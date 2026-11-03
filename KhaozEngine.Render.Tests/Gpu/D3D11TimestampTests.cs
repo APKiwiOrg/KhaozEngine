@@ -234,7 +234,7 @@ void main() { }");
             using var fence = fences.CreateFence();
             using var foreign = other.CreateFence();
             Assert.Equal(GpuTimestampRefusal.OutputTooSmall, Assert.Throws<GpuTimestampArgumentException>(() => pool.TryResolve(fence, new ulong[1], out _)).Reason);
-            Assert.Throws<ArgumentException>(() => pool.TryResolve(foreign, new ulong[2], out _));
+            Assert.Throws<GpuResourceOwnershipArgumentException>(() => pool.TryResolve(foreign, new ulong[2], out _));
             commands.Begin();
             Assert.Equal(GpuTimestampRefusal.UnresolvedBatch, Assert.Throws<GpuTimestampStateException>(() => commands.BeginTimestamps(pool, 2)).Reason);
             commands.End();

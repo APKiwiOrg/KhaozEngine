@@ -232,19 +232,28 @@ namespace KhaozEngine.Gpu.Metal.Internal
         {
             if (set is null)
             {
-                throw new ArgumentException(
-                    $"{what} was given no resource set.", nameof(set));
+                throw new GpuResourceOwnershipArgumentException(GpuResourceOwnershipRefusal.MissingResource,
+                    $"{what} was given no resource set.", nameof(set))
+                {
+                    ResourceKind = nameof(MetalResourceSet),
+                    Context = what,
+                };
             }
 
             MetalResourceSet typed = MetalResourceOwnership.Require<MetalResourceSet>(set, owner, nameof(set));
 
             if (typed.IsDisposed)
             {
-                throw new ObjectDisposedException(
+                throw new GpuResourceOwnershipDisposedException(GpuResourceOwnershipRefusal.NativeHandleReleased,
                     nameof(MetalResourceSet),
                     $"{what} was given a native Metal resource set that is already disposed. A set releases "
                     + "nothing on this backend, so the bind would work and would name resources the caller "
-                    + "considers unbound.");
+                    + "considers unbound.")
+                {
+                    NativeHandleKind = nameof(MetalResourceSet),
+                    ResourceKind = nameof(MetalResourceSet),
+                    Context = what,
+                };
             }
 
             return typed;

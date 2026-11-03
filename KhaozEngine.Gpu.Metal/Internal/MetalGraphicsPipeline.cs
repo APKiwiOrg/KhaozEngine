@@ -170,11 +170,16 @@ namespace KhaozEngine.Gpu.Metal.Internal
 
             if (typed.IsDisposed)
             {
-                throw new ObjectDisposedException(
+                throw new GpuResourceOwnershipDisposedException(GpuResourceOwnershipRefusal.NativeHandleReleased,
                     nameof(MetalGraphicsPipeline),
                     MetalGraphicsPipelinePlan.Label + " that is already disposed was bound. Its "
                     + "MTLRenderPipelineState and MTLDepthStencilState have been released, so recording it would "
-                    + "leave the draw that flushes it setting a released object on an encoder.");
+                    + "leave the draw that flushes it setting a released object on an encoder.")
+                {
+                    NativeHandleKind = "MTLRenderPipelineState, MTLDepthStencilState",
+                    ResourceKind = nameof(MetalGraphicsPipeline),
+                    Context = parameterName,
+                };
             }
 
             return typed;
@@ -364,13 +369,18 @@ namespace KhaozEngine.Gpu.Metal.Internal
         {
             if (!IsDisposed) return;
 
-            throw new ObjectDisposedException(
+            throw new GpuResourceOwnershipDisposedException(GpuResourceOwnershipRefusal.NativeHandleReleased,
                 nameof(MetalGraphicsPipeline),
                 MetalGraphicsPipelinePlan.Label + "'s " + member + " was read after the pipeline was disposed. "
                 + "Disposal released the "
                 + "MTLRenderPipelineState and the MTLDepthStencilState, so what is left is a pointer to an object "
                 + "the device has already let go of, and setting it on an encoder is a use-after-free inside the "
-                + "driver rather than anything this backend could report.");
+                + "driver rather than anything this backend could report.")
+            {
+                NativeHandleKind = member == nameof(RenderState) ? "MTLRenderPipelineState" : "MTLDepthStencilState",
+                ResourceKind = nameof(MetalGraphicsPipeline),
+                Context = member,
+            };
         }
 
         // Metal's own words, because this is the one compatibility check the API performs for this backend and

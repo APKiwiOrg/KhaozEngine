@@ -510,11 +510,16 @@ namespace KhaozEngine.Tests.Gpu
         {
             var owned = new OwnedResource(new FakeMetalDeviceLiveness());
 
-            ArgumentException thrown = Assert.Throws<ArgumentException>(
+            GpuResourceOwnershipArgumentException thrown = Assert.Throws<GpuResourceOwnershipArgumentException>(
                 () => MetalResourceOwnership.Require<OwnedResource>(owned, new FakeMetalDeviceLiveness(),
                     "resource"));
 
+            Assert.Equal(GpuResourceOwnershipRefusal.DifferentDevice, thrown.Reason);
+            Assert.Equal(nameof(OwnedResource), thrown.ResourceKind);
+            Assert.Equal("resource", thrown.Context);
             Assert.Equal("resource", thrown.ParamName);
+            Assert.IsAssignableFrom<ArgumentException>(thrown);
+            Assert.Equal(GpuBackendKind.MetalNative, thrown.ExpectedBackend);
         }
 
         /// <summary>And a resource from another BACKEND is refused by name rather than by
@@ -523,11 +528,17 @@ namespace KhaozEngine.Tests.Gpu
         [Fact]
         public void AResourceFromAnotherBackend_IsRefusedByName()
         {
-            ArgumentException thrown = Assert.Throws<ArgumentException>(
+            GpuResourceOwnershipArgumentException thrown = Assert.Throws<GpuResourceOwnershipArgumentException>(
                 () => MetalResourceOwnership.Require<OwnedResource>("not a resource",
                     new FakeMetalDeviceLiveness(), "resource"));
 
+            Assert.Equal(GpuResourceOwnershipRefusal.ForeignBackend, thrown.Reason);
+            Assert.Equal(typeof(string), thrown.ActualType);
+            Assert.Equal(typeof(OwnedResource), thrown.ExpectedType);
+            Assert.Equal("resource", thrown.Context);
             Assert.Equal("resource", thrown.ParamName);
+            Assert.IsAssignableFrom<ArgumentException>(thrown);
+            Assert.Equal(GpuBackendKind.MetalNative, thrown.ExpectedBackend);
         }
 
         /// <summary>

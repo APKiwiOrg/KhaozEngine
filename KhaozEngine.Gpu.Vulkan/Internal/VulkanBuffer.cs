@@ -203,10 +203,17 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         /// <see cref="VulkanTexture.Require"/> exists on the other side.</summary>
         internal static VulkanBuffer Require(IGpuBuffer? buffer, string what)
             => buffer as VulkanBuffer
-                ?? throw new ArgumentException(
+                ?? throw new GpuResourceOwnershipArgumentException(buffer is null ? GpuResourceOwnershipRefusal.MissingResource : GpuResourceOwnershipRefusal.ForeignBackend,
                     $"The buffer handed to {what} was not created by the native Vulkan backend, so it carries no "
                     + "VkBuffer. Create it through the same IGpuDevice.Factory.",
-                    nameof(buffer));
+                    nameof(buffer))
+                {
+                    ExpectedBackend = GpuBackendKind.VulkanNative,
+                    ActualType = buffer?.GetType(),
+                    ExpectedType = typeof(VulkanBuffer),
+                    Context = what,
+                    ResourceKind = "buffer",
+                };
 
         /// <summary>
         /// The buffer, refused by name when its declared usage does not include <paramref name="required"/>. The

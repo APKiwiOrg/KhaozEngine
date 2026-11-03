@@ -166,10 +166,15 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
 
             if (fence is not VulkanGpuFence armed)
             {
-                throw new ArgumentException(
+                throw new GpuResourceOwnershipArgumentException(GpuResourceOwnershipRefusal.ResourceNotOwnedByDevice,
                     "A fence created by another GPU backend was handed to the native Vulkan backend's Submit. A "
                     + $"fence on this backend is a value on this device's one timeline, and a {fence.GetType().Name} "
-                    + "has no value on it. Create fences through the device you submit to.", nameof(fence));
+                    + "has no value on it. Create fences through the device you submit to.", nameof(fence))
+                {
+                    ExpectedBackend = GpuBackendKind.VulkanNative,
+                    ActualType = fence?.GetType(),
+                    ResourceKind = "fence",
+                };
             }
 
             VulkanCommandList list = Recording(cl);
@@ -197,10 +202,15 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
 
             if (cl is not VulkanCommandList list)
             {
-                throw new ArgumentException(
+                throw new GpuResourceOwnershipArgumentException(GpuResourceOwnershipRefusal.ResourceNotOwnedByDevice,
                     "A command list created by another GPU backend was handed to the native Vulkan backend's "
                     + $"Submit. A {cl.GetType().Name} holds no VkCommandBuffer, so there is nothing to queue. "
-                    + "Create command lists from the device you submit them to.", nameof(cl));
+                    + "Create command lists from the device you submit them to.", nameof(cl))
+                {
+                    ExpectedBackend = GpuBackendKind.VulkanNative,
+                    ActualType = cl?.GetType(),
+                    ResourceKind = "command list",
+                };
             }
 
             return list;

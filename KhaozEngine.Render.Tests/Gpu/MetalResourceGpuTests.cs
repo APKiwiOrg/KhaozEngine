@@ -607,10 +607,10 @@ namespace KhaozEngine.Tests.Gpu
 
             var payload = new byte[8 * 8 * 4];
 
-            Assert.Throws<ArgumentException>(() => second.UpdateTexture(texture, payload, 0, 0, 8, 8));
-            Assert.Throws<ArgumentException>(() => second.UpdateBuffer(buffer, 0, new byte[16]));
-            Assert.Throws<ArgumentException>(() => second.Map(staging, GpuMapMode.Read));
-            Assert.Throws<ArgumentException>(() => second.Map(buffer, GpuMapMode.Read));
+            Assert.Throws<GpuResourceOwnershipArgumentException>(() => second.UpdateTexture(texture, payload, 0, 0, 8, 8));
+            Assert.Throws<GpuResourceOwnershipArgumentException>(() => second.UpdateBuffer(buffer, 0, new byte[16]));
+            Assert.Throws<GpuResourceOwnershipArgumentException>(() => second.Map(staging, GpuMapMode.Read));
+            Assert.Throws<GpuResourceOwnershipArgumentException>(() => second.Map(buffer, GpuMapMode.Read));
 
             // And the same calls on the device that created them still work, so the rule is about identity rather
             // than about having broken the entry points.

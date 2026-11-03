@@ -82,13 +82,13 @@ namespace KhaozEngine.Tests.Gpu
             var otherDevice = new FakeMetalDeviceLiveness();
             MetalShaderIndexTable table = TableFor(GpuResourceKind.UniformBuffer);
 
-            ArgumentException byShaders = Assert.Throws<ArgumentException>(
+            GpuResourceOwnershipArgumentException byShaders = Assert.Throws<GpuResourceOwnershipArgumentException>(
                 () => MetalGraphicsPipelinePlan.Build(
                     _liveness,
                     Description(ShaderSet(table, otherDevice), Layout(GpuResourceKind.UniformBuffer))));
             Assert.Equal("description", byShaders.ParamName);
 
-            ArgumentException byLayout = Assert.Throws<ArgumentException>(
+            GpuResourceOwnershipArgumentException byLayout = Assert.Throws<GpuResourceOwnershipArgumentException>(
                 () => MetalGraphicsPipelinePlan.Build(
                     _liveness,
                     Description(ShaderSet(table), LayoutOn(otherDevice, GpuResourceKind.UniformBuffer))));
@@ -107,7 +107,7 @@ namespace KhaozEngine.Tests.Gpu
             IGpuResourceLayout[] layouts = Layout(GpuResourceKind.UniformBuffer);
             layouts[0].Dispose();
 
-            Assert.Throws<ObjectDisposedException>(
+            Assert.Throws<GpuResourceOwnershipDisposedException>(
                 () => MetalGraphicsPipelinePlan.Build(_liveness, Description(shaders, layouts)));
         }
 
@@ -125,7 +125,7 @@ namespace KhaozEngine.Tests.Gpu
             MetalShaderSet shaders = ShaderSet(TableFor(GpuResourceKind.UniformBuffer));
             shaders.Dispose();
 
-            ObjectDisposedException refused = Assert.Throws<ObjectDisposedException>(
+            GpuResourceOwnershipDisposedException refused = Assert.Throws<GpuResourceOwnershipDisposedException>(
                 () => MetalGraphicsPipelinePlan.Build(
                     _liveness, Description(shaders, Layout(GpuResourceKind.UniformBuffer))));
             Assert.Equal(nameof(MetalShaderSet), refused.ObjectName);
@@ -134,7 +134,7 @@ namespace KhaozEngine.Tests.Gpu
                 _liveness, default, TableFor(GpuResourceKind.UniformBuffer), 64, 1, 1);
             kernel.Dispose();
 
-            ObjectDisposedException refusedKernel = Assert.Throws<ObjectDisposedException>(
+            GpuResourceOwnershipDisposedException refusedKernel = Assert.Throws<GpuResourceOwnershipDisposedException>(
                 () => MetalComputePipeline.Check(
                     _liveness,
                     new GpuComputePipelineDescription(kernel, Layout(GpuResourceKind.UniformBuffer))));
@@ -149,8 +149,9 @@ namespace KhaozEngine.Tests.Gpu
             MetalShaderSet shaders = ShaderSet(TableFor(GpuResourceKind.UniformBuffer));
             GpuPipelineDescription description = Description(shaders, Layout(GpuResourceKind.UniformBuffer));
             description.ShaderSet = null!;
-            ArgumentException error = Assert.Throws<ArgumentException>(
+            GpuResourceOwnershipArgumentException error = Assert.Throws<GpuResourceOwnershipArgumentException>(
                 () => MetalGraphicsPipelinePlan.Build(_liveness, description));
+            Assert.Equal(GpuResourceOwnershipRefusal.MissingResource, error.Reason);
             Assert.Equal("description", error.ParamName);
 
             description.ShaderSet = shaders;
@@ -404,8 +405,9 @@ namespace KhaozEngine.Tests.Gpu
         public void NoComputeShader_IsRefusedByName()
         {
             IGpuResourceLayout[] layouts = Layout(GpuResourceKind.UniformBuffer);
-            ArgumentException error = Assert.Throws<ArgumentException>(
+            GpuResourceOwnershipArgumentException error = Assert.Throws<GpuResourceOwnershipArgumentException>(
                 () => MetalComputePipeline.Check(_liveness, new GpuComputePipelineDescription(null!, layouts)));
+            Assert.Equal(GpuResourceOwnershipRefusal.MissingResource, error.Reason);
             Assert.Equal("description", error.ParamName);
 
             MetalComputeShader shader = new(_liveness, default, TableFor(GpuResourceKind.UniformBuffer), 64, 1, 1);

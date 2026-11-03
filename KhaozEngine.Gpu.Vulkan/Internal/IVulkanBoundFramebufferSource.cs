@@ -49,10 +49,17 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         /// <exception cref="ArgumentException">The framebuffer was made by another backend.</exception>
         internal static IVulkanBoundFramebufferSource Require(IGpuFramebuffer? framebuffer, string what)
             => framebuffer as IVulkanBoundFramebufferSource
-                ?? throw new ArgumentException(
+                ?? throw new GpuResourceOwnershipArgumentException(framebuffer is null ? GpuResourceOwnershipRefusal.MissingResource : GpuResourceOwnershipRefusal.ForeignBackend,
                     $"The framebuffer handed to {what} was not created by the native Vulkan backend, so it carries "
                     + "no VkImageView to render into. Create it through the same IGpuDevice.Factory, or use the "
                     + "device's own SwapchainFramebuffer.",
-                    nameof(framebuffer));
+                    nameof(framebuffer))
+                {
+                    ExpectedBackend = GpuBackendKind.VulkanNative,
+                    ActualType = framebuffer?.GetType(),
+                    ExpectedType = typeof(IVulkanBoundFramebufferSource),
+                    Context = what,
+                    ResourceKind = "framebuffer",
+                };
     }
 }

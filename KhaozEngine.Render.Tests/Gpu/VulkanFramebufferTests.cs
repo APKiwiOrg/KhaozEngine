@@ -348,7 +348,7 @@ namespace KhaozEngine.Tests.Gpu
             using VulkanCommandList list = fixture.CreateList();
             list.Begin();
 
-            Assert.Throws<ArgumentException>(() => list.SetFramebuffer(new ForeignFramebuffer()));
+            Assert.Throws<GpuResourceOwnershipArgumentException>(() => list.SetFramebuffer(new ForeignFramebuffer()));
         }
 
         // ---- Fixtures ----

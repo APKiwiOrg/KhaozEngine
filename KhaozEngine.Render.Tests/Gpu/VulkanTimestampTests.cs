@@ -147,7 +147,7 @@ namespace KhaozEngine.Tests.Gpu
             Assert.Throws<ArgumentNullException>(() => pool.TryResolve(null!, new ulong[3], out _));
             var other = new VulkanResourceFixture();
             using var foreignFence = other.Timeline.CreateFence();
-            Assert.Throws<ArgumentException>(() => pool.TryResolve(foreignFence, new ulong[3], out _));
+            Assert.Throws<GpuResourceOwnershipArgumentException>(() => pool.TryResolve(foreignFence, new ulong[3], out _));
             using var foreignList = List(other);
             foreignList.Begin();
             Assert.Equal(GpuTimestampRefusal.ForeignPool, Assert.Throws<GpuTimestampArgumentException>(() => foreignList.BeginTimestamps(pool, 1)).Reason);

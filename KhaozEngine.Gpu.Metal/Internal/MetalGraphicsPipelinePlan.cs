@@ -107,11 +107,15 @@ namespace KhaozEngine.Gpu.Metal.Internal
 
             if (description.ShaderSet is null)
             {
-                throw new ArgumentException(
+                throw new GpuResourceOwnershipArgumentException(GpuResourceOwnershipRefusal.MissingResource,
                     Label + " was given no shader set. A pipeline is created FROM a vertex and a fragment "
                     + "function, and the binding table it resolves every resource through travels with the set "
                     + "that was compiled, so there is nothing to build one from.",
-                    nameof(description));
+                    nameof(description))
+                {
+                    ResourceKind = nameof(MetalShaderSet),
+                    Context = Label,
+                };
             }
 
             MetalShaderSet shaders = MetalResourceOwnership.Require<MetalShaderSet>(
@@ -124,11 +128,16 @@ namespace KhaozEngine.Gpu.Metal.Internal
             // refusals run device-free. This is MetalResourceLayout.Require's arm applied to the other input.
             if (shaders.IsDisposed)
             {
-                throw new ObjectDisposedException(
+                throw new GpuResourceOwnershipDisposedException(GpuResourceOwnershipRefusal.NativeHandleReleased,
                     nameof(MetalShaderSet),
                     Label + " was given a native Metal shader set that is already disposed. Its MTLFunctions and "
                     + "MTLLibrary have been released, so the pipeline would be created from functions the device "
-                    + "has already let go of.");
+                    + "has already let go of.")
+                {
+                    NativeHandleKind = "MTLFunction, MTLLibrary",
+                    ResourceKind = nameof(MetalShaderSet),
+                    Context = Label,
+                };
             }
 
             MetalResourceLayout[] layouts = RequireLayouts(description.ResourceLayouts, liveness);

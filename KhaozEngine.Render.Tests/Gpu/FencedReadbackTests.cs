@@ -117,9 +117,12 @@ namespace KhaozEngine.Tests.Gpu
             using IGpuTexture staging = fixture.StagingTexture();
             IGpuFence foreign = SignaledFence(other);
 
-            ArgumentException ex = Assert.Throws<ArgumentException>(
+            GpuResourceOwnershipArgumentException ex = Assert.Throws<GpuResourceOwnershipArgumentException>(
                 () => fixture.Device.MapForRead(staging, foreign));
             Assert.Equal("fence", ex.ParamName);
+            Assert.Equal(GpuResourceOwnershipRefusal.DifferentDevice, ex.Reason);
+            fixture.Device.MapForRead(staging, SignaledFence(fixture));
+            fixture.Device.Unmap(staging);
         }
 
         [Fact]

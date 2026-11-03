@@ -119,10 +119,14 @@ namespace KhaozEngine.Gpu.Metal.Internal
         {
             if (layout is null)
             {
-                throw new ArgumentException(
+                throw new GpuResourceOwnershipArgumentException(GpuResourceOwnershipRefusal.MissingResource,
                     $"{what} was given no resource layout. Every element of a native Metal resource set is "
                     + "matched to a declared element positionally, so there is nothing to match against.",
-                    nameof(layout));
+                    nameof(layout))
+                {
+                    ResourceKind = nameof(MetalResourceLayout),
+                    Context = what,
+                };
             }
 
             MetalResourceLayout typed = MetalResourceOwnership.Require<MetalResourceLayout>(
@@ -130,11 +134,16 @@ namespace KhaozEngine.Gpu.Metal.Internal
 
             if (typed.IsDisposed)
             {
-                throw new ObjectDisposedException(
+                throw new GpuResourceOwnershipDisposedException(GpuResourceOwnershipRefusal.NativeHandleReleased,
                     nameof(MetalResourceLayout),
                     $"{what} was given a native Metal resource layout that is already disposed. A layout releases "
                     + "nothing on this backend, so the call would work, which is exactly why the flag is checked "
-                    + "here: the caller believes the declaration is still theirs to build against.");
+                    + "here: the caller believes the declaration is still theirs to build against.")
+                {
+                    NativeHandleKind = nameof(MetalResourceLayout),
+                    ResourceKind = nameof(MetalResourceLayout),
+                    Context = what,
+                };
             }
 
             return typed;

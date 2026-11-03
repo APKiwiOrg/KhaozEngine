@@ -230,15 +230,13 @@ namespace KhaozEngine.Tests.Gpu
             using IGpuBuffer theirBuffer = second.Factory.CreateBuffer(
                 new GpuBufferDescription(256, GpuBufferUsage.UniformBuffer));
 
-            Assert.Contains("DIFFERENT native Metal device",
-                Refusal(() => second.Factory.CreateResourceSet(
-                    new GpuResourceSetDescription(mine, theirBuffer))),
-                StringComparison.Ordinal);
+            var refusal7 = Assert.Throws<GpuResourceOwnershipArgumentException>(() => second.Factory.CreateResourceSet(
+                    new GpuResourceSetDescription(mine, theirBuffer)));
+            Assert.Equal(GpuResourceOwnershipRefusal.DifferentDevice, refusal7.Reason);
 
-            Assert.Contains("DIFFERENT native Metal device",
-                Refusal(() => first.Factory.CreateResourceSet(
-                    new GpuResourceSetDescription(mine, theirBuffer))),
-                StringComparison.Ordinal);
+            var refusal8 = Assert.Throws<GpuResourceOwnershipArgumentException>(() => first.Factory.CreateResourceSet(
+                    new GpuResourceSetDescription(mine, theirBuffer)));
+            Assert.Equal(GpuResourceOwnershipRefusal.DifferentDevice, refusal8.Reason);
 
             // And the same call on the device that created both still works, so the rule is about identity rather
             // than about having broken the entry point.

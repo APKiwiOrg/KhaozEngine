@@ -86,10 +86,17 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         /// a refusal worth making by name rather than a cast that fails inside a create-info.</summary>
         internal static VulkanShaderSet Require(IGpuShaderSet? shaders, string what)
             => shaders as VulkanShaderSet
-                ?? throw new ArgumentException(
+                ?? throw new GpuResourceOwnershipArgumentException(shaders is null ? GpuResourceOwnershipRefusal.MissingResource : GpuResourceOwnershipRefusal.ForeignBackend,
                     $"The shader set handed to {what} was not compiled by the native Vulkan backend, so it holds "
                     + "no VkShaderModule. Compile shaders through the same IGpuDevice.Factory the pipeline is "
                     + "being created from.",
-                    nameof(shaders));
+                    nameof(shaders))
+                {
+                    ExpectedBackend = GpuBackendKind.VulkanNative,
+                    ActualType = shaders?.GetType(),
+                    ExpectedType = typeof(VulkanShaderSet),
+                    Context = what,
+                    ResourceKind = "shader set",
+                };
     }
 }

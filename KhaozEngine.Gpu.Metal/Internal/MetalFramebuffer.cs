@@ -139,10 +139,17 @@ namespace KhaozEngine.Gpu.Metal.Internal
         /// <summary>The framebuffer as a bind source, or a named refusal for one another backend made.</summary>
         internal static IMetalBoundFramebufferSource Require(IGpuFramebuffer? framebuffer, string what)
             => framebuffer as IMetalBoundFramebufferSource
-                ?? throw new ArgumentException(
+                ?? throw new GpuResourceOwnershipArgumentException(framebuffer is null ? GpuResourceOwnershipRefusal.MissingResource : GpuResourceOwnershipRefusal.ForeignBackend,
                     $"The framebuffer handed to {what} was not created by the native Metal backend, so it carries "
                     + "no MTLTexture to render into. Create it through the same IGpuDevice.Factory.",
-                    nameof(framebuffer));
+                    nameof(framebuffer))
+                {
+                    ExpectedBackend = GpuBackendKind.MetalNative,
+                    ActualType = framebuffer?.GetType(),
+                    ExpectedType = typeof(IMetalBoundFramebufferSource),
+                    Context = what,
+                    ResourceKind = "framebuffer",
+                };
 
         static void RequireMatching(MetalTexture first, MetalTexture attachment, string what)
         {

@@ -96,11 +96,16 @@ namespace KhaozEngine.Gpu.Metal.Internal
             {
                 if (IsDisposed)
                 {
-                    throw new ObjectDisposedException(
+                    throw new GpuResourceOwnershipDisposedException(GpuResourceOwnershipRefusal.NativeHandleReleased,
                         nameof(MetalComputePipeline),
                         Label + "'s State was read after the pipeline was disposed. Disposal released the "
                         + "MTLComputePipelineState, so what is left is a pointer to an object the device has "
-                        + "already let go of.");
+                        + "already let go of.")
+                    {
+                        NativeHandleKind = "MTLComputePipelineState",
+                        ResourceKind = nameof(MetalComputePipeline),
+                        Context = nameof(State),
+                    };
                 }
 
                 return _state;
@@ -137,11 +142,16 @@ namespace KhaozEngine.Gpu.Metal.Internal
 
             if (typed.IsDisposed)
             {
-                throw new ObjectDisposedException(
+                throw new GpuResourceOwnershipDisposedException(GpuResourceOwnershipRefusal.NativeHandleReleased,
                     nameof(MetalComputePipeline),
                     Label + " that is already disposed was bound. Its MTLComputePipelineState has been released, "
                     + "so recording it would leave the dispatch that flushes it setting a released object on an "
-                    + "encoder.");
+                    + "encoder.")
+                {
+                    NativeHandleKind = "MTLComputePipelineState",
+                    ResourceKind = nameof(MetalComputePipeline),
+                    Context = parameterName,
+                };
             }
 
             return typed;
@@ -176,10 +186,14 @@ namespace KhaozEngine.Gpu.Metal.Internal
 
             if (description.Shader is null)
             {
-                throw new ArgumentException(
+                throw new GpuResourceOwnershipArgumentException(GpuResourceOwnershipRefusal.MissingResource,
                     Label + " was given no compute shader. A compute pipeline IS a kernel function plus the "
                     + "layouts it binds through, so there is nothing to build one from.",
-                    nameof(description));
+                    nameof(description))
+                {
+                    ResourceKind = nameof(MetalComputeShader),
+                    Context = Label,
+                };
             }
 
             MetalComputeShader shader = MetalResourceOwnership.Require<MetalComputeShader>(
@@ -191,11 +205,16 @@ namespace KhaozEngine.Gpu.Metal.Internal
             // out of five unless it is asked here.
             if (shader.IsDisposed)
             {
-                throw new ObjectDisposedException(
+                throw new GpuResourceOwnershipDisposedException(GpuResourceOwnershipRefusal.NativeHandleReleased,
                     nameof(MetalComputeShader),
                     Label + " was given a native Metal compute shader that is already disposed. Its MTLFunction "
                     + "and MTLLibrary have been released, so the pipeline would be created from a function the "
-                    + "device has already let go of.");
+                    + "device has already let go of.")
+                {
+                    NativeHandleKind = "MTLFunction, MTLLibrary",
+                    ResourceKind = nameof(MetalComputeShader),
+                    Context = Label,
+                };
             }
 
             IGpuResourceLayout[] declaredLayouts = description.ResourceLayouts ?? [];

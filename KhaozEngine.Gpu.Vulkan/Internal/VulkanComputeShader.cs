@@ -77,10 +77,17 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         /// <see cref="VulkanShaderSet.Require"/>, and row 13's compute pipeline is the caller.</summary>
         internal static VulkanComputeShader Require(IGpuComputeShader? shader, string what)
             => shader as VulkanComputeShader
-                ?? throw new ArgumentException(
+                ?? throw new GpuResourceOwnershipArgumentException(shader is null ? GpuResourceOwnershipRefusal.MissingResource : GpuResourceOwnershipRefusal.ForeignBackend,
                     $"The compute shader handed to {what} was not compiled by the native Vulkan backend, so it "
                     + "holds no VkShaderModule. Compile shaders through the same IGpuDevice.Factory the pipeline "
                     + "is being created from.",
-                    nameof(shader));
+                    nameof(shader))
+                {
+                    ExpectedBackend = GpuBackendKind.VulkanNative,
+                    ActualType = shader?.GetType(),
+                    ExpectedType = typeof(VulkanComputeShader),
+                    Context = what,
+                    ResourceKind = "compute shader",
+                };
     }
 }

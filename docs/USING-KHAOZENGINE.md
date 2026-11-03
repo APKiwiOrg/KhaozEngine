@@ -19834,6 +19834,14 @@ writes are being queued for a segment nothing ever acquires, which on a running 
 
 ---
 
+## GPU resource refusals
+
+Ownership refusals use `GpuResourceOwnershipArgumentException` for `DifferentDevice`, `ForeignBackend`, `MissingResource` and `ResourceNotOwnedByDevice`, and `GpuResourceOwnershipDisposedException` for `NativeHandleReleased`. Read the backend, resource identity, operation context and native handle properties rather than message text.
+
+See the [portable refusal catalog](../KhaozEngine.Gpu/README.md#refusals) and [Vulkan refusal catalog](../KhaozEngine.Gpu.Vulkan/README.md#refusals) for the full diagnostic members. Existing BCL catches still match.
+
+---
+
 ## A texture array with ONE layer (`GpuTextureDescription.IsArray`, 17.39.0)
 
 `GpuTextureDescription.Texture2DArray(width, height, format, usage, arrayLayers, mipLevels)` builds a 2D texture

@@ -190,10 +190,15 @@ namespace KhaozEngine.Gpu.D3D11.Internal
                     throw new ArgumentNullException(nameof(list));
 
                 default:
-                    throw new ArgumentException(
+                    throw new GpuResourceOwnershipArgumentException(GpuResourceOwnershipRefusal.ResourceNotOwnedByDevice,
                         $"A {list.GetType().Name} was submitted to the native Direct3D 11 device. Only a command "
                         + "list this backend created can be replayed, because a list from another backend holds "
-                        + "another backend's recording.", nameof(list));
+                        + "another backend's recording.", nameof(list))
+                    {
+                        ExpectedBackend = GpuBackendKind.Direct3D11Native,
+                        ActualType = list?.GetType(),
+                        ResourceKind = "command list",
+                    };
             }
         }
 

@@ -392,7 +392,7 @@ namespace KhaozEngine.Tests.Gpu
             var emitter = new D3D11CountingEmitter(log);
             using var foreign = new NullGpuCommandList();
 
-            ArgumentException ex = Assert.Throws<ArgumentException>(
+            GpuResourceOwnershipArgumentException ex = Assert.Throws<GpuResourceOwnershipArgumentException>(
                 () => D3D11CommandDrivers.Replay(foreign, ref emitter));
 
             Assert.Equal("list", ex.ParamName);

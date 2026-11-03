@@ -169,10 +169,17 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         {
             if (description.Layout is not D3D11ResourceLayout layout)
             {
-                throw new ArgumentException(
+                throw new GpuResourceOwnershipArgumentException(description.Layout is null ? GpuResourceOwnershipRefusal.MissingResource : GpuResourceOwnershipRefusal.ForeignBackend,
                     "A resource set for the native Direct3D 11 backend needs a layout this backend created. A "
                     + "layout from another backend carries another backend's register numbering.",
-                    nameof(description));
+                    nameof(description))
+                {
+                    ExpectedBackend = GpuBackendKind.Direct3D11Native,
+                    ActualType = description.Layout?.GetType(),
+                    ExpectedType = typeof(D3D11ResourceLayout),
+                    Context = "resource set",
+                    ResourceKind = "resource layout",
+                };
             }
 
             IGpuBindableResource[] resources = description.Resources ?? Array.Empty<IGpuBindableResource>();

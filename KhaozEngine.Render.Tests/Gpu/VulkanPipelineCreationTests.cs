@@ -429,22 +429,25 @@ namespace KhaozEngine.Tests.Gpu
                 var shaders = (VulkanShaderSet)fixture.Factory.CreateShadersFromSpirv(VertGlsl, FragGlsl);
                 owned.Add(shaders);
 
-                ArgumentException foreignShaders = Assert.Throws<ArgumentException>(
+                GpuResourceOwnershipArgumentException foreignShaders = Assert.Throws<GpuResourceOwnershipArgumentException>(
                     () => fixture.Factory.CreateGraphicsPipeline(Description(new ForeignShaderSet(), [])));
-                Assert.Contains("not compiled by the native Vulkan backend", foreignShaders.Message,
-                    StringComparison.Ordinal);
+                Assert.Equal(GpuResourceOwnershipRefusal.ForeignBackend, foreignShaders.Reason);
+                Assert.Equal(GpuBackendKind.VulkanNative, foreignShaders.ExpectedBackend);
+                Assert.Equal(typeof(ForeignShaderSet), foreignShaders.ActualType);
 
-                ArgumentException foreignLayout = Assert.Throws<ArgumentException>(
+                GpuResourceOwnershipArgumentException foreignLayout = Assert.Throws<GpuResourceOwnershipArgumentException>(
                     () => fixture.Factory.CreateGraphicsPipeline(
                         Description(shaders, [new ForeignResourceLayout()])));
-                Assert.Contains("not created by the native Vulkan backend", foreignLayout.Message,
-                    StringComparison.Ordinal);
+                Assert.Equal(GpuResourceOwnershipRefusal.ForeignBackend, foreignLayout.Reason);
+                Assert.Equal(GpuBackendKind.VulkanNative, foreignLayout.ExpectedBackend);
+                Assert.Equal(typeof(ForeignResourceLayout), foreignLayout.ActualType);
 
-                ArgumentException foreignCompute = Assert.Throws<ArgumentException>(
+                GpuResourceOwnershipArgumentException foreignCompute = Assert.Throws<GpuResourceOwnershipArgumentException>(
                     () => fixture.Factory.CreateComputePipeline(
                         new GpuComputePipelineDescription(new ForeignComputeShader())));
-                Assert.Contains("not compiled by the native Vulkan backend", foreignCompute.Message,
-                    StringComparison.Ordinal);
+                Assert.Equal(GpuResourceOwnershipRefusal.ForeignBackend, foreignCompute.Reason);
+                Assert.Equal(GpuBackendKind.VulkanNative, foreignCompute.ExpectedBackend);
+                Assert.Equal(typeof(ForeignComputeShader), foreignCompute.ActualType);
 
                 Assert.Empty(fixture.PipelineApi.Graphics);
                 Assert.Empty(fixture.PipelineApi.Compute);

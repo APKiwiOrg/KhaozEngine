@@ -353,9 +353,9 @@ namespace KhaozEngine.Tests.Gpu
             var foreign = new FakeBuffer(SourceSize);
             _list.Begin();
 
-            Assert.Equal("src", Assert.Throws<ArgumentException>(
+            Assert.Equal("src", Assert.Throws<GpuResourceOwnershipArgumentException>(
                 () => _list.CopyBuffer(foreign, 0, destination, 0, 16)).ParamName);
-            Assert.Equal("dst", Assert.Throws<ArgumentException>(
+            Assert.Equal("dst", Assert.Throws<GpuResourceOwnershipArgumentException>(
                 () => _list.CopyBuffer(source, 0, foreign, 0, 16)).ParamName);
 
             AssertNothingWasSpent();
@@ -401,7 +401,7 @@ namespace KhaozEngine.Tests.Gpu
 
             Action[] members = EveryMemberWith(texture, texture);
             Assert.NotEmpty(members);
-            foreach (Action member in members) Assert.Throws<ArgumentException>(member);
+            foreach (Action member in members) Assert.Throws<GpuResourceOwnershipArgumentException>(member);
 
             AssertNothingWasSpent();
         }

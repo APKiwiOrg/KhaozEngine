@@ -400,10 +400,11 @@ namespace KhaozEngine.Tests.Gpu
         [Fact]
         public void ASetFromAnotherBackend_IsRefusedByName()
         {
-            Assert.Contains("native Vulkan backend",
-                Assert.Throws<ArgumentException>(
-                    () => VulkanResourceSet.Require(new ForeignSet(), "a bind")).Message,
-                StringComparison.Ordinal);
+            var refusal = Assert.Throws<GpuResourceOwnershipArgumentException>(
+                () => VulkanResourceSet.Require(new ForeignSet(), "a bind"));
+            Assert.Equal(GpuResourceOwnershipRefusal.ForeignBackend, refusal.Reason);
+            Assert.Equal(GpuBackendKind.VulkanNative, refusal.ExpectedBackend);
+            Assert.Equal(typeof(ForeignSet), refusal.ActualType);
         }
 
         static string Throws(Action action) => Assert.Throws<ArgumentException>(action).Message;

@@ -351,13 +351,15 @@ namespace KhaozEngine.Tests.Gpu
             using VulkanCommandList list = fixture.CreateList();
             list.Begin();
 
-            Assert.Contains("not created by the native Vulkan backend",
-                Assert.Throws<ArgumentException>(() => list.SetPipeline(new ForeignPipeline())).Message,
-                StringComparison.Ordinal);
-            Assert.Contains("not created by the native Vulkan backend",
-                Assert.Throws<ArgumentException>(
-                    () => list.SetComputePipeline(new ForeignComputePipeline())).Message,
-                StringComparison.Ordinal);
+            var graphics = Assert.Throws<GpuResourceOwnershipArgumentException>(() => list.SetPipeline(new ForeignPipeline()));
+            Assert.Equal(GpuResourceOwnershipRefusal.ForeignBackend, graphics.Reason);
+            Assert.Equal(GpuBackendKind.VulkanNative, graphics.ExpectedBackend);
+            Assert.Equal(typeof(ForeignPipeline), graphics.ActualType);
+            var compute = Assert.Throws<GpuResourceOwnershipArgumentException>(
+                () => list.SetComputePipeline(new ForeignComputePipeline()));
+            Assert.Equal(GpuResourceOwnershipRefusal.ForeignBackend, compute.Reason);
+            Assert.Equal(GpuBackendKind.VulkanNative, compute.ExpectedBackend);
+            Assert.Equal(typeof(ForeignComputePipeline), compute.ActualType);
 
             Assert.Empty(fixture.PipelineBinder.Binds);
         }
@@ -384,7 +386,7 @@ namespace KhaozEngine.Tests.Gpu
 
                 // The live list's own disposed guard names the list. The pipeline guard names the VkPipeline.
                 Assert.Equal("VkPipeline",
-                    Assert.Throws<ObjectDisposedException>(() => list.SetPipeline(pipeline)).ObjectName);
+                    Assert.Throws<GpuResourceOwnershipDisposedException>(() => list.SetPipeline(pipeline)).ObjectName);
 
                 Assert.Empty(fixture.PipelineBinder.Binds);
             }
@@ -411,7 +413,7 @@ namespace KhaozEngine.Tests.Gpu
                 list.Begin();
 
                 Assert.Equal("VkPipeline",
-                    Assert.Throws<ObjectDisposedException>(() => list.SetComputePipeline(pipeline)).ObjectName);
+                    Assert.Throws<GpuResourceOwnershipDisposedException>(() => list.SetComputePipeline(pipeline)).ObjectName);
 
                 Assert.Empty(fixture.PipelineBinder.Binds);
             }

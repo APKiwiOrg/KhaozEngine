@@ -101,9 +101,18 @@ namespace KhaozEngine.Gpu.D3D11.Internal
             for (int i = 0; i < layouts.Length; i++)
             {
                 result[i] = layouts[i] as D3D11ResourceLayout
-                    ?? throw new ArgumentException(
+                    ?? throw new GpuResourceOwnershipArgumentException(layouts[i] is null ? GpuResourceOwnershipRefusal.MissingResource : GpuResourceOwnershipRefusal.ForeignBackend,
                         $"Resource layout {i} was not created by the native Direct3D 11 backend, so it carries no "
-                        + $"register numbering this {pipelineKind} pipeline can flatten.", nameof(layouts));
+                        + $"register numbering this {pipelineKind} pipeline can flatten.", nameof(layouts))
+                    {
+                        ExpectedBackend = GpuBackendKind.Direct3D11Native,
+                        ActualType = layouts[i]?.GetType(),
+                        ExpectedType = typeof(D3D11ResourceLayout),
+                        Context = pipelineKind,
+                        ResourceKind = "resource layout",
+                        ResourceIndex = i,
+                        PipelineKind = pipelineKind,
+                    };
             }
 
             return result;

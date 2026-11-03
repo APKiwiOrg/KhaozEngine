@@ -167,20 +167,17 @@ namespace KhaozEngine.Tests.Gpu
             using var foreignDevice = new MetalResourceLayout(theirs, new GpuResourceLayoutDescription());
             using var foreignBackend = new NotAMetalLayout();
 
-            Assert.Contains("no resource layout",
-                Assert.Throws<ArgumentException>(
-                    () => MetalResourceLayout.Require(null, mine, "a set")).Message,
-                StringComparison.Ordinal);
+            var missingRefusal = Assert.Throws<GpuResourceOwnershipArgumentException>(
+                () => MetalResourceLayout.Require(null, mine, "a set"));
+            Assert.Equal(GpuResourceOwnershipRefusal.MissingResource, missingRefusal.Reason);
 
-            Assert.Contains("not created by the native Metal backend",
-                Assert.Throws<ArgumentException>(
-                    () => MetalResourceLayout.Require(foreignBackend, mine, "a set")).Message,
-                StringComparison.Ordinal);
+            var foreignBackendRefusal = Assert.Throws<GpuResourceOwnershipArgumentException>(
+                () => MetalResourceLayout.Require(foreignBackend, mine, "a set"));
+            Assert.Equal(GpuResourceOwnershipRefusal.ForeignBackend, foreignBackendRefusal.Reason);
 
-            Assert.Contains("DIFFERENT native Metal device",
-                Assert.Throws<ArgumentException>(
-                    () => MetalResourceLayout.Require(foreignDevice, mine, "a set")).Message,
-                StringComparison.Ordinal);
+            var foreignDeviceRefusal = Assert.Throws<GpuResourceOwnershipArgumentException>(
+                () => MetalResourceLayout.Require(foreignDevice, mine, "a set"));
+            Assert.Equal(GpuResourceOwnershipRefusal.DifferentDevice, foreignDeviceRefusal.Reason);
 
             // The positive control, so the three refusals above are not passing because Require refuses
             // everything.
@@ -212,11 +209,11 @@ namespace KhaozEngine.Tests.Gpu
             // why the two refusals below have to be explicit.
             Assert.Equal(1, layout.ElementCount);
 
-            ObjectDisposedException refused = Assert.Throws<ObjectDisposedException>(
+            GpuResourceOwnershipDisposedException refused = Assert.Throws<GpuResourceOwnershipDisposedException>(
                 () => MetalResourceLayout.Require(layout, liveness, "a set"));
             Assert.Equal(nameof(MetalResourceLayout), refused.ObjectName);
 
-            Assert.Throws<ObjectDisposedException>(() => new MetalResourceSet(
+            Assert.Throws<GpuResourceOwnershipDisposedException>(() => new MetalResourceSet(
                 liveness, new GpuResourceSetDescription(layout)));
         }
 
@@ -237,7 +234,7 @@ namespace KhaozEngine.Tests.Gpu
 
             set.Dispose();
 
-            ObjectDisposedException refused = Assert.Throws<ObjectDisposedException>(
+            GpuResourceOwnershipDisposedException refused = Assert.Throws<GpuResourceOwnershipDisposedException>(
                 () => MetalResourceSet.Require(set, liveness, "a bind"));
             Assert.Equal(nameof(MetalResourceSet), refused.ObjectName);
         }

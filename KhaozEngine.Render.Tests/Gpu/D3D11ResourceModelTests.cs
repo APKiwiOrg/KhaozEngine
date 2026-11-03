@@ -299,7 +299,7 @@ namespace KhaozEngine.Tests.Gpu
         [Fact]
         public void AForeignLayout_IsRejected()
         {
-            Assert.Throws<ArgumentException>(() => new D3D11ResourceSet(
+            Assert.Throws<GpuResourceOwnershipArgumentException>(() => new D3D11ResourceSet(
                 new GpuResourceSetDescription(new FakeResourceLayout(), new FakeBuffer(16))));
         }
 

@@ -620,6 +620,11 @@ exception type. Message text is developer prose. Branch on the reason and read t
 
 | Exception and reason member | What it refuses | Identifiers |
 |---|---|---|
+| `GpuResourceOwnershipArgumentException`, `GpuResourceOwnershipRefusal.DifferentDevice` | Refuses a resource created by a different device of the same backend. | `ParamName`, `ExpectedBackend`, `ResourceKind`, `Context` |
+| `GpuResourceOwnershipArgumentException`, `GpuResourceOwnershipRefusal.ForeignBackend` | Refuses a resource originating from a different GPU backend. | `ParamName`, `ExpectedBackend`, `ActualType`, `ExpectedType`, `Context`, `ResourceIndex`, `PipelineKind` |
+| `GpuResourceOwnershipArgumentException`, `GpuResourceOwnershipRefusal.MissingResource` | Refuses a required resource that was not supplied. | `ParamName`, `ResourceKind`, `Context` |
+| `GpuResourceOwnershipDisposedException`, `GpuResourceOwnershipRefusal.NativeHandleReleased` | Refuses use of a resource whose native handle has been released. | `ObjectName`, `NativeHandleKind`, `ResourceKind`, `Context` |
+| `GpuResourceOwnershipArgumentException`, `GpuResourceOwnershipRefusal.ResourceNotOwnedByDevice` | Refuses a submitted command list or fence that is not owned by the submitting backend or device. | `ParamName`, `ExpectedBackend`, `ActualType`, `ResourceKind` |
 | `GpuBackendProviderMissingException`, `GpuBackendProviderMissingRefusal.ProviderNotRegistered` | A backend has no registered provider and cannot fall back. | `Backend`, `RegistrationConvention`, optional `RegistrationMethod` |
 | `GpuBackendRetiredException`, `GpuBackendRetiredRefusal.BackendRetired` | An explicitly named backend whose implementation was retired. | `Backend`, `Replacement`, `RetirementVersion` |
 | `GpuNoUsableBackendException`, `GpuNoUsableBackendRefusal.RequestedCreationFailed` | The requested backend and its fallback both threw. | `RequestedBackend`, `FallbackBackend`, `RequestedFailure`, `InnerException`, `FallbackFailure` |

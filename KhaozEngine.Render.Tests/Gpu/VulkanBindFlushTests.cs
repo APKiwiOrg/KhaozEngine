@@ -484,7 +484,7 @@ namespace KhaozEngine.Tests.Gpu
             using VulkanCommandList list = harness.Fixture.CreateList();
             list.Begin();
 
-            Assert.Throws<ArgumentException>(() => list.SetGraphicsResourceSet(0, new ForeignResourceSet()));
+            Assert.Throws<GpuResourceOwnershipArgumentException>(() => list.SetGraphicsResourceSet(0, new ForeignResourceSet()));
         }
 
         /// <summary>

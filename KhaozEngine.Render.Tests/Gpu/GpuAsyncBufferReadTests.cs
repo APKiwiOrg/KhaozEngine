@@ -204,9 +204,9 @@ namespace KhaozEngine.Tests.Gpu
             using var otherFences = new D3D11FenceSubsystem(otherTimeline, new object());
             IGpuFence foreign = otherFences.CreateFence();
             otherFences.SignalEndOfReplay(foreign);
-            Assert.Equal("completion", Assert.Throws<ArgumentException>(
+            Assert.Equal("completion", Assert.Throws<GpuResourceOwnershipArgumentException>(
                 () => rig.Reads.TryReadBuffer(rig.Staging, foreign, 0, four)).ParamName);
-            Assert.Equal("completion", Assert.Throws<ArgumentException>(
+            Assert.Equal("completion", Assert.Throws<GpuResourceOwnershipArgumentException>(
                 () => rig.Reads.TryReadBuffer(rig.Staging, new RecordedFence(), 0, four)).ParamName);
             NothingReached();
 
@@ -222,7 +222,7 @@ namespace KhaozEngine.Tests.Gpu
             Assert.Equal("staging", Assert.Throws<GpuStagingMapArgumentException>(
                 () => rig.Reads.TryReadBuffer(dynamic, completion, 0, four)).ParamName);
             using var otherDevices = new FakeStagingBuffer(StagingBytes, owner: new FakeD3D11DeviceLiveness());
-            Assert.Equal("staging", Assert.Throws<ArgumentException>(
+            Assert.Equal("staging", Assert.Throws<GpuResourceOwnershipArgumentException>(
                 () => rig.Reads.TryReadBuffer(otherDevices, completion, 0, four)).ParamName);
             Assert.Equal("staging", Assert.Throws<GpuStagingMapArgumentException>(
                 () => rig.Reads.TryReadBuffer(new FakeBuffer(StagingBytes), completion, 0, four)).ParamName);
@@ -255,7 +255,7 @@ namespace KhaozEngine.Tests.Gpu
             var metalOther = new MetalTimeline(new FakeMetalSharedEvent(), new FakeMetalDeviceLiveness());
             var metal = new MetalGpuFence(metalOwner);
             metal.RequireOwner(metalOwner);
-            Assert.Equal("completion", Assert.Throws<ArgumentException>(
+            Assert.Equal("completion", Assert.Throws<GpuResourceOwnershipArgumentException>(
                 () => metal.RequireOwner(metalOther)).ParamName);
             metal.Dispose();
             Assert.Throws<ObjectDisposedException>(() => metal.RequireOwner(metalOwner));
@@ -264,7 +264,7 @@ namespace KhaozEngine.Tests.Gpu
             using var vulkanOther = new VulkanTimeline(new FakeVulkanTimelineSemaphore());
             VulkanGpuFence vulkan = vulkanOwner.CreateFence();
             vulkan.RequireOwner(vulkanOwner);
-            Assert.Equal("completion", Assert.Throws<ArgumentException>(
+            Assert.Equal("completion", Assert.Throws<GpuResourceOwnershipArgumentException>(
                 () => vulkan.RequireOwner(vulkanOther)).ParamName);
             vulkan.Dispose();
             Assert.Throws<ObjectDisposedException>(() => vulkan.RequireOwner(vulkanOwner));

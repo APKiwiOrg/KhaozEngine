@@ -32,9 +32,15 @@ namespace KhaozEngine.Gpu.D3D11.Internal
 
             if (fence is not D3D11GpuFence own || !ReferenceEquals(own.Owner, _fences))
             {
-                throw new ArgumentException(
+                throw new GpuResourceOwnershipArgumentException(fence is D3D11GpuFence ? GpuResourceOwnershipRefusal.DifferentDevice : GpuResourceOwnershipRefusal.ResourceNotOwnedByDevice,
                     "MapForRead was handed a fence this native Direct3D 11 device did not create. Another device's "
-                    + "fence would read signaled for work this device never ran.", nameof(fence));
+                    + "fence would read signaled for work this device never ran.", nameof(fence))
+                {
+                    ExpectedBackend = GpuBackendKind.Direct3D11Native,
+                    ActualType = fence?.GetType(),
+                    Context = nameof(MapForRead),
+                    ResourceKind = "fence",
+                };
             }
 
             if (!own.Signaled)

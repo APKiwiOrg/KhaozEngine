@@ -26,10 +26,15 @@ namespace KhaozEngine.Gpu.Metal.Internal
 
             if (completion is not MetalGpuFence fence)
             {
-                throw new ArgumentException(
+                throw new GpuResourceOwnershipArgumentException(GpuResourceOwnershipRefusal.ResourceNotOwnedByDevice,
                     $"A {completion.GetType().Name} was handed to the native Metal backend as the completion fence "
                     + "of a staging copy. Only a fence this backend created names a value on its timeline.",
-                    nameof(completion));
+                    nameof(completion))
+                {
+                    ExpectedBackend = GpuBackendKind.MetalNative,
+                    ActualType = completion?.GetType(),
+                    ResourceKind = "fence",
+                };
             }
 
             fence.RequireOwner(_timeline, nameof(completion));

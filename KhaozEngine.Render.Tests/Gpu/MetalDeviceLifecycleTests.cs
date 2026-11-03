@@ -286,7 +286,7 @@ namespace KhaozEngine.Tests.Gpu
             // the one-argument Submit overload.
             using var foreign = new NullGpuCommandList();
             driven.Add(nameof(device.Submit));
-            Assert.Throws<ArgumentException>(() => device.Submit(foreign));
+            Assert.Throws<GpuResourceOwnershipArgumentException>(() => device.Submit(foreign));
 
             RequireEveryMemberDriven(driven);
         }

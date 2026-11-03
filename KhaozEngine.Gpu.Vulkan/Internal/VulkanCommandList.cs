@@ -697,10 +697,15 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         {
             if (handle != 0) return;
 
-            throw new ObjectDisposedException("VkPipeline",
+            throw new GpuResourceOwnershipDisposedException(GpuResourceOwnershipRefusal.NativeHandleReleased, "VkPipeline",
                 "The " + what + " pipeline handed to a native Vulkan bind carries the null VkPipeline, which is "
                 + "what Dispose leaves behind. Binding it would record nothing at all, and the identity guard "
-                + "cannot catch that, because a recording that has just begun has nothing bound either.");
+                + "cannot catch that, because a recording that has just begun has nothing bound either.")
+            {
+                NativeHandleKind = "VkPipeline",
+                ResourceKind = what + " pipeline",
+                Context = "binding " + what + " pipeline",
+            };
         }
 
         // The buffer the current slot is recording into, which every emitted vkCmd* names. Only meaningful while

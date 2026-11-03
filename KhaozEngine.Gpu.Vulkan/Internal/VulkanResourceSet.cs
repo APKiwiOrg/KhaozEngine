@@ -229,10 +229,17 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         /// this.</summary>
         internal static VulkanResourceSet Require(IGpuResourceSet? set, string what)
             => set as VulkanResourceSet
-                ?? throw new ArgumentException(
+                ?? throw new GpuResourceOwnershipArgumentException(set is null ? GpuResourceOwnershipRefusal.MissingResource : GpuResourceOwnershipRefusal.ForeignBackend,
                     $"The resource set handed to {what} was not created by the native Vulkan backend, so it "
                     + "carries no VkDescriptorSet. Create it through the same IGpuDevice.Factory.",
-                    nameof(set));
+                    nameof(set))
+                {
+                    ExpectedBackend = GpuBackendKind.VulkanNative,
+                    ActualType = set?.GetType(),
+                    ExpectedType = typeof(VulkanResourceSet),
+                    Context = what,
+                    ResourceKind = "resource set",
+                };
 
         // ONE BINDING'S WRITE, fully resolved. Every refusal here names the element by its declared name, because
         // a message about "element 4" is unactionable in a seven-element material layout.

@@ -1,4 +1,3 @@
-using System;
 using System.Linq;
 using System.Numerics;
 using KhaozEngine.Gpu;
@@ -43,7 +42,6 @@ namespace KhaozEngine.Tests.Gpu
         [InlineData(3456, 2234, 3342, 2160, true)]   // Native under the default render cap
         [InlineData(2560, 1440, 1707, 960, true)]    // Quality
         [InlineData(1280, 720, 1280, 720, false)]
-        [InlineData(1280, 720, 1920, 1080, false)] // Ratio one alone does not establish equal sizes.
         public void AFrameUpscalesWhereTheShadersRatioIsAboveOne(int dw, int dh, int iw, int ih, bool upscales)
         {
             var view = new TemporalViewInput(Matrix4x4.Identity, Matrix4x4.Identity);
@@ -51,9 +49,6 @@ namespace KhaozEngine.Tests.Gpu
                 historyValid: false);
             Assert.Equal(upscales, TemporalSplitResolve.Upscales(u));
             Assert.Equal(upscales, u.Jitter.Z > 1f);
-            // #1680. Equal positive sizes divide to exactly one on each axis before the max with one.
-            if (iw == dw && ih == dh)
-                Assert.Equal(BitConverter.SingleToUInt32Bits(1f), BitConverter.SingleToUInt32Bits(u.Jitter.Z));
         }
 
         [Theory]

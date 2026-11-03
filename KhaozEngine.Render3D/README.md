@@ -318,10 +318,7 @@ in the `KhaozEngine.Render3D.Ecs` arm under the same namespace, so a render-only
   targets. The final downscale generates and samples their mip chain after FXAA has finished.
   `.Temporal` renders at a `Post.Temporal.Upscale` preset from `Native` through `UltraPerformance` at or below
   the window, jitters each frame and resolves a stable full-resolution image from history, with a light contrast
-  adaptive sharpen (`Post.Temporal.Sharpness`) and a material mip bias (`Post.Temporal.MipBiasOffset`). When both
-  internal dimensions exactly match the display, its display Lanczos pair reuses the internal pair without
-  changing output or history bits. The guard checks both dimensions, not the broader at-display-size program
-  selection. Temporal rendering is
+  adaptive sharpen (`Post.Temporal.Sharpness`) and a material mip bias (`Post.Temporal.MipBiasOffset`). It is
   single-sample and never combines with MSAA. Moving draws
   pass a `MotionKey` through `RigidInstanceDraw` or `SkinnedInstanceDraw`, camera jumps call `Scene3D.CameraCut()`,
   and `Scene3D.DebugView`, `Scene3D.RequestTemporalCounts()` and `LastTemporalDiagnostics` show what the resolve did.

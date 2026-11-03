@@ -272,16 +272,8 @@ namespace KhaozEngine.Gpu.Metal.Internal
 
             MTLComputePipelineState state = device.NewComputePipelineState(function, out NSError error);
             if (state.IsNull)
-            {
-                throw new ShaderValidationException(
-                    "The native Metal device rejected this compute pipeline: "
-                    + (error.IsNull
-                        ? "-newComputePipelineStateWithFunction:error: answered nil and wrote no NSError, which "
-                            + "means the failure is not a compatibility one at all."
-                        : error.LocalizedDescription())
-                    + " The function itself already compiled, so this is Metal refusing to build a pipeline out "
-                    + "of it rather than a syntax error in the emitted MSL.");
-            }
+                MetalShaderNativeValidation.RequireComputePipelineAvailable(false,
+                    error.IsNull ? null : error.LocalizedDescription());
 
             try
             {

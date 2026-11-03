@@ -19122,9 +19122,18 @@ sample every texture up front in binding order belonged to the removed Veldrid b
 may retain that shape, but new shaders do not need it. `ShaderValidation.ValidatePair` and `ValidateCompute`
 still check that the authored indices reached the emitted MSL.
 
-A shader whose emission cannot be read fails at `CreateShadersFromSpirv` with a message naming the program, the
-stage and the offending argument, and it fails with no device involved, so it surfaces in a headless test run
-rather than as a wrong pixel.
+A shader whose emission cannot be read fails at `CreateShadersFromSpirv` with `ShaderValidationException`.
+Its `Reason` distinguishes a missing entry point, missing or unclosed arguments and an unreadable function
+name. `Label` and `Stage` identify the emission. Binding-table refusals also carry `Set` and `Binding` where
+applicable. These checks involve no device and surface in a headless test run.
+
+Native Metal failures carry `MetalLibraryRejected`, `MetalLibraryFunctionMissing`,
+`MetalGraphicsPipelineRejected` or `MetalComputePipelineRejected` on the same exception. `Stage` and
+`EntryPoint` identify library failures. `PipelineKind` identifies pipeline failures. `Diagnostic` retains
+native error data, and `NativeDiagnosticMissing` distinguishes a nil native error. Missing functions carry
+`Policy` M-S5. `MetalShaderFunctionException` separately distinguishes `FunctionReleased` from `StageMissing`,
+retaining `Stage` and `ResourceKind`. Native descriptor or state creation failures use
+`ShaderValidationStateException`, preserving `InvalidOperationException` catches and carrying `NativeClass`.
 
 **`KE_METAL_MSL_CACHE` controls the emission cache, and what it caches is not what you might expect.** There is
 no compiled-library cache on this backend, because macOS already caches the MSL-to-library compile across
@@ -19662,7 +19671,7 @@ backend uses, then calls FXC itself to `vs_5_0` / `ps_5_0` / `cs_5_0`. Nothing a
 a shader changes. Three things reach you.
 
 **Validate your own shaders through FXC too, not only through `ShaderValidation`.**
-`ShaderValidation.ValidatePair` cross-compiles to HLSL, MSL, GLSL and ESSL and stops there: it has never
+`ShaderValidation.ValidatePair` cross-compiles to HLSL and MSL and stops there: it has never
 COMPILED the HLSL it produced. That gap is real rather than theoretical, and this engine fell through it twice on
 Direct3D 11 and WARP specifically, once badly enough that a whole scene rendered with no colour in it. If you
 reference `KhaozEngine.Gpu.D3D11`, add the second half in your own test suite:
@@ -19678,9 +19687,18 @@ public void WaterCompilesEverywhere()
 ```
 
 `KhaozEngineD3D11.ValidateComputeShader(computeGlsl, label?)` is the compute sibling. Both need no device and no
-GPU, both throw `ShaderValidationException` naming the label and what specifically was wrong, and both throw
-`PlatformNotSupportedException` off Windows, because FXC is `d3dcompiler` and exists nowhere else. Hence the
-`IsPlatformSupported` gate.
+GPU. Both throw `ShaderValidationException` with `Reason` and `Label`. `D3D11FxcRejected` also carries
+`Profile`, native `HResult` and `Diagnostic`. `D3D11UserSemanticHole` carries `Semantic`, `FirstMissingIndex`
+when applicable and a read-only `RepairSourcePaths` snapshot. Off Windows they throw
+`D3D11ShaderPlatformException`, derived from `PlatformNotSupportedException`, with
+`D3D11ShaderPlatformRefusal.FxcUnavailableOnPlatform`, `Compiler`, `RequiredOperatingSystem`, `SupportProbe`
+and `PortableValidator`. FXC is `d3dcompiler` and exists nowhere else. Hence the `IsPlatformSupported` gate.
+
+D3D11 compiler-report failure events retain `D3D11CompilerEvidenceStateException` for `ReadProfileMismatch`,
+`ReflectionNotCaptured`, `ConstructionIdentityInvalid`, `FailureOriginMissing` and `CombinedFlagsTooLarge`.
+They carry the requested and required profiles, missing stage flags, or field and UTF-8 bounds where relevant.
+`D3D11CompilerEvidenceDisposedException` carries `PipelineUnavailable` and `ObjectName`. The original exception
+base types and the actual native failure occurrences remain available.
 
 What they add over the seam's validator is the FXC compile itself plus one assertion FXC makes possible: the
 compiled vertex input signature must have contiguous `TEXCOORD` indices from 0. SPIRV-Cross DROPS a vertex input
@@ -23894,8 +23912,21 @@ overload `AssertComplete(IEnumerable<string> keys, rm, cultures...)` takes an ex
 A custom GLSL shader that has a syntax error or miscompiles on one backend normally only blows up at first run on
 a real device of that backend. `ShaderValidation.ValidatePair` catches it on the CPU, with no `GraphicsDevice`, so
 it runs in the fast GPU-free test lane on every push: it compiles a GLSL 450 vertex/fragment pair to SPIR-V and
-cross-compiles the pair to every backend target (HLSL, MSL, GLSL, ESSL). A compile failure throws
-`ShaderValidationException` naming the label and the failing stage/target.
+cross-compiles the pair to every backend target (HLSL and MSL). A compile failure throws
+`ShaderValidationException` with a nullable `Reason`, `Label`, `Stage` and `Target`. Engine callers always
+supply a reason. Message-only constructors remain available to consumers and leave `Reason` null.
+`FrontEndCompileFailed` keeps the native cause in `InnerException` and its text in `Diagnostic`.
+`CrossCompileFailed` keeps the inner validation refusal, whose own reason and identifiers describe the failing
+rule. SPIR-V module refusals carry byte lengths, magic values or instruction offsets and word counts.
+The [GPU refusal table](../KhaozEngine.Gpu/README.md#refusals) lists every shader reason and its identifiers.
+`ShaderValidationArgumentException`, `ShaderValidationRangeException` and `ShaderValidationStateException`
+share `ShaderValidationRefusal` while
+preserving their original BCL bases. Metal vertex-stream range refusals retain `ParamName` and `ActualValue`,
+plus `Label`, `StreamCount` and `BufferTableSize`. Vulkan module-cache admission carries `SpirvLengthInvalid`
+on `ShaderValidationArgumentException`, with `ParamName`, `ByteLength` and `WordBytes`. Vulkan vertex-input
+refusals use `VulkanVertexInputException` with `InstanceDivisorUnsupported`, `ParamName`, `InstanceStepRate`,
+`Slot` and `MaximumStepRate`. Vertex-buffer collisions retain the resource `Set` and
+`Binding`, `ArgumentIndex`, stream bounds and policy M-B2.
 
 ```csharp
 [Fact]
@@ -23962,8 +23993,9 @@ a wrong picture on one backend and there is nothing in the GLSL that looks wrong
 three times before the guard existed, and found it by image golden or bisect every time.
 
 `ValidatePair` and `ValidateCompute` both run one check per stage over the emitted Metal, and it throws
-`ShaderValidationException` naming the offending `layout(set=, binding=)` pairs so the message is greppable in
-your GLSL:
+`ShaderValidationException` with `ShaderValidationRefusal.MetalBindingOrderMismatch`. Its identifiers are
+`Label`, `Stage`, `Space`, `ArgumentIndex`, `DeclaredSet`, `DeclaredBinding`, `EmittedSet`, `EmittedBinding`
+and `ExpectedIndex`. These point back to the GLSL declarations:
 
 - **Index order, per stage, over buffers AND textures AND samplers.** Each emitted argument is joined back to
   the `(set, binding)` you wrote through that stage's own SPIR-V decorations, so a swap between two resources of

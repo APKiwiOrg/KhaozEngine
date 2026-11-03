@@ -176,23 +176,36 @@ namespace KhaozEngine.Gpu.Metal.Internal
 
             if (library.IsNull)
             {
-                throw new ShaderValidationException(
+                string? diagnostic = error.IsNull ? null : error.LocalizedDescription();
+                throw new ShaderValidationException(ShaderValidationRefusal.MetalLibraryRejected,
                     "the native Metal device rejected the emitted MSL for the " + where + ": "
                     + (error.IsNull ? "-newLibraryWithSource:options:error: answered nil and wrote no NSError, "
-                        + "which means the failure is not a compile error at all." : error.LocalizedDescription())
+                        + "which means the failure is not a compile error at all." : diagnostic)
                     + " The source that failed is SPIRV-Cross output rather than anything hand-written, so the "
                     + "line number above is a line of emitted MSL: cross-compile the GLSL with "
-                    + "ShaderValidation.ValidatePair to see it.");
+                    + "ShaderValidation.ValidatePair to see it.")
+                {
+                    Stage = stage.Stage.ToGpu(),
+                    EntryPoint = stage.EntryPointName,
+                    Diagnostic = diagnostic,
+                    NativeDiagnosticMissing = error.IsNull,
+                    SourceOrigin = "SPIRV-Cross output",
+                };
             }
 
             MTLFunction function = library.NewFunction(NSString.FromManaged(stage.EntryPointName));
             if (function.IsNull)
             {
                 library.Release();
-                throw new ShaderValidationException(
+                throw new ShaderValidationException(ShaderValidationRefusal.MetalLibraryFunctionMissing,
                     "the emitted MSL for the " + where + " compiled, but the library carries no function of that "
                     + "name. The name was READ out of the emission rather than assumed (M-S5), so this means the "
-                    + "entry-point parse and Metal disagree about what the function is called.");
+                    + "entry-point parse and Metal disagree about what the function is called.")
+                {
+                    Stage = stage.Stage.ToGpu(),
+                    EntryPoint = stage.EntryPointName,
+                    Policy = "M-S5",
+                };
             }
 
             return new MetalCompiledStage(stage.Stage, library, function);
@@ -205,12 +218,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
         static MTLCompileOptions NewPinnedOptions()
         {
             MTLCompileOptions options = MTLCompileOptions.New();
-            if (options.IsNull)
-            {
-                throw new InvalidOperationException(
-                    "The Objective-C runtime has no MTLCompileOptions class, which means the Metal framework did "
-                    + "not load. Nothing about this shader caused it.");
-            }
+            MetalShaderNativeValidation.RequireClassAvailable(!options.IsNull, "MTLCompileOptions", shader: true);
 
             options.SetLanguageVersion(MslCompilePin.LanguageVersion);
             options.SetFastMathEnabled(MslCompilePin.FastMathEnabled);

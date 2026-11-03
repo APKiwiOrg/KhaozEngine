@@ -148,8 +148,13 @@ layout(set = 0, binding = 0) buffer Values { float Data[]; };
 void main() { Data[gl_GlobalInvocationID.x] = 1.0; }";
 
             ShaderValidation.ValidateCompute(tooManyThreads, "oversized workgroup");   // the seam is happy
-            Assert.Throws<ShaderValidationException>(
+            var error = Assert.Throws<ShaderValidationException>(
                 () => KhaozEngineD3D11.ValidateComputeShader(tooManyThreads, "oversized workgroup"));
+            Assert.Equal(ShaderValidationRefusal.D3D11FxcRejected, error.Reason);
+            Assert.Equal("oversized workgroup", error.Label);
+            Assert.Equal("cs_5_0", error.Profile);
+            Assert.True(error.HResult < 0);
+            Assert.False(string.IsNullOrWhiteSpace(error.Diagnostic));
         }
 
         // ---- the incidents, device-free on every leg -----------------------------------------------------

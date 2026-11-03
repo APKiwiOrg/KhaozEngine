@@ -208,8 +208,13 @@ public class GpuPublicApiTests
 
         Assert.Equal(new[]
         {
+            "KhaozEngine.Gpu.D3D11.D3D11CompilerEvidenceDisposedException",
+            "KhaozEngine.Gpu.D3D11.D3D11CompilerEvidenceRefusal",
+            "KhaozEngine.Gpu.D3D11.D3D11CompilerEvidenceStateException",
             "KhaozEngine.Gpu.D3D11.D3D11InvocationBlock",
             "KhaozEngine.Gpu.D3D11.D3D11InvocationReport",
+            "KhaozEngine.Gpu.D3D11.D3D11ShaderPlatformException",
+            "KhaozEngine.Gpu.D3D11.D3D11ShaderPlatformRefusal",
             "KhaozEngine.Gpu.D3D11.D3D11TimestampAdapterException",
             "KhaozEngine.Gpu.D3D11.D3D11TimestampAdapterRefusal",
             "KhaozEngine.Gpu.D3D11.D3D11WaitPolicyException",
@@ -297,6 +302,8 @@ public class GpuPublicApiTests
             "KhaozEngine.Gpu.Vulkan.VulkanStagingLayoutRefusal",
             "KhaozEngine.Gpu.Vulkan.VulkanTimestampAdapterException",
             "KhaozEngine.Gpu.Vulkan.VulkanTimestampAdapterRefusal",
+            "KhaozEngine.Gpu.Vulkan.VulkanVertexInputException",
+            "KhaozEngine.Gpu.Vulkan.VulkanVertexInputRefusal",
         }, exported);
     }
 
@@ -349,6 +356,8 @@ public class GpuPublicApiTests
             "KhaozEngine.Gpu.Metal.MetalBufferPolicyRefusal",
             "KhaozEngine.Gpu.Metal.MetalFrameAccessException",
             "KhaozEngine.Gpu.Metal.MetalFrameAccessFailure",
+            "KhaozEngine.Gpu.Metal.MetalShaderFunctionException",
+            "KhaozEngine.Gpu.Metal.MetalShaderFunctionRefusal",
             "KhaozEngine.Gpu.Metal.MetalStagingArenaRangeException",
             "KhaozEngine.Gpu.Metal.MetalStagingArenaRefusal",
             "KhaozEngine.Gpu.Metal.MetalStagingArenaStateException",

@@ -245,8 +245,10 @@ namespace KhaozEngine.Tests.Gpu
             ShaderValidationException ex = Assert.Throws<ShaderValidationException>(
                 () => new VulkanShaderSet(cache, VertGlsl, "#version 450\nvoid main() { not glsl }", "broken"));
 
-            Assert.Contains("broken", ex.Message, StringComparison.Ordinal);
-            Assert.Contains("Fragment", ex.Message, StringComparison.Ordinal);
+            Assert.Equal(ShaderValidationRefusal.FrontEndCompileFailed, ex.Reason);
+            Assert.Equal("broken", ex.Label);
+            Assert.Equal(GpuShaderStages.Fragment, ex.Stage);
+            Assert.Equal("SPIR-V", ex.Target);
             Assert.Empty(api.Created);
             Assert.Equal(0, cache.DistinctModuleCount);
         }
@@ -287,9 +289,13 @@ namespace KhaozEngine.Tests.Gpu
             var api = new FakeVulkanShaderApi();
             var cache = new VulkanShaderModuleCache(api);
 
-            ArgumentException ex = Assert.Throws<ArgumentException>(() => cache.GetOrCreate(new byte[length]));
+            ShaderValidationArgumentException ex = Assert.Throws<ShaderValidationArgumentException>(() => cache.GetOrCreate(new byte[length]));
 
+            Assert.IsAssignableFrom<ArgumentException>(ex);
+            Assert.Equal(ShaderValidationRefusal.SpirvLengthInvalid, ex.Reason);
             Assert.Equal("spirv", ex.ParamName);
+            Assert.Equal(length, ex.ByteLength);
+            Assert.Equal(4, ex.WordBytes);
             Assert.Empty(api.Created);
         }
     }

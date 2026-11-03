@@ -85,7 +85,7 @@ namespace KhaozEngine.Gpu.D3D11.Internal
             string? problem = DescribeHole(signature);
             if (problem is null) return;
 
-            throw new ShaderValidationException(
+            throw new ShaderValidationException(ShaderValidationRefusal.D3D11UserSemanticHole,
                 $"{label}: the compiled vertex input signature is {problem}. FXC and WARP miscompile a holed "
                 + $"{UserSemantic} sequence SILENTLY, and it has cost this engine two production incidents (the "
                 + "shadow depth pass corrupted WARP so the main passes rendered no colour, and the terrain blew "
@@ -93,7 +93,13 @@ namespace KhaozEngine.Gpu.D3D11.Internal
                 + "in the GLSL: read every declared input with a negligible live weight (the sink in "
                 + "ShaderSources.Shadow.cs), or order the interpolants so the used ones form a gap-free prefix "
                 + "(the note in ShaderSources.Terrain.cs). Do not renumber the engine-side vertex layout to "
-                + "match the hole: the hole is what miscompiles.");
+                + "match the hole: the hole is what miscompiles.")
+            {
+                Label = label,
+                Semantic = UserSemantic,
+                FirstMissingIndex = FirstMissingIndex(signature),
+                RepairSourcePaths = Array.AsReadOnly(new[] { "ShaderSources.Shadow.cs", "ShaderSources.Terrain.cs" }),
+            };
         }
 
         /// <summary>
@@ -129,6 +135,16 @@ namespace KhaozEngine.Gpu.D3D11.Internal
                     + $"[{Join(Enumerable.Range(0, indices.Count).Select(n => (uint)n))}]. The first missing "
                     + $"index is {i.ToString(CultureInfo.InvariantCulture)}";
             }
+            return null;
+        }
+
+        static int? FirstMissingIndex(IReadOnlyList<D3D11ShaderInputSemantic> signature)
+        {
+            var indices = signature.Where(entry => string.Equals(entry.Name, UserSemantic, StringComparison.OrdinalIgnoreCase))
+                .Select(entry => entry.Index).OrderBy(index => index).ToArray();
+            if (indices.Distinct().Count() != indices.Length) return null;
+            for (int i = 0; i < indices.Length; i++)
+                if (indices[i] != (uint)i) return i;
             return null;
         }
 

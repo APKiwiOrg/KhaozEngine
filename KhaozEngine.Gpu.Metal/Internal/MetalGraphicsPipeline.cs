@@ -236,13 +236,13 @@ namespace KhaozEngine.Gpu.Metal.Internal
             MTLFunction fragment = plan.Shaders.FunctionFor(MetalShaderStage.Fragment);
 
             MTLRenderPipelineDescriptor descriptor = MTLRenderPipelineDescriptor.New();
-            if (descriptor.IsNull) throw NoClass("MTLRenderPipelineDescriptor");
+            MetalShaderNativeValidation.RequireClassAvailable(!descriptor.IsNull, "MTLRenderPipelineDescriptor");
 
             MTLVertexDescriptor vertexDescriptor = MTLVertexDescriptor.New();
             if (vertexDescriptor.IsNull)
             {
                 descriptor.Release();
-                throw NoClass("MTLVertexDescriptor");
+                MetalShaderNativeValidation.RequireClassAvailable(false, "MTLVertexDescriptor");
             }
 
             MTLRenderPipelineState renderState;
@@ -326,20 +326,14 @@ namespace KhaozEngine.Gpu.Metal.Internal
         static MTLDepthStencilState CreateDepthState(MTLDevice device, MetalPipelineState state)
         {
             MTLDepthStencilDescriptor descriptor = MTLDepthStencilDescriptor.New();
-            if (descriptor.IsNull) throw NoClass("MTLDepthStencilDescriptor");
+            MetalShaderNativeValidation.RequireClassAvailable(!descriptor.IsNull, "MTLDepthStencilDescriptor");
 
             try
             {
                 descriptor.Configure(state.DepthComparison, state.DepthWriteEnabled);
                 MTLDepthStencilState depthState = device.NewDepthStencilState(descriptor);
 
-                if (depthState.IsNull)
-                {
-                    throw new InvalidOperationException(
-                        "The native Metal device would not create an MTLDepthStencilState. That call validates "
-                        + "nothing and takes no error out-parameter, so a nil is a device already in trouble "
-                        + "rather than a description this pipeline got wrong.");
-                }
+                MetalShaderNativeValidation.RequireDepthStateAvailable(!depthState.IsNull);
 
                 return depthState;
             }
@@ -390,16 +384,18 @@ namespace KhaozEngine.Gpu.Metal.Internal
         [SupportedOSPlatform("macos")]
         [MethodImpl(MethodImplOptions.NoInlining)]
         static ShaderValidationException Rejected(NSError error)
-            => new("The native Metal device rejected this graphics pipeline: "
+        {
+            string? diagnostic = error.IsNull ? null : error.LocalizedDescription();
+            return new(ShaderValidationRefusal.MetalGraphicsPipelineRejected, "The native Metal device rejected this graphics pipeline: "
                 + (error.IsNull
                     ? "-newRenderPipelineStateWithDescriptor:error: answered nil and wrote no NSError, which "
                         + "means the failure is not a compatibility one at all."
-                    : error.LocalizedDescription())
+                    : diagnostic)
                 + " A pipeline is validated against its compiled functions, so this names a disagreement between "
-                + "the shader set, the vertex layouts and the output formats this pipeline was created with.");
+                + "the shader set, the vertex layouts and the output formats this pipeline was created with.")
+            { PipelineKind = "graphics", Diagnostic = diagnostic, NativeDiagnosticMissing = error.IsNull };
+        }
 
-        static InvalidOperationException NoClass(string className)
-            => new($"The Objective-C runtime has no {className} class, which means the Metal framework did not "
-                + "load. Nothing about this pipeline description caused it.");
+
     }
 }

@@ -141,8 +141,15 @@ namespace KhaozEngine.Tests.Gpu
             ShaderValidationException error = Assert.Throws<ShaderValidationException>(
                 () => MetalVertexPlan.RequireNoCollision(1, table, "one stream"));
 
-            Assert.Contains("[[buffer(30)]]", error.Message, StringComparison.Ordinal);
-            Assert.Contains("one stream", error.Message, StringComparison.Ordinal);
+            Assert.Equal(ShaderValidationRefusal.MetalVertexBufferCollision, error.Reason);
+            Assert.Equal(30, error.ArgumentIndex);
+            Assert.Equal(0, error.Set);
+            Assert.Equal(30, error.Binding);
+            Assert.Equal(1, error.StreamCount);
+            Assert.Equal(30, error.LowestStreamIndex);
+            Assert.Equal(31, error.BufferTableSize);
+            Assert.Equal("M-B2", error.Policy);
+            Assert.Equal("one stream", error.Label);
 
             // The boundary is exact rather than approximate: an entry at 29 collides with two streams and not
             // with one, which is what makes the check about the COUNT rather than about a fixed range.
@@ -179,10 +186,16 @@ namespace KhaozEngine.Tests.Gpu
         [Fact]
         public void MoreStreamsThanTheTableHas_IsRefusedOnItsOwn()
         {
-            ArgumentOutOfRangeException error = Assert.Throws<ArgumentOutOfRangeException>(
+            ShaderValidationRangeException error = Assert.Throws<ShaderValidationRangeException>(
                 () => MetalVertexPlan.RequireNoCollision(32, VertexTableAt(0), "too many"));
 
-            Assert.Contains("31", error.Message, StringComparison.Ordinal);
+            Assert.IsAssignableFrom<ArgumentOutOfRangeException>(error);
+            Assert.Equal(ShaderValidationRefusal.MetalVertexStreamCountInvalid, error.Reason);
+            Assert.Equal("streamCount", error.ParamName);
+            Assert.Equal(32, error.ActualValue);
+            Assert.Equal("too many", error.Label);
+            Assert.Equal(32, error.StreamCount);
+            Assert.Equal(31, error.BufferTableSize);
         }
 
         /// <summary>

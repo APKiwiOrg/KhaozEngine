@@ -76,7 +76,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         /// been seen on this device, and a freshly created one otherwise.
         /// </summary>
         /// <param name="spirv">The module's SPIR-V, as the front end emitted it. Not retained.</param>
-        /// <exception cref="ArgumentException">The blob is empty or is not a whole number of 32-bit words.</exception>
+        /// <exception cref="ShaderValidationArgumentException">SpirvLengthInvalid identifies an empty or unaligned blob.</exception>
         internal ulong GetOrCreate(ReadOnlySpan<byte> spirv)
         {
             // THE WORD-LENGTH GUARD LIVES HERE RATHER THAN ON THE SEAM, so it runs under dotnet test with no
@@ -86,11 +86,15 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
             // SPIR-V module is a word stream by definition, and cheap enough to state anyway.
             if (spirv.Length == 0 || spirv.Length % 4 != 0)
             {
-                throw new ArgumentException(
+                throw new ShaderValidationArgumentException(ShaderValidationRefusal.SpirvLengthInvalid,
                     "A SPIR-V module is a stream of 32-bit words, so its byte length is non-zero and a multiple of "
                     + "four. This one is " + spirv.Length.ToString(CultureInfo.InvariantCulture)
                     + " bytes, which means it did not come from the engine's front end.",
-                    nameof(spirv));
+                    nameof(spirv))
+                {
+                    ByteLength = spirv.Length,
+                    WordBytes = 4,
+                };
             }
 
             string key = Convert.ToHexStringLower(SHA256.HashData(spirv));

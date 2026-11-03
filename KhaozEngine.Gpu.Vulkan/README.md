@@ -1180,7 +1180,9 @@ state, so there is one source of truth. Two rules are worth knowing:
   element sits immediately after the one before it in the same slot. A non-zero `Stride` is kept, which is how an
   interleaved buffer with padding survives, and a zero one is the sum of the slot's element sizes.
 
-**An instance step rate above 1 is refused by name.** Vulkan's core vertex input rate is two-valued with no
+**An instance step rate above 1 throws `VulkanVertexInputException`.** Its reason is
+`VulkanVertexInputRefusal.InstanceDivisorUnsupported`, with `ParamName`, `InstanceStepRate`, `Slot` and
+`MaximumStepRate`. Vulkan's core vertex input rate is two-valued with no
 divisor, and `VK_EXT_vertex_attribute_divisor` is not enabled here, so a rate of 2 cannot be honoured. Flattening
 it to 1 would draw every instance from the same element, silently. Every shipped instance stream declares 1.
 
@@ -1923,6 +1925,8 @@ on every rebuild. Its sampled R32F atlas remains stored. See
 
 | Exception and reason | What it refuses | Identifiers |
 |---|---|---|
+| `ShaderValidationArgumentException`, `ShaderValidationRefusal.SpirvLengthInvalid` | Refuses an empty or unaligned SPIR-V module at shader-cache admission. | `ParamName`, `ByteLength`, `WordBytes` |
+| `VulkanVertexInputException`, `VulkanVertexInputRefusal.InstanceDivisorUnsupported` | Refuses an instance divisor that the enabled Vulkan core vertex input cannot express. | `ParamName`, `InstanceStepRate`, `Slot`, `MaximumStepRate` |
 | `VulkanResourceSetRingException`, `VulkanResourceSetRingRefusal.RingBufferUsedAsStorage` | Refuses a ring-backed uniform buffer through a storage binding that cannot apply its frame base. | `ParamName`, `ElementName`, `Binding`, `ResourceKind` |
 | `VulkanResourceSetRingException`, `VulkanResourceSetRingRefusal.UniformBufferNotRingBacked` | Refuses a Vulkan uniform binding without its required ring. | `ParamName`, `ElementName`, `Binding`, `ActualUsage` |
 | `VulkanBufferBindingException`, `VulkanBufferBindingRefusal.RequiredUsageMissing` | Refuses binding a Vulkan buffer without the required native usage declaration. | `ParamName`, `Usage`, `RequiredUsage`, `Context` |

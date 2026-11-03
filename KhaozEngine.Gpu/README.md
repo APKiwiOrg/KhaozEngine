@@ -560,11 +560,12 @@ What it owns today:
     one's base level per array layer; `GenerateMipmaps` then fills the rest. Both go in the same list as the
     dispatch and cost no extra drain - a transfer is where every backend synchronises anyway.
 - **`ShaderValidation`** - `ValidatePair(vertexGlsl, fragmentGlsl, label?)` compiles a GLSL 450 vertex/fragment
-  pair to SPIR-V and cross-compiles it to every backend target (HLSL, MSL, GLSL, ESSL) with NO `GraphicsDevice`,
+  pair to SPIR-V and cross-compiles it to every backend target (HLSL and MSL) with NO `GraphicsDevice`,
   so a shader syntax error or a backend miscompile is caught in a fast GPU-free test loop instead of at first run
   on a real device of that backend. `ValidateCompute(computeGlsl, label?)` is the single-stage sibling for a
-  compute shader. A compile failure throws `ShaderValidationException` naming the label and the failing
-  stage/target. BOTH ALSO CHECK THE METAL BINDING ORDER (17.36.0, and `ValidateCompute` alone since 16.3.0),
+  compute shader. A compile failure throws `ShaderValidationException` with `Reason`, `Label`, `Stage` and
+  `Target`. `FrontEndCompileFailed` retains its native cause and diagnostic. `CrossCompileFailed` retains the
+  inner validation refusal. BOTH ALSO CHECK THE METAL BINDING ORDER (17.36.0, and `ValidateCompute` alone since 16.3.0),
   which is not a compile failure anywhere and is the one shader bug that renders a wrong picture instead of
   throwing. Metal has no binding decorations, so the cross-compiler assigns each resource an index of its own in
   first-reference order while the deleted Veldrid Metal backend bound a resource set by counting the layout in
@@ -573,8 +574,8 @@ What it owns today:
   - **Index order, per stage, over buffers AND textures AND samplers.** Each emitted argument is joined back to
     the `(set, binding)` you declared through that stage's own SPIR-V decorations, so a swap between two
     resources OF THE SAME KIND is caught as well (two storage buffers are both `device T&` in Metal, which is
-    why the 16.3.0 kind comparison could not see it). The message names both `layout(set=, binding=)` pairs and
-    the slot they collided on. Since 18.0.0 the engine AUTHORS each Metal argument index by walking the
+    why the 16.3.0 kind comparison could not see it). `MetalBindingOrderMismatch` carries both pairs in
+    `DeclaredSet` / `DeclaredBinding` and `EmittedSet` / `EmittedBinding`, plus `ArgumentIndex` and `ExpectedIndex`. Since 18.0.0 the engine AUTHORS each Metal argument index by walking the
     reflected layout in binding order, and the native Metal backend binds against that same scheme, so this
     confirms the authored scheme reached the emission rather than constraining how the shader is written.
 
@@ -618,8 +619,62 @@ The BCL subtypes `GpuRecordingStateException` and `GpuTimestamp*Exception` requi
 every constructor and expose a non-nullable `Reason`. Each derives from the refusal's original BCL
 exception type. Message text is developer prose. Branch on the reason and read the diagnostic properties.
 
+`ShaderValidationException` keeps its `Exception` base and message-only constructors. Engine callers fill
+`ShaderValidationRefusal` and the applicable identifiers. `CrossCompileFailed` retains its inner refusal,
+and `FrontEndCompileFailed` retains the actual compiler failure. `ShaderValidationArgumentException`,
+`ShaderValidationRangeException` and `ShaderValidationStateException` derive from the original
+`ArgumentException`, `ArgumentOutOfRangeException` and `InvalidOperationException` bases and require a reason.
+The Vulkan shader-module cache's byte-length guard uses `ShaderValidationArgumentException`, retaining
+`ParamName` and carrying `ByteLength` and `WordBytes`. Message text stays developer prose.
+
 | Exception and reason member | What it refuses | Identifiers |
 |---|---|---|
+| `ShaderValidationException`, `ShaderValidationRefusal.ComputeLocalSizeMissing` | Refuses a compute module without a literal local-size execution mode. | `Label` |
+| `ShaderValidationException`, `ShaderValidationRefusal.ComputeLocalSizeSpecialized` | Refuses a compute local size requiring specialization constant evaluation. | `Label`, `ExecutionMode` |
+| `ShaderValidationException`, `ShaderValidationRefusal.CrossCompileFailed` | Refuses a shader translation after a structured cross-compiler failure is caught. | `Label`, `Stage`, `Target`, `InnerException` |
+| `ShaderValidationException`, `ShaderValidationRefusal.CrossContextCreationFailed` | Refuses a SPIRV-Cross context that cannot be created. | `Label`, `Operation`, `ResultCode` |
+| `ShaderValidationException`, `ShaderValidationRefusal.CrossNativeCallFailed` | Refuses a failed SPIRV-Cross native operation. | `Label`, `Operation`, `ResultCode`, `Diagnostic` |
+| `ShaderValidationException`, `ShaderValidationRefusal.D3D11FxcOutputEmpty` | Refuses successful FXC compilation that produced no bytecode. | `Label`, `Profile` |
+| `ShaderValidationException`, `ShaderValidationRefusal.D3D11FxcRejected` | Refuses emitted HLSL rejected by FXC. | `Label`, `Profile`, `HResult`, `Diagnostic` |
+| `ShaderValidationException`, `ShaderValidationRefusal.D3D11UserSemanticHole` | Refuses a holed user-semantic sequence that the native compiler can miscompile. | `Label`, `Semantic`, `FirstMissingIndex`, `RepairSourcePaths` |
+| `ShaderValidationException`, `ShaderValidationRefusal.D3D11VertexModuleEmpty` | Refuses reflection of an empty compiled vertex module. | `Label` |
+| `ShaderValidationException`, `ShaderValidationRefusal.D3D11VertexReflectionFailed` | Refuses a vertex module whose compiled signature cannot be reflected. | `Label`, `Diagnostic`, `InnerException` |
+| `ShaderValidationException`, `ShaderValidationRefusal.FrontEndCompileFailed` | Refuses GLSL source that fails compilation to SPIR-V. | `Label`, `Stage`, `Target`, `Diagnostic` |
+| `ShaderValidationStateException`, `ShaderValidationRefusal.FrontEndCompilerInitializationFailed` | Refuses a front-end compiler initialization that returns null. | `NativeObjectKind` |
+| `ShaderValidationStateException`, `ShaderValidationRefusal.FrontEndNativeCompileFailed` | Refuses a failed native front-end compile result. | `Status`, `Diagnostic` |
+| `ShaderValidationStateException`, `ShaderValidationRefusal.FrontEndOptionsInitializationFailed` | Refuses front-end compile options initialization that returns null. | `NativeObjectKind` |
+| `ShaderValidationStateException`, `ShaderValidationRefusal.FrontEndResultMissing` | Refuses front-end compilation that returns no native result. | `NativeOperation` |
+| `ShaderValidationException`, `ShaderValidationRefusal.MetalBindingIndexInvalid` | Refuses an emitted resource use naming an undeclared binding. | `Label`, `Stage`, `Set`, `Binding`, `ElementCount` |
+| `ShaderValidationException`, `ShaderValidationRefusal.MetalBindingOrderMismatch` | Refuses a Metal resource argument whose index disagrees with authored binding order. | `Label`, `Stage`, `Space`, `ArgumentIndex`, `DeclaredSet`, `DeclaredBinding`, `EmittedSet`, `EmittedBinding`, `ExpectedIndex` |
+| `ShaderValidationException`, `ShaderValidationRefusal.MetalBufferKindOrderMismatch` | Refuses emitted Metal buffer kinds that disagree with reflected binding order. | `Label`, `Slot`, `DeclaredBufferKind`, `EmittedKind` |
+| `ShaderValidationException`, `ShaderValidationRefusal.MetalCachedStageMissing` | Refuses a cached resource use whose stage has no source payload. | `Label`, `Stage`, `Set`, `Binding` |
+| `ShaderValidationException`, `ShaderValidationRefusal.MetalComputePipelineRejected` | Refuses a compute pipeline rejected by the native Metal device. | `PipelineKind`, `Diagnostic`, `NativeDiagnosticMissing` |
+| `ShaderValidationStateException`, `ShaderValidationRefusal.MetalDepthStateUnavailable` | Refuses a nil native depth-stencil state during pipeline construction. | `NativeClass` |
+| `ShaderValidationException`, `ShaderValidationRefusal.MetalEntryArgumentsMissing` | Refuses an emitted Metal entry point without an argument list. | `Label`, `Stage` |
+| `ShaderValidationException`, `ShaderValidationRefusal.MetalEntryArgumentsUnclosed` | Refuses an emitted Metal entry point with an unclosed argument list. | `Label`, `Stage` |
+| `ShaderValidationException`, `ShaderValidationRefusal.MetalEntryNameUnreadable` | Refuses an emitted Metal entry point whose function name cannot be read. | `Label`, `Stage` |
+| `ShaderValidationException`, `ShaderValidationRefusal.MetalEntryPointMissing` | Refuses emitted MSL with no entry point for the requested stage. | `Label`, `Stage`, `EntryPointKeyword` |
+| `ShaderValidationException`, `ShaderValidationRefusal.MetalGraphicsPipelineRejected` | Refuses a graphics pipeline rejected by the native Metal device. | `PipelineKind`, `Diagnostic`, `NativeDiagnosticMissing` |
+| `ShaderValidationException`, `ShaderValidationRefusal.MetalHelperBufferUnnumbered` | Refuses a Metal helper buffer or memory argument outside the authored index scheme. | `Label`, `Stage`, `HelperKind`, `Policy` |
+| `ShaderValidationException`, `ShaderValidationRefusal.MetalLayoutCountMismatch` | Refuses a pipeline layout array whose length differs from shader reflection. | `Label`, `DeclaredLayoutCount`, `ReflectedLayoutCount` |
+| `ShaderValidationException`, `ShaderValidationRefusal.MetalLayoutElementCountMismatch` | Refuses a resource layout whose element count differs from shader reflection. | `Label`, `Set`, `DeclaredElementCount`, `ReflectedElementCount` |
+| `ShaderValidationException`, `ShaderValidationRefusal.MetalLayoutKindMismatch` | Refuses a resource layout whose element kind differs from shader reflection. | `Label`, `Set`, `Binding`, `DeclaredKind`, `ReflectedKind` |
+| `ShaderValidationException`, `ShaderValidationRefusal.MetalLibraryFunctionMissing` | Refuses a compiled Metal library without the parsed entry-point function. | `Label`, `Stage`, `EntryPoint`, `Policy` |
+| `ShaderValidationException`, `ShaderValidationRefusal.MetalLibraryRejected` | Refuses emitted MSL rejected by the native Metal library compiler. | `Label`, `Stage`, `EntryPoint`, `Diagnostic`, `NativeDiagnosticMissing`, `SourceOrigin` |
+| `ShaderValidationStateException`, `ShaderValidationRefusal.MetalNativeClassUnavailable` | Refuses shader or pipeline descriptor creation when the Objective-C class is unavailable. | `NativeClass` |
+| `ShaderValidationException`, `ShaderValidationRefusal.MetalProgramStageMissing` | Refuses a Metal program stage that the program does not contain. | `Stage` |
+| `ShaderValidationException`, `ShaderValidationRefusal.MetalProgramStageShapeInvalid` | Refuses a Metal program that is neither a compute stage nor a vertex and fragment pair. | `Label`, `StageCount`, `Stages` |
+| `ShaderValidationException`, `ShaderValidationRefusal.MetalResourceUseDuplicate` | Refuses a repeated resource use in one Metal stage. | `Label`, `Stage`, `Set`, `Binding` |
+| `ShaderValidationException`, `ShaderValidationRefusal.MetalResourceUseListMissing` | Refuses a cross-compiled Metal stage with no resource-use list. | `Label`, `Stage` |
+| `ShaderValidationException`, `ShaderValidationRefusal.MetalSetIndexInvalid` | Refuses an emitted resource use naming an undeclared set. | `Label`, `Stage`, `Set`, `LayoutCount`, `Binding` |
+| `ShaderValidationException`, `ShaderValidationRefusal.MetalVertexBufferCollision` | Refuses a reflected vertex resource buffer colliding with vertex stream indices. | `Label`, `Set`, `Binding`, `ArgumentIndex`, `StreamCount`, `LowestStreamIndex`, `BufferTableSize`, `Policy` |
+| `ShaderValidationArgumentException`, `ShaderValidationRefusal.SpirvLengthInvalid` | Refuses an empty or unaligned SPIR-V module at Vulkan cache admission. | `ParamName`, `ByteLength`, `WordBytes` |
+| `ShaderValidationRangeException`, `ShaderValidationRefusal.MetalVertexStreamCountInvalid` | Refuses a vertex stream count outside the Metal argument table capacity. | `ParamName`, `ActualValue`, `Label`, `StreamCount`, `BufferTableSize` |
+| `ShaderValidationException`, `ShaderValidationRefusal.ReflectionResourceKindUnsupported` | Refuses a reflected resource kind absent from the GPU contract mirror. | `Label`, `NativeResourceKind`, `SourceDeclaration` |
+| `ShaderValidationException`, `ShaderValidationRefusal.ReflectionVertexFormatUnsupported` | Refuses a reflected vertex input format absent from the GPU contract mirror. | `Label`, `NativeBaseType`, `ComponentCount` |
+| `ShaderValidationException`, `ShaderValidationRefusal.SpirvInstructionMalformed` | Refuses a truncated or non-advancing SPIR-V instruction. | `Label`, `WordOffset`, `WordCount`, `ModuleWordCount` |
+| `ShaderValidationException`, `ShaderValidationRefusal.SpirvLengthInvalid` | Refuses bytes that cannot form the required SPIR-V word or module layout. | `Label`, `ByteLength`, `MinimumHeaderBytes`, `WordBytes` |
+| `ShaderValidationException`, `ShaderValidationRefusal.SpirvMagicInvalid` | Refuses a SPIR-V module with the wrong magic number. | `Label`, `ActualMagic`, `ExpectedMagic` |
 | `GpuResourceSetException`, `GpuResourceSetRefusal.BufferWindowOutsideResource` | Refuses a binding window that does not fit within the buffer. | `ParamName`, `ElementName`, `Binding`, `RangeOffset`, `RangeBytes`, `BufferBytes` |
 | `GpuResourceSetException`, `GpuResourceSetRefusal.NativeHandleMissing` | Refuses a set resource whose native handle was already released. | `ParamName`, `ElementName`, `Binding`, `ResourceKind`, `NativeHandleKind` |
 | `GpuResourceSetException`, `GpuResourceSetRefusal.ResourceCountMismatch` | Refuses a set whose resource count differs from its layout. | `ParamName`, `DeclaredCount`, `SuppliedCount` |

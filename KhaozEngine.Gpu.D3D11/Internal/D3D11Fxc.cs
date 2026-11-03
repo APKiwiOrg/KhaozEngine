@@ -36,8 +36,8 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         /// <c>CreateShadersFromSpirv</c> takes two GLSL strings and no name, so a raw FXC message would identify
         /// nothing out of roughly fifty sources.
         /// </summary>
-        /// <exception cref="ShaderValidationException">FXC rejected the emitted HLSL. The message carries FXC's
-        /// own diagnostic, which names a line of the EMITTED source rather than of the GLSL it came from.
+        /// <exception cref="ShaderValidationException">FXC rejected the emitted HLSL. Diagnostic carries FXC's
+        /// native error data, with line numbers in the emitted source. Label, Profile and HResult identify the refusal.
         /// </exception>
         [MethodImpl(MethodImplOptions.NoInlining)]
         internal static byte[] Compile(string hlsl, string profile, uint flags, string label)
@@ -64,20 +64,20 @@ namespace KhaozEngine.Gpu.D3D11.Internal
                 if (result.Failure || code is null)
                 {
                     string detail = errors is null ? "(FXC returned no diagnostic)" : errors.AsString();
-                    throw new ShaderValidationException(
+                    throw new ShaderValidationException(ShaderValidationRefusal.D3D11FxcRejected,
                         $"{label}: FXC rejected the cross-compiled HLSL for profile {profile} "
                         + $"(HRESULT 0x{result.Code:X8}). This is HLSL that SPIRV-Cross emitted, so the line "
-                        + "numbers below are the EMITTED source, not the GLSL. FXC said: " + detail);
+                        + "numbers below are the EMITTED source, not the GLSL. FXC said: " + detail)
+                    {
+                        Label = label,
+                        Profile = profile,
+                        HResult = result.Code,
+                        Diagnostic = detail,
+                    };
                 }
 
                 byte[] dxbc = code.AsBytes();
-                if (dxbc.Length == 0)
-                {
-                    throw new ShaderValidationException(
-                        $"{label}: FXC reported success for profile {profile} and produced no bytes. Nothing "
-                        + "downstream can use an empty module, and a zero-length DXBC handed to the device fails "
-                        + "somewhere far less informative than here.");
-                }
+                D3D11ShaderResultValidation.RequireFxcOutput(dxbc.Length, profile, label);
                 return dxbc;
             }
             finally
@@ -97,12 +97,7 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         [MethodImpl(MethodImplOptions.NoInlining)]
         internal static D3D11ShaderInputSemantic[] ReflectVertexInputs(ReadOnlySpan<byte> dxbc, string label)
         {
-            if (dxbc.IsEmpty)
-            {
-                throw new ShaderValidationException(
-                    $"{label}: cannot reflect an empty vertex module. The input signature is what the contiguity "
-                    + "check reads, so there is nothing to check and nothing to build an input layout against.");
-            }
+            D3D11ShaderResultValidation.RequireVertexModule(dxbc.Length, label);
 
             ID3D11ShaderReflection? reflection = null;
             try
@@ -119,9 +114,8 @@ namespace KhaozEngine.Gpu.D3D11.Internal
             }
             catch (SharpGen.Runtime.SharpGenException ex)
             {
-                throw new ShaderValidationException(
-                    $"{label}: the compiled vertex module could not be reflected, so its input signature cannot "
-                    + $"be checked for the holed-TEXCOORD hazard: {ex.Message}", ex);
+                D3D11ShaderResultValidation.ThrowVertexReflectionFailure(ex, label);
+                throw;
             }
             finally
             {

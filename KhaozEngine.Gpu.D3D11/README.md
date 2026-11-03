@@ -768,7 +768,13 @@ the report. Missing metadata, empty statistics and reflection failures retain su
 `ConstantBuffers`, `BoundResources`, signature counts and every other scalar instruction/resource
 count under their original API names/descriptions. The budgeted read route uses the fixed
 (2,30,60,4096,16384,4) executable/statistics/total/text/flags/attempt profile. It refuses smaller
-substitute requests. Creator text is bounded before conversion, and raw flags remain intact.
+substitute requests with `D3D11CompilerEvidenceRefusal.ReadProfileMismatch`, retaining `RequestedProfile`
+and `RequiredProfile`. Combined flags beyond 16384 UTF-8 bytes carry `CombinedFlagsTooLarge`, `Field`,
+`MaximumUtf8Bytes` and `ActualUtf8Bytes` on `D3D11CompilerEvidenceStateException`. Other compiler-evidence
+reasons distinguish missing reflection (with `MissingStages`), invalid construction identity and missing
+failure origin. A dead pipeline carries `PipelineUnavailable` on `D3D11CompilerEvidenceDisposedException`,
+retaining `ObjectName`. These exceptions remain in the diagnostic failure events.
+Creator text is bounded before conversion, and raw flags remain intact.
 Reports retain typed availability, original read requests and counts, completion/refusal and actual
 failure occurrences. The renderer's fixed byte reservation is 1,048,576. Native `UINT` values are preserved losslessly in UInt64 metrics with the original
 native type in Source. These are intermediate-code facts. Temporary slots never fill physical register,
@@ -1048,9 +1054,14 @@ too), and `KhaozEngineD3D11.ValidateShaderPair` / `ValidateComputeShader` run th
 all, which is what the Windows CI leg calls over every shipped program on every push.
 
 Those two validation entry points are the half `KhaozEngine.Gpu`'s own `ShaderValidation` cannot cover: it
-cross-compiles to all four shading languages and stops, so it has never compiled the HLSL it produced, which is
+cross-compiles to both shipped shading languages and stops, so it has never compiled the HLSL it produced, which is
 precisely how both incidents got past it. They are Windows-only (FXC is `d3dcompiler`), so gate the call on
-`KhaozEngineD3D11.IsPlatformSupported` and run both.
+`KhaozEngineD3D11.IsPlatformSupported` and run both. Calling off Windows throws
+`D3D11ShaderPlatformException` with `FxcUnavailableOnPlatform`, `Compiler`, `RequiredOperatingSystem`,
+`SupportProbe` and `PortableValidator`. Compiler and signature failures remain `ShaderValidationException`.
+`D3D11FxcRejected` carries `Label`, `Profile`, the native `HResult` and `Diagnostic`.
+`D3D11UserSemanticHole` carries `Label`, `Semantic`, `FirstMissingIndex` when there is a hole, and the
+read-only `RepairSourcePaths` snapshot pointing to `ShaderSources.Shadow.cs` and `ShaderSources.Terrain.cs`.
 
 **`KE_D3D11_DEBUG` compiles shaders with debug information and no optimization**, so a RenderDoc or PIX capture's
 disassembly maps back to the emitted HLSL. The flags are part of the cache key, so a debug session and an
@@ -1383,6 +1394,13 @@ and `AlignmentBytes`. Staging contract refusals use the shared types in `KhaozEn
 
 | Exception and reason | What it refuses | Identifiers |
 |---|---|---|
+| `D3D11CompilerEvidenceStateException`, `D3D11CompilerEvidenceRefusal.CombinedFlagsTooLarge` | Refuses retaining combined compiler flags beyond the bounded pipeline evidence profile. | `Field`, `MaximumUtf8Bytes`, `ActualUtf8Bytes` |
+| `D3D11CompilerEvidenceStateException`, `D3D11CompilerEvidenceRefusal.ConstructionIdentityInvalid` | Refuses compiler evidence without valid construction correspondence identity. | No additional identifiers |
+| `D3D11CompilerEvidenceStateException`, `D3D11CompilerEvidenceRefusal.FailureOriginMissing` | Refuses invalid compiler evidence that has no originating failure event. | No additional identifiers |
+| `D3D11CompilerEvidenceDisposedException`, `D3D11CompilerEvidenceRefusal.PipelineUnavailable` | Refuses reading diagnostics from a disposed or lost pipeline, shader or device. | `ObjectName` |
+| `D3D11CompilerEvidenceStateException`, `D3D11CompilerEvidenceRefusal.ReadProfileMismatch` | Refuses a compiler read using a different fixed evidence profile. | `RequestedProfile`, `RequiredProfile` |
+| `D3D11CompilerEvidenceStateException`, `D3D11CompilerEvidenceRefusal.ReflectionNotCaptured` | Refuses a compiler read without captured reflection for every stage. | `MissingStages` |
+| `D3D11ShaderPlatformException`, `D3D11ShaderPlatformRefusal.FxcUnavailableOnPlatform` | Refuses native FXC validation on a platform without d3dcompiler. | `Compiler`, `RequiredOperatingSystem`, `SupportProbe`, `PortableValidator` |
 | `GpuStagingMapStateException`, `GpuStagingMapRefusal.AlreadyMapped` | A second map of an open resource | `Backend`, `ExistingMode`, `RequestedMode` |
 | `GpuStagingMapStateException`, `GpuStagingMapRefusal.NotMapped` | An unmap of a resource without an open mapping | `Backend` |
 | `GpuStagingMapStateException`, `GpuStagingMapRefusal.CompletionNotSignaled` | A fenced read map before completion | `Command` |

@@ -128,27 +128,50 @@ namespace KhaozEngine.Gpu.Metal.Internal
 
                     if (used.Set < 0 || used.Set >= layouts.Length)
                     {
-                        throw Loud(where,
+                        throw new ShaderValidationException(ShaderValidationRefusal.MetalSetIndexInvalid,
+                        where + ": " +
                             $"it names a set past the {Text(layouts.Length)} layouts the reflection declares. Set "
                             + "N is the layout at slot N, and that positional assumption is checked here rather "
-                            + "than assumed.");
+                            + "than assumed.")
+                        {
+                            Label = label,
+                            Stage = stage.Stage.ToGpu(),
+                            Set = used.Set,
+                            Binding = used.Binding,
+                            LayoutCount = layouts.Length,
+                        };
                     }
 
                     GpuResourceLayoutElement[] elements = layouts[used.Set].Elements;
                     if (used.Binding < 0 || used.Binding >= elements.Length)
                     {
-                        throw Loud(where,
+                        throw new ShaderValidationException(ShaderValidationRefusal.MetalBindingIndexInvalid,
+                        where + ": " +
                             $"it names a binding in a set that declares {Text(elements.Length)} elements. Binding "
-                            + "M is that layout's element M, and that positional assumption is checked here too.");
+                            + "M is that layout's element M, and that positional assumption is checked here too.")
+                        {
+                            Label = label,
+                            Stage = stage.Stage.ToGpu(),
+                            Set = used.Set,
+                            Binding = used.Binding,
+                            ElementCount = elements.Length,
+                        };
                     }
 
                     var key = new MetalIndexTableKey(used.Set, used.Binding, stage.Stage);
                     MetalIndexTableEntry entry = authored[((uint)used.Set, (uint)used.Binding)];
                     if (!entries.TryAdd(key, entry))
                     {
-                        throw Loud(where,
+                        throw new ShaderValidationException(ShaderValidationRefusal.MetalResourceUseDuplicate,
+                        where + ": " +
                             "this stage's use list names it twice. One element is one argument in one stage, so a "
-                            + "repeat means the list did not come from an emission.");
+                            + "repeat means the list did not come from an emission.")
+                        {
+                            Label = label,
+                            Stage = stage.Stage.ToGpu(),
+                            Set = used.Set,
+                            Binding = used.Binding,
+                        };
                     }
                 }
             }
@@ -202,9 +225,16 @@ namespace KhaozEngine.Gpu.Metal.Internal
             {
                 if (!stages.Contains(key.Stage))
                 {
-                    throw Loud($"{label} [{Name(key.Stage)}] set={Text(key.Set)} binding={Text(key.Binding)}",
+                    throw new ShaderValidationException(ShaderValidationRefusal.MetalCachedStageMissing,
+                        $"{label} [{Name(key.Stage)}] set={Text(key.Set)} binding={Text(key.Binding)}" + ": " +
                         "the cached triple names a stage the payload carries no source for. The element it names "
-                        + "was read out of an emission this payload does not contain.");
+                        + "was read out of an emission this payload does not contain.")
+                    {
+                        Label = label,
+                        Stage = key.Stage.ToGpu(),
+                        Set = key.Set,
+                        Binding = key.Binding,
+                    };
                 }
 
                 if (!byStage.TryGetValue(key.Stage, out List<MslResourceRef>? list))
@@ -271,13 +301,18 @@ namespace KhaozEngine.Gpu.Metal.Internal
             bool pair = stages.Contains(MetalShaderStage.Vertex) && stages.Contains(MetalShaderStage.Fragment);
             if (compute ? stages.Count == 1 : pair && stages.Count == 2) return;
 
-            throw new ShaderValidationException(
+            throw new ShaderValidationException(ShaderValidationRefusal.MetalProgramStageShapeInvalid,
                 $"{label}: the cached payload carries "
                 + $"{stages.Count.ToString(CultureInfo.InvariantCulture)} stage(s) ["
                 + string.Join(", ", stages.Select(Name))
                 + "], which is neither of the two shapes a Metal program has. A compute program is exactly one "
                 + "compute stage and a graphics program is exactly a vertex and fragment pair, because the pair "
-                + "is cross-compiled together and its indices are assigned across both at once.");
+                + "is cross-compiled together and its indices are assigned across both at once.")
+            {
+                Label = label,
+                StageCount = stages.Count,
+                Stages = stages.Aggregate(GpuShaderStages.None, (all, stage) => all | stage.ToGpu()),
+            };
         }
 
         /// <summary>
@@ -434,12 +469,17 @@ namespace KhaozEngine.Gpu.Metal.Internal
 
             if (declaredCount != _layouts.Length)
             {
-                throw new ShaderValidationException(
+                throw new ShaderValidationException(ShaderValidationRefusal.MetalLayoutCountMismatch,
                     $"{label}: the pipeline declares {declared.Count.ToString(CultureInfo.InvariantCulture)} "
                     + "resource layouts and its shader set reflected "
                     + $"{_layouts.Length.ToString(CultureInfo.InvariantCulture)}. The Metal binding table is keyed "
                     + "on (set, binding, stage) read out of the shader's own decorations, so a layout array of a "
-                    + "different shape resolves every element through a key that means something else.");
+                    + "different shape resolves every element through a key that means something else.")
+                {
+                    Label = label,
+                    DeclaredLayoutCount = declared.Count,
+                    ReflectedLayoutCount = _layouts.Length,
+                };
             }
 
             for (int set = 0; set < declaredCount; set++)
@@ -449,23 +489,36 @@ namespace KhaozEngine.Gpu.Metal.Internal
 
                 if (theirs.Length != mine.Length)
                 {
-                    throw new ShaderValidationException(
+                    throw new ShaderValidationException(ShaderValidationRefusal.MetalLayoutElementCountMismatch,
                         $"{label}: resource layout {set.ToString(CultureInfo.InvariantCulture)} declares "
                         + $"{theirs.Length.ToString(CultureInfo.InvariantCulture)} elements and the shader "
                         + $"reflected {mine.Length.ToString(CultureInfo.InvariantCulture)}. Binding M is that "
                         + "layout's element M on this backend, so the two arrays have to agree element for "
-                        + "element.");
+                        + "element.")
+                    {
+                        Label = label,
+                        Set = set,
+                        DeclaredElementCount = theirs.Length,
+                        ReflectedElementCount = mine.Length,
+                    };
                 }
 
                 for (int i = 0; i < mine.Length; i++)
                 {
                     if (theirs[i].Kind == mine[i].Kind) continue;
-                    throw new ShaderValidationException(
+                    throw new ShaderValidationException(ShaderValidationRefusal.MetalLayoutKindMismatch,
                         $"{label}: resource layout {set.ToString(CultureInfo.InvariantCulture)} element "
                         + $"{i.ToString(CultureInfo.InvariantCulture)} is declared as {theirs[i].Kind} and the "
                         + $"shader reflected {mine[i].Kind} there. The kind decides which of Metal's three "
                         + "argument tables the element is bound in, so a disagreement binds it in the wrong "
-                        + "space.");
+                        + "space.")
+                    {
+                        Label = label,
+                        Set = set,
+                        Binding = i,
+                        DeclaredKind = theirs[i].Kind,
+                        ReflectedKind = mine[i].Kind,
+                    };
                 }
             }
         }
@@ -474,7 +527,5 @@ namespace KhaozEngine.Gpu.Metal.Internal
 
         static string Text(int value) => value.ToString(CultureInfo.InvariantCulture);
 
-        static ShaderValidationException Loud(string where, string why)
-            => new($"{where}: {why}");
     }
 }

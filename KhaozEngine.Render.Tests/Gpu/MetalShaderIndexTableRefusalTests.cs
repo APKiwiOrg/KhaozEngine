@@ -40,18 +40,30 @@ namespace KhaozEngine.Tests.Gpu
     public sealed class MetalShaderIndexTableRefusalTests
     {
         [Theory]
-        [InlineData(1, 0)]
-        [InlineData(0, 1)]
-        public void AnUndeclaredSetOrBinding_IsRefused(int set, int binding)
+        [InlineData(1, 0, ShaderValidationRefusal.MetalSetIndexInvalid)]
+        [InlineData(0, 1, ShaderValidationRefusal.MetalBindingIndexInvalid)]
+        public void AnUndeclaredSetOrBinding_IsRefused(int set, int binding, ShaderValidationRefusal reason)
         {
-            Refusal(() => Build(Layout(GpuResourceKind.UniformBuffer), Used((set, binding))));
+            var error = Assert.Throws<ShaderValidationException>(() => Build(Layout(GpuResourceKind.UniformBuffer), Used((set, binding))));
+            Assert.Equal(reason, error.Reason);
+            Assert.Equal("hand-built", error.Label);
+            Assert.Equal(GpuShaderStages.Fragment, error.Stage);
+            Assert.Equal(set, error.Set);
+            Assert.Equal(binding, error.Binding);
+            if (reason == ShaderValidationRefusal.MetalSetIndexInvalid) Assert.Equal(1, error.LayoutCount);
+            else Assert.Equal(1, error.ElementCount);
         }
 
         [Fact]
         public void OneElementNamedTwiceInOneStage_IsRefused()
         {
-            Refusal(() => Build(Layout(GpuResourceKind.UniformBuffer),
+            var error = Assert.Throws<ShaderValidationException>(() => Build(Layout(GpuResourceKind.UniformBuffer),
                 Used((Set: 0, Binding: 0), (Set: 0, Binding: 0))));
+            Assert.Equal(ShaderValidationRefusal.MetalResourceUseDuplicate, error.Reason);
+            Assert.Equal("hand-built", error.Label);
+            Assert.Equal(GpuShaderStages.Fragment, error.Stage);
+            Assert.Equal(0, error.Set);
+            Assert.Equal(0, error.Binding);
         }
 
         /// <summary>
@@ -141,13 +153,17 @@ namespace KhaozEngine.Tests.Gpu
         }
 
         [Theory]
-        [InlineData("kernel main0()\n{\n}\n")]
-        [InlineData("fragment main0_out main0\n")]
-        [InlineData("fragment main0_out main0(constant A& _7 [[buffer(0)]]\n")]
-        [InlineData("fragment ()\n{\n}\n")]
-        public void AnEntryPointTheParseCannotRead_IsRefusedRatherThanGuessed(string msl)
+        [InlineData("kernel main0()\n{\n}\n", ShaderValidationRefusal.MetalEntryPointMissing)]
+        [InlineData("fragment main0_out main0\n", ShaderValidationRefusal.MetalEntryArgumentsMissing)]
+        [InlineData("fragment main0_out main0(constant A& _7 [[buffer(0)]]\n", ShaderValidationRefusal.MetalEntryArgumentsUnclosed)]
+        [InlineData("fragment ()\n{\n}\n", ShaderValidationRefusal.MetalEntryNameUnreadable)]
+        public void AnEntryPointTheParseCannotRead_IsRefusedRatherThanGuessed(string msl, ShaderValidationRefusal reason)
         {
-            NameRefusal(msl);
+            var error = Assert.Throws<ShaderValidationException>(() => MetalMslEntryPoint.NameOf(msl, MetalShaderStage.Fragment, "hand-built"));
+            Assert.Equal(reason, error.Reason);
+            Assert.Equal("hand-built", error.Label);
+            Assert.Equal(GpuShaderStages.Fragment, error.Stage);
+            if (reason == ShaderValidationRefusal.MetalEntryPointMissing) Assert.Equal("fragment", error.EntryPointKeyword);
         }
 
         /// <summary>The other half of those four: a well-formed entry point of the same shape reads its name, so
@@ -169,14 +185,29 @@ namespace KhaozEngine.Tests.Gpu
 
             table.RequireLayoutShape(Layout(GpuResourceKind.UniformBuffer, GpuResourceKind.TextureReadOnly), "ok");
 
-            Refusal(() => table.RequireLayoutShape(new[]
+            var count = Assert.Throws<ShaderValidationException>(() => table.RequireLayoutShape(new[]
             {
                 new GpuResourceLayoutDescription(Elements(GpuResourceKind.UniformBuffer)),
                 new GpuResourceLayoutDescription(Elements(GpuResourceKind.Sampler)),
             }, "two sets"));
-            Refusal(() => table.RequireLayoutShape(Layout(GpuResourceKind.UniformBuffer), "one element"));
-            Refusal(() => table.RequireLayoutShape(
+            Assert.Equal(ShaderValidationRefusal.MetalLayoutCountMismatch, count.Reason);
+            Assert.Equal("two sets", count.Label);
+            Assert.Equal(2, count.DeclaredLayoutCount);
+            Assert.Equal(1, count.ReflectedLayoutCount);
+            var elements = Assert.Throws<ShaderValidationException>(() => table.RequireLayoutShape(Layout(GpuResourceKind.UniformBuffer), "one element"));
+            Assert.Equal(ShaderValidationRefusal.MetalLayoutElementCountMismatch, elements.Reason);
+            Assert.Equal("one element", elements.Label);
+            Assert.Equal(0, elements.Set);
+            Assert.Equal(1, elements.DeclaredElementCount);
+            Assert.Equal(2, elements.ReflectedElementCount);
+            var kind = Assert.Throws<ShaderValidationException>(() => table.RequireLayoutShape(
                 Layout(GpuResourceKind.UniformBuffer, GpuResourceKind.Sampler), "wrong kind"));
+            Assert.Equal(ShaderValidationRefusal.MetalLayoutKindMismatch, kind.Reason);
+            Assert.Equal("wrong kind", kind.Label);
+            Assert.Equal(0, kind.Set);
+            Assert.Equal(1, kind.Binding);
+            Assert.Equal(GpuResourceKind.Sampler, kind.DeclaredKind);
+            Assert.Equal(GpuResourceKind.TextureReadOnly, kind.ReflectedKind);
         }
 
         /// <summary>
@@ -229,12 +260,6 @@ namespace KhaozEngine.Tests.Gpu
                 refs[i] = new MslResourceRef(elements[i].Set, elements[i].Binding);
             return new[] { new MetalStageResourceUse(MetalShaderStage.Fragment, refs) };
         }
-
-        static void Refusal(Action call) => Assert.Throws<ShaderValidationException>(call);
-
-        static void NameRefusal(string msl)
-            => Assert.Throws<ShaderValidationException>(
-                () => MetalMslEntryPoint.NameOf(msl, MetalShaderStage.Fragment, "hand-built"));
 
         /// <summary>A fragment entry point of the shape SPIRV-Cross emits, carrying the given argument text
         /// verbatim. The return type between the keyword and the name is not decoration: it is why the name is

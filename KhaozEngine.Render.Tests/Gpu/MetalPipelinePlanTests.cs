@@ -48,8 +48,12 @@ namespace KhaozEngine.Tests.Gpu
             ShaderValidationException error = Assert.Throws<ShaderValidationException>(
                 () => MetalGraphicsPipelinePlan.Build(_liveness, description));
 
-            Assert.Contains("A native Metal graphics pipeline", error.Message, StringComparison.Ordinal);
-            Assert.Contains("Sampler", error.Message, StringComparison.Ordinal);
+            Assert.Equal(ShaderValidationRefusal.MetalLayoutKindMismatch, error.Reason);
+            Assert.Equal("A native Metal graphics pipeline", error.Label);
+            Assert.Equal(0, error.Set);
+            Assert.Equal(0, error.Binding);
+            Assert.Equal(GpuResourceKind.Sampler, error.DeclaredKind);
+            Assert.Equal(GpuResourceKind.UniformBuffer, error.ReflectedKind);
 
             // And the matching declaration passes, so the row above is about the SHAPE rather than about the
             // check being unsatisfiable.
@@ -71,7 +75,10 @@ namespace KhaozEngine.Tests.Gpu
             ShaderValidationException error = Assert.Throws<ShaderValidationException>(
                 () => MetalGraphicsPipelinePlan.Build(_liveness, Description(shaders)));
 
-            Assert.Contains("0 resource layouts", error.Message, StringComparison.Ordinal);
+            Assert.Equal(ShaderValidationRefusal.MetalLayoutCountMismatch, error.Reason);
+            Assert.Equal("A native Metal graphics pipeline", error.Label);
+            Assert.Equal(0, error.DeclaredLayoutCount);
+            Assert.Equal(1, error.ReflectedLayoutCount);
         }
 
         /// <summary>A shader set from another device is refused by name, and so is a layout, both through the one
@@ -180,7 +187,14 @@ namespace KhaozEngine.Tests.Gpu
 
             ShaderValidationException error = Assert.Throws<ShaderValidationException>(
                 () => MetalGraphicsPipelinePlan.Build(_liveness, description));
-            Assert.Contains("[[buffer(30)]]", error.Message, StringComparison.Ordinal);
+            Assert.Equal(ShaderValidationRefusal.MetalVertexBufferCollision, error.Reason);
+            Assert.Equal(30, error.ArgumentIndex);
+            Assert.Equal(0, error.Set);
+            Assert.Equal(30, error.Binding);
+            Assert.Equal(1, error.StreamCount);
+            Assert.Equal(30, error.LowestStreamIndex);
+            Assert.Equal(31, error.BufferTableSize);
+            Assert.Equal("M-B2", error.Policy);
 
             // The same program with NO vertex streams is fine, because nothing occupies the top of the space.
             description.VertexLayouts = new List<GpuVertexLayoutDescription>();
@@ -393,9 +407,14 @@ namespace KhaozEngine.Tests.Gpu
             MetalComputeShader kernel = new(
                 _liveness, default, TableFor(GpuResourceKind.StructuredBufferReadWrite), 64, 1, 1);
 
-            Assert.Throws<ShaderValidationException>(() => MetalComputePipeline.Check(
+            var error = Assert.Throws<ShaderValidationException>(() => MetalComputePipeline.Check(
                 _liveness,
                 new GpuComputePipelineDescription(kernel, Layout(GpuResourceKind.UniformBuffer))));
+            Assert.Equal(ShaderValidationRefusal.MetalLayoutKindMismatch, error.Reason);
+            Assert.Equal(0, error.Set);
+            Assert.Equal(0, error.Binding);
+            Assert.Equal(GpuResourceKind.UniformBuffer, error.DeclaredKind);
+            Assert.Equal(GpuResourceKind.StructuredBufferReadWrite, error.ReflectedKind);
 
             (MetalComputeShader shader, MetalResourceLayout[] layouts) = MetalComputePipeline.Check(
                 _liveness,

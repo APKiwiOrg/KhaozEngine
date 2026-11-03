@@ -65,9 +65,12 @@ namespace KhaozEngine.Gpu.Metal.Internal
             foreach (MetalMslStage candidate in _stages)
                 if (candidate.Stage == stage) return candidate;
 
-            throw new ShaderValidationException(
+            throw new ShaderValidationException(ShaderValidationRefusal.MetalProgramStageMissing,
                 $"this Metal program has no {stage.ToString().ToLowerInvariant()} stage, so there is no library "
-                + "function to create from it.");
+                + "function to create from it.")
+            {
+                Stage = stage.ToGpu(),
+            };
         }
     }
 }

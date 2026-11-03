@@ -95,11 +95,16 @@ namespace KhaozEngine.Tests.Gpu
 
             Assert.True(Assert.Single(bindings).PerInstance);
 
-            ArgumentException ex = Assert.Throws<ArgumentException>(() => VulkanVertexInput.Build(
+            VulkanVertexInputException ex = Assert.Throws<VulkanVertexInputException>(() => VulkanVertexInput.Build(
                 [new GpuVertexLayoutDescription(0, 2, [new GpuVertexElement("I", GpuVertexElementFormat.Float4)])],
                 out _));
 
-            Assert.Contains("divisor", ex.Message, StringComparison.Ordinal);
+            Assert.IsAssignableFrom<ArgumentException>(ex);
+            Assert.Equal(VulkanVertexInputRefusal.InstanceDivisorUnsupported, ex.Reason);
+            Assert.Equal("stepRate", ex.ParamName);
+            Assert.Equal(2u, ex.InstanceStepRate);
+            Assert.Equal(0, ex.Slot);
+            Assert.Equal(1u, ex.MaximumStepRate);
         }
 
         /// <summary>A FULLSCREEN PASS DECLARES NO VERTEX LAYOUT AT ALL, which is a legal and common vertex input

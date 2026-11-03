@@ -139,7 +139,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
         // The cross-compile returns one use list per stage it emitted, so a missing one means the emission and
         // this assembly disagree about which stages the program has. Defaulting to an empty list would build a
         // table binding nothing for that stage, which is a black frame with no error.
-        static IReadOnlyList<MslResourceRef> UseFor(MslStageUse[] use, MetalShaderStage stage, string tag)
+        internal static IReadOnlyList<MslResourceRef> UseFor(MslStageUse[] use, MetalShaderStage stage, string tag)
         {
             GpuShaderStages wanted = stage switch
             {
@@ -153,10 +153,14 @@ namespace KhaozEngine.Gpu.Metal.Internal
             foreach (MslStageUse candidate in use)
                 if (candidate.Stage == wanted) return candidate.Used;
 
-            throw new ShaderValidationException(
+            throw new ShaderValidationException(ShaderValidationRefusal.MetalResourceUseListMissing,
                 $"{tag}: the MSL cross-compile returned no resource-use list for the "
                 + stage.ToString().ToLowerInvariant() + " stage, so there is nothing to say which of the "
-                + "program's authored indices that stage actually binds.");
+                + "program's authored indices that stage actually binds.")
+            {
+                Label = tag,
+                Stage = wanted,
+            };
         }
 
     }

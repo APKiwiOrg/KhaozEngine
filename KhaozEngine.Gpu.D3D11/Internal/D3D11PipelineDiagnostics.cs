@@ -13,6 +13,7 @@ internal sealed class D3D11PipelineDiagnostics
     readonly GpuPipelineCompilerReport _report;
     readonly ImmutableArray<GpuDiagnosticFailure> _failures;
     readonly bool _reflectionRequested, _countsKnown;
+    readonly GpuShaderStages _missingReflectionStages;
     readonly int _nativeExecutables;
     internal GpuPipelineConstructionIdentity ConstructionIdentity => _report.Identity;
 
@@ -23,6 +24,15 @@ internal sealed class D3D11PipelineDiagnostics
         _nativeExecutables = stages.Length;
         _countsKnown = known.Length == stages.Length && known.All(s => s.CountsComplete);
         _reflectionRequested = known.Length == stages.Length && known.All(s => s.ReflectionRequested);
+        for (int i = 0; i < stages.Length; i++)
+            if (stages[i] is not { ReflectionRequested: true })
+                _missingReflectionStages |= stages[i]?.Stage switch
+                {
+                    "vertex" => GpuShaderStages.Vertex,
+                    "pixel" => GpuShaderStages.Fragment,
+                    "compute" => GpuShaderStages.Compute,
+                    _ => stages.Length == 1 ? GpuShaderStages.Compute : i == 0 ? GpuShaderStages.Vertex : GpuShaderStages.Fragment,
+                };
         var status = known.Length != stages.Length || known.Any(s => s.Status == GpuDiagnosticStatus.Unsupported)
             ? GpuDiagnosticStatus.Unsupported : GpuDiagnosticStatus.Available;
         if (known.Any(s => s.Status == GpuDiagnosticStatus.Invalid)) status = GpuDiagnosticStatus.Invalid;
@@ -44,7 +54,7 @@ internal sealed class D3D11PipelineDiagnostics
                 + GpuDiagnosticIdentityEncoding.Utf8.GetByteCount(stage.Flags));
         if (flagBytes > 16384)
             throw new GpuDiagnosticFailureException(_failures.Add(new("d3d11.pipeline-evidence",
-                new InvalidOperationException("Combined CompilerFlags exceeds 16384 UTF-8 bytes before retention."))));
+                new D3D11CompilerEvidenceStateException(D3D11CompilerEvidenceRefusal.CombinedFlagsTooLarge, "Combined CompilerFlags exceeds 16384 UTF-8 bytes before retention.") { Field = "CompilerFlags", MaximumUtf8Bytes = 16384, ActualUtf8Bytes = flagBytes })));
         string flags = string.Join(" | ", known.Select(s => s.Stage + ": " + s.Flags));
         bool allStages = known.Length == stages.Length;
         GpuDiagnosticDigest MissingStage(string encoding) => new(null, encoding, GpuDiagnosticStatus.Invalid, "A shader stage identity was not retained.");
@@ -74,19 +84,26 @@ internal sealed class D3D11PipelineDiagnostics
         string? refusal = null;
         try
         {
-            if (request != Request) throw new InvalidOperationException("D3D11 requires the fixed two-by-30 compiler-read profile.");
+            if (request != Request) throw new D3D11CompilerEvidenceStateException(D3D11CompilerEvidenceRefusal.ReadProfileMismatch, "D3D11 requires the fixed two-by-30 compiler-read profile.")
+            {
+                RequestedProfile = request,
+                RequiredProfile = Request,
+            };
             cancellation.ThrowIfCancellationRequested(); checkOperation("d3d11.compiler-read-before"); cancellation.ThrowIfCancellationRequested();
-            if (invalid) throw new ObjectDisposedException("D3D11 pipeline", "The pipeline or its shader/device was disposed or lost.");
-            if (!_reflectionRequested) throw new InvalidOperationException("D3D11 compiler reflection was not captured for every stage.");
+            if (invalid) throw new D3D11CompilerEvidenceDisposedException(D3D11CompilerEvidenceRefusal.PipelineUnavailable, "D3D11 pipeline", "The pipeline or its shader/device was disposed or lost.");
+            if (!_reflectionRequested) throw new D3D11CompilerEvidenceStateException(D3D11CompilerEvidenceRefusal.ReflectionNotCaptured, "D3D11 compiler reflection was not captured for every stage.")
+            {
+                MissingStages = _missingReflectionStages,
+            };
             foreach (var digest in new[] { ConstructionIdentity.PipelineSha256, ConstructionIdentity.SourceSha256,
                 ConstructionIdentity.ShaderArtifactSha256, ConstructionIdentity.LayoutSha256,
                 ConstructionIdentity.DiagnosticConfigurationSha256, ConstructionIdentity.CodeGenerationSha256 })
                 if (digest.Status != GpuDiagnosticStatus.Available || !GpuDiagnosticIdentityEncoding.ValidHash(digest.Sha256))
-                    throw new InvalidOperationException("Construction correspondence identity is missing or invalid.");
+                    throw new D3D11CompilerEvidenceStateException(D3D11CompilerEvidenceRefusal.ConstructionIdentityInvalid, "Construction correspondence identity is missing or invalid.");
             if (report.Status == GpuDiagnosticStatus.Invalid)
             {
                 refusal = report.Reason;
-                if (failures.IsEmpty) throw new InvalidOperationException("Invalid compiler evidence has no originating failure event.");
+                if (failures.IsEmpty) throw new D3D11CompilerEvidenceStateException(D3D11CompilerEvidenceRefusal.FailureOriginMissing, "Invalid compiler evidence has no originating failure event.");
             }
             checkOperation("d3d11.compiler-read-after"); cancellation.ThrowIfCancellationRequested();
         }

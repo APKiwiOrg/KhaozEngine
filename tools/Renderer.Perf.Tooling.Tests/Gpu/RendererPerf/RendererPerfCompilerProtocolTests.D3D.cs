@@ -2,6 +2,7 @@ using System;
 using System.Collections.Immutable;
 using System.Text.Json;
 using KhaozEngine.Gpu;
+using KhaozEngine.Gpu.D3D11;
 using KhaozEngine.Gpu.D3D11.Internal;
 using Xunit;
 
@@ -55,8 +56,18 @@ public sealed partial class RendererPerfCompilerProtocolTests
         var pixel = D3D11ShaderEvidence.Capture("pixel", new byte[] { 1, 2, 3 }, "pixel", 0x8000, options, native);
         Assert.Equal(GpuDiagnosticStatus.Available, vertex.Status);
         Assert.Equal(GpuDiagnosticStatus.Available, pixel.Status);
+        var boundary = new D3D11PipelineDiagnostics(
+            [vertex with { Flags = new('x', 8183) }, pixel with { Flags = new('x', 8183) }], new('a', 64), new('b', 64));
+        Assert.Equal(16384, System.Text.Encoding.UTF8.GetByteCount(boundary.Read(false).Identity.CompilerFlags));
         var failure = Assert.Throws<GpuDiagnosticFailureException>(() => new D3D11PipelineDiagnostics([vertex, pixel], new('a', 64), new('b', 64)));
-        Assert.Contains("16384", Assert.Single(failure.Failures).Error.Message);
+        var error = Assert.IsType<D3D11CompilerEvidenceStateException>(Assert.Single(failure.Failures).Error);
+        Assert.IsAssignableFrom<InvalidOperationException>(error);
+        Assert.Equal(D3D11CompilerEvidenceRefusal.CombinedFlagsTooLarge, error.Reason);
+        Assert.Equal("CompilerFlags", error.Field);
+        Assert.Equal(16384, error.MaximumUtf8Bytes);
+        int actualBytes = System.Text.Encoding.UTF8.GetByteCount("vertex: " + vertex.Flags + " | pixel: " + pixel.Flags);
+        Assert.Equal(actualBytes, error.ActualUtf8Bytes);
+        Assert.True(error.ActualUtf8Bytes > error.MaximumUtf8Bytes);
     }
 
     sealed class ThirtyCounts : ID3D11ShaderReflectionApi

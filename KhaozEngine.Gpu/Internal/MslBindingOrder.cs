@@ -115,7 +115,7 @@ namespace KhaozEngine.Gpu.Internal
                     if (emitted.Set == declared.Set && emitted.Binding == declared.Binding) continue;
 
                     int belongs = byBinding.IndexOf(emitted);
-                    throw new ShaderValidationException(
+                    throw new ShaderValidationException(ShaderValidationRefusal.MetalBindingOrderMismatch,
                         $"{tag}: the Metal {stage} entry point puts layout(set={emitted.Set}, "
                         + $"binding={emitted.Binding}) at {space} index {i}, where binding order puts "
                         + $"layout(set={declared.Set}, binding={declared.Binding}) instead (binding order puts "
@@ -123,7 +123,18 @@ namespace KhaozEngine.Gpu.Internal
                         + $"decorations, so the cross-compiler numbers a stage's {space} arguments in "
                         + "FIRST-REFERENCE order while the resource layout is counted in binding order. Where the "
                         + "two disagree the wrong resource is bound to each slot, on Metal ONLY, and silently. "
-                        + AgreementClause);
+                        + AgreementClause)
+                    {
+                        Label = tag,
+                        Stage = Enum.TryParse<GpuShaderStages>(stage, true, out var shaderStage) ? shaderStage : null,
+                        Space = space,
+                        ArgumentIndex = i,
+                        DeclaredSet = declared.Set,
+                        DeclaredBinding = declared.Binding,
+                        EmittedSet = emitted.Set,
+                        EmittedBinding = emitted.Binding,
+                        ExpectedIndex = belongs,
+                    };
                 }
             }
             return bySpace;

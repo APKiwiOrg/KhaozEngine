@@ -57,8 +57,8 @@ namespace KhaozEngine.Gpu.Internal
         /// <param name="stage">Which stage the source is. Exactly one stage flag.</param>
         /// <param name="label">Optional name for the shader, included in any error message.</param>
         /// <param name="cache">A device-owned memo, or null for the ordinary process memo.</param>
-        /// <exception cref="ShaderValidationException">The source failed to compile to SPIR-V. The message names
-        /// the label and the stage.</exception>
+        /// <exception cref="ShaderValidationException">The source failed to compile to SPIR-V. Reason, Label, Stage,
+        /// Target and Diagnostic identify the failure.</exception>
         internal static byte[] ToSpirv(string glsl, GpuShaderStages stage, string? label = null, SpirvCompileCache? cache = null)
         {
             if (glsl is null) throw new ArgumentNullException(nameof(glsl));
@@ -87,7 +87,13 @@ namespace KhaozEngine.Gpu.Internal
             }
             catch (Exception ex)
             {
-                throw new ShaderValidationException($"{tag}: {stage} GLSL to SPIR-V failed: {ex.Message}", ex);
+                throw new ShaderValidationException(ShaderValidationRefusal.FrontEndCompileFailed, $"{tag}: {stage} GLSL to SPIR-V failed: {ex.Message}", ex)
+                {
+                    Label = tag,
+                    Stage = stage,
+                    Target = "SPIR-V",
+                    Diagnostic = ex is ShaderValidationStateException native ? native.Diagnostic ?? ex.Message : ex.Message,
+                };
             }
         }
 
@@ -96,6 +102,37 @@ namespace KhaozEngine.Gpu.Internal
         {
             ArgumentNullException.ThrowIfNull(label);
             return SpirvFrontEndPin.Identity + ";label=" + label;
+        }
+
+        // Value-taking fault seams keep native allocation failure coverage device-free.
+        internal static void RequireCompilerInitialized(bool initialized)
+        {
+            if (!initialized)
+                throw new ShaderValidationStateException(ShaderValidationRefusal.FrontEndCompilerInitializationFailed,
+                    "shaderc_compiler_initialize returned null.")
+                {
+                    NativeObjectKind = "compiler",
+                };
+        }
+
+        internal static void RequireOptionsInitialized(bool initialized)
+        {
+            if (!initialized)
+                throw new ShaderValidationStateException(ShaderValidationRefusal.FrontEndOptionsInitializationFailed,
+                    "shaderc_compile_options_initialize returned null.")
+                {
+                    NativeObjectKind = "compile options",
+                };
+        }
+
+        internal static void RequireCompileResultReturned(bool returned)
+        {
+            if (!returned)
+                throw new ShaderValidationStateException(ShaderValidationRefusal.FrontEndResultMissing,
+                    "shaderc_compile_into_spv returned null.")
+                {
+                    NativeOperation = "shaderc_compile_into_spv",
+                };
         }
 
         /// <summary>
@@ -115,15 +152,14 @@ namespace KhaozEngine.Gpu.Internal
         static unsafe byte[] Compile(string glsl, ShaderKind kind, string fileName)
         {
             Compiler* compiler = _shaderc.CompilerInitialize();
-            if (compiler is null) throw new InvalidOperationException("shaderc_compiler_initialize returned null.");
+            RequireCompilerInitialized(compiler is not null);
 
             CompileOptions* options = null;
             CompilationResult* result = null;
             try
             {
                 options = _shaderc.CompileOptionsInitialize();
-                if (options is null)
-                    throw new InvalidOperationException("shaderc_compile_options_initialize returned null.");
+                RequireOptionsInitialized(options is not null);
 
                 _shaderc.CompileOptionsSetTargetEnv(options, SpirvFrontEndPin.TargetEnvironment,
                     SpirvFrontEndPin.TargetEnvironmentVersion);
@@ -137,12 +173,19 @@ namespace KhaozEngine.Gpu.Internal
                     result = _shaderc.CompileIntoSpv(compiler, text, (nuint)source.Length, kind, fileName,
                         SpirvFrontEndPin.EntryPoint, options);
                 }
-                if (result is null) throw new InvalidOperationException("shaderc_compile_into_spv returned null.");
+                RequireCompileResultReturned(result is not null);
 
                 CompilationStatus status = _shaderc.ResultGetCompilationStatus(result);
                 if (status != CompilationStatus.Success)
-                    throw new InvalidOperationException(
-                        status + ": " + (_shaderc.ResultGetErrorMessageS(result) ?? "no message").TrimEnd());
+                {
+                    string diagnostic = (_shaderc.ResultGetErrorMessageS(result) ?? "no message").TrimEnd();
+                    throw new ShaderValidationStateException(ShaderValidationRefusal.FrontEndNativeCompileFailed,
+                        status + ": " + diagnostic)
+                    {
+                        Status = (int)status,
+                        Diagnostic = diagnostic,
+                    };
+                }
 
                 // The result owns its bytes and frees them with itself, so the module is COPIED out rather than
                 // wrapped. A span over native memory that outlives its owner is the one failure mode this shape

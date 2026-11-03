@@ -651,7 +651,11 @@ size read out of the module, because MSL does not carry it and `dispatchThreadgr
 names both entry points `main0`, so compiling the two texts together is a duplicate-symbol error. The
 entry-point name is READ rather than assumed for the same family of reason: the incumbent got it from a Veldrid
 layer this backend does not have, and a wrong name is not a compile error at all, it is a library that builds
-and a nil function, so that is a separate refusal with its own message.
+and a nil function. `ShaderValidationException.Reason` distinguishes `MetalLibraryRejected` from
+`MetalLibraryFunctionMissing`. `Stage` and `EntryPoint` identify the function, while native rejections carry
+`Diagnostic` and `NativeDiagnosticMissing`. `SourceOrigin` identifies emitted source and `Policy` carries M-S5
+for a missing library function. Accessing released functions instead throws `MetalShaderFunctionException`
+with `FunctionReleased`, `Stage` and `ResourceKind`. `StageMissing` identifies an absent stage.
 
 **Metal has no binding decorations, so where a resource landed is a fact about the emitted text. This backend
 AUTHORS that fact.** There is no `register(t3)` and no `layout(binding = 3)` on the far side. Left to itself the
@@ -1270,6 +1274,8 @@ These backend policies use required reason enums and preserve the BCL base type,
 
 | Exception and reason | What it refuses | Identifiers |
 |---|---|---|
+| `MetalShaderFunctionException`, `MetalShaderFunctionRefusal.FunctionReleased` | Refuses reading a released Metal shader function. | `Stage`, `ResourceKind` |
+| `MetalShaderFunctionException`, `MetalShaderFunctionRefusal.StageMissing` | Refuses a shader-set function for a stage the set does not carry. | `Stage` |
 | `MetalBufferPolicyArgumentException`, `MetalBufferPolicyRefusal.UniformStructuredCombination` | Uniform and structured usage on the same ring-backed buffer | `ParamName`, `Usage` |
 | `MetalBufferPolicyRangeException`, `MetalBufferPolicyRefusal.WriteOutsideBuffer` | A CPU write outside the logical buffer | `ParamName`, `ActualValue`, `OffsetBytes`, `WriteBytes`, `BufferBytes` |
 | `MetalStagingArenaRangeException`, `MetalStagingArenaRefusal.LeaseSizeUnaligned` | A lease size not aligned to the native copy boundary | `ParamName`, `ActualValue`, `AlignmentBytes`, `RecoveryOperation` |

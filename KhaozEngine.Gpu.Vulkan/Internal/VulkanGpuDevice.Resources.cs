@@ -207,16 +207,23 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         {
             if (!_liveness.IsDead) return;
 
-            string reason = _loss.HeaderValue is { Length: > 0 } latched
-                ? "The loss was first seen as " + latched + "."
+            string? lossReason = _loss.HeaderValue;
+            bool hasLoss = lossReason is { Length: > 0 };
+            string reason = hasLoss
+                ? "The loss was first seen as " + lossReason + "."
                 : "No loss reason was latched, so the token was marked dead by something other than the loss "
                     + "latch.";
 
-            throw new InvalidOperationException(
+            throw new VulkanDeviceMapException(hasLoss ? VulkanDeviceMapRefusal.LossLatched : VulkanDeviceMapRefusal.DeadWithoutLossRecord,
                 "The native Vulkan device is LOST, so nothing on it can be mapped: its host-visible memory went "
                 + "with the device, and the pointer a map returns would address memory the driver has already "
                 + "released. " + reason + " There is no recovery path on this backend, so a caller that wants to "
-                + "read back again creates a new device.");
+                + "read back again creates a new device.")
+                {
+                    LossReason = hasLoss ? lossReason : null,
+                    LossSite = hasLoss ? _loss.Site : null,
+                    ResultCode = hasLoss ? (int)_loss.ObservedResult : null,
+                };
         }
 
         /// <summary>

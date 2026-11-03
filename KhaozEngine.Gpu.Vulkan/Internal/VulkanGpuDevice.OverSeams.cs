@@ -73,6 +73,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         /// <param name="maxDynamicUniformBuffers">The device's <c>maxDescriptorSetUniformBuffersDynamic</c>, or 0
         /// to degrade to Vulkan's required minimum exactly as a device whose limit was never read does.</param>
         /// <param name="windowed">Optional surface and swapchain seams for device-level presentation checks.</param>
+        /// <param name="loss">Optional injected loss latch, built on the same liveness token.</param>
         internal static VulkanGpuDevice CreateOverSeams(
             DeviceLiveness liveness,
             VulkanTimeline timeline,
@@ -87,7 +88,8 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
             GpuCapabilities capabilities,
             int framesInFlight = 3,
             uint maxDynamicUniformBuffers = 0,
-            VulkanWindowedParts? windowed = null)
+            VulkanWindowedParts? windowed = null,
+            VulkanDeviceLossLatch? loss = null)
         {
             ArgumentNullException.ThrowIfNull(liveness);
             ArgumentNullException.ThrowIfNull(timeline);
@@ -100,7 +102,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
                 capabilities,
                 softwareAdapter: false,
                 liveness,
-                new VulkanDeviceLossLatch(liveness),
+                loss ?? new VulkanDeviceLossLatch(liveness),
                 timeline,
                 memoryApi,
                 memoryFacts,

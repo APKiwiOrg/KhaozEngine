@@ -19648,7 +19648,8 @@ to be explicit, so the native backend waits on the device timeline before return
 wait into `GpuDeviceCounters.DrainCount` and `DrainMs`. A `GpuMapMode.Write` map does not wait, matching the
 deleted Veldrid leg. `MappedData.RowPitch` and `MappedData.SizeInBytes` mean exactly what they meant there,
 because the subresource arithmetic behind them was reproduced from it byte for byte. **A map on a device that has
-been LOST throws instead**, naming the loss reason the backend latched at the site that noticed. Disposing a
+been LOST throws instead**. `VulkanDeviceMapException` carries `LossLatched`, the published `LossReason`,
+`LossSite` and `ResultCode`, or `DeadWithoutLossRecord` with null loss fields. Disposing a
 device was always refused, and losing one now is too: the host-visible memory a staging resource is mapped into
 went with the device, so the pointer would dangle. There is no recovery path, so a run that wants to read back
 again creates a new device.
@@ -28121,8 +28122,10 @@ See the [Metal refusal table](../KhaozEngine.Gpu.Metal/README.md#refusals) for e
 `VulkanBackendCreationRefusal` separates machine support, surface kind, diagnostic-settings and native-loader
 failures. `LoaderUnavailable` retains the native cause. `VulkanInstanceRefusal` separates a null factory
 result from incompatible live and requested configurations. `VulkanFeatureRefusal.RequiredFeatureMissing`
-carries the feature and device.
-See the [Vulkan refusal table](../KhaozEngine.Gpu.Vulkan/README.md#refusals).
+carries the feature and device. `VulkanResultRefusal.NativeCallFailed` carries the call, result code and token.
+`VulkanDeviceWiringRefusal.InstanceMissing` identifies the missing native object on a seam-built device.
+`VulkanValidationRefusal.StrictErrorLatched` carries the controlled site and first diagnostic with its message
+identifiers. See the [Vulkan refusal table](../KhaozEngine.Gpu.Vulkan/README.md#refusals).
 
 On Metal and Vulkan, a nonzero offset on a set with no authored dynamic element throws the portable
 `GpuDynamicBindingException` with `GpuDynamicBindingRefusal.DynamicElementMissing` and the backend,

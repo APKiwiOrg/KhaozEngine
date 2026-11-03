@@ -783,7 +783,9 @@ and keeps the invalidate, and every copy into a staging texture ends with a tran
 writes are available to the host when its fence signals.
 
 **And both `Map` overloads refuse a LOST device** ([#551](https://github.com/APKiwiOrg/KhaozEngine/issues/551)),
-with the reason the loss latch recorded. They used to guard the disposed flag alone, which says the consumer let
+with `VulkanDeviceMapRefusal.LossLatched` and the published `LossReason`, `LossSite` and `ResultCode`.
+A dead token with no published loss uses `DeadWithoutLossRecord` and null loss fields.
+They used to guard the disposed flag alone, which says the consumer let
 the device go and answers false for a device the driver took: the host-visible chunk a staging resource is
 mapped into went with the device, so the pointer would dangle and the read path's invalidate would be a native
 call against released memory. Every destroy is already a no-op by then, which is what leaves a map as the last
@@ -1932,9 +1934,14 @@ on every rebuild. Its sampled R32F atlas remains stored. See
 | `VulkanBackendCreationArgumentException`, `VulkanBackendCreationRefusal.ForeignDiagnosticSettings` | Refuses settings not owned by the Vulkan provider. | `ParamName`, `ActualType` |
 | `VulkanBackendCreationUnsupportedException`, `VulkanBackendCreationRefusal.MachineUnsupported` | Refuses Vulkan creation when the machine support probe reports a missing requirement. | `MissingRequirement`, `Probe`, `DriverPackage` |
 | `VulkanBackendCreationUnsupportedException`, `VulkanBackendCreationRefusal.WindowKindUnsupported` | Refuses a window kind with no supported Vulkan surface extension. | `WindowKind` |
+| `VulkanDeviceMapException`, `VulkanDeviceMapRefusal.DeadWithoutLossRecord` | Refuses mapping a dead device whose token has no latched driver loss. | `LossReason` |
+| `VulkanDeviceMapException`, `VulkanDeviceMapRefusal.LossLatched` | Refuses mapping after a native device loss was latched. | `LossReason`, `LossSite`, `ResultCode` |
+| `VulkanDeviceWiringException`, `VulkanDeviceWiringRefusal.InstanceMissing` | Refuses a native factory operation on a seam-built device with no VkInstance. | `NativeObjectKind` |
 | `VulkanFeatureException`, `VulkanFeatureRefusal.RequiredFeatureMissing` | Refuses a Vulkan device missing a mandatory Vulkan 1.3 feature. | `FeatureName`, `DeviceName` |
 | `VulkanInstanceUnsupportedException`, `VulkanInstanceRefusal.ConfigurationIncompatible` | Refuses acquiring an instance configuration not satisfied by the live process-wide instance. | `LiveWindowed`, `LiveWindowKind`, `LiveValidationMode`, `RequestedWindowed`, `RequestedWindowKind`, `RequestedValidationMode` |
 | `VulkanInstanceStateException`, `VulkanInstanceRefusal.FactoryReturnedNull` | Refuses an instance factory that returns no instance. | No additional identifiers |
+| `VulkanResultException`, `VulkanResultRefusal.NativeCallFailed` | Refuses a native Vulkan call returning a negative result code. | `Call`, `ResultCode`, `ResultToken` |
+| `VulkanValidationException`, `VulkanValidationRefusal.StrictErrorLatched` | Refuses continuing a strict Vulkan run after its first validation error. | `Site`, `Diagnostic`, `MessageId`, `MessageIdName` |
 | `VulkanBackendCreationUnsupportedException`, `VulkanBackendCreationRefusal.LoaderUnavailable` | Refuses native instance creation when the Vulkan loader cannot be resolved. | `LoaderExceptionType`, `Probe` |
 | `ShaderValidationArgumentException`, `ShaderValidationRefusal.SpirvLengthInvalid` | Refuses an empty or unaligned SPIR-V module at shader-cache admission. | `ParamName`, `ByteLength`, `WordBytes` |
 | `VulkanVertexInputException`, `VulkanVertexInputRefusal.InstanceDivisorUnsupported` | Refuses an instance divisor that the enabled Vulkan core vertex input cannot express. | `ParamName`, `InstanceStepRate`, `Slot`, `MaximumStepRate` |

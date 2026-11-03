@@ -72,13 +72,14 @@ namespace KhaozEngine.Tests.Gpu
             }
 
             // ---- And the refusal, on the same device, through the same member ------------------------------
-            ArgumentOutOfRangeException seam = Assert.Throws<ArgumentOutOfRangeException>(() =>
+            GpuCopyAlignmentException seam = Assert.Throws<GpuCopyAlignmentException>(() =>
             {
                 using IGpuCommandList cl = f.CreateCommandList();
                 using (GpuRecording.Open(dev, cl, nameof(CopyBufferOffsetGpuTests)))
                     cl.CopyBuffer(source, UnalignedOffset, staging, 0, copied);
             });
 
+            Assert.Equal(GpuCopyAlignmentRefusal.UnalignedOffset, seam.Reason);
             Assert.Equal("srcOffsetBytes", seam.ParamName);
             Assert.Equal((ulong)UnalignedOffset, seam.ActualValue);
 
@@ -90,9 +91,10 @@ namespace KhaozEngine.Tests.Gpu
                 Assert.Equal(values[i + 1], viaHelper[i]);
             }
 
-            ArgumentOutOfRangeException helper = Assert.Throws<ArgumentOutOfRangeException>(
+            GpuCopyAlignmentException helper = Assert.Throws<GpuCopyAlignmentException>(
                 () => GpuReadback.ReadBuffer<uint>(dev, source, (int)(Elements - 1), UnalignedOffset));
 
+            Assert.Equal(GpuCopyAlignmentRefusal.UnalignedOffset, helper.Reason);
             Assert.Equal("srcOffsetBytes", helper.ParamName);
             Assert.Equal((ulong)UnalignedOffset, helper.ActualValue);
         }

@@ -1,5 +1,6 @@
 using System;
 using KhaozEngine.Gpu;
+using KhaozEngine.Gpu.Vulkan;
 using KhaozEngine.Gpu.Vulkan.Internal;
 using Silk.NET.Vulkan;
 using Xunit;
@@ -34,7 +35,14 @@ public sealed partial class RendererPerfVulkanDiagnosticsTests
     public void Staging_payload_above_uint_max_remains_refused(uint layers, uint mipLevels)
     {
         var shape = new VulkanStagingShape(8192, 8192, mipLevels, layers, GpuPixelFormat.R16G16B16A16Float);
-        Assert.Throws<ArgumentOutOfRangeException>(() => VulkanStagingLayout.TotalBytes(shape));
+        VulkanStagingLayoutException thrown = Assert.Throws<VulkanStagingLayoutException>(
+            () => VulkanStagingLayout.TotalBytes(shape));
+
+        Assert.Equal(VulkanStagingLayoutRefusal.MappingSizeExceeded, thrown.Reason);
+        Assert.Equal("shape", thrown.ParamName);
+        Assert.Equal(shape, thrown.ActualValue);
+        Assert.Equal((ulong)uint.MaxValue, thrown.MaximumBytes);
+        Assert.True(thrown.ComputedBytes > thrown.MaximumBytes);
     }
 
     [Theory]

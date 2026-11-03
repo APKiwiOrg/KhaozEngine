@@ -97,11 +97,13 @@ namespace KhaozEngine.Tests.Gpu
 
             using IGpuDevice device = CreateHeadless();
 
-            ArgumentException thrown = Assert.Throws<ArgumentException>(() => device.Factory.CreateBuffer(
+            MetalBufferPolicyArgumentException thrown = Assert.Throws<MetalBufferPolicyArgumentException>(() => device.Factory.CreateBuffer(
                 new GpuBufferDescription(256,
                     GpuBufferUsage.UniformBuffer | GpuBufferUsage.StructuredBufferReadOnly)));
 
+            Assert.Equal(MetalBufferPolicyRefusal.UniformStructuredCombination, thrown.Reason);
             Assert.Equal("usage", thrown.ParamName);
+            Assert.Equal(GpuBufferUsage.UniformBuffer | GpuBufferUsage.StructuredBufferReadOnly, thrown.Usage);
         }
 
         /// <summary>
@@ -149,7 +151,15 @@ namespace KhaozEngine.Tests.Gpu
             using IGpuBuffer buffer = device.Factory.CreateBuffer(
                 new GpuBufferDescription(16, GpuBufferUsage.VertexBuffer));
 
-            Assert.Throws<ArgumentOutOfRangeException>(() => device.UpdateBuffer(buffer, 8, new byte[16]));
+            MetalBufferPolicyRangeException thrown = Assert.Throws<MetalBufferPolicyRangeException>(
+                () => device.UpdateBuffer(buffer, 8, new byte[16]));
+
+            Assert.Equal(MetalBufferPolicyRefusal.WriteOutsideBuffer, thrown.Reason);
+            Assert.Equal("writeBytes", thrown.ParamName);
+            Assert.Equal(16u, thrown.ActualValue);
+            Assert.Equal(8u, thrown.OffsetBytes);
+            Assert.Equal(16u, thrown.WriteBytes);
+            Assert.Equal(16u, thrown.BufferBytes);
         }
 
         /// <summary>
@@ -311,7 +321,14 @@ namespace KhaozEngine.Tests.Gpu
             using IGpuTexture texture = device.Factory.CreateTexture(
                 GpuTextureDescription.Texture2D(8, 8, GpuPixelFormat.R8G8B8A8UNorm, GpuTextureUsage.Sampled));
 
-            Assert.Throws<ArgumentException>(() => device.Map(texture, GpuMapMode.Read));
+            GpuStagingMapArgumentException thrown = Assert.Throws<GpuStagingMapArgumentException>(
+                () => device.Map(texture, GpuMapMode.Read));
+
+            Assert.Equal(GpuStagingMapRefusal.StagingUsageRequired, thrown.Reason);
+            Assert.Equal("staging", thrown.ParamName);
+            Assert.Equal(GpuBackendKind.MetalNative, thrown.Backend);
+            Assert.Equal("texture", thrown.ResourceKind);
+            Assert.Equal(GpuTextureUsage.Staging, thrown.RequiredTextureUsage);
         }
 
         /// <summary>

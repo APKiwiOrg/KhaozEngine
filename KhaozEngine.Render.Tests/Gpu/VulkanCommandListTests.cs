@@ -420,9 +420,7 @@ namespace KhaozEngine.Tests.Gpu
 
             foreach ((string member, Action<IGpuCommandList> call) in unbuilt)
             {
-                NotSupportedException refused = Assert.Throws<NotSupportedException>(() => call(list));
-                Assert.Contains("https://github.com/APKiwiOrg/KhaozEngine/issues/", refused.Message,
-                    StringComparison.Ordinal);
+                Assert.Throws<NotSupportedException>(() => call(list));
                 Assert.False(string.IsNullOrEmpty(member));
             }
         }

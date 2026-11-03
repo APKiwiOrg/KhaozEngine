@@ -212,9 +212,10 @@ public class SpriteBatchMaskedBatchTests
         Assert.Equal(0, rig.Batch.ScissorDepth);
         Assert.Equal(2, rig.Commands.UniformUploads.Count);
         var vpUpload = rig.Commands.UniformUploads[1];
-        Assert.Equal(0u, vpUpload.Offset);
+        Assert.Equal(initialVpOffset, vpUpload.Offset);
+        Assert.Equal(64, vpUpload.Data.Length);
         Assert.Equal(transform * Matrix4x4.CreateOrthographicOffCenter(0, 64, 64, 0, -1, 1),
-            MemoryMarshal.Read<Matrix4x4>(vpUpload.Data.AsSpan((int)initialVpOffset)));
+            MemoryMarshal.Read<Matrix4x4>(vpUpload.Data));
     }
 
     static FakeTexture Texture() => new(4, 4, 1, 1, GpuPixelFormat.R8G8B8A8UNorm);
@@ -566,6 +567,9 @@ public class SpriteBatchMaskedBatchTests
         Assert.Equal(3, rig.VertexUploads.Count);
         Assert.Equal(new uint[] { 0, 6, 0 }, rig.Draws.Select(draw => draw.VertexStart));
         Assert.Equal(new uint[] { 0, 0, 256 }, rig.Draws.Select(draw => draw.DynamicOffset));
+        // #1682. A later Begin must not rewrite the slot a committed offscreen prefix already read.
+        Assert.Equal(new uint[] { 0, 256 }, rig.Commands.UniformUploads.Select(upload => upload.Offset));
+        Assert.All(rig.Commands.UniformUploads, upload => Assert.Equal(64, upload.Data.Length));
         Assert.All(rig.Draws, draw => Assert.Same(rig.Factory.ResourceSets[0], draw.Set1));
         Assert.Same(rig.VertexUploads[0].Buffer, rig.Draws[1].VertexBuffer);
         Assert.Same(rig.VertexUploads[2].Buffer, rig.Draws[2].VertexBuffer);

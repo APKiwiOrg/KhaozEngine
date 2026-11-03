@@ -1,12 +1,10 @@
 using System;
-using System.Runtime.InteropServices;
 using KhaozEngine.Gpu;
 
 namespace KhaozEngine.Render2D
 {
     /// <summary>
-    /// THE PER-BEGIN VIEW-PROJECTION UBO: its slots, its CPU mirror, and the single whole-buffer write each Begin
-    /// records. Split out of <c>SpriteBatch.cs</c> when the upload shape changed for
+    /// THE PER-BEGIN VIEW-PROJECTION UBO: its slots, and the disjoint matrix write each Begin records. Split out of <c>SpriteBatch.cs</c> when the upload shape changed for
     /// <see href="https://github.com/APKiwiOrg/KhaozEngine/issues/408">#408</see>, because the slot bookkeeping is
     /// one coherent thing rather than an arbitrary slice of the batch.
     /// </summary>
@@ -32,25 +30,9 @@ namespace KhaozEngine.Render2D
         int _beginIndex;                  // Begins claimed this frame (reset by NewFrame). The current one's slot is _beginIndex-1
         uint _vpDynamicOffset;            // byte offset of the current Begin's slot, bound with set 1 on every draw
 
-        // THE CPU MIRROR OF THE WHOLE UBO, which is what makes each Begin's write a WHOLE-buffer write.
-        //
-        // A Begin used to write its own 64 bytes at its slot offset, and a PARTIAL write to a non-Dynamic uniform
-        // buffer is the shape Veldrid's D3D11CommandList.UpdateBufferCore sent down its staging route: rent a
-        // staging buffer, hand it to GraphicsDevice.UpdateBuffer, which Maps the IMMEDIATE context with
-        // D3D11_MAP_WRITE (not WRITE_DISCARD, no DO_NOT_WAIT) and blocks until the GPU has released the buffer being
-        // recycled. Only a write covering the whole buffer from offset 0 takes the cheap UpdateSubresource path, so
-        // every Begin was a CPU/GPU sync point in the middle of the 2D encode (#408). Metal and Vulkan have no such
-        // split, and the engine's own native D3D11 backend routes uniform writes through D3D11UniformRing and never
-        // had the stall at all.
-        //
-        // WHY THIS STAYS ONE WRITE PER BEGIN rather than one per frame, as the model and shadow blocks became in
-        // 17.18.0/17.20.0: those passes know every slot before the first draw that reads one. A batch does not. A
-        // Begin's draws are recorded before the next Begin exists, so an upload deferred to the end of the frame
-        // would land behind the draws that read it. Each Begin therefore re-uploads the mirror whole. That rewrites
-        // the earlier slots with the bytes they already hold (a slot's mirror value never changes once its Begin has
-        // claimed it, because _beginIndex only advances within a frame), so it is a no-op for anything already
-        // recorded, and it costs _vpCapacity * 256 bytes of memcpy per Begin instead of a blocking Map.
-        byte[] _vpImage;
+        // Each Begin writes only its own slot. Whole-mirror rewrites worked around a retired Veldrid D3D11
+        // staging stall (#408). Every shipped native backend now supports partial uniform writes without that
+        // stall, and rewriting an earlier slot would race an early-committed Metal prefix even if bytes match.
 
         /// <summary>The byte offset into the view-projection UBO bound (via set 1's dynamic offset) for the CURRENT
         /// Begin. Advances by <see cref="ViewProjSlotBytes"/> per Begin within a frame and resets to 0 each NewFrame.
@@ -64,30 +46,24 @@ namespace KhaozEngine.Render2D
         /// Begins than it had capacity for. For tests of the grow-with-retire path.</summary>
         internal int ViewProjSlotCapacity => _vpCapacity;
 
-        // Claim this Begin's own view-projection UBO slot, pack its matrix into the mirror, and upload the mirror
-        // WHOLE. The slot's byte offset is bound with set 1 on every draw of this batch. _vp is already
-        // clip-corrected by Begin's Clip().
+        // Claim a fresh slot before recording any draw that reads it. _vp is already clip-corrected.
         void UploadViewProj()
         {
             int slot = _beginIndex++;
             EnsureVpCapacity(slot + 1);
             _vpDynamicOffset = (uint)(slot * VpSlotBytes);
-            MemoryMarshal.Write(_vpImage.AsSpan(slot * VpSlotBytes, VpSlotBytes), in _vp);
-            _cl.UpdateBuffer(_vpUbo, 0, (ReadOnlySpan<byte>)_vpImage);
+            _cl.UpdateBuffer(_vpUbo, _vpDynamicOffset, in _vp);
         }
 
         // Grow _vpUbo to hold at least this many 256-byte slots. A grow RETIRES the old buffer and set: earlier
         // Begins this frame already recorded draws and slot writes against them, and a prior frame's list may still
         // read them. Their slots go unused in the new buffer, and this Begin and later ones write into it. The
-        // mirror keeps what it held, so the whole-buffer write that follows still carries every claimed slot.
+        // new buffer needs only this Begin's slot, since earlier draws retain their original buffer and set.
         void EnsureVpCapacity(int slots)
         {
             if (_vpCapacity >= slots) return;
             _retire.Retire(_vpUbo, _vpSet, null);
             _vpCapacity = Math.Max(slots, _vpCapacity * 2);
-            var image = new byte[checked(_vpCapacity * VpSlotBytes)];
-            _vpImage.AsSpan().CopyTo(image);
-            _vpImage = image;
             _vpUbo = _gd.Factory.CreateBuffer(new GpuBufferDescription((uint)(_vpCapacity * VpSlotBytes), GpuBufferUsage.UniformBuffer));
             _vpSet = _gd.Factory.CreateResourceSet(new GpuResourceSetDescription(_vpLayout, new GpuBufferRange(_vpUbo, 0, VpPayloadBytes)));
         }

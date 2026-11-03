@@ -583,8 +583,8 @@ namespace KhaozEngine.Render3D.Rendering
         /// <see cref="UploadInstances"/> (the depth pass reuses that instance buffer).
         /// <paramref name="noiseScales"/> is the per-cascade dissolve noise scale (issue #391).</summary>
         public void BeginShadowPass(IGpuCommandList cl, ReadOnlySpan<Matrix4x4> depthMats, int cascadeCount,
-            Vector3 renderOrigin, ReadOnlySpan<float> noiseScales) =>
-            _shadowMap.BeginDepthPass(cl, depthMats, cascadeCount, renderOrigin, noiseScales);
+            Vector3 renderOrigin, ReadOnlySpan<float> noiseScales, bool discardWorkingDepth = true) =>
+            _shadowMap.BeginDepthPass(cl, depthMats, cascadeCount, renderOrigin, noiseScales, discardWorkingDepth);
 
         /// <summary>Bind cascade <paramref name="cascade"/> (scissor its atlas column + rebase the light matrix) for
         /// the rigid + CPU-skinned caster draws that follow. <see cref="BeginShadowPass"/> must be bound.</summary>

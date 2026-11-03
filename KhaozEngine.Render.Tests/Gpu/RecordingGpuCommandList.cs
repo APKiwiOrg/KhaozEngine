@@ -70,6 +70,14 @@ namespace KhaozEngine.Tests.Gpu
         public int FramebufferBinds => _framebufferBinds;
 
         public RecordingGpuCommandList(IGpuCommandList inner) => Inner = inner;
+        internal bool ForceAttachmentStores { get; init; }
+        internal List<(IGpuFramebuffer Framebuffer, GpuAttachmentStoreActions Stores)> AttachmentStoreBindings { get; } = [];
+        public void SetFramebufferWithStoreActions(IGpuFramebuffer fb, in GpuAttachmentStoreActions stores)
+        {
+            AttachmentStoreBindings.Add((fb, ForceAttachmentStores ? default : stores));
+            if (ForceAttachmentStores) SetFramebuffer(fb);
+            else { _framebufferBinds++; Inner.SetFramebufferWithStoreActions(fb, stores); }
+        }
 
         /// <summary>Keep a COPY of each upload's bytes in <see cref="Upload.Data"/>, so a test can assert what a
         /// packed CPU image actually holds and not only its extent. Off by default: a real frame's list carries

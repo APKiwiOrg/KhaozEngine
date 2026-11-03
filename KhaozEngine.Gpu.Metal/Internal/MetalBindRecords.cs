@@ -305,6 +305,28 @@ namespace KhaozEngine.Gpu.Metal.Internal
             _batch.Clear();
         }
 
+        internal void RecordReads(MetalRecordedReads reads, int segment)
+        {
+            if (_table is null) return;
+            for (int slot = 0; slot < _recorded; slot++)
+            {
+                ref SlotRecord record = ref _slots[slot];
+                ReadOnlySpan<MetalBoundResource> bindings = record.Bound.Resources;
+                for (int binding = 0; binding < bindings.Length; binding++)
+                {
+                    ref readonly var bound = ref bindings[binding];
+                    if (bound.Resource is not MetalBuffer buffer || buffer.Handle.IsNull) continue;
+                    foreach (var stage in _stages)
+                    {
+                        if (!_table.TryGetIndex(slot, binding, stage, out _)) continue;
+                        ulong offset = (ulong)ComposedOffset(bound, segment, record.DynamicOffset, _offsetAlignment);
+                        reads.Add(buffer.CpuResource, offset, bound.Range);
+                        break;
+                    }
+                }
+            }
+        }
+
         /// <summary>
         /// CLAUSES 2, 3 AND 4, THE PRE-COMMAND HOOK. Row 14
         /// (https://github.com/APKiwiOrg/KhaozEngine/issues/580) calls this AFTER

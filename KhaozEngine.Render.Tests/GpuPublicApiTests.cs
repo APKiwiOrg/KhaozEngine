@@ -103,8 +103,8 @@ public class GpuPublicApiTests
     /// There is no second row because there is no binding assembly to contain: this package references no
     /// third-party package at all, so the Metal vocabulary it does own is its own internal types rather than a
     /// vendor's, and no assembly-prefix scan can see those. What holds THAT line is
-    /// <see cref="GpuMetalPublicSurface_IsExactlyTheApprovedMembers"/>, which asserts the assembly exports one
-    /// type, so an interop handle struct cannot become public without moving a list somebody had to read.
+    /// <see cref="GpuMetalPublicSurface_IsExactlyTheApprovedMembers"/>, which lists the registration entry point
+    /// and structured refusal family, so an interop handle cannot become public without an explicit API change.
     /// </para>
     /// </summary>
     [Theory]
@@ -314,7 +314,8 @@ public class GpuPublicApiTests
             .OrderBy(n => n, StringComparer.Ordinal)
             .ToArray();
 
-        Assert.Equal(new[] { "KhaozEngine.Gpu.Metal.KhaozEngineMetal" }, exported);
+        Assert.Equal(new[] { "KhaozEngine.Gpu.Metal.KhaozEngineMetal", "KhaozEngine.Gpu.Metal.MetalFrameAccessException",
+            "KhaozEngine.Gpu.Metal.MetalFrameAccessFailure" }, exported);
     }
 
     // Walks the externally visible (public + protected) surface of every exported type in <paramref name="assembly"/>

@@ -6,11 +6,14 @@ namespace KhaozEngine.Gpu.Metal.Internal
     internal sealed partial class MetalCommandList
     {
         readonly MetalTimeline? _timestampTimeline;
+        readonly System.Collections.Generic.HashSet<MetalTimestampPool> _frameTimestampPools = [];
 
         public void BeginTimestamps(IGpuTimestampPool pool, uint count)
         {
             using var autorelease = ObjCAutoreleasePool.Enter();
-            RequireTimestampPool(pool).Begin(_commandBuffer, count, this, _timestampRecordingId);
+            MetalTimestampPool timestamps = RequireTimestampPool(pool);
+            timestamps.Begin(_commandBuffer, count, this, _timestampRecordingId);
+            _frameTimestampPools.Add(timestamps);
         }
 
         public void WriteTimestamp(IGpuTimestampPool pool, uint index)

@@ -6,8 +6,26 @@ Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
 ## 21.23.1
 
-2026-11-02
+2026-11-03
 
+- Reuse tile-ground material samples for repeated active slot IDs, including steep companions, while keeping
+  every weight threshold and weighted addition unchanged. Output pixels stay identical.
+- Preserve cascade working depth and stencil under pass observers, whose timestamp markers can end native
+  render encoders between caster families. Unobserved rendering still discards the dead working planes.
+- Submit native Metal offscreen work before drawable acquisition, then continue the same frame in a
+  second command buffer. The final buffer alone owns completion and frame-slot reuse. CPU-visible ranges
+  accessed by a committed prefix stay immutable through final completion. Overlapping CPU writes and writable
+  mappings now throw a structured MetalFrameAccessException. SpriteBatch writes only its new matrix slot.
+- Keep steady native Metal recording and split-frame submission free of managed allocations. Reuse
+  slot-owned read footprints, range storage and mapping leases without changing CPU access refusals.
+- Preserve deferred device uniform updates across split Metal frames. Explicit drains and read maps cover
+  unsignalled prefixes, and writable ring mappings keep their pointer and access lease on the same segment.
+- Declare per-attachment store intent in the GPU seam. Metal and Vulkan discard only the directional
+  cascade pass's dead working depth and stencil, retaining the sampled colour atlas. Other backends may
+  retain discarded data. The default remains Store for every attachment.
+- Skip clustered point-shadow filters when banded NdotL is exactly zero. Diffuse and specular are already
+  zero there. Ignore non-finite light intensities so attenuation remains finite. Shader source and backend
+  emission pins are rebaked without relaxing equality checks.
 - Move the renderer performance evidence tooling tests, the Items benchmark quick acceptance test and the
   navigation capture research fixtures out of the engine solution into `tools/Renderer.Perf.Tooling.Tests`,
   `tools/Items.Benchmark.Tests` and `tools/NavCapture.Research.Tests`. The free `tooling-validation.yml`

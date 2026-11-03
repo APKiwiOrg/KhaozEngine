@@ -11,8 +11,7 @@ using Xunit;
 namespace KhaozEngine.Tests.Gpu
 {
     /// <summary>
-    /// The regression guard for the D3D11 encode decay: a frame's per-frame uniform blocks must go up as ONE
-    /// whole-buffer write each, not as a run of partial writes.
+    /// The regression guard for batched frame-uniform uploads and disjoint SpriteBatch matrix slots.
     /// <para>
     /// Why the shape matters, and why it matters on ONE backend in particular. Direct3D 11 forbids a partial box
     /// on a constant buffer, so a partial write to a uniform buffer that is not ring-backed cannot go up as one
@@ -114,27 +113,6 @@ namespace KhaozEngine.Tests.Gpu
                     + "a uniform buffer is what the D3D11 encode decay was made of (see the class remarks). Pack "
                     + "every slot and upload the buffer once.");
             }
-        }
-
-        /// <summary>As <see cref="AssertOneWholeBufferWrite"/>, but for a destination a frame legitimately writes
-        /// more than once. <c>SpriteBatch</c> is the only one: a Begin's draws are recorded before the next Begin
-        /// exists, so its uploads cannot be folded into one the way a pass that knows every slot up front can. What
-        /// still has to hold is that every one of them is WHOLE, because that is the half D3D11 charges for.</summary>
-        static void AssertOnlyWholeBufferWrites(RecordingGpuCommandList rec, uint size, int expected, string what)
-        {
-            List<RecordingGpuCommandList.Upload> hits = rec.ToBuffersOfSize(size);
-            Assert.True(hits.Count > 0, $"{what}: no {size}-byte destination was written this frame at all");
-
-            var distinct = new HashSet<IGpuBuffer>();
-            foreach (RecordingGpuCommandList.Upload u in hits) distinct.Add(u.Buffer);
-            Assert.True(distinct.Count == 1,
-                $"{what}: {distinct.Count} different {size}-byte buffers were written, so size no longer identifies it - retarget this assertion");
-
-            Assert.True(hits.Count == expected, $"{what}: expected {expected} uploads this frame, got {hits.Count}");
-            for (int i = 0; i < hits.Count; i++)
-                Assert.True(hits[i].IsWholeBuffer,
-                    $"{what}: upload {i} covered [{hits[i].Offset}, {hits[i].Offset + hits[i].Bytes}) of {size} bytes. " +
-                    "Only a whole-buffer write from offset 0 avoids a staging copy on a Direct3D 11 constant buffer.");
         }
 
         [Fact]
@@ -524,7 +502,7 @@ namespace KhaozEngine.Tests.Gpu
         }
 
         [Fact]
-        public void A_sprite_frame_writes_its_view_projection_slots_whole_once_per_begin()
+        public void A_sprite_frame_writes_only_its_new_view_projection_slot_per_begin()
         {
             var gd = new FakeGpuDevice();
             var f = gd.Factory;
@@ -543,8 +521,8 @@ namespace KhaozEngine.Tests.Gpu
             rec.ClearColorTarget(0, new Color(0, 0, 0, 1));
             batch.NewFrame(rec, W, H);
 
-            // Three Begins, each with a draw, so three slots are claimed and three uploads recorded. A batch cannot
-            // fold these into one (see AssertOnlyWholeBufferWrites); what it CAN do is make each one whole.
+            // #1682. Later Begins can run after a Metal prefix commits, so identical earlier bytes must not be
+            // rewritten. Each matrix owns a disjoint dynamic slot, on every backend.
             const int Begins = 3;
             for (int i = 0; i < Begins; i++)
             {
@@ -554,7 +532,13 @@ namespace KhaozEngine.Tests.Gpu
             }
 
             rec.End();
-            AssertOnlyWholeBufferWrites(rec, ViewProjUboBytes, Begins, "sprite view-projection UBO");
+            var uploads = rec.ToBuffersOfSize(ViewProjUboBytes);
+            Assert.Equal(Begins, uploads.Count);
+            for (int i = 0; i < Begins; i++)
+            {
+                Assert.Equal((uint)(i * batch.ViewProjSlotBytes), uploads[i].Offset);
+                Assert.Equal(64u, uploads[i].Bytes);
+            }
         }
     }
 }

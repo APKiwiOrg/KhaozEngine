@@ -30,6 +30,25 @@ namespace KhaozEngine.Tests.Gpu
     /// </summary>
     public sealed class VulkanRenderingScheduleTests
     {
+        // #595. The same per-plane intent reaches Vulkan's dynamic rendering plan.
+        [Fact]
+        public void OnlyTheAttachmentsDeclaredDeadAreDiscarded()
+        {
+            var api = new FakeVulkanRenderApi();
+            var schedule = new VulkanRenderingSchedule(api);
+            schedule.SetFramebuffer(Buffer, Framebuffer(1, colour: 2, depth: true), new(DiscardColourMask: 2, DiscardStencil: true));
+            schedule.PrepareDraw(Buffer);
+            var pass = Assert.Single(api.Begins);
+            Assert.False(pass.Colour[0].Discard);
+            Assert.True(pass.Colour[1].Discard);
+            var depth = Assert.NotNull(pass.Depth);
+            Assert.False(depth.DiscardDepth);
+            Assert.True(depth.DiscardStencil);
+            schedule.SetFramebuffer(Buffer, Framebuffer(2, colour: 1, depth: true));
+            schedule.PrepareDraw(Buffer);
+            Assert.False(Assert.NotNull(api.Begins[1].Depth).DiscardStencil);
+        }
+
         const ulong Buffer = 0xC0FFEE;
 
         // ---- The deferred begin and the clear folding (V-A2) ----

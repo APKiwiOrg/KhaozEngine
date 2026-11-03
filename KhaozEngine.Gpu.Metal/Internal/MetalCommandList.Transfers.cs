@@ -89,6 +89,9 @@ namespace KhaozEngine.Gpu.Metal.Internal
             if (encoder == IntPtr.Zero) return;
             if (source.Handle.Handle == IntPtr.Zero || destination.Handle.Handle == IntPtr.Zero) return;
 
+            RecordBufferAccess(source, srcOffsetBytes, MetalCopyAlignment.PaddedSize(sizeInBytes));
+            RecordBufferAccess(destination, dstOffsetBytes, MetalCopyAlignment.PaddedSize(sizeInBytes));
+
             _blit.CopyBufferToBuffer(encoder, source.Handle.Handle, srcOffsetBytes, destination.Handle.Handle,
                 dstOffsetBytes, MetalCopyAlignment.PaddedSize(sizeInBytes));
         }
@@ -296,6 +299,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
         /// <returns>The blit encoder, or <see cref="IntPtr.Zero"/> when the buffer would not make one.</returns>
         internal IntPtr EnsureCopyEncoder()
         {
+            if (_passes.HasPendingClears) ResolveDeferredDrawable();
             _passes.EndPass();
             return _encoders.EnsureBlitEncoder();
         }
@@ -307,6 +311,8 @@ namespace KhaozEngine.Gpu.Metal.Internal
         void Region(IntPtr encoder, MetalTexture source, uint sourceLevel, uint sourceLayer,
             MetalTexture destination, uint destinationLevel, uint destinationLayer, uint width, uint height)
         {
+            RecordStagingAccess(source, sourceLevel, sourceLayer, width, height);
+            RecordStagingAccess(destination, destinationLevel, destinationLayer, width, height);
             switch (MetalTransferPlan.CaseFor(source.IsStaging, destination.IsStaging))
             {
                 case MetalTransferCase.TextureToTexture:
@@ -352,6 +358,13 @@ namespace KhaozEngine.Gpu.Metal.Internal
                 source.Shape, sourceLevel, sourceLayer, destination.Shape, destinationLevel, destinationLayer);
 
             if (size == 0) return;
+
+            // This path copies the entire software subresource, including its padding.
+            if (_prefixFrame == 0)
+            {
+                _recordedReads.Add(source.CpuResource, from, size);
+                _recordedReads.Add(destination.CpuResource, to, size);
+            }
 
             MetalCopyAlignment.RequireAlignedOffset(from, nameof(source),
                 "A native Metal staging-to-staging texture copy", "source subresource");

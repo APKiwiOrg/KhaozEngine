@@ -4493,7 +4493,7 @@ scene.Draw(gun, sockets["socket_nose"] * shipWorld, Color.White);
   a fixed number by camera distance: orbiting the camera would change illumination on stationary surfaces.
   `Scene3D.MaxPointLights` remains a legacy compatibility constant, not the active upload ceiling. Zero lights renders
   byte-identical to the key+fill path. Presentation only: never feed a light back into simulation/collision.
-  Non-finite positions and non-positive or non-finite radii are ignored at submission, consistently across
+  Non-finite positions or intensities and non-positive or non-finite radii are ignored at submission, consistently across
   clustered and full-list fallback shading.
 
   `scene.PointLightClusters` reports submitted lights, cluster references, overflowing clusters, the projection

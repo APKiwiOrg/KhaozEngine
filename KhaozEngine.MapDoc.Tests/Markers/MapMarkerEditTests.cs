@@ -113,7 +113,8 @@ public sealed class MapMarkerEditTests
         Refuses(basic, new MapSetMarker(MapMarkerHeights.Apply(m, MarkerFixtures.SurfaceHeight())));
         MarkerFixture stacked = MarkerFixtures.Stacked();
         MapLocalMarkerDoc support = stacked.Document.BuildingIntent!.Markers.Single(x => x.Id == "stacked-surface")
-            with { Name = "support-renamed" };
+            with
+        { Name = "support-renamed" };
         Refuses(stacked, new MapSetMarker(support with { Position = support.Position with { Y = m.Position.Y } }));
         var accepted = MapMarkerEdits.Prepare(stacked.Document, stacked.Assets, new MapSetMarker(support));
         var published = Assert.Single(accepted.After.BuildingIntent!.Markers, x => x.Id == support.Id);

@@ -474,7 +474,10 @@ void computeLighting(texture2D pointAtlas, texture2D pointTransientAtlas, sample
         // att = 0, so whatever the sample answered it would be multiplied by nothing. Skipping it keeps the cost
         // of the soft filter on the one to three lights that actually reach a fragment, and it moves no picture,
         // because 0 * lit is 0 for every lit in 0..1.
-        if (att > 0.0 && pointLight.ShadowParams.x >= 0.0)
+        // EXACT ZERO BANDED NdotL ALSO MAKES THE FILTER IRRELEVANT (#1676): ndl * att is zero and the
+        // specular factor step(0.0001, ndl) is zero. AddLight admits finite intensity, and f is in 0..1,
+        // so att stays finite and skipping a shadow factor in 0..1 leaves both contributions identical.
+        if (att > 0.0 && ndl > 0.0 && pointLight.ShadowParams.x >= 0.0)
             att *= samplePointShadowCombined(pointAtlas, pointTransientAtlas, pointSamp, toL, dist, radius,
                                              ndlRaw, pointLight.ShadowParams, worldPos);
         vec3 lc = pointLight.ColorIntensity.rgb;

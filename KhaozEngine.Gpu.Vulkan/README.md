@@ -1907,3 +1907,12 @@ KhaozEngine.Gpu.Vulkan -> Veldrid*                            (never, asserted t
 
 See [docs/DEPENDENCY-SEAMS.md](../docs/DEPENDENCY-SEAMS.md), "Out-of-package graphics backends", for the
 inverted-edge pattern this package is the second instance of.
+
+## Attachment store intent
+
+`SetFramebufferWithStoreActions` maps each declared dead colour, depth and stencil attachment to Vulkan's
+`AttachmentStoreOp.DontCare`. All other attachments use `Store`. The intent applies to each rendering
+instance for the binding. A pass interrupted by transfers or dispatches must not load discarded data when
+it reopens. The unobserved directional cascade pass is uninterrupted and clears its separate working depth and stencil
+on every rebuild. Its sampled R32F atlas remains stored. See
+[the owner proof](../docs/METAL-FRAME-SUBMISSION.md#attachment-store-intent).

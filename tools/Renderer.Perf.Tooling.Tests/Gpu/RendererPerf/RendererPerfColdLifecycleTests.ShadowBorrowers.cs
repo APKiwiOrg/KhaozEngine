@@ -1,7 +1,6 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Reflection;
 using KhaozEngine.Gpu;
 using KhaozEngine.Primitives;
 using KhaozEngine.Render3D;
@@ -46,7 +45,7 @@ public sealed partial class RendererPerfColdLifecycleTests
             work = new RendererPerfSceneWorkload(device, observer, CleanupIdentity(recipe));
             Scene3D scene = work.Scene;
             var texture = scene.LoadTexture([255, 255, 255, 255], 1, 1, TextureMipPolicy.None);
-            albedo = (FakeTexture)Field<List<IGpuTexture>>(scene, "_textures").Last();
+            albedo = (FakeTexture)scene.TexturesForTests.Last()!;
             scene.LoadMesh(MeshPrimitives.Box(1), texture);
             scene.LoadSkinnedMesh(SkinnedMeshBuilder.BuildTube(.5f, 1, 4, 4, 2, Axis.Z), texture);
             var layers = Enumerable.Range(0, SplatMaterialConfig.LayerCount)
@@ -60,8 +59,7 @@ public sealed partial class RendererPerfColdLifecycleTests
             replacement.TransientAtlas = Assert.IsType<PointShadowAtlas>(PointShadowAtlas.TryCreate(device, 16, 1));
             baseAtlas = replacement.Atlas; transientAtlas = replacement.TransientAtlas;
             // Exercise the actual immutable receiver rebuild and its scene commit, before atlas adoption.
-            var result = (PointShadowBindResult)typeof(Scene3D).GetMethod("BindPointShadowAtlasesToReceivers", BindingFlags.Instance | BindingFlags.NonPublic)!
-                .Invoke(scene, [baseAtlas.Texture, transientAtlas.Texture])!;
+            var result = scene.BindPointShadowAtlasesForTests(baseAtlas.Texture, transientAtlas.Texture);
             Assert.Equal(PointShadowBindResult.Rebound, result);
             scene.CommitPointShadowReplacement(replacement);
             Assert.False(((FakeTexture)baseAtlas.Texture).Disposed);
@@ -82,10 +80,10 @@ public sealed partial class RendererPerfColdLifecycleTests
             }
             Assert.Same(baseAtlas.Texture, scene.BoundPointShadowTexture);
             Assert.Same(transientAtlas.Texture, scene.BoundPointShadowTransientTexture);
-            var model = Field<ModelRenderer>(scene, "_model");
+            var model = scene.ModelRendererForTests;
             modelUniform = (SubmissionTestBuffer)model.SharedFrameUniforms;
-            modelDefault = Field<FakeTexture>(model, "_white");
-            modelSet = Field<FakeResourceSet>(model, "_defaultSet");
+            modelDefault = (FakeTexture)model.WhiteTextureForTests;
+            modelSet = (FakeResourceSet)model.DefaultSetForTests;
             Assert.Contains(receivers[0].Resources, r => ReferenceEquals(r, modelUniform));
             Assert.Contains(modelSet.Resources, r => ReferenceEquals(r, baseAtlas.Texture));
             Assert.Contains(modelSet.Resources, r => ReferenceEquals(r, transientAtlas.Texture));
@@ -123,7 +121,7 @@ public sealed partial class RendererPerfColdLifecycleTests
             Assert.Equal(1, receivers[i].DisposeCalls);
         }
         Assert.True(((FakeTexture)receivers[5].Resources[1]).Disposed);
-        Assert.True(Field<FakeTexture>(work!, "_texture").Disposed);
+        Assert.True(((FakeTexture)work!._texture).Disposed);
         Assert.Equal(refuse.Count(r => r), ShadowReceivers(work!.Scene).Cast<FakeResourceSet>().Count(r => !r.Disposed));
         Assert.All(receivers.Where(r => !r.Disposed).SelectMany(r => r.Resources).OfType<FakeTexture>(), t => Assert.False(t.Disposed));
         Assert.True(receivers[5].Disposed); Assert.Contains("laterTile", releaseOrder); Assert.Equal("target", releaseOrder.Last());
@@ -149,7 +147,7 @@ public sealed partial class RendererPerfColdLifecycleTests
     static List<IGpuResourceSet> ShadowReceivers(Scene3D scene)
     {
         var result = new List<IGpuResourceSet>();
-        typeof(Scene3D).GetMethod("CollectLiveMaterialSets", BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(scene, [result]);
+        result.AddRange(scene.LiveMaterialSetsForTests);
         return result;
     }
 }

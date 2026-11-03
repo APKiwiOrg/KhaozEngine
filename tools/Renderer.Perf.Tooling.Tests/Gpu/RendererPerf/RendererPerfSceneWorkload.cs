@@ -11,11 +11,11 @@ namespace KhaozEngine.Tests.Gpu.RendererPerf;
 internal sealed class RendererPerfSceneWorkload : IRendererPerfNativeWork
 {
     readonly IGpuDevice _device;
-    readonly RendererPerfRecipe _recipe;
+    internal readonly RendererPerfRecipe _recipe;
     readonly RendererPerfRecipeIdentity _identity;
     readonly IRenderPassObserver _observer;
-    readonly IGpuTexture _texture;
-    readonly SpriteBatch? _ui;
+    internal readonly IGpuTexture _texture;
+    internal readonly SpriteBatch? _ui;
     readonly Action<IGpuDevice, IGpuTexture>? _validate;
     bool _cold, _validated, _disposed;
     long _frames;

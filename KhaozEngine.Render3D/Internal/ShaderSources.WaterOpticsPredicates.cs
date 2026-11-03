@@ -2,6 +2,9 @@ namespace KhaozEngine.Render3D.Internal;
 
 internal static partial class ShaderSources
 {
+    /// <summary>WaterOpticsNarrowPredicateTests compiles the production helper for independent oracle comparison.</summary>
+    internal static string WaterOpticsPredicatesGlslForTests => WaterOpticsPredicatesGlsl;
+
     // Exact binary32 orientation. Each input is a signed integer in units of 2^-149.
     // Wide fallback: six coordinate products fit below 2^557. Each magnitude sum streams 576 bits.
     // No float filter, optional double capability, epsilon or source-coordinate modification is involved.

@@ -2,7 +2,6 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Numerics;
-using System.Reflection;
 using KhaozEngine.Gpu;
 using KhaozEngine.Primitives;
 using KhaozEngine.Render3D;
@@ -22,10 +21,8 @@ public sealed class WaterColumnCopyTests
         internal readonly RecordingGpuCommandList Commands = new(new NullGpuCommandList());
         internal readonly Timeline Events;
         internal FakeGpuResourceFactory Factory => (FakeGpuResourceFactory)Device.Factory;
-        internal RenderResources Targets => Field<RenderResources>("_res");
-        internal WaterColumnColorSource Source => Field<WaterColumnColorSource>("_waterColumnColor");
-        T Field<T>(string name) => (T)typeof(Scene3D).GetField(name,
-            BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(Scene)!;
+        internal RenderResources Targets => Scene.RenderResourcesForTests;
+        internal IGpuTexture Source => Scene.WaterColumnColorTextureForTests!;
 
         internal Host()
         {
@@ -76,12 +73,12 @@ public sealed class WaterColumnCopyTests
         });
         h.Render();
 
-        var copy = Assert.Single(h.Commands.TextureCopies, c => ReferenceEquals(c.Destination, h.Source.Texture));
+        var copy = Assert.Single(h.Commands.TextureCopies, c => ReferenceEquals(c.Destination, h.Source));
         Assert.Same(h.Targets.ColorTex, copy.Source);
         Assert.NotSame(copy.Source, copy.Destination);
         Assert.Equal(copy.Source.Format, copy.Destination.Format);
         Assert.False(copy.WholeResource);
-        int copied = h.Events.Entries.FindIndex(e => e.Kind == "copy" && ReferenceEquals(e.Destination, h.Source.Texture));
+        int copied = h.Events.Entries.FindIndex(e => e.Kind == "copy" && ReferenceEquals(e.Destination, h.Source));
         int decal = h.Events.Entries.FindLastIndex(e => e.Kind == "decal");
         var water = h.Events.Entries.Select((e, i) => (e, i)).Where(x => x.e.Kind == "water").ToArray();
         Assert.True(decal >= 0 && decal < copied);
@@ -97,7 +94,7 @@ public sealed class WaterColumnCopyTests
         h.Queue();
         h.Render();
 
-        Assert.Same(h.Targets.ColorTex, h.Source.Texture);
+        Assert.Same(h.Targets.ColorTex, h.Source);
         var color = h.Commands.Resolves.Where(r => ReferenceEquals(r.Source, h.Targets.MsColor)).ToArray();
         Assert.Equal(2, color.Length);
         Assert.True(color[0].PreserveSource);
@@ -120,7 +117,7 @@ public sealed class WaterColumnCopyTests
         h.Queue();
         h.Render();
 
-        var copy = Assert.Single(h.Commands.TextureCopies, c => ReferenceEquals(c.Destination, h.Source.Texture));
+        var copy = Assert.Single(h.Commands.TextureCopies, c => ReferenceEquals(c.Destination, h.Source));
         Assert.True(copy.Source.MipLevels > 1);
         Assert.Equal(1u, copy.Destination.MipLevels);
         Assert.Equal(1u, copy.Destination.SampleCount);
@@ -188,7 +185,7 @@ public sealed class WaterColumnCopyTests
         Assert.Equal(new WaterColumnDiagnostics(2, true, WaterColumnCopyPath.SingleSampleCopy), h.Scene.WaterColumnLightDiagnostics);
         var colorSource = h.Source;
         var commands = h.Commands;
-        Assert.Single(commands.TextureCopies, c => ReferenceEquals(c.Destination, colorSource.Texture));
+        Assert.Single(commands.TextureCopies, c => ReferenceEquals(c.Destination, colorSource));
         WaterColumnDiagnostics last = h.Scene.WaterColumnLightDiagnostics;
         h.Scene.Begin();
         Assert.Equal(last, h.Scene.WaterColumnLightDiagnostics);
@@ -198,7 +195,7 @@ public sealed class WaterColumnCopyTests
         WaterColumnDiagnostics emptyFrameDiagnostics = h.Scene.WaterColumnLightDiagnostics;
         Assert.Equal(default(WaterColumnDiagnostics), emptyFrameDiagnostics);
         Assert.Empty(h.Commands.TextureCopies);
-        Assert.Equal((1u, 1u), (h.Source.Texture.Width, h.Source.Texture.Height));
+        Assert.Equal((1u, 1u), (h.Source.Width, h.Source.Height));
 
         h.Queue(false);
         int textures = h.Factory.Textures.Count;
@@ -244,15 +241,15 @@ public sealed class WaterColumnCopyTests
         using var h = new Host();
         h.Queue();
         h.Render(viewportPreparation);
-        IGpuTexture first = h.Source.Texture;
+        IGpuTexture first = h.Source;
         h.Queue();
         h.Render(viewportPreparation, () =>
         {
             h.Scene.Post.Hdr.Enabled = !h.Scene.Post.Hdr.Enabled;
             if (msaa) h.Scene.Post.Quality.AntiAliasing = AntiAliasing.Msaa(4);
         });
-        Assert.NotSame(first, h.Source.Texture);
-        Assert.Equal(h.Targets.ColorTex.Format, h.Source.Texture.Format);
+        Assert.NotSame(first, h.Source);
+        Assert.Equal(h.Targets.ColorTex.Format, h.Source.Format);
         Assert.Equal(msaa ? WaterColumnCopyPath.MsaaResolve : WaterColumnCopyPath.SingleSampleCopy,
             h.Scene.WaterColumnLightDiagnostics.CopyPath);
         Assert.False(Assert.IsType<FakeTexture>(first).Disposed);

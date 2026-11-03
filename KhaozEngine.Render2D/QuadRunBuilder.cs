@@ -62,6 +62,9 @@ namespace KhaozEngine.Render2D
             _groupOrder.Remove(key);
         }
 
+        /// <summary>SpriteBatchMaskedTestRig observes eviction without changing the retained grouping keys.</summary>
+        internal IReadOnlyList<object> GroupOrderForTests => _groupOrder.AsReadOnly();
+
         internal bool HasGroup(object key) => _groupScratch.ContainsKey(key);
 
         /// <summary>

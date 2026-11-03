@@ -21,6 +21,11 @@ namespace KhaozEngine.Render2D
             _core = new Render2DCore(window.GpuDevice, window.GpuDevice.SwapchainFramebuffer!.Outputs, ownsDevice: false);
         }
 
+        /// <summary>WorldMapRenderFixture shares a headless core with its capture context, without a native window.</summary>
+        internal static Render2DSurface CreateForTests(Render2DCore core) => new(core);
+
+        Render2DSurface(Render2DCore core) => _core = core;
+
         public SpriteBatch Batch => _core.Batch;
         public Texture2D LoadTexture(string pngPath) => _core.LoadTexture(pngPath);
         public Texture2D CreateTexture(byte[] rgba, int width, int height) => _core.CreateTexture(rgba, width, height);

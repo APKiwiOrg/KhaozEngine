@@ -1,10 +1,8 @@
 using System;
-using System.Collections;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Numerics;
-using System.Reflection;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json.Nodes;
@@ -242,8 +240,8 @@ public sealed class SkinnedAttachmentAssetTests
 
         LoadedAttachmentSet loaded = cache.Get("set.json", hash);
 
-        AssertCachedSnapshotHashes(cache, "_meshes", skin.Sha256, later.Sha256);
-        AssertCachedSnapshotHashes(cache, "_definitions", hash);
+        AssertCachedSnapshotHashes(cache.MeshSnapshotHashesForTests, skin.Sha256, later.Sha256);
+        AssertCachedSnapshotHashes(cache.DefinitionSnapshotHashesForTests, hash);
         Assert.Equal(hash, loaded.DefinitionSha256);
         Assert.Equal(2, loaded.Definition.Parts.Count);
         IReadOnlyList<GltfSkinnedMeshPart> captured = Assert.Single(recording.SkinnedParts);
@@ -315,17 +313,8 @@ public sealed class SkinnedAttachmentAssetTests
         Assert.Equal(0, harness.Scene.LiveSkinnedMeshCount);
     }
 
-    static void AssertCachedSnapshotHashes(AttachmentSetCache cache, string fieldName, params string[] expected)
-    {
-        var snapshots = Assert.IsAssignableFrom<IDictionary>(typeof(AttachmentSetCache)
-            .GetField(fieldName, BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(cache));
-        IEnumerable<string> hashes = snapshots.Values.Cast<object>().Select(snapshot =>
-        {
-            byte[] bytes = Assert.IsType<byte[]>(snapshot.GetType().GetProperty("Bytes")!.GetValue(snapshot));
-            return Convert.ToHexStringLower(SHA256.HashData(bytes));
-        });
+    static void AssertCachedSnapshotHashes(IReadOnlyList<string> hashes, params string[] expected) =>
         Assert.Equal(expected.Order(), hashes.Order());
-    }
 
     static RigidAttachmentPartDefinition Rigid(uint id, AttachmentMeshRef mesh) => new(id, mesh, "hip", Matrix4x4.Identity);
     static SkinnedAttachmentPartDefinition Skin(uint id, AttachmentMeshRef mesh) => new(id, mesh);

@@ -38,6 +38,17 @@ public sealed partial class Scene3D
         return replaced ? ShadowLayoutReplacementResult.Replaced : ShadowLayoutReplacementResult.Failed;
     }
 
+    /// <summary>RendererPerfColdLifecycleTests observes every immutable receiver replacement and its release lifetime.</summary>
+    internal IReadOnlyList<IGpuResourceSet> LiveMaterialSetsForTests
+    {
+        get
+        {
+            var sets = new List<IGpuResourceSet>();
+            CollectLiveMaterialSets(sets);
+            return sets.AsReadOnly();
+        }
+    }
+
     /// <summary>Every live resource set that carries a shadow binding, which is what a texture swap has to rebuild
     /// and hand back. One definition, because the cascade atlas replacement and the point-shadow atlas bind change
     /// the same sets for the same reason, and a set missing from one of the two lists would keep binding a freed

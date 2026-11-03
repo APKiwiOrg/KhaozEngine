@@ -61,9 +61,9 @@ public sealed partial class InteriorCutHighlightGpuTests
             Assert.Equal(renderOrigin, _stage.Scene.CurrentFrameView.RenderOrigin);
             if (mode is BoundaryMode.OutlineVisible or BoundaryMode.OutlineFull)
             {
-                Assert.Equal(expected ? 0f : 1f, _stage.Coverage("_fullCoverage")[Stage.H / 2 * Stage.W + Stage.W / 2]);
+                Assert.Equal(expected ? 0f : 1f, _stage.Coverage(visible: false)[Stage.H / 2 * Stage.W + Stage.W / 2]);
                 if (mode == BoundaryMode.OutlineVisible)
-                    Assert.Equal(expected ? 0f : 1f, _stage.Coverage("_visibleCoverage")[Stage.H / 2 * Stage.W + Stage.W / 2]);
+                    Assert.Equal(expected ? 0f : 1f, _stage.Coverage(visible: true)[Stage.H / 2 * Stage.W + Stage.W / 2]);
             }
             else
             {

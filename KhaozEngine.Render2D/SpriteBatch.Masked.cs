@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using System;
 using System.Numerics;
 using KhaozEngine.Gpu;
@@ -12,6 +13,22 @@ public sealed partial class SpriteBatch
     MaskedSpriteBatchResources? _maskedResources;
     Action<object>? _forgetMaskedKey;
     Action<IGpuResourceSet>? _retireMaskedSet;
+
+    /// <summary>SpriteBatchMaskedTestRig observes lazy ownership and cleanup after construction failures.</summary>
+    internal MaskedSpriteBatchResources? MaskedResourcesForTests => _maskedResources;
+
+    /// <summary>SpriteBatchMaskedVertexTests observes pending key identity without accessing mutable run storage.</summary>
+    internal IReadOnlyList<(object Key, int Start, int Count)> RunsForTests =>
+        new List<(object Key, int Start, int Count)>(_runs.Runs).AsReadOnly();
+
+    /// <summary>SpriteBatchMaskedTestRig checks that eviction forgets the selected grouping key.</summary>
+    internal bool HasGroupForTests(object key) => _runs.HasGroup(key);
+
+    /// <summary>SpriteBatchMaskedTestRig observes retained grouping order after key eviction.</summary>
+    internal IReadOnlyList<object> GroupOrderForTests => _runs.GroupOrderForTests;
+
+    /// <summary>SpriteBatchMaskedTestRig exercises failure cleanup through the actual lazy construction path.</summary>
+    internal MaskedSpriteBatchResources EnsureMaskedResourcesForTests() => EnsureMaskedResources();
 
     internal int CachedMaskedSetCount => _maskedResources?.CachedSetCount ?? 0;
 

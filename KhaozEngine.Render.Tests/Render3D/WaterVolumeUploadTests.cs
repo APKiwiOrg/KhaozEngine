@@ -1,7 +1,6 @@
 using System;
 using System.Linq;
 using System.Numerics;
-using System.Reflection;
 using System.Runtime.InteropServices;
 using KhaozEngine.Gpu;
 using KhaozEngine.Primitives;
@@ -21,8 +20,7 @@ public sealed class WaterVolumeUploadTests
         internal readonly Scene3D Scene;
         internal readonly RecordingGpuCommandList Commands = new(new NullGpuCommandList()) { CapturePayloads = true };
         internal FakeGpuResourceFactory Factory => (FakeGpuResourceFactory)Device.Factory;
-        internal ModelRenderer Renderer => (ModelRenderer)typeof(Scene3D).GetField("_model",
-            BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(Scene)!;
+        internal ModelRenderer Renderer => Scene.ModelRendererForTests;
         internal IGpuBuffer Buffer => Assert.Single(Factory.Buffers, b => b.SizeInBytes == 652800);
         internal byte[] UploadedFrame
         {

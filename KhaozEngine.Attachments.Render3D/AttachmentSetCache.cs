@@ -27,6 +27,14 @@ public sealed class AttachmentSetCache : IDisposable
         _source = source;
     }
 
+    /// <summary>SkinnedAttachmentAssetTests verifies the retained mesh bytes against independent source hashes.</summary>
+    internal IReadOnlyList<string> MeshSnapshotHashesForTests =>
+        _meshes.Values.Select(snapshot => Convert.ToHexStringLower(SHA256.HashData(snapshot.Bytes))).ToArray();
+
+    /// <summary>SkinnedAttachmentAssetTests verifies the retained definition bytes against independent source hashes.</summary>
+    internal IReadOnlyList<string> DefinitionSnapshotHashesForTests =>
+        _definitions.Values.Select(snapshot => Convert.ToHexStringLower(SHA256.HashData(snapshot.Bytes))).ToArray();
+
     internal IAttachmentScene Scene { get; }
 
     public LoadedAttachmentSet Get(string key, string expectedSha256)

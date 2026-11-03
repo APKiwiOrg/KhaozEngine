@@ -3,7 +3,6 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Numerics;
-using System.Reflection;
 using System.Text.Json;
 using KhaozEngine.Gpu;
 using KhaozEngine.Gpu.Internal;
@@ -17,16 +16,12 @@ public sealed class WaterOpticsNarrowPredicateTests
     const string Evidence = "/tmp/khaozengine-water-triangles/task-2/predicate-fastpath";
     sealed record Probe(string Name, uint[] Bits, bool Narrow);
 
-    // Read the production helpers, not a numerical reimplementation of the shader.
-    static string Helper(string name) => (string)typeof(ShaderSources)
-        .GetField(name, BindingFlags.Static | BindingFlags.NonPublic)!.GetRawConstantValue()!;
-
     static string Source => @"#version 450
 #extension GL_EXT_control_flow_attributes : require
 layout(local_size_x=1) in;
 layout(std430,set=0,binding=0) buffer Results { ivec4 Values[]; };
 layout(std430,set=0,binding=1) readonly buffer Inputs { uvec4 Bits[]; };
-" + Helper("WaterOpticsBinary32Glsl") + Helper("WaterOpticsPredicatesGlsl") + @"
+" + ShaderSources.WaterOpticsBinary32GlslForTests + ShaderSources.WaterOpticsPredicatesGlslForTests + @"
 void main() {
     uint i = gl_GlobalInvocationID.x;
     uvec2 a = Bits[2u*i].xy, b = Bits[2u*i].zw, p = Bits[2u*i+1u].xy;

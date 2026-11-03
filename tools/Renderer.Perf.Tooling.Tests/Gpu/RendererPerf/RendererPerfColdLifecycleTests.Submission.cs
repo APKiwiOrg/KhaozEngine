@@ -1,7 +1,6 @@
 using System;
 using System.Collections.Immutable;
 using System.Linq;
-using System.Reflection;
 using KhaozEngine.Gpu;
 using KhaozEngine.Windowing;
 using Xunit;
@@ -173,7 +172,7 @@ public sealed partial class RendererPerfColdLifecycleTests
     }
 
     static Frame SessionFrame(RendererPerfNativeSession session) =>
-        (Frame)typeof(RendererPerfNativeSession).GetField("_frame", BindingFlags.NonPublic | BindingFlags.Instance)!.GetValue(session)!;
+        session._frame;
     static GpuDiagnosticFailureException Owned(string stage, Exception first, Exception second, bool two) =>
         new(two ? [new(stage, first), new(stage + ".tail", second)] : [new(stage, first)]);
     sealed class EventParticipant(Exception error, bool submitted = false) : IGpuFrameSubmissionParticipant

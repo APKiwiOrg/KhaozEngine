@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using System.Numerics;
 using KhaozEngine.Gpu;
 using KhaozEngine.Render3D.Internal;
@@ -13,6 +14,21 @@ public sealed partial class Scene3D
 
     /// <summary>Diagnostics for the pre-water colour source of the latest rendered frame. Begin preserves it.</summary>
     public WaterColumnDiagnostics WaterColumnLightDiagnostics { get; private set; }
+
+    /// <summary>WaterColumnCopyTests and WaterColumnRiverScene observe the actual colour targets and their shape.</summary>
+    internal RenderResources RenderResourcesForTests => _res;
+
+    /// <summary>WaterColumnResourceLifecycleTests and WaterColumnShadowBindingTests exercise the borrowed water renderer.</summary>
+    internal WaterRenderer WaterRendererForTests => _water;
+
+    /// <summary>WaterVolumeUploadTests and water shadow tests exercise the shared model uniform upload path.</summary>
+    internal ModelRenderer ModelRendererForTests => _model;
+
+    /// <summary>Water column tests observe the copied texture and its lazy absence without mutating its owner.</summary>
+    internal IGpuTexture? WaterColumnColorTextureForTests => _waterColumnColor?.Texture;
+
+    /// <summary>RendererPerfColdLifecycleTests observes scene-owned textures to inject fake resource release failures.</summary>
+    internal IReadOnlyList<IGpuTexture?> TexturesForTests => _textures.AsReadOnly();
 
     // Authoring checks and the opted-in count, with no device work. Runs at preparation and again at render.
     void ValidateWaterColumnInputs()

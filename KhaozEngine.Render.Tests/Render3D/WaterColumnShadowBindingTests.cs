@@ -2,7 +2,6 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Numerics;
-using System.Reflection;
 using System.Runtime.InteropServices;
 using KhaozEngine.Gpu;
 using KhaozEngine.Gpu.Internal;
@@ -39,10 +38,8 @@ public sealed class WaterColumnShadowBindingTests
                 ShadowMapResolution = 256,
                 ShadowCascadeCount = 2,
             });
-            Targets = (RenderResources)typeof(Scene3D).GetField("_res", BindingFlags.Instance | BindingFlags.NonPublic)!
-                .GetValue(Scene)!;
-            Water = (WaterRenderer)typeof(Scene3D).GetField("_water", BindingFlags.Instance | BindingFlags.NonPublic)!
-                .GetValue(Scene)!;
+            Targets = Scene.RenderResourcesForTests;
+            Water = Scene.WaterRendererForTests;
             Scene.Post.Water.SwellAmplitude = 0f;
             Scene.Post.Water.WaterColumnLight = true;
             var field = Scene.LoadWaterOpticsField(new WaterOpticsField(2, 2, [4f, 4f, 4f, 4f]));
@@ -79,8 +76,7 @@ public sealed class WaterColumnShadowBindingTests
         FakeResourceSet[] sets = h.WaterSets;
         Assert.NotEmpty(sets);
         Assert.All(sets, set => Assert.Equal(17, set.Resources.Length));
-        var model = (ModelRenderer)typeof(Scene3D).GetField("_model", BindingFlags.Instance | BindingFlags.NonPublic)!
-            .GetValue(h.Scene)!;
+        var model = h.Scene.ModelRendererForTests;
         IGpuBuffer frame = model.SharedFrameUniforms;
         Assert.All(sets, set =>
         {

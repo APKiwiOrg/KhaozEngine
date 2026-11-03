@@ -334,6 +334,10 @@ namespace KhaozEngine.Render3D
             PublishResolvedPointShadows(false, false, null);
         }
 
+        /// <summary>RendererPerfColdLifecycleTests exercises receiver replacement before adopting replacement atlases.</summary>
+        internal PointShadowBindResult BindPointShadowAtlasesForTests(IGpuTexture? baseAtlas, IGpuTexture? transientAtlas) =>
+            BindPointShadowAtlasesToReceivers(baseAtlas, transientAtlas);
+
         /// <summary>Rebuild every receiver set against <paramref name="baseAtlas"/> and
         /// <paramref name="transientAtlas"/> (or their 1x1 defaults when null).
         /// The same two arguments the cascade replacement takes, for the same reason: a resource set is immutable,

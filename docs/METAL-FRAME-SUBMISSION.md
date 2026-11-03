@@ -79,13 +79,18 @@ D3D11 retains them through its ordinary framebuffer bind because its existing pi
 store control. Its store-intent entry point retains the recording guard and the caller identifier. There is no live GL backend. The retired OpenGL selection does not construct a device. No GL call
 or backend is introduced by this intent.
 
-The directional cascade pass owns one R32F colour atlas and separate D32FloatS8UInt working storage. Every
-cascade draws into that atlas in one uninterrupted render encoder. Matrix and skinning uploads use uniform
+The directional cascade pass owns one R32F colour atlas and separate D32FloatS8UInt working storage. With
+no pass observer, every cascade draws into that atlas in one uninterrupted render encoder. Matrix and skinning uploads use uniform
 ring CPU writes, so they add no transfer boundary inside it. The pass clears the whole depth and stencil
 before its first draw. Sampling, shadow captures, readback and dirty-skip reuse name only the R32F colour
 atlas. The working depth/stencil texture is retained only by the graph, framebuffer and matching pipelines,
 then disposed with that graph. Later cascades share the same encoder. Every next-frame rebuild clears it
 again, and a skipped frame never reads it.
+
+A registered pass observer may record timestamp markers that close native encoders between caster
+families. The scene therefore retains working depth and stencil whenever an observer is present. This
+preserves observed and captured output, including rigid versus skinned occlusion after a marker. Per-pass
+timing campaigns consequently include those stores. The unobserved shipping path receives the discard.
 
 This resolves #595's determinism concern. Discarded working bytes are undefined, but no output depends on
 them before their next clear. The colour atlas and every attachment with a later reader still use Store.

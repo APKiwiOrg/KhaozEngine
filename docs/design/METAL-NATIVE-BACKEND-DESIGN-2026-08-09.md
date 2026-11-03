@@ -836,10 +836,11 @@ encoder without arguing it.
 
 **Depth discard is now a per-attachment owner declaration (#595).** The directional cascade's sampled result
 is its R32F colour atlas. Its separate depth and stencil planes are working storage only. No later cascade
-loads them through another encoder, captures and readbacks read the colour atlas, and every rebuilt frame clears
+loads them through another encoder in unobserved rendering, captures and readbacks read the colour atlas, and every rebuilt frame clears
 the whole depth/stencil attachment before drawing. An unchanged frame reuses colour and never reads working
 depth. Undefined bytes with no reader cannot influence any output, so discarding these planes preserves
-determinism. The default remains Store for every attachment without this proof.
+determinism. The default remains Store for every attachment without this proof. A pass observer may
+record encoder-ending timestamp markers, so observed rendering retains working depth and stencil.
 
 The folded resolve remains separate work. `MTLStoreActionStoreAndMultisampleResolve` changes what the
 producing pass writes, and `scene3d_hdr_msaa` is a committed golden in this family.

@@ -71,8 +71,10 @@ namespace KhaozEngine.Tests.Gpu
 
         public RecordingGpuCommandList(IGpuCommandList inner) => Inner = inner;
         internal bool ForceAttachmentStores { get; init; }
+        internal List<(IGpuFramebuffer Framebuffer, GpuAttachmentStoreActions Stores)> AttachmentStoreBindings { get; } = [];
         public void SetFramebufferWithStoreActions(IGpuFramebuffer fb, in GpuAttachmentStoreActions stores)
         {
+            AttachmentStoreBindings.Add((fb, ForceAttachmentStores ? default : stores));
             if (ForceAttachmentStores) SetFramebuffer(fb);
             else { _framebufferBinds++; Inner.SetFramebufferWithStoreActions(fb, stores); }
         }

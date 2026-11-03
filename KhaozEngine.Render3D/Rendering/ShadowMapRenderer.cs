@@ -383,9 +383,10 @@ namespace KhaozEngine.Render3D.Rendering
         /// <see cref="BeginCascadeRigidDissolve"/> / <see cref="BeginCascadeRigidDissolveInverted"/>) per cascade to
         /// draw casters, then <see cref="EndDepthPass"/>. The origin rides at slot offset 64 and the noise scale at
         /// 80, both read only by the dissolve variants' vertex (the plain depth vertex declares just the matrix).
-        /// A short <paramref name="noiseScales"/> falls back to the base scale for the cascades it does not cover.</summary>
+        /// A short <paramref name="noiseScales"/> falls back to the base scale for the cascades it does not cover.
+        /// Set <paramref name="discardWorkingDepth"/> false when an observer may record encoder-ending markers.</summary>
         public void BeginDepthPass(IGpuCommandList cl, ReadOnlySpan<Matrix4x4> depthMats, int cascadeCount,
-            Vector3 renderOrigin, ReadOnlySpan<float> noiseScales)
+            Vector3 renderOrigin, ReadOnlySpan<float> noiseScales, bool discardWorkingDepth = true)
         {
             int count = Math.Min(cascadeCount, CascadeCount);
             var origin = new Vector4(renderOrigin, 0f);
@@ -409,9 +410,10 @@ namespace KhaozEngine.Render3D.Rendering
             // whole-buffer write escapes the partial-uniform-write staging route the incumbent had, which Mapped the
             // immediate context and stalled on the GPU (see the _frameImage note in ModelRenderer.FrameUbo.cs).
             cl.UpdateBuffer(_lightUbo, 0, (ReadOnlySpan<byte>)_lightImage);
-            // The R32F colour atlas is sampled and captured. Depth and stencil are working storage, cleared
-            // before every rebuild and never read outside this uninterrupted pass (#595).
-            cl.SetFramebufferWithStoreActions(_graph.Framebuffer, new GpuAttachmentStoreActions(DiscardDepth: true, DiscardStencil: true));
+            // Pass-observer timestamp markers can close encoders between caster families. Preserve working
+            // depth in that path. Unobserved rendering is uninterrupted, so both working planes are dead (#595).
+            cl.SetFramebufferWithStoreActions(_graph.Framebuffer,
+                new GpuAttachmentStoreActions(DiscardDepth: discardWorkingDepth, DiscardStencil: discardWorkingDepth));
             cl.ClearColorTarget(0, new Color(1f, 1f, 1f, 1f));  // 1.0 = far plane = no caster (whole atlas)
             cl.ClearDepthStencil(1f);
             cl.SetPipeline(_graph.Pipeline);

@@ -991,7 +991,7 @@ clears two attachments and reads the second one back as a texel.
 
 **Store actions are set explicitly.** The default is `Store` for every colour, depth and stencil attachment.
 `SetFramebufferWithStoreActions` lets the pass owner declare individual attachments dead. Metal then uses
-`DontCare` for only those attachments. The directional cascade pass retains its sampled R32F atlas and discards
+`DontCare` for only those attachments. The unobserved directional cascade pass retains its sampled R32F atlas and discards
 its working depth and stencil. Neither plane is sampled or captured, and the next rebuild clears both before
 reading them, so their undefined post-pass bytes cannot affect a deterministic output. See
 [attachment intent](../docs/METAL-FRAME-SUBMISSION.md#attachment-store-intent).

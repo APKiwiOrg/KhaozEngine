@@ -8,6 +8,8 @@ Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
 2026-11-03
 
+- Preserve cascade working depth and stencil under pass observers, whose timestamp markers can end native
+  render encoders between caster families. Unobserved rendering still discards the dead working planes.
 - Submit native Metal offscreen work before drawable acquisition, then continue the same frame in a
   second command buffer. The final buffer alone owns completion and frame-slot reuse. CPU-visible ranges
   accessed by a committed prefix stay immutable through final completion. Overlapping CPU writes and writable

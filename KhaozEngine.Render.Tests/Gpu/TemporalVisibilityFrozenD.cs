@@ -128,8 +128,8 @@ float temporalReleaseLock(float value, float motionPixels, float reactive, float
     internal static string Sha256(string text) =>
         Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(text.Replace("\r\n", "\n")))).ToLowerInvariant();
 
-    /// <summary>A production fragment program as D prime: the production visibility block, call-site block and hold
-    /// release replaced by the frozen texts, then the current mask's changes undone by
+    /// <summary>A production fragment program as D prime, with private probe gates undone first: the production
+    /// visibility block, call-site block and hold release replaced by the frozen texts, then the current mask's changes undone by
     /// <see cref="TemporalVisibilityFrozenDMask.Restore"/>. Production's lock release helper stays. A program that holds
     /// none of them, such as the depth store, comes back unchanged, and the split's first pass takes only the mask
     /// restore. One that holds only some of the release pieces, or holds one twice, or holds the release without the
@@ -162,6 +162,8 @@ float temporalReleaseLock(float value, float motionPixels, float reactive, float
     {
         // Test pipelines compile both members. Restore omitted resources before applying the frozen decision.
         program = TemporalVisibilityFullyLitGpuTests.ForceCheck(program);
+        // The certified-source lookup needs the current text before the probe's exact inverse is applied.
+        program = CandidateGateSource.WithoutGates(program);
         string released = RewriteRelease(program, visibility, callSite, holdRelease);
         string restored = TemporalVisibilityFrozenDMask.Restore(released);
         if (!ReferenceEquals(released, program) && ReferenceEquals(restored, released))

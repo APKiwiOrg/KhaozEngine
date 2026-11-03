@@ -7,5 +7,6 @@ namespace KhaozEngine.Game;
 internal sealed class SceneFrameShaderGates(Scene3D scene) : IFrameDiagnosticsShaderGates
 {
     public void Apply(int gates) => scene.ProbeShaderGates = (ShaderGateProbe)gates;
+    public int ConsumeExactSizeCondition() => scene.ConsumeProbeExactSizeCondition();
     public int ConsumeApplied() => scene.ConsumeAppliedProbeShaderGates();
 }

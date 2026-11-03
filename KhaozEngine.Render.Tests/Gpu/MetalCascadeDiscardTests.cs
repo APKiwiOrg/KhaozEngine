@@ -55,7 +55,7 @@ public sealed class MetalCascadeDiscardTests : IDisposable
     }
 
     [Fact]
-    public void The_recorder_default_keeps_every_block_on_store_while_the_directional_encoders_stay_counted()
+    public void Capture_without_a_schedule_keeps_every_block_on_store_while_the_directional_encoders_stay_counted()
     {
         using var timing = new MetalPassTimingCapture(_native, 1, 64, 4, labelEvents: 64);
         timing.Boundary(0, 10);
@@ -70,6 +70,21 @@ public sealed class MetalCascadeDiscardTests : IDisposable
         Assert.All(result.Blocks, b => Assert.False(b.Discard));
         Assert.Equal(0, result.OpenedUnknown);
         Assert.Equal(1, result.DirectionalEncodersOff);
+    }
+
+    [Fact]
+    public void Candidate_discards_in_every_block_and_stops_discarding_after_sampling()
+    {
+        using var timing = new MetalPassTimingCapture(_native, 1, 64, 4, labelEvents: 64, candidateDiscard: true);
+        timing.Boundary(0, 10);
+        timing.Boundary(72, 20);
+        timing.End(80, 30);
+        var blocks = timing.ExperimentSnapshot().Blocks;
+        Assert.Equal(2, blocks.Length);
+        Assert.All(blocks, b => Assert.True(b.Discard));
+        timing.ObservePass(Buffer, 81, PassLabelEventKind.Begin, MetalPassLabels.DirectionalPass, 0);
+        timing.Begin(MetalEncoderKind.Render, Buffer, Descriptor, 81, true);
+        Assert.Equal("store", Assert.Single(_native.DescriptorStoresAtOpen));
     }
 
     [Fact]

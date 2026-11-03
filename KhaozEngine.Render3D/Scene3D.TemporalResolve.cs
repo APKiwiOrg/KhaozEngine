@@ -174,6 +174,7 @@ namespace KhaozEngine.Render3D
                 previous is { } last ? ViewInput(last) : null, current.JitterPixels, current.Width, current.Height,
                 displayWidth, displayHeight, TemporalHistory.IsValid,
                 screenFixedBackground: Post.Background == BackgroundMode.Starfield);
+            uniforms.Params.W = (ProbeShaderGates & ShaderGateProbe.LanczosExactSizeReuse) != 0 ? 1f : 0f;
             _temporalResolve.PrepareUniforms(cl, uniforms, TemporalResolveMath.BuildDepthStore(current.Projection));
             return (_post, _temporalPost);
         }

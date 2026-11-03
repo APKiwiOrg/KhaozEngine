@@ -10,7 +10,7 @@ using Xunit;
 namespace KhaozEngine.Tests.Gpu;
 
 /// <summary>Frames without opted-in water retain the shader source text from main at 0af218d5b, apart from the private
-/// probe's three shader gates. The table stays that capture, so with the gate text taken out this proves everything else
+/// probe's six shader gates. The table stays that capture, so with the gate text taken out this proves everything else
 /// in every stage is the released source. <c>ShaderGateProbeTests</c> pins the gate text itself.</summary>
 public sealed class NonWaterShaderSourceEqualityTests
 {
@@ -46,7 +46,7 @@ public sealed class NonWaterShaderSourceEqualityTests
     // Normalize checkout line endings and undo the probe's exact gate text only. All other shader whitespace, identifiers
     // and ordering remain pinned.
     static string Sha256(string source)
-        => Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(WithoutProbeGates(source.ReplaceLineEndings("\n")))));
+        => Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(WithoutProbeGates(CandidateGateSource.WithoutGates(source.ReplaceLineEndings("\n"))))));
 
     static string WithoutProbeGates(string source) => source
         .Replace("        // IndirectParams.y is the private probe's switch: a banded ndl of exactly zero multiplies this term away.\n", "", StringComparison.Ordinal)

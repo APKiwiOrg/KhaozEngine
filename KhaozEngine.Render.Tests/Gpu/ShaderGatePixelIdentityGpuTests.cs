@@ -20,7 +20,7 @@ namespace KhaozEngine.Tests.Gpu;
 /// holds the uploaded values and the shader conditions. Comparing the off state with the released shader needs another
 /// build of the released tree and is not done here.
 /// </summary>
-public sealed class ShaderGatePixelIdentityGpuTests(ITestOutputHelper output)
+public sealed partial class ShaderGatePixelIdentityGpuTests(ITestOutputHelper output)
 {
     const int W = 256, H = 144, Frames = 6;
     const int Bands = 4;
@@ -64,6 +64,7 @@ public sealed class ShaderGatePixelIdentityGpuTests(ITestOutputHelper output)
         }
 
         internal Scene3D Scene { get; }
+        internal IGpuDevice Device => _gpu.GpuDevice;
 
         internal Attachments Frame(Action<Scene3D, int> draw)
         {

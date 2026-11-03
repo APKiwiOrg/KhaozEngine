@@ -15,4 +15,10 @@ public enum ShaderGateProbe
     UnderwaterMarchZero = 2,
     /// <summary>Reuse the current world position as the previous one on a rigid instance whose transform did not change.</summary>
     RigidWorldReuse = 4,
+    /// <summary>Reuse the converted internal Lanczos pair only at exactly equal internal and display sizes.</summary>
+    LanczosExactSizeReuse = 8,
+    /// <summary>Skip specular vectors and powers only at exactly zero specular strength.</summary>
+    ZeroSpecular = 16,
+    /// <summary>Reuse a material evaluation for a repeated tile slot, preserving every weighted addition.</summary>
+    TileSlotReuse = 32,
 }

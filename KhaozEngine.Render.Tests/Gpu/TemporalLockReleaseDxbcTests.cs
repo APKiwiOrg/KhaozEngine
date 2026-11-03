@@ -8,6 +8,7 @@ using Xunit.Abstractions;
 namespace KhaozEngine.Tests.Gpu;
 
 /// <summary>Requires the real FXC listings to branch around the shipped release's twelve scalar barrier ORs.
+/// The private probe compares baseline GLSL with only gate text removed, without recertifying the new branches.
 /// Task 7h Z round 2 retains the branch through FXC. D prime keeps its unqualified helper call.</summary>
 public sealed class TemporalLockReleaseDxbcTests(ITestOutputHelper output)
 {
@@ -30,12 +31,12 @@ public sealed class TemporalLockReleaseDxbcTests(ITestOutputHelper output)
 
     [Theory]
     [MemberData(nameof(AdditionalPrograms))]
-    public void EveryAdditionalShippedProgramHasCurrentUnmarkedConditionalBarriers(string program)
+    public void EveryAdditionalBaselineProgramHasUnmarkedConditionalBarriers(string program)
     {
         string source = TemporalLockReleaseDxbcPrograms.Additional.Single(p => p.Name == program).Source;
         string pin = Path.Combine(AppContext.BaseDirectory, "Fixtures", "taa-visibility-dxbc",
             program + ".shipped.glsl.sha256");
-        Assert.Equal(TemporalVisibilityFrozenD.Sha256(source), File.ReadAllText(pin).Trim());
+        Assert.Equal(TemporalVisibilityFrozenD.Sha256(CandidateGateSource.WithoutGates(source)), File.ReadAllText(pin).Trim());
         string listing = TemporalVisibilityDxbcRealProgramTests.Load(program, d: false);
         Assert.DoesNotContain("[precise", listing, StringComparison.Ordinal);
         if (program.Contains("FullyLit", StringComparison.Ordinal))

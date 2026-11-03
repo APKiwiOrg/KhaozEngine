@@ -266,21 +266,35 @@ void main() {
         tw /= tw.x + tw.y + tw.z;
     }
 
+    bool reuseSlots = (int(IndirectParams.w) & 2) != 0;
+    vec3 materialSamples[5];
     vec3 albedo = vec3(0.0);
     for (int L = 0; L < 5; L++) {
         float wl = w[L];
         if (wl <= 0.001) continue;
         int sl = slot[L];
-        vec3 c = sampleMaterial(sl, wpAbs, dWx, dWy, tw, tri);
-        // The material's steep companion, a property of the MATERIAL whatever slot role it fills here. Its own
-        // companion is never followed. A material with none, or a slope below its band, takes no extra tap.
-        vec4 sb = SteepBand[sl];
-        if (sb.x > 0.5) {
-            float s = 1.0 - smoothstep(sb.y, sb.z, ny);
-            if (s > 0.0) {
-                c = mix(c, sampleMaterial(clamp(int(sb.x - 0.5), 0, maxSlot), wpAbs, dWx, dWy, tw, tri), s);
+        int reuse = -1;
+        if (reuseSlots) {
+            for (int P = 0; P < L; P++) {
+                if (w[P] > 0.001 && slot[P] == sl) { reuse = P; break; }
             }
         }
+        vec3 c;
+        if (reuse >= 0) {
+            c = materialSamples[reuse];
+        } else {
+            c = sampleMaterial(sl, wpAbs, dWx, dWy, tw, tri);
+            // The material's steep companion, a property of the MATERIAL whatever slot role it fills here. Its own
+            // companion is never followed. A material with none, or a slope below its band, takes no extra tap.
+            vec4 sb = SteepBand[sl];
+            if (sb.x > 0.5) {
+                float s = 1.0 - smoothstep(sb.y, sb.z, ny);
+                if (s > 0.0) {
+                    c = mix(c, sampleMaterial(clamp(int(sb.x - 0.5), 0, maxSlot), wpAbs, dWx, dWy, tw, tri), s);
+                }
+            }
+        }
+        if (reuseSlots) materialSamples[L] = c;
         albedo += wl * c;
     }
     // The per-vertex jitter is the soft tile-to-tile brightness variation the colour path already had, kept here so

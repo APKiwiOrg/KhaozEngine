@@ -57,7 +57,7 @@ namespace KhaozEngine.Tests.Gpu
         {
             if (program == Helper)
                 return d ? D3D11FxcValidationTests.DHelperProgram : TemporalVisibilityCompiledFormTests.DecisionHelperProgram;
-            string source = D3D11FxcValidationTests.VisibilityPrograms.Single(p => p.Name == program).Source;
+            string source = CandidateGateSource.WithoutGates(D3D11FxcValidationTests.VisibilityPrograms.Single(p => p.Name == program).Source);
             return d ? TemporalVisibilityFrozenD.ToD(source) : source;
         }
 
@@ -79,15 +79,15 @@ namespace KhaozEngine.Tests.Gpu
         }
 
         /// <summary>Task 7h Z recaptured every stale fixture in hosted run 39636752557. This set is empty, so every
-        /// source pin must match the current GLSL on both sides.</summary>
+        /// source pin must match the baseline GLSL on both sides. Probe gates are not FXC-certified by these fixtures.</summary>
         internal static readonly string[] StaleUntil7g3b = [];
 
-        /// <summary>Each fixture is FXC's compile of the GLSL the code builds today: the SHA-256 of that text,
+        /// <summary>Each fixture is FXC's compile of the baseline GLSL before the private probe gates: the SHA-256 of that text,
         /// LF line endings, UTF-8, equals the one stored beside the fixture. A program in
         /// <see cref="StaleUntil7g3b"/> passes only while both source pins differ.</summary>
         [Theory]
         [MemberData(nameof(Programs))]
-        public void EachFixtureWasCompiledFromTheCurrentGlsl(string program)
+        public void EachFixtureWasCompiledFromTheProbeBaselineGlsl(string program)
         {
             var stale = new List<string>();
             foreach (bool d in new[] { true, false })
@@ -96,7 +96,7 @@ namespace KhaozEngine.Tests.Gpu
                 string stored = File.ReadAllText(Path.Combine(Fixtures, fixture + ".glsl.sha256")).Trim();
                 string current = TemporalVisibilityFrozenD.Sha256(Glsl(program, d));
                 if (stored != current)
-                    stale.Add($"{fixture}.dxbc.gz was dumped from GLSL hashing {stored}, and the code now builds GLSL "
+                    stale.Add($"{fixture}.dxbc.gz was dumped from GLSL hashing {stored}, and the probe baseline builds GLSL "
                         + $"hashing {current}.");
             }
             if (StaleUntil7g3b.Contains(program))

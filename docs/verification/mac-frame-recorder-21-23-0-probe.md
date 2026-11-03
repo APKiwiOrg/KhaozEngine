@@ -4,10 +4,10 @@ NEVER MERGE this diagnostic archive into `main`. Branch
 `fix/mac-frame-recorder-21-23-0-probe` starts exactly at released `v21.23.0`, commit
 `cc5771ccc0a21593c07a0e0c1e20eb5f3b17377b`. It ports recorder commits `1066ce936` and
 `5b6a423bd` and extends their evidence. No engine pin, version, draws, passes, copies, encoder count, public
-timestamp pools, frames in flight, framebufferOnly policy, capture taps or waits change. Schema 11 alternates
-committing offscreen work before drawable acquisition. The three shader gates and the directional cascade
-depth and stencil store experiment stay in the tree, off in every recorder block.
-`KhaozEngine.Render3D` differs from the base tag only for the three gates and their plumbing.
+timestamp pools, frames in flight, framebufferOnly policy, capture taps or waits change. Schema 12 keeps early
+offscreen submit, the point-shadow zero-N dot L gate and cascade depth discard on in every sampling block.
+It rotates three further shader cuts on top of that candidate frame.
+`KhaozEngine.Render3D` differs from the base tag only for the six gates and their plumbing.
 Only `KhaozEngine.Render3D`, `KhaozEngine.Gpu.Metal`, `KhaozEngine.Windowing` and `KhaozEngine.Game.Render3D`
 contain modified production source. This archive is never released or packaged.
 
@@ -39,13 +39,14 @@ It cannot exclude changes that reverse between callbacks. Cap and vsync changes 
 the summary. Require cap 0 and vsync true at baseline, end and both sample window states when
 comparing the intended scene. `cadenceCapped=true` is expected with vsync.
 
-## Schema 11
+## Schema 12
 
 The existing top-level cadence fields remain `processId`, `appAssembly`, `engineAssembly`,
 `stopwatchFrequency`, `durationSeconds`, `sampleCount`, `stopReason`, `baseline`, `end`,
-`samples` and `summary`. `schemaVersion` is 11. All schema 7 to 10 fields retain their meaning, except that
-`passTiming.blocks[].timed` is true in every block since schema 9 and `experiment.blocks[].discard` is false in every
-block since schema 10. `shaderGates.schedule[].gates` is zero in every block since schema 11. Its additional top-level fields are:
+`samples` and `summary`. `schemaVersion` is 12. Schema 7 to 11 fields retain their meaning. The scheduled treatments change:
+`passTiming.blocks[].timed`, `experiment.blocks[].discard` and `earlySubmit.schedule[].enabled` are true in every
+sampling block. `shaderGates.schedule[].gates` rotates 1, 9, 17, 33 in blocks of 72 callbacks. The first block is the
+candidate alone. G2 and G3 stay off. Its additional top-level fields are:
 
 - `identity`: process id, executable path, command-line argument array, every loaded assembly whose
   name starts with KhaozEngine or Grimhollow, and sorted KE_* environment names and values.
@@ -69,7 +70,7 @@ block since schema 10. `shaderGates.schedule[].gates` is zero in every block sin
   signatures, encoder records and explicit evidence-loss counters described below.
 - `shaderGates`: gate names, block schedule, the state each callback applied and counts, described under Shader gates.
 - `earlySubmit`: `blockCallbacks` 72, `schedule`, `appliedPerCallback`, `tailDeviceWorkPerCallback`,
-  `prefixUniformRewritesPerCallback`, `tailDeviceWorkTotal` and `prefixUniformRewritesTotal`, described under Early
+  `prefixUniformRewritesPerCallback`, `appliedCallbacks`, `tailDeviceWorkTotal` and `prefixUniformRewritesTotal`, described under Early
   offscreen commit.
 
 ## Native timing records
@@ -289,8 +290,8 @@ batch is outside the frame list and is not recorded. Standalone multisample reso
 
 ## Early offscreen commit
 
-Schema 11 tests #1682. Sampling blocks of 72 callbacks alternate OFF then ON, starting OFF. Per-encoder timing,
-labels and transfers stay on in both states. Shader gates and cascade discard stay off. Outside sampling, including
+Schema 11 introduced #1682. Schema 12 schedules early submit ON in every 72-callback block as part of the candidate
+frame, together with G1 and cascade discard. Per-encoder timing, labels and transfers stay on. Outside sampling, including
 when `KE_FRAME_DIAGNOSTICS_PATH` is absent, there is no early submission.
 
 `MetalCommandList.SetFramebuffer` reaches the split only for the frame list's first bind of an unresolved swapchain
@@ -337,9 +338,11 @@ one command buffer. An externally held mapped pointer must still obey the ordina
 `earlySubmit.schedule` contains `startCallback`, `endCallbackExclusive`, `startTimestamp`, `endTimestamp` and `enabled`.
 `appliedPerCallback` is true if at least one prefix actually committed in that callback. An ON block can contain false
 entries, for example a suppressed frame, an already acquired drawable, an open blit or compute encoder, a public timestamp batch or no swapchain bind.
-The state is scheduled treatment, and the applied flag exposes whether the mechanism ran.
+The state is scheduled treatment, and the applied flag exposes whether the mechanism ran. `appliedCallbacks` counts
+true flags. Early submit no longer alternates, so this count establishes whether the fixed candidate was exercised.
 
-`gpuSummary.earlySubmitStates` contains OFF and ON entries with:
+`gpuSummary.earlySubmitStates` retains OFF and ON entries for schema compatibility. OFF has no scheduled callbacks in
+schema 12. ON describes the entire capture, so use the shader-gate state summaries for the treatment comparison. Fields:
 
 - `enabled`, `scheduledCallbacks`, `appliedCallbacks` and `settledCallbacks`.
 - `callbackIntervalMs` and `framesPerSecond`, from the callback samples in that state.
@@ -381,7 +384,7 @@ remain limitations. No claim about the 144 Hz budget follows from this probe alo
 ## Shader gates
 
 The shading study found work whose result is already known exactly, and capture 03 had shown the bandwidth fixes were
-small. Three switches skip that work. Each is a uniform branch, so no shader recompiles mid-capture. `ShaderGateProbe`
+small. Six switches skip that work. Each is a uniform branch, so no shader recompiles mid-capture. `ShaderGateProbe`
 holds the mask, `Scene3D.ProbeShaderGates` the current value, off by default.
 
 | Name | Bit | Switch | Skips |
@@ -389,8 +392,11 @@ holds the mask, `Scene3D.ProbeShaderGates` the current value, off by default.
 | `pointShadowZeroNdl` (#1676) | 1 | `IndirectParams.y` | `samplePointShadowCombined` when the banded `ndl` is not above 0. `ndl` then zeroes both diffuse and specular, whatever `att` holds |
 | `underwaterMarchZero` (#1675) | 2 | `IndirectParams.z` | The remaining slices once `floatBitsToUint(visibility) == 0u`. Later slices only multiply positive zero by a value in 0 to 1. The receiver coverage fade after the loop still runs |
 | `rigidWorldReuse` (#1679) | 4 | `MotionParams.y` | `prevModel * Position` for slot -1, reusing `world`. `PrevViewProj` still applies |
+| `lanczosExactSizeReuse` (#1680, G4) | 8 | temporal `Params.w` | The display Lanczos pair reuses the internal pair after its existing conversion, only when both internal dimensions exactly equal the display dimensions |
+| `zeroSpecular` (#1678, G5) | 16 | `IndirectParams.w`, bit 0 | View and half vectors and specular powers at exactly zero strength. Small positive strengths take the original path. Diffuse, key visibility, indirect light, fog and accumulation order remain unchanged |
+| `tileSlotReuse` (#1677, G6) | 32 | `IndirectParams.w`, bit 1 | A repeated active tile slot reuses its earlier full material evaluation, including its steep companion. Every weight threshold, iteration and `albedo += wl * c` stays in place |
 
-Neither frame block changed layout: the switches take components nothing else reads, zero when off, so those bytes
+No uniform block changed layout: the switches take components nothing else reads, zero when off, so those bytes
 equal the released upload. The conditions are exact on purpose. No epsilon, no geometric normal and no change to
 accumulation order. The study's optional entry filter bypass is left out: it would have to reproduce each strength
 and coverage mix in `sampleKeyShadow`, and no measurement says it is worth that.
@@ -403,8 +409,9 @@ and wind-deformed vertices use other programs and never qualify.
 
 `GameApp3D` registers `SceneFrameShaderGates` through `AppWindow.RegisterFrameDiagnosticsShaderGates` only when the
 recorder is requested. The recorder's opening boundary is before prepare or update, so one callback sees one state.
-Since schema 11, every callback applies baseline with all gates zero. The retained test-only gate-block switch
-rotates baseline, `pointShadowZeroNdl`, `underwaterMarchZero`, `rigidWorldReuse` in blocks of 72 callbacks.
+Schema 12 rotates candidate (G1), candidate+G4, candidate+G5, candidate+G6 in blocks of 72 callbacks, starting
+with candidate. Exact masks are 1, 9, 17, 33. Early submit and cascade discard stay on in every block. The retained
+test-only legacy schedule rotates baseline, G1, G2, G3, preserving the earlier schema contracts.
 The schedule leaves the gates alone until sampling starts, and turns them off at the last boundary and on every failure and
 disposal. After that it never applies a nonzero mask. Nothing else in the engine sets the property.
 
@@ -414,11 +421,15 @@ Top-level `shaderGates` holds:
 - `schedule`: `startCallback`, `endCallbackExclusive`, `startTimestamp`, `endTimestamp`, `state` and `gates`.
 - `appliedPerCallback`: one value per sample, the mask that callback's frames actually uploaded, read back from the scene.
   -1 means no frame rendered, -2 means renders disagreed and -3 means nothing was registered.
+- `exactSizePerCallback`: active TAA with exact internal/display dimension equality, 1 when true and 0 when false,
+  regardless of whether G4 is enabled. Negative values use the same no-frame, mixed-render and unregistered sentinels.
+  This condition is separate from the applied mask. A scheduled G4 with condition 0 measured no eligible reuse.
 - `counts`: per state `blocks`, `scheduledCallbacks`, `matchingCallbacks`, `noFrameCallbacks`, `mismatchedCallbacks`
   (which includes -2 and -3). `applyFailures` sits beside it.
 
 `gpuSummary.shaderGateStates` has one entry per state with `state`, `gates`, `mainPassLabel`, `settledCallbacks`,
-`frameCompletionIntervalMs` (the same-block adjacency rule above) and three kinds of main pass input. The main pass is the
+`frameCompletionIntervalMs` and `gpuIdlePerFrameMs` (the same-block adjacency and complete prefix/final pair rules above),
+and labelled main-pass and TAA inputs. The main pass is the
 encoder labelled `opaque.rigid` when it opened. Terrain, foliage and skinned draws usually share that encoder under their
 own scopes, so these are the whole forward target, not rigid geometry alone.
 
@@ -426,11 +437,38 @@ own scopes, so these are the whole forward target, not rigid geometry alone.
 - `mainPassExclusiveVertexMs`, `mainPassExclusiveFragmentMs`: each instant of GPU time split evenly among the stage intervals
   active at it, summed per callback, the same sweep capture 03's offline analysis used. Valid records only.
 - `attributedBusyMs`: the same sweep's total per callback.
+- `taaPassLabel`, `taaPassFragmentMs` and `taaPassExclusiveFragmentMs`: `temporal.accumulate`, its raw fragment span
+  and its fragment share from the same attribution sweep. All stages, including other passes and callbacks, participate
+  in the sweep's denominator. Raw spans are empty without matching labels or valid clock calibration. Exclusive
+  shares are zero on settled callbacks with no matching stage, so inspect the raw coverage before interpreting a zero.
 
 The exclusive values and `settledCallbacks` skip 3 callbacks at each block edge, because overlap there reaches a
 neighbouring state. Raw records stay in the report for offline analysis.
 
 ### Pixel identity evidence
+
+Schema 12 adds `Candidate_GPU_cuts_preserve_every_main_attachment_and_temporal_history_bit`, run once through an
+isolated host alongside the existing native smoke. It is gated by `KE_GPU_TESTS=1`, headless, and creates no window,
+swapchain or drawable. Each arm runs six deterministic frames through real `Scene3D` and the split TAA path at
+256x144 with equal internal and display dimensions. G1 is enabled in both arms. The baseline repeats once to detect
+scene nondeterminism before comparing G4, G5 and G6 individually.
+
+The scene has adjacent `Material.None` and strength 0.001 model draws plus a point light. A separate zero-strength
+control must change HDR bytes, proving that the small positive path contributes. Terrain has five active slot roles
+(0,0,1,0,0), nonuniform texels, a steep companion and triplanar shading. Reuse preserves all five additions.
+Depth reconstruction outside shading counts qualifying zero-strength, positive-strength and repeated-slot ground
+fragments. G4 covers every accumulation pixel at exact size. These are eligibility counts, not GPU branch counters.
+
+Every frame compares raw HDR color, normals, scene depth, motion, key visibility and display bytes. It also compares
+hardware depth and stencil as separate native Metal planes, plus the current TAA color, confidence and previous-depth
+history outputs. The previous frame's history was checked when written, so both live history generations are covered
+after warmup. Native readbacks run after each frame's ordinary drain, outside timed shading. The tests add no capture
+taps or readbacks to the recorder. The single Apple M2 Max execution passed both native cases. Every compared attachment and history output had zero
+differing bytes in every frame for all three gates. The final-frame reconstruction counted 11,124 zero-strength and
+11,124 small-positive model fragments plus 14,616 repeated-slot ground fragments. Removing the small positive
+specular changed 8,220 HDR bytes. The external implementer report retains commands and raw evidence locations.
+
+Earlier gate evidence is retained:
 
 `ShaderGatePixelIdentityGpuTests` is gated by `KE_GPU_TESTS=1` and needs no window or swapchain. For each gate it renders a
 small deterministic scene through `Scene3D` with temporal rendering and HDR on for six frames, off twice and on once,
@@ -454,8 +492,11 @@ Limits:
   need a build of the released tree. `NonWaterShaderSourceEqualityTests` shows each stage's GLSL with the gate text taken out
   still hashes to the released capture. The baseline blocks may still differ from v21.23.0 in timing or bits if the Metal
   compiler optimizes the new branches differently.
-- The compiled SPIR-V, MSL and HLSL hash tables are rebaked for this archive. The gates move 30 lit fragment programs and the
-  rigid motion vertex with its visibility variant, 32 of each table's rows. No other row moved.
+- Frozen D source pins and FXC disassembly fixtures remain unchanged. Their source comparisons undo the private
+  probe gate text exactly, preserving their baseline contract. They do not certify FXC's lowering of G4. The native
+  pixel proof here is Metal only.
+- The compiled SPIR-V, MSL and HLSL hash tables are rebaked for this archive. The exact changed rows are recorded
+  in the external report. The GLSL table stays the released capture. Exact inverse replacements remove only probe gate text before hashing, and the uploaded switches and branch guards have separate tests.
 
 ### Measurement limits for the gates
 
@@ -470,10 +511,11 @@ Limits:
 
 ## Cascade depth-discard experiment
 
-Off in every recorder block since schema 10, because capture 03 measured it. `MetalPassTimingCapture(discardBlocks: true)`
-turns it back on, and only its tests and the native smoke do that. Top-level `experiment` has `name` `cascadeDepthDiscard`,
-`blockCallbacks` 72 and `blocks`, whose entries repeat the pass timing block bounds with `discard`. With the experiment on,
-blocks alternate starting with discard off. It counts `openedUnknown`,
+Schema 12 keeps discard on in every recorder block as part of the candidate. `candidateDiscard: true` selects this
+fixed schedule. `discardBlocks: true` retains the older alternating schedule for its tests and native smoke.
+Top-level `experiment` has `name` `cascadeDepthDiscard`, `blockCallbacks` 72 and `blocks`, whose entries repeat the
+pass timing block bounds with `discard`. The legacy test schedule alternates starting with discard off. The candidate
+schedule always discards. It counts `openedUnknown`,
 `dontCareApplied`, `keptStoreScopeOpen`, `resolvedDuringStop`, `resolveFailures`, `unresolvedEncoders`,
 `descriptorFailures` and `directionalEncodersOff`. `openedUnknown` equals the sum of the second through sixth.
 
@@ -514,7 +556,8 @@ Paths are under `KhaozEngine.Render3D/`. The gates changed none of these lines' 
 - Nothing draws to that framebuffer after the scope without rebinding it. The next pass binds its own framebuffer,
   which is also what normally ends this encoder after the scope has closed.
 
-This argument has not been checked by a pixel comparison.
+The unchanged cascade-discard argument has not been checked by a pixel comparison. The schema 12 GPU identity case
+checks the three new shader gates, with cascade shadows disabled in its deterministic scene.
 
 ### Measurement limits
 
@@ -574,9 +617,10 @@ One separately gated native smoke case records a headless offscreen render, seri
 blit encoder, then two passes over a Depth32Float_Stencil8 attachment through the real sink, opened Unknown and
 resolved to Store and DontCare. It commits once, waits for that buffer and resolves real stage timestamps. Its temporary
 isolated test host links the same test source to avoid unrelated GPU probes during suite discovery.
-This increment changes no KhaozEngine.Render3D source. The source diff against v21.23.0 for KhaozEngine.Render3D remains
-limited to the three gates and their plumbing. Verification
+Schema 12 tests cover the fixed candidate schedule, all new uploaded switch values, the exact-size condition flag,
+per-state TAA exclusive attribution, split-frame idle arithmetic and serialization. The source diff against v21.23.0
+for KhaozEngine.Render3D remains limited to the six gates and their plumbing. Verification
 commands, results, source identities and limitations belong in the implementer's external report.
 CPU tests do not prove native handler delivery, actual GPU timing validity, physical presentation,
 pixel identity or an FPS improvement. The gated GPU test is the pixel identity evidence, with the limits above. The parent owns DLL substitution and the single human-launched
-capture. No windowed app, push, merge, release, package publication or tag is part of this archive.
+capture. No windowed app, merge, release, package publication or tag is part of this archive. Only the private probe branch is pushed.

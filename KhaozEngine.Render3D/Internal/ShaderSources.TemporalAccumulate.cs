@@ -161,8 +161,13 @@ TemporalKernels temporalKernels(vec2 pixelCentre, ivec2 centreTexel, ivec2 maxTe
         vec2 toSample = vec2(texel) + 0.5 - jitter - pixelCentre;
         kernels.x[i] = toAfloat(lanczos2(toSample.x));
         kernels.y[i] = toAfloat(lanczos2(toSample.y));
-        kernels.displayX[i] = toAfloat(lanczos2(toSample.x * displayOverInternal));
-        kernels.displayY[i] = toAfloat(lanczos2(toSample.y * displayOverInternal));
+        if (Params.w > 0.5 && all(equal(Sizes.xy, Sizes.zw))) {
+            kernels.displayX[i] = kernels.x[i];
+            kernels.displayY[i] = kernels.y[i];
+        } else {
+            kernels.displayX[i] = toAfloat(lanczos2(toSample.x * displayOverInternal));
+            kernels.displayY[i] = toAfloat(lanczos2(toSample.y * displayOverInternal));
+        }
     }
     return kernels;
 }

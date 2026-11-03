@@ -99,8 +99,8 @@ public sealed class FrameDiagnosticsShaderGateTests : IDisposable
 
         using var json = JsonDocument.Parse(File.ReadAllText(ResultPath));
         JsonElement report = json.RootElement.GetProperty("shaderGates");
-        Assert.Equal(11, json.RootElement.GetProperty("schemaVersion").GetInt32());
-        Assert.Equal(new[] { "pointShadowZeroNdl", "underwaterMarchZero", "rigidWorldReuse" },
+        Assert.Equal(12, json.RootElement.GetProperty("schemaVersion").GetInt32());
+        Assert.Equal(new[] { "pointShadowZeroNdl", "underwaterMarchZero", "rigidWorldReuse", "lanczosExactSizeReuse", "zeroSpecular", "tileSlotReuse" },
             report.GetProperty("names").EnumerateArray().Select(n => n.GetString()));
         Assert.Equal(72, report.GetProperty("blockCallbacks").GetInt32());
         JsonElement[] schedule = report.GetProperty("schedule").EnumerateArray().ToArray();

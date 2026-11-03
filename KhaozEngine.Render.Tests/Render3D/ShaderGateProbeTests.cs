@@ -18,30 +18,38 @@ public sealed class ShaderGateProbeTests
 {
     const int IndirectTail = (int)IndirectUniforms.TailOffset;
 
-    static (Vector4 Indirect, Vector4 Motion, int Applied) Frame(ShaderGateProbe gates)
+    static (Vector4 Indirect, Vector4 Motion, Vector4 Temporal, int Applied) Frame(ShaderGateProbe gates)
     {
         using var scene = new MotionTestScene();
         scene.Scene.ForceTemporalForTests = true;
+        scene.Scene.Post.Quality.AntiAliasing = AntiAliasing.Temporal;
+        scene.Scene.Post.RenderScale = RenderScale.MatchViewport;
         if (gates != ShaderGateProbe.None) scene.Scene.ProbeShaderGates = gates;
         scene.Scene.PrepareFrame();
         using var commands = new RecordingGpuCommandList(new NullGpuCommandList()) { CapturePayloads = true };
         scene.Scene.RenderInternal(commands, MotionTestScene.Width, MotionTestScene.Height, scene.Target);
         byte[] motion = commands.ToBuffersOfSize(MotionFrameUbo.SizeInBytes).Last().Data!;
         return (MemoryMarshal.Read<Vector4>(scene.Scene.FrameImageForTests[IndirectTail..]),
-            MemoryMarshal.Read<MotionFrameUbo>(motion).Params, scene.Scene.ConsumeAppliedProbeShaderGates());
+            MemoryMarshal.Read<MotionFrameUbo>(motion).Params,
+            MemoryMarshal.Read<TemporalResolveUniforms>(commands.ToBuffersOfSize(TemporalResolveUniforms.SizeInBytes).Last().Data!).Params,
+            scene.Scene.ConsumeAppliedProbeShaderGates());
     }
 
     [Theory]
-    [InlineData(ShaderGateProbe.None, 0f, 0f, 0f)]
-    [InlineData(ShaderGateProbe.PointShadowZeroNdl, 1f, 0f, 0f)]
-    [InlineData(ShaderGateProbe.UnderwaterMarchZero, 0f, 1f, 0f)]
-    [InlineData(ShaderGateProbe.RigidWorldReuse, 0f, 0f, 1f)]
+    [InlineData(ShaderGateProbe.None, 0f, 0f, 0f, 0f, 0f)]
+    [InlineData(ShaderGateProbe.PointShadowZeroNdl, 1f, 0f, 0f, 0f, 0f)]
+    [InlineData(ShaderGateProbe.UnderwaterMarchZero, 0f, 1f, 0f, 0f, 0f)]
+    [InlineData(ShaderGateProbe.RigidWorldReuse, 0f, 0f, 1f, 0f, 0f)]
+    [InlineData(ShaderGateProbe.LanczosExactSizeReuse, 0f, 0f, 0f, 0f, 1f)]
+    [InlineData(ShaderGateProbe.ZeroSpecular, 0f, 0f, 0f, 1f, 0f)]
+    [InlineData(ShaderGateProbe.TileSlotReuse, 0f, 0f, 0f, 2f, 0f)]
     public void A_frame_uploads_only_its_own_gate_and_reports_what_it_applied(ShaderGateProbe gates, float pointShadow,
-        float underwater, float rigid)
+        float underwater, float rigid, float extra, float lanczos)
     {
-        var (indirect, motion, applied) = Frame(gates);
-        Assert.Equal(new Vector4(0f, pointShadow, underwater, 0f), indirect);
+        var (indirect, motion, temporal, applied) = Frame(gates);
+        Assert.Equal(new Vector4(0f, pointShadow, underwater, extra), indirect);
         Assert.Equal(rigid, motion.Y);
+        Assert.Equal(lanczos, temporal.W);
         Assert.Equal((int)gates, applied);
     }
 
@@ -75,6 +83,9 @@ public sealed class ShaderGateProbeTests
         Assert.Equal((int)ShaderGateProbe.PointShadowZeroNdl, 1 << Array.IndexOf(names, "pointShadowZeroNdl"));
         Assert.Equal((int)ShaderGateProbe.UnderwaterMarchZero, 1 << Array.IndexOf(names, "underwaterMarchZero"));
         Assert.Equal((int)ShaderGateProbe.RigidWorldReuse, 1 << Array.IndexOf(names, "rigidWorldReuse"));
+        Assert.Equal((int)ShaderGateProbe.LanczosExactSizeReuse, 1 << Array.IndexOf(names, "lanczosExactSizeReuse"));
+        Assert.Equal((int)ShaderGateProbe.ZeroSpecular, 1 << Array.IndexOf(names, "zeroSpecular"));
+        Assert.Equal((int)ShaderGateProbe.TileSlotReuse, 1 << Array.IndexOf(names, "tileSlotReuse"));
         gates.Apply(4);
         Assert.Equal(ShaderGateProbe.RigidWorldReuse, scene.Scene.ProbeShaderGates);
         scene.Render();
@@ -86,6 +97,10 @@ public sealed class ShaderGateProbeTests
     [Fact]
     public void Each_gate_tests_exactly_the_condition_that_keeps_the_result_identical()
     {
+        Assert.Contains("Params.w > 0.5 && all(equal(Sizes.xy, Sizes.zw))", ShaderSources.TemporalAccumulateFrag);
+        Assert.Contains("(int(IndirectParams.w) & 1) == 0 || specStrength != 0.0", ShaderSources.ModelFrag);
+        Assert.Contains("if (w[P] > 0.001 && slot[P] == sl)", ShaderSources.TileGroundFrag);
+        Assert.Contains("albedo += wl * c;", ShaderSources.TileGroundFrag);
         Assert.Contains("(IndirectParams.y < 0.5 || ndl > 0.0)", ShaderSources.ModelFrag);
         Assert.Contains("if (IndirectParams.z > 0.5 && floatBitsToUint(visibility) == 0u) break;", ShaderSources.ModelFrag);
         Assert.Contains("PrevViewProj * (MotionParams.y > 0.5 && slot < 0 ? world : prevModel * vec4(Position, 1.0))",

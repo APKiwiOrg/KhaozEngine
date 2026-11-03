@@ -13,7 +13,7 @@ namespace KhaozEngine.Tests.Windowing;
 public sealed class FrameDiagnosticsEarlySubmitTests
 {
     [Fact]
-    public void Schema_11_alternates_early_submit_from_off_and_keeps_shader_experiments_off()
+    public void Schema_12_keeps_the_candidate_on_and_rotates_three_additional_gates()
     {
         string directory = Path.Combine("/tmp/khaozengine-mac-frame-performance/early-submit-ab", Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(directory);
@@ -21,31 +21,37 @@ public sealed class FrameDiagnosticsEarlySubmitTests
         try
         {
             var gatesApplied = new Gates();
-            using (var recorder = new FrameDiagnosticsRecorder(path, 1000, capacity: 150, shaderGates: gatesApplied))
+            using (var recorder = new FrameDiagnosticsRecorder(path, 1000, capacity: 300, shaderGates: gatesApplied))
             {
                 File.WriteAllText(path + ".start", "");
                 var window = new FrameDiagnosticsWindowState(true, false, false, 800, 600, 0, false);
                 recorder.Observe(.001, 1, window, default);
-                for (int boundary = 0; boundary <= 150; boundary++)
+                for (int boundary = 0; boundary <= 300; boundary++)
                     recorder.Observe(.001, 1000 + boundary, window, default);
             }
             using var json = JsonDocument.Parse(File.ReadAllText(path));
             var root = json.RootElement;
-            Assert.Equal(11, root.GetProperty("schemaVersion").GetInt32());
+            Assert.Equal(12, root.GetProperty("schemaVersion").GetInt32());
             var early = root.GetProperty("earlySubmit");
             Assert.Equal(72, early.GetProperty("blockCallbacks").GetInt32());
             var blocks = early.GetProperty("schedule").EnumerateArray().ToArray();
-            Assert.Equal(new[] { false, true, false }, blocks.Select(b => b.GetProperty("enabled").GetBoolean()));
-            Assert.Equal(new[] { 0, 72, 144 }, blocks.Select(b => b.GetProperty("startCallback").GetInt32()));
-            Assert.Equal(new[] { 72, 144, 150 }, blocks.Select(b => b.GetProperty("endCallbackExclusive").GetInt32()));
-            Assert.Equal(150, early.GetProperty("appliedPerCallback").GetArrayLength());
+            Assert.Equal(new[] { true, true, true, true, true }, blocks.Select(b => b.GetProperty("enabled").GetBoolean()));
+            Assert.Equal(new[] { 0, 72, 144, 216, 288 }, blocks.Select(b => b.GetProperty("startCallback").GetInt32()));
+            Assert.Equal(new[] { 72, 144, 216, 288, 300 }, blocks.Select(b => b.GetProperty("endCallbackExclusive").GetInt32()));
+            Assert.Equal(300, early.GetProperty("appliedPerCallback").GetArrayLength());
             Assert.All(early.GetProperty("appliedPerCallback").EnumerateArray(), v => Assert.False(v.GetBoolean()));
+            Assert.Equal(0, early.GetProperty("appliedCallbacks").GetInt32());
             Assert.Equal(0, gatesApplied.Mask);
             var gateReport = root.GetProperty("shaderGates");
-            Assert.All(gateReport.GetProperty("appliedPerCallback").EnumerateArray(), v => Assert.Equal(0, v.GetInt32()));
+            Assert.Equal(new[] { 1, 9, 17, 33, 1 }, gateReport.GetProperty("appliedPerCallback").EnumerateArray()
+                .Where((_, i) => i % 72 == 0).Select(v => v.GetInt32()));
+            Assert.Equal(300, gateReport.GetProperty("exactSizePerCallback").GetArrayLength());
+            Assert.All(gateReport.GetProperty("exactSizePerCallback").EnumerateArray(), v => Assert.Equal(1, v.GetInt32()));
             var gates = gateReport.GetProperty("schedule").EnumerateArray().ToArray();
             Assert.NotEmpty(gates);
-            Assert.All(gates, b => Assert.Equal(0, b.GetProperty("gates").GetInt32()));
+            Assert.Equal(new[] { 1, 9, 17, 33, 1 }, gates.Select(b => b.GetProperty("gates").GetInt32()));
+            Assert.Equal(new[] { "candidate", "lanczosExactSizeReuse", "zeroSpecular", "tileSlotReuse", "candidate" },
+                gates.Select(b => b.GetProperty("state").GetString()));
         }
         finally { Directory.Delete(directory, true); }
     }
@@ -55,6 +61,7 @@ public sealed class FrameDiagnosticsEarlySubmitTests
         internal int Mask = -1;
         public void Apply(int gates) => Mask = gates;
         public int ConsumeApplied() => Mask;
+        public int ConsumeExactSizeCondition() => 1;
     }
 
 }

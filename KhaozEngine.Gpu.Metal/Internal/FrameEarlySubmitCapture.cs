@@ -10,10 +10,13 @@ internal readonly record struct FrameEarlySubmitBlock(int StartCallback, int End
 /// PrefixUniformRewrites counts tail writes into a uniform buffer the committed prefix read, which marks that frame
 /// contaminated for comparison. The totals include work from threads other than the frame thread.</summary>
 internal sealed record FrameEarlySubmitSnapshot(int BlockCallbacks, FrameEarlySubmitBlock[] Schedule, bool[] AppliedPerCallback,
-    int[] TailDeviceWorkPerCallback, int[] PrefixUniformRewritesPerCallback, long TailDeviceWorkTotal, long PrefixUniformRewritesTotal);
+    int[] TailDeviceWorkPerCallback, int[] PrefixUniformRewritesPerCallback, long TailDeviceWorkTotal, long PrefixUniformRewritesTotal)
+{
+    public int AppliedCallbacks => AppliedPerCallback.Count(value => value);
+}
 
-/// <summary>Private recorder experiment. Blocks alternate off then on, on the frame thread only.</summary>
-internal sealed class FrameEarlySubmitCapture(int capacity)
+/// <summary>Private recorder experiment. The candidate keeps every block on. Tests retain off/on alternation.</summary>
+internal sealed class FrameEarlySubmitCapture(int capacity, bool candidate = false)
 {
     internal const int BlockCallbacks = 72;
     readonly FrameEarlySubmitBlock[] _blocks = new FrameEarlySubmitBlock[capacity / BlockCallbacks + 1];
@@ -29,7 +32,7 @@ internal sealed class FrameEarlySubmitCapture(int capacity)
     {
         if (_stopped || callback % BlockCallbacks != 0) return;
         Close(callback, timestamp);
-        Enabled = callback / BlockCallbacks % 2 == 1;
+        Enabled = candidate || callback / BlockCallbacks % 2 == 1;
         _blocks[_count++] = new(callback, callback, timestamp, timestamp, Enabled);
     }
 

@@ -416,9 +416,14 @@ void computeLighting(texture2D pointAtlas, texture2D pointTransientAtlas, sample
     // preserving the existing accumulation. Fill, indirect, point lights, emissive and fog keep their values.
     vec3 keyColor = LightColor.rgb * fragmentUnderwaterKey.transmittance;
     diffuse = keyColor*(ndlKey*keyShadow) + FillColor.rgb*ndlFill;
-    vec3 V = normalize(CameraPos.xyz - worldPos);
-    vec3 H = normalize(-normalize(LightDir.xyz) + V);
-    float spec = pow(max(dot(N,H),0.0), specExp) * specStrength * step(0.0001, ndlKey) * keyShadow;
+    bool evaluateSpecular = (int(IndirectParams.w) & 1) == 0 || specStrength != 0.0;
+    vec3 V = vec3(0.0);
+    float spec = 0.0;
+    if (evaluateSpecular) {
+        V = normalize(CameraPos.xyz - worldPos);
+        vec3 H = normalize(-normalize(LightDir.xyz) + V);
+        spec = pow(max(dot(N,H),0.0), specExp) * specStrength * step(0.0001, ndlKey) * keyShadow;
+    }
     specColor = keyColor*spec;
     // Dynamic point/effect lights (muzzle flashes, explosions, thrusters): accumulate diffuse (+ cheap
     // specular) with a windowed distance attenuation, on top of the key+fill term and back-face gated by
@@ -480,8 +485,11 @@ void computeLighting(texture2D pointAtlas, texture2D pointTransientAtlas, sample
                                              ndlRaw, pointLight.ShadowParams, worldPos);
         vec3 lc = pointLight.ColorIntensity.rgb;
         diffuse += lc * (ndl * att);
-        vec3 Hp = normalize(L + V);
-        float sp = pow(max(dot(N,Hp),0.0), specExp) * specStrength * step(0.0001, ndl);
+        float sp = 0.0;
+        if (evaluateSpecular) {
+            vec3 Hp = normalize(L + V);
+            sp = pow(max(dot(N,Hp),0.0), specExp) * specStrength * step(0.0001, ndl);
+        }
         specColor += lc * (sp * att);
     }
 }

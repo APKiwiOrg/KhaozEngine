@@ -47,8 +47,8 @@ internal sealed class FrameDiagnosticsRecorder : IDisposable
         _frequency = frequency;
         _samples = new FrameDiagnosticsSample[capacity];
         _annotations = new(annotator, capacity);
-        _shaderGates = new(shaderGates, capacity, rotate: shaderGateBlocks);
-        _earlySubmit = new(capacity);
+        _shaderGates = new(shaderGates, capacity, candidate: !shaderGateBlocks);
+        _earlySubmit = new(capacity, candidate: true);
         _timing = new(frameCommands, passTiming: CreatePassTiming(device), earlySubmit: _earlySubmit);
         _framesInFlight = (device as MetalGpuDevice)?.DiagnosticFramesInFlight;
         MetalFrameTimingNative.Prepare();
@@ -58,7 +58,7 @@ internal sealed class FrameDiagnosticsRecorder : IDisposable
         ? CreateMetalPassTiming(metal) : null;
 
     [SupportedOSPlatform("macos")]
-    static MetalPassTimingCapture CreateMetalPassTiming(MetalGpuDevice device) => new(new MetalPassTimingNative(device.Handle.Handle));
+    static MetalPassTimingCapture CreateMetalPassTiming(MetalGpuDevice device) => new(new MetalPassTimingNative(device.Handle.Handle), candidateDiscard: true);
 
     internal static bool IsEnabled => !string.IsNullOrEmpty(Environment.GetEnvironmentVariable("KE_FRAME_DIAGNOSTICS_PATH"));
     internal bool NeedsBoundary => _phase is Phase.Armed or Phase.Sampling;

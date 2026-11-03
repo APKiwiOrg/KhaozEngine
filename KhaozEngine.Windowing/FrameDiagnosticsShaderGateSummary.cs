@@ -12,7 +12,8 @@ internal sealed record FrameDiagnosticsShaderGateState(string State, int Gates, 
     FrameDiagnosticsDistribution FrameCompletionIntervalMs, FrameDiagnosticsDistribution MainPassVertexMs,
     FrameDiagnosticsDistribution MainPassFragmentMs, FrameDiagnosticsDistribution MainPassEncoderMs,
     FrameDiagnosticsDistribution MainPassExclusiveVertexMs, FrameDiagnosticsDistribution MainPassExclusiveFragmentMs,
-    FrameDiagnosticsDistribution AttributedBusyMs);
+    FrameDiagnosticsDistribution AttributedBusyMs, FrameDiagnosticsDistribution GpuIdlePerFrameMs,
+    string TaaPassLabel, FrameDiagnosticsDistribution TaaPassFragmentMs, FrameDiagnosticsDistribution TaaPassExclusiveFragmentMs);
 
 internal static class FrameDiagnosticsShaderGateSummary
 {
@@ -21,12 +22,14 @@ internal static class FrameDiagnosticsShaderGateSummary
     internal const string MainPassLabel = "opaque.rigid";
     /// <summary>Callbacks skipped at each block edge in the exclusive values, whose overlap can reach a neighbouring state.</summary>
     internal const int EdgeCallbacks = 3;
+    internal const string TaaPassLabel = "temporal.accumulate";
 
     internal static FrameDiagnosticsShaderGateState[] States(FrameTimingSnapshot timing, PassTimingSnapshot passes,
         PassLabelsSnapshot labels, FrameDiagnosticsShaderGateReport report)
     {
         int mainLabel = Array.IndexOf(labels.Labels, MainPassLabel);
-        var shares = ExclusiveShares(passes, mainLabel);
+        int taaLabel = Array.IndexOf(labels.Labels, TaaPassLabel);
+        var shares = ExclusiveShares(passes, mainLabel, taaLabel);
         return report.Counts.Select(count =>
         {
             var blocks = report.Schedule.Where(b => b.Gates == count.Gates).ToArray();
@@ -34,22 +37,35 @@ internal static class FrameDiagnosticsShaderGateSummary
                 report.Schedule.Select(b => (b.StartCallback, b.EndCallbackExclusive, b.Gates == count.Gates)));
             var (vertex, fragment, whole) = FrameDiagnosticsPassSummary.Spans(passes.Encoders.Records.Where(e => mainLabel >= 0
                 && e.LabelId == mainLabel && blocks.Any(b => e.CallbackIndex >= b.StartCallback && e.CallbackIndex < b.EndCallbackExclusive)), passes);
+            var (_, taaFragment, _) = FrameDiagnosticsPassSummary.Spans(passes.Encoders.Records.Where(e => taaLabel >= 0
+                && e.LabelId == taaLabel && blocks.Any(b => e.CallbackIndex >= b.StartCallback && e.CallbackIndex < b.EndCallbackExclusive)), passes);
+            var idle = new List<double>();
+            foreach (var queue in FrameDiagnosticsEarlySubmitSummary.Frames(timing).GroupBy(f => f.Queue))
+            {
+                var frames = queue.OrderBy(f => f.Callback).ToArray();
+                for (int i = 1; i < frames.Length; i++)
+                    if (frames[i].Callback == frames[i - 1].Callback + 1 && blocks.Any(b => frames[i - 1].Callback >= b.StartCallback
+                        && frames[i].Callback < b.EndCallbackExclusive))
+                        idle.Add(Math.Max(0, frames[i].Start - frames[i - 1].End) * 1000);
+            }
             var settled = shares.Where(s => blocks.Any(b => s.Key >= b.StartCallback + EdgeCallbacks
                 && s.Key < b.EndCallbackExclusive - EdgeCallbacks)).Select(s => s.Value).ToArray();
             return new FrameDiagnosticsShaderGateState(count.State, count.Gates, MainPassLabel, settled.Length, intervals, vertex, fragment, whole,
                 FrameDiagnosticsDistribution.Create(settled.Select(s => s.MainVertexMs).ToList()),
                 FrameDiagnosticsDistribution.Create(settled.Select(s => s.MainFragmentMs).ToList()),
-                FrameDiagnosticsDistribution.Create(settled.Select(s => s.BusyMs).ToList()));
+                FrameDiagnosticsDistribution.Create(settled.Select(s => s.BusyMs).ToList()),
+                FrameDiagnosticsDistribution.Create(idle), TaaPassLabel, taaFragment,
+                FrameDiagnosticsDistribution.Create(settled.Select(s => s.TaaFragmentMs).ToList()));
         }).ToArray();
     }
 
     internal static Dictionary<int, double> AttributedBusy(PassTimingSnapshot passes)
         => ExclusiveShares(passes, -1).ToDictionary(pair => pair.Key, pair => pair.Value.BusyMs);
 
-    readonly record struct Interval(ulong Start, ulong End, bool MainVertex, bool MainFragment, int Callback, double Scale);
-    sealed class Share { internal double MainVertexMs, MainFragmentMs, BusyMs; }
+    readonly record struct Interval(ulong Start, ulong End, bool MainVertex, bool MainFragment, bool TaaFragment, int Callback, double Scale);
+    sealed class Share { internal double MainVertexMs, MainFragmentMs, TaaFragmentMs, BusyMs; }
 
-    static Dictionary<int, Share> ExclusiveShares(PassTimingSnapshot passes, int mainLabel)
+    static Dictionary<int, Share> ExclusiveShares(PassTimingSnapshot passes, int mainLabel, int taaLabel = -1)
     {
         var intervals = new List<Interval>();
         foreach (var encoder in passes.Encoders.Records)
@@ -58,10 +74,10 @@ internal static class FrameDiagnosticsShaderGateSummary
             if (encoder.Kind == "render")
             {
                 bool main = encoder.LabelId == mainLabel && mainLabel >= 0;
-                AddInterval(intervals, encoder.StartVertex, encoder.EndVertex, main, false, encoder.CallbackIndex, passes);
-                AddInterval(intervals, encoder.StartFragment, encoder.EndFragment, false, main, encoder.CallbackIndex, passes);
+                AddInterval(intervals, encoder.StartVertex, encoder.EndVertex, main, false, false, encoder.CallbackIndex, passes);
+                AddInterval(intervals, encoder.StartFragment, encoder.EndFragment, false, main, taaLabel >= 0 && encoder.LabelId == taaLabel, encoder.CallbackIndex, passes);
             }
-            else AddInterval(intervals, encoder.StartEncoder, encoder.EndEncoder, false, false, encoder.CallbackIndex, passes);
+            else AddInterval(intervals, encoder.StartEncoder, encoder.EndEncoder, false, false, false, encoder.CallbackIndex, passes);
         }
         var ticks = intervals.SelectMany(i => new[] { i.Start, i.End }).Distinct().Order().ToArray();
         var index = new Dictionary<ulong, int>(ticks.Length);
@@ -89,15 +105,16 @@ internal static class FrameDiagnosticsShaderGateSummary
                 share.BusyMs += ms;
                 if (interval.MainVertex) share.MainVertexMs += ms;
                 if (interval.MainFragment) share.MainFragmentMs += ms;
+                if (interval.TaaFragment) share.TaaFragmentMs += ms;
             }
         }
         return shares;
     }
 
-    static void AddInterval(List<Interval> intervals, ulong? start, ulong? end, bool mainVertex, bool mainFragment, int callback, PassTimingSnapshot passes)
+    static void AddInterval(List<Interval> intervals, ulong? start, ulong? end, bool mainVertex, bool mainFragment, bool taaFragment, int callback, PassTimingSnapshot passes)
     {
         if (start is not { } from || end is not { } to || to <= from) return;
         double scale = FrameDiagnosticsPassSummary.NanosecondsPerTick(from, passes);
-        if (scale > 0) intervals.Add(new(from, to, mainVertex, mainFragment, callback, scale));
+        if (scale > 0) intervals.Add(new(from, to, mainVertex, mainFragment, taaFragment, callback, scale));
     }
 }

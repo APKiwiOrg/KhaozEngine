@@ -1380,7 +1380,7 @@ namespace KhaozEngine.Render3D
             _model.BeginModelPass(cl, _res, Post, _profiling);
             using (ProfilePass(cl, "opaque.frame-uniforms"))
             {
-                _model.SetFrameUniforms(cl, vp, eye, Post, CollectionsMarshal.AsSpan(_lights), _frameOrigin, MaterialLod(), ApplyProbeShaderGates());
+                _model.SetFrameUniforms(cl, vp, eye, Post, CollectionsMarshal.AsSpan(_lights), _frameOrigin, MaterialLod(), ApplyProbeShaderGates(viewportW, viewportH));
                 _model.BindPass(cl);
             }
 

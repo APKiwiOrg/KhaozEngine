@@ -44,9 +44,9 @@ public partial class ContactLeasedQueryTests
         try
         {
             var nested = DryCrossing();
-            AssertBits(normal.Seat, nested.Seat);
+            LocomotionStateBits.AssertEqual(normal.Seat, nested.Seat, LocomotionStateBits.Policy.ExcludeContinuityHandle);
             Assert.Equal(normal.Signals, nested.Signals);
-            AssertBits(normal.Tick, nested.Tick);
+            LocomotionStateBits.AssertEqual(normal.Tick, nested.Tick, LocomotionStateBits.Policy.ExcludeContinuityHandle);
             Assert.Same(geometry.Lease, outer.Lease);
             Assert.True(outer.Arena.IsOpen);
         }

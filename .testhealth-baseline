@@ -440,3 +440,6 @@
 1 KETEST001 tools/PixelLabSheetAssembler.Tests/GapFillerTests.cs
 2 KETEST001 tools/PixelLabSheetAssembler.Tests/PixelLabExportTests.cs
 1 KETEST001 tools/PixelLabSheetAssembler.Tests/SheetAssemblerTests.cs
+
+# Bitwise state comparer for locomotion determinism parity (rule 8), merged from five per-file copies (owner decision D17)
+exempt KETEST002 KhaozEngine.Game.Tests/Locomotion/Contacts/LocomotionStateBits.cs

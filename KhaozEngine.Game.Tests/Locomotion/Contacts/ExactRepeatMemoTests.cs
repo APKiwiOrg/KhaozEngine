@@ -2,7 +2,6 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Numerics;
-using System.Reflection;
 using KhaozEngine.Locomotion;
 using KhaozEngine.Locomotion.Contacts;
 using KhaozEngine.Physics;
@@ -47,7 +46,7 @@ public sealed class ExactRepeatMemoTests(ITestOutputHelper output)
         Assert.Equal(bypassed.Reads, memo.Reads);
         Assert.Equal(bypassed.Counts.Volumes - 1, memo.Counts.Volumes);
         Assert.Equal(bypassed.Counts.Proposals - 2, memo.Counts.Proposals);
-        AssertSameBits(bypassed.Result, memo.Result, seat.Name);
+        LocomotionStateBits.AssertEqual(bypassed.Result, memo.Result, LocomotionStateBits.Policy.ExcludeContinuityHandle);
     }
 
     [Fact]
@@ -133,7 +132,7 @@ public sealed class ExactRepeatMemoTests(ITestOutputHelper output)
             using (SupportReferenceEvaluation.Begin()) reference = Tick(execution, seat, bypass: false);
             Assert.Equal(0, reference.Counts.FindMemoHits);
             Assert.Equal(bypassed.Reads, reference.Reads);
-            AssertSameBits(bypassed.Result, reference.Result, seat.Name);
+            LocomotionStateBits.AssertEqual(bypassed.Result, reference.Result, LocomotionStateBits.Policy.ExcludeContinuityHandle);
             Assert.Equal(1, Tick(execution, seat, bypass: false).Counts.FindMemoHits);
         }
 
@@ -174,7 +173,7 @@ public sealed class ExactRepeatMemoTests(ITestOutputHelper output)
             Assert.Equal(1, first.Counts.FindMemoHits);
             Assert.Equal(1, second.Counts.FindMemoHits);
             Assert.Equal(first.Counts.Find, second.Counts.Find);
-            AssertSameBits(first.Result, second.Result, "dry");
+            LocomotionStateBits.AssertEqual(first.Result, second.Result, LocomotionStateBits.Policy.ExcludeContinuityHandle);
             using IPhysicsQueryLease lease = dry.View.AcquireQueryReadLease();
             SupportRequestMemo? memo = SupportRequestMemo.OpenDry(lease);
             Assert.NotNull(memo);
@@ -261,7 +260,7 @@ public sealed class ExactRepeatMemoTests(ITestOutputHelper output)
                 TickResult warm = Tick(execution, row, bypass: false);
                 foreach (TickResult memo in new[] { cold, warm })
                 {
-                    AssertSameBits(bypassed.Result, memo.Result, name);
+                    LocomotionStateBits.AssertEqual(bypassed.Result, memo.Result, LocomotionStateBits.Policy.ExcludeContinuityHandle);
                     Assert.Equal(bypassed.Reads, memo.Reads);
                     Assert.Equal(bypassed.Counts.Find, memo.Counts.Find);
                     Assert.Equal(bypassed.Counts.AnalyticSamples, memo.Counts.AnalyticSamples);
@@ -286,7 +285,7 @@ public sealed class ExactRepeatMemoTests(ITestOutputHelper output)
         SupportSample sample = FootSupport.Find(analytic, world, lease, query, scope, memo);
         Assert.Equal(hit ? 1 : 0, SupportQueryDiagnostics.Snapshot().FindMemoHits - before);
         SupportSample oracle = FootSupport.Find(analytic, world, lease, query, scope, null);
-        AssertSameBits(oracle, sample, query.ToString());
+        LocomotionStateBits.AssertEqual(oracle, sample, LocomotionStateBits.Policy.ExcludeContinuityHandle);
         return sample;
     }
 
@@ -338,34 +337,4 @@ public sealed class ExactRepeatMemoTests(ITestOutputHelper output)
         read.Axis == q.Axis && read.FeetY == q.FeetY && read.Radius == q.FootRadius && read.ReachUp == q.ReachUp &&
         read.ReachDown == q.ReachDown && read.CosMaxSlope == q.CosMaxSlope;
 
-    static void AssertSameBits(object expected, object actual, string path)
-    {
-        Assert.Equal(expected.GetType(), actual.GetType());
-        if (expected is float f)
-        {
-            Assert.True(BitConverter.SingleToInt32Bits(f) == BitConverter.SingleToInt32Bits((float)actual),
-                $"{path}: expected {f:R}, actual {actual}");
-            return;
-        }
-        if (expected is double d)
-        {
-            Assert.True(BitConverter.DoubleToInt64Bits(d) == BitConverter.DoubleToInt64Bits((double)actual),
-                $"{path}: expected {d:R}, actual {actual}");
-            return;
-        }
-        Type type = expected.GetType();
-        if (type.IsPrimitive || type.IsEnum || type == typeof(string))
-        {
-            Assert.True(expected.Equals(actual), $"{path}: {expected} against {actual}");
-            return;
-        }
-        foreach (FieldInfo field in type.GetFields(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic))
-        {
-            // CF-4 interval evidence is not geometric state. JoinedEdgeContinuityTests compares it explicitly.
-            if (field.FieldType == typeof(SupportContinuityHandle)) continue;
-            object? left = field.GetValue(expected), right = field.GetValue(actual);
-            if (left is null) Assert.Null(right);
-            else AssertSameBits(left, right!, path + "." + field.Name);
-        }
-    }
 }

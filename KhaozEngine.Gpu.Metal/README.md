@@ -1281,6 +1281,14 @@ These backend policies use required reason enums and preserve the BCL base type,
 
 | Exception and reason | What it refuses | Identifiers |
 |---|---|---|
+| `MetalBackendCreationArgumentException`, `MetalBackendCreationRefusal.ContentViewMissing` | Refuses a Cocoa window that has no content view. | `ParamName`, `WindowKind` |
+| `MetalBackendCreationArgumentException`, `MetalBackendCreationRefusal.ForeignDiagnosticSettings` | Refuses settings not owned by the Metal provider. | `ParamName`, `ActualType` |
+| `MetalBackendCreationUnsupportedException`, `MetalBackendCreationRefusal.MachineUnsupported` | Refuses Metal creation when the machine probe reports a missing requirement. | `MissingRequirement`, `Backend` |
+| `MetalBackendCreationStateException`, `MetalBackendCreationRefusal.NativeLayerUnavailable` | Refuses creation when a CAMetalLayer cannot be materialized. | `Detail`, `NativeClass` |
+| `MetalBackendCreationPlatformException`, `MetalBackendCreationRefusal.NativeResourceUnavailableOnPlatform` | Refuses constructing a native Metal resource on another platform. | `ResourceKind`, `RequiredOperatingSystem` |
+| `MetalBackendCreationPlatformException`, `MetalBackendCreationRefusal.OperatingSystemUnsupported` | Refuses native Metal creation off macOS. | `CreationPath`, `RequiredOperatingSystem` |
+| `MetalBackendCreationArgumentException`, `MetalBackendCreationRefusal.WindowHandleMissing` | Refuses a null Cocoa window handle. | `ParamName`, `WindowKind` |
+| `MetalBackendCreationArgumentException`, `MetalBackendCreationRefusal.WindowKindUnsupported` | Refuses a Metal swapchain window that is not Cocoa. | `ParamName`, `ActualWindowKind`, `RequiredWindowKind` |
 | `MetalShaderFunctionException`, `MetalShaderFunctionRefusal.FunctionReleased` | Refuses reading a released Metal shader function. | `Stage`, `ResourceKind` |
 | `MetalShaderFunctionException`, `MetalShaderFunctionRefusal.StageMissing` | Refuses a shader-set function for a stage the set does not carry. | `Stage` |
 | `MetalBufferPolicyArgumentException`, `MetalBufferPolicyRefusal.UniformStructuredCombination` | Uniform and structured usage on the same ring-backed buffer | `ParamName`, `Usage` |

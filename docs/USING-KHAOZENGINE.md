@@ -28106,3 +28106,8 @@ from observer snapshots, so the wire payload does not grow.
 constant-buffer transposition inputs. `D3D11MapResultRefusal.MapFailed` carries the map site, HRESULT,
 result token and device-loss status. Each exception derives from the BCL type previously thrown.
 See the [D3D11 refusal table](../KhaozEngine.Gpu.D3D11/README.md#refusals) for the identifiers.
+
+### Native Metal creation and binding refusals
+
+`MetalBackendCreationRefusal` identifies platform, machine, Cocoa handle and native-layer failures.
+See the [Metal refusal table](../KhaozEngine.Gpu.Metal/README.md#refusals) for each exception and identifier.

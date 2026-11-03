@@ -123,7 +123,7 @@ namespace KhaozEngine.Tests.Gpu
 
             if (!KhaozEngineMetal.IsPlatformSupported)
             {
-                Assert.IsType<PlatformNotSupportedException>(ex);
+                Assert.Equal(MetalBackendCreationRefusal.OperatingSystemUnsupported, Assert.IsType<MetalBackendCreationPlatformException>(ex).Reason);
                 return;
             }
 
@@ -132,14 +132,13 @@ namespace KhaozEngine.Tests.Gpu
                 // THE WINDOW REFUSAL, which is what a default request now reaches: the machine can run the
                 // backend and the handle is null. It must name the handle rather than the package, because a
                 // message about the package would send a reader looking for an unfinished row that is finished.
-                Assert.IsType<ArgumentException>(ex);
-                Assert.Contains("Cocoa window handle", ex.Message, StringComparison.Ordinal);
+                Assert.Equal(MetalBackendCreationRefusal.WindowHandleMissing, Assert.IsType<MetalBackendCreationArgumentException>(ex).Reason);
+
                 Assert.DoesNotContain("581", ex.Message, StringComparison.Ordinal);
             }
             else
             {
-                Assert.IsType<NotSupportedException>(ex);
-                Assert.Contains("about the MACHINE", ex.Message, StringComparison.Ordinal);
+                Assert.Equal(MetalBackendCreationRefusal.MachineUnsupported, Assert.IsType<MetalBackendCreationUnsupportedException>(ex).Reason);
             }
         }
 

@@ -102,6 +102,7 @@ namespace KhaozEngine.Tests.Gpu
             Assert.Equal(GpuWindowKind.Cocoa, window.ActualWindowKind);
             Assert.Equal(GpuWindowKind.Win32, window.RequiredWindowKind);
             Assert.Equal("request", window.ParamName);
+            Assert.IsAssignableFrom<ArgumentException>(window);
             D3D11BackendProvider.RequireWindowKindForTests(GpuWindowKind.Win32);
         }
 

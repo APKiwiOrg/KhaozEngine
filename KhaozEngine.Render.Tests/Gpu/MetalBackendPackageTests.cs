@@ -124,6 +124,7 @@ namespace KhaozEngine.Tests.Gpu
             if (!KhaozEngineMetal.IsPlatformSupported)
             {
                 Assert.Equal(MetalBackendCreationRefusal.OperatingSystemUnsupported, Assert.IsType<MetalBackendCreationPlatformException>(ex).Reason);
+                Assert.IsAssignableFrom<PlatformNotSupportedException>(ex);
                 return;
             }
 

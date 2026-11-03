@@ -28130,3 +28130,6 @@ identifiers. See the [Vulkan refusal table](../KhaozEngine.Gpu.Vulkan/README.md#
 On Metal and Vulkan, a nonzero offset on a set with no authored dynamic element throws the portable
 `GpuDynamicBindingException` with `GpuDynamicBindingRefusal.DynamicElementMissing` and the backend,
 set number and offset. These families preserve the original BCL exception bases and parameter data.
+
+Post-probe D3D11 creation also identifies a missing HWND, versioned context or native creation output.
+See the backend refusal table for each reason and identifier.

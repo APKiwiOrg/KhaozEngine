@@ -211,6 +211,8 @@ public class GpuPublicApiTests
             "KhaozEngine.Gpu.D3D11.D3D11BackendCreationArgumentException",
             "KhaozEngine.Gpu.D3D11.D3D11BackendCreationPlatformException",
             "KhaozEngine.Gpu.D3D11.D3D11BackendCreationRefusal",
+            "KhaozEngine.Gpu.D3D11.D3D11BackendCreationStateException",
+            "KhaozEngine.Gpu.D3D11.D3D11BackendCreationUnsupportedException",
             "KhaozEngine.Gpu.D3D11.D3D11BindResolutionArgumentException",
             "KhaozEngine.Gpu.D3D11.D3D11BindResolutionRefusal",
             "KhaozEngine.Gpu.D3D11.D3D11BindResolutionStateException",

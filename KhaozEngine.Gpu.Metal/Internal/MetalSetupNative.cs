@@ -168,7 +168,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
         public void Commit(MTLCommandBuffer batch)
         {
             using ObjCAutoreleasePool pool = ObjCAutoreleasePool.Enter();
-            batch.Commit();
+            batch.Commit(FrameTimingCommandKind.SetupFlush);
         }
 
         /// <inheritdoc/>

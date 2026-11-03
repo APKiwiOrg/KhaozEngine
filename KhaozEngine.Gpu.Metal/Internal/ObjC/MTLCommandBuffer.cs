@@ -145,7 +145,11 @@ namespace KhaozEngine.Gpu.Metal.Internal.ObjC
         /// execution order when commits are serialised (M-N2).</summary>
         [SupportedOSPlatform("macos")]
         [MethodImpl(MethodImplOptions.NoInlining)]
-        internal void Commit() => ObjCMsgSend.SendVoid(Handle, ObjCRuntime.Sel("commit"));
+        internal void Commit(FrameTimingCommandKind kind = FrameTimingCommandKind.Other, IGpuCommandList? commands = null)
+        {
+            if (MetalFrameTimingProbe.Sampling) MetalFrameTimingNative.Submit(Handle, kind, commands);
+            ObjCMsgSend.SendVoid(Handle, ObjCRuntime.Sel("commit"));
+        }
 
         /// <summary>
         /// <c>-waitUntilCompleted</c>: block this thread until the GPU has finished this buffer AND everything

@@ -57,6 +57,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
             MTLCommandBuffer buffer = queue.CommandBuffer();
             if (buffer.IsNull) return MetalCommandBufferFault.Completed;
 
+            if (MetalFrameTimingProbe.Sampling) MetalCompletionHandler.AttachTo(buffer.Handle);
             buffer.Commit();
             buffer.WaitUntilCompleted();
             return MetalCommandBufferFault.Read(buffer);

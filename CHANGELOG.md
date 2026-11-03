@@ -4,6 +4,28 @@ All notable changes to KhaozEngine. One shared version line `<KhaozEngineVersion
 governs every package, including the four umbrella metapackages. Planned work lives in the repo's GitHub
 Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
+## 21.23.2
+
+2026-11-03
+
+- Engine types that tests used to reach by private reflection gain internal `...ForTests` seams in
+  `KhaozEngine.Attachments.Render3D`, `KhaozEngine.Automation`, `KhaozEngine.Catalog.Sqlite`, `KhaozEngine.Gpu`,
+  `KhaozEngine.Locomotion`, `KhaozEngine.MapDoc`, `KhaozEngine.MapEditor`, `KhaozEngine.Movement`,
+  `KhaozEngine.NetWorld`, `KhaozEngine.Physics`, `KhaozEngine.Physics.Bepu`, `KhaozEngine.Render2D`,
+  `KhaozEngine.Render3D`, `KhaozEngine.StatusEffects`, `KhaozEngine.TileWorld.Netcode`, `KhaozEngine.Windowing`,
+  `KhaozEngine.WorldStore` and `KhaozEngine.WorldStore.SqlServer`. Each returns a value, an identity token or
+  a read-only view, and fault tests inject through narrow value-taking methods. No behaviour or public API
+  changes.
+- `KhaozEngine.Physics.Bepu` grants `InternalsVisibleTo` to `KhaozEngine.MapDoc.Physics.Tests`,
+  `KhaozEngine.Movement.Tests` and `KhaozEngine.Physics.Tests`. `KhaozEngine.Attachments.Render3D` grants it to
+  `KhaozEngine.Render.Tests`, `KhaozEngine.Render2D` to `KhaozEngine.WorldMap.Gui.Tests`,
+  `KhaozEngine.StatusEffects` to `KhaozEngine.Foundation.Tests` and `KhaozEngine.CodeHealth.Analyzers` to its
+  own tests. Consumers need no code change.
+- `KhaozEngine.CodeHealth.Analyzers` collapses `.` and `..` segments in the part of a source path below the
+  baseline root, so a source-linked file is named by its real repository path in `.testhealth-baseline` and
+  the file-size baseline. A path that climbs above its root is not checked against that baseline. Root
+  matching is unchanged.
+
 ## 21.23.1
 
 2026-11-03
@@ -43,23 +65,6 @@ Issues (the `kind/roadmap` label), not a checked-in roadmap file.
   carry `HashVersion` 2. Earlier sidecars still skip while their other inputs are unchanged, checked
   against their recorded model or the old v2 default. A dry run names the older model beside each output
   it made, and `--force` re-bakes on purpose.
-- Engine types that tests used to reach by private reflection gain internal `...ForTests` seams in
-  `KhaozEngine.Attachments.Render3D`, `KhaozEngine.Automation`, `KhaozEngine.Catalog.Sqlite`, `KhaozEngine.Gpu`,
-  `KhaozEngine.Locomotion`, `KhaozEngine.MapDoc`, `KhaozEngine.MapEditor`, `KhaozEngine.Movement`,
-  `KhaozEngine.NetWorld`, `KhaozEngine.Physics`, `KhaozEngine.Physics.Bepu`, `KhaozEngine.Render2D`,
-  `KhaozEngine.Render3D`, `KhaozEngine.StatusEffects`, `KhaozEngine.TileWorld.Netcode`, `KhaozEngine.Windowing`,
-  `KhaozEngine.WorldStore` and `KhaozEngine.WorldStore.SqlServer`. Each returns a value, an identity token or
-  a read-only view, and fault tests inject through narrow value-taking methods. No behaviour or public API
-  changes.
-- `KhaozEngine.Physics.Bepu` grants `InternalsVisibleTo` to `KhaozEngine.MapDoc.Physics.Tests`,
-  `KhaozEngine.Movement.Tests` and `KhaozEngine.Physics.Tests`. `KhaozEngine.Attachments.Render3D` grants it to
-  `KhaozEngine.Render.Tests`, `KhaozEngine.Render2D` to `KhaozEngine.WorldMap.Gui.Tests`,
-  `KhaozEngine.StatusEffects` to `KhaozEngine.Foundation.Tests` and `KhaozEngine.CodeHealth.Analyzers` to its
-  own tests. Consumers need no code change.
-- `KhaozEngine.CodeHealth.Analyzers` collapses `.` and `..` segments in the part of a source path below the
-  baseline root, so a source-linked file is named by its real repository path in `.testhealth-baseline` and
-  the file-size baseline. A path that climbs above its root is not checked against that baseline. Root
-  matching is unchanged.
 
 ## 21.23.0
 

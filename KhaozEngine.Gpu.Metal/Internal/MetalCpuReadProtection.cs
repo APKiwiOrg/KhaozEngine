@@ -74,12 +74,16 @@ internal sealed class MetalRecordedReads
 }
 
 /// <summary>Shares the queue's submit lock. Publishing prefix reads and CPU writes are atomic against one another.
-/// No GPU wait, copy or submission is introduced. A zero final value is a quarantined, unfinished frame.</summary>
-internal sealed class MetalCpuReadProtection(object gate, Func<ulong> completed)
+/// Explicit read drains cover unsignalled prefixes outside the gate. A zero final value keeps a frame
+/// quarantined even after that drain.</summary>
+internal sealed class MetalCpuReadProtection(object gate, Func<ulong> completed, Func<ulong> lastSubmitted)
 {
     sealed record Frame(ulong Id, int Segment, MetalRecordedReads Reads)
     {
         internal ulong FinalValue;
+        internal bool PrefixCommitted;
+        internal ulong SubmittedBeforePrefix;
+        internal bool QueueDrained;
     }
     readonly List<Frame> _frames = [];
     readonly Stack<MetalRecordedReads> _freeReads = new();
@@ -121,6 +125,43 @@ internal sealed class MetalCpuReadProtection(object gate, Func<ulong> completed)
         }
     }
 
+    internal void Committed(ulong frameId)
+    {
+        lock (gate)
+            foreach (var frame in _frames)
+                if (frame.Id == frameId)
+                {
+                    frame.SubmittedBeforePrefix = lastSubmitted();
+                    frame.PrefixCommitted = true;
+                    return;
+                }
+    }
+
+    // An explicit CPU drain also covers prefixes with no final signal, including abandoned recordings.
+    // Snapshot under the submit gate, wait outside it, then acknowledge only work in that snapshot.
+    // This proves readback readiness, never slot reuse or writable access before final completion.
+    internal void DrainCommittedPrefixes(bool committedSetup, Action drainQueue)
+    {
+        ulong through;
+        bool required = committedSetup;
+        lock (gate)
+        {
+            ulong value = _frames.Count == 0 ? 0 : completed();
+            ReleaseCompleted(value);
+            through = _nextFrame;
+            foreach (var frame in _frames)
+                // Any completed final queued after this prefix covers its GPU work, even if its own tail
+                // was abandoned. It still cannot release that frame's slot or immutable byte ranges.
+                if (frame.PrefixCommitted && !frame.QueueDrained && value <= frame.SubmittedBeforePrefix)
+                { required = true; break; }
+        }
+        if (!required) return;
+        drainQueue();
+        lock (gate)
+            foreach (var frame in _frames)
+                if (frame.Id <= through && frame.PrefixCommitted) frame.QueueDrained = true;
+    }
+
     internal void RequireSlotAvailable(int segment)
     {
         RetireCompleted();
@@ -129,7 +170,7 @@ internal sealed class MetalCpuReadProtection(object gate, Func<ulong> completed)
                 throw new MetalFrameAccessException(MetalFrameAccessFailure.AbandonedFrameSlot, 0, 0, 0, frame.Id, segment);
     }
 
-    // Caller holds Gate through the actual copy or pointer handoff, not only through this check.
+    // Caller holds Gate through the actual copy or mapping-base capture and lease registration.
     internal void RequireWritable(MetalCpuResource resource, ulong offset, ulong length,
         MetalFrameAccessFailure reason = MetalFrameAccessFailure.OverlappingWrite)
     {

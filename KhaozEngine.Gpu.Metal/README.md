@@ -441,15 +441,16 @@ binding of the same buffer would read whichever segment that frame happened to l
 **A staging texture is not a texture.** It is a Shared `MTLBuffer` carrying the incumbent's SOFTWARE
 subresource layout, byte for byte, because that is what every golden reads back through. `Map` reports the row
 pitch and size for subresource 0 out of that arithmetic, which a checked-in 232-row table pins against the
-numbers Veldrid's own functions produced, with no device in the room. `Unmap` is a no-op, as it was in the
-incumbent, because a Shared buffer's pointer needs no unmapping.
+numbers Veldrid's own functions produced, with no device in the room. `Unmap` ends the CPU access lease.
+Shared storage needs no native unmap.
 
 **`Map` waits, where the incumbent did not.** `MTLGraphicsDevice.MapCore` handed back `contents()` immediately,
 which was correct at the time only because every engine caller drains first, so the seam's guarantee rested on a
 convention rather than on the backend. Here a read mapping drains, and it commits the pending setup batch
-first, so a texture uploaded and immediately read back sees the uploaded bytes. That drain is the QUEUE
-drain rather than the timeline's, because a setup batch signals no timeline value and only a completed
-empty buffer covers one. A write mapping does not drain, because the caller is the producer.
+first, so a texture uploaded and immediately read back sees the uploaded bytes. The timeline covers final
+submissions. A queue drain also covers newly flushed setup work and committed prefixes not covered by final
+completion or an earlier explicit drain, including abandoned recordings. Those buffers signal no timeline
+value. A write mapping flushes setup without draining, because the caller is the producer.
 
 **`TryReadBuffer` does not wait at all.** It polls the completion fence and copies from the staging buffer's
 `contents()` pointer, calling neither `Map` nor `WaitForIdle`, the setup flush, a submit or the submit lock. A
@@ -1179,6 +1180,9 @@ writes and writable mappings throw `MetalFrameAccessException`, with `Reason`, `
 `LengthBytes` and `FrameId`. A writable mapping already open over those bytes refuses the prefix commit.
 Disjoint byte ranges and texture subresources remain writable. `Unmap` ends the writable access lease.
 An abandoned prefix quarantines its ring slot, identified by `RingSegment`, until device teardown.
+Device uniform updates still defer in-flight non-current segments and retain the existing depth-one wait.
+Only immediate physical copies are checked for overlap, atomically before any segment or patch changes.
+A buffer map captures one physical base for its lease and pointer, even if another recording rotates the ring.
 [Frame submission](../docs/METAL-FRAME-SUBMISSION.md) owns the lifetime and write-path details.
 
 ## Three decisions worth knowing before reading the code

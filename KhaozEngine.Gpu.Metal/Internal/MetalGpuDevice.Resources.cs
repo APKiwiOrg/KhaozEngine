@@ -118,10 +118,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
                     nameof(staging));
             }
 
-            var layout = metal.SubresourceLayout(0, 0);
-            _rings.CpuReads.Map(metal, metal.CpuResource, layout.Offset, layout.Size, mode != GpuMapMode.Read);
-            try { DrainForRead(mode); return metal.Mapped(subresource: 0); }
-            catch { _rings.CpuReads.Unmap(metal); throw; }
+            return _cpuAccess.Map(metal, mode);
         }
 
         /// <inheritdoc/>
@@ -135,84 +132,12 @@ namespace KhaozEngine.Gpu.Metal.Internal
 
             MetalBuffer metal = MetalResourceOwnership.Require<MetalBuffer>(staging, _liveness, nameof(staging));
 
-            _rings.CpuReads.Map(metal, metal.CpuResource,
-                metal.Ring?.CurrentSegmentBaseBytes ?? 0, metal.SizeInBytes, mode != GpuMapMode.Read);
-            try { DrainForRead(mode); return metal.Mapped(); }
-            catch { _rings.CpuReads.Unmap(metal); throw; }
+            return _cpuAccess.Map(metal, mode);
         }
 
         /// <inheritdoc/>
         /// <remarks>Ends the writable mapping lease. See <see cref="Unmap(IGpuTexture)"/>.</remarks>
         public void Unmap(IGpuBuffer staging) => _rings.CpuReads.Unmap(staging);
-
-        /// <summary>
-        /// M-C6's READ DRAIN, and the setup flush that has to happen before it.
-        ///
-        /// <para><b>THE INCUMBENT DOES NOT WAIT AT ALL, and that is the defect this closes.</b>
-        /// <c>MTLGraphicsDevice.MapCore</c> hands back <c>contents()</c> immediately. It works today only because
-        /// every engine caller drains first (<c>GpuReadback</c> submits and drains before mapping), so the seam's
-        /// guarantee rests on a CALLER CONVENTION rather than on the backend. Getting it wrong returns a pointer
-        /// to bytes the blit has not written yet, which reads as an intermittently wrong golden, and an
-        /// intermittently wrong golden on a real device is the worst failure shape a five-legged blocking matrix
-        /// has.</para>
-        ///
-        /// <para><b>THE FLUSH COMES FIRST AND IT IS THE OTHER HALF OF THE SAME GUARANTEE (M-M9).</b> A texture
-        /// uploaded through the setup buffer and then read back must see the uploaded bytes, so the batch is
-        /// committed before the drain rather than after it. A drain that ran first would wait for everything
-        /// EXCEPT the upload the caller just made.</para>
-        ///
-        /// <para><b>A WRITE MAPPING DOES NOT DRAIN.</b> The seam's own reason for a wait is that the bytes the
-        /// caller is about to READ may not have arrived, and a caller mapping for
-        /// <see cref="GpuMapMode.Write"/> is the producer rather than the consumer. The incumbent did not wait
-        /// in either mode, so this is strictly narrower than "always wait" and strictly safer than what ships.</para>
-        ///
-        /// <para><b>THE DRAIN THAT COVERS THE FLUSH IS THE QUEUE'S AND NOT THE TIMELINE'S, WHICH IS THE ONE
-        /// DECISION THE ROW 6 AND ROW 7 MERGE HAD TO MAKE.</b> Row 6 routed this through
-        /// <see cref="WaitForIdle"/> on the reasoning that it was the device's one drain point, and at the time
-        /// that drain was an empty command buffer committed to a queue that runs in enqueue order, so it covered
-        /// the setup batch for free. Row 7 then moved <c>WaitForIdle</c> onto M-F5's counted
-        /// <c>waitUntilSignaledValue:timeoutMS:</c>, and a setup batch encodes no timeline signal at all, so that
-        /// drain stopped covering it: on a device that has never submitted a list, the target is 0, the wait
-        /// returns immediately, and <c>Map</c> would hand back a pointer to bytes the blit has not written. That
-        /// is exactly the defect M-C6 exists to close, arriving through the back door.
-        /// <para>
-        /// SO <c>WaitForIdle</c> KEEPS BOTH DRAINS and this member keeps routing through it. The alternative
-        /// considered and declined was giving the setup flush a timeline signal of its own, which would make
-        /// every committed buffer uniform and make the counted drain sufficient. It is declined on two counts.
-        /// <c>MetalTimeline.EncodeSignalForSubmit</c>'s stated precondition is that it is called inside the lock
-        /// that orders <c>-commit</c>, so honouring it would mean taking <c>_submitLock</c> while holding the
-        /// batch's own gate, which is the nested pair <see cref="MetalSetupCommands.Flush"/> exists to forbid,
-        /// and breaking it would let two threads allocate values in one order and commit in another, which is
-        /// precisely what makes <c>LastSubmitted</c> mean what it says. And it would give
-        /// <c>MetalSetupCommands</c>, which is deliberately free of Metal and of the submit path so its whole
-        /// decision surface runs under a plain <c>[Fact]</c>, a hard dependency on both. The queue drain's own
-        /// argument, by contrast, is already written down in this codebase and already relied on: a completed
-        /// empty command buffer proves everything committed to the queue before it has completed too, including
-        /// work that signals no timeline value, which is the identical reason the teardown drain stayed on the
-        /// queue for M-W6's present buffer.
-        /// </para>
-        /// <para>
-        /// WHAT IT COSTS is that a read-mapping drain does not land in <c>GpuDeviceCounters.DrainCount</c> or
-        /// <c>DrainMs</c> when the timeline half found nothing to wait for. That is the correct direction:
-        /// <c>MetalQueueDrain</c> deliberately does not count itself, because those channels are the timeline's
-        /// and a number written into them from a different mechanism would be read as the timeline's when it is
-        /// not.
-        /// </para></para>
-        /// </summary>
-        void DrainForRead(GpuMapMode mode)
-        {
-            if (mode == GpuMapMode.Write)
-            {
-                // FLUSHED BUT NOT DRAINED. The batch is committed so a later reader cannot find it still pending,
-                // and there is nothing for a producer to wait for.
-                _setup.Flush();
-                return;
-            }
-
-            // The device's ONE drain point, which flushes the batch and then waits for BOTH the timeline and, if
-            // that flush committed anything, the queue. See the remarks above for why it has to be both.
-            WaitForIdle();
-        }
 
         void WriteBuffer(IGpuBuffer buffer, uint offsetBytes, ReadOnlySpan<byte> data)
         {

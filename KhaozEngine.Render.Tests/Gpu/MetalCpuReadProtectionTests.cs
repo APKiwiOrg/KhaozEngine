@@ -6,10 +6,33 @@ namespace KhaozEngine.Tests.Gpu;
 
 public sealed class MetalCpuReadProtectionTests
 {
+    // #1682. A later immediate-copy refusal cannot partially update earlier segments or deferred patches.
+    [Fact]
+    public void ACurrentPrefixOverlapRefusesEverySegmentOfADeviceUpdateAtomically()
+    {
+        using var h = new MetalRingHarness();
+        var ring = h.NewRing(64, out var backing);
+        using var previous = h.NewList(new());
+        previous.Begin();
+        previous.End();
+        h.Submit(previous);
+        int current = h.Rings.BeginRecording();
+        var reads = new MetalRecordedReads();
+        reads.Add(ring.CpuResource, ring.SegmentBaseBytes(current), 16);
+        h.Rings.CpuReads.Protect(current, reads);
+        var before = (byte[])backing.Clone();
+        Assert.Equal(MetalFrameAccessFailure.OverlappingWrite,
+            Assert.Throws<MetalFrameAccessException>(() => h.Rings.UpdateBuffer(ring, 0, new byte[] { 9 })).Reason);
+        Assert.Equal(before, backing);
+        Assert.False(ring.HasPendingPatches);
+        h.Rings.UpdateBuffer(ring, 16, new byte[] { 9 });
+        Assert.Equal(9, ring.ReadSegment(current, 16, 1)[0]);
+    }
+
     [Fact]
     public void VertexAndTextureStridePaddingRemainsWritable()
     {
-        var protection = new MetalCpuReadProtection(new(), () => 0);
+        var protection = new MetalCpuReadProtection(new(), () => 0, () => 0);
         var resource = new MetalCpuResource();
         var reads = new MetalRecordedReads();
         reads.AddStrided(resource, 16, 8, 32, 3);
@@ -27,7 +50,7 @@ public sealed class MetalCpuReadProtectionTests
     public void OnlyOverlappingBytesStayImmutableUntilFinalCompletion()
     {
         ulong completed = 0;
-        var protection = new MetalCpuReadProtection(new(), () => completed);
+        var protection = new MetalCpuReadProtection(new(), () => completed, () => 0);
         var resource = new MetalCpuResource();
         var other = new MetalCpuResource();
         var reads = new MetalRecordedReads();
@@ -55,7 +78,7 @@ public sealed class MetalCpuReadProtectionTests
     [Fact]
     public void WritableMappingsCannotEnterOrSurviveAProtectedPrefix()
     {
-        var protection = new MetalCpuReadProtection(new(), () => 0);
+        var protection = new MetalCpuReadProtection(new(), () => 0, () => 0);
         var resource = new MetalCpuResource();
         var reads = new MetalRecordedReads();
         reads.Add(resource, 32, 32);
@@ -77,7 +100,7 @@ public sealed class MetalCpuReadProtectionTests
     [Fact]
     public void AbandonmentDoesNotInventACompletionForTheSlotOrItsBytes()
     {
-        var protection = new MetalCpuReadProtection(new(), () => ulong.MaxValue);
+        var protection = new MetalCpuReadProtection(new(), () => ulong.MaxValue, () => 0);
         var resource = new MetalCpuResource();
         var reads = new MetalRecordedReads();
         reads.Add(resource, 0, 16);

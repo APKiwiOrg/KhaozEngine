@@ -9,15 +9,6 @@ namespace KhaozEngine.Tests.Gpu;
 
 public sealed class MetalEarlyFrameSubmissionTests
 {
-    sealed class Api : IMetalEarlyFrameApi
-    {
-        public bool IsAlive { get; set; } = true;
-        internal Action? OnCommit;
-        internal Action? OnFlush;
-        public void FlushSetup() => OnFlush?.Invoke();
-        public void CommitWithCompletionHandler(IntPtr buffer) => OnCommit?.Invoke();
-    }
-
     static MetalSwapchainFramebuffer Drawable()
     {
         MetalSwapchainFramebuffer? fb = null;
@@ -30,7 +21,7 @@ public sealed class MetalEarlyFrameSubmissionTests
     public void AFinalTimestampBatchContinuesAcrossThePrefixAndStaysAfterTheTail()
     {
         using var rig = new CoveragePerf.MetalTimestampEndFixture();
-        rig.List.EarlySubmission = new(new Api(), rig.Harness.SubmitLock);
+        rig.List.EarlySubmission = new(new FakeMetalEarlyFrameApi(), rig.Harness.SubmitLock);
         rig.Start();
         rig.List.SetFramebuffer(Drawable());
         rig.PendingClear();
@@ -56,7 +47,7 @@ public sealed class MetalEarlyFrameSubmissionTests
         var buffers = new FakeMetalCommandBufferSource();
         var count = new MetalUncommittedBuffers(1, new RecordingLogger());
         using var list = h.NewList(new(), buffers, uncommitted: count);
-        var api = new Api { OnCommit = () => throw new InvalidOperationException("A lost device must never commit.") };
+        var api = new FakeMetalEarlyFrameApi { OnCommit = () => throw new InvalidOperationException("A lost device must never commit.") };
         api.OnFlush = () => api.IsAlive = false;
         list.EarlySubmission = new(api, h.SubmitLock);
         list.Begin();
@@ -77,7 +68,7 @@ public sealed class MetalEarlyFrameSubmissionTests
         var buffers = new FakeMetalCommandBufferSource();
         var uncommitted = new MetalUncommittedBuffers(1, new RecordingLogger());
         using var list = h.NewList(new(), buffers, uncommitted: uncommitted);
-        var api = new Api();
+        var api = new FakeMetalEarlyFrameApi();
         list.EarlySubmission = new(api, h.SubmitLock);
         list.Begin();
         int segment = list.RingSegment;
@@ -118,7 +109,7 @@ public sealed class MetalEarlyFrameSubmissionTests
         using var h = new MetalRingHarness(framesInFlight: 1);
         var buffers = new FakeMetalCommandBufferSource();
         var count = new MetalUncommittedBuffers(1, new RecordingLogger());
-        var api = new Api { OnCommit = () => buffers.NextAcquireFails = acquisitionFails };
+        var api = new FakeMetalEarlyFrameApi { OnCommit = () => buffers.NextAcquireFails = acquisitionFails };
         var list = h.NewList(new(), buffers, uncommitted: count);
         list.EarlySubmission = new(api, h.SubmitLock);
         list.Begin();
@@ -140,7 +131,7 @@ public sealed class MetalEarlyFrameSubmissionTests
         MetalBuffer source = h.NewBuffer(128, GpuBufferUsage.UniformBuffer);
         MetalBuffer destination = h.NewBuffer(128, GpuBufferUsage.Staging);
         using var list = h.NewList(new());
-        list.EarlySubmission = new(new Api(), h.SubmitLock);
+        list.EarlySubmission = new(new FakeMetalEarlyFrameApi(), h.SubmitLock);
         list.Begin();
         list.UpdateBuffer(source, 0, 7u);
         list.CopyBuffer(source, 0, destination, 0, 16);
@@ -150,14 +141,61 @@ public sealed class MetalEarlyFrameSubmissionTests
         list.ResolveDeferredDrawable();
         Assert.Equal(MetalFrameAccessFailure.OverlappingWrite,
             Assert.Throws<MetalFrameAccessException>(() => list.UpdateBuffer(source, 0, 9u)).Reason);
-        Assert.Throws<MetalFrameAccessException>(() => h.Rings.UpdateBuffer(source.Ring!, 0, new byte[4]));
+        Assert.Throws<MetalFrameAccessException>(() => h.Rings.UpdateBuffer(source.Ring!, 0, new byte[] { 11 }));
+        // Refusal must leave even earlier immediate-copy targets and pending patches unchanged.
+        Assert.Equal(7, source.Ring!.ReadSegment(0, 0, 1)[0]);
+        Assert.False(source.Ring.HasPendingPatches);
         h.Rings.UpdateBuffer(source.Ring!, 64, new byte[] { 9 });
-        Assert.Equal(9, source.Ring!.ReadSegment(0, 64, 1)[0]);
+        Assert.Equal(9, source.Ring.ReadSegment(list.RingSegment, 64, 1)[0]);
         list.End();
         h.Submit(list);
         h.Event.Completed = h.Timeline.LastSubmitted;
         h.Rings.UpdateBuffer(source.Ring!, 0, new byte[] { 9 });
         Assert.Equal(9, source.Ring.ReadSegment(0, 0, 1)[0]);
+        h.DisposeWithoutRelease(source);
+        h.DisposeWithoutRelease(destination);
+    }
+
+    // #1682. Submitted previous-frame storage is deferred, or waited for at depth one, rather than overwritten.
+    [Theory]
+    [InlineData(1)]
+    [InlineData(3)]
+    public void ADeviceUniformUpdatePreservesTheSplitPreviousFramesBytes(int depth)
+    {
+        using var h = new MetalRingHarness(framesInFlight: depth);
+        MetalBuffer source = h.NewBuffer(128, GpuBufferUsage.UniformBuffer);
+        MetalBuffer destination = h.NewBuffer(128, GpuBufferUsage.Staging);
+        using var list = h.NewList(new());
+        list.EarlySubmission = new(new FakeMetalEarlyFrameApi(), h.SubmitLock);
+        // Buffer copies address physical bytes. Align this recording with physical segment zero.
+        if (depth > 1) { h.Rings.BeginRecording(); h.Rings.BeginRecording(); }
+        list.Begin();
+        int previous = list.RingSegment;
+        list.UpdateBuffer(source, 0, 7u);
+        list.CopyBuffer(source, 0, destination, 0, 16);
+        list.SetFramebuffer(Drawable());
+        list.ClearColorTarget(0, Color.Black);
+        list.End();
+        ulong final = h.Submit(list);
+        Assert.Equal(0ul, h.Event.Completed);
+        if (depth > 1) h.Rings.BeginRecording();
+        h.Event.OnWait = () => Assert.Equal(7, source.Ring!.ReadSegment(previous, 0, 1)[0]);
+
+        h.Rings.UpdateBuffer(source.Ring!, 0, new byte[] { 9 });
+
+        if (depth == 1) Assert.Equal(final, h.Event.Completed);
+        else
+        {
+            Assert.Equal(0ul, h.Event.Completed);
+            Assert.Equal(7, source.Ring!.ReadSegment(previous, 0, 1)[0]);
+            Assert.True(source.Ring.HasPendingPatchesFor(previous));
+            Assert.Equal(9, source.Ring.ReadSegment(h.Rings.CurrentSegment, 0, 1)[0]);
+            h.Event.Completed = final;
+            h.Rings.BeginRecording();
+            h.Rings.BeginRecording();
+        }
+        Assert.Equal(9, source.Ring!.ReadSegment(previous, 0, 1)[0]);
+        Assert.False(source.Ring.HasPendingPatchesFor(previous));
         h.DisposeWithoutRelease(source);
         h.DisposeWithoutRelease(destination);
     }
@@ -168,7 +206,7 @@ public sealed class MetalEarlyFrameSubmissionTests
         using var h = new MetalRingHarness();
         var buffers = new FakeMetalCommandBufferSource();
         using var list = h.NewList(new(), buffers);
-        list.EarlySubmission = new(new Api(), h.SubmitLock);
+        list.EarlySubmission = new(new FakeMetalEarlyFrameApi(), h.SubmitLock);
         list.Begin();
         list.End();
         Assert.Single(buffers.Acquired);

@@ -4,7 +4,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
 {
     /// <summary>
     /// THE FENCED READ MAP (<see cref="IGpuFencedReadback"/>): <c>Map(staging, Read)</c> without the device-wide
-    /// drain. <see cref="Map(IGpuTexture, GpuMapMode)"/> routes a read through <c>DrainForRead</c>, which flushes
+    /// drain. <see cref="Map(IGpuTexture, GpuMapMode)"/> routes a read through <see cref="MetalCpuAccess"/>, which flushes
     /// the setup batch and then calls <see cref="WaitForIdle"/>, a wait for everything ever submitted. A caller
     /// holding a signaled fence over the copy that wrote the staging texture already has the only completion
     /// proof the read needs.
@@ -17,7 +17,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
     /// command buffer's work, so a completed value means the blit into the buffer has completed.
     /// </para>
     /// <para>
-    /// <b>NO SETUP FLUSH EITHER.</b> The flush in <c>DrainForRead</c> exists so a read sees uploads made through
+    /// <b>NO SETUP FLUSH EITHER.</b> The flush in <see cref="MetalCpuAccess"/> exists so a read sees uploads made through
     /// the setup batch. The batch only ever carries uploads into Private textures, a staging texture is written by
     /// a <c>memcpy</c> or by a copy in a command list, and every <c>Submit</c> flushes the batch ahead of its own
     /// commit, so the fenced submission already ran behind anything the batch held when it was made.

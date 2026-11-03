@@ -443,3 +443,5 @@
 
 # Bitwise state comparer for locomotion determinism parity (rule 8), merged from five per-file copies (owner decision D17)
 exempt KETEST002 KhaozEngine.Game.Tests/Locomotion/Contacts/LocomotionStateBits.cs
+# Shared IL reader for architecture fences: it must enumerate non-public methods and constructors to inspect compiled calls (owner decision D17)
+exempt KETEST002 test-shared/IlCallGraph.cs

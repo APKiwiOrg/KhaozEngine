@@ -36,9 +36,9 @@ Renderer.Perf.Tests.
 
 [RendererPerfShared.props](../../test-shared/RendererPerfShared.props) is the explicit 53-file helper
 source-link inventory. Sources retain canonical physical paths and existing ratchet allowances.
-The engine test assembly remains the owner of these helpers. UI recipes also copy its unchanged
-`Assets/Roboto-Regular.ttf` into the tooling output, retaining the authored font identity. The free
-workflow watches that asset explicitly. Source links import no native provider
+Helpers remain owned by their source test project or `test-shared`. UI recipes also copy the unchanged
+`KhaozEngine.Render.Tests/Assets/Roboto-Regular.ttf` into the tooling output, retaining the authored font
+identity. The free workflow watches that asset explicitly. Source links import no native provider
 module initializers. The offline verifier therefore loads no providers, while the authorized
 entrypoint registers its chosen backend only after admission. NativeDeviceLifecycle,
 GpuBackendProvidersSerial and AllocSensitive have assembly-local nonparallel definitions.

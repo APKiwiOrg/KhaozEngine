@@ -61,9 +61,30 @@ source without importing real-device fixtures or referencing the engine test ass
 `RendererPerfShared.props` explicitly source-links helper-only engine test files into the outside-solution
 renderer tooling assembly. It normalizes the source root before constructing paths, so KESIZE and
 KETEST retain each helper's physical repository-relative identity. The helper files remain owned by
-Render.Tests, including GpuPerfTimestampRing and its fakes. No module initializer or unrelated fact
-file is linked. The tooling project also imports AllocationMeasurement.props, including its independent
-allocation-isolation contract tests and serialized reporting framework.
+their source test project or `test-shared`, including GpuPerfTimestampRing and its fakes. No module
+initializer or unrelated fact file is linked. The tooling project also imports AllocationMeasurement.props,
+including its independent allocation-isolation contract tests and serialized reporting framework.
+
+## IL architecture fences
+
+`IlCallGraph.cs` is the shared IL reader in `KhaozEngine.Tests.Gpu`. `DeclaredMethods` enumerates a
+type's declared methods and constructors, including non-public members. `Callees` reads and caches
+their compiled call sites, and `Describe` renders a caller as `Type.Member`. Render.Tests source-links
+the reader directly. Renderer.Perf.Tooling.Tests links the same file through `RendererPerfShared.props`.
+Its non-public reflection is an owner-approved KETEST002 exemption for inspecting compiled calls.
+The architecture helper links normalize their physical paths before inclusion so KETEST exemptions
+match `test-shared/...` rather than a project-relative path containing `..`.
+
+`RefusalConstructorFence.cs` uses that reader to find callers of forbidden exception constructors.
+Source-link both helpers into an owning test project and pass engine assemblies and the custom
+exception's message-only constructors to `EngineCallers`. An empty result proves those assemblies
+contain no calls the reader can resolve to the supplied constructors. Reason-taking constructors
+remain allowed, and consumer assemblies are covered only if explicitly supplied.
+
+The reader stops or skips unresolved IL rather than guessing, so each architecture rule needs a
+positive control. `RefusalConstructorFenceTests` proves a private caller of `InvalidDataException(string)`
+is reported and an uncalled constructor is left clear. Existing Metal architecture and tooling fences
+retain their own controls and use the same reader.
 
 ## Items benchmark fixtures
 

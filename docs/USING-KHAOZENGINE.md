@@ -19844,6 +19844,8 @@ Resource layout declarations use `GpuResourceLayoutException` with `DynamicOffse
 
 Vulkan native buffer binding, ring policy and descriptor budgets use `VulkanBufferBindingException`, `VulkanBufferRingException` and `VulkanDescriptorLimitException`, with required reasons and usage or limit data. Layout transitions and queries use `VulkanLayoutArgumentException` and `VulkanLayoutStateException`, with the image and requested or tracked subresource ranges.
 
+Staging framebuffer attachments carry `AttachmentNotRenderable` across the native backends. A non-staging attachment without its required native render view carries `AttachmentViewMissing`. Missing swapchain attachment handles carry `AttachmentNotRenderable`.
+
 See the [portable refusal catalog](../KhaozEngine.Gpu/README.md#refusals) and [Vulkan refusal catalog](../KhaozEngine.Gpu.Vulkan/README.md#refusals) for the full diagnostic members. Existing BCL catches still match.
 
 ---

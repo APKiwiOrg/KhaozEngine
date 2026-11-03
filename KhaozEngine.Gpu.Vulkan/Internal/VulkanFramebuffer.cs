@@ -187,7 +187,8 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         {
             if (texture.AttachmentView != 0) return texture.AttachmentView;
 
-            throw new GpuFramebufferException(GpuFramebufferRefusal.AttachmentViewMissing,
+            throw new GpuFramebufferException(texture.IsStaging
+                    ? GpuFramebufferRefusal.AttachmentNotRenderable : GpuFramebufferRefusal.AttachmentViewMissing,
                 "The " + what + " has no VkImageView to bind, because its texture was not created with "
                 + "GpuTextureUsage." + usage + ". Every view a texture will ever need is created at TEXTURE "
                 + "creation from its declared usage bits and none at a bind or a draw (V-M11), so there is no "
@@ -195,7 +196,10 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
                 + texture.Describe() + ".", null)
             {
                 Attachment = what,
+                ActualUsage = texture.Usage,
                 RequiredUsage = usage,
+                IsStaging = texture.IsStaging,
+                NativeHandleKind = "VkImageView",
             };
         }
     }

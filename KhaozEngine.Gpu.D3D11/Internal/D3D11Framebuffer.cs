@@ -58,17 +58,17 @@ namespace KhaozEngine.Gpu.D3D11.Internal
             for (int i = 0; i < colour.Length; i++)
             {
                 RequireMatching(first, colour[i], "colour attachment " + i.ToString(System.Globalization.CultureInfo.InvariantCulture));
-                _renderTargetViews[i] = colour[i].RenderTargetView ?? throw MissingView(
+                _renderTargetViews[i] = D3D11FramebufferAttachmentValidation.RequireView(colour[i].RenderTargetView,
                     "colour attachment " + i.ToString(System.Globalization.CultureInfo.InvariantCulture),
-                    GpuTextureUsage.RenderTarget);
+                    GpuTextureUsage.RenderTarget, colour[i].Usage);
                 formats[i] = colour[i].Format;
             }
 
             if (depth is not null)
             {
                 RequireMatching(first, depth, "depth attachment");
-                DepthStencilView = depth.DepthStencilView ?? throw MissingView(
-                    "depth attachment", GpuTextureUsage.DepthStencil);
+                DepthStencilView = D3D11FramebufferAttachmentValidation.RequireView(depth.DepthStencilView,
+                    "depth attachment", GpuTextureUsage.DepthStencil, depth.Usage);
             }
 
             Outputs = new GpuOutputDescription(depth?.Format, formats).WithSampleCount((int)first.SampleCount);
@@ -131,13 +131,6 @@ namespace KhaozEngine.Gpu.D3D11.Internal
             };
         }
 
-        static GpuFramebufferException MissingView(string what, GpuTextureUsage usage)
-            => new GpuFramebufferException(GpuFramebufferRefusal.AttachmentViewMissing, $"The {what} has no view to bind, because its texture was not created with "
-                + $"GpuTextureUsage.{usage}. Views follow from the declared usage at creation, so a texture that "
-                + "did not ask to be a target never got one.", null)
-            {
-                Attachment = what,
-                RequiredUsage = usage,
-            };
+
     }
 }

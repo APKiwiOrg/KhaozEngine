@@ -195,8 +195,11 @@ namespace KhaozEngine.Tests.Gpu
         /// views follow from the declared usage at creation and there is no view factory reachable from here
         /// (V-M11). The refusal names the usage the caller should have asked for.
         /// </summary>
-        [Fact]
-        public void AColourAttachmentWithoutRenderTargetUsage_IsRefused()
+        [Theory]
+        [InlineData(GpuTextureUsage.Sampled, GpuFramebufferRefusal.AttachmentViewMissing)]
+        [InlineData(GpuTextureUsage.Staging, GpuFramebufferRefusal.AttachmentNotRenderable)]
+        public void AColourAttachmentWithoutRenderTargetUsage_IsRefused(
+            GpuTextureUsage usage, GpuFramebufferRefusal reason)
         {
             var fixture = new VulkanResourceFixture();
             var owned = new List<IDisposable>();
@@ -204,13 +207,18 @@ namespace KhaozEngine.Tests.Gpu
             try
             {
                 IGpuTexture sampled = fixture.Factory.CreateTexture(
-                    VulkanResourceFixture.Texture(64, 64, GpuTextureUsage.Sampled));
+                    VulkanResourceFixture.Texture(64, 64, usage));
                 owned.Add(sampled);
 
                 var refusal = Assert.Throws<GpuFramebufferException>(() => fixture.Factory.CreateFramebuffer(null, sampled));
-                Assert.Equal(GpuFramebufferRefusal.AttachmentViewMissing, refusal.Reason);
+                Assert.Equal(reason, refusal.Reason);
                 Assert.Equal("colour attachment 0", refusal.Attachment);
                 Assert.Equal(GpuTextureUsage.RenderTarget, refusal.RequiredUsage);
+                Assert.Equal(usage, refusal.ActualUsage);
+                Assert.Equal(usage == GpuTextureUsage.Staging, refusal.IsStaging);
+                using IGpuTexture target = fixture.Factory.CreateTexture(
+                    VulkanResourceFixture.Texture(64, 64, GpuTextureUsage.RenderTarget));
+                using IGpuFramebuffer control = fixture.Factory.CreateFramebuffer(null, target);
             }
             finally
             {

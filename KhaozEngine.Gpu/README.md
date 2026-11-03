@@ -622,7 +622,7 @@ exception type. Message text is developer prose. Branch on the reason and read t
 |---|---|---|
 | `GpuFramebufferException`, `GpuFramebufferRefusal.AttachmentNotRenderable` | Refuses an attachment without the native texture or view needed for rendering. | `Attachment`, `ActualUsage`, `RequiredUsage`, `IsStaging`, `NativeHandleKind` |
 | `GpuFramebufferException`, `GpuFramebufferRefusal.AttachmentShapeMismatch` | Refuses attachments that do not share one size and sample count. | `Attachment`, `Width`, `Height`, `SampleCount`, `ExpectedWidth`, `ExpectedHeight`, `ExpectedSampleCount` |
-| `GpuFramebufferException`, `GpuFramebufferRefusal.AttachmentViewMissing` | Refuses an attachment with no required native render view. | `ParamName`, `Attachment`, `RequiredUsage` |
+| `GpuFramebufferException`, `GpuFramebufferRefusal.AttachmentViewMissing` | Refuses an attachment with no required native render view. | `ParamName`, `Attachment`, `ActualUsage`, `RequiredUsage`, `IsStaging`, `NativeHandleKind` |
 | `GpuFramebufferException`, `GpuFramebufferRefusal.NoAttachments` | Refuses a framebuffer with no colour or depth attachment. | `ParamName`, `ColourAttachmentCount`, `HasDepth` |
 | `GpuPipelineOutputsException`, `GpuPipelineOutputsRefusal.BlendCountMismatch` | Refuses a graphics pipeline whose blend state count differs from its colour outputs. | `ParamName`, `DeclaredBlendCount`, `ColourOutputCount`, `PipelineKind` |
 | `GpuResourceLayoutException`, `GpuResourceLayoutRefusal.DynamicOffsetUnsupportedForKind` | Refuses a dynamic offset on a resource kind the backend cannot rebase. | `ParamName`, `Backend`, `ElementName`, `Binding`, `ResourceKind` |
@@ -692,6 +692,11 @@ The state exception derives from `InvalidOperationException`, the staging and sh
 from `ArgumentException`, and the alignment exception from `ArgumentOutOfRangeException`. A shape's
 requested dimensions are signed, preserving a negative request. Backends retain their existing map
 state tracking. These members do not introduce double-map detection where a backend did not have it.
+
+Staging framebuffer attachments use `AttachmentNotRenderable` on all native backends. A non-staging
+attachment without its required native render view uses `AttachmentViewMissing`. A missing swapchain
+attachment handle also uses `AttachmentNotRenderable`. These classifications preserve the existing
+validation points and backend admission differences.
 
 ## Optional compiler and memory diagnostics
 

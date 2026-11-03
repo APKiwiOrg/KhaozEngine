@@ -132,9 +132,9 @@ public sealed class CertifiedCurvedSweepLifetimeTests
         Assert.NotSame(previous, captures[handle.Value]);
         HitContains(Read(world, start - world.Origin, delta, length: 0), 1.25, 1.25);
         InstalledSweepGeometry current = captures[handle.Value]!;
-        captures[handle.Value] = previous;
+        world.ReplaceStaticSweepCaptureForTests(handle, previous);
         Refused(Read(world, start - world.Origin, delta, length: 0));
-        captures[handle.Value] = current;
+        world.ReplaceStaticSweepCaptureForTests(handle, current);
 
         using IPhysicsQueryLease lease = world.AcquireQueryReadLease();
         foreach ((float radius, float length) in new[] { (0.4f, 0.59999996f), (0.40000007f, 0.6000001f), (0.25f, 0f) })

@@ -270,7 +270,7 @@ public sealed class CertifiedMeshSweepCoverageTests
         {
             sim.Shapes.GetShape<Mesh>(native.Shape.Index).Scale = scale;
             CapsuleSweepGeometry.TryCapture(sim.Shapes, native.Shape, out var captured);
-            world.InstalledSweepStaticsForTests[handle.Value] = captured;
+            world.ReplaceStaticSweepCaptureForTests(handle, captured);
         }, handle.Value);
     }
 }

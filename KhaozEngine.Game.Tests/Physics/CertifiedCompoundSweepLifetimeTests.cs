@@ -36,9 +36,9 @@ public sealed class CertifiedCompoundSweepLifetimeTests
         Assert.NotSame(oldCapture, Geometry(world, handle));
         var captures = world.InstalledSweepStaticsForTests;
         var current = captures[handle.Value]!;
-        captures[handle.Value] = oldCapture;
+        world.ReplaceStaticSweepCaptureForTests(handle, oldCapture);
         Refused(Read(world, Start - world.Origin, Delta));
-        captures[handle.Value] = current;
+        world.ReplaceStaticSweepCaptureForTests(handle, current);
         HitContains(Read(world, Start - world.Origin, Delta), 1.625, 1.625);
         // Keep native geometry, root pose and registration id current. The independent
         // installation generation must reject a copied capture carrying an old generation.
@@ -76,9 +76,9 @@ public sealed class CertifiedCompoundSweepLifetimeTests
         body = world.AddDynamic(shape, replacementPose, new DynamicBodyDescription(1));
         Assert.Equal(oldDynamic, bodies[body.Value]);
         var currentDynamicCapture = dynamicCaptures[body.Value];
-        dynamicCaptures[body.Value] = oldDynamicCapture;
+        world.ReplaceDynamicSweepCaptureForTests(body, oldDynamicCapture);
         Refused(Read(world, replacementPose.Position + Start, Delta, filter: QueryFilter.DynamicsOnly));
-        dynamicCaptures[body.Value] = currentDynamicCapture;
+        world.ReplaceDynamicSweepCaptureForTests(body, currentDynamicCapture);
         HitContains(Read(world, replacementPose.Position + Start, Delta, filter: QueryFilter.DynamicsOnly), 1.625, 1.625);
         world.RemoveDynamic(body);
 

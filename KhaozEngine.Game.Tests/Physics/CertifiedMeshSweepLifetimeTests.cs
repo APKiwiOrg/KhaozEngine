@@ -61,9 +61,9 @@ public sealed class CertifiedMeshSweepLifetimeTests
         Assert.NotEqual(previousGeometry.Mesh!.Triangle(0).Vertex(0), captures[replacement.Value]!.Mesh!.Triangle(0).Vertex(0));
         HitContains(Read(world, start - world.Origin, delta), 1.25, 1.25);
         InstalledSweepGeometry currentGeometry = captures[replacement.Value]!;
-        captures[replacement.Value] = previousGeometry;
+        world.ReplaceStaticSweepCaptureForTests(replacement, previousGeometry);
         Refused(Read(world, start - world.Origin, delta));
-        captures[replacement.Value] = currentGeometry;
+        world.ReplaceStaticSweepCaptureForTests(replacement, currentGeometry);
         HitContains(Read(world, start - world.Origin, delta), 1.25, 1.25);
         using var excluded = world.CreateQueryViewExcludingStatics([replacement]);
         using var included = world.CreateQueryViewExcludingStatics([]);

@@ -99,9 +99,9 @@ public partial class SupportFootprintTests
         GeometrySign cold = polygon.SourcePredicates.Interior(polygon, 1, axis, radius, -1, spatial: true);
         long coldBytes = GC.GetAllocatedBytesForCurrentThread() - coldBefore;
         Assert.Equal(GeometrySign.Positive, cold);
-        var constants = polygon.SourcePredicates.MapForTests;
+        var constants = polygon.SourcePredicates.MapDegreesForTests;
         Assert.Equal(9, constants.Count);
-        Assert.All(constants, coefficient => Assert.Equal(0, coefficient.Degree));
+        Assert.All(constants, degree => Assert.Equal(0, degree));
         long payload = SourceScratchPayload(polygon.SourcePredicates);
         _output.WriteLine($"Represented source constants={constants.Count} coldBytes={coldBytes} scratchPayloadBytes={payload}");
         Assert.True(payload < 4 * 1024 * 1024, $"Retained source scratch is {payload} bytes");

@@ -86,9 +86,9 @@ public sealed class CertifiedSweepLifetimeTests
         StaticHandle replacement = world.AddStatic(Box, new Pose(new(1, 0, 0), Cyclic));
         HitContains(Read(world, Start, Delta), 2.625, 2.625);
         InstalledSweepGeometry current = captures[replacement.Value]!;
-        captures[replacement.Value] = old;
+        world.ReplaceStaticSweepCaptureForTests(replacement, old);
         Refused(Read(world, Start, Delta));
-        captures[replacement.Value] = current;
+        world.ReplaceStaticSweepCaptureForTests(replacement, current);
         HitContains(Read(world, Start, Delta), 2.625, 2.625);
         world.AdvanceUnhandledGenerationForTests();
         Refused(Read(world, Start, Delta));

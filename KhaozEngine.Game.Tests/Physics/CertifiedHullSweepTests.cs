@@ -84,9 +84,9 @@ public sealed class CertifiedHullSweepTests
         HitContains(Read(world, start, delta), expected.Lower, expected.Upper);
         HitContains(Read(world, start, delta), 2.25, 2.25);
         InstalledSweepGeometry current = captures[replacement.Value]!;
-        captures[replacement.Value] = previous;
+        world.ReplaceStaticSweepCaptureForTests(replacement, previous);
         Refused(Read(world, start, delta));
-        captures[replacement.Value] = current;
+        world.ReplaceStaticSweepCaptureForTests(replacement, current);
     }
 
     [Fact]

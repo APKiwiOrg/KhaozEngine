@@ -10,7 +10,8 @@ internal sealed partial class SupportFootprintSourcePredicates
 {
     readonly SupportSourcePolynomialWorkspace _work = new();
     /// <summary>Lets RepresentedSource and SourceCorrections verify all nine compiled map coefficients stay constant.</summary>
-    internal System.Collections.Generic.IReadOnlyList<SupportSourcePolynomial> MapForTests => _map;
+    internal System.Collections.Generic.IReadOnlyList<int> MapDegreesForTests =>
+        System.Array.AsReadOnly(System.Array.ConvertAll(_map, polynomial => polynomial.Degree));
 
     readonly SupportSourcePolynomial[] _map = new SupportSourcePolynomial[9];
     SupportPolygon _polygon = null!;

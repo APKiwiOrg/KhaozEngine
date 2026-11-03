@@ -60,7 +60,17 @@ internal sealed partial class SupportFootprintCollector
     }
 
     /// <summary>Lets PitchedPlates inject an unresolved admitted polygon before extrema evaluation.</summary>
-    internal IReadOnlyList<SupportPolygon> PolygonsForTests => _polygons;
+    internal int InjectPolygonUncertaintyForTests(StaticHandle owner, int elementId, Action<SupportPolygon> injectUncertainty)
+    {
+        int injected = 0;
+        foreach (SupportPolygon polygon in _polygons)
+            if (polygon.Static == owner && polygon.ElementId == elementId)
+            {
+                injectUncertainty(polygon);
+                injected++;
+            }
+        return injected;
+    }
 
     /// <summary>Lets TiltedQuery inspect the actual retained curved proof storage and work counters.</summary>
     internal SupportFootprintCurved CurvedKernelForTests => _curvedKernel;

@@ -237,19 +237,16 @@ public partial class SupportFootprintTests
         using IPhysicsQueryLease lease = scene.World.AcquireQueryReadLease();
         Capability(scene.World).QuerySupportFootprint(lease, request, new SupportFootprintMember[256], new ulong[1024]);
         SupportFootprintCollector scratch = FootprintScratch(scene.World);
-        var polygons = scratch.PolygonsForTests;
         int topId = scene.Faces.Single(f => f.Static == scene.Crate && f.Normal.Y > 0.5).ElementId;
         int injected = 0;
         ContactAllocationDiagnostics.SetObserver((phase, entering) =>
         {
             if (!entering || phase != ContactAllocationPhase.SupportExtrema) return;
-            foreach (SupportPolygon polygon in polygons)
-                if (polygon.Static == scene.Crate && polygon.ElementId == topId)
-                {
-                    PlateUncertainFixture(polygon, membership);
-                    Assert.False(polygon.HasSource);
-                    injected++;
-                }
+            injected += scratch.InjectPolygonUncertaintyForTests(scene.Crate, topId, polygon =>
+            {
+                PlateUncertainFixture(polygon, membership);
+                Assert.False(polygon.HasSource);
+            });
         });
         try
         {

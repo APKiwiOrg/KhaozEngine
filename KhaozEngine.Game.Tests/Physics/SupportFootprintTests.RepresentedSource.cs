@@ -95,9 +95,9 @@ public partial class SupportFootprintTests
         }
         polygon.Finish(FeaturePoint.Cross(map.Edge(local[0], local[1]), map.Edge(local[0], local[2])));
         Assert.Equal(GeometrySign.Positive, polygon.SourcePredicates.NormalComponent(polygon, 1));
-        var constants = polygon.SourcePredicates.MapForTests;
+        var constants = polygon.SourcePredicates.MapDegreesForTests;
         Assert.Equal(9, constants.Count);
-        Assert.All(constants, p => Assert.Equal(0, p.Degree));
+        Assert.All(constants, degree => Assert.Equal(0, degree));
         var identity = new SupportPolygonSourceMap(Vector3.UnitX, Vector3.UnitY, Vector3.UnitZ, Vector3.Zero);
         var comparer = SupportSourceMapComparer.Instance;
         for (int i = 0; i < 12; i++)

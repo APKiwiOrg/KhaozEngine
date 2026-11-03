@@ -67,14 +67,39 @@ namespace KhaozEngine.Tests.Gpu
 
             var provider = new D3D11BackendProvider();
 
-            NotSupportedException ex = windowed
-                ? Assert.Throws<PlatformNotSupportedException>(() => provider.CreateForWindow(default))
-                : Assert.Throws<PlatformNotSupportedException>(() => provider.CreateHeadless());
+            D3D11BackendCreationPlatformException ex = windowed
+                ? Assert.Throws<D3D11BackendCreationPlatformException>(() => provider.CreateForWindow(default))
+                : Assert.Throws<D3D11BackendCreationPlatformException>(() => provider.CreateHeadless());
 
-            Assert.Contains("Direct3D 11", ex.Message, StringComparison.Ordinal);
+            Assert.Equal(D3D11BackendCreationRefusal.OperatingSystemUnsupported, ex.Reason);
+            Assert.Equal(GpuBackendKind.Direct3D11Native, ex.Backend);
+            Assert.Equal(windowed ? "windowed" : "headless", ex.CreationPath);
+            Assert.Equal("Windows", ex.RequiredOperatingSystem);
+            Assert.Equal("KhaozEngineD3D11.IsPlatformSupported", ex.SupportProbe);
+            Assert.IsAssignableFrom<PlatformNotSupportedException>(ex);
             // It must not read as the OTHER failure mode. A missing registration is a wiring fault with its own
             // exception type and its own message, and decision I2 exists to keep the two tellable apart.
             Assert.IsNotType<GpuBackendProviderMissingException>(ex);
+        }
+
+        [Fact]
+        public void CreationPolicy_RefusesForeignSettingsAndWindowKindsWithoutADevice()
+        {
+            var provider = new D3D11BackendProvider(environment: _ => null);
+            var foreign = new KhaozEngine.Gpu.Metal.Internal.MetalBackendProvider(environment: _ => null)
+                .ResolveHeadlessSettings(new(false, false));
+            var settings = Assert.Throws<D3D11BackendCreationArgumentException>(() => provider.CreateHeadless(foreign));
+            Assert.Equal(D3D11BackendCreationRefusal.ForeignDiagnosticSettings, settings.Reason);
+            Assert.Equal(foreign.GetType(), settings.ActualType);
+            Assert.Equal("settings", settings.ParamName);
+            Assert.IsAssignableFrom<ArgumentException>(settings);
+            var window = Assert.Throws<D3D11BackendCreationArgumentException>(() =>
+                D3D11BackendProvider.RequireWindowKindForTests(GpuWindowKind.Cocoa));
+            Assert.Equal(D3D11BackendCreationRefusal.WindowKindUnsupported, window.Reason);
+            Assert.Equal(GpuWindowKind.Cocoa, window.ActualWindowKind);
+            Assert.Equal(GpuWindowKind.Win32, window.RequiredWindowKind);
+            Assert.Equal("request", window.ParamName);
+            D3D11BackendProvider.RequireWindowKindForTests(GpuWindowKind.Win32);
         }
 
         /// <summary>

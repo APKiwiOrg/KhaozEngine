@@ -28097,3 +28097,12 @@ the game reject a target before an Attack command creates a lock, chase or roll,
 Stair climb smoothing survives a shard handoff by seeding the destination's empty smoothing accumulator from the
 migrated `ClimbRateQ` signal. Ordinary ticks retain their full-precision accumulator. The float remains absent
 from observer snapshots, so the wire payload does not grow.
+
+### Native D3D11 creation and binding refusals
+
+`D3D11BackendCreationRefusal` distinguishes platform, window-kind and diagnostic-settings refusals.
+`D3D11ObjectPlatformRefusal.WindowsObjectUsedOffWindows` carries the native object kind and support probe.
+`D3D11BindResolutionRefusal` identifies missing views or native interfaces, framebuffer prerequisites and
+constant-buffer transposition inputs. `D3D11MapResultRefusal.MapFailed` carries the map site, HRESULT,
+result token and device-loss status. Each exception derives from the BCL type previously thrown.
+See the [D3D11 refusal table](../KhaozEngine.Gpu.D3D11/README.md#refusals) for the identifiers.

@@ -65,20 +65,29 @@ namespace KhaozEngine.Gpu.D3D11.Internal
                                 "Unmapped Direct3D 11 register file in a bind."),
                         };
 
-                        return view ?? throw new ArgumentException(
+                        return view ?? throw new D3D11BindResolutionArgumentException(D3D11BindResolutionRefusal.ViewMissing,
                             $"A {resource.GetType().Name} was bound at a '{Letter(file)}' register of the native "
                             + "Direct3D 11 backend and has no view for it. Views follow from a resource's DECLARED "
                             + "usage at creation (decision X1 creates them all eagerly and the emitter creates none), "
                             + "so this is either a layout element of the wrong kind or a resource created without the "
-                            + "usage bit its layout asks for.", nameof(resource));
+                            + "usage bit its layout asks for.", nameof(resource))
+                            {
+                                ResourceType = resource.GetType(),
+                                RegisterLetter = Letter(file)[0],
+                                RequiredInterface = typeof(ID3D11BindableViews),
+                            };
                     }
 
                 default:
-                    throw new ArgumentException(
+                    throw new D3D11BindResolutionArgumentException(D3D11BindResolutionRefusal.BindableInterfaceMissing,
                         $"A {resource.GetType().Name} was bound into the native Direct3D 11 backend. A resource "
                         + "this backend created answers ID3D11BindableViews, which is where the view a register "
                         + "file wants comes from, and a resource from another backend carries another backend's "
-                        + "handles.", nameof(resource));
+                        + "handles.", nameof(resource))
+                        {
+                            ResourceType = resource.GetType(),
+                            RequiredInterface = typeof(ID3D11BindableViews),
+                        };
             }
         }
 
@@ -92,11 +101,15 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         {
             if (framebuffer is null) throw new ArgumentNullException(nameof(framebuffer));
 
-            return framebuffer as ID3D11RenderTargetSurface ?? throw new ArgumentException(
+            return framebuffer as ID3D11RenderTargetSurface ?? throw new D3D11BindResolutionArgumentException(D3D11BindResolutionRefusal.FramebufferInterfaceMissing,
                 $"A {framebuffer.GetType().Name} reached the native Direct3D 11 emitter as a framebuffer. Both of "
                 + "this backend's framebuffer types answer ID3D11RenderTargetSurface, which is what carries the "
                 + "render target and depth-stencil views, and a framebuffer from another backend carries another "
-                + "backend's views.", nameof(framebuffer));
+                + "backend's views.", nameof(framebuffer))
+                {
+                    ResourceType = framebuffer.GetType(),
+                    RequiredInterface = typeof(ID3D11RenderTargetSurface),
+                };
         }
 
         /// <summary>
@@ -110,11 +123,15 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         /// </para>
         /// </summary>
         internal static object NativeBuffer(IGpuBuffer? buffer)
-            => (buffer as ID3D11BindableViews)?.BufferObject ?? throw new ArgumentException(
+            => (buffer as ID3D11BindableViews)?.BufferObject ?? throw new D3D11BindResolutionArgumentException(D3D11BindResolutionRefusal.NativeBufferMissing,
                 $"A {(buffer is null ? "null" : buffer.GetType().Name)} was handed to the native Direct3D 11 "
                 + "emitter as a buffer. A buffer this backend created carries the ID3D11Buffer every bind, copy "
                 + "and write names, and a buffer from another backend carries another backend's.",
-                nameof(buffer));
+                nameof(buffer))
+                {
+                    ResourceType = buffer?.GetType(),
+                    RequiredInterface = typeof(ID3D11BindableViews),
+                };
 
         /// <summary>
         /// THE FRAMEBUFFER A COMMAND NAMES AN ATTACHMENT OF, refused by name when nothing is bound, in the one
@@ -134,10 +151,13 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         /// </summary>
         internal static IGpuFramebuffer RequireBoundFramebuffer(IGpuFramebuffer? bound, string command,
             string? why = null)
-            => bound ?? throw new InvalidOperationException(
+            => bound ?? throw new D3D11BindResolutionStateException(D3D11BindResolutionRefusal.FramebufferNotBound,
                 $"{command} was reached with no framebuffer bound on the native Direct3D 11 backend. "
                 + (why ?? "A command that names an attachment of the bound framebuffer has nothing to name while "
-                    + "none is bound. Bind a framebuffer first."));
+                    + "none is bound. Bind a framebuffer first."))
+                    {
+                        Command = command,
+                    };
 
         /// <summary>
         /// The bound framebuffer whose extent IS the full scissor, refused by name when none is bound, in the one
@@ -186,10 +206,13 @@ namespace KhaozEngine.Gpu.D3D11.Internal
             IGpuFramebuffer framebuffer = RequireBoundFramebuffer(bound, "ClearDepthStencil");
             if (framebuffer.Outputs.Depth is not null) return framebuffer;
 
-            throw new InvalidOperationException(
+            throw new D3D11BindResolutionStateException(D3D11BindResolutionRefusal.DepthAttachmentMissing,
                 "ClearDepthStencil was reached with a framebuffer that declares no depth attachment on the native "
                 + "Direct3D 11 backend. A pass that clears depth has to render into a framebuffer that declares "
-                + "one.");
+                + "one.")
+                {
+                    Command = "ClearDepthStencil",
+                };
         }
 
         /// <summary>
@@ -211,11 +234,15 @@ namespace KhaozEngine.Gpu.D3D11.Internal
             ArgumentNullException.ThrowIfNull(constantCounts);
             if (firstConstants.Length < binds.Length || constantCounts.Length < binds.Length)
             {
-                throw new ArgumentException(
+                throw new D3D11BindResolutionArgumentException(D3D11BindResolutionRefusal.TransposeScratchTooSmall,
                     $"The constant-buffer scratch holds {Math.Min(firstConstants.Length, constantCounts.Length)} "
                     + $"entries and this bind covers {binds.Length} registers. The scratch is grown before the "
                     + "transposition, so a short one here is a defect in the emitter rather than an oversized "
-                    + "bind.", nameof(firstConstants));
+                    + "bind.", nameof(firstConstants))
+                    {
+                        SuppliedCount = Math.Min(firstConstants.Length, constantCounts.Length),
+                        RequiredCount = binds.Length,
+                    };
             }
 
             for (int i = 0; i < binds.Length; i++)
@@ -228,11 +255,16 @@ namespace KhaozEngine.Gpu.D3D11.Internal
 
                 if (binds[i].Buffer is null && (firstConstants[i] != 0 || constantCounts[i] != 0))
                 {
-                    throw new ArgumentException(
+                    throw new D3D11BindResolutionArgumentException(D3D11BindResolutionRefusal.NullBufferWindowNonzero,
                         $"Register {i} of a Direct3D 11 constant-buffer bind has no buffer but carries the window "
                         + $"[{firstConstants[i]}, +{constantCounts[i]}). A null entry must carry a first constant "
                         + "and a constant count of zero, and the runtime rejects the whole call otherwise, which "
-                        + "loses every other register in the same span.", nameof(binds));
+                        + "loses every other register in the same span.", nameof(binds))
+                        {
+                            RegisterIndex = i,
+                            FirstConstant = binds[i].FirstConstant,
+                            ConstantCount = binds[i].ConstantCount,
+                        };
                 }
             }
         }

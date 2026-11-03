@@ -1,6 +1,7 @@
 using System;
 using System.Threading;
 using KhaozEngine.Gpu;
+using KhaozEngine.Gpu.D3D11;
 using KhaozEngine.Gpu.D3D11.Internal;
 using KhaozEngine.Gpu.Internal;
 using KhaozEngine.Gpu.Metal.Internal;
@@ -177,10 +178,11 @@ namespace KhaozEngine.Tests.Gpu
             rig.Memory.TryMapResult = D3D11DeviceLossCodes.DeviceRemoved;
             byte[] destination = Untouched();
 
-            InvalidOperationException ex = Assert.Throws<InvalidOperationException>(
+            var ex = Assert.Throws<D3D11MapResultException>(
                 () => rig.Reads.TryReadBuffer(rig.Staging, completion, 0, destination));
 
-            Assert.Contains(D3D11StagingMaps.MapSite, ex.Message, StringComparison.Ordinal);
+            Assert.Equal(D3D11MapResultRefusal.MapFailed, ex.Reason);
+            Assert.Equal(D3D11StagingMaps.MapSite, ex.Site);
             Assert.Equal(Untouched(), destination);
             Assert.False(Monitor.IsEntered(rig.SubmitLock));
         }

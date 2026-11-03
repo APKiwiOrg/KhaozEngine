@@ -169,14 +169,19 @@ namespace KhaozEngine.Gpu.D3D11.Internal
 
             bool lost = loss?.Check(hresult, site) ?? false;
 
-            throw new InvalidOperationException(
+            throw new D3D11MapResultException(D3D11MapResultRefusal.MapFailed,
                 $"Mapping a resource on the native Direct3D 11 backend failed at {site} with "
                 + $"{D3D11DeviceLossCodes.Token(hresult)}. "
                 + (lost
                     ? "The device has been LOST, and the reason is in this session's telemetry header. Nothing "
                     + "further on this device will succeed."
                     : "The mapped pointer a failed map hands back is null, so this throws rather than letting a "
-                    + "reader walk it and report an empty readback."));
+                    + "reader walk it and report an empty readback."), hresult)
+                    {
+                        Site = site,
+                        ResultToken = D3D11DeviceLossCodes.Token(hresult),
+                        DeviceLost = lost,
+                    };
         }
     }
 }

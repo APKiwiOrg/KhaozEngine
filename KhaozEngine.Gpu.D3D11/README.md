@@ -440,8 +440,8 @@ refused by name.
 
 **What a resource offers a register file is the resource's own answer.** `ID3D11BindableViews` is the seam for
 that, and `D3D11BindResolve` is the device-free half of the bind: it unwraps a `GpuBufferRange` to its buffer,
-refuses a resource whose declared usage never earned it the view its layout asks for (naming the HLSL register
-letter), passes a null through as the HOLE an array bind legitimately has, and transposes a span of binds into
+refuses a resource whose declared usage never earned it the view its layout asks for with
+`D3D11BindResolutionRefusal.ViewMissing` and `RegisterLetter`, `ResourceType` and `RequiredInterface`, passes a null through as the HOLE an array bind legitimately has, and transposes a span of binds into
 the parallel arrays `*SetConstantBuffers1` takes. It is also where a REFUSAL both emitters owe lives: a buffer
 from another backend, and the framebuffer a clear names an attachment of (none bound, no
 colour attachment at that index, no depth attachment at all). A refusal kept in the real emitter alone means the
@@ -1394,6 +1394,19 @@ and `AlignmentBytes`. Staging contract refusals use the shared types in `KhaozEn
 
 | Exception and reason | What it refuses | Identifiers |
 |---|---|---|
+| `D3D11BackendCreationArgumentException`, `D3D11BackendCreationRefusal.ForeignDiagnosticSettings` | Refuses settings not owned by the D3D11 provider. | `ParamName`, `ActualType` |
+| `D3D11BackendCreationPlatformException`, `D3D11BackendCreationRefusal.OperatingSystemUnsupported` | Refuses native D3D11 device creation off Windows. | `Backend`, `CreationPath`, `RequiredOperatingSystem`, `SupportProbe` |
+| `D3D11BackendCreationArgumentException`, `D3D11BackendCreationRefusal.WindowKindUnsupported` | Refuses a D3D11 swapchain window that is not Win32. | `ParamName`, `ActualWindowKind`, `RequiredWindowKind` |
+| `D3D11BindResolutionArgumentException`, `D3D11BindResolutionRefusal.BindableInterfaceMissing` | Refuses a resource without the D3D11 bindable-view seam. | `ParamName`, `ResourceType`, `RequiredInterface` |
+| `D3D11BindResolutionStateException`, `D3D11BindResolutionRefusal.DepthAttachmentMissing` | Refuses a depth clear on a framebuffer without depth. | `Command` |
+| `D3D11BindResolutionArgumentException`, `D3D11BindResolutionRefusal.FramebufferInterfaceMissing` | Refuses a framebuffer without the D3D11 render-target seam. | `ParamName`, `ResourceType`, `RequiredInterface` |
+| `D3D11BindResolutionStateException`, `D3D11BindResolutionRefusal.FramebufferNotBound` | Refuses a framebuffer command before any framebuffer is bound. | `Command` |
+| `D3D11BindResolutionArgumentException`, `D3D11BindResolutionRefusal.NativeBufferMissing` | Refuses a buffer without a native D3D11 buffer handle. | `ParamName`, `ResourceType`, `RequiredInterface` |
+| `D3D11BindResolutionArgumentException`, `D3D11BindResolutionRefusal.NullBufferWindowNonzero` | Refuses a null constant buffer carrying a nonzero window. | `ParamName`, `RegisterIndex`, `FirstConstant`, `ConstantCount` |
+| `D3D11BindResolutionArgumentException`, `D3D11BindResolutionRefusal.TransposeScratchTooSmall` | Refuses transposing a constant-buffer span into undersized scratch. | `ParamName`, `SuppliedCount`, `RequiredCount` |
+| `D3D11BindResolutionArgumentException`, `D3D11BindResolutionRefusal.ViewMissing` | Refuses a resource without the native view needed by the register file. | `ParamName`, `ResourceType`, `RegisterLetter`, `RequiredInterface` |
+| `D3D11MapResultException`, `D3D11MapResultRefusal.MapFailed` | Refuses a native mapping operation that returns a failed HRESULT. | `Site`, `HResult`, `ResultToken`, `DeviceLost` |
+| `D3D11ObjectPlatformException`, `D3D11ObjectPlatformRefusal.WindowsObjectUsedOffWindows` | Refuses use of a Windows-only native D3D11 object on another operating system. | `ObjectKind`, `RequiredOperatingSystem`, `SupportProbe` |
 | `D3D11CompilerEvidenceStateException`, `D3D11CompilerEvidenceRefusal.CombinedFlagsTooLarge` | Refuses retaining combined compiler flags beyond the bounded pipeline evidence profile. | `Field`, `MaximumUtf8Bytes`, `ActualUtf8Bytes` |
 | `D3D11CompilerEvidenceStateException`, `D3D11CompilerEvidenceRefusal.ConstructionIdentityInvalid` | Refuses compiler evidence without valid construction correspondence identity. | No additional identifiers |
 | `D3D11CompilerEvidenceStateException`, `D3D11CompilerEvidenceRefusal.FailureOriginMissing` | Refuses invalid compiler evidence that has no originating failure event. | No additional identifiers |

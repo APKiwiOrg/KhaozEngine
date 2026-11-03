@@ -224,8 +224,14 @@ namespace KhaozEngine.Tests.Gpu
             var reason = new FakeRemovedReason();
             var latch = new D3D11DeviceLossLatch(new DeviceLiveness(), reason);
 
-            Assert.Throws<InvalidOperationException>(
+            var refusal = Assert.Throws<D3D11MapResultException>(
                 () => D3D11StagingMaps.RequireMapped(D3D11DeviceLossCodes.InvalidCall, latch));
+            Assert.Equal(D3D11MapResultRefusal.MapFailed, refusal.Reason);
+            Assert.Equal(D3D11DeviceLossCodes.InvalidCall, refusal.HResult);
+            Assert.Equal(D3D11StagingMaps.MapSite, refusal.Site);
+            Assert.Equal(D3D11DeviceLossCodes.Token(D3D11DeviceLossCodes.InvalidCall), refusal.ResultToken);
+            Assert.False(refusal.DeviceLost);
+            Assert.IsAssignableFrom<InvalidOperationException>(refusal);
 
             Assert.False(latch.IsLost);
             Assert.Equal(0, reason.Reads);
@@ -244,8 +250,13 @@ namespace KhaozEngine.Tests.Gpu
             var liveness = new DeviceLiveness();
             var latch = new D3D11DeviceLossLatch(liveness, reason);
 
-            Assert.Throws<InvalidOperationException>(
+            var refusal = Assert.Throws<D3D11MapResultException>(
                 () => D3D11StagingMaps.RequireMapped(D3D11DeviceLossCodes.DeviceRemoved, latch));
+            Assert.Equal(D3D11MapResultRefusal.MapFailed, refusal.Reason);
+            Assert.True(refusal.DeviceLost);
+            Assert.Equal(D3D11DeviceLossCodes.DeviceRemoved, refusal.HResult);
+            Assert.Equal(D3D11StagingMaps.MapSite, refusal.Site);
+            Assert.Equal("DXGI_ERROR_DEVICE_REMOVED", refusal.ResultToken);
 
             Assert.True(latch.IsLost);
             Assert.True(liveness.IsDead);
@@ -261,7 +272,7 @@ namespace KhaozEngine.Tests.Gpu
         /// </summary>
         [Fact]
         public void WithNoLatchWired_AFailedMapStillThrows()
-            => Assert.Throws<InvalidOperationException>(
+            => Assert.Throws<D3D11MapResultException>(
                 () => D3D11StagingMaps.RequireMapped(D3D11DeviceLossCodes.DeviceRemoved, loss: null));
 
         // ---- Decision W4's staging lock clause, through the seam ------------------------------------------------
@@ -379,7 +390,7 @@ namespace KhaozEngine.Tests.Gpu
             var access = new D3D11StagingAccess(memory, submitLock, latch);
             using var texture = new FakeStagingTexture();
 
-            Assert.Throws<InvalidOperationException>(
+            Assert.Throws<D3D11MapResultException>(
                 () => access.Map(texture, GpuMapMode.Read));
 
             Assert.True(latch.IsLost);

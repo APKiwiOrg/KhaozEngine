@@ -73,10 +73,15 @@ namespace KhaozEngine.Tests.Gpu
         {
             var resource = new ViewfulBuffer(shaderResource: new object());
 
-            ArgumentException ex = Assert.Throws<ArgumentException>(
+            var ex = Assert.Throws<D3D11BindResolutionArgumentException>(
                 () => D3D11BindResolve.ViewOf(resource, D3D11RegisterFile.Sampler));
 
-            Assert.Contains("'s' register", ex.Message, StringComparison.Ordinal);
+            Assert.Equal(D3D11BindResolutionRefusal.ViewMissing, ex.Reason);
+            Assert.Equal('s', ex.RegisterLetter);
+            Assert.Equal(typeof(ViewfulBuffer), ex.ResourceType);
+            Assert.Equal(typeof(ID3D11BindableViews), ex.RequiredInterface);
+            Assert.Equal("resource", ex.ParamName);
+            Assert.IsAssignableFrom<ArgumentException>(ex);
         }
 
         /// <summary>And a resource from another backend is refused by name rather than by an
@@ -84,11 +89,12 @@ namespace KhaozEngine.Tests.Gpu
         [Fact]
         public void AForeignResource_IsRefusedByName()
         {
-            ArgumentException ex = Assert.Throws<ArgumentException>(
+            var ex = Assert.Throws<D3D11BindResolutionArgumentException>(
                 () => D3D11BindResolve.ViewOf(new FakeSampler(), D3D11RegisterFile.Sampler));
 
-            Assert.Contains(nameof(FakeSampler), ex.Message, StringComparison.Ordinal);
-            Assert.Contains(nameof(ID3D11BindableViews), ex.Message, StringComparison.Ordinal);
+            Assert.Equal(D3D11BindResolutionRefusal.BindableInterfaceMissing, ex.Reason);
+            Assert.Equal(typeof(FakeSampler), ex.ResourceType);
+            Assert.Equal(typeof(ID3D11BindableViews), ex.RequiredInterface);
         }
 
         /// <summary>
@@ -103,13 +109,17 @@ namespace KhaozEngine.Tests.Gpu
         {
             var foreign = new FakeBuffer(64);
 
-            ArgumentException first = Assert.Throws<ArgumentException>(
+            var first = Assert.Throws<D3D11BindResolutionArgumentException>(
                 () => D3D11BindResolve.NativeBuffer(foreign));
-            ArgumentException second = Assert.Throws<ArgumentException>(
+            var second = Assert.Throws<D3D11BindResolutionArgumentException>(
                 () => D3D11BindResolve.NativeBuffer(foreign));
 
-            Assert.Contains(nameof(FakeBuffer), first.Message, StringComparison.Ordinal);
-            Assert.Contains(nameof(FakeBuffer), second.Message, StringComparison.Ordinal);
+            Assert.Equal(D3D11BindResolutionRefusal.NativeBufferMissing, first.Reason);
+            Assert.Equal(typeof(FakeBuffer), first.ResourceType);
+            Assert.Equal(typeof(ID3D11BindableViews), first.RequiredInterface);
+            Assert.Equal(D3D11BindResolutionRefusal.NativeBufferMissing, second.Reason);
+            Assert.Equal(typeof(FakeBuffer), second.ResourceType);
+            Assert.Equal(typeof(ID3D11BindableViews), second.RequiredInterface);
             Assert.Equal("buffer", first.ParamName);
             Assert.Equal("buffer", second.ParamName);
 
@@ -164,10 +174,12 @@ namespace KhaozEngine.Tests.Gpu
             var framebuffer = new FakeFramebuffer(
                 new GpuOutputDescription(null, GpuPixelFormat.R8G8B8A8UNorm), 4, 4);
 
-            ArgumentException ex = Assert.Throws<ArgumentException>(
+            var ex = Assert.Throws<D3D11BindResolutionArgumentException>(
                 () => D3D11BindResolve.RenderTargets(framebuffer));
 
-            Assert.Contains(nameof(FakeFramebuffer), ex.Message, StringComparison.Ordinal);
+            Assert.Equal(D3D11BindResolutionRefusal.FramebufferInterfaceMissing, ex.Reason);
+            Assert.Equal(typeof(FakeFramebuffer), ex.ResourceType);
+            Assert.Equal(typeof(ID3D11RenderTargetSurface), ex.RequiredInterface);
         }
 
         // ---- the constant-buffer transposition ------------------------------------------------------------
@@ -214,10 +226,14 @@ namespace KhaozEngine.Tests.Gpu
         {
             var binds = new[] { new D3D11ConstantBufferBind(null, 16, 4) };
 
-            ArgumentException ex = Assert.Throws<ArgumentException>(
+            var ex = Assert.Throws<D3D11BindResolutionArgumentException>(
                 () => D3D11BindResolve.Constants(binds, new int[4], new int[4]));
 
             Assert.Equal("binds", ex.ParamName);
+            Assert.Equal(D3D11BindResolutionRefusal.NullBufferWindowNonzero, ex.Reason);
+            Assert.Equal(0, ex.RegisterIndex);
+            Assert.Equal(16u, ex.FirstConstant);
+            Assert.Equal(4u, ex.ConstantCount);
         }
 
         /// <summary>A scratch shorter than the bind is a defect in the emitter rather than an oversized bind, and
@@ -232,8 +248,11 @@ namespace KhaozEngine.Tests.Gpu
                 new D3D11ConstantBufferBind(buffer, 16, 16),
             };
 
-            Assert.Throws<ArgumentException>(
+            var ex = Assert.Throws<D3D11BindResolutionArgumentException>(
                 () => D3D11BindResolve.Constants(binds, new int[1], new int[1]));
+            Assert.Equal(D3D11BindResolutionRefusal.TransposeScratchTooSmall, ex.Reason);
+            Assert.Equal(1, ex.SuppliedCount);
+            Assert.Equal(2, ex.RequiredCount);
         }
 
         /// <summary>The scratch grows geometrically and never below eight, which is what "zero per-call

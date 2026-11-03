@@ -208,11 +208,21 @@ public class GpuPublicApiTests
 
         Assert.Equal(new[]
         {
+            "KhaozEngine.Gpu.D3D11.D3D11BackendCreationArgumentException",
+            "KhaozEngine.Gpu.D3D11.D3D11BackendCreationPlatformException",
+            "KhaozEngine.Gpu.D3D11.D3D11BackendCreationRefusal",
+            "KhaozEngine.Gpu.D3D11.D3D11BindResolutionArgumentException",
+            "KhaozEngine.Gpu.D3D11.D3D11BindResolutionRefusal",
+            "KhaozEngine.Gpu.D3D11.D3D11BindResolutionStateException",
             "KhaozEngine.Gpu.D3D11.D3D11CompilerEvidenceDisposedException",
             "KhaozEngine.Gpu.D3D11.D3D11CompilerEvidenceRefusal",
             "KhaozEngine.Gpu.D3D11.D3D11CompilerEvidenceStateException",
             "KhaozEngine.Gpu.D3D11.D3D11InvocationBlock",
             "KhaozEngine.Gpu.D3D11.D3D11InvocationReport",
+            "KhaozEngine.Gpu.D3D11.D3D11MapResultException",
+            "KhaozEngine.Gpu.D3D11.D3D11MapResultRefusal",
+            "KhaozEngine.Gpu.D3D11.D3D11ObjectPlatformException",
+            "KhaozEngine.Gpu.D3D11.D3D11ObjectPlatformRefusal",
             "KhaozEngine.Gpu.D3D11.D3D11ShaderPlatformException",
             "KhaozEngine.Gpu.D3D11.D3D11ShaderPlatformRefusal",
             "KhaozEngine.Gpu.D3D11.D3D11TimestampAdapterException",
@@ -220,7 +230,7 @@ public class GpuPublicApiTests
             "KhaozEngine.Gpu.D3D11.D3D11WaitPolicyException",
             "KhaozEngine.Gpu.D3D11.D3D11WaitPolicyRefusal",
             "KhaozEngine.Gpu.D3D11.ID3D11InvocationDiagnostics",
-            "KhaozEngine.Gpu.D3D11.KhaozEngineD3D11"
+            "KhaozEngine.Gpu.D3D11.KhaozEngineD3D11",
         }, exported);
 
         Type capability = typeof(KhaozEngine.Gpu.D3D11.ID3D11InvocationDiagnostics);

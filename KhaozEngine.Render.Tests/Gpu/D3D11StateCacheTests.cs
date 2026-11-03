@@ -1,6 +1,7 @@
 using System;
 using System.Linq;
 using KhaozEngine.Gpu;
+using KhaozEngine.Gpu.D3D11;
 using KhaozEngine.Gpu.D3D11.Internal;
 using Xunit;
 
@@ -219,7 +220,7 @@ namespace KhaozEngine.Tests.Gpu
             var emitter = new D3D11NativeTraceEmitter(new D3D11DeviceState(), new D3D11NativeCallLog());
             emitter.Begin();
 
-            Assert.Throws<InvalidOperationException>(emitter.SetFullScissorRects);
+            Assert.Throws<D3D11BindResolutionStateException>(emitter.SetFullScissorRects);
         }
 
         /// <summary>
@@ -239,8 +240,8 @@ namespace KhaozEngine.Tests.Gpu
             var emitter = new D3D11NativeTraceEmitter(new D3D11DeviceState(), new D3D11NativeCallLog());
             emitter.Begin();
 
-            Assert.Throws<InvalidOperationException>(emitter.SetFullScissorRects);
-            Assert.Throws<InvalidOperationException>(() => D3D11BindResolve.RequireScissorExtent(null));
+            Assert.Throws<D3D11BindResolutionStateException>(emitter.SetFullScissorRects);
+            Assert.Throws<D3D11BindResolutionStateException>(() => D3D11BindResolve.RequireScissorExtent(null));
 
             FakeFramebuffer target = Framebuffer(640, 480);
             Assert.Same(target, D3D11BindResolve.RequireScissorExtent(target));
@@ -279,8 +280,8 @@ namespace KhaozEngine.Tests.Gpu
             var emitter = new D3D11NativeTraceEmitter(new D3D11DeviceState(), new D3D11NativeCallLog());
             emitter.Begin();
 
-            Assert.Throws<InvalidOperationException>(() => emitter.ClearColorTarget(0, KhaozEngine.Primitives.Color.Black));
-            Assert.Throws<InvalidOperationException>(() => emitter.ClearDepthStencil(1f));
+            Assert.Throws<D3D11BindResolutionStateException>(() => emitter.ClearColorTarget(0, KhaozEngine.Primitives.Color.Black));
+            Assert.Equal(D3D11BindResolutionRefusal.FramebufferNotBound, Assert.Throws<D3D11BindResolutionStateException>(() => emitter.ClearDepthStencil(1f)).Reason);
         }
 
         /// <summary>An index past the bound framebuffer's colour attachments is refused rather than clearing
@@ -317,7 +318,10 @@ namespace KhaozEngine.Tests.Gpu
             emitter.SetFramebuffer(new FakeFramebuffer(
                 new GpuOutputDescription(null, GpuPixelFormat.R8G8B8A8UNorm), 64, 64));
 
-            Assert.Throws<InvalidOperationException>(() => emitter.ClearDepthStencil(1f));
+            var refusal = Assert.Throws<D3D11BindResolutionStateException>(() => emitter.ClearDepthStencil(1f));
+            Assert.Equal(D3D11BindResolutionRefusal.DepthAttachmentMissing, refusal.Reason);
+            Assert.Equal("ClearDepthStencil", refusal.Command);
+            Assert.IsAssignableFrom<InvalidOperationException>(refusal);
         }
 
         /// <summary>The other half, and the one that keeps the three above from passing vacuously: a clear that

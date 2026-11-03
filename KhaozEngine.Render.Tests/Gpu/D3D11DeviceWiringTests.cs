@@ -47,10 +47,10 @@ namespace KhaozEngine.Tests.Gpu
             if (KhaozEngineD3D11.IsPlatformSupported) return;
 
             var provider = new D3D11BackendProvider();
-            var windowed = Assert.Throws<PlatformNotSupportedException>(
+            var windowed = Assert.Throws<D3D11BackendCreationPlatformException>(
                 () => provider.CreateForWindow(new GpuWindowedDeviceRequest(
                     new GpuWindowHandle(GpuWindowKind.Win32, new IntPtr(1)), 640, 480, true)));
-            var headless = Assert.Throws<PlatformNotSupportedException>(() => provider.CreateHeadless());
+            var headless = Assert.Throws<D3D11BackendCreationPlatformException>(() => provider.CreateHeadless());
 
             // The retired message. A build that still said this would be telling a tester the row never
             // landed, which is the one thing this exception must no longer claim.

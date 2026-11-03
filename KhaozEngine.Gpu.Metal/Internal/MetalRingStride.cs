@@ -86,7 +86,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
         /// IT IS A <c>ulong</c> AND THE CALLER IS EXPECTED TO REFUSE A LARGE ONE. <c>-newBufferWithLength:</c>
         /// takes an <c>NSUInteger</c>, so nothing overflows on the way to the driver, but the rest of this
         /// backend carries buffer sizes as <c>uint</c> because the seam does. <c>MetalBuffer</c> is where that
-        /// refusal lives, with the message that names the frames-in-flight knob as the lever.
+        /// refusal lives, carrying the frames-in-flight knob in <see cref="MetalRingLayoutException.EnvironmentVariable"/>.
         /// </para>
         /// </summary>
         /// <param name="sizeInBytes">The buffer's logical size.</param>
@@ -96,10 +96,14 @@ namespace KhaozEngine.Gpu.Metal.Internal
         {
             if (framesInFlight < 1)
             {
-                throw new ArgumentOutOfRangeException(nameof(framesInFlight), framesInFlight,
+                throw new MetalRingLayoutException(MetalRingLayoutRefusal.FrameDepthOutsideRange, nameof(framesInFlight), framesInFlight,
                     "A native Metal uniform ring needs at least one segment. "
                     + MetalFramesInFlight.EnvVarName + " clamps to "
-                    + MetalFramesInFlight.Minimum + " and above before it gets here.");
+                    + MetalFramesInFlight.Minimum + " and above before it gets here.")
+                    {
+                        MinimumDepth = 1,
+                        EnvironmentVariable = MetalFramesInFlight.EnvVarName,
+                    };
             }
 
             return (ulong)SegmentStrideFor(sizeInBytes) * (ulong)framesInFlight;
@@ -147,7 +151,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
         {
             if (BindWindowFits(rangeOffset, callerDynamicOffset, range, stride)) return;
 
-            throw new ArgumentOutOfRangeException(nameof(range), range,
+            throw new MetalRingLayoutException(MetalRingLayoutRefusal.BindWindowOutsideSegment, nameof(range), range,
                 "A native Metal uniform bind of " + range + " bytes at range offset " + rangeOffset
                 + " plus dynamic offset " + callerDynamicOffset + " runs past the end of its own " + stride
                 + "-byte ring segment. Metal's setBufferOffset: carries no length, so nothing would report this: "
@@ -157,7 +161,14 @@ namespace KhaozEngine.Gpu.Metal.Internal
                 + "offset. A BIGGER BUFFER DOES NOT HELP: a bare-buffer binding's range is the buffer's own "
                 + "logical size and the stride is that size rounded up to " + SegmentAlignment + ", so the "
                 + "headroom is align(size, " + SegmentAlignment + ") - size, which is 0 whenever the size is "
-                + "already aligned and never more than " + (SegmentAlignment - 1) + " bytes.");
+                + "already aligned and never more than " + (SegmentAlignment - 1) + " bytes.")
+                {
+                    RangeOffset = rangeOffset,
+                    DynamicOffset = callerDynamicOffset,
+                    RangeBytes = range,
+                    SegmentStride = stride,
+                    RecoveryOperation = "GpuBufferRange",
+                };
         }
     }
 }

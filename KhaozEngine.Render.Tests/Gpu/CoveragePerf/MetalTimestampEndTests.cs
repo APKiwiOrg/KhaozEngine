@@ -149,7 +149,8 @@ public sealed partial class MetalTimestampEndTests
         Assert.Equal(0, rig.Calls.OutstandingEncoders);
         Assert.Equal(0, rig.Render.OutstandingDescriptors);
         Assert.Equal(0ul, rig.Harness.Timeline.LastAllocated);
-        Assert.Throws<InvalidOperationException>(() => rig.List.Encoders.EnsureBlitEncoder());
+        Assert.Equal(KhaozEngine.Gpu.Metal.MetalEncoderRefusal.RecordingMissing,
+            Assert.Throws<KhaozEngine.Gpu.Metal.MetalEncoderStateException>(() => rig.List.Encoders.EnsureBlitEncoder()).Reason);
         rig.Render.BeforeCreate = null;
         rig.Calls.BeforeBegin = null;
         rig.Calls.AfterEnd = null;

@@ -1,4 +1,5 @@
 using System;
+using KhaozEngine.Gpu.Metal;
 using KhaozEngine.Gpu.Metal.Internal;
 using KhaozEngine.Render3D.Rendering;
 using Xunit;
@@ -69,10 +70,14 @@ namespace KhaozEngine.Tests.Gpu
         [Fact]
         public void ADepthBelowOneIsRefusedByName()
         {
-            ArgumentOutOfRangeException thrown =
-                Assert.Throws<ArgumentOutOfRangeException>(() => MetalRingStride.TotalBytesFor(256, 0));
+            var thrown =
+                Assert.Throws<MetalRingLayoutException>(() => MetalRingStride.TotalBytesFor(256, 0));
 
-            Assert.Contains(MetalFramesInFlight.EnvVarName, thrown.Message, StringComparison.Ordinal);
+            Assert.Equal(MetalRingLayoutRefusal.FrameDepthOutsideRange, thrown.Reason);
+            Assert.Equal(MetalFramesInFlight.EnvVarName, thrown.EnvironmentVariable);
+            Assert.Equal(1, thrown.MinimumDepth);
+            Assert.Null(thrown.MaximumDepth);
+            Assert.IsAssignableFrom<ArgumentOutOfRangeException>(thrown);
         }
 
         /// <summary>
@@ -96,13 +101,17 @@ namespace KhaozEngine.Tests.Gpu
         [Fact]
         public void AWindowThatLeavesItsSegmentIsRefusedByName()
         {
-            ArgumentOutOfRangeException thrown = Assert.Throws<ArgumentOutOfRangeException>(
+            var thrown = Assert.Throws<MetalRingLayoutException>(
                 () => MetalRingStride.RequireBindWindowFits(0, 256, 1024, 1024));
 
             Assert.Equal("range", thrown.ParamName);
             Assert.Equal(1024u, thrown.ActualValue);
-            Assert.Contains("GpuBufferRange window narrower than the buffer", thrown.Message,
-                StringComparison.Ordinal);
+            Assert.Equal(MetalRingLayoutRefusal.BindWindowOutsideSegment, thrown.Reason);
+            Assert.Equal(0u, thrown.RangeOffset);
+            Assert.Equal(256u, thrown.DynamicOffset);
+            Assert.Equal(1024u, thrown.RangeBytes);
+            Assert.Equal(1024u, thrown.SegmentStride);
+            Assert.Equal("GpuBufferRange", thrown.RecoveryOperation);
             Assert.DoesNotContain("Widen the buffer", thrown.Message, StringComparison.Ordinal);
         }
 

@@ -143,10 +143,15 @@ namespace KhaozEngine.Gpu.Metal.Internal
 
             if (framesInFlight < MetalFramesInFlight.Minimum || framesInFlight > MetalFramesInFlight.Maximum)
             {
-                throw new ArgumentOutOfRangeException(nameof(framesInFlight), framesInFlight,
+                throw new MetalRingLayoutException(MetalRingLayoutRefusal.FrameDepthOutsideRange, nameof(framesInFlight), framesInFlight,
                     "A native Metal uniform ring runs between " + MetalFramesInFlight.Minimum + " and "
                     + MetalFramesInFlight.Maximum + " frame segments. " + MetalFramesInFlight.EnvVarName
-                    + " clamps to that range before it gets here.");
+                    + " clamps to that range before it gets here.")
+                    {
+                        MinimumDepth = MetalFramesInFlight.Minimum,
+                        MaximumDepth = MetalFramesInFlight.Maximum,
+                        EnvironmentVariable = MetalFramesInFlight.EnvVarName,
+                    };
             }
 
             _timeline = timeline;
@@ -237,12 +242,15 @@ namespace KhaozEngine.Gpu.Metal.Internal
         {
             if (Monitor.IsEntered(_submitLock))
             {
-                throw new InvalidOperationException(
+                throw new MetalRingWaitException(MetalRingWaitRefusal.SubmitLockHeld,
                     "BeginRecording was called on the native Metal ring allocator while the caller held the "
                     + "submit lock. Claiming a segment waits for the GPU to finish with the submission that last "
                     + "read it, and the value it waits for is registered under that same lock (M-N2), so waiting "
                     + "while holding it would shut out the only thing that could end the wait. Begin takes it "
-                    + "nowhere, so reaching this means a new caller was added inside the lock.");
+                    + "nowhere, so reaching this means a new caller was added inside the lock.")
+                    {
+                        Operation = nameof(BeginRecording),
+                    };
             }
 
             bool blocked = false;

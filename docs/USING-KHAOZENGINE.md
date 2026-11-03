@@ -28110,8 +28110,10 @@ See the [D3D11 refusal table](../KhaozEngine.Gpu.D3D11/README.md#refusals) for t
 ### Native Metal creation and binding refusals
 
 `MetalBackendCreationRefusal` identifies platform, machine, Cocoa handle and native-layer failures.
+`MetalEncoderRefusal` identifies a missing render descriptor, a missing recording or an encoder still open.
 `MetalBindRecordsRefusal` identifies an unaligned composed offset, missing pipeline table, nil encoder or
-argument-space mismatch.
+argument-space mismatch. `MetalRingLayoutRefusal` carries frame-depth bounds or a segment window and
+its `GpuBufferRange` remedy. `MetalRingWaitRefusal.SubmitLockHeld` carries the refused operation.
 See the [Metal refusal table](../KhaozEngine.Gpu.Metal/README.md#refusals) for each exception and identifier.
 
 On Metal and Vulkan, a nonzero offset on a set with no authored dynamic element throws the portable

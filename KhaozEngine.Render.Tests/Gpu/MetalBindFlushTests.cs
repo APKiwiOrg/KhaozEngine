@@ -299,7 +299,7 @@ namespace KhaozEngine.Tests.Gpu
             Assert.NotEmpty(calls.ArrayWrites);
 
             records.Record(0, set, 256);
-            ArgumentOutOfRangeException thrown = Assert.Throws<ArgumentOutOfRangeException>(
+            MetalRingLayoutException thrown = Assert.Throws<MetalRingLayoutException>(
                 () => records.Flush(ref sink, Encoder, Epoch, segment: 0));
 
             Assert.Equal("range", thrown.ParamName);
@@ -580,7 +580,7 @@ namespace KhaozEngine.Tests.Gpu
             records.Record(0, slotZero, 0);
             records.Record(1, slotOneRefused, 0);
 
-            Assert.Throws<ArgumentOutOfRangeException>(
+            Assert.Throws<MetalRingLayoutException>(
                 () => records.Flush(ref sink, Encoder, Epoch, segment: 0));
 
             Assert.Equal(0, records.StagedEntries);
@@ -638,7 +638,7 @@ namespace KhaozEngine.Tests.Gpu
             records.Flush(ref sink, Encoder, Epoch, segment: 0);
 
             records.Record(0, setB, 0);
-            Assert.Throws<ArgumentOutOfRangeException>(
+            Assert.Throws<MetalRingLayoutException>(
                 () => records.Flush(ref sink, Encoder, Epoch, segment: 0));
 
             // THE VERTEX STAGE REALLY DID LAND, which is what makes this row about a stale record rather than

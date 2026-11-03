@@ -1,5 +1,6 @@
 using KhaozEngine.Gpu;
 using System;
+using KhaozEngine.Gpu.Metal;
 using KhaozEngine.Gpu.Metal.Internal;
 using KhaozEngine.Primitives;
 using Xunit;
@@ -222,9 +223,9 @@ namespace KhaozEngine.Tests.Gpu
             list.End();
             list.MarkSubmitted(1);
 
-            Assert.Throws<InvalidOperationException>(() => list.Encoders.EnsureBlitEncoder());
-            Assert.Throws<InvalidOperationException>(() => list.Encoders.EnsureComputeEncoder());
-            Assert.Throws<InvalidOperationException>(
+            Assert.Throws<MetalEncoderStateException>(() => list.Encoders.EnsureBlitEncoder());
+            Assert.Throws<MetalEncoderStateException>(() => list.Encoders.EnsureComputeEncoder());
+            Assert.Throws<MetalEncoderStateException>(
                 () => list.Encoders.EnsureRenderEncoder(new IntPtr(0xD5)));
 
             Assert.Empty(calls.Log);
@@ -243,7 +244,7 @@ namespace KhaozEngine.Tests.Gpu
             list.End();
             list.DiscardRecording();
 
-            Assert.Throws<InvalidOperationException>(() => list.Encoders.EnsureBlitEncoder());
+            Assert.Throws<MetalEncoderStateException>(() => list.Encoders.EnsureBlitEncoder());
             Assert.Empty(calls.Log);
         }
 

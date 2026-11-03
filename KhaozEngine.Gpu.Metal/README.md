@@ -1294,6 +1294,12 @@ These backend policies use required reason enums and preserve the BCL base type,
 | `MetalBindRecordsStateException`, `MetalBindRecordsRefusal.EncoderMissing` | Refuses a bind flush with a nil native encoder. | No additional identifiers |
 | `MetalBindRecordsStateException`, `MetalBindRecordsRefusal.IndexSpaceMismatch` | Refuses binding a resource in an argument table different from shader reflection. | `Set`, `Binding`, `Stage`, `ExpectedSpace`, `ActualSpace`, `ArgumentIndex` |
 | `MetalBindRecordsStateException`, `MetalBindRecordsRefusal.PipelineTableMissing` | Refuses flushing resource sets without a bound pipeline index table. | No additional identifiers |
+| `MetalEncoderStateException`, `MetalEncoderRefusal.EncoderStillOpen` | Refuses a timestamp boundary while a native encoder remains open. | `EncoderKind` |
+| `MetalEncoderStateException`, `MetalEncoderRefusal.RecordingMissing` | Refuses opening an encoder with no native command-buffer recording in flight. | `Command` |
+| `MetalEncoderArgumentException`, `MetalEncoderRefusal.RenderDescriptorMissing` | Refuses opening a render encoder with a nil render-pass descriptor. | `ParamName`, `NativeDescriptorKind` |
+| `MetalRingLayoutException`, `MetalRingLayoutRefusal.BindWindowOutsideSegment` | Refuses a uniform binding window that reaches outside its own Metal ring segment. | `ParamName`, `ActualValue`, `RangeOffset`, `DynamicOffset`, `RangeBytes`, `SegmentStride`, `RecoveryOperation` |
+| `MetalRingLayoutException`, `MetalRingLayoutRefusal.FrameDepthOutsideRange` | Refuses a Metal ring depth outside the validator supported range. | `ParamName`, `ActualValue`, `MinimumDepth`, `MaximumDepth`, `EnvironmentVariable` |
+| `MetalRingWaitException`, `MetalRingWaitRefusal.SubmitLockHeld` | Refuses a Metal segment claim while the caller holds the submit lock. | `Operation` |
 | `MetalShaderFunctionException`, `MetalShaderFunctionRefusal.FunctionReleased` | Refuses reading a released Metal shader function. | `Stage`, `ResourceKind` |
 | `MetalShaderFunctionException`, `MetalShaderFunctionRefusal.StageMissing` | Refuses a shader-set function for a stage the set does not carry. | `Stage` |
 | `MetalBufferPolicyArgumentException`, `MetalBufferPolicyRefusal.UniformStructuredCombination` | Uniform and structured usage on the same ring-backed buffer | `ParamName`, `Usage` |

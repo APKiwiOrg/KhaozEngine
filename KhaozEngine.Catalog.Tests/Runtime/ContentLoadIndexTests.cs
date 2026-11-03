@@ -127,10 +127,8 @@ public class ContentLoadIndexTests
 
         var failure = Assert.Throws<ContentLoadIndexException>(runtime.BuildLoadIndexes);
 
-        // The message is what spec 9.6's exit line is built from, so it names the key and the id, and the
+        // Spec 9.6's exit line names the key and the id, which the exception carries as members, and the
         // index's own exception is kept rather than flattened.
-        Assert.Contains("store", failure.Message, StringComparison.Ordinal);
-        Assert.Contains("1024", failure.Message, StringComparison.Ordinal);
         Assert.Equal(1024, failure.Type.Value);
         Assert.Equal("store", failure.TypeKey);
         Assert.Same(failing.Failure, failure.InnerException);

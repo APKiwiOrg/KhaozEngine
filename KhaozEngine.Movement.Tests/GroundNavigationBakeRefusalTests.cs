@@ -32,7 +32,7 @@ public class GroundNavigationBakeRefusalTests
     }
 
     [Theory]
-    [InlineData((ushort)3, (ushort)0)]
+    [InlineData((ushort)4, (ushort)0)]
     [InlineData((ushort)1, (ushort)1)]
     public void UnknownVersionOrFlagsAreUnsupported(ushort version, ushort flags)
     {

@@ -44,6 +44,11 @@
 1 KETEST001 KhaozEngine.ItemInstances.Tests/Generation/GenerationTablesTests.cs
 2 KETEST001 KhaozEngine.ItemInstances.Tests/Generation/ModCandidateTablesTests.cs
 1 KETEST001 KhaozEngine.MapDoc.Compatibility.Tests/LegacyWaterOracleTests.cs
+13 KETEST001 KhaozEngine.MapDoc.OracleHarness.Tests/PrivateOracleGuardTests.cs
+2 KETEST001 KhaozEngine.MapDoc.OracleHarness.Tests/ShippedBuildingInputGuardTests.cs
+4 KETEST001 KhaozEngine.MapDoc.OracleHarness.Tests/ShippedFoliageInputGuardTests.cs
+2 KETEST001 KhaozEngine.MapDoc.OracleHarness.Tests/ShippedMarkerInputGuardTests.cs
+2 KETEST001 KhaozEngine.MapDoc.OracleHarness.Tests/ShippedSpikeOutcomeTests.cs
 1 KETEST001 KhaozEngine.MapDoc.Physics.Tests/MapAssetShapesTests.cs
 6 KETEST001 KhaozEngine.MapDoc.Physics.Tests/MapNavTilingTests.cs
 4 KETEST001 KhaozEngine.MapDoc.Physics.Tests/MapPhysicsRegistrationTests.cs

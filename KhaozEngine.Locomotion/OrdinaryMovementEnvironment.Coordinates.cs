@@ -8,13 +8,14 @@ public sealed partial class OrdinaryMovementEnvironment
     /// <summary>The exact sign of a + b + c + d for binary32 operands, through a nonoverlapping
     /// binary64 expansion. Its largest nonzero component carries the sign of the whole sum.</summary>
     internal static int ExactSign(float a, float b, float c, float d = 0)
+        => ExactSign(stackalloc float[4] { a, b, c, d });
+
+    /// <summary>The exact sign of a finite sum of binary32 operands, retaining small cancelled addends.</summary>
+    internal static int ExactSign(ReadOnlySpan<float> values)
     {
-        Span<double> expansion = stackalloc double[4];
+        Span<double> expansion = stackalloc double[values.Length];
         int count = 0;
-        Grow(expansion, ref count, a);
-        Grow(expansion, ref count, b);
-        Grow(expansion, ref count, c);
-        Grow(expansion, ref count, d);
+        foreach (float value in values) Grow(expansion, ref count, value);
         for (int i = count - 1; i >= 0; i--)
             if (expansion[i] != 0) return Math.Sign(expansion[i]);
         return 0;

@@ -14,7 +14,8 @@ namespace KhaozEngine.Movement;
 /// words, <see cref="PhysicsNavBakeOptions.SampleWater"/> as one byte, 0 or 1, sources sorted by ordinal label, then
 /// profiles sorted by ordinal name, each with its area filter, its <see cref="NavBakeProfile.Aquatic"/> flag as one
 /// byte, 0 or 1, and the 27 retained <see cref="MoveTuning"/> fields. Format 2 appends each profile's effective kind,
-/// foot fraction, water mode, surface jump speed and placement offset.</summary>
+/// foot fraction, water mode, surface jump speed and placement offset. Format 3 additionally appends f32 Drop allowance,
+/// f32 walk speed, f32 run speed and u8 air momentum per profile. Disabled profiles use 0, 1, 1, false.</summary>
 /// <remarks>Adding a field to <see cref="MoveTuning"/>, <see cref="PhysicsNavBakeOptions"/> or
 /// <see cref="NavBakeProfile"/> changes this layout, so encode the field here. Once a format version has shipped, the
 /// layout change needs a new supported format version. Format 1 remains frozen for all-legacy bakes. Changing the
@@ -110,7 +111,8 @@ internal static partial class NavBakeIdentity
             writer.WriteUInt32(profile.Areas.Excluded);
             writer.WriteUInt8(profile.Aquatic ? (byte)1 : (byte)0);
             WriteTuning(writer, profile.Tuning);
-            if (version == ContactFormatVersion) WriteContactIdentity(writer, profile.Tuning);
+            if (HasContactIdentity(version)) WriteContactIdentity(writer, profile.Tuning);
+            if (version == DropFormatVersion) WriteDropIdentity(writer, profile);
         }
         return writer.ToArray();
     }
@@ -130,7 +132,7 @@ internal static partial class NavBakeIdentity
 
         if (!string.Equals(bake.EngineVersion, want.EngineVersion, StringComparison.Ordinal))
             return (NavBakeLoadStatus.EngineChanged, $"Bake engine {bake.EngineVersion}, expected {want.EngineVersion}.");
-        if (storedVersion != expectedVersion)
+        if (storedVersion != expectedVersion && storedVersion != DropFormatVersion && expectedVersion != DropFormatVersion)
             return (NavBakeLoadStatus.ProfilesChanged, $"Bake profile format {storedVersion}, expected {expectedVersion}.");
         for (int i = 0; i < OptionCount; i++)
             if (bake.OptionBits[i] != want.OptionBits[i])
@@ -140,6 +142,8 @@ internal static partial class NavBakeIdentity
             return (NavBakeLoadStatus.SourcesChanged, source);
         if (FirstProfileDifference(bake.Profiles, want.Profiles) is { } profile)
             return (NavBakeLoadStatus.ProfilesChanged, profile);
+        if (storedVersion != expectedVersion)
+            return (NavBakeLoadStatus.ProfilesChanged, $"Bake profile format {storedVersion}, expected {expectedVersion}.");
         return (NavBakeLoadStatus.Corrupt, "Stored identity differs from the expected bytes without a decoded difference.");
     }
 
@@ -149,6 +153,8 @@ internal static partial class NavBakeIdentity
         out string problem, ushort version = FormatVersion)
     {
         identity = null;
+        if (version is not (FormatVersion or ContactFormatVersion or DropFormatVersion))
+            return Fail("has an unsupported format", out problem);
         var reader = new NavBakeReader(bytes);
         if (!reader.TryReadLongString(out ReadOnlySpan<byte> engine)) return Fail("is truncated in the engine version", out problem);
         if (engine.Length == 0 || !Utf8.IsValid(engine)) return Fail("has an invalid engine version", out problem);
@@ -176,7 +182,8 @@ internal static partial class NavBakeIdentity
         }
 
         if (!reader.TryReadUInt16(out ushort profileCount)) return Fail("is truncated before the profiles", out problem);
-        int profileBytes = ProfileMinBytes + (version == ContactFormatVersion ? ContactIdentityBytes : 0);
+        int profileBytes = ProfileMinBytes + (HasContactIdentity(version) ? ContactIdentityBytes : 0) +
+            (version == DropFormatVersion ? DropIdentityBytes : 0);
         if (profileCount == 0 || profileCount > MaxProfiles || profileCount > reader.Remaining / profileBytes)
             return Fail($"has an impossible profile count {profileCount}", out problem);
         var profiles = new DecodedProfile[profileCount];
@@ -194,11 +201,16 @@ internal static partial class NavBakeIdentity
             if (aquatic > 1) return Fail($"has a non-canonical Aquatic flag {aquatic} in profile '{text}'", out problem);
             if (!ReadTuning(ref reader, out MoveTuning tuning))
                 return Fail($"has a truncated or non-canonical tuning in profile '{text}'", out problem);
-            if (version == ContactFormatVersion && !ReadContactIdentity(ref reader, aquatic == 1, ref tuning))
+            if (HasContactIdentity(version) && !ReadContactIdentity(ref reader, aquatic == 1, ref tuning))
                 return Fail($"has a truncated or non-canonical contact identity in profile '{text}'", out problem);
-            profiles[i] = new DecodedProfile(text, required, excluded, aquatic == 1, tuning);
+            float allowance = 0;
+            if (version == DropFormatVersion && !ReadDropIdentity(ref reader, aquatic == 1, ref tuning, out allowance))
+                return Fail($"has a truncated or non-canonical Drop identity in profile '{text}'", out problem);
+            profiles[i] = new DecodedProfile(text, required, excluded, aquatic == 1, tuning, allowance);
             previous = name;
         }
+        if (version == DropFormatVersion && !Array.Exists(profiles, static p => p.MaxDropMetres > 0))
+            return Fail("has format 3 without a Drop-enabled profile", out problem);
         if (reader.Remaining != 0) return Fail($"has {reader.Remaining} trailing bytes", out problem);
 
         identity = new Decoded(Encoding.UTF8.GetString(engine), options, sources, profiles);
@@ -314,7 +326,8 @@ internal static partial class NavBakeIdentity
             return $"field Excluded: bake 0x{bake.Excluded:X8}, expected 0x{want.Excluded:X8}";
         if (bake.Aquatic != want.Aquatic)
             return $"field Aquatic: bake {(bake.Aquatic ? "True" : "False")}, expected {(want.Aquatic ? "True" : "False")}";
-        return FirstTuningDifference(bake.Tuning, want.Tuning) ?? FirstContactDifference(bake.Tuning, want.Tuning);
+        return FirstTuningDifference(bake.Tuning, want.Tuning) ?? FirstContactDifference(bake.Tuning, want.Tuning) ??
+            FirstDropDifference(bake, want);
     }
 
     private static bool Fail(string reason, out string problem)
@@ -338,5 +351,5 @@ internal static partial class NavBakeIdentity
         DecodedProfile[] Profiles);
 
     /// <summary>A decoded profile. Its area bits are proved disjoint before any <see cref="NavAreaFilter"/> exists.</summary>
-    internal readonly record struct DecodedProfile(string Name, uint Required, uint Excluded, bool Aquatic, MoveTuning Tuning);
+    internal readonly record struct DecodedProfile(string Name, uint Required, uint Excluded, bool Aquatic, MoveTuning Tuning, float MaxDropMetres = 0);
 }

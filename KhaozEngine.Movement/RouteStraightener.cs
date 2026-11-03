@@ -79,13 +79,13 @@ internal sealed class RouteStraightener : IRegionPathPlanner
         return straightened;
     }
 
-    // The final waypoint carries region membership, a hop needs its start and landing, and a layer change needs
+    // The final waypoint carries region membership, a special transition needs its start and landing, and a layer change needs
     // both ends, so a scan never passes any of them.
     private static bool Mandatory(IReadOnlyList<NavWaypoint> wp, int i, int startLayer)
     {
-        if (i == wp.Count - 1 || wp[i].Kind == NavWaypointKind.Hop) return true;
+        if (i == wp.Count - 1 || wp[i].Kind != NavWaypointKind.Walk) return true;
         int previousLayer = i == 0 ? startLayer : wp[i - 1].Layer;
-        return wp[i].Layer != previousLayer || wp[i + 1].Kind == NavWaypointKind.Hop || wp[i + 1].Layer != wp[i].Layer;
+        return wp[i].Layer != previousLayer || wp[i + 1].Kind != NavWaypointKind.Walk || wp[i + 1].Layer != wp[i].Layer;
     }
 
     // A waypoint on a heightless or blocked cell has no feet to check, so no shortcut reaches or leaves it.

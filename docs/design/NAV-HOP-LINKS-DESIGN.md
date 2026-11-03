@@ -48,7 +48,7 @@ tells the follower's consumer "traverse this by jumping" so it can play a lunge 
    `new NavLink(...)` (all of `DungeonNav`) stays a `Stair` with byte-identical behavior, the record's
    positional constructor and two-field deconstruction are untouched, and equality now includes `Kind`
    (both sides `Stair` for existing links, so no test moves). An enum, not a bool, keeps the door open for
-   future kinds (climb, drop, teleport) per the standing extensibility preference.
+   other kinds (climb and teleport). Contact now supplies the separate Drop kind per the standing extensibility preference.
 
 3. **Hop links are generated at bake time from the step grid's own height field and mask, by a dedicated
    pass (`NavHopLinks.Generate`).** The generation needs only what the step bake already produced: per-cell
@@ -133,12 +133,12 @@ provider `BakeOverworldSteps` does.
 
 ### New public surface
 
-- **`enum NavLinkKind { Stair, Hop }`**: the link discriminator. `Stair` (default 0) is every pre-existing
+- **`enum NavLinkKind { Stair, Hop, Drop }`**: the link discriminator. `Stair` (default 0) is every pre-existing
   directed link (the `DungeonNav` stair connections), crossed by ordinary steering. `Hop` is a same-grid
   vertical lunge that surfaces the follower's hop seam.
 - **`NavLink.Kind`** (`NavLinkKind`, `init`, default `Stair`): added to the shipped record without touching
   its positional constructor.
-- **`enum NavWaypointKind { Walk, Hop }`**: the waypoint discriminator. `Walk` (default 0) steers normally.
+- **`enum NavWaypointKind { Walk, Hop, Drop }`**: the waypoint discriminator. `Walk` (default 0) steers normally.
   `Hop` marks a hop link's landing waypoint, which the follower surfaces as `Hopping`.
 - **`NavWaypoint.Kind`** (`NavWaypointKind`, `init`, default `Walk`): added the same way.
 - **`NavHopLinks.Generate(NavGrid grid, float stepHeight, float jumpHeight, int maxHopCells = 2, int layer = 0)
@@ -167,8 +167,8 @@ provider `BakeOverworldSteps` does.
 ### Changed internals (`GridPathPlanner`)
 
 - The link adjacency (`_linkEdges`) carries, per link, the precomputed traversal cost in meters
-  (`grid.CellSize` for `Stair`, `hopCostCells * grid.CellSize` for `Hop`) so A* charges the right cost, and
-  a `_hopEdges` set of `(fromId, toId)` node-id pairs so reconstruction can mark a hop landing.
+  (`grid.CellSize` for `Stair`, `hopCostCells * grid.CellSize` for `Hop`) and its kind. Search scratch retains
+  the selected incoming kind rather than looking up an endpoint-pair set. Drop adds distance plus descent cost.
 - A* link expansion charges the per-link cost instead of the hardcoded `grid.CellSize`.
 - Reconstruction, at a run boundary that is a hop edge, stamps `NavWaypointKind.Hop` on the emitted landing
   waypoint. Stair crossings emit a `Walk` landing exactly as today.
@@ -236,11 +236,11 @@ it in A* link expansion. `Stair` links keep their exact prior cost, so every exi
 the longest hop's octile displacement (~2.83 cells at `maxHopCells` 2), and the default 4 clears it, so A*
 stays optimal. This is the same admissibility framing the planner already documents for its links.
 
-Reconstruction: a same-grid hop spans Chebyshev distance >= 2, so `IsGridStep` returns false and the
-existing run-split logic treats it as a link crossing, ending the takeoff run and opening the landing run,
-emitting both endpoints un-smoothed. The only new work is stamping `NavWaypointKind.Hop` on the landing
-waypoint when the boundary edge is a hop (looked up in `_hopEdges` by the two chain node ids). Stair
-crossings emit a `Walk` landing as before, so the follower surfaces `Hopping` only for hops.
+Reconstruction retains the incoming edge actually selected by the search. A link boundary is never inferred from
+non-adjacency or an endpoint-pair Hop set. This preserves adjacent same-layer Drop transitions without annotating a
+cheaper ordinary exit as special. Hop landings retain `NavWaypointKind.Hop` and Stair landings Walk. Drop endpoints
+are mandatory physical anchors, including a Drop on the first edge. The unguarded Hop first-edge behavior remains
+unchanged. The [Drop contract](CONTACT-DROP-LINKS.md) describes its distance cost and whole-query heuristic fallback.
 
 ## Follower seam
 
@@ -267,7 +267,7 @@ a drifting goal or a corridor breach fires a cooldown-gated replan, which either
 forever" and now explicitly signaled. `ActivePath` stays the committed path and `ActiveWaypointIndex`
 points at the landing throughout, so a debug overlay reads the corridor normally.
 
-The follower stays height-free: it hands the consumer the two XZ endpoints and the consumer resolves Y from
+The Hop seam stays height-free: it hands the consumer the two XZ endpoints and the consumer resolves Y from
 its own surface data via `NavGrid.SurfaceHeightAt`, consistent with the existing "a `NavWaypoint` stores no
 Y, callers resolve height from the layer's grid" rule.
 
@@ -286,8 +286,9 @@ follower resume once the wolf arrives. No planner or brain change is needed to p
 
 - Multi-level surfaces at one XZ (bridges, overhangs, roofed interiors) and the layered extraction bake
   that would feed multiple `NavGrid` layers. That is the remaining phase-2 work this slice advances toward.
-- Drop-down-only links (a drop deeper than `jumpHeight`, one-way). Out of scope by the symmetric band rule,
-  which never generates them. A jump-band pair's drop-down direction is generated (it is the same pair).
+- `NavHopLinks` never generates drop-down-only links. Contact's separate `Drop` kind now supplies bounded one-way
+  unpowered descents through a real-controller certificate, independently of the geometric jump band. See
+  [Contact Drop links](CONTACT-DROP-LINKS.md).
 - Pathfinding cost tuning beyond the single `hopCostCells` knob. `jumpHeight` and `maxHopCells` are jump
   geometry, not cost.
 - A hop-arc clearance check (whether the parabola over the gap clears an overhang). The landing and takeoff

@@ -17,6 +17,16 @@ public class SurfaceHeightCallSiteTests
         string[] expected =
         {
             "KhaozEngine.Movement/GroundNavigation.cs:Resolve:RestingHeightAt",
+            // Drop candidate heights, cost and endpoints all use certified physical feet anchors.
+            "KhaozEngine.Movement/ContactDropCandidates.cs:Enumerate:RestingHeightAt",
+            "KhaozEngine.Movement/ContactDropCandidates.cs:Enumerate:RestingHeightAt",
+            "KhaozEngine.Movement/ContactDropCandidates.cs:Measure:RestingHeightAt",
+            "KhaozEngine.Movement/ContactDropCandidates.cs:Measure:RestingHeightAt",
+            "KhaozEngine.Movement/ContactDropProof.cs:Feet:RestingHeightAt",
+            "KhaozEngine.Navigation/GridPathPlanner.Links.cs:LinkCost:RestingHeightAt",
+            "KhaozEngine.Navigation/GridPathPlanner.Links.cs:LinkCost:RestingHeightAt",
+            "KhaozEngine.Navigation/PathFollower.Drop.cs:TryDrop:RestingHeightAt",
+            "KhaozEngine.Navigation/PathFollower.Drop.cs:TryDrop:RestingHeightAt",
             "KhaozEngine.Movement/RouteStraightener.cs:TryFeet:RestingHeightAt",
             "KhaozEngine.Movement/PhysicsNavBake.Profiles.cs:Feet:RestingHeightAt",
             "KhaozEngine.Navigation/GridPathPlanner.Region.cs:CellFeet:RestingHeightAt",
@@ -27,8 +37,8 @@ public class SurfaceHeightCallSiteTests
             "KhaozEngine.Movement/GroundNavigationBake.Writer.cs:WriteProfile:SurfaceHeightAt",
             // Format 2 appends physical feet separately, preserving the raw topology section.
             "KhaozEngine.Movement/GroundNavigationBake.Writer.cs:WriteRestingHeights:RestingHeightAt",
-            "KhaozEngine.Navigation/NavLayerLinks.cs:GenerateCore:SurfaceHeightAt",
-            "KhaozEngine.Navigation/NavLayerLinks.cs:GenerateCore:SurfaceHeightAt",
+            "KhaozEngine.Navigation/NavLayerLinks.cs:EnumerateCore:SurfaceHeightAt",
+            "KhaozEngine.Navigation/NavLayerLinks.cs:EnumerateCore:SurfaceHeightAt",
             "KhaozEngine.Navigation/NavHopLinks.cs:Generate:SurfaceHeightAt",
             "KhaozEngine.Navigation/NavHopLinks.cs:Generate:SurfaceHeightAt",
         };

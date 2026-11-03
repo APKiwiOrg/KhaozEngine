@@ -26,7 +26,8 @@ public static class MovementSupportResolver
     }
 
     /// <summary>Selects using the caller's shell profile, including its step height and traction band.
-    /// Body dimensions and slope must match the support request.</summary>
+    /// Body dimensions and slope must match the support request. A supported pose outside the admitted
+    /// precision budget returns Unresolved with no placement.</summary>
     public static MovementAvailability Select(in MovementSupportRequest request, in MoveTuning tuning,
         MovementQueryLease queries, out MovementSupportPlacement? placement)
     {
@@ -109,7 +110,7 @@ public static class MovementSupportResolver
         if (Vector3.Dot(support.Normal, normal) < 0.9999f) return MovementAvailability.Invalid;
         Vector3 feet = candidate.Feet with { Y = support.Height };
         if (!ContactPlacement.Clear(contact, feet, tuning, composition)) return MovementAvailability.Known;
-        placement = new MovementSupportPlacement(candidate, contact.BodyCentre(feet));
+        placement = new MovementSupportPlacement(candidate, contact.SupportedBodyCentre(feet, support));
         return MovementAvailability.Known;
     }
 

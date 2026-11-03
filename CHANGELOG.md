@@ -4,10 +4,31 @@ All notable changes to KhaozEngine. One shared version line `<KhaozEngineVersion
 governs every package, including the four umbrella metapackages. Planned work lives in the repo's GitHub
 Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
-## 21.23.2
+## 21.24.1
+
+2026-11-04
+
+- `scripts/check-test-health.sh` reports the solution and every tracked xunit project outside it, found with
+  `git ls-files`, instead of a fixed list. `KhaozEngine.MapDoc.OracleHarness.Tests` had been left out and
+  failed its own build. Its existing message assertions have catch-up entries in `.testhealth-baseline`. The
+  `KhaozEngine.CodeHealth.Analyzers` README describes the report roots. No analyzer or package code changes.
+
+## 21.24.0
 
 2026-11-03
 
+- Add baked one-way Contact `Drop` links with certified fall routes and supported landing completion. Each
+  navigation profile opts in through `MaxDropMetres`, which defaults to zero. A bake with any drop-enabled
+  profile uses KENB format 3 for the whole file. Unavailable proof evidence refuses the bake through
+  `ContactDropProofException`. Player hosts supply `PlayerPathInput` for authenticated Drop execution (#1645).
+- Keep the follower replan cooldown for fresh no-progress results and refresh stale reached terminals once.
+  Point routes validate the current goal before reporting `Arrived`, and deferred path queries report
+  `WaitingForPath` with zero steering (#1646).
+- Refresh a due route before committing a one-way Drop, and reconsider changed goals during grounded
+  preparation before physical launch. Active unsupported flight retains its committed Drop route.
+- Share captured drawn ground triangles between Contact support and water beds, preserving exact bed
+  membership on level and sloped terrain. Supported pose publication checks combined frame and capsule
+  conversion precision and refuses unrepresentable poses within the existing precision contract (#1647).
 - Engine types that tests used to reach by private reflection gain internal `...ForTests` seams in
   `KhaozEngine.Attachments.Render3D`, `KhaozEngine.Automation`, `KhaozEngine.Catalog.Sqlite`, `KhaozEngine.Gpu`,
   `KhaozEngine.Locomotion`, `KhaozEngine.MapDoc`, `KhaozEngine.MapEditor`, `KhaozEngine.Movement`,

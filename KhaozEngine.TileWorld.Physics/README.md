@@ -77,10 +77,14 @@ including objects outside their anchor region.
 
 `TileMediumSampler` implements `IMovementWaterField` with immutable body identities, finite beds and free surfaces.
 A point is in a column when the exact framed centre lies in X [minimum, maximum), Z (minimum, maximum] and its
-feet in [bed, surface). Its trace certifies rounded capsule coverage of the framed sweep against column unions,
-including exposed face patches and dry volume.
-Point and trace queries receive the physics-local body plus its frame origin and compare their double sum
-against the captured absolute column bounds. An immutable column index searches the actual rounded XZ bounds,
+feet in [bed, surface). Support and water share captured drawn triangles, triangle selection and anchored height
+evaluation. The lower boundary follows the selected triangle at the queried axis, including sloped beds and a
+level triangle beside a lower corner. A triangle at or above the free surface contributes no positive water volume.
+Trace coverage uses water prisms bounded by those triangles and clipped at the body's free surface, including
+exposed patches and dry volume. Internal triangle and same-body tile edges contribute no dry wall.
+Point and trace queries receive the physics-local body plus its frame origin. Exact predicates select the
+lateral column, then the bed uses the same world-axis mapping as ordinary support. An immutable column index
+searches the actual rounded XZ bounds,
 including large tile addresses whose rounded faces move across several nominal tiles. Candidate generation
 does not assume a fixed neighbouring-tile radius and never turns a missing candidate into a false dry fact.
 Equal-height bodies in different regions keep distinct identities. Internal same-body faces are suppressed.
@@ -248,13 +252,26 @@ bounding the loaded regions is first moved just inside it, so the floor carries 
 tile with no ground (no underlay, `TileSettings.NoDraw`, or a missing region inside the rectangle) they answer the
 document's lattice height, `TileWorldDocument.HeightAt`, with a straight up normal. They never answer NaN.
 
+Triangle heights interpolate differences from one lattice vertex. A level triangle keeps that exact lattice
+height, so certified support and the water field use the same bed boundary.
+The evaluated height stays inside the selected triangle's exact vertex range, including rounded seams. This
+prevents a rounding undershoot from creating support or water below a level that all drawn vertices bound.
+Captured support and water borrow the same immutable triangle records. The water semantic identity includes
+their complete captured geometry and loaded-region arrangement, so edits that change a sampled bed invalidate
+the field identity even when the tile's minimum corner stays unchanged.
+
 `MediumAt` is in water only when the point is over a water body and `feetY` is below that body's surface, so a body
 standing on a deck above a river is dry. The surface is the body's rim less `TileWaterBodies.SurfaceDropMetres`. An
 in-water answer is always built through the `MovementMedium` constructor and leaves the wade speed to the tuning.
 
 The legacy samplers have no shared scratch. The ground sampler needs its document to remain unedited while read.
 The water field and certified ground delegates retain immutable captured data. Water tracing uses bounded
-per-thread scratch and precomputed exact rectangular unions, so independent readers do not share scratch.
+per-thread scratch and precomputed exterior topology. A proved constant captured bed can use an exact rectangular
+union specialization. Trace certificates include represented height-evaluation and geometric arithmetic error.
+Point membership retains exact half-open comparisons, and an error beyond the existing coverage limit refuses
+the whole trace. Independent readers do not share mutable scratch.
+An owned lateral column with no reachable captured bed answers unresolved. Represented loaded rectangles use
+directed lower and upper bounds, retaining a coordinate even when the nominal region is narrower than one float step.
 
 These providers were audited for a parallel contact navigation bake, `NavBakeExecution` above degree 1 in
 [KhaozEngine.Movement](../KhaozEngine.Movement/README.md#parallel-contact-bake), and are endorsed by method:

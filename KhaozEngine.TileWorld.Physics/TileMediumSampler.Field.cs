@@ -26,7 +26,13 @@ public sealed partial class TileMediumSampler
         if (index >= 0)
         {
             TileWaterColumn column = _field.Columns[index];
-            return new(MovementAvailability.Known, body.CurrentSpace, column.Domain, true, 1, column.Interval);
+            float x = body.Centre.X + physicsOrigin.X, z = body.Centre.Z + physicsOrigin.Z;
+            if (!_field.Ground.TryDrawnHeight(x, z, out float bed))
+                return new(MovementAvailability.Unresolved, default, null, false, 0, null);
+            if (TileWaterArithmetic.Sign(body.Centre.Y, physicsOrigin.Y, -body.HalfHeight, -bed) >= 0 &&
+                TileWaterArithmetic.Sign(body.Centre.Y, physicsOrigin.Y, -body.HalfHeight, -column.Maximum.Y) < 0)
+                return new(MovementAvailability.Known, body.CurrentSpace, column.Domain, true, 1,
+                    new(bed, column.Maximum.Y, column.Maximum.Y, true, column.BedBoundaryId, column.SurfaceBoundaryId));
         }
         return new(MovementAvailability.Known, body.CurrentSpace, null, false, 1, null);
     }
@@ -36,18 +42,28 @@ public sealed partial class TileMediumSampler
         internal string WorldId { get; }
         internal string SemanticIdentity { get; }
         internal TileWaterColumn[] Columns { get; }
-        internal TileWaterColumn[] TraceColumns { get; }
+        internal CapturedTileGround Ground { get; }
+        internal TileWaterPrism[] Prisms { get; }
+        internal TileWaterPrismFace[] Faces { get; }
+        internal int[] PrismStarts { get; }
+        internal int[] FaceStarts { get; }
+        internal TileWaterColumn[] FlatColumns { get; }
+        internal TileWaterColumn[] NonuniformColumns { get; }
+        internal TileWaterBoundary[] FlatBoundaries { get; }
+        internal TileWaterBoundary[] FlatExterior { get; }
         internal TileWaterColumnIndex PointIndex { get; }
-        internal TileWaterBoundary[] Boundaries { get; }
-        internal TileWaterBoundary[] Exterior { get; }
         internal MovementWaterExtent Extent { get; }
 
-        internal FieldSnapshot(TileWorldDocument document, TileWorldCatalogs catalogs, RegionCoord[] regions, string worldId)
+        internal FieldSnapshot(TileWorldDocument document, TileWorldCatalogs catalogs, RegionCoord[] regions, string worldId,
+            TileMovementSnapshot captured)
         {
             WorldId = worldId;
+            Ground = captured.Ground;
+            var prisms = new List<TileWaterPrism>();
             var columns = new List<TileWaterColumn>();
             using var semantic = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
-            semantic.AppendData(Encoding.UTF8.GetBytes($"tile-water-v1/{worldId.Length}/{worldId}/{Bits(document.TileSize)}\n"));
+            semantic.AppendData(Encoding.UTF8.GetBytes(Ground.Fingerprint));
+            semantic.AppendData(Encoding.UTF8.GetBytes($"tile-water-drawn-v2/{worldId.Length}/{worldId}/{Bits(document.TileSize)}\n"));
             foreach (RegionCoord region in regions.OrderBy(r => r.Rz).ThenBy(r => r.Rx))
                 foreach (TileWaterBody body in TileWaterBodies.Collect(document, catalogs, region, Plane))
                 {
@@ -62,13 +78,20 @@ public sealed partial class TileMediumSampler
                     {
                         float bed = MathF.Min(MathF.Min(document.CornerHeight(tile.X, tile.Z, Plane), document.CornerHeight(tile.X + 1, tile.Z, Plane)),
                             MathF.Min(document.CornerHeight(tile.X, tile.Z + 1, Plane), document.CornerHeight(tile.X + 1, tile.Z + 1, Plane)));
-                        if (!(bed < body.SurfaceY)) bed = MathF.BitDecrement(body.SurfaceY);
+                        bed = MathF.Min(bed, body.SurfaceY);
                         string face = FormattableString.Invariant($"{local}/column/{tile.X}/{tile.Z}");
                         var column = new TileWaterColumn(domain,
                             TileWorldSpace.ToWorld(tile.X, bed, tile.Z + 1, document.TileSize),
                             TileWorldSpace.ToWorld(tile.X + 1, body.SurfaceY, tile.Z, document.TileSize),
                             face + "/min-x", face + "/max-x", face + "/min-z", face + "/max-z", face + "/bed", face + "/surface");
                         columns.Add(column);
+                        foreach (DrawnGroundTriangle triangle in Ground.Triangles(tile.X, tile.Z))
+                        {
+                            if (MathF.Min(triangle.A.Y, MathF.Min(triangle.B.Y, triangle.C.Y)) < body.SurfaceY)
+                                prisms.Add(new(column, triangle, tile.X, tile.Z, document.TileSize, columns.Count - 1));
+                            string geometry = FormattableString.Invariant($"{(int)triangle.PlanA}/{(int)triangle.PlanB}/{(int)triangle.PlanC}/{Bits(triangle.A.Y)}/{Bits(triangle.B.Y)}/{Bits(triangle.C.Y)}\n");
+                            semantic.AppendData(Encoding.UTF8.GetBytes(geometry));
+                        }
                         semantic.AppendData(Encoding.UTF8.GetBytes(FormattableString.Invariant($"{local}/{tile.X}/{tile.Z}/{Bits(bed)}/{Bits(body.SurfaceY)}\n")));
                     }
                 }
@@ -80,11 +103,44 @@ public sealed partial class TileMediumSampler
                 min = i == 0 ? Columns[i].Minimum : Vector3.Min(min, Columns[i].Minimum);
                 max = i == 0 ? Columns[i].Maximum : Vector3.Max(max, Columns[i].Maximum);
             }
+            var flat = new List<TileWaterColumn>();
+            var nonuniform = new List<TileWaterColumn>();
+            foreach (TileWaterColumn column in Columns)
+            {
+                if (TileWaterUniformBed.TryProve(Ground, column.Minimum, column.Maximum, out float bed))
+                {
+                    min.Y = Math.Min(min.Y, bed);
+                    if (bed < column.Maximum.Y && column.Minimum.X < column.Maximum.X && column.Minimum.Z < column.Maximum.Z)
+                        flat.Add(column with { Minimum = column.Minimum with { Y = bed } });
+                }
+                else nonuniform.Add(column);
+            }
+            FlatColumns = TileWaterColumnUnion.Merge(flat.ToArray());
+            FlatBoundaries = TileWaterBoundary.Build(FlatColumns, true);
+            FlatExterior = TileWaterBoundary.Build(FlatColumns, false);
+            NonuniformColumns = nonuniform.ToArray();
             Extent = new(min, max);
-            SemanticIdentity = "tile-water-v1/" + Convert.ToHexString(semantic.GetHashAndReset());
-            TraceColumns = TileWaterColumnUnion.Merge(Columns);
-            Boundaries = TileWaterBoundary.Build(TraceColumns, sameDomainOnly: true);
-            Exterior = TileWaterBoundary.Build(TraceColumns, sameDomainOnly: false);
+            SemanticIdentity = "tile-water-drawn-v2/" + Convert.ToHexString(semantic.GetHashAndReset());
+            Prisms = prisms.ToArray();
+            Faces = TileWaterPrismFaces.Build(Prisms).OrderBy(f => Prisms[f.Prism].ColumnIndex).ThenBy(f => f.Prism).ToArray();
+            PrismStarts = Starts(Columns.Length, Prisms.Select(p => p.ColumnIndex));
+            FaceStarts = Starts(Columns.Length, Faces.Select(f => Prisms[f.Prism].ColumnIndex));
+        }
+
+        static int[] Starts(int columns, IEnumerable<int> owners)
+        {
+            var starts = new int[columns + 1];
+            foreach (int owner in owners) starts[owner + 1]++;
+            for (int i = 1; i < starts.Length; i++) starts[i] += starts[i - 1];
+            return starts;
+        }
+
+        internal bool CanTraceFlat(in MovementMediumSweepQuery query, Vector3 origin)
+        {
+            var bounds = new TileWaterPathBounds(query, origin);
+            foreach (TileWaterColumn column in NonuniformColumns)
+                if (bounds.Meets(column.Minimum, column.Maximum)) return false;
+            return true;
         }
 
         static string Bits(float value) => BitConverter.SingleToInt32Bits(value).ToString("X8", CultureInfo.InvariantCulture);

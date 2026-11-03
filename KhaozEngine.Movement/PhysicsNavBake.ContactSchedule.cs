@@ -16,10 +16,10 @@ public sealed partial class PhysicsNavBake
     // in that order, so the lowest failing ordinal is the exception the serial build throws first.
     private GroundNavigation BuildContactProfileInParallel(GroundMoveContext context, EffectiveMovementBinding source,
         in MoveTuning tuning, NavAreaFootprint footprint, float height, int maxSurfaces, int degree,
-        ContactNavigationReusePolicy reuse)
+        ContactNavigationReusePolicy reuse, float maxDropMetres)
     {
         ContactNavigationWorkers workers = ContactNavigationWorkers.Create(this, context, source, footprint, degree,
-            Columns.Height, reuse);
+            Columns.Height, reuse, maxDropMetres);
         GroundNavigation navigation;
         try
         {
@@ -96,10 +96,26 @@ public sealed partial class PhysicsNavBake
             for (int index = 0; index < candidates.Count; index++)
                 if (accepted[index]) links.Add(candidates[index]);
 
+            if (maxDropMetres > 0)
+            {
+                var drops = ContactDropCandidates.Generate(space.Layers, layers, tuning, maxDropMetres);
+                space = new NavSpace(space.Layers, [.. space.Links, .. drops]);
+                var dropAccepted = new bool[drops.Count];
+                workers.Run(ContactNavigationPhase.Drops, drops.Count, index => index, (proof, band) =>
+                {
+                    for (int index = band.Start; index < band.End; index++)
+                    {
+                        if (!band.Admits(index)) return;
+                        dropAccepted[index] = proof.TryDrop(space, drops[index]);
+                    }
+                }).ThrowSelected();
+                for (int index = 0; index < drops.Count; index++)
+                    if (dropAccepted[index]) links.Add(drops[index]);
+            }
             workers.Snapshot.AssertCurrent();
             _ = Context;
             var graph = new NavTraversalGraph(space, tuning.CapsuleRadius, height, layers, links);
-            navigation = new GroundNavigation(graph, tuning, footprint, false);
+            navigation = new GroundNavigation(graph, tuning, footprint, false, maxDropMetres);
         }
         catch (Exception failure)
         {

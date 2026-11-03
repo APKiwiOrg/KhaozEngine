@@ -88,6 +88,7 @@ internal static class AirPass
         float footRadius = settings.FootRadiusFraction * tuning.CapsuleRadius;
         float cosMaxSlope = MathF.Cos(tractionSlopeRadians);
 
+        using var acceptedRoute = new ContactAirRoute(queries);
         // A shell that cannot be freed does not move or fall, as a held ground tick does not move.
         Vector3 start = ShellMotion.RecoverWithQueries(queries, feet, tuning, out bool cleared);
         queries.RequireRecoveryAccepted();
@@ -96,6 +97,7 @@ internal static class AirPass
             {
                 ClimbBudget = budget,
             };
+        acceptedRoute.Accept(feet, start);
 
         // While nothing has deviated from the plan, the move is the planned prefix itself, so free flight is exact
         // however many substeps it takes. After a contact the rest of the tick flies at the changed velocity.
@@ -142,8 +144,11 @@ internal static class AirPass
             if (rising)
             {
                 if (medium?.ChangesOwner(start + moved, current.Y, NoSupport, false) == true)
+                {
+                    acceptedRoute.Accept(from, start + moved);
                     return Handoff(start + moved, NoSupport, AirOutcome.Airborne, remainingTime);
-                if (!buoyant) continue;
+                }
+                if (!buoyant) { acceptedRoute.Accept(from, start + moved); continue; }
             }
 
             Vector3 at = start + moved;
@@ -161,7 +166,10 @@ internal static class AirPass
             // legs even before the water allows footing. A bed it rose off seats nothing.
             if (rising && !(support.Status == SupportStatus.Walkable &&
                     (double)support.Height - support.HeightError > high))
+            {
+                acceptedRoute.Accept(from, at);
                 continue;
+            }
             var remaining = new Vector2(displacement.X - next.X, displacement.Z - next.Z);
             var horizontal = new Vector2(current.X, current.Z);
             if (support.Status == SupportStatus.Walkable && medium?.AllowsFooting(at, support) == false &&
@@ -193,6 +201,7 @@ internal static class AirPass
                 }
                 // A refused seat clips at the clear unraised substep, as a land landing does.
                 // Continuing the descent would let the legs pass through an analytic bed.
+                acceptedRoute.Accept(from, clipped);
                 return new(clipped, 0,
                     Achieved(feet, start, moved + (bed.Valid ? new Vector3(bed.Total.X, 0, bed.Total.Y) : Vector3.Zero)),
                     remaining, AirOutcome.Airborne, NoSupport, 0, blocked || bed.Valid && bed.Pushed)
@@ -223,7 +232,9 @@ internal static class AirPass
                     // pays the climb as it pays any lag. Falling on would let the legs pass the support, and analytic
                     // terrain has no shell to stop them.
                     double above = (double)support.Height - at.Y;
-                    if (!(above >= -support.HeightError && above <= tuning.StepHeight)) continue;
+                    if (!(above >= -support.HeightError && above <= tuning.StepHeight))
+                    { acceptedRoute.Accept(from, at); continue; }
+                    acceptedRoute.Accept(from, at);
                     return new(at, 0f, Achieved(feet, start, moved), remaining, AirOutcome.Landed, support,
                         MathF.Max(0f, -current.Y), blocked)
                     {
@@ -235,6 +246,7 @@ internal static class AirPass
                     };
                 }
                 Vector3 push = new(placement.Total.X, 0f, placement.Total.Y);
+                acceptedRoute.Accept(from, placement.Feet);
                 return new(placement.Feet, 0f, Achieved(feet, start, moved + push), remaining, AirOutcome.Landed,
                     placement.Support, MathF.Max(0f, -current.Y), blocked || placement.Pushed)
                 {
@@ -254,6 +266,7 @@ internal static class AirPass
             {
                 if (!route.Append(at with { Y = support.Height }))
                     throw new ContactQueryFailure(MovementAvailability.Known, MovementStepOutcome.Blocked);
+                acceptedRoute.Accept(from, at with { Y = support.Height });
                 return new(at with { Y = support.Height }, MathF.Min(0f, current.Y + gravity * remainingTime),
                     Achieved(feet, start, moved), remaining, AirOutcome.Sliding, support, 0f - current.Y, blocked)
                 {
@@ -265,6 +278,7 @@ internal static class AirPass
                     ClimbBudget = budget,
                 };
             }
+            acceptedRoute.Accept(from, at);
             if (!rising && medium?.ChangesOwner(at, current.Y, NoSupport, false) == true)
                 return Handoff(at, NoSupport, AirOutcome.Airborne, remainingTime);
         }

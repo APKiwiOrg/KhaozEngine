@@ -126,6 +126,6 @@ internal sealed class ContactTickWorkspace
     static bool SameField(MovementAnalyticGround? first, MovementAnalyticGround? second) =>
         first is { } a && second is { } b
             ? a.Axis == b.Axis && a.Height == b.Height && a.Normal == b.Normal && a.Owner == b.Owner &&
-                a.Space == b.Space && a.Identity == b.Identity
+                a.Space == b.Space && a.Identity == b.Identity && a.HeightTranslation == b.HeightTranslation
             : first.HasValue == second.HasValue;
 }

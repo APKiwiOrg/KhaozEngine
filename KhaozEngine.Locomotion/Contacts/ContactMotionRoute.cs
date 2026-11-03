@@ -22,7 +22,8 @@ internal struct ContactMotionRoute
     {
         if (Denied) return false;
         Count();
-        if (!_queries.AcceptSegment(Current, target)) { Denied = true; return false; }
+        if (!_queries.AcceptSegment(Current, target) || !_queries.AcceptRouteSegment(Current, target))
+        { Denied = true; return false; }
         Record(target);
         return true;
     }
@@ -37,6 +38,7 @@ internal struct ContactMotionRoute
         for (int i = 0; i < written; i++)
         {
             Count();
+            if (!_queries.AcceptRouteSegment(Current, path[i])) { Denied = true; return false; }
             Record(path[i]);
         }
         return true;

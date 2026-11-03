@@ -138,17 +138,26 @@ the public constructors.
 
 `PathFollower` is per-agent mutable state the brain owns. One call per tick:
 `Tick(currentPosition, goalPosition, dt) -> PathFollowOutput` where the output carries `worldDir`
-(a `Vector2` ready for `StepTowards`), a state enum (`Following`, `Arrived`, `Unreachable`), and the
-active waypoint for debugging.
+(a `Vector2` ready for `StepTowards`), a state enum (`Following`, `Arrived`, `Unreachable`, `Hopping`,
+`WaitingForPath`, `Dropping`), and the active waypoint for debugging. Contact Drop hosts also read
+`DropTraversal` and acknowledge actual supported completion through `CompleteDrop()`, as
+[Contact Drop links](CONTACT-DROP-LINKS.md) describes.
 
 Replan triggers, all configured by a `PathFollowConfig` with defaults:
 
 - Goal drifted more than `GoalRetargetTolerance` from where it was when the current path was planned
   (a moving player).
 - Agent diverged more than `CorridorTolerance` from the current path segment (shoved, slid, blocked).
-- Waypoint reached within `AcceptRadius` advances the index. Final waypoint reached flips to
-  `Arrived`.
+- Waypoint reached within `AcceptRadius` advances the index on the agent's layer. A Complete point
+  terminal witnesses `Arrived` only for the same queried point intent, including snapped endpoints.
+  Current goal proximity also witnesses arrival. An obsolete terminal on a previously useful route
+  refreshes immediately, even for drift below the retarget tolerances.
 - A `ReplanCooldown` floor so an agent pinned against a moving target does not replan every tick.
+  Fresh exhausted results retain that cooldown, including after an immediate stale-route replacement.
+  A point query deferred after route consumption or changing a failed intent returns `WaitingForPath`
+  at zero motion instead of an unqueried failure. Point Partial exhaustion retains its one-tick raw-goal steer.
+  A due replan runs before locking an unlocked Drop, even inside cooldown. Once airborne, the Drop keeps its
+  committed route until supported acknowledgement or explicit Reset.
 
 The dynamic-avoidance seam is the follower's output: a later avoidance layer adjusts `worldDir` after
 the follower and before `StepTowards`, touching neither planner nor follower.

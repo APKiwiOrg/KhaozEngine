@@ -32,7 +32,7 @@ internal static partial class RendererPerfCompilerJson
     sealed class ValueConverter<T, TWire>(Func<T, TWire> encode, Func<TWire, T> decode) : JsonConverter<T>
     {
         public override T Read(ref Utf8JsonReader reader, Type type, JsonSerializerOptions options)
-            => decode(JsonSerializer.Deserialize<TWire>(ref reader, options) ?? throw new JsonException("Missing GPU value."));
+            => decode(JsonSerializer.Deserialize<TWire>(ref reader, options) ?? throw new RendererPerfCompilerJsonException(RendererPerfCompilerJsonRefusal.Schema, "Missing GPU value."));
         public override void Write(Utf8JsonWriter writer, T value, JsonSerializerOptions options) => JsonSerializer.Serialize(writer, encode(value), options);
     }
 }

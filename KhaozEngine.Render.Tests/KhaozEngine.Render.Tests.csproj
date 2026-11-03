@@ -10,6 +10,8 @@
          matter of ABI, and the staging-map tests write through a pinned span. Both are test-side mirrors of what
          KhaozEngine.Gpu.Vulkan is unsafe by construction for. -->
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <!-- Keep architecture helper paths canonical so their test-health exemptions match. -->
+    <ArchitectureTestSourceRoot>$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)../test-shared'))</ArchitectureTestSourceRoot>
   </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="Microsoft.NET.Test.Sdk" />
@@ -109,6 +111,8 @@
     <ProjectReference Include="../KhaozEngine.TestSupport.Gpu/KhaozEngine.TestSupport.Gpu.csproj" />
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="$(ArchitectureTestSourceRoot)/IlCallGraph.cs" Link="Shared/IlCallGraph.cs" />
+    <Compile Include="$(ArchitectureTestSourceRoot)/RefusalConstructorFence.cs" Link="Shared/RefusalConstructorFence.cs" />
     <Compile Include="../test-shared/SkinnedAttachmentGlbFixture.cs" Link="Shared/SkinnedAttachmentGlbFixture.cs" />
     <Compile Include="../test-shared/RendererPerfSceneInputs.cs" Link="Shared/RendererPerfSceneInputs.cs" />
   </ItemGroup>

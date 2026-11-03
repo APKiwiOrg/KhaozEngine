@@ -23,26 +23,26 @@ internal static partial class RendererPerfCompilerJson
     {
         public override RendererPerfCompilerInventory Read(ref Utf8JsonReader reader, Type type, JsonSerializerOptions options)
         {
-            var wire = JsonSerializer.Deserialize<InventoryValue>(ref reader, options) ?? throw new JsonException("Missing inventory.");
-            if (wire.Schema != Schema) throw new JsonException("Unknown compiler inventory schema.");
+            var wire = JsonSerializer.Deserialize<InventoryValue>(ref reader, options) ?? throw new RendererPerfCompilerJsonException(RendererPerfCompilerJsonRefusal.Schema, "Missing inventory.");
+            if (wire.Schema != Schema) throw new RendererPerfCompilerJsonException(RendererPerfCompilerJsonRefusal.Schema, "Unknown compiler inventory schema.");
             var sources = new Dictionary<string, string>(StringComparer.Ordinal);
             var content = new RendererPerfConstructionContent(new());
             foreach (var s in wire.Sources)
             {
                 string source = content.Source(s.Source);
                 if (s.Sha256 != RendererPerfConstructionContent.SourceHash(source) || !sources.TryAdd(s.Sha256, source))
-                    throw new JsonException("Source table hash is invalid or duplicated.");
+                    throw new RendererPerfCompilerJsonException(RendererPerfCompilerJsonRefusal.SourceTable, "Source table hash is invalid or duplicated.");
             }
             var used = new HashSet<string>(StringComparer.Ordinal);
             var order = new List<string>();
             var shaders = wire.Shaders.Select(s => new RendererPerfShaderRecipe(s.Id, [.. s.Stages.Select(stage =>
             {
-                if (!sources.TryGetValue(stage.SourceSha256, out string? source)) throw new JsonException("Foreign stage source reference.");
+                if (!sources.TryGetValue(stage.SourceSha256, out string? source)) throw new RendererPerfCompilerJsonException(RendererPerfCompilerJsonRefusal.SourceTable, "Foreign stage source reference.");
                 if (used.Add(stage.SourceSha256)) order.Add(stage.SourceSha256);
                 return new RendererPerfStageSource(stage.Stage, stage.EntryPoint, source, stage.LocalX, stage.LocalY, stage.LocalZ);
             })])).ToImmutableArray();
             if (!order.SequenceEqual(wire.Sources.Select(s => s.Sha256)))
-                throw new JsonException("Source table is unused or not in first-reference order.");
+                throw new RendererPerfCompilerJsonException(RendererPerfCompilerJsonRefusal.SourceTable, "Source table is unused or not in first-reference order.");
             return new(wire.Schema, wire.Operations, wire.FactoryEvents, shaders, wire.Layouts, wire.Recipes,
                 wire.Occurrences, wire.Counts, wire.Complete, wire.Reason);
         }

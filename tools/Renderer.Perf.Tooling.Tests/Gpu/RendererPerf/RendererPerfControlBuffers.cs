@@ -27,7 +27,8 @@ internal readonly record struct RendererPerfControlBuffers(uint InputBytes, uint
                 : limit == 0 ? "The device did not report a storage-buffer range."
                 : "A whole storage-buffer binding exceeds the admitted range.";
             throw new RendererPerfProtocolException("Compatibility",
-                $"Control {controlId} requires {required} bytes per storage-buffer binding, device limit {limit} bytes. {reason}");
+                $"Control {controlId} requires {required} bytes per storage-buffer binding, device limit {limit} bytes. {reason}")
+            { ControlId = controlId, RequiredBytes = required, DeviceLimitBytes = limit };
         }
     }
 }

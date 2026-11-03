@@ -78,9 +78,10 @@ public sealed class MotionExpectationTests
         var motion = new MotionTargetReadback(
             [new Vector2(5f / 3f, 0f), new Vector2(float.NaN, float.NaN), new Vector2(.001f / 3f, 0f)], 3, 1);
 
-        var failure = Assert.ThrowsAny<Xunit.Sdk.XunitException>(
+        var failure = Assert.Throws<MotionExpectationException>(
             () => MotionExpectation.AssertDrawnPixels(motion, (_, _) => Vector2.Zero, .05f));
-        Assert.Contains("pixel (1, 0)", failure.Message);
+        Assert.Equal(MotionExpectationRefusal.OutsideTolerance, failure.Reason);
+        Assert.Equal((1, 0), failure.Pixel);
     }
 
     [Fact]
@@ -89,8 +90,28 @@ public sealed class MotionExpectationTests
         // Past the threshold, as the sentinel is, but not finite: a motion that overflowed half precision.
         var motion = new MotionTargetReadback([new Vector2(float.PositiveInfinity, 0f), new Vector2(0f, 0f)], 2, 1);
 
-        var failure = Assert.ThrowsAny<Xunit.Sdk.XunitException>(
+        var failure = Assert.Throws<MotionExpectationException>(
             () => MotionExpectation.AssertDrawnPixels(motion, (_, _) => Vector2.Zero, .05f));
-        Assert.Contains("pixel (0, 0)", failure.Message);
+        Assert.Equal(MotionExpectationRefusal.OutsideTolerance, failure.Reason);
+        Assert.Equal((0, 0), failure.Pixel);
+    }
+
+    [Theory]
+    [InlineData(false, MotionExpectationRefusal.NoDrawnPixels)]
+    [InlineData(true, MotionExpectationRefusal.NoAdmittedPixels)]
+    public void AnEmptyPixelSetIsDistinguishedFromABadPixel(bool covered, MotionExpectationRefusal reason)
+    {
+        var motion = new MotionTargetReadback([Vector2.Zero], 1, 1);
+        Assert.Equal(1, MotionExpectation.AssertCovered(motion, (_, _) => true));
+        Assert.Equal(1, MotionExpectation.AssertDrawnPixels(motion, (_, _) => Vector2.Zero, 0f));
+
+        var failure = Assert.Throws<MotionExpectationException>(() =>
+        {
+            if (covered) MotionExpectation.AssertCovered(motion, (_, _) => false);
+            else MotionExpectation.AssertDrawnPixels(motion, (_, _) => Vector2.Zero, 0f, (_, _) => false);
+        });
+        Assert.Equal(reason, failure.Reason);
+        Assert.Equal(0, failure.Count);
+        Assert.Null(failure.Pixel);
     }
 }

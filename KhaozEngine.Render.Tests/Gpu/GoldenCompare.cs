@@ -189,10 +189,18 @@ namespace KhaozEngine.Tests.Gpu
         /// Core compare/bake logic, parameterized on directories + backend so it is testable against throwaway
         /// temp dirs (never the committed goldens dir, never a process-wide env-var mutation). The public
         /// <see cref="AssertOrUpdate(string,byte[],int,int)"/> resolves those from the environment and delegates
-        /// here. Golden text lives at <c>&lt;goldenDir&gt;/&lt;name&gt;.&lt;backend&gt;.txt</c>; evidence PNGs at
+        /// here. Golden text lives at <c>&lt;goldenDir&gt;/&lt;name&gt;.&lt;backend&gt;.txt</c>, with evidence PNGs at
         /// <c>&lt;evidenceDir&gt;/&lt;name&gt;.&lt;backend&gt;.{got,want,diff,bake}.png</c>.
         /// </summary>
         internal static void AssertOrUpdate(string name, byte[] rgba, int w, int h,
+            string goldenDir, string evidenceDir, string backend, bool updateGoldens,
+            string? bakeRefusal = null) =>
+            CompareOrUpdate(name, rgba, w, h, goldenDir, evidenceDir, backend, updateGoldens, bakeRefusal)?.Throw();
+
+        /// <summary>Returns comparison, missing-reference and bake-policy failures as values, with evidence paths
+        /// or the bake refusal. A successful comparison or bake returns null. Malformed golden grids retain their
+        /// existing assertion path.</summary>
+        internal static GoldenComparisonFailure? CompareOrUpdate(string name, byte[] rgba, int w, int h,
             string goldenDir, string evidenceDir, string backend, bool updateGoldens,
             string? bakeRefusal = null)
         {
@@ -203,21 +211,28 @@ namespace KhaozEngine.Tests.Gpu
                 // Fails rather than quietly degrading to a compare. The operator asked to overwrite a reference
                 // and must be told they did not get one, or the next run's green is read as the bake having
                 // worked.
-                if (bakeRefusal != null) Assert.Fail(bakeRefusal);
+                if (bakeRefusal != null)
+                    return new GoldenComparisonFailure(GoldenComparisonRefusal.BakeRefused, bakeRefusal)
+                    {
+                        BakeRefusal = bakeRefusal,
+                    };
                 Directory.CreateDirectory(goldenDir);
                 File.WriteAllText(path, Serialize(grid));
                 // Evidence: the full-res capture, so CI bake artifacts are viewable.
                 WriteEvidence(evidenceDir, name, backend, "bake", rgba, w, h);
-                return;
+                return null;
             }
 
             if (!File.Exists(path))
             {
                 // Write the captured frame so a brand-new scene can be eyeballed before its first bake.
                 string gotPath = WriteEvidence(evidenceDir, name, backend, "got", rgba, w, h);
-                Assert.Fail(
+                return new GoldenComparisonFailure(GoldenComparisonRefusal.MissingGolden,
                     $"golden '{name}' missing at {path}. Run with KE_GPU_TESTS=1 KE_UPDATE_GOLDENS=1 to generate it. " +
-                    $"Captured frame written to: {gotPath}");
+                    $"Captured frame written to: {gotPath}")
+                {
+                    GotPath = gotPath,
+                };
             }
             float[] golden = Deserialize(File.ReadAllText(path));
             Assert.True(golden.Length == grid.Length,
@@ -256,8 +271,14 @@ namespace KhaozEngine.Tests.Gpu
                   .Append("  want: ").Append(wantPath).Append('\n')
                   .Append("  diff: ").Append(diffPath).Append('\n');
                 sb.Append("Re-bake intentionally with KE_GPU_TESTS=1 KE_UPDATE_GOLDENS=1 if the change is expected.");
-                Assert.Fail(sb.ToString());
+                return new GoldenComparisonFailure(GoldenComparisonRefusal.ImageRegressed, sb.ToString())
+                {
+                    GotPath = gotPath,
+                    WantPath = wantPath,
+                    DiffPath = diffPath,
+                };
             }
+            return null;
         }
 
         /// <summary>Encode <paramref name="rgba"/> (w x h RGBA8) to <c>&lt;dir&gt;/&lt;name&gt;.&lt;backend&gt;.&lt;kind&gt;.png</c> and return the path.</summary>

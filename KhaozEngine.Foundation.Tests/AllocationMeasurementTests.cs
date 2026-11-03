@@ -40,10 +40,11 @@ public sealed class AllocationMeasurementTests
     [Fact]
     public void AnInducedCollectionInvalidatesTheCounter()
     {
-        var failure = Assert.ThrowsAny<XunitException>(() =>
+        var failure = Assert.Throws<AllocationMeasurementException>(() =>
             AllocationMeasurement.Measure("induced collection", static () => GC.Collect()));
-        Assert.Contains("garbage collection", failure.Message);
-        Assert.Contains("induced collection", failure.Message);
+        Assert.Equal(AllocationMeasurementRefusal.CollectionInterrupted, failure.Reason);
+        Assert.Equal("induced collection", failure.Description);
+        Assert.True(failure.Collections!.Value.Gen0 > 0);
     }
 
     [Fact]
@@ -51,9 +52,15 @@ public sealed class AllocationMeasurementTests
     {
         using var region = AllocationRegion.Start("budget control", totalSize: 64 * 1024);
         GC.KeepAlive(new byte[8 * 1024 * 1024]);
-        var failure = Assert.ThrowsAny<XunitException>(region.Dispose);
-        Assert.Contains("budget was exhausted", failure.Message);
-        Assert.Contains("process=", failure.Message);
+        var failure = Assert.Throws<AllocationMeasurementException>(region.Dispose);
+        Assert.Equal(AllocationMeasurementRefusal.BudgetExhausted, failure.Reason);
+        Assert.Equal("budget control", failure.Description);
+        Assert.Equal(64 * 1024, failure.Budget);
+        Assert.True(failure.ProcessBytes >= failure.Budget);
+        Assert.True(failure.ThreadBytes > 0);
+        Assert.Equal(failure.ProcessBytes - failure.ThreadBytes, failure.OtherThreadBytes);
+        Assert.True(failure.ReportedMessages >= 0);
+        Assert.NotNull(failure.Collections);
         region.Dispose();
     }
 
@@ -62,8 +69,10 @@ public sealed class AllocationMeasurementTests
     {
         using var region = AllocationRegion.Start("ended region");
         GC.EndNoGCRegion();
-        var failure = Assert.ThrowsAny<XunitException>(region.Dispose);
-        Assert.Contains("ended before", failure.Message);
+        var failure = Assert.Throws<AllocationMeasurementException>(region.Dispose);
+        Assert.Equal(AllocationMeasurementRefusal.RegionEnded, failure.Reason);
+        Assert.Equal("ended region", failure.Description);
+        Assert.NotNull(failure.RuntimeReason);
         region.Dispose();
     }
 

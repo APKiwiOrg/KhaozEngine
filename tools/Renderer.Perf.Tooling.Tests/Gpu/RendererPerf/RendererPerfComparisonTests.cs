@@ -138,10 +138,20 @@ public sealed class RendererPerfComparisonTests
                 Recipes = baseline.Recipes.SetItem(0, baseline.Recipes[0] with
                 { Facts = baseline.Recipes[0].Facts.Add("nonfinite", Value(double.PositiveInfinity)) })
             };
-        var original = Assert.Throws<RendererPerfProtocolException>(() => VerifiedAnalyze(candidate));
-        var result = VerifiedCompare(baseline, candidate);
+        RendererPerfProtocolException? original = null;
+        RendererPerfSummary Analyze(RendererPerfReport report,
+            ImmutableDictionary<string, RendererPerfReferenceRates>? references)
+        {
+            try { return RendererPerfAnalysis.Analyze(report, references); }
+            catch (RendererPerfProtocolException error) { original = error; throw; }
+        }
+        var result = RendererPerfComparison.CompareRaw(baseline, candidate, null, null, Analyze);
         Assert.False(result.Compatible);
-        Assert.Contains($"candidate protocol {original.Code}: {original.Message}", result.Reasons);
+        var (side, refusal) = Assert.Single(result.ProtocolRefusals);
+        Assert.Equal("candidate", side);
+        Assert.NotNull(original);
+        Assert.Same(original, refusal.Error);
+        Assert.Equal(refusal.Reason, Assert.Single(result.Reasons));
         Assert.Empty(result.Differences);
         Assert.Empty(result.Rows);
         Assert.Empty(result.CombinedRows);

@@ -20,7 +20,18 @@ For several counters in one window, or a workload that uses stack spans a delega
 capture, use `AllocationRegion.Start` and dispose the region before asserting on the counters.
 A lost region invalidates the measurement and reports process allocation, thread allocation,
 allocation by other threads, the test messages reported during the window, collection counts and the
-runtime reason.
+runtime reason. Isolation and invalid-window refusals throw `AllocationMeasurementException`, which remains an
+xUnit assertion failure. Its `Reason` names the refusal and `Description` identifies the measurement.
+Window failures carry `Budget`, `ProcessBytes`, `ThreadBytes`, `OtherThreadBytes`, `ReportedMessages`,
+`Collections` (gen0, gen1, gen2) and `RuntimeReason`. Those window fields are absent for an isolation refusal.
+
+| Reason | Refused condition |
+|---|---|
+| `CollectionNotIsolated` | The collection can run beside another test |
+| `BudgetExhausted` | Process allocation exhausted the reserved budget |
+| `CollectionInterrupted` | A collection interrupted the window |
+| `RegionEnded` | The no-GC region ended before the window completed |
+
 Nested starts are rejected before calling the runtime so they cannot invalidate an existing region.
 The process-wide budget is checked explicitly even when the runtime grants additional space.
 No measurement retries its workload, keeps the smallest of several readings or accepts an
@@ -50,9 +61,39 @@ source without importing real-device fixtures or referencing the engine test ass
 `RendererPerfShared.props` explicitly source-links helper-only engine test files into the outside-solution
 renderer tooling assembly. It normalizes the source root before constructing paths, so KESIZE and
 KETEST retain each helper's physical repository-relative identity. The helper files remain owned by
-Render.Tests, including GpuPerfTimestampRing and its fakes. No module initializer or unrelated fact
-file is linked. The tooling project also imports AllocationMeasurement.props, including its independent
-allocation-isolation contract tests and serialized reporting framework.
+their source test project or `test-shared`, including GpuPerfTimestampRing and its fakes. No module
+initializer or unrelated fact file is linked. The tooling project also imports AllocationMeasurement.props,
+including its independent allocation-isolation contract tests and serialized reporting framework.
+
+## IL architecture fences
+
+`IlCallGraph.cs` is the shared IL reader in `KhaozEngine.Tests.Gpu`. `DeclaredMethods` enumerates a
+type's declared methods and constructors, including non-public members. `Callees` reads and caches
+their compiled call sites, and `Describe` renders a caller as `Type.Member`. Render.Tests source-links
+the reader directly. Renderer.Perf.Tooling.Tests links the same file through `RendererPerfShared.props`.
+Its non-public reflection is an owner-approved KETEST002 exemption for inspecting compiled calls.
+The architecture helper links normalize their physical paths before inclusion so KETEST exemptions
+match `test-shared/...` rather than a project-relative path containing `..`.
+
+`RefusalConstructorFence.cs` reads assembly files through `PEReader` and `MetadataReader` to find
+`newobj` and constructor-chaining `call` instructions whose declaring type and parameter type names
+match forbidden exception constructors. Ordinary method calls remain allowed. Constructed generic
+declaring types supply their arguments when decoding constructor parameters, so overload matching
+uses the instantiated parameter types.
+It reads metadata only so scanning a backend never loads its platform-specific interop dependencies.
+Source-link this helper into an owning test project and pass engine assemblies and the custom
+exception's message-only constructors to `EngineCallers`. Callers are returned as sorted, distinct
+`<declaring type full name>.<method name>` descriptions. An empty result proves those assemblies
+contain no matching constructor calls. Reason-taking constructors remain allowed, and consumer
+assemblies are covered only if explicitly supplied. Invalid IL or metadata fails the scan.
+
+`IlCallGraph` stops or skips unresolved IL rather than guessing, so its architecture rules need positive
+controls. `RefusalConstructorFenceTests` proves private callers of `InvalidDataException(string)`,
+same-assembly base and this constructor chains, and constructed generic exceptions are reported.
+A generic construction after switch, two-byte opcodes and mixed operands remains visible, while
+another constructor overload and an uncalled constructor stay clear. Scanning the D3D11 assembly
+loads no interop off Windows. Existing Metal architecture and tooling fences retain their own
+controls and use `IlCallGraph`.
 
 ## Items benchmark fixtures
 

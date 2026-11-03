@@ -14,7 +14,13 @@ internal sealed record RendererPerfComparisonRow(string SceneId, RendererPerfLay
     bool Compatible, ImmutableArray<string> Reasons, ImmutableDictionary<string, RendererPerfDelta> Deltas);
 internal sealed record RendererPerfComparisonResult(bool Compatible, ImmutableArray<string> Reasons,
     ImmutableArray<RendererPerfIdentityDifference> Differences, ImmutableArray<RendererPerfComparisonRow> Rows,
-    ImmutableArray<RendererPerfComparisonRow> CombinedRows, ImmutableArray<RendererPerfComparisonRow> ControlRows);
+    ImmutableArray<RendererPerfComparisonRow> CombinedRows, ImmutableArray<RendererPerfComparisonRow> ControlRows)
+{
+    /// <summary>The original refusal of each side whose report could not be analyzed, keyed by "baseline" or
+    /// "candidate". Each also appears in <see cref="Reasons"/> as text.</summary>
+    internal ImmutableDictionary<string, RendererPerfProtocolRefusal> ProtocolRefusals { get; init; } =
+        ImmutableDictionary<string, RendererPerfProtocolRefusal>.Empty;
+}
 
 // Compatibility is a data-admission decision. It is never a percentage regression budget.
 internal static class RendererPerfComparison
@@ -31,19 +37,27 @@ internal static class RendererPerfComparison
     internal static RendererPerfComparisonResult Compare(RendererPerfVerifiedArtifact baseline, RendererPerfVerifiedArtifact candidate)
         => CompareValidated(Analyze(baseline), Analyze(candidate));
 
-    static RendererPerfComparisonResult CompareRaw(RendererPerfReport baseline, RendererPerfReport candidate,
+    internal static RendererPerfComparisonResult CompareRaw(RendererPerfReport baseline, RendererPerfReport candidate,
         ImmutableDictionary<string, RendererPerfReferenceRates>? baselineReferences,
-        ImmutableDictionary<string, RendererPerfReferenceRates>? candidateReferences)
+        ImmutableDictionary<string, RendererPerfReferenceRates>? candidateReferences,
+        Func<RendererPerfReport, ImmutableDictionary<string, RendererPerfReferenceRates>?, RendererPerfSummary>? analyze = null)
     {
         var failures = new List<string>();
+        var refusals = ImmutableDictionary.CreateBuilder<string, RendererPerfProtocolRefusal>(StringComparer.Ordinal);
         RendererPerfSummary? Read(RendererPerfReport report, ImmutableDictionary<string, RendererPerfReferenceRates>? references, string name)
         {
-            try { return Analyze(report, references); }
-            catch (RendererPerfProtocolException error) { failures.Add($"{name} protocol {error.Code}: {error.Message}"); return null; }
+            try { return (analyze ?? Analyze)(report, references); }
+            catch (RendererPerfProtocolException error)
+            {
+                var refusal = new RendererPerfProtocolRefusal(error, $"{name} protocol {error.Code}: {error.Message}");
+                failures.Add(refusal.Reason);
+                refusals.Add(name, refusal);
+                return null;
+            }
         }
         var before = Read(baseline, baselineReferences, "baseline");
         var after = Read(candidate, candidateReferences, "candidate");
-        return before is null || after is null ? new(false, [.. failures], [], [], [], [])
+        return before is null || after is null ? new(false, [.. failures], [], [], [], []) { ProtocolRefusals = refusals.ToImmutable() }
             : CompareValidated(before, after);
     }
 

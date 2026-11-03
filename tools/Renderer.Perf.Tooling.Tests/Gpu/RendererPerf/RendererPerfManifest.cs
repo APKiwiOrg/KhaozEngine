@@ -76,9 +76,11 @@ internal sealed record RendererPerfManifest(string Schema, string UnitId, string
         if (schedule.ExecutionClass == RendererPerfExecutionClass.Rehearsal) _ = RendererPerfRehearsalPolicy.Class(manifest);
         RendererPerfExecutionPolicy execution = manifest.Execution;
         Require(execution.Leg is "linux-vulkan" or "windows-d3d11" or "windows-vulkan", "Preset", "Unsupported hosted leg.");
-        Require(schedule.Legs.Contains(execution.Leg), "Preset", schedule.Preset == "pilot"
-            ? $"{LegName(execution.Leg)} has no initial pilot preset."
-            : $"{LegName(execution.Leg)} is not an approved leg for the {schedule.Preset} campaign.");
+        if (!schedule.Legs.Contains(execution.Leg))
+            throw new RendererPerfProtocolException("Preset", schedule.Preset == "pilot"
+                ? $"{LegName(execution.Leg)} has no initial pilot preset."
+                : $"{LegName(execution.Leg)} is not an approved leg for the {schedule.Preset} campaign.")
+            { Preset = schedule.Preset, Leg = execution.Leg };
         Require(manifest.BatchSize == 3 && manifest.MaximumScopeOccurrences == 255
             && manifest.ConditioningFrames == schedule.ConditioningFrames, "Preset", "Pacing, scope capacity or conditioning count differs from the preset.");
         if (schedule.ExecutionClass == RendererPerfExecutionClass.Rehearsal) RendererPerfRehearsalPolicy.Validate(manifest);

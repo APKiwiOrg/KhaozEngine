@@ -93,11 +93,16 @@ public sealed partial class RendererPerfMetalDiagnosticsTests
         Assert.Equal(0, native.Allocations);
         Assert.Equal(0, native.ClockReads);
         using var device = new GpuPerfTimestampTestDevice { Features = capabilities, Software = false };
-        var identity = RendererPerfProtocolTests.CompleteReport().Identity;
-        var refusal = Assert.Throws<RendererPerfProtocolException>(() => RendererPerfAdmission.Device(device,
-            new(identity, true, true, null, System.Collections.Immutable.ImmutableDictionary<string, RendererPerfMetric>.Empty)));
-        Assert.Contains("required timestamp and completion proof", refusal.Message);
+        // The identity names this adapter, so the timestamp proof is the only admission rule the device breaks.
+        var identity = RendererPerfProtocolTests.CompleteReport().Identity with { Adapter = capabilities.DeviceName };
+        var info = new RendererPerfSessionInfo(identity, true, true, null,
+            System.Collections.Immutable.ImmutableDictionary<string, RendererPerfMetric>.Empty);
+        var refusal = Assert.Throws<RendererPerfProtocolException>(() => RendererPerfAdmission.Device(device, info));
+        Assert.Equal("Admission", refusal.Code);
         Assert.Empty(device.Pools);
+        // Passing control: the same device and identity with timestamps admit.
+        device.Features = capabilities with { SupportsTimestamps = true };
+        RendererPerfAdmission.Device(device, info);
     }
 
     [Theory]

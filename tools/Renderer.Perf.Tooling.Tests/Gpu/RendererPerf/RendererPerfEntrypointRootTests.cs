@@ -12,20 +12,18 @@ namespace KhaozEngine.Tests.Gpu.RendererPerf;
 [Collection("NativeDeviceLifecycle")]
 public sealed class RendererPerfEntrypointRootTests
 {
-    const string RuntimeRefusal = "Observed runtime, GC, tiering or relevant environment differs from approval.";
-
     [Fact]
     public void Nested_test_host_keeps_its_canonical_working_directory_when_given_dot_segments()
     {
         using var fixture = new EntryFixture(hostRelativePath: "tools/../tools/Renderer.Perf.Tests/bin/Release/net10.0");
-        fixture.Refuse(RuntimeRefusal);
+        fixture.Refuse(RendererPerfEntrypointRefusal.RuntimeDiffers);
     }
 
     [Fact]
     public void Nested_test_host_reads_authorized_checkout_manifest_then_refuses_runtime_before_native_startup()
     {
         using var fixture = new EntryFixture();
-        Assert.Equal("Entrypoint", Assert.IsType<RendererPerfProtocolException>(fixture.Refuse(RuntimeRefusal)).Code);
+        fixture.Refuse(RendererPerfEntrypointRefusal.RuntimeDiffers);
         using var runtime = JsonDocument.Parse(File.ReadAllBytes(Path.Combine(fixture.Work.Reports, "runtime-admission.json")));
         Assert.Equal(Environment.Version.ToString(), runtime.RootElement.GetProperty("runtimeVersion").GetString());
         Assert.Equal("1", runtime.RootElement.GetProperty("environment").GetProperty("KE_GPU_TESTS").GetString());
@@ -37,45 +35,86 @@ public sealed class RendererPerfEntrypointRootTests
     public void Runtime_admitted_fixture_refuses_recipe_sources_from_another_checkout_before_startup()
     {
         using var fixture = new EntryFixture(matchRuntime: true);
-        fixture.Refuse("Recipe sources must belong to the authorized checkout root.");
+        fixture.Refuse(RendererPerfEntrypointRefusal.RecipeSourceOutsideCheckout);
         Assert.True(File.Exists(Path.Combine(fixture.Work.Reports, "runtime-admission.json")));
         Assert.False(File.Exists(Path.Combine(fixture.Work.Reports, "native-admission.json")));
     }
 
+    // The ordinary fixture passes every check before runtime admission (it refuses RuntimeDiffers), so each row
+    // breaks only the rule its change targets.
     [Theory]
-    [InlineData("nested-root")]
-    [InlineData("relative-root")]
-    [InlineData("missing-root")]
-    [InlineData("foreign-checkout")]
-    [InlineData("wrong-head")]
-    [InlineData("manifest-hash")]
-    [InlineData("extra-change")]
-    public void Invalid_checkout_or_authorization_refuses_before_runtime_admission(string change)
+    [InlineData("second-attempt", RendererPerfEntrypointRefusal.NotFirstHostedAttempt)]
+    [InlineData("unit-input", RendererPerfEntrypointRefusal.InputsDisagree)]
+    [InlineData("unsafe-unit", RendererPerfEntrypointRefusal.UnsafeUnitToken)]
+    [InlineData("nested-root", RendererPerfEntrypointRefusal.CheckoutRootNotGitTopLevel)]
+    [InlineData("relative-root", RendererPerfEntrypointRefusal.CheckoutRootNotAbsolute)]
+    [InlineData("dispatch-hash", RendererPerfEntrypointRefusal.DispatchHashesDisagree)]
+    [InlineData("foreign-checkout", RendererPerfEntrypointRefusal.AuthorizationNotManifestOnly)]
+    [InlineData("wrong-head", RendererPerfEntrypointRefusal.AuthorizationNotManifestOnly)]
+    [InlineData("extra-change", RendererPerfEntrypointRefusal.AuthorizationNotManifestOnly)]
+    [InlineData("manifest-unit", RendererPerfEntrypointRefusal.ManifestUnitMismatch)]
+    public void Invalid_entrypoint_input_refuses_before_runtime_admission(string change, RendererPerfEntrypointRefusal refusal)
     {
         using var fixture = new EntryFixture();
         using var foreign = change == "foreign-checkout"
             ? new RendererPerfWorkflowContractTests.WorkflowFixture(EntryFixture.NewDirectory()) : null;
-        string reason = "Authorization must add only the manifest to its immutable workload parent.";
+        string unit = "pilot-linux";
         switch (change)
         {
-            case "nested-root": fixture.Set("GITHUB_WORKSPACE", fixture.Host); reason = "Checkout root must be the explicit Git top level."; break;
-            case "relative-root": fixture.Set("GITHUB_WORKSPACE", "."); reason = "GITHUB_WORKSPACE must name an absolute checkout root."; break;
-            case "missing-root": fixture.Set("GITHUB_WORKSPACE", null); reason = "GITHUB_WORKSPACE must be explicit."; break;
+            case "second-attempt": fixture.Set("GITHUB_RUN_ATTEMPT", "2"); break;
+            case "unit-input": fixture.Set("KE_RENDERER_PERF_UNIT", "pilot-other"); break;
+            case "unsafe-unit":
+                unit = "Pilot-linux";
+                fixture.Set("RENDERER_PERF_UNIT", unit);
+                fixture.Set("KE_RENDERER_PERF_UNIT", unit);
+                break;
+            case "nested-root": fixture.Set("GITHUB_WORKSPACE", fixture.Host); break;
+            case "relative-root": fixture.Set("GITHUB_WORKSPACE", "."); break;
+            case "dispatch-hash": fixture.Set("RENDERER_PERF_MANIFEST_SHA256", new string('0', 64)); break;
             case "foreign-checkout":
                 // Keep the parent inspectable so refusal exercises checkout identity, not a missing Git object.
                 foreign!.Git("fetch", "--quiet", fixture.Root, fixture.Work.Workload);
                 fixture.Set("GITHUB_WORKSPACE", foreign.Git("rev-parse", "--show-toplevel").Trim());
                 break;
             case "wrong-head": fixture.Set("TESTED_REF", fixture.Work.Workload); break;
-            case "manifest-hash": File.AppendAllText(fixture.Work.ManifestPath, " "); reason = "Manifest bytes do not match the dispatched SHA-256."; break;
             case "extra-change":
                 File.WriteAllText(Path.Combine(fixture.Work.Directory, "extra.txt"), "not authorized");
                 fixture.Work.Git("add", "--", "extra.txt");
                 fixture.Work.Git("commit", "--quiet", "--amend", "--no-edit");
                 fixture.AuthorizeCurrentHead();
                 break;
+            case "manifest-unit":
+                // The authorization admits the other unit's manifest path, so only the entrypoint's unit check differs.
+                fixture.Work.Manifest["unitId"] = "pilot-other";
+                fixture.Work.SaveManifest();
+                fixture.Work.Git("add", "--", "tools/Renderer.Perf.Tests/authorized/pilot-linux.json");
+                fixture.Work.Git("commit", "--quiet", "--amend", "--no-edit");
+                fixture.AuthorizeCurrentHead("pilot-other");
+                fixture.Set("RENDERER_PERF_MANIFEST_SHA256", fixture.Work.Environment["RENDERER_PERF_MANIFEST_SHA256"]);
+                break;
         }
-        fixture.Refuse(reason);
+        fixture.Refuse(refusal, unit);
+        Assert.False(File.Exists(Path.Combine(fixture.Work.Reports, "runtime-admission.json")));
+    }
+
+    [Fact]
+    public void Missing_checkout_root_refuses_before_runtime_admission()
+    {
+        // Every other variable stays explicit, so the only unset name is the one refused.
+        using var fixture = new EntryFixture();
+        fixture.Set("GITHUB_WORKSPACE", null);
+        fixture.Refuse<InvalidOperationException>();
+        Assert.False(File.Exists(Path.Combine(fixture.Work.Reports, "runtime-admission.json")));
+    }
+
+    [Fact]
+    public void Changed_manifest_bytes_refuse_before_runtime_admission()
+    {
+        using var fixture = new EntryFixture();
+        File.AppendAllText(fixture.Work.ManifestPath, " ");
+        var error = fixture.Refuse<RendererPerfProtocolException>();
+        Assert.Equal("Hash", error.Code);
+        Assert.Null(error.EntrypointRefusal);
         Assert.False(File.Exists(Path.Combine(fixture.Work.Reports, "runtime-admission.json")));
     }
 
@@ -138,12 +177,12 @@ public sealed class RendererPerfEntrypointRootTests
             Environment.CurrentDirectory = Host;
         }
 
-        internal void AuthorizeCurrentHead()
+        internal void AuthorizeCurrentHead(string authorizedUnit = "pilot-linux")
         {
             Work.Environment["TESTED_REF"] = Work.Git("rev-parse", "HEAD").Trim();
             var authorization = new RendererPerfAuthorization(Work.Environment["RENDERER_PERF_MANIFEST_SHA256"],
                 Work.Workload, Work.Environment["TESTED_REF"], Work.Workload, 1,
-                ["tools/Renderer.Perf.Tests/authorized/pilot-linux.json"], 1, "linux-vulkan", "gpu-t4-linux", "gpu-hosted-bench.yml");
+                [$"tools/Renderer.Perf.Tests/authorized/{authorizedUnit}.json"], 1, "linux-vulkan", "gpu-t4-linux", "gpu-hosted-bench.yml");
             File.WriteAllBytes(Path.Combine(Work.Reports, "authorization.json"),
                 JsonSerializer.SerializeToUtf8Bytes(authorization, RendererPerfManifest.JsonOptions));
             Set("TESTED_REF", Work.Environment["TESTED_REF"]);
@@ -155,12 +194,17 @@ public sealed class RendererPerfEntrypointRootTests
             _previous.TryAdd(name, Environment.GetEnvironmentVariable(name));
             Environment.SetEnvironmentVariable(name, value);
         }
-        internal Exception Refuse(string reason)
+        internal T Refuse<T>(string unit = "pilot-linux") where T : Exception
         {
-            var error = Assert.ThrowsAny<Exception>(() => RendererPerfEntrypoint.Run("pilot-linux", Work.Reports));
-            Assert.Equal(reason, error.Message);
+            var error = Assert.Throws<T>(() => RendererPerfEntrypoint.Run(unit, Work.Reports));
             Assert.Equal(Host, Environment.CurrentDirectory);
             return error;
+        }
+        internal void Refuse(RendererPerfEntrypointRefusal refusal, string unit = "pilot-linux")
+        {
+            var error = Refuse<RendererPerfProtocolException>(unit);
+            Assert.Equal("Entrypoint", error.Code);
+            Assert.Equal(refusal, error.EntrypointRefusal);
         }
         public void Dispose()
         {

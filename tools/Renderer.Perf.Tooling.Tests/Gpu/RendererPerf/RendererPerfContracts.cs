@@ -77,6 +77,11 @@ internal sealed record RendererPerfPublication(RendererPerfPublicationState Stat
 {
     [JsonRequired]
     public RendererPerfFailureTextEvidence FailureText { get; init; } = new(false, 0, 0);
+
+    /// <summary>The original exception projected into publication text, retained even when text capacity is exhausted.
+    /// Runtime evidence only, absent on reports read from JSON.</summary>
+    [JsonIgnore]
+    public Exception? OriginalFailureException { get; init; }
 }
 internal sealed record RendererPerfReport(string Schema, RendererPerfManifest Manifest, RendererPerfRunIdentity Identity,
     ImmutableArray<RendererPerfRecipeReport> Recipes, ImmutableArray<RendererPerfBlockReport> Blocks,
@@ -100,4 +105,23 @@ internal sealed class RendererPerfProtocolException(string code, string message,
     : Exception(message, inner)
 {
     internal string Code { get; } = code;
+
+    /// <summary>The control a compatibility refusal names.</summary>
+    internal int? ControlId { get; init; }
+
+    /// <summary>The bytes one storage-buffer binding of <see cref="ControlId"/> requires.</summary>
+    internal uint? RequiredBytes { get; init; }
+
+    /// <summary>The storage-buffer range the device admits, zero when it reported none.</summary>
+    internal uint? DeviceLimitBytes { get; init; }
+
+    /// <summary>The preset whose schedule refused <see cref="Leg"/>.</summary>
+    internal string? Preset { get; init; }
+
+    /// <summary>The hosted leg a preset refused.</summary>
+    internal string? Leg { get; init; }
+
+    /// <summary>Which entrypoint rule refused. Set for every refusal whose Code is "Entrypoint" and null
+    /// otherwise.</summary>
+    public RendererPerfEntrypointRefusal? EntrypointRefusal { get; init; }
 }

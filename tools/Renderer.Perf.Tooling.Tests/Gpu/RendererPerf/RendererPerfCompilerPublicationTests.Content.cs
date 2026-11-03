@@ -88,7 +88,9 @@ public sealed partial class RendererPerfCompilerPublicationTests
             {
                 Assert.NotNull(error);
                 Assert.Null(verified);
-                Assert.Contains("content changed", Assert.IsType<IOException>(error).Message, StringComparison.OrdinalIgnoreCase);
+                var changed = Assert.IsType<RendererPerfArtifactVerificationException>(error);
+                Assert.Equal(RendererPerfArtifactVerificationRefusal.ContentChanged, changed.Reason);
+                Assert.Equal(relative, changed.Path);
             }
             else
             {
@@ -150,7 +152,7 @@ public sealed partial class RendererPerfCompilerPublicationTests
         Assert.True(reached);
         var failure = Assert.Single(result.Failures);
         if (cancel) Assert.Equal(f.Cancellation.Token, Assert.IsType<OperationCanceledException>(failure.Error).CancellationToken);
-        else Assert.IsType<TimeoutException>(failure.Error);
+        else Assert.Equal(boundary, Assert.IsType<RendererPerfUnitBudgetTimeoutException>(failure.Error).Stage);
         Assert.False(result.Report.Publication.FinalUnitPublished);
         Assert.False(result.Report.Assessment.ValidForPromotion);
         Assert.Equal(f.Report.Blocks, result.Report.Blocks);

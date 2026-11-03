@@ -112,7 +112,8 @@ public sealed partial class RendererPerfColdLifecycleTests
         var read = rig.Diagnostic.LastRead!;
         Assert.Same(read.Report, Assert.Single(outcome.Report!.Pipelines));
         Assert.Same(read.Failures[0].Error, outcome.Failures[0].Error);
-        Assert.IsType<TimeoutException>(outcome.Failures[0].Error);
+        Assert.Equal(RendererPerfUnitBudgetRefusal.DeadlineReached,
+            Assert.IsType<RendererPerfUnitBudgetTimeoutException>(outcome.Failures[0].Error).Reason);
         Assert.Equal(RendererPerfCollectionState.DeadlineExceeded, outcome.Report.Compiler.State);
         Assert.Null(outcome.Report.Compiler.Results[1].Read);
         Assert.Equal(100, outcome.Report.Startup[0].Wall.StartTicks);

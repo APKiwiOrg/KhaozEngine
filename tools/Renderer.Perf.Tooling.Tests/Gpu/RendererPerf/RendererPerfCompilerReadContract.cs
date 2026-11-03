@@ -46,7 +46,10 @@ internal static class RendererPerfCompilerReadContract
         public override void Write(ReadOnlySpan<byte> buffer)
         {
             long next = checked(_length + buffer.Length);
-            if (next > maximum) throw new InvalidOperationException($"Compiler encoding requires {next} bytes, above reservation {maximum}.");
+            if (next > maximum)
+                throw new RendererPerfCompilerEncodingException(RendererPerfCompilerEncodingRefusal.AboveReservation,
+                    $"Compiler encoding requires {next} bytes, above reservation {maximum}.")
+                { RequiredBytes = next, ReservationBytes = maximum };
             _length = next;
         }
         public override void Write(byte[] buffer, int offset, int count) => Write(buffer.AsSpan(offset, count));

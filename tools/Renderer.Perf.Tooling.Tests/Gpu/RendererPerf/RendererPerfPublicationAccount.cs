@@ -29,7 +29,9 @@ internal sealed class RendererPerfPublicationAccount
         budget.Check("renderer.publication.account.before");
         _baseRoot = BaseBytes(report, inventory);
         _shape = CompletionBytes(report, inventory);
-        if (_shape > CompletionReserve || Available < 0) throw new InvalidOperationException("Retained base/inventory and completion evidence exceed publication capacity.");
+        if (_shape > CompletionReserve || Available < 0)
+            throw new RendererPerfPublicationCapacityException(RendererPerfPublicationCapacityRefusal.RetainedEvidenceExceedsCapacity,
+                "Retained base/inventory and completion evidence exceed publication capacity.");
         budget.Check("renderer.publication.account.after");
     }
     internal long Available => checked(RendererPerfReportJson.MaximumBytes - _baseRoot - _inventory - _committed - CompletionReserve);

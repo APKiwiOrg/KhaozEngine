@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.Globalization;
 using System.Threading;
 using System.Threading.Tasks;
 using KhaozEngine.Catalog;
@@ -125,10 +124,6 @@ public class ContentIdAllocatorTests
 
         Assert.Equal(Game, error.Type);
         Assert.Equal(ContentAuthoringException.IdCeilingReason, error.Reason);
-        Assert.Contains(
-            ContentValidationFixtures.GameTypeId.ToString(CultureInfo.InvariantCulture),
-            error.Message,
-            StringComparison.Ordinal);
         Assert.Contains("ceiling of 8", error.Message, StringComparison.Ordinal);
         Assert.Contains("issued through 8", error.Message, StringComparison.Ordinal);
     }

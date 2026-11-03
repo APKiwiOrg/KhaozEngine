@@ -31,7 +31,7 @@
     <Compile Include="$(RendererPerfRepositoryRoot)/KhaozEngine.Render.Tests/Gpu/FakeVulkanShaderApi.cs" Link="Shared/Gpu/FakeVulkanShaderApi.cs" />
     <Compile Include="$(RendererPerfRepositoryRoot)/KhaozEngine.Render.Tests/Gpu/FakeVulkanTimelineSemaphore.cs" Link="Shared/Gpu/FakeVulkanTimelineSemaphore.cs" />
     <Compile Include="$(RendererPerfRepositoryRoot)/KhaozEngine.Render.Tests/Gpu/FakeVulkanTransferSink.cs" Link="Shared/Gpu/FakeVulkanTransferSink.cs" />
-    <Compile Include="$(RendererPerfRepositoryRoot)/KhaozEngine.Render.Tests/Gpu/IlCallGraph.cs" Link="Shared/Gpu/IlCallGraph.cs" />
+    <Compile Include="$(RendererPerfRepositoryRoot)/test-shared/IlCallGraph.cs" Link="Shared/IlCallGraph.cs" />
     <Compile Include="$(RendererPerfRepositoryRoot)/KhaozEngine.Render.Tests/Gpu/MetalBindFixtures.cs" Link="Shared/Gpu/MetalBindFixtures.cs" />
     <Compile Include="$(RendererPerfRepositoryRoot)/KhaozEngine.Render.Tests/Gpu/MetalRingHarness.cs" Link="Shared/Gpu/MetalRingHarness.cs" />
     <Compile Include="$(RendererPerfRepositoryRoot)/KhaozEngine.Render.Tests/Gpu/MetalSwapchainFakes.cs" Link="Shared/Gpu/MetalSwapchainFakes.cs" />

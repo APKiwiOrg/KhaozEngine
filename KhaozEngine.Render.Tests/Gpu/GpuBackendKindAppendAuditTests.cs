@@ -187,7 +187,7 @@ namespace KhaozEngine.Tests.Gpu
             var ex = Assert.Throws<GpuBackendProviderMissingException>(
                 () => GpuBackendProviders.Require((GpuBackendKind)9003));
 
-            Assert.Contains("9003", ex.Message, StringComparison.Ordinal);
+            Assert.Equal((GpuBackendKind)9003, ex.Backend);
             Assert.Contains("Register()", ex.Message, StringComparison.Ordinal);
         }
 

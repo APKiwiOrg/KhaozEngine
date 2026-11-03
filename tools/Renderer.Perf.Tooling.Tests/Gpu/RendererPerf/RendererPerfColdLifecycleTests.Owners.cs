@@ -1,6 +1,7 @@
 using System;
 using System.Linq;
 using System.Reflection;
+using System.Text.Json;
 using System.Threading;
 using KhaozEngine.Gpu;
 using Xunit;
@@ -62,8 +63,14 @@ public sealed partial class RendererPerfColdLifecycleTests
         Assert.Equal(expected.Length, outcome.Failures.Length);
         for (int i = 0; i < expected.Length; i++) Assert.Same(expected[i], outcome.Failures[i].Error);
         Assert.Equal("renderer.frame", outcome.Failures[0].Stage);
+        var publication = outcome.Report!.Publication;
+        Assert.Same(frame, publication.OriginalFailureException);
+        Assert.True(publication.FailureText.Complete);
+        // Byte evidence must describe the published outer failure, including aggregate context.
+        long publishedBytes = JsonSerializer.SerializeToUtf8Bytes(publication.OriginalFailure, RendererPerfManifest.JsonOptions).LongLength
+            + JsonSerializer.SerializeToUtf8Bytes(publication.Errors, RendererPerfManifest.JsonOptions).LongLength;
+        Assert.Equal(publishedBytes, publication.FailureText.RequiredUtf8Bytes);
         Assert.Single(outcome.Report!.Conditioning);
-        Assert.Equal(frame.Message, outcome.Report.Publication.OriginalFailure);
         Assert.Equal(0, rig.Diagnostic.CompilerReads);
         Assert.Single(rig.Attempts);
         Assert.DoesNotContain("production.dispose.shader", rig.Trace);
@@ -73,7 +80,7 @@ public sealed partial class RendererPerfColdLifecycleTests
         Assert.False(exhausted.Publication.FailureText.Complete);
         Assert.Equal(expected.Length, exhausted.Publication.FailureText.OmittedFailures);
         Assert.Equal(RendererPerfFailureText.OmittedOriginal, exhausted.Publication.OriginalFailure);
-        Assert.Same(frame, outcome.Failures[0].Error);
+        Assert.Same(frame, exhausted.Publication.OriginalFailureException);
     }
 
     [Fact]

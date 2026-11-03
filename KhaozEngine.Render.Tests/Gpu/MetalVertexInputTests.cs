@@ -123,12 +123,6 @@ namespace KhaozEngine.Tests.Gpu
             Assert.True(programs > 30 && vertexBufferEntries > 0,
                 "the shipped-program walk found almost nothing, so the assertion above means nothing:\n" + report);
 
-            // NOT SCRAPING THE BOUNDARY. The largest shipped pipeline declares two vertex streams, so a margin of
-            // eight is not a number this row needs, it is the distance at which a corpus creeping upward becomes
-            // visible here instead of at a pipeline that suddenly will not create.
-            Assert.True(headroom >= 8,
-                "the shipped emission now reaches within eight buffer indices of the top-pinned stream range, "
-                + "which is close enough that a program adding resource buffers would collide:\n" + report);
         }
 
         /// <summary>

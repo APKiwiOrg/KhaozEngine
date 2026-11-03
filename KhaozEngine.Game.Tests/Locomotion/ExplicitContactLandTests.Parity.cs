@@ -93,7 +93,8 @@ public partial class ContactLeasedQueryTests
             var input = new FramedMovementState(before with { Position = mapping.BodyCentre(queriesFeet(before)) },
                 scene.Lease.Frame, new(Room, null, scene.Lease.Identity));
             // At this authored datum both published-centre mappings recover exactly the same kernel pose.
-            AssertBits(queriesFeet(before), mapping.KernelFeet(input.State.Position, tuning));
+            LocomotionStateBits.AssertEqual(queriesFeet(before), mapping.KernelFeet(input.State.Position, tuning),
+                LocomotionStateBits.Policy.ExcludeContinuityHandle);
             // Camera commands normalize their magnitude, so both entries receive full-speed intent.
             MovementStepResult result = jump
                 ? ExplicitCharacterMovement.Step(input, camera,
@@ -103,7 +104,8 @@ public partial class ContactLeasedQueryTests
             Assert.True(result.Outcome is MovementStepOutcome.Advanced or MovementStepOutcome.Blocked,
                 $"{scenario}, tick {tick}: {result.Outcome}");
             MoveState actual = result.State.State;
-            AssertBits(dry with { Position = Vector3.Zero }, actual with { Position = Vector3.Zero });
+            LocomotionStateBits.AssertEqual(dry with { Position = Vector3.Zero }, actual with { Position = Vector3.Zero },
+                LocomotionStateBits.Policy.ExcludeContinuityHandle);
             Assert.InRange(Vector3.Distance(queriesFeet(dry), mapping.KernelFeet(actual.Position, tuning)), 0, 0.0005f);
             launchedFromSupport |= dry.SupportGranted && !dry.Grounded && dry.VerticalVelocity > 0;
             committedFlight |= dry.Commitment.Phase == MovementCommitmentPhase.Airborne;

@@ -23,9 +23,10 @@ public sealed class RendererPerfControlAdmissionTests
         var error = Assert.Throws<RendererPerfProtocolException>(() =>
             RendererPerfControls.Create(device, new(7, "1", facts.WorkSha256, 32, 64)));
 
-        Assert.Contains("Control 7", error.Message, StringComparison.Ordinal);
-        Assert.Contains("134217728", error.Message, StringComparison.Ordinal);
-        Assert.Contains("device limit 0 bytes", error.Message, StringComparison.Ordinal);
+        Assert.Equal("Compatibility", error.Code);
+        Assert.Equal(7, error.ControlId);
+        Assert.Equal(134217728u, error.RequiredBytes);
+        Assert.Equal(0u, error.DeviceLimitBytes);
         Assert.Equal(0, device.TextureAttempts);
         Assert.Equal(0, device.Submissions);
     }
@@ -60,9 +61,10 @@ public sealed class RendererPerfControlAdmissionTests
             device.TextureAttempts = 0;
             device.Features = device.Features with { MaxStorageBufferRangeBytes = requiredBytes - 1 };
             var refused = Assert.Throws<RendererPerfProtocolException>(() => RendererPerfControls.Create(device, control));
-            Assert.Contains("Control " + id, refused.Message, StringComparison.Ordinal);
-            Assert.Contains(requiredBytes.ToString(System.Globalization.CultureInfo.InvariantCulture), refused.Message, StringComparison.Ordinal);
-            Assert.Contains((requiredBytes - 1).ToString(System.Globalization.CultureInfo.InvariantCulture), refused.Message, StringComparison.Ordinal);
+            Assert.Equal("Compatibility", refused.Code);
+            Assert.Equal(id, refused.ControlId);
+            Assert.Equal(requiredBytes, refused.RequiredBytes);
+            Assert.Equal(requiredBytes - 1, refused.DeviceLimitBytes);
             Assert.Equal(0, device.TextureAttempts);
         }
         Assert.Equal(0, device.Submissions);
@@ -117,8 +119,8 @@ public sealed class RendererPerfControlAdmissionTests
         var error = Assert.Throws<RendererPerfProtocolException>(() =>
             RendererPerfControls.Create(device, new(4, "1", facts.WorkSha256, 32, 64)));
 
-        Assert.Contains("Control 4", error.Message, StringComparison.Ordinal);
         Assert.Equal("Compatibility", error.Code);
+        Assert.Equal(4, error.ControlId);
         Assert.Equal(0, device.TextureAttempts);
         Assert.Equal(0, device.Submissions);
     }
@@ -136,9 +138,9 @@ public sealed class RendererPerfControlAdmissionTests
         Assert.Equal(0, rig.Frames);
         Assert.Equal(0, rig.Production.TextureAttempts);
         Assert.Contains(outcome.Failures, failure => failure.Error is RendererPerfProtocolException
-            && failure.Error.Message.Contains("Control 7", StringComparison.Ordinal)
-            && failure.Error.Message.Contains("requires 134217728 bytes", StringComparison.Ordinal)
-            && failure.Error.Message.Contains("device limit 134217727 bytes", StringComparison.Ordinal));
+        {
+            Code: "Compatibility", ControlId: 7, RequiredBytes: 134217728u, DeviceLimitBytes: 134217727u
+        });
         Assert.NotNull(outcome.EarlyFailure);
     }
 }

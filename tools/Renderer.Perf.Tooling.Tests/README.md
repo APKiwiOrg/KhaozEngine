@@ -18,6 +18,12 @@ The setup also builds Renderer.Perf.Verify for verifier success and refusal proc
 solution builds and Render.Tests shards have no such prerequisite. AllocationMeasurement.props
 imports its allocation-isolation contract tests in addition to the moved renderer tests.
 
+Refused comparisons retain each original protocol exception with its published reason, keyed by side.
+Raw comparison accepts an analysis delegate so tests can observe the actual codec refusal before it is
+returned. Failure publication retains `OriginalFailureException` as runtime evidence, including the
+outer aggregate. This member is excluded from JSON. Published failure text and its UTF-8 byte accounting
+remain independently checkable, including when an aggregate wraps another failure.
+
 ## References and shared sources
 
 Direct engine references are Diagnostics, Gpu, Gpu.D3D11, Gpu.Metal, Gpu.Vulkan, Primitives, Render2D,
@@ -30,9 +36,9 @@ Renderer.Perf.Tests.
 
 [RendererPerfShared.props](../../test-shared/RendererPerfShared.props) is the explicit 53-file helper
 source-link inventory. Sources retain canonical physical paths and existing ratchet allowances.
-The engine test assembly remains the owner of these helpers. UI recipes also copy its unchanged
-`Assets/Roboto-Regular.ttf` into the tooling output, retaining the authored font identity. The free
-workflow watches that asset explicitly. Source links import no native provider
+Helpers remain owned by their source test project or `test-shared`. UI recipes also copy the unchanged
+`KhaozEngine.Render.Tests/Assets/Roboto-Regular.ttf` into the tooling output, retaining the authored font
+identity. The free workflow watches that asset explicitly. Source links import no native provider
 module initializers. The offline verifier therefore loads no providers, while the authorized
 entrypoint registers its chosen backend only after admission. NativeDeviceLifecycle,
 GpuBackendProvidersSerial and AllocSensitive have assembly-local nonparallel definitions.

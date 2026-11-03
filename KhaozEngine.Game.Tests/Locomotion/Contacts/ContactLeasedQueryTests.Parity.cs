@@ -1,6 +1,5 @@
 using System;
 using System.Numerics;
-using System.Reflection;
 using KhaozEngine.Locomotion;
 using KhaozEngine.Locomotion.Contacts;
 using KhaozEngine.Physics;
@@ -115,7 +114,7 @@ public partial class ContactLeasedQueryTests
                     jump, dt, tuning, queries);
                 slides += SupportQueryDiagnostics.Routes.SlideSegments - before.SlideSegments;
                 retries += SupportQueryDiagnostics.Routes.WallRetries - before.WallRetries;
-                AssertBits(dry, leased);
+                LocomotionStateBits.AssertEqual(dry, leased, LocomotionStateBits.Policy.ExcludeContinuityHandle);
                 launchedFromSupport |= dry.SupportGranted && !dry.Grounded && dry.VerticalVelocity > 0;
                 committedFlight |= dry.Commitment.Phase == MovementCommitmentPhase.Airborne;
             }
@@ -127,24 +126,5 @@ public partial class ContactLeasedQueryTests
         if (scenario == "buffered-jump") Assert.True(bufferPressed && launchedFromSupport);
         if (scenario == "commitment") Assert.True(committedFlight);
         static Vector3 queriesFeet(MoveState state) => state.Position - new Vector3(0, 0.75f, 0);
-    }
-
-    static void AssertBits(object expected, object actual, string path = "state")
-    {
-        Assert.Equal(expected.GetType(), actual.GetType());
-        if (expected is float f)
-        { Assert.True(BitConverter.SingleToInt32Bits(f) == BitConverter.SingleToInt32Bits((float)actual), $"{path}: expected {f:R}, actual {actual}"); return; }
-        if (expected is double d)
-        { Assert.Equal(BitConverter.DoubleToInt64Bits(d), BitConverter.DoubleToInt64Bits((double)actual)); return; }
-        Type type = expected.GetType();
-        if (type.IsPrimitive || type.IsEnum || type == typeof(string)) { Assert.Equal(expected, actual); return; }
-        foreach (FieldInfo field in type.GetFields(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic))
-        {
-            // CF-4 interval evidence names each head's own receiver and lease, so parity reads geometric fields only.
-            if (field.FieldType == typeof(SupportContinuityHandle)) continue;
-            object? left = field.GetValue(expected), right = field.GetValue(actual);
-            if (left is null) Assert.Null(right);
-            else { Assert.IsType(left.GetType(), right); AssertBits(left, right!, path + "." + field.Name); }
-        }
     }
 }

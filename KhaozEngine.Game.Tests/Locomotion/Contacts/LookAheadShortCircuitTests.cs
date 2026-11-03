@@ -2,7 +2,6 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Numerics;
-using System.Reflection;
 using KhaozEngine.Locomotion;
 using KhaozEngine.Locomotion.Contacts;
 using KhaozEngine.Physics;
@@ -41,7 +40,7 @@ public sealed class LookAheadShortCircuitTests(ITestOutputHelper output)
                         string name = $"{row.Name} {door} {run} {direction}";
                         TickResult skipping = Tick(execution, row, input, direction, sample: false);
                         TickResult sampled = Tick(execution, row, input, direction, sample: true);
-                        AssertSameBits(sampled.Result, skipping.Result, name);
+                        LocomotionStateBits.AssertEqual(sampled.Result, skipping.Result, LocomotionStateBits.Policy.IncludeContinuityHandle);
                         Assert.True(skipping.Finds <= sampled.Finds, name);
                         Assert.Equal(sampled.Finds - skipping.Finds, sampled.LookAheadReads - skipping.LookAheadReads);
                         compared++;
@@ -141,7 +140,7 @@ public sealed class LookAheadShortCircuitTests(ITestOutputHelper output)
         output.WriteLine($"{disjunct}, EWMA {ewma}, rise {moveRise}: {sampled.Signals}, reads {skipping.Reads} of {sampled.Reads}.");
         Assert.Equal(GroundSignals.Samples, sampled.Reads);
         Assert.Equal(disjunct == "none" ? GroundSignals.Samples : 0, skipping.Reads);
-        AssertSameBits(sampled.Signals, skipping.Signals, disjunct);
+        LocomotionStateBits.AssertEqual(sampled.Signals, skipping.Signals, LocomotionStateBits.Policy.IncludeContinuityHandle);
         // A decided ascent reports its rate, except a seeded rise too small for the wire, which ends the run.
         if (disjunct != "none") Assert.Equal(moveRise > 0.01f, sampled.Signals.Item1 > 0);
     }
@@ -247,34 +246,5 @@ public sealed class LookAheadShortCircuitTests(ITestOutputHelper output)
         for (int k = 1; k <= GroundSignals.Samples; k++)
             if (reachUp == tuning.StepHeight + 2 * (k * tuning.CapsuleRadius)) return true;
         return false;
-    }
-
-    static void AssertSameBits(object expected, object actual, string path)
-    {
-        Assert.Equal(expected.GetType(), actual.GetType());
-        if (expected is float f)
-        {
-            Assert.True(BitConverter.SingleToInt32Bits(f) == BitConverter.SingleToInt32Bits((float)actual),
-                $"{path}: expected {f:R}, actual {actual}");
-            return;
-        }
-        if (expected is double d)
-        {
-            Assert.True(BitConverter.DoubleToInt64Bits(d) == BitConverter.DoubleToInt64Bits((double)actual),
-                $"{path}: expected {d:R}, actual {actual}");
-            return;
-        }
-        Type type = expected.GetType();
-        if (type.IsPrimitive || type.IsEnum || type == typeof(string))
-        {
-            Assert.True(expected.Equals(actual), $"{path}: {expected} against {actual}");
-            return;
-        }
-        foreach (FieldInfo field in type.GetFields(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic))
-        {
-            object? left = field.GetValue(expected), right = field.GetValue(actual);
-            if (left is null) Assert.Null(right);
-            else AssertSameBits(left, right!, path + "." + field.Name);
-        }
     }
 }

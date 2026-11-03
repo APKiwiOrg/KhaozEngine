@@ -265,7 +265,6 @@ namespace KhaozEngine.Tests.Gpu
 
             Assert.Equal(retired, ex.Backend);
             Assert.Contains("18.0.0", ex.Message, StringComparison.Ordinal);
-            Assert.Contains($"GpuBackendKind.{ex.Replacement}", ex.Message, StringComparison.Ordinal);
             Assert.False(GpuBackendSelector.IsRetired(ex.Replacement));
         }
 

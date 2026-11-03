@@ -26,7 +26,7 @@ public sealed class DeltaPacketBudgetAcceptanceTests
     private const int ExtensionFrameHead = 2;
     private const int KeyframePrefix = 12 + 18 + 4 + 4;
     private const int PositionFrame = 2 + 16;
-    private const int MovementFrame = 2 + 57;
+    private const int MovementFrame = 2 + 64;
     private const int OwnerStateFrame = 2 + 8;
 
     public static TheoryData<bool, string> Cases()

@@ -78,7 +78,9 @@ public class WireGenerationBlobMigrationTests
 
         byte[] normalized = WireGenerationBlobMigration.NormalizeV3ToV4(atTwelve);
 
-        byte[] expected = BodyAt(MoveProtocol.WireProtocolVersion, CommittedMovement(), Owner(),
+        MovementState expectedMovement = CommittedMovement();
+        expectedMovement.SpeedScaleQ *= 64;
+        byte[] expected = BodyAt(MoveProtocol.WireProtocolVersion, expectedMovement, Owner(),
             (16, CellBlobFixtures.Extension(new byte[] { 0x04, 0x0C, 0x80, 0xFF })));
         Assert.Equal(expected, normalized);
         Assert.Equal(expected, BuiltinBlobLayout.NormalizeToCurrent(atTwelve, 12));
@@ -103,6 +105,7 @@ public class WireGenerationBlobMigrationTests
         persistence.SaveDirtyPass();
         await persistence.FlushAsync();
 
+        m.SpeedScaleQ *= 64;
         byte[] expected = BodyAt(MoveProtocol.WireProtocolVersion, m, Owner(),
             (16, CellBlobFixtures.Extension(new byte[] { 0x04, 0x0C, 0x80, 0xFF })));
         Assert.Equal(CellBlobFixtures.Wrap(4, MoveProtocol.WireProtocolVersion, expected),
@@ -149,6 +152,7 @@ public class WireGenerationBlobMigrationTests
         // Generation 9 predates FacingYawQ, so the field it never wrote comes back at its default. The timers it
         // stored inside the movement payload come back as an owner frame.
         MovementState expected = m;
+        expected.SpeedScaleQ *= 64;
         expected.FacingYawQ = 0;
         Assert.Equal(BodyAt(MoveProtocol.WireProtocolVersion, expected, Owner()), normalized);
     }

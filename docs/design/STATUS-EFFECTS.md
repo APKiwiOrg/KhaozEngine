@@ -123,6 +123,5 @@ dispel categories, diminishing returns and exclusivity groups remain outside thi
 can compose `Has` and `Remove` until a concrete reusable rule is needed.
 
 Movement speed is also a game-owned channel mapping. Passing its folded value through `SetSpeedScale`
-replicates the scale in 1/16 steps. Finer quantization is an
-[open owner decision](https://github.com/APKiwiOrg/KhaozEngine/issues/1652), not an implicit part of
-the status effect contract.
+replicates the scale in 1/1024 steps through the signed 16-bit movement field at wire generation 15.
+Quantization belongs to movement transport. Effect definitions and modifier accumulation stay unchanged.

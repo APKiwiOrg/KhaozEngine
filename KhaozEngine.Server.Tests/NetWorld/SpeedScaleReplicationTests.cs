@@ -45,7 +45,7 @@ public class SpeedScaleReplicationTests
     [Fact]
     public void Default_component_decodes_to_exactly_unmodified()
     {
-        // Every unboosted player carries this byte on every tick, and the component is default-constructed at spawn
+        // Every unboosted player carries this value on every tick, and the component is default-constructed at spawn
         // and whenever a TryGet misses. Anything but an exact 1 here is a silent global speed change.
         Assert.Equal(1f, MovementState.DecodeSpeedScale(default(MovementState).SpeedScaleQ));
         Assert.Equal(0, MovementState.QuantizeSpeedScale(1f));
@@ -63,9 +63,28 @@ public class SpeedScaleReplicationTests
     [InlineData(8f)]        // MaxSpeedScale
     public void Round_trips_exactly_at_the_quantum(float scale)
     {
-        // The 1/16 quantum is a negative power of two, so every one of these lands dead on with no float slop, which
+        // The 1/1024 quantum is a negative power of two, so every one of these lands dead on with no float slop, which
         // is what lets the server sim and the client replay agree bit-exactly rather than merely closely.
         Assert.Equal(scale, MovementState.DecodeSpeedScale(MovementState.QuantizeSpeedScale(scale)));
+    }
+
+    // #1652: literal expectations distinguish fine quantization from the historical 1/16 encoding.
+    [Theory]
+    [InlineData(1.1f, 102, 1.099609375f)]
+    [InlineData(1.00048828125f, 0, 1f)] // midpoint rounds to even
+    [InlineData(1.00146484375f, 2, 1.001953125f)] // odd midpoint rounds upward to even
+    [InlineData(0.99951171875f, 0, 1f)] // negative midpoint
+    [InlineData(0f, -1024, 0f)]
+    [InlineData(8f, 7168, 8f)]
+    [InlineData(float.NaN, 0, 1f)]
+    [InlineData(float.PositiveInfinity, 7168, 8f)]
+    [InlineData(float.NegativeInfinity, -1024, 0f)]
+    public void Fine_speed_quantization_preserves_literals_and_rounding(float scale, short q, float decoded)
+    {
+        var actual = MovementState.QuantizeSpeedScale(scale);
+        Assert.IsType<short>((object)actual);
+        Assert.Equal(q, actual);
+        Assert.Equal(decoded, MovementState.DecodeSpeedScale(actual));
     }
 
     [Fact]
@@ -76,7 +95,7 @@ public class SpeedScaleReplicationTests
         Assert.Equal(1f, MovementState.DecodeSpeedScale(MovementState.QuantizeSpeedScale(float.NaN)));
         // Defence-in-depth on the READ side: a corrupt or hostile frame must never decode to a negative multiplier,
         // which would drive the character backwards against its own command.
-        Assert.Equal(0f, MovementState.DecodeSpeedScale(-127));
+        Assert.Equal(0f, MovementState.DecodeSpeedScale(short.MinValue));
     }
 
     [Fact]
@@ -132,15 +151,15 @@ public class SpeedScaleReplicationTests
     [Fact]
     public void SetSpeedScale_quantizes_before_the_sim_sees_it()
     {
-        // The server must never run a speed it cannot tell its clients about: a requested 1.1x becomes 1.125x on BOTH
-        // heads rather than 1.1x authoritative against 1.125x predicted, which would drift for the whole buff.
+        // The server quantizes before stepping, so a requested 1.1x becomes 1.099609375x on both heads.
+        // An unquantized authoritative speed would drift against the client replay for the whole buff.
         (WorldServer server, WorldClient client, int slot) = Connect();
         server.SetSpeedScale(PlayerRef.Slot(slot), 1.1f);
         for (int i = 0; i < 6; i++) Frame(server, client, Forward);
 
         Assert.True(server.TryGetPlayerState(slot, out PlayerMoveState authoritative));
         Assert.True(client.TryGetComponent(client.LocalNetId, out MovementState ms));
-        Assert.Equal(1.125f, authoritative.Move.SpeedScale);
+        Assert.Equal(1.099609375f, authoritative.Move.SpeedScale);
         Assert.Equal(authoritative.Move.SpeedScale, MovementState.DecodeSpeedScale(ms.SpeedScaleQ));
     }
 
@@ -189,7 +208,7 @@ public class SpeedScaleReplicationTests
         Assert.True(owner.World.TryGet(entity, out MovementState replicated));
         Assert.Equal(MovementState.QuantizeSpeedScale(1.1f), replicated.SpeedScaleQ);
         Assert.True(server.TryGetPlayerState(slot, out PlayerMoveState applied));
-        Assert.Equal(1.125f, applied.Move.SpeedScale);
+        Assert.Equal(1.099609375f, applied.Move.SpeedScale);
     }
 
     [Fact]

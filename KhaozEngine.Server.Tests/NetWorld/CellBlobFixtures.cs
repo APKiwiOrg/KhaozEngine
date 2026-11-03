@@ -15,9 +15,8 @@ namespace KhaozEngine.Tests.NetWorld;
 /// <para>
 /// The per-generation encoders here are written out field by field from the codec's own history (the generation notes
 /// on <see cref="MoveProtocol.WireProtocolVersion"/>). <c>BuiltinBlobLayoutTests</c> is what stops them drifting: it
-/// compares this ladder's newest rung byte-for-byte against the live codec and checks each rung is a prefix of the
-/// next, so a codec change that is not mirrored here goes red rather than quietly baking a wrong fixture into every
-/// migration test.
+/// compares this ladder's newest rung byte-for-byte against the live codec and checks append-only rungs are prefixes.
+/// A codec change missing here goes red instead of baking a wrong fixture into every migration test.
 /// </para>
 /// </summary>
 internal static class CellBlobFixtures
@@ -43,7 +42,8 @@ internal static class CellBlobFixtures
         if (generation >= 3) bw.Write(m.Swimming);               // generation 3: the surface-swim flag
         if (generation >= 4) bw.Write(m.TeleportEpoch);          // generation 4: the authoritative teleport epoch
         if (generation >= 5) bw.Write(m.ClimbRateQ);             // generation 5: the quantized step-climb rate
-        if (generation >= 6) bw.Write(m.SpeedScaleQ);            // generation 6: the quantized haste/slow multiplier
+        if (generation >= 15) bw.Write(m.SpeedScaleQ);          // generation 15: signed 16-bit fine speed
+        else if (generation >= 6) bw.Write(unchecked((sbyte)m.SpeedScaleQ)); // historical raw signed byte
         if (generation >= 7) bw.Write(m.HorizontalVelocityXQ);   // generation 7: carried airborne velocity, world X
         if (generation >= 7) bw.Write(m.HorizontalVelocityZQ);   // generation 7: carried airborne velocity, world Z
         if (generation >= 10) bw.Write(m.FacingYawQ);            // generation 10: the carried heading
@@ -62,6 +62,12 @@ internal static class CellBlobFixtures
             bw.Write((byte)m.Commitment.EndReason);
         }
         if (generation >= 14) bw.Write((byte)m.WaterExcursion);
+        if (generation >= 15)
+        {
+            bw.Write((byte)m.Commitment.Kind);
+            bw.Write(m.Commitment.DistanceRemaining);
+            bw.Write(m.Commitment.ConsecutiveBlockedTicks);
+        }
         bw.Flush();
         return ms.ToArray();
     }

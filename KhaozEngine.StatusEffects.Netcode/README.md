@@ -79,8 +79,8 @@ Refresh never shortens a window or moves its periodic anchor. The core README de
 For a client's `TryGetComponent<ActiveStatusEffects>` result, pass `state.Entries.AsSpan()` to
 `StatusEffectBar.Build` with the shared catalog and a server tick estimate. Enable `ReceiveServerTick`
 for `LatestServerTick` or `RemoteRenderTick` and wait until it is known. The game resolves icons and
-localized labels. A movement speed channel folded through `SetSpeedScale` still replicates in 1/16
-steps, with finer precision tracked in [#1652](https://github.com/APKiwiOrg/KhaozEngine/issues/1652).
+localized labels. A movement speed channel folded through `SetSpeedScale` replicates in 1/1024
+steps at wire generation 15. A requested 10 percent haste becomes 1.099609375x.
 
 The [consumer recipe](../docs/USING-KHAOZENGINE.md#status-effects) includes event handling, cleanup and
 client bar construction. The [design rationale](../docs/design/STATUS-EFFECTS.md) explains the split.

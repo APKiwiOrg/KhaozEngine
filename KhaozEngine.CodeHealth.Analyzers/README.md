@@ -89,14 +89,10 @@ instead of treating them as enforced debt.
 
 Both ratchets use `AnalyzerPathPolicy` for baseline-relative paths and the generated and vendored
 file exclusions listed above. Both callers normalize baseline-root separators before calling the policy.
-The policy collapses dot segments and repeated and trailing separators in both operands. Relative roots
-such as `.` and `A/..` resolve to their own base without gaining an absolute leading separator. Leading
-`..` segments in a relative root remain part of its base, and a source cannot escape that base. Relative
-and absolute paths stay distinct, including drive paths such as `C:/repo/X.cs` and UNC paths such as
-`//server/share/X.cs`. Drive letters compare without case, and dot segments cannot climb above a drive
-anchor or UNC share. An empty root retains its historical leading-separator behavior.
-Rejected inputs keep their original relative output. A previously checked path that becomes generated
-only when its trailing separator is removed keeps its prior result, preserving existing baseline checks.
+The policy matches the supplied root plus `/` against the source path without case, then collapses
+`.` and `..` only inside the extracted relative path. It refuses a `..` with no preceding segment
+and applies exclusions to the collapsed key. Other segments, including empty segments from repeated
+or trailing separators, keep their existing spelling. Root spelling and prefix matching stay unchanged.
 Linked files resolve to their real repository path, so a baseline or `exempt` line names the file where
 it lives. The baseline grammar is `<count> <rule> <path>` or
 `exempt <rule> <path>`, with paths relative to its directory and a `#` reason line above each exemption:

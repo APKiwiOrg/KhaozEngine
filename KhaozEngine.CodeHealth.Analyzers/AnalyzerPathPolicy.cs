@@ -3,12 +3,10 @@ using System;
 namespace KhaozEngine.CodeHealth.Analyzers
 {
     /// <summary>
-    /// Path rules shared by the baseline-driven analyzers. Callers normalize baseline-root separators,
-    /// then both operands collapse separators and dot segments before comparison. A source path is checked
-    /// relative to its baseline directory. Generated and vendored paths keep their existing exclusions.
-    /// The exclusions mirror
-    /// is_excluded in check-file-size.sh, the semantic authority for KESIZE, so both ratchets agree on which
-    /// files are ours to shrink.
+    /// Path rules shared by the baseline-driven analyzers. Separators normalise to '/', a source path is
+    /// checked relative to the directory that holds its baseline file, and generated or vendored code is
+    /// never checked. The exclusions mirror is_excluded in check-file-size.sh, the semantic authority for
+    /// KESIZE, so both ratchets agree on which files are ours to shrink.
     /// </summary>
     internal static class AnalyzerPathPolicy
     {
@@ -16,98 +14,36 @@ namespace KhaozEngine.CodeHealth.Analyzers
 
         /// <summary>
         /// Gives the path of <paramref name="path"/> relative to <paramref name="root"/>, and true, when the
-        /// file lies under that root and is not excluded. Both operands are normalised before comparison,
-        /// preserving prior results for excluded inputs and trailing-separator inputs newly deemed generated.
+        /// file lies under that root and is not excluded after collapsing relative dot segments.
+        /// <paramref name="root"/> already has normalised separators and is otherwise matched as supplied.
         /// </summary>
         public static bool TryGetCheckedRelativePath(string path, string root, out string relative)
         {
             relative = string.Empty;
             if (string.IsNullOrEmpty(path)) return false;
 
-            // Keep the pre-normalization result when an excluded or unsupported input stays refused.
-            // The analyzer callers already normalize the baseline root's separators.
-            var original = NormalizeSeparators(path);
-            var originalPrefix = root + "/";
-            var originallyUnderRoot = original.StartsWith(originalPrefix, StringComparison.OrdinalIgnoreCase);
-            if (originallyUnderRoot) relative = original.Substring(originalPrefix.Length);
-            var originallyChecked = originallyUnderRoot && !IsExcluded(relative);
-            if (root.IndexOf('\\') >= 0) return false;
-            if (!TryNormalizePath(path, out var full) || !TryNormalizePath(root, out var normalizedRoot)) return false;
-
-            // An empty root historically denotes the leading separator. A relative root such as "."
-            // instead resolves to its own base and must retain an empty, relative prefix.
-            if (root.Length == 0) normalizedRoot = "/";
-            if ((GetAnchorLength(full) != 0) != (GetAnchorLength(normalizedRoot) != 0))
-                return false;
-            var prefix = normalizedRoot.Length == 0 || normalizedRoot.EndsWith("/", StringComparison.Ordinal)
-                ? normalizedRoot : normalizedRoot + "/";
-            string candidate;
-            if (full.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
-                candidate = full.Substring(prefix.Length);
-            else if (originallyUnderRoot && string.Equals(full, normalizedRoot, StringComparison.OrdinalIgnoreCase))
-                candidate = string.Empty;
-            else
-                return false;
-
-            if (candidate == ".." || candidate.StartsWith("../", StringComparison.Ordinal)) return false;
-            // Collapsing a trailing separator must not newly exclude an input previously checked.
-            if (IsExcluded(candidate)) return originallyChecked;
-
-            relative = candidate;
-            return true;
-        }
-
-        private static bool TryNormalizePath(string path, out string normalized)
-        {
-            normalized = string.Empty;
             var full = NormalizeSeparators(path);
-            var prefixLength = GetAnchorLength(full);
-            var anchor = full.Substring(0, prefixLength);
-            if (anchor.StartsWith("//", StringComparison.Ordinal))
-                anchor = "//" + string.Join("/", anchor.Split(new[] { '/' }, StringSplitOptions.RemoveEmptyEntries));
+            if (!full.StartsWith(root + "/", StringComparison.OrdinalIgnoreCase)) return false;
 
-            var segments = full.Substring(prefixLength).Split('/');
+            relative = full.Substring(root.Length + 1);
+            var segments = relative.Split('/');
             var segmentCount = 0;
             foreach (var segment in segments)
             {
-                if (segment.Length == 0 || segment == ".") continue;
+                if (segment == ".") continue;
                 if (segment == "..")
                 {
-                    if (segmentCount > 0 && segments[segmentCount - 1] != "..") segmentCount--;
-                    else if (prefixLength != 0) return false;
-                    else segments[segmentCount++] = segment;
+                    if (segmentCount == 0) return false;
+                    segmentCount--;
                 }
                 else
                 {
+                    // Empty segments are part of existing baseline keys and remain on the stack.
                     segments[segmentCount++] = segment;
                 }
             }
-            var separator = segmentCount > 0 && anchor.Length > 0 && !anchor.EndsWith("/", StringComparison.Ordinal)
-                ? "/" : string.Empty;
-            normalized = anchor + separator + string.Join("/", segments, 0, segmentCount);
-            return true;
-        }
-
-        private static int GetAnchorLength(string path)
-        {
-            if (path.Length >= 3 && path[1] == ':' && path[2] == '/' &&
-                ((path[0] >= 'A' && path[0] <= 'Z') || (path[0] >= 'a' && path[0] <= 'z')))
-                return 3;
-            if (path.Length == 0 || path[0] != '/') return 0;
-            if (path.Length < 3 || path[1] != '/' || path[2] == '/') return 1;
-
-            // A UNC server and share form one anchor, outside the removable segment stack.
-            var serverEnd = path.IndexOf('/', 2);
-            if (serverEnd < 0) return 1;
-            var shareStart = serverEnd;
-            while (shareStart < path.Length && path[shareStart] == '/') shareStart++;
-            if (shareStart == path.Length) return 1;
-            var shareEnd = path.IndexOf('/', shareStart);
-            if (shareEnd < 0) shareEnd = path.Length;
-            var server = path.Substring(2, serverEnd - 2);
-            var share = path.Substring(shareStart, shareEnd - shareStart);
-            if (server == "." || server == ".." || share == "." || share == "..") return 1;
-            return shareEnd;
+            relative = string.Join("/", segments, 0, segmentCount);
+            return !IsExcluded(relative);
         }
 
         private static bool IsExcluded(string relative)

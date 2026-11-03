@@ -146,13 +146,14 @@ namespace KhaozEngine.Gpu.Metal.Internal
         /// stage's buffer table holds is a caller asking for something the API cannot express at all, whatever
         /// shader it uses. A vertex-stage resource buffer landing in the top-pinned range is the combined-bindings
         /// case section 8.3 names, and it is a fact about the EMISSION meeting the declaration, which is why it
-        /// reads as a shader validation failure and quotes both sides.
+        /// carries MetalVertexBufferCollision in Reason, with Set, Binding, ArgumentIndex, StreamCount,
+        /// LowestStreamIndex, BufferTableSize, Label and Policy.
         /// </para>
         /// <para>
         /// THE COUNT ARM RUNS FIRST AND IT RUNS EARLY, which is an ordering obligation rather than a preference.
         /// <see cref="MetalVertexStreamIndex.ForSlot"/> refuses a slot the table cannot hold, so the plan cannot
         /// silently produce a wrapped index either way, but this refusal carries Label, StreamCount,
-        /// BufferTableSize and Policy, where the mapping's refusal only knows about a slot.
+        /// BufferTableSize and Reason = MetalVertexStreamCountInvalid, where the mapping's refusal only knows about a slot.
         /// So the caller asks this of the DECLARED layout count before the plan is built at all.
         /// </para>
         /// <para>
@@ -168,9 +169,10 @@ namespace KhaozEngine.Gpu.Metal.Internal
         /// emission chose.</param>
         /// <param name="label">A name for the pipeline, carried in the refusal's Label.</param>
         /// <exception cref="ShaderValidationRangeException">More vertex streams than the buffer table has
-        /// entries.</exception>
+        /// entries. Reason is MetalVertexStreamCountInvalid, with Label, StreamCount and BufferTableSize.</exception>
         /// <exception cref="ShaderValidationException">A vertex-stage resource buffer landed in the range the
-        /// streams occupy.</exception>
+        /// streams occupy. Reason is MetalVertexBufferCollision, with Label, Set, Binding, ArgumentIndex,
+        /// StreamCount, LowestStreamIndex, BufferTableSize and Policy.</exception>
         internal static void RequireNoCollision(int streamCount, MetalShaderIndexTable table, string label)
         {
             ArgumentNullException.ThrowIfNull(table);

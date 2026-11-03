@@ -75,9 +75,11 @@ namespace KhaozEngine.Gpu.Internal
         /// </summary>
         /// <param name="vertexSpirv">The vertex stage's SPIR-V module.</param>
         /// <param name="fragmentSpirv">The fragment stage's SPIR-V module.</param>
-        /// <param name="label">Optional name for the pair, included in any error message.</param>
+        /// <param name="label">Optional name for the pair, carried in <see cref="ShaderValidationException.Label"/>.</param>
         /// <exception cref="ShaderValidationException">The pair failed to cross-compile, or the module declares
-        /// something the engine's own description mirrors do not model.</exception>
+        /// something the engine's own description mirrors do not model. Reason is
+        /// <see cref="ShaderValidationRefusal.CrossCompileFailed"/>, with Label, Target, Stage when known, and the
+        /// underlying refusal in InnerException.</exception>
         internal static CrossCompiledPair VertexFragmentToHlsl(byte[] vertexSpirv, byte[] fragmentSpirv,
             string? label = null)
             => Pair(vertexSpirv, fragmentSpirv, Backend.Hlsl, "HLSL", label ?? "shader pair");
@@ -87,9 +89,11 @@ namespace KhaozEngine.Gpu.Internal
         /// <see cref="VertexFragmentToHlsl"/>.
         /// </summary>
         /// <param name="computeSpirv">The compute stage's SPIR-V module.</param>
-        /// <param name="label">Optional name for the shader, included in any error message.</param>
+        /// <param name="label">Optional name for the shader, carried in <see cref="ShaderValidationException.Label"/>.</param>
         /// <exception cref="ShaderValidationException">The module failed to cross-compile, or declares something
-        /// the engine's own description mirrors do not model.</exception>
+        /// the engine's own description mirrors do not model. Reason is
+        /// <see cref="ShaderValidationRefusal.CrossCompileFailed"/>, with Label, Stage = Compute, Target and the
+        /// underlying refusal in InnerException.</exception>
         internal static CrossCompiledCompute ComputeToHlsl(byte[] computeSpirv, string? label = null)
             => Compute(computeSpirv, Backend.Hlsl, "HLSL", label ?? "compute shader");
 
@@ -126,9 +130,11 @@ namespace KhaozEngine.Gpu.Internal
         /// </summary>
         /// <param name="vertexSpirv">The vertex stage's SPIR-V module.</param>
         /// <param name="fragmentSpirv">The fragment stage's SPIR-V module.</param>
-        /// <param name="label">Optional name for the pair, included in any error message.</param>
+        /// <param name="label">Optional name for the pair, carried in <see cref="ShaderValidationException.Label"/>.</param>
         /// <exception cref="ShaderValidationException">The pair failed to cross-compile, or the module declares
-        /// something the engine's own description mirrors do not model.</exception>
+        /// something the engine's own description mirrors do not model. Reason is
+        /// <see cref="ShaderValidationRefusal.CrossCompileFailed"/>, with Label, Target, Stage when known, and the
+        /// underlying refusal in InnerException.</exception>
         internal static CrossCompiledPair VertexFragmentToMsl(byte[] vertexSpirv, byte[] fragmentSpirv,
             string? label = null)
             => Pair(vertexSpirv, fragmentSpirv, Backend.Msl, "MSL", label ?? "shader pair");
@@ -138,9 +144,11 @@ namespace KhaozEngine.Gpu.Internal
         /// <see cref="VertexFragmentToMsl"/>.
         /// </summary>
         /// <param name="computeSpirv">The compute stage's SPIR-V module.</param>
-        /// <param name="label">Optional name for the shader, included in any error message.</param>
+        /// <param name="label">Optional name for the shader, carried in <see cref="ShaderValidationException.Label"/>.</param>
         /// <exception cref="ShaderValidationException">The module failed to cross-compile, or declares something
-        /// the engine's own description mirrors do not model.</exception>
+        /// the engine's own description mirrors do not model. Reason is
+        /// <see cref="ShaderValidationRefusal.CrossCompileFailed"/>, with Label, Stage = Compute, Target and the
+        /// underlying refusal in InnerException.</exception>
         internal static CrossCompiledCompute ComputeToMsl(byte[] computeSpirv, string? label = null)
             => Compute(computeSpirv, Backend.Msl, "MSL", label ?? "compute shader");
 
@@ -431,7 +439,8 @@ namespace KhaozEngine.Gpu.Internal
 
         /// <summary>
         /// The one place a SPIRV-Cross result code becomes an exception, and it reads the context's own last
-        /// error string rather than only naming the code. Internal because
+        /// error string into Diagnostic. Reason is CrossNativeCallFailed, with Label, Operation and ResultCode.
+        /// Internal because
         /// <see cref="SpirvCrossReflect"/> shares it: the reflection pass makes the same kind of call and its
         /// failures read the same way.
         /// </summary>

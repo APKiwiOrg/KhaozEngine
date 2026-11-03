@@ -155,7 +155,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
         /// way out, because it can only fail the same way on every future launch.
         /// </summary>
         /// <param name="key">The program's content key. A null or blank one is a miss, not a throw.</param>
-        /// <param name="label">A name for the program, for the message a refused table would carry.</param>
+        /// <param name="label">A name for the program, carried in ShaderValidationException.Label on a refused table.</param>
         internal MetalMslCacheEntry? TryLoad(string? key, string label)
         {
             // A KEY THAT IS NOT A KEY IS A MISS AND NOT A THROW, which is where the file plumbing's extraction

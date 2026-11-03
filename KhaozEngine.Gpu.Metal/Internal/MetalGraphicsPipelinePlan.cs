@@ -17,8 +17,8 @@ namespace KhaozEngine.Gpu.Metal.Internal
     /// constructor that also calls <c>-newRenderPipelineStateWithDescriptor:error:</c> would make them macOS-only,
     /// which on this program means they are asserted on one leg out of five.</para>
     ///
-    /// <para><b>THE ORDER OF THE CHECKS IS THE ORDER THEY BECOME ANSWERABLE, and it matters for the message a
-    /// caller sees.</b> Ownership first, because a layout from another device makes every later question
+    /// <para><b>THE ORDER OF THE CHECKS IS THE ORDER THEY BECOME ANSWERABLE, and it determines the refusal a
+    /// caller receives.</b> Ownership first, because a layout from another device makes every later question
     /// meaningless. Then the layout SHAPE against the reflection (2.2b, pin 4), because the binding table is keyed
     /// on <c>(set, binding, stage)</c> read out of the shader's own decorations and a differently shaped array
     /// resolves every element through a key that means something else. Then M-B2's collision check, which needs
@@ -49,7 +49,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
             SampleCount = sampleCount;
         }
 
-        /// <summary>The name every refusal from this row quotes. The seam gives a pipeline no name of its own, so
+        /// <summary>The Label carried by shader validation refusals from this row. The seam gives a pipeline no name of its own, so
         /// there is nothing more specific to say. Structured refusal properties carry the diagnostic counts.</summary>
         internal const string Label = "A native Metal graphics pipeline";
 

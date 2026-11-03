@@ -19189,12 +19189,16 @@ owns anything native and the call would otherwise quietly work.
 surprise you. The binding table is keyed on `(set, binding, stage)` against the shader's own reflection, so
 `GpuPipelineDescription.ResourceLayouts` has to be the same SHAPE as what the shader reflects: the same number
 of sets, the same number of elements in each, and the same `GpuResourceKind` at each position. A disagreement
-throws at `CreateGraphicsPipeline` naming the counts, which is the same declaration every other backend already
-expects and the first place anything checks it. Two consequences worth knowing. `ResourceLayouts` cannot be
-left empty for a shader that references nothing, because such a shader still reflects one empty set
-([#599](https://github.com/APKiwiOrg/KhaozEngine/issues/599)), and no shipped engine program is in that shape.
-And your vertex layouts have to cover every attribute the vertex function declares, because Metal validates the
-pipeline against the compiled function and says which attribute is missing.
+throws `ShaderValidationException` at `CreateGraphicsPipeline`. `Reason` is `MetalLayoutCountMismatch`,
+`MetalLayoutElementCountMismatch` or `MetalLayoutKindMismatch`, with `Label`. Layout-count refusals carry
+`DeclaredLayoutCount` and `ReflectedLayoutCount`, element-count refusals carry `Set`, `DeclaredElementCount`
+and `ReflectedElementCount`, and kind refusals carry `Set`, `Binding`, `DeclaredKind` and `ReflectedKind`.
+This is the same declaration every other backend already expects and the first place anything checks it.
+An empty `ResourceLayouts` array is valid for a shader that references no resources. Trailing empty declared
+layouts are ignored, including a single empty set
+([#599](https://github.com/APKiwiOrg/KhaozEngine/issues/599)). Your vertex layouts must cover every attribute
+the vertex function declares. Metal validates the pipeline against the compiled function, and a native rejection
+is carried as `MetalGraphicsPipelineRejected` with `PipelineKind`, `Diagnostic` and `NativeDiagnosticMissing`.
 
 **Disposing a shader set or a pipeline and then using it is refused by name on this backend, where the deleted Veldrid
 legs were quieter about it.** Creating a pipeline from a disposed `IGpuShaderSet`, or binding a disposed

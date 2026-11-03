@@ -30,8 +30,9 @@ namespace KhaozEngine.Gpu.Metal.Internal
     /// </para>
     /// <para>
     /// AND EVERY FAILURE HERE IS LOUD (2.2b, pin 1). An entry point that cannot be found, an argument list that
-    /// does not open or does not close, and a name that cannot be read: each throws naming the program and the
-    /// stage. A function looked up by a guessed name is exactly the gap M-S5 exists to close.
+    /// does not open or does not close, and a name that cannot be read: each throws with Label and Stage. Reason
+    /// distinguishes MetalEntryPointMissing, MetalEntryArgumentsMissing, MetalEntryArgumentsUnclosed and
+    /// MetalEntryNameUnreadable. A function looked up by a guessed name is exactly the gap M-S5 exists to close.
     /// </para>
     /// </summary>
     internal static class MetalMslEntryPoint
@@ -56,9 +57,11 @@ namespace KhaozEngine.Gpu.Metal.Internal
         /// </summary>
         /// <param name="msl">The emitted MSL for one stage.</param>
         /// <param name="stage">Which stage's entry point to find.</param>
-        /// <param name="label">A name for the program, included in any error message.</param>
+        /// <param name="label">A name for the program, carried in <see cref="ShaderValidationException.Label"/>.</param>
         /// <exception cref="ShaderValidationException">The stage's entry point is not present, its argument list
-        /// does not open or does not close, or its name cannot be read.</exception>
+        /// does not open or does not close, or its name cannot be read. Label and Stage identify the emission, and
+        /// Reason is MetalEntryPointMissing, MetalEntryArgumentsMissing, MetalEntryArgumentsUnclosed or
+        /// MetalEntryNameUnreadable.</exception>
         internal static string NameOf(string msl, MetalShaderStage stage, string label)
         {
             ArgumentNullException.ThrowIfNull(msl);

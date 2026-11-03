@@ -77,16 +77,20 @@ namespace KhaozEngine.Tests.Gpu
         }
 
         [Theory]
-        [InlineData(false, 16)]
-        [InlineData(true, 16)]
-        [InlineData(false, 21)]
-        [InlineData(true, 21)]
-        public void InvalidModuleLengthsNameTheirLayout(bool decorations, int length)
+        [InlineData(false, true)]
+        [InlineData(true, true)]
+        [InlineData(false, false)]
+        [InlineData(true, false)]
+        public void InvalidModuleLengthsNameTheirLayout(bool decorations, bool shortHeader)
         {
-            var error = Assert.Throws<ShaderValidationException>(() => Read(new byte[length], decorations));
+            byte[] module = Spirv("#version 450\nlayout(local_size_x = 64) in;\nvoid main() {}\n");
+            Read(module, decorations);
+            byte[] invalid = shortHeader ? module[..16] : [.. module, (byte)0];
+
+            var error = Assert.Throws<ShaderValidationException>(() => Read(invalid, decorations));
             Assert.Equal(ShaderValidationRefusal.SpirvLengthInvalid, error.Reason);
             Assert.Equal("t", error.Label);
-            Assert.Equal(length, error.ByteLength);
+            Assert.Equal(shortHeader ? 16 : module.Length + 1, error.ByteLength);
             Assert.Equal(20, error.MinimumHeaderBytes);
             Assert.Equal(4, error.WordBytes);
         }

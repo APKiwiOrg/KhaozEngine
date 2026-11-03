@@ -21,16 +21,17 @@ namespace KhaozEngine.Gpu.Metal.Internal
     /// and that is genuinely all of it.
     /// </para>
     /// <para>
-    /// A FAILED COMPILE CARRIES METAL'S OWN MESSAGE. <c>newLibraryWithSource:</c> answers nil and writes an
-    /// <c>NSError</c> whose localized description has the source line and the diagnostic, so the throw quotes it.
+    /// A FAILED COMPILE CARRIES METAL'S OWN DIAGNOSTIC. <c>newLibraryWithSource:</c> answers nil and writes an
+    /// <c>NSError</c> whose localized description is carried in ShaderValidationException.Diagnostic, with
+    /// Reason = MetalLibraryRejected, Stage, EntryPoint, SourceOrigin and NativeDiagnosticMissing.
     /// Without that a broken shader is an unexplained nil, and the MSL that failed is not something the caller
     /// wrote: it is SPIRV-Cross output, so "which line" is the only way anyone works backwards to the GLSL.
     /// </para>
     /// <para>
     /// AND A NIL FUNCTION IS A SEPARATE FAILURE FROM A NIL LIBRARY, deliberately. A library that compiled but
     /// carries no function of the emitted name means the name read out of the MSL and the name Metal saw
-    /// disagree, which is M-S5's whole subject, so it says so rather than folding into a generic compile
-    /// failure.
+    /// disagree, which is M-S5's whole subject. Reason is MetalLibraryFunctionMissing, with Stage, EntryPoint
+    /// and Policy, rather than the compile refusal MetalLibraryRejected.
     /// </para>
     /// <para>
     /// EVERY BODY OPENS AN AUTORELEASE POOL (M-N5). The <c>NSString</c>s this creates are autoreleased, the

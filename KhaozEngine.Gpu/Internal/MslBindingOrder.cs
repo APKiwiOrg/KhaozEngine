@@ -69,7 +69,7 @@ namespace KhaozEngine.Gpu.Internal
 
         static readonly string[] Spaces = { "buffer", "texture", "sampler" };
 
-        /// <summary>WHERE TO LOOK WHEN THIS FIRES, carried in every message this type throws. The rejection is
+        /// <summary>Guidance for MetalBindingOrderMismatch. The rejection is
         /// almost certainly not about the shader: the engine authors every Metal argument index, so an emission
         /// that disagrees with binding order is an emission the authored scheme did not reach, which is a
         /// toolchain or install fault rather than something to fix in the GLSL.</summary>
@@ -86,13 +86,14 @@ namespace KhaozEngine.Gpu.Internal
         /// </summary>
         /// <param name="spirv">That stage's own SPIR-V module, for the id join.</param>
         /// <param name="msl">The emitted Metal source for that stage.</param>
-        /// <param name="stage">Which stage, for the entry-point keyword and the error message.</param>
-        /// <param name="tag">The shader's label, included in any error message.</param>
+        /// <param name="stage">Which stage, for the entry-point keyword and ShaderValidationException.Stage.</param>
+        /// <param name="tag">The shader's label, carried in ShaderValidationException.Label.</param>
         /// <returns>The resolved arguments per index space, which <see cref="ShaderValidation.ValidateCompute"/>
         /// reads to decide whether its kind-comparing fallback has anything left to do, or null when the entry
         /// point could not be read at all.</returns>
         /// <exception cref="ShaderValidationException">A stage's Metal index order disagrees with its binding
-        /// order.</exception>
+        /// order. Reason is MetalBindingOrderMismatch, with Label, Stage, Space, ArgumentIndex, DeclaredSet,
+        /// DeclaredBinding, EmittedSet, EmittedBinding and ExpectedIndex.</exception>
         internal static Dictionary<string, List<MslBoundResource>>? CheckStage(
             byte[] spirv, string msl, string stage, string tag)
         {

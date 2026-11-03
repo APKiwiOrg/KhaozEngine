@@ -32,12 +32,13 @@ namespace KhaozEngine.Gpu.D3D11.Internal
     {
         /// <summary>
         /// Compile <paramref name="hlsl"/> to DXBC for <paramref name="profile"/> under <paramref name="flags"/>.
-        /// <paramref name="label"/> names the shader in any failure, because the seam's
+        /// <paramref name="label"/> is carried in ShaderValidationException.Label, because the seam's
         /// <c>CreateShadersFromSpirv</c> takes two GLSL strings and no name, so a raw FXC message would identify
         /// nothing out of roughly fifty sources.
         /// </summary>
         /// <exception cref="ShaderValidationException">FXC rejected the emitted HLSL. Diagnostic carries FXC's
-        /// native error data, with line numbers in the emitted source. Label, Profile and HResult identify the refusal.
+        /// native error data, with line numbers in the emitted source. Reason is D3D11FxcRejected, with Label,
+        /// Profile and HResult.
         /// </exception>
         [MethodImpl(MethodImplOptions.NoInlining)]
         internal static byte[] Compile(string hlsl, string profile, uint flags, string label)

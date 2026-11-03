@@ -684,11 +684,14 @@ elements those are is asked of `spvc_compiler_msl_is_resource_used` after the em
 a text nothing reads any more.
 
 **Nothing falls back to a count.** A `(set, binding)` outside the declared layout array, a binding outside that
-set's elements, or two entries landing on one `(set, binding, stage)`: each throws at shader-set creation,
-naming the program and the stage. So does an emission needing one of SPIRV-Cross's own helper buffers, which are
-numbered from the top of the buffer table where the vertex streams are pinned and carry no `(set, binding)` for
-anything to see them by. All of it happens with no device involved, so a shader the backend cannot number fails
-on a CI leg that has no GPU rather than as a wrong pixel on one that does.
+set's elements, or two entries landing on one `(set, binding, stage)`: each throws `ShaderValidationException`
+at shader-set creation. `Reason` is `MetalSetIndexInvalid`, `MetalBindingIndexInvalid` or
+`MetalResourceUseDuplicate`, with `Label`, `Stage`, `Set` and `Binding`. An emission needing one of
+SPIRV-Cross's own helper buffers throws with `Reason` = `CrossCompileFailed`. Its `InnerException` has
+`Reason` = `MetalHelperBufferUnnumbered`, with `Label`, `Stage`, `HelperKind` and `Policy` = M-B2. These helpers
+are numbered from the top of the buffer table where the vertex streams are pinned and carry no `(set, binding)`
+for anything to see them by. All of it happens with no device involved, so a shader the backend cannot number
+fails on a CI leg that has no GPU rather than as a wrong pixel on one that does.
 
 **The emission is pinned twice and neither pin covers the numbering.** One pin freezes the cross-compile options
 and one freezes `MTLCompileOptions` (`languageVersion` 3.2, fast math on, `preserveInvariance` off, all measured
@@ -820,9 +823,13 @@ so it is not reproduced. Top pinning depends on nothing, and it moves no pixel: 
 the emitted MSL, which reaches attributes through `[[stage_in]]`, so it only has to agree between the vertex
 descriptor and the bind, both of which this backend owns. Over the 34 shipped graphics programs the highest
 buffer index any vertex function's emission chose is **0**, so 30 of the 31 entries are free and the largest
-shipped pipeline declares two streams. A pipeline whose combined vertex-stage bindings would collide throws at
-creation naming both sides, and the assertion is read out of the table's vertex-stage entries rather than out of
-declared stage visibility, because a stage that never references an element has no index for it.
+shipped pipeline declares two streams. A pipeline whose combined vertex-stage bindings would collide throws
+`ShaderValidationException` at creation with `Reason` = `MetalVertexBufferCollision`, `Label`, `Set`, `Binding`,
+`ArgumentIndex`, `StreamCount`, `LowestStreamIndex`, `BufferTableSize` and `Policy` = M-B2. The assertion reads
+the table's vertex-stage entries rather than declared stage visibility, because a stage that never references an
+element has no index for it. A stream count outside 0 through 31 instead throws `ShaderValidationRangeException`
+with `Reason` = `MetalVertexStreamCountInvalid`, `ParamName`, `ActualValue`, `Label`, `StreamCount` and
+`BufferTableSize`.
 
 **A pipeline is where the declared layouts are checked against the shader's reflection.** The binding table is
 keyed on `(set, binding, stage)` read out of the shader's own decorations, so a layout array of a different

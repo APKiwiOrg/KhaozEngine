@@ -36,11 +36,11 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         /// <param name="modules">The device's ONE module cache, asked here and never held.</param>
         /// <param name="vertexGlsl">The vertex source, GLSL <c>#version 450</c>.</param>
         /// <param name="fragmentGlsl">The fragment source.</param>
-        /// <param name="label">Optional name, included in a compile failure's message.</param>
+        /// <param name="label">Optional name, carried in <see cref="ShaderValidationException.Label"/>.</param>
         /// <param name="compileCache">An explicit device memo, or null for ordinary defaults.</param>
         /// <param name="bytesCache">Optional disk cache checked before the front end.</param>
-        /// <exception cref="ShaderValidationException">A source failed to compile to SPIR-V. The message names the
-        /// label and the stage.</exception>
+        /// <exception cref="ShaderValidationException">A source failed to compile to SPIR-V.
+        /// Reason is FrontEndCompileFailed, with Label, Stage, Target and Diagnostic.</exception>
         internal VulkanShaderSet(VulkanShaderModuleCache modules, string vertexGlsl, string fragmentGlsl,
             string? label = null, SpirvBytesCache? bytesCache = null, SpirvCompileCache? compileCache = null)
         {

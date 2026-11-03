@@ -49,8 +49,9 @@ namespace KhaozEngine.Gpu.Metal.Internal
     /// THE FIVE REFUSALS THE JOIN OWNED COLLAPSE TO THREE, and the two that went are the two that can no longer
     /// happen. An argument name that is not <c>_&lt;id&gt;</c> and an id carrying no decorations were both
     /// failures to RESOLVE an argument, and nothing resolves an argument any more. What is left is structural and
-    /// still throws, naming the program and the stage: a <c>(set, binding)</c> outside the declared layout array,
-    /// a binding outside that set's elements, and two entries on one <c>(set, binding, stage)</c>. The kind check
+    /// still throws with Label, Stage, Set and Binding: a <c>(set, binding)</c> outside the declared layout array,
+    /// a binding outside that set's elements, and two entries on one <c>(set, binding, stage)</c>. Reason is
+    /// MetalSetIndexInvalid, MetalBindingIndexInvalid or MetalResourceUseDuplicate respectively. The kind check
     /// went with them for a better reason than disuse: the space an element binds in is now DERIVED from its
     /// kind, so an element in the wrong space is unconstructible rather than merely rejected.
     /// </para>
@@ -108,9 +109,10 @@ namespace KhaozEngine.Gpu.Metal.Internal
         /// </summary>
         /// <param name="layouts">The reflection's resource layouts, in set order.</param>
         /// <param name="stages">Each stage, with the resources its emission carries an argument for.</param>
-        /// <param name="label">A name for the program, included in every error message.</param>
+        /// <param name="label">A name for the program, carried in <see cref="ShaderValidationException.Label"/>.</param>
         /// <exception cref="ShaderValidationException">A use list names a set or a binding the layout array does
-        /// not declare, or two entries land on one <c>(set, binding, stage)</c>.</exception>
+        /// not declare, or two entries land on one <c>(set, binding, stage)</c>. Reason is MetalSetIndexInvalid,
+        /// MetalBindingIndexInvalid or MetalResourceUseDuplicate, with Label, Stage, Set and Binding.</exception>
         internal static MetalShaderIndexTable Build(GpuResourceLayoutDescription[] layouts,
             IReadOnlyList<MetalStageResourceUse> stages, string label)
         {
@@ -208,7 +210,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
         /// <param name="stages">The stages the payload carries a source for. A compute program is exactly one
         /// <see cref="MetalShaderStage.Compute"/>, a graphics program exactly
         /// <see cref="MetalShaderStage.Vertex"/> and <see cref="MetalShaderStage.Fragment"/>.</param>
-        /// <param name="label">A name for the program, included in any error message.</param>
+        /// <param name="label">A name for the program, carried in <see cref="ShaderValidationException.Label"/>.</param>
         /// <exception cref="ShaderValidationException">The payload's triples, stages and layouts do not
         /// agree.</exception>
         internal static MetalShaderIndexTable FromCache(IReadOnlyList<MetalIndexTableKey> used,
@@ -451,8 +453,11 @@ namespace KhaozEngine.Gpu.Metal.Internal
         /// </para>
         /// </summary>
         /// <param name="declared">The layout array the pipeline was created with, in slot order.</param>
-        /// <param name="label">A name for the pipeline or program, included in any error message.</param>
-        /// <exception cref="ShaderValidationException">The declared array is a different shape.</exception>
+        /// <param name="label">A name for the pipeline or program, carried in <see cref="ShaderValidationException.Label"/>.</param>
+        /// <exception cref="ShaderValidationException">The declared array is a different shape. Reason is
+        /// MetalLayoutCountMismatch with Label, DeclaredLayoutCount and ReflectedLayoutCount,
+        /// MetalLayoutElementCountMismatch with Label, Set, DeclaredElementCount and ReflectedElementCount,
+        /// or MetalLayoutKindMismatch with Label, Set, Binding, DeclaredKind and ReflectedKind.</exception>
         internal void RequireLayoutShape(IReadOnlyList<GpuResourceLayoutDescription> declared, string label)
         {
             ArgumentNullException.ThrowIfNull(declared);

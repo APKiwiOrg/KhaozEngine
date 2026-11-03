@@ -67,7 +67,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
                 layout, readLimits, readCounters, shader.ThreadGroupSizeX, shader.ThreadGroupSizeY, shader.ThreadGroupSizeZ);
         }
 
-        /// <summary>The name every refusal from this half of the row quotes.</summary>
+        /// <summary>The Label carried by shader validation refusals from this half of the row.</summary>
         internal const string Label = "A native Metal compute pipeline";
 
         /// <inheritdoc/>

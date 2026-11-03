@@ -56,9 +56,12 @@ namespace KhaozEngine.Gpu.Internal
         /// <summary>Every id in the module carrying both a <c>DescriptorSet</c> and a <c>Binding</c>
         /// decoration, keyed by id.</summary>
         /// <param name="spirv">The module bytes, little-endian words as every glslang emission is.</param>
-        /// <param name="label">A name for the module, included in any error message.</param>
+        /// <param name="label">A name for the module, carried in <see cref="ShaderValidationException.Label"/>.</param>
         /// <exception cref="ShaderValidationException">The bytes are not a SPIR-V module, or the instruction
-        /// stream is truncated.</exception>
+        /// stream is truncated. Reason distinguishes SpirvLengthInvalid, SpirvMagicInvalid and
+        /// SpirvInstructionMalformed, with Label. Length refusals carry ByteLength, MinimumHeaderBytes and
+        /// WordBytes, magic refusals carry ActualMagic and ExpectedMagic, and malformed instructions carry
+        /// WordOffset, WordCount and ModuleWordCount.</exception>
         internal static IReadOnlyDictionary<uint, SpirvResourceDecoration> Read(byte[] spirv, string label)
         {
             ArgumentNullException.ThrowIfNull(spirv);

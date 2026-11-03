@@ -73,11 +73,12 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         internal const string UserSemantic = "TEXCOORD";
 
         /// <summary>
-        /// Throw when <paramref name="signature"/> has a holed <see cref="UserSemantic"/> sequence, naming the
-        /// shader through <paramref name="label"/> and printing the sequence it found next to the one it needed.
+        /// Throw when <paramref name="signature"/> has a holed <see cref="UserSemantic"/> sequence.
+        /// ShaderValidationException carries Label, Semantic, FirstMissingIndex when present, and RepairSourcePaths.
         /// A signature with no user inputs at all is legal and passes: the fullscreen passes declare none.
         /// </summary>
-        /// <exception cref="ShaderValidationException">The indices are not exactly 0 to n-1.</exception>
+        /// <exception cref="ShaderValidationException">The indices are not exactly 0 to n-1.
+        /// Reason is D3D11UserSemanticHole.</exception>
         internal static void RequireContiguousUserSemantics(
             IReadOnlyList<D3D11ShaderInputSemantic> signature, string label)
         {

@@ -55,10 +55,11 @@ namespace KhaozEngine.Gpu.Internal
         /// </summary>
         /// <param name="glsl">The shader source, GLSL <c>#version 450</c>.</param>
         /// <param name="stage">Which stage the source is. Exactly one stage flag.</param>
-        /// <param name="label">Optional name for the shader, included in any error message.</param>
+        /// <param name="label">Optional name for the shader, carried in <see cref="ShaderValidationException.Label"/>.</param>
         /// <param name="cache">A device-owned memo, or null for the ordinary process memo.</param>
-        /// <exception cref="ShaderValidationException">The source failed to compile to SPIR-V. Reason, Label, Stage,
-        /// Target and Diagnostic identify the failure.</exception>
+        /// <exception cref="ShaderValidationException">The source failed to compile to SPIR-V.
+        /// Reason is <see cref="ShaderValidationRefusal.FrontEndCompileFailed"/>. Label, Stage, Target and
+        /// Diagnostic identify the failure.</exception>
         internal static byte[] ToSpirv(string glsl, GpuShaderStages stage, string? label = null, SpirvCompileCache? cache = null)
         {
             if (glsl is null) throw new ArgumentNullException(nameof(glsl));

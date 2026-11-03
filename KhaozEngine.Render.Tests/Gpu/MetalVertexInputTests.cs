@@ -186,8 +186,11 @@ namespace KhaozEngine.Tests.Gpu
         [Fact]
         public void MoreStreamsThanTheTableHas_IsRefusedOnItsOwn()
         {
+            MetalShaderIndexTable table = MetalShaderIndexTable.Build([], [], "stream count");
+            MetalVertexPlan.RequireNoCollision(31, table, "too many");
+
             ShaderValidationRangeException error = Assert.Throws<ShaderValidationRangeException>(
-                () => MetalVertexPlan.RequireNoCollision(32, VertexTableAt(0), "too many"));
+                () => MetalVertexPlan.RequireNoCollision(32, table, "too many"));
 
             Assert.IsAssignableFrom<ArgumentOutOfRangeException>(error);
             Assert.Equal(ShaderValidationRefusal.MetalVertexStreamCountInvalid, error.Reason);

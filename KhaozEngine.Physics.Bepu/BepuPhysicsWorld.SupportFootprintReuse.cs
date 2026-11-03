@@ -35,14 +35,14 @@ public sealed partial class BepuPhysicsWorld : IPhysicsSupportFootprintReuseSour
             ReferenceEquals(exclusions, session.Exclusions) && session.Matches(lease) ? session : null;
     }
 
-    sealed class FootprintReuseSession : IPhysicsSupportFootprintReuseSession
+    internal sealed class FootprintReuseSession : IPhysicsSupportFootprintReuseSession
     {
         readonly BepuPhysicsWorld _owner;
         readonly IPhysicsWorld _receiver;
         internal StaticQueryExclusions? Exclusions { get; }
         readonly int _thread, _originX, _originY, _originZ;
         readonly long _installedGeneration, _staticGeneration, _leaseGeneration;
-        internal readonly SupportFootprintProofMemo Memo = new();
+        internal SupportFootprintProofMemo Memo;
         SupportFootprintReuseDomain _domain;
         bool _hasDomain, _disposed;
         internal ulong SourceVersion { get; private set; }
@@ -50,6 +50,7 @@ public sealed partial class BepuPhysicsWorld : IPhysicsSupportFootprintReuseSour
         internal FootprintReuseSession(BepuPhysicsWorld owner, IPhysicsWorld receiver, IPhysicsQueryLease lease,
             StaticQueryExclusions? exclusions)
         {
+            Memo = new();
             _owner = owner;
             _receiver = receiver;
             Exclusions = exclusions;
@@ -60,6 +61,54 @@ public sealed partial class BepuPhysicsWorld : IPhysicsSupportFootprintReuseSour
             _originX = BitConverter.SingleToInt32Bits(lease.Origin.X);
             _originY = BitConverter.SingleToInt32Bits(lease.Origin.Y);
             _originZ = BitConverter.SingleToInt32Bits(lease.Origin.Z);
+        }
+
+        /// <summary>Lets ContactNavigationReuseFixture observe the live source domain without resetting it.</summary>
+        internal SupportFootprintReuseDomain DomainForTests => _domain;
+
+        /// <summary>Lets SupportFootprintProofReuseBasisTests exercise exact captured-origin matching with synthetic leases.</summary>
+        internal bool MatchesForTests(IPhysicsQueryLease lease) => Matches(lease);
+
+        /// <summary>Lets SupportFootprintProofReuseBasisTests observe the owner's exact live basis comparison.</summary>
+        internal bool CurrentBasisForTests => CurrentBasis();
+
+        /// <summary>Lets SupportFootprintProofReuseBasisTests verify that only the selected origin component changed.</summary>
+        internal (int X, int Y, int Z) OriginBitsForTests => (_originX, _originY, _originZ);
+
+        /// <summary>Lets SupportFootprintProofReuseBasisTests compare every non-origin field on a non-owning copy.</summary>
+        internal (BepuPhysicsWorld Owner, IPhysicsWorld Receiver, StaticQueryExclusions? Exclusions, int Thread,
+            long InstalledGeneration, long StaticGeneration, long LeaseGeneration, SupportFootprintProofMemo Memo,
+            SupportFootprintReuseDomain Domain, bool HasDomain, bool Disposed, ulong SourceVersion) NonOriginStateForTests =>
+            (_owner, _receiver, Exclusions, _thread, _installedGeneration, _staticGeneration, _leaseGeneration,
+                Memo, _domain, _hasDomain, _disposed, SourceVersion);
+
+        /// <summary>Lets SupportFootprintProofReuseBasisTests alter one captured origin field without owning the copied memo.</summary>
+        internal FootprintReuseSession CloneWithOriginForTests(string axis, int bits) => new(this, axis, bits);
+
+        FootprintReuseSession(FootprintReuseSession source, string axis, int bits)
+        {
+            _owner = source._owner;
+            _receiver = source._receiver;
+            Exclusions = source.Exclusions;
+            _thread = source._thread;
+            _installedGeneration = source._installedGeneration;
+            _staticGeneration = source._staticGeneration;
+            _leaseGeneration = source._leaseGeneration;
+            _originX = axis == "X" ? bits : source._originX;
+            _originY = axis == "Y" ? bits : source._originY;
+            _originZ = axis == "Z" ? bits : source._originZ;
+            Memo = source.Memo;
+            _domain = source._domain;
+            _hasDomain = source._hasDomain;
+            _disposed = source._disposed;
+            SourceVersion = source.SourceVersion;
+        }
+
+        /// <summary>Lets ContactNavigationReuseFixture lower the unopened memo capacity to exercise saturation.</summary>
+        internal void LimitMemoForTests(int capacity)
+        {
+            Memo.Dispose();
+            Memo = new(capacity, 2 * 1024 * 1024);
         }
 
         public void ResetSource(in SupportFootprintReuseDomain domain)

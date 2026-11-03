@@ -1,7 +1,6 @@
 using System;
 using System.Collections.Generic;
 using System.Numerics;
-using System.Reflection;
 using BepuPhysics;
 using BepuPhysics.Collidables;
 using KhaozEngine.Locomotion.Contacts;
@@ -143,10 +142,8 @@ internal static class SupportFootprintCurvedProofOracle
 
     internal static IReadOnlyList<InstalledPart> Installed(BepuPhysicsWorld world, StaticHandle owner)
     {
-        var sim = (BepuPhysics.Simulation)typeof(BepuPhysicsWorld)
-            .GetField("_sim", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(world)!;
-        var handles = (Dictionary<int, (BepuPhysics.StaticHandle Handle, TypedIndex Shape)>)typeof(BepuPhysicsWorld)
-            .GetField("_handles", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(world)!;
+        var sim = world.SimulationForTests;
+        var handles = world.StaticHandlesForTests;
         sim.Statics.GetDescription(handles[owner.Value].Handle, out StaticDescription description);
         var result = new List<InstalledPart>();
         Pose parent = new(description.Pose.Position, description.Pose.Orientation);

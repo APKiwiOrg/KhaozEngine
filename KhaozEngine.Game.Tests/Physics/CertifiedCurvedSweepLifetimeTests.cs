@@ -1,7 +1,6 @@
 using System;
 using System.Collections.Generic;
 using System.Numerics;
-using System.Reflection;
 using BepuPhysics.Collidables;
 using KhaozEngine.Locomotion;
 using KhaozEngine.Locomotion.Contacts;
@@ -35,12 +34,12 @@ public sealed class CertifiedCurvedSweepLifetimeTests
         Vector3 start = new(-2, 0, 0), delta = new(4, 0, 0);
         HitContains(Read(world, start, delta, length: 0), 1.5, 1.5);
         var entry = Static(world, handle);
-        var geometry = ((Dictionary<int, InstalledSweepGeometry?>)Field(world, "_installedSweepStatics"))[handle.Value]!;
+        var geometry = world.InstalledSweepStaticsForTests[handle.Value]!;
         Sim(world).Statics.GetDescription(entry.Handle, out var installed);
         Assert.True(CapsuleSweepGeometry.TryReadLeaf(Sim(world).Shapes, entry.Shape, installed.Pose, geometry, 0, out var leaf));
         var scratch = new CapsuleSweepScratch();
-        var convex = typeof(CapsuleConvexSweep).GetMethod("Prove", BindingFlags.NonPublic | BindingFlags.Static)!.CreateDelegate<ConvexProof>();
-        var cylinder = typeof(CapsuleCylinderSweep).GetMethod("Prove", BindingFlags.NonPublic | BindingFlags.Static)!.CreateDelegate<CylinderProof>();
+        var convex = (ConvexProof)CapsuleConvexSweep.ProveForTests;
+        var cylinder = (CylinderProof)CapsuleCylinderSweep.ProveForTests;
         Assert.True(CapsuleCylinderFrame.TryCreate(leaf, start, delta, new(0.25f, 0), out var frame));
         CapsuleSweepWork work = default;
         CapsuleSweepResult result = default;
@@ -118,7 +117,7 @@ public sealed class CertifiedCurvedSweepLifetimeTests
         var handle = world.AddStatic(Shape(family, 0.25f), Centred(family, 1, Turn(1)));
         Vector3 start = new(-2, 0, 0), delta = new(4, 0, 0);
         HitContains(Read(world, start, delta, length: 0), 1.5, 1.5);
-        var captures = (Dictionary<int, InstalledSweepGeometry?>)Field(world, "_installedSweepStatics");
+        var captures = world.InstalledSweepStaticsForTests;
         InstalledSweepGeometry previous = captures[handle.Value]!;
         var old = Static(world, handle);
         world.Rebase(new(16, 8, -16));
@@ -175,7 +174,7 @@ public sealed class CertifiedCurvedSweepLifetimeTests
         var handle = world.AddStatic(Shape(family, 0.25f), Centred(family, 1, Quaternion.Identity));
         HitContains(Read(world, Vector3.Zero, Vector3.Zero, length: 0), 0, 0);
         var entry = Static(world, handle);
-        var geometry = ((Dictionary<int, InstalledSweepGeometry?>)Field(world, "_installedSweepStatics"))[handle.Value]!;
+        var geometry = world.InstalledSweepStaticsForTests[handle.Value]!;
         Sim(world).Statics.GetDescription(entry.Handle, out var installed);
         var work = new CapsuleSweepWork { Descendants = CapsuleGeneralSweepPolicy.MaximumDescendants };
         var scratch = new CapsuleSweepScratch();
@@ -203,7 +202,7 @@ public sealed class CertifiedCurvedSweepLifetimeTests
     {
         using var world = new BepuPhysicsWorld(Vector3.Zero);
         var body = world.AddDynamic(Shape(family, 0.25f), Centred(family, 1, Turn(1), new(40, 0, 0)), new DynamicBodyDescription(1));
-        var entries = (Dictionary<int, (BepuPhysics.BodyHandle Handle, TypedIndex Shape)>)Field(world, "_dynamics");
+        var entries = world.DynamicHandlesForTests;
         Mutate(world, sim => { var reference = sim.Bodies[entries[body.Value].Handle]; reference.Awake = false; });
         Assert.False(world.IsAwake(body));
         HitContains(Read(world, new(38, 0, 0), new(4, 0, 0), length: 0, filter: QueryFilter.DynamicsOnly), 1.5, 1.5);

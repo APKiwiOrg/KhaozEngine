@@ -29,9 +29,9 @@ public partial class SupportFootprintTests
         using var lease = scene.World.AcquireQueryReadLease();
         var collector = new SupportFootprintCollector(32);
         Assert.True(collector.Begin(request));
-        var simulation = (BepuPhysics.Simulation)ObjectField(scene.World, "_sim");
+        var simulation = scene.World.SimulationForTests;
         var candidates = collector.Candidates(simulation,
-            (System.Collections.Generic.Dictionary<int, int>)ObjectField(scene.World, "_reverseHandles"), null);
+            scene.World.ReverseStaticHandlesForTests, null);
         var candidate = Assert.Single(candidates);
         simulation.Statics.GetDescription(candidate.Installed, out var description);
         var cache = new InstalledSupportGeometryCache();
@@ -136,7 +136,7 @@ public partial class SupportFootprintTests
                 }
                 if (row == "below-band")
                 {
-                    Assert.True((bool)ObjectField(FootprintScratch(scene.World), "_belowBandPass"));
+                    Assert.True(FootprintScratch(scene.World).BelowBandPassForTests);
                     Assert.Equal(0, result.Members);
                 }
                 foreach (var observation in observations)
@@ -255,14 +255,14 @@ public partial class SupportFootprintTests
         using var lease = scene.World.AcquireQueryReadLease();
         var collector = new SupportFootprintCollector();
         Assert.True(collector.Begin(Request()));
-        var simulation = (BepuPhysics.Simulation)ObjectField(scene.World, "_sim");
+        var simulation = scene.World.SimulationForTests;
         var candidates = collector.Candidates(simulation,
-            (System.Collections.Generic.Dictionary<int, int>)ObjectField(scene.World, "_reverseHandles"), null);
+            scene.World.ReverseStaticHandlesForTests, null);
         simulation.Statics.GetDescription(Assert.Single(candidates).Installed, out var description);
         Assert.Equal(CapsuleFeatureStatus.Complete,
             collector.Collect(simulation, owner, description, new InstalledSupportGeometryCache(), 0));
-        Assert.Equal(1, (int)ObjectField(collector, "_count"));
-        var work = (SupportCurvedWork)ObjectField(collector, "_curvedWork");
+        Assert.Equal(1, collector.MemberCountForTests);
+        var work = collector.CurvedWorkForTests;
         work.Fail(reason);
         var members = MemberSentinels(260);
         var before = (SupportFootprintMember[])members.Clone();

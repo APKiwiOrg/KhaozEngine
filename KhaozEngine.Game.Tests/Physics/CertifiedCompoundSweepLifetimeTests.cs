@@ -1,7 +1,6 @@
 using System;
 using System.Collections.Generic;
 using System.Numerics;
-using System.Reflection;
 using System.Threading;
 using BepuPhysics.Collidables;
 using KhaozEngine.Physics;
@@ -35,27 +34,25 @@ public sealed class CertifiedCompoundSweepLifetimeTests
         Assert.Equal(old.Handle, replacement.Handle);
         Assert.Equal(old.Shape, replacement.Shape);
         Assert.NotSame(oldCapture, Geometry(world, handle));
-        var captures = (Dictionary<int, InstalledSweepGeometry?>)Field(world, "_installedSweepStatics");
-        var current = captures[handle.Value];
+        var captures = world.InstalledSweepStaticsForTests;
+        var current = captures[handle.Value]!;
         captures[handle.Value] = oldCapture;
         Refused(Read(world, Start - world.Origin, Delta));
         captures[handle.Value] = current;
         HitContains(Read(world, Start - world.Origin, Delta), 1.625, 1.625);
         // Keep native geometry, root pose and registration id current. The independent
         // installation generation must reject a copied capture carrying an old generation.
-        var generationField = typeof(InstalledSweepGeometry).GetField("_installationGeneration", BindingFlags.NonPublic | BindingFlags.Instance)!;
-        var registrationField = typeof(InstalledSweepGeometry).GetField("_registrationId", BindingFlags.NonPublic | BindingFlags.Instance)!;
-        registrationField.SetValue(current, handle.Value - 1);
+        current.RegistrationIdForTests = handle.Value - 1;
         Refused(Read(world, Start - world.Origin, Delta));
-        registrationField.SetValue(current, handle.Value);
-        long generation = (long)generationField.GetValue(current)!;
-        generationField.SetValue(current, generationField.GetValue(oldCapture));
+        current.RegistrationIdForTests = handle.Value;
+        long generation = current.InstallationGenerationForTests;
+        current.InstallationGenerationForTests = oldCapture.InstallationGenerationForTests;
         Refused(Read(world, Start - world.Origin, Delta));
-        generationField.SetValue(current, generation);
+        current.InstallationGenerationForTests = generation;
         HitContains(Read(world, Start - world.Origin, Delta), 1.625, 1.625);
 
         var body = world.AddDynamic(shape, Pose.At(new(40, 0, 0)), new DynamicBodyDescription(1));
-        var bodies = (Dictionary<int, (BepuPhysics.BodyHandle Handle, TypedIndex Shape)>)Field(world, "_dynamics");
+        var bodies = world.DynamicHandlesForTests;
         Mutate(world, sim => { var reference = sim.Bodies[bodies[body.Value].Handle]; reference.Awake = false; });
         Assert.False(world.IsAwake(body));
         HitContains(Read(world, new(38, 0, 0), Delta, filter: QueryFilter.DynamicsOnly), 1.625, 1.625);
@@ -71,7 +68,7 @@ public sealed class CertifiedCompoundSweepLifetimeTests
         world.SetConstraintTarget(joint, 0.5f);
         HitContains(Read(world, Start - world.Origin, Delta, filter: QueryFilter.StaticsOnly), 1.625, 1.625);
         world.RemoveConstraint(joint);
-        var dynamicCaptures = (Dictionary<int, InstalledSweepGeometry?>)Field(world, "_installedSweepDynamics");
+        var dynamicCaptures = world.InstalledSweepDynamicsForTests;
         var oldDynamicCapture = dynamicCaptures[body.Value];
         var oldDynamic = bodies[body.Value];
         Pose replacementPose = world.GetDynamicPose(body);
@@ -164,10 +161,8 @@ public sealed class CertifiedCompoundSweepLifetimeTests
         Assert.NotNull(children);
         var child = children[1];
         Assert.True(child.TryPose(child.ParentPose, out var saved));
-        object invalid = saved;
-        typeof(InstalledPoseOperator).GetField("<X>k__BackingField", BindingFlags.NonPublic | BindingFlags.Instance)!
-            .SetValue(invalid, new FeaturePoint(FeatureNumber.Exact(double.Epsilon), FeatureNumber.Exact(0), FeatureNumber.Exact(0)));
-        child.PublishPose(child.ParentPose, child.LeafPose, (InstalledPoseOperator)invalid);
+        var invalid = saved.WithXForTests(new FeaturePoint(FeatureNumber.Exact(double.Epsilon), FeatureNumber.Exact(0), FeatureNumber.Exact(0)));
+        child.PublishPose(child.ParentPose, child.LeafPose, invalid);
         Refused(world.SweepCapsuleCertified(queryDimensions, overlap, Vector3.UnitX));
         CapsuleSweepResult refusal = default;
         long refusalBytes = AllocationMeasurement.Measure(nameof(CompoundWarmDimensionAndRefusalQueriesAllocateNothing) + "_late", () =>

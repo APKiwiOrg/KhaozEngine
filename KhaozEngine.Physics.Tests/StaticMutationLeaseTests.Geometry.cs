@@ -98,7 +98,7 @@ public sealed partial class StaticMutationLeaseTests
         using IPhysicsStaticMutationLease writer = Acquire(world);
         StaticHandle first = world.AddStatic(shape, Pose.At(new(2, 0, 0)));
         TypedIndex root = InstalledShape(world, first);
-        Simulation simulation = Field<Simulation>(world, "_sim");
+        Simulation simulation = world.SimulationForTests;
         int? child = mesh ? null : simulation.Shapes.GetShape<Compound>(root.Index).Children[0].ShapeIndex.Index;
         int installedStorage = OutstandingStorage(world);
         Assert.True(world.Raycast(Vector3.Zero, Vector3.UnitX, 4, out _));
@@ -132,31 +132,23 @@ public sealed partial class StaticMutationLeaseTests
         new(new CapsuleShape(0.01f, 0.01f), Pose.At(new(0, 0.416f, 0)), 0.802f),
         new(new CapsuleShape(0.2f, 0.01f), Pose.At(new(0, 0.606f, 0)), 0.802f));
 
-    static int SupportCaptures(BepuPhysicsWorld world)
-    {
-        object cache = Field<object>(world, "_installedSupportGeometry");
-        return (int)cache.GetType().GetProperty("Constructions", BindingFlags.Instance | BindingFlags.NonPublic)!
-            .GetValue(cache)!;
-    }
+    static int SupportCaptures(BepuPhysicsWorld world) => world.InstalledSupportGeometryForTests.Constructions;
 
     static TypedIndex InstalledShape(BepuPhysicsWorld world, StaticHandle handle) =>
-        Field<Dictionary<int, (BepuPhysics.StaticHandle, TypedIndex)>>(world, "_handles")[handle.Value].Item2;
+        world.StaticHandlesForTests[handle.Value].Shape;
 
     static int OutstandingStorage(BepuPhysicsWorld world)
     {
         // Retained block capacity is not a leak. Count slots still loaned by the backend allocator,
         // independently of which returned buffer a subsequent mesh construction happens to reuse.
         var pools = (Array)typeof(BufferPool).GetField("pools", BindingFlags.Instance | BindingFlags.NonPublic)!
-            .GetValue(Field<BufferPool>(world, "_pool"))!;
+            .GetValue(world.PoolForTests)!;
         return pools.Cast<object>().Sum(pool =>
         {
             var slots = (ManagedIdPool)pool.GetType().GetField("Slots")!.GetValue(pool)!;
             return slots.HighestPossiblyClaimedId + 1 - slots.AvailableIdCount;
         });
     }
-
-    static T Field<T>(BepuPhysicsWorld world, string name) =>
-        (T)typeof(BepuPhysicsWorld).GetField(name, BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(world)!;
 
     sealed class UnsupportedShape : PhysicsShape;
 }

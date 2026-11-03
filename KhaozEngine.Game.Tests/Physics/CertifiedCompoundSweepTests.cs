@@ -17,7 +17,7 @@ public sealed class CertifiedCompoundSweepTests
     internal static CompoundChild[] Pair() => [new(Box, new(Vector3.Zero, Cyclic)),
         new(CertifiedHullSweepTests.Tetrahedron(), Pose.At(new(2, 0, 0)))];
     internal static InstalledSweepGeometry Geometry(BepuPhysicsWorld world, StaticHandle handle) =>
-        ((Dictionary<int, InstalledSweepGeometry?>)Field(world, "_installedSweepStatics"))[handle.Value]!;
+        world.InstalledSweepStaticsForTests[handle.Value]!;
 
     [Fact]
     public void CompoundDescendantsMatchSplitInstalledGeometry()

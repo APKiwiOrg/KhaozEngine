@@ -16,6 +16,12 @@ internal sealed class SupportTiltedCurved
 
     readonly SupportTiltedCurvedGeometry _geometry;
     readonly SupportCurvedSurfaceAdmission _admission;
+    /// <summary>Lets TiltedQuery and TiltedRegions inspect actual root work and capacity refusal.</summary>
+    internal SupportTiltedCurvedGeometry GeometryForTests => _geometry;
+
+    /// <summary>Lets TiltedQuery and TiltedRegions inspect actual surface-admission work and refusal.</summary>
+    internal SupportCurvedSurfaceAdmission AdmissionForTests => _admission;
+
     internal void ResetStatistics() { _geometry.ResetStatistics(); _admission.ResetStatistics(); }
 
     internal GeometrySign Measure(StaticHandle owner, in SupportCurvedLeaf leaf, int part,

@@ -2,7 +2,6 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Numerics;
-using System.Reflection;
 using KhaozEngine.Locomotion.Contacts;
 using KhaozEngine.Physics;
 using KhaozEngine.Physics.Bepu;
@@ -238,8 +237,7 @@ public partial class SupportFootprintTests
         using IPhysicsQueryLease lease = scene.World.AcquireQueryReadLease();
         Capability(scene.World).QuerySupportFootprint(lease, request, new SupportFootprintMember[256], new ulong[1024]);
         SupportFootprintCollector scratch = FootprintScratch(scene.World);
-        var polygons = (List<SupportPolygon>)typeof(SupportFootprintCollector)
-            .GetField("_polygons", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(scratch)!;
+        var polygons = scratch.PolygonsForTests;
         int topId = scene.Faces.Single(f => f.Static == scene.Crate && f.Normal.Y > 0.5).ElementId;
         int injected = 0;
         ContactAllocationDiagnostics.SetObserver((phase, entering) =>

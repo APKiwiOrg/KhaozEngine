@@ -114,7 +114,7 @@ public sealed class CertifiedRigidSweepCorrespondenceTests
     }
 
     static InstalledSweepGeometry Capture(BepuPhysicsWorld world, KhaozEngine.Physics.StaticHandle handle) =>
-        ((Dictionary<int, InstalledSweepGeometry?>)Field(world, "_installedSweepStatics"))[handle.Value]!;
+        world.InstalledSweepStaticsForTests[handle.Value]!;
 
     static int[] TopFace(InstalledSweepGeometry geometry)
     {

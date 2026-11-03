@@ -9,6 +9,9 @@ internal sealed partial class SupportTiltedCurvedGeometry
     internal int RootLiveHighWater { get; private set; }
     internal int RootTerminalHighWater { get; private set; }
 
+    /// <summary>Lets TiltedQuery and TiltedRegions distinguish root capacity refusal from surface admission refusal.</summary>
+    internal SupportCurvedRootRegions RootsForTests => _roots;
+
     internal void ResetStatistics()
     {
         RootCellCount = 0; RootLiveHighWater = RootTerminalHighWater = 0;

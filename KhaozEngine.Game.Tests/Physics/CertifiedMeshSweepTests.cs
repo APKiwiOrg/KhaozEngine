@@ -108,7 +108,7 @@ public sealed class CertifiedMeshSweepTests
         using IPhysicsQueryLease lease = world.AcquireQueryReadLease();
         var native = Static(world, handle);
         Sim(world).Statics.GetDescription(native.Handle, out var description);
-        var geometry = ((System.Collections.Generic.Dictionary<int, InstalledSweepGeometry?>)Field(world, "_installedSweepStatics"))[handle.Value]!;
+        var geometry = world.InstalledSweepStaticsForTests[handle.Value]!;
         Assert.True(geometry.TryPose(description.Pose, out var map));
         var leaf = new InstalledSweepLeaf(geometry.Mesh!.Triangle(0), description.Pose, map);
         var work = new CapsuleSweepWork();
@@ -131,7 +131,7 @@ public sealed class CertifiedMeshSweepTests
                 int[] indices = reversed ? [0, 2, 4, 4, 2, 5, 1, 3, 2, 0, 1, 2] : [0, 1, 2, 1, 3, 2, 4, 2, 5, 0, 2, 4];
                 using var world = new BepuPhysicsWorld(Vector3.Zero);
                 StaticHandle handle = world.AddStatic(new TriangleMeshShape(vertices, indices), Pose.Identity);
-                var geometry = ((System.Collections.Generic.Dictionary<int, InstalledSweepGeometry?>)Field(world, "_installedSweepStatics"))[handle.Value]!;
+                var geometry = world.InstalledSweepStaticsForTests[handle.Value]!;
                 Assert.Equal(4, geometry.Mesh!.Count);
                 for (int i = 0; i < 4; i++)
                     for (int j = i + 1; j < 4; j++) Assert.NotSame(geometry.Mesh.Triangle(i), geometry.Mesh.Triangle(j));

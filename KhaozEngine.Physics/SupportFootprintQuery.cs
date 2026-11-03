@@ -129,6 +129,18 @@ public readonly struct SupportFootprintResult
         FootVerdict = foot;
     }
 
+    /// <summary>Lets CorruptedResultMetadataAndForeignSourcesAreRejected change captured metadata without recapturing it.</summary>
+    internal SupportFootprintResult WithCapturedMetadataForTests(IPhysicsWorld? source, Vector3 origin, long generation) =>
+        new(this, source, origin, generation);
+
+    SupportFootprintResult(in SupportFootprintResult result, IPhysicsWorld? source, Vector3 origin, long generation)
+    {
+        this = result;
+        SourceWorld = source;
+        Origin = origin;
+        GeometryGeneration = generation;
+    }
+
     static void Validate(SupportProposalVerdict verdict)
     {
         if (verdict.Status > SupportProposalStatus.InvalidStart ||

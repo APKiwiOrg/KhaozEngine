@@ -9,6 +9,9 @@ namespace KhaozEngine.Physics.Bepu;
 internal sealed partial class SupportFootprintSourcePredicates
 {
     readonly SupportSourcePolynomialWorkspace _work = new();
+    /// <summary>Lets RepresentedSource and SourceCorrections verify all nine compiled map coefficients stay constant.</summary>
+    internal System.Collections.Generic.IReadOnlyList<SupportSourcePolynomial> MapForTests => _map;
+
     readonly SupportSourcePolynomial[] _map = new SupportSourcePolynomial[9];
     SupportPolygon _polygon = null!;
     SupportPolygonSourceMap _sourceMap;

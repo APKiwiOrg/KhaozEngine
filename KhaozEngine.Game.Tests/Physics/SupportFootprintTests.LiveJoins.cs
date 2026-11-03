@@ -1,7 +1,6 @@
 using System;
 using System.Linq;
 using System.Numerics;
-using System.Reflection;
 using KhaozEngine.Locomotion.Contacts;
 using KhaozEngine.Physics;
 using KhaozEngine.Physics.Bepu;
@@ -262,13 +261,7 @@ public partial class SupportFootprintTests
     {
         var collector = new SupportFootprintCollector();
         Assert.True(collector.Begin(request));
-        const BindingFlags Private = BindingFlags.Instance | BindingFlags.NonPublic;
-        Type memberType = typeof(SupportFootprintCollector).GetNestedType("Member", BindingFlags.NonPublic)!;
-        var stored = (Array)typeof(SupportFootprintCollector).GetField("_members", Private)!.GetValue(collector)!;
-        for (int i = 0; i < admitted.Length; i++)
-            stored.SetValue(Activator.CreateInstance(memberType, admitted[i].Polygon, default(SupportCurvedLeaf), 0,
-                admitted[i].Value), i);
-        typeof(SupportFootprintCollector).GetField("_count", Private)!.SetValue(collector, admitted.Length);
+        collector.SeedMembersForTests(admitted);
         var members = new SupportFootprintMember[SupportFootprintResult.MaximumElements];
         var joins = new ulong[SupportFootprintResult.MaximumElements * SupportFootprintResult.JoinWordsFor(
             SupportFootprintResult.MaximumElements)];

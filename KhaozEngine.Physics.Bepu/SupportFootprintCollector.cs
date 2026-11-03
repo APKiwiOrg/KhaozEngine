@@ -51,6 +51,29 @@ internal sealed partial class SupportFootprintCollector
     double _columnBottom, _columnTop;
     int _count;
 
+    /// <summary>Lets JoinedEdgeContinuityTests and LiveJoins publish the same admitted polygon members directly.</summary>
+    internal void SeedMembersForTests(ReadOnlySpan<(SupportPolygon Polygon, SupportFootprintMember Value)> admitted)
+    {
+        for (int i = 0; i < admitted.Length; i++)
+            _members[i] = new(admitted[i].Polygon, default, 0, admitted[i].Value);
+        _count = admitted.Length;
+    }
+
+    /// <summary>Lets PitchedPlates inject an unresolved admitted polygon before extrema evaluation.</summary>
+    internal IReadOnlyList<SupportPolygon> PolygonsForTests => _polygons;
+
+    /// <summary>Lets TiltedQuery inspect the actual retained curved proof storage and work counters.</summary>
+    internal SupportFootprintCurved CurvedKernelForTests => _curvedKernel;
+
+    /// <summary>Lets CurvedWork inject an exhausted work account before publication.</summary>
+    internal SupportCurvedWork CurvedWorkForTests => _curvedWork;
+
+    /// <summary>Lets CurvedWork verify that admission retained a member before injecting a refusal.</summary>
+    internal int MemberCountForTests => _count;
+
+    /// <summary>Lets CurvedWork verify the below-band pass used by its late-refusal regression.</summary>
+    internal bool BelowBandPassForTests => _belowBandPass;
+
     internal bool Begin(in SupportFootprintRequest request)
     {
         _curvedWork.Begin();

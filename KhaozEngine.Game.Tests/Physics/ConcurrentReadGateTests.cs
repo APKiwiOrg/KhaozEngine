@@ -1,6 +1,5 @@
 using System;
 using System.Numerics;
-using System.Reflection;
 using System.Threading;
 using KhaozEngine.Locomotion;
 using KhaozEngine.Physics;
@@ -397,6 +396,5 @@ public sealed class ConcurrentReadGateTests
         public IPhysicsQueryLease AcquireQueryReadLease() => inner.AcquireQueryReadLease();
     }
 
-    internal static QueryGate Gate(BepuPhysicsWorld world) => (QueryGate)typeof(BepuPhysicsWorld)
-        .GetField("_queryGate", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(world)!;
+    internal static QueryGate Gate(BepuPhysicsWorld world) => world.QueryGateForTests;
 }

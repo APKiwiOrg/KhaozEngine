@@ -48,6 +48,13 @@ public sealed partial class GroundNavigationBake
         ProfileNames = Array.AsReadOnly(names);
     }
 
+    /// <summary>Lets ContactNavigationReuseFixture replace re-proved traversal in both stored profile indexes.</summary>
+    internal void ReplaceProfileForTests(string name, GroundNavigation replacement)
+    {
+        _profiles[Array.IndexOf(_names, name)] = replacement;
+        _byName[name] = replacement;
+    }
+
     /// <summary>SHA-256 of the identity block, for logs and build manifests.</summary>
     public ReadOnlySpan<byte> Fingerprint => _fingerprint;
 

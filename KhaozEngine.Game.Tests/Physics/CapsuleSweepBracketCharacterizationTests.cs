@@ -1,7 +1,6 @@
 using System;
 using System.Linq;
 using System.Numerics;
-using System.Reflection;
 using BepuPhysics;
 using BepuPhysics.Collidables;
 using BepuPhysics.CollisionDetection;
@@ -45,9 +44,7 @@ public class CapsuleSweepBracketCharacterizationTests(ITestOutputHelper output)
         using IPhysicsQueryLease lease = ((IPhysicsQueryLeaseSource)view).AcquireQueryReadLease();
         Assert.Same(world, view.SourceWorld);
         lease.AssertCurrent();
-        FieldInfo? field = typeof(BepuPhysicsWorld).GetField("_sim", BindingFlags.Instance | BindingFlags.NonPublic);
-        Assert.NotNull(field);
-        BepuSim simulation = Assert.IsType<BepuSim>(field.GetValue(world));
+        BepuSim simulation = world.SimulationForTests;
         Assert.Equal(1, simulation.Statics.Count);
         ref var target = ref simulation.Statics[0];
         Assert.Equal(default(Box).TypeId, target.Shape.Type);

@@ -1,7 +1,6 @@
 using System;
 using System.Linq;
 using System.Numerics;
-using System.Reflection;
 using System.Threading;
 using KhaozEngine.Locomotion;
 using KhaozEngine.Physics;
@@ -290,8 +289,7 @@ public sealed class ConcurrentReadScratchTests
         return world;
     }
 
-    static InstalledSupportGeometryCache Cache(BepuPhysicsWorld world) => (InstalledSupportGeometryCache)typeof(BepuPhysicsWorld)
-        .GetField("_installedSupportGeometry", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(world)!;
+    static InstalledSupportGeometryCache Cache(BepuPhysicsWorld world) => world.InstalledSupportGeometryForTests;
 
     // The owner's published geometry, read through the cache's own lookup, which hits once a capture is published.
     static InstalledSupportGeometry? Published(BepuPhysicsWorld world, InstalledSupportGeometryCache cache, StaticHandle owner)

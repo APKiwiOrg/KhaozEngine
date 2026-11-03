@@ -2,7 +2,6 @@ using System;
 using System.Collections;
 using System.Linq;
 using System.Numerics;
-using System.Reflection;
 using System.Threading;
 using KhaozEngine.Locomotion.Contacts;
 using KhaozEngine.Physics;
@@ -354,20 +353,11 @@ public partial class SupportFootprintTests
         Assert.Equal(0, builds);
     }
 
-    // Inspection stays in the test, without a production API for looking up cached triangle identities.
-    static object MeshForm(InstalledSupportMeshWorldCache cache, StaticHandle owner, int id)
-    {
-        var slots = (IDictionary)cache.GetType().GetField("_statics", BindingFlags.Instance | BindingFlags.NonPublic)!
-            .GetValue(cache)!;
-        object slot = slots[owner.Value]!;
-        var triangles = (IDictionary)slot.GetType().GetProperty("Triangles", BindingFlags.Instance | BindingFlags.NonPublic)!
-            .GetValue(slot)!;
-        return triangles[id]!;
-    }
+    static object MeshForm(InstalledSupportMeshWorldCache cache, StaticHandle owner, int id) =>
+        cache.PublishedFormForTests(owner, id);
 
     static InstalledSupportMeshWorldCache MeshForms(BepuPhysicsWorld world) =>
-        ((InstalledSupportGeometryCache)typeof(BepuPhysicsWorld)
-            .GetField("_installedSupportGeometry", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(world)!)
+        (world.InstalledSupportGeometryForTests)
         .MeshWorldForms;
 
     static void MeshFind(BepuPhysicsWorld world, IPhysicsQueryLease lease, Vector2 axis)

@@ -17,6 +17,9 @@ internal sealed partial class SupportFootprintCurved
 
     readonly SupportCurvedSourceArithmetic _arithmetic;
     readonly SupportTiltedCurved _tilted;
+    /// <summary>Lets TiltedQuery observe retained tilted proof storage without running another query.</summary>
+    internal SupportTiltedCurved TiltedForTests => _tilted;
+
     internal void ResetStatistics() => _tilted.ResetStatistics();
     readonly record struct Point(Number X, Number Y, Number Z)
     {

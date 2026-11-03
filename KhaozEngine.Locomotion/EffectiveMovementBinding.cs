@@ -36,6 +36,10 @@ public sealed partial class EffectiveMovementBinding : IDisposable
             ContactComposition.Ordinary(tuning) : ContactComposition.PublicExplicit(tuning));
     }
 
+    /// <summary>Lets ContactNavigationReuseFixture trace the actual environment provider through a decorating wrapper.</summary>
+    internal void DecorateProviderForTests(Func<IMovementEnvironmentProvider, IMovementEnvironmentProvider> decorate) =>
+        _context!.DecorateProviderForTests(decorate);
+
     public static EffectiveMovementBinding Legacy(in MoveTuning tuning)
     {
         MovementConfigurationValidation.ValidateLegacy(tuning);

@@ -1,7 +1,6 @@
 using System;
 using System.Collections.Generic;
 using System.Numerics;
-using System.Reflection;
 using BepuPhysics.Collidables;
 using KhaozEngine.Physics;
 using KhaozEngine.Physics.Bepu;
@@ -99,10 +98,8 @@ internal static class CertifiedSweepExactOracle
         Vector3 centre, float radius, float halfCylinderLength, Vector3 delta)
     {
         using IPhysicsQueryLease lease = world.AcquireQueryReadLease();
-        var flags = BindingFlags.Instance | BindingFlags.NonPublic;
-        var simulation = (BepuSim)typeof(BepuPhysicsWorld).GetField("_sim", flags)!.GetValue(world)!;
-        var handles = (Dictionary<int, (BepuPhysics.StaticHandle Handle, TypedIndex Shape)>)
-            typeof(BepuPhysicsWorld).GetField("_handles", flags)!.GetValue(world)!;
+        var simulation = world.SimulationForTests;
+        var handles = world.StaticHandlesForTests;
         var entry = handles[handle.Value];
         simulation.Statics.GetDescription(entry.Handle, out var installed);
         Assert.Equal(default(Box).TypeId, entry.Shape.Type);

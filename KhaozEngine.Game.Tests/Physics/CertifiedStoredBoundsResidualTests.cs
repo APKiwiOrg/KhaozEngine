@@ -44,7 +44,7 @@ public sealed class CertifiedStoredBoundsResidualTests
         Assert.True(CapsuleSweepGeometry.TryReadLeaf(Sim(world).Shapes, Static(world, handle).Shape,
             new(Vector3.Zero, rotation), geometry, 0, out var leaf));
         Assert.True(CapsuleSweepPruning.Validate(leaf.Map, rotation));
-        Assert.Empty((HashSet<int>)Field(world, "_unprovedSweepStatics"));
+        Assert.Empty(world.UnprovedSweepStaticsForTests);
 
         const float radius = 281474976710656f;
         Vector3 centre = new(MathF.BitIncrement(radius), 0, 0);

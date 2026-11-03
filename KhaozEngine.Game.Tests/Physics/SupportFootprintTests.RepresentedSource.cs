@@ -1,7 +1,6 @@
 using System;
 using System.Linq;
 using System.Numerics;
-using System.Reflection;
 using BepuPhysics;
 using KhaozEngine.Physics;
 using KhaozEngine.Physics.Bepu;
@@ -76,17 +75,14 @@ public partial class SupportFootprintTests
         polygon.Begin(new(1), 0, 3);
         Assert.Throws<InvalidOperationException>(() => polygon.BeginSource(dual));
         Assert.False(polygon.HasSource);
-        var constructor = typeof(InstalledPoseOperator).GetConstructor(BindingFlags.Instance | BindingFlags.NonPublic,
-            null, [typeof(FeaturePoint), typeof(FeaturePoint), typeof(FeaturePoint), typeof(Vector3),
-                typeof(FeaturePoint), typeof(FeaturePoint), typeof(FeaturePoint)], null)!;
         FeaturePoint x = FeaturePoint.Exact(Vector3.UnitX), y = FeaturePoint.Exact(Vector3.UnitY), z = FeaturePoint.Exact(Vector3.UnitZ);
-        var mismatched = (InstalledPoseOperator)constructor.Invoke([x, y, z, Vector3.Zero, y, x, z]);
+        var mismatched = InstalledPoseOperator.CreateForTests(x, y, z, Vector3.Zero, y, x, z);
         Assert.True(mismatched.IsResolved);
         Assert.Throws<InvalidOperationException>(() => polygon.BeginSource(mismatched));
-        var reversed = (InstalledPoseOperator)constructor.Invoke([FeaturePoint.Exact(-Vector3.UnitX), y, z, Vector3.Zero, x, y, z]);
+        var reversed = InstalledPoseOperator.CreateForTests(FeaturePoint.Exact(-Vector3.UnitX), y, z, Vector3.Zero, x, y, z);
         Assert.False(reversed.IsResolved);
         Assert.Throws<InvalidOperationException>(() => polygon.BeginSource(reversed));
-        var singular = (InstalledPoseOperator)constructor.Invoke([FeaturePoint.Exact(Vector3.Zero), y, z, Vector3.Zero, x, y, z]);
+        var singular = InstalledPoseOperator.CreateForTests(FeaturePoint.Exact(Vector3.Zero), y, z, Vector3.Zero, x, y, z);
         Assert.False(singular.IsResolved);
         Assert.Throws<InvalidOperationException>(() => polygon.BeginSource(singular));
         Assert.True(InstalledPoseOperator.TryCreateSupport(pose, out var map));
@@ -99,9 +95,8 @@ public partial class SupportFootprintTests
         }
         polygon.Finish(FeaturePoint.Cross(map.Edge(local[0], local[1]), map.Edge(local[0], local[2])));
         Assert.Equal(GeometrySign.Positive, polygon.SourcePredicates.NormalComponent(polygon, 1));
-        var constants = (SupportSourcePolynomial[])typeof(SupportFootprintSourcePredicates)
-            .GetField("_map", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(polygon.SourcePredicates)!;
-        Assert.Equal(9, constants.Length);
+        var constants = polygon.SourcePredicates.MapForTests;
+        Assert.Equal(9, constants.Count);
         Assert.All(constants, p => Assert.Equal(0, p.Degree));
         var identity = new SupportPolygonSourceMap(Vector3.UnitX, Vector3.UnitY, Vector3.UnitZ, Vector3.Zero);
         var comparer = SupportSourceMapComparer.Instance;

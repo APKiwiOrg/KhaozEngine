@@ -9,11 +9,15 @@ public sealed class MovementEnvironmentContext
 {
     readonly IPhysicsWorldQueryView _physics;
     readonly IPhysicsWorld _source;
-    readonly IMovementEnvironmentProvider _provider;
+    IMovementEnvironmentProvider _provider;
     readonly MovementQueryIdentity _identity;
     readonly string _worldId;
     readonly ContactTickWorkspace _workspace = new();
     int _inUse;
+
+    /// <summary>Lets ContactNavigationReuseFixture decorate the installed provider while retaining its identity and scope.</summary>
+    internal void DecorateProviderForTests(Func<IMovementEnvironmentProvider, IMovementEnvironmentProvider> decorate) =>
+        _provider = decorate(_provider);
 
     public MovementEnvironmentContext(IPhysicsWorldQueryView physics, IMovementEnvironmentProvider provider,
         MovementQueryIdentity identity)

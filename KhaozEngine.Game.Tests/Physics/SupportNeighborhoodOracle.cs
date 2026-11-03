@@ -1,7 +1,6 @@
 using System;
 using System.Collections.Generic;
 using System.Numerics;
-using System.Reflection;
 using KhaozEngine.Physics;
 using KhaozEngine.Physics.Bepu;
 using Xunit;
@@ -138,9 +137,7 @@ internal static class SupportNeighborhoodOracle
     internal static List<OracleFace> InstalledHull(BepuPhysicsWorld world, StaticHandle owner,
         Func<Pose, Pose, Vector3, OracleVector>? historical = null)
     {
-        FieldInfo? field = typeof(BepuPhysicsWorld).GetField("_sim", BindingFlags.Instance | BindingFlags.NonPublic);
-        Assert.NotNull(field);
-        BepuSim simulation = Assert.IsType<BepuSim>(field.GetValue(world));
+        BepuSim simulation = world.SimulationForTests;
         Assert.Equal(1, simulation.Statics.Count);
         ref var body = ref simulation.Statics[0];
         Assert.Equal(default(BepuCompound).TypeId, body.Shape.Type);
@@ -271,13 +268,8 @@ internal static class SupportNeighborhoodOracle
 
     static BepuSim Installed(BepuPhysicsWorld world, StaticHandle owner, out BepuStaticDescription description)
     {
-        FieldInfo? simulationField = typeof(BepuPhysicsWorld).GetField("_sim", BindingFlags.Instance | BindingFlags.NonPublic);
-        FieldInfo? handlesField = typeof(BepuPhysicsWorld).GetField("_handles", BindingFlags.Instance | BindingFlags.NonPublic);
-        Assert.NotNull(simulationField);
-        Assert.NotNull(handlesField);
-        BepuSim simulation = Assert.IsType<BepuSim>(simulationField.GetValue(world));
-        var handles = Assert.IsType<Dictionary<int, (BepuStaticHandle Handle, BepuTypedIndex Shape)>>(
-            handlesField.GetValue(world));
+        BepuSim simulation = world.SimulationForTests;
+        var handles = world.StaticHandlesForTests;
         simulation.Statics.GetDescription(handles[owner.Value].Handle, out description);
         return simulation;
     }

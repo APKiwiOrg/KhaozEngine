@@ -48,7 +48,7 @@ public sealed class CertifiedSweepLifetimeTests
         Assert.Equal(translated, Read(world, Start - world.Origin, Delta));
 
         DynamicBodyHandle body = world.AddDynamic(Box, new Pose(new(40, 0, 0), Cyclic), new DynamicBodyDescription(1));
-        var dynamics = (Dictionary<int, (BepuPhysics.BodyHandle Handle, BepuPhysics.Collidables.TypedIndex Shape)>)Field(world, "_dynamics");
+        var dynamics = world.DynamicHandlesForTests;
         Mutate(world, simulation =>
         {
             var reference = simulation.Bodies[dynamics[body.Value].Handle];
@@ -80,7 +80,7 @@ public sealed class CertifiedSweepLifetimeTests
     {
         using var world = new BepuPhysicsWorld(Vector3.Zero);
         StaticHandle original = world.AddStatic(Box, new Pose(Vector3.Zero, Cyclic));
-        var captures = (Dictionary<int, InstalledSweepGeometry?>)Field(world, "_installedSweepStatics");
+        var captures = world.InstalledSweepStaticsForTests;
         InstalledSweepGeometry old = captures[original.Value]!;
         world.RemoveStatic(original);
         StaticHandle replacement = world.AddStatic(Box, new Pose(new(1, 0, 0), Cyclic));
@@ -90,7 +90,7 @@ public sealed class CertifiedSweepLifetimeTests
         Refused(Read(world, Start, Delta));
         captures[replacement.Value] = current;
         HitContains(Read(world, Start, Delta), 2.625, 2.625);
-        ((IDisposable)Call(world, "EnterMutation", false, true)!).Dispose();
+        world.AdvanceUnhandledGenerationForTests();
         Refused(Read(world, Start, Delta));
         world.AddStatic(Box, new Pose(new(20, 0, 0), Cyclic));
         Refused(Read(world, Start, Delta));

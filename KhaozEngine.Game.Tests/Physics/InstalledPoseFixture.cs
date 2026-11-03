@@ -1,7 +1,6 @@
 using System;
 using System.Collections.Generic;
 using System.Numerics;
-using System.Reflection;
 using BepuPhysics.Collidables;
 using BepuUtilities;
 using KhaozEngine.Physics;
@@ -17,7 +16,7 @@ using CompoundChild = KhaozEngine.Physics.CompoundChild;
 namespace KhaozEngine.Tests.Physics;
 
 // Raw source/API premises stay separate from the independent oracle. The scene below uses
-// authorized owned-test reflection only to read _sim, then checks public registry data under its lease.
+// the internal simulation seam only to read installed state, then checks public registry data under its lease.
 internal static class InstalledPoseSourceChecks
 {
     internal static void Coefficients(Quaternion q)
@@ -130,12 +129,10 @@ internal sealed class InstalledPoseScene : IDisposable
 
     void AssertInstalledIdentity(PhysicsShape frozen, Pose expectedPose)
     {
-        // Only the owned registry field is reflected. All raw pose/shape reads below use public APIs.
+        // The owned simulation seam exposes the registry. Raw pose/shape reads below use public Bepu APIs.
         // This method checks subject identity, never an expected feature witness or classifier result.
         Lease.AssertCurrent();
-        FieldInfo? field = typeof(BepuPhysicsWorld).GetField("_sim", BindingFlags.Instance | BindingFlags.NonPublic);
-        Assert.NotNull(field);
-        BepuSim simulation = Assert.IsType<BepuSim>(field.GetValue(World));
+        BepuSim simulation = World.SimulationForTests;
         Assert.Equal(2, simulation.Statics.Count);
         Pose floorPose = Pose.At(new Vector3(0, -16, 0));
         var floorRaw = new RigidPose(floorPose.Position, floorPose.Orientation);

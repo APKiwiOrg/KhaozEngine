@@ -30,7 +30,12 @@ can absorb another contributor's staged files. Never use the shared stash for wo
   the type thrown before, as `WaterOpticsSurfaceException` derives from `ArgumentException`, so existing
   catches keep working. A new refusal in a family adds a reason member. The message stays developer prose
   and is never a contract. A plain parameter check whose `ParamName` and `ActualValue` already name the
-  problem stays a BCL exception.
+  problem stays a BCL exception. A rule that every implementation of a shared contract enforces, such as an
+  `IGpu*` command or resource rule, is one family in the contract's package, and every backend throws the
+  same reason for the same input. A collection identifier is a read-only snapshot the exception copies when
+  it is set, so neither the caller's source nor a cast of the exposed list can change it. A change to a throw
+  site's type converts every test that asserts the old exact type in the same change, GPU facts included,
+  because they skip in a local run and fail only on the GPU legs.
 - A test that needs private state uses an internal `<Thing>ForTests` seam beside the type, never reflection.
   A seam returns the narrowest thing the test reads: a value, a count, an identity predicate or token, a
   snapshot copy or a genuine read-only view. It never returns a live mutable collection behind an

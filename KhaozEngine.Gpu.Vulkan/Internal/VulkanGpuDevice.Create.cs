@@ -181,11 +181,10 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
                 chosen = -1;
                 for (int i = 0; i < handles.Length; i++)
                     if (candidates[i].MeetsRequirements && AdapterKey(vk, handles[i]) == pinned) { chosen = i; break; }
-                if (chosen < 0)
-                    throw new InvalidOperationException("The pinned Vulkan UUID is unavailable or ineligible.");
+                VulkanBackendCreationChecks.RequirePinnedAdapterForTests(chosen, pinned);
             }
             if (warning != null) log.Warn(warning);
-            if (chosen == VulkanPhysicalDeviceSelection.NoDevice) throw NoEligibleDevice(candidates);
+            VulkanBackendCreationChecks.RequireEligibleDeviceForTests(chosen != VulkanPhysicalDeviceSelection.NoDevice, candidates);
 
             log.Info(VulkanPhysicalDeviceSelection.Describe(chosen, request, candidates));
 
@@ -432,13 +431,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
             if (counted != Result.Success && counted != Result.Incomplete)
                 VulkanResultCodes.Require(counted, "vkEnumeratePhysicalDevices");
 
-            if (count == 0)
-            {
-                throw new InvalidOperationException(
-                    "The native Vulkan backend found no physical device, on a machine whose support probe "
-                    + "answered yes. That is a loader with no installed ICD behind it, and it means the machine "
-                    + "changed between the probe and this call.");
-            }
+            VulkanBackendCreationChecks.RequirePhysicalDevicesForTests(count);
 
             var devices = new PhysicalDevice[count];
             fixed (PhysicalDevice* handles = devices)
@@ -472,17 +465,5 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
             messenger.NameObject(device, ObjectType.Semaphore, timeline.Handle, "KhaozEngine.DeviceTimeline");
         }
 
-        static InvalidOperationException NoEligibleDevice(IReadOnlyList<VulkanPhysicalDeviceInfo> candidates)
-        {
-            var reasons = new List<string>(candidates.Count);
-            foreach (VulkanPhysicalDeviceInfo candidate in candidates)
-                reasons.Add(candidate.Name + ": " + (candidate.RejectionReason ?? "no reason recorded"));
-
-            return new InvalidOperationException(
-                "No physical device on this machine can run the native Vulkan backend, on a machine whose support "
-                + "probe answered yes. Every device and its own reason: " + string.Join(". ", reasons)
-                + ". The probe and this call ask the same requirement method, so a disagreement means the machine "
-                + "changed between them.");
-        }
     }
 }

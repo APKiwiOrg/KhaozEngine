@@ -13,4 +13,10 @@ public enum VulkanBackendCreationRefusal
     WindowKindUnsupported,
     /// <summary>Refuses native instance creation when the Vulkan loader cannot be resolved.</summary>
     LoaderUnavailable,
+    /// <summary>Refuses a pinned Vulkan adapter that is absent or ineligible.</summary>
+    PinnedAdapterUnavailable,
+    /// <summary>Refuses a native Vulkan loader with no physical devices after the support probe.</summary>
+    PhysicalDevicesMissing,
+    /// <summary>Refuses native Vulkan creation when every candidate is ineligible.</summary>
+    EligibleDeviceMissing,
 }

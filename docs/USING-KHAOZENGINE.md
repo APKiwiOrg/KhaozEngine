@@ -28131,8 +28131,9 @@ On Metal and Vulkan, a nonzero offset on a set with no authored dynamic element 
 `GpuDynamicBindingException` with `GpuDynamicBindingRefusal.DynamicElementMissing` and the backend,
 set number and offset. These families preserve the original BCL exception bases and parameter data.
 
-Post-probe D3D11 creation also identifies a missing HWND, versioned context or native creation output.
-See the backend refusal table for each reason and identifier.
-
-Post-probe Metal creation also identifies a missing eligible device or native command queue.
-Resource-set and vertex-stream flushes share `MetalBindRecordsRefusal.EncoderMissing` for a nil encoder.
+Post-probe native creation checks also carry structured reasons. D3D11 identifies a missing HWND,
+versioned context or native creation output. Metal identifies a missing eligible device or command queue.
+Vulkan identifies an unavailable pinned adapter, an empty enumeration or all-ineligible candidates,
+with independent candidate counts and copied name/rejection lists. The backend refusal tables list these
+members and their data. A nil encoder uses `MetalBindRecordsRefusal.EncoderMissing` for both resource-set
+and vertex-stream flushes.

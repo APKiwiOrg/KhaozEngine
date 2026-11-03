@@ -297,6 +297,7 @@ public class GpuPublicApiTests
             "KhaozEngine.Gpu.Vulkan.KhaozEngineVulkan",
             "KhaozEngine.Gpu.Vulkan.VulkanBackendCreationArgumentException",
             "KhaozEngine.Gpu.Vulkan.VulkanBackendCreationRefusal",
+            "KhaozEngine.Gpu.Vulkan.VulkanBackendCreationStateException",
             "KhaozEngine.Gpu.Vulkan.VulkanBackendCreationUnsupportedException",
             "KhaozEngine.Gpu.Vulkan.VulkanBufferBindingException",
             "KhaozEngine.Gpu.Vulkan.VulkanBufferBindingRefusal",

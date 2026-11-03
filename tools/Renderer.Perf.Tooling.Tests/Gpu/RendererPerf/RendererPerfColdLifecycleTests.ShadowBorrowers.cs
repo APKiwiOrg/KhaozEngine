@@ -45,7 +45,7 @@ public sealed partial class RendererPerfColdLifecycleTests
             work = new RendererPerfSceneWorkload(device, observer, CleanupIdentity(recipe));
             Scene3D scene = work.Scene;
             var texture = scene.LoadTexture([255, 255, 255, 255], 1, 1, TextureMipPolicy.None);
-            albedo = (FakeTexture)scene.TexturesForTests.Last()!;
+            albedo = rig.Production.CreatedTextures.Single(t => scene.IsTextureForTests(texture, t));
             scene.LoadMesh(MeshPrimitives.Box(1), texture);
             scene.LoadSkinnedMesh(SkinnedMeshBuilder.BuildTube(.5f, 1, 4, 4, 2, Axis.Z), texture);
             var layers = Enumerable.Range(0, SplatMaterialConfig.LayerCount)
@@ -53,7 +53,7 @@ public sealed partial class RendererPerfColdLifecycleTests
             scene.LoadSplatMaterial(1, 1, layers);
             scene.LoadTileGroundMaterial(1, 1, [new TileGroundLayerImage { AlbedoRgba = [255, 255, 255, 255] }]);
             scene.LoadTileGroundMaterial(1, 1, [new TileGroundLayerImage { AlbedoRgba = [255, 255, 255, 255] }]);
-            var before = ShadowReceivers(scene);
+            var before = ShadowReceivers(scene, rig.Production);
             Assert.Equal(names.Length, before.Count);
             var replacement = Assert.IsType<Scene3D.PointShadowReplacement>(scene.BuildPointShadowReplacement(16, 2));
             replacement.TransientAtlas = Assert.IsType<PointShadowAtlas>(PointShadowAtlas.TryCreate(device, 16, 1));
@@ -64,7 +64,7 @@ public sealed partial class RendererPerfColdLifecycleTests
             scene.CommitPointShadowReplacement(replacement);
             Assert.False(((FakeTexture)baseAtlas.Texture).Disposed);
             Assert.False(((FakeTexture)transientAtlas.Texture).Disposed);
-            receivers = ShadowReceivers(scene).Cast<FakeResourceSet>().ToArray();
+            receivers = ShadowReceivers(scene, rig.Production).Cast<FakeResourceSet>().ToArray();
             for (int i = 0; i < receivers.Length; i++)
             {
                 Assert.NotSame(before[i], receivers[i]); Assert.False(((FakeResourceSet)before[i]).Disposed);
@@ -80,10 +80,9 @@ public sealed partial class RendererPerfColdLifecycleTests
             }
             Assert.Same(baseAtlas.Texture, scene.BoundPointShadowTexture);
             Assert.Same(transientAtlas.Texture, scene.BoundPointShadowTransientTexture);
-            var model = scene.ModelRendererForTests;
-            modelUniform = (SubmissionTestBuffer)model.SharedFrameUniforms;
-            modelDefault = (FakeTexture)model.WhiteTextureForTests;
-            modelSet = (FakeResourceSet)model.DefaultSetForTests;
+            modelUniform = (SubmissionTestBuffer)scene.ModelShadowBindingsForTests.FrameUniforms;
+            modelDefault = (FakeTexture)scene.ModelDefaultResourcesForTests.White;
+            modelSet = (FakeResourceSet)scene.ModelDefaultResourcesForTests.Set;
             Assert.Contains(receivers[0].Resources, r => ReferenceEquals(r, modelUniform));
             Assert.Contains(modelSet.Resources, r => ReferenceEquals(r, baseAtlas.Texture));
             Assert.Contains(modelSet.Resources, r => ReferenceEquals(r, transientAtlas.Texture));
@@ -122,7 +121,7 @@ public sealed partial class RendererPerfColdLifecycleTests
         }
         Assert.True(((FakeTexture)receivers[5].Resources[1]).Disposed);
         Assert.True(((FakeTexture)work!._texture).Disposed);
-        Assert.Equal(refuse.Count(r => r), ShadowReceivers(work!.Scene).Cast<FakeResourceSet>().Count(r => !r.Disposed));
+        Assert.Equal(refuse.Count(r => r), ShadowReceivers(work!.Scene, rig.Production).Cast<FakeResourceSet>().Count(r => !r.Disposed));
         Assert.All(receivers.Where(r => !r.Disposed).SelectMany(r => r.Resources).OfType<FakeTexture>(), t => Assert.False(t.Disposed));
         Assert.True(receivers[5].Disposed); Assert.Contains("laterTile", releaseOrder); Assert.Equal("target", releaseOrder.Last());
         Assert.Equal(retained ? 0 : 1, baseReleases); Assert.Equal(retained ? 0 : 1, transientReleases);
@@ -144,10 +143,11 @@ public sealed partial class RendererPerfColdLifecycleTests
             failing, retained, baseReleases, transientReleases, modelUniform.DisposeCalls, receivers[5].Disposed);
     }
 
-    static List<IGpuResourceSet> ShadowReceivers(Scene3D scene)
+    static List<IGpuResourceSet> ShadowReceivers(Scene3D scene, RendererPerfConstructionFixture factory)
     {
         var result = new List<IGpuResourceSet>();
-        result.AddRange(scene.LiveMaterialSetsForTests);
+        foreach (object identity in scene.LiveMaterialSetIdentitiesForTests)
+            result.Add(Assert.Single(factory.CreatedResourceSets, set => Scene3D.MaterialSetMatchesIdentityForTests(set, identity)));
         return result;
     }
 }

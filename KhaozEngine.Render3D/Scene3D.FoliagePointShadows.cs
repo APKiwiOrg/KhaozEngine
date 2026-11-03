@@ -41,12 +41,13 @@ public sealed partial class Scene3D
     /// <summary>Live proxy streams. For the lifetime tests.</summary>
     internal int FoliagePointShadowStreamCount => _foliagePointStreams.Count;
 
-    /// <summary>FoliagePointIndexedFrameTests checks lazy upload and reuse of one batch's proxy buffer.</summary>
-    internal IGpuBuffer? FoliagePointBufferForTests(FoliageBatch batch) => _foliagePointStreams[batch].Buffer;
+    /// <summary>FoliagePointIndexedFrameTests checks lazy upload and buffer reuse through an opaque identity.</summary>
+    internal object? FoliagePointBufferIdentityForTests(FoliageBatch batch) =>
+        _foliagePointStreams[batch].Buffer is { } buffer ? TestObservationIdentity.For(buffer) : null;
 
-    /// <summary>FoliagePointIndexedFrameTests observes run boundaries and buffer identity without mutable storage.</summary>
-    internal IReadOnlyList<(IGpuBuffer Buffer, FoliagePointShadowRun Run)> FoliagePointFaceRunsForTests =>
-        _foliagePointFaceRuns.ConvertAll(entry => (entry.Buffer, entry.Run)).AsReadOnly();
+    /// <summary>FoliagePointIndexedFrameTests observes run boundaries and opaque buffer identities without borrowing buffers.</summary>
+    internal IReadOnlyList<(object BufferIdentity, FoliagePointShadowRun Run)> FoliagePointFaceRunsForTests =>
+        _foliagePointFaceRuns.ConvertAll(entry => (TestObservationIdentity.For(entry.Buffer), entry.Run)).AsReadOnly();
 
     /// <summary>FoliagePointIndexedFrameTests verifies an empty frame removes membership and performs no touch tests.</summary>
     internal (IReadOnlyList<FoliagePointCasterRef> Hits, int TouchTests) QueryFoliagePointIndexForTests(

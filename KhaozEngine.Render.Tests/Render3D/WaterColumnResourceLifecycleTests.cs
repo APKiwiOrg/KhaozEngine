@@ -21,14 +21,14 @@ public sealed class WaterColumnResourceLifecycleTests
         Assert.Equal(0, scene.RetiredResourceCount);
         // The construction inventory before M5 (0af218d5b), without standalone column fallbacks.
         Assert.Equal((19, 32, 4), (factory.Textures.Count, factory.Buffers.Count, factory.SamplerCreateCount));
-        WaterRenderer water = scene.WaterRendererForTests;
-        ModelRenderer model = scene.ModelRendererForTests;
-        Assert.Same(model.ShadowMap.ShadowTexture, water.ColumnShadows.ShadowAtlas);
-        Assert.Same(model.ShadowMap.ShadowSampler, water.ColumnShadows.ShadowSampler);
-        Assert.Same(model.SharedFrameUniforms, water.ColumnShadows.FrameUniforms);
-        water.Dispose();
-        Assert.False(Assert.IsType<FakeTexture>(model.ShadowMap.ShadowTexture).Disposed);
-        Assert.False(Assert.IsType<FakeBuffer>(model.SharedFrameUniforms).Disposed);
+        var water = scene.WaterShadowBindingsForTests;
+        var model = scene.ModelShadowBindingsForTests;
+        Assert.Same(model.Atlas, water.Atlas);
+        Assert.Same(model.Sampler, water.Sampler);
+        Assert.Same(model.FrameUniforms, water.FrameUniforms);
+        scene.DisposeWaterForTests();
+        Assert.False(Assert.IsType<FakeTexture>(model.Atlas).Disposed);
+        Assert.False(Assert.IsType<FakeBuffer>(model.FrameUniforms).Disposed);
     }
 
     [Theory]

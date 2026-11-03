@@ -39,10 +39,10 @@ public sealed partial class RendererPerfColdLifecycleTests
         {
             work = new RendererPerfSceneWorkload(device, observer, identity);
             var ui = work._ui!;
-            uniform = (SubmissionTestBuffer)ui.ViewProjectionBufferForTests;
+            uniform = rig.Production.CreatedBuffers.Single(ui.IsViewProjectionBufferForTests);
             uniform.OnDispose = () => { observed.Add("ui.uniform"); throw uiError; };
-            work.Scene.LoadTexture(new byte[4], 1, 1);
-            sceneTexture = work.Scene.TexturesForTests.Last() as FakeTexture;
+            var loadedTexture = work.Scene.LoadTexture(new byte[4], 1, 1);
+            sceneTexture = rig.Production.CreatedTextures.Single(t => work.Scene.IsTextureForTests(loadedTexture, t));
             sceneTexture!.OnDispose = () => { observed.Add("scene.texture"); throw sceneError; };
             target = (FakeFramebuffer)work.Target;
             target.OnDispose = () => { observed.Add("target"); throw targetError; };
@@ -148,7 +148,7 @@ public sealed partial class RendererPerfColdLifecycleTests
     {
         using var device = new RendererPerfConstructionFixture();
         var ui = new SpriteBatch(device, new GpuOutputDescription(null, GpuPixelFormat.R8G8B8A8UNorm));
-        var buffer = (SubmissionTestBuffer)ui.ViewProjectionBufferForTests;
+        var buffer = device.CreatedBuffers.Single(ui.IsViewProjectionBufferForTests);
         var drain = new InvalidOperationException("prerequisite"); var child = new InvalidOperationException("UI child");
         buffer.OnDispose = () => throw child;
         device.Trace = stage => { if (failDrain && stage == "drain") throw drain; };

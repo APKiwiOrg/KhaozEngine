@@ -14,7 +14,8 @@ internal sealed partial class TargetOutlineRenderer
     internal static (int PayloadBytes, int SlotBytes, int UboBytes) DrawLayoutForTests =>
         (DrawPayloadBytes, DrawSlotBytes, Marshal.SizeOf<DrawUbo>());
 
-    /// <summary>InteriorCutHighlightGpuTests reads full and visible mask coverage for its geometric oracle.</summary>
+    /// <summary>InteriorCutHighlightGpuTests reads full and visible mask coverage for its geometric oracle.
+    /// Borrowed for observation and GPU readback. Never dispose or mutate it.</summary>
     internal IGpuTexture? CoverageForTests(bool visible) => visible ? _visibleCoverage : _fullCoverage;
 
     readonly IGpuResourceLayout _interiorCutLayout;

@@ -24,10 +24,8 @@ public sealed class WaterColumnShadowBindingTests
             MaxColorAttachments = 8,
         });
         internal readonly Scene3D Scene;
-        internal readonly RenderResources Targets;
         internal readonly RecordingGpuCommandList Commands = new(new NullGpuCommandList()) { CapturePayloads = true };
         internal readonly WaterOpticsBinding Optics;
-        internal readonly WaterRenderer Water;
         internal FakeGpuResourceFactory Factory => (FakeGpuResourceFactory)Device.Factory;
 
         internal Harness()
@@ -38,8 +36,6 @@ public sealed class WaterColumnShadowBindingTests
                 ShadowMapResolution = 256,
                 ShadowCascadeCount = 2,
             });
-            Targets = Scene.RenderResourcesForTests;
-            Water = Scene.WaterRendererForTests;
             Scene.Post.Water.SwellAmplitude = 0f;
             Scene.Post.Water.WaterColumnLight = true;
             var field = Scene.LoadWaterOpticsField(new WaterOpticsField(2, 2, [4f, 4f, 4f, 4f]));
@@ -57,8 +53,7 @@ public sealed class WaterColumnShadowBindingTests
         internal FakeResourceSet[] WaterSets => Factory.ResourceSets.Where(s => !s.Disposed
             && s.Resources.Length >= 12 && s.Resources[6] is GpuBufferRange).ToArray();
 
-        internal void VerifyPrepared() => Water.VerifyOpticsFrame(Targets, Scene.RelativeWaterPlanes(),
-            Scene.Post.Water, Scene.EffectTimeSeconds);
+        internal void VerifyPrepared() => Scene.VerifyWaterOpticsForTests();
 
         public void Dispose()
         {
@@ -76,8 +71,8 @@ public sealed class WaterColumnShadowBindingTests
         FakeResourceSet[] sets = h.WaterSets;
         Assert.NotEmpty(sets);
         Assert.All(sets, set => Assert.Equal(17, set.Resources.Length));
-        var model = h.Scene.ModelRendererForTests;
-        IGpuBuffer frame = model.SharedFrameUniforms;
+        var model = h.Scene.ModelShadowBindingsForTests;
+        IGpuBuffer frame = model.FrameUniforms;
         Assert.All(sets, set =>
         {
             GpuResourceLayoutElement[] layout = ((FakeResourceLayout)set.Layout!).Description.Elements;
@@ -85,15 +80,15 @@ public sealed class WaterColumnShadowBindingTests
             Assert.Equal("ColumnShadowSampler", layout[13].Name);
             Assert.Equal("WaterLitFrame", layout[14].Name);
             Assert.Same(frame, set.Resources[14]);
-            Assert.Same(model.ShadowMap.ShadowTexture, set.Resources[12]);
-            Assert.Same(model.ShadowMap.ShadowSampler, set.Resources[13]);
+            Assert.Same(model.Atlas, set.Resources[12]);
+            Assert.Same(model.Sampler, set.Resources[13]);
             Assert.Equal(1280u, ((GpuBufferRange)set.Resources[6]).Size);
         });
         Matrix4x4[] matrices = [Matrix4x4.CreateScale(2f), Matrix4x4.CreateScale(3f),
             Matrix4x4.CreateScale(4f), Matrix4x4.CreateScale(5f)];
-        model.SetShadowUniforms(matrices, 4, 1f / 512f, 0.001f, 0.002f, 0.75f, 80f, 0.05f, 0.1f,
+        h.Scene.SetModelShadowUniformsForTests(matrices, 4, 1f / 512f, 0.001f, 0.002f, 0.75f, 80f, 0.05f, 0.1f,
             [0.01f, 0.02f, 0.03f, 0.04f]);
-        model.SetFrameUniforms(h.Commands, Matrix4x4.Identity, Vector3.Zero, h.Scene.Post, []);
+        h.Scene.UploadModelFrameForTests(h.Commands, Matrix4x4.Identity, Vector3.Zero, []);
         var upload = Assert.Single(h.Commands.Uploads, u => ReferenceEquals(frame, u.Buffer));
         Assert.Equal(MemoryMarshal.AsBytes(matrices.AsSpan()).ToArray(), upload.Data!.AsSpan(688, 256).ToArray());
         Assert.Equal(new Vector4(4f, 0.75f, 0.001f, 0.002f), MemoryMarshal.Read<Vector4>(upload.Data.AsSpan(944)));
@@ -103,9 +98,8 @@ public sealed class WaterColumnShadowBindingTests
         h.Commands.Clear();
         WaterPlane[] queue = Enumerable.Range(0, planes).Select(i =>
             new WaterPlane(0f, 0f, 0f, 5f, optics: i % 2 == 0 ? h.Optics : default)).ToArray();
-        h.Water.Draw(h.Commands, h.Targets, queue, WaterTestFrames.TopDown, WaterTestFrames.TopDown,
-            -Vector3.UnitY, KhaozEngine.Primitives.Color.White, Vector3.UnitY * 100f,
-            h.Scene.Post.Water, h.Scene.Post.Sky, 0f);
+        h.Scene.DrawPreparedWaterForTests(h.Commands, queue, WaterTestFrames.TopDown, WaterTestFrames.TopDown,
+            -Vector3.UnitY, KhaozEngine.Primitives.Color.White, Vector3.UnitY * 100f);
         Assert.DoesNotContain(h.Commands.Uploads, u => ReferenceEquals(frame, u.Buffer));
         Assert.Equal(688u, ModelRenderer.ShadowTailOffset);
         Assert.Equal(256, Marshal.OffsetOf<ModelRenderer.ShadowUbo>(nameof(ModelRenderer.ShadowUbo.Params)).ToInt32());
@@ -212,13 +206,12 @@ public sealed class WaterColumnShadowBindingTests
         using var replacementAtlas = new FakeTexture(1, 1, 1, 1, GpuPixelFormat.R32Float);
         using var replacementSampler = new FakeSampler();
         using var replacementFrame = new FakeBuffer(1024);
-        WaterColumnBindings bindings = h.Water.ColumnShadows;
-        bindings.SetShadows(changed == "atlas" ? replacementAtlas : bindings.ShadowAtlas,
-            changed == "sampler" ? replacementSampler : bindings.ShadowSampler,
+        var bindings = h.Scene.WaterShadowBindingsForTests;
+        h.Scene.SetWaterShadowBindingsForTests(changed == "atlas" ? replacementAtlas : bindings.Atlas,
+            changed == "sampler" ? replacementSampler : bindings.Sampler,
             changed == "frame" ? replacementFrame : bindings.FrameUniforms);
         Assert.Throws<InvalidOperationException>(h.VerifyPrepared);
-        var frame = new FramePrepare(h.Scene.Post.Water, h.Scene.RelativeWaterPlanes(), h.Scene.EffectTimeSeconds);
-        h.Water.PrepareOpticsFrame(h.Targets, frame);
+        h.Scene.PrepareWaterOpticsForTests();
         h.VerifyPrepared();
         FakeResourceSet[] replacements = h.WaterSets.Except(oldSets).ToArray();
         Assert.Equal(2, replacements.Length);

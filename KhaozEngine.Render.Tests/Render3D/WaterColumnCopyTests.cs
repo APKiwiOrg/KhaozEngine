@@ -21,7 +21,7 @@ public sealed class WaterColumnCopyTests
         internal readonly RecordingGpuCommandList Commands = new(new NullGpuCommandList());
         internal readonly Timeline Events;
         internal FakeGpuResourceFactory Factory => (FakeGpuResourceFactory)Device.Factory;
-        internal RenderResources Targets => Scene.RenderResourcesForTests;
+        internal (int Width, int Height, int SampleCount, IGpuTexture ColorTex, IGpuTexture? MsColor) Targets => Scene.ColorTargetsForTests;
         internal IGpuTexture Source => Scene.WaterColumnColorTextureForTests!;
 
         internal Host()

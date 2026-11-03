@@ -64,7 +64,8 @@ namespace KhaozEngine.Render3D
         TemporalResolveRenderer? _temporalResolve;
         TemporalPostTargets? _temporalPost;
 
-        /// <summary>The resolve's renderer, null until the first frame that resolves. Internal, for the tests.</summary>
+        /// <summary>The resolve's renderer, null until the first frame that resolves. Internal, for the tests.
+        /// Borrowed for observation and identity checks. Never dispose or mutate it.</summary>
         internal TemporalResolveRenderer? TemporalResolveRendererForTests => _temporalResolve;
 
         /// <summary>The display post targets, null until the first frame that resolves and released, but kept, by a frame
@@ -72,7 +73,7 @@ namespace KhaozEngine.Render3D
         internal TemporalPostTargets? TemporalPostTargetsForTests => _temporalPost;
 
         /// <summary>TemporalTestResolve installs rewritten shader sources before the first resolve for paired controls.</summary>
-        internal TemporalResolveRenderer InstallTemporalResolveForTests(Func<string, string> rewrite) =>
+        internal void InstallTemporalResolveForTests(Func<string, string> rewrite) =>
             _temporalResolve = new TemporalResolveRenderer(_gd, rewrite);
 
         /// <summary>RendererPerfColdLifecycleTests prepares owned post targets before injecting fake disposal failures.</summary>

@@ -143,8 +143,8 @@ public class SpriteBatchMaskedBatchTests
         var alphaSet = Assert.IsType<FakeResourceSet>(rig.Draws[0].Set0);
         var additiveSet = Assert.IsType<FakeResourceSet>(rig.Draws[1].Set0);
         Assert.Same(alphaSet, additiveSet);
-        Assert.Same(rig.MaskedOwner!.PipelineFor(BlendMode.Alpha), rig.Draws[0].Pipeline);
-        Assert.Same(rig.MaskedOwner.PipelineFor(BlendMode.Additive), rig.Draws[1].Pipeline);
+        Assert.True(rig.Batch.IsMaskedPipelineForTests(BlendMode.Alpha, rig.Draws[0].Pipeline));
+        Assert.True(rig.Batch.IsMaskedPipelineForTests(BlendMode.Additive, rig.Draws[1].Pipeline));
         Assert.Equal(1, rig.Batch.CachedMaskedSetCount);
     }
 
@@ -208,7 +208,7 @@ public class SpriteBatchMaskedBatchTests
         var afterScissorBlend = rig.Batch.BlendMode;
         Assert.Same(pointSampler, afterScissorSourceSampler);
         Assert.Equal(BlendMode.Additive, afterScissorBlend);
-        Assert.All(rig.Draws, draw => Assert.Same(rig.MaskedOwner!.PipelineFor(BlendMode.Additive), draw.Pipeline));
+        Assert.All(rig.Draws, draw => Assert.True(rig.Batch.IsMaskedPipelineForTests(BlendMode.Additive, draw.Pipeline)));
         Assert.Equal(0, rig.Batch.ScissorDepth);
         Assert.Equal(2, rig.Commands.UniformUploads.Count);
         var vpUpload = rig.Commands.UniformUploads[1];
@@ -313,7 +313,7 @@ public class SpriteBatchMaskedBatchTests
         Assert.Equal(0u, draw.DynamicOffset);
         Assert.Equal(new IGpuBindableResource[] { source.Handle, rig.Device.PointSampler,
             mask.Handle, rig.Device.LinearSampler }, Assert.IsType<FakeResourceSet>(draw.Set0).Resources);
-        Assert.Same(rig.MaskedOwner!.PipelineFor(BlendMode.Alpha), draw.Pipeline);
+        Assert.True(rig.Batch.IsMaskedPipelineForTests(BlendMode.Alpha, draw.Pipeline));
         Assert.Equal(2, rig.Batch.FrameStats.Quads);
         Assert.Equal(1, rig.Batch.FrameStats.Flushes);
         Assert.Equal(768, rig.Batch.FrameStats.SpriteUploadBytes);
@@ -389,8 +389,8 @@ public class SpriteBatchMaskedBatchTests
         Assert.Equal(new[] { maskA.Handle, maskB.Handle, maskA.Handle, maskA.Handle },
             rig.Draws.Select(draw => Assert.IsType<FakeResourceSet>(draw.Set0).Resources[2]));
         Assert.Same(rig.Draws[0].Set0, rig.Draws[2].Set0);
-        Assert.Same(rig.MaskedOwner!.PipelineFor(BlendMode.Alpha), rig.Draws[0].Pipeline);
-        Assert.Same(rig.MaskedOwner.PipelineFor(BlendMode.Additive), rig.Draws[2].Pipeline);
+        Assert.True(rig.Batch.IsMaskedPipelineForTests(BlendMode.Alpha, rig.Draws[0].Pipeline));
+        Assert.True(rig.Batch.IsMaskedPipelineForTests(BlendMode.Additive, rig.Draws[2].Pipeline));
         Assert.Same(rig.Device.PointSampler, Assert.IsType<FakeResourceSet>(rig.Draws[3].Set0).Resources[3]);
         Assert.Equal(1, rig.Batch.FrameStats.TextureSwitches);
         Assert.Equal(1920, rig.Batch.FrameStats.SpriteUploadBytes);
@@ -433,7 +433,7 @@ public class SpriteBatchMaskedBatchTests
     public void CanonicalKeysIncludeBothTexturesBothSamplersAndBlend()
     {
         using var rig = Create();
-        var owner = rig.EnsureMaskedResources();
+        using var owner = rig.CreateMaskedResources();
         using var source = Texture();
         using var mask = Texture();
         using var second = Texture();
@@ -471,7 +471,7 @@ public class SpriteBatchMaskedBatchTests
     public void BlendVariantsShareOneBindingSet()
     {
         using var rig = Create();
-        var owner = rig.EnsureMaskedResources();
+        using var owner = rig.CreateMaskedResources();
         using var source = Texture();
         using var mask = Texture();
         var sampler = rig.Device.LinearSampler;
@@ -480,7 +480,7 @@ public class SpriteBatchMaskedBatchTests
 
         Assert.Same(owner.SetFor(alpha, 1), owner.SetFor(additive, 1));
         Assert.Equal(1, owner.CachedSetCount);
-        Assert.Same(owner, rig.EnsureMaskedResources());
+        // LazyPipelinesReuseOrdinaryVertexAndOutputState checks repeated lazy construction.
         Assert.NotSame(owner.PipelineFor(BlendMode.Alpha), owner.PipelineFor(BlendMode.Additive));
         Assert.Equal(2, rig.Factory.ShaderRequests.Count);
         Assert.Equal(4, rig.Factory.GraphicsPipelines.Count);
@@ -490,7 +490,7 @@ public class SpriteBatchMaskedBatchTests
     public void ValueEqualDistinctHandlesRemainSeparate()
     {
         using var rig = Create();
-        var owner = rig.EnsureMaskedResources();
+        using var owner = rig.CreateMaskedResources();
         using var source = Texture();
         using var mask = Texture();
         using var valueEqualHandleA = new ValueEqualTexture();
@@ -604,7 +604,8 @@ public class SpriteBatchMaskedBatchTests
         rig.Frame(batch => batch.Draw(sprite, new Vector4(0, 0, 4, 4), Color.White));
         Assert.Single(rig.Draws);
         rig.Forwarder.Failure = ConstructionFailure.None;
-        Assert.Same(rig.EnsureMaskedResources(), rig.MaskedOwner);
+        rig.EnsureMaskedResources();
+        Assert.NotNull(rig.MaskedOwner);
     }
 
     [Fact]
@@ -626,7 +627,11 @@ public class SpriteBatchMaskedBatchTests
     public void LazyPipelinesReuseOrdinaryVertexAndOutputState()
     {
         using var rig = Create();
-        var owner = rig.EnsureMaskedResources();
+        rig.EnsureMaskedResources();
+        object ownerIdentity = rig.MaskedOwner!;
+        Assert.NotNull(ownerIdentity);
+        rig.EnsureMaskedResources();
+        Assert.Same(ownerIdentity, rig.MaskedOwner);
         Assert.Equal(3, rig.Forwarder.Layouts.Count);
         Assert.Equal(0, rig.InnerDevice.WaitForIdleCalls);
         Assert.Equal(0, rig.Forwarder.CommandListRequests);
@@ -648,19 +653,21 @@ public class SpriteBatchMaskedBatchTests
             Assert.Same(ordinary.ResourceLayouts[1], masked.ResourceLayouts[1]);
             Assert.Same(rig.Forwarder.Layouts[2], masked.ResourceLayouts[0]);
         }
-        Assert.Same(rig.Factory.Pipelines[2], owner.PipelineFor(BlendMode.Alpha));
-        Assert.Same(rig.Factory.Pipelines[3], owner.PipelineFor(BlendMode.Additive));
+        Assert.True(rig.Batch.IsMaskedPipelineForTests(BlendMode.Alpha, rig.Factory.Pipelines[2]));
+        Assert.True(rig.Batch.IsMaskedPipelineForTests(BlendMode.Additive, rig.Factory.Pipelines[3]));
     }
 
     [Fact]
     public void MaskedOwnerDisposesAfterDrainBeforeSharedViewResources()
     {
         using var rig = Create();
-        var owner = rig.EnsureMaskedResources();
         using var source = Texture();
         using var mask = Texture();
         var sampler = rig.Device.LinearSampler;
-        var set = Assert.IsType<FakeResourceSet>(owner.SetFor(owner.KeyFor(source, sampler, mask, sampler, BlendMode.Alpha, 1), 1));
+        using var sourceSprite = Texture2D.Wrap(source, 4, 4, ownsHandle: false);
+        using var maskSprite = Texture2D.Wrap(mask, 4, 4, ownsHandle: false);
+        rig.Frame(batch => batch.DrawMasked(sourceSprite, new Vector4(0, 0, 4, 4), maskSprite, Color.White));
+        var set = Assert.IsType<FakeResourceSet>(Assert.Single(rig.Draws).Set0);
         rig.InnerDevice.OnWaitForIdle = () =>
         {
             Assert.False(set.Disposed);

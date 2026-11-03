@@ -159,10 +159,12 @@ namespace KhaozEngine.Render3D.Rendering
         readonly IGpuBuffer _ubo;
         readonly IGpuResourceLayout _layout;
         readonly IGpuSampler _sampler;          // shared linear/wrap sampler (the device built-in, NOT owned here)
-        /// <summary>RendererPerfColdLifecycleTests injects a fake default-texture release failure into the real owner.</summary>
+        /// <summary>RendererPerfColdLifecycleTests identifies the default texture and observes its release.
+        /// Borrowed for observation. Never dispose or mutate it.</summary>
         internal IGpuTexture WhiteTextureForTests => _white;
 
-        /// <summary>RendererPerfColdLifecycleTests observes default receiver bindings and release after atlas replacement.</summary>
+        /// <summary>RendererPerfColdLifecycleTests observes default receiver bindings and release after atlas replacement.
+        /// Borrowed for observation. Never dispose or mutate it.</summary>
         internal IGpuResourceSet DefaultSetForTests => _defaultSet;
 
         readonly IGpuTexture _white;            // 1x1 white default; white*vColor*vTint == vColor*vTint (untextured invariant)

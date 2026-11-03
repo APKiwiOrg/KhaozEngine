@@ -20,13 +20,12 @@ public sealed class WaterVolumeUploadTests
         internal readonly Scene3D Scene;
         internal readonly RecordingGpuCommandList Commands = new(new NullGpuCommandList()) { CapturePayloads = true };
         internal FakeGpuResourceFactory Factory => (FakeGpuResourceFactory)Device.Factory;
-        internal ModelRenderer Renderer => Scene.ModelRendererForTests;
         internal IGpuBuffer Buffer => Assert.Single(Factory.Buffers, b => b.SizeInBytes == 652800);
         internal byte[] UploadedFrame
         {
             get
             {
-                IGpuBuffer buffer = Renderer.SharedFrameUniforms;
+                IGpuBuffer buffer = Scene.ModelShadowBindingsForTests.FrameUniforms;
                 return Commands.Uploads.Last(u => ReferenceEquals(u.Buffer, buffer)).Data!;
             }
         }
@@ -290,19 +289,19 @@ public sealed class WaterVolumeUploadTests
         var grid = new ClusterFrameGrid();
         Assert.True(grid.TryPrepare(projection, Vector3.Zero, -Vector3.UnitZ, projection, Vector3.Zero));
 
-        h.Renderer.BuildAndUploadLightingClusters(h.Commands, lights, water, projection, Vector3.Zero,
+        h.Scene.BuildModelLightingClustersForTests(h.Commands, lights, water, projection, Vector3.Zero,
             -Vector3.UnitZ, projection, Vector3.Zero);
-        h.Renderer.SetFrameUniforms(h.Commands, projection, Vector3.Zero, h.Scene.Post, lights);
+        h.Scene.UploadModelFrameForTests(h.Commands, projection, Vector3.Zero, lights);
 
-        Assert.Equal(1, h.Renderer.WaterVolumeDiagnostics.RecordCount);
-        Assert.True(h.Renderer.WaterVolumeDiagnostics.ReferenceCount > 0);
+        Assert.Equal(1, h.Scene.ModelWaterVolumeDiagnosticsForTests.RecordCount);
+        Assert.True(h.Scene.ModelWaterVolumeDiagnosticsForTests.ReferenceCount > 0);
         h.Upload();
         Assert.Equal(grid.Depth, MemoryMarshal.Read<Vector4>(h.UploadedFrame.AsSpan(1312)));
         Assert.Equal(new Vector4(0f, 0f, -1f, 1f), MemoryMarshal.Read<Vector4>(h.UploadedFrame.AsSpan(1328)));
         Assert.Equal(1f, MemoryMarshal.Read<ModelRenderer.FrameUbo>(h.UploadedFrame).Params.Y);
-        Assert.True(h.Renderer.PointLightClusterDiagnostics(lights.Length).UsesFullFallback);
+        Assert.True(h.Scene.ModelUsesFullLightFallbackForTests(lights.Length));
         RecordingGpuCommandList.Upload lightUpload = Assert.Single(h.Commands.Uploads,
-            u => ReferenceEquals(u.Buffer, h.Renderer.PointLightClusterBuffer));
+            u => h.Scene.IsModelPointLightClusterBufferForTests(u.Buffer));
         uint[] headers = MemoryMarshal.Cast<byte, uint>(lightUpload.Data!.AsSpan()).ToArray();
         Assert.Equal(3456, headers.Length);
         Assert.All(headers, header => Assert.Equal(255u, header));
@@ -316,9 +315,9 @@ public sealed class WaterVolumeUploadTests
         ModelRenderer.PointLightData[] lights =
             [new() { PosRadius = new Vector4(0f, 0f, -1f, 2f), ColorIntensity = Vector4.One }];
 
-        h.Renderer.BuildAndUploadPointLightClusters(h.Commands, lights, projection, Vector3.Zero,
+        h.Scene.BuildModelPointLightClustersForTests(h.Commands, lights, projection, Vector3.Zero,
             -Vector3.UnitZ, projection, Vector3.Zero);
-        h.Renderer.SetFrameUniforms(h.Commands, projection, Vector3.Zero, h.Scene.Post, lights);
+        h.Scene.UploadModelFrameForTests(h.Commands, projection, Vector3.Zero, lights);
 
         Vector4[] expected = [new(0f, 0f, 0f, -1f), Vector4.Zero];
         Assert.Equal(MemoryMarshal.AsBytes(expected.AsSpan()).ToArray(), h.UploadedFrame.AsSpan(1312, 32).ToArray());

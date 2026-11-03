@@ -14,21 +14,27 @@ public sealed partial class SpriteBatch
     Action<object>? _forgetMaskedKey;
     Action<IGpuResourceSet>? _retireMaskedSet;
 
-    /// <summary>SpriteBatchMaskedTestRig observes lazy ownership and cleanup after construction failures.</summary>
-    internal MaskedSpriteBatchResources? MaskedResourcesForTests => _maskedResources;
+    /// <summary>SpriteBatchMaskedTestRig observes lazy ownership and cleanup using an opaque owner identity.</summary>
+    internal object? MaskedResourceIdentityForTests => _maskedResources is { } owner
+        ? TestObservationIdentity.For(owner) : null;
 
-    /// <summary>SpriteBatchMaskedVertexTests observes pending key identity without accessing mutable run storage.</summary>
+    /// <summary>SpriteBatchMaskedVertexTests observes pending keys as opaque identities, never mutable cache entries.</summary>
     internal IReadOnlyList<(object Key, int Start, int Count)> RunsForTests =>
-        new List<(object Key, int Start, int Count)>(_runs.Runs).AsReadOnly();
+        new List<(object Key, int Start, int Count)>(_runs.Runs)
+            .ConvertAll(run => (TestObservationIdentity.For(run.Key), run.Start, run.Count)).AsReadOnly();
 
     /// <summary>SpriteBatchMaskedTestRig checks that eviction forgets the selected grouping key.</summary>
-    internal bool HasGroupForTests(object key) => _runs.HasGroup(key);
+    internal bool HasGroupForTests(object key) => _runs.HasGroupForTests(key);
 
     /// <summary>SpriteBatchMaskedTestRig observes retained grouping order after key eviction.</summary>
     internal IReadOnlyList<object> GroupOrderForTests => _runs.GroupOrderForTests;
 
     /// <summary>SpriteBatchMaskedTestRig exercises failure cleanup through the actual lazy construction path.</summary>
-    internal MaskedSpriteBatchResources EnsureMaskedResourcesForTests() => EnsureMaskedResources();
+    internal void EnsureMaskedResourcesForTests() => EnsureMaskedResources();
+
+    /// <summary>SpriteBatchMaskedBatchTests checks the selected masked pipeline without borrowing it.</summary>
+    internal bool IsMaskedPipelineForTests(BlendMode blend, IGpuPipeline? pipeline) =>
+        _maskedResources is { } owner && ReferenceEquals(owner.PipelineFor(blend), pipeline);
 
     internal int CachedMaskedSetCount => _maskedResources?.CachedSetCount ?? 0;
 

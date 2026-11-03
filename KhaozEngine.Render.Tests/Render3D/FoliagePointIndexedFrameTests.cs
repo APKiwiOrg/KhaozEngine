@@ -104,14 +104,14 @@ public sealed class FoliagePointIndexedFrameTests
         Assert.Equal(0, Frame(rig, motionOnly, Full).PointStaticRebuilds);
         // A cached row needs no proxy upload. Its signature must still include these not-yet-uploaded proxies.
         Assert.Equal(scene.LastFoliageStats.InstanceUploadBytes, scene.LastFrameStats.InstanceUploadBytes);
-        Assert.Null(scene.FoliagePointBufferForTests(motionOnly));
+        Assert.Null(scene.FoliagePointBufferIdentityForTests(motionOnly));
         Assert.Equal(0, Frame(rig, motionOnly, Full).PointStaticRebuilds);
 
         scene.RenderOrigin = new Vector3(256f, 0f, 0f);
         Assert.Equal(0, Frame(rig, motionOnly, Full).PointStaticRebuilds);
         Assert.Equal(new Vector3(256f, 0f, 0f), scene.RenderOrigin);
         Assert.Equal(0, scene.LastFrameStats.InstanceUploadBytes);
-        Assert.Null(scene.FoliagePointBufferForTests(motionOnly));
+        Assert.Null(scene.FoliagePointBufferIdentityForTests(motionOnly));
         Assert.Equal(0, Frame(rig, motionOnly, Full).PointStaticRebuilds);
         Assert.Equal(0, scene.LastFrameStats.InstanceUploadBytes);
         // Rebuild at the rebased origin to verify off-camera face runs as well as cached signatures.
@@ -119,7 +119,8 @@ public sealed class FoliagePointIndexedFrameTests
         Assert.Equal(1, Frame(rig, motionOnly, Full).PointStaticRebuilds);
         Assert.Equal(2 * ModelRenderer.InstanceData.SizeInBytes, scene.LastFrameStats.InstanceUploadBytes);
         AssertRuns(scene, new FoliagePointShadowRun(mesh, 0, 2));
-        IGpuBuffer buffer = Assert.IsAssignableFrom<IGpuBuffer>(scene.FoliagePointBufferForTests(motionOnly));
+        object? buffer = scene.FoliagePointBufferIdentityForTests(motionOnly);
+        Assert.NotNull(buffer);
 
         // A dynamic row requests a draw at the next origin. Rebase the same buffer without dirtying the static row.
         scene.RenderOrigin = new Vector3(512f, 0f, 0f);
@@ -130,7 +131,7 @@ public sealed class FoliagePointIndexedFrameTests
             s.AddLight(Light, Color.White, 6f, 1f, LightShadow.Dynamic);
         }).PointStaticRebuilds);
         Assert.Equal(2 * ModelRenderer.InstanceData.SizeInBytes, scene.LastFrameStats.InstanceUploadBytes);
-        Assert.Same(buffer, scene.FoliagePointBufferForTests(motionOnly));
+        Assert.Same(buffer, scene.FoliagePointBufferIdentityForTests(motionOnly));
         AssertRuns(scene, new FoliagePointShadowRun(mesh, 0, 2));
         Assert.Equal(0, Frame(rig, motionOnly, Full).PointStaticRebuilds);
         Assert.Equal(0, scene.LastFrameStats.InstanceUploadBytes);
@@ -180,12 +181,12 @@ public sealed class FoliagePointIndexedFrameTests
         Render(false);
         Assert.Equal(1, Render(false).PointStaticRebuilds);
         AssertRuns(scene, new FoliagePointShadowRun(mesh, 0, 2), new FoliagePointShadowRun(mesh, 0, 2));
-        List<IGpuBuffer> buffers = FaceBuffers(scene);
+        List<object> buffers = FaceBuffers(scene);
         Assert.NotSame(buffers[0], buffers[1]);
         Assert.Equal(0, Render(false).PointStaticRebuilds);
         Assert.Equal(1, Render(true).PointStaticRebuilds);
         AssertRuns(scene, new FoliagePointShadowRun(mesh, 0, 2), new FoliagePointShadowRun(mesh, 0, 2));
-        List<IGpuBuffer> reversed = FaceBuffers(scene);
+        List<object> reversed = FaceBuffers(scene);
         Assert.Same(buffers[0], reversed[1]);
         Assert.Same(buffers[1], reversed[0]);
         Assert.Equal(0, Render(true).PointStaticRebuilds);
@@ -244,6 +245,6 @@ public sealed class FoliagePointIndexedFrameTests
         Assert.Equal(expected.Length * PointShadowMath.FaceCount, scene.FoliagePointShadowDrawCalls);
     }
 
-    static List<IGpuBuffer> FaceBuffers(Scene3D scene) =>
-        scene.FoliagePointFaceRunsForTests.Select(entry => entry.Buffer).ToList();
+    static List<object> FaceBuffers(Scene3D scene) =>
+        scene.FoliagePointFaceRunsForTests.Select(entry => entry.BufferIdentity).ToList();
 }

@@ -54,7 +54,7 @@ public sealed class WaterColumnRiverScene : IDisposable
             device.Present();
         }
         _previous = settings;
-        RenderResources resources = scene.RenderResourcesForTests;
+        var resources = scene.ColorTargetsForTests;
         Assert.Equal(settings.Aa.Mode == AntiAliasingMode.Msaa ? 4 : 1, resources.SampleCount);
         Assert.Equal(settings.Size, resources.Width);
         float[] linear = ReadRgb(resources.ColorTex);

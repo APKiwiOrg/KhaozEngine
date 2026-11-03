@@ -608,10 +608,15 @@ umbrella would otherwise get nothing. One physical rule file, so the two copies 
 
 ## Refusals
 
-The backend selection and recording exception types below retain their existing constructors and
-`InvalidOperationException` base. Engine paths
-always fill `Reason`. A consumer-created message-only instance can leave it null. `GpuNestedRecordingException`
-retains its owner/attempted constructor, which also fills the reason. Message text is developer prose. Branch on the reason and read the diagnostic properties.
+`GpuBackendProviderMissingException`, `GpuBackendRetiredException` and `GpuNoUsableBackendException`
+retain their existing constructors and `InvalidOperationException` base. Engine paths always fill
+their nullable `Reason`. A consumer-created message-only instance can leave it null.
+`GpuNestedRecordingException` retains its owner/attempted constructor and `InvalidOperationException`
+base. Every constructor fills its nullable `Reason`.
+
+The BCL subtypes `GpuRecordingStateException` and `GpuTimestamp*Exception` require a reason in
+every constructor and expose a non-nullable `Reason`. Each derives from the refusal's original BCL
+exception type. Message text is developer prose. Branch on the reason and read the diagnostic properties.
 
 | Exception and reason member | What it refuses | Identifiers |
 |---|---|---|

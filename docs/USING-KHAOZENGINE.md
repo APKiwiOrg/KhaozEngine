@@ -24227,7 +24227,8 @@ the backend's sealing policy and cannot produce valid completed-frame evidence.
 Recording lifecycle checks on all three native backends use `GpuRecordingStateException`, derived
 from `InvalidOperationException`, with `Backend` and `Command`. `GpuRecordingStateRefusal` distinguishes
 `BeginWhileRecording`, `CommandOutsideRecording`, `EndWithoutRecording`, `RecordingAlreadySealed`
-and `SubmissionWithoutSeal`. Direct3D 11 keeps its existing `CommandOutsideRecording` rule for End.
+and `SubmissionWithoutSeal`. End on a fresh or abandoned list uses `EndWithoutRecording`.
+End on a sealed list uses `RecordingAlreadySealed`.
 A lost Metal or Vulkan timestamp device uses `GpuTimestampStateException` with
 `TimestampDeviceUnavailable` and `Backend`. Direct3D 11 keeps its disposed-device exception.
 

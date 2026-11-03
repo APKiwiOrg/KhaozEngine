@@ -128,7 +128,7 @@ public sealed partial class D3D11TimestampEndTests
         Assert.False(rig.IsSealed);
         int calls = rig.Api.Calls.Count;
         Assert.Equal(GpuRecordingStateRefusal.SubmissionWithoutSeal, Assert.Throws<GpuRecordingStateException>(rig.Submit).Reason);
-        Assert.Equal(GpuRecordingStateRefusal.CommandOutsideRecording, Assert.Throws<GpuRecordingStateException>(rig.List.End).Reason);
+        Assert.Equal(GpuRecordingStateRefusal.EndWithoutRecording, Assert.Throws<GpuRecordingStateException>(rig.List.End).Reason);
         Assert.Equal(calls, rig.Api.Calls.Count);
         rig.Api.OnEnd = null;
         rig.List.Begin();
@@ -158,7 +158,7 @@ public sealed partial class D3D11TimestampEndTests
         Assert.False(rig.Deferred.Emitter.Stream.Sealed);
         Assert.Equal(GpuRecordingStateRefusal.SubmissionWithoutSeal, Assert.Throws<GpuRecordingStateException>(rig.Submit).Reason);
         Assert.Empty(rig.Api.Calls);
-        Assert.Equal(GpuRecordingStateRefusal.CommandOutsideRecording, Assert.Throws<GpuRecordingStateException>(rig.List.End).Reason);
+        Assert.Equal(GpuRecordingStateRefusal.EndWithoutRecording, Assert.Throws<GpuRecordingStateException>(rig.List.End).Reason);
         rig.List.Begin();
         rig.List.End();
         rig.Submit();

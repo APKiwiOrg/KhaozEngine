@@ -9,7 +9,8 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         {
             ObjectDisposedException.ThrowIf(_disposed, this);
             if (!_recording)
-                throw new GpuRecordingStateException(GpuRecordingStateRefusal.CommandOutsideRecording, "End was called on a Direct3D 11 command list that is not recording. Every recording opens "
+                throw new GpuRecordingStateException(IsSealed ? GpuRecordingStateRefusal.RecordingAlreadySealed : GpuRecordingStateRefusal.EndWithoutRecording,
+                    "End was called on a Direct3D 11 command list that is not recording. Every recording opens "
                     + "with Begin, which is what resets the stream.") { Backend = GpuBackendKind.Direct3D11Native, Command = nameof(End) };
 
             try

@@ -327,14 +327,28 @@ namespace KhaozEngine.Tests.Gpu
             Assert.Equal(GpuRecordingStateRefusal.BeginWhileRecording, Assert.Throws<GpuRecordingStateException>(list.Begin).Reason);
         }
 
-        /// <summary><c>End</c> with no recording open is a caller sequencing error and never anything the
-        /// backend can make sense of.</summary>
-        [Fact]
-        public void EndWithoutBegin_Throws()
+        /// <summary><c>End</c> distinguishes a fresh list from an already sealed recording on both drivers.</summary>
+        [Theory]
+        [InlineData(false)]
+        [InlineData(true)]
+        public void EndOutsideRecording_DistinguishesFreshAndSealedLists(bool immediate)
         {
-            using IGpuCommandList list = CreateDeferred();
+            using IGpuCommandList list = CreateRecording(
+                immediate ? D3D11RecordMode.Immediate : D3D11RecordMode.Deferred,
+                new D3D11CountingEmitter(new D3D11EmitterCallLog()));
 
-            Assert.Equal(GpuRecordingStateRefusal.CommandOutsideRecording, Assert.Throws<GpuRecordingStateException>(list.End).Reason);
+            GpuRecordingStateException fresh = Assert.Throws<GpuRecordingStateException>(list.End);
+            Assert.Equal(GpuRecordingStateRefusal.EndWithoutRecording, fresh.Reason);
+            Assert.Equal(GpuBackendKind.Direct3D11Native, fresh.Backend);
+            Assert.Equal(nameof(IGpuCommandList.End), fresh.Command);
+
+            list.Begin();
+            list.End();
+
+            GpuRecordingStateException sealedList = Assert.Throws<GpuRecordingStateException>(list.End);
+            Assert.Equal(GpuRecordingStateRefusal.RecordingAlreadySealed, sealedList.Reason);
+            Assert.Equal(GpuBackendKind.Direct3D11Native, sealedList.Backend);
+            Assert.Equal(nameof(IGpuCommandList.End), sealedList.Command);
         }
 
         /// <summary>

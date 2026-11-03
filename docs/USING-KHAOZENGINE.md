@@ -24181,6 +24181,11 @@ signal them at the same completion point. Null or duplicate fences are refused. 
 alive and unreset until its own consumers release it. Older device implementations inherit a default span
 overload that forwards zero or one fence and throws `NotSupportedException` for several fences.
 
+Wait admission uses `D3D11WaitPolicyException` with `D3D11WaitPolicyRefusal.SubmitLockHeld` or
+`VulkanRingWaitException` with `VulkanRingWaitRefusal.SubmitLockHeld`, both carrying `Operation`.
+Both retain their `InvalidOperationException` base and their existing refusal points. Messages are
+developer prose.
+
 ### GPU timestamps without waiting
 
 Gate timestamp collection on `GpuCapabilities.SupportsTimestamps`. It defaults to false. Native Vulkan

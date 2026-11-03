@@ -210,6 +210,8 @@ public class GpuPublicApiTests
         {
             "KhaozEngine.Gpu.D3D11.D3D11InvocationBlock",
             "KhaozEngine.Gpu.D3D11.D3D11InvocationReport",
+            "KhaozEngine.Gpu.D3D11.D3D11WaitPolicyException",
+            "KhaozEngine.Gpu.D3D11.D3D11WaitPolicyRefusal",
             "KhaozEngine.Gpu.D3D11.ID3D11InvocationDiagnostics",
             "KhaozEngine.Gpu.D3D11.KhaozEngineD3D11"
         }, exported);
@@ -274,6 +276,8 @@ public class GpuPublicApiTests
         Assert.Equal(new[]
         {
             "KhaozEngine.Gpu.Vulkan.KhaozEngineVulkan",
+            "KhaozEngine.Gpu.Vulkan.VulkanRingWaitException",
+            "KhaozEngine.Gpu.Vulkan.VulkanRingWaitRefusal",
             "KhaozEngine.Gpu.Vulkan.VulkanStagingLayoutException",
             "KhaozEngine.Gpu.Vulkan.VulkanStagingLayoutRefusal",
         }, exported);

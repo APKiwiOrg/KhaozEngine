@@ -1,3 +1,4 @@
+using KhaozEngine.Gpu.Vulkan;
 using System;
 using System.Threading;
 using KhaozEngine.Gpu.Internal;
@@ -65,13 +66,15 @@ namespace KhaozEngine.Tests.Gpu
         {
             using var harness = new VulkanRingHarness(sizeInBytes: 256, framesInFlight: 3);
 
-            InvalidOperationException ex;
+            VulkanRingWaitException ex;
             lock (harness.SubmitLock)
             {
-                ex = Assert.Throws<InvalidOperationException>(() => harness.Allocator.BeginFrame());
+                ex = Assert.Throws<VulkanRingWaitException>(() => harness.Allocator.BeginFrame());
             }
 
-            Assert.Contains("submit lock", ex.Message, StringComparison.Ordinal);
+            Assert.Equal(VulkanRingWaitRefusal.SubmitLockHeld, ex.Reason);
+            Assert.IsAssignableFrom<InvalidOperationException>(ex);
+            Assert.Equal("BeginFrame", ex.Operation);
         }
 
         /// <summary>The wait itself happens with the lock FREE, which is the other half of the same rule. The gate

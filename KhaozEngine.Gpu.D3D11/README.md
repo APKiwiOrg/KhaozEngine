@@ -1388,6 +1388,7 @@ and `AlignmentBytes`. Staging contract refusals use the shared types in `KhaozEn
 | `GpuStagingMapStateException`, `GpuStagingMapRefusal.CompletionNotSignaled` | A fenced read map before completion | `Command` |
 | `GpuStagingMapArgumentException`, `GpuStagingMapRefusal.ForeignResource` | A staging or native map target without the backend capability | `ParamName`, `Backend`, `ActualType`, `ResourceKind` |
 | `GpuStagingMapArgumentException`, `GpuStagingMapRefusal.StagingUsageRequired` | A resource without mappable staging usage | `ParamName` where previously supplied, `Backend`, `ResourceKind`, `RequiredBufferUsage` or `RequiredTextureUsage` |
+| `D3D11WaitPolicyException`, `D3D11WaitPolicyRefusal.SubmitLockHeld` | a D3D11 drain or ring rotation while the caller holds the submit lock | `Operation` |
 
 State exceptions derive from `InvalidOperationException`, staging argument exceptions from
 `ArgumentException`, and copy alignment from `ArgumentOutOfRangeException`. Existing parameter

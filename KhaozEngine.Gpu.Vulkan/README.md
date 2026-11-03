@@ -1922,6 +1922,7 @@ on every rebuild. Its sampled R32F atlas remains stored. See
 | Exception and reason | What it refuses | Identifiers |
 |---|---|---|
 | `VulkanStagingLayoutException`, `VulkanStagingLayoutRefusal.MappingSizeExceeded` | Staging layout arithmetic exceeding the mapping's 32-bit size ceiling | `ParamName`, `ActualValue`, `Width`, `Height`, `MipLevels`, `ArrayLayers`, `Format`, `Quantity`, `ComputedBytes`, `MaximumBytes` |
+| `VulkanRingWaitException`, `VulkanRingWaitRefusal.SubmitLockHeld` | a Vulkan ring rotation while the caller holds the submit lock | `Operation` |
 
 `VulkanStagingLayoutException` derives from `ArgumentOutOfRangeException` and keeps its original
 parameter and actual shape. `Reason` is required and the computed byte counts remain 64-bit.

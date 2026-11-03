@@ -261,6 +261,9 @@ in the `KhaozEngine.Render3D.Ecs` arm under the same namespace, so a render-only
     (0, 90) degrees, or carries one whose two ends pack to the same cosine. `Scene3D.LoadTileGroundMaterial` packs
     the params before it creates any GPU resource, so a refused set leaks nothing. Every derivative stays hoisted into uniform control flow and every side tap is a
     `textureGrad`.
+    Repeated active corner or overlay roles reuse the complete sample for their clamped slot ID, including its
+    steep companion. Each role keeps its original weight threshold and ordered weighted addition. Equal-slot
+    weights are never combined, so the optimization preserves rounding and output pixels.
   - **Constraints worth knowing.** Entries past the layer count are zeroed, while the shader clamps every mesh slot
     to the last real texture layer before reading either resource. A hand-built mesh naming an invalid slot
     therefore shows the set's last material instead of sampling a nonexistent array slice. The pipeline binds TWO

@@ -293,11 +293,22 @@ said 'report build failed'
 unchanged
 check 'update after a failed own build leaves the baseline' 1 "$rc"
 
-# Combined report builds must retain physical tool paths and use maximum linked-source counts.
+# Combined report builds must retain physical tool paths and use maximum linked-source counts. The report
+# roots come from the tracked projects: the solution, then each xunit project it does not list. The harness
+# is built although the script never names it, and neither the solution member nor the probe is.
 fresh
-mkdir -p tools/Renderer.Perf.Tooling.Tests
-: >tools/Renderer.Perf.Tooling.Tests/Renderer.Perf.Tooling.Tests.csproj
-printf '2 KETEST001 Tests/A.cs\n3 KETEST002 tools/Renderer.Perf.Tooling.Tests/Tool.cs\n5 KETEST002 test-shared/Shared.cs\n1 KETEST002 tools/NavCapture.Research.Tests/Research/NavCaptureSnapshot.cs\n' >.testhealth-baseline
+for project in Tests/Tests.csproj Sample.Harness.Tests/Sample.Harness.Tests.csproj \
+    tools/Renderer.Perf.Tooling.Tests/Renderer.Perf.Tooling.Tests.csproj \
+    tools/Items.Benchmark.Tests/Items.Benchmark.Tests.csproj \
+    tools/NavCapture.Research.Tests/NavCapture.Research.Tests.csproj; do
+  mkdir -p "$(dirname "$project")"
+  printf '<Project><ItemGroup><PackageReference Include="xunit" /></ItemGroup></Project>\n' >"$project"
+done
+mkdir -p tools/Probe
+printf '<Project />\n' >tools/Probe/Probe.csproj
+printf '<Solution>\n  <Project Path="Tests/Tests.csproj" />\n</Solution>\n' >KhaozEngine.slnx
+(unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE; git init -q . && git add -- KhaozEngine.slnx Tests Sample.Harness.Tests tools)
+printf '2 KETEST001 Tests/A.cs\n1 KETEST001 Sample.Harness.Tests/Guard.cs\n3 KETEST002 tools/Renderer.Perf.Tooling.Tests/Tool.cs\n5 KETEST002 test-shared/Shared.cs\n1 KETEST002 tools/NavCapture.Research.Tests/Research/NavCaptureSnapshot.cs\n' >.testhealth-baseline
 cp .testhealth-baseline before
 mkdir -p "$TMPROOT/combined-bin"
 cat > "$TMPROOT/combined-bin/dotnet" <<'STUB'
@@ -306,6 +317,8 @@ printf '%s\n' "$*" >>commands
 case "$2" in
   KhaozEngine.slnx)
     printf "warning KETEST001: 'Tests/A.cs' has 2 assertions\nwarning KETEST002: 'test-shared/Shared.cs' has 3 accesses\n" ;;
+  Sample.Harness.Tests/Sample.Harness.Tests.csproj)
+    printf "warning KETEST001: 'Sample.Harness.Tests/Guard.cs' has 1 assertions\n" ;;
   tools/Renderer.Perf.Tooling.Tests/Renderer.Perf.Tooling.Tests.csproj)
     printf "warning KETEST002: 'tools/Renderer.Perf.Tooling.Tests/Tool.cs' has 3 accesses\nwarning KETEST002: 'test-shared/Shared.cs' has 5 accesses\n"
     exit "${EXTRA_BUILD_EXIT:-0}" ;;
@@ -324,7 +337,7 @@ TESTHEALTH_BUILD_LOG= PATH="$TMPROOT/combined-bin:$PATH" sh "$SCRIPT" --preview 
 rc=$?
 set -e
 unchanged
-[ "$(wc -l <commands | tr -d ' ')" -eq 4 ] || rc="$rc, extra target not built"
+[ "$(wc -l <commands | tr -d ' ')" -eq 5 ] || rc="$rc, outside-solution xunit projects not each built once"
 if grep -qE 'drop |lower ' "$OUTFILE"; then rc="$rc, combined findings lost"; fi
 check 'combined report retains tool allowance and maximum linked-file count without writing' 0 "$rc"
 set +e

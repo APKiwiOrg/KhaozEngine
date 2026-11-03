@@ -33,22 +33,36 @@ fi
 tmp=$(mktemp -d "${TMPDIR:-/tmp}/khaozengine-test-health.XXXXXX")
 trap 'rm -rf "$tmp"' 0
 trap 'exit 2' HUP INT TERM
+
+# Report roots are the solution plus every tracked xunit project it does not list. Directory.Build.props
+# hands the analyzer to every project below the root, so a harness kept out of the solution still compiles
+# under the ratchet. A hand-kept list once missed one, which then failed its own build with no allowance.
+# A project the report never builds would also lose its allowance on the next --update.
+report_targets() {
+  echo KhaozEngine.slnx
+  [ -f KhaozEngine.slnx ] || return 0
+  if ! git ls-files -- '*.csproj' >"$tmp/projects"; then
+    echo "check-test-health: git ls-files failed, so test projects outside the solution cannot be found." >&2
+    return 1
+  fi
+  while IFS= read -r project; do
+    if grep -Fq "Path=\"$project\"" KhaozEngine.slnx; then continue; fi
+    if grep -Eq '<PackageReference[^>]*Include="xunit"' "$project"; then echo "$project"; fi
+  done <"$tmp/projects"
+}
+
 log=${TESTHEALTH_BUILD_LOG:-$tmp/build.log}
 if [ -z "${TESTHEALTH_BUILD_LOG:-}" ]; then
   : >"$log"
-  # Explicit report roots are independent of engine test selection. Add each baselined tool here
-  # when it leaves the solution, otherwise missing diagnostics could silently erase its allowance.
-  for target in KhaozEngine.slnx \
-      tools/Renderer.Perf.Tooling.Tests/Renderer.Perf.Tooling.Tests.csproj \
-      tools/Items.Benchmark.Tests/Items.Benchmark.Tests.csproj \
-      tools/NavCapture.Research.Tests/NavCapture.Research.Tests.csproj; do
+  if ! report_targets >"$tmp/targets"; then exit 2; fi
+  while IFS= read -r target; do
     if ! dotnet build "$target" -c Release --no-incremental \
-        -p:KhaozTestHealthMode=report -p:TreatWarningsAsErrors=false >>"$log" 2>&1; then
+        -p:KhaozTestHealthMode=report -p:TreatWarningsAsErrors=false >>"$log" 2>&1 </dev/null; then
       cat "$log" >&2
       echo "check-test-health: report build failed for $target. Baseline entries were not changed." >&2
       exit 1
     fi
-  done
+  done <"$tmp/targets"
 fi
 
 # Each diagnostic carries the file total. Findings repeat at every location, in the build summary,

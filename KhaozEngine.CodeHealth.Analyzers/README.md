@@ -109,7 +109,9 @@ Exemptions and any baseline growth require owner approval. The exception path fo
 wording or structural-reflection contract is an approved exemption, never a suppression. An exemption
 wins over a numeric entry for the same rule and path. KETEST003 is never baselined.
 
-`scripts/check-test-health.sh` supports three modes, each building a non-incremental Release report:
+`scripts/check-test-health.sh` supports three modes, each building a non-incremental Release report of
+`KhaozEngine.slnx` and of every tracked xunit project outside it. The script finds those projects with
+`git ls-files`, so a test project kept out of the solution is still reported and keeps its allowance:
 
 - `--init` records initial KETEST001 and KETEST002 counts. It refuses an existing numeric baseline and
   preserves adoption-time comments and exemptions. Initial adoption needs owner approval.

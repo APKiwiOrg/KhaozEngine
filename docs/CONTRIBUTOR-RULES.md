@@ -252,9 +252,12 @@ with zero skips before a separately approved research campaign. The seven Suppor
 remain in Movement.Tests and default engine CI. Fixture validation authorizes no capture campaign.
 
 The ratchet report build is a separate maintenance inventory. `check-test-health.sh` sequentially
-builds the engine solution and the baselined outside-solution tooling projects before lowering any
-allowance. Linked files retain their canonical physical repository path and findings use the maximum
-per-source count across assemblies. This build inventory adds no tooling test execution to engine CI.
+builds the engine solution, then every tracked project with an xunit package reference that the solution
+does not list, before lowering any allowance. It finds those projects itself because the analyzer reaches
+every project under `Directory.Build.props`. A hand-kept list once missed
+`KhaozEngine.MapDoc.OracleHarness.Tests`, which then failed its own build with no allowance. Linked files
+retain their canonical physical repository path and findings use the maximum per-source count across
+assemblies. This build inventory adds no tooling test execution to engine CI.
 
 Renderer workflow contract tests parse checkout text through `RendererPerfWorkflowText`, which accepts
 LF and CRLF before extracting jobs or embedded commands. Exact-byte inputs keep their LF rules in

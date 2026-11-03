@@ -28113,8 +28113,10 @@ required attachment before retrying. Messages and refusal points are unchanged.
 
 `D3D11BackendCreationRefusal` distinguishes platform, window-kind and diagnostic-settings refusals.
 `D3D11ObjectPlatformRefusal.WindowsObjectUsedOffWindows` carries the native object kind and support probe.
-`D3D11BindResolutionRefusal` identifies missing views or native interfaces and constant-buffer
-transposition inputs. `D3D11MapResultRefusal.MapFailed` carries the map site, HRESULT,
+`D3D11BindResolutionRefusal` identifies missing register views and constant-buffer transposition inputs.
+Foreign bindable resources, framebuffers and buffers use `GpuResourceOwnershipArgumentException` with
+`GpuResourceOwnershipRefusal.ForeignBackend`, `ActualType` and `ExpectedType`. A missing required native
+buffer uses `MissingResource`. `D3D11MapResultRefusal.MapFailed` carries the map site, HRESULT,
 result token and device-loss status. Each exception derives from the BCL type previously thrown.
 See the [D3D11 refusal table](../KhaozEngine.Gpu.D3D11/README.md#refusals) for the identifiers.
 

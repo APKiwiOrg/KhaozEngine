@@ -436,7 +436,9 @@ cache is already right.
 opposite lifetimes and only `IGpuFramebuffer` in common, so an emitter casting to one of them would work for
 every offscreen pass and throw on the first frame that presents. Both answer `ID3D11RenderTargetSurface`
 instead, object-typed like the rest of this package's internal seams, and a framebuffer from another backend is
-refused by name.
+refused with `GpuResourceOwnershipRefusal.ForeignBackend`, `ActualType` and `ExpectedType`.
+The resource-view and native-buffer adapters use the same shared family. A missing required buffer uses
+`MissingResource`, while a null entry in a resource-view span remains an accepted hole.
 
 **What a resource offers a register file is the resource's own answer.** `ID3D11BindableViews` is the seam for
 that, and `D3D11BindResolve` is the device-free half of the bind: it unwraps a `GpuBufferRange` to its buffer,
@@ -1402,9 +1404,8 @@ and `AlignmentBytes`. Staging contract refusals use the shared types in `KhaozEn
 | `D3D11BackendCreationArgumentException`, `D3D11BackendCreationRefusal.ForeignDiagnosticSettings` | Refuses settings not owned by the D3D11 provider. | `ParamName`, `ActualType` |
 | `D3D11BackendCreationPlatformException`, `D3D11BackendCreationRefusal.OperatingSystemUnsupported` | Refuses native D3D11 device creation off Windows. | `Backend`, `CreationPath`, `RequiredOperatingSystem`, `SupportProbe` |
 | `D3D11BackendCreationArgumentException`, `D3D11BackendCreationRefusal.WindowKindUnsupported` | Refuses a D3D11 swapchain window that is not Win32. | `ParamName`, `ActualWindowKind`, `RequiredWindowKind` |
-| `D3D11BindResolutionArgumentException`, `D3D11BindResolutionRefusal.BindableInterfaceMissing` | Refuses a resource without the D3D11 bindable-view seam. | `ParamName`, `ResourceType`, `RequiredInterface` |
-| `D3D11BindResolutionArgumentException`, `D3D11BindResolutionRefusal.FramebufferInterfaceMissing` | Refuses a framebuffer without the D3D11 render-target seam. | `ParamName`, `ResourceType`, `RequiredInterface` |
-| `D3D11BindResolutionArgumentException`, `D3D11BindResolutionRefusal.NativeBufferMissing` | Refuses a buffer without a native D3D11 buffer handle. | `ParamName`, `ResourceType`, `RequiredInterface` |
+| `GpuResourceOwnershipArgumentException`, `GpuResourceOwnershipRefusal.ForeignBackend` | Refuses a bindable resource, framebuffer or buffer without this backend's native adapter. | `ParamName`, `ExpectedBackend`, `ActualType`, `ExpectedType`, `ResourceKind`, `Context` |
+| `GpuResourceOwnershipArgumentException`, `GpuResourceOwnershipRefusal.MissingResource` | Refuses a missing required native buffer. | `ParamName`, `ExpectedBackend`, `ExpectedType`, `ResourceKind`, `Context` |
 | `D3D11BindResolutionArgumentException`, `D3D11BindResolutionRefusal.NullBufferWindowNonzero` | Refuses a null constant buffer carrying a nonzero window. | `ParamName`, `RegisterIndex`, `FirstConstant`, `ConstantCount` |
 | `D3D11BindResolutionArgumentException`, `D3D11BindResolutionRefusal.TransposeScratchTooSmall` | Refuses transposing a constant-buffer span into undersized scratch. | `ParamName`, `SuppliedCount`, `RequiredCount` |
 | `D3D11BindResolutionArgumentException`, `D3D11BindResolutionRefusal.ViewMissing` | Refuses a resource without the native view needed by the register file. | `ParamName`, `ResourceType`, `RegisterLetter`, `RequiredInterface` |

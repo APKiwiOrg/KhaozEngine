@@ -79,14 +79,17 @@ namespace KhaozEngine.Gpu.D3D11.Internal
                     }
 
                 default:
-                    throw new D3D11BindResolutionArgumentException(D3D11BindResolutionRefusal.BindableInterfaceMissing,
+                    throw new GpuResourceOwnershipArgumentException(GpuResourceOwnershipRefusal.ForeignBackend,
                         $"A {resource.GetType().Name} was bound into the native Direct3D 11 backend. A resource "
                         + "this backend created answers ID3D11BindableViews, which is where the view a register "
                         + "file wants comes from, and a resource from another backend carries another backend's "
                         + "handles.", nameof(resource))
                         {
-                            ResourceType = resource.GetType(),
-                            RequiredInterface = typeof(ID3D11BindableViews),
+                            ActualType = resource.GetType(),
+                            ExpectedType = typeof(ID3D11BindableViews),
+                            ExpectedBackend = GpuBackendKind.Direct3D11Native,
+                            ResourceKind = "bindable resource",
+                            Context = "resource bind",
                         };
             }
         }
@@ -101,14 +104,17 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         {
             if (framebuffer is null) throw new ArgumentNullException(nameof(framebuffer));
 
-            return framebuffer as ID3D11RenderTargetSurface ?? throw new D3D11BindResolutionArgumentException(D3D11BindResolutionRefusal.FramebufferInterfaceMissing,
+            return framebuffer as ID3D11RenderTargetSurface ?? throw new GpuResourceOwnershipArgumentException(GpuResourceOwnershipRefusal.ForeignBackend,
                 $"A {framebuffer.GetType().Name} reached the native Direct3D 11 emitter as a framebuffer. Both of "
                 + "this backend's framebuffer types answer ID3D11RenderTargetSurface, which is what carries the "
                 + "render target and depth-stencil views, and a framebuffer from another backend carries another "
                 + "backend's views.", nameof(framebuffer))
                 {
-                    ResourceType = framebuffer.GetType(),
-                    RequiredInterface = typeof(ID3D11RenderTargetSurface),
+                    ActualType = framebuffer.GetType(),
+                    ExpectedType = typeof(ID3D11RenderTargetSurface),
+                    ExpectedBackend = GpuBackendKind.Direct3D11Native,
+                    ResourceKind = "framebuffer",
+                    Context = "framebuffer bind",
                 };
         }
 
@@ -123,14 +129,17 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         /// </para>
         /// </summary>
         internal static object NativeBuffer(IGpuBuffer? buffer)
-            => (buffer as ID3D11BindableViews)?.BufferObject ?? throw new D3D11BindResolutionArgumentException(D3D11BindResolutionRefusal.NativeBufferMissing,
+            => (buffer as ID3D11BindableViews)?.BufferObject ?? throw new GpuResourceOwnershipArgumentException(buffer is null ? GpuResourceOwnershipRefusal.MissingResource : GpuResourceOwnershipRefusal.ForeignBackend,
                 $"A {(buffer is null ? "null" : buffer.GetType().Name)} was handed to the native Direct3D 11 "
                 + "emitter as a buffer. A buffer this backend created carries the ID3D11Buffer every bind, copy "
                 + "and write names, and a buffer from another backend carries another backend's.",
                 nameof(buffer))
                 {
-                    ResourceType = buffer?.GetType(),
-                    RequiredInterface = typeof(ID3D11BindableViews),
+                    ActualType = buffer?.GetType(),
+                    ExpectedType = typeof(ID3D11BindableViews),
+                    ExpectedBackend = GpuBackendKind.Direct3D11Native,
+                    ResourceKind = "buffer",
+                    Context = "native buffer",
                 };
 
         /// <summary>

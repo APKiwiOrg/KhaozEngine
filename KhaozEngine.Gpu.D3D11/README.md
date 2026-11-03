@@ -1406,3 +1406,9 @@ Resource ownership, layout declarations, resource sets and framebuffer checks us
 [portable refusal catalog](../KhaozEngine.Gpu/README.md#refusals) lists each required reason and its
 diagnostic members. Swapchain copies use `GpuSwapchainCopyArgumentException` and
 `GpuSwapchainCopyStateException` from that same catalog.
+
+Framebuffer creation reports `ForeignBackend` for foreign colour or depth textures and
+`MissingResource` for a null colour entry. The ownership refusal retains `ParamName = "texture"`
+and identifies the attachment through `Context`. Graphics and compute pipeline adapters, resource-set
+binds, texture transfers and device-level texture uploads also report ownership refusals. Native
+view and register validation remains the separate bind-resolution contract.

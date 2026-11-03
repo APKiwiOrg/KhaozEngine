@@ -629,7 +629,7 @@ exception type. Message text is developer prose. Branch on the reason and read t
 | `GpuResourceSetException`, `GpuResourceSetRefusal.TextureUsageMissing` | Refuses a texture lacking the usage required by the layout binding. | `ParamName`, `ElementName`, `Binding`, `ResourceKind`, `ActualUsage`, `RequiredUsage` |
 | `GpuResourceOwnershipArgumentException`, `GpuResourceOwnershipRefusal.DifferentDevice` | Refuses a resource created by a different device of the same backend. | `ParamName`, `ExpectedBackend`, `ResourceKind`, `Context` |
 | `GpuResourceOwnershipArgumentException`, `GpuResourceOwnershipRefusal.ForeignBackend` | Refuses a resource originating from a different GPU backend. | `ParamName`, `ExpectedBackend`, `ActualType`, `ExpectedType`, `Context`, `ResourceIndex`, `PipelineKind` |
-| `GpuResourceOwnershipArgumentException`, `GpuResourceOwnershipRefusal.MissingResource` | Refuses a required resource that was not supplied. | `ParamName`, `ResourceKind`, `Context` |
+| `GpuResourceOwnershipArgumentException`, `GpuResourceOwnershipRefusal.MissingResource` | Refuses a required resource that was not supplied. | `ParamName`, `ResourceKind`, `Context`, optional `ResourceIndex` |
 | `GpuResourceOwnershipDisposedException`, `GpuResourceOwnershipRefusal.NativeHandleReleased` | Refuses use of a resource whose native handle has been released. | `ObjectName`, `NativeHandleKind`, `ResourceKind`, `Context` |
 | `GpuResourceOwnershipArgumentException`, `GpuResourceOwnershipRefusal.ResourceNotOwnedByDevice` | Refuses a submitted command list or fence that is not owned by the submitting backend or device. | `ParamName`, `ExpectedBackend`, `ActualType`, `ResourceKind` |
 | `GpuFramebufferException`, `GpuFramebufferRefusal.AttachmentNotRenderable` | Refuses an attachment without the native texture or view needed for rendering. | `Attachment`, `ActualUsage`, `RequiredUsage`, `IsStaging`, `NativeHandleKind` |
@@ -672,6 +672,12 @@ exception type. Message text is developer prose. Branch on the reason and read t
 | `GpuTimestampUnsupportedException`, `GpuTimestampRefusal.TimestampUnsupported` | timestamps when the device or adapter has no timestamp capability | `Backend`, `Command`, `Detail` |
 | `GpuTimestampStateException`, `GpuTimestampRefusal.UnresolvedBatch` | beginning a batch while the preceding batch is unresolved | `Count`, `Backend` |
 | `GpuTimestampStateException`, `GpuTimestampRefusal.WrongRecording` | timestamp work on another list, command buffer or recording | `Backend`, `Command`, `RecordingId` |
+
+Ownership checks also cover framebuffer attachment adapters, pipeline and resource-set binds, uploads,
+completed staging-buffer reads and swapchain-copy command lists. A null slot in a pipeline's layout
+array carries `MissingResource` with `ResourceIndex`. A retirement queue refuses a frame submission
+from another device with `DifferentDevice`, or `ForeignBackend` when its backend differs. These checks
+retain their original parameter names.
 
 Missing-provider refusals always carry `RegistrationConvention = "KhaozEngine<Backend>.Register()"`.
 `RegistrationMethod` carries the known startup entry point, such as `KhaozEngineD3D11.Register()`, and is null

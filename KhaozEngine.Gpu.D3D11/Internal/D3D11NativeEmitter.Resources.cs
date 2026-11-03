@@ -163,10 +163,18 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         {
             if (pipeline is null) throw new ArgumentNullException(nameof(pipeline));
             if (pipeline is not ID3D11ComputePipelineState state)
-                throw new ArgumentException(
+                throw new GpuResourceOwnershipArgumentException(GpuResourceOwnershipRefusal.ForeignBackend,
                     $"A {pipeline.GetType().Name} reached the native Direct3D 11 emitter as a compute pipeline. A "
                     + "pipeline this backend created answers ID3D11ComputePipelineState, which is where the "
-                    + "compiled compute shader comes from.", nameof(pipeline));
+                    + "compiled compute shader comes from.", nameof(pipeline))
+                {
+                    ExpectedBackend = GpuBackendKind.Direct3D11Native,
+                    ActualType = pipeline.GetType(),
+                    ExpectedType = typeof(ID3D11ComputePipelineState),
+                    ResourceKind = "pipeline",
+                    Context = "compute pipeline",
+                    PipelineKind = "compute",
+                };
 
             D3D11NativeEmitter sink = this;
             _state.Binds.SetComputePipeline(ref sink, pipeline);
@@ -206,9 +214,17 @@ namespace KhaozEngine.Gpu.D3D11.Internal
 
         static D3D11Texture NativeTexture(IGpuTexture texture)
             => texture as D3D11Texture
-                ?? throw new ArgumentException(
+                ?? throw new GpuResourceOwnershipArgumentException(texture is null
+                    ? GpuResourceOwnershipRefusal.MissingResource : GpuResourceOwnershipRefusal.ForeignBackend,
                     $"A {(texture is null ? "null" : texture.GetType().Name)} was handed to the native Direct3D 11 "
                     + "emitter as a texture. A texture this backend created carries the ID3D11Texture2D and the "
-                    + "eager views a copy, a resolve and a mip generation name.", nameof(texture));
+                    + "eager views a copy, a resolve and a mip generation name.", nameof(texture))
+                {
+                    ExpectedBackend = GpuBackendKind.Direct3D11Native,
+                    ActualType = texture?.GetType(),
+                    ExpectedType = typeof(D3D11Texture),
+                    ResourceKind = "texture",
+                    Context = "texture transfer",
+                };
     }
 }

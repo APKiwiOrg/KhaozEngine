@@ -1960,6 +1960,13 @@ Resource ownership, layout declarations, resource sets and framebuffer checks us
 diagnostic members. Swapchain copies use `GpuSwapchainCopyArgumentException` and
 `GpuSwapchainCopyStateException` from that same catalog.
 
+Completed buffer reads report `DifferentDevice` with `ParamName = "staging"` for a buffer owned by
+another device. A copyable swapchain request with a valid destination reports
+`ResourceNotOwnedByDevice` with `ParamName = "commands"` for a foreign command list. Pipeline-layout
+null entries report `MissingResource` with the slot's `ResourceIndex`. Command-list uploads report
+`ForeignBackend` for foreign buffers. A seam-built list missing its staging uploader keeps its plain
+argument refusal when the buffer already implements the native upload interface.
+
 Graphics blend counts use `GpuPipelineOutputsException`. Texture copy, mip generation and resolve
 checks use `GpuTextureTransferArgumentException` and `GpuTextureTransferRangeException` where the
 backend checks the rule. Their reasons identify the rejected shape or subresource. Backend-specific

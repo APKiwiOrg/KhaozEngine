@@ -472,7 +472,17 @@ namespace KhaozEngine.Tests.Gpu
             var emitter = new D3D11NativeTraceEmitter(new D3D11DeviceState(), new D3D11NativeCallLog());
             emitter.Begin();
 
-            Assert.Throws<ArgumentException>(() => emitter.SetPipeline(new FakePipeline()));
+            using var foreign = new FakePipeline();
+            var refusal = Assert.Throws<GpuResourceOwnershipArgumentException>(() => emitter.SetPipeline(foreign));
+            Assert.Equal(GpuResourceOwnershipRefusal.ForeignBackend, refusal.Reason);
+            Assert.Equal("pipeline", refusal.ParamName);
+            Assert.Equal(GpuBackendKind.Direct3D11Native, refusal.ExpectedBackend);
+            Assert.Equal(typeof(FakePipeline), refusal.ActualType);
+            Assert.Equal(typeof(ID3D11PipelineState), refusal.ExpectedType);
+            Assert.Equal("graphics pipeline", refusal.Context);
+            Assert.Equal("graphics", refusal.PipelineKind);
+            using var own = Pipeline();
+            emitter.SetPipeline(own);
         }
 
         // ---- Decision R8: precise scrub and unbind on disposal ----

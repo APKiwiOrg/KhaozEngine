@@ -727,11 +727,21 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
 
             if (_uploads is null || buffer is not IVulkanUploadDestination destination)
             {
-                throw new ArgumentException(
-                    "That buffer cannot be written by a native Vulkan command list: it holds no VkBuffer to copy "
+                const string message = "That buffer cannot be written by a native Vulkan command list: it holds no VkBuffer to copy "
                     + "into, which means it was created by another GPU backend. Create buffers through the device "
                     + "you record against. (A list built with no staging arena reaches this too, which is only a "
-                    + "list constructed by a test rather than by the device.)", nameof(buffer));
+                    + "list constructed by a test rather than by the device.)";
+                // A seam-built list without an uploader is a wiring refusal even for an owned buffer.
+                if (buffer is IVulkanUploadDestination) throw new ArgumentException(message, nameof(buffer));
+                throw new GpuResourceOwnershipArgumentException(GpuResourceOwnershipRefusal.ForeignBackend,
+                    message, nameof(buffer))
+                {
+                    ExpectedBackend = GpuBackendKind.VulkanNative,
+                    ActualType = buffer.GetType(),
+                    ExpectedType = typeof(IVulkanUploadDestination),
+                    ResourceKind = "buffer",
+                    Context = nameof(UpdateBuffer),
+                };
             }
 
             if (!_recording)

@@ -45,9 +45,14 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
 
             if (!ReferenceEquals(buffer.Owner, _resources))
             {
-                throw new ArgumentException(
+                throw new GpuResourceOwnershipArgumentException(GpuResourceOwnershipRefusal.DifferentDevice,
                     "That staging buffer was created by a DIFFERENT native Vulkan device, so its memory is not this "
-                    + "device's to read. Read it through the device that created it.", nameof(staging));
+                    + "device's to read. Read it through the device that created it.", nameof(staging))
+                {
+                    ExpectedBackend = GpuBackendKind.VulkanNative,
+                    ResourceKind = "buffer",
+                    Context = nameof(TryReadBuffer),
+                };
             }
 
             GpuReadWindow.Require(buffer.SizeInBytes, offsetBytes, destination.Length);

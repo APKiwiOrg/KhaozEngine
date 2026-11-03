@@ -39,7 +39,8 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
     {
         /// <summary>
         /// Build a device over the seams a caller supplies, with NO Vulkan loader, no instance lease, no
-        /// swapchain and no disk pipeline cache. Everything the device itself assembles (the block allocator, the
+        /// disk pipeline cache. Optional windowed seams build the real present boundary over fake native calls.
+        /// Everything the device itself assembles (the block allocator, the
         /// submit queue, the uniform ring, the resource owner, the staging source, the setup command buffer, the
         /// descriptors, the module cache, the pipelines, the resource factory and the shared sampler pair) is the
         /// REAL type wired exactly as the shipped constructor wires it, because the wiring is the whole point.
@@ -71,6 +72,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         /// <param name="framesInFlight">The device depth every pool ring and uniform ring is cut to.</param>
         /// <param name="maxDynamicUniformBuffers">The device's <c>maxDescriptorSetUniformBuffersDynamic</c>, or 0
         /// to degrade to Vulkan's required minimum exactly as a device whose limit was never read does.</param>
+        /// <param name="windowed">Optional surface and swapchain seams for device-level presentation checks.</param>
         internal static VulkanGpuDevice CreateOverSeams(
             DeviceLiveness liveness,
             VulkanTimeline timeline,
@@ -84,7 +86,8 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
             IVulkanPipelineApi pipelineApi,
             GpuCapabilities capabilities,
             int framesInFlight = 3,
-            uint maxDynamicUniformBuffers = 0)
+            uint maxDynamicUniformBuffers = 0,
+            VulkanWindowedParts? windowed = null)
         {
             ArgumentNullException.ThrowIfNull(liveness);
             ArgumentNullException.ThrowIfNull(timeline);
@@ -111,7 +114,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
                 spirvBytes: null,
                 maxDynamicUniformBuffers,
                 framesInFlight,
-                windowed: null);
+                windowed);
         }
     }
 }

@@ -19845,6 +19845,14 @@ Resource ownership checks use `GpuResourceOwnershipArgumentException` for `Diffe
 operation context and native handle properties rather than message text. Plain BCL parameter and
 lifetime checks keep their existing types.
 
+The same ownership reasons apply to attachment factories, pipeline and resource-set binds, uploads,
+completed staging-buffer reads and swapchain-copy command lists. D3D11 framebuffer adapters identify
+colour or depth attachments through `Context` and retain `ParamName = "texture"`. Vulkan completed
+buffer reads retain `ParamName = "staging"`, and foreign swapchain-copy lists retain
+`ParamName = "commands"`. A missing pipeline-layout slot carries `MissingResource` and `ResourceIndex`.
+Retirement queues reject a frame submission from another device with `DifferentDevice`, or
+`ForeignBackend` when its backend differs.
+
 `GpuResourceLayoutException` carries `DynamicOffsetUnsupportedForKind`, the backend, element name,
 binding when known and declared kind. `GpuResourceSetException` distinguishes resource count, kind,
 null entries, buffer windows, texture usage, staging textures and missing native handles. Its members

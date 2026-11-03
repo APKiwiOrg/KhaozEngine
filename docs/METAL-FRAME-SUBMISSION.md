@@ -48,7 +48,19 @@ copies protect their source and shared destination spans, including the existing
 writes cannot race GPU writes either. Staging texture copies protect only
 their source and shared destination rows, mip and layer. The staging-to-staging path protects the complete
 software subresources it actually copies, including padding. No whole-device write prohibition is used. A disjoint CPU write performs a footprint lookup without polling
-the driver. Read-footprint dictionaries and range lists are reused after final completion.
+the driver.
+
+Steady recording, prefix submission, disjoint CPU accesses and map/unmap cycles allocate no managed memory
+once the workload has warmed. Each command list preallocates one read-footprint container per ring slot.
+The normal ring gate proves final completion before that slot's footprint is cleared under the submit lock.
+Retirement removes protection without clearing a footprint reclaimed by a later recording. Completion timing
+never chooses a fresh footprint from a shared pool. Frame records are stored by value in ring-sized storage,
+and mapping lease lists return to a pool after the outermost unmap.
+
+Within a footprint, dictionaries and range lists retain their capacity across recordings. Range lists keep
+stable recording positions instead of circulating through a LIFO pool, so alternating main and capture
+recordings with different resource counts cannot keep redistributing and growing already-warmed storage.
+A larger workload may grow storage during warm-up. Steady frames never pay for those containers again.
 
 Publishing and CPU access share the submit lock. A writable mapping opened before the prefix must be unmapped
 before the prefix commits. A read-only mapping gives no write permission. Using a pointer after `Unmap` or

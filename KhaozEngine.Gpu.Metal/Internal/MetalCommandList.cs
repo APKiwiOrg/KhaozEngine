@@ -159,6 +159,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
             _passes = new MetalRenderPassSchedule(_encoders, render, clearMode);
             _owner = owner;
             _rings = rings;
+            _readSlots = new(rings.CpuReads, rings.FramesInFlight);
             _arena = arena;
             _blit = blit;
             _liveness = liveness;
@@ -314,8 +315,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
             // rather than polling the timeline a second time. It gives back the blocks that slot filled last time
             // round when, and only when, the submission that read them has completed, and it never waits.
             _arena.BeginSlot(_segment, _rings.CompletedValue);
-            if (_prefixFrame == 0) _recordedReads.Clear();
-            else _recordedReads = _rings.CpuReads.TakeReads();
+            _readSlots.Begin(_segment);
             _prefixFrame = 0;
             _drawableResolved = false;
             _deferredDrawable = null;

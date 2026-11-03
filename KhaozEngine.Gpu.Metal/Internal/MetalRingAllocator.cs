@@ -152,7 +152,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
             _timeline = timeline;
             _backpressure = backpressure;
             _submitLock = submitLock;
-            CpuReads = new MetalCpuReadProtection(submitLock, () => timeline.CompletedValue, () => timeline.LastSubmitted);
+            CpuReads = new MetalCpuReadProtection(submitLock, () => timeline.CompletedValue, () => timeline.LastSubmitted, framesInFlight);
             _segmentOwner = new ulong[framesInFlight];
             FramesInFlight = framesInFlight;
         }

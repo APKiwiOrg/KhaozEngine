@@ -5,7 +5,8 @@ namespace KhaozEngine.Gpu.Metal.Internal;
 internal sealed partial class MetalCommandList
 {
     internal MetalEarlyFrameSubmission? EarlySubmission { get; set; }
-    MetalRecordedReads _recordedReads = new();
+    readonly MetalRecordingReads _readSlots;
+    MetalRecordedReads _recordedReads => _readSlots.Current;
     ulong _prefixFrame;
     bool _drawableResolved;
     MetalSwapchainFramebuffer? _deferredDrawable;

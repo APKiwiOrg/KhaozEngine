@@ -27,7 +27,7 @@ internal readonly record struct MetalCpuRead(MetalCpuResource Resource, ulong Of
 internal sealed class MetalRecordedReads
 {
     readonly Dictionary<MetalCpuResource, List<MetalCpuRead>> _ranges = new();
-    readonly Stack<List<MetalCpuRead>> _freeRanges = new();
+    readonly List<List<MetalCpuRead>> _rangeStorage = new();
     internal Dictionary<MetalCpuResource, List<MetalCpuRead>>.ValueCollection Ranges => _ranges.Values;
     internal bool Overlaps(in MetalCpuRead access)
     {
@@ -37,13 +37,17 @@ internal sealed class MetalRecordedReads
     }
     internal void Clear()
     {
-        foreach (var ranges in _ranges.Values) { ranges.Clear(); _freeRanges.Push(ranges); }
+        foreach (var ranges in _ranges.Values) ranges.Clear();
         _ranges.Clear();
     }
     List<MetalCpuRead> RangesFor(MetalCpuResource resource)
     {
         if (_ranges.TryGetValue(resource, out var ranges)) return ranges;
-        ranges = _freeRanges.Count == 0 ? [] : _freeRanges.Pop();
+        // A stable recording position keeps its capacity when main and capture use different resource counts.
+        // A LIFO free list permutes the capacities at every Clear and keeps growing already-warmed workloads.
+        int index = _ranges.Count;
+        if (index == _rangeStorage.Count) _rangeStorage.Add([]);
+        ranges = _rangeStorage[index];
         _ranges.Add(resource, ranges);
         return ranges;
     }
@@ -76,29 +80,21 @@ internal sealed class MetalRecordedReads
 /// <summary>Shares the queue's submit lock. Publishing prefix reads and CPU writes are atomic against one another.
 /// Explicit read drains cover unsignalled prefixes outside the gate. A zero final value keeps a frame
 /// quarantined even after that drain.</summary>
-internal sealed class MetalCpuReadProtection(object gate, Func<ulong> completed, Func<ulong> lastSubmitted)
+internal sealed class MetalCpuReadProtection(object gate, Func<ulong> completed, Func<ulong> lastSubmitted,
+    int framesInFlight = MetalFramesInFlight.Default)
 {
-    sealed record Frame(ulong Id, int Segment, MetalRecordedReads Reads)
+    record struct Frame(ulong Id, int Segment, MetalRecordedReads Reads)
     {
         internal ulong FinalValue;
         internal bool PrefixCommitted;
         internal ulong SubmittedBeforePrefix;
         internal bool QueueDrained;
     }
-    readonly List<Frame> _frames = [];
-    readonly Stack<MetalRecordedReads> _freeReads = new();
+    readonly List<Frame> _frames = new(framesInFlight);
     readonly Dictionary<object, List<(MetalCpuRead Range, bool Writable)>> _mappings = new(ReferenceEqualityComparer.Instance);
+    readonly Stack<List<(MetalCpuRead Range, bool Writable)>> _freeMappings = new();
     ulong _nextFrame;
     internal object Gate => gate;
-    internal MetalRecordedReads TakeReads()
-    {
-        lock (gate)
-        {
-            RetireCompleted();
-            return _freeReads.Count == 0 ? new() : _freeReads.Pop();
-        }
-    }
-
     internal ulong Protect(int segment, MetalRecordedReads reads)
     {
         lock (gate)
@@ -120,21 +116,29 @@ internal sealed class MetalCpuReadProtection(object gate, Func<ulong> completed,
     {
         lock (gate)
         {
-            foreach (var frame in _frames)
-                if (frame.Id == frameId) { frame.FinalValue = finalValue; return; }
+            for (int i = 0; i < _frames.Count; i++)
+            {
+                var frame = _frames[i];
+                if (frame.Id != frameId) continue;
+                frame.FinalValue = finalValue;
+                _frames[i] = frame;
+                return;
+            }
         }
     }
 
     internal void Committed(ulong frameId)
     {
         lock (gate)
-            foreach (var frame in _frames)
-                if (frame.Id == frameId)
-                {
-                    frame.SubmittedBeforePrefix = lastSubmitted();
-                    frame.PrefixCommitted = true;
-                    return;
-                }
+            for (int i = 0; i < _frames.Count; i++)
+            {
+                var frame = _frames[i];
+                if (frame.Id != frameId) continue;
+                frame.SubmittedBeforePrefix = lastSubmitted();
+                frame.PrefixCommitted = true;
+                _frames[i] = frame;
+                return;
+            }
     }
 
     // An explicit CPU drain also covers prefixes with no final signal, including abandoned recordings.
@@ -158,8 +162,13 @@ internal sealed class MetalCpuReadProtection(object gate, Func<ulong> completed,
         if (!required) return;
         drainQueue();
         lock (gate)
-            foreach (var frame in _frames)
-                if (frame.Id <= through && frame.PrefixCommitted) frame.QueueDrained = true;
+            for (int i = 0; i < _frames.Count; i++)
+            {
+                var frame = _frames[i];
+                if (frame.Id > through || !frame.PrefixCommitted) continue;
+                frame.QueueDrained = true;
+                _frames[i] = frame;
+            }
     }
 
     internal void RequireSlotAvailable(int segment)
@@ -195,7 +204,11 @@ internal sealed class MetalCpuReadProtection(object gate, Func<ulong> completed,
         lock (gate)
         {
             if (writable) RequireWritable(resource, offset, length, MetalFrameAccessFailure.WritableMapping);
-            if (!_mappings.TryGetValue(owner, out var maps)) _mappings.Add(owner, maps = []);
+            if (!_mappings.TryGetValue(owner, out var maps))
+            {
+                maps = _freeMappings.Count == 0 ? [] : _freeMappings.Pop();
+                _mappings.Add(owner, maps);
+            }
             maps.Add((new(resource, offset, length), writable));
         }
     }
@@ -205,7 +218,11 @@ internal sealed class MetalCpuReadProtection(object gate, Func<ulong> completed,
         {
             if (!_mappings.TryGetValue(owner, out var maps)) return;
             maps.RemoveAt(maps.Count - 1);
-            if (maps.Count == 0) _mappings.Remove(owner);
+            if (maps.Count == 0)
+            {
+                _mappings.Remove(owner);
+                _freeMappings.Push(maps);
+            }
         }
     }
     void RetireCompleted()
@@ -218,10 +235,9 @@ internal sealed class MetalCpuReadProtection(object gate, Func<ulong> completed,
         for (int i = _frames.Count - 1; i >= 0; i--)
         {
             if (_frames[i].FinalValue == 0 || _frames[i].FinalValue > value) continue;
-            var reads = _frames[i].Reads;
+            // The recording owns its read storage. Retirement drops protection without clearing a slot
+            // another Begin may already have reclaimed after its completion wait.
             _frames.RemoveAt(i);
-            reads.Clear();
-            _freeReads.Push(reads);
         }
     }
     static MetalFrameAccessException Refusal(MetalFrameAccessFailure reason, in MetalCpuRead access, ulong frameId)

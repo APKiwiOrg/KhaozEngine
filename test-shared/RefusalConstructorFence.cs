@@ -43,7 +43,7 @@ internal static class RefusalConstructorFence
                 BlobReader il = pe.GetMethodBody(method.RelativeVirtualAddress).GetILReader();
                 if (CallsForbiddenConstructor(metadata, il, forbidden))
                     callers.Add(Names.GetTypeFromDefinition(metadata, method.GetDeclaringType(), 0)
-                        + "." + metadata.GetString(method.Name));
+                        .Name + "." + metadata.GetString(method.Name));
             }
         }
         return callers.ToArray();
@@ -70,11 +70,13 @@ internal static class RefusalConstructorFence
 
             int size = OperandSize(opcode.OperandType);
             if (size > il.RemainingBytes) throw new BadImageFormatException("Truncated IL operand.");
-            if (opcode == OpCodes.Newobj)
+            if (opcode == OpCodes.Newobj || opcode == OpCodes.Call)
             {
-                var (type, parameters) = ConstructorSignature(metadata, MetadataTokens.EntityHandle(il.ReadInt32()));
-                if (forbidden.Any(candidate => candidate.Type == type
-                    && candidate.Parameters.SequenceEqual(parameters, StringComparer.Ordinal)))
+                var signature = ConstructorSignature(metadata, MetadataTokens.EntityHandle(il.ReadInt32()));
+                if (signature is null && opcode == OpCodes.Newobj)
+                    throw new BadImageFormatException("Newobj does not reference a constructor.");
+                if (signature is { } target && forbidden.Any(candidate => candidate.Type == target.Type
+                    && candidate.Parameters.SequenceEqual(target.Parameters, StringComparer.Ordinal)))
                     return true;
             }
             else
@@ -85,23 +87,27 @@ internal static class RefusalConstructorFence
         return false;
     }
 
-    static (string Type, ImmutableArray<string> Parameters) ConstructorSignature(
+    static (string Type, ImmutableArray<string> Parameters)? ConstructorSignature(
         MetadataReader metadata, EntityHandle handle)
     {
         switch (handle.Kind)
         {
             case HandleKind.MemberReference:
                 MemberReference member = metadata.GetMemberReference((MemberReferenceHandle)handle);
-                if (metadata.GetString(member.Name) != ".ctor")
-                    throw new BadImageFormatException("Newobj does not reference a constructor.");
-                return (Names.FromHandle(metadata, member.Parent),
-                    member.DecodeMethodSignature(Names, genericContext: null).ParameterTypes);
+                if (metadata.GetString(member.Name) != ".ctor") return null;
+                SignatureType declaringType = Names.FromHandle(metadata, member.Parent);
+                // Member signatures retain !n even when their declaring type is a closed instantiation.
+                return (declaringType.Name,
+                    member.DecodeMethodSignature(Names, declaringType.TypeArguments).ParameterTypes
+                        .Select(parameter => parameter.Name).ToImmutableArray());
             case HandleKind.MethodDefinition:
                 MethodDefinition method = metadata.GetMethodDefinition((MethodDefinitionHandle)handle);
-                if (metadata.GetString(method.Name) != ".ctor")
-                    throw new BadImageFormatException("Newobj does not reference a constructor.");
-                return (Names.GetTypeFromDefinition(metadata, method.GetDeclaringType(), 0),
-                    method.DecodeSignature(Names, genericContext: null).ParameterTypes);
+                if (metadata.GetString(method.Name) != ".ctor") return null;
+                return (Names.GetTypeFromDefinition(metadata, method.GetDeclaringType(), 0).Name,
+                    method.DecodeSignature(Names, genericContext: default).ParameterTypes
+                        .Select(parameter => parameter.Name).ToImmutableArray());
+            case HandleKind.MethodSpecification:
+                return null;
             default:
                 throw new BadImageFormatException("Invalid constructor token.");
         }
@@ -121,7 +127,9 @@ internal static class RefusalConstructorFence
 
     // Only the supplied constructor identities use reflection. Scanned types stay in metadata so their
     // platform-specific dependencies never enter the test process.
-    sealed class TypeNames : ISignatureTypeProvider<string, object?>
+    readonly record struct SignatureType(string Name, ImmutableArray<string> TypeArguments = default);
+
+    sealed class TypeNames : ISignatureTypeProvider<SignatureType, ImmutableArray<string>>
     {
         internal static string FromType(Type type)
         {
@@ -138,49 +146,55 @@ internal static class RefusalConstructorFence
             return type.FullName!;
         }
 
-        internal string FromHandle(MetadataReader reader, EntityHandle handle) => handle.Kind switch
+        internal SignatureType FromHandle(MetadataReader reader, EntityHandle handle) => handle.Kind switch
         {
             HandleKind.TypeDefinition => GetTypeFromDefinition(reader, (TypeDefinitionHandle)handle, 0),
             HandleKind.TypeReference => GetTypeFromReference(reader, (TypeReferenceHandle)handle, 0),
-            HandleKind.TypeSpecification => GetTypeFromSpecification(reader, null, (TypeSpecificationHandle)handle, 0),
+            HandleKind.TypeSpecification => GetTypeFromSpecification(reader, default, (TypeSpecificationHandle)handle, 0),
             _ => throw new BadImageFormatException("Invalid constructor declaring type."),
         };
 
-        public string GetTypeFromDefinition(MetadataReader reader, TypeDefinitionHandle handle, byte rawTypeKind)
+        public SignatureType GetTypeFromDefinition(MetadataReader reader, TypeDefinitionHandle handle, byte rawTypeKind)
         {
             TypeDefinition type = reader.GetTypeDefinition(handle);
             TypeDefinitionHandle parent = type.GetDeclaringType();
-            return parent.IsNil ? Qualify(reader.GetString(type.Namespace), reader.GetString(type.Name))
-                : GetTypeFromDefinition(reader, parent, 0) + "+" + reader.GetString(type.Name);
+            return new(parent.IsNil ? Qualify(reader.GetString(type.Namespace), reader.GetString(type.Name))
+                : GetTypeFromDefinition(reader, parent, 0).Name + "+" + reader.GetString(type.Name));
         }
 
-        public string GetTypeFromReference(MetadataReader reader, TypeReferenceHandle handle, byte rawTypeKind)
+        public SignatureType GetTypeFromReference(MetadataReader reader, TypeReferenceHandle handle, byte rawTypeKind)
         {
             TypeReference type = reader.GetTypeReference(handle);
-            return type.ResolutionScope.Kind == HandleKind.TypeReference
-                ? GetTypeFromReference(reader, (TypeReferenceHandle)type.ResolutionScope, 0)
+            return new(type.ResolutionScope.Kind == HandleKind.TypeReference
+                ? GetTypeFromReference(reader, (TypeReferenceHandle)type.ResolutionScope, 0).Name
                     + "+" + reader.GetString(type.Name)
-                : Qualify(reader.GetString(type.Namespace), reader.GetString(type.Name));
+                : Qualify(reader.GetString(type.Namespace), reader.GetString(type.Name)));
         }
 
-        public string GetTypeFromSpecification(MetadataReader reader, object? genericContext,
+        public SignatureType GetTypeFromSpecification(MetadataReader reader, ImmutableArray<string> genericContext,
             TypeSpecificationHandle handle, byte rawTypeKind)
             => reader.GetTypeSpecification(handle).DecodeSignature(this, genericContext);
 
-        public string GetPrimitiveType(PrimitiveTypeCode typeCode) => "System." + typeCode;
-        public string GetSZArrayType(string elementType) => elementType + "[]";
-        public string GetArrayType(string elementType, ArrayShape shape)
-            => elementType + (shape.Rank == 1 ? "[*]" : "[" + new string(',', shape.Rank - 1) + "]");
-        public string GetByReferenceType(string elementType) => elementType + "&";
-        public string GetPointerType(string elementType) => elementType + "*";
-        public string GetPinnedType(string elementType) => elementType;
-        public string GetModifiedType(string modifier, string unmodifiedType, bool isRequired) => unmodifiedType;
-        public string GetGenericInstantiation(string genericType, ImmutableArray<string> typeArguments)
-            => genericType + "[" + string.Join(",", typeArguments) + "]";
-        public string GetGenericTypeParameter(object? genericContext, int index) => "!" + index;
-        public string GetGenericMethodParameter(object? genericContext, int index) => "!!" + index;
-        public string GetFunctionPointerType(MethodSignature<string> signature)
-            => "methodptr(" + string.Join(",", signature.ParameterTypes) + ")->" + signature.ReturnType;
+        public SignatureType GetPrimitiveType(PrimitiveTypeCode typeCode) => new("System." + typeCode);
+        public SignatureType GetSZArrayType(SignatureType elementType) => new(elementType.Name + "[]");
+        public SignatureType GetArrayType(SignatureType elementType, ArrayShape shape)
+            => new(elementType.Name + (shape.Rank == 1 ? "[*]" : "[" + new string(',', shape.Rank - 1) + "]"));
+        public SignatureType GetByReferenceType(SignatureType elementType) => new(elementType.Name + "&");
+        public SignatureType GetPointerType(SignatureType elementType) => new(elementType.Name + "*");
+        public SignatureType GetPinnedType(SignatureType elementType) => elementType;
+        public SignatureType GetModifiedType(SignatureType modifier, SignatureType unmodifiedType, bool isRequired)
+            => unmodifiedType;
+        public SignatureType GetGenericInstantiation(SignatureType genericType, ImmutableArray<SignatureType> typeArguments)
+        {
+            var arguments = typeArguments.Select(argument => argument.Name).ToImmutableArray();
+            return new(genericType.Name + "[" + string.Join(",", arguments) + "]", arguments);
+        }
+        public SignatureType GetGenericTypeParameter(ImmutableArray<string> genericContext, int index)
+            => new(genericContext.IsDefault ? "!" + index : genericContext[index]);
+        public SignatureType GetGenericMethodParameter(ImmutableArray<string> genericContext, int index) => new("!!" + index);
+        public SignatureType GetFunctionPointerType(MethodSignature<SignatureType> signature)
+            => new("methodptr(" + string.Join(",", signature.ParameterTypes.Select(parameter => parameter.Name))
+                + ")->" + signature.ReturnType.Name);
 
         static string Qualify(string space, string name) => space.Length == 0 ? name : space + "." + name;
     }

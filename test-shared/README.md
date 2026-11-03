@@ -76,7 +76,10 @@ The architecture helper links normalize their physical paths before inclusion so
 match `test-shared/...` rather than a project-relative path containing `..`.
 
 `RefusalConstructorFence.cs` reads assembly files through `PEReader` and `MetadataReader` to find
-`newobj` calls whose declaring type and parameter type names match forbidden exception constructors.
+`newobj` and constructor-chaining `call` instructions whose declaring type and parameter type names
+match forbidden exception constructors. Ordinary method calls remain allowed. Constructed generic
+declaring types supply their arguments when decoding constructor parameters, so overload matching
+uses the instantiated parameter types.
 It reads metadata only so scanning a backend never loads its platform-specific interop dependencies.
 Source-link this helper into an owning test project and pass engine assemblies and the custom
 exception's message-only constructors to `EngineCallers`. Callers are returned as sorted, distinct
@@ -85,9 +88,12 @@ contain no matching constructor calls. Reason-taking constructors remain allowed
 assemblies are covered only if explicitly supplied. Invalid IL or metadata fails the scan.
 
 `IlCallGraph` stops or skips unresolved IL rather than guessing, so its architecture rules need positive
-controls. `RefusalConstructorFenceTests` proves a private caller of `InvalidDataException(string)` is
-reported, an uncalled constructor is left clear and scanning the D3D11 assembly loads no interop off
-Windows. Existing Metal architecture and tooling fences retain their own controls and use `IlCallGraph`.
+controls. `RefusalConstructorFenceTests` proves private callers of `InvalidDataException(string)`,
+same-assembly base and this constructor chains, and constructed generic exceptions are reported.
+A generic construction after switch, two-byte opcodes and mixed operands remains visible, while
+another constructor overload and an uncalled constructor stay clear. Scanning the D3D11 assembly
+loads no interop off Windows. Existing Metal architecture and tooling fences retain their own
+controls and use `IlCallGraph`.
 
 ## Items benchmark fixtures
 

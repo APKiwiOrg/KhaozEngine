@@ -272,21 +272,19 @@ namespace KhaozEngine.Gpu.Metal.Internal
         /// The buffer's bytes as a span, for the <c>Map</c> path. The whole REQUESTED size rather than the rounded
         /// allocation, because the rounding is a padding the caller never asked for and never owns.
         /// <para>
-        /// A RING-BACKED BUFFER MAPS ITS CURRENT SEGMENT, which is the only answer that means anything: the
+        /// A RING-BACKED BUFFER MAPS THE SEGMENT CAPTURED WITH ITS LEASE, which is the only consistent answer: the
         /// caller asked for a buffer of <see cref="SizeInBytes"/> bytes and the segment IS that buffer as far as
         /// the seam is concerned, so handing back the whole allocation would hand back N copies with no way to
         /// tell which one the next submit binds. It is also the answer a readback wants, since a record-time
         /// write goes to exactly this segment.
         /// </para>
         /// </summary>
-        internal MappedData Mapped()
+        internal MappedData Mapped(ulong physicalBase)
         {
-            if (_ring is null) return new MappedData(Contents, SizeInBytes, SizeInBytes);
-
             IntPtr contents = Contents;
             IntPtr segment = contents == IntPtr.Zero
                 ? IntPtr.Zero
-                : contents + (nint)_ring.CurrentSegmentBaseBytes;
+                : contents + (nint)physicalBase;
 
             return new MappedData(segment, SizeInBytes, SizeInBytes);
         }

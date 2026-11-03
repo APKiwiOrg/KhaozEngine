@@ -106,6 +106,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
         // offset is checked against. 256 would refuse offsets the device accepts (macOS reports 16 or 32).
         readonly uint _bufferOffsetAlignment;
         readonly MetalEarlyFrameSubmission _earlySubmission;
+        readonly MetalCpuAccess _cpuAccess;
 
         // THE DEVICE'S BORDER-COLOUR ANSWER, read off the probe's snapshot at creation because a sampler cannot
         // ask it safely: the way to ask a device directly is to build a border sampler, which is the abort.
@@ -146,6 +147,8 @@ namespace KhaozEngine.Gpu.Metal.Internal
             _backpressure = new WaitAccumulator();
             _rings = new MetalRingAllocator(framesInFlight, timeline, _backpressure, _submitLock);
             _earlySubmission = new MetalEarlyFrameSubmission(new EarlyFrameApi(this), _submitLock);
+            _cpuAccess = new MetalCpuAccess(_rings.CpuReads, _setup.Flush, _timeline.WaitForIdle,
+                DrainCommittedUnsignalledWork, _liveness);
 
             _factory = new MetalResourceFactory(this);
         }
@@ -559,8 +562,9 @@ namespace KhaozEngine.Gpu.Metal.Internal
         /// AND IT IS TWO DRAINS RATHER THAN ONE, WHICH IS THE ROW 6 AND ROW 7 SEAM. The setup batch (M-M9) is
         /// flushed first, and a flushed batch is a committed command buffer that signals NO timeline value, so
         /// M-F5's counted drain cannot see it. The second drain is the queue's, taken only when the flush
-        /// actually committed something, and it covers the batch by the same enqueue-order argument the teardown
-        /// drain rests on. A frame loop that uploads nothing pays for exactly one drain, which is M-F5's.
+        /// committed something or a committed prefix remains uncovered by final-frame completion. It covers
+        /// unsignalled work by the same enqueue-order argument the teardown drain rests on. Once the final
+        /// frame completes, an upload-free frame loop needs no additional queue drain.
         /// </para>
         /// </summary>
         public void WaitForIdle()
@@ -568,23 +572,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
             if (_liveness.IsDead) return;
             if (!KhaozEngineMetal.IsPlatformSupported) return;
 
-            // THE SETUP BATCH FIRST (M-M9). A drain that ran before the flush would wait for everything except
-            // the uploads the caller has just made, which is exactly the case an explicit drain is asked for.
-            // The flush COMMITS and does not wait, and it says whether it committed anything, because that is
-            // what decides the second drain below.
-            bool committed = _setup.Flush();
-
-            // M-F5's DRAIN, counted, over everything a Submit ever took to the queue.
-            _timeline.WaitForIdle();
-
-            // AND THE QUEUE DRAIN FOR THE BATCH THE FLUSH JUST COMMITTED, which the timeline cannot cover. A
-            // setup batch encodes NO timeline signal (see DrainForRead in MetalGpuDevice.Resources.cs for the
-            // whole argument and why it is not given one), so it is invisible to a counted drain, and the flush
-            // above just put it BEHIND everything the timeline knows about. An empty command buffer committed
-            // after it and waited on is what covers it, by the same enqueue-order argument teardown already
-            // rests on. Skipped when the flush committed nothing, so the frame loop's own WaitForIdle is exactly
-            // M-F5's drain and nothing more.
-            if (committed) DrainCommittedSetupBatch();
+            _cpuAccess.WaitForIdle();
         }
 
         /// <summary>
@@ -689,11 +677,11 @@ namespace KhaozEngine.Gpu.Metal.Internal
             _device.Release();
         }
 
-        // The queue drain that covers a just-committed setup batch, split out only because Drain is macOS-gated
+        // The queue drain that covers setup batches and unsignalled prefixes, split out because Drain is macOS-gated
         // and WaitForIdle's own body is not. See WaitForIdle for why the timeline's drain cannot do this one.
         [SupportedOSPlatform("macos")]
         [MethodImpl(MethodImplOptions.NoInlining)]
-        void DrainCommittedSetupBatch() => Drain("waitUntilCompleted (setup batch drain)");
+        void DrainCommittedUnsignalledWork() => Drain("waitUntilCompleted (unsignalled work drain)");
 
         // The SYNCHRONOUS way a command-buffer reading reaches the latch. The other is the completion handler on
         // every submitted buffer, through MetalCompletionErrorRoute, and the two are kept apart because they read

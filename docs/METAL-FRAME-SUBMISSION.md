@@ -23,6 +23,13 @@ Timestamp batches continue across the pair without a new batch or frame id. Pres
 separate buffer. An abandoned frame, including a failed tail acquisition, leaves the prefix's slot quarantined
 until device teardown. It never creates a timeline signal, another submission or a wait to manufacture reuse.
 
+Explicit `WaitForIdle` and blocking read maps also cover committed prefixes that have no final signal,
+including abandoned recordings. After the timeline drain, a queue drain covers any prefix not already covered
+by a later final signal or an earlier explicit queue drain. A completed final signal covers every prefix
+committed before it, even if that prefix's own tail was abandoned. The submit lock is released during that wait. This
+readiness proof neither submits the tail nor releases its slot or CPU write protection. A completed final
+frame needs no additional queue drain, preserving the ordinary frame loop's waits.
+
 ## CPU write-after-record rule
 
 Resolving a drawable can now execute earlier draws before the explicit `Submit`. CPU-visible bytes a
@@ -47,13 +54,16 @@ Publishing and CPU access share the submit lock. A writable mapping opened befor
 before the prefix commits. A read-only mapping gives no write permission. Using a pointer after `Unmap` or
 disposal violates the map lifecycle. Refused writable mappings fail before the map's ordinary drain.
 Nested maps unwind in reverse order, so unmapping a nested read does not release an older writable lease.
+Buffer mapping captures its physical segment base under the protection lock and uses that base for both the
+lease and the returned pointer. A concurrent recording may rotate the ring while the normal map drain runs,
+but it cannot move the mapped span away from its lease.
 Completion polling releases range protection only after the final signal, never after the prefix or Submit.
 An unfinished prefix has no final signal, so its ranges and frame slot remain quarantined.
 
 | Write path | Protection |
 | --- | --- |
 | Command-list uniform upload | Checks its physical ring segment and byte span under the protection lock before copying |
-| Device `UpdateBuffer`, all overloads | The shared writer checks non-ring bytes before copying. Uniform writes check every segment before changing any segment, so refusal cannot partially apply an update |
+| Device `UpdateBuffer`, all overloads | The shared writer checks non-ring bytes before copying. Uniform writes plan immediate copies and deferred patches under the submit lock. Only immediate physical copies need prefix protection, after the existing depth-one completion wait. All checks precede any copy or patch change, so refusal is atomic |
 | Command-list non-uniform upload | Takes fresh, append-only staging bytes. The GPU copy is ordered after earlier commands, including the prefix, by the same queue |
 | Staging arena reuse | The arena keeps the original frame slot. Only final completion recycles it. An abandoned prefix quarantines the slot |
 | Writable buffer or staging-texture map | Checks and leases the mapped span. A prefix refuses an already-open overlapping lease. `Unmap` removes the lease |

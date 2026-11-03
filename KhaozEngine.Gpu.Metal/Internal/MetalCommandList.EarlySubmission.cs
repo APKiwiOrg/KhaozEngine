@@ -12,6 +12,7 @@ internal sealed partial class MetalCommandList
     GpuAttachmentStoreActions _deferredStores;
 
     internal void ProtectPrefix() => _prefixFrame = _rings.CpuReads.Protect(_segment, _recordedReads);
+    internal void PrefixCommitted() => _rings.CpuReads.Committed(_prefixFrame);
 
     // The outgoing framebuffer already owes this pass end. No render encoder is split in two.
     // A compute or blit encoder left open by preceding work is also ended before the next framebuffer can draw.

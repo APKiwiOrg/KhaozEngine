@@ -21,6 +21,7 @@ internal sealed class MetalEarlyFrameSubmission(IMetalEarlyFrameApi api, object 
             if (!api.IsAlive) return false;
             list.ProtectPrefix();
             api.CommitWithCompletionHandler(buffer);
+            list.PrefixCommitted();
             return true;
         }
     }

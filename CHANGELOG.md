@@ -14,6 +14,8 @@ Issues (the `kind/roadmap` label), not a checked-in roadmap file.
   second command buffer. The final buffer alone owns completion and frame-slot reuse. CPU-visible ranges
   accessed by a committed prefix stay immutable through final completion. Overlapping CPU writes and writable
   mappings now throw a structured MetalFrameAccessException. SpriteBatch writes only its new matrix slot.
+- Preserve deferred device uniform updates across split Metal frames. Explicit drains and read maps cover
+  unsignalled prefixes, and writable ring mappings keep their pointer and access lease on the same segment.
 - Declare per-attachment store intent in the GPU seam. Metal and Vulkan discard only the directional
   cascade pass's dead working depth and stencil, retaining the sampled colour atlas. Other backends may
   retain discarded data. The default remains Store for every attachment.

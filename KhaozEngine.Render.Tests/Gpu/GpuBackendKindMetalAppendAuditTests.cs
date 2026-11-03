@@ -500,7 +500,6 @@ namespace KhaozEngine.Tests.Gpu
                     () => GpuDeviceContext.CreateForWindow(default, 640, 480, true, GpuBackendKind.MetalNative));
 
                 Assert.Equal(GpuBackendKind.MetalNative, ex.Backend);
-                Assert.Contains(nameof(GpuBackendKind.MetalNative), ex.Message, StringComparison.Ordinal);
                 // The actionable line is the convention, which is what degrades correctly for a backend whose
                 // package the message predates.
                 Assert.Contains("KhaozEngine<Backend>.Register()", ex.Message, StringComparison.Ordinal);

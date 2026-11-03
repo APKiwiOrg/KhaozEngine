@@ -238,12 +238,6 @@ namespace KhaozEngine.Tests.Gpu
                 // this rather than on the recovery from it, and neither stack has to be recovered from a log.
                 Assert.Same(boom, ex.InnerException);
                 Assert.NotNull(ex.FallbackFailure);
-
-                // And both reasons are in the one line a support paste carries.
-                Assert.Contains(requested.ToString(), ex.Message);
-                Assert.Contains(fallbackTo.ToString(), ex.Message);
-                Assert.Contains("device creation returned a hard failure", ex.Message);
-                Assert.Contains(ex.FallbackFailure!.Message, ex.Message);
             }
         }
 

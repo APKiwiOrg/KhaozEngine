@@ -630,6 +630,7 @@ The Vulkan shader-module cache's byte-length guard uses `ShaderValidationArgumen
 
 | Exception and reason member | What it refuses | Identifiers |
 |---|---|---|
+| `GpuBackendCreationArgumentException`, `GpuBackendCreationRefusal.ForeignDiagnosticSettings` | Refuses headless creation with diagnostic settings not owned by the requested backend. | `ParamName`, `ExpectedBackend`, `ActualType` |
 | `GpuBoundFramebufferException`, `GpuBoundFramebufferRefusal.FramebufferNotBound` | Refuses a framebuffer-dependent command when no framebuffer is bound. | `Command` |
 | `GpuBoundFramebufferException`, `GpuBoundFramebufferRefusal.DepthAttachmentMissing` | Refuses a depth clear when the bound framebuffer declares no depth attachment. | `Command` |
 | `GpuDynamicBindingException`, `GpuDynamicBindingRefusal.DynamicElementMissing` | Refuses a nonzero dynamic offset on a set with no dynamic layout element. | `ParamName`, `Backend`, `Set`, `DynamicOffset` |

@@ -28109,9 +28109,17 @@ D3D11 retains its existing draw acceptance. A depth clear against a colour-only 
 `DepthAttachmentMissing` and `Command = "ClearDepthStencil"` on all three backends. Bind a target with the
 required attachment before retrying. Messages and refusal points are unchanged.
 
+### Backend diagnostic settings refusals
+
+The native D3D11, Metal and Vulkan providers require their own frozen diagnostic settings for
+`IGpuHeadlessDiagnosticProvider.CreateHeadless(settings)`. Foreign settings throw
+`GpuBackendCreationArgumentException`, derived from `ArgumentException`, with
+`GpuBackendCreationRefusal.ForeignDiagnosticSettings`, `ParamName`, `ExpectedBackend` and `ActualType`.
+Resolve settings through the same provider before creating its device.
+
 ### Native D3D11 creation and binding refusals
 
-`D3D11BackendCreationRefusal` distinguishes platform, window-kind and diagnostic-settings refusals.
+`D3D11BackendCreationRefusal` distinguishes native platform and window-kind refusals.
 `D3D11ObjectPlatformRefusal.WindowsObjectUsedOffWindows` carries the native object kind and support probe.
 `D3D11BindResolutionRefusal` identifies missing register views and constant-buffer transposition inputs.
 Foreign bindable resources, framebuffers and buffers use `GpuResourceOwnershipArgumentException` with
@@ -28131,8 +28139,7 @@ See the [Metal refusal table](../KhaozEngine.Gpu.Metal/README.md#refusals) for e
 
 ### Native Vulkan creation and device refusals
 
-`VulkanBackendCreationRefusal` separates machine support, surface kind, diagnostic-settings and native-loader
-failures. `LoaderUnavailable` retains the native cause. `VulkanInstanceRefusal` separates a null factory
+`VulkanBackendCreationRefusal` separates machine support, surface kind and native-loader failures. `LoaderUnavailable` retains the native cause. `VulkanInstanceRefusal` separates a null factory
 result from incompatible live and requested configurations. `VulkanFeatureRefusal.RequiredFeatureMissing`
 carries the feature and device. `VulkanResultRefusal.NativeCallFailed` carries the call, result code and token.
 `VulkanDeviceWiringRefusal.InstanceMissing` identifies the missing native object on a seam-built device.

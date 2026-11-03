@@ -99,9 +99,10 @@ namespace KhaozEngine.Gpu.Metal.Internal
         public GpuProviderDevice CreateHeadless(IGpuHeadlessDiagnosticSettings settings)
         {
             if (settings is not MetalHeadlessDiagnosticSettings frozen)
-                throw new MetalBackendCreationArgumentException(MetalBackendCreationRefusal.ForeignDiagnosticSettings, "Settings are not owned by this backend.", nameof(settings))
+                throw new GpuBackendCreationArgumentException(GpuBackendCreationRefusal.ForeignDiagnosticSettings, "Settings are not owned by this backend.", nameof(settings))
                 {
                     ActualType = settings?.GetType(),
+                    ExpectedBackend = GpuBackendKind.MetalNative,
                 };
             if (_headless is not null) return _headless(frozen);
             if (!OperatingSystem.IsMacOS()) throw new MetalBackendCreationPlatformException(MetalBackendCreationRefusal.OperatingSystemUnsupported, "Metal requires macOS.")

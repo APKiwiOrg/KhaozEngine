@@ -1282,12 +1282,12 @@ These backend policies use required reason enums and preserve the BCL base type,
 
 | Exception and reason | What it refuses | Identifiers |
 |---|---|---|
+| `GpuBackendCreationArgumentException`, `GpuBackendCreationRefusal.ForeignDiagnosticSettings` | Refuses headless creation with diagnostic settings not owned by the requested backend. | `ParamName`, `ExpectedBackend`, `ActualType` |
 | `GpuBoundFramebufferException`, `GpuBoundFramebufferRefusal.FramebufferNotBound` | Refuses a framebuffer-dependent command when no framebuffer is bound. | `Command` |
 | `GpuBoundFramebufferException`, `GpuBoundFramebufferRefusal.DepthAttachmentMissing` | Refuses a depth clear when the bound framebuffer declares no depth attachment. | `Command` |
 | `MetalBackendCreationStateException`, `MetalBackendCreationRefusal.EligibleDeviceMissing` | Refuses creation when no eligible Metal device remains after the support probe. | `Detail` |
 | `MetalBackendCreationStateException`, `MetalBackendCreationRefusal.CommandQueueUnavailable` | Refuses a Metal device that cannot create its native command queue. | `DeviceName` |
 | `MetalBackendCreationArgumentException`, `MetalBackendCreationRefusal.ContentViewMissing` | Refuses a Cocoa window that has no content view. | `ParamName`, `WindowKind` |
-| `MetalBackendCreationArgumentException`, `MetalBackendCreationRefusal.ForeignDiagnosticSettings` | Refuses settings not owned by the Metal provider. | `ParamName`, `ActualType` |
 | `MetalBackendCreationUnsupportedException`, `MetalBackendCreationRefusal.MachineUnsupported` | Refuses Metal creation when the machine probe reports a missing requirement. | `MissingRequirement`, `Backend` |
 | `MetalBackendCreationStateException`, `MetalBackendCreationRefusal.NativeLayerUnavailable` | Refuses creation when a CAMetalLayer cannot be materialized. | `Detail`, `NativeClass` |
 | `MetalBackendCreationPlatformException`, `MetalBackendCreationRefusal.NativeResourceUnavailableOnPlatform` | Refuses constructing a native Metal resource on another platform. | `ResourceKind`, `RequiredOperatingSystem` |

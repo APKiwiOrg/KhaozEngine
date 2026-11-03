@@ -85,13 +85,16 @@ namespace KhaozEngine.Tests.Gpu
         [Fact]
         public void CreationPolicy_RefusesForeignSettingsAndWindowKindsWithoutADevice()
         {
-            var provider = new D3D11BackendProvider(environment: _ => null);
+            using var device = new FakeGpuDevice(GpuBackendKind.Direct3D11Native);
+            var provider = new D3D11BackendProvider(environment: _ => null, headless: _ => new(device, null, null));
             var foreign = new KhaozEngine.Gpu.Metal.Internal.MetalBackendProvider(environment: _ => null)
                 .ResolveHeadlessSettings(new(false, false));
-            var settings = Assert.Throws<D3D11BackendCreationArgumentException>(() => provider.CreateHeadless(foreign));
-            Assert.Equal(D3D11BackendCreationRefusal.ForeignDiagnosticSettings, settings.Reason);
+            var settings = Assert.Throws<GpuBackendCreationArgumentException>(() => provider.CreateHeadless(foreign));
+            Assert.Equal(GpuBackendCreationRefusal.ForeignDiagnosticSettings, settings.Reason);
             Assert.Equal(foreign.GetType(), settings.ActualType);
             Assert.Equal("settings", settings.ParamName);
+            Assert.Equal(GpuBackendKind.Direct3D11Native, settings.ExpectedBackend);
+            provider.CreateHeadless(provider.ResolveHeadlessSettings(new(false, false)));
             Assert.IsAssignableFrom<ArgumentException>(settings);
             var window = Assert.Throws<D3D11BackendCreationArgumentException>(() =>
                 D3D11BackendProvider.RequireWindowKindForTests(GpuWindowKind.Cocoa));

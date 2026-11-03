@@ -117,9 +117,10 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         public GpuProviderDevice CreateHeadless(IGpuHeadlessDiagnosticSettings settings)
         {
             if (settings is not VulkanHeadlessDiagnosticSettings frozen)
-                throw new VulkanBackendCreationArgumentException(VulkanBackendCreationRefusal.ForeignDiagnosticSettings, "Settings are not owned by this backend.", nameof(settings))
+                throw new GpuBackendCreationArgumentException(GpuBackendCreationRefusal.ForeignDiagnosticSettings, "Settings are not owned by this backend.", nameof(settings))
                 {
                     ActualType = settings?.GetType(),
+                    ExpectedBackend = GpuBackendKind.VulkanNative,
                 };
             if (_headless is not null) return _headless(frozen);
             return VulkanGpuDevice.CreateHeadless(frozen);

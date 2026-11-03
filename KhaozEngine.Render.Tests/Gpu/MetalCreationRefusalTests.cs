@@ -52,10 +52,15 @@ public sealed class MetalCreationRefusalTests
     public void ProviderFaultsCarrySettingsMachineAndPlatform()
     {
         var foreign = new D3D11BackendProvider(environment: _ => null).ResolveHeadlessSettings(new(false, false));
-        var settings = Assert.Throws<MetalBackendCreationArgumentException>(() => new MetalBackendProvider().CreateHeadless(foreign));
-        Assert.Equal(MetalBackendCreationRefusal.ForeignDiagnosticSettings, settings.Reason);
+        using var device = new FakeGpuDevice(GpuBackendKind.MetalNative);
+        var provider = new MetalBackendProvider(environment: _ => null, headless: _ => new(device, null, null));
+        var settings = Assert.Throws<GpuBackendCreationArgumentException>(() => provider.CreateHeadless(foreign));
+        Assert.Equal(GpuBackendCreationRefusal.ForeignDiagnosticSettings, settings.Reason);
         Assert.Equal(foreign.GetType(), settings.ActualType);
         Assert.Equal("settings", settings.ParamName);
+        Assert.Equal(GpuBackendKind.MetalNative, settings.ExpectedBackend);
+        Assert.IsAssignableFrom<ArgumentException>(settings);
+        provider.CreateHeadless(provider.ResolveHeadlessSettings(new(false, false)));
         var machine = Assert.Throws<MetalBackendCreationUnsupportedException>(() => MetalBackendProvider.RequireMachineSupportForTests("family below floor"));
         MetalBackendProvider.RequireMachineSupportForTests(null);
         Assert.Equal(MetalBackendCreationRefusal.MachineUnsupported, machine.Reason);

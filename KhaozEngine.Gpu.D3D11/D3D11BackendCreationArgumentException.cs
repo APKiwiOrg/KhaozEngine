@@ -14,9 +14,6 @@ public sealed class D3D11BackendCreationArgumentException : ArgumentException
     /// <summary>The rule that refused the operation.</summary>
     public D3D11BackendCreationRefusal Reason { get; }
 
-    /// <summary>ActualType associated with the refused operation, when applicable.</summary>
-    public Type? ActualType { get; init; }
-
     /// <summary>ActualWindowKind associated with the refused operation, when applicable.</summary>
     public GpuWindowKind? ActualWindowKind { get; init; }
 

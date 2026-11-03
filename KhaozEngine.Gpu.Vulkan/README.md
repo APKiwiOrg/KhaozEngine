@@ -1934,13 +1934,13 @@ change the captured diagnostics.
 
 | Exception and reason | What it refuses | Identifiers |
 |---|---|---|
+| `GpuBackendCreationArgumentException`, `GpuBackendCreationRefusal.ForeignDiagnosticSettings` | Refuses headless creation with diagnostic settings not owned by the requested backend. | `ParamName`, `ExpectedBackend`, `ActualType` |
 | `GpuBoundFramebufferException`, `GpuBoundFramebufferRefusal.FramebufferNotBound` | Refuses a framebuffer-dependent command when no framebuffer is bound. | `Command` |
 | `GpuBoundFramebufferException`, `GpuBoundFramebufferRefusal.DepthAttachmentMissing` | Refuses a depth clear when the bound framebuffer declares no depth attachment. | `Command` |
 | `VulkanBackendCreationStateException`, `VulkanBackendCreationRefusal.PinnedAdapterUnavailable` | Refuses a pinned Vulkan adapter that is absent or ineligible. | `AdapterKey` |
 | `VulkanBackendCreationStateException`, `VulkanBackendCreationRefusal.PhysicalDevicesMissing` | Refuses a native Vulkan loader with no physical devices after the support probe. | `PhysicalDeviceCount` |
 | `VulkanBackendCreationStateException`, `VulkanBackendCreationRefusal.EligibleDeviceMissing` | Refuses native Vulkan creation when every candidate is ineligible. | `CandidateCount`, `CandidateNames`, `CandidateRejections` |
 | `VulkanBackendCreationUnsupportedException`, `VulkanBackendCreationRefusal.CocoaSurfaceUnsupported` | Refuses Cocoa presentation because the native Vulkan package does not carry the Metal translation layer. | `WindowKind`, `RequiredTranslationLayer`, `RequiredExtension` |
-| `VulkanBackendCreationArgumentException`, `VulkanBackendCreationRefusal.ForeignDiagnosticSettings` | Refuses settings not owned by the Vulkan provider. | `ParamName`, `ActualType` |
 | `VulkanBackendCreationUnsupportedException`, `VulkanBackendCreationRefusal.MachineUnsupported` | Refuses Vulkan creation when the machine support probe reports a missing requirement. | `MissingRequirement`, `Probe`, `DriverPackage` |
 | `VulkanBackendCreationUnsupportedException`, `VulkanBackendCreationRefusal.WindowKindUnsupported` | Refuses a window kind with no supported Vulkan surface extension. | `WindowKind` |
 | `VulkanDeviceMapException`, `VulkanDeviceMapRefusal.DeadWithoutLossRecord` | Refuses mapping a dead device whose token has no latched driver loss. | `LossReason` |

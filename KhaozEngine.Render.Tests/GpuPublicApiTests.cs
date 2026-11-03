@@ -294,7 +294,6 @@ public class GpuPublicApiTests
         Assert.Equal(new[]
         {
             "KhaozEngine.Gpu.Vulkan.KhaozEngineVulkan",
-            "KhaozEngine.Gpu.Vulkan.VulkanBackendCreationArgumentException",
             "KhaozEngine.Gpu.Vulkan.VulkanBackendCreationRefusal",
             "KhaozEngine.Gpu.Vulkan.VulkanBackendCreationStateException",
             "KhaozEngine.Gpu.Vulkan.VulkanBackendCreationUnsupportedException",

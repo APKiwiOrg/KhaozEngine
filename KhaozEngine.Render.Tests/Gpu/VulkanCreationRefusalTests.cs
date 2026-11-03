@@ -13,10 +13,14 @@ public sealed class VulkanCreationRefusalTests
     public void ForeignSettingsAndUnknownSurfacesRefuseBeforeNativeCreation()
     {
         var settings = new D3D11BackendProvider(environment: _ => null).ResolveHeadlessSettings(new(false, false));
-        var refusal = Assert.Throws<VulkanBackendCreationArgumentException>(() => new VulkanBackendProvider().CreateHeadless(settings));
-        Assert.Equal(VulkanBackendCreationRefusal.ForeignDiagnosticSettings, refusal.Reason);
+        using var device = new FakeGpuDevice(GpuBackendKind.VulkanNative);
+        var provider = new VulkanBackendProvider(environment: _ => null, headless: _ => new(device, null, null));
+        var refusal = Assert.Throws<GpuBackendCreationArgumentException>(() => provider.CreateHeadless(settings));
+        Assert.Equal(GpuBackendCreationRefusal.ForeignDiagnosticSettings, refusal.Reason);
         Assert.Equal(settings.GetType(), refusal.ActualType);
         Assert.Equal("settings", refusal.ParamName);
+        Assert.Equal(GpuBackendKind.VulkanNative, refusal.ExpectedBackend);
+        provider.CreateHeadless(provider.ResolveHeadlessSettings(new(false, false)));
         Assert.IsAssignableFrom<ArgumentException>(refusal);
         var surface = Assert.Throws<VulkanBackendCreationUnsupportedException>(() => VulkanInstanceLayout.SurfaceExtensionFor((GpuWindowKind)999));
         Assert.Equal(VulkanBackendCreationRefusal.WindowKindUnsupported, surface.Reason);

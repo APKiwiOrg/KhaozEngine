@@ -108,9 +108,10 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         public GpuProviderDevice CreateHeadless(IGpuHeadlessDiagnosticSettings settings)
         {
             if (settings is not D3D11HeadlessDiagnosticSettings frozen)
-                throw new D3D11BackendCreationArgumentException(D3D11BackendCreationRefusal.ForeignDiagnosticSettings, "Settings are not owned by this backend.", nameof(settings))
+                throw new GpuBackendCreationArgumentException(GpuBackendCreationRefusal.ForeignDiagnosticSettings, "Settings are not owned by this backend.", nameof(settings))
                 {
                     ActualType = settings?.GetType(),
+                    ExpectedBackend = GpuBackendKind.Direct3D11Native,
                 };
             if (_headless is not null) return _headless(frozen);
             if (!OperatingSystem.IsWindows()) throw new D3D11BackendCreationPlatformException(D3D11BackendCreationRefusal.OperatingSystemUnsupported, "Direct3D11 requires Windows.")

@@ -1398,10 +1398,10 @@ and `AlignmentBytes`. Staging contract refusals use the shared types in `KhaozEn
 
 | Exception and reason | What it refuses | Identifiers |
 |---|---|---|
+| `GpuBackendCreationArgumentException`, `GpuBackendCreationRefusal.ForeignDiagnosticSettings` | Refuses headless creation with diagnostic settings not owned by the requested backend. | `ParamName`, `ExpectedBackend`, `ActualType` |
 | `D3D11BackendCreationArgumentException`, `D3D11BackendCreationRefusal.WindowHandleMissing` | Refuses a null HWND for native D3D11 windowed creation. | `ParamName`, `ActualWindowKind` |
 | `D3D11BackendCreationUnsupportedException`, `D3D11BackendCreationRefusal.RuntimeContextUnavailable` | Refuses a runtime without the required versioned D3D11 context. | `RequiredInterface` |
 | `D3D11BackendCreationStateException`, `D3D11BackendCreationRefusal.NativeObjectsMissing` | Refuses native creation success without its device and context outputs. | `DeviceReturned`, `ContextReturned` |
-| `D3D11BackendCreationArgumentException`, `D3D11BackendCreationRefusal.ForeignDiagnosticSettings` | Refuses settings not owned by the D3D11 provider. | `ParamName`, `ActualType` |
 | `D3D11BackendCreationPlatformException`, `D3D11BackendCreationRefusal.OperatingSystemUnsupported` | Refuses native D3D11 device creation off Windows. | `Backend`, `CreationPath`, `RequiredOperatingSystem`, `SupportProbe` |
 | `D3D11BackendCreationArgumentException`, `D3D11BackendCreationRefusal.WindowKindUnsupported` | Refuses a D3D11 swapchain window that is not Win32. | `ParamName`, `ActualWindowKind`, `RequiredWindowKind` |
 | `GpuResourceOwnershipArgumentException`, `GpuResourceOwnershipRefusal.ForeignBackend` | Refuses a bindable resource, framebuffer or buffer without this backend's native adapter. | `ParamName`, `ExpectedBackend`, `ActualType`, `ExpectedType`, `ResourceKind`, `Context` |

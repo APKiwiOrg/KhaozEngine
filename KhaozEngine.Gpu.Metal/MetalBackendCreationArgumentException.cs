@@ -17,9 +17,6 @@ public sealed class MetalBackendCreationArgumentException : ArgumentException
     /// <summary>WindowKind associated with the refused operation, when applicable.</summary>
     public GpuWindowKind? WindowKind { get; init; }
 
-    /// <summary>ActualType associated with the refused operation, when applicable.</summary>
-    public Type? ActualType { get; init; }
-
     /// <summary>ActualWindowKind associated with the refused operation, when applicable.</summary>
     public GpuWindowKind? ActualWindowKind { get; init; }
 

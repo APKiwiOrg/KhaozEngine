@@ -19618,11 +19618,10 @@ own object model would allow it.
 the whole of what happens (18.0.0, issue #690).** `Render3DSurface.Render` calls `Scene3D.PrepareFrame` as a
 safety net, but by then the frame's list is open, so a scene with a producer that owns a command list (today: the
 FFT ocean, and `Scene3D.Begin`'s retire barrier once a retirement is pending) gets `GpuNestedRecordingException`
-naming the fix. There used to be a second layer under that, the vendored Veldrid fork's own guardrail throwing
-`VeldridException` on its leg, and it went with the fork in 18.0.0. Nothing replaced it and nothing needs to: the
-register refuses before any list is begun, so the message and the behaviour are identical on all three backends.
-The fix is unchanged, and it is the one the message names: queue and prepare the scene in `onPrepare`, call
-`Render` from `onFrame`, or subclass `GameApp3D`, which does exactly that for you. Note the data-dependence above
+with `Reason = GpuNestedRecordingRefusal.RecordingAlreadyOpen`. `Owner` identifies the open recording and
+`Attempted` the refused producer. The register refuses before any list begins, with the same reason and
+identifiers on all three backends. Queue and prepare the scene in `onPrepare`, then call `Render` from
+`onFrame`, or subclass `GameApp3D`, which supplies those phases. The data-dependence above
 applies here too, so a raw-`AppWindow` host with no ocean can run for a long time before the first unload turns
 its missing phase into an exception.
 

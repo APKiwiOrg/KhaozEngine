@@ -137,7 +137,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
         /// The same question as a refusal, for the bind path that must not compose an offset which reads past its
         /// own segment. Row 13 (https://github.com/APKiwiOrg/KhaozEngine/issues/579) is the caller.
         ///
-        /// <para><b>THE MESSAGE NAMES THE ONE LEVER THAT WORKS, AND IT IS NOT A BIGGER BUFFER.</b> A bare-buffer
+        /// <para><b>THE WINDOW IS THE LEVER THAT LEAVES ROOM FOR A CALLER OFFSET.</b> A bare-buffer
         /// binding takes the buffer's LOGICAL SIZE as its range and the stride is that same size rounded up to
         /// <see cref="SegmentAlignment"/>, so the headroom a caller offset could use is
         /// <c>align(size, 256) - size</c>: between 0 and 255 bytes, and exactly 0 whenever the size is already
@@ -151,7 +151,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
         {
             if (BindWindowFits(rangeOffset, callerDynamicOffset, range, stride)) return;
 
-            throw new MetalRingLayoutException(MetalRingLayoutRefusal.BindWindowOutsideSegment, nameof(range), range,
+            throw new GpuDynamicBindingRangeException(GpuDynamicBindingRefusal.WindowOutsideSegment, nameof(range), range,
                 "A native Metal uniform bind of " + range + " bytes at range offset " + rangeOffset
                 + " plus dynamic offset " + callerDynamicOffset + " runs past the end of its own " + stride
                 + "-byte ring segment. Metal's setBufferOffset: carries no length, so nothing would report this: "

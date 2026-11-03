@@ -3,8 +3,6 @@ namespace KhaozEngine.Gpu.Metal;
 /// <summary>The rules of the MetalBindRecords refusal family.</summary>
 public enum MetalBindRecordsRefusal
 {
-    /// <summary>Refuses a composed Metal buffer bind offset that violates device alignment.</summary>
-    ComposedOffsetUnaligned,
     /// <summary>Refuses a bind flush with a nil native encoder.</summary>
     EncoderMissing,
     /// <summary>Refuses binding a resource in an argument table different from shader reflection.</summary>

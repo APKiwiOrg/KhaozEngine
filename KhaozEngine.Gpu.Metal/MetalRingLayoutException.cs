@@ -14,21 +14,6 @@ public sealed class MetalRingLayoutException : ArgumentOutOfRangeException
     /// <summary>The rule that refused the operation.</summary>
     public MetalRingLayoutRefusal Reason { get; }
 
-    /// <summary>RangeOffset associated with the refused operation, when applicable.</summary>
-    public uint? RangeOffset { get; init; }
-
-    /// <summary>DynamicOffset associated with the refused operation, when applicable.</summary>
-    public uint? DynamicOffset { get; init; }
-
-    /// <summary>RangeBytes associated with the refused operation, when applicable.</summary>
-    public uint? RangeBytes { get; init; }
-
-    /// <summary>SegmentStride associated with the refused operation, when applicable.</summary>
-    public uint? SegmentStride { get; init; }
-
-    /// <summary>RecoveryOperation associated with the refused operation, when applicable.</summary>
-    public string? RecoveryOperation { get; init; }
-
     /// <summary>MinimumDepth associated with the refused operation, when applicable.</summary>
     public int? MinimumDepth { get; init; }
 

@@ -383,7 +383,6 @@ public class GpuPublicApiTests
             "KhaozEngine.Gpu.Metal.MetalBackendCreationRefusal",
             "KhaozEngine.Gpu.Metal.MetalBackendCreationStateException",
             "KhaozEngine.Gpu.Metal.MetalBackendCreationUnsupportedException",
-            "KhaozEngine.Gpu.Metal.MetalBindRecordsRangeException",
             "KhaozEngine.Gpu.Metal.MetalBindRecordsRefusal",
             "KhaozEngine.Gpu.Metal.MetalBindRecordsStateException",
             "KhaozEngine.Gpu.Metal.MetalBufferPolicyArgumentException",

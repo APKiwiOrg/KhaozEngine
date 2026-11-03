@@ -630,6 +630,8 @@ The Vulkan shader-module cache's byte-length guard uses `ShaderValidationArgumen
 
 | Exception and reason member | What it refuses | Identifiers |
 |---|---|---|
+| `GpuDynamicBindingRangeException`, `GpuDynamicBindingRefusal.OffsetMisaligned` | Refuses a composed buffer offset that violates binding alignment. | `ParamName`, `ActualValue`, `ComposedOffset`, `AlignmentBytes`, `RingBase`, `RangeOffset`, `DynamicOffset`, `RangeBytes`, `SegmentStride` |
+| `GpuDynamicBindingRangeException`, `GpuDynamicBindingRefusal.WindowOutsideSegment` | Refuses a uniform window outside its own frame-ring segment. | `ParamName`, `ActualValue`, `RangeOffset`, `DynamicOffset`, `RangeBytes`, `SegmentStride`, optional `RecoveryOperation` |
 | `GpuBackendCreationArgumentException`, `GpuBackendCreationRefusal.ForeignDiagnosticSettings` | Refuses headless creation with diagnostic settings not owned by the requested backend. | `ParamName`, `ExpectedBackend`, `ActualType` |
 | `GpuBoundFramebufferException`, `GpuBoundFramebufferRefusal.FramebufferNotBound` | Refuses a framebuffer-dependent command when no framebuffer is bound. | `Command` |
 | `GpuBoundFramebufferException`, `GpuBoundFramebufferRefusal.DepthAttachmentMissing` | Refuses a depth clear when the bound framebuffer declares no depth attachment. | `Command` |

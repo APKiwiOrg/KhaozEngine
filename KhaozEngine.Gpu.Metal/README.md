@@ -955,7 +955,7 @@ the same check at set creation passes a zero caller offset and cannot fire. Noth
 values, and an unaligned result is a validation error under the debug layer and undefined behaviour without it.
 The number checked against is the device's own reported buffer-offset alignment, read at creation and carried
 down to the bind records, not the ring stride: macOS reports 16 or 32, so checking against 256 would refuse
-binds every Mac accepts. `MetalBindRecordsRefusal.ComposedOffsetUnaligned` carries `ComposedOffset`,
+binds every Mac accepts. `GpuDynamicBindingRefusal.OffsetMisaligned` carries `ComposedOffset`,
 `RingBase`, `RangeOffset`, `DynamicOffset` and `AlignmentBytes`.
 
 **A refused flush is refused whole.** Any exception out of a flush drops the staged writes and invalidates every
@@ -1287,6 +1287,8 @@ These backend policies use required reason enums and preserve the BCL base type,
 
 | Exception and reason | What it refuses | Identifiers |
 |---|---|---|
+| `GpuDynamicBindingRangeException`, `GpuDynamicBindingRefusal.OffsetMisaligned` | Refuses a composed buffer offset that violates binding alignment. | `ParamName`, `ActualValue`, `ComposedOffset`, `AlignmentBytes`, `RingBase`, `RangeOffset`, `DynamicOffset`, `RangeBytes`, `SegmentStride` |
+| `GpuDynamicBindingRangeException`, `GpuDynamicBindingRefusal.WindowOutsideSegment` | Refuses a uniform window outside its own frame-ring segment. | `ParamName`, `ActualValue`, `RangeOffset`, `DynamicOffset`, `RangeBytes`, `SegmentStride`, optional `RecoveryOperation` |
 | `GpuBackendCreationArgumentException`, `GpuBackendCreationRefusal.ForeignDiagnosticSettings` | Refuses headless creation with diagnostic settings not owned by the requested backend. | `ParamName`, `ExpectedBackend`, `ActualType` |
 | `GpuBoundFramebufferException`, `GpuBoundFramebufferRefusal.FramebufferNotBound` | Refuses a framebuffer-dependent command when no framebuffer is bound. | `Command` |
 | `GpuBoundFramebufferException`, `GpuBoundFramebufferRefusal.DepthAttachmentMissing` | Refuses a depth clear when the bound framebuffer declares no depth attachment. | `Command` |
@@ -1299,14 +1301,12 @@ These backend policies use required reason enums and preserve the BCL base type,
 | `MetalBackendCreationPlatformException`, `MetalBackendCreationRefusal.OperatingSystemUnsupported` | Refuses native Metal creation off macOS. | `CreationPath`, `RequiredOperatingSystem` |
 | `MetalBackendCreationArgumentException`, `MetalBackendCreationRefusal.WindowHandleMissing` | Refuses a null Cocoa window handle. | `ParamName`, `WindowKind` |
 | `MetalBackendCreationArgumentException`, `MetalBackendCreationRefusal.WindowKindUnsupported` | Refuses a Metal swapchain window that is not Cocoa. | `ParamName`, `ActualWindowKind`, `RequiredWindowKind` |
-| `MetalBindRecordsRangeException`, `MetalBindRecordsRefusal.ComposedOffsetUnaligned` | Refuses a composed Metal buffer bind offset that violates device alignment. | `ParamName`, `ActualValue`, `ComposedOffset`, `RingBase`, `RangeOffset`, `DynamicOffset`, `AlignmentBytes` |
 | `MetalBindRecordsStateException`, `MetalBindRecordsRefusal.EncoderMissing` | Refuses a bind flush with a nil native encoder. | No additional identifiers |
 | `MetalBindRecordsStateException`, `MetalBindRecordsRefusal.IndexSpaceMismatch` | Refuses binding a resource in an argument table different from shader reflection. | `Set`, `Binding`, `Stage`, `ExpectedSpace`, `ActualSpace`, `ArgumentIndex` |
 | `MetalBindRecordsStateException`, `MetalBindRecordsRefusal.PipelineTableMissing` | Refuses flushing resource sets without a bound pipeline index table. | No additional identifiers |
 | `MetalEncoderStateException`, `MetalEncoderRefusal.EncoderStillOpen` | Refuses a timestamp boundary while a native encoder remains open. | `EncoderKind` |
 | `MetalEncoderStateException`, `MetalEncoderRefusal.RecordingMissing` | Refuses opening an encoder with no native command-buffer recording in flight. | `Command` |
 | `MetalEncoderArgumentException`, `MetalEncoderRefusal.RenderDescriptorMissing` | Refuses opening a render encoder with a nil render-pass descriptor. | `ParamName`, `NativeDescriptorKind` |
-| `MetalRingLayoutException`, `MetalRingLayoutRefusal.BindWindowOutsideSegment` | Refuses a uniform binding window that reaches outside its own Metal ring segment. | `ParamName`, `ActualValue`, `RangeOffset`, `DynamicOffset`, `RangeBytes`, `SegmentStride`, `RecoveryOperation` |
 | `MetalRingLayoutException`, `MetalRingLayoutRefusal.FrameDepthOutsideRange` | Refuses a Metal ring depth outside the validator supported range. | `ParamName`, `ActualValue`, `MinimumDepth`, `MaximumDepth`, `EnvironmentVariable` |
 | `MetalRingWaitException`, `MetalRingWaitRefusal.SubmitLockHeld` | Refuses a Metal segment claim while the caller holds the submit lock. | `Operation` |
 | `MetalShaderFunctionException`, `MetalShaderFunctionRefusal.FunctionReleased` | Refuses reading a released Metal shader function. | `Stage`, `ResourceKind` |

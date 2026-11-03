@@ -28249,9 +28249,13 @@ See the [D3D11 refusal table](../KhaozEngine.Gpu.D3D11/README.md#refusals) for t
 
 `MetalBackendCreationRefusal` identifies platform, machine, Cocoa handle and native-layer failures.
 `MetalEncoderRefusal` identifies a missing render descriptor, a missing recording or an encoder still open.
-`MetalBindRecordsRefusal` identifies an unaligned composed offset, missing pipeline table, nil encoder or
-argument-space mismatch. `MetalRingLayoutRefusal` carries frame-depth bounds or a segment window and
-its `GpuBufferRange` remedy. `MetalRingWaitRefusal.SubmitLockHeld` carries the refused operation.
+`MetalBindRecordsRefusal` identifies a missing pipeline table, nil encoder or argument-space mismatch.
+`MetalRingLayoutRefusal` carries frame-depth bounds. `GpuDynamicBindingRangeException` identifies
+`OffsetMisaligned` or `WindowOutsideSegment` through `GpuDynamicBindingRefusal` on Metal and Vulkan.
+It carries `ComposedOffset`, `AlignmentBytes`, `RingBase`, `RangeOffset`, `DynamicOffset`, `RangeBytes`
+and `SegmentStride` where the guard has those values. It preserves `ParamName` and `ActualValue` as
+`ArgumentOutOfRangeException` data. Metal window refusals retain `RecoveryOperation = "GpuBufferRange"`.
+D3D11 accepts these inputs today, tracked in [#1689](https://github.com/APKiwiOrg/KhaozEngine/issues/1689). `MetalRingWaitRefusal.SubmitLockHeld` carries the refused operation.
 See the [Metal refusal table](../KhaozEngine.Gpu.Metal/README.md#refusals) for each exception and identifier.
 
 ### Native Vulkan creation and device refusals

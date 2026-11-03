@@ -164,8 +164,10 @@ namespace KhaozEngine.Tests.Gpu
         /// also the difference between a legal bind and one that runs past the end of the buffer, which is
         /// <c>VUID-vkCmdBindDescriptorSets-pDescriptorSets-01979</c>.
         /// </summary>
-        [Fact]
-        public void TheBindWindow_MustFitInsideOneSegment()
+        [Theory]
+        [InlineData(768ul, 257ul, 1024ul)]
+        [InlineData(256ul, 256ul, 256ul)]
+        public void TheBindWindow_MustFitInsideOneSegment(ulong dynamicOffset, ulong range, ulong stride)
         {
             // A window that exactly fills the segment is the tight legal case, and the shipped slot-array shapes
             // below all land on it.
@@ -175,8 +177,16 @@ namespace KhaozEngine.Tests.Gpu
             Assert.False(VulkanRingStride.BindWindowFits(0, 768, 257, 1024));
             Assert.False(VulkanRingStride.BindWindowFits(1, 768, 256, 1024));
 
-            ArgumentOutOfRangeException ex = Assert.Throws<ArgumentOutOfRangeException>(
-                () => VulkanRingStride.RequireBindWindowFits(0, 768, 257, 1024));
+            GpuDynamicBindingRangeException ex = Assert.Throws<GpuDynamicBindingRangeException>(
+                () => VulkanRingStride.RequireBindWindowFits(0, dynamicOffset, range, stride));
+            Assert.Equal(GpuDynamicBindingRefusal.WindowOutsideSegment, ex.Reason);
+            Assert.Equal(range, ex.ActualValue);
+            Assert.Equal(0ul, ex.RangeOffset);
+            Assert.Equal(dynamicOffset, ex.DynamicOffset);
+            Assert.Equal(range, ex.RangeBytes);
+            Assert.Equal(stride, ex.SegmentStride);
+            Assert.IsAssignableFrom<ArgumentOutOfRangeException>(ex);
+            VulkanRingStride.RequireBindWindowFits(0, 0, range, stride);
             Assert.Equal("range", ex.ParamName);
         }
 

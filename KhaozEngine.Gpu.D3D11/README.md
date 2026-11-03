@@ -1446,3 +1446,7 @@ Framebuffer creation reports `ForeignBackend` for foreign colour or depth textur
 and identifies the attachment through `Context`. Graphics and compute pipeline adapters, resource-set
 binds, texture transfers and device-level texture uploads also report ownership refusals. Native
 view and register validation remains the separate bind-resolution contract.
+
+D3D11 currently accepts dynamic offset alignment and segment-window inputs that Metal and Vulkan refuse
+through `GpuDynamicBindingRangeException` with `OffsetMisaligned` or `WindowOutsideSegment`.
+The admission gap is tracked in [#1689](https://github.com/APKiwiOrg/KhaozEngine/issues/1689).

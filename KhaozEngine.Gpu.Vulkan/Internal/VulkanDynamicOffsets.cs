@@ -155,7 +155,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
 
             if (composed % alignment == 0) return;
 
-            throw new ArgumentOutOfRangeException(nameof(dynamicUniform), composed,
+            throw new GpuDynamicBindingRangeException(GpuDynamicBindingRefusal.OffsetMisaligned, nameof(dynamicUniform), composed,
                 "A native Vulkan dynamic offset of "
                 + composed.ToString(CultureInfo.InvariantCulture)
                 + " bytes at binding "
@@ -174,7 +174,16 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
                 + alignment.ToString(CultureInfo.InvariantCulture)
                 + " bytes. That alignment is the 256-byte portable floor or this device's own limit, whichever is "
                 + "larger, so an offset cannot pass on a lax dev device and fail validation on one reporting the "
-                + "spec's required maximum.");
+                + "spec's required maximum.")
+            {
+                ComposedOffset = composed,
+                AlignmentBytes = alignment,
+                RingBase = dynamicUniform.Ring.CurrentFrameBaseBytes,
+                RangeOffset = dynamicUniform.RangeOffset,
+                DynamicOffset = applied,
+                RangeBytes = dynamicUniform.Range,
+                SegmentStride = dynamicUniform.Ring.SegmentStrideBytes,
+            };
         }
 
         // Doubling from eight, so a run over the engine's widest shipped shapes never reallocates after the first

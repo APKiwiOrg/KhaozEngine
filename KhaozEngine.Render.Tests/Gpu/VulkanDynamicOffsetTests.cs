@@ -170,17 +170,26 @@ namespace KhaozEngine.Tests.Gpu
 
             records.Record(0, set, 4 * 256);
 
-            ArgumentOutOfRangeException refused = Assert.Throws<ArgumentOutOfRangeException>(
+            GpuDynamicBindingRangeException refused = Assert.Throws<GpuDynamicBindingRangeException>(
                 () => records.Flush(ref sink));
 
             // The bind-window refusal (VUID 01979) names the range. 1024 is aligned, so the alignment refusal,
             // which names the dynamic uniform instead, has nothing to say here.
             Assert.Equal("range", refused.ParamName);
+            Assert.Equal(GpuDynamicBindingRefusal.WindowOutsideSegment, refused.Reason);
+            Assert.Equal(256ul, refused.ActualValue);
+            Assert.Equal(0ul, refused.RangeOffset);
+            Assert.Equal(1024ul, refused.DynamicOffset);
+            Assert.Equal(256ul, refused.RangeBytes);
+            Assert.Equal(1024ul, refused.SegmentStride);
             Assert.Equal(0, counts.BindDescriptorSetCalls);
 
             // AND THE SLOT IS STILL DIRTY. Clearing the mark before the call landed would turn a loud, repeatable
             // refusal into one throw followed by a draw that renders against whatever the descriptor slots hold.
             Assert.True(records.IsDirty(0));
+            records.Record(0, set, 256);
+            records.Flush(ref sink);
+            Assert.False(records.IsDirty(0));
         }
 
         /// <summary>
@@ -206,18 +215,31 @@ namespace KhaozEngine.Tests.Gpu
             // multiple of the 256 the entry owes.
             records.Record(0, set, 128);
 
-            ArgumentOutOfRangeException refused = Assert.Throws<ArgumentOutOfRangeException>(
+            GpuDynamicBindingRangeException refused = Assert.Throws<GpuDynamicBindingRangeException>(
                 () => records.Flush(ref sink));
 
             // The alignment refusal (VUID 01971) names the dynamic uniform, where the window refusal names the range.
             Assert.Equal("dynamicUniform", refused.ParamName);
+            Assert.Equal(GpuDynamicBindingRefusal.OffsetMisaligned, refused.Reason);
+            Assert.Equal(128ul, refused.ActualValue);
+            Assert.Equal(128ul, refused.ComposedOffset);
+            Assert.Equal(256ul, refused.AlignmentBytes);
+            Assert.Equal(0ul, refused.RingBase);
+            Assert.Equal(0ul, refused.RangeOffset);
+            Assert.Equal(128ul, refused.DynamicOffset);
+            Assert.Equal(256ul, refused.RangeBytes);
+            Assert.Equal(1024ul, refused.SegmentStride);
+            Assert.IsAssignableFrom<ArgumentOutOfRangeException>(refused);
             Assert.Equal(0, counts.BindDescriptorSetCalls);
 
             // AND THE SLOT IS STILL DIRTY, so the refusal repeats at the next draw rather than being spent on the
             // first one and followed by a draw against whatever the descriptor slots hold.
             Assert.True(records.IsDirty(0));
-            Assert.Throws<ArgumentOutOfRangeException>(() => records.Flush(ref sink));
+            Assert.Throws<GpuDynamicBindingRangeException>(() => records.Flush(ref sink));
             Assert.Equal(0, counts.BindDescriptorSetCalls);
+            records.Record(0, set, 256);
+            records.Flush(ref sink);
+            Assert.False(records.IsDirty(0));
         }
 
         /// <summary>

@@ -572,7 +572,8 @@ namespace KhaozEngine.Gpu.Metal.Internal
             }
 
             ulong composed = frameBase + bound.RangeOffset + caller;
-            RequireOffsetAligned(composed, frameBase, bound.RangeOffset, caller, alignment);
+            RequireOffsetAligned(composed, frameBase, bound.RangeOffset, caller, alignment,
+                bound.Range, ring?.SegmentStrideBytes);
 
             return (nuint)composed;
         }
@@ -591,11 +592,11 @@ namespace KhaozEngine.Gpu.Metal.Internal
         // for reporting as 0 or as something 256 is not a multiple of, so by the time it reaches here it is a
         // power of two that divides the stride.
         static void RequireOffsetAligned(ulong composed, ulong frameBase, uint rangeOffset, uint dynamicOffset,
-            uint alignment)
+            uint alignment, uint range, uint? stride)
         {
             if ((composed & (alignment - 1UL)) == 0) return;
 
-            throw new MetalBindRecordsRangeException(MetalBindRecordsRefusal.ComposedOffsetUnaligned, nameof(dynamicOffset), dynamicOffset,
+            throw new GpuDynamicBindingRangeException(GpuDynamicBindingRefusal.OffsetMisaligned, nameof(dynamicOffset), dynamicOffset,
                 "A native Metal buffer bind composed the offset "
                 + composed.ToString(CultureInfo.InvariantCulture) + " (ring segment base "
                 + frameBase.ToString(CultureInfo.InvariantCulture) + " plus the set's range offset "
@@ -612,6 +613,8 @@ namespace KhaozEngine.Gpu.Metal.Internal
                     RangeOffset = rangeOffset,
                     DynamicOffset = dynamicOffset,
                     AlignmentBytes = alignment,
+                    RangeBytes = range,
+                    SegmentStride = stride,
                 };
         }
 

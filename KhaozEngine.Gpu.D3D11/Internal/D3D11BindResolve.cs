@@ -151,7 +151,7 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         /// </summary>
         internal static IGpuFramebuffer RequireBoundFramebuffer(IGpuFramebuffer? bound, string command,
             string? why = null)
-            => bound ?? throw new D3D11BindResolutionStateException(D3D11BindResolutionRefusal.FramebufferNotBound,
+            => bound ?? throw new GpuBoundFramebufferException(GpuBoundFramebufferRefusal.FramebufferNotBound,
                 $"{command} was reached with no framebuffer bound on the native Direct3D 11 backend. "
                 + (why ?? "A command that names an attachment of the bound framebuffer has nothing to name while "
                     + "none is bound. Bind a framebuffer first."))
@@ -206,7 +206,7 @@ namespace KhaozEngine.Gpu.D3D11.Internal
             IGpuFramebuffer framebuffer = RequireBoundFramebuffer(bound, "ClearDepthStencil");
             if (framebuffer.Outputs.Depth is not null) return framebuffer;
 
-            throw new D3D11BindResolutionStateException(D3D11BindResolutionRefusal.DepthAttachmentMissing,
+            throw new GpuBoundFramebufferException(GpuBoundFramebufferRefusal.DepthAttachmentMissing,
                 "ClearDepthStencil was reached with a framebuffer that declares no depth attachment on the native "
                 + "Direct3D 11 backend. A pass that clears depth has to render into a framebuffer that declares "
                 + "one.")

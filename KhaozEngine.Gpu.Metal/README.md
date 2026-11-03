@@ -1282,6 +1282,8 @@ These backend policies use required reason enums and preserve the BCL base type,
 
 | Exception and reason | What it refuses | Identifiers |
 |---|---|---|
+| `GpuBoundFramebufferException`, `GpuBoundFramebufferRefusal.FramebufferNotBound` | Refuses a framebuffer-dependent command when no framebuffer is bound. | `Command` |
+| `GpuBoundFramebufferException`, `GpuBoundFramebufferRefusal.DepthAttachmentMissing` | Refuses a depth clear when the bound framebuffer declares no depth attachment. | `Command` |
 | `MetalBackendCreationStateException`, `MetalBackendCreationRefusal.EligibleDeviceMissing` | Refuses creation when no eligible Metal device remains after the support probe. | `Detail` |
 | `MetalBackendCreationStateException`, `MetalBackendCreationRefusal.CommandQueueUnavailable` | Refuses a Metal device that cannot create its native command queue. | `DeviceName` |
 | `MetalBackendCreationArgumentException`, `MetalBackendCreationRefusal.ContentViewMissing` | Refuses a Cocoa window that has no content view. | `ParamName`, `WindowKind` |

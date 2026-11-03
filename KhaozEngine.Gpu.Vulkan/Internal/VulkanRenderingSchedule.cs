@@ -187,7 +187,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         /// index.</exception>
         internal void ClearColourTarget(ulong commandBuffer, uint index, Color rgba)
         {
-            RequireFramebuffer("Clearing a colour target");
+            RequireFramebuffer("Clearing a colour target", nameof(IGpuCommandList.ClearColorTarget));
 
             if (index >= (uint)_framebuffer.ColourCount)
             {
@@ -216,14 +216,17 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         /// attachment.</exception>
         internal void ClearDepthStencil(ulong commandBuffer, float depth)
         {
-            RequireFramebuffer("Clearing the depth attachment");
+            RequireFramebuffer("Clearing the depth attachment", nameof(IGpuCommandList.ClearDepthStencil));
 
             if (!_framebuffer.HasDepth)
             {
-                throw new InvalidOperationException(
+                throw new GpuBoundFramebufferException(GpuBoundFramebufferRefusal.DepthAttachmentMissing,
                     "The bound native Vulkan framebuffer declares no depth attachment, so there is nothing to "
                     + "clear. A framebuffer's attachments are fixed at creation, so this is the pass binding the "
-                    + "wrong target rather than a depth attachment that failed to arrive.");
+                    + "wrong target rather than a depth attachment that failed to arrive.")
+                {
+                    Command = nameof(IGpuCommandList.ClearDepthStencil),
+                };
             }
 
             if (_rendering)
@@ -262,7 +265,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         /// <exception cref="InvalidOperationException">No framebuffer is bound.</exception>
         internal void SetFullScissorRects()
         {
-            RequireFramebuffer("Resetting the scissor rects");
+            RequireFramebuffer("Resetting the scissor rects", nameof(IGpuCommandList.SetFullScissorRects));
 
             _scissor = VulkanScissorRect.ForFramebuffer(_framebuffer.Width, _framebuffer.Height);
             _scissorDirty = true;
@@ -280,9 +283,9 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         /// </para>
         /// </summary>
         /// <exception cref="InvalidOperationException">No framebuffer is bound.</exception>
-        internal void PrepareDraw(ulong commandBuffer)
+        internal void PrepareDraw(ulong commandBuffer, string command = nameof(IGpuCommandList.Draw))
         {
-            RequireFramebuffer("Drawing");
+            RequireFramebuffer("Drawing", command);
 
             if (!_rendering) BeginRendering(commandBuffer);
 
@@ -401,15 +404,15 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
             Array.Resize(ref _beginColour, capacity);
         }
 
-        void RequireFramebuffer(string what)
+        void RequireFramebuffer(string what, string command)
         {
             if (_framebuffer.IsBound) return;
 
-            throw new InvalidOperationException(
+            throw new GpuBoundFramebufferException(GpuBoundFramebufferRefusal.FramebufferNotBound,
                 what + " needs a framebuffer bound on the native Vulkan backend, and this recording has none. "
                 + "A render pass instance is opened from the bound framebuffer's own attachment views, and there "
                 + "is no default target to fall back to: Begin resets the bound framebuffer, because a fresh "
-                + "VkCommandBuffer holds none.");
+                + "VkCommandBuffer holds none.") { Command = command };
         }
 
         static void RequireSingleScissor(uint index)

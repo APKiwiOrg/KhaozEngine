@@ -64,14 +64,18 @@ namespace KhaozEngine.Tests.Gpu
         /// <summary>A draw with no framebuffer is refused by name rather than opening a pass against nothing. A
         /// fresh recording holds no framebuffer, so this is the very first thing a mis-sequenced frame does.
         /// </summary>
-        [Fact]
-        public void ADrawWithNoFramebufferIsRefusedByName()
+        [Theory]
+        [InlineData("Draw")]
+        [InlineData("DrawIndexed")]
+        public void ADrawWithNoFramebufferIsRefusedByName(string command)
         {
             Harness h = Harness.New();
 
-            Assert.Throws<InvalidOperationException>(() => h.Schedule.PrepareDraw());
+            var refusal = Assert.Throws<GpuBoundFramebufferException>(() => h.Schedule.PrepareDraw(command));
+            Assert.Equal(GpuBoundFramebufferRefusal.FramebufferNotBound, refusal.Reason);
+            Assert.Equal(command, refusal.Command);
             h.Schedule.SetFramebuffer(Framebuffer(1, colourCount: 1));
-            Assert.NotEqual(IntPtr.Zero, h.Schedule.PrepareDraw());
+            Assert.NotEqual(IntPtr.Zero, h.Schedule.PrepareDraw(command));
         }
 
         // ---- The per-attachment clear (M-A2) -----------------------------------------------------------------
@@ -254,7 +258,9 @@ namespace KhaozEngine.Tests.Gpu
             Harness h = Harness.New();
             h.Schedule.SetFramebuffer(Framebuffer(1, colourCount: 1));
 
-            Assert.Throws<InvalidOperationException>(() => h.Schedule.ClearDepthStencil(1f));
+            var refusal = Assert.Throws<GpuBoundFramebufferException>(() => h.Schedule.ClearDepthStencil(1f));
+            Assert.Equal(GpuBoundFramebufferRefusal.DepthAttachmentMissing, refusal.Reason);
+            Assert.Equal("ClearDepthStencil", refusal.Command);
             h.Schedule.PrepareDraw();
             Assert.False(Assert.Single(h.Render.Passes).Depth.Present);
             h.Schedule.SetFramebuffer(Framebuffer(2, colourCount: 1, depth: true));
@@ -586,7 +592,9 @@ namespace KhaozEngine.Tests.Gpu
         {
             Harness h = Harness.New();
 
-            Assert.Throws<InvalidOperationException>(h.Schedule.SetFullScissorRects);
+            var refusal = Assert.Throws<GpuBoundFramebufferException>(h.Schedule.SetFullScissorRects);
+            Assert.Equal(GpuBoundFramebufferRefusal.FramebufferNotBound, refusal.Reason);
+            Assert.Equal("SetFullScissorRects", refusal.Command);
             h.Schedule.SetFramebuffer(Framebuffer(1, colourCount: 1));
             h.Schedule.SetFullScissorRects();
             Assert.Equal(new MetalScissorRect(0, 0, 64, 64), h.Schedule.Scissor);

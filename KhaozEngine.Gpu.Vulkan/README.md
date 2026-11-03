@@ -1934,6 +1934,8 @@ change the captured diagnostics.
 
 | Exception and reason | What it refuses | Identifiers |
 |---|---|---|
+| `GpuBoundFramebufferException`, `GpuBoundFramebufferRefusal.FramebufferNotBound` | Refuses a framebuffer-dependent command when no framebuffer is bound. | `Command` |
+| `GpuBoundFramebufferException`, `GpuBoundFramebufferRefusal.DepthAttachmentMissing` | Refuses a depth clear when the bound framebuffer declares no depth attachment. | `Command` |
 | `VulkanBackendCreationStateException`, `VulkanBackendCreationRefusal.PinnedAdapterUnavailable` | Refuses a pinned Vulkan adapter that is absent or ineligible. | `AdapterKey` |
 | `VulkanBackendCreationStateException`, `VulkanBackendCreationRefusal.PhysicalDevicesMissing` | Refuses a native Vulkan loader with no physical devices after the support probe. | `PhysicalDeviceCount` |
 | `VulkanBackendCreationStateException`, `VulkanBackendCreationRefusal.EligibleDeviceMissing` | Refuses native Vulkan creation when every candidate is ineligible. | `CandidateCount`, `CandidateNames`, `CandidateRejections` |

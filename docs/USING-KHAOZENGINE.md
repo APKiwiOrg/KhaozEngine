@@ -28099,12 +28099,22 @@ Stair climb smoothing survives a shard handoff by seeding the destination's empt
 migrated `ClimbRateQ` signal. Ordinary ticks retain their full-precision accumulator. The float remains absent
 from observer snapshots, so the wire payload does not grow.
 
+### Bound framebuffer refusals
+
+D3D11, Metal and Vulkan throw `GpuBoundFramebufferException`, derived from `InvalidOperationException`,
+with `GpuBoundFramebufferRefusal.FramebufferNotBound` when an existing framebuffer-dependent command has
+no target. `ClearColorTarget`, `ClearDepthStencil` and `SetFullScissorRects` report those exact member names
+in `Command`. Metal and Vulkan also refuse draws without a target and report `Draw` or `DrawIndexed`.
+D3D11 retains its existing draw acceptance. A depth clear against a colour-only target uses
+`DepthAttachmentMissing` and `Command = "ClearDepthStencil"` on all three backends. Bind a target with the
+required attachment before retrying. Messages and refusal points are unchanged.
+
 ### Native D3D11 creation and binding refusals
 
 `D3D11BackendCreationRefusal` distinguishes platform, window-kind and diagnostic-settings refusals.
 `D3D11ObjectPlatformRefusal.WindowsObjectUsedOffWindows` carries the native object kind and support probe.
-`D3D11BindResolutionRefusal` identifies missing views or native interfaces, framebuffer prerequisites and
-constant-buffer transposition inputs. `D3D11MapResultRefusal.MapFailed` carries the map site, HRESULT,
+`D3D11BindResolutionRefusal` identifies missing views or native interfaces and constant-buffer
+transposition inputs. `D3D11MapResultRefusal.MapFailed` carries the map site, HRESULT,
 result token and device-loss status. Each exception derives from the BCL type previously thrown.
 See the [D3D11 refusal table](../KhaozEngine.Gpu.D3D11/README.md#refusals) for the identifiers.
 

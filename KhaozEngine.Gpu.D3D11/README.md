@@ -1374,3 +1374,21 @@ U4, U5, X1, X2, X3, S1, S2, S3, S4, S5, C1, C2, C3, C4, C5, C6, G1, G2, G3, G4 a
 M5 in section
 13 is the swapchain's, and its wording is reproduced above rather than referenced, because a reader of a soak
 capture will not have the design doc open.
+
+## Refusals
+
+Copy offsets use the portable `GpuCopyAlignmentException` with
+`GpuCopyAlignmentRefusal.UnalignedOffset`, carrying `ParamName`, `ActualValue`, `Context`, `Side`
+and `AlignmentBytes`. Staging contract refusals use the shared types in `KhaozEngine.Gpu`.
+
+| Exception and reason | What it refuses | Identifiers |
+|---|---|---|
+| `GpuStagingMapStateException`, `GpuStagingMapRefusal.AlreadyMapped` | A second map of an open resource | `Backend`, `ExistingMode`, `RequestedMode` |
+| `GpuStagingMapStateException`, `GpuStagingMapRefusal.NotMapped` | An unmap of a resource without an open mapping | `Backend` |
+| `GpuStagingMapStateException`, `GpuStagingMapRefusal.CompletionNotSignaled` | A fenced read map before completion | `Command` |
+| `GpuStagingMapArgumentException`, `GpuStagingMapRefusal.ForeignResource` | A staging or native map target without the backend capability | `ParamName`, `Backend`, `ActualType`, `ResourceKind` |
+| `GpuStagingMapArgumentException`, `GpuStagingMapRefusal.StagingUsageRequired` | A resource without mappable staging usage | `ParamName` where previously supplied, `Backend`, `ResourceKind`, `RequiredBufferUsage` or `RequiredTextureUsage` |
+
+State exceptions derive from `InvalidOperationException`, staging argument exceptions from
+`ArgumentException`, and copy alignment from `ArgumentOutOfRangeException`. Existing parameter
+names and actual values stay intact. Native map-result failures remain a separate backend family.

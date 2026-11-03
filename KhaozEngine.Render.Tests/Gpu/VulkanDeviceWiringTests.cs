@@ -258,8 +258,10 @@ namespace KhaozEngine.Tests.Gpu
             }
 
             Assert.Empty(memoryApi.Flushes);
-            Assert.Throws<InvalidOperationException>(() => device.Unmap(texture));
-            Assert.Throws<InvalidOperationException>(() => device.Unmap(buffer));
+            Assert.Equal(GpuStagingMapRefusal.NotMapped,
+                Assert.Throws<GpuStagingMapStateException>(() => device.Unmap(texture)).Reason);
+            Assert.Equal(GpuStagingMapRefusal.NotMapped,
+                Assert.Throws<GpuStagingMapStateException>(() => device.Unmap(buffer)).Reason);
         }
 
         // ---- The hook's own contract ---------------------------------------------------------------------

@@ -361,7 +361,7 @@ What it owns today:
   - **`ToRgba`'s SOURCE must already be single-mip, single-sample `R8G8B8A8UNorm` at the size asked for.** It
     allocates a staging texture of exactly that shape and takes a WHOLE-texture copy into it, and a whole copy names
     every subresource on both sides, so anything else is not a copy a backend can narrow. A source that disagrees is
-    refused with an `ArgumentException` naming the readback and what the texture actually is, before anything is
+    refused with `GpuRgbaReadbackException` and `SourceShapeMismatch`, carrying the requested and actual shape, before anything is
     allocated or submitted. Native Metal and Vulkan already refused it in their own `CopyTexture`, but Direct3D 11's
     `CopyResource` is silent about a mismatch, so the same call used to throw on two backends and hand back
     channel-swapped or garbage bytes on the third
@@ -608,7 +608,8 @@ umbrella would otherwise get nothing. One physical rule file, so the two copies 
 
 ## Refusals
 
-These exception types retain their existing constructors and `InvalidOperationException` base. Engine paths
+The backend selection and recording exception types below retain their existing constructors and
+`InvalidOperationException` base. Engine paths
 always fill `Reason`. A consumer-created message-only instance can leave it null. `GpuNestedRecordingException`
 retains its owner/attempted constructor, which also fills the reason. Message text is developer prose. Branch on the reason and read the diagnostic properties.
 
@@ -628,6 +629,26 @@ to device creation. Retired-backend refusals carry `RetirementVersion = new Vers
 For `RecordingAlreadyOpen`, put per-frame producer work in `AppWindow.Run`'s `onPrepare` callback or
 `Scene3D.PrepareFrame` before the frame recording opens. Loads, readbacks and offscreen captures belong outside
 the frame when they are not per-frame work.
+
+Copy alignment, whole-source RGBA8 shape and native staging admission use public exceptions in this
+package. Each derives from the BCL type previously thrown, so existing catches still work. `Reason`
+is required. Messages are developer prose. `ParamName` and `ActualValue` keep their existing values.
+
+| Exception and reason | What it refuses | Identifiers |
+|---|---|---|
+| `GpuCopyAlignmentException`, `GpuCopyAlignmentRefusal.UnalignedOffset` | A copy or readback offset not divisible by four | `ParamName`, `ActualValue`, `Context`, `Side`, `AlignmentBytes`, optional `PayloadBytes`, `RecoveryOperation` |
+| `GpuRgbaReadbackException`, `GpuRgbaReadbackRefusal.SourceShapeMismatch` | A whole-source RGBA8 readback with incompatible format, mip count, sample count or dimensions | `ParamName`, `RequestedWidth`, `RequestedHeight`, `SourceWidth`, `SourceHeight`, `SourceFormat`, `SourceMipLevels`, `SourceSampleCount`, `MipReadbackOperation`, `ResolveOperation` |
+| `GpuStagingMapStateException`, `GpuStagingMapRefusal.AlreadyMapped` | A second map while the resource is mapped | `Backend`, `ExistingMode`, `RequestedMode` |
+| `GpuStagingMapStateException`, `GpuStagingMapRefusal.NotMapped` | An unmap without an open map | `Backend` |
+| `GpuStagingMapStateException`, `GpuStagingMapRefusal.CompletionNotSignaled` | A fenced read map before completion | `Command` |
+| `GpuStagingMapStateException`, `GpuStagingMapRefusal.MappingMissing` | A Vulkan staging write without mapped backing memory | `Backend` |
+| `GpuStagingMapArgumentException`, `GpuStagingMapRefusal.ForeignResource` | A staging or upload resource without the backend's native capability | `ParamName`, `Backend`, `ActualType`, `ResourceKind` |
+| `GpuStagingMapArgumentException`, `GpuStagingMapRefusal.StagingUsageRequired` | A map or read of a resource without the required staging usage | `ParamName` where previously supplied, `Backend`, `ResourceKind`, `RequiredBufferUsage` or `RequiredTextureUsage` |
+
+The state exception derives from `InvalidOperationException`, the staging and shape argument exceptions
+from `ArgumentException`, and the alignment exception from `ArgumentOutOfRangeException`. A shape's
+requested dimensions are signed, preserving a negative request. Backends retain their existing map
+state tracking. These members do not introduce double-map detection where a backend did not have it.
 
 ## Optional compiler and memory diagnostics
 

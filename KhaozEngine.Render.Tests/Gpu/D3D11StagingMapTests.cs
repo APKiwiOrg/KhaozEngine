@@ -57,9 +57,13 @@ namespace KhaozEngine.Tests.Gpu
 
             maps.Open(resource, GpuMapMode.Read);
 
-            InvalidOperationException ex = Assert.Throws<InvalidOperationException>(
+            GpuStagingMapStateException ex = Assert.Throws<GpuStagingMapStateException>(
                 () => maps.Open(resource, GpuMapMode.Write));
-            Assert.Contains(nameof(GpuMapMode.Read), ex.Message, StringComparison.Ordinal);
+            Assert.Equal(GpuStagingMapRefusal.AlreadyMapped, ex.Reason);
+            Assert.IsAssignableFrom<InvalidOperationException>(ex);
+            Assert.Equal(GpuBackendKind.Direct3D11Native, ex.Backend);
+            Assert.Equal(GpuMapMode.Read, ex.ExistingMode);
+            Assert.Equal(GpuMapMode.Write, ex.RequestedMode);
             Assert.True(maps.IsMapped(resource));
             Assert.Equal(1, maps.OpenCount);
         }
@@ -75,7 +79,8 @@ namespace KhaozEngine.Tests.Gpu
             var maps = new D3D11StagingMaps();
 
             var resource = new object();
-            Assert.Throws<InvalidOperationException>(() => maps.Close(resource));
+            Assert.Equal(GpuStagingMapRefusal.NotMapped,
+                Assert.Throws<GpuStagingMapStateException>(() => maps.Close(resource)).Reason);
             Assert.Equal(0, maps.OpenCount);
 
             maps.Open(resource, GpuMapMode.Read);
@@ -335,9 +340,11 @@ namespace KhaozEngine.Tests.Gpu
 
             access.Map(buffer, GpuMapMode.Read);
 
-            Assert.Throws<InvalidOperationException>(() => access.Map(buffer, GpuMapMode.Write));
+            Assert.Equal(GpuStagingMapRefusal.AlreadyMapped,
+                Assert.Throws<GpuStagingMapStateException>(() => access.Map(buffer, GpuMapMode.Write)).Reason);
 
-            Assert.Throws<InvalidOperationException>(() => access.Unmap(never));
+            Assert.Equal(GpuStagingMapRefusal.NotMapped,
+                Assert.Throws<GpuStagingMapStateException>(() => access.Unmap(never)).Reason);
 
             // One map, and nothing else reached the driver. The first mapping is still open and still balanced.
             Assert.Equal(new[] { "MapBuffer" }, memory.Calls);
@@ -420,13 +427,22 @@ namespace KhaozEngine.Tests.Gpu
             using var defaultUsage = new FakeStagingBuffer(mappable: false);
             using var foreign = new FakeBuffer(256);
 
-            ArgumentException notStaging = Assert.Throws<ArgumentException>(
+            GpuStagingMapArgumentException notStaging = Assert.Throws<GpuStagingMapArgumentException>(
                 () => access.Map(defaultUsage, GpuMapMode.Read));
-            Assert.Contains("GpuBufferUsage.Staging", notStaging.Message, StringComparison.Ordinal);
+            Assert.Equal(GpuStagingMapRefusal.StagingUsageRequired, notStaging.Reason);
+            Assert.IsAssignableFrom<ArgumentException>(notStaging);
+            Assert.Null(notStaging.ParamName);
+            Assert.Equal(GpuBackendKind.Direct3D11Native, notStaging.Backend);
+            Assert.Equal("buffer", notStaging.ResourceKind);
+            Assert.Equal(GpuBufferUsage.Staging, notStaging.RequiredBufferUsage);
 
-            ArgumentException otherBackend = Assert.Throws<ArgumentException>(
+            GpuStagingMapArgumentException otherBackend = Assert.Throws<GpuStagingMapArgumentException>(
                 () => access.Map(foreign, GpuMapMode.Read));
-            Assert.Contains("another backend", otherBackend.Message, StringComparison.Ordinal);
+            Assert.Equal(GpuStagingMapRefusal.ForeignResource, otherBackend.Reason);
+            Assert.Equal("staging", otherBackend.ParamName);
+            Assert.Equal(GpuBackendKind.Direct3D11Native, otherBackend.Backend);
+            Assert.Equal(typeof(FakeBuffer), otherBackend.ActualType);
+            Assert.Equal("buffer", otherBackend.ResourceKind);
 
             Assert.Empty(memory.Calls);
             Assert.Equal(0, access.Maps.OpenCount);

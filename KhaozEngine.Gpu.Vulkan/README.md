@@ -1916,3 +1916,18 @@ instance for the binding. A pass interrupted by transfers or dispatches must not
 it reopens. The unobserved directional cascade pass is uninterrupted and clears its separate working depth and stencil
 on every rebuild. Its sampled R32F atlas remains stored. See
 [the owner proof](../docs/METAL-FRAME-SUBMISSION.md#attachment-store-intent).
+
+## Refusals
+
+| Exception and reason | What it refuses | Identifiers |
+|---|---|---|
+| `VulkanStagingLayoutException`, `VulkanStagingLayoutRefusal.MappingSizeExceeded` | Staging layout arithmetic exceeding the mapping's 32-bit size ceiling | `ParamName`, `ActualValue`, `Width`, `Height`, `MipLevels`, `ArrayLayers`, `Format`, `Quantity`, `ComputedBytes`, `MaximumBytes` |
+
+`VulkanStagingLayoutException` derives from `ArgumentOutOfRangeException` and keeps its original
+parameter and actual shape. `Reason` is required and the computed byte counts remain 64-bit.
+Zero shape components, unsupported formats and subresource indices keep their existing BCL checks.
+
+Portable copy offsets use `GpuCopyAlignmentException`. Map admission, double maps, unbalanced unmaps,
+missing mappings and unsignaled fenced reads use the shared `GpuStagingMapArgumentException` and
+`GpuStagingMapStateException` types documented in `KhaozEngine.Gpu`. Their reasons preserve the
+existing refusal points and map state tracking.

@@ -288,7 +288,8 @@ namespace KhaozEngine.Gpu
         /// staging-copy-map-unmap dance.
         /// <para>
         /// <b>BOTH OFFSETS MUST BE MULTIPLES OF FOUR, ON EVERY BACKEND, AND ONE THAT IS NOT IS REFUSED WITH AN
-        /// <see cref="ArgumentOutOfRangeException"/> NAMING THE SIDE IT CAME FROM.</b> macOS requires it of
+        /// <see cref="GpuCopyAlignmentException"/> WITH <see cref="GpuCopyAlignmentRefusal.UnalignedOffset"/>
+        /// AND <see cref="GpuCopyAlignmentException.Side"/> NAMING THE SIDE IT CAME FROM.</b> macOS requires it of
         /// <c>copyFromBuffer:sourceOffset:toBuffer:destinationOffset:size:</c>, so until 17.40.0 the same call
         /// succeeded on three backends and threw on Metal
         /// (<see href="https://github.com/APKiwiOrg/KhaozEngine/issues/602">#602</see>). The strictest backend's
@@ -592,8 +593,9 @@ namespace KhaozEngine.Gpu
         /// <see cref="ObjectDisposedException"/> is what most backends throw, and a caller catches the base type
         /// because a backend may throw either. A disposed fence or buffer throws
         /// <see cref="ObjectDisposedException"/>. A null argument throws <see cref="ArgumentNullException"/>. A
-        /// fence or buffer from another device or backend, and a buffer without
-        /// <see cref="GpuBufferUsage.Staging"/>, throw <see cref="ArgumentException"/> naming the parameter. An
+        /// fence or buffer from another device or backend throws <see cref="ArgumentException"/> naming the
+        /// parameter. A buffer without <see cref="GpuBufferUsage.Staging"/> throws
+        /// <see cref="GpuStagingMapArgumentException"/> with <see cref="GpuStagingMapRefusal.StagingUsageRequired"/>. An
         /// unaligned or past-the-end <paramref name="offsetBytes"/> throws
         /// <see cref="ArgumentOutOfRangeException"/> naming <c>offsetBytes</c>, and a window that starts inside
         /// the buffer but runs off its end names <c>destination</c>.

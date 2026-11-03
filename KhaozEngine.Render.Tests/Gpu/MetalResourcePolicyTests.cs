@@ -1,9 +1,10 @@
-using System;
 using System.Linq;
-using KhaozEngine.Gpu;
+using System;
 using KhaozEngine.Gpu.Internal;
-using KhaozEngine.Gpu.Metal.Internal;
 using KhaozEngine.Gpu.Metal.Internal.ObjC;
+using KhaozEngine.Gpu.Metal.Internal;
+using KhaozEngine.Gpu.Metal;
+using KhaozEngine.Gpu;
 using Xunit;
 
 namespace KhaozEngine.Tests.Gpu
@@ -211,10 +212,13 @@ namespace KhaozEngine.Tests.Gpu
                 GpuBufferUsage.StructuredBufferReadOnly, GpuBufferUsage.StructuredBufferReadWrite,
             })
             {
-                ArgumentException thrown = Assert.Throws<ArgumentException>(
+                MetalBufferPolicyArgumentException thrown = Assert.Throws<MetalBufferPolicyArgumentException>(
                     () => MetalBufferPolicy.RequireCreatable(GpuBufferUsage.UniformBuffer | structured));
 
                 Assert.Equal("usage", thrown.ParamName);
+                Assert.IsAssignableFrom<ArgumentException>(thrown);
+                Assert.Equal(MetalBufferPolicyRefusal.UniformStructuredCombination, thrown.Reason);
+                Assert.Equal(GpuBufferUsage.UniformBuffer | structured, thrown.Usage);
             }
         }
 
@@ -225,14 +229,16 @@ namespace KhaozEngine.Tests.Gpu
             MetalBufferPolicy.RequireWriteFits(0, 64, 64);
             MetalBufferPolicy.RequireWriteFits(32, 32, 64);
 
-            ArgumentOutOfRangeException thrown = Assert.Throws<ArgumentOutOfRangeException>(
+            MetalBufferPolicyRangeException thrown = Assert.Throws<MetalBufferPolicyRangeException>(
                 () => MetalBufferPolicy.RequireWriteFits(32, 33, 64));
 
             Assert.Equal("writeBytes", thrown.ParamName);
             Assert.Equal(33u, thrown.ActualValue);
-            // MetalBufferPolicy promises both numbers in the refusal: the write size and the capacity.
-            Assert.Contains("33", thrown.Message, StringComparison.Ordinal);
-            Assert.Contains("64", thrown.Message, StringComparison.Ordinal);
+            Assert.IsAssignableFrom<ArgumentOutOfRangeException>(thrown);
+            Assert.Equal(MetalBufferPolicyRefusal.WriteOutsideBuffer, thrown.Reason);
+            Assert.Equal(32u, thrown.OffsetBytes);
+            Assert.Equal(33u, thrown.WriteBytes);
+            Assert.Equal(64u, thrown.BufferBytes);
         }
 
         // ---- Textures and views -------------------------------------------------------------------------------

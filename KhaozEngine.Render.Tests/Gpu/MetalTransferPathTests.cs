@@ -1,6 +1,7 @@
 using System;
 using System.Linq;
 using KhaozEngine.Gpu;
+using KhaozEngine.Gpu.Metal;
 using KhaozEngine.Gpu.Metal.Internal;
 using Xunit;
 
@@ -251,7 +252,7 @@ namespace KhaozEngine.Tests.Gpu
             (MetalBuffer source, MetalBuffer destination) = Buffers();
             _list.Begin();
 
-            ArgumentOutOfRangeException thrown = Assert.Throws<ArgumentOutOfRangeException>(
+            GpuCopyAlignmentException thrown = Assert.Throws<GpuCopyAlignmentException>(
                 () => _list.CopyBuffer(source, sourceOffset, destination, destinationOffset, 16));
 
             Assert.Equal(parameter, thrown.ParamName);
@@ -272,11 +273,11 @@ namespace KhaozEngine.Tests.Gpu
             _list.Begin();
 
             // The SOURCE is 256 bytes, so a 64-byte read from 224 runs off it.
-            Assert.Throws<ArgumentOutOfRangeException>(
+            Assert.Throws<MetalBufferPolicyRangeException>(
                 () => _list.CopyBuffer(source, SourceSize - 32, destination, 0, 64));
 
             // The DESTINATION is 128, so a 64-byte write from 96 runs off it while the source is comfortable.
-            Assert.Throws<ArgumentOutOfRangeException>(
+            Assert.Throws<MetalBufferPolicyRangeException>(
                 () => _list.CopyBuffer(source, 0, destination, DestinationSize - 32, 64));
 
             AssertNothingWasSpent();

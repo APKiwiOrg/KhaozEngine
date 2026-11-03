@@ -219,12 +219,12 @@ namespace KhaozEngine.Tests.Gpu
 
             // A non-staging source, a buffer from another device, another backend's buffer and a disposed one.
             using var dynamic = new FakeStagingBuffer(StagingBytes, staging: false, owner: rig.Liveness);
-            Assert.Equal("staging", Assert.Throws<ArgumentException>(
+            Assert.Equal("staging", Assert.Throws<GpuStagingMapArgumentException>(
                 () => rig.Reads.TryReadBuffer(dynamic, completion, 0, four)).ParamName);
             using var otherDevices = new FakeStagingBuffer(StagingBytes, owner: new FakeD3D11DeviceLiveness());
             Assert.Equal("staging", Assert.Throws<ArgumentException>(
                 () => rig.Reads.TryReadBuffer(otherDevices, completion, 0, four)).ParamName);
-            Assert.Equal("staging", Assert.Throws<ArgumentException>(
+            Assert.Equal("staging", Assert.Throws<GpuStagingMapArgumentException>(
                 () => rig.Reads.TryReadBuffer(new FakeBuffer(StagingBytes), completion, 0, four)).ParamName);
             var disposedStaging = new FakeStagingBuffer(StagingBytes, owner: rig.Liveness);
             disposedStaging.Dispose();

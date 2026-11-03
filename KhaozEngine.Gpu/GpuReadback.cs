@@ -34,7 +34,7 @@ namespace KhaozEngine.Gpu
         /// <para><paramref name="src"/> MUST ALREADY BE a <see cref="GpuPixelFormat.R8G8B8A8UNorm"/>, single-mip,
         /// single-sample texture of exactly <paramref name="width"/> x <paramref name="height"/>: the copy is a
         /// whole-texture one into a staging texture of that shape. Anything else is refused with an
-        /// <see cref="ArgumentException"/> naming what the source actually is (see
+        /// <see cref="GpuRgbaReadbackException"/> carrying the requested and actual source shape (see
         /// <see cref="RequireCopyableSource"/>). Read one level of a mipped texture with
         /// <see cref="ToRgbaMip"/>.</para></summary>
         public static byte[] ToRgba(IGpuDevice gd, IGpuTexture src, int width, int height)
@@ -81,14 +81,14 @@ namespace KhaozEngine.Gpu
         /// themselves (<c>RequireMatchingShape</c> in the native Metal and Vulkan command lists), but Direct3D 11's
         /// <c>CopyResource</c> is silent about it, so the same call threw on two backends and read back
         /// channel-swapped or garbage bytes on the third. Refusing at the call site is what makes the three agree,
-        /// and the message names the READBACK and the source's actual format and mip count rather than a copy the
-        /// caller never wrote.</para>
+        /// and the refusal carries the source's actual format and mip count on
+        /// <see cref="GpuRgbaReadbackException"/> with <see cref="GpuRgbaReadbackRefusal.SourceShapeMismatch"/>.</para>
         ///
         /// <para>Device-free by construction: everything it reads is on the handle, so it runs before anything is
         /// allocated, recorded or submitted.</para>
         /// </summary>
         /// <exception cref="ArgumentNullException"><paramref name="src"/> is null.</exception>
-        /// <exception cref="ArgumentException"><paramref name="src"/> is not a single-mip, single-sample
+        /// <exception cref="GpuRgbaReadbackException"><paramref name="src"/> is not a single-mip, single-sample
         /// <see cref="GpuPixelFormat.R8G8B8A8UNorm"/> texture of exactly <paramref name="width"/> x
         /// <paramref name="height"/>.</exception>
         static void RequireCopyableSource(IGpuTexture src, int width, int height)
@@ -100,7 +100,7 @@ namespace KhaozEngine.Gpu
                 return;
             }
 
-            throw new ArgumentException(
+            throw new GpuRgbaReadbackException(GpuRgbaReadbackRefusal.SourceShapeMismatch,
                 "An RGBA8 readback (GpuReadback.ToRgba) was asked for "
                 + width.ToString(CultureInfo.InvariantCulture) + "x" + height.ToString(CultureInfo.InvariantCulture)
                 + " of a texture that is " + Describe(src)
@@ -112,7 +112,18 @@ namespace KhaozEngine.Gpu
                 + "order on one backend and an exception on the other two. Resolve a multisampled target "
                 + "(IGpuCommandList.ResolveTexture) or convert a B8G8R8A8UNorm one before reading it back, read one "
                 + "level of a mip chain with GpuReadback.ToRgbaMip, and pass the source's own dimensions.",
-                nameof(src));
+                nameof(src))
+            {
+                RequestedWidth = width,
+                RequestedHeight = height,
+                SourceWidth = src.Width,
+                SourceHeight = src.Height,
+                SourceFormat = src.Format,
+                SourceMipLevels = src.MipLevels,
+                SourceSampleCount = src.SampleCount,
+                MipReadbackOperation = "GpuReadback.ToRgbaMip",
+                ResolveOperation = "IGpuCommandList.ResolveTexture",
+            };
         }
 
         // What the source actually is, for the refusal above. Every field the whole copy compares, in one phrase.
@@ -169,7 +180,7 @@ namespace KhaozEngine.Gpu
         /// <para>
         /// <b><paramref name="srcOffsetBytes"/> MUST BE A MULTIPLE OF FOUR</b>, which is what
         /// <see cref="IGpuCommandList.CopyBuffer"/> requires of an offset on every backend, and one that is not
-        /// is refused here with an <see cref="ArgumentOutOfRangeException"/> before anything is allocated,
+        /// is refused here with a <see cref="GpuCopyAlignmentException"/> before anything is allocated,
         /// recorded or submitted. Until 17.40.0 this offset went into the copy unfiltered, so the same call
         /// succeeded on three backends and threw on native Metal, whose copy selector requires the alignment on
         /// macOS (<see href="https://github.com/APKiwiOrg/KhaozEngine/issues/602">#602</see>). Refusing rather

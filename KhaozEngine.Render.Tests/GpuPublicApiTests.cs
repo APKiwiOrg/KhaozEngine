@@ -104,7 +104,7 @@ public class GpuPublicApiTests
     /// third-party package at all, so the Metal vocabulary it does own is its own internal types rather than a
     /// vendor's, and no assembly-prefix scan can see those. What holds THAT line is
     /// <see cref="GpuMetalPublicSurface_IsExactlyTheApprovedMembers"/>, which lists the registration entry point
-    /// and structured refusal family, so an interop handle cannot become public without an explicit API change.
+    /// and structured refusal families, so an interop handle cannot become public without an explicit API change.
     /// </para>
     /// </summary>
     [Theory]
@@ -263,7 +263,7 @@ public class GpuPublicApiTests
 
         Assert.Equal(approvedMembers, members);
 
-        // And one exported type, which is the other half of the same claim. The provider, the probe, the
+        // And the approved exported types, which are the other half of the same claim. The provider, the probe, the
         // requirement check and the binding spike are all internal, which is what keeps the package's whole
         // vocabulary out of a consumer's compile.
         string[] exported = entryPoint.Assembly.GetExportedTypes()
@@ -271,13 +271,17 @@ public class GpuPublicApiTests
             .OrderBy(n => n, StringComparer.Ordinal)
             .ToArray();
 
-        Assert.Equal(new[] { "KhaozEngine.Gpu.Vulkan.KhaozEngineVulkan" }, exported);
+        Assert.Equal(new[]
+        {
+            "KhaozEngine.Gpu.Vulkan.KhaozEngineVulkan",
+            "KhaozEngine.Gpu.Vulkan.VulkanStagingLayoutException",
+            "KhaozEngine.Gpu.Vulkan.VulkanStagingLayoutRefusal",
+        }, exported);
     }
 
     /// <summary>
     /// The same member-by-member pin for the native Metal backend, and here it carries more weight than in
-    /// either sibling, because this package has no third-party assembly for a prefix scan to catch. The one
-    /// exported type IS the containment: every Objective-C handle struct, every <c>objc_msgSend</c> overload and
+    /// either sibling, because this package has no third-party assembly for a prefix scan to catch. The registration type and structured refusal families define the containment: every Objective-C handle struct, every <c>objc_msgSend</c> overload and
     /// the interop spike are internal, so a consumer's compile never sees a Metal vocabulary at all.
     /// <para>
     /// The list is TWO entries, which is one more than either sibling has, and that is decision M-P1 rather
@@ -314,8 +318,20 @@ public class GpuPublicApiTests
             .OrderBy(n => n, StringComparer.Ordinal)
             .ToArray();
 
-        Assert.Equal(new[] { "KhaozEngine.Gpu.Metal.KhaozEngineMetal", "KhaozEngine.Gpu.Metal.MetalFrameAccessException",
-            "KhaozEngine.Gpu.Metal.MetalFrameAccessFailure" }, exported);
+        Assert.Equal(new[]
+        {
+            "KhaozEngine.Gpu.Metal.KhaozEngineMetal",
+            "KhaozEngine.Gpu.Metal.MetalArgumentBatchException",
+            "KhaozEngine.Gpu.Metal.MetalArgumentBatchRefusal",
+            "KhaozEngine.Gpu.Metal.MetalBufferPolicyArgumentException",
+            "KhaozEngine.Gpu.Metal.MetalBufferPolicyRangeException",
+            "KhaozEngine.Gpu.Metal.MetalBufferPolicyRefusal",
+            "KhaozEngine.Gpu.Metal.MetalFrameAccessException",
+            "KhaozEngine.Gpu.Metal.MetalFrameAccessFailure",
+            "KhaozEngine.Gpu.Metal.MetalStagingArenaRangeException",
+            "KhaozEngine.Gpu.Metal.MetalStagingArenaRefusal",
+            "KhaozEngine.Gpu.Metal.MetalStagingArenaStateException",
+        }, exported);
     }
 
     // Walks the externally visible (public + protected) surface of every exported type in <paramref name="assembly"/>

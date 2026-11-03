@@ -77,16 +77,19 @@ namespace KhaozEngine.Tests.Gpu
         {
             foreach ((string backend, Action<uint, uint> copy) in EveryBackend())
             {
-                ArgumentOutOfRangeException thrown = Assert.Throws<ArgumentOutOfRangeException>(
+                GpuCopyAlignmentException thrown = Assert.Throws<GpuCopyAlignmentException>(
                     () => copy(Unaligned, 0));
 
                 Assert.Equal("srcOffsetBytes", thrown.ParamName);
+                Assert.Equal("source", thrown.Side);
                 Assert.Equal((ulong)Unaligned, thrown.ActualValue);
 
                 // The side-naming is the whole point of passing it through: a refusal that named the other end
                 // sends the reader to the buffer that was fine.
                 Assert.DoesNotContain("destination offset", thrown.Message, StringComparison.Ordinal);
-                Assert.Contains(backend, thrown.Message, StringComparison.Ordinal);
+                Assert.Equal(GpuCopyAlignmentRefusal.UnalignedOffset, thrown.Reason);
+                Assert.Contains(backend, thrown.Context, StringComparison.Ordinal);
+                Assert.Equal(4u, thrown.AlignmentBytes);
             }
         }
 
@@ -99,13 +102,16 @@ namespace KhaozEngine.Tests.Gpu
         {
             foreach ((string backend, Action<uint, uint> copy) in EveryBackend())
             {
-                ArgumentOutOfRangeException thrown = Assert.Throws<ArgumentOutOfRangeException>(
+                GpuCopyAlignmentException thrown = Assert.Throws<GpuCopyAlignmentException>(
                     () => copy(SmallestAligned, UnalignedDestination));
 
                 Assert.Equal("dstOffsetBytes", thrown.ParamName);
+                Assert.Equal("destination", thrown.Side);
                 Assert.Equal((ulong)UnalignedDestination, thrown.ActualValue);
                 Assert.DoesNotContain("source offset", thrown.Message, StringComparison.Ordinal);
-                Assert.Contains(backend, thrown.Message, StringComparison.Ordinal);
+                Assert.Equal(GpuCopyAlignmentRefusal.UnalignedOffset, thrown.Reason);
+                Assert.Contains(backend, thrown.Context, StringComparison.Ordinal);
+                Assert.Equal(4u, thrown.AlignmentBytes);
             }
         }
 
@@ -157,11 +163,14 @@ namespace KhaozEngine.Tests.Gpu
         [Fact]
         public void ReadBuffer_RefusesAnUnalignedOffset_BeforeItTouchesTheDevice()
         {
-            ArgumentOutOfRangeException thrown = Assert.Throws<ArgumentOutOfRangeException>(
+            GpuCopyAlignmentException thrown = Assert.Throws<GpuCopyAlignmentException>(
                 () => GpuReadback.ReadBuffer<uint>(null!, null!, 4, Unaligned));
 
             Assert.Equal("srcOffsetBytes", thrown.ParamName);
-            Assert.Contains("A buffer readback (GpuReadback.ReadBuffer)", thrown.Message, StringComparison.Ordinal);
+            Assert.Equal("source", thrown.Side);
+            Assert.Equal(GpuCopyAlignmentRefusal.UnalignedOffset, thrown.Reason);
+            Assert.IsAssignableFrom<ArgumentOutOfRangeException>(thrown);
+            Assert.Equal("A buffer readback (GpuReadback.ReadBuffer)", thrown.Context);
         }
 
         /// <summary>
@@ -177,7 +186,7 @@ namespace KhaozEngine.Tests.Gpu
             using IGpuBuffer buffer = device.Factory.CreateBuffer(
                 new GpuBufferDescription(256, GpuBufferUsage.StructuredBufferReadWrite, sizeof(uint)));
 
-            Assert.Throws<ArgumentOutOfRangeException>(
+            Assert.Throws<GpuCopyAlignmentException>(
                 () => GpuReadback.ReadBuffer<uint>(device, buffer, 4, Unaligned));
         }
 
@@ -189,7 +198,7 @@ namespace KhaozEngine.Tests.Gpu
         /// </summary>
         [Fact]
         public void ReadBuffer_RefusesAnUnalignedOffset_EvenForZeroElements()
-            => Assert.Throws<ArgumentOutOfRangeException>(
+            => Assert.Throws<GpuCopyAlignmentException>(
                 () => GpuReadback.ReadBuffer<uint>(null!, null!, 0, Unaligned));
 
         // ---- The four backends, as one table -------------------------------------------------------------

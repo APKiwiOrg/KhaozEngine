@@ -1,6 +1,8 @@
-using System;
 using System.Linq;
+using System;
 using KhaozEngine.Gpu.Metal.Internal;
+using KhaozEngine.Gpu.Metal;
+using KhaozEngine.Gpu;
 using Xunit;
 
 namespace KhaozEngine.Tests.Gpu
@@ -178,12 +180,14 @@ namespace KhaozEngine.Tests.Gpu
         [Fact]
         public void AnUnalignedDestinationOffsetIsRefusedByName()
         {
-            ArgumentOutOfRangeException thrown = Assert.Throws<ArgumentOutOfRangeException>(
+            GpuCopyAlignmentException thrown = Assert.Throws<GpuCopyAlignmentException>(
                 () => Record(ring: null, 3, Payload(16, seed: 6)));
 
             Assert.Equal("offsetBytes", thrown.ParamName);
             Assert.Equal(3ul, Convert.ToUInt64(thrown.ActualValue));
-            Assert.Contains("device-level UpdateBuffer", thrown.Message, StringComparison.Ordinal);
+            Assert.Equal(GpuCopyAlignmentRefusal.UnalignedOffset, thrown.Reason);
+            Assert.Equal("IGpuDevice.UpdateBuffer", thrown.RecoveryOperation);
+            Assert.Equal(16u, thrown.PayloadBytes);
 
             // Nothing was staged and nothing was encoded, so the refusal is not half a recording.
             Assert.Equal(0, _calls.EncoderBoundaries);
@@ -209,7 +213,7 @@ namespace KhaozEngine.Tests.Gpu
         [Fact]
         public void ABulkWritePastTheEndIsRefusedBeforeAnythingIsStaged()
         {
-            Assert.Throws<ArgumentOutOfRangeException>(
+            Assert.Throws<MetalBufferPolicyRangeException>(
                 () => Record(ring: null, DestinationSize - 8, Payload(16, seed: 8)));
 
             Assert.Equal(0, _arena.BlocksCreated);
@@ -275,7 +279,7 @@ namespace KhaozEngine.Tests.Gpu
         [Fact]
         public void ANilHandleStillRefusesAWritePastTheEnd()
         {
-            Assert.Throws<ArgumentOutOfRangeException>(() => MetalBufferUpload.Record(
+            Assert.Throws<MetalBufferPolicyRangeException>(() => MetalBufferUpload.Record(
                 ring: null, Segment, IntPtr.Zero, DestinationSize, DestinationSize - 8, Payload(16, seed: 11),
                 _encoders, _arena, _harness.Blit));
         }

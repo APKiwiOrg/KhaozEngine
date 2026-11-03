@@ -19,10 +19,15 @@ namespace KhaozEngine.Gpu.D3D11.Internal
 
             if (staging is not ID3D11MappableResource { IsMappable: true })
             {
-                throw new ArgumentException(
+                throw new GpuStagingMapArgumentException(GpuStagingMapRefusal.StagingUsageRequired,
                     "MapForRead maps a GpuTextureUsage.Staging texture created by this native Direct3D 11 device, "
                     + "and this one is not, so it has no CPU access to map. Copy into a staging texture and map "
-                    + "that.", nameof(staging));
+                    + "that.", nameof(staging))
+                {
+                    Backend = GpuBackendKind.Direct3D11Native,
+                    ResourceKind = "texture",
+                    RequiredTextureUsage = GpuTextureUsage.Staging,
+                };
             }
 
             if (fence is not D3D11GpuFence own || !ReferenceEquals(own.Owner, _fences))
@@ -34,9 +39,12 @@ namespace KhaozEngine.Gpu.D3D11.Internal
 
             if (!own.Signaled)
             {
-                throw new InvalidOperationException(
+                throw new GpuStagingMapStateException(GpuStagingMapRefusal.CompletionNotSignaled,
                     "MapForRead was called with a fence that has not signaled, so the copy into the staging texture "
-                    + "may still be running. Poll IGpuFence.Signaled first. This map never waits, by design.");
+                    + "may still be running. Poll IGpuFence.Signaled first. This map never waits, by design.")
+                {
+                    Command = nameof(MapForRead),
+                };
             }
 
             return _staging.Map(staging, GpuMapMode.Read);

@@ -1,6 +1,7 @@
 using System;
-using KhaozEngine.Gpu;
 using KhaozEngine.Gpu.Vulkan.Internal;
+using KhaozEngine.Gpu.Vulkan;
+using KhaozEngine.Gpu;
 using Xunit;
 
 namespace KhaozEngine.Tests.Gpu
@@ -326,10 +327,21 @@ namespace KhaozEngine.Tests.Gpu
             // 40000 x 40000 at four bytes is 6.4 GB, which does not fit MappedData.SizeInBytes.
             var shape = new VulkanStagingShape(40000, 40000, 1, 1, GpuPixelFormat.R8G8B8A8UNorm);
 
-            ArgumentOutOfRangeException ex =
-                Assert.Throws<ArgumentOutOfRangeException>(() => VulkanStagingLayout.TotalBytes(shape));
+            VulkanStagingLayoutException ex =
+                Assert.Throws<VulkanStagingLayoutException>(() => VulkanStagingLayout.TotalBytes(shape));
 
-            Assert.Contains("32-bit", ex.Message, StringComparison.Ordinal);
+            Assert.IsAssignableFrom<ArgumentOutOfRangeException>(ex);
+            Assert.Equal(VulkanStagingLayoutRefusal.MappingSizeExceeded, ex.Reason);
+            Assert.Equal("shape", ex.ParamName);
+            Assert.Equal(shape, ex.ActualValue);
+            Assert.Equal(40000u, ex.Width);
+            Assert.Equal(40000u, ex.Height);
+            Assert.Equal(1u, ex.MipLevels);
+            Assert.Equal(1u, ex.ArrayLayers);
+            Assert.Equal(GpuPixelFormat.R8G8B8A8UNorm, ex.Format);
+            Assert.Equal("total size", ex.Quantity);
+            Assert.Equal(6400000000ul, ex.ComputedBytes);
+            Assert.Equal((ulong)uint.MaxValue, ex.MaximumBytes);
         }
     }
 }

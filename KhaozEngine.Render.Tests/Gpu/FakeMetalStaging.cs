@@ -20,6 +20,8 @@ namespace KhaozEngine.Tests.Gpu
         readonly Dictionary<IntPtr, (byte[] Bytes, GCHandle Pin)> _blocks = new();
         nint _nextHandle = 0x5000;
 
+        internal bool FailAllocation { get; set; }
+
         /// <summary>Every block ever created, in order, with the size it was asked for. The pool's whole
         /// observable behaviour: a run of uploads that reuses blocks leaves this short.</summary>
         internal List<ulong> Created { get; } = new();
@@ -34,6 +36,7 @@ namespace KhaozEngine.Tests.Gpu
         public MetalStagingBlock Create(ulong sizeBytes)
         {
             Created.Add(sizeBytes);
+            if (FailAllocation) return default;
 
             var bytes = new byte[(int)sizeBytes];
             GCHandle pin = GCHandle.Alloc(bytes, GCHandleType.Pinned);

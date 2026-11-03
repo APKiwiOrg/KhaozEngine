@@ -52,11 +52,16 @@ namespace KhaozEngine.Gpu.D3D11.Internal
 
             if (_open.TryGetValue(resource, out GpuMapMode existing))
             {
-                throw new InvalidOperationException(
+                throw new GpuStagingMapStateException(GpuStagingMapRefusal.AlreadyMapped,
                     $"This staging resource is already mapped for {existing} on the native Direct3D 11 backend, so "
                     + $"a second map for {mode} would fail in the runtime and return a null pointer. Unmap the "
                     + "first mapping before taking another. A readback is Map, read, Unmap, and holding one open "
-                    + "across a frame also blocks every copy into it.");
+                    + "across a frame also blocks every copy into it.")
+                {
+                    Backend = GpuBackendKind.Direct3D11Native,
+                    ExistingMode = existing,
+                    RequestedMode = mode,
+                };
             }
 
             _open.Add(resource, mode);
@@ -72,10 +77,13 @@ namespace KhaozEngine.Gpu.D3D11.Internal
 
             if (_open.Remove(resource)) return;
 
-            throw new InvalidOperationException(
+            throw new GpuStagingMapStateException(GpuStagingMapRefusal.NotMapped,
                 "This staging resource is not mapped on the native Direct3D 11 backend, so there is nothing to "
                 + "unmap. Direct3D 11 ignores the call silently, which is how an unbalanced pair turns into a "
-                + "readback that returns the previous contents rather than into a failure anyone sees.");
+                + "readback that returns the previous contents rather than into a failure anyone sees.")
+            {
+                Backend = GpuBackendKind.Direct3D11Native,
+            };
         }
 
         /// <summary>

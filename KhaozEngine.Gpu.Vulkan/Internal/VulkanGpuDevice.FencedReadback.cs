@@ -42,9 +42,12 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
 
             if (!own.Signaled)
             {
-                throw new InvalidOperationException(
+                throw new GpuStagingMapStateException(GpuStagingMapRefusal.CompletionNotSignaled,
                     "MapForRead was called with a fence that has not signaled, so the copy into the staging texture "
-                    + "may still be running. Poll IGpuFence.Signaled first. This map never waits, by design.");
+                    + "may still be running. Poll IGpuFence.Signaled first. This map never waits, by design.")
+                {
+                    Command = nameof(MapForRead),
+                };
             }
 
             return OpenTextureMap(target, GpuMapMode.Read);

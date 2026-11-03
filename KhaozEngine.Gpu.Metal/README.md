@@ -1261,3 +1261,26 @@ written rather than one being written and disabled, and `BOOL` is one byte while
 
 The one comforting property of this risk is that an interop defect presents as a crash rather than as a wrong
 pixel, and the leg that will exercise it runs the full suite on a real GPU on every trigger.
+
+## Refusals
+
+These backend policies use required reason enums and preserve the BCL base type, `ParamName` and
+`ActualValue` of their previous refusals. Messages are developer prose.
+
+| Exception and reason | What it refuses | Identifiers |
+|---|---|---|
+| `MetalBufferPolicyArgumentException`, `MetalBufferPolicyRefusal.UniformStructuredCombination` | Uniform and structured usage on the same ring-backed buffer | `ParamName`, `Usage` |
+| `MetalBufferPolicyRangeException`, `MetalBufferPolicyRefusal.WriteOutsideBuffer` | A CPU write outside the logical buffer | `ParamName`, `ActualValue`, `OffsetBytes`, `WriteBytes`, `BufferBytes` |
+| `MetalStagingArenaRangeException`, `MetalStagingArenaRefusal.LeaseSizeUnaligned` | A lease size not aligned to the native copy boundary | `ParamName`, `ActualValue`, `AlignmentBytes`, `RecoveryOperation` |
+| `MetalStagingArenaStateException`, `MetalStagingArenaRefusal.BlockAllocationFailed` | A nil staging block allocation | `BlockBytes` |
+| `MetalArgumentBatchException`, `MetalArgumentBatchRefusal.DuplicateArgumentIndex` | Two entries at one argument index within one space and shader stage | `Index`, `Space`, `Stage` |
+
+The argument subtype derives from `ArgumentException`, range subtypes from
+`ArgumentOutOfRangeException`, and state and batch subtypes from `InvalidOperationException`.
+Arena capacities and alignments are 64-bit byte values. A fresh block failing to hold its already
+aligned request remains an internal arithmetic invariant, rather than a caller refusal reason.
+
+Portable copy-alignment and staging-admission refusals use `GpuCopyAlignmentException` and the
+`GpuStagingMapArgumentException` / `GpuStagingMapStateException` types from `KhaozEngine.Gpu`.
+A staged buffer upload carries its payload in `PayloadBytes` and its device-level remedy in
+`RecoveryOperation`. The ring-backed write path keeps its existing alignment freedom.

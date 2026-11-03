@@ -30,11 +30,16 @@ namespace KhaozEngine.Tests.Gpu
             fixture.Device.Submit(list, submitted);
 
             Assert.False(submitted.Signaled);
-            Assert.Throws<InvalidOperationException>(() => fixture.Device.MapForRead(staging, submitted));
-            Assert.Throws<InvalidOperationException>(() => fixture.Device.MapForRead(staging, unarmed));
+            GpuStagingMapStateException ex = Assert.Throws<GpuStagingMapStateException>(
+                () => fixture.Device.MapForRead(staging, submitted));
+            Assert.Equal(GpuStagingMapRefusal.CompletionNotSignaled, ex.Reason);
+            Assert.Equal("MapForRead", ex.Command);
+            Assert.Equal(GpuStagingMapRefusal.CompletionNotSignaled,
+                Assert.Throws<GpuStagingMapStateException>(() => fixture.Device.MapForRead(staging, unarmed)).Reason);
 
             // Nothing was mapped: an Unmap of the texture is refused as unmapped, and nothing waited.
-            Assert.Throws<InvalidOperationException>(() => fixture.Device.Unmap(staging));
+            Assert.Equal(GpuStagingMapRefusal.NotMapped,
+                Assert.Throws<GpuStagingMapStateException>(() => fixture.Device.Unmap(staging)).Reason);
             Assert.Equal(0, fixture.Semaphore.WaitCount);
         }
 
@@ -45,8 +50,10 @@ namespace KhaozEngine.Tests.Gpu
             using IGpuTexture target = fixture.OpenSetupWork();
             IGpuFence fence = SignaledFence(fixture);
 
-            ArgumentException ex = Assert.Throws<ArgumentException>(
+            GpuStagingMapArgumentException ex = Assert.Throws<GpuStagingMapArgumentException>(
                 () => fixture.Device.MapForRead(target, fence));
+            Assert.Equal(GpuStagingMapRefusal.StagingUsageRequired, ex.Reason);
+            Assert.Equal(GpuTextureUsage.Staging, ex.RequiredTextureUsage);
             Assert.Equal("staging", ex.ParamName);
         }
 

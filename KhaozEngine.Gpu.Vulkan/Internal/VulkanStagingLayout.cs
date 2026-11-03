@@ -366,7 +366,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         {
             if (value <= uint.MaxValue) return value;
 
-            throw new ArgumentOutOfRangeException(nameof(shape), shape,
+            throw new VulkanStagingLayoutException(VulkanStagingLayoutRefusal.MappingSizeExceeded, nameof(shape), shape,
                 "The "
                 + what
                 + " of that native Vulkan staging texture is "
@@ -374,7 +374,17 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
                 + " bytes, which does not fit the 32-bit size the GPU seam describes a mapping with "
                 + "(MappedData.SizeInBytes is a uint). The same arithmetic in 32 bits wraps here silently, "
                 + "which sizes the staging buffer far too small and corrupts whatever follows it, so it is "
-                + "refused by name instead. Read back in tiles.");
+                + "refused by name instead. Read back in tiles.")
+            {
+                Width = shape.Width,
+                Height = shape.Height,
+                MipLevels = shape.MipLevels,
+                ArrayLayers = shape.ArrayLayers,
+                Format = shape.Format,
+                Quantity = what,
+                ComputedBytes = value,
+                MaximumBytes = uint.MaxValue,
+            };
         }
     }
 }

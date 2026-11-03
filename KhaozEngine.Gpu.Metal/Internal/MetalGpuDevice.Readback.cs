@@ -40,11 +40,16 @@ namespace KhaozEngine.Gpu.Metal.Internal
 
             if ((buffer.Usage & GpuBufferUsage.Staging) == 0 || buffer.IsRingBacked)
             {
-                throw new ArgumentException(
+                throw new GpuStagingMapArgumentException(GpuStagingMapRefusal.StagingUsageRequired,
                     "This buffer was not created as a plain GpuBufferUsage.Staging buffer. Every buffer is "
                     + "CPU-visible on Metal, but the seam reads only staging buffers so the same call holds on "
                     + "Direct3D 11 and Vulkan, and a ring-backed buffer has one segment per frame in flight rather "
-                    + "than one range. Record a CopyBuffer into a staging buffer and read that.", nameof(staging));
+                    + "than one range. Record a CopyBuffer into a staging buffer and read that.", nameof(staging))
+                {
+                    Backend = GpuBackendKind.MetalNative,
+                    ResourceKind = "buffer",
+                    RequiredBufferUsage = GpuBufferUsage.Staging,
+                };
             }
 
             GpuReadWindow.Require(buffer.SizeInBytes, offsetBytes, destination.Length);

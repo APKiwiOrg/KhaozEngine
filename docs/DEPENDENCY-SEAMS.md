@@ -2280,9 +2280,10 @@ backend's requirement as its own contract, and every backend refuses identically
 
 **Where the rule lives.** `KhaozEngine.Gpu/Internal/GpuCopyAlignment.cs`, internal, reached by the three native
 backend packages across the `InternalsVisibleTo` seam they already sit on. The Veldrid wrapper inside
-`KhaozEngine.Gpu` reached it too until `18.0.0` deleted it. One helper means one wording: the exception is an `ArgumentOutOfRangeException` whose
-`ParamName` is the seam's own `srcOffsetBytes` or `dstOffsetBytes` and whose message names the side the bad
-offset came from, whichever backend answered. `MetalCopyAlignment` keeps its name and its SIZE half, which is
+`KhaozEngine.Gpu` reached it too until `18.0.0` deleted it. One helper means one refusal: `GpuCopyAlignmentException` derives from
+`ArgumentOutOfRangeException` and carries `GpuCopyAlignmentRefusal.UnalignedOffset`. Its `ParamName` is the
+seam's own `srcOffsetBytes` or `dstOffsetBytes`, `ActualValue` is the offset, and `Side`, `Context` and
+`AlignmentBytes` identify the refused copy, whichever backend answered. `MetalCopyAlignment` keeps its name and its SIZE half, which is
 Metal's alone (only Metal needs the size aligned, and it pads the size up rather than refusing it), and forwards
 its offset half here.
 

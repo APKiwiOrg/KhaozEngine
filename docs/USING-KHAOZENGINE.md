@@ -23994,7 +23994,9 @@ samples needs `Sampled` as well. A storage buffer is `GpuBufferUsage.StructuredB
 
 **A copy offset is a multiple of four, on every backend (since 17.40.0).** `ReadBuffer<T>`'s optional
 `srcOffsetBytes` and both offsets of `IGpuCommandList.CopyBuffer` are refused with an
-`ArgumentOutOfRangeException` when they are not, naming the side the bad one came from. macOS requires it of
+`GpuCopyAlignmentException` when they are not, with `GpuCopyAlignmentRefusal.UnalignedOffset`.
+It derives from `ArgumentOutOfRangeException` and carries `ParamName`, `ActualValue`, `Context`, `Side`,
+`AlignmentBytes`, optional upload `PayloadBytes` and `RecoveryOperation`. macOS requires it of
 `copyFromBuffer:sourceOffset:toBuffer:destinationOffset:size:`, so before 17.40.0 the same call was taken on
 Vulkan and Direct3D 11 and threw on Metal, which is a difference a game would only meet on a player's
 Mac ([#602](https://github.com/APKiwiOrg/KhaozEngine/issues/602)). The seam takes the strictest backend's rule
@@ -24009,18 +24011,43 @@ uint[] bad  = GpuReadback.ReadBuffer<uint>(gd, buffer, 4, srcOffsetBytes: 3);   
 **`GpuReadback.ToRgba`'s source must already be single-mip, single-sample `R8G8B8A8UNorm` at the size you ask
 for.** It allocates a staging texture of exactly that shape and takes a WHOLE-texture copy into it, and a
 whole copy names every subresource on both sides, so anything else is not a copy a backend can narrow. A source that
-disagrees is refused with an `ArgumentException` naming the readback and what the texture actually is, before
+disagrees is refused with `GpuRgbaReadbackException` and `GpuRgbaReadbackRefusal.SourceShapeMismatch`, before
 anything is allocated or submitted. Native Metal and Vulkan already refused the copy themselves, but Direct3D 11's
 `CopyResource` is silent about a mismatch, so the same call used to throw on two backends and hand back
 channel-swapped or garbage bytes on the third ([#83](https://github.com/APKiwiOrg/KhaozEngine/issues/83)). Resolve a
 multisampled target with `IGpuCommandList.ResolveTexture` first, read one level of a mip chain with
-`GpuReadback.ToRgbaMip`, and pass the source's own dimensions.
+`GpuReadback.ToRgbaMip`, and pass the source's own dimensions. The exception derives from
+`ArgumentException`, keeps `ParamName`, and carries `RequestedWidth`, `RequestedHeight`, `SourceWidth`,
+`SourceHeight`, `SourceFormat`, `SourceMipLevels` and `SourceSampleCount`. Requested dimensions retain
+negative values. `MipReadbackOperation` and `ResolveOperation` identify the per-level and resolve remedies.
 
 ```csharp
 byte[] px  = GpuReadback.ToRgba(gd, colourTarget, w, h);        // R8G8B8A8UNorm, 1 mip, 1 sample, w x h
-byte[] bad = GpuReadback.ToRgba(gd, swapchainBgra, w, h);       // throws: B8G8R8A8UNorm named in the message
+byte[] bad = GpuReadback.ToRgba(gd, swapchainBgra, w, h);       // SourceShapeMismatch, SourceFormat is B8G8R8A8UNorm
 byte[] mip = GpuReadback.ToRgbaMip(gd, mipped, 2, 0, w / 4, h / 4);   // one level of a mip chain
 ```
+
+Staging admission uses `GpuStagingMapArgumentException` (an `ArgumentException`) with
+`ForeignResource` or `StagingUsageRequired`. It carries `Backend`, `ResourceKind` and the original
+`ParamName`, plus `ActualType` for a foreign resource or `RequiredBufferUsage` / `RequiredTextureUsage`
+for missing usage. `GpuStagingMapStateException` (an `InvalidOperationException`) carries `AlreadyMapped`
+with `Backend`, `ExistingMode` and `RequestedMode`, `NotMapped` or `MappingMissing` with `Backend`, and
+`CompletionNotSignaled` with `Command`. The last reason identifies an unsignaled `MapForRead` fence.
+The backends retain their existing admission checks and state tracking.
+
+Metal buffer policy uses `MetalBufferPolicyArgumentException` with `UniformStructuredCombination`
+and `Usage`, or `MetalBufferPolicyRangeException` with `WriteOutsideBuffer`, `OffsetBytes`,
+`WriteBytes` and `BufferBytes`. Metal arena refusals use `MetalStagingArenaRangeException` with
+`LeaseSizeUnaligned`, `AlignmentBytes` and `RecoveryOperation`, or `MetalStagingArenaStateException`
+with `BlockAllocationFailed` and 64-bit `BlockBytes`. Duplicate argument entries use
+`MetalArgumentBatchException` with `DuplicateArgumentIndex`, `Index`, `Space` and `Stage`.
+Each backend exception uses its matching `Metal*Refusal` enum and retains its former BCL base.
+
+Vulkan staging layout overflow uses `VulkanStagingLayoutException` (an `ArgumentOutOfRangeException`)
+with `VulkanStagingLayoutRefusal.MappingSizeExceeded`. It keeps `ParamName` and `ActualValue` and
+carries `Width`, `Height`, `MipLevels`, `ArrayLayers`, `Format`, `Quantity`, `ComputedBytes` and
+`MaximumBytes`. Byte counts remain 64-bit while the mapping ceiling remains `uint.MaxValue`.
+Messages for these families are developer prose. Branch on the reason and identifiers.
 
 ### Reading a completed staging copy without waiting
 
@@ -24043,7 +24070,8 @@ result can arrive a few frames late.
   backend, a disposed fence or buffer, a buffer without `GpuBufferUsage.Staging`, an `offsetBytes` that is not a
   multiple of four, and a `destination` that runs past the end of the buffer.
 - Do not hold a synchronous `Map` of the same staging buffer while polling. Direct3D 11 refuses the read with the
-  double-map `InvalidOperationException`, and Metal and Vulkan do not detect it.
+  double-map `GpuStagingMapStateException` with `GpuStagingMapRefusal.AlreadyMapped`, and Metal and Vulkan
+  do not detect it on this polling path.
 - On Direct3D 11 a `Submit` does not flush the immediate context. The next `Present` or drain hands the work to the
   driver, which in a presenting frame loop is the frame boundary. A headless loop that neither presents nor drains
   can read `false` indefinitely.

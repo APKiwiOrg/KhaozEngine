@@ -115,13 +115,14 @@ internal static partial class ContactController
         // Intent, as legacy: the walk or run speed scaled by AirControl in the air and by the entity's scale. Under
         // AirMomentum an airborne tick steers the carried velocity instead, and a committed flight flies its own.
         float landScale = fluid?.LandScale(feet) ?? 1;
-        float speedScale = (s.Grounded ? 1f : t.AirControl) * s.SpeedScale * landScale;
+        bool groundCommitment = commitmentControlled && s.Commitment.Kind == MovementCommitmentKind.Ground;
+        float speedScale = groundCommitment ? 1f : (s.Grounded ? 1f : t.AirControl) * s.SpeedScale * landScale;
         float speed = speedFraction > 0f ? (run ? t.RunSpeed : t.WalkSpeed) * speedScale * speedFraction : 0f;
         Vector2 intent = moveDir * speed;
         Vector2 commanded = intent;
         if (committedFlight)
             commanded = s.HorizontalVelocity;
-        else if (t.AirMomentum && !s.Grounded)
+        else if (t.AirMomentum && !s.Grounded && !groundCommitment)
             commanded = CharacterMovement.ResolveAirborneVelocity(s.HorizontalVelocity, moveDir,
                 (run ? t.RunSpeed : t.WalkSpeed) * s.SpeedScale * speedFraction * landScale, dt, t);
 
@@ -228,6 +229,7 @@ internal static partial class ContactController
                 ? ExplicitCharacterMovement.WaterAborted(s.Commitment)
                 : CharacterMovement.FinishCommitmentTick(s.Commitment, launched, grounded, s.Position, end, dt),
         };
+        GroundTravelCommitment.StopTerminalMotion(ref result);
         if (!Finite(result)) return Held(state, result.Commitment);
         continuation = tick with { Completed = true };
         return result;

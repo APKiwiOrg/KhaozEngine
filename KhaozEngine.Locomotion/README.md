@@ -746,9 +746,10 @@ seat constrains the horizontal proposal and keeps the feasible along-shore compo
 sample the crossed tread along the actual proposal and use bounded axis cuts to locate its boundary.
 The retry runs the same shell,
 support and placement passes under the original pin and climb budget. Coverage uses the full body.
-Scripted movement commitments use the shared preparation, ballistic seed, timeout and recovery lifecycle.
-They suppress player steering and buffered jumps, retain their carried collision-clipped velocity,
-and use the same leased contact tick on land. Surface entry aborts the commitment. An environment refusal
+Scripted movement commitments share preparation, timeout and recovery. Ballistic travel seeds a launch,
+while ground travel retains the ordinary vertical integrator and spends a horizontal distance budget.
+They suppress player steering and buffered jumps. Ballistic travel retains its collision-clipped velocity.
+Both use the same leased contact tick on land. Surface entry aborts the commitment. An environment refusal
 preserves its original lifecycle and pose while consuming the player press. Sharded integration,
 generic nav proof and native acceptance remain in development.
 Dry explicit motion uses carried coyote/buffer timers and the existing pure air-momentum law.
@@ -825,13 +826,27 @@ producer acceptance or a playable consumer feature.
   a run tick, with no consumer of its own.
   A rejected non-finite tick holds the last good pose and clears `StepDeltaY`, so its previous step impulse
   is not replayed while the input remains invalid.
-- **`MoveState.Commitment`** - optional carried `MovementCommitment` state for a server-authored ballistic move.
-  `Preparing`, `Airborne`, and `Recovering` suppress command movement, jump, and facing. Entering surface-swimming
+- **`MoveState.Commitment`** - optional carried `MovementCommitment` state for server-authored ballistic or ground travel.
+  `Preparing`, `Airborne`, `Travelling` and `Recovering` suppress command movement, jump and facing. Entering surface-swimming
   depth aborts with `MovementCommitmentEndReason.EnteredWater` and hands control to the ordinary swim state.
   The airborne phase uses its latched XZ direction, horizontal speed, vertical speed, and gravity through the normal
   swept collision, support, and bounds path. `Completed` and `Aborted` are terminal states that clear on the next
-  step. The zero default is ordinary command-driven locomotion. NetWorld creates and replicates this state through
-  `MovementCommitmentRequest` rather than accepting it from the client.
+  step. The zero default is ordinary command-driven locomotion. The existing NetWorld wire carries ballistic state.
+  Ground wire state and server controls are not yet available.
+  `MovementCommitment.ForGroundTravel(sequence, direction, speed, distance)` creates positive-budget ground state,
+  with optional preparation, recovery and timeout durations. The factory validates values. Its caller admits only
+  supported, non-swimming actors. Ground travel faces its committed direction, ignores `SpeedScale`, suppresses any
+  buffered jump and uses ordinary gravity, traction, step handling, bounds and collide-and-slide on both controllers.
+  `DistanceRemaining` subtracts achieved XZ displacement length. Exhaustion holds active with zero horizontal carry
+  until steering or an explicit end, because an old endpoint does not establish arrival at a moving target.
+  Three consecutive nonzero steps with less than 10 percent progress abort as `Blocked`. Adequate progress resets
+  `ConsecutiveBlockedTicks`, while steering and zero-budget holds retain it. Final budgets below the controller's
+  resolvable travel are exhausted, using binary32 spacing on the travel axes and Legacy's sweep remainder limit.
+  `GroundTravelCommitment.Steer` re-aims or replaces the budget in preparation or travel, allowing zero distance.
+  `GroundTravelCommitment.End` accepts `Arrived` into optional recovery or completion, preserving that reason through
+  recovery. Other terminal reasons abort. Both controls require the matching sequence, ignore inapplicable state
+  and never restart recovery. Invalid supplied values throw even for stale sequences. Water entry aborts with
+  `EnteredWater`, and lost grounded support aborts with `UnsupportedState` during preparation, travel or recovery.
 - **`MoveState.SpeedScale`** (14.26.0) - per-entity HORIZONTAL speed multiplier: haste (`> 1`), slow (`< 1`),
   root (`0`), unmodified (`1`, the default). A movement INPUT the step reads and carries through unchanged, and nothing
   in the sim derives or decays it. It multiplies INTO the existing speed product rather than replacing any of it, so

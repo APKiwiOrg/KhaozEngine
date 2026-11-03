@@ -15,6 +15,7 @@ public static partial class CharacterMovement
 
         if (movement.Phase is MovementCommitmentPhase.Completed or MovementCommitmentPhase.Aborted)
         {
+            GroundTravelCommitment.StopTerminalMotion(ref state);
             state.Commitment = default;
             return false;
         }
@@ -26,6 +27,8 @@ public static partial class CharacterMovement
         jump = false;
         faceYaw = null;
 
+        if (movement.Kind == MovementCommitmentKind.Ground) state.JumpBufferRemaining = 0;
+
         float timeout = MathF.Max(0f, movement.TimeoutRemaining - dt);
         movement = movement with { TimeoutRemaining = timeout };
         if (timeout <= 0f)
@@ -35,7 +38,15 @@ public static partial class CharacterMovement
             {
                 Phase = MovementCommitmentPhase.Aborted,
                 EndReason = MovementCommitmentEndReason.TimedOut,
+                DistanceRemaining = movement.Kind == MovementCommitmentKind.Ground ? 0 : movement.DistanceRemaining,
             };
+            return true;
+        }
+
+        if (movement.Kind == MovementCommitmentKind.Ground)
+        {
+            state.Commitment = movement;
+            GroundTravelCommitment.PrepareTick(ref state, ref tuning, ref moveDir, ref speedFraction, dt);
             return true;
         }
 
@@ -81,8 +92,10 @@ public static partial class CharacterMovement
     }
 
     internal static MovementCommitment FinishCommitmentTick(in MovementCommitment movement, bool launchedThisTick,
-        bool grounded, in Vector3 start, in Vector3 end, float dt)
+        bool grounded, in Vector3 start, in Vector3 end, float dt, float groundTravelResolution = 0)
     {
+        if (movement.Kind == MovementCommitmentKind.Ground)
+            return GroundTravelCommitment.FinishTick(movement, grounded, start, end, dt, groundTravelResolution);
         if (movement.Phase != MovementCommitmentPhase.Airborne) return movement;
 
         if (launchedThisTick && movement.HorizontalSpeed > 0f)

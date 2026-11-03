@@ -15,7 +15,10 @@ internal static class MovementCommitmentRequestExtensions
 {
     /// <summary>Builds the commitment this request describes, stamped with <paramref name="sequence"/>.</summary>
     public static MovementCommitment Start(this in MovementCommitmentRequest request, uint sequence) =>
-        new(sequence, request.Direction, request.HorizontalSpeed, request.VerticalSpeed, request.Gravity,
+        request.IsGroundTravel
+            ? MovementCommitment.ForGroundTravel(sequence, request.Direction, request.HorizontalSpeed,
+                request.DistanceRemaining, request.PreparationSeconds, request.RecoverySeconds, request.TimeoutSeconds)
+            : new(sequence, request.Direction, request.HorizontalSpeed, request.VerticalSpeed, request.Gravity,
             request.PreparationSeconds, request.RecoverySeconds, request.TimeoutSeconds);
 
     /// <summary>Refuses a request MovementCommitment would refuse. A default request never ran the constructor,

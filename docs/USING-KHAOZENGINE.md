@@ -14605,7 +14605,18 @@ var server = new WorldServer(transport, new WorldServerConfig { TickSeconds = 1f
 // loop: server.Poll(); clock.Advance(elapsed, _ => server.Tick(1f/30f));
 ```
 
-For a server-authored leap, charge, knockback, or similar move that player input must not steer, queue a movement
+For local ground travel, create `MovementCommitment.ForGroundTravel(sequence, direction, speed, distance)` and
+carry it on `MoveState.Commitment`. The caller admits a supported, non-swimming actor. Both movement controllers
+retain ordinary gravity and collision, face the commitment and ignore player input and `SpeedScale`. The positive
+distance budget subtracts achieved XZ displacement and holds active at zero. Use sequence-checked
+`GroundTravelCommitment.Steer` to re-aim or supply another budget, including zero. Use
+`GroundTravelCommitment.End` to confirm `Arrived`, optionally recovering with that reason preserved, or to abort
+with another terminal reason. Steering and ending do not restart recovery. Three consecutive steps below 10 percent
+progress abort as `Blocked`, with the counter carried in state. Lost grounded support and water entry terminate
+explicitly. The local request bridge recognizes `MovementCommitmentRequest.ForGroundTravel`, but ground wire
+replication, authoritative server controls and pursuit are not yet available.
+
+For a server-authored ballistic leap, knockback, or similar move that player input must not steer, queue a movement
 commitment. This example authors an 8 metre same-height arc with a 2 metre apex, then holds a rooted recovery pose
 for 0.15 seconds after physical contact:
 

@@ -165,17 +165,24 @@ public class MovementCommitmentTests
         Assert.Equal(MovementCommitmentEndReason.TimedOut, state.Commitment.EndReason);
     }
 
-    [Fact]
-    public void Entering_deep_water_aborts_without_a_landing_and_enters_swimming()
+    [Theory]
+    [InlineData(false, MovementCommitmentPhase.Preparing)]
+    [InlineData(true, MovementCommitmentPhase.Preparing)]
+    [InlineData(true, MovementCommitmentPhase.Travelling)]
+    [InlineData(true, MovementCommitmentPhase.Recovering)]
+    public void Entering_deep_water_aborts_without_a_landing_and_enters_swimming(bool ground,
+        MovementCommitmentPhase phase)
     {
         static MovementMedium DeepWater(float _, float __, float ___) => new(4f, inWater: true);
         var state = new MoveState
         {
             Position = new Vector3(0f, Tuning.CapsuleHalfHeight, 0f),
-            Grounded = false,
-            TimeSinceGrounded = 1f,
-            Commitment = new MovementCommitment(23u, Vector2.UnitX, 8f, 5f, 0f, 3f),
+            Grounded = ground,
+            TimeSinceGrounded = ground ? 0 : 1f,
+            Commitment = ground ? MovementCommitment.ForGroundTravel(23, Vector2.UnitX, 8, 5, timeoutSeconds: 3)
+                : new MovementCommitment(23u, Vector2.UnitX, 8f, 5f, 0f, 3f),
         };
+        state.Commitment = state.Commitment with { Phase = phase, RecoveryRemaining = 1 };
 
         state = CharacterMovement.Step(state, MoveCommand.Idle, Dt, Flat, Tuning, medium: DeepWater);
 
@@ -185,9 +192,11 @@ public class MovementCommitmentTests
     }
 
     [Theory]
-    [InlineData(30)]
-    [InlineData(60)]
-    public void Authored_arc_lands_within_one_fixed_step_at_common_tick_rates(int tickRate)
+    [InlineData(30, MovementControllerKind.Legacy)]
+    [InlineData(60, MovementControllerKind.Legacy)]
+    [InlineData(30, MovementControllerKind.Contact)]
+    [InlineData(60, MovementControllerKind.Contact)]
+    public void Authored_arc_lands_within_one_fixed_step_at_common_tick_rates(int tickRate, MovementControllerKind controller)
     {
         const float Distance = 8f;
         const float Apex = 2f;
@@ -205,9 +214,31 @@ public class MovementCommitmentTests
         };
 
         for (int i = 0; i < 180 && state.Commitment.Phase != MovementCommitmentPhase.Completed; i++)
-            state = CharacterMovement.Step(state, MoveCommand.Idle, dt, Flat, Tuning);
+            state = CharacterMovement.Step(state, MoveCommand.Idle, dt, Flat, Tuning with { Controller = controller });
 
         Assert.Equal(MovementCommitmentPhase.Completed, state.Commitment.Phase);
         Assert.InRange(MathF.Abs(state.Position.X - Distance), 0f, horizontalSpeed * dt + 1e-4f);
+    }
+
+    [Fact]
+    public void Existing_commitment_enum_ordinals_remain_compatible()
+    {
+        Assert.Equal(new byte[] { 0, 1, 2, 3, 4, 5, 6 }, new byte[]
+        {
+            (byte)MovementCommitmentPhase.None, (byte)MovementCommitmentPhase.Preparing,
+            (byte)MovementCommitmentPhase.Airborne, (byte)MovementCommitmentPhase.Recovering,
+            (byte)MovementCommitmentPhase.Completed, (byte)MovementCommitmentPhase.Aborted,
+            (byte)MovementCommitmentPhase.Travelling,
+        });
+        Assert.Equal(new byte[] { 0, 1, 2, 3, 4, 5, 6, 7, 8 }, new byte[]
+        {
+            (byte)MovementCommitmentEndReason.None, (byte)MovementCommitmentEndReason.Landed,
+            (byte)MovementCommitmentEndReason.Blocked, (byte)MovementCommitmentEndReason.TimedOut,
+            (byte)MovementCommitmentEndReason.EnteredWater, (byte)MovementCommitmentEndReason.Aborted,
+            (byte)MovementCommitmentEndReason.Teleported, (byte)MovementCommitmentEndReason.Superseded,
+            (byte)MovementCommitmentEndReason.Disconnected,
+        });
+        Assert.Equal(0, (byte)MovementCommitmentKind.Ballistic);
+        Assert.Equal(1, (byte)MovementCommitmentKind.Ground);
     }
 }

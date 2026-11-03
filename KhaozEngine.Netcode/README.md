@@ -603,7 +603,11 @@ compile and bind unchanged. A head that never references `NetWorld` can implemen
 `KhaozEngine.TileWorld.Netcode`'s `TileWorldServer` does. `ServerAdmin`, the facade over it, stays in `NetWorld`.
 `MovementCommitmentRequest` validates its arguments without Locomotion, so its refusals are a restatement of
 `KhaozEngine.Locomotion.MovementCommitment`'s, held equal by `MovementCommitmentRequestParityTests` in
-`KhaozEngine.Server.Tests`.
+`KhaozEngine.Server.Tests`. `MovementCommitmentRequest.ForGroundTravel(direction, speed, distance)` creates
+an immutable ground request with optional preparation, recovery and timeout durations. Speed and begin distance
+are positive and finite. Directions are finite, nonzero and normalized, including extreme finite magnitudes.
+`IsGroundTravel` and `DistanceRemaining` identify this request without a Locomotion dependency. Existing ballistic
+requests default to false and zero. Ground wire support and authoritative server controls remain in development.
 
 The three decorators are public and compose on their own when a head wants a different order, or only one of them.
 They forward both optional verified-claim companions. Version and world gates unwrap their own token layer before

@@ -773,6 +773,10 @@ momentarily unreadable) is not a teleport, and neither is the recovery back off 
 
 ## Server-authored committed movement
 
+The request bridge also recognizes `MovementCommitmentRequest.ForGroundTravel` and builds the ground Locomotion
+state. This is a local primitive. Ground admission controls, pursuit and wire replication are not yet available.
+Do not send ground commitments through the existing ballistic wire.
+
 Both authoritative heads can commit a player to one collision-safe ballistic move. The direction and arc are
 latched when the queued request reaches the host tick. Player move, jump, facing, and self-rescue input cannot alter
 the move while it is active. Admin teleport and `AbortMovementCommitment(target, expectedSequence)` remain deliberate

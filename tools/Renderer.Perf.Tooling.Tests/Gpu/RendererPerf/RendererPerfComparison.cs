@@ -18,8 +18,8 @@ internal sealed record RendererPerfComparisonResult(bool Compatible, ImmutableAr
 {
     /// <summary>The original refusal of each side whose report could not be analyzed, keyed by "baseline" or
     /// "candidate". Each also appears in <see cref="Reasons"/> as text.</summary>
-    internal ImmutableDictionary<string, RendererPerfProtocolException> ProtocolRefusals { get; init; } =
-        ImmutableDictionary<string, RendererPerfProtocolException>.Empty;
+    internal ImmutableDictionary<string, RendererPerfProtocolRefusal> ProtocolRefusals { get; init; } =
+        ImmutableDictionary<string, RendererPerfProtocolRefusal>.Empty;
 }
 
 // Compatibility is a data-admission decision. It is never a percentage regression budget.
@@ -37,19 +37,21 @@ internal static class RendererPerfComparison
     internal static RendererPerfComparisonResult Compare(RendererPerfVerifiedArtifact baseline, RendererPerfVerifiedArtifact candidate)
         => CompareValidated(Analyze(baseline), Analyze(candidate));
 
-    static RendererPerfComparisonResult CompareRaw(RendererPerfReport baseline, RendererPerfReport candidate,
+    internal static RendererPerfComparisonResult CompareRaw(RendererPerfReport baseline, RendererPerfReport candidate,
         ImmutableDictionary<string, RendererPerfReferenceRates>? baselineReferences,
-        ImmutableDictionary<string, RendererPerfReferenceRates>? candidateReferences)
+        ImmutableDictionary<string, RendererPerfReferenceRates>? candidateReferences,
+        Func<RendererPerfReport, ImmutableDictionary<string, RendererPerfReferenceRates>?, RendererPerfSummary>? analyze = null)
     {
         var failures = new List<string>();
-        var refusals = ImmutableDictionary.CreateBuilder<string, RendererPerfProtocolException>(StringComparer.Ordinal);
+        var refusals = ImmutableDictionary.CreateBuilder<string, RendererPerfProtocolRefusal>(StringComparer.Ordinal);
         RendererPerfSummary? Read(RendererPerfReport report, ImmutableDictionary<string, RendererPerfReferenceRates>? references, string name)
         {
-            try { return Analyze(report, references); }
+            try { return (analyze ?? Analyze)(report, references); }
             catch (RendererPerfProtocolException error)
             {
-                failures.Add($"{name} protocol {error.Code}: {error.Message}");
-                refusals.Add(name, error);
+                var refusal = new RendererPerfProtocolRefusal(error, $"{name} protocol {error.Code}: {error.Message}");
+                failures.Add(refusal.Reason);
+                refusals.Add(name, refusal);
                 return null;
             }
         }

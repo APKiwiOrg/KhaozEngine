@@ -77,6 +77,11 @@ internal sealed record RendererPerfPublication(RendererPerfPublicationState Stat
 {
     [JsonRequired]
     public RendererPerfFailureTextEvidence FailureText { get; init; } = new(false, 0, 0);
+
+    /// <summary>The original exception projected into publication text, retained even when text capacity is exhausted.
+    /// Runtime evidence only, absent on reports read from JSON.</summary>
+    [JsonIgnore]
+    public Exception? OriginalFailureException { get; init; }
 }
 internal sealed record RendererPerfReport(string Schema, RendererPerfManifest Manifest, RendererPerfRunIdentity Identity,
     ImmutableArray<RendererPerfRecipeReport> Recipes, ImmutableArray<RendererPerfBlockReport> Blocks,

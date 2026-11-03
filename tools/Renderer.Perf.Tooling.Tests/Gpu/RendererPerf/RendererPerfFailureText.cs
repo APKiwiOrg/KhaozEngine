@@ -15,7 +15,11 @@ internal static class RendererPerfFailureText
         var text = Project(failures, availableUtf8Bytes);
         return report with
         {
-            Publication = report.Publication with { OriginalFailure = text.Original, Errors = text.Errors, FailureText = text.Evidence },
+            Publication = report.Publication with
+            {
+                OriginalFailure = text.Original, Errors = text.Errors, FailureText = text.Evidence,
+                OriginalFailureException = failures.IsEmpty ? null : failures[0].Error
+            },
             Assessment = report.Assessment with { ValidForPromotion = report.Assessment.ValidForPromotion && failures.IsEmpty && text.Evidence.Complete }
         };
     }

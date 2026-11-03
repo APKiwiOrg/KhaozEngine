@@ -18,6 +18,12 @@ The setup also builds Renderer.Perf.Verify for verifier success and refusal proc
 solution builds and Render.Tests shards have no such prerequisite. AllocationMeasurement.props
 imports its allocation-isolation contract tests in addition to the moved renderer tests.
 
+Refused comparisons retain each original protocol exception with its published reason, keyed by side.
+Raw comparison accepts an analysis delegate so tests can observe the actual codec refusal before it is
+returned. Failure publication retains `OriginalFailureException` as runtime evidence, including the
+outer aggregate. This member is excluded from JSON. Published failure text and its UTF-8 byte accounting
+remain independently checkable, including when an aggregate wraps another failure.
+
 ## References and shared sources
 
 Direct engine references are Diagnostics, Gpu, Gpu.D3D11, Gpu.Metal, Gpu.Vulkan, Primitives, Render2D,

@@ -52,7 +52,8 @@ internal static class MotionExpectation
     /// <summary>Hold every pixel opaque geometry drew (every pixel that is not the sentinel), and that
     /// <paramref name="where"/> admits, to within <paramref name="tolerance"/> internal pixels of
     /// <paramref name="expected"/>. A non-finite error counts as infinitely wrong, so a NaN reading fails
-    /// wherever it falls in the scan. Returns how many pixels were checked. The message names the worst one.</summary>
+    /// wherever it falls in the scan. Returns how many pixels were checked. A failure carries the worst pixel
+    /// and scan on <see cref="MotionExpectationException"/>.</summary>
     public static int AssertDrawnPixels(MotionTargetReadback motion, Func<int, int, Vector2> expected, float tolerance,
         Func<int, int, bool>? where = null) => HoldDrawnPixels(motion, expected, tolerance, where).Count;
 
@@ -80,10 +81,18 @@ internal static class MotionExpectation
                 if (error <= worst) continue;
                 (worst, at, got, want) = (error, (x, y), reported, analytic);
             }
-        Assert.True(count > 0, "no pixel drew opaque geometry");
-        Assert.True(worst <= tolerance,
-            $"pixel {at} reported {got} px where {want} px was expected, {worst:F4} px off, over {count} drawn pixels");
-        return new MotionScan(count, worst, at, got, want);
+        if (count <= 0)
+            throw new MotionExpectationException(MotionExpectationRefusal.NoDrawnPixels, "no pixel drew opaque geometry");
+        var scan = new MotionScan(count, worst, at, got, want);
+        if (!(worst <= tolerance))
+            throw new MotionExpectationException(MotionExpectationRefusal.OutsideTolerance,
+                $"pixel {at} reported {got} px where {want} px was expected, {worst:F4} px off, over {count} drawn pixels")
+            {
+                Pixel = at,
+                Count = count,
+                Scan = scan,
+            };
+        return scan;
     }
 
     /// <summary>Require opaque geometry at every pixel <paramref name="where"/> admits: a finite value that is not the
@@ -98,10 +107,17 @@ internal static class MotionExpectation
                 if (!where(x, y)) continue;
                 count++;
                 Vector2 stored = motion.UvAt(x, y);
-                Assert.True(float.IsFinite(stored.X) && float.IsFinite(stored.Y) && !motion.IsBackground(x, y),
-                    $"pixel ({x}, {y}) stored {stored}, which is not a drawn surface's motion");
+                if (!(float.IsFinite(stored.X) && float.IsFinite(stored.Y) && !motion.IsBackground(x, y)))
+                    throw new MotionExpectationException(MotionExpectationRefusal.InvalidCoveredMotion,
+                        $"pixel ({x}, {y}) stored {stored}, which is not a drawn surface's motion")
+                    {
+                        Pixel = (x, y),
+                        Count = count,
+                        Stored = stored,
+                    };
             }
-        Assert.True(count > 0, "no pixel was admitted");
+        if (count <= 0)
+            throw new MotionExpectationException(MotionExpectationRefusal.NoAdmittedPixels, "no pixel was admitted");
         return count;
     }
 }

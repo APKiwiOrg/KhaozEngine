@@ -65,7 +65,9 @@ public sealed class AllocationIsolationParallelContractTests
         {
             Exception? error = Record.Exception(() => started = AllocationRegion.Start("parallel contract probe"));
             Assert.Null(started);
-            Assert.Contains("DisableParallelization = true", Assert.IsType<XunitException>(error).Message);
+            var failure = Assert.IsType<AllocationMeasurementException>(error);
+            Assert.Equal(AllocationMeasurementRefusal.CollectionNotIsolated, failure.Reason);
+            Assert.Equal("parallel contract probe", failure.Description);
             Assert.NotEqual(GCLatencyMode.NoGCRegion, GCSettings.LatencyMode);
         }
         finally

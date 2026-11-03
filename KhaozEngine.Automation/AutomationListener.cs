@@ -40,6 +40,10 @@ namespace KhaozEngine.Automation
 
         internal Task AcceptLoopCompletion => _acceptLoop.Completion;
 
+        /// <summary>AutomationLoopbackTests injects an accept-socket failure without setting the stopping flag,
+        /// so the real accept loop must report the unexpected endpoint loss.</summary>
+        internal void StopAcceptSocketForTests() => _listener.Stop();
+
         /// <summary>Bind loopback on an ephemeral port and start accepting. Throws if the bind fails, because a host
         /// that cannot listen must not go on to advertise a port in the handshake file.</summary>
         public AutomationListener(

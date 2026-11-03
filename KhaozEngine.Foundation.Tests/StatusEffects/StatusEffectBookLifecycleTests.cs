@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.Reflection;
 using KhaozEngine.StatusEffects;
 using Xunit;
 
@@ -176,9 +175,7 @@ public sealed class StatusEffectBookLifecycleTests
     {
         var book = Create(new StatusEffectDefinition(new(1), 30));
         // Seed the boundary directly instead of generating billions of changes.
-        var stamp = typeof(StatusEffectBook).GetField("_modifierStamp", BindingFlags.Instance | BindingFlags.NonPublic);
-        Assert.NotNull(stamp);
-        stamp.SetValue(book, Convert.ChangeType(4294967294UL, stamp.FieldType));
+        book.SeedModifierStampForTests(4294967294UL);
 
         book.Apply(7, new(1), 100);
         Assert.Equal(4294967295UL, book.ModifierVersion(7));

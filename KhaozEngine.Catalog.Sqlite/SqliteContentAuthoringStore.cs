@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Data;
 using System.Threading;
 using System.Threading.Tasks;
 using KhaozEngine.Catalog.Authoring;
@@ -71,6 +72,15 @@ public sealed partial class SqliteContentAuthoringStore : IContentAuthoringStore
         _connection = new SqliteStoreConnection(connectionString, SqliteCatalogSchema.BootstrapSql);
         _allocator = new ContentIdAllocator(this);
         PackStore = packStore;
+    }
+
+    /// <summary>UpgradeLifetimeCatalogTests captures the actual held native handle before failed setup.
+    /// The read-only probe reports that same handle's closure and the provider state without lending either object.</summary>
+    internal Func<(ConnectionState State, bool NativeHandleClosed)> CaptureConnectionLifetimeForTests()
+    {
+        SqliteConnection connection = _connection.Connection;
+        var native = connection.Handle ?? throw new InvalidOperationException("The held SQLite connection has no native handle.");
+        return () => (connection.State, native.IsClosed);
     }
 
     /// <summary>The allocator this store hands its two allocation members to.</summary>

@@ -191,6 +191,20 @@ public sealed partial class TileWorldServer : IDisposable
         };
     }
 
+    /// <summary>TileLoopbackHarness uses a real allocator with a nonzero node so loopback tests detect net-id
+    /// truncation through the production protocol. The allocator is installed before any player is spawned.</summary>
+    internal static TileWorldServer CreateWithAllocatorNodeForTests(INetTransport transport, TileWorldServerConfig config,
+        TileCollisionMap map, ITileTargets? targets, IConnectionAuthenticator? authenticator,
+        ReplicationRegistry? registry, ushort allocatorNode)
+        => new(transport, config, map, targets, authenticator, registry, allocatorNode);
+
+    private TileWorldServer(INetTransport transport, TileWorldServerConfig config, TileCollisionMap map,
+        ITileTargets? targets, IConnectionAuthenticator? authenticator, ReplicationRegistry? registry, ushort allocatorNode)
+        : this(transport, config, map, targets, authenticator, registry, entityInteractionReachPolicy: null)
+    {
+        allocator = new NetIdAllocator(allocatorNode);
+    }
+
     /// <summary>The cell grid, for tests, tooling and a head that persists cells.</summary>
     public ShardHost Host => host;
 

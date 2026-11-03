@@ -19,6 +19,9 @@ public sealed partial class MapStoredSurfaceSource : IMapSurfaceAcquisitionSourc
     internal MapSurfaceStorageIndex Index { get; }
     internal MapResolverIdentityDoc? ResolverIdentity { get; }
     internal MapSupportRecipe SupportRecipe { get; }
+    /// <summary>MapFoliageReviewTests observes retained density before and after identity computation.
+    /// Counting the pinned globals never loads foliage or exposes its mutable document.</summary>
+    internal int ResidentFoliageChunkCountForTests(int layerIndex) => _globals.Foliage!.Layers[layerIndex].Chunks.Count;
     MapStoredSurfaceSource(string directory, MapDocument manifest, MapTileIndex tiles)
     {
         _directory = Path.GetFullPath(directory);

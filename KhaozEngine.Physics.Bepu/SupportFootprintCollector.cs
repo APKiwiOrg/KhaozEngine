@@ -59,17 +59,23 @@ internal sealed partial class SupportFootprintCollector
         _count = admitted.Length;
     }
 
-    /// <summary>Lets PitchedPlates inject an unresolved admitted polygon before extrema evaluation.</summary>
-    internal int InjectPolygonUncertaintyForTests(StaticHandle owner, int elementId, Action<SupportPolygon> injectUncertainty)
+    /// <summary>Injects unresolved vertex or normal values before extrema evaluation, preserving admitted identity.
+    /// Returns copied observations, never the collector's polygons or their storage.</summary>
+    internal SupportPolygonUncertaintyObservation[] InjectPolygonUncertaintyForTests(StaticHandle owner, int elementId,
+        ReadOnlySpan<FeaturePoint> vertices, FeaturePoint normal)
     {
-        int injected = 0;
+        List<SupportPolygonUncertaintyObservation> observations = [];
         foreach (SupportPolygon polygon in _polygons)
             if (polygon.Static == owner && polygon.ElementId == elementId)
             {
-                injectUncertainty(polygon);
-                injected++;
+                polygon.Begin(polygon.Static, polygon.ElementId, vertices.Length);
+                for (int i = 0; i < vertices.Length; i++)
+                    polygon.Set(i, vertices[i], FeaturePoint.Subtract(vertices[(i + 1) % vertices.Length], vertices[i]));
+                polygon.Finish(normal);
+                observations.Add(new(polygon.Static, polygon.ElementId, polygon.Vertices.ToArray(),
+                    polygon.Normal, polygon.HasSource));
             }
-        return injected;
+        return observations.ToArray();
     }
 
     /// <summary>Lets TiltedQuery inspect the actual retained curved proof storage and work counters.</summary>

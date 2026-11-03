@@ -98,12 +98,18 @@ internal sealed class MutableWaterField(IMovementWaterField inner) : IMovementWa
         inner.TraceWater(query, physicsOrigin, identity, spans, contacts);
 }
 
-/// <summary>A fault raised by a test provider. The message names the fault and the exact query position.</summary>
+/// <summary>A fault raised by a test provider. <see cref="Tag"/> names the fault and <see cref="PositionBits"/> the
+/// exact query position, and the message repeats both.</summary>
 internal sealed class ProviderFaultException(string tag, Vector3 position)
     : Exception($"{tag} at {BitConverter.SingleToInt32Bits(position.X)}, {BitConverter.SingleToInt32Bits(position.Y)}, " +
         $"{BitConverter.SingleToInt32Bits(position.Z)}")
 {
     internal string Tag { get; } = tag;
+
+    /// <summary>The query position's bit patterns, so a signed zero or a last-bit difference still tells two
+    /// positions apart.</summary>
+    internal (int X, int Y, int Z) PositionBits { get; } = (BitConverter.SingleToInt32Bits(position.X),
+        BitConverter.SingleToInt32Bits(position.Y), BitConverter.SingleToInt32Bits(position.Z));
 }
 
 /// <summary>A small two-column Stair world at zero origin: a left deck at 0.1875 and, on the right, a floor under a

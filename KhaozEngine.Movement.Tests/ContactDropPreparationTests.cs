@@ -25,7 +25,7 @@ public class ContactDropPreparationTests
         float start = launchPrefix ? -0.25f : 4.875f;
         foreach (float phase in new[] { start, MathF.BitDecrement(start), MathF.BitIncrement(start) })
         {
-            var (move, follower, planner) = Driver(nav);
+            var (move, planner) = Driver(nav);
             // Vertical source alignment remains pending even when the horizontal anchors coincide.
             // Quarter pace keeps the supported launch prefix inside the admitted ground footprint.
             var body = new MoveState
@@ -36,7 +36,7 @@ public class ContactDropPreparationTests
             var first = move.Tick(body, tuning, Below, 0.01f, false, Dt, fixture.Context);
             Assert.Equal(launchPrefix ? RangeMoveStatus.Dropping : RangeMoveStatus.Following, first.Status);
             Assert.Equal(1, planner.Calls);
-            Assert.Equal(NavWaypointKind.Drop, follower.ActivePath!.Waypoints[follower.ActiveWaypointIndex].Kind);
+            Assert.Equal(NavWaypointKind.Drop, move.ActivePathForTests!.Waypoints[move.ActiveWaypointIndexForTests].Kind);
             body = NpcGroundMovement.Step(body, first, false, Dt, tuning, fixture.Context);
             Assert.True(body.Grounded);
             Assert.Equal(launchPrefix ? 4.75f : phase, body.Position.Y);
@@ -46,7 +46,7 @@ public class ContactDropPreparationTests
             Assert.True(refreshed.WorldDirection.X < 0);
             Assert.Equal(2, planner.Calls);
             Assert.Equal(launchPrefix ? 4f : phase - 0.75f, planner.LastStart.Y);
-            Assert.DoesNotContain(follower.ActivePath!.Waypoints, waypoint => waypoint.Kind == NavWaypointKind.Drop);
+            Assert.DoesNotContain(move.ActivePathForTests!.Waypoints, waypoint => waypoint.Kind == NavWaypointKind.Drop);
             FinishOnLedge(move, body, refreshed, tuning, fixture.Context, planner);
         }
     }
@@ -57,7 +57,7 @@ public class ContactDropPreparationTests
         using var fixture = new ContactDropFixture();
         var tuning = ContactDropFixture.Tuning;
         var nav = fixture.Capture.BuildProfile(tuning, default, new GroundProfileOptions { MaxDropMetres = 6 });
-        var (move, follower, planner) = Driver(nav);
+        var (move, planner) = Driver(nav);
         var body = new MoveState { Position = new(-0.25f, 4.75f, 0), Grounded = true, SpeedScale = 0 };
         var held = move.Tick(body, tuning, Below, 0.01f, false, Dt, fixture.Context);
         Assert.Equal(RangeMoveStatus.Following, held.Status);
@@ -67,7 +67,7 @@ public class ContactDropPreparationTests
         Assert.Equal(RangeMoveStatus.Following, held.Status);
         Assert.Equal(Vector2.Zero, held.WorldDirection);
         Assert.Equal(2, planner.Calls);
-        NavPath locked = follower.ActivePath!;
+        NavPath locked = move.ActivePathForTests!;
         Assert.Contains(locked.Waypoints, waypoint => waypoint.Kind == NavWaypointKind.Drop);
         for (int tick = 0; tick < 10; tick++)
         {
@@ -75,7 +75,7 @@ public class ContactDropPreparationTests
             Assert.Equal(RangeMoveStatus.Following, held.Status);
             Assert.Equal(Vector2.Zero, held.WorldDirection);
             Assert.Equal(2, planner.Calls);
-            Assert.Same(locked, follower.ActivePath);
+            Assert.Same(locked, move.ActivePathForTests);
         }
 
         body = body with { SpeedScale = 1 };
@@ -91,7 +91,7 @@ public class ContactDropPreparationTests
             var steering = move.Tick(body, tuning, latest, 0.01f, false, Dt, fixture.Context);
             Assert.Equal(RangeMoveStatus.Dropping, steering.Status);
             Assert.Equal(2, planner.Calls);
-            Assert.Same(locked, follower.ActivePath);
+            Assert.Same(locked, move.ActivePathForTests);
             body = NpcGroundMovement.Step(body, steering, false, Dt, tuning, fixture.Context);
         }
         Assert.Fail("The refreshed Drop never completed its real flight to lower support.");
@@ -105,7 +105,7 @@ public class ContactDropPreparationTests
         using var fixture = new ContactDropFixture();
         var tuning = ContactDropFixture.Tuning;
         var nav = fixture.Capture.BuildProfile(tuning, default, new GroundProfileOptions { MaxDropMetres = 6 });
-        var (move, follower, planner) = Driver(nav);
+        var (move, planner) = Driver(nav);
         var body = new MoveState { Position = new(-0.25f, 4.75f, 0), Grounded = true, SpeedScale = 0 };
         var input = new PlayerPathInput(0);
         for (int tick = 0; tick < 10; tick++)
@@ -114,7 +114,7 @@ public class ContactDropPreparationTests
             Assert.Equal(RangeMoveStatus.Following, held.Status);
             Assert.Equal(Vector2.Zero, held.WorldDirection);
             Assert.Equal(1, planner.Calls);
-            Assert.Equal(NavWaypointKind.Drop, follower.ActivePath!.Waypoints[follower.ActiveWaypointIndex].Kind);
+            Assert.Equal(NavWaypointKind.Drop, move.ActivePathForTests!.Waypoints[move.ActiveWaypointIndexForTests].Kind);
             body = PlayerStep(body, held, fixture.Context, input);
             Assert.True(body.Grounded);
             Assert.Equal(new Vector3(-0.25f, 4.75f, 0), body.Position);
@@ -125,8 +125,8 @@ public class ContactDropPreparationTests
         Assert.Equal(intoRange ? RangeMoveStatus.InRange : RangeMoveStatus.Following, reconsidered.Status);
         Assert.Equal(Vector2.Zero, reconsidered.WorldDirection);
         Assert.Equal(intoRange ? 1 : 2, planner.Calls);
-        if (intoRange) Assert.Null(follower.ActivePath);
-        else Assert.DoesNotContain(follower.ActivePath!.Waypoints, waypoint => waypoint.Kind == NavWaypointKind.Drop);
+        if (intoRange) Assert.Null(move.ActivePathForTests);
+        else Assert.DoesNotContain(move.ActivePathForTests!.Waypoints, waypoint => waypoint.Kind == NavWaypointKind.Drop);
 
         body = body with { SpeedScale = 1 };
         for (int tick = 0; tick < 60; tick++)
@@ -175,15 +175,14 @@ public class ContactDropPreparationTests
         }
     }
 
-    static (MoveToRange Move, PathFollower Follower, Recorder Planner) Driver(GroundNavigation navigation)
+    static (MoveToRange Move, Recorder Planner) Driver(GroundNavigation navigation)
     {
         var planner = new Recorder(navigation.Planner);
-        var move = new MoveToRange(planner, navigation, new PathFollowConfig
+        var move = MoveToRange.CreateForTests(planner, navigation, new PathFollowConfig
         {
             ReplanCooldownSeconds = 30, GoalRetargetTolerance = 0.1f,
         });
-        var follower = move.Follower;
-        return (move, follower, planner);
+        return (move, planner);
     }
 
     sealed class Recorder(IRegionPathPlanner inner) : IRegionPathPlanner

@@ -31,7 +31,6 @@ public class ContactDropRetargetTests
         {
             ReplanCooldownSeconds = cooldown, GoalRetargetTolerance = 0.1f,
         });
-        var follower = move.Follower;
         var body = new MoveState { Position = new(-0.25f, 4.75f, 0), Grounded = true };
         var target = ReachTarget.Point(new(1.25f, -3.25f, 0));
         var latest = ReachTarget.Point(new(0.25f, 0.75f, 1));
@@ -49,14 +48,14 @@ public class ContactDropRetargetTests
                 Assert.True(dropSeconds > cooldown);
                 Assert.True(flightSeconds > cooldown);
                 Assert.Equal(RangeMoveStatus.Following, steering.Status);
-                Assert.NotSame(locked, follower.ActivePath);
-                Assert.DoesNotContain(follower.ActivePath!.Waypoints, w => w.Kind == NavWaypointKind.Drop);
+                Assert.NotSame(locked, move.ActivePathForTests);
+                Assert.DoesNotContain(move.ActivePathForTests!.Waypoints, w => w.Kind == NavWaypointKind.Drop);
                 Assert.True(steering.WorldDirection.Y > 0);
                 return;
             }
             Assert.Equal(RangeMoveStatus.Dropping, steering.Status);
-            locked ??= follower.ActivePath;
-            Assert.Same(locked, follower.ActivePath);
+            locked ??= move.ActivePathForTests;
+            Assert.Same(locked, move.ActivePathForTests);
             Assert.Equal(2, locked!.Waypoints.Count(w => w.Kind == NavWaypointKind.Drop));
             dropSeconds += dt;
             body = NpcGroundMovement.Step(body, steering, false, dt, tuning, context);

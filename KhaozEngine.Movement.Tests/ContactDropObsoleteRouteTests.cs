@@ -38,8 +38,7 @@ public class ContactDropObsoleteRouteTests
     {
         // The cooldown outlasts the whole walk, so only the pending Drop can make the due query immediate.
         var planner = new Recorder(nav.Planner);
-        var move = new MoveToRange(planner, nav, new PathFollowConfig { ReplanCooldownSeconds = 30 });
-        var follower = move.Follower;
+        var move = MoveToRange.CreateForTests(planner, nav, new PathFollowConfig { ReplanCooldownSeconds = 30 });
 
         var body = new MoveState { Position = new(startX, 4.75f, 0), Grounded = true };
         var below = ReachTarget.Point(new(0.25f, 0.75f, 0));
@@ -48,7 +47,7 @@ public class ContactDropObsoleteRouteTests
         Assert.Equal(RangeMoveStatus.Following, first.Status);
         Assert.True(first.WorldDirection.X > 0);
         Assert.Equal(1, planner.Calls);
-        Assert.Contains(follower.ActivePath!.Waypoints, w => w.Kind == NavWaypointKind.Drop);
+        Assert.Contains(move.ActivePathForTests!.Waypoints, w => w.Kind == NavWaypointKind.Drop);
         body = NpcGroundMovement.Step(body, first, false, Dt, tuning, context);
 
         int? refreshed = null;
@@ -68,7 +67,7 @@ public class ContactDropObsoleteRouteTests
             {
                 refreshed = tick;
                 Assert.Equal(4f, planner.LastStart.Y);
-                Assert.DoesNotContain(follower.ActivePath!.Waypoints, w => w.Kind == NavWaypointKind.Drop);
+                Assert.DoesNotContain(move.ActivePathForTests!.Waypoints, w => w.Kind == NavWaypointKind.Drop);
             }
             Assert.Equal(refreshed is null ? 1 : 2, planner.Calls);
             Assert.True(refreshed is null ? steering.WorldDirection.X > 0 : steering.WorldDirection.X < 0, at);

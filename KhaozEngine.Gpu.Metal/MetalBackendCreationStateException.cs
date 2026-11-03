@@ -19,4 +19,6 @@ public sealed class MetalBackendCreationStateException : InvalidOperationExcepti
 
     /// <summary>NativeClass associated with the refused operation, when applicable.</summary>
     public string? NativeClass { get; init; }
+    /// <summary>The device that could not create a command queue.</summary>
+    public string? DeviceName { get; init; }
 }

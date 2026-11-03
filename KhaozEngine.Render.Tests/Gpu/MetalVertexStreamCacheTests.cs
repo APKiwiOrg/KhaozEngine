@@ -1,4 +1,5 @@
 using System;
+using KhaozEngine.Gpu.Metal;
 using KhaozEngine.Gpu.Metal.Internal;
 using Xunit;
 
@@ -160,7 +161,7 @@ namespace KhaozEngine.Tests.Gpu
             streams.Flush(ref sink, IntPtr.Zero, Epoch);
 
             streams.Record(0, new IntPtr(0xA), 0);
-            Assert.Throws<InvalidOperationException>(() => streams.Flush(ref sink, IntPtr.Zero, Epoch));
+            Assert.Equal(MetalBindRecordsRefusal.EncoderMissing, Assert.Throws<MetalBindRecordsStateException>(() => streams.Flush(ref sink, IntPtr.Zero, Epoch)).Reason);
             Assert.True(streams.IsDirty(0));
 
             streams.Reset();

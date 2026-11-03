@@ -39,4 +39,18 @@ public sealed class NativeCreationGuardTests
         Assert.IsAssignableFrom<InvalidOperationException>(refusal);
     }
 
+
+    [Fact]
+    public void MetalPostProbeCreationRefusalsCarryDeviceAndRequirement()
+    {
+        var selection = Assert.Throws<MetalBackendCreationStateException>(() => MetalBackendCreationChecks.RequireEligibleDeviceForTests(false, "device removed"));
+        Assert.Equal(MetalBackendCreationRefusal.EligibleDeviceMissing, selection.Reason);
+        Assert.Equal("device removed", selection.Detail);
+        MetalBackendCreationChecks.RequireEligibleDeviceForTests(true, null);
+        var queue = Assert.Throws<MetalBackendCreationStateException>(() => MetalBackendCreationChecks.RequireCommandQueueForTests(false, "test device"));
+        Assert.Equal(MetalBackendCreationRefusal.CommandQueueUnavailable, queue.Reason);
+        Assert.Equal("test device", queue.DeviceName);
+        MetalBackendCreationChecks.RequireCommandQueueForTests(true, "test device");
+    }
+
 }

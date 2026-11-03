@@ -19,4 +19,8 @@ public enum MetalBackendCreationRefusal
     WindowHandleMissing,
     /// <summary>Refuses a Metal swapchain window that is not Cocoa.</summary>
     WindowKindUnsupported,
+    /// <summary>Refuses creation when no eligible Metal device remains after the support probe.</summary>
+    EligibleDeviceMissing,
+    /// <summary>Refuses a Metal device that cannot create its native command queue.</summary>
+    CommandQueueUnavailable,
 }

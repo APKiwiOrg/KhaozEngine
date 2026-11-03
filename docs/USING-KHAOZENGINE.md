@@ -28133,3 +28133,6 @@ set number and offset. These families preserve the original BCL exception bases 
 
 Post-probe D3D11 creation also identifies a missing HWND, versioned context or native creation output.
 See the backend refusal table for each reason and identifier.
+
+Post-probe Metal creation also identifies a missing eligible device or native command queue.
+Resource-set and vertex-stream flushes share `MetalBindRecordsRefusal.EncoderMissing` for a nil encoder.

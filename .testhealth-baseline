@@ -445,3 +445,5 @@ exempt KETEST002 tools/Renderer.Perf.Tooling.Tests/Gpu/RendererPerf/RendererPerf
 exempt KETEST002 tools/Renderer.Perf.Tooling.Tests/Gpu/RendererPerf/RendererPerfMetalDiagnosticsTests.Orphan.cs
 # Cold native D3D11 adapter identity inspection deliberately avoids backend API changes (owner decision D18)
 exempt KETEST002 tools/Renderer.Perf.Tooling.Tests/Gpu/RendererPerf/RendererPerfNativeIdentity.cs
+# Leak check reads third-party BepuUtilities 2.4.0 BufferPool slot counters, which have no public outstanding-loan count (owner decision D22)
+exempt KETEST002 KhaozEngine.Physics.Tests/StaticMutationLeaseTests.Geometry.cs

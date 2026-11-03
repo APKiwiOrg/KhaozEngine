@@ -965,7 +965,9 @@ at its authoritative boundary. Shape kind, dimensions, box yaw and range changes
 immutable profile requires a new `MoveToRange` instance. Call `Reset` for a target identity change, teleport,
 manual input, target death or invalidity, or cancellation. The strict `AcceptRadius` cap can hold at float
 resolution, including when the caller supplies zero. The profile must match radius, half-height, slope and step
-for the tuning it serves. Walk and run pace, climb pace and effect scale can differ.
+for the tuning it serves. A Legacy graph lets walk and run pace and climb pace differ. A Contact graph compares every
+retained tuning field, including climb pace, and its walk pace, run pace and air momentum can differ only with zero
+`MaxDropMetres`. Effect scale is a per-tick input and can differ on either.
 
 An NPC keeps the physics world, providers, tuning, body and target snapshots. The area mask is caller-owned
 `uint` policy:

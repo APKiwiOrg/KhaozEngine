@@ -9900,9 +9900,10 @@ the configured arrival radius and layer checks. Physics rebasing need not reprod
 A fresh Complete result already terminal when queried keeps the ordinary cooldown, so a no-progress
 start-cell result cannot repeat the query every tick.
 
-The profile must match the tuning's radius, half-height, slope and step. Contact profiles also match their retained
-flight inputs when `MaxDropMetres` is positive, including walk/run pace and momentum. Zero-allowance supported
-proofs normalize those three inputs. Climb pace and effect scale may differ. The game owns nominal ranges, target validity, target identity, cancellation and the
+The profile must match the tuning's radius, half-height, slope and step. A Legacy graph lets walk and run pace and
+climb pace differ. A Contact graph compares every retained tuning field, including climb pace, and its walk pace, run
+pace and air momentum may differ only with zero `MaxDropMetres`. Effect scale is a per-tick input and may differ on
+either. The game owns nominal ranges, target validity, target identity, cancellation and the
 authoritative server tolerance, which it applies once after the engine's exact observed reach. The engine owns
 no NPC brain, action queue or combat rule. Shape kind, dimensions, box yaw and range changes reset internally.
 A changed immutable profile requires a new `MoveToRange` instance. Call `Reset` before the next tick for a target

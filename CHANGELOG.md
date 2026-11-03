@@ -9,8 +9,9 @@ Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 2026-11-03
 
 - Add baked one-way Contact `Drop` links with certified fall routes and supported landing completion. Each
-  navigation profile opts in through `MaxDropMetres`, which defaults to zero. Only drop-enabled profiles use
-  KENB format 3. Player hosts supply `PlayerPathInput` for authenticated Drop execution (#1645).
+  navigation profile opts in through `MaxDropMetres`, which defaults to zero. A bake with any drop-enabled
+  profile uses KENB format 3 for the whole file. Unavailable proof evidence refuses the bake through
+  `ContactDropProofException`. Player hosts supply `PlayerPathInput` for authenticated Drop execution (#1645).
 - Keep the follower replan cooldown for fresh no-progress results and refresh stale reached terminals once.
   Point routes validate the current goal before reporting `Arrived`, and deferred path queries report
   `WaitingForPath` with zero steering (#1646).

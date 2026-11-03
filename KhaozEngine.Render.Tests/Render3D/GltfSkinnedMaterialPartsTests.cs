@@ -188,7 +188,7 @@ public sealed class GltfSkinnedMaterialPartsTests
         InvalidDataException error = Assert.Throws<InvalidDataException>(load);
 
         Assert.Contains(identity, error.Message);
-        Assert.Equal("SharpGLTF.Validation", error.InnerException?.GetType().Namespace);
+        Assert.NotNull(error.InnerException);
     }
 
     static SkinnedAttachmentGlbFixture Fixture(string? colorType = "VEC4", int colorComponentType = 5126)

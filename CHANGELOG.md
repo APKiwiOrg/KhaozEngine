@@ -4,6 +4,15 @@ All notable changes to KhaozEngine. One shared version line `<KhaozEngineVersion
 governs every package, including the four umbrella metapackages. Planned work lives in the repo's GitHub
 Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
+## 21.24.1
+
+2026-11-04
+
+- `scripts/check-test-health.sh` reports the solution and every tracked xunit project outside it, found with
+  `git ls-files`, instead of a fixed list. `KhaozEngine.MapDoc.OracleHarness.Tests` had been left out and
+  failed its own build. Its existing message assertions have catch-up entries in `.testhealth-baseline`. The
+  `KhaozEngine.CodeHealth.Analyzers` README describes the report roots. No analyzer or package code changes.
+
 ## 21.24.0
 
 2026-11-03

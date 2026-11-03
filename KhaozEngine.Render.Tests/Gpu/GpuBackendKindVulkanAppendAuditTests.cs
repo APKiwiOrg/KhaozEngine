@@ -356,11 +356,10 @@ namespace KhaozEngine.Tests.Gpu
                 Assert.Equal(GpuBackendKind.VulkanNative, ex.Backend);
                 // Not Metal, which is what the pre-phase-2 discard arm asked for.
                 Assert.DoesNotContain("Metal", ex.Message);
-                // And the ACTIONABLE line is this backend's own. The second provider-backed backend is what
-                // turned the old message wrong: written when there was one, it named KhaozEngineD3D11.Register()
-                // as though that were the generic instruction, so a Vulkan wiring fault told the reader to
-                // register Direct3D 11. It states the convention now, and this is the row that holds it there.
-                Assert.Contains("KhaozEngineVulkan.Register()", ex.Message, StringComparison.Ordinal);
+                // The generic convention and known entry point both describe this registration.
+                Assert.Equal(GpuBackendProviderMissingRefusal.ProviderNotRegistered, ex.Reason);
+                Assert.Equal("KhaozEngine<Backend>.Register()", ex.RegistrationConvention);
+                Assert.Equal("KhaozEngineVulkan.Register()", ex.RegistrationMethod);
             }
         }
 
@@ -378,7 +377,9 @@ namespace KhaozEngine.Tests.Gpu
 
                 Assert.Equal(GpuBackendKind.VulkanNative, ex.Backend);
                 Assert.DoesNotContain("Metal", ex.Message);
-                Assert.Contains("KhaozEngineVulkan.Register()", ex.Message, StringComparison.Ordinal);
+                Assert.Equal(GpuBackendProviderMissingRefusal.ProviderNotRegistered, ex.Reason);
+                Assert.Equal("KhaozEngine<Backend>.Register()", ex.RegistrationConvention);
+                Assert.Equal("KhaozEngineVulkan.Register()", ex.RegistrationMethod);
             }
         }
 

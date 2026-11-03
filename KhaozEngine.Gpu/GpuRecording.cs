@@ -18,22 +18,34 @@ namespace KhaozEngine.Gpu
     /// </summary>
     public sealed class GpuNestedRecordingException : InvalidOperationException
     {
+        /// <summary>The refusal reason. Every constructor of this type supplies it.</summary>
+        public GpuNestedRecordingRefusal? Reason { get; }
+
+        /// <summary>Build a refusal with its structured reason and developer message.</summary>
+        public GpuNestedRecordingException(GpuNestedRecordingRefusal reason, string message)
+            : base(message) => Reason = reason;
+
+        /// <summary>Build a refusal with its structured reason, developer message and original failure.</summary>
+        public GpuNestedRecordingException(GpuNestedRecordingRefusal reason, string message, Exception inner)
+            : base(message, inner) => Reason = reason;
+
         /// <summary>Build the refusal. <paramref name="owner"/> is the recording that was already open,
         /// <paramref name="attempted"/> the one that was refused.</summary>
         public GpuNestedRecordingException(string owner, string attempted)
-            : base(BuildMessage(owner, attempted))
+            : this(GpuNestedRecordingRefusal.RecordingAlreadyOpen, BuildMessage(owner, attempted))
         {
             Owner = owner;
             Attempted = attempted;
         }
 
         /// <summary>Who was already recording on the device.</summary>
-        public string Owner { get; }
+        public string Owner { get; init; } = string.Empty;
 
         /// <summary>Who tried to open a second recording and was refused.</summary>
-        public string Attempted { get; }
+        public string Attempted { get; init; } = string.Empty;
 
-        /// <summary>The message text, built here so a test can assert the wording without catching anything.
+        /// <summary>The developer message. Callers inspect <see cref="Reason"/>, <see cref="Owner"/> and
+        /// <see cref="Attempted"/> for the refusal contract.
         /// <para>
         /// It explains itself with the PORTABLE RULE and never with one backend's mechanism, which is a
         /// deliberate change from the wording that shipped through 17.x. That named the incumbent's
@@ -168,7 +180,13 @@ namespace KhaozEngine.Gpu
             // device's backpressure into another device's stall.
             lock (slot)
             {
-                if (slot.Owner is { } open) throw new GpuNestedRecordingException(open, owner);
+                if (slot.Owner is { } open)
+                    throw new GpuNestedRecordingException(GpuNestedRecordingRefusal.RecordingAlreadyOpen,
+                        GpuNestedRecordingException.BuildMessage(open, owner))
+                    {
+                        Owner = open,
+                        Attempted = owner,
+                    };
                 slot.Owner = owner;
                 slot.Commands = commands;
             }

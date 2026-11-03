@@ -99,9 +99,10 @@ namespace KhaozEngine.Tests.Gpu
                 () => GpuBackendProviders.Require(SentinelKind));
 
             Assert.Equal(SentinelKind, ex.Backend);
-            // The message has to be actionable on its own: the reader is a consumer whose app just refused to
-            // start, and the fix is one line they have never written before.
-            Assert.Contains("KhaozEngineD3D11.Register()", ex.Message);
+            // An unknown kind still carries the actionable startup convention without inventing an entry point.
+            Assert.Equal(GpuBackendProviderMissingRefusal.ProviderNotRegistered, ex.Reason);
+            Assert.Equal("KhaozEngine<Backend>.Register()", ex.RegistrationConvention);
+            Assert.Null(ex.RegistrationMethod);
         }
 
         // --- the machine-capability probe, which is the OTHER failure mode ---

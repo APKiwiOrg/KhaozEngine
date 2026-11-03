@@ -103,10 +103,13 @@ What it owns today:
   captures and will never see it on a live 18.0.0 run.
 - **`GpuNoUsableBackendException`** (17.40.0) - the DOUBLE FALL: the requested backend failed, the engine fell
   back, and the fallback failed too, so there is no device. It carries `RequestedBackend`, `FallbackBackend` and
-  both failures, and its message names both backends and both reasons in the order they were tried. The FIRST
+  `RequestedFailure`, `Reason` and both failures. `Reason` is `GpuNoUsableBackendRefusal.RequestedCreationFailed`
+  when creation threw, `RequestedMachineUnsupported` when the support probe refused, or
+  `RequestedProviderNotRegistered` when a stored preference had no registered provider. The FIRST
   failure is `InnerException`, because on a native backend and its deleted Veldrid twin the two usually shared
   one underlying cause and the one worth reading is the first, and the fallback's own exception is on
-  `FallbackFailure` so neither stack has to be reconstructed from a log. A backend NAMED outright never reaches
+  `FallbackFailure` so neither stack has to be reconstructed from a log. When the request never threw,
+  `InnerException` is the same object as `FallbackFailure`. A backend NAMED outright never reaches
   it: naming one turns fallback off, so its failure propagates alone.
 - **`GpuThreadingCaps` / `GpuThreadingDiagnostics`** (17.22.0) - the graphics driver's multi-threading
   capabilities, on **Direct3D11 only**: `DriverCommandLists` and `DriverConcurrentCreates`, read straight off the
@@ -245,9 +248,10 @@ What it owns today:
   with no backend in it, because a reader who meets a backend name in a portable refusal reasonably stops
   applying the rule once that backend is gone.
   `GpuRecording.Open(device, list, owner)` begins the list and claims the device, the returned scope ends it and
-  releases, and a second `Open` on the same device throws `GpuNestedRecordingException` carrying `Owner` (who is
-  already recording) and `Attempted` (who was refused). `OpenOwner(device)` and `CanOpen(device)` answer the same
-  question without being refused. Every recording the engine opens goes through it (the windowed frame list, both
+  releases, and a second `Open` on the same device throws `GpuNestedRecordingException` with
+  `Reason = GpuNestedRecordingRefusal.RecordingAlreadyOpen`, carrying `Owner` (who is already recording) and
+  `Attempted` (who was refused). Move that work to the frame's pre-record phase. `OpenOwner(device)` and
+  `CanOpen(device)` answer the same question without being refused. Every recording the engine opens goes through it (the windowed frame list, both
   snapshot hosts, the preview, the offscreen 2D captures, the ocean's priming pass, the retire barrier, the mipmap
   generates and every readback), so the refusal reads the same on every backend and is provable with no GPU.
   Calling `IGpuCommandList.Begin` directly stays legal and unwatched: a consumer's own list gets whatever its
@@ -601,6 +605,29 @@ there on `build` and on a rid-agnostic `publish`, no-op on Windows, macOS and `p
 `<KhaozEngineFlattenHostNatives>false</KhaozEngineFlattenHostNatives>`. It ships here as well as in `Foundation`
 because `Foundation` is not in this package's dependency closure, so a project that references this one and no
 umbrella would otherwise get nothing. One physical rule file, so the two copies cannot drift.
+
+## Refusals
+
+These exception types retain their existing constructors and `InvalidOperationException` base. Engine paths
+always fill `Reason`. A consumer-created message-only instance can leave it null. `GpuNestedRecordingException`
+retains its owner/attempted constructor, which also fills the reason. Message text is developer prose. Branch on the reason and read the diagnostic properties.
+
+| Exception and reason member | What it refuses | Identifiers |
+|---|---|---|
+| `GpuBackendProviderMissingException`, `GpuBackendProviderMissingRefusal.ProviderNotRegistered` | A backend has no registered provider and cannot fall back. | `Backend`, `RegistrationConvention`, optional `RegistrationMethod` |
+| `GpuBackendRetiredException`, `GpuBackendRetiredRefusal.BackendRetired` | An explicitly named backend whose implementation was retired. | `Backend`, `Replacement`, `RetirementVersion` |
+| `GpuNoUsableBackendException`, `GpuNoUsableBackendRefusal.RequestedCreationFailed` | The requested backend and its fallback both threw. | `RequestedBackend`, `FallbackBackend`, `RequestedFailure`, `InnerException`, `FallbackFailure` |
+| `GpuNoUsableBackendException`, `GpuNoUsableBackendRefusal.RequestedMachineUnsupported` | The requested backend failed its support probe and the fallback failed. | `RequestedBackend`, `FallbackBackend`, `RequestedFailure`, `InnerException`, `FallbackFailure` |
+| `GpuNoUsableBackendException`, `GpuNoUsableBackendRefusal.RequestedProviderNotRegistered` | A stored preference had no registered provider and its fallback failed. | `RequestedBackend`, `FallbackBackend`, `RequestedFailure`, `InnerException`, `FallbackFailure` |
+| `GpuNestedRecordingException`, `GpuNestedRecordingRefusal.RecordingAlreadyOpen` | A second recording while one is already open on the device. | `Owner`, `Attempted` |
+
+Missing-provider refusals always carry `RegistrationConvention = "KhaozEngine<Backend>.Register()"`.
+`RegistrationMethod` carries the known startup entry point, such as `KhaozEngineD3D11.Register()`, and is null
+for an unrecognized backend. The convention remains actionable for appended backends without adding a branch
+to device creation. Retired-backend refusals carry `RetirementVersion = new Version(18, 0, 0)`.
+For `RecordingAlreadyOpen`, put per-frame producer work in `AppWindow.Run`'s `onPrepare` callback or
+`Scene3D.PrepareFrame` before the frame recording opens. Loads, readbacks and offscreen captures belong outside
+the frame when they are not per-frame work.
 
 ## Optional compiler and memory diagnostics
 

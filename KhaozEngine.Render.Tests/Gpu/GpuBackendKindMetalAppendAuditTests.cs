@@ -502,13 +502,15 @@ namespace KhaozEngine.Tests.Gpu
                 Assert.Equal(GpuBackendKind.MetalNative, ex.Backend);
                 // The actionable line is the convention, which is what degrades correctly for a backend whose
                 // package the message predates.
-                Assert.Contains("KhaozEngine<Backend>.Register()", ex.Message, StringComparison.Ordinal);
+                Assert.Equal(GpuBackendProviderMissingRefusal.ProviderNotRegistered, ex.Reason);
+                Assert.Equal("KhaozEngine<Backend>.Register()", ex.RegistrationConvention);
+                Assert.Equal("KhaozEngineMetal.Register()", ex.RegistrationMethod);
             }
         }
 
         /// <summary>
         /// The headless twin, through the public named-backend overload, which is the entry a backend-parity
-        /// harness uses. Same exception, same convention in the message.
+        /// harness uses. Same exception, same structured registration convention.
         /// </summary>
         [Fact]
         public void CreateHeadless_OnTheNativeKind_ThrowsNamingTheMissingRegistration()
@@ -519,7 +521,9 @@ namespace KhaozEngine.Tests.Gpu
                     () => GpuDeviceContext.CreateHeadless(GpuBackendKind.MetalNative));
 
                 Assert.Equal(GpuBackendKind.MetalNative, ex.Backend);
-                Assert.Contains("KhaozEngine<Backend>.Register()", ex.Message, StringComparison.Ordinal);
+                Assert.Equal(GpuBackendProviderMissingRefusal.ProviderNotRegistered, ex.Reason);
+                Assert.Equal("KhaozEngine<Backend>.Register()", ex.RegistrationConvention);
+                Assert.Equal("KhaozEngineMetal.Register()", ex.RegistrationMethod);
             }
         }
 

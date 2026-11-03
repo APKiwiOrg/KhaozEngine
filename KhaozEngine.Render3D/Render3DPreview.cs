@@ -129,7 +129,12 @@ namespace KhaozEngine.Render3D
             // The preview owns its target size, so bound water targets are prepared at that size. A capture
             // inside another recording is refused here under the preview's own name, before preparation.
             if (GpuRecording.OpenOwner(_gd) is { } owner)
-                throw new GpuNestedRecordingException(owner, "Render3DPreview.Capture");
+                throw new GpuNestedRecordingException(GpuNestedRecordingRefusal.RecordingAlreadyOpen,
+                    GpuNestedRecordingException.BuildMessage(owner, "Render3DPreview.Capture"))
+                {
+                    Owner = owner,
+                    Attempted = "Render3DPreview.Capture",
+                };
             Scene.PrepareFrame(Width, Height);
             using (GpuRecording.Open(_gd, _cl, "Render3DPreview.Capture"))
                 Scene.RenderInternal(_cl, Width, Height, _fb);

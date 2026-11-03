@@ -18450,7 +18450,9 @@ have persisted them as a player's saved choice.
   default, because the engine never had an OpenGL implementation and is not gaining one.
 - A STORED preference naming one takes the same redirect, and reports
   `GpuBackendSource.FallbackAfterFailure`, which is the signal a game already clears a stored choice on.
-- NAMING one in code throws `GpuBackendRetiredException`. Repointing the member at its native sibling was ruled
+- NAMING one in code throws `GpuBackendRetiredException` with
+  `Reason = GpuBackendRetiredRefusal.BackendRetired`, `Backend`, `Replacement` and
+  `RetirementVersion = new Version(18, 0, 0)`. Repointing the member at its native sibling was ruled
   out by name in the removal design: it would move every tester's stored choice onto a different implementation
   with no rebuild signal and no player notice.
 
@@ -18465,11 +18467,15 @@ implementations of those three APIs, and they are the only implementations left 
 `d3d11`, `vulkan`, `metal` and `gl` named the Veldrid backend, which the same release deleted, so a token
 naming one of them RESOLVES to that API's native backend and logs the retirement WARN rather than failing the
 run. NAMING a native backend without referencing its package and calling its `Register()` throws
-`GpuBackendProviderMissingException` and never falls back, because a run that quietly used a different
+`GpuBackendProviderMissingException` with `Reason = GpuBackendProviderMissingRefusal.ProviderNotRegistered`
+and never falls back, because a run that quietly used a different
 implementation would report its measurements under the wrong name. DEFAULTING to one without the package
 throws the same exception since 18.0.0, where it used to fall back to the incumbent and report
 `GpuBackendSource.DefaultProviderMissing`: there is no second implementation to reach for, and the umbrellas
 carry the packages so an ordinary game never meets it.
+Read `Backend` for the missing registration, `RegistrationConvention` for
+`KhaozEngine<Backend>.Register()` and `RegistrationMethod` for a known backend's entry point, or null for an
+unrecognized backend. The convention continues to apply when a backend is appended.
 
 Because each API had two members, code that cares about the API rather than the implementation asks
 `kind.IsDirect3D11()`, `kind.IsVulkan()` or `kind.IsMetal()` (the `GpuBackendKinds` extensions, 17.30.0, 17.32.0
@@ -18642,8 +18648,11 @@ packages, and `AppWindow` plus both snapshot hosts register at boot.
 
 **When the fallback fails too, `GpuNoUsableBackendException` (17.40.0) names BOTH attempts.** There is no device
 at that point and the app cannot render, and the exception carries `RequestedBackend`, `FallbackBackend`, the
-first failure as its `InnerException` and the fallback's own on `FallbackFailure`, with both reasons in the
-message in the order they were tried. The first failure is the inner one deliberately: on a native backend and
+first failure as its `InnerException`, the fallback's own on `FallbackFailure` and the requested diagnostic on
+`RequestedFailure`. Its `Reason` is `GpuNoUsableBackendRefusal.RequestedCreationFailed` when creation threw,
+`RequestedMachineUnsupported` when the support probe refused, or `RequestedProviderNotRegistered` when the
+stored preference had no provider. When the request never threw, `InnerException` is the fallback's exception.
+The first failure is the inner one deliberately: on a native backend and
 its deleted Veldrid twin the two usually shared one underlying cause, and the one worth reading is the first. A backend
 named outright never reaches it, because naming one turns fallback off.
 
@@ -19428,8 +19437,11 @@ refuse it rather than replay it.
 **The rule is now enforced for every recording the engine opens (`GpuRecording`, 17.36.0).** It used to be a
 paragraph you had to have read. `GpuRecording.Open(device, list, owner)` begins a list and claims the device,
 the returned `GpuRecordingScope` ends it and releases, and a second `Open` on the same device throws
-`GpuNestedRecordingException`. The message names both sides and the fix, which is the part a stack trace cannot
-give you, because the damage this replaces surfaced several draws away from the call that caused it:
+`GpuNestedRecordingException` with `Reason = GpuNestedRecordingRefusal.RecordingAlreadyOpen`.
+`Owner` identifies the open recording and `Attempted` the refused one. Move per-frame work to the pre-record
+phase through `AppWindow.Run(onPrepare)` or `Scene3D.PrepareFrame`. Loads, readbacks and offscreen captures
+belong outside the frame when they are not per-frame work. These identifiers supply the context a stack trace
+cannot, because the damage this replaces surfaced several draws away from the call that caused it:
 
 ```csharp
 using (GpuRecording.Open(gd, cl, "my streaming upload"))

@@ -35,6 +35,7 @@ namespace KhaozEngine.Tests.Gpu
                 var ex = Assert.Throws<GpuNestedRecordingException>(
                     () => GpuRecording.Open(device, ownList, "Scene3D.LoadTexture"));
 
+                Assert.Equal(GpuNestedRecordingRefusal.RecordingAlreadyOpen, ex.Reason);
                 Assert.Equal("the window's frame list", ex.Owner);
                 Assert.Equal("Scene3D.LoadTexture", ex.Attempted);
             }

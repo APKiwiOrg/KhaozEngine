@@ -546,10 +546,10 @@ namespace KhaozEngine.Tests.Gpu
 
                 list.CopyTextureSubresource(seed, 0, 0, array, 0, 0, 8, 8);
 
-                InvalidOperationException refused =
-                    Assert.Throws<InvalidOperationException>(() => list.GenerateMipmaps(array));
+                VulkanLayoutStateException refused =
+                    Assert.Throws<VulkanLayoutStateException>(() => list.GenerateMipmaps(array));
 
-                Assert.Contains("WIDER than the ranges it has tracked", refused.Message, StringComparison.Ordinal);
+                Assert.Equal(VulkanLayoutRefusal.UntrackedRemainder, refused.Reason);
             }
             finally
             {

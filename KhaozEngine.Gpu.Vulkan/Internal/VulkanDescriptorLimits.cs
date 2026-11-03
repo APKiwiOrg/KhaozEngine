@@ -77,7 +77,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
             uint limit = EffectiveLimit(reportedLimit);
             if ((ulong)dynamicUniformCount <= limit) return;
 
-            throw new NotSupportedException(
+            throw new VulkanDescriptorLimitException(VulkanDescriptorLimitRefusal.DynamicUniformLimitExceeded,
                 "A native Vulkan pipeline layout over "
                 + setLayoutCount.ToString(CultureInfo.InvariantCulture)
                 + " descriptor set layouts needs "
@@ -92,7 +92,13 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
                 + "is " + SpecRequiredMinimum.ToString(CultureInfo.InvariantCulture)
                 + ", and every pipeline the shipped renderers declare is asserted at or under it by a device-free "
                 + "test, so reaching this message means either a new layout combination or a device below the "
-                + "required minimum. Split the uniform data into fewer buffers.");
+                + "required minimum. Split the uniform data into fewer buffers.")
+            {
+                LimitName = "maxDescriptorSetUniformBuffersDynamic",
+                RequestedCount = dynamicUniformCount,
+                Limit = limit,
+                SetLayoutCount = setLayoutCount,
+            };
         }
     }
 }

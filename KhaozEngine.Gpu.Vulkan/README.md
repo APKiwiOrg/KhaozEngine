@@ -1921,6 +1921,13 @@ on every rebuild. Its sampled R32F atlas remains stored. See
 
 | Exception and reason | What it refuses | Identifiers |
 |---|---|---|
+| `VulkanBufferBindingException`, `VulkanBufferBindingRefusal.RequiredUsageMissing` | Refuses binding a Vulkan buffer without the required native usage declaration. | `ParamName`, `Usage`, `RequiredUsage`, `Context` |
+| `VulkanBufferRingException`, `VulkanBufferRingRefusal.UniformUsageCombination` | Refuses combining a Vulkan ring-backed uniform buffer with another binding usage. | `ParamName`, `Usage`, `ConflictingUsage` |
+| `VulkanDescriptorLimitException`, `VulkanDescriptorLimitRefusal.DynamicUniformLimitExceeded` | Refuses a pipeline layout exceeding the device dynamic uniform descriptor limit. | `LimitName`, `RequestedCount`, `Limit`, `SetLayoutCount` |
+| `VulkanLayoutArgumentException`, `VulkanLayoutRefusal.ImageHandleMissing` | Refuses a layout transition for a staging or null image handle. | `ParamName`, `Image` |
+| `VulkanLayoutStateException`, `VulkanLayoutRefusal.NoSingleLayout` | Refuses querying one layout for a range spanning narrower tracked pieces. | `Image`, `CoveredRangeCount`, `BaseMip`, `MipCount`, `BaseLayer`, `LayerCount` |
+| `VulkanLayoutStateException`, `VulkanLayoutRefusal.PartialOverlap` | Refuses partially overlapping tracked subresource rectangles that neither contain one another. | `Image`, `RequestedBaseMip`, `RequestedMipCount`, `RequestedBaseLayer`, `RequestedLayerCount`, `TrackedBaseMip`, `TrackedMipCount`, `TrackedBaseLayer`, `TrackedLayerCount` |
+| `VulkanLayoutStateException`, `VulkanLayoutRefusal.UntrackedRemainder` | Refuses a wider transition whose uncovered remainder would need an unrepresentable barrier. | `Image`, `BaseMip`, `MipCount`, `BaseLayer`, `LayerCount`, `TargetLayout`, `RestingLayout` |
 | `VulkanResourceSetRingException`, `VulkanResourceSetRingRefusal.RingBufferUsedAsStorage` | Refuses a ring-backed uniform buffer through a storage binding that cannot apply its frame base. | `ParamName`, `ElementName`, `Binding`, `ResourceKind` |
 | `VulkanResourceSetRingException`, `VulkanResourceSetRingRefusal.UniformBufferNotRingBacked` | Refuses a Vulkan uniform binding without its required ring. | `ParamName`, `ElementName`, `Binding`, `ActualUsage` |
 | `VulkanStagingLayoutException`, `VulkanStagingLayoutRefusal.MappingSizeExceeded` | Staging layout arithmetic exceeding the mapping's 32-bit size ceiling | `ParamName`, `ActualValue`, `Width`, `Height`, `MipLevels`, `ArrayLayers`, `Format`, `Quantity`, `ComputedBytes`, `MaximumBytes` |

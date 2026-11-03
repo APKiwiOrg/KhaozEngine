@@ -62,10 +62,14 @@ namespace KhaozEngine.Tests.Gpu
         [InlineData(GpuBufferUsage.UniformBuffer | GpuBufferUsage.IndirectBuffer)]
         public void AUniformBufferCombinedWithAnotherBinding_IsRefusedAtCreation(GpuBufferUsage usage)
         {
-            ArgumentException ex = Assert.Throws<ArgumentException>(
+            VulkanBufferRingException ex = Assert.Throws<VulkanBufferRingException>(
                 () => VulkanBufferRingPolicy.ForBuffer(usage));
 
-            Assert.Contains("divergence", ex.Message, StringComparison.Ordinal);
+            Assert.IsAssignableFrom<ArgumentException>(ex);
+            Assert.Equal(VulkanBufferRingRefusal.UniformUsageCombination, ex.Reason);
+            Assert.Equal("usage", ex.ParamName);
+            Assert.Equal(usage, ex.Usage);
+            Assert.Equal(usage & ~GpuBufferUsage.UniformBuffer, ex.ConflictingUsage);
 
             Assert.True(VulkanBufferRingPolicy.IsRefusedCombination(usage));
             Assert.False(VulkanBufferRingPolicy.IsRingBacked(usage));

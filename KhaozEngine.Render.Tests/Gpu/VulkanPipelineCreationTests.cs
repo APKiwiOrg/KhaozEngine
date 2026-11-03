@@ -486,8 +486,9 @@ namespace KhaozEngine.Tests.Gpu
                     owned.Add(layouts[i]);
                 }
 
-                Assert.Throws<NotSupportedException>(
-                    () => fixture.Factory.CreateGraphicsPipeline(Description(shaders, layouts)));
+                Assert.Equal(VulkanDescriptorLimitRefusal.DynamicUniformLimitExceeded,
+                    Assert.Throws<VulkanDescriptorLimitException>(
+                        () => fixture.Factory.CreateGraphicsPipeline(Description(shaders, layouts))).Reason);
 
                 Assert.Empty(fixture.PipelineApi.Graphics);
             }

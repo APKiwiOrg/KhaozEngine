@@ -19842,6 +19842,8 @@ Resource set declarations use `GpuResourceSetException`. Its required `GpuResour
 
 Resource layout declarations use `GpuResourceLayoutException` with `DynamicOffsetUnsupportedForKind`, the backend, element name, binding and resource kind. Framebuffers use `GpuFramebufferException` with attachment identity, actual and expected shape or usage, and a required `GpuFramebufferRefusal`. Graphics blend count checks use `GpuPipelineOutputsException` with `BlendCountMismatch`, both counts and `PipelineKind`.
 
+Vulkan native buffer binding, ring policy and descriptor budgets use `VulkanBufferBindingException`, `VulkanBufferRingException` and `VulkanDescriptorLimitException`, with required reasons and usage or limit data. Layout transitions and queries use `VulkanLayoutArgumentException` and `VulkanLayoutStateException`, with the image and requested or tracked subresource ranges.
+
 See the [portable refusal catalog](../KhaozEngine.Gpu/README.md#refusals) and [Vulkan refusal catalog](../KhaozEngine.Gpu.Vulkan/README.md#refusals) for the full diagnostic members. Existing BCL catches still match.
 
 ---

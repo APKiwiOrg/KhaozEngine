@@ -228,10 +228,15 @@ namespace KhaozEngine.Tests.Gpu
                     VulkanResourceFixture.Buffer(256, GpuBufferUsage.UniformBuffer));
                 owned.Add(uniform);
 
-                ArgumentException refused = Assert.Throws<ArgumentException>(
+                VulkanBufferBindingException refused = Assert.Throws<VulkanBufferBindingException>(
                     () => list.SetVertexBuffer(0, uniform));
 
-                Assert.Contains("GpuBufferUsage.VertexBuffer", refused.Message, StringComparison.Ordinal);
+                Assert.IsAssignableFrom<ArgumentException>(refused);
+                Assert.Equal(VulkanBufferBindingRefusal.RequiredUsageMissing, refused.Reason);
+                Assert.Equal("buffer", refused.ParamName);
+                Assert.Equal(GpuBufferUsage.UniformBuffer, refused.Usage);
+                Assert.Equal(GpuBufferUsage.VertexBuffer, refused.RequiredUsage);
+                Assert.Equal("a native Vulkan vertex buffer bind", refused.Context);
             }
             finally
             {

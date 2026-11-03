@@ -154,11 +154,12 @@ namespace KhaozEngine.Tests.Gpu
         {
             var fixture = new VulkanResourceFixture();
 
-            ArgumentException ex = Assert.Throws<ArgumentException>(() => fixture.Factory.CreateBuffer(
+            VulkanBufferRingException ex = Assert.Throws<VulkanBufferRingException>(() => fixture.Factory.CreateBuffer(
                 new GpuBufferDescription(256, GpuBufferUsage.UniformBuffer | GpuBufferUsage.VertexBuffer)));
 
-            Assert.Contains("RING-BACKED", ex.Message, StringComparison.Ordinal);
-            Assert.Contains("documented divergence", ex.Message, StringComparison.Ordinal);
+            Assert.Equal(VulkanBufferRingRefusal.UniformUsageCombination, ex.Reason);
+            Assert.Equal(GpuBufferUsage.UniformBuffer | GpuBufferUsage.VertexBuffer, ex.Usage);
+            Assert.Equal(GpuBufferUsage.VertexBuffer, ex.ConflictingUsage);
             Assert.Empty(fixture.ResourceApi.Events);
             Assert.Equal(0, fixture.MemoryApi.AllocateCount);
         }

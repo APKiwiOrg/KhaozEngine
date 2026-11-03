@@ -228,13 +228,18 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
             VulkanBuffer resolved = Require(buffer, what);
             if ((resolved._usage & required) != 0) return resolved;
 
-            throw new ArgumentException(
+            throw new VulkanBufferBindingException(VulkanBufferBindingRefusal.RequiredUsageMissing,
                 "A " + resolved.Describe() + " was handed to " + what
                 + ", and it was not created with GpuBufferUsage." + required
                 + ". A native Vulkan buffer carries only the VkBufferUsageFlags its description asked for, so this "
                 + "bind names a buffer the driver was never told could be used that way. Add the usage to the "
                 + "buffer's description.",
-                nameof(buffer));
+                nameof(buffer))
+            {
+                Usage = resolved._usage,
+                RequiredUsage = required,
+                Context = what,
+            };
         }
 
         /// <summary>The diagnostic line a refusal quotes, so a message about the wrong kind of buffer says which

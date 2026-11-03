@@ -87,7 +87,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
             // the device rather than about the window. Phase 3 shipped this the other way round once and the
             // message told a machine with no driver that the package was still being built.
             string? missing = _machineAnswer.Value;
-            if (missing is not null) throw MachineRefusalForTests(missing);
+            RequireMachineSupportForTests(missing);
 
             return MetalGpuDevice.CreateForWindow(request);
         }
@@ -117,7 +117,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
             if (!KhaozEngineMetal.IsPlatformSupported) throw PlatformRefusalForTests("headless");
 
             string? missing = _machineAnswer.Value;
-            if (missing is not null) throw MachineRefusalForTests(missing);
+            RequireMachineSupportForTests(missing);
 
             return MetalGpuDevice.CreateHeadless();
         }
@@ -139,6 +139,12 @@ namespace KhaozEngine.Gpu.Metal.Internal
                 return "the native Metal support probe could not answer at all (it threw "
                     + ex.GetType().Name + ": " + ex.Message + "), which is the same answer as no";
             }
+        }
+
+        // The machine policy consumes the probe's value, without requiring a native device in tests.
+        internal static void RequireMachineSupportForTests(string? missing)
+        {
+            if (missing is not null) throw MachineRefusalForTests(missing);
         }
 
         // The MACHINE-level refusal, quoting the probe's own sentence rather than paraphrasing it, so each way a

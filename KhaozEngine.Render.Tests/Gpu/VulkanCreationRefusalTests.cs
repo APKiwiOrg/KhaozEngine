@@ -33,4 +33,18 @@ public sealed class VulkanCreationRefusalTests
         Assert.Equal("GpuBackendSelector.IsBackendSupported", refusal.Probe);
         Assert.Same(cause, refusal.InnerException);
     }
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void MachineAdmissionIsDeviceFreeAndCarriesTheDriverRemedy(bool noDriver)
+    {
+        string missing = noDriver ? VulkanSupportProbe.NoDriverInstalled : VulkanSupportProbe.NoLoaderResolved;
+        var refusal = Assert.Throws<VulkanBackendCreationUnsupportedException>(() => VulkanBackendProvider.RequireMachineSupportForTests(missing));
+        Assert.Equal(VulkanBackendCreationRefusal.MachineUnsupported, refusal.Reason);
+        Assert.Equal(missing, refusal.MissingRequirement);
+        Assert.Equal("GpuBackendSelector.IsBackendSupported", refusal.Probe);
+        Assert.Equal(noDriver ? "mesa-vulkan-drivers" : null, refusal.DriverPackage);
+        Assert.IsAssignableFrom<NotSupportedException>(refusal);
+        VulkanBackendProvider.RequireMachineSupportForTests(null);
+    }
 }

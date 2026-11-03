@@ -56,7 +56,8 @@ public sealed class MetalCreationRefusalTests
         Assert.Equal(MetalBackendCreationRefusal.ForeignDiagnosticSettings, settings.Reason);
         Assert.Equal(foreign.GetType(), settings.ActualType);
         Assert.Equal("settings", settings.ParamName);
-        var machine = MetalBackendProvider.MachineRefusalForTests("family below floor");
+        var machine = Assert.Throws<MetalBackendCreationUnsupportedException>(() => MetalBackendProvider.RequireMachineSupportForTests("family below floor"));
+        MetalBackendProvider.RequireMachineSupportForTests(null);
         Assert.Equal(MetalBackendCreationRefusal.MachineUnsupported, machine.Reason);
         Assert.Equal("family below floor", machine.MissingRequirement);
         Assert.Equal(GpuBackendKind.MetalNative, machine.Backend);

@@ -105,7 +105,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
             // a machine that cannot run this backend must refuse with a NotSupportedException naming what it is
             // missing, so the creation path can catch it, WARN and fall back.
             string? missing = _machineAnswer.Value;
-            if (missing is not null) throw ThisMachineCannot(missing);
+            RequireMachineSupportForTests(missing);
 
             return VulkanGpuDevice.CreateForWindow(request);
         }
@@ -131,7 +131,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
             // refuse with a NotSupportedException naming what it is missing, so the creation path can catch it,
             // WARN and fall back, and so the reader is told whether to install something or to file a bug.
             string? missing = _machineAnswer.Value;
-            if (missing is not null) throw ThisMachineCannot(missing);
+            RequireMachineSupportForTests(missing);
 
             return VulkanGpuDevice.CreateHeadless();
         }
@@ -153,6 +153,12 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
                 return "the native Vulkan support probe could not answer at all (it threw "
                     + ex.GetType().Name + ": " + ex.Message + "), which is the same answer as no";
             }
+        }
+
+        // The machine policy consumes the probe's value, without requiring a native device in tests.
+        internal static void RequireMachineSupportForTests(string? missing)
+        {
+            if (missing is not null) throw ThisMachineCannot(missing);
         }
 
         // The MACHINE-level refusal, and it quotes the probe's own sentence rather than paraphrasing it, so the

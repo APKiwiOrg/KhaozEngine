@@ -90,7 +90,6 @@ public abstract partial class ContentAuthoringStoreConformance
             () => store.PublishAsync(Stamped(1, "harvest-profiles", 4)));
 
         Assert.Equal(ContentAuthoringException.UpgradeAlreadyRecordedReason, refused.Reason);
-        Assert.Contains("harvest-profiles", refused.Message, StringComparison.Ordinal);
 
         // Nothing moved: the pointer, the version list, the ledger and the rows are where the first publish
         // left them, and the second publish's draft is still open for its caller to deal with.

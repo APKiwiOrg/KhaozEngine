@@ -31,18 +31,12 @@ namespace KhaozEngine.Tests.Gpu
     /// the tolerant behaviour. The incumbent went in 18.0.0 and took its two rows with it, and the rest
     /// stay.</para>
     ///
-    /// <para><b>WHAT A RED RUN MEANS.</b> Either a backend stopped enforcing the rule, or one of them started
-    /// wording its refusal differently, or the rule stopped being four bytes on one side of the seam and not the
+    /// <para><b>WHAT A RED RUN MEANS.</b> Either a backend stopped enforcing the rule, or one of them named the
+    /// wrong parameter or offset, or the rule stopped being four bytes on one side of the seam and not the
     /// other, or an aligned copy stopped being recorded at all.</para>
     /// </summary>
     public sealed class CopyBufferOffsetContractTests : IDisposable
     {
-        // The sentence every backend's refusal carries, because they all come out of one helper. Asserting the
-        // shared text is what makes "identically" a claim rather than a hope: four separately worded refusals
-        // would all still be ArgumentOutOfRangeExceptions.
-        const string SharedSentence =
-            "IGpuCommandList.CopyBuffer requires that of both of its offsets on every backend";
-
         const uint Unaligned = 3;
         const uint UnalignedDestination = 6;
         const uint SmallestAligned = 4;
@@ -74,7 +68,7 @@ namespace KhaozEngine.Tests.Gpu
         }
 
         /// <summary>
-        /// EVERY BACKEND REFUSES AN UNALIGNED SOURCE OFFSET, AND SAYS THE SAME THING. The parameter name is the
+        /// EVERY BACKEND REFUSES AN UNALIGNED SOURCE OFFSET WITH THE SAME PARAMETER AND VALUE. The name is the
         /// seam's own <c>srcOffsetBytes</c> on all four, so a caller catching the exception reads one name
         /// whichever machine reported it.
         /// </summary>
@@ -87,9 +81,7 @@ namespace KhaozEngine.Tests.Gpu
                     () => copy(Unaligned, 0));
 
                 Assert.Equal("srcOffsetBytes", thrown.ParamName);
-                Assert.Contains("source offset of 3", thrown.Message, StringComparison.Ordinal);
-                Assert.Contains("not a multiple of 4", thrown.Message, StringComparison.Ordinal);
-                Assert.Contains(SharedSentence, thrown.Message, StringComparison.Ordinal);
+                Assert.Equal((ulong)Unaligned, thrown.ActualValue);
 
                 // The side-naming is the whole point of passing it through: a refusal that named the other end
                 // sends the reader to the buffer that was fine.
@@ -111,8 +103,7 @@ namespace KhaozEngine.Tests.Gpu
                     () => copy(SmallestAligned, UnalignedDestination));
 
                 Assert.Equal("dstOffsetBytes", thrown.ParamName);
-                Assert.Contains("destination offset of 6", thrown.Message, StringComparison.Ordinal);
-                Assert.Contains(SharedSentence, thrown.Message, StringComparison.Ordinal);
+                Assert.Equal((ulong)UnalignedDestination, thrown.ActualValue);
                 Assert.DoesNotContain("source offset", thrown.Message, StringComparison.Ordinal);
                 Assert.Contains(backend, thrown.Message, StringComparison.Ordinal);
             }
@@ -171,7 +162,6 @@ namespace KhaozEngine.Tests.Gpu
 
             Assert.Equal("srcOffsetBytes", thrown.ParamName);
             Assert.Contains("A buffer readback (GpuReadback.ReadBuffer)", thrown.Message, StringComparison.Ordinal);
-            Assert.Contains(SharedSentence, thrown.Message, StringComparison.Ordinal);
         }
 
         /// <summary>

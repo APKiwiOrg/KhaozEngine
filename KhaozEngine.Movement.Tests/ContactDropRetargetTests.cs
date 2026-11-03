@@ -1,6 +1,5 @@
 using System.Linq;
 using System.Numerics;
-using System.Reflection;
 using KhaozEngine.Locomotion;
 using KhaozEngine.Movement;
 using KhaozEngine.Navigation;
@@ -32,8 +31,7 @@ public class ContactDropRetargetTests
         {
             ReplanCooldownSeconds = cooldown, GoalRetargetTolerance = 0.1f,
         });
-        var follower = Assert.IsType<PathFollower>(typeof(MoveToRange).GetField("_follower",
-            BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(move));
+        var follower = move.Follower;
         var body = new MoveState { Position = new(-0.25f, 4.75f, 0), Grounded = true };
         var target = ReachTarget.Point(new(1.25f, -3.25f, 0));
         var latest = ReachTarget.Point(new(0.25f, 0.75f, 1));

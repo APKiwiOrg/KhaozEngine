@@ -1,26 +1,22 @@
 #!/bin/sh
 # Template-managed: canonical copy is game-template/scripts/check-scratch.sh. Do not hand-edit in a game repo:
 # change it in the template and re-propagate (scaffold-game-repo skill). Commits are gated by the pre-commit template-sync check.
-# check-scratch.sh - keep specs, plans and other agent scratch out of the repo, and keep program
-# trackers to their fixed shape (docs/programs/README.md). Scratch roots are docs/superpowers/ at the
-# repo root and any .superpowers/ folder at any depth.
+# check-scratch.sh - keep specs, plans and program state out of the repo. Program state lives
+# outside the repository (docs/programs/README.md). Scratch roots are docs/superpowers/ at the repo
+# root and any .superpowers/ folder at any depth.
 #
 #   R1  no tracked file under a scratch root
 #   R2  no tracked text names a file under a scratch root. A bare folder mention, a placeholder path
 #       (a segment with <, * or YYYY) and the upstream obra/superpowers URL pass.
 #   R3  no new doc under docs/ named by date, except a record under docs/verification/ (staged only)
-#   R4  a tracker docs/programs/<name>.md is at most 8192 bytes, uses only the six fixed ## headings
-#       outside fenced blocks and has Goal, Milestones and Next step
-#   R5  a design file docs/programs/<name>-design.md is at most 32768 bytes and has its tracker
-#
-# Sizes count bytes without CR, so a CRLF checkout measures the same as an LF one.
+#   R4  no tracked file under docs/programs/ except exact docs/programs/README.md
 #
 # Two modes, the same split as check-dashes.sh:
 #
 #   (default)   staged mode - what .githooks/pre-commit runs. R1 on staged additions and changes (so a
-#               `git rm --cached` passes), R2 on ADDED lines only, R3, and R4 and R5 on the staged blobs.
+#               `git rm --cached` passes), R2 on ADDED lines only, R3 on new paths, R4 on the full index.
 #   --tree      whole-tree mode - what CI runs. R1 on every tracked path, R2 on every tracked text file,
-#               R4 and R5 on the working tree.
+#               R4 on every tracked path, including files absent from the working tree.
 #
 # During a merge, R2 ignores lines already in the same file in any parent, and R3 ignores paths
 # already in any parent. Merge parents include HEAD and every entry in MERGE_HEAD.
@@ -53,8 +49,6 @@ fail=0
 report() { echo "check-scratch: $1: $2" >&2; fail=1; }
 
 scratch_paths='^docs/superpowers/|(^|/)\.superpowers/'
-tracker_cap=8192
-design_cap=32768
 
 # Pathspecs R2 searches: everything, minus the check, its test and the ignore list.
 # The check and its test name scratch paths by design. Exclude them wherever this repo keeps them.
@@ -151,63 +145,6 @@ merge_new_lines='
   } else existing[key] = 1
 }'
 
-# R4 heading check on a tracker read from stdin. A ## line inside a ``` or ~~~ fenced block is quoted
-# text, not a heading.
-headings='
-BEGIN {
-  n = split("Goal|Links|Milestones|Decisions in force|Open questions and owner gates|Next step", w, "|")
-  for (i = 1; i <= n; i++) known[w[i]] = 1
-  need["Goal"] = 1; need["Milestones"] = 1; need["Next step"] = 1
-}
-{ sub(/\r$/, "") }
-{
-  t = $0
-  sub(/^ ? ? ?/, "", t)
-  m = substr(t, 1, 3)
-  if (m == "```" || m == "~~~") {
-    if (fence == "") { fence = m; next }
-    if (m == fence) { fence = ""; next }
-  }
-}
-fence != "" { next }
-/^## / {
-  h = substr($0, 4)
-  sub(/[ \t]+$/, "", h)
-  if (!(h in known)) printf "check-scratch: %s: heading \"## %s\" is not one of the fixed tracker sections\n", file, h
-  seen[h] = 1
-}
-END {
-  for (h in need) if (!(h in seen)) printf "check-scratch: %s: tracker has no \"## %s\" section\n", file, h
-}'
-
-# R4 and R5 for one docs/programs file. $1 path, $2 command that prints its content, $3 command that
-# succeeds when a given path exists in the same tree or index.
-check_program_file() {
-  f=$1; show=$2; exists=$3
-  name=${f#docs/programs/}; name=${name%.md}
-  case "$name" in
-    */*|README) return 0 ;;
-  esac
-  size=$($show "$f" | tr -d '\r' | wc -c | tr -d ' ')
-  case "$name" in
-    *-design)
-      if [ "$size" -gt "$design_cap" ]; then report "$f" "design file is $size bytes, over the $design_cap byte cap"; fi
-      if ! $exists "docs/programs/${name%-design}.md"; then
-        report "$f" "design file has no tracker docs/programs/${name%-design}.md"
-      fi
-      ;;
-    *)
-      if [ "$size" -gt "$tracker_cap" ]; then report "$f" "tracker is $size bytes, over the $tracker_cap byte cap"; fi
-      out=$($show "$f" | awk -v file="$f" "$headings")
-      if [ -n "$out" ]; then printf '%s\n' "$out" >&2; fail=1; fi
-      ;;
-  esac
-}
-show_tree() { cat -- "$1"; }
-show_index() { g show ":$1"; }
-in_tree() { [ -n "$(g ls-files -- "$1")" ]; }
-in_index() { g cat-file -e ":$1" 2>/dev/null; }
-
 # report_each <reason>: one violation per path read from stdin.
 report_each() {
   while IFS= read -r f; do
@@ -229,14 +166,7 @@ EOF
   out=$(printf '%s\n' "$refs" | awk "$classify")
   if [ -n "$out" ]; then printf '%s\n' "$out" >&2; fail=1; fi
 
-  # R4, R5
-  progs=$(g ls-files -- docs/programs | grep -E '^docs/programs/[^/]+\.md$' || true)
-  while IFS= read -r f; do
-    [ -n "$f" ] && [ -f "$f" ] || continue
-    check_program_file "$f" show_tree in_tree
-  done <<EOF
-$progs
-EOF
+
 else
   staged=$(g diff --cached --name-only --diff-filter=d)
   merge_parents=
@@ -293,20 +223,20 @@ EOF
 $dated
 EOF
 
-  # R4, R5 on the staged blobs, plus a staged tracker deletion that leaves its design file orphaned.
-  while IFS= read -r f; do
-    case "$f" in docs/programs/*.md) check_program_file "$f" show_index in_index ;; esac
-  done <<EOF
-$staged
-EOF
-  gone=$(g diff --cached --name-only --diff-filter=D -- docs/programs)
-  while IFS= read -r f; do
-    case "$f" in docs/programs/*-design.md|docs/programs/README.md|docs/programs/*/*) continue ;; docs/programs/*.md) ;; *) continue ;; esac
-    d=${f%.md}-design.md
-    if in_index "$d"; then report "$d" "design file has no tracker $f"; fi
-  done <<EOF
-$gone
-EOF
+
 fi
+
+# R4 uses the complete resulting index in both modes. Parent files and unchanged files still count,
+# while staged deletions and renames out of docs/programs/ leave no forbidden path.
+progs=$(g ls-files -- docs/programs/) || {
+  echo "check-scratch: git ls-files failed" >&2
+  exit 2
+}
+while IFS= read -r f; do
+  case "$f" in ''|docs/programs/README.md) continue ;; esac
+  report "$f" "program state lives outside this repository, read docs/programs/README.md"
+done <<EOF
+$progs
+EOF
 
 exit $fail

@@ -135,13 +135,7 @@ namespace KhaozEngine.Tests.Gpu
 
         /// <summary>How the sea state is configured before a test's own overrides. Deliberately the shipped
         /// defaults except for the two knobs that make this affordable on a software rasterizer.</summary>
-        public static void BaseSea(WaterSeaState sea)
-        {
-            ArgumentNullException.ThrowIfNull(sea);
-            sea.Seed = 20260726;
-            sea.CascadeCount = 2;
-            sea.CascadeResolution = 64;
-        }
+        public static void BaseSea(WaterSeaState sea) => RendererPerfSceneInputs.BaseSea(sea);
 
         /// <summary>The scene: open water from an ELEVATED vantage, which is where the tiling this class is about
         /// actually reads, framed so the surface fills most of the picture. Returns the seabed mesh the frame

@@ -6,6 +6,33 @@ and execution. The [cold publication design](design/RENDERER-COLD-PUBLICATION.md
 retains the design rationale. The renderer sections record no measured baseline or performance budget.
 The hosted CPU physics rebase diagnostic below carries its own fixed limit.
 
+## Default correctness and on-demand probes
+
+The default filter `Category!=LiveSocket&Category!=Diagnostic` keeps four renderer correctness checks:
+
+| Method | Default coverage |
+|---|---|
+| `ShadowRerecordBenchGpuTests.Compacted_refit_preserves_the_atlas_from_drawing_every_caster` | Byte-exact atlas equality against the full-caster oracle |
+| `ShadowRerecordBenchGpuTests.The_hold_releases_on_a_cadence_the_threshold_predicts` | Angular threshold, slow/fast cadence ratio and coverage over its 400-frame horizon |
+| `ShadowCascadeCullPerfGpuTests.A_small_caster_fixture_draws_fewer_instances_with_culling` | Two deterministic near/far casters, four cascades, one warm frame and two observations per culling state at one merge gap |
+| `OceanFftPingPongPerfGpuTests.The_fft_ocean_costs_no_steady_state_gpu_drain` | Shipping FFT setup and procedural comparison, two source transitions, two priming frames and four observations per state |
+
+The cascade check asserts unchanged candidate populations, rendered cascades and fewer instance draws.
+It establishes no timing speedup. The FFT check advances the effect clock each frame and asserts zero
+`OceanStalls` and zero `OceanStallMs` on every observed frame. Its boundary cleanup drains are separate
+from those production counters. It introduces no per-frame drain.
+
+Nineteen methods in `KhaozEngine.Render.Tests/Gpu` carry method-level
+`[Trait("Category", "Diagnostic")]`: the CPU skinning cost loop, interior-cut cost capture, shadow
+rerecord timing table, temporal outline, resolve, shadowed-frame and visibility-decomposition probes.
+They keep their existing Fact/GpuFact attributes and capability requirements. Nothing moves or is deleted.
+Run these on demand through `cross-platform-gpu.yml` with `renderTestFilter=Category=Diagnostic`, or
+narrow the filter, for example `Category=Diagnostic&FullyQualifiedName~TemporalResolveCostPerfGpuTests`.
+The dispatch input replaces the default exclusion. Hosted Metal, WARP and llvmpipe retain their existing
+capability gates and software-adapter refusals. A software result cannot certify hardware performance.
+Paid `gpu-hosted-bench.yml` measurement mode keeps its explicit filter and separate owner authorization.
+Historical timing receipts remain evidence for their original commits and workloads.
+
 ## Hosted physics rebase diagnostic
 
 The separate `physics-rebase-perf.yml` CPU lane runs on `main` every Monday at 04:37 UTC and on
@@ -48,6 +75,16 @@ It reconstructs authorization from the requested checkout's HEAD, sole workload 
 the dispatch hash, unit, leg and first attempt, and the trusted PowerShell selector's runner fact.
 The command compares those facts with `authorization.json`, then managed parsing binds the runner and
 workflow to the preset. A disagreement refuses. PowerShell's existing outer guards stay in place.
+After admission, the free `renderer-tooling-validation` prerequisite validates both the resolved
+authorization SHA B and the trusted `github.workflow_sha` implementation, deduplicating identical refs.
+Its reusable `tooling-validation.yml` matrix runs the entire headless tooling suite on Ubuntu lavapipe,
+Windows D3D11 WARP and macOS Metal, then runs the single native FFT bound correctness fact with zero skips.
+Checkout credentials are read-only and measurement opt-in is removed. The paid `renderer-bench` matrix
+requires both admission and this validation to succeed. Failed, skipped or cancelled validation refuses
+allocation, including reruns. The reusable workflow also refuses completion if its required renderer matrix was skipped, failed or
+cancelled, rather than accepting a successful selector alone. A tooling pass grants no permission to execute a measurement campaign.
+The generic bench mode retains its existing admission dependency.
+
 The separate matrix step explicitly requires admission success. These checks cover every paid and
 rehearsal preset, including exact-byte refusal of a UTF-8 byte order mark, complete schedules and recipe
 identity formats, runtime policy values, pacing, enums, all deadlines and the complete budget.
@@ -64,7 +101,7 @@ These live checks, native adapter and timestamp admission, and graphics-clock te
 entrypoint. The managed manifest checks repeat there before device creation.
 
 Each preset is one entry in the typed schedule table, `RendererPerfSchedules` in
-`KhaozEngine.Render.Tests/Gpu/RendererPerf/RendererPerfSchedule.cs`. An entry names its execution class,
+`tools/Renderer.Perf.Tooling.Tests/Gpu/RendererPerf/RendererPerfSchedule.cs`. An entry names its execution class,
 scenes with recipe versions and profiles, iterations, block and control frame counts, control IDs,
 conditioning frames and scene, total frames and admitted hosted legs. A manifest must reproduce its entry
 exactly. An unknown preset, including a differently cased one, is refused with the `Preset` code before
@@ -122,7 +159,13 @@ the approved unit and cumulative campaign envelope after every attempt.
 The public deterministic recipes cover empty, village, outdoors, crowd and effects/UI scenes. They
 use fixed simulation sequences and no consumer assets. The v1 settings encoding fixes uniform indirect
 lighting and zero irradiance coefficients. The harness explicitly selects and validates both values.
-Directional or nonzero input refuses construction instead of changing the frozen recipe identity. A full unit has 1,200 conditioning frames,
+Directional or nonzero input refuses construction instead of changing the frozen recipe identity.
+
+The recipe-local JSON resolver omits `RigidInstanceDraw.ShadowMobility` only for `Static`, preserving the
+existing rigid construction bytes and digests. `Dynamic` and other nondefault values remain authored geometry
+inputs and change geometry and construction identities. Frozen recipe files and strict comparisons stay unchanged.
+
+A full unit has 1,200 conditioning frames,
 five scenes, both layouts, three iterations, 192 warm-up and 256 measured frames per block, and twelve
 controls with 64 warm-up and 128 measured frames each. That is 16,944 retained frames. The smaller
 pilot has its own frozen schedule and 1,260 frames. Warm-up and conditioning remain separate from
@@ -477,11 +520,13 @@ post-verification write protection nor an atomic multi-file filesystem transacti
 Offline and workflow verification must repeat against received files. Verified summaries retain that association and their reference rates.
 `RendererPerfComparison.Compare(verifiedBaseline, verifiedCandidate)` requires it for verdicts.
 
-Ordinary local Release test setup runs `sh scripts/build-release-tests.sh KhaozEngine.slnx`, or passes
-`KhaozEngine.Render.Tests/KhaozEngine.Render.Tests.csproj` for the affected assembly. This builds its
-outside-solution process prerequisite before `dotnet test -c Release --no-build`. Full and selective
-ordinary CI and the native GPU matrix use this same build owner, including native shard solutions
-that select Render.Tests. Process tests refuse a missing executable.
+Renderer tooling Release setup runs
+`sh scripts/build-release-tests.sh tools/Renderer.Perf.Tooling.Tests/Renderer.Perf.Tooling.Tests.csproj`,
+then `dotnet test tools/Renderer.Perf.Tooling.Tests/Renderer.Perf.Tooling.Tests.csproj -c Release --no-build`
+with `KE_GPU_TESTS` and `KE_RENDERER_PERF_UNIT` unset. This builds its offline process prerequisite.
+Process tests refuse a missing executable. Engine solution builds and native engine shards no longer
+own these tests or require the verifier. The [tooling README](../tools/Renderer.Perf.Tooling.Tests/README.md)
+lists the explicit references, helper ownership and assembly access.
 
 The directory-verification mode of the outside-solution `tools/Renderer.Perf.Verify` console takes
 exactly directory and report filename. Its free-job `admit` mode is described under
@@ -527,7 +572,7 @@ are errors. Keep the error instead of repairing the input into a favorable resul
 
 ## Reproducing summaries
 
-The offline types live in `KhaozEngine.Render.Tests/Gpu/RendererPerf`, not a shipped package API.
+The offline types live in `tools/Renderer.Perf.Tooling.Tests/Gpu/RendererPerf`, not a shipped package API.
 `RendererPerfAnalysis` owns arithmetic, `RendererPerfComparison` owns compatibility and deltas,
 and `RendererPerfMarkdown` formats compact human output. None creates a device, reads a clock,
 launches a workload or changes the raw artifact.

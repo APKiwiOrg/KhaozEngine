@@ -167,18 +167,10 @@ public sealed class BugReportJsonTests
     [InlineData(",\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"", "")]
     [InlineData("\"gameId\":\"grimhollow\",", "")]
     [InlineData("\"gameId\":\"grimhollow\"", "\"gameId\":null")]
-    public void Manifest_rejects_missing_or_null_fields(string field, string replacement)
-    {
-        byte[] json = Encoding.UTF8.GetBytes(Replace(ManifestGolden, field, replacement));
-        Assert.Throws<JsonException>(() => BugReportJson.DeserializeManifest(json));
-        Assert.Throws<JsonException>(() => JsonSerializer.Deserialize<BugReportManifest>(json, BugReportJson.Options));
-    }
-
-    [Theory]
     [InlineData("\"kind\":\"bug\"", "\"kind\":1")]
     [InlineData("\"kind\":\"bug\"", "\"kind\":0")]
     [InlineData("\"kind\":\"bug\"", "\"kind\":\"1\"")]
-    public void Manifest_rejects_integer_kinds(string field, string replacement)
+    public void Manifest_rejects_invalid_fields(string field, string replacement)
     {
         byte[] json = Encoding.UTF8.GetBytes(Replace(ManifestGolden, field, replacement));
         Assert.Throws<JsonException>(() => BugReportJson.DeserializeManifest(json));
@@ -214,7 +206,11 @@ public sealed class BugReportJsonTests
     [InlineData("{\"build\":{\"version\":\"1.0.0\"}}", "null")]
     [InlineData("\"subject\":\"player-1\",", "")]
     [InlineData("\"formatVersion\":1,", "")]
-    public void ServerSnapshot_rejects_missing_or_null_fields(string field, string replacement)
+    [InlineData("{\"version\":\"1.0.0\"}", "{\"version\":\"\\uD800\"}")]
+    [InlineData("{\"version\":\"1.0.0\"}", "{\"\\uDC00\":\"1.0.0\"}")]
+    [InlineData("{\"build\":", "{\"b\\uD800\":")]
+    [InlineData("\"player-1\"", "\"\\uD800\"")]
+    public void ServerSnapshot_rejects_invalid_fields(string field, string replacement)
     {
         byte[] json = Encoding.UTF8.GetBytes(Replace(SnapshotJson, field, replacement));
         Assert.Throws<JsonException>(() => BugReportJson.DeserializeServerSnapshot(json));
@@ -239,17 +235,6 @@ public sealed class BugReportJsonTests
         string Nested(int depth) => string.Concat(Enumerable.Repeat("{\"a\":", depth - 1)) + "{}" + new string('}', depth - 1);
         Assert.True(BugReportJson.IsValidSection(Encoding.UTF8.GetBytes(Nested(BugReportLimits.MaxSectionDepth))));
         Assert.False(BugReportJson.IsValidSection(Encoding.UTF8.GetBytes(Nested(BugReportLimits.MaxSectionDepth + 1))));
-    }
-
-    [Theory]
-    [InlineData("{\"version\":\"1.0.0\"}", "{\"version\":\"\\uD800\"}")]
-    [InlineData("{\"version\":\"1.0.0\"}", "{\"\\uDC00\":\"1.0.0\"}")]
-    [InlineData("{\"build\":", "{\"b\\uD800\":")]
-    [InlineData("\"player-1\"", "\"\\uD800\"")]
-    public void ServerSnapshot_rejects_undecodable_strings(string field, string replacement)
-    {
-        byte[] json = Encoding.UTF8.GetBytes(Replace(SnapshotJson, field, replacement));
-        Assert.Throws<JsonException>(() => BugReportJson.DeserializeServerSnapshot(json));
     }
 
     [Theory]

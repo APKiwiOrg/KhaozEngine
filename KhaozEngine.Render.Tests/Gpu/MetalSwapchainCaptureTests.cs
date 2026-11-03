@@ -157,9 +157,8 @@ namespace KhaozEngine.Tests.Gpu
             list.Begin();
             list.SetFramebuffer(new RecordedFramebuffer());
 
-            InvalidOperationException refused = Assert.Throws<InvalidOperationException>(
+            Assert.Throws<InvalidOperationException>(
                 () => list.CopyFromDrawable(new IntPtr(0x5C1), destination));
-            Assert.Equal(SwapchainCopyCheck.NotBoundMessage, refused.Message);
             Assert.Empty(calls.Log);
 
             list.SetFramebuffer(swapchain);

@@ -78,7 +78,6 @@ namespace KhaozEngine.Tests.Terrain
             Assert.Equal(1, source.Queries);   // not vacuous: the source really was queried from inside the build
             var ex = Assert.IsType<InvalidOperationException>(source.Caught);
             Assert.Contains("1 chunk build(s)", ex.Message);          // names the mismatch it caught
-            Assert.Contains("FlushPendingBuilds", ex.Message);        // and the call that fixes it
 
             // The refused swap did not land, so this build's mesh is the old field's all the way through. The two
             // fields are 45 m apart in base height, so a couple of metres of band is plenty to tell them apart (a

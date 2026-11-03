@@ -79,7 +79,7 @@ public sealed class TileWorldViewSharedResourceTests
         var ex = Assert.Throws<InvalidOperationException>(() => new TileWorldView(
             scene, TileRenderTestData.HouseWorld(), catalogs, new Unresolving(unresolved)));
 
-        Assert.Contains("refused", ex.Message, StringComparison.Ordinal);
+        Assert.Same(scene.PropMeshRefusal, ex);
         Assert.Single(scene.PropMeshLoads);
         Assert.Equal(0, scene.AliveMeshCount);
     }

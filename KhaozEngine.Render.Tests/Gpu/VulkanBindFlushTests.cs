@@ -353,10 +353,9 @@ namespace KhaozEngine.Tests.Gpu
             var records = new VulkanBindRecords(PipelineBindPoint.Graphics);
             records.Record(0, set, 0);
 
-            InvalidOperationException refused = Assert.Throws<InvalidOperationException>(
-                () => records.Flush(ref sink));
+            // The only InvalidOperationException a flush without the validation guard raises.
+            Assert.Throws<InvalidOperationException>(() => records.Flush(ref sink));
 
-            Assert.Contains("no pipeline bound", refused.Message, StringComparison.Ordinal);
             Assert.Equal(0, counts.BindDescriptorSetCalls);
         }
 
@@ -379,10 +378,9 @@ namespace KhaozEngine.Tests.Gpu
             // The offset that leaves its own segment, on a recording that never bound a pipeline.
             records.Record(0, set, 4 * 256);
 
-            InvalidOperationException refused = Assert.Throws<InvalidOperationException>(
-                () => records.Flush(ref sink));
+            // The offset refusals are ArgumentOutOfRangeException, so the exact type is the no-pipeline refusal.
+            Assert.Throws<InvalidOperationException>(() => records.Flush(ref sink));
 
-            Assert.Contains("no pipeline bound", refused.Message, StringComparison.Ordinal);
             Assert.Equal(0, counts.BindDescriptorSetCalls);
             Assert.True(records.IsDirty(0));
         }

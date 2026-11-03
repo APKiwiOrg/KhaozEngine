@@ -1,0 +1,447 @@
+# KhaozEngine test-health baseline for KETEST001 and KETEST002. KETEST003 is report-only and never listed.
+# Entries are '<count> <rule> <path>', relative to this directory.
+# This baseline may only shrink. New debt is not allowed.
+# With owner approval, exempt a rule and path with a reason comment:
+# exempt KETEST001 path/to/File.cs
+# Ratchet down locally:
+# build-slot --heavy --label testhealth-update -- sh scripts/check-test-health.sh --update
+
+6 KETEST001 KhaozEngine.Accounts.Tests/SqlServer/SqlServerAccountStoreLayoutTests.cs
+2 KETEST001 KhaozEngine.Accounts.Tests/Sqlite/SqliteAccountStoreLayoutTests.cs
+1 KETEST001 KhaozEngine.Attachments.Tests/AuthoredStringTests.cs
+3 KETEST001 KhaozEngine.Attachments.Tests/GlbPolicyTests.cs
+2 KETEST001 KhaozEngine.Attachments.Tests/JsonTests.cs
+1 KETEST001 KhaozEngine.Attachments.Tests/RigIdentityTests.cs
+2 KETEST001 KhaozEngine.Attachments.Tests/SkinnedGlbPolicyTests.cs
+4 KETEST001 KhaozEngine.Audio.Tests/Audio/AudioSystemThreadAffinityTests.cs
+1 KETEST002 KhaozEngine.Automation.Tests/AutomationGateTests.cs
+1 KETEST002 KhaozEngine.Automation.Tests/AutomationLoopbackTests.cs
+5 KETEST001 KhaozEngine.BugReports.Relay.Tests/GitHubAppIssueClientTests.cs
+3 KETEST001 KhaozEngine.BugReports.Tests/Core/BugReportBundleWriterTests.cs
+1 KETEST001 KhaozEngine.Catalog.Tests/Authoring/BundleJsonFormatVersionTests.cs
+2 KETEST001 KhaozEngine.Catalog.Tests/Authoring/BundleTests.cs
+4 KETEST001 KhaozEngine.Catalog.Tests/Authoring/ContentIdAllocatorTests.cs
+1 KETEST001 KhaozEngine.Catalog.Tests/Authoring/InMemoryContentAuthoringStoreTests.cs
+1 KETEST001 KhaozEngine.Catalog.Tests/Publish/PublishPipelineTests.cs
+4 KETEST001 KhaozEngine.Catalog.Tests/Registry/ContentFieldLookupTests.cs
+19 KETEST001 KhaozEngine.Catalog.Tests/Registry/ContentTypeRegistryTests.cs
+3 KETEST001 KhaozEngine.Catalog.Tests/Sqlite/SqliteCatalogNonmutatingOpenTests.cs
+3 KETEST001 KhaozEngine.Catalog.Tests/Sqlite/SqliteCatalogResetHostForeignKeyTests.cs
+3 KETEST001 KhaozEngine.Catalog.Tests/Sqlite/SqliteCatalogResetRepairTests.cs
+3 KETEST001 KhaozEngine.Catalog.Tests/Sqlite/SqliteCatalogResetSchemaVersionTests.cs
+2 KETEST001 KhaozEngine.Catalog.Tests/Sqlite/SqliteCatalogRowTimestampTests.Migration.cs
+2 KETEST001 KhaozEngine.Catalog.Tests/Sqlite/SqliteCatalogSchemaMigrationTests.cs
+9 KETEST001 KhaozEngine.Catalog.Tests/Sqlite/SqliteCatalogSchemaTests.cs
+3 KETEST001 KhaozEngine.Catalog.Tests/Sqlite/SqliteTextSchemaMigrationTests.cs
+3 KETEST001 KhaozEngine.Catalog.Tests/Upgrade/CatalogRunGuardTests.cs
+1 KETEST001 KhaozEngine.Catalog.Tests/Upgrade/ContentUpgradeSweepCancellationTests.cs
+1 KETEST002 KhaozEngine.Catalog.Tests/Upgrade/UpgradeLifetimeCatalogTests.cs
+1 KETEST001 KhaozEngine.Catalog.Tests/Validation/ContentValidatorSweepTests.cs
+18 KETEST001 KhaozEngine.Foundation.Tests/Localization/LocalizationCoverageTests.cs
+1 KETEST002 KhaozEngine.Foundation.Tests/StatusEffects/StatusEffectBookLifecycleTests.cs
+9 KETEST001 KhaozEngine.Game.Tests/Dungeon/DungeonJsonTests.cs
+1 KETEST001 KhaozEngine.Game.Tests/Dungeon/DungeonKitMapTests.cs
+1 KETEST001 KhaozEngine.Game.Tests/Dungeon/DungeonMapDocEmitterTests.cs
+3 KETEST002 KhaozEngine.Game.Tests/Locomotion/Contacts/JoinedEdgeContinuityTests.cs
+1 KETEST002 KhaozEngine.Game.Tests/Locomotion/Contacts/SupportEquivalenceRepresentedOracle.cs
+5 KETEST001 KhaozEngine.Game.Tests/Locomotion/MovementSelectorTests.cs
+1 KETEST002 KhaozEngine.Game.Tests/Physics/BepuCertifiedCapsuleSweepTests.Lifecycle.cs
+1 KETEST002 KhaozEngine.Game.Tests/Physics/BepuCertifiedCapsuleSweepTests.cs
+1 KETEST002 KhaozEngine.Game.Tests/Physics/CapsuleBoxEnclosureWitnessTests.cs
+1 KETEST002 KhaozEngine.Game.Tests/Physics/CapsuleBoxFractionSweepTests.cs
+1 KETEST002 KhaozEngine.Game.Tests/Physics/CapsuleBoxPointWitnessTests.cs
+1 KETEST002 KhaozEngine.Game.Tests/Physics/CapsuleBoxSweepTests.cs
+1 KETEST002 KhaozEngine.Game.Tests/Physics/CapsuleFeatureMeshTests.cs
+1 KETEST002 KhaozEngine.Game.Tests/Physics/CapsuleFeaturePolyhedronTests.cs
+1 KETEST002 KhaozEngine.Game.Tests/Physics/CapsuleSweepBracketCharacterizationTests.cs
+1 KETEST002 KhaozEngine.Game.Tests/Physics/CapsuleSweepCharacterizationTests.cs
+1 KETEST002 KhaozEngine.Game.Tests/Physics/CapsuleSweepLeafProjectionTests.cs
+3 KETEST002 KhaozEngine.Game.Tests/Physics/CertifiedCompoundSweepLifetimeTests.cs
+2 KETEST002 KhaozEngine.Game.Tests/Physics/CertifiedCurvedSweepLifetimeTests.cs
+3 KETEST002 KhaozEngine.Game.Tests/Physics/CertifiedGeneralSweepFixture.cs
+1 KETEST002 KhaozEngine.Game.Tests/Physics/CertifiedHullSweepLifetimeTests.cs
+2 KETEST002 KhaozEngine.Game.Tests/Physics/CertifiedHullSweepTests.cs
+1 KETEST002 KhaozEngine.Game.Tests/Physics/CertifiedSweepExactOracle.cs
+1 KETEST002 KhaozEngine.Game.Tests/Physics/ConcurrentReadGateTests.cs
+1 KETEST002 KhaozEngine.Game.Tests/Physics/ConcurrentReadScratchTests.cs
+1 KETEST002 KhaozEngine.Game.Tests/Physics/InstalledPoseFixture.cs
+2 KETEST002 KhaozEngine.Game.Tests/Physics/InstalledSupportPoseTests.cs
+1 KETEST002 KhaozEngine.Game.Tests/Physics/PhysicsQueryViewLifecycleTests.cs
+1 KETEST002 KhaozEngine.Game.Tests/Physics/SupportCurvedWorkTests.cs
+2 KETEST002 KhaozEngine.Game.Tests/Physics/SupportFootprintCurvedProofOracle.cs
+1 KETEST002 KhaozEngine.Game.Tests/Physics/SupportFootprintProofReuseBasisTests.cs
+2 KETEST002 KhaozEngine.Game.Tests/Physics/SupportFootprintScenes.cs
+1 KETEST002 KhaozEngine.Game.Tests/Physics/SupportFootprintTests.AdmissionCertificate.cs
+3 KETEST002 KhaozEngine.Game.Tests/Physics/SupportFootprintTests.Certificates.cs
+1 KETEST002 KhaozEngine.Game.Tests/Physics/SupportFootprintTests.JoinCost.cs
+2 KETEST002 KhaozEngine.Game.Tests/Physics/SupportFootprintTests.LiveJoins.cs
+3 KETEST002 KhaozEngine.Game.Tests/Physics/SupportFootprintTests.MeshConcurrency.cs
+3 KETEST002 KhaozEngine.Game.Tests/Physics/SupportFootprintTests.MeshWorldForm.cs
+1 KETEST002 KhaozEngine.Game.Tests/Physics/SupportFootprintTests.PitchedPlates.cs
+2 KETEST002 KhaozEngine.Game.Tests/Physics/SupportFootprintTests.RepresentedSource.cs
+2 KETEST002 KhaozEngine.Game.Tests/Physics/SupportFootprintTests.Slopes.cs
+1 KETEST002 KhaozEngine.Game.Tests/Physics/SupportFootprintTests.SourceCorrections.cs
+1 KETEST002 KhaozEngine.Game.Tests/Physics/SupportFootprintTests.TiltedQuery.cs
+1 KETEST002 KhaozEngine.Game.Tests/Physics/SupportFootprintTests.WorldForm.cs
+3 KETEST002 KhaozEngine.Game.Tests/Physics/SupportNeighborhoodOracle.cs
+2 KETEST001 KhaozEngine.Identity.Exchange.Tests/AspNetCore/ExchangeHostingPrimitiveTests.cs
+1 KETEST001 KhaozEngine.Identity.Exchange.Tests/AuthExchangeOutcomeTests.cs
+1 KETEST001 KhaozEngine.ItemInstances.Tests/Generation/GenerationTablesTests.cs
+2 KETEST001 KhaozEngine.ItemInstances.Tests/Generation/ModCandidateTablesTests.cs
+1 KETEST001 KhaozEngine.MapDoc.Compatibility.Tests/LegacyWaterOracleTests.cs
+1 KETEST001 KhaozEngine.MapDoc.Physics.Tests/MapAssetShapesTests.cs
+6 KETEST001 KhaozEngine.MapDoc.Physics.Tests/MapNavTilingTests.cs
+4 KETEST001 KhaozEngine.MapDoc.Physics.Tests/MapPhysicsRegistrationTests.cs
+2 KETEST001 KhaozEngine.MapDoc.Physics.Tests/MapPlacementGeometryTests.cs
+6 KETEST001 KhaozEngine.MapDoc.Physics.Tests/MapPrefabSupportTests.cs
+1 KETEST001 KhaozEngine.MapDoc.Physics.Tests/MapPrefabVillageAcceptanceTests.cs
+11 KETEST001 KhaozEngine.MapDoc.Physics.Tests/MapResidencyOwnershipTests.cs
+3 KETEST001 KhaozEngine.MapDoc.Physics.Tests/MapTerrainPhysicsTests.cs
+5 KETEST001 KhaozEngine.MapDoc.Physics.Tests/MapWaterWorldFixTests.cs
+4 KETEST001 KhaozEngine.MapDoc.Physics.Tests/MapWorldBuilderTests.cs
+3 KETEST001 KhaozEngine.MapDoc.Physics.Tests/MapWorldQueriesTests.cs
+1 KETEST002 KhaozEngine.MapDoc.Physics.Tests/NativeWorldFixtures.Compounds.cs
+1 KETEST001 KhaozEngine.MapDoc.Tests/Editing/FinePatchConversionTests.cs
+1 KETEST001 KhaozEngine.MapDoc.Tests/Foliage/MapFoliageEditTests.cs
+1 KETEST001 KhaozEngine.MapDoc.Tests/Foliage/MapFoliageFinalizationTests.cs
+2 KETEST001 KhaozEngine.MapDoc.Tests/Foliage/MapFoliagePayloadTests.cs
+1 KETEST001 KhaozEngine.MapDoc.Tests/Foliage/MapFoliageProposalAdmissionTests.cs
+1 KETEST002 KhaozEngine.MapDoc.Tests/Foliage/MapFoliageReviewTests.cs
+1 KETEST001 KhaozEngine.MapDoc.Tests/Foliage/MapFoliageStorageTests.cs
+3 KETEST001 KhaozEngine.MapDoc.Tests/Identity/SchemeTwoIdentityTests.cs
+1 KETEST001 KhaozEngine.MapDoc.Tests/LegacyLoadPolicyTests.cs
+2 KETEST001 KhaozEngine.MapDoc.Tests/Markers/MapMarkerAdoptionTests.cs
+1 KETEST001 KhaozEngine.MapDoc.Tests/Markers/MapMarkerAnchorTests.cs
+4 KETEST001 KhaozEngine.MapDoc.Tests/Markers/MapMarkerEditTests.cs
+3 KETEST001 KhaozEngine.MapDoc.Tests/Markers/MapMarkerFormatTests.cs
+4 KETEST001 KhaozEngine.MapDoc.Tests/Markers/MapMarkerHeightTests.cs
+1 KETEST001 KhaozEngine.MapDoc.Tests/Markers/MapMarkerRegistryTests.cs
+2 KETEST001 KhaozEngine.MapDoc.Tests/Markers/MapMarkerRemapTests.cs
+2 KETEST001 KhaozEngine.MapDoc.Tests/NativeStorageNamespaceTests.cs
+5 KETEST001 KhaozEngine.MapDoc.Tests/Prefabs/MapPrefabBindingTests.cs
+1 KETEST001 KhaozEngine.MapDoc.Tests/Prefabs/MapPrefabClosureTests.cs
+1 KETEST001 KhaozEngine.MapDoc.Tests/Prefabs/MapPrefabEditTests.cs
+7 KETEST001 KhaozEngine.MapDoc.Tests/Prefabs/MapPrefabExpansionTests.cs
+1 KETEST001 KhaozEngine.MapDoc.Tests/Prefabs/MapPrefabFormatTests.cs
+8 KETEST001 KhaozEngine.MapDoc.Tests/Prefabs/MapPrefabIdentityTests.cs
+1 KETEST001 KhaozEngine.MapDoc.Tests/Prefabs/MapPrefabPaintScaleTests.cs
+2 KETEST001 KhaozEngine.MapDoc.Tests/Prefabs/MapPrefabPaintTests.cs
+1 KETEST001 KhaozEngine.MapDoc.Tests/Prefabs/MapPrefabTransformTests.Composition.cs
+10 KETEST001 KhaozEngine.MapDoc.Tests/Prefabs/MapPrefabTransformTests.Review.cs
+3 KETEST001 KhaozEngine.MapDoc.Tests/Prefabs/MapPrefabWaterTests.cs
+6 KETEST001 KhaozEngine.MapDoc.Tests/Prefabs/MapTypedResourceSchemaTests.cs
+1 KETEST001 KhaozEngine.MapDoc.Tests/Storage/ScopedProducerConformanceTests.cs
+2 KETEST001 KhaozEngine.MapDoc.Tests/Support/ResolverV2Tests.cs
+1 KETEST001 KhaozEngine.MapDoc.Tests/Surfaces/CompilerContractTests.cs
+1 KETEST001 KhaozEngine.MapDoc.Tests/Surfaces/SurfaceCompilerTests.cs
+2 KETEST001 KhaozEngine.MapDoc.Tests/Surfaces/SurfacePatchCodecTests.cs
+2 KETEST001 KhaozEngine.MapDoc.Tests/Surfaces/TopologyRecordTests.cs
+2 KETEST001 KhaozEngine.MapDoc.Tests/Water/MapWaterContainmentTests.cs
+1 KETEST001 KhaozEngine.MapDoc.Tests/Water/MapWaterDomainTests.cs
+1 KETEST001 KhaozEngine.MapEditor.Tests/MapDoc/BoundFaceContextDemandTests.cs
+2 KETEST001 KhaozEngine.MapEditor.Tests/MapDoc/FoliageSchemaParityTests.cs
+3 KETEST001 KhaozEngine.MapEditor.Tests/MapDoc/MapDocumentFileTests.cs
+5 KETEST001 KhaozEngine.MapEditor.Tests/MapDoc/MapTiledFileTests.cs
+4 KETEST001 KhaozEngine.MapEditor.Tests/MapDoc/MapTiledFormatTests.cs
+2 KETEST001 KhaozEngine.MapEditor.Tests/MapDoc/NativeCollisionRefusalTests.cs
+2 KETEST001 KhaozEngine.MapEditor.Tests/MapDoc/NativeDocumentTransactionTests.cs
+4 KETEST001 KhaozEngine.MapEditor.Tests/MapDoc/NativeFoliageCommandTests.cs
+1 KETEST001 KhaozEngine.MapEditor.Tests/MapDoc/NativeFoliageProposalAdmissionTests.cs
+1 KETEST001 KhaozEngine.MapEditor.Tests/MapDoc/NativeFoliageSnapshotTests.cs
+1 KETEST001 KhaozEngine.MapEditor.Tests/MapDoc/NativeFoliageStampTests.cs
+6 KETEST001 KhaozEngine.MapEditor.Tests/MapDoc/NativeLegacySpawnFenceTests.cs
+2 KETEST001 KhaozEngine.MapEditor.Tests/MapDoc/NativeLifecycleTests.cs
+2 KETEST001 KhaozEngine.MapEditor.Tests/MapDoc/NativeMarkerCommandTests.cs
+3 KETEST001 KhaozEngine.MapEditor.Tests/MapDoc/NativeMarkerSupportEditTests.cs
+1 KETEST001 KhaozEngine.MapEditor.Tests/MapDoc/NativePrefabCommandTests.cs
+3 KETEST001 KhaozEngine.MapEditor.Tests/MapDoc/NativeStorageOwnershipTests.cs
+4 KETEST001 KhaozEngine.MapEditor.Tests/MapDoc/NativeWaterCommandTests.cs
+2 KETEST001 KhaozEngine.MapEditor.Tests/MapDoc/StoredIdentityValidationTests.cs
+3 KETEST001 KhaozEngine.MapEditor.Tests/MapDoc/StoredWholeIdentityTests.cs
+1 KETEST001 KhaozEngine.MapEditor.Tests/MapDoc/SurfaceEmbeddingRegressionFixtures.cs
+1 KETEST001 KhaozEngine.MapEditor.Tests/MapDoc/SurfaceStorageAcceptanceEdgeTests.cs
+2 KETEST001 KhaozEngine.MapEditor.Tests/MapDoc/SurfaceStorageGuardRegressionTests.cs
+3 KETEST001 KhaozEngine.MapEditor.Tests/MapDoc/SurfaceStorageTests.cs
+3 KETEST001 KhaozEngine.MapEditor.Tests/MapEditTool/MapEditSessionTests.cs
+2 KETEST001 KhaozEngine.MapEditor.Tests/MapEditTool/MarkerConsumerWireTests.cs
+2 KETEST001 KhaozEngine.MapEditor.Tests/MapEditTool/MarkerServiceTests.cs
+2 KETEST001 KhaozEngine.MapEditor.Tests/MapEditTool/MarkerVillageWorkflowTests.cs
+4 KETEST001 KhaozEngine.MapEditor.Tests/MapEditTool/MarkerWireTests.cs
+1 KETEST001 KhaozEngine.MapEditor.Tests/MapEditTool/MutationServiceDuplicateTests.cs
+4 KETEST001 KhaozEngine.MapEditor.Tests/MapEditTool/MutationServicePlacementTests.cs
+3 KETEST001 KhaozEngine.MapEditor.Tests/MapEditTool/MutationServiceProceduralTests.cs
+1 KETEST001 KhaozEngine.MapEditor.Tests/MapEditTool/MutationServiceSculptTests.cs
+4 KETEST001 KhaozEngine.MapEditor.Tests/MapEditTool/MutationServiceWorldTests.cs
+1 KETEST001 KhaozEngine.MapEditor.Tests/MapEditTool/PrefabAuthoringReviewTests.cs
+7 KETEST001 KhaozEngine.MapEditor.Tests/MapEditTool/PrefabCapturedContextReviewTests.cs
+1 KETEST001 KhaozEngine.MapEditor.Tests/MapEditTool/PrefabServiceTests.cs
+1 KETEST001 KhaozEngine.MapEditor.Tests/MapEditTool/PrefabVillageWorkflowTests.cs
+1 KETEST001 KhaozEngine.MapEditor.Tests/MapEditTool/RenderServiceTests.cs
+2 KETEST001 KhaozEngine.MapEditor.Tests/MapEditTool/TerrainTransactionTests.cs
+2 KETEST001 KhaozEngine.MapEditor.Tests/MapEditTool/WaterServiceTests.cs
+2 KETEST001 KhaozEngine.MapEditor.Tests/MapEditor/EditorCommandsTests.cs
+1 KETEST002 KhaozEngine.MapEditor.Tests/MapEditor/HeadlessPickViewport.cs
+2 KETEST001 KhaozEngine.Movement.Tests/ContactNavigationBasisTests.cs
+2 KETEST001 KhaozEngine.Movement.Tests/ContactNavigationInitialHoldReuseTests.cs
+3 KETEST001 KhaozEngine.Movement.Tests/ContactNavigationRefusalTests.cs
+1 KETEST002 KhaozEngine.Movement.Tests/CornerFeatureOracle.cs
+4 KETEST002 KhaozEngine.Movement.Tests/Fixtures/ContactNavigationReuseFixture.cs
+1 KETEST001 KhaozEngine.Movement.Tests/GroundNavigationValidateTests.cs
+1 KETEST002 KhaozEngine.Movement.Tests/LowLipFeatureSourceCapacityTests.cs
+2 KETEST001 KhaozEngine.Movement.Tests/NavBakeExecutionTests.cs
+3 KETEST001 KhaozEngine.Movement.Tests/ParallelContactBakeTests.cs
+2 KETEST001 KhaozEngine.Movement.Tests/RuntimeStaticNavigationTests.cs
+3 KETEST002 KhaozEngine.Physics.Tests/StaticMutationLeaseTests.Geometry.cs
+1 KETEST002 KhaozEngine.Physics.Tests/StaticMutationLeaseTests.cs
+2 KETEST001 KhaozEngine.Render.Tests/Gpu/BackendRetirementTests.cs
+2 KETEST001 KhaozEngine.Render.Tests/Gpu/ComputeShaderValidationTests.cs
+3 KETEST001 KhaozEngine.Render.Tests/Gpu/CopyBufferOffsetContractTests.cs
+2 KETEST001 KhaozEngine.Render.Tests/Gpu/CoveragePerf/D3D11TimestampEndTests.FailedEnd.cs
+4 KETEST001 KhaozEngine.Render.Tests/Gpu/CoveragePerf/D3D11TimestampEndTests.cs
+2 KETEST001 KhaozEngine.Render.Tests/Gpu/CoveragePerf/MetalTimestampEndTests.Cleanup.cs
+4 KETEST001 KhaozEngine.Render.Tests/Gpu/CoveragePerf/MetalTimestampEndTests.cs
+6 KETEST001 KhaozEngine.Render.Tests/Gpu/CoveragePerf/VulkanTimestampEndTests.cs
+1 KETEST001 KhaozEngine.Render.Tests/Gpu/D3D11BackendPackageTests.cs
+2 KETEST001 KhaozEngine.Render.Tests/Gpu/D3D11ComputePathTests.cs
+6 KETEST001 KhaozEngine.Render.Tests/Gpu/D3D11EmitterResolutionTests.cs
+1 KETEST001 KhaozEngine.Render.Tests/Gpu/D3D11FenceLifecycleTests.cs
+2 KETEST001 KhaozEngine.Render.Tests/Gpu/D3D11RecorderContractTests.cs
+1 KETEST001 KhaozEngine.Render.Tests/Gpu/D3D11RegisterNumberingTests.cs
+5 KETEST001 KhaozEngine.Render.Tests/Gpu/D3D11ShaderPathTests.cs
+3 KETEST001 KhaozEngine.Render.Tests/Gpu/D3D11StagingMapTests.cs
+1 KETEST001 KhaozEngine.Render.Tests/Gpu/D3D11SwapchainCaptureTests.cs
+2 KETEST001 KhaozEngine.Render.Tests/Gpu/D3D11ThreadingContractTests.cs
+2 KETEST001 KhaozEngine.Render.Tests/Gpu/D3D11WindowsBoundaryTests.cs
+1 KETEST001 KhaozEngine.Render.Tests/Gpu/GpuAsyncBufferReadTests.cs
+2 KETEST001 KhaozEngine.Render.Tests/Gpu/GpuBackendKindAppendAuditTests.cs
+2 KETEST001 KhaozEngine.Render.Tests/Gpu/GpuBackendKindMetalAppendAuditTests.cs
+2 KETEST001 KhaozEngine.Render.Tests/Gpu/GpuBackendKindVulkanAppendAuditTests.cs
+1 KETEST001 KhaozEngine.Render.Tests/Gpu/GpuBackendProvidersTests.cs
+1 KETEST001 KhaozEngine.Render.Tests/Gpu/GpuFrameSubmissionFailureTests.cs
+8 KETEST001 KhaozEngine.Render.Tests/Gpu/GpuReadbackSourceShapeTests.cs
+2 KETEST001 KhaozEngine.Render.Tests/Gpu/MetalArgumentBatchTests.cs
+2 KETEST001 KhaozEngine.Render.Tests/Gpu/MetalBackendPackageTests.cs
+4 KETEST001 KhaozEngine.Render.Tests/Gpu/MetalBindFlushTests.cs
+1 KETEST001 KhaozEngine.Render.Tests/Gpu/MetalBoundResourceTests.cs
+1 KETEST001 KhaozEngine.Render.Tests/Gpu/MetalBufferUploadTests.cs
+3 KETEST001 KhaozEngine.Render.Tests/Gpu/MetalCommandListRecordingTests.cs
+4 KETEST001 KhaozEngine.Render.Tests/Gpu/MetalDrawPathTests.cs
+2 KETEST001 KhaozEngine.Render.Tests/Gpu/MetalEncoderScopeTests.cs
+2 KETEST001 KhaozEngine.Render.Tests/Gpu/MetalIndexSpaceAgreementTests.cs
+2 KETEST001 KhaozEngine.Render.Tests/Gpu/MetalPipelineBindingTests.cs
+1 KETEST001 KhaozEngine.Render.Tests/Gpu/MetalPipelineGpuTests.cs
+5 KETEST001 KhaozEngine.Render.Tests/Gpu/MetalPipelinePlanTests.cs
+3 KETEST001 KhaozEngine.Render.Tests/Gpu/MetalRenderPassGpuTests.cs
+7 KETEST001 KhaozEngine.Render.Tests/Gpu/MetalResourceLayoutTests.cs
+2 KETEST001 KhaozEngine.Render.Tests/Gpu/MetalResourcePolicyTests.cs
+2 KETEST001 KhaozEngine.Render.Tests/Gpu/MetalRingStrideTests.cs
+7 KETEST001 KhaozEngine.Render.Tests/Gpu/MetalShaderGpuTests.cs
+2 KETEST001 KhaozEngine.Render.Tests/Gpu/MetalStagingAllocationTests.cs
+1 KETEST001 KhaozEngine.Render.Tests/Gpu/MetalStagingArenaTests.cs
+1 KETEST001 KhaozEngine.Render.Tests/Gpu/MetalSubmitTargetIdentityTests.cs
+5 KETEST001 KhaozEngine.Render.Tests/Gpu/MetalTransferGpuTests.cs
+2 KETEST001 KhaozEngine.Render.Tests/Gpu/MetalUniformRingTests.cs
+3 KETEST001 KhaozEngine.Render.Tests/Gpu/MetalVertexInputTests.cs
+1 KETEST001 KhaozEngine.Render.Tests/Gpu/NativeDefaultTests.cs
+3 KETEST001 KhaozEngine.Render.Tests/Gpu/PostChainTargetsGpuTests.cs
+1 KETEST001 KhaozEngine.Render.Tests/Gpu/ProviderFallbackTests.cs
+1 KETEST002 tools/Renderer.Perf.Tooling.Tests/Gpu/RendererPerf/RendererPerfColdLifecycleTests.Owners.cs
+3 KETEST002 tools/Renderer.Perf.Tooling.Tests/Gpu/RendererPerf/RendererPerfColdLifecycleTests.SceneCleanup.cs
+2 KETEST002 tools/Renderer.Perf.Tooling.Tests/Gpu/RendererPerf/RendererPerfColdLifecycleTests.ShadowBorrowers.cs
+1 KETEST002 tools/Renderer.Perf.Tooling.Tests/Gpu/RendererPerf/RendererPerfColdLifecycleTests.Submission.cs
+1 KETEST001 tools/Renderer.Perf.Tooling.Tests/Gpu/RendererPerf/RendererPerfCompilerProtocolTests.D3D.cs
+1 KETEST001 tools/Renderer.Perf.Tooling.Tests/Gpu/RendererPerf/RendererPerfD3D11DiagnosticsTests.Owners.cs
+1 KETEST002 tools/Renderer.Perf.Tooling.Tests/Gpu/RendererPerf/RendererPerfPointTraceTests.cs
+1 KETEST002 tools/Renderer.Perf.Tooling.Tests/Gpu/RendererPerf/RendererPerfSidecarAccountingTests.cs
+2 KETEST001 KhaozEngine.Render.Tests/Gpu/SpirvCrossCompileTests.cs
+4 KETEST001 KhaozEngine.Render.Tests/Gpu/SwapchainCopyCheckTests.cs
+1 KETEST002 KhaozEngine.Render.Tests/Gpu/TemporalBilinearShadowControl.cs
+1 KETEST002 KhaozEngine.Render.Tests/Gpu/TemporalTestResolve.cs
+6 KETEST001 KhaozEngine.Render.Tests/Gpu/VulkanBackendPackageTests.cs
+1 KETEST001 KhaozEngine.Render.Tests/Gpu/VulkanBindFlushTests.cs
+3 KETEST001 KhaozEngine.Render.Tests/Gpu/VulkanCommandListTests.cs
+1 KETEST001 KhaozEngine.Render.Tests/Gpu/VulkanDescriptorLayoutTests.cs
+1 KETEST001 KhaozEngine.Render.Tests/Gpu/VulkanDescriptorLimitTests.cs
+2 KETEST001 KhaozEngine.Render.Tests/Gpu/VulkanDeviceLossLatchTests.cs
+3 KETEST001 KhaozEngine.Render.Tests/Gpu/VulkanDeviceWiringTests.cs
+1 KETEST001 KhaozEngine.Render.Tests/Gpu/VulkanDrawPathTests.cs
+4 KETEST001 KhaozEngine.Render.Tests/Gpu/VulkanFeatureChainTests.cs
+3 KETEST001 KhaozEngine.Render.Tests/Gpu/VulkanInstanceLifecycleTests.cs
+2 KETEST001 KhaozEngine.Render.Tests/Gpu/VulkanLayoutTrackerTests.cs
+2 KETEST001 KhaozEngine.Render.Tests/Gpu/VulkanPipelineBindTests.cs
+8 KETEST001 KhaozEngine.Render.Tests/Gpu/VulkanPipelineCreationTests.cs
+2 KETEST001 KhaozEngine.Render.Tests/Gpu/VulkanResourceCreationTests.cs
+1 KETEST001 KhaozEngine.Render.Tests/Gpu/VulkanResourceSetTests.cs
+1 KETEST001 KhaozEngine.Render.Tests/Gpu/VulkanRingSemanticsTests.cs
+1 KETEST001 KhaozEngine.Render.Tests/Gpu/VulkanRingSubmissionTests.cs
+2 KETEST001 KhaozEngine.Render.Tests/Gpu/VulkanShaderPathTests.cs
+1 KETEST001 KhaozEngine.Render.Tests/Gpu/VulkanStagingLayoutTableTests.cs
+1 KETEST001 KhaozEngine.Render.Tests/Gpu/VulkanSwapchainCaptureTests.cs
+2 KETEST001 KhaozEngine.Render.Tests/Gpu/VulkanTransferPathTests.cs
+1 KETEST001 KhaozEngine.Render.Tests/Gpu/VulkanUniformRingTests.cs
+3 KETEST001 KhaozEngine.Render.Tests/Gpu/VulkanValidationTests.cs
+1 KETEST001 KhaozEngine.Render.Tests/Gpu/WaterClipmapAcceptanceTests.cs
+1 KETEST002 KhaozEngine.Render.Tests/Gpu/WaterColumnRiverScene.cs
+1 KETEST002 KhaozEngine.Render.Tests/Gpu/WaterOpticsNarrowPredicateTests.cs
+1 KETEST001 KhaozEngine.Render.Tests/Imaging/PngReaderTests.cs
+1 KETEST002 KhaozEngine.Render.Tests/Render2D/DpiFontBindingTests.cs
+5 KETEST002 KhaozEngine.Render.Tests/Render2D/SpriteBatchMaskedTestRig.cs
+1 KETEST002 KhaozEngine.Render.Tests/Render2D/SpriteBatchMaskedVertexTests.cs
+1 KETEST001 KhaozEngine.Render.Tests/Render3D/Animation/BoneMaskForJointsTests.cs
+3 KETEST001 KhaozEngine.Render.Tests/Render3D/Animation/ClipRefusalsTests.cs
+19 KETEST001 KhaozEngine.Render.Tests/Render3D/Animation/ContractJointMapTests.cs
+2 KETEST001 KhaozEngine.Render.Tests/Render3D/Animation/Inspection/PoseProbeTests.cs
+1 KETEST001 KhaozEngine.Render.Tests/Render3D/Animation/MomentScheduleTests.cs
+7 KETEST001 KhaozEngine.Render.Tests/Render3D/Animation/SkeletonContractTests.cs
+5 KETEST001 KhaozEngine.Render.Tests/Render3D/Animation/SkeletonNamesTests.cs
+1 KETEST002 KhaozEngine.Render.Tests/Render3D/FoliagePointIndexedFrameTests.cs
+7 KETEST001 KhaozEngine.Render.Tests/Render3D/GltfIndexValidationTests.cs
+1 KETEST001 KhaozEngine.Render.Tests/Render3D/GltfSkinnedMaterialPartsTests.cs
+3 KETEST002 KhaozEngine.Render.Tests/Render3D/InteriorCutHighlightTests.cs
+7 KETEST001 KhaozEngine.Render.Tests/Render3D/PropLoaderTests.cs
+1 KETEST001 KhaozEngine.Render.Tests/Render3D/RigidAttachmentAssetTests.cs
+2 KETEST001 KhaozEngine.Render.Tests/Render3D/RigidAttachmentBindingTests.cs
+2 KETEST001 KhaozEngine.Render.Tests/Render3D/RigidInstanceDrawTests.cs
+2 KETEST002 KhaozEngine.Render.Tests/Render3D/ShadowCascadeOriginTests.cs
+1 KETEST002 KhaozEngine.Render.Tests/Render3D/SkinnedAttachmentAssetTests.cs
+9 KETEST001 KhaozEngine.Render.Tests/Render3D/SkinnedAttachmentBindingTests.cs
+1 KETEST002 KhaozEngine.Render.Tests/Render3D/WaterColumnCopyTests.cs
+1 KETEST002 KhaozEngine.Render.Tests/Render3D/WaterColumnResourceLifecycleTests.cs
+3 KETEST002 KhaozEngine.Render.Tests/Render3D/WaterColumnShadowBindingTests.cs
+2 KETEST001 KhaozEngine.Render.Tests/Render3D/WaterVolumeLayoutTests.cs
+1 KETEST002 KhaozEngine.Render.Tests/Render3D/WaterVolumeUploadTests.cs
+2 KETEST001 KhaozEngine.Render.Tests/Render3D/WindowedFramePrepareTests.cs
+1 KETEST001 KhaozEngine.Render.Tests/Terrain/ChunkSinkFieldSwapTests.cs
+11 KETEST001 KhaozEngine.Render.Tests/TileWorld/AnimatedFoliageStyleTests.cs
+4 KETEST001 KhaozEngine.Render.Tests/TileWorld/TileGroundMaterialsTests.cs
+3 KETEST001 KhaozEngine.Render.Tests/TileWorld/TileGroundSteepCompanionsTests.cs
+3 KETEST001 KhaozEngine.Render.Tests/TileWorld/TileWorldPropLayerTests.cs
+2 KETEST001 KhaozEngine.Render.Tests/TileWorld/TileWorldSceneDescriptorTests.cs
+5 KETEST001 KhaozEngine.Render.Tests/TileWorld/TileWorldViewAnimatedFoliageTests.cs
+2 KETEST002 KhaozEngine.Render.Tests/Windowing/AppWindowDisposalTests.cs
+1 KETEST001 KhaozEngine.Server.Tests/Catalog/ContentAuthoringStoreConformance.Schema.cs
+3 KETEST001 KhaozEngine.Server.Tests/Catalog/SqlServer/SqlServerCatalogNonmutatingOpenTests.cs
+3 KETEST001 KhaozEngine.Server.Tests/Catalog/SqlServer/SqlServerCatalogResetRepairTests.cs
+3 KETEST001 KhaozEngine.Server.Tests/Catalog/SqlServer/SqlServerCatalogResetSchemaVersionTests.cs
+5 KETEST001 KhaozEngine.Server.Tests/Catalog/SqlServer/SqlServerCatalogRowTimestampTests.Migration.cs
+2 KETEST001 KhaozEngine.Server.Tests/Catalog/SqlServer/SqlServerCatalogSchemaMigrationTests.cs
+1 KETEST001 KhaozEngine.Server.Tests/Catalog/SqlServer/SqlServerCatalogSchemaProviderErrorTests.cs
+6 KETEST001 KhaozEngine.Server.Tests/Catalog/SqlServer/SqlServerCatalogSchemaTests.cs
+3 KETEST001 KhaozEngine.Server.Tests/Catalog/SqlServer/SqlServerTextSchemaMigrationTests.cs
+2 KETEST001 KhaozEngine.Server.Tests/Identity/SignInExceptionBaseTests.cs
+3 KETEST001 KhaozEngine.Server.Tests/NetWorld/CellBlobRecoveryTests.cs
+2 KETEST002 KhaozEngine.Server.Tests/NetWorld/OrdinaryContactLifecycleTests.Lifetime.cs
+1 KETEST001 KhaozEngine.Server.Tests/NetWorld/ShardedCellOriginTests.cs
+4 KETEST001 KhaozEngine.Server.Tests/NetWorld/ShardedFrameAnchoringTests.cs
+2 KETEST001 KhaozEngine.Server.Tests/NetWorld/WorldClientServerTickTests.cs
+7 KETEST001 KhaozEngine.Server.Tests/Netcode/SigningSecretTests.cs
+4 KETEST002 KhaozEngine.Server.Tests/WorldStore/Journal/InMemoryMutationJournalStoreTests.cs
+1 KETEST001 KhaozEngine.Server.Tests/WorldStore/Journal/MutationJournalBenchmarkTests.cs
+3 KETEST002 KhaozEngine.Server.Tests/WorldStore/Journal/MutationJournalRecoveryTests.cs
+2 KETEST001 KhaozEngine.Server.Tests/WorldStore/Journal/SqlServerJournalMetadataTests.cs
+1 KETEST002 KhaozEngine.Server.Tests/WorldStore/Journal/SqlServerJournalMigrationBackfillProbe.cs
+1 KETEST001 KhaozEngine.Server.Tests/WorldStore/Journal/SqlServerJournalResetAtomicityTests.cs
+4 KETEST001 KhaozEngine.Server.Tests/WorldStore/Journal/SqlServerJournalResetHostObjectTests.cs
+2 KETEST001 KhaozEngine.Server.Tests/WorldStore/Journal/SqlServerJournalRowTimestampTests.cs
+1 KETEST001 KhaozEngine.Server.Tests/WorldStore/Journal/SqlServerMutationJournalFailureTests.cs
+3 KETEST001 KhaozEngine.Server.Tests/WorldStore/Journal/SqlServerMutationJournalReadOnlyTests.cs
+1 KETEST001 KhaozEngine.Server.Tests/WorldStore/Journal/SqlServerMutationJournalStoreTests.cs
+1 KETEST001 KhaozEngine.Server.Tests/WorldStore/Journal/SqliteJournalResetHostObjectTests.cs
+2 KETEST001 KhaozEngine.Server.Tests/WorldStore/Journal/SqliteJournalRowTimestampTests.cs
+3 KETEST001 KhaozEngine.Server.Tests/WorldStore/Journal/SqliteMutationJournalReadOnlyTests.cs
+6 KETEST001 KhaozEngine.Server.Tests/WorldStore/Journal/SqliteMutationJournalStoreTests.cs
+1 KETEST001 KhaozEngine.TileEdit.Tests/CatalogWriterTests.cs
+5 KETEST001 KhaozEngine.TileEdit.Tests/ClearanceToolsTests.cs
+2 KETEST001 KhaozEngine.TileEdit.Tests/MutationServiceTests.cs
+2 KETEST001 KhaozEngine.TileEdit.Tests/QueryServiceTests.cs
+1 KETEST001 KhaozEngine.TileEdit.Tests/RenderServiceTests.cs
+3 KETEST001 KhaozEngine.TileEdit.Tests/TileEditSessionTests.cs
+2 KETEST001 KhaozEngine.TileWorld.Netcode.Tests/TileNetcode/TileFootprintInterestTests.cs
+4 KETEST002 KhaozEngine.TileWorld.Netcode.Tests/TileNetcode/TileFootprintInterestTests.cs
+1 KETEST002 KhaozEngine.TileWorld.Netcode.Tests/TileNetcode/TileLoopbackHarness.cs
+2 KETEST001 KhaozEngine.TileWorld.Netcode.Tests/TileNetcode/TileWorldServerTickTests.cs
+2 KETEST001 KhaozEngine.TileWorld.Physics.Tests/TileWorldCollidersTests.cs
+1 KETEST001 KhaozEngine.TileWorld.Tests/TileWorld/Editing/LayerCommandTests.cs
+2 KETEST001 KhaozEngine.TileWorld.Tests/TileWorld/Editing/MarkerAndRegionCommandTests.cs
+1 KETEST001 KhaozEngine.TileWorld.Tests/TileWorld/Editing/ObjectCommandTests.cs
+12 KETEST001 KhaozEngine.TileWorld.Tests/TileWorld/Editing/PgmReaderTests.cs
+7 KETEST001 KhaozEngine.TileWorld.Tests/TileWorld/GroundMaterialSteepTests.cs
+1 KETEST001 KhaozEngine.TileWorld.Tests/TileWorld/TileFoliageLayerPersistenceTests.cs
+2 KETEST001 KhaozEngine.TileWorld.Tests/TileWorld/TileHeightsTests.cs
+4 KETEST001 KhaozEngine.TileWorld.Tests/TileWorld/TilePrefabTests.cs
+28 KETEST001 KhaozEngine.TileWorld.Tests/TileWorld/TileWorldCatalogsTests.cs
+5 KETEST001 KhaozEngine.TileWorld.Tests/TileWorld/TileWorldClearanceSettingsTests.cs
+2 KETEST001 KhaozEngine.TileWorld.Tests/TileWorld/TileWorldDocumentMarkerScopeTests.cs
+6 KETEST001 KhaozEngine.TileWorld.Tests/TileWorld/TileWorldDocumentTests.cs
+13 KETEST001 KhaozEngine.TileWorld.Tests/TileWorld/TileWorldFileTests.cs
+2 KETEST001 KhaozEngine.TileWorld.Tests/TileWorld/TileWorldValidatorTests.cs
+1 KETEST002 KhaozEngine.WorldMap.Gui.Tests/WorldMapRenderFixture.cs
+
+# Bitwise state comparer for locomotion determinism parity (rule 8), merged from five per-file copies (owner decision D17)
+exempt KETEST002 KhaozEngine.Game.Tests/Locomotion/Contacts/LocomotionStateBits.cs
+# Shared IL reader for architecture fences: it must enumerate non-public methods and constructors to inspect compiled calls (owner decision D17)
+exempt KETEST002 test-shared/IlCallGraph.cs
+# ContentKey field discovery enforces byte-slice storage with no retained string (owner decision D17)
+exempt KETEST002 KhaozEngine.Catalog.Tests/Format/ContentKeyTests.cs
+# Field discovery enforces immutable flat lookup arrays without retained dictionaries or replaceable fields (owner decision D17)
+exempt KETEST002 KhaozEngine.Catalog.Tests/Runtime/ContentReferenceIndexTests.cs
+# Field and property walks enforce no dictionary, lock or duplicate key storage, one holder field and immutable reachable indexes (owner decision D17)
+exempt KETEST002 KhaozEngine.Catalog.Tests/Runtime/ContentRuntimeTests.cs
+# Storage walks enforce a shared text body with one offset array, no decoded entries and a cache bounded to 512 entries by construction (owner decision D17)
+exempt KETEST002 KhaozEngine.Catalog.Tests/Text/ContentStringCatalogTests.cs
+# Failure injection into fresh Regex objects avoids wall-clock timeouts when no accessible matcher setter exists (owner decision D17)
+exempt KETEST002 KhaozEngine.Foundation.Tests/Diagnostics/ReportRedactorMatchingFailureTests.cs
+# The measurement utility walks private storage to account for retained support-query memory (owner decision D17)
+exempt KETEST002 KhaozEngine.Game.Tests/Locomotion/Contacts/SupportCostScratch.cs
+# Outer and composed field discovery enforces the crafting working copy's no allocator authority rule (owner decision D17)
+exempt KETEST002 KhaozEngine.ItemInstances.Tests/Crafting/CraftWorkingCopyTests.cs
+# Working-copy field discovery enforces no allocator authority alongside refusing-store execution proof (owner decision D17)
+exempt KETEST002 KhaozEngine.ItemInstances.Tests/Crafting/CraftingRegistryTests.cs
+# Method and field metadata enforce integer-only tolerances under the generation determinism contract (owner decision D17)
+exempt KETEST002 KhaozEngine.ItemInstances.Tests/Generation/GeneratorDistributionTests.cs
+# Bit-exact state discovery and cloning retain every numeric state bit, including private storage canonicalized by public getters (owner decision D17)
+exempt KETEST002 KhaozEngine.Movement.Tests/ContactNavigationInitialHoldReuseTests.cs
+# Recursive bitwise comparison preserves exact context and core output equivalence, including hidden speed-scale storage (owner decision D17)
+exempt KETEST002 KhaozEngine.Movement.Tests/Fixtures/RuntimeStaticScene.cs
+# Serialized-field discovery catches retained tuning and option fields omitted from the KENB identity encoding (owner decision D17)
+exempt KETEST002 KhaozEngine.Movement.Tests/NavBakeIdentityTests.cs
+# Constructor and field walks enforce caller-provided device state and prohibit Vortice or SharpGen types on off-Windows surfaces (owner decision D17)
+exempt KETEST002 KhaozEngine.Render.Tests/Gpu/D3D11EmitterResolutionTests.cs
+# Constructor and field walks enforce caller-provided device state without missing newly added violating members (owner decision D17)
+exempt KETEST002 KhaozEngine.Render.Tests/Gpu/D3D11ReplayContractTests.cs
+# Complete instance-field discovery enforces strict leaf ownership of the D3D11 creation gate (owner decision D17)
+exempt KETEST002 KhaozEngine.Render.Tests/Gpu/D3D11ThreadingContractTests.cs
+# Metadata and IL walks enforce autorelease pool ownership at encoder seams and frame-capture roots, with native, interface and generic positive controls (owner decision D17)
+exempt KETEST002 KhaozEngine.Render.Tests/Gpu/MetalAutoreleaseArchitectureTests.cs
+# Field-graph traversal enforces no factory, device, layout or liveness reachability from bind records, with plain-data positive controls (owner decision D17)
+exempt KETEST002 KhaozEngine.Render.Tests/Gpu/MetalBindRecordsTests.cs
+# Package-method discovery enforces the M-M10 no-view-factory architecture rule, including future entry points (owner decision D17)
+exempt KETEST002 KhaozEngine.Render.Tests/Gpu/MetalEagerViewArchitectureTests.cs
+# Selector field and nested-type discovery enforce the once-per-process hot-selector rule and retain future-field coverage (owner decision D17)
+exempt KETEST002 KhaozEngine.Render.Tests/Gpu/MetalHotSelectorTests.cs
+# Method and nested-type metadata drive the ContentKey name and stage blindness IL fence, including iterator and positive-control paths (owner decision D17)
+exempt KETEST002 KhaozEngine.Render.Tests/Gpu/MetalIndexTableNameBlindnessTests.cs
+# Reflection confirms forbidden HLSL members exist so the no-HLSL MemberRef fence cannot pass vacuously (owner decision D17)
+exempt KETEST002 KhaozEngine.Render.Tests/Gpu/MetalShaderArchitectureTests.cs
+# Owner-retained P2 metadata walk guards against reintroducing Veldrid types (owner decision D17)
+exempt KETEST002 KhaozEngine.Render.Tests/Gpu/SpirvCrossCompileTests.cs
+# Signature and field-graph walks enforce V-M11 and V-D2 view-factory unreachability and its sole allowed edge (owner decision D17)
+exempt KETEST002 KhaozEngine.Render.Tests/Gpu/VulkanRecordingUnreachabilityTests.cs
+# Public and protected surface discovery enforces dependency seams, including the retained Veldrid reintroduction guard (owner decision D17)
+exempt KETEST002 KhaozEngine.Render.Tests/GpuPublicApiTests.cs
+# Renderer field-type walks enforce the shared GpuRetireQueue rule and absence of private retirement lists (owner decision D17)
+exempt KETEST002 KhaozEngine.Render.Tests/Render3D/GrownBufferRetirementTests.cs
+# Recursive state discovery preserves determinism bits, signed zero and non-replicated storage that public getters or wire bytes can erase (owner decision D17)
+exempt KETEST002 KhaozEngine.Server.Tests/NetWorld/OrdinaryContactReplayTests.RuntimeStatics.cs
+# Provider-field injection deterministically holds SQLite's mid-activation gap open when no engine seam can force that state (owner decision D17)
+exempt KETEST002 KhaozEngine.Server.Tests/Sqlite/SqliteStoreConnectionPoolIsolationTests.cs
+# Snapshot restoration requires the private PhysicsNavBake constructor because no production restore API or supported snapshot format exists (owner decision D17)
+exempt KETEST002 tools/NavCapture.Research.Tests/Research/NavCaptureSnapshot.cs
+# Cold ocean preparation reads existing Scene3D and WaterRenderer owners without adding seams that change the paid harness hash (owner decision D18)
+exempt KETEST002 tools/Renderer.Perf.Tooling.Tests/Gpu/RendererPerf/RendererPerfColdOcean.cs
+# Shader digest enumeration discovers every source constant, including private SpriteBatch shaders and future additions (owner decision D17)
+exempt KETEST002 tools/Renderer.Perf.Tooling.Tests/Gpu/RendererPerf/RendererPerfExecutable.cs
+# A private-method IL fence verifies the orphan route without constructing a native Metal device headlessly (owner decision D17)
+exempt KETEST002 tools/Renderer.Perf.Tooling.Tests/Gpu/RendererPerf/RendererPerfMetalDiagnosticsTests.Orphan.cs
+# Cold native D3D11 adapter identity inspection deliberately avoids backend API changes (owner decision D18)
+exempt KETEST002 tools/Renderer.Perf.Tooling.Tests/Gpu/RendererPerf/RendererPerfNativeIdentity.cs

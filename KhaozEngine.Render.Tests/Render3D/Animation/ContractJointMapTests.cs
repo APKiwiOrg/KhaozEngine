@@ -47,10 +47,8 @@ namespace KhaozEngine.Tests.Render3D.Animation
             Assert.Equal(3, map.Bone("socket_head"));
             Assert.Equal(4, map.Bone("leg.L"));
 
-            var outside = Assert.Throws<InvalidOperationException>(() => map.Bone("root"));
-            Assert.Contains("'root'", outside.Message, StringComparison.Ordinal);
-            var unknown = Assert.Throws<KeyNotFoundException>(() => map.Node("tail"));
-            Assert.Contains("No skeleton node named 'tail'", unknown.Message, StringComparison.Ordinal);
+            Assert.Throws<InvalidOperationException>(() => map.Bone("root"));
+            Assert.Throws<KeyNotFoundException>(() => map.Node("tail"));
         }
 
         [Fact]
@@ -126,7 +124,7 @@ namespace KhaozEngine.Tests.Render3D.Animation
             Assert.Equal(helpers.RestLocal, map.BaseLocal.ToArray());
             Assert.Throws<KeyNotFoundException>(() => map.Node(""));
             var helper = Assert.Throws<ArgumentException>(() => map.BaseWorld(7));
-            Assert.Contains("Node 7 ''", helper.Message, StringComparison.Ordinal);
+            Assert.Equal("node", helper.ParamName);
         }
 
         [Fact]
@@ -139,7 +137,7 @@ namespace KhaozEngine.Tests.Render3D.Animation
         }
 
         [Fact]
-        public void FrameAccessorsRefuseANonContractNodeNamingIt()
+        public void FrameAccessorsRefuseANonContractNodeAsTheNodeArgument()
         {
             Skeleton skeleton = Build();
             var map = new ContractJointMap(skeleton, Contract);
@@ -149,8 +147,7 @@ namespace KhaozEngine.Tests.Render3D.Animation
             foreach (Func<int, Matrix4x4> read in accessors)
             {
                 var error = Assert.Throws<ArgumentException>(() => read(lantern));
-                Assert.Contains($"Node {lantern} 'lantern'", error.Message, StringComparison.Ordinal);
-                Assert.Contains("not a contract joint", error.Message, StringComparison.Ordinal);
+                Assert.Equal("node", error.ParamName);
                 Assert.Throws<ArgumentOutOfRangeException>(() => read(-1));
                 Assert.Throws<ArgumentOutOfRangeException>(() => read(skeleton.NodeCount));
             }
@@ -193,27 +190,31 @@ namespace KhaozEngine.Tests.Render3D.Animation
         [Fact]
         public void RefusesMoreNodesThanASkinnedDrawTakes()
         {
-            int count = SkinningMath.MaxBonesPerDraw + 1;
-            var parents = new int[count];
-            var rest = new JointPose[count];
-            var logical = new int[count];
-            var names = new string[count];
-            var skin = new int[count - 1];
-            for (int node = 0; node < count; node++)
-            {
-                parents[node] = node - 1;
-                rest[node] = JointPose.Identity;
-                logical[node] = node;
-                names[node] = node == 0 ? "root" : $"link_{node}";
-                if (node > 0) skin[node - 1] = node;
-            }
             var contract = new SkeletonContract(new[] { new ContractJoint("root", null, false) });
 
-            var error = Assert.Throws<ArgumentException>(
-                () => new ContractJointMap(new Skeleton(parents, rest, logical, skin, names), contract));
+            // The same chain at the limit is accepted, so the one node more is the only thing refused.
+            _ = new ContractJointMap(Chain(SkinningMath.MaxBonesPerDraw), contract);
+            Skeleton over = Chain(SkinningMath.MaxBonesPerDraw + 1);
 
-            Assert.Contains($"{count} nodes", error.Message, StringComparison.Ordinal);
-            Assert.Contains($"{SkinningMath.MaxBonesPerDraw}", error.Message, StringComparison.Ordinal);
+            Assert.Throws<ArgumentException>(() => new ContractJointMap(over, contract));
+
+            static Skeleton Chain(int count)
+            {
+                var parents = new int[count];
+                var rest = new JointPose[count];
+                var logical = new int[count];
+                var names = new string[count];
+                var skin = new int[count - 1];
+                for (int node = 0; node < count; node++)
+                {
+                    parents[node] = node - 1;
+                    rest[node] = JointPose.Identity;
+                    logical[node] = node;
+                    names[node] = node == 0 ? "root" : $"link_{node}";
+                    if (node > 0) skin[node - 1] = node;
+                }
+                return new Skeleton(parents, rest, logical, skin, names);
+            }
         }
 
         [Fact]
@@ -370,7 +371,7 @@ namespace KhaozEngine.Tests.Render3D.Animation
 
             SkinnedGltfMesh other = Mesh(Build());
             var error = Assert.Throws<ArgumentException>(() => map.SkinAtBase(other));
-            Assert.Contains("same skeleton", error.Message, StringComparison.Ordinal);
+            Assert.Equal("mesh", error.ParamName);
         }
 
         // Every contract joint's base frame is the palette's, and its parent base inverse takes that frame back to

@@ -37,7 +37,7 @@ public sealed class MapNativeResolutionTests
     {
         MapDocument document = SupportFixtures.CaveWithPlacements();
         var options = SupportFixtures.V2 with { ResolverVersion = 1 };
-        Assert.Contains("resolver", Assert.Throws<MapDocumentException>(() =>
-            MapNativeResolution.Resolve(document, SupportFixtures.Assets(), options, (_, _) => 0f)).Message);
+        Assert.Throws<MapDocumentException>(() =>
+            MapNativeResolution.Resolve(document, SupportFixtures.Assets(), options, (_, _) => 0f));
     }
 }

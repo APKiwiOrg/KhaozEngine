@@ -1,16 +1,19 @@
 using KhaozEngine.CodeHealth.Analyzers;
 using Xunit;
 
-namespace KhaozEngine.CodeHealth.Analyzers.Tests;
+namespace KhaozEngine.Tests.CodeHealth;
 
 public class BaselineFileTests
 {
-    [Fact]
-    public void Parses_LinesAndPath()
+    [Theory]
+    [InlineData("1478 Consumer.Server/Program.cs\n900 Src/Game.cs\n", "Consumer.Server/Program.cs", 1478, "Src/Game.cs", 900)]
+    [InlineData("1000 Src/A.cs\r\n900 Src/B.cs", "Src/A.cs", 1000, "Src/B.cs", 900)]
+    public void Parses_LinesAndPaths_WithLfOrCrlfAndNoFinalNewline(
+        string content, string firstPath, int firstLines, string secondPath, int secondLines)
     {
-        var entries = ParseEntries("1478 Consumer.Server/Program.cs\n900 Src/Game.cs\n");
-        Assert.Equal(1478, entries["Consumer.Server/Program.cs"]);
-        Assert.Equal(900, entries["Src/Game.cs"]);
+        var entries = ParseEntries(content);
+        Assert.Equal(firstLines, entries[firstPath]);
+        Assert.Equal(secondLines, entries[secondPath]);
     }
 
     [Fact]
@@ -39,14 +42,6 @@ public class BaselineFileTests
     {
         var entries = ParseEntries("1000 Src/Dup.cs\n2000 Src/Dup.cs\n");
         Assert.Equal(1000, entries["Src/Dup.cs"]);
-    }
-
-    [Fact]
-    public void Tolerates_CrlfAndMissingFinalNewline()
-    {
-        var entries = ParseEntries("1000 Src/A.cs\r\n900 Src/B.cs");
-        Assert.Equal(1000, entries["Src/A.cs"]);
-        Assert.Equal(900, entries["Src/B.cs"]);
     }
 
     [Fact]

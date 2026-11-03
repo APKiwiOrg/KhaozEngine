@@ -9,6 +9,6 @@
     <PackageReference Include="Microsoft.NET.Test.Sdk" />
     <PackageReference Include="xunit" />
     <PackageReference Include="xunit.runner.visualstudio" />
-    <ProjectReference Include="../../KhaozEngine.Render.Tests/KhaozEngine.Render.Tests.csproj" />
+    <ProjectReference Include="../Renderer.Perf.Tooling.Tests/Renderer.Perf.Tooling.Tests.csproj" />
   </ItemGroup>
 </Project>

@@ -62,8 +62,12 @@ These SHA-256 values identify reconciled source bytes, separately from runtime s
 
 ## Coverage inventory
 
-Harness types below live under `KhaozEngine.Render.Tests/Gpu/RendererPerf` unless explicitly named
-otherwise. Shared timing types live under its sibling `Performance` directory.
+The paths and source hashes above identify the historical source at the recorded commits. Harness
+types below now live under `tools/Renderer.Perf.Tooling.Tests/Gpu/RendererPerf` unless explicitly named
+otherwise. The old `KhaozEngine.Render.Tests/Gpu/RendererPerf` prefix in this record remains historical
+evidence, not a current build path. Shared timing types remain under
+`KhaozEngine.Render.Tests/Gpu/Performance`. The [current tooling entrypoint](../../tools/Renderer.Perf.Tooling.Tests/README.md)
+owns explicit build and test instructions. Historical commands, hashes, manifests and receipts are unchanged.
 The complete public pass registry remains in the [consumer reference](../USING-KHAOZENGINE.md#gpu-timestamps-without-waiting).
 The inventory here maps concerns to executable checks rather than duplicating that registry.
 

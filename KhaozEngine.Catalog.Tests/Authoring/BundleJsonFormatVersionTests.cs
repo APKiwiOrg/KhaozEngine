@@ -44,7 +44,6 @@ public class BundleJsonFormatVersionTests
 
         Assert.Equal(ContentAuthoringException.BundleFormatReason, precheckRefusal.Reason);
         Assert.Equal(readRefusal.Reason, precheckRefusal.Reason);
-        Assert.Equal(readRefusal.Message, precheckRefusal.Message);
     }
 
     [Fact]

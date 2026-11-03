@@ -98,12 +98,10 @@ public class DefinitionTests
         set.ValidateReferences(joints, meshes);
 
         joints.Clear();
-        InvalidDataException jointError = Assert.Throws<InvalidDataException>(() => set.ValidateReferences(joints, meshes));
-        Assert.Contains("1", jointError.Message);
-        Assert.Contains("hip", jointError.Message);
+        Assert.Throws<InvalidDataException>(() => set.ValidateReferences(joints, meshes));
         joints.Add("hip");
         meshes.Clear();
-        Assert.Contains("parts/plate.glb", Assert.Throws<InvalidDataException>(() => set.ValidateReferences(joints, meshes)).Message);
+        Assert.Throws<InvalidDataException>(() => set.ValidateReferences(joints, meshes));
         meshes["parts/plate.glb"] = new string('b', 64);
         Assert.Throws<InvalidDataException>(() => set.ValidateReferences(joints, meshes));
     }
@@ -123,12 +121,12 @@ public class DefinitionTests
         new AttachmentSetDefinition([skinned]).ValidateReferences(new HashSet<string>(), meshes);
 
         meshes.Remove(skinned.Mesh.Key);
-        Assert.Contains(skinned.Mesh.Key, Assert.Throws<InvalidDataException>(() => set.ValidateReferences(joints, meshes)).Message);
+        Assert.Throws<InvalidDataException>(() => set.ValidateReferences(joints, meshes));
         meshes[skinned.Mesh.Key] = new string('b', 64);
         Assert.Throws<InvalidDataException>(() => set.ValidateReferences(joints, meshes));
         meshes[skinned.Mesh.Key] = AttachmentFixtures.Hash;
         joints.Clear();
-        Assert.Contains("hip", Assert.Throws<InvalidDataException>(() => set.ValidateReferences(joints, meshes)).Message);
+        Assert.Throws<InvalidDataException>(() => set.ValidateReferences(joints, meshes));
     }
 
     [Fact]

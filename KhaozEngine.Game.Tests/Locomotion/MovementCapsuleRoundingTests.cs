@@ -1,6 +1,5 @@
 using System;
 using System.Numerics;
-using System.Reflection;
 using KhaozEngine.Locomotion;
 using Xunit;
 
@@ -9,10 +8,6 @@ namespace KhaozEngine.Tests.Locomotion;
 public class MovementCapsuleRoundingTests
 {
     static readonly MovementSpaceKey Room = new("world", "room");
-    delegate bool EncloseDelegate(in MovementBodyQuery body, Vector3 delta, out MovementBodyQuery enclosed,
-        out Vector3 endpoint, out double inflation);
-    delegate bool ImpactDelegate(Vector3 centre, Vector3 delta, double distance, double length,
-        out Vector3 point, out double error);
 
     [Fact]
     public void PositiveLostLowBitsRemainInsideTheQueriedCapsule() =>
@@ -38,7 +33,7 @@ public class MovementCapsuleRoundingTests
     public void AnEndpointErrorBeyondTheSkinRefusesTheQueryShape()
     {
         var body = Body(new(65536, 0.75f, 0));
-        Assert.False(Enclose()(body, new(0.003f, 0, 0), out MovementBodyQuery enclosure, out _, out _));
+        Assert.False(MovementCapsuleRounding.TryEnclose(body, new(0.003f, 0, 0), out MovementBodyQuery enclosure, out _, out _));
         Assert.Equal(default, enclosure);
     }
 
@@ -48,7 +43,7 @@ public class MovementCapsuleRoundingTests
     [Fact]
     public void AxisImpactUsesTheOriginalCapsuleCentre()
     {
-        Assert.True(Impact()(new(1, 2, 3), new(4, 0, 0), 1, 4, out Vector3 point, out double error));
+        Assert.True(MovementCapsuleRounding.TryImpact(new(1, 2, 3), new(4, 0, 0), 1, 4, out Vector3 point, out double error));
         Assert.Equal(new Vector3(2, 2, 3), point);
         Assert.InRange(error, 0d, 0.001d);
     }
@@ -56,7 +51,7 @@ public class MovementCapsuleRoundingTests
     [Fact]
     public void PythagoreanImpactContainsTheIndependentRationalPoint()
     {
-        Assert.True(Impact()(Vector3.Zero, new(3, 4, 0), 1, 5, out Vector3 point, out double error));
+        Assert.True(MovementCapsuleRounding.TryImpact(Vector3.Zero, new(3, 4, 0), 1, 5, out Vector3 point, out double error));
         // Exact point is (3/5,4/5,0). Compare integer dyadics, not another floating norm.
         BigInteger unit = BigInteger.One << 1074;
         BigInteger scaledError = BigInteger.Abs(5 * Units(point.X) - 3 * unit) +
@@ -67,15 +62,15 @@ public class MovementCapsuleRoundingTests
     [Fact]
     public void InvalidAndUncertifiableImpactPosesRefuse()
     {
-        Assert.False(Impact()(Vector3.Zero, Vector3.UnitX, 2, 1, out _, out _));
-        Assert.False(Impact()(Vector3.Zero, Vector3.UnitX, double.NaN, 1, out _, out _));
-        Assert.False(Impact()(new(50000, 0, 0), new(4, 0, 0), 1, 4, out _, out _));
+        Assert.False(MovementCapsuleRounding.TryImpact(Vector3.Zero, Vector3.UnitX, 2, 1, out _, out _));
+        Assert.False(MovementCapsuleRounding.TryImpact(Vector3.Zero, Vector3.UnitX, double.NaN, 1, out _, out _));
+        Assert.False(MovementCapsuleRounding.TryImpact(new(50000, 0, 0), new(4, 0, 0), 1, 4, out _, out _));
     }
 
     static void Check(Vector3 centre, Vector3 delta, float radius = 0.25f)
     {
         var body = Body(centre, radius);
-        Assert.True(Enclose()(body, delta, out MovementBodyQuery enclosed, out Vector3 endpoint, out double inflation));
+        Assert.True(MovementCapsuleRounding.TryEnclose(body, delta, out MovementBodyQuery enclosed, out Vector3 endpoint, out double inflation));
         Assert.Equal(centre + delta, endpoint);
         BigInteger l1 = BigInteger.Abs(Units(centre.X) + Units(delta.X) - Units(endpoint.X)) +
             BigInteger.Abs(Units(centre.Y) + Units(delta.Y) - Units(endpoint.Y)) +
@@ -89,11 +84,6 @@ public class MovementCapsuleRoundingTests
     }
 
     static MovementBodyQuery Body(Vector3 centre, float radius = 0.25f) => new(centre, radius, 0.75f, Room, null);
-    static Type Helper => typeof(MovementQueryLease).Assembly.GetType("KhaozEngine.Locomotion.MovementCapsuleRounding")!;
-    static EncloseDelegate Enclose() => Helper.GetMethod("TryEnclose", BindingFlags.NonPublic | BindingFlags.Static)!
-        .CreateDelegate<EncloseDelegate>();
-    static ImpactDelegate Impact() => Helper.GetMethod("TryImpact", BindingFlags.NonPublic | BindingFlags.Static)!
-        .CreateDelegate<ImpactDelegate>();
 
     static BigInteger Units(double value)
     {

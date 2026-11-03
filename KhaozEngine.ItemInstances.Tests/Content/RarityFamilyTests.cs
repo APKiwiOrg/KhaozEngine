@@ -20,8 +20,6 @@ namespace KhaozEngine.Tests.ItemInstances.Content;
 /// </summary>
 public class RarityFamilyTests
 {
-    public static TheoryData<string> TypeKeys => Keys(Rarity);
-
     public static TheoryData<string> AllTypeKeys => Keys(All);
 
     [Fact]
@@ -361,13 +359,16 @@ public class RarityFamilyTests
     }
 
     [Theory]
-    [MemberData(nameof(TypeKeys))]
+    [MemberData(nameof(AllTypeKeys))]
     public void Every_field_name_is_snake_case_under_the_content_key_rules(string typeKey)
     {
         FamilyType type = Find(typeKey);
 
-        foreach (ContentFieldEntry field in type.CreateSchema().Fields)
+        ContentFieldSchema schema = type.CreateSchema();
+        Assert.NotEmpty(schema.Fields);
+        foreach (ContentFieldEntry field in schema.Fields)
         {
+            Assert.NotEmpty(field.Name);
             Assert.False(
                 ContentTextKey.ExceedsBound(type.Key, 64, field.Name),
                 ContentTextKey.Derive(type.Key, ReadOnlySpan<byte>.Empty, field.Name));

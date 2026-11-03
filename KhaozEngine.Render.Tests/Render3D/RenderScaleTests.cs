@@ -71,21 +71,16 @@ namespace KhaozEngine.Tests.Render3D
             Assert.Equal((1, 1), Scene3D.ComputeTargetSize(s, -10, -10));
         }
 
-        [Fact]
-        public void MatchViewport_supersample_multiplies_the_target_below_cap()
+        [Theory]
+        [InlineData(1280, 720, 2560, 1440)]
+        [InlineData(800, 600, 1600, 1200)]
+        [InlineData(1920, 1080, 3840, 2160)]
+        [InlineData(2560, 1440, 3840, 2160)]
+        public void MatchViewport_supersample_tracks_the_viewport_up_to_the_cap(
+            int viewportWidth, int viewportHeight, int expectedWidth, int expectedHeight)
         {
             var s = new PixelPostProcessSettings { RenderScale = RenderScale.MatchViewport, Supersample = 2f };
-            // A 720p window x2 = 1440p internal (under the 3840x2160 cap) - the same effective AA a 2x/Retina display gives.
-            Assert.Equal((2560, 1440), Scene3D.ComputeTargetSize(s, 1280, 720));
-            Assert.Equal((1600, 1200), Scene3D.ComputeTargetSize(s, 800, 600));
-        }
-
-        [Fact]
-        public void MatchViewport_supersample_still_clamps_to_the_cap()
-        {
-            var s = new PixelPostProcessSettings { RenderScale = RenderScale.MatchViewport, Supersample = 2f };
-            Assert.Equal((3840, 2160), Scene3D.ComputeTargetSize(s, 1920, 1080));   // 1080p x2 = 4K = exactly the cap
-            Assert.Equal((3840, 2160), Scene3D.ComputeTargetSize(s, 2560, 1440));   // 1440p x2 > cap -> clamps (16:9)
+            Assert.Equal((expectedWidth, expectedHeight), Scene3D.ComputeTargetSize(s, viewportWidth, viewportHeight));
         }
 
         [Fact]

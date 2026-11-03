@@ -47,13 +47,16 @@ namespace KhaozEngine.Tests.Gpu
         // The reference consumer's player mesh is 13,637 vertices (player_human_male.glb). BuildTube's vertex count is
         // (rings + 1) * radial, so 340 x 40 lands at 13,640: the same order, and exact enough that a per-character
         // cost measured through it is the real one.
-        internal const int CharacterRings = 340, CharacterRadial = 40, CharacterBones = 48;
+        internal const int CharacterRings = RendererPerfSceneInputs.CharacterRings,
+            CharacterRadial = RendererPerfSceneInputs.CharacterRadial,
+            CharacterBones = RendererPerfSceneInputs.CharacterBones;
 
         /// <summary>Vertices per character, which is what the CPU-skinning stream is linear in.</summary>
         internal const int CharacterVertices = (CharacterRings + 1) * CharacterRadial;
 
         /// <summary>The shadow tier the live client runs.</summary>
-        internal const int ShadowResolution = 2048, Cascades = 4;
+        internal const int ShadowResolution = RendererPerfSceneInputs.ShadowResolution,
+            Cascades = RendererPerfSceneInputs.Cascades;
 
         const float ChunkSize = 60f;
 
@@ -95,28 +98,13 @@ namespace KhaozEngine.Tests.Gpu
         }
 
         internal static Matrix4x4[] PropWorlds(int count, float extent, uint seed)
-        {
-            var worlds = new Matrix4x4[count];
-            float Next() { seed = unchecked(seed * 1664525u + 1013904223u); return (seed >> 8) / (float)(1 << 24); }
-            for (int i = 0; i < count; i++)
-            {
-                float x = (Next() - 0.5f) * extent, z = (Next() - 0.5f) * extent;
-                worlds[i] = Matrix4x4.CreateRotationY(Next() * 6.28f) * Matrix4x4.CreateTranslation(x, 0f, z);
-            }
-            return worlds;
-        }
+            => RendererPerfSceneInputs.PropWorlds(count, extent, seed);
 
-        internal static SkinnedGltfMesh CharacterTube() => SkinnedMeshBuilder.BuildTube(
-            0.5f, 4f, CharacterRings, CharacterRadial, CharacterBones, Axis.Z);
+        internal static SkinnedGltfMesh CharacterTube() => RendererPerfSceneInputs.CharacterTube();
 
         /// <summary>The live client's shadow tier, which every row measuring this scene builds its scene
         /// with.</summary>
-        internal static ShadowSettings Shadows() => new()
-        {
-            Mode = ShadowMode.ShadowMap,
-            ShadowMapResolution = ShadowResolution,
-            ShadowCascadeCount = Cascades,
-        };
+        internal static ShadowSettings Shadows() => RendererPerfSceneInputs.Shadows();
 
         /// <summary>Point <paramref name="scene"/>'s camera at the world the way every row measuring it
         /// does, so two rows are looking at the same thing.</summary>

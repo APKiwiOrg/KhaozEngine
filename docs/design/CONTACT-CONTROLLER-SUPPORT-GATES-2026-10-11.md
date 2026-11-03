@@ -238,10 +238,10 @@ a too-high step, invalid start, unsupported member or stale interval into permis
 Use certified contact bounds for any new above/below decision. If the sign cannot be established,
 refuse. Do not compare a new boundary against raw sweep rounding and call it certified.
 
-Preserve `ContactAboveTheBandRefuses`, `StepJustAboveTheBandRefuses`,
-`GeometryInsideTheLegStartRefuses` and `OverhangAboveTheBandIsIgnored`.
-Their anchors are `FootSupportNeighborhoodTests.cs:212` and `FootSupportBoundaryTests.cs:92`, `:128`,
-`:141` under `KhaozEngine.Game.Tests/Locomotion/Contacts/`. An in-band lower crate is different from
+Preserve `ContactAboveTheBandRefuses`, `CrateAboveTheBandOrInsideTheLegStartRefuses`
+and `OverhangAboveTheBandIsIgnored`. The crate theory retains both refusal cases for box and mesh geometry.
+Their anchors are `FootSupportNeighborhoodTests.cs:235` and `FootSupportBoundaryTests.cs:134`,
+`:92` under `KhaozEngine.Game.Tests/Locomotion/Contacts/`. An in-band lower crate is different from
 these physical refusals. An ordinary steep hit must not poison a complete walkable contribution.
 Keep steep selection and joined-steep suppression as SG-1 requires.
 Cost if wrong: a cheap completeness fix seats the body through an above-band roof or tall step.

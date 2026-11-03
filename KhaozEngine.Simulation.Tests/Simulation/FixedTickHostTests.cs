@@ -89,22 +89,15 @@ public class FixedTickHostTests
         Assert.Throws<ArgumentOutOfRangeException>(() => new FixedTickHost(0f));
     }
 
-    [Fact]
-    public void SecondsUntilNextTick_IsAFullTick_RightAfterATickFiresWithNothingLeftOver()
+    [Theory]
+    [InlineData(0.1f, 0.1f)] // an exact tick leaves no accumulated time
+    [InlineData(0.07f, 0.03f)] // a partial tick leaves the remainder to wait
+    public void SecondsUntilNextTick_ReflectsTheAccumulator(float elapsed, float expected)
     {
-        // Right after a tick fires with a clean accumulator (nothing left over), the NEXT tick is a full
-        // tickSeconds away - the accumulator has to build back up from zero.
         var host = new FixedTickHost(0.1f);
-        host.Advance(0.1f, _ => { });   // exactly one tick, nothing left over
-        Assert.Equal(0.1f, host.SecondsUntilNextTick, precision: 5);
-    }
+        host.Advance(elapsed, _ => { });
 
-    [Fact]
-    public void SecondsUntilNextTick_ReflectsLeftoverAccumulator()
-    {
-        var host = new FixedTickHost(0.1f);
-        host.Advance(0.07f, _ => { });   // no tick yet, 0.07 accumulated
-        Assert.Equal(0.03f, host.SecondsUntilNextTick, precision: 5);
+        Assert.Equal(expected, host.SecondsUntilNextTick, precision: 5);
     }
 
     [Fact]

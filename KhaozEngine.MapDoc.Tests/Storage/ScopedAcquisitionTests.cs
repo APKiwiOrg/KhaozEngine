@@ -26,6 +26,7 @@ public sealed class ScopedAcquisitionTests
             MapStoredSurfaceSource source = MapStoredSurfaceSource.Open(dir);
             MapScopedSurfaces s = ScopeFixtures.Acquire(source, FarScope());
             Assert.Equal(MapAcquireStatus.Complete, s.Status);
+            s.Identity.RequireComplete();
             // Scope directories and indices cost four pages. The outside anchor adds one ground index.
             Assert.Equal(5, s.PagesRead);
             // Only ground(0,0) and roof(41,0) require additional anchor patch reads.
@@ -58,7 +59,7 @@ public sealed class ScopedAcquisitionTests
             Assert.Contains(new MapUnavailable("door-top", new("roof", 41, 0), MapPatchStatus.Missing), s.Witness.Unavailable);
             Assert.Equal((false, false, false), (s.Identity.Complete, s.ReadWitness.Complete, s.Witness.Complete));
             Assert.DoesNotContain(s.Witness.KnownEmpty, r => r.SurfaceId == "roof" && r.Slots.MinX <= 41 && r.Slots.MaxXExclusive > 41 && r.Slots.MinZ <= 0 && r.Slots.MaxZExclusive > 0);
-            Assert.Contains("incomplete", Assert.Throws<MapDocumentException>(s.Identity.RequireComplete).Message);
+            Assert.Throws<MapDocumentException>(s.Identity.RequireComplete);
         }
         finally
         {
@@ -73,7 +74,7 @@ public sealed class ScopedAcquisitionTests
             Assert.Equal(MapAcquireStatus.Incomplete, corrupt.Status);
             Assert.Contains(new MapUnavailable("door-top", new("roof", 41, 0), MapPatchStatus.Corrupt), corrupt.Witness.Unavailable);
             Assert.Equal((false, false, false), (corrupt.Identity.Complete, corrupt.ReadWitness.Complete, corrupt.Witness.Complete));
-            Assert.Contains("incomplete", Assert.Throws<MapDocumentException>(corrupt.Identity.RequireComplete).Message);
+            Assert.Throws<MapDocumentException>(corrupt.Identity.RequireComplete);
         }
         finally
         {
@@ -168,7 +169,13 @@ public sealed class ScopedAcquisitionTests
             first.Heights[0] = 7;
             first.Cells[0] = default;
             first.SetPresent(0, 0, false);
-            Assert.Throws<NotSupportedException>(() => ((IList<KeyValuePair<MapPatchKey, string>>)s.Witness.Present).Add(default));
+            var present = s.Witness.Present.ToArray();
+            if (s.Witness.Present is ICollection<KeyValuePair<MapPatchKey, string>> mutable)
+            {
+                Assert.Throws<NotSupportedException>(() => mutable.Add(default));
+                Assert.Throws<NotSupportedException>(mutable.Clear);
+            }
+            Assert.Equal(present, s.Witness.Present);
             s.Patch(ground1).Patch!.CornerDependencies.Clear();
             MapSurfacePatch ridgeCopy = s.Patch(ridge).Patch!;
             MapBoundaryChain chain = Assert.IsType<MapBoundaryChain>(Assert.Single(ridgeCopy.Records));

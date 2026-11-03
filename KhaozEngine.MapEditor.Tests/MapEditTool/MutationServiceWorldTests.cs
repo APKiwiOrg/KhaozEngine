@@ -165,12 +165,16 @@ namespace KhaozEngine.Tests.MapEditTool
 
                 ArgumentException ex = Assert.Throws<ArgumentException>(() =>
                     mutation.FeatureEdit(99, "{\"type\":\"lake\",\"centerX\":0,\"centerZ\":0,\"radius\":5,\"depth\":2}"));
-                Assert.Contains("out of range", ex.Message);
+                Assert.Equal("index", ex.ParamName);
 
                 // The same up-front guard protects remove and both reorder endpoints.
                 Assert.Throws<ArgumentException>(() => mutation.FeatureRemove(99));
                 Assert.Throws<ArgumentException>(() => mutation.FeatureReorder(0, 99));
                 Assert.Throws<ArgumentException>(() => mutation.FeatureReorder(99, 0));
+
+                mutation.FeatureEdit(0, "{\"type\":\"lake\",\"centerX\":0,\"centerZ\":0,\"radius\":5,\"depth\":2}");
+                LakeFeatureDoc edited = Assert.IsType<LakeFeatureDoc>(session.WithDocument((doc, _) => doc.Terrain.Features[0]));
+                Assert.Equal((0f, 0f, 5f, 2f), (edited.CenterX, edited.CenterZ, edited.Radius, edited.Depth));
 
                 Assert.Empty(session.Validate().StructuralErrors);
             }
@@ -244,7 +248,6 @@ namespace KhaozEngine.Tests.MapEditTool
                     mutation.ExclusionAdd("{\"type\":\"disc\",\"centerX\":0,\"centerZ\":0,\"radius\":5}",
                         layers: new[] { "ghost" }));
 
-                Assert.StartsWith("mutation rejected:", ex.Message);
                 Assert.Contains("unknown scatter layer 'ghost'", ex.Message);
                 Assert.Equal(before, session.WithDocument((doc, _) => doc.Exclusions.Count));
                 Assert.Equal(dirtyBefore, session.IsDirty);
@@ -309,7 +312,6 @@ namespace KhaozEngine.Tests.MapEditTool
                 InvalidOperationException ex = Assert.Throws<InvalidOperationException>(() =>
                     mutation.ScatterOverrideAdd(CoverRectJson, layers: new[] { "ghost" }));
 
-                Assert.StartsWith("mutation rejected:", ex.Message);
                 Assert.Contains("unknown scatter layer 'ghost'", ex.Message);
                 Assert.Equal(before, session.WithDocument((doc, _) => doc.ScatterOverrides.Count));
                 Assert.Equal(dirtyBefore, session.IsDirty);
@@ -373,7 +375,6 @@ namespace KhaozEngine.Tests.MapEditTool
                 InvalidOperationException ex = Assert.Throws<InvalidOperationException>(() =>
                     mutation.ScatterOverrideEdit(index, shapeJson: CoverRectJson, layers: new[] { "ghost" }));
 
-                Assert.StartsWith("mutation rejected:", ex.Message);
                 Assert.Contains("unknown scatter layer 'ghost'", ex.Message);
                 Assert.Equal(before, session.WithDocument((doc, r) => MapDocumentFile.SaveText(doc, r)));
                 Assert.Equal(dirtyBefore, session.IsDirty);
@@ -425,12 +426,15 @@ namespace KhaozEngine.Tests.MapEditTool
 
                 ArgumentException ex = Assert.Throws<ArgumentException>(() =>
                     mutation.ScatterOverrideEdit(99, densityMultiplier: 1f));
-                Assert.Contains("out of range", ex.Message);
+                Assert.Equal("index", ex.ParamName);
 
                 // The same up-front guard protects remove and both reorder endpoints.
                 Assert.Throws<ArgumentException>(() => mutation.ScatterOverrideRemove(99));
                 Assert.Throws<ArgumentException>(() => mutation.ScatterOverrideReorder(0, 99));
                 Assert.Throws<ArgumentException>(() => mutation.ScatterOverrideReorder(99, 0));
+
+                mutation.ScatterOverrideEdit(0, densityMultiplier: 1f);
+                Assert.Equal(1f, session.WithDocument((doc, _) => doc.ScatterOverrides[0].DensityMultiplier));
 
                 Assert.Empty(session.Validate().StructuralErrors);
             }
@@ -497,11 +501,13 @@ namespace KhaozEngine.Tests.MapEditTool
                 (MapEditSession session, MutationService mutation) = OpenSample(dir);
                 bool dirtyBefore = session.IsDirty;
 
-                MapDocumentException ex = Assert.Throws<MapDocumentException>(() =>
+                Assert.Throws<MapDocumentException>(() =>
                     mutation.BakeRegion("ghost_layer", RectMinX, RectMinZ, RectMaxX, RectMaxZ));
 
-                Assert.Contains("ghost_layer", ex.Message);
                 Assert.Equal(dirtyBefore, session.IsDirty);
+
+                BakeResult accepted = mutation.BakeRegion("trees", RectMinX, RectMinZ, RectMaxX, RectMaxZ);
+                Assert.True(accepted.BakedCount > 0);
             }
             finally { Directory.Delete(dir, recursive: true); }
         }

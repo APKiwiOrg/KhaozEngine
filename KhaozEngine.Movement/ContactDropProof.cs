@@ -124,7 +124,7 @@ internal sealed class ContactDropProof : IDisposable
         var unselected = new FramedMovementState(state.State, _frame, null);
         var water = _binding.SampleWaterForPacing(unselected, queries, out bool swimming, out float landScale);
         if (water.Availability != MovementAvailability.Known)
-            throw new InvalidOperationException($"Contact Drop pacing returned {water.Availability}.");
+            throw new ContactDropProofException(water.Availability);
         if (swimming) return new(unselected, MovementStepOutcome.PlacementRefused);
         MoveState absolute = state.State with { Position = state.State.Position + _frame.PhysicsOrigin };
         Vector2 input = hold ? Vector2.Zero : ContactDropControl.Input(absolute, target, _binding.Tuning,
@@ -135,7 +135,7 @@ internal sealed class ContactDropProof : IDisposable
         _hooks?.DropStep?.Invoke(new(source, Feet(result), run, hold, result.Outcome, result.State.State.Grounded,
             result.State.State.CommandedVelocity) { UnwalkableSupport = result.ContactUnwalkableSupport });
         if (result.Outcome is MovementStepOutcome.EnvironmentInvalid or MovementStepOutcome.EnvironmentUnresolved or MovementStepOutcome.FrameMismatch)
-            throw new InvalidOperationException($"Contact Drop step returned {result.Outcome}.");
+            throw new ContactDropProofException(result.Outcome);
         return result;
     }
 

@@ -355,6 +355,9 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         /// </para>
         /// </remarks>
         public void SetFramebuffer(IGpuFramebuffer fb)
+            => SetFramebufferWithStoreActions(fb, default);
+
+        public void SetFramebufferWithStoreActions(IGpuFramebuffer fb, in GpuAttachmentStoreActions stores)
         {
             VulkanRenderingSchedule rendering = RequireRendering("Binding a framebuffer");
 
@@ -369,7 +372,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
             // a later bind of some other target cannot either.
             _boundSwapchain |= framebuffer.IsSwapchain;
 
-            rendering.SetFramebuffer(CurrentBuffer, framebuffer.AsBound);
+            rendering.SetFramebuffer(CurrentBuffer, framebuffer.AsBound, stores);
         }
 
         /// <inheritdoc/>

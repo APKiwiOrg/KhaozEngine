@@ -7,30 +7,22 @@ namespace KhaozEngine.Tests.StatusEffects;
 
 public sealed class StatusEffectBarTests
 {
-    [Fact]
-    public void Build_ComputesRemainingAndFraction()
+    [Theory]
+    [InlineData(100L, 130L, 2, 115d, 15d, 0.5f)]
+    [InlineData(100L, 130L, 1, 90d, 40d, 1f)]
+    [InlineData(130L, 130L, 1, 115d, 15d, 0f)]
+    [InlineData(100L, 130L, 1, 122.5d, 7.5d, 0.25f)]
+    public void Build_ComputesRemainingAndClampedFraction_ForPresentationWindows(
+        long start, long end, int stacks, double now, double expectedRemaining, float expectedFraction)
     {
         var catalog = Create(new StatusEffectDefinition(new(1), 30));
         var rows = new List<StatusEffectBarItem>();
 
-        StatusEffectBar.Build(new[] { new StatusEffectEntry(new(1), 7, 2, 100, 130) }, catalog, 115, rows);
+        StatusEffectBar.Build(new[] { new StatusEffectEntry(new(1), 7, stacks, start, end) }, catalog, now, rows);
 
         var row = Assert.Single(rows);
-        Assert.Equal(15d, row.RemainingTicks);
-        Assert.Equal(0.5f, row.Fraction);
-    }
-
-    [Fact]
-    public void Build_ClampsFractionBeforeStart()
-    {
-        var catalog = Create(new StatusEffectDefinition(new(1), 30));
-        var rows = new List<StatusEffectBarItem>();
-
-        StatusEffectBar.Build(new[] { new StatusEffectEntry(new(1), 7, 1, 100, 130) }, catalog, 90, rows);
-
-        var row = Assert.Single(rows);
-        Assert.Equal(40d, row.RemainingTicks);
-        Assert.Equal(1f, row.Fraction);
+        Assert.Equal(expectedRemaining, row.RemainingTicks);
+        Assert.Equal(expectedFraction, row.Fraction);
     }
 
     [Fact]
@@ -88,32 +80,6 @@ public sealed class StatusEffectBarTests
         Assert.Equal(2, rows.Count);
         Assert.Equal(sentinel, rows[0]);
         Assert.Equal(new StatusEffectId(1), rows[1].Effect);
-    }
-
-    [Fact]
-    public void Build_ZeroLengthWindowHasZeroFraction()
-    {
-        var catalog = Create(new StatusEffectDefinition(new(1), 30));
-        var rows = new List<StatusEffectBarItem>();
-
-        StatusEffectBar.Build(new[] { new StatusEffectEntry(new(1), 7, 1, 130, 130) }, catalog, 115, rows);
-
-        var row = Assert.Single(rows);
-        Assert.Equal(15d, row.RemainingTicks);
-        Assert.Equal(0f, row.Fraction);
-    }
-
-    [Fact]
-    public void Build_PreservesFractionalTicks()
-    {
-        var catalog = Create(new StatusEffectDefinition(new(1), 30));
-        var rows = new List<StatusEffectBarItem>();
-
-        StatusEffectBar.Build(new[] { new StatusEffectEntry(new(1), 7, 1, 100, 130) }, catalog, 122.5, rows);
-
-        var row = Assert.Single(rows);
-        Assert.Equal(7.5, row.RemainingTicks);
-        Assert.Equal(0.25f, row.Fraction);
     }
 
     [Fact]

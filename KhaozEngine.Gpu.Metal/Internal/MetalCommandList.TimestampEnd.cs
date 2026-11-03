@@ -35,6 +35,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
 
         void BeginTimestampRecording()
         {
+            _frameTimestampPools.Clear();
             ClearTimestampEnd();
             // Native handles can repeat even though Metal command buffers are single-use.
             unchecked { _timestampRecordingId++; }

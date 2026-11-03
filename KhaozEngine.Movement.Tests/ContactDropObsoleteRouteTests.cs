@@ -1,6 +1,5 @@
 using System;
 using System.Numerics;
-using System.Reflection;
 using KhaozEngine.Locomotion;
 using KhaozEngine.Movement;
 using KhaozEngine.Navigation;
@@ -38,12 +37,9 @@ public class ContactDropObsoleteRouteTests
     static void Approach(float startX, MoveTuning tuning, GroundNavigation nav, GroundMoveContext context)
     {
         // The cooldown outlasts the whole walk, so only the pending Drop can make the due query immediate.
-        var move = new MoveToRange(nav, new PathFollowConfig { ReplanCooldownSeconds = 30 });
-        var follower = Assert.IsType<PathFollower>(typeof(MoveToRange).GetField("_follower",
-            BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(move));
-        FieldInfo plannerField = typeof(PathFollower).GetField("_planner", BindingFlags.Instance | BindingFlags.NonPublic)!;
-        var planner = new Recorder(Assert.IsAssignableFrom<IRegionPathPlanner>(plannerField.GetValue(follower)));
-        plannerField.SetValue(follower, planner);
+        var planner = new Recorder(nav.Planner);
+        var move = new MoveToRange(planner, nav, new PathFollowConfig { ReplanCooldownSeconds = 30 });
+        var follower = move.Follower;
 
         var body = new MoveState { Position = new(startX, 4.75f, 0), Grounded = true };
         var below = ReachTarget.Point(new(0.25f, 0.75f, 0));

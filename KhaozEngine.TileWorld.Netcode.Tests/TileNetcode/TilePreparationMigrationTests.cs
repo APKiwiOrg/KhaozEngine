@@ -21,7 +21,7 @@ public class TilePreparationMigrationTests
         { CombatPreparationRules = new PreparationScenario.Profiles() };
         ArgumentException error = Assert.Throws<ArgumentException>(() => new TileWorldServer(hub.Server,
             config, TileMoveSimulatorTests.Bake(doc), registry: new ReplicationRegistry()));
-        Assert.Contains("TileCombatPreparationState", error.Message, StringComparison.Ordinal);
+        Assert.Equal("registry", error.ParamName);
         using var disabled = new TileWorldServer(hub.Server, config with { CombatPreparationRules = null },
             TileMoveSimulatorTests.Bake(doc), registry: new ReplicationRegistry());
     }

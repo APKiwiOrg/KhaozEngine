@@ -162,7 +162,8 @@ public class ParallelContactBakeScheduleTests
         }))
         {
             var parallel = Assert.Throws<ProviderFaultException>(() => scene.Build(new NavBakeExecution(2)));
-            Assert.Equal(serial.Message, parallel.Message);
+            Assert.Equal(serial.Tag, parallel.Tag);
+            Assert.Equal(serial.PositionBits, parallel.PositionBits);
         }
         Assert.Equal(1, Volatile.Read(ref waited));
         // The worker that reached the last row first finished several bands on the way.

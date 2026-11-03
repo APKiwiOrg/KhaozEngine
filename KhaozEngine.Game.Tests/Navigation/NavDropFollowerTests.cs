@@ -32,9 +32,7 @@ public class NavDropFollowerTests
             var output = Tick(feet, feet);
             Assert.Equal(PathFollowState.Dropping, output.State);
             Assert.Equal(Vector2.Zero, output.WorldDir);
-            var property = typeof(PathFollowOutput).GetProperty("DropTraversal");
-            Assert.NotNull(property);
-            var traversal = Assert.IsType<NavDropTraversal>(property.GetValue(output));
+            var traversal = Assert.IsType<NavDropTraversal>(output.DropTraversal);
             Assert.Equal(new Vector3(0.5f, 4, 0.5f), traversal.StartFeet);
             Assert.Equal(new Vector3(1.5f, 2, 0.5f), traversal.LandingFeet);
             Assert.Equal(space.Links[0], traversal.Link);
@@ -48,23 +46,15 @@ public class NavDropFollowerTests
     {
         var (space, _) = NavDropPlannerTests.Chain();
         var follower = new PathFollower(new FixedPlanner(), new PathFollowConfig { AcceptRadius = 1, ReplanCooldownSeconds = 0 }, space);
-        var complete = typeof(PathFollower).GetMethod("CompleteDrop");
-        Assert.NotNull(complete);
-        Assert.Throws<InvalidOperationException>(() => Invoke());
+        Assert.Throws<InvalidOperationException>(() => follower.CompleteDrop());
         Assert.Equal(PathFollowState.Dropping, follower.Tick(new(0.5f, 4, 0.5f), new Vector3(2.5f, 0, 0.5f), 0, 0.1f).State);
-        Invoke();
+        follower.CompleteDrop();
         Assert.Equal(2, follower.ActiveWaypointIndex);
-        Assert.Throws<InvalidOperationException>(() => Invoke());
+        Assert.Throws<InvalidOperationException>(() => follower.CompleteDrop());
         Assert.Equal(PathFollowState.Dropping, follower.Tick(new(1.5f, 2, 0.5f), new Vector3(2.5f, 0, 0.5f), 0, 0.1f).State);
         follower.Reset();
         Assert.Null(follower.ActivePath);
-        Assert.Throws<InvalidOperationException>(() => Invoke());
-        void Invoke()
-        {
-            try { complete.Invoke(follower, null); }
-            catch (System.Reflection.TargetInvocationException failure) when (failure.InnerException is not null)
-            { System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(failure.InnerException).Throw(); }
-        }
+        Assert.Throws<InvalidOperationException>(() => follower.CompleteDrop());
     }
 
     [Fact]

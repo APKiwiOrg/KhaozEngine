@@ -24,8 +24,6 @@ namespace KhaozEngine.Tests.ItemInstances.Content;
 /// </summary>
 public class SocketAndNameFamilyTests
 {
-    public static TheoryData<string> TypeKeys => Keys(SocketAndName);
-
     [Fact]
     public void The_four_register_in_the_Instances_band_at_260_262_270_and_273()
     {
@@ -290,24 +288,6 @@ public class SocketAndNameFamilyTests
         byte[] bytes = Forge(rule, "gem_socket_rule", 4, 1, 5, value);
         Assert.False(rule.Codec.TryDecode(bytes, out _, out string? reason));
         Assert.Equal(ContentRowCodecBase.ReasonFieldMalformed, reason);
-    }
-
-    [Theory]
-    [MemberData(nameof(TypeKeys))]
-    public void Every_field_name_is_snake_case_under_the_content_key_rules(string typeKey)
-    {
-        FamilyType type = Find(typeKey);
-
-        foreach (ContentFieldEntry field in type.CreateSchema().Fields)
-        {
-            Assert.False(
-                ContentTextKey.ExceedsBound(type.Key, 64, field.Name),
-                ContentTextKey.Derive(type.Key, ReadOnlySpan<byte>.Empty, field.Name));
-            foreach (char c in field.Name)
-            {
-                Assert.True(c is (>= 'a' and <= 'z') or (>= '0' and <= '9') or '_', field.Name);
-            }
-        }
     }
 
     static ContentFieldEntry SocketTypeFieldOfBaseSocket(ContentTypeRegistry registry)

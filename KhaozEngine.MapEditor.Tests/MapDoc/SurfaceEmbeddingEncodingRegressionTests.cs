@@ -44,12 +44,11 @@ public sealed class SurfaceEmbeddingEncodingRegressionTests
         accepted.AssertPayload(0, expected);
 
         var refused = new PayloadArrays(exactBytes - 1);
-        var error = Assert.Throws<MapDocumentException>(() =>
+        Assert.Throws<MapDocumentException>(() =>
         {
             if (useNode) MapSurfaceEmbeddedPayload.Encode(node, exactBytes - 1, refused.Allocate);
             else MapSurfaceEmbeddedPayload.Encode(json.RootElement, exactBytes - 1, refused.Allocate);
         });
-        Assert.Contains("tiled", error.Message);
         Assert.Empty(refused.Buffers);
     }
 }

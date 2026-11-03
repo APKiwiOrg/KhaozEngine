@@ -173,8 +173,9 @@ namespace KhaozEngine.Tests.Gpu
             ArgumentOutOfRangeException refused = Assert.Throws<ArgumentOutOfRangeException>(
                 () => records.Flush(ref sink));
 
-            Assert.Contains("VUID-vkCmdBindDescriptorSets-pDescriptorSets-01979", refused.Message,
-                StringComparison.Ordinal);
+            // The bind-window refusal (VUID 01979) names the range. 1024 is aligned, so the alignment refusal,
+            // which names the dynamic uniform instead, has nothing to say here.
+            Assert.Equal("range", refused.ParamName);
             Assert.Equal(0, counts.BindDescriptorSetCalls);
 
             // AND THE SLOT IS STILL DIRTY. Clearing the mark before the call landed would turn a loud, repeatable
@@ -208,8 +209,8 @@ namespace KhaozEngine.Tests.Gpu
             ArgumentOutOfRangeException refused = Assert.Throws<ArgumentOutOfRangeException>(
                 () => records.Flush(ref sink));
 
-            Assert.Contains("VUID-vkCmdBindDescriptorSets-pDynamicOffsets-01971", refused.Message,
-                StringComparison.Ordinal);
+            // The alignment refusal (VUID 01971) names the dynamic uniform, where the window refusal names the range.
+            Assert.Equal("dynamicUniform", refused.ParamName);
             Assert.Equal(0, counts.BindDescriptorSetCalls);
 
             // AND THE SLOT IS STILL DIRTY, so the refusal repeats at the next draw rather than being spent on the

@@ -132,9 +132,8 @@ public partial class SupportFootprintTests
         _output.WriteLine($"Represented source constants={constants.Length} warmBytes={warmBytes}");
     }
 
-    static long SourceScratchPayload(object scratch) => (long)typeof(KhaozEngine.Tests.Locomotion.Contacts.SupportCostScratch)
-        .GetMethod("Visit", BindingFlags.Static | BindingFlags.NonPublic)!
-        .Invoke(null, [scratch, new HashSet<object>(ReferenceEqualityComparer.Instance)])!;
+    static long SourceScratchPayload(object scratch) =>
+        SupportCostScratch.Visit(scratch, new HashSet<object>(ReferenceEqualityComparer.Instance));
 
     static void AssertSourceFallbacks() => Assert.True(SupportQueryDiagnostics.Snapshot().ExactFallbacks > 0);
 

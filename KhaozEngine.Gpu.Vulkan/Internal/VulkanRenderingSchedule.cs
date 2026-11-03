@@ -27,7 +27,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
     /// situation.</description></item>
     /// <item><description><b><see cref="PrepareDraw"/>, which the first draw of a pass calls.</b> Begin the
     /// instance with <c>loadOp = CLEAR</c> and the pending value per attachment that has one, <c>LOAD</c> for the
-    /// rest and <c>storeOp = STORE</c> always (V-A6), then emit the viewport and the scissor if
+    /// rest and the explicit per-attachment store intent, defaulting to STORE (V-A6), then emit the viewport and the scissor if
     /// marked.</description></item>
     /// <item><description><b><see cref="EndRendering"/>, which <c>End</c> and every command illegal inside a
     /// render pass instance call (V-A4).</b> Close the instance, flushing pending clears through a begin and end
@@ -91,6 +91,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         VulkanColourAttachment[] _beginColour = new VulkanColourAttachment[4];
 
         VulkanBoundFramebuffer _framebuffer;
+        GpuAttachmentStoreActions _stores;
         VulkanViewportRect _viewport;
         VulkanScissorRect _scissor;
 
@@ -155,9 +156,10 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         /// </summary>
         /// <param name="commandBuffer">The buffer being recorded into.</param>
         /// <param name="framebuffer">The incoming framebuffer as plain data.</param>
-        internal void SetFramebuffer(ulong commandBuffer, in VulkanBoundFramebuffer framebuffer)
+        /// <param name="stores">The pass owner's explicit dead-attachment intent.</param>
+        internal void SetFramebuffer(ulong commandBuffer, in VulkanBoundFramebuffer framebuffer, GpuAttachmentStoreActions stores = default)
         {
-            if (framebuffer.Id == _framebuffer.Id) return;
+            if (framebuffer.Id == _framebuffer.Id && stores == _stores) return;
 
             // THE OUTGOING FRAMEBUFFER'S PASS CLOSES FIRST, clear-only flush included, which is the same helper
             // End uses. A begin against the incoming attachments with the outgoing instance still open would be
@@ -165,6 +167,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
             EndRendering(commandBuffer);
 
             _framebuffer = framebuffer;
+            _stores = stores;
 
             EnsureColourCapacity(framebuffer.ColourCount);
             Array.Clear(_colourClears, 0, _colourClears.Length);
@@ -345,7 +348,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         // attachment and whether a mid-pass clear names the stencil aspect.
         bool StencilPlane => VulkanFormats.IsStencilFormat(_framebuffer.Depth.Format);
 
-        // THE BEGIN ITSELF: one loadOp per attachment, storeOp = STORE always (V-A6), and the pending array
+        // THE BEGIN ITSELF: one loadOp per attachment, explicit per-attachment store intent (V-A6), and the pending array
         // consumed. Reached from the first draw of a pass and from the clear-only flush, and from nowhere else.
         void BeginRendering(ulong commandBuffer)
         {
@@ -358,7 +361,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
                 _beginColour[i] = new VulkanColourAttachment(
                     colour[i].View,
                     pending.Pending ? VulkanLoadOp.Clear : VulkanLoadOp.Load,
-                    pending.Value);
+                    pending.Value, _stores.DiscardsColour(i));
             }
 
             VulkanDepthAttachment? depth = _framebuffer.HasDepth
@@ -366,7 +369,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
                     _framebuffer.Depth.View,
                     _depthClearPending ? VulkanLoadOp.Clear : VulkanLoadOp.Load,
                     _depthClear,
-                    StencilPlane)
+                    StencilPlane, _stores.DiscardDepth, _stores.DiscardStencil)
                 : null;
 
             // EVERY ATTACHMENT INTO ITS ATTACHMENT LAYOUT, immediately before the begin below, which is the point

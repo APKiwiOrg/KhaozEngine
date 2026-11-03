@@ -58,9 +58,18 @@ public class TileWorldPropLayerTests
             new TileWorldView(scene, TileRenderTestData.HouseWorld(), TileRenderTestData.Catalogs,
                 new GreyboxMeshResolver(), options));
 
-        Assert.Contains("tree", error.Message, StringComparison.Ordinal);
+        Assert.Equal("definitions", error.ParamName);
         Assert.Empty(scene.MaterialLoads);
         Assert.Empty(scene.PropMeshLoads);
+
+        // The same two layers selecting different archetypes construct, so only the shared selection was refused.
+        TilePropLayerDefinition disjoint = second with
+        {
+            ArchetypeIds = new HashSet<string>(StringComparer.Ordinal) { "bush" },
+        };
+        using var view = new TileWorldView(new RecordingTileWorldScene(), TileRenderTestData.HouseWorld(),
+            TileRenderTestData.Catalogs, new GreyboxMeshResolver(),
+            new TileWorldViewOptions { PropLayers = new[] { Trees(), disjoint } });
     }
 
     [Fact]

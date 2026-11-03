@@ -37,8 +37,6 @@ namespace KhaozEngine.Tests.Gpu
 
                 Assert.Equal("the window's frame list", ex.Owner);
                 Assert.Equal("Scene3D.LoadTexture", ex.Attempted);
-                Assert.Contains("the window's frame list", ex.Message);
-                Assert.Contains("Scene3D.LoadTexture", ex.Message);
             }
 
             // The refused list was never begun, so the count is the frame's alone. A refusal that had already

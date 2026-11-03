@@ -334,12 +334,15 @@ namespace KhaozEngine.Tests.Terrain
             Assert.Equal(0, rig.MergedDrawCount);
         }
 
-        [Fact]
-        public void Merged_hlod_entrance_uses_complementary_coverage()
+        [Theory]
+        [InlineData(500f, true)]
+        [InlineData(120f, false)]
+        public void Merged_hlod_entrance_is_complementary_unless_the_exit_fade_overlaps(
+            float drawRadius, bool expectedComplement)
         {
             using var rig = new PropClusterRig();
             PropClusterKey key = new("trees", 0, 0, 0);
-            PropLayer layer = PropClusterRig.ExitLayer(drawRadius: 500f, fadeWidth: 40f,
+            PropLayer layer = PropClusterRig.ExitLayer(drawRadius, fadeWidth: 40f,
                                                        hlodDistance: 100f, hlodWidth: 40f);
             rig.Apply(key, rig.Build(key, generation: 1, layer));
 
@@ -348,24 +351,7 @@ namespace KhaozEngine.Tests.Terrain
 
             Assert.Equal(1, rig.MergedDrawCount);
             Assert.Equal(0.5f, rig.LastMergedDissolve, 5);
-            Assert.True(rig.LastMergedComplement);
-        }
-
-        [Fact]
-        public void Exit_fade_takes_precedence_when_it_overlaps_the_hlod_entrance()
-        {
-            using var rig = new PropClusterRig();
-            PropClusterKey key = new("trees", 0, 0, 0);
-            PropLayer layer = PropClusterRig.ExitLayer(drawRadius: 120f, fadeWidth: 40f,
-                                                       hlodDistance: 100f, hlodWidth: 40f);
-            rig.Apply(key, rig.Build(key, generation: 1, layer));
-
-            rig.ResetDraws();
-            rig.Renderer.Draw(Focus(100f));
-
-            Assert.Equal(1, rig.MergedDrawCount);
-            Assert.Equal(0.5f, rig.LastMergedDissolve, 5);
-            Assert.False(rig.LastMergedComplement);
+            Assert.Equal(expectedComplement, rig.LastMergedComplement);
         }
 
         static Vector3 Focus(float clusterDistance) => new(32f + clusterDistance, 0f, 32f);

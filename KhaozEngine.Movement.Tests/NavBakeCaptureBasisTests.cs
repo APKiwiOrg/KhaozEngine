@@ -50,13 +50,12 @@ public class NavBakeCaptureBasisTests
             world.AddStatic(new BoxShape(new(2, 0.1f, 2)), Pose.At(new(0, -0.1f, 0))));
         using var context = Context(scene);
         int calls = 0;
-        var failure = Assert.Throws<InvalidOperationException>(() => PhysicsNavBake.Capture(context, Options, _ =>
+        Assert.Throws<InvalidOperationException>(() => PhysicsNavBake.Capture(context, Options, _ =>
         {
             if (calls++ == 0) scene.Physics.AddStatic(new BoxShape(Vector3.One), Pose.At(new(10, 0, 0)));
             return 0;
         }));
         Assert.Equal(1, calls);
-        Assert.Contains("geometry", failure.Message);
     }
 
     [Fact]
@@ -65,9 +64,8 @@ public class NavBakeCaptureBasisTests
         var water = MovementWaterField.Level("world", 0, -4);
         using var scene = new OrdinaryContactScene(water: water);
         using var context = Context(scene, water);
-        var failure = Assert.Throws<InvalidOperationException>(() =>
+        Assert.Throws<InvalidOperationException>(() =>
             PhysicsNavBake.Capture(context, Options with { SampleWater = true }, _ => 0));
-        Assert.Contains("medium delegate", failure.Message);
     }
 
     [Fact]

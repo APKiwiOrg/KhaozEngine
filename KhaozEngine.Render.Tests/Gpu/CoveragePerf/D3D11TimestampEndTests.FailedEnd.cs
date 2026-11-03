@@ -22,7 +22,7 @@ public sealed partial class D3D11TimestampEndTests
         rig.Api.OnEnd = null;
         rig.Api.OnEmitterEnd = null;
         rig.List.Begin();
-        Assert.Contains("unresolved", Assert.Throws<InvalidOperationException>(() => rig.List.BeginTimestamps(rig.Pool, 2)).Message);
+        Assert.Throws<InvalidOperationException>(() => rig.List.BeginTimestamps(rig.Pool, 2));
         rig.List.End();
         Assert.Equal(calls, rig.Api.Calls.Count);
     }

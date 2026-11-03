@@ -58,7 +58,7 @@ public sealed record SfxManifest
 public static class SfxDefaults
 {
     /// <summary>Default ElevenLabs sound-effects model.</summary>
-    public const string Model = "eleven_text_to_sound_v2";
+    public const string Model = "eleven_text_to_sound_v3";
     /// <summary>Default API source format: highest-fidelity self-describing mp3 (single lossy step before encode).</summary>
     public const string SourceFormat = "mp3_44100_192";
     /// <summary>Default OGG Vorbis quality (~q5, ~12 KB/s mono).</summary>

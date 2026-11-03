@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Text.RegularExpressions;
 using KhaozEngine.MapDoc;
 using KhaozEngine.MapDoc.Surfaces;
 using KhaozEngine.MapDoc.Water;
@@ -81,25 +82,33 @@ public class MapWaterFormatTests
     }
 
     [Theory]
-    [InlineData("legacy-document", "water: bounded water requires a resolver-2 native document")]
-    [InlineData("native-resolver-one", "water: bounded water requires a resolver-2 native document")]
-    [InlineData("duplicate-medium", "water medium 'sea-water' is duplicated")]
-    [InlineData("zero-wade", "water medium 'sea-water': wadeSpeedScale must be in (0, 1]")]
-    [InlineData("duplicate-body", "water body 'ocean' is duplicated")]
-    [InlineData("infinite-level", "water body 'ocean': surfaceY must be finite within 1000000 m")]
-    [InlineData("tiny-level", "water body 'ocean': surfaceY is not representable")]
-    [InlineData("unknown-medium", "water body 'ocean': unknown medium 'brine'")]
-    [InlineData("empty-material", "water body 'ocean': renderMaterial must be non-empty")]
-    [InlineData("empty-domain", "water body 'ocean': domain is empty")]
-    [InlineData("empty-rect", "water body 'ocean': rect 0 is empty")]
-    [InlineData("far-rect", "water body 'ocean': domain exceeds 1000000 m")]
-    [InlineData("short-ring", "water body 'ocean': ring 0 needs at least 3 vertices")]
-    [InlineData("no-cover", "water body 'ocean': covers no space")]
-    [InlineData("repeated-cover", "water body 'ocean': cover 'sea' is repeated")]
-    public void Validation_RefusesBadMediaAndBodies(string variant, string message)
+    [InlineData("legacy-document", new[] { "water", "resolver-2" })]
+    [InlineData("native-resolver-one", new[] { "water", "resolver-2" })]
+    [InlineData("duplicate-medium", new[] { "sea-water" })]
+    [InlineData("zero-wade", new[] { "sea-water", "wadeSpeedScale", "0", "1" })]
+    [InlineData("duplicate-body", new[] { "ocean" })]
+    [InlineData("infinite-level", new[] { "ocean", "surfaceY", "1000000" })]
+    [InlineData("tiny-level", new[] { "ocean", "surfaceY", "not representable" })]
+    [InlineData("unknown-medium", new[] { "ocean", "brine" })]
+    [InlineData("empty-material", new[] { "ocean", "renderMaterial" })]
+    [InlineData("empty-domain", new[] { "ocean", "domain" })]
+    [InlineData("empty-rect", new[] { "ocean", "rect", "0" })]
+    [InlineData("far-rect", new[] { "ocean", "domain", "1000000" })]
+    [InlineData("short-ring", new[] { "ocean", "ring", "0", "3" })]
+    [InlineData("no-cover", new[] { "ocean" })]
+    [InlineData("repeated-cover", new[] { "ocean", "sea" })]
+    [InlineData("bow-tie", new[] { "ocean", "ring", "0" })]
+    [InlineData("collinear", new[] { "ocean", "ring", "0" })]
+    [InlineData("overlapping-pieces", new[] { "ocean", "rect", "0", "1" })]
+    [InlineData("overlapping-ring", new[] { "ocean", "rect", "ring", "0" })]
+    [InlineData("overlapping-bodies", new[] { "cave-lake", "second-lake", "lake-cave" })]
+    [InlineData("too-many-pieces", new[] { "ocean", "domain", "65536" })]
+    [InlineData("too-many-vertices", new[] { "ocean", "domain", "262144" })]
+    public void Validation_RefusesInvalidWater(string variant, string[] diagnosticValues)
     {
         IReadOnlyList<string> errors = MapDocumentValidator.Validate(WaterFixtures.Broken(variant), MapDocRegistry.CreateDefault());
-        Assert.Contains(errors, e => e.Contains(message, StringComparison.Ordinal));
+        Assert.Contains(errors, error => diagnosticValues.All(value =>
+            Regex.IsMatch(error, @"(?<![\p{L}\p{N}_.\-])" + Regex.Escape(value) + @"(?![\p{L}\p{N}_\-]|\.[\p{L}\p{N}])")));
     }
 
     [Fact]

@@ -108,7 +108,7 @@ public class QueryServiceTests
         using var f = new Fixture();
 
         ArgumentException layer = Assert.Throws<ArgumentException>(() => f.Query.TilesGetRect(Corner, 0, "heights"));
-        Assert.Contains("underlay", layer.Message, StringComparison.Ordinal);
+        Assert.Equal("layer", layer.ParamName);
         Assert.Throws<ArgumentException>(() => f.Query.TilesGetRect(new TileRect(0, 0, 0, 4), 0, "underlay"));
     }
 

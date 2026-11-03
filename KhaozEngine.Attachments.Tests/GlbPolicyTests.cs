@@ -81,7 +81,7 @@ public class GlbPolicyTests
         InvalidDataException rigid = Assert.Throws<InvalidDataException>(() => AttachmentGlb.ValidateRigidEmbedded(glb, name + ".glb"));
         InvalidDataException skinned = Assert.Throws<InvalidDataException>(() => AttachmentGlb.ValidateSkinnedEmbedded(glb, name + ".glb"));
         Assert.Contains(name + ".glb", rigid.Message);
-        Assert.Equal(rigid.Message, skinned.Message);
+        Assert.Contains(name + ".glb", skinned.Message);
     }
 
     static byte[] Container(string json, bool binary = true)

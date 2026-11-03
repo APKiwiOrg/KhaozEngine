@@ -48,12 +48,12 @@ public static partial class AttachmentGlb
         }
     });
 
-    static int ValidateSkin(JsonElement root, JsonElement skin, AttachmentGlbAccessors accessors)
+    internal static int ValidateSkin(JsonElement root, JsonElement skin, AttachmentGlbAccessors accessors, int maxJoints = MaxSkinnedJoints)
     {
         const string context = "skin 0";
         JsonElement joints = AttachmentGlbAccessors.Required(skin, "joints", context);
-        if (joints.ValueKind != JsonValueKind.Array || joints.GetArrayLength() is < 1 or > MaxSkinnedJoints)
-            throw new InvalidDataException($"{context}: joints must contain 1 to {MaxSkinnedJoints} entries.");
+        if (joints.ValueKind != JsonValueKind.Array || joints.GetArrayLength() < 1 || joints.GetArrayLength() > maxJoints)
+            throw new InvalidDataException($"{context}: joints must contain 1 to {maxJoints} entries.");
         var indices = new HashSet<int>();
         var names = new HashSet<string>(StringComparer.Ordinal);
         int ordinal = 0;

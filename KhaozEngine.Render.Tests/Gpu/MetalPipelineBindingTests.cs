@@ -189,13 +189,17 @@ namespace KhaozEngine.Tests.Gpu
         {
             MetalCommandList list = NewList();
 
-            Assert.Contains("not recording",
-                Assert.Throws<InvalidOperationException>(() => list.SetPipeline(Pipeline())).Message,
-                StringComparison.Ordinal);
-            Assert.Contains("not recording",
-                Assert.Throws<InvalidOperationException>(
-                    () => list.SetComputePipeline(ComputePipeline())).Message,
-                StringComparison.Ordinal);
+            MetalGraphicsPipeline graphics = Pipeline();
+            MetalComputePipeline compute = ComputePipeline();
+            Assert.Throws<InvalidOperationException>(() => list.SetPipeline(graphics));
+            Assert.Throws<InvalidOperationException>(() => list.SetComputePipeline(compute));
+
+            list.Begin();
+            list.SetPipeline(graphics);
+            list.SetComputePipeline(compute);
+            Assert.Same(graphics, list.Pipelines.Graphics);
+            Assert.Same(compute, list.Pipelines.Compute);
+            list.End();
         }
 
         /// <summary>
@@ -210,10 +214,9 @@ namespace KhaozEngine.Tests.Gpu
             list.Begin();
 
             Assert.Throws<ArgumentNullException>(() => list.SetPipeline(null!));
-            Assert.Contains("DIFFERENT native Metal device",
-                Assert.Throws<ArgumentException>(
-                    () => list.SetPipeline(Pipeline(new FakeMetalDeviceLiveness()))).Message,
-                StringComparison.Ordinal);
+            ArgumentException foreign = Assert.Throws<ArgumentException>(
+                () => list.SetPipeline(Pipeline(new FakeMetalDeviceLiveness())));
+            Assert.Equal("p", foreign.ParamName);
 
             list.End();
         }
@@ -239,7 +242,7 @@ namespace KhaozEngine.Tests.Gpu
 
             ObjectDisposedException refused = Assert.Throws<ObjectDisposedException>(
                 () => list.SetPipeline(graphics));
-            Assert.Contains("already disposed", refused.Message, StringComparison.Ordinal);
+            Assert.Equal(nameof(MetalGraphicsPipeline), refused.ObjectName);
             Assert.Contains("MTLRenderPipelineState", refused.Message, StringComparison.Ordinal);
 
             MetalComputePipeline compute = ComputePipeline();
@@ -247,7 +250,7 @@ namespace KhaozEngine.Tests.Gpu
 
             ObjectDisposedException refusedCompute = Assert.Throws<ObjectDisposedException>(
                 () => list.SetComputePipeline(compute));
-            Assert.Contains("already disposed", refusedCompute.Message, StringComparison.Ordinal);
+            Assert.Equal(nameof(MetalComputePipeline), refusedCompute.ObjectName);
             Assert.Contains("MTLComputePipelineState", refusedCompute.Message, StringComparison.Ordinal);
 
             // NOTHING WAS RECORDED BY EITHER, which is the half that would still be wrong if the refusal landed

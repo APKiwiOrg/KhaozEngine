@@ -61,8 +61,8 @@ namespace KhaozEngine.Gpu.Metal.Internal
         /// BUILD THE <c>MTLRenderPassDescriptor</c> FOR ONE PASS, and take a retain on it (see the type remarks).
         /// <para>
         /// EVERY DECISION IS ALREADY MADE BY THE TIME IT ARRIVES HERE. Which attachment clears and to what
-        /// (M-A2), what each load action is, and that every store action is <c>Store</c> rather than the
-        /// descriptor's discarding default (M-A4), are all fields of the plan
+        /// (M-A2), what each load action is, and the explicit store intent per attachment, defaulting to
+        /// <c>Store</c> (M-A4), are all fields of the plan
         /// <see cref="MetalRenderPassSchedule"/> computed. This member translates and makes native calls, so a
         /// fake can record the plan verbatim and every rule in section 7.1 and 7.2 is asserted with no Metal
         /// anywhere.

@@ -169,32 +169,17 @@ public sealed class BugReportViewerPageTests
         Assert.Equal(ErrorText, data.RootElement.GetProperty("server").GetString());
     }
 
-    [Fact]
-    public void Numbers_keep_their_exact_text()
+    [Theory]
+    [InlineData("{\"n\":9007199254740993,\"f\":1.50e3}", "{\n  \"n\": 9007199254740993,\n  \"f\": 1.50e3\n}")]
+    [InlineData("{\"e\":{},\"l\":[],\"n\":[[],{\"a\":false}]}",
+        "{\n  \"e\": {},\n  \"l\": [],\n  \"n\": [\n    [],\n    {\n      \"a\": false\n    }\n  ]\n}")]
+    [InlineData("{\"s\":\"q\\\"b\\\\c\\u0001\"}", "{\n  \"s\": \"q\\\"b\\\\c\\u0001\"\n}")]
+    public void Display_text_preserves_json_values(string section, string expected)
     {
-        string page = BugReportViewerPage.Render(Model(sections: [Section("build", "{\"n\":9007199254740993,\"f\":1.50e3}")]));
+        string page = BugReportViewerPage.Render(Model(sections: [Section("build", section)]));
 
         using JsonDocument data = Data(page);
-        Assert.Equal("{\n  \"n\": 9007199254740993,\n  \"f\": 1.50e3\n}", SectionText(data, "build"));
-    }
-
-    [Fact]
-    public void Display_text_keeps_empty_containers_on_one_line()
-    {
-        string page = BugReportViewerPage.Render(Model(sections: [Section("build", "{\"e\":{},\"l\":[],\"n\":[[],{\"a\":false}]}")]));
-
-        using JsonDocument data = Data(page);
-        Assert.Equal("{\n  \"e\": {},\n  \"l\": [],\n  \"n\": [\n    [],\n    {\n      \"a\": false\n    }\n  ]\n}",
-            SectionText(data, "build"));
-    }
-
-    [Fact]
-    public void Display_text_escapes_quotes_backslashes_and_control_characters()
-    {
-        string page = BugReportViewerPage.Render(Model(sections: [Section("build", "{\"s\":\"q\\\"b\\\\c\\u0001\"}")]));
-
-        using JsonDocument data = Data(page);
-        Assert.Equal("{\n  \"s\": \"q\\\"b\\\\c\\u0001\"\n}", SectionText(data, "build"));
+        Assert.Equal(expected, SectionText(data, "build"));
     }
 
     [Fact]

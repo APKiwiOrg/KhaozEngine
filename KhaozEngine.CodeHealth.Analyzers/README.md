@@ -1,8 +1,8 @@
 # KhaozEngine.CodeHealth.Analyzers
 
-Compile-time enforcement of the fleet's file-size ratchet (the god-class guard). The semantic
-authority is `scripts/check-file-size.sh` in game-template: this analyzer applies the same rules in
-the build and the IDE, where they cannot be bypassed by skipping a git hook.
+Compile-time file-size and test-health ratchets in the build and IDE. The semantic authority for
+the file-size ratchet (the god-class guard) is `scripts/check-file-size.sh` in game-template. The
+test-health ratchet counts brittle assertions and non-public reflection against a separate baseline.
 
 ## Diagnostics
 
@@ -67,3 +67,70 @@ large diff. Ratcheting DOWN stays free: `scripts/check-file-size.sh --update` ca
 entries, never raise one.
 
 Flows to consumers via all four umbrellas (`Foundation`, `Game2D`, `Game3D`, `Server`).
+
+## Test-health ratchet
+
+KETEST rules run only in compilations that reference xunit and have a `.testhealth-baseline` supplied
+as an AdditionalFile. Without that file they stay silent, including in report mode. Consumers adopt
+by adding the file. The package's buildTransitive props discover it by walking up from each project
+directory. `KhaozTestHealthBaselineDir` overrides that discovered directory independently of the
+file-size baseline.
+
+| Id | Mode | Counts and exclusions |
+|----|------|-----------------------|
+| KETEST001 | Error above the per-file allowance | Each `Exception.Message` access inside `Assert.Contains`, `Equal`, `NotEqual`, `StartsWith`, `EndsWith`, `Matches`, `True` or `False`. `DoesNotContain` and `DoesNotMatch` absence checks never count because they are disclosure contracts. Unrelated properties named `Message` do not count. Prefer the exception type and structured members such as parameter name, error code or status. |
+| KETEST002 | Error above the per-file allowance | Each `BindingFlags.NonPublic` reference and each `UnsafeAccessor` attribute application. Public-only reflection does not count. Prefer the public API or an internal seam exposed through `InternalsVisibleTo`. |
+| KETEST003 | Report-only review aid | Test methods whose every direct assertion runs inside a loop or `Assert.All` over a source that is not provably non-empty. Proven non-empty loops and tests with an assertion outside those loops do not count. Assert the expected count or non-emptiness before iterating. |
+
+KETEST003 appears only with `-p:KhaozTestHealthMode=report`, never gates normal builds and never enters
+the baseline. Only 6 of 20 sampled findings in this repository were real, because loops over local
+tables and test-owned case helpers look possibly empty to a syntactic check. Review its candidates
+instead of treating them as enforced debt.
+
+Both ratchets use `AnalyzerPathPolicy` for baseline-relative paths and the generated and vendored
+file exclusions listed above. The baseline grammar is `<count> <rule> <path>` or
+`exempt <rule> <path>`, with paths relative to its directory and a `#` reason line above each exemption:
+
+```text
+2 KETEST001 MyGame.Tests/ValidationTests.cs
+1 KETEST002 MyGame.Tests/LegacyStructureTests.cs
+# Disclosure wording is the contract for this test file. Approved by the repo owner.
+exempt KETEST001 MyGame.Tests/DisclosureTests.cs
+```
+
+KETEST001 and KETEST002 have separate per-file counts, with zero allowed for an unlisted pair.
+Exemptions and any baseline growth require owner approval. The exception path for a legitimate
+wording or structural-reflection contract is an approved exemption, never a suppression. An exemption
+wins over a numeric entry for the same rule and path. KETEST003 is never baselined.
+
+`scripts/check-test-health.sh` supports three modes, each building a non-incremental Release report:
+
+- `--init` records initial KETEST001 and KETEST002 counts. It refuses an existing numeric baseline and
+  preserves adoption-time comments and exemptions. Initial adoption needs owner approval.
+- `--preview` prints reductions and growth without writing the baseline.
+- `--update` lowers counts or drops resolved entries, preserves exemptions and never raises counts.
+  Preview and update return a failure for unapproved growth.
+
+`TESTHEALTH_BUILD_LOG=<file>` makes the script parse that log instead of building. A supplied log with no
+KETEST001 or KETEST002 findings over a baseline that still has numeric entries is refused with exit 2,
+because an incremental or failed build prints nothing for up-to-date projects and would wipe the
+baseline. The script's own build is non-incremental and must succeed, so an empty result from it is
+trusted and `--update` drops the last entries.
+
+Ratchet down through the shared build queue:
+
+```sh
+build-slot --heavy --label testhealth-update -- sh scripts/check-test-health.sh --update
+```
+
+Report mode emits non-exempt findings as warnings without subtracting baseline allowances, including
+KETEST003 candidates. To review them without promoting report warnings to errors:
+
+```sh
+build-slot --heavy --label testhealth-report -- dotnet build KhaozEngine.slnx -c Release --no-incremental -p:KhaozTestHealthMode=report -p:TreatWarningsAsErrors=false
+```
+
+A `.testhealth-baseline` change forces a FULL selective CI run. Tests marked
+`[Trait("Category", "Diagnostic")]` report instead of gating, so default CI excludes them with
+`Category!=LiveSocket&Category!=Diagnostic`. Run them on demand through the `cross-platform-gpu`
+workflow's `renderTestFilter` dispatch input set to `Category=Diagnostic`.

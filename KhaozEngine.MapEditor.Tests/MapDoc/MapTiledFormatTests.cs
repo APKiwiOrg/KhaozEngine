@@ -99,10 +99,10 @@ namespace KhaozEngine.Tests.MapDoc
             TiledDocFixture.InDirectory(directory =>
             {
                 MapDocumentFile.SaveTiled(TiledDocFixture.SampleDoc(), directory);
+                Assert.Equal(1, MapDocumentFile.LoadTiled(directory, OriginWindow).Tiles!.LoadedCount);
                 SetSchemeVersion(directory, MapDocumentHash.SchemeVersion + 7);
 
-                var ex = Assert.Throws<MapDocumentException>(() => MapDocumentFile.LoadTiled(directory, OriginWindow));
-                Assert.Contains("hash scheme", ex.Message, StringComparison.Ordinal);
+                Assert.Throws<MapDocumentException>(() => MapDocumentFile.LoadTiled(directory, OriginWindow));
 
                 // A WHOLE load at a mismatched scheme is fine: it can upgrade what it can read.
                 MapDocument whole = MapDocumentFile.LoadTiled(directory);

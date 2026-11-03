@@ -317,7 +317,7 @@ public class TileWorldServerTickTests
         TileMoveState tooLong = TileMoveState.At(new TileCoord(10, 10, 0), TileDirection.S);
         tooLong.Route = TileRoute.FromSteps(tooLong.Tile, steps);
         ArgumentException route = Assert.Throws<ArgumentException>(() => s.SetPlayerState(0, tooLong));
-        Assert.Contains("300", route.Message);
+        Assert.Equal("state", route.ParamName);
 
         // The other two doors, refused for the same reason: a player nobody can see and who can never step.
         Assert.Throws<ArgumentException>(() =>

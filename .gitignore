@@ -49,6 +49,8 @@ artifacts/
 # ===== End standard base =====
 
 # ----- KhaozEngine-specific (add repo-specific rules below) -----
+# Python bytecode the shard and selector scripts leave behind when their tests import them
+__pycache__/
 # Failure-evidence PNGs written by the GPU golden compare (got/want/diff/bake); local-only, uploaded as CI artifacts
 KhaozEngine.Render.Tests/Gpu/goldens-evidence/
 # Emitted HLSL written by D3D11HlslByteEqualityTests when a pinned hash no longer matches; local-only,

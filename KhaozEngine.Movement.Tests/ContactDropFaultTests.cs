@@ -41,10 +41,11 @@ public class ContactDropFaultTests
                     water.Armed = true;
             },
         });
-        var failure = Assert.Throws<InvalidOperationException>(() => fixture.Capture.BuildProfile(ContactDropFixture.Tuning,
+        var failure = Assert.Throws<ContactDropProofException>(() => fixture.Capture.BuildProfile(ContactDropFixture.Tuning,
             default, new GroundProfileOptions { MaxDropMetres = 6 }));
         Assert.True(water.Refused);
-        Assert.Contains("Drop", failure.Message, StringComparison.Ordinal);
+        Assert.Equal(ContactDropProofFailure.StepUnavailable, failure.Reason);
+        Assert.Equal(MovementStepOutcome.EnvironmentUnresolved, failure.Outcome);
     }
 
     [Fact]
@@ -57,14 +58,19 @@ public class ContactDropFaultTests
         Assert.NotEmpty(candidates);
         using var hooks = ContactNavigationBuildHooks.Install(new()
         {
-            DropCandidate = row => throw new InvalidOperationException($"drop-ordinal-{candidates[row.Link]}"),
+            DropCandidate = row => throw new DropCandidateFailure(candidates[row.Link]),
         });
         foreach (int degree in new[] { 1, 2, 4 })
         {
-            var failure = Assert.Throws<InvalidOperationException>(() => fixture.Capture.BuildProfile(ContactDropFixture.Tuning,
+            var failure = Assert.Throws<DropCandidateFailure>(() => fixture.Capture.BuildProfile(ContactDropFixture.Tuning,
                 default, new GroundProfileOptions { MaxDropMetres = 6 }, new NavBakeExecution(degree)));
-            Assert.Equal("drop-ordinal-0", failure.Message);
+            Assert.Equal(0, failure.Ordinal);
         }
+    }
+
+    private sealed class DropCandidateFailure(int ordinal) : InvalidOperationException
+    {
+        internal int Ordinal { get; } = ordinal;
     }
 
     private sealed class FaultField : IMovementWaterField

@@ -261,8 +261,8 @@ public sealed class SurfaceStorageTests
     {
         Assert.Equal((256, 8_388_608L), (MapSurfaceEmbedding.MaxPatches, MapSurfaceEmbedding.MaxEncodedBytes));
         MapDocument doc = SurfaceStorageFixtures.FlatPatches(3);
-        Assert.Contains("tiled", Assert.Throws<MapDocumentException>(() => MapSurfaceEmbedding.Check(doc.Surfaces, 2, long.MaxValue)).Message);
-        Assert.Contains("tiled", Assert.Throws<MapDocumentException>(() => MapSurfaceEmbedding.Check(doc.Surfaces, 3, 10)).Message);
+        Assert.Throws<MapDocumentException>(() => MapSurfaceEmbedding.Check(doc.Surfaces, 2, long.MaxValue));
+        Assert.Throws<MapDocumentException>(() => MapSurfaceEmbedding.Check(doc.Surfaces, 3, 10));
         MapSurfaceEmbedding.Check(doc.Surfaces, 3, long.MaxValue);
         string path = Path.Combine(dir, "m.json");
         string text = MapDocumentFile.SaveText(doc);

@@ -75,14 +75,14 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
 
     /// <summary>
     /// ONE COLOUR ATTACHMENT AS A BEGIN NAMES IT: the view, what happens to its contents, and the value it clears
-    /// to when it clears. The store op is not here because it is <c>STORE</c> unconditionally (V-A6) and a field
-    /// that only ever holds one value is a field somebody eventually sets to the other one.
+    /// to when it clears. The pass owner's discard intent maps directly to the store op (V-A6).
     /// </summary>
     /// <param name="View">The attachment's <c>VkImageView</c>, made at TEXTURE creation (V-M11) and borrowed
     /// here.</param>
     /// <param name="LoadOp">Load, or clear with <paramref name="ClearValue"/>.</param>
     /// <param name="ClearValue">The clear colour, meaningful only under <see cref="VulkanLoadOp.Clear"/>.</param>
-    internal readonly record struct VulkanColourAttachment(ulong View, VulkanLoadOp LoadOp, Color ClearValue);
+    /// <param name="Discard">Whether the pass owner declares the colour result dead.</param>
+    internal readonly record struct VulkanColourAttachment(ulong View, VulkanLoadOp LoadOp, Color ClearValue, bool Discard = false);
 
     /// <summary>
     /// THE DEPTH ATTACHMENT AS A BEGIN NAMES IT, plus the one thing the colour arm has no analogue for.
@@ -102,6 +102,8 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
     /// stencil value that goes with it is always 0.</param>
     /// <param name="Stencil">Whether the format carries a stencil plane, so the begin names a stencil attachment
     /// as well as a depth one.</param>
+    /// <param name="DiscardDepth">Whether the depth result is dead after the pass.</param>
+    /// <param name="DiscardStencil">Whether the stencil result is dead after the pass.</param>
     internal readonly record struct VulkanDepthAttachment(
-        ulong View, VulkanLoadOp LoadOp, float ClearDepth, bool Stencil);
+        ulong View, VulkanLoadOp LoadOp, float ClearDepth, bool Stencil, bool DiscardDepth = false, bool DiscardStencil = false);
 }

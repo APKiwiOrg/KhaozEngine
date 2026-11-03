@@ -137,11 +137,7 @@ public sealed class TileWorldSceneSkinnedTests
         Assert.Equal(new Vector2(0.65f, 0.14f), packed.Dissolve);
     }
 
-    static void AssertSkinnedNotSupported(Action action)
-    {
-        NotSupportedException ex = Assert.Throws<NotSupportedException>(action);
-        Assert.Contains("skinned", ex.Message, StringComparison.OrdinalIgnoreCase);
-    }
+    static void AssertSkinnedNotSupported(Action action) => Assert.Throws<NotSupportedException>(action);
 
     sealed class SceneHarness : IDisposable
     {

@@ -134,16 +134,22 @@ public class SheetAssemblerTests
         Assert.Contains("frame_001", result.Warnings[0]);
     }
 
-    [Fact]
-    public void Missing_whole_direction_throws()
+    [Theory]
+    [InlineData("missing-east", AssemblyRefusal.DirectionMissing)]
+    [InlineData("negative-indices", AssemblyRefusal.NoFrames)]
+    public void Unassemblable_animation_throws_with_its_reason(string fault, AssemblyRefusal reason)
     {
+        // The passing control is Sheet_dimensions_are_8_rows_by_frameCount_columns, one frame 0 in every direction.
         var byDir = new Dictionary<string, IReadOnlyList<FrameEntry>>();
         foreach (var d in Dirs)
-            byDir[d] = new List<FrameEntry> { new(0, Dot(16, 16, 8, 15)) };
-        byDir.Remove("east");
+            byDir[d] = new List<FrameEntry> { new(fault == "negative-indices" ? -1 : 0, Dot(16, 16, 8, 15)) };
+        if (fault == "missing-east")
+            byDir.Remove("east");
         var anim = new CharacterAnimation("Test", "walking", byDir);
 
         var ex = Assert.Throws<AssemblyException>(() => SheetAssembler.Assemble(anim, new AssemblyOptions()));
-        Assert.Contains("east", ex.Message);
+        Assert.Equal(reason, ex.Reason);
+        Assert.Equal("walking", ex.Animation);
+        Assert.Equal(fault == "missing-east" ? "east" : null, ex.Direction);
     }
 }

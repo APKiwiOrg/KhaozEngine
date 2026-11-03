@@ -9,6 +9,14 @@ Dispatch the trusted `gpu-hosted-bench.yml` workflow with B's immutable SHA as `
 leg, the default diagnostic filter and the three `renderer-perf-*` inputs. Only attempt one is
 admissible. A failure requires scoped correction and fresh approval, never an automatic rerun.
 
+The measurement implementation now comes from
+[Renderer.Perf.Tooling.Tests](../../Renderer.Perf.Tooling.Tests/README.md), which also owns its
+headless contract tests. The free tooling prerequisite must pass at the requested authorization SHA
+and trusted workflow SHA before `renderer-bench` can allocate. It validates the tooling on lavapipe,
+WARP and Metal and grants no measurement authorization. Historical receipts and authorized manifest
+hashes retain their original artifact identity. Every later campaign records its own new assembly
+identity and needs its normal exact approval.
+
 The isolated project stays outside the solution. Its only fact is
 `Renderer.Perf.Tests.RendererPerfTests.Measure_authorized_unit`, category `RendererPerformance`.
 `KE_RENDERER_PERF_UNIT` and `KE_RENDERER_PERF_REPORTS` are explicit. Discovery never opens a GPU.

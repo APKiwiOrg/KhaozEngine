@@ -108,8 +108,10 @@ public sealed partial class StaticMutationLeaseTests
         Assert.True(OutstandingStorage(world) < installedStorage);
         StaticHandle second = world.AddStatic(shape, Pose.At(new(2, 0, 0)));
         TypedIndex replacement = InstalledShape(world, second);
+        // Mesh.Dispose alone returns buffers but leaks the root shape slot.
         Assert.Equal(root, replacement);
         Assert.Equal(installedStorage, OutstandingStorage(world));
+        // Backing buffers can retain capacity while a compound child shape slot leaks.
         if (child is int originalChild)
             Assert.Equal(originalChild, simulation.Shapes.GetShape<Compound>(replacement.Index).Children[0].ShapeIndex.Index);
         Assert.True(world.Raycast(Vector3.Zero, Vector3.UnitX, 4, out RayHit hit));

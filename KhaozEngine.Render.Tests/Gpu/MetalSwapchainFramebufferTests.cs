@@ -113,7 +113,11 @@ namespace KhaozEngine.Tests.Gpu
             ArgumentException ex = Assert.Throws<ArgumentException>(() => fb.Adopt(
                 new MetalAttachment(IntPtr.Zero, GpuPixelFormat.B8G8R8A8UNorm), new MetalDrawableSize(8u, 8u)));
 
-            Assert.Contains("orphan target", ex.Message, StringComparison.Ordinal);
+            Assert.Equal("attachment", ex.ParamName);
+            Assert.Equal(new IntPtr(0x10), fb.Attachment.Texture);
+            Assert.Equal(1ul, fb.Generation);
+            fb.Adopt(new MetalAttachment(new IntPtr(0x20), GpuPixelFormat.B8G8R8A8UNorm), new MetalDrawableSize(8u, 8u));
+            Assert.Equal(new IntPtr(0x20), fb.Attachment.Texture);
         }
 
         /// <summary>

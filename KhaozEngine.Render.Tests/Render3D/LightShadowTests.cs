@@ -15,6 +15,22 @@ namespace KhaozEngine.Tests.Render3D;
 /// </summary>
 public sealed class LightShadowTests
 {
+    // #1676. The zero-NdotL shadow-filter gate needs finite attenuation, including at maximum intensity.
+    [Theory]
+    [InlineData(float.NaN)]
+    [InlineData(float.PositiveInfinity)]
+    [InlineData(float.NegativeInfinity)]
+    public void NonFiniteIntensityIsIgnored(float intensity)
+    {
+        using var rig = new LightQueueRig();
+        rig.Scene.AddLight(Vector3.Zero, Color.White, 4f, intensity, LightShadow.Dynamic);
+        Assert.Equal(0, rig.Scene.LightCount);
+
+        rig.Scene.AddLight(Vector3.Zero, Color.White, 4f, float.MaxValue, LightShadow.Dynamic);
+        Assert.Equal(1, rig.Scene.LightCount);
+        Assert.Equal(LightShadow.Dynamic, rig.Scene.LightShadowAt(0));
+    }
+
     [Fact]
     public void None_IsTheDefaultValueAndRequestsNothing()
     {

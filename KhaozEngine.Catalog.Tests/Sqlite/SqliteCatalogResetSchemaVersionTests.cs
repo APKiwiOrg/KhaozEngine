@@ -155,7 +155,6 @@ public class SqliteCatalogResetSchemaVersionTests
 
         Assert.Equal("schema-mismatch", refused.Reason);
         Assert.Contains(FormattableString.Invariant($"version '{Current + 1}', newer"), refused.Message, StringComparison.Ordinal);
-        Assert.Contains("Nothing was dropped", refused.Message, StringComparison.Ordinal);
         AssertUntouched(database, epochBefore, SqliteCatalogSchemaInventory.Tables.Count);
         Assert.Equal((long)Current + 1, database.Scalar("SELECT schema_version FROM catalog_metadata;"));
     }

@@ -351,6 +351,7 @@ namespace KhaozEngine.Render3D
         /// rows lived in has been freed.</summary>
         void AdoptPointShadowSlotCache(int rows)
         {
+            _pointRigidLayers.Reset(rows);
             if (_pointSlotCache is { } cache && cache.Capacity == rows)
             {
                 cache.InvalidateEveryRow();
@@ -364,6 +365,7 @@ namespace KhaozEngine.Render3D
 
         void DropPointShadowSlotCache()
         {
+            _pointRigidLayers.Reset(0);
             _pointSlotCache = null;
             _pointCasterSignatures = Array.Empty<long>();
         }

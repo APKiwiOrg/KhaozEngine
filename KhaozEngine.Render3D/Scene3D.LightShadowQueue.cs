@@ -27,12 +27,12 @@ public sealed partial class Scene3D
     /// camera distance and keeps a stable dynamic reserve. Dynamic effects past their render budget are drawn
     /// unshadowed rather than dropped, with the nearest effects winning. Presentation only, exactly like the
     /// light itself.
-    /// Non-finite positions and non-positive or non-finite radii are ignored, so clustered and full-list
-    /// fallback shading receive the same valid light geometry.
+    /// Non-finite positions or intensities and non-positive or non-finite radii are ignored, so clustered and
+    /// full-list fallback shading receive the same valid geometry and finite attenuation.
     /// </remarks>
     public void AddLight(Vector3 worldPos, Color color, float radius, float intensity, LightShadow shadow)
     {
-        if (!(radius > 0f) || !float.IsFinite(radius)
+        if (!(radius > 0f) || !float.IsFinite(radius) || !float.IsFinite(intensity)
             || !float.IsFinite(worldPos.X) || !float.IsFinite(worldPos.Y) || !float.IsFinite(worldPos.Z)) return;
         Vector4 c = color;
         _lights.Add(new ModelRenderer.PointLightData

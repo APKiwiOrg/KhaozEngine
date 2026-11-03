@@ -345,6 +345,8 @@ Each fall certifies known eligible columns across the projected capsule corridor
 the original play-area boundary. Air feet can stand above lower support only during the named transition. Ordinary
 `AllowsSegment` remains supported-only. A forbidden surface, insufficient clearance, missing column or unsupported
 landing cannot borrow permission from a lower allowed surface. Unknown evidence refuses the bake, not one edge.
+Unavailable Drop pacing or step evidence throws `ContactDropProofException`, an `InvalidOperationException`
+with a stable `Reason` and the corresponding `Availability` or `Outcome`. Exception wording is developer prose.
 
 `MoveToRange` aligns on real support at the physical source, then previews the actual body, momentum, SpeedScale,
 run mode, timestep and current Contact environment before departure. The slice bound is the floor of baked duration

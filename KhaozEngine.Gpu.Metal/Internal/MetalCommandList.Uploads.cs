@@ -62,6 +62,10 @@ namespace KhaozEngine.Gpu.Metal.Internal
             // the allocator's current segment here instead would let another list's Begin move it mid-recording.
             MetalBufferUpload.Record(metal.Ring, _segment, metal.Handle.Handle, metal.SizeInBytes, offsetBytes,
                 data, _encoders, _arena, _blit);
+            // Shared destinations written by the prefix also exclude racing CPU writes, even if the prefix
+            // never reads them. Tail GPU uploads remain ordered through the command queue.
+            if (metal.Ring is null && !data.IsEmpty)
+                RecordBufferAccess(metal, offsetBytes, MetalBufferUpload.CopyBytesFor(offsetBytes, (uint)data.Length, metal.SizeInBytes));
         }
     }
 }

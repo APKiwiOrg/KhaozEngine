@@ -38,14 +38,14 @@ public class CrashHandlerTests
         try
         {
             CrashHandler.Install(mgr);
-            CrashHandler.Report("Unhandled exception", new InvalidOperationException("kaboom"), null);
+            var failure = new InvalidOperationException("kaboom");
+            CrashHandler.Report("Unhandled exception", failure, null);
 
             var e = Assert.Single(sink.Entries);
             Assert.Equal(LogLevel.Fatal, e.Level);
             Assert.Equal("Crash", e.Category);
             Assert.Contains("Unhandled exception", e.Message);
-            Assert.NotNull(e.Exception);
-            Assert.Equal("kaboom", e.Exception!.Message);
+            Assert.Same(failure, e.Exception);
         }
         finally { CrashHandler.Uninstall(); }
     }
@@ -76,13 +76,14 @@ public class CrashHandlerTests
     [Fact]
     public void InstallTwiceThenUninstallLeavesNoHandlers()
     {
-        var (mgr, _) = SyncManager();
+        var (mgr, sink) = SyncManager();
         CrashHandler.Install(mgr);
         CrashHandler.Install(mgr);   // must not double-register
         CrashHandler.Uninstall();
         // After a single Uninstall the AppDomain handler is gone; Report is now a no-op.
         var ex = Record.Exception(() => CrashHandler.Report("after", new Exception("x"), null));
         Assert.Null(ex);
+        Assert.Empty(sink.Entries);
     }
 
     [Fact]
@@ -99,14 +100,15 @@ public class CrashHandlerTests
             CrashHandler.Install();
             Log.Configure(secondOptions);
 
-            CrashHandler.Report("Unhandled exception (terminating)", new InvalidOperationException("kaboom"), null);
+            var failure = new InvalidOperationException("kaboom");
+            CrashHandler.Report("Unhandled exception (terminating)", failure, null);
 
             Assert.Empty(firstSink.Entries);
             var e = Assert.Single(secondSink.Entries);
             Assert.Equal(LogLevel.Fatal, e.Level);
             Assert.Equal("Crash", e.Category);
             Assert.Contains("Unhandled exception (terminating)", e.Message);
-            Assert.Equal("kaboom", e.Exception!.Message);
+            Assert.Same(failure, e.Exception);
         }
         finally { CrashHandler.Uninstall(); Log.Shutdown(); }
     }
@@ -121,12 +123,13 @@ public class CrashHandlerTests
             CrashHandler.Install();   // used to no-op permanently, because Log.Manager was null here
             Log.Configure(options);
 
-            CrashHandler.Report("Unhandled exception", new InvalidOperationException("late"), null);
+            var failure = new InvalidOperationException("late");
+            CrashHandler.Report("Unhandled exception", failure, null);
 
             var e = Assert.Single(sink.Entries);
             Assert.Equal(LogLevel.Fatal, e.Level);
             Assert.Equal("Crash", e.Category);
-            Assert.Equal("late", e.Exception!.Message);
+            Assert.Same(failure, e.Exception);
         }
         finally { CrashHandler.Uninstall(); Log.Shutdown(); }
     }
@@ -157,10 +160,11 @@ public class CrashHandlerTests
             CrashHandler.Install(mgr);
             Log.Configure(ambientOptions);
 
-            CrashHandler.Report("Unhandled exception", new InvalidOperationException("stays home"), null);
+            var failure = new InvalidOperationException("stays home");
+            CrashHandler.Report("Unhandled exception", failure, null);
 
             var e = Assert.Single(ownSink.Entries);
-            Assert.Equal("stays home", e.Exception!.Message);
+            Assert.Same(failure, e.Exception);
             Assert.Empty(ambientSink.Entries);
         }
         finally { CrashHandler.Uninstall(); Log.Shutdown(); mgr.Shutdown(); }

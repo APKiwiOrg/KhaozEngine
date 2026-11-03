@@ -275,7 +275,7 @@ namespace KhaozEngine.Tests.Gpu
             ArgumentException ex = Assert.Throws<ArgumentException>(
                 () => D3D11CommandDrivers.Submit(new object(), list, ref emitter, null, fences.CreateFence()));
 
-            Assert.Contains("fence subsystem", ex.Message, StringComparison.Ordinal);
+            Assert.Equal("fence", ex.ParamName);
             Assert.Equal(0, timeline.SignalCount);
             Assert.Equal(0, log.TotalCalls);
         }

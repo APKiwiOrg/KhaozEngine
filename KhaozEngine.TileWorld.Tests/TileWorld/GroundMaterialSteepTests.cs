@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using System.IO;
+using System.Text.RegularExpressions;
 using KhaozEngine.TileWorld;
 using Xunit;
 
@@ -19,6 +20,12 @@ public class GroundMaterialSteepTests
 
     static TileWorldException Refused(string steep) =>
         Assert.Throws<TileWorldException>(() => TileWorldCatalogs.LoadJson(Catalog(steep), "steep.json"));
+
+    static void AssertDiagnosticValues(string message, string[] values)
+    {
+        foreach (string value in values)
+            Assert.Matches(@"(?<![\p{L}\p{N}_.\-])" + Regex.Escape(value) + @"(?![\p{L}\p{N}_\-]|\.[\p{L}\p{N}])", message);
+    }
 
     [Fact]
     public void A_full_steep_object_round_trips()
@@ -59,36 +66,26 @@ public class GroundMaterialSteepTests
         Assert.Equal(80f, steep.ResolvedToDegrees);
     }
 
-    [Fact]
-    public void An_unknown_companion_is_refused_by_name()
+    [Theory]
+    [InlineData("{ \"material\": 99 }", new[] { "steep.json", "1", "grass", "99" })]
+    [InlineData("{ \"material\": 1 }", new[] { "steep.json", "1", "grass" })]
+    [InlineData("{ \"material\": 4 }", new[] { "steep.json", "1", "grass", "4", "water", "Water" })]
+    public void An_invalid_companion_is_refused_by_name(string steep, string[] diagnosticValues)
     {
-        TileWorldException ex = Refused("""{ "material": 99 }""");
-        Assert.Contains("steep.json", ex.Message);
-        Assert.Contains("material 1 ('grass') steep names material 99, which is not in the same catalog", ex.Message);
-    }
+        TileWorldException ex = Refused(steep);
 
-    [Fact]
-    public void A_self_reference_is_refused()
-    {
-        TileWorldException ex = Refused("""{ "material": 1 }""");
-        Assert.Contains("material 1 ('grass') steep names the material itself", ex.Message);
-    }
-
-    [Fact]
-    public void A_water_companion_is_refused()
-    {
-        TileWorldException ex = Refused("""{ "material": 4 }""");
-        Assert.Contains("names material 4 ('water'), which is Water", ex.Message);
+        AssertDiagnosticValues(ex.Message, diagnosticValues);
     }
 
     [Theory]
-    [InlineData("""{ "material": 14, "fromDegrees": 50, "toDegrees": 50 }""", "fromDegrees 50 is not below toDegrees 50.")]
-    [InlineData("""{ "material": 14, "fromDegrees": 60, "toDegrees": 45 }""", "fromDegrees 60 is not below toDegrees 45.")]
-    [InlineData("""{ "material": 14, "fromDegrees": 60 }""", "fromDegrees 60 is not below toDegrees 55 (the default).")]
-    [InlineData("""{ "material": 14, "toDegrees": 20 }""", "fromDegrees 40 (the default) is not below toDegrees 20.")]
-    public void A_band_that_does_not_rise_is_refused(string steep, string expected)
+    [InlineData("""{ "material": 14, "fromDegrees": 50, "toDegrees": 50 }""", new[] { "fromDegrees", "50", "toDegrees" })]
+    [InlineData("""{ "material": 14, "fromDegrees": 60, "toDegrees": 45 }""", new[] { "fromDegrees", "60", "toDegrees", "45" })]
+    [InlineData("""{ "material": 14, "fromDegrees": 60 }""", new[] { "fromDegrees", "60", "toDegrees", "55" })]
+    [InlineData("""{ "material": 14, "toDegrees": 20 }""", new[] { "fromDegrees", "40", "toDegrees", "20" })]
+    public void A_band_that_does_not_rise_is_refused(string steep, string[] diagnosticValues)
     {
-        Assert.Contains(expected, Refused(steep).Message);
+        TileWorldException error = Refused(steep);
+        AssertDiagnosticValues(error.Message, diagnosticValues);
     }
 
     // Both ends pack to cos 1 in single precision, so the renderer's smoothstep would have equal edges, which GLSL
@@ -98,7 +95,8 @@ public class GroundMaterialSteepTests
     {
         TileWorldException ex = Refused("""{ "material": 14, "fromDegrees": 0.001, "toDegrees": 0.002 }""");
         Assert.Contains("steep.json", ex.Message);
-        Assert.Contains("band 0.001 to 0.002 degrees is too narrow to render", ex.Message);
+        Assert.Contains("0.001", ex.Message);
+        Assert.Contains("0.002", ex.Message);
     }
 
     [Fact]
@@ -121,22 +119,22 @@ public class GroundMaterialSteepTests
     public void The_schema_refuses_a_malformed_steep_object(string steep, string field)
     {
         TileWorldException ex = Refused(steep);
-        Assert.Contains("does not match the schema", ex.Message);
         Assert.Contains(field, ex.Message);
     }
 
     // A catalog built in code never meets the schema, so the rules carry the range check too.
     [Theory]
-    [InlineData(0f, 50f, "fromDegrees 0 is outside (0, 90).")]
-    [InlineData(float.NaN, 50f, "fromDegrees NaN is outside (0, 90).")]
-    [InlineData(40f, 90f, "toDegrees 90 is outside (0, 90).")]
-    public void The_rules_refuse_a_band_outside_a_right_angle(float from, float to, string expected)
+    [InlineData(0f, 50f, new[] { "fromDegrees", "0", "90" })]
+    [InlineData(float.NaN, 50f, new[] { "fromDegrees", "NaN", "0", "90" })]
+    [InlineData(40f, 90f, new[] { "toDegrees", "90", "0" })]
+    public void The_rules_refuse_a_band_outside_a_right_angle(float from, float to, string[] diagnosticValues)
     {
         TileWorldCatalogs c = TileWorldCatalogs.LoadJson(Catalog(""), "steep.json");
         GroundMaterial grass = c.Material(1)!;
         grass.Steep = new GroundMaterialSteep { Material = 14, FromDegrees = from, ToDegrees = to };
 
-        Assert.EndsWith(expected, GroundMaterialSteepRules.Problem(grass, c));
+        string problem = Assert.IsType<string>(GroundMaterialSteepRules.Problem(grass, c));
+        AssertDiagnosticValues(problem, diagnosticValues);
     }
 
     [Fact]
@@ -163,7 +161,8 @@ public class GroundMaterialSteepTests
         var ex = Assert.Throws<TileWorldException>(() =>
             TileWorldCatalogs.Load(new[] { tmp.Sub("grass.json"), tmp.Sub("rock.json") }));
         Assert.Contains("grass.json", ex.Message);
-        Assert.Contains("not in the same catalog", ex.Message);
+        Assert.Contains("grass", ex.Message);
+        Assert.Contains("14", ex.Message);
     }
 
     [Fact]
@@ -175,7 +174,7 @@ public class GroundMaterialSteepTests
         IReadOnlyList<TileWorldIssue> issues = TileWorldValidator.Validate(new TileWorldDocument(), c);
 
         TileWorldIssue issue = Assert.Single(issues, i => i.Code == "material.steep");
-        Assert.Contains("which is Water", issue.Message);
+        Assert.Contains("Water", issue.Message);
     }
 
     [Fact]

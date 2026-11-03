@@ -68,7 +68,7 @@ public class AuthExchangeOutcomeTests
 
         AuthExchangeResult at = await exchange.ExchangeAsync("discord", atCap);
         Assert.Equal(AuthExchangeOutcome.Ok, at.Outcome);
-        Assert.Equal(1, validator.Calls);
+        Assert.Equal("discord:1", at.Subject);
     }
 
     // Code points rather than strings, so no control character lands in a test case name.
@@ -108,7 +108,7 @@ public class AuthExchangeOutcomeTests
             .ExchangeAsync("discord", credential);
 
         Assert.Equal(AuthExchangeOutcome.Ok, result.Outcome);
-        Assert.Equal(1, validator.Calls);
+        Assert.Equal("discord:1", result.Subject);
     }
 
     [Fact]

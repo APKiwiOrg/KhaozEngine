@@ -212,45 +212,12 @@ void main() { o = texture(sampler2D(A, S), vec2(0.5)); }";
 
         // ---- 3. The false-positive budget ----------------------------------------------------------------
 
-        /// <summary>
-        /// A RESOURCE NEITHER STAGE REFERENCES must not trip anything. The cross-compiler drops it from the
-        /// emission entirely and Veldrid reflected an unreferenced separate texture as a <c>UniformBuffer</c> with
-        /// no stages, so counting it would be counting a phantom. The guard sees only what the emission kept,
-        /// which makes this a clean pass rather than a false alarm. It used to cost a false NEGATIVE as well, for
-        /// the whole-layout slot the dead element still consumed, and that stopped mattering when the prefix
-        /// check retired: nothing counts across the whole layout any more.
-        /// </summary>
-        [Fact]
-        public void ADeadStrippedResourceBetweenTwoLiveOnesValidatesClean()
+        [Theory]
+        [InlineData("DeadStripped", DeadStrippedFragment)]
+        [InlineData("StorageBufferBesideTexture", StorageBufferFragment)]
+        public void MixedResourceLayouts_ValidateClean(string label, string fragment)
         {
-            const string frag = @"#version 450
-layout(set=0, binding=0) uniform texture2D A;
-layout(set=0, binding=1) uniform texture2D NeverRead;
-layout(set=0, binding=2) uniform texture2D B;
-layout(set=0, binding=3) uniform sampler S;
-layout(location=0) out vec4 o;
-void main() { o = texture(sampler2D(A, S), vec2(0.5)) + texture(sampler2D(B, S), vec2(0.5)); }";
-
-            ShaderValidation.ValidatePair(PositionOnlyVert, frag, "DeadStripped");
-        }
-
-        /// <summary>
-        /// A READ-ONLY STORAGE BUFFER BESIDE A TEXTURE in one graphics stage. Worth its own fact because the two
-        /// share Direct3D11's <c>t</c> register class while living in DIFFERENT Metal index spaces, so any guard
-        /// that reconstructed Metal's numbering from register counters would mis-order this pair. The id join
-        /// reads each argument's own index space off its attribute and never has to.
-        /// </summary>
-        [Fact]
-        public void AStorageBufferBesideATextureValidatesClean()
-        {
-            const string frag = @"#version 450
-layout(std430, set=0, binding=0) readonly buffer Values { vec4 D[]; };
-layout(set=0, binding=1) uniform texture2D T;
-layout(set=0, binding=2) uniform sampler S;
-layout(location=0) out vec4 o;
-void main() { o = D[0] + texture(sampler2D(T, S), vec2(0.5)); }";
-
-            ShaderValidation.ValidatePair(PositionOnlyVert, frag, "StorageBufferBesideTexture");
+            ShaderValidation.ValidatePair(PositionOnlyVert, fragment, label);
         }
 
         /// <summary>
@@ -268,9 +235,12 @@ layout(set=0, binding=1) uniform sampler S;
 layout(location=0) out vec4 o;
 void main() { o = texture(sampler2D(T[1], S), vec2(0.5)) + texture(sampler2D(T[0], S), vec2(0.5)); }";
 
+            byte[] vertex = SpirvFrontEnd.ToSpirv(PositionOnlyVert, GpuShaderStages.Vertex, "TextureArray");
+            byte[] fragment = SpirvFrontEnd.ToSpirv(frag, GpuShaderStages.Fragment, "TextureArray");
+            Assert.Throws<ShaderValidationException>(
+                () => SpirvCrossCompile.VertexFragmentToMsl(vertex, fragment, "TextureArray"));
             var ex = Assert.Throws<ShaderValidationException>(
                 () => ShaderValidation.ValidatePair(PositionOnlyVert, frag, "TextureArray"));
-            Assert.Contains("cross-compile to MSL failed", ex.Message);
             Assert.DoesNotContain("binding order", ex.Message);
         }
 
@@ -286,6 +256,21 @@ layout(set=0, binding=1) uniform sampler S;
 layout(set=0, binding=2) uniform Block { vec4 Tint; };
 layout(location=0) out vec4 o;
 void main() { o = texture(sampler2D(T, S), vec2(0.5)) * Tint; }", "NoResourceVertex");
+
+        const string DeadStrippedFragment = @"#version 450
+layout(set=0, binding=0) uniform texture2D A;
+layout(set=0, binding=1) uniform texture2D NeverRead;
+layout(set=0, binding=2) uniform texture2D B;
+layout(set=0, binding=3) uniform sampler S;
+layout(location=0) out vec4 o;
+void main() { o = texture(sampler2D(A, S), vec2(0.5)) + texture(sampler2D(B, S), vec2(0.5)); }";
+
+        const string StorageBufferFragment = @"#version 450
+layout(std430, set=0, binding=0) readonly buffer Values { vec4 D[]; };
+layout(set=0, binding=1) uniform texture2D T;
+layout(set=0, binding=2) uniform sampler S;
+layout(location=0) out vec4 o;
+void main() { o = D[0] + texture(sampler2D(T, S), vec2(0.5)); }";
 
         const string PositionOnlyVert = @"#version 450
 layout(location=0) in vec3 P;

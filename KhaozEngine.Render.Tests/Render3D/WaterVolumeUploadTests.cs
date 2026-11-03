@@ -28,8 +28,7 @@ public sealed class WaterVolumeUploadTests
         {
             get
             {
-                object buffer = typeof(ModelRenderer).GetField("_ubo", BindingFlags.Instance | BindingFlags.NonPublic)!
-                    .GetValue(Renderer)!;
+                IGpuBuffer buffer = Renderer.SharedFrameUniforms;
                 return Commands.Uploads.Last(u => ReferenceEquals(u.Buffer, buffer)).Data!;
             }
         }

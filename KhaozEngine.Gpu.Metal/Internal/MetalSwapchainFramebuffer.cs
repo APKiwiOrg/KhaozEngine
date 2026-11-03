@@ -92,6 +92,9 @@ namespace KhaozEngine.Gpu.Metal.Internal
         /// <summary>The current colour attachment, for the tests that assert the publish ordering this type exists
         /// for.</summary>
         internal MetalAttachment Attachment => _colour[0];
+        internal MetalBoundFramebuffer DeferredBound => new(
+            unchecked((ulong)Interlocked.Increment(ref _nextId)), Width, Height,
+            [new(default, Outputs.Colour[0])], default, false);
 
         /// <inheritdoc/>
         MetalBoundFramebuffer IMetalBoundFramebufferSource.AsBound

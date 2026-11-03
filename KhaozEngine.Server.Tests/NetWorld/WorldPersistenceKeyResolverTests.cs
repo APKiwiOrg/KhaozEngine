@@ -516,18 +516,19 @@ public class WorldPersistenceKeyResolverTests
         rig.Pump(() => first.Slot >= 0 && rig.Host.JoinedSlots.Count == 1);
         int oldSlot = first.Slot;
         bool throwOnce = true;
+        var callbackFailure = new InvalidOperationException("leave callback failed");
         rig.Host.PlayerLeaving += (_, _, _) =>
         {
             if (!throwOnce) return;
             throwOnce = false;
-            throw new InvalidOperationException("leave callback failed");
+            throw callbackFailure;
         };
 
         rig.Drop(first);
         InvalidOperationException error = Assert.Throws<InvalidOperationException>(
             () => rig.Pump(() => rig.Host.JoinedSlots.Count == 0));
 
-        Assert.Equal("leave callback failed", error.Message);
+        Assert.Same(callbackFailure, error);
         Assert.Equal(0, rig.EntityCount);
         Assert.Empty(rig.Host.JoinedSlots);
         Assert.False(rig.Host.TryGetPersistenceKey(oldSlot, out _));

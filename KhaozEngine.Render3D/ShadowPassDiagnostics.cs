@@ -121,7 +121,7 @@ namespace KhaozEngine.Render3D
         /// shadows are off, and before the point shadow pass exists at all.</summary>
         public int PointShadowedLights { get; init; }
 
-        /// <summary>How many CACHED (<see cref="LightShadowMode.Static"/>) maps were re-rendered this frame, at
+        /// <summary>How many ordinary budgeted <see cref="LightShadowMode.Static"/> bases were re-rendered this frame, at
         /// or below <see cref="PointShadowSettings.MaxStaticRebuildsPerFrame"/>. A still scene reports 0 here
         /// every frame after the first, which is the whole point of the cache.</summary>
         public int PointStaticRebuilds { get; init; }
@@ -130,7 +130,7 @@ namespace KhaozEngine.Render3D
         /// <see cref="PointShadowSettings.MaxDynamicLightsPerFrame"/>. Every one of them is six faces.</summary>
         public int PointDynamicRenders { get; init; }
 
-        /// <summary>Static point lights that intersected a retained skinned caster before transient capacity was applied.</summary>
+        /// <summary>Static point lights that intersected a moving rigid or retained skinned caster before transient capacity was applied.</summary>
         public int PointTransientDemand { get; init; }
 
         /// <summary>Current-pose static transient rows rendered this frame.</summary>
@@ -141,6 +141,18 @@ namespace KhaozEngine.Render3D
 
         /// <summary>Skinned caster face draws into static transient rows this frame.</summary>
         public int PointStaticTransientSkinnedDrawCalls { get; init; }
+
+        /// <summary>Moving rigid caster face draws into static transient rows this frame.</summary>
+        public int PointStaticTransientRigidDrawCalls { get; init; }
+
+        /// <summary>Skinned caster face draws into complete static fallback bases this frame.</summary>
+        public int PointStaticFallbackSkinnedDrawCalls { get; init; }
+
+        /// <summary>Complete current static base renders required by unavailable transient storage.</summary>
+        public int PointRigidFallbackRowsRendered { get; init; }
+
+        /// <summary>Mandatory pure-base renders that remove stale transient or reclassified rigid depth.</summary>
+        public int PointRigidTransitionRowsRendered { get; init; }
 
         /// <summary>Every caster draw call the point shadow pass issued this frame, across every face of every
         /// light it rendered. The point pass's counterpart to <see cref="TotalDrawCalls"/>.</summary>

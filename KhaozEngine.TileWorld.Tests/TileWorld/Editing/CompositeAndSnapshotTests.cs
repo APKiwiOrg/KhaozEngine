@@ -28,24 +28,24 @@ public class CompositeAndSnapshotTests
         readonly List<string> _log;
         readonly string _name;
         readonly int _x;
-        readonly bool _throwOnApply;
-        readonly bool _throwOnRevert;
+        readonly TileWorldException? _applyFailure;
+        readonly TileWorldException? _revertFailure;
         ushort _old;
 
-        public RecordingCommand(List<string> log, string name, int x, bool throwOnApply = false,
-            bool throwOnRevert = false) : base(name)
+        public RecordingCommand(List<string> log, string name, int x, TileWorldException? applyFailure = null,
+            TileWorldException? revertFailure = null) : base(name)
         {
             _log = log;
             _name = name;
             _x = x;
-            _throwOnApply = throwOnApply;
-            _throwOnRevert = throwOnRevert;
+            _applyFailure = applyFailure;
+            _revertFailure = revertFailure;
             Dirty.Add(new TileDirtyRect(new TileRect(x, 0, 1, 1), 0));
         }
 
         public override void Apply(TileWorldDocument doc)
         {
-            if (_throwOnApply) throw new TileWorldException($"{_name} refuses to apply");
+            if (_applyFailure is not null) throw _applyFailure;
             _log.Add($"apply {_name}");
             _old = doc.GetUnderlay(_x, 0, 0);
             doc.SetUnderlay(_x, 0, 0, 9);
@@ -54,7 +54,7 @@ public class CompositeAndSnapshotTests
         public override void Revert(TileWorldDocument doc)
         {
             _log.Add($"revert {_name}");
-            if (_throwOnRevert) throw new TileWorldException($"{_name} refuses to revert");
+            if (_revertFailure is not null) throw _revertFailure;
             doc.SetUnderlay(_x, 0, 0, _old);
         }
     }
@@ -109,16 +109,17 @@ public class CompositeAndSnapshotTests
     {
         TileEditingDocument ed = Editing(out TileWorldDocument doc);
         var log = new List<string>();
+        var failure = new TileWorldException("apply failed");
         var composite = new CompositeCommand("Doomed", new ITileCommand[]
         {
             new RecordingCommand(log, "a", 1),
             new RecordingCommand(log, "b", 2),
-            new RecordingCommand(log, "c", 3, throwOnApply: true),
+            new RecordingCommand(log, "c", 3, applyFailure: failure),
         });
 
         TileWorldException ex = Assert.Throws<TileWorldException>(() => ed.Execute(composite));
 
-        Assert.Contains("c refuses", ex.Message);
+        Assert.Same(failure, ex);
         Assert.Equal(new[] { "apply a", "apply b", "revert b", "revert a" }, log);
         Assert.Equal(1, doc.GetUnderlay(1, 0, 0));
         Assert.Equal(1, doc.GetUnderlay(2, 0, 0));
@@ -131,11 +132,13 @@ public class CompositeAndSnapshotTests
     {
         TileEditingDocument ed = Editing(out TileWorldDocument doc);
         var log = new List<string>();
+        var failure = new TileWorldException("apply failed");
+        var rollbackFailure = new TileWorldException("rollback failed");
         var composite = new CompositeCommand("Stuck", new ITileCommand[]
         {
             new RecordingCommand(log, "a", 1),
-            new RecordingCommand(log, "b", 2, throwOnRevert: true),
-            new RecordingCommand(log, "c", 3, throwOnApply: true),
+            new RecordingCommand(log, "b", 2, revertFailure: rollbackFailure),
+            new RecordingCommand(log, "c", 3, applyFailure: failure),
         });
 
         AggregateException ex = Assert.Throws<AggregateException>(() => ed.Execute(composite));
@@ -144,8 +147,8 @@ public class CompositeAndSnapshotTests
         // apply failure is the one that explains the edit.
         Assert.Equal(new[] { "apply a", "apply b", "revert b", "revert a" }, log);
         Assert.Equal(2, ex.InnerExceptions.Count);
-        Assert.Contains("c refuses to apply", ex.InnerExceptions[0].Message);
-        Assert.Contains("b refuses to revert", ex.InnerExceptions[1].Message);
+        Assert.Same(failure, ex.InnerExceptions[0]);
+        Assert.Same(rollbackFailure, ex.InnerExceptions[1]);
         Assert.Equal(1, doc.GetUnderlay(1, 0, 0));
         Assert.Equal(0, ed.History.UndoDepth);
     }
@@ -282,6 +285,7 @@ public class CompositeAndSnapshotTests
         var ed = new TileEditingDocument(doc, Cat);
         string before = TileWorldHash.OfWorld(doc);
 
+        var failure = new TileWorldException("mutation failed");
         var snapshot = new SnapshotRectCommand("Half a stamp", new TileRect(4, 4, 4, 4), new[] { 0 }, d =>
         {
             d.SetUnderlay(5, 5, 0, 9);
@@ -289,14 +293,14 @@ public class CompositeAndSnapshotTests
             d.RemoveObject(standing.Id);
             d.AddObject("bush", 4, 4, 0, 0);
             d.RemoveMarker("here");
-            throw new TileWorldException("the stamp gave up half way");
+            throw failure;
         });
 
         TileWorldException ex = Assert.Throws<TileWorldException>(() => ed.Execute(snapshot));
 
         // The pre-image is already in hand when the mutation throws, so there is no reason to leave the rect
         // half stamped and every reason not to: this command is discarded rather than pushed onto the stack.
-        Assert.Contains("gave up half way", ex.Message);
+        Assert.Same(failure, ex);
         Assert.Equal(3, doc.GetUnderlay(5, 5, 0));
         Assert.Equal(150, doc.CornerHeightCm(5, 5, 0));
         Assert.Equal(6, doc.FindObject(standing.Id)!.X);

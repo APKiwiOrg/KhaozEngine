@@ -182,7 +182,6 @@ void main() {
             _vpLayout = f.CreateResourceLayout(new GpuResourceLayoutDescription(
                 new GpuResourceLayoutElement("Vp", GpuResourceKind.UniformBuffer, GpuShaderStages.Vertex, dynamic: true)));
             _vpCapacity = 8;
-            _vpImage = new byte[_vpCapacity * VpSlotBytes];
             _vpUbo = f.CreateBuffer(new GpuBufferDescription((uint)(_vpCapacity * VpSlotBytes), GpuBufferUsage.UniformBuffer));
             _vpSet = f.CreateResourceSet(new GpuResourceSetDescription(_vpLayout, new GpuBufferRange(_vpUbo, 0, VpPayloadBytes)));
             _shaders = f.CreateShadersFromSpirv(VertSrc, FragSrc);

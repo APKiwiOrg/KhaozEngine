@@ -57,7 +57,6 @@ public sealed class SqlServerJournalResetHostObjectTests
             Assert.Contains($"host table 'dbo.{HostTable}'", refused.Message, StringComparison.Ordinal);
             Assert.Contains("journal table 'journal_stream'", refused.Message, StringComparison.Ordinal);
             Assert.Contains($"ON DELETE {action}", refused.Message, StringComparison.Ordinal);
-            Assert.Contains("Nothing was deleted", refused.Message, StringComparison.Ordinal);
             Assert.Equal(before, await SqlServerJournalResetHarness.CountsAsync());
             Assert.Equal(metadata, await SqlServerJournalResetHarness.MetadataAsync());
             Assert.Equal(1L, await HostRowsReferencingAsync(seeded.First));

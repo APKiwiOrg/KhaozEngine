@@ -3546,6 +3546,14 @@ description, because MSBuild prints the message and nothing else. If you hit one
 genuinely legitimate, the answer is to ask the repo owner to bless or exempt it, never to split the
 file to make the error go away.
 
+The same package supplies the opt-in KETEST test-health ratchet for xunit compilations. Add a
+`.testhealth-baseline` to adopt it. `KhaozTestHealthBaselineDir` overrides the discovered directory.
+Without that file the KETEST rules stay silent. KETEST001 and KETEST002 enforce exception-message assertion and
+non-public reflection allowances. KETEST003 is report-only because only 6 of 20 sampled findings were
+real, as local tables and test-owned case helpers look possibly empty to a syntactic check. The
+[analyzer README](../KhaozEngine.CodeHealth.Analyzers/README.md#test-health-ratchet) owns rule details,
+report mode, baseline grammar and the owner-approved exemption path.
+
 ## In-game patch notes (`PatchNotesLoader` / `PatchNotesView` / `PatchNotesScreen`, 10.45.0)
 
 Renders a game's player-facing `docs/PLAY_CHANGELOG.md` (the shared changelog style, `docs/CHANGELOG-STYLE.md`)
@@ -4485,7 +4493,7 @@ scene.Draw(gun, sockets["socket_nose"] * shipWorld, Color.White);
   a fixed number by camera distance: orbiting the camera would change illumination on stationary surfaces.
   `Scene3D.MaxPointLights` remains a legacy compatibility constant, not the active upload ceiling. Zero lights renders
   byte-identical to the key+fill path. Presentation only: never feed a light back into simulation/collision.
-  Non-finite positions and non-positive or non-finite radii are ignored at submission, consistently across
+  Non-finite positions or intensities and non-positive or non-finite radii are ignored at submission, consistently across
   clustered and full-list fallback shading.
 
   `scene.PointLightClusters` reports submitted lights, cluster references, overflowing clusters, the projection
@@ -5352,12 +5360,11 @@ trails are not depth-sorted against each other - keep alpha trails for cases whe
         and starts to band once the taps are far apart, and the ceiling grows with distance by construction (it
         is an angle off the light), so a far receiver is still allowed a wider penumbra than a near one. Clamped
         into `PenumbraTexelsFloor`..`PenumbraTexelsCeiling` (`1`..`16`) by `ResolvedMaxPenumbraTexels`.
-      - **Two per-frame budgets.** `MaxStaticRebuildsPerFrame` (default `2`) caps how many CACHED maps one frame
-        may re-render, which bounds the frame in which several of them changed at once. A still scene rebuilds
-        none, which is the whole point of the cache. `MaxDynamicLightsPerFrame` (default `4`) caps the
-        every-frame maps, and each one of those is six faces every frame, so it is the hard ceiling on the
-        pass's steady cost. Current-pose transient rows have no separate budget: deferring one would reuse an old
-        skinned pose. Their capacity is capped by the live base atlas instead.
+      - **Two ordinary per-frame budgets.** `MaxStaticRebuildsPerFrame` (default `2`) caps ordinary cached base
+        refreshes. Mandatory moving-rigid fallback and pure-base transitions have separate counters and run
+        outside this budget, with at most one base render per owned light per frame. A still scene rebuilds
+        none. `MaxDynamicLightsPerFrame` (default `4`) caps dynamic-light maps, each costing six faces per frame. Current-pose transient rows have no separate budget: deferring one would reuse an old
+        rigid or skinned pose. Their capacity is capped by the live base atlas instead.
       - **A `Dynamic` light has NO IDENTITY ACROSS FRAMES, so its budget is harder than the static one.** It
         carries no key, so the engine keys its row by the light's PLACE IN THE QUEUE, and that place belongs to a
         different light as soon as one of them expires and the rest shift down. So a dynamic row carries nothing
@@ -5379,8 +5386,8 @@ trails are not depth-sorted against each other - keep alpha trails for cases whe
         plus 5 of `D32FloatS8UInt` depth per texel: `28,311,552` bytes (27 MiB) at the defaults and `95,551,488`
         bytes (about 91 MiB) at `384` by `12`. Read it into a settings screen the way `ShadowMapResolution`'s
         cascade cost is read. Static expansion may require more rows, while extent or allocation limits may
-        reduce face resolution. A compact transient atlas for current skinned poses adds live memory only when a
-        static light intersects a skinned caster. Its exact high-water row count is capped by the live base atlas.
+        reduce face resolution. A compact transient atlas for current skinned poses and opted-in moving rigid casters adds live memory
+        only when a static light intersects one. Its exact high-water row count is capped by the live base atlas.
         `PointShadowSettings.AtlasBytes` remains the configured base floor. Use `scene.ResolvedPointShadows` for
         actual live dimensions, base and transient bytes, and refusal state.
       - **The three detail profiles carry it.** `ShadowSettings.ForDetail(ShadowMapDetail.Low)` sets
@@ -5410,14 +5417,27 @@ trails are not depth-sorted against each other - keep alpha trails for cases whe
       - **The counters.** `scene.PointShadowedLights` is how many lights carried a map last frame, and
         `LastShadowPassDiagnostics` carries `PointShadowedLights`, `PointStaticRebuilds`, `PointDynamicRenders`,
         `PointTransientDemand`, `PointTransientRowsRendered`, `PointDynamicSkinnedDrawCalls`,
-        `PointStaticTransientSkinnedDrawCalls`, `PointFaceDrawCalls`, and `PointSlotsInUse` beside the cascade
-        pass's own counters. `PointStaticRebuilds` still counts rigid static base rebuilds only. A changing
-        skinned pose can redraw a transient row every frame while this rigid counter stays at zero.
+        `PointStaticTransientSkinnedDrawCalls`, `PointStaticTransientRigidDrawCalls`, `PointFaceDrawCalls`, and
+        `PointSlotsInUse` beside the cascade pass's own counters. `PointStaticRebuilds` counts ordinary budgeted
+        base rebuilds only. `PointRigidFallbackRowsRendered` counts complete-base compatibility redraws and
+        `PointRigidTransitionRowsRendered` counts mandatory pure-base cleanup. `PointStaticFallbackSkinnedDrawCalls`
+        reports skinned face draws in fallback bases. All caster draws enter `PointFaceDrawCalls`.
       - **Skinned bodies cast point shadows by default.** `Scene3D.DrawSkinned` and its dissolved variants use
         CPU or GPU skinning and cast unless `castsShadows: false` is passed. Models, tile ground, splat terrain,
-        and `DrawShadowOnly` instances remain rigid casters. Static lights keep those rigid casters in cached
-        base rows and put current skinned poses in a compact transient atlas. Dynamic lights clear and draw rigid
-        and skinned casters together in their selected base row. A static transient row is independent of the
+        and `DrawShadowOnly` instances remain rigid casters. Static lights cache Static rigid casters and put current
+        skinned poses in a compact transient atlas.
+        Set `RigidInstanceDraw.ShadowMobility = ShadowCasterMobility.Dynamic` for moving rigid casters to share
+        that transient layer without invalidating the warmed base. Static is the constructor and zero default.
+        Unsupported enum values are rejected before queue mutation. Motion keys, cast opt-out and shadow-only
+        remain independent, and key-light rendering is unchanged. If transient capacity is unavailable, affected
+        admitted rows redraw a complete current base, including skinned geometry. Recovery clears the base to
+        Static geometry before publishing split sampling. Removal and mobility changes clear stale actor depth,
+        including at zero ordinary budget. A changed static signature under current or previous opted-in demand
+        can conservatively force a scenery rebuild. This correctness work is bounded to one base render per owned
+        light per frame, outside the ordinary static budget, leaving its allowance available for independent dirty
+        rows and new admissions. First admission still consumes an ordinary selection when it uses fallback.
+        See [caster layers](design/POINT-SHADOW-CASTERS.md).
+        Dynamic lights clear and draw rigid and skinned casters together in their selected base row. A static transient row is independent of the
         light's base row number. The receiver selects one face and local UV for each hard or soft tap, reads both
         atlases there, and compares against the nearer stored depth. When no transient row is assigned it takes
         the original base-only path before any transient fetch. Skinned colour and target-outline alpha cutouts
@@ -6017,7 +6037,7 @@ trails are not depth-sorted against each other - keep alpha trails for cases whe
     `TileWaterLooks.River` carries the owner-selected linear RGB `(0.28, 0.30, 0.18)` and `Clarity = 1.5f`,
     with `WaterColumnLight` left null. Set that nullable field on a consumer-owned look to opt in, preserving
     the shared preset. Landing 1 is built and awaits the owner's measured-cost ruling before release.
-    [Landing 2's bent view](programs/water-optics-design.md) remains unbuilt.
+    Landing 2's bent view, designed in the `water-optics` program, remains unbuilt.
   - **Independent optical bed** (`WaterPlane.Optics`, a `WaterOpticsBinding`, **default unbound = legacy scene
     depth**). An unbound plane grades its colour, shore foam and shore fade from the first opaque surface behind it,
     which can be a swimming creature, a bridge or a prop. A bound plane reads its own signed bed depth for those
@@ -7181,6 +7201,15 @@ every mesh node, unique non-blank joint names and at most 128 joints. Every prim
 `JOINTS_0` and `WEIGHTS_0` with at most four influences. External URIs, duplicate keys, further
 influence sets, all-zero weights, out-of-range joints, animations, morph targets and mesh weights
 are refused. Rigid and skinned imports retain the same material factors, vertex colours and maps.
+
+For body fit revisions, call `AttachmentGlb.ComputeRigIdentity(bodyGlbBytes, sourceName)` from a
+headless publisher or the client. Persist the complete `rig-v1:<sha256>` result. It covers ordered
+joints, hierarchy, rest frames, inverse binds and skinned vertex/index data, while animation and
+appearance edits leave it unchanged. It accepts animated bodies separately from garment validation.
+Changing from a whole-file hash requires regenerating fit evidence and updating fields that accept
+only bare hashes. Exact-file integrity hashes remain separate. The
+[Attachments README](../KhaozEngine.Attachments/README.md#body-rig-identity) defines the v1 encoding,
+supported inputs and refusals.
 
 The renderer arm `KhaozEngine.Attachments.Render3D` ships in Game3D. Load and bind once:
 
@@ -9231,7 +9260,7 @@ outside every umbrella and carries no physics backend, input or
 rendering dependency:
 
 ```xml
-<PackageReference Include="KhaozEngine.Movement" Version="21.21.0" />
+<PackageReference Include="KhaozEngine.Movement" Version="21.23.1" />
 ```
 
 The package composes `KhaozEngine.Locomotion`, `KhaozEngine.Navigation` and `KhaozEngine.Physics`. It does not
@@ -9507,6 +9536,8 @@ The allowance must be finite and nonnegative. Legacy, aquatic and public explici
 Full-tuning walk/run proofs certify the local walk-off, airborne corridor, first supported landing and final Hold.
 Neither transient swimming nor an unwalkable contact can disappear inside a tick. Supported wading remains eligible.
 The local horizon is `1 + ceil(2 * capsuleRadius / cellSize)` and the original edge duration bounds every attempt.
+Unavailable pacing or step evidence refuses the bake through `ContactDropProofException`, derived from
+`InvalidOperationException`. Inspect its `Reason` and `Availability` or `Outcome`, rather than its message.
 
 `MoveToRange` aligns at the physical source, then previews the actual body, run mode, SpeedScale, momentum,
 timestep and live environment before launch. It supplies bounded ordinary input as Dropping while the host advances
@@ -9731,7 +9762,7 @@ option does not enter bake identity or change canonical bytes. See the
 Round 2 D adds the driver layer in the same opt-in package. Keep the package reference explicit:
 
 ```xml
-<PackageReference Include="KhaozEngine.Movement" Version="21.21.0" />
+<PackageReference Include="KhaozEngine.Movement" Version="21.23.1" />
 ```
 
 `MoveToRange` consumes a `GroundNavigation` profile or an equivalent guarded `IRegionPathPlanner` composition.
@@ -9869,8 +9900,9 @@ the configured arrival radius and layer checks. Physics rebasing need not reprod
 A fresh Complete result already terminal when queried keeps the ordinary cooldown, so a no-progress
 start-cell result cannot repeat the query every tick.
 
-The profile must match the tuning's radius, half-height, slope and step. Walk and run pace, climb pace and
-effect scale may differ. The game owns nominal ranges, target validity, target identity, cancellation and the
+The profile must match the tuning's radius, half-height, slope and step. Contact profiles also match their retained
+flight inputs when `MaxDropMetres` is positive, including walk/run pace and momentum. Zero-allowance supported
+proofs normalize those three inputs. Climb pace and effect scale may differ. The game owns nominal ranges, target validity, target identity, cancellation and the
 authoritative server tolerance, which it applies once after the engine's exact observed reach. The engine owns
 no NPC brain, action queue or combat rule. Shape kind, dimensions, box yaw and range changes reset internally.
 A changed immutable profile requires a new `MoveToRange` instance. Call `Reset` before the next tick for a target
@@ -10576,7 +10608,7 @@ same opt-in-backend pattern the `WorldStore.*` durable backends use.
 **Backend (`KhaozEngine.Physics.Bepu`)** - add this package to your game head / server:
 
 ```xml
-<PackageReference Include="KhaozEngine.Physics.Bepu" Version="21.21.0" />
+<PackageReference Include="KhaozEngine.Physics.Bepu" Version="21.23.1" />
 ```
 
 ```csharp
@@ -17928,7 +17960,8 @@ game's sound effects from a `sfx.manifest.jsonc` (prompt -> ElevenLabs sound-eff
 your asset tree). It defaults to the formats this `AudioSystem` wants: mono OGG Vorbis (mono because OpenAL only
 spatializes mono sources - a stereo buffer plays flat and skips `PlaySfx3D` positioning), and forces `wav`
 output to the 16-bit PCM 44.1 kHz that `WavDecoder` accepts. It is idempotent (a `.sfxmeta` hash sidecar per
-output, skip-unchanged + `--force`) and has a `--dry-run` plan-with-credit-estimate. See the README "Dev tools"
+output, skip-unchanged + `--force`, and a model change re-bakes nothing already approved) and has a
+`--dry-run` plan-with-credit-estimate. See the README "Dev tools"
 section. The tool only produces the audio files; loading and playing them is the normal `AudioSystem` flow
 above. Each game owns its manifest and its play-key wiring.
 
@@ -18823,7 +18856,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="21.21.0" />
+<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="21.23.1" />
 ```
 
 ```csharp
@@ -18859,7 +18892,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="21.21.0" />
+<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="21.23.1" />
 ```
 
 ```csharp
@@ -19103,7 +19136,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Metal" Version="21.21.0" />
+<PackageReference Include="KhaozEngine.Gpu.Metal" Version="21.23.1" />
 ```
 
 ```csharp
@@ -21709,6 +21742,43 @@ Integer prefix sums over the loot index, chances in basis points, nesting capped
 destination too small is filled and `TryRoll` says so rather than silently losing drops. What the CALLER still
 owns is the journal event a draw feeds: the roller answers `LootDraw`s and writes nothing anywhere.
 
+### Arbitrary-weight choice
+
+`KhaozEngine.Primitives.WeightedSelector.TrySelectIndex(ReadOnlySpan<int> weights, IRandomSource rng, out int index)`
+selects an index from caller-prepared nonnegative integer weights. Keep one canonical candidate list and use
+zero weights to exclude entries without changing their indexes. Positive entries retain their relative weights.
+
+```csharp
+static string? ChooseLabel(IRandomSource rng)
+{
+    string[] candidates = ["alpha", "beta", "gamma"];
+    int[] eligibleWeights = [2, 0, 3];
+    return WeightedSelector.TrySelectIndex(eligibleWeights, rng, out int index)
+        ? candidates[index]
+        : null;
+}
+```
+
+Empty/default spans and all-zero pools return false with index -1 and no RNG call. A null RNG throws
+`ArgumentNullException` for `rng` first, even for an empty or invalid pool. Negative weights or a total above
+`int.MaxValue` throw `ArgumentOutOfRangeException` for `weights` before drawing. A total of `int.MaxValue` is
+accepted. Indexes are relative to the supplied span, including a slice or a compact filtered list.
+
+Each nonempty call copies the weights into one owned array before validation and RNG invocation, using O(n)
+time and storage. The helper never writes caller memory or retains inputs. The caller synchronizes capture
+and keeps its candidates aligned and alive until resolving the returned index. Concurrent mutation during
+capture is unsupported. RNG callbacks may mutate the original weights without changing the captured pool
+for the current call. Later calls capture the current weights anew.
+
+Every successful call reserves one logical RNG slot through `RandomDraw.Below`. A total of 1 calls `Skip`,
+and larger totals call `NextInt(0, total)` once, even when only one entry has positive weight. This does not
+guarantee one underlying generator step or replay stability across changed weights. Source exceptions
+propagate without retry. A returned draw outside `[0, total)` throws `InvalidOperationException` without a
+second draw. Source failures cannot roll back random state, and no result is promised on an exception.
+
+The caller owns eligibility policy, candidate lifetime and persistence. Retain the resolved outcome when
+retries must reuse the same choice. `LootRoller` keeps its existing catalog behavior and draw schedule.
+
 ### The admin console API
 
 `CatalogAdminActions.Register` puts SIXTEEN actions on the existing `ServerAdmin` dispatch, so a console
@@ -22127,6 +22197,13 @@ IS. `KhaozEngine.ItemInstances` is the other half of that split: the canonical p
 owned item carries beyond its definition id, the registry that says what every property kind means to a
 walker that knows nothing about any kind, container codec version 2, the instance id allocator and the
 validator that sweeps a stored container against the active content version.
+
+Items benchmark options, limits, declared fields, JSON, atomic output and resident-memory instrument
+regressions remain covered by nine Server.Tests methods in default engine CI. The end-to-end quick
+acceptance fact runs explicitly in the outside-solution
+[`Items.Benchmark.Tests`](../tools/Items.Benchmark.Tests/README.md) suite. A passing free tooling run
+at the exact benchmark code commit is required before publishing new evidence. It validates the
+instrument and workload structure, while separately authorized benchmark runs produce performance evidence.
 
 Four rules run through all of it. The ENCODER is what makes a payload canonical (fields strictly ascending by
 kind, no kind twice, every varint minimal), so **byte equality is the stacking rule** and nothing anywhere
@@ -23630,7 +23707,7 @@ socket a shipping build does not contain. It is in NO umbrella, and a game head 
 
 ```xml
 <ItemGroup Condition="'$(Configuration)' == 'Debug'">
-  <PackageReference Include="KhaozEngine.Automation" Version="21.21.0" />
+  <PackageReference Include="KhaozEngine.Automation" Version="21.23.1" />
 </ItemGroup>
 ```
 
@@ -24367,7 +24444,7 @@ including skips. Detailed markers can serialize Vulkan work or split Metal encod
 separately from the outer-pair-only frame totals and report that instrumentation cost.
 
 The internal renderer adapter is
-[`RendererPerfRecorder`](../KhaozEngine.Render.Tests/Gpu/RendererPerf/RendererPerfRecorder.cs), with
+[`RendererPerfRecorder`](../tools/Renderer.Perf.Tooling.Tests/Gpu/RendererPerf/RendererPerfRecorder.cs), with
 `RendererPerfDevice` and `RendererPerfCommandList` forwarding the native seam. Construct the recorder,
 fixed pass definitions, sample storage, CPU-span capacity and resource metadata capacity before warming.
 Pass definitions freeze IDs, occurrences, parents and increasing reserved marker pairs for GPU intervals.

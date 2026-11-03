@@ -181,7 +181,8 @@ namespace KhaozEngine.Tests.Gpu
             ArgumentOutOfRangeException thrown = Assert.Throws<ArgumentOutOfRangeException>(
                 () => Record(ring: null, 3, Payload(16, seed: 6)));
 
-            Assert.Contains("multiple of 4", thrown.Message, StringComparison.Ordinal);
+            Assert.Equal("offsetBytes", thrown.ParamName);
+            Assert.Equal(3ul, Convert.ToUInt64(thrown.ActualValue));
             Assert.Contains("device-level UpdateBuffer", thrown.Message, StringComparison.Ordinal);
 
             // Nothing was staged and nothing was encoded, so the refusal is not half a recording.

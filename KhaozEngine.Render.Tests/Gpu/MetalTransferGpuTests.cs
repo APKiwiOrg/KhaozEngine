@@ -474,7 +474,7 @@ namespace KhaozEngine.Tests.Gpu
             ArgumentOutOfRangeException badMip = Assert.Throws<ArgumentOutOfRangeException>(
                 () => list.CopyTextureSubresource(small, 7, 0, staging, Size, Size));
             Assert.Equal("mipLevel", badMip.ParamName);
-            Assert.Contains("mip level(s)", badMip.Message, StringComparison.Ordinal);
+            Assert.Equal(7u, badMip.ActualValue);
 
             ArgumentOutOfRangeException badArrayLayer = Assert.Throws<ArgumentOutOfRangeException>(
                 () => list.CopyTextureSubresource(small, 0, 7, staging, Size, Size));

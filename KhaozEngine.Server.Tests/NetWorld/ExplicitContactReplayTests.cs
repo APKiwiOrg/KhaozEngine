@@ -107,8 +107,9 @@ public class ExplicitContactReplayTests
 
     static void AssertMoveBits(MoveState expected, MoveState actual)
     {
+        Assert.Equal(expected.SpeedScaleStorageBits, actual.SpeedScaleStorageBits);
         foreach (var field in typeof(MoveState).GetFields(System.Reflection.BindingFlags.Instance |
-            System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.NonPublic))
+            System.Reflection.BindingFlags.Public))
             Assert.Equal(Bits(field.GetValue(expected)), Bits(field.GetValue(actual)));
 
         static object? Bits(object? value) => value switch

@@ -69,7 +69,8 @@ namespace KhaozEngine.Tests.Gpu
             ArgumentOutOfRangeException thrown = Assert.Throws<ArgumentOutOfRangeException>(
                 () => new MetalUniformRing(_harness.Rings, IntPtr.Zero, 256));
 
-            Assert.Contains("MTLStorageModeShared", thrown.Message, StringComparison.Ordinal);
+            Assert.Equal("contents", thrown.ParamName);
+            Assert.Equal(IntPtr.Zero, thrown.ActualValue);
         }
 
         /// <summary>
@@ -86,7 +87,8 @@ namespace KhaozEngine.Tests.Gpu
             ArgumentOutOfRangeException thrown =
                 Assert.Throws<ArgumentOutOfRangeException>(() => ring.Write(0, 192, new byte[16]));
 
-            Assert.Contains("next frame's segment", thrown.Message, StringComparison.Ordinal);
+            Assert.Equal("offsetBytes", thrown.ParamName);
+            Assert.Equal(192u, thrown.ActualValue);
 
             // The last byte the caller owns is still writable, so the refusal is exact rather than conservative.
             ring.Write(0, 192, new byte[8]);

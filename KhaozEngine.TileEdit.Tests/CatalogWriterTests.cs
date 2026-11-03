@@ -235,7 +235,8 @@ public class CatalogWriterTests
     {
         var ex = Assert.Throws<ArgumentOutOfRangeException>(() => CatalogWriter.SetCollisionHeights(
             Encoding.UTF8.GetBytes(OneLine), new Dictionary<string, float> { ["wall"] = height }));
-        Assert.Contains("wall", ex.Message, StringComparison.Ordinal);
+        Assert.Equal("heights", ex.ParamName);
+        Assert.Equal(height, ex.ActualValue);
     }
 
     [Fact]

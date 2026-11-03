@@ -1,14 +1,9 @@
-using System.Runtime.CompilerServices;
 using System.Reflection;
-
-[assembly: InternalsVisibleTo("Renderer.Perf.Tests")]
-
-[assembly: InternalsVisibleTo("Renderer.Perf.Verify")]
 
 namespace KhaozEngine.Tests.Gpu;
 
-// The offline executable references this assembly for the single shared verifier. It must not
-// acquire the test host's provider-registration side effects when this module initializes.
+// Retained for direct offline loading of the engine test assembly. Renderer tooling now owns
+// the verifier and has no provider-registration module initializers.
 internal static class RendererPerfAssemblyAccess
 {
     internal static bool OfflineVerifier => Assembly.GetEntryAssembly()?.GetName().Name == "Renderer.Perf.Verify";

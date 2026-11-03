@@ -161,7 +161,6 @@ public sealed class MarkerWireTests
 
         CallToolResult partial = await harness.Client.CallAsync("marker_list", new Dictionary<string, object?> { ["minX"] = -1.0 });
         Assert.True(partial.IsError == true);
-        Assert.Contains("minX, minZ, maxX and maxZ", Text(partial), StringComparison.Ordinal);
     }
 
     static void AssertSame(MapDocument gui, EditorHistory history, MapAssetClosure assets, MapEditSession direct, MapEditSession live)

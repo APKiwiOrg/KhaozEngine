@@ -128,8 +128,13 @@ namespace KhaozEngine.Tests.Gpu
         {
             var queue = new D3D11EventTimelineQueue();
 
-            InvalidOperationException ex = Assert.Throws<InvalidOperationException>(queue.RetireOldest);
-            Assert.Contains("nothing in flight", ex.Message, StringComparison.Ordinal);
+            Assert.Throws<InvalidOperationException>(queue.RetireOldest);
+            Assert.Equal(0UL, queue.Completed);
+            Assert.Equal(0, queue.PendingCount);
+
+            ulong issued = queue.Enqueue(new object());
+            queue.RetireOldest();
+            Assert.Equal(issued, queue.Completed);
         }
 
         [Fact]

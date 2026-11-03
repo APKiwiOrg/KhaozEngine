@@ -101,7 +101,7 @@ namespace KhaozEngine.Tests.Gpu
                 new GpuBufferDescription(256,
                     GpuBufferUsage.UniformBuffer | GpuBufferUsage.StructuredBufferReadOnly)));
 
-            Assert.Contains("frame ring", thrown.Message, StringComparison.Ordinal);
+            Assert.Equal("usage", thrown.ParamName);
         }
 
         /// <summary>

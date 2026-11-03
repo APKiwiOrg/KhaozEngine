@@ -103,7 +103,7 @@ namespace KhaozEngine.Tests.Gpu
                 new GpuResourceLayoutDescription(Element("Bad", kind, dynamic: true))));
 
             Assert.Contains("'Bad' at binding 0", failed.Message, StringComparison.Ordinal);
-            Assert.Contains("setVertexBufferOffset", failed.Message, StringComparison.Ordinal);
+            Assert.Equal("element", failed.ParamName);
         }
 
         /// <summary>
@@ -212,10 +212,9 @@ namespace KhaozEngine.Tests.Gpu
             // why the two refusals below have to be explicit.
             Assert.Equal(1, layout.ElementCount);
 
-            Assert.Contains("already disposed",
-                Assert.Throws<ObjectDisposedException>(
-                    () => MetalResourceLayout.Require(layout, liveness, "a set")).Message,
-                StringComparison.Ordinal);
+            ObjectDisposedException refused = Assert.Throws<ObjectDisposedException>(
+                () => MetalResourceLayout.Require(layout, liveness, "a set"));
+            Assert.Equal(nameof(MetalResourceLayout), refused.ObjectName);
 
             Assert.Throws<ObjectDisposedException>(() => new MetalResourceSet(
                 liveness, new GpuResourceSetDescription(layout)));
@@ -238,10 +237,9 @@ namespace KhaozEngine.Tests.Gpu
 
             set.Dispose();
 
-            Assert.Contains("already disposed",
-                Assert.Throws<ObjectDisposedException>(
-                    () => MetalResourceSet.Require(set, liveness, "a bind")).Message,
-                StringComparison.Ordinal);
+            ObjectDisposedException refused = Assert.Throws<ObjectDisposedException>(
+                () => MetalResourceSet.Require(set, liveness, "a bind"));
+            Assert.Equal(nameof(MetalResourceSet), refused.ObjectName);
         }
 
         /// <summary>
@@ -267,7 +265,7 @@ namespace KhaozEngine.Tests.Gpu
 
             ArgumentException failed = Assert.Throws<ArgumentException>(
                 () => MetalResourceSet.RequireWindowInBuffer(offset, range, size, "a row"));
-            Assert.Contains("a row binds", failed.Message, StringComparison.Ordinal);
+            Assert.Equal("range", failed.ParamName);
         }
 
         /// <summary>

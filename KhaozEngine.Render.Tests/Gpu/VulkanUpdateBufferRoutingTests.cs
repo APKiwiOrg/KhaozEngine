@@ -124,7 +124,7 @@ namespace KhaozEngine.Tests.Gpu
             ArgumentException ex = Assert.Throws<ArgumentException>(
                 () => list.UpdateBuffer<byte>(buffer, 0, new byte[] { 1 }));
 
-            Assert.Contains("VkBuffer", ex.Message, StringComparison.Ordinal);
+            Assert.Equal("buffer", ex.ParamName);
             Assert.DoesNotContain("519", ex.Message, StringComparison.Ordinal);
         }
 

@@ -1,6 +1,5 @@
 using System;
 using System.Numerics;
-using System.Reflection;
 using KhaozEngine.Locomotion;
 using KhaozEngine.Movement;
 using KhaozEngine.Navigation;
@@ -178,15 +177,12 @@ public class ContactDropPreparationTests
 
     static (MoveToRange Move, PathFollower Follower, Recorder Planner) Driver(GroundNavigation navigation)
     {
-        var move = new MoveToRange(navigation, new PathFollowConfig
+        var planner = new Recorder(navigation.Planner);
+        var move = new MoveToRange(planner, navigation, new PathFollowConfig
         {
             ReplanCooldownSeconds = 30, GoalRetargetTolerance = 0.1f,
         });
-        var follower = Assert.IsType<PathFollower>(typeof(MoveToRange).GetField("_follower",
-            BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(move));
-        FieldInfo field = typeof(PathFollower).GetField("_planner", BindingFlags.Instance | BindingFlags.NonPublic)!;
-        var planner = new Recorder(Assert.IsAssignableFrom<IRegionPathPlanner>(field.GetValue(follower)));
-        field.SetValue(follower, planner);
+        var follower = move.Follower;
         return (move, follower, planner);
     }
 

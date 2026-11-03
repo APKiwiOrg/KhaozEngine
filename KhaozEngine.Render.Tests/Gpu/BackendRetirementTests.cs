@@ -264,8 +264,7 @@ namespace KhaozEngine.Tests.Gpu
                     new GpuBackendSelection(retired, GpuBackendSource.OsProbe, null), allowFallback: true, out _));
 
             Assert.Equal(retired, ex.Backend);
-            Assert.Contains("retired in 18.0.0", ex.Message, StringComparison.Ordinal);
-            Assert.Contains($"GpuBackendKind.{ex.Replacement}", ex.Message, StringComparison.Ordinal);
+            Assert.Contains("18.0.0", ex.Message, StringComparison.Ordinal);
             Assert.False(GpuBackendSelector.IsRetired(ex.Replacement));
         }
 
@@ -287,7 +286,7 @@ namespace KhaozEngine.Tests.Gpu
             var ex = Assert.Throws<GpuBackendRetiredException>(() => GpuBackendProviders.Require(retired));
 
             Assert.Equal(retired, ex.Backend);
-            Assert.Contains("retired in 18.0.0", ex.Message, StringComparison.Ordinal);
+            Assert.Contains("18.0.0", ex.Message, StringComparison.Ordinal);
             Assert.DoesNotContain("Register()", ex.Message, StringComparison.Ordinal);
         }
 

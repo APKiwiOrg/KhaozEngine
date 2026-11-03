@@ -58,11 +58,11 @@ public partial class SupportFootprintTests
         Assert.Equal(before, members);
         Assert.All(joins, word => Assert.Equal(73UL, word));
         var (_, roots, admission) = TiltedScratch(scene.World);
-        Assert.True((bool)Property(roots, "CapacityRefused") || (bool)Property(admission, "CapacityRefused"));
+        Assert.True(((KhaozEngine.Physics.Bepu.SupportCurvedRootRegions)roots).CapacityRefused
+            || ((KhaozEngine.Physics.Bepu.SupportCurvedSurfaceAdmission)admission).CapacityRefused);
         SupportFootprintResult warm = default;
         long allocation = AllocationMeasurement.Measure(nameof(CurvedTiltedUncertifiedSourceFamilyRefusesAtomicallyAtCellBound), () =>
             warm = Capability(scene.World).QuerySupportFootprint(lease, request, members, joins));
-        _output.WriteLine($"refusal retained-array-payload={ArrayPayload(TiltedScratch(scene.World).Tilted)}");
         Assert.Equal(CapsuleFeatureStatus.Unsupported, warm.Status);
         Assert.Equal(0, allocation);
         Assert.Equal(before, members);
@@ -210,14 +210,13 @@ public partial class SupportFootprintTests
 
     static string TiltedStatistics(object world)
     {
-        var (tilted, _, admission) = TiltedScratch(world);
-        object geometry = ObjectField(tilted, "_geometry");
-        return $"root cells={Property(geometry, "RootCellCount")} frontier={Property(geometry, "RootLiveHighWater")} terminal={Property(geometry, "RootTerminalHighWater")} " +
-            $"admission cells={Property(admission, "TotalCells")} frontier={Property(admission, "FrontierHighWater")}";
+        var (tilted, _, admissionObject) = TiltedScratch(world);
+        var geometry = (KhaozEngine.Physics.Bepu.SupportTiltedCurvedGeometry)ObjectField(tilted, "_geometry");
+        var admission = (KhaozEngine.Physics.Bepu.SupportCurvedSurfaceAdmission)admissionObject;
+        return $"root cells={geometry.RootCellCount} frontier={geometry.RootLiveHighWater} terminal={geometry.RootTerminalHighWater} " +
+            $"admission cells={admission.TotalCells} frontier={admission.FrontierHighWater}";
     }
 
-    static object Property(object target, string name) => target.GetType()
-        .GetProperty(name, BindingFlags.NonPublic | BindingFlags.Instance)!.GetValue(target)!;
     static object ObjectField(object target, string name) => target.GetType()
         .GetField(name, BindingFlags.NonPublic | BindingFlags.Instance)!.GetValue(target)!;
     static object CurvedScratch(object world) => ObjectField(FootprintScratch((KhaozEngine.Physics.Bepu.BepuPhysicsWorld)world), "_curvedKernel");

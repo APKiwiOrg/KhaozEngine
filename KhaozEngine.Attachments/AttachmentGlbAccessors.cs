@@ -9,24 +9,26 @@ internal sealed class AttachmentGlbAccessors
 {
     readonly JsonElement root;
     readonly ReadOnlyMemory<byte> binary;
+    readonly bool refuseCompression;
 
-    internal AttachmentGlbAccessors(JsonElement root, ReadOnlyMemory<byte> binary)
+    internal AttachmentGlbAccessors(JsonElement root, ReadOnlyMemory<byte> binary, bool refuseCompression = false)
     {
         this.root = root;
+        this.refuseCompression = refuseCompression;
         int declaredLength = Integer(root.GetProperty("buffers")[0], "byteLength", "buffer 0");
         if (declaredLength > binary.Length)
             throw new InvalidDataException("buffer 0: declared length exceeds the BIN chunk.");
         this.binary = binary[..declaredLength];
     }
 
-    internal Accessor Read(JsonElement reference, string context, string type, bool joints = false, bool weights = false)
+    internal Accessor Read(JsonElement reference, string context, string type, bool joints = false, bool weights = false, bool scalarIndices = false)
     {
         int index = Index(reference, context + " accessor");
         context += $" accessor {index}";
         JsonElement value = Entry(root, "accessors", index, context);
         if (!value.TryGetProperty("type", out JsonElement shape) || shape.ValueKind != JsonValueKind.String || shape.GetString() != type)
             throw new InvalidDataException($"{context}: expected {type}.");
-        int components = type == "MAT4" ? 16 : type == "VEC3" ? 3 : 4;
+        int components = type == "MAT4" ? 16 : type == "VEC3" ? 3 : type == "SCALAR" ? 1 : 4;
         int componentType = Integer(value, "componentType", context);
         bool normalized = false;
         if (value.TryGetProperty("normalized", out JsonElement normalization))
@@ -35,7 +37,8 @@ internal sealed class AttachmentGlbAccessors
                 throw new InvalidDataException($"{context}: normalized must be a boolean.");
             normalized = normalization.GetBoolean();
         }
-        bool legal = joints ? (componentType is 5121 or 5123) && !normalized
+        bool legal = scalarIndices ? (componentType is 5121 or 5123 or 5125) && !normalized
+            : joints ? (componentType is 5121 or 5123) && !normalized
             : weights ? (componentType == 5126 && !normalized) || ((componentType is 5121 or 5123) && normalized)
             : componentType == 5126 && !normalized;
         if (!legal)
@@ -93,6 +96,9 @@ internal sealed class AttachmentGlbAccessors
         int viewIndex = Index(reference, context + " bufferView");
         context += $" bufferView {viewIndex}";
         JsonElement view = Entry(root, "bufferViews", viewIndex, context);
+        if (refuseCompression && view.TryGetProperty("extensions", out JsonElement extensions)
+            && (extensions.TryGetProperty("EXT_meshopt_compression", out _) || extensions.TryGetProperty("KHR_meshopt_compression", out _)))
+            throw new InvalidDataException($"{context}: compressed geometry is not supported by rig-v1.");
         if (Integer(view, "buffer", context) != 0)
             throw new InvalidDataException($"{context}: buffer must be 0.");
         int viewOffset = Integer(view, "byteOffset", context, 0);
@@ -166,6 +172,9 @@ internal sealed class AttachmentGlbAccessors
         readonly int[] sparseIndices;
         readonly ReadOnlyMemory<byte> sparseValues;
         internal int Count { get; }
+        internal int ComponentType => componentType;
+        internal bool Normalized => normalized;
+        internal int ElementSize => components * ComponentSize(componentType);
 
         internal Accessor(ReadOnlyMemory<byte> data, int stride, int count, int components, int componentType,
             bool normalized, int[] sparseIndices, ReadOnlyMemory<byte> sparseValues)
@@ -183,10 +192,7 @@ internal sealed class AttachmentGlbAccessors
         internal void ReadElement(int index, Span<float> result)
         {
             int componentSize = ComponentSize(componentType);
-            int elementSize = components * componentSize;
-            int sparseIndex = System.Array.BinarySearch(sparseIndices, index);
-            ReadOnlySpan<byte> encoded = sparseIndex >= 0 ? sparseValues.Span.Slice(sparseIndex * elementSize, elementSize)
-                : data.IsEmpty ? default : data.Span.Slice(index * stride, elementSize);
+            ReadOnlySpan<byte> encoded = RawElement(index);
             for (int lane = 0; lane < components; lane++)
             {
                 float value = 0;
@@ -198,6 +204,21 @@ internal sealed class AttachmentGlbAccessors
                 }
                 result[lane] = value;
             }
+        }
+
+        // Return authored bytes after sparse selection, without decoding floats or normalization.
+        // An empty span denotes glTF's implicit zero-filled base element.
+        internal ReadOnlySpan<byte> RawElement(int index)
+        {
+            int sparseIndex = System.Array.BinarySearch(sparseIndices, index);
+            return sparseIndex >= 0 ? sparseValues.Span.Slice(sparseIndex * ElementSize, ElementSize)
+                : data.IsEmpty ? default : data.Span.Slice(index * stride, ElementSize);
+        }
+
+        internal uint UnsignedElement(int index)
+        {
+            ReadOnlySpan<byte> bytes = RawElement(index);
+            return bytes.IsEmpty ? 0 : Unsigned(bytes, componentType);
         }
     }
 }

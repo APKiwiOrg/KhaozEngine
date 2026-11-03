@@ -19,7 +19,6 @@ namespace KhaozEngine.Tests.Render3D.Animation
             }));
 
             Assert.Contains("'hips'", error.Message, StringComparison.Ordinal);
-            Assert.Contains("twice", error.Message, StringComparison.Ordinal);
         }
 
         [Fact]

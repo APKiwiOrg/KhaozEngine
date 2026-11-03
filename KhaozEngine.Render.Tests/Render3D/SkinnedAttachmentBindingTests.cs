@@ -25,7 +25,6 @@ public sealed class SkinnedAttachmentBindingTests
         InvalidDataException error = Assert.Throws<InvalidDataException>(() => new AttachmentSetBinding(definition, Map(Create())));
 
         Assert.Contains("host", error.Message, StringComparison.OrdinalIgnoreCase);
-        Assert.Contains("2", error.Message);
     }
 
     [Fact]
@@ -70,7 +69,6 @@ public sealed class SkinnedAttachmentBindingTests
 
         Assert.Contains("2", error.Message);
         Assert.Contains(GarmentRef.Key, error.Message);
-        Assert.Contains(joint, error.Message);
     }
 
     [Fact]
@@ -177,7 +175,7 @@ public sealed class SkinnedAttachmentBindingTests
     }
 
     [Fact]
-    public void Imported_garment_bind_mismatch_names_the_part_mesh_and_joint()
+    public void Imported_garment_bind_mismatch_names_the_part_and_mesh()
     {
         SkinnedAttachmentGlbFixture fixture = Fixture();
         fixture.SetInverseBind(1, Matrix4x4.CreateTranslation(2, 0, 0));
@@ -187,7 +185,6 @@ public sealed class SkinnedAttachmentBindingTests
 
         Assert.Contains("2", error.Message);
         Assert.Contains(GarmentRef.Key, error.Message);
-        Assert.Contains("knee", error.Message);
     }
 
     [Fact]

@@ -320,7 +320,7 @@ public class ContainerLoadTests
 
         ArgumentException refused = Assert.Throws<ArgumentException>(
             () => Context(types, Properties(), chained));
-        Assert.Contains("contracts 8.3", refused.Message, StringComparison.Ordinal);
+        Assert.Equal("rules", refused.ParamName);
 
         // The vetted handle is the one the pass takes, so there is no "already vetted" flag to get wrong.
         VettedRemapRules vetted = VettedRemapRules.Vet(Rules(Replaced(1, 2, item, Sword, 200)));

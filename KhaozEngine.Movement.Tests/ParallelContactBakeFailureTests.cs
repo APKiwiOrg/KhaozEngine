@@ -102,7 +102,8 @@ public class ParallelContactBakeFailureTests
         foreach (int degree in Degrees)
         {
             var parallel = Assert.Throws<ProviderFaultException>(() => scene.Build(new NavBakeExecution(degree)));
-            Assert.Equal(serial.Message, parallel.Message);
+            Assert.Equal(serial.Tag, parallel.Tag);
+            Assert.Equal(serial.PositionBits, parallel.PositionBits);
             Assert.Contains(nameof(Faults.Check), parallel.StackTrace);
             scene.AssertUsable();
         }
@@ -133,11 +134,12 @@ public class ParallelContactBakeFailureTests
             failed.Set();
             throw new ProviderFaultException("earlier", position);
         });
-        string expected = Assert.Throws<ProviderFaultException>(() => scene.Build(new(1) { UseStableContactHoldReuse = true })).Message;
+        var expected = Assert.Throws<ProviderFaultException>(() => scene.Build(new(1) { UseStableContactHoldReuse = true }));
         failed.Reset();
         coordinate = true;
         var thrown = Assert.Throws<ProviderFaultException>(() => scene.Build(new NavBakeExecution(2)));
-        Assert.Equal(expected, thrown.Message);
+        Assert.Equal(expected.Tag, thrown.Tag);
+        Assert.Equal(expected.PositionBits, thrown.PositionBits);
         Assert.True(siblingHeld);
         Assert.True(siblingReleased);
         scene.AssertUsable();
@@ -175,7 +177,7 @@ public class ParallelContactBakeFailureTests
         using var reuse = ContactNavigationBuildHooks.Install(ContactNavigationReuseFixture.Hooks(mode));
         using var faults = new Faults { Earlier = Near(Centre(1, 2), 0.45f, 0.8f) };
         using var scene = new SmallStairScene(fault: faults.Check);
-        string expected = Assert.Throws<ProviderFaultException>(() => scene.Build(new(1) { UseStableContactHoldReuse = true })).Message;
+        var expected = Assert.Throws<ProviderFaultException>(() => scene.Build(new(1) { UseStableContactHoldReuse = true }));
         var released = new List<int>();
         var cleanup = new InvalidOperationException("release fault");
         using (ContactNavigationBuildHooks.Install(new()
@@ -190,7 +192,8 @@ public class ParallelContactBakeFailureTests
         }))
         {
             var primary = Assert.Throws<ProviderFaultException>(() => scene.Build(new NavBakeExecution(3)));
-            Assert.Equal(expected, primary.Message);
+            Assert.Equal(expected.Tag, primary.Tag);
+            Assert.Equal(expected.PositionBits, primary.PositionBits);
             var attached = Assert.IsType<AggregateException>(primary.Data[ContactNavigationWorkers.CleanupFailuresKey]);
             Assert.Same(cleanup, Assert.Single(attached.InnerExceptions));
         }
@@ -296,7 +299,8 @@ public class ParallelContactBakeFailureTests
         {
             faults.Coordinate();
             var parallel = Assert.Throws<ProviderFaultException>(() => scene.Build(new NavBakeExecution(degree)));
-            Assert.Equal(serial.Message, parallel.Message);
+            Assert.Equal(serial.Tag, parallel.Tag);
+            Assert.Equal(serial.PositionBits, parallel.PositionBits);
             Assert.Contains(nameof(Faults.Check), parallel.StackTrace);
             Assert.True(faults.EarlierWaitedForLater,
                 $"The later failure did not finish first at degree {degree}. {faults.CoordinationState}");

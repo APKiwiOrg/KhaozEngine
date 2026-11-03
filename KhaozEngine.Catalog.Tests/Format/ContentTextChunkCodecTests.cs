@@ -184,20 +184,13 @@ public class ContentTextChunkCodecTests
 
     // ---- The body refusals, spec 7.6 ----
 
-    [Fact]
-    public void EntriesOutOfOrdinalKeyOrderRefuse()
+    // Strict ascending order gives each key one entry, so a canonical hash cannot depend on which copy a reader kept.
+    [Theory]
+    [InlineData("bow")] // Descending ordinal order.
+    [InlineData("item")] // Equal keys violate strict ascending order too.
+    public void NonAscendingEntryKeysRefuse(string secondKey)
     {
-        byte[] file = Wrap("en-US", RawBody((4, "item", 1, "a"), (3, "bow", 1, "b")));
-
-        Assert.Equal(ContentTextChunkCodec.ReasonEntryOrder, Refusal(file));
-    }
-
-    [Fact]
-    public void ADuplicateKeyRefuses()
-    {
-        // Ascending is STRICT, so the same key twice is the same refusal as disorder: a canonical chunk has
-        // one entry per key or its hash depends on which copy a reader kept.
-        byte[] file = Wrap("en-US", RawBody((4, "item", 1, "a"), (4, "item", 1, "b")));
+        byte[] file = Wrap("en-US", RawBody((4, "item", 1, "a"), ((byte)secondKey.Length, secondKey, 1, "b")));
 
         Assert.Equal(ContentTextChunkCodec.ReasonEntryOrder, Refusal(file));
     }

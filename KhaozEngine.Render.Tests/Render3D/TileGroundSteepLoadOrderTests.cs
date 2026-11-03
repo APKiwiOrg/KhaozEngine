@@ -44,7 +44,7 @@ public sealed class TileGroundSteepLoadOrderTests
 
             var ex = Assert.Throws<ArgumentException>(() => scene.LoadTileGroundMaterial(1, 1, layers));
 
-            Assert.Contains("names itself", ex.Message);
+            Assert.Equal("layers", ex.ParamName);
             Assert.Equal(textures, factory.Textures.Count);
             Assert.Equal(buffers, factory.Buffers.Count);
         }

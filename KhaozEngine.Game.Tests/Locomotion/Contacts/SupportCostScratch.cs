@@ -16,12 +16,12 @@ internal static class SupportCostScratch
     readonly record struct ArrayLayout(int Stride, bool ContainsReferences);
 
     const BindingFlags Fields = BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic;
-    static readonly MethodInfo Size = typeof(SupportCostScratch).GetMethod(nameof(SizeOf), BindingFlags.Static | BindingFlags.NonPublic)!;
-    static readonly MethodInfo References = typeof(SupportCostScratch).GetMethod(nameof(ContainsReferences), BindingFlags.Static | BindingFlags.NonPublic)!;
+    static readonly MethodInfo Size = typeof(SupportCostScratch).GetMethod(nameof(SizeOf), BindingFlags.Static | BindingFlags.Public)!;
+    static readonly MethodInfo References = typeof(SupportCostScratch).GetMethod(nameof(ContainsReferences), BindingFlags.Static | BindingFlags.Public)!;
     static readonly ConcurrentDictionary<Type, ArrayLayout> ArrayLayouts = new();
     static readonly ConcurrentDictionary<Type, FieldInfo[]> ReferenceFields = new();
-    static int SizeOf<T>() => Unsafe.SizeOf<T>();
-    static bool ContainsReferences<T>() => RuntimeHelpers.IsReferenceOrContainsReferences<T>();
+    public static int SizeOf<T>() => Unsafe.SizeOf<T>();
+    public static bool ContainsReferences<T>() => RuntimeHelpers.IsReferenceOrContainsReferences<T>();
 
     static ArrayLayout Layout(Type type) => ArrayLayouts.GetOrAdd(type, static element =>
         new((int)Size.MakeGenericMethod(element).Invoke(null, null)!,
@@ -50,7 +50,7 @@ internal static class SupportCostScratch
         Visit(scratch.Overlaps.Idle, seen) + Visit(scratch.SweepCandidates.Idle, seen) + Visit(scratch.Contacts.Idle, seen) +
         Visit(scratch.Footprints.Idle, seen) + Visit(scratch.Neighborhoods.Idle, seen) + scratch.NativeCapacity;
 
-    static long Visit(object? value, HashSet<object> seen)
+    internal static long Visit(object? value, HashSet<object> seen)
     {
         if (value is null || value is string || value is Delegate) return 0;
         Type type = value.GetType();

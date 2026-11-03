@@ -291,7 +291,7 @@ decisions without making legacy point queries inherit guarded semantics.
 
 | Id | Contract and reason |
 | --- | --- |
-| B1.1 | Grounded link generation shares the existing scan but emits Stair only. A dummy jump height must not accidentally admit Hop links or alter legacy ordering. |
+| B1.1 | The grounded base scan emits Stair only. Movement appends separately proved, opt-in Contact Drop candidates afterward. A dummy jump height must not admit Hop links or alter legacy ordering. |
 | B1.2 | MaxLayerCells is enforced after layer assignment and before dense arrays. A post-allocation guard would not bound memory. |
 | B2.2 | Guarded snapping requires an admitted raw-passable own cell and returns its centre. A nearby accepted ring cannot authorize crossing a rejected node. |
 | B3.1 | Safe search priority is separate from progress toward actual member feet. Zero heuristic must not pin every Partial to the start. |

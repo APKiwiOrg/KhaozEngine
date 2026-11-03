@@ -34,7 +34,7 @@ public sealed class LegacyLoadPolicyTests
         };
         modified["notes"] = "kept nowhere";
         var error = Assert.Throws<MapDocumentException>(() => MapDocumentFile.LoadText(root.ToJsonString()));
-        Assert.Contains("unknown property 'notes'", error.Message);
+        Assert.Contains("notes", error.Message);
     }
 
     [Fact]

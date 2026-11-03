@@ -1,6 +1,6 @@
 #!/bin/sh
 # ci-prior-gate.sh - find the hosted pre-tag gate for a commit, so a v* tag run can skip the tests that
-# gate already passed (see docs/design/CI-SELECTIVE-TESTS-DESIGN-2026-07-18.md, Decision 7).
+# gate already passed (see docs/design/CI-SELECTIVE-TESTS.md, Decision 7).
 #
 #   GITHUB_REPOSITORY=<owner>/<repo> GH_TOKEN=<token> scripts/ci-prior-gate.sh [--report-only] <sha>
 #

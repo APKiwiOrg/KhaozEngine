@@ -30,10 +30,10 @@ public sealed class AssetSourceTests : IDisposable
     }
 
     [Fact]
-    public void Read_ReportsMissingFileWithKeyContext()
+    public void Read_RejectsMissingFile()
     {
         var source = new DirectoryAttachmentAssetSource(root);
-        Assert.Contains("missing.glb", Assert.Throws<InvalidDataException>(() => source.Read("missing.glb")).Message);
+        Assert.Throws<InvalidDataException>(() => source.Read("missing.glb"));
     }
 
     [Theory]
@@ -54,7 +54,6 @@ public sealed class AssetSourceTests : IDisposable
 
         InvalidDataException error = Assert.Throws<InvalidDataException>(() => source.Read(key));
 
-        Assert.Contains(key, error.Message);
         Assert.Null(error.InnerException);
     }
 

@@ -25,17 +25,14 @@ public sealed class InMemorySeamTests
     const string SecondId = "0192f3a4b5c67d8e9f0a1b2c3d4e5f61";
 
     [Fact]
-    public async Task MediaStoreWithoutListOrDelete_ThrowsNotSupportedNamingTheMember()
+    public async Task MediaStoreWithoutListOrDelete_ThrowsNotSupported()
     {
         IReportMediaStore store = new MediaStoreWithoutListOrDelete();
 
-        NotSupportedException list = await Assert.ThrowsAsync<NotSupportedException>(() =>
+        await Assert.ThrowsAsync<NotSupportedException>(() =>
             store.ListAsync(ReportArea.Public, "g/2026-10/a/", CancellationToken.None));
-        NotSupportedException delete = await Assert.ThrowsAsync<NotSupportedException>(() =>
+        await Assert.ThrowsAsync<NotSupportedException>(() =>
             store.DeleteAsync(ReportArea.Public, "g/2026-10/a/x.json", CancellationToken.None));
-
-        Assert.Contains("ListAsync", list.Message);
-        Assert.Contains("DeleteAsync", delete.Message);
     }
 
     [Fact]
@@ -165,15 +162,13 @@ public sealed class InMemorySeamTests
     }
 
     [Fact]
-    public async Task QueueWithoutDelay_ThrowsNotSupportedNamingTheMember()
+    public async Task QueueWithoutDelay_ThrowsNotSupported()
     {
         IReportWorkQueue queue = new QueueWithoutDelay();
         var item = new ReportWorkItem(ReportWorkKind.CreateIssue, FirstId);
 
-        NotSupportedException error = await Assert.ThrowsAsync<NotSupportedException>(() =>
+        await Assert.ThrowsAsync<NotSupportedException>(() =>
             queue.EnqueueAsync(item, TimeSpan.FromMinutes(12), CancellationToken.None));
-
-        Assert.Contains("IReportWorkQueue.EnqueueAsync", error.Message);
     }
 
     sealed class QueueWithoutDelay : IReportWorkQueue

@@ -27,6 +27,8 @@ supported footprint band only inside this transition certificate. The certificat
 ordinary play-area boundary for all proposed shell routes and resolved air substeps. Highest supported launch
 height counts against the whole descent. No clipping, jump, velocity snap or endpoint interpolation proves an edge.
 Unavailable environment evidence refuses the whole bake. A known obstruction refuses only the candidate.
+Unavailable pacing and step evidence use `ContactDropProofException` with a stable reason and their original
+availability or step outcome. It remains an `InvalidOperationException` for existing catches.
 
 Workers own their fall state, full-tuning bindings and source sessions. Candidate ordinals precede parallel work,
 verdicts merge by ordinal and the lowest serial failure wins. Final snapshot authentication precedes publication.

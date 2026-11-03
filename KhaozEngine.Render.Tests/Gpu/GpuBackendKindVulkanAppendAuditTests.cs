@@ -75,19 +75,8 @@ namespace KhaozEngine.Tests.Gpu
 
         // --- row 3: the CreateForWindow / CreateHeadless Veldrid switches. In the registry class below. ---
 
-        /// <summary>
-        /// The fourteenth site, stated so it needs no edit. It was "everything the built-in path does not build"
-        /// over a positive membership test across the four Veldrid kinds, which made an APPENDED member
-        /// provider-backed with no edit at all. 18.0.0 deleted the built-in path, so
-        /// <see cref="GpuBackendProviders.RequiresProvider"/> is now unconditionally true and the site stopped
-        /// being an append site entirely. Forgetting a registration still throws a message naming it.
-        /// </summary>
-        [Fact]
-        public void TheNativeKind_IsProviderBacked_WithNoEditToTheRegistry()
-        {
-            Assert.True(GpuBackendProviders.RequiresProvider(GpuBackendKind.VulkanNative));
-            Assert.True(GpuBackendProviders.RequiresProvider(GpuBackendKind.Vulkan));
-        }
+        // The fourteenth site needs no edit: GpuBackendProviders.RequiresProvider is unconditionally true since
+        // 18.0.0. VulkanNative and Vulkan are asserted by GpuBackendProvidersTests.RequiresProvider_IsTrue_ForEveryKind.
 
         // --- row 4: GpuBackendSelector.ToVeldrid, one more explicit throwing arm ---
 
@@ -183,26 +172,8 @@ namespace KhaozEngine.Tests.Gpu
         // --- row 7: GpuBackendSelector.ProbeOS, FLIPPED at 17.40.0, and the third row that means
         // something different here ---
 
-        /// <summary>
-        /// LINUX probes to the native backend since 17.40.0, and Linux is the operating system this member's
-        /// flip changed. That is the whole difference from the Direct3D 11 audit's version of this row, where the
-        /// flip is a Windows one: all three arms moved in one release, but they are three different defaults and
-        /// a reader who assumes one enum append flips one default would have the wrong OS in mind.
-        /// <para>
-        /// Only the Linux row is here. The full four-OS mapping is the same assertion for all three appends, so
-        /// it is pinned once in <c>GpuBackendKindAppendAuditTests.ProbeOS_AnswersTheNativeBackend_OnEveryOs</c>,
-        /// and "this kind is never what the fallback answers" is walked over every OS by
-        /// <see cref="ANativeRequest_IsItsOwnFallback_OnExactlyItsOwnPlatform"/> below.
-        /// </para>
-        /// </summary>
-        [Fact]
-        public void ProbeOS_AnswersTheNativeBackend_OnLinux()
-        {
-            Assert.Equal(GpuBackendKind.VulkanNative, GpuBackendSelector.ProbeOS(OSPlatformKind.Linux));
-            // And it is what a failed creation falls back to as well since 18.0.0, the incumbent map having gone
-            // with the incumbent. There is one Linux answer now rather than two.
-            Assert.False(GpuBackendSelector.IsRetired(GpuBackendSelector.ProbeOS(OSPlatformKind.Linux)));
-        }
+        // The Linux probe answer, VulkanNative and not retired, is asserted by the Linux row of
+        // GpuBackendKindAppendAuditTests.ProbeOS_AnswersTheNativeBackend_OnEveryOs.
 
         // --- row 8: GpuBackendSelector._windowCandidates. In the registry class below. ---
 

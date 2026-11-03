@@ -232,7 +232,7 @@ namespace KhaozEngine.Tests.Terrain
                 PropLayer.CompanionLayer(0, Bushes(1), NoMeshes, 60f),
                 PropLayer.CompanionLayer(5, Bushes(1), NoMeshes, 60f),
             }));
-            Assert.Contains("out of range", outOfRange.Message);
+            Assert.Equal("layers", outOfRange.ParamName);
 
             var companionHost = Assert.Throws<ArgumentException>(() => sink.UpdateLayers(new[]
             {
@@ -240,7 +240,7 @@ namespace KhaozEngine.Tests.Terrain
                 PropLayer.CompanionLayer(0, Bushes(1), NoMeshes, 60f),
                 PropLayer.CompanionLayer(1, Bushes(1), NoMeshes, 60f),
             }));
-            Assert.Contains("must be a scatter or placement layer", companionHost.Message);
+            Assert.Equal("layers", companionHost.ParamName);
 
             // A refused list leaves the sink serving the one it had.
             Assert.Equal(36, sink.ScatterLayersFor(Origin)[2].Count);

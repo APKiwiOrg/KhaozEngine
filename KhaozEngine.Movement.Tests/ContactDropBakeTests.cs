@@ -44,11 +44,5 @@ public class ContactDropBakeTests(ITestOutputHelper output)
     }
 
     internal static GroundProfileOptions DropOptions(float allowance)
-    {
-        var options = new GroundProfileOptions();
-        var property = typeof(GroundProfileOptions).GetProperty("MaxDropMetres");
-        Assert.NotNull(property);
-        property.SetValue(options, allowance);
-        return options;
-    }
+        => new() { MaxDropMetres = allowance };
 }

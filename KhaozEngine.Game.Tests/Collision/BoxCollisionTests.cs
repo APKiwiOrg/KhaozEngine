@@ -7,25 +7,17 @@ namespace KhaozEngine.Tests.Collision;
 
 public class BoxCollisionTests
 {
-    [Fact]
-    public void CircleAabb_HeadOn_PushesOutAlongShortestAxis()
+    [Theory]
+    [InlineData(1.2f, 0f, 1f, 0.3f, 0f)] // Head-on at the right face.
+    [InlineData(0f, 0.6f, 0.5f, 0f, 0.4f)] // Glancing at the top face preserves the tangent.
+    [InlineData(0.2f, 0f, 0.1f, 0.4f, 0f)] // Inside, exit through the nearest face.
+    public void CircleAabb_PushesOutAlongNearestFace(float x, float y, float radius, float pushX, float pushY)
     {
-        // Circle r=1 centred 1.2 right of a 1x1 (half 0.5) box at origin: nearest face is +X at x=0.5,
-        // gap from centre to face = 0.7, overlap depth = r - gap = 0.3 along +X.
-        bool hit = BoxCollision.ResolveCircleAabb(new Vector2(1.2f, 0f), 1f, Vector2.Zero, new Vector2(0.5f, 0.5f), out Vector2 push);
+        bool hit = BoxCollision.ResolveCircleAabb(new Vector2(x, y), radius,
+            Vector2.Zero, new Vector2(0.5f, 0.5f), out Vector2 push);
         Assert.True(hit);
-        Assert.Equal(0.3f, push.X, 3);
-        Assert.Equal(0f, push.Y, 3);
-    }
-
-    [Fact]
-    public void CircleAabb_Glancing_PushesOnlyPerpendicular_SoTangentSurvives()
-    {
-        // Circle just clipping the top face (+Y) while travelling along X: push is purely +Y (the tangent X is untouched).
-        bool hit = BoxCollision.ResolveCircleAabb(new Vector2(0f, 0.6f), 0.5f, Vector2.Zero, new Vector2(0.5f, 0.5f), out Vector2 push);
-        Assert.True(hit);
-        Assert.Equal(0f, push.X, 3);
-        Assert.Equal(0.4f, push.Y, 3); // r(0.5) - gap(0.1)
+        Assert.Equal(pushX, push.X, 3);
+        Assert.Equal(pushY, push.Y, 3);
     }
 
     [Fact]
@@ -39,16 +31,6 @@ public class BoxCollisionTests
         Assert.Equal(depth / MathF.Sqrt(2f), push.X, 3);
         Assert.Equal(depth / MathF.Sqrt(2f), push.Y, 3);
         Assert.True(push.X > 0 && push.Y > 0);
-    }
-
-    [Fact]
-    public void CircleAabb_CentreInside_PushesOutNearestFace()
-    {
-        // Centre at (0.2,0) inside a half-0.5 box, r=0.1: nearest face +X. Must exit fully: centre -> 0.5 + r = 0.6.
-        bool hit = BoxCollision.ResolveCircleAabb(new Vector2(0.2f, 0f), 0.1f, Vector2.Zero, new Vector2(0.5f, 0.5f), out Vector2 push);
-        Assert.True(hit);
-        Assert.Equal(0.4f, push.X, 3); // 0.6 - 0.2
-        Assert.Equal(0f, push.Y, 3);
     }
 
     [Fact]
@@ -76,8 +58,10 @@ public class BoxCollisionTests
     [Fact]
     public void CircleOrientedBox_EqualsAabb_WhenYawZero()
     {
-        BoxCollision.ResolveCircleAabb(new Vector2(1.2f, 0f), 1f, Vector2.Zero, new Vector2(0.5f, 0.5f), out Vector2 a);
-        BoxCollision.ResolveCircleOrientedBox(new Vector2(1.2f, 0f), 1f, Vector2.Zero, new Vector2(0.5f, 0.5f), 0f, out Vector2 b);
+        Assert.True(BoxCollision.ResolveCircleAabb(new Vector2(1.2f, 0f), 1f, Vector2.Zero, new Vector2(0.5f, 0.5f), out Vector2 a));
+        Assert.Equal(0.3f, a.X, 3);
+        Assert.Equal(0f, a.Y, 3);
+        Assert.True(BoxCollision.ResolveCircleOrientedBox(new Vector2(1.2f, 0f), 1f, Vector2.Zero, new Vector2(0.5f, 0.5f), 0f, out Vector2 b));
         Assert.Equal(a.X, b.X, 4);
         Assert.Equal(a.Y, b.Y, 4);
     }

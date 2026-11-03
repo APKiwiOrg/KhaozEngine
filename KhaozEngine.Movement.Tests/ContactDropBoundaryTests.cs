@@ -28,9 +28,10 @@ public class ContactDropBoundaryTests
         }
         else
         {
-            var failure = Assert.Throws<InvalidOperationException>(() => fixture.Capture.BuildProfile(ContactDropFixture.Tuning,
+            var failure = Assert.Throws<ContactDropProofException>(() => fixture.Capture.BuildProfile(ContactDropFixture.Tuning,
                 default, new GroundProfileOptions { MaxDropMetres = 6 }));
-            Assert.Contains("EnvironmentUnresolved", failure.Message, StringComparison.Ordinal);
+            Assert.Equal(ContactDropProofFailure.StepUnavailable, failure.Reason);
+            Assert.Equal(MovementStepOutcome.EnvironmentUnresolved, failure.Outcome);
         }
         Assert.True(candidates > 0);
         Assert.True(boundary.Refusals > 0);

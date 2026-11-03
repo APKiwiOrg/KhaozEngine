@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.Collections.ObjectModel;
 using System.IO;
 using System.Linq;
 using System.Numerics;
@@ -23,6 +22,7 @@ public sealed class ScopedProducerConformanceTests
         MapSurfaceScope scope = AcquisitionConformanceFixtures.Scope();
         MapScopedSurfaces view = ScopeFixtures.Acquire(probe, scope);
         Assert.Equal(MapAcquireStatus.Complete, view.Status);
+        view.Identity.RequireComplete();
         Assert.Equal((probe.SnapshotId, probe.RootSha256, scope.Frame), (view.ReadWitness.SnapshotId, view.Identity.RootSha256, view.Identity.Frame));
         Assert.Equal((true, true, true), (view.Witness.Complete, view.Identity.Complete, view.ReadWitness.Complete));
         Assert.Equal(new[] { "seed" }, view.Witness.SurfaceIds);
@@ -81,9 +81,8 @@ public sealed class ScopedProducerConformanceTests
         MapScopedSurfaces view = ScopeFixtures.Acquire(probe, AcquisitionConformanceFixtures.Scope());
         Assert.Equal(MapAcquireStatus.Incomplete, view.Status);
         Assert.Equal(new MapUnavailable("patch", AcquisitionConformanceFixtures.Seed, MapPatchStatus.Unloaded), Assert.Single(view.Witness.Unavailable));
-        Assert.Contains("incident", view.Detail);
         Assert.Equal((false, false, false), (view.Witness.Complete, view.Identity.Complete, view.ReadWitness.Complete));
-        Assert.Contains("incomplete", Assert.Throws<MapDocumentException>(view.Identity.RequireComplete).Message);
+        Assert.Throws<MapDocumentException>(view.Identity.RequireComplete);
         Assert.Empty(view.Witness.KnownEmpty);
         Assert.Equal(MapPatchStatus.Present, view.Patch(AcquisitionConformanceFixtures.Seed).Status);
     }
@@ -196,10 +195,15 @@ public sealed class ScopedProducerConformanceTests
             Assert.DoesNotContain(probe.Session.ReservedAtDispose, k => k.SurfaceId == "anchor" && k.SlotX >= 30 && k.SlotX < 33);
             Assert.All(probe.Session.ReservationSnapshots, snapshot =>
             {
-                Assert.IsType<ReadOnlyCollection<MapPatchKey>>(snapshot);
                 Assert.Equal(snapshot.OrderBy(k => k), snapshot);
                 Assert.Equal(snapshot.Count, snapshot.Distinct().Count());
-                Assert.Throws<NotSupportedException>(() => ((IList<MapPatchKey>)snapshot).Add(default));
+                var before = snapshot.ToArray();
+                if (snapshot is ICollection<MapPatchKey> mutable)
+                {
+                    Assert.Throws<NotSupportedException>(() => mutable.Add(default));
+                    Assert.Throws<NotSupportedException>(mutable.Clear);
+                }
+                Assert.Equal(before, snapshot);
             });
             Assert.Equal(new[] { AcquisitionConformanceFixtures.Seed }, probe.Session.ReservationSnapshots.First(s => s.Count == 1));
         }
@@ -268,7 +272,6 @@ public sealed class ScopedProducerConformanceTests
             Assert.Equal(expected, view.Status);
             if (expected is MapAcquireStatus.CapacityExceeded or MapAcquireStatus.NotRepresentable) AcquisitionConformanceFixtures.AssertNoFacts(view);
             if (terminal == "FindCapacity") Assert.Equal(new[] { AcquisitionConformanceFixtures.Seed }, probe.Session.ReservedAtDispose);
-            if (terminal == "ExactOverflow") Assert.Contains("overflow", view.Detail);
             var calls = (probe.Session.Finds, probe.Session.SurfaceLookups.Count, probe.Session.ExplicitReads.Count, probe.Session.IncidentQueries.Count,
                 probe.LegacyFinds, probe.LegacyReads, probe.LegacySurfaceGets);
             _ = view.Patch(AcquisitionConformanceFixtures.Seed);

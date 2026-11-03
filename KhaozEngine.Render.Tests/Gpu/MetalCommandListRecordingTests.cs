@@ -70,8 +70,12 @@ namespace KhaozEngine.Tests.Gpu
             (MetalCommandList list, _, _, _) = NewList();
             list.Begin();
 
-            InvalidOperationException thrown = Assert.Throws<InvalidOperationException>(list.Begin);
-            Assert.Contains("already recording", thrown.Message, StringComparison.Ordinal);
+            Assert.Throws<InvalidOperationException>(list.Begin);
+            Assert.True(list.IsRecording);
+
+            list.End();
+            list.Begin();
+            Assert.True(list.IsRecording);
         }
 
         /// <summary>
@@ -152,9 +156,12 @@ namespace KhaozEngine.Tests.Gpu
             (MetalCommandList list, _, _, _) = NewList();
             list.Begin();
 
-            InvalidOperationException thrown =
-                Assert.Throws<InvalidOperationException>(() => _ = list.SealedCommandBuffer);
-            Assert.Contains("without a sealed recording", thrown.Message, StringComparison.Ordinal);
+            Assert.Throws<InvalidOperationException>(() => _ = list.SealedCommandBuffer);
+            Assert.True(list.IsRecording);
+            Assert.False(list.IsSealed);
+
+            list.End();
+            Assert.NotEqual(IntPtr.Zero, list.SealedCommandBuffer);
         }
 
         [Fact]
@@ -505,7 +512,6 @@ namespace KhaozEngine.Tests.Gpu
             InvalidOperationException thrown = Assert.Throws<InvalidOperationException>(
                 () => list.SetGraphicsResourceSet(0, null!));
 
-            Assert.Contains("Call Begin first", thrown.Message, StringComparison.Ordinal);
             Assert.DoesNotContain("not built", thrown.Message, StringComparison.Ordinal);
 
             // AND A NULL SET IS RECORDED RATHER THAN REFUSED once the list is recording, which is clause 6: the

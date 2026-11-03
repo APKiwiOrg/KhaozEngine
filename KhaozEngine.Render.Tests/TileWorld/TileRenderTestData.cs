@@ -436,6 +436,10 @@ public sealed partial class RecordingTileWorldScene : ITileWorldScene, ITileWorl
     /// <summary>The same for <see cref="LoadPropMeshes"/>, counted over archetypes rather than parts.</summary>
     public int ThrowOnPropMeshLoad { get; set; }
 
+    /// <summary>What <see cref="ThrowOnPropMeshLoad"/> threw, so a test can tell that refusal from the already-unloaded
+    /// throw of a double free, which has the same type.</summary>
+    public InvalidOperationException? PropMeshRefusal { get; private set; }
+
     /// <summary>Forgets the recorded draws, so the next frame's records stand alone. Handles are untouched.</summary>
     public void ClearFrame()
     {
@@ -535,7 +539,7 @@ public sealed partial class RecordingTileWorldScene : ITileWorldScene, ITileWorl
     {
         ArgumentNullException.ThrowIfNull(parts);
         if (PropMeshLoads.Count + 1 == ThrowOnPropMeshLoad)
-            throw new InvalidOperationException($"the fake refused prop-mesh upload {ThrowOnPropMeshLoad}.");
+            throw PropMeshRefusal = new InvalidOperationException($"the fake refused prop-mesh upload {ThrowOnPropMeshLoad}.");
 
         var handles = new MeshHandle[parts.Count];
         for (int i = 0; i < parts.Count; i++) handles[i] = Next();

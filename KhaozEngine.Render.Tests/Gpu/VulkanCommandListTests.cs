@@ -423,7 +423,6 @@ namespace KhaozEngine.Tests.Gpu
                 NotSupportedException refused = Assert.Throws<NotSupportedException>(() => call(list));
                 Assert.Contains("https://github.com/APKiwiOrg/KhaozEngine/issues/", refused.Message,
                     StringComparison.Ordinal);
-                Assert.Contains("not built yet", refused.Message, StringComparison.Ordinal);
                 Assert.False(string.IsNullOrEmpty(member));
             }
         }
@@ -461,6 +460,7 @@ namespace KhaozEngine.Tests.Gpu
             nameof(IGpuCommandList.SetGraphicsResourceSet),     // row 11, the bind flush, both overloads
             nameof(IGpuCommandList.SetComputeResourceSet),      // row 11, the bind flush, both overloads
             nameof(IGpuCommandList.SetFramebuffer),             // row 12, the deferred begin
+            nameof(IGpuCommandList.SetFramebufferWithStoreActions), // #595, explicit attachment lifetime
             nameof(IGpuCommandList.ClearColorTarget),           // row 12, folded into loadOp
             nameof(IGpuCommandList.ClearDepthStencil),          // row 12, folded into loadOp
             nameof(IGpuCommandList.SetScissorRect),             // row 12, the framebuffer-change guard

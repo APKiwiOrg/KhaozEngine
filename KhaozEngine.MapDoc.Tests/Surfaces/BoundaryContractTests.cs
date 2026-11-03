@@ -172,9 +172,9 @@ public sealed class BoundaryContractTests
         Assert.Equal(new MapExactValue(1, cellUnitDenominator), mismatch);
         if (cellUnitDenominator > 1) Assert.True(mismatch.CompareTo(new(1, 10000)) < 0);
 
-        MapDocumentException error = Assert.Throws<MapDocumentException>(() => MapWallStripCompiler.Compile(strip, l, u));
-
-        Assert.Contains("vertex sequence", error.Message);
+        var matching = u with { Points = u.Points.Select((point, i) => point with { X = l.Points[i].X, Z = l.Points[i].Z }).ToArray() };
+        Assert.NotEmpty(MapWallStripCompiler.Compile(strip, l, matching).Faces);
+        Assert.Throws<MapDocumentException>(() => MapWallStripCompiler.Compile(strip, l, u));
     }
 
     [Theory]

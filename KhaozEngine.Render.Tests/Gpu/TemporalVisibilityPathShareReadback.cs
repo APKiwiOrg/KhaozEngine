@@ -1,6 +1,5 @@
 using System;
 using System.Globalization;
-using System.Reflection;
 using KhaozEngine.Gpu;
 using KhaozEngine.Render3D;
 using KhaozEngine.Render3D.Internal;
@@ -22,14 +21,7 @@ internal static class TemporalVisibilityPathShareReadback
 
     // Install before the first resolve. The scene owns and disposes the renderer.
     internal static TemporalResolveRenderer UseExportingResolve(TemporalFixture fx, Func<string, string>? rewrite = null)
-    {
-        FieldInfo field = typeof(Scene3D).GetField("_temporalResolve", BindingFlags.Instance | BindingFlags.NonPublic)
-            ?? throw new InvalidOperationException("Scene3D no longer holds its resolve renderer in _temporalResolve");
-        Assert.Null(field.GetValue(fx.Scene));
-        var renderer = new TemporalResolveRenderer(fx.Device, rewrite ?? TemporalVisibilityProductionPaths.Rewrite);
-        field.SetValue(fx.Scene, renderer);
-        return renderer;
-    }
+        => TemporalTestResolve.Install(fx, rewrite ?? TemporalVisibilityProductionPaths.Rewrite);
 
     internal static string Share(long part, long whole) => whole == 0 ? "n/a"
         : (100.0 * part / whole).ToString("0.00", CultureInfo.InvariantCulture) + "%";

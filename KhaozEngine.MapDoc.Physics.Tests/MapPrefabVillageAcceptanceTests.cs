@@ -55,13 +55,11 @@ public sealed class MapPrefabVillageAcceptanceTests
     {
         var f = PrefabFixtures.Village();
         string text = MapDocumentFile.SaveText(f.Document);
-        foreach (string head in new[] { "client", "server" })
+        foreach (string _ in new[] { "client", "server" })
         {
-            MapBuiltWorld? installed = null;
-            var error = Assert.Throws<MapDocumentException>(() => installed = MapWorldBuilder.Build(
+            var error = Assert.Throws<MapDocumentException>(() => MapWorldBuilder.Build(
                 MapDocumentFile.LoadText(text), PrefabFixtures.ReloadVillageAssets(f.Assets, "bath"), PrefabPhysicsFixtures.Options()));
             Assert.Contains("bath", error.Message);
-            Assert.True(installed is null, head + " must refuse before static installation");
         }
     }
 

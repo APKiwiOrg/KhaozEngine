@@ -100,12 +100,11 @@ public sealed class CertifiedHullSweepLifetimeTests
         }
         var captures = (Dictionary<int, InstalledSweepGeometry?>)Field(world, "_installedSweepStatics");
         InstalledSweepGeometry geometry = captures[replacement.Value]!;
-        FieldInfo field = typeof(InstalledSweepGeometry).GetField("_operator", BindingFlags.Instance | BindingFlags.NonPublic)!;
-        object saved = field.GetValue(geometry)!;
-        object uncertain = field.GetValue(geometry)!;
+        Assert.True(geometry.TryPose(geometry.ParentPose, out var saved));
+        object uncertain = saved;
         typeof(InstalledPoseOperator).GetField("<X>k__BackingField", BindingFlags.Instance | BindingFlags.NonPublic)!
             .SetValue(uncertain, new FeaturePoint(FeatureNumber.Enclosed(GeometryInterval.Enclose(-1, 1)), FeatureNumber.Exact(0), FeatureNumber.Exact(0)));
-        field.SetValue(geometry, uncertain);
+        geometry.PublishPose(geometry.ParentPose, geometry.LeafPose, (InstalledPoseOperator)uncertain);
         var refusedDimensions = new CapsuleQueryDimensions(0.25f, 0);
         Pose refusedPose = Pose.At(start - world.Origin);
         Refused(world.SweepCapsuleCertified(refusedDimensions, refusedPose, delta));
@@ -114,7 +113,7 @@ public sealed class CertifiedHullSweepLifetimeTests
             measuredRefusal = world.SweepCapsuleCertified(refusedDimensions, refusedPose, delta));
         Assert.Equal(0, refusedBytes);
         Refused(measuredRefusal);
-        field.SetValue(geometry, saved);
+        geometry.PublishPose(geometry.ParentPose, geometry.LeafPose, saved);
         HitContains(world.SweepCapsuleCertified(refusedDimensions, refusedPose, delta), 1.75, 1.75);
         lease.AssertCurrent();
     }

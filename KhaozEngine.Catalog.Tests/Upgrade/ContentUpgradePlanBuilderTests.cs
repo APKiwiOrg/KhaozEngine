@@ -50,11 +50,11 @@ public sealed class ContentUpgradePlanBuilderTests
     }
 
     /// <summary>
-    /// The same FIELD twice is the planner contradicting itself, and the builder says which row and which
-    /// field rather than publishing whichever value came last.
+    /// The same FIELD twice is the planner contradicting itself. The builder identifies the field parameter
+    /// rather than publishing whichever value came last.
     /// </summary>
     [Fact]
-    public void PatchingOneFieldOfOneRowTwiceIsRefusedNamingTheRowAndTheField()
+    public void PatchingOneFieldOfOneRowTwiceIsRefused()
     {
         ContentUpgradePlanBuilder builder = Builder()
             .PatchField(UpgradeFixtures.Thing, OldRow, PublishFixtures.ValueField, Int(11), Int(12));
@@ -62,8 +62,7 @@ public sealed class ContentUpgradePlanBuilderTests
         ArgumentException refused = Assert.Throws<ArgumentException>(() => builder.PatchField(
             UpgradeFixtures.Thing, OldRow, PublishFixtures.ValueField, Int(12), Int(13)));
 
-        Assert.Contains("old_row", refused.Message, StringComparison.Ordinal);
-        Assert.Contains(PublishFixtures.ValueField, refused.Message, StringComparison.Ordinal);
+        Assert.Equal("fieldName", refused.ParamName);
     }
 
     /// <summary>
@@ -71,7 +70,7 @@ public sealed class ContentUpgradePlanBuilderTests
     /// outright. The builder says so while nothing has been written.
     /// </summary>
     [Fact]
-    public void PatchingAndRetiringOneRowIsRefusedNamingTheRow()
+    public void PatchingAndRetiringOneRowIsRefused()
     {
         ContentUpgradePlanBuilder builder = Builder()
             .PatchField(UpgradeFixtures.Thing, OldRow, PublishFixtures.ValueField, Int(11), Int(12));
@@ -79,7 +78,7 @@ public sealed class ContentUpgradePlanBuilderTests
         ArgumentException refused = Assert.Throws<ArgumentException>(() => builder.RetireRow(
             UpgradeFixtures.Thing, OldRow, ContentRetirePolicy.Placeholder));
 
-        Assert.Contains("old_row", refused.Message, StringComparison.Ordinal);
+        Assert.Equal("key", refused.ParamName);
     }
 
     /// <summary>A retire and then a patch is the same collision from the other side.</summary>
@@ -98,7 +97,7 @@ public sealed class ContentUpgradePlanBuilderTests
     /// turns on would never match again. It is refused.
     /// </summary>
     [Fact]
-    public void RetiringOneRowTwiceIsRefusedNamingTheRow()
+    public void RetiringOneRowTwiceIsRefused()
     {
         ContentUpgradePlanBuilder builder = Builder()
             .RetireRow(UpgradeFixtures.Thing, OldRow, ContentRetirePolicy.Placeholder);
@@ -106,12 +105,12 @@ public sealed class ContentUpgradePlanBuilderTests
         ArgumentException refused = Assert.Throws<ArgumentException>(() => builder.RetireRow(
             UpgradeFixtures.Thing, OldRow, ContentRetirePolicy.Placeholder));
 
-        Assert.Contains("old_row", refused.Message, StringComparison.Ordinal);
+        Assert.Equal("key", refused.ParamName);
     }
 
     /// <summary>One identity staged twice is the same hazard on the additive half.</summary>
     [Fact]
-    public void AddingOneRowTwiceIsRefusedNamingTheRow()
+    public void AddingOneRowTwiceIsRefused()
     {
         ContentUpgradePlanBuilder builder = Builder()
             .AddRow(UpgradeFixtures.Other, NewRow);
@@ -119,7 +118,7 @@ public sealed class ContentUpgradePlanBuilderTests
         ArgumentException refused = Assert.Throws<ArgumentException>(
             () => builder.AddRow(UpgradeFixtures.Other, NewRow));
 
-        Assert.Contains("new_row", refused.Message, StringComparison.Ordinal);
+        Assert.Equal("key", refused.ParamName);
     }
 
     /// <summary>

@@ -173,7 +173,6 @@ public class ObjectPoolTests
         var refusal = Assert.Throws<StalePoolReturnException>(() => pool.Return(in a));
 
         Assert.Equal(0, refusal.Slot);
-        Assert.Equal(StalePoolReturnException.BuildMessage(0), refusal.Message);
         Assert.Equal(1, pool.ActiveCount);
         Assert.True(pool.TryReturn(in b));
     }

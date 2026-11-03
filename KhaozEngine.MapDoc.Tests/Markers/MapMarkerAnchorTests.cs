@@ -23,7 +23,7 @@ public sealed class MapMarkerAnchorTests
         MapDocument reloaded = MapDocumentFile.LoadText(MapDocumentFile.SaveText(fixture.Document));
 
         var error = Assert.Throws<MapDocumentException>(() => MapMarkerAnchors.Read(reloaded, fixture.Assets));
-        Assert.Equal("Prefab expansion preflight limit exceeded.", error.Message);
+        Assert.Contains("preflight limit exceeded", error.Message);
 
         MarkerFixture control = ManyBoundMarkers(2, markers);
         Assert.Equal(2 * markers, MapMarkerAnchors.Read(control.Document, control.Assets).Count(a => a.Id.Contains("/bound-", System.StringComparison.Ordinal)));

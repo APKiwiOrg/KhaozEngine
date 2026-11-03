@@ -1,6 +1,5 @@
 using System;
 using Xunit;
-using Xunit.Sdk;
 
 namespace KhaozEngine.Tests.Locomotion.Contacts;
 
@@ -12,8 +11,8 @@ public sealed class SupportAllocationRegionTests
     {
         using var region = SupportAllocationRegion.Start();
         GC.Collect();
-        Exception? failure = Record.Exception(region.Dispose);
-        Assert.IsAssignableFrom<XunitException>(failure);
-        Assert.Contains("collection", failure!.Message, StringComparison.OrdinalIgnoreCase);
+        var failure = Assert.Throws<AllocationMeasurementException>(region.Dispose);
+        Assert.Equal(AllocationMeasurementRefusal.CollectionInterrupted, failure.Reason);
+        Assert.Equal(nameof(AnInducedCollectionFailsAsAnAllocationAssertion), failure.Description);
     }
 }

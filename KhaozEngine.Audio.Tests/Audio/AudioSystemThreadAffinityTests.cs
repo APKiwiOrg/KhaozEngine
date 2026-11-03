@@ -55,15 +55,17 @@ public sealed class AudioSystemThreadAffinityTests : IDisposable
     private static void AssertThrowsOffThread(Action action)
     {
         Exception? caught = RunOffThread(action);
-        var invalid = Assert.IsType<InvalidOperationException>(caught);
-        Assert.Contains("main-thread-only", invalid.Message);
+        Assert.IsType<InvalidOperationException>(caught);
     }
 
-    [Fact]
-    public void PlaySfxOffTheOwningThreadThrows()
+    [Theory]
+    [InlineData("blip")]
+    [InlineData("not-registered")]
+    public void PlaySfxOffTheOwningThreadThrows(string name)
     {
+        // Even an unknown name must fail the thread guard before reaching the warn-once lookup path.
         using AudioSystem audio = NewLoaded();
-        AssertThrowsOffThread(() => audio.PlaySfx("blip"));
+        AssertThrowsOffThread(() => audio.PlaySfx(name));
     }
 
     [Fact]
@@ -78,15 +80,6 @@ public sealed class AudioSystemThreadAffinityTests : IDisposable
     {
         using AudioSystem audio = NewLoaded();
         AssertThrowsOffThread(() => audio.PlaySfx(new[] { "blip" }));
-    }
-
-    [Fact]
-    public void UnknownSfxNameStillThrowsOffThread()
-    {
-        // The guard runs BEFORE the name lookup, so the off-thread caller is told about the thread rather than
-        // getting the unknown-name warn-once no-op it would get on the owning thread.
-        using AudioSystem audio = NewLoaded();
-        AssertThrowsOffThread(() => audio.PlaySfx("not-registered"));
     }
 
     [Fact]
@@ -135,12 +128,18 @@ public sealed class AudioSystemThreadAffinityTests : IDisposable
     {
         using AudioSystem audio = NewLoaded();
         int owner = Environment.CurrentManagedThreadId;
+        int caller = 0;
 
-        Exception? caught = RunOffThread(() => audio.DefineBus("ui"));
+        Exception? caught = RunOffThread(() =>
+        {
+            caller = Environment.CurrentManagedThreadId;
+            audio.DefineBus("ui");
+        });
 
         var invalid = Assert.IsType<InvalidOperationException>(caught);
         Assert.Contains("AudioSystem.DefineBus", invalid.Message);
-        Assert.Contains($"owned by thread {owner}", invalid.Message);
+        Assert.Matches($@"\b{owner}\b", invalid.Message);
+        Assert.Matches($@"\b{caller}\b", invalid.Message);
     }
 
     [Fact]

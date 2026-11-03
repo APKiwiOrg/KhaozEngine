@@ -1,7 +1,5 @@
 using System;
 using System.Numerics;
-using System.Reflection;
-using System.Runtime.ExceptionServices;
 using KhaozEngine.Locomotion;
 using KhaozEngine.Physics;
 using KhaozEngine.Physics.Bepu;
@@ -64,35 +62,23 @@ public class MovementCapsuleSweepLeaseTests
         Assert.Equal(0f, hit.Result.ImpactDistance);
     }
 
-    [Fact]
-    public void ShortClearCannotPublishAPrefix()
+    [Theory]
+    [InlineData(0.99f)] // Short clear cannot publish a prefix.
+    [InlineData(1.01f)] // Overlong clear cannot claim another request.
+    public void ClearMustCoverExactlyTheRequestedDistance(float distance)
     {
         using var scene = new Scene();
-        scene.Script.Result = Clear(0.99f);
+        scene.Script.Result = Clear(distance);
         AssertRefused(Query(scene.Lease, Vector3.UnitX), MovementAvailability.Invalid);
     }
 
-    [Fact]
-    public void OverlongClearCannotClaimAnotherRequest()
+    [Theory]
+    [InlineData(0.9f, 1.1f)] // Upper bound outside the request.
+    [InlineData(1.1f, 1.2f)] // Both bounds outside the request.
+    public void HitBoundsCannotExceedTheRequest(float lower, float upper)
     {
         using var scene = new Scene();
-        scene.Script.Result = Clear(1.01f);
-        AssertRefused(Query(scene.Lease, Vector3.UnitX), MovementAvailability.Invalid);
-    }
-
-    [Fact]
-    public void HitUpperBoundCannotExceedTheRequest()
-    {
-        using var scene = new Scene();
-        scene.Script.Result = new(CapsuleSweepStatus.Hit, 0.9f, 1.1f, 0f);
-        AssertRefused(Query(scene.Lease, Vector3.UnitX), MovementAvailability.Invalid);
-    }
-
-    [Fact]
-    public void BothHitBoundsBeyondTheRequestAreRejected()
-    {
-        using var scene = new Scene();
-        scene.Script.Result = new(CapsuleSweepStatus.Hit, 1.1f, 1.2f, 0f);
+        scene.Script.Result = new(CapsuleSweepStatus.Hit, lower, upper, 0f);
         AssertRefused(Query(scene.Lease, Vector3.UnitX), MovementAvailability.Invalid);
     }
 
@@ -187,20 +173,9 @@ public class MovementCapsuleSweepLeaseTests
 
     static Capture Query(MovementQueryLease lease, Vector3 displacement)
     {
-        MethodInfo? method = typeof(MovementQueryLease).GetMethod("QuerySolidSweep",
-            BindingFlags.Instance | BindingFlags.NonPublic);
-        Assert.NotNull(method);
-        object?[] args = [Body, displacement, Clear(123f)];
-        try
-        {
-            var availability = (MovementAvailability)method.Invoke(lease, args)!;
-            return new Capture(availability, (CapsuleSweepResult)args[2]!);
-        }
-        catch (TargetInvocationException exception) when (exception.InnerException is not null)
-        {
-            ExceptionDispatchInfo.Capture(exception.InnerException).Throw();
-            throw;
-        }
+        CapsuleSweepResult result = Clear(123f);
+        MovementAvailability availability = lease.QuerySolidSweep(Body, displacement, out result);
+        return new Capture(availability, result);
     }
 
     readonly record struct Capture(MovementAvailability Availability, CapsuleSweepResult Result);

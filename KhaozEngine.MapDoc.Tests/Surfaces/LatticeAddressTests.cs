@@ -15,7 +15,7 @@ public sealed class LatticeAddressTests
         Assert.Equal(("1/2", "-3"), (new MapExactValue(2, 4).ToString(), new MapExactValue(-6, 2).ToString()));
         Assert.Equal(new MapExactValue(13421773, 134217728), MapExactValue.FromSingle(0.1f));
         Assert.Throws<MapExactOverflowException>(() => MapExactValue.FromSingle(1e-30f));
-        Assert.Contains("finite", Assert.Throws<ArgumentException>(() => MapExactValue.FromSingle(float.NaN)).Message);
+        Assert.Equal("value", Assert.Throws<ArgumentException>(() => MapExactValue.FromSingle(float.NaN)).ParamName);
         Assert.Equal((2L, 3L), (new MapExactValue(5, 2).Floor(), new MapExactValue(5, 2).Ceiling()));
         Assert.Equal((-3L, -2L), (new MapExactValue(-5, 2).Floor(), new MapExactValue(-5, 2).Ceiling()));
     }
@@ -34,7 +34,8 @@ public sealed class LatticeAddressTests
         Assert.Equal(new MapExactValue(1, 2), third.WorldXz(MapLatticeAddress.Create(3, 0, 2)).X);                       // 1.5 third-cells
         Assert.Equal(MapLatticeAddress.Create(4, 3, 3), coarse.AddressOf(new(4, 3), new(1, 1)));
         Assert.Equal(new MapExactXz(new(4, 3), new(-1, 1)), MapLatticeFrame.ImportedMetreCentimetre.WorldXz(MapLatticeAddress.Create(4, 3, 3)));
-        Assert.Contains("denominator", Assert.Throws<MapDocumentException>(() => coarse.AddressOf(new(1, 128), new(0, 1))).Message);
+        Assert.Equal(MapLatticeAddress.Create(1, 0, 64), coarse.AddressOf(new(1, 64), new(0, 1)));
+        Assert.Throws<MapDocumentException>(() => coarse.AddressOf(new(1, 128), new(0, 1)));
         Assert.Throws<MapDocumentException>(() => MapLatticeAddress.Create(1, 0, 65));
     }
     [Fact]

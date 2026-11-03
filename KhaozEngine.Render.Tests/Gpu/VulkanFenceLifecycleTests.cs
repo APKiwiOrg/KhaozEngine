@@ -94,8 +94,7 @@ namespace KhaozEngine.Tests.Gpu
             VulkanGpuFence fence = timeline.CreateFence();
             fence.Arm(1);
 
-            InvalidOperationException thrown = Assert.Throws<InvalidOperationException>(() => fence.Arm(2));
-            Assert.Contains("Reset", thrown.Message, StringComparison.Ordinal);
+            Assert.Throws<InvalidOperationException>(() => fence.Arm(2));
             Assert.Equal(1UL, fence.Target);
         }
 

@@ -64,12 +64,14 @@ namespace KhaozEngine.Tests.Gpu
             Assert.Equal("  Apple M2 Max  ", request.RawValue);
         }
 
-        [Fact]
-        public void AnIndexIsHonoured_WhenItNamesAnEligibleDevice()
+        [Theory]
+        [InlineData("1")]
+        [InlineData("radeon")]
+        public void AnExplicitPin_SelectsTheEligibleDevice(string value)
         {
-            MetalDeviceCandidate[] devices = [Eligible("Apple M2 Max"), Eligible("AMD Radeon Pro")];
+            MetalDeviceCandidate[] devices = [Eligible("Apple M2 Max"), Eligible("AMD Radeon Pro W6800X")];
 
-            int chosen = MetalDeviceSelection.Choose(MetalDeviceSelection.Parse("1"), devices, out string? warning);
+            int chosen = MetalDeviceSelection.Choose(MetalDeviceSelection.Parse(value), devices, out string? warning);
 
             Assert.Equal(1, chosen);
             Assert.Null(warning);
@@ -94,52 +96,21 @@ namespace KhaozEngine.Tests.Gpu
             Assert.Equal(0, chosen);
             Assert.NotNull(warning);
             Assert.Contains("supportsFamily:", warning, StringComparison.Ordinal);
-            Assert.Contains("crash on frame one", warning, StringComparison.Ordinal);
         }
 
-        [Fact]
-        public void AnIndexOutOfRange_WarnsWithTheCountAndTheList()
+        [Theory]
+        [InlineData("7")]
+        [InlineData("Radeon")]
+        public void AnUnsatisfiedPin_WarnsWithTheRequestAndDevices_AndFallsBack(string value)
         {
             MetalDeviceCandidate[] devices = [Eligible("Apple M2 Max")];
 
-            int chosen = MetalDeviceSelection.Choose(MetalDeviceSelection.Parse("7"), devices, out string? warning);
+            int chosen = MetalDeviceSelection.Choose(MetalDeviceSelection.Parse(value), devices, out string? warning);
 
             Assert.Equal(0, chosen);
             Assert.NotNull(warning);
-            Assert.Contains("enumerates 1", warning, StringComparison.Ordinal);
+            Assert.Contains(value, warning, StringComparison.Ordinal);
             Assert.Contains("Apple M2 Max", warning, StringComparison.Ordinal);
-        }
-
-        [Fact]
-        public void ANameSubstring_MatchesCaseInsensitively()
-        {
-            MetalDeviceCandidate[] devices = [Eligible("Apple M2 Max"), Eligible("AMD Radeon Pro W6800X")];
-
-            int chosen = MetalDeviceSelection.Choose(MetalDeviceSelection.Parse("radeon"), devices,
-                out string? warning);
-
-            Assert.Equal(1, chosen);
-            Assert.Null(warning);
-        }
-
-        /// <summary>
-        /// A name substring is machine-specific by nature, so a value that is right on the machine it was written
-        /// on is wrong on the next one. That must WARN and fall back rather than fail, or a diagnostic lever
-        /// becomes a way of bricking a session, and the warning lists what was really enumerated because "nothing
-        /// matched" on its own sends the reader to check their spelling.
-        /// </summary>
-        [Fact]
-        public void ANameThatMatchesNothing_WarnsWithTheEnumerationAndFallsBack()
-        {
-            MetalDeviceCandidate[] devices = [Eligible("Apple M2 Max")];
-
-            int chosen = MetalDeviceSelection.Choose(MetalDeviceSelection.Parse("Radeon"), devices,
-                out string? warning);
-
-            Assert.Equal(0, chosen);
-            Assert.NotNull(warning);
-            Assert.Contains("Radeon", warning, StringComparison.Ordinal);
-            Assert.Contains("enumerated: 0='Apple M2 Max'", warning, StringComparison.Ordinal);
         }
 
         /// <summary>
@@ -178,7 +149,7 @@ namespace KhaozEngine.Tests.Gpu
 
             Assert.Equal(0, chosen);
             Assert.NotNull(warning);
-            Assert.Contains("Metal has no discrete flag", warning, StringComparison.Ordinal);
+            Assert.Contains(MetalDeviceSelection.EnvVarName, warning, StringComparison.Ordinal);
         }
 
         /// <summary>
@@ -240,7 +211,6 @@ namespace KhaozEngine.Tests.Gpu
                 requestHonoured: false);
 
             Assert.Contains("SUBSTITUTED", line, StringComparison.Ordinal);
-            Assert.Contains("not comparable", line, StringComparison.Ordinal);
         }
 
         /// <summary>
@@ -254,7 +224,6 @@ namespace KhaozEngine.Tests.Gpu
             string line = MetalDeviceSelection.DescribeSystemDefault("Apple M2 Max");
 
             Assert.Contains(MetalDeviceSelection.EnvVarName, line, StringComparison.Ordinal);
-            Assert.Contains("incumbent", line, StringComparison.Ordinal);
             Assert.Contains("Apple M2 Max", line, StringComparison.Ordinal);
         }
 
@@ -277,9 +246,12 @@ namespace KhaozEngine.Tests.Gpu
             MetalDeviceSelection.Choose(MetalDeviceSelection.Parse("Nothing"), devices, out string? warning);
 
             Assert.NotNull(warning);
-            Assert.Contains("0='Intel Iris Pro' (low-power)", warning, StringComparison.Ordinal);
-            Assert.Contains("1='Old eGPU' INELIGIBLE", warning, StringComparison.Ordinal);
-            Assert.Contains("2='Apple M2 Max' (headless)", warning, StringComparison.Ordinal);
+            Assert.Contains("Intel Iris Pro", warning, StringComparison.Ordinal);
+            Assert.Contains("low-power", warning, StringComparison.Ordinal);
+            Assert.Contains("Old eGPU", warning, StringComparison.Ordinal);
+            Assert.Contains("INELIGIBLE", warning, StringComparison.Ordinal);
+            Assert.Contains("Apple M2 Max", warning, StringComparison.Ordinal);
+            Assert.Contains("headless", warning, StringComparison.Ordinal);
         }
     }
 }

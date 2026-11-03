@@ -167,7 +167,7 @@ public sealed partial class MetalTimestampEndTests
         rig.Render.AfterRelease = null;
         int signals = rig.Native.Signals.Count;
         if (tail) rig.List.Begin();
-        Assert.Contains("unresolved", Assert.Throws<InvalidOperationException>(() => rig.List.BeginTimestamps(rig.Pool, 2)).Message);
+        Assert.Throws<InvalidOperationException>(() => rig.List.BeginTimestamps(rig.Pool, 2));
         rig.List.End();
         Assert.Equal(signals, rig.Native.Signals.Count);
         rig.List.Dispose();

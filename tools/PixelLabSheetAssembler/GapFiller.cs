@@ -16,7 +16,9 @@ public static class GapFiller
         bool strict, List<string> warnings)
     {
         if (present.Count == 0)
-            throw new AssemblyException($"direction '{dirName}' has no frames for animation '{anim}'.");
+            throw new AssemblyException(AssemblyRefusal.DirectionEmpty,
+                $"direction '{dirName}' has no frames for animation '{anim}'.")
+            { Direction = dirName, Animation = anim };
 
         var sources = new int[frameCount];
         for (int i = 0; i < frameCount; i++)
@@ -28,7 +30,8 @@ public static class GapFiller
             }
 
             if (strict)
-                throw new AssemblyException($"{dirName}/{anim} frame_{i:000} missing (--strict).");
+                throw new AssemblyException(AssemblyRefusal.FrameMissing, $"{dirName}/{anim} frame_{i:000} missing (--strict).")
+                { Direction = dirName, Animation = anim, FrameIndex = i };
 
             int src = -1;
             for (int j = i - 1; j >= 0; j--)

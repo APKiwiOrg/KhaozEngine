@@ -75,43 +75,16 @@ namespace KhaozEngine.Tests.Render3D.Animation
             AssertVectorNear(jointModel.Translation, actual.Translation);
         }
 
-        [Fact]
-        public void ComposeRigid_ThrowsWhenJointXBasisIsZero()
+        [Theory]
+        [InlineData(0f, 0f, 1f, 0f, 0f, 1f)] // Collapsed X.
+        [InlineData(1f, 2f, 0f, 0f, 0f, 1f)] // Y depends on X.
+        [InlineData(1f, 0f, 1f, 1f, 1f, 0f)] // Z depends on X and Y.
+        public void ComposeRigid_rejects_dependent_joint_axes(float xx, float yx, float yy, float zx, float zy, float zz)
         {
             var jointModel = new Matrix4x4(
-                0f, 0f, 0f, 0f,
-                0f, 1f, 0f, 0f,
-                0f, 0f, 1f, 0f,
-                3f, 4f, 5f, 1f);
-
-            ArgumentException error = Assert.Throws<ArgumentException>(() =>
-                BoneSocket.ComposeRigid(Matrix4x4.Identity, jointModel, Matrix4x4.Identity));
-
-            Assert.Equal("jointModel", error.ParamName);
-        }
-
-        [Fact]
-        public void ComposeRigid_ThrowsWhenJointYBasisDependsOnX()
-        {
-            var jointModel = new Matrix4x4(
-                1f, 0f, 0f, 0f,
-                2f, 0f, 0f, 0f,
-                0f, 0f, 1f, 0f,
-                3f, 4f, 5f, 1f);
-
-            ArgumentException error = Assert.Throws<ArgumentException>(() =>
-                BoneSocket.ComposeRigid(Matrix4x4.Identity, jointModel, Matrix4x4.Identity));
-
-            Assert.Equal("jointModel", error.ParamName);
-        }
-
-        [Fact]
-        public void ComposeRigid_ThrowsWhenJointZBasisDependsOnXAndY()
-        {
-            var jointModel = new Matrix4x4(
-                1f, 0f, 0f, 0f,
-                0f, 1f, 0f, 0f,
-                1f, 1f, 0f, 0f,
+                xx, 0f, 0f, 0f,
+                yx, yy, 0f, 0f,
+                zx, zy, zz, 0f,
                 3f, 4f, 5f, 1f);
 
             ArgumentException error = Assert.Throws<ArgumentException>(() =>

@@ -665,16 +665,27 @@ public class NavLayerBakerTests
     [Fact]
     public void ProviderOverflow_Throws()
     {
-        var provider = new DelegateColumnProvider((x, z, surfaces) =>
+        // Writes every slot with a non-standable sample at strictly ascending heights, so the samples satisfy
+        // the provider contract and only the reported count can refuse. The baker's buffer is stack memory, so
+        // an unwritten slot would hold undefined data that could trip the ordering refusal instead.
+        static int FillAscending(Span<NavSurfaceSample> surfaces)
         {
-            // Reports one more surface than the caller's buffer can possibly hold.
-            return surfaces.Length + 1;
-        });
+            for (int i = 0; i < surfaces.Length; i++)
+                surfaces[i] = new NavSurfaceSample(false, i, float.PositiveInfinity);
+            return surfaces.Length;
+        }
 
-        InvalidOperationException ex = Assert.Throws<InvalidOperationException>(() => NavLayerBaker.BakeOverworldLayered(
+        // Reports one more surface than the caller's buffer can possibly hold.
+        var provider = new DelegateColumnProvider((x, z, surfaces) => FillAscending(surfaces) + 1);
+
+        Assert.Throws<InvalidOperationException>(() => NavLayerBaker.BakeOverworldLayered(
             provider, minX: 0f, minZ: 0f, maxX: 4f, maxZ: 4f,
             cellSize: 1f, stepHeight: StepHeight, agentHeight: AgentHeight, jumpHeight: JumpHeight));
-        Assert.Contains("surfaces", ex.Message, StringComparison.OrdinalIgnoreCase);
+
+        // The same written samples with the exact buffer count are inside the contract and accepted.
+        NavLayerBaker.BakeOverworldLayered(
+            new DelegateColumnProvider((x, z, surfaces) => FillAscending(surfaces)), minX: 0f, minZ: 0f, maxX: 4f, maxZ: 4f,
+            cellSize: 1f, stepHeight: StepHeight, agentHeight: AgentHeight, jumpHeight: JumpHeight);
     }
 
     [Fact]
@@ -687,11 +698,22 @@ public class NavLayerBakerTests
             return 2;
         });
 
-        InvalidOperationException ex = Assert.Throws<InvalidOperationException>(() => NavLayerBaker.BakeOverworldLayered(
+        Assert.Throws<InvalidOperationException>(() => NavLayerBaker.BakeOverworldLayered(
             provider, minX: 0f, minZ: 0f, maxX: 4f, maxZ: 4f,
             cellSize: 1f, stepHeight: StepHeight, agentHeight: AgentHeight, jumpHeight: JumpHeight,
             maxSurfacesPerColumn: 2));
-        Assert.Contains("ascending", ex.Message, StringComparison.OrdinalIgnoreCase);
+
+        // The same two surfaces in ascending order are accepted, so only the order refuses.
+        var ascending = new DelegateColumnProvider((x, z, surfaces) =>
+        {
+            surfaces[0] = new NavSurfaceSample(true, 0.5f, float.PositiveInfinity);
+            surfaces[1] = new NavSurfaceSample(true, 1.0f, float.PositiveInfinity);
+            return 2;
+        });
+        NavLayerBaker.BakeOverworldLayered(
+            ascending, minX: 0f, minZ: 0f, maxX: 4f, maxZ: 4f,
+            cellSize: 1f, stepHeight: StepHeight, agentHeight: AgentHeight, jumpHeight: JumpHeight,
+            maxSurfacesPerColumn: 2);
     }
 
     [Fact]

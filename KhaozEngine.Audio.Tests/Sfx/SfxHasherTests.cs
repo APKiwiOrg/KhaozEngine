@@ -20,14 +20,14 @@ public class SfxHasherTests
     public void Hash_is_stable_for_identical_inputs()
     {
         Assert.Equal(
-            SfxHasher.Compute(Entry(), SfxDefaults.Model, SfxDefaults.SourceFormat),
-            SfxHasher.Compute(Entry(), SfxDefaults.Model, SfxDefaults.SourceFormat));
+            SfxHasher.Compute(Entry(), SfxDefaults.SourceFormat),
+            SfxHasher.Compute(Entry(), SfxDefaults.SourceFormat));
     }
 
     [Fact]
     public void Hash_is_hex_sha256()
     {
-        string h = SfxHasher.Compute(Entry(), SfxDefaults.Model, SfxDefaults.SourceFormat);
+        string h = SfxHasher.Compute(Entry(), SfxDefaults.SourceFormat);
         Assert.Equal(64, h.Length);
         Assert.Matches("^[0-9a-f]{64}$", h);
     }
@@ -38,14 +38,13 @@ public class SfxHasherTests
     [InlineData("influence")]
     [InlineData("format")]
     [InlineData("channels")]
-    [InlineData("model")]
     [InlineData("source")]
     public void Hash_changes_when_any_input_changes(string field)
     {
-        string baseline = SfxHasher.Compute(Entry(), SfxDefaults.Model, SfxDefaults.SourceFormat);
+        string baseline = SfxHasher.Compute(Entry(), SfxDefaults.SourceFormat);
 
         SfxEntry e = Entry();
-        string model = SfxDefaults.Model, source = SfxDefaults.SourceFormat;
+        string source = SfxDefaults.SourceFormat;
         switch (field)
         {
             case "prompt": e = e with { Prompt = "different" }; break;
@@ -53,18 +52,28 @@ public class SfxHasherTests
             case "influence": e = e with { PromptInfluence = 0.9 }; break;
             case "format": e = e with { Format = SfxFormat.Wav }; break;
             case "channels": e = e with { Channels = SfxChannels.Stereo }; break;
-            case "model": model = "other_model"; break;
             case "source": source = "pcm_44100"; break;
         }
 
-        Assert.NotEqual(baseline, SfxHasher.Compute(e, model, source));
+        Assert.NotEqual(baseline, SfxHasher.Compute(e, source));
+    }
+
+    // Sidecars written before hash scheme 2 are only honoured while this reproduces their bytes. The expected
+    // value was computed outside this code from the scheme 1 layout, which reproduces all 42 scheme 1 sidecars
+    // in Grimhollow and Hardpoint.
+    [Fact]
+    public void Legacy_hash_reproduces_scheme_1_sidecars()
+    {
+        Assert.Equal(
+            "90a8a129714249d606fbd9a0d2b0b2b12f8dfd5c710e7f9be37ff7bee45fa1e2",
+            SfxHasher.ComputeLegacy(Entry(), "eleven_text_to_sound_v2", "mp3_44100_192"));
     }
 
     [Fact]
     public void Out_path_does_not_affect_hash()
     {
-        string a = SfxHasher.Compute(Entry(), SfxDefaults.Model, SfxDefaults.SourceFormat);
-        string b = SfxHasher.Compute(Entry() with { Out = "somewhere/else.ogg" }, SfxDefaults.Model, SfxDefaults.SourceFormat);
+        string a = SfxHasher.Compute(Entry(), SfxDefaults.SourceFormat);
+        string b = SfxHasher.Compute(Entry() with { Out = "somewhere/else.ogg" }, SfxDefaults.SourceFormat);
         Assert.Equal(a, b);
     }
 

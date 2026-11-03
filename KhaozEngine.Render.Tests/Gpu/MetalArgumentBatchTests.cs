@@ -92,8 +92,9 @@ namespace KhaozEngine.Tests.Gpu
             batch.Emit(ref sink, MetalShaderStage.Compute, Encoder);
 
             Assert.Equal(
-                new[] { MetalIndexSpace.Buffer, MetalIndexSpace.Texture, MetalIndexSpace.Sampler },
-                calls.ArrayWrites.Select(w => w.Space).ToArray());
+                new[] { MetalIndexSpace.Buffer, MetalIndexSpace.Texture, MetalIndexSpace.Sampler }
+                    .OrderBy(space => space),
+                calls.ArrayWrites.Select(w => w.Space).OrderBy(space => space).ToArray());
         }
 
         /// <summary>

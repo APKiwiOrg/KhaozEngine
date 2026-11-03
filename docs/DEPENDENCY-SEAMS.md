@@ -380,7 +380,7 @@ so a capture from an explicitly selected or fallback device cannot be filed unde
 support project retains direct backend edges for its uniform-ring adapters and its filtered registration-test
 module initializer belt.
 
-The file-size ratchet adds one more analyzer edge, from every umbrella:
+The file-size and test-health ratchets share one analyzer edge, from every umbrella:
 
 ```
 KhaozEngine.Game2D/Game3D/Server/Foundation -> KhaozEngine.CodeHealth.Analyzers   (packed dependency,
@@ -388,10 +388,11 @@ KhaozEngine.Game2D/Game3D/Server/Foundation -> KhaozEngine.CodeHealth.Analyzers 
 ```
 
 `KhaozEngine.CodeHealth.Analyzers` is a `netstandard2.0` Roslyn analyzer with no runtime dependency. It ships its
-assembly under `analyzers/dotnet/cs` and its `buildTransitive` props auto-discover the consumer's `.filesize-baseline`
-and hand it to the analyzer as an `AdditionalFile`, so the edge is analyzer-only and drags nothing into shipped game
-code. All four umbrellas carry it (a file-size ratchet is not renderer- or server-specific), so any project that
-references an umbrella gets the ratchet.
+assembly under `analyzers/dotnet/cs` and its `buildTransitive` props independently discover the consumer's
+`.filesize-baseline` and `.testhealth-baseline` and supply them as AdditionalFiles. Each ratchet stays silent
+without its baseline. KETEST rules also require an xunit reference. The edge is analyzer-only and adds no
+runtime dependency. All four umbrellas carry it because these ratchets apply across engine areas. The
+[analyzer README](../KhaozEngine.CodeHealth.Analyzers/README.md) owns rule and adoption details.
 
 ## Self-relaunch seam: process control
 
@@ -518,7 +519,9 @@ scheduler still wins over it.
 
 `KhaozEngine.Attachments` has no project or third-party dependency. It owns immutable definitions,
 canonical JSON, reference checks, the `IAttachmentAssetSource` byte seam, directory source policy and
-embedded rigid and skinned GLB preflight. JSON uses `System.Text.Json` from the BCL. No renderer or particular
+embedded rigid and skinned GLB preflight. `AttachmentGlb.ComputeRigIdentity` provides versioned body
+fit evidence from raw accessor bytes and canonical rest frames, excluding animation and appearance.
+JSON uses `System.Text.Json` and hashing uses SHA-256 from the BCL. No renderer or particular
 skeleton type appears in its API. Publishers reference it directly. Foundation and Server do not
 gain an attachment dependency.
 

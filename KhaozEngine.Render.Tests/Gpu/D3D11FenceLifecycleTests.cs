@@ -128,12 +128,14 @@ namespace KhaozEngine.Tests.Gpu
 
             fences.SignalEndOfReplay(fence);
 
-            InvalidOperationException ex =
-                Assert.Throws<InvalidOperationException>(() => fences.SignalEndOfReplay(fence));
-            Assert.Contains("Reset", ex.Message, StringComparison.Ordinal);
+            Assert.Throws<InvalidOperationException>(() => fences.SignalEndOfReplay(fence));
 
             Assert.Equal(2, timeline.SignalCount);              // the failed submit still signalled
             Assert.Equal(1UL, ((D3D11GpuFence)fence).Target);   // and did not retarget the fence
+
+            fence.Reset();
+            fences.SignalEndOfReplay(fence);
+            Assert.Equal(3UL, ((D3D11GpuFence)fence).Target);
         }
 
         /// <summary>A fence from another backend cannot be armed, and saying so beats an

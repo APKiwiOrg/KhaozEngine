@@ -1,6 +1,5 @@
 using System;
 using System.Linq;
-using System.Reflection;
 using KhaozEngine.Gpu.Vulkan.Internal;
 using Silk.NET.Vulkan;
 using Xunit;
@@ -163,15 +162,7 @@ namespace KhaozEngine.Tests.Gpu
         public void TheRealSink_RefusesANullApi()
             => Assert.Throws<ArgumentNullException>(() => new VulkanCmdSink(null!, default));
 
-        /// <summary>And it carries no mutable field at all, which is the strongest form of the rule above: there
-        /// is no state for a copy to disagree about.</summary>
-        [Fact]
-        public void TheRealSink_CarriesNoMutableState()
-        {
-            FieldInfo[] fields = typeof(VulkanCmdSink)
-                .GetFields(BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public);
-
-            Assert.All(fields, f => Assert.True(f.IsInitOnly, f.Name + " is not readonly."));
-        }
+        // No separate "carries no mutable field" row: a readonly struct cannot declare one (CS8340), so
+        // EverySinkInTheBackend_IsAReadonlyStruct already fails for every way that could happen.
     }
 }

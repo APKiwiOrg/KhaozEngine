@@ -53,9 +53,10 @@ public class ContactDropRefusalTests
         });
         if (!roof)
         {
-            var refused = Assert.Throws<InvalidOperationException>(() => fixture.Capture.BuildProfile(ContactDropFixture.Tuning,
+            var refused = Assert.Throws<ContactDropProofException>(() => fixture.Capture.BuildProfile(ContactDropFixture.Tuning,
                 default, new GroundProfileOptions { MaxDropMetres = 6 }));
-            Assert.Contains("EnvironmentUnresolved", refused.Message, StringComparison.Ordinal);
+            Assert.Equal(ContactDropProofFailure.StepUnavailable, refused.Reason);
+            Assert.Equal(MovementStepOutcome.EnvironmentUnresolved, refused.Outcome);
             return;
         }
         var nav = fixture.Capture.BuildProfile(ContactDropFixture.Tuning, default, new GroundProfileOptions { MaxDropMetres = 6 });

@@ -261,6 +261,9 @@ in the `KhaozEngine.Render3D.Ecs` arm under the same namespace, so a render-only
     (0, 90) degrees, or carries one whose two ends pack to the same cosine. `Scene3D.LoadTileGroundMaterial` packs
     the params before it creates any GPU resource, so a refused set leaks nothing. Every derivative stays hoisted into uniform control flow and every side tap is a
     `textureGrad`.
+    Repeated active corner or overlay roles reuse the complete sample for their clamped slot ID, including its
+    steep companion. Each role keeps its original weight threshold and ordered weighted addition. Equal-slot
+    weights are never combined, so the optimization preserves rounding and output pixels.
   - **Constraints worth knowing.** Entries past the layer count are zeroed, while the shader clamps every mesh slot
     to the last real texture layer before reading either resource. A hand-built mesh naming an invalid slot
     therefore shows the set's last material instead of sampling a nonexistent array slice. The pipeline binds TWO
@@ -514,7 +517,7 @@ in the `KhaozEngine.Render3D.Ecs` arm under the same namespace, so a render-only
   unshadowed and the frame after it carries the map. Knobs on `ShadowSettings.PointShadows` (a `PointShadowSettings`):
   `Enabled`, `FaceResolution` (default `256`, `64..1024` via `ResolvedFaceResolution`), `MaxShadowedLights` (default
   `8`, `1..256` via `ResolvedMaxLights`, the configured capacity floor and dynamic-effect budget),
-  `MaxStaticRebuildsPerFrame` (default `2`), `MaxDynamicLightsPerFrame` (default `4`, nearest-eye-first), and the
+  `MaxStaticRebuildsPerFrame` (default `2`, ordinary base refreshes), `MaxDynamicLightsPerFrame` (default `4`, nearest-eye-first), and the
   radius-normalized `Bias`/`SlopeBias` (defaults `0.01`/`0.02`, clamped
   `0..MaxBias` via `ResolvedBias`/`ResolvedSlopeBias`).
   Every submitted point light reaches a growable shared structured buffer. CPU-built conservative 3D frustum
@@ -544,8 +547,12 @@ in the `KhaozEngine.Render3D.Ecs` arm under the same namespace, so a render-only
   `Scene3D.RequestShadowMapDetail` carries a profile on a
   live scene and `Scene3D.RequestPointShadowSettings` requests a custom one at the next frame boundary.
   `Scene3D.DrawSkinned` and its dissolved variants cast by default through CPU or GPU skinning. Static lights keep
-  rigid casters (`DrawShadowOnly` included) in cached base rows and render each current skinned pose in a compact
-  transient atlas. Dynamic lights clear and redraw rigid and skinned casters together in their selected base row.
+  Static rigid casters (`DrawShadowOnly` included) in cached base rows. Set
+  `RigidInstanceDraw.ShadowMobility = ShadowCasterMobility.Dynamic` for moving rigid geometry. It shares the
+  current-frame transient atlas with skinned poses and stays outside the cached static signature. Static is the
+  constructor and zero default. Motion keys do not select mobility, and unsupported mobility values are refused
+  before queue mutation. Key-light and color behavior stay unchanged. Dynamic lights clear and redraw rigid and
+  skinned casters together in their selected base row.
   `castsShadows: false` excludes a skinned draw from point work. The transient atlas grows to exact demand at a
   frame boundary, keeps high-water capacity within a compatible base layout, and never exceeds its base row count.
   Receiver hard and soft taps compare the nearer of the base and transient depths. An unassigned transient row
@@ -557,7 +564,17 @@ in the `KhaozEngine.Render3D.Ecs` arm under the same namespace, so a render-only
   default. Read `Scene3D.PointShadowedLights`, or `PointShadowedLights`/`PointStaticRebuilds`/
   `PointDynamicRenders`/`PointTransientDemand`/`PointTransientRowsRendered`/
   `PointDynamicSkinnedDrawCalls`/`PointStaticTransientSkinnedDrawCalls`/`PointFaceDrawCalls`/`PointSlotsInUse` on
-  `ShadowPassDiagnostics`. `PointStaticRebuilds` counts rigid base rebuilds only.
+  `ShadowPassDiagnostics`. `PointStaticRebuilds` counts ordinary budgeted base rebuilds only.
+  `PointStaticTransientRigidDrawCalls` reports moving rigid transient face draws.
+  `PointRigidFallbackRowsRendered` counts complete current base redraws when a moving rigid caster has no
+  transient row. `PointRigidTransitionRowsRendered` counts mandatory pure-base cleanup before split sampling,
+  after fallback removal, or when a changed static signature meets current or previous moving rigid demand.
+  Both bypass the ordinary static budget, deduplicate with ordinary work, and render each owned base row at
+  most once per frame. Existing mandatory rows leave the ordinary allowance available for independent dirty
+  rows and new admissions. First admission still spends an ordinary selection, including when it uses fallback.
+  Refusal can cost a full scenery redraw, preserving current character and scenery shadows.
+  `PointStaticFallbackSkinnedDrawCalls` counts skinned face draws into fallback bases. `PointFaceDrawCalls`
+  includes every caster draw in these categories. See [caster layers](../docs/design/POINT-SHADOW-CASTERS.md).
   Point-light MASK alpha testing remains [#1098](https://github.com/APKiwiOrg/KhaozEngine/issues/1098).
   Skinned colour and outline cutouts are available, while key-light skinned cutout remains
   [#1097](https://github.com/APKiwiOrg/KhaozEngine/issues/1097). No draw overload or point-shadow quality
@@ -934,8 +951,8 @@ in the `KhaozEngine.Render3D.Ecs` arm under the same namespace, so a render-only
   `TileWaterLooks.River` supplies the owner-selected linear RGB `(0.28, 0.30, 0.18)` and `Clarity = 1.5f`,
   with `WaterColumnLight` left null. See [the TileWorld reference](../KhaozEngine.TileWorld.Render3D/README.md)
   for preset ownership and explicit opt-in. The remaining bent-view design is
-  [Landing 2](../docs/programs/water-optics-design.md). Release waits for the owner's measured-cost ruling
-  tracked in [the water optics program](../docs/programs/water-optics.md).
+  Landing 2 in the `water-optics` program design. Release waits for the owner's measured-cost ruling
+  recorded in the `water-optics` program in the owner's program store.
 
   <a id="water-column-coefficients"></a>
   **Water column coefficients.** For authored linear RGB `c`, the CPU derives
@@ -1778,3 +1795,13 @@ foliage pays no point-proxy cost.
 Dispose the batch when placements change or unload. The scene owns GPU buffers and retires them safely.
 Mesh handles remain caller-owned and must belong to that scene. `LastFoliageStats` reports workload and
 upload counts. `CandidateInstances` includes instances the shader rejects, rather than exact visible blades.
+
+The clustered point-light receiver skips its shadow filter when banded NdotL is exactly zero. Both diffuse
+and specular are already zero there, with specular gated by `step(0.0001, ndl)`. `AddLight` ignores non-finite
+intensities, keeping attenuation finite. The unobserved directional cascade keeps its sampled R32F colour atlas and
+declares only its separate working depth and stencil dead. Those planes are cleared before every rebuild
+and never sampled, captured or read back. See [attachment lifetime](../docs/METAL-FRAME-SUBMISSION.md#attachment-store-intent).
+
+A registered pass observer keeps cascade working depth and stencil stored because timestamp markers can
+end native encoders between caster families. This preserves capture output. Per-pass timing campaigns
+include those stores, while unobserved rendering receives the discard.

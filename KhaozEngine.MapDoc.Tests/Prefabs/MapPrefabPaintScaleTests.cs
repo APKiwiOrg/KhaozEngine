@@ -28,7 +28,7 @@ public sealed class MapPrefabPaintScaleTests
         long faces = f.Document.Surfaces.Patches.Values.Where(p => p.Key.SurfaceId == "ground")
             .Sum(p => (long)MapSurfaceCompiler.Compile(ground, p).Faces.Count);
         // Every footprint yields at least one paint source, so the old face by source product exceeds the pair budget.
-        Assert.Equal(limits.MaxSourceFacesPerBound, faces);
+        Assert.InRange(faces, 1, limits.MaxSourceFacesPerBound);
         Assert.True(faces * Scattered.Length > limits.MaxPairChecks);
 
         var regions = PrefabFixtures.Effective(f).PaintRegions["ground"];

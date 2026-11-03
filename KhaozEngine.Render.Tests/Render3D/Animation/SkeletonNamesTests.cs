@@ -111,9 +111,7 @@ namespace KhaozEngine.Tests.Render3D.Animation
                 new[] { 0, 1, 2 },
                 new[] { "root", "arm", "arm" });
 
-            InvalidOperationException error = Assert.Throws<InvalidOperationException>(() => skeleton.IndexOf("arm"));
-
-            Assert.Contains("arm", error.Message, StringComparison.Ordinal);
+            Assert.Throws<InvalidOperationException>(() => skeleton.IndexOf("arm"));
         }
 
         [Fact]

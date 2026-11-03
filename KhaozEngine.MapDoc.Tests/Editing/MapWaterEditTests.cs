@@ -34,13 +34,13 @@ public class MapWaterEditTests
     }
 
     [Theory]
-    [InlineData("remove-used-medium", "water medium 'sea-water' is used by 'cave-lake'")]
-    [InlineData("legacy-with-bodies", "remove every water body before using legacy global water")]
-    [InlineData("remove-unknown-body", "no water body 'nowhere'")]
-    [InlineData("upsert-without-section", "bounded water is off")]
-    [InlineData("bounded-on-resolver-one", "bounded water requires a resolver-2 native document")]
-    public void InvalidEdits_Refuse(string variant, string message) =>
-        Assert.Contains(message, Assert.Throws<MapDocumentException>(() => WaterFixtures.ApplyEdit(variant)).Message, StringComparison.Ordinal);
+    [InlineData("remove-used-medium")]
+    [InlineData("legacy-with-bodies")]
+    [InlineData("remove-unknown-body")]
+    [InlineData("upsert-without-section")]
+    [InlineData("bounded-on-resolver-one")]
+    public void InvalidEdits_Refuse(string variant) =>
+        Assert.Throws<MapDocumentException>(() => WaterFixtures.ApplyEdit(variant));
 
     [Fact]
     public void NameAffectedBodies_UsesCoveredSpaces()

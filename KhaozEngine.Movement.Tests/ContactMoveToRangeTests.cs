@@ -28,8 +28,8 @@ public class ContactMoveToRangeTests
         MoveTuning wrong = contactGraph ? legacy : Tuning;
         // Invalid body and dt would fail later. A kind refusal must win before any planning or prediction.
         var body = new MoveState { Position = new(float.NaN), Grounded = true };
-        Assert.Contains("Kind", Assert.Throws<ArgumentException>(() =>
-            move.Tick(body, wrong, default, 0, false, float.NaN, context)).Message, StringComparison.Ordinal);
+        Assert.Equal("binding", Assert.Throws<ArgumentException>(() =>
+            move.Tick(body, wrong, default, 0, false, float.NaN, context)).ParamName);
     }
 
     [Theory]
@@ -78,8 +78,8 @@ public class ContactMoveToRangeTests
         var target = ReachTarget.Point(body.Position);
         Assert.Equal(RangeMoveStatus.InRange, move.Tick(body, Tuning, target, 0, false, 1f / 30f, context).Status);
         MoveTuning wrong = Tuning with { Water = new(Tuning.Water.Mode, 1f) };
-        Assert.Contains("Water.SurfaceJumpSpeed", Assert.Throws<ArgumentException>(() =>
-            move.Tick(body, wrong, target, 0, false, 1f / 30f, context)).Message, StringComparison.Ordinal);
+        Assert.Equal("binding", Assert.Throws<ArgumentException>(() =>
+            move.Tick(body, wrong, target, 0, false, 1f / 30f, context)).ParamName);
     }
 
     [Theory]

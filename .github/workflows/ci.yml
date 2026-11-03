@@ -1,5 +1,5 @@
 name: ci
-# Paths split by event (see docs/design/CI-SELECTIVE-TESTS-DESIGN-2026-07-18.md, Decisions 4, 5 and 7):
+# Paths split by event (see docs/design/CI-SELECTIVE-TESTS.md, Decisions 4, 5 and 7):
 #   * workflow_dispatch runs the FULL sequence inline: restore, build, full test, determinism double-pass,
 #     pack, plus the three SQL Server jobs. A dispatch on main at the release commit is the hosted
 #     pre-tag gate. It never publishes and never reuses anything.
@@ -114,6 +114,7 @@ jobs:
           sh scripts/check-agent-instructions.sh --tree
           sh scripts/check-scratch.sh --tree
           sh scripts/tests/check-scratch.test.sh
+          sh scripts/tests/check-test-health.test.sh
       # Fail fast if the docs' "current version" declarations drifted from Directory.Build.props. Runs
       # on every event, both paths, so a selective docs-only push is still guarded.
       - name: Check doc version consistency
@@ -123,6 +124,7 @@ jobs:
           sh scripts/tests/check-agent-instructions.test.sh
           sh scripts/tests/ci-prior-gate.test.sh
           sh scripts/tests/build-release-tests.test.sh
+          python3 scripts/tests/renderer-tooling-selection.test.py
           sh scripts/tests/gpu-test-shards.test.sh
           sh scripts/tests/hooks-file-change-guard.test.sh
           sh scripts/tests/hooks-filesize-guard.test.sh
@@ -159,7 +161,7 @@ jobs:
       # headlessly by LoopbackTransport. Run them locally with the full (unfiltered) test command.
       - name: Test (full)
         if: (startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch') && env.REUSED_GATE != 'true'
-        run: dotnet test -c Release --no-build --filter "Category!=LiveSocket"
+        run: dotnet test -c Release --no-build --filter "Category!=LiveSocket&Category!=Diagnostic"
       # Determinism guard: the FP-scope tests must stay byte-identical under both JIT tiering modes.
       # (The default run above covers ambient tiering. These pin the two extremes explicitly.) The
       # DeterministicFp tests live in KhaozEngine.Foundation.Tests, and the fan-out tests that prove the

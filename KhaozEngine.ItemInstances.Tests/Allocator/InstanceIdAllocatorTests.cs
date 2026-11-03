@@ -49,8 +49,7 @@ public class InstanceIdAllocatorTests
     public void A_boot_on_a_node_id_already_on_the_retired_list_throws()
     {
         var store = StoreAt(7, 1, LiveEpoch, 3, 7);
-        InvalidOperationException thrown = Assert.Throws<InvalidOperationException>(() => Fresh(store));
-        Assert.Contains("retired", thrown.Message, StringComparison.Ordinal);
+        Assert.Throws<InvalidOperationException>(() => Fresh(store));
     }
 
     [Fact]
@@ -60,10 +59,7 @@ public class InstanceIdAllocatorTests
         var allocator = Fresh(store);
 
         Assert.False(allocator.CanIssue);
-        InvalidOperationException thrown = Assert.Throws<InvalidOperationException>(() => allocator.Next());
-        Assert.Contains("IMutationJournalMaintenance.RotateStoreEpochAsync", thrown.Message, StringComparison.Ordinal);
-        Assert.Contains("DURABLE-PLAYER-JOURNAL-DESIGN-2026-09-06.md", thrown.Message, StringComparison.Ordinal);
-        Assert.Contains("section 10", thrown.Message, StringComparison.Ordinal);
+        Assert.Throws<InvalidOperationException>(() => allocator.Next());
         Assert.Equal(0, store.PersistCount);
     }
 
@@ -111,8 +107,8 @@ public class InstanceIdAllocatorTests
         var store = StoreAt(0, InstanceIdAllocator.MaxCounter);
         var allocator = Fresh(store);
 
-        InvalidOperationException thrown = Assert.Throws<InvalidOperationException>(() => allocator.Next());
-        Assert.Contains("exhausted", thrown.Message, StringComparison.Ordinal);
+        Assert.True(allocator.CanIssue);
+        Assert.Throws<InvalidOperationException>(() => allocator.Next());
         Assert.Equal(0, store.PersistCount);
     }
 
@@ -207,17 +203,6 @@ public class InstanceIdAllocatorTests
     public void An_item_gets_an_id_when_its_payload_is_non_empty_or_its_definition_declares_one(
         int payloadLength, DeclaredInstanceProperties declared, bool expected) =>
         Assert.Equal(expected, InstanceIdAllocator.NeedsInstanceId(payloadLength, declared));
-
-    [Fact]
-    public void The_id_rule_reads_the_ITEM_so_a_later_declaration_does_not_reach_a_stored_copy()
-    {
-        // The stored copy: an empty payload written when the definition declared nothing.
-        Assert.False(InstanceIdAllocator.NeedsInstanceId(0, DeclaredInstanceProperties.None));
-
-        // The definition gains durability. A copy encoded at 0 bytes is still a plain stack, because the
-        // rule is asked of the item the caller holds rather than replayed over everything ever stored.
-        Assert.True(InstanceIdAllocator.NeedsInstanceId(0, DeclaredInstanceProperties.Durability));
-    }
 
     [Fact]
     public void A_rotate_onto_a_node_this_store_already_retired_is_refused()

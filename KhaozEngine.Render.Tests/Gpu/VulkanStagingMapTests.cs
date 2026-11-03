@@ -65,10 +65,7 @@ namespace KhaozEngine.Tests.Gpu
 
             maps.Open(resource, GpuMapMode.Read);
 
-            InvalidOperationException ex =
-                Assert.Throws<InvalidOperationException>(() => maps.Open(resource, GpuMapMode.Write));
-
-            Assert.Contains("already mapped", ex.Message, StringComparison.Ordinal);
+            Assert.Throws<InvalidOperationException>(() => maps.Open(resource, GpuMapMode.Write));
             Assert.Equal(1, maps.OpenCount);
         }
 

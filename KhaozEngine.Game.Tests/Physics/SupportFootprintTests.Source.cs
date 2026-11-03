@@ -224,9 +224,7 @@ public partial class SupportFootprintTests
             Assert.Equal(0, bytes);
             Assert.True(SupportQueryDiagnostics.Snapshot().ExactFallbacks > 0);
             object scratch = FootprintScratch(scene.World);
-            long payload = (long)typeof(KhaozEngine.Tests.Locomotion.Contacts.SupportCostScratch)
-                .GetMethod("Visit", System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic)!
-                .Invoke(null, [scratch, new HashSet<object>(ReferenceEqualityComparer.Instance)])!;
+            long payload = SupportCostScratch.Visit(scratch, new HashSet<object>(ReferenceEqualityComparer.Instance));
             _output.WriteLine($"Rotated source fallback general={general} coldBytes={coldBytes} warmBytes={bytes} scratchPayloadBytes={payload} exactFallbacks={SupportQueryDiagnostics.Snapshot().ExactFallbacks}");
         }
         finally { SupportQueryDiagnostics.Enable(false); }

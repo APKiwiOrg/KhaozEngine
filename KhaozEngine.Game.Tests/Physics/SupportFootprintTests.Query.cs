@@ -1,7 +1,6 @@
 using System;
 using System.Linq;
 using System.Numerics;
-using System.Reflection;
 using System.Collections.Generic;
 using System.Threading;
 using KhaozEngine.Physics;
@@ -213,13 +212,7 @@ public partial class SupportFootprintTests
     static void CheckQueryOracle(SupportFootprintScene scene, SupportFootprintRequest request,
         SupportFootprintResult result, SupportFootprintMember[] members, ulong[] joins)
     {
-        if (result.Status != CapsuleFeatureStatus.Complete)
-        {
-            object scratch = FootprintScratch(scene.World);
-            var polygons = (List<SupportPolygon>)scratch.GetType().GetField("_polygons", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(scratch)!;
-            string diagnostics = string.Join("\n", polygons.Select(p => $"{p.Static}/{p.ElementId} admission={SupportFootprintPolygon.Measure(p, request, out _)} lowest={SupportFootprintProposalGeometry.Lowest(p, request.FootProposal, out var h)} [{h.Lower:R}, {h.Upper:R}]"));
-            Assert.Fail($"{result.Status}\n{diagnostics}");
-        }
+        Assert.Equal(CapsuleFeatureStatus.Complete, result.Status);
         var oracle = Members(scene, request);
         Assert.Equal(oracle.Count, result.Members);
         for (int i = 0; i < result.Members; i++)

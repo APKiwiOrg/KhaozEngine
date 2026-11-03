@@ -35,7 +35,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
     /// The seam documents exactly one open recording per device, and that rule is what portable code is written
     /// against. This backend is more permissive as a BACKEND PROPERTY, and it gets there from Metal's own object
     /// model rather than from a barrier design: each list holds its own command buffer and its own encoders, and
-    /// this design has NO shared record-time state at all. No layout tracker (M-H3), no barrier batch, no device
+    /// encoder state is list-local. Prefix CPU-range protection shares the submit lock. No layout tracker (M-H3), no barrier batch, no device
     /// state cache. It is not a promise of the interface and code that relies on it does not port. And the decay
     /// warning applies for the third time: <c>OpenListTrackingGpuDevice</c> passes trivially on this leg and is
     /// NOT evidence about this backend.</para>
@@ -159,6 +159,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
             _passes = new MetalRenderPassSchedule(_encoders, render, clearMode);
             _owner = owner;
             _rings = rings;
+            _readSlots = new(rings.CpuReads, rings.FramesInFlight);
             _arena = arena;
             _blit = blit;
             _liveness = liveness;
@@ -307,12 +308,17 @@ namespace KhaozEngine.Gpu.Metal.Internal
             // so nothing can be recorded into a segment the GPU is still reading. CAPTURED, because this
             // recording's writes and binds all belong to the version claimed here and another list beginning
             // meanwhile moves the allocator's own current segment.
-            _segment = _rings.BeginRecording();
+            try { _segment = _rings.BeginRecording(); }
+            catch { ReleaseHeldBuffer(); throw; }
 
             // AND THE ARENA ROTATES ONTO THE SAME SLOT, taking the completion value the gate above just read
             // rather than polling the timeline a second time. It gives back the blocks that slot filled last time
             // round when, and only when, the submission that read them has completed, and it never waits.
             _arena.BeginSlot(_segment, _rings.CompletedValue);
+            _readSlots.Begin(_segment);
+            _prefixFrame = 0;
+            _drawableResolved = false;
+            _deferredDrawable = null;
 
             // THE RECORDER STATE RESET GOES HERE, immediately after the acquisition and before the recording flag
             // flips. A reset added anywhere else is a reset that a re-Begun list can be observed without. Today
@@ -331,6 +337,8 @@ namespace KhaozEngine.Gpu.Metal.Internal
             _graphicsBinds.Reset();
             _computeBinds.Reset();
             _streams.Reset();
+            _readStreams.Clear();
+            _readIndices = null;
             _boundSwapchain = false;
 
             // BOTH PIPELINES FORGOTTEN. The epoch bump above already invalidates the STATE BLOCK's stamp, so this
@@ -391,6 +399,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
         /// <see cref="MetalTimeline.EncodeSignalForSubmit"/>.</param>
         internal void MarkSubmitted(ulong signalledValue)
         {
+            if (_prefixFrame != 0) _rings.CpuReads.Submitted(_prefixFrame, signalledValue);
             _arena.RecordSubmitted(signalledValue);
             if (_segment >= 0) _rings.RecordSegmentOwner(_segment, signalledValue);
 

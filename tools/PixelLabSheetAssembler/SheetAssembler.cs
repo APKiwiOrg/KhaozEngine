@@ -17,7 +17,9 @@ public static class SheetAssembler
         foreach (var name in DirectionRows.NameToRow.Keys)
         {
             if (!anim.FramesByDir.TryGetValue(name, out var list) || list.Count == 0)
-                throw new AssemblyException($"animation '{anim.AnimName}' is missing direction '{name}'.");
+                throw new AssemblyException(AssemblyRefusal.DirectionMissing,
+                    $"animation '{anim.AnimName}' is missing direction '{name}'.")
+                { Animation = anim.AnimName, Direction = name };
         }
 
         // 2. frameCount = highest index + 1 across all directions.
@@ -26,7 +28,7 @@ public static class SheetAssembler
             foreach (var f in list)
                 frameCount = Math.Max(frameCount, f.Index + 1);
         if (frameCount == 0)
-            throw new AssemblyException("no frames found.");
+            throw new AssemblyException(AssemblyRefusal.NoFrames, "no frames found.") { Animation = anim.AnimName };
 
         // 3. Uniform cell = max frame dimensions across all present frames.
         int cellW = 0, cellH = 0;

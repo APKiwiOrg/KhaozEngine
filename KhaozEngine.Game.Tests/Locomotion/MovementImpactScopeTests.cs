@@ -1,7 +1,5 @@
 using System;
-using System.Linq;
 using System.Numerics;
-using System.Reflection;
 using KhaozEngine.Locomotion;
 using KhaozEngine.Physics;
 using KhaozEngine.Physics.Bepu;
@@ -13,9 +11,6 @@ namespace KhaozEngine.Tests.Locomotion;
 
 public class MovementImpactScopeTests
 {
-    delegate MovementAvailability Contacts(in MovementBodyQuery body, float margin, Span<CapsuleContact> scratch,
-        out CapsuleContactResult result);
-
     [Fact]
     public void RoundedInwardScopeAdditionCannotAuthorizeAnImpactQuery()
     {
@@ -32,12 +27,9 @@ public class MovementImpactScopeTests
         var acquired = environment.Acquire();
         Assert.Equal(MovementAvailability.Known, acquired.Status);
         using var lease = Assert.IsType<MovementQueryLease>(acquired.Lease);
-        MethodInfo method = typeof(MovementQueryLease).GetMethods(BindingFlags.Instance | BindingFlags.NonPublic)
-            .Single(method => method.Name == "QuerySolidContacts" && method.GetParameters().Length == 4);
-        var query = method.CreateDelegate<Contacts>(lease);
         var sentinel = new CapsuleContact(Vector3.UnitX, 91, false, 92, 93, 94);
         CapsuleContact[] buffer = [sentinel];
-        Assert.Equal(MovementAvailability.Unresolved, query(body, margin, buffer, out CapsuleContactResult result));
+        Assert.Equal(MovementAvailability.Unresolved, lease.QuerySolidContacts(body, margin, buffer, out CapsuleContactResult result));
         Assert.Equal(default, result);
         Assert.Equal(sentinel, buffer[0]);
     }

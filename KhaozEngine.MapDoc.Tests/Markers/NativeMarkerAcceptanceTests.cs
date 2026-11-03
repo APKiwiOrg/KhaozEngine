@@ -100,8 +100,7 @@ public sealed class NativeMarkerAcceptanceTests
         var choices = MarkerFixtures.VillageChoices().ToDictionary(p => p.Key, p => p.Value);
         var key = new MapLegacySpawnKey(MapLegacySpawnKind.PlayerSpawn, "legacy-start");
         choices[key] = choices[key] with { Name = "start" };
-        var refused = Assert.Throws<MapDocumentException>(() => MapMarkerAdoption.ConvertSpawns(legacy.Document, choices));
-        Assert.Contains("'start'", refused.Message, StringComparison.Ordinal);
+        Assert.Throws<MapDocumentException>(() => MapMarkerAdoption.ConvertSpawns(legacy.Document, choices));
         Assert.Equal(before, MapDocumentFile.SaveText(legacy.Document));
     }
 

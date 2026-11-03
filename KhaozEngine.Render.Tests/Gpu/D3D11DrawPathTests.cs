@@ -525,11 +525,15 @@ namespace KhaozEngine.Tests.Gpu
         public void AVertexSlotPastTheInputAssembler_IsRefused()
         {
             var streams = new D3D11VertexStreams();
+            var buffer = new FakeBuffer(64);
+            streams.RecordVertexBuffer(31, buffer, 0);
+            Assert.Same(buffer, streams.BufferAt(31));
 
             ArgumentOutOfRangeException ex = Assert.Throws<ArgumentOutOfRangeException>(
-                () => streams.RecordVertexBuffer(64, new FakeBuffer(64), 0));
+                () => streams.RecordVertexBuffer(32, buffer, 0));
 
-            Assert.Contains("32 slots", ex.Message, StringComparison.Ordinal);
+            Assert.Equal("slot", ex.ParamName);
+            Assert.Equal(32u, ex.ActualValue);
         }
 
         // ---- fixtures ---------------------------------------------------------------------------------------

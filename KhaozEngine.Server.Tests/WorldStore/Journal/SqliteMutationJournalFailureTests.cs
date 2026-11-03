@@ -13,13 +13,11 @@ public sealed class SqliteMutationJournalFailureTests : IDisposable
 {
     private readonly SqliteJournalTestDatabase database = new();
 
-    [Fact]
-    public Task Failure_after_event_writes_rolls_back_all_mutation_rows()
-        => InjectedStatementBoundaryFailureRollsBackAllMutationRows(JournalTestHookPhase.AfterEventWrites);
-
-    [Fact]
-    public Task Failure_after_projection_writes_rolls_back_all_mutation_rows()
-        => InjectedStatementBoundaryFailureRollsBackAllMutationRows(JournalTestHookPhase.AfterProjectionWrites);
+    [Theory]
+    [InlineData(nameof(JournalTestHookPhase.AfterEventWrites))]
+    [InlineData(nameof(JournalTestHookPhase.AfterProjectionWrites))]
+    public Task Failure_at_a_statement_boundary_rolls_back_all_mutation_rows(string phase)
+        => InjectedStatementBoundaryFailureRollsBackAllMutationRows(Enum.Parse<JournalTestHookPhase>(phase));
 
     private async Task InjectedStatementBoundaryFailureRollsBackAllMutationRows(JournalTestHookPhase failurePhase)
     {
@@ -220,13 +218,11 @@ public sealed class SqliteMutationJournalFailureTests : IDisposable
         await AssertCorrupt(() => operationStore.ResolveOperationAsync(initialization.Identity));
     }
 
-    [Fact]
-    public Task Failure_after_snapshot_write_preserves_prior_snapshot_and_tail()
-        => CompactionFailureBoundaryPreservesPriorSnapshotAndTail(JournalTestHookPhase.SnapshotWrittenBeforeVerification);
-
-    [Fact]
-    public Task Failure_before_event_prune_preserves_prior_snapshot_and_tail()
-        => CompactionFailureBoundaryPreservesPriorSnapshotAndTail(JournalTestHookPhase.SnapshotVerifiedBeforePrune);
+    [Theory]
+    [InlineData(nameof(JournalTestHookPhase.SnapshotWrittenBeforeVerification))]
+    [InlineData(nameof(JournalTestHookPhase.SnapshotVerifiedBeforePrune))]
+    public Task Failure_at_a_compaction_boundary_preserves_prior_snapshot_and_tail(string phase)
+        => CompactionFailureBoundaryPreservesPriorSnapshotAndTail(Enum.Parse<JournalTestHookPhase>(phase));
 
     private async Task CompactionFailureBoundaryPreservesPriorSnapshotAndTail(JournalTestHookPhase failurePhase)
     {

@@ -44,7 +44,10 @@ namespace KhaozEngine.Tests.Dungeon
                 case nameof(DungeonConfig.CeilingHeightMeters): config.CeilingHeightMeters = 0f; break; // <= 0 when set
             }
             var ex = Assert.Throws<ArgumentException>(() => config.Validate());
-            Assert.Contains(property, ex.Message);
+            // The min-over-max rule names the minimum, the first invalid property in check order.
+            string expected = property == nameof(DungeonConfig.CorridorMaxWidth)
+                ? nameof(DungeonConfig.CorridorMinWidth) : property;
+            Assert.Equal(expected, ex.ParamName);
         }
 
         [Fact]
@@ -71,7 +74,7 @@ namespace KhaozEngine.Tests.Dungeon
 
             config.HallChancePercent = 25;
             var ex = Assert.Throws<ArgumentException>(() => config.Validate());
-            Assert.Contains(nameof(DungeonConfig.PlotWidthTiles), ex.Message);
+            Assert.Equal(nameof(DungeonConfig.PlotWidthTiles), ex.ParamName);
         }
     }
 }

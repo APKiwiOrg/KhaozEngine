@@ -27,9 +27,8 @@ public sealed class MapTiledConcurrentSaveTests
                 {
                     if (attempted || step != (MapTiledSaveStep)phase) return;
                     attempted = true;
-                    MapDocumentException error = Assert.Throws<MapDocumentException>(() =>
+                    Assert.Throws<MapDocumentException>(() =>
                         MapDocumentFile.SaveTiled(second, Path.Combine(directory, ".")));
-                    Assert.Contains("exclusive save", error.Message);
                 },
             };
 

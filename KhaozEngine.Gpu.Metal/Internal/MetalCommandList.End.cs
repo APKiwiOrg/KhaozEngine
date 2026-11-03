@@ -52,6 +52,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
 
             try
             {
+                if (_passes.HasPendingClears) ResolveDeferredDrawable();
                 _passes.EndPass();
                 _encoders.EnsureNoEncoder();
                 EmitTimestampEnd();

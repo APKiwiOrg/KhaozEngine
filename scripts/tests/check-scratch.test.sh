@@ -38,7 +38,7 @@ newrepo() {
   git config user.email t@t.t; git config user.name t
   git config commit.gpgsign false; git config core.autocrlf false; git config core.safecrlf false
 }
-commit() { git add -A; git commit -q --no-verify -m "$1"; }
+commit() { git add -A; git commit -q -m "$1"; }
 # A fresh repo per case, with the ignore rules a real repo carries and one clean committed file.
 case_no=0
 fresh() {
@@ -50,12 +50,6 @@ fresh() {
 }
 # put <path> <printf format> [args]: write a file, creating its folder.
 put() { p=$1; shift; mkdir -p "$(dirname -- "$p")"; printf "$@" > "$p"; }
-tracker() { put "$1" '# x\n\n## Goal\n\nDone means done.\n\n## Milestones\n\n| M | Status |\n\n## Next step\n\nStart.\n'; }
-pad_to() { # file, exact byte size
-  cur=$(wc -c < "$1" | tr -d ' ')
-  awk -v n="$(( $2 - cur - 1 ))" 'BEGIN { s = "x"; while (length(s) < n) s = s s; print substr(s, 1, n) }' >> "$1"
-}
-to_crlf() { awk '{ printf "%s\r\n", $0 }' "$1" > "$1.crlf"; mv "$1.crlf" "$1"; }
 
 echo "== tree mode, tracked scratch (R1) =="
 fresh; run --tree
@@ -106,48 +100,43 @@ check tree_binary_file_skipped 0 "$rc"
 fresh; put docs/a.md 'Intro.\r\nSee the [plan](superpowers/plans/2026-10-04-x.md).\r\n'; git add docs/a.md; run --tree
 check tree_crlf_reference_still_fails 1 "$rc"
 
-echo "== tree mode, trackers and design files (R4, R5) =="
-fresh; tracker docs/programs/x.md; pad_to docs/programs/x.md 8193; git add -A; run --tree
-check tree_tracker_over_cap_fails 1 "$rc"
-
-fresh; tracker docs/programs/x.md
-printf '\n## Links\n\nhttps://example.invalid/1\n\n## Decisions in force\n\nD1.\n\n## Open questions and owner gates\n\nNone.\n' \
-  >> docs/programs/x.md
-pad_to docs/programs/x.md 8192; git add -A; run --tree
-check tree_tracker_at_cap_passes 0 "$rc"
-
-fresh; tracker docs/programs/x.md; printf '\n## Log\n\nDid things.\n' >> docs/programs/x.md; git add -A; run --tree
-check tree_tracker_unknown_heading_fails 1 "$rc"
-
-fresh; put docs/programs/x.md '# x\n\n## Goal\n\ng\n\n## Milestones\n\nm\n'; git add -A; run --tree
-check tree_tracker_missing_next_step_fails 1 "$rc"
-
-fresh; put docs/programs/x.md '# x\r\n\r\n## Goal\r\n\r\ng\r\n\r\n## Milestones\r\n\r\nm\r\n\r\n## Next step\r\n\r\nn\r\n'
+echo "== tree mode, program files (R4) =="
+fresh; put docs/programs/x.md '# x\n\n## Goal\n\nGoal.\n\n## Milestones\n\nNone.\n\n## Next step\n\nContinue.\n'
 git add -A; run --tree
-check tree_crlf_tracker_passes 0 "$rc"
+said 'program state lives outside this repository, read docs/programs/README.md'
+check tree_program_file_fails 1 "$rc"
 
-fresh; tracker docs/programs/x.md; pad_to docs/programs/x.md 8192; to_crlf docs/programs/x.md; git add -A; run --tree
-check tree_crlf_tracker_at_cap_passes 0 "$rc"
+fresh; put 'docs/programs/archive/old program.md' '# Program\n'; git add -A; run --tree
+said 'program state lives outside this repository, read docs/programs/README.md'
+check tree_nested_program_file_fails 1 "$rc"
 
-fresh; tracker docs/programs/x.md
-printf '\n```md\n## Log\n```\n\n~~~\n## Notes\n```\n## Still quoted\n~~~\n' >> docs/programs/x.md; git add -A; run --tree
-check tree_tracker_fenced_heading_passes 0 "$rc"
+fresh; put docs/programs/state.json '{"status":"Active"}\n'; git add -A; run --tree
+said 'program state lives outside this repository, read docs/programs/README.md'
+check tree_non_markdown_program_file_fails 1 "$rc"
 
-fresh; put docs/programs/README.md '# Programs\n\n## The three tiers\n\nText.\n\n## Tracker shape\n\nText.\n'; git add -A; run --tree
-check tree_readme_not_treated_as_tracker 0 "$rc"
+fresh; put docs/programs/x-design.md '# Design\n'; git add -A; run --tree
+said 'program state lives outside this repository, read docs/programs/README.md'
+check tree_program_design_file_fails 1 "$rc"
 
-fresh; tracker docs/programs/x.md; put docs/programs/x-design.md '# x design\n\n'; pad_to docs/programs/x-design.md 32769
-git add -A; run --tree
-check tree_design_over_cap_fails 1 "$rc"
+fresh; put docs/programs/archive/README.md '# Old programs\n'; git add -A; run --tree
+said 'program state lives outside this repository, read docs/programs/README.md'
+check tree_nested_readme_fails 1 "$rc"
 
-fresh; put docs/programs/x-design.md '# x design\n\nThe plan.\n'; git add -A; run --tree
-check tree_orphan_design_fails 1 "$rc"
+fresh; put docs/programs/x.md '# Program\n'; commit program
+rm docs/programs/x.md; run --tree
+said 'program state lives outside this repository, read docs/programs/README.md'
+check tree_missing_working_copy_fails 1 "$rc"
+
+fresh; put docs/programs/README.md '# Programs\r\n'; git add -A; run --tree
+check readme_only_passes 0 "$rc"
+run
+check staged_readme_only_passes 0 "$rc"
 
 echo "== staged mode =="
 fresh; put docs/superpowers/plans/a.md 'plan\n'; git add -f docs/superpowers/plans/a.md; run
 check staged_force_add_scratch_fails 1 "$rc"
 
-fresh; put docs/superpowers/plans/a.md 'plan\n'; git add -f docs/superpowers/plans/a.md; git commit -q --no-verify -m scratch
+fresh; put docs/superpowers/plans/a.md 'plan\n'; git add -f docs/superpowers/plans/a.md; git commit -q -m scratch
 git rm -q --cached docs/superpowers/plans/a.md; run
 check staged_rm_cached_scratch_passes 0 "$rc"
 
@@ -181,12 +170,27 @@ fresh; put docs/design/FOO-2026-10-25.md '# foo\n\nA design that has been here a
 mkdir -p docs/archive; git mv docs/design/FOO-2026-10-25.md docs/archive/FOO-2026-10-25.md; run
 check staged_rename_of_dated_doc_passes 0 "$rc"
 
-fresh; tracker docs/programs/x.md; pad_to docs/programs/x.md 8193; git add -A; run
-check staged_oversize_tracker_fails 1 "$rc"
+fresh; put docs/programs/x.md '# Program\n'; git add -A; run
+said 'program state lives outside this repository, read docs/programs/README.md'
+check staged_program_file_fails 1 "$rc"
 
-fresh; tracker docs/programs/x.md; put docs/programs/x-design.md '# x design\n'; commit program
+fresh; put docs/programs/x.md '# Program\n'; commit program
+put unrelated.txt 'Unrelated change.\n'; git add unrelated.txt; run
+said 'program state lives outside this repository, read docs/programs/README.md'
+check staged_unrelated_change_cannot_grandfather_program_fails 1 "$rc"
+
+fresh; put notes.md '# Program\n'; commit notes
+mkdir -p docs/programs/archive; git mv notes.md 'docs/programs/archive/old program.json'; run
+said 'program state lives outside this repository, read docs/programs/README.md'
+check staged_program_rename_fails 1 "$rc"
+
+fresh; put docs/programs/x.md '# Program\n'; commit program
+git mv docs/programs/x.md notes.md; run
+check staged_program_rename_out_passes 0 "$rc"
+
+fresh; put docs/programs/x.md '# Program\n'; commit program
 git rm -q docs/programs/x.md; run
-check staged_tracker_delete_orphaning_design_fails 1 "$rc"
+check staged_program_delete_passes 0 "$rc"
 
 echo "== staged merge mode =="
 # Each case branches before main's changes, then leaves a real merge pending in the index.
@@ -257,6 +261,29 @@ git checkout -q topic; put topic.txt 'Topic work.\n'; commit topic
 git merge --no-ff --no-commit main extra >"$TMPROOT/merge-out" 2>&1
 run
 check staged_octopus_merge_inherited_content_passes 0 "$rc"
+
+fresh; git branch -m main; git branch topic
+put docs/programs/x.md '# Program\n'; commit program; merge_main; run
+said 'program state lives outside this repository, read docs/programs/README.md'
+check staged_merge_parent_program_fails 1 "$rc"
+
+fresh; put docs/programs/x.md '# Program\n'; commit program
+git branch -m main; git checkout -qb topic
+put topic.txt 'Topic work.\n'; commit topic
+git checkout -q main; put main.txt 'Main work.\n'; commit main
+git merge --no-ff --no-commit topic >"$TMPROOT/merge-out" 2>&1
+run
+said 'program state lives outside this repository, read docs/programs/README.md'
+check staged_merge_head_program_fails 1 "$rc"
+
+fresh; git branch -m main; git branch topic; git branch extra
+put main.txt 'Main work.\n'; commit main
+git checkout -q extra; put docs/programs/state.json '{"status":"Active"}\n'; commit extra
+git checkout -q topic; put topic.txt 'Topic work.\n'; commit topic
+git merge --no-ff --no-commit main extra >"$TMPROOT/merge-out" 2>&1
+run
+said 'program state lives outside this repository, read docs/programs/README.md'
+check staged_octopus_merge_parent_program_fails 1 "$rc"
 
 echo "== self exclusion =="
 fresh; mkdir -p Scripts/tests; cp "$SCRIPT" Scripts/check-scratch.sh; cp "$here/check-scratch.test.sh" Scripts/tests/check-scratch.test.sh

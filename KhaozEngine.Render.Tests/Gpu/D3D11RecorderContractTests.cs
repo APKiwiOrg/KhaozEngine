@@ -314,6 +314,7 @@ namespace KhaozEngine.Tests.Gpu
             => new (string, Action<IGpuCommandList>)[]
             {
                 (nameof(IGpuCommandList.SetFramebuffer), l => l.SetFramebuffer(f.Framebuffer)),
+                (nameof(IGpuCommandList.SetFramebufferWithStoreActions), l => l.SetFramebufferWithStoreActions(f.Framebuffer, default)),
                 (nameof(IGpuCommandList.ClearColorTarget), l => l.ClearColorTarget(0, new Color(1f, 1f, 1f, 1f))),
                 (nameof(IGpuCommandList.ClearDepthStencil), l => l.ClearDepthStencil(1f)),
                 (nameof(IGpuCommandList.SetPipeline), l => l.SetPipeline(f.Pipeline)),

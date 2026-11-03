@@ -46,25 +46,15 @@ namespace KhaozEngine.Tests.Render2D
             Assert.True(aGrave.H > a.H);                          // the accent adds inked height
         }
 
-        [Fact]
-        public void Measure_counts_accented_chars()
+        [Theory]
+        [InlineData("À", "AÀ", "A")]
+        [InlineData("Ł", "LŁ", "L")]
+        public void Measure_counts_extended_latin_chars(string letter, string combined, string baseLetter)
         {
             BakedFont baked = Bake();
 
-            Assert.True(Width(baked, "À") > 0);
-            Assert.True(Width(baked, "AÀ") > Width(baked, "A"));
-        }
-
-        [Fact]
-        public void Measure_counts_latin_extended_a_chars()
-        {
-            // Same shape as Measure_counts_accented_chars, but for a Latin Extended-A letter (U+0141, "L with
-            // stroke") rather than a Latin-1 Supplement one: both blocks must actually measure real glyphs,
-            // not silently fall back to zero width.
-            BakedFont baked = Bake();
-
-            Assert.True(Width(baked, "Ł") > 0);
-            Assert.True(Width(baked, "LŁ") > Width(baked, "L"));
+            Assert.True(Width(baked, letter) > 0);
+            Assert.True(Width(baked, combined) > Width(baked, baseLetter));
         }
 
         [Fact]
@@ -128,6 +118,7 @@ namespace KhaozEngine.Tests.Render2D
             // Every baked glyph must be a real outline the face contains: either inked (W/H > 0) or a
             // legitimate blank with an advance (space, NBSP). A .notdef bake would show up as an empty
             // box with no ink for a letter codepoint.
+            Assert.NotEmpty(baked.Glyphs);
             foreach (KeyValuePair<char, GlyphInfo> kv in baked.Glyphs)
             {
                 bool inked = kv.Value.W > 0 && kv.Value.H > 0;

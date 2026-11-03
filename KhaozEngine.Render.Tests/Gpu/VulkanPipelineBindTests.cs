@@ -382,9 +382,9 @@ namespace KhaozEngine.Tests.Gpu
                 using VulkanCommandList list = fixture.CreateList();
                 list.Begin();
 
-                Assert.Contains("null VkPipeline",
-                    Assert.Throws<ObjectDisposedException>(() => list.SetPipeline(pipeline)).Message,
-                    StringComparison.Ordinal);
+                // The live list's own disposed guard names the list. The pipeline guard names the VkPipeline.
+                Assert.Equal("VkPipeline",
+                    Assert.Throws<ObjectDisposedException>(() => list.SetPipeline(pipeline)).ObjectName);
 
                 Assert.Empty(fixture.PipelineBinder.Binds);
             }
@@ -410,9 +410,8 @@ namespace KhaozEngine.Tests.Gpu
                 using VulkanCommandList list = fixture.CreateList();
                 list.Begin();
 
-                Assert.Contains("null VkPipeline",
-                    Assert.Throws<ObjectDisposedException>(() => list.SetComputePipeline(pipeline)).Message,
-                    StringComparison.Ordinal);
+                Assert.Equal("VkPipeline",
+                    Assert.Throws<ObjectDisposedException>(() => list.SetComputePipeline(pipeline)).ObjectName);
 
                 Assert.Empty(fixture.PipelineBinder.Binds);
             }
@@ -440,9 +439,8 @@ namespace KhaozEngine.Tests.Gpu
 
                 using VulkanCommandList list = fixture.CreateList();
 
-                Assert.Contains("needs an open recording",
-                    Assert.Throws<InvalidOperationException>(() => list.SetPipeline(pipeline)).Message,
-                    StringComparison.Ordinal);
+                // Never begun and the pipeline is live, so the recording guard is the one refusing.
+                Assert.Throws<InvalidOperationException>(() => list.SetPipeline(pipeline));
 
                 Assert.Empty(fixture.PipelineBinder.Binds);
             }

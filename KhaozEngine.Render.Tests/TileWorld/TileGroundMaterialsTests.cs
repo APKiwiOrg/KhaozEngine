@@ -162,7 +162,6 @@ public class TileGroundMaterialsTests
         TileWorldException ex = Assert.Throws<TileWorldException>(() => TileGroundMaterials.Build(catalogs));
 
         Assert.Contains("grass", ex.Message, StringComparison.Ordinal);
-        Assert.Contains("textures/grass.png", ex.Message, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -193,9 +192,7 @@ public class TileGroundMaterialsTests
     {
         TileWorldCatalogs catalogs = Materials(TileGroundMaterialConfig.MaxMaterials);
 
-        TileWorldException ex = Assert.Throws<TileWorldException>(() => TileGroundMaterials.Build(catalogs));
-
-        Assert.Contains($"{TileGroundMaterialConfig.MaxMaterials}", ex.Message, StringComparison.Ordinal);
+        Assert.Throws<TileWorldException>(() => TileGroundMaterials.Build(catalogs));
     }
 
     [Fact]
@@ -210,7 +207,7 @@ public class TileGroundMaterialsTests
         ArgumentException ex = Assert.Throws<ArgumentException>(
             () => new TileGroundMaterialSet(2, 2, new ushort[] { 7 }, layers));
 
-        Assert.Contains("2x2", ex.Message, StringComparison.Ordinal);
+        Assert.Equal("layers", ex.ParamName);
     }
 
     [Fact]

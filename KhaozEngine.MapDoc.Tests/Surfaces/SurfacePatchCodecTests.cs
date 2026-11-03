@@ -44,26 +44,29 @@ public sealed class SurfacePatchCodecTests
     public void Decode_RefusesOversizedInputUnreducedUnitsAndOverflow()
     {
         Assert.Contains("1048576", Assert.Throws<MapDocumentException>(() => MapSurfacePatchCodec.Decode(new byte[1_048_577], SurfacePatchFixtures.Sample().Key)).Message);
-        Assert.Contains("reduced", Assert.Throws<MapDocumentException>(() => new MapRational(2, 200)).Message);
-        Assert.Contains("positive", Assert.Throws<MapDocumentException>(() => new MapRational(0, 1)).Message);
+        Assert.Equal(new MapExactValue(1, 100), new MapRational(1, 100).Exact());
+        Assert.Throws<MapDocumentException>(() => new MapRational(2, 200));
+        Assert.Equal(new MapExactValue(1, 1), new MapRational(1, 1).Exact());
+        Assert.Throws<MapDocumentException>(() => new MapRational(0, 1));
         Assert.Equal(new MapExactPoint(new(4, 1), new(1433, 100), new(-64, 1)), MapLatticeFrame.ImportedMetreCentimetre.Corner(4, 64, 1433));
-        Assert.Contains("overflow", Assert.Throws<MapExactOverflowException>(() => new MapExactValue(long.MaxValue, 1).Multiply(new(2, 1))).Message);
+        Assert.Throws<MapExactOverflowException>(() => new MapExactValue(long.MaxValue, 1).Multiply(new(2, 1)));
     }
 
     [Theory]
-    [InlineData(4, 4, "cut")]
-    [InlineData(5, 4, "rotation")]
-    [InlineData(6, 128, "flags")]
-    [InlineData(7, 3, "topology")]
-    public void Decode_RejectsInvalidPackedCellBytes(int offset, int value, string diagnostic)
+    [InlineData(4, 4)]
+    [InlineData(5, 4)]
+    [InlineData(6, 128)]
+    [InlineData(7, 3)]
+    public void Decode_RejectsInvalidPackedCellBytes(int offset, int value)
     {
         MapSurfacePatch patch = SurfacePatchFixtures.Sample();
-        JsonObject json = JsonNode.Parse(MapSurfacePatchCodec.Encode(patch))!.AsObject();
+        byte[] valid = MapSurfacePatchCodec.Encode(patch);
+        Assert.Equal(valid, MapSurfacePatchCodec.Encode(MapSurfacePatchCodec.Decode(valid, patch.Key)));
+        JsonObject json = JsonNode.Parse(valid)!.AsObject();
         byte[] cells = Convert.FromBase64String(json["cells"]!.GetValue<string>());
         cells[offset] = (byte)value;
         json["cells"] = Convert.ToBase64String(cells);
-        Assert.Contains(diagnostic, Assert.Throws<MapDocumentException>(() =>
-            MapSurfacePatchCodec.Decode(Encoding.UTF8.GetBytes(json.ToJsonString()), patch.Key)).Message);
+        Assert.Throws<MapDocumentException>(() => MapSurfacePatchCodec.Decode(Encoding.UTF8.GetBytes(json.ToJsonString()), patch.Key));
     }
 
     [Fact]

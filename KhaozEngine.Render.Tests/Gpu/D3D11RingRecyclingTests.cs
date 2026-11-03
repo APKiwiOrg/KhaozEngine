@@ -336,7 +336,12 @@ namespace KhaozEngine.Tests.Gpu
 
             ArgumentException ex = Assert.Throws<ArgumentException>(() => D3D11CommandDrivers.Submit(
                 harness.SubmitLock, list, ref emitter, null, null, harness.Allocator));
-            Assert.Contains("segment", ex.Message, StringComparison.Ordinal);
+            Assert.Equal("rings", ex.ParamName);
+            Assert.Empty(log.Trace);
+
+            var signal = new D3D11SubmitSignalTests.FakeD3D11SubmitSignal();
+            D3D11CommandDrivers.Submit(harness.SubmitLock, list, ref emitter, signal, null, harness.Allocator);
+            Assert.Equal(1UL, harness.Allocator.SegmentOwner(0));
         }
 
         // ---- the off-timeline write (6.4) -----------------------------------------------------------------

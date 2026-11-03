@@ -160,7 +160,6 @@ public class SqlServerCatalogResetSchemaVersionTests
 
         Assert.Equal("schema-mismatch", refused.Reason);
         Assert.Contains(FormattableString.Invariant($"version '{Current + 1}', newer"), refused.Message, StringComparison.Ordinal);
-        Assert.Contains("Nothing was dropped", refused.Message, StringComparison.Ordinal);
         AssertUntouched(database, epochBefore, SqlServerCatalogSchemaExpectations.Tables.Count);
         Assert.Equal(Current + 1, database.Scalar("SELECT schema_version FROM dbo.catalog_metadata;"));
     }

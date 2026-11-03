@@ -23,23 +23,13 @@ file sealed class PreciseCircle : ICircleCollider, IPreciseCircleCollisionTarget
 
 public class CircleCollisionTests
 {
-    [Fact]
-    public void IntersectsTrueWhenCirclesOverlap()
+    [Theory]
+    [InlineData(3f, 2f, true)] // Overlap.
+    [InlineData(5f, 3f, true)] // Touching counts as intersecting.
+    [InlineData(5.0001f, 3f, false)] // Just beyond contact.
+    public void IntersectsRespectsCombinedRadius(float otherX, float otherRadius, bool expected)
     {
-        Assert.True(CircleCollision.Intersects(new Vector2(0f, 0f), 2f, new Vector2(3f, 0f), 2f));
-    }
-
-    [Fact]
-    public void IntersectsTrueWhenExactlyTouching()
-    {
-        // distance == combined radius -> the original uses <=, so touching counts as intersecting.
-        Assert.True(CircleCollision.Intersects(new Vector2(0f, 0f), 2f, new Vector2(5f, 0f), 3f));
-    }
-
-    [Fact]
-    public void IntersectsFalseWhenJustBeyondTouching()
-    {
-        Assert.False(CircleCollision.Intersects(new Vector2(0f, 0f), 2f, new Vector2(5.0001f, 0f), 3f));
+        Assert.Equal(expected, CircleCollision.Intersects(Vector2.Zero, 2f, new Vector2(otherX, 0f), otherRadius));
     }
 
     [Fact]

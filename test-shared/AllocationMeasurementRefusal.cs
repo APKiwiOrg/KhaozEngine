@@ -1,0 +1,14 @@
+namespace KhaozEngine.Tests;
+
+/// <summary>Why an allocation measurement was refused or invalidated.</summary>
+public enum AllocationMeasurementRefusal
+{
+    /// <summary>The collection can run beside other tests, invalidating the process-wide budget.</summary>
+    CollectionNotIsolated,
+    /// <summary>The process allocated at least the reserved budget before the window completed.</summary>
+    BudgetExhausted,
+    /// <summary>A garbage collection interrupted the measurement window.</summary>
+    CollectionInterrupted,
+    /// <summary>The no-GC region ended before the measurement window completed.</summary>
+    RegionEnded,
+}

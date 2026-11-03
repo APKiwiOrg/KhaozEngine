@@ -181,12 +181,12 @@ public sealed class OpenAlLoopBackendTests
         Assert.False(backend.SetLoopGain(loop.Handle, 0.4f));
         al.ThrowNext("Gain");
         Assert.False(backend.SetLoopGain(loop.Handle, 0.4f));
-        var reported = Assert.Single(fixture.Sink.Entries, e => e.Exception?.Message == "Scripted Gain");
+        var reported = Assert.Single(fixture.Sink.Entries, e => e.Exception is InvalidOperationException);
         Assert.Equal(LogLevel.Warn, reported.Level);
         Assert.True(backend.SetLoopGain(loop.Handle, 0.4f));
         al.ThrowNext("Gain");
         Assert.False(backend.SetLoopGain(loop.Handle, 0.4f));
-        Assert.Equal(2, fixture.Sink.Entries.Count(e => e.Exception?.Message == "Scripted Gain"));
+        Assert.Equal(2, fixture.Sink.Entries.Count(e => e.Exception is InvalidOperationException));
         al.FailNext("Position", AudioError.InvalidValue);
         Assert.False(backend.SetLoopPosition(loop.Handle, Vector3.One));
         Assert.True(backend.SetLoopPosition(loop.Handle, Vector3.One));

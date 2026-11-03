@@ -85,9 +85,8 @@ public sealed class NativeMarkerConsumerTests
             session.Open(root, null, staged);
             string stateBefore = MarkerEditorFixtures.State(session);
             session.WholeWorldTileLimit = 1;
-            var windowedOpen = Assert.Throws<MapDocumentException>(() =>
+            Assert.Throws<MapDocumentException>(() =>
                 session.Open(root, null, new(MarkerConsumerFixtures.Roles(), null)));
-            Assert.Contains("Windowed native editing is not supported yet", windowedOpen.Message, StringComparison.Ordinal);
             Assert.Equal(stateBefore, MarkerEditorFixtures.State(session));
             Assert.Same(staged, session.MarkerOptions);
 

@@ -24,7 +24,7 @@ namespace KhaozEngine.Tests.Gpu
     /// resource set's contents back, so <see cref="UniformWindowsOfSet"/> has to be handed in (from
     /// <c>UniformBufferTrackingGpuDevice.WindowsOf</c>). A caller that forgets gets an empty
     /// <see cref="Reads"/> list, which would make every rewrite look safe, so
-    /// <see cref="UniformRewriteAudit.Scan"/>'s callers assert the list is non-empty before believing an empty
+    /// <c>UniformRewriteAudit.Scan</c>'s callers assert the list is non-empty before believing an empty
     /// answer.</para>
     /// </summary>
     internal sealed partial class RecordingGpuCommandList

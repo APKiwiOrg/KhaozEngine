@@ -434,7 +434,8 @@ What it owns today:
   once per batch of at most three, including the final short batch, then harvests once. The ring retains the
   exact submission fence through immutable publication and quarantines pending or invalid results without
   waiting or polling again. Pass labels and skipped-pass status remain adapter-owned.
-  The internal renderer harness adds `RendererPerfRecorder`, `RendererPerfDevice` and
+  The outside-solution [renderer tooling harness](../tools/Renderer.Perf.Tooling.Tests/README.md)
+  adds `RendererPerfRecorder`, `RendererPerfDevice` and
   `RendererPerfCommandList` beside its protocol records. They retain fixed command-owner, CPU-span,
   dispatch-size and framebuffer-format storage before recording. Logical requested calls, redundant bind
   requests, upload bytes and copy bytes stay separate from optional native emitted-state counters.
@@ -750,3 +751,12 @@ is presented.
 
 `SwapchainCopyCheck` holds the destination rule and the bound-this-recording refusal for all three backends. `SwapchainCopyCheckTests` drives it, and
 `D3D11SwapchainCaptureTests` drives the Direct3D 11 half over a fake swapchain surface.
+
+## Attachment lifetime and early submission
+
+`SetFramebufferWithStoreActions` takes per-colour, depth and stencil intent through
+`GpuAttachmentStoreActions`. Store is the default. Discard is valid only when the pass owner proves no later
+read, including a reopened pass, capture or readback. Metal and Vulkan map it directly. Other implementations
+may retain the data. Native Metal may commit an offscreen prefix during drawable resolution, making that
+prefix's CPU-visible access ranges immutable through final frame completion. See
+[frame submission](../docs/METAL-FRAME-SUBMISSION.md) for the structured refusal and mapping contract.

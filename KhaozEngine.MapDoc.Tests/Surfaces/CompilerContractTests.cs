@@ -33,6 +33,7 @@ public sealed class CompilerContractTests
     public void PaintOverride_MixedPaintCrossingALaterFaceRefusesAtomically()
     {
         var (target, surface, patch) = CrossingOverride();
+        Assert.NotEmpty(MapSurfaceCompiler.ApplyPaintOverride(target, surface, patch).Paint);
         patch.Cells[3] = patch.Cells[3] with { Underlay = 10 };
         patch.Cells[7] = patch.Cells[7] with { Underlay = 10 };
         Assert.Empty(patch.ValidateLocal());
@@ -42,10 +43,7 @@ public sealed class CompilerContractTests
         MapSurfaceCell[] originalCells = patch.Cells.ToArray();
         ulong[] originalPresence = patch.Presence.ToArray();
 
-        MapDocumentException error = Assert.Throws<MapDocumentException>(() =>
-            MapSurfaceCompiler.ApplyPaintOverride(target, surface, patch));
-
-        Assert.Contains("paint override boundary crosses physical face", error.Message);
+        Assert.Throws<MapDocumentException>(() => MapSurfaceCompiler.ApplyPaintOverride(target, surface, patch));
         Assert.Equal(originalPaint, target.Paint);
         Assert.Equal(originalFaces, target.Faces);
         Assert.Equal(originalVertices, target.ExactVertices);
@@ -57,6 +55,7 @@ public sealed class CompilerContractTests
     public void PaintOverride_PartialPresenceCrossingALaterFaceRefusesAtomically()
     {
         var (target, surface, patch) = CrossingOverride();
+        Assert.NotEmpty(MapSurfaceCompiler.ApplyPaintOverride(target, surface, patch).Paint);
         patch.SetPresent(3, 0, false);
         patch.SetPresent(3, 1, false);
         Assert.Empty(patch.ValidateLocal());
@@ -66,10 +65,7 @@ public sealed class CompilerContractTests
         MapSurfaceCell[] originalCells = patch.Cells.ToArray();
         ulong[] originalPresence = patch.Presence.ToArray();
 
-        MapDocumentException error = Assert.Throws<MapDocumentException>(() =>
-            MapSurfaceCompiler.ApplyPaintOverride(target, surface, patch));
-
-        Assert.Contains("paint override presence boundary crosses physical face", error.Message);
+        Assert.Throws<MapDocumentException>(() => MapSurfaceCompiler.ApplyPaintOverride(target, surface, patch));
         Assert.Equal(originalPaint, target.Paint);
         Assert.Equal(originalFaces, target.Faces);
         Assert.Equal(originalVertices, target.ExactVertices);

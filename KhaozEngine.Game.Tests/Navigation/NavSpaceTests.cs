@@ -19,28 +19,17 @@ public class NavSpaceTests
         Assert.Equal(0, space.LayerOf(1000f));
     }
 
-    [Fact]
-    public void LayerOf_TwoStackedFiniteBands_ResolvesByContainment()
+    [Theory]
+    [InlineData(3f, 3f, 6f, 1.5f, 4.5f)] // Inside adjoining bands.
+    [InlineData(2f, 10f, 12f, 4f, 8f)] // Between separated bands, nearest centre.
+    public void LayerOf_FiniteBands_ResolvesContainmentOrNearestCenter(float groundMax,
+        float upperMin, float upperMax, float groundQueryY, float upperQueryY)
     {
-        NavGrid ground = MakeGrid(yMin: 0f, yMax: 3f);
-        NavGrid upper = MakeGrid(yMin: 3f, yMax: 6f);
+        NavGrid ground = MakeGrid(yMin: 0f, yMax: groundMax);
+        NavGrid upper = MakeGrid(yMin: upperMin, yMax: upperMax);
         var space = new NavSpace(new[] { ground, upper });
-
-        Assert.Equal(0, space.LayerOf(1.5f));
-        Assert.Equal(1, space.LayerOf(4.5f));
-    }
-
-    [Fact]
-    public void LayerOf_BetweenBands_ResolvesToNearestBandCenter()
-    {
-        NavGrid ground = MakeGrid(yMin: 0f, yMax: 2f);
-        NavGrid upper = MakeGrid(yMin: 10f, yMax: 12f);
-        var space = new NavSpace(new[] { ground, upper });
-
-        // ground center = 1, upper center = 11. y = 4 is closer to ground center.
-        Assert.Equal(0, space.LayerOf(4f));
-        // y = 8 is closer to upper center.
-        Assert.Equal(1, space.LayerOf(8f));
+        Assert.Equal(0, space.LayerOf(groundQueryY));
+        Assert.Equal(1, space.LayerOf(upperQueryY));
     }
 
     [Fact]
@@ -78,27 +67,15 @@ public class NavSpaceTests
         Assert.Equal(0, space.LayerOf(0f));
     }
 
-    [Fact]
-    public void Constructor_LinkEndpointOutOfBoundsInFromLayer_Throws()
+    [Theory]
+    [InlineData(0, 10, 10, 0, 1, 1)] // From cell outside the layer.
+    [InlineData(0, 1, 1, 0, 10, 10)] // To cell outside the layer.
+    [InlineData(0, 1, 1, 5, 1, 1)] // Unknown destination layer.
+    public void Constructor_InvalidLinkEndpoint_Throws(int fromLayer, int fromX, int fromZ,
+        int toLayer, int toX, int toZ)
     {
         NavGrid ground = MakeGrid();
-        var links = new[] { new NavLink(0, 10, 10, 0, 1, 1) };
-        Assert.Throws<ArgumentException>(() => new NavSpace(new[] { ground }, links));
-    }
-
-    [Fact]
-    public void Constructor_LinkEndpointOutOfBoundsInToLayer_Throws()
-    {
-        NavGrid ground = MakeGrid();
-        var links = new[] { new NavLink(0, 1, 1, 0, 10, 10) };
-        Assert.Throws<ArgumentException>(() => new NavSpace(new[] { ground }, links));
-    }
-
-    [Fact]
-    public void Constructor_LinkReferencesUnknownLayer_Throws()
-    {
-        NavGrid ground = MakeGrid();
-        var links = new[] { new NavLink(0, 1, 1, 5, 1, 1) };
+        var links = new[] { new NavLink(fromLayer, fromX, fromZ, toLayer, toX, toZ) };
         Assert.Throws<ArgumentException>(() => new NavSpace(new[] { ground }, links));
     }
 

@@ -97,6 +97,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
             RequireRecording("Binding a vertex buffer");
 
             _streams.Record(slot, buffer.Handle.Handle, offsetBytes);
+            _readStreams[slot] = (buffer, offsetBytes);
         }
 
         /// <inheritdoc/>
@@ -120,6 +121,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
             RequireRecording("Binding an index buffer");
 
             _indices.Record(buffer.Handle.Handle, MetalIndexBinding.ToIndexType(fmt));
+            _readIndices = buffer;
         }
 
         /// <inheritdoc/>
@@ -194,6 +196,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
             // frame.
             if (_indices.DrawRefusal() is { } refusal) throw new InvalidOperationException(refusal);
 
+            ResolveDeferredDrawable();
             IntPtr encoder = _passes.PrepareDraw();
             if (encoder == IntPtr.Zero) return;
 
@@ -272,6 +275,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
             where TSink : struct, IMetalEncoderSink
         {
             PrepareGraphics(ref sink, pipeline, encoder);
+            RecordGraphicsReads(pipeline, vertexStart, vertexCount, instanceStart, instanceCount, indexed: false);
             sink.Draw(encoder, pipeline.State.PrimitiveType, vertexStart, vertexCount, instanceCount,
                 instanceStart);
         }
@@ -281,6 +285,10 @@ namespace KhaozEngine.Gpu.Metal.Internal
             where TSink : struct, IMetalEncoderSink
         {
             PrepareGraphics(ref sink, pipeline, encoder);
+            RecordGraphicsReads(pipeline, 0, indexCount, instanceStart, instanceCount, indexed: true);
+            if (_readIndices is { } indices && indexCount != 0 && instanceCount != 0)
+                RecordBufferAccess(indices, (ulong)_indices.OffsetFor(indexStart),
+                    (ulong)indexCount * (_indices.IndexType == MTLIndexType.UInt16 ? 2ul : 4ul));
             sink.DrawIndexed(encoder, pipeline.State.PrimitiveType, indexCount, _indices.Buffer,
                 _indices.OffsetFor(indexStart), _indices.IndexType == MTLIndexType.UInt16, instanceCount,
                 vertexOffset, instanceStart);
@@ -297,6 +305,8 @@ namespace KhaozEngine.Gpu.Metal.Internal
             }
 
             FlushComputeBinds(ref sink, encoder);
+            if (_prefixFrame == 0 && groupCountX != 0 && groupCountY != 0 && groupCountZ != 0)
+                _computeBinds.RecordReads(_recordedReads, _segment);
 
             MetalComputeShader shader = pipeline.Shader;
             sink.Dispatch(encoder, groupCountX, groupCountY, groupCountZ, shader.ThreadGroupSizeX,
@@ -328,6 +338,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
         {
             MetalGraphicsPipeline pipeline = RequireGraphicsPipeline(what);
 
+            ResolveDeferredDrawable();
             encoder = _passes.PrepareDraw();
             return pipeline;
         }

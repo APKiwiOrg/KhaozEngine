@@ -4,21 +4,84 @@ All notable changes to KhaozEngine. One shared version line `<KhaozEngineVersion
 governs every package, including the four umbrella metapackages. Planned work lives in the repo's GitHub
 Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
+## 21.23.1
+
+2026-11-03
+
+- Reuse tile-ground material samples for repeated active slot IDs, including steep companions, while keeping
+  every weight threshold and weighted addition unchanged. Output pixels stay identical.
+- Preserve cascade working depth and stencil under pass observers, whose timestamp markers can end native
+  render encoders between caster families. Unobserved rendering still discards the dead working planes.
+- Submit native Metal offscreen work before drawable acquisition, then continue the same frame in a
+  second command buffer. The final buffer alone owns completion and frame-slot reuse. CPU-visible ranges
+  accessed by a committed prefix stay immutable through final completion. Overlapping CPU writes and writable
+  mappings now throw a structured MetalFrameAccessException. SpriteBatch writes only its new matrix slot.
+- Keep steady native Metal recording and split-frame submission free of managed allocations. Reuse
+  slot-owned read footprints, range storage and mapping leases without changing CPU access refusals.
+- Preserve deferred device uniform updates across split Metal frames. Explicit drains and read maps cover
+  unsignalled prefixes, and writable ring mappings keep their pointer and access lease on the same segment.
+- Declare per-attachment store intent in the GPU seam. Metal and Vulkan discard only the directional
+  cascade pass's dead working depth and stencil, retaining the sampled colour atlas. Other backends may
+  retain discarded data. The default remains Store for every attachment.
+- Skip clustered point-shadow filters when banded NdotL is exactly zero. Diffuse and specular are already
+  zero there. Ignore non-finite light intensities so attenuation remains finite. Shader source and backend
+  emission pins are rebaked without relaxing equality checks.
+- Move the renderer performance evidence tooling tests, the Items benchmark quick acceptance test and the
+  navigation capture research fixtures out of the engine solution into `tools/Renderer.Perf.Tooling.Tests`,
+  `tools/Items.Benchmark.Tests` and `tools/NavCapture.Research.Tests`. The free `tooling-validation.yml`
+  workflow runs each one when its own inputs change, and engine CI no longer runs them. No test was deleted,
+  and their test-health baseline entries moved with them.
+- `KhaozEngine.Gpu`, `KhaozEngine.Gpu.D3D11`, `KhaozEngine.Gpu.Metal`, `KhaozEngine.Gpu.Vulkan`,
+  `KhaozEngine.Render2D`, `KhaozEngine.Render3D` and `KhaozEngine.Windowing` grant `InternalsVisibleTo` to
+  `Renderer.Perf.Tooling.Tests`, and `KhaozEngine.Movement` grants it to `NavCapture.Research.Tests`. Public
+  APIs are unchanged and consumers need no code change.
+- Bound the default renderer timing probes. Probes that only measure and report carry
+  `[Trait("Category", "Diagnostic")]` and run on demand.
+- `ke-sfxbake` defaults to `eleven_text_to_sound_v3`, because ElevenLabs deprecated
+  `eleven_text_to_sound_v2` and stops serving it on 1 February 2027. The `.sfxmeta` hash no longer covers
+  the model, so this switch and any later model change re-bake nothing already approved. New sidecars
+  carry `HashVersion` 2. Earlier sidecars still skip while their other inputs are unchanged, checked
+  against their recorded model or the old v2 default. A dry run names the older model beside each output
+  it made, and `--force` re-bakes on purpose.
+
+## 21.23.0
+
+2026-11-01
+
+- Add `RigidInstanceDraw.ShadowMobility` and `ShadowCasterMobility.Dynamic` so moving rigid casters share
+  current point-shadow layers with skinned casters while static scenery stays cached. Preserve shadows
+  through mobility changes and transient allocation failure with separately counted fallback work.
+  Existing draws retain their cached behavior (#1144).
+- Add the opt-in test-health ratchet to `KhaozEngine.CodeHealth.Analyzers`. KETEST001 counts exception-message
+  wording assertions, excluding `DoesNotContain` and `DoesNotMatch` disclosure checks. KETEST002 counts
+  `BindingFlags.NonPublic` references and `UnsafeAccessor` applications. Both enforce per-file allowances
+  in `.testhealth-baseline` as errors in xunit compilations and stay silent without that adoption file.
+  KETEST003 reports possibly empty assertion loops only with `KhaozTestHealthMode=report`, never enters
+  the baseline and does not gate normal builds. Only 6 of 20 sampled findings were real because local
+  tables and test-owned case helpers look possibly empty to a syntactic check. Baseline growth and
+  exemptions need owner approval, and `scripts/check-test-health.sh --update` only ratchets down.
+- Exclude tests marked `[Trait("Category", "Diagnostic")]` from default CI with
+  `Category!=LiveSocket&Category!=Diagnostic`. Run these reporting tests on demand through the
+  `cross-platform-gpu` dispatch input `renderTestFilter=Category=Diagnostic`. Baseline changes force a
+  FULL selective CI run.
+- Share `AnalyzerPathPolicy` between KESIZE and KETEST and move analyzer tests to
+  `KhaozEngine.Tests.CodeHealth`.
+- Correct `FixedTickHost.SecondsUntilNextTick` documentation to describe the full-tick wait with an empty accumulator and the shorter wait when time remains.
+
+## 21.22.0
+
+2026-10-31
+
+- Add `WeightedSelector.TrySelectIndex` in `KhaozEngine.Primitives` for caller-prepared integer-weighted choices. Zero weights exclude entries while preserving their indexes. The helper validates and captures weights before using the caller's random source, with explicit empty-pool and logical-draw behavior (#1664).
+
 ## 21.21.0
 
-2026-10-29
+2026-10-30
 
-- Add baked one-way Contact `Drop` links with certified fall routes and supported landing completion. Each
-  navigation profile opts in through `MaxDropMetres`, which defaults to zero. Only drop-enabled profiles use
-  KENB format 3. Player hosts supply `PlayerPathInput` for authenticated Drop execution (#1645).
-- Keep the follower replan cooldown for fresh no-progress results and refresh stale reached terminals once.
-  Point routes validate the current goal before reporting `Arrived`, and deferred path queries report
-  `WaitingForPath` with zero steering (#1646).
-- Refresh a due route before committing a one-way Drop, and reconsider changed goals during grounded
-  preparation before physical launch. Active unsupported flight retains its committed Drop route.
-- Share captured drawn ground triangles between Contact support and water beds, preserving exact bed
-  membership on level and sloped terrain. Supported pose publication checks combined frame and capsule
-  conversion precision and refuses unrepresentable poses within the existing precision contract (#1647).
+- Add `AttachmentGlb.ComputeRigIdentity` in `KhaozEngine.Attachments`. Its versioned `rig-v1:` SHA-256
+  covers ordered skin joints, hierarchy, rest frames, inverse binds and skinned vertex/index data.
+  Animation and appearance edits leave fit evidence unchanged. Raw accessor elements and canonical
+  decimal rest values produce the same identity across platforms, independent of buffer layout (#1661).
 
 ## 21.20.0
 

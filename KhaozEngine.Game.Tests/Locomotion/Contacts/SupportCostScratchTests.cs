@@ -1,7 +1,6 @@
 using System;
 using System.Collections.Generic;
 using System.Numerics;
-using System.Reflection;
 using KhaozEngine.Physics;
 using KhaozEngine.Physics.Bepu;
 using KhaozEngine.Tests.Physics;
@@ -41,10 +40,9 @@ public sealed class SupportCostScratchTests
         var scratch = new Scratch();
         var coldSeen = new HashSet<object>(ReferenceEqualityComparer.Instance);
         var warmSeen = new HashSet<object>(ReferenceEqualityComparer.Instance);
-        MethodInfo visit = typeof(SupportCostScratch).GetMethod("Visit", BindingFlags.Static | BindingFlags.NonPublic)!;
         using var region = SupportAllocationRegion.Start();
-        long cold = (long)visit.Invoke(null, [scratch, coldSeen])!;
-        long warm = (long)visit.Invoke(null, [scratch, warmSeen])!;
+        long cold = SupportCostScratch.Visit(scratch, coldSeen);
+        long warm = SupportCostScratch.Visit(scratch, warmSeen);
         region.Dispose();
         long expected = 64_000 * 12 + 64_000 * IntPtr.Size + 3;
         Assert.Equal(expected, cold);

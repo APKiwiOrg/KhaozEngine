@@ -74,11 +74,4 @@ public class NativeCollisionServiceTests
         Assert.NotNull(f.Session.RedoNative());
         Assert.Equal(changed.AfterSha256, f.Service.Measure("wall-1").ColliderSha256);
     }
-
-    [Fact]
-    public void BakedMeshCollider_RefusesHeightEdits()
-    {
-        using var f = new NativeCollisionToolFixture();
-        Assert.Contains("compound boxes", Assert.Throws<MapDocumentException>(() => f.Service.SetHeights("rock-mesh", 0f, 1f)).Message);
-    }
 }

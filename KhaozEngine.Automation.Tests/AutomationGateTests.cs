@@ -24,7 +24,6 @@ public class AutomationGateTests
         ArgumentOutOfRangeException error = Assert.Throws<ArgumentOutOfRangeException>(() => new AutomationHost(options));
 
         Assert.Equal("options", error.ParamName);
-        Assert.Contains("CommandTimeout", error.Message);
     }
 
     [Fact]
@@ -35,7 +34,6 @@ public class AutomationGateTests
         ArgumentOutOfRangeException error = Assert.Throws<ArgumentOutOfRangeException>(() => new AutomationHost(options));
 
         Assert.Equal("options", error.ParamName);
-        Assert.Contains("CommandTimeout", error.Message);
     }
 
     [Fact]

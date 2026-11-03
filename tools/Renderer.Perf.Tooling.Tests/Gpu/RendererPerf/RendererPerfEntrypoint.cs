@@ -18,26 +18,28 @@ internal static class RendererPerfEntrypoint
     internal static void Run(string unit, string directory)
     {
         Require(Env("GITHUB_ACTIONS") == "true" && Env("RUNNER_ENVIRONMENT") == "github-hosted" && Env("KE_GPU_TESTS") == "1"
-            && Env("WORKFLOW_RUN_ATTEMPT") == "1" && Env("GITHUB_RUN_ATTEMPT") == "1",
+            && Env("WORKFLOW_RUN_ATTEMPT") == "1" && Env("GITHUB_RUN_ATTEMPT") == "1", RendererPerfEntrypointRefusal.NotFirstHostedAttempt,
             "Only a first-attempt GitHub-hosted authorization can open the native device.");
         Require(unit == Env("RENDERER_PERF_UNIT") && unit == Env("KE_RENDERER_PERF_UNIT")
-            && directory == Env("KE_RENDERER_PERF_REPORTS"), "Explicit entrypoint inputs disagree with the workflow.");
-        Require(unit.Length is >= 1 and <= 64 && unit[0] != '-' && unit.All(c => c is >= 'a' and <= 'z' or >= '0' and <= '9' or '-'), "Unsafe unit token.");
+            && directory == Env("KE_RENDERER_PERF_REPORTS"), RendererPerfEntrypointRefusal.InputsDisagree, "Explicit entrypoint inputs disagree with the workflow.");
+        Require(unit.Length is >= 1 and <= 64 && unit[0] != '-' && unit.All(c => c is >= 'a' and <= 'z' or >= '0' and <= '9' or '-'),
+            RendererPerfEntrypointRefusal.UnsafeUnitToken, "Unsafe unit token.");
         var checkout = new RendererPerfCheckout(Env("GITHUB_WORKSPACE"));
         string path = $"tools/Renderer.Perf.Tests/authorized/{unit}.json";
         byte[] bytes = File.ReadAllBytes(checkout.ManifestPath(unit));
         byte[] authorizationBytes = File.ReadAllBytes(Path.Combine(directory, "authorization.json"));
         var authorization = RendererPerfManifest.ReadJson<RendererPerfAuthorization>(authorizationBytes, 64 * 1024);
         Require(authorization.ManifestSha256 == Env("RENDERER_PERF_MANIFEST_SHA256")
-            && authorization.WorkloadSha == Env("RENDERER_PERF_WORKLOAD_SHA"), "Dispatch hashes disagree with independent authorization facts.");
+            && authorization.WorkloadSha == Env("RENDERER_PERF_WORKLOAD_SHA"), RendererPerfEntrypointRefusal.DispatchHashesDisagree,
+            "Dispatch hashes disagree with independent authorization facts.");
         string head = checkout.Git("rev-parse", "HEAD");
         string parents = checkout.Git("rev-list", "--parents", "-n", "1", "HEAD");
         string changes = checkout.Git("diff", "--name-status", "--no-renames", "--ignore-submodules=none", authorization.WorkloadSha, "HEAD");
         Require(head == Env("TESTED_REF") && head == authorization.AuthorizationSha
             && parents == head + " " + authorization.WorkloadSha && changes == "A\t" + path,
-            "Authorization must add only the manifest to its immutable workload parent.");
+            RendererPerfEntrypointRefusal.AuthorizationNotManifestOnly, "Authorization must add only the manifest to its immutable workload parent.");
         var manifest = RendererPerfManifest.Parse(bytes, authorization);
-        Require(manifest.UnitId == unit, "Manifest names a different unit.");
+        Require(manifest.UnitId == unit, RendererPerfEntrypointRefusal.ManifestUnitMismatch, "Manifest names a different unit.");
         var environment = RuntimeEnvironment();
         string gc = GCSettings.IsServerGC ? "server" : "workstation";
         Directory.CreateDirectory(directory);
@@ -52,7 +54,7 @@ internal static class RendererPerfEntrypoint
             && string.IsNullOrEmpty(Environment.GetEnvironmentVariable("VK_LOADER_LAYERS_ENABLE"))
             && environment.Count == manifest.Runtime.Environment.Count
             && environment.All(p => manifest.Runtime.Environment.TryGetValue(p.Key, out var value) && value == p.Value),
-            "Observed runtime, GC, tiering or relevant environment differs from approval.");
+            RendererPerfEntrypointRefusal.RuntimeDiffers, "Observed runtime, GC, tiering or relevant environment differs from approval.");
         checkout.ValidateRecipePaths(manifest);
         long coldStart = Stopwatch.GetTimestamp();
         var clock = new RendererPerfClock(Stopwatch.GetTimestamp, Stopwatch.Frequency);
@@ -206,6 +208,9 @@ internal static class RendererPerfEntrypoint
         return Env("PROCESSOR_IDENTIFIER");
     }
     static string Env(string name) => Environment.GetEnvironmentVariable(name) ?? throw new InvalidOperationException(name + " must be explicit.");
-    static void Require(bool condition, string reason) => RendererPerfManifest.Require(condition, "Entrypoint", reason);
+    internal static void Require(bool condition, RendererPerfEntrypointRefusal refusal, string reason)
+    {
+        if (!condition) throw new RendererPerfProtocolException("Entrypoint", reason) { EntrypointRefusal = refusal };
+    }
 
 }

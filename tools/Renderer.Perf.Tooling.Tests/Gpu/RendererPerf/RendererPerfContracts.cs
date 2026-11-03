@@ -115,4 +115,8 @@ internal sealed class RendererPerfProtocolException(string code, string message,
 
     /// <summary>The hosted leg a preset refused.</summary>
     internal string? Leg { get; init; }
+
+    /// <summary>Which entrypoint rule refused. Set for every refusal whose Code is "Entrypoint" and null
+    /// otherwise.</summary>
+    public RendererPerfEntrypointRefusal? EntrypointRefusal { get; init; }
 }

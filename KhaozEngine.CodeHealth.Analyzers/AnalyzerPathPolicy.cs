@@ -37,7 +37,7 @@ namespace KhaozEngine.CodeHealth.Analyzers
             // An empty root historically denotes the leading separator. A relative root such as "."
             // instead resolves to its own base and must retain an empty, relative prefix.
             if (root.Length == 0) normalizedRoot = "/";
-            if (full.StartsWith("/", StringComparison.Ordinal) != normalizedRoot.StartsWith("/", StringComparison.Ordinal))
+            if ((GetAnchorLength(full) != 0) != (GetAnchorLength(normalizedRoot) != 0))
                 return false;
             var prefix = normalizedRoot.Length == 0 || normalizedRoot.EndsWith("/", StringComparison.Ordinal)
                 ? normalizedRoot : normalizedRoot + "/";
@@ -61,7 +61,10 @@ namespace KhaozEngine.CodeHealth.Analyzers
         {
             normalized = string.Empty;
             var full = NormalizeSeparators(path);
-            var prefixLength = full.Length > 0 && full[0] == '/' ? 1 : 0;
+            var prefixLength = GetAnchorLength(full);
+            var anchor = full.Substring(0, prefixLength);
+            if (anchor.StartsWith("//", StringComparison.Ordinal))
+                anchor = "//" + string.Join("/", anchor.Split(new[] { '/' }, StringSplitOptions.RemoveEmptyEntries));
 
             var segments = full.Substring(prefixLength).Split('/');
             var segmentCount = 0;
@@ -79,8 +82,32 @@ namespace KhaozEngine.CodeHealth.Analyzers
                     segments[segmentCount++] = segment;
                 }
             }
-            normalized = full.Substring(0, prefixLength) + string.Join("/", segments, 0, segmentCount);
+            var separator = segmentCount > 0 && anchor.Length > 0 && !anchor.EndsWith("/", StringComparison.Ordinal)
+                ? "/" : string.Empty;
+            normalized = anchor + separator + string.Join("/", segments, 0, segmentCount);
             return true;
+        }
+
+        private static int GetAnchorLength(string path)
+        {
+            if (path.Length >= 3 && path[1] == ':' && path[2] == '/' &&
+                ((path[0] >= 'A' && path[0] <= 'Z') || (path[0] >= 'a' && path[0] <= 'z')))
+                return 3;
+            if (path.Length == 0 || path[0] != '/') return 0;
+            if (path.Length < 3 || path[1] != '/' || path[2] == '/') return 1;
+
+            // A UNC server and share form one anchor, outside the removable segment stack.
+            var serverEnd = path.IndexOf('/', 2);
+            if (serverEnd < 0) return 1;
+            var shareStart = serverEnd;
+            while (shareStart < path.Length && path[shareStart] == '/') shareStart++;
+            if (shareStart == path.Length) return 1;
+            var shareEnd = path.IndexOf('/', shareStart);
+            if (shareEnd < 0) shareEnd = path.Length;
+            var server = path.Substring(2, serverEnd - 2);
+            var share = path.Substring(shareStart, shareEnd - shareStart);
+            if (server == "." || server == ".." || share == "." || share == "..") return 1;
+            return shareEnd;
         }
 
         private static bool IsExcluded(string relative)

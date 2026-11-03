@@ -92,7 +92,9 @@ file exclusions listed above. Both callers normalize baseline-root separators be
 The policy collapses dot segments and repeated and trailing separators in both operands. Relative roots
 such as `.` and `A/..` resolve to their own base without gaining an absolute leading separator. Leading
 `..` segments in a relative root remain part of its base, and a source cannot escape that base. Relative
-and absolute paths stay distinct. An empty root retains its historical leading-separator behavior.
+and absolute paths stay distinct, including drive paths such as `C:/repo/X.cs` and UNC paths such as
+`//server/share/X.cs`. Drive letters compare without case, and dot segments cannot climb above a drive
+anchor or UNC share. An empty root retains its historical leading-separator behavior.
 Rejected inputs keep their original relative output. A previously checked path that becomes generated
 only when its trailing separator is removed keeps its prior result, preserving existing baseline checks.
 Linked files resolve to their real repository path, so a baseline or `exempt` line names the file where

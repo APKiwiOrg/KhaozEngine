@@ -13,6 +13,10 @@ public class AnalyzerPathPolicyTests
     [InlineData(".", "./X.cs", "X.cs")]
     [InlineData("A/..", "A/../X.cs", "X.cs")]
     [InlineData("", "/X.cs", "X.cs")]
+    [InlineData("C:/", "C:/repo/../X.cs", "X.cs")]
+    [InlineData("c:/", @"C:\repo\.\..\X.cs", "X.cs")]
+    [InlineData("C:/repo", @"c:\repo/A\..\X.cs", "X.cs")]
+    [InlineData("//server/share", @"\\SERVER\share\A/../X.cs", "X.cs")]
     public void RelativePathNormalizesRootAndSource(string root, string path, string expectedRelative)
     {
         Assert.True(AnalyzerPathPolicy.TryGetCheckedRelativePath(path, root, out var relative));
@@ -36,6 +40,12 @@ public class AnalyzerPathPolicyTests
     [InlineData("", "X.cs", "/X.cs")]
     [InlineData(".", "./obj/X.cs", "./X.cs")]
     [InlineData(".", "./X.g.cs", "./X.cs")]
+    [InlineData(".", "C:/repo/X.cs", "./X.cs")]
+    [InlineData(".", @"C:\repo\X.cs", "./X.cs")]
+    [InlineData("C:/", "X.cs", "C:/X.cs")]
+    [InlineData("C:/", "C:/../X.cs", "C:/./X.cs")]
+    [InlineData("C:/", "C:/../C:/X.cs", "C:/./X.cs")]
+    [InlineData("//server/share", "//server/share/../share/X.cs", "//server/share/./X.cs")]
     public void NormalizedBaseKeepsContainmentAndExclusions(string root, string path, string control)
     {
         Assert.True(AnalyzerPathPolicy.TryGetCheckedRelativePath(control, root, out var relative));

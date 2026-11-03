@@ -8,6 +8,42 @@ namespace KhaozEngine.Tests.Gpu;
 [Collection("AllocSensitive")]
 public sealed class MetalCpuReadAllocationTests(ITestOutputHelper output)
 {
+    // #1692. Both interval indexes must reuse large, irregular recordings, not only tiny prefixes.
+    [Fact]
+    public void ASteadyThreeThousandDrawFootprintReusesItsIndexes()
+    {
+        var reads = new MetalRecordedReads();
+        var resource = new MetalCpuResource();
+        ulong completed = 0;
+        var protection = new MetalCpuReadProtection(new(), () => completed, () => completed);
+        object owner = new();
+        void Frame()
+        {
+            protection.RequireSlotAvailable(0);
+            reads.Clear();
+            for (uint draw = 0; draw < 3000; draw++)
+            {
+                // A permutation exercises insertion and rotations away from the append path.
+                ulong offset = draw * 1999 % 3000 * 256;
+                reads.Add(resource, offset, 32);
+                reads.AddStrided(resource, offset + 64, 8, 32, 4);
+            }
+            // A late contiguous transfer joins many nodes and recycles their storage next frame.
+            reads.Add(resource, 0, 1024);
+            ulong frame = protection.Protect(0, reads);
+            protection.MapWritable(owner, resource, 3000 * 256, 64);
+            protection.Unmap(owner);
+            protection.Submitted(frame, ++completed);
+        }
+        Frame();
+        Frame();
+        long bytes = AllocationMeasurement.Measure("one steady 3000-draw footprint", Frame);
+        output.WriteLine($"One steady 3000-draw footprint: {bytes} bytes");
+        Assert.Equal(0, bytes);
+        Assert.True(reads.Overlaps(new(resource, 2999 * 256, 1)));
+        Assert.False(reads.Overlaps(new(resource, 2999 * 256 + 32, 32)));
+    }
+
     // #1685. Alternating main and capture footprints must not shuffle differently sized range lists.
     [Fact]
     public void AlternatingSteadyFootprintsReuseTheirRangeStorage()

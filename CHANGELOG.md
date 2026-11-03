@@ -8,6 +8,8 @@ Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
 2026-11-04
 
+- Reduce Mac CPU frame time in scenes with thousands of draws by indexing split-frame read footprints.
+  Overlapping CPU writes and writable maps keep the same refusals, with no steady-frame allocation (#1692).
 - GPU refusals carry a public reason enum and the identifiers callers need, so code and tests tell refusals
   apart by `Reason` instead of message text. Shared `IGpu*` contract rules live in `KhaozEngine.Gpu` and
   every backend throws the same reason for the same input, for example `GpuRecordingStateRefusal`,

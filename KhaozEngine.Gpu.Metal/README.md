@@ -1196,6 +1196,12 @@ An abandoned prefix quarantines its ring slot, identified by `RingSegment`, unti
 Device uniform updates still defer in-flight non-current segments and retain the existing depth-one wait.
 Only immediate physical copies are checked for overlap, atomically before any segment or patch changes.
 A buffer map captures one physical base for its lease and pointer, even if another recording rotates the ring.
+Slot-owned, reusable interval indexes keep read recording O(log n) amortized and contiguous CPU access
+checks O(log n). Strided checks visit candidate spans and their search paths, bounded by O((k + 1) log n),
+where k counts overlapping bounding spans. Exact attribute checks preserve writable padding.
+Prefix publication queries each writable lease through the same index. The footprint never scans
+every recorded read per draw or disjoint write, avoiding quadratic frame work in draw-heavy Mac scenes
+(#1692). Warmed node storage is reused without steady-frame allocation.
 [Frame submission](../docs/METAL-FRAME-SUBMISSION.md) owns the lifetime and write-path details.
 
 ## Three decisions worth knowing before reading the code

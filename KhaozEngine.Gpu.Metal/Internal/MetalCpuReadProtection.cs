@@ -23,60 +23,6 @@ internal readonly record struct MetalCpuRead(MetalCpuResource Resource, ulong Of
     }
 }
 
-/// <summary>Read footprint of one recording. Adjacent ranges coalesce without protecting gaps.</summary>
-internal sealed class MetalRecordedReads
-{
-    readonly Dictionary<MetalCpuResource, List<MetalCpuRead>> _ranges = new();
-    readonly List<List<MetalCpuRead>> _rangeStorage = new();
-    internal Dictionary<MetalCpuResource, List<MetalCpuRead>>.ValueCollection Ranges => _ranges.Values;
-    internal bool Overlaps(in MetalCpuRead access)
-    {
-        if (!_ranges.TryGetValue(access.Resource, out var ranges)) return false;
-        foreach (var range in ranges) if (range.Overlaps(access)) return true;
-        return false;
-    }
-    internal void Clear()
-    {
-        foreach (var ranges in _ranges.Values) ranges.Clear();
-        _ranges.Clear();
-    }
-    List<MetalCpuRead> RangesFor(MetalCpuResource resource)
-    {
-        if (_ranges.TryGetValue(resource, out var ranges)) return ranges;
-        // A stable recording position keeps its capacity when main and capture use different resource counts.
-        // A LIFO free list permutes the capacities at every Clear and keeps growing already-warmed workloads.
-        int index = _ranges.Count;
-        if (index == _rangeStorage.Count) _rangeStorage.Add([]);
-        ranges = _rangeStorage[index];
-        _ranges.Add(resource, ranges);
-        return ranges;
-    }
-    internal void AddStrided(MetalCpuResource resource, ulong offset, ulong bytes, ulong stride, ulong count)
-    {
-        if (count == 0 || bytes == 0) return;
-        if (stride == bytes) { Add(resource, offset, checked(bytes * count)); return; }
-        var ranges = RangesFor(resource);
-        var read = new MetalCpuRead(resource, offset, bytes, stride, count);
-        if (!ranges.Contains(read)) ranges.Add(read);
-    }
-    internal void Add(MetalCpuResource resource, ulong offset, ulong length)
-    {
-        if (length == 0) return;
-        var ranges = RangesFor(resource);
-        ulong end = checked(offset + length);
-        for (int i = ranges.Count - 1; i >= 0; i--)
-        {
-            var range = ranges[i];
-            if (range.Stride != 0) continue;
-            if (range.Offset > end || offset > range.Offset + range.Length) continue;
-            offset = Math.Min(offset, range.Offset);
-            end = Math.Max(end, range.Offset + range.Length);
-            ranges.RemoveAt(i);
-        }
-        ranges.Add(new(resource, offset, end - offset));
-    }
-}
-
 /// <summary>Shares the queue's submit lock. Publishing prefix reads and CPU writes are atomic against one another.
 /// Explicit read drains cover unsignalled prefixes outside the gate. A zero final value keeps a frame
 /// quarantined even after that drain.</summary>
@@ -101,12 +47,10 @@ internal sealed class MetalCpuReadProtection(object gate, Func<ulong> completed,
         {
             RetireCompleted();
             ulong id = ++_nextFrame;
-            foreach (var ranges in reads.Ranges)
-                foreach (var range in ranges)
-                    foreach (var maps in _mappings.Values)
-                        foreach (var map in maps)
-                            if (map.Writable && range.Overlaps(map.Range))
-                                throw Refusal(MetalFrameAccessFailure.MappedPrefix, map.Range, id);
+            foreach (var maps in _mappings.Values)
+                foreach (var map in maps)
+                    if (map.Writable && reads.Overlaps(map.Range))
+                        throw Refusal(MetalFrameAccessFailure.MappedPrefix, map.Range, id);
             _frames.Add(new(id, segment, reads));
             return id;
         }

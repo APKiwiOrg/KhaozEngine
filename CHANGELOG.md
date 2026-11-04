@@ -28,6 +28,11 @@ Issues (the `kind/roadmap` label), not a checked-in roadmap file.
   prop loading, attachment binding and submission, the shared shadow-only `DrawAdmissionRefusal`, the post chain,
   water frames, lit receivers, chunk sink configuration and the tile-ground and prop-layer validators. Messages
   are unchanged.
+
+## 22.0.1
+
+2026-11-04
+
 - Skip default material-map sampling and dormant cutout work for opaque, untangented foliage with no maps.
 - Reuse exact duplicate tile-ground GPU vertices without changing triangle inputs, order or authored geometry.
 - Reuse Metal vertex-read coverage across shadow, geometry and forward passes, including mesh and pipeline

@@ -697,14 +697,29 @@ explicit opt-ins, both false by default. An enabled terrain profile requires non
 finite `MaxDropMetres`, and captured evidence. Capture alone never enables a profile, and zero permission is invalid
 with the profile flag. Consumers must opt in and rebake after adopting the released capability.
 
-Format 4 retains the entire steep inventory and the deterministic union of every worker's required columns, original
-raw identities and complete solid groups. Geometry is pooled once across enabled profiles. The layer data and ordered
-acceptance bits remain profile-owned. A workload digest binds the identity, canonical evidence, frozen profile bytes
-and regenerated Stair-then-Drop sequence. The loader validates bounds, tags, keys, geometry, topology, coverage and
-raw references before candidate allocation. It counts and authenticates regeneration before allocating the endpoint
-array. An Excluded evidence query is an error, including a steep-presence query, so missing evidence cannot select
-the sharp policy. The file stores no trajectories or per-mode physics verdicts. Disabled profiles retain their old
-recipe and do not inherit terrain permission. Formats 1, 2 and 3 retain their exact layout and candidate meanings.
+Terrain opt-in is additive. Every candidate with sharp topology attempts the unchanged sharp proof first.
+Only a sharp refusal with applicable terrain can attempt the terrain proof. New terrain topology uses the terrain
+proof alone. Every accepted Drop retains its proving route. Policy selection reads that route, never geometry.
+
+Format 4 stores the ordered candidate list as canonical unsigned LEB128 counts and ZigZag LEB128 deltas of flattened
+integer layer/cell endpoints, followed by link-kind bytes. Each profile retains its original layer data and acceptance
+bits, then a facts block with the bake-time f32 slope cosine, f64 footprint surface reach, length-prefixed endpoints
+and a terrain-route bitset. Disabled profiles store a zero cosine and no terrain routes. A terrain bit must name an
+accepted Drop on an enabled profile. The workload digest binds the full identity, canonical container evidence,
+profile name, frozen profile bytes and exact facts bytes. Loading validates counts against remaining bytes and
+storage capacity, canonical integers, bounds, duplicate endpoints, endpoint admission, routes and the digest.
+It never regenerates candidates or replays refused verdicts. Refusals remain authenticated bake-time facts.
+
+Evidence is pooled across enabled profiles and retains only accepted terrain proofs' reads and certificate inputs,
+including whole queried columns, original raw identities and required complete solid groups. Neither sharp proof
+reads, refused attempts, recipe closure nor the global steep inventory is retained. Certificate reconstruction and
+terrain policy reads are local. Certificates reconstruct lazily on first use with the persisted threshold bits.
+Loading and reconstruction use no platform trigonometric functions. Excluded evidence always throws
+`DependencyMissing`, including steep-presence queries. It cannot select a fallback policy. No trajectories or
+per-mode physics verdicts are stored. Formats 1, 2 and 3 keep their exact bytes and candidate meanings.
+
+Terrain support currently covers bake, load and certificate reconstruction. Standard terrain preview and live
+following are not available yet. An accepted terrain link must not be presented as a runnable standard-host Drop.
 
 In format 3, disabled profiles encode those four appended values as 0, 1, 1 and false. Enabled profiles
 retain their actual flight inputs. The 13 added identity bytes per profile change neither the layer layout
@@ -1380,11 +1395,11 @@ It keeps the full actual walk/run tuning, original raw target layer, ordinary te
 original boundary and 64-slice duration. Selected support binds canonical feature geometry and owner separately
 from the ordinary adapter's selector owner, which must remain unchanged after the real source Hold.
 Explicit capture/profile flags publish these certified links and retain their evidence in KENB 4. Runtime
-continuation still uses the separate host path. Existing sharp Drops and ordinary `AllowsSegment` are unchanged.
+preview and live following are not available yet. Existing sharp Drops and ordinary `AllowsSegment` are unchanged.
 
-Calling-thread dependency receipts can reduce evidence for one frozen profile and candidate stream. The subset
-retains every steep face, all observed coverage and column dependencies, their original raw rows, and complete
-solid groups needed by occupancy checks. Other cells are explicitly `Excluded`, which never certifies terrain
-coverage. Source bindings are regenerated from the original captured columns and raw grid heights, without a
-resting-height lookup. Another tuning or candidate recipe requires its own dependency receipt. KENB 4 freezes this
-certificate input shape for the authenticated workload. Reusing it for another tuning or recipe is refused.
+Calling-thread dependency receipts retain only accepted terrain proof reads and their certificate inputs.
+The subset includes observed coverage and columns, original raw rows, local faces and complete solid groups needed
+by occupancy checks. Other cells are explicitly `Excluded` and a later query throws `DependencyMissing`.
+Raw bindings use original captured column ordinals and raw grid heights, never resting-height proximity.
+The stored candidates and route facts remove any need for recipe closure or a global steep inventory.
+Another tuning or workload needs a new bake. Accepted terrain certificates reconstruct on first use.

@@ -1,9 +1,6 @@
 using System;
 using System.Collections.Generic;
-using System.IO;
-using System.Linq;
 using System.Numerics;
-using System.Security.Cryptography;
 using KhaozEngine.Locomotion;
 using KhaozEngine.Navigation;
 
@@ -23,8 +20,12 @@ public sealed partial class GroundNavigationBake
         var scratch = new LayerScratch(new bool[plan.Cells], new bool[plan.Cells], new float[plan.Cells], new byte[plan.Cells], new float[plan.Cells]);
         for (int i = 0; i < result.Length; i++)
         {
-            if (!reader.TryReadInt32(out int bytes) || !reader.TryReadBytes(bytes, out var data) || !reader.TryReadBytes(32, out var digest)) return "Terrain profile is truncated.";
-            if (DecodeTerrainProfile(data, plan, plan.Profiles[i], columns!, scratch, evidence, identity, geometry, digest, out var navigation) is { } failed) return failed;
+            if (!reader.TryReadInt32(out int bytes) || !reader.TryReadBytes(bytes, out var data) ||
+                !reader.TryReadInt32(out int factBytes) || !reader.TryReadBytes(factBytes, out var facts) ||
+                !reader.TryReadBytes(32, out var digest)) return "Terrain profile is truncated.";
+            if (!TerrainWorkload.Digest(identity, geometry, plan.Profiles[i].Name, data, facts).AsSpan().SequenceEqual(digest))
+                return "The frozen terrain workload does not match.";
+            if (DecodeTerrainProfile(data, facts, plan, plan.Profiles[i], columns!, scratch, evidence, out var navigation) is { } failed) return failed;
             result[i] = navigation!;
         }
         if (reader.Remaining != 0) return "Terrain payload has trailing bytes.";
@@ -32,9 +33,9 @@ public sealed partial class GroundNavigationBake
         return null;
     }
 
-    static string? DecodeTerrainProfile(ReadOnlySpan<byte> data, LoadPlan plan, NavBakeProfile profile,
+    static string? DecodeTerrainProfile(ReadOnlySpan<byte> data, ReadOnlySpan<byte> facts, LoadPlan plan, NavBakeProfile profile,
         PhysicsNavColumns columns, LayerScratch scratch, PhysicsNavDescentEvidence evidence,
-        ReadOnlySpan<byte> identity, ReadOnlySpan<byte> geometry, ReadOnlySpan<byte> expectedDigest, out GroundNavigation? navigation)
+        out GroundNavigation? navigation)
     {
         var reader = new NavBakeReader(data);
         navigation = null;
@@ -47,7 +48,7 @@ public sealed partial class GroundNavigationBake
         var grids = new NavGrid[layerCount];
         var traversal = new NavTraversalLayer[layerCount];
         (bool[] blocked, bool[] accepted, float[] heights, byte[] exits, float[]? resting) = scratch;
-        bool contact = true && profile.Tuning.Controller == MovementControllerKind.Contact;
+        bool contact = profile.Tuning.Controller == MovementControllerKind.Contact;
         PhysicsNavBakeOptions options = plan.Options;
         for (int layer = 0; layer < layerCount; layer++)
         {
@@ -108,45 +109,34 @@ public sealed partial class GroundNavigationBake
         if (!reader.TryReadInt32(out int stored) || stored < 0 || BitsetLength(stored) != reader.Remaining)
             return "Terrain candidate count is impossible for the remaining bytes.";
         if (!reader.TryReadBytes(BitsetLength(stored), out var bits) || !UnusedBitsClear(bits, stored)) return "Terrain acceptance bits are invalid.";
-        var space = new NavSpace(grids, []);
-        var empty = new NavTraversalGraph(space, profile.Tuning.CapsuleRadius,
-            2f * profile.Tuning.CapsuleHalfHeight, traversal, []);
-        PhysicsNavColumns footprintColumns = profile.Aquatic ? AquaticColumns.Derive(columns, profile.Tuning) : columns;
-        var ground = new NavAreaFootprint(footprintColumns, options, profile.Tuning, profile.Areas);
-        var basis = new GroundNavigation(empty, profile.Tuning, ground, profile.Aquatic, profile.MaxDropMetres, profile.AllowTerrainDescents);
-        var sources = profile.AllowTerrainDescents ? new ContactTerrainProfileEvidence(evidence, basis) : null;
-        var digest = TerrainWorkload.Digest(identity, geometry, profile.Name, data,
-            RegenerateTerrainProfile(basis, evidence, sources), out int regenerated);
-        if (regenerated != stored || !digest.AsSpan().SequenceEqual(expectedDigest)) return "The frozen terrain workload does not match.";
-        // Only the authenticated, regenerated count sizes the candidate array.
-        var candidates = new NavLink[regenerated]; int next = 0;
-        foreach (var link in RegenerateTerrainProfile(basis, evidence, sources))
+        var factReader = new NavBakeReader(facts);
+        if (!factReader.TryReadSingle(out float slopeCos) || !float.IsFinite(slopeCos) ||
+            (profile.AllowTerrainDescents ? slopeCos < 0 || slopeCos > 1 : Bits(slopeCos) != 0) ||
+            !factReader.TryReadUInt64(out ulong reachBits) ||
+            !factReader.TryReadInt32(out int endpointBytes) || !factReader.TryReadBytes(endpointBytes, out var endpoints) ||
+            !factReader.TryReadBytes(BitsetLength(stored), out var routes) || !UnusedBitsClear(routes, stored) || factReader.Remaining != 0)
+            return "Terrain candidate and route facts are invalid.";
+        double surfaceReach = BitConverter.UInt64BitsToDouble(reachBits);
+        if (!double.IsFinite(surfaceReach) || surfaceReach < profile.Tuning.StepHeight + (double)profile.Tuning.GroundedEpsilon)
+            return "Terrain footprint reach is invalid.";
+        var candidates = TerrainCandidateCodec.Decode(endpoints, traversal, stored);
+        var links = new List<NavLink>(); var terrainLinks = new List<NavLink>();
+        for (int i = 0; i < candidates.Length; i++)
         {
-            if (next == candidates.Length) return "Terrain candidate enumeration changed.";
-            candidates[next++] = link;
+            if (IsSet(routes, i))
+            {
+                if (!profile.AllowTerrainDescents || !IsSet(bits, i) || candidates[i].Kind != NavLinkKind.Drop)
+                    return "A terrain route must name an accepted enabled Drop.";
+                terrainLinks.Add(candidates[i]);
+            }
+            if (IsSet(bits, i)) links.Add(candidates[i]);
         }
-        if (next != candidates.Length) return "Terrain candidate enumeration changed.";
-        var links = new List<NavLink>();
-        for (int i = 0; i < candidates.Length; i++) if (IsSet(bits, i)) links.Add(candidates[i]);
+        PhysicsNavColumns footprintColumns = profile.Aquatic ? AquaticColumns.Derive(columns, profile.Tuning) : columns;
+        var ground = new NavAreaFootprint(footprintColumns, options, profile.Tuning, profile.Areas, surfaceReach);
         var graph = new NavTraversalGraph(new NavSpace(grids, candidates), profile.Tuning.CapsuleRadius,
             2f * profile.Tuning.CapsuleHalfHeight, traversal, links);
         navigation = new GroundNavigation(graph, profile.Tuning, ground, profile.Aquatic, profile.MaxDropMetres, profile.AllowTerrainDescents);
-        if (profile.AllowTerrainDescents) navigation.RebindTerrainEvidence(evidence);
+        if (profile.AllowTerrainDescents) navigation.AttachTerrain(evidence, terrainLinks, slopeCos);
         return null;
-    }
-
-    static IEnumerable<NavLink> RegenerateTerrainProfile(GroundNavigation navigation, PhysicsNavDescentEvidence evidence,
-        ContactTerrainProfileEvidence? sources)
-    {
-        if (!navigation.AllowTerrainDescents)
-            return navigation.MaxDropMetres > 0
-                ? ContactDropTopology.Enumerate(navigation.Space.Layers, navigation.Graph.Layers, navigation.Identity.Tuning, navigation.MaxDropMetres)
-                : NavLayerLinks.EnumerateGrounded(navigation.Space.Layers, navigation.Identity.Tuning.StepHeight);
-        return TerrainLinks();
-        IEnumerable<NavLink> TerrainLinks()
-        {
-            foreach (var link in NavLayerLinks.EnumerateGrounded(navigation.Space.Layers, navigation.Identity.Tuning.StepHeight)) yield return link;
-            foreach (var link in ContactTerrainDropCandidates.Enumerate(navigation, evidence, sources!, navigation.Identity.Tuning, navigation.MaxDropMetres)) yield return link;
-        }
     }
 }

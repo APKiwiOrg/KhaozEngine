@@ -10,14 +10,14 @@ namespace KhaozEngine.Movement;
 /// <summary>Fresh-bake terrain proof using the ordinary Contact solver, input and unchanged slice budget.</summary>
 internal sealed class ContactTerrainDropProof(PhysicsNavBakeOptions options, EffectiveMovementBinding source,
     MovementFrameDescriptor frame, Func<Vector3, MovementQueryLease> acquire, NavAreaFootprint ground,
-    float allowance, bool reuse, PhysicsNavDescentEvidence evidence, ContactTerrainProfileEvidence sources) : IDisposable
+    float allowance, bool reuse, PhysicsNavDescentEvidence evidence, ContactTerrainProfileEvidence sources, float slopeCos) : IDisposable
 {
     readonly EffectiveMovementBinding _binding = source.CreateFallProofBinding();
     readonly ContactNavigationBuildHooks? _hooks = ContactNavigationBuildHooks.Current;
     internal ContactTerrainDropRefusal Refusal { get; private set; }
     internal bool IsTerrain(NavSpace space, NavLink link) => ContactTerrainDropCertificate.HasSteep(evidence,
         _binding.Tuning, ContactDropProof.Feet(space.Layers[link.FromLayer], link.FromX, link.FromZ),
-        ContactDropProof.Feet(space.Layers[link.ToLayer], link.ToX, link.ToZ));
+        ContactDropProof.Feet(space.Layers[link.ToLayer], link.ToX, link.ToZ), slopeCos);
 
     internal bool TryEdge(NavSpace space, NavLink link)
     {
@@ -30,7 +30,7 @@ internal sealed class ContactTerrainDropProof(PhysicsNavBakeOptions options, Eff
         if (link.Kind != NavLinkKind.Drop || !HeightAllowed(from.Y, to.Y, tuning.StepHeight, allowance))
             return Refuse(ContactTerrainDropRefusal.DescentAllowance);
         if (!ground.Accepts(from) || !ground.Accepts(to)) return Refuse(ContactTerrainDropRefusal.Certificate);
-        var certificate = ContactTerrainDropCertificate.Create(evidence, sources, ground, tuning, space, link, from, to, allowance);
+        var certificate = ContactTerrainDropCertificate.Create(evidence, sources, ground, tuning, space, link, from, to, allowance, slopeCos);
         if (certificate is null) return Refuse(ContactTerrainDropRefusal.Certificate);
         bool usable = false;
         foreach (bool run in new[] { false, true })

@@ -70,13 +70,14 @@ and rejects another patch, lost support or exhausted duration. It never adds ord
 Terminal support must resolve through the original target layer's raw cell patch, satisfy the full ordinary
 footprint and the unchanged 1 mm sphere, then survive a real zero-input Hold. The original boundary, highest-launch
 descent accounting, medium history and 64 slices at 30 Hz remain mandatory. Geometry without a captured terrain
-band continues through the existing sharp proof.
+band does not gain a terrain proof. Sharp topology always attempts the existing sharp proof first.
 
-The future certificate must preserve original layer and cell identity, full ordinary terminal footprint admission,
-the 3D 1 mm arrival sphere and a real supported terminal Hold. Collision, roofs, areas, water, original boundaries,
-highest-launch descent and existing proof budgets remain binding throughout the transition. Fringe poses never
-become ordinary navigation nodes, and `AllowsSegment` retains its ordinary meaning. Creatures retain zero
-permission. Profiles without the future opt-in retain the existing sharp Drop policy.
+Terrain opt-in is additive. Every sharp-topology candidate attempts the unchanged sharp proof first. A refusal
+may attempt terrain when applicable. New terrain topology attempts terrain only. Every accepted link records its
+proving route, which is the sole policy selector. Creatures retain zero permission by default.
+
+The opt-in, physical certificate and bake/load support are implemented. Standard terrain preview and live following
+are not available yet. Publishing an accepted terrain link does not make it executable through the standard host.
 
 ## Planning and following
 
@@ -159,13 +160,17 @@ own authority, advance the real controller and decide interaction timing from ac
 The added identity fields are f32 allowance, f32 WalkSpeed, f32 RunSpeed and u8 AirMomentum. Disabled profiles store
 canonical `0, 1, 1, false`, preserving the old normalized-ground identity. Enabled runtime profiles also validate
 actual speed and momentum. Retained identity fields still include water, air control, gravity, terminal speed,
-braking and body geometry. Load is explicitly version directed, regenerates candidates from stored grids, exits
-and physical anchors, bounds counts before allocation and authenticates the ordered acceptance bits.
+braking and body geometry. Load is explicitly version directed. Formats 1 through 3 regenerate their frozen
+candidate recipes. Format 4 stores canonical ordered integer endpoints and validates bounds, admission, encoding
+and storage capacity before use. It authenticates acceptance and the proving route for each accepted link.
 
 A same-engine allowance or profile terrain flag change is ProfilesChanged. Capture evidence selection changes are
-OptionsChanged. Excluded evidence is unavailable, never proof that steep geometry is absent. All worker receipts
-are unioned before reduction, and the frozen identity/evidence/profile/candidate digest is checked before endpoint
-allocation. No trajectories are stored.
+OptionsChanged. Format 4 retains only accepted terrain proof reads and local certificate inputs, including raw
+identities, whole queried columns and needed complete solid groups. Sharp/refused proof dependencies, recipe
+closure and the global steep inventory are omitted. Excluded evidence throws DependencyMissing. Certificates
+reconstruct on first use. Persisted f32 slope cosine and f64 footprint reach bits remove platform trigonometry
+from load and reconstruction. The digest binds identity, evidence, profile bytes, candidate bytes and route facts.
+Refused verdicts are authenticated bake-time facts and are never replayed on load. No trajectories are stored.
 
 A same-engine allowance change is ProfilesChanged. EngineChanged retains comparison priority. Consumers must adopt
 a released engine and rebake, never patch old acceptance bits or relabel an old graph. Candidate counting is data

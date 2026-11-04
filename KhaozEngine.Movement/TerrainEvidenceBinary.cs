@@ -44,11 +44,14 @@ internal ref struct TerrainEvidenceReader(ReadOnlySpan<byte> data)
         double value = BitConverter.UInt64BitsToDouble(bits);
         return double.IsFinite(value) ? value : throw Corrupt();
     }
-    internal string Text()
+    internal string Text(DescentCaptureIndexBudget? budget = null)
     {
         int count = Count(Array.MaxLength, 1);
         var bytes = Bytes(count);
         if (bytes.Length == 0 || !System.Text.Unicode.Utf8.IsValid(bytes)) throw Corrupt();
+        int characters = Encoding.UTF8.GetCharCount(bytes);
+        if (characters > Array.MaxLength / sizeof(char)) throw Corrupt();
+        budget?.Reserve(characters, sizeof(char));
         return Encoding.UTF8.GetString(bytes);
     }
     internal static InvalidDataException Corrupt() => new("Invalid terrain evidence payload.");

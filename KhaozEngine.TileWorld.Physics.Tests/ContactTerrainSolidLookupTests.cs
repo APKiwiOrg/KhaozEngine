@@ -36,9 +36,12 @@ public class ContactTerrainSolidLookupTests
             2d * ContactTerrainScene.Tuning.CapsuleHalfHeight, default);
         Assert.Equal(expected, oldVerdict);
         Assert.Equal(oldVerdict, actualVerdict);
-        var oldSubset = ContactTerrainEvidenceSubset.Build(e, oldReads, ContactTerrainScene.Tuning);
         var actualSubset = ContactTerrainEvidenceSubset.Build(e, actualReads, ContactTerrainScene.Tuning);
-        Assert.Equal(ContactTerrainCaptureBytes.Encode(oldSubset), ContactTerrainCaptureBytes.Encode(actualSubset));
+        // The old global scan observes unrelated metadata. Only the production receipt is retained now.
+        var canonical = TerrainEvidenceUnion.Build(e.Options, capture.Columns, [actualSubset]);
+        var loaded = TerrainEvidenceDecoder.Decode(TerrainEvidenceWriter.Encode(canonical, capture.Columns), e.Options, capture.Columns);
+        Assert.Equal(expected, ContactTerrainDropCorridor.CertifyColumn(loaded, 9, 6, -6, 0.75,
+            2d * ContactTerrainScene.Tuning.CapsuleHalfHeight, default));
         int[] farFaces = Enumerable.Range(0, e.FaceCount).Where(i => e.Face(i).Owner.LocalId == "far").ToArray();
         Assert.NotEmpty(farFaces);
         foreach (int face in farFaces)

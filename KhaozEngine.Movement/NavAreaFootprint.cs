@@ -16,7 +16,7 @@ internal sealed class NavAreaFootprint
     private readonly double _surfaceReach;
 
     internal NavAreaFootprint(PhysicsNavColumns columns, PhysicsNavBakeOptions options,
-        in MoveTuning tuning, NavAreaFilter areas)
+        in MoveTuning tuning, NavAreaFilter areas, double? surfaceReach = null)
     {
         _columns = columns;
         _options = options;
@@ -27,8 +27,8 @@ internal sealed class NavAreaFootprint
         // column can also capture ground under a low tread, whose headroom is not the body's clearance.
         _checkHeadroom = tuning.Controller != MovementControllerKind.Contact;
         // A footprint can straddle a step or slope while the core seats or paces the body.
-        _surfaceReach = tuning.StepHeight + (double)tuning.GroundedEpsilon +
-            _radius * Math.Tan(tuning.MaxSlopeRadians);
+        _surfaceReach = surfaceReach ?? (tuning.StepHeight + (double)tuning.GroundedEpsilon +
+            _radius * Math.Tan(tuning.MaxSlopeRadians));
         AcceptsPredicate = Accepts;
     }
 
@@ -40,6 +40,7 @@ internal sealed class NavAreaFootprint
 
     /// <summary>The area filter applied to every touched surface.</summary>
     internal NavAreaFilter Areas => _areas;
+    internal double SurfaceReach => _surfaceReach;
 
     /// <summary>One delegate over <see cref="Accepts"/>, built once so traversal proofs do not allocate it per call.</summary>
     internal Func<Vector3, bool> AcceptsPredicate { get; }

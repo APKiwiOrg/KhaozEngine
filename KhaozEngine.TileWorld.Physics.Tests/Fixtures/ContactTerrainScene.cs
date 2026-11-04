@@ -41,9 +41,10 @@ internal sealed class ContactTerrainScene : IDisposable
             water, Registration, boundary ?? MovementBoundary.Rectangle(0, -3, 5, 0));
     }
 
-    internal static TileWorldDocument Document(float height, float tileSize = 1, Func<float, float>? profile = null)
+    internal static TileWorldDocument Document(float height, float tileSize = 1, Func<float, float>? profile = null,
+        float widthMetres = 5, float depthMetres = 3)
     {
-        int width = (int)(5 / tileSize), depth = (int)(3 / tileSize);
+        int width = (int)(widthMetres / tileSize), depth = (int)(depthMetres / tileSize);
         var doc = TileWorldMovementNavigationTests.Drawn(0, 0, width, depth);
         doc.TileSize = tileSize;
         for (int z = 0; z <= depth; z++)

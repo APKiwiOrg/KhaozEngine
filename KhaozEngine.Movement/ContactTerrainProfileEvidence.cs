@@ -13,6 +13,7 @@ internal sealed class ContactTerrainProfileEvidence
     readonly PhysicsNavDescentEvidence _evidence;
     readonly GroundNavigation _navigation;
     internal int Count => _cells.Count;
+    internal GroundNavigation Navigation => _navigation;
     internal ContactTerrainProfileEvidence(PhysicsNavDescentEvidence evidence, GroundNavigation navigation)
     {
         _evidence = evidence;

@@ -9652,12 +9652,21 @@ false. The profile must select non-aquatic OrdinaryContact. Capture permission n
 and a terrain profile with zero allowance is invalid. Adopt the released engine and rebake, rather than relabeling
 an older file. Creature profiles remain disabled unless explicitly granted their own positive allowance and flag.
 
-Evidence capture selects KENB 4. It pools canonical geometry and exact original raw associations across enabled
-profiles, retains the full steep inventory and every worker's dependency union, and authenticates each frozen
-ordered candidate workload. Missing Excluded evidence fails loudly instead of falling back to sharp Drops. The
-loader validates geometry, references, coverage, raw identities and regenerated count/digest before allocating
-candidate endpoints. Stored acceptance bits never become trajectories or preview arrivals. Disabled profiles in a
-mixed container retain their original recipe. Formats 1, 2 and 3 stay frozen.
+Evidence capture selects KENB 4. Terrain opt-in first tries the unchanged sharp proof on every sharp-topology
+candidate, then tries terrain only after refusal when terrain applies. New terrain topology uses terrain only.
+Each accepted link retains its proving route. The file stores its ordered integer endpoints, acceptance bits,
+route bits and bake-time slope/footprint threshold bits. A workload digest binds those facts, identity, canonical
+pooled evidence and frozen profile bytes. Endpoints are checked for canonical encoding, bounds and admission.
+Loading never regenerates candidates or replays refusals. Refusals are decided at bake time and authenticated.
+
+Only accepted terrain proof dependencies and certificate inputs survive, with original raw associations and
+required whole solid groups. Sharp dependencies, refused attempts, recipe closure and the global steep inventory
+are omitted. Excluded evidence throws `DependencyMissing`. Runtime policy selection must use the persisted route,
+never infer it from retained geometry. Certificates reconstruct lazily with persisted thresholds, avoiding platform
+trigonometric classification on load. Disabled profiles keep their original policy. Formats 1, 2 and 3 stay frozen.
+
+Terrain support currently covers bake, load and certificate reconstruction. Standard terrain preview and live
+following are not available yet. Accepted terrain links are not runnable through the standard host path yet.
 
 Load needs no new movement proof. The identity covers the engine version, every capture option including
 `SampleWater`, the labelled digests, and each profile's name, area filter, `Aquatic` flag and every `MoveTuning` field except

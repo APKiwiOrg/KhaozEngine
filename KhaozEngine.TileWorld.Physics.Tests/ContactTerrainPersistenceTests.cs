@@ -1,5 +1,6 @@
 using System;
 using System.Buffers.Binary;
+using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using KhaozEngine.Movement;
@@ -15,7 +16,7 @@ public class ContactTerrainPersistenceTests
     [InlineData(1.3f)]
     [InlineData(4f)]
     [InlineData(6f)]
-    public void FormatFourRegeneratesTheFreshTerrainCandidatesAndAcceptedLinks(float height)
+    public void FormatFourStoresCandidatesRoutesAndAcceptedTerrainStepParity(float height)
     {
         using var scene = new ContactTerrainScene(height);
         var options = ContactTerrainOptInTests.Options with { CaptureTerrainDescentEvidence = true };
@@ -41,10 +42,29 @@ public class ContactTerrainPersistenceTests
         using var rewritten = new MemoryStream(); loaded.Bake.WriteTo(rewritten);
         Assert.Equal(bytes, rewritten.ToArray());
         using var binding = scene.Context.CreateNavigationBinding(ContactTerrainScene.Tuning);
-        using var proof = new ContactNavigationProof(capture, scene.Context, binding, restored.Footprint, maxDropMetres: 6);
-        proof.EnableTerrainDescents(restored.Terrain!.Evidence, restored.Terrain.Sources);
+        using var proof = new ContactNavigationProof(capture, scene.Context, binding, fresh.Footprint, maxDropMetres: 6);
+        // Refusals belong to bake time. Keep every refusal case on the original complete capture.
+        proof.EnableTerrainDescents(capture.DescentEvidence!, new(capture.DescentEvidence!, fresh));
         Assert.NotEmpty(fresh.Space.Links);
+        int terrainCount = 0, refusedCount = 0;
         foreach (var link in restored.Space.Links.Where(link => link.Kind == NavLinkKind.Drop))
-            Assert.Equal(fresh.Graph.Links.Contains(link), proof.TryDrop(restored.Space, link));
+        {
+            Assert.Equal(fresh.Graph.Links.Contains(link), proof.TryDrop(fresh.Space, link));
+            if (!fresh.Graph.Links.Contains(link)) { refusedCount++; continue; }
+            Assert.Equal(fresh.Terrain!.Route(link), restored.Terrain!.Route(link));
+            if (restored.Terrain.Route(link) != ContactDropRoute.Terrain) continue;
+            terrainCount++;
+            Assert.True(restored.Terrain.TryGet(link, out var certificate));
+            Assert.NotNull(certificate);
+            var before = new List<ContactDropStepObservation>();
+            using (ContactNavigationBuildHooks.Install(new() { DropStep = before.Add }))
+                Assert.True(ContactTerrainRouteReplay.Prove(capture, scene.Context, fresh, link, capture.DescentEvidence));
+            var after = new List<ContactDropStepObservation>();
+            using (ContactNavigationBuildHooks.Install(new() { DropStep = after.Add }))
+                Assert.True(ContactTerrainRouteReplay.Prove(capture, scene.Context, restored, link));
+            Assert.Equal(before.ToArray(), after.ToArray());
+        }
+        Assert.True(terrainCount > 0);
+        Assert.True(refusedCount > 0);
     }
 }

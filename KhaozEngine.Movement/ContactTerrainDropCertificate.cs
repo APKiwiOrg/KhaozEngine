@@ -51,13 +51,13 @@ internal sealed class ContactTerrainDropCertificate
         foreach (int face in faces) _keys.Add(evidence.Face(face).Key, face);
     }
 
-    internal static bool HasSteep(PhysicsNavDescentEvidence evidence, MoveTuning tuning, Vector3 from, Vector3 to) =>
+    internal static bool HasSteep(PhysicsNavDescentEvidence evidence, MoveTuning tuning, Vector3 from, Vector3 to, float? slopeCos = null) =>
         ProjectedFaces(evidence, tuning, from, to).Any(i => evidence.Face(i).Analytic &&
-            evidence.Face(i).Normal.Y > 0 && evidence.Face(i).Normal.Y < MathF.Cos(tuning.MaxSlopeRadians));
+            evidence.Face(i).Normal.Y > 0 && evidence.Face(i).Normal.Y < (slopeCos ?? MathF.Cos(tuning.MaxSlopeRadians)));
 
     internal static ContactTerrainDropCertificate? Create(PhysicsNavDescentEvidence evidence,
         ContactTerrainProfileEvidence sources, NavAreaFootprint ground, MoveTuning tuning, NavSpace space,
-        NavLink link, Vector3 from, Vector3 to, float allowance)
+        NavLink link, Vector3 from, Vector3 to, float allowance, float? slopeCos = null)
     {
         if (space.Layers.Any(grid => grid.Width != evidence.Width || grid.Height != evidence.Height ||
                 grid.CellSize != evidence.Options.CellSize || grid.OriginX != evidence.Options.MinX || grid.OriginZ != evidence.Options.MinZ) ||
@@ -65,7 +65,7 @@ internal sealed class ContactTerrainDropCertificate
             !sources.TryGet(link.ToLayer, link.ToX, link.ToZ, out var target) ||
             !new ContactTerrainDropCorridor(evidence, ground, tuning, from, to, allowance).Certify()) return null;
         var faces = ProjectedFaces(evidence, tuning, from, to);
-        float cos = MathF.Cos(tuning.MaxSlopeRadians);
+        float cos = slopeCos ?? MathF.Cos(tuning.MaxSlopeRadians);
         var walkable = faces.Where(i => evidence.Face(i).Analytic && evidence.Face(i).Normal.Y >= cos).ToHashSet();
         var upper = Component(evidence, [source.Face], walkable);
         var landing = Component(evidence, [target.Face], walkable);

@@ -74,8 +74,8 @@ public sealed partial class GroundNavigationBake
     /// <exception cref="ArgumentException">A source, profile name, count or tuning is invalid, a profile slope differs
     /// from the capture slope, an aquatic profile's capture did not sample water or its swim fractions are out of
     /// order, or the identity block exceeds 1 MiB.</exception>
-    /// <exception cref="InvalidOperationException">The physics origin changed, or a fresh profile's candidate links
-    /// differ from the list regenerated from its grids, which is an engine defect.</exception>
+    /// <exception cref="InvalidOperationException">The physics origin changed, or a non-terrain profile's candidate
+    /// links differ from its frozen recipe, which is an engine defect.</exception>
     public static GroundNavigationBake Create(PhysicsNavBake capture, NavBakeSources sources,
         IReadOnlyList<NavBakeProfile> profiles)
         => Create(capture, sources, profiles, null);
@@ -125,7 +125,7 @@ public sealed partial class GroundNavigationBake
                     MaxDropMetres = profile.MaxDropMetres,
                     AllowTerrainDescents = profile.AllowTerrainDescents
                 }, execution);
-            IEnumerable<NavLink> regenerated = profile.AllowTerrainDescents ? TerrainCandidates(navigation) : profile.MaxDropMetres > 0
+            IEnumerable<NavLink> regenerated = profile.AllowTerrainDescents ? navigation.Space.Links : profile.MaxDropMetres > 0
                 ? ContactDropTopology.Enumerate(navigation.Space.Layers, navigation.Graph.Layers, profile.Tuning, profile.MaxDropMetres)
                 : NavLayerLinks.GenerateGrounded(navigation.Space.Layers, profile.Tuning.StepHeight);
             if (!SameLinks(regenerated, navigation.Space.Links))

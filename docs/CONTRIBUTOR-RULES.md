@@ -318,6 +318,11 @@ Goldens are backend-family artifacts. A new or changed golden must be baked by t
 Plain `dotnet test` skips GPU facts. A local GPU proof sets `KE_GPU_TESTS=1` and confirms zero skipped
 render tests. [`CROSS-PLATFORM.md`](CROSS-PLATFORM.md) owns the full matrix contract.
 
+`terrain-format.yml` is a separate headless portability gate on hosted `ubuntu-26.04`, `macos-26` and
+`windows-2025`. It loads the committed Mac-baked KENB 4 fixture, reconstructs every accepted terrain
+certificate and requires a byte-identical rewrite. It runs on matching pushes and pull requests and
+offers manual dispatch for a task branch. It never uses a self-hosted runner or requires a GPU.
+
 ## Version, package and release rules
 
 `Directory.Build.props` contains the one `<KhaozEngineVersion>` for every package. SemVer is additive

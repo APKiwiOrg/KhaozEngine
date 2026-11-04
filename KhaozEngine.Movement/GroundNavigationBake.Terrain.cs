@@ -9,14 +9,6 @@ public sealed partial class GroundNavigationBake
 {
     readonly PhysicsNavDescentEvidence? _terrainEvidence;
 
-    static IEnumerable<NavLink> TerrainCandidates(GroundNavigation navigation)
-    {
-        foreach (var link in NavLayerLinks.EnumerateGrounded(navigation.Space.Layers, navigation.Identity.Tuning.StepHeight)) yield return link;
-        var terrain = navigation.Terrain ?? throw new InvalidOperationException("Terrain navigation has no frozen evidence.");
-        foreach (var link in ContactTerrainDropCandidates.Enumerate(navigation, terrain.Evidence, terrain.Sources,
-            navigation.Identity.Tuning, navigation.MaxDropMetres)) yield return link;
-    }
-
     byte[] EncodeTerrainPayload()
     {
         var writer = new NavBakeWriter();
@@ -26,12 +18,18 @@ public sealed partial class GroundNavigationBake
         for (int i = 0; i < _profiles.Length; i++)
         {
             var profile = _profiles[i]; var data = new NavBakeWriter(); WriteProfile(data, profile);
-            if (profile.AllowTerrainDescents && !SameLinks(TerrainCandidates(profile), profile.Space.Links))
-                throw new InvalidOperationException("The frozen terrain candidate order changed.");
-            var digest = TerrainWorkload.Digest(_identity, evidence, _names[i], data.WrittenSpan,
-                profile.AllowTerrainDescents ? TerrainCandidates(profile) : profile.Space.Links, out int count);
-            if (count != profile.Space.Links.Count) throw new InvalidOperationException("The frozen terrain workload changed.");
-            writer.WriteInt32(data.Length); writer.WriteBytes(data.WrittenSpan); writer.WriteBytes(digest);
+            var facts = new NavBakeWriter();
+            facts.WriteSingle(profile.Terrain?.SlopeCos ?? 0);
+            facts.WriteUInt64(BitConverter.DoubleToUInt64Bits(profile.Footprint.SurfaceReach));
+            byte[] endpoints = TerrainCandidateCodec.Encode(profile.Space.Links, _columns.Width, _columns.Height);
+            facts.WriteInt32(endpoints.Length); facts.WriteBytes(endpoints);
+            var routes = new byte[BitsetLength(profile.Space.Links.Count)];
+            for (int c = 0; c < profile.Space.Links.Count; c++)
+                if (profile.Terrain?.Route(profile.Space.Links[c]) == ContactDropRoute.Terrain) routes[c >> 3] |= (byte)(1 << (c & 7));
+            facts.WriteBytes(routes);
+            var digest = TerrainWorkload.Digest(_identity, evidence, _names[i], data.WrittenSpan, facts.WrittenSpan);
+            writer.WriteInt32(data.Length); writer.WriteBytes(data.WrittenSpan);
+            writer.WriteInt32(facts.Length); writer.WriteBytes(facts.WrittenSpan); writer.WriteBytes(digest);
         }
         return writer.ToArray();
     }

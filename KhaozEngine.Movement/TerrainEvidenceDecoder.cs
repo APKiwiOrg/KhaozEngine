@@ -21,7 +21,7 @@ internal static class TerrainEvidenceDecoder
         var names = new string[namesCount]; var usedNames = new bool[namesCount];
         for (int i = 0; i < names.Length; i++)
         {
-            names[i] = r.Text(); budget.Reserve(names[i].Length, 2);
+            names[i] = r.Text(budget);
             if (i > 0 && string.CompareOrdinal(names[i - 1], names[i]) >= 0) throw Corrupt();
         }
         int pointsCount = r.Count(Array.MaxLength, 13);
@@ -39,6 +39,7 @@ internal static class TerrainEvidenceDecoder
         int count = r.Count(options.MaxLayerCells, 16);
         budget.Reserve(count, 72);
         var faces = new DescentFace[count]; var joins = new int[count][];
+        int nextPoint = 0;
         for (int i = 0; i < count; i++)
         {
             int source = r.Index(names.Length); usedNames[source] = true;
@@ -56,7 +57,12 @@ internal static class TerrainEvidenceDecoder
             bool curved = kind is PhysicsEvidenceKind.Sphere or PhysicsEvidenceKind.Capsule or PhysicsEvidenceKind.Cylinder;
             if (curved ? n != 0 || analytic : n < 3 || kind == PhysicsEvidenceKind.Triangle && n != 3 || analytic && n != 3) throw Corrupt();
             var vertices = new PhysicsEvidencePoint[n];
-            for (int j = 0; j < n; j++) { int p = r.Index(points.Length); usedPoints[p] = true; vertices[j] = points[p]; }
+            for (int j = 0; j < n; j++)
+            {
+                int p = r.Index(points.Length);
+                if (!usedPoints[p] && p != nextPoint++) throw Corrupt();
+                usedPoints[p] = true; vertices[j] = points[p];
+            }
             Pose pose = default; float radius = 0, half = 0;
             if (curved)
             {

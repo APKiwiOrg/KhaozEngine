@@ -14,11 +14,9 @@ internal static class ContactTerrainEvidenceSubset
         if (!reads.Matches(evidence)) throw new ArgumentException("The dependency receipt belongs to another capture.", nameof(reads));
         var cells = reads.Coverage.Concat(reads.Columns).Concat(reads.Bindings.Keys.Select(k => (k.X, k.Z)))
             .Where(c => (uint)c.X < (uint)evidence.Width && (uint)c.Z < (uint)evidence.Height).ToHashSet();
-        var keep = new HashSet<int>();
-        float cos = MathF.Cos(tuning.MaxSlopeRadians);
-        // The whole steep inventory is required to reproduce band absence as well as positive reach.
+        var keep = new HashSet<int>(reads.FaceRecords.Concat(reads.Adjacency));
         for (int i = 0; i < evidence.FaceCount; i++)
-            if (evidence.Face(i).Analytic && evidence.Face(i).Normal.Y > 0 && evidence.Face(i).Normal.Y < cos) keep.Add(i);
+            if (reads.Normals.Contains(evidence.Face(i).Key) || reads.Points.Contains(evidence.Face(i).Key)) keep.Add(i);
         foreach (var (x, z) in cells)
             foreach (var row in evidence.Column(x, z)) keep.Add(row.Face);
         foreach (var raw in evidence.RawBindings)

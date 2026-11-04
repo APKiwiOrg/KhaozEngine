@@ -9,9 +9,25 @@ namespace KhaozEngine.Tests.Movement;
 
 public class TerrainEvidenceCodecTests
 {
+    [Fact]
+    public void DecodedIdentifierStorageIsReservedBeforeStringAllocation()
+    {
+        // #1697. A small storage ceiling exercises the same preallocation boundary as a large hostile name.
+        var writer = new NavBakeWriter(); TerrainEvidenceBinary.Text(writer, "a\u00e9");
+        byte[] bytes = writer.ToArray();
+        var budget = new DescentCaptureIndexBudget(3);
+        var failure = Assert.Throws<PhysicsNavDescentEvidenceException>(() => ReadText(bytes, budget));
+        Assert.Equal(PhysicsNavDescentEvidenceReason.IndexStorageExceeded, failure.Reason);
+        Assert.Equal(0, budget.UsedBytes);
+        Assert.Equal("a\u00e9", ReadText(bytes, new(4)));
+    }
+    static string ReadText(byte[] bytes, DescentCaptureIndexBudget budget)
+    { var reader = new TerrainEvidenceReader(bytes); return reader.Text(budget); }
+
     [Theory]
     [InlineData("names-count")]
     [InlineData("point-nan")]
+    [InlineData("point-order")]
     [InlineData("analytic-tag")]
     [InlineData("kind-tag")]
     [InlineData("vertex-count")]
@@ -29,6 +45,14 @@ public class TerrainEvidenceCodecTests
         var offsets = Offsets(payload);
         if (mutation == "names-count") payload = [255, 255, 255, 255, 15];
         else if (mutation == "point-nan") BitConverter.GetBytes(float.NaN).CopyTo(payload, offsets["point"]);
+        // #1697. Equivalent geometry with a swapped pool must still be refused as noncanonical.
+        else if (mutation == "point-order")
+        {
+            var first = payload.AsSpan(offsets["point"] - 1, 13).ToArray();
+            payload.AsSpan(offsets["point"] + 12, 13).CopyTo(payload.AsSpan(offsets["point"] - 1));
+            first.CopyTo(payload.AsSpan(offsets["point"] + 12));
+            payload[offsets["indices"]] = 1; payload[offsets["indices"] + 1] = 0;
+        }
         else if (mutation == "analytic-tag") payload[offsets["analytic"]] = 2;
         else if (mutation == "kind-tag") payload[offsets["kind"]] = 255;
         else if (mutation == "vertex-count") payload[offsets["vertices"]] = 2;
@@ -69,6 +93,7 @@ public class TerrainEvidenceCodecTests
         result["analytic"] = payload.Length - r.Remaining; _ = r.Boolean();
         result["kind"] = payload.Length - r.Remaining; _ = r.Byte();
         result["vertices"] = payload.Length - r.Remaining; uint vertices = r.Unsigned();
+        result["indices"] = payload.Length - r.Remaining;
         for (int i = 0; i < vertices; i++) _ = r.Unsigned();
         result["adjacency"] = payload.Length - r.Remaining; Assert.Equal(0u, r.Unsigned());
         Assert.Equal(1u, r.Unsigned()); _ = r.Unsigned();

@@ -76,8 +76,10 @@ public sealed class GroundPursuit
     /// not surface arc length or cumulative travel. The commitment timeout bounds total duration.
     /// Travelling always carries a finite nonzero direction. While a due replan cools down it carries the last
     /// valid direction and zero remaining length, which holds the commitment without claiming arrival.
-    /// A formerly nonterminal corridor reaching a stale terminal refreshes once immediately, including near
-    /// its terminal under AcceptRadius and layer checks. A fresh query already terminal keeps the cooldown.</summary>
+    /// A valid final approach keeps steering inside AcceptRadius. Terminal proximity only changes the timing
+    /// of an otherwise due refresh. No usable horizontal direction outside exact reach also makes a refresh due.
+    /// A formerly nonterminal corridor reaching a stale terminal refreshes once immediately under radius and
+    /// layer checks. A fresh query already terminal keeps the cooldown.</summary>
     public GroundPursuitResult Tick(in MoveState body, in MoveTuning tuning, ReachTarget? target,
         float dt, GroundMoveContext context)
     {
@@ -93,10 +95,12 @@ public sealed class GroundPursuit
         var goal = new GroundPursuitGoal(tuning, current, _settings.StopDistance);
         Vector3 feet = Feet(body, tuning);
         _cooldown = MathF.Max(0, _cooldown - dt);
-        _route.Advance(feet, _follow.AcceptRadius, _allowsSegment);
+        bool entryAllowed = _route.Advance(feet, _follow.AcceptRadius, _allowsSegment);
         bool terminal = _route.AtTerminal(feet, _follow.AcceptRadius);
         if (!terminal) _freshTerminal = false;
-        bool due = terminal || !goal.Region.Contains(_route.Endpoint)
+        // Proximity changes refresh timing only. A valid final approach must keep its travel budget.
+        // Exact horizontal exhaustion still needs a query if current 3D reach has not witnessed arrival.
+        bool due = !entryAllowed || !_route.TryDirection(feet, out _) || !goal.Region.Contains(_route.Endpoint)
             || GroundPursuitRoute.Distance(goal.Region.Anchor, _plannedAnchor) > _follow.GoalRetargetTolerance
             || Math.Abs((double)goal.Region.Anchor.Y - _plannedAnchor.Y) > _follow.GoalRetargetVerticalTolerance
             || _route.CorridorDistance(feet) > _follow.CorridorTolerance

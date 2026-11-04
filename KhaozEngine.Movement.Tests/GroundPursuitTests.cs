@@ -191,6 +191,141 @@ public class GroundPursuitTests(GroundPursuitFixture fixture) : IClassFixture<Gr
         Assert.Equal(GroundPursuitStatus.Arrived, pursuit.Tick(body, Tuning, touching, 0.1f, scene.Context).Status);
     }
 
+    [Fact]
+    public void ValidFinalApproachKeepsSteeringThroughPreparationUntilExactReach()
+    {
+        var scene = fixture.Flat;
+        const float dt = 0.1f;
+        var pursuit = new GroundPursuit(scene.Navigation, new PathFollowConfig { ReplanCooldownSeconds = 10 });
+        var body = scene.Body(1.25f);
+        var target = scene.Target();
+        var ready = pursuit.Admit(body, Tuning, target, Limits, scene.Context);
+        Assert.Equal(GroundPursuitStatus.Ready, ready.Status);
+        Assert.True(ready.RemainingPathLength < PathFollowConfig.Default.AcceptRadius);
+        body.Commitment = MovementCommitment.ForGroundTravel(1, ready.Direction, 0.5f, ready.RemainingPathLength,
+            preparationSeconds: 0.3f, timeoutSeconds: 3);
+        bool prepared = false, approached = false, arrived = false;
+        for (int tick = 0; tick < 40; tick++)
+        {
+            bool within = ReachGeometry.Within(new(body.Position, Tuning.CapsuleRadius, Tuning.CapsuleHalfHeight), target, Limits.StopDistance);
+            var update = pursuit.Tick(body, Tuning, target, dt, scene.Context);
+            Assert.Equal(within ? GroundPursuitStatus.Arrived : GroundPursuitStatus.Travelling, update.Status);
+            if (within) { arrived = true; break; }
+            AssertCommand(update, positive: true);
+            prepared |= body.Commitment.Phase == MovementCommitmentPhase.Preparing;
+            approached |= body.Commitment.Phase == MovementCommitmentPhase.Travelling;
+            body.Commitment = GroundTravelCommitment.Steer(body.Commitment, 1, update.Direction, update.RemainingPathLength);
+            body = scene.Context.Step(body, Vector2.Zero, false, dt, Tuning);
+            Assert.True(body.Commitment.IsActive);
+        }
+        Assert.True(prepared);
+        Assert.True(approached);
+        Assert.True(arrived);
+    }
+
+    [Fact]
+    public void NoDirectionAtValidEndpointHoldsForARefreshRatherThanEndingPursuit()
+    {
+        var scene = fixture.Detour;
+        var body = scene.Body(2.75f, 2.75f);
+        var endpoint = scene.Body(2.25f, 2.75f);
+        var nextEndpoint = scene.Body(1.75f, 2.75f, 0.3f);
+        Vector3 Feet(MoveState state) => state.Position - Vector3.UnitY * Tuning.CapsuleHalfHeight;
+        NavWaypoint Waypoint(MoveState state) => new(new(state.Position.X, state.Position.Z), scene.Navigation.Space.LayerAt(Feet(state)));
+        var target = ReachTarget.Point(new(2.25f, 2.5f, 2.75f));
+        var limits = new GroundPursuitSettings(5, 5, 1);
+        bool refreshed = false;
+        var planner = new MoveToRangeTests.ScriptPlanner((_, _) => new(NavPathStatus.Complete,
+            [Waypoint(refreshed ? nextEndpoint : endpoint)]));
+        var pursuit = new GroundPursuit(planner, scene.Navigation.Space, scene.Navigation.AllowsSegment,
+            new PathFollowConfig { ReplanCooldownSeconds = 10 });
+        var ready = pursuit.Admit(body, Tuning, target, limits, scene.Context);
+        Assert.Equal(GroundPursuitStatus.Ready, ready.Status);
+        Assert.True(ReachGeometry.Within(new(endpoint.Position, Tuning.CapsuleRadius, Tuning.CapsuleHalfHeight), target, limits.StopDistance));
+        body = endpoint;
+        // The authoritative centre is just below exact reach, although the captured endpoint remains valid.
+        body.Position.Y = MathF.BitDecrement(0.75f);
+        Assert.False(ReachGeometry.Within(new(body.Position, Tuning.CapsuleRadius, Tuning.CapsuleHalfHeight), target, limits.StopDistance));
+        Assert.True(scene.Navigation.AllowsSegment(Feet(body), Feet(endpoint)));
+        var held = pursuit.Tick(body, Tuning, target, 0.01f, scene.Context);
+        Assert.Equal(GroundPursuitStatus.Travelling, held.Status);
+        Assert.Equal(GroundPursuitDetail.None, held.Detail);
+        Assert.Equal(ready.Direction, held.Direction);
+        Assert.Equal(0, held.RemainingPathLength);
+        refreshed = true;
+        var update = pursuit.Tick(body, Tuning, target, 10, scene.Context);
+        Assert.Equal(GroundPursuitStatus.Travelling, update.Status);
+        AssertCommand(update, positive: true);
+        Assert.Equal(0.5f, update.RemainingPathLength, 5);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void GroundCommitmentCrossesRetainedCornerWithoutReturningAcrossIt(bool refuseCrossedShortcut)
+    {
+        var scene = fixture.Flat;
+        const float dt = 0.1f, speed = 15;
+        var body = scene.Body(-0.5f);
+        Vector2 corner = new(0.25f, 0.25f), end = new(0.25f, 3.25f);
+        var target = scene.Target(end.X, end.Y);
+        bool blocked = false;
+        bool Allows(Vector3 from, Vector3 to) => scene.Navigation.AllowsSegment(from, to)
+            && !(from.X < corner.X && to.Z > corner.Y)
+            && !(blocked && to.Z > corner.Y);
+        var path = new NavPath(NavPathStatus.Complete, [new(corner, 0), new(end, 0)]);
+        var pursuit = Fixed(scene, path, Allows);
+        var ready = pursuit.Admit(body, Tuning, target, Limits, scene.Context);
+        Assert.Equal(GroundPursuitStatus.Ready, ready.Status);
+        Assert.Equal(Vector2.UnitX, ready.Direction); // The corner survived straightening.
+        Assert.True(speed * dt > 2 * PathFollowConfig.Default.AcceptRadius);
+        body.Commitment = MovementCommitment.ForGroundTravel(1, ready.Direction, speed, ready.RemainingPathLength, timeoutSeconds: 3);
+        bool crossed = false, resumed = false, arrived = false;
+        for (int tick = 0; tick < 12; tick++)
+        {
+            var update = pursuit.Tick(body, Tuning, target, dt, scene.Context);
+            if (update.Status == GroundPursuitStatus.Arrived) { arrived = true; break; }
+            Assert.Equal(GroundPursuitStatus.Travelling, update.Status);
+            if (blocked)
+            {
+                // Returning to the old corner remains legal, but the crossed entry to the next leg is refused.
+                Assert.True(Allows(body.Position - Vector3.UnitY * Tuning.CapsuleHalfHeight,
+                    new(corner.X, body.Position.Y - Tuning.CapsuleHalfHeight, corner.Y)));
+                Assert.Equal(0, update.RemainingPathLength);
+                Assert.Equal(ready.Direction, update.Direction);
+            }
+            else
+            {
+                AssertCommand(update, positive: true);
+                if (crossed)
+                {
+                    Assert.True(update.Direction.Y > 0);
+                    resumed = true;
+                }
+            }
+            Vector3 before = body.Position;
+            body.Commitment = GroundTravelCommitment.Steer(body.Commitment, 1, update.Direction, update.RemainingPathLength);
+            body = scene.Context.Step(body, Vector2.Zero, false, dt, Tuning);
+            Assert.True(body.Commitment.IsActive);
+            if (crossed) Assert.True(body.Position.Z >= before.Z);
+            if (blocked)
+            {
+                Assert.Equal(new Vector2(before.X, before.Z), new Vector2(body.Position.X, body.Position.Z));
+                blocked = false;
+            }
+            if (!crossed && body.Position.X > corner.X + PathFollowConfig.Default.AcceptRadius)
+            {
+                Assert.Equal(corner.Y, body.Position.Z, 5);
+                crossed = true;
+                blocked = refuseCrossedShortcut;
+            }
+        }
+        Assert.True(crossed);
+        Assert.True(resumed);
+        Assert.True(arrived);
+        Assert.True(ReachGeometry.Within(new(body.Position, Tuning.CapsuleRadius, Tuning.CapsuleHalfHeight), target, Limits.StopDistance));
+    }
+
     [Theory]
     [InlineData(false)]
     [InlineData(true)]

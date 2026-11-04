@@ -40,7 +40,14 @@ Budget, drift, corridor and cooldown defaults come from `PathFollowConfig`. A pr
 reaching its stale terminal refreshes once immediately under waypoint radius and layer checks. A fresh query
 already terminal at its start keeps the cooldown. A due replan cooling down returns Travelling with the last valid
 direction and zero remaining length to hold the commitment. Route consumption, a cached endpoint or a spent
-commitment budget never proves arrival.
+commitment budget never proves arrival. A valid final approach keeps steering with positive remaining length
+inside `AcceptRadius` while outside exact reach. Terminal proximity only changes the timing of an otherwise due
+replan. No usable horizontal direction outside exact reach also makes a replan due, preserving cooldown holds
+until refresh can supply a route. An unusable fresh route still returns NoPath with NoDirection.
+
+Crossing an intermediate waypoint counts as progress along its incoming segment, including at corners. Advancement
+requires supported-walk admission from the current feet to the next waypoint. If a crossed entry is refused,
+replanning becomes due instead of steering back across the old waypoint.
 
 The game owns target identity, speed, preparation, timeout, recovery and cancellation. After a Ready admission,
 queue begin with the returned direction and length. On each `OnBeforeTick`, forward Travelling to

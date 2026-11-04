@@ -14690,6 +14690,12 @@ endpoint membership trigger replanning. Invalid membership includes sub-threshol
 nonterminal corridor reaching a stale terminal refreshes once immediately under radius and layer checks. A fresh
 query already terminal keeps the cooldown. The defaults for budget, drift, corridor and cooldown come from
 `PathFollowConfig`. Consumed routes, spent commitment distance and cached endpoints never witness arrival.
+A valid final approach keeps steering with positive remaining length inside `AcceptRadius` while outside exact
+reach. Terminal proximity only changes the timing of an otherwise due replan. A missing usable horizontal
+direction outside exact reach also makes a refresh due, with the same cooldown policy. Crossing an intermediate
+waypoint counts as progress along its incoming segment, including at corners. It advances only through supported
+segment admission from the current feet to the next waypoint. Refused crossed entries make replanning due rather
+than steering back across the old waypoint.
 
 Pass null when the target disappears. Call `Reset` before replacing target identity, teleporting or manually
 cancelling, then admit afresh. Do not tick during recovery or after a terminal result. Use commitment timeout

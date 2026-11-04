@@ -57,13 +57,38 @@ internal sealed class GroundPursuitRoute
         return GroundPursuitDetail.None;
     }
 
-    internal void Advance(Vector3 position, float radius, Func<Vector3, Vector3, bool> allowsSegment)
+    // Returns false when a crossed waypoint cannot admit entry to the next leg. Near a corner that has
+    // not been crossed, a refused shortcut still permits steering toward the retained corner itself.
+    internal bool Advance(Vector3 position, float radius, Func<Vector3, Vector3, bool> allowsSegment)
     {
         int layer = _space.LayerAt(position);
-        while (_index < _feet.Length - 1 && _path.Waypoints[_index].Layer == layer &&
-            Distance(position, Active) <= radius && allowsSegment(position, _feet[_index + 1]))
+        while (_index < _feet.Length - 1 && _path.Waypoints[_index].Layer == layer)
+        {
+            bool passed = PassedActive(position, radius);
+            if (!passed && Distance(position, Active) > radius) break;
+            if (!allowsSegment(position, _feet[_index + 1])) return !passed;
             _index++;
+        }
+        return true;
     }
+
+    private bool PassedActive(Vector3 position, float radius)
+    {
+        // Corners count too. Crossing is measured along the incoming segment, not its turned successor.
+        Vector3 from = _index == 0 ? _origin : _feet[_index - 1];
+        double dx = (double)Active.X - from.X, dz = (double)Active.Z - from.Z;
+        double squared = dx * dx + dz * dz;
+        double px = (double)position.X - Active.X, pz = (double)position.Z - Active.Z;
+        if (squared == 0 || px * dx + pz * dz < 0) return false;
+        double lateral = Math.Abs(px * dz - pz * dx) / Math.Sqrt(squared);
+        // Match the follower's float-step slack so an on-line controller step survives world-coordinate rounding.
+        float magnitude = MathF.Max(MaxAbsXz(from), MathF.Max(MaxAbsXz(Active), MaxAbsXz(position)));
+        double ulp = magnitude == float.MaxValue ? (double)magnitude - MathF.BitDecrement(magnitude)
+            : (double)MathF.BitIncrement(magnitude) - magnitude;
+        return lateral <= radius + 4 * ulp;
+    }
+
+    private static float MaxAbsXz(Vector3 position) => MathF.Max(MathF.Abs(position.X), MathF.Abs(position.Z));
 
     internal bool AtTerminal(Vector3 position, float radius)
         => _index == _feet.Length - 1 && _path.Waypoints[^1].Layer == _space.LayerAt(position)

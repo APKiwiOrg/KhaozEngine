@@ -31,7 +31,7 @@ internal static class ContactTerrainDropCandidates
                 for (int x = 0; x < grid.Width; x++)
                 {
                     if (onlySource is { } selected && (selected.Layer != layer || selected.X != x || selected.Z != z)) continue;
-                    if (!layers[layer].IsAccepted(x, z) || !sources.TryGet(layer, x, z, out var raw)) continue;
+                    if (!layers[layer].IsAccepted(x, z)) continue;
                     var from = ContactDropProof.Feet(grid, x, z);
                     for (int direction = 0; direction < 8; direction++)
                     {
@@ -40,7 +40,7 @@ internal static class ContactTerrainDropCandidates
                         var original = sharp[(layer, x, z, dx, dz)].ToArray();
                         if (original.Length > 0) { output.Add(original[0]); continue; }
                         int range = bands.Reach(x, z, direction);
-                        if (range == 0) continue;
+                        if (range == 0 || !sources.TryGet(layer, x, z, out var raw)) continue;
                         bool steep = false;
                         int nextAdmitted = admitted.Next(direction, x, z);
                         for (int d = 1; d <= range; d++)

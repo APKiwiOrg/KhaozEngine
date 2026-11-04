@@ -22,6 +22,21 @@ internal sealed class ContactTerrainDropCertificate
     internal Vector3 From { get; }
     internal Vector3 To { get; }
 
+    ContactTerrainDropCertificate(ContactTerrainDropCertificate source)
+    {
+        _evidence = source._evidence; _keys = source._keys; _upper = source._upper;
+        _steep = new(source._steep); _landing = source._landing;
+        _sourceCell = source._sourceCell; _targetCell = source._targetCell; _fringe = source._fringe;
+        _targetGrid = source._targetGrid; _link = source._link;
+        Ground = source.Ground; Corridor = source.Corridor; From = source.From; To = source.To;
+    }
+    internal ContactTerrainDropCertificate WithoutSteepForTests(MovementSurfaceFeatureKey key)
+    {
+        var copy = new ContactTerrainDropCertificate(this);
+        if (copy._keys.TryGetValue(key, out int face)) copy._steep.Remove(face);
+        return copy;
+    }
+
     ContactTerrainDropCertificate(PhysicsNavDescentEvidence evidence, NavAreaFootprint ground, MoveTuning tuning,
         NavSpace space, NavLink link, Vector3 from, Vector3 to, float allowance, HashSet<int> faces,
         HashSet<int> upper, HashSet<int> steep, HashSet<int> landing, int sourceFace, int targetFace)
@@ -44,7 +59,9 @@ internal sealed class ContactTerrainDropCertificate
         ContactTerrainProfileEvidence sources, NavAreaFootprint ground, MoveTuning tuning, NavSpace space,
         NavLink link, Vector3 from, Vector3 to, float allowance)
     {
-        if (!sources.TryGet(link.FromLayer, link.FromX, link.FromZ, out var source) ||
+        if (space.Layers.Any(grid => grid.Width != evidence.Width || grid.Height != evidence.Height ||
+                grid.CellSize != evidence.Options.CellSize || grid.OriginX != evidence.Options.MinX || grid.OriginZ != evidence.Options.MinZ) ||
+            !sources.TryGet(link.FromLayer, link.FromX, link.FromZ, out var source) ||
             !sources.TryGet(link.ToLayer, link.ToX, link.ToZ, out var target) ||
             !new ContactTerrainDropCorridor(evidence, ground, tuning, from, to, allowance).Certify()) return null;
         var faces = ProjectedFaces(evidence, tuning, from, to);

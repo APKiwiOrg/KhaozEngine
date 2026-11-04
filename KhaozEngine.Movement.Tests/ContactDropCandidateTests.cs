@@ -37,6 +37,9 @@ public class ContactDropCandidateTests
         NavGrid[] grids = [Grid([6, null, 0])];
         Assert.Single(ContactDropCandidates.Generate(grids, Layers(grids), ContactDropFixture.Tuning, 6));
         Assert.Empty(ContactDropCandidates.Generate(grids, Layers(grids), ContactDropFixture.Tuning, MathF.BitDecrement(6)));
+        Assert.True(ContactTerrainDropProof.HeightAllowed(6, 0, ContactDropFixture.Tuning.StepHeight, 6));
+        Assert.False(ContactTerrainDropProof.HeightAllowed(MathF.BitIncrement(6), 0, ContactDropFixture.Tuning.StepHeight, 6));
+        Assert.False(ContactTerrainDropProof.HeightAllowed(6, 0, ContactDropFixture.Tuning.StepHeight, MathF.BitDecrement(6)));
         grids = [Grid([6, null, null, 0])];
         Assert.Empty(ContactDropCandidates.Generate(grids, Layers(grids), ContactDropFixture.Tuning, 6));
     }

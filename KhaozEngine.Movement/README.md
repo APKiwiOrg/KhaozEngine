@@ -1293,3 +1293,10 @@ original boundary and 64-slice duration. Selected support binds canonical featur
 from the ordinary adapter's selector owner, which must remain unchanged after the real source Hold.
 These internal paths do not publish terrain links. Public opt-in flags, persistence and runtime continuation
 remain separate work. Existing sharp Drops and ordinary `AllowsSegment` are unchanged.
+
+Calling-thread dependency receipts can reduce evidence for one frozen profile and candidate stream. The subset
+retains every steep face, all observed coverage and column dependencies, their original raw rows, and complete
+solid groups needed by occupancy checks. Other cells are explicitly `Excluded`, which never certifies terrain
+coverage. Source bindings are regenerated from the original captured columns and raw grid heights, without a
+resting-height lookup. Another tuning or candidate recipe requires its own dependency receipt. This is an internal
+certificate input shape, with no new persisted format or public capture flag.

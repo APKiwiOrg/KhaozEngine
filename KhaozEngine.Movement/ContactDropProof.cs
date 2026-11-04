@@ -133,7 +133,12 @@ internal sealed partial class ContactDropProof : IDisposable
         MovementStepResult result = _binding.StepTowards(unselected, input, run, _options.EdgeProbeSeconds, queries, boundary);
         queries.AssertCurrent();
         _hooks?.DropStep?.Invoke(new(source, Feet(result), run, hold, result.Outcome, result.State.State.Grounded,
-            result.State.State.CommandedVelocity) { UnwalkableSupport = result.ContactUnwalkableSupport });
+            result.State.State.CommandedVelocity)
+        {
+            UnwalkableSupport = result.ContactUnwalkableSupport,
+            Swimming = result.State.State.Swimming,
+            EnteredSwimming = result.ContactEnteredSwimming
+        });
         if (result.Outcome is MovementStepOutcome.EnvironmentInvalid or MovementStepOutcome.EnvironmentUnresolved or MovementStepOutcome.FrameMismatch)
             throw new ContactDropProofException(result.Outcome);
         return result;

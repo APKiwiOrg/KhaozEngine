@@ -25,7 +25,8 @@ internal sealed class ContactTerrainScene : IDisposable
     internal IMovementAnalyticSupportSource Source => Registration.AnalyticSupport!;
 
     internal ContactTerrainScene(float height, bool identity = true,
-        Action<BepuPhysicsWorld, OrdinaryMovementRegistration.Builder>? extra = null, TileWorldDocument? document = null, MovementBoundary? boundary = null)
+        Action<BepuPhysicsWorld, OrdinaryMovementRegistration.Builder>? extra = null, TileWorldDocument? document = null,
+        MovementBoundary? boundary = null, IMovementWaterField? water = null)
     {
         From = new(0.625f, height, -1.375f);
         var doc = document ?? Document(height);
@@ -37,14 +38,21 @@ internal sealed class ContactTerrainScene : IDisposable
         extra?.Invoke(World, builder);
         using (var lease = World.AcquireQueryReadLease()) Registration = builder.Build(lease);
         Context = new(identity ? Colliders.MovementGroundHeight : (x, z) => Colliders.MovementGroundHeight(x, z), Colliders.MovementGroundNormal, World, null, null, null,
-            null, Registration, boundary ?? MovementBoundary.Rectangle(0, -3, 5, 0));
+            water, Registration, boundary ?? MovementBoundary.Rectangle(0, -3, 5, 0));
     }
 
-    internal static TileWorldDocument Document(float height)
+    internal static TileWorldDocument Document(float height, float tileSize = 1, Func<float, float>? profile = null)
     {
-        var doc = TileWorldMovementNavigationTests.Drawn(0, 0, 5, 3);
-        for (int z = 0; z <= 3; z++)
-            for (int x = 0; x <= 1; x++) doc.SetCornerHeightCm(x, z, 0, checked((short)MathF.Round(height * 100)));
+        int width = (int)(5 / tileSize), depth = (int)(3 / tileSize);
+        var doc = TileWorldMovementNavigationTests.Drawn(0, 0, width, depth);
+        doc.TileSize = tileSize;
+        for (int z = 0; z <= depth; z++)
+            for (int x = 0; x <= width; x++)
+            {
+                float axis = x * tileSize;
+                float y = profile?.Invoke(axis) ?? (axis <= 1 ? height : axis >= 2 ? 0 : height * (2 - axis));
+                doc.SetCornerHeightCm(x, z, 0, checked((short)MathF.Round(y * 100)));
+            }
         return doc;
     }
 

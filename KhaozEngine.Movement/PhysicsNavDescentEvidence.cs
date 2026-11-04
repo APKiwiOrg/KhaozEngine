@@ -6,7 +6,7 @@ using KhaozEngine.Physics;
 
 namespace KhaozEngine.Movement;
 
-internal enum DescentCoverage : byte { Unavailable, Complete, KnownEmpty, OutOfBounds }
+internal enum DescentCoverage : byte { Unavailable, Complete, KnownEmpty, OutOfBounds, Excluded }
 internal readonly record struct DescentColumnFace(int Face, uint Areas);
 internal readonly record struct DescentRawBinding(int X, int Z, int Ordinal, int HeightBits, int Face);
 
@@ -20,7 +20,8 @@ internal sealed class DescentFace(MovementSurfaceFeatureKey key, MovementSupport
     internal MovementSupportKey CanonicalOwner { get; } = canonicalOwner ?? owner;
     internal bool Analytic { get; } = analytic;
     internal PhysicsEvidenceKind Kind { get; } = kind;
-    internal ReadOnlySpan<PhysicsEvidencePoint> Points => _points;
+    internal ReadOnlySpan<PhysicsEvidencePoint> Points
+    { get { ContactTerrainEvidenceReads.ReadPoints(this); return _points; } }
     internal Pose Pose { get; } = pose;
     internal float Radius { get; } = radius;
     internal float HalfLength { get; } = halfLength;
@@ -28,6 +29,7 @@ internal sealed class DescentFace(MovementSurfaceFeatureKey key, MovementSupport
     {
         get
         {
+            ContactTerrainEvidenceReads.ReadNormal(this);
             if (_points.Length < 3) return default;
             var a = _points[0]; var b = _points[1]; var c = _points[2];
             double x = (b.Y - a.Y) * (c.Z - a.Z) - (b.Z - a.Z) * (c.Y - a.Y);
@@ -60,10 +62,13 @@ internal sealed class PhysicsNavDescentEvidence
     internal PhysicsNavDescentEvidence(PhysicsNavBakeOptions options, int width, int height, DescentFace[] faces,
         int[] starts, DescentColumnFace[] columns, DescentCoverage[] coverage, DescentRawBinding[] raw, int[][] joins)
     { Options = options; Width = width; Height = height; _faces = faces; _starts = starts; _columns = columns; _coverage = coverage; _raw = raw; _joins = joins; }
-    internal DescentFace Face(int index) => _faces[index];
-    internal DescentCoverage Coverage(int x, int z) => (uint)x < (uint)Width && (uint)z < (uint)Height ? _coverage[z * Width + x] : DescentCoverage.OutOfBounds;
-    internal ReadOnlySpan<DescentColumnFace> Column(int x, int z) => _columns.AsSpan(_starts[z * Width + x], _starts[z * Width + x + 1] - _starts[z * Width + x]);
-    internal ReadOnlySpan<int> Joins(int face) => _joins[face];
+    internal ReadOnlySpan<DescentRawBinding> RawBindings => _raw;
+    internal DescentFace Face(int index) { ContactTerrainEvidenceReads.ReadFace(this, index); return _faces[index]; }
+    internal DescentCoverage Coverage(int x, int z)
+    { ContactTerrainEvidenceReads.ReadCoverage(this, x, z); return (uint)x < (uint)Width && (uint)z < (uint)Height ? _coverage[z * Width + x] : DescentCoverage.OutOfBounds; }
+    internal ReadOnlySpan<DescentColumnFace> Column(int x, int z)
+    { ContactTerrainEvidenceReads.ReadColumn(this, x, z); return _columns.AsSpan(_starts[z * Width + x], _starts[z * Width + x + 1] - _starts[z * Width + x]); }
+    internal ReadOnlySpan<int> Joins(int face) { ContactTerrainEvidenceReads.ReadAdjacency(this, face); return _joins[face]; }
     internal bool TryRaw(int x, int z, int bits, out DescentRawBinding result)
     { result = default; bool found = false; foreach (var raw in _raw) { if (raw.X != x || raw.Z != z || raw.HeightBits != bits) continue; if (found) return false; result = raw; found = true; } return found; }
     internal PhysicsNavDescentEvidence MissingColumnForTests(int x, int z)

@@ -27,8 +27,7 @@ internal sealed class ContactTerrainDropProof(PhysicsNavBakeOptions options, Eff
         Vector3 to = ContactDropProof.Feet(space.Layers[link.ToLayer], link.ToX, link.ToZ);
         SupportQueryDiagnostics.Record(SupportQueryCounter.DropCandidates);
         _hooks?.DropCandidate?.Invoke(new(link, (double)from.Y - to.Y, tuning.WalkSpeed > 0, tuning.RunSpeed > 0));
-        if (link.Kind != NavLinkKind.Drop || (double)from.Y - to.Y <= tuning.StepHeight ||
-            (double)from.Y - to.Y > allowance)
+        if (link.Kind != NavLinkKind.Drop || !HeightAllowed(from.Y, to.Y, tuning.StepHeight, allowance))
             return Refuse(ContactTerrainDropRefusal.DescentAllowance);
         if (!ground.Accepts(from) || !ground.Accepts(to)) return Refuse(ContactTerrainDropRefusal.Certificate);
         var certificate = ContactTerrainDropCertificate.Create(evidence, sources, ground, tuning, space, link, from, to, allowance);
@@ -56,7 +55,8 @@ internal sealed class ContactTerrainDropProof(PhysicsNavBakeOptions options, Eff
             var state = new FramedMovementState(new MoveState
             {
                 Position = certificate.From - frame.PhysicsOrigin + Vector3.UnitY * _binding.Tuning.CapsuleHalfHeight,
-                Grounded = true, SpeedScale = 1,
+                Grounded = true,
+                SpeedScale = 1,
             }, frame, null);
             for (int slice = 0; slice < options.MaxEdgeProbeSteps; slice++)
             {
@@ -90,13 +90,20 @@ internal sealed class ContactTerrainDropProof(PhysicsNavBakeOptions options, Eff
         var result = _binding.StepTowards(start, input, run, options.EdgeProbeSeconds, queries, boundary);
         queries.AssertCurrent();
         _hooks?.DropStep?.Invoke(new(certificate.From, Feet(result), run, hold, result.Outcome,
-            result.State.State.Grounded, result.State.State.CommandedVelocity) { UnwalkableSupport = result.ContactUnwalkableSupport });
+            result.State.State.Grounded, result.State.State.CommandedVelocity)
+        {
+            UnwalkableSupport = result.ContactUnwalkableSupport,
+            Swimming = result.State.State.Swimming,
+            EnteredSwimming = result.ContactEnteredSwimming
+        });
         if (result.Outcome is MovementStepOutcome.EnvironmentInvalid or MovementStepOutcome.EnvironmentUnresolved or MovementStepOutcome.FrameMismatch)
             throw new ContactDropProofException(result.Outcome);
         return result;
     }
     Vector3 Feet(in MovementStepResult result) => result.State.State.Position + frame.PhysicsOrigin -
         Vector3.UnitY * _binding.Tuning.CapsuleHalfHeight;
+    internal static bool HeightAllowed(float from, float to, float step, float allowance) =>
+        (double)from - to > step && (double)from - to <= allowance;
     bool Refuse(ContactTerrainDropRefusal reason) { Refusal = reason; return false; }
     public void Dispose() => _binding.Dispose();
 }

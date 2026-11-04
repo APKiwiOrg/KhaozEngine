@@ -10,9 +10,11 @@ internal readonly record struct DescentAdmittedBinding(int Layer, int X, int Z, 
 internal sealed class ContactTerrainProfileEvidence
 {
     readonly Dictionary<(int Layer, int X, int Z), DescentRawBinding> _cells = [];
+    readonly PhysicsNavDescentEvidence _evidence;
     internal int Count => _cells.Count;
     internal ContactTerrainProfileEvidence(PhysicsNavDescentEvidence evidence, GroundNavigation navigation)
     {
+        _evidence = evidence;
         for (int layer = 0; layer < navigation.Space.Layers.Count; layer++)
         {
             NavGrid grid = navigation.Space.Layers[layer];
@@ -20,6 +22,7 @@ internal sealed class ContactTerrainProfileEvidence
                 for (int x = 0; x < grid.Width; x++)
                 {
                     if (!navigation.Graph.Layers[layer].IsAccepted(x, z)) continue;
+                    if (evidence.Coverage(x, z) == DescentCoverage.Excluded) continue;
                     if (grid.SurfaceHeightAt(x, z) is not float raw || !evidence.TryRaw(x, z, BitConverter.SingleToInt32Bits(raw), out var address))
                         throw new PhysicsNavDescentEvidenceException(PhysicsNavDescentEvidenceReason.RawAssociationAmbiguous,
                             KhaozEngine.Physics.PhysicsEvidenceStatus.Unavailable);
@@ -27,6 +30,11 @@ internal sealed class ContactTerrainProfileEvidence
                 }
         }
     }
-    internal bool TryGet(int layer, int x, int z, out DescentRawBinding raw) => _cells.TryGetValue((layer, x, z), out raw);
+    internal bool TryGet(int layer, int x, int z, out DescentRawBinding raw)
+    {
+        bool found = _cells.TryGetValue((layer, x, z), out raw);
+        ContactTerrainEvidenceReads.ReadBinding(_evidence, layer, x, z, found ? raw : null);
+        return found;
+    }
     internal long PayloadBytes => Count * 24L;
 }

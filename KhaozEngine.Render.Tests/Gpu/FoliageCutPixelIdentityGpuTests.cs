@@ -58,9 +58,9 @@ public sealed class FoliageCutPixelIdentityGpuTests
         byte[][] actual = Render(context.GpuDevice, materialKind: materialKind, model: model);
         byte[][] control = Render(context.GpuDevice, changeColor: true, materialKind: materialKind, model: model);
         Assert.Equal(materialKind == 0, restored > 0);
-        Assert.Equal(4 * 10, expected.Length);
-        GBufferByteIdentity.AssertAll(expected, actual);
-        Assert.False(actual[0].SequenceEqual(control[0]), "Foliage must contribute HDR pixels.");
+        Assert.Equal(4 * 11, expected.Length);
+        GBufferByteIdentity.AssertAll(expected, actual, imagesPerFrame: 11);
+        Assert.False(actual[11].SequenceEqual(control[11]), "Foliage must contribute HDR pixels.");
     }
 
     internal static byte[][] Render(IGpuDevice device, bool changeColor = false, int materialKind = 0, string? model = null)
@@ -84,6 +84,9 @@ public sealed class FoliageCutPixelIdentityGpuTests
         scene.Post.FillLightColor = Color.Black;
         scene.Post.LightDirection = Vector3.Normalize(new Vector3(.3f, -1f, .4f));
         scene.Post.LightColor = Color.White;
+        scene.Post.Quality.Shadows.PointShadows.FaceResolution = 64;
+        scene.Post.Quality.Shadows.PointShadows.MaxShadowedLights = 1;
+        scene.Post.Quality.Shadows.PointShadows.MaxDynamicLightsPerFrame = 1;
         scene.Camera.Azimuth = .3f;
         scene.Camera.Elevation = .95f;
         scene.Camera.AspectRatio = (float)Width / Height;
@@ -115,13 +118,19 @@ public sealed class FoliageCutPixelIdentityGpuTests
         {
             scene.Begin();
             scene.EffectTimeSeconds = frame * .17f;
+            if (frame == 3) scene.CameraCut();
+            scene.Post.LightColor = frame == 0 ? Color.Black : Color.White;
+            scene.Post.AmbientColor = frame == 0 ? Color.Black : new Color(.3f, .3f, .3f);
+            if (frame > 0) scene.AddLight(new Vector3(0, 2, 1), new Color(.4f, .3f, .2f), 6, 1, LightShadow.Dynamic);
             scene.Camera.Target = new Vector3(frame * .03f, .5f, 0f);
             scene.RenderOrigin = frame >= 2 ? new Vector3(1024, 0, 1024) : Vector3.Zero;
             scene.Post.Quality.Shadows.Mode = frame % 2 == 0 ? ShadowMode.Off : ShadowMode.ShadowMap;
             scene.Post.Atmosphere.Enabled = frame >= 2;
             var settings = new FoliageRenderSettings
             {
-                DrawRadius = 10, DistantDensity = 1, WindStrength = .2f,
+                DrawRadius = 10,
+                DistantDensity = 1,
+                WindStrength = .2f,
                 WindFadeBladePixels = 3,
             };
             scene.DrawFoliage(batch, Vector3.Zero, settings,
@@ -141,6 +150,8 @@ public sealed class FoliageCutPixelIdentityGpuTests
             }.Select(texture => PointShadowZeroNdlGpuTests.Read(device, texture)));
             float[] shadow = scene.DebugReadShadowMap(out _, out _);
             frames.Add(System.Runtime.InteropServices.MemoryMarshal.AsBytes(shadow.AsSpan()).ToArray());
+            float[] pointShadow = scene.DebugReadPointShadowAtlas(out _, out _);
+            frames.Add(System.Runtime.InteropServices.MemoryMarshal.AsBytes(pointShadow.AsSpan()).ToArray());
         }
         Assert.Contains(Enumerable.Range(0, Width * Height), pixel => BitConverter.ToSingle(frames[2], pixel * 4) < 1f);
         return frames.ToArray();

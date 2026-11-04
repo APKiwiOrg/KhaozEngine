@@ -63,7 +63,8 @@ public sealed class GroundIndexReusePixelIdentityGpuTests
             }
         var options = new TileGroundMesherOptions
         {
-            SmoothNormals = smooth, Slots = TileGroundMaterials.Build(TileRenderTestData.Catalogs),
+            SmoothNormals = smooth,
+            Slots = TileGroundMaterials.Build(TileRenderTestData.Catalogs),
         };
         var result = new List<(GltfMesh, Matrix4x4)>();
         foreach (RegionCoord region in document.Regions.Keys.OrderBy(r => r.Rz).ThenBy(r => r.Rx))

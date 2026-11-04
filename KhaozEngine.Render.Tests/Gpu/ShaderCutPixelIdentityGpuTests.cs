@@ -91,6 +91,7 @@ public sealed class ShaderCutPixelIdentityGpuTests
             scene.EffectTimeSeconds = frame / 60f;
             if (geometry is not null)
             {
+                if (frame == 2) scene.CameraCut();
                 scene.Camera.Target = new Vector3(frame * .03f, 0, 0);
                 scene.Post.Atmosphere.Enabled = frame == 2;
                 scene.Post.Quality.Shadows.Mode = frame == 1 ? ShadowMode.ShadowMap : ShadowMode.Off;

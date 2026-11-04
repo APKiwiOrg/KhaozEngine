@@ -8,11 +8,11 @@ namespace KhaozEngine.Tests.Gpu;
 internal static class GBufferByteIdentity
 {
     static readonly string[] Names = ["HDR", "normal", "depth", "motion", "visibility", "display", "history colour",
-        "history confidence", "previous depth", "shadow atlas"];
-    static readonly int[] PixelBytes = [8, 4, 4, 4, 1, 4, 8, 4, 4, 4];
-    static readonly int[] ComponentBytes = [2, 1, 4, 2, 1, 1, 2, 2, 4, 4];
+        "history confidence", "previous depth", "shadow atlas", "point-shadow atlas"];
+    static readonly int[] PixelBytes = [8, 4, 4, 4, 1, 4, 8, 4, 4, 4, 4];
+    static readonly int[] ComponentBytes = [2, 1, 4, 2, 1, 1, 2, 2, 4, 4, 4];
 
-    internal static void AssertAll(byte[][] expected, byte[][] actual)
+    internal static void AssertAll(byte[][] expected, byte[][] actual, int imagesPerFrame = 10)
     {
         Assert.NotEmpty(expected);
         Assert.Equal(expected.Length, actual.Length);
@@ -21,7 +21,7 @@ internal static class GBufferByteIdentity
         {
             byte[] a = expected[image], b = actual[image];
             Assert.Equal(a.Length, b.Length);
-            int slot = image % Names.Length, stride = ComponentBytes[slot];
+            int slot = image % imagesPerFrame, stride = ComponentBytes[slot];
             int components = 0;
             var pixels = new HashSet<int>();
             double maximum = 0;
@@ -40,7 +40,7 @@ internal static class GBufferByteIdentity
                 maximumUlp = Math.Max(maximumUlp, ux > uy ? ux - uy : uy - ux);
             }
             if (components > 0)
-                differences.Add($"frame {image / Names.Length}, {Names[slot]}: {pixels.Count} changed pixels, "
+                differences.Add($"frame {image / imagesPerFrame}, {Names[slot]}: {pixels.Count} changed pixels, "
                     + $"{components} changed components, max delta {maximum:R}, max ULP/code delta {maximumUlp}");
         }
         Assert.True(differences.Count == 0, string.Join("\n", differences));

@@ -48,7 +48,7 @@ public sealed class WaterVolumeLayoutTests
     {
         ShippedGraphicsProgram[] programs = ShippedShaderPrograms.GraphicsPrograms()
             .Where(p => p.WaterVolumeBinding.HasValue).ToArray();
-        Assert.Equal(30, programs.Length);
+        Assert.Equal(34, programs.Length);
         foreach (ShippedGraphicsProgram program in programs)
         {
             CrossCompiledPair compiled = SpirvCrossCompile.GlslPairToHlsl(
@@ -57,7 +57,7 @@ public sealed class WaterVolumeLayoutTests
             int binding = program.WaterVolumeBinding!.Value;
             Assert.Equal(binding + 1, elements.Length);
             Assert.Equal(GpuResourceKind.StructuredBufferReadOnly, elements[binding].Kind);
-            Assert.Contains(binding == 15 ? "register(t10)" : "register(t3)",
+            Assert.Contains(binding switch { 15 => "register(t10)", 10 => "register(t6)", _ => "register(t3)" },
                 compiled.FragmentSource, StringComparison.Ordinal);
         }
     }

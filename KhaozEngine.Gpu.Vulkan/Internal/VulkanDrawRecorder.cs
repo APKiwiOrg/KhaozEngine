@@ -129,7 +129,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         internal void Draw(ulong commandBuffer, VulkanRenderingSchedule rendering, VulkanBindRecords binds,
             in VulkanDrawCall call)
         {
-            PrepareGraphics(commandBuffer, rendering, binds);
+            PrepareGraphics(commandBuffer, rendering, binds, nameof(IGpuCommandList.Draw));
             _emitter.Draw(commandBuffer, binds, in call);
             _hazards.NoteAccesses(binds);
         }
@@ -138,7 +138,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         internal void DrawIndexed(ulong commandBuffer, VulkanRenderingSchedule rendering, VulkanBindRecords binds,
             in VulkanIndexedDrawCall call)
         {
-            PrepareGraphics(commandBuffer, rendering, binds);
+            PrepareGraphics(commandBuffer, rendering, binds, nameof(IGpuCommandList.DrawIndexed));
             _emitter.DrawIndexed(commandBuffer, binds, in call);
             _hazards.NoteAccesses(binds);
         }
@@ -180,7 +180,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
 
         // STEPS 1 TO 3 OF THE DRAW ORDER. Step 4 is the emitter's, because the descriptor flush and the command
         // are one monomorphized pair.
-        void PrepareGraphics(ulong commandBuffer, VulkanRenderingSchedule rendering, VulkanBindRecords binds)
+        void PrepareGraphics(ulong commandBuffer, VulkanRenderingSchedule rendering, VulkanBindRecords binds, string command)
         {
             ArgumentNullException.ThrowIfNull(rendering);
             ArgumentNullException.ThrowIfNull(binds);
@@ -203,7 +203,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
             }
 
             TransitionBoundImages(commandBuffer, binds);
-            rendering.PrepareDraw(commandBuffer);
+            rendering.PrepareDraw(commandBuffer, command);
             _geometry.Flush(_emitter, commandBuffer);
         }
 

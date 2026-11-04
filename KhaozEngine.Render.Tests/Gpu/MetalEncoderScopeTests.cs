@@ -1,4 +1,5 @@
 using System;
+using KhaozEngine.Gpu.Metal;
 using KhaozEngine.Gpu.Metal.Internal;
 using Xunit;
 
@@ -151,10 +152,12 @@ namespace KhaozEngine.Tests.Gpu
         {
             (MetalEncoderScope scope, FakeMetalEncoderCalls calls) = NewScope();
 
-            ArgumentException thrown = Assert.Throws<ArgumentException>(
+            var thrown = Assert.Throws<MetalEncoderArgumentException>(
                 () => scope.EnsureRenderEncoder(IntPtr.Zero));
 
-            Assert.Contains("nil MTLRenderPassDescriptor", thrown.Message, StringComparison.Ordinal);
+            Assert.Equal(MetalEncoderRefusal.RenderDescriptorMissing, thrown.Reason);
+            Assert.Equal("MTLRenderPassDescriptor", thrown.NativeDescriptorKind);
+            Assert.IsAssignableFrom<ArgumentException>(thrown);
             Assert.Equal("descriptor", thrown.ParamName);
 
             // Nothing was opened and nothing was ended, so the refusal costs no boundary and leaves the scope in
@@ -268,9 +271,11 @@ namespace KhaozEngine.Tests.Gpu
             FakeMetalEncoderCalls calls = new();
             MetalEncoderScope scope = new(new FakeMetalEncoderSink(calls));
 
-            InvalidOperationException thrown =
-                Assert.Throws<InvalidOperationException>(() => scope.EnsureBlitEncoder());
-            Assert.Contains("no recording in flight", thrown.Message, StringComparison.Ordinal);
+            var thrown =
+                Assert.Throws<MetalEncoderStateException>(() => scope.EnsureBlitEncoder());
+            Assert.Equal(MetalEncoderRefusal.RecordingMissing, thrown.Reason);
+            Assert.Equal("EnsureBlitEncoder", thrown.Command);
+            Assert.IsAssignableFrom<InvalidOperationException>(thrown);
 
             scope.BeginRecording(new IntPtr(0x100));
             Assert.NotEqual(IntPtr.Zero, scope.EnsureBlitEncoder());
@@ -279,10 +284,22 @@ namespace KhaozEngine.Tests.Gpu
             scope.EnsureNoEncoder();
             scope.ForgetCommandBuffer();
 
-            Assert.Throws<InvalidOperationException>(() => scope.EnsureBlitEncoder());
+            Assert.Throws<MetalEncoderStateException>(() => scope.EnsureBlitEncoder());
 
             // One begin and one end, so nothing reached the sink on either refusal.
             Assert.Equal(2, calls.EncoderBoundaries);
+        }
+
+        [Fact]
+        public void ATimeBoundaryRefusesAnOpenEncoderAndAcceptsTheClosedControl()
+        {
+            var (scope, _) = NewScope();
+            scope.EnsureBlitEncoder();
+            var refusal = Assert.Throws<MetalEncoderStateException>(scope.RecordExternalEncoderBoundary);
+            Assert.Equal(MetalEncoderRefusal.EncoderStillOpen, refusal.Reason);
+            Assert.Equal("Blit", refusal.EncoderKind);
+            scope.EnsureNoEncoder();
+            scope.RecordExternalEncoderBoundary();
         }
 
         [Fact]

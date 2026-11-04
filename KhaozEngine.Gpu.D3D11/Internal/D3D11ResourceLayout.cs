@@ -35,7 +35,7 @@ namespace KhaozEngine.Gpu.D3D11.Internal
             {
                 if (!IsDynamicStructured(_elements[i])) continue;
 
-                throw new ArgumentException(
+                throw new GpuResourceLayoutException(GpuResourceLayoutRefusal.DynamicOffsetUnsupportedForKind,
                     $"'{_elements[i].Name}' is declared as {_elements[i].Kind} AND dynamic, which the native "
                     + "Direct3D 11 backend cannot honour. A dynamic offset is a per-draw byte rebase and the only "
                     + "bind that carries one is the constant-buffer bind, which takes a first constant and a "
@@ -47,7 +47,13 @@ namespace KhaozEngine.Gpu.D3D11.Internal
                     + "constant buffer. Every draw would read the window the view was created with while the "
                     + "caller believed it had moved. Declare the element as a uniform buffer, or build one "
                     + "resource set per window.",
-                    nameof(description));
+                    nameof(description))
+                {
+                    Backend = GpuBackendKind.Direct3D11Native,
+                    ElementName = _elements[i].Name,
+                    Binding = i,
+                    ResourceKind = _elements[i].Kind,
+                };
             }
 
             _slots = new D3D11RegisterSlot[_elements.Length];
@@ -101,9 +107,18 @@ namespace KhaozEngine.Gpu.D3D11.Internal
             for (int i = 0; i < layouts.Length; i++)
             {
                 result[i] = layouts[i] as D3D11ResourceLayout
-                    ?? throw new ArgumentException(
+                    ?? throw new GpuResourceOwnershipArgumentException(layouts[i] is null ? GpuResourceOwnershipRefusal.MissingResource : GpuResourceOwnershipRefusal.ForeignBackend,
                         $"Resource layout {i} was not created by the native Direct3D 11 backend, so it carries no "
-                        + $"register numbering this {pipelineKind} pipeline can flatten.", nameof(layouts));
+                        + $"register numbering this {pipelineKind} pipeline can flatten.", nameof(layouts))
+                    {
+                        ExpectedBackend = GpuBackendKind.Direct3D11Native,
+                        ActualType = layouts[i]?.GetType(),
+                        ExpectedType = typeof(D3D11ResourceLayout),
+                        Context = pipelineKind,
+                        ResourceKind = "resource layout",
+                        ResourceIndex = i,
+                        PipelineKind = pipelineKind,
+                    };
             }
 
             return result;

@@ -26,14 +26,14 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
             native.End(CurrentBuffer);
         }
 
-        VulkanTimestampPool RequireTimestampPool(IGpuTimestampPool pool)
+        VulkanTimestampPool RequireTimestampPool(IGpuTimestampPool pool, [System.Runtime.CompilerServices.CallerMemberName] string member = "")
         {
             ObjectDisposedException.ThrowIf(_disposed, this);
-            if (!_recording) throw new InvalidOperationException("Timestamp commands require an open command list.");
-            if (_timestampTimeline is null) throw new NotSupportedException("This Vulkan command list has no timestamp support.");
+            if (!_recording) throw new GpuRecordingStateException(GpuRecordingStateRefusal.CommandOutsideRecording, "Timestamp commands require an open command list.") { Backend = GpuBackendKind.VulkanNative, Command = member };
+            if (_timestampTimeline is null) throw new GpuTimestampUnsupportedException(GpuTimestampRefusal.TimestampUnsupported, "This Vulkan command list has no timestamp support.") { Backend = GpuBackendKind.VulkanNative, Command = member };
             ArgumentNullException.ThrowIfNull(pool);
             if (pool is not VulkanTimestampPool native)
-                throw new ArgumentException("Use a timestamp pool from this Vulkan device.", nameof(pool));
+                throw new GpuResourceOwnershipArgumentException(GpuResourceOwnershipRefusal.ForeignBackend, "Use a timestamp pool from this Vulkan device.", nameof(pool)) { ExpectedBackend = GpuBackendKind.VulkanNative, ActualType = pool.GetType(), ExpectedType = typeof(VulkanTimestampPool), ResourceKind = "timestamp pool", Context = "timestamp pool" };
             native.RequireOwner(_timestampTimeline);
             return native;
         }

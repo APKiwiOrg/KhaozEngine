@@ -59,7 +59,12 @@ namespace KhaozEngine.Render3D
                 return;
             }
             if (GpuRecording.OpenOwner(_gd) is { } owner)
-                throw new GpuNestedRecordingException(owner, "scene viewport preparation");
+                throw new GpuNestedRecordingException(GpuNestedRecordingRefusal.RecordingAlreadyOpen,
+                    GpuNestedRecordingException.BuildMessage(owner, "scene viewport preparation"))
+                {
+                    Owner = owner,
+                    Attempted = "scene viewport preparation",
+                };
             _waterViewportPrepared = false;
             EnsureSize(viewportWidth, viewportHeight);
             _res.EnsureDistortion(_distortionSprites.Count > 0, DistortionQuality == DistortionQuality.Full ? 2 : 4);

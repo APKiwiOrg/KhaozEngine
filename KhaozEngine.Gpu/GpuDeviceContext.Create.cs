@@ -88,7 +88,7 @@ namespace KhaozEngine.Gpu
                 && selection.Backend != fallback;
 
             string? failure = PreflightProvider(selection, canFallBack,
-                out IGpuBackendProvider? provider);
+                out IGpuBackendProvider? provider, out GpuNoUsableBackendRefusal refusal);
             var request = new GpuWindowedDeviceRequest(window, width, height, syncToVerticalBlank);
             Exception? cause = null;
 
@@ -136,7 +136,7 @@ namespace KhaozEngine.Gpu
             }
             catch (Exception ex)
             {
-                throw GpuNoUsableBackendException.Build(selection.Backend, failure, fallback, ex, cause);
+                throw GpuNoUsableBackendException.Build(refusal, selection.Backend, failure, fallback, ex, cause);
             }
         }
 
@@ -208,22 +208,47 @@ namespace KhaozEngine.Gpu
         /// </summary>
         internal static string? PreflightProvider(GpuBackendSelection selection, bool allowFallback,
             out IGpuBackendProvider? provider)
+            => PreflightProvider(selection, allowFallback, out provider, out _);
+
+        static string? PreflightProvider(GpuBackendSelection selection, bool allowFallback,
+            out IGpuBackendProvider? provider, out GpuNoUsableBackendRefusal refusal)
         {
+            // If preflight succeeds, only a creation exception can lead to fallback.
+            refusal = GpuNoUsableBackendRefusal.RequestedCreationFailed;
             GpuBackendKind backend = selection.Backend;
             if (GpuBackendSelector.IsRetired(backend))
             {
-                throw new GpuBackendRetiredException(backend,
-                    GpuBackendSelector.NativeReplacementFor(backend, GpuBackendSelector.DetectOS()));
+                GpuBackendKind replacement = GpuBackendSelector.NativeReplacementFor(
+                    backend, GpuBackendSelector.DetectOS());
+                throw new GpuBackendRetiredException(GpuBackendRetiredRefusal.BackendRetired,
+                    GpuBackendRetiredException.BuildMessage(backend, replacement))
+                {
+                    Backend = backend,
+                    Replacement = replacement,
+                    RetirementVersion = new Version(18, 0, 0),
+                };
             }
 
             if (!GpuBackendProviders.TryGet(backend, out provider) || provider is null)
             {
-                if (allowFallback && selection.CameFromStoredPreference) return NoRegisteredProvider;
-                throw new GpuBackendProviderMissingException(backend);
+                if (allowFallback && selection.CameFromStoredPreference)
+                {
+                    refusal = GpuNoUsableBackendRefusal.RequestedProviderNotRegistered;
+                    return NoRegisteredProvider;
+                }
+                throw new GpuBackendProviderMissingException(GpuBackendProviderMissingRefusal.ProviderNotRegistered,
+                    GpuBackendProviderMissingException.BuildMessage(backend))
+                {
+                    Backend = backend,
+                    RegistrationConvention = GpuBackendProviderMissingException.Convention,
+                    RegistrationMethod = GpuBackendProviderMissingException.RegistrationMethodFor(backend),
+                };
             }
 
             if (!allowFallback) return null;
-            return GpuBackendSelector.IsBackendSupported(backend) ? null : NoMachineSupport;
+            if (GpuBackendSelector.IsBackendSupported(backend)) return null;
+            refusal = GpuNoUsableBackendRefusal.RequestedMachineUnsupported;
+            return NoMachineSupport;
         }
 
         // The construction step, shared by the windowed and headless entries so the guard and the ownership
@@ -356,7 +381,7 @@ namespace KhaozEngine.Gpu
                 && selection.Backend != fallback;
 
             string? failure = PreflightProvider(selection, canFallBack,
-                out IGpuBackendProvider? provider);
+                out IGpuBackendProvider? provider, out GpuNoUsableBackendRefusal refusal);
             if (failure is null)
             {
                 GpuProviderDevice created;
@@ -373,7 +398,8 @@ namespace KhaozEngine.Gpu
                     // arm was added for: a provider that answers "this machine cannot" raises
                     // NotSupportedException from creation, and a machine with no loader raises out of the
                     // P/Invoke layer before that.
-                    return HeadlessFallback(selection, fallback, $"{ex.GetType().Name}: {ex.Message}", ex);
+                    return HeadlessFallback(selection, fallback, GpuNoUsableBackendRefusal.RequestedCreationFailed,
+                        $"{ex.GetType().Name}: {ex.Message}", ex);
                 }
 
                 // Adoption sits OUTSIDE the catch, exactly as it does on the windowed path: every throw out of it
@@ -382,14 +408,14 @@ namespace KhaozEngine.Gpu
                 return Adopt(created, selection);
             }
 
-            return HeadlessFallback(selection, fallback, failure, cause: null);
+            return HeadlessFallback(selection, fallback, refusal, failure, cause: null);
         }
 
         // The headless fallback itself, in one place so the probe-refusal arm and the creation-failure arm
         // report, warn and re-enter identically. allowFallback goes false on the way back in: the platform
         // default is where a fallback lands, and there is nothing further to fall back to.
         static GpuDeviceContext HeadlessFallback(GpuBackendSelection selection, GpuBackendKind fallback,
-            string failure, Exception? cause)
+            GpuNoUsableBackendRefusal refusal, string failure, Exception? cause)
         {
             GpuBackendSelection fell = GpuBackendSelector.AfterFallback(selection, fallback);
             WarnFallback(selection.Backend, failure, fallback);
@@ -400,7 +426,7 @@ namespace KhaozEngine.Gpu
             }
             catch (Exception ex)
             {
-                throw GpuNoUsableBackendException.Build(selection.Backend, failure, fallback, ex, cause);
+                throw GpuNoUsableBackendException.Build(refusal, selection.Backend, failure, fallback, ex, cause);
             }
         }
     }

@@ -187,19 +187,31 @@ namespace KhaozEngine.Gpu.D3D11.Internal
 
             if (staging is not ID3D11ReadableStaging buffer)
             {
-                throw new ArgumentException(
+                throw new GpuResourceOwnershipArgumentException(GpuResourceOwnershipRefusal.ForeignBackend,
                     $"A {staging.GetType().Name} was handed to the native Direct3D 11 backend as a staging buffer to "
                     + "read. A buffer this backend created carries the ID3D11Buffer a map names, and a buffer from "
-                    + "another backend carries another backend's.", nameof(staging));
+                    + "another backend carries another backend's.", nameof(staging))
+                {
+                    ExpectedBackend = GpuBackendKind.Direct3D11Native,
+                    ExpectedType = typeof(ID3D11ReadableStaging),
+                    Context = "staging read",
+                    ActualType = staging.GetType(),
+                    ResourceKind = "buffer",
+                };
             }
 
             ObjectDisposedException.ThrowIf(buffer.IsDisposed, staging);
 
             if (!buffer.IsStagingUsage)
             {
-                throw new ArgumentException(
+                throw new GpuStagingMapArgumentException(GpuStagingMapRefusal.StagingUsageRequired,
                     "This buffer was not created with GpuBufferUsage.Staging, so it has no CPU read access on "
-                    + "Direct3D 11. Record a CopyBuffer into a staging buffer and read that.", nameof(staging));
+                    + "Direct3D 11. Record a CopyBuffer into a staging buffer and read that.", nameof(staging))
+                {
+                    Backend = GpuBackendKind.Direct3D11Native,
+                    ResourceKind = "buffer",
+                    RequiredBufferUsage = GpuBufferUsage.Staging,
+                };
             }
 
             GpuReadWindow.Require(staging.SizeInBytes, offsetBytes, count);
@@ -253,17 +265,31 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         // got wrong is handing this backend another backend's buffer.
         static ID3D11MappableResource RequireBuffer(IGpuBuffer? staging)
             => staging as ID3D11MappableResource
-                ?? throw new ArgumentException(
+                ?? throw new GpuResourceOwnershipArgumentException(staging is null ? GpuResourceOwnershipRefusal.MissingResource : GpuResourceOwnershipRefusal.ForeignBackend,
                     $"A {(staging is null ? "null" : staging.GetType().Name)} was handed to the native Direct3D 11 "
                     + "backend as a staging buffer. A buffer this backend created carries the ID3D11Buffer a map "
-                    + "names, and a buffer from another backend carries another backend's.", nameof(staging));
+                    + "names, and a buffer from another backend carries another backend's.", nameof(staging))
+                {
+                    ExpectedBackend = GpuBackendKind.Direct3D11Native,
+                    ExpectedType = typeof(ID3D11MappableResource),
+                    Context = "staging map",
+                    ActualType = staging?.GetType(),
+                    ResourceKind = "buffer",
+                };
 
         static ID3D11MappableResource RequireTexture(IGpuTexture? staging)
             => staging as ID3D11MappableResource
-                ?? throw new ArgumentException(
+                ?? throw new GpuResourceOwnershipArgumentException(staging is null ? GpuResourceOwnershipRefusal.MissingResource : GpuResourceOwnershipRefusal.ForeignBackend,
                     $"A {(staging is null ? "null" : staging.GetType().Name)} was handed to the native Direct3D 11 "
                     + "backend as a staging texture. A texture this backend created carries the ID3D11Texture2D a "
-                    + "map names, and a texture from another backend carries another backend's.", nameof(staging));
+                    + "map names, and a texture from another backend carries another backend's.", nameof(staging))
+                {
+                    ExpectedBackend = GpuBackendKind.Direct3D11Native,
+                    ExpectedType = typeof(ID3D11MappableResource),
+                    Context = "staging map",
+                    ActualType = staging?.GetType(),
+                    ResourceKind = "texture",
+                };
 
         // A DEFAULT-usage resource has no CPU access flags at all, so Direct3D 11 fails the map and hands back a
         // null pointer, and a caller that read through it would walk unmapped memory. Refused by name instead, and
@@ -274,11 +300,17 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         {
             if (mappable) return;
 
-            throw new ArgumentException(
+            throw new GpuStagingMapArgumentException(GpuStagingMapRefusal.StagingUsageRequired,
                 $"This {what} was not created with GpuBufferUsage.Staging (or GpuTextureUsage.Staging), so it has "
                 + "no CPU access and cannot be mapped. Direct3D 11 fails the map and hands back a null pointer, "
                 + "which reads as an empty readback rather than as a failure. Copy into a staging resource of its "
-                + "own first, which is what GpuReadback does.");
+                + "own first, which is what GpuReadback does.", paramName: null)
+            {
+                Backend = GpuBackendKind.Direct3D11Native,
+                ResourceKind = what,
+                RequiredBufferUsage = what == "buffer" ? GpuBufferUsage.Staging : null,
+                RequiredTextureUsage = what == "texture" ? GpuTextureUsage.Staging : null,
+            };
         }
     }
 }

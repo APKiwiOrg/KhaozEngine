@@ -101,9 +101,10 @@ namespace KhaozEngine.Gpu.Metal.Internal
         /// </summary>
         internal MetalPipelineBinding Pipelines => _pipelines;
 
-        static InvalidOperationException NotRecording(string member)
-            => new(member + " was called on a native Metal command list that is not recording. Call Begin first. "
+        static GpuRecordingStateException NotRecording(string member)
+            => new(GpuRecordingStateRefusal.CommandOutsideRecording, member + " was called on a native Metal command list that is not recording. Call Begin first. "
                 + "A bound pipeline is state of the recording rather than of the list, and it is forgotten at "
-                + "every Begin, so binding one outside a recording would be binding it into nothing.");
+                + "every Begin, so binding one outside a recording would be binding it into nothing.")
+            { Backend = GpuBackendKind.MetalNative, Command = member };
     }
 }

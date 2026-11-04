@@ -79,16 +79,26 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         {
             if (!KhaozEngineD3D11.IsPlatformSupported) throw NotOnThisPlatform("windowed");
 
-            if (request.Window.Kind != GpuWindowKind.Win32)
-            {
-                throw new ArgumentException(
-                    $"The native Direct3D 11 backend was handed a {request.Window.Kind} window handle. A Direct3D "
-                    + "swapchain presents into a Win32 HWND and nothing else, so this is a wiring error rather "
-                    + "than a machine that cannot run the backend.", nameof(request));
-            }
+            RequireWindowKindForTests(request.Window.Kind);
 
             return D3D11GpuDevice.CreateForWindowWindows(request.Window.Handle, request.Width, request.Height,
                 request.SyncToVerticalBlank);
+        }
+
+        // Value-only window policy shared by production and device-free refusal tests.
+        internal static void RequireWindowKindForTests(GpuWindowKind kind)
+        {
+            if (kind != GpuWindowKind.Win32)
+            {
+                throw new D3D11BackendCreationArgumentException(D3D11BackendCreationRefusal.WindowKindUnsupported,
+                    $"The native Direct3D 11 backend was handed a {kind} window handle. A Direct3D "
+                    + "swapchain presents into a Win32 HWND and nothing else, so this is a wiring error rather "
+                    + "than a machine that cannot run the backend.", "request")
+                    {
+                        ActualWindowKind = kind,
+                        RequiredWindowKind = GpuWindowKind.Win32,
+                    };
+            }
         }
 
         /// <inheritdoc/>
@@ -98,9 +108,19 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         public GpuProviderDevice CreateHeadless(IGpuHeadlessDiagnosticSettings settings)
         {
             if (settings is not D3D11HeadlessDiagnosticSettings frozen)
-                throw new ArgumentException("Settings are not owned by this backend.", nameof(settings));
+                throw new GpuBackendCreationArgumentException(GpuBackendCreationRefusal.ForeignDiagnosticSettings, "Settings are not owned by this backend.", nameof(settings))
+                {
+                    ActualType = settings?.GetType(),
+                    ExpectedBackend = GpuBackendKind.Direct3D11Native,
+                };
             if (_headless is not null) return _headless(frozen);
-            if (!OperatingSystem.IsWindows()) throw new PlatformNotSupportedException("Direct3D11 requires Windows.");
+            if (!OperatingSystem.IsWindows()) throw new D3D11BackendCreationPlatformException(D3D11BackendCreationRefusal.OperatingSystemUnsupported, "Direct3D11 requires Windows.")
+            {
+                Backend = GpuBackendKind.Direct3D11Native,
+                CreationPath = "headless",
+                RequiredOperatingSystem = "Windows",
+                SupportProbe = "KhaozEngineD3D11.IsPlatformSupported",
+            };
             return D3D11GpuDevice.CreateHeadlessWindows(frozen);
         }
 
@@ -115,10 +135,11 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         // package used to give: creation is built, and what is missing on macOS or Linux is Direct3D itself.
         // Named here rather than through D3D11PlatformGuard, whose wording is for a Windows-only OBJECT that was
         // somehow constructed elsewhere, which is a different (and unreachable) fault.
-        static PlatformNotSupportedException NotOnThisPlatform(string path)
-            => new($"The native Direct3D 11 backend cannot create a {path} device on this operating system, "
+        static D3D11BackendCreationPlatformException NotOnThisPlatform(string path)
+            => new(D3D11BackendCreationRefusal.OperatingSystemUnsupported, $"The native Direct3D 11 backend cannot create a {path} device on this operating system, "
                 + "which has no Direct3D 11. Registration is safe everywhere and reports the backend as "
                 + "unsupported off Windows, so read GpuBackendSelector.IsBackendSupported (or "
-                + "KhaozEngineD3D11.IsPlatformSupported) before naming this backend.");
+                + "KhaozEngineD3D11.IsPlatformSupported) before naming this backend.")
+            { Backend = GpuBackendKind.Direct3D11Native, CreationPath = path, RequiredOperatingSystem = "Windows", SupportProbe = "KhaozEngineD3D11.IsPlatformSupported" };
     }
 }

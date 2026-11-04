@@ -15,31 +15,31 @@ namespace KhaozEngine.Tests.Gpu
             var state = new GpuTimestampPoolState(4);
             Assert.Throws<ArgumentOutOfRangeException>(() => state.Begin(0));
             Assert.Throws<ArgumentOutOfRangeException>(() => state.Begin(5));
-            Assert.Throws<InvalidOperationException>(() => state.Write(0));
-            Assert.Throws<InvalidOperationException>(() => state.End());
-            Assert.Throws<InvalidOperationException>(() => state.Resolved());
+            Assert.Equal(GpuTimestampRefusal.BatchNotRecording, Assert.Throws<GpuTimestampStateException>(() => state.Write(0)).Reason);
+            Assert.Equal(GpuTimestampRefusal.IncompleteBatch, Assert.Throws<GpuTimestampStateException>(() => state.End()).Reason);
+            Assert.Equal(GpuTimestampRefusal.BatchNotEnded, Assert.Throws<GpuTimestampStateException>(() => state.Resolved()).Reason);
 
             state.Begin(2);
             Assert.Equal(2u, state.Count);
-            Assert.Throws<InvalidOperationException>(() => state.Begin(2));
+            Assert.Equal(GpuTimestampRefusal.UnresolvedBatch, Assert.Throws<GpuTimestampStateException>(() => state.Begin(2)).Reason);
             Assert.Throws<ArgumentOutOfRangeException>(() => state.Write(2));
-            Assert.Throws<InvalidOperationException>(() => state.Write(1));
+            Assert.Equal(GpuTimestampRefusal.IndexOutOfSequence, Assert.Throws<GpuTimestampStateException>(() => state.Write(1)).Reason);
             state.Write(0);
-            Assert.Throws<InvalidOperationException>(() => state.Write(0));
-            Assert.Throws<InvalidOperationException>(() => state.End());
-            Assert.Throws<InvalidOperationException>(() => state.Resolved());
+            Assert.Equal(GpuTimestampRefusal.IndexOutOfSequence, Assert.Throws<GpuTimestampStateException>(() => state.Write(0)).Reason);
+            Assert.Equal(GpuTimestampRefusal.IncompleteBatch, Assert.Throws<GpuTimestampStateException>(() => state.End()).Reason);
+            Assert.Equal(GpuTimestampRefusal.BatchNotEnded, Assert.Throws<GpuTimestampStateException>(() => state.Resolved()).Reason);
             state.Write(1);
             state.End();
-            Assert.Throws<InvalidOperationException>(() => state.Write(0));
-            Assert.Throws<InvalidOperationException>(() => state.End());
-            Assert.Throws<InvalidOperationException>(() => state.Begin(1));
+            Assert.Equal(GpuTimestampRefusal.BatchNotRecording, Assert.Throws<GpuTimestampStateException>(() => state.Write(0)).Reason);
+            Assert.Equal(GpuTimestampRefusal.IncompleteBatch, Assert.Throws<GpuTimestampStateException>(() => state.End()).Reason);
+            Assert.Equal(GpuTimestampRefusal.UnresolvedBatch, Assert.Throws<GpuTimestampStateException>(() => state.Begin(1)).Reason);
 
             state.Resolved();
             state.Resolved(); // Repeated consumption must not make a completed batch unusable.
             Assert.Equal(2u, state.Count);
             state.Begin(1);
             Assert.Equal(1u, state.Count);
-            Assert.Throws<InvalidOperationException>(() => state.End());
+            Assert.Equal(GpuTimestampRefusal.IncompleteBatch, Assert.Throws<GpuTimestampStateException>(() => state.End()).Reason);
             state.Write(0);
             state.End();
             state.Resolved();
@@ -113,10 +113,14 @@ namespace KhaozEngine.Tests.Gpu
         {
             IGpuResourceFactory factory = new FakeGpuResourceFactory();
             using IGpuCommandList commands = new NullGpuCommandList();
-            Assert.Throws<NotSupportedException>(() => factory.CreateTimestampPool(4));
-            Assert.Throws<NotSupportedException>(() => commands.BeginTimestamps(null!, 2));
-            Assert.Throws<NotSupportedException>(() => commands.WriteTimestamp(null!, 0));
-            Assert.Throws<NotSupportedException>(() => commands.EndTimestamps(null!));
+            var unsupported = Assert.Throws<GpuTimestampUnsupportedException>(() => factory.CreateTimestampPool(4));
+            Assert.IsAssignableFrom<NotSupportedException>(unsupported);
+            Assert.Equal(GpuTimestampRefusal.TimestampUnsupported, unsupported.Reason);
+            Assert.Equal("CreateTimestampPool", unsupported.Command);
+            Assert.Null(unsupported.Backend);
+            Assert.Equal(GpuTimestampRefusal.TimestampUnsupported, Assert.Throws<GpuTimestampUnsupportedException>(() => commands.BeginTimestamps(null!, 2)).Reason);
+            Assert.Equal(GpuTimestampRefusal.TimestampUnsupported, Assert.Throws<GpuTimestampUnsupportedException>(() => commands.WriteTimestamp(null!, 0)).Reason);
+            Assert.Equal(GpuTimestampRefusal.TimestampUnsupported, Assert.Throws<GpuTimestampUnsupportedException>(() => commands.EndTimestamps(null!)).Reason);
         }
     }
 }

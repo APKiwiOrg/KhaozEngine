@@ -125,11 +125,11 @@ namespace KhaozEngine.Tests.Gpu
                 () => GpuDeviceContext.PreflightProvider(
                     new GpuBackendSelection(SentinelKind, GpuBackendSource.OsProbe, null), allowFallback, out _));
 
-            // The message has to say whose line is missing, because the fix is in the consuming app and not in
-            // the engine. It states the naming CONVENTION plus two worked examples rather than switching on the
-            // kind, which is what keeps it correct for a backend appended later.
+            // The startup convention remains useful even for a backend this build does not recognize.
             Assert.Equal(SentinelKind, ex.Backend);
-            Assert.Contains("KhaozEngineD3D11.Register()", ex.Message, StringComparison.Ordinal);
+            Assert.Equal(GpuBackendProviderMissingRefusal.ProviderNotRegistered, ex.Reason);
+            Assert.Equal("KhaozEngine<Backend>.Register()", ex.RegistrationConvention);
+            Assert.Null(ex.RegistrationMethod);
         }
 
         /// <summary>

@@ -26,8 +26,17 @@ namespace KhaozEngine.Tests.Gpu
         {
             var ex = Assert.Throws<ShaderValidationException>(() => ShaderValidation.ValidateCompute(
                 "#version 450\nlayout(local_size_x = 1) in;\nvoid main() { this is not glsl }\n", "Broken"));
-            Assert.Contains("Broken", ex.Message);
-            Assert.Contains("Compute", ex.Message);
+            Assert.Equal(ShaderValidationRefusal.FrontEndCompileFailed, ex.Reason);
+            Assert.Equal("Broken", ex.Label);
+            Assert.Equal(GpuShaderStages.Compute, ex.Stage);
+            Assert.Equal("SPIR-V", ex.Target);
+            Assert.False(string.IsNullOrWhiteSpace(ex.Diagnostic));
+            var native = Assert.IsType<ShaderValidationStateException>(ex.InnerException);
+            Assert.Equal(ShaderValidationRefusal.FrontEndNativeCompileFailed, native.Reason);
+            Assert.IsAssignableFrom<System.InvalidOperationException>(native);
+            Assert.NotNull(native.Status);
+            Assert.NotEqual(0, native.Status);
+            Assert.False(string.IsNullOrWhiteSpace(native.Diagnostic));
         }
     }
 }

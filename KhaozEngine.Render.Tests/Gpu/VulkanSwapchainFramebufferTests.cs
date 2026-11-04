@@ -72,7 +72,7 @@ namespace KhaozEngine.Tests.Gpu
         [Fact]
         public void AZeroViewIsRefused()
         {
-            Assert.Throws<ArgumentException>(() => new VulkanSwapchainFramebuffer(
+            Assert.Throws<GpuFramebufferException>(() => new VulkanSwapchainFramebuffer(
                 GpuPixelFormat.B8G8R8A8UNorm, default, new VulkanExtent(1280, 720)));
         }
 

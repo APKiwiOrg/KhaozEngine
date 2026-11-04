@@ -34,17 +34,25 @@ namespace KhaozEngine.Gpu.Metal.Internal
             MetalTexture metal = MetalResourceOwnership.Require<MetalTexture>(staging, _liveness, nameof(staging));
             if (!metal.IsStaging)
             {
-                throw new ArgumentException(
+                throw new GpuStagingMapArgumentException(GpuStagingMapRefusal.StagingUsageRequired,
                     "MapForRead maps a GpuTextureUsage.Staging texture, and this one is a Private MTLTexture with no "
-                    + "CPU-visible memory. Copy into a staging texture and map that.", nameof(staging));
+                    + "CPU-visible memory. Copy into a staging texture and map that.", nameof(staging))
+                {
+                    Backend = GpuBackendKind.MetalNative,
+                    ResourceKind = "texture",
+                    RequiredTextureUsage = GpuTextureUsage.Staging,
+                };
             }
 
             MetalGpuFence own = RequireFence(fence, _timeline);
             if (!own.Signaled)
             {
-                throw new InvalidOperationException(
+                throw new GpuStagingMapStateException(GpuStagingMapRefusal.CompletionNotSignaled,
                     "MapForRead was called with a fence that has not signaled, so the copy into the staging texture "
-                    + "may still be running. Poll IGpuFence.Signaled first. This map never waits, by design.");
+                    + "may still be running. Poll IGpuFence.Signaled first. This map never waits, by design.")
+                {
+                    Command = nameof(MapForRead),
+                };
             }
 
             var layout = metal.SubresourceLayout(0, 0);

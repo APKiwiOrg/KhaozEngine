@@ -195,7 +195,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         {
             if (offsetBytes <= SizeInBytes && (ulong)length <= SizeInBytes - offsetBytes) return;
 
-            throw new ArgumentOutOfRangeException(nameof(offsetBytes), offsetBytes,
+            throw new GpuBufferTransferRangeException(GpuBufferTransferRefusal.WindowOutsideBuffer, nameof(offsetBytes), offsetBytes,
                 "A "
                 + length.ToString(CultureInfo.InvariantCulture)
                 + "-byte write at offset "
@@ -204,7 +204,12 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
                 + SizeInBytes.ToString(CultureInfo.InvariantCulture)
                 + "-byte native Vulkan uniform buffer. On a ring-backed buffer that would spill into the next "
                 + "frame's segment, which the GPU may be reading, so it is refused here rather than corrupting a "
-                + "frame.");
+                + "frame.")
+            {
+                OffsetBytes = offsetBytes,
+                SizeBytes = length,
+                BufferBytes = SizeInBytes,
+            };
         }
 
         /// <summary>The copy into ANY segment, which is what the off-timeline write walks. CALLED ONLY BY

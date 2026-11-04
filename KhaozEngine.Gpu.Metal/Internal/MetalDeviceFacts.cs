@@ -33,8 +33,8 @@ namespace KhaozEngine.Gpu.Metal.Internal
     /// M-M3's 256 stride has to be a multiple of. See
     /// <see cref="MetalDeviceFactsReader.ReadBufferOffsetAlignment"/> for which selector produced it and why Metal
     /// exposes no constant-buffer-specific query to ask instead. Zero means nothing answered.</param>
-    /// <param name="BufferOffsetAlignmentSource">The selector the value above came from, carried into the
-    /// refusal message so a rejected machine names the read rather than only the number.</param>
+    /// <param name="BufferOffsetAlignmentSource">The selector the alignment value above came from,
+    /// retained in the probe facts for diagnostic attribution.</param>
     /// <param name="SupportsTextureSampleCount1">Whether <c>-supportsTextureSampleCount:</c> answers yes for 1,
     /// which is the walk M-C3's <c>MaxMsaaSampleCount</c> read starts from.</param>
     internal readonly record struct MetalDeviceFacts(

@@ -530,10 +530,15 @@ namespace KhaozEngine.Tests.Gpu
         {
             var element = new GpuResourceLayoutElement("Work", kind, GpuShaderStages.Compute, dynamic: true);
 
-            ArgumentException error = Assert.Throws<ArgumentException>(
+            GpuResourceLayoutException error = Assert.Throws<GpuResourceLayoutException>(
                 () => new D3D11ResourceLayout(new GpuResourceLayoutDescription(U("Frame"), element)));
 
-            Assert.Contains("Work", error.Message, StringComparison.Ordinal);
+            Assert.IsAssignableFrom<ArgumentException>(error);
+            Assert.Equal(GpuResourceLayoutRefusal.DynamicOffsetUnsupportedForKind, error.Reason);
+            Assert.Equal("Work", error.ElementName);
+            Assert.Equal(1, error.Binding);
+            Assert.Equal(kind, error.ResourceKind);
+            Assert.Equal(GpuBackendKind.Direct3D11Native, error.Backend);
             Assert.Equal("description", error.ParamName);
 
             var accepted = new GpuResourceLayoutElement("Work", kind, GpuShaderStages.Compute);

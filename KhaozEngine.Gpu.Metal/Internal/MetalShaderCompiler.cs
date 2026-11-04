@@ -21,16 +21,17 @@ namespace KhaozEngine.Gpu.Metal.Internal
     /// and that is genuinely all of it.
     /// </para>
     /// <para>
-    /// A FAILED COMPILE CARRIES METAL'S OWN MESSAGE. <c>newLibraryWithSource:</c> answers nil and writes an
-    /// <c>NSError</c> whose localized description has the source line and the diagnostic, so the throw quotes it.
+    /// A FAILED COMPILE CARRIES METAL'S OWN DIAGNOSTIC. <c>newLibraryWithSource:</c> answers nil and writes an
+    /// <c>NSError</c> whose localized description is carried in ShaderValidationException.Diagnostic, with
+    /// Reason = MetalLibraryRejected, Stage, EntryPoint, SourceOrigin and NativeDiagnosticMissing.
     /// Without that a broken shader is an unexplained nil, and the MSL that failed is not something the caller
     /// wrote: it is SPIRV-Cross output, so "which line" is the only way anyone works backwards to the GLSL.
     /// </para>
     /// <para>
     /// AND A NIL FUNCTION IS A SEPARATE FAILURE FROM A NIL LIBRARY, deliberately. A library that compiled but
     /// carries no function of the emitted name means the name read out of the MSL and the name Metal saw
-    /// disagree, which is M-S5's whole subject, so it says so rather than folding into a generic compile
-    /// failure.
+    /// disagree, which is M-S5's whole subject. Reason is MetalLibraryFunctionMissing, with Stage, EntryPoint
+    /// and Policy, rather than the compile refusal MetalLibraryRejected.
     /// </para>
     /// <para>
     /// EVERY BODY OPENS AN AUTORELEASE POOL (M-N5). The <c>NSString</c>s this creates are autoreleased, the
@@ -176,23 +177,36 @@ namespace KhaozEngine.Gpu.Metal.Internal
 
             if (library.IsNull)
             {
-                throw new ShaderValidationException(
+                string? diagnostic = error.IsNull ? null : error.LocalizedDescription();
+                throw new ShaderValidationException(ShaderValidationRefusal.MetalLibraryRejected,
                     "the native Metal device rejected the emitted MSL for the " + where + ": "
                     + (error.IsNull ? "-newLibraryWithSource:options:error: answered nil and wrote no NSError, "
-                        + "which means the failure is not a compile error at all." : error.LocalizedDescription())
+                        + "which means the failure is not a compile error at all." : diagnostic)
                     + " The source that failed is SPIRV-Cross output rather than anything hand-written, so the "
                     + "line number above is a line of emitted MSL: cross-compile the GLSL with "
-                    + "ShaderValidation.ValidatePair to see it.");
+                    + "ShaderValidation.ValidatePair to see it.")
+                {
+                    Stage = stage.Stage.ToGpu(),
+                    EntryPoint = stage.EntryPointName,
+                    Diagnostic = diagnostic,
+                    NativeDiagnosticMissing = error.IsNull,
+                    SourceOrigin = "SPIRV-Cross output",
+                };
             }
 
             MTLFunction function = library.NewFunction(NSString.FromManaged(stage.EntryPointName));
             if (function.IsNull)
             {
                 library.Release();
-                throw new ShaderValidationException(
+                throw new ShaderValidationException(ShaderValidationRefusal.MetalLibraryFunctionMissing,
                     "the emitted MSL for the " + where + " compiled, but the library carries no function of that "
                     + "name. The name was READ out of the emission rather than assumed (M-S5), so this means the "
-                    + "entry-point parse and Metal disagree about what the function is called.");
+                    + "entry-point parse and Metal disagree about what the function is called.")
+                {
+                    Stage = stage.Stage.ToGpu(),
+                    EntryPoint = stage.EntryPointName,
+                    Policy = "M-S5",
+                };
             }
 
             return new MetalCompiledStage(stage.Stage, library, function);
@@ -205,12 +219,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
         static MTLCompileOptions NewPinnedOptions()
         {
             MTLCompileOptions options = MTLCompileOptions.New();
-            if (options.IsNull)
-            {
-                throw new InvalidOperationException(
-                    "The Objective-C runtime has no MTLCompileOptions class, which means the Metal framework did "
-                    + "not load. Nothing about this shader caused it.");
-            }
+            MetalShaderNativeValidation.RequireClassAvailable(!options.IsNull, "MTLCompileOptions", shader: true);
 
             options.SetLanguageVersion(MslCompilePin.LanguageVersion);
             options.SetFastMathEnabled(MslCompilePin.FastMathEnabled);

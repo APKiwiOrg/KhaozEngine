@@ -651,7 +651,11 @@ size read out of the module, because MSL does not carry it and `dispatchThreadgr
 names both entry points `main0`, so compiling the two texts together is a duplicate-symbol error. The
 entry-point name is READ rather than assumed for the same family of reason: the incumbent got it from a Veldrid
 layer this backend does not have, and a wrong name is not a compile error at all, it is a library that builds
-and a nil function, so that is a separate refusal with its own message.
+and a nil function. `ShaderValidationException.Reason` distinguishes `MetalLibraryRejected` from
+`MetalLibraryFunctionMissing`. `Stage` and `EntryPoint` identify the function, while native rejections carry
+`Diagnostic` and `NativeDiagnosticMissing`. `SourceOrigin` identifies emitted source and `Policy` carries M-S5
+for a missing library function. Accessing released functions instead throws `MetalShaderFunctionException`
+with `FunctionReleased`, `Stage` and `ResourceKind`. `StageMissing` identifies an absent stage.
 
 **Metal has no binding decorations, so where a resource landed is a fact about the emitted text. This backend
 AUTHORS that fact.** There is no `register(t3)` and no `layout(binding = 3)` on the far side. Left to itself the
@@ -680,11 +684,14 @@ elements those are is asked of `spvc_compiler_msl_is_resource_used` after the em
 a text nothing reads any more.
 
 **Nothing falls back to a count.** A `(set, binding)` outside the declared layout array, a binding outside that
-set's elements, or two entries landing on one `(set, binding, stage)`: each throws at shader-set creation,
-naming the program and the stage. So does an emission needing one of SPIRV-Cross's own helper buffers, which are
-numbered from the top of the buffer table where the vertex streams are pinned and carry no `(set, binding)` for
-anything to see them by. All of it happens with no device involved, so a shader the backend cannot number fails
-on a CI leg that has no GPU rather than as a wrong pixel on one that does.
+set's elements, or two entries landing on one `(set, binding, stage)`: each throws `ShaderValidationException`
+at shader-set creation. `Reason` is `MetalSetIndexInvalid`, `MetalBindingIndexInvalid` or
+`MetalResourceUseDuplicate`, with `Label`, `Stage`, `Set` and `Binding`. An emission needing one of
+SPIRV-Cross's own helper buffers throws with `Reason` = `CrossCompileFailed`. Its `InnerException` has
+`Reason` = `MetalHelperBufferUnnumbered`, with `Label`, `Stage`, `HelperKind` and `Policy` = M-B2. These helpers
+are numbered from the top of the buffer table where the vertex streams are pinned and carry no `(set, binding)`
+for anything to see them by. All of it happens with no device involved, so a shader the backend cannot number
+fails on a CI leg that has no GPU rather than as a wrong pixel on one that does.
 
 **The emission is pinned twice and neither pin covers the numbering.** One pin freezes the cross-compile options
 and one freezes `MTLCompileOptions` (`languageVersion` 3.2, fast math on, `preserveInvariance` off, all measured
@@ -816,9 +823,13 @@ so it is not reproduced. Top pinning depends on nothing, and it moves no pixel: 
 the emitted MSL, which reaches attributes through `[[stage_in]]`, so it only has to agree between the vertex
 descriptor and the bind, both of which this backend owns. Over the 34 shipped graphics programs the highest
 buffer index any vertex function's emission chose is **0**, so 30 of the 31 entries are free and the largest
-shipped pipeline declares two streams. A pipeline whose combined vertex-stage bindings would collide throws at
-creation naming both sides, and the assertion is read out of the table's vertex-stage entries rather than out of
-declared stage visibility, because a stage that never references an element has no index for it.
+shipped pipeline declares two streams. A pipeline whose combined vertex-stage bindings would collide throws
+`ShaderValidationException` at creation with `Reason` = `MetalVertexBufferCollision`, `Label`, `Set`, `Binding`,
+`ArgumentIndex`, `StreamCount`, `LowestStreamIndex`, `BufferTableSize` and `Policy` = M-B2. The assertion reads
+the table's vertex-stage entries rather than declared stage visibility, because a stage that never references an
+element has no index for it. A stream count outside 0 through 31 instead throws `ShaderValidationRangeException`
+with `Reason` = `MetalVertexStreamCountInvalid`, `ParamName`, `ActualValue`, `Label`, `StreamCount` and
+`BufferTableSize`.
 
 **A pipeline is where the declared layouts are checked against the shader's reflection.** The binding table is
 keyed on `(set, binding, stage)` read out of the shader's own decorations, so a layout array of a different
@@ -870,7 +881,8 @@ bind records the incoming program's binding table, which is what invalidates a r
 the two programs map that slot's elements to different indices. Both hang off the identity guard above, so a
 redundant bind touches neither, and the compute bind carries the second one for the same reason a dispatch has.
 
-**A disposed pipeline is refused at the bind, by name.** Disposing one releases its `MTLRenderPipelineState` and
+**A disposed pipeline is refused at the bind with `GpuResourceOwnershipDisposedException`.**
+Its `NativeHandleReleased` reason and `NativeHandleKind` identify the released objects. Disposing one releases its `MTLRenderPipelineState` and
 its `MTLDepthStencilState`, so binding it afterwards would leave a later draw setting a released object on a
 live encoder. That is the one refusal on this path about memory rather than about a caller's belief: a disposed
 resource layout or resource set releases nothing at all here, where a pipeline genuinely has.
@@ -943,7 +955,8 @@ the same check at set creation passes a zero caller offset and cannot fire. Noth
 values, and an unaligned result is a validation error under the debug layer and undefined behaviour without it.
 The number checked against is the device's own reported buffer-offset alignment, read at creation and carried
 down to the bind records, not the ring stride: macOS reports 16 or 32, so checking against 256 would refuse
-binds every Mac accepts. The refusal names all three components.
+binds every Mac accepts. `GpuDynamicBindingRefusal.OffsetMisaligned` carries `ComposedOffset`,
+`RingBase`, `RangeOffset`, `DynamicOffset` and `AlignmentBytes`.
 
 **A refused flush is refused whole.** Any exception out of a flush drops the staged writes and invalidates every
 slot's emitted state, so the next draw re-derives every arm and re-binds in full. Without that, a throw part way
@@ -1183,6 +1196,12 @@ An abandoned prefix quarantines its ring slot, identified by `RingSegment`, unti
 Device uniform updates still defer in-flight non-current segments and retain the existing depth-one wait.
 Only immediate physical copies are checked for overlap, atomically before any segment or patch changes.
 A buffer map captures one physical base for its lease and pointer, even if another recording rotates the ring.
+Slot-owned, reusable interval indexes keep read recording O(log n) amortized and contiguous CPU access
+checks O(log n). Strided checks visit candidate spans and their search paths, bounded by O((k + 1) log n),
+where k counts overlapping bounding spans. Exact attribute checks preserve writable padding.
+Prefix publication queries each writable lease through the same index. The footprint never scans
+every recorded read per draw or disjoint write, avoiding quadratic frame work in draw-heavy Mac scenes
+(#1692). Warmed node storage is reused without steady-frame allocation.
 [Frame submission](../docs/METAL-FRAME-SUBMISSION.md) owns the lifetime and write-path details.
 
 ## Three decisions worth knowing before reading the code
@@ -1261,3 +1280,89 @@ written rather than one being written and disabled, and `BOOL` is one byte while
 
 The one comforting property of this risk is that an interop defect presents as a crash rather than as a wrong
 pixel, and the leg that will exercise it runs the full suite on a real GPU on every trigger.
+
+Foreign resources at map, readback and upload entry points use
+`GpuResourceOwnershipArgumentException` with `GpuResourceOwnershipRefusal.ForeignBackend`.
+`ExpectedBackend`, `ActualType`, `ExpectedType`, `ResourceKind` and `Context` identify the refused resource
+where the guard has those values. Mapping-state and staging-usage refusals stay in `GpuStagingMapRefusal`.
+
+## Refusals
+
+These backend policies use required reason enums and preserve the BCL base type, `ParamName` and
+`ActualValue` of their previous refusals. Messages are developer prose.
+
+| Exception and reason | What it refuses | Identifiers |
+|---|---|---|
+| `GpuBufferUsageArgumentException`, `GpuBufferUsageRefusal.UniformBindingCombination` | Refuses a uniform buffer combined with another binding of the same bytes. | `ParamName`, `Usage`, `ConflictingUsage` |
+| `GpuBufferTransferRangeException`, `GpuBufferTransferRefusal.WindowOutsideBuffer` | Refuses a buffer write or copy window outside the logical buffer. | `ParamName`, `ActualValue`, `OffsetBytes`, `SizeBytes`, `BufferBytes`, optional `Side` |
+| `GpuTextureTransferRangeException`, `GpuTextureTransferRefusal.SubresourceOutOfRange` | Refuses a copy, staging or upload subresource outside the texture. | `ParamName`, `ActualValue`, `MipLevel`, `ArrayLayer`, `MipLevels`, `ArrayLayers`, optional `Side` |
+| `GpuDynamicBindingRangeException`, `GpuDynamicBindingRefusal.OffsetMisaligned` | Refuses a composed buffer offset that violates binding alignment. | `ParamName`, `ActualValue`, `ComposedOffset`, `AlignmentBytes`, `RingBase`, `RangeOffset`, `DynamicOffset`, `RangeBytes`, `SegmentStride`, optional `Set` and `Binding` |
+| `GpuDynamicBindingRangeException`, `GpuDynamicBindingRefusal.WindowOutsideSegment` | Refuses a uniform window outside its own frame-ring segment. | `ParamName`, `ActualValue`, `RangeOffset`, `DynamicOffset`, `RangeBytes`, `SegmentStride`, optional `RecoveryOperation` |
+| `GpuBackendCreationArgumentException`, `GpuBackendCreationRefusal.ForeignDiagnosticSettings` | Refuses headless creation with diagnostic settings not owned by the requested backend. | `ParamName`, `ExpectedBackend`, `ActualType` |
+| `GpuBoundFramebufferException`, `GpuBoundFramebufferRefusal.FramebufferNotBound` | Refuses a framebuffer-dependent command when no framebuffer is bound. | `Command` |
+| `GpuBoundFramebufferException`, `GpuBoundFramebufferRefusal.DepthAttachmentMissing` | Refuses a depth clear when the bound framebuffer declares no depth attachment. | `Command` |
+| `MetalBackendCreationStateException`, `MetalBackendCreationRefusal.EligibleDeviceMissing` | Refuses creation when no eligible Metal device remains after the support probe. | `Detail` |
+| `MetalBackendCreationStateException`, `MetalBackendCreationRefusal.CommandQueueUnavailable` | Refuses a Metal device that cannot create its native command queue. | `DeviceName` |
+| `MetalBackendCreationArgumentException`, `MetalBackendCreationRefusal.ContentViewMissing` | Refuses a Cocoa window that has no content view. | `ParamName`, `WindowKind` |
+| `MetalBackendCreationUnsupportedException`, `MetalBackendCreationRefusal.MachineUnsupported` | Refuses Metal creation when the machine probe reports a missing requirement. | `MissingRequirement`, `Backend` |
+| `MetalBackendCreationStateException`, `MetalBackendCreationRefusal.NativeLayerUnavailable` | Refuses creation when a CAMetalLayer cannot be materialized. | `Detail`, `NativeClass` |
+| `MetalBackendCreationPlatformException`, `MetalBackendCreationRefusal.NativeResourceUnavailableOnPlatform` | Refuses constructing a native Metal resource on another platform. | `ResourceKind`, `RequiredOperatingSystem` |
+| `MetalBackendCreationPlatformException`, `MetalBackendCreationRefusal.OperatingSystemUnsupported` | Refuses native Metal creation off macOS. | `CreationPath`, `RequiredOperatingSystem` |
+| `MetalBackendCreationArgumentException`, `MetalBackendCreationRefusal.WindowHandleMissing` | Refuses a null Cocoa window handle. | `ParamName`, `WindowKind` |
+| `MetalBackendCreationArgumentException`, `MetalBackendCreationRefusal.WindowKindUnsupported` | Refuses a Metal swapchain window that is not Cocoa. | `ParamName`, `ActualWindowKind`, `RequiredWindowKind` |
+| `MetalBindRecordsStateException`, `MetalBindRecordsRefusal.EncoderMissing` | Refuses a bind flush with a nil native encoder. | No additional identifiers |
+| `MetalBindRecordsStateException`, `MetalBindRecordsRefusal.IndexSpaceMismatch` | Refuses binding a resource in an argument table different from shader reflection. | `Set`, `Binding`, `Stage`, `ExpectedSpace`, `ActualSpace`, `ArgumentIndex` |
+| `MetalBindRecordsStateException`, `MetalBindRecordsRefusal.PipelineTableMissing` | Refuses flushing resource sets without a bound pipeline index table. | No additional identifiers |
+| `MetalEncoderStateException`, `MetalEncoderRefusal.EncoderStillOpen` | Refuses a timestamp boundary while a native encoder remains open. | `EncoderKind` |
+| `MetalEncoderStateException`, `MetalEncoderRefusal.RecordingMissing` | Refuses opening an encoder with no native command-buffer recording in flight. | `Command` |
+| `MetalEncoderArgumentException`, `MetalEncoderRefusal.RenderDescriptorMissing` | Refuses opening a render encoder with a nil render-pass descriptor. | `ParamName`, `NativeDescriptorKind` |
+| `MetalRingLayoutException`, `MetalRingLayoutRefusal.FrameDepthOutsideRange` | Refuses a Metal ring depth outside the validator supported range. | `ParamName`, `ActualValue`, `MinimumDepth`, `MaximumDepth`, `EnvironmentVariable` |
+| `MetalRingWaitException`, `MetalRingWaitRefusal.SubmitLockHeld` | Refuses a Metal segment claim while the caller holds the submit lock. | `Operation` |
+| `MetalShaderFunctionException`, `MetalShaderFunctionRefusal.FunctionReleased` | Refuses reading a released Metal shader function. | `Stage`, `ResourceKind` |
+| `MetalShaderFunctionException`, `MetalShaderFunctionRefusal.StageMissing` | Refuses a shader-set function for a stage the set does not carry. | `Stage` |
+| `MetalStagingArenaRangeException`, `MetalStagingArenaRefusal.LeaseSizeUnaligned` | A lease size not aligned to the native copy boundary | `ParamName`, `ActualValue`, `AlignmentBytes`, `RecoveryOperation` |
+| `MetalStagingArenaStateException`, `MetalStagingArenaRefusal.BlockAllocationFailed` | A nil staging block allocation | `BlockBytes` |
+| `MetalArgumentBatchException`, `MetalArgumentBatchRefusal.DuplicateArgumentIndex` | Two entries at one argument index within one space and shader stage | `Index`, `Space`, `Stage` |
+| `MetalTimestampAdapterStateException`, `MetalTimestampAdapterRefusal.NativeTimestampResourceUnavailable` | a nil timestamp resource or encoder | `ResourceKind` |
+| `MetalTimestampAdapterUnsupportedException`, `MetalTimestampAdapterRefusal.SamplingBoundaryUnsupported` | a counter sampling boundary the Metal device does not support | `StageBoundary` |
+
+The argument subtype derives from `ArgumentException`, range subtypes from
+`ArgumentOutOfRangeException`, and state and batch subtypes from `InvalidOperationException`.
+Arena capacities and alignments are 64-bit byte values. A fresh block failing to hold its already
+aligned request remains an internal arithmetic invariant, rather than a caller refusal reason.
+
+Portable copy-alignment and staging-admission refusals use `GpuCopyAlignmentException` and the
+`GpuStagingMapArgumentException` / `GpuStagingMapStateException` types from `KhaozEngine.Gpu`.
+A staged buffer upload carries its payload in `PayloadBytes` and its device-level remedy in
+`RecoveryOperation`. The ring-backed write path keeps its existing alignment freedom.
+
+Recording lifecycle and timestamp contract refusals use `GpuRecordingStateException` and the
+`GpuTimestampStateException`, `GpuTimestampArgumentException`, `GpuTimestampRangeException`, `GpuTimestampDisposedException` and
+`GpuTimestampUnsupportedException` types from `KhaozEngine.Gpu`. Their required reasons and identifiers
+are listed in the [portable refusal catalog](../KhaozEngine.Gpu/README.md#refusals).
+
+Resource ownership, layout declarations, resource sets and framebuffer checks use the corresponding
+`GpuResourceOwnership*Exception`, `GpuResourceLayoutException`, `GpuResourceSetException` and
+`GpuFramebufferException` types from `KhaozEngine.Gpu`. Existing BCL catches still match. The
+[portable refusal catalog](../KhaozEngine.Gpu/README.md#refusals) lists each required reason and its
+diagnostic members. Swapchain copies use `GpuSwapchainCopyArgumentException` and
+`GpuSwapchainCopyStateException` from that same catalog.
+
+Graphics blend counts use `GpuPipelineOutputsException`. Texture copy, mip generation and resolve
+checks use `GpuTextureTransferArgumentException` and `GpuTextureTransferRangeException` where the
+backend checks the rule. Their reasons identify the rejected shape or subresource. Backend-specific
+admission differences remain as described above.
+
+A nonzero dynamic offset without a declared dynamic element uses the portable
+`GpuDynamicBindingException` and `GpuDynamicBindingRefusal.DynamicElementMissing`, carrying
+`Backend`, `Set` and `DynamicOffset`.
+
+A resource of the declared logical kind from another backend uses `GpuResourceOwnershipRefusal.ForeignBackend`
+in resource-set admission. A genuinely different logical kind keeps `GpuResourceSetRefusal.ResourceKindMismatch`.
+The ownership carrier records `ElementName`, `ResourceIndex`, `ResourceKind`, `ExpectedBackend`, `ActualType`
+and `ExpectedType` where the guard has them. An absent D3D11 register view uses `MissingResource` and
+`RegisterLetter`, with the original parameter and resource types.
+
+Timestamp pools and completion fences use `GpuResourceOwnershipArgumentException` with `ForeignBackend`
+for another backend or `DifferentDevice` for another device/timeline. Their ownership identifiers retain
+the original parameter and runtime type.

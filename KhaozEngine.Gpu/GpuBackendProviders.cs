@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Concurrent;
+using System.Collections.Generic;
 
 namespace KhaozEngine.Gpu
 {
@@ -15,14 +16,50 @@ namespace KhaozEngine.Gpu
     /// </summary>
     public sealed class GpuBackendProviderMissingException : InvalidOperationException
     {
+        /// <summary>The refusal reason. Null only for a consumer-created instance built through a
+        /// message-only constructor outside the engine.</summary>
+        public GpuBackendProviderMissingRefusal? Reason { get; }
+
+        /// <summary>Build a refusal with its structured reason and developer message.</summary>
+        public GpuBackendProviderMissingException(GpuBackendProviderMissingRefusal reason, string message)
+            : base(message) => Reason = reason;
+
+        /// <summary>Build a refusal with its structured reason, developer message and original failure.</summary>
+        public GpuBackendProviderMissingException(GpuBackendProviderMissingRefusal reason, string message, Exception inner)
+            : base(message, inner) => Reason = reason;
+
+        /// <summary>The generic startup entry-point convention, independent of which backends this build knows.
+        /// Null for a consumer-created message-only instance.</summary>
+        public string? RegistrationConvention { get; init; }
+
+        /// <summary>The known backend's startup entry point, or null when only the generic convention is known.</summary>
+        public string? RegistrationMethod { get; init; }
+
+        internal const string Convention = "KhaozEngine<Backend>.Register()";
+
+        // Diagnostic data only. An appended or unnamed backend keeps the generic convention and needs no entry.
+        static readonly Dictionary<GpuBackendKind, string> RegistrationMethods = new()
+        {
+            [GpuBackendKind.Direct3D11Native] = "KhaozEngineD3D11.Register()",
+            [GpuBackendKind.VulkanNative] = "KhaozEngineVulkan.Register()",
+            [GpuBackendKind.MetalNative] = "KhaozEngineMetal.Register()",
+        };
+
+        internal static string? RegistrationMethodFor(GpuBackendKind backend)
+            => RegistrationMethods.TryGetValue(backend, out string? method) ? method : null;
+
         /// <summary>The backend that was asked for and has no registered provider.</summary>
-        public GpuBackendKind Backend { get; }
+        public GpuBackendKind Backend { get; init; }
 
         /// <summary>The exception as the creation path throws it, with the actionable message built from
         /// <paramref name="backend"/>.</summary>
         public GpuBackendProviderMissingException(GpuBackendKind backend)
-            : base(BuildMessage(backend))
-            => Backend = backend;
+            : this(GpuBackendProviderMissingRefusal.ProviderNotRegistered, BuildMessage(backend))
+        {
+            Backend = backend;
+            RegistrationConvention = Convention;
+            RegistrationMethod = RegistrationMethodFor(backend);
+        }
 
         /// <summary>Standard message constructor. <see cref="Backend"/> is left at its default.</summary>
         public GpuBackendProviderMissingException(string message) : base(message)
@@ -43,7 +80,7 @@ namespace KhaozEngine.Gpu
         // string. The convention is real and holds for every package (KhaozEngine.Gpu.<Backend> exposes
         // KhaozEngine<Backend>.Register()), so stating it degrades correctly for a backend added later: that
         // reader is told the rule, not somebody else's entry point.
-        static string BuildMessage(GpuBackendKind backend)
+        internal static string BuildMessage(GpuBackendKind backend)
             => $"No graphics backend provider is registered for {backend}. That backend lives in an opt-in package "
                 + "outside KhaozEngine.Gpu, one package per backend, and registering it is one explicit call the "
                 + "consuming app makes at startup: KhaozEngine.Gpu.<Backend> exposes a single static "
@@ -124,7 +161,9 @@ namespace KhaozEngine.Gpu
 
         /// <summary>
         /// The registered provider for <paramref name="backend"/>, or a
-        /// <see cref="GpuBackendProviderMissingException"/> naming what is missing and how to register it. This is
+        /// <see cref="GpuBackendProviderMissingException"/> with
+        /// <see cref="GpuBackendProviderMissingRefusal.ProviderNotRegistered"/>, the missing backend and its
+        /// registration convention and known entry point. This is
         /// the throw half of decision I2, and the creation path calls it BEFORE the machine-capability probe
         /// precisely so a forgotten registration can never be read as an incapable machine and turned into a quiet
         /// fallback onto a different backend.
@@ -141,13 +180,26 @@ namespace KhaozEngine.Gpu
         {
             if (GpuBackendSelector.IsRetired(backend))
             {
-                throw new GpuBackendRetiredException(backend,
-                    GpuBackendSelector.NativeReplacementFor(backend, GpuBackendSelector.DetectOS()));
+                GpuBackendKind replacement = GpuBackendSelector.NativeReplacementFor(
+                    backend, GpuBackendSelector.DetectOS());
+                throw new GpuBackendRetiredException(GpuBackendRetiredRefusal.BackendRetired,
+                    GpuBackendRetiredException.BuildMessage(backend, replacement))
+                {
+                    Backend = backend,
+                    Replacement = replacement,
+                    RetirementVersion = new Version(18, 0, 0),
+                };
             }
 
             return _providers.TryGetValue(backend, out IGpuBackendProvider? provider)
                 ? provider
-                : throw new GpuBackendProviderMissingException(backend);
+                : throw new GpuBackendProviderMissingException(GpuBackendProviderMissingRefusal.ProviderNotRegistered,
+                    GpuBackendProviderMissingException.BuildMessage(backend))
+                {
+                    Backend = backend,
+                    RegistrationConvention = GpuBackendProviderMissingException.Convention,
+                    RegistrationMethod = GpuBackendProviderMissingException.RegistrationMethodFor(backend),
+                };
         }
 
         /// <summary>

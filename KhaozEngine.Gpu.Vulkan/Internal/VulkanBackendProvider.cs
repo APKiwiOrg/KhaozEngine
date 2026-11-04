@@ -105,7 +105,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
             // a machine that cannot run this backend must refuse with a NotSupportedException naming what it is
             // missing, so the creation path can catch it, WARN and fall back.
             string? missing = _machineAnswer.Value;
-            if (missing is not null) throw ThisMachineCannot(missing);
+            RequireMachineSupportForTests(missing);
 
             return VulkanGpuDevice.CreateForWindow(request);
         }
@@ -117,7 +117,11 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         public GpuProviderDevice CreateHeadless(IGpuHeadlessDiagnosticSettings settings)
         {
             if (settings is not VulkanHeadlessDiagnosticSettings frozen)
-                throw new ArgumentException("Settings are not owned by this backend.", nameof(settings));
+                throw new GpuBackendCreationArgumentException(GpuBackendCreationRefusal.ForeignDiagnosticSettings, "Settings are not owned by this backend.", nameof(settings))
+                {
+                    ActualType = settings?.GetType(),
+                    ExpectedBackend = GpuBackendKind.VulkanNative,
+                };
             if (_headless is not null) return _headless(frozen);
             return VulkanGpuDevice.CreateHeadless(frozen);
         }
@@ -128,7 +132,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
             // refuse with a NotSupportedException naming what it is missing, so the creation path can catch it,
             // WARN and fall back, and so the reader is told whether to install something or to file a bug.
             string? missing = _machineAnswer.Value;
-            if (missing is not null) throw ThisMachineCannot(missing);
+            RequireMachineSupportForTests(missing);
 
             return VulkanGpuDevice.CreateHeadless();
         }
@@ -152,18 +156,25 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
             }
         }
 
+        // The machine policy consumes the probe's value, without requiring a native device in tests.
+        internal static void RequireMachineSupportForTests(string? missing)
+        {
+            if (missing is not null) throw ThisMachineCannot(missing);
+        }
+
         // The MACHINE-level refusal, and it quotes the probe's own sentence rather than paraphrasing it, so the
         // three machine states each read as themselves: no loader names the loader, a loader with no driver names
         // the driver and the package that installs one, and a device below the floor names the requirement. It
         // must be tellable apart from a refusal about the PACKAGE (a window kind with no surface extension is the
         // one left, now that every work-breakdown row has landed and no member refuses by naming one) and from
         // GpuBackendProviderMissingException, which is about the WIRING. That three-way split is decision V-I4.
-        static NotSupportedException ThisMachineCannot(string missing)
-            => new("The native Vulkan backend cannot create a device on this machine: " + missing
+        static VulkanBackendCreationUnsupportedException ThisMachineCannot(string missing)
+            => new(VulkanBackendCreationRefusal.MachineUnsupported, "The native Vulkan backend cannot create a device on this machine: " + missing
                 + ". This is a statement about the MACHINE rather than about the package, which returns a real "
                 + "device on both its headless and its windowed path wherever the probe answers yes. It is the "
                 + "same question GpuBackendSelector.IsBackendSupported answers without creating anything, asked "
                 + "here so a machine that cannot run the backend refuses instead of failing partway into "
-                + "creation.");
+                + "creation.")
+            { MissingRequirement = missing, Probe = "GpuBackendSelector.IsBackendSupported", DriverPackage = missing.Contains(VulkanSupportProbe.NoDriverInstalled, StringComparison.Ordinal) ? "mesa-vulkan-drivers" : null };
     }
 }

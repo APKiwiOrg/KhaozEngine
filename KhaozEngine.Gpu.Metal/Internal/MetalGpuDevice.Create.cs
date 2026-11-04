@@ -97,7 +97,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
             if (settings is null) ReportValidation();
 
             MetalSelectedDevice selected = MetalDeviceEnumeration.AcquireSelected(settings?.Device);
-            if (selected.Device.IsNull) throw NoEligibleDevice(selected);
+            MetalBackendCreationChecks.RequireEligibleDeviceForTests(!selected.Device.IsNull, selected.NoDeviceDetail);
 
             log.Info(selected.LogLine);
             if (selected.Warning is not null) log.Warn(selected.Warning);
@@ -133,7 +133,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
             // order the observable order. No second queue and no async compute: #534's argument transfers with
             // the FFT ocean as the same named consumer.
             MTLCommandQueue queue = device.NewCommandQueue();
-            if (queue.IsNull) throw NoQueue(selected.Facts.DeviceName);
+            MetalBackendCreationChecks.RequireCommandQueueForTests(!queue.IsNull, selected.Facts.DeviceName);
 
             var liveness = new DeviceLiveness();
             var loss = new MetalDeviceLossLatch(liveness);
@@ -331,15 +331,5 @@ namespace KhaozEngine.Gpu.Metal.Internal
             }
         }
 
-        static InvalidOperationException NoEligibleDevice(in MetalSelectedDevice selected)
-            => new("No Metal device on this machine can run the native Metal backend, on a machine whose support "
-                + "probe answered yes. " + (selected.NoDeviceDetail ?? "No reason was recorded.")
-                + " The probe and this call go through the same acquisition and ask the same requirement method, "
-                + "so a disagreement means the machine changed between them.");
-
-        static InvalidOperationException NoQueue(string deviceName)
-            => new("The Metal device '" + deviceName + "' would not create a command queue. That is a device "
-                + "under resource pressure rather than a device below the floor, since -newCommandQueue is the "
-                + "first allocation this backend makes and it takes no arguments to get wrong.");
     }
 }

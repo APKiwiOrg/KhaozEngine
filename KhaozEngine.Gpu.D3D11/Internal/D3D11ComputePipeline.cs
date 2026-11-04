@@ -44,11 +44,19 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         {
             if (description.Shader is not D3D11ComputeShader shader)
             {
-                throw new ArgumentException(
+                throw new GpuResourceOwnershipArgumentException(description.Shader is null ? GpuResourceOwnershipRefusal.MissingResource : GpuResourceOwnershipRefusal.ForeignBackend,
                     "A compute pipeline for the native Direct3D 11 backend needs a compute shader this backend "
                     + "compiled. A shader from another backend holds another backend's compiled module, and "
                     + "CSSetShader takes an ID3D11ComputeShader.",
-                    nameof(description));
+                    nameof(description))
+                {
+                    ExpectedBackend = GpuBackendKind.Direct3D11Native,
+                    ActualType = description.Shader?.GetType(),
+                    ExpectedType = typeof(D3D11ComputeShader),
+                    Context = "compute pipeline",
+                    ResourceKind = "compute shader",
+                    PipelineKind = "compute",
+                };
             }
 
             Shader = shader;

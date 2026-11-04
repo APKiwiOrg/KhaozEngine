@@ -1,6 +1,7 @@
 using System;
 using System.Linq;
 using KhaozEngine.Gpu;
+using KhaozEngine.Gpu.Vulkan;
 using KhaozEngine.Gpu.Vulkan.Internal;
 using Xunit;
 
@@ -153,11 +154,12 @@ namespace KhaozEngine.Tests.Gpu
         {
             var fixture = new VulkanResourceFixture();
 
-            ArgumentException ex = Assert.Throws<ArgumentException>(() => fixture.Factory.CreateBuffer(
+            GpuBufferUsageArgumentException ex = Assert.Throws<GpuBufferUsageArgumentException>(() => fixture.Factory.CreateBuffer(
                 new GpuBufferDescription(256, GpuBufferUsage.UniformBuffer | GpuBufferUsage.VertexBuffer)));
 
-            Assert.Contains("RING-BACKED", ex.Message, StringComparison.Ordinal);
-            Assert.Contains("documented divergence", ex.Message, StringComparison.Ordinal);
+            Assert.Equal(GpuBufferUsageRefusal.UniformBindingCombination, ex.Reason);
+            Assert.Equal(GpuBufferUsage.UniformBuffer | GpuBufferUsage.VertexBuffer, ex.Usage);
+            Assert.Equal(GpuBufferUsage.VertexBuffer, ex.ConflictingUsage);
             Assert.Empty(fixture.ResourceApi.Events);
             Assert.Equal(0, fixture.MemoryApi.AllocateCount);
         }

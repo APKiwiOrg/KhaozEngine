@@ -1,5 +1,6 @@
 using System;
 using System.Threading.Tasks;
+using KhaozEngine.Gpu.Vulkan;
 using KhaozEngine.Gpu.Vulkan.Internal;
 using Xunit;
 
@@ -181,11 +182,13 @@ namespace KhaozEngine.Tests.Gpu
             Assert.True(pump.IsLatched);
             Assert.Single(log.Errors);
 
-            InvalidOperationException ex = Assert.Throws<InvalidOperationException>(
+            var ex = Assert.Throws<VulkanValidationException>(
                 () => pump.ThrowIfLatched("vkCreateDevice"));
 
-            Assert.Contains("vkCreateDevice", ex.Message, StringComparison.Ordinal);
-            Assert.Contains("the descriptor set is not bound", ex.Message, StringComparison.Ordinal);
+            Assert.Equal(VulkanValidationRefusal.StrictErrorLatched, ex.Reason);
+            Assert.Equal("vkCreateDevice", ex.Site);
+            Assert.Contains("the descriptor set is not bound", ex.Diagnostic, StringComparison.Ordinal);
+            Assert.IsAssignableFrom<InvalidOperationException>(ex);
         }
 
         /// <summary>A warning never latches, on any rung. <c>strict</c> is about errors, and latching on a
@@ -212,10 +215,13 @@ namespace KhaozEngine.Tests.Gpu
             pump.Report(Error("the first one", id: 1, name: "VUID-first"));
             pump.Report(Error("the second one", id: 2, name: "VUID-second"));
 
-            InvalidOperationException ex = Assert.Throws<InvalidOperationException>(
+            var ex = Assert.Throws<VulkanValidationException>(
                 () => pump.ThrowIfLatched("WaitForIdle"));
 
-            Assert.Contains("the first one", ex.Message, StringComparison.Ordinal);
+            Assert.Equal(VulkanValidationRefusal.StrictErrorLatched, ex.Reason);
+            Assert.Contains("the first one", ex.Diagnostic, StringComparison.Ordinal);
+            Assert.Equal(1, ex.MessageId);
+            Assert.Equal("VUID-first", ex.MessageIdName);
             Assert.DoesNotContain("the second one", ex.Message, StringComparison.Ordinal);
         }
 

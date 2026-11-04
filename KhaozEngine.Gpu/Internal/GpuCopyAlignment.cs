@@ -48,14 +48,15 @@ namespace KhaozEngine.Gpu.Internal
         /// <param name="what">What the caller was doing, as a sentence opener ("A native Metal buffer copy").
         /// </param>
         /// <param name="side">Which end of the copy the offset belongs to ("source" or "destination").</param>
-        /// <exception cref="ArgumentOutOfRangeException">The offset is not a multiple of
+        /// <param name="payloadBytes">The upload payload size, when supplied by an upload caller.</param>
+        /// <exception cref="GpuCopyAlignmentException">The offset is not a multiple of
         /// <see cref="Bytes"/>.</exception>
         internal static void RequireAlignedOffset(ulong offsetBytes, string parameterName, string what,
-            string side)
+            string side, uint? payloadBytes = null)
         {
             if (IsAligned(offsetBytes)) return;
 
-            throw new ArgumentOutOfRangeException(parameterName, offsetBytes,
+            throw new GpuCopyAlignmentException(GpuCopyAlignmentRefusal.UnalignedOffset, parameterName, offsetBytes,
                 what + " was given a " + side + " offset of "
                 + offsetBytes.ToString(CultureInfo.InvariantCulture) + ", which is not a multiple of "
                 + Bytes.ToString(CultureInfo.InvariantCulture)
@@ -63,7 +64,14 @@ namespace KhaozEngine.Gpu.Internal
                 + "copyFromBuffer:sourceOffset:toBuffer:destinationOffset:size: requires it on macOS and a seam "
                 + "member that succeeds on three backends and throws on the fourth is a trap a consumer finds on "
                 + "a user's machine (#602). Align the offset, or write the buffer through the device-level "
-                + "UpdateBuffer instead, which is a plain copy with no blit behind it.");
+                + "UpdateBuffer instead, which is a plain copy with no blit behind it.")
+            {
+                Context = what,
+                Side = side,
+                AlignmentBytes = Bytes,
+                PayloadBytes = payloadBytes,
+                RecoveryOperation = "IGpuDevice.UpdateBuffer",
+            };
         }
     }
 }

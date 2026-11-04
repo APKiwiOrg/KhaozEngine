@@ -1,3 +1,4 @@
+using KhaozEngine.Gpu.D3D11;
 using System;
 using KhaozEngine.Gpu;
 using KhaozEngine.Gpu.D3D11.Internal;
@@ -201,7 +202,7 @@ namespace KhaozEngine.Tests.Gpu
             submitter.Submit();
 
             lock (harness.SubmitLock)
-                Assert.Throws<InvalidOperationException>(() => harness.Ring.Write(0, Second));
+                Assert.Equal(D3D11WaitPolicyRefusal.SubmitLockHeld, Assert.Throws<D3D11WaitPolicyException>(() => harness.Ring.Write(0, Second)).Reason);
             Assert.Equal(0, harness.Allocator.CurrentSegment);
             Assert.Equal(First, Segment(harness, 0));
 

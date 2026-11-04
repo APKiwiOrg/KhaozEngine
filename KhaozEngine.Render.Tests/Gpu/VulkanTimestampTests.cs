@@ -1,3 +1,4 @@
+using KhaozEngine.Gpu.Vulkan;
 using System;
 using KhaozEngine.Gpu;
 using KhaozEngine.Gpu.Internal;
@@ -110,7 +111,7 @@ namespace KhaozEngine.Tests.Gpu
             var api = new FakeTimestampApi();
             Assert.False(Capabilities(bits, period).SupportsTimestamps);
             var factory = Factory(rig, api, bits, period);
-            Assert.Throws<NotSupportedException>(() => factory.CreateTimestampPool(3));
+            Assert.Equal(GpuTimestampRefusal.TimestampUnsupported, Assert.Throws<GpuTimestampUnsupportedException>(() => factory.CreateTimestampPool(3)).Reason);
             Assert.Equal(0, api.CreateCalls);
         }
 
@@ -126,30 +127,30 @@ namespace KhaozEngine.Tests.Gpu
             using var list = List(rig);
             using var fence = rig.Timeline.CreateFence();
             Assert.Equal(3u, pool.Capacity);
-            Assert.Throws<InvalidOperationException>(() => pool.TryResolve(fence, new ulong[3], out _));
-            Assert.Throws<InvalidOperationException>(() => list.BeginTimestamps(pool, 3));
+            Assert.Equal(GpuTimestampRefusal.BatchNotEnded, Assert.Throws<GpuTimestampStateException>(() => pool.TryResolve(fence, new ulong[3], out _)).Reason);
+            Assert.Equal(GpuRecordingStateRefusal.CommandOutsideRecording, Assert.Throws<GpuRecordingStateException>(() => list.BeginTimestamps(pool, 3)).Reason);
             list.Begin();
             Assert.Throws<ArgumentOutOfRangeException>(() => list.BeginTimestamps(pool, 4));
             list.BeginTimestamps(pool, 3);
-            Assert.Throws<InvalidOperationException>(() => list.EndTimestamps(pool));
-            Assert.Throws<InvalidOperationException>(() => list.WriteTimestamp(pool, 1));
+            Assert.Equal(GpuTimestampRefusal.IncompleteBatch, Assert.Throws<GpuTimestampStateException>(() => list.EndTimestamps(pool)).Reason);
+            Assert.Equal(GpuTimestampRefusal.IndexOutOfSequence, Assert.Throws<GpuTimestampStateException>(() => list.WriteTimestamp(pool, 1)).Reason);
             list.WriteTimestamp(pool, 0);
-            Assert.Throws<InvalidOperationException>(() => list.WriteTimestamp(pool, 0));
+            Assert.Equal(GpuTimestampRefusal.IndexOutOfSequence, Assert.Throws<GpuTimestampStateException>(() => list.WriteTimestamp(pool, 0)).Reason);
             list.WriteTimestamp(pool, 1);
             list.WriteTimestamp(pool, 2);
             list.EndTimestamps(pool);
-            Assert.Throws<InvalidOperationException>(() => list.BeginTimestamps(pool, 3));
+            Assert.Equal(GpuTimestampRefusal.UnresolvedBatch, Assert.Throws<GpuTimestampStateException>(() => list.BeginTimestamps(pool, 3)).Reason);
             fence.Arm(1);
             int polls = rig.Semaphore.ReadCount;
-            Assert.Throws<ArgumentException>(() => pool.TryResolve(fence, new ulong[2], out _));
+            Assert.Equal(GpuTimestampRefusal.OutputTooSmall, Assert.Throws<GpuTimestampArgumentException>(() => pool.TryResolve(fence, new ulong[2], out _)).Reason);
             Assert.Equal(polls, rig.Semaphore.ReadCount);
             Assert.Throws<ArgumentNullException>(() => pool.TryResolve(null!, new ulong[3], out _));
             var other = new VulkanResourceFixture();
             using var foreignFence = other.Timeline.CreateFence();
-            Assert.Throws<ArgumentException>(() => pool.TryResolve(foreignFence, new ulong[3], out _));
+            Assert.Throws<GpuResourceOwnershipArgumentException>(() => pool.TryResolve(foreignFence, new ulong[3], out _));
             using var foreignList = List(other);
             foreignList.Begin();
-            Assert.Throws<ArgumentException>(() => foreignList.BeginTimestamps(pool, 1));
+            Assert.Equal(GpuResourceOwnershipRefusal.DifferentDevice, Assert.Throws<GpuResourceOwnershipArgumentException>(() => foreignList.BeginTimestamps(pool, 1)).Reason);
             fence.Dispose();
             Assert.Throws<ObjectDisposedException>(() => pool.TryResolve(fence, new ulong[3], out _));
             Assert.Equal(0, api.ReadCalls);
@@ -233,11 +234,12 @@ namespace KhaozEngine.Tests.Gpu
             var api = new VulkanTimestampApi(vk, new Device(1), loss, alive);
             ulong handle = api.CreatePool(3);
             native.ReadResult = Result.ErrorDeviceLost;
-            Assert.Throws<InvalidOperationException>(() => api.TryRead(handle, 3, new ulong[3], new ulong[3]));
+            var ex = Assert.Throws<VulkanTimestampAdapterException>(() => api.TryRead(handle, 3, new ulong[3], new ulong[3]));
+            Assert.Equal(VulkanTimestampAdapterRefusal.NativeDeviceLost, ex.Reason);
+            Assert.Equal("vkGetQueryPoolResults (timestamps)", ex.Site);
             Assert.True(alive.IsDead);
-            Assert.Contains("vkGetQueryPoolResults", loss.Site);
-            Assert.Throws<InvalidOperationException>(() => api.Reset(1, handle, 3));
-            Assert.Throws<InvalidOperationException>(() => api.Write(1, handle, 0));
+            Assert.Equal(GpuTimestampRefusal.TimestampDeviceUnavailable, Assert.Throws<GpuTimestampStateException>(() => api.Reset(1, handle, 3)).Reason);
+            Assert.Equal(GpuTimestampRefusal.TimestampDeviceUnavailable, Assert.Throws<GpuTimestampStateException>(() => api.Write(1, handle, 0)).Reason);
             api.DestroyPool(handle);
             Assert.Equal(0, native.DestroyCalls);
 
@@ -247,7 +249,7 @@ namespace KhaozEngine.Tests.Gpu
             using var fence = rig.Timeline.CreateFence();
             Record(list, pool, 3);
             rig.Liveness.Kill();
-            Assert.Throws<InvalidOperationException>(() => pool.TryResolve(fence, new ulong[3], out _));
+            Assert.Equal(GpuTimestampRefusal.TimestampDeviceUnavailable, Assert.Throws<GpuTimestampStateException>(() => pool.TryResolve(fence, new ulong[3], out _)).Reason);
         }
 
         static GpuCapabilities Capabilities(int bits, double period)

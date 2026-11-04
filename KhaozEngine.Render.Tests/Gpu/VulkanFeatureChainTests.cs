@@ -1,4 +1,5 @@
 using System;
+using KhaozEngine.Gpu.Vulkan;
 using KhaozEngine.Gpu.Vulkan.Internal;
 using Xunit;
 
@@ -84,11 +85,14 @@ namespace KhaozEngine.Tests.Gpu
                 TimelineSemaphore = missing != "timelineSemaphore",
             };
 
-            NotSupportedException ex = Assert.Throws<NotSupportedException>(
+            var ex = Assert.Throws<VulkanFeatureException>(
                 () => VulkanFeatureChain.Select(support, "Old Radeon"));
 
-            Assert.Contains(missing, ex.Message, StringComparison.Ordinal);
-            Assert.Contains("Old Radeon", ex.Message, StringComparison.Ordinal);
+            Assert.Equal(VulkanFeatureRefusal.RequiredFeatureMissing, ex.Reason);
+            Assert.Equal(missing, ex.FeatureName);
+            Assert.Equal("Old Radeon", ex.DeviceName);
+            Assert.IsAssignableFrom<NotSupportedException>(ex);
+            VulkanFeatureChain.Select(Everything, "Old Radeon");
         }
 
         /// <summary>
@@ -105,10 +109,11 @@ namespace KhaozEngine.Tests.Gpu
                 GeometryShader: false, TessellationShader: false, MultiViewport: false,
                 DrawIndirectFirstInstance: false, ShaderFloat64: false);
 
-            NotSupportedException ex = Assert.Throws<NotSupportedException>(
+            var ex = Assert.Throws<VulkanFeatureException>(
                 () => VulkanFeatureChain.Select(support, "Old Radeon"));
 
-            Assert.Contains("dynamicRendering", ex.Message, StringComparison.Ordinal);
+            Assert.Equal(VulkanFeatureRefusal.RequiredFeatureMissing, ex.Reason);
+            Assert.Equal("dynamicRendering", ex.FeatureName);
             Assert.DoesNotContain("synchronization2", ex.Message, StringComparison.Ordinal);
         }
 
@@ -186,10 +191,11 @@ namespace KhaozEngine.Tests.Gpu
         {
             VulkanFeatureSupport support = Everything with { TimelineSemaphore = false };
 
-            NotSupportedException ex = Assert.Throws<NotSupportedException>(
+            var ex = Assert.Throws<VulkanFeatureException>(
                 () => VulkanFeatureChain.Select(support, "   "));
 
-            Assert.Contains("this device", ex.Message, StringComparison.Ordinal);
+            Assert.Equal(VulkanFeatureRefusal.RequiredFeatureMissing, ex.Reason);
+            Assert.Equal("   ", ex.DeviceName);
         }
     }
 }

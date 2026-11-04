@@ -131,7 +131,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
 
             if (encoder == IntPtr.Zero)
             {
-                throw new InvalidOperationException(
+                throw new MetalBindRecordsStateException(MetalBindRecordsRefusal.EncoderMissing,
                     "A native Metal vertex-stream flush was given a nil encoder. A message to nil is a silent "
                     + "no-op in Objective-C, so the streams would go nowhere and their records would read as "
                     + "bound. The pass schedule answers IntPtr.Zero for M-W5's orphan target, and a draw owes "

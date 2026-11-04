@@ -50,10 +50,11 @@ namespace KhaozEngine.Tests.Gpu
             object mine = new();
             object theirs = new();
 
-            ArgumentException thrown =
-                Assert.Throws<ArgumentException>(() => MetalGpuDevice.RequireList(NewList(theirs), mine));
+            GpuResourceOwnershipArgumentException thrown =
+                Assert.Throws<GpuResourceOwnershipArgumentException>(() => MetalGpuDevice.RequireList(NewList(theirs), mine));
 
             Assert.Equal("cl", thrown.ParamName);
+            Assert.Equal(GpuResourceOwnershipRefusal.DifferentDevice, thrown.Reason);
         }
 
         /// <summary>And the arm that always worked, in the shape it actually turns up in: a decorator that WRAPS
@@ -66,7 +67,7 @@ namespace KhaozEngine.Tests.Gpu
             using MetalCommandList real = NewList(device);
             using RecordingGpuCommandList wrapper = new(real);
 
-            Assert.Throws<ArgumentException>(() => MetalGpuDevice.RequireList(wrapper, device));
+            Assert.Throws<GpuResourceOwnershipArgumentException>(() => MetalGpuDevice.RequireList(wrapper, device));
         }
 
         [Fact]
@@ -90,11 +91,11 @@ namespace KhaozEngine.Tests.Gpu
             MetalTimeline theirs = new(new FakeMetalSharedEvent());
             using MetalGpuFence foreign = theirs.CreateFence();
 
-            ArgumentException thrown =
-                Assert.Throws<ArgumentException>(() => MetalGpuDevice.RequireFence(foreign, mine));
+            GpuResourceOwnershipArgumentException thrown =
+                Assert.Throws<GpuResourceOwnershipArgumentException>(() => MetalGpuDevice.RequireFence(foreign, mine));
 
             Assert.Equal("fence", thrown.ParamName);
-            Assert.Contains("names no value on this device's timeline", thrown.Message, StringComparison.Ordinal);
+            Assert.Equal(GpuResourceOwnershipRefusal.DifferentDevice, thrown.Reason);
 
             // And it was never armed, so the wrong counter was never written into it.
             Assert.Equal(0UL, foreign.Target);
@@ -105,7 +106,7 @@ namespace KhaozEngine.Tests.Gpu
         {
             MetalTimeline timeline = new(new FakeMetalSharedEvent());
 
-            Assert.Throws<ArgumentException>(
+            Assert.Throws<GpuResourceOwnershipArgumentException>(
                 () => MetalGpuDevice.RequireFence(new AlwaysSignaledFence(), timeline));
         }
 

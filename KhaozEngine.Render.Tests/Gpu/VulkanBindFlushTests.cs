@@ -415,8 +415,12 @@ namespace KhaozEngine.Tests.Gpu
             VulkanResourceSet set = harness.Set("Beam");
             var records = new VulkanBindRecords(PipelineBindPoint.Graphics);
 
-            ArgumentException refused = Assert.Throws<ArgumentException>(() => records.Record(0, set, 256));
-            Assert.Contains("V-D4", refused.Message, StringComparison.Ordinal);
+            var refused = Assert.Throws<GpuDynamicBindingException>(() => records.Record(0, set, 256));
+            Assert.Equal(GpuDynamicBindingRefusal.DynamicElementMissing, refused.Reason);
+            Assert.Equal(GpuBackendKind.VulkanNative, refused.Backend);
+            Assert.Equal(0u, refused.Set);
+            Assert.Equal(256u, refused.DynamicOffset);
+            Assert.Equal("dynamicOffset", refused.ParamName);
 
             records.Record(0, set, 0);
             Assert.True(records.IsDirty(0));
@@ -484,7 +488,7 @@ namespace KhaozEngine.Tests.Gpu
             using VulkanCommandList list = harness.Fixture.CreateList();
             list.Begin();
 
-            Assert.Throws<ArgumentException>(() => list.SetGraphicsResourceSet(0, new ForeignResourceSet()));
+            Assert.Throws<GpuResourceOwnershipArgumentException>(() => list.SetGraphicsResourceSet(0, new ForeignResourceSet()));
         }
 
         /// <summary>

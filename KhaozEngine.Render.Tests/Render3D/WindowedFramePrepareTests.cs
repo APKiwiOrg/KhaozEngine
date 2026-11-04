@@ -146,9 +146,7 @@ namespace KhaozEngine.Tests.Render3D
 
             Assert.Equal("the window's frame list", ex.Owner);
             Assert.Contains("ocean", ex.Attempted);
-            // Both halves of the diagnosis reach the reader, and the message names the fix rather than the symptom.
-            Assert.Contains("the window's frame list", ex.Message);
-            Assert.Contains("pre-record phase", ex.Message);
+            Assert.Equal(GpuNestedRecordingRefusal.RecordingAlreadyOpen, ex.Reason);
             // And the refusal left nothing half-open: the frame's own list still closed on the way out.
             Assert.Equal(0, device.OpenLists);
             Assert.Equal(1, device.PeakOpenLists);

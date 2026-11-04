@@ -147,7 +147,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
             // M-N5's one pool for the pass opening, the bind flush and the draw. See the type remarks.
             using ObjCAutoreleasePool pool = ObjCAutoreleasePool.Enter();
 
-            MetalGraphicsPipeline pipeline = BeginDraw("Drawing", out IntPtr encoder);
+            MetalGraphicsPipeline pipeline = BeginDraw("Drawing", nameof(IGpuCommandList.Draw), out IntPtr encoder);
             if (encoder == IntPtr.Zero) return;
 
             if (KhaozEngineMetal.IsPlatformSupported && _sink is MetalEncoderSink native)
@@ -197,7 +197,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
             if (_indices.DrawRefusal() is { } refusal) throw new InvalidOperationException(refusal);
 
             ResolveDeferredDrawable();
-            IntPtr encoder = _passes.PrepareDraw();
+            IntPtr encoder = _passes.PrepareDraw(nameof(IGpuCommandList.DrawIndexed));
             if (encoder == IntPtr.Zero) return;
 
             if (KhaozEngineMetal.IsPlatformSupported && _sink is MetalEncoderSink native)
@@ -334,12 +334,12 @@ namespace KhaozEngine.Gpu.Metal.Internal
         // THE FIRST STEP, plus the two things every graphics command needs true. Every refusal is spent BEFORE
         // the pass opens, which is why the two halves are separate members: DrawIndexed has a third refusal of its
         // own and it belongs between them.
-        MetalGraphicsPipeline BeginDraw(string what, out IntPtr encoder)
+        MetalGraphicsPipeline BeginDraw(string what, string command, out IntPtr encoder)
         {
             MetalGraphicsPipeline pipeline = RequireGraphicsPipeline(what);
 
             ResolveDeferredDrawable();
-            encoder = _passes.PrepareDraw();
+            encoder = _passes.PrepareDraw(command);
             return pipeline;
         }
 

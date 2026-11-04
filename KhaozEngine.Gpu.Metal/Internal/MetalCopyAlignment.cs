@@ -76,10 +76,11 @@ namespace KhaozEngine.Gpu.Metal.Internal
         /// <param name="what">What the caller was doing, as a sentence opener ("A native Metal buffer copy").
         /// </param>
         /// <param name="side">Which end of the copy the offset belongs to ("source" or "destination").</param>
-        /// <exception cref="System.ArgumentOutOfRangeException">The offset is not a multiple of
+        /// <param name="payloadBytes">The upload payload size, if this is an upload refusal.</param>
+        /// <exception cref="GpuCopyAlignmentException">The offset is not a multiple of
         /// <see cref="Bytes"/>.</exception>
         internal static void RequireAlignedOffset(ulong offsetBytes, string parameterName, string what,
-            string side)
-            => GpuCopyAlignment.RequireAlignedOffset(offsetBytes, parameterName, what, side);
+            string side, uint? payloadBytes = null)
+            => GpuCopyAlignment.RequireAlignedOffset(offsetBytes, parameterName, what, side, payloadBytes);
     }
 }

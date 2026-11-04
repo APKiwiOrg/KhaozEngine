@@ -32,7 +32,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         {
             RequireLive();
             if (!ReferenceEquals(_recordingList, list) || _recordingId != recordingId)
-                throw new InvalidOperationException("The timestamp pool must be begun on this list in its current recording.");
+                throw new GpuTimestampStateException(GpuTimestampRefusal.WrongRecording, "The timestamp pool must be begun on this list in its current recording.") { Backend = GpuBackendKind.VulkanNative, Command = nameof(ValidateTimestampEnd), RecordingId = recordingId };
             RequireRecording(commandBuffer);
             state.ValidateTimestampEnd(finalIndex);
         }
@@ -60,14 +60,14 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         internal static void RequireDeviceLive(VulkanTimeline timeline)
         {
             if (timeline.IsDeviceDead)
-                throw new InvalidOperationException("The native Vulkan timestamp device is disposed or lost.");
+                throw new GpuTimestampStateException(GpuTimestampRefusal.TimestampDeviceUnavailable, "The native Vulkan timestamp device is disposed or lost.") { Backend = GpuBackendKind.VulkanNative };
         }
 
-        void RequireRecording(ulong commandBuffer)
+        void RequireRecording(ulong commandBuffer, [System.Runtime.CompilerServices.CallerMemberName] string member = "")
         {
             RequireLive();
             if (Ended || commandBuffer != _recordingBuffer)
-                throw new InvalidOperationException("Write and end a timestamp batch in the command buffer that began it.");
+                throw new GpuTimestampStateException(GpuTimestampRefusal.WrongRecording, "Write and end a timestamp batch in the command buffer that began it.") { Backend = GpuBackendKind.VulkanNative, Command = member };
         }
     }
 }

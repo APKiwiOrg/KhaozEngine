@@ -1,6 +1,7 @@
 using System;
 using System.Linq;
 using KhaozEngine.Gpu;
+using KhaozEngine.Gpu.D3D11;
 using KhaozEngine.Gpu.D3D11.Internal;
 using KhaozEngine.Gpu.Internal;
 using Xunit;
@@ -173,7 +174,10 @@ public sealed partial class RendererPerfD3D11DiagnosticsTests
         Assert.Contains("not requested", report.Reason);
         var result = pipeline.ReadCompilerReport(D3D11PipelineDiagnostics.Request, _ => { }, default);
         Assert.Same(api.Failure, result.Failures[0].Error);
-        Assert.Contains("not captured", result.Failures[1].Error.Message);
+        Assert.Equal(2, result.Failures.Length);
+        var error = Assert.IsType<D3D11CompilerEvidenceStateException>(result.Failures[1].Error);
+        Assert.Equal(D3D11CompilerEvidenceRefusal.ReflectionNotCaptured, error.Reason);
+        Assert.Equal(GpuShaderStages.Vertex, error.MissingStages);
     }
 
     [Fact]

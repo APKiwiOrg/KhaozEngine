@@ -4,10 +4,24 @@ All notable changes to KhaozEngine. One shared version line `<KhaozEngineVersion
 governs every package, including the four umbrella metapackages. Planned work lives in the repo's GitHub
 Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
-## 21.24.1
+## 21.25.0
 
 2026-11-04
 
+- Reduce Mac CPU frame time in scenes with thousands of draws by indexing split-frame read footprints.
+  Overlapping CPU writes and writable maps keep the same refusals, with no steady-frame allocation (#1692).
+- GPU refusals carry a public reason enum and the identifiers callers need, so code and tests tell refusals
+  apart by `Reason` instead of message text. Shared `IGpu*` contract rules live in `KhaozEngine.Gpu` and
+  every backend throws the same reason for the same input, for example `GpuRecordingStateRefusal`,
+  `GpuResourceOwnershipRefusal`, `GpuBoundFramebufferRefusal`, `GpuDynamicBindingRefusal` and
+  `GpuBackendCreationRefusal`. Rules one backend owns are families in `KhaozEngine.Gpu.D3D11`,
+  `KhaozEngine.Gpu.Metal` and `KhaozEngine.Gpu.Vulkan`. Each package README lists its reasons and identifiers.
+- Each new refusal exception derives from the type thrown before, keeps `ParamName` and `ActualValue`, and has
+  a non-nullable `Reason`. Existing `catch` clauses still match, and messages are unchanged.
+- `ShaderValidationException`, `GpuBackendProviderMissingException`, `GpuNoUsableBackendException`,
+  `GpuNestedRecordingException` and `GpuBackendRetiredException` keep their constructors and gain reason
+  constructors, a `Reason` that is null only for an instance built through a message-only constructor outside
+  the engine, and identifier properties. Collection identifiers are read-only snapshots.
 - `scripts/check-test-health.sh` reports the solution and every tracked xunit project outside it, found with
   `git ls-files`, instead of a fixed list. `KhaozEngine.MapDoc.OracleHarness.Tests` had been left out and
   failed its own build. Its existing message assertions have catch-up entries in `.testhealth-baseline`. The

@@ -32,7 +32,9 @@ namespace KhaozEngine.Gpu.Metal.Internal
         /// </para>
         /// <para>
         /// AN <c>End</c> WITHOUT A <c>Begin</c> IS REFUSED, including a second <c>End</c> on an already sealed
-        /// list, and the message says which of the two happened.
+        /// list. <see cref="GpuRecordingStateException.Reason"/> distinguishes
+        /// <see cref="GpuRecordingStateRefusal.EndWithoutRecording"/> from
+        /// <see cref="GpuRecordingStateRefusal.RecordingAlreadySealed"/>.
         /// </para>
         /// </remarks>
         public void End()
@@ -44,10 +46,10 @@ namespace KhaozEngine.Gpu.Metal.Internal
 
             if (!_recording)
             {
-                throw new InvalidOperationException(_sealed
+                throw new GpuRecordingStateException(_sealed ? GpuRecordingStateRefusal.RecordingAlreadySealed : GpuRecordingStateRefusal.EndWithoutRecording, _sealed
                     ? "End was called twice on a native Metal command list. The recording is already sealed and "
                         + "ready to submit."
-                    : "End was called on a native Metal command list that is not recording. Call Begin first.");
+                    : "End was called on a native Metal command list that is not recording. Call Begin first.") { Backend = GpuBackendKind.MetalNative, Command = nameof(End) };
             }
 
             try

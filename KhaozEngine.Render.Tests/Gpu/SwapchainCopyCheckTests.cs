@@ -28,12 +28,16 @@ namespace KhaozEngine.Tests.Gpu
         {
             var destination = new FakeTexture(640, 360, 1, 1, GpuPixelFormat.B8G8R8A8UNorm);
 
-            var refusal = Assert.Throws<ArgumentException>(
+            var refusal = Assert.Throws<GpuSwapchainCopyArgumentException>(
                 () => SwapchainCopyCheck.RequireDestination(Swapchain, destination));
 
             Assert.Equal("destination", refusal.ParamName);
-            Assert.Contains("640x360", refusal.Message, StringComparison.Ordinal);
-            Assert.Contains("1280x720", refusal.Message, StringComparison.Ordinal);
+            Assert.IsAssignableFrom<ArgumentException>(refusal);
+            Assert.Equal(GpuSwapchainCopyRefusal.DestinationShapeMismatch, refusal.Reason);
+            Assert.Equal(640u, refusal.DestinationWidth);
+            Assert.Equal(360u, refusal.DestinationHeight);
+            Assert.Equal(1280u, refusal.SourceWidth);
+            Assert.Equal(720u, refusal.SourceHeight);
         }
 
         [Fact]
@@ -41,12 +45,30 @@ namespace KhaozEngine.Tests.Gpu
         {
             var destination = new FakeTexture(1280, 720, 1, 1, GpuPixelFormat.R8G8B8A8UNorm);
 
-            var refusal = Assert.Throws<ArgumentException>(
+            var refusal = Assert.Throws<GpuSwapchainCopyArgumentException>(
                 () => SwapchainCopyCheck.RequireDestination(Swapchain, destination));
 
             Assert.Equal("destination", refusal.ParamName);
-            Assert.Contains(nameof(GpuPixelFormat.R8G8B8A8UNorm), refusal.Message, StringComparison.Ordinal);
-            Assert.Contains(nameof(GpuPixelFormat.B8G8R8A8UNorm), refusal.Message, StringComparison.Ordinal);
+            Assert.Equal(GpuSwapchainCopyRefusal.DestinationShapeMismatch, refusal.Reason);
+            Assert.Equal(GpuPixelFormat.R8G8B8A8UNorm, refusal.DestinationFormat);
+            Assert.Equal(GpuPixelFormat.B8G8R8A8UNorm, refusal.SourceFormat);
+        }
+
+        [Theory]
+        [InlineData(0)]
+        [InlineData(2)]
+        public void A_swapchain_requires_one_colour_attachment(int colourCount)
+        {
+            var formats = new GpuPixelFormat[colourCount];
+            Array.Fill(formats, GpuPixelFormat.B8G8R8A8UNorm);
+            var framebuffer = new FakeFramebuffer(new GpuOutputDescription(null, formats), 1280, 720);
+            var destination = new FakeTexture(1280, 720, 1, 1, GpuPixelFormat.B8G8R8A8UNorm);
+            var refusal = Assert.Throws<GpuSwapchainCopyArgumentException>(
+                () => SwapchainCopyCheck.RequireDestination(framebuffer, destination));
+            Assert.Equal(GpuSwapchainCopyRefusal.ColourAttachmentCount, refusal.Reason);
+            Assert.Equal("swapchain", refusal.ParamName);
+            Assert.Equal(colourCount, refusal.ColourAttachmentCount);
+            SwapchainCopyCheck.RequireDestination(Swapchain, destination);
         }
 
         [Fact]
@@ -55,9 +77,9 @@ namespace KhaozEngine.Tests.Gpu
             var mipped = new FakeTexture(1280, 720, 2, 1, GpuPixelFormat.B8G8R8A8UNorm);
             var multisampled = new FakeTexture(1280, 720, 1, 4, GpuPixelFormat.B8G8R8A8UNorm);
 
-            Assert.Equal("destination", Assert.Throws<ArgumentException>(
+            Assert.Equal("destination", Assert.Throws<GpuSwapchainCopyArgumentException>(
                 () => SwapchainCopyCheck.RequireDestination(Swapchain, mipped)).ParamName);
-            Assert.Equal("destination", Assert.Throws<ArgumentException>(
+            Assert.Equal("destination", Assert.Throws<GpuSwapchainCopyArgumentException>(
                 () => SwapchainCopyCheck.RequireDestination(Swapchain, multisampled)).ParamName);
         }
     }

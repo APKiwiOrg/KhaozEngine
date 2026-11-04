@@ -57,10 +57,22 @@ Retirement removes protection without clearing a footprint reclaimed by a later 
 never chooses a fresh footprint from a shared pool. Frame records are stored by value in ring-sized storage,
 and mapping lease lists return to a pool after the outermost unmap.
 
-Within a footprint, dictionaries and range lists retain their capacity across recordings. Range lists keep
-stable recording positions instead of circulating through a LIFO pool, so alternating main and capture
-recordings with different resource counts cannot keep redistributing and growing already-warmed storage.
-A larger workload may grow storage during warm-up. Steady frames never pay for those containers again.
+Within a footprint, each resource has reusable AVL indexes for contiguous and strided reads. Contiguous
+intervals coalesce overlaps and adjacency without filling gaps. Strided entries deduplicate by their full
+read key and index their bounding spans, while overlap checks still test only the actual attribute bytes.
+Recording costs O(log n) per read, amortized across intervals removed by coalescing. A contiguous lookup
+costs O(log n). A strided lookup visits only candidate spans and their search paths, bounded by
+O((k + 1) log n), where k is the number of overlapping strided bounding spans examined. Prefix
+publication queries that same index once per writable mapping rather than crossing every read with every
+mapping. No access scans all reads merely because the frame has many draws. This avoids the quadratic
+recording and access work that stalled draw-heavy Mac frames (#1692).
+
+Dictionaries and index node arrays retain their capacity across recordings. Index storage keeps stable
+recording positions instead of circulating through a LIFO pool, so alternating main and capture recordings
+with different resource counts cannot keep redistributing and growing already-warmed storage. Removed
+nodes are reused. A larger workload may grow storage during warm-up. Steady frames never pay for those
+containers again. The internal probe-step diagnostic counts index node examinations and rotations so the
+3,000-draw regression can bound work deterministically, without a wall-clock assertion.
 
 Publishing and CPU access share the submit lock. A writable mapping opened before the prefix must be unmapped
 before the prefix commits. A read-only mapping gives no write permission. Using a pointer after `Unmap` or

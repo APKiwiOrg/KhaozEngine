@@ -228,7 +228,12 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
             foreach (var completion in completions)
             {
                 if (completion is not VulkanGpuFence fence)
-                    throw new ArgumentException("A completion fence belongs to another backend.", nameof(completions));
+                    throw new GpuResourceOwnershipArgumentException(GpuResourceOwnershipRefusal.ForeignBackend, "A completion fence belongs to another backend.", nameof(completions))
+                    {
+                        ExpectedBackend = GpuBackendKind.VulkanNative,
+                        ActualType = completion?.GetType(),
+                        ResourceKind = "fence",
+                    };
                 fence.RequireOwner(_timeline, nameof(completions));
                 if (fence.Target != 0) throw new InvalidOperationException("Reset completion fences before submitting.");
             }

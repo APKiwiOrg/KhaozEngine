@@ -36,7 +36,7 @@ namespace KhaozEngine.Tests.Gpu
 
             Assert.False(list.IsRecording);
             Assert.False(list.IsSealed);
-            Assert.Throws<InvalidOperationException>(() => list.SealedBuffer);
+            Assert.Equal(GpuRecordingStateRefusal.SubmissionWithoutSeal, Assert.Throws<GpuRecordingStateException>(() => list.SealedBuffer).Reason);
         }
 
         /// <summary>
@@ -53,7 +53,7 @@ namespace KhaozEngine.Tests.Gpu
             list.Begin();
             int events = fixture.Api.Events.Count;
 
-            Assert.Throws<InvalidOperationException>(list.Begin);
+            Assert.Equal(GpuRecordingStateRefusal.BeginWhileRecording, Assert.Throws<GpuRecordingStateException>(list.Begin).Reason);
 
             Assert.Equal(events, fixture.Api.Events.Count);
             Assert.True(list.IsRecording);
@@ -68,14 +68,14 @@ namespace KhaozEngine.Tests.Gpu
             using var fixture = new Fixture();
             using VulkanCommandList list = fixture.CreateList();
 
-            InvalidOperationException never = Assert.Throws<InvalidOperationException>(list.End);
-            Assert.Contains("not recording", never.Message, StringComparison.Ordinal);
+            GpuRecordingStateException never = Assert.Throws<GpuRecordingStateException>(list.End);
+            Assert.Equal(GpuRecordingStateRefusal.EndWithoutRecording, never.Reason);
 
             list.Begin();
             list.End();
 
-            InvalidOperationException twice = Assert.Throws<InvalidOperationException>(list.End);
-            Assert.Contains("twice", twice.Message, StringComparison.Ordinal);
+            GpuRecordingStateException twice = Assert.Throws<GpuRecordingStateException>(list.End);
+            Assert.Equal(GpuRecordingStateRefusal.RecordingAlreadySealed, twice.Reason);
         }
 
         /// <summary>A disposed list answers ObjectDisposed on both lifecycle members, rather than reporting a
@@ -420,9 +420,7 @@ namespace KhaozEngine.Tests.Gpu
 
             foreach ((string member, Action<IGpuCommandList> call) in unbuilt)
             {
-                NotSupportedException refused = Assert.Throws<NotSupportedException>(() => call(list));
-                Assert.Contains("https://github.com/APKiwiOrg/KhaozEngine/issues/", refused.Message,
-                    StringComparison.Ordinal);
+                Assert.Throws<NotSupportedException>(() => call(list));
                 Assert.False(string.IsNullOrEmpty(member));
             }
         }

@@ -178,14 +178,19 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
             int declaredCount = declared?.Length ?? 0;
             if (declaredCount != colourCount)
             {
-                throw new ArgumentException(
+                throw new GpuPipelineOutputsException(GpuPipelineOutputsRefusal.BlendCountMismatch,
                     "A graphics pipeline declared " + declaredCount.ToString(CultureInfo.InvariantCulture)
                     + " blend attachment state(s) for " + colourCount.ToString(CultureInfo.InvariantCulture)
                     + " colour output(s). GpuPipelineDescription.BlendAttachments is one per colour output, and "
                     + "Vulkan requires the colour blend state's attachment count to equal the rendering "
                     + "create-info's, so neither dropping the extras nor inventing a state for an attachment "
                     + "nobody described is an answer this backend is willing to give.",
-                    nameof(declared));
+                    nameof(declared))
+                {
+                    DeclaredBlendCount = declaredCount,
+                    ColourOutputCount = colourCount,
+                    PipelineKind = "graphics",
+                };
             }
 
             // Copied rather than kept, because the spec holds it for the pipeline's creation and the array is the

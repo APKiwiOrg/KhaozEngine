@@ -119,10 +119,14 @@ namespace KhaozEngine.Gpu.Metal.Internal
         {
             if (layout is null)
             {
-                throw new ArgumentException(
+                throw new GpuResourceOwnershipArgumentException(GpuResourceOwnershipRefusal.MissingResource,
                     $"{what} was given no resource layout. Every element of a native Metal resource set is "
                     + "matched to a declared element positionally, so there is nothing to match against.",
-                    nameof(layout));
+                    nameof(layout))
+                {
+                    ResourceKind = nameof(MetalResourceLayout),
+                    Context = what,
+                };
             }
 
             MetalResourceLayout typed = MetalResourceOwnership.Require<MetalResourceLayout>(
@@ -130,11 +134,16 @@ namespace KhaozEngine.Gpu.Metal.Internal
 
             if (typed.IsDisposed)
             {
-                throw new ObjectDisposedException(
+                throw new GpuResourceOwnershipDisposedException(GpuResourceOwnershipRefusal.NativeHandleReleased,
                     nameof(MetalResourceLayout),
                     $"{what} was given a native Metal resource layout that is already disposed. A layout releases "
                     + "nothing on this backend, so the call would work, which is exactly why the flag is checked "
-                    + "here: the caller believes the declaration is still theirs to build against.");
+                    + "here: the caller believes the declaration is still theirs to build against.")
+                {
+                    NativeHandleKind = nameof(MetalResourceLayout),
+                    ResourceKind = nameof(MetalResourceLayout),
+                    Context = what,
+                };
             }
 
             return typed;
@@ -156,13 +165,19 @@ namespace KhaozEngine.Gpu.Metal.Internal
 
             if (!element.Dynamic || space == MetalIndexSpace.Buffer) return;
 
-            throw new ArgumentException(
+            throw new GpuResourceLayoutException(GpuResourceLayoutRefusal.DynamicOffsetUnsupportedForKind,
                 $"{where} declares a {element.Kind} with a per-draw dynamic offset. On Metal the per-draw offset "
                 + "is applied with -setVertexBufferOffset:atIndex: or its stage sibling, which exists only in the "
                 + "[[buffer(n)]] space, so a dynamic offset on a texture or a sampler element has nowhere to go "
                 + "and would be silently dropped at every bind. Declare it on the buffer element the offset is "
                 + "meant for.",
-                nameof(element));
+                nameof(element))
+            {
+                Backend = GpuBackendKind.MetalNative,
+                ElementName = element.Name,
+                Binding = binding,
+                ResourceKind = element.Kind,
+            };
         }
 
         // THIS BACKEND IS WIDER THAN THE CONTRACT, AND THAT IS A DOCUMENTED SUPERSET RATHER THAN THE SEAM.

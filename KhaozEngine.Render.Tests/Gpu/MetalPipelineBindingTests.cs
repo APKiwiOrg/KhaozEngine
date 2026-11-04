@@ -191,8 +191,8 @@ namespace KhaozEngine.Tests.Gpu
 
             MetalGraphicsPipeline graphics = Pipeline();
             MetalComputePipeline compute = ComputePipeline();
-            Assert.Throws<InvalidOperationException>(() => list.SetPipeline(graphics));
-            Assert.Throws<InvalidOperationException>(() => list.SetComputePipeline(compute));
+            Assert.Equal(GpuRecordingStateRefusal.CommandOutsideRecording, Assert.Throws<GpuRecordingStateException>(() => list.SetPipeline(graphics)).Reason);
+            Assert.Equal(GpuRecordingStateRefusal.CommandOutsideRecording, Assert.Throws<GpuRecordingStateException>(() => list.SetComputePipeline(compute)).Reason);
 
             list.Begin();
             list.SetPipeline(graphics);
@@ -214,7 +214,7 @@ namespace KhaozEngine.Tests.Gpu
             list.Begin();
 
             Assert.Throws<ArgumentNullException>(() => list.SetPipeline(null!));
-            ArgumentException foreign = Assert.Throws<ArgumentException>(
+            GpuResourceOwnershipArgumentException foreign = Assert.Throws<GpuResourceOwnershipArgumentException>(
                 () => list.SetPipeline(Pipeline(new FakeMetalDeviceLiveness())));
             Assert.Equal("p", foreign.ParamName);
 
@@ -240,18 +240,23 @@ namespace KhaozEngine.Tests.Gpu
             MetalGraphicsPipeline graphics = Pipeline();
             graphics.Dispose();
 
-            ObjectDisposedException refused = Assert.Throws<ObjectDisposedException>(
+            GpuResourceOwnershipDisposedException refused = Assert.Throws<GpuResourceOwnershipDisposedException>(
                 () => list.SetPipeline(graphics));
+            Assert.IsAssignableFrom<ObjectDisposedException>(refused);
+            Assert.Equal(GpuResourceOwnershipRefusal.NativeHandleReleased, refused.Reason);
+            Assert.Equal("MTLRenderPipelineState, MTLDepthStencilState", refused.NativeHandleKind);
+            Assert.Equal(nameof(MetalGraphicsPipeline), refused.ResourceKind);
+            Assert.Equal("p", refused.Context);
             Assert.Equal(nameof(MetalGraphicsPipeline), refused.ObjectName);
-            Assert.Contains("MTLRenderPipelineState", refused.Message, StringComparison.Ordinal);
 
             MetalComputePipeline compute = ComputePipeline();
             compute.Dispose();
 
-            ObjectDisposedException refusedCompute = Assert.Throws<ObjectDisposedException>(
+            GpuResourceOwnershipDisposedException refusedCompute = Assert.Throws<GpuResourceOwnershipDisposedException>(
                 () => list.SetComputePipeline(compute));
+            Assert.Equal(GpuResourceOwnershipRefusal.NativeHandleReleased, refusedCompute.Reason);
+            Assert.Equal("MTLComputePipelineState", refusedCompute.NativeHandleKind);
             Assert.Equal(nameof(MetalComputePipeline), refusedCompute.ObjectName);
-            Assert.Contains("MTLComputePipelineState", refusedCompute.Message, StringComparison.Ordinal);
 
             // NOTHING WAS RECORDED BY EITHER, which is the half that would still be wrong if the refusal landed
             // after the record instead of before it.
@@ -275,8 +280,8 @@ namespace KhaozEngine.Tests.Gpu
             MetalShaderIndexTable table = graphics.Table;
             graphics.Dispose();
 
-            Assert.Throws<ObjectDisposedException>(() => graphics.RenderState);
-            Assert.Throws<ObjectDisposedException>(() => graphics.DepthStencilState);
+            Assert.Throws<GpuResourceOwnershipDisposedException>(() => graphics.RenderState);
+            Assert.Throws<GpuResourceOwnershipDisposedException>(() => graphics.DepthStencilState);
 
             // The plan is managed data that disposal released nothing of, so it still answers.
             Assert.Same(table, graphics.Table);
@@ -285,7 +290,7 @@ namespace KhaozEngine.Tests.Gpu
             MetalComputePipeline compute = ComputePipeline();
             compute.Dispose();
 
-            Assert.Throws<ObjectDisposedException>(() => compute.State);
+            Assert.Throws<GpuResourceOwnershipDisposedException>(() => compute.State);
             Assert.NotNull(compute.Table);
         }
 

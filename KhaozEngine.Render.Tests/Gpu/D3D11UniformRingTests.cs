@@ -67,7 +67,12 @@ namespace KhaozEngine.Tests.Gpu
         [InlineData(GpuBufferUsage.UniformBuffer | GpuBufferUsage.IndirectBuffer)]
         public void AUniformBufferCombinedWithAnotherBinding_IsRefusedAtCreation(GpuBufferUsage usage)
         {
-            ArgumentException ex = Assert.Throws<ArgumentException>(() => D3D11ViewPolicy.ForBuffer(usage));
+            GpuBufferUsageArgumentException ex = Assert.Throws<GpuBufferUsageArgumentException>(() => D3D11ViewPolicy.ForBuffer(usage));
+            Assert.Equal(GpuBufferUsageRefusal.UniformBindingCombination, ex.Reason);
+            Assert.Equal(usage, ex.Usage);
+            Assert.Equal(usage & ~(GpuBufferUsage.UniformBuffer | GpuBufferUsage.Dynamic), ex.ConflictingUsage);
+            Assert.IsAssignableFrom<ArgumentException>(ex);
+            D3D11ViewPolicy.ForBuffer(GpuBufferUsage.UniformBuffer);
 
             Assert.Equal("usage", ex.ParamName);
         }
@@ -304,8 +309,15 @@ namespace KhaozEngine.Tests.Gpu
         {
             using var harness = new D3D11RingHarness(sizeInBytes: 256, framesInFlight: 3);
 
-            Assert.Throws<ArgumentOutOfRangeException>(() => harness.Ring.Write(248, new byte[16]));
-            Assert.Throws<ArgumentOutOfRangeException>(() => harness.Ring.Write(256, new byte[1]));
+            var refusal = Assert.Throws<GpuBufferTransferRangeException>(() => harness.Ring.Write(248, new byte[16]));
+            Assert.Equal(GpuBufferTransferRefusal.WindowOutsideBuffer, refusal.Reason);
+            Assert.Equal("offsetBytes", refusal.ParamName);
+            Assert.Equal(248u, refusal.ActualValue);
+            Assert.Equal(248ul, refusal.OffsetBytes);
+            Assert.Equal(16L, refusal.SizeBytes);
+            Assert.Equal(256ul, refusal.BufferBytes);
+            Assert.IsAssignableFrom<ArgumentOutOfRangeException>(refusal);
+            Assert.Throws<GpuBufferTransferRangeException>(() => harness.Ring.Write(256, new byte[1]));
 
             // The last byte of the buffer is still writable, so the bound is exact rather than conservative.
             harness.Ring.Write(255, new byte[1] { 0xFF });

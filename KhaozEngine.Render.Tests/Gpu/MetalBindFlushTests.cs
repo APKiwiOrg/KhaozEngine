@@ -1,6 +1,7 @@
 using System;
 using System.Linq;
 using KhaozEngine.Gpu;
+using KhaozEngine.Gpu.Metal;
 using KhaozEngine.Gpu.Metal.Internal;
 using Xunit;
 using Xunit.Abstractions;
@@ -298,11 +299,16 @@ namespace KhaozEngine.Tests.Gpu
             Assert.NotEmpty(calls.ArrayWrites);
 
             records.Record(0, set, 256);
-            ArgumentOutOfRangeException thrown = Assert.Throws<ArgumentOutOfRangeException>(
+            GpuDynamicBindingRangeException thrown = Assert.Throws<GpuDynamicBindingRangeException>(
                 () => records.Flush(ref sink, Encoder, Epoch, segment: 0));
 
             Assert.Equal("range", thrown.ParamName);
             Assert.Equal(256u, thrown.ActualValue);
+            Assert.Equal(GpuDynamicBindingRefusal.WindowOutsideSegment, thrown.Reason);
+            Assert.Equal(0ul, thrown.RangeOffset);
+            Assert.Equal(256ul, thrown.DynamicOffset);
+            Assert.Equal(256ul, thrown.RangeBytes);
+            Assert.Equal(256ul, thrown.SegmentStride);
 
             // THE MARK SURVIVES, which is what turns a loud repeatable refusal into a loud repeatable refusal
             // rather than one throw followed by a frame of silence.
@@ -384,15 +390,22 @@ namespace KhaozEngine.Tests.Gpu
             // and therefore reaches the alignment check rather than the window one.
             records.Record(0, set, MetalBindProgram.DeviceOffsetAlignment / 2);
 
-            ArgumentOutOfRangeException thrown = Assert.Throws<ArgumentOutOfRangeException>(
+            var thrown = Assert.Throws<GpuDynamicBindingRangeException>(
                 () => records.Flush(ref sink, Encoder, Epoch, segment: 1));
 
             // ALL THREE COMPONENTS ARE NAMED, because the composed number on its own does not say which of them
             // to go and look at.
-            Assert.Contains("ring segment base", thrown.Message, StringComparison.Ordinal);
-            Assert.Contains("range offset", thrown.Message, StringComparison.Ordinal);
-            Assert.Contains("per-draw offset", thrown.Message, StringComparison.Ordinal);
-            Assert.Contains("16-byte buffer-offset alignment", thrown.Message, StringComparison.Ordinal);
+            Assert.Equal(GpuDynamicBindingRefusal.OffsetMisaligned, thrown.Reason);
+            Assert.Equal(264ul, thrown.ComposedOffset);
+            Assert.Equal(256ul, thrown.RingBase);
+            Assert.Equal(0ul, thrown.RangeOffset);
+            Assert.Equal(8ul, thrown.DynamicOffset);
+            Assert.Equal(16ul, thrown.AlignmentBytes);
+            Assert.Equal(64ul, thrown.RangeBytes);
+            Assert.Equal(256ul, thrown.SegmentStride);
+            Assert.Equal("dynamicOffset", thrown.ParamName);
+            Assert.Equal(8u, thrown.ActualValue);
+            Assert.IsAssignableFrom<ArgumentOutOfRangeException>(thrown);
 
             // AND THE REFUSAL IS A WHOLE-FLUSH REFUSAL like every other one on this path.
             Assert.True(records.IsDirty(0));
@@ -574,7 +587,7 @@ namespace KhaozEngine.Tests.Gpu
             records.Record(0, slotZero, 0);
             records.Record(1, slotOneRefused, 0);
 
-            Assert.Throws<ArgumentOutOfRangeException>(
+            Assert.Throws<GpuDynamicBindingRangeException>(
                 () => records.Flush(ref sink, Encoder, Epoch, segment: 0));
 
             Assert.Equal(0, records.StagedEntries);
@@ -632,7 +645,7 @@ namespace KhaozEngine.Tests.Gpu
             records.Flush(ref sink, Encoder, Epoch, segment: 0);
 
             records.Record(0, setB, 0);
-            Assert.Throws<ArgumentOutOfRangeException>(
+            Assert.Throws<GpuDynamicBindingRangeException>(
                 () => records.Flush(ref sink, Encoder, Epoch, segment: 0));
 
             // THE VERTEX STAGE REALLY DID LAND, which is what makes this row about a stale record rather than

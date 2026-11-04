@@ -188,7 +188,9 @@ namespace KhaozEngine.Tests.Gpu
                 () => GpuBackendProviders.Require((GpuBackendKind)9003));
 
             Assert.Equal((GpuBackendKind)9003, ex.Backend);
-            Assert.Contains("Register()", ex.Message, StringComparison.Ordinal);
+            Assert.Equal(GpuBackendProviderMissingRefusal.ProviderNotRegistered, ex.Reason);
+            Assert.Equal("KhaozEngine<Backend>.Register()", ex.RegistrationConvention);
+            Assert.Null(ex.RegistrationMethod);
         }
 
         // --- row 5: GpuBackendSelector.TryParseBackend ---
@@ -586,9 +588,10 @@ namespace KhaozEngine.Tests.Gpu
 
                 Assert.Equal(GpuBackendKind.Direct3D11Native, ex.Backend);
                 Assert.DoesNotContain("Metal", ex.Message);
-                // The actionable line stays THIS backend's own. Pinned once the second provider-backed backend
-                // arrived and the message stopped being able to name one entry point as though it were generic.
-                Assert.Contains("KhaozEngineD3D11.Register()", ex.Message, StringComparison.Ordinal);
+                // The known backend keeps its own remedy beside the generic convention.
+                Assert.Equal(GpuBackendProviderMissingRefusal.ProviderNotRegistered, ex.Reason);
+                Assert.Equal("KhaozEngine<Backend>.Register()", ex.RegistrationConvention);
+                Assert.Equal("KhaozEngineD3D11.Register()", ex.RegistrationMethod);
             }
         }
 

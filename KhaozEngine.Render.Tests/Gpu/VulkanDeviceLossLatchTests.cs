@@ -1,6 +1,7 @@
 using System;
 using System.Threading.Tasks;
 using KhaozEngine.Gpu.Internal;
+using KhaozEngine.Gpu.Vulkan;
 using KhaozEngine.Gpu.Vulkan.Internal;
 using Silk.NET.Vulkan;
 using Xunit;
@@ -222,12 +223,15 @@ namespace KhaozEngine.Tests.Gpu
             // A positive result is a SUCCESS code in Vulkan, which is the one that catches people out.
             VulkanResultCodes.Require(Result.Incomplete, "vkEnumeratePhysicalDevices");
 
-            InvalidOperationException ex = Assert.Throws<InvalidOperationException>(
+            var ex = Assert.Throws<VulkanResultException>(
                 () => VulkanResultCodes.Require(Result.ErrorIncompatibleDriver, "vkCreateInstance"));
 
             // VulkanResultCodes promises the call name verbatim and the stable result token in the message.
-            Assert.Contains("vkCreateInstance", ex.Message, StringComparison.Ordinal);
-            Assert.Contains("VK_ERROR_INCOMPATIBLE_DRIVER", ex.Message, StringComparison.Ordinal);
+            Assert.Equal(VulkanResultRefusal.NativeCallFailed, ex.Reason);
+            Assert.Equal("vkCreateInstance", ex.Call);
+            Assert.Equal((int)Result.ErrorIncompatibleDriver, ex.ResultCode);
+            Assert.Equal("VK_ERROR_INCOMPATIBLE_DRIVER", ex.ResultToken);
+            Assert.IsAssignableFrom<InvalidOperationException>(ex);
         }
 
         /// <summary><c>VK_SUBOPTIMAL_KHR</c> is a SUCCESS, which the swapchain row depends on and which is the
@@ -241,7 +245,7 @@ namespace KhaozEngine.Tests.Gpu
             Assert.False(VulkanResultCodes.IsDeviceLoss(Result.ErrorOutOfDeviceMemory));
         }
 
-        sealed class FakeFault(string? detail) : IVulkanDeviceFault
+        internal sealed class FakeFault(string? detail) : IVulkanDeviceFault
         {
             public string? DescribeFault() => detail;
         }

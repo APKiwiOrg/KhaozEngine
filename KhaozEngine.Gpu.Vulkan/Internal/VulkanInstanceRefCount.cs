@@ -136,8 +136,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         /// with no display server.
         /// <para>
         /// THE TEST IS SATISFACTION, NOT EQUALITY, and 17.40.0 is where that stopped being a distinction without
-        /// a difference. It was written as equality, which refused the ordering the refusal message itself
-        /// prescribes: a windowed instance's extension list is the headless one PLUS <c>VK_KHR_surface</c> and
+        /// a difference. Equality refused a compatible ordering: a windowed instance's extension list is the headless one PLUS <c>VK_KHR_surface</c> and
         /// one platform surface extension, so a headless device asked for while a windowed one is live already
         /// has everything it needs and asks for nothing the live instance lacks. Equality refused it anyway, so
         /// "create the windowed device first" resolved nothing and a Linux client that opened a window and then
@@ -165,7 +164,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
                     // The count is raised only AFTER creation succeeds. A throw here must leave the refcount at
                     // zero with no instance, or the next acquire would hand out a lease on nothing.
                     T created = _create(key);
-                    _live = created ?? throw new InvalidOperationException(
+                    _live = created ?? throw new VulkanInstanceStateException(VulkanInstanceRefusal.FactoryReturnedNull,
                         "The native Vulkan instance factory returned nothing. A factory that cannot create an "
                         + "instance must throw, so the failure carries a reason the fallback can log.");
                     _liveKey = key;
@@ -222,12 +221,13 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
             return live.Windowed && live.Window == asked.Window;
         }
 
-        static NotSupportedException MismatchedConfiguration(in VulkanInstanceKey live, in VulkanInstanceKey asked)
-            => new($"The native Vulkan backend has one process-wide VkInstance (decision V-N1) and it is already "
+        static VulkanInstanceUnsupportedException MismatchedConfiguration(in VulkanInstanceKey live, in VulkanInstanceKey asked)
+            => new(VulkanInstanceRefusal.ConfigurationIncompatible, $"The native Vulkan backend has one process-wide VkInstance (decision V-N1) and it is already "
                 + $"live for a different configuration. It was created as {Describe(live)} and this device asked "
                 + $"for {Describe(asked)}. A live instance's extension and layer lists are fixed at creation and "
                 + "Vulkan offers no way to add one afterwards, so this needs the other device released first. "
-                + "Create the windowed device before any headless one, or run them in separate processes.");
+                + "Create the windowed device before any headless one, or run them in separate processes.")
+            { LiveWindowed = live.Windowed, LiveWindowKind = live.Window, LiveValidationMode = (int)live.Validation, RequestedWindowed = asked.Windowed, RequestedWindowKind = asked.Window, RequestedValidationMode = (int)asked.Validation };
 
         static string Describe(in VulkanInstanceKey key)
             => (key.Windowed ? $"windowed on {key.Window}" : "headless")

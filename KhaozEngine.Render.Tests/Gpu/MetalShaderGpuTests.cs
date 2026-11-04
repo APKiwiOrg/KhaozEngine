@@ -134,11 +134,12 @@ namespace KhaozEngine.Tests.Gpu
                 compiler, HandBuilt("#include <metal_stdlib>\nthis is not MSL\n", "main0"));
 
             _output.WriteLine(error.Message);
-            Assert.Contains("rejected the emitted MSL", error.Message, StringComparison.Ordinal);
-            Assert.Contains("SPIRV-Cross output", error.Message, StringComparison.Ordinal);
-
-            // Metal's own words came through, which is the whole point: without them a shader typo is "nil".
-            Assert.Contains("error", error.Message, StringComparison.OrdinalIgnoreCase);
+            Assert.Equal(ShaderValidationRefusal.MetalLibraryRejected, error.Reason);
+            Assert.Equal(GpuShaderStages.Compute, error.Stage);
+            Assert.Equal("main0", error.EntryPoint);
+            Assert.Equal("SPIRV-Cross output", error.SourceOrigin);
+            Assert.False(error.NativeDiagnosticMissing);
+            Assert.False(string.IsNullOrWhiteSpace(error.Diagnostic));
         }
 
         /// <summary>
@@ -161,8 +162,10 @@ namespace KhaozEngine.Tests.Gpu
             ShaderValidationException error = Rejected(compiler, HandBuilt(valid, "notTheEntryPoint"));
 
             _output.WriteLine(error.Message);
-            Assert.Contains("carries no function of that name", error.Message, StringComparison.Ordinal);
-            Assert.Contains("M-S5", error.Message, StringComparison.Ordinal);
+            Assert.Equal(ShaderValidationRefusal.MetalLibraryFunctionMissing, error.Reason);
+            Assert.Equal(GpuShaderStages.Compute, error.Stage);
+            Assert.Equal("notTheEntryPoint", error.EntryPoint);
+            Assert.Equal("M-S5", error.Policy);
         }
 
         /// <summary>GLSL the FRONT END rejects never reaches the device, and its message names the stage that
@@ -178,7 +181,9 @@ namespace KhaozEngine.Tests.Gpu
                 () => device.Factory.CreateShadersFromSpirv("not glsl at all", "nor this"));
 
             _output.WriteLine(error.Message);
-            Assert.Contains("GLSL to SPIR-V failed", error.Message, StringComparison.Ordinal);
+            Assert.Equal(ShaderValidationRefusal.FrontEndCompileFailed, error.Reason);
+            Assert.Equal(GpuShaderStages.Vertex, error.Stage);
+            Assert.Equal("SPIR-V", error.Target);
             Assert.DoesNotContain("rejected the emitted MSL", error.Message, StringComparison.Ordinal);
         }
 
@@ -221,10 +226,10 @@ namespace KhaozEngine.Tests.Gpu
             set.Dispose();
 
             Assert.Empty(metal.Stages);
-            Assert.Contains("disposed",
-                Assert.Throws<InvalidOperationException>(
-                    () => metal.FunctionFor(MetalShaderStage.Vertex)).Message,
-                StringComparison.Ordinal);
+            var error = Assert.Throws<MetalShaderFunctionException>(() => metal.FunctionFor(MetalShaderStage.Vertex));
+            Assert.Equal(MetalShaderFunctionRefusal.FunctionReleased, error.Reason);
+            Assert.Equal(GpuShaderStages.Vertex, error.Stage);
+            Assert.Equal("shader set", error.ResourceKind);
         }
 
         static IGpuDevice CreateHeadless() => new MetalBackendProvider().CreateHeadless().Device;

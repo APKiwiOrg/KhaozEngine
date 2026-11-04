@@ -24,18 +24,34 @@ namespace KhaozEngine.Gpu
     /// </summary>
     public sealed class GpuBackendRetiredException : InvalidOperationException
     {
+        /// <summary>The refusal reason. Null only for a consumer-created instance built through a
+        /// message-only constructor outside the engine.</summary>
+        public GpuBackendRetiredRefusal? Reason { get; }
+
+        /// <summary>Build a refusal with its structured reason and developer message.</summary>
+        public GpuBackendRetiredException(GpuBackendRetiredRefusal reason, string message)
+            : base(message) => Reason = reason;
+
+        /// <summary>Build a refusal with its structured reason, developer message and original failure.</summary>
+        public GpuBackendRetiredException(GpuBackendRetiredRefusal reason, string message, Exception inner)
+            : base(message, inner) => Reason = reason;
+
+        /// <summary>The release that retired the implementation. Null for a consumer-created message-only instance.</summary>
+        public Version? RetirementVersion { get; init; }
+
         /// <summary>The retired backend that was named.</summary>
-        public GpuBackendKind Backend { get; }
+        public GpuBackendKind Backend { get; init; }
 
         /// <summary>The live backend serving that API now, which is what the caller should name instead.</summary>
-        public GpuBackendKind Replacement { get; }
+        public GpuBackendKind Replacement { get; init; }
 
         /// <summary>The exception as the creation path throws it, with the message built from the pair.</summary>
         public GpuBackendRetiredException(GpuBackendKind backend, GpuBackendKind replacement)
-            : base(BuildMessage(backend, replacement))
+            : this(GpuBackendRetiredRefusal.BackendRetired, BuildMessage(backend, replacement))
         {
             Backend = backend;
             Replacement = replacement;
+            RetirementVersion = new Version(18, 0, 0);
         }
 
         /// <summary>Standard message constructor. Both properties are left at their defaults.</summary>
@@ -54,7 +70,7 @@ namespace KhaozEngine.Gpu
         // rather than left to the reader because the four retirements are not symmetric: three of them have a
         // native implementation of the same API, and OpenGL has no replacement at all and answers the platform
         // default.
-        static string BuildMessage(GpuBackendKind backend, GpuBackendKind replacement)
+        internal static string BuildMessage(GpuBackendKind backend, GpuBackendKind replacement)
             => $"GpuBackendKind.{backend} was retired in 18.0.0, together with the Veldrid backend that "
                 + "implemented it. The member is kept so a stored graphics preference written by an older build "
                 + $"still loads, and it has no implementation behind it: name GpuBackendKind.{replacement} "

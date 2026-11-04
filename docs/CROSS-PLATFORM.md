@@ -143,8 +143,10 @@ is file IO and `KhaozEngine.Gpu` does none. `GpuBackendSource.DefaultProviderMis
 17.40.0 appended for a DEFAULT that fell back to the incumbent, is RETIRED at 18.0.0 with NO PRODUCER: there is
 no incumbent to create instead, so that case throws. The member keeps its number because the enum is
 append-only and a 17.40.0 capture that recorded a 5 still has to read back as what it meant. And when the
-fallback fails too there is no device at all, which `GpuNoUsableBackendException` reports naming both backends
-and both reasons.
+fallback fails too there is no device at all. `GpuNoUsableBackendException.Reason` distinguishes
+`GpuNoUsableBackendRefusal.RequestedCreationFailed`, `RequestedMachineUnsupported` and
+`RequestedProviderNotRegistered`. `RequestedBackend`, `FallbackBackend`, `RequestedFailure`, `InnerException`
+and `FallbackFailure` preserve both attempts.
 
 A RETIRED member never reaches any of this. It is answered before the provider registry: as an env token by
 the redirect, as a stored preference by the self-heal, and in code by `GpuBackendRetiredException`.

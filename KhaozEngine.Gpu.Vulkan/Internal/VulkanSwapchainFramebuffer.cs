@@ -105,11 +105,18 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         {
             if (attachment.View == 0)
             {
-                throw new ArgumentException(
+                throw new GpuFramebufferException(GpuFramebufferRefusal.AttachmentNotRenderable,
                     "The native Vulkan swapchain framebuffer was handed an attachment with no VkImageView. A "
                     + "swapchain framebuffer always has a colour target, so a zero view means a recreate published "
                     + "before it had made one, and binding it would rasterise into nothing with no error anywhere.",
-                    nameof(attachment));
+                    nameof(attachment))
+                {
+                    Attachment = "colour attachment 0",
+                    ActualUsage = GpuTextureUsage.RenderTarget,
+                    RequiredUsage = GpuTextureUsage.RenderTarget,
+                    IsStaging = false,
+                    NativeHandleKind = "VkImageView",
+                };
             }
 
             _colour[0] = attachment;

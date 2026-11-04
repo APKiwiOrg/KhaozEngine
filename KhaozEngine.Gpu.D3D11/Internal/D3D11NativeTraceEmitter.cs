@@ -121,11 +121,19 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         {
             if (pipeline is null) throw new ArgumentNullException(nameof(pipeline));
             if (pipeline is not ID3D11PipelineState state)
-                throw new ArgumentException(
+                throw new GpuResourceOwnershipArgumentException(GpuResourceOwnershipRefusal.ForeignBackend,
                     $"A {pipeline.GetType().Name} reached the native Direct3D 11 emitter as a graphics pipeline. "
                     + "A pipeline this backend created also implements ID3D11PipelineState, which is what the "
                     + "redundancy caches of decision R6 compare against, so a pipeline without it would rebind "
-                    + "all seven state objects on every draw.", nameof(pipeline));
+                    + "all seven state objects on every draw.", nameof(pipeline))
+                {
+                    ExpectedBackend = GpuBackendKind.Direct3D11Native,
+                    ActualType = pipeline.GetType(),
+                    ExpectedType = typeof(ID3D11PipelineState),
+                    ResourceKind = "pipeline",
+                    Context = "graphics pipeline",
+                    PipelineKind = "graphics",
+                };
 
             D3D11NativeTraceEmitter sink = this;
             _state.Binds.SetGraphicsPipeline(ref sink, pipeline);

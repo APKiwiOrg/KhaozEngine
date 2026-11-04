@@ -155,14 +155,17 @@ namespace KhaozEngine.Gpu.Metal.Internal
         {
             if (descriptor == IntPtr.Zero)
             {
-                throw new ArgumentException(
+                throw new MetalEncoderArgumentException(MetalEncoderRefusal.RenderDescriptorMissing,
                     "A native Metal render encoder was asked for with a nil MTLRenderPassDescriptor. "
                     + "renderCommandEncoderWithDescriptor: takes a nonnull argument, so this is undefined "
                     + "behaviour on a device rather than an error it reports, and a test fake will hand back a "
                     + "perfectly good encoder for it. A descriptor Metal refused to build is handled by the pass "
                     + "schedule, which returns without opening anything and leaves the pending clears owed: a "
                     + "caller that builds its own descriptor owes that same arm before it gets here.",
-                    nameof(descriptor));
+                    nameof(descriptor))
+                    {
+                        NativeDescriptorKind = "MTLRenderPassDescriptor",
+                    };
             }
 
             if (_kind == MetalEncoderKind.Render) return _encoder;
@@ -249,7 +252,10 @@ namespace KhaozEngine.Gpu.Metal.Internal
         internal void RecordExternalEncoderBoundary()
         {
             if (_kind != MetalEncoderKind.None)
-                throw new InvalidOperationException("End the current encoder before recording a timestamp boundary.");
+                throw new MetalEncoderStateException(MetalEncoderRefusal.EncoderStillOpen, "End the current encoder before recording a timestamp boundary.")
+                {
+                    EncoderKind = _kind.ToString(),
+                };
             _epoch += 2;
         }
 
@@ -258,15 +264,18 @@ namespace KhaozEngine.Gpu.Metal.Internal
         // the recording is over and the buffer has gone (ForgetCommandBuffer, from the submit or from a release
         // this list made without committing). Naming it here beats what Metal does with the second one, which is
         // a driver-side failed assertion that takes the process with it.
-        IntPtr RecordingBuffer()
+        IntPtr RecordingBuffer([System.Runtime.CompilerServices.CallerMemberName] string command = "")
             => _commandBuffer != IntPtr.Zero
                 ? _commandBuffer
-                : throw new InvalidOperationException(
+                : throw new MetalEncoderStateException(MetalEncoderRefusal.RecordingMissing,
                     "An encoder was opened on a native Metal command list with no recording in flight. Call Begin "
                     + "first, and do not record against a list that has already been submitted: an encoder opened "
                     + "on a command buffer Metal has already taken is not an error this backend can report, it is "
                     + "a driver assertion that aborts the process. The buffer either was never taken from the "
-                    + "queue or has been committed or released since.");
+                    + "queue or has been committed or released since.")
+                    {
+                        Command = command,
+                    };
 
         // The epoch bump belongs to the BEGIN as much as to the end: a record stamped against the encoder that
         // was open before this one describes an argument table that no longer exists, and a bump only at the end

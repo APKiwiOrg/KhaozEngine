@@ -32,8 +32,8 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         {
             RequireRecording(member);
             ArgumentNullException.ThrowIfNull(pool);
-            if (_timestampFences is null) throw new NotSupportedException("This Direct3D 11 command list has no timestamp device.");
-            if (pool is not D3D11TimestampPool native) throw new ArgumentException("Use this Direct3D 11 device's timestamp pool.", nameof(pool));
+            if (_timestampFences is null) throw new GpuTimestampUnsupportedException(GpuTimestampRefusal.TimestampUnsupported, "This Direct3D 11 command list has no timestamp device.") { Backend = GpuBackendKind.Direct3D11Native, Command = member };
+            if (pool is not D3D11TimestampPool native) throw new GpuResourceOwnershipArgumentException(GpuResourceOwnershipRefusal.ForeignBackend, "Use this Direct3D 11 device's timestamp pool.", nameof(pool)) { ExpectedBackend = GpuBackendKind.Direct3D11Native, ActualType = pool.GetType(), ExpectedType = typeof(D3D11TimestampPool), ResourceKind = "timestamp pool", Context = "timestamp pool" };
             native.RequireOwner(_timestampFences);
             return native;
         }

@@ -130,10 +130,9 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         }
 
         /// <summary>
-        /// A short human-readable tag for <paramref name="key"/>, for a message that has to name a shader the
-        /// caller never labelled. The seam's <c>CreateShadersFromSpirv</c> takes two GLSL strings and no name, so
-        /// this is the only stable identity a failure can print, and it is the SAME value the cache file is named
-        /// after and the byte-equality hash table lists, which is what makes it greppable rather than decorative.
+        /// A short human-readable tag for <paramref name="key"/>, used in ShaderValidationException.Label when
+        /// the caller never labelled the shader. The seam's <c>CreateShadersFromSpirv</c> takes two GLSL strings
+        /// and no name. The tag is a prefix of the cache file key, so a refusal can be traced to its cache entry.
         /// </summary>
         internal static string ShortTag(string key)
         {

@@ -1,9 +1,10 @@
-using System;
 using System.Linq;
-using KhaozEngine.Gpu;
+using System;
 using KhaozEngine.Gpu.Internal;
-using KhaozEngine.Gpu.Metal.Internal;
 using KhaozEngine.Gpu.Metal.Internal.ObjC;
+using KhaozEngine.Gpu.Metal.Internal;
+using KhaozEngine.Gpu.Metal;
+using KhaozEngine.Gpu;
 using Xunit;
 
 namespace KhaozEngine.Tests.Gpu
@@ -211,10 +212,13 @@ namespace KhaozEngine.Tests.Gpu
                 GpuBufferUsage.StructuredBufferReadOnly, GpuBufferUsage.StructuredBufferReadWrite,
             })
             {
-                ArgumentException thrown = Assert.Throws<ArgumentException>(
+                GpuBufferUsageArgumentException thrown = Assert.Throws<GpuBufferUsageArgumentException>(
                     () => MetalBufferPolicy.RequireCreatable(GpuBufferUsage.UniformBuffer | structured));
 
                 Assert.Equal("usage", thrown.ParamName);
+                Assert.IsAssignableFrom<ArgumentException>(thrown);
+                Assert.Equal(GpuBufferUsageRefusal.UniformBindingCombination, thrown.Reason);
+                Assert.Equal(GpuBufferUsage.UniformBuffer | structured, thrown.Usage);
             }
         }
 
@@ -225,14 +229,16 @@ namespace KhaozEngine.Tests.Gpu
             MetalBufferPolicy.RequireWriteFits(0, 64, 64);
             MetalBufferPolicy.RequireWriteFits(32, 32, 64);
 
-            ArgumentOutOfRangeException thrown = Assert.Throws<ArgumentOutOfRangeException>(
+            GpuBufferTransferRangeException thrown = Assert.Throws<GpuBufferTransferRangeException>(
                 () => MetalBufferPolicy.RequireWriteFits(32, 33, 64));
 
             Assert.Equal("writeBytes", thrown.ParamName);
             Assert.Equal(33u, thrown.ActualValue);
-            // MetalBufferPolicy promises both numbers in the refusal: the write size and the capacity.
-            Assert.Contains("33", thrown.Message, StringComparison.Ordinal);
-            Assert.Contains("64", thrown.Message, StringComparison.Ordinal);
+            Assert.IsAssignableFrom<ArgumentOutOfRangeException>(thrown);
+            Assert.Equal(GpuBufferTransferRefusal.WindowOutsideBuffer, thrown.Reason);
+            Assert.Equal(32u, thrown.OffsetBytes);
+            Assert.Equal(33u, thrown.SizeBytes);
+            Assert.Equal(64u, thrown.BufferBytes);
         }
 
         // ---- Textures and views -------------------------------------------------------------------------------
@@ -504,11 +510,16 @@ namespace KhaozEngine.Tests.Gpu
         {
             var owned = new OwnedResource(new FakeMetalDeviceLiveness());
 
-            ArgumentException thrown = Assert.Throws<ArgumentException>(
+            GpuResourceOwnershipArgumentException thrown = Assert.Throws<GpuResourceOwnershipArgumentException>(
                 () => MetalResourceOwnership.Require<OwnedResource>(owned, new FakeMetalDeviceLiveness(),
                     "resource"));
 
+            Assert.Equal(GpuResourceOwnershipRefusal.DifferentDevice, thrown.Reason);
+            Assert.Equal(nameof(OwnedResource), thrown.ResourceKind);
+            Assert.Equal("resource", thrown.Context);
             Assert.Equal("resource", thrown.ParamName);
+            Assert.IsAssignableFrom<ArgumentException>(thrown);
+            Assert.Equal(GpuBackendKind.MetalNative, thrown.ExpectedBackend);
         }
 
         /// <summary>And a resource from another BACKEND is refused by name rather than by
@@ -517,11 +528,17 @@ namespace KhaozEngine.Tests.Gpu
         [Fact]
         public void AResourceFromAnotherBackend_IsRefusedByName()
         {
-            ArgumentException thrown = Assert.Throws<ArgumentException>(
+            GpuResourceOwnershipArgumentException thrown = Assert.Throws<GpuResourceOwnershipArgumentException>(
                 () => MetalResourceOwnership.Require<OwnedResource>("not a resource",
                     new FakeMetalDeviceLiveness(), "resource"));
 
+            Assert.Equal(GpuResourceOwnershipRefusal.ForeignBackend, thrown.Reason);
+            Assert.Equal(typeof(string), thrown.ActualType);
+            Assert.Equal(typeof(OwnedResource), thrown.ExpectedType);
+            Assert.Equal("resource", thrown.Context);
             Assert.Equal("resource", thrown.ParamName);
+            Assert.IsAssignableFrom<ArgumentException>(thrown);
+            Assert.Equal(GpuBackendKind.MetalNative, thrown.ExpectedBackend);
         }
 
         /// <summary>
@@ -593,15 +610,22 @@ namespace KhaozEngine.Tests.Gpu
         {
             var shape = new MetalStagingShape(64, 32, 4, 3, GpuPixelFormat.R8G8B8A8UNorm);
 
-            var level = Assert.Throws<ArgumentOutOfRangeException>(
+            var level = Assert.Throws<GpuTextureTransferRangeException>(
                 () => MetalStagingLayout.RequireRegionFits(shape, 4, 0, 0, 0, 1, 1));
-            var layer = Assert.Throws<ArgumentOutOfRangeException>(
+            var layer = Assert.Throws<GpuTextureTransferRangeException>(
                 () => MetalStagingLayout.RequireRegionFits(shape, 0, 3, 0, 0, 1, 1));
 
             // Each refusal names the parameter that was actually out of range (#697). One message covered both
             // and reported mipLevel either way, which points a caller at the argument that was fine.
             Assert.Equal("mipLevel", level.ParamName);
             Assert.Equal("arrayLayer", layer.ParamName);
+            Assert.Equal(GpuTextureTransferRefusal.SubresourceOutOfRange, level.Reason);
+            Assert.Equal(GpuTextureTransferRefusal.SubresourceOutOfRange, layer.Reason);
+            Assert.Equal(4u, level.MipLevel);
+            Assert.Equal(4u, level.MipLevels);
+            Assert.Equal(3u, layer.ArrayLayer);
+            Assert.Equal(3u, layer.ArrayLayers);
+            MetalStagingLayout.RequireRegionFits(shape, 3, 2, 0, 0, 1, 1);
         }
 
         // Every usage combination a BINDABLE texture can carry, which is the power set of the five bits that are

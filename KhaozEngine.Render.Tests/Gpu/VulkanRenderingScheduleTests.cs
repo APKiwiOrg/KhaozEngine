@@ -525,15 +525,28 @@ namespace KhaozEngine.Tests.Gpu
 
         /// <summary>Every member that needs a target refuses without one, because a render pass instance is opened
         /// from the bound framebuffer's own views and there is no default to fall back to.</summary>
-        [Fact]
-        public void WithNoFramebufferBound_TheMembersThatNeedOneRefuse()
+        [Theory]
+        [InlineData("ClearColorTarget")]
+        [InlineData("ClearDepthStencil")]
+        [InlineData("SetFullScissorRects")]
+        [InlineData("Draw")]
+        [InlineData("DrawIndexed")]
+        public void WithNoFramebufferBound_TheMembersThatNeedOneRefuse(string command)
         {
             var schedule = new VulkanRenderingSchedule(new FakeVulkanRenderApi());
-
-            Assert.Throws<InvalidOperationException>(() => schedule.ClearColourTarget(Buffer, 0, Color.White));
-            Assert.Throws<InvalidOperationException>(() => schedule.ClearDepthStencil(Buffer, 1f));
-            Assert.Throws<InvalidOperationException>(schedule.SetFullScissorRects);
-            Assert.Throws<InvalidOperationException>(() => schedule.PrepareDraw(Buffer));
+            Action issue = command switch
+            {
+                "ClearColorTarget" => () => schedule.ClearColourTarget(Buffer, 0, Color.White),
+                "ClearDepthStencil" => () => schedule.ClearDepthStencil(Buffer, 1f),
+                "SetFullScissorRects" => schedule.SetFullScissorRects,
+                _ => () => schedule.PrepareDraw(Buffer, command),
+            };
+            var refusal = Assert.Throws<GpuBoundFramebufferException>(issue);
+            Assert.Equal(GpuBoundFramebufferRefusal.FramebufferNotBound, refusal.Reason);
+            Assert.Equal(command, refusal.Command);
+            Assert.IsAssignableFrom<InvalidOperationException>(refusal);
+            schedule.SetFramebuffer(Buffer, Framebuffer(1, colour: 1, depth: true));
+            issue();
         }
 
         /// <summary>Clearing an attachment the bound framebuffer does not have is refused. A colour attachment
@@ -546,7 +559,12 @@ namespace KhaozEngine.Tests.Gpu
             schedule.SetFramebuffer(Buffer, Framebuffer(1, colour: 1, depth: false));
 
             Assert.Throws<ArgumentOutOfRangeException>(() => schedule.ClearColourTarget(Buffer, 1, Color.White));
-            Assert.Throws<InvalidOperationException>(() => schedule.ClearDepthStencil(Buffer, 1f));
+            var refusal = Assert.Throws<GpuBoundFramebufferException>(() => schedule.ClearDepthStencil(Buffer, 1f));
+            Assert.Equal(GpuBoundFramebufferRefusal.DepthAttachmentMissing, refusal.Reason);
+            Assert.Equal("ClearDepthStencil", refusal.Command);
+            schedule.ClearColourTarget(Buffer, 0, Color.White);
+            schedule.SetFramebuffer(Buffer, Framebuffer(2, colour: 1, depth: true));
+            schedule.ClearDepthStencil(Buffer, 1f);
         }
 
         // ---- The stencil plane ----

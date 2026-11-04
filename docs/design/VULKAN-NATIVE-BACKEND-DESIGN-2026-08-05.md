@@ -809,7 +809,8 @@ brace.
 `multiViewport`, `drawIndirectFirstInstance` and `shaderFloat64` are READ for capability reporting and not
 enabled. The incumbent hands `vkCreateDevice` the entire supported feature struct, which makes the engine's real
 dependencies unknowable from the code, so a future device missing one fails at an unrelated call site instead of
-at device creation with the feature's name in the message.
+at device creation with `VulkanFeatureRefusal.RequiredFeatureMissing` and the `FeatureName` and
+`DeviceName` identifiers on `VulkanFeatureException`.
 
 **One graphics queue that also presents**, required to be the same family. On the headless path there is no
 presentation requirement and any graphics-capable family serves.

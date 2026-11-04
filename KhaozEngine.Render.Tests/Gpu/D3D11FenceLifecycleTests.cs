@@ -147,9 +147,10 @@ namespace KhaozEngine.Tests.Gpu
             var timeline = new FakeD3D11FenceTimeline();
             using D3D11FenceSubsystem fences = Subsystem(timeline);
 
-            ArgumentException ex =
-                Assert.Throws<ArgumentException>(() => fences.SignalEndOfReplay(new ForeignFence()));
-            Assert.Contains(nameof(ForeignFence), ex.Message, StringComparison.Ordinal);
+            GpuResourceOwnershipArgumentException ex =
+                Assert.Throws<GpuResourceOwnershipArgumentException>(() => fences.SignalEndOfReplay(new ForeignFence()));
+            Assert.Equal(GpuResourceOwnershipRefusal.ForeignBackend, ex.Reason);
+            Assert.Equal(typeof(ForeignFence), ex.ActualType);
             Assert.Equal(0, timeline.SignalCount);
         }
 
@@ -166,7 +167,7 @@ namespace KhaozEngine.Tests.Gpu
             var liveness = new FakeD3D11DeviceLiveness { IsDead = true };
             using D3D11FenceSubsystem fences = Subsystem(timeline, liveness);
 
-            Assert.Throws<ArgumentException>(() => fences.SignalEndOfReplay(new ForeignFence()));
+            Assert.Throws<GpuResourceOwnershipArgumentException>(() => fences.SignalEndOfReplay(new ForeignFence()));
             Assert.Equal(0, timeline.SignalCount);
         }
 

@@ -1,3 +1,4 @@
+using KhaozEngine.Gpu;
 using System;
 using System.Linq;
 using System.Runtime.CompilerServices;
@@ -147,8 +148,8 @@ public sealed partial class MetalTimestampEndTests
         if (tail)
         {
             Assert.False(rig.List.IsRecording);
-            Assert.Contains("without a sealed recording", Assert.Throws<InvalidOperationException>(rig.Submit).Message);
-            Assert.Contains("not recording", Assert.Throws<InvalidOperationException>(rig.List.End).Message);
+            Assert.Equal(GpuRecordingStateRefusal.SubmissionWithoutSeal, Assert.Throws<GpuRecordingStateException>(rig.Submit).Reason);
+            Assert.Equal(GpuRecordingStateRefusal.EndWithoutRecording, Assert.Throws<GpuRecordingStateException>(rig.List.End).Reason);
             Assert.Equal(new[] { abandoned }, rig.Buffers.Released);
             Assert.Equal(0, rig.Buffers.Outstanding);
             Assert.Equal(0, rig.Uncommitted.Outstanding);
@@ -167,7 +168,7 @@ public sealed partial class MetalTimestampEndTests
         rig.Render.AfterRelease = null;
         int signals = rig.Native.Signals.Count;
         if (tail) rig.List.Begin();
-        Assert.Throws<InvalidOperationException>(() => rig.List.BeginTimestamps(rig.Pool, 2));
+        Assert.Equal(GpuTimestampRefusal.UnresolvedBatch, Assert.Throws<GpuTimestampStateException>(() => rig.List.BeginTimestamps(rig.Pool, 2)).Reason);
         rig.List.End();
         Assert.Equal(signals, rig.Native.Signals.Count);
         rig.List.Dispose();

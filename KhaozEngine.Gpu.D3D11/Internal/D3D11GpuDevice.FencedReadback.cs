@@ -19,24 +19,38 @@ namespace KhaozEngine.Gpu.D3D11.Internal
 
             if (staging is not ID3D11MappableResource { IsMappable: true })
             {
-                throw new ArgumentException(
+                throw new GpuStagingMapArgumentException(GpuStagingMapRefusal.StagingUsageRequired,
                     "MapForRead maps a GpuTextureUsage.Staging texture created by this native Direct3D 11 device, "
                     + "and this one is not, so it has no CPU access to map. Copy into a staging texture and map "
-                    + "that.", nameof(staging));
+                    + "that.", nameof(staging))
+                {
+                    Backend = GpuBackendKind.Direct3D11Native,
+                    ResourceKind = "texture",
+                    RequiredTextureUsage = GpuTextureUsage.Staging,
+                };
             }
 
             if (fence is not D3D11GpuFence own || !ReferenceEquals(own.Owner, _fences))
             {
-                throw new ArgumentException(
+                throw new GpuResourceOwnershipArgumentException(fence is D3D11GpuFence ? GpuResourceOwnershipRefusal.DifferentDevice : GpuResourceOwnershipRefusal.ForeignBackend,
                     "MapForRead was handed a fence this native Direct3D 11 device did not create. Another device's "
-                    + "fence would read signaled for work this device never ran.", nameof(fence));
+                    + "fence would read signaled for work this device never ran.", nameof(fence))
+                {
+                    ExpectedBackend = GpuBackendKind.Direct3D11Native,
+                    ActualType = fence?.GetType(),
+                    Context = nameof(MapForRead),
+                    ResourceKind = "fence",
+                };
             }
 
             if (!own.Signaled)
             {
-                throw new InvalidOperationException(
+                throw new GpuStagingMapStateException(GpuStagingMapRefusal.CompletionNotSignaled,
                     "MapForRead was called with a fence that has not signaled, so the copy into the staging texture "
-                    + "may still be running. Poll IGpuFence.Signaled first. This map never waits, by design.");
+                    + "may still be running. Poll IGpuFence.Signaled first. This map never waits, by design.")
+                {
+                    Command = nameof(MapForRead),
+                };
             }
 
             return _staging.Map(staging, GpuMapMode.Read);

@@ -110,9 +110,11 @@ namespace KhaozEngine.Tests.Gpu
         {
             MetalSwapchainFramebuffer fb = Make(new IntPtr(0x10), 8u, 8u);
 
-            ArgumentException ex = Assert.Throws<ArgumentException>(() => fb.Adopt(
+            GpuFramebufferException ex = Assert.Throws<GpuFramebufferException>(() => fb.Adopt(
                 new MetalAttachment(IntPtr.Zero, GpuPixelFormat.B8G8R8A8UNorm), new MetalDrawableSize(8u, 8u)));
 
+            Assert.Equal(GpuFramebufferRefusal.AttachmentNotRenderable, ex.Reason);
+            Assert.Equal("MTLTexture", ex.NativeHandleKind);
             Assert.Equal("attachment", ex.ParamName);
             Assert.Equal(new IntPtr(0x10), fb.Attachment.Texture);
             Assert.Equal(1ul, fb.Generation);

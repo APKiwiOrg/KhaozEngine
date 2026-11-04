@@ -136,9 +136,15 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
             for (int i = 0; i < layouts.Count; i++)
             {
                 VulkanResourceLayout layout = layouts[i]
-                    ?? throw new ArgumentException(
+                    ?? throw new GpuResourceOwnershipArgumentException(GpuResourceOwnershipRefusal.MissingResource,
                         "A native Vulkan pipeline layout was built over a null resource layout at slot "
-                        + i.ToString(System.Globalization.CultureInfo.InvariantCulture) + ".", nameof(layouts));
+                        + i.ToString(System.Globalization.CultureInfo.InvariantCulture) + ".", nameof(layouts))
+                    {
+                        ExpectedBackend = GpuBackendKind.VulkanNative,
+                        ResourceKind = "resource layout",
+                        Context = "pipeline layout",
+                        ResourceIndex = i,
+                    };
 
                 handles[i] = layout.SetLayout;
                 dynamicUniforms += layout.DynamicUniformCount;

@@ -83,11 +83,10 @@ namespace KhaozEngine.Gpu.D3D11.Internal
             {
                 if (Monitor.IsEntered(_submitLock))
                 {
-                    throw new InvalidOperationException(
-                        "A record-time uniform write on the native Direct3D 11 ring owed a segment rotation while the "
+                    throw new D3D11WaitPolicyException(D3D11WaitPolicyRefusal.SubmitLockHeld, "A record-time uniform write on the native Direct3D 11 ring owed a segment rotation while the "
                         + "caller held the submit lock. The rotation waits for the GPU to finish with the segment it "
                         + "opens, and the submit lock is held for microseconds, never across a GPU wait. Record "
-                        + "outside the lock.");
+                        + "outside the lock.") { Operation = "BeforeRecordWrite" };
                 }
 
                 Rotate();

@@ -74,21 +74,29 @@ namespace KhaozEngine.Gpu.Metal.Internal
 
         /// <summary>The function for one stage, which is what a render pipeline descriptor's
         /// <c>vertexFunction</c> and <c>fragmentFunction</c> are set to.</summary>
-        /// <exception cref="InvalidOperationException">This set carries no such stage, or it is disposed.</exception>
+        /// <exception cref="MetalShaderFunctionException">StageMissing or FunctionReleased identifies the refusal.</exception>
         internal MTLFunction FunctionFor(MetalShaderStage stage)
         {
             if (_disposed)
             {
-                throw new InvalidOperationException(
+                throw new MetalShaderFunctionException(MetalShaderFunctionRefusal.FunctionReleased,
                     "This native Metal shader set is disposed, so its functions are released. A pipeline created "
-                    + "from one would hold a function the device has already let go of.");
+                    + "from one would hold a function the device has already let go of.")
+                {
+                    Stage = stage.ToGpu(),
+                    ResourceKind = "shader set",
+                };
             }
 
             foreach (MetalCompiledStage compiled in _stages)
                 if (compiled.Stage == stage) return compiled.Function;
 
-            throw new InvalidOperationException(
-                $"This native Metal shader set carries no {stage.ToString().ToLowerInvariant()} stage.");
+            throw new MetalShaderFunctionException(MetalShaderFunctionRefusal.StageMissing,
+                $"This native Metal shader set carries no {stage.ToString().ToLowerInvariant()} stage.")
+            {
+                Stage = stage.ToGpu(),
+                ResourceKind = "shader set",
+            };
         }
 
         /// <summary>Release every function and library, once, and never on a dead device (M-F6).</summary>
@@ -170,12 +178,16 @@ namespace KhaozEngine.Gpu.Metal.Internal
         internal bool IsDisposed => _disposed;
 
         /// <summary>The kernel function, which is what a compute pipeline is created from.</summary>
-        /// <exception cref="InvalidOperationException">This shader is disposed.</exception>
+        /// <exception cref="MetalShaderFunctionException">FunctionReleased identifies this shader's released function.</exception>
         internal MetalShaderEvidence? Evidence { get; }
 
         internal MTLFunction Function => _disposed
-            ? throw new InvalidOperationException(
+            ? throw new MetalShaderFunctionException(MetalShaderFunctionRefusal.FunctionReleased,
                 "This native Metal compute shader is disposed, so its function is released.")
+            {
+                Stage = GpuShaderStages.Compute,
+                ResourceKind = "compute shader",
+            }
             : _stage.Function;
 
         /// <summary>Release the function and its library, once, and never on a dead device (M-F6).</summary>

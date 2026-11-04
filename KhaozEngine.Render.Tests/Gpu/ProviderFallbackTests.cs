@@ -217,27 +217,37 @@ namespace KhaozEngine.Tests.Gpu
         /// leg's own pin would outrank the preference and disarm the fallback on that leg alone.
         /// </para>
         /// </summary>
-        [Fact]
-        public void CreateForWindow_ReportsBothFailures_WhenTheFallbackFailsToo()
+        [Theory]
+        [InlineData(false)]
+        [InlineData(true)]
+        public void CreateForWindow_ReportsBothFailures_WhenTheFallbackFailsToo(bool headless)
         {
             GpuBackendKind fallbackTo = GpuBackendSelector.ProbeOS(GpuBackendSelector.DetectOS());
             GpuBackendKind requested = NonDefaultNative().Kind;
             var boom = new InvalidOperationException("device creation returned a hard failure");
             var provider = new FakeBackendProvider(requested) { CreationThrows = boom };
 
+            var fallbackBoom = new InvalidOperationException("fallback creation failed");
+            using (new BackendProviderScope(fallbackTo,
+                new FakeBackendProvider(fallbackTo) { CreationThrows = fallbackBoom }))
             using (new EnvScope(GpuBackendSelector.EnvVarName, null))
             using (new BackendProviderScope(requested, provider))
             {
                 GpuNoUsableBackendException ex = Assert.Throws<GpuNoUsableBackendException>(
-                    () => GpuDeviceContext.CreateForWindow(Unbuildable(), 640, 480, true, (GpuBackendKind?)requested));
+                    () => headless
+                        ? GpuDeviceContext.CreateHeadless(
+                            new GpuBackendSelection(requested, GpuBackendSource.UserPreference, null))
+                        : GpuDeviceContext.CreateForWindow(Unbuildable(), 640, 480, true, (GpuBackendKind?)requested));
 
+                Assert.Equal(GpuNoUsableBackendRefusal.RequestedCreationFailed, ex.Reason);
+                Assert.Equal("InvalidOperationException: device creation returned a hard failure", ex.RequestedFailure);
                 Assert.Equal(requested, ex.RequestedBackend);
                 Assert.Equal(fallbackTo, ex.FallbackBackend);
 
                 // Both exceptions stay reachable as OBJECTS, so a debugger stops on the attempt that started
                 // this rather than on the recovery from it, and neither stack has to be recovered from a log.
                 Assert.Same(boom, ex.InnerException);
-                Assert.NotNull(ex.FallbackFailure);
+                Assert.Same(fallbackBoom, ex.FallbackFailure);
             }
         }
 
@@ -252,22 +262,66 @@ namespace KhaozEngine.Tests.Gpu
         /// being thrown, which is what keeps a player off a saved choice this machine cannot run.
         /// </para>
         /// </summary>
-        [Fact]
-        public void CreateForWindow_UsesTheFallbackFailureAsTheInner_WhenTheRequestNeverThrew()
+        [Theory]
+        [InlineData(false)]
+        [InlineData(true)]
+        public void CreateForWindow_UsesTheFallbackFailureAsTheInner_WhenTheRequestNeverThrew(bool headless)
         {
             GpuBackendKind requested = NonDefaultNative().Kind;
             var provider = new FakeBackendProvider(requested) { Supported = false };
 
+            var fallbackBoom = new InvalidOperationException("fallback creation failed");
+            GpuBackendKind fallbackKind = GpuBackendSelector.ProbeOS(GpuBackendSelector.DetectOS());
+            using (new BackendProviderScope(fallbackKind,
+                new FakeBackendProvider(fallbackKind) { CreationThrows = fallbackBoom }))
             using (new EnvScope(GpuBackendSelector.EnvVarName, null))
             using (new BackendProviderScope(requested, provider))
             {
                 GpuNoUsableBackendException ex = Assert.Throws<GpuNoUsableBackendException>(
-                    () => GpuDeviceContext.CreateForWindow(Unbuildable(), 640, 480, true, (GpuBackendKind?)requested));
+                    () => headless
+                        ? GpuDeviceContext.CreateHeadless(
+                            new GpuBackendSelection(requested, GpuBackendSource.UserPreference, null))
+                        : GpuDeviceContext.CreateForWindow(Unbuildable(), 640, 480, true, (GpuBackendKind?)requested));
 
                 Assert.Same(ex.FallbackFailure, ex.InnerException);
-                Assert.Contains("this machine reports no support for it", ex.Message);
+                Assert.Equal(GpuNoUsableBackendRefusal.RequestedMachineUnsupported, ex.Reason);
+                Assert.Equal("this machine reports no support for it", ex.RequestedFailure);
+                Assert.Equal(requested, ex.RequestedBackend);
+                Assert.Equal(GpuBackendSelector.ProbeOS(GpuBackendSelector.DetectOS()), ex.FallbackBackend);
+                Assert.Same(fallbackBoom, ex.FallbackFailure);
                 Assert.Equal(0, provider.WindowedCreations);
             }
+        }
+
+        [Theory]
+        [InlineData(false)]
+        [InlineData(true)]
+        public void MissingStoredProvider_IsDistinctFromAnUnsupportedMachine_WhenFallbackFails(bool headless)
+        {
+            GpuBackendKind fallback = GpuBackendSelector.ProbeOS(GpuBackendSelector.DetectOS());
+            var fallbackBoom = new InvalidOperationException("fallback creation failed");
+            using var env = new EnvScope(GpuBackendSelector.EnvVarName, null);
+            using var missing = new BackendProviderScope(SentinelKind, provider: null);
+            using var fallbackProvider = new BackendProviderScope(fallback,
+                new FakeBackendProvider(fallback) { CreationThrows = fallbackBoom });
+            var selection = new GpuBackendSelection(SentinelKind, GpuBackendSource.UserPreference, null);
+
+            GpuDeviceContext Create() => headless
+                ? GpuDeviceContext.CreateHeadless(selection)
+                : GpuDeviceContext.CreateForWindow(default, 8, 8, true, (GpuBackendKind?)SentinelKind);
+
+            var ex = Assert.Throws<GpuNoUsableBackendException>(() => Create());
+            Assert.Equal(GpuNoUsableBackendRefusal.RequestedProviderNotRegistered, ex.Reason);
+            Assert.Equal(SentinelKind, ex.RequestedBackend);
+            Assert.Equal(fallback, ex.FallbackBackend);
+            Assert.Equal("no graphics backend provider for it is registered in this build", ex.RequestedFailure);
+            Assert.Same(fallbackBoom, ex.InnerException);
+            Assert.Same(fallbackBoom, ex.FallbackFailure);
+
+            // Rule 15: registration alone repairs the request even while fallback still fails.
+            using var registered = new BackendProviderScope(SentinelKind, new FakeBackendProvider(SentinelKind));
+            using GpuDeviceContext context = Create();
+            Assert.Equal(SentinelKind, context.Backend);
         }
     }
 }

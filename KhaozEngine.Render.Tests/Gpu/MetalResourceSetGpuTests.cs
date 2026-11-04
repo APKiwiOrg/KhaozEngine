@@ -129,10 +129,11 @@ namespace KhaozEngine.Tests.Gpu
 
             // A window that leaves the buffer is refused where the caller can still see it, because Metal's own
             // setters carry no length and nothing downstream would ever report it.
-            Assert.Contains("binds 128 bytes at offset 960",
-                Refusal(() => factory.CreateResourceSet(new GpuResourceSetDescription(
-                    layout, new GpuBufferRange(buffer, 960, 128)))),
-                StringComparison.Ordinal);
+            var refusal0 = Assert.Throws<GpuResourceSetException>(() => factory.CreateResourceSet(new GpuResourceSetDescription(
+                    layout, new GpuBufferRange(buffer, 960, 128))));
+            Assert.Equal(GpuResourceSetRefusal.BufferWindowOutsideResource, refusal0.Reason);
+            Assert.Equal(960u, refusal0.RangeOffset);
+            Assert.Equal(128u, refusal0.RangeBytes);
         }
 
         /// <summary>
@@ -163,28 +164,32 @@ namespace KhaozEngine.Tests.Gpu
             // fixture being wrong.
             factory.CreateResourceSet(new GpuResourceSetDescription(layout, frame, albedo)).Dispose();
 
-            Assert.Contains("matched to elements POSITIONALLY",
-                Refusal(() => factory.CreateResourceSet(new GpuResourceSetDescription(layout, frame))),
-                StringComparison.Ordinal);
+            var refusal1 = Assert.Throws<GpuResourceSetException>(() => factory.CreateResourceSet(new GpuResourceSetDescription(layout, frame)));
+            Assert.Equal(GpuResourceSetRefusal.ResourceCountMismatch, refusal1.Reason);
+            Assert.Equal(2, refusal1.DeclaredCount);
+            Assert.Equal(1, refusal1.SuppliedCount);
 
-            Assert.Contains("'Albedo' at binding 1",
-                Refusal(() => factory.CreateResourceSet(
-                    new GpuResourceSetDescription(layout, frame, null!))),
-                StringComparison.Ordinal);
+            var refusal2 = Assert.Throws<GpuResourceSetException>(() => factory.CreateResourceSet(
+                    new GpuResourceSetDescription(layout, frame, null!)));
+            Assert.Equal(GpuResourceSetRefusal.ResourceMissing, refusal2.Reason);
+            Assert.Equal("Albedo", refusal2.ElementName);
+            Assert.Equal(1, refusal2.Binding);
 
             // A TEXTURE WHERE A BUFFER IS DECLARED, which is what a resource array one step out of line with its
             // layout actually looks like.
-            Assert.Contains("declares UniformBuffer, which needs a buffer",
-                Refusal(() => factory.CreateResourceSet(
-                    new GpuResourceSetDescription(layout, albedo, albedo))),
-                StringComparison.Ordinal);
+            var wrongKind = Assert.Throws<GpuResourceSetException>(() => factory.CreateResourceSet(
+                new GpuResourceSetDescription(layout, albedo, albedo)));
+            Assert.Equal(GpuResourceSetRefusal.ResourceKindMismatch, wrongKind.Reason);
+            Assert.Equal(GpuResourceKind.UniformBuffer, wrongKind.ResourceKind);
+            Assert.Equal(typeof(MetalBuffer), wrongKind.ExpectedType);
+            Assert.Equal(typeof(MetalTexture), wrongKind.ActualType);
 
             // A STAGING TEXTURE IS A Shared MTLBuffer AND NOT AN MTLTexture AT ALL (M-C5), so it has no handle for
             // the texture table and binding it would be nil at the draw with nothing pointing back here.
-            string refused = Refusal(() => factory.CreateResourceSet(
+            GpuResourceSetException refused = Assert.Throws<GpuResourceSetException>(() => factory.CreateResourceSet(
                 new GpuResourceSetDescription(layout, frame, staging)));
-            _output.WriteLine(refused);
-            Assert.Contains("STAGING texture", refused, StringComparison.Ordinal);
+            _output.WriteLine(refused.Message);
+            Assert.Equal(GpuResourceSetRefusal.StagingTextureCannotBind, refused.Reason);
 
             // A TEXTURE BOUND FOR A DIRECTION IT WAS NOT CREATED FOR, through the real factory, so the usage the
             // description declared really is what reaches the check. Sampled-only into a read-write element is
@@ -192,9 +197,9 @@ namespace KhaozEngine.Tests.Gpu
             using IGpuResourceLayout storage = factory.CreateResourceLayout(new GpuResourceLayoutDescription(
                 Element("Target", GpuResourceKind.TextureReadWrite)));
 
-            Assert.Contains("Add GpuTextureUsage.Storage",
-                Refusal(() => factory.CreateResourceSet(new GpuResourceSetDescription(storage, albedo))),
-                StringComparison.Ordinal);
+            var refusal5 = Assert.Throws<GpuResourceSetException>(() => factory.CreateResourceSet(new GpuResourceSetDescription(storage, albedo)));
+            Assert.Equal(GpuResourceSetRefusal.TextureUsageMissing, refusal5.Reason);
+            Assert.Equal(GpuTextureUsage.Storage, refusal5.RequiredUsage);
 
             // AND A DISPOSED RESOURCE ANSWERS A NIL HANDLE. Creation is where a resource that is ALREADY gone is
             // still in front of the caller, and one disposed later degrades to the same nil at the bind on its
@@ -203,10 +208,10 @@ namespace KhaozEngine.Tests.Gpu
                 16, 16, GpuPixelFormat.R8G8B8A8UNorm, GpuTextureUsage.Sampled));
             disposed.Dispose();
 
-            Assert.Contains("already been disposed",
-                Refusal(() => factory.CreateResourceSet(
-                    new GpuResourceSetDescription(layout, frame, disposed))),
-                StringComparison.Ordinal);
+            var refusal6 = Assert.Throws<GpuResourceSetException>(() => factory.CreateResourceSet(
+                    new GpuResourceSetDescription(layout, frame, disposed)));
+            Assert.Equal(GpuResourceSetRefusal.NativeHandleMissing, refusal6.Reason);
+            Assert.Equal("MTLTexture", refusal6.NativeHandleKind);
         }
 
         /// <summary>
@@ -230,15 +235,13 @@ namespace KhaozEngine.Tests.Gpu
             using IGpuBuffer theirBuffer = second.Factory.CreateBuffer(
                 new GpuBufferDescription(256, GpuBufferUsage.UniformBuffer));
 
-            Assert.Contains("DIFFERENT native Metal device",
-                Refusal(() => second.Factory.CreateResourceSet(
-                    new GpuResourceSetDescription(mine, theirBuffer))),
-                StringComparison.Ordinal);
+            var refusal7 = Assert.Throws<GpuResourceOwnershipArgumentException>(() => second.Factory.CreateResourceSet(
+                    new GpuResourceSetDescription(mine, theirBuffer)));
+            Assert.Equal(GpuResourceOwnershipRefusal.DifferentDevice, refusal7.Reason);
 
-            Assert.Contains("DIFFERENT native Metal device",
-                Refusal(() => first.Factory.CreateResourceSet(
-                    new GpuResourceSetDescription(mine, theirBuffer))),
-                StringComparison.Ordinal);
+            var refusal8 = Assert.Throws<GpuResourceOwnershipArgumentException>(() => first.Factory.CreateResourceSet(
+                    new GpuResourceSetDescription(mine, theirBuffer)));
+            Assert.Equal(GpuResourceOwnershipRefusal.DifferentDevice, refusal8.Reason);
 
             // And the same call on the device that created both still works, so the rule is about identity rather
             // than about having broken the entry point.
@@ -308,8 +311,6 @@ namespace KhaozEngine.Tests.Gpu
             => new(name, kind, GpuShaderStages.Vertex | GpuShaderStages.Fragment, dynamic);
 
         static IGpuDevice CreateHeadless() => new MetalBackendProvider().CreateHeadless().Device;
-
-        static string Refusal(Func<object> call) => Assert.ThrowsAny<Exception>(() => call()).Message;
 
         // [SupportedOSPlatformGuard] rather than an inline check at every call site, the same mechanism the
         // sibling GPU suites use. Dormant off macOS rather than skipped, which is phase 3's row-19 lesson.

@@ -29,7 +29,7 @@ namespace KhaozEngine.Gpu.D3D11.Internal
     internal static class D3D11ShaderValidation
     {
         /// <summary>Validate a GLSL 450 vertex and fragment pair through the real shader path.</summary>
-        /// <exception cref="PlatformNotSupportedException">Called off Windows, where there is no FXC.</exception>
+        /// <exception cref="D3D11ShaderPlatformException">Called off Windows, where there is no FXC.</exception>
         /// <exception cref="ShaderValidationException">A source failed to compile to SPIR-V, the pair failed to
         /// cross-compile, FXC rejected the emitted HLSL, or the vertex input signature is holed.</exception>
         internal static void ValidatePair(string vertexGlsl, string fragmentGlsl, string? label = null)
@@ -43,7 +43,7 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         }
 
         /// <summary>Validate a GLSL 450 compute source through the real shader path.</summary>
-        /// <exception cref="PlatformNotSupportedException">Called off Windows, where there is no FXC.</exception>
+        /// <exception cref="D3D11ShaderPlatformException">Called off Windows, where there is no FXC.</exception>
         /// <exception cref="ShaderValidationException">The source failed to compile to SPIR-V, failed to
         /// cross-compile, declares no resolvable workgroup size, or FXC rejected the emitted HLSL.</exception>
         internal static void ValidateCompute(string computeGlsl, string? label = null)
@@ -58,9 +58,10 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         // Not D3D11PlatformGuard's wording: that one is for a Windows-only OBJECT reached off Windows, which is
         // an internal invariant break. This is a caller asking for a compile on a machine that has no compiler,
         // which is an ordinary and answerable mistake, so it says what to do about it instead.
-        static PlatformNotSupportedException NotOnThisPlatform()
-            => new("Validating a shader through FXC needs d3dcompiler, which exists only on Windows. Gate the "
+        static D3D11ShaderPlatformException NotOnThisPlatform()
+            => new(D3D11ShaderPlatformRefusal.FxcUnavailableOnPlatform, "Validating a shader through FXC needs d3dcompiler, which exists only on Windows. Gate the "
                 + $"call on {nameof(KhaozEngineD3D11)}.{nameof(KhaozEngineD3D11.IsPlatformSupported)} and use "
-                + "KhaozEngine.Gpu's ShaderValidation for the device-free, all-platform cross-compile check.");
+                + "KhaozEngine.Gpu's ShaderValidation for the device-free, all-platform cross-compile check.")
+            { Compiler = "d3dcompiler", RequiredOperatingSystem = "Windows", SupportProbe = "KhaozEngineD3D11.IsPlatformSupported", PortableValidator = "ShaderValidation" };
     }
 }

@@ -87,16 +87,18 @@ namespace KhaozEngine.Tests.Gpu
         {
             var provider = new VulkanBackendProvider();
 
-            NotSupportedException ex = Assert.Throws<NotSupportedException>(
+            var ex = Assert.Throws<VulkanBackendCreationUnsupportedException>(
                 () => provider.CreateForWindow(default));
 
             if (TryProbe() is not null)
             {
-                Assert.Contains("this machine", ex.Message, StringComparison.OrdinalIgnoreCase);
+                Assert.Equal(VulkanBackendCreationRefusal.MachineUnsupported, ex.Reason);
+                Assert.Equal(TryProbe(), ex.MissingRequirement);
             }
             else
             {
-                Assert.Contains("Cocoa", ex.Message, StringComparison.Ordinal);
+                Assert.Equal(VulkanBackendCreationRefusal.CocoaSurfaceUnsupported, ex.Reason);
+                Assert.Equal(GpuWindowKind.Cocoa, ex.WindowKind);
             }
 
             // Not the OTHER failure mode. A missing registration is a wiring fault with its own exception type
@@ -144,9 +146,12 @@ namespace KhaozEngine.Tests.Gpu
                 // NOT an InvalidOperationException, which is what a creation that skipped the probe raises. That
                 // type is reserved for the genuinely surprising case, a machine that answered yes and then failed
                 // anyway, and its message says so in as many words.
-                NotSupportedException ex = Assert.Throws<NotSupportedException>(() => provider.CreateHeadless());
+                var ex = Assert.Throws<VulkanBackendCreationUnsupportedException>(() => provider.CreateHeadless());
 
-                Assert.Contains("this machine", ex.Message, StringComparison.Ordinal);
+                Assert.Equal(VulkanBackendCreationRefusal.MachineUnsupported, ex.Reason);
+                Assert.Equal(missing, ex.MissingRequirement);
+                Assert.Equal("GpuBackendSelector.IsBackendSupported", ex.Probe);
+                Assert.IsAssignableFrom<NotSupportedException>(ex);
                 // The row-4 refusal is retired from this path. A message naming 514 here would mean the device
                 // row did not actually wire itself in.
                 Assert.DoesNotContain("514", ex.Message, StringComparison.Ordinal);
@@ -158,13 +163,13 @@ namespace KhaozEngine.Tests.Gpu
                     // the loader is present and telling this reader to install one sends them after a library
                     // they already have. It also has to carry the fix, since "expected on CI" and "broken" are
                     // the same log line otherwise.
-                    Assert.Contains(VulkanSupportProbe.NoDriverInstalled, ex.Message, StringComparison.Ordinal);
-                    Assert.Contains("mesa-vulkan-drivers", ex.Message, StringComparison.Ordinal);
+                    Assert.Contains(VulkanSupportProbe.NoDriverInstalled, ex.MissingRequirement, StringComparison.Ordinal);
+                    Assert.Equal("mesa-vulkan-drivers", ex.DriverPackage);
                 }
                 else if (missing.Contains(VulkanSupportProbe.NoLoaderResolved, StringComparison.Ordinal))
                 {
                     // MACHINE STATE ONE: no libvulkan at all, which is every macOS machine this is written on.
-                    Assert.Contains(VulkanSupportProbe.NoLoaderResolved, ex.Message, StringComparison.Ordinal);
+                    Assert.Contains(VulkanSupportProbe.NoLoaderResolved, ex.MissingRequirement, StringComparison.Ordinal);
                 }
 
                 // Any OTHER refusal (a pre-1.3 loader, a device under the descriptor limit, a probe that threw)

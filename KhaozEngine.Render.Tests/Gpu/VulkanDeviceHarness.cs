@@ -34,11 +34,15 @@ namespace KhaozEngine.Tests.Gpu
         /// <param name="framesInFlight">The device depth every pool ring and uniform ring is cut to.</param>
         /// <param name="nonCoherentReadback">Make the cached host-visible type NOT coherent, so a readback staging
         /// resource lands on memory whose reads need an invalidate.</param>
-        internal VulkanDeviceFixture(int framesInFlight = 3, bool nonCoherentReadback = false)
+        /// <param name="windowed">Optional fake surface and swapchain seams for device-level capture checks.</param>
+        /// <param name="liveness">Optional token shared with the injected loss latch.</param>
+        /// <param name="loss">Optional latch for driving the real device-loss map refusal.</param>
+        internal VulkanDeviceFixture(int framesInFlight = 3, bool nonCoherentReadback = false,
+            VulkanWindowedParts? windowed = null, DeviceLiveness? liveness = null, VulkanDeviceLossLatch? loss = null)
         {
             FramesInFlight = framesInFlight;
 
-            Liveness = new DeviceLiveness();
+            Liveness = liveness ?? new DeviceLiveness();
             Semaphore = new FakeVulkanTimelineSemaphore();
             Timeline = new VulkanTimeline(Semaphore, Liveness);
             MemoryApi = new FakeVulkanDeviceMemoryApi();
@@ -59,7 +63,7 @@ namespace KhaozEngine.Tests.Gpu
 
             Device = VulkanGpuDevice.CreateOverSeams(
                 Liveness, Timeline, MemoryApi, facts, CommandApi, ResourceApi, SetupSink, DescriptorApi,
-                ShaderApi, PipelineApi, Capabilities, framesInFlight);
+                ShaderApi, PipelineApi, Capabilities, framesInFlight, windowed: windowed, loss: loss);
         }
 
         /// <summary>The device under test: a real one, wired exactly as the shipped constructor wires it.</summary>

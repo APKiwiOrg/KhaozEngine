@@ -237,10 +237,15 @@ namespace KhaozEngine.Gpu.D3D11.Internal
             if (fence is not null)
             {
                 own = fence as D3D11GpuFence
-                    ?? throw new ArgumentException(
+                    ?? throw new GpuResourceOwnershipArgumentException(GpuResourceOwnershipRefusal.ForeignBackend,
                         $"A {fence.GetType().Name} was handed to the native Direct3D 11 device as a fence. Only a "
                         + "fence this backend created can be armed, because a fence from another backend has "
-                        + "another backend's completion signal behind it.", nameof(fence));
+                        + "another backend's completion signal behind it.", nameof(fence))
+                    {
+                        ExpectedBackend = GpuBackendKind.Direct3D11Native,
+                        ActualType = fence?.GetType(),
+                        ResourceKind = "fence",
+                    };
             }
 
             if (_liveness.IsDead) return _issued;
@@ -302,8 +307,8 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         /// here rather than acquiring it, so the release inside this method releases NOTHING: the outer level
         /// survives, no other thread can submit, and the drain waits for work that can never arrive. That is a
         /// hang with no name on it, at teardown, which is where a hang is hardest to attribute. The check costs
-        /// one <see cref="Monitor.IsEntered"/> per drain and turns the whole family into a message naming the
-        /// rule.
+        /// one <see cref="Monitor.IsEntered"/> per drain and carries
+        /// <see cref="D3D11WaitPolicyRefusal.SubmitLockHeld"/>.
         /// </para>
         /// <para>
         /// IT COMES AFTER THE TWO NO-OP RETURNS, WHICH IS THE ORDER THAT MATTERS. Teardown is exactly where a
@@ -344,12 +349,11 @@ namespace KhaozEngine.Gpu.D3D11.Internal
 
             if (Monitor.IsEntered(_submitLock))
             {
-                throw new InvalidOperationException(
-                    "WaitForIdle was called on the native Direct3D 11 device while the caller already held the "
+                throw new D3D11WaitPolicyException(D3D11WaitPolicyRefusal.SubmitLockHeld, "WaitForIdle was called on the native Direct3D 11 device while the caller already held the "
                     + "submit lock. The drain signals and flushes under the lock and then RELEASES it to wait, so "
                     + "that the work it is waiting for can still be submitted. Re-entering the lock here releases "
                     + "nothing, so the drain would wait for a submission no other thread can make. Call it "
-                    + "outside the frame's critical section.");
+                    + "outside the frame's critical section.") { Operation = "WaitForIdle" };
             }
 
             ulong target;

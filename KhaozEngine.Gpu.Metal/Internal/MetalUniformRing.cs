@@ -197,11 +197,16 @@ namespace KhaozEngine.Gpu.Metal.Internal
         {
             if (length >= 0 && offsetBytes <= SizeInBytes && (ulong)length <= SizeInBytes - offsetBytes) return;
 
-            throw new ArgumentOutOfRangeException(nameof(offsetBytes), offsetBytes,
+            throw new GpuBufferTransferRangeException(GpuBufferTransferRefusal.WindowOutsideBuffer, nameof(offsetBytes), offsetBytes,
                 "A " + length + "-byte write at offset " + offsetBytes + " runs past the end of a " + SizeInBytes
                 + "-byte native Metal uniform buffer. On a ring-backed buffer that would spill into the next "
                 + "frame's segment, which the GPU may be reading, so it is refused here rather than corrupting a "
-                + "frame.");
+                + "frame.")
+            {
+                OffsetBytes = offsetBytes,
+                SizeBytes = length,
+                BufferBytes = SizeInBytes,
+            };
         }
 
         /// <summary>The copy into ANY segment, which is what the off-timeline write walks. CALLED ONLY BY

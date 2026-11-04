@@ -111,11 +111,16 @@ namespace KhaozEngine.Gpu.Metal.Internal
             MetalTexture metal = MetalResourceOwnership.Require<MetalTexture>(staging, _liveness, nameof(staging));
             if (!metal.IsStaging)
             {
-                throw new ArgumentException(
+                throw new GpuStagingMapArgumentException(GpuStagingMapRefusal.StagingUsageRequired,
                     "Only a GpuTextureUsage.Staging texture can be mapped on the native Metal backend. Every "
                     + "other texture is MTLStorageModePrivate and has no CPU-visible memory at all (M-M2), so "
                     + "there is no pointer to hand back. Copy into a staging texture and map that.",
-                    nameof(staging));
+                    nameof(staging))
+                {
+                    Backend = GpuBackendKind.MetalNative,
+                    ResourceKind = "texture",
+                    RequiredTextureUsage = GpuTextureUsage.Staging,
+                };
             }
 
             return _cpuAccess.Map(metal, mode);

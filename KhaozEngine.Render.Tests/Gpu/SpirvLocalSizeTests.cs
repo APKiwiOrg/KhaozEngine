@@ -1,3 +1,5 @@
+using System;
+using System.Buffers.Binary;
 using KhaozEngine.Gpu;
 using KhaozEngine.Gpu.Internal;
 using Xunit;
@@ -42,23 +44,77 @@ namespace KhaozEngine.Tests.Gpu
 
         // A real module whose ONLY defect is its magic number. Without the magic check these bytes parse to 64x1x1,
         // so the refusal cannot come from the missing-LocalSize or truncation throws, which share the exception type.
-        [Fact]
-        public void NonSpirvBytesAreRejectedByTheMagicNumber()
+        [Theory]
+        [InlineData(false)]
+        [InlineData(true)]
+        public void NonSpirvBytesAreRejectedByTheMagicNumber(bool decorations)
         {
             byte[] module = Spirv("#version 450\nlayout(local_size_x = 64) in;\nvoid main() {}\n");
             Assert.Equal((64u, 1u, 1u), SpirvLocalSize.Parse(module, "t"));
             var notSpirv = (byte[])module.Clone();
             notSpirv[0] ^= 0xFF;
-            Assert.Throws<ShaderValidationException>(() => SpirvLocalSize.Parse(notSpirv, "t"));
+            var error = Assert.Throws<ShaderValidationException>(() => Read(notSpirv, decorations));
+            Assert.Equal(ShaderValidationRefusal.SpirvMagicInvalid, error.Reason);
+            Assert.Equal("t", error.Label);
+            Assert.Equal(BinaryPrimitives.ReadUInt32LittleEndian(notSpirv), error.ActualMagic);
+            Assert.Equal(0x07230203u, error.ExpectedMagic);
         }
 
-        [Fact]
-        public void ATruncatedModuleIsRejectedRatherThanReadPastTheEnd()
+        [Theory]
+        [InlineData(false)]
+        [InlineData(true)]
+        public void ATruncatedModuleIsRejectedRatherThanReadPastTheEnd(bool decorations)
         {
             byte[] spirv = Spirv("#version 450\nlayout(local_size_x = 64) in;\nvoid main() {}\n");
             var truncated = new byte[24];                  // header (20 bytes) plus one partial instruction word
             System.Array.Copy(spirv, truncated, truncated.Length);
-            Assert.Throws<ShaderValidationException>(() => SpirvLocalSize.Parse(truncated, "t"));
+            var error = Assert.Throws<ShaderValidationException>(() => Read(truncated, decorations));
+            Assert.Equal(ShaderValidationRefusal.SpirvInstructionMalformed, error.Reason);
+            Assert.Equal("t", error.Label);
+            Assert.Equal(5, error.WordOffset);
+            Assert.Equal((int)(BinaryPrimitives.ReadUInt32LittleEndian(truncated.AsSpan(20)) >> 16), error.WordCount);
+            Assert.Equal(6, error.ModuleWordCount);
+        }
+
+        [Theory]
+        [InlineData(false, true)]
+        [InlineData(true, true)]
+        [InlineData(false, false)]
+        [InlineData(true, false)]
+        public void InvalidModuleLengthsNameTheirLayout(bool decorations, bool shortHeader)
+        {
+            byte[] module = Spirv("#version 450\nlayout(local_size_x = 64) in;\nvoid main() {}\n");
+            Read(module, decorations);
+            byte[] invalid = shortHeader ? module[..16] : [.. module, (byte)0];
+
+            var error = Assert.Throws<ShaderValidationException>(() => Read(invalid, decorations));
+            Assert.Equal(ShaderValidationRefusal.SpirvLengthInvalid, error.Reason);
+            Assert.Equal("t", error.Label);
+            Assert.Equal(shortHeader ? 16 : module.Length + 1, error.ByteLength);
+            Assert.Equal(20, error.MinimumHeaderBytes);
+            Assert.Equal(4, error.WordBytes);
+        }
+
+        [Theory]
+        [InlineData(false, ShaderValidationRefusal.ComputeLocalSizeMissing)]
+        [InlineData(true, ShaderValidationRefusal.ComputeLocalSizeSpecialized)]
+        public void ExternalModulesMustDeclareALiteralLocalSize(bool specialized, ShaderValidationRefusal reason)
+        {
+            uint[] words = specialized
+                ? [0x07230203, 0x00010000, 0, 8, 0, (6u << 16) | 331u, 1, 38, 2, 3, 4]
+                : [0x07230203, 0x00010000, 0, 8, 0];
+            var bytes = new byte[words.Length * 4];
+            for (int i = 0; i < words.Length; i++) BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(i * 4), words[i]);
+            var error = Assert.Throws<ShaderValidationException>(() => SpirvLocalSize.Parse(bytes, "external"));
+            Assert.Equal(reason, error.Reason);
+            Assert.Equal("external", error.Label);
+            if (specialized) Assert.Equal("LocalSizeId", error.ExecutionMode);
+        }
+
+        static void Read(byte[] bytes, bool decorations)
+        {
+            if (decorations) _ = SpirvResourceDecorations.Read(bytes, "t");
+            else _ = SpirvLocalSize.Parse(bytes, "t");
         }
     }
 }

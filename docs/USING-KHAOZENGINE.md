@@ -9260,7 +9260,7 @@ outside every umbrella and carries no physics backend, input or
 rendering dependency:
 
 ```xml
-<PackageReference Include="KhaozEngine.Movement" Version="21.24.1" />
+<PackageReference Include="KhaozEngine.Movement" Version="21.25.0" />
 ```
 
 The package composes `KhaozEngine.Locomotion`, `KhaozEngine.Navigation` and `KhaozEngine.Physics`. It does not
@@ -9762,7 +9762,7 @@ option does not enter bake identity or change canonical bytes. See the
 Round 2 D adds the driver layer in the same opt-in package. Keep the package reference explicit:
 
 ```xml
-<PackageReference Include="KhaozEngine.Movement" Version="21.24.1" />
+<PackageReference Include="KhaozEngine.Movement" Version="21.25.0" />
 ```
 
 `MoveToRange` consumes a `GroundNavigation` profile or an equivalent guarded `IRegionPathPlanner` composition.
@@ -10609,7 +10609,7 @@ same opt-in-backend pattern the `WorldStore.*` durable backends use.
 **Backend (`KhaozEngine.Physics.Bepu`)** - add this package to your game head / server:
 
 ```xml
-<PackageReference Include="KhaozEngine.Physics.Bepu" Version="21.24.1" />
+<PackageReference Include="KhaozEngine.Physics.Bepu" Version="21.25.0" />
 ```
 
 ```csharp
@@ -18661,7 +18661,9 @@ have persisted them as a player's saved choice.
   default, because the engine never had an OpenGL implementation and is not gaining one.
 - A STORED preference naming one takes the same redirect, and reports
   `GpuBackendSource.FallbackAfterFailure`, which is the signal a game already clears a stored choice on.
-- NAMING one in code throws `GpuBackendRetiredException`. Repointing the member at its native sibling was ruled
+- NAMING one in code throws `GpuBackendRetiredException` with
+  `Reason = GpuBackendRetiredRefusal.BackendRetired`, `Backend`, `Replacement` and
+  `RetirementVersion = new Version(18, 0, 0)`. Repointing the member at its native sibling was ruled
   out by name in the removal design: it would move every tester's stored choice onto a different implementation
   with no rebuild signal and no player notice.
 
@@ -18676,11 +18678,15 @@ implementations of those three APIs, and they are the only implementations left 
 `d3d11`, `vulkan`, `metal` and `gl` named the Veldrid backend, which the same release deleted, so a token
 naming one of them RESOLVES to that API's native backend and logs the retirement WARN rather than failing the
 run. NAMING a native backend without referencing its package and calling its `Register()` throws
-`GpuBackendProviderMissingException` and never falls back, because a run that quietly used a different
+`GpuBackendProviderMissingException` with `Reason = GpuBackendProviderMissingRefusal.ProviderNotRegistered`
+and never falls back, because a run that quietly used a different
 implementation would report its measurements under the wrong name. DEFAULTING to one without the package
 throws the same exception since 18.0.0, where it used to fall back to the incumbent and report
 `GpuBackendSource.DefaultProviderMissing`: there is no second implementation to reach for, and the umbrellas
 carry the packages so an ordinary game never meets it.
+Read `Backend` for the missing registration, `RegistrationConvention` for
+`KhaozEngine<Backend>.Register()` and `RegistrationMethod` for a known backend's entry point, or null for an
+unrecognized backend. The convention continues to apply when a backend is appended.
 
 Because each API had two members, code that cares about the API rather than the implementation asks
 `kind.IsDirect3D11()`, `kind.IsVulkan()` or `kind.IsMetal()` (the `GpuBackendKinds` extensions, 17.30.0, 17.32.0
@@ -18853,8 +18859,11 @@ packages, and `AppWindow` plus both snapshot hosts register at boot.
 
 **When the fallback fails too, `GpuNoUsableBackendException` (17.40.0) names BOTH attempts.** There is no device
 at that point and the app cannot render, and the exception carries `RequestedBackend`, `FallbackBackend`, the
-first failure as its `InnerException` and the fallback's own on `FallbackFailure`, with both reasons in the
-message in the order they were tried. The first failure is the inner one deliberately: on a native backend and
+first failure as its `InnerException`, the fallback's own on `FallbackFailure` and the requested diagnostic on
+`RequestedFailure`. Its `Reason` is `GpuNoUsableBackendRefusal.RequestedCreationFailed` when creation threw,
+`RequestedMachineUnsupported` when the support probe refused, or `RequestedProviderNotRegistered` when the
+stored preference had no provider. When the request never threw, `InnerException` is the fallback's exception.
+The first failure is the inner one deliberately: on a native backend and
 its deleted Veldrid twin the two usually shared one underlying cause, and the one worth reading is the first. A backend
 named outright never reaches it, because naming one turns fallback off.
 
@@ -18957,7 +18966,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="21.24.1" />
+<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="21.25.0" />
 ```
 
 ```csharp
@@ -18993,7 +19002,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="21.24.1" />
+<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="21.25.0" />
 ```
 
 ```csharp
@@ -19049,7 +19058,8 @@ validated by a human at a window or not at all. A green Vulkan leg is not eviden
 Call it unconditionally anyway, and on every OS. Unlike `KhaozEngine.Gpu.D3D11` there is no platform guard to
 read first and none to add: Vulkan is not a Windows API, the same managed code runs everywhere, the loader is
 resolved at runtime, and a machine without one is answered by the probe rather than by a platform predicate. The
-package's whole public surface is that one method.
+package's registration surface is that one method. Its structured refusal enums and exceptions also expose
+engine-only reasons and diagnostic values.
 
 Whether the machine can run it is the separate question `IsBackendSupported` answers, through this package's own
 functional probe: a Vulkan loader, a throwaway instance at the 1.3 floor, then every physical device checked for
@@ -19237,7 +19247,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Metal" Version="21.24.1" />
+<PackageReference Include="KhaozEngine.Gpu.Metal" Version="21.25.0" />
 ```
 
 ```csharp
@@ -19323,9 +19333,18 @@ sample every texture up front in binding order belonged to the removed Veldrid b
 may retain that shape, but new shaders do not need it. `ShaderValidation.ValidatePair` and `ValidateCompute`
 still check that the authored indices reached the emitted MSL.
 
-A shader whose emission cannot be read fails at `CreateShadersFromSpirv` with a message naming the program, the
-stage and the offending argument, and it fails with no device involved, so it surfaces in a headless test run
-rather than as a wrong pixel.
+A shader whose emission cannot be read fails at `CreateShadersFromSpirv` with `ShaderValidationException`.
+Its `Reason` distinguishes a missing entry point, missing or unclosed arguments and an unreadable function
+name. `Label` and `Stage` identify the emission. Binding-table refusals also carry `Set` and `Binding` where
+applicable. These checks involve no device and surface in a headless test run.
+
+Native Metal failures carry `MetalLibraryRejected`, `MetalLibraryFunctionMissing`,
+`MetalGraphicsPipelineRejected` or `MetalComputePipelineRejected` on the same exception. `Stage` and
+`EntryPoint` identify library failures. `PipelineKind` identifies pipeline failures. `Diagnostic` retains
+native error data, and `NativeDiagnosticMissing` distinguishes a nil native error. Missing functions carry
+`Policy` M-S5. `MetalShaderFunctionException` separately distinguishes `FunctionReleased` from `StageMissing`,
+retaining `Stage` and `ResourceKind`. Native descriptor or state creation failures use
+`ShaderValidationStateException`, preserving `InvalidOperationException` catches and carrying `NativeClass`.
 
 **`KE_METAL_MSL_CACHE` controls the emission cache, and what it caches is not what you might expect.** There is
 no compiled-library cache on this backend, because macOS already caches the MSL-to-library compile across
@@ -19381,12 +19400,16 @@ owns anything native and the call would otherwise quietly work.
 surprise you. The binding table is keyed on `(set, binding, stage)` against the shader's own reflection, so
 `GpuPipelineDescription.ResourceLayouts` has to be the same SHAPE as what the shader reflects: the same number
 of sets, the same number of elements in each, and the same `GpuResourceKind` at each position. A disagreement
-throws at `CreateGraphicsPipeline` naming the counts, which is the same declaration every other backend already
-expects and the first place anything checks it. Two consequences worth knowing. `ResourceLayouts` cannot be
-left empty for a shader that references nothing, because such a shader still reflects one empty set
-([#599](https://github.com/APKiwiOrg/KhaozEngine/issues/599)), and no shipped engine program is in that shape.
-And your vertex layouts have to cover every attribute the vertex function declares, because Metal validates the
-pipeline against the compiled function and says which attribute is missing.
+throws `ShaderValidationException` at `CreateGraphicsPipeline`. `Reason` is `MetalLayoutCountMismatch`,
+`MetalLayoutElementCountMismatch` or `MetalLayoutKindMismatch`, with `Label`. Layout-count refusals carry
+`DeclaredLayoutCount` and `ReflectedLayoutCount`, element-count refusals carry `Set`, `DeclaredElementCount`
+and `ReflectedElementCount`, and kind refusals carry `Set`, `Binding`, `DeclaredKind` and `ReflectedKind`.
+This is the same declaration every other backend already expects and the first place anything checks it.
+An empty `ResourceLayouts` array is valid for a shader that references no resources. Trailing empty declared
+layouts are ignored, including a single empty set
+([#599](https://github.com/APKiwiOrg/KhaozEngine/issues/599)). Your vertex layouts must cover every attribute
+the vertex function declares. Metal validates the pipeline against the compiled function, and a native rejection
+is carried as `MetalGraphicsPipelineRejected` with `PipelineKind`, `Diagnostic` and `NativeDiagnosticMissing`.
 
 **Disposing a shader set or a pipeline and then using it is refused by name on this backend, where the deleted Veldrid
 legs were quieter about it.** Creating a pipeline from a disposed `IGpuShaderSet`, or binding a disposed
@@ -19639,8 +19662,11 @@ refuse it rather than replay it.
 **The rule is now enforced for every recording the engine opens (`GpuRecording`, 17.36.0).** It used to be a
 paragraph you had to have read. `GpuRecording.Open(device, list, owner)` begins a list and claims the device,
 the returned `GpuRecordingScope` ends it and releases, and a second `Open` on the same device throws
-`GpuNestedRecordingException`. The message names both sides and the fix, which is the part a stack trace cannot
-give you, because the damage this replaces surfaced several draws away from the call that caused it:
+`GpuNestedRecordingException` with `Reason = GpuNestedRecordingRefusal.RecordingAlreadyOpen`.
+`Owner` identifies the open recording and `Attempted` the refused one. Move per-frame work to the pre-record
+phase through `AppWindow.Run(onPrepare)` or `Scene3D.PrepareFrame`. Loads, readbacks and offscreen captures
+belong outside the frame when they are not per-frame work. These identifiers supply the context a stack trace
+cannot, because the damage this replaces surfaced several draws away from the call that caused it:
 
 ```csharp
 using (GpuRecording.Open(gd, cl, "my streaming upload"))
@@ -19692,11 +19718,10 @@ own object model would allow it.
 the whole of what happens (18.0.0, issue #690).** `Render3DSurface.Render` calls `Scene3D.PrepareFrame` as a
 safety net, but by then the frame's list is open, so a scene with a producer that owns a command list (today: the
 FFT ocean, and `Scene3D.Begin`'s retire barrier once a retirement is pending) gets `GpuNestedRecordingException`
-naming the fix. There used to be a second layer under that, the vendored Veldrid fork's own guardrail throwing
-`VeldridException` on its leg, and it went with the fork in 18.0.0. Nothing replaced it and nothing needs to: the
-register refuses before any list is begun, so the message and the behaviour are identical on all three backends.
-The fix is unchanged, and it is the one the message names: queue and prepare the scene in `onPrepare`, call
-`Render` from `onFrame`, or subclass `GameApp3D`, which does exactly that for you. Note the data-dependence above
+with `Reason = GpuNestedRecordingRefusal.RecordingAlreadyOpen`. `Owner` identifies the open recording and
+`Attempted` the refused producer. The register refuses before any list begins, with the same reason and
+identifiers on all three backends. Queue and prepare the scene in `onPrepare`, then call `Render` from
+`onFrame`, or subclass `GameApp3D`, which supplies those phases. The data-dependence above
 applies here too, so a raw-`AppWindow` host with no ocean can run for a long time before the first unload turns
 its missing phase into an exception.
 
@@ -19780,7 +19805,9 @@ number, and again only the first can make it refuse something the other backends
 **A uniform buffer may not also be something else there either.** Creating a buffer as
 `GpuBufferUsage.UniformBuffer | GpuBufferUsage.StructuredBufferReadOnly` (or with either read-write structured
 bit, or with the vertex, index or indirect bits) is legal on the seam and was accepted by the deleted Veldrid
-Vulkan backend. `GpuBackendKind.VulkanNative` REFUSES it at creation, with a message saying so. A uniform buffer there is ring-backed: it holds one copy of itself per frame in flight, and
+Vulkan backend. `GpuBackendKind.VulkanNative` refuses it at creation with
+`GpuBufferUsageArgumentException` and `GpuBufferUsageRefusal.UniformBindingCombination`.
+Read `Usage` and `ConflictingUsage` for the rejected binding combination. A uniform buffer there is ring-backed: it holds one copy of itself per frame in flight, and
 the frame's base offset is supplied at the bind as the dynamic uniform descriptor's offset. No other binding
 carries that base, so the vertex, index, indirect or storage read would address the first copy while the uniform
 read addressed the current one, and one frame's data would be read as another's with nothing thrown. Create two
@@ -19831,7 +19858,8 @@ to be explicit, so the native backend waits on the device timeline before return
 wait into `GpuDeviceCounters.DrainCount` and `DrainMs`. A `GpuMapMode.Write` map does not wait, matching the
 deleted Veldrid leg. `MappedData.RowPitch` and `MappedData.SizeInBytes` mean exactly what they meant there,
 because the subresource arithmetic behind them was reproduced from it byte for byte. **A map on a device that has
-been LOST throws instead**, naming the loss reason the backend latched at the site that noticed. Disposing a
+been LOST throws instead**. `VulkanDeviceMapException` carries `LossLatched`, the published `LossReason`,
+`LossSite` and `ResultCode`, or `DeadWithoutLossRecord` with null loss fields. Disposing a
 device was always refused, and losing one now is too: the host-visible memory a staging resource is mapped into
 went with the device, so the pointer would dangle. There is no recovery path, so a run that wants to read back
 again creates a new device.
@@ -19858,7 +19886,7 @@ backend uses, then calls FXC itself to `vs_5_0` / `ps_5_0` / `cs_5_0`. Nothing a
 a shader changes. Three things reach you.
 
 **Validate your own shaders through FXC too, not only through `ShaderValidation`.**
-`ShaderValidation.ValidatePair` cross-compiles to HLSL, MSL, GLSL and ESSL and stops there: it has never
+`ShaderValidation.ValidatePair` cross-compiles to HLSL and MSL and stops there: it has never
 COMPILED the HLSL it produced. That gap is real rather than theoretical, and this engine fell through it twice on
 Direct3D 11 and WARP specifically, once badly enough that a whole scene rendered with no colour in it. If you
 reference `KhaozEngine.Gpu.D3D11`, add the second half in your own test suite:
@@ -19874,9 +19902,18 @@ public void WaterCompilesEverywhere()
 ```
 
 `KhaozEngineD3D11.ValidateComputeShader(computeGlsl, label?)` is the compute sibling. Both need no device and no
-GPU, both throw `ShaderValidationException` naming the label and what specifically was wrong, and both throw
-`PlatformNotSupportedException` off Windows, because FXC is `d3dcompiler` and exists nowhere else. Hence the
-`IsPlatformSupported` gate.
+GPU. Both throw `ShaderValidationException` with `Reason` and `Label`. `D3D11FxcRejected` also carries
+`Profile`, native `HResult` and `Diagnostic`. `D3D11UserSemanticHole` carries `Semantic`, `FirstMissingIndex`
+when applicable and a read-only `RepairSourcePaths` snapshot. Off Windows they throw
+`D3D11ShaderPlatformException`, derived from `PlatformNotSupportedException`, with
+`D3D11ShaderPlatformRefusal.FxcUnavailableOnPlatform`, `Compiler`, `RequiredOperatingSystem`, `SupportProbe`
+and `PortableValidator`. FXC is `d3dcompiler` and exists nowhere else. Hence the `IsPlatformSupported` gate.
+
+D3D11 compiler-report failure events retain `D3D11CompilerEvidenceStateException` for `ReadProfileMismatch`,
+`ReflectionNotCaptured`, `ConstructionIdentityInvalid`, `FailureOriginMissing` and `CombinedFlagsTooLarge`.
+They carry the requested and required profiles, missing stage flags, or field and UTF-8 bounds where relevant.
+`D3D11CompilerEvidenceDisposedException` carries `PipelineUnavailable` and `ObjectName`. The original exception
+base types and the actual native failure occurrences remain available.
 
 What they add over the seam's validator is the FXC compile itself plus one assertion FXC makes possible: the
 compiled vertex input signature must have contiguous `TEXCOORD` indices from 0. SPIRV-Cross DROPS a vertex input
@@ -20030,6 +20067,74 @@ segment's next reopen. That blocks nobody, it usually happens at load time befor
 non-zero reading beside a zero stall count is a specific diagnosis: the segment count is fine and something is
 writing off-timeline against work still in flight. `OffTimelineOutstanding` climbing rather than settling means
 writes are being queued for a segment nothing ever acquires, which on a running device means frames stopped.
+
+---
+
+## GPU resource refusals
+
+Resource ownership checks use `GpuResourceOwnershipArgumentException` for `DifferentDevice`,
+`ForeignBackend` and `MissingResource`, and
+`GpuResourceOwnershipDisposedException` for `NativeHandleReleased`. Read the resource type, backend,
+operation context and native handle properties rather than message text. Plain BCL parameter and
+lifetime checks keep their existing types.
+
+Foreign-resource admission at GPU bind, map, readback and upload entry points uses
+`GpuResourceOwnershipArgumentException` with `GpuResourceOwnershipRefusal.ForeignBackend` on all three
+backends. Its `ExpectedBackend`, `ActualType`, `ExpectedType`, `ResourceKind` and `Context` carry the
+resource identifiers available at that guard. `ParamName` keeps the entry point's parameter name.
+Staging usage and mapping state remain in `GpuStagingMapRefusal`.
+
+A resource-set adapter cast distinguishes logical-kind mistakes from foreign-backend resources.
+The former uses `GpuResourceSetRefusal.ResourceKindMismatch`. The latter uses
+`GpuResourceOwnershipRefusal.ForeignBackend`, with `ElementName`, `ResourceIndex`, `ResourceKind`,
+`ExpectedBackend`, `ActualType` and `ExpectedType` where those values are available.
+
+The same ownership reasons apply to attachment factories, pipeline and resource-set binds, uploads,
+completed staging-buffer reads and swapchain-copy command lists. D3D11 framebuffer adapters identify
+colour or depth attachments through `Context` and retain `ParamName = "texture"`. Vulkan completed
+buffer reads retain `ParamName = "staging"`, and foreign swapchain-copy lists retain
+`ParamName = "commands"`. A missing pipeline-layout slot carries `MissingResource` and `ResourceIndex`.
+Retirement queues reject a frame submission from another device with `DifferentDevice`, or
+`ForeignBackend` when its backend differs.
+
+`GpuResourceLayoutException` carries `DynamicOffsetUnsupportedForKind`, the backend, element name,
+binding when known and declared kind. `GpuResourceSetException` distinguishes resource count, kind,
+null entries, buffer windows, texture usage, staging textures and missing native handles. Its members
+retain the declaration index and the offending window or usage. Vulkan's ring constraints use
+`VulkanResourceSetRingException` with `UniformBufferNotRingBacked` or `RingBufferUsedAsStorage`.
+
+`GpuFramebufferException` distinguishes `NoAttachments`, `AttachmentShapeMismatch`,
+`AttachmentViewMissing` and `AttachmentNotRenderable`. It identifies the attachment and the actual
+and expected shapes, usage or native handle kind as appropriate. Graphics blend-count checks use
+`GpuPipelineOutputsException` with `BlendCountMismatch`, `DeclaredBlendCount`, `ColourOutputCount`
+and `PipelineKind`. Backend admission differences remain as documented by each backend.
+
+Texture copy, mip generation and resolve checks use the portable `GpuTextureTransferArgumentException`
+and `GpuTextureTransferRangeException`. Their required `GpuTextureTransferRefusal` reason distinguishes
+`TextureShapeMismatch`, `MipChainRequired`, `ResolveShapeMismatch` and `SubresourceOutOfRange`.
+The last reason also covers existing staging-layout and upload mip/layer guards on all three backends.
+Their `GpuTextureTransferRangeException` carries the mip, layer and texture counts available at the guard,
+plus the original `ParamName` and `ActualValue`. A copy guard also carries `Side`.
+Shape properties retain both resources' dimensions and format. Subresource refusals retain `ParamName`,
+`ActualValue`, `Side`, mip and layer indices and their limits.
+
+Swapchain copy checks use `GpuSwapchainCopyArgumentException` for `ColourAttachmentCount` and
+`DestinationShapeMismatch`, and `GpuSwapchainCopyStateException` for `SwapchainNotBound` and
+`SwapchainNotCopyable`. The shape refusal carries both shapes. The state refusal names `Command`.
+
+Buffer writes and copies that leave the logical buffer use `GpuBufferTransferRangeException` with
+`GpuBufferTransferRefusal.WindowOutsideBuffer`, `OffsetBytes`, `SizeBytes`, `BufferBytes` and `Side`
+where the guard has the copy side. This includes the uniform-ring write checks on all three backends.
+Vulkan refuses empty buffer copies with `VulkanBufferCopyException` and `VulkanBufferCopyRefusal.EmptyCopy`. Binding usage checks use `VulkanBufferBindingException` with
+`RequiredUsageMissing`, `Usage`, `RequiredUsage` and `Context`. Descriptor budgets use
+`VulkanDescriptorLimitException` with `DynamicUniformLimitExceeded`, `LimitName`, `RequestedCount`,
+`Limit` and `SetLayoutCount`. Layout tracking uses `VulkanLayoutArgumentException` for
+`ImageHandleMissing` and `VulkanLayoutStateException` for `NoSingleLayout`, `PartialOverlap` and
+`UntrackedRemainder`. Its properties identify the image and requested or tracked subresource ranges.
+Staging framebuffer attachments carry `AttachmentNotRenderable` across the native backends. A non-staging attachment without its required native render view carries `AttachmentViewMissing`. Missing swapchain attachment handles carry `AttachmentNotRenderable`.
+
+See the [portable refusal catalog](../KhaozEngine.Gpu/README.md#refusals) and
+[Vulkan refusal catalog](../KhaozEngine.Gpu.Vulkan/README.md#refusals) for the full diagnostic members.
 
 ---
 
@@ -23808,7 +23913,7 @@ socket a shipping build does not contain. It is in NO umbrella, and a game head 
 
 ```xml
 <ItemGroup Condition="'$(Configuration)' == 'Debug'">
-  <PackageReference Include="KhaozEngine.Automation" Version="21.24.1" />
+  <PackageReference Include="KhaozEngine.Automation" Version="21.25.0" />
 </ItemGroup>
 ```
 
@@ -24038,8 +24143,21 @@ overload `AssertComplete(IEnumerable<string> keys, rm, cultures...)` takes an ex
 A custom GLSL shader that has a syntax error or miscompiles on one backend normally only blows up at first run on
 a real device of that backend. `ShaderValidation.ValidatePair` catches it on the CPU, with no `GraphicsDevice`, so
 it runs in the fast GPU-free test lane on every push: it compiles a GLSL 450 vertex/fragment pair to SPIR-V and
-cross-compiles the pair to every backend target (HLSL, MSL, GLSL, ESSL). A compile failure throws
-`ShaderValidationException` naming the label and the failing stage/target.
+cross-compiles the pair to every backend target (HLSL and MSL). A compile failure throws
+`ShaderValidationException` with a nullable `Reason`, `Label`, `Stage` and `Target`. Engine callers always
+supply a reason. Message-only constructors remain available to consumers and leave `Reason` null.
+`FrontEndCompileFailed` keeps the native cause in `InnerException` and its text in `Diagnostic`.
+`CrossCompileFailed` keeps the inner validation refusal, whose own reason and identifiers describe the failing
+rule. SPIR-V module refusals carry byte lengths, magic values or instruction offsets and word counts.
+The [GPU refusal table](../KhaozEngine.Gpu/README.md#refusals) lists every shader reason and its identifiers.
+`ShaderValidationArgumentException`, `ShaderValidationRangeException` and `ShaderValidationStateException`
+share `ShaderValidationRefusal` while
+preserving their original BCL bases. Metal vertex-stream range refusals retain `ParamName` and `ActualValue`,
+plus `Label`, `StreamCount` and `BufferTableSize`. Vulkan module-cache admission carries `SpirvLengthInvalid`
+on `ShaderValidationArgumentException`, with `ParamName`, `ByteLength` and `WordBytes`. Vulkan vertex-input
+refusals use `VulkanVertexInputException` with `InstanceDivisorUnsupported`, `ParamName`, `InstanceStepRate`,
+`Slot` and `MaximumStepRate`. Vertex-buffer collisions retain the resource `Set` and
+`Binding`, `ArgumentIndex`, stream bounds and policy M-B2.
 
 ```csharp
 [Fact]
@@ -24106,8 +24224,9 @@ a wrong picture on one backend and there is nothing in the GLSL that looks wrong
 three times before the guard existed, and found it by image golden or bisect every time.
 
 `ValidatePair` and `ValidateCompute` both run one check per stage over the emitted Metal, and it throws
-`ShaderValidationException` naming the offending `layout(set=, binding=)` pairs so the message is greppable in
-your GLSL:
+`ShaderValidationException` with `ShaderValidationRefusal.MetalBindingOrderMismatch`. Its identifiers are
+`Label`, `Stage`, `Space`, `ArgumentIndex`, `DeclaredSet`, `DeclaredBinding`, `EmittedSet`, `EmittedBinding`
+and `ExpectedIndex`. These point back to the GLSL declarations:
 
 - **Index order, per stage, over buffers AND textures AND samplers.** Each emitted argument is joined back to
   the `(set, binding)` you wrote through that stage's own SPIR-V decorations, so a swap between two resources of
@@ -24193,7 +24312,9 @@ samples needs `Sampled` as well. A storage buffer is `GpuBufferUsage.StructuredB
 
 **A copy offset is a multiple of four, on every backend (since 17.40.0).** `ReadBuffer<T>`'s optional
 `srcOffsetBytes` and both offsets of `IGpuCommandList.CopyBuffer` are refused with an
-`ArgumentOutOfRangeException` when they are not, naming the side the bad one came from. macOS requires it of
+`GpuCopyAlignmentException` when they are not, with `GpuCopyAlignmentRefusal.UnalignedOffset`.
+It derives from `ArgumentOutOfRangeException` and carries `ParamName`, `ActualValue`, `Context`, `Side`,
+`AlignmentBytes`, optional upload `PayloadBytes` and `RecoveryOperation`. macOS requires it of
 `copyFromBuffer:sourceOffset:toBuffer:destinationOffset:size:`, so before 17.40.0 the same call was taken on
 Vulkan and Direct3D 11 and threw on Metal, which is a difference a game would only meet on a player's
 Mac ([#602](https://github.com/APKiwiOrg/KhaozEngine/issues/602)). The seam takes the strictest backend's rule
@@ -24208,18 +24329,46 @@ uint[] bad  = GpuReadback.ReadBuffer<uint>(gd, buffer, 4, srcOffsetBytes: 3);   
 **`GpuReadback.ToRgba`'s source must already be single-mip, single-sample `R8G8B8A8UNorm` at the size you ask
 for.** It allocates a staging texture of exactly that shape and takes a WHOLE-texture copy into it, and a
 whole copy names every subresource on both sides, so anything else is not a copy a backend can narrow. A source that
-disagrees is refused with an `ArgumentException` naming the readback and what the texture actually is, before
+disagrees is refused with `GpuRgbaReadbackException` and `GpuRgbaReadbackRefusal.SourceShapeMismatch`, before
 anything is allocated or submitted. Native Metal and Vulkan already refused the copy themselves, but Direct3D 11's
 `CopyResource` is silent about a mismatch, so the same call used to throw on two backends and hand back
 channel-swapped or garbage bytes on the third ([#83](https://github.com/APKiwiOrg/KhaozEngine/issues/83)). Resolve a
 multisampled target with `IGpuCommandList.ResolveTexture` first, read one level of a mip chain with
-`GpuReadback.ToRgbaMip`, and pass the source's own dimensions.
+`GpuReadback.ToRgbaMip`, and pass the source's own dimensions. The exception derives from
+`ArgumentException`, keeps `ParamName`, and carries `RequestedWidth`, `RequestedHeight`, `SourceWidth`,
+`SourceHeight`, `SourceFormat`, `SourceMipLevels` and `SourceSampleCount`. Requested dimensions retain
+negative values. `MipReadbackOperation` and `ResolveOperation` identify the per-level and resolve remedies.
 
 ```csharp
 byte[] px  = GpuReadback.ToRgba(gd, colourTarget, w, h);        // R8G8B8A8UNorm, 1 mip, 1 sample, w x h
-byte[] bad = GpuReadback.ToRgba(gd, swapchainBgra, w, h);       // throws: B8G8R8A8UNorm named in the message
+byte[] bad = GpuReadback.ToRgba(gd, swapchainBgra, w, h);       // SourceShapeMismatch, SourceFormat is B8G8R8A8UNorm
 byte[] mip = GpuReadback.ToRgbaMip(gd, mipped, 2, 0, w / 4, h / 4);   // one level of a mip chain
 ```
+
+Staging admission uses `GpuStagingMapArgumentException` (an `ArgumentException`) with
+`StagingUsageRequired`. It carries `Backend`, `ResourceKind`, the original `ParamName` and
+`RequiredBufferUsage` / `RequiredTextureUsage` for missing usage. A foreign staging resource uses
+`GpuResourceOwnershipArgumentException` with `ForeignBackend` and the ownership identifiers. `GpuStagingMapStateException` (an `InvalidOperationException`) carries `AlreadyMapped`
+with `Backend`, `ExistingMode` and `RequestedMode`, `NotMapped` or `MappingMissing` with `Backend`, and
+`CompletionNotSignaled` with `Command`. The last reason identifies an unsignaled `MapForRead` fence.
+The backends retain their existing admission checks and state tracking.
+
+Uniform and structured usage on one buffer is refused by all three backends through
+`GpuBufferUsageArgumentException` with `GpuBufferUsageRefusal.UniformBindingCombination`, `Usage` and
+`ConflictingUsage`. Vulkan and Direct3D 11 also refuse uniform plus vertex, index or indirect usage,
+while Metal accepts those combinations. Buffer bounds use `GpuBufferTransferRangeException` with
+`WindowOutsideBuffer`, `OffsetBytes`, `SizeBytes` and `BufferBytes`. These shared range exceptions retain
+each guard's original `ParamName` and `ActualValue`. Metal arena refusals use `MetalStagingArenaRangeException` with
+`LeaseSizeUnaligned`, `AlignmentBytes` and `RecoveryOperation`, or `MetalStagingArenaStateException`
+with `BlockAllocationFailed` and 64-bit `BlockBytes`. Duplicate argument entries use
+`MetalArgumentBatchException` with `DuplicateArgumentIndex`, `Index`, `Space` and `Stage`.
+Each backend exception uses its matching `Metal*Refusal` enum and retains its former BCL base.
+
+Vulkan staging layout overflow uses `VulkanStagingLayoutException` (an `ArgumentOutOfRangeException`)
+with `VulkanStagingLayoutRefusal.MappingSizeExceeded`. It keeps `ParamName` and `ActualValue` and
+carries `Width`, `Height`, `MipLevels`, `ArrayLayers`, `Format`, `Quantity`, `ComputedBytes` and
+`MaximumBytes`. Byte counts remain 64-bit while the mapping ceiling remains `uint.MaxValue`.
+Messages for these families are developer prose. Branch on the reason and identifiers.
 
 ### Reading a completed staging copy without waiting
 
@@ -24242,7 +24391,8 @@ result can arrive a few frames late.
   backend, a disposed fence or buffer, a buffer without `GpuBufferUsage.Staging`, an `offsetBytes` that is not a
   multiple of four, and a `destination` that runs past the end of the buffer.
 - Do not hold a synchronous `Map` of the same staging buffer while polling. Direct3D 11 refuses the read with the
-  double-map `InvalidOperationException`, and Metal and Vulkan do not detect it.
+  double-map `GpuStagingMapStateException` with `GpuStagingMapRefusal.AlreadyMapped`, and Metal and Vulkan
+  do not detect it on this polling path.
 - On Direct3D 11 a `Submit` does not flush the immediate context. The next `Present` or drain hands the work to the
   driver, which in a presenting frame loop is the frame boundary. A headless loop that neither presents nor drains
   can read `false` indefinitely.
@@ -24358,7 +24508,8 @@ Gate timestamp collection on `GpuCapabilities.SupportsTimestamps`. It defaults t
 reports the selected graphics queue's counter support. Direct3D 11 probes both native query kinds on
 the actual device without timing a workload. Metal probes the timestamp counter set, supported sampling
 boundaries and sample-buffer creation. An unsupported
-`IGpuResourceFactory.CreateTimestampPool(capacity)` throws `NotSupportedException`. The optional timestamp
+`IGpuResourceFactory.CreateTimestampPool(capacity)` throws `GpuTimestampUnsupportedException` with
+`GpuTimestampRefusal.TimestampUnsupported`. It remains a `NotSupportedException`. The optional timestamp
 command defaults also throw, so existing factories and command lists stay source compatible.
 
 Allocate a fixed caller-owned ring once, with one `IGpuTimestampPool` per retained frame and preallocated
@@ -24372,7 +24523,10 @@ Place writes at pass boundaries, including between a compute dispatch and a draw
 requires every index to have been written. These three calls only encode work. They never submit it. A pool
 retains one unresolved batch, and a new begin clears the previous batch only after its result was consumed.
 Invalid count or index bounds throw `ArgumentOutOfRangeException`. Missing, duplicate or out-of-order writes
-and invalid lifecycle operations throw `InvalidOperationException`.
+and invalid timestamp lifecycle operations throw `GpuTimestampStateException`. Its required
+`GpuTimestampRefusal` reason distinguishes `BatchNotRecording`, `UnresolvedBatch`, `IndexOutOfSequence`,
+`IncompleteBatch` and `BatchNotEnded`. Cursor refusals carry `Count`, `Index`, `ExpectedIndex` or
+`WrittenCount` as appropriate. The exception still derives from `InvalidOperationException`.
 
 For completed-frame GPU timing, also require `commandList is IGpuCommandListTimestampEnd`. Vulkan, Direct3D 11
 and Metal implement this optional interface. A list without it cannot prove completed-frame time, because End can
@@ -24380,11 +24534,26 @@ emit later clears or barriers. Begin the batch and write every index before the 
 `FinishTimestampsOnEnd(pool, count - 1)` while the list is still recording. Arming validates the current
 list and recording, the same-device pool, the last batch index and every earlier write before storing
 anything. Only one tail can be armed. Manual `WriteTimestamp` or `EndTimestamps` for its pool is refused.
+`GpuTimestampRefusal.WrongRecording`, `TailPrefixIncomplete`, `TailAlreadyArmed` and
+`ManualFinalizationWhileArmed` distinguish the state refusals. A wrong final index uses
+`GpuTimestampRangeException` with `FinalIndexRequired`, retaining `ParamName` and `ActualValue` and
+carrying `FinalIndex` and `Count`. Foreign pools use `GpuResourceOwnershipArgumentException` with
+`ForeignBackend` for another backend or `DifferentDevice` for another device/timeline. They carry
+`ExpectedBackend`, `ActualType`, `ExpectedType`, `ResourceKind`, `Context` and the original `ParamName`.
 The ordinary End writes the last marker and ends that same batch after all GPU finalization and before
 the native seal, with no extra submission, flush, wait or per-frame allocation. Unarmed End is unchanged.
 Failure or abandonment clears only the list's tail. The caller quarantines the Recording or Pending pool
 through teardown, rather than resetting or reusing it. There is no cancellation API. Device loss follows
 the backend's sealing policy and cannot produce valid completed-frame evidence.
+
+Recording lifecycle checks on all three native backends use `GpuRecordingStateException`, derived
+from `InvalidOperationException`, with `Backend` and `Command`. `GpuRecordingStateRefusal` distinguishes
+`BeginWhileRecording`, `CommandOutsideRecording`, `EndWithoutRecording`, `RecordingAlreadySealed`
+and `SubmissionWithoutSeal`. End on a fresh or abandoned list uses `EndWithoutRecording`.
+End on a sealed list uses `RecordingAlreadySealed`.
+A lost Metal or Vulkan timestamp device uses `GpuTimestampStateException` with
+`TimestampDeviceUnavailable` and `Backend`. Direct3D 11 uses `GpuTimestampDisposedException` with the
+same reason and `Backend`, retaining `ObjectName = "IGpuDevice"` and its `ObjectDisposedException` base.
 
 Submit the list containing `EndTimestamps` once with a same-device completion fence, then call
 `pool.TryResolve(completion, ticks, out double tickPeriodNanoseconds)` on later frames. Keep the pool and
@@ -24392,6 +24561,11 @@ fence alive, and never reset, resubmit or dispose that fence until resolution co
 readback ring has consumed its entries. A fence from another submission is a caller error. A never-submitted
 fence stays pending. On Direct3D 11, presenting or a caller drain hands submitted work to the driver. This
 API introduces no flush policy for a headless loop that never presents.
+
+A short output uses `GpuTimestampArgumentException` with `OutputTooSmall`, `SuppliedCount` and
+`RequiredCount`. A completion fence of another backend uses `GpuResourceOwnershipArgumentException`
+with `GpuResourceOwnershipRefusal.ForeignBackend` and its ownership identifiers. Both preserve
+`ParamName`. A native fence from another device of the same backend uses `DifferentDevice`.
 
 `Pending` leaves caller ticks unchanged and sets the period to zero. `Invalid` does the same but consumes
 the batch, for example when counters are disjoint, calibration is unusable or elapsed ticks overflow.
@@ -24674,6 +24848,17 @@ Marker cost counts as part of instrumented GPU time and is never subtracted. Hos
 may report unsupported. Its negative branch must execute and that GPU gate is unmeasurable there.
 Native correctness is required on supported Apple hardware. Budget timing remains a separate,
 owner-approved measurement on a chosen device.
+
+Backend adapter refusals stay in their packages. `D3D11TimestampAdapterException` carries
+`D3D11TimestampAdapterRefusal.QueryReadFailed`, the native `HResult` and `Operation`.
+`MetalTimestampAdapterStateException` carries `NativeTimestampResourceUnavailable` and `ResourceKind`.
+`MetalTimestampAdapterUnsupportedException` carries `SamplingBoundaryUnsupported` and `StageBoundary`.
+Both use `MetalTimestampAdapterRefusal`. `VulkanTimestampAdapterException` carries
+`VulkanTimestampAdapterRefusal.NativeDeviceLost` with `Site`, or `PoolAlreadyCreated`.
+Wait admission uses `D3D11WaitPolicyException` with `D3D11WaitPolicyRefusal.SubmitLockHeld` or
+`VulkanRingWaitException` with `VulkanRingWaitRefusal.SubmitLockHeld`, both carrying `Operation`.
+These adapter and wait state exceptions retain their `InvalidOperationException` base. The Metal
+sampling-boundary exception retains `NotSupportedException`. Messages remain developer prose.
 
 ### Ordering: two rules, because there is no barrier call
 
@@ -28144,3 +28329,67 @@ the game reject a target before an Attack command creates a lock, chase or roll,
 Stair climb smoothing survives a shard handoff by seeding the destination's empty smoothing accumulator from the
 migrated `ClimbRateQ` signal. Ordinary ticks retain their full-precision accumulator. The float remains absent
 from observer snapshots, so the wire payload does not grow.
+
+### Bound framebuffer refusals
+
+D3D11, Metal and Vulkan throw `GpuBoundFramebufferException`, derived from `InvalidOperationException`,
+with `GpuBoundFramebufferRefusal.FramebufferNotBound` when an existing framebuffer-dependent command has
+no target. `ClearColorTarget`, `ClearDepthStencil` and `SetFullScissorRects` report those exact member names
+in `Command`. Metal and Vulkan also refuse draws without a target and report `Draw` or `DrawIndexed`.
+D3D11 retains its existing draw acceptance. A depth clear against a colour-only target uses
+`DepthAttachmentMissing` and `Command = "ClearDepthStencil"` on all three backends. Bind a target with the
+required attachment before retrying. Messages and refusal points are unchanged.
+
+### Backend diagnostic settings refusals
+
+The native D3D11, Metal and Vulkan providers require their own frozen diagnostic settings for
+`IGpuHeadlessDiagnosticProvider.CreateHeadless(settings)`. Foreign settings throw
+`GpuBackendCreationArgumentException`, derived from `ArgumentException`, with
+`GpuBackendCreationRefusal.ForeignDiagnosticSettings`, `ParamName`, `ExpectedBackend` and `ActualType`.
+Resolve settings through the same provider before creating its device.
+
+### Native D3D11 creation and binding refusals
+
+`D3D11BackendCreationRefusal` distinguishes native platform and window-kind refusals.
+`D3D11ObjectPlatformRefusal.WindowsObjectUsedOffWindows` carries the native object kind and support probe.
+`D3D11BindResolutionRefusal` identifies constant-buffer transposition inputs. Missing native register views
+use `GpuResourceOwnershipRefusal.MissingResource`, with `RegisterLetter`, `ActualType` and `ExpectedType`.
+Foreign bindable resources, framebuffers and buffers use `GpuResourceOwnershipArgumentException` with
+`GpuResourceOwnershipRefusal.ForeignBackend`, `ActualType` and `ExpectedType`. A missing required native
+buffer uses `MissingResource`. `D3D11MapResultRefusal.MapFailed` carries the map site, HRESULT,
+result token and device-loss status. Each exception derives from the BCL type previously thrown.
+See the [D3D11 refusal table](../KhaozEngine.Gpu.D3D11/README.md#refusals) for the identifiers.
+
+### Native Metal creation and binding refusals
+
+`MetalBackendCreationRefusal` identifies platform, machine, Cocoa handle and native-layer failures.
+`MetalEncoderRefusal` identifies a missing render descriptor, a missing recording or an encoder still open.
+`MetalBindRecordsRefusal` identifies a missing pipeline table, nil encoder or argument-space mismatch.
+`MetalRingLayoutRefusal` carries frame-depth bounds. `GpuDynamicBindingRangeException` identifies
+`OffsetMisaligned` or `WindowOutsideSegment` through `GpuDynamicBindingRefusal` on Metal and Vulkan.
+It carries `ComposedOffset`, `AlignmentBytes`, `RingBase`, `RangeOffset`, `DynamicOffset`, `RangeBytes`
+and `SegmentStride` where the guard has those values. Vulkan alignment refusals also carry `Set` and
+`Binding`. It preserves `ParamName` and `ActualValue` as
+`ArgumentOutOfRangeException` data. Metal window refusals retain `RecoveryOperation = "GpuBufferRange"`.
+D3D11 accepts these inputs today, tracked in [#1689](https://github.com/APKiwiOrg/KhaozEngine/issues/1689). `MetalRingWaitRefusal.SubmitLockHeld` carries the refused operation.
+See the [Metal refusal table](../KhaozEngine.Gpu.Metal/README.md#refusals) for each exception and identifier.
+
+### Native Vulkan creation and device refusals
+
+`VulkanBackendCreationRefusal` separates machine support, surface kind and native-loader failures. `LoaderUnavailable` retains the native cause. `VulkanInstanceRefusal` separates a null factory
+result from incompatible live and requested configurations. `VulkanFeatureRefusal.RequiredFeatureMissing`
+carries the feature and device. `VulkanResultRefusal.NativeCallFailed` carries the call, result code and token.
+`VulkanDeviceWiringRefusal.InstanceMissing` identifies the missing native object on a seam-built device.
+`VulkanValidationRefusal.StrictErrorLatched` carries the controlled site and first diagnostic with its message
+identifiers. See the [Vulkan refusal table](../KhaozEngine.Gpu.Vulkan/README.md#refusals).
+
+On Metal and Vulkan, a nonzero offset on a set with no authored dynamic element throws the portable
+`GpuDynamicBindingException` with `GpuDynamicBindingRefusal.DynamicElementMissing` and the backend,
+set number and offset. These families preserve the original BCL exception bases and parameter data.
+
+Post-probe native creation checks also carry structured reasons. D3D11 identifies a missing HWND,
+versioned context or native creation output. Metal identifies a missing eligible device or command queue.
+Vulkan identifies an unavailable pinned adapter, an empty enumeration or all-ineligible candidates,
+with independent candidate counts and copied name/rejection lists. The backend refusal tables list these
+members and their data. A nil encoder uses `MetalBindRecordsRefusal.EncoderMissing` for both resource-set
+and vertex-stream flushes.

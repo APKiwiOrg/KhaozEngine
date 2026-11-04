@@ -41,53 +41,59 @@ namespace KhaozEngine.Tests.Gpu
         /// refusal has to NAME the format, because "the copy failed" sends the caller to inspect the copy.
         /// </summary>
         [Fact]
-        public void ABgraSource_IsRefused_AndTheMessageNamesTheFormat()
+        public void ABgraSource_IsRefused_AndNamesTheFormat()
         {
-            ArgumentException ex = Assert.Throws<ArgumentException>(
+            GpuRgbaReadbackException ex = Assert.Throws<GpuRgbaReadbackException>(
                 () => GpuReadback.ToRgba(_device, Texture(GpuPixelFormat.B8G8R8A8UNorm), (int)W, (int)H));
 
             Assert.Equal("src", ex.ParamName);
-            Assert.Contains("GpuReadback.ToRgba", ex.Message);
-            Assert.Contains("B8G8R8A8UNorm", ex.Message);
+            Assert.IsAssignableFrom<ArgumentException>(ex);
+            Assert.Equal(GpuRgbaReadbackRefusal.SourceShapeMismatch, ex.Reason);
+            Assert.Equal(GpuPixelFormat.B8G8R8A8UNorm, ex.SourceFormat);
         }
 
-        /// <summary>A mipped source, with the mip count in the message and the per-level readback named as the
+        /// <summary>A mipped source, with the structured mip count and the per-level readback named as the
         /// way out.</summary>
         [Fact]
-        public void AMippedSource_IsRefused_AndTheMessageNamesTheMipCount()
+        public void AMippedSource_IsRefused_AndNamesTheMipCount()
         {
-            ArgumentException ex = Assert.Throws<ArgumentException>(
+            GpuRgbaReadbackException ex = Assert.Throws<GpuRgbaReadbackException>(
                 () => GpuReadback.ToRgba(_device, Texture(mips: 4), (int)W, (int)H));
 
             Assert.Equal("src", ex.ParamName);
-            Assert.Contains("4 mip level(s)", ex.Message);
-            Assert.Contains("ToRgbaMip", ex.Message);
+            Assert.Equal(GpuRgbaReadbackRefusal.SourceShapeMismatch, ex.Reason);
+            Assert.Equal(4u, ex.SourceMipLevels);
+            Assert.Equal("GpuReadback.ToRgbaMip", ex.MipReadbackOperation);
         }
 
         /// <summary>A multisampled source, which no backend can whole-copy into a single-sample staging texture.
-        /// The resolve is the way out and the message says so.</summary>
+        /// The resolve is the way out and the refusal names it.</summary>
         [Fact]
         public void AMultisampledSource_IsRefused()
         {
-            ArgumentException ex = Assert.Throws<ArgumentException>(
+            GpuRgbaReadbackException ex = Assert.Throws<GpuRgbaReadbackException>(
                 () => GpuReadback.ToRgba(_device, Texture(samples: 4), (int)W, (int)H));
 
             Assert.Equal("src", ex.ParamName);
-            Assert.Contains("4 sample(s)", ex.Message);
-            Assert.Contains("ResolveTexture", ex.Message);
+            Assert.Equal(GpuRgbaReadbackRefusal.SourceShapeMismatch, ex.Reason);
+            Assert.Equal(4u, ex.SourceSampleCount);
+            Assert.Equal("IGpuCommandList.ResolveTexture", ex.ResolveOperation);
         }
 
         /// <summary>A size the source does not have. The staging texture is built from the CALLER's numbers, so a
-        /// mismatch here is the same unnarrowable whole copy, and both shapes belong in the message.</summary>
+        /// mismatch here is the same unnarrowable whole copy, and both shapes belong on the refusal.</summary>
         [Fact]
         public void ASizeTheSourceDoesNotHave_IsRefused()
         {
-            ArgumentException ex = Assert.Throws<ArgumentException>(
+            GpuRgbaReadbackException ex = Assert.Throws<GpuRgbaReadbackException>(
                 () => GpuReadback.ToRgba(_device, Texture(), (int)W / 2, (int)H));
 
             Assert.Equal("src", ex.ParamName);
-            Assert.Contains("32x32", ex.Message);   // what was asked for
-            Assert.Contains("64x32", ex.Message);   // what the source is
+            Assert.Equal(GpuRgbaReadbackRefusal.SourceShapeMismatch, ex.Reason);
+            Assert.Equal(32, ex.RequestedWidth);
+            Assert.Equal(32, ex.RequestedHeight);
+            Assert.Equal(64u, ex.SourceWidth);
+            Assert.Equal(32u, ex.SourceHeight);
         }
 
         /// <summary>

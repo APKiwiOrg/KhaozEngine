@@ -66,7 +66,14 @@ namespace KhaozEngine.Gpu.D3D11.Internal
             // cannot be multisampled without a resolve the present path does not have.
             Outputs = new GpuOutputDescription(depthFormat, colourFormat);
             _renderTargetView = attachments.RenderTargetView
-                ?? throw new ArgumentException(NoRenderTarget, nameof(attachments));
+                ?? throw new GpuFramebufferException(GpuFramebufferRefusal.AttachmentNotRenderable, NoRenderTarget, nameof(attachments))
+                {
+                    Attachment = "colour attachment 0",
+                    ActualUsage = GpuTextureUsage.RenderTarget,
+                    RequiredUsage = GpuTextureUsage.RenderTarget,
+                    IsStaging = false,
+                    NativeHandleKind = "ID3D11RenderTargetView",
+                };
             _depthStencilView = attachments.DepthStencilView;
             Width = attachments.Width;
             Height = attachments.Height;
@@ -107,7 +114,14 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         internal void Adopt(in D3D11SwapchainAttachments attachments)
         {
             _renderTargetView = attachments.RenderTargetView
-                ?? throw new ArgumentException(NoRenderTarget, nameof(attachments));
+                ?? throw new GpuFramebufferException(GpuFramebufferRefusal.AttachmentNotRenderable, NoRenderTarget, nameof(attachments))
+                {
+                    Attachment = "colour attachment 0",
+                    ActualUsage = GpuTextureUsage.RenderTarget,
+                    RequiredUsage = GpuTextureUsage.RenderTarget,
+                    IsStaging = false,
+                    NativeHandleKind = "ID3D11RenderTargetView",
+                };
             _depthStencilView = attachments.DepthStencilView;
             Width = attachments.Width;
             Height = attachments.Height;

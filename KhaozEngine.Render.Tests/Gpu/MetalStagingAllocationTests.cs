@@ -1,6 +1,8 @@
 using System;
-using KhaozEngine.Gpu.Metal.Internal;
 using KhaozEngine.Gpu.Metal.Internal.ObjC;
+using KhaozEngine.Gpu.Metal.Internal;
+using KhaozEngine.Gpu.Metal;
+using KhaozEngine.Gpu;
 using Xunit;
 
 namespace KhaozEngine.Tests.Gpu
@@ -79,12 +81,14 @@ namespace KhaozEngine.Tests.Gpu
         [Fact]
         public void AMisalignedStagedUploadStillNamesItsSizeInTheRefusal()
         {
-            ArgumentOutOfRangeException thrown = Assert.Throws<ArgumentOutOfRangeException>(
+            GpuCopyAlignmentException thrown = Assert.Throws<GpuCopyAlignmentException>(
                 () => MetalBufferUpload.CopyBytesFor(offsetBytes: 6, lengthBytes: 16, DestinationSize));
 
-            Assert.Contains("A record-time upload of 16 bytes to a non-uniform native Metal buffer",
-                thrown.Message, StringComparison.Ordinal);
-            Assert.Contains("destination offset of 6", thrown.Message, StringComparison.Ordinal);
+            Assert.Equal(GpuCopyAlignmentRefusal.UnalignedOffset, thrown.Reason);
+            Assert.Equal(16u, thrown.PayloadBytes);
+            Assert.Equal("destination", thrown.Side);
+            Assert.Equal("offsetBytes", thrown.ParamName);
+            Assert.Equal(6ul, thrown.ActualValue);
         }
 
         static void LeaseFrame(MetalStagingArena arena, int frame)

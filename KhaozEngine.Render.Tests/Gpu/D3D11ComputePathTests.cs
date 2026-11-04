@@ -713,11 +713,12 @@ namespace KhaozEngine.Tests.Gpu
             using D3D11ResourceLayout mine = D3D11BindFixtures.ShadowLayout();
             var foreign = new FakeResourceLayout();
 
-            ArgumentException ex = Assert.Throws<ArgumentException>(
+            GpuResourceOwnershipArgumentException ex = Assert.Throws<GpuResourceOwnershipArgumentException>(
                 () => D3D11ResourceLayout.RequireAll(new IGpuResourceLayout[] { mine, foreign }, "compute"));
 
-            Assert.Contains("Resource layout 1", ex.Message, StringComparison.Ordinal);
-            Assert.Contains("compute pipeline", ex.Message, StringComparison.Ordinal);
+            Assert.Equal(GpuResourceOwnershipRefusal.ForeignBackend, ex.Reason);
+            Assert.Equal(1, ex.ResourceIndex);
+            Assert.Equal("compute", ex.PipelineKind);
         }
 
         /// <summary>A pipeline that declares no layouts binds no sets, so an empty or absent array is not an error

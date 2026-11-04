@@ -12,16 +12,16 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         {
             D3D11TimestampPool native = RequireTimestampPool(pool);
             if (_timestampEndPool is not null)
-                throw new InvalidOperationException("A final timestamp tail is already armed for this recording.");
+                throw new GpuTimestampStateException(GpuTimestampRefusal.TailAlreadyArmed, "A final timestamp tail is already armed for this recording.") { Backend = GpuBackendKind.Direct3D11Native };
             native.ValidateTimestampEnd(this, _timestampRecordingId, finalIndex);
             _timestampEndPool = native;
             _timestampEndIndex = finalIndex;
         }
 
-        void RefuseArmedTimestampPool(D3D11TimestampPool pool)
+        void RefuseArmedTimestampPool(D3D11TimestampPool pool, [System.Runtime.CompilerServices.CallerMemberName] string member = "")
         {
             if (ReferenceEquals(pool, _timestampEndPool))
-                throw new InvalidOperationException("The timestamp pool's final marker and batch end are armed for End.");
+                throw new GpuTimestampStateException(GpuTimestampRefusal.ManualFinalizationWhileArmed, "The timestamp pool's final marker and batch end are armed for End.") { Backend = GpuBackendKind.Direct3D11Native, Command = member };
         }
 
         void EmitTimestampEnd()

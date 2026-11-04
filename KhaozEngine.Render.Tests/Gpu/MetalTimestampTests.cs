@@ -69,7 +69,7 @@ namespace KhaozEngine.Tests.Gpu
             var api = new MetalTimestampApi(native);
             Assert.False(api.SupportsTimestampCounters);
             using var harness = new MetalRingHarness();
-            Assert.Throws<NotSupportedException>(() => new MetalTimestampPool(api, harness.Timeline, harness.Liveness, 4));
+            Assert.Equal(GpuTimestampRefusal.TimestampUnsupported, Assert.Throws<GpuTimestampUnsupportedException>(() => new MetalTimestampPool(api, harness.Timeline, harness.Liveness, 4)).Reason);
             Assert.Equal(0, native.Allocations);
         }
 
@@ -185,7 +185,14 @@ namespace KhaozEngine.Tests.Gpu
             if (dead) harness.Event.OnRead = harness.Liveness.MarkDead;
             else native.ClockError = true;
             ulong[] ticks = { 91, 92, 93 };
-            Assert.Throws<InvalidOperationException>(() => pool.TryResolve(fence, ticks, out _));
+            if (dead)
+            {
+                var ex = Assert.Throws<GpuTimestampStateException>(() => pool.TryResolve(fence, ticks, out _));
+                Assert.Equal(GpuTimestampRefusal.TimestampDeviceUnavailable, ex.Reason);
+                Assert.Equal(GpuBackendKind.MetalNative, ex.Backend);
+            }
+            else
+                Assert.Throws<InvalidOperationException>(() => pool.TryResolve(fence, ticks, out _));
             Assert.Equal(new ulong[] { 91, 92, 93 }, ticks);
             Assert.Equal(0, native.Copies);
             Assert.Equal(0, harness.Event.WaitCount);

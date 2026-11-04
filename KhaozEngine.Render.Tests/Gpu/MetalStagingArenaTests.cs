@@ -1,5 +1,6 @@
 using System;
 using KhaozEngine.Gpu.Metal.Internal;
+using KhaozEngine.Gpu.Metal;
 using Xunit;
 
 namespace KhaozEngine.Tests.Gpu
@@ -57,7 +58,7 @@ namespace KhaozEngine.Tests.Gpu
             _harness.Liveness.MarkDead();
 
             Assert.Throws<ArgumentOutOfRangeException>(() => arena.Take(0));
-            Assert.Throws<ArgumentOutOfRangeException>(() => arena.Take(6));
+            Assert.Throws<MetalStagingArenaRangeException>(() => arena.Take(6));
         }
 
         /// <summary>
@@ -303,9 +304,30 @@ namespace KhaozEngine.Tests.Gpu
         {
             using MetalStagingArena arena = _harness.NewArena();
 
-            ArgumentOutOfRangeException thrown = Assert.Throws<ArgumentOutOfRangeException>(() => arena.Take(6));
+            MetalStagingArenaRangeException thrown = Assert.Throws<MetalStagingArenaRangeException>(() => arena.Take(6));
 
-            Assert.Contains("AlignedCopyBytes", thrown.Message, StringComparison.Ordinal);
+            Assert.IsAssignableFrom<ArgumentOutOfRangeException>(thrown);
+            Assert.Equal(MetalStagingArenaRefusal.LeaseSizeUnaligned, thrown.Reason);
+            Assert.Equal("sizeBytes", thrown.ParamName);
+            Assert.Equal(6ul, thrown.ActualValue);
+            Assert.Equal(4ul, thrown.AlignmentBytes);
+            Assert.Equal("MetalStagingArena.AlignedCopyBytes", thrown.RecoveryOperation);
+            Assert.True(arena.Take(MetalStagingArena.AlignedCopyBytes(6)).IsValid);
+        }
+
+        [Fact]
+        public void ANilBlockAllocation_IsRefusedWithTheRequestedCapacity()
+        {
+            using var source = new FakeMetalStagingSource { FailAllocation = true };
+            using var arena = new MetalStagingArena(source, 3, blockBytes: 16);
+
+            MetalStagingArenaStateException ex = Assert.Throws<MetalStagingArenaStateException>(() => arena.Take(32));
+            Assert.IsAssignableFrom<InvalidOperationException>(ex);
+            Assert.Equal(MetalStagingArenaRefusal.BlockAllocationFailed, ex.Reason);
+            Assert.Equal(32ul, ex.BlockBytes);
+
+            source.FailAllocation = false;
+            Assert.True(arena.Take(32).IsValid);
         }
 
         /// <summary>A request of exactly one size class takes exactly that class, which is the arithmetic the

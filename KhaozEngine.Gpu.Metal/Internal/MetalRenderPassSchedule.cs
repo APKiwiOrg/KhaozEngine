@@ -243,7 +243,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
         /// index.</exception>
         internal void ClearColourTarget(uint index, Color rgba)
         {
-            RequireFramebuffer("Clearing a colour target");
+            RequireFramebuffer("Clearing a colour target", nameof(IGpuCommandList.ClearColorTarget));
 
             if (index >= (uint)_framebuffer.ColourCount)
             {
@@ -268,14 +268,17 @@ namespace KhaozEngine.Gpu.Metal.Internal
         /// depth attachment.</exception>
         internal void ClearDepthStencil(float depth)
         {
-            RequireFramebuffer("Clearing the depth attachment");
+            RequireFramebuffer("Clearing the depth attachment", nameof(IGpuCommandList.ClearDepthStencil));
 
             if (!_framebuffer.HasDepth)
             {
-                throw new InvalidOperationException(
+                throw new GpuBoundFramebufferException(GpuBoundFramebufferRefusal.DepthAttachmentMissing,
                     "The bound native Metal framebuffer declares no depth attachment, so there is nothing to "
                     + "clear. A framebuffer's attachments are fixed at creation, so this is the pass binding the "
-                    + "wrong target rather than a depth attachment that failed to arrive.");
+                    + "wrong target rather than a depth attachment that failed to arrive.")
+                {
+                    Command = nameof(IGpuCommandList.ClearDepthStencil),
+                };
             }
 
             EndOpenPass();
@@ -309,7 +312,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
         /// <exception cref="InvalidOperationException">No framebuffer is bound.</exception>
         internal void SetFullScissorRects()
         {
-            RequireFramebuffer("Resetting the scissor rects");
+            RequireFramebuffer("Resetting the scissor rects", nameof(IGpuCommandList.SetFullScissorRects));
 
             _scissor = MetalScissorRect.ForFramebuffer(_framebuffer.Width, _framebuffer.Height);
             _scissorEmitted.Clear();
@@ -334,9 +337,9 @@ namespace KhaozEngine.Gpu.Metal.Internal
         /// </summary>
         /// <returns>The open render encoder, or <see cref="IntPtr.Zero"/>.</returns>
         /// <exception cref="InvalidOperationException">No framebuffer is bound.</exception>
-        internal IntPtr PrepareDraw()
+        internal IntPtr PrepareDraw(string command = nameof(IGpuCommandList.Draw))
         {
-            RequireFramebuffer("Drawing");
+            RequireFramebuffer("Drawing", command);
 
             IntPtr encoder = BeginPass();
             if (encoder == IntPtr.Zero) return IntPtr.Zero;
@@ -549,15 +552,15 @@ namespace KhaozEngine.Gpu.Metal.Internal
                 + "PrepareDraw rather than through MetalEncoderScope directly.");
         }
 
-        void RequireFramebuffer(string what)
+        void RequireFramebuffer(string what, string command)
         {
             if (_framebuffer.IsBound) return;
 
-            throw new InvalidOperationException(
+            throw new GpuBoundFramebufferException(GpuBoundFramebufferRefusal.FramebufferNotBound,
                 what + " needs a framebuffer bound on the native Metal backend, and this recording has none. A "
                 + "render encoder is opened from a descriptor naming the bound framebuffer's own attachment "
                 + "textures, and there is no default target to fall back to: Begin resets the bound framebuffer, "
-                + "because a fresh MTLCommandBuffer holds none.");
+                + "because a fresh MTLCommandBuffer holds none.") { Command = command };
         }
 
         static void RequireSingleScissor(uint index)

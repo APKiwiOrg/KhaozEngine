@@ -84,12 +84,11 @@ namespace KhaozEngine.Gpu.D3D11
         /// </summary>
         /// <param name="vertexGlsl">The vertex shader source, GLSL <c>#version 450</c>.</param>
         /// <param name="fragmentGlsl">The fragment shader source, GLSL <c>#version 450</c>.</param>
-        /// <param name="label">Optional name for the pair, included in any error message.</param>
-        /// <exception cref="PlatformNotSupportedException">Called off Windows. FXC is <c>d3dcompiler</c>, which
+        /// <param name="label">Optional name for the pair, carried in ShaderValidationException.Label.</param>
+        /// <exception cref="D3D11ShaderPlatformException">Called off Windows. FXC is <c>d3dcompiler</c>, which
         /// exists nowhere else, so gate the call on <see cref="IsPlatformSupported"/>.</exception>
         /// <exception cref="ShaderValidationException">A source failed to compile to SPIR-V, the pair failed to
-        /// cross-compile, FXC rejected the emitted HLSL, or the vertex input signature is holed. The message
-        /// names the label and what specifically was wrong.</exception>
+        /// cross-compile, FXC rejected the emitted HLSL, or the vertex input signature is holed. Reason and Label identify the refusal.</exception>
         public static void ValidateShaderPair(string vertexGlsl, string fragmentGlsl, string? label = null)
             => D3D11ShaderValidation.ValidatePair(vertexGlsl, fragmentGlsl, label);
 
@@ -100,8 +99,8 @@ namespace KhaozEngine.Gpu.D3D11
         /// </summary>
         /// <param name="computeGlsl">The compute shader source, GLSL <c>#version 450</c>, with a
         /// <c>layout(local_size_x = ...) in;</c> workgroup declaration.</param>
-        /// <param name="label">Optional name for the shader, included in any error message.</param>
-        /// <exception cref="PlatformNotSupportedException">Called off Windows.</exception>
+        /// <param name="label">Optional name for the shader, carried in ShaderValidationException.Label.</param>
+        /// <exception cref="D3D11ShaderPlatformException">Called off Windows.</exception>
         /// <exception cref="ShaderValidationException">The source failed to compile to SPIR-V, failed to
         /// cross-compile, declares no resolvable workgroup size, or FXC rejected the emitted HLSL.</exception>
         public static void ValidateComputeShader(string computeGlsl, string? label = null)

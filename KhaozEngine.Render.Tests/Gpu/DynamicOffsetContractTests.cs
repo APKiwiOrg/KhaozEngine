@@ -67,9 +67,9 @@ namespace KhaozEngine.Tests.Gpu
         {
             var description = new GpuResourceLayoutDescription(Dynamic(kind));
 
-            Assert.Throws<System.ArgumentException>(() => new D3D11ResourceLayout(description));
+            Assert.Throws<GpuResourceLayoutException>(() => new D3D11ResourceLayout(description));
 
-            Assert.Throws<System.ArgumentException>(() => new VulkanResourceLayout(
+            Assert.Throws<GpuResourceLayoutException>(() => new VulkanResourceLayout(
                 new VulkanDescriptorSetLayoutCache(new FakeVulkanDescriptorApi()), description));
         }
 

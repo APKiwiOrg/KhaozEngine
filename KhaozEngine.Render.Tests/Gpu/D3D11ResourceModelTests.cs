@@ -261,7 +261,7 @@ namespace KhaozEngine.Tests.Gpu
                 new GpuResourceLayoutElement("Tex", GpuResourceKind.TextureReadOnly, GpuShaderStages.Fragment),
                 new GpuResourceLayoutElement("Samp", GpuResourceKind.Sampler, GpuShaderStages.Fragment)));
 
-            Assert.Throws<ArgumentException>(() => new D3D11ResourceSet(
+            Assert.Throws<GpuResourceSetException>(() => new D3D11ResourceSet(
                 new GpuResourceSetDescription(layout, new FakeTexture(4, 4, 1, 1, GpuPixelFormat.R8UNorm))));
         }
 
@@ -275,9 +275,9 @@ namespace KhaozEngine.Tests.Gpu
             using var bufferLayout = new D3D11ResourceLayout(new GpuResourceLayoutDescription(
                 new GpuResourceLayoutElement("U", GpuResourceKind.UniformBuffer, GpuShaderStages.Fragment)));
 
-            Assert.Throws<ArgumentException>(() => new D3D11ResourceSet(
+            Assert.Throws<GpuResourceSetException>(() => new D3D11ResourceSet(
                 new GpuResourceSetDescription(textureLayout, new FakeSampler())));
-            Assert.Throws<ArgumentException>(() => new D3D11ResourceSet(
+            Assert.Throws<GpuResourceSetException>(() => new D3D11ResourceSet(
                 new GpuResourceSetDescription(bufferLayout, new FakeSampler())));
         }
 
@@ -290,7 +290,7 @@ namespace KhaozEngine.Tests.Gpu
             using var layout = new D3D11ResourceLayout(new GpuResourceLayoutDescription(
                 new GpuResourceLayoutElement("U", GpuResourceKind.UniformBuffer, GpuShaderStages.Vertex)));
 
-            Assert.Throws<ArgumentException>(() => new D3D11ResourceSet(
+            Assert.Throws<GpuResourceSetException>(() => new D3D11ResourceSet(
                 new GpuResourceSetDescription(layout, new GpuBufferRange(buffer, 192, 128))));
         }
 
@@ -299,7 +299,7 @@ namespace KhaozEngine.Tests.Gpu
         [Fact]
         public void AForeignLayout_IsRejected()
         {
-            Assert.Throws<ArgumentException>(() => new D3D11ResourceSet(
+            Assert.Throws<GpuResourceOwnershipArgumentException>(() => new D3D11ResourceSet(
                 new GpuResourceSetDescription(new FakeResourceLayout(), new FakeBuffer(16))));
         }
 

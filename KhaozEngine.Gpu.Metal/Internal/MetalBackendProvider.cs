@@ -81,13 +81,13 @@ namespace KhaozEngine.Gpu.Metal.Internal
         /// <inheritdoc/>
         public GpuProviderDevice CreateForWindow(in GpuWindowedDeviceRequest request)
         {
-            if (!KhaozEngineMetal.IsPlatformSupported) throw NotOnThisPlatform("windowed");
+            if (!KhaozEngineMetal.IsPlatformSupported) throw PlatformRefusalForTests("windowed");
 
             // THE MACHINE IS ASKED BEFORE ANYTHING IS BUILT, so a Mac that cannot run this backend hears about
             // the device rather than about the window. Phase 3 shipped this the other way round once and the
             // message told a machine with no driver that the package was still being built.
             string? missing = _machineAnswer.Value;
-            if (missing is not null) throw ThisMachineCannot(missing);
+            RequireMachineSupportForTests(missing);
 
             return MetalGpuDevice.CreateForWindow(request);
         }
@@ -99,18 +99,26 @@ namespace KhaozEngine.Gpu.Metal.Internal
         public GpuProviderDevice CreateHeadless(IGpuHeadlessDiagnosticSettings settings)
         {
             if (settings is not MetalHeadlessDiagnosticSettings frozen)
-                throw new ArgumentException("Settings are not owned by this backend.", nameof(settings));
+                throw new GpuBackendCreationArgumentException(GpuBackendCreationRefusal.ForeignDiagnosticSettings, "Settings are not owned by this backend.", nameof(settings))
+                {
+                    ActualType = settings?.GetType(),
+                    ExpectedBackend = GpuBackendKind.MetalNative,
+                };
             if (_headless is not null) return _headless(frozen);
-            if (!OperatingSystem.IsMacOS()) throw new PlatformNotSupportedException("Metal requires macOS.");
+            if (!OperatingSystem.IsMacOS()) throw new MetalBackendCreationPlatformException(MetalBackendCreationRefusal.OperatingSystemUnsupported, "Metal requires macOS.")
+            {
+                CreationPath = "headless",
+                RequiredOperatingSystem = "macOS",
+            };
             return MetalGpuDevice.CreateHeadless(frozen);
         }
 
         public GpuProviderDevice CreateHeadless()
         {
-            if (!KhaozEngineMetal.IsPlatformSupported) throw NotOnThisPlatform("headless");
+            if (!KhaozEngineMetal.IsPlatformSupported) throw PlatformRefusalForTests("headless");
 
             string? missing = _machineAnswer.Value;
-            if (missing is not null) throw ThisMachineCannot(missing);
+            RequireMachineSupportForTests(missing);
 
             return MetalGpuDevice.CreateHeadless();
         }
@@ -134,14 +142,21 @@ namespace KhaozEngine.Gpu.Metal.Internal
             }
         }
 
+        // The machine policy consumes the probe's value, without requiring a native device in tests.
+        internal static void RequireMachineSupportForTests(string? missing)
+        {
+            if (missing is not null) throw MachineRefusalForTests(missing);
+        }
+
         // The MACHINE-level refusal, quoting the probe's own sentence rather than paraphrasing it, so each way a
         // Mac can fail reads as itself: no device names the device, a device below the family floor names the
         // families it did answer, and a coarse buffer alignment names the number and the selector it came from.
-        static NotSupportedException ThisMachineCannot(string missing)
-            => new("The native Metal backend cannot create a device on this machine: " + missing
+        internal static MetalBackendCreationUnsupportedException MachineRefusalForTests(string missing)
+            => new(MetalBackendCreationRefusal.MachineUnsupported, "The native Metal backend cannot create a device on this machine: " + missing
                 + ". This is a statement about the MACHINE rather than about the package, and it is the same "
                 + "question GpuBackendSelector.IsBackendSupported answers without creating anything, asked here "
-                + "so a machine that cannot run the backend refuses instead of failing partway into creation.");
+                + "so a machine that cannot run the backend refuses instead of failing partway into creation.")
+            { MissingRequirement = missing, Backend = GpuBackendKind.MetalNative };
 
         // THERE IS NO PACKAGE-LEVEL REFUSAL LEFT, and its removal is row 15
         // (https://github.com/APKiwiOrg/KhaozEngine/issues/581). Until this row a windowed request was refused
@@ -153,10 +168,14 @@ namespace KhaozEngine.Gpu.Metal.Internal
         // The off-macOS refusal, and it is a PLATFORM answer rather than either of the other two. Registration
         // is safe on every OS on purpose (M-I4), so this is what a consumer that registered unconditionally and
         // then named the backend anyway gets to read.
-        static PlatformNotSupportedException NotOnThisPlatform(string path)
-            => new($"The native Metal backend cannot create a {path} device on this operating system, which has "
+        internal static MetalBackendCreationPlatformException PlatformRefusalForTests(string path)
+            => new(MetalBackendCreationRefusal.OperatingSystemUnsupported, $"The native Metal backend cannot create a {path} device on this operating system, which has "
                 + "no Metal. Registration is safe everywhere and reports the backend as unsupported off macOS, "
                 + "so read GpuBackendSelector.IsBackendSupported (or KhaozEngineMetal.IsPlatformSupported) "
-                + "before naming this backend.");
+                + "before naming this backend.")
+                {
+                    CreationPath = path,
+                    RequiredOperatingSystem = "macOS",
+                };
     }
 }

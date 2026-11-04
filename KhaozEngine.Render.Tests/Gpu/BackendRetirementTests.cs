@@ -252,19 +252,21 @@ namespace KhaozEngine.Tests.Gpu
         /// forgotten registration and send a reader off to add a package reference that would not help.
         /// </summary>
         [Theory]
-        [InlineData(GpuBackendKind.Metal)]
-        [InlineData(GpuBackendKind.Vulkan)]
-        [InlineData(GpuBackendKind.Direct3D11)]
-        [InlineData(GpuBackendKind.OpenGL)]
+        [InlineData(GpuBackendKind.Metal, GpuBackendKind.MetalNative)]
+        [InlineData(GpuBackendKind.Vulkan, GpuBackendKind.VulkanNative)]
+        [InlineData(GpuBackendKind.Direct3D11, GpuBackendKind.Direct3D11Native)]
+        [InlineData(GpuBackendKind.OpenGL, null)]
         public void NamingARetiredBackend_ThrowsTheRetiredExceptionRatherThanTheMissingProviderOne(
-            GpuBackendKind retired)
+            GpuBackendKind retired, GpuBackendKind? replacement)
         {
             var ex = Assert.Throws<GpuBackendRetiredException>(
                 () => GpuDeviceContext.PreflightProvider(
                     new GpuBackendSelection(retired, GpuBackendSource.OsProbe, null), allowFallback: true, out _));
 
             Assert.Equal(retired, ex.Backend);
-            Assert.Contains("18.0.0", ex.Message, StringComparison.Ordinal);
+            Assert.Equal(GpuBackendRetiredRefusal.BackendRetired, ex.Reason);
+            Assert.Equal(new Version(18, 0, 0), ex.RetirementVersion);
+            Assert.Equal(replacement ?? GpuBackendSelector.ProbeOS(GpuBackendSelector.DetectOS()), ex.Replacement);
             Assert.False(GpuBackendSelector.IsRetired(ex.Replacement));
         }
 
@@ -276,17 +278,20 @@ namespace KhaozEngine.Tests.Gpu
         /// the two entry points cannot give the same reader different reasons for the same fact.
         /// </summary>
         [Theory]
-        [InlineData(GpuBackendKind.Metal)]
-        [InlineData(GpuBackendKind.Vulkan)]
-        [InlineData(GpuBackendKind.Direct3D11)]
-        [InlineData(GpuBackendKind.OpenGL)]
+        [InlineData(GpuBackendKind.Metal, GpuBackendKind.MetalNative)]
+        [InlineData(GpuBackendKind.Vulkan, GpuBackendKind.VulkanNative)]
+        [InlineData(GpuBackendKind.Direct3D11, GpuBackendKind.Direct3D11Native)]
+        [InlineData(GpuBackendKind.OpenGL, null)]
         public void RequiringARetiredBackend_ThrowsTheRetiredException_RatherThanNamingAMissingPackage(
-            GpuBackendKind retired)
+            GpuBackendKind retired, GpuBackendKind? replacement)
         {
             var ex = Assert.Throws<GpuBackendRetiredException>(() => GpuBackendProviders.Require(retired));
 
             Assert.Equal(retired, ex.Backend);
-            Assert.Contains("18.0.0", ex.Message, StringComparison.Ordinal);
+            Assert.Equal(GpuBackendRetiredRefusal.BackendRetired, ex.Reason);
+            Assert.Equal(new Version(18, 0, 0), ex.RetirementVersion);
+            Assert.Equal(replacement ?? GpuBackendSelector.ProbeOS(GpuBackendSelector.DetectOS()), ex.Replacement);
+            Assert.False(GpuBackendSelector.IsRetired(ex.Replacement));
             Assert.DoesNotContain("Register()", ex.Message, StringComparison.Ordinal);
         }
 

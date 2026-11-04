@@ -157,16 +157,16 @@ namespace KhaozEngine.Tests.Gpu
             list.Begin();
             list.SetFramebuffer(new RecordedFramebuffer());
 
-            Assert.Throws<InvalidOperationException>(
+            Assert.Throws<GpuSwapchainCopyStateException>(
                 () => list.CopyFromDrawable(new IntPtr(0x5C1), destination));
             Assert.Empty(calls.Log);
 
             list.SetFramebuffer(swapchain);
-            Assert.Throws<ArgumentException>(() => list.CopyFromDrawable(new IntPtr(0x5C1), destination));
+            Assert.Throws<GpuResourceOwnershipArgumentException>(() => list.CopyFromDrawable(new IntPtr(0x5C1), destination));
             list.End();
 
             list.Begin();
-            Assert.Throws<InvalidOperationException>(() => list.CopyFromDrawable(new IntPtr(0x5C1), destination));
+            Assert.Throws<GpuSwapchainCopyStateException>(() => list.CopyFromDrawable(new IntPtr(0x5C1), destination));
             list.End();
         }
 

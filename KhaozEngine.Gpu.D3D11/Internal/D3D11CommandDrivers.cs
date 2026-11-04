@@ -190,20 +190,24 @@ namespace KhaozEngine.Gpu.D3D11.Internal
                     throw new ArgumentNullException(nameof(list));
 
                 default:
-                    throw new ArgumentException(
+                    throw new GpuResourceOwnershipArgumentException(GpuResourceOwnershipRefusal.ForeignBackend,
                         $"A {list.GetType().Name} was submitted to the native Direct3D 11 device. Only a command "
                         + "list this backend created can be replayed, because a list from another backend holds "
-                        + "another backend's recording.", nameof(list));
+                        + "another backend's recording.", nameof(list))
+                    {
+                        ExpectedBackend = GpuBackendKind.Direct3D11Native,
+                        ActualType = list?.GetType(),
+                        ResourceKind = "command list",
+                    };
             }
         }
 
         static void RequireSealed(bool isSealed)
         {
             if (!isSealed)
-                throw new InvalidOperationException(
-                    "A Direct3D 11 command list was submitted without End. End seals the recording, and "
+                throw new GpuRecordingStateException(GpuRecordingStateRefusal.SubmissionWithoutSeal, "A Direct3D 11 command list was submitted without End. End seals the recording, and "
                     + "replaying an unsealed one replays a half-recorded frame instead of failing, which reads "
-                    + "as a rendering defect somewhere else entirely.");
+                    + "as a rendering defect somewhere else entirely.") { Backend = GpuBackendKind.Direct3D11Native, Command = "Submit" };
         }
     }
 }

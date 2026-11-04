@@ -24,9 +24,10 @@ namespace KhaozEngine.Gpu.D3D11.Internal
     internal static class D3D11PlatformGuard
     {
         /// <summary>The exception for a Windows-only <paramref name="what"/> reached off Windows.</summary>
-        internal static PlatformNotSupportedException NotOnThisPlatform(string what)
-            => new($"The native Direct3D 11 backend's {what} was used on an operating system that has no Direct3D "
+        internal static D3D11ObjectPlatformException NotOnThisPlatform(string what)
+            => new(D3D11ObjectPlatformRefusal.WindowsObjectUsedOffWindows, $"The native Direct3D 11 backend's {what} was used on an operating system that has no Direct3D "
                 + "11. It holds Direct3D objects, so it can only be created on Windows, and reaching this means "
-                + "one was created anyway. Read KhaozEngineD3D11.IsPlatformSupported before naming this backend.");
+                + "one was created anyway. Read KhaozEngineD3D11.IsPlatformSupported before naming this backend.")
+            { ObjectKind = what, RequiredOperatingSystem = "Windows", SupportProbe = "KhaozEngineD3D11.IsPlatformSupported" };
     }
 }

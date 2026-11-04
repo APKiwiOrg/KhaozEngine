@@ -194,7 +194,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
         /// <paramref name="framesInFlight"/> segments, refused by name when it would leave the 32-bit range the
         /// seam carries buffer sizes in.
         /// <para>
-        /// THE MESSAGE NAMES THE KNOB, because the lever is real: the total is the stride times the depth, and
+        /// THE DEPTH IS THE LEVER A CALLER CAN LOWER: the total is the stride times the depth, and
         /// <c>KE_METAL_FRAMES_IN_FLIGHT</c> is the only term a caller can lower without changing their own
         /// buffer. Reaching this at the default three needs a uniform buffer well past a gigabyte, which is not
         /// a uniform buffer.

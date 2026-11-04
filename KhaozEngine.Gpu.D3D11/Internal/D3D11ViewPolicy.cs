@@ -275,7 +275,7 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         /// </para>
         /// </summary>
         static void RejectRingCombination(GpuBufferUsage usage)
-            => throw new ArgumentException(
+            => throw new GpuBufferUsageArgumentException(GpuBufferUsageRefusal.UniformBindingCombination,
                 $"A buffer was created as {usage} on the native Direct3D 11 backend, which combines "
                 + "GpuBufferUsage.UniformBuffer with another way of binding the same bytes. A uniform buffer here "
                 + "is RING-BACKED: it holds one segment per frame in flight and the frame's base offset is added "
@@ -285,6 +285,10 @@ namespace KhaozEngine.Gpu.D3D11.Internal
                 + "The seam allows the combination and the Veldrid Direct3D 11 backend deleted in 18.0.0 "
                 + "accepted it, so this is a documented divergence of GpuBackendKind.Direct3D11Native rather "
                 + "than a defect. Create two buffers, one uniform and one for the other usage.",
-                nameof(usage));
+                nameof(usage))
+            {
+                Usage = usage,
+                ConflictingUsage = usage & ~(GpuBufferUsage.UniformBuffer | GpuBufferUsage.Dynamic),
+            };
     }
 }

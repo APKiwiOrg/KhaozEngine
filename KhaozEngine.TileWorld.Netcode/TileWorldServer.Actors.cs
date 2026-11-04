@@ -177,10 +177,13 @@ public sealed partial class TileWorldServer
     /// <paramref name="at"/> (<see cref="TileCollision.CanStand"/>). A one-tile spawn on the default profile retains
     /// the legacy blocked-home rule. A larger footprint is checked on every profile.</exception>
     /// <exception cref="ArgumentOutOfRangeException"><paramref name="spec"/> asks for a max health of zero, or a
-    /// footprint size outside 1 through <see cref="TileMoveState.MaxFootprintSize"/>. Also thrown for a footprint
-    /// this config cannot serve: interest is measured from the nearest footprint tile, so a body wider than
+    /// footprint size outside 1 through <see cref="TileMoveState.MaxFootprintSize"/>.</exception>
+    /// <exception cref="TileInterestRangeException">The config cannot serve the footprint. Interest is measured
+    /// from the nearest footprint tile, so a body wider than
     /// <see cref="TileWorldServerConfig.OverlapMargin"/> leaves room for is refused here rather than throwing out
-    /// of the first serve. See <see cref="LargestFootprintSize"/>.</exception>
+    /// of the first serve. Carries <see cref="TileInterestRefusal.FootprintRadiusExceedsMargin"/>, the required
+    /// query radius, configured interest radius, overlap margin and footprint size, with the original parameter
+    /// and value. See <see cref="LargestFootprintSize"/>.</exception>
     public long SpawnActor(TileCoord at, in TileActorSpawn spec) => SpawnActorFrom(at, spec, null);
 
     // The same door with the SPAWNER the actor came from, so the host's index is written before OnActorSpawned

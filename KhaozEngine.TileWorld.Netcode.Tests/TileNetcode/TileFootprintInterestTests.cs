@@ -126,25 +126,40 @@ public class TileFootprintInterestTests
             served);
     }
 
-    [Fact]
-    public void A_footprint_the_overlap_margin_cannot_ghost_is_refused_at_the_spawn()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void A_footprint_the_overlap_margin_cannot_ghost_is_refused_at_the_spawn(bool isStatic)
     {
         // 15 tiles of interest inside a 16 tile border band, the margin the engine shipped before 19.0.0. A 2x2
         // needs 16.41.
         using var h = new Harness(radius: 15f, margin: 16f);
-        var spawn = new TileActorSpawn(30, 0, TileDirection.S) { FootprintSize = 2 };
+        long Spawn(TileWorldServer server, int size) => isStatic
+            ? server.SpawnStaticEntity(new TileCoord(20, 20, 0), new TileStaticEntitySpawn
+            {
+                FootprintSize = size,
+                Facing = TileDirection.S,
+            })
+            : server.SpawnActor(new TileCoord(20, 20, 0), new TileActorSpawn(30, 0, TileDirection.S)
+            {
+                FootprintSize = size,
+            });
 
-        ArgumentOutOfRangeException error =
-            Assert.Throws<ArgumentOutOfRangeException>(() => h.Server.SpawnActor(new TileCoord(20, 20, 0), spawn));
+        var error = Assert.Throws<TileInterestRangeException>(() => Spawn(h.Server, 2));
 
+        Assert.IsAssignableFrom<ArgumentOutOfRangeException>(error);
+        Assert.Equal(TileInterestRefusal.FootprintRadiusExceedsMargin, error.Reason);
         Assert.Equal("spec", error.ParamName);
         Assert.Equal(2, error.ActualValue);
-        Assert.Contains("16.41", error.Message, StringComparison.Ordinal);
-        Assert.Matches(@"(?<![\d.])16(?![\d.])", error.Message);
+        Assert.Equal(2, error.FootprintSize);
+        Assert.Equal(15f + MathF.Sqrt(2f), error.RequiredQueryRadius!.Value, 0.00001f);
+        Assert.Equal(15f, error.InterestRadius);
+        Assert.Equal(16f, error.OverlapMargin);
+        Assert.Equal(1, h.Server.LargestFootprintSize);
         // The refusal is the PAIR rather than the body, so one tile is still fine and a wider band admits the 2x2.
-        Assert.NotEqual(0L, h.Body(new TileCoord(20, 20, 0), size: 1));
+        Assert.NotEqual(0L, Spawn(h.Server, 1));
         using var wider = new Harness(radius: 15f, margin: 17f);
-        Assert.NotEqual(0L, wider.Body(new TileCoord(20, 20, 0), size: 2));
+        Assert.NotEqual(0L, Spawn(wider.Server, 2));
     }
 
     [Fact]
@@ -174,15 +189,24 @@ public class TileFootprintInterestTests
             FootprintSize = 2,
         };
 
-        ArgumentOutOfRangeException error = Assert.Throws<ArgumentOutOfRangeException>(
+        var error = Assert.Throws<TileInterestRangeException>(
             () => h.Server.Actors.Add(definition, new TileCoord(20, 20, 0)));
 
+        Assert.IsAssignableFrom<ArgumentOutOfRangeException>(error);
+        Assert.Equal(TileInterestRefusal.FootprintRadiusExceedsMargin, error.Reason);
         Assert.Equal("definition", error.ParamName);
         Assert.Equal(definition.FootprintSize, error.ActualValue);
+        Assert.Equal(2, error.FootprintSize);
+        Assert.Equal(15f + MathF.Sqrt(2f), error.RequiredQueryRadius!.Value, 0.00001f);
+        Assert.Equal(15f, error.InterestRadius);
+        Assert.Equal(16f, error.OverlapMargin);
         Assert.Empty(h.Server.Actors.Spawners);
         // Nothing to spawn, so the tick the definition would have fired on is uneventful.
         h.Server.Tick(Dt);
         Assert.Equal(0, h.Server.ActorCount);
+        using var wider = new Harness(radius: 15f, margin: 17f);
+        wider.Server.Actors.Add(definition, new TileCoord(20, 20, 0));
+        Assert.Single(wider.Server.Actors.Spawners);
     }
 
     [Fact]

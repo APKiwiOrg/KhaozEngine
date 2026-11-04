@@ -16352,7 +16352,12 @@ and carries a non-nullable `TileServerStateRefusal Reason`. `PlaneOutsideWorld` 
 `RemainingSteps` and `MaximumSteps`. Actor, ground-item, object-state and static-entity placement use the same
 validator and reasons. The player-only `PlayerFootprintNotOne` carries `FootprintSize` and is checked even
 before teleport normalization. A teleport normalizes the origin and progress before validating them.
-Route adjacency is still forwarded from `TileRoute.RemainingSteps` before any state write. See the
+Route adjacency is still forwarded from `TileRoute.RemainingSteps` before any state write as
+`TileRouteArgumentException`, an `ArgumentException` with `TileRouteRefusal.TilesNotAdjacent`, `From`, `To` and
+`ParamName = "b"`. Adjacency stays planar. `Next` on an idle route throws `TileRouteStateException`, an
+`InvalidOperationException` with `IdleHasNoNext`, `Index` and `TileCount`. `End` on an empty route throws the
+same type with `EmptyHasNoEnd` and `TileCount`. A finished nonempty route still answers its destination. See the
+[route refusal table](../KhaozEngine.TileWorld.Netcode/README.md#route-refusals) and
 [server state refusal table](../KhaozEngine.TileWorld.Netcode/README.md#server-state-refusals).
 
 **A step commits its tile when it STARTS.** `TileMoveState.Tile` is the tile the simulation OWNS: it flips on the
@@ -17352,8 +17357,16 @@ crosses a region handoff and reaches both heads with no second lookup.
   own diagonal behind the near tile that put it in range and the home cell has to hold that anchor as a ghost. At
   the default 15 tile radius that is 16.42 for a 2x2 and 24.9 for an 8x8. The default `OverlapMargin` of 25 covers
   every legal body at the default radius, so only a game that narrows the band or widens the radius has to do this
-  sum, and one that does MUST keep the margin above it. `TileActorHost.Add` and `TileWorldServer.SpawnActor` refuse a
-  body the margin cannot cover, naming both numbers, rather than throwing out of the first serve. A world of
+  sum, and one that does MUST keep the margin at least the required query radius. Server construction refuses
+  `InterestRadius > OverlapMargin`
+  with `TileInterestArgumentException`, an `ArgumentException` carrying
+  `TileInterestRefusal.ConfiguredRadiusExceedsMargin`, `InterestRadius`, `OverlapMargin` and `ParamName = "config"`.
+  `TileActorHost.Add`, `TileWorldServer.SpawnActor` and `SpawnStaticEntity` refuse a body the margin cannot cover
+  with `TileInterestRangeException`, an `ArgumentOutOfRangeException` carrying `FootprintRadiusExceedsMargin`.
+  `RequiredQueryRadius` and `OverlapMargin` carry both numbers, alongside `InterestRadius`, `FootprintSize` and the
+  original `ParamName` (`"definition"` or `"spec"`) and `ActualValue` (the footprint size). See the
+  [interest refusal table](../KhaozEngine.TileWorld.Netcode/README.md#interest-refusals). Refusal happens before
+  admission, keeping it out of the first serve. A world of
   one-tile bodies is served exactly the set it was served before footprints existed and pays nothing for any of
   this.
 

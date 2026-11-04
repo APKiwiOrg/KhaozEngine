@@ -370,8 +370,12 @@ public class TileWorldServerTickTests
         // only on the gap: ten tiles of it, spelled as a single step.
         TileMoveState detached = TileMoveState.At(new TileCoord(10, 10, 0), TileDirection.S);
         detached.Route = new TileRoute(new[] { new TileCoord(20, 20, 0) }, 0);
-        ArgumentException gap = Assert.Throws<ArgumentException>(() => s.SetPlayerState(0, detached));
-        Assert.Contains("not adjacent", gap.Message);
+        var gap = Assert.Throws<TileRouteArgumentException>(() => s.SetPlayerState(0, detached));
+        Assert.IsAssignableFrom<ArgumentException>(gap);
+        Assert.Equal(TileRouteRefusal.TilesNotAdjacent, gap.Reason);
+        Assert.Equal("b", gap.ParamName);
+        Assert.Equal(new TileCoord(10, 10, 0), gap.From);
+        Assert.Equal(new TileCoord(20, 20, 0), gap.To);
 
         // The previous state is intact, which is what the refusal promises: still on the spawn tile, still idle.
         Assert.True(s.TryGetPlayerState(0, out TileMoveState refusedRoute));

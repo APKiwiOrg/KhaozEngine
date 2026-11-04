@@ -123,7 +123,35 @@ the refusing guard knows them. Messages remain developer prose.
 
 A teleport normalizes the origin and progress before validation, after checking the player footprint.
 Nonadjacent route tiles are still refused by `TileRoute.RemainingSteps` before any state write, through the
-route family's own exception.
+route family's `TileRouteArgumentException`.
+
+## Route refusals
+
+`TileRouteArgumentException` derives from `ArgumentException` and `TileRouteStateException` derives from
+`InvalidOperationException`. Both carry a non-nullable `TileRouteRefusal Reason`. Adjacency compares planar
+coordinates and adds no plane restriction. The negative constructor index and null arguments stay BCL checks.
+
+| Reason | What it refuses | Identifiers |
+| --- | --- | --- |
+| `TilesNotAdjacent` | `Direction` or `RemainingSteps` cannot join the two tiles in one planar step | `From`, `To`, `ParamName = "b"` |
+| `IdleHasNoNext` | Reading `Next` when there are no remaining route tiles | `Index`, `TileCount` |
+| `EmptyHasNoEnd` | Reading `End` when the route has no tiles | `TileCount` |
+
+A finished nonempty route still has an `End`. An empty route does not. Messages remain developer prose.
+
+## Interest refusals
+
+`TileInterestArgumentException` derives from `ArgumentException` and `TileInterestRangeException` derives from
+`ArgumentOutOfRangeException`. Both carry a non-nullable `TileInterestRefusal Reason`. The configured-radius
+check runs at server construction. The footprint check is shared by `TileActorHost.Add`, `SpawnActor` and
+`SpawnStaticEntity`, before a definition or entity is admitted.
+
+| Reason | What it refuses | Identifiers |
+| --- | --- | --- |
+| `ConfiguredRadiusExceedsMargin` | The configured interest radius exceeds the overlap margin | `InterestRadius`, `OverlapMargin`, `ParamName = "config"` |
+| `FootprintRadiusExceedsMargin` | The footprint's inflated interest query radius exceeds the overlap margin | `RequiredQueryRadius`, `InterestRadius`, `OverlapMargin`, `FootprintSize`, `ParamName = "spec"` or `"definition"`, `ActualValue` equal to the footprint size |
+
+Use these members to distinguish refusals and read their values. Messages remain developer prose.
 
 ## The types
 
@@ -1066,8 +1094,10 @@ one as its anchor, so a future source cannot make `Math.Clamp` throw inside the 
 in range, and the home cell has to be holding that anchor as a ghost. At the default 15 tile radius that is 16.42
 for a 2x2 and 24.9 for an 8x8. The default `OverlapMargin` of 25 covers every legal body at the default radius, so
 only a game that narrows the band or widens the radius has to do this sum. A body the margin cannot cover is
-refused at `TileActorHost.Add` and at `SpawnActor`, with an `ArgumentOutOfRangeException` naming both numbers,
-rather than throwing out of the first serve and taking the tick down for every player.
+refused at `TileActorHost.Add`, `SpawnActor` and `SpawnStaticEntity` with
+`TileInterestRangeException` and `FootprintRadiusExceedsMargin`. `RequiredQueryRadius` and `OverlapMargin` carry
+both numbers alongside `InterestRadius`, `FootprintSize` and the original `ParamName` and `ActualValue`.
+This keeps the refusal out of the first serve and the shared tick.
 
 `LargestFootprintSize` never decreases. Despawning the world's only cow leaves the query as wide as the cow made
 it, which costs a slightly wider grid sweep and cannot cost correctness.

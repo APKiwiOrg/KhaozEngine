@@ -107,8 +107,8 @@ public sealed partial class TileWorldServer : IDisposable
     /// <paramref name="map"/> is null.</exception>
     /// <exception cref="ArgumentOutOfRangeException"><paramref name="config"/> asks for a tick of zero seconds or
     /// less.</exception>
-    /// <exception cref="ArgumentException"><paramref name="config"/> asks for an interest radius wider than its
-    /// overlap margin.</exception>
+    /// <exception cref="TileInterestArgumentException"><paramref name="config"/> asks for an interest radius wider than its
+    /// overlap margin. Carries <see cref="TileInterestRefusal.ConfiguredRadiusExceedsMargin"/> and both values.</exception>
     public TileWorldServer(INetTransport transport, TileWorldServerConfig config, TileCollisionMap map,
         ITileTargets? targets = null, IConnectionAuthenticator? authenticator = null,
         ReplicationRegistry? registry = null)
@@ -130,9 +130,13 @@ public sealed partial class TileWorldServer : IDisposable
         // would land on the tick a player first walked near a cell edge, on a live server, hours after the
         // misconfiguration shipped.
         if (config.InterestRadius > config.OverlapMargin)
-            throw new ArgumentException(
+            throw new TileInterestArgumentException(TileInterestRefusal.ConfiguredRadiusExceedsMargin,
                 $"InterestRadius {config.InterestRadius} exceeds OverlapMargin {config.OverlapMargin}: the home cell "
-              + "cannot hold the full area of interest as ghosts.", nameof(config));
+              + "cannot hold the full area of interest as ghosts.", nameof(config))
+            {
+                InterestRadius = config.InterestRadius,
+                OverlapMargin = config.OverlapMargin,
+            };
         // The same reasoning for the plane count: TileWorldPersistence refuses a stored plane against the MAP's
         // count while SetPlayerState refuses against the CONFIG's, and a head that bakes more planes than it
         // configures would have the binding admit a record the door still throws on, out of Update(dt) on a
@@ -339,8 +343,9 @@ public sealed partial class TileWorldServer : IDisposable
     /// <c>StepProgressNotBelowTotal</c> with <c>StepTicks</c> and <c>StepTotal</c>, or <c>RouteLimitExceeded</c>
     /// with <c>RemainingSteps</c> and <c>MaximumSteps</c>. <see cref="ArgumentException.ParamName"/> stays
     /// <c>state</c>.</exception>
-    /// <exception cref="ArgumentException">A route whose tiles are not adjacent to each other is refused by
-    /// <see cref="TileRoute.RemainingSteps"/> before any state is written.</exception>
+    /// <exception cref="TileRouteArgumentException">A route whose tiles are not adjacent to each other is refused by
+    /// <see cref="TileRoute.RemainingSteps"/> before any state is written. Carries
+    /// <see cref="TileRouteRefusal.TilesNotAdjacent"/> and the two supplied tiles.</exception>
     /// <exception cref="TileServerStateArgumentException"><paramref name="state"/> carries a <see cref="TileMoveState.FootprintSize"/>
     /// above 1. A player is one tile, and a larger footprint is for actors. Refused ahead of the teleport
     /// normalization, so a teleport is refused for it too. The reason is

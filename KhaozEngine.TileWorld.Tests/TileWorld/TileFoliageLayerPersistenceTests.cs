@@ -124,10 +124,11 @@ public class TileFoliageLayerPersistenceTests
     public void Invalid_dimensions_fail_clearly(float cellSize, int width, int height, TileWorldRefusal reason)
     {
         static TileFoliageLayer Build(float cell, int w, int h) => new(
-            "bad", 0, 0f, 0f, cell, w, h, new byte[6], 1, 1f, 1f, 1f, 0f,
+            "bad", 0, 0f, 0f, cell, w, h, new byte[Math.Max(0, w) * Math.Max(0, h)], 1, 1f, 1f, 1f, 0f,
             [new TileFoliageArchetype("bush", 1f)], [1], true, true, 0f, 0f);
         Assert.Equal(6, Build(0.5f, 3, 2).CopyDensity().Length);
-        // A non-positive dimension cannot have a matching density raster. The reason identifies the guard.
+        // The density raster matches width times height, empty for a zero width, so each row breaks only its own
+        // rule. A negative height has no matching raster, and the dimension guard refuses it first.
         var ex = Assert.Throws<TileFoliageArgumentException>(() => Build(cellSize, width, height));
         Assert.Equal(reason, ex.Reason);
         Assert.Equal("bad", ex.LayerId);

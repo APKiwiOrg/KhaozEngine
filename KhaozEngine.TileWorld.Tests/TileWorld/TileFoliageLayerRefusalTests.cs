@@ -191,7 +191,7 @@ public class TileFoliageLayerRefusalTests
             case TileWorldRefusal.FoliagePlaneNegative: dto.Plane = -1; break;
             case TileWorldRefusal.FoliageOriginNonFinite: dto.OriginX = float.PositiveInfinity; break;
             case TileWorldRefusal.FoliageCellSizeInvalid: dto.CellSize = 0f; break;
-            case TileWorldRefusal.FoliageDimensionsNonPositive: dto.Width = 0; break;
+            case TileWorldRefusal.FoliageDimensionsNonPositive: dto.Width = 0; dto.Density = []; break;
             case TileWorldRefusal.FoliageSampleLimitExceeded: dto.Width = int.MaxValue; dto.Height = 2; break;
             case TileWorldRefusal.FoliageDensityLengthMismatch: dto.Density = [1, 2]; break;
             case TileWorldRefusal.FoliageSpacingInvalid: dto.Spacing = 0f; break;

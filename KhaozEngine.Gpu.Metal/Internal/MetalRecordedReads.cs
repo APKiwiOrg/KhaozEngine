@@ -7,15 +7,16 @@ internal sealed class MetalRecordedReads
 {
     sealed class ResourceReads
     {
-        internal readonly MetalReadIntervalIndex Contiguous = new();
+        internal readonly MetalReadIntervalIndex Contiguous = new(contiguous: true);
         internal readonly MetalReadIntervalIndex Strided = new();
         internal void Clear() { Contiguous.Clear(); Strided.Clear(); }
     }
 
     readonly Dictionary<MetalCpuResource, ResourceReads> _resources = new();
     readonly List<ResourceReads> _storage = new();
+    internal ulong Generation { get; private set; }
 
-    // Counts index node examinations and rotations, independent of the clock (#1692).
+    // Counts index search/hint probes and rotations, independent of the clock (#1692, #1696).
     internal long ProbeStepsForTests
     {
         get
@@ -27,12 +28,24 @@ internal sealed class MetalRecordedReads
         }
     }
 
+    internal long NodeWritesForTests
+    {
+        get
+        {
+            long writes = 0;
+            foreach (var reads in _resources.Values)
+                writes += reads.Contiguous.NodeWritesForTests + reads.Strided.NodeWritesForTests;
+            return writes;
+        }
+    }
+
     internal bool Overlaps(in MetalCpuRead access)
         => _resources.TryGetValue(access.Resource, out var reads)
             && (reads.Contiguous.Overlaps(access) || reads.Strided.Overlaps(access));
 
     internal void Clear()
     {
+        Generation++;
         foreach (var reads in _resources.Values) reads.Clear();
         _resources.Clear();
     }

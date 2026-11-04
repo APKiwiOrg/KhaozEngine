@@ -54,7 +54,13 @@ public class TileWorldDocumentTests
     {
         var doc = new TileWorldDocument { Id = "w", DisplayName = "W" };
         var ex = Assert.Throws<TileWorldException>(() => doc.SetUnderlay(70, -3, 0, 1));
-        Assert.Contains("(1, -1)", ex.Message);
+        Assert.Equal(TileWorldRefusal.RegionMissing, ex.Reason);
+        Assert.Equal(new RegionCoord(1, -1), ex.Region);
+        Assert.Equal(70, ex.TileX);
+        Assert.Equal(-3, ex.TileZ);
+        doc.GetOrCreateRegion(new RegionCoord(1, -1));
+        doc.SetUnderlay(70, -3, 0, 1);
+        Assert.Equal(1, doc.GetUnderlay(70, -3, 0));
     }
 
     [Fact]
@@ -125,7 +131,13 @@ public class TileWorldDocumentTests
     public void AddObject_outside_any_region_throws()
     {
         var doc = new TileWorldDocument { Id = "w", DisplayName = "W" };
-        Assert.Throws<TileWorldException>(() => doc.AddObject("tree", 3, 4, 0, 0));
+        var ex = Assert.Throws<TileWorldException>(() => doc.AddObject("tree", 3, 4, 0, 0));
+        Assert.Equal(TileWorldRefusal.RegionMissing, ex.Reason);
+        Assert.Equal(new RegionCoord(0, 0), ex.Region);
+        Assert.Equal(3, ex.TileX);
+        Assert.Equal(4, ex.TileZ);
+        Assert.Equal(1, doc.NextObjectId);
+        Assert.Empty(doc.AllObjects());
     }
 
     [Fact]
@@ -201,11 +213,22 @@ public class TileWorldDocumentTests
         var doc = new TileWorldDocument { Id = "w", DisplayName = "W" };
         doc.UnloadedRegionHashes[new RegionCoord(2, 3)] = "abc123";
         var ex = Assert.Throws<TileWorldException>(() => doc.GetOrCreateRegion(new RegionCoord(2, 3)));
-        Assert.Contains("(2, 3)", ex.Message);
-        Assert.Contains("not loaded", ex.Message);
+        Assert.Equal(TileWorldRefusal.RegionNotLoaded, ex.Reason);
+        Assert.Equal(new RegionCoord(2, 3), ex.Region);
+        Assert.Null(ex.TileX);
+        Assert.Null(ex.TileZ);
         Assert.Empty(doc.Regions);
         var write = Assert.Throws<TileWorldException>(() => doc.SetUnderlay(2 * 64, 3 * 64, 0, 1));
-        Assert.Contains("not loaded", write.Message);
+        Assert.Equal(TileWorldRefusal.RegionNotLoaded, write.Reason);
+        Assert.Equal(new RegionCoord(2, 3), write.Region);
+        Assert.Equal(128, write.TileX);
+        Assert.Equal(192, write.TileZ);
+
+        var loaded = new TileRegion(new RegionCoord(2, 3), doc.PlaneCount);
+        doc.AttachRegion(loaded);
+        Assert.Same(loaded, doc.GetOrCreateRegion(new RegionCoord(2, 3)));
+        doc.SetUnderlay(128, 192, 0, 1);
+        Assert.Equal(1, doc.GetUnderlay(128, 192, 0));
     }
 
     [Fact]
@@ -214,7 +237,11 @@ public class TileWorldDocumentTests
         var doc = new TileWorldDocument { Id = "w", DisplayName = "W" };
         doc.GetOrCreateRegion(new RegionCoord(0, 0));
         doc.SetMarker("spawn", 5, 5, 0);
-        Assert.Throws<TileWorldException>(() => doc.SetMarker("spawn", 500, 500, 0));
+        var ex = Assert.Throws<TileWorldException>(() => doc.SetMarker("spawn", 500, 500, 0));
+        Assert.Equal(TileWorldRefusal.RegionMissing, ex.Reason);
+        Assert.Equal(new RegionCoord(7, 7), ex.Region);
+        Assert.Equal(500, ex.TileX);
+        Assert.Equal(500, ex.TileZ);
         TileMarker? m = doc.FindMarker("spawn");
         Assert.NotNull(m);
         Assert.Equal(5, m!.X);

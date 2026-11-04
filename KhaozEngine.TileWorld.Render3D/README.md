@@ -882,8 +882,9 @@ collision, navigation, simulation, replication or hashes.
   change eligibility, including regions reached by the door clearance.
 - A DIRTY region is never dropped: unloading one with unsaved edits would throw, so it stays resident past the
   ring and says so once through `Log`. Regions the manifest does not list are skipped and do not spend the budget.
-- A torn region file throws `TileWorldException` straight out of `Update`. A world whose files no longer match
-  what wrote them is not something a streaming loop should paper over by drawing a hole.
+- A torn region file throws `TileWorldException` straight out of `Update`, with
+  `TileWorldRefusal.RegionHashMismatch`, `Region`, `SourceName`, `ExpectedHash` and `ActualHash`. A world whose
+  files no longer match what wrote them is not something a streaming loop should paper over by drawing a hole.
 
 The first shared one-metre-tile profile is:
 

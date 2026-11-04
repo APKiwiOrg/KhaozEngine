@@ -28,7 +28,7 @@ public sealed partial class TileWorldDocument
         if (!TrySetCornerHeightCm(x, z, plane, cm))
         {
             // The write above fails only when the corner's region is absent, so this always throws. Routing the
-            // throw through RequireRegion keeps the message that tells a never-created region apart from one
+            // throw through RequireRegion keeps the refusal that tells a never-created region apart from one
             // that is merely unloaded, which matters because GetOrCreateRegion refuses the unloaded case.
             RequireRegion(x, z);
         }

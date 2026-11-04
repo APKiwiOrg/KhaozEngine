@@ -12749,6 +12749,19 @@ Editor region deletion and create-undo use that explicit deletion path. `TileWor
 is that plus load-everything. A region the manifest knows about but that is not in memory cannot be created
 blind: `GetOrCreateRegion` and `RequireRegion` both throw for it, so a save can never blank authored terrain.
 
+These refusals keep the exact `TileWorldException` type. Inspect `Reason` as a `TileWorldRefusal`, with
+`RegionMissing` for a required region that does not exist, `RegionNotLoaded` for a known but unloaded region,
+and `RegionDirty` for an attempted unload with unsaved changes. `Region` is the refused planar coordinate.
+`RequireRegion(x, z)` also fills nullable `TileX` and `TileZ` with the requested tile coordinates, with no
+implied plane. Guards that received only a region leave those two values null.
+
+`TileWorldSource.Open` and `TileWorldHash.OfManifestRegions` share `ManifestRegionDuplicate` and `Region`
+for duplicate rows. `Open` also carries the manifest path in `SourceName`. The hash composer uses
+`ManifestRegionHashMissing` and `Region` for a null region hash. Eager and lazy loads use
+`RegionHashMismatch`, carrying `Region`, the region file path in `SourceName`, and `ExpectedHash` and
+`ActualHash`. Messages are developer prose. Both message-only constructors remain available to consumers,
+and `Reason` is null only for such an externally constructed instance.
+
 `source.FindMarker("spawn")` answers off the manifest's marker index with NO region read, which is what a client
 needs before it has streamed anything: `TileWorldDocument.FindMarker` walks LOADED regions only, so asking it
 first means materialising regions one at a time until one carries the marker and unloading the ones that did not.
@@ -13549,7 +13562,8 @@ Only `PrimeAround` and explicit offline `SettleForCapture` calls do. Active same
 the ground-cover reach beyond the fixed mesh margin. Streaming a region rebuilds every loaded ground mesh or cover cache affected by its border
 data, solid footprints, upper roofs or tagged doors. A dirty region is never streamed out (unloading unsaved edits
 would throw, so it stays resident and logs once), and a torn region file throws `TileWorldException` straight out of
-`Update` rather than drawing a hole.
+`Update` rather than drawing a hole. The refusal carries `TileWorldRefusal.RegionHashMismatch`, `Region`,
+`SourceName`, `ExpectedHash` and `ActualHash`.
 
 **Translucent overlays.** `ITileWorldScene.DrawOverlayMesh(mesh, world)` forwards the scene's unlit,
 depth-tested, alpha-blended overlay pass, which does not write depth. Use it for route highlights or range

@@ -163,7 +163,11 @@ public class TilePrefabTests
     {
         TileWorldDocument doc = HouseWorld();
         TilePrefab p = TilePrefabs.Extract(doc, Cat, new TileRect(10, 10, 3, 2), 0, 1);
-        Assert.Throws<TileWorldException>(() => TilePrefabs.Place(doc, p, 126, 5, 0, 0));
+        var ex = Assert.Throws<TileWorldException>(() => TilePrefabs.Place(doc, p, 126, 5, 0, 0));
+        Assert.Equal(TileWorldRefusal.RegionMissing, ex.Reason);
+        Assert.Equal(new RegionCoord(2, 0), ex.Region);
+        Assert.Equal(128, ex.TileX);
+        Assert.Equal(5, ex.TileZ);
         Assert.Equal(1, doc.GetUnderlay(126, 5, 0));
         Assert.Equal(0, doc.GetOverlay(126, 5, 0));
     }

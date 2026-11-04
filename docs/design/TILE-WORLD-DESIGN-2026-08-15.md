@@ -212,7 +212,8 @@ One form only, a directory:
   (`<target>.<guid>.tmp`) since #790: the fixed `<target>.tmp` this shipped with was shared by every writer into
   the directory, so two concurrent saves could truncate each other's tmp and rename half a file into place.
 - Load: each region's bytes are hashed and compared to the manifest's entry. A mismatch is a torn write or a
-  hand edit that forgot the manifest, and the load refuses, naming the region.
+  hand edit that forgot the manifest. The load refuses with `TileWorldRefusal.RegionHashMismatch` on
+  `TileWorldException`, carrying `Region`, `SourceName`, `ExpectedHash` and `ActualHash`.
 - `WorldHash`: SHA-256 over the canonical manifest bytes, which compose the per-region hashes, so it is
   independent of region write order and computed without re-serialising the regions. This is the value
   Grimhollow's client and server will compare, the way the reference consumer's `MapDocumentDigest` compares
@@ -438,7 +439,8 @@ of `ViewportWorld`.
   `TileWorldView.DirtyRegionMargin` before turning the rect into region marks: a corner is shared by four tiles,
   a central-difference normal reads one corner further still, and a corner colour averages the tiles meeting
   there. The rect does not say which of those three an edit touched, and marking wide costs nothing.
-- **A dirty region is never streamed out.** `TileWorldSource.Unload` throws on unsaved edits, so the residency
+- **A dirty region is never streamed out.** `TileWorldSource.Unload` throws `TileWorldException` with
+  `TileWorldRefusal.RegionDirty` and `Region` on unsaved edits, so the residency
   keeps that region resident past the unload radius and logs once instead. The resident set can then exceed the
   ring, which is the correct trade: an editor holds a handful of dirty regions, and the alternative is losing the
   edit.
@@ -821,10 +823,13 @@ hash of the committed world that a content change updates deliberately.
 
 ## 11. Failure handling
 
-- Load: schema errors name region and JSON path, a region hash mismatch names the region and refuses, a
-  missing catalog names the manifest line, a missing neighbour region is not an error (edge-extend).
-- MCP: the guard turns exceptions into structured errors, a rect touching an uncreated region names it and
-  hints `region_create`, an object whose footprint leaves every loaded region is refused.
+- Load: schema errors name region and JSON path. A region hash mismatch refuses with
+  `TileWorldRefusal.RegionHashMismatch`, carrying `Region`, `SourceName`, `ExpectedHash` and `ActualHash` on
+  `TileWorldException`. A missing catalog names the manifest line, a missing neighbour region is not an error
+  (edge-extend).
+- MCP: the guard turns exceptions into structured errors. A rect touching an uncreated region refuses with
+  `TileWorldRefusal.RegionMissing`, carrying `Region`, `TileX` and `TileZ` on `TileWorldException` for
+  in-process callers. An object whose footprint leaves every loaded region is refused.
 - Editor: a failed save surfaces in the status bar and never loses the document (tmp + rename).
 - Renderer: a missing mesh ref draws a placeholder box and logs once per archetype, never faults the view.
 

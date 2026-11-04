@@ -83,7 +83,9 @@ public sealed class TileWorldSource
         {
             var c = new RegionCoord(r.Rx, r.Rz);
             if (!known.TryAdd(c, r.Hash))
-                throw new TileWorldException($"{TileWorldFile.ManifestPath(directory)}: region {c} is listed twice");
+                throw new TileWorldException(TileWorldRefusal.ManifestRegionDuplicate,
+                    $"{TileWorldFile.ManifestPath(directory)}: region {c} is listed twice")
+                { SourceName = TileWorldFile.ManifestPath(directory), Region = c };
             doc.UnloadedRegionHashes[c] = r.Hash;
         }
         var markers = new Dictionary<string, TileMarker>(StringComparer.Ordinal);
@@ -109,7 +111,9 @@ public sealed class TileWorldSource
         byte[] bytes = TileWorldFile.ReadRegionBytes(Directory, c);
         string actual = TileWorldHash.OfRegionBytes(bytes);
         if (!string.Equals(actual, expectedHash, StringComparison.OrdinalIgnoreCase))
-            throw new TileWorldException($"{path}: region {c} hash {actual} does not match the manifest's {expectedHash} (torn write, or a hand edit that skipped the manifest)");
+            throw new TileWorldException(TileWorldRefusal.RegionHashMismatch,
+                $"{path}: region {c} hash {actual} does not match the manifest's {expectedHash} (torn write, or a hand edit that skipped the manifest)")
+            { SourceName = path, Region = c, ActualHash = actual, ExpectedHash = expectedHash };
         TileRegion region = TileRegionFile.Parse(bytes, c, Document.PlaneCount, path);
         Document.AttachRegion(region);
         return region;
@@ -139,7 +143,9 @@ public sealed class TileWorldSource
     {
         TileRegion? r = Document.GetRegion(c);
         if (r is null) return false;
-        if (r.Dirty) throw new TileWorldException($"region {c} has unsaved changes and cannot be unloaded");
+        if (r.Dirty)
+            throw new TileWorldException(TileWorldRefusal.RegionDirty,
+                $"region {c} has unsaved changes and cannot be unloaded") { Region = c };
         // Hashed from the region, not read out of _known, which is the manifest as it stood at Open. A region
         // that was loaded, edited and saved has new bytes on disk and a new hash in the manifest, while _known
         // still holds the old one. Recording that stale hash here would put it back into the next save's

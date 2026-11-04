@@ -2,6 +2,7 @@ using System;
 using System.Globalization;
 using System.IO;
 using System.Linq;
+using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json.Nodes;
 using System.Threading;
@@ -93,10 +94,18 @@ public class TileWorldFileTests
         string dir = tmp.Sub("world");
         TileWorldFile.Save(Authored(), dir);
         string r00 = Path.Combine(dir, "regions", "r_0_0.json");
+        byte[] original = File.ReadAllBytes(r00);
+        string expected = Convert.ToHexStringLower(SHA256.HashData(original));
         File.WriteAllText(r00, File.ReadAllText(r00).Replace("\"rotation\":1", "\"rotation\":2"));
+        string actual = Convert.ToHexStringLower(SHA256.HashData(File.ReadAllBytes(r00)));
         var ex = Assert.Throws<TileWorldException>(() => TileWorldFile.Load(dir));
-        Assert.Contains("(0, 0)", ex.Message);
-        Assert.Contains("hash", ex.Message);
+        Assert.Equal(TileWorldRefusal.RegionHashMismatch, ex.Reason);
+        Assert.Equal(new RegionCoord(0, 0), ex.Region);
+        Assert.Equal(r00, ex.SourceName);
+        Assert.Equal(expected, ex.ExpectedHash);
+        Assert.Equal(actual, ex.ActualHash);
+        File.WriteAllBytes(r00, original);
+        Assert.NotNull(TileWorldFile.Load(dir).GetRegion(new RegionCoord(0, 0)));
     }
 
     [Fact]

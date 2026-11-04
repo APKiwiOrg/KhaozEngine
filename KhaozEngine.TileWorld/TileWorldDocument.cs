@@ -60,7 +60,8 @@ public sealed partial class TileWorldDocument
     public TileRegion GetOrCreateRegion(RegionCoord c)
     {
         if (_regions.TryGetValue(c, out TileRegion? r)) return r;
-        if (UnloadedRegionHashes.ContainsKey(c)) throw new TileWorldException(UnloadedMessage(c));
+        if (UnloadedRegionHashes.ContainsKey(c))
+            throw new TileWorldException(TileWorldRefusal.RegionNotLoaded, UnloadedMessage(c)) { Region = c };
         r = new TileRegion(c, PlaneCount) { Dirty = true };
         _regions.Add(c, r);
         return r;
@@ -126,15 +127,19 @@ public sealed partial class TileWorldDocument
     /// <summary>The region holding world tile (x, z), or null when it is not in memory.</summary>
     public TileRegion? RegionAt(int x, int z) => GetRegion(RegionCoord.Of(x, z));
 
-    /// <summary>The region holding world tile (x, z), or a <see cref="TileWorldException"/> naming it. The
-    /// message distinguishes a region that was never created from one still waiting to be loaded.</summary>
+    /// <summary>The region holding world tile (x, z), or a <see cref="TileWorldException"/> carrying
+    /// <see cref="TileWorldException.Region"/>, <see cref="TileWorldException.TileX"/> and
+    /// <see cref="TileWorldException.TileZ"/>. Its reason distinguishes <see cref="TileWorldRefusal.RegionMissing"/>
+    /// from <see cref="TileWorldRefusal.RegionNotLoaded"/> without implying a tile plane.</summary>
     public TileRegion RequireRegion(int x, int z)
     {
         RegionCoord c = RegionCoord.Of(x, z);
         TileRegion? r = GetRegion(c);
         if (r is not null) return r;
-        string why = UnloadedRegionHashes.ContainsKey(c) ? UnloadedMessage(c) : $"region {c} does not exist. Create it first.";
-        throw new TileWorldException($"tile ({x}, {z}): {why}");
+        bool unloaded = UnloadedRegionHashes.ContainsKey(c);
+        string why = unloaded ? UnloadedMessage(c) : $"region {c} does not exist. Create it first.";
+        throw new TileWorldException(unloaded ? TileWorldRefusal.RegionNotLoaded : TileWorldRefusal.RegionMissing,
+            $"tile ({x}, {z}): {why}") { Region = c, TileX = x, TileZ = z };
     }
 
     void RequirePlane(int plane)

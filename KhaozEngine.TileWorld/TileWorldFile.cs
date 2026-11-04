@@ -11,10 +11,12 @@ namespace KhaozEngine.TileWorld;
 
 /// <summary>Save/load of the one on-disk form: a directory with <c>world.json</c> and
 /// <c>regions/r_&lt;rx&gt;_&lt;rz&gt;.json</c>. Every file lands via tmp + rename, the manifest last, and every
-/// region's bytes are hashed against the manifest on load, so a torn write is refused by name rather than
-/// loaded as a subtly different world. That is DETECTION, not rollback: region bytes are overwritten in
-/// place, so a save interrupted part way through leaves the regions it already replaced replaced, and the
-/// next load names the first file whose bytes disagree with the manifest.</summary>
+/// region's bytes are hashed against the manifest on load, so a torn write is refused with
+/// <see cref="TileWorldRefusal.RegionHashMismatch"/> rather than loaded as a subtly different world.
+/// <see cref="TileWorldException.Region"/>, <see cref="TileWorldException.SourceName"/>,
+/// <see cref="TileWorldException.ExpectedHash"/> and <see cref="TileWorldException.ActualHash"/> identify
+/// the mismatch. That is DETECTION, not rollback: region bytes are overwritten in place, so a save
+/// interrupted part way through leaves the regions it already replaced replaced.</summary>
 public static partial class TileWorldFile
 {
     /// <summary>Format version this engine writes, and the version every load is migrated up to.</summary>

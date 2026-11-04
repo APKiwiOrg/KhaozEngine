@@ -39,9 +39,11 @@ of its own and raises no events: every mutation marks its region `Dirty`, and th
 
 - Regions: `GetRegion`, `GetOrCreateRegion`, `RegionAt`, `RequireRegion`, `RemoveRegion`, `DeleteRegion`,
   `RegionsTouching`.
-  `GetOrCreateRegion` and `RequireRegion` are the two that THROW. `RequireRegion` throws for a region that does
-  not exist at all, and both throw for one the manifest knows about but that is not in memory (creating it
-  blind would let the next save overwrite authored terrain), so load that one through `TileWorldSource` first.
+  `RequireRegion` refuses a region that does not exist with `TileWorldRefusal.RegionMissing`. Both it and
+  `GetOrCreateRegion` refuse one the manifest knows about but that is not in memory with `RegionNotLoaded`
+  (creating it blind would let the next save overwrite authored terrain), so load that one through
+  `TileWorldSource` first. Both carry `TileWorldException.Region`, and `RequireRegion` also carries the
+  requested planar `TileX` and `TileZ`.
 - Tiles: `Get`/`Set` pairs for `Underlay`, `Overlay`, `OverlayShape`, `OverlayRotation` and `Settings`, where
   `TileSettings` is `Blocked`, `Indoors`, `Bridge`, `NoDraw`, `FeatherOverlay` and `TileOverlayShape` is `Full`, `DiagonalHalf`,
   `CornerQuarter`, `CornerThreeQuarter`. Reads outside a loaded region answer the default, writes require it.
@@ -78,7 +80,9 @@ through a tmp plus rename, and clears `Dirty` only once the manifest naming thos
 `TileWorldLoadOptions.RegisterMigration` complete the surface. Region file names are invariant-culture and
 strictly canonical, so `r_+1_2.json` is not region (1, 2) and the stale sweep will not delete a file the
 manifest never named. A torn write is DETECTED, not rolled back: bytes are replaced in place, so an interrupted
-save leaves what it already wrote, and the next load refuses the world naming the first disagreeing file.
+save leaves what it already wrote, and the next load refuses the world with `RegionHashMismatch`.
+`TileWorldException.SourceName` identifies the first disagreeing file, `Region` identifies its coordinate,
+and `ExpectedHash` and `ActualHash` carry the manifest and file-byte hashes.
 
 Foliage layers are an optional manifest block. Their density bytes use base64 and retain the row convention
 above. An empty layer list is omitted, so old world JSON and old world hashes stay unchanged. Non-empty foliage
@@ -93,6 +97,7 @@ only, `EnsureLoaded(coord)`/`EnsureLoaded(rect)` materialise regions on demand h
 `IsLoaded`, `KnownRegions` and `Document` expose the state, and `Unload(coord)` drops a CLEAN region while
 refreshing its known-hash table from that region's current bytes, so a region that was edited and saved is not
 later mistaken for a torn write, and refreshing its marker rows the same way and for the same reason.
+Unsaved changes are refused with `RegionDirty` and the region coordinate in `TileWorldException.Region`.
 `Document.RemoveRegion(coord)` takes that same safe unload path on a source-backed document. Use
 `Document.DeleteRegion(coord)` for permanent deletion: it accepts dirty or unloaded regions and clears the
 source's known hash, unloaded hash and marker rows so the next save removes the file and manifest entry.
@@ -116,6 +121,25 @@ two, and it is the one a netcode connect gate should compare. `OfWorld` alone ca
 `CollisionKind`, so two heads over the same world directory with independently updated catalogs pass the gate and
 then disagree on the baked collision map, which reads as a per-step correction on every wall instead of a refusal
 at the door. `OfWorld` is unchanged, so moving a gate to the composed digest is a change on BOTH heads at once.
+
+## Refusals
+
+`TileWorldException` retains its exact type and both message-only constructors. Use `Reason` and the
+identifiers below to distinguish region residency and manifest-region refusals. Messages remain developer
+prose. `Reason` is nullable only for a message-only instance built outside the engine. Its reason-taking
+constructors also accept an original cause through `InnerException`.
+
+Regions are planar. `Region` is a `RegionCoord?`, and `TileX` and `TileZ` are `int?` values set only when the
+guard received tile coordinates. They never imply a plane. A region-only operation leaves both null.
+
+| `TileWorldRefusal` reason | Refuses | Identifiers |
+| --- | --- | --- |
+| `RegionMissing` | An operation requiring a region that does not exist | `Region`, plus `TileX` and `TileZ` for a tile lookup |
+| `RegionNotLoaded` | An operation requiring a known region that is not loaded | `Region`, plus `TileX` and `TileZ` for a tile lookup |
+| `RegionDirty` | Unloading a region with unsaved changes | `Region` |
+| `ManifestRegionDuplicate` | A repeated region coordinate in `Open` or `OfManifestRegions` | `Region`, plus `SourceName` for `Open` |
+| `ManifestRegionHashMissing` | A null region hash passed to `OfManifestRegions` | `Region` |
+| `RegionHashMismatch` | Region bytes that disagree with the manifest's hash | `Region`, `SourceName`, `ExpectedHash`, `ActualHash` |
 
 ## Catalogs and validation
 

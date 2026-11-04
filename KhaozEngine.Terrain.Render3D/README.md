@@ -117,12 +117,15 @@ Kept separate from the render-free field so a server/sim never drags in `Render3
     the caller must flush in-flight builds first (`TerrainStreamer.FlushPendingBuilds`) before swapping, so a
     build already running against the old field cannot land after the swap. The map editor runs its streamer
     synchronously, so that ordering concern does not apply there. Swapping while a build is EXECUTING throws
-    `InvalidOperationException` naming the number of builds it caught (issue #105), because that build reads the
+    `ChunkSinkConfigurationStateException` with `ChunkSinkConfigurationRefusal.FieldChangeDuringBuild` and
+    `BuildCount` naming the number of builds it caught (issue #105), because that build reads the
     field at several points and would otherwise mesh one chunk from two fields. A build that has already returned
     and is waiting to apply is the half `FlushPendingBuilds` covers, so the fix for that exception is to flush,
     never to retry.
   - **`UpdateLayers(layers)`** swaps the captured generation configs every FUTURE chunk build reads, under the same
-    flush precondition and in-flight refusal as `UpdateField`. The list must pass the construction rules again
+    flush precondition as `UpdateField`. Its in-flight refusal is `LayersChangeDuringBuild`, with `BuildCount`.
+    `ReconfigureLod` likewise refuses active builds with `LodChangeDuringBuild` and `BuildCount`.
+    The list must pass the construction rules again
     and keep the sink's topology: the same count and, per index, the same kind and HLOD presence, with every
     placement layer unchanged. The placement buckets and the HLOD gate derive from exactly those parts, so they
     stay valid without a rebuild. A companion may name a different host, which is only safe when every loaded
@@ -382,3 +385,20 @@ statics). See the 3D World room (`Room3D`) in `KhaozEngine.Showcase` for the wal
 (its foliage scatter uses this multi-part form so the re-baked textured pine/oak/rock kit renders textured).
 
 Part of [KhaozEngine](https://github.com/APKiwiOrg/KhaozEngine).
+
+## Configuration refusals
+
+`ChunkSinkConfigurationArgumentException` derives from `ArgumentException`, and
+`ChunkSinkConfigurationStateException` derives from `InvalidOperationException`. Both carry
+`ChunkSinkConfigurationRefusal` in the `KhaozEngine.Terrain` namespace. Construction keeps each argument's
+`ParamName`. Flush or drain CPU builds before replacing their field, layer configuration or LOD table.
+Topology checks remain owned by `PropLayerTopology`, and a negative `collisionLod` remains a BCL
+`ArgumentOutOfRangeException` with `ParamName` and `ActualValue`.
+
+| ChunkSinkConfigurationRefusal | Refused input | Identifiers |
+|---|---|---|
+| `DynamicsRequiresPhysics` | A dynamics source without a physics world | `ParamName` |
+| `CollisionRequiresPhysics` | Terrain collision without a physics world | `ParamName` |
+| `FieldChangeDuringBuild` | Replacing the field during CPU chunk builds | `BuildCount` |
+| `LayersChangeDuringBuild` | Replacing captured layer configuration during CPU chunk builds | `BuildCount` |
+| `LodChangeDuringBuild` | Replacing the LOD table during CPU chunk builds | `BuildCount` |

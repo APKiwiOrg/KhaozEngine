@@ -12435,6 +12435,15 @@ the chunk's props instead of rebuilding it. `streamer.RefreshPlacements(coord)` 
 layers of that loaded chunk through `Scene3DChunkSink`'s `IChunkPlacementRefreshSink` and leaves its terrain mesh
 and collider alone. `Invalidate` is still the call for a field change.
 
+`Scene3DChunkSink` configuration guards carry `ChunkSinkConfigurationRefusal` in `KhaozEngine.Terrain`.
+`DynamicsRequiresPhysics` and `CollisionRequiresPhysics` use `ChunkSinkConfigurationArgumentException`
+(an `ArgumentException`) and retain the offending `ParamName`. `UpdateField`, `UpdateLayers` and
+`ReconfigureLod` refuse executing CPU builds through `ChunkSinkConfigurationStateException`
+(an `InvalidOperationException`), with `FieldChangeDuringBuild`, `LayersChangeDuringBuild` or
+`LodChangeDuringBuild` and the active `BuildCount`. Flush or drain the streamer before changing configuration.
+A negative `collisionLod` stays a BCL parameter check, and layer topology remains a separate policy. See the
+[terrain configuration refusal table](../KhaozEngine.Terrain.Render3D/README.md#configuration-refusals).
+
 The same holds for a change to scatter or companion configs that leaves the field alone, such as a moved
 exclusion. Hand the sink the new layers, then refresh the props of the chunks the change can reach:
 

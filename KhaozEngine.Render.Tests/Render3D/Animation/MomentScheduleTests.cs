@@ -294,7 +294,7 @@ namespace KhaozEngine.Tests.Render3D.Animation
             Assert.Equal(double.PositiveInfinity, total.TotalWeight);
             Assert.Equal("families", total.ParamName);
             _ = new MomentSchedule(TurnOptions,
-                [glance with { Weight = double.MaxValue }, Turns[Turn] with { Weight = double.Epsilon }]);
+                [glance with { Weight = double.MaxValue }, Turns[Turn] with { Weight = 1d }]);
 
             // The edges are taken: a moment filling the room between the quiet ends, no quiet, no empty share and
             // no empty slot allowed. With neither empty draws nor a run of them allowed, every slot holds a moment.

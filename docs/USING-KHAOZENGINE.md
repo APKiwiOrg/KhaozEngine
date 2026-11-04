@@ -9656,6 +9656,10 @@ an older file. Creature profiles remain disabled unless explicitly granted their
 
 Evidence capture selects KENB 4. Terrain opt-in first tries the unchanged sharp proof on every sharp-topology
 candidate, then tries terrain only after refusal when terrain applies. New terrain topology uses terrain only.
+The height prerequisite tests ground inside the exact doubled-radius capsule projection, including its circular
+caps. Height limits stay fixed. Coverage, source identity, overlap, exact ground area and obstruction checks
+keep their whole-cell scope. Physical proof and the terrain policy still decide every Drop.
+
 Each accepted link retains its proving route. The file stores its ordered integer endpoints, acceptance bits,
 route bits and bake-time slope/footprint threshold bits. A workload digest binds those facts, identity, canonical
 pooled evidence and frozen profile bytes. Endpoints are checked for canonical encoding, bounds and admission.

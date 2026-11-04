@@ -20,20 +20,21 @@ internal sealed class ContactTerrainDropCorridor(PhysicsNavDescentEvidence evide
         double minX = Math.Min(from.X, to.X) - radius, maxX = Math.Max(from.X, to.X) + radius;
         double minZ = Math.Min(from.Z, to.Z) - radius, maxZ = Math.Max(from.Z, to.Z) + radius;
         if (minX < options.MinX || minZ < options.MinZ || maxX >= options.MaxX || maxZ >= options.MaxZ) return false;
+        var heightBand = new ContactTerrainHeightBand(from, to, radius);
         for (int z = Cell(minZ, options.MinZ); z <= Cell(maxZ, options.MinZ); z++)
             for (int x = Cell(minX, options.MinX); x <= Cell(maxX, options.MinX); x++)
             {
                 double left = options.MinX + x * (double)options.CellSize, bottom = options.MinZ + z * (double)options.CellSize;
                 if (!NavFootprintGeometry.Touches(from, to, left, bottom, options.CellSize, radius)) continue;
                 if (!CertifyColumn(evidence, x, z, (double)from.Y - allowance, (double)from.Y + tuning.StepHeight,
-                        2d * tuning.CapsuleHalfHeight, ground.Areas)) return false;
+                        2d * tuning.CapsuleHalfHeight, ground.Areas, heightBand)) return false;
             }
         return true;
     }
     int Cell(double p, float origin) => (int)Math.Floor((p - origin) / evidence.Options.CellSize);
 
     internal static bool CertifyColumn(PhysicsNavDescentEvidence evidence, int x, int z,
-        double lower, double upper, double bodyHeight, NavAreaFilter areas)
+        double lower, double upper, double bodyHeight, NavAreaFilter areas, ContactTerrainHeightBand? heightBand = null)
     {
         if (evidence.Coverage(x, z) != DescentCoverage.Complete) return false;
         var o = evidence.Options;
@@ -52,12 +53,14 @@ internal sealed class ContactTerrainDropCorridor(PhysicsNavDescentEvidence evide
             var clipped = DescentGeometry.Cell(face.Points, left, bottom, o.CellSize);
             var area = DescentGeometry.Area2(clipped);
             if (area.Sign == 0) continue;
+            bool outside = false;
             foreach (var p in clipped)
             {
                 var y = DescentGeometry.Height(face.Points, p);
                 if (!hasBed || y < minimumBed) { minimumBed = y; hasBed = true; }
-                if (y < new DescentNumber(lower) || y > new DescentNumber(upper)) return false;
+                outside |= y < new DescentNumber(lower) || y > new DescentNumber(upper);
             }
+            if (outside && (heightBand is null || !heightBand.Allows(face.Points, clipped, lower, upper))) return false;
             foreach (var previous in ground)
                 if (DescentGeometry.Area2(DescentGeometry.Overlap(clipped, previous.Polygon)).Sign > 0) return false;
             ground.Add((entry.Face, clipped));

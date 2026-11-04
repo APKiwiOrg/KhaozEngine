@@ -1401,8 +1401,12 @@ There is no radius-only terrain horizon or universal height-over-slope reach for
 Gentle slopes receive no terrain extension. Each source still contributes at most eight candidates.
 
 `ContactTerrainDropCorridor` checks exact column coverage over the doubled-radius projection, first physical
-obstructions and solid occupancy. Foreign geometry below complete ground cannot replace that ground, and a roof
-cannot be skipped to reach an allowed floor. Mesh faces are clipped exactly against the ground and vertical body
+obstructions and solid occupancy. The height band tests only ground inside the exact projected capsule, including
+its circular caps. `ContactTerrainHeightBand` intersects each violating height half-plane with that capsule
+using rational clips and squared-distance predicates. Ground outside that projection cannot refuse solely
+through height. The height limits and doubled radius stay fixed. Coverage, single-source identity, overlapping-layer checks, exact ground area, minimum bed
+and all obstruction checks retain their whole-cell scope. Foreign geometry below complete ground cannot replace
+that ground, and a roof cannot be skipped to reach an allowed floor. Mesh faces are clipped exactly against the ground and vertical body
 envelope, including intersections whose original vertices all lie outside that envelope.
 The original narrow center corridor, play boundary and highest-launch
 descent bound remain composed through `NavDropFootprint`. Geometry supplies evidence, not collision permission.

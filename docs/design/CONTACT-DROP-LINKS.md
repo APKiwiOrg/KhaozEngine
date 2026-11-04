@@ -59,8 +59,11 @@ An internal physical capture and pure terrain envelope retain these source keys 
 geometry, including nonstandable faces, roofs and objects. Complete coverage, known emptiness, unavailable data
 and out-of-bounds space are distinct. Original admitted layers bind to captured raw ordinals and height bits.
 The geometry-derived band fringes and directional indexes find wider terrain descents without changing the sharp
-recipe. Exact coverage and occupancy checks provide a corridor prerequisite. They do not replace the actual
-motion certificate. Publication also requires the explicit profile permission and authenticated KENB 4 workload. See the
+recipe. The height band certifies ground inside the exact doubled-radius capsule projection, including its
+circular caps. Height limits stay fixed. Coverage, source identity, overlap, exact ground area and every
+obstruction gate keep their whole-cell scope. Exact coverage and occupancy checks provide a corridor prerequisite.
+They do not replace the actual motion certificate. Publication also requires the explicit profile permission and
+authenticated KENB 4 workload. See the
 [internal evidence contract](../../KhaozEngine.Movement/README.md#internal-terrain-descent-evidence).
 
 The internal terrain proof uses one `ContactTerrainDropPolicy` with LaunchPrefix, Descending, LandingFringe and

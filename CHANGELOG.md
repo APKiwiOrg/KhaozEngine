@@ -4,9 +4,29 @@ All notable changes to KhaozEngine. One shared version line `<KhaozEngineVersion
 governs every package, including the four umbrella metapackages. Planned work lives in the repo's GitHub
 Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
-## 21.25.0
+## 22.0.0
 
 2026-11-04
+
+- Add server-authoritative ground commitments with sequence-checked begin, steering and end on both float heads.
+  Ground travel uses its own speed, ignores player movement, jump, facing and speed effects, and retains ordinary
+  collision, gravity, slopes and steps. Horizontal distance caps the final stride and holds at zero until the
+  server steers or ends. Carried progress detects sustained blockage and survives prediction replay and handoff (#1658).
+- Add opt-in `GroundPursuit` in Movement for complete guarded walk-only routes, moving targets, independent trigger
+  and horizontal path limits, and exact current 3D body reach. `PathQueryBudget.WalkOnly` keeps a cheaper Hop or
+  Drop from hiding an available walking detour. Games wire pursuit from `OnBeforeTick` and own ability policy.
+- Publish ground arrival before optional recovery advances, so games apply a validated strike immediately.
+  Ended releases control exactly once and preserves an accepted Arrived outcome through every recovery release.
+  Recovery uses its own timer after arrival. Target loss and invalid routes cancel without an arrival.
+- **Breaking API change.** `MovementState.SpeedScaleQ` is now a `short`, `QuantizeSpeedScale` returns `short`,
+  and `DecodeSpeedScale` accepts `short`. The offset-from-one quantum is 1/1024 instead of 1/16. The 8x cap,
+  exact default and root values, clamping and nonfinite handling are unchanged. A requested 10 percent haste now
+  becomes 1.099609375 instead of 1.125 (#1652).
+- **Breaking wire change.** Wire generation 15 needs matched client and server and a major engine repin. The
+  movement payload is 64 bytes, with Int16 speed in its original slot and an appended ground commitment suffix.
+  Persisted movement payloads migrate automatically through normal blob normalization. Historical speed q becomes
+  Int16(q * 64), preserving its old decoded value while composing with owner-timer splitting and framed positions.
+  New ground fields default to Ballistic and zero. Malformed payloads still refuse and quarantine.
 
 - Reduce Mac CPU frame time in scenes with thousands of draws by indexing split-frame read footprints.
   Overlapping CPU writes and writable maps keep the same refusals, with no steady-frame allocation (#1692).

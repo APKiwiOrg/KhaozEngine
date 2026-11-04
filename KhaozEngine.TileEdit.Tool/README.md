@@ -98,6 +98,7 @@ described above.
 
 | `TileWorldRefusal` reason | Refuses | Identifiers |
 | --- | --- | --- |
+| `CatalogArchetypeMissing` | Placing or scattering an archetype absent from the catalogs | `ArchetypeId` |
 | `ObjectMissing` | Querying an absent object id through `QueryService.ObjectGet` | `ObjectId` |
 
 Direct mutation service calls propagate the command and document reasons. See the

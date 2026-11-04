@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using KhaozEngine.Content;
 using KhaozEngine.TileWorld;
 using Xunit;
 
@@ -29,6 +30,37 @@ public class TileWorldExceptionTests
 
         Assert.Equal(TileWorldRefusal.RegionHashMismatch, ex.Reason);
         Assert.Same(inner, ex.InnerException);
+    }
+
+    [Fact]
+    public void Catalog_schema_identifiers_are_owned_read_only_snapshots()
+    {
+        var finding = new JsonSchemaFinding("/materials/0/steep/chain", "false", "chain");
+        var findings = new List<JsonSchemaFinding> { finding };
+        var fields = new List<string> { finding.InstanceLocation };
+        var ex = new TileWorldException(TileWorldRefusal.CatalogSchemaMismatch, "refused catalog")
+        {
+            SchemaFindings = findings,
+            SchemaFields = fields,
+        };
+        findings.Clear();
+        fields.Clear();
+        Assert.NotNull(ex.SchemaFindings);
+        Assert.NotNull(ex.SchemaFields);
+        Assert.Equal(finding, Assert.Single(ex.SchemaFindings));
+        Assert.Equal("/materials/0/steep/chain", Assert.Single(ex.SchemaFields));
+        if (ex.SchemaFindings is IList<JsonSchemaFinding> findingList)
+        {
+            Assert.Throws<NotSupportedException>(() => findingList[0] = finding with { PropertyName = "other" });
+            Assert.Throws<NotSupportedException>(() => findingList.Clear());
+        }
+        if (ex.SchemaFields is IList<string> fieldList)
+        {
+            Assert.Throws<NotSupportedException>(() => fieldList[0] = "other");
+            Assert.Throws<NotSupportedException>(() => fieldList.Clear());
+        }
+        Assert.Equal(finding, Assert.Single(ex.SchemaFindings));
+        Assert.Equal("/materials/0/steep/chain", Assert.Single(ex.SchemaFields));
     }
 
     [Fact]

@@ -270,7 +270,8 @@ public class MutationServiceTests
         // no point never builds.
         TileWorldException ex = Assert.Throws<TileWorldException>(
             () => f.Mutate.ObjectScatter("no-such-archetype", new TileRect(20, 20, 8, 8), 0, 3, 1, seed: 7));
-        Assert.Contains("no-such-archetype", ex.Message, StringComparison.Ordinal);
+        Assert.Equal(TileWorldRefusal.CatalogArchetypeMissing, ex.Reason);
+        Assert.Equal("no-such-archetype", ex.ArchetypeId);
     }
 
     [Fact]

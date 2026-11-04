@@ -187,6 +187,18 @@ region file and is null for these in-memory attachment, restoration and save che
 | `LayerBase64Malformed` | A dense layer with malformed base64 | `LayerName`, `SourceName` and `Plane` when loading a region or prefab, original `FormatException` in `InnerException` |
 | `LayerByteCountMismatch` | A dense layer whose decoded byte count differs from its shape | `LayerName`, `ActualByteCount`, `ExpectedByteCount`, plus `SourceName` and `Plane` when loading a region or prefab |
 | `SchemaResourceMissing` | An embedded catalog schema resource absent from the assembly | `ResourceName` |
+| `CatalogJsonMalformed` | Catalog JSON that cannot be parsed or deserialized | `SourceName`, nullable parser path in `Field`, original `JsonException` in `InnerException` |
+| `CatalogSchemaMismatch` | A catalog that fails its JSON schema | `SourceName`, owned read-only `SchemaFields` and `SchemaFindings` snapshots |
+| `CatalogReadFailed` | A catalog file that cannot be read | `SourceName`, original `InnerException` |
+| `CatalogMaterialIdReserved` | A material using id 0, reserved for void | `SourceName`, `MaterialId` |
+| `CatalogMaterialDuplicate` | A material id already defined | `SourceName`, `FirstSourceName`, `MaterialId`, `MaterialName` |
+| `CatalogArchetypeIdMissing` | An archetype with a missing or blank id | `SourceName`, `ArchetypeId` as supplied |
+| `CatalogArchetypeDuplicate` | An archetype id already defined | `SourceName`, `FirstSourceName`, `ArchetypeId` |
+| `CatalogWalkSurfaceNull` | A null entry in an archetype's walk surfaces | `SourceName`, `ArchetypeId`, `SurfaceIndex` |
+| `CatalogCollisionHeightInvalid` | A collision height that is not finite and positive | `SourceName`, `ArchetypeId`, `Field`, `Value` |
+| `CatalogWalkSurfaceNonFinite` | A non-finite walk-surface height or extent | `SourceName`, `ArchetypeId`, `SurfaceIndex`, `Field`, `Value` |
+| `CatalogWalkSurfaceBoundsUnordered` | Walk-surface bounds whose minimum is not below the maximum | `SourceName`, `ArchetypeId`, `SurfaceIndex`, `MinField`, `MaxField`, `Minimum`, `Maximum` |
+| `CatalogArchetypeMissing` | Placement or scatter requiring an archetype absent from the catalogs | `ArchetypeId` |
 | `WorldValidationFailed` | A document with semantic validation issues | `WorldId`, total `IssueCount`, complete owned read-only `Issues` snapshot |
 | `PrefabSizeNonPositive` | A prefab whose width or height is not positive | `PrefabName`, `Width`, `Height`, plus `SourceName` on load |
 | `PrefabPlaneCountNonPositive` | A prefab file whose plane count is not positive | `SourceName`, `PrefabName`, `PlaneCount` |
@@ -218,9 +230,15 @@ catalog JSON files (schema-checked, JSONC tolerated), `LoadJson` parses one in m
 loaded ones, and `Greybox()` is the engine's six-material, twelve-archetype test catalog covering every
 collision kind with square and non-square footprints. `Material(id)` and `Archetype(id)` are the lookups, and
 `Archetype` is null-tolerant, so a null archetype id in content is a validator finding rather than a throw.
-Malformed or duplicate content throws a `TileWorldException` naming the source file, and
-`TileWorldSchema.GetCatalogJson()` returns the embedded catalog schema. If the resource is missing, it
-throws `SchemaResourceMissing` with `ResourceName`. `GroundMaterial` is
+Required-archetype adapters in placement commands and scatter use `CatalogArchetypeMissing` and `ArchetypeId`.
+The null-returning queries keep their existing behavior.
+Malformed or duplicate content throws the exact `TileWorldException` type with a catalog reason from the
+[refusal table](#refusals). `SourceName` identifies the content label or file path, and duplicates also carry
+`FirstSourceName` plus the material or archetype id. `CatalogSchemaMismatch` carries `SchemaFields` as distinct
+failing instance locations and immutable `KhaozEngine.Content.JsonSchemaFinding` values in `SchemaFindings`.
+Locations are JSON Pointers, including unknown properties such as `/materials/0/steep/chain`. Both collections
+are owned read-only snapshots. `TileWorldSchema.GetCatalogJson()` returns the embedded catalog schema. If the
+resource is missing, it throws `SchemaResourceMissing` with `ResourceName`. `GroundMaterial` is
 `{ Id, Name, Color, Texture, Kind, TilesPerMetre, Steep }` (`Ground` or `Water`, id 0 reserved for void) and
 `TileObjectArchetype` is
 `{ Id, Name, MeshRef, LodMeshRef, SizeX, SizeZ, CollisionKind, IsRoof, Interactive, YawOffsetDegrees, Tags, WalkSurfaces, CollisionHeight }`, with
@@ -262,9 +280,10 @@ unrotated), and an extent may reach past the footprint, the way a bridge landing
 }
 ```
 
-The schema requires `height` and refuses any other key. The loader refuses a non-finite height or extent, and a min
-that is not below its max when both are given, naming the source and the archetype. `Merge` re-runs that check on
-every archetype it adds, so an in-memory edit cannot carry a NaN through it. A pair with one null side is not
+The schema requires `height` and refuses any other key. The loader uses `CatalogWalkSurfaceNonFinite` for a
+non-finite height or extent and `CatalogWalkSurfaceBoundsUnordered` for a min that is not below its max when
+both are given. Both carry `SourceName`, `ArchetypeId` and `SurfaceIndex`, plus the field and value or both
+bound fields and values. `Merge` re-runs that check on every archetype it adds, so an in-memory edit cannot carry a NaN through it. A pair with one null side is not
 judged at load, because its resolved edge depends on a tile size the catalog does not know, and a rectangle that
 comes out inverted simply covers nothing. An empty list loads as null. Walk surfaces change no footprint, no
 collision and no pathing. `OfCatalogs` digests them, writing nothing for an archetype without any, so a catalog
@@ -273,8 +292,9 @@ with no walk surfaces keeps the digest it had before the field existed.
 `CollisionHeight` is the optional `collisionHeight` catalog field: how tall the object stands for collision, in
 metres above the mesh's local base, so a collider's top is the height the model stands at plus this. Absent loads
 as null, and a present value must be a finite number above 0. The schema refuses 0, a negative number and a JSON
-`null`. `Merge` refuses any such value edited in after load, NaN and infinity included, naming the source and the
-archetype. The tile collision map and pathing never read it. `KhaozEngine.TileWorld.Physics` requires it on every
+`null`. `Merge` refuses any such value edited in after load, NaN and infinity included, with
+`CatalogCollisionHeightInvalid`, `SourceName`, `ArchetypeId`, `Field` = `collisionHeight` and `Value`.
+The tile collision map and pathing never read it. `KhaozEngine.TileWorld.Physics` requires it on every
 `Solid`, `Diagonal`, `Wall` and `WallCorner` archetype, and `ke-tileedit`'s `archetype_measure_heights` and
 `archetype_set_collision_heights` fill it from the kit. `OfCatalogs` digests it only when present, so a catalog
 without heights keeps its digest.

@@ -107,19 +107,25 @@ public class GroundMaterialSteepTests
         Assert.Equal(40.5f, c.Material(1)!.Steep!.ResolvedToDegrees);
     }
 
-    // The schema refuses these before the rules see them, so the message is the schema's, naming the field.
+    // The schema refuses these before the semantic rules see them, retaining the instance location.
     [Theory]
-    [InlineData("""{ "material": 14, "fromDegrees": 0 }""", "fromDegrees")]
-    [InlineData("""{ "material": 14, "fromDegrees": -5 }""", "fromDegrees")]
-    [InlineData("""{ "material": 14, "toDegrees": 90 }""", "toDegrees")]
-    [InlineData("""{ "material": 14, "toDegrees": 120 }""", "toDegrees")]
-    [InlineData("""{ "fromDegrees": 40 }""", "steep")]
-    [InlineData("""{ "material": 0 }""", "steep/material")]
-    [InlineData("""{ "material": 14, "chain": true }""", "chain")]
-    public void The_schema_refuses_a_malformed_steep_object(string steep, string field)
+    [InlineData("""{ "material": 14, "fromDegrees": 0 }""", "/materials/0/steep/fromDegrees", "fromDegrees")]
+    [InlineData("""{ "material": 14, "fromDegrees": -5 }""", "/materials/0/steep/fromDegrees", "fromDegrees")]
+    [InlineData("""{ "material": 14, "toDegrees": 90 }""", "/materials/0/steep/toDegrees", "toDegrees")]
+    [InlineData("""{ "material": 14, "toDegrees": 120 }""", "/materials/0/steep/toDegrees", "toDegrees")]
+    [InlineData("""{ "fromDegrees": 40 }""", "/materials/0/steep", "steep")]
+    [InlineData("""{ "material": 0 }""", "/materials/0/steep/material", "material")]
+    [InlineData("""{ "material": 14, "chain": true }""", "/materials/0/steep/chain", "chain")]
+    public void The_schema_refuses_a_malformed_steep_object(string steep, string path, string property)
     {
         TileWorldException ex = Refused(steep);
-        Assert.Contains(field, ex.Message);
+        Assert.Equal(TileWorldRefusal.CatalogSchemaMismatch, ex.Reason);
+        Assert.Equal("steep.json", ex.SourceName);
+        Assert.NotNull(ex.SchemaFields);
+        Assert.Contains(path, ex.SchemaFields);
+        Assert.NotNull(ex.SchemaFindings);
+        Assert.Contains(ex.SchemaFindings, finding => finding.InstanceLocation == path &&
+            finding.PropertyName == property);
     }
 
     // A catalog built in code never meets the schema, so the rules carry the range check too.

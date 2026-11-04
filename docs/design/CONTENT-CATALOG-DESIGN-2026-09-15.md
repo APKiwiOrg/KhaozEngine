@@ -1495,8 +1495,8 @@ public static ContentValidationReport Validate(
 - INPUT is a complete candidate snapshot, the PREVIOUS published snapshot or null, and the full ordered rule
   set. Nothing is read from a database, a file or an ambient static inside it.
 - OUTPUT is `(bool IsValid, IReadOnlyList<ContentFinding> Findings)`, accumulating rather than stopping at the
-  first, following `JsonSchemaValidator.ValidationReport` and its run-to-the-end sweep
-  (`KhaozEngine.Content/JsonSchemaValidator.cs:11-101`, `a-engine.md:275-292`).
+  first, following `KhaozEngine.Content.ValidationReport` and its run-to-the-end sweep
+  (`KhaozEngine.Content/ValidationReport.cs`, `KhaozEngine.Content/JsonSchemaValidator.cs`).
 - NO SIDE EFFECTS. It does not log, does not mutate the candidate, does not touch a counter and does not throw
   for content reasons. A throw from it is a bug in the validator.
 

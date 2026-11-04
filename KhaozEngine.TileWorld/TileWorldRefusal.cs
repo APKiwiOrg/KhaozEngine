@@ -118,4 +118,30 @@ public enum TileWorldRefusal
     PrefabJsonMalformed,
     /// <summary>Refuses a prefab file that cannot be read.</summary>
     PrefabReadFailed,
+
+    // Catalog admission and required lookups.
+    /// <summary>Refuses catalog JSON that cannot be parsed or deserialized.</summary>
+    CatalogJsonMalformed,
+    /// <summary>Refuses a catalog that fails its JSON schema.</summary>
+    CatalogSchemaMismatch,
+    /// <summary>Refuses loading a catalog file that cannot be read.</summary>
+    CatalogReadFailed,
+    /// <summary>Refuses a material using the id reserved for void.</summary>
+    CatalogMaterialIdReserved,
+    /// <summary>Refuses a material id already defined by a catalog.</summary>
+    CatalogMaterialDuplicate,
+    /// <summary>Refuses an archetype whose id is missing or blank.</summary>
+    CatalogArchetypeIdMissing,
+    /// <summary>Refuses an archetype id already defined by a catalog.</summary>
+    CatalogArchetypeDuplicate,
+    /// <summary>Refuses a null entry in an archetype's walk surfaces.</summary>
+    CatalogWalkSurfaceNull,
+    /// <summary>Refuses an archetype collision height that is not finite and positive.</summary>
+    CatalogCollisionHeightInvalid,
+    /// <summary>Refuses a non-finite walk-surface height or extent.</summary>
+    CatalogWalkSurfaceNonFinite,
+    /// <summary>Refuses walk-surface bounds whose minimum is not below the maximum.</summary>
+    CatalogWalkSurfaceBoundsUnordered,
+    /// <summary>Refuses an operation requiring an archetype absent from the catalogs.</summary>
+    CatalogArchetypeMissing,
 }

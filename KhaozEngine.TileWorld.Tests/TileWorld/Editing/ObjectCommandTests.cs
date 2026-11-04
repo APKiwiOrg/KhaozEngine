@@ -92,7 +92,8 @@ public class ObjectCommandTests
     {
         TileWorldException ex = Assert.Throws<TileWorldException>(
             () => new PlaceObjectCommand(Cat, "not_a_thing", 5, 5, 0, 0, null));
-        Assert.Contains("not_a_thing", ex.Message);
+        Assert.Equal(TileWorldRefusal.CatalogArchetypeMissing, ex.Reason);
+        Assert.Equal("not_a_thing", ex.ArchetypeId);
     }
 
     [Fact]

@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using KhaozEngine.Content;
 
 namespace KhaozEngine.TileWorld;
 
@@ -12,6 +13,8 @@ namespace KhaozEngine.TileWorld;
 public sealed class TileWorldException : Exception
 {
     IReadOnlyList<TileWorldIssue>? _issues;
+    IReadOnlyList<string>? _schemaFields;
+    IReadOnlyList<JsonSchemaFinding>? _schemaFindings;
 
     public TileWorldException(string message) : base(message) { }
     public TileWorldException(string message, Exception? inner) : base(message, inner) { }
@@ -55,7 +58,7 @@ public sealed class TileWorldException : Exception
     /// <summary>The refused object's document-unique id.</summary>
     public long? ObjectId { get; init; }
 
-    /// <summary>The refused object's catalog archetype id.</summary>
+    /// <summary>The refused or required catalog archetype id, as supplied.</summary>
     public string? ArchetypeId { get; init; }
 
     /// <summary>The refused object's or marker's authored tile address, including its known plane.
@@ -75,8 +78,8 @@ public sealed class TileWorldException : Exception
     /// <summary>The coordinate stored in a region file that disagrees with <see cref="Region"/>.</summary>
     public RegionCoord? ActualRegion { get; init; }
 
-    /// <summary>The refused manifest field, or the parser's JSON path for malformed region, manifest or prefab data,
-    /// when available.</summary>
+    /// <summary>The refused catalog or manifest field, or the parser's JSON path for malformed region,
+    /// manifest, prefab or catalog data, when available.</summary>
     public string? Field { get; init; }
 
     /// <summary>The non-positive tile size refused by manifest admission.</summary>
@@ -134,4 +137,47 @@ public sealed class TileWorldException : Exception
 
     /// <summary>The required entry count for a refused prefab layer.</summary>
     public int? ExpectedCount { get; init; }
+
+    /// <summary>The catalog source that first defined a duplicate material or archetype id.</summary>
+    public string? FirstSourceName { get; init; }
+
+    /// <summary>The refused ground material's catalog id.</summary>
+    public ushort? MaterialId { get; init; }
+
+    /// <summary>The refused ground material's authoring name.</summary>
+    public string? MaterialName { get; init; }
+
+    /// <summary>The zero-based index of the refused walk surface.</summary>
+    public int? SurfaceIndex { get; init; }
+
+    /// <summary>The refused collision height or non-finite walk-surface value.</summary>
+    public float? Value { get; init; }
+
+    /// <summary>The lower-bound field of an unordered walk-surface extent.</summary>
+    public string? MinField { get; init; }
+
+    /// <summary>The upper-bound field of an unordered walk-surface extent.</summary>
+    public string? MaxField { get; init; }
+
+    /// <summary>The lower-bound value of an unordered walk-surface extent.</summary>
+    public float? Minimum { get; init; }
+
+    /// <summary>The upper-bound value of an unordered walk-surface extent.</summary>
+    public float? Maximum { get; init; }
+
+    /// <summary>The failing instance locations as JSON Pointers for a catalog schema mismatch.
+    /// Setting this property copies the collection into an owned read-only snapshot.</summary>
+    public IReadOnlyList<string>? SchemaFields
+    {
+        get => _schemaFields;
+        init => _schemaFields = value is null ? null : Array.AsReadOnly<string>([.. value]);
+    }
+
+    /// <summary>The structured findings for a catalog schema mismatch. Setting this property copies the
+    /// collection into an owned read-only snapshot. Each finding is immutable and engine-owned.</summary>
+    public IReadOnlyList<JsonSchemaFinding>? SchemaFindings
+    {
+        get => _schemaFindings;
+        init => _schemaFindings = value is null ? null : Array.AsReadOnly<JsonSchemaFinding>([.. value]);
+    }
 }

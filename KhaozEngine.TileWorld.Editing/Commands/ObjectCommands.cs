@@ -27,7 +27,8 @@ public sealed class PlaceObjectCommand : TileCommandBase
         ArgumentNullException.ThrowIfNull(catalogs);
         ArgumentException.ThrowIfNullOrWhiteSpace(archetypeId);
         TileObjectArchetype a = catalogs.Archetype(archetypeId)
-            ?? throw new TileWorldException($"archetype '{archetypeId}' is not in the catalogs");
+            ?? throw new TileWorldException(TileWorldRefusal.CatalogArchetypeMissing, $"archetype '{archetypeId}' is not in the catalogs")
+            { ArchetypeId = archetypeId };
         _archetypeId = archetypeId;
         _x = x;
         _z = z;

@@ -12809,6 +12809,16 @@ A length refusal adds `ActualByteCount` and `ExpectedByteCount`. Context comes d
 so callers never need to parse the message. `TileWorldSchema.GetCatalogJson()` uses `SchemaResourceMissing`
 with `ResourceName` if its embedded catalog schema is absent.
 
+Catalog admission keeps `TileWorldException` and uses the `Catalog*` reasons in the
+[TileWorld refusal table](../KhaozEngine.TileWorld/README.md#refusals). `CatalogJsonMalformed` and
+`CatalogReadFailed` carry `SourceName` and the original cause, with the parser path in nullable `Field` for
+malformed JSON. Duplicate reasons add `FirstSourceName` and the material or archetype id. Semantic walk-surface
+and collision-height refusals carry `SourceName`, `ArchetypeId` and their typed field, index and value members.
+`CatalogSchemaMismatch` carries owned read-only `SchemaFields` (distinct JSON Pointer instance locations) and
+`SchemaFindings` snapshots. The latter contains immutable `KhaozEngine.Content.JsonSchemaFinding` values,
+including an unknown property's full path such as `/materials/0/steep/chain`. Placement commands and scatter
+use `CatalogArchetypeMissing` with `ArchetypeId`, while null-returning catalog queries remain unchanged.
+
 `TileWorldValidator.ValidateOrThrow` uses `WorldValidationFailed` with `WorldId`, total `IssueCount` and
 the complete `Issues` collection. The exception copies `Issues` when set into an owned read-only snapshot,
 which cannot be changed through its source collection or a cast. Inspect each `TileWorldIssue.Code` to
@@ -21131,6 +21141,14 @@ The renderer-free foundation, one line each (all pure .NET / `System.Numerics`, 
   server-side append-only log - see "Batched async writes" below).
 - **`KhaozEngine.Content`**: config loading + JSON-schema validation: `ConfigLoader` (disk-then-embedded),
   `JsonSchemaValidator`, build-time schema enforcement via the bundled `Content.Validator` tool.
+  `ValidationReport` keeps its positional `(bool IsValid, IReadOnlyList<string> Errors)` constructor and
+  developer-facing error strings. Its additive `Findings` collection is an owned read-only snapshot, empty by
+  default, on success and for an unparseable schema. Each immutable `JsonSchemaFinding` carries an
+  `InstanceLocation` JSON Pointer, a nullable schema `Keyword`, and the decoded `PropertyName` when the
+  location addresses an object property. A required-property failure addresses the containing object,
+  without inferring the missing name from prose. Root and array-element locations have no property name.
+  An unknown property rejected by `additionalProperties` has its full instance path and property name.
+  Malformed instance JSON still throws `JsonException`.
 - **`KhaozEngine.Serialization`**: shared `System.Text.Json` baselines. **JSONC (JSON with `//` / `/* */`
   comments and trailing commas) is the engine standard for hand-authored config, manifests, settings, and
   saves**: the `Jsonc` class is the single read policy every engine JSON load routes through (`Jsonc.Deserialize`

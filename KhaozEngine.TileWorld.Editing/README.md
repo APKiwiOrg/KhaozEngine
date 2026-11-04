@@ -238,6 +238,7 @@ identifier below, rather than parsing the message.
 
 | `TileWorldRefusal` reason | Refuses | Identifiers |
 | --- | --- | --- |
+| `CatalogArchetypeMissing` | Constructing a placement for an archetype absent from the catalogs | `ArchetypeId` |
 | `ObjectMissing` | Moving, rotating, removing or setting tags on an absent object id | `ObjectId` |
 | `MarkerMissing` | Removing an absent marker name | `MarkerName` |
 

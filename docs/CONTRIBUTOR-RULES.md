@@ -320,8 +320,8 @@ render tests. [`CROSS-PLATFORM.md`](CROSS-PLATFORM.md) owns the full matrix cont
 
 `terrain-format.yml` is a separate headless portability gate on hosted `ubuntu-26.04`, `macos-26` and
 `windows-2025`. It loads the committed Mac-baked KENB 4 fixture, reconstructs every accepted terrain
-certificate and requires a byte-identical rewrite. It runs on matching pushes and pull requests and
-offers manual dispatch for a task branch. It never uses a self-hosted runner or requires a GPU.
+certificate and requires a byte-identical rewrite. Every main push and pull request runs the gate.
+Manual dispatch supports a task branch. It never uses a self-hosted runner or requires a GPU.
 
 ## Version, package and release rules
 

@@ -3,15 +3,7 @@ name: Terrain format portability
 on:
   push:
     branches: [main]
-    paths: &terrain-paths
-      - 'KhaozEngine.Movement/**'
-      - 'KhaozEngine.Navigation/**'
-      - 'KhaozEngine.TileWorld.Physics.Tests/**'
-      - 'Directory.Build.*'
-      - 'Directory.Packages.props'
-      - '.github/workflows/terrain-format.yml'
   pull_request:
-    paths: *terrain-paths
   workflow_dispatch:
 
 permissions:

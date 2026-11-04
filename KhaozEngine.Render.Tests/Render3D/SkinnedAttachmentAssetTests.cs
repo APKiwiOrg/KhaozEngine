@@ -94,7 +94,10 @@ public sealed class SkinnedAttachmentAssetTests
         using var cache = new AttachmentSetCache(harness.Scene, source);
         int buffers = harness.Factory.Buffers.Count, textures = harness.Factory.Textures.Count;
 
-        Assert.Throws<InvalidDataException>(() => cache.Get("set.json", hash));
+        var error = Assert.Throws<InvalidDataException>(() => cache.Get("set.json", hash));
+        var importError = Assert.IsType<GltfImportDataException>(error.InnerException);
+        Assert.Equal(GltfImportRefusal.MalformedModel, importError.Reason);
+        Assert.NotNull(importError.InnerException);
 
         Assert.Equal(1, source.Reads[invalid.Key]);
         Assert.Equal(buffers, harness.Factory.Buffers.Count);

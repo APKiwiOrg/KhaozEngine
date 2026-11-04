@@ -56,13 +56,59 @@ namespace KhaozEngine.Tests.Render3D
         }
 
         [Theory]
-        [InlineData(2f, 5000f)]
-        [InlineData(5000f, 1.8f)]
-        [InlineData(0f, 2f)]
-        public void Normalize_rejects_implausible_or_degenerate_height(float rawHeight, float declaredHeight)
+        [InlineData(2f, 5000f, PropLoadRefusal.DeclaredHeightOutsideRange)]
+        [InlineData(2f, .01f, PropLoadRefusal.DeclaredHeightOutsideRange)]
+        [InlineData(8192f, 2f, PropLoadRefusal.ScaleOutsideRange)]
+        [InlineData(1f / 8192, 2f, PropLoadRefusal.ScaleOutsideRange)]
+        [InlineData(0f, 2f, PropLoadRefusal.NoMeasurableHeight)]
+        public void Normalize_rejects_implausible_or_degenerate_height(
+            float rawHeight, float declaredHeight, PropLoadRefusal reason)
         {
             GltfMesh raw = Box(0f, 0f, 0f, 1f, rawHeight, 1f);
-            Assert.Throws<InvalidOperationException>(() => PropLoader.Normalize(raw, heightMeters: declaredHeight));
+            var parts = new[] { new GltfMeshPart(raw, default) };
+            Action[] loads =
+            {
+                () => PropLoader.Normalize(raw, declaredHeight),
+                () => PropLoader.NormalizeParts(parts, declaredHeight),
+            };
+            foreach (Action load in loads)
+            {
+                var ex = Assert.Throws<PropLoadStateException>(load);
+                Assert.Equal(reason, ex.Reason);
+                Assert.Null(ex.EntryId);
+                Assert.IsAssignableFrom<InvalidOperationException>(ex);
+                if (reason == PropLoadRefusal.DeclaredHeightOutsideRange)
+                {
+                    Assert.Equal(declaredHeight, ex.HeightMeters);
+                    Assert.Equal(PropValidation.Default.MinHeightMeters, ex.MinimumHeightMeters);
+                    Assert.Equal(PropValidation.Default.MaxHeightMeters, ex.MaximumHeightMeters);
+                }
+                else
+                {
+                    Assert.Equal(rawHeight, ex.RawHeight);
+                    if (reason == PropLoadRefusal.ScaleOutsideRange)
+                    {
+                        Assert.Equal(rawHeight == 8192f ? 1f / 4096 : 16384f, ex.Scale);
+                        Assert.Equal(declaredHeight, ex.HeightMeters);
+                        Assert.Equal(PropValidation.Default.MinScale, ex.MinimumScale);
+                        Assert.Equal(PropValidation.Default.MaxScale, ex.MaximumScale);
+                    }
+                }
+            }
+            Assert.NotNull(PropLoader.Normalize(Box(0, 0, 0, 1, 2, 1), 2));
+            Assert.Single(PropLoader.NormalizeParts(new[] { new GltfMeshPart(Box(0, 0, 0, 1, 2, 1), default) }, 2));
+        }
+
+        [Fact]
+        public void NormalizeParts_requires_a_material_part()
+        {
+            var ex = Assert.Throws<PropLoadArgumentException>(
+                () => PropLoader.NormalizeParts(Array.Empty<GltfMeshPart>(), 2));
+            Assert.Equal(PropLoadRefusal.MaterialPartsEmpty, ex.Reason);
+            Assert.Equal(0, ex.PartCount);
+            Assert.Equal("parts", ex.ParamName);
+            Assert.IsAssignableFrom<ArgumentException>(ex);
+            Assert.Single(PropLoader.NormalizeParts(new[] { new GltfMeshPart(Box(0, 0, 0, 1, 2, 1), default) }, 2));
         }
 
         [Fact]
@@ -71,12 +117,15 @@ namespace KhaozEngine.Tests.Render3D
             GltfMesh raw = Box(0f, 0f, 0f, 1f, 2f, 1f);
             raw = new GltfMesh(raw.Vertices, new uint[] { 0, 1, 9 });
 
-            InvalidOperationException ex = Assert.Throws<InvalidOperationException>(
+            var ex = Assert.Throws<MeshIndexStateException>(
                 () => PropLoader.Normalize(raw, heightMeters: 2f));
 
-            // The consumer contract promises the offending index and the vertex count in the diagnostic.
-            Assert.Contains("index 9", ex.Message);
-            Assert.Contains("vertex count 8", ex.Message);
+            Assert.Equal(MeshIndexRefusal.SourceIndexOutsideVertexCount, ex.Reason);
+            Assert.Equal(9L, ex.Index);
+            Assert.Equal(8, ex.VertexCount);
+            Assert.Equal("prop", ex.Identity);
+            Assert.Null(ex.EntryId);
+            Assert.NotNull(PropLoader.Normalize(new GltfMesh(raw.Vertices, new uint[] { 0, 1, 2 }), 2));
         }
 
         [Fact]
@@ -90,13 +139,17 @@ namespace KhaozEngine.Tests.Render3D
                 new GltfMeshPart(bad, default),
             };
 
-            InvalidOperationException ex = Assert.Throws<InvalidOperationException>(
+            var ex = Assert.Throws<MeshIndexStateException>(
                 () => PropLoader.NormalizeParts(parts, heightMeters: 2f));
 
-            // Part identity, offending index and vertex count are the documented diagnostic payload.
-            Assert.Contains("part 1", ex.Message);
-            Assert.Contains($"index {uint.MaxValue}", ex.Message);
-            Assert.Contains("vertex count 8", ex.Message);
+            Assert.Equal(MeshIndexRefusal.SourceIndexOutsideVertexCount, ex.Reason);
+            Assert.Equal(1, ex.PartIndex);
+            Assert.Equal((long)uint.MaxValue, ex.Index);
+            Assert.Equal(8, ex.VertexCount);
+            Assert.Equal("prop", ex.Identity);
+            Assert.Null(ex.EntryId);
+            parts[1] = new GltfMeshPart(good, default);
+            Assert.Equal(2, PropLoader.NormalizeParts(parts, 2).Count);
         }
 
         // ---- LoadProp (in-process glb) ----
@@ -138,10 +191,12 @@ namespace KhaozEngine.Tests.Render3D
         public void LoadProp_MissingFile_PreservesTheLoadFailure()
         {
             var entry = new AssetEntry("ghost", Path.Combine(Path.GetTempPath(), "does_not_exist_xyz.glb"), 5f, "test", "CC0");
-            var ex = Assert.Throws<InvalidOperationException>(() => PropLoader.LoadProp(entry));
+            var ex = Assert.Throws<PropLoadStateException>(() => PropLoader.LoadProp(entry));
+            Assert.Equal(PropLoadRefusal.AssetLoadFailed, ex.Reason);
+            Assert.Equal(entry.File, ex.Path);
             Assert.NotNull(ex.InnerException);
             // LoadProp promises the entry identity in its failure.
-            Assert.Contains("ghost", ex.Message);
+            Assert.Equal("ghost", ex.EntryId);
         }
 
         // ---- LoadPropLodAuto (author-supplied far LOD variant) ----
@@ -178,10 +233,12 @@ namespace KhaozEngine.Tests.Render3D
         {
             var entry = new AssetEntry("stump", "stump.glb", 5f, "test", "CC0",
                 lodFile: Path.Combine(Path.GetTempPath(), "no_such_lod_xyz.glb"));
-            var ex = Assert.Throws<InvalidOperationException>(() => PropLoader.LoadPropLodAuto(entry));
+            var ex = Assert.Throws<PropLoadStateException>(() => PropLoader.LoadPropLodAuto(entry));
+            Assert.Equal(PropLoadRefusal.AssetLoadFailed, ex.Reason);
+            Assert.Equal(entry.LodFile, ex.Path);
             Assert.NotNull(ex.InnerException);
             // LoadPropLodAuto promises the entry identity in its failure.
-            Assert.Contains("stump", ex.Message);
+            Assert.Equal("stump", ex.EntryId);
         }
     }
 }

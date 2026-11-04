@@ -9,7 +9,8 @@ namespace KhaozEngine.Render3D
     // after SharpGLTF's strict validation refuses an asset.
     public static partial class GltfLoader
     {
-        static ModelRoot LoadModel(string path) => LoadModel(path, settings => ModelRoot.Load(path, settings));
+        static ModelRoot LoadModel(string path, string? entryId = null) =>
+            LoadModel(path, settings => ModelRoot.Load(path, settings), entryId);
 
         // A GLB in memory, read in place when it is array-backed and copied once otherwise. Each read opens a fresh
         // read-only stream, so the validation fallback can re-read it.
@@ -25,19 +26,20 @@ namespace KhaozEngine.Render3D
         }
 
         // The byte overloads' exception contract: SharpGLTF's own exception types stay inside the loader, so a
-        // malformed GLB reaches the caller as InvalidDataException naming its identity, with the original inner.
+        // malformed GLB carries GltfImportRefusal.MalformedModel and raw Identity, with the original inner.
         static T TranslateModelErrors<T>(string identity, Func<T> load)
         {
             try { return load(); }
             catch (SharpGLTF.Validation.ModelException ex)
             {
-                throw new InvalidDataException($"glTF asset '{identity}' is malformed: {ex.Message}", ex);
+                throw new GltfImportDataException(GltfImportRefusal.MalformedModel,
+                    $"glTF asset '{identity}' is malformed: {ex.Message}", ex) { Identity = identity };
             }
         }
 
         // identity names the asset in errors: a file path, or the caller's identity for bytes. read takes null for
         // SharpGLTF's default strict settings, or the fallback's validation-skipping settings.
-        static ModelRoot LoadModel(string identity, Func<ReadSettings?, ModelRoot> read)
+        static ModelRoot LoadModel(string identity, Func<ReadSettings?, ModelRoot> read, string? entryId = null)
         {
             try { return read(null); }
             catch (SharpGLTF.Validation.DataException ex)
@@ -53,16 +55,17 @@ namespace KhaozEngine.Render3D
                 }
                 catch (Exception uncheckedEx)
                 {
-                    throw new InvalidOperationException(
+                    throw new GltfImportStateException(GltfImportRefusal.ValidationFailed,
                         $"glTF asset '{identity}' failed validation: {ex.Message}",
-                        new AggregateException(ex, uncheckedEx));
+                        new AggregateException(ex, uncheckedEx)) { Identity = identity };
                 }
-                ValidatePrimitiveIndices(uncheckedRoot, identity);
-                throw new InvalidOperationException($"glTF asset '{identity}' failed validation: {ex.Message}", ex);
+                ValidatePrimitiveIndices(uncheckedRoot, identity, entryId);
+                throw new GltfImportStateException(GltfImportRefusal.ValidationFailed,
+                    $"glTF asset '{identity}' failed validation: {ex.Message}", ex) { Identity = identity };
             }
         }
 
-        static void ValidatePrimitiveIndices(ModelRoot root, string identity)
+        static void ValidatePrimitiveIndices(ModelRoot root, string identity, string? entryId)
         {
             string assetIdentity = $"glTF asset '{identity}'";
             foreach (var mesh in root.LogicalMeshes)
@@ -72,9 +75,9 @@ namespace KhaozEngine.Render3D
                     if (pos == null) continue;
                     foreach (var (a, b, c) in prim.GetTriangleIndices())
                     {
-                        MeshIndexValidation.Source(a, pos.Count, assetIdentity);
-                        MeshIndexValidation.Source(b, pos.Count, assetIdentity);
-                        MeshIndexValidation.Source(c, pos.Count, assetIdentity);
+                        MeshIndexValidation.Source(a, pos.Count, identity, entryId, diagnosticIdentity: assetIdentity);
+                        MeshIndexValidation.Source(b, pos.Count, identity, entryId, diagnosticIdentity: assetIdentity);
+                        MeshIndexValidation.Source(c, pos.Count, identity, entryId, diagnosticIdentity: assetIdentity);
                     }
                 }
         }

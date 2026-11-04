@@ -1373,9 +1373,13 @@ in the `KhaozEngine.Render3D.Ecs` arm under the same namespace, so a render-only
   via the manifest `"textured": true` flag (`AssetEntry.Textured`, default false: renders with the flat
   per-material base colour as before).
 - glTF index validation: every rigid, material-part, skinned and animation load rejects a triangle index outside
-  its primitive's position count. The error names the asset path, bad index and vertex count. Manifest and LOD
-  loads through `PropLoader` add the prop id, and direct `Normalize` calls apply the same check to caller-supplied
-  `GltfMesh` values before transforming them. The raw `GltfMesh` constructor remains permissive for live
+  its primitive's position count with `MeshIndexStateException` and
+  `MeshIndexRefusal.SourceIndexOutsideVertexCount`. `Identity` is the raw asset path or supplied identity,
+  `Index` is the bad index and `VertexCount` is the primitive's vertex count. Manifest and LOD loads through
+  `PropLoader` preserve that refusal as `InnerException` of `PropLoadRefusal.AssetLoadFailed`, with `EntryId`
+  and `Path` on the wrapper and the raw `Identity` and `EntryId` on the inner index refusal. Direct `Normalize`
+  and `NormalizeParts` apply the same check to caller-supplied `GltfMesh` values before transforming them.
+  Direct normalization uses `Identity = "prop"` and null `EntryId`, and a material part also carries `PartIndex`. The raw `GltfMesh` constructor remains permissive for live
   containment paths that must degrade safely when handed malformed data.
 - Multi-texture-per-primitive props: a prop whose parts are separate materials (a tree with a bark material +
   a leaf material, a signpost with a wood post + a painted sign) renders each part with its own texture instead
@@ -1392,15 +1396,17 @@ in the `KhaozEngine.Render3D.Ecs` arm under the same namespace, so a render-only
 - Material parts from bytes: `GltfLoader.LoadPartsWithMaterials(ReadOnlyMemory<byte> glb, string identity)`
   imports the same welded geometry, baked node transforms and decoded maps as the path overload, in
   the same first-use material order. A byte slice reads only that slice. The source is read without
-  mutation, and `identity` names malformed indices in diagnostics. Attachment consumers apply
+  mutation, and `identity` is the raw `MeshIndexStateException.Identity` for malformed indices. Attachment consumers apply
   `AttachmentGlb.ValidateRigidEmbedded` before import through `KhaozEngine.Attachments`.
   `KhaozEngine.Attachments.Render3D` supplies the skeleton binding and ships in Game3D.
-- Byte import exception contract: since 21.0.0 `LoadPartsWithMaterials(glb, identity)`,
+- Byte import exception contract: `LoadPartsWithMaterials(glb, identity)`,
   `LoadSkinnedPartsWithMaterials(glb, identity)` and `LoadSkinned(glb, identity)` report a malformed glTF as
-  `InvalidDataException`. Its
-  message names `identity` and the importer's diagnostic is the inner exception, so callers never name a
-  SharpGLTF type. Missing triangles, a missing skin, the bone cap and bad indices still throw
-  `InvalidOperationException`.
+  `GltfImportDataException` with `GltfImportRefusal.MalformedModel`, raw `Identity` and the importer's diagnostic
+  as `InnerException`. This is a breaking catch change from `InvalidDataException`, which is sealed.
+  `GltfImportDataException` derives directly from `Exception`. Catch it instead of a SharpGLTF type.
+  Strict validation, missing triangles, missing skins and invalid skin joints carry `GltfImportRefusal` on
+  `GltfImportStateException`, which derives from `InvalidOperationException`. Bad mesh indices use
+  `MeshIndexStateException`, also derived from `InvalidOperationException`.
 - Skinned material parts: `GltfLoader.LoadSkinnedPartsWithMaterials(path)` and its
   `(ReadOnlyMemory<byte> glb, string identity)` overload return one `GltfSkinnedMeshPart(Mesh, Maps)` per
   source material in first-use order, including an untextured group for primitives without a material.
@@ -1728,6 +1734,40 @@ Renderer deps (the GPU backends, the `Silk.NET.Shaderc` and `Silk.NET.SPIRV.Cros
 SharpGLTF) are confined to this package via
 `KhaozEngine.Gpu`. See
 `docs/USING-KHAOZENGINE.md`.
+
+## Mesh import and prop refusals
+
+Messages remain developer prose. Branch on `Reason` and read the structured identifiers below.
+`MeshIndexStateException`, `GltfImportStateException` and `PropLoadStateException` derive from
+`InvalidOperationException`. `PropLoadArgumentException` derives from `ArgumentException` and preserves
+`ParamName`. `GltfImportDataException` derives directly from `Exception` because `InvalidDataException` is
+sealed. Every constructor of these new types requires a reason.
+
+| MeshIndexRefusal | Refused input | Identifiers |
+|---|---|---|
+| `SourceIndexOutsideVertexCount` | A source index outside its primitive's vertex domain | Raw `Identity`, `Index`, `VertexCount`, optional `EntryId` and `PartIndex` |
+| `RebasedIndexOverflow` | An index whose rebased value cannot fit an unsigned index | Raw `Identity`, `Index`, `VertexCount`, `BaseIndex`, optional `EntryId` and `PartIndex` |
+
+| GltfImportRefusal | Refused input | Identifiers |
+|---|---|---|
+| `ValidationFailed` | Strict import validation after the index preflight | `Identity`, original `InnerException` |
+| `MalformedModel` | Malformed imported model data | `Identity`, original importer `InnerException` on `GltfImportDataException` |
+| `NoTriangles` | A rigid import without triangle geometry | `Identity` |
+| `NoSkinnedMesh` | An import without usable skinned geometry | `Identity` |
+| `SkinJointLimitExceeded` | A skin above the renderer joint limit | `Identity`, `JointCount`, `MaximumJointCount` |
+| `SkinJointIndexOutsideRange` | A vertex influence outside the imported skin joint count | `Identity`, `JointCount`, `BoneIndices`, `VertexIndex`, `PartIndex` |
+
+| PropLoadRefusal | Refused input | Identifiers |
+|---|---|---|
+| `AssetLoadFailed` | A prop source that cannot be loaded | `EntryId`, `Path`, original `InnerException` |
+| `DeclaredHeightOutsideRange` | A declared height outside the validation band | Optional `EntryId`, `HeightMeters`, `MinimumHeightMeters`, `MaximumHeightMeters` |
+| `NoMeasurableHeight` | Degenerate geometry with no measurable vertical extent | Optional `EntryId`, `RawHeight` |
+| `ScaleOutsideRange` | An implausible raw-to-declared normalization scale | Optional `EntryId`, `Scale`, `HeightMeters`, `RawHeight`, `MinimumScale`, `MaximumScale` |
+| `MaterialPartsEmpty` | Normalization without material parts | `PartCount`, `ParamName` on `PropLoadArgumentException` |
+
+Direct normalization has no manifest entry, so its `EntryId` is null. Loader `Identity` values are raw paths or
+caller identities, never the surrounding diagnostic prose. Skin `VertexIndex` is local to its decoded material
+part, and `PartIndex` is zero-based. Plain null and identity parameter checks retain their BCL exceptions.
 
 ## Animation refusals
 

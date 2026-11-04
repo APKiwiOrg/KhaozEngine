@@ -7303,9 +7303,11 @@ Besides the set type renames in the design record table:
   `AttachmentSetJson.RigidOnlyFormatVersion`.
 - `GltfLoader.LoadPartsWithMaterials(ReadOnlyMemory<byte>, string)`,
   `GltfLoader.LoadSkinnedPartsWithMaterials(ReadOnlyMemory<byte>, string)` and
-  `GltfLoader.LoadSkinned(ReadOnlyMemory<byte>, string)` throw `InvalidDataException` for a malformed glTF.
-  The message names the identity and the importer's diagnostic is the inner exception. Catch that instead of a
-  SharpGLTF type.
+  `GltfLoader.LoadSkinned(ReadOnlyMemory<byte>, string)` throw `GltfImportDataException` for a malformed glTF.
+  `Reason` is `GltfImportRefusal.MalformedModel`, `Identity` is the supplied raw identity and the importer's
+  diagnostic is `InnerException`. This type derives directly from `Exception` because `InvalidDataException`
+  is sealed. Update existing `InvalidDataException` catches to include `GltfImportDataException`.
+  Callers never need a SharpGLTF exception type.
 
 ### Skinned body contracts (any body shape)
 
@@ -11490,7 +11492,23 @@ multiplying the fields yourself: a blind per-field multiply lands on a set `Vali
 `Scene3DChunkSink.MergeStats` forwards its cumulative `HlodMergeStats`. `MalformedCornersDropped` counts each
 out-of-range source corner contained during HLOD building, including repeated placements. A nonzero count
 identifies malformed source content even when containment keeps the live client running. At authoring ingress,
-`GltfLoader` and every `PropLoader` path reject invalid indices with asset identity, bad index and vertex count.
+`GltfLoader` rejects invalid indices with `MeshIndexStateException`,
+`MeshIndexRefusal.SourceIndexOutsideVertexCount` and raw `Identity`, `Index` and `VertexCount` members.
+`PropLoader` asset loads wrap the original refusal in `PropLoadStateException` with
+`PropLoadRefusal.AssetLoadFailed`, `EntryId` and `Path`. The inner mesh refusal also preserves `EntryId`.
+Direct `Normalize` and `NormalizeParts` throw the mesh refusal directly with `Identity = "prop"` and null
+`EntryId`, and `NormalizeParts` includes the zero-based `PartIndex`. Rebase failures use
+`MeshIndexRefusal.RebasedIndexOverflow` with the same index values and `BaseIndex`.
+
+Other model refusals use `GltfImportStateException` and `GltfImportRefusal` for strict validation, no triangles,
+no usable skin, too many skin joints or an influence outside the skin joint count. Each carries raw `Identity`,
+and joint refusals also carry the counts or the vertex's `BoneIndices`, `VertexIndex` and `PartIndex`.
+`PropLoader` normalization uses `PropLoadRefusal.DeclaredHeightOutsideRange`, `NoMeasurableHeight` or
+`ScaleOutsideRange` with the declared or measured values and validation bounds. Empty material parts use
+`PropLoadArgumentException`, `PropLoadRefusal.MaterialPartsEmpty`, `PartCount` and `ParamName`.
+The state exceptions remain `InvalidOperationException` subtypes and the argument exception remains an
+`ArgumentException` subtype. See the [mesh import and prop refusal tables](../KhaozEngine.Render3D/README.md#mesh-import-and-prop-refusals)
+for the identifiers of each reason. Messages are developer prose.
 
 
 The decor ring makes far *terrain* visible for free, but its props still pop in only at the gameplay radius. HLOD

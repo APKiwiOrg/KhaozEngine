@@ -261,15 +261,25 @@ public class CatalogWriterTests
         Assert.Equal(OneLine, File.ReadAllText(path));
     }
 
+    // Each refused catalog beside a control that differs from it only by the refused defect. The duplicates are
+    // edits of the valid catalog, so their control removes the duplicate and nothing else.
+    public static TheoryData<string, string, TileWorldRefusal, string?, string?> CatalogEditRefusals => new()
+    {
+        { "{]", OneLine, TileWorldRefusal.CatalogEditJsonMalformed, null, null },
+        { "[]", OneLine, TileWorldRefusal.CatalogEditNotObject, null, null },
+        { OneLine.Replace("\"id\": \"rug\"", "\"id\": \"wall\"", StringComparison.Ordinal), OneLine,
+            TileWorldRefusal.CatalogEditArchetypeDuplicate, "wall", null },
+        { OneLine.Replace("\"collisionKind\": \"Wall\"",
+                "\"collisionKind\": \"Wall\", \"collisionHeight\": 1, \"collisionHeight\": 1.5", StringComparison.Ordinal),
+            OneLine.Replace("\"collisionKind\": \"Wall\"",
+                "\"collisionKind\": \"Wall\", \"collisionHeight\": 1", StringComparison.Ordinal),
+            TileWorldRefusal.CatalogEditHeightDuplicate, "wall", "collisionHeight" },
+    };
+
     [Theory]
-    [InlineData("{]", TileWorldRefusal.CatalogEditJsonMalformed, null, null)]
-    [InlineData("[]", TileWorldRefusal.CatalogEditNotObject, null, null)]
-    [InlineData("{\"archetypes\":[{\"id\":\"wall\"},{\"id\":\"wall\"}]}",
-        TileWorldRefusal.CatalogEditArchetypeDuplicate, "wall", null)]
-    [InlineData("{\"archetypes\":[{\"id\":\"wall\",\"collisionHeight\":1,\"collisionHeight\":2}]}",
-        TileWorldRefusal.CatalogEditHeightDuplicate, "wall", "collisionHeight")]
+    [MemberData(nameof(CatalogEditRefusals))]
     public void CatalogEditRefusalsKeepTheirReasonAndIdentifiersThroughPrepare(
-        string catalog, TileWorldRefusal reason, string? archetypeId, string? field)
+        string catalog, string control, TileWorldRefusal reason, string? archetypeId, string? field)
     {
         var heights = new Dictionary<string, float> { ["wall"] = 2f };
         byte[] bytes = Encoding.UTF8.GetBytes(catalog);
@@ -298,9 +308,9 @@ public class CatalogWriterTests
             Assert.IsAssignableFrom<JsonException>(inner.InnerException);
         Assert.Equal(bytes, File.ReadAllBytes(path));
 
-        File.WriteAllText(path, OneLine);
+        File.WriteAllText(path, control);
         Assert.NotNull(CatalogWriter.Prepare(path, heights));
-        Assert.Equal(OneLine, File.ReadAllText(path));
+        Assert.Equal(control, File.ReadAllText(path));
     }
 
     [Fact]

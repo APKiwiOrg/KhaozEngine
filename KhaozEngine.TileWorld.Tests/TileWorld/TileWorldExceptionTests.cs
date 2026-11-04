@@ -1,5 +1,8 @@
 using System;
+using System.Collections;
 using System.Collections.Generic;
+using System.Linq;
+using System.Reflection;
 using KhaozEngine.Content;
 using KhaozEngine.TileWorld;
 using Xunit;
@@ -136,4 +139,52 @@ public class TileWorldExceptionTests
         }
         Assert.Equal(overlap, Assert.Single(ex.Overlaps));
     }
+
+    [Fact]
+    public void Naming_a_source_keeps_the_reason_every_identifier_and_the_refusal_as_its_cause()
+    {
+        // Every public settable property is an identifier, so one added without a copy fails here by name.
+        PropertyInfo[] identifiers = typeof(TileWorldException)
+            .GetProperties(BindingFlags.Public | BindingFlags.Instance | BindingFlags.DeclaredOnly)
+            .Where(p => p.CanWrite).ToArray();
+        Assert.Contains(identifiers, p => p.Name == nameof(TileWorldException.SourceName));
+        var refusal = new TileWorldException(TileWorldRefusal.CatalogEditArchetypeDuplicate, "duplicate archetype");
+        for (int i = 0; i < identifiers.Length; i++) identifiers[i].SetValue(refusal, Sample(identifiers[i], i));
+
+        TileWorldException named = refusal.WithSourceName("catalog.json");
+
+        Assert.Equal(TileWorldRefusal.CatalogEditArchetypeDuplicate, named.Reason);
+        Assert.Same(refusal, named.InnerException);
+        Assert.Equal("catalog.json", named.SourceName);
+        Assert.Empty(identifiers
+            .Where(p => p.Name != nameof(TileWorldException.SourceName) && !Matches(p.GetValue(refusal), p.GetValue(named)))
+            .Select(p => p.Name));
+    }
+
+    // A distinct non-default value per property, so both a missing copy and a copy from the wrong property show.
+    static object Sample(PropertyInfo property, int index)
+    {
+        Type type = Nullable.GetUnderlyingType(property.PropertyType) ?? property.PropertyType;
+        if (type == typeof(string)) return property.Name;
+        if (type == typeof(int)) return 1000 + index;
+        if (type == typeof(long)) return 2000L + index;
+        if (type == typeof(float)) return 0.5f + index;
+        if (type == typeof(ushort)) return (ushort)(3000 + index);
+        if (type == typeof(char)) return (char)('A' + index);
+        if (type == typeof(bool)) return index % 2 == 0;
+        if (type == typeof(RegionCoord)) return new RegionCoord(index, -index);
+        if (type == typeof(TileCoord)) return new TileCoord(index, -index, index % 4);
+        if (type == typeof(IReadOnlyList<string>)) return new[] { property.Name };
+        if (type == typeof(IReadOnlyList<byte>)) return new[] { (byte)index };
+        if (type == typeof(IReadOnlyList<TileWorldIssue>)) return new[] { new TileWorldIssue(property.Name, "issue", null, null) };
+        if (type == typeof(IReadOnlyList<TileClearanceOverlap>))
+            return new[] { new TileClearanceOverlap(property.Name, index, index + 1, 0.25f) };
+        if (type == typeof(IReadOnlyList<JsonSchemaFinding>)) return new[] { new JsonSchemaFinding(property.Name, null, null) };
+        throw new InvalidOperationException($"add a sample for {property.Name} of type {property.PropertyType}");
+    }
+
+    static bool Matches(object? expected, object? actual) =>
+        expected is IEnumerable sequence and not string && actual is IEnumerable other
+            ? sequence.Cast<object?>().SequenceEqual(other.Cast<object?>())
+            : Equals(expected, actual);
 }

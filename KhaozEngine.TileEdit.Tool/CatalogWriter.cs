@@ -101,14 +101,7 @@ public static class CatalogWriter
         }
         byte[] after;
         try { after = SetCollisionHeights(before, heights); }
-        catch (TileWorldException ex)
-        {
-            throw new TileWorldException(ex.Reason!.Value, $"{path}: {ex.Message}", ex)
-            {
-                SourceName = path, ArchetypeId = ex.ArchetypeId,
-                ArchetypeIds = ex.ArchetypeIds, Field = ex.Field,
-            };
-        }
+        catch (TileWorldException ex) { throw ex.WithSourceName(path); }
         if (after.AsSpan().SequenceEqual(before)) return null;
 
         // The loader reads the file as text, a byte order mark dropped, so the check reads it the same way.

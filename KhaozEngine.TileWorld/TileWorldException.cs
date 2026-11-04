@@ -29,6 +29,52 @@ public sealed class TileWorldException : Exception
     /// <summary>Creates a refusal retaining the original cause, its stable reason and developer-facing message.</summary>
     public TileWorldException(TileWorldRefusal reason, string message, Exception inner) : base(message, inner) => Reason = reason;
 
+    /// <summary>This refusal named for <paramref name="sourceName"/>, with the same reason and every identifier, the
+    /// message prefixed with the source and this instance kept as the inner exception. A wrapper that only adds the
+    /// source uses this, so it never flattens the refusal it wraps or drops an identifier added later.</summary>
+    internal TileWorldException WithSourceName(string sourceName) => new(this, sourceName);
+
+    // The collection identifiers are already owned read-only snapshots, so the copy shares them.
+    TileWorldException(TileWorldException inner, string sourceName) : base($"{sourceName}: {inner.Message}", inner)
+    {
+        Reason = inner.Reason;
+        SourceName = sourceName;
+        _issues = inner._issues; _overlaps = inner._overlaps; _schemaFields = inner._schemaFields;
+        _schemaFindings = inner._schemaFindings; _actualMagic = inner._actualMagic;
+        _requiredTools = inner._requiredTools; _archetypeIds = inner._archetypeIds;
+        Region = inner.Region; TileX = inner.TileX; TileZ = inner.TileZ; WorldDirectory = inner.WorldDirectory;
+        ExpectedHash = inner.ExpectedHash; ActualHash = inner.ActualHash; ActualPlaneCount = inner.ActualPlaneCount;
+        ExpectedPlaneCount = inner.ExpectedPlaneCount; ObjectId = inner.ObjectId; ArchetypeId = inner.ArchetypeId;
+        Tile = inner.Tile; Plane = inner.Plane; PlaneCount = inner.PlaneCount; MarkerName = inner.MarkerName;
+        ActualRegion = inner.ActualRegion; Field = inner.Field; TileSize = inner.TileSize;
+        FormatVersion = inner.FormatVersion; SupportedFormatVersion = inner.SupportedFormatVersion;
+        MigrationFrom = inner.MigrationFrom; MigrationTo = inner.MigrationTo; LayerName = inner.LayerName;
+        ActualByteCount = inner.ActualByteCount; ExpectedByteCount = inner.ExpectedByteCount;
+        ResourceName = inner.ResourceName; WorldId = inner.WorldId; IssueCount = inner.IssueCount;
+        PrefabName = inner.PrefabName; Width = inner.Width; Height = inner.Height; ActualCount = inner.ActualCount;
+        ExpectedCount = inner.ExpectedCount; FirstSourceName = inner.FirstSourceName; MaterialId = inner.MaterialId;
+        MaterialName = inner.MaterialName; MaterialCount = inner.MaterialCount;
+        MaximumMaterialCount = inner.MaximumMaterialCount; ReferenceMaterialId = inner.ReferenceMaterialId;
+        ReferenceMaterialName = inner.ReferenceMaterialName; ExpectedWidth = inner.ExpectedWidth;
+        ExpectedHeight = inner.ExpectedHeight; TexturePath = inner.TexturePath; ColourText = inner.ColourText;
+        CharacterIndex = inner.CharacterIndex; Character = inner.Character; SurfaceIndex = inner.SurfaceIndex;
+        Value = inner.Value; MinField = inner.MinField; MaxField = inner.MaxField; Minimum = inner.Minimum;
+        Maximum = inner.Maximum; CompanionMaterialId = inner.CompanionMaterialId;
+        CompanionMaterialName = inner.CompanionMaterialName; FromDegrees = inner.FromDegrees;
+        ToDegrees = inner.ToDegrees; FromIsDefault = inner.FromIsDefault; ToIsDefault = inner.ToIsDefault;
+        ExpectedMagic = inner.ExpectedMagic; MaxValue = inner.MaxValue; ByteOffset = inner.ByteOffset;
+        BitsPerSample = inner.BitsPerSample; RequiredByteCount = inner.RequiredByteCount;
+        AvailableByteCount = inner.AvailableByteCount; ParsedValue = inner.ParsedValue; MeshRoot = inner.MeshRoot;
+        ResolvedMeshRoot = inner.ResolvedMeshRoot; CellSize = inner.CellSize; WaiverTag = inner.WaiverTag;
+        RuleName = inner.RuleName; RuleCount = inner.RuleCount; RuleIndex = inner.RuleIndex;
+        Tolerance = inner.Tolerance; TagCount = inner.TagCount; TagIndex = inner.TagIndex; Tag = inner.Tag;
+        LayerId = inner.LayerId; LayerIndex = inner.LayerIndex; OriginX = inner.OriginX; OriginZ = inner.OriginZ;
+        SampleCount = inner.SampleCount; MaximumSampleCount = inner.MaximumSampleCount; Spacing = inner.Spacing;
+        ScaleMin = inner.ScaleMin; ScaleMax = inner.ScaleMax; RootOffset = inner.RootOffset;
+        DoorClearance = inner.DoorClearance; EdgeFade = inner.EdgeFade; ArchetypeCount = inner.ArchetypeCount;
+        ArchetypeIndex = inner.ArchetypeIndex; Weight = inner.Weight; TotalWeight = inner.TotalWeight;
+    }
+
     /// <summary>The stable reason for the refusal. Null only for an instance built through a message-only
     /// constructor by code outside the engine.</summary>
     public TileWorldRefusal? Reason { get; }

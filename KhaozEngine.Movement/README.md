@@ -1267,6 +1267,10 @@ allowance subtraction. Connected steep geometry and the unchanged capsule/cell i
 rasterized fringes and finite reach. Per-body directional band endpoints and a next-admitted-column index remove
 repeated band walks. Each ray stops at the first gap in its contiguous dilated band, with only the first downstream
 cell included. A later arm of the same connected component cannot bridge an unadmitted apron.
+Band endpoints occupy sparse component/cell records, with a checked aggregate limit of `MaxLayerCells` before
+endpoint-array allocation. Overlapping components remain ambiguous. Source lookup reads one indexed cell rather
+than scanning every component. Numeric index payload is at most 36 bytes per counted record, excluding managed
+collection overhead and bounded construction scratch. Exceeding the record limit reports `CapacityExceeded`.
 There is no radius-only terrain horizon or universal height-over-slope reach formula.
 Gentle slopes receive no terrain extension. Each source still contributes at most eight candidates.
 

@@ -1,61 +1,74 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Numerics;
 using KhaozEngine.Locomotion;
 using KhaozEngine.Navigation;
+using KhaozEngine.Physics;
 
 namespace KhaozEngine.Movement;
 
-/// <summary>Immutable rasterized physical bands and directional endpoints. Built once per body, not per source.</summary>
+/// <summary>Sparse physical bands and directional endpoints, bounded before allocation by the capture budget.</summary>
 internal sealed class ContactTerrainBandIndex
 {
-    readonly List<(bool[] Mask, int[][] End)> _bands = [];
+    readonly Dictionary<int, int[]?> _cells = [];
     readonly int _width, _height;
     internal long Bytes { get; private set; }
     internal ContactTerrainBandIndex(PhysicsNavDescentEvidence e, IEnumerable<int[]> components, MoveTuning tuning)
     {
         _width = e.Width; _height = e.Height; var o = e.Options;
+        long records = 0;
         foreach (var component in components)
         {
-            var mask = new bool[checked(e.Width * e.Height)];
+            var mask = new HashSet<int>();
             foreach (int index in component)
             {
                 var face = e.Face(index); double minX = double.PositiveInfinity, minZ = minX, maxX = double.NegativeInfinity, maxZ = maxX;
                 foreach (var p in face.Points) { minX = Math.Min(minX, p.X); maxX = Math.Max(maxX, p.X); minZ = Math.Min(minZ, p.Z); maxZ = Math.Max(maxZ, p.Z); }
-                int x0 = Math.Max(0, (int)Math.Floor((minX - tuning.CapsuleRadius - o.MinX) / o.CellSize));
-                int x1 = Math.Min(e.Width - 1, (int)Math.Floor((maxX + tuning.CapsuleRadius - o.MinX) / o.CellSize));
-                int z0 = Math.Max(0, (int)Math.Floor((minZ - tuning.CapsuleRadius - o.MinZ) / o.CellSize));
-                int z1 = Math.Min(e.Height - 1, (int)Math.Floor((maxZ + tuning.CapsuleRadius - o.MinZ) / o.CellSize));
+                int x0 = (int)Math.Clamp(Math.Floor((minX - tuning.CapsuleRadius - o.MinX) / o.CellSize), 0, e.Width - 1);
+                int x1 = (int)Math.Clamp(Math.Floor((maxX + tuning.CapsuleRadius - o.MinX) / o.CellSize), 0, e.Width - 1);
+                int z0 = (int)Math.Clamp(Math.Floor((minZ - tuning.CapsuleRadius - o.MinZ) / o.CellSize), 0, e.Height - 1);
+                int z1 = (int)Math.Clamp(Math.Floor((maxZ + tuning.CapsuleRadius - o.MinZ) / o.CellSize), 0, e.Height - 1);
                 for (int z = z0; z <= z1; z++) for (int x = x0; x <= x1; x++)
-                    if (Touches(face, o.MinX + x * (double)o.CellSize, o.MinZ + z * (double)o.CellSize, o.CellSize, tuning.CapsuleRadius)) mask[z * e.Width + x] = true;
+                {
+                    int cell = checked(z * e.Width + x);
+                    if (mask.Contains(cell) || !Touches(face, o.MinX + x * (double)o.CellSize,
+                            o.MinZ + z * (double)o.CellSize, o.CellSize, tuning.CapsuleRadius)) continue;
+                    if (records >= o.MaxLayerCells)
+                        throw new PhysicsNavDescentEvidenceException(PhysicsNavDescentEvidenceReason.CapacityExceeded,
+                            PhysicsEvidenceStatus.CapacityExceeded);
+                    records = checked(records + 1);
+                    mask.Add(cell);
+                }
             }
-            var ends = new int[8][];
+            // Count component/cell incidences, including overlapping components, before endpoint arrays exist.
+            // An overlap is ambiguous for lookup, but still consumes construction work and its bounded scratch.
+            var ends = mask.ToDictionary(cell => cell, _ => new int[8]);
+            int[] ordered = mask.Order().ToArray();
             for (int direction = 0; direction < 8; direction++)
             {
                 int dx = NavTraversalLayer.NeighborX(direction), dz = NavTraversalLayer.NeighborZ(direction);
-                var end = ends[direction] = new int[mask.Length];
-                for (int zi = 0; zi < e.Height; zi++) for (int xi = 0; xi < e.Width; xi++)
+                bool ascending = dz < 0 || dz == 0 && dx < 0;
+                for (int i = 0; i < ordered.Length; i++)
                 {
-                    int z = dz > 0 ? e.Height - 1 - zi : zi, x = dx > 0 ? e.Width - 1 - xi : xi, nx = x + dx, nz = z + dz;
+                    int cell = ordered[ascending ? i : ordered.Length - 1 - i];
+                    int x = cell % e.Width, z = cell / e.Width, nx = x + dx, nz = z + dz;
                     if ((uint)nx >= (uint)e.Width || (uint)nz >= (uint)e.Height) continue;
                     int next = nz * e.Width + nx;
-                    end[z * e.Width + x] = mask[next] ? end[next] + 1 : 0;
+                    ends[cell][direction] = ends.TryGetValue(next, out var end) ? checked(end[direction] + 1) : 0;
                 }
             }
-            _bands.Add((mask, ends)); Bytes += mask.Length * 33L;
+            foreach (var (cell, end) in ends)
+                if (!_cells.TryAdd(cell, end)) _cells[cell] = null;
         }
+        // Numeric construction-payload upper bound. Managed dictionary overhead is not included.
+        Bytes = checked(records * 36);
     }
     internal int Reach(int x, int z, int direction)
     {
-        int cell = z * _width + x, reach = 0;
-        foreach (var band in _bands)
-        {
-            if (!band.Mask[cell]) continue;
-            // More than one disconnected band reachable at the source is ambiguous.
-            if (reach != 0) return 0;
-            reach = Math.Min(Math.Max(_width, _height), band.End[direction][cell] + 1);
-        }
-        return reach;
+        if ((uint)x >= (uint)_width || (uint)z >= (uint)_height ||
+            !_cells.TryGetValue(z * _width + x, out var end) || end is null) return 0;
+        return Math.Min(Math.Max(_width, _height), checked(end[direction] + 1));
     }
     static bool Touches(DescentFace face, double left, double bottom, double size, double radius)
     {

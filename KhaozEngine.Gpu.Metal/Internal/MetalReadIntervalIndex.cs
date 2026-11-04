@@ -17,6 +17,8 @@ internal sealed class MetalReadIntervalIndex(bool contiguous = false)
     int _root, _used, _free, _rightmost;
     internal long ProbeStepsForTests { get; private set; }
     internal long NodeWritesForTests { get; private set; }
+    internal long InsertsForTests { get; private set; }
+    internal long ExtendsForTests { get; private set; }
     internal long RotationsForTests { get; private set; }
 
     internal void Clear()
@@ -25,7 +27,7 @@ internal sealed class MetalReadIntervalIndex(bool contiguous = false)
         _root = _used = _free = _rightmost = 0;
         ProbeStepsForTests = 0;
         NodeWritesForTests = 0;
-        RotationsForTests = 0;
+        RotationsForTests = InsertsForTests = ExtendsForTests = 0;
     }
 
     internal void Add(in MetalCpuRead read)
@@ -47,10 +49,12 @@ internal sealed class MetalReadIntervalIndex(bool contiguous = false)
             {
                 ulong count = (read.Offset - previous.Offset) / read.Stride + read.Count;
                 if (count <= previous.Count) return;
+                ExtendsForTests++;
                 Extend(_root, tail, previous with { Count = count });
                 return;
             }
         }
+        InsertsForTests++;
         _root = Insert(_root, read, out _, out tail);
     }
 

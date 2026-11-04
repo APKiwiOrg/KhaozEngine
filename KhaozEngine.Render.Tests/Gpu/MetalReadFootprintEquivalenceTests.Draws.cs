@@ -106,6 +106,15 @@ public sealed partial class MetalReadFootprintEquivalenceTests
         oracle.Add(new(1, 0, 8, 32, 3));
         oracle.Add(new(0, 4, 4, 32, 1));
         Check();
+        // Adjacent attributes can merge, but the eight bytes before the third attribute remain writable.
+        var padded = new MetalVertexReadLayout([new(30, 32, MTLVertexStepFunction.PerVertex, 1)],
+            [new(0, 30, GpuVertexElementFormat.Float1, 0), new(1, 30, GpuVertexElementFormat.Float1, 4),
+                new(2, 30, GpuVertexElementFormat.Float1, 16)]);
+        vertices.Record(0, a, 0);
+        vertices.RecordReads(reads, padded, 1, 2, 0, 1, indexed: false);
+        oracle.Add(new(0, 32, 8, 32, 2));
+        oracle.Add(new(0, 48, 4, 32, 2));
+        Check();
     }
 
     // #1696. Cache hits, joined windows and changed bindings must preserve the same byte union at a split.

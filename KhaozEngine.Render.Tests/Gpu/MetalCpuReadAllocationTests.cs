@@ -47,6 +47,44 @@ public sealed class MetalCpuReadAllocationTests(ITestOutputHelper output)
         Assert.False(reads.Overlaps(new(f.Instances.CpuResource, 11999 * 96 + 32, 64)));
     }
 
+    // #1696 round 3. Rebound stream/window caches must retain capacity across the entire multi-pass frame.
+    [Fact]
+    public void ASteadyMultiPassFrameReusesItsBindingAndWindowCoverage()
+    {
+        using var fixture = new MetalReadFootprintMultiPassFixture();
+        var f = fixture.Draws;
+        var reads = new MetalRecordedReads();
+        var binds = MetalBindRecords.ForGraphics(MetalBindProgram.DeviceOffsetAlignment);
+        var vertices = new MetalVertexReadRecords();
+        void Frame()
+        {
+            reads.Clear();
+            binds.Reset();
+            binds.SetIndexTable(f.Pipeline.Table);
+            vertices.Reset();
+            vertices.Record(2, f.Meshes[3], 0);
+            uint sequence = 0;
+            for (int pass = 0; pass < 11; pass++)
+                for (uint draw = 0; draw < MetalReadFootprintMultiPassFixture.PassDraws(pass); draw++)
+                {
+                    var (family, window, mesh) = MetalReadFootprintMultiPassFixture.Window(pass, draw);
+                    vertices.Record(0, f.Meshes[mesh], 0);
+                    vertices.Record(1, f.InstanceStreams[family], 0);
+                    binds.Record(0, f.Set, sequence++ * 512);
+                    binds.RecordReads(reads, 0);
+                    vertices.RecordReads(reads, f.PassPipelines[MetalReadFootprintMultiPassFixture.Pipeline(pass)].Plan.ReadLayout,
+                        0, 1024, window, 4, indexed: true);
+                }
+        }
+        Frame();
+        Frame();
+        long bytes = AllocationMeasurement.Measure("2850 multi-pass draw reads", Frame);
+        output.WriteLine($"2850 multi-pass draw reads: {bytes} bytes");
+        Assert.Equal(0, bytes);
+        Assert.True(reads.Overlaps(new(f.InstanceStreams[2].CpuResource, 624 * 96, 32)));
+        Assert.False(reads.Overlaps(new(f.InstanceStreams[2].CpuResource, 628 * 96, 192)));
+    }
+
     // #1692. Both interval indexes must reuse large, irregular recordings, not only tiny prefixes.
     [Fact]
     public void ASteadyThreeThousandDrawFootprintReusesItsIndexes()

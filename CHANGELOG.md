@@ -8,6 +8,10 @@ Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
 2026-11-04
 
+- Reuse Metal vertex-read coverage across shadow, geometry and forward passes, including mesh and pipeline
+  rebinds and differently ordered instance windows. Revisited windows avoid interval-tree work, indexed
+  streams leave the per-draw window loop, and adjacent window attributes coalesce without filling padding.
+  Exact CPU access refusals and warmed zero allocation remain unchanged (#1696).
 - Append increasing Metal uniform-ring read slices without tree rebalancing. Binding and vertex cursors
   remove steady-draw resource, shader-use and continuation hashing, preserving exact CPU access refusals and warmed
   zero allocation for frames with fresh uniform slices on every draw (#1696).

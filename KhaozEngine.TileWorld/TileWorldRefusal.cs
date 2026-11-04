@@ -50,4 +50,18 @@ public enum TileWorldRefusal
     MarkerMissing,
     /// <summary>Refuses a marker name already held by an unloaded region.</summary>
     MarkerNameInUnloadedRegion,
+
+    // Dense layer codec.
+    /// <summary>Refuses a dense layer with malformed base64 bytes.</summary>
+    LayerBase64Malformed,
+    /// <summary>Refuses a dense layer whose decoded byte count differs from its shape.</summary>
+    LayerByteCountMismatch,
+
+    // Embedded schemas.
+    /// <summary>Refuses a catalog schema resource name absent from the assembly.</summary>
+    SchemaResourceMissing,
+
+    // World validation.
+    /// <summary>Refuses a document with semantic validation issues.</summary>
+    WorldValidationFailed,
 }

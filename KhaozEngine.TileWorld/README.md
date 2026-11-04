@@ -125,7 +125,8 @@ at the door. `OfWorld` is unchanged, so moving a gate to the composed digest is 
 ## Refusals
 
 `TileWorldException` retains its exact type and both message-only constructors. Use `Reason` and the
-identifiers below to distinguish region residency, content, manifest-region, object and marker refusals.
+identifiers below to distinguish region residency, content, manifest-region, object, marker, dense-layer,
+embedded-schema and validation refusals.
 Messages remain developer prose. `Reason` is nullable only for a message-only instance built outside the
 engine. Its reason-taking constructors also accept an original cause through `InnerException`.
 
@@ -157,12 +158,21 @@ region file and is null for these in-memory attachment, restoration and save che
 | `ObjectIndexStale` | Moving an indexed object absent from its indexed region | `ObjectId`, indexed `Region` |
 | `MarkerMissing` | Removing a required marker name that is absent | `MarkerName` |
 | `MarkerNameInUnloadedRegion` | Authoring a marker name already held by an unloaded region | `MarkerName`, holding `Region`, existing marker's full `Tile` |
+| `LayerBase64Malformed` | A dense layer with malformed base64 | `LayerName`, `SourceName` and `Plane` when loading a region or prefab, original `FormatException` in `InnerException` |
+| `LayerByteCountMismatch` | A dense layer whose decoded byte count differs from its shape | `LayerName`, `ActualByteCount`, `ExpectedByteCount`, plus `SourceName` and `Plane` when loading a region or prefab |
+| `SchemaResourceMissing` | An embedded catalog schema resource absent from the assembly | `ResourceName` |
+| `WorldValidationFailed` | A document with semantic validation issues | `WorldId`, total `IssueCount`, complete owned read-only `Issues` snapshot |
 
 `MoveObject`, required object commands and `QueryService.ObjectGet` share `ObjectMissing`. A stale object
 index can follow direct edits to a region's public object list. `MoveObject` checks the destination region
 before reporting `ObjectIndexStale`, and `RebuildObjectIndex` repairs the index after bulk list edits.
 `MarkerNameInUnloadedRegion` identifies the existing marker's tile, including its known plane, rather than
 the requested destination. Load that region before moving the marker, or choose a different name.
+
+Region and prefab loaders pass dense-layer context directly to the codec. `LayerName` is `heights`,
+`underlay`, `overlay`, `overlayShape`, `overlayRotation` or `settings`, with `heights` also used for prefab
+relative heights. `SourceName` is the file name or supplied content name, and `Plane` is the decoded plane's
+index. Neither identifier is reconstructed from message text.
 
 ## Catalogs and validation
 
@@ -172,7 +182,8 @@ loaded ones, and `Greybox()` is the engine's six-material, twelve-archetype test
 collision kind with square and non-square footprints. `Material(id)` and `Archetype(id)` are the lookups, and
 `Archetype` is null-tolerant, so a null archetype id in content is a validator finding rather than a throw.
 Malformed or duplicate content throws a `TileWorldException` naming the source file, and
-`TileWorldSchema.GetCatalogJson()` returns the embedded catalog schema. `GroundMaterial` is
+`TileWorldSchema.GetCatalogJson()` returns the embedded catalog schema. If the resource is missing, it
+throws `SchemaResourceMissing` with `ResourceName`. `GroundMaterial` is
 `{ Id, Name, Color, Texture, Kind, TilesPerMetre, Steep }` (`Ground` or `Water`, id 0 reserved for void) and
 `TileObjectArchetype` is
 `{ Id, Name, MeshRef, LodMeshRef, SizeX, SizeZ, CollisionKind, IsRoof, Interactive, YawOffsetDegrees, Tags, WalkSurfaces, CollisionHeight }`, with
@@ -252,7 +263,10 @@ in single precision cosine, which is what the renderer blends on. `OfCatalogs` d
 present, so a catalog without companions keeps its digest.
 
 `TileWorldValidator.Validate(doc, catalogs)` returns `TileWorldIssue(Code, Message, Region, Tile)` records and
-never throws on bad content, while `ValidateOrThrow` throws once quoting the first five. The codes are stable
+never throws on bad content. `ValidateOrThrow` throws `WorldValidationFailed` with `WorldId`, total
+`IssueCount` and the complete `Issues` list, including findings beyond the first five summarized in the
+developer message. `Issues` is copied when set and exposed as a read-only snapshot, so changing the source
+collection or casting the exposed list cannot mutate it. The codes are stable
 and callers may branch on them: `header.planeCount`, `header.tileSize`, `header.planeHeight`,
 `region.planeCount`, `material.missing`, `overlay.shape`, `archetype.missing`, `object.plane`,
 `object.footprint`, `object.duplicateId`, `object.region`, `marker.plane`, `marker.duplicateName`,

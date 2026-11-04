@@ -72,14 +72,17 @@ public static class TileWorldValidator
         return issues;
     }
 
-    /// <summary>Validates the whole document and, when anything is wrong, throws once quoting the first five
-    /// issues and the total count.</summary>
+    /// <summary>Validates the whole document and, when anything is wrong, throws
+    /// <see cref="TileWorldRefusal.WorldValidationFailed"/> with the document's <see cref="TileWorldException.WorldId"/>,
+    /// the total <see cref="TileWorldException.IssueCount"/> and an owned read-only
+    /// <see cref="TileWorldException.Issues"/> snapshot. The developer message summarizes only the first five issues.</summary>
     public static void ValidateOrThrow(TileWorldDocument doc, TileWorldCatalogs catalogs)
     {
         IReadOnlyList<TileWorldIssue> issues = Validate(doc, catalogs);
         if (issues.Count == 0) return;
         string head = string.Join(" | ", issues.Take(5).Select(i => $"[{i.Code}] {i.Message}"));
-        throw new TileWorldException($"world '{doc.Id}' has {issues.Count} validation issues: {head}");
+        throw new TileWorldException(TileWorldRefusal.WorldValidationFailed, $"world '{doc.Id}' has {issues.Count} validation issues: {head}")
+        { WorldId = doc.Id, IssueCount = issues.Count, Issues = issues };
     }
 
     static void ValidateLayers(TileWorldCatalogs catalogs, TileRegion region, List<TileWorldIssue> issues)

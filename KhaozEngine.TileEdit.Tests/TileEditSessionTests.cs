@@ -209,7 +209,12 @@ public class TileEditSessionTests
         ValidateResult validated = session.Validate();
         Assert.False(validated.Valid);
         Assert.Contains(validated.Issues, i => i.StartsWith("[material.missing]", System.StringComparison.Ordinal));
-        Assert.Throws<TileWorldException>(() => session.Save());
+        TileWorldException ex = Assert.Throws<TileWorldException>(() => session.Save());
+        Assert.Equal(TileWorldRefusal.WorldValidationFailed, ex.Reason);
+        Assert.Equal(session.Editing!.Document.Id, ex.WorldId);
+        Assert.Equal(1, ex.IssueCount);
+        Assert.NotNull(ex.Issues);
+        Assert.Equal("material.missing", Assert.Single(ex.Issues).Code);
     }
 
     [Fact]

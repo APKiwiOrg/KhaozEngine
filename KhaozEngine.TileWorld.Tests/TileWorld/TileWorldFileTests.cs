@@ -402,7 +402,81 @@ public class TileWorldFileTests
     {
         short[] s = { -1, 0, 1, short.MaxValue };
         Assert.Equal(s, TileLayerCodec.DecodeShorts(TileLayerCodec.Encode(s), 4, "heights"));
-        Assert.Throws<TileWorldException>(() => TileLayerCodec.DecodeShorts(TileLayerCodec.Encode(s), 3, "heights"));
-        Assert.Throws<TileWorldException>(() => TileLayerCodec.DecodeBytes("not base64!", 1, "settings"));
+        TileWorldException length = Assert.Throws<TileWorldException>(() => TileLayerCodec.DecodeShorts(TileLayerCodec.Encode(s), 3, "heights"));
+        Assert.Equal(TileWorldRefusal.LayerByteCountMismatch, length.Reason);
+        Assert.Equal("heights", length.LayerName);
+        Assert.Equal(8, length.ActualByteCount);
+        Assert.Equal(6, length.ExpectedByteCount);
+        Assert.Null(length.SourceName);
+        Assert.Null(length.Plane);
+
+        Assert.Equal(new byte[] { 1 }, TileLayerCodec.DecodeBytes("AQ==", 1, "settings"));
+        TileWorldException malformed = Assert.Throws<TileWorldException>(() => TileLayerCodec.DecodeBytes("not base64!", 1, "settings"));
+        Assert.Equal(TileWorldRefusal.LayerBase64Malformed, malformed.Reason);
+        Assert.Equal("settings", malformed.LayerName);
+        Assert.Null(malformed.SourceName);
+        Assert.Null(malformed.Plane);
+        Assert.IsType<FormatException>(malformed.InnerException);
+    }
+
+    [Theory]
+    [InlineData(false, "heights", "heights", 8192)]
+    [InlineData(false, "underlay", "underlay", 8192)]
+    [InlineData(false, "overlay", "overlay", 8192)]
+    [InlineData(false, "overlayShape", "overlayShape", 4096)]
+    [InlineData(false, "overlayRotation", "overlayRotation", 4096)]
+    [InlineData(false, "settings", "settings", 4096)]
+    [InlineData(true, "heightsRelative", "heights", 8)]
+    [InlineData(true, "underlay", "underlay", 2)]
+    [InlineData(true, "overlay", "overlay", 2)]
+    [InlineData(true, "overlayShape", "overlayShape", 1)]
+    [InlineData(true, "overlayRotation", "overlayRotation", 1)]
+    [InlineData(true, "settings", "settings", 1)]
+    public void Loaded_layers_keep_the_source_plane_and_layer_on_refusal(bool prefab, string field, string layerName, int expectedBytes)
+    {
+        using var tmp = new TempDir();
+        string source = tmp.Sub("authored plane 9 settings.json");
+        var plane = new JsonObject { [field] = "" };
+        var json = new JsonObject { ["planes"] = new JsonArray(null, plane) };
+        if (prefab)
+        {
+            json["width"] = 1;
+            json["height"] = 1;
+            json["planeCount"] = 2;
+        }
+        else
+        {
+            json["rx"] = 0;
+            json["rz"] = 0;
+        }
+
+        void Load()
+        {
+            if (prefab)
+            {
+                File.WriteAllText(source, json.ToJsonString());
+                TilePrefabFile.Load(source);
+            }
+            else TileRegionFile.Parse(Encoding.UTF8.GetBytes(json.ToJsonString()), new RegionCoord(0, 0), 2, source);
+        }
+
+        TileWorldException length = Assert.Throws<TileWorldException>(Load);
+        Assert.Equal(TileWorldRefusal.LayerByteCountMismatch, length.Reason);
+        Assert.Equal(source, length.SourceName);
+        Assert.Equal(1, length.Plane);
+        Assert.Equal(layerName, length.LayerName);
+        Assert.Equal(0, length.ActualByteCount);
+        Assert.Equal(expectedBytes, length.ExpectedByteCount);
+
+        plane[field] = "not base64!";
+        TileWorldException malformed = Assert.Throws<TileWorldException>(Load);
+        Assert.Equal(TileWorldRefusal.LayerBase64Malformed, malformed.Reason);
+        Assert.Equal(source, malformed.SourceName);
+        Assert.Equal(1, malformed.Plane);
+        Assert.Equal(layerName, malformed.LayerName);
+        Assert.IsType<FormatException>(malformed.InnerException);
+
+        plane[field] = Convert.ToBase64String(new byte[expectedBytes]);
+        Load();
     }
 }

@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 
 namespace KhaozEngine.TileWorld;
 
@@ -10,6 +11,8 @@ namespace KhaozEngine.TileWorld;
 /// plane, and a guard that received only a region coordinate leaves both tile coordinates null.</para></summary>
 public sealed class TileWorldException : Exception
 {
+    IReadOnlyList<TileWorldIssue>? _issues;
+
     public TileWorldException(string message) : base(message) { }
     public TileWorldException(string message, Exception? inner) : base(message, inner) { }
 
@@ -58,7 +61,7 @@ public sealed class TileWorldException : Exception
     /// <summary>The refused object's or marker's authored tile address, including its known plane.</summary>
     public TileCoord? Tile { get; init; }
 
-    /// <summary>The object's or marker's plane that lies outside the document's range.</summary>
+    /// <summary>The object's or marker's refused plane, or the plane containing a refused dense layer.</summary>
     public int? Plane { get; init; }
 
     /// <summary>The document's plane count for an object or marker plane refusal.</summary>
@@ -72,4 +75,30 @@ public sealed class TileWorldException : Exception
 
     /// <summary>The JSON path reported by the parser for malformed region data, when available.</summary>
     public string? Field { get; init; }
+
+    /// <summary>The dense layer refused, such as heights, underlay or settings.</summary>
+    public string? LayerName { get; init; }
+
+    /// <summary>The decoded byte count for <see cref="TileWorldRefusal.LayerByteCountMismatch"/>.</summary>
+    public int? ActualByteCount { get; init; }
+
+    /// <summary>The required byte count for <see cref="TileWorldRefusal.LayerByteCountMismatch"/>.</summary>
+    public int? ExpectedByteCount { get; init; }
+
+    /// <summary>The embedded schema resource name absent from the assembly.</summary>
+    public string? ResourceName { get; init; }
+
+    /// <summary>The document id for <see cref="TileWorldRefusal.WorldValidationFailed"/>.</summary>
+    public string? WorldId { get; init; }
+
+    /// <summary>The total number of semantic validation issues, including those beyond the message's summary.</summary>
+    public int? IssueCount { get; init; }
+
+    /// <summary>All semantic validation issues. Setting this property copies the supplied collection into an
+    /// owned read-only snapshot, so neither the source nor a cast of the exposed list can change it.</summary>
+    public IReadOnlyList<TileWorldIssue>? Issues
+    {
+        get => _issues;
+        init => _issues = value is null ? null : Array.AsReadOnly<TileWorldIssue>([.. value]);
+    }
 }

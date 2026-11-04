@@ -93,15 +93,14 @@ public static class TilePrefabFile
         for (int i = 0; i < planes.Count; i++)
         {
             PlaneDto? p = planes[i];
-            string where = $"{path} plane {i}";
             prefab.Planes.Add(p is null ? null : new TilePrefabPlane
             {
-                HeightsRelative = p.HeightsRelative is null ? null : TileLayerCodec.DecodeShorts(p.HeightsRelative, corners, where + " heights"),
-                Underlay = p.Underlay is null ? null : TileLayerCodec.DecodeUShorts(p.Underlay, tiles, where + " underlay"),
-                Overlay = p.Overlay is null ? null : TileLayerCodec.DecodeUShorts(p.Overlay, tiles, where + " overlay"),
-                OverlayShape = p.OverlayShape is null ? null : TileLayerCodec.DecodeBytes(p.OverlayShape, tiles, where + " overlayShape"),
-                OverlayRotation = p.OverlayRotation is null ? null : TileLayerCodec.DecodeBytes(p.OverlayRotation, tiles, where + " overlayRotation"),
-                Settings = p.Settings is null ? null : TileLayerCodec.DecodeBytes(p.Settings, tiles, where + " settings"),
+                HeightsRelative = p.HeightsRelative is null ? null : TileLayerCodec.DecodeShorts(p.HeightsRelative, corners, "heights", path, i),
+                Underlay = p.Underlay is null ? null : TileLayerCodec.DecodeUShorts(p.Underlay, tiles, "underlay", path, i),
+                Overlay = p.Overlay is null ? null : TileLayerCodec.DecodeUShorts(p.Overlay, tiles, "overlay", path, i),
+                OverlayShape = p.OverlayShape is null ? null : TileLayerCodec.DecodeBytes(p.OverlayShape, tiles, "overlayShape", path, i),
+                OverlayRotation = p.OverlayRotation is null ? null : TileLayerCodec.DecodeBytes(p.OverlayRotation, tiles, "overlayRotation", path, i),
+                Settings = p.Settings is null ? null : TileLayerCodec.DecodeBytes(p.Settings, tiles, "settings", path, i),
             });
         }
         return prefab;

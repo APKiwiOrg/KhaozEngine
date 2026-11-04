@@ -12783,6 +12783,20 @@ still checks the destination region first. Use `RebuildObjectIndex` after bulk l
 `JsonException` in `InnerException`. Use these members rather than message wording. The
 [TileWorld refusal table](../KhaozEngine.TileWorld/README.md#refusals) lists the identifiers for each reason.
 
+Region and prefab dense layers share `LayerBase64Malformed` and `LayerByteCountMismatch`. Both carry
+`LayerName`, the file or content name in `SourceName`, and the decoded plane index in `Plane`.
+Layer names are `heights` (including prefab relative heights), `underlay`, `overlay`, `overlayShape`,
+`overlayRotation` and `settings`. Malformed base64 retains its original `FormatException` in `InnerException`.
+A length refusal adds `ActualByteCount` and `ExpectedByteCount`. Context comes directly from the loader,
+so callers never need to parse the message. `TileWorldSchema.GetCatalogJson()` uses `SchemaResourceMissing`
+with `ResourceName` if its embedded catalog schema is absent.
+
+`TileWorldValidator.ValidateOrThrow` uses `WorldValidationFailed` with `WorldId`, total `IssueCount` and
+the complete `Issues` collection. The exception copies `Issues` when set into an owned read-only snapshot,
+which cannot be changed through its source collection or a cast. Inspect each `TileWorldIssue.Code` to
+distinguish individual findings. The developer message summarizes only the first five findings, while the
+snapshot retains every finding. `Validate` still returns findings without throwing on bad content.
+
 `source.FindMarker("spawn")` answers off the manifest's marker index with NO region read, which is what a client
 needs before it has streamed anything: `TileWorldDocument.FindMarker` walks LOADED regions only, so asking it
 first means materialising regions one at a time until one carries the marker and unloading the ones that did not.

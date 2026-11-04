@@ -61,14 +61,13 @@ internal static class TileRegionFile
             TileRegionPlaneDto? pd = dto.Planes[i];
             if (pd is null) continue;
             TilePlaneData p = region.Planes[i];
-            string where = $"{sourceName} plane {i}";
             const int n = TileRegion.TileCount;
-            if (pd.Heights is not null) p.Heights = TileLayerCodec.DecodeShorts(pd.Heights, n, where + " heights");
-            if (pd.Underlay is not null) p.Underlay = TileLayerCodec.DecodeUShorts(pd.Underlay, n, where + " underlay");
-            if (pd.Overlay is not null) p.Overlay = TileLayerCodec.DecodeUShorts(pd.Overlay, n, where + " overlay");
-            if (pd.OverlayShape is not null) p.OverlayShape = TileLayerCodec.DecodeBytes(pd.OverlayShape, n, where + " overlayShape");
-            if (pd.OverlayRotation is not null) p.OverlayRotation = TileLayerCodec.DecodeBytes(pd.OverlayRotation, n, where + " overlayRotation");
-            if (pd.Settings is not null) p.Settings = TileLayerCodec.DecodeBytes(pd.Settings, n, where + " settings");
+            if (pd.Heights is not null) p.Heights = TileLayerCodec.DecodeShorts(pd.Heights, n, "heights", sourceName, i);
+            if (pd.Underlay is not null) p.Underlay = TileLayerCodec.DecodeUShorts(pd.Underlay, n, "underlay", sourceName, i);
+            if (pd.Overlay is not null) p.Overlay = TileLayerCodec.DecodeUShorts(pd.Overlay, n, "overlay", sourceName, i);
+            if (pd.OverlayShape is not null) p.OverlayShape = TileLayerCodec.DecodeBytes(pd.OverlayShape, n, "overlayShape", sourceName, i);
+            if (pd.OverlayRotation is not null) p.OverlayRotation = TileLayerCodec.DecodeBytes(pd.OverlayRotation, n, "overlayRotation", sourceName, i);
+            if (pd.Settings is not null) p.Settings = TileLayerCodec.DecodeBytes(pd.Settings, n, "settings", sourceName, i);
         }
         TileRect rect = expected.Rect;
         foreach (TileObjectDto o in dto.Objects)

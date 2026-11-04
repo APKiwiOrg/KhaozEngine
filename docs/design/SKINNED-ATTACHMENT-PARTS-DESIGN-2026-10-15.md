@@ -47,8 +47,8 @@ Beyond the renames above:
   `GltfLoader.LoadSkinnedPartsWithMaterials(ReadOnlyMemory<byte>, string)` and
   `GltfLoader.LoadSkinned(ReadOnlyMemory<byte>, string)` throw `GltfImportDataException` for a malformed glTF.
   `Reason` is `GltfImportRefusal.MalformedModel`, `Identity` is the supplied raw identity and the importer's
-  diagnostic is `InnerException`. This type derives directly from `Exception` because `InvalidDataException`
-  is sealed. Update existing `InvalidDataException` catches to include `GltfImportDataException`.
+  diagnostic is `InnerException`. This type derives from `MalformedDataException` in Primitives because
+  `InvalidDataException` is sealed. Update existing malformed-data catches to include `MalformedDataException`.
   Callers never need a SharpGLTF exception type.
 
 `AttachmentPartDefinition` has two concrete kinds, `RigidAttachmentPartDefinition` and

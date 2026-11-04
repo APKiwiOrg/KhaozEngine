@@ -28,7 +28,9 @@ can absorb another contributor's staged files. Never use the shared stash for wo
   enum and the identifiers its docs promise (an entry id, the offending index, a path), filled at every throw
   site. The type belongs to the refusal family that owns the check, a validator or policy, and derives from
   the type thrown before, as `WaterOpticsSurfaceException` derives from `ArgumentException`, so existing
-  catches keep working. A new refusal in a family adds a reason member. The message stays developer prose
+  catches keep working. A refusal for malformed input data whose BCL type would be the sealed
+  `InvalidDataException` derives from `MalformedDataException`, and code that handles malformed data catches
+  the base. A new refusal in a family adds a reason member. The message stays developer prose
   and is never a contract. A plain parameter check whose `ParamName` and `ActualValue` already name the
   problem stays a BCL exception. A rule that every implementation of a shared contract enforces, such as an
   `IGpu*` command or resource rule, is one family in the contract's package, and every backend throws the

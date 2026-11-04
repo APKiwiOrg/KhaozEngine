@@ -191,6 +191,7 @@ public sealed class GltfSkinnedMaterialPartsTests
 
         GltfImportDataException error = Assert.Throws<GltfImportDataException>(load);
 
+        Assert.IsAssignableFrom<MalformedDataException>(error);
         Assert.Equal(GltfImportRefusal.MalformedModel, error.Reason);
         Assert.Equal(identity, error.Identity);
         Assert.NotNull(error.InnerException);

@@ -734,8 +734,8 @@ and nothing here can prove which id a member would be issued.
 
 Every check ANSWERS a refusal string rather than throwing, because the run reports catalog state to an
 operator and a stack trace is not an instruction. A planner that throws `InvalidDataException`,
-`ContentAuthoringException` or `ArgumentException` is still reported as a refusal, which is the shape a
-hand-written check already has.
+`MalformedDataException`, `ContentAuthoringException` or `ArgumentException` is still reported as a refusal,
+which is the shape a hand-written check already has.
 
 ```csharp
 var definition = new ContentUpgradeDefinition(

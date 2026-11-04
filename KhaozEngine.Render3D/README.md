@@ -1403,7 +1403,8 @@ in the `KhaozEngine.Render3D.Ecs` arm under the same namespace, so a render-only
   `LoadSkinnedPartsWithMaterials(glb, identity)` and `LoadSkinned(glb, identity)` report a malformed glTF as
   `GltfImportDataException` with `GltfImportRefusal.MalformedModel`, raw `Identity` and the importer's diagnostic
   as `InnerException`. This is a breaking catch change from `InvalidDataException`, which is sealed.
-  `GltfImportDataException` derives directly from `Exception`. Catch it instead of a SharpGLTF type.
+  `GltfImportDataException` derives from `MalformedDataException` in Primitives. Catch the base to handle
+  malformed data across engine families, or the concrete type to inspect `GltfImportRefusal`.
   Strict validation, missing triangles, missing skins and invalid skin joints carry `GltfImportRefusal` on
   `GltfImportStateException`, which derives from `InvalidOperationException`. Bad mesh indices use
   `MeshIndexStateException`, also derived from `InvalidOperationException`.
@@ -1740,8 +1741,9 @@ SharpGLTF) are confined to this package via
 Messages remain developer prose. Branch on `Reason` and read the structured identifiers below.
 `MeshIndexStateException`, `GltfImportStateException` and `PropLoadStateException` derive from
 `InvalidOperationException`. `PropLoadArgumentException` derives from `ArgumentException` and preserves
-`ParamName`. `GltfImportDataException` derives directly from `Exception` because `InvalidDataException` is
-sealed. Every constructor of these new types requires a reason.
+`ParamName`. `GltfImportDataException` derives from `MalformedDataException` in Primitives because
+`InvalidDataException` is sealed. Catch `MalformedDataException` to handle malformed data across families.
+Every constructor of these concrete family types requires a reason.
 
 | MeshIndexRefusal | Refused input | Identifiers |
 |---|---|---|

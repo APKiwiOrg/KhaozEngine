@@ -7305,8 +7305,8 @@ Besides the set type renames in the design record table:
   `GltfLoader.LoadSkinnedPartsWithMaterials(ReadOnlyMemory<byte>, string)` and
   `GltfLoader.LoadSkinned(ReadOnlyMemory<byte>, string)` throw `GltfImportDataException` for a malformed glTF.
   `Reason` is `GltfImportRefusal.MalformedModel`, `Identity` is the supplied raw identity and the importer's
-  diagnostic is `InnerException`. This type derives directly from `Exception` because `InvalidDataException`
-  is sealed. Update existing `InvalidDataException` catches to include `GltfImportDataException`.
+  diagnostic is `InnerException`. This type derives from `MalformedDataException` in Primitives because
+  `InvalidDataException` is sealed. Update existing malformed-data catches to include `MalformedDataException`.
   Callers never need a SharpGLTF exception type.
 
 ### Skinned body contracts (any body shape)
@@ -20713,6 +20713,10 @@ The renderer-free foundation, one line each (all pure .NET / `System.Numerics`, 
 
 - **`KhaozEngine.Primitives`**: the zero-dependency leaf: `Color` (`FromHex`/`ToHex`, `* float`, `Lerp`),
   `DeterministicRng`, `XorRng`, `MathUtil`, `ViewportMath`, `Easing`. The bottom of the dependency graph.
+  Its abstract `KhaozEngine.MalformedDataException` is the base for every engine refusal for malformed input
+  data whose BCL type would have been the sealed `InvalidDataException`. Catch the base when handling any
+  such refusal, or catch a concrete family type and inspect its `Reason` to distinguish that family's
+  refusals. The base has no reason member and is available on both `net8.0` and `net10.0`.
 - **`KhaozEngine.App`**: app identity / data paths: `AppDataPaths` (publisher-rooted: `<base>/APKiwiOrg/<game>/`),
   `BuildMetadata`, `ServiceLocator`, and `AppInstallStamp` (local first-ran/updated stamp; see "Install / update
   stamp" below), plus `EnvFile` for ordered optional-file assignments with caller-owned precedence.

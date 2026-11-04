@@ -34,6 +34,24 @@ Workers own their fall state, full-tuning bindings and source sessions. Candidat
 verdicts merge by ordinal and the lowest serial failure wins. Final snapshot authentication precedes publication.
 No trajectory, destination verdict or prefix is borrowed from another body, profile or attempt.
 
+## Continuous terrain decision
+
+Continuous terrain transitions are not available until their separate terrain certificate is implemented.
+The released sharp-ledge candidate horizon, corridor and first-air-landing rules above remain in force.
+Retaining steep geometry or scanning farther alone cannot certify a terrain descent.
+
+The approved opt-in semantics permit a player body to slide on authenticated steep faces in a captured
+continuous descent chain. Its first walkable support may lie in a bounded downstream fringe of the named
+target's own physical landing patch, before ordinary input reaches that admitted anchor. An intermediate shelf,
+another raw layer at equal height or unrelated ground cannot supply this first support. Selected steep contacts
+and the first walkable support, including transient support inside a tick, need authenticated route evidence.
+
+The future certificate must preserve original layer and cell identity, full ordinary terminal footprint admission,
+the 3D 1 mm arrival sphere and a real supported terminal Hold. Collision, roofs, areas, water, original boundaries,
+highest-launch descent and existing proof budgets remain binding throughout the transition. Fringe poses never
+become ordinary navigation nodes, and `AllowsSegment` retains its ordinary meaning. Creatures retain zero
+permission. Profiles without the future opt-in retain the existing sharp Drop policy.
+
 ## Planning and following
 
 Ordinary exits and accepted links remain separate. Public `NavTraversalGraph.CanTraverse` is their union.

@@ -5,16 +5,38 @@ namespace KhaozEngine.Gpu.Metal.Internal;
 /// <summary>Slot-owned read footprint. Adjacent contiguous ranges coalesce without protecting gaps.</summary>
 internal sealed class MetalRecordedReads
 {
-    sealed class ResourceReads
+    internal sealed class ResourceReads
     {
-        internal readonly MetalReadIntervalIndex Contiguous = new(contiguous: true);
+        internal readonly MetalContiguousReadIndex Contiguous = new();
         internal readonly MetalReadIntervalIndex Strided = new();
         internal void Clear() { Contiguous.Clear(); Strided.Clear(); }
+    }
+
+    // Owned by a binding/attribute, never by a shared resource. Generation checks prevent stale node hints.
+    internal struct Cursor
+    {
+        internal MetalRecordedReads? Target;
+        internal ulong Generation;
+        internal MetalCpuResource? Resource;
+        internal ResourceReads? Reads;
+        internal int Tail;
     }
 
     readonly Dictionary<MetalCpuResource, ResourceReads> _resources = new();
     readonly List<ResourceReads> _storage = new();
     internal ulong Generation { get; private set; }
+    long _resourceLookups;
+    internal long HashLookupsForTests => _resourceLookups;
+    internal long RotationsForTests
+    {
+        get
+        {
+            long count = 0;
+            foreach (var reads in _resources.Values)
+                count += reads.Contiguous.RotationsForTests + reads.Strided.RotationsForTests;
+            return count;
+        }
+    }
 
     // Counts index search/hint probes and rotations, independent of the clock (#1692, #1696).
     internal long ProbeStepsForTests
@@ -48,10 +70,12 @@ internal sealed class MetalRecordedReads
         Generation++;
         foreach (var reads in _resources.Values) reads.Clear();
         _resources.Clear();
+        _resourceLookups = 0;
     }
 
     ResourceReads ReadsFor(MetalCpuResource resource)
     {
+        _resourceLookups++;
         if (_resources.TryGetValue(resource, out var reads)) return reads;
         // Stable recording positions retain their capacity across differently sized main/capture frames.
         int index = _resources.Count;
@@ -59,6 +83,27 @@ internal sealed class MetalRecordedReads
         reads = _storage[index];
         _resources.Add(resource, reads);
         return reads;
+    }
+
+    ResourceReads ReadsFor(MetalCpuResource resource, ref Cursor cursor)
+    {
+        if (!ReferenceEquals(cursor.Target, this) || cursor.Generation != Generation
+            || !ReferenceEquals(cursor.Resource, resource))
+            cursor = new() { Target = this, Generation = Generation, Resource = resource, Reads = ReadsFor(resource) };
+        return cursor.Reads!;
+    }
+
+    internal void AddStrided(MetalCpuResource resource, ulong offset, ulong bytes, ulong stride, ulong count, ref Cursor cursor)
+    {
+        if (count == 0 || bytes == 0) return;
+        if (stride == bytes) { Add(resource, offset, checked(bytes * count), ref cursor); return; }
+        ReadsFor(resource, ref cursor).Strided.Add(new(resource, offset, bytes, stride, count), ref cursor.Tail);
+    }
+
+    internal void Add(MetalCpuResource resource, ulong offset, ulong length, ref Cursor cursor)
+    {
+        if (length == 0) return;
+        ReadsFor(resource, ref cursor).Contiguous.AddContiguous(new(resource, offset, length));
     }
 
     internal void AddStrided(MetalCpuResource resource, ulong offset, ulong bytes, ulong stride, ulong count)

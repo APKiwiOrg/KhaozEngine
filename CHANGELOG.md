@@ -8,6 +8,9 @@ Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
 2026-11-04
 
+- Append increasing Metal uniform-ring read slices without tree rebalancing. Binding and vertex cursors
+  remove steady-draw resource, shader-use and continuation hashing, preserving exact CPU access refusals and warmed
+  zero allocation for frames with fresh uniform slices on every draw (#1696).
 - Record Metal split-frame reads when bindings or draw windows change. Reuse indexed mesh coverage, extend
   consecutive instance windows and leave duplicate interval inserts free of tree writes. CPU access refusals
   and steady-frame zero allocation are unchanged (#1696).

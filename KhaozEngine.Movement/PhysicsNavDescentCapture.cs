@@ -200,10 +200,11 @@ internal static class PhysicsNavDescentCapture
         }
         starts[^1] = refs.Count;
         var joins = new DescentAdjacencyIndex(faces, source, budget).Build();
+        var evidence = new PhysicsNavDescentEvidence(options, width, height, faces, starts, refs.ToArray(), coverage, raw.ToArray(), joins, budget);
         hooks?.IndexStorage?.Invoke(budget.UsedBytes);
         hooks?.Progress?.Invoke(ContactTerrainCaptureStage.Adjacency, faces.Length, faces.Length);
         lease.AssertCurrent();
-        return new(options, width, height, faces, starts, refs.ToArray(), coverage, raw.ToArray(), joins);
+        return evidence;
     }
 
     static bool SameTriangle(PhysicsEvidencePoint[] points, MovementSurfaceFeature feature)

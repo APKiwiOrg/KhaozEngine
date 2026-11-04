@@ -1334,6 +1334,11 @@ candidate visitation, otherwise capture keeps the all-pairs path. The test-only 
 the entire capture output. The independent oracle lives only in the test project. Index arrays and conservative bookkeeping share a checked aggregate byte budget bounded
 by `Array.MaxLength`. `IndexStorageExceeded` reports requested and maximum bytes before unsupported storage is
 allocated. Existing feature, reference, sweep and proof budgets are unchanged.
+Frozen evidence builds exact raw-address and full-solid interval lookups once. Raw lookup preserves height bits
+and the original duplicate ambiguity result. Solid ranges retain every matching Source/Address part, including
+roofs outside the aperture. Their queries record only contributing group dependencies. Receipts share privately
+immutable face membership, so constructing a worker or candidate receipt never scans the world. These derived
+lookups share the checked index reserve and add no persisted geometry bytes.
 
 `ContactTerrainDropCandidates` is pure and deterministic. It retains the fixed source and neighbor order,
 ordinary exit suppression, nearest eligible lower column, highest eligible layer, step-band stop and exact

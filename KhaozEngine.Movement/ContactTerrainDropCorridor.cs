@@ -73,13 +73,8 @@ internal sealed class ContactTerrainDropCorridor(PhysicsNavDescentEvidence evide
             if (face.Points.Length < 3) return false;
             if (face.Kind == PhysicsEvidenceKind.SolidPolygon)
             {
-                double min = double.PositiveInfinity, max = double.NegativeInfinity;
-                for (int f = 0; f < evidence.FaceCount; f++)
-                {
-                    var part = evidence.Face(f);
-                    if (part.Kind != PhysicsEvidenceKind.SolidPolygon || part.Key.Source != face.Key.Source || part.Key.Address != face.Key.Address) continue;
-                    foreach (var p in part.Points) { min = Math.Min(min, p.Y); max = Math.Max(max, p.Y); }
-                }
+                var interval = evidence.SolidInterval(entry.Face);
+                double min = interval.Minimum, max = interval.Maximum;
                 if (new DescentNumber(max) < minimumBed) continue;
                 if (min <= upper + bodyHeight && max >= lower) return false;
             }

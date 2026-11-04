@@ -50,6 +50,7 @@ internal sealed class PhysicsNavDescentEvidence
     readonly DescentCoverage[] _coverage;
     readonly DescentRawBinding[] _raw;
     readonly int[][] _joins;
+    readonly DescentEvidenceLookup _lookup;
     internal PhysicsNavBakeOptions Options { get; }
     internal int Width { get; }
     internal int Height { get; }
@@ -60,8 +61,13 @@ internal sealed class PhysicsNavDescentEvidence
     internal int PointCount { get { int total = 0; foreach (var face in _faces) total += face.Points.Length; return total; } }
     internal long RetainedPayloadBytes { get { long n = GeometryBytes + _starts.Length * 4L + _columns.Length * 8L + _coverage.Length + _raw.Length * 20L; foreach (var j in _joins) n += j.Length * 4L; return n; } }
     internal PhysicsNavDescentEvidence(PhysicsNavBakeOptions options, int width, int height, DescentFace[] faces,
-        int[] starts, DescentColumnFace[] columns, DescentCoverage[] coverage, DescentRawBinding[] raw, int[][] joins)
-    { Options = options; Width = width; Height = height; _faces = faces; _starts = starts; _columns = columns; _coverage = coverage; _raw = raw; _joins = joins; }
+        int[] starts, DescentColumnFace[] columns, DescentCoverage[] coverage, DescentRawBinding[] raw, int[][] joins,
+        DescentCaptureIndexBudget? indexBudget = null)
+    {
+        Options = options; Width = width; Height = height; _faces = faces; _starts = starts;
+        _columns = columns; _coverage = coverage; _raw = raw; _joins = joins;
+        _lookup = new(faces, raw, indexBudget ?? new());
+    }
     internal ReadOnlySpan<DescentRawBinding> RawBindings => _raw;
     internal DescentFace Face(int index) { ContactTerrainEvidenceReads.ReadFace(this, index); return _faces[index]; }
     internal DescentCoverage Coverage(int x, int z)
@@ -70,7 +76,18 @@ internal sealed class PhysicsNavDescentEvidence
     { ContactTerrainEvidenceReads.ReadColumn(this, x, z); return _columns.AsSpan(_starts[z * Width + x], _starts[z * Width + x + 1] - _starts[z * Width + x]); }
     internal ReadOnlySpan<int> Joins(int face) { ContactTerrainEvidenceReads.ReadAdjacency(this, face); return _joins[face]; }
     internal bool TryRaw(int x, int z, int bits, out DescentRawBinding result)
-    { result = default; bool found = false; foreach (var raw in _raw) { if (raw.X != x || raw.Z != z || raw.HeightBits != bits) continue; if (found) return false; result = raw; found = true; } return found; }
+        => _lookup.TryRaw(x, z, bits, out result);
+    internal bool OwnsFace(DescentFace face) => _lookup.Owns(face);
+    internal DescentSolidInterval SolidInterval(int face)
+    {
+        var interval = _lookup.Solid(_faces[face]);
+        foreach (int member in interval.Members)
+        {
+            ContactTerrainEvidenceReads.ReadFace(this, member);
+            ContactTerrainEvidenceReads.ReadPoints(_faces[member]);
+        }
+        return interval;
+    }
     internal PhysicsNavDescentEvidence MissingColumnForTests(int x, int z)
     { var coverage = (DescentCoverage[])_coverage.Clone(); coverage[z * Width + x] = DescentCoverage.Unavailable; return new(Options, Width, Height, _faces, _starts, _columns, coverage, _raw, _joins); }
 }

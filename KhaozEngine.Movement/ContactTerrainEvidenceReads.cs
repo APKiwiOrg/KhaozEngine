@@ -9,7 +9,6 @@ internal sealed class ContactTerrainEvidenceReads
 {
     [ThreadStatic] static ContactTerrainEvidenceReads? t_current;
     readonly PhysicsNavDescentEvidence _owner;
-    readonly HashSet<DescentFace> _faces = [];
     internal HashSet<(int X, int Z)> Coverage { get; } = [];
     internal HashSet<(int X, int Z)> Columns { get; } = [];
     internal HashSet<int> FaceRecords { get; } = [];
@@ -20,7 +19,6 @@ internal sealed class ContactTerrainEvidenceReads
     internal ContactTerrainEvidenceReads(PhysicsNavDescentEvidence owner)
     {
         _owner = owner;
-        for (int i = 0; i < owner.FaceCount; i++) _faces.Add(owner.Face(i));
     }
     internal bool Matches(PhysicsNavDescentEvidence owner) => ReferenceEquals(_owner, owner);
     internal Scope Observe()
@@ -40,9 +38,9 @@ internal sealed class ContactTerrainEvidenceReads
     internal static void ReadAdjacency(PhysicsNavDescentEvidence owner, int index)
     { if (t_current is { } r && ReferenceEquals(r._owner, owner)) r.Adjacency.Add(index); }
     internal static void ReadNormal(DescentFace face)
-    { if (t_current is { } r && r._faces.Contains(face)) r.Normals.Add(face.Key); }
+    { if (t_current is { } r && r._owner.OwnsFace(face)) r.Normals.Add(face.Key); }
     internal static void ReadPoints(DescentFace face)
-    { if (t_current is { } r && r._faces.Contains(face)) r.Points.Add(face.Key); }
+    { if (t_current is { } r && r._owner.OwnsFace(face)) r.Points.Add(face.Key); }
     internal static void ReadBinding(PhysicsNavDescentEvidence owner, int layer, int x, int z, DescentRawBinding? raw)
     { if (t_current is { } r && ReferenceEquals(r._owner, owner)) r.Bindings[(layer, x, z)] = raw; }
 }

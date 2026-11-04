@@ -37,7 +37,8 @@ beside `Skeleton` and `BoneMask`. Each is pure, headless and free of a graphics 
 The table is validated once. It is not empty, every name is unique, exactly one joint has no parent
 and it comes first, and every other joint's parent is declared before it. One forward pass over the
 joints therefore meets each parent before its children, the order a `Skeleton` keeps its nodes in. A
-refusal is an `ArgumentException` naming the offending joint. The table is copied, so a caller may
+refusal is a `SkeletonContractArgumentException`, derived from `ArgumentException`, whose
+`SkeletonContractRefusal` reason and joint identifiers describe the rule. The table is copied, so a caller may
 reuse its list.
 
 ## ContractJointMap
@@ -66,17 +67,20 @@ the game.
 
 ## The other four
 
-`ClipRefusals` returns a message for two clips of one name, a clip of no length, a required joint's
+`ClipRefusals.Only` throws `ClipAdmissionArgumentException` with `DuplicateClipName` and `ClipName` for two
+clips of one name. The other checks return a diagnostic message for a clip of no length, a required joint's
 rotation or a named joint's translation left unkeyed, a channel the stance keys left unkeyed on the
 nodes a filter takes, and the first `ClipHygiene` finding. The messages keep Grimhollow's wording,
 with the caller's clip family and rule in place of the player's own. `Unkeyed` walks the turned joints
 in order, each rotation and then its translation when the moved list names it too, then the joints
 only the moved list names. A loader that lists its joints as the player does therefore meets the
 player's first refusal. The humanoid clause of the player's message, which names its first contract,
-stays in the game. A joint name the skeleton lacks is the caller's error and throws.
+stays in the game. A joint name the skeleton lacks is the caller's error and throws
+`ClipAdmissionArgumentException` with `RequiredJointMissing` and `JointName`.
 
 `BoneMask.ForJoints` builds the named-group masks a layered animator composites through. It weighs
-the named joints only, never their descendants, and refuses a name the skeleton does not carry.
+the named joints only, never their descendants, and refuses a name the skeleton does not carry with
+`BoneMaskArgumentException`, `BoneMaskRefusal.JointNameMissing` and `JointName`.
 
 `SkinnedGrounding.MinimumY` finds where a posed skin meets the floor without a per-frame allocation.
 The caller lends one scratch column per bone. A vertex whose weights total under the threshold

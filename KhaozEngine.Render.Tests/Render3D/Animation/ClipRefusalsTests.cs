@@ -22,10 +22,11 @@ namespace KhaozEngine.Tests.Render3D.Animation
             AnimationClip second = Clip("walk", 1f, Turn(SpineLogical));
 
             Assert.Same(first, ClipRefusals.Only(null, first, "clips"));
-            var refusal = Assert.Throws<ArgumentException>(() => ClipRefusals.Only(first, second, "clips"));
+            var refusal = Assert.Throws<ClipAdmissionArgumentException>(() => ClipRefusals.Only(first, second, "clips"));
             Assert.Equal("clips", refusal.ParamName);
-            Assert.StartsWith("The skin carries more than one clip named 'walk'.", refusal.Message,
-                StringComparison.Ordinal);
+            Assert.Equal(ClipAdmissionRefusal.DuplicateClipName, refusal.Reason);
+            Assert.Equal("walk", refusal.ClipName);
+            Assert.IsAssignableFrom<ArgumentException>(refusal);
         }
 
         [Fact]
@@ -66,10 +67,12 @@ namespace KhaozEngine.Tests.Render3D.Animation
                 + " must move, or the joint stands at its bind position.",
                 ClipRefusals.Unkeyed(rootStill, skeleton, Turned, new[] { "hips", "root" }, "action"));
 
-            var missing = Assert.Throws<ArgumentException>(
-                () => ClipRefusals.Unkeyed(unturned, skeleton, new[] { "tail" }, Moved, "locomotion"));
+            var missing = Assert.Throws<ClipAdmissionArgumentException>(
+                () => ClipRefusals.Unkeyed(rootStill, skeleton, new[] { "tail" }, Moved, "locomotion"));
+            Assert.Null(ClipRefusals.Unkeyed(rootStill, skeleton, new[] { "spine" }, Moved, "locomotion"));
             Assert.Equal("turned", missing.ParamName);
-            Assert.Contains("'tail'", missing.Message, StringComparison.Ordinal);
+            Assert.Equal(ClipAdmissionRefusal.RequiredJointMissing, missing.Reason);
+            Assert.Equal("tail", missing.JointName);
         }
 
         [Fact]
@@ -78,11 +81,13 @@ namespace KhaozEngine.Tests.Render3D.Animation
             Skeleton skeleton = Build();
             AnimationClip keyed = Clip("walk", 1f, TurnAndMove(HipsLogical), Turn(SpineLogical), Turn(HeadLogical));
 
-            var missing = Assert.Throws<ArgumentException>(
+            var missing = Assert.Throws<ClipAdmissionArgumentException>(
                 () => ClipRefusals.Unkeyed(keyed, skeleton, Turned, new[] { "hips", "tail" }, "locomotion"));
 
+            Assert.Null(ClipRefusals.Unkeyed(keyed, skeleton, Turned, Moved, "locomotion"));
             Assert.Equal("moved", missing.ParamName);
-            Assert.Contains("'tail'", missing.Message, StringComparison.Ordinal);
+            Assert.Equal(ClipAdmissionRefusal.RequiredJointMissing, missing.Reason);
+            Assert.Equal("tail", missing.JointName);
         }
 
         [Fact]

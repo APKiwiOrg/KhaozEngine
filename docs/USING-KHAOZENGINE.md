@@ -7163,12 +7163,21 @@ with X right and Y forward. `Advance` refuses a sample span shorter than `ClipCo
 a nonfinite velocity. `n` is 0 only until a movement has eased a weight in after construction or `Reset`.
 
 `GltfLoader.LoadSkinned` retains the glTF name of every skeleton node in `Skeleton.NodeNames`, using an empty
-string for an unnamed node. `Skeleton.IndexOf(name)` resolves a required name and lists the known names if it is
-missing. `TryIndexOf(name, out node)` is the non-throwing missing-name form. Duplicate non-empty names throw when
-name lookup is used because the target would be ambiguous. `BoneIndexOfNode(node)` maps a skeleton node back to
-its skin bone, or returns `-1` for a non-joint ancestor. A loaded skeleton contains every `skin.joints` node and
+string for an unnamed node. `Skeleton.IndexOf(name)` resolves a required name or throws
+`SkeletonArgumentException` with `SkeletonRefusal.JointNameMissing`, `RequestedName` and `KnownNames`.
+`KnownNames` is an owned read-only snapshot of the non-empty names, copied when set so source
+mutation and collection casts cannot change it. `TryIndexOf(name, out node)` is the non-throwing missing-name
+form. Duplicate non-empty names throw `SkeletonStateException` with `SkeletonRefusal.DuplicateNodeName`,
+`NodeName`, `FirstNodeIndex` and `DuplicateNodeIndex` when name lookup is used because the target is ambiguous.
+`BoneIndexOfNode(node)` maps a skeleton node back to its skin bone, or returns `-1` for a non-joint ancestor. A loaded skeleton contains every `skin.joints` node and
 the ancestors needed to compose those joints. It does not include a child outside `skin.joints`, so an authored
 socket that needs name lookup remains a zero-weight skin joint.
+
+`SkeletonArgumentException` derives from `ArgumentException`. Its other reasons are
+`NodeArrayLengthsMismatch` with `ParentCount`, `RestCount` and `LogicalIndexCount`, `NameCountMismatch` with
+`NameCount` and `NodeCount`, and `LocalPoseCountMismatch` or `BonePaletteCountMismatch` with `ActualCount` and
+`ExpectedCount` for `ComposeInto` buffers. `SkeletonStateException` derives from `InvalidOperationException`.
+Argument refusals preserve `ParamName`, including null on the node-array and compose-buffer guards.
 
 `BoneSocket` composes a rigid piece onto one of those posed joints without a scene or GPU. System.Numerics uses
 row vectors, so the piece-local transform stays innermost:
@@ -7303,7 +7312,11 @@ Besides the set type renames in the design record table:
 A game with more than one skinned body states each body's joints once as a `SkeletonContract` and checks every
 loaded skin against it. Each `ContractJoint` carries a glTF node name, its parent's name (`null` for the root) and
 whether it deforms the skin. The root comes first and each parent before its children. Construction refuses an
-empty table, an unnamed or repeated joint, a second root and a parent declared after its child, naming the joint.
+empty table, an unnamed or repeated joint, a first joint with a parent, a second root and a parent declared after
+its child. `SkeletonContractArgumentException` derives from `ArgumentException`, retains `ParamName` as `joints`
+and carries `SkeletonContractRefusal`: `EmptyJointTable` with `JointCount`, `JointUnnamed` with `JointIndex` and
+`JointName`, `FirstJointHasParent` or `ParentNotDeclaredBeforeChild` with `JointName` and `ParentName`,
+`AdditionalRoot` with `JointName` and `RootName`, and `DuplicateJointName` with `JointName`.
 The table is copied, so a caller may reuse its list.
 
 ```csharp
@@ -7338,7 +7351,8 @@ The alignment's homogeneous component is exactly one, including when general inv
 base axes. External attachment matrices still require an exact affine column.
 
 `ClipRefusals` words a skin loader's clip refusals one way, naming the clip, the rule and the joint. `Only` throws
-on a second clip of one name. The other checks return null for a clean clip and a message otherwise, so a loader
+`ClipAdmissionArgumentException` on a second clip of one name, with `ClipAdmissionRefusal.DuplicateClipName`
+and `ClipName`. The other checks return null for a clean clip and a diagnostic message otherwise, so a loader
 chains them and throws the first:
 
 ```csharp
@@ -7352,8 +7366,11 @@ if (refusal is not null) throw new InvalidDataException(refusal);
 ```
 
 `Unkeyed` checks each `turned` joint's rotation, then its translation when `moved` names it too, then the joints
-only `moved` names, and throws for a joint name the skeleton lacks. `Uncovered` refuses a channel the stance keys
-and the clip leaves unkeyed on a node the filter takes, and returns null without a stance. `Breach` reports the
+only `moved` names. A joint name the skeleton lacks throws `ClipAdmissionArgumentException` with
+`ClipAdmissionRefusal.RequiredJointMissing` and `JointName`. The exception derives from `ArgumentException`,
+retaining the caller's `paramName` for `Only` and `turned` or `moved` for `Unkeyed`. These admission failures are
+separate from the returned diagnostics. `Uncovered` refuses a channel the stance keys and the clip leaves
+unkeyed on a node the filter takes, and returns null without a stance. `Breach` reports the
 first `ClipHygiene` finding of a policy. Each check allocates, so run them at load.
 
 `SkinnedGrounding.MinimumY` returns the lowest world y of the DEFORMED skin, not its rest box, so a body lowered
@@ -7407,8 +7424,12 @@ its descendants (the torso + arms + head) at `weight`, everything else 0 - the u
 `BoneMask.Subtree(skeleton, "spine", weight)` resolves the root through `Skeleton.NodeNames`. The older overload
 that accepts an explicit name list remains available for code-driven rigs. When a body's groups are lists of joints
 rather than one subtree, `BoneMask.ForJoints(skeleton, new[] { "neck", "head" }, weight)` weighs exactly the named
-joints, never their descendants. A name listed twice is taken once, and a name the skeleton lacks throws
-`ArgumentException` naming it.
+joints, never their descendants. A name listed twice is taken once. A missing name throws
+`BoneMaskArgumentException` with `BoneMaskRefusal.JointNameMissing` and `JointName`, which can be null for a
+null list entry. The explicit-name subtree overload throws `NameCountMismatch` with `NameCount` and `NodeCount`,
+or `SubtreeRootMissing` with `JointName`. The retained-name overload forwards the `Skeleton` name-lookup
+refusal. `BoneMaskArgumentException` derives from `ArgumentException` and preserves `ParamName` as `jointNames`,
+`boneNames` or `rootBoneName` for those guards. Null arguments and numeric root ranges keep their BCL checks.
 
     var anim = new LayeredAnimator(skeleton);
     // Base: full-body locomotion (drive its clip/playhead however you like - e.g. from your own state machine).

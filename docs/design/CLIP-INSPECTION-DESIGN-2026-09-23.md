@@ -32,8 +32,10 @@ a clip whose duration is negative or non-finite. A zero-duration clip samples at
 
 `SetLocals` requires exactly one pose per skeleton node and copies the input before composing. Model
 matrices are composed for every node, including named hierarchy nodes that are absent from the skin
-palette. Name lookup uses `Skeleton.IndexOf`, including its precise missing-name and duplicate-name
-diagnostics. Index lookup rejects values outside `[0, NodeCount)`.
+palette. Name lookup uses `Skeleton.IndexOf`, forwarding `SkeletonArgumentException` with
+`SkeletonRefusal.JointNameMissing`, `RequestedName` and immutable `KnownNames`, or `SkeletonStateException`
+with `SkeletonRefusal.DuplicateNodeName` and its node identifiers. Index lookup rejects values outside
+`[0, NodeCount)`.
 
 `JointModel` returns the current model-space matrix. `JointPosition` returns its translation. The type
 keeps no device, mesh, inverse-bind, or world-transform state.

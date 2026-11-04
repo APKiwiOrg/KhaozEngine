@@ -1666,7 +1666,8 @@ in the `KhaozEngine.Render3D.Ecs` arm under the same namespace, so a render-only
     additive layers run the same code. Warmed calls allocate no managed memory.
   - `SkeletonContract` / `ContractJoint` state a skinned body's named joints, each with its parent and whether it
     deforms the skin, the root first and each parent before its children. Construction refuses an empty table, an
-    unnamed or repeated joint, a second root and a parent declared after its child, naming the joint.
+    unnamed or repeated joint, a first joint with a parent, a second root and a parent declared after its child.
+    `SkeletonContractArgumentException.Reason` and its joint identifiers describe the refusal.
   - `ContractJointMap(skeleton, contract, stance, stanceClipName)` checks a loaded skeleton against a contract. It
     refuses more nodes than `SkinningMath.MaxBonesPerDraw`, two nodes of one name, and a contract joint that is
     missing, misparented or, other than the root, outside the skin. Unnamed nodes are left alone. The base is an
@@ -1677,10 +1678,12 @@ in the `KhaozEngine.Render3D.Ecs` arm under the same namespace, so a render-only
     Its homogeneous component stays exactly one when general inversion rounds it for oblique base axes.
     `SkinAtBase` deforms a skin to the base on the CPU and allocates, so call it at load.
   - `ClipRefusals` words a skin loader's clip refusals one way, naming the clip, the rule and the joint. `Only`
-    throws on a second clip of one name. `NoLength`, `Unkeyed`, `Uncovered` and `Breach` return null for a clean
-    clip and a message otherwise, so a loader chains them with `??` and throws the first. They cover a clip of no
+    throws `ClipAdmissionArgumentException` with `DuplicateClipName` and `ClipName` on a second clip of one name.
+    `NoLength`, `Unkeyed`, `Uncovered` and `Breach` return null for a clean clip and a message otherwise, so a
+    loader chains them with `??` and throws the first. They cover a clip of no
     length, a required rotation or translation left unkeyed, a stance channel left unkeyed on the nodes a filter
-    takes, and the first `ClipHygiene` finding. A joint name the skeleton lacks throws.
+    takes, and the first `ClipHygiene` finding. `Unkeyed` throws `ClipAdmissionArgumentException` with
+    `RequiredJointMissing` and `JointName` for a required joint the skeleton lacks.
   - `SkinnedGrounding.MinimumY(vertices, inverseBind, palette, model, scratch)` returns the lowest world y of the
     DEFORMED skin, so a crouched or striding body can be set down on its ground. The caller lends one `Vector4`
     scratch entry per bone and the call allocates nothing. An unweighted vertex draws through the model alone, as
@@ -1697,7 +1700,8 @@ in the `KhaozEngine.Render3D.Ecs` arm under the same namespace, so a render-only
     a `LayerMode`. `BoneMask` is per-node weights 0..1 (`BoneMask.Full`/`.Empty`, `BoneMask.Subtree(skel, root, w)`
     for "this bone and all descendants at weight w" - the upper-body-action shape). The root may be a node index or
     a retained glTF name. `BoneMask.ForJoints(skel, jointNames, w)` weighs a named joint group without its
-    descendants and refuses a name the skeleton lacks. Override lerps toward the layer
+    descendants and refuses a name the skeleton lacks with `BoneMaskArgumentException`,
+    `BoneMaskRefusal.JointNameMissing` and `JointName`. Override lerps toward the layer
     pose by `weight x mask`. Additive applies the clip's delta from its first frame (the reference), scaled by
     `weight x mask`: the rotation delta is both EXTRACTED and APPLIED in the joint's LOCAL frame
     (`delta = inverse(reference) * sample`, applied as `base * delta`), so a base equal to the reference reproduces
@@ -1721,6 +1725,53 @@ Renderer deps (the GPU backends, the `Silk.NET.Shaderc` and `Silk.NET.SPIRV.Cros
 SharpGLTF) are confined to this package via
 `KhaozEngine.Gpu`. See
 `docs/USING-KHAOZENGINE.md`.
+
+## Animation refusals
+
+These exceptions carry a non-nullable `Reason`. Messages are developer prose. Argument-family types derive from
+`ArgumentException` and preserve `ParamName`, including null where the original guard had none. Unrelated null
+and scalar index checks keep their BCL exceptions.
+
+`SkeletonArgumentException` and `SkeletonStateException` share `SkeletonRefusal`. The state type derives from
+`InvalidOperationException` and is raised lazily by name lookup for duplicate non-empty names. `KnownNames` is
+an owned read-only snapshot of the non-empty names, copied when set.
+
+| SkeletonRefusal | Refused input | Identifiers |
+|---|---|---|
+| `NodeArrayLengthsMismatch` | Node arrays with different lengths | `ParentCount`, `RestCount`, `LogicalIndexCount` |
+| `NameCountMismatch` | Name table length differs from node count | `NameCount`, `NodeCount` |
+| `JointNameMissing` | Required name absent from the skeleton | `RequestedName`, `KnownNames` |
+| `LocalPoseCountMismatch` | Compose pose buffer length differs from node count | `ActualCount`, `ExpectedCount` |
+| `BonePaletteCountMismatch` | Compose palette length differs from bone count | `ActualCount`, `ExpectedCount` |
+| `DuplicateNodeName` | Ambiguous non-empty name lookup | `NodeName`, `FirstNodeIndex`, `DuplicateNodeIndex` |
+
+`SkeletonContractArgumentException` carries `SkeletonContractRefusal` for the joint-table policy.
+
+| SkeletonContractRefusal | Refused input | Identifiers |
+|---|---|---|
+| `EmptyJointTable` | No root joint | `JointCount` |
+| `JointUnnamed` | Null or empty joint name | `JointIndex`, `JointName` |
+| `FirstJointHasParent` | First joint has a parent | `JointName`, `ParentName` |
+| `AdditionalRoot` | Another joint has no parent | `JointName`, `RootName` |
+| `ParentNotDeclaredBeforeChild` | Parent has not been declared before its child | `JointName`, `ParentName` |
+| `DuplicateJointName` | Repeated joint name | `JointName` |
+
+`BoneMaskArgumentException` carries `BoneMaskRefusal` for named masks and explicit-name subtree admission.
+The subtree overload using retained skeleton names forwards the `Skeleton` name-lookup refusal.
+
+| BoneMaskRefusal | Refused input | Identifiers |
+|---|---|---|
+| `JointNameMissing` | Joint group names a missing joint, including null or empty names | `JointName` |
+| `NameCountMismatch` | Explicit name table length differs from node count | `NameCount`, `NodeCount` |
+| `SubtreeRootMissing` | Subtree root absent from the explicit name table | `JointName` |
+
+`ClipAdmissionArgumentException` carries `ClipAdmissionRefusal`. `NoLength`, the normal `Unkeyed` finding,
+`Uncovered` and `Breach` retain their returned diagnostic string contracts.
+
+| ClipAdmissionRefusal | Refused input | Identifiers |
+|---|---|---|
+| `DuplicateClipName` | `Only` is given a clip when one was already taken | `ClipName` |
+| `RequiredJointMissing` | `Unkeyed` requires a joint absent from the skeleton | `JointName` |
 
 ## Persistent grass and foliage
 

@@ -115,14 +115,12 @@ namespace KhaozEngine.Tests.Render3D.Animation
         [InlineData(1000f, ContractJointMapRefusal.ParentBaseFrameSingular, "child")]
         public void RefusesSingularBaseFrames(float scale, ContractJointMapRefusal reason, string joint)
         {
-            var contract = new SkeletonContract([new("root", null, false), new("child", "root", true)]);
-            var pose = JointPose.Identity;
-            // Finite non-unit rotations can pass rigid-basis checks while cancellation makes an inverse fail.
-            pose.Rotation = new Quaternion(0.5f, 0.3f, 0.4f, 0f);
-            pose.Scale = new Vector3(scale);
-            var skeleton = new Skeleton([-1, 0], [pose, JointPose.Identity], [0, 1], [1], ["root", "child"]);
+            // Inject only the inversion result, without depending on floating-point cancellation.
+            Action<bool> refuseSingularFrame = reason == ContractJointMapRefusal.ParentBaseFrameSingular
+                ? inverted => ContractJointMap.RefuseSingularParentBaseFrame(inverted, joint, 0)
+                : inverted => ContractJointMap.RefuseSingularBaseFrame(inverted, joint, 0);
 
-            var error = Assert.Throws<ContractJointMapArgumentException>(() => new ContractJointMap(skeleton, contract));
+            var error = Assert.Throws<ContractJointMapArgumentException>(() => refuseSingularFrame(false));
             Assert.Equal(reason, error.Reason);
             Assert.Equal(joint, error.JointName);
             Assert.Equal("skeleton", error.ParamName);
@@ -131,7 +129,10 @@ namespace KhaozEngine.Tests.Render3D.Animation
             else
                 Assert.Equal(0, error.ParentNodeIndex);
 
-            pose.Rotation = Quaternion.Identity;
+            refuseSingularFrame(true);
+            var contract = new SkeletonContract([new("root", null, false), new("child", "root", true)]);
+            var pose = JointPose.Identity;
+            pose.Scale = new Vector3(scale);
             _ = new ContractJointMap(new Skeleton([-1, 0], [pose, JointPose.Identity], [0, 1], [1],
                 ["root", "child"]), contract);
         }

@@ -87,19 +87,30 @@ namespace KhaozEngine.Render3D
 
                 Matrix4x4 parentWorld = parent < 0 ? Matrix4x4.Identity : _baseWorld[parent];
                 _baseWorld[node] = _baseLocal[node].ToMatrix() * parentWorld;
-                if (!Matrix4x4.Invert(parentWorld, out _parentBaseInverse[node]))
-                    throw new ContractJointMapArgumentException(ContractJointMapRefusal.ParentBaseFrameSingular,
-                        $"Joint '{name}' has a singular parent base frame.", nameof(skeleton))
-                    { JointName = name, ParentNodeIndex = parent };
+                RefuseSingularParentBaseFrame(Matrix4x4.Invert(parentWorld, out _parentBaseInverse[node]), name, parent);
                 Matrix4x4 rigidBase = BoneSocket.ComposeRigid(Matrix4x4.Identity, _baseWorld[node], Matrix4x4.Identity);
-                if (!Matrix4x4.Invert(rigidBase, out Matrix4x4 inverseRigidBase))
-                    throw new ContractJointMapArgumentException(ContractJointMapRefusal.BaseFrameSingular,
-                        $"Joint '{name}' has a singular base frame.", nameof(skeleton)) { JointName = name, NodeIndex = node };
+                RefuseSingularBaseFrame(Matrix4x4.Invert(rigidBase, out Matrix4x4 inverseRigidBase), name, node);
                 _bodyAlignment[node] = Matrix4x4.CreateTranslation(rigidBase.Translation) * inverseRigidBase;
                 // General inversion can round the homogeneous one of this engine-owned rigid affine frame.
                 _bodyAlignment[node].M44 = 1f;
                 _isContract[node] = true;
             }
+        }
+
+        // Value-taking fault seams cover inversion refusals without cancellation-sensitive matrices.
+        internal static void RefuseSingularParentBaseFrame(bool inversionSucceeded, string name, int parent)
+        {
+            if (!inversionSucceeded)
+                throw new ContractJointMapArgumentException(ContractJointMapRefusal.ParentBaseFrameSingular,
+                    $"Joint '{name}' has a singular parent base frame.", "skeleton")
+                { JointName = name, ParentNodeIndex = parent };
+        }
+
+        internal static void RefuseSingularBaseFrame(bool inversionSucceeded, string name, int node)
+        {
+            if (!inversionSucceeded)
+                throw new ContractJointMapArgumentException(ContractJointMapRefusal.BaseFrameSingular,
+                    $"Joint '{name}' has a singular base frame.", "skeleton") { JointName = name, NodeIndex = node };
         }
 
         /// <summary>The skeleton the map was built over.</summary>

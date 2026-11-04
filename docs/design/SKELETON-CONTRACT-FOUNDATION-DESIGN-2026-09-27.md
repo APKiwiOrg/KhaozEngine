@@ -63,8 +63,10 @@ so the frame accessors refuse a node outside the contract with `NodeOutsideContr
 `NodeName`, rather than hand back a zero matrix that would collapse an attached piece to the origin.
 Name lookup and bone lookup retain their original BCL bases through `ContractJointMapKeyNotFoundException`
 and `ContractJointMapStateException`, with `NodeNameMissing` or `NamedNodeOutsideSkin` and `JointName`.
-Finite non-unit rotations and scale can reach the inversion guards, which report `BaseFrameSingular` with
+The inversion guards report `BaseFrameSingular` with
 `JointName` and `NodeIndex`, or `ParentBaseFrameSingular` with `JointName` and `ParentNodeIndex`.
+Their refusal tests supply inversion results through internal value-taking fault seams. A singular source can
+fail BoneSocket's rigid-basis check first, and cancellation-based inputs do not portably reach either guard.
 
 The arithmetic runs in the same order as Grimhollow's `HumanoidJointMap`. The humanoid can then wrap
 this map and keep its palettes bit for bit. The humanoid's hip pivot is a humanoid fact and stays in

@@ -113,11 +113,22 @@ public class TileWorldFileTests
     {
         using var tmp = new TempDir();
         string dir = tmp.Sub("world");
-        Assert.Throws<TileWorldException>(() => TileWorldFile.Load(dir));
+        var missing = Assert.Throws<TileWorldException>(() => TileWorldFile.Load(dir));
+        Assert.Equal(TileWorldRefusal.ManifestReadFailed, missing.Reason);
+        Assert.Equal(Path.Combine(dir, "world.json"), missing.SourceName);
+        Assert.NotNull(missing.InnerException);
         TileWorldFile.Save(Authored(), dir);
-        File.Delete(Path.Combine(dir, "regions", "r_1_0.json"));
+        Assert.Equal("test", TileWorldFile.Load(dir).Id);
+        string regionPath = Path.Combine(dir, "regions", "r_1_0.json");
+        byte[] original = File.ReadAllBytes(regionPath);
+        File.Delete(regionPath);
         var ex = Assert.Throws<TileWorldException>(() => TileWorldFile.Load(dir));
-        Assert.Contains("r_1_0.json", ex.Message);
+        Assert.Equal(TileWorldRefusal.RegionReadFailed, ex.Reason);
+        Assert.Equal(regionPath, ex.SourceName);
+        Assert.Equal(new RegionCoord(1, 0), ex.Region);
+        Assert.NotNull(ex.InnerException);
+        File.WriteAllBytes(regionPath, original);
+        Assert.NotNull(TileWorldFile.Load(dir).GetRegion(new RegionCoord(1, 0)));
     }
 
     [Fact]
@@ -135,7 +146,12 @@ public class TileWorldFileTests
         opts.RegisterMigration(0, root => { root["planeHeight"] = 2.5f; return root; });
         TileWorldDocument back = TileWorldFile.Load(dir, opts);
         Assert.Equal(2.5f, back.PlaneHeight);
-        Assert.Throws<TileWorldException>(() => TileWorldFile.Load(dir));
+        var ex = Assert.Throws<TileWorldException>(() => TileWorldFile.Load(dir));
+        Assert.Equal(TileWorldRefusal.ManifestMigrationMissing, ex.Reason);
+        Assert.Equal(manifestPath, ex.SourceName);
+        Assert.Equal(0, ex.FormatVersion);
+        Assert.Equal(0, ex.MigrationFrom);
+        Assert.Equal(1, ex.MigrationTo);
     }
 
     [Fact]
@@ -299,19 +315,26 @@ public class TileWorldFileTests
         Assert.Equal(4, back.Planes.Length);
     }
 
-    [Fact]
-    public void Load_refuses_a_formatVersion_that_is_not_an_integer()
+    [Theory]
+    [InlineData("\"1\"")]
+    [InlineData("[]")]
+    public void Load_refuses_a_formatVersion_that_is_not_an_integer(string value)
     {
         using var tmp = new TempDir();
         string dir = tmp.Sub("world");
         TileWorldFile.Save(Authored(), dir);
         string manifestPath = Path.Combine(dir, "world.json");
         JsonObject m = (JsonObject)JsonNode.Parse(File.ReadAllText(manifestPath))!;
-        m["formatVersion"] = "1";
+        m["formatVersion"] = JsonNode.Parse(value);
         File.WriteAllText(manifestPath, m.ToJsonString());
         var ex = Assert.Throws<TileWorldException>(() => TileWorldFile.Load(dir));
-        Assert.Contains("world.json", ex.Message);
-        Assert.Contains("formatVersion", ex.Message);
+        Assert.Equal(TileWorldRefusal.ManifestFormatVersionNotInteger, ex.Reason);
+        Assert.Equal(manifestPath, ex.SourceName);
+        Assert.Equal("formatVersion", ex.Field);
+
+        m["formatVersion"] = TileWorldFile.CurrentFormatVersion;
+        File.WriteAllText(manifestPath, m.ToJsonString());
+        Assert.Equal("test", TileWorldFile.Load(dir).Id);
     }
 
     [Fact]

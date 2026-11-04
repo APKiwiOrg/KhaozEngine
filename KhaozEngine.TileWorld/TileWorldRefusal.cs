@@ -64,4 +64,34 @@ public enum TileWorldRefusal
     // World validation.
     /// <summary>Refuses a document with semantic validation issues.</summary>
     WorldValidationFailed,
+
+    // World files and manifest admission.
+    /// <summary>Refuses a save when a stale region file cannot be deleted.</summary>
+    WorldStaleRegionDeleteFailed,
+    /// <summary>Refuses loading a world manifest that cannot be read.</summary>
+    ManifestReadFailed,
+    /// <summary>Refuses a manifest whose JSON root is not an object.</summary>
+    ManifestNotObject,
+    /// <summary>Refuses manifest JSON that cannot be parsed or deserialized.</summary>
+    ManifestJsonMalformed,
+    /// <summary>Refuses a manifest with no format version.</summary>
+    ManifestFormatVersionMissing,
+    /// <summary>Refuses a manifest whose format version is not an integer.</summary>
+    ManifestFormatVersionNotInteger,
+    /// <summary>Refuses a manifest newer than the engine's supported format version.</summary>
+    ManifestFormatVersionUnsupported,
+    /// <summary>Refuses a manifest requiring an unregistered migration step.</summary>
+    ManifestMigrationMissing,
+    /// <summary>Refuses a manifest migration that returns no JSON object.</summary>
+    ManifestMigrationReturnedNull,
+    /// <summary>Refuses a manifest that deserializes to no manifest value.</summary>
+    ManifestEmpty,
+    /// <summary>Refuses a manifest whose plane count is below one.</summary>
+    ManifestPlaneCountInvalid,
+    /// <summary>Refuses a manifest whose tile size is not positive.</summary>
+    ManifestTileSizeInvalid,
+    /// <summary>Refuses a manifest with a missing or blank world id.</summary>
+    ManifestIdMissing,
+    /// <summary>Refuses loading a region file that cannot be read.</summary>
+    RegionReadFailed,
 }

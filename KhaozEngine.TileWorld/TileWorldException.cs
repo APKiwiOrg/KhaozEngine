@@ -64,7 +64,8 @@ public sealed class TileWorldException : Exception
     /// <summary>The object's or marker's refused plane, or the plane containing a refused dense layer.</summary>
     public int? Plane { get; init; }
 
-    /// <summary>The document's plane count for an object or marker plane refusal.</summary>
+    /// <summary>The document's plane count for an object or marker plane refusal, or the manifest's invalid
+    /// plane count for <see cref="TileWorldRefusal.ManifestPlaneCountInvalid"/>.</summary>
     public int? PlaneCount { get; init; }
 
     /// <summary>The refused marker's name.</summary>
@@ -73,8 +74,24 @@ public sealed class TileWorldException : Exception
     /// <summary>The coordinate stored in a region file that disagrees with <see cref="Region"/>.</summary>
     public RegionCoord? ActualRegion { get; init; }
 
-    /// <summary>The JSON path reported by the parser for malformed region data, when available.</summary>
+    /// <summary>The refused manifest field, or the parser's JSON path for malformed region or manifest data,
+    /// when available.</summary>
     public string? Field { get; init; }
+
+    /// <summary>The non-positive tile size refused by manifest admission.</summary>
+    public float? TileSize { get; init; }
+
+    /// <summary>The manifest's original format version for an unsupported version or missing migration.</summary>
+    public int? FormatVersion { get; init; }
+
+    /// <summary>The engine's supported manifest version for an unsupported-version refusal.</summary>
+    public int? SupportedFormatVersion { get; init; }
+
+    /// <summary>The source version of the missing or null-returning manifest migration step.</summary>
+    public int? MigrationFrom { get; init; }
+
+    /// <summary>The target version of the missing or null-returning manifest migration step.</summary>
+    public int? MigrationTo { get; init; }
 
     /// <summary>The dense layer refused, such as heights, underlay or settings.</summary>
     public string? LayerName { get; init; }

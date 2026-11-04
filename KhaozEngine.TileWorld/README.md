@@ -84,6 +84,18 @@ save leaves what it already wrote, and the next load refuses the world with `Reg
 `TileWorldException.SourceName` identifies the first disagreeing file, `Region` identifies its coordinate,
 and `ExpectedHash` and `ActualHash` carry the manifest and file-byte hashes.
 
+Manifest loading distinguishes read, JSON, format-version, migration and field admission failures through
+`TileWorldRefusal`. Each carries the manifest path in `SourceName`. `ManifestJsonMalformed` retains the
+original `JsonException` and its nullable JSON path in `Field`. Required or invalid manifest fields use
+their property name in `Field`, with the refused `PlaneCount` or `TileSize` where applicable.
+`ManifestFormatVersionUnsupported` carries the requested `FormatVersion` and `SupportedFormatVersion`.
+`ManifestMigrationMissing` carries the original `FormatVersion` and the missing step's `MigrationFrom`
+and `MigrationTo`. `ManifestMigrationReturnedNull` carries the step's `MigrationFrom` and `MigrationTo`.
+`ManifestNotObject` distinguishes a non-object JSON root from `ManifestEmpty`, a null deserialization result.
+`ManifestReadFailed`, `RegionReadFailed` and `WorldStaleRegionDeleteFailed` retain their original I/O cause
+in `InnerException`. The region read and stale-delete failures also carry the file path and region coordinate.
+The [refusal table](#refusals) lists each reason and identifier.
+
 Foliage layers are an optional manifest block. Their density bytes use base64 and retain the row convention
 above. An empty layer list is omitted, so old world JSON and old world hashes stay unchanged. Non-empty foliage
 is part of `TileWorldHash.OfWorld`, including every placement and exclusion setting. `TileWorldSource.Open`
@@ -125,7 +137,7 @@ at the door. `OfWorld` is unchanged, so moving a gate to the composed digest is 
 ## Refusals
 
 `TileWorldException` retains its exact type and both message-only constructors. Use `Reason` and the
-identifiers below to distinguish region residency, content, manifest-region, object, marker, dense-layer,
+identifiers below to distinguish region residency, content, world-file, manifest-region, object, marker, dense-layer,
 embedded-schema and validation refusals.
 Messages remain developer prose. `Reason` is nullable only for a message-only instance built outside the
 engine. Its reason-taking constructors also accept an original cause through `InnerException`.
@@ -145,6 +157,20 @@ region file and is null for these in-memory attachment, restoration and save che
 | `ManifestRegionDuplicate` | A repeated region coordinate in `Open` or `OfManifestRegions` | `Region`, plus `SourceName` for `Open` |
 | `ManifestRegionHashMissing` | A null region hash passed to `OfManifestRegions` | `Region` |
 | `RegionHashMismatch` | Region bytes that disagree with the manifest's hash | `Region`, `SourceName`, `ExpectedHash`, `ActualHash` |
+| `WorldStaleRegionDeleteFailed` | A save whose stale region file cannot be deleted | `SourceName`, `Region`, original `InnerException` |
+| `ManifestReadFailed` | A world manifest that cannot be read | `SourceName`, original `InnerException` |
+| `ManifestNotObject` | A manifest whose JSON root is not an object | `SourceName` |
+| `ManifestJsonMalformed` | Manifest JSON that cannot be parsed or deserialized | `SourceName`, nullable parser path in `Field`, original `JsonException` in `InnerException` |
+| `ManifestFormatVersionMissing` | A manifest with no format version | `SourceName`, `Field` = `formatVersion` |
+| `ManifestFormatVersionNotInteger` | A manifest whose format version is not an integer | `SourceName`, `Field` = `formatVersion` |
+| `ManifestFormatVersionUnsupported` | A manifest newer than the supported format | `SourceName`, `FormatVersion`, `SupportedFormatVersion` |
+| `ManifestMigrationMissing` | A manifest requiring an unregistered migration step | `SourceName`, original `FormatVersion`, `MigrationFrom`, `MigrationTo` |
+| `ManifestMigrationReturnedNull` | A migration that returns no JSON object | `SourceName`, `MigrationFrom`, `MigrationTo` |
+| `ManifestEmpty` | A manifest that deserializes to no value | `SourceName` |
+| `ManifestPlaneCountInvalid` | A manifest whose plane count is below one | `SourceName`, `Field` = `planeCount`, `PlaneCount` |
+| `ManifestTileSizeInvalid` | A manifest whose tile size is not positive | `SourceName`, `Field` = `tileSize`, `TileSize` |
+| `ManifestIdMissing` | A manifest with a missing or blank world id | `SourceName`, `Field` = `id` |
+| `RegionReadFailed` | A region file that cannot be read | `SourceName`, `Region`, original `InnerException` |
 | `RegionPlaneCountMismatch` | A region whose plane count differs from the document | `Region`, `ActualPlaneCount`, `ExpectedPlaneCount`, plus `SourceName` on parse |
 | `RegionObjectOutsideBounds` | An object anchored outside its containing region | `Region`, `ObjectId`, `ArchetypeId`, `Tile`, plus `SourceName` on parse |
 | `RegionObjectPlaneOutsideRange` | An object on a plane the document does not have | `Region`, `ObjectId`, `ArchetypeId`, `Plane`, `PlaneCount`, plus `SourceName` on parse |

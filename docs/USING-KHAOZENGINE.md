@@ -12762,6 +12762,24 @@ for duplicate rows. `Open` also carries the manifest path in `SourceName`. The h
 `ActualHash`. Messages are developer prose. Both message-only constructors remain available to consumers,
 and `Reason` is null only for such an externally constructed instance.
 
+World-file I/O and manifest admission also retain `TileWorldException`. `ManifestReadFailed` and
+`RegionReadFailed` carry the refused file path in `SourceName` and the original cause in `InnerException`.
+`RegionReadFailed` also carries `Region`. A save that cannot delete a stale region uses
+`WorldStaleRegionDeleteFailed` with `SourceName`, `Region` and the original cause. It still leaves dirty
+regions dirty until the new manifest lands.
+
+Manifest parsing uses `ManifestNotObject` for a non-object JSON root and `ManifestJsonMalformed` for parse
+or deserialization errors, with `SourceName`, the parser's nullable JSON path in `Field` and the original
+`JsonException` in `InnerException`. A null deserialization result uses `ManifestEmpty` and `SourceName`.
+`ManifestFormatVersionMissing` and `ManifestFormatVersionNotInteger` carry `SourceName` and
+`Field = "formatVersion"`. `ManifestFormatVersionUnsupported` carries `SourceName`, the requested
+`FormatVersion` and `SupportedFormatVersion`. `ManifestMigrationMissing` carries `SourceName`, the
+original `FormatVersion`, `MigrationFrom` and `MigrationTo`. `ManifestMigrationReturnedNull` carries
+`SourceName`, `MigrationFrom` and `MigrationTo`. `ManifestPlaneCountInvalid`, `ManifestTileSizeInvalid`
+and `ManifestIdMissing` carry `SourceName` and `Field` naming `planeCount`, `tileSize` or `id`, respectively.
+The first two also carry the refused `PlaneCount` or `TileSize`. These reasons pass through eager
+`TileWorldFile.Load` and streaming `TileWorldSource.Open` without changing their identity.
+
 Region parsing, saving, attachment and undo restoration share `RegionPlaneCountMismatch` with `Region`,
 `ActualPlaneCount` and `ExpectedPlaneCount`. Parse and save share `RegionObjectOutsideBounds`,
 `RegionObjectPlaneOutsideRange`, `RegionMarkerOutsideBounds` and `RegionMarkerPlaneOutsideRange`.

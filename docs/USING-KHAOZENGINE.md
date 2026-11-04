@@ -7204,6 +7204,22 @@ parts contain only `id`, `kind` and `mesh`. Unknown or duplicate members are ref
 write the original canonical format-1 bytes and keep their semantic hashes. Mixed or skinned sets
 write format 2. Reference this package explicitly from headless publishers.
 
+Set constructor admission throws `AttachmentSetArgumentException`, which remains catchable as
+`ArgumentException` and retains `ParamName`. `ValidateReferences` and `AttachmentSetJson.Parse`
+throw `AttachmentSetDataException`, derived from `MalformedDataException`. Both family types carry
+non-nullable `AttachmentSetRefusal Reason` and the part, mesh, hash, joint or schema identifiers
+listed in the [set refusal table](../KhaozEngine.Attachments/README.md#set-refusals).
+Catch `MalformedDataException` where a set-data caller previously caught `InvalidDataException`.
+Plain null-argument and source-name checks stay BCL.
+
+The JSON wrapper preserves a known set reason and every identifier, including a constructor's
+`ParamName`, adds `SourceName` and keeps the original as `InnerException`. Native syntax and
+framework accessor failures use `JsonMalformed` and `JsonValueShapeInvalid`. For schema checks,
+`JsonPath` names the canonical value location, or the containing object alongside `PropertyName` for missing, duplicate
+and unknown properties. `PartIndex` and `ComponentIndex` are zero-based. `ActualCount` is null for
+a non-array transform and `ActualHash` is null for a missing reference. `AttachmentSetCache.Get`
+propagates these JSON refusals before mesh reads or uploads. Messages remain developer prose.
+
 `AttachmentGlb.ValidateRigidEmbedded` and `ValidateSkinnedEmbedded` check self-contained glTF 2.0
 GLBs before import. The garment policy requires one embedded buffer, exactly one skin referenced by
 every mesh node, unique non-blank joint names and at most 128 joints. Every primitive needs

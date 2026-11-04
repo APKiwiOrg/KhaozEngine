@@ -78,8 +78,10 @@ GLB preflight propagates `AttachmentGlbContainerDataException`, `AttachmentAcces
 `AttachmentHierarchyDataException`, `AttachmentRigidGeometryDataException` and
 `AttachmentSkinnedGeometryDataException` from `Get`, including their `Reason`, `SourceName` and identifiers.
 Catch `MalformedDataException` for these families. The [GLB refusal tables](../KhaozEngine.Attachments/README.md#glb-refusals)
-list their members. Definition and binding refusals still use `InvalidDataException`
-until their own families are converted.
+list their members. Definition JSON admission propagates `AttachmentSetDataException` with
+`AttachmentSetRefusal`, `SourceName` and its identifiers. It also derives from `MalformedDataException`.
+The [set refusal table](../KhaozEngine.Attachments/README.md#set-refusals) lists its members.
+Binding refusals still use `InvalidDataException` until their own family is converted.
 
 ```csharp
 using var scene = new Scene3D(device, output);

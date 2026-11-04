@@ -54,8 +54,9 @@ Format 2 requires `kind` on every part, using exactly `"rigid"` or `"skinned"`. 
 
 The example hash is a placeholder. Hash the exact self-contained GLB bytes. `local` contains 16
 row-major finite numbers and must be affine and invertible. Unknown or duplicate members, missing
-fields, unsupported versions and invalid parts throw `InvalidDataException` with source context.
-Invalid constructor arguments throw `ArgumentException`.
+fields, unsupported versions and invalid parts throw `AttachmentSetDataException` with `SourceName`.
+Invalid constructor definitions throw `AttachmentSetArgumentException`. Both carry `AttachmentSetRefusal`
+and the identifiers listed in [Set refusals](#set-refusals).
 
 `Write(definition)` emits format 1 whenever all parts are rigid, even after parsing format 2.
 Existing canonical format-1 bytes and semantic hashes stay unchanged. A set containing skinned parts
@@ -92,6 +93,56 @@ Unsigned byte and unsigned short joints, float or normalized unsigned byte/short
 views and sparse overrides are supported. Accessor and sparse ranges are checked against the declared
 embedded buffer before reading. Optional inverse-bind accessors must contain one finite MAT4 per
 joint. Host joint-name mapping and bind-pose compatibility are renderer-level checks.
+
+## Set refusals
+
+`AttachmentSetArgumentException` derives from `ArgumentException` for constructor admission.
+`AttachmentSetDataException` derives from `MalformedDataException` for JSON and reference admission.
+Both require a non-nullable `AttachmentSetRefusal Reason`. Constructor refusals retain `ParamName`.
+Plain null-argument and source-name checks retain their BCL types.
+
+`AttachmentSetJson.Parse` throws `AttachmentSetDataException` for every content refusal. Its wrapper
+preserves a known set reason and every identifier, adds `SourceName`, prefixes the developer message
+with `sourceName: message` and keeps the original as `InnerException`. A constructor refusal's
+`ParamName` is also copied onto the data exception. Native JSON syntax failures use `JsonMalformed`,
+and framework value-access failures use `JsonValueShapeInvalid`. Catch `MalformedDataException`
+where callers previously caught `InvalidDataException` for set data. The sealed BCL type cannot be a base.
+`AttachmentSetCache.Get` propagates these JSON refusals before mesh reads or uploads.
+
+For schema checks, `JsonPath` uses `$` for the root and identifies the refused value. Missing,
+duplicate and unknown properties identify their containing object plus `PropertyName`. `PartIndex` and
+`ComponentIndex` are zero-based. `ActualCount` is null when a local transform is not an array.
+`ActualHash` is null for a missing mesh reference. Messages remain developer prose.
+
+Every JSON refusal also carries `SourceName`. Direct constructor and reference checks have no source name.
+
+| Reason | Refuses | Identifiers |
+|---|---|---|
+| `PartsEmpty` | a set with no parts. | `PartCount` |
+| `PartNull` | a null part in the set. | `PartIndex` |
+| `PartIdInvalidOrDuplicate` | a zero or repeated part id. | `PartId`, `PartIndex` |
+| `PartKindUnsupported` | an unsupported attachment-part runtime kind. | `PartId`, `ActualType` |
+| `MeshKeyInvalid` | an unsafe or malformed mesh asset key. | `PartId`, `MeshKey` |
+| `MeshHashInvalid` | a mesh hash that is not lowercase SHA-256. | `PartId`, `MeshKey`, `DeclaredHash` |
+| `JointNameEmpty` | a rigid part without a joint name. | `PartId` |
+| `JointNameMalformedUtf16` | a rigid joint name with malformed UTF-16. | `PartId`, `JointName` |
+| `LocalTransformInvalid` | a non-finite non-affine or singular local transform. | `PartId` |
+| `MeshHashConflict` | one mesh key declared with conflicting hashes. | `PartId`, `MeshKey`, `DeclaredHash`, `ExistingHash` |
+| `JointReferenceUnresolved` | a joint outside the provided ordinal reference set. | `PartId`, `JointName` |
+| `MeshReferenceMissingOrHashMismatch` | a mesh absent from the reference closure or with a different hash. | `PartId`, `MeshKey`, `ExpectedHash`, `ActualHash` |
+| `FormatVersionUnsupported` | an unsupported attachment JSON version. | `JsonPath`, `FormatVersion` |
+| `PartsNotArray` | a parts member that is not an array. | `JsonPath` |
+| `JsonPartKindUnsupported` | an unsupported authored attachment kind. | `JsonPath`, `Kind` |
+| `JsonPartIdInvalid` | a part id outside the unsigned integer representation. | `JsonPath` |
+| `LocalTransformLengthMismatch` | a local transform with other than sixteen numeric entries. | `JsonPath`, `ActualCount`, `ExpectedCount` |
+| `LocalTransformComponentInvalid` | a non-finite or non-numeric local transform component. | `JsonPath`, `ComponentIndex` |
+| `JsonObjectRequired` | a schema value that is not an object. | `JsonPath` |
+| `JsonPropertyDuplicate` | a repeated property in an attachment JSON object. | `JsonPath`, `PropertyName` |
+| `JsonPropertyUnknown` | an unknown property at an attachment JSON schema location. | `JsonPath`, `PropertyName` |
+| `JsonPropertyMissing` | a required property absent from attachment JSON. | `JsonPath`, `PropertyName` |
+| `JsonStringRequired` | a non-string attachment schema member. | `JsonPath`, `PropertyName` |
+| `JsonMalformed` | malformed JSON syntax while retaining the caller source name. | `InnerException` |
+| `JsonValueShapeInvalid` | a JSON value shape rejected by a framework accessor. | `InnerException` |
 
 ## GLB refusals
 

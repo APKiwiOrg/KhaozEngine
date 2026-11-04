@@ -16666,6 +16666,29 @@ SKIPS it rather than failing, which is the forward compatibility the wire wants 
 never arrive, movement and the owner route and the display name all keep working, and nothing anywhere says a
 thing.
 
+Tile component refusals carry `TileComponentCodecRefusal Reason` and typed identifiers. Encoder size refusals
+throw `TileComponentCodecArgumentException`, an `ArgumentException` subtype keeping `ParamName = "v"`.
+`RouteWriteLimitExceeded` carries `ActualCount` and `MaximumCount`. `InstanceWriteLimitExceeded` carries
+`ActualByteCount` and `MaximumByteCount`.
+
+Malformed component data throws `TileComponentCodecDataException`, derived from `MalformedDataException`.
+This replaces the sealed `InvalidDataException` catch contract. `RouteReadLimitExceeded` and
+`NameReadLimitExceeded` carry the declared count and its limit. `RoutePayloadTruncated` and
+`NamePayloadTruncated` carry the declared count and `AvailableByteCount`. `RouteStreamShortRead` and
+`NameStreamShortRead` carry the declared count and `ActualReadCount`. Route counts use `DeclaredCount` and
+`MaximumCount`, while UTF-8 name counts use `DeclaredByteCount` and `MaximumByteCount`. `PlaneOutsideWorld`
+carries `ComponentName`, `Plane` and `PlaneCount`. The [codec refusal table](../KhaozEngine.TileWorld.Netcode/README.md#component-codec-refusals)
+lists all reasons and their identifiers.
+
+Catch `MalformedDataException` around direct `ClientReplicationView.Apply` or `ApplyDelta` calls that use either
+`TileProtocol.CreateRegistry` overload. Keep an `InvalidDataException` catch too when another source still raises
+it. `TryApply`, `TryApplyRetainingUnknown` and `TryApplyDelta` retain their false/error contract. Format 2 staging
+wraps codec faults in `DeltaRebuildException` with `Failure = MalformedPacket` and preserves the original as
+`InnerException`. `ClientDeltaRebuild.TryApply` still maps that failure to `Invalid`. A `SnapshotBlobReader`
+built-in resolver that invokes a codec preserves the fault inside its `InvalidOperationException`.
+`SnapshotWriter` encoding methods can propagate the argument subtype. Frame `TryDecode` methods and the
+item-instance component's total reader retain their existing behavior.
+
 `Presenter` starts as a placeholder and is REPLACED once the document is loaded
 (`client.Presenter = new TilePresenter(document)`), so it carries the world's real tile size and plane height and
 puts every pose on the world's authored ground rather than on the plane floor the placeholder draws at.

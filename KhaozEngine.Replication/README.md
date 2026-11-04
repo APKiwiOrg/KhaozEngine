@@ -117,6 +117,11 @@ area-of-interest deltas over a reliable channel, and opt-in format 2 acknowledge
   persistence-restore variant: it applies non-throwing AND collects every unknown **extension** frame it would
   otherwise skip as a raw `RetainedComponent` (net id + type id + payload), so the caller (cell persistence) can
   retain and re-persist it verbatim instead of silently dropping data at rest under a registry downgrade.
+  Malformed component codecs can throw a family subtype of `MalformedDataException`. Catch that base around
+  direct `Apply` or `ApplyDelta` calls. In particular, tile component codecs now throw
+  `TileComponentCodecDataException` instead of the sealed `InvalidDataException`. The three `TryApply` variants
+  still return false and an error for those faults. A built-in payload resolver invoked by `SnapshotBlobReader`
+  preserves such a fault as the inner exception of its `InvalidOperationException`.
 - **`SnapshotBlobReader` / `SnapshotBlobWriter`** (since 9.33.0) - walk and rebuild the snapshot wire format
   (`[count][per entity: netId + (typeId,[len],payload).. + 0]`) into structured entities/components, so a cell-blob
   migration can map / drop / transform per-component payloads without hand-parsing the stream. Extension frames
@@ -227,6 +232,9 @@ packet or acknowledgement never strands a value, a component or an entity.
   `MalformedPacket` (malformed bytes or an unknown built-in) and `CapacityExceeded` are terminal, while
   `SequenceAmbiguous` is ignored like a stale packet. `LatestAcceptedId` and `AckTarget` name the newest accepted id.
   `Reset()` retires the current epoch, so a later `ExpectEpoch` must name a greater one.
+  A codec fault during projection staging is preserved as the `InnerException` of a `DeltaRebuildException` with
+  `Failure = MalformedPacket`. This includes family subtypes of `MalformedDataException`, so the original reason
+  and identifiers remain available at the wrapping boundary.
 - **What an acknowledgement means.** The exact immutable projection was reconstructed, validated and retained, not
   merely that a packet arrived. The live world is never a baseline, because presentation may have changed it.
 - **Publication.** An accepted projection replaces each entity's whole replicated component set: absent net ids

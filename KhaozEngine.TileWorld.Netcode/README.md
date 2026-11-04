@@ -153,6 +153,33 @@ check runs at server construction. The footprint check is shared by `TileActorHo
 
 Use these members to distinguish refusals and read their values. Messages remain developer prose.
 
+## Component codec refusals
+
+`TileComponentCodecArgumentException` derives from `ArgumentException` and keeps `ParamName = "v"` on both
+encoder size refusals. `TileComponentCodecDataException` derives from `MalformedDataException`. Both carry a
+non-nullable `TileComponentCodecRefusal Reason`. Messages remain developer prose.
+
+| Reason | What it refuses | Identifiers |
+| --- | --- | --- |
+| `RouteWriteLimitExceeded` | Encoding a route above the wire step limit | `ActualCount`, `MaximumCount`, `ParamName` |
+| `RouteReadLimitExceeded` | A declared route count above the wire limit | `DeclaredCount`, `MaximumCount` |
+| `RoutePayloadTruncated` | A route count larger than its bounded component payload | `DeclaredCount`, `AvailableByteCount` |
+| `RouteStreamShortRead` | An unbounded route stream returning fewer bytes than declared | `DeclaredCount`, `ActualReadCount` |
+| `NameReadLimitExceeded` | A declared UTF-8 name length above the wire limit | `DeclaredByteCount`, `MaximumByteCount` |
+| `NamePayloadTruncated` | A name length larger than its bounded component payload | `DeclaredByteCount`, `AvailableByteCount` |
+| `NameStreamShortRead` | An unbounded name stream returning fewer bytes than declared | `DeclaredByteCount`, `ActualReadCount` |
+| `InstanceWriteLimitExceeded` | Encoding an item-instance payload above the wire byte limit | `ActualByteCount`, `MaximumByteCount`, `ParamName` |
+| `PlaneOutsideWorld` | A whole-int ground-item or pending-command plane outside the configured world | `ComponentName`, `Plane`, `PlaneCount` |
+
+This is a breaking catch change for malformed component data, which previously threw the sealed
+`InvalidDataException`. Catch `MalformedDataException` for codecs installed by either `TileProtocol.CreateRegistry`
+overload. Direct `ClientReplicationView.Apply` and `ApplyDelta` can propagate the data refusal. `TryApply`,
+`TryApplyRetainingUnknown` and `TryApplyDelta` keep their false/error recovery contract. Format 2 staging keeps the
+codec fault as the `InnerException` of `DeltaRebuildException` with `Failure = MalformedPacket`, which
+`ClientDeltaRebuild.TryApply` maps to `Invalid`. A `SnapshotBlobReader` built-in resolver that invokes a codec keeps
+the fault inside its `InvalidOperationException`. `SnapshotWriter` encoding methods can propagate the argument
+subtype. Frame `TryDecode` methods and the total item-instance reader retain their existing behavior.
+
 ## The types
 
 **State and commands**

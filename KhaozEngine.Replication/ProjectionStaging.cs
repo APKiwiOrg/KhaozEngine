@@ -106,7 +106,7 @@ internal sealed class ProjectionStaging
         catch (Exception ex) when (ex is not DeltaRebuildException)
         {
             throw new DeltaRebuildException(DeltaRebuildFailure.MalformedPacket,
-                $"Type id {component.TypeId} payload did not decode: {ex.Message}");
+                $"Type id {component.TypeId} payload did not decode: {ex.Message}", ex);
         }
         finally
         {
@@ -148,7 +148,7 @@ internal sealed class ProjectionStaging
         catch (Exception ex)
         {
             throw new DeltaRebuildException(DeltaRebuildFailure.MalformedPacket,
-                $"Built-in type id {typeId} did not decode from the remaining body: {ex.Message}");
+                $"Built-in type id {typeId} did not decode from the remaining body: {ex.Message}", ex);
         }
         finally
         {

@@ -256,7 +256,12 @@ public class TileReplicationTests
         // nobody routed it to, with a fresh wrong answer every snapshot. The cap lives in TileMoveSimulator, so a
         // route this long cannot come from one, and a hand-built one is a local bug worth the stack.
         var tooLong = new TileDirection[TileProtocol.MaxRouteSteps + 1];
-        Assert.Throws<ArgumentException>(() => Snapshot(reg, tooLong));
+        var refusal = Assert.Throws<TileComponentCodecArgumentException>(() => Snapshot(reg, tooLong));
+        Assert.IsAssignableFrom<ArgumentException>(refusal);
+        Assert.Equal(TileComponentCodecRefusal.RouteWriteLimitExceeded, refusal.Reason);
+        Assert.Equal("v", refusal.ParamName);
+        Assert.Equal(tooLong.Length, refusal.ActualCount);
+        Assert.Equal(TileProtocol.MaxRouteSteps, refusal.MaximumCount);
     }
 
     static byte[] Snapshot(ReplicationRegistry reg, TileDirection[] steps)
@@ -430,9 +435,20 @@ public class TileReplicationTests
             ? GroundItemBytes(plane)
             : PendingCommandBytes(plane);
 
-        Assert.False(new ClientReplicationView(TileProtocol.CreateRegistry(planeCount: 4))
+        var registry = TileProtocol.CreateRegistry(planeCount: 4);
+        var refusal = Assert.Throws<TileComponentCodecDataException>(() => new ClientReplicationView(registry)
+            .Apply(new World(), OneEntity(typeId, payload)));
+        Assert.Equal(TileComponentCodecRefusal.PlaneOutsideWorld, refusal.Reason);
+        Assert.Equal(typeId == TileProtocol.TileGroundItemTypeId ? nameof(TileGroundItem) : nameof(PendingTileCommand),
+            refusal.ComponentName);
+        Assert.Equal(plane, refusal.Plane);
+        Assert.Equal(4, refusal.PlaneCount);
+        Assert.False(new ClientReplicationView(registry)
             .TryApply(new World(), OneEntity(typeId, payload), out string? error));
-        Assert.Contains("plane", error!, StringComparison.OrdinalIgnoreCase);
+        Assert.NotNull(error);
+
+        byte[] valid = typeId == TileProtocol.TileGroundItemTypeId ? GroundItemBytes(3) : PendingCommandBytes(3);
+        Assert.True(new ClientReplicationView(registry).TryApply(new World(), OneEntity(typeId, valid), out _));
     }
 
     [Fact]
@@ -465,23 +481,36 @@ public class TileReplicationTests
         Assert.Equal(300, world.Get<TileGroundItem>(ground).Plane);
     }
 
-    [Fact]
-    public void A_component_frame_that_lies_about_its_length_fails_the_apply_rather_than_reading_short()
+    [Theory]
+    [InlineData(TileProtocol.TileRouteStateTypeId, TileProtocol.MaxRouteSteps,
+        TileComponentCodecRefusal.RouteReadLimitExceeded)]
+    [InlineData(TileProtocol.TileIdentityTypeId, TileProtocol.MaxDisplayNameBytes,
+        TileComponentCodecRefusal.NameReadLimitExceeded)]
+    public void A_component_frame_that_lies_about_its_length_fails_the_apply_rather_than_reading_short(
+        ushort typeId, int maximum, TileComponentCodecRefusal reason)
     {
-        // 21 bytes, whose route header claims 65535 steps behind the two it carries. Read as a short route it
-        // answers TRUE and rebuilds a walk out of whatever bytes followed, and the clamp-and-skip path this
-        // replaces allocated the 64 KB the ushort asked for while doing it, per component, per entity. Nothing
-        // legitimate declares a length it does not carry, so the frame is malformed and the apply says so, which
-        // is the caller's disconnect signal.
-        byte[] route = OneEntity(TileProtocol.TileRouteStateTypeId, 0xFF, 0xFF, 3, 3);
-        Assert.Equal(21, route.Length);
-        Assert.False(new ClientReplicationView(TileProtocol.CreateRegistry())
-            .TryApply(new World(), route, out string? error));
+        // All declared bytes are present, so only the wire cap is broken. The control fixes that one defect.
+        byte[] payload = CountedPayload(maximum + 1);
+        byte[] frame = OneEntity(typeId, payload);
+        var registry = TileProtocol.CreateRegistry();
+        var refusal = Assert.Throws<TileComponentCodecDataException>(() => new ClientReplicationView(registry)
+            .Apply(new World(), frame));
+        Assert.IsAssignableFrom<MalformedDataException>(refusal);
+        Assert.Equal(reason, refusal.Reason);
+        if (typeId == TileProtocol.TileRouteStateTypeId)
+        {
+            Assert.Equal(maximum + 1, refusal.DeclaredCount);
+            Assert.Equal(maximum, refusal.MaximumCount);
+        }
+        else
+        {
+            Assert.Equal(maximum + 1, refusal.DeclaredByteCount);
+            Assert.Equal(maximum, refusal.MaximumByteCount);
+        }
+        Assert.False(new ClientReplicationView(registry).TryApply(new World(), frame, out string? error));
         Assert.NotNull(error);
-
-        byte[] name = OneEntity(TileProtocol.TileIdentityTypeId, 0xFF, 0xFF, (byte)'x');
-        Assert.False(new ClientReplicationView(TileProtocol.CreateRegistry())
-            .TryApply(new World(), name, out _));
+        Assert.True(new ClientReplicationView(registry)
+            .TryApply(new World(), OneEntity(typeId, CountedPayload(maximum)), out _));
     }
 
     [Theory]
@@ -498,19 +527,41 @@ public class TileReplicationTests
         var routeWorld = new World();
         byte[] route = LyingComponentThenNamedEntities(
             TileProtocol.TileRouteStateTypeId, new byte[] { 200, 0, 3, 3 }, followers);
+        var registry = TileProtocol.CreateRegistry();
+        var routeRefusal = Assert.Throws<TileComponentCodecDataException>(() => new ClientReplicationView(registry)
+            .Apply(new World(), route));
+        Assert.Equal(TileComponentCodecRefusal.RoutePayloadTruncated, routeRefusal.Reason);
+        Assert.Equal(200, routeRefusal.DeclaredCount);
+        Assert.Equal(2L, routeRefusal.AvailableByteCount);
         Assert.False(new ClientReplicationView(TileProtocol.CreateRegistry())
             .TryApply(routeWorld, route, out string? error));
-        Assert.Contains("200", error!);
+        Assert.NotNull(error);
         Assert.Empty(routeWorld.Query().With<TileRouteState>().Entities());
+        Assert.True(new ClientReplicationView(registry).TryApply(new World(), LyingComponentThenNamedEntities(
+            TileProtocol.TileRouteStateTypeId, new byte[] { 2, 0, 3, 3 }, followers), out _));
 
         // Same shape on the other declared length. 40 is UNDER the display-name cap, so the cap check waves it
         // through and only the payload bound is left to catch it.
         var nameWorld = new World();
         byte[] name = LyingComponentThenNamedEntities(
             TileProtocol.TileIdentityTypeId, new byte[] { 40, 0, (byte)'x' }, followers);
+        var nameRefusal = Assert.Throws<TileComponentCodecDataException>(() => new ClientReplicationView(registry)
+            .Apply(new World(), name));
+        Assert.Equal(TileComponentCodecRefusal.NamePayloadTruncated, nameRefusal.Reason);
+        Assert.Equal(40, nameRefusal.DeclaredByteCount);
+        Assert.Equal(1L, nameRefusal.AvailableByteCount);
         Assert.False(new ClientReplicationView(TileProtocol.CreateRegistry())
             .TryApply(nameWorld, name, out _));
         Assert.Empty(nameWorld.Query().With<TileIdentity>().Entities());
+        Assert.True(new ClientReplicationView(registry).TryApply(new World(), LyingComponentThenNamedEntities(
+            TileProtocol.TileIdentityTypeId, new byte[] { 1, 0, (byte)'x' }, followers), out _));
+    }
+
+    static byte[] CountedPayload(int count)
+    {
+        var payload = new byte[count + 2];
+        System.Buffers.Binary.BinaryPrimitives.WriteUInt16LittleEndian(payload, (ushort)count);
+        return payload;
     }
 
     [Fact]

@@ -39,7 +39,7 @@ internal sealed class ContactTerrainBandIndex
                     int z = dz > 0 ? e.Height - 1 - zi : zi, x = dx > 0 ? e.Width - 1 - xi : xi, nx = x + dx, nz = z + dz;
                     if ((uint)nx >= (uint)e.Width || (uint)nz >= (uint)e.Height) continue;
                     int next = nz * e.Width + nx;
-                    end[z * e.Width + x] = end[next] > 0 ? end[next] + 1 : mask[next] ? 1 : 0;
+                    end[z * e.Width + x] = mask[next] ? end[next] + 1 : 0;
                 }
             }
             _bands.Add((mask, ends)); Bytes += mask.Length * 33L;
@@ -50,7 +50,7 @@ internal sealed class ContactTerrainBandIndex
         int cell = z * _width + x, reach = 0;
         foreach (var band in _bands)
         {
-            if (!band.Mask[cell] || band.End[direction][cell] == 0) continue;
+            if (!band.Mask[cell]) continue;
             // More than one disconnected band reachable at the source is ambiguous.
             if (reach != 0) return 0;
             reach = Math.Min(Math.Max(_width, _height), band.End[direction][cell] + 1);

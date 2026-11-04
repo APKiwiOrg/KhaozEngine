@@ -1265,7 +1265,9 @@ capacity has a structured `PhysicsNavDescentEvidenceException` reason. No partia
 ordinary exit suppression, nearest eligible lower column, highest eligible layer, step-band stop and exact
 allowance subtraction. Connected steep geometry and the unchanged capsule/cell intersection helper derive its
 rasterized fringes and finite reach. Per-body directional band endpoints and a next-admitted-column index remove
-repeated band walks. There is no radius-only terrain horizon or universal height-over-slope reach formula.
+repeated band walks. Each ray stops at the first gap in its contiguous dilated band, with only the first downstream
+cell included. A later arm of the same connected component cannot bridge an unadmitted apron.
+There is no radius-only terrain horizon or universal height-over-slope reach formula.
 Gentle slopes receive no terrain extension. Each source still contributes at most eight candidates.
 
 `ContactTerrainDropCorridor` checks exact column coverage over the doubled-radius projection, first physical

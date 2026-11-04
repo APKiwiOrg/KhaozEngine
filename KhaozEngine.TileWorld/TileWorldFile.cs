@@ -58,21 +58,26 @@ public static partial class TileWorldFile
         foreach (TileRegion region in doc.Regions.Values)
         {
             if (region.Planes.Length != doc.PlaneCount)
-                throw new TileWorldException($"region {region.Coord}: has {region.Planes.Length} planes, the document has {doc.PlaneCount}, refusing to save an inconsistent world");
+                throw new TileWorldException(TileWorldRefusal.RegionPlaneCountMismatch, $"region {region.Coord}: has {region.Planes.Length} planes, the document has {doc.PlaneCount}, refusing to save an inconsistent world")
+                { Region = region.Coord, ActualPlaneCount = region.Planes.Length, ExpectedPlaneCount = doc.PlaneCount };
             TileRect rect = region.Coord.Rect;
             foreach (TileObject o in region.Objects)
             {
                 if (!rect.Contains(o.X, o.Z))
-                    throw new TileWorldException($"region {region.Coord}: object {o.Id} '{o.ArchetypeId}' is anchored at ({o.X}, {o.Z}), outside its own region, refusing to save a world no load would accept");
+                    throw new TileWorldException(TileWorldRefusal.RegionObjectOutsideBounds, $"region {region.Coord}: object {o.Id} '{o.ArchetypeId}' is anchored at ({o.X}, {o.Z}), outside its own region, refusing to save a world no load would accept")
+                    { Region = region.Coord, ObjectId = o.Id, ArchetypeId = o.ArchetypeId, Tile = o.Coord };
                 if ((uint)o.Plane >= (uint)doc.PlaneCount)
-                    throw new TileWorldException($"region {region.Coord}: object {o.Id} '{o.ArchetypeId}' is on plane {o.Plane}, the document has {doc.PlaneCount}, refusing to save a world no load would accept");
+                    throw new TileWorldException(TileWorldRefusal.RegionObjectPlaneOutsideRange, $"region {region.Coord}: object {o.Id} '{o.ArchetypeId}' is on plane {o.Plane}, the document has {doc.PlaneCount}, refusing to save a world no load would accept")
+                    { Region = region.Coord, ObjectId = o.Id, ArchetypeId = o.ArchetypeId, Plane = o.Plane, PlaneCount = doc.PlaneCount };
             }
             foreach (TileMarker m in region.Markers)
             {
                 if (!rect.Contains(m.X, m.Z))
-                    throw new TileWorldException($"region {region.Coord}: marker '{m.Name}' is at ({m.X}, {m.Z}), outside its own region, refusing to save a world no load would accept");
+                    throw new TileWorldException(TileWorldRefusal.RegionMarkerOutsideBounds, $"region {region.Coord}: marker '{m.Name}' is at ({m.X}, {m.Z}), outside its own region, refusing to save a world no load would accept")
+                    { Region = region.Coord, MarkerName = m.Name, Tile = m.Coord };
                 if ((uint)m.Plane >= (uint)doc.PlaneCount)
-                    throw new TileWorldException($"region {region.Coord}: marker '{m.Name}' is on plane {m.Plane}, the document has {doc.PlaneCount}, refusing to save a world no load would accept");
+                    throw new TileWorldException(TileWorldRefusal.RegionMarkerPlaneOutsideRange, $"region {region.Coord}: marker '{m.Name}' is on plane {m.Plane}, the document has {doc.PlaneCount}, refusing to save a world no load would accept")
+                    { Region = region.Coord, MarkerName = m.Name, Plane = m.Plane, PlaneCount = doc.PlaneCount };
             }
         }
         string regionsDir = Path.Combine(directory, RegionsDirectoryName);

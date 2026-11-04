@@ -12762,6 +12762,20 @@ for duplicate rows. `Open` also carries the manifest path in `SourceName`. The h
 `ActualHash`. Messages are developer prose. Both message-only constructors remain available to consumers,
 and `Reason` is null only for such an externally constructed instance.
 
+Region parsing, saving, attachment and undo restoration share `RegionPlaneCountMismatch` with `Region`,
+`ActualPlaneCount` and `ExpectedPlaneCount`. Parse and save share `RegionObjectOutsideBounds`,
+`RegionObjectPlaneOutsideRange`, `RegionMarkerOutsideBounds` and `RegionMarkerPlaneOutsideRange`.
+These carry the containing `Region`, the object's `ObjectId` and `ArchetypeId` or the marker's `MarkerName`,
+and either the full authored `Tile` for a bounds refusal or `Plane` and `PlaneCount` for a plane refusal.
+These save checks run before the first write. Parsing also sets `SourceName` to the region file path.
+Attachment, restoration and these save checks leave `SourceName` null.
+
+`RegionCoordinateMismatch` carries the manifest's expected `Region`, the file's `ActualRegion` and
+`SourceName`. `RegionFileEmpty` carries `SourceName` for JSON that deserializes to no region.
+`RegionJsonMalformed` carries `SourceName`, the parser's JSON path in nullable `Field`, and the original
+`JsonException` in `InnerException`. Use these members rather than message wording. The
+[TileWorld refusal table](../KhaozEngine.TileWorld/README.md#refusals) lists the identifiers for each reason.
+
 `source.FindMarker("spawn")` answers off the manifest's marker index with NO region read, which is what a client
 needs before it has streamed anything: `TileWorldDocument.FindMarker` walks LOADED regions only, so asking it
 first means materialising regions one at a time until one carries the marker and unloading the ones that did not.

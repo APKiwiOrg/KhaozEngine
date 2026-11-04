@@ -42,4 +42,34 @@ public sealed class TileWorldException : Exception
 
     /// <summary>The hash of the region bytes read for <see cref="TileWorldRefusal.RegionHashMismatch"/>.</summary>
     public string? ActualHash { get; init; }
+
+    /// <summary>The plane count stored in the refused region.</summary>
+    public int? ActualPlaneCount { get; init; }
+
+    /// <summary>The document's required plane count for a refused region.</summary>
+    public int? ExpectedPlaneCount { get; init; }
+
+    /// <summary>The refused object's document-unique id.</summary>
+    public long? ObjectId { get; init; }
+
+    /// <summary>The refused object's catalog archetype id.</summary>
+    public string? ArchetypeId { get; init; }
+
+    /// <summary>The refused object's or marker's authored tile address, including its known plane.</summary>
+    public TileCoord? Tile { get; init; }
+
+    /// <summary>The object's or marker's plane that lies outside the document's range.</summary>
+    public int? Plane { get; init; }
+
+    /// <summary>The document's plane count for an object or marker plane refusal.</summary>
+    public int? PlaneCount { get; init; }
+
+    /// <summary>The refused marker's name.</summary>
+    public string? MarkerName { get; init; }
+
+    /// <summary>The coordinate stored in a region file that disagrees with <see cref="Region"/>.</summary>
+    public RegionCoord? ActualRegion { get; init; }
+
+    /// <summary>The JSON path reported by the parser for malformed region data, when available.</summary>
+    public string? Field { get; init; }
 }

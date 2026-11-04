@@ -18,4 +18,22 @@ public enum TileWorldRefusal
     ManifestRegionHashMissing,
     /// <summary>Refuses region bytes whose hash differs from the manifest's stored hash.</summary>
     RegionHashMismatch,
+
+    // Region content.
+    /// <summary>Refuses a region whose plane count differs from the document.</summary>
+    RegionPlaneCountMismatch,
+    /// <summary>Refuses an object anchored outside its containing region.</summary>
+    RegionObjectOutsideBounds,
+    /// <summary>Refuses an object on a plane the document does not have.</summary>
+    RegionObjectPlaneOutsideRange,
+    /// <summary>Refuses a marker located outside its containing region.</summary>
+    RegionMarkerOutsideBounds,
+    /// <summary>Refuses a marker on a plane the document does not have.</summary>
+    RegionMarkerPlaneOutsideRange,
+    /// <summary>Refuses a region file whose coordinate differs from its manifest row.</summary>
+    RegionCoordinateMismatch,
+    /// <summary>Refuses a region file that decodes to no region.</summary>
+    RegionFileEmpty,
+    /// <summary>Refuses region JSON that cannot be parsed or deserialized.</summary>
+    RegionJsonMalformed,
 }

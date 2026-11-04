@@ -299,15 +299,31 @@ public class TileWorldDocumentTests
         Assert.Throws<ArgumentException>(() => doc.RestoreRegion(region));
     }
 
-    [Fact]
-    public void RestoreRegion_refuses_a_region_whose_plane_count_does_not_match()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void Attach_and_restore_refuse_a_region_whose_plane_count_does_not_match(bool restore)
     {
         var doc = new TileWorldDocument { Id = "w", DisplayName = "W", PlaneCount = 4 };
 
-        var ex = Assert.Throws<TileWorldException>(() => doc.RestoreRegion(new TileRegion(new RegionCoord(0, 0), 2)));
+        var coord = new RegionCoord(0, 0);
+        var ex = Assert.Throws<TileWorldException>(() =>
+        {
+            var region = new TileRegion(coord, 2);
+            if (restore) doc.RestoreRegion(region);
+            else doc.AttachRegion(region);
+        });
 
-        Assert.Contains("restore", ex.Message);
+        Assert.Equal(TileWorldRefusal.RegionPlaneCountMismatch, ex.Reason);
+        Assert.Equal(coord, ex.Region);
+        Assert.Equal(2, ex.ActualPlaneCount);
+        Assert.Equal(4, ex.ExpectedPlaneCount);
         Assert.Empty(doc.Regions);
+
+        var matching = new TileRegion(coord, 4);
+        if (restore) doc.RestoreRegion(matching);
+        else doc.AttachRegion(matching);
+        Assert.Same(matching, doc.GetRegion(coord));
     }
 
     [Fact]

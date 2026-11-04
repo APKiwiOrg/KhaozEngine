@@ -125,12 +125,16 @@ at the door. `OfWorld` is unchanged, so moving a gate to the composed digest is 
 ## Refusals
 
 `TileWorldException` retains its exact type and both message-only constructors. Use `Reason` and the
-identifiers below to distinguish region residency and manifest-region refusals. Messages remain developer
+identifiers below to distinguish region residency, content and manifest-region refusals. Messages remain developer
 prose. `Reason` is nullable only for a message-only instance built outside the engine. Its reason-taking
 constructors also accept an original cause through `InnerException`.
 
 Regions are planar. `Region` is a `RegionCoord?`, and `TileX` and `TileZ` are `int?` values set only when the
 guard received tile coordinates. They never imply a plane. A region-only operation leaves both null.
+For an authored object or marker outside its containing region, `Tile` carries its full address, including
+the plane supplied by that content. Region content is checked on parse and before the first save write.
+Region attachment and undo restoration also check plane counts. `SourceName` is set when parsing a named
+region file and is null for these in-memory attachment, restoration and save checks.
 
 | `TileWorldRefusal` reason | Refuses | Identifiers |
 | --- | --- | --- |
@@ -140,6 +144,14 @@ guard received tile coordinates. They never imply a plane. A region-only operati
 | `ManifestRegionDuplicate` | A repeated region coordinate in `Open` or `OfManifestRegions` | `Region`, plus `SourceName` for `Open` |
 | `ManifestRegionHashMissing` | A null region hash passed to `OfManifestRegions` | `Region` |
 | `RegionHashMismatch` | Region bytes that disagree with the manifest's hash | `Region`, `SourceName`, `ExpectedHash`, `ActualHash` |
+| `RegionPlaneCountMismatch` | A region whose plane count differs from the document | `Region`, `ActualPlaneCount`, `ExpectedPlaneCount`, plus `SourceName` on parse |
+| `RegionObjectOutsideBounds` | An object anchored outside its containing region | `Region`, `ObjectId`, `ArchetypeId`, `Tile`, plus `SourceName` on parse |
+| `RegionObjectPlaneOutsideRange` | An object on a plane the document does not have | `Region`, `ObjectId`, `ArchetypeId`, `Plane`, `PlaneCount`, plus `SourceName` on parse |
+| `RegionMarkerOutsideBounds` | A marker outside its containing region | `Region`, `MarkerName`, `Tile`, plus `SourceName` on parse |
+| `RegionMarkerPlaneOutsideRange` | A marker on a plane the document does not have | `Region`, `MarkerName`, `Plane`, `PlaneCount`, plus `SourceName` on parse |
+| `RegionCoordinateMismatch` | A region file whose coordinate differs from its manifest row | Expected `Region`, `ActualRegion`, `SourceName` |
+| `RegionFileEmpty` | A region file that deserializes to no region | `SourceName` |
+| `RegionJsonMalformed` | Region JSON that cannot be parsed or deserialized | `SourceName`, `Field` when the parser supplies a JSON path, original `JsonException` in `InnerException` |
 
 ## Catalogs and validation
 

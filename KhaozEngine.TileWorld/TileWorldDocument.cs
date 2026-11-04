@@ -74,19 +74,22 @@ public sealed partial class TileWorldDocument
     internal void AttachRegion(TileRegion region)
     {
         if (region.Planes.Length != PlaneCount)
-            throw new TileWorldException($"region {region.Coord}: has {region.Planes.Length} planes, the document has {PlaneCount}");
+            throw new TileWorldException(TileWorldRefusal.RegionPlaneCountMismatch, $"region {region.Coord}: has {region.Planes.Length} planes, the document has {PlaneCount}")
+            { Region = region.Coord, ActualPlaneCount = region.Planes.Length, ExpectedPlaneCount = PlaneCount };
         Attach(region);
     }
 
     /// <summary>Puts a region this document previously held back where it was, the undo of a region delete.
-    /// Same semantics as <see cref="AttachRegion"/> (the coordinate must be free) with a message that says
-    /// restore, because a plane-count mismatch here means the document's plane count moved under a command
-    /// rather than that a file on disk disagrees with the manifest.</summary>
+    /// Same semantics as <see cref="AttachRegion"/> (the coordinate must be free). A plane-count mismatch
+    /// carries <see cref="TileWorldRefusal.RegionPlaneCountMismatch"/>, <see cref="TileWorldException.Region"/>,
+    /// <see cref="TileWorldException.ActualPlaneCount"/> and <see cref="TileWorldException.ExpectedPlaneCount"/>.
+    /// Here the document's plane count moved under a command rather than a file disagreeing with its manifest.</summary>
     internal void RestoreRegion(TileRegion region)
     {
         ArgumentNullException.ThrowIfNull(region);
         if (region.Planes.Length != PlaneCount)
-            throw new TileWorldException($"region {region.Coord}: cannot restore a region with {region.Planes.Length} planes into a document with {PlaneCount}");
+            throw new TileWorldException(TileWorldRefusal.RegionPlaneCountMismatch, $"region {region.Coord}: cannot restore a region with {region.Planes.Length} planes into a document with {PlaneCount}")
+            { Region = region.Coord, ActualPlaneCount = region.Planes.Length, ExpectedPlaneCount = PlaneCount };
         Attach(region);
     }
 

@@ -226,15 +226,77 @@ public class TileWorldFileTests
         Assert.Equal(9, back.GetUnderlay(70, 6, 0));
     }
 
-    [Fact]
-    public void Parse_refuses_a_marker_on_a_plane_the_world_does_not_have()
+    [Theory]
+    [InlineData(true, true, TileWorldRefusal.RegionObjectOutsideBounds)]
+    [InlineData(true, false, TileWorldRefusal.RegionObjectPlaneOutsideRange)]
+    [InlineData(false, true, TileWorldRefusal.RegionMarkerOutsideBounds)]
+    [InlineData(false, false, TileWorldRefusal.RegionMarkerPlaneOutsideRange)]
+    public void Parse_refuses_an_object_or_marker_outside_its_region_or_planes(
+        bool isObject, bool outsideBounds, TileWorldRefusal reason)
     {
-        string json = "{\"rx\":0,\"rz\":0,\"planes\":[null,null,null,null],\"objects\":[]," +
-                      "\"markers\":[{\"name\":\"spawn\",\"x\":5,\"z\":5,\"plane\":9}]}";
-        byte[] bytes = Encoding.UTF8.GetBytes(json);
-        var ex = Assert.Throws<TileWorldException>(() => TileRegionFile.Parse(bytes, new RegionCoord(0, 0), 4, "crafted.json"));
-        Assert.Contains("spawn", ex.Message);
-        Assert.Contains("plane 9", ex.Message);
+        var coord = new RegionCoord(0, 0);
+        JsonNode json = JsonNode.Parse(TileRegionFile.WriteCanonical(Authored().GetRegion(coord)!))!;
+        JsonNode item = json[isObject ? "objects" : "markers"]![0]!;
+        item[outsideBounds ? "x" : "plane"] = outsideBounds ? 200 : 9;
+        byte[] bytes = Encoding.UTF8.GetBytes(json.ToJsonString());
+        var ex = Assert.Throws<TileWorldException>(() => TileRegionFile.Parse(bytes, coord, 4, "crafted.json"));
+        Assert.Equal(reason, ex.Reason);
+        Assert.Equal("crafted.json", ex.SourceName);
+        Assert.Equal(coord, ex.Region);
+        if (isObject)
+        {
+            Assert.Equal(1, ex.ObjectId);
+            Assert.Equal("tree", ex.ArchetypeId);
+        }
+        else Assert.Equal("spawn", ex.MarkerName);
+        if (outsideBounds) Assert.Equal(new TileCoord(200, isObject ? 4 : 8, 0), ex.Tile);
+        else
+        {
+            Assert.Equal(9, ex.Plane);
+            Assert.Equal(4, ex.PlaneCount);
+        }
+
+        item[outsideBounds ? "x" : "plane"] = outsideBounds ? (isObject ? 3 : 8) : 0;
+        TileRegion back = TileRegionFile.Parse(Encoding.UTF8.GetBytes(json.ToJsonString()), coord, 4, "crafted.json");
+        Assert.Equal(isObject ? new TileCoord(3, 4, 0) : new TileCoord(8, 8, 0),
+            isObject ? back.Objects.Single(o => o.Id == 1).Coord : Assert.Single(back.Markers).Coord);
+    }
+
+    [Theory]
+    [InlineData("null", TileWorldRefusal.RegionFileEmpty, null)]
+    [InlineData("{\"rx\":\"bad\",\"rz\":0,\"planes\":[null,null,null,null]}", TileWorldRefusal.RegionJsonMalformed, "$.rx")]
+    [InlineData("{\"rx\":1,\"rz\":2,\"planes\":[null,null,null,null]}", TileWorldRefusal.RegionCoordinateMismatch, null)]
+    [InlineData("{\"rx\":0,\"rz\":0,\"planes\":[null,null]}", TileWorldRefusal.RegionPlaneCountMismatch, null)]
+    public void Parse_refuses_a_region_header_with_its_source_and_structured_cause(
+        string json, TileWorldRefusal reason, string? field)
+    {
+        var coord = new RegionCoord(0, 0);
+        var ex = Assert.Throws<TileWorldException>(() =>
+            TileRegionFile.Parse(Encoding.UTF8.GetBytes(json), coord, 4, "header.json"));
+
+        Assert.Equal(reason, ex.Reason);
+        Assert.Equal("header.json", ex.SourceName);
+        if (reason == TileWorldRefusal.RegionJsonMalformed)
+        {
+            Assert.Equal(field, ex.Field);
+            Assert.IsType<System.Text.Json.JsonException>(ex.InnerException);
+        }
+        if (reason == TileWorldRefusal.RegionCoordinateMismatch)
+        {
+            Assert.Equal(coord, ex.Region);
+            Assert.Equal(new RegionCoord(1, 2), ex.ActualRegion);
+        }
+        if (reason == TileWorldRefusal.RegionPlaneCountMismatch)
+        {
+            Assert.Equal(coord, ex.Region);
+            Assert.Equal(2, ex.ActualPlaneCount);
+            Assert.Equal(4, ex.ExpectedPlaneCount);
+        }
+
+        TileRegion back = TileRegionFile.Parse(
+            "{\"rx\":0,\"rz\":0,\"planes\":[null,null,null,null]}"u8, coord, 4, "header.json");
+        Assert.Equal(coord, back.Coord);
+        Assert.Equal(4, back.Planes.Length);
     }
 
     [Fact]
@@ -265,14 +327,25 @@ public class TileWorldFileTests
         back.PlaneCount = 5;
         back.Regions[new RegionCoord(0, 0)].Dirty = true;
         var ex = Assert.Throws<TileWorldException>(() => TileWorldFile.Save(back, dir));
-        Assert.Contains("4 planes", ex.Message);
-        Assert.Contains("the document has 5", ex.Message);
+        Assert.Equal(TileWorldRefusal.RegionPlaneCountMismatch, ex.Reason);
+        Assert.Equal(new RegionCoord(0, 0), ex.Region);
+        Assert.Equal(4, ex.ActualPlaneCount);
+        Assert.Equal(5, ex.ExpectedPlaneCount);
         Assert.Equal(manifestBefore, File.ReadAllText(Path.Combine(dir, "world.json")));
         Assert.Equal(regionBefore, File.ReadAllText(Path.Combine(dir, "regions", "r_0_0.json")));
+
+        back.PlaneCount = 4;
+        TileWorldFile.Save(back, dir);
+        Assert.Equal(4, TileWorldFile.Load(dir).PlaneCount);
     }
 
-    [Fact]
-    public void Save_refuses_an_object_or_marker_a_load_would_reject_before_writing_anything()
+    [Theory]
+    [InlineData(true, true, TileWorldRefusal.RegionObjectOutsideBounds)]
+    [InlineData(true, false, TileWorldRefusal.RegionObjectPlaneOutsideRange)]
+    [InlineData(false, true, TileWorldRefusal.RegionMarkerOutsideBounds)]
+    [InlineData(false, false, TileWorldRefusal.RegionMarkerPlaneOutsideRange)]
+    public void Save_refuses_an_object_or_marker_a_load_would_reject_before_writing_anything(
+        bool isObject, bool outsideBounds, TileWorldRefusal reason)
     {
         using var tmp = new TempDir();
         string dir = tmp.Sub("world");
@@ -284,20 +357,43 @@ public class TileWorldFileTests
         // X and Z are public and settable, so an editor can walk an object out of its own region without ever
         // going through MoveObject. Parse refuses that on the way back in, so Save has to refuse it going out.
         TileObject tree = doc.FindObject(1)!;
-        tree.X = 200;
+        TileMarker marker = doc.FindMarker("spawn")!;
+        if (isObject)
+        {
+            if (outsideBounds) tree.X = 200;
+            else tree.Plane = 9;
+        }
+        else
+        {
+            if (outsideBounds) marker.X = 200;
+            else marker.Plane = 9;
+        }
         TileWorldException ex = Assert.Throws<TileWorldException>(() => TileWorldFile.Save(doc, dir));
-        Assert.Contains("(200, 4)", ex.Message);
-        Assert.Contains("(0, 0)", ex.Message);
-
-        tree.X = 3;
-        doc.FindMarker("spawn")!.Plane = 9;
-        TileWorldException planeEx = Assert.Throws<TileWorldException>(() => TileWorldFile.Save(doc, dir));
-        Assert.Contains("spawn", planeEx.Message);
-        Assert.Contains("plane 9", planeEx.Message);
+        Assert.Equal(reason, ex.Reason);
+        Assert.Equal(new RegionCoord(0, 0), ex.Region);
+        if (isObject)
+        {
+            Assert.Equal(1, ex.ObjectId);
+            Assert.Equal("tree", ex.ArchetypeId);
+        }
+        else Assert.Equal("spawn", ex.MarkerName);
+        if (outsideBounds) Assert.Equal(new TileCoord(200, isObject ? 4 : 8, 0), ex.Tile);
+        else
+        {
+            Assert.Equal(9, ex.Plane);
+            Assert.Equal(4, ex.PlaneCount);
+        }
 
         Assert.Equal(manifestBefore, File.ReadAllText(Path.Combine(dir, "world.json")));
         Assert.Equal(regionBefore, File.ReadAllText(Path.Combine(dir, "regions", "r_0_0.json")));
         Assert.Equal("tree", TileWorldFile.Load(dir).FindObject(1)!.ArchetypeId);
+
+        tree.X = 3;
+        tree.Plane = 0;
+        marker.X = 8;
+        marker.Plane = 0;
+        TileWorldFile.Save(doc, dir, force: true);
+        Assert.Equal(new TileCoord(8, 8, 0), TileWorldFile.Load(dir).FindMarker("spawn")!.Coord);
     }
 
     [Fact]

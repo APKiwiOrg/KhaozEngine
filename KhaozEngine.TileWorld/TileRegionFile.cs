@@ -37,12 +37,23 @@ internal static class TileRegionFile
     public static TileRegion Parse(ReadOnlySpan<byte> bytes, RegionCoord expected, int planeCount, string sourceName)
     {
         TileRegionFileDto dto;
-        try { dto = JsonSerializer.Deserialize<TileRegionFileDto>(bytes, TileWorldJson.Region) ?? throw new TileWorldException($"{sourceName}: empty region file"); }
-        catch (JsonException ex) { throw new TileWorldException($"{sourceName}: {ex.Message}", ex); }
+        try
+        {
+            dto = JsonSerializer.Deserialize<TileRegionFileDto>(bytes, TileWorldJson.Region)
+                ?? throw new TileWorldException(TileWorldRefusal.RegionFileEmpty, $"{sourceName}: empty region file")
+                { SourceName = sourceName };
+        }
+        catch (JsonException ex)
+        {
+            throw new TileWorldException(TileWorldRefusal.RegionJsonMalformed, $"{sourceName}: {ex.Message}", ex)
+            { SourceName = sourceName, Field = ex.Path };
+        }
         if (dto.Rx != expected.Rx || dto.Rz != expected.Rz)
-            throw new TileWorldException($"{sourceName}: file says region ({dto.Rx}, {dto.Rz}), manifest says {expected}");
+            throw new TileWorldException(TileWorldRefusal.RegionCoordinateMismatch, $"{sourceName}: file says region ({dto.Rx}, {dto.Rz}), manifest says {expected}")
+            { SourceName = sourceName, Region = expected, ActualRegion = new RegionCoord(dto.Rx, dto.Rz) };
         if (dto.Planes.Count != planeCount)
-            throw new TileWorldException($"{sourceName}: {dto.Planes.Count} planes, the world has {planeCount}");
+            throw new TileWorldException(TileWorldRefusal.RegionPlaneCountMismatch, $"{sourceName}: {dto.Planes.Count} planes, the world has {planeCount}")
+            { SourceName = sourceName, Region = expected, ActualPlaneCount = dto.Planes.Count, ExpectedPlaneCount = planeCount };
 
         var region = new TileRegion(expected, planeCount);
         for (int i = 0; i < planeCount; i++)
@@ -62,14 +73,22 @@ internal static class TileRegionFile
         TileRect rect = expected.Rect;
         foreach (TileObjectDto o in dto.Objects)
         {
-            if (!rect.Contains(o.X, o.Z)) throw new TileWorldException($"{sourceName}: object {o.Id} at ({o.X}, {o.Z}) is outside region {expected}");
-            if ((uint)o.Plane >= (uint)planeCount) throw new TileWorldException($"{sourceName}: object {o.Id} is on plane {o.Plane}, the world has {planeCount}");
+            if (!rect.Contains(o.X, o.Z))
+                throw new TileWorldException(TileWorldRefusal.RegionObjectOutsideBounds, $"{sourceName}: object {o.Id} at ({o.X}, {o.Z}) is outside region {expected}")
+                { SourceName = sourceName, Region = expected, ObjectId = o.Id, ArchetypeId = o.ArchetypeId, Tile = new TileCoord(o.X, o.Z, o.Plane) };
+            if ((uint)o.Plane >= (uint)planeCount)
+                throw new TileWorldException(TileWorldRefusal.RegionObjectPlaneOutsideRange, $"{sourceName}: object {o.Id} is on plane {o.Plane}, the world has {planeCount}")
+                { SourceName = sourceName, Region = expected, ObjectId = o.Id, ArchetypeId = o.ArchetypeId, Plane = o.Plane, PlaneCount = planeCount };
             region.Objects.Add(new TileObject { Id = o.Id, ArchetypeId = o.ArchetypeId, X = o.X, Z = o.Z, Plane = o.Plane, Rotation = o.Rotation & 3, Tags = o.Tags });
         }
         foreach (TileMarkerDto m in dto.Markers)
         {
-            if (!rect.Contains(m.X, m.Z)) throw new TileWorldException($"{sourceName}: marker '{m.Name}' at ({m.X}, {m.Z}) is outside region {expected}");
-            if ((uint)m.Plane >= (uint)planeCount) throw new TileWorldException($"{sourceName}: marker '{m.Name}' is on plane {m.Plane}, the world has {planeCount}");
+            if (!rect.Contains(m.X, m.Z))
+                throw new TileWorldException(TileWorldRefusal.RegionMarkerOutsideBounds, $"{sourceName}: marker '{m.Name}' at ({m.X}, {m.Z}) is outside region {expected}")
+                { SourceName = sourceName, Region = expected, MarkerName = m.Name, Tile = new TileCoord(m.X, m.Z, m.Plane) };
+            if ((uint)m.Plane >= (uint)planeCount)
+                throw new TileWorldException(TileWorldRefusal.RegionMarkerPlaneOutsideRange, $"{sourceName}: marker '{m.Name}' is on plane {m.Plane}, the world has {planeCount}")
+                { SourceName = sourceName, Region = expected, MarkerName = m.Name, Plane = m.Plane, PlaneCount = planeCount };
             region.Markers.Add(new TileMarker { Name = m.Name, X = m.X, Z = m.Z, Plane = m.Plane, Tags = m.Tags });
         }
         return region;

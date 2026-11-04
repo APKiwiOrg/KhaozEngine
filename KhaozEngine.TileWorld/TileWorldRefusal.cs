@@ -144,4 +144,20 @@ public enum TileWorldRefusal
     CatalogWalkSurfaceBoundsUnordered,
     /// <summary>Refuses an operation requiring an archetype absent from the catalogs.</summary>
     CatalogArchetypeMissing,
+
+    // Ground material steep companions.
+    /// <summary>Refuses a material using itself as its steep companion.</summary>
+    SteepSelfReference,
+    /// <summary>Refuses a steep companion absent from the same catalog.</summary>
+    SteepCompanionMissing,
+    /// <summary>Refuses a water material as a steep companion.</summary>
+    SteepCompanionWater,
+    /// <summary>Refuses a steep blend start outside the open right angle.</summary>
+    SteepFromOutsideRightAngle,
+    /// <summary>Refuses a steep blend end outside the open right angle.</summary>
+    SteepToOutsideRightAngle,
+    /// <summary>Refuses a steep blend whose resolved start is not below its end.</summary>
+    SteepBandUnordered,
+    /// <summary>Refuses a steep blend whose single-precision endpoint cosines cannot be ordered.</summary>
+    SteepCosinesCollapsed,
 }

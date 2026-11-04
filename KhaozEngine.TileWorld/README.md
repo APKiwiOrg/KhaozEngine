@@ -138,7 +138,7 @@ at the door. `OfWorld` is unchanged, so moving a gate to the composed digest is 
 
 `TileWorldException` retains its exact type and both message-only constructors. Use `Reason` and the
 identifiers below to distinguish region residency, content, world-file, manifest-region, object, marker, dense-layer,
-embedded-schema, validation and prefab refusals.
+embedded-schema, validation, prefab, catalog and steep-companion refusals.
 Messages remain developer prose. `Reason` is nullable only for a message-only instance built outside the
 engine. Its reason-taking constructors also accept an original cause through `InnerException`.
 
@@ -199,6 +199,13 @@ region file and is null for these in-memory attachment, restoration and save che
 | `CatalogWalkSurfaceNonFinite` | A non-finite walk-surface height or extent | `SourceName`, `ArchetypeId`, `SurfaceIndex`, `Field`, `Value` |
 | `CatalogWalkSurfaceBoundsUnordered` | Walk-surface bounds whose minimum is not below the maximum | `SourceName`, `ArchetypeId`, `SurfaceIndex`, `MinField`, `MaxField`, `Minimum`, `Maximum` |
 | `CatalogArchetypeMissing` | Placement or scatter requiring an archetype absent from the catalogs | `ArchetypeId` |
+| `SteepSelfReference` | A material using itself as its steep companion | `SourceName`, `MaterialId`, `MaterialName`, `CompanionMaterialId` |
+| `SteepCompanionMissing` | A steep companion absent from the same catalog | `SourceName`, `MaterialId`, `MaterialName`, `CompanionMaterialId` |
+| `SteepCompanionWater` | A water material used as a steep companion | `SourceName`, `MaterialId`, `MaterialName`, `CompanionMaterialId`, `CompanionMaterialName` |
+| `SteepFromOutsideRightAngle` | A resolved steep blend start outside (0, 90) | `SourceName`, `MaterialId`, `MaterialName`, `Field` = `fromDegrees`, `FromDegrees`, `ToDegrees` |
+| `SteepToOutsideRightAngle` | A resolved steep blend end outside (0, 90) | `SourceName`, `MaterialId`, `MaterialName`, `Field` = `toDegrees`, `FromDegrees`, `ToDegrees` |
+| `SteepBandUnordered` | A resolved steep blend start not below its end | `SourceName`, `MaterialId`, `MaterialName`, `FromDegrees`, `ToDegrees`, `FromIsDefault`, `ToIsDefault` |
+| `SteepCosinesCollapsed` | A steep blend whose endpoint cosines cannot be ordered in single precision | `SourceName`, `MaterialId`, `MaterialName`, `FromDegrees`, `ToDegrees` |
 | `WorldValidationFailed` | A document with semantic validation issues | `WorldId`, total `IssueCount`, complete owned read-only `Issues` snapshot |
 | `PrefabSizeNonPositive` | A prefab whose width or height is not positive | `PrefabName`, `Width`, `Height`, plus `SourceName` on load |
 | `PrefabPlaneCountNonPositive` | A prefab file whose plane count is not positive | `SourceName`, `PrefabName`, `PlaneCount` |
@@ -313,11 +320,17 @@ are optional and default to `GroundMaterialSteep.DefaultFromDegrees` (40) and `D
 blends every tap of the material toward the companion over that band of the ground normal's slope, whichever corner
 or overlay slot the material fills, so a cliff face renders the companion even where the corner vote picked the
 material at its foot. A companion's own `steep` is never followed. The schema refuses a missing `material`, an
-unknown key, and a band end outside (0, 90). `GroundMaterialSteepRules` then refuses, naming the source file and
-the material, a companion that is not another material of the SAME catalog file, a self reference, a `Water`
-companion, a band whose resolved start is not below its resolved end, and a band too narrow for its ends to differ
-in single precision cosine, which is what the renderer blends on. `OfCatalogs` digests it only when
-present, so a catalog without companions keeps its digest.
+unknown key, and a band end outside (0, 90). `GroundMaterialSteepRules.ThrowIfInvalid` throws
+`TileWorldException` with one of the seven `Steep` reasons in the refusal table. `SourceName`, `MaterialId`
+and `MaterialName` identify the source and first invalid material in ascending id order.
+`SteepSelfReference`, `SteepCompanionMissing` and `SteepCompanionWater` carry `CompanionMaterialId`, with
+`CompanionMaterialName` also set for water. Companions must belong to the SAME catalog file.
+`SteepFromOutsideRightAngle` and `SteepToOutsideRightAngle` name the invalid endpoint in `Field`.
+All four endpoint and band reasons carry resolved `FromDegrees` and `ToDegrees`, and `SteepBandUnordered`
+also carries `FromIsDefault` and `ToIsDefault`. `SteepCosinesCollapsed` refuses ends that cannot be ordered
+in single precision cosine, which is what the renderer blends on. `Problem` reports the same validation
+finding as developer prose without throwing. `OfCatalogs` digests the companion only when present, so a
+catalog without companions keeps its digest.
 
 `TileWorldValidator.Validate(doc, catalogs)` returns `TileWorldIssue(Code, Message, Region, Tile)` records and
 never throws on bad content. `ValidateOrThrow` throws `WorldValidationFailed` with `WorldId`, total

@@ -991,6 +991,10 @@ its interior cut uniforms. The default frame and the frameless core query overlo
 `ArgumentOutOfRangeException`. Each carries a non-null `Reason` and preserves `ParamName` and any `ActualValue`.
 Optional identifiers are null when that reason does not use them. Messages remain developer prose.
 Shared steep-band rules forward `TileGroundSteepArgumentException` from Render3D without translation.
+Catalog companion checks in `TileGroundMaterials.Build` delegate to `GroundMaterialSteepRules` and throw
+`TileWorldException` with the core `TileWorldRefusal` reason, `SourceName` equal to `ground material set`,
+`MaterialId`, `MaterialName` and the applicable companion or band identifiers. See the
+[core refusal table](../KhaozEngine.TileWorld/README.md#refusals) for the seven steep reasons.
 
 | Reason | Refused input | Identifiers |
 |---|---|---|

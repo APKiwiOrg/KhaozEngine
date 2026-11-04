@@ -13574,6 +13574,18 @@ The two rules are independent. Below 45 degrees the projection is unchanged for 
 with a companion already blends from its `fromDegrees`, 40 by default. A material with no companion renders
 exactly as before below 45 degrees. The triplanar constants are `TileGroundSteepShading`'s in Render3D.
 
+Catalog companion validation uses `GroundMaterialSteepRules.ThrowIfInvalid` and the existing
+`TileWorldException`. Its `TileWorldRefusal` reason is `SteepSelfReference`, `SteepCompanionMissing`,
+`SteepCompanionWater`, `SteepFromOutsideRightAngle`, `SteepToOutsideRightAngle`, `SteepBandUnordered` or
+`SteepCosinesCollapsed`. Every one carries `SourceName`, `MaterialId` and `MaterialName`, selecting the
+first invalid material in ascending id order. Companion reasons carry `CompanionMaterialId`, with
+`CompanionMaterialName` also set for water. Endpoint and band reasons carry resolved `FromDegrees` and
+`ToDegrees`. An outside-angle reason also carries `Field`, and `SteepBandUnordered` carries
+`FromIsDefault` and `ToIsDefault`. `Problem` uses the same finding for developer prose.
+`TileGroundMaterials.Build` delegates catalog checks to these rules with `SourceName` equal to
+`ground material set`, preserving the core reason. Hand-built render-slot validation continues to use
+`TileGroundSteepRefusal` as described above. Unused optional identifiers remain null.
+
 **Water is carved, not placed.** A tile is water when its underlay material's `kind` is `Water`, and you sink the
 bed by lowering the corner heights, so the material's texture is the river BED and the surface height is computed.
 `TileWaterPlanes.Collect(doc, catalogs, region, plane, look?)` turns the bodies of the GPU-free

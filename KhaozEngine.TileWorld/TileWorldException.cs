@@ -78,7 +78,7 @@ public sealed class TileWorldException : Exception
     /// <summary>The coordinate stored in a region file that disagrees with <see cref="Region"/>.</summary>
     public RegionCoord? ActualRegion { get; init; }
 
-    /// <summary>The refused catalog or manifest field, or the parser's JSON path for malformed region,
+    /// <summary>The refused catalog, manifest or steep-band field, or the parser's JSON path for malformed region,
     /// manifest, prefab or catalog data, when available.</summary>
     public string? Field { get; init; }
 
@@ -180,4 +180,22 @@ public sealed class TileWorldException : Exception
         get => _schemaFindings;
         init => _schemaFindings = value is null ? null : Array.AsReadOnly<JsonSchemaFinding>([.. value]);
     }
+
+    /// <summary>The catalog id of a self-referencing, missing or water steep companion.</summary>
+    public ushort? CompanionMaterialId { get; init; }
+
+    /// <summary>The refused water steep companion's authoring name.</summary>
+    public string? CompanionMaterialName { get; init; }
+
+    /// <summary>The resolved steep-band start in degrees, when an endpoint or band is refused.</summary>
+    public float? FromDegrees { get; init; }
+
+    /// <summary>The resolved steep-band end in degrees, when an endpoint or band is refused.</summary>
+    public float? ToDegrees { get; init; }
+
+    /// <summary>Whether an unordered steep band's start used the engine default.</summary>
+    public bool? FromIsDefault { get; init; }
+
+    /// <summary>Whether an unordered steep band's end used the engine default.</summary>
+    public bool? ToIsDefault { get; init; }
 }

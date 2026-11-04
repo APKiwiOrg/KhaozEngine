@@ -1,4 +1,3 @@
-using System;
 using System.Collections.Generic;
 using System.Numerics;
 using KhaozEngine.Render3D;
@@ -68,14 +67,20 @@ public class TileGroundSteepCompanionsTests
     public void A_companion_edited_wrong_after_load_is_refused_before_it_can_land_in_the_missing_slot()
     {
         TileWorldCatalogs catalogs = Catalog("""
-            { "id": 1, "name": "grass", "color": "#4d8a3a", "steep": { "material": 3 } },
-            { "id": 3, "name": "stone", "color": "#7a7a7a" }
+            { "id": 3, "name": "stone", "color": "#7a7a7a", "steep": { "material": 1 } },
+            { "id": 1, "name": "grass", "color": "#4d8a3a", "steep": { "material": 3 } }
             """);
+        TileGroundMaterials.Build(catalogs);
+        // Both become invalid, with the higher id inserted first. Refusal must still name the lowest id.
+        catalogs.Material(3)!.Steep!.Material = 8;
         catalogs.Material(1)!.Steep!.Material = 9;
 
         var ex = Assert.Throws<TileWorldException>(() => TileGroundMaterials.Build(catalogs));
-        Assert.Contains("ground material set", ex.Message);
-        Assert.Contains("grass", ex.Message, StringComparison.Ordinal);
+        Assert.Equal(TileWorldRefusal.SteepCompanionMissing, ex.Reason);
+        Assert.Equal("ground material set", ex.SourceName);
+        Assert.Equal((ushort)1, ex.MaterialId);
+        Assert.Equal("grass", ex.MaterialName);
+        Assert.Equal((ushort)9, ex.CompanionMaterialId);
     }
 
     [Fact]

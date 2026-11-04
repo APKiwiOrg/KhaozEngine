@@ -201,6 +201,19 @@ reads each version once through `ReadVersionRowsAsync`, with no page reads. The 
 target rows when rendering rollback blockers. Both paths keep only types in the admin registry and include
 retired rows. Stores implementing only `IContentAuthoringStore` retain the existing 500-row paging fallback.
 
+With `PublishPolicy` configured, `catalog-pin` checks changes to the operator's effective selection,
+using the current pin or active version as baseline and the requested pin or active version as target.
+An already effective selection succeeds without rereading rows or invoking the policy. Changed selections
+load verified published snapshots, including retired rows. Incompatible values and policy exceptions
+refuse with structured findings and preserve the hold. A consumer protecting row existence also compares
+membership and retirement, rather than field values alone.
+
+The provider's `IContentVersionSelectionStore` conditional setter checks the catalog epoch, active version
+and pin before writing, so an unpin cannot select an active version that moved during validation.
+Unreadable or mismatched snapshots, unsupported conditional pinning and changed selection metadata refuse
+under `KEC0045`. A policy throw uses `KEC0044`. Trusted server calls to `SetPinnedVersionAsync` remain a separate in-process recovery path. With no policy the existing action,
+warnings and direct setter behavior remain unchanged.
+
 `catalog-pin` writes the operator's hold, and a version pinned in the SERVER'S OWN CONFIG wins over it,
 always. A pin against such a server is a 200 carrying `configPinnedVersion` and a warning naming it, because
 the write happened and takes effect the moment the config pin is removed, while a bare 200 for a call with no

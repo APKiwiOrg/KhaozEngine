@@ -19,40 +19,14 @@ internal static class ContentPublishPolicyValidation
             return report;
         }
 
-        var own = new List<ContentFinding>();
-        try
-        {
-            policy.Validate(new ContentPublishPolicySnapshot(previous, registry),
-                new ContentPublishPolicySnapshot(candidate, registry), own);
-        }
-        catch (Exception failure)
-        {
-            own.Add(new ContentFinding(default, 0, IContentPublishPolicy.FailureCode,
-                FormattableString.Invariant($"The consumer publish policy threw {failure.GetType().Name}: {failure.Message}")));
-        }
-
-        if (own.Count == 0)
+        ContentValidationReport own = ContentPublishPolicyEvaluation.Validate(candidate, previous, registry, policy);
+        if (own.Findings.Count == 0)
         {
             return report;
         }
 
         var combined = new List<ContentFinding>(report.Findings);
-        bool valid = report.IsValid;
-        foreach (ContentFinding finding in own)
-        {
-            ContentFinding identified = finding;
-            if (finding.Key is null
-                && (candidate.TryGetRow(finding.Type, finding.Id, out ContentRow? row)
-                    || previous is not null && previous.TryGetRow(finding.Type, finding.Id, out row)))
-            {
-                identified = finding with { Key = row.Key.ToString() };
-            }
-
-            combined.Add(identified);
-            valid &= string.Equals(finding.Code, ContentValidator.InformationalCode, StringComparison.Ordinal);
-        }
-
-        // Never return the list a consumer callback could retain and change after this validation.
-        return new ContentValidationReport(valid, Array.AsReadOnly(combined.ToArray()));
+        combined.AddRange(own.Findings);
+        return new ContentValidationReport(report.IsValid && own.IsValid, Array.AsReadOnly(combined.ToArray()));
     }
 }

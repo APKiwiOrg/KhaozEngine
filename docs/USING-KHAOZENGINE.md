@@ -22104,6 +22104,16 @@ publish request. There is no HTTP bypass mode. With no policy configured, the ex
 published bytes and version numbering are unchanged. A policy refusal preserves the active version and
 all pending draft work, and releases its publication freeze.
 
+The registered policy also guards `catalog-pin` and clearing a hold when the effective version changes.
+The baseline is the current pin, falling back to the active version. The target is the requested pin, or
+the active version for an unpin. Already effective selections succeed without a policy call. Changed
+selections load complete published snapshots, evaluate the policy and use the store's conditional pin
+setter to confirm the catalog epoch, active version and pin before writing. Incompatible selections and
+policy exceptions leave the hold unchanged. Unreadable snapshots, missing conditional pin support and
+selection metadata that changed under the check refuse under `KEC0045`. Direct trusted server
+`SetPinnedVersionAsync` recovery calls stay separate. Consumer policies protecting existence compare
+membership in both snapshots and retirement as well as field values.
+
 The sixteen are `catalog-schema`, `catalog-list`, `catalog-get`, `catalog-edit`, `catalog-draft`,
 `catalog-discard`, `catalog-validate`, `catalog-diff`, `catalog-publish`, `catalog-versions`, `catalog-pin`,
 `catalog-rollback`, `catalog-import`, `catalog-export`, `catalog-sweep` and `catalog-verify`. None returns

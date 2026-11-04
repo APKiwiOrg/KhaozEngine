@@ -484,6 +484,10 @@ sealed class ArtifactPolicy(ContentTypeId guardedType, string guardedField) : IC
 }
 ```
 
+The example checks field changes on existing rows only. A consumer protecting a row's existence must
+also compare membership in both snapshots and `IsRetired`, including additions and rows absent from the
+target version.
+
 The example's `guardedType` and `guardedField` are host-owned identifiers for a value a game's baked
 artifacts depend on. Snapshot views contain detached rows, read-only collections and typed field values.
 Byte payloads are copied on access. No store or mutable registry is supplied. Policies must be deterministic
@@ -494,6 +498,22 @@ provisional, so use the stable row key to identify a finding.
 Policy codes are preserved without folding them into a type validator's message. A policy throw adds
 `IContentPublishPolicy.FailureCode` (`KEC0044`) and refuses publication. A refusal leaves the active version
 and complete draft unchanged and releases its freeze, like any other validation refusal.
+
+Operator version selection also checks the registered policy. `catalog-pin` compares the current pin,
+or the active version when no pin exists, with the requested target. Clearing the pin compares that
+pinned version with the active version. Selecting the already effective version needs no policy check.
+Changed selections load both complete published snapshots and evaluate the policy through
+`ContentPublishPolicyEvaluation.Validate`, which checks only the consumer policy rather than running
+publish-history validation backwards.
+
+`IContentVersionSelectionStore.TrySetPinnedVersionAsync` atomically compares the checked
+`ContentVersionSelection` (catalog epoch, active version and pin) and writes the hold and audit together.
+The bundled providers implement it. If a snapshot cannot be read or verified, the conditional capability
+is missing, or selection metadata moves during validation, the action refuses with
+`IContentVersionSelectionStore.UnavailableCode` (`KEC0045`) and does not write the hold. Policy findings
+and `KEC0044` exceptions use the existing structured refusal payload. Direct trusted server calls to
+`SetPinnedVersionAsync` retain their recovery behavior. With no policy the operator action keeps its
+existing direct setter path without reading snapshots.
 
 HTTP `catalog-import` is an operator publication too. The bundled stores implement the optional
 `IContentPolicyImportStore` capability, whose `ImportWithPolicyAsync(bundle, request)` requires a

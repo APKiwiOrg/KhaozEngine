@@ -1327,6 +1327,14 @@ the latter and the captured canonical feature geometry, while physical installat
 looking up a layer by resting-height proximity. Missing capability, source identity, ambiguous raw support or
 capacity has a structured `PhysicsNavDescentEvidenceException` reason. No partial evidence is published.
 
+Capture uses inclusive projected bounds to narrow cell candidates and processes them in original face ordinal
+order. Boundary-only touches, vertical faces and zero-area projections remain candidates. The original exact
+clip, overlap and source adjacency predicates decide retention. A source may provide a complete adjacency-key
+candidate visitation, otherwise capture keeps the all-pairs path. The test-only all-face/all-pairs oracle checks
+the entire capture output. Index arrays and conservative bookkeeping share a checked aggregate byte budget bounded
+by `Array.MaxLength`. `IndexStorageExceeded` reports requested and maximum bytes before unsupported storage is
+allocated. Existing feature, reference, sweep and proof budgets are unchanged.
+
 `ContactTerrainDropCandidates` is pure and deterministic. It retains the fixed source and neighbor order,
 ordinary exit suppression, nearest eligible lower column, highest eligible layer, step-band stop and exact
 allowance subtraction. Connected steep geometry and the unchanged capsule/cell intersection helper derive its

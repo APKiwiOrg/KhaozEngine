@@ -87,6 +87,7 @@ public sealed partial class PhysicsNavBake : IDisposable
             GroundMobility = QueryMobility.Statics,
         };
         int stored = 0;
+        var captureHooks = ContactTerrainCaptureHooks.Current;
         for (int z = 0; z < height; z++)
         {
             for (int x = 0; x < width; x++)
@@ -127,6 +128,7 @@ public sealed partial class PhysicsNavBake : IDisposable
                 EnsureOrigin(world, origin);
                 water[wet++] = new PhysicsNavWater(cell, sample.WaterSurfaceY, waterAreas);
             }
+            captureHooks?.Progress?.Invoke(ContactTerrainCaptureStage.RawColumns, z + 1, height);
         }
         starts[cells] = stored;
         basis?.AssertCurrent();

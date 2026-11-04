@@ -67,6 +67,10 @@ triangle geometry and its canonical owner. `AreAdjacent` authenticates both keys
 never height similarity. An unknown address or a field without provenance returns unavailable evidence.
 `IMovementAnalyticSupportPin` provides the same facts within an authenticated movement read.
 
+`IMovementAnalyticSupportCandidates` optionally accelerates source-topology lookup. A Known visitation must include
+every key that `AreAdjacent` could accept. It supplies candidates, never adjacency permission. Consumers still call
+the unchanged exact predicate and fall back to all pairs when no complete candidate capability is available.
+
 The internal Contact descent witness records selected steep support and first walkable support from Air, Slide
 and water handoffs, including support left again inside one tick and recertification after horizontal rounding.
 It copies analytic feature identity while the

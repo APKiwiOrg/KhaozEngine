@@ -11,6 +11,11 @@ namespace KhaozEngine.Movement;
 
 internal static class PhysicsNavDescentCapture
 {
+    [ThreadStatic] static bool t_reference;
+    internal static ReferenceScope ReferenceScanForTests()
+    { bool prior = t_reference; t_reference = true; return new(prior); }
+    internal readonly struct ReferenceScope(bool prior) : IDisposable
+    { public void Dispose() => t_reference = prior; }
     sealed record Observed(StaticHandle Static, PhysicsEvidenceFace Address, PhysicsEvidencePoint[] Points,
         MovementSupportKey Owner, bool Analytic);
 
@@ -34,6 +39,8 @@ internal static class PhysicsNavDescentCapture
         if (status != PhysicsEvidenceStatus.Complete)
             throw new PhysicsNavDescentEvidenceException(status == PhysicsEvidenceStatus.CapacityExceeded ?
                 PhysicsNavDescentEvidenceReason.CapacityExceeded : PhysicsNavDescentEvidenceReason.BackendRefused, status);
+        var hooks = ContactTerrainCaptureHooks.Current;
+        hooks?.Progress?.Invoke(ContactTerrainCaptureStage.Geometry, observed.Count, observed.Count);
         bool Visit(in PhysicsEvidenceFace face, ReadOnlySpan<PhysicsEvidencePoint> vertices)
         {
             if (registration.BindCapturedFeature(lease, face.Static, face.Feature, out var owner, out bool analytic) != MovementAvailability.Known)
@@ -67,6 +74,18 @@ internal static class PhysicsNavDescentCapture
                 input.Address.Pose, input.Address.Radius, input.Address.HalfLength, canonicalOwner);
         }
         int width = bake.Columns.Width, height = bake.Columns.Height;
+        var budget = new DescentCaptureIndexBudget();
+        var index = t_reference ? null : new DescentFaceIndex(faces, budget);
+        int[] reference = t_reference ? Enumerable.Range(0, faces.Length).ToArray() : [];
+        var firstKeys = new Dictionary<MovementSurfaceFeatureKey, int>();
+        var primitives = new Dictionary<(StaticHandle Static, int Leaf), int>();
+        budget.Reserve(faces.Length, 160);
+        for (int f = 0; f < faces.Length; f++) firstKeys.TryAdd(faces[f].Key, f);
+        for (int f = 0; f < faces.Length; f++)
+            if (faces[f].Kind is PhysicsEvidenceKind.Sphere or PhysicsEvidenceKind.Capsule or PhysicsEvidenceKind.Cylinder)
+                if (!primitives.TryAdd((observed[f].Static, observed[f].Address.Leaf), f))
+                    primitives[(observed[f].Static, observed[f].Address.Leaf)] = -1;
+        hooks?.Progress?.Invoke(ContactTerrainCaptureStage.Index, faces.Length, faces.Length);
         var starts = new int[checked(width * height + 1)];
         var coverage = new DescentCoverage[width * height];
         var refs = new List<DescentColumnFace>();
@@ -81,6 +100,7 @@ internal static class PhysicsNavDescentCapture
         };
         var output = new ColumnSurface[options.MaxSurfacesPerColumn + 1];
         for (int z = 0; z < height; z++)
+        {
             for (int x = 0; x < width; x++)
             {
                 int cell = z * width + x;
@@ -89,7 +109,8 @@ internal static class PhysicsNavDescentCapture
                 if (left + options.CellSize > options.MaxX || bottom + options.CellSize > options.MaxZ)
                 { coverage[cell] = DescentCoverage.OutOfBounds; continue; }
                 coverage[cell] = DescentCoverage.Complete;
-                for (int f = 0; f < faces.Length; f++)
+                ReadOnlySpan<int> candidates = index is null ? reference : index.Query(left, bottom, left + options.CellSize, bottom + options.CellSize);
+                foreach (int f in candidates)
                 {
                     var face = faces[f];
                     if (face.Points.Length < 3)
@@ -124,6 +145,8 @@ internal static class PhysicsNavDescentCapture
                 if (refs.Count == starts[cell]) coverage[cell] = DescentCoverage.KnownEmpty;
                 observer.Hits.Clear();
                 float ax = options.MinX + (x + 0.5f) * options.CellSize, az = options.MinZ + (z + 0.5f) * options.CellSize;
+                // Raw probes use float anchors. At large coordinates rounding can place one outside the double cell bounds.
+                candidates = index is null ? reference : index.Query(ax, az, ax, az);
                 int count = probe.Sample(ax - lease.Origin.X, az - lease.Origin.Z, output);
                 var originals = bake.Columns.GetColumn(x, z);
                 if (count != originals.Length) throw Refuse(PhysicsNavDescentEvidenceReason.RawAssociationAmbiguous);
@@ -135,12 +158,18 @@ internal static class PhysicsNavDescentCapture
                     var hits = observer.Hits.Where(h => BitConverter.SingleToInt32Bits(h.Result.Point.Y + lease.Origin.Y) == bits && h.Result.Distance > 0).ToArray();
                     if (hits.Length != 1 || hits[0].Result.Body is not { } body) throw Refuse(PhysicsNavDescentEvidenceReason.RawAssociationAmbiguous);
                     int selected = -1;
-                    for (int f = 0; f < faces.Length; f++)
+                    if (t_reference)
+                        for (int f = 0; f < faces.Length; f++)
+                        {
+                            if (observed[f].Static != body || observed[f].Address.Leaf != hits[0].Leaf ||
+                                faces[f].Kind is not (PhysicsEvidenceKind.Sphere or PhysicsEvidenceKind.Capsule or PhysicsEvidenceKind.Cylinder)) continue;
+                            if (selected >= 0) throw Refuse(PhysicsNavDescentEvidenceReason.RawAssociationAmbiguous);
+                            selected = f;
+                        }
+                    else if (primitives.TryGetValue((body, hits[0].Leaf), out int primitive))
                     {
-                        if (observed[f].Static != body || observed[f].Address.Leaf != hits[0].Leaf ||
-                            faces[f].Kind is not (PhysicsEvidenceKind.Sphere or PhysicsEvidenceKind.Capsule or PhysicsEvidenceKind.Cylinder)) continue;
-                        if (selected >= 0) throw Refuse(PhysicsNavDescentEvidenceReason.RawAssociationAmbiguous);
-                        selected = f;
+                        if (primitive < 0) throw Refuse(PhysicsNavDescentEvidenceReason.RawAssociationAmbiguous);
+                        selected = primitive;
                     }
                     if (selected >= 0)
                     {
@@ -148,7 +177,7 @@ internal static class PhysicsNavDescentCapture
                         continue;
                     }
                     DescentNumber highest = default;
-                    for (int f = 0; f < faces.Length; f++)
+                    foreach (int f in candidates)
                     {
                         var face = faces[f];
                         if (observed[f].Static != body || hits[0].Leaf >= 0 && observed[f].Address.Leaf != hits[0].Leaf ||
@@ -161,7 +190,7 @@ internal static class PhysicsNavDescentCapture
                         if (selected < 0 || y > highest) { selected = f; highest = y; }
                     }
                     if (selected < 0) throw Refuse(PhysicsNavDescentEvidenceReason.RawAssociationAmbiguous);
-                    for (int f = 0; f < faces.Length; f++)
+                    foreach (int f in candidates)
                     {
                         if (f == selected || faces[f].Normal.Y <= 0 || !DescentGeometry.Contains(faces[f].Points, ax, az)) continue;
                         var sameHeight = DescentGeometry.Height(faces[f].Points, new(ax, az));
@@ -175,20 +204,20 @@ internal static class PhysicsNavDescentCapture
                     }
                     // Shared triangle edges use the analytic field's own deterministic selection.
                     if (faces[selected].Analytic && source.Describe(new(ax, az), out var named) == MovementAvailability.Known)
-                        for (int f = 0; f < faces.Length; f++) if (faces[f].Key == named.Key) { selected = f; break; }
+                    {
+                        if (t_reference)
+                            for (int f = 0; f < faces.Length; f++) if (faces[f].Key == named.Key) { selected = f; break; }
+                        if (!t_reference && firstKeys.TryGetValue(named.Key, out int canonical)) selected = canonical;
+                    }
                     raw.Add(new(x, z, ordinal, bits, selected));
                 }
             }
-        starts[^1] = refs.Count;
-        var joins = new int[faces.Length][];
-        for (int i = 0; i < faces.Length; i++)
-        {
-            var row = new List<int>();
-            if (faces[i].Analytic)
-                for (int j = 0; j < faces.Length; j++)
-                    if (i != j && faces[j].Analytic && source.AreAdjacent(faces[i].Key, faces[j].Key)) row.Add(j);
-            joins[i] = row.ToArray();
+            hooks?.Progress?.Invoke(ContactTerrainCaptureStage.Columns, z + 1, height);
         }
+        starts[^1] = refs.Count;
+        var joins = new DescentAdjacencyIndex(faces, source, budget).Build(t_reference);
+        hooks?.IndexStorage?.Invoke(budget.UsedBytes);
+        hooks?.Progress?.Invoke(ContactTerrainCaptureStage.Adjacency, faces.Length, faces.Length);
         lease.AssertCurrent();
         return new(options, width, height, faces, starts, refs.ToArray(), coverage, raw.ToArray(), joins);
     }

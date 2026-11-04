@@ -5,7 +5,7 @@ using KhaozEngine.Locomotion;
 namespace KhaozEngine.TileWorld.Physics;
 
 /// <summary>Identity from the same private captured lattice used by the installed ground's analytic field.</summary>
-internal sealed class TileAnalyticSupportSource(TileMovementSnapshot snapshot, string worldId) : IMovementAnalyticSupportSource
+internal sealed class TileAnalyticSupportSource(TileMovementSnapshot snapshot, string worldId) : IMovementAnalyticSupportSource, IMovementAnalyticSupportCandidates
 {
     readonly string _source = worldId + "/tile-ground-v1/" + snapshot.Ground.Fingerprint;
     readonly MovementSupportKey _owner = new(worldId, "tile-ground");
@@ -50,6 +50,23 @@ internal sealed class TileAnalyticSupportSource(TileMovementSnapshot snapshot, s
             for (int j = 0; j < 3; j++)
                 if (SharedEdge(left[i], left[(i + 1) % 3], right[j], right[(j + 1) % 3])) return true;
         return false;
+    }
+
+    public MovementAvailability VisitAdjacentCandidates(MovementSurfaceFeatureKey key, MovementAnalyticSupportCandidateVisitor visitor)
+    {
+        ArgumentNullException.ThrowIfNull(visitor);
+        if (!TryTriangle(key, out int x, out int z, out _)) return MovementAvailability.Unresolved;
+        // AreAdjacent first refuses any pair farther than one authored cell in either axis.
+        // Visit every triangle in that exact key neighbourhood, leaving SharedEdge as the decider.
+        for (int dz = -1; dz <= 1; dz++) for (int dx = -1; dx <= 1; dx++)
+        {
+            long nx = (long)x + dx, nz = (long)z + dz;
+            if (nx < int.MinValue || nx > int.MaxValue || nz < int.MinValue || nz > int.MaxValue) continue;
+            var triangles = snapshot.Ground.Triangles((int)nx, (int)nz);
+            for (int part = 0; part < triangles.Length; part++)
+                if (!visitor(new(_source, Address((int)nx, (int)nz), part))) return MovementAvailability.CapacityExceeded;
+        }
+        return MovementAvailability.Known;
     }
 
     bool TryTriangle(MovementSurfaceFeatureKey key, out int x, out int z, out DrawnGroundTriangle triangle)

@@ -27,18 +27,24 @@ public static partial class ExplicitCharacterMovement
     internal static MovementCommitment WaterAborted(in MovementCommitment movement) => movement with
     {
         Phase = MovementCommitmentPhase.Aborted,
-        EndReason = MovementCommitmentEndReason.EnteredWater
+        EndReason = GroundTravelCommitment.ResolveEndReason(movement, MovementCommitmentEndReason.EnteredWater),
+        DistanceRemaining = movement.Kind == MovementCommitmentKind.Ground ? 0 : movement.DistanceRemaining,
     };
 
     static bool ValidCommitment(in MovementCommitment movement)
     {
-        if (movement.Phase is < MovementCommitmentPhase.None or > MovementCommitmentPhase.Aborted ||
-            movement.EndReason is < MovementCommitmentEndReason.None or > MovementCommitmentEndReason.Disconnected)
+        if (movement.Phase is < MovementCommitmentPhase.None or > MovementCommitmentPhase.Travelling ||
+            movement.EndReason is < MovementCommitmentEndReason.None or > MovementCommitmentEndReason.UnsupportedState)
             return false;
+        if (movement.Kind is < MovementCommitmentKind.Ballistic or > MovementCommitmentKind.Ground) return false;
         if (!movement.IsActive) return true;
         return movement.Sequence != 0 && float.IsFinite(movement.Direction.X) && float.IsFinite(movement.Direction.Y) &&
             MathF.Abs(movement.Direction.LengthSquared() - 1) <= 0.00001f &&
-            Nonnegative(movement.HorizontalSpeed) && Positive(movement.VerticalSpeed) && Positive(movement.Gravity) &&
+            (movement.Kind == MovementCommitmentKind.Ground
+                ? Positive(movement.HorizontalSpeed) && Nonnegative(movement.DistanceRemaining) &&
+                    movement.ConsecutiveBlockedTicks <= 3 && movement.Phase != MovementCommitmentPhase.Airborne
+                : Nonnegative(movement.HorizontalSpeed) && Positive(movement.VerticalSpeed) && Positive(movement.Gravity) &&
+                    movement.Phase != MovementCommitmentPhase.Travelling) &&
             Nonnegative(movement.PreparationRemaining) && Nonnegative(movement.RecoveryRemaining) &&
             Nonnegative(movement.TimeoutRemaining);
     }

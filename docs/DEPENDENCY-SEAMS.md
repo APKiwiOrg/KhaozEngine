@@ -166,9 +166,10 @@ KhaozEngine.Server.Admin -> Microsoft.AspNetCore.App [shared framework, Framewor
 A server that does not want an admin HTTP endpoint never references `Server.Admin`, so the web stack stays
 out of its dependency closure.
 
-`IAdminControllable` and the three types it names (`PlayerRef`, `OnlinePlayer`, `MovementCommitmentRequest`) live
-in the `KhaozEngine.Netcode` ASSEMBLY under their shipped `KhaozEngine.NetWorld` names, and `NetWorld` type-forwards
-all four (`TypeForwards.cs`), which is the same move the ban seam made. That is what lets
+`IAdminControllable` and the types it names (`PlayerRef`, `OnlinePlayer`, `MovementCommitmentRequest`,
+`MovementCommitmentStopReason`) live in the `KhaozEngine.Netcode` ASSEMBLY under `KhaozEngine.NetWorld` names.
+`NetWorld` type-forwards the interface and the three types that first shipped there (`TypeForwards.cs`), which is the
+same move the ban seam made. The stop reason never shipped in `NetWorld`, so it needs no forward. That is what lets
 `KhaozEngine.TileWorld.Netcode`'s `TileWorldServer` implement the interface with no `NetWorld` reference, so a tile
 head hands itself to `ServerAdmin` exactly as a `WorldServer` or `ShardedWorldServer` does. `ServerAdmin` itself
 stays in `NetWorld`, so a tile game that wants the facade or the endpoint takes `NetWorld` in its own head, which is

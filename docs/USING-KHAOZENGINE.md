@@ -9260,7 +9260,7 @@ outside every umbrella and carries no physics backend, input or
 rendering dependency:
 
 ```xml
-<PackageReference Include="KhaozEngine.Movement" Version="21.25.0" />
+<PackageReference Include="KhaozEngine.Movement" Version="22.0.0" />
 ```
 
 The package composes `KhaozEngine.Locomotion`, `KhaozEngine.Navigation` and `KhaozEngine.Physics`. It does not
@@ -9762,7 +9762,7 @@ option does not enter bake identity or change canonical bytes. See the
 Round 2 D adds the driver layer in the same opt-in package. Keep the package reference explicit:
 
 ```xml
-<PackageReference Include="KhaozEngine.Movement" Version="21.25.0" />
+<PackageReference Include="KhaozEngine.Movement" Version="22.0.0" />
 ```
 
 `MoveToRange` consumes a `GroundNavigation` profile or an equivalent guarded `IRegionPathPlanner` composition.
@@ -10609,7 +10609,7 @@ same opt-in-backend pattern the `WorldStore.*` durable backends use.
 **Backend (`KhaozEngine.Physics.Bepu`)** - add this package to your game head / server:
 
 ```xml
-<PackageReference Include="KhaozEngine.Physics.Bepu" Version="21.25.0" />
+<PackageReference Include="KhaozEngine.Physics.Bepu" Version="22.0.0" />
 ```
 
 ```csharp
@@ -14581,7 +14581,7 @@ owned binding on disposal. See [ordinary contact configuration](../KhaozEngine.N
 for configuration, resident scopes, replay and view lifetime.
 `SamplerSpace.Frame` ordinary ground samplers receive the original local axes and return local heights directly,
 including a nonzero physics Y origin. World samplers keep the direct dry path's rounded absolute translation.
-The registration's analytic range is absolute in both spaces. Wire generation 14 stays unchanged.
+The registration's analytic range is absolute in both spaces. Sampler space does not change the wire layout.
 The [allocation and local cost proof](verification/2026-10-13-contact-controller-phase5a-cost.md)
 records named lifetime tokens and three one-pair samples without a timing threshold or hosted cost-gate claim.
 
@@ -14605,7 +14605,186 @@ var server = new WorldServer(transport, new WorldServerConfig { TickSeconds = 1f
 // loop: server.Poll(); clock.Advance(elapsed, _ => server.Tick(1f/30f));
 ```
 
-For a server-authored leap, charge, knockback, or similar move that player input must not steer, queue a movement
+For local ground travel, create `MovementCommitment.ForGroundTravel(sequence, direction, speed, distance)` and
+carry it on `MoveState.Commitment`. The caller admits a supported, non-swimming actor. Both movement controllers
+retain ordinary gravity and collision, face the commitment and ignore player input and `SpeedScale`. The positive
+distance budget subtracts achieved XZ displacement and holds active at zero. Use sequence-checked
+`GroundTravelCommitment.Steer` to re-aim or supply another budget, including zero. Use
+`GroundTravelCommitment.End` to confirm `Arrived`, optionally recovering with that reason preserved, or to abort
+with another terminal reason. Steering and ending do not restart recovery. Three consecutive steps below 10 percent
+progress abort as `Blocked`, with the counter carried in state. Lost grounded support and water entry terminate
+with `UnsupportedState` and `EnteredWater` during preparation or travel, preserving `Arrived` if recovery has begun.
+Both float server heads accept `MovementCommitmentRequest.ForGroundTravel` through
+`BeginMovementCommitment`, and ground progress rides wire generation 15. A begin requires grounded support and
+refuses swimming or airborne-from-water actors. Refusal preserves any active commitment and publishes exactly
+one `MovementCommitmentEnded` for the refused sequence with `UnsupportedState`.
+
+Use `SteerMovementCommitment(target, expectedSequence, direction, distanceRemaining)` to re-aim preparing or
+travelling ground state. The sequence must be nonzero, direction finite and nonzero, and distance finite and
+nonnegative, including zero to hold. Use `EndMovementCommitment(target, expectedSequence, reason)` with the
+Netcode-defined `MovementCommitmentStopReason`. `Arrived` emits `MovementCommitmentArrived` once immediately after
+the admin drain and before movement advances recovery. Its handler observes the full `RecoveryRemaining`, even
+when that duration is shorter than a tick. A sharded frame without a physical step also delivers arrival.
+Commands queued by the handler apply on the next frame. `MovementCommitmentEnded` runs once at release and
+reports `Arrived` for that sequence after accepted arrival, including release by recovery expiry, water, lost
+support, teleport, supersession, disconnect or `AbortMovementCommitment`. Interruptions release immediately.
+The travel timeout stops applying at accepted ground arrival, and `RecoveryRemaining` bounds recovery. Ballistic
+timeout and recovery behavior stays unchanged. With no recovery, arrival precedes end in the same frame.
+Apply authoritative effects from the arrival result's absolute `Position` and
+steered `Direction`, with the game's normal target, reach and combat validation. Ended releases ability bookkeeping.
+
+`TargetLost`, `NoPath`, `TooLong` and `UnsupportedState` abort with their corresponding Locomotion reason.
+`Cancelled` maps to `Aborted`. `None`, unknown reasons and invalid values throw before queueing even for stale
+sequences or missing actors. Both controls ignore stale sequences, absent actors, ballistic or terminal state,
+and recovery. Repeated ends publish nothing and never restart recovery. `AbortMovementCommitment` can still
+cancel recovery. These calls also live on `IAdminControllable` and `ServerAdmin`. Other heads retain unsupported
+defaults that throw `NotSupportedException`.
+
+The admin drain follows `OnBeforeTick` on both heads, so calls from that hook affect the same eligible movement
+step. A short sharded frame may apply control and publish accepted outcomes without advancing physical timers.
+Ground controls edit carried state without placement admission, so an unresolved explicit movement environment
+can hold physical movement without refusing begin, steer, end or abort, advancing timers, or duplicating events.
+Arrival and end publish before snapshots, so effects applied from event handlers are served that frame.
+Sequence checks persist across same-host handoff, and active ground travel retains the movement anomaly
+exemption at speeds above ordinary walking while respecting bounds.
+
+`KhaozEngine.Movement.GroundPursuit` supplies guarded walk-only planning for those controls. Keep one object per
+active pursuit. Construct it with a `GroundNavigation` profile and optional `PathFollowConfig`. Admission checks
+current exact 3D shape reach, then the independent `TriggerRange`. It requires a Complete walking route ending
+inside current reach and fitting `MaximumPathLength`. Both limits are finite and positive. `StopDistance` is finite
+and nonnegative. Trigger range is checked only at admission, while the path cap is checked on every replan.
+Path length and `RemainingPathLength` are horizontal XZ metres, so slope rise does not consume budget. Arrival
+and endpoint membership use exact 3D reach including capsule extent and target height.
+
+Pursuit always sets `PathQueryBudget.WalkOnly`, which makes the grid planner skip Hop and Drop links while keeping
+Stair and ordinary accepted walking exits. The default is false for existing queries. The profile planner and
+route straightener preserve the option. Pursuit also refuses every non-Walk waypoint, even from another planner.
+Actual-to-route entry and shortcuts use the profile's supported-walk segment guard. Partial, unreachable, empty,
+non-walk and invalid endpoint or entry routes return NoPath with `GroundPursuitDetail`. Profile mismatch,
+airborne, swimming and incompatible commitment state return UnsupportedState. Malformed parameters throw BCL
+exceptions. The lower-level constructor accepts equivalent guarded planning, space and segment admission, with
+runtime profile compatibility owned by its caller.
+
+Load a server-side `GroundNavigation` profile for the actor's actual capsule and movement binding before
+constructing the pursuit. `GroundMoveContext` is caller-owned and used sequentially. The authoritative actor state
+must be grounded, neither swimming nor airborne from water, have no buffered jump, and have no incompatible active
+commitment. `Admit` refuses any active commitment. The game also checks root, stun and ability policy before begin.
+
+This example shows one stable actor and target identity. The game supplies the request queue, current target
+lookup, policy checks, configured durations and effect callbacks. The same wiring applies to either float head.
+Keep the pursuit and sequence keyed by stable actor identity across same-host handoff, rather than by cell entity.
+
+```csharp
+using KhaozEngine.Locomotion;
+using KhaozEngine.Movement;
+using KhaozEngine.NetWorld;
+
+var actor = PlayerRef.Account(actorId);
+string targetId = ""; // The game supplies stable target identifiers.
+var pursuit = new GroundPursuit(navigation);
+var limits = new GroundPursuitSettings(triggerRange, maximumPathLength, stopDistance);
+uint sequence = 0;
+bool awaitingRelease = false;
+
+server.OnBeforeTick += dt =>
+{
+    if (!server.TryGetPlayerState(slot, out PlayerMoveState state)) return;
+    if (sequence == 0)
+    {
+        // A request records this actor's chosen target identity. It never writes movement state.
+        if (!TryConsumePursuitRequest(actorId, out targetId)) return;
+        if (IsRootedOrStunned(actorId) || !CanBeginAbility(actorId)) return;
+        if (!TryGetTargetShape(targetId, out ReachTarget target)) return;
+        GroundPursuitResult admitted = pursuit.Admit(state.Move, tuning, target, limits, context);
+        if (admitted.Status != GroundPursuitStatus.Ready)
+        {
+            ReportAdmission(actorId, admitted.Status, admitted.Detail);
+            return; // Includes AlreadyInRange. The game chooses its ordinary in-range action.
+        }
+        sequence = server.BeginMovementCommitment(actor,
+            MovementCommitmentRequest.ForGroundTravel(admitted.Direction, speed, admitted.RemainingPathLength,
+                preparationSeconds, recoverySeconds, timeoutSeconds));
+        return;
+    }
+    if (ShouldCancelAbility(actorId))
+    {
+        pursuit.Reset();
+        awaitingRelease = true;
+        server.AbortMovementCommitment(actor, sequence); // Also releases recovery, preserving accepted Arrived.
+        return;
+    }
+    if (awaitingRelease) return; // Recovery needs no further pursuit steering.
+
+    ReachTarget? current = TryGetTargetShape(targetId, out ReachTarget shape) ? shape : null;
+    GroundPursuitResult update = pursuit.Tick(state.Move, tuning, current, dt, context);
+    if (update.Status == GroundPursuitStatus.Travelling)
+    {
+        server.SteerMovementCommitment(actor, sequence, update.Direction, update.RemainingPathLength);
+        return;
+    }
+    MovementCommitmentStopReason reason = update.Status switch
+    {
+        GroundPursuitStatus.Arrived => MovementCommitmentStopReason.Arrived,
+        GroundPursuitStatus.TargetLost => MovementCommitmentStopReason.TargetLost,
+        GroundPursuitStatus.NoPath => MovementCommitmentStopReason.NoPath,
+        GroundPursuitStatus.TooLong => MovementCommitmentStopReason.TooLong,
+        GroundPursuitStatus.UnsupportedState => MovementCommitmentStopReason.UnsupportedState,
+        _ => throw new InvalidOperationException("Unexpected active pursuit result.")
+    };
+    awaitingRelease = true;
+    server.EndMovementCommitment(actor, sequence, reason);
+};
+
+server.MovementCommitmentArrived += result =>
+{
+    if (result.Slot != slot || result.Sequence != sequence) return;
+    awaitingRelease = true;
+    // This is the strike point, before optional recovery advances. Revalidate current game policy and reach.
+    if (TryGetTargetShape(targetId, out ReachTarget target)
+        && ReachGeometry.Within(new MovementBody(result.Position, tuning.CapsuleRadius, tuning.CapsuleHalfHeight),
+            target, limits.StopDistance)
+        && CanStrike(actorId, targetId))
+        ApplyStrike(actorId, targetId, result.Position, result.Direction);
+};
+server.MovementCommitmentEnded += result =>
+{
+    if (result.Slot != slot || result.Sequence != sequence) return;
+    ReleaseAbility(actorId, result.Sequence, result.Reason);
+    pursuit.Reset();
+    sequence = 0;
+    awaitingRelease = false;
+};
+```
+
+Adoption requires the 22.0.0 major engine repin, matched generation-15 client and server, and the server-side
+navigation profile for the actor's capsule. Persisted movement payloads migrate automatically through normal
+blob normalization. Clients need the matching movement environment for replay, not a navigation query or route
+cache. See [forced movement rationale](design/FORCED-MOVEMENT.md) for package boundaries and the prediction tradeoff.
+
+Ready always carries finite nonzero direction and positive remaining length. AlreadyInRange and OutOfRange
+are separate admission results and must not begin a commitment. Travelling always carries finite nonzero
+direction and nonnegative remaining length. A due replan cooling down holds with the last valid direction and
+zero distance. It does not arrive or terminate. Target drift, corridor exit, route consumption and invalid cached
+endpoint membership trigger replanning. Invalid membership includes sub-threshold target motion. A formerly
+nonterminal corridor reaching a stale terminal refreshes once immediately under radius and layer checks. A fresh
+query already terminal keeps the cooldown. The defaults for budget, drift, corridor and cooldown come from
+`PathFollowConfig`. Consumed routes, spent commitment distance and cached endpoints never witness arrival.
+A valid final approach keeps steering with positive remaining length inside `AcceptRadius` while outside exact
+reach. Terminal proximity only changes the timing of an otherwise due replan. A missing usable horizontal
+direction outside exact reach also makes a refresh due, with the same cooldown policy. Crossing an intermediate
+waypoint counts as progress along the actor's active steering leg, including at corners. That leg starts at the
+query start and resets to the current feet whenever advancement selects another waypoint. A proximity skip cannot
+witness crossing the next waypoint without actor movement. Advancement still requires supported segment admission
+from the current feet to the next waypoint. Refused crossed entries make replanning due rather than steering back
+across the old waypoint. Corridor distance continues to use the route's original segments.
+
+Pass null when the target disappears. Call `Reset` before replacing target identity, teleporting or manually
+cancelling, then admit afresh. Do not tick during recovery or after a terminal result. Use commitment timeout
+for the total pursuit duration, the authoritative arrival event for game-validated effects, and the ended event
+for lifecycle cleanup. Pursuit performs no physics stepping, position writes, actor lookup or ability logic.
+Clients replay the server-carried direction and distance rather than planning their own route.
+
+For a server-authored ballistic leap, knockback, or similar move that player input must not steer, queue a movement
 commitment. This example authors an 8 metre same-height arc with a 2 metre apex, then holds a rooted recovery pose
 for 0.15 seconds after physical contact:
 
@@ -15999,8 +16178,8 @@ top of the next tick, ahead of `OnBeforeTick`. The host-thread `Kick(int slot, s
   join, and once per tick over every live session, ahead of `OnBeforeTick`. A ban that lands after the door closes
   the session with `TileServerReason.Banned`, the same string as the door's `ke:banned` refusal, whoever recorded
   it, and a tokenless guest seat is never checked. This is the tile counterpart of the `WorldServer` join check.
-- `SetPosition` keeps the interface default and cuts like `Teleport`. The movement commitment pair is not
-  supported and throws `NotSupportedException`.
+- `SetPosition` keeps the interface default and cuts like `Teleport`. The movement commitment controls are not
+  supported and throw `NotSupportedException`.
 
 ```csharp
 var server = new TileWorldServer(transport, config with { Presenter = new TilePresenter(document) }, map);
@@ -18866,7 +19045,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="21.25.0" />
+<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="22.0.0" />
 ```
 
 ```csharp
@@ -18902,7 +19081,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="21.25.0" />
+<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="22.0.0" />
 ```
 
 ```csharp
@@ -19147,7 +19326,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Metal" Version="21.25.0" />
+<PackageReference Include="KhaozEngine.Gpu.Metal" Version="22.0.0" />
 ```
 
 ```csharp
@@ -21138,8 +21317,8 @@ server.SetSpeedScale(player, scale); // actor and player identify the same game-
 `ModifierTotal` sums per-stack integer contributions exactly, including cancelling contributions.
 It throws `OverflowException` if the final sum cannot fit in an `int`. Use the `ulong` value from
 `ModifierVersion(actor)` to refold lazily, including the return to zero when no instances remain.
-Movement scales replicate in 1/16 steps. Finer precision remains an
-[open question](https://github.com/APKiwiOrg/KhaozEngine/issues/1652).
+Movement scales replicate in 1/1024 steps at wire generation 15. A requested 10 percent haste becomes
+1.099609375x after quantization.
 
 Call `Publish` every tick after stepping and gameplay mutations. It drains changed actor ids and
 retries pending publications. The Sharding target first checks `TryGetOwner`, then `IsInHandoff`:
@@ -23813,7 +23992,7 @@ socket a shipping build does not contain. It is in NO umbrella, and a game head 
 
 ```xml
 <ItemGroup Condition="'$(Configuration)' == 'Debug'">
-  <PackageReference Include="KhaozEngine.Automation" Version="21.25.0" />
+  <PackageReference Include="KhaozEngine.Automation" Version="22.0.0" />
 </ItemGroup>
 ```
 
@@ -27107,7 +27286,7 @@ var server = new WorldServer(transport, config, terrain.SampleHeight, MoveTuning
 
 3. *Graceful decode (last resort).* Even if both above are bypassed, an undecodable snapshot (an unregistered BUILT-IN component type id from a newer core protocol) becomes a clean `DisconnectReason.IncompatibleVersion` disconnect plus a `SnapshotDecodeFailed` event - never an unhandled exception in your frame loop. (An unregistered consumer *extension* id, at/above `ReplicationRegistry.FirstExtensionTypeId`, is skipped instead, so a newer server's added component never disconnects an older client - see the server-owned NPCs section above.)
 
-**Engine wire generation (enforced automatically since 10.2.0).** 10.0.0 widened `NetId` to 64-bit on the wire (the snapshot/delta id field and the frame header, `[localNetId:long][ackSeq:int]`, grown 8 -> 12 bytes) with NO dual-format wire, so a 10.0.0 peer and a pre-10.0.0 peer MUST reject each other at connect rather than misparse a 64-bit frame as 32-bit. As of 10.2.0 the engine does this for you, independent of your `ProtocolVersion`: `WorldClient` always folds `MoveProtocol.WireProtocolVersion` (= 14 with explicit water excursion transport, up from 1 for the pre-10.0.0 32-bit line, with generations 3 to 7 each adding a field to the movement built-in codec, 8 adding the whole new `PickupState` built-in, 9 the floating-origin frame-relative position, 10 the move frame's flags byte plus `MovementState.FacingYawQ` together, 11 `MovementState.Commitment`, 12 moving the two feel timers into the owner-only `MovementOwnerState` built-in, 13 adding `MoveCommand.ScaleSpeedByAxis` as bit 2 of the existing flags byte, and 14 appending the one-byte `MovementState.WaterExcursion`) into its Hello even with no `ProtocolVersion`, and `WorldServer` / `ShardedWorldServer` always install a `WireGenerationAuthenticator` that rejects a wire-generation mismatch, or a peer that presents none (a pre-10.2.0 / 9.x client), cleanly as `DisconnectReason.IncompatibleVersion`. Generation 13 keeps the move frame at 18 bytes, with run bit 0, `FaceCamera` bit 1, precise speed bit 2, yaw at byte 13 and jump at byte 17. Generation 14 appends the explicit water excursion to the movement payload (57 bytes). The owner timer frame remains 8 bytes. Earlier persisted generations default the new byte to None while preserving legacy Swimming and the existing carried state. This transport addition does not enable explicit swimming on its own. You no longer fold `;wire{N}` into your `ProtocolVersion` (the pre-10.2.0 advice is obsolete): the `ProtocolVersion` gate above is now purely your GAME version, checked on top of the automatic wire gate. Both skew directions produce the clean disconnect. Consequences are unchanged from 10.0.0: adopt client and server together across a wire bump (the break is not one-sided), and a server that has written 64-bit cell blobs cannot be downgraded (an old build treats a v2 blob as `SkippedTooNew` and quarantines it). A bare `NetClient` driven straight into a `WorldServer` / `ShardedWorldServer`, bypassing `WorldClient`, must present the wire layer itself via `ProtocolHandshake.BuildClientToken(MoveProtocol.WireProtocolVersion, consumerVersion, innerToken)`.
+**Engine wire generation (enforced automatically since 10.2.0).** 10.0.0 widened `NetId` to 64-bit on the wire (the snapshot/delta id field and the frame header, `[localNetId:long][ackSeq:int]`, grown 8 -> 12 bytes) with NO dual-format wire, so a 10.0.0 peer and a pre-10.0.0 peer MUST reject each other at connect rather than misparse a 64-bit frame as 32-bit. As of 10.2.0 the engine does this for you, independent of your `ProtocolVersion`: `WorldClient` always folds `MoveProtocol.WireProtocolVersion` (= 15 with fine speed and ground commitment transport, up from 1 for the pre-10.0.0 32-bit line, with generations 3 to 7 each adding a field to the movement built-in codec, 8 adding the whole new `PickupState` built-in, 9 the floating-origin frame-relative position, 10 the move frame's flags byte plus `MovementState.FacingYawQ` together, 11 `MovementState.Commitment`, 12 moving the two feel timers into the owner-only `MovementOwnerState` built-in, 13 adding `MoveCommand.ScaleSpeedByAxis` as bit 2 of the existing flags byte, 14 appending the one-byte `MovementState.WaterExcursion`, and 15 widening speed in place to Int16 and appending ground commitment state) into its Hello even with no `ProtocolVersion`, and `WorldServer` / `ShardedWorldServer` always install a `WireGenerationAuthenticator` that rejects a wire-generation mismatch, or a peer that presents none (a pre-10.2.0 / 9.x client), cleanly as `DisconnectReason.IncompatibleVersion`. Generation 13 keeps the move frame at 18 bytes, with run bit 0, `FaceCamera` bit 1, precise speed bit 2, yaw at byte 13 and jump at byte 17. Generation 14 appended the explicit water excursion. Generation 15 widens speed in place and appends ground commitment state, producing a 64-byte movement payload. The owner timer frame remains 8 bytes. Historical generations 1 through 14 normalize explicitly. The owner timers split first, then an old signed speed byte multiplies by 64 to preserve its old decoded value. Pre-speed layouts default to zero/unmodified, and the ground suffix defaults to Ballistic and zero. Position frames, legacy Swimming, existing carried state and opaque extensions survive. Malformed or truncated payloads remain refused and quarantined. This transport addition does not enable explicit swimming on its own. You no longer fold `;wire{N}` into your `ProtocolVersion` (the pre-10.2.0 advice is obsolete): the `ProtocolVersion` gate above is now purely your GAME version, checked on top of the automatic wire gate. Both skew directions produce the clean disconnect. Consequences are unchanged from 10.0.0: adopt client and server together across a wire bump (the break is not one-sided), and a server that has written 64-bit cell blobs cannot be downgraded (an old build treats a v2 blob as `SkippedTooNew` and quarantines it). A bare `NetClient` driven straight into a `WorldServer` / `ShardedWorldServer`, bypassing `WorldClient`, must present the wire layer itself via `ProtocolHandshake.BuildClientToken(MoveProtocol.WireProtocolVersion, consumerVersion, innerToken)`.
 
 ```csharp
 client.SnapshotDecodeFailed += err => ShowOutOfDateUI(err);   // "client out of date, please update"
@@ -27459,14 +27638,14 @@ What the engine guarantees once you set it:
   It rides the server-authored `MovementState` instead, which is also what makes it survive a reconcile: the
   client rebuilds its basis from the replicated components alone.
 
-Range and precision: the value is clamped to `[0, MovementState.MaxSpeedScale]` (8) and quantized to 1/16 BEFORE
+Range and precision: the value is clamped to `[0, MovementState.MaxSpeedScale]` (8) and quantized to 1/1024 BEFORE
 it reaches the sim, so the server never runs a speed it cannot describe to its clients. `0`, `0.5`, `1`, `1.5`,
-`2`, `5` and `8` are all exact, and a requested `1.1` resolves to `1.125` on both ends. Wire cost is one byte per
+`2`, `5` and `8` are all exact, and a requested `1.1` resolves to `1.099609375` on both ends. Wire cost is two bytes (Int16) per
 entity per snapshot, and an unmodified player encodes as `0` decoding to exactly `1.0`.
 
-**Compatibility:** this added `MovementState.SpeedScaleQ` to the movement built-in codec, bumping
-`MoveProtocol.WireProtocolVersion` to 6. The movement built-in is not length-prefixed, so an old client cannot
-skip the byte and is rejected at connect by the always-on `WireGenerationAuthenticator`. **Client and server must
+**Compatibility:** generation 6 introduced `MovementState.SpeedScaleQ` as a signed byte. Generation 15 widens
+it in place to `short`, with `QuantizeSpeedScale` returning and `DecodeSpeedScale` accepting `short`.
+The movement built-in is not length-prefixed, so an old client is rejected at connect by the always-on `WireGenerationAuthenticator`. **Client and server must
 ship together.**
 
 NPCs and single-player get this for free and without any wire involvement: the value lives on
@@ -27742,7 +27921,7 @@ PlayerMoveState full = PlayerMoveState.From(position, movement, owner);
   Cell persistence and cell handoff write it for every entity that has it, so a restored or handed-off player keeps
   its coyote and jump-buffer windows. A border ghost does not carry it, and is never simulated.
 - **What it saves.** The owner-state split saves 8 bytes per moving player per observer per snapshot. The current movement
-  payload is 57 bytes including the excursion byte, and on the delta path a change confined to the timers no longer resends the movement frame to observers
+  payload is 64 bytes including the excursion byte and ground commitment suffix, and on the delta path a change confined to the timers no longer resends the movement frame to observers
   at all. The owner pays 2 bytes more, the owner frame's type id.
 - **Remotes are unaffected.** `VerticalVelocity`, `Grounded`, `Swimming`, `TeleportEpoch`, `ClimbRateQ`,
   `SpeedScaleQ`, the carried arc, `FacingYawQ` and `Commitment` keep their meaning and their order.

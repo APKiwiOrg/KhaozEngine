@@ -5,6 +5,66 @@ server that needs body-aware movement geometry, absolute-coordinate ground movem
 ground navigation profile, a baked profile set loaded without physics, or a route-free approach. It stays
 outside every umbrella and carries no backend, input or rendering dependency.
 
+## Ground pursuit for committed travel
+
+`GroundPursuit` plans and steers one active pursuit without stepping physics or writing actor state. Construct it
+with `GroundNavigation` and optional `PathFollowConfig`, or supply equivalent `IRegionPathPlanner`, `NavSpace`
+and supported-walk segment admission. The convenience constructor checks the actual capsule and resolved
+`GroundMoveContext` binding against the baked profile. The lower-level caller owns equivalent compatibility.
+
+`Admit(in MoveState, in MoveTuning, in ReachTarget, in GroundPursuitSettings, GroundMoveContext)` checks current
+exact 3D reach first, then the shape-distance `TriggerRange`. It requires a Complete, nonempty route whose endpoint
+belongs to current reach, whose waypoints are all Walk and whose horizontal length fits `MaximumPathLength`.
+Hop, Drop and unknown transitions refuse. Pursuit sets `PathQueryBudget.WalkOnly` on admission and every replan,
+so a drop-enabled profile can choose a longer walking detour. It also checks returned waypoint kinds for planners
+that ignore that option. `RouteStraightener` drops only guarded walking shortcuts. Actual-to-route entry and every
+kept segment use the supplied supported-walk guard.
+
+`GroundPursuitSettings(triggerRange, maximumPathLength, stopDistance)` requires finite positive trigger and path
+limits, and finite nonnegative stop distance. Trigger range applies only at admission. The path cap applies to the
+remaining route at admission and every replan, not total distance travelled. Route length and
+`GroundPursuitResult.RemainingPathLength` are horizontal XZ metres. Slope rise does not consume budget, so these
+values are not surface arc length. Endpoint membership and arrival always use exact 3D capsule-to-target reach.
+The commitment timeout bounds total pursuit duration.
+
+Ready always supplies a finite nonzero unit `Direction` and positive finite remaining length for
+`MovementCommitmentRequest.ForGroundTravel`. AlreadyInRange and OutOfRange are separate admission outcomes.
+NoPath, TooLong and UnsupportedState refuse or terminate. `GroundPursuitDetail` distinguishes partial,
+unreachable, non-walk, empty, invalid endpoint, invalid entry and unusable direction routes, plus unsupported
+state and profile diagnostics. Malformed parameters remain BCL exceptions.
+
+Call `Tick(in MoveState, in MoveTuning, ReachTarget? target, float dt, GroundMoveContext)` from the authoritative
+game tick. It checks the current target's exact reach before route following. It replans on target drift, corridor
+exit, route consumption or invalid endpoint membership, including target motion below the normal drift threshold.
+Budget, drift, corridor and cooldown defaults come from `PathFollowConfig`. A previously nonterminal corridor
+reaching its stale terminal refreshes once immediately under waypoint radius and layer checks. A fresh query
+already terminal at its start keeps the cooldown. A due replan cooling down returns Travelling with the last valid
+direction and zero remaining length to hold the commitment. Route consumption, a cached endpoint or a spent
+commitment budget never proves arrival. A valid final approach keeps steering with positive remaining length
+inside `AcceptRadius` while outside exact reach. Terminal proximity only changes the timing of an otherwise due
+replan. No usable horizontal direction outside exact reach also makes a replan due, preserving cooldown holds
+until refresh can supply a route. An unusable fresh route still returns NoPath with NoDirection.
+
+Crossing an intermediate waypoint counts as progress along the actor's active steering leg, including at corners.
+The leg begins at the query start, then at the actor's current feet whenever advancement selects another waypoint.
+Proximity skipping a waypoint does not visit it and cannot witness crossing its successor without actor movement.
+Advancement requires supported-walk admission from the current feet to the next waypoint. If a crossed entry is
+refused, replanning becomes due instead of steering back across the old waypoint. Corridor distance still uses
+the route's original segments.
+
+The game owns target identity, speed, preparation, timeout, recovery and cancellation. After a Ready admission,
+queue begin with the returned direction and length. On each `OnBeforeTick`, forward Travelling to
+`SteerMovementCommitment(actor, sequence, result.Direction, result.RemainingPathLength)`. Map Arrived, TargetLost,
+NoPath, TooLong and UnsupportedState to the corresponding `EndMovementCommitment` reason. Stop ticking on a
+terminal result. Use the authoritative arrival event for validated effects and the ended event for cleanup.
+Pass null for a missing target. Call `Reset()` for target replacement, teleport or manual cancellation, then admit
+afresh. Tick after reset reports UnsupportedState with NotAdmitted. Clients replay carried controls without a
+navigation query. Load a server-side profile matching the actor capsule and resolved movement binding before
+admission. The actor must be grounded, neither swimming nor airborne from water, without buffered jump or an
+active commitment. Game root and stun policy is caller-owned. See the
+[consumer contract](../docs/USING-KHAOZENGINE.md) for the complete `OnBeforeTick` example, immediate strike on
+arrival and cleanup on end, and the [rationale](../docs/design/FORCED-MOVEMENT.md) for the package and prediction tradeoffs.
+
 ## Exact 3D reach
 
 `MovementBody` is an upright capsule in absolute metres. `Centre` is the capsule centre, `Radius` is

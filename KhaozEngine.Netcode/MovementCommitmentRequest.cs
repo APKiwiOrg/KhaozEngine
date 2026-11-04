@@ -5,7 +5,7 @@ using System.Numerics;
 // IAdminControllable.cs.
 namespace KhaozEngine.NetWorld;
 
-/// <summary>An immutable request for a server-authored committed ballistic move.
+/// <summary>An immutable request for a server-authored committed ballistic or ground move.
 /// <para>Defined in the <c>KhaozEngine.Netcode</c> assembly under this namespace, and type-forwarded from
 /// <c>KhaozEngine.NetWorld</c>, where it shipped. The float heads turn it into a
 /// <c>KhaozEngine.Locomotion.MovementCommitment</c> when it starts.</para></summary>
@@ -16,7 +16,7 @@ public readonly struct MovementCommitmentRequest
     {
         Require(direction, horizontalSpeed, verticalSpeed, gravity, preparationSeconds, recoverySeconds,
             timeoutSeconds);
-        Direction = Vector2.Normalize(direction);
+        Direction = NormalizeDirection(direction);
         HorizontalSpeed = horizontalSpeed;
         VerticalSpeed = verticalSpeed;
         Gravity = gravity;
@@ -25,6 +25,43 @@ public readonly struct MovementCommitmentRequest
         TimeoutSeconds = timeoutSeconds;
     }
 
+    private MovementCommitmentRequest(Vector2 direction, float speed, float distance, float preparationSeconds,
+        float recoverySeconds, float timeoutSeconds)
+    {
+        if (!float.IsFinite(direction.X) || !float.IsFinite(direction.Y) || direction == Vector2.Zero)
+            throw new ArgumentException("Direction must be finite and nonzero.", nameof(direction));
+        if (!float.IsFinite(speed) || speed <= 0f) throw new ArgumentOutOfRangeException(nameof(speed));
+        if (!float.IsFinite(distance) || distance <= 0f) throw new ArgumentOutOfRangeException(nameof(distance));
+        if (!float.IsFinite(preparationSeconds) || preparationSeconds < 0f)
+            throw new ArgumentOutOfRangeException(nameof(preparationSeconds));
+        if (!float.IsFinite(recoverySeconds) || recoverySeconds < 0f)
+            throw new ArgumentOutOfRangeException(nameof(recoverySeconds));
+        if (!float.IsFinite(timeoutSeconds) || timeoutSeconds <= 0f)
+            throw new ArgumentOutOfRangeException(nameof(timeoutSeconds));
+        Direction = NormalizeDirection(direction, ground: true);
+        HorizontalSpeed = speed;
+        DistanceRemaining = distance;
+        PreparationSeconds = preparationSeconds;
+        RecoverySeconds = recoverySeconds;
+        TimeoutSeconds = timeoutSeconds;
+        IsGroundTravel = true;
+    }
+
+    /// <summary>Creates positive-budget ground travel. The caller validates actor support and water state.</summary>
+    public static MovementCommitmentRequest ForGroundTravel(Vector2 direction, float speed, float distance,
+        float preparationSeconds = 0f, float recoverySeconds = 0f, float timeoutSeconds = 5f) =>
+        new(direction, speed, distance, preparationSeconds, recoverySeconds, timeoutSeconds);
+
+    private static Vector2 NormalizeDirection(Vector2 direction, bool ground = false)
+    {
+        float lengthSquared = direction.LengthSquared();
+        if (!ground && float.IsFinite(lengthSquared) && lengthSquared > 0f) return Vector2.Normalize(direction);
+        double length = Math.Sqrt((double)direction.X * direction.X + (double)direction.Y * direction.Y);
+        return new((float)(direction.X / length), (float)(direction.Y / length));
+    }
+
+    public bool IsGroundTravel { get; }
+    public float DistanceRemaining { get; }
     public Vector2 Direction { get; }
     public float HorizontalSpeed { get; }
     public float VerticalSpeed { get; }
@@ -53,7 +90,7 @@ public readonly struct MovementCommitmentRequest
 
     // The refusals KhaozEngine.Locomotion.MovementCommitment's constructor makes, restated here because this type now
     // lives below Locomotion and cannot build one to borrow them. The same order, the same exception types, the same
-    // parameter names and the same message, so a caller cannot tell which of the two refused it.
+    // parameter names, so a caller cannot tell which of the two refused it.
     // MovementCommitmentRequestParityTests in KhaozEngine.Server.Tests, the one project that sees both assemblies,
     // holds the two equal. The float heads still validate through MovementCommitment itself when a request starts, so
     // a drift here would move where a bad request is refused, never whether.

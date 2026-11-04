@@ -12,6 +12,8 @@ public static partial class MoveProtocol
 {
     /// <summary>
     /// The engine wire-format generation. Bumped when a wire layout or command interpretation changes incompatibly.
+    /// Generation <c>15</c> widens SpeedScaleQ in place to Int16 at 1/1024 and appends the ground commitment
+    /// kind, remaining distance and blocked-tick count. The movement payload is 64 bytes.
     /// Generation <c>14</c> appends the one-byte explicit water excursion to the movement built-in.
     /// Older persisted states default to None. Generation <c>13</c> added <see cref="MoveCommand.ScaleSpeedByAxis"/>
     /// at bit 2 of the move flags byte. Older peers would silently apply full speed to precise input, so they must
@@ -67,7 +69,7 @@ public static partial class MoveProtocol
     /// <see cref="WorldClientConfig.ProtocolVersion"/> game-version gate still layers on top via
     /// <see cref="VersionCheckingAuthenticator"/>.
     /// </summary>
-    public const int WireProtocolVersion = 14;
+    public const int WireProtocolVersion = 15;
 
     /// <summary>Type id of <see cref="ReplicatedPosition"/> in the shared registry.</summary>
     public const ushort PositionTypeId = 1;
@@ -158,7 +160,7 @@ public static partial class MoveProtocol
                 bw.Write(m.Swimming);       // wire generation 3: the surface-swim flag rides alongside the vertical axis
                 bw.Write(m.TeleportEpoch);  // wire generation 4: the authoritative teleport epoch (hard-cut marker)
                 bw.Write(m.ClimbRateQ);     // wire generation 5: the quantized signed step-climb rate (0 = not climbing)
-                bw.Write(m.SpeedScaleQ);    // wire generation 6: the quantized haste/slow multiplier (0 = unmodified, 1.0)
+                bw.Write(m.SpeedScaleQ);    // generation 15: Int16 at 1/1024, widened in place from generation 6's byte
                 bw.Write(m.HorizontalVelocityXQ);   // wire generation 7: carried airborne velocity, world X (0 = none)
                 bw.Write(m.HorizontalVelocityZQ);   // wire generation 7: carried airborne velocity, world Z (0 = none)
                 bw.Write(m.FacingYawQ);     // wire generation 10: the carried heading as a 16-bit turn fraction (0 = -Z)
@@ -174,32 +176,45 @@ public static partial class MoveProtocol
                 bw.Write(m.Commitment.TimeoutRemaining);
                 bw.Write((byte)m.Commitment.EndReason);
                 bw.Write(WaterExcursionWire.Encode(m.WaterExcursion));
+                bw.Write((byte)m.Commitment.Kind);
+                bw.Write(m.Commitment.DistanceRemaining);
+                bw.Write(m.Commitment.ConsecutiveBlockedTicks);
             },
-            read: br => new MovementState
+            read: br =>
             {
-                VerticalVelocity = br.ReadSingle(),
-                Grounded = br.ReadBoolean(),
-                Swimming = br.ReadBoolean(),
-                TeleportEpoch = br.ReadUInt32(),
-                ClimbRateQ = br.ReadSByte(),
-                SpeedScaleQ = br.ReadSByte(),
-                HorizontalVelocityXQ = br.ReadInt16(),   // wire generation 7: carried airborne velocity, world X
-                HorizontalVelocityZQ = br.ReadInt16(),   // wire generation 7: carried airborne velocity, world Z
-                FacingYawQ = br.ReadInt16(),             // wire generation 10: the carried heading
-                Commitment = new MovementCommitment
+                var movement = new MovementState
                 {
-                    Sequence = br.ReadUInt32(),
-                    Phase = (MovementCommitmentPhase)br.ReadByte(),
-                    Direction = new Vector2(br.ReadSingle(), br.ReadSingle()),
-                    HorizontalSpeed = br.ReadSingle(),
-                    VerticalSpeed = br.ReadSingle(),
-                    Gravity = br.ReadSingle(),
-                    PreparationRemaining = br.ReadSingle(),
-                    RecoveryRemaining = br.ReadSingle(),
-                    TimeoutRemaining = br.ReadSingle(),
-                    EndReason = (MovementCommitmentEndReason)br.ReadByte(),
-                },
-                WaterExcursion = WaterExcursionWire.Decode(br.ReadByte()),
+                    VerticalVelocity = br.ReadSingle(),
+                    Grounded = br.ReadBoolean(),
+                    Swimming = br.ReadBoolean(),
+                    TeleportEpoch = br.ReadUInt32(),
+                    ClimbRateQ = br.ReadSByte(),
+                    SpeedScaleQ = br.ReadInt16(),
+                    HorizontalVelocityXQ = br.ReadInt16(),   // wire generation 7: carried airborne velocity, world X
+                    HorizontalVelocityZQ = br.ReadInt16(),   // wire generation 7: carried airborne velocity, world Z
+                    FacingYawQ = br.ReadInt16(),             // wire generation 10: the carried heading
+                    Commitment = new MovementCommitment
+                    {
+                        Sequence = br.ReadUInt32(),
+                        Phase = (MovementCommitmentPhase)br.ReadByte(),
+                        Direction = new Vector2(br.ReadSingle(), br.ReadSingle()),
+                        HorizontalSpeed = br.ReadSingle(),
+                        VerticalSpeed = br.ReadSingle(),
+                        Gravity = br.ReadSingle(),
+                        PreparationRemaining = br.ReadSingle(),
+                        RecoveryRemaining = br.ReadSingle(),
+                        TimeoutRemaining = br.ReadSingle(),
+                        EndReason = (MovementCommitmentEndReason)br.ReadByte(),
+                    },
+                    WaterExcursion = WaterExcursionWire.Decode(br.ReadByte()),
+                };
+                movement.Commitment = movement.Commitment with
+                {
+                    Kind = (MovementCommitmentKind)br.ReadByte(),
+                    DistanceRemaining = br.ReadSingle(),
+                    ConsecutiveBlockedTicks = br.ReadByte(),
+                };
+                return movement;
             });
         // Display name. Length-prefixed UTF-8, capped at MaxDisplayNameBytes. Not interpolated (strings do not blend);
         // re-sent in every AoI snapshot (names are static, so this is wasteful but simple and consistent at the

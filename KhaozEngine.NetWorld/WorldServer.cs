@@ -527,6 +527,7 @@ public sealed partial class WorldServer : IWorldPersistenceHost, IAdminControlla
         foreach (RateLimiter limiter in rateBySlot.Values) limiter.Refill(elapsedSteps);
         OnBeforeTick?.Invoke(dt);   // consumer NPC/enemy brains run before movement + serving
         admin.Drain(ApplyAdminCommand);
+        PublishMovementCommitmentArrivals();
         // Authoritative movement: one command per player per tick. The slot list is a reused buffer rather than a
         // fresh List each tick, but it is still a COPY of the keys: both loops below can mutate netIdBySlot (a kick
         // or a disconnect mid-serve), so neither may enumerate the dictionary directly.
@@ -699,6 +700,10 @@ public sealed partial class WorldServer : IWorldPersistenceHost, IAdminControlla
                 break;
             case AdminCommandKind.AbortMovementCommitment:
                 ApplyAbortMovementCommitment(cmd.Target, cmd.Sequence, MovementCommitmentEndReason.Aborted);
+                break;
+            case AdminCommandKind.SteerMovementCommitment:
+            case AdminCommandKind.EndMovementCommitment:
+                ApplyGroundMovementCommitmentControl(cmd);
                 break;
             case AdminCommandKind.HoldMovement:
             case AdminCommandKind.ReleaseMovement:

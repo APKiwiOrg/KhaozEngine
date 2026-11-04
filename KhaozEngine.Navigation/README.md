@@ -64,6 +64,20 @@ single layer, always 0. `GridPathPlanner.FindPath` resolves both endpoints with 
 `KhaozEngine.Dungeon`'s `DungeonNav.Bake` is a worked multi-layer example: one `NavGrid` layer per
 dungeon floor, joined by directed `NavLink` pairs at every stair run.
 
+## Walk-only query policy
+
+`PathQueryBudget.WalkOnly` is an additive, default-false query option. When true, `GridPathPlanner` skips Hop
+and Drop link expansion and keeps Stair links. Ordinary neighbour expansion continues to use accepted walking
+exits. Point and region queries both honor it. Existing queries retain their current routes and budgets.
+This lets a caller request a longer walking route when a cheaper Drop would otherwise win, and returns a
+non-Complete result if no walking route exists. Other `IRegionPathPlanner` implementations may ignore the option,
+so a caller requiring walking also checks every returned waypoint kind.
+
+`GroundNavigation.Planner` and Movement's `RouteStraightener` forward the budget unchanged. Movement's
+`GroundPursuit` sets WalkOnly at admission and on every replan, while retaining its own non-Walk refusal guard.
+The [forced movement rationale](../docs/design/FORCED-MOVEMENT.md#guarded-pursuit) explains why a cheaper
+non-walking route must not hide an available walking detour.
+
 ## Baking the overworld (`NavGridBaker`)
 
 `NavGridBaker.BakeOverworld(terrain, colliders, minX, minZ, maxX, maxZ, cellSize, maxSlopeRadians,

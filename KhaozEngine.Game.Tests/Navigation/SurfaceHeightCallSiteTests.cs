@@ -28,6 +28,8 @@ public class SurfaceHeightCallSiteTests
             "KhaozEngine.Navigation/PathFollower.Drop.cs:TryDrop:RestingHeightAt",
             "KhaozEngine.Navigation/PathFollower.Drop.cs:TryDrop:RestingHeightAt",
             "KhaozEngine.Movement/RouteStraightener.cs:TryFeet:RestingHeightAt",
+            // Pursuit route membership seats the actual capsule on certified physical feet, not raw surfaces.
+            "KhaozEngine.Movement/GroundPursuitRoute.cs:Validate:RestingHeightAt",
             "KhaozEngine.Movement/PhysicsNavBake.Profiles.cs:Feet:RestingHeightAt",
             "KhaozEngine.Navigation/GridPathPlanner.Region.cs:CellFeet:RestingHeightAt",
             "KhaozEngine.Navigation/NavSpace.cs:LayerAt:RestingHeightAt",

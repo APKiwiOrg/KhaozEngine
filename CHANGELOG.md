@@ -4,12 +4,21 @@ All notable changes to KhaozEngine. One shared version line `<KhaozEngineVersion
 governs every package, including the four umbrella metapackages. Planned work lives in the repo's GitHub
 Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
+## 22.0.1
+
+2026-11-04
+
+- Skip default material-map sampling and dormant cutout work for opaque, untangented foliage with no maps.
+- Reuse exact duplicate tile-ground GPU vertices without changing triangle inputs, order or authored geometry.
+- Reuse Metal vertex-read coverage across shadow, geometry and forward passes, including mesh and pipeline
+  rebinds and differently ordered instance windows. Revisited windows avoid interval-tree work, indexed
+  streams leave the per-draw window loop, and adjacent window attributes coalesce without filling padding.
+  Exact CPU access refusals and warmed zero allocation remain unchanged (#1696).
+
 ## 22.0.0
 
 2026-11-04
 
-- Reuse exact duplicate tile-ground GPU vertices without changing triangle inputs, order or authored geometry.
-- Skip default material-map sampling and dormant cutout work for opaque, untangented foliage with no maps.
 - Add server-authoritative ground commitments with sequence-checked begin, steering and end on both float heads.
   Ground travel uses its own speed, ignores player movement, jump, facing and speed effects, and retains ordinary
   collision, gravity, slopes and steps. Horizontal distance caps the final stride and holds at zero until the

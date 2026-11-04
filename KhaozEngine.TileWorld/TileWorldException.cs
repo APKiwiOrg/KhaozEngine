@@ -45,6 +45,7 @@ public sealed class TileWorldException : Exception
         Region = inner.Region; TileX = inner.TileX; TileZ = inner.TileZ; WorldDirectory = inner.WorldDirectory;
         ExpectedHash = inner.ExpectedHash; ActualHash = inner.ActualHash; ActualPlaneCount = inner.ActualPlaneCount;
         ExpectedPlaneCount = inner.ExpectedPlaneCount; ObjectId = inner.ObjectId; ArchetypeId = inner.ArchetypeId;
+        CollisionKind = inner.CollisionKind;
         Tile = inner.Tile; Plane = inner.Plane; PlaneCount = inner.PlaneCount; MarkerName = inner.MarkerName;
         ActualRegion = inner.ActualRegion; Field = inner.Field; TileSize = inner.TileSize;
         FormatVersion = inner.FormatVersion; SupportedFormatVersion = inner.SupportedFormatVersion;
@@ -113,6 +114,9 @@ public sealed class TileWorldException : Exception
 
     /// <summary>The refused or required catalog or foliage archetype id, as supplied.</summary>
     public string? ArchetypeId { get; init; }
+
+    /// <summary>The placed archetype's collision kind refused because it has no collision height.</summary>
+    public TileCollisionKind? CollisionKind { get; init; }
 
     /// <summary>The requested archetype ids absent from an edited catalog, in ordinal order. Setting this
     /// property copies the collection into an owned read-only snapshot.</summary>

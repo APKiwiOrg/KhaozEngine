@@ -342,28 +342,49 @@ public class TileWorldCollidersTests
     [InlineData(nameof(TileColliderOptions.BlockedHeight), float.NaN)]
     public void AnOptionThatIsNotAFinitePositiveNumberIsRefusedByName(string option, float value)
     {
-        TileColliderOptions options = option switch
+        TileColliderOptions WithValue(float optionValue) => option switch
         {
-            nameof(TileColliderOptions.WallThickness) => new TileColliderOptions { WallThickness = value },
-            nameof(TileColliderOptions.WalkSurfaceThickness) => new TileColliderOptions { WalkSurfaceThickness = value },
-            _ => new TileColliderOptions { BlockedHeight = value },
+            nameof(TileColliderOptions.WallThickness) => new TileColliderOptions { WallThickness = optionValue },
+            nameof(TileColliderOptions.WalkSurfaceThickness) => new TileColliderOptions { WalkSurfaceThickness = optionValue },
+            _ => new TileColliderOptions { BlockedHeight = optionValue },
         };
+        TileWorldDocument doc = FlatWorld();
+        TileWorldCatalogs catalogs = Catalogs();
 
-        ArgumentOutOfRangeException error = Assert.Throws<ArgumentOutOfRangeException>(
-            () => TileWorldColliders.Build(FlatWorld(), Catalogs(), options));
+        TileColliderOptionsRangeException error = Assert.Throws<TileColliderOptionsRangeException>(
+            () => TileWorldColliders.Build(doc, catalogs, WithValue(value)));
 
+        Assert.Equal(TileColliderOptionsRefusal.OptionNotFinitePositive, error.Reason);
+        Assert.Equal(option, error.OptionName);
         Assert.Equal("options", error.ParamName);
-        Assert.Contains(option, error.Message, StringComparison.Ordinal);
+        Assert.Equal(value, Assert.IsType<float>(error.ActualValue));
+        Assert.IsAssignableFrom<ArgumentOutOfRangeException>(error);
+        Assert.NotEmpty(TileWorldColliders.Build(doc, catalogs, WithValue(0.25f)).Colliders);
     }
 
-    [Fact]
-    public void AMissingCollisionHeightThrowsNamingTheArchetype()
+    [Theory]
+    [InlineData(TileCollisionKind.Solid)]
+    [InlineData(TileCollisionKind.Diagonal)]
+    [InlineData(TileCollisionKind.Wall)]
+    [InlineData(TileCollisionKind.WallCorner)]
+    public void AMissingCollisionHeightThrowsNamingTheArchetype(TileCollisionKind kind)
     {
         TileWorldDocument doc = SlopedWorldWith("unmeasured", 1, 1);
+        TileObject placed = Assert.Single(doc.AllObjects());
+        TileWorldCatalogs catalogs = Catalogs();
+        TileObjectArchetype archetype = catalogs.Archetype("unmeasured")!;
+        archetype.CollisionKind = kind;
 
-        TileWorldException error = Assert.Throws<TileWorldException>(() => TileWorldColliders.Build(doc, Catalogs()));
+        TileWorldException error = Assert.Throws<TileWorldException>(() => TileWorldColliders.Build(doc, catalogs));
 
-        Assert.Contains("'unmeasured'", error.Message, StringComparison.Ordinal);
+        Assert.Equal(TileWorldRefusal.ColliderCollisionHeightMissing, error.Reason);
+        Assert.Equal("unmeasured", error.ArchetypeId);
+        Assert.Equal(kind, error.CollisionKind);
+        Assert.Equal(placed.Id, error.ObjectId);
+        Assert.Equal(new TileCoord(1, 1, 0), error.Tile);
+
+        archetype.CollisionHeight = 1f;
+        Assert.NotEmpty(TileWorldColliders.Build(doc, catalogs).Colliders);
     }
 
     [Fact]

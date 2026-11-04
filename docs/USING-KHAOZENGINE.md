@@ -13139,8 +13139,14 @@ details rollback, default/all-true compatibility and the matching-load/policy-on
 The contract a consumer has to keep:
 
 - **Every `Solid`, `Diagonal`, `Wall` and `WallCorner` archetype needs a `collisionHeight`**, whose field rules are
-  in the `KhaozEngine.TileWorld` README. `Build` throws a `TileWorldException` naming an archetype placed without
-  one. `ke-tileedit`'s `archetype_measure_heights` and `archetype_set_collision_heights` fill them from the kit.
+  in the `KhaozEngine.TileWorld` README. `Build` throws a `TileWorldException` with
+  `TileWorldRefusal.ColliderCollisionHeightMissing`, `ArchetypeId`, `CollisionKind`, `ObjectId` and `Tile` including
+  its known plane when a placed archetype has none. `ke-tileedit`'s `archetype_measure_heights` and
+  `archetype_set_collision_heights` fill them from the kit.
+- **Collider thicknesses and a set blocked height must be finite and positive.** `Build` throws
+  `TileColliderOptionsRangeException` with `TileColliderOptionsRefusal.OptionNotFinitePositive`, `OptionName`,
+  `ParamName = options` and the numeric `ActualValue`. It derives from `ArgumentOutOfRangeException`, so existing
+  range catches still match.
 - **Rebuild after an edit.** Remove the old registration, `Build` again and `AddTo` again. The samplers answer for
   the world as it was built.
 - **The samplers speak absolute document coordinates.** `AddTo` subtracts `world.Origin` once, so in a rebased world

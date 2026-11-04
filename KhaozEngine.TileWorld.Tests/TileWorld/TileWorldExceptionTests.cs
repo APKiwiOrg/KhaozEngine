@@ -174,6 +174,7 @@ public class TileWorldExceptionTests
         if (type == typeof(bool)) return index % 2 == 0;
         if (type == typeof(RegionCoord)) return new RegionCoord(index, -index);
         if (type == typeof(TileCoord)) return new TileCoord(index, -index, index % 4);
+        if (type == typeof(TileCollisionKind)) return TileCollisionKind.Diagonal;
         if (type == typeof(IReadOnlyList<string>)) return new[] { property.Name };
         if (type == typeof(IReadOnlyList<byte>)) return new[] { (byte)index };
         if (type == typeof(IReadOnlyList<TileWorldIssue>)) return new[] { new TileWorldIssue(property.Name, "issue", null, null) };

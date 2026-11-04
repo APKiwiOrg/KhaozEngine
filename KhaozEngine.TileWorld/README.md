@@ -161,6 +161,9 @@ and the `ArgumentOutOfRangeException`-compatible `CatalogEditRangeException`.
 TileEdit session admission and prefab discovery also share this type and enum. The
 [tool refusal table](../KhaozEngine.TileEdit.Tool/README.md#refusals) lists their session, source-path and
 clearance aggregate identifiers.
+Placed collider geometry also shares this type and enum. The
+[physics refusal table](../KhaozEngine.TileWorld.Physics/README.md#refusals) lists `ColliderCollisionHeightMissing`
+and its archetype, collision-kind, object and tile identifiers.
 
 Regions are planar. `Region` is a `RegionCoord?`, and `TileX` and `TileZ` are `int?` values set only when the
 guard received tile coordinates. They never imply a plane. A region-only operation leaves both null.

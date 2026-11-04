@@ -316,4 +316,8 @@ public enum TileWorldRefusal
     ColourShapeInvalid,
     /// <summary>Refuses a non-hex character in a correctly shaped authored colour.</summary>
     ColourDigitInvalid,
+
+    // Placed collider geometry.
+    /// <summary>Refuses a collidable placed archetype without a collision height.</summary>
+    ColliderCollisionHeightMissing,
 }

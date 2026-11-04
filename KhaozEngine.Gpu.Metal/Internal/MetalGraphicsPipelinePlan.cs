@@ -42,6 +42,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
             Layouts = layouts;
             Streams = streams;
             Attributes = attributes;
+            ReadLayout = new(streams, attributes);
             State = state;
             ColourAttachments = colourAttachments;
             DepthFormat = depthFormat;
@@ -66,6 +67,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
 
         /// <summary>The vertex attributes, in attribute-index order.</summary>
         internal MetalVertexAttribute[] Attributes { get; }
+        internal MetalVertexReadLayout ReadLayout { get; }
 
         /// <summary>The rasterizer, depth and topology values a pipeline change emits.</summary>
         internal MetalPipelineState State { get; }

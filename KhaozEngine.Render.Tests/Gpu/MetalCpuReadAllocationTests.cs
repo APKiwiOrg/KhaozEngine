@@ -8,6 +8,38 @@ namespace KhaozEngine.Tests.Gpu;
 [Collection("AllocSensitive")]
 public sealed class MetalCpuReadAllocationTests(ITestOutputHelper output)
 {
+    // #1696. Per-change state and continuation hints must retain their capacity across warmed recordings.
+    [Fact]
+    public void SteadyBindingAndWindowChangesAllocateNothing()
+    {
+        using var f = new MetalReadFootprintDrawFixture();
+        var reads = new MetalRecordedReads();
+        var binds = MetalBindRecords.ForGraphics(MetalBindProgram.DeviceOffsetAlignment);
+        var vertices = new MetalVertexReadRecords();
+        void Frame()
+        {
+            reads.Clear();
+            binds.Reset();
+            binds.SetIndexTable(f.Pipeline.Table);
+            vertices.Reset();
+            vertices.Record(0, f.Vertices, 0);
+            vertices.Record(1, f.Instances, 0);
+            for (uint draw = 0; draw < 3000; draw++)
+            {
+                binds.Record(0, f.Set, draw * 256);
+                binds.RecordReads(reads, 0);
+                vertices.RecordReads(reads, f.Pipeline.Plan.ReadLayout, 0, 1024, draw * 4, 4, indexed: true);
+            }
+        }
+        Frame();
+        Frame();
+        long bytes = AllocationMeasurement.Measure("3000 per-change draw reads", Frame);
+        output.WriteLine($"3000 per-change draw reads: {bytes} bytes");
+        Assert.Equal(0, bytes);
+        Assert.True(reads.Overlaps(new(f.Instances.CpuResource, 11999 * 96, 32)));
+        Assert.False(reads.Overlaps(new(f.Instances.CpuResource, 11999 * 96 + 32, 64)));
+    }
+
     // #1692. Both interval indexes must reuse large, irregular recordings, not only tiny prefixes.
     [Fact]
     public void ASteadyThreeThousandDrawFootprintReusesItsIndexes()

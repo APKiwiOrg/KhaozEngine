@@ -337,8 +337,9 @@ namespace KhaozEngine.Gpu.Metal.Internal
             _graphicsBinds.Reset();
             _computeBinds.Reset();
             _streams.Reset();
-            _readStreams.Clear();
+            _readStreams.Reset();
             _readIndices = null;
+            _hasIndexRead = false;
             _boundSwapchain = false;
 
             // BOTH PIPELINES FORGOTTEN. The epoch bump above already invalidates the STATE BLOCK's stamp, so this

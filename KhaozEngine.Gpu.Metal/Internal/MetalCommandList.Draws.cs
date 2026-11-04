@@ -97,7 +97,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
             RequireRecording("Binding a vertex buffer");
 
             _streams.Record(slot, buffer.Handle.Handle, offsetBytes);
-            _readStreams[slot] = (buffer, offsetBytes);
+            _readStreams.Record(slot, buffer, offsetBytes);
         }
 
         /// <inheritdoc/>
@@ -287,7 +287,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
             PrepareGraphics(ref sink, pipeline, encoder);
             RecordGraphicsReads(pipeline, 0, indexCount, instanceStart, instanceCount, indexed: true);
             if (_readIndices is { } indices && indexCount != 0 && instanceCount != 0)
-                RecordBufferAccess(indices, (ulong)_indices.OffsetFor(indexStart),
+                RecordIndexRead(indices, (ulong)_indices.OffsetFor(indexStart),
                     (ulong)indexCount * (_indices.IndexType == MTLIndexType.UInt16 ? 2ul : 4ul));
             sink.DrawIndexed(encoder, pipeline.State.PrimitiveType, indexCount, _indices.Buffer,
                 _indices.OffsetFor(indexStart), _indices.IndexType == MTLIndexType.UInt16, instanceCount,

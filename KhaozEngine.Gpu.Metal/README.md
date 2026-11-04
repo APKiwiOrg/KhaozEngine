@@ -1183,7 +1183,12 @@ An abandoned prefix quarantines its ring slot, identified by `RingSegment`, unti
 Device uniform updates still defer in-flight non-current segments and retain the existing depth-one wait.
 Only immediate physical copies are checked for overlap, atomically before any segment or patch changes.
 A buffer map captures one physical base for its lease and pointer, even if another recording rotates the ring.
-Slot-owned, reusable interval indexes keep read recording O(log n) amortized and contiguous CPU access
+Read recording follows resource binding and draw-window changes. Unchanged draws perform no interval-index
+work. Dynamic-offset changes record only dynamic elements, indexed mesh coverage is reused per binding and
+vertex layout, and consecutive instance windows extend exact strided reads without filling padding or gaps.
+Duplicate inserts never rewrite or rebalance tree nodes. This removes repeated recording work from steady
+draw state (#1696), independently of encoder invalidation.
+Slot-owned, reusable interval indexes keep changed-read recording O(log n) amortized and contiguous CPU access
 checks O(log n). Strided checks visit candidate spans and their search paths, bounded by O((k + 1) log n),
 where k counts overlapping bounding spans. Exact attribute checks preserve writable padding.
 Prefix publication queries each writable lease through the same index. The footprint never scans

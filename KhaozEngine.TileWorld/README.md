@@ -125,9 +125,9 @@ at the door. `OfWorld` is unchanged, so moving a gate to the composed digest is 
 ## Refusals
 
 `TileWorldException` retains its exact type and both message-only constructors. Use `Reason` and the
-identifiers below to distinguish region residency, content and manifest-region refusals. Messages remain developer
-prose. `Reason` is nullable only for a message-only instance built outside the engine. Its reason-taking
-constructors also accept an original cause through `InnerException`.
+identifiers below to distinguish region residency, content, manifest-region, object and marker refusals.
+Messages remain developer prose. `Reason` is nullable only for a message-only instance built outside the
+engine. Its reason-taking constructors also accept an original cause through `InnerException`.
 
 Regions are planar. `Region` is a `RegionCoord?`, and `TileX` and `TileZ` are `int?` values set only when the
 guard received tile coordinates. They never imply a plane. A region-only operation leaves both null.
@@ -152,6 +152,17 @@ region file and is null for these in-memory attachment, restoration and save che
 | `RegionCoordinateMismatch` | A region file whose coordinate differs from its manifest row | Expected `Region`, `ActualRegion`, `SourceName` |
 | `RegionFileEmpty` | A region file that deserializes to no region | `SourceName` |
 | `RegionJsonMalformed` | Region JSON that cannot be parsed or deserialized | `SourceName`, `Field` when the parser supplies a JSON path, original `JsonException` in `InnerException` |
+| `ObjectMissing` | Moving, editing or querying a required object id that is absent | `ObjectId` |
+| `ObjectIdDuplicate` | Inserting an object id already in use | `ObjectId` |
+| `ObjectIndexStale` | Moving an indexed object absent from its indexed region | `ObjectId`, indexed `Region` |
+| `MarkerMissing` | Removing a required marker name that is absent | `MarkerName` |
+| `MarkerNameInUnloadedRegion` | Authoring a marker name already held by an unloaded region | `MarkerName`, holding `Region`, existing marker's full `Tile` |
+
+`MoveObject`, required object commands and `QueryService.ObjectGet` share `ObjectMissing`. A stale object
+index can follow direct edits to a region's public object list. `MoveObject` checks the destination region
+before reporting `ObjectIndexStale`, and `RebuildObjectIndex` repairs the index after bulk list edits.
+`MarkerNameInUnloadedRegion` identifies the existing marker's tile, including its known plane, rather than
+the requested destination. Load that region before moving the marker, or choose a different name.
 
 ## Catalogs and validation
 

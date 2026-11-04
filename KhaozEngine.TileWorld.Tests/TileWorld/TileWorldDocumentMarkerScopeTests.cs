@@ -15,7 +15,7 @@ public class TileWorldDocumentMarkerScopeTests
         string dir = tmp.Sub("world");
         TileWorldDocument doc = TileWorldTestData.FlatWorld(4, new RegionCoord(0, 0), new RegionCoord(1, 0));
         doc.SetMarker("camp", 5, 5, 0);
-        doc.SetMarker("spawn", 70, 5, 0);
+        doc.SetMarker("spawn", 70, 5, 2);
         TileWorldFile.Save(doc, dir);
         return dir;
     }
@@ -29,12 +29,20 @@ public class TileWorldDocumentMarkerScopeTests
         TileWorldDocument doc = src.Document;
 
         TileWorldException ex = Assert.Throws<TileWorldException>(() => doc.SetMarker("spawn", 6, 6, 0));
-        Assert.Contains("spawn", ex.Message);
-        Assert.Contains("1, 0", ex.Message);   // names the region holding it, so the fix is obvious
+        Assert.Equal(TileWorldRefusal.MarkerNameInUnloadedRegion, ex.Reason);
+        Assert.Equal("spawn", ex.MarkerName);
+        Assert.Equal(new RegionCoord(1, 0), ex.Region);
+        Assert.Equal(new TileCoord(70, 5, 2), ex.Tile);
 
         TileRegion loaded = doc.GetRegion(new RegionCoord(0, 0))!;
         Assert.Equal(new[] { "camp" }, loaded.Markers.Select(m => m.Name).ToArray());
         Assert.False(loaded.Dirty);            // nothing mutated on the way to the refusal
+
+        src.EnsureLoaded(new RegionCoord(1, 0));
+        TileMarker moved = doc.SetMarker("spawn", 6, 6, 0);
+        Assert.Same(moved, doc.FindMarker("spawn"));
+        Assert.Equal(6, moved.X);
+        Assert.Empty(doc.GetRegion(new RegionCoord(1, 0))!.Markers);
     }
 
     [Fact]

@@ -108,7 +108,8 @@ public class MarkerAndRegionCommandTests
     {
         TileEditingDocument ed = Editing(out TileWorldDocument doc);
         TileWorldException ex = Assert.Throws<TileWorldException>(() => ed.Execute(new RemoveMarkerCommand("ghost")));
-        Assert.Contains("ghost", ex.Message);
+        Assert.Equal(TileWorldRefusal.MarkerMissing, ex.Reason);
+        Assert.Equal("ghost", ex.MarkerName);
         Assert.Empty(doc.AllMarkers());
     }
 

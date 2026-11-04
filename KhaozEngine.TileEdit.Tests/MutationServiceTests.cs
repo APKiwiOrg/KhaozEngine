@@ -198,7 +198,9 @@ public class MutationServiceTests
 
         MutationResult removed = f.Mutate.ObjectRemove(placed.ObjectId);
         Assert.Equal("Remove object", removed.Label);
-        Assert.Throws<TileWorldException>(() => f.Query.ObjectGet(placed.ObjectId));
+        TileWorldException missing = Assert.Throws<TileWorldException>(() => f.Query.ObjectGet(placed.ObjectId));
+        Assert.Equal(TileWorldRefusal.ObjectMissing, missing.Reason);
+        Assert.Equal(placed.ObjectId, missing.ObjectId);
 
         // The undo puts it back with the SAME id, so nothing that referred to it is left dangling.
         f.Mutate.Undo();

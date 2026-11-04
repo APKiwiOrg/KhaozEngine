@@ -231,6 +231,20 @@ carries on.
   `SnapshotRectCommand` does track and restore that null-ness for the rect it owns, over a corner span one
   region wider and taller than its tiles, which is why a prefab stamp undoes to the same bytes.
 
+## Refusals
+
+Required object and marker lookups keep the exact `TileWorldException` type. Inspect its `Reason` and the
+identifier below, rather than parsing the message.
+
+| `TileWorldRefusal` reason | Refuses | Identifiers |
+| --- | --- | --- |
+| `ObjectMissing` | Moving, rotating, removing or setting tags on an absent object id | `ObjectId` |
+| `MarkerMissing` | Removing an absent marker name | `MarkerName` |
+
+Document admission reasons also propagate unchanged through commands, including `ObjectIdDuplicate` when
+re-adding an occupied id and `MarkerNameInUnloadedRegion` when a marker name belongs to an unloaded region.
+The [TileWorld refusal table](../KhaozEngine.TileWorld/README.md#refusals) lists their identifiers.
+
 ## `TileEditOps`
 
 Static factories that READ the document and return the command expressing the edit. Nothing here mutates: the

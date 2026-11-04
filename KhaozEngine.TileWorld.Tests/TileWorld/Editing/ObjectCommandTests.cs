@@ -198,7 +198,9 @@ public class ObjectCommandTests
         TileEditingDocument ed = Editing(out TileWorldDocument doc);
         long id = Place(ed, "tree", 5, 5);
 
-        Assert.Throws<TileWorldException>(() => ed.Execute(new MoveObjectCommand(Cat, 9999, 6, 5, 0)));
+        TileWorldException missing = Assert.Throws<TileWorldException>(() => ed.Execute(new MoveObjectCommand(Cat, 9999, 6, 5, 0)));
+        Assert.Equal(TileWorldRefusal.ObjectMissing, missing.Reason);
+        Assert.Equal(9999, missing.ObjectId);
         Assert.Throws<TileWorldException>(() => ed.Execute(new MoveObjectCommand(Cat, id, 500, 500, 0)));
 
         TileObject o = doc.FindObject(id)!;
@@ -292,7 +294,9 @@ public class ObjectCommandTests
     public void Remove_of_an_unknown_id_throws()
     {
         TileEditingDocument ed = Editing(out TileWorldDocument doc);
-        Assert.Throws<TileWorldException>(() => ed.Execute(new RemoveObjectCommand(Cat, 4242)));
+        TileWorldException ex = Assert.Throws<TileWorldException>(() => ed.Execute(new RemoveObjectCommand(Cat, 4242)));
+        Assert.Equal(TileWorldRefusal.ObjectMissing, ex.Reason);
+        Assert.Equal(4242, ex.ObjectId);
         Assert.Empty(doc.AllObjects());
     }
 
@@ -335,6 +339,8 @@ public class ObjectCommandTests
     public void Set_tags_of_an_unknown_id_throws()
     {
         TileEditingDocument ed = Editing(out TileWorldDocument doc);
-        Assert.Throws<TileWorldException>(() => ed.Execute(new SetObjectTagsCommand(77, new[] { "x" })));
+        TileWorldException ex = Assert.Throws<TileWorldException>(() => ed.Execute(new SetObjectTagsCommand(77, new[] { "x" })));
+        Assert.Equal(TileWorldRefusal.ObjectMissing, ex.Reason);
+        Assert.Equal(77, ex.ObjectId);
     }
 }

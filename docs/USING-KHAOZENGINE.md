@@ -12770,6 +12770,13 @@ and either the full authored `Tile` for a bounds refusal or `Plane` and `PlaneCo
 These save checks run before the first write. Parsing also sets `SourceName` to the region file path.
 Attachment, restoration and these save checks leave `SourceName` null.
 
+Object and marker identity refusals use the same exact `TileWorldException` type. `ObjectMissing` carries
+`ObjectId` for `MoveObject`, required object commands and `QueryService.ObjectGet`. `ObjectIdDuplicate`
+carries the occupied `ObjectId` on insertion. `ObjectIndexStale` carries `ObjectId` and the indexed `Region`
+when direct edits to a region's public object list leave the index pointing at an absent object. `MoveObject`
+still checks the destination region first. Use `RebuildObjectIndex` after bulk list edits.
+`MarkerMissing` carries `MarkerName` for a required marker removal.
+
 `RegionCoordinateMismatch` carries the manifest's expected `Region`, the file's `ActualRegion` and
 `SourceName`. `RegionFileEmpty` carries `SourceName` for JSON that deserializes to no region.
 `RegionJsonMalformed` carries `SourceName`, the parser's JSON path in nullable `Field`, and the original
@@ -12796,11 +12803,12 @@ through the region that carries it.
 
 **A marker name is unique across the WHOLE world, not just the loaded part.** `SetMarker` consults the same
 index through `document.Source` (the `TileWorldSource` it was opened through, null for a document built in
-memory) and refuses a name an unloaded region already carries, naming that region, rather than authoring a
-second marker that only collides once both regions are in. A loaded region outranks its index row, so re-homing
-a marker inside the part of the world you hold is unaffected. `Unload` refreshes the rows of the region it is
-dropping from that region, the same way it refreshes the known hash, so a marker deleted and saved before the
-unload really does free its name.
+memory) and refuses a name an unloaded region already carries with `MarkerNameInUnloadedRegion`.
+`MarkerName`, `Region` and the existing marker's full `Tile`, including its known plane, identify what holds
+the name. Load that region before moving the marker, or choose a different name. A loaded region outranks its
+index row, so re-homing a marker inside the part of the world you hold is unaffected. `Unload` refreshes the
+rows of the region it is dropping from that region, the same way it refreshes the known hash, so a marker
+deleted and saved before the unload really does free its name.
 
 **Collision is derived, never authored.** `TileCollisionBaker.Bake` builds the whole `TileCollisionMap` from
 settings plus object archetypes, `Rebake(map, doc, catalogs, dirtyRect, plane)` re-derives one rect after an
@@ -13680,6 +13688,11 @@ back whole when a child throws) and `SnapshotRectCommand` (an arbitrary mutation
 rect's pre-image first). An object placed and then undone comes back with the id it HAD on redo, so anything
 referring to it by id keeps resolving.
 
+Required object commands use `TileWorldException` with `TileWorldRefusal.ObjectMissing` and `ObjectId`.
+`RemoveMarkerCommand` uses `MarkerMissing` and `MarkerName`. Other document admission reasons propagate
+unchanged. The [editing refusal table](../KhaozEngine.TileWorld.Editing/README.md#refusals) documents these
+required lookups.
+
 **`TileEditOps` builds the commands, it does not mutate.** `Raise` (with an edge falloff), `Flatten`, `Smooth`
 (an iterated box blur reading its outside neighbours from the document, so a patch blends into the terrain
 around it), `SetHeights`, `Line` (Bresenham, one object per tile, one undo step), `Scatter` (a jittered grid
@@ -13715,6 +13728,11 @@ The `ke-tileedit` dotnet tool is an MCP (Model Context Protocol) server over std
 validates, renders and saves tile worlds, so an AI client can author one before any GUI editor exists. Every
 mutation runs through `KhaozEngine.TileWorld.Editing`, the same command layer the later GUI editor drives, so
 an MCP edit and a GUI edit are the same undoable operation.
+
+Direct in-process calls to `QueryService.ObjectGet` refuse an absent id with the exact `TileWorldException`
+type, `TileWorldRefusal.ObjectMissing` and `ObjectId`. Mutation service calls propagate the command and
+document reasons. MCP error responses retain human-readable text. See the
+[tool refusal table](../KhaozEngine.TileEdit.Tool/README.md#refusals).
 
 **Wiring into Claude Code.** Register the tool as an MCP server, repo-local for development:
 

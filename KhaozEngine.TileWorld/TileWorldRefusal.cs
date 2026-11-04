@@ -36,4 +36,18 @@ public enum TileWorldRefusal
     RegionFileEmpty,
     /// <summary>Refuses region JSON that cannot be parsed or deserialized.</summary>
     RegionJsonMalformed,
+
+    // Document objects.
+    /// <summary>Refuses an operation requiring an object id that is absent.</summary>
+    ObjectMissing,
+    /// <summary>Refuses insertion of an object id already in use.</summary>
+    ObjectIdDuplicate,
+    /// <summary>Refuses moving an indexed object absent from its indexed region.</summary>
+    ObjectIndexStale,
+
+    // Document markers.
+    /// <summary>Refuses an operation requiring a marker name that is absent.</summary>
+    MarkerMissing,
+    /// <summary>Refuses a marker name already held by an unloaded region.</summary>
+    MarkerNameInUnloadedRegion,
 }

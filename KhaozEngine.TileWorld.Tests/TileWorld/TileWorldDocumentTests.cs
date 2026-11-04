@@ -125,6 +125,47 @@ public class TileWorldDocumentTests
         Assert.True(doc.RemoveObject(a.Id));
         Assert.Null(doc.FindObject(a.Id));
         Assert.False(doc.RemoveObject(a.Id));
+
+        TileWorldException missing = Assert.Throws<TileWorldException>(() => doc.MoveObject(a.Id, 3, 4, 0));
+        Assert.Equal(TileWorldRefusal.ObjectMissing, missing.Reason);
+        Assert.Equal(a.Id, missing.ObjectId);
+    }
+
+    [Fact]
+    public void MoveObject_checks_the_destination_before_refusing_a_stale_index()
+    {
+        var doc = new TileWorldDocument { Id = "w", DisplayName = "W" };
+        TileRegion from = doc.GetOrCreateRegion(new RegionCoord(0, 0));
+        TileObject o = doc.AddObject("tree", 3, 4, 0, 0);
+        Assert.True(from.Objects.Remove(o));
+        from.Dirty = false;
+
+        TileWorldException destination = Assert.Throws<TileWorldException>(() => doc.MoveObject(o.Id, 70, 4, 2));
+        Assert.Equal(TileWorldRefusal.RegionMissing, destination.Reason);
+        Assert.Equal(new RegionCoord(1, 0), destination.Region);
+        Assert.Equal(70, destination.TileX);
+        Assert.Equal(4, destination.TileZ);
+        Assert.False(from.Dirty);
+
+        TileRegion to = doc.GetOrCreateRegion(new RegionCoord(1, 0));
+        to.Dirty = false;
+        TileWorldException stale = Assert.Throws<TileWorldException>(() => doc.MoveObject(o.Id, 70, 4, 2));
+        Assert.Equal(TileWorldRefusal.ObjectIndexStale, stale.Reason);
+        Assert.Equal(o.Id, stale.ObjectId);
+        Assert.Equal(from.Coord, stale.Region);
+        Assert.Equal(new TileCoord(3, 4, 0), o.Coord);
+        Assert.Empty(from.Objects);
+        Assert.Empty(to.Objects);
+        Assert.False(from.Dirty);
+        Assert.False(to.Dirty);
+
+        // Restoring the indexed object fixes the sole defect in the second refusal.
+        from.Objects.Add(o);
+        doc.MoveObject(o.Id, 70, 4, 2);
+        Assert.Same(o, doc.FindObject(o.Id));
+        Assert.Equal(new TileCoord(70, 4, 2), o.Coord);
+        Assert.Empty(from.Objects);
+        Assert.Same(o, Assert.Single(to.Objects));
     }
 
     [Fact]
@@ -277,8 +318,13 @@ public class TileWorldDocumentTests
 
         var ex = Assert.Throws<TileWorldException>(() => doc.AddObjectWithId(first.Id, "tree", 9, 9, 0, 0, null));
 
-        Assert.Contains(first.Id.ToString(System.Globalization.CultureInfo.InvariantCulture), ex.Message);
+        Assert.Equal(TileWorldRefusal.ObjectIdDuplicate, ex.Reason);
+        Assert.Equal(first.Id, ex.ObjectId);
         Assert.Single(doc.AllObjects());
+        Assert.Same(first, doc.FindObject(first.Id));
+
+        TileObject other = doc.AddObjectWithId(doc.NextObjectId, "tree", 9, 9, 0, 0, null);
+        Assert.Same(other, doc.FindObject(other.Id));
     }
 
     [Fact]

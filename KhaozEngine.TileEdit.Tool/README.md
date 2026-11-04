@@ -90,6 +90,20 @@ edit, with no explicit rebake verb and no full-world rebake.
 the client with the lower layer's own precise text rather than a generic failure, through one guard every verb
 goes through.
 
+## Refusals
+
+Direct in-process calls to `QueryService.ObjectGet` keep the exact `TileWorldException` type. Inspect its
+`Reason` and identifier rather than parsing the message. MCP error responses retain the human-readable text
+described above.
+
+| `TileWorldRefusal` reason | Refuses | Identifiers |
+| --- | --- | --- |
+| `ObjectMissing` | Querying an absent object id through `QueryService.ObjectGet` | `ObjectId` |
+
+Direct mutation service calls propagate the command and document reasons. See the
+[editing refusal table](../KhaozEngine.TileWorld.Editing/README.md#refusals) and the
+[TileWorld refusal table](../KhaozEngine.TileWorld/README.md#refusals) for object and marker identifiers.
+
 ## Coordinate conventions
 
 - **Tile space throughout the query and mutation surface**: x runs east, z runs north, and a plane is a storey

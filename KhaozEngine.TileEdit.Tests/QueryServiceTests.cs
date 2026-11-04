@@ -196,7 +196,9 @@ public class QueryServiceTests
         Assert.Equal(new[] { f.TreeId }, f.Query.ObjectFind(archetypeId: "tree").Select(o => o.Id).ToArray());
         Assert.Equal(new[] { f.TreeId }, f.Query.ObjectFind(tag: "forest").Select(o => o.Id).ToArray());
         Assert.Equal(3, f.Query.ObjectFind().Count);
-        Assert.Throws<TileWorldException>(() => f.Query.ObjectGet(9999));
+        TileWorldException missing = Assert.Throws<TileWorldException>(() => f.Query.ObjectGet(9999));
+        Assert.Equal(TileWorldRefusal.ObjectMissing, missing.Reason);
+        Assert.Equal(9999, missing.ObjectId);
     }
 
     [Fact]

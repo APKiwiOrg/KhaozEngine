@@ -104,6 +104,27 @@ and cuts settled losers to zero through a caller-supplied comparison. A body AT 
 under either policy, so a one-tile body standing in a cow's rump is in the cow's stack and one of the two is
 hidden.
 
+## Server state refusals
+
+`SetPlayerState` validates before writing either state component. State admission throws
+`TileServerStateArgumentException`, an `ArgumentException` with a non-nullable `TileServerStateRefusal Reason`
+and `ParamName = "state"`. Actor, ground-item, object-state and static-entity placement share the world and
+step admission validator and carry the same reasons for the same input. Identifiers are populated only where
+the refusing guard knows them. Messages remain developer prose.
+
+| Reason | What it refuses | Identifiers |
+| --- | --- | --- |
+| `PlayerFootprintNotOne` | A player footprint other than one tile, including a teleport | `FootprintSize` |
+| `PlaneOutsideWorld` | A plane below zero or at or above the configured plane count | `Tile`, `Plane`, `PlaneCount` |
+| `RegionNotLoaded` | A tile in a region the collision map has not loaded | `Tile`, `Region` |
+| `StepOriginInvalid` | An origin neither the tile itself nor one adjacent tile on the same plane | `Tile`, `StepFrom` |
+| `StepProgressNotBelowTotal` | Nonzero step progress at or beyond its total duration | `StepTicks`, `StepTotal` |
+| `RouteLimitExceeded` | More remaining route steps than configured | `RemainingSteps`, `MaximumSteps` |
+
+A teleport normalizes the origin and progress before validation, after checking the player footprint.
+Nonadjacent route tiles are still refused by `TileRoute.RemainingSteps` before any state write, through the
+route family's own exception.
+
 ## The types
 
 **State and commands**
@@ -1448,7 +1469,8 @@ unauthenticated peer an amplifier of two bytes in and about 7 KB out.
 - **A large actor is an NxN body everywhere the RULES look, and since 19.0.0 everywhere interest and the draw
   rule look too.** Interest is measured from the nearest footprint tile (see the interest section above), and a
   settled body's draw stack is every tile of its square, so a one-tile body standing in a cow's rump no longer
-  overlaps it on screen. Players stay one tile: `SetPlayerState` refuses a `FootprintSize` above 1.
+  overlaps it on screen. Players stay one tile: `SetPlayerState` refuses a `FootprintSize` above 1 with
+  `TileServerStateArgumentException`, `TileServerStateRefusal.PlayerFootprintNotOne` and `FootprintSize`.
 - **Actors do not block movement.** Players walk through monsters. Making an actor block would put a DYNAMIC entry
   in a collision map each head bakes for itself from files, so the two heads would disagree on every occupied tile
   and every chase would become a correction storm. The honest answer is a server-owned occupancy overlay the

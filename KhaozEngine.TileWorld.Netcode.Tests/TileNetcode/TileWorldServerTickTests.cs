@@ -316,14 +316,29 @@ public class TileWorldServerTickTests
         Array.Fill(steps, TileDirection.N);
         TileMoveState tooLong = TileMoveState.At(new TileCoord(10, 10, 0), TileDirection.S);
         tooLong.Route = TileRoute.FromSteps(tooLong.Tile, steps);
-        ArgumentException route = Assert.Throws<ArgumentException>(() => s.SetPlayerState(0, tooLong));
+        var route = Assert.Throws<TileServerStateArgumentException>(() => s.SetPlayerState(0, tooLong));
+        Assert.IsAssignableFrom<ArgumentException>(route);
+        Assert.Equal(TileServerStateRefusal.RouteLimitExceeded, route.Reason);
         Assert.Equal("state", route.ParamName);
+        Assert.Equal(300, route.RemainingSteps);
+        Assert.Equal(256, route.MaximumSteps);
 
         // The other two doors, refused for the same reason: a player nobody can see and who can never step.
-        Assert.Throws<ArgumentException>(() =>
+        var plane = Assert.Throws<TileServerStateArgumentException>(() =>
             s.SetPlayerState(0, TileMoveState.At(new TileCoord(10, 10, 9), TileDirection.S)));
-        Assert.Throws<ArgumentException>(() =>
+        Assert.IsAssignableFrom<ArgumentException>(plane);
+        Assert.Equal(TileServerStateRefusal.PlaneOutsideWorld, plane.Reason);
+        Assert.Equal("state", plane.ParamName);
+        Assert.Equal(new TileCoord(10, 10, 9), plane.Tile);
+        Assert.Equal(9, plane.Plane);
+        Assert.Equal(4, plane.PlaneCount);
+        var region = Assert.Throws<TileServerStateArgumentException>(() =>
             s.SetPlayerState(0, TileMoveState.At(new TileCoord(9000, 10, 0), TileDirection.S)));
+        Assert.IsAssignableFrom<ArgumentException>(region);
+        Assert.Equal(TileServerStateRefusal.RegionNotLoaded, region.Reason);
+        Assert.Equal("state", region.ParamName);
+        Assert.Equal(new TileCoord(9000, 10, 0), region.Tile);
+        Assert.Equal(new RegionCoord(140, 0), region.Region);
 
         // Nothing was written and the tick runs on, for the refused player and for everybody else.
         s.Enqueue(1, 0, TileCommand.WalkTo(new TileCoord(10, 14, 0), TileMoveMode.Run));
@@ -394,21 +409,33 @@ public class TileWorldServerTickTests
         TileMoveState moved = TileMoveState.At(new TileCoord(10, 10, 0), TileDirection.S);
         moved.Tile = new TileCoord(20, 10, 0);
         Assert.Equal(0, (int)moved.StepTicks);
-        ArgumentException far = Assert.Throws<ArgumentException>(() => s.SetPlayerState(0, moved));
-        Assert.Contains("StepFrom", far.Message);
+        var far = Assert.Throws<TileServerStateArgumentException>(() => s.SetPlayerState(0, moved));
+        Assert.IsAssignableFrom<ArgumentException>(far);
+        Assert.Equal(TileServerStateRefusal.StepOriginInvalid, far.Reason);
+        Assert.Equal("state", far.ParamName);
+        Assert.Equal(new TileCoord(20, 10, 0), far.Tile);
+        Assert.Equal(new TileCoord(10, 10, 0), far.StepFrom);
 
         // The same gap taken mid-glide, which is what a copy made while the player was walking looks like.
         TileMoveState progressed = moved;
         progressed.StepTicks = 2;
         progressed.StepTotal = 4;
-        Assert.Throws<ArgumentException>(() => s.SetPlayerState(0, progressed));
+        var glide = Assert.Throws<TileServerStateArgumentException>(() => s.SetPlayerState(0, progressed));
+        Assert.IsAssignableFrom<ArgumentException>(glide);
+        Assert.Equal(TileServerStateRefusal.StepOriginInvalid, glide.Reason);
+        Assert.Equal(new TileCoord(20, 10, 0), glide.Tile);
+        Assert.Equal(new TileCoord(10, 10, 0), glide.StepFrom);
 
         // An origin on ANOTHER plane, which no step produces because a step never changes plane. It is unspellable
         // on the wire (StepFrom rides without a plane byte of its own), so this door is the only place a hand-built
         // one can be caught.
         TileMoveState crossPlane = TileMoveState.At(new TileCoord(10, 10, 0), TileDirection.S);
         crossPlane.StepFrom = new TileCoord(10, 10, 1);
-        Assert.Throws<ArgumentException>(() => s.SetPlayerState(0, crossPlane));
+        var crossed = Assert.Throws<TileServerStateArgumentException>(() => s.SetPlayerState(0, crossPlane));
+        Assert.IsAssignableFrom<ArgumentException>(crossed);
+        Assert.Equal(TileServerStateRefusal.StepOriginInvalid, crossed.Reason);
+        Assert.Equal(new TileCoord(10, 10, 0), crossed.Tile);
+        Assert.Equal(new TileCoord(10, 10, 1), crossed.StepFrom);
 
         // What the door must NOT refuse: a real step in flight. Zero progress is legal on one, because the tick a
         // body lands is the tick the next step commits, so a landing tick carries an origin and no ticks yet.
@@ -505,7 +532,12 @@ public class TileWorldServerTickTests
 
         TileMoveState tampered = walking;
         tampered.StepTicks = 250;
-        Assert.Throws<ArgumentException>(() => s.SetPlayerState(0, tampered));
+        var progress = Assert.Throws<TileServerStateArgumentException>(() => s.SetPlayerState(0, tampered));
+        Assert.IsAssignableFrom<ArgumentException>(progress);
+        Assert.Equal(TileServerStateRefusal.StepProgressNotBelowTotal, progress.Reason);
+        Assert.Equal("state", progress.ParamName);
+        Assert.Equal((byte)250, progress.StepTicks);
+        Assert.Equal(walking.StepTotal, progress.StepTotal);
         s.SetPlayerState(0, tampered, teleport: true);
         Assert.True(s.TryGetPlayerState(0, out TileMoveState after));
         Assert.Equal(0, (int)after.StepTicks);

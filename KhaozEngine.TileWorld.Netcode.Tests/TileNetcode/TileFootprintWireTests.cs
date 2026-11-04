@@ -133,8 +133,16 @@ public class TileFootprintWireTests
 
         TileMoveState large = TileMoveState.At(new TileCoord(12, 12, 0), TileDirection.S);
         large.FootprintSize = 2;
-        Assert.Throws<ArgumentException>(() => s.SetPlayerState(0, large));
-        Assert.Throws<ArgumentException>(() => s.SetPlayerState(0, large, teleport: true));
+        var footprint = Assert.Throws<TileServerStateArgumentException>(() => s.SetPlayerState(0, large));
+        Assert.IsAssignableFrom<ArgumentException>(footprint);
+        Assert.Equal(TileServerStateRefusal.PlayerFootprintNotOne, footprint.Reason);
+        Assert.Equal("state", footprint.ParamName);
+        Assert.Equal(2, footprint.FootprintSize);
+        var teleport = Assert.Throws<TileServerStateArgumentException>(() => s.SetPlayerState(0, large, teleport: true));
+        Assert.IsAssignableFrom<ArgumentException>(teleport);
+        Assert.Equal(TileServerStateRefusal.PlayerFootprintNotOne, teleport.Reason);
+        Assert.Equal("state", teleport.ParamName);
+        Assert.Equal(2, teleport.FootprintSize);
 
         Assert.True(s.TryGetPlayerState(0, out TileMoveState stored));
         Assert.Equal(new TileCoord(10, 10, 0), stored.Tile);

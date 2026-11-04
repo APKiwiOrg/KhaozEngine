@@ -59,10 +59,21 @@ public class TileStaticEntityTests
         using TileWorldServer server = Server(hub.Server, new TileCoord(10, 10, 0));
         var valid = new TileStaticEntitySpawn(TileDirection.S);
 
-        Assert.Throws<ArgumentException>(() =>
+        var plane = Assert.Throws<TileServerStateArgumentException>(() =>
             server.SpawnStaticEntity(new TileCoord(10, 10, 99), valid));
-        Assert.Throws<ArgumentException>(() =>
+        Assert.IsAssignableFrom<ArgumentException>(plane);
+        Assert.Equal(TileServerStateRefusal.PlaneOutsideWorld, plane.Reason);
+        Assert.Equal("state", plane.ParamName);
+        Assert.Equal(new TileCoord(10, 10, 99), plane.Tile);
+        Assert.Equal(99, plane.Plane);
+        Assert.Equal(4, plane.PlaneCount);
+        var region = Assert.Throws<TileServerStateArgumentException>(() =>
             server.SpawnStaticEntity(new TileCoord(9_000, 9_000, 0), valid));
+        Assert.IsAssignableFrom<ArgumentException>(region);
+        Assert.Equal(TileServerStateRefusal.RegionNotLoaded, region.Reason);
+        Assert.Equal("state", region.ParamName);
+        Assert.Equal(new TileCoord(9_000, 9_000, 0), region.Tile);
+        Assert.Equal(new RegionCoord(140, 140), region.Region);
         Assert.Throws<ArgumentOutOfRangeException>(() =>
             server.SpawnStaticEntity(new TileCoord(10, 10, 0), valid with { FootprintSize = 0 }));
         Assert.Throws<ArgumentOutOfRangeException>(() =>

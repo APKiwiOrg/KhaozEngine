@@ -16344,6 +16344,17 @@ The SIBLING of the section above, for a world made of tiles rather than of metre
 `TileDirection` facing and a `TileMoveMode`, and a step COMMITS every N ticks along a deterministic `TileRoute`.
 Click, walk at once, the server is right when the two disagree.
 
+`TileWorldServer.SetPlayerState` refuses malformed authoritative state before writing either component.
+`TileServerStateArgumentException` remains catchable as `ArgumentException`, preserves `ParamName = "state"`
+and carries a non-nullable `TileServerStateRefusal Reason`. `PlaneOutsideWorld` carries `Tile`, `Plane` and
+`PlaneCount`, `RegionNotLoaded` carries `Tile` and `Region`, `StepOriginInvalid` carries `Tile` and `StepFrom`,
+`StepProgressNotBelowTotal` carries `StepTicks` and `StepTotal`, and `RouteLimitExceeded` carries
+`RemainingSteps` and `MaximumSteps`. Actor, ground-item, object-state and static-entity placement use the same
+validator and reasons. The player-only `PlayerFootprintNotOne` carries `FootprintSize` and is checked even
+before teleport normalization. A teleport normalizes the origin and progress before validating them.
+Route adjacency is still forwarded from `TileRoute.RemainingSteps` before any state write. See the
+[server state refusal table](../KhaozEngine.TileWorld.Netcode/README.md#server-state-refusals).
+
 **A step commits its tile when it STARTS.** `TileMoveState.Tile` is the tile the simulation OWNS: it flips on the
 tick the step begins, and the remaining ticks glide the DRAWN body into it from `TileMoveState.StepFrom`, the tile
 being left. So the rules run a little ahead of the picture, by strictly less than one step, and every question
@@ -17324,7 +17335,8 @@ crosses a region handoff and reaches both heads with no second lookup.
   plane)` is off the delayed sample the body is drawn from, for click bounds and a target highlight.
   `client.TryGetLatestRemoteFootprint` is off the newest snapshot, for a rule, and it is what `TileRemoteTargets`
   resolves a remote to, so a predicted approach to a cow stops on the same tile the server stops on.
-- **Players are one tile.** `TileWorldServer.SetPlayerState` refuses a state with a `FootprintSize` above 1.
+- **Players are one tile.** `TileWorldServer.SetPlayerState` refuses a state with a `FootprintSize` above 1 as
+  `TileServerStateArgumentException` with `TileServerStateRefusal.PlayerFootprintNotOne` and `FootprintSize`.
 - **There is no simulator-wide size.** `TileMoveOptions.AgentSize` and `TileMoveSimulator.AgentSize` were removed in
   19.0.0 ([#900](https://github.com/APKiwiOrg/KhaozEngine/issues/900)). Every body is stepped, pathed and reached at
   its own state's `FootprintSize`, and `TileMoveSimulator.FootprintOf(state)` stays as the name the combat roll asks

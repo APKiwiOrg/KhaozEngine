@@ -192,11 +192,17 @@ public class TileFootprintInterestTests
         Assert.Equal(1, h.Server.LargestFootprintSize);
         // A refused spawn is not a body, so it must not widen the query. This one is refused for its plane, which
         // is checked after the footprint pair and before the size is recorded.
-        Assert.Throws<ArgumentException>(() =>
+        var plane = Assert.Throws<TileServerStateArgumentException>(() =>
             h.Server.SpawnActor(new TileCoord(20, 20, 99), new TileActorSpawn(30, 0, TileDirection.S)
             {
                 FootprintSize = 4,
             }));
+        Assert.IsAssignableFrom<ArgumentException>(plane);
+        Assert.Equal(TileServerStateRefusal.PlaneOutsideWorld, plane.Reason);
+        Assert.Equal("state", plane.ParamName);
+        Assert.Equal(new TileCoord(20, 20, 99), plane.Tile);
+        Assert.Equal(99, plane.Plane);
+        Assert.Equal(4, plane.PlaneCount);
         Assert.Equal(1, h.Server.LargestFootprintSize);
 
         long big = h.Body(new TileCoord(20, 20, 0), size: 5);

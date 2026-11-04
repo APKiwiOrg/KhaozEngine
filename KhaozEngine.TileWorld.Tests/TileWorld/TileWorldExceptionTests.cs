@@ -104,6 +104,7 @@ public class TileWorldExceptionTests
         var source = new List<TileWorldIssue> { issue };
         var ex = new TileWorldException(TileWorldRefusal.WorldValidationFailed, "refused world") { IssueCount = source.Count, Issues = source };
 
+        source[0] = issue with { Code = "other" };
         source.Clear();
         Assert.NotNull(ex.Issues);
         Assert.Equal(1, ex.IssueCount);
@@ -114,5 +115,25 @@ public class TileWorldExceptionTests
             Assert.Throws<NotSupportedException>(() => list.Clear());
         }
         Assert.Equal(issue, Assert.Single(ex.Issues));
+    }
+
+    [Fact]
+    public void Clearance_overlaps_are_an_owned_read_only_snapshot()
+    {
+        var overlap = new TileClearanceOverlap("trees-clear-buildings", 11, 22, 0.125f);
+        var source = new List<TileClearanceOverlap> { overlap };
+        var ex = new TileWorldException(TileWorldRefusal.SessionClearanceFailed, "refused clearance")
+        { Overlaps = source };
+
+        source[0] = overlap with { SubjectObjectId = 33 };
+        source.Clear();
+        Assert.NotNull(ex.Overlaps);
+        Assert.Equal(overlap, Assert.Single(ex.Overlaps));
+        if (ex.Overlaps is IList<TileClearanceOverlap> list)
+        {
+            Assert.Throws<NotSupportedException>(() => list[0] = overlap with { ObstacleObjectId = 44 });
+            Assert.Throws<NotSupportedException>(() => list.Clear());
+        }
+        Assert.Equal(overlap, Assert.Single(ex.Overlaps));
     }
 }

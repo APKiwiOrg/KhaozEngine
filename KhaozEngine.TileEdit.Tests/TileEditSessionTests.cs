@@ -54,7 +54,9 @@ public class TileEditSessionTests
         TileWorldException ex = Assert.Throws<TileWorldException>(() =>
             session.Create(dir, "other", "Other", 4, 1f, new[] { TileEditTestWorld.CatalogFileName }));
 
-        Assert.Contains("already exists", ex.Message);
+        Assert.Equal(TileWorldRefusal.SessionWorldExists, ex.Reason);
+        Assert.Equal(dir, ex.WorldDirectory);
+        Assert.Equal(TileWorldFile.ManifestPath(dir), ex.SourceName);
         // The refusal must not have disturbed the world that was open.
         Assert.Equal("test-world", session.Summary().Id);
     }
@@ -77,6 +79,28 @@ public class TileEditSessionTests
         Assert.Equal("sibling", reopened.Summary().Id);
         Assert.Equal(Path.GetFullPath(tmp.Sub(TileEditTestWorld.CatalogFileName)), reopened.CatalogPaths[0]);
         Assert.NotEmpty(new QueryService(reopened).CatalogList("materials").Materials);
+    }
+
+    [Theory]
+    [InlineData(false, TileWorldRefusal.ManifestReadFailed)]
+    [InlineData(true, TileWorldRefusal.SessionOpenFailed)]
+    public void Open_KeepsKnownRefusalsAndWrapsOtherCauses(bool invalidPath, TileWorldRefusal reason)
+    {
+        using var tmp = new TempDir();
+        string dir = tmp.Sub("world");
+        TileEditTestWorld.NewSession(dir);
+        var session = new TileEditSession();
+        session.Open(dir);
+        string path = invalidPath ? tmp.Sub("invalid\0") : tmp.Sub("missing");
+
+        TileWorldException ex = Assert.Throws<TileWorldException>(() => session.Open(path));
+
+        Assert.Equal(reason, ex.Reason);
+        Assert.Equal(invalidPath ? path : TileWorldFile.ManifestPath(path), ex.SourceName);
+        Assert.NotNull(ex.InnerException);
+        Assert.IsNotType<TileWorldException>(ex.InnerException);
+        Assert.Equal("test-world", session.Summary().Id);
+        Assert.Equal(dir, session.DocumentPath);
     }
 
     [Fact]
@@ -191,8 +215,8 @@ public class TileEditSessionTests
         })
         {
             TileWorldException ex = Assert.Throws<TileWorldException>(call);
-            Assert.Contains("world_open", ex.Message);
-            Assert.Contains("world_create", ex.Message);
+            Assert.Equal(TileWorldRefusal.SessionNotOpen, ex.Reason);
+            Assert.Equal(new[] { "world_open", "world_create" }, ex.RequiredTools);
         }
     }
 

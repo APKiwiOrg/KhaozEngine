@@ -286,4 +286,18 @@ public enum TileWorldRefusal
     CatalogEditArchetypeDuplicate,
     /// <summary>Refuses catalog editing when a requested archetype has repeated collisionHeight properties.</summary>
     CatalogEditHeightDuplicate,
+
+    // TileEdit session lifecycle and save admission.
+    /// <summary>Refuses opening a world when loading fails without a known tile-world refusal.</summary>
+    SessionOpenFailed,
+    /// <summary>Refuses creating a world in a directory that already holds a world manifest.</summary>
+    SessionWorldExists,
+    /// <summary>Refuses an operation requiring an open world before one has been opened or created.</summary>
+    SessionNotOpen,
+    /// <summary>Refuses saving a world with clearance findings.</summary>
+    SessionClearanceFailed,
+
+    // Prefab discovery.
+    /// <summary>Refuses listing prefabs in a resolved directory that does not exist.</summary>
+    PrefabDirectoryMissing,
 }

@@ -13,6 +13,7 @@ namespace KhaozEngine.TileWorld;
 public sealed class TileWorldException : Exception
 {
     IReadOnlyList<TileWorldIssue>? _issues;
+    IReadOnlyList<TileClearanceOverlap>? _overlaps;
     IReadOnlyList<string>? _schemaFields;
     IReadOnlyList<JsonSchemaFinding>? _schemaFindings;
     IReadOnlyList<byte>? _actualMagic;
@@ -45,6 +46,9 @@ public sealed class TileWorldException : Exception
 
     /// <summary>The source file or content name, when the refusal has one.</summary>
     public string? SourceName { get; init; }
+
+    /// <summary>The supplied world directory refused because it already holds a world manifest.</summary>
+    public string? WorldDirectory { get; init; }
 
     /// <summary>The region hash recorded in the manifest for <see cref="TileWorldRefusal.RegionHashMismatch"/>.</summary>
     public string? ExpectedHash { get; init; }
@@ -120,13 +124,13 @@ public sealed class TileWorldException : Exception
     /// <summary>The embedded schema resource name absent from the assembly.</summary>
     public string? ResourceName { get; init; }
 
-    /// <summary>The document id for validation or a missing clearance declaration.</summary>
+    /// <summary>The document id for validation, clearance save admission or a missing clearance declaration.</summary>
     public string? WorldId { get; init; }
 
-    /// <summary>The total number of semantic validation issues, including those beyond the message's summary.</summary>
+    /// <summary>The total number of semantic validation or clearance issues, including those beyond the message's summary.</summary>
     public int? IssueCount { get; init; }
 
-    /// <summary>All semantic validation issues. Setting this property copies the supplied collection into an
+    /// <summary>All semantic validation or clearance issues. Setting this property copies the supplied collection into an
     /// owned read-only snapshot, so neither the source nor a cast of the exposed list can change it.</summary>
     public IReadOnlyList<TileWorldIssue>? Issues
     {
@@ -245,6 +249,17 @@ public sealed class TileWorldException : Exception
 
     /// <summary>The supplied clearance mesh root.</summary>
     public string? MeshRoot { get; init; }
+
+    /// <summary>The normalized absolute mesh directory used by a refused clearance save.</summary>
+    public string? ResolvedMeshRoot { get; init; }
+
+    /// <summary>Every penetrating pair from a refused clearance save. Setting this property copies the
+    /// immutable overlap values into an owned read-only snapshot. Empty for clearance failures without overlaps.</summary>
+    public IReadOnlyList<TileClearanceOverlap>? Overlaps
+    {
+        get => _overlaps;
+        init => _overlaps = value is null ? null : Array.AsReadOnly<TileClearanceOverlap>([.. value]);
+    }
 
     /// <summary>The refused clearance or foliage sampling cell edge in world units.</summary>
     public float? CellSize { get; init; }

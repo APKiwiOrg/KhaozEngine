@@ -173,13 +173,19 @@ public class ClearanceToolsTests
 
         McpException ex = Assert.Throws<McpException>(() => f.Worlds.WorldSave());
 
-        string[] lines = ex.Message.Split('\n');
-        Assert.Equal(3, lines.Length);
-        Assert.All(lines.Skip(1), l => Assert.StartsWith($"[{TileWorldClearance.OverlapCode}] ", l));
-        Assert.Contains($"tree #{tree} ", lines[1]);
-        Assert.Contains($"wall #{wall} ", lines[1]);
-        Assert.Contains($"tree #{tree2} ", lines[2]);
-        Assert.Contains($"wall #{wall2} ", lines[2]);
+        var refusal = Assert.IsType<TileWorldException>(ex.InnerException);
+        Assert.Equal(TileWorldRefusal.SessionClearanceFailed, refusal.Reason);
+        Assert.Equal("clearance", refusal.WorldId);
+        Assert.Equal(2, refusal.IssueCount);
+        Assert.NotNull(refusal.Issues);
+        Assert.Equal(new[] { "clearance.overlap", "clearance.overlap" }, refusal.Issues.Select(i => i.Code));
+        Assert.NotNull(refusal.Overlaps);
+        Assert.Equal(new[] { (RuleName, tree, wall), (RuleName, tree2, wall2) },
+            refusal.Overlaps.Select(o => (o.RuleName, o.SubjectObjectId, o.ObstacleObjectId)));
+        Assert.All(refusal.Overlaps, o => Assert.True(o.Depth > 0f));
+        Assert.Equal(refusal.Overlaps, refusal.Issues.Select(i => i.Overlap!.Value));
+        Assert.Equal("../models", refusal.MeshRoot);
+        Assert.Equal(Path.GetFullPath(f.Temp.Sub("models")), refusal.ResolvedMeshRoot);
         Assert.Equal(before, File.ReadAllBytes(f.Manifest));
         Assert.True(f.Worlds.Summary().Dirty);
     }
@@ -213,9 +219,20 @@ public class ClearanceToolsTests
 
         McpException ex = Assert.Throws<McpException>(() => f.Worlds.WorldSave());
 
-        Assert.Contains($"[{TileWorldClearance.MeshCode}] ", ex.Message);
-        Assert.Contains(Path.GetFullPath(f.Temp.Sub("absent")), ex.Message);
+        var refusal = Assert.IsType<TileWorldException>(ex.InnerException);
+        Assert.Equal(TileWorldRefusal.SessionClearanceFailed, refusal.Reason);
+        Assert.Equal("clearance", refusal.WorldId);
+        Assert.Equal(1, refusal.IssueCount);
+        Assert.NotNull(refusal.Issues);
+        TileWorldIssue issue = Assert.Single(refusal.Issues);
+        Assert.Equal("clearance.mesh", issue.Code);
+        Assert.Null(issue.Overlap);
+        Assert.NotNull(refusal.Overlaps);
+        Assert.Empty(refusal.Overlaps);
+        Assert.Equal("../absent", refusal.MeshRoot);
+        Assert.Equal(Path.GetFullPath(f.Temp.Sub("absent")), refusal.ResolvedMeshRoot);
         Assert.Equal(before, File.ReadAllBytes(f.Manifest));
+        Assert.True(f.Worlds.Summary().Dirty);
     }
 
     [Fact]

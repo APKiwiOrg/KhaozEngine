@@ -155,6 +155,7 @@ public class RenderServiceTests
         TileWorldException ex = Assert.Throws<TileWorldException>(() =>
             render.RenderTopDown(new TileRect(0, 0, 4, 4), 0, 4));
 
-        Assert.Contains("world_open", ex.Message, StringComparison.Ordinal);
+        Assert.Equal(TileWorldRefusal.SessionNotOpen, ex.Reason);
+        Assert.Equal(new[] { "world_open", "world_create" }, ex.RequiredTools);
     }
 }

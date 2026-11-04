@@ -12733,7 +12733,9 @@ directory, forward slashes only, refused when rooted or holding a backslash on e
 an object waiver tag. `TileWorldClearance.Check(doc, catalogs, meshes)` places every loaded object's mesh as the
 prop renderer draws it and returns `clearance.overlap`, `clearance.mesh` and `clearance.rule` issues, reading
 meshes through `ITileMeshGeometry` (the glb implementation is `GltfTileMeshGeometry` in
-`KhaozEngine.TileWorld.Render3D`). `TileWorldValidator.Validate` never runs it, the block is outside
+`KhaozEngine.TileWorld.Render3D`). Overlap issues expose `TileWorldIssue.Overlap`, an immutable
+`TileClearanceOverlap` containing the rule name, both object ids and the full sampled depth in metres.
+`TileWorldValidator.Validate` never runs it, the block is outside
 `TileWorldHash.OfWorld`, and the geometry core is `ClearanceMesh`, `ClearanceSolid`, `ClearanceSamples` and
 `ClearanceProbe` in `KhaozEngine.Primitives`. An obstacle is solid from its lowest point to its top surface, so a
 hollow piece such as a bridge deck must not carry an obstacle tag. Field contracts, rule matching and the issue
@@ -13901,6 +13903,16 @@ relative to yet: pass them an absolute path.
 with every argument and the ASCII map legends, is the
 [`KhaozEngine.TileEdit.Tool` README](../KhaozEngine.TileEdit.Tool/README.md).
 
+**Session and prefab refusals carry data.** `TileEditSession` keeps the exact `TileWorldException` type.
+`SessionWorldExists` exposes the supplied `WorldDirectory` and manifest path as `SourceName`.
+`SessionNotOpen` exposes an owned read-only `RequiredTools` list containing `world_open` and `world_create`.
+`Open` passes known tile-world refusals through unchanged. Other world-load failures carry
+`SessionOpenFailed`, the supplied path as `SourceName` and the original `InnerException`. A failed open or
+create leaves the current world open. `QueryService.PrefabList` refuses a missing resolved directory with
+`PrefabDirectoryMissing` and its normalized absolute path as `SourceName`. Plain parameter checks stay BCL.
+MCP tool callers inspect these members through `McpException.InnerException`, which retains the original
+exception. See the [tool refusal table](../KhaozEngine.TileEdit.Tool/README.md#refusals).
+
 **Catalog edits preserve refusal details.** Direct `CatalogWriter` callers inspect the shared
 `TileWorldRefusal` reason instead of parsing messages. `CatalogEditRangeException` remains catchable as
 `ArgumentOutOfRangeException` and carries `CatalogEditHeightInvalid`, the offending `ArchetypeId`,
@@ -13936,10 +13948,16 @@ Invalid settings and unknown rule removal expose the shared clearance reasons on
 
 **Clearance refuses the save.** When the world declares clearance rules, `world_save` runs
 `TileWorldClearance.Check` after the validator against the glb meshes under the block's mesh root, and any
-`clearance.overlap`, `clearance.mesh` or `clearance.rule` issue refuses the save with every issue listed and
-nothing written. `world_validate` appends the same issues and `clearance_check` reports them alone, neither
-writing. `clearance_set` replaces the mesh root, cell size and waiver tag on every call, so an omitted value
-resets to its default. The session reads meshes through one `GltfTileMeshGeometry` per open world, which
+`clearance.overlap`, `clearance.mesh` or `clearance.rule` issue refuses the save with
+`TileWorldRefusal.SessionClearanceFailed`, nothing written and the dirty state retained. Through
+`McpException.InnerException`, the `TileWorldException` carries `WorldId`, total `IssueCount`, complete
+`Issues`, authored `MeshRoot` and normalized absolute `ResolvedMeshRoot`. Its owned read-only `Overlaps`
+snapshot carries every pair's `RuleName`, `SubjectObjectId`, `ObstacleObjectId` and sampled `Depth` in metres.
+Each overlap issue also exposes that immutable `TileClearanceOverlap` through `TileWorldIssue.Overlap`,
+which is null for non-overlap issues. `Issues` is also an owned read-only snapshot, and the original issue
+constructor and stable codes stay available. MCP text still lists every issue one per line.
+`world_validate` appends the same issues and `clearance_check` reports them alone, neither writing.
+`clearance_set` replaces the mesh root, cell size and waiver tag on every call, so an omitted value resets to its default. The session reads meshes through one `GltfTileMeshGeometry` per open world, which
 re-reads a glb whose last write time or length changed, so a glb written or re-exported while the world is open
 is seen at the next save or check with no `world_open`. The block and the check are under
 [Tile world](#tile-world-khaozenginetileworld).

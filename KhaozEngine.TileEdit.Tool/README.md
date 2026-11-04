@@ -92,9 +92,9 @@ goes through.
 
 ## Refusals
 
-Direct in-process object and foliage queries and foliage mutations keep the exact `TileWorldException` type
-for the refusals below. Inspect its `Reason` and identifiers rather than parsing the message. MCP error
-responses retain the human-readable text described above. Every tool guard retains the original exception
+Direct in-process session operations, object, prefab and foliage queries and foliage mutations keep the exact
+`TileWorldException` type for the refusals below. Inspect its `Reason` and identifiers rather than parsing the
+message. MCP error responses retain the human-readable text described above. Every tool guard retains the original exception
 in `McpException.InnerException`, so
 in-process tool callers inspect the inner family's reason and identifiers. An existing `McpException`
 passes through unchanged.
@@ -103,10 +103,19 @@ passes through unchanged.
 | --- | --- | --- |
 | `CatalogArchetypeMissing` | Placing or scattering an archetype absent from the catalogs | `ArchetypeId` |
 | `ObjectMissing` | Querying an absent object id through `QueryService.ObjectGet` | `ObjectId` |
+| `SessionOpenFailed` | Opening a world when loading fails without a known tile-world refusal | Supplied path as `SourceName`, original `InnerException` |
+| `SessionWorldExists` | Creating a world in a directory already holding a manifest | Supplied `WorldDirectory`, manifest path as `SourceName` |
+| `SessionNotOpen` | Any operation requiring an open world before opening or creating one | Owned read-only `RequiredTools` containing `world_open` and `world_create` |
+| `SessionClearanceFailed` | Saving a world with clearance issues | `WorldId`, total `IssueCount`, complete owned read-only `Issues` and `Overlaps`, `MeshRoot`, `ResolvedMeshRoot` |
+| `PrefabDirectoryMissing` | Listing prefabs in a directory that does not exist | Normalized absolute directory as `SourceName` |
 | `ClearanceBlockMissing` | Setting or removing a rule before declaring a clearance block | `WorldId`, owned read-only `RequiredTools` containing `clearance_set` |
 | `FoliageLayerMissing` | Querying, replacing density, painting or removing an absent foliage layer | `LayerId` |
 | `FoliageCatalogArchetypeMissing` | Setting a foliage layer with an archetype absent from the catalogs | `LayerId`, `ArchetypeId` |
 | `FoliageCatalogUnderlayMissing` | Setting a foliage layer with an allowed material absent from the catalogs | `LayerId`, `MaterialId` |
+
+`TileEditSession.Open` passes known `TileWorldException` instances through unchanged. Its fallback
+`SessionOpenFailed` preserves an otherwise unstructured load failure as the original inner exception.
+A refused create or open leaves the current world open. Plain parameter checks remain BCL exceptions.
 
 Direct mutation service calls propagate the command and document reasons. See the
 [editing refusal table](../KhaozEngine.TileWorld.Editing/README.md#refusals) and the
@@ -243,9 +252,15 @@ read, or a mesh root that is not a directory) and `clearance.rule` (a rule whose
 block, the solid model and its limit are in the [`KhaozEngine.TileWorld` README](../KhaozEngine.TileWorld/README.md#clearance).
 
 **`world_save` refuses a world with any clearance issue** whenever the world declares rules, after the validator
-passes, and lists every issue one per line. Nothing is written. Fix the placement, or tag a deliberate overlap
-with the waiver tag, which is a decision for the world's owner. `world_validate` reports the same issues without
-failing.
+passes. In-process callers inspect `SessionClearanceFailed` through `McpException.InnerException`.
+It carries `WorldId`, the full `IssueCount`, all `Issues`, the authored `MeshRoot` and the normalized absolute
+`ResolvedMeshRoot`. `Overlaps` holds every penetrating pair as an immutable `TileClearanceOverlap` with
+`RuleName`, `SubjectObjectId`, `ObstacleObjectId` and sampled `Depth` in metres. Each corresponding issue also
+carries that value in `TileWorldIssue.Overlap`, and its `Code` remains `clearance.overlap`. Non-overlap issues
+leave `Overlap` null. Both exception collections are owned read-only snapshots. Nothing is written and the
+dirty state is retained. Fix the placement, or tag a deliberate overlap with the waiver tag, which is a decision
+for the world's owner. `world_validate` reports the same issues without failing. MCP text responses still list every
+issue one per line.
 
 Meshes are read through one `GltfTileMeshGeometry` per open world, resolved as `meshRef` under the mesh root and
 reused across saves and checks, so an unchanged glb is parsed once. It is replaced lazily at the next check after

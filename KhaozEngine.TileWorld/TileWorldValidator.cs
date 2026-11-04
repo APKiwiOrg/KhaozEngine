@@ -5,7 +5,12 @@ using System.Linq;
 namespace KhaozEngine.TileWorld;
 
 /// <summary>One validation finding. <see cref="Code"/> is stable and greppable, <see cref="Message"/> is for humans.</summary>
-public sealed record TileWorldIssue(string Code, string Message, RegionCoord? Region, TileCoord? Tile);
+public sealed record TileWorldIssue(string Code, string Message, RegionCoord? Region, TileCoord? Tile)
+{
+    /// <summary>The immutable penetrating-pair finding for <see cref="TileWorldClearance.OverlapCode"/>,
+    /// or null for an issue that does not report an overlap.</summary>
+    public TileClearanceOverlap? Overlap { get; init; }
+}
 
 /// <summary>Semantic validation of a document against its catalogs: every id resolves, every plane is in
 /// range, every footprint lands on existing regions, ids and marker names are unique. Runs at save in the

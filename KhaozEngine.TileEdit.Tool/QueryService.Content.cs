@@ -88,12 +88,16 @@ public sealed partial class QueryService
 
     /// <summary>The prefab files in a directory, by name. A relative directory resolves against the open world's
     /// directory, the same rule every other path argument follows.</summary>
-    /// <exception cref="TileWorldException">The directory does not exist.</exception>
+    /// <exception cref="TileWorldException">The directory does not exist, carrying
+    /// <see cref="TileWorldRefusal.PrefabDirectoryMissing"/> and its resolved path in
+    /// <see cref="TileWorldException.SourceName"/>. A closed session carries
+    /// <see cref="TileWorldRefusal.SessionNotOpen"/> instead.</exception>
     public IReadOnlyList<PrefabFileInfo> PrefabList(string directory)
     {
         string resolved = session.ResolvePath(directory);
         if (!Directory.Exists(resolved))
-            throw new TileWorldException($"{resolved}: no such directory, there are no prefabs to list");
+            throw new TileWorldException(TileWorldRefusal.PrefabDirectoryMissing,
+                $"{resolved}: no such directory, there are no prefabs to list") { SourceName = resolved };
         return Directory.EnumerateFiles(resolved, "*" + PrefabExtension)
             .OrderBy(p => p, StringComparer.Ordinal)
             .Select(p => new PrefabFileInfo(System.IO.Path.GetFileNameWithoutExtension(p), p, new FileInfo(p).Length))

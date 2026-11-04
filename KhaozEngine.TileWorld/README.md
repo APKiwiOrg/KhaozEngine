@@ -158,6 +158,9 @@ Byte-preserving catalog edits share this enum and use `ArchetypeIds` for the com
 of missing archetypes, copied into an owned read-only snapshot. See the
 [catalog edit refusal table](../KhaozEngine.TileEdit.Tool/README.md#catalog-edit-refusals) for their reasons
 and the `ArgumentOutOfRangeException`-compatible `CatalogEditRangeException`.
+TileEdit session admission and prefab discovery also share this type and enum. The
+[tool refusal table](../KhaozEngine.TileEdit.Tool/README.md#refusals) lists their session, source-path and
+clearance aggregate identifiers.
 
 Regions are planar. `Region` is a `RegionCoord?`, and `TileX` and `TileZ` are `int?` values set only when the
 guard received tile coordinates. They never imply a plane. A region-only operation leaves both null.
@@ -478,6 +481,10 @@ The codes are stable (`TileWorldClearance.OverlapCode`, `MeshCode`, `RuleCode`):
   above `ClearanceSolid.MaxCells` and a mesh source that reports success with no mesh). Reported once per archetype, and its objects are never silently passed.
 - `clearance.overlap`: one per penetrating pair, at its deepest sample, naming the rule, both objects with their
   ids, archetypes, tiles and planes, and the depth in metres. `Region` and `Tile` are the subject's.
+  `TileWorldIssue.Overlap` carries an immutable `TileClearanceOverlap` with `RuleName`, `SubjectObjectId`,
+  `ObstacleObjectId` and the full sampled `Depth` in metres. Other issues leave `Overlap` null. The original
+  four-argument `TileWorldIssue` constructor and stable `Code` remain available, so callers need no message
+  parsing to identify a pair.
 
 Issues come back rule issues first, then mesh issues by archetype id, then overlaps by rule order, subject id and
 obstacle id. An object whose archetype the catalogs lack is skipped, because `Validate` reports it as

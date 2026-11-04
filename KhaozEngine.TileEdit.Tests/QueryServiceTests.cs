@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using KhaozEngine.TileEdit;
 using KhaozEngine.TileWorld;
@@ -248,7 +249,9 @@ public class QueryServiceTests
         PrefabFileInfo hut = Assert.Single(prefabs);
         Assert.Equal("hut", hut.Name);
         Assert.True(hut.SizeBytes > 0);
-        Assert.Throws<TileWorldException>(() => f.Query.PrefabList("nowhere"));
+        TileWorldException missing = Assert.Throws<TileWorldException>(() => f.Query.PrefabList("nowhere"));
+        Assert.Equal(TileWorldRefusal.PrefabDirectoryMissing, missing.Reason);
+        Assert.Equal(Path.GetFullPath(Path.Combine(f.Session.DocumentPath!, "nowhere")), missing.SourceName);
     }
 
     /// <summary>A relative path has nothing to be relative TO without an open world, and falling back to the
@@ -260,7 +263,8 @@ public class QueryServiceTests
         var closed = new TileEditSession();
 
         TileWorldException ex = Assert.Throws<TileWorldException>(() => new QueryService(closed).PrefabList("."));
-        Assert.Contains("world_open", ex.Message, StringComparison.Ordinal);
+        Assert.Equal(TileWorldRefusal.SessionNotOpen, ex.Reason);
+        Assert.Equal(new[] { "world_open", "world_create" }, ex.RequiredTools);
 
         var mutate = new MutationService(closed);
         Assert.Throws<TileWorldException>(() => mutate.PrefabPlace("hut.json", 0, 0, 0));

@@ -20,6 +20,8 @@ public static partial class CharacterMovement
     private const float SubstepFraction = 0.5f;
     private const int SlideIterations = 4;
     private const float SkinWidth = 0.01f;
+    // Shared with ground commitments so a successfully spent budget cannot stall below sweep resolution.
+    internal const float SweepTravelResolution = 1e-6f;
     // A small "standing on a prop" skin (NOT the larger GroundedEpsilon mount band): a capsule whose carried Y is
     // above terrain by more than this is genuinely on a prop, so the support sweep keeps following the prop surface
     // (e.g. down the far side of a dome it mounted), while one at terrain level is below it. A flank steeper than the
@@ -110,7 +112,7 @@ public static partial class CharacterMovement
         steppedUp = false; steppedFloorY = 0f;
         achievedHorizontal = Vector2.Zero;
         float fullLen = full.Length();
-        if (fullLen <= 1e-6f) return start + full;
+        if (fullLen <= SweepTravelResolution) return start + full;
 
         float maxStep = MathF.Max(0.01f, t.CapsuleRadius * SubstepFraction);
         int substeps = (int)MathF.Ceiling(fullLen / maxStep);
@@ -176,7 +178,7 @@ public static partial class CharacterMovement
             }
 
             float dist = delta.Length();
-            if (dist <= 1e-6f) break;
+            if (dist <= SweepTravelResolution) break;
             Vector3 dir = delta / dist;
             if (!world.SweepCapsule(capsule, Pose.At(pos), dir, dist, out SweepHit hit))
             {

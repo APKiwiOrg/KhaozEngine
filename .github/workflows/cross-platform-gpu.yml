@@ -1070,6 +1070,8 @@ jobs:
       # And it is scoped to the ONE test project that owns these tests, because run over the whole solution the
       # setting fails on each of the other 17 test projects, where matching zero is the correct outcome.
       - name: Shader FXC validation and Vortice struct sizes (no device)
+        env:
+          KE_DUMP_FOLIAGE_DXBC: ${{ github.event_name == 'workflow_dispatch' && inputs.renderTestFilter == 'FullyQualifiedName~DumpFoliageOpaqueDisassembly' && '1' || '' }}
         # THE ONE WINDOWS LEG. Nothing here creates a device or selects a backend, so the step is device-free
         # and backend-independent, and it used to be pinned to `direct3d11` because the incumbent and native
         # Windows legs would otherwise run byte-identical work twice at the Windows 2x rate. 18.0.0 deleted the

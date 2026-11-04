@@ -23,18 +23,22 @@ namespace KhaozEngine.Render3D
                 if (alphaCutoff > 0f && cutoutAlbedo is not null)
                     shadowCutout = _model.ShadowMap.CreateCutoutMaterialSet(cutoutAlbedo);
                 outlineNormals ??= OutlineNormalBuilder.Build(mesh.Vertices, mesh.Indices32);
+                GroundUploadStreams upload = tileGroundMaterial >= 0
+                    ? ExactGroundMeshReuse.Compact(mesh.Vertices, outlineNormals, mesh.Indices32)
+                    : new(mesh.Vertices, outlineNormals, mesh.Indices32);
                 vb = f.CreateBuffer(new GpuBufferDescription(
-                    (uint)(mesh.Vertices.Length * ModelVertex.SizeInBytes), GpuBufferUsage.VertexBuffer));
-                _gd.UpdateBuffer(vb, 0, mesh.Vertices);
+                    (uint)(upload.Vertices.Length * ModelVertex.SizeInBytes), GpuBufferUsage.VertexBuffer));
+                _gd.UpdateBuffer(vb, 0, upload.Vertices);
                 outlineNormalVb = f.CreateBuffer(new GpuBufferDescription(
-                    (uint)(outlineNormals.Length * sizeof(float) * 3), GpuBufferUsage.VertexBuffer));
-                _gd.UpdateBuffer(outlineNormalVb, 0, outlineNormals);
-                ib = CreateIndexBuffer(mesh.Indices32, mesh.IndexFormat);
+                    (uint)(upload.OutlineNormals.Length * sizeof(float) * 3), GpuBufferUsage.VertexBuffer));
+                _gd.UpdateBuffer(outlineNormalVb, 0, upload.OutlineNormals);
+                ib = CreateIndexBuffer(upload.Indices, mesh.IndexFormat);
 
                 MeshBounds bounds = MeshBounds.FromVertices(mesh.Vertices);
                 int index = _slots.Alloc(out int generation);
                 var slot = new Mesh(vb, outlineNormalVb, ib, mesh.Indices32.Length, mesh.IndexFormat, in bounds,
-                    material, outlineMaterial, splatMaterial, alphaCutoff, tileGroundMaterial, shadowCutout);
+                    material, outlineMaterial, splatMaterial, alphaCutoff, tileGroundMaterial, shadowCutout,
+                    FoliageMaterial.IsOpaque(material is not null, alphaCutoff, mesh.Vertices));
                 if (index < _meshes.Count) _meshes[index] = slot;
                 else _meshes.Add(slot);
                 return new MeshHandle(index, generation);

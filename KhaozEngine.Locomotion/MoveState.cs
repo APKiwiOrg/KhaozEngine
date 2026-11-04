@@ -263,6 +263,6 @@ public struct MoveState
     /// feature.</summary>
     public float FacingYaw;
 
-    /// <summary>The replicated server-authored ballistic movement currently controlling this character.</summary>
+    /// <summary>The server-authored ballistic or ground movement currently controlling this character.</summary>
     public MovementCommitment Commitment;
 }

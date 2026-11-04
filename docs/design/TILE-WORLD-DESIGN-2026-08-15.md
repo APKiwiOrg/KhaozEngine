@@ -483,7 +483,9 @@ the constraints the terrain pass already paid for (one UBO per pipeline on Metal
 order, fragment interpolants contiguous from location 0 for FXC).
 
 **The pipeline: `TileGround`, one new shader pair in `Render3D`, same vertex layout as the model path.**
-`ModelVertex` does not change, so the mesher keeps emitting `GltfMesh` and nothing in the upload path moves.
+`ModelVertex` does not change, so the mesher keeps emitting its canonical `GltfMesh`. GPU upload shares only
+complete byte-identical vertex tuples, including the outline-normal stream, and remaps indices without changing
+ordered triangle inputs, winding, counts or bounds. The CPU mesh and its geometry hashes remain unchanged.
 The fields are repurposed for this pipeline only:
 
 - Every triangle of a tile carries the SAME four material slots: the material chosen at each of the tile's

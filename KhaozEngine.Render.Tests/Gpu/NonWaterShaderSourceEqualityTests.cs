@@ -36,7 +36,7 @@ public sealed class NonWaterShaderSourceEqualityTests
             .Where(line => line.Length > 0 && !line.StartsWith('#'))
             .Select(line => line.Split(' ', 2, StringSplitOptions.RemoveEmptyEntries))
             .ToDictionary(parts => parts[0], parts => parts[1], StringComparer.Ordinal);
-        Assert.Equal(248, expected.Count);
+        Assert.Equal(256, expected.Count);
         Assert.Equal(expected.Keys.Order(StringComparer.Ordinal), actual.Keys.Order(StringComparer.Ordinal));
 
         string[] mismatches = actual.OrderBy(row => row.Key, StringComparer.Ordinal)

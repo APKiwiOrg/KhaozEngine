@@ -205,7 +205,7 @@ public partial class ExplicitShardedHeadsTests
         return SnapshotWriter.WriteFiltered(world, registry, new HashSet<long> { 99, 100 }, ReplicationChannels.Persist);
     }
 
-    sealed class Pair : IDisposable
+    internal sealed class Pair : IDisposable
     {
         public ExplicitPlayerEnvironment Environment { get; }
         public ExplicitPlayerEnvironment ClientEnvironment { get; }

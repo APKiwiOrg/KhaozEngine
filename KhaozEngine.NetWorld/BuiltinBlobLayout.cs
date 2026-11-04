@@ -16,13 +16,14 @@ namespace KhaozEngine.NetWorld;
 /// </para>
 /// <para>
 /// Almost every growth APPENDED a field whose default encoding is zero bytes, so bringing a payload forward from an
-/// older generation is the old bytes followed by zeros - which is what <see cref="NormalizeToCurrent"/> does. There
-/// are two exceptions, and each gets an explicit rewrite. <see cref="MoveProtocol.PositionTypeId"/> was restructured
+/// older generation is the old bytes followed by zeros - which is what <see cref="NormalizeToCurrent"/> does. The
+/// exceptions receive explicit rewrites. <see cref="MoveProtocol.PositionTypeId"/> was restructured
 /// at generation <see cref="FramedPositionWireGeneration"/>. <see cref="MoveProtocol.MovementTypeId"/> SHRANK at
 /// generation <see cref="MovementOwnerWireGeneration"/>, when its two feel timers moved out into the new
 /// <see cref="MoveProtocol.MovementOwnerTypeId"/> frame, so an older movement payload is split in two
-/// (<see cref="MovementOwnerBlobSplit"/>). A future change that is neither an append nor covered here needs its own
-/// case in <see cref="CellBlobRewriter"/>, and the layout row below it.
+/// (<see cref="MovementOwnerBlobSplit"/>). Generation 15 widens the speed byte in place and appends ground
+/// commitment state, composed with the owner split by <see cref="MovementPayloadRewrite"/>. A future change
+/// that is neither an append nor covered here needs its own case in <see cref="CellBlobRewriter"/>, and the layout row below it.
 /// </para>
 /// </summary>
 public static class BuiltinBlobLayout
@@ -154,6 +155,7 @@ public static class BuiltinBlobLayout
         12 => 56,       // - TimeSinceGrounded, JumpBufferRemaining (moved to MovementOwnerState, owner only)
         13 => 56,       // precise move-command flag, persisted payload unchanged
         14 => 57,       // + WaterExcursion (byte, None=0 for earlier generations)
+        15 => 64,       // SpeedScaleQ widened to Int16 (+1), ground commitment suffix (+6)
         _ => throw new ArgumentOutOfRangeException(nameof(wireGeneration), wireGeneration,
             $"No cell-blob movement layout is recorded for wire generation {wireGeneration}. Add its row here (and " +
             "its CellBlobRewriter case if the change was not a plain append) in the same change that bumps " +

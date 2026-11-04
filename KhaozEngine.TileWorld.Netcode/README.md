@@ -1347,8 +1347,9 @@ unchanged and stay the right calls from game code already on the host thread.
   predicate bans goes out as `ke:banned` instead, so `BanAsync`'s kick reads as the ban (see the connect door
   section). A broadcast has no fallback, so an empty or oversized
   token throws `ArgumentException` at the call, and the endpoint answers it with a 400.
-- `SetPosition` keeps the interface default and cuts like `Teleport`. `BeginMovementCommitment` and
-  `AbortMovementCommitment` throw `NotSupportedException`, since a tile world has no ballistic move.
+- `SetPosition` keeps the interface default and cuts like `Teleport`. `BeginMovementCommitment`,
+  `AbortMovementCommitment`, `SteerMovementCommitment` and `EndMovementCommitment` keep unsupported interface
+  defaults that throw `NotSupportedException`. Float movement commitments do not apply to the tile head.
 
 ## A payload too large for one game message
 

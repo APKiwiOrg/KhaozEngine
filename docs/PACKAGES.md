@@ -111,7 +111,7 @@ Terrain, tile worlds, native maps, navigation, physics and character movement.
 | [KhaozEngine.Physics](../KhaozEngine.Physics/README.md) | Defines headless 3D physics, rigid bodies, joints, collision queries, baked shapes, and support-query measurements. | None | Every umbrella |
 | [KhaozEngine.Physics.Bepu](../KhaozEngine.Physics.Bepu/README.md) | Runs deterministic 3D physics through Bepu with rigid bodies, joints, powered drives, and collision queries. | Physics (+ BepuPhysics) | Opt-in |
 | [KhaozEngine.Locomotion](../KhaozEngine.Locomotion/README.md) | Shared character movement for local control, server simulation and prediction, including collision, jumping, slopes, wading and swimming. | Primitives, Physics | Every umbrella |
-| [KhaozEngine.Movement](../KhaozEngine.Movement/README.md) | Body-aware reach, absolute ground movement, physics-backed navigation profiles and exact range steering. | Locomotion, Navigation, Physics | Opt-in |
+| [KhaozEngine.Movement](../KhaozEngine.Movement/README.md) | Body-aware reach, absolute ground movement, physics-backed navigation profiles, exact range steering and committed ground pursuit. | Locomotion, Navigation, Physics | Opt-in |
 | [KhaozEngine.SegmentRig](../KhaozEngine.SegmentRig/README.md) | Procedural poses, action strokes, skeleton transforms and held-item sockets for rigid-segment humanoids and quadrupeds. | None | Every umbrella |
 
 ## Gameplay and content

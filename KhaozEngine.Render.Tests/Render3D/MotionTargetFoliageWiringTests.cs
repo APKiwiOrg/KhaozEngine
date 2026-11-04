@@ -21,10 +21,11 @@ public sealed class MotionTargetFoliageWiringTests
         readonly MotionTestScene _harness;
         readonly FoliageBatch _batch;
 
-        internal Rig(int maxColorAttachments = 8)
+        internal Rig(int maxColorAttachments = 8, bool opaque = true)
         {
             _harness = new MotionTestScene(maxColorAttachments);
-            MeshHandle blade = Scene.LoadMesh(MeshPrimitives.Box(1f));
+            MeshHandle blade = Scene.LoadMesh(MeshPrimitives.Box(1f),
+                new Scene3D.SurfaceMaps(default, alphaCutoff: opaque ? 0f : .5f));
             _batch = Scene.CreateFoliageBatch(new[] { new FoliageInstance(blade, Matrix4x4.Identity, .1f) });
             Scene.ForceTemporalForTests = true;
         }
@@ -140,13 +141,16 @@ public sealed class MotionTargetFoliageWiringTests
             && (r.VertexGlsl == ShaderSources.FoliageVert || r.VertexGlsl == ShaderSources.FoliageMotionVert));
 
     [Theory]
-    [InlineData(4, 4, "FoliageMotion")]
-    [InlineData(5, 5, "FoliageMotionVisibility")]
-    [InlineData(8, 5, "FoliageMotionVisibility")]
+    [InlineData(4, 4, false, "FoliageMotion")]
+    [InlineData(5, 5, false, "FoliageMotionVisibility")]
+    [InlineData(8, 5, false, "FoliageMotionVisibility")]
+    [InlineData(4, 4, true, "FoliageOpaqueMotion")]
+    [InlineData(5, 5, true, "FoliageOpaqueMotionVisibility")]
+    [InlineData(8, 5, true, "FoliageOpaqueMotionVisibility")]
     public void TheFoliageDrawBindsItsVariantAndTheMotionBlockAtSetTwoOnlyWhileTemporal(
-        int maxColorAttachments, int outputs, string program)
+        int maxColorAttachments, int outputs, bool opaque, string program)
     {
-        using var rig = new Rig(maxColorAttachments);
+        using var rig = new Rig(maxColorAttachments, opaque);
         rig.Scene.ForceTemporalForTests = false;
         rig.Begin(orthoSize: 6f);
         rig.Draw(focusX: 3f, seconds: 1f);
@@ -154,7 +158,7 @@ public sealed class MotionTargetFoliageWiringTests
         {
             RecordingGpuCommandList.DrawBindings draw = FoliageDraw(off);
             FakeGraphicsPipelineRequest request = ((FakePipeline)draw.Pipeline!).Request!.Value;
-            Assert.Equal("Foliage", MotionTargetPrograms.Name(request));
+            Assert.Equal(opaque ? "FoliageOpaque" : "Foliage", MotionTargetPrograms.Name(request));
             MotionTargetPrograms.AssertLayout(request, 3);
             Assert.Equal(2, request.Description.ResourceLayouts.Length);
             Assert.Equal(new uint[] { 0, 1 }, draw.Sets.Keys.Order().ToArray());

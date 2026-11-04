@@ -30,6 +30,8 @@
     <None Update="Fixtures/point-shadow-seam/*.red.gz" CopyToOutputDirectory="PreserveNewest" />
     <!-- Gpu/TemporalVisibilityDxbcRealProgramTests.cs reads FXC's disassembly of every visibility program, D and
          shipped, as hosted run 39376184230 printed it, and the SHA-256 of the GLSL each listing was compiled from. -->
+    <None Update="Fixtures/foliage-opaque-dxbc/*.dxbc.gz" CopyToOutputDirectory="PreserveNewest" />
+    <None Update="Fixtures/foliage-opaque-dxbc/*.glsl.sha256" CopyToOutputDirectory="PreserveNewest" />
     <None Update="Fixtures/taa-visibility-dxbc/*.dxbc.gz" CopyToOutputDirectory="PreserveNewest" />
     <None Update="Fixtures/taa-visibility-dxbc/*.glsl.sha256" CopyToOutputDirectory="PreserveNewest" />
     <!-- Bundled libre font (Roboto, Apache-2.0) so the 2D golden has identical glyph input on every OS/runner,

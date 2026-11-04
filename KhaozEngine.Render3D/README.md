@@ -237,8 +237,10 @@ in the `KhaozEngine.Render3D.Ecs` arm under the same namespace, so a render-only
     exactly ONE layer is a one-layer array, not a padded two-layer one: between 17.38.0 and 17.39.0 it was
     duplicated into a second slice, because the GPU seam could not express a one-layer array and the fragment
     declares `texture2DArray` (#666, fixed by `GpuTextureDescription.IsArray`).
-  - **The vertex contract, for this pipeline only.** `ModelVertex` is unchanged, so the upload path is the ordinary
-    one, but the fields are repurposed: `Color` is the vertex's four weights, `Uv.x`, `Uv.y`, `Tangent.x` and
+  - **Upload reuse.** Tile-ground upload shares only complete byte-identical vertex tuples, including the outline
+    normal stream. Index remapping preserves triangle order, winding, input values and index count. CPU meshes,
+    bounds and their canonical geometry hashes stay unchanged. Ordinary model uploads retain their existing path.
+  - **The vertex contract, for this pipeline only.** `ModelVertex` is unchanged, but the fields are repurposed: `Color` is the vertex's four weights, `Uv.x`, `Uv.y`, `Tangent.x` and
     `Tangent.y` are four material SLOTS as floats holding integers (constant across a triangle, so interpolation
     cannot smear them), `Tangent.z` is a per-vertex brightness multiplier and `Tangent.w` is 0 for the ordinary
     four-layer path. A positive value names an optional overlay slot plus one, whose weight is one minus the
@@ -1882,7 +1884,11 @@ default, keeps wind at every size. Advance `Scene3D.EffectTimeSeconds` from the 
 four `FoliageInteractor` positions, radii, strengths and agitation values for cosmetic bending and shiver.
 Vertical separation prevents a different floor from pushing the foliage. Position must be finite, radius
 finite and non-negative, and strength and agitation finite in `[0, 1]`. Strength defaults to 1 and
-agitation to 0. All submission inputs are copied by value. Foliage is lit and supports material alpha
+agitation to 0. All submission inputs are copied by value. Meshes with no material maps, zero alpha cutoff
+and zero tangents on every vertex use an opaque no-map fragment. Lighting, fog, normal, depth, motion
+and visibility arithmetic retain the ordinary foliage contract. Textured, MASK and tangent-bearing
+meshes keep the generic fragment. The opaque resource set follows ordinary default-set replacements
+when light buffers or shadow atlases change. Foliage is lit and supports material alpha
 masks. It adds no collision or world state.
 
 `FoliageInstance(Mesh, Transform, ThinningRank, Motion = default, CastsShadows = false)` stores motion

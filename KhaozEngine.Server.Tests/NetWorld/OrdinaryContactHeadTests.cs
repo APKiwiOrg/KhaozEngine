@@ -165,7 +165,7 @@ public partial class OrdinaryContactHeadTests
     }
 
     [Fact]
-    public void WireGenerationRemainsFourteen() => Assert.Equal(14, MoveProtocol.WireProtocolVersion);
+    public void WireGenerationIncludesFineSpeedAndGroundState() => Assert.Equal(15, MoveProtocol.WireProtocolVersion);
 
     [Fact]
     public void ConfiguredOrdinaryBoundaryWinsOverWorldBounds()

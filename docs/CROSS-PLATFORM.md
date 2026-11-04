@@ -1173,6 +1173,14 @@ in the `ShaderSources.cs` source comments; this is the consolidated checklist.)
   above it, so it reads it with a `1e-30` weight rather than leave a hole in the pixel-input signature.
   `D3D11FxcValidationTests` asserts on the emitted HLSL that every shadow depth vertex's input signature, and the
   cutout and skinned dissolve fragments' interpolants, are contiguous.
+- **Opaque foliage FXC fixtures stay tied to current source.** The four `FoliageOpaque` fragment variants
+  retain hosted Windows disassembly and GLSL pins under `Fixtures/foliage-opaque-dxbc`. Dispatch
+  `cross-platform-gpu` on the source branch with `legs=direct3d11-native`, `tier=push`, `bake=false` and
+  `renderTestFilter=FullyQualifiedName~DumpFoliageOpaqueDisassembly` to arm its Windows-only dump.
+  The deliberate dump failure prints numbered `FOLIAGEDXBC` lines and `FOLIAGEDXBCSOURCE` hashes.
+  Import contiguous lines with carriage returns removed and the terminal newline retained, then validate
+  on the final commit with the dump disarmed. Windows compares every frozen listing with current FXC
+  output exactly. Existing temporal DXBC fixtures keep their empty stale-source allowance.
 - **Sampling textures in binding order is retired.** Native Metal authors resource indices through
   `MslIndexRemap`. The higher-binding-first conditional pixel-readback case in
   `MetalConditionalTextureOrderGpuTests` verifies both runtime branches. Samples can be conditional

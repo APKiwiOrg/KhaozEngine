@@ -226,25 +226,29 @@ internal sealed class MovementHoldRig : IDisposable
 
     public readonly InMemoryTransportHub Hub = new();
     public readonly IMovementHoldServer Server;
+    public readonly WorldServer? Single;
     public readonly ShardedWorldServer? Sharded;
+    public IAdminControllable Admin => (IAdminControllable?)Single ?? Sharded!;
     public readonly MoveTuning Tuning;
     public int LingerTicks;
     public bool ThrowOnLeave;
     public int Leaves;
 
-    public MovementHoldRig(MovementHoldHead head, int? lingerTicks = null, MoveTuning? tuning = null)
+    public MovementHoldRig(MovementHoldHead head, int? lingerTicks = null, MoveTuning? tuning = null,
+        AntiCheatConfig? antiCheat = null, WorldBounds? bounds = null, float? cellSize = null)
     {
         Tuning = tuning ?? MoveTuning.Default;
         LingerTicks = lingerTicks ?? 0;
         if (head == MovementHoldHead.Flat)
         {
-            var flat = new WorldServer(Hub.Server, new WorldServerConfig
+            var flat = Single = new WorldServer(Hub.Server, new WorldServerConfig
             {
                 TickSeconds = Dt,
                 InterestRadius = 500f,
                 MaxPlayers = 4,
                 MaxInputBacklog = 0,
-            }, Ground, Tuning);
+                AntiCheat = antiCheat ?? new(),
+            }, Ground, Tuning, bounds: bounds);
             flat.PlayerLeaving += (_, _, _) => OnLeaving();
             Server = new FlatHead(flat);
         }
@@ -255,8 +259,12 @@ internal sealed class MovementHoldRig : IDisposable
                 TickSeconds = Dt,
                 MaxPlayers = 4,
                 MaxInputBacklog = 0,
+                AntiCheat = antiCheat ?? new(),
+                CellSize = cellSize ?? 60f,
+                OverlapMargin = cellSize is null ? 24f : 1f,
+                InterestRadius = cellSize is null ? 24f : 1f,
                 DisconnectLingerTicks = lingerTicks is null ? null : (_, _) => LingerTicks,
-            }, Ground, Tuning);
+            }, Ground, Tuning, bounds: bounds);
             Sharded.PlayerLeaving += (_, _, _) => OnLeaving();
             Server = new ShardedHead(Sharded);
         }
@@ -330,6 +338,7 @@ internal sealed class MovementHoldRig : IDisposable
 
     public void Dispose()
     {
+        Single?.Dispose();
         Sharded?.Dispose();
         Hub.Dispose();
     }

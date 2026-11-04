@@ -6,7 +6,7 @@ using Xunit;
 
 namespace KhaozEngine.Tests.Gpu;
 
-public sealed class MetalReadFootprintEquivalenceTests
+public sealed partial class MetalReadFootprintEquivalenceTests
 {
     // #1692. Indexing must preserve the old union of actual attribute bytes, never its bounding spans.
     [Fact]

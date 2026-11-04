@@ -100,7 +100,7 @@ The new descendant and feature budgets bound previously unsupported work. They d
 any existing cap. Sparse large meshes use certified pruning, not a total-world triangle cap.
 Policy versions and all these constants are recorded together in an internal
 `CapsuleGeneralSweepPolicy`, initially version 1. Existing box/tree policies remain version 1.
-No public movement profile, frozen fingerprint, wire generation 14 or navigation format changes.
+General sweeps change no public movement profile, frozen fingerprint, movement wire layout or navigation format.
 Native G1b must carry this backend domain into its own policy identity before adoption.
 Cost if wrong: a nominal certificate has hidden unbounded work or a scale-dependent numerical hole.
 

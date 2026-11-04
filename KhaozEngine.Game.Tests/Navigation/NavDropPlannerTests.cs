@@ -48,6 +48,51 @@ public class NavDropPlannerTests
         Assert.Equal(ordinaryExit ? 1 : 3, path.Waypoints.Count);
     }
 
+    // FM-D15 keeps existing routes and lets a pursuit ask for the longer supported walk.
+    [Theory]
+    [InlineData(false, false)]
+    [InlineData(true, false)]
+    [InlineData(true, true)]
+    public void WalkOnlySkipsTheCheaperDropButKeepsAWalkingDetour(bool walkOnly, bool region)
+    {
+        var drop = new NavLink(0, 0, 0, 0, 1, 0) { Kind = NavLinkKind.Drop };
+        var grid = NavGrid.FromBlockedSurfaces(2, 4, 1, 0, 0, new bool[8], new float[] { 4, 0, 4, 0, 4, 0, 4, 0 });
+        var space = new NavSpace(new[] { grid }, new[] { drop });
+        var graph = new NavTraversalGraph(space, 0, 1,
+            new[] { new NavTraversalLayer(2, 4, Enumerable.Repeat(true, 8).ToArray(), new byte[] { 4, 0, 4, 8, 4, 8, 1, 8 }) }, new[] { drop });
+        var planner = new GridPathPlanner(space, graph);
+        Vector3 start = new(0.5f, 4, 0.5f), end = new(1.5f, 0, 0.5f);
+        PathQueryBudget budget = PathQueryBudget.Default with { WalkOnly = walkOnly };
+        NavPath path = region ? planner.FindPath(start, new NavGoalRegion(end, 0, p => p == end), 0, budget)
+            : planner.FindPath(start, end, 0, budget);
+        Assert.Equal(NavPathStatus.Complete, path.Status);
+        Assert.Equal(!walkOnly, path.Waypoints.Any(w => w.Kind == NavWaypointKind.Drop));
+        Assert.Equal(walkOnly ? 7 : 2, path.Waypoints.Count);
+    }
+
+    [Theory]
+    [InlineData(NavLinkKind.Drop, false)]
+    [InlineData(NavLinkKind.Hop, false)]
+    [InlineData(NavLinkKind.Stair, true)]
+    public void WalkOnlyKeepsStairsAndRefusesAnOnlyHopOrDrop(NavLinkKind kind, bool complete)
+    {
+        var grid = NavGrid.FromBlockedSurfaces(2, 1, 1, 0, 0, new bool[2], new float[] { 1, 0 });
+        var link = new NavLink(0, 0, 0, 0, 1, 0) { Kind = kind };
+        var space = new NavSpace(new[] { grid }, new[] { link });
+        var graph = new NavTraversalGraph(space, 0, 1,
+            new[] { new NavTraversalLayer(2, 1, new[] { true, true }, new byte[2]) }, new[] { link });
+        var planner = new GridPathPlanner(space, graph);
+        Assert.Equal(NavPathStatus.Complete, planner.FindPath(new(0.5f, 1, 0.5f), new Vector3(1.5f, 0, 0.5f), 0, PathQueryBudget.Default).Status);
+        NavPath path = planner.FindPath(new(0.5f, 1, 0.5f), new Vector3(1.5f, 0, 0.5f), 0,
+            PathQueryBudget.Default with { WalkOnly = true });
+        Assert.Equal(complete, path.Status == NavPathStatus.Complete);
+        if (complete)
+        {
+            Assert.NotEmpty(path.Waypoints);
+            Assert.All(path.Waypoints, waypoint => Assert.Equal(NavWaypointKind.Walk, waypoint.Kind));
+        }
+    }
+
     [Fact]
     public void UnguardedDropAtFirstEdgeKeepsItsSourceAndAppendsExactGoal()
     {

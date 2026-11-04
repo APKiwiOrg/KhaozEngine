@@ -162,6 +162,7 @@ public sealed partial class GridPathPlanner
             {
                 foreach ((int targetId, float costMeters, NavLinkKind kind) in links)
                 {
+                    if (budget.WalkOnly && kind is NavLinkKind.Hop or NavLinkKind.Drop) continue;
                     if (scratch.IsClosed(targetId))
                     {
                         continue;

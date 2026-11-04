@@ -231,7 +231,8 @@ namespace KhaozEngine.Gpu.Metal.Internal
                         + "record, then End before submitting: the seam documents that a list submitted without "
                         + "End is a half-recorded frame and that a backend is free to refuse it, and this backend "
                         + "does. A command buffer with an encoder still open cannot legally be committed at all, "
-                        + "and one this list never took from the queue has nothing to commit.") { Backend = GpuBackendKind.MetalNative, Command = "Submit" };
+                        + "and one this list never took from the queue has nothing to commit.")
+                    { Backend = GpuBackendKind.MetalNative, Command = "Submit" };
                 }
 
                 return _commandBuffer;
@@ -277,7 +278,8 @@ namespace KhaozEngine.Gpu.Metal.Internal
                 throw new GpuRecordingStateException(GpuRecordingStateRefusal.BeginWhileRecording, "Begin was called on a native Metal command list that is already recording. Call End first. "
                     + "A second Begin cannot restart the recording: this backend takes a fresh MTLCommandBuffer "
                     + "per Begin, so restarting would abandon a buffer that may have an encoder open on it, and "
-                    + "an encoder left open is a command buffer that cannot be committed.") { Backend = GpuBackendKind.MetalNative, Command = nameof(Begin) };
+                    + "an encoder left open is a command buffer that cannot be committed.")
+                { Backend = GpuBackendKind.MetalNative, Command = nameof(Begin) };
             }
 
             // The sealed-but-unsubmitted buffer goes back BEFORE the new one is taken, so a list re-Begun in a
@@ -335,8 +337,9 @@ namespace KhaozEngine.Gpu.Metal.Internal
             _graphicsBinds.Reset();
             _computeBinds.Reset();
             _streams.Reset();
-            _readStreams.Clear();
+            _readStreams.Reset();
             _readIndices = null;
+            _hasIndexRead = false;
             _boundSwapchain = false;
 
             // BOTH PIPELINES FORGOTTEN. The epoch bump above already invalidates the STATE BLOCK's stamp, so this

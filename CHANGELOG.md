@@ -8,6 +8,9 @@ Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
 2026-11-04
 
+- Record Metal split-frame reads when bindings or draw windows change. Reuse indexed mesh coverage, extend
+  consecutive instance windows and leave duplicate interval inserts free of tree writes. CPU access refusals
+  and steady-frame zero allocation are unchanged (#1696).
 - GPU refusals carry a public reason enum and the identifiers callers need, so code and tests tell refusals
   apart by `Reason` instead of message text. Shared `IGpu*` contract rules live in `KhaozEngine.Gpu` and
   every backend throws the same reason for the same input, for example `GpuRecordingStateRefusal`,

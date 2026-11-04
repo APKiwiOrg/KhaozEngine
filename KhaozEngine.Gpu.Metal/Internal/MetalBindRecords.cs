@@ -69,7 +69,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
     /// whole schedule, the run cutting, the stage fork and the offset composition be driven by plain
     /// <c>[Fact]</c>s on a machine with no Metal at all.</para>
     /// </summary>
-    internal sealed class MetalBindRecords
+    internal sealed partial class MetalBindRecords
     {
         /// <summary>
         /// The highest set number a record will grow to cover. Well past anything a shipped pipeline declares
@@ -209,17 +209,23 @@ namespace KhaozEngine.Gpu.Metal.Internal
                     + "element dynamic in the resource layout, or bind through the overload that passes no "
                     + "offset.",
                     nameof(dynamicOffset))
-                    {
-                        Backend = GpuBackendKind.MetalNative,
-                        Set = slot,
-                        DynamicOffset = dynamicOffset,
-                    };
+                {
+                    Backend = GpuBackendKind.MetalNative,
+                    Set = slot,
+                    DynamicOffset = dynamicOffset,
+                };
             }
 
             EnsureSlot(slot);
 
             ref SlotRecord record = ref _slots[slot];
-            if (!record.Bound.SameSetAs(set) || record.DynamicOffset != dynamicOffset) record.Dirty = true;
+            bool setChanged = !record.Bound.SameSetAs(set);
+            if (setChanged || record.DynamicOffset != dynamicOffset)
+            {
+                record.Dirty = true;
+                _pendingReads |= 1u << (int)slot;
+                if (setChanged) _fullReads |= 1u << (int)slot;
+            }
 
             if (!set.IsBound)
             {
@@ -272,6 +278,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
             if (_table is not null && _table.SameIndicesAs(table)) return false;
 
             _table = table;
+            _pendingReads = _fullReads = (1u << _recorded) - 1;
             InvalidateAll();
             return true;
         }
@@ -308,28 +315,8 @@ namespace KhaozEngine.Gpu.Metal.Internal
             _recorded = 0;
             _table = null;
             _batch.Clear();
-        }
-
-        internal void RecordReads(MetalRecordedReads reads, int segment)
-        {
-            if (_table is null) return;
-            for (int slot = 0; slot < _recorded; slot++)
-            {
-                ref SlotRecord record = ref _slots[slot];
-                ReadOnlySpan<MetalBoundResource> bindings = record.Bound.Resources;
-                for (int binding = 0; binding < bindings.Length; binding++)
-                {
-                    ref readonly var bound = ref bindings[binding];
-                    if (bound.Resource is not MetalBuffer buffer || buffer.Handle.IsNull) continue;
-                    foreach (var stage in _stages)
-                    {
-                        if (!_table.TryGetIndex(slot, binding, stage, out _)) continue;
-                        ulong offset = (ulong)ComposedOffset(bound, segment, record.DynamicOffset, _offsetAlignment);
-                        reads.Add(buffer.CpuResource, offset, bound.Range);
-                        break;
-                    }
-                }
-            }
+            _pendingReads = _fullReads = 0;
+            _readTarget = null;
         }
 
         /// <summary>
@@ -607,15 +594,15 @@ namespace KhaozEngine.Gpu.Metal.Internal
                 + "construction, so one of the other two is the misaligned one. Metal's debug layer calls an "
                 + "unaligned offset a validation error and the driver calls it undefined behaviour, and neither "
                 + "says which bind did it.")
-                {
-                    ComposedOffset = composed,
-                    RingBase = frameBase,
-                    RangeOffset = rangeOffset,
-                    DynamicOffset = dynamicOffset,
-                    AlignmentBytes = alignment,
-                    RangeBytes = range,
-                    SegmentStride = stride,
-                };
+            {
+                ComposedOffset = composed,
+                RingBase = frameBase,
+                RangeOffset = rangeOffset,
+                DynamicOffset = dynamicOffset,
+                AlignmentBytes = alignment,
+                RangeBytes = range,
+                SegmentStride = stride,
+            };
         }
 
         // WHAT SEPARATES THE THREE ARMS, IN ONE PLACE. Read the order: an invalid stamp beats a clean flag,
@@ -668,14 +655,14 @@ namespace KhaozEngine.Gpu.Metal.Internal
                 + "resource layout that disagrees with the shader's own reflection, which is what the pipeline's "
                 + "layout shape check refuses at creation. Binding it anyway would put a resource of one kind "
                 + "where another was expected, with nothing downstream to report it.")
-                {
-                    Set = (uint)slot,
-                    Binding = binding,
-                    Stage = stage == MetalShaderStage.Vertex ? GpuShaderStages.Vertex : stage == MetalShaderStage.Fragment ? GpuShaderStages.Fragment : GpuShaderStages.Compute,
-                    ExpectedSpace = entry.Space.Word(),
-                    ActualSpace = bound.Space.Word(),
-                    ArgumentIndex = entry.Index,
-                };
+            {
+                Set = (uint)slot,
+                Binding = binding,
+                Stage = stage == MetalShaderStage.Vertex ? GpuShaderStages.Vertex : stage == MetalShaderStage.Fragment ? GpuShaderStages.Fragment : GpuShaderStages.Compute,
+                ExpectedSpace = entry.Space.Word(),
+                ActualSpace = bound.Space.Word(),
+                ArgumentIndex = entry.Index,
+            };
         }
 
         MetalShaderIndexTable RequireIndexTable()

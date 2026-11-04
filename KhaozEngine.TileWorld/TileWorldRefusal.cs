@@ -270,4 +270,20 @@ public enum TileWorldRefusal
     FoliageCatalogArchetypeMissing,
     /// <summary>Refuses a foliage configuration allowing an underlay absent from the catalogs.</summary>
     FoliageCatalogUnderlayMissing,
+
+    // Byte-preserving catalog collision-height editing.
+    /// <summary>Refuses an archetype height that is not finite and positive.</summary>
+    CatalogEditHeightInvalid,
+    /// <summary>Refuses catalog bytes that cannot be read as JSON.</summary>
+    CatalogEditJsonMalformed,
+    /// <summary>Refuses a catalog edit whose source file cannot be read.</summary>
+    CatalogEditReadFailed,
+    /// <summary>Refuses catalog editing when the JSON root is not an object.</summary>
+    CatalogEditNotObject,
+    /// <summary>Refuses catalog editing when requested archetypes are absent.</summary>
+    CatalogEditArchetypesMissing,
+    /// <summary>Refuses catalog editing when a requested archetype is defined more than once.</summary>
+    CatalogEditArchetypeDuplicate,
+    /// <summary>Refuses catalog editing when a requested archetype has repeated collisionHeight properties.</summary>
+    CatalogEditHeightDuplicate,
 }

@@ -154,6 +154,10 @@ Messages remain developer prose. `Reason` is nullable only for a message-only in
 engine. Its reason-taking constructors also accept an original cause through `InnerException`.
 PGM heightmap reads also use this type and enum. Their source, header and raster identifiers are listed in
 the [editing refusal table](../KhaozEngine.TileWorld.Editing/README.md#refusals).
+Byte-preserving catalog edits share this enum and use `ArchetypeIds` for the complete ordinal-sorted list
+of missing archetypes, copied into an owned read-only snapshot. See the
+[catalog edit refusal table](../KhaozEngine.TileEdit.Tool/README.md#catalog-edit-refusals) for their reasons
+and the `ArgumentOutOfRangeException`-compatible `CatalogEditRangeException`.
 
 Regions are planar. `Region` is a `RegionCoord?`, and `TileX` and `TileZ` are `int?` values set only when the
 guard received tile coordinates. They never imply a plane. A region-only operation leaves both null.

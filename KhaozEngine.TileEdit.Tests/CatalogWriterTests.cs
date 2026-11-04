@@ -4,6 +4,7 @@ using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Text;
+using System.Text.Json;
 using KhaozEngine.TileEdit;
 using KhaozEngine.TileWorld;
 using Xunit;
@@ -233,8 +234,11 @@ public class CatalogWriterTests
     [InlineData(-1f)]
     public void TheWriterRefusesAHeightTheLoaderWouldReject(float height)
     {
-        var ex = Assert.Throws<ArgumentOutOfRangeException>(() => CatalogWriter.SetCollisionHeights(
+        var ex = Assert.Throws<CatalogEditRangeException>(() => CatalogWriter.SetCollisionHeights(
             Encoding.UTF8.GetBytes(OneLine), new Dictionary<string, float> { ["wall"] = height }));
+        Assert.IsAssignableFrom<ArgumentOutOfRangeException>(ex);
+        Assert.Equal(TileWorldRefusal.CatalogEditHeightInvalid, ex.Reason);
+        Assert.Equal("wall", ex.ArchetypeId);
         Assert.Equal("heights", ex.ParamName);
         Assert.Equal(height, ex.ActualValue);
     }
@@ -246,9 +250,87 @@ public class CatalogWriterTests
         string path = temp.Sub("one-line.json");
         File.WriteAllText(path, OneLine);
         var ex = Assert.Throws<TileWorldException>(() => CatalogWriter.WriteCollisionHeights(path,
-            new Dictionary<string, float> { ["wall"] = 2f, ["ghost"] = 1f }));
-        Assert.Contains("ghost", ex.Message, StringComparison.Ordinal);
+            new Dictionary<string, float> { ["wall"] = 2f, ["ghost"] = 1f, ["absent"] = 3f }));
+        Assert.Equal(TileWorldRefusal.CatalogEditArchetypesMissing, ex.Reason);
+        Assert.Equal(path, ex.SourceName);
+        Assert.Equal(new[] { "absent", "ghost" }, ex.ArchetypeIds);
+        var inner = Assert.IsType<TileWorldException>(ex.InnerException);
+        Assert.Equal(TileWorldRefusal.CatalogEditArchetypesMissing, inner.Reason);
+        Assert.Equal(new[] { "absent", "ghost" }, inner.ArchetypeIds);
+        Assert.Null(inner.SourceName);
         Assert.Equal(OneLine, File.ReadAllText(path));
+    }
+
+    [Theory]
+    [InlineData("{]", TileWorldRefusal.CatalogEditJsonMalformed, null, null)]
+    [InlineData("[]", TileWorldRefusal.CatalogEditNotObject, null, null)]
+    [InlineData("{\"archetypes\":[{\"id\":\"wall\"},{\"id\":\"wall\"}]}",
+        TileWorldRefusal.CatalogEditArchetypeDuplicate, "wall", null)]
+    [InlineData("{\"archetypes\":[{\"id\":\"wall\",\"collisionHeight\":1,\"collisionHeight\":2}]}",
+        TileWorldRefusal.CatalogEditHeightDuplicate, "wall", "collisionHeight")]
+    public void CatalogEditRefusalsKeepTheirReasonAndIdentifiersThroughPrepare(
+        string catalog, TileWorldRefusal reason, string? archetypeId, string? field)
+    {
+        var heights = new Dictionary<string, float> { ["wall"] = 2f };
+        byte[] bytes = Encoding.UTF8.GetBytes(catalog);
+        var direct = Assert.Throws<TileWorldException>(() => CatalogWriter.SetCollisionHeights(bytes, heights));
+        Assert.Equal(reason, direct.Reason);
+        Assert.Equal(archetypeId, direct.ArchetypeId);
+        Assert.Equal(field, direct.Field);
+        Assert.Null(direct.SourceName);
+        if (reason == TileWorldRefusal.CatalogEditJsonMalformed)
+            Assert.IsAssignableFrom<JsonException>(direct.InnerException);
+
+        using var temp = new TempDir();
+        string path = temp.Sub("refused.json");
+        File.WriteAllBytes(path, bytes);
+        var wrapped = Assert.Throws<TileWorldException>(() => CatalogWriter.Prepare(path, heights));
+        Assert.Equal(reason, wrapped.Reason);
+        Assert.Equal(path, wrapped.SourceName);
+        Assert.Equal(archetypeId, wrapped.ArchetypeId);
+        Assert.Equal(field, wrapped.Field);
+        var inner = Assert.IsType<TileWorldException>(wrapped.InnerException);
+        Assert.Equal(reason, inner.Reason);
+        Assert.Equal(archetypeId, inner.ArchetypeId);
+        Assert.Equal(field, inner.Field);
+        Assert.Null(inner.SourceName);
+        if (reason == TileWorldRefusal.CatalogEditJsonMalformed)
+            Assert.IsAssignableFrom<JsonException>(inner.InnerException);
+        Assert.Equal(bytes, File.ReadAllBytes(path));
+
+        File.WriteAllText(path, OneLine);
+        Assert.NotNull(CatalogWriter.Prepare(path, heights));
+        Assert.Equal(OneLine, File.ReadAllText(path));
+    }
+
+    [Fact]
+    public void PrepareIdentifiesAnUnreadableCatalogAndRetainsItsCause()
+    {
+        using var temp = new TempDir();
+        string path = temp.Sub("missing.json");
+        var ex = Assert.Throws<TileWorldException>(() => CatalogWriter.Prepare(path, Nothing));
+        Assert.Equal(TileWorldRefusal.CatalogEditReadFailed, ex.Reason);
+        Assert.Equal(path, ex.SourceName);
+        Assert.NotNull(ex.InnerException);
+        Assert.False(File.Exists(path));
+
+        File.WriteAllText(path, OneLine);
+        Assert.Null(CatalogWriter.Prepare(path, Nothing));
+        Assert.Equal(OneLine, File.ReadAllText(path));
+    }
+
+    [Fact]
+    public void MissingArchetypeIdentifiersAreOwnedReadOnlySnapshots()
+    {
+        var ids = new List<string> { "absent", "ghost" };
+        var ex = new TileWorldException(TileWorldRefusal.CatalogEditArchetypesMissing, "missing archetypes")
+        { ArchetypeIds = ids };
+        ids[0] = "changed";
+        ids.Clear();
+        Assert.Equal(new[] { "absent", "ghost" }, ex.ArchetypeIds);
+        var exposed = Assert.IsAssignableFrom<IList<string>>(ex.ArchetypeIds);
+        Assert.Throws<NotSupportedException>(() => exposed[0] = "changed");
+        Assert.Equal(new[] { "absent", "ghost" }, ex.ArchetypeIds);
     }
 
     static IEnumerable<(string Name, byte[] Bytes)> Fixtures()

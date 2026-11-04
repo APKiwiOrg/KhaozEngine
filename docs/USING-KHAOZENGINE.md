@@ -13901,6 +13901,19 @@ relative to yet: pass them an absolute path.
 with every argument and the ASCII map legends, is the
 [`KhaozEngine.TileEdit.Tool` README](../KhaozEngine.TileEdit.Tool/README.md).
 
+**Catalog edits preserve refusal details.** Direct `CatalogWriter` callers inspect the shared
+`TileWorldRefusal` reason instead of parsing messages. `CatalogEditRangeException` remains catchable as
+`ArgumentOutOfRangeException` and carries `CatalogEditHeightInvalid`, the offending `ArchetypeId`,
+`ParamName = heights` and the original `ActualValue`. The exact `TileWorldException` type carries
+`CatalogEditJsonMalformed`, `CatalogEditReadFailed`, `CatalogEditNotObject`, `CatalogEditArchetypesMissing`,
+`CatalogEditArchetypeDuplicate` or `CatalogEditHeightDuplicate`. Missing archetypes are the complete
+ordinal-sorted, owned read-only `ArchetypeIds` snapshot. Duplicate refusals carry `ArchetypeId`, and duplicate
+heights also carry `Field = collisionHeight`. `Prepare` and `WriteCollisionHeights` add `SourceName` to a
+byte-splice refusal while retaining its reason, identifiers and exact original exception in `InnerException`.
+Read failures retain their original cause, and malformed JSON retains its parser cause. These refusals leave
+the file untouched. The [catalog edit refusal table](../KhaozEngine.TileEdit.Tool/README.md#catalog-edit-refusals)
+lists each rule. The height service continues to report per-entry errors through its existing response payload.
+
 **Coordinates and row order.** Tile space throughout (x east, z north, plane a storey index from 0), a rect is
 `x, z, width, height` with the far edges EXCLUSIVE, heights live on CORNERS so their rects are one wider and
 one deeper than the tiles they carry, and rotation is quarter turns clockwise (0 west, 1 north, 2 east, 3

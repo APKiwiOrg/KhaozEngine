@@ -17,6 +17,7 @@ public sealed class TileWorldException : Exception
     IReadOnlyList<JsonSchemaFinding>? _schemaFindings;
     IReadOnlyList<byte>? _actualMagic;
     IReadOnlyList<string>? _requiredTools;
+    IReadOnlyList<string>? _archetypeIds;
 
     public TileWorldException(string message) : base(message) { }
     public TileWorldException(string message, Exception? inner) : base(message, inner) { }
@@ -62,6 +63,14 @@ public sealed class TileWorldException : Exception
 
     /// <summary>The refused or required catalog or foliage archetype id, as supplied.</summary>
     public string? ArchetypeId { get; init; }
+
+    /// <summary>The requested archetype ids absent from an edited catalog, in ordinal order. Setting this
+    /// property copies the collection into an owned read-only snapshot.</summary>
+    public IReadOnlyList<string>? ArchetypeIds
+    {
+        get => _archetypeIds;
+        init => _archetypeIds = value is null ? null : Array.AsReadOnly<string>([.. value]);
+    }
 
     /// <summary>The refused object's or marker's authored tile address, including its known plane.
     /// Prefab refusals use prefab-relative coordinates.</summary>

@@ -112,6 +112,28 @@ Direct mutation service calls propagate the command and document reasons. See th
 [editing refusal table](../KhaozEngine.TileWorld.Editing/README.md#refusals) and the
 [TileWorld refusal table](../KhaozEngine.TileWorld/README.md#refusals) for object and marker identifiers.
 
+### Catalog edit refusals
+
+`CatalogWriter.SetCollisionHeights` uses the same `TileWorldRefusal` enum. Invalid heights throw
+`CatalogEditRangeException`, derived from `ArgumentOutOfRangeException`, with the original `ParamName`
+(`heights`) and `ActualValue` plus the offending `ArchetypeId`. The other edit refusals retain the exact
+`TileWorldException` type. Null arguments and blank paths remain ordinary parameter exceptions.
+
+| `TileWorldRefusal` reason | Refuses | Identifiers |
+| --- | --- | --- |
+| `CatalogEditHeightInvalid` | A requested height that is not finite and positive | `CatalogEditRangeException.ArchetypeId`, `ParamName`, `ActualValue` |
+| `CatalogEditJsonMalformed` | Catalog bytes that cannot be read as JSON | Original `JsonException` in `InnerException` |
+| `CatalogEditReadFailed` | A source catalog that cannot be read | `SourceName`, original `InnerException` |
+| `CatalogEditNotObject` | A JSON root that is not an object | `SourceName` when prepared from a file |
+| `CatalogEditArchetypesMissing` | Requested archetypes absent from the catalog | Complete ordinal-sorted, owned read-only `ArchetypeIds` snapshot |
+| `CatalogEditArchetypeDuplicate` | A requested archetype defined more than once | `ArchetypeId` |
+| `CatalogEditHeightDuplicate` | A requested archetype with repeated height properties | `ArchetypeId`, `Field` equal to `collisionHeight` |
+
+`Prepare` and `WriteCollisionHeights` add `SourceName` to a byte-splice `TileWorldException` without changing
+its specific `Reason` or identifiers. The new wrapper retains the exact original exception in
+`InnerException`, including a malformed-JSON refusal's own parser cause. These refusals write nothing.
+Post-edit loader validation propagates the loader's catalog reason and source unchanged.
+
 ## Coordinate conventions
 
 - **Tile space throughout the query and mutation surface**: x runs east, z runs north, and a plane is a storey

@@ -42,8 +42,8 @@ public static class CatalogWriter
     /// <summary>Returns <paramref name="catalog"/> (UTF-8 catalog JSON, JSONC tolerated) with each named
     /// archetype's <c>collisionHeight</c> set, every other byte kept. With nothing to set, the input comes back
     /// unchanged.</summary>
-    /// <exception cref="ArgumentOutOfRangeException">A height is not a finite number above 0, which the catalog
-    /// loader would refuse.</exception>
+    /// <exception cref="CatalogEditRangeException">A height is not a finite number above 0, which the catalog
+    /// loader would refuse. Carries CatalogEditHeightInvalid, ArchetypeId, ParamName and ActualValue.</exception>
     /// <exception cref="TileWorldException">The catalog is not readable JSON, does not define a named archetype,
     /// or defines one twice, or an entry carries two <c>collisionHeight</c> properties.</exception>
     public static byte[] SetCollisionHeights(byte[] catalog, IReadOnlyDictionary<string, float> heights)
@@ -53,8 +53,9 @@ public static class CatalogWriter
         foreach ((string id, float h) in heights)
         {
             if (!(float.IsFinite(h) && h > 0f))
-                throw new ArgumentOutOfRangeException(nameof(heights), h,
-                    $"archetype '{id}': collisionHeight {FormatHeight(h)} is not a finite number above 0.");
+                throw new CatalogEditRangeException(TileWorldRefusal.CatalogEditHeightInvalid,
+                    $"archetype '{id}': collisionHeight {FormatHeight(h)} is not a finite number above 0.", nameof(heights), h)
+                { ArchetypeId = id };
         }
         if (heights.Count == 0) return catalog;
 
@@ -66,7 +67,8 @@ public static class CatalogWriter
         }
         catch (JsonException ex)
         {
-            throw new TileWorldException($"catalog is not readable JSON: {ex.Message}", ex);
+            throw new TileWorldException(TileWorldRefusal.CatalogEditJsonMalformed,
+                $"catalog is not readable JSON: {ex.Message}", ex);
         }
 
         using var output = new MemoryStream(catalog.Length + 32 * splices.Count);
@@ -94,11 +96,19 @@ public static class CatalogWriter
         try { before = File.ReadAllBytes(path); }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
-            throw new TileWorldException($"{path}: cannot read catalog. {ex.Message}", ex);
+            throw new TileWorldException(TileWorldRefusal.CatalogEditReadFailed,
+                $"{path}: cannot read catalog. {ex.Message}", ex) { SourceName = path };
         }
         byte[] after;
         try { after = SetCollisionHeights(before, heights); }
-        catch (TileWorldException ex) { throw new TileWorldException($"{path}: {ex.Message}", ex); }
+        catch (TileWorldException ex)
+        {
+            throw new TileWorldException(ex.Reason!.Value, $"{path}: {ex.Message}", ex)
+            {
+                SourceName = path, ArchetypeId = ex.ArchetypeId,
+                ArchetypeIds = ex.ArchetypeIds, Field = ex.Field,
+            };
+        }
         if (after.AsSpan().SequenceEqual(before)) return null;
 
         // The loader reads the file as text, a byte order mark dropped, so the check reads it the same way.
@@ -130,7 +140,7 @@ public static class CatalogWriter
         var found = new HashSet<string>(StringComparer.Ordinal);
         var reader = new Utf8JsonReader(catalog.AsSpan(start), ReaderOptions);
         if (!reader.Read() || reader.TokenType != JsonTokenType.StartObject)
-            throw new TileWorldException("a catalog is a JSON object");
+            throw new TileWorldException(TileWorldRefusal.CatalogEditNotObject, "a catalog is a JSON object");
         while (reader.Read() && reader.TokenType == JsonTokenType.PropertyName)
         {
             bool archetypes = reader.ValueTextEquals("archetypes"u8);
@@ -153,8 +163,9 @@ public static class CatalogWriter
 
         string[] missing = heights.Keys.Where(id => !found.Contains(id)).OrderBy(id => id, StringComparer.Ordinal).ToArray();
         if (missing.Length > 0)
-            throw new TileWorldException(
-                $"the catalog does not define archetype {string.Join(", ", missing.Select(id => $"'{id}'"))}");
+            throw new TileWorldException(TileWorldRefusal.CatalogEditArchetypesMissing,
+                $"the catalog does not define archetype {string.Join(", ", missing.Select(id => $"'{id}'"))}")
+            { ArchetypeIds = missing };
         return splices;
     }
 
@@ -199,9 +210,13 @@ public static class CatalogWriter
         }
 
         if (id is null || !heights.TryGetValue(id, out float value)) return;
-        if (!found.Add(id)) throw new TileWorldException($"the catalog defines archetype '{id}' twice");
+        if (!found.Add(id))
+            throw new TileWorldException(TileWorldRefusal.CatalogEditArchetypeDuplicate,
+                $"the catalog defines archetype '{id}' twice") { ArchetypeId = id };
         // Which of the two a reader keeps is the reader's business, so neither is guessed at.
-        if (twoHeights) throw new TileWorldException($"archetype '{id}' carries collisionHeight twice");
+        if (twoHeights)
+            throw new TileWorldException(TileWorldRefusal.CatalogEditHeightDuplicate,
+                $"archetype '{id}' carries collisionHeight twice") { ArchetypeId = id, Field = "collisionHeight" };
         byte[] number = Encoding.UTF8.GetBytes(FormatHeight(value));
         if (height is { } existing)
         {

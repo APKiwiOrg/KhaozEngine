@@ -19,7 +19,7 @@ public sealed class FrameDiagnosticsActivationTests
         {
             Environment.SetEnvironmentVariable("KE_FRAME_DIAGNOSTICS_PATH", value);
             Assert.False(FrameDiagnosticsRecorder.IsEnabled);
-            Assert.Null(FrameDiagnosticsRecorder.FromEnvironment(new RefusedAnnotation()));
+            Assert.Null(FrameDiagnosticsRecorder.FromEnvironment(new RefusedAnnotation(), gbufferGates: new RefusedGates()));
             Assert.False(MetalFrameTimingProbe.Sampling);
             Assert.Same(passes, MetalFrameTimingProbe.PassTiming);
         }
@@ -30,5 +30,11 @@ public sealed class FrameDiagnosticsActivationTests
     {
         public string[] Channels => throw new InvalidOperationException("Disabled diagnostics must never register channels.");
         public void Sample(Span<long> values) => throw new InvalidOperationException();
+    }
+
+    sealed class RefusedGates : IFrameDiagnosticsGBufferGates
+    {
+        public void Apply(GBufferGate gate) => throw new InvalidOperationException();
+        public int ConsumeApplied(Span<long> skippedDraws) => throw new InvalidOperationException();
     }
 }

@@ -3,6 +3,7 @@ using System.Numerics;
 using System.Runtime.InteropServices;
 using KhaozEngine.Gpu;
 using KhaozEngine.Render3D.Rendering;
+using KhaozEngine.Windowing;
 
 namespace KhaozEngine.Render3D
 {
@@ -84,9 +85,12 @@ namespace KhaozEngine.Render3D
                 }
                 // Slot indexes the header window and paletteSlot the shared palette. They are the same number here
                 // (both are the caster's compacted index), which is exactly what the depth pass cannot say.
-                _model.DrawGpuSkinned(cl, dr.RestVb, dr.Ib, dr.IndexCount, dr.IndexFormat, dr.Slot, dr.Slot,
-                    dr.SkinnedMaterialSet);
-                CountSkinnedDraw(dr.IndexCount);
+                if (!SkipGBufferDraw(GBufferGate.Skinned))
+                {
+                    _model.DrawGpuSkinned(cl, dr.RestVb, dr.Ib, dr.IndexCount, dr.IndexFormat, dr.Slot, dr.Slot,
+                        dr.SkinnedMaterialSet);
+                    CountSkinnedDraw(dr.IndexCount);
+                }
             }
         }
     }

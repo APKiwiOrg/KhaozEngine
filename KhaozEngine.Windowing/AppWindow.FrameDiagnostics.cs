@@ -7,6 +7,7 @@ namespace KhaozEngine.Windowing;
 public sealed partial class AppWindow
 {
     IFrameDiagnosticsAnnotator? _frameDiagnosticsAnnotator;
+    IFrameDiagnosticsGBufferGates? _frameDiagnosticsGBufferGates;
 
     /// <summary>Whether this process requested the private frame recorder through KE_FRAME_DIAGNOSTICS_PATH.</summary>
     public bool FrameDiagnosticsEnabled => FrameDiagnosticsRecorder.IsEnabled;
@@ -16,6 +17,13 @@ public sealed partial class AppWindow
     {
         ArgumentNullException.ThrowIfNull(annotator);
         _frameDiagnosticsAnnotator = annotator;
+    }
+
+    /// <summary>Register the private main-pass draw cuts before Run. No pass observer is installed.</summary>
+    public void RegisterFrameDiagnosticsGBufferGates(IFrameDiagnosticsGBufferGates gates)
+    {
+        ArgumentNullException.ThrowIfNull(gates);
+        _frameDiagnosticsGBufferGates = gates;
     }
 
     void ObserveFrameDiagnostics(FrameDiagnosticsRecorder diagnostics, double dt)

@@ -1,4 +1,5 @@
 using KhaozEngine.Gpu;
+using KhaozEngine.Windowing;
 
 namespace KhaozEngine.Render3D;
 
@@ -6,6 +7,7 @@ public sealed partial class Scene3D
 {
     void DrawOpaqueRigidGeometry(IGpuCommandList cl)
     {
+        BeginGBufferGateFrame();
         using (ProfilePass(cl, "opaque.rigid", executed: _profiling is null || HasOpaqueCommands(0), fusedMotion: _res.MotionAllocated))
         {
             if (_instanceData.Count > 0)
@@ -23,9 +25,9 @@ public sealed partial class Scene3D
                     for (uint s = 0; s < run.Count; s++)
                     {
                         if (_instanceVisible[run.Start + s]) { if (spanLen == 0) spanStart = run.Start + s; spanLen++; }
-                        else if (spanLen > 0) { _model.DrawMeshInstanced(cl, mesh.Vb, mesh.Ib, mesh.IndexCount, mesh.IndexFormat, spanStart, spanLen, mesh.MaterialSet); CountMeshDraw(mesh.IndexCount, spanLen); spanLen = 0; }
+                        else if (spanLen > 0) { if (!SkipGBufferDraw(GBufferGate.Rigid)) { _model.DrawMeshInstanced(cl, mesh.Vb, mesh.Ib, mesh.IndexCount, mesh.IndexFormat, spanStart, spanLen, mesh.MaterialSet); CountMeshDraw(mesh.IndexCount, spanLen); } spanLen = 0; }
                     }
-                    if (spanLen > 0) { _model.DrawMeshInstanced(cl, mesh.Vb, mesh.Ib, mesh.IndexCount, mesh.IndexFormat, spanStart, spanLen, mesh.MaterialSet); CountMeshDraw(mesh.IndexCount, spanLen); }
+                    if (spanLen > 0 && !SkipGBufferDraw(GBufferGate.Rigid)) { _model.DrawMeshInstanced(cl, mesh.Vb, mesh.Ib, mesh.IndexCount, mesh.IndexFormat, spanStart, spanLen, mesh.MaterialSet); CountMeshDraw(mesh.IndexCount, spanLen); }
                 }
             }
         }
@@ -59,8 +61,11 @@ public sealed partial class Scene3D
                 if (dr.Dissolve) _model.BindDissolvePass(cl); else _model.BindCpuSkinnedPass(cl);
                 dissolveBound = dr.Dissolve;
             }
-            _model.DrawCpuSkinned(cl, dr.Ib, dr.IndexCount, dr.IndexFormat, dr.BaseVertex, (uint)d, dr.MaterialSet);
-            CountSkinnedDraw(dr.IndexCount);
+            if (!SkipGBufferDraw(GBufferGate.Skinned))
+            {
+                _model.DrawCpuSkinned(cl, dr.Ib, dr.IndexCount, dr.IndexFormat, dr.BaseVertex, (uint)d, dr.MaterialSet);
+                CountSkinnedDraw(dr.IndexCount);
+            }
         }
     }
 }

@@ -2,8 +2,9 @@
 
 NEVER MERGE this diagnostic archive into `main`. Branch `fix/mac-frame-recorder-21-23-1-probe` starts
 at released `v21.23.1`, commit `be27e609d1e13b1230c3196ac2d0dd7cdf8509b0`. It is never released or
-packaged. Schema 13 ports the measurements from the private v21.23.0 recorder onto the released
-split-submission renderer. It does not contain the experiments from that archive.
+packaged. Schema 14 retains the schema 13 measurements of the released split-submission renderer
+and adds the owner-approved, sampling-only G-buffer category draw cuts. It does not contain the
+shader or submission experiments from the older archive.
 
 ## Activation and boundaries
 
@@ -32,9 +33,11 @@ true at baseline, end and both states of every sample. `cadenceCapped=true` is e
 
 ## Rendering boundary
 
-No Render3D source changes. Game.Render3D has one read-only exception, registering
-`SceneFrameDiagnosticsAnnotator` when the path is enabled. It reads public last-frame diagnostics,
-camera inputs and light inputs. It adds no prepare, render, capture tap or copy-source request.
+Game.Render3D registers `SceneFrameDiagnosticsAnnotator` and the scene's
+`IFrameDiagnosticsGBufferGates` seam only when the path is enabled. The annotator reads public
+last-frame diagnostics, camera inputs and light inputs. It adds no prepare, render, capture tap or
+copy-source request. Render3D skips selected main-pass draw calls only while the recorder samples,
+as described below. Outside that window the scene starts and remains at `GBufferGate.Disabled`.
 
 The recorder registers no Render3D pass observer. `passObserverRegistered=false` explicitly describes
 that recorder policy. The host must also leave its own observer unset for this measurement. The
@@ -48,12 +51,12 @@ in a finally block after creation so reused descriptors cannot leak sampling. Th
 markers, diagnostic copies, extra encoders, resolves on the GPU, new signals, waits or drains. Stage
 timing itself can perturb execution, so this probe is evidence from an instrumented renderer.
 
-## Schema 13
+## Schema 14
 
 All ported field names and units retain their old meanings. New fields are identified below. JSON
 uses camelCase, numeric command kinds and nullable missing stage values.
 
-- `schemaVersion` is 13. `processId`, `appAssembly`, `engineAssembly`, `stopwatchFrequency`,
+- `schemaVersion` is 14. `processId`, `appAssembly`, `engineAssembly`, `stopwatchFrequency`,
   `durationSeconds`, `sampleCount`, `stopReason`, `baseline`, `end`, `samples` and `summary` keep
   their cadence and cumulative-counter meanings. Stop reasons are `duration` or `capacity`.
 - Each sample has `startTimestamp`, `endTimestamp`, `monotonicIntervalSeconds`, `loopDeltaSeconds`,
@@ -87,6 +90,81 @@ uses camelCase, numeric command kinds and nullable missing stage values.
   prefix actually committed, and `appliedCallbacks` counts true values. New
   `prefixCommitsPerCallback` records the exact prefix count for each callback, including zero when
   no split happened. There is no schedule, switch or treatment state.
+- `gbufferGates` is new in schema 14. It describes the five category cuts, their actual callback
+  schedule, applied states, skipped draws and neighbouring-baseline pairs below. All schema 13
+  field names and meanings remain unchanged.
+
+## G-buffer category cuts
+
+There are five gates. These are renderer draw families, because props and ground cover do not
+have separate main-pass queues. A skipped draw is one otherwise valid, visible GPU indexed draw,
+not one instance, triangle, submitted item or culled run.
+
+| Id and name | Source methods | Content covered |
+| --- | --- | --- |
+| 1 `rigid` | `Scene3D.DrawOpaqueRigidGeometry` | Ordinary instanced meshes, including props and CPU-submitted ground cover |
+| 2 `splat` | `Scene3D.DrawSplatRuns` | Five-layer splat terrain |
+| 3 `tileGround` | `Scene3D.DrawTileGroundRuns` | Tile-ground material meshes |
+| 4 `foliage` | `Scene3D.DrawFoliagePass` | Retained GPU foliage, including GPU ground-cover batches |
+| 5 `skinned` | `Scene3D.DrawGpuSkinnedMain`, `Scene3D.DrawCpuSkinnedMain` | Both character skinning paths, including dissolve variants |
+
+Only the draw and its actual-draw statistics are skipped. Grouping, visibility, rigid and bone
+uploads, main skinned header uploads, foliage updates and motion-history bookkeeping continue.
+Directional cascades and point shadows never consult the gates. Lighting, resolves, stores,
+submission boundaries and all subsequent passes keep their ordinary paths. Skipped geometry still
+casts shadows. It changes the visible depth/normal receivers, so later lighting and temporal work
+can change cost as a consequence. Attribute the main G-buffer encoder, rather than interpreting
+the whole-frame difference as an isolated category cost. Even inside that encoder, removing a
+depth writer changes occlusion and overdraw for remaining geometry. Each delta is a marginal
+cost, and the five deltas need not sum to the baseline pass cost.
+
+The same model framebuffer also receives `DrawTexturedBillboards`, `DrawBeams`, `DrawTrails`,
+`DrawOverlayMeshes` and `DrawSilhouettes`. These transparent/effect paths preserve the opaque
+normal and linear-depth attachments and remain ungated. Background, blob/ground decals, water,
+particles, depth lines and post processing also remain ungated. There is no extra independent
+opaque prop or ground-cover draw family beyond the five above.
+
+The schedule begins at sampling callback zero, after trigger I/O, and follows
+`B G1 B G2 B G3 B G4 B G5 B G1 ... B G5 B`. Nominal blocks contain **36 callbacks**.
+There are 15 gate blocks and 16 baselines, giving three rotations in 1,116 callbacks when every
+block is full. Each baseline between gates is shared by both neighbours. After the fifteenth gate
+block the last baseline starts at callback 1,080 and holds until the unchanged ten-second duration
+or capacity boundary. Its recorded extent can therefore exceed 36 callbacks. A slower capture can
+end before all rotations finish. The schedule records this honestly, without extending duration.
+
+Analysis drops the first **six callbacks of every block**, then pairs each gate block with both
+its preceding and following baselines. Use the recorded extents and lengths, not the old 48- or
+72-callback assumptions. Reject pairs without enough retained baseline/treatment evidence, wrong
+applied states, unstable workload/camera or missing native completion/stage evidence. The final
+baseline needs retained callbacks too. The temporal image can be disturbed at every transition,
+but no gate clears or invalidates a renderer cache or history.
+
+`gbufferGates` fields are:
+
+- `gates` lists each `id`, `name` and `sourceMethods`.
+- `blockCallbacks` is 36 and `discardCallbacksPerBlock` is 6.
+- `schedule` contains `startCallback`, `endCallbackExclusive`, `startTimestamp`, `endTimestamp`,
+  `gateId`, `gate` and nominal `blockCallbacks`. Baseline has id 0 and name `baseline`. Timestamps
+  are Stopwatch ticks. The final baseline's actual length is its end minus its start.
+- `pairs` gives zero-based `gateBlock`, `baselineBeforeBlock` and `baselineAfterBlock` schedule
+  indices. A pair is listed only when both neighbouring baseline blocks were observed. A listed
+  pair can still have a short last block and requires the analysis checks above.
+- `appliedPerCallback` has one entry per completed sample. Values 0 through 5 name the actual
+  baseline or gate. -1 means no main G-buffer frame rendered, -2 means renders disagreed, and -3
+  means no scene gate source was registered. Scheduled state alone is never proof of application.
+- `skippedDrawsPerCallback` has one row per sample and five signed integer columns in gate-id
+  order. Counts sum all renders in that callback, including mixed-state renders. Consumption
+  clears all counts, so a suppressed callback cannot repeat the previous frame's evidence.
+- `counts` contains baseline and each gate's `gateId`, `gate`, `blocks`, `scheduledCallbacks`,
+  `matchingCallbacks`, `noFrameCallbacks`, `mismatchedCallbacks` and total `skippedDraws`. Per-gate
+  skipped totals use their own column across all callbacks. These raw totals include the six
+  discarded callbacks, allowing analysis to choose its retained evidence explicitly.
+- `applyFailures` counts refused transitions. A nonzero value invalidates the comparison.
+
+The scene records an applied state when its main G-buffer path actually runs, including an empty
+opaque queue. Selection changes only at opening callback boundaries. Duration, capacity, early
+close and failure all disable selection. No environment path means no recorder or schedule, and
+an unarmed, armed-but-not-sampling, stopped or failed recorder never leaves a gate enabled.
 
 ## Native records and split-frame association
 
@@ -198,7 +276,7 @@ Light direction is Post.LightDirection. These are public inputs, not fitted shad
 matrices. `scene.EnableTiming` records overlay CPU timing work. Boolean values are 0 or 1. Suppressed
 renders can retain previous last-frame diagnostic values.
 
-Schema 13 deliberately omits `passLabels`, `transfers`, `experiment`, `shaderGates`, their state
+Schema 14 still omits `passLabels`, `transfers`, `experiment`, `shaderGates`, their state
 summaries and all early-submit schedule/tail-write experiment fields. Labels and transfers required
 an observer, which would disable the released cascade discard. The discard experiment, shader gates
 and early-submit schedule changed rendering and are inappropriate for confirming the released
@@ -207,6 +285,11 @@ There is no stage-overlap attribution by named pass without those labels.
 
 Headless fakes cover lifecycle, bounded buffers, missing evidence, allocation-free sampling,
 annotations, split kinds/counts, pair busy/idle math, schema serialization and disabled activation.
+Headless category tests also check three rotations, shared baseline pairs, terminal baseline hold,
+zero-allocation scheduling, actual applied states, no-render callbacks, disabled activation and
+restoration after completion, early close or failure. Real scene draw recording over the fake GPU
+checks each category and both skinning paths, unchanged uploads and shadow draws, ungated effects
+and restoration on the next baseline with no pass observer.
 The gated native smoke checks real render, serial compute and blit timestamps. Existing allocation
 facts check warmed frames with diagnostics inactive. These tests establish neither 144 FPS nor
 physical presentation coverage at the owner's slow view. The parent owns DLL substitution and the

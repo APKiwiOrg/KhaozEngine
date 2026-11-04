@@ -21,6 +21,7 @@ internal sealed record FrameDiagnosticsReport(int SchemaVersion, int ProcessId, 
 {
     public bool PassObserverRegistered => false;
     public FrameEarlySubmitSnapshot EarlySubmit { get; init; } = new([], []);
+    public FrameDiagnosticsGBufferGateReport? GbufferGates { get; init; }
 
     internal FrameDiagnosticsReport WithPassTiming(PassTimingSnapshot? timing)
     {
@@ -36,7 +37,7 @@ internal sealed record FrameDiagnosticsReport(int SchemaVersion, int ProcessId, 
         var samples = new FrameDiagnosticsSample[count];
         Array.Copy(buffer, samples, count);
         var engine = typeof(FrameDiagnosticsRecorder).Assembly;
-        return new FrameDiagnosticsReport(13, Environment.ProcessId,
+        return new FrameDiagnosticsReport(14, Environment.ProcessId,
             Assembly.GetEntryAssembly()?.FullName ?? "unknown", engine.FullName + " MVID=" + engine.ManifestModule.ModuleVersionId,
             frequency, (end.Timestamp - baseline.Timestamp) / (double)frequency, count, reason, baseline, end, samples,
             FrameDiagnosticsSummary.Create(baseline, end, samples, reason == "capacity", count == buffer.Length),

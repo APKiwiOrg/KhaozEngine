@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using KhaozEngine.Gpu;
 using KhaozEngine.Render3D.Internal;
 using KhaozEngine.Render3D.Rendering;
+using KhaozEngine.Windowing;
 
 namespace KhaozEngine.Render3D
 {
@@ -98,9 +99,9 @@ namespace KhaozEngine.Render3D
                 for (uint s = 0; s < run.Count; s++)
                 {
                     if (_instanceVisible[run.Start + s]) { if (spanLen == 0) spanStart = run.Start + s; spanLen++; }
-                    else if (spanLen > 0) { _model.DrawSplatMeshInstanced(cl, mesh.Vb, mesh.Ib, mesh.IndexCount, mesh.IndexFormat, spanStart, spanLen, sm.Set); CountMeshDraw(mesh.IndexCount, spanLen); spanLen = 0; }
+                    else if (spanLen > 0) { if (!SkipGBufferDraw(GBufferGate.Splat)) { _model.DrawSplatMeshInstanced(cl, mesh.Vb, mesh.Ib, mesh.IndexCount, mesh.IndexFormat, spanStart, spanLen, sm.Set); CountMeshDraw(mesh.IndexCount, spanLen); } spanLen = 0; }
                 }
-                if (spanLen > 0) { _model.DrawSplatMeshInstanced(cl, mesh.Vb, mesh.Ib, mesh.IndexCount, mesh.IndexFormat, spanStart, spanLen, sm.Set); CountMeshDraw(mesh.IndexCount, spanLen); }
+                if (spanLen > 0 && !SkipGBufferDraw(GBufferGate.Splat)) { _model.DrawSplatMeshInstanced(cl, mesh.Vb, mesh.Ib, mesh.IndexCount, mesh.IndexFormat, spanStart, spanLen, sm.Set); CountMeshDraw(mesh.IndexCount, spanLen); }
             }
         }
 

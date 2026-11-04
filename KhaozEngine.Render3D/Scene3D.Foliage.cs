@@ -5,6 +5,7 @@ using System.Runtime.InteropServices;
 using KhaozEngine.Gpu;
 using KhaozEngine.Render3D.Internal;
 using KhaozEngine.Render3D.Rendering;
+using KhaozEngine.Windowing;
 
 namespace KhaozEngine.Render3D;
 
@@ -207,9 +208,12 @@ public sealed partial class Scene3D
             if (draw.Batch.IsDisposed || draw.Batch.Buffer is null) continue;
             MeshHandle handle = draw.Patch.Mesh;
             if (!_slots.IsValid(handle.Index, handle.Generation) || _meshes[handle.Index] is not { } mesh) continue;
-            _model.DrawFoliageMesh(cl, mesh.Vb, mesh.Ib, mesh.IndexCount, mesh.IndexFormat,
-                draw.Batch.Buffer, (uint)draw.Patch.Start, (uint)draw.Count, (uint)draw.UniformSlot, mesh.MaterialSet);
-            CountMeshDraw(mesh.IndexCount, (uint)draw.Count);
+            if (!SkipGBufferDraw(GBufferGate.Foliage))
+            {
+                _model.DrawFoliageMesh(cl, mesh.Vb, mesh.Ib, mesh.IndexCount, mesh.IndexFormat,
+                    draw.Batch.Buffer, (uint)draw.Patch.Start, (uint)draw.Count, (uint)draw.UniformSlot, mesh.MaterialSet);
+                CountMeshDraw(mesh.IndexCount, (uint)draw.Count);
+            }
             candidates += draw.Count;
             patches++;
         }

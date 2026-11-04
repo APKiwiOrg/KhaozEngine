@@ -152,6 +152,9 @@ identifiers below to distinguish region residency, content, world-file, manifest
 embedded-schema, validation, prefab, catalog, steep-companion, clearance and foliage refusals.
 Messages remain developer prose. `Reason` is nullable only for a message-only instance built outside the
 engine. Its reason-taking constructors also accept an original cause through `InnerException`.
+`TileWorldRefusalConstructorFenceTests` guards engine callers against both message-only constructors.
+It scans the complete TileWorld, Editing, Physics, Render3D and TileEdit.Tool assemblies, including
+compiler-generated lambda bodies, so every engine-created refusal supplies a reason.
 PGM heightmap reads also use this type and enum. Their source, header and raster identifiers are listed in
 the [editing refusal table](../KhaozEngine.TileWorld.Editing/README.md#refusals).
 Byte-preserving catalog edits share this enum and use `ArchetypeIds` for the complete ordinal-sorted list

@@ -13774,6 +13774,17 @@ whose offsets come from a hash of the point and the seed, so the same arguments 
 or the red channel as height and ignoring alpha. A palette PNG supplies the red channel of each entry. Both formats preserve 16-bit sample precision. Write PGM files with LF line endings: a CRLF header spends its CR as the single delimiter byte and leaves the LF as sample 0, which shifts
 the whole raster.
 
+`PgmReader.Read` and the PGM path through `TileEditOps.ImportHeights(string, ...)` retain the exact
+`TileWorldException` type. Inspect its `TileWorldRefusal Reason` and the
+[editing refusal identifiers](../KhaozEngine.TileWorld.Editing/README.md#refusals).
+`PgmReadFailed` preserves the file-read cause as `InnerException`. All nine PGM reasons carry `SourceName`,
+using the supplied path or name, `<empty path>` for an empty path, and `<bytes>` for unnamed in-memory input.
+`PgmMagicUnsupported` carries `ExpectedMagic` = `P5` and an owned read-only `ActualMagic` byte snapshot.
+Header refusals identify their `Field`, `ByteOffset`, dimensions or maxval and bounds as applicable.
+`PgmHeaderIntegerOverflow` also carries `ParsedValue` through the digit that first exceeded the integer range.
+`PgmRasterTruncated` records `Width`, `Height`, `BitsPerSample` and `long` byte counts in `RequiredByteCount`
+and `AvailableByteCount`, before allocating samples. Messages remain developer prose.
+
 `PngReader.Decode` and the PNG path through `TileEditOps.ImportHeights(string, ...)` throw
 `PngDecodeDataException : MalformedDataException` for malformed PNG input. Catch `MalformedDataException`
 for the shared malformed-data boundary, replacing a PNG-specific `InvalidDataException` catch.

@@ -15,6 +15,7 @@ public sealed class TileWorldException : Exception
     IReadOnlyList<TileWorldIssue>? _issues;
     IReadOnlyList<string>? _schemaFields;
     IReadOnlyList<JsonSchemaFinding>? _schemaFindings;
+    IReadOnlyList<byte>? _actualMagic;
 
     public TileWorldException(string message) : base(message) { }
     public TileWorldException(string message, Exception? inner) : base(message, inner) { }
@@ -78,7 +79,7 @@ public sealed class TileWorldException : Exception
     /// <summary>The coordinate stored in a region file that disagrees with <see cref="Region"/>.</summary>
     public RegionCoord? ActualRegion { get; init; }
 
-    /// <summary>The refused catalog, manifest or steep-band field, or the parser's JSON path for malformed region,
+    /// <summary>The refused catalog, manifest, steep-band or PGM header field, or the parser's JSON path for malformed region,
     /// manifest, prefab or catalog data, when available.</summary>
     public string? Field { get; init; }
 
@@ -126,10 +127,10 @@ public sealed class TileWorldException : Exception
     /// <summary>The refused prefab's authored name, when admission has a prefab value.</summary>
     public string? PrefabName { get; init; }
 
-    /// <summary>The refused prefab's declared footprint width in tiles.</summary>
+    /// <summary>The refused prefab's declared footprint width in tiles, or the PGM header's image width in samples.</summary>
     public int? Width { get; init; }
 
-    /// <summary>The refused prefab's declared footprint height in tiles.</summary>
+    /// <summary>The refused prefab's declared footprint height in tiles, or the PGM header's image height in samples.</summary>
     public int? Height { get; init; }
 
     /// <summary>The entry count carried by a refused prefab layer.</summary>
@@ -159,10 +160,10 @@ public sealed class TileWorldException : Exception
     /// <summary>The upper-bound field of an unordered walk-surface extent.</summary>
     public string? MaxField { get; init; }
 
-    /// <summary>The lower-bound value of an unordered walk-surface extent.</summary>
+    /// <summary>The lower-bound value of an unordered walk-surface extent, or the minimum permitted PGM maxval.</summary>
     public float? Minimum { get; init; }
 
-    /// <summary>The upper-bound value of an unordered walk-surface extent.</summary>
+    /// <summary>The upper-bound value of an unordered walk-surface extent, or the maximum permitted PGM maxval.</summary>
     public float? Maximum { get; init; }
 
     /// <summary>The failing instance locations as JSON Pointers for a catalog schema mismatch.
@@ -198,4 +199,35 @@ public sealed class TileWorldException : Exception
 
     /// <summary>Whether an unordered steep band's end used the engine default.</summary>
     public bool? ToIsDefault { get; init; }
+
+    /// <summary>The required binary PGM signature, P5, for an unsupported-magic refusal.</summary>
+    public string? ExpectedMagic { get; init; }
+
+    /// <summary>The available first two image bytes, or fewer for truncated input. Setting this property
+    /// copies the collection into an owned read-only snapshot.</summary>
+    public IReadOnlyList<byte>? ActualMagic
+    {
+        get => _actualMagic;
+        init => _actualMagic = value is null ? null : Array.AsReadOnly<byte>([.. value]);
+    }
+
+    /// <summary>The PGM header's refused maxval.</summary>
+    public int? MaxValue { get; init; }
+
+    /// <summary>The zero-based byte offset where a PGM header refusal was detected. For integer overflow,
+    /// this is the digit that first made the parsed value exceed the supported range. At end of input,
+    /// this equals the input byte count.</summary>
+    public int? ByteOffset { get; init; }
+
+    /// <summary>The PGM raster's bits per sample, 8 or 16, for a truncated-raster refusal.</summary>
+    public int? BitsPerSample { get; init; }
+
+    /// <summary>The raster byte count required by the PGM header, calculated before allocating samples.</summary>
+    public long? RequiredByteCount { get; init; }
+
+    /// <summary>The byte count following the PGM header's single raster delimiter.</summary>
+    public long? AvailableByteCount { get; init; }
+
+    /// <summary>The PGM header integer accumulated through the first digit that exceeded the supported range.</summary>
+    public long? ParsedValue { get; init; }
 }

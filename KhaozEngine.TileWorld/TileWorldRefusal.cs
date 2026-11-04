@@ -160,4 +160,24 @@ public enum TileWorldRefusal
     SteepBandUnordered,
     /// <summary>Refuses a steep blend whose single-precision endpoint cosines cannot be ordered.</summary>
     SteepCosinesCollapsed,
+
+    // PGM heightmap input.
+    /// <summary>Refuses a PGM file that cannot be read from the supplied path.</summary>
+    PgmReadFailed,
+    /// <summary>Refuses an image without the binary PGM P5 signature.</summary>
+    PgmMagicUnsupported,
+    /// <summary>Refuses a PGM with a non-positive dimension.</summary>
+    PgmDimensionsNonPositive,
+    /// <summary>Refuses a PGM maxval outside one through 65535.</summary>
+    PgmMaxValueOutsideRange,
+    /// <summary>Refuses a PGM header without the raster whitespace delimiter.</summary>
+    PgmRasterDelimiterMissing,
+    /// <summary>Refuses a PGM raster shorter than its declared dimensions require.</summary>
+    PgmRasterTruncated,
+    /// <summary>Refuses a PGM header field without a preceding separator.</summary>
+    PgmHeaderSeparatorMissing,
+    /// <summary>Refuses a missing or non-decimal PGM header integer.</summary>
+    PgmHeaderIntegerMalformed,
+    /// <summary>Refuses a PGM header integer above the supported integer range.</summary>
+    PgmHeaderIntegerOverflow,
 }

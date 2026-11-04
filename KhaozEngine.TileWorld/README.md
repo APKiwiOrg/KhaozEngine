@@ -141,6 +141,8 @@ identifiers below to distinguish region residency, content, world-file, manifest
 embedded-schema, validation, prefab, catalog and steep-companion refusals.
 Messages remain developer prose. `Reason` is nullable only for a message-only instance built outside the
 engine. Its reason-taking constructors also accept an original cause through `InnerException`.
+PGM heightmap reads also use this type and enum. Their source, header and raster identifiers are listed in
+the [editing refusal table](../KhaozEngine.TileWorld.Editing/README.md#refusals).
 
 Regions are planar. `Region` is a `RegionCoord?`, and `TileX` and `TileZ` are `int?` values set only when the
 guard received tile coordinates. They never imply a plane. A region-only operation leaves both null.

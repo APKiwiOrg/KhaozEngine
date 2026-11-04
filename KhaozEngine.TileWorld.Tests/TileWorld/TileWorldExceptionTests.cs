@@ -64,6 +64,23 @@ public class TileWorldExceptionTests
     }
 
     [Fact]
+    public void Pgm_magic_bytes_are_an_owned_read_only_snapshot()
+    {
+        byte[] magic = { (byte)'P', (byte)'2' };
+        var ex = new TileWorldException(TileWorldRefusal.PgmMagicUnsupported, "refused PGM") { ActualMagic = magic };
+
+        magic[1] = (byte)'6';
+        Assert.NotNull(ex.ActualMagic);
+        Assert.Equal(new byte[] { (byte)'P', (byte)'2' }, ex.ActualMagic);
+        if (ex.ActualMagic is IList<byte> list)
+        {
+            Assert.Throws<NotSupportedException>(() => list[0] = (byte)'Q');
+            Assert.Throws<NotSupportedException>(() => list.Clear());
+        }
+        Assert.Equal(new byte[] { (byte)'P', (byte)'2' }, ex.ActualMagic);
+    }
+
+    [Fact]
     public void Validation_issues_are_an_owned_read_only_snapshot()
     {
         var issue = new TileWorldIssue("material.missing", "missing material", new RegionCoord(2, 3), new TileCoord(130, 195, 1));

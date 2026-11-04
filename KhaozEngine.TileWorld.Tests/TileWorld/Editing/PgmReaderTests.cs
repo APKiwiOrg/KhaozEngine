@@ -128,64 +128,115 @@ public class PgmReaderTests
         Assert.Equal(new ushort[] { 1, 2, 3, 4 }, image.Samples);
     }
 
-    [Fact]
-    public void An_ascii_greymap_is_refused()
+    [Theory]
+    [InlineData("P2")]
+    [InlineData("P6")]
+    [InlineData("Q5")]
+    public void A_non_P5_magic_is_refused(string magic)
     {
         var ex = Assert.Throws<TileWorldException>(
-            () => PgmReader.Read(Encoding.ASCII.GetBytes("P2\n2 2\n255\n1 2 3 4\n")));
+            () => PgmReader.Read(Pgm($"{magic}\n1 1\n255\n", 42)));
 
-        Assert.Contains("<bytes>", ex.Message, StringComparison.Ordinal);
-        Assert.Contains("P5", ex.Message, StringComparison.Ordinal);
+        Assert.Equal(TileWorldRefusal.PgmMagicUnsupported, ex.Reason);
+        Assert.Equal("<bytes>", ex.SourceName);
+        Assert.Equal("P5", ex.ExpectedMagic);
+        Assert.Equal(Encoding.ASCII.GetBytes(magic), ex.ActualMagic);
+        Assert.Equal(new ushort[] { 42 }, PgmReader.Read(Pgm("P5\n1 1\n255\n", 42)).Samples);
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("P")]
+    public void An_empty_or_truncated_magic_is_refused(string magic)
+    {
+        var ex = Assert.Throws<TileWorldException>(() => PgmReader.Read(Encoding.ASCII.GetBytes(magic)));
+
+        Assert.Equal(TileWorldRefusal.PgmMagicUnsupported, ex.Reason);
+        Assert.Equal("<bytes>", ex.SourceName);
+        Assert.Equal("P5", ex.ExpectedMagic);
+        Assert.Equal(Encoding.ASCII.GetBytes(magic), ex.ActualMagic);
+        Assert.Equal(new ushort[] { 42 }, PgmReader.Read(Pgm("P5\n1 1\n255\n", 42)).Samples);
     }
 
     [Fact]
-    public void A_colour_pixmap_is_refused()
+    public void A_truncated_header_is_refused()
+    {
+        var ex = Assert.Throws<TileWorldException>(() => PgmReader.Read(Pgm("P5\n1 1\n")));
+
+        Assert.Equal(TileWorldRefusal.PgmHeaderIntegerMalformed, ex.Reason);
+        Assert.Equal("<bytes>", ex.SourceName);
+        Assert.Equal("maxval", ex.Field);
+        Assert.Equal(7, ex.ByteOffset);
+        Assert.Equal(new ushort[] { 42 }, PgmReader.Read(Pgm("P5\n1 1\n255\n", 42)).Samples);
+    }
+
+    [Theory]
+    [InlineData("P5\nx 1\n255\n", "width", 3)]
+    [InlineData("P5\n1 x\n255\n", "height", 5)]
+    [InlineData("P5\n1 1\nx\n", "maxval", 7)]
+    // A minus sign never reaches the number, so a negative dimension fails as a malformed header.
+    [InlineData("P5\n-1 1\n255\n", "width", 3)]
+    public void A_non_decimal_header_integer_is_refused(string header, string field, int offset)
+    {
+        var ex = Assert.Throws<TileWorldException>(() => PgmReader.Read(Pgm(header, 42), "header.pgm"));
+
+        Assert.Equal(TileWorldRefusal.PgmHeaderIntegerMalformed, ex.Reason);
+        Assert.Equal("header.pgm", ex.SourceName);
+        Assert.Equal(field, ex.Field);
+        Assert.Equal(offset, ex.ByteOffset);
+        Assert.Equal(new ushort[] { 42 }, PgmReader.Read(Pgm("P5\n1 1\n255\n", 42)).Samples);
+    }
+
+    [Theory]
+    [InlineData(0, 1, 0)]
+    [InlineData(70000, 65535, 1)]
+    public void A_maxval_outside_one_to_sixty_five_thousand_five_hundred_and_thirty_five_is_refused(
+        int maxval, int validMaxval, ushort validSample)
     {
         var ex = Assert.Throws<TileWorldException>(
-            () => PgmReader.Read(Pgm("P6\n2 2\n255\n", new byte[12])));
+            () => PgmReader.Read(Pgm($"P5\n1 1\n{maxval}\n", 0, 1)));
 
-        Assert.Contains("P5", ex.Message, StringComparison.Ordinal);
+        Assert.Equal(TileWorldRefusal.PgmMaxValueOutsideRange, ex.Reason);
+        Assert.Equal("<bytes>", ex.SourceName);
+        Assert.Equal("maxval", ex.Field);
+        Assert.Equal(maxval, ex.MaxValue);
+        Assert.Equal(1f, ex.Minimum);
+        Assert.Equal(65535f, ex.Maximum);
+        Assert.Equal(new[] { validSample }, PgmReader.Read(Pgm($"P5\n1 1\n{validMaxval}\n", 0, 1)).Samples);
     }
 
-    [Fact]
-    public void An_empty_or_truncated_header_is_refused()
+    [Theory]
+    [InlineData(0, 1)]
+    [InlineData(1, 0)]
+    public void A_dimension_that_is_not_positive_is_refused(int width, int height)
     {
-        Assert.Throws<TileWorldException>(() => PgmReader.Read(Array.Empty<byte>()));
-        Assert.Throws<TileWorldException>(() => PgmReader.Read(Encoding.ASCII.GetBytes("P5\n2 2\n")));
-        Assert.Throws<TileWorldException>(() => PgmReader.Read(Encoding.ASCII.GetBytes("P5\n2 x\n255\n")));
+        var ex = Assert.Throws<TileWorldException>(
+            () => PgmReader.Read(Pgm($"P5\n{width} {height}\n255\n", 42)));
+
+        Assert.Equal(TileWorldRefusal.PgmDimensionsNonPositive, ex.Reason);
+        Assert.Equal("<bytes>", ex.SourceName);
+        Assert.Equal(width, ex.Width);
+        Assert.Equal(height, ex.Height);
+        Assert.Equal(new ushort[] { 42 }, PgmReader.Read(Pgm("P5\n1 1\n255\n", 42)).Samples);
     }
 
-    [Fact]
-    public void A_maxval_outside_one_to_sixty_five_thousand_five_hundred_and_thirty_five_is_refused()
+    [Theory]
+    [InlineData(255, 8, 4L)]
+    [InlineData(65535, 16, 8L)]
+    public void A_raster_shorter_than_the_header_claims_is_refused(int maxval, int bits, long required)
     {
-        var zero = Assert.Throws<TileWorldException>(
-            () => PgmReader.Read(Pgm("P5\n2 2\n0\n", 1, 2, 3, 4)));
-        var huge = Assert.Throws<TileWorldException>(
-            () => PgmReader.Read(Pgm("P5\n2 2\n70000\n", new byte[8])));
+        string header = $"P5\n2 2\n{maxval}\n";
+        var ex = Assert.Throws<TileWorldException>(
+            () => PgmReader.Read(Pgm(header, new byte[(int)required - 1])));
 
-        Assert.Contains("maxval", zero.Message, StringComparison.Ordinal);
-        Assert.Contains("maxval", huge.Message, StringComparison.Ordinal);
-    }
-
-    [Fact]
-    public void A_dimension_that_is_not_positive_is_refused()
-    {
-        Assert.Throws<TileWorldException>(() => PgmReader.Read(Pgm("P5\n0 2\n255\n")));
-        Assert.Throws<TileWorldException>(() => PgmReader.Read(Pgm("P5\n2 0\n255\n")));
-        // A minus sign never reaches the number, so a negative dimension fails as a malformed header.
-        Assert.Throws<TileWorldException>(() => PgmReader.Read(Pgm("P5\n-2 2\n255\n", new byte[8])));
-    }
-
-    [Fact]
-    public void A_raster_shorter_than_the_header_claims_is_refused()
-    {
-        var eight = Assert.Throws<TileWorldException>(
-            () => PgmReader.Read(Pgm("P5\n2 2\n255\n", 1, 2, 3)));
-        var sixteen = Assert.Throws<TileWorldException>(
-            () => PgmReader.Read(Pgm("P5\n2 2\n65535\n", 1, 2, 3, 4, 5, 6, 7)));
-
-        Assert.Contains("4 bytes", eight.Message, StringComparison.Ordinal);
-        Assert.Contains("8 bytes", sixteen.Message, StringComparison.Ordinal);
+        Assert.Equal(TileWorldRefusal.PgmRasterTruncated, ex.Reason);
+        Assert.Equal("<bytes>", ex.SourceName);
+        Assert.Equal(2, ex.Width);
+        Assert.Equal(2, ex.Height);
+        Assert.Equal(bits, ex.BitsPerSample);
+        Assert.Equal(required, ex.RequiredByteCount);
+        Assert.Equal(required - 1, ex.AvailableByteCount);
+        Assert.Equal(new ushort[] { 0, 0, 0, 0 }, PgmReader.Read(Pgm(header, new byte[(int)required])).Samples);
     }
 
     [Fact]
@@ -200,8 +251,61 @@ public class PgmReaderTests
         long allocated = AllocationMeasurement.Measure("A giant raster refusal",
             () => ex = Assert.Throws<TileWorldException>(() => PgmReader.Read(bytes)));
 
-        Assert.Contains("10000000000 bytes", ex.Message, StringComparison.Ordinal);
+        Assert.Equal(TileWorldRefusal.PgmRasterTruncated, ex.Reason);
+        Assert.Equal("<bytes>", ex.SourceName);
+        Assert.Equal(100000, ex.Width);
+        Assert.Equal(100000, ex.Height);
+        Assert.Equal(8, ex.BitsPerSample);
+        Assert.Equal(10000000000L, ex.RequiredByteCount);
+        Assert.Equal(4L, ex.AvailableByteCount);
         Assert.True(allocated < 1024 * 1024, $"the refusal allocated {allocated} bytes, it should allocate only its message");
+        Assert.Equal(new ushort[] { 1, 2, 3, 4 }, PgmReader.Read(Pgm("P5\n2 2\n255\n", 1, 2, 3, 4)).Samples);
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void A_missing_raster_delimiter_is_refused(bool atEnd)
+    {
+        byte[] bytes = Pgm("P5\n1 1\n255", atEnd ? Array.Empty<byte>() : new byte[] { 42 });
+        var ex = Assert.Throws<TileWorldException>(() => PgmReader.Read(bytes, "delimiter.pgm"));
+
+        Assert.Equal(TileWorldRefusal.PgmRasterDelimiterMissing, ex.Reason);
+        Assert.Equal("delimiter.pgm", ex.SourceName);
+        Assert.Equal("maxval", ex.Field);
+        Assert.Equal(10, ex.ByteOffset);
+        Assert.Equal(new ushort[] { 42 }, PgmReader.Read(Pgm("P5\n1 1\n255\n", 42)).Samples);
+    }
+
+    [Theory]
+    [InlineData("P51 1\n255\n", "width", 2)]
+    [InlineData("P5\n1x1\n255\n", "height", 4)]
+    [InlineData("P5\n1 1x255\n", "maxval", 6)]
+    public void A_missing_header_separator_is_refused(string header, string field, int offset)
+    {
+        var ex = Assert.Throws<TileWorldException>(() => PgmReader.Read(Pgm(header, 42), "separator.pgm"));
+
+        Assert.Equal(TileWorldRefusal.PgmHeaderSeparatorMissing, ex.Reason);
+        Assert.Equal("separator.pgm", ex.SourceName);
+        Assert.Equal(field, ex.Field);
+        Assert.Equal(offset, ex.ByteOffset);
+        Assert.Equal(new ushort[] { 42 }, PgmReader.Read(Pgm("P5\n1 1\n255\n", 42)).Samples);
+    }
+
+    [Theory]
+    [InlineData("P5\n2147483648 1\n255\n", "width", 12)]
+    [InlineData("P5\n1 2147483648\n255\n", "height", 14)]
+    [InlineData("P5\n1 1\n2147483648\n", "maxval", 16)]
+    public void A_header_integer_outside_the_supported_range_is_refused(string header, string field, int offset)
+    {
+        var ex = Assert.Throws<TileWorldException>(() => PgmReader.Read(Pgm(header, 42), "overflow.pgm"));
+
+        Assert.Equal(TileWorldRefusal.PgmHeaderIntegerOverflow, ex.Reason);
+        Assert.Equal("overflow.pgm", ex.SourceName);
+        Assert.Equal(field, ex.Field);
+        Assert.Equal(offset, ex.ByteOffset);
+        Assert.Equal(2147483648L, ex.ParsedValue);
+        Assert.Equal(new ushort[] { 42 }, PgmReader.Read(Pgm("P5\n1 1\n255\n", 42)).Samples);
     }
 
     [Fact]
@@ -217,15 +321,20 @@ public class PgmReaderTests
     }
 
     [Fact]
-    public void The_file_overload_names_the_path_in_its_message()
+    public void The_file_overload_carries_the_path_on_a_refusal()
     {
         using var tmp = new TempDir();
         string path = tmp.Sub("broken.pgm");
-        File.WriteAllBytes(path, Encoding.ASCII.GetBytes("P2\n2 2\n255\n"));
+        File.WriteAllBytes(path, Pgm("P2\n1 1\n255\n", 42));
 
         var ex = Assert.Throws<TileWorldException>(() => PgmReader.Read(path));
 
-        Assert.Contains(path, ex.Message, StringComparison.Ordinal);
+        Assert.Equal(TileWorldRefusal.PgmMagicUnsupported, ex.Reason);
+        Assert.Equal(path, ex.SourceName);
+        Assert.Equal("P5", ex.ExpectedMagic);
+        Assert.Equal(new byte[] { (byte)'P', (byte)'2' }, ex.ActualMagic);
+        File.WriteAllBytes(path, Pgm("P5\n1 1\n255\n", 42));
+        Assert.Equal(new ushort[] { 42 }, PgmReader.Read(path).Samples);
     }
 
     [Fact]
@@ -236,7 +345,11 @@ public class PgmReaderTests
 
         var ex = Assert.Throws<TileWorldException>(() => PgmReader.Read(path));
 
-        Assert.Contains(path, ex.Message, StringComparison.Ordinal);
+        Assert.Equal(TileWorldRefusal.PgmReadFailed, ex.Reason);
+        Assert.Equal(path, ex.SourceName);
+        Assert.NotNull(ex.InnerException);
+        File.WriteAllBytes(path, Pgm("P5\n1 1\n255\n", 42));
+        Assert.Equal(new ushort[] { 42 }, PgmReader.Read(path).Samples);
     }
 
     [Fact]
@@ -246,16 +359,28 @@ public class PgmReaderTests
         // one exception type from a bad file, so that must not escape raw.
         var ex = Assert.Throws<TileWorldException>(() => PgmReader.Read(""));
 
-        Assert.Contains("empty path", ex.Message, StringComparison.Ordinal);
+        Assert.Equal(TileWorldRefusal.PgmReadFailed, ex.Reason);
+        Assert.Equal("<empty path>", ex.SourceName);
+        Assert.NotNull(ex.InnerException);
         Assert.Throws<ArgumentNullException>(() => PgmReader.Read(null!));
+        using var tmp = new TempDir();
+        string path = tmp.Sub("valid.pgm");
+        File.WriteAllBytes(path, Pgm("P5\n1 1\n255\n", 42));
+        Assert.Equal(new ushort[] { 42 }, PgmReader.Read(path).Samples);
     }
 
-    [Fact]
-    public void A_given_name_rides_the_message_of_a_byte_read()
+    [Theory]
+    [InlineData("upload.pgm", "upload.pgm")]
+    [InlineData(null, "<bytes>")]
+    [InlineData("", "<bytes>")]
+    public void A_byte_read_carries_its_source_name(string? name, string expectedName)
     {
-        var ex = Assert.Throws<TileWorldException>(
-            () => PgmReader.Read(Encoding.ASCII.GetBytes("P2\n"), "upload.pgm"));
+        var ex = Assert.Throws<TileWorldException>(() => PgmReader.Read(Pgm("P2\n1 1\n255\n", 42), name));
 
-        Assert.Contains("upload.pgm", ex.Message, StringComparison.Ordinal);
+        Assert.Equal(TileWorldRefusal.PgmMagicUnsupported, ex.Reason);
+        Assert.Equal(expectedName, ex.SourceName);
+        Assert.Equal("P5", ex.ExpectedMagic);
+        Assert.Equal(new byte[] { (byte)'P', (byte)'2' }, ex.ActualMagic);
+        Assert.Equal(new ushort[] { 42 }, PgmReader.Read(Pgm("P5\n1 1\n255\n", 42), name).Samples);
     }
 }

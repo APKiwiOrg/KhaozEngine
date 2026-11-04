@@ -9532,6 +9532,11 @@ MoveCommand command = input.Command(steering, run);
 ```
 
 Standalone construction uses `BuildProfile(tuning, areas, new GroundProfileOptions { MaxDropMetres = allowance })`.
+The engine's internal terrain capture now retains complete physical geometry and original raw associations,
+with a pure geometry-derived candidate envelope and corridor coverage checks. These are prerequisites only.
+Terrain Drop publication still requires its motion certificate, persisted identity and explicit permission.
+See the [internal descent evidence contract](../KhaozEngine.Movement/README.md#internal-terrain-descent-evidence).
+
 Certified tile installations expose optional analytic feature provenance through
 `OrdinaryMovementRegistration.AnalyticSupport`. It supports internal selected-route identity checks while ordinary
 height delegates and movement results keep their existing behavior. Continuous terrain Drop transitions still

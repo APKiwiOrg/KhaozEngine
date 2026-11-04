@@ -1,0 +1,69 @@
+using System;
+using System.Collections.Generic;
+using System.Numerics;
+using KhaozEngine.Locomotion;
+using KhaozEngine.Physics;
+
+namespace KhaozEngine.Movement;
+
+internal enum DescentCoverage : byte { Unavailable, Complete, KnownEmpty, OutOfBounds }
+internal readonly record struct DescentColumnFace(int Face, uint Areas);
+internal readonly record struct DescentRawBinding(int X, int Z, int Ordinal, int HeightBits, int Face);
+
+internal sealed class DescentFace(MovementSurfaceFeatureKey key, MovementSupportKey owner, bool analytic,
+    PhysicsEvidenceKind kind, PhysicsEvidencePoint[] points, Pose pose, float radius, float halfLength)
+{
+    readonly PhysicsEvidencePoint[] _points = (PhysicsEvidencePoint[])points.Clone();
+    internal MovementSurfaceFeatureKey Key { get; } = key;
+    internal MovementSupportKey Owner { get; } = owner;
+    internal bool Analytic { get; } = analytic;
+    internal PhysicsEvidenceKind Kind { get; } = kind;
+    internal ReadOnlySpan<PhysicsEvidencePoint> Points => _points;
+    internal Pose Pose { get; } = pose;
+    internal float Radius { get; } = radius;
+    internal float HalfLength { get; } = halfLength;
+    internal Vector3 Normal
+    {
+        get
+        {
+            if (_points.Length < 3) return default;
+            var a = _points[0]; var b = _points[1]; var c = _points[2];
+            double x = (b.Y - a.Y) * (c.Z - a.Z) - (b.Z - a.Z) * (c.Y - a.Y);
+            double y = (b.Z - a.Z) * (c.X - a.X) - (b.X - a.X) * (c.Z - a.Z);
+            double z = (b.X - a.X) * (c.Y - a.Y) - (b.Y - a.Y) * (c.X - a.X);
+            double length = Math.Sqrt(x * x + y * y + z * z);
+            return length > 0 ? new((float)(x / length), (float)(y / length), (float)(z / length)) : default;
+        }
+    }
+}
+
+/// <summary>Sparse immutable physical coverage, separate from standable columns and all admission.</summary>
+internal sealed class PhysicsNavDescentEvidence
+{
+    readonly DescentFace[] _faces;
+    readonly int[] _starts;
+    readonly DescentColumnFace[] _columns;
+    readonly DescentCoverage[] _coverage;
+    readonly DescentRawBinding[] _raw;
+    readonly int[][] _joins;
+    internal PhysicsNavBakeOptions Options { get; }
+    internal int Width { get; }
+    internal int Height { get; }
+    internal int FaceCount => _faces.Length;
+    internal int ReferenceCount => _columns.Length;
+    internal int RawCount => _raw.Length;
+    internal long GeometryBytes => _faces.Length * 64L + PointCount * 24L;
+    internal int PointCount { get { int total = 0; foreach (var face in _faces) total += face.Points.Length; return total; } }
+    internal long RetainedPayloadBytes { get { long n = GeometryBytes + _starts.Length * 4L + _columns.Length * 8L + _coverage.Length + _raw.Length * 20L; foreach (var j in _joins) n += j.Length * 4L; return n; } }
+    internal PhysicsNavDescentEvidence(PhysicsNavBakeOptions options, int width, int height, DescentFace[] faces,
+        int[] starts, DescentColumnFace[] columns, DescentCoverage[] coverage, DescentRawBinding[] raw, int[][] joins)
+    { Options = options; Width = width; Height = height; _faces = faces; _starts = starts; _columns = columns; _coverage = coverage; _raw = raw; _joins = joins; }
+    internal DescentFace Face(int index) => _faces[index];
+    internal DescentCoverage Coverage(int x, int z) => (uint)x < (uint)Width && (uint)z < (uint)Height ? _coverage[z * Width + x] : DescentCoverage.OutOfBounds;
+    internal ReadOnlySpan<DescentColumnFace> Column(int x, int z) => _columns.AsSpan(_starts[z * Width + x], _starts[z * Width + x + 1] - _starts[z * Width + x]);
+    internal ReadOnlySpan<int> Joins(int face) => _joins[face];
+    internal bool TryRaw(int x, int z, int bits, out DescentRawBinding result)
+    { result = default; bool found = false; foreach (var raw in _raw) { if (raw.X != x || raw.Z != z || raw.HeightBits != bits) continue; if (found) return false; result = raw; found = true; } return found; }
+    internal PhysicsNavDescentEvidence MissingColumnForTests(int x, int z)
+    { var coverage = (DescentCoverage[])_coverage.Clone(); coverage[z * Width + x] = DescentCoverage.Unavailable; return new(Options, Width, Height, _faces, _starts, _columns, coverage, _raw, _joins); }
+}

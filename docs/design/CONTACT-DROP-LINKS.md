@@ -53,6 +53,14 @@ analytic identity is explicit unavailable evidence. The witness retains first wa
 or Air leaves it again before the tick ends, and accumulates selected medium history. Existing coarse flags and
 movement results remain unchanged. These facts alone do not enable a terrain transition or replace its certificate.
 
+An internal physical capture and pure terrain envelope retain these source keys alongside actual installed
+geometry, including nonstandable faces, roofs and objects. Complete coverage, known emptiness, unavailable data
+and out-of-bounds space are distinct. Original admitted layers bind to captured raw ordinals and height bits.
+The geometry-derived band fringes and directional indexes find wider terrain descents without changing the sharp
+recipe. Exact coverage and occupancy checks provide a corridor prerequisite. They do not replace the actual
+motion certificate or enable terrain Drop publication. See the
+[internal evidence contract](../../KhaozEngine.Movement/README.md#internal-terrain-descent-evidence).
+
 The future certificate must preserve original layer and cell identity, full ordinary terminal footprint admission,
 the 3D 1 mm arrival sphere and a real supported terminal Hold. Collision, roofs, areas, water, original boundaries,
 highest-launch descent and existing proof budgets remain binding throughout the transition. Fringe poses never

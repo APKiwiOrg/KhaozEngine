@@ -1250,3 +1250,27 @@ This API adds no native sampler, tiled bake or legacy bake-format change. Adopti
 [#1344](https://github.com/APKiwiOrg/KhaozEngine/issues/1344) small bodies. Generic tests cover dry and
 surface motion, a live wall, exact-view matching, refusal after earlier steps, all tuning inputs,
 semantic-source order and synthetic adjacent-frame equivalence. Real native adoption remains G1b.
+
+## Internal terrain descent evidence
+
+The internal `PhysicsNavBake.CaptureDescent` entry captures immutable physical evidence beside ordinary
+`PhysicsNavColumns`. The public capture path is unchanged. The new path retains exact installed face geometry,
+source adjacency, classified column references, complete coverage or known emptiness, and original raw surface
+addresses. It observes the unchanged column probe's real rays to bind the original ordinal and raw height bits.
+`ContactTerrainProfileEvidence` associates admitted original layer/cell addresses with those raw sources, without
+looking up a layer by resting-height proximity. Missing capability, source identity, ambiguous raw support or
+capacity has a structured `PhysicsNavDescentEvidenceException` reason. No partial evidence is published.
+
+`ContactTerrainDropCandidates` is pure and deterministic. It retains the fixed source and neighbor order,
+ordinary exit suppression, nearest eligible lower column, highest eligible layer, step-band stop and exact
+allowance subtraction. Connected steep geometry and the unchanged capsule/cell intersection helper derive its
+rasterized fringes and finite reach. Per-body directional band endpoints and a next-admitted-column index remove
+repeated band walks. There is no radius-only terrain horizon or universal height-over-slope reach formula.
+Gentle slopes receive no terrain extension. Each source still contributes at most eight candidates.
+
+`ContactTerrainDropCorridor` checks exact column coverage over the doubled-radius projection, first physical
+obstructions and solid occupancy. Foreign geometry below complete ground cannot replace that ground, and a roof
+cannot be skipped to reach an allowed floor. The original narrow center corridor, play boundary and highest-launch
+descent bound remain composed through `NavDropFootprint`. Geometry supplies evidence, not collision permission.
+These internal prerequisites do not enable terrain links. The terrain proof policy, opt-in flags, persistence
+and runtime transition remain separate work. Existing sharp Drops and ordinary `AllowsSegment` are unchanged.

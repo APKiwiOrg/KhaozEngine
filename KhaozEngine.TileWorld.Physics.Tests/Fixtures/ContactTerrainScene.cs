@@ -25,7 +25,7 @@ internal sealed class ContactTerrainScene : IDisposable
     internal IMovementAnalyticSupportSource Source => Registration.AnalyticSupport!;
 
     internal ContactTerrainScene(float height, bool identity = true,
-        Action<BepuPhysicsWorld, OrdinaryMovementRegistration.Builder>? extra = null, TileWorldDocument? document = null)
+        Action<BepuPhysicsWorld, OrdinaryMovementRegistration.Builder>? extra = null, TileWorldDocument? document = null, MovementBoundary? boundary = null)
     {
         From = new(0.625f, height, -1.375f);
         var doc = document ?? Document(height);
@@ -37,7 +37,7 @@ internal sealed class ContactTerrainScene : IDisposable
         extra?.Invoke(World, builder);
         using (var lease = World.AcquireQueryReadLease()) Registration = builder.Build(lease);
         Context = new(identity ? Colliders.MovementGroundHeight : (x, z) => Colliders.MovementGroundHeight(x, z), Colliders.MovementGroundNormal, World, null, null, null,
-            null, Registration, MovementBoundary.Rectangle(0, -3, 5, 0));
+            null, Registration, boundary ?? MovementBoundary.Rectangle(0, -3, 5, 0));
     }
 
     internal static TileWorldDocument Document(float height)

@@ -598,8 +598,10 @@ whole. Their defaults fall back to the older draws, so an older scene keeps comp
 The rigid default drops the key, the tint, the material, `ShadowMobility`, `CastsShadows` and `InvertShadowDissolve`, and does not
 forward `DissolveComplement`. It draws nothing for a shadow-only descriptor. It also draws nothing for a complement
 phase above one half with no dissolve. `Scene3D` shows no body for that draw, at most a shadow, so the fallback treats
-it like a shadow-only draw. A shadow-only descriptor with `CastsShadows = false` throws the same `ArgumentException`
-the scene's instance queue throws. The skinned default keeps the tint, drops the key, the material and the shadow opt-out, and
+it like a shadow-only draw. A shadow-only descriptor with `CastsShadows = false` throws
+`DrawAdmissionArgumentException` with `DrawAdmissionRefusal.ShadowOnlyWithoutCasting`, `ShadowOnly`,
+`CastsShadows` and `ParamName` set to `draw`. The scene's instance queue uses the same shared reason.
+The skinned default keeps the tint, drops the key, the material and the shadow opt-out, and
 still refuses the call on a scene without skinned meshes.
 `CreatePropClusterOwner()` is the opt-in cluster seam. Its default throws `NotSupportedException`, so a custom
 scene can continue to host an ordinary view and fails clearly only when `PropLayers` asks it for large-world

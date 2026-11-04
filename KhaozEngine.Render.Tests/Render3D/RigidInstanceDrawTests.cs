@@ -210,17 +210,24 @@ public sealed class RigidInstanceDrawTests
     [Fact]
     public void Shadow_only_without_casting_is_refused_as_the_instance_constructor_refuses_it()
     {
-        ArgumentException expected = Assert.Throws<ArgumentException>(() =>
+        var expected = Assert.Throws<DrawAdmissionArgumentException>(() =>
         {
             _ = new SceneInstances.Instance(Mesh, World, Color.White, Material.None, castsShadows: false,
                 shadowOnly: true);
         });
         using var harness = new MotionTestScene();
         harness.Scene.Begin();
-        ArgumentException actual = Assert.Throws<ArgumentException>(() =>
+        var actual = Assert.Throws<DrawAdmissionArgumentException>(() =>
             harness.Scene.Draw(new RigidInstanceDraw(Mesh, World) { ShadowOnly = true, CastsShadows = false }));
 
-        Assert.Equal(expected.Message, actual.Message);
+        Assert.Equal(DrawAdmissionRefusal.ShadowOnlyWithoutCasting, expected.Reason);
+        Assert.Equal(DrawAdmissionRefusal.ShadowOnlyWithoutCasting, actual.Reason);
+        Assert.True(expected.ShadowOnly);
+        Assert.False(expected.CastsShadows);
+        Assert.True(actual.ShadowOnly);
+        Assert.False(actual.CastsShadows);
+        Assert.IsAssignableFrom<ArgumentException>(actual);
+        Assert.Equal("shadowOnly", expected.ParamName);
         Assert.Equal(expected.ParamName, actual.ParamName);
         Assert.Empty(harness.Scene.QueuedInstancesForTests);
     }

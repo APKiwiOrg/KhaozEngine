@@ -4678,7 +4678,8 @@ Every older `Draw(MeshHandle, ...)`, `Draw(PropHandle, ...)`, `DrawShadowOnly` a
 descriptor with no key and forwards to these two, so existing code queues exactly what it did and needs no change. A
 new draw knob becomes a descriptor property rather than another overload. Both descriptors also carry
 `ShadowOnly`, `InvertShadowDissolve` and `DissolveComplement`. `ShadowOnly = true` with `CastsShadows = false` draws
-nowhere and throws the same `ArgumentException` the instance queue has always thrown for that pair. A `default`
+nowhere and throws `DrawAdmissionArgumentException` with `DrawAdmissionRefusal.ShadowOnlyWithoutCasting`,
+`ShadowOnly`, `CastsShadows` and the entry point's `ParamName`. A `default`
 descriptor is not the plain draw (its tint is transparent, its material is not `Material.None` and it casts no
 shadow), so build one with the constructor.
 
@@ -7268,7 +7269,17 @@ Garment joints match host skin bones by ordinal name, including reordered subset
 outside the skin is insufficient. Every garment inverse bind must be finite and match the host
 within an inclusive absolute `1e-4` per element over all 16 elements. Binding precomputes the index
 table. Rigid parts retain part-local correction, body alignment and scale-free joint composition.
-Rigid-only `loaded.Bind(map)` remains valid and refuses garments with `InvalidDataException`.
+Rigid-only `loaded.Bind(map)` remains valid and refuses garments with `AttachmentBindingDataException`,
+`AttachmentBindingRefusal.HostMeshRequired` and `PartId`. Binding data refusals derive from
+`MalformedDataException`. Callers handling malformed data from either `AttachmentSetBinding`
+constructor or either `LoadedAttachmentSet.Bind` overload catch that base. `RigidJointUnresolved`
+carries `PartId`, `JointName` and the original `InnerException`. Garment refusals preserve `PartId`,
+`MeshKey`, joint names and counts where applicable. `GarmentBindMismatch` carries `BindTolerance`.
+Frame and palette access refusals use `AttachmentBindingArgumentException`, an `ArgumentException`
+with `Reason`, `ParamName` and the applicable identifiers. `PoseCompositionFailed` keeps the original
+error as `InnerException`, including a joint or world validation reason when one was thrown by the
+binding. The [binding refusal table](../KhaozEngine.Attachments.Render3D/README.md#binding-refusals)
+lists every member and its identifiers.
 
 One cache owns uploads for one scene, shares verified mesh revisions by key, hash and kind, and
 refuses a mesh reference requested under both kinds even when its upload is warm. Dispose it before
@@ -7301,8 +7312,18 @@ for (int i = 0; i < count; i++)
 synchronously before the next preparation or submission on that view, or cache disposal. Scene3D
 records the current and previous palettes for motion. Rigid-only `WriteDraws` with
 `Span<RigidInstanceDraw>` remains valid. A set containing garments refuses that overload with
-`InvalidOperationException` before writing anything. Insufficient capacity, an invalid later pose
-or an invalid template changes no descriptor and queues no prefix. The unused output suffix stays intact.
+`AttachmentSubmissionStateException`, an `InvalidOperationException`, with
+`AttachmentSubmissionRefusal.MixedDrawRequired` and `SkinnedPartCount` before writing anything.
+Insufficient capacity throws `AttachmentSubmissionArgumentException`, an `ArgumentException`, with
+`AttachmentSubmissionRefusal.OutputTooSmall`, `ActualCapacity`, `RequiredCapacity` and `ParamName`.
+A shadow-only template without casting throws the Render3D `DrawAdmissionArgumentException` with
+`DrawAdmissionRefusal.ShadowOnlyWithoutCasting`, `ShadowOnly`, `CastsShadows` and `ParamName`.
+Rigid and skinned instance construction, Scene3D descriptor admission and the tile-world rigid fallback
+use that same shared family and reason, retaining each entry point's parameter name.
+Insufficient capacity, an invalid later pose or an invalid template changes no descriptor and queues
+no prefix. The unused output suffix stays intact. See the
+[submission refusal table](../KhaozEngine.Attachments.Render3D/README.md#submission-refusals) and
+[draw admission table](../KhaozEngine.Render3D/README.md#draw-admission-refusals).
 
 Create one outline group through the scene, then add the complete mixed set:
 
@@ -20485,7 +20506,8 @@ custom scene keeps compiling. The rigid default keeps the mesh, the transform an
 a descriptor whose `Dissolve` is above 0 through `DrawMeshDissolved`. It draws nothing for a shadow-only descriptor.
 It also draws nothing for a complement phase above one half with no dissolve. `Scene3D` shows no body for that draw, at
 most a shadow, so the fallback treats it like a shadow-only draw. A shadow-only descriptor with `CastsShadows = false`
-throws the same `ArgumentException` the scene's instance queue throws. The rigid default drops the key, the tint, the
+throws the shared Render3D `DrawAdmissionArgumentException` with
+`DrawAdmissionRefusal.ShadowOnlyWithoutCasting`, both shadow flags and `ParamName` set to `draw`. The rigid default drops the key, the tint, the
 material, `CastsShadows` and `InvertShadowDissolve`, and does not forward `DissolveComplement`. The skinned default
 keeps the tint as well and drops the key, the material and `CastsShadows`. On a scene that does not implement the older
 skinned draws it still throws `NotSupportedException`.

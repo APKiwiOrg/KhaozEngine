@@ -148,7 +148,8 @@ in the `KhaozEngine.Render3D.Ecs` arm under the same namespace, so a render-only
   Every older `Draw`, `DrawShadowOnly` and `DrawSkinned` overload builds a descriptor with no key and forwards, so
   existing callers queue exactly what they did, and a new draw knob becomes a descriptor property rather than another
   overload. The constructor sets a white tint, `Material.None` and casting shadows (the plain rigid overload's), and
-  shadow-only without casting is refused as before. `MotionKey` is a stable 64-bit identity for a draw that moves:
+  shadow-only without casting throws `DrawAdmissionArgumentException` with
+  `DrawAdmissionRefusal.ShadowOnlyWithoutCasting`. `MotionKey` is a stable 64-bit identity for a draw that moves:
   `MotionKey.From(id)` wraps an id the game owns and `MotionKey.Combine(key, part)` derives one key per part of a
   multi-part body. While temporal rendering is active (see the `Scene3D.CameraCut()` bullet above) the scene
   remembers each keyed draw's previous world transform and, for a skinned draw, its previous bone palette. A draw
@@ -1941,3 +1942,14 @@ and never sampled, captured or read back. See [attachment lifetime](../docs/META
 A registered pass observer keeps cascade working depth and stencil stored because timestamp markers can
 end native encoders between caster families. This preserves capture output. Per-pass timing campaigns
 include those stores, while unobserved rendering receives the discard.
+
+## Draw admission refusals
+
+`DrawAdmissionArgumentException` derives from `ArgumentException` and carries `DrawAdmissionRefusal`.
+The rigid and skinned instance queues, Scene3D descriptor admission, the tile-world rigid fallback and
+attachment submission enforce this one contract. Each preserves its own `ParamName`. Refusal happens
+before palette, queue or motion publication.
+
+| Reason | Refused input | Identifiers |
+|---|---|---|
+| `ShadowOnlyWithoutCasting` | A shadow-only draw with shadow casting disabled | `ShadowOnly`, `CastsShadows`, `ParamName` |

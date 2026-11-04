@@ -94,14 +94,16 @@ public interface ITileWorldScene
     /// descriptor, which an older scene never cast. It also draws nothing for a complement phase above one half with
     /// no dissolve. <see cref="Scene3D"/> shows no body for that draw, at most a shadow, so the fallback treats it like
     /// a shadow-only draw.</summary>
-    /// <exception cref="ArgumentException">The descriptor is shadow-only and casts no shadow, the pair the scene's
-    /// instance queue refuses with the same message. It names <c>draw</c> as its parameter.</exception>
+    /// <exception cref="DrawAdmissionArgumentException">The descriptor is shadow-only and casts no shadow.
+    /// <see cref="DrawAdmissionRefusal.ShadowOnlyWithoutCasting"/> is the shared queue reason.
+    /// It names <c>draw</c> as its parameter and carries both shadow flags.</exception>
     void DrawMesh(in RigidInstanceDraw draw)
     {
         if (draw.ShadowOnly && !draw.CastsShadows)
-            throw new ArgumentException(
+            throw new DrawAdmissionArgumentException(DrawAdmissionRefusal.ShadowOnlyWithoutCasting,
                 "A shadow-only instance must cast shadows: shadowOnly with castsShadows false draws in neither pass.",
-                nameof(draw));
+                nameof(draw))
+            { ShadowOnly = draw.ShadowOnly, CastsShadows = draw.CastsShadows };
         // The colour pass and the plain shadow passes read a phase above one half as the complement, which keeps
         // nothing at a threshold of zero. An inverted shadow ignores the phase, so such a draw is at most a shadow.
         if (draw.ShadowOnly || (draw.DissolveComplement > 0.5f && draw.Dissolve <= 0f)) return;
@@ -318,8 +320,8 @@ public sealed class Scene3DTileWorldScene : ITileWorldScene, IAttachmentScene, I
 
     /// <summary>Forwards the whole descriptor, motion key included, to
     /// <see cref="Scene3D.Draw(in RigidInstanceDraw)"/>. Nothing is dropped, unlike the interface's fallback.</summary>
-    /// <exception cref="ArgumentException">The descriptor is shadow-only and casts no shadow, which the scene's
-    /// instance queue refuses.</exception>
+    /// <exception cref="DrawAdmissionArgumentException">The descriptor is shadow-only and casts no shadow,
+    /// with <see cref="DrawAdmissionRefusal.ShadowOnlyWithoutCasting"/>.</exception>
     public void DrawMesh(in RigidInstanceDraw draw) => _scene.Draw(in draw);
     /// <summary>Publish the field for the next scene render.</summary>
     public void SetInteriorCut(InteriorHeightField? field) => _scene.InteriorCut = field;

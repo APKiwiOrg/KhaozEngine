@@ -5,12 +5,13 @@ references `KhaozEngine.Attachments` and `KhaozEngine.Render3D` and ships in `Kh
 
 `AttachmentSetCache.Get` loads rigid, skinned and mixed sets. The map-only `AttachmentSetBinding`
 constructor and `LoadedAttachmentSet.Bind(map)` refuse sets containing skinned parts with
-`InvalidDataException` explaining that an explicit host mesh is required.
+`AttachmentBindingDataException` with `AttachmentBindingRefusal.HostMeshRequired` and `PartId`.
 
 Construct `AttachmentSetBinding(definition, map)` once with a `ContractJointMap`. Every rigid part must
-name a contract joint in the skin. Unresolved references throw `InvalidDataException` naming the
-part and joint. The binding retains the exact `Skeleton` instance and resolves node, skin-bone
-index and body alignment at construction.
+name a contract joint in the skin. Unresolved references throw `AttachmentBindingDataException` with
+`AttachmentBindingRefusal.RigidJointUnresolved`, `PartId`, `JointName` and the original `InnerException`.
+The binding retains the exact `Skeleton` instance and resolves node, skin-bone index and body alignment
+at construction.
 
 Scratch storage is allocated at binding construction. Valid `ComposeWorlds` calls allocate no
 managed memory. Use each binding on its owning render thread. Calls on the same binding must not
@@ -37,7 +38,9 @@ subset of the host and a different skin order. Its skin must contain 1 to 128 jo
 inverse bind and rest pose per joint. Every inverse-bind matrix must be finite and match the
 corresponding actual host inverse bind with an inclusive absolute tolerance of `1e-4` over all 16
 elements. Rest poses are never inverted to infer binds. Missing mesh metadata, unresolved joints or
-mismatched binds throw contextual `InvalidDataException`.
+mismatched binds throw `AttachmentBindingDataException`. `Reason` identifies the rule, and `PartId`,
+`MeshKey` and `JointName` identify the garment and joint where applicable. `GarmentBindMismatch` also
+carries `BindTolerance`. `GarmentJointCountOutsideRange` carries the actual and allowed joint counts.
 
 `SkinnedJointCount(partId)` gives the destination capacity for a garment, or zero for a rigid part.
 Allocate the destination once in the caller. `CopySkinnedPalette(skeleton, hostPalette, partId,
@@ -46,14 +49,15 @@ binds. The renderer alone applies the garment's inverse binds. The binding snaps
 and owns no garment frame palettes. Later source-skeleton changes cannot reorder its copies.
 An unknown part, a rigid palette-copy request, a foreign skeleton, a palette whose length differs
 from the full host skin, insufficient destination capacity or invalid referenced joint matrices
-throws `ArgumentException` before writing. The unused destination tail remains untouched. Valid
-copies allocate no managed memory and perform no name searches.
+throws `AttachmentBindingArgumentException` before writing. Its `Reason` and identifiers name the rule.
+The unused destination tail remains untouched. Valid copies allocate no managed memory and perform no
+name searches.
 
 `ComposeWorlds` still writes every canonical part. Rigid parts use the composition above, and
 skinned parts receive the unchanged character model matrix.
 
 Another skeleton instance, a palette whose length differs from the skin, insufficient output
-space or invalid pose matrices throws `ArgumentException`. Matrices must be finite, affine and
+space or invalid pose matrices throws `AttachmentBindingArgumentException`. Matrices must be finite, affine and
 invertible, with a recoverable joint basis. The entire result is validated before any output is
 written. Output may overlap the input palette, and entries beyond `PartCount` are untouched.
 
@@ -81,7 +85,9 @@ Catch `MalformedDataException` for these families. The [GLB refusal tables](../K
 list their members. Definition JSON admission propagates `AttachmentSetDataException` with
 `AttachmentSetRefusal`, `SourceName` and its identifiers. It also derives from `MalformedDataException`.
 The [set refusal table](../KhaozEngine.Attachments/README.md#set-refusals) lists its members.
-Binding refusals still use `InvalidDataException` until their own family is converted.
+Binding data refusals also derive from `MalformedDataException`. Catch that base for malformed data
+from either `AttachmentSetBinding` constructor or either `LoadedAttachmentSet.Bind` overload.
+Argument refusals retain `ArgumentException` as their base and preserve `ParamName`.
 
 ```csharp
 using var scene = new Scene3D(device, output);
@@ -159,8 +165,13 @@ for (int i = 0; i < count; i++)
 `BoneMatrices` borrows its part's preallocated palette, shared by all its materials. Consume it
 synchronously before the bound view's next preparation, submission or cache disposal. The rigid
 `WriteDraws` overload taking `Span<RigidInstanceDraw>` remains supported for rigid-only sets and
-throws `InvalidOperationException` for a set containing skinned parts before writing anything.
-An insufficient buffer or invalid pose or template throws before any descriptor is written, and
+throws `AttachmentSubmissionStateException` (an `InvalidOperationException`) with
+`AttachmentSubmissionRefusal.MixedDrawRequired` and `SkinnedPartCount` before writing anything.
+An insufficient buffer throws `AttachmentSubmissionArgumentException` (an `ArgumentException`) with
+`AttachmentSubmissionRefusal.OutputTooSmall`, `ActualCapacity`, `RequiredCapacity` and `ParamName`.
+A shadow-only template without casting throws the shared Render3D `DrawAdmissionArgumentException`
+with `DrawAdmissionRefusal.ShadowOnlyWithoutCasting`, `ShadowOnly`, `CastsShadows` and `ParamName`.
+An invalid pose or template throws before any descriptor is written, and
 the unused buffer suffix stays untouched.
 
 Create the outline group through the scene's `BeginMeshOutline` API, then queue the complete set:
@@ -188,3 +199,49 @@ Calls on the same bound view must not overlap.
 
 For the version-21 set-level rename and its rationale, see the
 [skinned attachment design](../docs/design/SKINNED-ATTACHMENT-PARTS-DESIGN-2026-10-15.md).
+
+## Binding refusals
+
+`AttachmentBindingRefusal` spans `AttachmentBindingDataException` for malformed binding data and
+`AttachmentBindingArgumentException` for frame or access arguments. Data refusals derive from
+`MalformedDataException`, replacing the former sealed `InvalidDataException` surface. Messages remain
+developer prose. Rigid frame errors carry `PoseCompositionFailed` with the original error as
+`InnerException`. A binding joint or world validation error there retains its own structured reason.
+
+| Reason | Refused input or access | Identifiers |
+|---|---|---|
+| `HostMeshRequired` | map-only binding for a set containing skinned parts | `PartId` |
+| `RigidJointUnresolved` | a rigid part whose joint cannot bind to the contract skin | `PartId`, `JointName`, `InnerException` |
+| `PartHasNoGarmentPalette` | a garment-palette request for a rigid part | `PartId`, `ParamName` |
+| `WorldOutputTooSmall` | output shorter than the attachment-part count | `ActualCapacity`, `RequiredCapacity`, `ParamName` |
+| `ModelTransformInvalid` | a non-finite non-affine or singular model transform | `ParamName` |
+| `JointPoseInvalid` | an invalid rigid joint pose before publishing any output | `PartId`, `JointName`, `ParamName` |
+| `WorldTransformInvalid` | an invalid composed rigid world transform | `PartId`, `JointName`, `ParamName` |
+| `PoseCompositionFailed` | rigid pose composition rejected by the socket validator | `PartId`, `JointName`, `InnerException`, `ParamName` |
+| `PartMissing` | a part id absent from this binding | `PartId`, `ParamName` |
+| `SkeletonMismatch` | frame data using a different skeleton instance | `ParamName` |
+| `HostPaletteLengthMismatch` | a host palette with the wrong bone count | `ActualCount`, `RequiredCount`, `ParamName` |
+| `GarmentBindCountsMismatch` | garment bind and rest counts not matching its joint table | `PartId`, `MeshKey`, `JointCount`, `InverseBindCount`, `RestCount` |
+| `GarmentJointUnresolved` | a garment joint that cannot bind to the host skin | `PartId`, `MeshKey`, `JointName`, `InnerException` |
+| `GarmentBindMismatch` | non-finite garment binds or binds outside the host tolerance | `PartId`, `MeshKey`, `JointName`, `BindTolerance` |
+| `HostBindCountsMismatch` | a host without one bind and rest pose per skin bone | `JointCount`, `InverseBindCount`, `RestCount` |
+| `HostInverseBindNonFinite` | a non-finite host inverse bind | `BoneIndex` |
+| `GarmentMetadataMissing` | a garment without captured or supplied skin metadata | `PartId`, `MeshKey` |
+| `GarmentSkeletonMissing` | garment metadata without a skeleton | `PartId`, `MeshKey` |
+| `GarmentNodeMissing` | a garment joint referring outside its skeleton | `PartId`, `MeshKey`, `BoneIndex`, `NodeIndex`, `NodeCount` |
+| `GarmentJointCountOutsideRange` | a garment joint count outside the renderer capacity | `PartId`, `MeshKey`, `JointCount`, `MinimumJointCount`, `MaximumJointCount` |
+| `HostSkeletonMismatch` | a host mesh using a different contract skeleton instance | `ParamName` |
+| `HostJointPoseInvalid` | an invalid host joint model matrix before palette publication | `PartId`, `BoneIndex`, `ParamName` |
+| `GarmentPaletteOutputTooSmall` | output shorter than the garment joint count | `PartId`, `ActualCapacity`, `RequiredCapacity`, `ParamName` |
+
+## Submission refusals
+
+`AttachmentSubmissionArgumentException` derives from `ArgumentException` and keeps `ParamName`.
+`AttachmentSubmissionStateException` derives from `InvalidOperationException`. Both carry
+`AttachmentSubmissionRefusal`. Pose errors keep their AttachmentBinding reason. Shadow-only
+eligibility uses the shared [DrawAdmission family](../KhaozEngine.Render3D/README.md#draw-admission-refusals).
+
+| Reason | Refused input or access | Identifiers |
+|---|---|---|
+| `OutputTooSmall` | Output shorter than the attachment draw count | `ActualCapacity`, `RequiredCapacity`, `ParamName` |
+| `MixedDrawRequired` | Rigid descriptors for a set containing skinned parts | `SkinnedPartCount` |

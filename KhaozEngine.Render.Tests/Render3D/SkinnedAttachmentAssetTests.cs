@@ -68,8 +68,12 @@ public sealed class SkinnedAttachmentAssetTests
         Assert.Single(recording.Uploads);
         Assert.Single(second.Definition.Parts);
         Assert.Equal(firstHash, first.DefinitionSha256);
-        Assert.Throws<InvalidDataException>(() => first.Bind(RigidAttachmentTestRig.Map(RigidAttachmentTestRig.Create())));
-        Assert.Throws<InvalidDataException>(() => second.Bind(RigidAttachmentTestRig.Map(RigidAttachmentTestRig.Create())));
+        var firstError = Assert.Throws<AttachmentBindingDataException>(() => first.Bind(RigidAttachmentTestRig.Map(RigidAttachmentTestRig.Create())));
+        Assert.Equal(AttachmentBindingRefusal.HostMeshRequired, firstError.Reason);
+        Assert.Equal(2u, firstError.PartId);
+        var secondError = Assert.Throws<AttachmentBindingDataException>(() => second.Bind(RigidAttachmentTestRig.Map(RigidAttachmentTestRig.Create())));
+        Assert.Equal(AttachmentBindingRefusal.HostMeshRequired, secondError.Reason);
+        Assert.Equal(7u, secondError.PartId);
     }
 
     [Fact]

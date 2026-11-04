@@ -895,8 +895,10 @@ the older draws above. The rigid default keeps the mesh, the transform and the d
 material, `CastsShadows` and `InvertShadowDissolve`, and does not forward `DissolveComplement`. It draws nothing for a
 shadow-only descriptor, which an older scene never cast. It also draws nothing for a complement phase above one half
 with no dissolve. `Scene3D` shows no body for that draw, at most a shadow, so the fallback treats it like a
-shadow-only draw. A shadow-only descriptor with `CastsShadows = false` throws the same `ArgumentException` the scene's
-instance queue throws. The skinned default keeps the tint as well, drops the key, the material
+shadow-only draw. A shadow-only descriptor with `CastsShadows = false` throws the shared Render3D
+`DrawAdmissionArgumentException` with `DrawAdmissionRefusal.ShadowOnlyWithoutCasting`, `ShadowOnly`,
+`CastsShadows` and `ParamName` set to `draw`. The scene's instance queue uses the same reason.
+The skinned default keeps the tint as well, drops the key, the material
 and `CastsShadows`, and still throws `NotSupportedException` where the older skinned draws do.
 `CreatePropClusterOwner()` returns the view-owned `ITileWorldPropClusterOwner` used for detached CPU builds,
 scene-thread apply and draw, invalidation, unload and disposal. Its default also throws `NotSupportedException`.

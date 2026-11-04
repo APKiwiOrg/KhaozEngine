@@ -50,7 +50,7 @@ GPU-free building blocks almost every other package sits on.
 | [KhaozEngine.Content](../KhaozEngine.Content/README.md) | Loads JSON configuration, validates schemas, and enforces content schemas during consumer builds. | Diagnostics, Serialization, Primitives (+ JsonSchema.Net) | Every umbrella |
 | [KhaozEngine.Ecs](../KhaozEngine.Ecs/README.md) | Archetype entity-component system with by-reference components, safe iteration, deferred commands, parallel queries, and world snapshots. | Serialization, Simulation, Primitives | Every umbrella |
 | [KhaozEngine.Determinism](../KhaozEngine.Determinism/README.md) | Controls and restores per-thread floating-point settings for deterministic fixed-tick simulations. | Diagnostics | Every umbrella |
-| [KhaozEngine.Imaging](../KhaozEngine.Imaging/README.md) | PNG reading and writing, JPEG encoding, thumbnail decoding and image regression comparisons. | None | Every umbrella |
+| [KhaozEngine.Imaging](../KhaozEngine.Imaging/README.md) | PNG reading and writing, JPEG encoding, thumbnail decoding and image regression comparisons. | Primitives | Every umbrella |
 | [KhaozEngine.Http](../KhaozEngine.Http/README.md) | Sends HTTP requests with bounded attempts, per-attempt timeouts, configurable backoff, and cancellation-aware retries. | None | Every umbrella |
 
 ## GPU and windowing

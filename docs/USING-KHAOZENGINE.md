@@ -13656,10 +13656,21 @@ referring to it by id keeps resolving.
 (an iterated box blur reading its outside neighbours from the document, so a patch blends into the terrain
 around it), `SetHeights`, `Line` (Bresenham, one object per tile, one undo step), `Scatter` (a jittered grid
 whose offsets come from a hash of the point and the seed, so the same arguments always produce the same world),
-`PlacePrefab` and `ImportHeights`. Height imports detect binary PGM (netpbm P5) or PNG by signature.
+`PlacePrefab` and `ImportHeights`. The path overload selects PNG for a `.png` extension and binary PGM
+(netpbm P5) otherwise.
 `PngReader` in Imaging supports every PNG colour type and bit depth, noninterlaced or Adam7, using grayscale
 or the red channel as height and ignoring alpha. A palette PNG supplies the red channel of each entry. Both formats preserve 16-bit sample precision. Write PGM files with LF line endings: a CRLF header spends its CR as the single delimiter byte and leaves the LF as sample 0, which shifts
 the whole raster.
+
+`PngReader.Decode` and the PNG path through `TileEditOps.ImportHeights(string, ...)` throw
+`PngDecodeDataException : MalformedDataException` for malformed PNG input. Catch `MalformedDataException`
+for the shared malformed-data boundary, replacing a PNG-specific `InvalidDataException` catch.
+Unsupported PNG features throw `PngDecodeNotSupportedException : NotSupportedException`.
+Both carry `PngDecodeRefusal Reason` and the identifiers listed in the
+[Imaging refusal table](../KhaozEngine.Imaging/README.md#refusals), including chunk offsets, lengths,
+CRCs, palette indices and allocation sizes. `CompressedStreamCorrupt` preserves the native zlib error
+in `InnerException`. `DecodedLengthMismatch` separately records the bytes read and trailing-data probe.
+Messages are developer prose, so callers branch on `Reason`.
 
 Two limits are worth knowing before leaning on the general case. A `SnapshotRectCommand` owns what was inside
 its rect when it looked and nothing else, so an object anchored outside but overhanging in is not restored, and

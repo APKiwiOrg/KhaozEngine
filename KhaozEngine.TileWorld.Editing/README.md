@@ -284,9 +284,13 @@ much of the edit landed inside the authored world.
 ## `PgmReader` and `PgmImage`
 
 `PgmReader.Read(path)` and `Read(bytes, name?)` decode binary PGM (netpbm P5) greyscale images, 8 or 16 bit,
-which remains the smallest heightmap format for generated tooling. The path overload also accepts `.png` through
-`KhaozEngine.Imaging.PngReader`. Its PNG overload ignores alpha and reads the first color channel, preserving
-ordinary greyscale RGB heightmaps while retaining all 16 bits of sample precision.
+which remains the smallest heightmap format for generated tooling. `TileEditOps.ImportHeights(string, ...)`
+also accepts `.png` through `KhaozEngine.Imaging.PngReader`. Its `PngImage` overload ignores alpha and reads
+the first color channel, preserving ordinary greyscale RGB heightmaps and all 16 bits of sample precision.
+The PNG path propagates `PngDecodeDataException : MalformedDataException` or
+`PngDecodeNotSupportedException : NotSupportedException`, with `PngDecodeRefusal Reason` and the
+[Imaging identifiers](../KhaozEngine.Imaging/README.md#refusals). PNG callers catch `MalformedDataException`
+in place of the former `InvalidDataException` boundary.
 
 `PgmImage(Width, Height, MaxValue, Samples)` carries the decoded samples row-major with the TOP row first, the
 order the file itself is written in, and `Sample(x, y)` reads one with per-axis bounds checks (a raw flat index

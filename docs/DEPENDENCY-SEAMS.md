@@ -515,6 +515,13 @@ exposes the property. `World.DefaultScheduler` itself is the per-world seam in `
 `SingleThreadedJobScheduler`, so a world stays byte-identical until a game opts in, and an explicit per-call
 scheduler still wins over it.
 
+## PNG I/O: shared malformed-data base
+
+`KhaozEngine.Imaging` references only `KhaozEngine.Primitives` for `MalformedDataException`, the shared
+base of `PngDecodeDataException`. PNG and JPEG codecs use BCL APIs, including zlib, and take no
+third-party image dependency. Unsupported PNG features use `PngDecodeNotSupportedException` on the
+BCL `NotSupportedException` base. Both carry `PngDecodeRefusal`.
+
 ## Attachment definitions: GPU-free with shared primitives
 
 `KhaozEngine.Attachments` references only the dependency-free `KhaozEngine.Primitives` for the shared

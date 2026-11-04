@@ -69,7 +69,7 @@ internal static class PhysicsNavDescentCapture
         var coverage = new DescentCoverage[width * height];
         var refs = new List<DescentColumnFace>();
         var raw = new List<DescentRawBinding>();
-        var observer = new PhysicsColumnEvidenceProbe(context.Physics);
+        var observer = new PhysicsColumnEvidenceProbe(context.Physics, lease);
         var probe = new PhysicsColumnProbe(observer)
         {
             ProbeHeight = options.ProbeHeight - lease.Origin.Y,
@@ -133,11 +133,24 @@ internal static class PhysicsNavDescentCapture
                     var hits = observer.Hits.Where(h => BitConverter.SingleToInt32Bits(h.Result.Point.Y + lease.Origin.Y) == bits && h.Result.Distance > 0).ToArray();
                     if (hits.Length != 1 || hits[0].Result.Body is not { } body) throw Refuse(PhysicsNavDescentEvidenceReason.RawAssociationAmbiguous);
                     int selected = -1;
+                    for (int f = 0; f < faces.Length; f++)
+                    {
+                        if (observed[f].Static != body || observed[f].Address.Leaf != hits[0].Leaf ||
+                            faces[f].Kind is not (PhysicsEvidenceKind.Sphere or PhysicsEvidenceKind.Capsule or PhysicsEvidenceKind.Cylinder)) continue;
+                        if (selected >= 0) throw Refuse(PhysicsNavDescentEvidenceReason.RawAssociationAmbiguous);
+                        selected = f;
+                    }
+                    if (selected >= 0)
+                    {
+                        raw.Add(new(x, z, ordinal, bits, selected));
+                        continue;
+                    }
                     DescentNumber highest = default;
                     for (int f = 0; f < faces.Length; f++)
                     {
                         var face = faces[f];
-                        if (observed[f].Static != body || face.Normal.Y <= 0 || !DescentGeometry.Contains(face.Points, ax, az)) continue;
+                        if (observed[f].Static != body || hits[0].Leaf >= 0 && observed[f].Address.Leaf != hits[0].Leaf ||
+                            face.Normal.Y <= 0 || !DescentGeometry.Contains(face.Points, ax, az)) continue;
                         var y = DescentGeometry.Height(face.Points, new(ax, az));
                         if (y > new DescentNumber(hits[0].Origin.Y + lease.Origin.Y)) continue;
                         if (selected >= 0 && y.CompareTo(highest) == 0 && face.Key != faces[selected].Key &&

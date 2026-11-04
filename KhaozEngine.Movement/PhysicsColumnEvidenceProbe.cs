@@ -6,14 +6,24 @@ using KhaozEngine.Physics;
 namespace KhaozEngine.Movement;
 
 /// <summary>Observes the actual rays of the unchanged column probe. Only its accepted output bits bind raw rows.</summary>
-internal sealed class PhysicsColumnEvidenceProbe(IPhysicsWorld world) : IPhysicsWorld
+internal sealed class PhysicsColumnEvidenceProbe(IPhysicsWorld world, IPhysicsQueryLease lease) : IPhysicsWorld
 {
-    internal readonly record struct Hit(Vector3 Origin, RayHit Result);
+    internal readonly record struct Hit(Vector3 Origin, RayHit Result, int Leaf);
     internal List<Hit> Hits { get; } = [];
     public bool Raycast(Vector3 origin, Vector3 direction, float distance, out RayHit hit, QueryFilter filter = default)
     {
-        bool found = world.Raycast(origin, direction, distance, out hit, filter);
-        if (found) Hits.Add(new(origin, hit));
+        int leaf = -1;
+        bool found;
+        if (world is IPhysicsStaticEvidenceRaycast evidence && filter.Mobility == QueryMobility.Statics)
+        {
+            var status = evidence.RaycastStaticEvidence(lease, origin, direction, distance, out var selected, out leaf);
+            if (status != PhysicsEvidenceStatus.Complete)
+                throw new PhysicsNavDescentEvidenceException(PhysicsNavDescentEvidenceReason.BackendRefused, status);
+            hit = selected.GetValueOrDefault();
+            found = selected.HasValue;
+        }
+        else found = world.Raycast(origin, direction, distance, out hit, filter);
+        if (found) Hits.Add(new(origin, hit, leaf));
         return found;
     }
     public Vector3 Origin => world.Origin;

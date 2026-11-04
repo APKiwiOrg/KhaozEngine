@@ -1257,6 +1257,10 @@ The internal `PhysicsNavBake.CaptureDescent` entry captures immutable physical e
 `PhysicsNavColumns`. The public capture path is unchanged. The new path retains exact installed face geometry,
 source adjacency, classified column references, complete coverage or known emptiness, and original raw surface
 addresses. It observes the unchanged column probe's real rays to bind the original ordinal and raw height bits.
+The optional `IPhysicsStaticEvidenceRaycast` capability retains the actual selected installed leaf from that same
+ray. Bepu supplies it for standalone and compound primitives. Curved raw surfaces bind to their represented
+primitive identity without a fabricated plane or a slope-normal filter. Curved geometry inside a descent corridor
+still refuses certification conservatively, while an unrelated curved prop does not abort capture.
 `ContactTerrainProfileEvidence` associates admitted original layer/cell addresses with those raw sources, without
 looking up a layer by resting-height proximity. Missing capability, source identity, ambiguous raw support or
 capacity has a structured `PhysicsNavDescentEvidenceException` reason. No partial evidence is published.

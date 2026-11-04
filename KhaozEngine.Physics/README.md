@@ -115,6 +115,11 @@ The callback receives exact represented polygon coordinates or the installed cur
 Local static addresses and callback spans stay inside the interval and never become portable source identity.
 Navigation binds them to its installer's canonical provenance before retaining data.
 
+`IPhysicsStaticEvidenceRaycast` optionally preserves the installed leaf selected by a static column ray in the
+same authenticated lease. A complete miss returns a null hit and leaf -1. Bepu uses its ordinary nearest-hit
+rule, including compound child selection. The leaf resolves curved raw support to the captured primitive without
+inventing a plane. It does not identify a convex polygon face and is not portable outside its source interval.
+
 The Bepu implementation validates the installed registry and broad-phase coverage. It retains all faces of an
 intersecting solid, including faces outside the vertical aperture, and every relevant mesh triangle independent
 of slope. Existing source limits remain in force. A coordinate that cannot be certified exactly is unresolved.

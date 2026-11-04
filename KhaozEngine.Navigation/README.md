@@ -75,6 +75,8 @@ so a caller requiring walking also checks every returned waypoint kind.
 
 `GroundNavigation.Planner` and Movement's `RouteStraightener` forward the budget unchanged. Movement's
 `GroundPursuit` sets WalkOnly at admission and on every replan, while retaining its own non-Walk refusal guard.
+The [forced movement rationale](../docs/design/FORCED-MOVEMENT.md#guarded-pursuit) explains why a cheaper
+non-walking route must not hide an available walking detour.
 
 ## Baking the overworld (`NavGridBaker`)
 

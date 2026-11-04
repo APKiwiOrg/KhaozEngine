@@ -854,6 +854,13 @@ served. Timeout, deep-water swim entry, and a launch blocked at its first stride
 landing event. A second server begin supersedes the first.
 Disconnect emits an ended result and strips the state before persistence.
 
+Ground pursuit adoption requires a 22.0.0 major repin, matched generation-15 peers, and a server-side navigation
+profile matching the actor capsule and movement context. Persisted movement payloads migrate automatically.
+The [consumer contract](../docs/USING-KHAOZENGINE.md) provides the complete `OnBeforeTick`, immediate arrival
+strike and cleanup on end. The [rationale](../docs/design/FORCED-MOVEMENT.md) explains why only direction
+and horizontal distance replicate. At corners, stale steering can produce bounded correction rather than a
+client-side route query. Budget exhaustion alone never authorizes arrival.
+
 ## Authoritative movement invocation measurement
 
 `SupportQueryCapture` records `PlayerLegacySteps` or `PlayerContactSteps` once at each eligible entity's

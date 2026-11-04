@@ -607,7 +607,9 @@ compile and bind unchanged. A head that never references `NetWorld` can implemen
 an immutable ground request with optional preparation, recovery and timeout durations. Speed and begin distance
 are positive and finite. Directions are finite, nonzero and normalized, including extreme finite magnitudes.
 `IsGroundTravel` and `DistanceRemaining` identify this request without a Locomotion dependency. Existing ballistic
-requests default to false and zero. Ground state rides wire generation 15.
+requests default to false and zero. Ground state rides wire generation 15. Adoption requires matched client
+and server plus a major engine repin. The [rationale](../docs/design/FORCED-MOVEMENT.md) explains why scalar
+controls stay here while pursuit remains opt-in.
 
 Both float heads implement queued `SteerMovementCommitment(target, expectedSequence, direction, distanceRemaining)`
 and `EndMovementCommitment(target, expectedSequence, reason)`, also exposed by `ServerAdmin`. The dependency-free

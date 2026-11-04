@@ -164,7 +164,7 @@ Ordinary contact ground navigation is released in 20.39.0 through
 anchors, wet unit-pace proofs, KENB format 2 and runtime binding validation. Contact aquatic navigation,
 footprint-only seeds and public explicit bake profiles remain deferred to
 [#1389](https://github.com/APKiwiOrg/KhaozEngine/issues/1389).
-Wire generation 14 and legacy v1 bake bytes stay unchanged.
+This navigation composition preserves legacy v1 bake bytes. Current movement transport is generation 15.
 
 ## API
 
@@ -854,6 +854,7 @@ producer acceptance or a playable consumer feature.
   `GroundTravelCommitment.ResolveEndReason` preserves that accepted outcome for every external release, including
   teleport, supersession, disconnect and abort. The float heads apply it when constructing end results, so each
   release path reports the same outcome. Ballistic recovery remains subject to its original timeout.
+  See the [forced movement rationale](../docs/design/FORCED-MOVEMENT.md) for authority, lifecycle and prediction tradeoffs.
 - **`MoveState.SpeedScale`** (14.26.0) - per-entity HORIZONTAL speed multiplier: haste (`> 1`), slow (`< 1`),
   root (`0`), unmodified (`1`, the default). A movement INPUT the step reads and carries through unchanged, and nothing
   in the sim derives or decays it. It multiplies INTO the existing speed product rather than replacing any of it, so

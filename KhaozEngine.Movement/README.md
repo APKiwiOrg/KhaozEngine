@@ -59,7 +59,11 @@ NoPath, TooLong and UnsupportedState to the corresponding `EndMovementCommitment
 terminal result. Use the authoritative arrival event for validated effects and the ended event for cleanup.
 Pass null for a missing target. Call `Reset()` for target replacement, teleport or manual cancellation, then admit
 afresh. Tick after reset reports UnsupportedState with NotAdmitted. Clients replay carried controls without a
-navigation query. See the [consumer contract](../docs/USING-KHAOZENGINE.md) for server control wiring.
+navigation query. Load a server-side profile matching the actor capsule and resolved movement binding before
+admission. The actor must be grounded, neither swimming nor airborne from water, without buffered jump or an
+active commitment. Game root and stun policy is caller-owned. See the
+[consumer contract](../docs/USING-KHAOZENGINE.md) for the complete `OnBeforeTick` example, immediate strike on
+arrival and cleanup on end, and the [rationale](../docs/design/FORCED-MOVEMENT.md) for the package and prediction tradeoffs.
 
 ## Exact 3D reach
 

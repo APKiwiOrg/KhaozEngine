@@ -14581,7 +14581,7 @@ owned binding on disposal. See [ordinary contact configuration](../KhaozEngine.N
 for configuration, resident scopes, replay and view lifetime.
 `SamplerSpace.Frame` ordinary ground samplers receive the original local axes and return local heights directly,
 including a nonzero physics Y origin. World samplers keep the direct dry path's rounded absolute translation.
-The registration's analytic range is absolute in both spaces. Wire generation 14 stays unchanged.
+The registration's analytic range is absolute in both spaces. Sampler space does not change the wire layout.
 The [allocation and local cost proof](verification/2026-10-13-contact-controller-phase5a-cost.md)
 records named lifetime tokens and three one-pair samples without a timing threshold or hosted cost-gate claim.
 
@@ -14665,22 +14665,101 @@ airborne, swimming and incompatible commitment state return UnsupportedState. Ma
 exceptions. The lower-level constructor accepts equivalent guarded planning, space and segment admission, with
 runtime profile compatibility owned by its caller.
 
+Load a server-side `GroundNavigation` profile for the actor's actual capsule and movement binding before
+constructing the pursuit. `GroundMoveContext` is caller-owned and used sequentially. The authoritative actor state
+must be grounded, neither swimming nor airborne from water, have no buffered jump, and have no incompatible active
+commitment. `Admit` refuses any active commitment. The game also checks root, stun and ability policy before begin.
+
+This example shows one stable actor and target identity. The game supplies the request queue, current target
+lookup, policy checks, configured durations and effect callbacks. The same wiring applies to either float head.
+Keep the pursuit and sequence keyed by stable actor identity across same-host handoff, rather than by cell entity.
+
 ```csharp
+using KhaozEngine.Locomotion;
+using KhaozEngine.Movement;
+using KhaozEngine.NetWorld;
+
+var actor = PlayerRef.Account(actorId);
+string targetId = ""; // The game supplies stable target identifiers.
 var pursuit = new GroundPursuit(navigation);
 var limits = new GroundPursuitSettings(triggerRange, maximumPathLength, stopDistance);
-GroundPursuitResult admitted = pursuit.Admit(actorState, tuning, targetShape, limits, context);
-if (admitted.Status == GroundPursuitStatus.Ready)
-    sequence = server.BeginMovementCommitment(actor,
-        MovementCommitmentRequest.ForGroundTravel(admitted.Direction, speed, admitted.RemainingPathLength));
+uint sequence = 0;
+bool awaitingRelease = false;
 
-// In OnBeforeTick for an admitted pursuit. targetShapeOrNull is refreshed by the game each tick.
-GroundPursuitResult update = pursuit.Tick(actorState, tuning, targetShapeOrNull, dt, context);
-if (update.Status == GroundPursuitStatus.Travelling)
-    server.SteerMovementCommitment(actor, sequence, update.Direction, update.RemainingPathLength);
-else if (update.Status == GroundPursuitStatus.Arrived)
-    server.EndMovementCommitment(actor, sequence, MovementCommitmentStopReason.Arrived);
-// Map TargetLost, NoPath, TooLong and UnsupportedState to their corresponding end reason, then stop ticking.
+server.OnBeforeTick += dt =>
+{
+    if (!server.TryGetPlayerState(slot, out PlayerMoveState state)) return;
+    if (sequence == 0)
+    {
+        // A request records this actor's chosen target identity. It never writes movement state.
+        if (!TryConsumePursuitRequest(actorId, out targetId)) return;
+        if (IsRootedOrStunned(actorId) || !CanBeginAbility(actorId)) return;
+        if (!TryGetTargetShape(targetId, out ReachTarget target)) return;
+        GroundPursuitResult admitted = pursuit.Admit(state.Move, tuning, target, limits, context);
+        if (admitted.Status != GroundPursuitStatus.Ready)
+        {
+            ReportAdmission(actorId, admitted.Status, admitted.Detail);
+            return; // Includes AlreadyInRange. The game chooses its ordinary in-range action.
+        }
+        sequence = server.BeginMovementCommitment(actor,
+            MovementCommitmentRequest.ForGroundTravel(admitted.Direction, speed, admitted.RemainingPathLength,
+                preparationSeconds, recoverySeconds, timeoutSeconds));
+        return;
+    }
+    if (ShouldCancelAbility(actorId))
+    {
+        pursuit.Reset();
+        awaitingRelease = true;
+        server.AbortMovementCommitment(actor, sequence); // Also releases recovery, preserving accepted Arrived.
+        return;
+    }
+    if (awaitingRelease) return; // Recovery needs no further pursuit steering.
+
+    ReachTarget? current = TryGetTargetShape(targetId, out ReachTarget shape) ? shape : null;
+    GroundPursuitResult update = pursuit.Tick(state.Move, tuning, current, dt, context);
+    if (update.Status == GroundPursuitStatus.Travelling)
+    {
+        server.SteerMovementCommitment(actor, sequence, update.Direction, update.RemainingPathLength);
+        return;
+    }
+    MovementCommitmentStopReason reason = update.Status switch
+    {
+        GroundPursuitStatus.Arrived => MovementCommitmentStopReason.Arrived,
+        GroundPursuitStatus.TargetLost => MovementCommitmentStopReason.TargetLost,
+        GroundPursuitStatus.NoPath => MovementCommitmentStopReason.NoPath,
+        GroundPursuitStatus.TooLong => MovementCommitmentStopReason.TooLong,
+        GroundPursuitStatus.UnsupportedState => MovementCommitmentStopReason.UnsupportedState,
+        _ => throw new InvalidOperationException("Unexpected active pursuit result.")
+    };
+    awaitingRelease = true;
+    server.EndMovementCommitment(actor, sequence, reason);
+};
+
+server.MovementCommitmentArrived += result =>
+{
+    if (result.Slot != slot || result.Sequence != sequence) return;
+    awaitingRelease = true;
+    // This is the strike point, before optional recovery advances. Revalidate current game policy and reach.
+    if (TryGetTargetShape(targetId, out ReachTarget target)
+        && ReachGeometry.Within(new MovementBody(result.Position, tuning.CapsuleRadius, tuning.CapsuleHalfHeight),
+            target, limits.StopDistance)
+        && CanStrike(actorId, targetId))
+        ApplyStrike(actorId, targetId, result.Position, result.Direction);
+};
+server.MovementCommitmentEnded += result =>
+{
+    if (result.Slot != slot || result.Sequence != sequence) return;
+    ReleaseAbility(actorId, result.Sequence, result.Reason);
+    pursuit.Reset();
+    sequence = 0;
+    awaitingRelease = false;
+};
 ```
+
+Adoption requires the 22.0.0 major engine repin, matched generation-15 client and server, and the server-side
+navigation profile for the actor's capsule. Persisted movement payloads migrate automatically through normal
+blob normalization. Clients need the matching movement environment for replay, not a navigation query or route
+cache. See [forced movement rationale](design/FORCED-MOVEMENT.md) for package boundaries and the prediction tradeoff.
 
 Ready always carries finite nonzero direction and positive remaining length. AlreadyInRange and OutOfRange
 are separate admission results and must not begin a commitment. Travelling always carries finite nonzero

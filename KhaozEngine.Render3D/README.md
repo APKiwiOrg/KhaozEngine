@@ -233,8 +233,10 @@ in the `KhaozEngine.Render3D.Ecs` arm under the same namespace, so a render-only
     exactly ONE layer is a one-layer array, not a padded two-layer one: between 17.38.0 and 17.39.0 it was
     duplicated into a second slice, because the GPU seam could not express a one-layer array and the fragment
     declares `texture2DArray` (#666, fixed by `GpuTextureDescription.IsArray`).
-  - **The vertex contract, for this pipeline only.** `ModelVertex` is unchanged, so the upload path is the ordinary
-    one, but the fields are repurposed: `Color` is the vertex's four weights, `Uv.x`, `Uv.y`, `Tangent.x` and
+  - **Upload reuse.** Tile-ground upload shares only complete byte-identical vertex tuples, including the outline
+    normal stream. Index remapping preserves triangle order, winding, input values and index count. CPU meshes,
+    bounds and their canonical geometry hashes stay unchanged. Ordinary model uploads retain their existing path.
+  - **The vertex contract, for this pipeline only.** `ModelVertex` is unchanged, but the fields are repurposed: `Color` is the vertex's four weights, `Uv.x`, `Uv.y`, `Tangent.x` and
     `Tangent.y` are four material SLOTS as floats holding integers (constant across a triangle, so interpolation
     cannot smear them), `Tangent.z` is a per-vertex brightness multiplier and `Tangent.w` is 0 for the ordinary
     four-layer path. A positive value names an optional overlay slot plus one, whose weight is one minus the

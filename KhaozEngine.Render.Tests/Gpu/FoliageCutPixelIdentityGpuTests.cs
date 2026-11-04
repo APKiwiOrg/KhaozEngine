@@ -59,7 +59,7 @@ public sealed class FoliageCutPixelIdentityGpuTests
         byte[][] control = Render(context.GpuDevice, changeColor: true, materialKind: materialKind, model: model);
         Assert.Equal(materialKind == 0, restored > 0);
         Assert.Equal(4 * 10, expected.Length);
-        for (int i = 0; i < expected.Length; i++) Assert.Equal(expected[i], actual[i]);
+        GBufferByteIdentity.AssertAll(expected, actual);
         Assert.False(actual[0].SequenceEqual(control[0]), "Foliage must contribute HDR pixels.");
     }
 

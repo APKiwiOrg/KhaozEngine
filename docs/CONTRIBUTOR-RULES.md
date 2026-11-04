@@ -37,7 +37,14 @@ can absorb another contributor's staged files. Never use the shared stash for wo
   same reason for the same input. A collection identifier is a read-only snapshot the exception copies when
   it is set, so neither the caller's source nor a cast of the exposed list can change it. A change to a throw
   site's type converts every test that asserts the old exact type in the same change, GPU facts included,
-  because they skip in a local run and fail only on the GPU legs.
+  because they skip in a local run and fail only on the GPU legs. A wrapper that adds context, such as a
+  source name, rethrows the inner refusal in its own family with its reason and identifiers and keeps the
+  original as the inner exception. It never flattens a known reason into a generic one.
+- A test that reaches a numerical guard, such as a singular matrix, a collapsed cosine or a zero length, never
+  depends on floating-point cancellation landing on a threshold or on subnormal inputs. CI runs on x64 and
+  arm64, whose fused multiply-add, SIMD and denormal modes differ, so the same input can pass one check on one
+  leg and an earlier one on another. Use exact normal float32 values with the arithmetic written out in a
+  comment, or a narrow value-taking fault seam beside the guard.
 - A test that needs private state uses an internal `<Thing>ForTests` seam beside the type, never reflection.
   A seam returns the narrowest thing the test reads: a value, a count, an identity predicate or token, a
   snapshot copy or a genuine read-only view. It never returns a live mutable collection behind an

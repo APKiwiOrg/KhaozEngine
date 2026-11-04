@@ -4,10 +4,29 @@ All notable changes to KhaozEngine. One shared version line `<KhaozEngineVersion
 governs every package, including the four umbrella metapackages. Planned work lives in the repo's GitHub
 Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
-## 22.0.1
+## 23.0.0
 
 2026-11-04
 
+- **Breaking API change.** Loader refusals for malformed data no longer throw `InvalidDataException`. glTF import,
+  the attachment GLB, geometry, rig-identity, set and binding readers, and PNG decoding throw per-family
+  `<Family>DataException` types with a `Reason` and identifiers, all deriving from the new abstract
+  `MalformedDataException` in `KhaozEngine.Primitives`. Catch `MalformedDataException` where code caught
+  `InvalidDataException` from `GltfLoader`, `Scene3D.GetOrLoad*` factories that import, `AttachmentGlb`,
+  `AttachmentSetJson`, `AttachmentSetDefinition.ValidateReferences`, `AttachmentSetCache.Get`,
+  `AttachmentSetBinding`, `LoadedAttachmentSet.Bind`, `PngReader.Decode` or `TileEditOps.ImportHeights`.
+  `KhaozEngine.Attachments` and `KhaozEngine.Imaging` now reference `KhaozEngine.Primitives`.
+- Attachment source wrappers keep the inner family's reason and identifiers and add `SourceName`, rather than
+  rewrapping as a generic error. A corrupt PNG compressed stream is `PngDecodeRefusal.CompressedStreamCorrupt`
+  with the zlib error as the inner exception.
+- Content upgrade planners that throw `MalformedDataException` are reported as refusals, like
+  `InvalidDataException`, `ContentAuthoringException` and `ArgumentException`.
+- Render3D, Attachments.Render3D, Terrain.Render3D and TileWorld.Render3D refusals carry a public reason enum and
+  identifiers through subtypes of the exception thrown before, so existing catches still match. This covers
+  skeletons, skeleton contracts, bone masks, clip admission, contract joint maps, moment schedules, mesh indices,
+  prop loading, attachment binding and submission, the shared shadow-only `DrawAdmissionRefusal`, the post chain,
+  water frames, lit receivers, chunk sink configuration and the tile-ground and prop-layer validators. Messages
+  are unchanged.
 - Skip default material-map sampling and dormant cutout work for opaque, untangented foliage with no maps.
 - Reuse exact duplicate tile-ground GPU vertices without changing triangle inputs, order or authored geometry.
 - Reuse Metal vertex-read coverage across shadow, geometry and forward passes, including mesh and pipeline

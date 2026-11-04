@@ -4,7 +4,9 @@ using KhaozEngine.Gpu;
 namespace KhaozEngine.Tests.Gpu;
 
 /// <summary>A real device with a test-owned shader oracle at its factory boundary.</summary>
-internal sealed class ShaderOverrideGpuDevice(IGpuDevice inner, Func<string, string> rewrite) : IGpuDevice, IGpuResourceFactory
+internal sealed class ShaderOverrideGpuDevice(IGpuDevice inner, Func<string, string> rewrite,
+    Func<GpuResourceLayoutDescription, GpuResourceLayoutDescription>? layoutRewrite = null,
+    Func<GpuResourceSetDescription, GpuResourceSetDescription>? setRewrite = null) : IGpuDevice, IGpuResourceFactory
 {
     public GpuBackendKind Backend => inner.Backend;
     public GpuCapabilities Capabilities => inner.Capabilities;
@@ -34,8 +36,8 @@ internal sealed class ShaderOverrideGpuDevice(IGpuDevice inner, Func<string, str
     public IGpuTexture CreateTexture(in GpuTextureDescription d) => inner.Factory.CreateTexture(d);
     public IGpuFramebuffer CreateFramebuffer(IGpuTexture? depth, params IGpuTexture[] colour) => inner.Factory.CreateFramebuffer(depth, colour);
     public IGpuSampler CreateSampler(in GpuSamplerDescription d) => inner.Factory.CreateSampler(d);
-    public IGpuResourceLayout CreateResourceLayout(in GpuResourceLayoutDescription d) => inner.Factory.CreateResourceLayout(d);
-    public IGpuResourceSet CreateResourceSet(in GpuResourceSetDescription d) => inner.Factory.CreateResourceSet(d);
+    public IGpuResourceLayout CreateResourceLayout(in GpuResourceLayoutDescription d) => inner.Factory.CreateResourceLayout(layoutRewrite?.Invoke(d) ?? d);
+    public IGpuResourceSet CreateResourceSet(in GpuResourceSetDescription d) => inner.Factory.CreateResourceSet(setRewrite?.Invoke(d) ?? d);
     public IGpuShaderSet CreateShadersFromSpirv(string vertex, string fragment) => inner.Factory.CreateShadersFromSpirv(rewrite(vertex), rewrite(fragment));
     public IGpuComputeShader CreateComputeShaderFromSpirv(string source) => inner.Factory.CreateComputeShaderFromSpirv(rewrite(source));
     public IGpuPipeline CreateGraphicsPipeline(in GpuPipelineDescription d) => inner.Factory.CreateGraphicsPipeline(d);

@@ -97,6 +97,9 @@ namespace KhaozEngine.Tests.Gpu
                 ["Model"] = L([.. AtmosphereBindings.AppendLayout(U("U", VF), Ro("PointLights", F), Ro("PointLightClusters", F), T("Albedo"),
                     T("NormalMap"), T("RoughnessMap"), S("Sampler"), T("ShadowMap"), S("ShadowSamp"),
                     T("PointShadowMap"), T("PointShadowTransientMap")), T("InteriorCut"), Ro("WaterVolumes", F)]),
+                ["Model.foliageOpaque"] = L([.. AtmosphereBindings.AppendLayout(U("U", VF), Ro("PointLights", F),
+                    Ro("PointLightClusters", F), T("ShadowMap"), S("ShadowSamp"), T("PointShadowMap"),
+                    T("PointShadowTransientMap")), Ro("WaterVolumes", F)]),
                 ["Foliage"] = L(U("Foliage", V, dynamic: true)),
                 // The shared frame block, fragment-only point lights and per-draw vertex block in binding order.
                 // The two uniform buffers retain their relative order from #604.
@@ -279,6 +282,8 @@ namespace KhaozEngine.Tests.Gpu
             ("GroundDecalRenderer", ["GroundDecal"]),
             ("ModelRenderer", ["Model"]),
             ("ModelRenderer foliage", ["Model", "Foliage"]),
+            ("ModelRenderer foliage opaque", ["Model.foliageOpaque", "Foliage"]),
+            ("ModelRenderer foliage opaque motion", ["Model.foliageOpaque", "Foliage", "Motion.frame"]),
             ("ModelRenderer foliage motion", ["Model", "Foliage", "Motion.frame"]),
             ("ModelRenderer dissolve", ["Model"]),
             ("ModelRenderer splat", ["Model.splatFrame", "Model.splatMaterial"]),
@@ -357,8 +362,8 @@ namespace KhaozEngine.Tests.Gpu
             // The atmosphere producers add three dense layouts and pipeline rows. GpuScaledCopy adds one of each.
             // Both counts are stated so an emptied table cannot pass by agreeing with itself.
             // Certified resolve and accumulation add two compact layouts and four pipeline shapes.
-            Assert.Equal(68, ShippedLayouts.Count);
-            Assert.Equal(75, ShippedPipelines.Count);
+            Assert.Equal(69, ShippedLayouts.Count);
+            Assert.Equal(77, ShippedPipelines.Count);
 
             foreach ((string pipeline, string[] slots) in ShippedPipelines)
             {

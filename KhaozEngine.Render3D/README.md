@@ -1740,7 +1740,11 @@ default, keeps wind at every size. Advance `Scene3D.EffectTimeSeconds` from the 
 four `FoliageInteractor` positions, radii, strengths and agitation values for cosmetic bending and shiver.
 Vertical separation prevents a different floor from pushing the foliage. Position must be finite, radius
 finite and non-negative, and strength and agitation finite in `[0, 1]`. Strength defaults to 1 and
-agitation to 0. All submission inputs are copied by value. Foliage is lit and supports material alpha
+agitation to 0. All submission inputs are copied by value. Meshes with no material maps, zero alpha cutoff
+and zero tangents on every vertex use an opaque no-map fragment. Lighting, fog, normal, depth, motion
+and visibility arithmetic retain the ordinary foliage contract. Textured, MASK and tangent-bearing
+meshes keep the generic fragment. The opaque resource set follows ordinary default-set replacements
+when light buffers or shadow atlases change. Foliage is lit and supports material alpha
 masks. It adds no collision or world state.
 
 `FoliageInstance(Mesh, Transform, ThinningRank, Motion = default, CastsShadows = false)` stores motion

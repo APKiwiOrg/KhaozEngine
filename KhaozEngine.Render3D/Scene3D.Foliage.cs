@@ -211,7 +211,7 @@ public sealed partial class Scene3D
             if (!SkipGBufferDraw(GBufferGate.Foliage))
             {
                 _model.DrawFoliageMesh(cl, mesh.Vb, mesh.Ib, mesh.IndexCount, mesh.IndexFormat,
-                    draw.Batch.Buffer, (uint)draw.Patch.Start, (uint)draw.Count, (uint)draw.UniformSlot, mesh.MaterialSet);
+                    draw.Batch.Buffer, (uint)draw.Patch.Start, (uint)draw.Count, (uint)draw.UniformSlot, mesh.MaterialSet, mesh.OpaqueFoliage);
                 CountMeshDraw(mesh.IndexCount, (uint)draw.Count);
             }
             candidates += draw.Count;

@@ -27,6 +27,26 @@ internal sealed class MetalRecordedReads
     internal ulong Generation { get; private set; }
     long _resourceLookups;
     internal long HashLookupsForTests => _resourceLookups;
+    internal long InsertsForTests
+    {
+        get
+        {
+            long count = 0;
+            foreach (var reads in _resources.Values)
+                count += reads.Contiguous.InsertsForTests + reads.Strided.InsertsForTests;
+            return count;
+        }
+    }
+    internal long ExtendsForTests
+    {
+        get
+        {
+            long count = 0;
+            foreach (var reads in _resources.Values)
+                count += reads.Contiguous.ExtendsForTests + reads.Strided.ExtendsForTests;
+            return count;
+        }
+    }
     internal long RotationsForTests
     {
         get

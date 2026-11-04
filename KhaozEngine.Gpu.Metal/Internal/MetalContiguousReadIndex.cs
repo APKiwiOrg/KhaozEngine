@@ -13,6 +13,8 @@ internal sealed class MetalContiguousReadIndex
 
     internal long ProbeStepsForTests => _probes + _earlier.ProbeStepsForTests;
     internal long NodeWritesForTests => _writes + _earlier.NodeWritesForTests;
+    internal long InsertsForTests => _earlier.InsertsForTests;
+    internal long ExtendsForTests => _earlier.ExtendsForTests;
     internal long RotationsForTests => _earlier.RotationsForTests;
 
     internal void Clear()

@@ -14,17 +14,22 @@ internal sealed class MetalReadFootprintDrawFixture : IDisposable
     internal readonly MetalBuffer Vertices, Instances, Uniform, Material, Indices;
     internal readonly MetalBoundSet Set;
     internal readonly MetalGraphicsPipeline Pipeline;
+    internal readonly MetalGraphicsPipeline[] PassPipelines;
+    internal readonly MetalBuffer[] InstanceStreams;
     internal readonly MetalBuffer[] Meshes;
     internal readonly MetalBoundSet[] StaticSets;
     readonly uint _uniformStep;
 
-    internal MetalReadFootprintDrawFixture(int draws = 3000, bool freshSlices = false)
+    internal MetalReadFootprintDrawFixture(int draws = 3000, bool freshSlices = false, bool multiPass = false)
     {
         _uniformStep = freshSlices ? 512u : 256u;
         Vertices = Harness.NewBuffer(32768, GpuBufferUsage.VertexBuffer);
         Meshes = [Vertices, Harness.NewBuffer(32768, GpuBufferUsage.VertexBuffer),
             Harness.NewBuffer(32768, GpuBufferUsage.VertexBuffer), Harness.NewBuffer(32768, GpuBufferUsage.VertexBuffer)];
         Instances = Harness.NewBuffer((uint)(draws * 384 + 1024), GpuBufferUsage.VertexBuffer);
+        InstanceStreams = multiPass ? [Instances,
+            Harness.NewBuffer(262144, GpuBufferUsage.VertexBuffer),
+            Harness.NewBuffer(262144, GpuBufferUsage.VertexBuffer)] : [Instances];
         Uniform = Harness.NewBuffer((uint)draws * _uniformStep + 256, GpuBufferUsage.UniformBuffer);
         Material = Harness.NewBuffer((uint)draws * _uniformStep + 256, GpuBufferUsage.UniformBuffer);
         Indices = Harness.NewBuffer(2048, GpuBufferUsage.IndexBuffer);
@@ -65,7 +70,13 @@ internal sealed class MetalReadFootprintDrawFixture : IDisposable
             },
             Outputs = new(null, GpuPixelFormat.B8G8R8A8UNorm),
         };
+        if (multiPass)
+            description.VertexLayouts.Add(new(32, 0, [new("Previous", GpuVertexElementFormat.Float3)]));
         Pipeline = new(Harness.Liveness, MetalGraphicsPipelinePlan.Build(Harness.Liveness, description), default, default);
+        PassPipelines = multiPass ? [Pipeline,
+            new(Harness.Liveness, MetalGraphicsPipelinePlan.Build(Harness.Liveness, description), default, default),
+            new(Harness.Liveness, MetalGraphicsPipelinePlan.Build(Harness.Liveness, description), default, default),
+            new(Harness.Liveness, MetalGraphicsPipelinePlan.Build(Harness.Liveness, description), default, default)] : [Pipeline];
         List = Harness.NewList(new());
     }
 
@@ -77,6 +88,7 @@ internal sealed class MetalReadFootprintDrawFixture : IDisposable
         List.SetVertexBuffer(0, Vertices);
         List.SetVertexBuffer(1, Instances);
         List.SetIndexBuffer(Indices, GpuIndexFormat.UInt16);
+        if (PassPipelines.Length > 1) List.SetVertexBuffer(2, Meshes[3]);
     }
 
     internal void Draw(uint draw, bool changeUniforms = true, bool advanceInstances = true)

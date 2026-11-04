@@ -25,6 +25,13 @@ public sealed partial class PathFollower
         return TickCore(feet, goal.Anchor, agentRadius, 0f, goal, preparingDrop: true);
     }
 
+    /// <summary>Point-query counterpart of reversible supported preparation. The host advances time first.</summary>
+    internal PathFollowOutput TickDropPreparation(Vector3 feet, Vector3 goal, float agentRadius)
+    {
+        if (_drop is null) throw new InvalidOperationException("No active Drop to prepare.");
+        return TickCore(feet, goal, agentRadius, 0f, region: null, preparingDrop: true);
+    }
+
     /// <summary>Acknowledges the active Drop's supported landing. The host must verify actual non-swimming
     /// support at the named landing with its movement controller. Advances exactly this transition and permits
     /// subsequent goal retargeting. A final Complete Drop remains a reached-terminal witness for the next

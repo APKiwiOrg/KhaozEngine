@@ -64,5 +64,39 @@ public class ContactTerrainAdditiveTests
             Assert.Equal(ContactDropRoute.Sharp, terrain.Terrain!.Route(link));
             Assert.False(terrain.Terrain.TryGet(link, out _));
         }
+        var selected = directions.First(link => ContactTerrainDropCertificate.HasSteep(capture.DescentEvidence!, tuning,
+            ContactDropProof.Feet(sharp.Space.Layers[link.FromLayer], link.FromX, link.FromZ),
+            ContactDropProof.Feet(sharp.Space.Layers[link.ToLayer], link.ToX, link.ToZ)));
+        var from = ContactDropProof.Feet(sharp.Space.Layers[selected.FromLayer], selected.FromX, selected.FromZ);
+        var to = ContactDropProof.Feet(sharp.Space.Layers[selected.ToLayer], selected.ToX, selected.ToZ);
+        var traversal = new NavDropTraversal(selected, from, to);
+        var original = new ContactDropFollower(sharp, traversal);
+        var mixed = new ContactDropFollower(terrain, traversal);
+        var reads = new ContactTerrainEvidenceReads(terrain.Terrain!.Evidence);
+        var body = new MoveState { Position = from + Vector3.UnitY * tuning.CapsuleHalfHeight, Grounded = true, SpeedScale = 1 };
+        bool completed = false;
+        for (int tick = 0; tick < 120; tick++)
+        {
+            var input = new PlayerPathInput(0.7f + tick * 0.1f);
+            var before = original.Tick(body, tuning, false, ContactTerrainScene.Dt, scene.Context, input,
+                out bool firstComplete, out bool firstReplan);
+            RangeSteering after;
+            bool secondComplete, secondReplan;
+            using (reads.Observe()) after = mixed.Tick(body, tuning, false, ContactTerrainScene.Dt, scene.Context, input,
+                out secondComplete, out secondReplan);
+            Assert.Equal(before, after);
+            Assert.Equal(firstComplete, secondComplete);
+            Assert.Equal(firstReplan, secondReplan);
+            Assert.False(firstReplan);
+            Assert.NotEqual(RangeMoveStatus.Blocked, after.Status);
+            if (secondComplete) { completed = true; break; }
+            body = ContactTerrainRuntimeTests.Step(scene.Context, body, input.Command(after, false));
+        }
+        Assert.True(completed);
+        Assert.Empty(reads.Coverage);
+        Assert.Empty(reads.Columns);
+        Assert.Empty(reads.FaceRecords);
+        Assert.Empty(reads.Adjacency);
+        Assert.Empty(reads.Bindings);
     }
 }

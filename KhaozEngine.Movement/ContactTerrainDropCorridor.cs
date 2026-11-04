@@ -12,8 +12,6 @@ internal sealed class ContactTerrainDropCorridor(PhysicsNavDescentEvidence evide
 {
     readonly NavDropFootprint _volume = new(ground, tuning, from, to, allowance);
     internal bool Contains(Vector3 feet) => _volume.Contains(feet);
-    internal void BeginMode() => _volume.BeginMode();
-    internal MovementBoundary Compose(MovementBoundary ordinary, MovementFrameDescriptor frame) => _volume.Compose(ordinary, frame);
 
     internal bool Certify()
     {

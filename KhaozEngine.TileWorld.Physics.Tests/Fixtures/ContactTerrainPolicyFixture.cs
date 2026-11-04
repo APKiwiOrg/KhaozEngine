@@ -58,12 +58,11 @@ public sealed class ContactTerrainPolicyFixture : IDisposable
     internal IReadOnlyList<ContactDropStepObservation> ObserveRunUntilRefusal()
     {
         var certificate = Certificate();
-        certificate.Corridor.BeginMode();
         using var binding = Scene.Context.CreateNavigationBinding(ContactTerrainScene.Tuning);
         var frame = Scene.Context.NavigationFrame;
         var policy = new ContactTerrainDropPolicy(certificate, frame, ContactTerrainScene.Tuning, 6);
         var witness = new ContactDescentEvidence(policy.Observe);
-        var boundary = certificate.Corridor.Compose(binding.CaptureOrdinaryBoundary(frame), frame);
+        var boundary = policy.Corridor.Compose(binding.CaptureOrdinaryBoundary(frame), frame);
         var state = new FramedMovementState(new MoveState
         { Position = From + Vector3.UnitY * ContactTerrainScene.Tuning.CapsuleHalfHeight, Grounded = true, SpeedScale = 1 }, frame, null);
         var steps = new List<ContactDropStepObservation>();

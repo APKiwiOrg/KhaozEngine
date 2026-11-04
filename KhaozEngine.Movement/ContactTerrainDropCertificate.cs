@@ -21,6 +21,7 @@ internal sealed class ContactTerrainDropCertificate
     internal ContactTerrainDropCorridor Corridor { get; }
     internal Vector3 From { get; }
     internal Vector3 To { get; }
+    internal NavDropFootprint CreateCorridor(MoveTuning tuning, float allowance) => new(Ground, tuning, From, To, allowance);
 
     ContactTerrainDropCertificate(ContactTerrainDropCertificate source)
     {

@@ -101,7 +101,7 @@ public sealed partial class MoveToRange
         if (swims && Settling(body, tuning, context)) return Hold(RangeMoveStatus.Suspended);
         NavGoalRegion goal = Goal(tuning, target, range);
         if (!body.Grounded && !swims && _drop is null) return Hold(RangeMoveStatus.Suspended);
-        if (_drop is not null && _stalled) return Hold(RangeMoveStatus.Blocked);
+        if (_drop is not null && _stalled) return Hold(RangeMoveStatus.Blocked) with { DropRefusal = _drop.Refusal };
         bool preparingDrop = _drop is { Preparing: true } && body.Grounded && !body.Swimming;
         if (_drop is not null && !preparingDrop &&
             TickDrop(body, tuning, run, dt, context, playerInput, out RangeSteering dropping)) return dropping;

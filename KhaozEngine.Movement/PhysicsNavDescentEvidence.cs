@@ -112,7 +112,7 @@ internal sealed class PhysicsNavDescentEvidence
         _coverage = source._coverage; _raw = source._raw; _joins = source._joins; _lookup = source._lookup;
         StrictDependencies = true;
     }
-    internal PhysicsNavDescentEvidence RequireDependencies() => new(this);
+    internal PhysicsNavDescentEvidence RequireDependencies() => StrictDependencies ? this : new(this);
     internal static void MissingDependency() => throw new PhysicsNavDescentEvidenceException(
         PhysicsNavDescentEvidenceReason.DependencyMissing, PhysicsEvidenceStatus.Unavailable);
 }

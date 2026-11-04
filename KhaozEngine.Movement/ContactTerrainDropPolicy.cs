@@ -23,6 +23,7 @@ internal sealed class ContactTerrainDropPolicy(ContactTerrainDropCertificate cer
     internal ContactTerrainDropPhase Phase { get; private set; }
     internal ContactTerrainDropRefusal Refusal { get; private set; }
     internal bool Complete { get; private set; }
+    internal NavDropFootprint Corridor { get; } = certificate.CreateCorridor(tuning, allowance);
 
     internal void BeginTick() => _lastFace = -1;
     internal bool Observe(in ContactSelectedSupport selected)

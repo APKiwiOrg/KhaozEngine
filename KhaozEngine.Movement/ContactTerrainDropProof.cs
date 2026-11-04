@@ -50,8 +50,7 @@ internal sealed class ContactTerrainDropProof(PhysicsNavBakeOptions options, Eff
         using var session = new ContactDropSourceSession(_binding, reuse);
         try
         {
-            certificate.Corridor.BeginMode();
-            var boundary = certificate.Corridor.Compose(_binding.CaptureOrdinaryBoundary(frame), frame);
+            var boundary = policy.Corridor.Compose(_binding.CaptureOrdinaryBoundary(frame), frame);
             var state = new FramedMovementState(new MoveState
             {
                 Position = certificate.From - frame.PhysicsOrigin + Vector3.UnitY * _binding.Tuning.CapsuleHalfHeight,

@@ -160,7 +160,11 @@ clearance, layer bands and transforms remain unchanged. Region predicates and ph
 use resting heights. Stair and Hop generation and stored surface identity use raw heights. Contact Drop generation uses certified resting anchors.
 
 `KhaozEngine.Movement` implements phase 5b ordinary contact ground navigation, released in 20.39.0, persists these
-resting heights in KENB formats 2 and 3 and validates runtime bindings before routing. Format 3 adds opt-in Drop topology. This package keeps no Locomotion
+resting heights in KENB formats 2 through 4 and validates runtime bindings before routing. Format 3 adds opt-in Drop
+topology. Format 4 stores exact candidate endpoints, accepted routes and opt-in terrain evidence. Movement selects
+the stored sharp or terrain policy for preview and actual following. Both point and region routes retain mandatory
+Drop endpoints and require `CompleteDrop()` after actual supported terminal Hold, including the lower terrain
+fringe. Consumers must enable capture and profile terrain flags and rebake. This package keeps no Locomotion
 dependency. Contact aquatic navigation, footprint-only seeds and public explicit bake profiles are deferred to
 [#1389](https://github.com/APKiwiOrg/KhaozEngine/issues/1389). See the
 [Movement profile contract](../KhaozEngine.Movement/README.md#capsule-checked-ground-profiles).

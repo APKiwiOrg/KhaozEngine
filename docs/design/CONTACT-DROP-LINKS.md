@@ -6,7 +6,8 @@ explicit profiles cannot enable it. Numeric allowances must be finite and nonneg
 
 ## Candidate and physical certificate
 
-After node admission, ordinary directed exits and Stair proofs, sources scan in layer, Z, X and fixed neighbor
+Sharp Drops use the following candidate and physical certificate. After node admission, ordinary directed exits
+and Stair proofs, sources scan in layer, Z, X and fixed neighbor
 order. A direction with an accepted ordinary exit is not a brink. For cell size c and capsule radius r the local
 horizon is `1 + ceil(2*r/c)` cells. The nearest column with an admitted lower anchor supplies its highest eligible
 surface, with layer-index ties. A supported step-band continuation stops the scan. Require
@@ -67,6 +68,8 @@ TerminalHold phases. Full-tuning walk and run each start from their own real sou
 feature must belong to the authenticated downward chain. First walkable support must belong to the named target's
 own connected patch inside the finite downstream fringe. The policy retains exclusive transition ownership there,
 and rejects another patch, lost support or exhausted duration. It never adds ordinary nodes or segment permission.
+Terrain following emits the terminal zero-input command while retaining its Drop lock. It acknowledges only after
+the next supplied body authenticates that issued Hold, so the wrapper cannot replace it with a later Walk.
 Terminal support must resolve through the original target layer's raw cell patch, satisfy the full ordinary
 footprint and the unchanged 1 mm sphere, then survive a real zero-input Hold. The original boundary, highest-launch
 descent accounting, medium history and 64 slices at 30 Hz remain mandatory. Geometry without a captured terrain
@@ -76,8 +79,14 @@ Terrain opt-in is additive. Every sharp-topology candidate attempts the unchange
 may attempt terrain when applicable. New terrain topology attempts terrain only. Every accepted link records its
 proving route, which is the sole policy selector. Creatures retain zero permission by default.
 
-The opt-in, physical certificate and bake/load support are implemented. Standard terrain preview and live following
-are not available yet. Publishing an accepted terrain link does not make it executable through the standard host.
+Bake, preview and following share the terrain policy. Runtime selects only by the stored route, before reading
+evidence. Sharp-route links retain the existing sharp preview and follower. Every terrain attempt owns its
+corridor, selected-support witness and phase state. Cached certificates contain immutable topology and their
+first construction is synchronized across callers. Loading a file needs no physics and grants no new permission.
+The consumer must opt in and rebake, then supply its ordinary live movement context and actual body to execute.
+Call `GroundNavigation.PrepareTerrainDescents()` during loading, outside a frame or simulation tick. It builds the
+synchronized certificate cache without physics and is safe for concurrent callers. First use can exceed a frame
+or tick budget. Preparation caches immutable topology only and never replaces the live preview or actual Hold.
 
 ## Planning and following
 
@@ -116,7 +125,9 @@ expired cooldown lets the current goal replace the old route before its next tra
 
 ## Range execution and hosts
 
-`MoveToRange` owns a ContactDropFollower with Align, Launch, Falling and Landed phases. Alignment follows admitted
+`MoveToRange` owns a ContactDropFollower dispatched by the stored proving route. Sharp execution keeps its
+Align, Launch, Falling and Landed phases. Terrain execution uses LaunchPrefix, Descending, LandingFringe and
+TerminalHold from the shared policy. Alignment follows admitted
 support to the named source using the shared physical arrival rule. The follower's broad accept radius never
 authorizes departure. Commitments, buffered jumps and unrelated airborne bodies remain Suspended.
 
@@ -124,8 +135,11 @@ Supported preparation is reversible, including Align, rooted holds and launch-pr
 Before issuing departure, the host reconsiders actual current range membership and refreshes due goal drift through
 the follower's single query site, even inside cooldown. Membership or a replacement without that Drop releases its
 untraversed preparation without calling `CompleteDrop()`. An unchanged Drop retains its prepared state and preview.
-A refreshed Drop keeps the ordinary cooldown and locks normally. Each tick queries at most once. The first command
-whose proved step leaves support, including a same-tick fall and landing, commits the immutable flight. Unsupported
+A refreshed Drop keeps the ordinary cooldown and locks normally. Refresh requires ordinary raw admission at the
+actual supported pose. A prefix outside that admission can return Unreachable and cancel preparation, without
+borrowing the old source node as a substitute query origin. Each tick queries at most once. The first command
+whose proved step enters certified descent, including steep sliding or a same-tick fall and landing, commits the
+transition through the supported lower fringe until terminal Hold. Unsupported
 ticks never replan or retarget that flight, even when the latest goal contains the airborne body.
 
 Before launch, one bounded preview checks the actual body, walk/run mode, SpeedScale, momentum, timestep and live
@@ -133,7 +147,9 @@ environment. It uses the same bounded control law and original-boundary composit
 count is the floor of the baked duration divided by dt, including both Holds. It neither searches for another edge
 nor publishes a predicted arrival. The predicted continuation is checked against actual motion, control inputs and
 read identity. A changed basis suspends in flight and replans once supported. Known obstruction is Blocked, while unavailable evidence suspends or follows the
-existing environment error contract. Flight requests ordinary bounded input, with no jump or direct-driver fallback.
+existing environment error contract. A missing retained dependency instead ends the attempt as `Blocked` with
+`RangeSteering.DropRefusal` equal to `ContactDropRuntimeRefusal.DependencyMissing`. It never escapes to the host,
+means absent geometry or selects the sharp policy. Flight requests ordinary bounded input, with no jump or direct-driver fallback.
 Airborne descent is excluded from ground-stall accounting.
 
 Player hosts pass one `PlayerPathInput` carrying this tick's finite camera yaw to `MoveToRange.Tick`, then create

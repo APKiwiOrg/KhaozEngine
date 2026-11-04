@@ -45,13 +45,12 @@ public class ContactTerrainPolicyRefusalTests(ContactTerrainPolicyFixture fixtur
                 excluded = steep.Key;
                 certificate = certificate.WithoutSteepForTests(steep.Key);
             }
-            certificate.Corridor.BeginMode();
             using var binding = fixture.Scene.Context.CreateNavigationBinding(ContactTerrainScene.Tuning);
             var frame = fixture.Scene.Context.NavigationFrame;
             var policy = new ContactTerrainDropPolicy(certificate, frame, ContactTerrainScene.Tuning, 6);
             bool injected = false, hold = false;
             var witness = new ContactDescentEvidence(Observe);
-            var boundary = certificate.Corridor.Compose(binding.CaptureOrdinaryBoundary(frame), frame);
+            var boundary = policy.Corridor.Compose(binding.CaptureOrdinaryBoundary(frame), frame);
             var state = new FramedMovementState(new MoveState
             { Position = fixture.From + Vector3.UnitY * ContactTerrainScene.Tuning.CapsuleHalfHeight, Grounded = true, SpeedScale = 1 }, frame, null);
             for (int slice = 0; slice < fixture.Capture.Options.MaxEdgeProbeSteps; slice++)

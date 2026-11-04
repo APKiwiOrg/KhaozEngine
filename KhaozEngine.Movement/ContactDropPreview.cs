@@ -14,6 +14,8 @@ internal static class ContactDropPreview
         in MoveState body, in MoveTuning tuning, bool run, float dt, GroundMoveContext context,
         ContactDropPredictionBasis basis, PlayerPathInput? playerInput = null)
     {
+        if (navigation.Terrain?.Route(traversal.Link) == ContactDropRoute.Terrain)
+            return ContactTerrainDropPreview.Prove(navigation, traversal, body, tuning, run, dt, context, basis, playerInput);
         var corridor = new NavDropFootprint(navigation.Footprint, tuning, traversal.StartFeet,
             traversal.LandingFeet, navigation.MaxDropMetres);
         if (!corridor.Certify()) return RangeMoveStatus.Blocked;

@@ -30,6 +30,11 @@ public class ContactTerrainOptInTests
         Assert.Contains(terrain.Graph.Links, link => link.Kind == NavLinkKind.Drop && link.FromX == sx &&
             link.FromZ == sz && link.ToX == tx && link.ToZ == tz);
         Assert.False(terrain.AllowsSegment(scene.From, scene.To));
+        var retained = terrain.Terrain!.Evidence;
+        var excluded = Enumerable.Range(0, retained.Width * retained.Height).First(i =>
+            retained.StoredCoverage(i % retained.Width, i / retained.Width) == DescentCoverage.Excluded);
+        var missing = Assert.Throws<PhysicsNavDescentEvidenceException>(() => retained.Column(excluded % retained.Width, excluded / retained.Width));
+        Assert.Equal(PhysicsNavDescentEvidenceReason.DependencyMissing, missing.Reason);
     }
 
     [Fact]

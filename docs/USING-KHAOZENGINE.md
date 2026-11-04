@@ -9417,9 +9417,11 @@ public sealed class GroundNavigation
     public float AgentHeight { get; }
     public bool Aquatic { get; }
     public float MaxDropMetres { get; }
+    public bool AllowTerrainDescents { get; }
     public bool AllowsSegment(Vector3 fromFeet, Vector3 toFeet);
     public void Validate(EffectiveMovementBinding binding);
     public void Validate(in MoveTuning tuning);
+    public void PrepareTerrainDescents();
 }
 ```
 
@@ -9664,9 +9666,18 @@ required whole solid groups. Sharp dependencies, refused attempts, recipe closur
 are omitted. Excluded evidence throws `DependencyMissing`. Runtime policy selection must use the persisted route,
 never infer it from retained geometry. Certificates reconstruct lazily with persisted thresholds, avoiding platform
 trigonometric classification on load. Disabled profiles keep their original policy. Formats 1, 2 and 3 stay frozen.
+Call `GroundNavigation.PrepareTerrainDescents()` during loading, outside a frame or simulation tick. It builds the
+synchronized certificate cache without physics and is safe for concurrent callers. First use can exceed a frame
+or tick budget. Preparation caches immutable topology only and never replaces the live preview or actual Hold.
 
-Terrain support currently covers bake, load and certificate reconstruction. Standard terrain preview and live
-following are not available yet. Accepted terrain links are not runnable through the standard host path yet.
+Terrain Drops execute through `MoveToRange` using the same policy as the bake. Stored routes select sharp or
+terrain behavior before evidence access. Preview and submission share the current `PlayerPathInput` when using
+player commands. Supported preparation remains reversible. Certified descent, including steep sliding, owns the
+route through the lower fringe until the actual body reaches the named raw landing within 1 mm and survives its
+ordinary supported Hold. No fringe node becomes ordinary walkable ground. `Blocked` with
+`RangeSteering.DropRefusal == ContactDropRuntimeRefusal.DependencyMissing` ends an attempt whose retained evidence
+is incomplete, without sharp fallback or an exception to the host. Certificates reconstruct under a shared lock,
+while each preview and follower owns its mutable corridor and policy state.
 
 Load needs no new movement proof. The identity covers the engine version, every capture option including
 `SampleWater`, the labelled digests, and each profile's name, area filter, `Aquatic` flag and every `MoveTuning` field except

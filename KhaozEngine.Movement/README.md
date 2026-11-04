@@ -304,9 +304,11 @@ public sealed class GroundNavigation
     public float AgentHeight { get; }
     public bool Aquatic { get; }
     public float MaxDropMetres { get; }
+    public bool AllowTerrainDescents { get; }
     public bool AllowsSegment(Vector3 fromFeet, Vector3 toFeet);
     public void Validate(EffectiveMovementBinding binding);
     public void Validate(in MoveTuning tuning);
+    public void PrepareTerrainDescents();
 }
 ```
 
@@ -395,7 +397,8 @@ and is not fixed in this release. Check routes over sloped physics ground in the
 
 Set finite nonnegative `GroundProfileOptions.MaxDropMetres` or `NavBakeProfile.MaxDropMetres` per body profile.
 Zero preserves existing topology and identity. Positive allowance requires an OrdinaryContact ground profile,
-independently of manual falls and fall damage. The local candidate horizon is `1 + ceil(2 * radius / cellSize)`.
+independently of manual falls and fall damage. The sharp candidate horizon is `1 + ceil(2 * radius / cellSize)`. Opted-in terrain routes use their authenticated
+geometry-derived band and bounded fringe instead.
 Only the nearest eligible lower admitted surface is considered in a direction without a supported ordinary exit.
 Both usable walk/run modes must prove an unpowered fall, supported target arrival and post-landing Hold within
 the existing total edge duration. Full tuning includes actual pace and momentum. First landing, unwalkable contact
@@ -427,7 +430,10 @@ A target that moves past retarget tolerance refreshes at the Drop source and thr
 rooted holds and the supported launch prefix, even inside the cooldown. Current range membership cancels preparation
 without acknowledging an untraversed Drop. Refresh uses the follower's single query site and retains the fresh
 result's ordinary cooldown. A replacement without that Drop releases its preparation. The first command that
-leaves support commits the physical flight, whose source and landing then remain fixed until supported completion.
+enters certified descent commits the transition, including steep sliding. Its source and landing remain fixed
+through the supported lower fringe until terminal Hold. Refresh still requires ordinary raw admission at the
+actual supported pose. A prefix outside that admission can return Unreachable and cancel preparation. It never
+borrows the old source node as a substitute query origin.
 See [Contact Drop links](../docs/design/CONTACT-DROP-LINKS.md) for costs, follower acknowledgement and storage reasons.
 
 ### Parallel contact bake
@@ -714,12 +720,20 @@ Evidence is pooled across enabled profiles and retains only accepted terrain pro
 including whole queried columns, original raw identities and required complete solid groups. Neither sharp proof
 reads, refused attempts, recipe closure nor the global steep inventory is retained. Certificate reconstruction and
 terrain policy reads are local. Certificates reconstruct lazily on first use with the persisted threshold bits.
+Call `GroundNavigation.PrepareTerrainDescents()` during loading, outside a frame or simulation tick. It builds the
+synchronized certificate cache without physics and is safe for concurrent callers. First use can exceed a frame
+or tick budget. Preparation caches immutable topology only and never replaces the live preview or actual Hold.
 Loading and reconstruction use no platform trigonometric functions. Excluded evidence always throws
 `DependencyMissing`, including steep-presence queries. It cannot select a fallback policy. No trajectories or
 per-mode physics verdicts are stored. Formats 1, 2 and 3 keep their exact bytes and candidate meanings.
 
-Terrain support currently covers bake, load and certificate reconstruction. Standard terrain preview and live
-following are not available yet. An accepted terrain link must not be presented as a runnable standard-host Drop.
+Terrain preview and following use the same `ContactTerrainDropPolicy` as the bake. The stored route selects the
+policy before evidence access. Sharp routes retain their existing preview and follower. Each terrain preview and
+follower owns its corridor, support witness and descent state. Cached certificates hold immutable topology only.
+The terrain follower returns a zero-input `Dropping` command for terminal Hold and retains ownership until the
+next supplied body authenticates that command. A later Walk cannot replace the Hold before submission.
+A missing retained dependency returns `Blocked` with `RangeSteering.DropRefusal` set to
+`ContactDropRuntimeRefusal.DependencyMissing`, ending that attempt without sharp fallback or a host exception.
 
 In format 3, disabled profiles encode those four appended values as 0, 1, 1 and false. Enabled profiles
 retain their actual flight inputs. The 13 added identity bytes per profile change neither the layer layout
@@ -1394,8 +1408,10 @@ The internal fresh-bake proof opts in through `ContactNavigationProof.EnableTerr
 It keeps the full actual walk/run tuning, original raw target layer, ordinary terminal footprint, 1 mm sphere,
 original boundary and 64-slice duration. Selected support binds canonical feature geometry and owner separately
 from the ordinary adapter's selector owner, which must remain unchanged after the real source Hold.
-Explicit capture/profile flags publish these certified links and retain their evidence in KENB 4. Runtime
-preview and live following are not available yet. Existing sharp Drops and ordinary `AllowsSegment` are unchanged.
+Explicit capture/profile flags publish these certified links and retain their evidence in KENB 4. Runtime preview
+and following use this same policy, selected by the stored route. Supported alignment and launch preparation stay
+reversible. The first accepted command entering descent commits the transition through the supported lower fringe
+until the actual body supplies terminal support and a real Hold. Ordinary `AllowsSegment` remains unchanged.
 
 Calling-thread dependency receipts retain only accepted terrain proof reads and their certificate inputs.
 The subset includes observed coverage and columns, original raw rows, local faces and complete solid groups needed

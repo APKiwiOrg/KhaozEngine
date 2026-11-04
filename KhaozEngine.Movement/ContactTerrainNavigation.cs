@@ -16,12 +16,13 @@ internal sealed class ContactTerrainNavigation
     internal PhysicsNavDescentEvidence Evidence { get; }
     internal ContactTerrainProfileEvidence Sources { get; }
     internal float SlopeCos { get; }
+    internal int CertificateCountForTests { get { lock (_certificates) return _certificates.Count; } }
     internal ContactTerrainNavigation(GroundNavigation navigation, PhysicsNavDescentEvidence evidence,
         IEnumerable<NavLink> terrainLinks, float slopeCos)
     {
-        _navigation = navigation; Evidence = evidence; SlopeCos = slopeCos;
+        _navigation = navigation; Evidence = evidence.RequireDependencies(); SlopeCos = slopeCos;
         _terrainLinks = new(terrainLinks);
-        Sources = new(evidence, navigation);
+        Sources = new(Evidence, navigation);
     }
     internal ContactDropRoute Route(NavLink link) => _terrainLinks.Contains(link) ? ContactDropRoute.Terrain : ContactDropRoute.Sharp;
     internal bool TryGet(NavLink link, out ContactTerrainDropCertificate? certificate)
@@ -46,6 +47,17 @@ internal sealed class ContactTerrainNavigation
 
 public sealed partial class GroundNavigation
 {
+    /// <summary>Constructs every accepted terrain certificate without physics. Call during loading, outside a
+    /// frame or simulation tick, to avoid first-use work. Concurrent callers share the synchronized cache.
+    /// Profiles without terrain routes need no preparation. No trajectory or live movement verdict is cached.</summary>
+    /// <exception cref="PhysicsNavDescentEvidenceException">A retained certificate dependency is missing.</exception>
+    public void PrepareTerrainDescents()
+    {
+        if (Terrain is not { } terrain) return;
+        foreach (var link in Graph.Links)
+            if (terrain.Route(link) == ContactDropRoute.Terrain) terrain.TryGet(link, out _);
+    }
+
     internal ContactTerrainNavigation? Terrain { get; private set; }
     internal void AttachTerrain(PhysicsNavDescentEvidence evidence, IEnumerable<NavLink> terrainLinks, float slopeCos)
     {

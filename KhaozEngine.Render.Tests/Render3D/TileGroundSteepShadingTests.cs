@@ -141,10 +141,10 @@ namespace KhaozEngine.Tests.Render3D
         [Fact]
         public void A_band_whose_ends_pack_to_the_same_cosine_is_refused()
         {
-            // Both exact subnormal angles round to zero radians, far from a cancellation threshold.
-            float from = float.Epsilon, to = 2f * float.Epsilon;
-            Assert.Equal(0f, from * (MathF.PI / 180f));
-            Assert.Equal(0f, to * (MathF.PI / 180f));
+            // Exact normal powers of two keep denormal modes (DAZ, flush to zero) out of the path. Both radian
+            // values stay below 2^-20, so each cosine's deficit is under 2^-41, far below the 2^-25 rounding
+            // midpoint, and both round to exactly one on every arithmetic path.
+            float from = 1f / 65536f, to = 1f / 32768f;
             var layers = new[] { Layer(new TileGroundSteepLayer { CompanionSlot = 1, FromDegrees = from, ToDegrees = to }), Layer() };
             var ex = Assert.Throws<TileGroundSteepArgumentException>(() => TileGroundMaterialConfig.BuildParams(layers, 0.15f));
             Assert.Equal("layers", ex.ParamName);
@@ -152,6 +152,11 @@ namespace KhaozEngine.Tests.Render3D
             Assert.Equal(0, ex.LayerIndex);
             Assert.Equal(from, ex.FromDegrees);
             Assert.Equal(to, ex.ToDegrees);
+
+            // The same layer with a band whose ends pack to distinct cosines is accepted.
+            TileGroundMaterialConfig.BuildParams(
+                new[] { Layer(new TileGroundSteepLayer { CompanionSlot = 1, FromDegrees = 40f, ToDegrees = 55f }), Layer() },
+                0.15f);
         }
 
         [Fact]

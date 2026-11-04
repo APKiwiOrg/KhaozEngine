@@ -12708,6 +12708,18 @@ tagged `door` within `DoorClearance`. Its height and normal use the selected `Ti
 the same interpolated lattice values as the rendered ground. Non-solid decorative objects remain eligible.
 Validation resolves the foliage archetype and material ids against the same catalogs as the rest of the world.
 
+Foliage construction and DTO or document admission use `TileFoliageArgumentException`, preserving
+`ArgumentException` catches and the original null `ParamName`. Its non-nullable `TileWorldRefusal Reason`
+distinguishes invalid raster geometry, density length, placement settings, archetype ids and weights,
+underlays, duplicate layers and world-plane admission. Inspect `LayerId` and the reason-specific values in
+the [TileWorld refusal table](../KhaozEngine.TileWorld/README.md#refusals), including the offending entry
+index or the actual and expected density counts. Manifest loading throws `TileWorldException` with exactly
+the same reason and identifiers, adds the manifest path in `SourceName` and keeps the original refusal in
+`InnerException`. Direct null `density` and `archetypes` constructor parameters remain plain
+`ArgumentNullException`s with `ParamName`. A null manifest density is `FoliageDensityNull` with `LayerId`,
+`Field` = `density` and the original `ArgumentNullException` retained. A null manifest layer instead uses
+`FoliageLayerNull` with its zero-based `LayerIndex`. Messages remain developer prose.
+
 **Clearance is an authoring check, never a runtime rule.** An optional `clearance` manifest block
 (`TileWorldDocument.Clearance`, a `TileClearanceSettings`) declares rules such as "objects whose archetype is
 tagged `tree` keep their meshes clear of objects tagged `structure`", with a mesh root (relative to the world

@@ -212,4 +212,54 @@ public enum TileWorldRefusal
     ClearanceMeshRootNull,
     /// <summary>Refuses editing a clearance rule without a clearance block.</summary>
     ClearanceBlockMissing,
+
+    // Foliage layer validation and document admission.
+    /// <summary>Refuses a foliage layer whose id is null or blank.</summary>
+    FoliageIdBlank,
+    /// <summary>Refuses a foliage layer on a negative plane.</summary>
+    FoliagePlaneNegative,
+    /// <summary>Refuses a foliage raster with a non-finite origin coordinate.</summary>
+    FoliageOriginNonFinite,
+    /// <summary>Refuses a foliage cell size that is non-finite or not positive.</summary>
+    FoliageCellSizeInvalid,
+    /// <summary>Refuses a foliage raster with a non-positive dimension.</summary>
+    FoliageDimensionsNonPositive,
+    /// <summary>Refuses a foliage raster exceeding the supported sample count.</summary>
+    FoliageSampleLimitExceeded,
+    /// <summary>Refuses foliage density whose length differs from its raster dimensions.</summary>
+    FoliageDensityLengthMismatch,
+    /// <summary>Refuses foliage spacing that is non-finite or not positive.</summary>
+    FoliageSpacingInvalid,
+    /// <summary>Refuses a foliage scale range that is non-finite, non-positive or unordered.</summary>
+    FoliageScaleRangeInvalid,
+    /// <summary>Refuses a non-finite foliage root offset.</summary>
+    FoliageRootOffsetNonFinite,
+    /// <summary>Refuses a foliage door clearance that is negative or non-finite.</summary>
+    FoliageDoorClearanceInvalid,
+    /// <summary>Refuses a foliage edge fade that is negative or non-finite.</summary>
+    FoliageEdgeFadeInvalid,
+    /// <summary>Refuses a foliage layer without an archetype.</summary>
+    FoliageArchetypesEmpty,
+    /// <summary>Refuses a foliage archetype whose id is null or blank.</summary>
+    FoliageArchetypeIdBlank,
+    /// <summary>Refuses a repeated ordinal foliage archetype id.</summary>
+    FoliageArchetypeDuplicate,
+    /// <summary>Refuses a foliage archetype weight that is non-finite or not positive.</summary>
+    FoliageWeightInvalid,
+    /// <summary>Refuses foliage archetype weights whose accumulated total is non-finite.</summary>
+    FoliageTotalWeightNonFinite,
+    /// <summary>Refuses void material zero as an allowed foliage underlay.</summary>
+    FoliageUnderlayVoid,
+    /// <summary>Refuses a null foliage layer entry in a manifest.</summary>
+    FoliageLayerNull,
+    /// <summary>Refuses a foliage manifest layer whose archetype list is null.</summary>
+    FoliageArchetypesNull,
+    /// <summary>Refuses a null foliage archetype entry in a manifest layer.</summary>
+    FoliageArchetypeNull,
+    /// <summary>Refuses a repeated ordinal foliage layer id.</summary>
+    FoliageLayerDuplicate,
+    /// <summary>Refuses a foliage layer on a plane the world does not have.</summary>
+    FoliagePlaneOutsideWorld,
+    /// <summary>Refuses a foliage manifest layer whose density is null.</summary>
+    FoliageDensityNull,
 }

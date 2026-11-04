@@ -101,6 +101,17 @@ above. An empty layer list is omitted, so old world JSON and old world hashes st
 is part of `TileWorldHash.OfWorld`, including every placement and exclusion setting. `TileWorldSource.Open`
 loads the global layers without materialising a region, and a partial save carries them forward.
 
+Layer construction, DTO admission and document admission throw `TileFoliageArgumentException`, an
+`ArgumentException` subtype with non-nullable `TileWorldRefusal Reason` and the foliage identifiers in the
+[refusal table](#refusals). `ParamName` retains its original null value. File loading adds the manifest path
+in `TileWorldException.SourceName`, preserves the same reason and every identifier, and retains the original
+refusal in `InnerException`. Direct null `density` and `archetypes` constructor arguments stay plain
+`ArgumentNullException`s with their original `ParamName`. A null manifest density instead uses
+`FoliageDensityNull`, `LayerId` and `Field` = `density`, retaining the original null-parameter exception.
+`ExpectedCount` is `long?` on the foliage subtype and retains the existing `int?` type on `TileWorldException`.
+The density-length guard runs after the sample limit, so its expected count fits both types without loss.
+A null layer entry carries `LayerIndex` only when the caller knows its position. No placeholder index is used.
+
 The optional `clearance` block is the other manifest-level authoring block. It is outside every world hash and
 is described under [Clearance](#clearance).
 
@@ -138,7 +149,7 @@ at the door. `OfWorld` is unchanged, so moving a gate to the composed digest is 
 
 `TileWorldException` retains its exact type and both message-only constructors. Use `Reason` and the
 identifiers below to distinguish region residency, content, world-file, manifest-region, object, marker, dense-layer,
-embedded-schema, validation, prefab, catalog, steep-companion and clearance refusals.
+embedded-schema, validation, prefab, catalog, steep-companion, clearance and foliage refusals.
 Messages remain developer prose. `Reason` is nullable only for a message-only instance built outside the
 engine. Its reason-taking constructors also accept an original cause through `InnerException`.
 PGM heightmap reads also use this type and enum. Their source, header and raster identifiers are listed in
@@ -235,6 +246,30 @@ region file and is null for these in-memory attachment, restoration and save che
 | `ClearanceRulesNull` | A file block with a null rule list | `Field` = `rules` |
 | `ClearanceMeshRootNull` | A file block with a null mesh root | `SourceName`, `Field` = `meshRoot`, original `ArgumentNullException` with `ParamName` = `meshRoot` in `InnerException` |
 | `ClearanceBlockMissing` | Editing rules before declaring a clearance block through TileEdit | `WorldId`, owned read-only `RequiredTools` snapshot containing `clearance_set` |
+| `FoliageIdBlank` | A null or blank foliage layer id | Nullable `LayerId` |
+| `FoliagePlaneNegative` | A negative foliage plane | `LayerId`, `Plane` |
+| `FoliageOriginNonFinite` | A non-finite raster origin | `LayerId`, `OriginX`, `OriginZ` |
+| `FoliageCellSizeInvalid` | A non-finite or non-positive cell edge | `LayerId`, `CellSize` |
+| `FoliageDimensionsNonPositive` | A non-positive raster dimension | `LayerId`, `Width`, `Height` |
+| `FoliageSampleLimitExceeded` | A raster exceeding the supported sample count | `LayerId`, `SampleCount` (`long`), `MaximumSampleCount` |
+| `FoliageDensityLengthMismatch` | Density length differing from the raster dimensions | `LayerId`, `ActualCount`, `ExpectedCount`, `Width`, `Height` |
+| `FoliageSpacingInvalid` | Non-finite or non-positive placement spacing | `LayerId`, `Spacing` |
+| `FoliageScaleRangeInvalid` | A non-finite, non-positive or unordered scale range | `LayerId`, `ScaleMin`, `ScaleMax` |
+| `FoliageRootOffsetNonFinite` | A non-finite root offset | `LayerId`, `RootOffset` |
+| `FoliageDoorClearanceInvalid` | A negative or non-finite door clearance | `LayerId`, `DoorClearance` |
+| `FoliageEdgeFadeInvalid` | A negative or non-finite edge fade | `LayerId`, `EdgeFade` |
+| `FoliageArchetypesEmpty` | A layer without an archetype | `LayerId`, `ArchetypeCount` |
+| `FoliageArchetypeIdBlank` | A null or blank archetype id | `LayerId`, nullable `ArchetypeId`, zero-based `ArchetypeIndex` |
+| `FoliageArchetypeDuplicate` | A repeated ordinal archetype id | `LayerId`, `ArchetypeId` |
+| `FoliageWeightInvalid` | A non-finite or non-positive archetype weight | `LayerId`, `ArchetypeId`, `Weight` |
+| `FoliageTotalWeightNonFinite` | A non-finite accumulated archetype weight | `LayerId`, `TotalWeight` |
+| `FoliageUnderlayVoid` | Void material zero as an allowed underlay | `LayerId`, `MaterialId` = `0` |
+| `FoliageLayerNull` | A null layer entry in a manifest | Zero-based `LayerIndex` when the caller knows the index |
+| `FoliageArchetypesNull` | A null archetype list in a manifest layer | `LayerId` |
+| `FoliageArchetypeNull` | A null archetype entry in a manifest layer | `LayerId`, zero-based `ArchetypeIndex` |
+| `FoliageLayerDuplicate` | A repeated ordinal layer id | `LayerId` |
+| `FoliagePlaneOutsideWorld` | A layer on a plane the world does not have | `LayerId`, `Plane`, `PlaneCount` |
+| `FoliageDensityNull` | A null density array in a manifest layer | `SourceName`, `LayerId`, `Field` = `density`, original `ArgumentNullException` with `ParamName` = `density` in `InnerException` |
 
 `MoveObject`, required object commands and `QueryService.ObjectGet` share `ObjectMissing`. A stale object
 index can follow direct edits to a region's public object list. `MoveObject` checks the destination region

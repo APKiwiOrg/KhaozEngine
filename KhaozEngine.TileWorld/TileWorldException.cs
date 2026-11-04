@@ -60,17 +60,17 @@ public sealed class TileWorldException : Exception
     /// <summary>The refused object's document-unique id.</summary>
     public long? ObjectId { get; init; }
 
-    /// <summary>The refused or required catalog archetype id, as supplied.</summary>
+    /// <summary>The refused or required catalog or foliage archetype id, as supplied.</summary>
     public string? ArchetypeId { get; init; }
 
     /// <summary>The refused object's or marker's authored tile address, including its known plane.
     /// Prefab refusals use prefab-relative coordinates.</summary>
     public TileCoord? Tile { get; init; }
 
-    /// <summary>The object's or marker's refused plane, or the plane containing a refused dense layer.</summary>
+    /// <summary>The refused object, marker or foliage plane, or the plane containing a refused dense layer.</summary>
     public int? Plane { get; init; }
 
-    /// <summary>The document's or prefab's plane count for an object or marker plane refusal, or the invalid
+    /// <summary>The document's or prefab's plane count for an object, marker or foliage plane refusal, or the invalid
     /// plane count refused by manifest or prefab-file admission.</summary>
     public int? PlaneCount { get; init; }
 
@@ -80,7 +80,7 @@ public sealed class TileWorldException : Exception
     /// <summary>The coordinate stored in a region file that disagrees with <see cref="Region"/>.</summary>
     public RegionCoord? ActualRegion { get; init; }
 
-    /// <summary>The refused clearance, catalog, manifest, steep-band or PGM header field, or the parser's JSON
+    /// <summary>The refused clearance, foliage, catalog, manifest, steep-band or PGM header field, or the parser's JSON
     /// path for malformed region, manifest, prefab or catalog data, when available.</summary>
     public string? Field { get; init; }
 
@@ -128,22 +128,22 @@ public sealed class TileWorldException : Exception
     /// <summary>The refused prefab's authored name, when admission has a prefab value.</summary>
     public string? PrefabName { get; init; }
 
-    /// <summary>The refused prefab's declared footprint width in tiles, or the PGM header's image width in samples.</summary>
+    /// <summary>The refused prefab footprint width in tiles, or PGM image or foliage raster width in samples.</summary>
     public int? Width { get; init; }
 
-    /// <summary>The refused prefab's declared footprint height in tiles, or the PGM header's image height in samples.</summary>
+    /// <summary>The refused prefab footprint height in tiles, or PGM image or foliage raster height in samples.</summary>
     public int? Height { get; init; }
 
-    /// <summary>The entry count carried by a refused prefab layer.</summary>
+    /// <summary>The entry count carried by a refused prefab layer or foliage density raster.</summary>
     public int? ActualCount { get; init; }
 
-    /// <summary>The required entry count for a refused prefab layer.</summary>
+    /// <summary>The required entry count for a refused prefab layer or foliage density raster.</summary>
     public int? ExpectedCount { get; init; }
 
     /// <summary>The catalog source that first defined a duplicate material or archetype id.</summary>
     public string? FirstSourceName { get; init; }
 
-    /// <summary>The refused ground material's catalog id.</summary>
+    /// <summary>The refused ground material catalog id, including a disallowed foliage underlay.</summary>
     public ushort? MaterialId { get; init; }
 
     /// <summary>The refused ground material's authoring name.</summary>
@@ -237,7 +237,7 @@ public sealed class TileWorldException : Exception
     /// <summary>The supplied clearance mesh root.</summary>
     public string? MeshRoot { get; init; }
 
-    /// <summary>The refused clearance sampling cell edge in world units.</summary>
+    /// <summary>The refused clearance or foliage sampling cell edge in world units.</summary>
     public float? CellSize { get; init; }
 
     /// <summary>The refused clearance waiver tag.</summary>
@@ -271,4 +271,52 @@ public sealed class TileWorldException : Exception
         get => _requiredTools;
         init => _requiredTools = value is null ? null : Array.AsReadOnly<string>([.. value]);
     }
+
+    /// <summary>The refused foliage layer id, as supplied.</summary>
+    public string? LayerId { get; init; }
+
+    /// <summary>The zero-based index of a null foliage layer entry, when the caller supplied an index.</summary>
+    public int? LayerIndex { get; init; }
+
+    /// <summary>The refused foliage raster origin on the world X axis.</summary>
+    public float? OriginX { get; init; }
+
+    /// <summary>The refused foliage raster origin on the world Z axis.</summary>
+    public float? OriginZ { get; init; }
+
+    /// <summary>The foliage raster sample count, calculated without integer overflow.</summary>
+    public long? SampleCount { get; init; }
+
+    /// <summary>The maximum supported foliage raster sample count.</summary>
+    public int? MaximumSampleCount { get; init; }
+
+    /// <summary>The refused foliage placement spacing in world units.</summary>
+    public float? Spacing { get; init; }
+
+    /// <summary>The refused foliage scale range minimum.</summary>
+    public float? ScaleMin { get; init; }
+
+    /// <summary>The refused foliage scale range maximum.</summary>
+    public float? ScaleMax { get; init; }
+
+    /// <summary>The refused foliage root offset in world units.</summary>
+    public float? RootOffset { get; init; }
+
+    /// <summary>The refused foliage door clearance in world units.</summary>
+    public float? DoorClearance { get; init; }
+
+    /// <summary>The refused foliage edge fade in world units.</summary>
+    public float? EdgeFade { get; init; }
+
+    /// <summary>The number of supplied foliage archetypes.</summary>
+    public int? ArchetypeCount { get; init; }
+
+    /// <summary>The zero-based index of a null or blank-id foliage archetype entry.</summary>
+    public int? ArchetypeIndex { get; init; }
+
+    /// <summary>The refused foliage archetype weight.</summary>
+    public float? Weight { get; init; }
+
+    /// <summary>The accumulated foliage archetype weight.</summary>
+    public float? TotalWeight { get; init; }
 }

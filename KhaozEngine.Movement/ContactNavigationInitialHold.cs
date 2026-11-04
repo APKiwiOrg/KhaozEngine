@@ -48,7 +48,8 @@ internal readonly struct ContactNavigationHoldKey(in FramedMovementState initial
         a.Sequence == b.Sequence && a.Phase == b.Phase && Same(a.Direction, b.Direction) &&
         Same(a.HorizontalSpeed, b.HorizontalSpeed) && Same(a.VerticalSpeed, b.VerticalSpeed) && Same(a.Gravity, b.Gravity) &&
         Same(a.PreparationRemaining, b.PreparationRemaining) && Same(a.RecoveryRemaining, b.RecoveryRemaining) &&
-        Same(a.TimeoutRemaining, b.TimeoutRemaining) && a.EndReason == b.EndReason;
+        Same(a.TimeoutRemaining, b.TimeoutRemaining) && a.EndReason == b.EndReason && a.Kind == b.Kind &&
+        Same(a.DistanceRemaining, b.DistanceRemaining) && a.ConsecutiveBlockedTicks == b.ConsecutiveBlockedTicks;
 
     static bool Same(in MoveTuning a, in MoveTuning b) =>
         Same(a.WalkSpeed, b.WalkSpeed) && Same(a.RunSpeed, b.RunSpeed) && Same(a.CapsuleHalfHeight, b.CapsuleHalfHeight) &&

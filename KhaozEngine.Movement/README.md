@@ -714,7 +714,10 @@ and a terrain-route bitset. Disabled profiles store a zero cosine and no terrain
 accepted Drop on an enabled profile. The workload digest binds the full identity, canonical container evidence,
 profile name, frozen profile bytes and exact facts bytes. Loading validates counts against remaining bytes and
 storage capacity, canonical integers, bounds, duplicate endpoints, endpoint admission, routes and the digest.
-It never regenerates candidates or replays refused verdicts. Refusals remain authenticated bake-time facts.
+Disabled profiles must match their frozen candidate recipe and order, using scalar arithmetic without terrain
+regeneration. Enabled profiles require legal Stair/Drop shapes and positive non-aquatic OrdinaryContact Drop
+permission. Their candidates are never regenerated. Loading never replays refused verdicts. Refusals remain
+authenticated bake-time facts.
 
 Evidence is pooled across enabled profiles and retains only accepted terrain proofs' reads and certificate inputs,
 including whole queried columns, original raw identities and required complete solid groups. Neither sharp proof

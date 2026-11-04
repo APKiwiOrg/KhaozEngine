@@ -9659,7 +9659,9 @@ candidate, then tries terrain only after refusal when terrain applies. New terra
 Each accepted link retains its proving route. The file stores its ordered integer endpoints, acceptance bits,
 route bits and bake-time slope/footprint threshold bits. A workload digest binds those facts, identity, canonical
 pooled evidence and frozen profile bytes. Endpoints are checked for canonical encoding, bounds and admission.
-Loading never regenerates candidates or replays refusals. Refusals are decided at bake time and authenticated.
+Disabled profiles must match their frozen recipe and order without terrain regeneration or trigonometry.
+Enabled profiles validate link shapes and Drop permission without regenerating their candidates. Loading never
+replays refusals. Refusals are decided at bake time and authenticated.
 
 Only accepted terrain proof dependencies and certificate inputs survive, with original raw associations and
 required whole solid groups. Sharp dependencies, refused attempts, recipe closure and the global steep inventory

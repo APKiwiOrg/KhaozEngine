@@ -120,6 +120,8 @@ public sealed partial class GroundNavigationBake
         if (!double.IsFinite(surfaceReach) || surfaceReach < profile.Tuning.StepHeight + (double)profile.Tuning.GroundedEpsilon)
             return "Terrain footprint reach is invalid.";
         var candidates = TerrainCandidateCodec.Decode(endpoints, traversal, stored);
+        if (!TerrainCandidateContract.Validate(candidates, grids, traversal, profile))
+            return "Stored candidates violate the profile recipe or link shape.";
         var links = new List<NavLink>(); var terrainLinks = new List<NavLink>();
         for (int i = 0; i < candidates.Length; i++)
         {

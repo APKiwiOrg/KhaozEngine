@@ -178,7 +178,9 @@ canonical `0, 1, 1, false`, preserving the old normalized-ground identity. Enabl
 actual speed and momentum. Retained identity fields still include water, air control, gravity, terminal speed,
 braking and body geometry. Load is explicitly version directed. Formats 1 through 3 regenerate their frozen
 candidate recipes. Format 4 stores canonical ordered integer endpoints and validates bounds, admission, encoding
-and storage capacity before use. It authenticates acceptance and the proving route for each accepted link.
+and storage capacity before use. Disabled profiles additionally match the frozen recipe and order with scalar
+arithmetic only. Enabled profiles validate Stair/Drop shapes and positive non-aquatic OrdinaryContact Drop
+permission without terrain regeneration. It authenticates acceptance and the proving route for each accepted link.
 
 A same-engine allowance or profile terrain flag change is ProfilesChanged. Capture evidence selection changes are
 OptionsChanged. Format 4 retains only accepted terrain proof reads and local certificate inputs, including raw

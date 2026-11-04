@@ -25,7 +25,9 @@ namespace KhaozEngine.Server.Admin.Catalog;
 /// </summary>
 /// <param name="store">The authoring store the candidate is built from and published through.</param>
 /// <param name="registry">The registry the candidate's types are declared in. Per instance, never ambient.</param>
-internal sealed class CatalogPublishActions(IContentAuthoringStore store, ContentTypeRegistry registry)
+/// <param name="publishPolicy">The host-owned operator policy captured at registration, or null.</param>
+internal sealed class CatalogPublishActions(
+    IContentAuthoringStore store, ContentTypeRegistry registry, IContentPublishPolicy? publishPolicy)
 {
     /// <summary>The refusal a publish the validator rejected comes back under.</summary>
     public const string CandidateRefused = "content candidate refused";
@@ -216,7 +218,10 @@ internal sealed class CatalogPublishActions(IContentAuthoringStore store, Conten
             ContentPublishResult result = await store
                 .PublishAsync(
                     new ContentPublishRequest(
-                        CatalogAdminActions.Actor, operatorId, note, expected.Value, minimumServer, minimumClient),
+                        CatalogAdminActions.Actor, operatorId, note, expected.Value, minimumServer, minimumClient)
+                    {
+                        PublishPolicy = publishPolicy,
+                    },
                     cancellationToken)
                 .ConfigureAwait(false);
 
@@ -266,7 +271,7 @@ internal sealed class CatalogPublishActions(IContentAuthoringStore store, Conten
         ContentPublishBaseline baseline = await store
             .ReadPublishBaselineAsync(cancellationToken).ConfigureAwait(false);
         ContentDraft? draft = await store.GetOpenDraftAsync(cancellationToken).ConfigureAwait(false);
-        return ContentDraftCandidate.Build(baseline, draft?.Changes ?? new ContentChangeSet(), registry);
+        return ContentDraftCandidate.Build(baseline, draft?.Changes ?? new ContentChangeSet(), registry, publishPolicy);
     }
 
     /// <summary>The diff as a console receives it, with every type id turned into the key it renders under.</summary>

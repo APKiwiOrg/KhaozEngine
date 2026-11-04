@@ -455,6 +455,58 @@ recovery sweep has no prepared `ContentPublisher` to build a commit around, and 
 is no longer the same operation: it refuses while a publish holds the draft frozen, and it records an audit
 row naming who ran it.
 
+### Consumer operator publication policy
+
+A host can attach an `IContentPublishPolicy` to its operator surface. The engine admin helper takes it
+through `CatalogAdminActionOptions.PublishPolicy`, captures it at registration and binds it to the
+in-process `ContentPublishRequest.PublishPolicy`. HTTP JSON cannot supply or override this property.
+The same original store, registry and publisher perform publication.
+
+Custom operator surfaces use `ContentDraftCandidate.Build(baseline, changes, registry, policy)` for preview
+and set the same host-owned policy on their publish request. The existing publisher evaluates it again on
+the frozen baseline and candidate after the unchanged validator sweep, before encoding or commit.
+
+```csharp
+sealed class ArtifactPolicy(ContentTypeId guardedType, string guardedField) : IContentPublishPolicy
+{
+    public void Validate(ContentPublishPolicySnapshot baseline, ContentPublishPolicySnapshot candidate,
+        ICollection<ContentFinding> findings)
+    {
+        foreach (ContentPublishPolicyRow row in candidate.Rows(guardedType))
+        {
+            if (baseline.TryGetRow(row.Type, row.Key, out var old)
+                && old.GetValue(guardedField) != row.GetValue(guardedField))
+            {
+                findings.Add(row.Finding("artifact-rebuild-required", "Matching baked artifacts are required."));
+            }
+        }
+    }
+}
+```
+
+The example's `guardedType` and `guardedField` are host-owned identifiers for a value a game's baked
+artifacts depend on. Snapshot views contain detached rows, read-only collections and typed field values.
+Byte payloads are copied on access. No store or mutable registry is supplied. Policies must be deterministic
+and side-effect free. The initial baseline is an empty view at version zero. New ids at preview remain
+provisional, so use the stable row key to identify a finding.
+
+`row.Finding(code, reason)` supplies the existing finding shape with structured type, id and optional `Key`.
+Policy codes are preserved without folding them into a type validator's message. A policy throw adds
+`IContentPublishPolicy.FailureCode` (`KEC0044`) and refuses publication. A refusal leaves the active version
+and complete draft unchanged and releases its freeze, like any other validation refusal.
+
+HTTP `catalog-import` is an operator publication too. The bundled stores implement the optional
+`IContentPolicyImportStore` capability, whose `ImportWithPolicyAsync(bundle, request)` requires a
+`ContentPolicyImportRequest` carrying a non-null policy and the server's actor, operator and note. It uses
+the existing seed staging, text handling and frozen publisher. The admin handler binds its configured
+policy to this request, never a value from JSON. A custom store lacking this capability refuses operator
+imports under `IContentPolicyImportStore.UnavailableReason` when a policy is configured.
+
+Trusted server calls to `ImportBundleAsync` and `ImportTextBundleAsync`, release tooling and upgrade
+publication keep their existing paths without an operator policy. These paths can ship matching artifacts
+and do not become an HTTP bypass. No configured policy preserves
+the existing validation sequence, version numbering and published bytes.
+
 ## Rebuilding a pack root
 
 `ContentPackRebuild.RunAsync(store, registry, versionNumber, target, pointers)` writes one PUBLISHED version's

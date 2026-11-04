@@ -1528,17 +1528,25 @@ catalog loader is the shape this avoids: validation lives INSIDE the SQL read de
 
 ### 5.2 The findings
 
-A finding is `(ContentTypeId Type, int Id, string Code, string Message)`. The CODE is a stable token so a
+A finding is `(ContentTypeId Type, int Id, string Code, string Message)`, with an optional structured `Key`
+for consumer publication policy findings. The CODE is a stable token so a
 counter, a test and an operator runbook can all key on it, which is the same rule contracts 9.7 applies to
 decode reasons. Codes are never reused and never renumbered, which is why a code this spec withdrew is
 withdrawn rather than recycled.
 
-**Forty-two codes are issued, across the number range `KEC0001` to `KEC0043`.** `KEC0013` is withdrawn and
+**Forty-three codes are issued, across the number range `KEC0001` to `KEC0044`.** `KEC0013` is withdrawn and
 carries no check, and `KEC0032` to `KEC0035` are four codes sharing one row below. `KEC0000` is not a finding
 about content and is listed first and separately. Section 15.7 builds one test per issued code.
 
+A host-owned `IContentPublishPolicy` runs after the unchanged validator sweep at operator preview and
+again on the publisher's frozen baseline and candidate. It receives detached typed row views, never a
+store or mutable registry. Its findings preserve their consumer-owned codes and structured row keys.
+The admin registration binds it for both publish and operator import, while trusted server seed and
+upgrade calls retain their existing paths. The [authoring policy contract](../../KhaozEngine.Catalog.Authoring/README.md#consumer-operator-publication-policy)
+defines those APIs and the import capability.
+
 **The number range is banded, and the bands are as durable as the codes.** `KEC0001` to `KEC0099` are the
-engine's own, of which 1 to 43 are issued and 44 to 99 are free for this spec's successors. `KEC0100` to
+engine's own, of which 1 to 44 are issued and 45 to 99 are free for this spec's successors. `KEC0100` to
 `KEC0199` are RESERVED for Scope B, so an affix rule and a family block rule are told apart by an operator
 reading a code rather than by reading a message. `KEC0200` and above are unallocated and no game takes one: a
 game validator's findings come back as `KEC0040` prefixed with the game's type key, which is section 5.3's
@@ -1587,6 +1595,7 @@ rule and does not change.
 | `KEC0041` | A `Fork` edit's preconditions fail: its source row is absent or already retired, its `forkKey` is taken or malformed, or its `flagField` is absent from the type's schema or is not `Bool`. | 3.7 here, 8.2 |
 | `KEC0042` | A definition id exceeds the `maxDefinitionId` its type declared at registration. | 4.3, 3.6 here |
 | `KEC0043` | A live `loot_entry.weight` is outside 0 to 2,147,483,647, or one live table's non-guaranteed weights total above 2,147,483,647. | 3.5 here |
+| `KEC0044` | A host-owned consumer publish policy threw. Emitted by the authoring publisher outside the validator sweep. | Consumer operator publication policy |
 
 `KEC0022` and `KEC0025` are the two checks that make the reference consumer's stackable defects impossible to publish:
 `Stackable = true, MaxStack = 1` is directly reachable in its admin form today

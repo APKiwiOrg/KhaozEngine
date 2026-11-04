@@ -22077,6 +22077,33 @@ CatalogAdminActions.Register(
     new CatalogAdminActionOptions { ConfiguredVersion = config.ContentVersion, ServerBuild = buildOrdinal });
 ```
 
+A host can constrain operator publication when a value a game's baked artifacts depend on must stay
+unchanged until matching artifacts ship. Set `CatalogAdminActionOptions.PublishPolicy` to an
+`IContentPublishPolicy` during registration. `catalog-validate` evaluates it against the preview baseline
+and candidate. The store's existing `ContentPublisher` evaluates it again after freezing the real draft,
+after the existing validators and before encoding or committing. A passing preview never authorizes a
+later edit.
+
+The policy receives `ContentPublishPolicySnapshot` views. `Rows(type)` and `TryGetRow(type, key, out row)`
+expose old and new rows, and `row.GetValue(fieldName)` returns typed `ContentFieldValue` values. The views
+are detached, their row collections are read-only, and byte values are copied on access. They expose no
+store or mutable registry. Implementations must remain deterministic and side-effect free.
+Use `row.Finding(code, reason)` to append a `ContentFinding` with structured `Type`, `Id`, `Key` and `Code`.
+The admin response preserves that key and code, so a consumer never needs to parse the reason prose.
+A policy throw refuses publication under `IContentPublishPolicy.FailureCode` (`KEC0044`).
+
+The HTTP caller cannot supply, clear or override the registered policy. The handler binds it to the
+in-process `ContentPublishRequest.PublishPolicy`, which is excluded from JSON. HTTP `catalog-import` also
+binds it, through `IContentPolicyImportStore.ImportWithPolicyAsync` and a required-policy
+`ContentPolicyImportRequest`. The bundled in-memory, SQLite and SQL Server stores carry that policy through
+their existing seed pipeline to the frozen publication. A custom store without this capability refuses
+operator imports when a policy is configured, rather than dropping the policy. Trusted server calls to
+`ImportBundleAsync` or `ImportTextBundleAsync`, release tooling and `ContentUpgradeRunner` keep their
+existing publication paths and do not acquire an operator policy. A custom operator surface must bind its own host policy both at preview and on its
+publish request. There is no HTTP bypass mode. With no policy configured, the existing validation sequence,
+published bytes and version numbering are unchanged. A policy refusal preserves the active version and
+all pending draft work, and releases its publication freeze.
+
 The sixteen are `catalog-schema`, `catalog-list`, `catalog-get`, `catalog-edit`, `catalog-draft`,
 `catalog-discard`, `catalog-validate`, `catalog-diff`, `catalog-publish`, `catalog-versions`, `catalog-pin`,
 `catalog-rollback`, `catalog-import`, `catalog-export`, `catalog-sweep` and `catalog-verify`. None returns

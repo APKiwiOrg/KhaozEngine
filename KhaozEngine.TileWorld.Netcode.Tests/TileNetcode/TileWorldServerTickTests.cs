@@ -350,6 +350,22 @@ public class TileWorldServerTickTests
         Assert.True(s.TryGetPlayerState(0, out TileMoveState refused));
         Assert.Equal(new TileCoord(10, 10, 0), refused.Tile);
         Assert.True(refused.Route.IsIdle);
+
+        // Each refused state repaired at its limit is accepted: a route of exactly the cap (shuttling so it stays on
+        // the loaded region), the top plane and the far corner of the loaded region.
+        var shuttle = new TileDirection[256];
+        for (int i = 0; i < shuttle.Length; i++) shuttle[i] = i % 2 == 0 ? TileDirection.N : TileDirection.S;
+        TileMoveState atCap = TileMoveState.At(new TileCoord(10, 10, 0), TileDirection.S);
+        atCap.Route = TileRoute.FromSteps(atCap.Tile, shuttle);
+        s.SetPlayerState(0, atCap);
+        Assert.True(s.TryGetPlayerState(0, out TileMoveState capped));
+        Assert.Equal(256, capped.Route.RemainingSteps(capped.Tile).Length);
+        s.SetPlayerState(0, TileMoveState.At(new TileCoord(10, 10, 3), TileDirection.S));
+        Assert.True(s.TryGetPlayerState(0, out TileMoveState top));
+        Assert.Equal(new TileCoord(10, 10, 3), top.Tile);
+        s.SetPlayerState(0, TileMoveState.At(new TileCoord(63, 63, 0), TileDirection.S));
+        Assert.True(s.TryGetPlayerState(0, out TileMoveState corner));
+        Assert.Equal(new TileCoord(63, 63, 0), corner.Tile);
     }
 
     // The last refusal, the one delegated to TileRoute.RemainingSteps, is the one that has to happen before the
@@ -542,6 +558,12 @@ public class TileWorldServerTickTests
         Assert.Equal("state", progress.ParamName);
         Assert.Equal((byte)250, progress.StepTicks);
         Assert.Equal(walking.StepTotal, progress.StepTotal);
+        // One tick short of the total is still a step in flight, so the same state there is accepted.
+        TileMoveState lastTick = walking;
+        lastTick.StepTicks = (byte)(walking.StepTotal - 1);
+        s.SetPlayerState(0, lastTick);
+        Assert.True(s.TryGetPlayerState(0, out TileMoveState accepted));
+        Assert.Equal(lastTick.StepTicks, accepted.StepTicks);
         s.SetPlayerState(0, tampered, teleport: true);
         Assert.True(s.TryGetPlayerState(0, out TileMoveState after));
         Assert.Equal(0, (int)after.StepTicks);

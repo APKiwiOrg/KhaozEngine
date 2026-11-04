@@ -147,6 +147,10 @@ public class TileActorSpawnTests
         // indexes, served to every viewer around it forever. The GRID is what says nothing was built, so that is
         // what the door test asserts.
         foreach (CellSim cell in s.Host.Cells) Assert.Equal(0, cell.OwnedCount);
+
+        // Each repaired at its limit is accepted: the top plane and the far corner of the second loaded region.
+        Assert.True(s.SpawnActor(new TileCoord(12, 12, 3), Rat) > 0);
+        Assert.True(s.SpawnActor(new TileCoord(127, 63, 0), Rat) > 0);
     }
 
     [Fact]

@@ -80,6 +80,11 @@ public class TileStaticEntityTests
             server.SpawnStaticEntity(new TileCoord(10, 10, 0),
                 valid with { FootprintSize = TileMoveState.MaxFootprintSize + 1 }));
         Assert.All(server.Host.Cells, cell => Assert.Equal(0, cell.OwnedCount));
+
+        // The plane and region refusals repaired at their limit are accepted: the top plane and the far corner of
+        // the loaded region.
+        Assert.True(server.SpawnStaticEntity(new TileCoord(10, 10, 3), valid) > 0);
+        Assert.True(server.SpawnStaticEntity(new TileCoord(63, 63, 0), valid) > 0);
     }
 
     [Fact]

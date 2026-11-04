@@ -515,9 +515,10 @@ exposes the property. `World.DefaultScheduler` itself is the per-world seam in `
 `SingleThreadedJobScheduler`, so a world stays byte-identical until a game opts in, and an explicit per-call
 scheduler still wins over it.
 
-## Attachment definitions: a GPU-free leaf
+## Attachment definitions: GPU-free with shared primitives
 
-`KhaozEngine.Attachments` has no project or third-party dependency. It owns immutable definitions,
+`KhaozEngine.Attachments` references only the dependency-free `KhaozEngine.Primitives` for the shared
+`MalformedDataException` base. It has no third-party dependency. It owns immutable definitions,
 canonical JSON, reference checks, the `IAttachmentAssetSource` byte seam, directory source policy and
 embedded rigid and skinned GLB preflight. `AttachmentGlb.ComputeRigIdentity` provides versioned body
 fit evidence from raw accessor bytes and canonical rest frames, excluding animation and appearance.
@@ -525,7 +526,8 @@ JSON uses `System.Text.Json` and hashing uses SHA-256 from the BCL. No renderer 
 skeleton type appears in its API. Publishers reference it directly. Foundation and Server do not
 gain an attachment dependency.
 
-`ArchitectureTests.ZeroDependencyLeaves_CarryNoProjectReferences` pins the leaf alongside Primitives.
+`ArchitectureTests.Attachment_definitions_reference_only_the_shared_primitives` pins this single edge.
+`ZeroDependencyLeaves_CarryNoProjectReferences` continues to pin Primitives as a leaf.
 The renderer's existing dependency allowlist and ECS-free closure remain unchanged.
 
 `KhaozEngine.Attachments.Render3D` references only Attachments and Render3D. It resolves contract

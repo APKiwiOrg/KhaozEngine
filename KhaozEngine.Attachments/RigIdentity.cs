@@ -30,7 +30,7 @@ internal static class RigIdentity
         {
             JsonElement node = nodes[i];
             if (!node.TryGetProperty("skin", out JsonElement reference)) continue;
-            if (AttachmentGlbAccessors.Index(reference, "node skin") != 0)
+            if (AttachmentGlbAccessors.Index(reference, "node skin", $"$.nodes[{i}].skin") != 0)
                 throw new InvalidDataException("Skinned nodes must reference skin 0.");
             if (!node.TryGetProperty("mesh", out _))
                 throw new InvalidDataException("A skinned node must reference a mesh.");
@@ -57,20 +57,23 @@ internal static class RigIdentity
             writer.Transform(nodes[index]);
         }
         if (skin.TryGetProperty("inverseBindMatrices", out JsonElement binds))
-            writer.Accessor(accessors.Read(binds, "inverseBindMatrices", "MAT4"), "MAT4");
+            writer.Accessor(accessors.Read(binds, "inverseBindMatrices", "MAT4", "$.skins[0].inverseBindMatrices"), "MAT4");
         else writer.DefaultBinds(jointCount);
         writer.Integer(meshes.Count);
         foreach (int index in meshes)
         {
             writer.Integer(ids[index]);
-            JsonElement mesh = AttachmentGlbAccessors.Entry(root, "meshes",
-                AttachmentGlbAccessors.Index(nodes[index].GetProperty("mesh"), "mesh"), "rig");
+            int meshIndex = AttachmentGlbAccessors.Index(nodes[index].GetProperty("mesh"), "mesh", $"$.nodes[{index}].mesh");
+            JsonElement mesh = AttachmentGlbAccessors.Entry(root, "meshes", meshIndex, "rig");
+            string meshPath = $"$.meshes[{meshIndex}]";
             if (mesh.TryGetProperty("weights", out _)) throw new InvalidDataException("Morph weights are not supported by rig-v1.");
-            JsonElement primitives = AttachmentGlbAccessors.Required(mesh, "primitives", "mesh");
+            JsonElement primitives = AttachmentGlbAccessors.Required(mesh, "primitives", "mesh", meshPath);
             if (primitives.ValueKind != JsonValueKind.Array || primitives.GetArrayLength() == 0)
                 throw new InvalidDataException("A skinned mesh requires primitives.");
             writer.Integer(primitives.GetArrayLength());
-            foreach (JsonElement primitive in primitives.EnumerateArray()) WritePrimitive(primitive, accessors, jointCount, writer);
+            int primitiveIndex = 0;
+            foreach (JsonElement primitive in primitives.EnumerateArray())
+                WritePrimitive(primitive, accessors, jointCount, writer, meshPath + $".primitives[{primitiveIndex++}]");
         }
         return writer.Finish();
     }
@@ -90,24 +93,24 @@ internal static class RigIdentity
         }
     }
 
-    static void WritePrimitive(JsonElement primitive, AttachmentGlbAccessors accessors, int jointCount, RigIdentityWriter writer)
+    static void WritePrimitive(JsonElement primitive, AttachmentGlbAccessors accessors, int jointCount, RigIdentityWriter writer, string jsonPath)
     {
         if (primitive.ValueKind != JsonValueKind.Object || primitive.TryGetProperty("targets", out _))
             throw new InvalidDataException("Morph targets or malformed primitives are not supported by rig-v1.");
         if (primitive.TryGetProperty("extensions", out JsonElement extensions) && extensions.TryGetProperty("KHR_draco_mesh_compression", out _))
             throw new InvalidDataException("Compressed geometry is not supported by rig-v1.");
-        int mode = AttachmentGlbAccessors.Integer(primitive, "mode", "primitive", 4);
+        int mode = AttachmentGlbAccessors.Integer(primitive, "mode", "primitive", 4, jsonPath);
         if (mode > 6) throw new InvalidDataException("Invalid primitive mode.");
         writer.Integer(mode);
-        JsonElement attributes = AttachmentGlbAccessors.Object(primitive, "attributes", "primitive");
-        var positions = accessors.Read(AttachmentGlbAccessors.Required(attributes, "POSITION", "primitive"), "POSITION", "VEC3");
+        JsonElement attributes = AttachmentGlbAccessors.Object(primitive, "attributes", "primitive", jsonPath);
+        var positions = accessors.Read(AttachmentGlbAccessors.Required(attributes, "POSITION", "primitive", jsonPath + ".attributes"), "POSITION", "VEC3", jsonPath + ".attributes.POSITION");
         Finite(positions, 3);
         writer.Accessor(positions, "VEC3");
         bool hasNormals = attributes.TryGetProperty("NORMAL", out JsonElement normal);
         writer.Integer(hasNormals ? 1 : 0);
         if (hasNormals)
         {
-            var normals = accessors.Read(normal, "NORMAL", "VEC3");
+            var normals = accessors.Read(normal, "NORMAL", "VEC3", jsonPath + ".attributes.NORMAL");
             SameCount(normals, positions.Count);
             Finite(normals, 3);
             writer.Accessor(normals, "VEC3");
@@ -128,8 +131,8 @@ internal static class RigIdentity
         foreach (int set in sets)
         {
             string suffix = set.ToString(CultureInfo.InvariantCulture);
-            var joints = accessors.Read(AttachmentGlbAccessors.Required(attributes, "JOINTS_" + suffix, "primitive"), "JOINTS_" + suffix, "VEC4", joints: true);
-            var weights = accessors.Read(AttachmentGlbAccessors.Required(attributes, "WEIGHTS_" + suffix, "primitive"), "WEIGHTS_" + suffix, "VEC4", weights: true);
+            var joints = accessors.Read(AttachmentGlbAccessors.Required(attributes, "JOINTS_" + suffix, "primitive", jsonPath + ".attributes"), "JOINTS_" + suffix, "VEC4", jsonPath + ".attributes.JOINTS_" + suffix, joints: true);
+            var weights = accessors.Read(AttachmentGlbAccessors.Required(attributes, "WEIGHTS_" + suffix, "primitive", jsonPath + ".attributes"), "WEIGHTS_" + suffix, "VEC4", jsonPath + ".attributes.WEIGHTS_" + suffix, weights: true);
             SameCount(joints, positions.Count);
             SameCount(weights, positions.Count);
             ValidateInfluences(joints, weights, jointCount, totalWeights);
@@ -143,7 +146,7 @@ internal static class RigIdentity
         writer.Integer(hasIndices ? 1 : 0);
         if (hasIndices)
         {
-            var values = accessors.Read(indices, "indices", "SCALAR", scalarIndices: true);
+            var values = accessors.Read(indices, "indices", "SCALAR", jsonPath + ".indices", scalarIndices: true);
             for (int i = 0; i < values.Count; i++)
                 if (values.UnsignedElement(i) >= positions.Count) throw new InvalidDataException("Vertex index is outside POSITION count.");
             writer.Accessor(values, "SCALAR");

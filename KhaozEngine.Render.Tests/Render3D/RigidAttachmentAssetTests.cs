@@ -99,7 +99,9 @@ public sealed class RigidAttachmentAssetTests
         using var cache = new AttachmentSetCache(harness.Scene, source);
         int buffers = harness.Factory.Buffers.Count;
 
-        Assert.Throws<InvalidDataException>(() => cache.Get("set.json", hash));
+        var error = Assert.Throws<AttachmentGlbContainerDataException>(() => cache.Get("set.json", hash));
+        Assert.Equal(AttachmentGlbContainerRefusal.HeaderInvalid, error.Reason);
+        Assert.NotNull(error.SourceName);
 
         Assert.Equal(buffers, harness.Factory.Buffers.Count);
     }

@@ -211,6 +211,7 @@ public class SkinnedGlbPolicyTests
     [InlineData("external-image", "image URI")]
     [InlineData("data-image", "image URI")]
     [InlineData("nested-duplicate", "duplicate")]
+    [InlineData("nested-duplicate-key", "duplicate")]
     public void Skinned_policy_refuses_lossy_or_unsafe_data(string name, string expectedContext)
     {
         var fixture = new SkinnedAttachmentGlbFixture(name == "129-joints" ? 129 : 4,
@@ -312,13 +313,16 @@ public class SkinnedGlbPolicyTests
             case "external-image": fixture.Root["images"] = new JsonArray(new JsonObject { ["uri"] = "image.png" }); break;
             case "data-image": fixture.Root["images"] = new JsonArray(new JsonObject { ["uri"] = "data:image/png;base64,AA==" }); break;
             case "nested-duplicate": fixture.Root["extensions"] = JsonNode.Parse("""{"VENDOR_test":{"nested":[{"x":1}]}}"""); break;
+            case "nested-duplicate-key": fixture.Root["extensions"] = JsonNode.Parse("""{"VENDOR_test":{"a.b":[{"x":1}]}}"""); break;
             default:
                 if (name.StartsWith("sparse-", StringComparison.Ordinal)) ConfigureSparse(fixture, name);
                 break;
         }
-        byte[] bad = fixture.Build(name == "nested-duplicate"
+        byte[] bad = fixture.Build(name is "nested-duplicate" or "nested-duplicate-key"
             ? json => json.Replace("\"x\":1", "\"x\":1,\"x\":2", StringComparison.Ordinal) : null);
-        var error = Assert.Throws<InvalidDataException>(() => AttachmentGlb.ValidateSkinnedEmbedded(bad, "bad.glb"));
+        Action validate = () => AttachmentGlb.ValidateSkinnedEmbedded(bad, "bad.glb");
+        if (AttachmentRefusalAssertions.Skinned(name, validate)) return;
+        var error = Assert.Throws<InvalidDataException>(validate);
         Assert.Contains("bad.glb", error.Message);
         Assert.Contains(expectedContext, error.Message);
     }

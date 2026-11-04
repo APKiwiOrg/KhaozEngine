@@ -1,8 +1,9 @@
 # KhaozEngine.Attachments
 
-GPU-free, BCL-only definitions for rigid and skinned mesh parts. Rigid parts attach to named joints,
+GPU-free definitions for rigid and skinned mesh parts. Rigid parts attach to named joints,
 while skinned parts declare garment meshes that use the host body's pose. Reference this package
-explicitly from headless publishers or consumers. It is not included in Foundation or Server.
+explicitly from headless publishers or consumers. Its only engine dependency is the dependency-free
+Primitives package, which supplies `MalformedDataException`. It is not included in Foundation or Server.
 
 `AttachmentSetDefinition` copies parts, orders them by positive stable ID and exposes read-only
 parts and distinct mesh references. Repeated mesh keys must declare the same lowercase SHA-256.
@@ -92,6 +93,84 @@ views and sparse overrides are supported. Accessor and sparse ranges are checked
 embedded buffer before reading. Optional inverse-bind accessors must contain one finite MAT4 per
 joint. Host joint-name mapping and bind-pose compatibility are renderer-level checks.
 
+## GLB refusals
+
+`ValidateRigidEmbedded`, `ValidateSkinnedEmbedded` and `ComputeRigIdentity` preserve the originating
+container, accessor or hierarchy family. Catch `MalformedDataException` for these malformed-data
+refusals and inspect the concrete type's non-nullable `Reason`. This changes the catch contract from
+`InvalidDataException`, which is sealed. Geometry policies and rig-identity-owned refusals retain
+`InvalidDataException` until their families are converted.
+
+Each family carries `SourceName`. A public wrapper copies its reason and every identifier into the
+same family, prefixes the developer message with the source name and keeps the original as
+`InnerException`. JSON syntax failures use `AttachmentGlbContainerRefusal.JsonMalformed`. Framework
+JSON shape and numeric conversion failures use `ValueShapeInvalid`, retaining the original error.
+`JsonPath` is the canonical schema location, with indexes carried separately where applicable.
+Property names outside ASCII identifier syntax use escaped JSON string brackets, so a literal dot
+in a property name cannot be confused with a nested property.
+Accessor `Index` is a nullable `long` so it preserves both table references and unsigned sparse indexes.
+Messages are developer prose and are not a contract.
+
+### AttachmentGlbContainer
+
+`AttachmentGlbContainerDataException` carries `AttachmentGlbContainerRefusal`. Every reason includes `SourceName`.
+
+| Reason | What it refuses | Other identifiers |
+|---|---|---|
+| `HeaderInvalid` | an invalid GLB magic version or declared total length. | `ByteLength`, `DeclaredLength`, `Version` |
+| `ChunkHeaderTruncated` | a truncated GLB chunk header. | `Offset`, `AvailableBytes` |
+| `ChunkLengthInvalid` | an unaligned or out-of-bounds GLB chunk length. | `Offset`, `DeclaredLength`, `AvailableBytes` |
+| `FirstChunkNotJson` | a GLB whose first chunk is not nonempty JSON. | `ChunkType`, `ChunkLength` |
+| `UnexpectedChunk` | an unexpected or duplicate post-JSON GLB chunk. | `Offset`, `ChunkType` |
+| `JsonRootNotObject` | a GLB JSON root that is not an object. | None |
+| `AssetVersionUnsupported` | missing or unsupported glTF asset version metadata. | `AssetVersion` |
+| `EmbeddedBufferLengthMismatch` | a declared buffer inconsistent with the BIN chunk. | `DeclaredLength`, `BinaryLength` |
+| `MultipleEmbeddedBuffers` | more than one embedded buffer. | `BufferCount` |
+| `PropertyNotArray` | a GLB array property with another JSON shape. | `PropertyName` |
+| `ArrayEntryNotObject` | a non-object entry in a GLB object array. | `PropertyName`, `EntryIndex` |
+| `ExternalResourceUri` | a resource URI instead of embedded bytes. | `ResourceKind` |
+| `DuplicateJsonProperty` | a duplicate property anywhere in the GLB JSON tree. | `JsonPath`, `PropertyName` |
+| `JsonMalformed` | malformed GLB JSON syntax with source context. | `InnerException` |
+| `ValueShapeInvalid` | a framework JSON shape or numeric conversion failure with source context. | `InnerException` |
+
+### AttachmentAccessor
+
+`AttachmentAccessorDataException` carries `AttachmentAccessorRefusal`. Every reason includes `SourceName`.
+
+| Reason | What it refuses | Other identifiers |
+|---|---|---|
+| `TypeMismatch` | an accessor with another vector or matrix shape. | `JsonPath`, `AccessorIndex`, `ExpectedType`, `ActualType` |
+| `NormalizedNotBoolean` | a non-boolean normalized flag. | `JsonPath`, `AccessorIndex` |
+| `EncodingUnsupported` | an unsupported accessor component or normalized encoding. | `JsonPath`, `ComponentType`, `Normalized` |
+| `CountNotPositive` | an accessor with zero elements. | `JsonPath`, `Count` |
+| `OffsetWithoutBufferView` | a nonzero accessor offset without a buffer view. | `JsonPath`, `ByteOffset` |
+| `SparseCountOutsideAccessor` | an empty or oversized sparse override table. | `JsonPath`, `SparseCount`, `AccessorCount` |
+| `SparseIndexEncodingUnsupported` | sparse indices with an unsupported component type. | `JsonPath`, `ComponentType` |
+| `SparseIndexNotIncreasingInRange` | sparse indices outside the accessor or not strictly increasing. | `JsonPath`, `EntryIndex`, `Index`, `PreviousIndex`, `AccessorCount` |
+| `CompressionUnsupported` | compressed fit geometry in rig-v1. | `JsonPath`, `BufferViewIndex`, `ExtensionName` |
+| `BufferIndexNotZero` | a view referencing another embedded buffer. | `JsonPath`, `BufferIndex` |
+| `BufferViewOutsideBuffer` | a buffer-view range outside the embedded buffer. | `JsonPath`, `ByteOffset`, `ByteLength`, `BufferLength` |
+| `ByteStrideInvalid` | an unsupported or misaligned accessor stride. | `JsonPath`, `ByteStride`, `ElementSize`, `StrideAllowed` |
+| `RangeOrAlignmentInvalid` | an accessor range or alignment outside its view. | `JsonPath`, `ByteOffset`, `RequiredBytes`, `ViewLength`, `Alignment` |
+| `PropertyMissing` | a required accessor or container property absent from JSON. | `JsonPath`, `PropertyName` |
+| `ObjectRequired` | a required object with another JSON shape. | `JsonPath`, `PropertyName` |
+| `NonNegativeIntegerRequired` | a JSON index that is not a supported nonnegative integer. | `JsonPath` |
+| `ReferenceInvalid` | a missing out-of-range or non-object table entry. | `JsonPath`, `TableName`, `Index`, `EntryCount` |
+
+### AttachmentHierarchy
+
+`AttachmentHierarchyDataException` carries `AttachmentHierarchyRefusal`. Every reason includes `SourceName`.
+
+| Reason | What it refuses | Other identifiers |
+|---|---|---|
+| `NodesNotArray` | a node table with another JSON shape. | `JsonPath` |
+| `NodeNotObject` | a non-object node in the hierarchy. | `JsonPath`, `NodeIndex` |
+| `ChildrenNotArray` | a child list with another JSON shape. | `JsonPath`, `NodeIndex` |
+| `ChildIndexOutsideNodes` | a child node index outside the hierarchy. | `JsonPath`, `NodeIndex`, `ChildIndex`, `NodeCount` |
+| `MultipleParents` | multiple parents or repeated child references. | `JsonPath`, `NodeIndex`, `ParentIndex` |
+| `Cycle` | a cycle anywhere in the node hierarchy. | `JsonPath`, `NodeIndex` |
+| `JointsHaveDifferentRoots` | skin joints that do not share one tree root. | `JsonPath`, `ExpectedRootIndex`, `ActualRootIndex` |
+
 ## Body rig identity
 
 Use `AttachmentGlb.ComputeRigIdentity(glbBytes, sourceName)` to identify what a garment fits against.
@@ -113,8 +192,9 @@ Adding, removing or retiming clips leaves the identity unchanged. Morph targets 
 compressed geometry and unsupported accessor encodings are refused rather than omitted.
 Encoding refusal is scoped to covered primitives and accessors. Required extensions affecting only
 ignored appearance or animation data do not change fit identity.
-Bad containers, hierarchy, names, references, accessor ranges and nonfinite fit data throw
-`InvalidDataException` with `sourceName` context. Invalid source-name arguments throw
+Bad containers, hierarchy, references and accessor encodings or ranges use the structured malformed-data
+refusals below. Names and nonfinite fit data still use `InvalidDataException` with source context.
+Invalid source-name arguments throw
 `ArgumentException`. The rigid and skinned attachment validation APIs keep their existing policies,
 including their animation and external-image refusal.
 

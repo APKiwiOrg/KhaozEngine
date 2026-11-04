@@ -133,7 +133,7 @@ Historical rigid-feature exceptions are not a waiver. Main movement invalidates 
 
 Pre-merge package proof uses a private temporary feed. Packages and symbols must carry 21.0.0,
 the committed proof head and tested assembly bytes. Dependency edges remain governed by the
-[dependency reference](../DEPENDENCY-SEAMS.md#attachment-definitions-a-gpu-free-leaf).
+[dependency reference](../DEPENDENCY-SEAMS.md#attachment-definitions-gpu-free-with-shared-primitives).
 The orchestrator owns whole-branch review, integration, main push checks and the guarded shared-feed
 pack. Consumer adoption waits for owner approval of the exact major tag and the separate
 engine-rooted release handoff with independently verified release evidence.

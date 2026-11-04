@@ -33,7 +33,9 @@ public sealed class SkinnedAttachmentAssetTests
         using var cache = new AttachmentSetCache(harness.Scene, source);
         int beforeUploads = harness.Factory.Buffers.Count, textures = harness.Factory.Textures.Count;
 
-        Assert.Throws<InvalidDataException>(() => cache.Get("set.json", hash));
+        var error = Assert.Throws<AttachmentGlbContainerDataException>(() => cache.Get("set.json", hash));
+        Assert.Equal(AttachmentGlbContainerRefusal.HeaderInvalid, error.Reason);
+        Assert.NotNull(error.SourceName);
 
         Assert.Equal(1, source.Reads[rigid.Key]);
         Assert.Equal(1, source.Reads[skinned.Key]);
@@ -164,7 +166,15 @@ public sealed class SkinnedAttachmentAssetTests
         using var cache = new AttachmentSetCache(harness.Scene, source);
         int buffers = harness.Factory.Buffers.Count;
 
-        Assert.Throws<InvalidDataException>(() => cache.Get("set.json", hash));
+        if (skinnedBytes) Assert.Throws<InvalidDataException>(() => cache.Get("set.json", hash));
+        else
+        {
+            var error = Assert.Throws<AttachmentAccessorDataException>(() => cache.Get("set.json", hash));
+            Assert.Equal(AttachmentAccessorRefusal.PropertyMissing, error.Reason);
+            Assert.Equal("skins", error.PropertyName);
+            Assert.Equal("$", error.JsonPath);
+            Assert.NotNull(error.SourceName);
+        }
 
         Assert.Equal(buffers, harness.Factory.Buffers.Count);
     }

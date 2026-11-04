@@ -7196,7 +7196,7 @@ because no rigid orientation can be recovered.
 
 ### Attachment sets
 
-`KhaozEngine.Attachments` is a GPU-free, BCL-only package with immutable `AttachmentSetDefinition`
+`KhaozEngine.Attachments` is a GPU-free package referencing only the dependency-free Primitives, with immutable `AttachmentSetDefinition`
 values whose `AttachmentPartDefinition` parts are either `RigidAttachmentPartDefinition` or
 `SkinnedAttachmentPartDefinition`. `AttachmentSetJson` reads format 1 as rigid and format 2 with a
 required exact `rigid` or `skinned` kind on every part. Rigid parts keep `joint` and `local`. Skinned
@@ -7210,6 +7210,21 @@ every mesh node, unique non-blank joint names and at most 128 joints. Every prim
 `JOINTS_0` and `WEIGHTS_0` with at most four influences. External URIs, duplicate keys, further
 influence sets, all-zero weights, out-of-range joints, animations, morph targets and mesh weights
 are refused. Rigid and skinned imports retain the same material factors, vertex colours and maps.
+
+The container, accessor and hierarchy checks throw `AttachmentGlbContainerDataException`,
+`AttachmentAccessorDataException` and `AttachmentHierarchyDataException`. Each derives from
+`MalformedDataException` and carries its family's non-nullable `Reason`, `SourceName` and typed
+identifiers. Catch `MalformedDataException` for these families. Existing `InvalidDataException`
+catches need this additional base because `InvalidDataException` is sealed. `JsonPath` identifies
+the canonical schema location. Accessor `Index` preserves signed table references and unsigned
+sparse indexes as `long?`. The [GLB refusal tables](../KhaozEngine.Attachments/README.md#glb-refusals)
+list every reason and identifier. Messages remain developer prose.
+
+All three public GLB APIs preserve a known refusal's family, reason and identifiers when adding
+`SourceName`, and keep the original error as `InnerException`. JSON syntax failures use the
+container's `JsonMalformed` reason. Framework JSON shape and numeric conversion failures use
+`ValueShapeInvalid`. Geometry policies and rig-identity-owned refusals still throw
+`InvalidDataException` with source context until those families are converted.
 
 For body fit revisions, call `AttachmentGlb.ComputeRigIdentity(bodyGlbBytes, sourceName)` from a
 headless publisher or the client. Persist the complete `rig-v1:<sha256>` result. It covers ordered

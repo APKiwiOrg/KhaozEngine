@@ -209,7 +209,6 @@ public partial class ArchitectureTests
 
     [Theory]
     [InlineData("KhaozEngine.Primitives")]
-    [InlineData("KhaozEngine.Attachments")]
     public void ZeroDependencyLeaves_CarryNoProjectReferences(string package)
     {
         IReadOnlySet<string> refs = LoadGraph()[package].ProjectRefs;

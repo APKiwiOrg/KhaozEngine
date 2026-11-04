@@ -85,7 +85,12 @@ public class RigIdentityTests
         body.Accessors[0]!["componentType"] = 5122;
         body.Root["extensionsUsed"] = new JsonArray("KHR_mesh_quantization");
         body.Root["extensionsRequired"] = new JsonArray("KHR_mesh_quantization");
-        Assert.Throws<InvalidDataException>(() => Identity(body));
+        var error = Assert.Throws<AttachmentAccessorDataException>(() => Identity(body));
+        Assert.Equal(AttachmentAccessorRefusal.EncodingUnsupported, error.Reason);
+        Assert.Equal("body.glb", error.SourceName);
+        Assert.Equal("$.accessors[0]", error.JsonPath);
+        Assert.Equal(5122, error.ComponentType);
+        Assert.False(error.Normalized);
     }
 
     [Theory]
@@ -279,7 +284,12 @@ public class RigIdentityTests
         var body = new SkinnedAttachmentGlbFixture();
         body.Views[0]!["extensions"] = new JsonObject { ["EXT_meshopt_compression"] = new JsonObject() };
         if (required) body.Root["extensionsRequired"] = new JsonArray("EXT_meshopt_compression");
-        Assert.Throws<InvalidDataException>(() => Identity(body));
+        var error = Assert.Throws<AttachmentAccessorDataException>(() => Identity(body));
+        Assert.Equal(AttachmentAccessorRefusal.CompressionUnsupported, error.Reason);
+        Assert.Equal("body.glb", error.SourceName);
+        Assert.Equal("$.bufferViews[0]", error.JsonPath);
+        Assert.Equal(0, error.BufferViewIndex);
+        Assert.Equal("EXT_meshopt_compression", error.ExtensionName);
     }
 
     [Theory]
@@ -326,7 +336,9 @@ public class RigIdentityTests
                 body.Nodes[1]!["translation"] = new JsonArray(0, 0, 0);
                 break;
         }
-        var error = Assert.Throws<InvalidDataException>(() => Identity(body));
+        Action validate = () => Identity(body);
+        if (AttachmentRefusalAssertions.Rig(defect, validate)) return;
+        var error = Assert.Throws<InvalidDataException>(validate);
         Assert.Contains("body.glb", error.Message);
     }
 

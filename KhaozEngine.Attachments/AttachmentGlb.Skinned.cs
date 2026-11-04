@@ -30,9 +30,9 @@ public static partial class AttachmentGlb
             if (node.TryGetProperty("weights", out _))
                 throw new InvalidDataException($"{context}: morph weights are refused.");
             if (!node.TryGetProperty("mesh", out JsonElement mesh)) continue;
-            int meshIndex = AttachmentGlbAccessors.Index(mesh, context + " mesh");
+            int meshIndex = AttachmentGlbAccessors.Index(mesh, context + " mesh", $"$.nodes[{nodeIndex - 1}].mesh");
             AttachmentGlbAccessors.Entry(root, "meshes", meshIndex, context);
-            if (!node.TryGetProperty("skin", out JsonElement skin) || AttachmentGlbAccessors.Index(skin, context + " skin") != 0)
+            if (!node.TryGetProperty("skin", out JsonElement skin) || AttachmentGlbAccessors.Index(skin, context + " skin", $"$.nodes[{nodeIndex - 1}].skin") != 0)
                 throw new InvalidDataException($"{context}: each mesh node must reference skin 0.");
         }
 
@@ -44,14 +44,17 @@ public static partial class AttachmentGlb
                 throw new InvalidDataException($"{context}: morph weights are refused.");
             int primitiveIndex = 0;
             foreach (JsonElement primitive in Array(mesh, "primitives"))
-                ValidatePrimitive(primitive, context + $" primitive {primitiveIndex++}", accessors, jointCount);
+            {
+                int index = primitiveIndex++;
+                ValidatePrimitive(primitive, context + $" primitive {index}", accessors, jointCount, $"$.meshes[{meshOrdinal - 1}].primitives[{index}]");
+            }
         }
     });
 
     internal static int ValidateSkin(JsonElement root, JsonElement skin, AttachmentGlbAccessors accessors, int maxJoints = MaxSkinnedJoints)
     {
         const string context = "skin 0";
-        JsonElement joints = AttachmentGlbAccessors.Required(skin, "joints", context);
+        JsonElement joints = AttachmentGlbAccessors.Required(skin, "joints", context, "$.skins[0]");
         if (joints.ValueKind != JsonValueKind.Array || joints.GetArrayLength() < 1 || joints.GetArrayLength() > maxJoints)
             throw new InvalidDataException($"{context}: joints must contain 1 to {maxJoints} entries.");
         var indices = new HashSet<int>();
@@ -60,7 +63,7 @@ public static partial class AttachmentGlb
         foreach (JsonElement joint in joints.EnumerateArray())
         {
             string jointContext = context + $" joint {ordinal++}";
-            int index = AttachmentGlbAccessors.Index(joint, jointContext);
+            int index = AttachmentGlbAccessors.Index(joint, jointContext, $"$.skins[0].joints[{ordinal - 1}]");
             if (!indices.Add(index))
                 throw new InvalidDataException($"{jointContext}: repeated node index {index}.");
             JsonElement node = AttachmentGlbAccessors.Entry(root, "nodes", index, jointContext);
@@ -74,7 +77,7 @@ public static partial class AttachmentGlb
         int count = joints.GetArrayLength();
         if (skin.TryGetProperty("inverseBindMatrices", out JsonElement reference))
         {
-            var binds = accessors.Read(reference, context + " inverseBindMatrices", "MAT4");
+            var binds = accessors.Read(reference, context + " inverseBindMatrices", "MAT4", "$.skins[0].inverseBindMatrices");
             if (binds.Count != count)
                 throw new InvalidDataException($"{context}: inverseBindMatrices count must match joints.");
             Span<float> matrix = stackalloc float[16];
@@ -89,18 +92,18 @@ public static partial class AttachmentGlb
         return count;
     }
 
-    static void ValidatePrimitive(JsonElement primitive, string context, AttachmentGlbAccessors accessors, int jointCount)
+    static void ValidatePrimitive(JsonElement primitive, string context, AttachmentGlbAccessors accessors, int jointCount, string jsonPath)
     {
         if (primitive.TryGetProperty("targets", out _))
             throw new InvalidDataException($"{context}: morph targets are refused.");
-        JsonElement attributes = AttachmentGlbAccessors.Object(primitive, "attributes", context);
+        JsonElement attributes = AttachmentGlbAccessors.Object(primitive, "attributes", context, jsonPath);
         foreach (JsonProperty attribute in attributes.EnumerateObject())
             if ((attribute.Name.StartsWith("JOINTS_", StringComparison.Ordinal) && attribute.Name != "JOINTS_0")
                 || (attribute.Name.StartsWith("WEIGHTS_", StringComparison.Ordinal) && attribute.Name != "WEIGHTS_0"))
                 throw new InvalidDataException($"{context}: extra influence attribute {attribute.Name} is refused.");
-        var positions = accessors.Read(AttachmentGlbAccessors.Required(attributes, "POSITION", context), context + " POSITION", "VEC3");
-        var joints = accessors.Read(AttachmentGlbAccessors.Required(attributes, "JOINTS_0", context), context + " JOINTS_0", "VEC4", joints: true);
-        var weights = accessors.Read(AttachmentGlbAccessors.Required(attributes, "WEIGHTS_0", context), context + " WEIGHTS_0", "VEC4", weights: true);
+        var positions = accessors.Read(AttachmentGlbAccessors.Required(attributes, "POSITION", context, jsonPath + ".attributes"), context + " POSITION", "VEC3", jsonPath + ".attributes.POSITION");
+        var joints = accessors.Read(AttachmentGlbAccessors.Required(attributes, "JOINTS_0", context, jsonPath + ".attributes"), context + " JOINTS_0", "VEC4", jsonPath + ".attributes.JOINTS_0", joints: true);
+        var weights = accessors.Read(AttachmentGlbAccessors.Required(attributes, "WEIGHTS_0", context, jsonPath + ".attributes"), context + " WEIGHTS_0", "VEC4", jsonPath + ".attributes.WEIGHTS_0", weights: true);
         if (positions.Count != joints.Count || positions.Count != weights.Count)
             throw new InvalidDataException($"{context}: POSITION, JOINTS_0 and WEIGHTS_0 accessor counts must match.");
         Span<float> jointValues = stackalloc float[4];

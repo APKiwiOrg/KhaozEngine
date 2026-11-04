@@ -74,10 +74,11 @@ reuse after a different set warmed the cache. The cache copies source memory and
 preserves earlier cached assets. Skinned material groups retain their skin-order joint names, inverse
 binds and rest poses as immutable metadata. Loading allocates no frame palettes.
 
-GLB preflight propagates `AttachmentGlbContainerDataException`, `AttachmentAccessorDataException` and
-`AttachmentHierarchyDataException` from `Get`, including their `Reason`, `SourceName` and identifiers.
+GLB preflight propagates `AttachmentGlbContainerDataException`, `AttachmentAccessorDataException`,
+`AttachmentHierarchyDataException`, `AttachmentRigidGeometryDataException` and
+`AttachmentSkinnedGeometryDataException` from `Get`, including their `Reason`, `SourceName` and identifiers.
 Catch `MalformedDataException` for these families. The [GLB refusal tables](../KhaozEngine.Attachments/README.md#glb-refusals)
-list their members. Definition, geometry-policy and binding refusals still use `InvalidDataException`
+list their members. Definition and binding refusals still use `InvalidDataException`
 until their own families are converted.
 
 ```csharp

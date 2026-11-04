@@ -1,7 +1,6 @@
 using System;
 using System.Buffers.Binary;
 using System.Collections.Generic;
-using System.IO;
 using System.Text.Json;
 
 namespace KhaozEngine.Attachments;
@@ -27,11 +26,6 @@ public static partial class AttachmentGlb
         catch (Exception error) when (error is JsonException or InvalidOperationException or FormatException or OverflowException)
         {
             throw SourceFailure(error, sourceName);
-        }
-        catch (InvalidDataException error)
-        {
-            // W3e removes this compatibility arm for geometry families not yet converted.
-            throw new InvalidDataException($"{sourceName}: {error.Message}", error);
         }
     }
 

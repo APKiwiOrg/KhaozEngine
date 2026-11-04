@@ -96,10 +96,9 @@ joint. Host joint-name mapping and bind-pose compatibility are renderer-level ch
 ## GLB refusals
 
 `ValidateRigidEmbedded`, `ValidateSkinnedEmbedded` and `ComputeRigIdentity` preserve the originating
-container, accessor or hierarchy family. Catch `MalformedDataException` for these malformed-data
-refusals and inspect the concrete type's non-nullable `Reason`. This changes the catch contract from
-`InvalidDataException`, which is sealed. Geometry policies and rig-identity-owned refusals retain
-`InvalidDataException` until their families are converted.
+container, accessor, hierarchy, rigid geometry, skinned geometry or rig identity family. Catch
+`MalformedDataException` for these malformed-data refusals and inspect the concrete type's non-nullable
+`Reason`. This changes the catch contract from `InvalidDataException`, which is sealed.
 
 Each family carries `SourceName`. A public wrapper copies its reason and every identifier into the
 same family, prefixes the developer message with the source name and keeps the original as
@@ -171,6 +170,72 @@ Messages are developer prose and are not a contract.
 | `Cycle` | a cycle anywhere in the node hierarchy. | `JsonPath`, `NodeIndex` |
 | `JointsHaveDifferentRoots` | skin joints that do not share one tree root. | `JsonPath`, `ExpectedRootIndex`, `ActualRootIndex` |
 
+### AttachmentRigidGeometry
+
+`AttachmentRigidGeometryDataException` carries `AttachmentRigidGeometryRefusal`. Every reason includes `SourceName`.
+
+| Reason | What it refuses | Other identifiers |
+|---|---|---|
+| `SkinPresent` | skin data in rigid attachment geometry. | No additional identifiers |
+| `AnimationPresent` | animation in rigid attachment geometry. | No additional identifiers |
+| `NodeDeformationPresent` | a rigid node carrying skin or morph data. | `NodeIndex`, `HasSkin`, `HasWeights` |
+| `MeshMorphWeightsPresent` | mesh morph weights in rigid geometry. | `MeshIndex` |
+| `PrimitiveMorphTargetsPresent` | primitive morph targets in rigid geometry. | `MeshIndex`, `PrimitiveIndex` |
+| `SkinAttributePresent` | joint or weight vertex attributes in rigid geometry. | `MeshIndex`, `PrimitiveIndex`, `AttributeName` |
+
+### AttachmentSkinnedGeometry
+
+`AttachmentSkinnedGeometryDataException` carries `AttachmentSkinnedGeometryRefusal`. Every reason includes `SourceName`.
+
+`ValidateSkin` shares these reasons with rig identity, whose joint limit is independent of the renderer limit.
+
+| Reason | What it refuses | Other identifiers |
+|---|---|---|
+| `EmbeddedBufferCountMismatch` | skinned geometry without exactly one embedded buffer. | `BufferCount` |
+| `SkinCountMismatch` | skinned geometry without exactly one object skin. | `SkinCount` |
+| `AnimationPresent` | animation in a skinned attachment. | No additional identifiers |
+| `MorphWeightsPresent` | node or mesh morph weights in a skinned attachment. | `JsonPath`, `ElementIndex` |
+| `MeshNodeSkinMismatch` | a mesh node not referencing skin zero. | `NodeIndex`, `SkinIndex` |
+| `JointCountOutsideRange` | a skin joint table outside its allowed count. | `JsonPath`, `JointCount`, `MaximumJointCount` |
+| `JointNodeDuplicate` | repeated skin joint node indices. | `JointOrdinal`, `NodeIndex` |
+| `JointNameEmpty` | an unnamed skin joint. | `JointOrdinal`, `NodeIndex` |
+| `JointNameDuplicate` | repeated ordinal joint names. | `JointOrdinal`, `JointName` |
+| `InverseBindCountMismatch` | a bind accessor whose count differs from the skin joint count. | `BindCount`, `JointCount` |
+| `InverseBindNonFinite` | a non-finite inverse-bind matrix. | `JointOrdinal`, `ComponentIndex` |
+| `MorphTargetsPresent` | morph targets in a skinned primitive. | `JsonPath` |
+| `ExtraInfluenceAttribute` | unsupported influence sets beyond JOINTS_0 and WEIGHTS_0. | `JsonPath`, `AttributeName` |
+| `VertexAttributeCountMismatch` | position joint and weight accessors of different lengths. | `JsonPath`, `PositionCount`, `JointCount`, `WeightCount` |
+| `JointIndexOutsideSkin` | a vertex joint index beyond the skin joint count. | `JsonPath`, `VertexIndex`, `Lane`, `Index`, `JointCount` |
+| `WeightInvalid` | a non-finite or negative skin influence weight. | `JsonPath`, `VertexIndex`, `Lane`, `Weight` |
+| `WeightsAllZero` | a vertex with no positive skin weight. | `JsonPath`, `VertexIndex` |
+
+### RigIdentity
+
+`RigIdentityDataException` carries `RigIdentityRefusal`. Every reason includes `SourceName`.
+
+| Reason | What it refuses | Other identifiers |
+|---|---|---|
+| `EmbeddedBufferCountMismatch` | rig identity without exactly one embedded buffer. | `BufferCount` |
+| `SkinCountMismatch` | rig identity without exactly one object skin. | `SkinCount` |
+| `MeshNodeSkinMismatch` | a fitted mesh node referencing another skin. | `NodeIndex`, `SkinIndex` |
+| `MeshNodeHasNoMesh` | a skinned node without mesh geometry. | `NodeIndex` |
+| `MorphWeightsUnsupported` | node or mesh morph weights in rig-v1. | `JsonPath`, `ElementIndex` |
+| `SkinnedGeometryMissing` | rig identity without fitted skinned mesh geometry. | No additional identifiers |
+| `PrimitivesEmpty` | a fitted mesh without primitive geometry. | `MeshIndex`, `PrimitiveCount` |
+| `PrimitiveShapeOrMorphUnsupported` | a non-object or morph-bearing fitted primitive. | `MeshIndex`, `PrimitiveIndex` |
+| `CompressionUnsupported` | Draco-compressed fitted primitive geometry. | `PrimitiveIndex`, `ExtensionName` |
+| `PrimitiveModeInvalid` | a fitted primitive mode outside the glTF mode domain. | `PrimitiveIndex`, `Mode` |
+| `InfluenceAttributeMalformed` | a noncanonical influence-set attribute suffix. | `PrimitiveIndex`, `AttributeName` |
+| `FirstInfluenceSetMissing` | fitted geometry missing influence set zero. | `PrimitiveIndex` |
+| `WeightsAllZero` | a fitted vertex with no positive influence weight. | `PrimitiveIndex`, `VertexIndex` |
+| `VertexIndexOutsidePositionCount` | an index outside fitted POSITION data. | `PrimitiveIndex`, `Index`, `VertexCount` |
+| `JointIndexOrWeightInvalid` | an out-of-range joint or invalid weight in fitted geometry. | `VertexIndex`, `Lane`, `JointIndex`, `Weight`, `JointCount` |
+| `VertexAccessorCountMismatch` | fitted attributes with differing vertex counts. | `ActualCount`, `PositionCount` |
+| `FitValueNonFinite` | a non-finite fitted accessor value. | `JsonPath`, `VertexIndex`, `ComponentIndex` |
+| `MatrixAndTrsBothPresent` | a rest transform authored as both matrix and TRS. | `NodeIndex` |
+| `RestTransformLengthMismatch` | a rest transform with the wrong number of components. | `NodeIndex`, `ExpectedCount`, `ActualCount` |
+| `RestTransformComponentInvalid` | a non-numeric or non-finite rest transform component. | `NodeIndex`, `ComponentIndex` |
+
 ## Body rig identity
 
 Use `AttachmentGlb.ComputeRigIdentity(glbBytes, sourceName)` to identify what a garment fits against.
@@ -192,8 +257,9 @@ Adding, removing or retiming clips leaves the identity unchanged. Morph targets 
 compressed geometry and unsupported accessor encodings are refused rather than omitted.
 Encoding refusal is scoped to covered primitives and accessors. Required extensions affecting only
 ignored appearance or animation data do not change fit identity.
-Bad containers, hierarchy, references and accessor encodings or ranges use the structured malformed-data
-refusals below. Names and nonfinite fit data still use `InvalidDataException` with source context.
+Bad containers, hierarchy, references, names, transforms and fit data use the structured malformed-data
+refusals in the GLB tables above. Shared skin checks retain `AttachmentSkinnedGeometryRefusal`, including
+joint names and inverse binds. Rig-specific checks use `RigIdentityRefusal`. Both retain `SourceName`.
 Invalid source-name arguments throw
 `ArgumentException`. The rigid and skinned attachment validation APIs keep their existing policies,
 including their animation and external-image refusal.

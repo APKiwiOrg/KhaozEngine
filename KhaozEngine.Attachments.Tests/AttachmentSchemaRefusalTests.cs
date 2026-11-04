@@ -86,11 +86,15 @@ public sealed class AttachmentSchemaRefusalTests
     [InlineData("container")]
     [InlineData("accessor")]
     [InlineData("hierarchy")]
+    [InlineData("skinned")]
+    [InlineData("rig")]
     public void Rig_identity_preserves_each_converted_family_with_source_context(string family)
     {
         var fixture = new SkinnedAttachmentGlbFixture();
         Assert.StartsWith("rig-v1:", AttachmentGlb.ComputeRigIdentity(fixture.Build(), "control.glb"));
         if (family == "accessor") fixture.Accessors[2]!["normalized"] = "true";
+        if (family == "skinned") fixture.Nodes[1]!["name"] = "joint-0";
+        if (family == "rig") fixture.MeshNode.Remove("mesh");
         if (family == "hierarchy") fixture.Nodes[1]!["children"] = new JsonArray(0);
         byte[] bytes = fixture.Build();
         if (family == "container") bytes[0] = 0;
@@ -113,6 +117,21 @@ public sealed class AttachmentSchemaRefusalTests
                 Assert.Equal(2, accessor.AccessorIndex);
                 Assert.Equal("$.accessors[2].normalized", accessor.JsonPath);
                 Assert.Equal(accessor.Reason, Assert.IsType<AttachmentAccessorDataException>(accessor.InnerException).Reason);
+                break;
+            case "skinned":
+                var skinned = Assert.Throws<AttachmentSkinnedGeometryDataException>(validate);
+                Assert.Equal(AttachmentSkinnedGeometryRefusal.JointNameDuplicate, skinned.Reason);
+                Assert.Equal("body.glb", skinned.SourceName);
+                Assert.Equal(1, skinned.JointOrdinal);
+                Assert.Equal("joint-0", skinned.JointName);
+                Assert.Equal(skinned.Reason, Assert.IsType<AttachmentSkinnedGeometryDataException>(skinned.InnerException).Reason);
+                break;
+            case "rig":
+                var rig = Assert.Throws<RigIdentityDataException>(validate);
+                Assert.Equal(RigIdentityRefusal.MeshNodeHasNoMesh, rig.Reason);
+                Assert.Equal("body.glb", rig.SourceName);
+                Assert.Equal(4, rig.NodeIndex);
+                Assert.Equal(rig.Reason, Assert.IsType<RigIdentityDataException>(rig.InnerException).Reason);
                 break;
             case "hierarchy":
                 var hierarchy = Assert.Throws<AttachmentHierarchyDataException>(validate);

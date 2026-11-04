@@ -1,6 +1,5 @@
 using System;
 using System.Buffers.Binary;
-using System.IO;
 using System.Text;
 using KhaozEngine.Attachments;
 using Xunit;
@@ -20,6 +19,8 @@ public class GlbPolicyTests
     [InlineData("data-uri")]
     [InlineData("skins")]
     [InlineData("node-skin")]
+    [InlineData("node-weights")]
+    [InlineData("mesh-weights")]
     [InlineData("joints-attribute")]
     [InlineData("weights-attribute")]
     [InlineData("morph-target")]
@@ -36,6 +37,7 @@ public class GlbPolicyTests
     [InlineData("value-shape")]
     public void Policy_RejectsExternalOrNonRigidData(string name)
     {
+        AttachmentGlb.ValidateRigidEmbedded(Container(Embedded), "control.glb");
         string json = name switch
         {
             "root-array" => "[]",
@@ -49,6 +51,8 @@ public class GlbPolicyTests
             "data-uri" => Embedded.Replace("\"mimeType\":", "\"uri\":\"data:image/png;base64,AAAA\",\"mimeType\":", StringComparison.Ordinal),
             "skins" => Embedded.Replace("\"meshes\":", "\"skins\":[{\"joints\":[0]}],\"meshes\":", StringComparison.Ordinal),
             "node-skin" => Embedded.Replace("\"meshes\":", "\"nodes\":[{\"skin\":0}],\"meshes\":", StringComparison.Ordinal),
+            "node-weights" => Embedded.Replace("\"meshes\":", "\"nodes\":[{\"weights\":[]}],\"meshes\":", StringComparison.Ordinal),
+            "mesh-weights" => Embedded.Replace("\"primitives\":", "\"weights\":[],\"primitives\":", StringComparison.Ordinal),
             "joints-attribute" => Embedded.Replace("\"POSITION\":0", "\"POSITION\":0,\"JOINTS_0\":1", StringComparison.Ordinal),
             "weights-attribute" => Embedded.Replace("\"POSITION\":0", "\"POSITION\":0,\"WEIGHTS_0\":1", StringComparison.Ordinal),
             "morph-target" => Embedded.Replace("\"attributes\":", "\"targets\":[{}],\"attributes\":", StringComparison.Ordinal),
@@ -61,8 +65,7 @@ public class GlbPolicyTests
         byte[] glb = Container(json, binary: name != "missing-binary");
         Action validate = () => AttachmentGlb.ValidateRigidEmbedded(glb, name + ".glb");
         if (AttachmentRefusalAssertions.ContainerPolicy(name, validate, name + ".glb")) return;
-        InvalidDataException error = Assert.Throws<InvalidDataException>(validate);
-        Assert.Contains(name + ".glb", error.Message);
+        AttachmentGeometryRefusalAssertions.Rigid(name, validate, name + ".glb");
     }
 
     [Theory]

@@ -166,7 +166,12 @@ public sealed class SkinnedAttachmentAssetTests
         using var cache = new AttachmentSetCache(harness.Scene, source);
         int buffers = harness.Factory.Buffers.Count;
 
-        if (skinnedBytes) Assert.Throws<InvalidDataException>(() => cache.Get("set.json", hash));
+        if (skinnedBytes)
+        {
+            var error = Assert.Throws<AttachmentRigidGeometryDataException>(() => cache.Get("set.json", hash));
+            Assert.Equal(AttachmentRigidGeometryRefusal.SkinPresent, error.Reason);
+            Assert.Equal("set.json: attachment part 1, mesh 'wrong.glb'", error.SourceName);
+        }
         else
         {
             var error = Assert.Throws<AttachmentAccessorDataException>(() => cache.Get("set.json", hash));

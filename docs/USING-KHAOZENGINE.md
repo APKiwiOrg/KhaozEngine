@@ -7211,8 +7211,9 @@ every mesh node, unique non-blank joint names and at most 128 joints. Every prim
 influence sets, all-zero weights, out-of-range joints, animations, morph targets and mesh weights
 are refused. Rigid and skinned imports retain the same material factors, vertex colours and maps.
 
-The container, accessor and hierarchy checks throw `AttachmentGlbContainerDataException`,
-`AttachmentAccessorDataException` and `AttachmentHierarchyDataException`. Each derives from
+The GLB checks throw `AttachmentGlbContainerDataException`, `AttachmentAccessorDataException`,
+`AttachmentHierarchyDataException`, `AttachmentRigidGeometryDataException`,
+`AttachmentSkinnedGeometryDataException` or `RigIdentityDataException`. Each derives from
 `MalformedDataException` and carries its family's non-nullable `Reason`, `SourceName` and typed
 identifiers. Catch `MalformedDataException` for these families. Existing `InvalidDataException`
 catches need this additional base because `InvalidDataException` is sealed. `JsonPath` identifies
@@ -7223,8 +7224,9 @@ list every reason and identifier. Messages remain developer prose.
 All three public GLB APIs preserve a known refusal's family, reason and identifiers when adding
 `SourceName`, and keep the original error as `InnerException`. JSON syntax failures use the
 container's `JsonMalformed` reason. Framework JSON shape and numeric conversion failures use
-`ValueShapeInvalid`. Geometry policies and rig-identity-owned refusals still throw
-`InvalidDataException` with source context until those families are converted.
+`ValueShapeInvalid`. Shared skin checks retain `AttachmentSkinnedGeometryRefusal` through rig identity,
+including joint names and inverse binds. Rig-specific fit and rest-transform checks use `RigIdentityRefusal`.
+`AttachmentSetCache.Get` propagates the rigid and skinned policy families before decoding and uploading.
 
 For body fit revisions, call `AttachmentGlb.ComputeRigIdentity(bodyGlbBytes, sourceName)` from a
 headless publisher or the client. Persist the complete `rig-v1:<sha256>` result. It covers ordered

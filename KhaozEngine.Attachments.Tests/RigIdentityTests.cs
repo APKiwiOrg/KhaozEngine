@@ -1,6 +1,5 @@
 using System;
 using System.Buffers.Binary;
-using System.IO;
 using System.Linq;
 using System.Numerics;
 using System.Text.Json.Nodes;
@@ -293,6 +292,18 @@ public class RigIdentityTests
     }
 
     [Theory]
+    [InlineData("no-buffer")]
+    [InlineData("other-skin")]
+    [InlineData("skin-no-mesh")]
+    [InlineData("node-morph")]
+    [InlineData("mesh-morph")]
+    [InlineData("empty-primitives")]
+    [InlineData("bad-mode")]
+    [InlineData("malformed-influence")]
+    [InlineData("no-first-set")]
+    [InlineData("zero-weights")]
+    [InlineData("attribute-count")]
+    [InlineData("rest-nonfinite")]
     [InlineData("no-skin")]
     [InlineData("two-skins")]
     [InlineData("no-mesh")]
@@ -313,8 +324,21 @@ public class RigIdentityTests
     public void Unsafe_fit_input_is_refused_with_source_context(string defect)
     {
         var body = DetailedBody();
+        Assert.StartsWith("rig-v1:", Identity(body));
         switch (defect)
         {
+            case "no-buffer": body.Root["buffers"] = new JsonArray(); break;
+            case "other-skin": body.MeshNode["skin"] = 1; break;
+            case "skin-no-mesh": body.MeshNode.Remove("mesh"); break;
+            case "node-morph": body.MeshNode["weights"] = new JsonArray(); break;
+            case "mesh-morph": body.Mesh["weights"] = new JsonArray(); break;
+            case "empty-primitives": body.Mesh["primitives"] = new JsonArray(); break;
+            case "bad-mode": body.Primitives[0]!["mode"] = 7; break;
+            case "malformed-influence": Attributes(body)["JOINTS_01"] = 6; break;
+            case "no-first-set": Attributes(body).Remove("JOINTS_0"); Attributes(body).Remove("WEIGHTS_0"); break;
+            case "zero-weights": body.SetElement(2, 1, 0, 0, 0, 0); body.SetElement(7, 1, 0, 0, 0, 0); break;
+            case "attribute-count": body.Accessors[4]!["count"] = 2; break;
+            case "rest-nonfinite": body.Nodes[1]!["translation"] = new JsonArray(0, double.MaxValue, 0); break;
             case "no-skin": body.Root.Remove("skins"); break;
             case "two-skins": body.Root["skins"]!.AsArray().Add(body.Skin.DeepClone()); break;
             case "no-mesh": body.MeshNode.Remove("skin"); break;
@@ -338,8 +362,7 @@ public class RigIdentityTests
         }
         Action validate = () => Identity(body);
         if (AttachmentRefusalAssertions.Rig(defect, validate)) return;
-        var error = Assert.Throws<InvalidDataException>(validate);
-        Assert.Contains("body.glb", error.Message);
+        RigIdentityRefusalAssertions.Verify(defect, validate);
     }
 
     static string Identity(SkinnedAttachmentGlbFixture body) => AttachmentGlb.ComputeRigIdentity(body.Build(), "body.glb");

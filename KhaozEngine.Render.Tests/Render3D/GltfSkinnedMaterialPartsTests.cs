@@ -154,7 +154,12 @@ public sealed class GltfSkinnedMaterialPartsTests
         Assert.Equal(128, GltfLoader.LoadSkinned(atCap, "at-cap").BoneCount);
         Assert.NotEmpty(GltfLoader.LoadSkinnedPartsWithMaterials(atCap, "at-cap"));
         byte[] overCap = new SkinnedAttachmentGlbFixture(SkinningMath.MaxBonesPerDraw + 1).Build();
-        Assert.Throws<InvalidDataException>(() => AttachmentGlb.ValidateSkinnedEmbedded(overCap, "over-cap"));
+        var policy = Assert.Throws<AttachmentSkinnedGeometryDataException>(() => AttachmentGlb.ValidateSkinnedEmbedded(overCap, "over-cap"));
+        Assert.Equal(AttachmentSkinnedGeometryRefusal.JointCountOutsideRange, policy.Reason);
+        Assert.Equal("over-cap", policy.SourceName);
+        Assert.Equal("$.skins[0].joints", policy.JsonPath);
+        Assert.Equal(SkinningMath.MaxBonesPerDraw + 1, policy.JointCount);
+        Assert.Equal(SkinningMath.MaxBonesPerDraw, policy.MaximumJointCount);
         var error = Assert.Throws<GltfImportStateException>(() => GltfLoader.LoadSkinnedPartsWithMaterials(overCap, "over-cap"));
         Assert.Equal(GltfImportRefusal.SkinJointLimitExceeded, error.Reason);
         Assert.Equal("over-cap", error.Identity);

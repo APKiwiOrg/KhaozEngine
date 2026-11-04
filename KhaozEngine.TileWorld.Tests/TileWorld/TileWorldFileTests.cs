@@ -319,7 +319,8 @@ public class TileWorldFileTests
     {
         using var tmp = new TempDir();
         string dir = tmp.Sub("world");
-        TileWorldFile.Save(Authored(), dir);
+        // One region, so the refused region is the only candidate and the test pins no traversal order.
+        TileWorldFile.Save(TileWorldTestData.FlatWorld(4, new RegionCoord(0, 0)), dir);
         TileWorldDocument back = TileWorldFile.Load(dir);
         string manifestBefore = File.ReadAllText(Path.Combine(dir, "world.json"));
         string regionBefore = File.ReadAllText(Path.Combine(dir, "regions", "r_0_0.json"));

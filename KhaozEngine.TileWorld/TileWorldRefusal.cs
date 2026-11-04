@@ -94,4 +94,28 @@ public enum TileWorldRefusal
     ManifestIdMissing,
     /// <summary>Refuses loading a region file that cannot be read.</summary>
     RegionReadFailed,
+
+    // Prefab shape and file admission.
+    /// <summary>Refuses a prefab whose width or height is not positive.</summary>
+    PrefabSizeNonPositive,
+    /// <summary>Refuses a prefab file whose plane count is not positive.</summary>
+    PrefabPlaneCountNonPositive,
+    /// <summary>Refuses a prefab whose plane list differs from its declared plane count.</summary>
+    PrefabPlaneCountMismatch,
+    /// <summary>Refuses a prefab layer whose entry count differs from its declared size.</summary>
+    PrefabLayerCountMismatch,
+    /// <summary>Refuses a prefab file with an object anchored outside its footprint.</summary>
+    PrefabObjectOutsideBounds,
+    /// <summary>Refuses a prefab object on a plane the prefab does not have.</summary>
+    PrefabObjectPlaneOutsideRange,
+    /// <summary>Refuses a prefab file with a marker outside its footprint.</summary>
+    PrefabMarkerOutsideBounds,
+    /// <summary>Refuses a prefab marker on a plane the prefab does not have.</summary>
+    PrefabMarkerPlaneOutsideRange,
+    /// <summary>Refuses a prefab file that deserializes to no prefab.</summary>
+    PrefabEmpty,
+    /// <summary>Refuses prefab JSON that cannot be parsed or deserialized.</summary>
+    PrefabJsonMalformed,
+    /// <summary>Refuses a prefab file that cannot be read.</summary>
+    PrefabReadFailed,
 }

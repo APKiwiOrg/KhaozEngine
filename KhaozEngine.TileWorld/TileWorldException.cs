@@ -46,10 +46,10 @@ public sealed class TileWorldException : Exception
     /// <summary>The hash of the region bytes read for <see cref="TileWorldRefusal.RegionHashMismatch"/>.</summary>
     public string? ActualHash { get; init; }
 
-    /// <summary>The plane count stored in the refused region.</summary>
+    /// <summary>The plane count carried by the refused region or prefab.</summary>
     public int? ActualPlaneCount { get; init; }
 
-    /// <summary>The document's required plane count for a refused region.</summary>
+    /// <summary>The document's required region plane count, or the prefab's declared plane count.</summary>
     public int? ExpectedPlaneCount { get; init; }
 
     /// <summary>The refused object's document-unique id.</summary>
@@ -58,14 +58,15 @@ public sealed class TileWorldException : Exception
     /// <summary>The refused object's catalog archetype id.</summary>
     public string? ArchetypeId { get; init; }
 
-    /// <summary>The refused object's or marker's authored tile address, including its known plane.</summary>
+    /// <summary>The refused object's or marker's authored tile address, including its known plane.
+    /// Prefab refusals use prefab-relative coordinates.</summary>
     public TileCoord? Tile { get; init; }
 
     /// <summary>The object's or marker's refused plane, or the plane containing a refused dense layer.</summary>
     public int? Plane { get; init; }
 
-    /// <summary>The document's plane count for an object or marker plane refusal, or the manifest's invalid
-    /// plane count for <see cref="TileWorldRefusal.ManifestPlaneCountInvalid"/>.</summary>
+    /// <summary>The document's or prefab's plane count for an object or marker plane refusal, or the invalid
+    /// plane count refused by manifest or prefab-file admission.</summary>
     public int? PlaneCount { get; init; }
 
     /// <summary>The refused marker's name.</summary>
@@ -74,7 +75,7 @@ public sealed class TileWorldException : Exception
     /// <summary>The coordinate stored in a region file that disagrees with <see cref="Region"/>.</summary>
     public RegionCoord? ActualRegion { get; init; }
 
-    /// <summary>The refused manifest field, or the parser's JSON path for malformed region or manifest data,
+    /// <summary>The refused manifest field, or the parser's JSON path for malformed region, manifest or prefab data,
     /// when available.</summary>
     public string? Field { get; init; }
 
@@ -118,4 +119,19 @@ public sealed class TileWorldException : Exception
         get => _issues;
         init => _issues = value is null ? null : Array.AsReadOnly<TileWorldIssue>([.. value]);
     }
+
+    /// <summary>The refused prefab's authored name, when admission has a prefab value.</summary>
+    public string? PrefabName { get; init; }
+
+    /// <summary>The refused prefab's declared footprint width in tiles.</summary>
+    public int? Width { get; init; }
+
+    /// <summary>The refused prefab's declared footprint height in tiles.</summary>
+    public int? Height { get; init; }
+
+    /// <summary>The entry count carried by a refused prefab layer.</summary>
+    public int? ActualCount { get; init; }
+
+    /// <summary>The required entry count for a refused prefab layer.</summary>
+    public int? ExpectedCount { get; init; }
 }

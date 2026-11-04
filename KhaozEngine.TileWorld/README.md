@@ -138,7 +138,7 @@ at the door. `OfWorld` is unchanged, so moving a gate to the composed digest is 
 
 `TileWorldException` retains its exact type and both message-only constructors. Use `Reason` and the
 identifiers below to distinguish region residency, content, world-file, manifest-region, object, marker, dense-layer,
-embedded-schema and validation refusals.
+embedded-schema, validation and prefab refusals.
 Messages remain developer prose. `Reason` is nullable only for a message-only instance built outside the
 engine. Its reason-taking constructors also accept an original cause through `InnerException`.
 
@@ -188,6 +188,17 @@ region file and is null for these in-memory attachment, restoration and save che
 | `LayerByteCountMismatch` | A dense layer whose decoded byte count differs from its shape | `LayerName`, `ActualByteCount`, `ExpectedByteCount`, plus `SourceName` and `Plane` when loading a region or prefab |
 | `SchemaResourceMissing` | An embedded catalog schema resource absent from the assembly | `ResourceName` |
 | `WorldValidationFailed` | A document with semantic validation issues | `WorldId`, total `IssueCount`, complete owned read-only `Issues` snapshot |
+| `PrefabSizeNonPositive` | A prefab whose width or height is not positive | `PrefabName`, `Width`, `Height`, plus `SourceName` on load |
+| `PrefabPlaneCountNonPositive` | A prefab file whose plane count is not positive | `SourceName`, `PrefabName`, `PlaneCount` |
+| `PrefabPlaneCountMismatch` | A prefab whose plane list differs from its declaration | `PrefabName`, `ActualPlaneCount`, `ExpectedPlaneCount`, plus `SourceName` on load |
+| `PrefabLayerCountMismatch` | A hand-built prefab layer whose entry count differs from its size | `PrefabName`, `Plane`, `LayerName`, `ActualCount`, `ExpectedCount`, `Width`, `Height` |
+| `PrefabObjectOutsideBounds` | A prefab file with an object anchored outside its footprint | `SourceName`, `PrefabName`, `ArchetypeId`, full relative `Tile`, `Width`, `Height` |
+| `PrefabObjectPlaneOutsideRange` | A prefab object on a plane the prefab does not have | `PrefabName`, `ArchetypeId`, `Plane`, `PlaneCount`, full relative `Tile`, plus `SourceName` on load |
+| `PrefabMarkerOutsideBounds` | A prefab file with a marker outside its footprint | `SourceName`, `PrefabName`, `MarkerName`, full relative `Tile`, `Width`, `Height` |
+| `PrefabMarkerPlaneOutsideRange` | A prefab marker on a plane the prefab does not have | `PrefabName`, `MarkerName`, `Plane`, `PlaneCount`, full relative `Tile`, plus `SourceName` on load |
+| `PrefabEmpty` | A prefab file that deserializes to no value | `SourceName` |
+| `PrefabJsonMalformed` | Prefab JSON that cannot be parsed or deserialized | `SourceName`, nullable parser path in `Field`, original `JsonException` in `InnerException` |
+| `PrefabReadFailed` | A prefab file that cannot be read | `SourceName`, original `InnerException` |
 
 `MoveObject`, required object commands and `QueryService.ObjectGet` share `ObjectMissing`. A stale object
 index can follow direct edits to a region's public object list. `MoveObject` checks the destination region
@@ -539,6 +550,13 @@ the tile actually draws with, so a shape whose overlay material is missing is pa
 `TilePrefab` is a rect of tiles lifted out of a world (every layer, corner heights relative to the rect's SW
 corner, objects and markers in prefab-relative coordinates) that can be stamped elsewhere with a rotation.
 `TilePrefabFile.Save`/`Load` are its JSON form (base64 layers, indented for git, atomic replace).
+`Load` and hand-built `Place` share the size, plane-list and object/marker plane reasons in the
+[refusal table](#refusals). `PrefabName` is the authored name, including an empty unnamed label.
+`Load` also carries the file path in `SourceName`, while hand-built admission leaves it null. Empty,
+malformed and unreadable files have no admitted prefab value, so `PrefabName` remains null.
+File admission additionally checks positive plane counts and object/marker footprints. Serialized dense-layer
+errors retain `LayerBase64Malformed` or `LayerByteCountMismatch`, while hand-built layer lengths use
+`PrefabLayerCountMismatch`.
 
 - `Extract(doc, catalogs, rect, planeFrom, planeCount, includeObjects, includeMarkers, name,
   includeDerivedHeights)` lifts it, stamping each object's UNROTATED `SizeX`/`SizeZ` so a rotation later needs no

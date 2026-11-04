@@ -12893,6 +12893,23 @@ relative heights, objects, markers) and stamp it elsewhere at any rotation, with
 form. Pass `includeDerivedHeights: false` to `TilePrefabs.Extract` when an unauthored upper plane should keep
 deriving its height from the destination ground. Explicit height layers remain authored, even when their
 values happen to match the derived surface. The default includes derived heights for compatibility.
+
+Prefab admission retains `TileWorldException` and uses `PrefabSizeNonPositive`, `PrefabPlaneCountMismatch`,
+`PrefabObjectPlaneOutsideRange` and `PrefabMarkerPlaneOutsideRange` for the same shape rules in a file or a
+hand-built stamp. `PrefabName` is the authored name, which can be empty. File admission also supplies
+`SourceName`, while hand-built admission leaves it null. Size refusals carry `Width` and `Height`, plane-list
+refusals carry `ActualPlaneCount` and `ExpectedPlaneCount`, and object/marker plane refusals carry
+`ArchetypeId` or `MarkerName`, `Plane`, `PlaneCount` and the full prefab-relative `Tile`.
+
+`Load` additionally uses `PrefabPlaneCountNonPositive` with `PlaneCount`, and `PrefabObjectOutsideBounds`
+or `PrefabMarkerOutsideBounds` with the object or marker identity, full relative `Tile`, `Width` and `Height`.
+Hand-built layer lengths use `PrefabLayerCountMismatch`, with `Plane`, `LayerName`, `ActualCount`,
+`ExpectedCount`, `Width` and `Height`. Serialized layer errors keep the codec reasons described above.
+`PrefabEmpty`, `PrefabJsonMalformed` and `PrefabReadFailed` identify file admission failures with `SourceName`
+and no known `PrefabName`. Malformed JSON also carries the parser's nullable path in `Field` and the original
+`JsonException` in `InnerException`. A read failure retains its original cause in `InnerException`.
+Use these members and the [refusal table](../KhaozEngine.TileWorld/README.md#refusals) instead of message text.
+
 A stamp is additive per layer, so clear the rect first if you want a replace. Full API summary: the
 `KhaozEngine.TileWorld` package README. Design rationale: `docs/design/TILE-WORLD-DESIGN-2026-08-15.md`.
 

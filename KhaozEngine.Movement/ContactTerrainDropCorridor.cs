@@ -96,14 +96,8 @@ internal sealed class ContactTerrainDropCorridor(PhysicsNavDescentEvidence evide
                 var overlap = DescentGeometry.Overlap(polygon, floor.Polygon);
                 if (DescentGeometry.Area2(overlap).Sign == 0) continue;
                 var support = evidence.Face(floor.Face);
-                foreach (var p in overlap)
-                {
-                    var y = DescentGeometry.Height(face.Points, p);
-                    var bed = DescentGeometry.Height(support.Points, p);
-                    // A solid underside is occupancy evidence too. A ceiling above the aperture is harmless
-                    // only when it also clears the whole body's represented height envelope.
-                    if (y >= bed && y >= new DescentNumber(lower) && y <= new DescentNumber(upper + bodyHeight)) return false;
-                }
+                if (DescentObstruction.Intersects(face.Points, support.Points, overlap, lower, upper + bodyHeight))
+                    return false;
             }
         }
         return true;

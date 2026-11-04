@@ -1270,7 +1270,9 @@ Gentle slopes receive no terrain extension. Each source still contributes at mos
 
 `ContactTerrainDropCorridor` checks exact column coverage over the doubled-radius projection, first physical
 obstructions and solid occupancy. Foreign geometry below complete ground cannot replace that ground, and a roof
-cannot be skipped to reach an allowed floor. The original narrow center corridor, play boundary and highest-launch
+cannot be skipped to reach an allowed floor. Mesh faces are clipped exactly against the ground and vertical body
+envelope, including intersections whose original vertices all lie outside that envelope.
+The original narrow center corridor, play boundary and highest-launch
 descent bound remain composed through `NavDropFootprint`. Geometry supplies evidence, not collision permission.
 These internal prerequisites do not enable terrain links. The terrain proof policy, opt-in flags, persistence
 and runtime transition remain separate work. Existing sharp Drops and ordinary `AllowsSegment` are unchanged.

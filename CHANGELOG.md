@@ -14,7 +14,8 @@ Issues (the `kind/roadmap` label), not a checked-in roadmap file.
   `MalformedDataException` in `KhaozEngine.Primitives`. Catch `MalformedDataException` where code caught
   `InvalidDataException` from `GltfLoader`, `Scene3D.GetOrLoad*` factories that import, `AttachmentGlb`,
   `AttachmentSetJson`, `AttachmentSetDefinition.ValidateReferences`, `AttachmentSetCache.Get`,
-  `AttachmentSetBinding`, `LoadedAttachmentSet.Bind`, `PngReader.Decode` or `TileEditOps.ImportHeights`.
+  `AttachmentSetBinding`, `LoadedAttachmentSet.Bind`, `PngReader.Decode`, `TileEditOps.ImportHeights` or
+  `MutationService.HeightsImport`.
   `KhaozEngine.Attachments` and `KhaozEngine.Imaging` now reference `KhaozEngine.Primitives`.
 - Attachment source wrappers keep the inner family's reason and identifiers and add `SourceName`, rather than
   rewrapping as a generic error. A corrupt PNG compressed stream is `PngDecodeRefusal.CompressedStreamCorrupt`

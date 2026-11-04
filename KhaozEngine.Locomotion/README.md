@@ -749,7 +749,8 @@ support and placement passes under the original pin and climb budget. Coverage u
 Scripted movement commitments share preparation, timeout and recovery. Ballistic travel seeds a launch,
 while ground travel retains the ordinary vertical integrator and spends a horizontal distance budget.
 They suppress player steering and buffered jumps. Ballistic travel retains its collision-clipped velocity.
-Both use the same leased contact tick on land. Surface entry aborts the commitment. An environment refusal
+Both use the same leased contact tick on land. Surface entry releases control, preserving accepted ground arrival
+as the terminal outcome during recovery. An environment refusal
 preserves its original lifecycle and pose while consuming the player press. Sharded integration,
 generic nav proof and native acceptance remain in development.
 Dry explicit motion uses carried coyote/buffer timers and the existing pure air-momentum law.
@@ -845,9 +846,14 @@ producer acceptance or a playable consumer feature.
   resolvable travel are exhausted, using binary32 spacing on the travel axes and Legacy's sweep remainder limit.
   `GroundTravelCommitment.Steer` re-aims or replaces the budget in preparation or travel, allowing zero distance.
   `GroundTravelCommitment.End` accepts `Arrived` into optional recovery or completion, preserving that reason through
-  recovery. Other terminal reasons abort. Both controls require the matching sequence, ignore inapplicable state
-  and never restart recovery. Invalid supplied values throw even for stale sequences. Water entry aborts with
-  `EnteredWater`, and lost grounded support aborts with `UnsupportedState` during preparation, travel or recovery.
+  recovery. At accepted arrival the travel timeout stops applying, and `RecoveryRemaining` alone bounds recovery.
+  Other terminal reasons abort before arrival. Both controls require the matching sequence, ignore inapplicable
+  state and never restart recovery. Invalid supplied values throw even for stale sequences. Water entry aborts
+  with `EnteredWater`, and lost grounded support aborts with `UnsupportedState` during preparation or travel.
+  During recovery those conditions still release control immediately, retaining `Arrived` as the terminal reason.
+  `GroundTravelCommitment.ResolveEndReason` preserves that accepted outcome for every external release, including
+  teleport, supersession, disconnect and abort. The float heads apply it when constructing end results, so each
+  release path reports the same outcome. Ballistic recovery remains subject to its original timeout.
 - **`MoveState.SpeedScale`** (14.26.0) - per-entity HORIZONTAL speed multiplier: haste (`> 1`), slow (`< 1`),
   root (`0`), unmodified (`1`, the default). A movement INPUT the step reads and carries through unchanged, and nothing
   in the sim derives or decays it. It multiplies INTO the existing speed product rather than replacing any of it, so

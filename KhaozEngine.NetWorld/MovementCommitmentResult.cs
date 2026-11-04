@@ -5,7 +5,15 @@ namespace KhaozEngine.NetWorld;
 
 /// <summary>The authoritative result of one commitment lifecycle transition.</summary>
 public readonly record struct MovementCommitmentResult(int Slot, uint Sequence, MovementCommitmentEndReason Reason,
-    Vector3 Position, Vector2 Direction);
+    Vector3 Position, Vector2 Direction)
+{
+    internal static MovementCommitmentResult From(int slot, in PlayerMoveState state, MovementCommitmentEndReason reason)
+    {
+        MovementCommitment movement = state.Move.Commitment;
+        return new(slot, movement.Sequence, GroundTravelCommitment.ResolveEndReason(movement, reason),
+            state.Absolute.Position, movement.Direction);
+    }
+}
 
 // The bridge from the request to the Locomotion state the float heads carry. The request moved down into
 // KhaozEngine.Netcode with IAdminControllable (see TypeForwards.cs), below Locomotion, so these two halves of it

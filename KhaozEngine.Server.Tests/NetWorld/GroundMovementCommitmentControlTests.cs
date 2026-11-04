@@ -108,23 +108,37 @@ public class GroundMovementCommitmentControlTests
 
     // #1658. An admin end can become terminal before the step observer captures its before state.
     [Theory]
-    [InlineData(MovementHoldHead.Flat, 0f)]
-    [InlineData(MovementHoldHead.Sharded, 0f)]
-    [InlineData(MovementHoldHead.Flat, 0.15f)]
-    [InlineData(MovementHoldHead.Sharded, 0.15f)]
+    [InlineData(MovementHoldHead.Flat, 0f, false)]
+    [InlineData(MovementHoldHead.Sharded, 0f, false)]
+    [InlineData(MovementHoldHead.Flat, 0.15f, false)]
+    [InlineData(MovementHoldHead.Sharded, 0.15f, false)]
+    [InlineData(MovementHoldHead.Flat, Dt / 2, false)]
+    [InlineData(MovementHoldHead.Sharded, Dt / 2, false)]
+    [InlineData(MovementHoldHead.Flat, 0.15f, true)]
+    [InlineData(MovementHoldHead.Sharded, 0.15f, true)]
     public void Arrival_precedes_exactly_one_end_and_repeated_controls_cannot_restart_recovery(
-        MovementHoldHead head, float recovery)
+        MovementHoldHead head, float recovery, bool nearTimeout)
     {
         using var rig = new MovementHoldRig(head);
         using var seat = rig.JoinClient("ground");
         var target = PlayerRef.Slot(seat.Slot);
         uint sequence = rig.Admin.BeginMovementCommitment(target,
-            MovementCommitmentRequest.ForGroundTravel(Vector2.UnitX, 30, 10, recoverySeconds: recovery));
+            MovementCommitmentRequest.ForGroundTravel(Vector2.UnitX, 30, 10, recoverySeconds: recovery,
+                timeoutSeconds: nearTimeout ? 2 * Dt : 5));
         rig.Step();
         var arrived = new List<MovementCommitmentResult>();
         var ended = new List<MovementCommitmentResult>();
         var order = new List<string>();
-        Arrived(rig, result => { arrived.Add(result); order.Add("arrival"); });
+        Arrived(rig, result =>
+        {
+            arrived.Add(result);
+            order.Add("arrival");
+            var accepted = rig.Authority(seat.Slot).Move.Commitment;
+            Assert.Equal(sequence, accepted.Sequence);
+            Assert.Equal(recovery > 0 ? MovementCommitmentPhase.Recovering : MovementCommitmentPhase.Completed, accepted.Phase);
+            Assert.Equal(recovery, accepted.RecoveryRemaining);
+            Assert.Empty(ended);
+        });
         Ended(rig, result => { ended.Add(result); order.Add("end"); });
         Vector3 stopped = rig.Authority(seat.Slot).Position;
         Before(rig, _ =>
@@ -459,8 +473,128 @@ public class GroundMovementCommitmentControlTests
         Pump(8);
         Assert.Equal(arrived ? 1 : 0, arrivals.Count);
         Assert.Equal(sequence, Assert.Single(ends).Sequence);
-        Assert.Equal(abortRecovery ? MovementCommitmentEndReason.Aborted
-            : arrived ? MovementCommitmentEndReason.Arrived : MovementCommitmentEndReason.NoPath, ends[0].Reason);
+        Assert.Equal(arrived ? MovementCommitmentEndReason.Arrived : MovementCommitmentEndReason.NoPath, ends[0].Reason);
+    }
+
+    [Theory]
+    [InlineData(MovementHoldHead.Flat, false)]
+    [InlineData(MovementHoldHead.Sharded, false)]
+    [InlineData(MovementHoldHead.Sharded, true)]
+    public void Arrival_handler_controls_wait_for_the_next_frame_including_a_short_sharded_frame(
+        MovementHoldHead head, bool shortFrame)
+    {
+        using var rig = new MovementHoldRig(head);
+        using var seat = rig.JoinClient("arrival-hook");
+        var target = PlayerRef.Slot(seat.Slot);
+        uint sequence = rig.Admin.BeginMovementCommitment(target,
+            MovementCommitmentRequest.ForGroundTravel(Vector2.UnitX, 30, 10, recoverySeconds: 10 * Dt));
+        rig.Step();
+        var arrived = new List<MovementCommitmentResult>();
+        var ended = new List<MovementCommitmentResult>();
+        Ended(rig, ended.Add);
+        Arrived(rig, result =>
+        {
+            arrived.Add(result);
+            Assert.Equal(MovementCommitmentPhase.Recovering, rig.Authority(seat.Slot).Move.Commitment.Phase);
+            Assert.Equal(10 * Dt, rig.Authority(seat.Slot).Move.Commitment.RecoveryRemaining);
+            rig.Admin.AbortMovementCommitment(target, sequence);
+        });
+        rig.Admin.EndMovementCommitment(target, sequence, MovementCommitmentStopReason.Arrived);
+        rig.Server.Tick(shortFrame ? Dt / 4 : Dt);
+        Assert.Single(arrived);
+        Assert.Empty(ended);
+        Assert.True(rig.Authority(seat.Slot).Move.Commitment.IsActive);
+        rig.Step();
+        Assert.Equal(sequence, Assert.Single(ended).Sequence);
+        Assert.Equal(MovementCommitmentEndReason.Arrived, ended[0].Reason);
+        Assert.False(rig.Authority(seat.Slot).Move.Commitment.IsActive);
+    }
+
+    public static TheoryData<MovementHoldHead, string> RecoveryReleases => new()
+    {
+        { MovementHoldHead.Flat, "expiry" }, { MovementHoldHead.Sharded, "expiry" },
+        { MovementHoldHead.Flat, "water" }, { MovementHoldHead.Sharded, "water" },
+        { MovementHoldHead.Flat, "unsupported" }, { MovementHoldHead.Sharded, "unsupported" },
+        { MovementHoldHead.Flat, "teleport" }, { MovementHoldHead.Sharded, "teleport" },
+        { MovementHoldHead.Flat, "supersession" }, { MovementHoldHead.Sharded, "supersession" },
+        { MovementHoldHead.Flat, "disconnect" }, { MovementHoldHead.Sharded, "disconnect" },
+        { MovementHoldHead.Flat, "abort" }, { MovementHoldHead.Sharded, "abort" },
+    };
+
+    // #1658. Accepted arrival is the terminal outcome even when recovery is interrupted.
+    [Theory]
+    [MemberData(nameof(RecoveryReleases))]
+    public void Every_recovery_release_keeps_arrived_and_ends_the_sequence_once(MovementHoldHead head, string release)
+    {
+        using var rig = new MovementHoldRig(head);
+        using var seat = rig.JoinClient("recovery-release");
+        var target = PlayerRef.Slot(seat.Slot);
+        var request = MovementCommitmentRequest.ForGroundTravel(Vector2.UnitX, 30, 10, recoverySeconds: 4 * Dt);
+        uint sequence = rig.Admin.BeginMovementCommitment(target, request);
+        rig.Step();
+        var arrived = new List<MovementCommitmentResult>();
+        var ended = new List<MovementCommitmentResult>();
+        Arrived(rig, arrived.Add);
+        Ended(rig, ended.Add);
+        rig.Admin.EndMovementCommitment(target, sequence, MovementCommitmentStopReason.Arrived);
+        rig.Step();
+        Assert.Single(arrived);
+        Assert.Empty(ended);
+        Assert.Equal(MovementCommitmentPhase.Recovering, rig.Authority(seat.Slot).Move.Commitment.Phase);
+        uint replacement = 0;
+        switch (release)
+        {
+            case "water":
+            case "unsupported":
+                var state = rig.Authority(seat.Slot);
+                state.Move.Swimming = release == "water";
+                if (release == "unsupported")
+                {
+                    state.Move.Grounded = false;
+                    state.Position += new Vector3(0, 10, 0);
+                }
+                rig.Server.SetPlayerState(seat.Slot, state);
+                break;
+            case "teleport":
+                rig.Admin.Teleport(target, rig.Authority(seat.Slot).Position + Vector3.UnitZ);
+                break;
+            case "supersession":
+                replacement = rig.Admin.BeginMovementCommitment(target, request);
+                break;
+            case "disconnect":
+                rig.Server.Disconnect(seat.Slot);
+                break;
+            case "abort":
+                rig.Admin.AbortMovementCommitment(target, sequence);
+                break;
+            case "expiry":
+                break;
+            default:
+                throw new ArgumentOutOfRangeException(nameof(release));
+        }
+        rig.Step();
+        if (release == "expiry")
+        {
+            Assert.Empty(ended);
+            for (int i = 0; i < 6; i++) rig.Step();
+        }
+        var result = Assert.Single(ended);
+        Assert.Equal(sequence, result.Sequence);
+        Assert.Equal(MovementCommitmentEndReason.Arrived, result.Reason);
+        if (release == "disconnect") Assert.False(rig.Server.TryGetPlayerState(seat.Slot, out _));
+        else
+        {
+            var current = rig.Authority(seat.Slot).Move.Commitment;
+            Assert.False(current.Sequence == sequence && current.IsActive);
+            if (release == "supersession")
+            {
+                Assert.Equal(replacement, current.Sequence);
+                Assert.True(current.IsActive);
+            }
+        }
+        rig.Step();
+        Assert.Single(ended);
+        Assert.Single(arrived);
     }
 
     static void Arrived(MovementHoldRig rig, Action<MovementCommitmentResult> action)

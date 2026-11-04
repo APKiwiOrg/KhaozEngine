@@ -487,6 +487,7 @@ public sealed partial class ShardedWorldServer : IWorldPersistenceHost, IAdminCo
         ExpireLingers();            // an expired linger leaves before anything sees this tick
         OnBeforeTick?.Invoke(dt);   // consumer NPC/enemy brains run before movement + serving
         admin.Drain(ApplyAdminCommand);
+        PublishMovementCommitmentArrivals();
         // A reused buffer, but still a COPY of the keys: the loops below can mutate netIdBySlot (a kick or a
         // disconnect mid-serve), so neither may enumerate the dictionary directly.
         tickSlots.Clear();

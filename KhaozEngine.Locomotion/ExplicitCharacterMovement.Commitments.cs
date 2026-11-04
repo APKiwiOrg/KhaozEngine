@@ -27,7 +27,7 @@ public static partial class ExplicitCharacterMovement
     internal static MovementCommitment WaterAborted(in MovementCommitment movement) => movement with
     {
         Phase = MovementCommitmentPhase.Aborted,
-        EndReason = MovementCommitmentEndReason.EnteredWater,
+        EndReason = GroundTravelCommitment.ResolveEndReason(movement, MovementCommitmentEndReason.EnteredWater),
         DistanceRemaining = movement.Kind == MovementCommitmentKind.Ground ? 0 : movement.DistanceRemaining,
     };
 

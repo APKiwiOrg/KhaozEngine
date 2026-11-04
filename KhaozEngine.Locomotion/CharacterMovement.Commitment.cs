@@ -27,7 +27,11 @@ public static partial class CharacterMovement
         jump = false;
         faceYaw = null;
 
-        if (movement.Kind == MovementCommitmentKind.Ground) state.JumpBufferRemaining = 0;
+        if (movement.Kind == MovementCommitmentKind.Ground)
+        {
+            GroundTravelCommitment.PrepareTick(ref state, ref tuning, ref moveDir, ref speedFraction, dt);
+            return true;
+        }
 
         float timeout = MathF.Max(0f, movement.TimeoutRemaining - dt);
         movement = movement with { TimeoutRemaining = timeout };
@@ -38,15 +42,7 @@ public static partial class CharacterMovement
             {
                 Phase = MovementCommitmentPhase.Aborted,
                 EndReason = MovementCommitmentEndReason.TimedOut,
-                DistanceRemaining = movement.Kind == MovementCommitmentKind.Ground ? 0 : movement.DistanceRemaining,
             };
-            return true;
-        }
-
-        if (movement.Kind == MovementCommitmentKind.Ground)
-        {
-            state.Commitment = movement;
-            GroundTravelCommitment.PrepareTick(ref state, ref tuning, ref moveDir, ref speedFraction, dt);
             return true;
         }
 

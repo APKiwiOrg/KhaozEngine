@@ -66,12 +66,30 @@ public static class GroundTravelCommitment
         };
     }
 
+    /// <summary>Accepted ground arrival remains the terminal outcome when recovery releases for any reason.
+    /// Before arrival, and for ballistic moves, the supplied release reason is retained.</summary>
+    public static MovementCommitmentEndReason ResolveEndReason(in MovementCommitment movement,
+        MovementCommitmentEndReason reason) =>
+        movement.Kind == MovementCommitmentKind.Ground && movement.EndReason == MovementCommitmentEndReason.Arrived
+            ? MovementCommitmentEndReason.Arrived : reason;
+
     internal static void PrepareTick(ref MoveState state, ref MoveTuning tuning, ref Vector2 direction,
         ref float fraction, float dt)
     {
         MovementCommitment movement = state.Commitment;
         state.JumpBufferRemaining = 0;
         state.HorizontalVelocity = Vector2.Zero;
+        // Arrival finishes travel. Recovery is bounded by its own remaining time, including when travel
+        // arrived on its final eligible tick. Ballistic timeout policy stays in the shared flight path.
+        if (movement.EndReason != MovementCommitmentEndReason.Arrived)
+        {
+            movement = movement with { TimeoutRemaining = MathF.Max(0, movement.TimeoutRemaining - dt) };
+            if (movement.TimeoutRemaining <= 0)
+            {
+                state.Commitment = Abort(movement, MovementCommitmentEndReason.TimedOut);
+                return;
+            }
+        }
         state.FacingYaw = CharacterMovement.FacingYawOf(movement.Direction);
         if (state.Swimming || state.WaterExcursion == WaterExcursionState.AirborneFromWater)
             movement = Abort(movement, MovementCommitmentEndReason.EnteredWater);
@@ -138,7 +156,7 @@ public static class GroundTravelCommitment
     }
 
     static MovementCommitment Abort(in MovementCommitment movement, MovementCommitmentEndReason reason) =>
-        movement with { Phase = MovementCommitmentPhase.Aborted, EndReason = reason, DistanceRemaining = 0 };
+        movement with { Phase = MovementCommitmentPhase.Aborted, EndReason = ResolveEndReason(movement, reason), DistanceRemaining = 0 };
 
     static double IntendedDistance(in MovementCommitment movement, float dt) =>
         Math.Min(movement.DistanceRemaining, (double)movement.HorizontalSpeed * dt);

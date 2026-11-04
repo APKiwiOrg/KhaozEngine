@@ -182,13 +182,18 @@ public class MovementCommitmentTests
             Commitment = ground ? MovementCommitment.ForGroundTravel(23, Vector2.UnitX, 8, 5, timeoutSeconds: 3)
                 : new MovementCommitment(23u, Vector2.UnitX, 8f, 5f, 0f, 3f),
         };
-        state.Commitment = state.Commitment with { Phase = phase, RecoveryRemaining = 1 };
+        state.Commitment = state.Commitment with
+        {
+            Phase = phase, RecoveryRemaining = 1,
+            EndReason = phase == MovementCommitmentPhase.Recovering ? MovementCommitmentEndReason.Arrived : default,
+        };
 
         state = CharacterMovement.Step(state, MoveCommand.Idle, Dt, Flat, Tuning, medium: DeepWater);
 
         Assert.True(state.Swimming);
         Assert.Equal(MovementCommitmentPhase.Aborted, state.Commitment.Phase);
-        Assert.Equal(MovementCommitmentEndReason.EnteredWater, state.Commitment.EndReason);
+        Assert.Equal(phase == MovementCommitmentPhase.Recovering ? MovementCommitmentEndReason.Arrived
+            : MovementCommitmentEndReason.EnteredWater, state.Commitment.EndReason);
     }
 
     [Theory]

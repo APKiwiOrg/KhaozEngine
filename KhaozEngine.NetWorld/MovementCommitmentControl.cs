@@ -84,5 +84,5 @@ internal static class MovementCommitmentControl
     };
 
     private static MovementCommitmentResult Result(int slot, in PlayerMoveState state, MovementCommitmentEndReason reason) =>
-        new(slot, state.Move.Commitment.Sequence, reason, state.Absolute.Position, state.Move.Commitment.Direction);
+        MovementCommitmentResult.From(slot, state, reason);
 }

@@ -18,10 +18,12 @@ public sealed partial class ShardedWorldServer
     /// <summary>Raised once on physical landing, after handoff and ghost sync and before the snapshot pass.</summary>
     public event Action<MovementCommitmentResult>? MovementCommitmentLanded;
 
-    /// <summary>Raised once when authoritative ground arrival is accepted, before optional recovery and snapshots.</summary>
+    /// <summary>Raised once immediately after the admin drain, before movement advances ground recovery and
+    /// before snapshots, including frames without a physical step. Commands queued by handlers apply next frame.</summary>
     public event Action<MovementCommitmentResult>? MovementCommitmentArrived;
 
-    /// <summary>Raised once after recovery, or when a commitment aborts for any reason.</summary>
+    /// <summary>Raised once after recovery, or when a commitment releases for any reason. Accepted ground arrival
+    /// remains the reported reason even when recovery is interrupted.</summary>
     public event Action<MovementCommitmentResult>? MovementCommitmentEnded;
 
     /// <summary>Queues a committed move and returns its correlation sequence.</summary>
@@ -117,22 +119,22 @@ public sealed partial class ShardedWorldServer
         movementCommitmentEnds.Add(Result(slot, state, reason));
 
     private static MovementCommitmentResult Result(int slot, in PlayerMoveState state,
-        MovementCommitmentEndReason reason)
+        MovementCommitmentEndReason reason) => MovementCommitmentResult.From(slot, state, reason);
+
+    private void PublishMovementCommitmentArrivals()
     {
-        MovementCommitment movement = state.Move.Commitment;
-        return new MovementCommitmentResult(slot, movement.Sequence, reason, state.Position, movement.Direction);
+        foreach (MovementCommitmentResult result in movementCommitmentArrivals)
+            MovementCommitmentArrived?.Invoke(result);
+        movementCommitmentArrivals.Clear();
     }
 
     private void PublishMovementCommitmentEvents()
     {
         foreach (MovementCommitmentResult result in movementCommitmentLandings)
             MovementCommitmentLanded?.Invoke(result);
-        foreach (MovementCommitmentResult result in movementCommitmentArrivals)
-            MovementCommitmentArrived?.Invoke(result);
         foreach (MovementCommitmentResult result in movementCommitmentEnds)
             MovementCommitmentEnded?.Invoke(result);
         movementCommitmentLandings.Clear();
-        movementCommitmentArrivals.Clear();
         movementCommitmentEnds.Clear();
     }
 }

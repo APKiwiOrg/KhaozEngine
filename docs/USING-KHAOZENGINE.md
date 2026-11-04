@@ -14613,7 +14613,8 @@ distance budget subtracts achieved XZ displacement and holds active at zero. Use
 `GroundTravelCommitment.End` to confirm `Arrived`, optionally recovering with that reason preserved, or to abort
 with another terminal reason. Steering and ending do not restart recovery. Three consecutive steps below 10 percent
 progress abort as `Blocked`, with the counter carried in state. Lost grounded support and water entry terminate
-explicitly. Both float server heads accept `MovementCommitmentRequest.ForGroundTravel` through
+with `UnsupportedState` and `EnteredWater` during preparation or travel, preserving `Arrived` if recovery has begun.
+Both float server heads accept `MovementCommitmentRequest.ForGroundTravel` through
 `BeginMovementCommitment`, and ground progress rides wire generation 15. A begin requires grounded support and
 refuses swimming or airborne-from-water actors. Refusal preserves any active commitment and publishes exactly
 one `MovementCommitmentEnded` for the refused sequence with `UnsupportedState`.
@@ -14621,9 +14622,15 @@ one `MovementCommitmentEnded` for the refused sequence with `UnsupportedState`.
 Use `SteerMovementCommitment(target, expectedSequence, direction, distanceRemaining)` to re-aim preparing or
 travelling ground state. The sequence must be nonzero, direction finite and nonzero, and distance finite and
 nonnegative, including zero to hold. Use `EndMovementCommitment(target, expectedSequence, reason)` with the
-Netcode-defined `MovementCommitmentStopReason`. `Arrived` emits `MovementCommitmentArrived` once before optional
-recovery, then `MovementCommitmentEnded` once at release with `Arrived` retained. With no recovery, arrival
-precedes end in the same frame. Apply authoritative effects from the arrival result's absolute `Position` and
+Netcode-defined `MovementCommitmentStopReason`. `Arrived` emits `MovementCommitmentArrived` once immediately after
+the admin drain and before movement advances recovery. Its handler observes the full `RecoveryRemaining`, even
+when that duration is shorter than a tick. A sharded frame without a physical step also delivers arrival.
+Commands queued by the handler apply on the next frame. `MovementCommitmentEnded` runs once at release and
+reports `Arrived` for that sequence after accepted arrival, including release by recovery expiry, water, lost
+support, teleport, supersession, disconnect or `AbortMovementCommitment`. Interruptions release immediately.
+The travel timeout stops applying at accepted ground arrival, and `RecoveryRemaining` bounds recovery. Ballistic
+timeout and recovery behavior stays unchanged. With no recovery, arrival precedes end in the same frame.
+Apply authoritative effects from the arrival result's absolute `Position` and
 steered `Direction`, with the game's normal target, reach and combat validation. Ended releases ability bookkeeping.
 
 `TargetLost`, `NoPath`, `TooLong` and `UnsupportedState` abort with their corresponding Locomotion reason.

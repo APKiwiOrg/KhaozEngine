@@ -284,10 +284,15 @@ public class GroundMovementCommitmentTests
         MovementCommitmentPhase phase)
     {
         var state = Standing() with { Grounded = false, VerticalVelocity = -2 };
-        state.Commitment = state.Commitment with { Phase = phase, PreparationRemaining = 1, RecoveryRemaining = 1 };
+        state.Commitment = state.Commitment with
+        {
+            Phase = phase, PreparationRemaining = 1, RecoveryRemaining = 1,
+            EndReason = phase == MovementCommitmentPhase.Recovering ? MovementCommitmentEndReason.Arrived : default,
+        };
         state = CharacterMovement.Step(state, Hostile, Dt, Abyss, Tuning with { Controller = controller });
         Assert.Equal(MovementCommitmentPhase.Aborted, state.Commitment.Phase);
-        Assert.Equal(MovementCommitmentEndReason.UnsupportedState, state.Commitment.EndReason);
+        Assert.Equal(phase == MovementCommitmentPhase.Recovering ? MovementCommitmentEndReason.Arrived
+            : MovementCommitmentEndReason.UnsupportedState, state.Commitment.EndReason);
         Assert.Equal(-2 - 7 * Dt, state.VerticalVelocity, 5);
         Assert.Equal(Vector2.Zero, state.HorizontalVelocity);
     }
@@ -295,7 +300,6 @@ public class GroundMovementCommitmentTests
     [Theory]
     [InlineData(MovementControllerKind.Legacy, MovementCommitmentPhase.Preparing)]
     [InlineData(MovementControllerKind.Contact, MovementCommitmentPhase.Travelling)]
-    [InlineData(MovementControllerKind.Contact, MovementCommitmentPhase.Recovering)]
     public void Timeout_releases_control_even_while_holding(MovementControllerKind controller, MovementCommitmentPhase phase)
     {
         var state = Standing();
@@ -305,6 +309,44 @@ public class GroundMovementCommitmentTests
         Assert.Equal(MovementCommitmentPhase.Aborted, state.Commitment.Phase);
         Assert.Equal(MovementCommitmentEndReason.TimedOut, state.Commitment.EndReason);
         Assert.Equal(Vector2.Zero, state.HorizontalVelocity);
+    }
+
+    // #1658. Arrival completes travel, so its timeout cannot truncate ground recovery. Ballistic is unchanged.
+    [Theory]
+    [InlineData(MovementControllerKind.Legacy, true)]
+    [InlineData(MovementControllerKind.Contact, true)]
+    [InlineData(MovementControllerKind.Legacy, false)]
+    [InlineData(MovementControllerKind.Contact, false)]
+    public void Arrival_recovery_ignores_travel_timeout_but_ballistic_recovery_keeps_it(
+        MovementControllerKind controller, bool ground)
+    {
+        var tuning = Tuning with { Controller = controller };
+        var state = Standing();
+        state.Commitment = ground
+            ? MovementCommitment.ForGroundTravel(1, Vector2.UnitX, 3, 10, recoverySeconds: 3 * Dt, timeoutSeconds: 2 * Dt)
+            : new MovementCommitment(1, Vector2.UnitX, 3, 5, 7, 0, 3 * Dt, 2 * Dt)
+                with { Phase = MovementCommitmentPhase.Recovering };
+        state = CharacterMovement.Step(state, MoveCommand.Idle, Dt, Flat, tuning);
+        if (ground)
+            state.Commitment = GroundTravelCommitment.End(state.Commitment, 1, MovementCommitmentEndReason.Arrived);
+        var arrived = state.Position;
+        state = CharacterMovement.Step(state, Hostile, Dt, Flat, tuning);
+        if (!ground)
+        {
+            Assert.Equal(MovementCommitmentPhase.Aborted, state.Commitment.Phase);
+            Assert.Equal(MovementCommitmentEndReason.TimedOut, state.Commitment.EndReason);
+            return;
+        }
+        Assert.Equal(MovementCommitmentPhase.Recovering, state.Commitment.Phase);
+        Assert.True(state.Commitment.RecoveryRemaining > 0);
+        Assert.Equal(MovementCommitmentEndReason.Arrived, state.Commitment.EndReason);
+        for (int i = 0; i < 4 && state.Commitment.IsActive; i++)
+        {
+            state = CharacterMovement.Step(state, Hostile, Dt, Flat, tuning);
+            Assert.Equal(arrived, state.Position);
+        }
+        Assert.Equal(MovementCommitmentPhase.Completed, state.Commitment.Phase);
+        Assert.Equal(MovementCommitmentEndReason.Arrived, state.Commitment.EndReason);
     }
 
     [Theory]

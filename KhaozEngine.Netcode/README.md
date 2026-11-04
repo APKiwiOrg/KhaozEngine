@@ -621,8 +621,10 @@ retain default methods that throw `NotSupportedException`.
 The float heads admit a ground begin only for grounded actors that are neither swimming nor airborne from water.
 A refused request leaves the current commitment intact and emits one `MovementCommitmentEnded` result for the
 refused sequence with `UnsupportedState`. `MovementCommitmentArrived` fires once at accepted ground arrival,
-before optional recovery. `MovementCommitmentEnded` fires once at release. Arrival precedes end when both happen
-in one frame, and both precede snapshots. Pursuit remains pending.
+immediately after the admin drain and before movement advances optional recovery. Commands queued by its handlers
+apply on the next frame. The travel timeout stops applying at accepted ground arrival. `MovementCommitmentEnded`
+fires once at release and reports `Arrived` after accepted arrival, including when recovery is interrupted.
+Arrival precedes end when both happen in one frame, and both precede snapshots. Pursuit remains pending.
 
 The three decorators are public and compose on their own when a head wants a different order, or only one of them.
 They forward both optional verified-claim companions. Version and world gates unwrap their own token layer before

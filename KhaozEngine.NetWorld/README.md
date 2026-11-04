@@ -815,10 +815,18 @@ Ground travel uses `SteerMovementCommitment(target, expectedSequence, direction,
 the direction and remaining budget during preparation or travel. The sequence must be nonzero, direction finite
 and nonzero, and distance finite and nonnegative. A zero budget holds without inferring arrival. Use
 `EndMovementCommitment(target, expectedSequence, MovementCommitmentStopReason.Arrived)` to confirm arrival.
-`MovementCommitmentArrived` publishes exactly once at the accepted end, before optional rooted recovery.
-`MovementCommitmentEnded` publishes exactly once at control release, after recovery if requested. Arrival
-precedes end if both occur in one frame. These events publish before snapshots, so effects applied by their
-handlers reach that frame's snapshot. Arrival results carry the absolute position and current steered direction.
+`MovementCommitmentArrived` publishes exactly once immediately after the admin drain, before movement advances
+optional rooted recovery. The callback observes the full recovery duration, even when it is shorter than one tick.
+Arrival also publishes in a sharded frame with no physical step. Commands queued by an arrival handler apply on
+the next frame, because that frame's admin drain has already finished. Direct host-thread state edits still
+reach that frame's snapshot. Arrival results carry the absolute position and current steered direction.
+
+The travel timeout stops applying at accepted ground arrival. `RecoveryRemaining` bounds recovery independently.
+`MovementCommitmentEnded` publishes exactly once at control release and always reports `Arrived` for that sequence
+after arrival was accepted. Recovery expiry, water, lost support, teleport, supersession, disconnect and
+`AbortMovementCommitment` all preserve that outcome, while interruptions release control immediately. Arrival
+precedes end if both occur in one frame. Landed and Ended keep their existing publication points, before snapshots.
+Ballistic timeout and recovery behavior is unchanged.
 
 Other stop reasons are `TargetLost`, `NoPath`, `TooLong`, `UnsupportedState` and `Cancelled`. They abort immediately,
 with `Cancelled` mapping to the existing Locomotion `Aborted` reason. `None` and unknown values are invalid.

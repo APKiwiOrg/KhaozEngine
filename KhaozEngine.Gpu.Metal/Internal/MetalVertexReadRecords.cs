@@ -12,6 +12,7 @@ internal sealed class MetalVertexReadRecords
         internal MetalVertexReadLayout? Layout;
         internal bool Reachable;
         internal ulong First, Last;
+        internal MetalRecordedReads.Cursor[]? Cursors;
     }
 
     readonly Binding[] _bindings = new Binding[MetalVertexStreamRecords.MaxSlot + 1];
@@ -22,12 +23,13 @@ internal sealed class MetalVertexReadRecords
     {
         ref var binding = ref _bindings[slot];
         if (ReferenceEquals(binding.Buffer, buffer) && binding.Offset == offset) return;
-        binding = new() { Buffer = buffer, Offset = offset };
+        binding = new() { Buffer = buffer, Offset = offset, Cursors = binding.Cursors };
     }
 
     internal void Reset()
     {
-        Array.Clear(_bindings);
+        for (int slot = 0; slot < _bindings.Length; slot++)
+            _bindings[slot] = new() { Cursors = _bindings[slot].Cursors };
         _target = null;
     }
 
@@ -47,23 +49,28 @@ internal sealed class MetalVertexReadRecords
             if (binding.Buffer is not { } buffer || buffer.Handle.IsNull) continue;
             ref readonly var stream = ref layout.Streams[slot];
             bool reachable = indexed && !stream.PerInstance;
+            bool same = ReferenceEquals(binding.Layout, layout) && binding.Reachable == reachable;
+            if (same && reachable) continue;
             ulong first = stream.PerInstance ? instanceStart / stream.StepRate : vertexStart;
             ulong last = stream.PerInstance ? ((ulong)instanceStart + instanceCount - 1) / stream.StepRate
                 : (ulong)vertexStart + vertexCount - 1;
-            bool same = ReferenceEquals(binding.Layout, layout) && binding.Reachable == reachable;
-            if (same && (reachable || (first >= binding.First && last <= binding.Last))) continue;
+            if (same && first >= binding.First && last <= binding.Last) continue;
 
-            foreach (var attribute in stream.Attributes)
+            var cursors = binding.Cursors;
+            if (cursors is null || cursors.Length < stream.Attributes.Length)
+                binding.Cursors = cursors = new MetalRecordedReads.Cursor[stream.Attributes.Length];
+            for (int attributeIndex = 0; attributeIndex < stream.Attributes.Length; attributeIndex++)
             {
+                var attribute = stream.Attributes[attributeIndex];
                 ulong offset = binding.Offset + attribute.Offset;
                 if (reachable)
                 {
                     if (offset + attribute.Bytes > buffer.SizeInBytes || stream.Stride == 0) continue;
                     reads.AddStrided(buffer.CpuResource, offset, attribute.Bytes, stream.Stride,
-                        (buffer.SizeInBytes - offset - attribute.Bytes) / stream.Stride + 1);
+                        (buffer.SizeInBytes - offset - attribute.Bytes) / stream.Stride + 1, ref cursors[attributeIndex]);
                 }
                 else reads.AddStrided(buffer.CpuResource, offset + first * stream.Stride,
-                    attribute.Bytes, stream.Stride, last - first + 1);
+                    attribute.Bytes, stream.Stride, last - first + 1, ref cursors[attributeIndex]);
             }
             if (same && first <= binding.Last + 1 && last + 1 >= binding.First)
             {

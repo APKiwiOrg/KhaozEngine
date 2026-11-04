@@ -57,34 +57,49 @@ Retirement removes protection without clearing a footprint reclaimed by a later 
 never chooses a fresh footprint from a shared pool. Frame records are stored by value in ring-sized storage,
 and mapping lease lists return to a pool after the outermost unmap.
 
-Within a footprint, each resource has reusable AVL indexes for contiguous and strided reads. Contiguous
-intervals coalesce overlaps and adjacency without filling gaps. Strided entries retain exact element
+Within a footprint, each resource has a reusable sorted append run for contiguous reads and separate AVL
+indexes for earlier contiguous reads and strided reads. Increasing uniform-ring slices append in constant
+work, with no tree insertion or rebalancing. Overlaps and adjacency merge with the last run interval without
+filling alignment gaps. Earlier reads already covered by the run need only a binary search. Other earlier
+reads enter the contiguous AVL, whose union is queried alongside the run. No run is migrated or rescanned
+when recording changes direction. Strided entries retain exact element
 sequences and index their bounding spans, while overlap checks still test only the actual attribute bytes.
 Resource bindings record reads only after a set, dynamic offset, live shader table or recording changes.
-An offset-only change records only dynamic elements. Encoder invalidation does not invalidate already
+An offset-only change records only dynamic elements, using cached live-element flags rather than querying
+the shader-use dictionary again. Full read invalidation resolves those flags after a set, shader table,
+physical segment or recording changes. Encoder invalidation does not invalidate already
 recorded reads. Indexed vertex streams record their reachable attributes once per binding and vertex layout.
 Repeated draw windows reuse their coverage, and consecutive strided windows extend the same exact attribute
 sequence without filling padding or skipped elements. Attribute sizes and stream membership are resolved
 with the pipeline, rather than rediscovered per draw. Duplicate inserts are lookups with no tree writes.
 These per-change rules avoid repeating read recording across thousands of unchanged draws (#1696).
 
-Recording costs O(log n) per changed read, amortized across intervals removed by coalescing. A contiguous lookup
+Recording an increasing contiguous slice costs O(1) after storage warm-up. Other changed reads cost O(log n),
+amortized across contiguous intervals removed by coalescing. A contiguous lookup
 costs O(log n). A strided lookup visits only candidate spans and their search paths, bounded by
 O((k + 1) log n), where k is the number of overlapping strided bounding spans examined. Prefix
 publication queries that same index once per writable mapping rather than crossing every read with every
 mapping. No access scans all reads merely because the frame has many draws. This avoids the quadratic
 recording and access work that stalled draw-heavy Mac frames (#1692).
 
-Dictionaries and index node arrays retain their capacity across recordings. Index storage keeps stable
+Dictionaries, append runs, binding cursors and index node arrays retain their capacity across recordings. Index storage keeps stable
 recording positions instead of circulating through a LIFO pool, so alternating main and capture recordings
 with different resource counts cannot keep redistributing and growing already-warmed storage. Removed
 nodes are reused. A larger workload may grow storage during warm-up. Steady frames never pay for those
 containers again. The internal diagnostics count index node examinations, rotations and node mutations so
 the 3,000-draw regression can bound work deterministically, without a wall-clock assertion. An unchanged
-draw performs no index work. A draw with new uniform slices and instance windows pays logarithmic work
-only for those changed reads. Arbitrary binding, layout and window changes retain the indexed worst case
-above. The strided continuation cache keeps one node hint per attribute shape and stride phase, and falls
-back to the same AVL insertion when a window cannot extend that hint.
+draw performs no index work. Binding elements and vertex attributes own resource cursors, avoiding resource
+dictionary lookups on steady draws. Each vertex attribute also owns its strided continuation hint. A matching
+window extends that exact sequence and refreshes ancestor bounds without insertion or balancing. Its cost
+is O(log s), where s is the number of strided sequences for that resource, independent of uniform slices.
+The two instance attributes in the 3,000-draw regression keep s at two. This removes the tuple-keyed
+continuation dictionary and its per-draw hashing. Different shapes, stride phases or skipped elements fall
+back to ordinary AVL insertion. Cursor identity includes the footprint, generation and resource, so ring-slot
+reuse and interleaved command lists cannot reuse a stale node hint. No shared resource carries mutable cursors.
+Arbitrary binding, layout and window changes retain the indexed worst case above. The game-shaped regression
+allows at most twelve probes and mutations per draw, plus a fixed setup allowance, and requires zero rotations
+and zero resource or shader-use hash lookups between mesh or static-set rebinds. These are deterministic work bounds, not a claim
+about elapsed frame time (#1696).
 
 Publishing and CPU access share the submit lock. A writable mapping opened before the prefix must be unmapped
 before the prefix commits. A read-only mapping gives no write permission. Using a pointer after `Unmap` or

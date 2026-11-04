@@ -27,6 +27,9 @@ Issues (the `kind/roadmap` label), not a checked-in roadmap file.
   Persisted movement payloads migrate automatically through normal blob normalization. Historical speed q becomes
   Int16(q * 64), preserving its old decoded value while composing with owner-timer splitting and framed positions.
   New ground fields default to Ballistic and zero. Malformed payloads still refuse and quarantine.
+- Append increasing Metal uniform-ring read slices without tree rebalancing. Binding and vertex cursors
+  remove steady-draw resource, shader-use and continuation hashing, preserving exact CPU access refusals and warmed
+  zero allocation for frames with fresh uniform slices on every draw (#1696).
 - Record Metal split-frame reads when bindings or draw windows change. Reuse indexed mesh coverage, extend
   consecutive instance windows and leave duplicate interval inserts free of tree writes. CPU access refusals
   and steady-frame zero allocation are unchanged (#1696).

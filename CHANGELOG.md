@@ -8,6 +8,7 @@ Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
 2026-11-04
 
+- Skip default material-map sampling and dormant cutout work for opaque, untangented foliage with no maps.
 - Add server-authoritative ground commitments with sequence-checked begin, steering and end on both float heads.
   Ground travel uses its own speed, ignores player movement, jump, facing and speed effects, and retains ordinary
   collision, gravity, slopes and steps. Horizontal distance caps the final stride and holds at zero until the

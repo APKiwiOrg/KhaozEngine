@@ -19,6 +19,7 @@ internal sealed class ContactTickWorkspace
     MovementQueryLease? _lease;
     int _analyticCount, _ownerCount;
     bool _tick;
+    internal ContactDescentEvidence? DescentEvidence { get; set; }
     internal ContactCapsuleShapes Shapes { get; } = new();
     internal LeasedContactQueryContext Queries { get; } = new();
     internal ExplicitContactModes Modes { get; } = new();
@@ -58,6 +59,7 @@ internal sealed class ContactTickWorkspace
         _ownerCount = 0;
         Array.Clear(_water, 0, _waterCount);
         _waterCount = 0;
+        DescentEvidence = null;
         _lease = null;
     }
 

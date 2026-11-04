@@ -21,5 +21,8 @@
     <EmbeddedResource Include="Fixtures/TileInstallationBaseline.json" />
     <EmbeddedResource Include="Fixtures/TileInstallationBaseline.navbake" />
   </ItemGroup>
+  <ItemGroup>
+    <Compile Include="../KhaozEngine.Game.Tests/Locomotion/Contacts/LocomotionStateBits.cs" Link="Fixtures/LocomotionStateBits.cs" />
+  </ItemGroup>
   <Import Project="../test-shared/AllocationMeasurement.props" />
 </Project>

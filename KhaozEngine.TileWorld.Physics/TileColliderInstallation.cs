@@ -10,13 +10,15 @@ namespace KhaozEngine.TileWorld.Physics;
 internal static class TileColliderInstallation
 {
     internal static TileColliderRegistration Install(IPhysicsWorld world, IReadOnlyList<TileCollider> colliders,
-        TileColliderProvenance[] provenance, string worldId, OrdinaryMovementExtent extent, Func<TileCollider, bool>? include)
+        TileColliderProvenance[] provenance, string worldId, OrdinaryMovementExtent extent, Func<TileCollider, bool>? include, IMovementAnalyticSupportSource? analyticSupport = null)
     {
         ArgumentNullException.ThrowIfNull(world);
         var selected = new List<int>(colliders.Count);
         var retained = new List<TileColliderProvenance>(colliders.Count);
+        int groundCount = 0;
         for (int i = 0; i < colliders.Count; i++)
         {
+            if (colliders[i].Kind == TileColliderKind.Ground) groundCount++;
             if (include is not null && !include(colliders[i])) continue;
             selected.Add(i);
             retained.Add(provenance[i]);
@@ -49,6 +51,6 @@ internal static class TileColliderInstallation
             }
             throw;
         }
-        return new TileColliderRegistration(world, handles, groundHandles.ToArray(), owners, worldId, extent, indices);
+        return new TileColliderRegistration(world, handles, groundHandles.ToArray(), owners, worldId, extent, indices, groundHandles.Count == groundCount ? analyticSupport : null);
     }
 }

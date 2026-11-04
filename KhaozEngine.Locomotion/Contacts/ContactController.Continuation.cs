@@ -146,6 +146,9 @@ internal static partial class ContactController
                     : AirPass.StepWithMedium(tick.Feet, drive, tick.VerticalVelocity, time, t.Gravity, t, c.Settings,
                         tick.TractionGate, tick.Queries, tick.Budget, c.ClampXz, c.Fluid);
                 tick.Queries.AcceptRoute(air.Blocked);
+                tick.Queries.DescentEvidence?.Record(tick.Queries, air.Feet, air.Support,
+                    waterSegment ? ContactDescentMode.Water : ContactDescentMode.Air,
+                    c.Settings.FootRadiusFraction * t.CapsuleRadius, tick.TractionGate);
                 Vector2 asked = segment == 0 ? commanded : drive;
                 bool grounded = air.Outcome == AirOutcome.Landed;
                 tick = tick with
@@ -199,6 +202,9 @@ internal static partial class ContactController
                     if (rounded.Status is not (SupportStatus.Walkable or SupportStatus.Steep))
                         throw new ContactQueryFailure(MovementAvailability.Unresolved);
                     tick = tick with { Support = rounded, Binding = binding };
+                    tick.Queries.DescentEvidence?.Record(tick.Queries, tick.Feet, rounded,
+                        tick.Mode == Mode.Slide ? ContactDescentMode.Slide : ContactDescentMode.Ground,
+                        c.Settings.FootRadiusFraction * t.CapsuleRadius, tick.TractionGate);
                 }
                 else
                     tick = tick with

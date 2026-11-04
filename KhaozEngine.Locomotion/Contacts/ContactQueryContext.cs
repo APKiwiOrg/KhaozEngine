@@ -15,6 +15,13 @@ internal readonly struct ContactQueryContext
     public static implicit operator ContactQueryContext(DryContactQueryContext dry) => new(dry);
     public static implicit operator ContactQueryContext(LeasedContactQueryContext leased) => new(leased);
 
+    internal ContactDescentEvidence? DescentEvidence => _leased?.DescentEvidence;
+    internal MovementAvailability DescribeSelectedAnalytic(Vector3 feet, in SupportSample sample,
+        out MovementSurfaceFeature feature)
+    {
+        feature = default;
+        return _leased?.DescribeSelectedAnalytic(feet, sample, out feature) ?? MovementAvailability.Unresolved;
+    }
     internal ContactCapsuleShapes Shapes => _leased?.Shapes ?? ContactCapsuleShapes.ForThread;
     internal bool HasShell => _leased is not null || _dry.HasShell;
     internal bool HasMediumProof => _leased is not null;

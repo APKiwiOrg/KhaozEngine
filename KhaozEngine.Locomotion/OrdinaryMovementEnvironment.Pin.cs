@@ -6,7 +6,7 @@ using KhaozEngine.Physics;
 namespace KhaozEngine.Locomotion;
 
 /// <summary>Non-owning evidence for one physical read and runtime registration publication.</summary>
-internal sealed class OrdinaryMovementEnvironmentPin : IMovementEnvironmentPin, IMovementContactSupportPin
+internal sealed partial class OrdinaryMovementEnvironmentPin : IMovementEnvironmentPin, IMovementContactSupportPin
 {
     readonly OrdinaryMovementEnvironment _owner;
     readonly IPhysicsQueryLease _physics;

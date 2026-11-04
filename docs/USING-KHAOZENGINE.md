@@ -9532,6 +9532,12 @@ MoveCommand command = input.Command(steering, run);
 ```
 
 Standalone construction uses `BuildProfile(tuning, areas, new GroundProfileOptions { MaxDropMetres = allowance })`.
+Certified tile installations expose optional analytic feature provenance through
+`OrdinaryMovementRegistration.AnalyticSupport`. It supports internal selected-route identity checks while ordinary
+height delegates and movement results keep their existing behavior. Continuous terrain Drop transitions still
+require their separate capture and physical certificate. See
+[analytic support provenance](../KhaozEngine.Locomotion/README.md#analytic-support-provenance).
+
 The allowance must be finite and nonnegative. Legacy, aquatic and public explicit selections refuse positive values.
 Full-tuning walk/run proofs certify the local walk-off, airborne corridor, first supported landing and final Hold.
 Neither transient swimming nor an unwalkable contact can disappear inside a tick. Supported wading remains eligible.

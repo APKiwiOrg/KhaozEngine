@@ -54,6 +54,29 @@ Register excluded statics before publication so their provenance participates in
 The optional `IPhysicsStaticGeometrySource` marker keeps a registration valid across steps and pure rebases.
 Without it, a fresh physics geometry generation requires a fresh registration.
 
+### Analytic support provenance
+
+`OrdinaryMovementRegistration.Builder.WithAnalyticSupport` optionally attaches an immutable
+`IMovementAnalyticSupportSource`. It must recognize the exact height and normal delegates through `Matches`,
+including their coordinate convention. Ordinary movement does not query this capability or change its owner,
+selection, coarse flags or result. Existing delegates remain valid without it.
+
+`Describe` identifies the same authored face the field selects. `MovementSurfaceFeatureKey` contains a source
+provenance string, an opaque source address and a part number. `GetFeature` resolves that exact address to copied
+triangle geometry and its canonical owner. `AreAdjacent` authenticates both keys and uses source topology,
+never height similarity. An unknown address or a field without provenance returns unavailable evidence.
+`IMovementAnalyticSupportPin` provides the same facts within an authenticated movement read.
+
+The internal Contact descent witness records selected steep support and first walkable support from Air, Slide
+and water handoffs, including support left again inside one tick and recertification after horizontal rounding.
+It copies analytic feature identity while the
+lease is current. Physics addresses are visible only to an in-lease validator, and no continuity arena escapes.
+Its fixed 256-event storage is opt-in and reusable. Overflow, unavailable support and missing analytic identity
+have distinct structured statuses and never alter movement. Selected-pose wetness and selected swimming and
+water-excursion history accumulate across subsegments. They do not replace a swept water certificate.
+This evidence does not enable terrain Drop transitions. Their separate capture and physical certificate remain
+required by the [Drop contract](../docs/design/CONTACT-DROP-LINKS.md).
+
 ### Runtime statics
 
 Use `registration.ApplyRuntimeStatics` between movement reads to add, replace or remove ordinary stationary

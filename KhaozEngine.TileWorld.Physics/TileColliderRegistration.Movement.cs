@@ -33,6 +33,7 @@ public sealed partial class TileColliderRegistration
             builder.Add(_handles[i], 0, int.MaxValue, new(worldId, row.OwnerLocalId), row.AbsoluteMinimum, row.AbsoluteMaximum);
         }
         foreach (StaticHandle handle in _groundHandles) builder.Exclude(handle);
+        if (_analyticSupport is not null) builder.WithAnalyticSupport(_analyticSupport);
         return builder;
     }
 }

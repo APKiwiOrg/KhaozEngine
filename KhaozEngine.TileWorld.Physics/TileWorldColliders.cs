@@ -17,12 +17,14 @@ namespace KhaozEngine.TileWorld.Physics;
 public sealed partial class TileWorldColliders
 {
     readonly byte[] _hash;
+    readonly IMovementAnalyticSupportSource _analyticSupport;
 
     TileWorldColliders(TileCollider[] colliders, byte[] hash, TileGroundSampler ground, TileMediumSampler medium,
         TileColliderProvenance[] provenance, string worldId, TileMovementSnapshot captured, OrdinaryMovementExtent extent)
     {
         Colliders = Array.AsReadOnly(colliders);
         _hash = hash;
+        _analyticSupport = new TileAnalyticSupportSource(captured, worldId);
         Ground = ground;
         Medium = medium;
         _provenance = provenance;
@@ -150,7 +152,7 @@ public sealed partial class TileWorldColliders
     /// <exception cref="AggregateException">Adding failed and removing what was added failed too. The add failure is
     /// the first inner exception.</exception>
     public TileColliderRegistration AddTo(IPhysicsWorld world)
-        => TileColliderInstallation.Install(world, Colliders, _provenance, MovementWorldId, MovementExtent, null);
+        => TileColliderInstallation.Install(world, Colliders, _provenance, MovementWorldId, MovementExtent, null, _analyticSupport);
 
     /// <summary>
     /// Adds only selected colliders as statics, retaining their canonical owners, absolute bounds and the full
@@ -174,7 +176,7 @@ public sealed partial class TileWorldColliders
     {
         ArgumentNullException.ThrowIfNull(world);
         ArgumentNullException.ThrowIfNull(include);
-        return TileColliderInstallation.Install(world, Colliders, _provenance, MovementWorldId, MovementExtent, include);
+        return TileColliderInstallation.Install(world, Colliders, _provenance, MovementWorldId, MovementExtent, include, _analyticSupport);
     }
 
     static void RequirePositive(float value, string option)

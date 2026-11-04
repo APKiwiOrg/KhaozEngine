@@ -46,6 +46,13 @@ target's own physical landing patch, before ordinary input reaches that admitted
 another raw layer at equal height or unrelated ground cannot supply this first support. Selected steep contacts
 and the first walkable support, including transient support inside a tick, need authenticated route evidence.
 
+Locomotion provides an optional bounded selected-route witness for this prerequisite. The certified tile-ground
+installation supplies canonical analytic feature keys from the same captured drawn triangles as its height field,
+with shared-edge source adjacency. A key is not inferred from height or a process-local physics handle. Missing
+analytic identity is explicit unavailable evidence. The witness retains first walkable support even when Slide
+or Air leaves it again before the tick ends, and accumulates selected medium history. Existing coarse flags and
+movement results remain unchanged. These facts alone do not enable a terrain transition or replace its certificate.
+
 The future certificate must preserve original layer and cell identity, full ordinary terminal footprint admission,
 the 3D 1 mm arrival sphere and a real supported terminal Hold. Collision, roofs, areas, water, original boundaries,
 highest-launch descent and existing proof budgets remain binding throughout the transition. Fringe poses never

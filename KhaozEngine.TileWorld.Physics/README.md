@@ -61,6 +61,19 @@ The binding creates its movement view with ground handles excluded. Ground meshe
 complete physics world. Use `CreateMovementRegistrationBuilder(worldId, combinedExtent)` to retain tile owners
 and exclusions while adding other installed statics. Build that combined registration under a fresh source lease.
 
+A complete ground installation also attaches optional `OrdinaryMovementRegistration.AnalyticSupport`.
+It recognizes the exact captured `MovementGroundHeight` and `MovementGroundNormal` delegates in world coordinates.
+Wrapping those delegates requires a separately authenticated source, even when their sampled values agree.
+The canonical key qualifies packed signed tile X/Z and the triangle ordinal with the world and immutable captured
+lattice fingerprint. It uses the same drawn-triangle selector as the field. Shared-edge adjacency comes from the
+original integer half-tile lattice, including partial edge joins at corner cuts. It does not join faces by height.
+Keys survive a rebase and are independent of local handles. Editing the source document cannot mutate the captured
+identity. Rebuilding edited geometry produces new provenance. No authored file format changes are needed.
+
+Holes, clamped exterior samples, unknown keys and a partial installation that omits any ground collider supply no
+analytic identity. Ordinary movement and its existing fallback sampling remain unchanged. Only an identity consumer
+must refuse that unavailable evidence. This capability does not create terrain navigation links.
+
 Retain the returned `OrdinaryMovementRegistration` for `ApplyRuntimeStatics` batches between movement reads.
 Use `CreateMovementRegistrationBuilder(worldId, combinedExtent)` to reserve possible runtime height and width
 before binding, even for a flat tile world. The default tile extent does not reserve future walls automatically.

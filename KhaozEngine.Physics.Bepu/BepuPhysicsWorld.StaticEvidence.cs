@@ -21,14 +21,13 @@ public sealed partial class BepuPhysicsWorld : IPhysicsStaticEvidence
         using QueryOperation operation = EnterQuery();
         if (!SweepRecordCountsMatch() || !SelectedSweepBoundsProved(QueryMobility.Statics, null))
             return PhysicsEvidenceStatus.Unavailable;
-        int candidates = 0, features = 0;
+        int features = 0;
         foreach (var row in _handles.OrderBy(row => row.Key))
         {
             int broad = _sim.Statics[_sim.Statics.HandleToIndex[row.Value.Handle.Value]].BroadPhaseIndex;
             if (!ReadSweepStoredBounds(_sim.BroadPhase.StaticTree, broad, out var min, out var max))
                 return PhysicsEvidenceStatus.Unavailable;
             if (!EvidenceOverlap(min, max, minimum, maximum)) continue;
-            if (++candidates > MaximumSweepCandidates) return PhysicsEvidenceStatus.CapacityExceeded;
             var reference = new CollidableReference(row.Value.Handle);
             if (!TryGetInstalledSweepGeometry(reference, out var geometry) || geometry is null)
                 return PhysicsEvidenceStatus.Unsupported;

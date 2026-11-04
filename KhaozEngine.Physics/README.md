@@ -123,6 +123,8 @@ inventing a plane. It does not identify a convex polygon face and is not portabl
 The Bepu implementation validates the installed registry and broad-phase coverage. It retains all faces of an
 intersecting solid, including faces outside the vertical aperture, and every relevant mesh triangle independent
 of slope. Existing source limits remain in force. A coordinate that cannot be certified exactly is unresolved.
+Complete static enumeration is bounded by the installed inventory and the caller's feature cap. It does not inherit
+the local capsule sweep's examined-static ceiling. The local sweep ceiling remains unchanged.
 Ordinary column probes, support admission and movement do not request this capability.
 
 ## Types

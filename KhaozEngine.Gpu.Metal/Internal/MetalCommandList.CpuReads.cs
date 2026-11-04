@@ -10,6 +10,12 @@ internal sealed partial class MetalCommandList
     // Deterministic work diagnostic for the real draw path, without driver timing.
     internal long ReadProbeStepsForTests => _recordedReads.ProbeStepsForTests;
     internal long ReadNodeWritesForTests => _recordedReads.NodeWritesForTests;
+    internal long ReadInsertsForTests => _recordedReads.InsertsForTests;
+    internal long ReadExtendsForTests => _recordedReads.ExtendsForTests;
+    internal long ReadCoverageStepsForTests => _readStreams.CoverageStepsForTests;
+    internal long ReadRotationsForTests => _recordedReads.RotationsForTests;
+    internal long ReadHashLookupsForTests => _recordedReads.HashLookupsForTests;
+    internal long ReadShaderLookupsForTests => _graphicsBinds.ReadShaderLookupsForTests;
     internal bool ReadOverlapsForTests(in MetalCpuRead access) => _recordedReads.Overlaps(access);
 
     void RecordGraphicsReads(MetalGraphicsPipeline pipeline, uint vertexStart, uint vertexCount,

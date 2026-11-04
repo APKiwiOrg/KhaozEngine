@@ -1,4 +1,6 @@
 using System;
+using System.Collections.Generic;
+using System.Numerics;
 
 namespace KhaozEngine.Gpu.Metal.Internal;
 
@@ -9,26 +11,51 @@ internal sealed class MetalVertexReadRecords
     {
         internal MetalBuffer? Buffer;
         internal uint Offset;
-        internal MetalVertexReadLayout? Layout;
-        internal bool Reachable;
-        internal ulong First, Last;
+        internal MetalVertexReadLayout.Stream Stream;
+        internal MetalVertexReadCoverage? Coverage;
     }
+    readonly record struct Key(MetalBuffer Buffer, uint Offset, int Shape, bool Reachable);
 
     readonly Binding[] _bindings = new Binding[MetalVertexStreamRecords.MaxSlot + 1];
+    readonly Dictionary<Key, MetalVertexReadCoverage> _coverage = new();
+    readonly Dictionary<MetalVertexReadLayout.Stream, int> _shapes = new();
+    readonly int[] _shapeIds = new int[MetalVertexStreamRecords.MaxSlot + 1];
+    readonly List<MetalVertexReadCoverage> _storage = new();
     MetalRecordedReads? _target;
+    MetalVertexReadLayout? _layout;
     ulong _generation;
+    bool _indexed;
+    uint _dirty, _windowSlots;
+    long _preparations;
+
+    internal long CoverageStepsForTests
+    {
+        get
+        {
+            long steps = _preparations;
+            foreach (var coverage in _coverage.Values) steps += coverage.StepsForTests;
+            return steps;
+        }
+    }
 
     internal void Record(uint slot, MetalBuffer buffer, uint offset)
     {
         ref var binding = ref _bindings[slot];
         if (ReferenceEquals(binding.Buffer, buffer) && binding.Offset == offset) return;
-        binding = new() { Buffer = buffer, Offset = offset };
+        binding.Buffer = buffer;
+        binding.Offset = offset;
+        _dirty |= 1u << (int)slot;
     }
 
     internal void Reset()
     {
         Array.Clear(_bindings);
+        _coverage.Clear();
+        _shapes.Clear();
         _target = null;
+        _layout = null;
+        _dirty = _windowSlots = 0;
+        _preparations = 0;
     }
 
     internal void RecordReads(MetalRecordedReads reads, MetalVertexReadLayout layout,
@@ -39,41 +66,84 @@ internal sealed class MetalVertexReadRecords
         {
             _target = reads;
             _generation = reads.Generation;
-            for (int slot = 0; slot < _bindings.Length; slot++) _bindings[slot].Layout = null;
+            _coverage.Clear();
+            _shapes.Clear();
+            _layout = null;
+            _preparations = 0;
         }
+        if (!ReferenceEquals(_layout, layout) || _indexed != indexed)
+        {
+            if (!ReferenceEquals(_layout, layout)) ResolveShapes(layout);
+            _layout = layout;
+            _indexed = indexed;
+            _dirty = (1u << Math.Min(layout.Streams.Length, _bindings.Length)) - 1;
+            _windowSlots = 0;
+        }
+        if (_dirty != 0) Prepare(reads, layout, indexed);
+
+        // Indexed streams were handled when their binding changed. The hot loop visits only draw windows.
+        uint slots = _windowSlots;
+        while (slots != 0)
+        {
+            int slot = BitOperations.TrailingZeroCount(slots);
+            slots &= slots - 1;
+            ref readonly var binding = ref _bindings[slot];
+            if (binding.Buffer!.Handle.IsNull) continue;
+            ref readonly var stream = ref binding.Stream;
+            ulong first = stream.PerInstance ? instanceStart : vertexStart;
+            ulong last = first + (stream.PerInstance ? instanceCount : vertexCount) - 1;
+            if (stream.PerInstance && stream.StepRate != 1)
+            {
+                first /= stream.StepRate;
+                last /= stream.StepRate;
+            }
+            binding.Coverage!.Record(reads, binding.Buffer, binding.Offset, stream, first, last, reachable: false);
+        }
+    }
+
+    // Resolve structural equality only when the pipeline layout changes, never on every mesh rebind.
+    void ResolveShapes(MetalVertexReadLayout layout)
+    {
         for (int slot = 0; slot < Math.Min(layout.Streams.Length, _bindings.Length); slot++)
         {
+            var stream = layout.Streams[slot];
+            if (!_shapes.TryGetValue(stream, out int shape))
+            {
+                shape = _shapes.Count;
+                _shapes.Add(stream, shape);
+            }
+            _shapeIds[slot] = shape;
+            _preparations++;
+        }
+    }
+
+    void Prepare(MetalRecordedReads reads, MetalVertexReadLayout layout, bool indexed)
+    {
+        uint slots = _dirty & ((1u << Math.Min(layout.Streams.Length, _bindings.Length)) - 1);
+        while (slots != 0)
+        {
+            int slot = BitOperations.TrailingZeroCount(slots);
+            uint bit = 1u << slot;
+            slots &= ~bit;
+            _windowSlots &= ~bit;
+            _preparations++;
             ref var binding = ref _bindings[slot];
             if (binding.Buffer is not { } buffer || buffer.Handle.IsNull) continue;
-            ref readonly var stream = ref layout.Streams[slot];
-            bool reachable = indexed && !stream.PerInstance;
-            ulong first = stream.PerInstance ? instanceStart / stream.StepRate : vertexStart;
-            ulong last = stream.PerInstance ? ((ulong)instanceStart + instanceCount - 1) / stream.StepRate
-                : (ulong)vertexStart + vertexCount - 1;
-            bool same = ReferenceEquals(binding.Layout, layout) && binding.Reachable == reachable;
-            if (same && (reachable || (first >= binding.First && last <= binding.Last))) continue;
-
-            foreach (var attribute in stream.Attributes)
+            binding.Stream = layout.Streams[slot];
+            bool reachable = indexed && !binding.Stream.PerInstance;
+            var key = new Key(buffer, binding.Offset, _shapeIds[slot], reachable);
+            if (!_coverage.TryGetValue(key, out var coverage))
             {
-                ulong offset = binding.Offset + attribute.Offset;
-                if (reachable)
-                {
-                    if (offset + attribute.Bytes > buffer.SizeInBytes || stream.Stride == 0) continue;
-                    reads.AddStrided(buffer.CpuResource, offset, attribute.Bytes, stream.Stride,
-                        (buffer.SizeInBytes - offset - attribute.Bytes) / stream.Stride + 1);
-                }
-                else reads.AddStrided(buffer.CpuResource, offset + first * stream.Stride,
-                    attribute.Bytes, stream.Stride, last - first + 1);
+                int index = _coverage.Count;
+                if (index == _storage.Count) _storage.Add(new());
+                coverage = _storage[index];
+                coverage.Clear();
+                _coverage.Add(key, coverage);
             }
-            if (same && first <= binding.Last + 1 && last + 1 >= binding.First)
-            {
-                first = Math.Min(first, binding.First);
-                last = Math.Max(last, binding.Last);
-            }
-            binding.Layout = layout;
-            binding.Reachable = reachable;
-            binding.First = first;
-            binding.Last = last;
+            binding.Coverage = coverage;
+            if (reachable) coverage.Record(reads, buffer, binding.Offset, binding.Stream, 0, 0, reachable: true);
+            else _windowSlots |= bit;
         }
+        _dirty = 0;
     }
 }

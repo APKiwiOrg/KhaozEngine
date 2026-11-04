@@ -7,7 +7,7 @@ namespace KhaozEngine.NetWorld;
 /// The cell-blob rewrite for the one built-in that SHRANK: a <see cref="MovementState"/> payload stored before
 /// <see cref="BuiltinBlobLayout.MovementOwnerWireGeneration"/> carries the two feel timers that now live on
 /// <see cref="MovementOwnerState"/>. Bringing it forward is a split, not a pad. The movement payload is re-emitted
-/// without the timers (then padded like any other append), and the eight timer bytes become a
+/// without the timers (then transformed by MovementPayloadRewrite), and the eight timer bytes become a
 /// <see cref="MoveProtocol.MovementOwnerTypeId"/> frame of their own, so a restored player keeps its coyote and
 /// jump-buffer windows exactly as the stored body had them.
 /// <para>The owner frame is emitted where the live writer would put it. Built-in frames go out in registration order
@@ -22,27 +22,16 @@ internal static class MovementOwnerBlobSplit
         fromGeneration < BuiltinBlobLayout.MovementOwnerWireGeneration
         && toGeneration >= BuiltinBlobLayout.MovementOwnerWireGeneration;
 
-    /// <summary>
-    /// Copies the <paramref name="fromLen"/>-byte movement payload at <paramref name="pos"/> to
-    /// <paramref name="bw"/> without its timers, zero-padded to <paramref name="toLen"/>, and returns the timer bytes
-    /// in <paramref name="timers"/> for <see cref="WriteOwnerFrame"/>. False on a payload too short to hold the timers
-    /// or one whose remainder would not fit the target layout, which retires the candidate generation.
-    /// </summary>
-    internal static bool TryWriteMovement(byte[] body, ref int pos, BinaryWriter bw, int fromLen, int toLen,
-        out byte[]? timers)
+    /// <summary>Removes the two timers into a separate owner payload. The caller supplies a complete historical
+    /// movement payload and enough scratch space, then applies subsequent movement transformations.</summary>
+    internal static int RemoveTimers(ReadOnlySpan<byte> source, Span<byte> destination, out byte[] timers)
     {
-        timers = null;
         int head = BuiltinBlobLayout.MovementTimersOffset;
         int cut = BuiltinBlobLayout.MovementOwnerPayloadBytes;
-        int kept = fromLen - cut;
-        if (fromLen < head + cut || kept > toLen || (long)pos + fromLen > body.Length) return false;
-
-        bw.Write(body, pos, head);                               // VerticalVelocity, Grounded
-        timers = body.AsSpan(pos + head, cut).ToArray();          // TimeSinceGrounded, JumpBufferRemaining
-        bw.Write(body, pos + head + cut, fromLen - head - cut);  // everything the generation appended after them
-        for (int pad = kept; pad < toLen; pad++) bw.Write((byte)0);
-        pos += fromLen;
-        return true;
+        timers = source.Slice(head, cut).ToArray();
+        source[..head].CopyTo(destination);
+        source[(head + cut)..].CopyTo(destination[head..]);
+        return source.Length - cut;
     }
 
     /// <summary>Whether a held owner frame must be written before the frame whose id is <paramref name="typeId"/>

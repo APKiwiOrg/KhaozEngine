@@ -1,5 +1,4 @@
 using System;
-using System.Collections.Generic;
 
 namespace KhaozEngine.Gpu.Metal.Internal;
 
@@ -16,40 +15,61 @@ internal sealed class MetalReadIntervalIndex(bool contiguous = false)
     // Index zero is the empty subtree. Removed nodes form a free list in Left, without retaining resources.
     Node[] _nodes = new Node[16];
     int _root, _used, _free, _rightmost;
-    readonly Dictionary<(ulong Bytes, ulong Stride, ulong Phase), int> _tails = new();
     internal long ProbeStepsForTests { get; private set; }
     internal long NodeWritesForTests { get; private set; }
+    internal long InsertsForTests { get; private set; }
+    internal long ExtendsForTests { get; private set; }
+    internal long RotationsForTests { get; private set; }
 
     internal void Clear()
     {
         Array.Clear(_nodes, 0, _used + 1);
         _root = _used = _free = _rightmost = 0;
-        _tails.Clear();
         ProbeStepsForTests = 0;
         NodeWritesForTests = 0;
+        RotationsForTests = InsertsForTests = ExtendsForTests = 0;
     }
 
     internal void Add(in MetalCpuRead read)
     {
-        var combined = read;
-        var lane = (read.Length, read.Stride, read.Stride == 0 ? 0 : read.Offset % read.Stride);
-        if (read.Stride != 0 && HasUnwrappedEnd(read) && _tails.TryGetValue(lane, out int tail))
+        int tail = 0;
+        Add(read, ref tail);
+    }
+
+    internal void Add(in MetalCpuRead read, ref int tail)
+    {
+        if (read.Stride != 0 && HasUnwrappedEnd(read) && tail != 0)
         {
             ProbeStepsForTests++;
             var previous = _nodes[tail].Read;
             // Matching phase joins element sequences, never their bounding spans. A skipped element stays a gap.
-            if (HasUnwrappedEnd(previous) && read.Offset >= previous.Offset
+            if (HasUnwrappedEnd(previous) && read.Length == previous.Length && read.Stride == previous.Stride
+                && read.Offset >= previous.Offset && (read.Offset - previous.Offset) % read.Stride == 0
                 && (read.Offset - previous.Offset) / read.Stride <= previous.Count)
             {
                 ulong count = (read.Offset - previous.Offset) / read.Stride + read.Count;
                 if (count <= previous.Count) return;
-                combined = previous with { Count = count };
+                ExtendsForTests++;
+                Extend(_root, tail, previous with { Count = count });
+                return;
             }
         }
-        int root = Insert(_root, combined, out bool changed, out int inserted);
-        if (!changed) return;
-        _root = root;
-        if (read.Stride != 0) _tails[lane] = inserted;
+        InsertsForTests++;
+        _root = Insert(_root, read, out _, out tail);
+    }
+
+    // Only the end changes. Tree shape and key stay fixed, so refresh bounds without balancing.
+    void Extend(int index, int tail, in MetalCpuRead read)
+    {
+        ProbeStepsForTests++;
+        if (index == tail)
+        {
+            _nodes[index].Read = read;
+            _nodes[index].End = EndOf(read);
+            NodeWritesForTests++;
+        }
+        else Extend(Compare(read, _nodes[index].Read) < 0 ? _nodes[index].Left : _nodes[index].Right, tail, read);
+        Refresh(index);
     }
 
     // This index contains only contiguous intervals. Every removed interval pays for its own coalescing
@@ -251,6 +271,7 @@ internal sealed class MetalReadIntervalIndex(bool contiguous = false)
 
     int RotateLeft(int index)
     {
+        RotationsForTests++;
         ProbeStepsForTests++;
         int root = _nodes[index].Right;
         _nodes[index].Right = _nodes[root].Left;
@@ -263,6 +284,7 @@ internal sealed class MetalReadIntervalIndex(bool contiguous = false)
 
     int RotateRight(int index)
     {
+        RotationsForTests++;
         ProbeStepsForTests++;
         int root = _nodes[index].Left;
         _nodes[index].Left = _nodes[root].Right;

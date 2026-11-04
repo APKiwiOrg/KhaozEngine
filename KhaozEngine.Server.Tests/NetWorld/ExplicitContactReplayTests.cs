@@ -101,7 +101,7 @@ public class ExplicitContactReplayTests
         }
         AssertMoveBits(expected.Move, prediction.PredictedState.Move);
         Assert.Equal(expected.FrameAnchor, prediction.PredictedState.FrameAnchor);
-        Assert.Equal(14, MoveProtocol.WireProtocolVersion);
+        Assert.Equal(15, MoveProtocol.WireProtocolVersion);
         Assert.Equal("contact-shell-footprint-swim-v1", ExplicitMovementProfile.ControllerModel);
     }
 

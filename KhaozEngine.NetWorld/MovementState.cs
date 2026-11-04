@@ -57,7 +57,7 @@ public struct MovementState : IComponent
     public sbyte ClimbRateQ;
 
     /// <summary>The per-entity horizontal speed multiplier (<see cref="KhaozEngine.Locomotion.MoveState.SpeedScale"/>:
-    /// haste, slow, root) quantized to a single byte as the OFFSET FROM 1 at the fixed wire scale
+    /// haste, slow, root) quantized to a signed 16-bit value as the OFFSET FROM 1 at the fixed wire scale
     /// <see cref="SpeedScaleQuantum"/>. Decoded scale = <c>1 + SpeedScaleQ * SpeedScaleQuantum</c>, so <b>0 - the
     /// <c>default</c> every unboosted player carries every tick - is exactly 1.0</b>, with no rounding. That offset
     /// encoding is the point: a plain <c>q * quantum</c> like <see cref="ClimbRateQ"/> would make an absent or
@@ -70,7 +70,7 @@ public struct MovementState : IComponent
     /// and the pending command window would replay at the wrong speed.</para>
     /// Added on the wire in generation 6 (<see cref="MoveProtocol.WireProtocolVersion"/>). A mismatched peer is
     /// rejected at connect by the always-on <see cref="WireGenerationAuthenticator"/>.</summary>
-    public sbyte SpeedScaleQ;
+    public short SpeedScaleQ;
 
     /// <summary>The world-X component of the CARRIED airborne horizontal velocity
     /// (<see cref="KhaozEngine.Locomotion.MoveState.HorizontalVelocity"/>, m/s) quantized to a <see cref="short"/> at
@@ -216,35 +216,27 @@ public struct MovementState : IComponent
     /// 0 decodes to exactly 0 (not climbing).</summary>
     public static float DecodeClimbRate(sbyte q) => q * ClimbRateQuantum;
 
-    /// <summary>Fixed wire scale for <see cref="SpeedScaleQ"/> (multiplier per quantum unit): 1/16. Deliberately an
-    /// exact NEGATIVE POWER OF TWO, not the 0.05-style decimal <see cref="ClimbRateQuantum"/> uses, because unlike a
-    /// climb rate this value multiplies the position delta on BOTH heads every tick: an inexact quantum makes
-    /// <c>1 + q*quantum</c> land a hair off the round number for the sim and for a root
-    /// (<c>1 - 20*0.05f</c> is <c>-1.5e-8</c>, a slow reverse crawl, not a stop). At 1/16 every representable scale is
-    /// an exact float, so 1.0, 0.0, 0.5, 0.75, 1.5, 2, 5 all land dead on and the server and client agree bit-exactly
-    /// by construction. The cost is 6.25% granularity: a requested 1.1x resolves to 1.125x.</summary>
-    public const float SpeedScaleQuantum = 1f / 16f;
+    /// <summary>Fixed wire scale for <see cref="SpeedScaleQ"/>: 1/1024, an exact negative power of two.
+    /// Representable multipliers are exact binary floats on both heads. A requested 1.1x becomes 1.099609375x.
+    /// Generation 15 widened the original signed byte in place to a signed 16-bit value.</summary>
+    public const float SpeedScaleQuantum = 1f / 1024f;
 
-    /// <summary>The largest replicable speed multiplier (8x), the clamp <see cref="QuantizeSpeedScale"/> applies. Far
-    /// beyond any sane movement buff and comfortably inside the <see cref="sbyte"/> range, so the encoding keeps
-    /// headroom rather than running to its edge. A server-only NPC is not bound by this (it rides no wire), only what
-    /// replicates is.</summary>
+    /// <summary>The largest replicable speed multiplier (8x), the clamp <see cref="QuantizeSpeedScale"/> applies.
+    /// A server-only NPC is not bound by this because it rides no wire.</summary>
     public const float MaxSpeedScale = 8f;
 
-    /// <summary>Quantizes a speed multiplier to the wire <see cref="sbyte"/>: clamped to <c>[0, MaxSpeedScale]</c>,
-    /// expressed as the offset from 1, and rounded to the nearest <see cref="SpeedScaleQuantum"/>. A scale of exactly
-    /// 1 yields exactly 0 (the unmodified default).</summary>
-    public static sbyte QuantizeSpeedScale(float scale)
+    /// <summary>Quantizes a multiplier to the wire short: NaN becomes 1, values clamp to
+    /// <c>[0, MaxSpeedScale]</c>, and the offset from 1 rounds to the nearest quantum with ties to even.
+    /// Legitimate values span -1024 (root) through 7168 (8x). Zero is exactly unmodified.</summary>
+    public static short QuantizeSpeedScale(float scale)
     {
         float clamped = Math.Clamp(float.IsNaN(scale) ? 1f : scale, 0f, MaxSpeedScale);
-        return (sbyte)Math.Clamp((int)MathF.Round((clamped - 1f) / SpeedScaleQuantum), -127, 127);
+        return (short)MathF.Round((clamped - 1f) / SpeedScaleQuantum);
     }
 
-    /// <summary>Decodes a wire <see cref="SpeedScaleQ"/> back to a speed multiplier: <c>1 + q * SpeedScaleQuantum</c>,
-    /// floored at 0. 0 decodes to exactly 1 (unmodified). The floor is defence-in-depth against a corrupt or hostile
-    /// frame: a <c>q</c> below -16 would otherwise decode NEGATIVE and drive the character backwards against its own
-    /// command. There is no matching ceiling - an out-of-range high value is merely fast, not inverted.</summary>
-    public static float DecodeSpeedScale(sbyte q) => MathF.Max(0f, 1f + q * SpeedScaleQuantum);
+    /// <summary>Decodes <c>1 + q * SpeedScaleQuantum</c>, floored at zero. A corrupt value below -1024
+    /// cannot reverse movement. There is no ceiling because a high value is fast rather than inverted.</summary>
+    public static float DecodeSpeedScale(short q) => MathF.Max(0f, 1f + q * SpeedScaleQuantum);
 
     /// <summary>Fixed wire scale for <see cref="HorizontalVelocityXQ"/> / <see cref="HorizontalVelocityZQ"/> (m/s per
     /// quantum unit): 1/256, giving 0.0039 m/s resolution and a <see cref="short"/> reach of +/-127.996 m/s, of which

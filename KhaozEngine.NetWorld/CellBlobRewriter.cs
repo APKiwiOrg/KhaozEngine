@@ -234,11 +234,10 @@ internal static class CellBlobRewriter
             if (typeId == MoveProtocol.MovementTypeId && !policy.AcceptsMovementPayload(body, pos, fromGeneration))
                 return false;
 
-            if (typeId == MoveProtocol.MovementTypeId && MovementOwnerBlobSplit.Applies(fromGeneration, toGeneration))
+            if (typeId == MoveProtocol.MovementTypeId)
             {
-                // The one built-in that shrank: its feel timers leave for an owner frame of their own, written
-                // after the entity's remaining built-ins (see MovementOwnerBlobSplit).
-                if (!MovementOwnerBlobSplit.TryWriteMovement(body, ref pos, bw, fromLen, toLen, out ownerTimers))
+                // Compose timer removal and in-place speed widening before padding new fields.
+                if (!MovementPayloadRewrite.TryWrite(body, ref pos, bw, fromGeneration, toGeneration, out ownerTimers))
                     return false;
                 continue;
             }

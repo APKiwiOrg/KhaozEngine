@@ -82,8 +82,8 @@ optional shown-only filter. `DrainChangedActors` appends changed actor ids in as
 drops empty actor records. The network projection owns that drain when one is attached to the book.
 
 A game that maps a movement speed channel through `ShardedWorldServer.SetSpeedScale` must account for
-the replicated scale's 1/16 steps. Finer precision remains an
-[open question](https://github.com/APKiwiOrg/KhaozEngine/issues/1652).
+the replicated scale's 1/1024 steps at wire generation 15. A requested 10 percent haste becomes
+1.099609375x after quantization.
 
 ## Minimal server-side use
 

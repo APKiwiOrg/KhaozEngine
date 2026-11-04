@@ -15,7 +15,7 @@ namespace KhaozEngine.NetWorld;
 internal enum AdminCommandKind : byte
 {
     Teleport, Kick, Broadcast, SpeedScale, SetPosition, BeginMovementCommitment, AbortMovementCommitment,
-    HoldMovement, ReleaseMovement,
+    HoldMovement, ReleaseMovement, SteerMovementCommitment, EndMovementCommitment,
 }
 
 /// <summary>A queued admin mutation, applied on the host thread during the next tick.</summary>
@@ -30,6 +30,9 @@ internal readonly struct AdminCommand
     public float Scale { get; init; }
 
     public uint Sequence { get; init; }
+    public Vector2 Direction { get; init; }
+    public float DistanceRemaining { get; init; }
+    public MovementCommitmentStopReason StopReason { get; init; }
 
     /// <summary>The target slot's turnover count captured at enqueue for a slot-targeted
     /// <see cref="AdminCommandKind.HoldMovement"/> or <see cref="AdminCommandKind.ReleaseMovement"/>, unused

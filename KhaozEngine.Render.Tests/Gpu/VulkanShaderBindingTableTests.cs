@@ -55,6 +55,7 @@ namespace KhaozEngine.Tests.Gpu
 
                 ["Model"] = "ModelRenderer",
                 ["Foliage"] = "ModelRenderer foliage",
+                ["FoliageOpaque"] = "ModelRenderer foliage opaque",
                 ["ModelDissolve"] = "ModelRenderer dissolve",
                 ["SkinnedModel"] = "ModelRenderer skinned",
                 ["SkinnedModelDissolve"] = "ModelRenderer skinned dissolve",
@@ -66,6 +67,7 @@ namespace KhaozEngine.Tests.Gpu
                 ["ModelCpuSkinnedMotion"] = "ModelRenderer cpu skinned motion",
                 ["ModelCpuSkinnedDissolveMotion"] = "ModelRenderer cpu skinned motion",
                 ["FoliageMotion"] = "ModelRenderer foliage motion",
+                ["FoliageOpaqueMotion"] = "ModelRenderer foliage opaque motion",
                 ["SplatMotion"] = "ModelRenderer splat motion",
                 ["TileGroundMotion"] = "ModelRenderer tile ground motion",
                 ["TexturedBillboardMotion"] = "TexturedBillboardRenderer",
@@ -77,6 +79,7 @@ namespace KhaozEngine.Tests.Gpu
                 // Visibility adds fragment outputs and preserves each program's resource layout.
                 ["ModelVisibility"] = "ModelRenderer",
                 ["FoliageVisibility"] = "ModelRenderer foliage",
+                ["FoliageOpaqueVisibility"] = "ModelRenderer foliage opaque",
                 ["ModelDissolveVisibility"] = "ModelRenderer dissolve",
                 ["SkinnedModelVisibility"] = "ModelRenderer skinned",
                 ["SkinnedModelDissolveVisibility"] = "ModelRenderer skinned dissolve",
@@ -88,6 +91,7 @@ namespace KhaozEngine.Tests.Gpu
                 ["ModelCpuSkinnedMotionVisibility"] = "ModelRenderer cpu skinned motion",
                 ["ModelCpuSkinnedDissolveMotionVisibility"] = "ModelRenderer cpu skinned motion",
                 ["FoliageMotionVisibility"] = "ModelRenderer foliage motion",
+                ["FoliageOpaqueMotionVisibility"] = "ModelRenderer foliage opaque motion",
                 ["SplatMotionVisibility"] = "ModelRenderer splat motion",
                 ["TileGroundMotionVisibility"] = "ModelRenderer tile ground motion",
                 ["TexturedBillboardVisibility"] = "TexturedBillboardRenderer",
@@ -228,6 +232,7 @@ namespace KhaozEngine.Tests.Gpu
                 {
                     "Model" or "ModelDissolve" or "Foliage" or "ModelMotion" or "ModelCpuSkinnedMotion"
                         or "ModelCpuSkinnedDissolveMotion" or "FoliageMotion" => 11,
+                    "FoliageOpaque" or "FoliageOpaqueMotion" => 7,
                     "SkinnedModel" or "SkinnedModelDissolve" or "SkinnedModelMotion"
                         or "SkinnedModelDissolveMotion" => 4,
                     "Splat" or "TileGround" or "SplatMotion" or "TileGroundMotion" => 3,
@@ -341,7 +346,7 @@ namespace KhaozEngine.Tests.Gpu
                 .ToHashSet(StringComparer.Ordinal);
 
             // Ten certified FullyLit variants cover resolve, debug/count and both split sizes at both precisions.
-            Assert.Equal(124, catalog.Length);
+            Assert.Equal(128, catalog.Length);
             Assert.Equal(catalog.Length, ProgramPipelines.Count);
 
             foreach (string program in catalog)

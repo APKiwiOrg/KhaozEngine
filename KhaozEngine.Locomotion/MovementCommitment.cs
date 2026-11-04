@@ -3,6 +3,13 @@ using System.Numerics;
 
 namespace KhaozEngine.Locomotion;
 
+/// <summary>The physical travel policy of a movement commitment. Ballistic preserves the original default.</summary>
+public enum MovementCommitmentKind : byte
+{
+    Ballistic = 0,
+    Ground = 1,
+}
+
 /// <summary>The lifecycle of a server-authored movement commitment.</summary>
 public enum MovementCommitmentPhase : byte
 {
@@ -12,6 +19,7 @@ public enum MovementCommitmentPhase : byte
     Recovering,
     Completed,
     Aborted,
+    Travelling,
 }
 
 /// <summary>Why a movement commitment stopped.</summary>
@@ -26,11 +34,16 @@ public enum MovementCommitmentEndReason : byte
     Teleported,
     Superseded,
     Disconnected,
+    Arrived,
+    TargetLost,
+    NoPath,
+    TooLong,
+    UnsupportedState,
 }
 
 /// <summary>
-/// Carried state for one committed ballistic move. While active, player commands cannot alter its travel, jump, or
-/// facing. The state is replicated so authoritative correction and pending-command replay continue the same move.
+/// Carried state for one committed ballistic or ground move. While active, player commands cannot alter its
+/// travel, jump or facing. Authoritative correction and pending-command replay use the same carried state.
 /// </summary>
 public readonly record struct MovementCommitment
 {
@@ -61,7 +74,7 @@ public readonly record struct MovementCommitment
 
         Sequence = sequence;
         Phase = MovementCommitmentPhase.Preparing;
-        Direction = Vector2.Normalize(direction);
+        Direction = NormalizeDirection(direction);
         HorizontalSpeed = horizontalSpeed;
         VerticalSpeed = verticalSpeed;
         Gravity = gravity;
@@ -71,6 +84,24 @@ public readonly record struct MovementCommitment
         EndReason = MovementCommitmentEndReason.None;
     }
 
+    /// <summary>Creates ground travel with a positive distance budget. Actor admission belongs to the caller.</summary>
+    public static MovementCommitment ForGroundTravel(uint sequence, Vector2 direction, float speed, float distance,
+        float preparationSeconds = 0f, float recoverySeconds = 0f, float timeoutSeconds = 5f) =>
+        GroundTravelCommitment.Create(sequence, direction, speed, distance, preparationSeconds, recoverySeconds,
+            timeoutSeconds);
+
+    // Preserve the released arithmetic for ordinary ballistic inputs, while avoiding overflow for huge ones.
+    internal static Vector2 NormalizeDirection(Vector2 direction, bool ground = false)
+    {
+        float lengthSquared = direction.LengthSquared();
+        if (!ground && float.IsFinite(lengthSquared) && lengthSquared > 0f) return Vector2.Normalize(direction);
+        double length = Math.Sqrt((double)direction.X * direction.X + (double)direction.Y * direction.Y);
+        return new((float)(direction.X / length), (float)(direction.Y / length));
+    }
+
+    public MovementCommitmentKind Kind { get; init; }
+    public float DistanceRemaining { get; init; }
+    public byte ConsecutiveBlockedTicks { get; init; }
     public uint Sequence { get; init; }
     public MovementCommitmentPhase Phase { get; init; }
     public Vector2 Direction { get; init; }
@@ -83,5 +114,5 @@ public readonly record struct MovementCommitment
     public MovementCommitmentEndReason EndReason { get; init; }
 
     public bool IsActive => Phase is MovementCommitmentPhase.Preparing or MovementCommitmentPhase.Airborne
-        or MovementCommitmentPhase.Recovering;
+        or MovementCommitmentPhase.Recovering or MovementCommitmentPhase.Travelling;
 }

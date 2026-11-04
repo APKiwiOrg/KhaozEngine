@@ -1196,13 +1196,22 @@ An abandoned prefix quarantines its ring slot, identified by `RingSegment`, unti
 Device uniform updates still defer in-flight non-current segments and retain the existing depth-one wait.
 Only immediate physical copies are checked for overlap, atomically before any segment or patch changes.
 A buffer map captures one physical base for its lease and pointer, even if another recording rotates the ring.
-Read recording follows resource binding and draw-window changes. Unchanged draws perform no interval-index
-work. Dynamic-offset changes record only dynamic elements, indexed mesh coverage is reused per binding and
-vertex layout, and consecutive instance windows extend exact strided reads without filling padding or gaps.
-Duplicate inserts never rewrite or rebalance tree nodes. This removes repeated recording work from steady
-draw state (#1696), independently of encoder invalidation.
-Slot-owned, reusable interval indexes keep changed-read recording O(log n) amortized and contiguous CPU access
-checks O(log n). Strided checks visit candidate spans and their search paths, bounded by O((k + 1) log n),
+Read recording follows resource binding and draw-window changes. Coverage is retained across mesh,
+instance-buffer and equivalent pipeline-layout rebinds within a recording. The cache distinguishes buffer,
+offset, stream shape and indexed reachability. Indexed streams with recorded coverage leave the per-draw
+window loop. The common window check compares the bounds of a monotonically growing covered element run.
+Disconnected windows use an expected O(1) first-element lookup. Revisited windows and shorter same-start
+windows perform no interval-tree work. A different-start subwindow outside the primary run records normally
+on its first visit. No cache joins padding or skipped elements. Footprint and generation changes invalidate
+coverage, independently of encoder invalidation. Non-indexed and instance windows coalesce adjacent
+attribute bytes before recording, leaving padding writable. Indexed reachable attributes stay separate so
+complete attributes at the end of a partial vertex are still protected (#1696).
+Slot-owned sorted runs append increasing uniform-ring slices in O(1) warmed work, with no tree rebalancing.
+Out-of-order contiguous reads use a separate AVL union. Binding and vertex-attribute cursors avoid resource
+lookups on steady draws, and cached live-element flags avoid repeated shader-use queries. New consecutive
+instance windows refresh only their strided tree's bounds without balancing, in O(log s) for s strided
+sequences on that resource. Other new reads retain O(log n) amortized recording and contiguous CPU access
+checks remain O(log n). Strided checks visit candidate spans and their search paths, bounded by O((k + 1) log n),
 where k counts overlapping bounding spans. Exact attribute checks preserve writable padding.
 Prefix publication queries each writable lease through the same index. The footprint never scans
 every recorded read per draw or disjoint write, avoiding quadratic frame work in draw-heavy Mac scenes

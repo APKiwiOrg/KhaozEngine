@@ -487,6 +487,7 @@ public sealed partial class ShardedWorldServer : IWorldPersistenceHost, IAdminCo
         ExpireLingers();            // an expired linger leaves before anything sees this tick
         OnBeforeTick?.Invoke(dt);   // consumer NPC/enemy brains run before movement + serving
         admin.Drain(ApplyAdminCommand);
+        PublishMovementCommitmentArrivals();
         // A reused buffer, but still a COPY of the keys: the loops below can mutate netIdBySlot (a kick or a
         // disconnect mid-serve), so neither may enumerate the dictionary directly.
         tickSlots.Clear();
@@ -655,8 +656,8 @@ public sealed partial class ShardedWorldServer : IWorldPersistenceHost, IAdminCo
     /// expiry timer). The desired value is retained by the player's stable net id and retried after handoffs until
     /// its owned entity resolves. No-op for an unknown player.
     /// <para><paramref name="scale"/> is clamped to <c>[0, MovementState.MaxSpeedScale]</c> and quantized to the
-    /// wire's 1/16 granularity BEFORE it reaches the sim, so the server never runs a speed its clients cannot be
-    /// told about: a requested 1.1x becomes 1.125x on both heads rather than 1.1x on one and 1.125x on the other.
+    /// wire's 1/1024 granularity BEFORE it reaches the sim, so the server never runs a speed its clients cannot be
+    /// told about: a requested 1.1x becomes 1.099609375x on both heads.
     /// Read the applied value back via <see cref="TryGetPlayerState"/>.</para>
     /// The same seam as <see cref="WorldServer.SetSpeedScale"/>.</summary>
     /// <param name="target">The player, by slot or account id.</param>
@@ -709,6 +710,10 @@ public sealed partial class ShardedWorldServer : IWorldPersistenceHost, IAdminCo
                 break;
             case AdminCommandKind.AbortMovementCommitment:
                 ApplyAbortMovementCommitment(cmd.Target, cmd.Sequence, MovementCommitmentEndReason.Aborted);
+                break;
+            case AdminCommandKind.SteerMovementCommitment:
+            case AdminCommandKind.EndMovementCommitment:
+                ApplyGroundMovementCommitmentControl(cmd);
                 break;
             case AdminCommandKind.HoldMovement:
             case AdminCommandKind.ReleaseMovement:

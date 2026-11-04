@@ -112,7 +112,7 @@ public partial class ExplicitPlayerHeadsTests
         Assert.Equal(0, pair.LegacyCalls);
     }
 
-    sealed class Pair : IDisposable
+    internal sealed class Pair : IDisposable
     {
         public readonly ExplicitPlayerEnvironment ServerEnvironment = new();
         public readonly ExplicitPlayerEnvironment ClientEnvironment = new();

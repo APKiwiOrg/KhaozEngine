@@ -11,11 +11,6 @@ namespace KhaozEngine.Movement;
 
 internal static class PhysicsNavDescentCapture
 {
-    [ThreadStatic] static bool t_reference;
-    internal static ReferenceScope ReferenceScanForTests()
-    { bool prior = t_reference; t_reference = true; return new(prior); }
-    internal readonly struct ReferenceScope(bool prior) : IDisposable
-    { public void Dispose() => t_reference = prior; }
     sealed record Observed(StaticHandle Static, PhysicsEvidenceFace Address, PhysicsEvidencePoint[] Points,
         MovementSupportKey Owner, bool Analytic);
 
@@ -75,8 +70,7 @@ internal static class PhysicsNavDescentCapture
         }
         int width = bake.Columns.Width, height = bake.Columns.Height;
         var budget = new DescentCaptureIndexBudget();
-        var index = t_reference ? null : new DescentFaceIndex(faces, budget);
-        int[] reference = t_reference ? Enumerable.Range(0, faces.Length).ToArray() : [];
+        var index = new DescentFaceIndex(faces, budget);
         var firstKeys = new Dictionary<MovementSurfaceFeatureKey, int>();
         var primitives = new Dictionary<(StaticHandle Static, int Leaf), int>();
         budget.Reserve(faces.Length, 160);
@@ -109,7 +103,7 @@ internal static class PhysicsNavDescentCapture
                 if (left + options.CellSize > options.MaxX || bottom + options.CellSize > options.MaxZ)
                 { coverage[cell] = DescentCoverage.OutOfBounds; continue; }
                 coverage[cell] = DescentCoverage.Complete;
-                ReadOnlySpan<int> candidates = index is null ? reference : index.Query(left, bottom, left + options.CellSize, bottom + options.CellSize);
+                ReadOnlySpan<int> candidates = index.Query(left, bottom, left + options.CellSize, bottom + options.CellSize);
                 foreach (int f in candidates)
                 {
                     var face = faces[f];
@@ -146,7 +140,7 @@ internal static class PhysicsNavDescentCapture
                 observer.Hits.Clear();
                 float ax = options.MinX + (x + 0.5f) * options.CellSize, az = options.MinZ + (z + 0.5f) * options.CellSize;
                 // Raw probes use float anchors. At large coordinates rounding can place one outside the double cell bounds.
-                candidates = index is null ? reference : index.Query(ax, az, ax, az);
+                candidates = index.Query(ax, az, ax, az);
                 int count = probe.Sample(ax - lease.Origin.X, az - lease.Origin.Z, output);
                 var originals = bake.Columns.GetColumn(x, z);
                 if (count != originals.Length) throw Refuse(PhysicsNavDescentEvidenceReason.RawAssociationAmbiguous);
@@ -158,15 +152,7 @@ internal static class PhysicsNavDescentCapture
                     var hits = observer.Hits.Where(h => BitConverter.SingleToInt32Bits(h.Result.Point.Y + lease.Origin.Y) == bits && h.Result.Distance > 0).ToArray();
                     if (hits.Length != 1 || hits[0].Result.Body is not { } body) throw Refuse(PhysicsNavDescentEvidenceReason.RawAssociationAmbiguous);
                     int selected = -1;
-                    if (t_reference)
-                        for (int f = 0; f < faces.Length; f++)
-                        {
-                            if (observed[f].Static != body || observed[f].Address.Leaf != hits[0].Leaf ||
-                                faces[f].Kind is not (PhysicsEvidenceKind.Sphere or PhysicsEvidenceKind.Capsule or PhysicsEvidenceKind.Cylinder)) continue;
-                            if (selected >= 0) throw Refuse(PhysicsNavDescentEvidenceReason.RawAssociationAmbiguous);
-                            selected = f;
-                        }
-                    else if (primitives.TryGetValue((body, hits[0].Leaf), out int primitive))
+                    if (primitives.TryGetValue((body, hits[0].Leaf), out int primitive))
                     {
                         if (primitive < 0) throw Refuse(PhysicsNavDescentEvidenceReason.RawAssociationAmbiguous);
                         selected = primitive;
@@ -205,9 +191,7 @@ internal static class PhysicsNavDescentCapture
                     // Shared triangle edges use the analytic field's own deterministic selection.
                     if (faces[selected].Analytic && source.Describe(new(ax, az), out var named) == MovementAvailability.Known)
                     {
-                        if (t_reference)
-                            for (int f = 0; f < faces.Length; f++) if (faces[f].Key == named.Key) { selected = f; break; }
-                        if (!t_reference && firstKeys.TryGetValue(named.Key, out int canonical)) selected = canonical;
+                        if (firstKeys.TryGetValue(named.Key, out int canonical)) selected = canonical;
                     }
                     raw.Add(new(x, z, ordinal, bits, selected));
                 }
@@ -215,7 +199,7 @@ internal static class PhysicsNavDescentCapture
             hooks?.Progress?.Invoke(ContactTerrainCaptureStage.Columns, z + 1, height);
         }
         starts[^1] = refs.Count;
-        var joins = new DescentAdjacencyIndex(faces, source, budget).Build(t_reference);
+        var joins = new DescentAdjacencyIndex(faces, source, budget).Build();
         hooks?.IndexStorage?.Invoke(budget.UsedBytes);
         hooks?.Progress?.Invoke(ContactTerrainCaptureStage.Adjacency, faces.Length, faces.Length);
         lease.AssertCurrent();

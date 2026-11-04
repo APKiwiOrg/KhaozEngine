@@ -29,11 +29,11 @@ public class ContactTerrainCaptureIndexParityTests
         var options = new PhysicsNavBakeOptions(65536, -1.375f, 65536.0078125f, -1.373046875f,
             0.001953125f, 10, 14, ContactTerrainScene.Tuning.MaxSlopeRadians, 4, 64);
         byte[] expected;
-        using (PhysicsNavDescentCapture.ReferenceScanForTests())
-        using (var reference = PhysicsNavBake.CaptureDescent(context, options, _ => 0))
+        using (var capture = PhysicsNavBake.Capture(context, options, _ => 0))
         {
-            Assert.Equal(2, reference.DescentEvidence!.RawCount);
-            expected = ContactTerrainCaptureBytes.Encode(reference.DescentEvidence);
+            var reference = ContactTerrainCaptureOracle.Capture(capture);
+            Assert.Equal(2, reference.RawCount);
+            expected = ContactTerrainCaptureBytes.Encode(reference);
         }
         using var indexed = PhysicsNavBake.CaptureDescent(context, options, _ => 0);
         Assert.Equal(expected, ContactTerrainCaptureBytes.Encode(indexed.DescentEvidence!));
@@ -63,10 +63,7 @@ public class ContactTerrainCaptureIndexParityTests
         });
         var options = new PhysicsNavBakeOptions(0, -3, 5, 0, 0.25f, 10, 14, ContactTerrainScene.Tuning.MaxSlopeRadians, 256, 1024);
         using var indexed = PhysicsNavBake.CaptureDescent(scene.Context, options, _ => 0);
-        byte[] expected;
-        using (PhysicsNavDescentCapture.ReferenceScanForTests())
-        using (var reference = PhysicsNavBake.CaptureDescent(scene.Context, options, _ => 0))
-            expected = ContactTerrainCaptureBytes.Encode(reference.DescentEvidence!);
+        byte[] expected = ContactTerrainCaptureBytes.Encode(ContactTerrainCaptureOracle.Capture(indexed));
         Assert.Equal(expected, ContactTerrainCaptureBytes.Encode(indexed.DescentEvidence!));
     }
 }

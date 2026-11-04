@@ -35,7 +35,7 @@ internal sealed class DescentAdjacencyIndex
                 if (_seen[index] != _stamp) { _seen[index] = _stamp; _candidates[_candidateCount++] = index; }
         return true;
     }
-    internal int[][] Build(bool reference)
+    internal int[][] Build()
     {
         _budget.Reserve(_faces.Length, 8);
         var joins = new int[_faces.Length][];
@@ -43,7 +43,7 @@ internal sealed class DescentAdjacencyIndex
         {
             if (!_faces[i].Analytic) { joins[i] = []; continue; }
             _stamp = i + 1; _candidateCount = 0;
-            bool narrowed = !reference && _source is IMovementAnalyticSupportCandidates topology &&
+            bool narrowed = _source is IMovementAnalyticSupportCandidates topology &&
                 topology.VisitAdjacentCandidates(_faces[i].Key, _visit) == MovementAvailability.Known;
             if (!narrowed)
             {

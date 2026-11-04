@@ -1331,7 +1331,7 @@ Capture uses inclusive projected bounds to narrow cell candidates and processes 
 order. Boundary-only touches, vertical faces and zero-area projections remain candidates. The original exact
 clip, overlap and source adjacency predicates decide retention. A source may provide a complete adjacency-key
 candidate visitation, otherwise capture keeps the all-pairs path. The test-only all-face/all-pairs oracle checks
-the entire capture output. Index arrays and conservative bookkeeping share a checked aggregate byte budget bounded
+the entire capture output. The independent oracle lives only in the test project. Index arrays and conservative bookkeeping share a checked aggregate byte budget bounded
 by `Array.MaxLength`. `IndexStorageExceeded` reports requested and maximum bytes before unsupported storage is
 allocated. Existing feature, reference, sweep and proof budgets are unchanged.
 

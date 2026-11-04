@@ -138,7 +138,7 @@ at the door. `OfWorld` is unchanged, so moving a gate to the composed digest is 
 
 `TileWorldException` retains its exact type and both message-only constructors. Use `Reason` and the
 identifiers below to distinguish region residency, content, world-file, manifest-region, object, marker, dense-layer,
-embedded-schema, validation, prefab, catalog and steep-companion refusals.
+embedded-schema, validation, prefab, catalog, steep-companion and clearance refusals.
 Messages remain developer prose. `Reason` is nullable only for a message-only instance built outside the
 engine. Its reason-taking constructors also accept an original cause through `InnerException`.
 PGM heightmap reads also use this type and enum. Their source, header and raster identifiers are listed in
@@ -220,6 +220,21 @@ region file and is null for these in-memory attachment, restoration and save che
 | `PrefabEmpty` | A prefab file that deserializes to no value | `SourceName` |
 | `PrefabJsonMalformed` | Prefab JSON that cannot be parsed or deserialized | `SourceName`, nullable parser path in `Field`, original `JsonException` in `InnerException` |
 | `PrefabReadFailed` | A prefab file that cannot be read | `SourceName`, original `InnerException` |
+| `ClearanceMeshRootRooted` | A rooted clearance mesh root | `MeshRoot` |
+| `ClearanceMeshRootBackslash` | A clearance mesh root containing a backslash | `MeshRoot` |
+| `ClearanceCellSizeOutsideRange` | A non-finite or out-of-range sampling cell edge | `CellSize`, `Minimum`, `Maximum` |
+| `ClearanceWaiverTagBlank` | A supplied blank waiver tag | `WaiverTag` |
+| `ClearanceRuleDuplicate` | A repeated ordinal rule name | `RuleName` |
+| `ClearanceMeshRootRequired` | Rules with a missing or blank mesh root | `MeshRoot`, `RuleCount` |
+| `ClearanceRuleMissing` | Removing an unknown rule | `RuleName` |
+| `ClearanceRuleNull` | A null rule entry | Zero-based `RuleIndex` |
+| `ClearanceRuleNameBlank` | A null or blank rule name | Nullable `RuleName` |
+| `ClearanceToleranceInvalid` | A negative or non-finite tolerance | `RuleName`, `Tolerance` |
+| `ClearanceTagsEmpty` | A missing or empty tag list | `RuleName`, `Field`, `TagCount` (null for a null list) |
+| `ClearanceTagBlank` | A null or blank tag | `RuleName`, `Field`, zero-based `TagIndex`, nullable `Tag` |
+| `ClearanceRulesNull` | A file block with a null rule list | `Field` = `rules` |
+| `ClearanceMeshRootNull` | A file block with a null mesh root | `SourceName`, `Field` = `meshRoot`, original `ArgumentNullException` with `ParamName` = `meshRoot` in `InnerException` |
+| `ClearanceBlockMissing` | Editing rules before declaring a clearance block through TileEdit | `WorldId`, owned read-only `RequiredTools` snapshot containing `clearance_set` |
 
 `MoveObject`, required object commands and `QueryService.ObjectGet` share `ObjectMissing`. A stale object
 index can follow direct edits to a region's public object list. `MoveObject` checks the destination region
@@ -368,7 +383,7 @@ none, and `SetClearance(settings)` replaces it. The constructor validates every 
 
 | Field | Contract |
 |---|---|
-| `meshRoot` | Directory the archetypes' `meshRef` paths resolve under, relative to the directory holding `world.json`, with forward slashes only (`../models`). A rooted path is refused with `ArgumentException`, because world files are committed and shared. The rule is the same on every OS: a leading `/` or `\`, a drive prefix such as `C:` and any backslash are refused. Required while rules exist. |
+| `meshRoot` | Directory the archetypes' `meshRef` paths resolve under, relative to the directory holding `world.json`, with forward slashes only (`../models`). A rooted path is refused with `TileClearanceArgumentException` (`ClearanceMeshRootRooted`), because world files are committed and shared. The rule is the same on every OS: a leading `/` or `\`, a drive prefix such as `C:` and any backslash are refused. Required while rules exist. |
 | `cellSize` | Sampling and rasterizing pitch in metres, 0.02 through 1. Default 0.1 (`TileClearanceSettings.DefaultCellSize`). |
 | `waiverTag` | Object tag that exempts an object from every rule. Optional. Null waives nothing. |
 | `rules` | `TileClearanceRule(Name, SubjectTags, ObstacleTags, Tolerance)` in authoring order. Names are unique by ordinal comparison, both tag lists are non-empty with no blank tag, and `tolerance` is metres of allowed depth, finite and at least 0, default 0. |
@@ -376,7 +391,15 @@ none, and `SetClearance(settings)` replaces it. The constructor validates every 
 `TileClearanceRule` compares by value: the name and every tag ordinally, tag order included, and the tolerance.
 A save writes every default out. An absent block stays absent, so an older world keeps its bytes. The block is
 outside `TileWorldHash.OfWorld`, so adding or tuning a rule changes no world digest and forces no navigation
-rebake. A malformed block, a rooted `meshRoot` included, fails the load as a `TileWorldException`.
+rebake. Direct validation throws `TileClearanceArgumentException`, an `ArgumentException` subtype with a
+non-nullable `TileWorldRefusal Reason` and the identifiers in the [refusal table](#refusals). Its `ParamName`
+remains null, as before. A null constructor `meshRoot` and a null `WithRule` argument remain plain
+`ArgumentNullException`s with their original `ParamName`.
+
+A malformed block, a rooted `meshRoot` included, fails the load as a `TileWorldException`. The file wrapper
+adds the manifest path in `SourceName` and preserves the exact reason, all applicable clearance identifiers
+and the original exception in `InnerException`. A null file mesh root translates the plain parameter check
+to `ClearanceMeshRootNull`, with `Field` = `meshRoot` and the original `ArgumentNullException` retained.
 
 **Rule matching.** An object is a subject of a rule when its archetype's catalog `tags` contain any of the rule's
 `subjectTags`, and an obstacle when they contain any `obstacleTags`. Matching reads archetype tags only, and the

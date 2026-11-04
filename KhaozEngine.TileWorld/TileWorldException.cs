@@ -16,6 +16,7 @@ public sealed class TileWorldException : Exception
     IReadOnlyList<string>? _schemaFields;
     IReadOnlyList<JsonSchemaFinding>? _schemaFindings;
     IReadOnlyList<byte>? _actualMagic;
+    IReadOnlyList<string>? _requiredTools;
 
     public TileWorldException(string message) : base(message) { }
     public TileWorldException(string message, Exception? inner) : base(message, inner) { }
@@ -79,8 +80,8 @@ public sealed class TileWorldException : Exception
     /// <summary>The coordinate stored in a region file that disagrees with <see cref="Region"/>.</summary>
     public RegionCoord? ActualRegion { get; init; }
 
-    /// <summary>The refused catalog, manifest, steep-band or PGM header field, or the parser's JSON path for malformed region,
-    /// manifest, prefab or catalog data, when available.</summary>
+    /// <summary>The refused clearance, catalog, manifest, steep-band or PGM header field, or the parser's JSON
+    /// path for malformed region, manifest, prefab or catalog data, when available.</summary>
     public string? Field { get; init; }
 
     /// <summary>The non-positive tile size refused by manifest admission.</summary>
@@ -110,7 +111,7 @@ public sealed class TileWorldException : Exception
     /// <summary>The embedded schema resource name absent from the assembly.</summary>
     public string? ResourceName { get; init; }
 
-    /// <summary>The document id for <see cref="TileWorldRefusal.WorldValidationFailed"/>.</summary>
+    /// <summary>The document id for validation or a missing clearance declaration.</summary>
     public string? WorldId { get; init; }
 
     /// <summary>The total number of semantic validation issues, including those beyond the message's summary.</summary>
@@ -160,10 +161,12 @@ public sealed class TileWorldException : Exception
     /// <summary>The upper-bound field of an unordered walk-surface extent.</summary>
     public string? MaxField { get; init; }
 
-    /// <summary>The lower-bound value of an unordered walk-surface extent, or the minimum permitted PGM maxval.</summary>
+    /// <summary>The lower-bound value of an unordered walk-surface extent, the minimum permitted PGM maxval
+    /// or the minimum clearance cell size.</summary>
     public float? Minimum { get; init; }
 
-    /// <summary>The upper-bound value of an unordered walk-surface extent, or the maximum permitted PGM maxval.</summary>
+    /// <summary>The upper-bound value of an unordered walk-surface extent, the maximum permitted PGM maxval
+    /// or the maximum clearance cell size.</summary>
     public float? Maximum { get; init; }
 
     /// <summary>The failing instance locations as JSON Pointers for a catalog schema mismatch.
@@ -230,4 +233,42 @@ public sealed class TileWorldException : Exception
 
     /// <summary>The PGM header integer accumulated through the first digit that exceeded the supported range.</summary>
     public long? ParsedValue { get; init; }
+
+    /// <summary>The supplied clearance mesh root.</summary>
+    public string? MeshRoot { get; init; }
+
+    /// <summary>The refused clearance sampling cell edge in world units.</summary>
+    public float? CellSize { get; init; }
+
+    /// <summary>The refused clearance waiver tag.</summary>
+    public string? WaiverTag { get; init; }
+
+    /// <summary>The refused or missing clearance rule name.</summary>
+    public string? RuleName { get; init; }
+
+    /// <summary>The number of clearance rules requiring a mesh root.</summary>
+    public int? RuleCount { get; init; }
+
+    /// <summary>The zero-based index of a null clearance rule entry.</summary>
+    public int? RuleIndex { get; init; }
+
+    /// <summary>The refused clearance overlap tolerance in world units.</summary>
+    public float? Tolerance { get; init; }
+
+    /// <summary>The refused tag list count. Null when the list itself is null.</summary>
+    public int? TagCount { get; init; }
+
+    /// <summary>The zero-based index of a refused clearance tag.</summary>
+    public int? TagIndex { get; init; }
+
+    /// <summary>The refused clearance tag. Null when the tag itself is null.</summary>
+    public string? Tag { get; init; }
+
+    /// <summary>The tool names required to establish a missing declaration. Setting this property copies
+    /// the collection into an owned read-only snapshot.</summary>
+    public IReadOnlyList<string>? RequiredTools
+    {
+        get => _requiredTools;
+        init => _requiredTools = value is null ? null : Array.AsReadOnly<string>([.. value]);
+    }
 }

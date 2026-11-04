@@ -180,4 +180,36 @@ public enum TileWorldRefusal
     PgmHeaderIntegerMalformed,
     /// <summary>Refuses a PGM header integer above the supported integer range.</summary>
     PgmHeaderIntegerOverflow,
+
+    // Clearance declaration admission and editing.
+    /// <summary>Refuses a clearance mesh root that is rooted instead of relative.</summary>
+    ClearanceMeshRootRooted,
+    /// <summary>Refuses a clearance mesh root containing a backslash.</summary>
+    ClearanceMeshRootBackslash,
+    /// <summary>Refuses a clearance sampling cell size outside the permitted range.</summary>
+    ClearanceCellSizeOutsideRange,
+    /// <summary>Refuses a supplied clearance waiver tag that is blank.</summary>
+    ClearanceWaiverTagBlank,
+    /// <summary>Refuses a duplicate clearance rule name.</summary>
+    ClearanceRuleDuplicate,
+    /// <summary>Refuses clearance rules without a non-blank mesh root.</summary>
+    ClearanceMeshRootRequired,
+    /// <summary>Refuses removing a clearance rule that does not exist.</summary>
+    ClearanceRuleMissing,
+    /// <summary>Refuses a null clearance rule entry.</summary>
+    ClearanceRuleNull,
+    /// <summary>Refuses a clearance rule without a non-blank name.</summary>
+    ClearanceRuleNameBlank,
+    /// <summary>Refuses a clearance tolerance that is negative or non-finite.</summary>
+    ClearanceToleranceInvalid,
+    /// <summary>Refuses a clearance rule with a missing or empty tag list.</summary>
+    ClearanceTagsEmpty,
+    /// <summary>Refuses a clearance rule tag that is null or blank.</summary>
+    ClearanceTagBlank,
+    /// <summary>Refuses a clearance file block whose rule list is null.</summary>
+    ClearanceRulesNull,
+    /// <summary>Refuses a clearance file block whose mesh root is null.</summary>
+    ClearanceMeshRootNull,
+    /// <summary>Refuses editing a clearance rule without a clearance block.</summary>
+    ClearanceBlockMissing,
 }

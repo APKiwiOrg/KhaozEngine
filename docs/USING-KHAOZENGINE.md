@@ -12721,6 +12721,16 @@ meshes through `ITileMeshGeometry` (the glb implementation is `GltfTileMeshGeome
 hollow piece such as a bridge deck must not carry an obstacle tag. Field contracts, rule matching and the issue
 order are in the `KhaozEngine.TileWorld` package README under Clearance.
 
+Clearance declaration validation throws `TileClearanceArgumentException`, an `ArgumentException` subtype
+with non-nullable `TileWorldRefusal Reason`. Rooted and backslash paths expose `ClearanceMeshRootRooted` or
+`ClearanceMeshRootBackslash` with `MeshRoot`. Other reasons expose the rule name, tag field and index,
+tolerance, cell-size bounds or required rule count where applicable. See the package's refusal table for
+the complete identifiers. Direct null `meshRoot` and `WithRule` arguments remain plain
+`ArgumentNullException`s with `ParamName`. File loading wraps a clearance refusal in `TileWorldException`
+with the same reason and identifiers, the manifest path in `SourceName` and the original exception in
+`InnerException`. A null file mesh root instead exposes `ClearanceMeshRootNull`, `Field` = `meshRoot` and
+the original `ArgumentNullException`.
+
 ```csharp
 var meshes = new GltfTileMeshGeometry(TileWorldClearance.ResolveMeshRoot(worldDir, doc.Clearance!));
 IReadOnlyList<TileWorldIssue> clearance = TileWorldClearance.Check(doc, catalogs, meshes);
@@ -13880,6 +13890,14 @@ while `foliage_density_set` takes explicit numeric rows and dimensions. `foliage
 centre and radius. Every configure, density, paint and remove call is one undo step.
 `render_view` is the one verb in WORLD metres, where y is up and world z is MINUS tile z: to look at tile
 (10, 20) from the south-east, target world (10.5, 0, -20.5) with the eye at (18, 8, -12).
+
+**Clearance tool refusals retain their cause.** In-process tool callers inspect
+`McpException.InnerException` for the original family's reason and identifiers. Existing `McpException`s
+pass through unchanged, and MCP clients still receive the same human-readable error text. Setting or
+removing a rule without a block exposes `TileWorldException` with `ClearanceBlockMissing`, `WorldId` and an
+owned read-only `RequiredTools` list containing `clearance_set`. Declare the block before editing rules.
+Invalid settings and unknown rule removal expose the shared clearance reasons on
+`TileClearanceArgumentException`, with `MeshRoot`, `RuleName` or the applicable tag identifiers.
 
 **Clearance refuses the save.** When the world declares clearance rules, `world_save` runs
 `TileWorldClearance.Check` after the validator against the glb meshes under the block's mesh root, and any

@@ -94,12 +94,15 @@ goes through.
 
 Direct in-process calls to `QueryService.ObjectGet` keep the exact `TileWorldException` type. Inspect its
 `Reason` and identifier rather than parsing the message. MCP error responses retain the human-readable text
-described above.
+described above. Every tool guard retains the original exception in `McpException.InnerException`, so
+in-process tool callers inspect the inner family's reason and identifiers. An existing `McpException`
+passes through unchanged.
 
 | `TileWorldRefusal` reason | Refuses | Identifiers |
 | --- | --- | --- |
 | `CatalogArchetypeMissing` | Placing or scattering an archetype absent from the catalogs | `ArchetypeId` |
 | `ObjectMissing` | Querying an absent object id through `QueryService.ObjectGet` | `ObjectId` |
+| `ClearanceBlockMissing` | Setting or removing a rule before declaring a clearance block | `WorldId`, owned read-only `RequiredTools` containing `clearance_set` |
 
 Direct mutation service calls propagate the command and document reasons. See the
 [editing refusal table](../KhaozEngine.TileWorld.Editing/README.md#refusals) and the
@@ -194,6 +197,13 @@ author reading a map needs to tell "there is a wall here" from "there is no worl
 | `clearance_rule_set(name, subjectTags, obstacleTags, tolerance = 0)` | Adds a rule, or replaces the rule of the same name in place. Refuses when the world has no block, so run `clearance_set` first. |
 | `clearance_rule_remove(name)` | Removes one rule by name. Refuses an unknown name. |
 | `clearance_check()` | Runs the check against the meshes on disk and reports a clear flag and every issue as `[code] message`, writing nothing. |
+
+Direct clearance validation uses `TileClearanceArgumentException`, an `ArgumentException` subtype sharing
+`TileWorldRefusal` with `TileWorldException`. Unknown rule removal exposes `ClearanceRuleMissing` with
+`RuleName`, a rooted mesh root exposes `ClearanceMeshRootRooted` with `MeshRoot`, and an empty tag list exposes
+`ClearanceTagsEmpty` with `RuleName`, `Field` and `TagCount`. Tool callers reach these values through
+`McpException.InnerException`. The complete clearance reasons and identifiers are in the
+[TileWorld refusal table](../KhaozEngine.TileWorld/README.md#refusals).
 
 Each mutation is one undo step through `SetClearanceCommand` and changes no tile, object or collision. A rule
 makes every object whose archetype carries any subject tag keep its mesh clear of every object whose archetype

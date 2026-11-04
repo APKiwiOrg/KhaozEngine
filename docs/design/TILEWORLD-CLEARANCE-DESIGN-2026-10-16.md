@@ -50,7 +50,9 @@ Calls approved with the design:
 
 `TileClearanceSettings` is the immutable, self-validating model and `TileWorldDocument.Clearance` holds it.
 `meshRoot` is relative to the directory holding `world.json` and uses forward slashes only. A rooted path is
-refused with `ArgumentException` by the settings and as a `TileWorldException` at load, because world files are
+refused with `TileClearanceArgumentException` (an `ArgumentException` subtype) by the settings and as a
+`TileWorldException` at load, both carrying `TileWorldRefusal.ClearanceMeshRootRooted` and `MeshRoot`.
+The load wrapper adds `SourceName` and keeps the original exception in `InnerException`. World files are
 committed and shared across machines. The rule is decided by the characters alone, the same on every OS: a leading
 `/` or `\`, a drive prefix (an ASCII letter then `:`) and any backslash are refused. `Path.IsPathRooted` was not
 used because it reads drive letters and backslashes only on Windows, so `C:\kit` or `..\models` would save on

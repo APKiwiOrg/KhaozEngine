@@ -119,11 +119,22 @@ public class ClearanceToolsTests
         int depth = f.Worlds.Summary().UndoDepth;
 
         McpException unknown = Assert.Throws<McpException>(() => f.Clearance.ClearanceRuleRemove("no-such-rule"));
-        Assert.Contains("no-such-rule", unknown.Message);
+        var unknownRule = Assert.IsType<TileClearanceArgumentException>(unknown.InnerException);
+        Assert.Equal(TileWorldRefusal.ClearanceRuleMissing, unknownRule.Reason);
+        Assert.Equal("no-such-rule", unknownRule.RuleName);
+        string meshRoot = Path.GetFullPath(f.Temp.Sub("models"));
         McpException rooted = Assert.Throws<McpException>(
-            () => f.Clearance.ClearanceSet(Path.GetFullPath(f.Temp.Sub("models"))));
-        Assert.Contains("rooted", rooted.Message);
-        Assert.Throws<McpException>(() => f.Clearance.ClearanceRuleSet("empty", Array.Empty<string>(), new[] { "x" }));
+            () => f.Clearance.ClearanceSet(meshRoot));
+        var rootedSettings = Assert.IsType<TileClearanceArgumentException>(rooted.InnerException);
+        Assert.Equal(TileWorldRefusal.ClearanceMeshRootRooted, rootedSettings.Reason);
+        Assert.Equal(meshRoot, rootedSettings.MeshRoot);
+        McpException empty = Assert.Throws<McpException>(
+            () => f.Clearance.ClearanceRuleSet("empty", Array.Empty<string>(), new[] { "x" }));
+        var emptyTags = Assert.IsType<TileClearanceArgumentException>(empty.InnerException);
+        Assert.Equal(TileWorldRefusal.ClearanceTagsEmpty, emptyTags.Reason);
+        Assert.Equal("empty", emptyTags.RuleName);
+        Assert.Equal("subjectTags", emptyTags.Field);
+        Assert.Equal(0, emptyTags.TagCount);
 
         Assert.Equal(depth, f.Worlds.Summary().UndoDepth);
         AssertBlock(f.Clearance.ClearanceGet(), "../models", 0.1f, Waiver, (RuleName, "tree", "structure", 0f));
@@ -138,8 +149,15 @@ public class ClearanceToolsTests
         McpException ex = Assert.Throws<McpException>(
             () => f.Clearance.ClearanceRuleSet(RuleName, new[] { "tree" }, new[] { "structure" }));
 
-        Assert.Contains("clearance_set", ex.Message);
-        Assert.Throws<McpException>(() => f.Clearance.ClearanceRuleRemove(RuleName));
+        var missing = Assert.IsType<TileWorldException>(ex.InnerException);
+        Assert.Equal(TileWorldRefusal.ClearanceBlockMissing, missing.Reason);
+        Assert.Equal("clearance", missing.WorldId);
+        Assert.Equal(new[] { "clearance_set" }, missing.RequiredTools);
+        McpException remove = Assert.Throws<McpException>(() => f.Clearance.ClearanceRuleRemove(RuleName));
+        var removeMissing = Assert.IsType<TileWorldException>(remove.InnerException);
+        Assert.Equal(TileWorldRefusal.ClearanceBlockMissing, removeMissing.Reason);
+        Assert.Equal("clearance", removeMissing.WorldId);
+        Assert.Equal(new[] { "clearance_set" }, removeMissing.RequiredTools);
         Assert.Null(f.Clearance.ClearanceGet());
         Assert.Equal(depth, f.Worlds.Summary().UndoDepth);
     }

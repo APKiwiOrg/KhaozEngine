@@ -81,6 +81,23 @@ public class TileWorldExceptionTests
     }
 
     [Fact]
+    public void Required_tools_are_an_owned_read_only_snapshot()
+    {
+        var source = new List<string> { "clearance_set" };
+        var ex = new TileWorldException(TileWorldRefusal.ClearanceBlockMissing, "missing block") { RequiredTools = source };
+        source[0] = "other";
+        source.Clear();
+        Assert.NotNull(ex.RequiredTools);
+        Assert.Equal("clearance_set", Assert.Single(ex.RequiredTools));
+        if (ex.RequiredTools is IList<string> list)
+        {
+            Assert.Throws<NotSupportedException>(() => list[0] = "other");
+            Assert.Throws<NotSupportedException>(() => list.Clear());
+        }
+        Assert.Equal("clearance_set", Assert.Single(ex.RequiredTools));
+    }
+
+    [Fact]
     public void Validation_issues_are_an_owned_read_only_snapshot()
     {
         var issue = new TileWorldIssue("material.missing", "missing material", new RegionCoord(2, 3), new TileCoord(130, 195, 1));

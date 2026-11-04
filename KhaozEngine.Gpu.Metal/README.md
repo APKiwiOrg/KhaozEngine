@@ -1188,8 +1188,13 @@ work. Dynamic-offset changes record only dynamic elements, indexed mesh coverage
 vertex layout, and consecutive instance windows extend exact strided reads without filling padding or gaps.
 Duplicate inserts never rewrite or rebalance tree nodes. This removes repeated recording work from steady
 draw state (#1696), independently of encoder invalidation.
-Slot-owned, reusable interval indexes keep changed-read recording O(log n) amortized and contiguous CPU access
-checks O(log n). Strided checks visit candidate spans and their search paths, bounded by O((k + 1) log n),
+Slot-owned sorted runs append increasing uniform-ring slices in O(1) warmed work, with no tree rebalancing.
+Out-of-order contiguous reads use a separate AVL union. Binding and vertex-attribute cursors avoid resource
+lookups on steady draws, cached live-element flags avoid repeated shader-use queries, and attribute-owned
+continuation hints replace tuple hashing. Consecutive instance
+windows refresh only their strided tree's bounds without balancing, in O(log s) for s strided sequences on
+that resource. Other changed reads retain O(log n) amortized recording and contiguous CPU access
+checks remain O(log n). Strided checks visit candidate spans and their search paths, bounded by O((k + 1) log n),
 where k counts overlapping bounding spans. Exact attribute checks preserve writable padding.
 Prefix publication queries each writable lease through the same index. The footprint never scans
 every recorded read per draw or disjoint write, avoiding quadratic frame work in draw-heavy Mac scenes

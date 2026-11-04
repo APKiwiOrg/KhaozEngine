@@ -9,10 +9,12 @@ namespace KhaozEngine.Tests.Gpu;
 public sealed class MetalCpuReadAllocationTests(ITestOutputHelper output)
 {
     // #1696. Per-change state and continuation hints must retain their capacity across warmed recordings.
-    [Fact]
-    public void SteadyBindingAndWindowChangesAllocateNothing()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void SteadyBindingAndWindowChangesAllocateNothing(bool freshSlices)
     {
-        using var f = new MetalReadFootprintDrawFixture();
+        using var f = new MetalReadFootprintDrawFixture(freshSlices: freshSlices);
         var reads = new MetalRecordedReads();
         var binds = MetalBindRecords.ForGraphics(MetalBindProgram.DeviceOffsetAlignment);
         var vertices = new MetalVertexReadRecords();
@@ -26,7 +28,12 @@ public sealed class MetalCpuReadAllocationTests(ITestOutputHelper output)
             vertices.Record(1, f.Instances, 0);
             for (uint draw = 0; draw < 3000; draw++)
             {
-                binds.Record(0, f.Set, draw * 256);
+                if (freshSlices)
+                {
+                    vertices.Record(0, f.Meshes[draw / 750 % (uint)f.Meshes.Length], 0);
+                    binds.Record(1, f.StaticSets[draw / 500 % (uint)f.StaticSets.Length], 0);
+                }
+                binds.Record(0, f.Set, draw * (freshSlices ? 512u : 256u));
                 binds.RecordReads(reads, 0);
                 vertices.RecordReads(reads, f.Pipeline.Plan.ReadLayout, 0, 1024, draw * 4, 4, indexed: true);
             }

@@ -551,8 +551,11 @@ unpacks it.) A set is N layers of equal size (`width`, `height`, `AlbedoRgba`,
 catalog. A material with `Texture` set is decoded through `ImageRgba` (path resolved RELATIVE TO THE CATALOG FILE
 that declared it, through a new public `TileWorldCatalogs.MaterialSource(id)`, the same rule `world.json` uses
 for its catalog paths, and a material whose catalog came from memory rather than a file cannot carry a relative
-`Texture` at all, a `TileWorldException` names it), and must match the set's size, a mismatch is a
-`TileWorldException` naming the material and both sizes, not a silent resample. A material with no
+`Texture` at all, a `TileWorldException` carries `TileWorldRefusal.GroundMaterialTextureSourceMissing` with
+`MaterialId`, `MaterialName` and `TexturePath`), and must match the set's size. A mismatch carries
+`GroundMaterialTextureSizeMismatch` with the material identifiers, actual `Width` and `Height`,
+`ReferenceMaterialId`, `ReferenceMaterialName`, `ExpectedWidth` and `ExpectedHeight`, preserving authored
+texture sizes instead of silently resampling. A material with no
 `Texture` gets a flat layer of its catalog `Color` (one fill, same size), so the colour-only world of R1 to R4
 renders through the SAME pipeline and the same goldens path, just without texture detail. Textured materials
 take a white tint (the texture IS the colour, the catalog `Color` stays what the headless readers and the

@@ -141,10 +141,12 @@ public sealed class TileWorldException : Exception
     /// <summary>The refused prefab's authored name, when admission has a prefab value.</summary>
     public string? PrefabName { get; init; }
 
-    /// <summary>The refused prefab footprint width in tiles, or PGM image or foliage raster width in samples.</summary>
+    /// <summary>The refused prefab footprint width in tiles, PGM image or foliage raster width in samples,
+    /// or ground material texture width in texels.</summary>
     public int? Width { get; init; }
 
-    /// <summary>The refused prefab footprint height in tiles, or PGM image or foliage raster height in samples.</summary>
+    /// <summary>The refused prefab footprint height in tiles, PGM image or foliage raster height in samples,
+    /// or ground material texture height in texels.</summary>
     public int? Height { get; init; }
 
     /// <summary>The entry count carried by a refused prefab layer or foliage density raster.</summary>
@@ -161,6 +163,36 @@ public sealed class TileWorldException : Exception
 
     /// <summary>The refused ground material's authoring name.</summary>
     public string? MaterialName { get; init; }
+
+    /// <summary>The number of catalog materials refused by the single-set layer limit.</summary>
+    public int? MaterialCount { get; init; }
+
+    /// <summary>The maximum catalog material count in one set, excluding the reserved missing layer.</summary>
+    public int? MaximumMaterialCount { get; init; }
+
+    /// <summary>The first textured material's catalog id, which establishes the set's required dimensions.</summary>
+    public ushort? ReferenceMaterialId { get; init; }
+
+    /// <summary>The first textured material's authoring name.</summary>
+    public string? ReferenceMaterialName { get; init; }
+
+    /// <summary>The texture width in texels established by the first textured material.</summary>
+    public int? ExpectedWidth { get; init; }
+
+    /// <summary>The texture height in texels established by the first textured material.</summary>
+    public int? ExpectedHeight { get; init; }
+
+    /// <summary>The authored relative texture path refused because its catalog has no source file.</summary>
+    public string? TexturePath { get; init; }
+
+    /// <summary>The malformed authored colour text. Null for a null-colour refusal.</summary>
+    public string? ColourText { get; init; }
+
+    /// <summary>The zero-based index of a non-hex character in the authored colour, including its leading hash.</summary>
+    public int? CharacterIndex { get; init; }
+
+    /// <summary>The refused non-hex character in the authored colour.</summary>
+    public char? Character { get; init; }
 
     /// <summary>The zero-based index of the refused walk surface.</summary>
     public int? SurfaceIndex { get; init; }

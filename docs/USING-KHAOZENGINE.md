@@ -13523,6 +13523,21 @@ one from the catalogs on its own unless `TileWorldViewOptions.GroundMaterials` h
 points the mesher at it (the slots in a vertex only mean anything against the set the mesh is drawn with), and
 frees it on `Dispose`. So a colour-only world and a textured one take exactly the same path.
 
+Catalog-to-set refusals keep `TileWorldException` and carry a `TileWorldRefusal` reason. A catalog above the
+single-set capacity selects `GroundMaterialLayerLimitExceeded` with `MaterialCount` and
+`MaximumMaterialCount` (the reserved layer is excluded from that maximum). A texture size disagreement selects
+`GroundMaterialTextureSizeMismatch` with `MaterialId`, `MaterialName`, `Width`, `Height`, `ReferenceMaterialId`,
+`ReferenceMaterialName`, `ExpectedWidth` and `ExpectedHeight`, all dimensions in texels. A relative texture on a
+catalog without a source file selects `GroundMaterialTextureSourceMissing` with `MaterialId`, `MaterialName`
+and `TexturePath`.
+
+`TileColors.Parse` accepts `#rrggbb` and `#rrggbbaa`, including through its `GroundMaterial` overload. Bad
+authored colours keep `TileWorldException`: `TileWorldRefusal.ColourNull` carries no identifiers,
+`ColourShapeInvalid` carries `ColourText`, and `ColourDigitInvalid` carries `ColourText`, the zero-based
+`CharacterIndex` in that string (including its leading `#`) and the refused `Character`. Messages remain
+developer prose. The [render refusal table](../KhaozEngine.TileWorld.Render3D/README.md#tileworld-render-refusals)
+lists the reasons and identifiers.
+
 **Feather selected overlay edges.** Author `TileSettings.FeatherOverlay` on the intended road tiles with
 `ke-tileedit` (`tile_set` or `tiles_fill`, `settings: "FeatherOverlay"`). Preserve other required flags in the
 comma list. Give those tiles the surrounding grass as their underlay and the road as their overlay.

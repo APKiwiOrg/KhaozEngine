@@ -129,9 +129,19 @@ public class TileGroundMaterialsTests
         TileWorldException ex = Assert.Throws<TileWorldException>(() => TileGroundMaterials.Build(
             catalogs, path => path == first ? Solid(4, 4, 1, 2, 3) : Solid(2, 8, 4, 5, 6)));
 
-        Assert.Contains("road", ex.Message, StringComparison.Ordinal);
-        Assert.Contains("2x8", ex.Message, StringComparison.Ordinal);
-        Assert.Contains("4x4", ex.Message, StringComparison.Ordinal);
+        Assert.Equal(TileWorldRefusal.GroundMaterialTextureSizeMismatch, ex.Reason);
+        Assert.Equal((ushort)2, ex.MaterialId);
+        Assert.Equal("road", ex.MaterialName);
+        Assert.Equal(2, ex.Width);
+        Assert.Equal(8, ex.Height);
+        Assert.Equal((ushort)1, ex.ReferenceMaterialId);
+        Assert.Equal("grass", ex.ReferenceMaterialName);
+        Assert.Equal(4, ex.ExpectedWidth);
+        Assert.Equal(4, ex.ExpectedHeight);
+
+        TileGroundMaterialSet control = TileGroundMaterials.Build(catalogs, _ => Solid(4, 4, 1, 2, 3));
+        Assert.Equal(4, control.Width);
+        Assert.Equal(4, control.Height);
     }
 
     [Fact]
@@ -161,7 +171,10 @@ public class TileGroundMaterialsTests
 
         TileWorldException ex = Assert.Throws<TileWorldException>(() => TileGroundMaterials.Build(catalogs));
 
-        Assert.Contains("grass", ex.Message, StringComparison.Ordinal);
+        Assert.Equal(TileWorldRefusal.GroundMaterialTextureSourceMissing, ex.Reason);
+        Assert.Equal((ushort)1, ex.MaterialId);
+        Assert.Equal("grass", ex.MaterialName);
+        Assert.Equal("textures/grass.png", ex.TexturePath);
     }
 
     [Fact]
@@ -192,7 +205,10 @@ public class TileGroundMaterialsTests
     {
         TileWorldCatalogs catalogs = Materials(TileGroundMaterialConfig.MaxMaterials);
 
-        Assert.Throws<TileWorldException>(() => TileGroundMaterials.Build(catalogs));
+        var ex = Assert.Throws<TileWorldException>(() => TileGroundMaterials.Build(catalogs));
+        Assert.Equal(TileWorldRefusal.GroundMaterialLayerLimitExceeded, ex.Reason);
+        Assert.Equal(TileGroundMaterialConfig.MaxMaterials, ex.MaterialCount);
+        Assert.Equal(TileGroundMaterialConfig.MaxMaterials - 1, ex.MaximumMaterialCount);
     }
 
     [Fact]

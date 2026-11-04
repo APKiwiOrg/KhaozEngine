@@ -300,4 +300,20 @@ public enum TileWorldRefusal
     // Prefab discovery.
     /// <summary>Refuses listing prefabs in a resolved directory that does not exist.</summary>
     PrefabDirectoryMissing,
+
+    // Catalog ground material sets.
+    /// <summary>Refuses a catalog exceeding one material set's capacity after reserving the missing layer.</summary>
+    GroundMaterialLayerLimitExceeded,
+    /// <summary>Refuses a ground texture whose dimensions differ from the first textured material.</summary>
+    GroundMaterialTextureSizeMismatch,
+    /// <summary>Refuses a relative ground texture when its catalog has no source file.</summary>
+    GroundMaterialTextureSourceMissing,
+
+    // Authored colour parsing.
+    /// <summary>Refuses a null authored colour.</summary>
+    ColourNull,
+    /// <summary>Refuses an authored colour without a leading hash and six or eight digits.</summary>
+    ColourShapeInvalid,
+    /// <summary>Refuses a non-hex character in a correctly shaped authored colour.</summary>
+    ColourDigitInvalid,
 }

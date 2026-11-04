@@ -135,11 +135,12 @@ public static class TileGroundMaterials
         var ids = new List<ushort>(catalogs.Materials.Keys);
         ids.Sort();
         if (ids.Count + 1 > TileGroundMaterialConfig.MaxMaterials)
-            throw new TileWorldException(
+            throw new TileWorldException(TileWorldRefusal.GroundMaterialLayerLimitExceeded,
                 $"this ground catalog has {ids.Count} materials, and one material set holds " +
                 $"{TileGroundMaterialConfig.MaxMaterials - 1} of them plus the reserved missing-material slot " +
                 $"(the ceiling is {TileGroundMaterialConfig.MaxMaterials} layers in one texture array). Splitting " +
-                "a catalog across several sets is not built yet, so a world this big needs a smaller catalog.");
+                "a catalog across several sets is not built yet, so a world this big needs a smaller catalog.")
+            { MaterialCount = ids.Count, MaximumMaterialCount = TileGroundMaterialConfig.MaxMaterials - 1 };
 
         // Decoded first, because the size of the first textured material is what every other layer is built to,
         // and an untextured material cannot be filled until that size is known.
@@ -160,11 +161,16 @@ public static class TileGroundMaterials
             }
             else if (image.Width != width || image.Height != height)
             {
-                throw new TileWorldException(
+                throw new TileWorldException(TileWorldRefusal.GroundMaterialTextureSizeMismatch,
                     $"ground material {id} ('{material.Name}') decodes to {image.Width}x{image.Height}, but the set " +
                     $"is {width}x{height} (from material {sizedBy}, '{catalogs.Materials[sizedBy].Name}'). Every " +
                     "layer of one set is one slice of the same texture array, so resize the texture: the set never " +
-                    "resamples one behind your back.");
+                    "resamples one behind your back.")
+                {
+                    MaterialId = id, MaterialName = material.Name, Width = image.Width, Height = image.Height,
+                    ReferenceMaterialId = sizedBy, ReferenceMaterialName = catalogs.Materials[sizedBy].Name,
+                    ExpectedWidth = width, ExpectedHeight = height,
+                };
             }
             decoded[id] = image;
         }
@@ -198,10 +204,11 @@ public static class TileGroundMaterials
         // A catalog built in memory has no directory to resolve against, and guessing one (the process working
         // directory, say) would find a different file on every machine.
         if (source is null)
-            throw new TileWorldException(
+            throw new TileWorldException(TileWorldRefusal.GroundMaterialTextureSourceMissing,
                 $"ground material {id} ('{material.Name}') carries the relative texture '{texture}', but its catalog " +
                 "did not come from a file, so there is no directory to resolve it against. Load the catalog from a " +
-                "file, or give the material an absolute texture path.");
+                "file, or give the material an absolute texture path.")
+            { MaterialId = id, MaterialName = material.Name, TexturePath = texture };
         return Path.GetFullPath(Path.Combine(Path.GetDirectoryName(source) ?? string.Empty, texture));
     }
 

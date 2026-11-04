@@ -32,14 +32,22 @@ public class TileColorsTests
     }
 
     [Theory]
-    [InlineData("4d8a3a")]
-    [InlineData("#4d8a3")]
-    [InlineData("#4d8a3ag0")]
-    [InlineData("#zzzzzz")]
-    [InlineData("")]
-    public void Parse_rejects_malformed_hex(string hex)
+    [InlineData("04d8a3a", "#4d8a3a", TileWorldRefusal.ColourShapeInvalid, null, null)]
+    [InlineData("#4d8a3", "#4d8a3a", TileWorldRefusal.ColourShapeInvalid, null, null)]
+    [InlineData("#4d8a3ag0", "#4d8a3af0", TileWorldRefusal.ColourDigitInvalid, 7, 'g')]
+    [InlineData("#zd8a3a", "#4d8a3a", TileWorldRefusal.ColourDigitInvalid, 1, 'z')]
+    [InlineData("#4z8a3a", "#4d8a3a", TileWorldRefusal.ColourDigitInvalid, 2, 'z')]
+    [InlineData("", "#4d8a3a", TileWorldRefusal.ColourShapeInvalid, null, null)]
+    public void Parse_rejects_malformed_hex(string hex, string control, TileWorldRefusal reason,
+                                           int? characterIndex, char? character)
     {
-        Assert.Throws<TileWorldException>(() => TileColors.Parse(hex));
+        var ex = Assert.Throws<TileWorldException>(() => TileColors.Parse(hex));
+        Assert.Equal(reason, ex.Reason);
+        Assert.Equal(hex, ex.ColourText);
+        Assert.Equal(characterIndex, ex.CharacterIndex);
+        Assert.Equal(character, ex.Character);
+
+        TileColors.Parse(control);
     }
 
     [Fact]
@@ -47,10 +55,16 @@ public class TileColorsTests
     {
         // A catalog material whose colour was written as JSON null is bad content, not a caller bug, so it fails
         // with the tile-world error every other malformed colour raises rather than as an argument error.
-        Assert.Throws<TileWorldException>(() => TileColors.Parse((string?)null));
+        var ex = Assert.Throws<TileWorldException>(() => TileColors.Parse((string?)null));
+        Assert.Equal(TileWorldRefusal.ColourNull, ex.Reason);
+        Assert.Null(ex.ColourText);
 
         var blank = new GroundMaterial { Id = 9, Name = "blank", Color = null! };
-        Assert.Throws<TileWorldException>(() => TileColors.Parse(blank));
+        var materialEx = Assert.Throws<TileWorldException>(() => TileColors.Parse(blank));
+        Assert.Equal(TileWorldRefusal.ColourNull, materialEx.Reason);
+        Assert.Null(materialEx.ColourText);
+
+        Assert.Equal(Vector4.One, TileColors.Parse(new GroundMaterial { Id = 9, Name = "blank", Color = "#ffffff" }));
     }
 
     [Fact]

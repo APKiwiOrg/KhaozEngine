@@ -1261,6 +1261,8 @@ The optional `IPhysicsStaticEvidenceRaycast` capability retains the actual selec
 ray. Bepu supplies it for standalone and compound primitives. Curved raw surfaces bind to their represented
 primitive identity without a fabricated plane or a slope-normal filter. Curved geometry inside a descent corridor
 still refuses certification conservatively, while an unrelated curved prop does not abort capture.
+Analytic faces retain both the installed mesh owner and the canonical field owner. Selected support must match
+the latter and the captured canonical feature geometry, while physical installation provenance remains intact.
 `ContactTerrainProfileEvidence` associates admitted original layer/cell addresses with those raw sources, without
 looking up a layer by resting-height proximity. Missing capability, source identity, ambiguous raw support or
 capacity has a structured `PhysicsNavDescentEvidenceException` reason. No partial evidence is published.
@@ -1284,5 +1286,10 @@ cannot be skipped to reach an allowed floor. Mesh faces are clipped exactly agai
 envelope, including intersections whose original vertices all lie outside that envelope.
 The original narrow center corridor, play boundary and highest-launch
 descent bound remain composed through `NavDropFootprint`. Geometry supplies evidence, not collision permission.
-These internal prerequisites do not enable terrain links. The terrain proof policy, opt-in flags, persistence
-and runtime transition remain separate work. Existing sharp Drops and ordinary `AllowsSegment` are unchanged.
+The internal fresh-bake proof opts in through `ContactNavigationProof.EnableTerrainDescents`. One
+`ContactTerrainDropPolicy` authenticates launch, descending support, the bounded lower fringe and terminal Hold.
+It keeps the full actual walk/run tuning, original raw target layer, ordinary terminal footprint, 1 mm sphere,
+original boundary and 64-slice duration. Selected support binds canonical feature geometry and owner separately
+from the ordinary adapter's selector owner, which must remain unchanged after the real source Hold.
+These internal paths do not publish terrain links. Public opt-in flags, persistence and runtime continuation
+remain separate work. Existing sharp Drops and ordinary `AllowsSegment` are unchanged.

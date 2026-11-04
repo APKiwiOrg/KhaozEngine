@@ -11,11 +11,13 @@ internal readonly record struct DescentColumnFace(int Face, uint Areas);
 internal readonly record struct DescentRawBinding(int X, int Z, int Ordinal, int HeightBits, int Face);
 
 internal sealed class DescentFace(MovementSurfaceFeatureKey key, MovementSupportKey owner, bool analytic,
-    PhysicsEvidenceKind kind, PhysicsEvidencePoint[] points, Pose pose, float radius, float halfLength)
+    PhysicsEvidenceKind kind, PhysicsEvidencePoint[] points, Pose pose, float radius, float halfLength,
+    MovementSupportKey? canonicalOwner = null)
 {
     readonly PhysicsEvidencePoint[] _points = (PhysicsEvidencePoint[])points.Clone();
     internal MovementSurfaceFeatureKey Key { get; } = key;
     internal MovementSupportKey Owner { get; } = owner;
+    internal MovementSupportKey CanonicalOwner { get; } = canonicalOwner ?? owner;
     internal bool Analytic { get; } = analytic;
     internal PhysicsEvidenceKind Kind { get; } = kind;
     internal ReadOnlySpan<PhysicsEvidencePoint> Points => _points;

@@ -51,6 +51,7 @@ internal static class PhysicsNavDescentCapture
         {
             var input = observed[i];
             MovementSurfaceFeatureKey key;
+            MovementSupportKey canonicalOwner = input.Owner;
             if (input.Analytic)
             {
                 if (input.Points.Length != 3) throw Refuse(PhysicsNavDescentEvidenceReason.IdentityUnavailable);
@@ -58,11 +59,12 @@ internal static class PhysicsNavDescentCapture
                 if (source.Describe(centre, out var feature) != MovementAvailability.Known || !SameTriangle(input.Points, feature))
                     throw Refuse(PhysicsNavDescentEvidenceReason.IdentityUnavailable);
                 key = feature.Key;
+                canonicalOwner = feature.Owner;
             }
             else key = new("installed/" + registration.CaptureProvenance + "/" + input.Owner.LocalId + "/" + owners[input.Static],
                 input.Address.Leaf, input.Address.Feature);
             faces[i] = new(key, input.Owner, input.Analytic, input.Address.Kind, input.Points,
-                input.Address.Pose, input.Address.Radius, input.Address.HalfLength);
+                input.Address.Pose, input.Address.Radius, input.Address.HalfLength, canonicalOwner);
         }
         int width = bake.Columns.Width, height = bake.Columns.Height;
         var starts = new int[checked(width * height + 1)];

@@ -8,7 +8,7 @@ namespace KhaozEngine.Movement;
 
 /// <summary>One worker's full-tuning, unpowered fall proof. Holds, launch and flight are real Contact steps.
 /// A fresh canonical state and initial Hold belong to each mode attempt. Ground Hold caches are never read.</summary>
-internal sealed class ContactDropProof : IDisposable
+internal sealed partial class ContactDropProof : IDisposable
 {
     readonly PhysicsNavBakeOptions _options;
     readonly EffectiveMovementBinding _binding;
@@ -33,7 +33,7 @@ internal sealed class ContactDropProof : IDisposable
         _reuse = reuse;
     }
 
-    internal bool TryEdge(NavSpace space, NavLink link)
+    bool TrySharpEdge(NavSpace space, NavLink link)
     {
         Vector3 from = Feet(space.Layers[link.FromLayer], link.FromX, link.FromZ);
         Vector3 to = Feet(space.Layers[link.ToLayer], link.ToX, link.ToZ);
@@ -167,5 +167,9 @@ internal sealed class ContactDropProof : IDisposable
         return new(centre.X, grid.RestingHeightAt(x, z)!.Value, centre.Y);
     }
 
-    public void Dispose() => _binding.Dispose();
+    public void Dispose()
+    {
+        try { _terrain?.Dispose(); }
+        finally { _binding.Dispose(); }
+    }
 }

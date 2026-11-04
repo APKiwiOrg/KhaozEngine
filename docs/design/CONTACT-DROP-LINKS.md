@@ -36,9 +36,10 @@ No trajectory, destination verdict or prefix is borrowed from another body, prof
 
 ## Continuous terrain decision
 
-Continuous terrain transitions are not available until their separate terrain certificate is implemented.
-The released sharp-ledge candidate horizon, corridor and first-air-landing rules above remain in force.
-Retaining steep geometry or scanning farther alone cannot certify a terrain descent.
+Continuous terrain transitions have an internal fresh-bake certificate. Public opt-in, persisted terrain evidence
+and runtime terrain continuation remain unavailable. The default sharp-ledge candidate horizon, corridor and
+first-air-landing rules above remain in force. Retaining steep geometry or scanning farther alone cannot certify
+a terrain descent.
 
 The approved opt-in semantics permit a player body to slide on authenticated steep faces in a captured
 continuous descent chain. Its first walkable support may lie in a bounded downstream fringe of the named
@@ -51,7 +52,7 @@ installation supplies canonical analytic feature keys from the same captured dra
 with shared-edge source adjacency. A key is not inferred from height or a process-local physics handle. Missing
 analytic identity is explicit unavailable evidence. The witness retains first walkable support even when Slide
 or Air leaves it again before the tick ends, and accumulates selected medium history. Existing coarse flags and
-movement results remain unchanged. These facts alone do not enable a terrain transition or replace its certificate.
+movement results remain unchanged.
 
 An internal physical capture and pure terrain envelope retain these source keys alongside actual installed
 geometry, including nonstandable faces, roofs and objects. Complete coverage, known emptiness, unavailable data
@@ -60,6 +61,16 @@ The geometry-derived band fringes and directional indexes find wider terrain des
 recipe. Exact coverage and occupancy checks provide a corridor prerequisite. They do not replace the actual
 motion certificate or enable terrain Drop publication. See the
 [internal evidence contract](../../KhaozEngine.Movement/README.md#internal-terrain-descent-evidence).
+
+The internal terrain proof uses one `ContactTerrainDropPolicy` with LaunchPrefix, Descending, LandingFringe and
+TerminalHold phases. Full-tuning walk and run each start from their own real source Hold. Every selected steep
+feature must belong to the authenticated downward chain. First walkable support must belong to the named target's
+own connected patch inside the finite downstream fringe. The policy retains exclusive transition ownership there,
+and rejects another patch, lost support or exhausted duration. It never adds ordinary nodes or segment permission.
+Terminal support must resolve through the original target layer's raw cell patch, satisfy the full ordinary
+footprint and the unchanged 1 mm sphere, then survive a real zero-input Hold. The original boundary, highest-launch
+descent accounting, medium history and 64 slices at 30 Hz remain mandatory. Geometry without a captured terrain
+band continues through the existing sharp proof.
 
 The future certificate must preserve original layer and cell identity, full ordinary terminal footprint admission,
 the 3D 1 mm arrival sphere and a real supported terminal Hold. Collision, roofs, areas, water, original boundaries,

@@ -16,5 +16,7 @@ internal sealed partial class ContactNavigationProof
     internal bool TryDrop(NavSpace space, NavLink link) => (_drop ??
         throw new InvalidOperationException("This Contact proof has no Drop permission.")).TryEdge(space, link);
 
-    internal void EnableTerrainDescents(PhysicsNavDescentEvidence evidence, ContactTerrainProfileEvidence sources) { }
+    internal void EnableTerrainDescents(PhysicsNavDescentEvidence evidence, ContactTerrainProfileEvidence sources) =>
+        (_drop ?? throw new InvalidOperationException("This Contact proof has no Drop permission.")).EnableTerrainDescents(evidence, sources);
+    internal ContactTerrainDropRefusal TerrainRefusal => _drop?.TerrainRefusal ?? ContactTerrainDropRefusal.None;
 }

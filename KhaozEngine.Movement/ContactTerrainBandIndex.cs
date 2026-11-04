@@ -70,6 +70,8 @@ internal sealed class ContactTerrainBandIndex
             !_cells.TryGetValue(z * _width + x, out var end) || end is null) return 0;
         return Math.Min(Math.Max(_width, _height), checked(end[direction] + 1));
     }
+    internal bool Covers(int x, int z) => (uint)x < (uint)_width && (uint)z < (uint)_height &&
+        _cells.TryGetValue(z * _width + x, out var end) && end is not null;
     static bool Touches(DescentFace face, double left, double bottom, double size, double radius)
     {
         if (DescentGeometry.Contains(face.Points, left + size / 2, bottom + size / 2)) return true;

@@ -36,8 +36,8 @@ No trajectory, destination verdict or prefix is borrowed from another body, prof
 
 ## Continuous terrain decision
 
-Continuous terrain transitions have an internal fresh-bake certificate. Public opt-in, persisted terrain evidence
-and runtime terrain continuation remain unavailable. The default sharp-ledge candidate horizon, corridor and
+Continuous terrain transitions have explicit capture/profile opt-ins and a shared physical certificate.
+KENB 4 retains their frozen proof dependencies and candidate workloads. The default sharp-ledge candidate horizon, corridor and
 first-air-landing rules above remain in force. Retaining steep geometry or scanning farther alone cannot certify
 a terrain descent.
 
@@ -59,7 +59,7 @@ geometry, including nonstandable faces, roofs and objects. Complete coverage, kn
 and out-of-bounds space are distinct. Original admitted layers bind to captured raw ordinals and height bits.
 The geometry-derived band fringes and directional indexes find wider terrain descents without changing the sharp
 recipe. Exact coverage and occupancy checks provide a corridor prerequisite. They do not replace the actual
-motion certificate or enable terrain Drop publication. See the
+motion certificate. Publication also requires the explicit profile permission and authenticated KENB 4 workload. See the
 [internal evidence contract](../../KhaozEngine.Movement/README.md#internal-terrain-descent-evidence).
 
 The internal terrain proof uses one `ContactTerrainDropPolicy` with LaunchPrefix, Descending, LandingFringe and
@@ -153,13 +153,19 @@ own authority, advance the real controller and decide interaction timing from ac
 | --- | --- | --- |
 | 1 | All Legacy, zero allowance | Frozen legacy layout and Stair recipe |
 | 2 | Contact present, all allowances zero | Frozen Contact identity, resting heights and Stair recipe |
-| 3 | At least one positive allowance | Format 2 plus 13 bytes per profile and ordered Stair-plus-Drop acceptance bits |
+| 3 | No evidence capture, at least one positive allowance | Format 2 plus 13 bytes per profile and ordered Stair-plus-Drop acceptance bits |
+| 4 | Evidence capture enabled | Explicit terrain flags, canonical evidence union and authenticated profile workloads |
 
 The added identity fields are f32 allowance, f32 WalkSpeed, f32 RunSpeed and u8 AirMomentum. Disabled profiles store
 canonical `0, 1, 1, false`, preserving the old normalized-ground identity. Enabled runtime profiles also validate
 actual speed and momentum. Retained identity fields still include water, air control, gravity, terminal speed,
 braking and body geometry. Load is explicitly version directed, regenerates candidates from stored grids, exits
 and physical anchors, bounds counts before allocation and authenticates the ordered acceptance bits.
+
+A same-engine allowance or profile terrain flag change is ProfilesChanged. Capture evidence selection changes are
+OptionsChanged. Excluded evidence is unavailable, never proof that steep geometry is absent. All worker receipts
+are unioned before reduction, and the frozen identity/evidence/profile/candidate digest is checked before endpoint
+allocation. No trajectories are stored.
 
 A same-engine allowance change is ProfilesChanged. EngineChanged retains comparison priority. Consumers must adopt
 a released engine and rebake, never patch old acceptance bits or relabel an old graph. Candidate counting is data

@@ -3,7 +3,7 @@ using KhaozEngine.Physics;
 
 namespace KhaozEngine.Movement;
 
-public enum PhysicsNavDescentEvidenceReason { CapabilityUnavailable, BackendRefused, IdentityUnavailable, RawAssociationAmbiguous, CapacityExceeded, IndexStorageExceeded }
+public enum PhysicsNavDescentEvidenceReason { CapabilityUnavailable, BackendRefused, IdentityUnavailable, RawAssociationAmbiguous, CapacityExceeded, IndexStorageExceeded, DependencyMissing }
 public sealed class PhysicsNavDescentEvidenceException(PhysicsNavDescentEvidenceReason reason, PhysicsEvidenceStatus status)
     : InvalidOperationException("Complete authenticated descent evidence is unavailable.")
 {

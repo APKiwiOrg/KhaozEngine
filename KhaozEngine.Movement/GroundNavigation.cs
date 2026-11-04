@@ -17,7 +17,8 @@ public sealed partial class GroundNavigation
     {
     }
 
-    internal GroundNavigation(NavTraversalGraph graph, in MoveTuning tuning, NavAreaFootprint footprint, bool aquatic, float maxDropMetres = 0)
+    internal GroundNavigation(NavTraversalGraph graph, in MoveTuning tuning, NavAreaFootprint footprint, bool aquatic, float maxDropMetres = 0,
+        bool allowTerrainDescents = false)
     {
         Graph = graph;
         _tuning = new ProfileTuning(tuning.CapsuleRadius, tuning.CapsuleHalfHeight, tuning.MaxSlopeRadians, tuning.StepHeight);
@@ -26,7 +27,13 @@ public sealed partial class GroundNavigation
         _footprint = footprint;
         Aquatic = aquatic;
         MaxDropMetres = maxDropMetres == 0 ? 0 : maxDropMetres;
-        Identity = new(new NavBakeProfile("", tuning, footprint.Areas) { Aquatic = aquatic, MaxDropMetres = MaxDropMetres }.ResolveKind(), tuning, MaxDropMetres);
+        AllowTerrainDescents = allowTerrainDescents;
+        Identity = new(new NavBakeProfile("", tuning, footprint.Areas)
+        {
+            Aquatic = aquatic,
+            MaxDropMetres = MaxDropMetres,
+            AllowTerrainDescents = allowTerrainDescents
+        }.ResolveKind(), tuning, MaxDropMetres, allowTerrainDescents);
         Planner = new ProfilePlanner(this, new GridPathPlanner(graph.Space, graph));
     }
 
@@ -36,6 +43,9 @@ public sealed partial class GroundNavigation
     /// <summary>The baked unpowered descent permission in metres. Zero disables Drop topology.
     /// This is a profile permission, independent of manual falling and fall damage.</summary>
     public float MaxDropMetres { get; }
+
+    /// <summary>Whether this profile owns certified continuous-terrain Drop transitions.</summary>
+    public bool AllowTerrainDescents { get; }
 
     /// <summary>The graph-owned source topology. Candidate links are filtered by the planner's graph.</summary>
     public NavSpace Space => Graph.Space;

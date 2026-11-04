@@ -11,10 +11,12 @@ internal sealed class ContactTerrainProfileEvidence
 {
     readonly Dictionary<(int Layer, int X, int Z), DescentRawBinding> _cells = [];
     readonly PhysicsNavDescentEvidence _evidence;
+    readonly GroundNavigation _navigation;
     internal int Count => _cells.Count;
     internal ContactTerrainProfileEvidence(PhysicsNavDescentEvidence evidence, GroundNavigation navigation)
     {
         _evidence = evidence;
+        _navigation = navigation;
         for (int layer = 0; layer < navigation.Space.Layers.Count; layer++)
         {
             NavGrid grid = navigation.Space.Layers[layer];
@@ -22,7 +24,7 @@ internal sealed class ContactTerrainProfileEvidence
                 for (int x = 0; x < grid.Width; x++)
                 {
                     if (!navigation.Graph.Layers[layer].IsAccepted(x, z)) continue;
-                    if (evidence.Coverage(x, z) == DescentCoverage.Excluded) continue;
+                    if (evidence.StoredCoverage(x, z) == DescentCoverage.Excluded) continue;
                     if (grid.SurfaceHeightAt(x, z) is not float raw || !evidence.TryRaw(x, z, BitConverter.SingleToInt32Bits(raw), out var address))
                         throw new PhysicsNavDescentEvidenceException(PhysicsNavDescentEvidenceReason.RawAssociationAmbiguous,
                             KhaozEngine.Physics.PhysicsEvidenceStatus.Unavailable);
@@ -33,6 +35,9 @@ internal sealed class ContactTerrainProfileEvidence
     internal bool TryGet(int layer, int x, int z, out DescentRawBinding raw)
     {
         bool found = _cells.TryGetValue((layer, x, z), out raw);
+        if (!found && _evidence.StrictDependencies && layer >= 0 && layer < _navigation.Graph.Layers.Count &&
+            _navigation.Graph.Layers[layer].IsAccepted(x, z) && _evidence.StoredCoverage(x, z) == DescentCoverage.Excluded)
+            PhysicsNavDescentEvidence.MissingDependency();
         ContactTerrainEvidenceReads.ReadBinding(_evidence, layer, x, z, found ? raw : null);
         return found;
     }

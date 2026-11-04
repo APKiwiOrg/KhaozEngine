@@ -51,6 +51,7 @@ internal sealed class PhysicsNavDescentEvidence
     readonly DescentRawBinding[] _raw;
     readonly int[][] _joins;
     readonly DescentEvidenceLookup _lookup;
+    internal bool StrictDependencies { get; private init; }
     internal PhysicsNavBakeOptions Options { get; }
     internal int Width { get; }
     internal int Height { get; }
@@ -71,12 +72,26 @@ internal sealed class PhysicsNavDescentEvidence
     internal ReadOnlySpan<DescentRawBinding> RawBindings => _raw;
     internal DescentFace Face(int index) { ContactTerrainEvidenceReads.ReadFace(this, index); return _faces[index]; }
     internal DescentCoverage Coverage(int x, int z)
-    { ContactTerrainEvidenceReads.ReadCoverage(this, x, z); return (uint)x < (uint)Width && (uint)z < (uint)Height ? _coverage[z * Width + x] : DescentCoverage.OutOfBounds; }
+    {
+        ContactTerrainEvidenceReads.ReadCoverage(this, x, z);
+        var coverage = StoredCoverage(x, z);
+        if (StrictDependencies && coverage == DescentCoverage.Excluded) MissingDependency();
+        return coverage;
+    }
+    internal DescentCoverage StoredCoverage(int x, int z) => (uint)x < (uint)Width && (uint)z < (uint)Height
+        ? _coverage[z * Width + x] : DescentCoverage.OutOfBounds;
     internal ReadOnlySpan<DescentColumnFace> Column(int x, int z)
-    { ContactTerrainEvidenceReads.ReadColumn(this, x, z); return _columns.AsSpan(_starts[z * Width + x], _starts[z * Width + x + 1] - _starts[z * Width + x]); }
+    {
+        ContactTerrainEvidenceReads.ReadColumn(this, x, z);
+        if (StrictDependencies && StoredCoverage(x, z) == DescentCoverage.Excluded) MissingDependency();
+        return _columns.AsSpan(_starts[z * Width + x], _starts[z * Width + x + 1] - _starts[z * Width + x]);
+    }
     internal ReadOnlySpan<int> Joins(int face) { ContactTerrainEvidenceReads.ReadAdjacency(this, face); return _joins[face]; }
     internal bool TryRaw(int x, int z, int bits, out DescentRawBinding result)
-        => _lookup.TryRaw(x, z, bits, out result);
+    {
+        if (StrictDependencies && StoredCoverage(x, z) == DescentCoverage.Excluded) MissingDependency();
+        return _lookup.TryRaw(x, z, bits, out result);
+    }
     internal bool OwnsFace(DescentFace face) => _lookup.Owns(face);
     internal DescentSolidInterval SolidInterval(int face)
     {
@@ -90,4 +105,14 @@ internal sealed class PhysicsNavDescentEvidence
     }
     internal PhysicsNavDescentEvidence MissingColumnForTests(int x, int z)
     { var coverage = (DescentCoverage[])_coverage.Clone(); coverage[z * Width + x] = DescentCoverage.Unavailable; return new(Options, Width, Height, _faces, _starts, _columns, coverage, _raw, _joins); }
+    PhysicsNavDescentEvidence(PhysicsNavDescentEvidence source)
+    {
+        Options = source.Options; Width = source.Width; Height = source.Height;
+        _faces = source._faces; _starts = source._starts; _columns = source._columns;
+        _coverage = source._coverage; _raw = source._raw; _joins = source._joins; _lookup = source._lookup;
+        StrictDependencies = true;
+    }
+    internal PhysicsNavDescentEvidence RequireDependencies() => new(this);
+    internal static void MissingDependency() => throw new PhysicsNavDescentEvidenceException(
+        PhysicsNavDescentEvidenceReason.DependencyMissing, PhysicsEvidenceStatus.Unavailable);
 }

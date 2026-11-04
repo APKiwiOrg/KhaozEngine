@@ -33,7 +33,7 @@ internal static partial class NavBakeIdentity
     internal const int MaxNameLength = 64;
     internal const int MaxProfiles = 256;
     internal const int DigestLength = 32;
-    private const int OptionCount = 14;
+    private const int OptionCount = 15;
     private const int WordOptionCount = 13;
 
     private const int SourceMinBytes = 1 + 1 + DigestLength;
@@ -52,6 +52,7 @@ internal static partial class NavBakeIdentity
         nameof(PhysicsNavBakeOptions.MaxCells), nameof(PhysicsNavBakeOptions.MaxLayerCells),
         nameof(PhysicsNavBakeOptions.MaxSurfacesPerColumn), nameof(PhysicsNavBakeOptions.EdgeProbeSeconds),
         nameof(PhysicsNavBakeOptions.MaxEdgeProbeSteps), nameof(PhysicsNavBakeOptions.SampleWater),
+        nameof(PhysicsNavBakeOptions.CaptureTerrainDescentEvidence),
     ];
 
     /// <summary>The Movement assembly's informational version without build metadata.</summary>
@@ -82,7 +83,8 @@ internal static partial class NavBakeIdentity
         IReadOnlyList<(string Label, byte[] Digest)> sources = (expected.Sources
             ?? throw new ArgumentException("Expectation sources are required.", nameof(expected))).Snapshot();
         NavBakeProfile[] profiles = SortedProfiles(expected.Profiles, nameof(expected));
-        ushort version = FormatFor(profiles);
+        ValidateTerrainExpectation(options, profiles);
+        ushort version = FormatFor(options, profiles);
         if (sources.Count == 0)
             throw new ArgumentException("A bake needs at least one source.", nameof(expected));
         if (sources.Count > ushort.MaxValue)
@@ -91,6 +93,7 @@ internal static partial class NavBakeIdentity
         var writer = new NavBakeWriter();
         writer.WriteLongString(engine);
         WriteOptions(writer, options);
+        if (version == TerrainFormatVersion) writer.WriteUInt8(options.CaptureTerrainDescentEvidence ? (byte)1 : (byte)0);
         writer.WriteUInt16((ushort)sources.Count);
         for (int i = 0; i < sources.Count; i++)
         {
@@ -112,7 +115,8 @@ internal static partial class NavBakeIdentity
             writer.WriteUInt8(profile.Aquatic ? (byte)1 : (byte)0);
             WriteTuning(writer, profile.Tuning);
             if (HasContactIdentity(version)) WriteContactIdentity(writer, profile.Tuning);
-            if (version == DropFormatVersion) WriteDropIdentity(writer, profile);
+            if (HasDropIdentity(version)) WriteDropIdentity(writer, profile);
+            if (version == TerrainFormatVersion) writer.WriteUInt8(profile.AllowTerrainDescents ? (byte)1 : (byte)0);
         }
         return writer.ToArray();
     }
@@ -132,7 +136,7 @@ internal static partial class NavBakeIdentity
 
         if (!string.Equals(bake.EngineVersion, want.EngineVersion, StringComparison.Ordinal))
             return (NavBakeLoadStatus.EngineChanged, $"Bake engine {bake.EngineVersion}, expected {want.EngineVersion}.");
-        if (storedVersion != expectedVersion && storedVersion != DropFormatVersion && expectedVersion != DropFormatVersion)
+        if (storedVersion != expectedVersion && !HasDropIdentity(storedVersion) && !HasDropIdentity(expectedVersion))
             return (NavBakeLoadStatus.ProfilesChanged, $"Bake profile format {storedVersion}, expected {expectedVersion}.");
         for (int i = 0; i < OptionCount; i++)
             if (bake.OptionBits[i] != want.OptionBits[i])
@@ -153,7 +157,7 @@ internal static partial class NavBakeIdentity
         out string problem, ushort version = FormatVersion)
     {
         identity = null;
-        if (version is not (FormatVersion or ContactFormatVersion or DropFormatVersion))
+        if (version is not (FormatVersion or ContactFormatVersion or DropFormatVersion or TerrainFormatVersion))
             return Fail("has an unsupported format", out problem);
         var reader = new NavBakeReader(bytes);
         if (!reader.TryReadLongString(out ReadOnlySpan<byte> engine)) return Fail("is truncated in the engine version", out problem);
@@ -164,6 +168,11 @@ internal static partial class NavBakeIdentity
         if (!reader.TryReadUInt8(out byte sampleWater)) return Fail("is truncated in the options", out problem);
         if (sampleWater > 1) return Fail($"has a non-canonical SampleWater byte {sampleWater}", out problem);
         options[WordOptionCount] = sampleWater;
+        if (version == TerrainFormatVersion)
+        {
+            if (!reader.TryReadUInt8(out byte terrain) || terrain != 1) return Fail("has a non-canonical terrain capture flag", out problem);
+            options[WordOptionCount + 1] = terrain;
+        }
 
         if (!reader.TryReadUInt16(out ushort sourceCount)) return Fail("is truncated before the sources", out problem);
         if (sourceCount == 0 || sourceCount > reader.Remaining / SourceMinBytes)
@@ -183,7 +192,7 @@ internal static partial class NavBakeIdentity
 
         if (!reader.TryReadUInt16(out ushort profileCount)) return Fail("is truncated before the profiles", out problem);
         int profileBytes = ProfileMinBytes + (HasContactIdentity(version) ? ContactIdentityBytes : 0) +
-            (version == DropFormatVersion ? DropIdentityBytes : 0);
+            (HasDropIdentity(version) ? DropIdentityBytes : 0) + (version == TerrainFormatVersion ? 1 : 0);
         if (profileCount == 0 || profileCount > MaxProfiles || profileCount > reader.Remaining / profileBytes)
             return Fail($"has an impossible profile count {profileCount}", out problem);
         var profiles = new DecodedProfile[profileCount];
@@ -204,9 +213,12 @@ internal static partial class NavBakeIdentity
             if (HasContactIdentity(version) && !ReadContactIdentity(ref reader, aquatic == 1, ref tuning))
                 return Fail($"has a truncated or non-canonical contact identity in profile '{text}'", out problem);
             float allowance = 0;
-            if (version == DropFormatVersion && !ReadDropIdentity(ref reader, aquatic == 1, ref tuning, out allowance))
+            if (HasDropIdentity(version) && !ReadDropIdentity(ref reader, aquatic == 1, ref tuning, out allowance))
                 return Fail($"has a truncated or non-canonical Drop identity in profile '{text}'", out problem);
-            profiles[i] = new DecodedProfile(text, required, excluded, aquatic == 1, tuning, allowance);
+            bool allowTerrain = false;
+            if (version == TerrainFormatVersion && !ReadTerrainFlag(ref reader, allowance, out allowTerrain))
+                return Fail($"has a truncated or non-canonical terrain identity in profile '{text}'", out problem);
+            profiles[i] = new DecodedProfile(text, required, excluded, aquatic == 1, tuning, allowance, allowTerrain);
             previous = name;
         }
         if (version == DropFormatVersion && !Array.Exists(profiles, static p => p.MaxDropMetres > 0))
@@ -281,7 +293,7 @@ internal static partial class NavBakeIdentity
     private static string FormatOption(int index, uint bits) => index switch
     {
         8 or 9 or 10 or 12 => ((int)bits).ToString(CultureInfo.InvariantCulture),
-        WordOptionCount => bits == 1u ? "True" : "False",
+        WordOptionCount or WordOptionCount + 1 => bits == 1u ? "True" : "False",
         _ => FormatFloat(bits),
     };
 
@@ -327,7 +339,7 @@ internal static partial class NavBakeIdentity
         if (bake.Aquatic != want.Aquatic)
             return $"field Aquatic: bake {(bake.Aquatic ? "True" : "False")}, expected {(want.Aquatic ? "True" : "False")}";
         return FirstTuningDifference(bake.Tuning, want.Tuning) ?? FirstContactDifference(bake.Tuning, want.Tuning) ??
-            FirstDropDifference(bake, want);
+            FirstDropDifference(bake, want) ?? FirstTerrainDifference(bake, want);
     }
 
     private static bool Fail(string reason, out string problem)
@@ -351,5 +363,6 @@ internal static partial class NavBakeIdentity
         DecodedProfile[] Profiles);
 
     /// <summary>A decoded profile. Its area bits are proved disjoint before any <see cref="NavAreaFilter"/> exists.</summary>
-    internal readonly record struct DecodedProfile(string Name, uint Required, uint Excluded, bool Aquatic, MoveTuning Tuning, float MaxDropMetres = 0);
+    internal readonly record struct DecodedProfile(string Name, uint Required, uint Excluded, bool Aquatic, MoveTuning Tuning,
+        float MaxDropMetres = 0, bool AllowTerrainDescents = false);
 }

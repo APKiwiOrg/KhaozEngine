@@ -70,7 +70,7 @@ public sealed partial class PhysicsNavBake
         {
             RequireConcurrentReads(context);
             return BuildContactProfileInParallel(context, source!, tuning, footprint, height,
-                Options.MaxSurfacesPerColumn, degree, reuse, options!.MaxDropMetres);
+                Options.MaxSurfacesPerColumn, degree, reuse, options!.MaxDropMetres, options.AllowTerrainDescents);
         }
         using LegacyNavigationReadScope? stable = kind == EffectiveMovementBindingKind.Legacy &&
             execution?.UseStableLegacyReadScope == true ? LegacyNavigationReadScope.Acquire(context, Basis, Origin) : null;
@@ -144,18 +144,27 @@ public sealed partial class PhysicsNavBake
                 Prove(context, tuning, Feet(fromGrid, link.FromX, link.FromZ), fromFloats,
                     Feet(toGrid, link.ToX, link.ToZ), toFloats, footprint)) links.Add(link);
         }
+        ContactTerrainProfileBuild? terrain = null;
         if (options!.MaxDropMetres > 0)
         {
-            var drops = ContactDropCandidates.Generate(space.Layers, layers, tuning, options.MaxDropMetres);
+            if (options.AllowTerrainDescents)
+            {
+                var basis = new GroundNavigation(new NavTraversalGraph(space, tuning.CapsuleRadius, height, layers, links), tuning, footprint);
+                terrain = new(DescentEvidence!, basis, tuning, options.MaxDropMetres);
+                terrain.Register(contact!);
+            }
+            var drops = terrain?.Candidates ?? ContactDropCandidates.Generate(space.Layers, layers, tuning, options.MaxDropMetres);
             space = new NavSpace(space.Layers, [.. space.Links, .. drops]);
             foreach (NavLink drop in drops)
-                if (contact!.TryDrop(space, drop)) links.Add(drop);
+                if (terrain is null ? contact!.TryDrop(space, drop) : terrain.Prove(contact!, space, drop)) links.Add(drop);
         }
         _ = Context;
         contact?.AssertCurrent();
         stable?.AssertCurrent();
         var graph = new NavTraversalGraph(space, tuning.CapsuleRadius, height, layers, links);
-        return new GroundNavigation(graph, tuning, footprint, aquatic, options!.MaxDropMetres);
+        var navigation = new GroundNavigation(graph, tuning, footprint, aquatic, options!.MaxDropMetres, options.AllowTerrainDescents);
+        terrain?.Attach(navigation);
+        return navigation;
     }
 
     /// <summary>Runs every profile's argument checks in order, then the concurrent-read capability check, before any
@@ -164,7 +173,12 @@ public sealed partial class PhysicsNavBake
     internal void CheckProfiles(IReadOnlyList<NavBakeProfile> profiles)
     {
         foreach (NavBakeProfile profile in profiles)
-            CheckProfile(profile.Tuning, profile.Areas, new GroundProfileOptions { Aquatic = profile.Aquatic, MaxDropMetres = profile.MaxDropMetres }).Dispose();
+            CheckProfile(profile.Tuning, profile.Areas, new GroundProfileOptions
+            {
+                Aquatic = profile.Aquatic,
+                MaxDropMetres = profile.MaxDropMetres,
+                AllowTerrainDescents = profile.AllowTerrainDescents
+            }).Dispose();
         RequireConcurrentReads(Context);
     }
 
@@ -172,7 +186,15 @@ public sealed partial class PhysicsNavBake
     private ProfileCheck CheckProfile(in MoveTuning tuning, NavAreaFilter areas, GroundProfileOptions? options)
     {
         ArgumentNullException.ThrowIfNull(options);
-        EffectiveMovementBindingKind kind = new NavBakeProfile("", tuning, areas) { Aquatic = options.Aquatic, MaxDropMetres = options.MaxDropMetres }.ResolveKind();
+        EffectiveMovementBindingKind kind = new NavBakeProfile("", tuning, areas)
+        {
+            Aquatic = options.Aquatic,
+            MaxDropMetres = options.MaxDropMetres,
+            AllowTerrainDescents = options.AllowTerrainDescents
+        }.ResolveKind();
+        if (options.AllowTerrainDescents && (!Options.CaptureTerrainDescentEvidence || DescentEvidence is null))
+            throw new PhysicsNavDescentEvidenceException(PhysicsNavDescentEvidenceReason.CapabilityUnavailable,
+                KhaozEngine.Physics.PhysicsEvidenceStatus.Unavailable);
         GroundMoveContext context = Context;
         RequireAuthoredStatics(context);
         if (kind == EffectiveMovementBindingKind.OrdinaryContact)

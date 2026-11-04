@@ -134,7 +134,13 @@ public sealed partial class PhysicsNavBake : IDisposable
         basis?.AssertCurrent();
         EnsureOrigin(world, origin);
         var columns = new PhysicsNavColumns(options, width, height, starts, surfaces.AsSpan(0, stored), water.AsSpan(0, wet));
-        return new PhysicsNavBake(context, options, origin, columns, basis, classify);
+        var capture = new PhysicsNavBake(context, options, origin, columns, basis, classify);
+        try
+        {
+            if (options.CaptureTerrainDescentEvidence) capture.DescentEvidence = PhysicsNavDescentCapture.Capture(capture);
+            return capture;
+        }
+        catch { capture.Dispose(); throw; }
     }
 
     /// <summary>Releases retained builder providers without disposing or changing caller-owned physics.</summary>

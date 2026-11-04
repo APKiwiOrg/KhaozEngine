@@ -21,6 +21,20 @@ internal sealed class ContactTerrainEvidenceReads
         _owner = owner;
     }
     internal bool Matches(PhysicsNavDescentEvidence owner) => ReferenceEquals(_owner, owner);
+    internal void UnionWith(ContactTerrainEvidenceReads other)
+    {
+        if (!other.Matches(_owner)) throw new ArgumentException("The dependency receipt belongs to another capture.", nameof(other));
+        Coverage.UnionWith(other.Coverage); Columns.UnionWith(other.Columns);
+        FaceRecords.UnionWith(other.FaceRecords); Adjacency.UnionWith(other.Adjacency);
+        Normals.UnionWith(other.Normals); Points.UnionWith(other.Points);
+        foreach (var (key, value) in other.Bindings)
+        {
+            if (Bindings.TryGetValue(key, out var prior) && prior != value)
+                throw new PhysicsNavDescentEvidenceException(PhysicsNavDescentEvidenceReason.RawAssociationAmbiguous,
+                    KhaozEngine.Physics.PhysicsEvidenceStatus.Unavailable);
+            Bindings[key] = value;
+        }
+    }
     internal Scope Observe()
     {
         var prior = t_current;

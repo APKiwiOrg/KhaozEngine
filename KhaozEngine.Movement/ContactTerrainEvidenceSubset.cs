@@ -9,7 +9,7 @@ namespace KhaozEngine.Movement;
 internal static class ContactTerrainEvidenceSubset
 {
     internal static PhysicsNavDescentEvidence Build(PhysicsNavDescentEvidence evidence,
-        ContactTerrainEvidenceReads reads, MoveTuning tuning)
+        ContactTerrainEvidenceReads reads, MoveTuning tuning, ContactTerrainEvidenceReads? workerFacts = null)
     {
         if (!reads.Matches(evidence)) throw new ArgumentException("The dependency receipt belongs to another capture.", nameof(reads));
         var cells = reads.Coverage.Concat(reads.Columns).Concat(reads.Bindings.Keys.Select(k => (k.X, k.Z)))
@@ -28,6 +28,14 @@ internal static class ContactTerrainEvidenceSubset
         for (int i = 0; i < evidence.FaceCount; i++)
             if (evidence.Face(i).Kind == PhysicsEvidenceKind.SolidPolygon &&
                 solids.Contains((evidence.Face(i).Key.Source, evidence.Face(i).Key.Address))) keep.Add(i);
+        if (workerFacts is not null)
+        {
+            if (!workerFacts.Matches(evidence)) throw new ArgumentException("The worker receipt belongs to another capture.", nameof(workerFacts));
+            var keys = keep.Select(i => evidence.Face(i).Key).ToHashSet();
+            if (workerFacts.FaceRecords.Any(i => !keep.Contains(i)) || workerFacts.Adjacency.Any(i => !keep.Contains(i)) ||
+                workerFacts.Normals.Any(key => !keys.Contains(key)) || workerFacts.Points.Any(key => !keys.Contains(key)))
+                throw new InvalidOperationException("A worker dependency is absent from the frozen evidence closure.");
+        }
         int[] original = keep.Order().ToArray();
         var map = original.Select((old, index) => (old, index)).ToDictionary(p => p.old, p => p.index);
         var faces = original.Select(evidence.Face).ToArray();

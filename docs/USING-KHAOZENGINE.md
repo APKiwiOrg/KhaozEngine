@@ -9532,9 +9532,9 @@ MoveCommand command = input.Command(steering, run);
 ```
 
 Standalone construction uses `BuildProfile(tuning, areas, new GroundProfileOptions { MaxDropMetres = allowance })`.
-The engine's internal terrain capture now retains complete physical geometry and original raw associations,
-with a pure geometry-derived candidate envelope and corridor coverage checks. These are prerequisites only.
-Terrain Drop publication still requires its motion certificate, persisted identity and explicit permission.
+Explicit terrain capture retains complete physical geometry and original raw associations, with a pure
+geometry-derived candidate envelope and corridor coverage checks. Terrain Drop publication requires its real
+motion certificate, KENB 4 workload identity and explicit per-profile permission.
 See the [internal descent evidence contract](../KhaozEngine.Movement/README.md#internal-terrain-descent-evidence).
 
 Certified tile installations expose optional analytic feature provenance through
@@ -9643,9 +9643,22 @@ GroundNavigation? playerProfile = result.Status == NavBakeLoadStatus.Loaded
 
 `Create` builds each profile through the live capture, so it is exactly the fresh build, and `WriteTo` is
 byte-deterministic. All-Legacy sets with zero allowance retain KENB format 1. A zero-allowance set containing
-Contact profiles uses format 2, storing effective identity and resting feet heights. Any positive allowance selects
+Contact profiles uses format 2, storing effective identity and resting feet heights. Without evidence capture, any positive allowance selects
 format 3, retaining the format-2 layout plus per-profile allowance, actual walk/run speeds and momentum, and the
 ordered Stair-plus-Drop acceptance bits. Formats 1 and 2 keep their original candidate recipe and bytes.
+To bake continuous terrain transitions, explicitly set `PhysicsNavBakeOptions.CaptureTerrainDescentEvidence = true`
+and the player's `NavBakeProfile.AllowTerrainDescents = true` with its positive `MaxDropMetres`. Both flags default
+false. The profile must select non-aquatic OrdinaryContact. Capture permission never grants profile permission,
+and a terrain profile with zero allowance is invalid. Adopt the released engine and rebake, rather than relabeling
+an older file. Creature profiles remain disabled unless explicitly granted their own positive allowance and flag.
+
+Evidence capture selects KENB 4. It pools canonical geometry and exact original raw associations across enabled
+profiles, retains the full steep inventory and every worker's dependency union, and authenticates each frozen
+ordered candidate workload. Missing Excluded evidence fails loudly instead of falling back to sharp Drops. The
+loader validates geometry, references, coverage, raw identities and regenerated count/digest before allocating
+candidate endpoints. Stored acceptance bits never become trajectories or preview arrivals. Disabled profiles in a
+mixed container retain their original recipe. Formats 1, 2 and 3 stay frozen.
+
 Load needs no new movement proof. The identity covers the engine version, every capture option including
 `SampleWater`, the labelled digests, and each profile's name, area filter, `Aquatic` flag and every `MoveTuning` field except
 `WalkSpeed`, `RunSpeed` and `AirMomentum` for disabled Drop profiles. Enabled profiles retain those three actual

@@ -12,14 +12,17 @@ internal static class ContactTerrainDropCandidates
 {
     internal static IReadOnlyList<NavLink> Generate(GroundNavigation navigation, PhysicsNavDescentEvidence evidence,
         ContactTerrainProfileEvidence sources, MoveTuning tuning, float allowance, (int Layer, int X, int Z)? onlySource = null)
+        => Enumerate(navigation, evidence, sources, tuning, allowance, onlySource).ToArray();
+
+    internal static IEnumerable<NavLink> Enumerate(GroundNavigation navigation, PhysicsNavDescentEvidence evidence,
+        ContactTerrainProfileEvidence sources, MoveTuning tuning, float allowance, (int Layer, int X, int Z)? onlySource = null)
     {
         if (!float.IsFinite(allowance) || allowance < 0) throw new ArgumentOutOfRangeException(nameof(allowance));
-        if (allowance == 0) return [];
+        if (allowance == 0) yield break;
         var grids = navigation.Space.Layers;
         var layers = navigation.Graph.Layers;
-        var sharp = ContactDropCandidates.Generate(grids, layers, tuning, allowance)
-            .ToLookup(link => (link.FromLayer, link.FromX, link.FromZ, Math.Sign(link.ToX - link.FromX), Math.Sign(link.ToZ - link.FromZ)));
-        var output = new List<NavLink>();
+        using var sharp = ContactDropCandidates.Enumerate(grids, layers, tuning, allowance).GetEnumerator();
+        bool hasSharp = sharp.MoveNext();
         float cos = MathF.Cos(tuning.MaxSlopeRadians);
         var admitted = new ContactTerrainAdmittedIndex(navigation);
         var bands = new ContactTerrainBandIndex(evidence, Components(evidence, cos), tuning);
@@ -30,15 +33,21 @@ internal static class ContactTerrainDropCandidates
             for (int z = 0; z < grid.Height; z++)
                 for (int x = 0; x < grid.Width; x++)
                 {
-                    if (onlySource is { } selected && (selected.Layer != layer || selected.X != x || selected.Z != z)) continue;
                     if (!layers[layer].IsAccepted(x, z)) continue;
                     var from = ContactDropProof.Feet(grid, x, z);
                     for (int direction = 0; direction < 8; direction++)
                     {
                         if ((layers[layer].ExitMask(x, z) & (1 << direction)) != 0) continue;
                         int dx = NavTraversalLayer.NeighborX(direction), dz = NavTraversalLayer.NeighborZ(direction);
-                        var original = sharp[(layer, x, z, dx, dz)].ToArray();
-                        if (original.Length > 0) { output.Add(original[0]); continue; }
+                        bool selectedSource = onlySource is not { } selected || (selected.Layer == layer && selected.X == x && selected.Z == z);
+                        if (hasSharp && sharp.Current.FromLayer == layer && sharp.Current.FromX == x && sharp.Current.FromZ == z &&
+                            Math.Sign(sharp.Current.ToX - x) == dx && Math.Sign(sharp.Current.ToZ - z) == dz)
+                        {
+                            if (selectedSource) yield return sharp.Current;
+                            hasSharp = sharp.MoveNext();
+                            continue;
+                        }
+                        if (!selectedSource) continue;
                         int range = bands.Reach(x, z, direction);
                         if (range == 0 || !sources.TryGet(layer, x, z, out var raw)) continue;
                         bool steep = false;
@@ -80,14 +89,13 @@ internal static class ContactTerrainDropCandidates
                             if (target < 0) continue;
                             if (steep && sources.TryGet(target, nx, nz, out var landing) &&
                                 evidence.Face(landing.Face).Key.Source == evidence.Face(raw.Face).Key.Source)
-                                output.Add(new(layer, x, z, target, nx, nz) { Kind = NavLinkKind.Drop });
+                                yield return new(layer, x, z, target, nx, nz) { Kind = NavLinkKind.Drop };
                             break;
                         }
                     Refused:;
                     }
                 }
         }
-        return output;
     }
 
     static List<int[]> Components(PhysicsNavDescentEvidence e, float cos)

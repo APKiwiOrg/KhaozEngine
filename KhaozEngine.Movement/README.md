@@ -679,7 +679,7 @@ public sealed class GroundNavigationBake
 }
 ```
 
-`Create` builds every profile through `capture.BuildProfile` with its `Aquatic` and `MaxDropMetres` options while the capture is live, so each
+`Create` builds every profile through `capture.BuildProfile` with its `Aquatic`, `MaxDropMetres` and `AllowTerrainDescents` options while the capture is live, so each
 profile is exactly the fresh build. The `execution` overload builds profiles one after another and passes the setting to
 each contact profile, as [Parallel contact bake](#parallel-contact-bake) describes. An aquatic profile from a capture
 without `SampleWater` is refused there.
@@ -689,7 +689,22 @@ without `SampleWater` is refused there.
 | --- | --- | --- |
 | 1 | All profiles are Legacy with zero Drop allowance | Original supported tuning and Stair recipe |
 | 2 | Contact exists and every Drop allowance is zero | Format 1 plus effective kind, foot fraction, water policy and zero placement offset |
-| 3 | Any profile has positive `MaxDropMetres` | Format 2 plus f32 allowance, f32 walk speed, f32 run speed and u8 air momentum per profile. Ordered Stair candidates precede Drop candidates |
+| 3 | Evidence capture is off and any profile has positive `MaxDropMetres` | Format 2 plus f32 allowance, f32 walk speed, f32 run speed and u8 air momentum per profile. Ordered Stair candidates precede Drop candidates |
+| 4 | `CaptureTerrainDescentEvidence` is true | Format 3 identity plus explicit capture/profile terrain flags, canonical physical evidence and authenticated per-profile ordered workloads |
+
+`PhysicsNavBakeOptions.CaptureTerrainDescentEvidence` and per-profile `AllowTerrainDescents` are non-positional,
+explicit opt-ins, both false by default. An enabled terrain profile requires non-aquatic OrdinaryContact, positive
+finite `MaxDropMetres`, and captured evidence. Capture alone never enables a profile, and zero permission is invalid
+with the profile flag. Consumers must opt in and rebake after adopting the released capability.
+
+Format 4 retains the entire steep inventory and the deterministic union of every worker's required columns, original
+raw identities and complete solid groups. Geometry is pooled once across enabled profiles. The layer data and ordered
+acceptance bits remain profile-owned. A workload digest binds the identity, canonical evidence, frozen profile bytes
+and regenerated Stair-then-Drop sequence. The loader validates bounds, tags, keys, geometry, topology, coverage and
+raw references before candidate allocation. It counts and authenticates regeneration before allocating the endpoint
+array. An Excluded evidence query is an error, including a steep-presence query, so missing evidence cannot select
+the sharp policy. The file stores no trajectories or per-mode physics verdicts. Disabled profiles retain their old
+recipe and do not inherit terrain permission. Formats 1, 2 and 3 retain their exact layout and candidate meanings.
 
 In format 3, disabled profiles encode those four appended values as 0, 1, 1 and false. Enabled profiles
 retain their actual flight inputs. The 13 added identity bytes per profile change neither the layer layout
@@ -1364,12 +1379,12 @@ The internal fresh-bake proof opts in through `ContactNavigationProof.EnableTerr
 It keeps the full actual walk/run tuning, original raw target layer, ordinary terminal footprint, 1 mm sphere,
 original boundary and 64-slice duration. Selected support binds canonical feature geometry and owner separately
 from the ordinary adapter's selector owner, which must remain unchanged after the real source Hold.
-These internal paths do not publish terrain links. Public opt-in flags, persistence and runtime continuation
-remain separate work. Existing sharp Drops and ordinary `AllowsSegment` are unchanged.
+Explicit capture/profile flags publish these certified links and retain their evidence in KENB 4. Runtime
+continuation still uses the separate host path. Existing sharp Drops and ordinary `AllowsSegment` are unchanged.
 
 Calling-thread dependency receipts can reduce evidence for one frozen profile and candidate stream. The subset
 retains every steep face, all observed coverage and column dependencies, their original raw rows, and complete
 solid groups needed by occupancy checks. Other cells are explicitly `Excluded`, which never certifies terrain
 coverage. Source bindings are regenerated from the original captured columns and raw grid heights, without a
-resting-height lookup. Another tuning or candidate recipe requires its own dependency receipt. This is an internal
-certificate input shape, with no new persisted format or public capture flag.
+resting-height lookup. Another tuning or candidate recipe requires its own dependency receipt. KENB 4 freezes this
+certificate input shape for the authenticated workload. Reusing it for another tuning or recipe is refused.

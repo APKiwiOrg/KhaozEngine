@@ -45,6 +45,8 @@ internal sealed class ContactNavigationWorkers
 
     internal ContactNavigationSnapshot Snapshot { get; }
     internal int Count => _proofs.Length;
+    internal void PrepareTerrain(ContactTerrainProfileBuild terrain)
+    { foreach (var proof in _proofs) terrain.Register(proof!); }
 
     /// <summary>Captures the snapshot, validates the envelope once and constructs at most <paramref name="degree"/>
     /// workers, never more than <paramref name="rows"/>. A setup failure releases every worker built so far.</summary>

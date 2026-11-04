@@ -139,8 +139,10 @@ public class PngReaderAdmissionTests
     public void Header_has_the_wire_format_length()
     {
         byte[] header = Header(1, 1, 8, 0, 0);
-        byte[] png = Join(Signature, Chunk("IHDR", header.AsSpan(0, 12).ToArray()),
-            Chunk("IDAT", Compress(new byte[] { 0, 42 })), Chunk("IEND", Array.Empty<byte>()));
+        byte[] data = Chunk("IDAT", Compress(new byte[] { 0, 42 }));
+        byte[] end = Chunk("IEND", Array.Empty<byte>());
+        Assert.Equal(new byte[] { 42 }, PngReader.Decode(Join(Signature, Chunk("IHDR", header), data, end)).Bytes);
+        byte[] png = Join(Signature, Chunk("IHDR", header.AsSpan(0, 12).ToArray()), data, end);
 
         PngDecodeDataException error = Assert.Throws<PngDecodeDataException>(() => PngReader.Decode(png));
 
@@ -185,6 +187,7 @@ public class PngReaderAdmissionTests
     [Fact]
     public void Unsupported_color_type_is_reported()
     {
+        Assert.Equal(new byte[] { 42 }, PngReader.Decode(BuildPng(1, 1, 8, 0, 0, new byte[] { 0, 42 })).Bytes);
         byte[] png = BuildPng(1, 1, 8, 1, 0, new byte[] { 0, 42 });
 
         PngDecodeNotSupportedException error = Assert.Throws<PngDecodeNotSupportedException>(() => PngReader.Decode(png));
@@ -199,10 +202,12 @@ public class PngReaderAdmissionTests
     public void Compression_and_filter_methods_must_be_supported(byte compression, byte filter)
     {
         byte[] header = Header(1, 1, 8, 0, 0);
+        byte[] data = Chunk("IDAT", Compress(new byte[] { 0, 42 }));
+        byte[] end = Chunk("IEND", Array.Empty<byte>());
+        Assert.Equal(new byte[] { 42 }, PngReader.Decode(Join(Signature, Chunk("IHDR", header), data, end)).Bytes);
         header[10] = compression;
         header[11] = filter;
-        byte[] png = Join(Signature, Chunk("IHDR", header),
-            Chunk("IDAT", Compress(new byte[] { 0, 42 })), Chunk("IEND", Array.Empty<byte>()));
+        byte[] png = Join(Signature, Chunk("IHDR", header), data, end);
 
         PngDecodeNotSupportedException error = Assert.Throws<PngDecodeNotSupportedException>(() => PngReader.Decode(png));
 

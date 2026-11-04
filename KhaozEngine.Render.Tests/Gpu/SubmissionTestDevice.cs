@@ -33,6 +33,7 @@ internal sealed class SubmissionTestDevice : IGpuDevice, IGpuResourceFactory, IG
     internal int CreatedCount, CopyCalls, ReadCalls, WaitCalls, FlushCalls, SubmitCalls;
     internal readonly System.Collections.Generic.List<SubmissionTestFence> Fences = new();
     internal bool FailSubmit, FailWait, AllowCommandList;
+    internal InvalidOperationException SubmitFault { get; } = new("planned submit failure");
     internal IGpuFence? SubmittedFence;
     internal IGpuFence[] SubmittedFences = Array.Empty<IGpuFence>();
     internal SubmissionTestDevice(int capacity) => Buffers = new SubmissionTestBuffer[capacity];
@@ -66,8 +67,8 @@ internal sealed class SubmissionTestDevice : IGpuDevice, IGpuResourceFactory, IG
         return true;
     }
 
-    public void Submit(IGpuCommandList cl) { SubmitCalls++; if (FailSubmit) throw new InvalidOperationException("planned submit failure"); }
-    public void Submit(IGpuCommandList cl, IGpuFence fence) { SubmitCalls++; SubmittedFence = fence; if (FailSubmit) throw new InvalidOperationException("planned submit failure"); }
+    public void Submit(IGpuCommandList cl) { SubmitCalls++; if (FailSubmit) throw SubmitFault; }
+    public void Submit(IGpuCommandList cl, IGpuFence fence) { SubmitCalls++; SubmittedFence = fence; if (FailSubmit) throw SubmitFault; }
     public void Submit(IGpuCommandList cl, ReadOnlySpan<IGpuFence> completions)
     {
         GpuCompletionFences.Validate(completions);

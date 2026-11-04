@@ -42,13 +42,13 @@ namespace KhaozEngine.Tests.Gpu
 
         /// <summary>The refusal <see cref="PixelPostProcess.Run"/> throws for <paramref name="res"/>, inside an open
         /// recording, so a run that did not refuse would have recorded its passes.</summary>
-        public static InvalidOperationException RunRefused(IGpuDevice gd, PixelPostProcess post, IPostChainTargets res,
+        public static PostChainStateException RunRefused(IGpuDevice gd, PixelPostProcess post, IPostChainTargets res,
             Output output, PixelPostProcessSettings s, bool distortionActive = false)
         {
-            InvalidOperationException refused;
+            PostChainStateException refused;
             using IGpuCommandList cl = gd.Factory.CreateCommandList();
             using (GpuRecording.Open(gd, cl, nameof(PostChainRig)))
-                refused = Assert.Throws<InvalidOperationException>(
+                refused = Assert.Throws<PostChainStateException>(
                     () => post.Run(cl, res, output.Framebuffer, s, runFxaa: false, distortionActive));
             gd.Submit(cl);
             gd.WaitForIdle();

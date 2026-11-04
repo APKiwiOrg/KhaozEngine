@@ -4303,7 +4303,9 @@ scene.UnloadSharedTexture("art/hull.png");     // false when nothing was cached 
   also fixes the frame's render targets and prepares bound optical water (see **Independent optical bed** under
   Water). The no-argument `PrepareFrame()` is the legacy form and throws when bound water is queued. Only a
   frame that queues bound water freezes its inputs at preparation: a changed viewport, HDR, MSAA, grid mode or
-  water input then throws at recording. A frame with no bound water keeps the legacy late binding on either form.
+  water input then throws at recording. The water renderer reports `WaterFrameStateException` with
+  `WaterFrameRefusal.OpticsInputsChangedOrUnprepared`, `Prepared`, `PreparedPlaneCount` and `ActualPlaneCount`.
+  A frame with no bound water keeps the legacy late binding on either form.
   Every host the engine ships prepares for you, so a game needs no change. `GameApp3D` prepares with its frame size.
   `Render3DPreview.Capture` and the `Render3DSnapshot` captures call `Begin` themselves and prepare with their own
   target size, so a draw callback needs no preparation, and one that also calls `PrepareFrame` with that size is a
@@ -5932,6 +5934,22 @@ trails are not depth-sorted against each other - keep alpha trails for cases whe
     and `MsaaResolveTargetGoldenTests` reads the resolved depth and normal targets back. The tonemap runs
     on the engine's existing display-referred shading values (no separate scene-linear conversion pass), so the
     current art direction is preserved, just with headroom added.
+The internal post chain reports `PostChainRefusal` on `PostChainArgumentException` (an `ArgumentException`)
+and `PostChainStateException` (an `InvalidOperationException`). `SourceSlotCountUnsupported` carries
+`SourceSlotCount`, `MinimumSourceSlotCount`, `MaximumSourceSlotCount` and `ParamName` without replacing the
+previous binding. `TargetsNotBoundAtCurrentGeneration` carries `BoundGeneration`, `ActualGeneration` and
+`TargetsMatch`, so a caller can distinguish an unbound chain, another target object and stale generation.
+`SourceSlotNotBuilt` carries `SourceSlot` and `BoundGeneration`. `TemporalPingPairMissing` carries
+`PingsAllocated`. State identifiers unrelated to a reason are null. See the
+[Render3D refusal tables](../KhaozEngine.Render3D/README.md#post-chain-and-water-frame-refusals).
+
+Water preparation and recording report `WaterFrameRefusal`. `AbsoluteQueueCountMismatch` is on
+`WaterFrameArgumentException` (an `ArgumentException`), with `AbsoluteCount`, `PlaneCount` and `ParamName`.
+`WaterFrameStateException` (an `InvalidOperationException`) carries `OceanDemandChanged` with
+`PreparedOceanDemand` and `ActualOceanDemand`, or `OpticsInputsChangedOrUnprepared` with `Prepared`,
+`PreparedPlaneCount` and `ActualPlaneCount`, including the pipeline fallback. The last successful plane count
+is retained after a failed preparation and is zero before the first success. Unrelated state identifiers are null.
+
 - **Water** (`Scene3D.DrawWater(in WaterPlane)` + `Post.Water`, a `WaterSettings`, **default off/no-op**): an opt-in
   stylized ocean surface - a Gerstner swell displacing the surface grid, a domain-warped three-layer procedural
   ripple normal on top, a camera-distance detail fade, per-channel Beer-Lambert depth grading of the body colour, a
@@ -5963,8 +5981,10 @@ trails are not depth-sorted against each other - keep alpha trails for cases whe
     splat and tile ground. A layout gains a binding with its first shader reader because optimization removes
     unread declarations and shifts Direct3D11 registers. Shaderc preserve-bindings stays unchanged.
     Scene and standalone lit renderer construction require `GpuCapabilities.MaxFragmentStorageBuffers >= 3`
-    before GPU allocation, including when water is disabled. Lower reports throw `NotSupportedException`
-    naming `maxPerStageDescriptorStorageBuffers`. See the
+    before GPU allocation, including when water is disabled. Lower reports throw
+    `LitReceiverNotSupportedException` (a `NotSupportedException`) with
+    `LitReceiverRefusal.FragmentStorageBufferLimitInsufficient`, `RequiredCount`, `AvailableCount` and
+    `CapabilityName` (`maxPerStageDescriptorStorageBuffers`). See the
     [Render3D water reference](../KhaozEngine.Render3D/README.md) for packing, caps and diagnostics.
   - **Per-plane look** (`WaterPlane.Look`, a `WaterLook`, since 17.7.0, **default `null` = the scene's look, byte-
     identical**): the optional `look` constructor parameter, so every ordinary call written before this existed still

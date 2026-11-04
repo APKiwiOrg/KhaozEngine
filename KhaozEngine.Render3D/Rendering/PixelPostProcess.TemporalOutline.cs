@@ -59,8 +59,10 @@ namespace KhaozEngine.Render3D.Rendering
             GpuRetireQueue retired)
         {
             if (!res.PingsAllocated)
-                throw new InvalidOperationException("The outline ahead of the temporal resolve writes the internal "
-                    + "ping pair, which is not allocated. The scene holds it while this pass runs.");
+                throw new PostChainStateException(PostChainRefusal.TemporalPingPairMissing,
+                    "The outline ahead of the temporal resolve writes the internal "
+                    + "ping pair, which is not allocated. The scene holds it while this pass runs.")
+                { PingsAllocated = res.PingsAllocated };
             IGpuResourceFactory f = _gd.Factory;
             _temporalEdgeLayout ??= f.CreateResourceLayout(new GpuResourceLayoutDescription(
                 T("ColorTex"), T("NormalTex"), T("DepthTex"), S("Samp"), U("Edge"), T("OpaqueTex")));

@@ -1059,8 +1059,9 @@ in the `KhaozEngine.Render3D.Ecs` arm under the same namespace, so a render-only
   - **Preparation**: queue every plane, then call `Scene3D.PrepareFrame(width, height)` with the viewport size
     before opening the frame's command list. `GameApp3D` forwards its frame size automatically. The no-argument
     `PrepareFrame()` remains the legacy form and throws when bound water is queued. A changed viewport, target or
-    water input after preparation throws at recording rather than drawing stale resources. Only a frame with bound
-    water freezes those inputs. Preparation revalidates coverage from the absolute queue, the rectangle
+    water input after preparation is refused at recording. `WaterRenderer` reports
+    `WaterFrameRefusal.OpticsInputsChangedOrUnprepared` on `WaterFrameStateException`, with `Prepared`,
+    `PreparedPlaneCount` and `ActualPlaneCount`. Only a frame with bound water freezes those inputs. Preparation revalidates coverage from the absolute queue, the rectangle
     `DrawWater` admitted, so an explicit off-grid `RenderOrigin` cannot refuse an admitted plane.
   - **Lifetime**: reuse the handle across frames. `UnloadWaterOpticsField` invalidates either kind at once and
     defers texture destruction through the scene's retirement queue. On a disposed scene, unloading or binding a
@@ -1089,8 +1090,9 @@ in the `KhaozEngine.Render3D.Ecs` arm under the same namespace, so a render-only
   Every lit receiver reads that scene-owned buffer in shared key shading. Set 0 appends binding 15 for rigid,
   foliage and CPU-skinned receivers, 7 for GPU-skinned, and 6 for splat and tile ground. Lit fragments require
   three storage buffers, checked at renderer creation against `GpuCapabilities.MaxFragmentStorageBuffers`.
-  Scene and standalone lit renderer construction throw `NotSupportedException` before GPU allocation for
-  reports below three, naming Vulkan's `maxPerStageDescriptorStorageBuffers`. The buffers are point-light
+  Scene and standalone lit renderer construction throw `LitReceiverNotSupportedException` before GPU allocation
+  for reports below three, with `LitReceiverRefusal.FragmentStorageBufferLimitInsufficient`, `RequiredCount`,
+  `AvailableCount` and `CapabilityName` (`maxPerStageDescriptorStorageBuffers`). The buffers are point-light
   records, point-light clusters and water volumes. A buffer joins a layout with its first shader reader:
   optimization removes unread declarations and would shift Direct3D11 material registers away from the C#
   layouts. Shaderc preserve-bindings stays unchanged.
@@ -1953,3 +1955,40 @@ before palette, queue or motion publication.
 | Reason | Refused input | Identifiers |
 |---|---|---|
 | `ShadowOnlyWithoutCasting` | A shadow-only draw with shadow casting disabled | `ShadowOnly`, `CastsShadows`, `ParamName` |
+
+## Post-chain and water-frame refusals
+
+`PostChainArgumentException` derives from `ArgumentException`, and `PostChainStateException` derives from
+`InvalidOperationException`. Both carry `PostChainRefusal`. A refused source-slot count preserves the previous
+binding. Generation admission distinguishes never-bound targets (`BoundGeneration` is null), a different target
+object (`TargetsMatch` is false), and a stale generation on the same targets (`TargetsMatch` is true).
+Identifier members used only by another state reason are null.
+
+| PostChainRefusal | Refused input | Identifiers |
+|---|---|---|
+| `SourceSlotCountUnsupported` | Targets outside the chain's supported source-slot range | `SourceSlotCount`, `MinimumSourceSlotCount`, `MaximumSourceSlotCount`, `ParamName` |
+| `TargetsNotBoundAtCurrentGeneration` | Running targets without a binding at their current generation | `BoundGeneration`, `ActualGeneration`, `TargetsMatch` |
+| `SourceSlotNotBuilt` | Selecting a source slot whose resource sets were not built | `SourceSlot`, `BoundGeneration` |
+| `TemporalPingPairMissing` | Running the outline ahead of the temporal resolve without internal pings | `PingsAllocated` |
+
+`WaterFrameArgumentException` derives from `ArgumentException`, and `WaterFrameStateException` derives from
+`InvalidOperationException`. Both carry `WaterFrameRefusal`. The shared optics failure includes the pipeline
+fallback and distinguishes a never-prepared or failed preparation from changed inputs through `Prepared`.
+`PreparedPlaneCount` is the last successfully prepared count, or zero before the first success.
+Identifier members used only by another state reason are null.
+
+| WaterFrameRefusal | Refused input | Identifiers |
+|---|---|---|
+| `OceanDemandChanged` | Draw-time ocean demand differs from preparation | `PreparedOceanDemand`, `ActualOceanDemand` |
+| `AbsoluteQueueCountMismatch` | The absolute queue and frame have different lengths | `AbsoluteCount`, `PlaneCount`, `ParamName` |
+| `OpticsInputsChangedOrUnprepared` | Recording changed or unprepared optical inputs | `Prepared`, `PreparedPlaneCount`, `ActualPlaneCount` |
+
+## Lit receiver refusals
+
+`LitReceiverNotSupportedException` derives from `NotSupportedException` and carries `LitReceiverRefusal`.
+Scene construction, standalone model rendering and water-volume construction share this preflight before GPU
+allocation. This is a lit-pipeline requirement owned by Render3D.
+
+| LitReceiverRefusal | Refused input | Identifiers |
+|---|---|---|
+| `FragmentStorageBufferLimitInsufficient` | The device reports fewer fragment storage buffers than lit receivers require | `RequiredCount`, `AvailableCount`, `CapabilityName` |

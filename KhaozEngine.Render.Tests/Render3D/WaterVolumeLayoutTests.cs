@@ -96,8 +96,12 @@ public sealed class WaterVolumeLayoutTests
     {
         using var device = new FakeGpuDevice(capabilityOverride: new GpuCapabilities(false, true)
         { MaxFragmentStorageBuffers = reported });
-        NotSupportedException error = Assert.Throws<NotSupportedException>(() => NewRenderer(device));
-        Assert.Contains("maxPerStageDescriptorStorageBuffers", error.Message, StringComparison.Ordinal);
+        LitReceiverNotSupportedException error = Assert.Throws<LitReceiverNotSupportedException>(() => NewRenderer(device));
+        Assert.IsAssignableFrom<NotSupportedException>(error);
+        Assert.Equal(LitReceiverRefusal.FragmentStorageBufferLimitInsufficient, error.Reason);
+        Assert.Equal(3, error.RequiredCount);
+        Assert.Equal(reported, error.AvailableCount);
+        Assert.Equal("maxPerStageDescriptorStorageBuffers", error.CapabilityName);
         Assert.Empty(((FakeGpuResourceFactory)device.Factory).ShaderRequests);
         Assert.Empty(((FakeGpuResourceFactory)device.Factory).Buffers);
     }
@@ -118,9 +122,13 @@ public sealed class WaterVolumeLayoutTests
     {
         using var device = new FakeGpuDevice(capabilityOverride: new GpuCapabilities(false, true)
         { MaxFragmentStorageBuffers = reported });
-        NotSupportedException error = Assert.Throws<NotSupportedException>(() =>
+        LitReceiverNotSupportedException error = Assert.Throws<LitReceiverNotSupportedException>(() =>
             new Scene3D(device, new(null, GpuPixelFormat.R8G8B8A8UNorm)));
-        Assert.Contains("maxPerStageDescriptorStorageBuffers", error.Message, StringComparison.Ordinal);
+        Assert.IsAssignableFrom<NotSupportedException>(error);
+        Assert.Equal(LitReceiverRefusal.FragmentStorageBufferLimitInsufficient, error.Reason);
+        Assert.Equal(3, error.RequiredCount);
+        Assert.Equal(reported, error.AvailableCount);
+        Assert.Equal("maxPerStageDescriptorStorageBuffers", error.CapabilityName);
         var factory = (FakeGpuResourceFactory)device.Factory;
         Assert.Empty(factory.Buffers);
         Assert.Empty(factory.Textures);

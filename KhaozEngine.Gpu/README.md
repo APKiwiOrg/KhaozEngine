@@ -272,7 +272,9 @@ What it owns today:
   `MaxFragmentStorageBuffers` reports the per-stage storage buffer limit, with Vulkan reading
   `maxPerStageDescriptorStorageBuffers`, Direct3D11 reporting 128 SRV slots and Metal reporting 31 buffer slots.
   Older capability producers default to four. Explicit reports below three make Render3D scene and standalone
-  lit renderer construction throw `NotSupportedException` before GPU allocation, naming `maxPerStageDescriptorStorageBuffers`.
+  lit renderer construction throw Render3D's `LitReceiverNotSupportedException` before GPU allocation, with
+  `LitReceiverRefusal.FragmentStorageBufferLimitInsufficient`, `RequiredCount`, `AvailableCount` and
+  `CapabilityName` (`maxPerStageDescriptorStorageBuffers`).
   `MaxStorageBufferRangeBytes` is the maximum admitted whole storage
   binding in bytes, or zero when unknown. Vulkan retains `maxStorageBufferRange` from the selected
   physical device. Direct3D 11 folds its adapter-dependent resource guarantee with the full raw-view

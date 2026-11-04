@@ -82,9 +82,13 @@ namespace KhaozEngine.Tests.Gpu
             FillColour(gd, bound, Bound);
             FillColour(gd, other, Other);
 
-            ArgumentException refused = Assert.Throws<ArgumentException>(
-                () => post.BindTargets(new SlotCountOverride(other, slots)));
-            Assert.Contains("source slot", refused.Message);
+            PostChainArgumentException refused = Assert.Throws<PostChainArgumentException>(
+                () => post.BindTargets(new PostChainTestTargets(other, slots)));
+            Assert.Equal(PostChainRefusal.SourceSlotCountUnsupported, refused.Reason);
+            Assert.Equal(slots, refused.SourceSlotCount);
+            Assert.Equal(1, refused.MinimumSourceSlotCount);
+            Assert.Equal(PixelPostProcess.MaxSourceSlots, refused.MaximumSourceSlotCount);
+            Assert.Equal("res", refused.ParamName);
 
             post.BindTargets(bound);
             PostChainRig.AssertEveryPixel(PostChainRig.RunChain(gd, post, bound, output, PostChainRig.LegacyPlain(), runFxaa: false), Bound);
@@ -102,12 +106,19 @@ namespace KhaozEngine.Tests.Gpu
             PixelPostProcessSettings s = PostChainRig.LegacyPlain();
             post.BindTargets(bound);
 
-            InvalidOperationException another = PostChainRig.RunRefused(gd, post, other, output, s);
-            Assert.Contains("BindTargets", another.Message);
+            PostChainStateException another = PostChainRig.RunRefused(gd, post, other, output, s);
+            Assert.Equal(PostChainRefusal.TargetsNotBoundAtCurrentGeneration, another.Reason);
+            Assert.Equal(bound.Generation, another.BoundGeneration);
+            Assert.Equal(other.Generation, another.ActualGeneration);
+            Assert.False(another.TargetsMatch);
 
+            int boundGeneration = bound.Generation;
             bound.Resize(20, 8, mipped: false, sampleCount: 1, bloomEnabled: false, hdrColor: false);
-            InvalidOperationException stale = PostChainRig.RunRefused(gd, post, bound, output, s);
-            Assert.Contains("BindTargets", stale.Message);
+            PostChainStateException stale = PostChainRig.RunRefused(gd, post, bound, output, s);
+            Assert.Equal(PostChainRefusal.TargetsNotBoundAtCurrentGeneration, stale.Reason);
+            Assert.Equal(boundGeneration, stale.BoundGeneration);
+            Assert.Equal(bound.Generation, stale.ActualGeneration);
+            Assert.True(stale.TargetsMatch);
 
             post.BindTargets(bound);   // rebinding at the new generation is accepted again
             PostChainRig.RunChain(gd, post, bound, output, s, runFxaa: false);
@@ -128,30 +139,5 @@ namespace KhaozEngine.Tests.Gpu
             gd.WaitForIdle();
         }
 
-        /// <summary>Another target set's textures under a source slot count of its own.</summary>
-        sealed class SlotCountOverride(IPostChainTargets inner, int slots) : IPostChainTargets
-        {
-            public int Width => inner.Width;
-            public int Height => inner.Height;
-            public int Generation => inner.Generation;
-            public int SourceSlotCount => slots;
-            public int SourceSlot => 0;
-            public IGpuTexture Source(int slot) => inner.Source(0);
-            public IGpuTexture NormalTex => inner.NormalTex;
-            public IGpuTexture DepthColorTex => inner.DepthColorTex;
-            public IGpuTexture PingA => inner.PingA;
-            public IGpuTexture PingB => inner.PingB;
-            public IGpuFramebuffer PingAFB => inner.PingAFB;
-            public IGpuFramebuffer PingBFB => inner.PingBFB;
-            public bool BloomAllocated => inner.BloomAllocated;
-            public IGpuTexture? BloomA => inner.BloomA;
-            public IGpuTexture? BloomB => inner.BloomB;
-            public IGpuFramebuffer? BloomAFB => inner.BloomAFB;
-            public IGpuFramebuffer? BloomBFB => inner.BloomBFB;
-            public int BloomWidth => inner.BloomWidth;
-            public int BloomHeight => inner.BloomHeight;
-            public bool DistortAllocated => inner.DistortAllocated;
-            public IGpuTexture? DistortTex => inner.DistortTex;
-        }
     }
 }

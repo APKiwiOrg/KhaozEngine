@@ -86,12 +86,12 @@ namespace KhaozEngine.Render3D.Rendering
 
         // Triangle programs exist only after a bound preparation. Unbound routes are created before drawing,
         // at preparation or lazily by the legacy late binding in Draw.
-        IGpuPipeline PreparedWaterPipeline(PlaneRoute route, bool triangle)
+        IGpuPipeline PreparedWaterPipeline(PlaneRoute route, bool triangle, int planeCount)
         {
             WaterProgram? program = triangle
                 ? route == PlaneRoute.Clipmap ? _clipTriangleProgram : _triangleProgram
                 : route == PlaneRoute.Clipmap ? _clipProgram : _defaultProgram;
-            return program?.Pipeline ?? throw ChangedOpticsInputs();
+            return program?.Pipeline ?? throw ChangedOpticsInputs(planeCount);
         }
 
         /// <summary>Replace every existing variant as one transaction. Failed replacements leave all old

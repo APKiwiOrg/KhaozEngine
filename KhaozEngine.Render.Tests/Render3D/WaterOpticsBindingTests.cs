@@ -59,6 +59,55 @@ public sealed class WaterOpticsBindingTests
         }
     }
 
+    [Fact]
+    public void AbsoluteQueueMustMatchThePreparedFrameCount()
+    {
+        using var h = new Harness();
+        var frame = new FramePrepare(h.Settings, h.Planes, 0f);
+        h.Renderer.PrepareFrame(frame);
+        var error = Assert.Throws<WaterFrameArgumentException>(() =>
+            h.Renderer.PrepareOpticsFrame(h.Targets, new FramePrepare(h.Settings, h.Planes, 0f), h.Planes.AsSpan(0, 1)));
+        Assert.IsAssignableFrom<ArgumentException>(error);
+        Assert.Equal(WaterFrameRefusal.AbsoluteQueueCountMismatch, error.Reason);
+        Assert.Equal("absolute", error.ParamName);
+        Assert.Equal(1, error.AbsoluteCount);
+        Assert.Equal(2, error.PlaneCount);
+        h.Renderer.PrepareOpticsFrame(h.Targets, frame, h.Planes);
+        h.Draw();
+    }
+
+    [Fact]
+    public void BoundWaterCannotDrawBeforePreparation()
+    {
+        using var h = new Harness();
+        var error = Assert.Throws<WaterFrameStateException>(h.Draw);
+        Assert.Equal(WaterFrameRefusal.OpticsInputsChangedOrUnprepared, error.Reason);
+        Assert.False(error.Prepared);
+        Assert.Equal(0, error.PreparedPlaneCount);
+        Assert.Equal(2, error.ActualPlaneCount);
+        h.Prepare();
+        h.Draw();
+    }
+
+    [Fact]
+    public void OceanDemandCannotChangeAfterAnEmptyPreparation()
+    {
+        using var h = new Harness();
+        h.Planes = [new WaterPlane(0f, 0f, 0f, 5f)];
+        h.Prepare();
+        h.Draw();
+        h.Prepare();
+        h.Renderer.PrepareFrame(new FramePrepare(h.Settings, Array.Empty<WaterPlane>(), 0f));
+        h.Settings.WaveSource = WaterWaveSource.FftOcean;
+        var error = Assert.Throws<WaterFrameStateException>(h.Draw);
+        Assert.Equal(WaterFrameRefusal.OceanDemandChanged, error.Reason);
+        Assert.False(error.PreparedOceanDemand);
+        Assert.True(error.ActualOceanDemand);
+        h.Settings.WaveSource = WaterWaveSource.Procedural;
+        h.Prepare();
+        h.Draw();
+    }
+
     // Mutable looks, scene defaults and queue entries must never invalidate a coverage proof silently.
     [Theory]
     [InlineData("amplitude")]
@@ -83,7 +132,12 @@ public sealed class WaterOpticsBindingTests
             case "bathymetry": h.Settings.Bathymetry = new WaterBathymetry(8, 0f, 0f, 40f); break;
         }
         int sets = h.Factory.ResourceSets.Count, buffers = h.Factory.Buffers.Count;
-        Assert.Throws<InvalidOperationException>(h.Draw);
+        var error = Assert.Throws<WaterFrameStateException>(h.Draw);
+        Assert.IsAssignableFrom<InvalidOperationException>(error);
+        Assert.Equal(WaterFrameRefusal.OpticsInputsChangedOrUnprepared, error.Reason);
+        Assert.True(error.Prepared);
+        Assert.Equal(2, error.PreparedPlaneCount);
+        Assert.Equal(2, error.ActualPlaneCount);
         Assert.Equal(sets, h.Factory.ResourceSets.Count);
         Assert.Equal(buffers, h.Factory.Buffers.Count);
     }
@@ -119,7 +173,7 @@ public sealed class WaterOpticsBindingTests
         IGpuBindableResource texture = h.Renderer.Optics.Resolve(h.Handle).Texture;
         Assert.Contains(first, s => ReferenceEquals(texture, s.Resources[10]));
         h.Targets.Resize(120, 80, false, 1, false, false);
-        Assert.Throws<InvalidOperationException>(h.Draw);
+        Assert.Equal(WaterFrameRefusal.OpticsInputsChangedOrUnprepared, Assert.Throws<WaterFrameStateException>(h.Draw).Reason);
         h.Prepare();
         Assert.All(first, s => Assert.False(s.Disposed));
         h.Retired.BeginFrame();
@@ -141,7 +195,7 @@ public sealed class WaterOpticsBindingTests
         using var h = new Harness();
         h.Factory.ThrowOnResourceSetCreate = h.Factory.ResourceSets.Count + 2;
         Assert.Throws<InvalidOperationException>(h.Prepare);
-        Assert.Throws<InvalidOperationException>(h.Draw);
+        Assert.Equal(WaterFrameRefusal.OpticsInputsChangedOrUnprepared, Assert.Throws<WaterFrameStateException>(h.Draw).Reason);
         h.Factory.ThrowOnResourceSetCreate = 0;
         h.Prepare();
         h.Draw();
@@ -167,9 +221,10 @@ public sealed class WaterOpticsBindingTests
         using var other = new RenderResources(h.Device, 96, 64, false);
         h.Prepare();
         Assert.Equal(h.Targets.Generation, other.Generation);
-        Assert.Throws<InvalidOperationException>(() => h.Renderer.Draw(h.Commands, other, h.Planes,
-            WaterTestFrames.TopDown, WaterTestFrames.TopDown, -Vector3.UnitY, Color.White,
-            Vector3.UnitY * 100f, h.Settings, h.Sky, 0f));
+        Assert.Equal(WaterFrameRefusal.OpticsInputsChangedOrUnprepared,
+            Assert.Throws<WaterFrameStateException>(() => h.Renderer.Draw(h.Commands, other, h.Planes,
+                WaterTestFrames.TopDown, WaterTestFrames.TopDown, -Vector3.UnitY, Color.White,
+                Vector3.UnitY * 100f, h.Settings, h.Sky, 0f)).Reason);
         FakeResourceSet[] previous = h.WaterSets();
         var frame = new FramePrepare(h.Settings, h.Planes, 0f);
         h.Renderer.PrepareFrame(frame);

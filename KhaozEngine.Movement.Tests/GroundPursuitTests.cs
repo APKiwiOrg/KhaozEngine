@@ -327,6 +327,46 @@ public class GroundPursuitTests(GroundPursuitFixture fixture) : IClassFixture<Gr
     }
 
     [Theory]
+    [InlineData(false, false)]
+    [InlineData(true, false)]
+    [InlineData(false, true)]
+    [InlineData(true, true)]
+    public void StationaryActorApproachesItsNewLegAfterProximitySkip(bool skipNearbyWaypoint, bool freshReplan)
+    {
+        var scene = fixture.Flat;
+        var body = scene.Body(-0.3125f);
+        Vector2 first = new(0.25f, 0.25f), second = new(-0.25f, 0.25f), end = new(-0.25f, 3.25f);
+        var target = scene.Target(end.X, end.Y);
+        // N1. Centre-line admission keeps the raw turn through straightening, permits start-to-second
+        // entry and refuses start-to-final entry. Offset lines cannot remove the nearby first waypoint.
+        bool Allows(Vector3 from, Vector3 to) => scene.Navigation.AllowsSegment(from, to)
+            && (from.Z == first.Y && to.Z == first.Y || from.X == second.X && to.X == second.X);
+        var route = new NavPath(NavPathStatus.Complete, skipNearbyWaypoint
+            ? [new(first, 0), new(second, 0), new(end, 0)]
+            : [new(second, 0), new(end, 0)]);
+        NavPath planned = freshReplan ? new(NavPathStatus.Complete, [new(new(1.25f, 0.25f), 0)]) : route;
+        var planner = new MoveToRangeTests.ScriptPlanner((_, _) => planned);
+        var pursuit = new GroundPursuit(planner, scene.Navigation.Space, Allows,
+            new PathFollowConfig { ReplanCooldownSeconds = 10 });
+        var admitted = pursuit.Admit(body, Tuning, freshReplan ? scene.Target(1.25f) : target, Limits, scene.Context);
+        Assert.Equal(GroundPursuitStatus.Ready, admitted.Status);
+        if (freshReplan)
+        {
+            planned = route;
+            var refreshed = pursuit.Tick(body, Tuning, target, 10, scene.Context);
+            Assert.Equal(GroundPursuitStatus.Travelling, refreshed.Status);
+            Assert.Equal(3.0625f, refreshed.RemainingPathLength);
+            Assert.Equal(Vector2.UnitX, refreshed.Direction);
+        }
+        else Assert.Equal(3.0625f, admitted.RemainingPathLength);
+        var stationary = pursuit.Tick(body, Tuning, target, 0.01f, scene.Context);
+        Assert.Equal(GroundPursuitStatus.Travelling, stationary.Status);
+        Assert.Equal(GroundPursuitDetail.None, stationary.Detail);
+        Assert.Equal(3.0625f, stationary.RemainingPathLength);
+        Assert.Equal(Vector2.UnitX, stationary.Direction);
+    }
+
+    [Theory]
     [InlineData(false)]
     [InlineData(true)]
     public void InvalidatedEndpointHoldsDuringCooldownThenReplansEvenBelowDriftTolerance(bool consumed)

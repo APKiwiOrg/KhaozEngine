@@ -14693,9 +14693,11 @@ query already terminal keeps the cooldown. The defaults for budget, drift, corri
 A valid final approach keeps steering with positive remaining length inside `AcceptRadius` while outside exact
 reach. Terminal proximity only changes the timing of an otherwise due replan. A missing usable horizontal
 direction outside exact reach also makes a refresh due, with the same cooldown policy. Crossing an intermediate
-waypoint counts as progress along its incoming segment, including at corners. It advances only through supported
-segment admission from the current feet to the next waypoint. Refused crossed entries make replanning due rather
-than steering back across the old waypoint.
+waypoint counts as progress along the actor's active steering leg, including at corners. That leg starts at the
+query start and resets to the current feet whenever advancement selects another waypoint. A proximity skip cannot
+witness crossing the next waypoint without actor movement. Advancement still requires supported segment admission
+from the current feet to the next waypoint. Refused crossed entries make replanning due rather than steering back
+across the old waypoint. Corridor distance continues to use the route's original segments.
 
 Pass null when the target disappears. Call `Reset` before replacing target identity, teleporting or manually
 cancelling, then admit afresh. Do not tick during recovery or after a terminal result. Use commitment timeout

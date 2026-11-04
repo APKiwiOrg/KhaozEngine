@@ -11,6 +11,7 @@ internal sealed class GroundPursuitRoute
     private readonly NavPath _path;
     private readonly NavSpace _space;
     private readonly Vector3 _origin;
+    private Vector3 _legOrigin;
     private int _index;
 
     private GroundPursuitRoute(NavPath path, NavSpace space, Vector3 origin, Vector3[] feet)
@@ -18,6 +19,7 @@ internal sealed class GroundPursuitRoute
         _path = path;
         _space = space;
         _origin = origin;
+        _legOrigin = origin;
         _feet = feet;
     }
 
@@ -68,14 +70,15 @@ internal sealed class GroundPursuitRoute
             if (!passed && Distance(position, Active) > radius) break;
             if (!allowsSegment(position, _feet[_index + 1])) return !passed;
             _index++;
+            _legOrigin = position;
         }
         return true;
     }
 
     private bool PassedActive(Vector3 position, float radius)
     {
-        // Corners count too. Crossing is measured along the incoming segment, not its turned successor.
-        Vector3 from = _index == 0 ? _origin : _feet[_index - 1];
+        // Crossing follows the actual steering leg. Proximity skipping a waypoint does not visit it.
+        Vector3 from = _legOrigin;
         double dx = (double)Active.X - from.X, dz = (double)Active.Z - from.Z;
         double squared = dx * dx + dz * dz;
         double px = (double)position.X - Active.X, pz = (double)position.Z - Active.Z;

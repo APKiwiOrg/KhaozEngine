@@ -45,9 +45,12 @@ inside `AcceptRadius` while outside exact reach. Terminal proximity only changes
 replan. No usable horizontal direction outside exact reach also makes a replan due, preserving cooldown holds
 until refresh can supply a route. An unusable fresh route still returns NoPath with NoDirection.
 
-Crossing an intermediate waypoint counts as progress along its incoming segment, including at corners. Advancement
-requires supported-walk admission from the current feet to the next waypoint. If a crossed entry is refused,
-replanning becomes due instead of steering back across the old waypoint.
+Crossing an intermediate waypoint counts as progress along the actor's active steering leg, including at corners.
+The leg begins at the query start, then at the actor's current feet whenever advancement selects another waypoint.
+Proximity skipping a waypoint does not visit it and cannot witness crossing its successor without actor movement.
+Advancement requires supported-walk admission from the current feet to the next waypoint. If a crossed entry is
+refused, replanning becomes due instead of steering back across the old waypoint. Corridor distance still uses
+the route's original segments.
 
 The game owns target identity, speed, preparation, timeout, recovery and cancellation. After a Ready admission,
 queue begin with the returned direction and length. On each `OnBeforeTick`, forward Travelling to

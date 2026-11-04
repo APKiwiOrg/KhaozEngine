@@ -29,8 +29,9 @@ namespace KhaozEngine.Render3D
         /// clip that could mislead a caller is refused: it must be named <paramref name="stanceClipName"/>, key each
         /// track exactly once, animate contract joints only, and carry no scale track.</param>
         /// <param name="stanceClipName">The name a stance clip must carry.</param>
-        /// <exception cref="ArgumentException">The skeleton or the stance breaks the contract. The message names the
-        /// joint, or the clip for a misnamed stance.</exception>
+        /// <exception cref="ContractJointMapArgumentException">The skeleton or stance breaks the contract.
+        /// <see cref="ContractJointMapArgumentException.Reason"/> identifies the rule, with structured node, joint,
+        /// parent or clip identifiers on the exception.</exception>
         public ContractJointMap(Skeleton skeleton, SkeletonContract contract, AnimationClip? stance = null,
             string stanceClipName = "stance")
         {
@@ -38,8 +39,10 @@ namespace KhaozEngine.Render3D
             ArgumentNullException.ThrowIfNull(contract);
             ArgumentNullException.ThrowIfNull(stanceClipName);
             if (skeleton.NodeCount > SkinningMath.MaxBonesPerDraw)
-                throw new ArgumentException($"The skeleton has {skeleton.NodeCount} nodes, more than the"
-                    + $" {SkinningMath.MaxBonesPerDraw} a skinned draw takes.", nameof(skeleton));
+                throw new ContractJointMapArgumentException(ContractJointMapRefusal.NodeLimitExceeded,
+                    $"The skeleton has {skeleton.NodeCount} nodes, more than the"
+                    + $" {SkinningMath.MaxBonesPerDraw} a skinned draw takes.", nameof(skeleton))
+                { NodeCount = skeleton.NodeCount, MaximumNodeCount = SkinningMath.MaxBonesPerDraw };
 
             Skeleton = skeleton;
             Contract = contract;
@@ -51,7 +54,9 @@ namespace KhaozEngine.Render3D
             {
                 string nodeName = skeleton.NodeNames[node];
                 if (nodeName.Length > 0 && !_nodes.TryAdd(nodeName, node))
-                    throw new ArgumentException($"Duplicate skeleton node name '{nodeName}'.", nameof(skeleton));
+                    throw new ContractJointMapArgumentException(ContractJointMapRefusal.DuplicateNodeName,
+                        $"Duplicate skeleton node name '{nodeName}'.", nameof(skeleton))
+                    { NodeName = nodeName, NodeIndex = node };
             }
 
             _baseLocal = stance is null
@@ -62,26 +67,34 @@ namespace KhaozEngine.Render3D
             {
                 (string name, string? expectedParent, _) = contract.Joints[index];
                 if (!_nodes.TryGetValue(name, out int node))
-                    throw new ArgumentException($"Missing contract joint '{name}'.", nameof(skeleton));
+                    throw new ContractJointMapArgumentException(ContractJointMapRefusal.ContractJointMissing,
+                        $"Missing contract joint '{name}'.", nameof(skeleton)) { JointName = name };
 
                 int parent = skeleton.ParentIndices[node];
                 if (parent < -1 || parent >= skeleton.NodeCount)
-                    throw new ArgumentException($"Joint '{name}' has an invalid parent index {parent}.",
-                        nameof(skeleton));
+                    throw new ContractJointMapArgumentException(ContractJointMapRefusal.ParentIndexInvalid,
+                        $"Joint '{name}' has an invalid parent index {parent}.", nameof(skeleton))
+                    { JointName = name, ParentIndex = parent, NodeCount = skeleton.NodeCount };
                 string? actualParent = parent < 0 ? null : skeleton.NodeNames[parent];
                 if (!string.Equals(actualParent, expectedParent, StringComparison.Ordinal))
-                    throw new ArgumentException($"Joint '{name}' has parent '{actualParent ?? "none"}',"
-                        + $" expected '{expectedParent ?? "none"}'.", nameof(skeleton));
+                    throw new ContractJointMapArgumentException(ContractJointMapRefusal.ParentNameMismatch,
+                        $"Joint '{name}' has parent '{actualParent ?? "none"}',"
+                        + $" expected '{expectedParent ?? "none"}'.", nameof(skeleton))
+                    { JointName = name, ActualParentName = actualParent, ExpectedParentName = expectedParent };
                 if (name != contract.Root && skeleton.BoneIndexOfNode(node) < 0)
-                    throw new ArgumentException($"Joint '{name}' is not in the skin.", nameof(skeleton));
+                    throw new ContractJointMapArgumentException(ContractJointMapRefusal.ContractJointOutsideSkin,
+                        $"Joint '{name}' is not in the skin.", nameof(skeleton)) { JointName = name, NodeIndex = node };
 
                 Matrix4x4 parentWorld = parent < 0 ? Matrix4x4.Identity : _baseWorld[parent];
                 _baseWorld[node] = _baseLocal[node].ToMatrix() * parentWorld;
                 if (!Matrix4x4.Invert(parentWorld, out _parentBaseInverse[node]))
-                    throw new ArgumentException($"Joint '{name}' has a singular parent base frame.", nameof(skeleton));
+                    throw new ContractJointMapArgumentException(ContractJointMapRefusal.ParentBaseFrameSingular,
+                        $"Joint '{name}' has a singular parent base frame.", nameof(skeleton))
+                    { JointName = name, ParentNodeIndex = parent };
                 Matrix4x4 rigidBase = BoneSocket.ComposeRigid(Matrix4x4.Identity, _baseWorld[node], Matrix4x4.Identity);
                 if (!Matrix4x4.Invert(rigidBase, out Matrix4x4 inverseRigidBase))
-                    throw new ArgumentException($"Joint '{name}' has a singular base frame.", nameof(skeleton));
+                    throw new ContractJointMapArgumentException(ContractJointMapRefusal.BaseFrameSingular,
+                        $"Joint '{name}' has a singular base frame.", nameof(skeleton)) { JointName = name, NodeIndex = node };
                 _bodyAlignment[node] = Matrix4x4.CreateTranslation(rigidBase.Translation) * inverseRigidBase;
                 // General inversion can round the homogeneous one of this engine-owned rigid affine frame.
                 _bodyAlignment[node].M44 = 1f;
@@ -96,22 +109,26 @@ namespace KhaozEngine.Render3D
         public SkeletonContract Contract { get; }
 
         /// <summary>The skeleton node of a name, a contract joint or any other named node.</summary>
-        /// <exception cref="KeyNotFoundException">The skeleton has no node of that name.</exception>
+        /// <exception cref="ContractJointMapKeyNotFoundException">The skeleton has no node of that name,
+        /// with <see cref="ContractJointMapRefusal.NodeNameMissing"/> and the requested JointName.</exception>
         public int Node(string name) =>
             _nodes.TryGetValue(name, out int node)
                 ? node
-                : throw new KeyNotFoundException($"No skeleton node named '{name}'.");
+                : throw new ContractJointMapKeyNotFoundException(ContractJointMapRefusal.NodeNameMissing,
+                    $"No skeleton node named '{name}'.") { JointName = name };
 
         /// <summary>The skin bone of a named joint.</summary>
-        /// <exception cref="KeyNotFoundException">The skeleton has no node of that name.</exception>
-        /// <exception cref="InvalidOperationException">The joint is not in the skin, as the root may not be.
-        /// </exception>
+        /// <exception cref="ContractJointMapKeyNotFoundException">The skeleton has no node of that name,
+        /// with <see cref="ContractJointMapRefusal.NodeNameMissing"/> and the requested JointName.</exception>
+        /// <exception cref="ContractJointMapStateException">The joint is not in the skin, as the root may not be,
+        /// with <see cref="ContractJointMapRefusal.NamedNodeOutsideSkin"/> and JointName.</exception>
         public int Bone(string name)
         {
             int bone = Skeleton.BoneIndexOfNode(Node(name));
             return bone >= 0
                 ? bone
-                : throw new InvalidOperationException($"Joint '{name}' is not in the skin.");
+                : throw new ContractJointMapStateException(ContractJointMapRefusal.NamedNodeOutsideSkin,
+                    $"Joint '{name}' is not in the skin.") { JointName = name };
         }
 
         /// <summary>The zero, one local pose per node: the stance when the skin ships one, the bind rest otherwise.
@@ -120,13 +137,15 @@ namespace KhaozEngine.Render3D
 
         /// <summary>A contract joint's model frame at the base (the stance, or the bind rest without one).</summary>
         /// <param name="node">A contract joint's node.</param>
-        /// <exception cref="ArgumentException">The node is not a contract joint.</exception>
+        /// <exception cref="ContractJointMapArgumentException">The node is not a contract joint, with
+        /// <see cref="ContractJointMapRefusal.NodeOutsideContract"/>, NodeIndex and NodeName.</exception>
         public Matrix4x4 BaseWorld(int node) => _baseWorld[ContractNode(node)];
 
         /// <summary>The inverse of a contract joint's parent model frame at the base, which turns a model frame back
         /// into the joint's local pose.</summary>
         /// <param name="node">A contract joint's node.</param>
-        /// <exception cref="ArgumentException">The node is not a contract joint.</exception>
+        /// <exception cref="ContractJointMapArgumentException">The node is not a contract joint, with
+        /// <see cref="ContractJointMapRefusal.NodeOutsideContract"/>, NodeIndex and NodeName.</exception>
         public Matrix4x4 ParentBaseInverse(int node) => _parentBaseInverse[ContractNode(node)];
 
         /// <summary>Takes a joint's base ORIENTATION back out, for a rigid piece authored in the body's own axes.
@@ -141,7 +160,8 @@ namespace KhaozEngine.Render3D
         /// joint that sits at the body's axes at the base. The homogeneous component is exactly one even when
         /// general inversion rounds it for oblique base axes.</remarks>
         /// <param name="node">A contract joint's node.</param>
-        /// <exception cref="ArgumentException">The node is not a contract joint.</exception>
+        /// <exception cref="ContractJointMapArgumentException">The node is not a contract joint, with
+        /// <see cref="ContractJointMapRefusal.NodeOutsideContract"/>, NodeIndex and NodeName.</exception>
         public Matrix4x4 BodyAlignment(int node) => _bodyAlignment[ContractNode(node)];
 
         /// <summary>Every vertex of a skin on this map's skeleton, deformed to the base, in model space.</summary>
@@ -150,12 +170,14 @@ namespace KhaozEngine.Render3D
         /// skin's own to within a rounding. Allocates the result and two palettes, so call it at load, not per frame.
         /// </remarks>
         /// <param name="mesh">A skin whose skeleton is this map's.</param>
-        /// <exception cref="ArgumentException">The mesh poses through another skeleton.</exception>
+        /// <exception cref="ContractJointMapArgumentException">The mesh poses through another skeleton, with
+        /// <see cref="ContractJointMapRefusal.MeshSkeletonMismatch"/> and ParamName mesh.</exception>
         public Vector3[] SkinAtBase(SkinnedGltfMesh mesh)
         {
             ArgumentNullException.ThrowIfNull(mesh);
             if (!ReferenceEquals(mesh.Skeleton, Skeleton))
-                throw new ArgumentException("The mesh and joint map must use the same skeleton.", nameof(mesh));
+                throw new ContractJointMapArgumentException(ContractJointMapRefusal.MeshSkeletonMismatch,
+                    "The mesh and joint map must use the same skeleton.", nameof(mesh));
 
             var joints = new Matrix4x4[Skeleton.BoneCount];
             Skeleton.ComposeInto(_baseLocal, joints);
@@ -176,8 +198,9 @@ namespace KhaozEngine.Render3D
                 throw new ArgumentOutOfRangeException(nameof(node), node,
                     $"The skeleton has no node {node}. It has {_isContract.Length}.");
             if (!_isContract[node])
-                throw new ArgumentException($"Node {node} '{Skeleton.NodeNames[node]}' is not a contract joint.",
-                    nameof(node));
+                throw new ContractJointMapArgumentException(ContractJointMapRefusal.NodeOutsideContract,
+                    $"Node {node} '{Skeleton.NodeNames[node]}' is not a contract joint.", nameof(node))
+                { NodeIndex = node, NodeName = Skeleton.NodeNames[node] };
             return node;
         }
 
@@ -187,27 +210,35 @@ namespace KhaozEngine.Render3D
             string stanceClipName)
         {
             if (!string.Equals(stance.Name, stanceClipName, StringComparison.Ordinal))
-                throw new ArgumentException($"The base pose clip is '{stance.Name}', expected '{stanceClipName}'.",
-                    nameof(stance));
+                throw new ContractJointMapArgumentException(ContractJointMapRefusal.StanceNameMismatch,
+                    $"The base pose clip is '{stance.Name}', expected '{stanceClipName}'.", nameof(stance))
+                { ClipName = stance.Name, ExpectedClipName = stanceClipName };
             foreach (JointTrack track in stance.Tracks)
             {
                 int node = skeleton.NodeForLogicalIndex(track.TargetNode);
                 if (node < 0)
-                    throw new ArgumentException($"The stance animates glTF node {track.TargetNode}, which is not a"
-                        + " contract joint of this skeleton.", nameof(stance));
+                    throw new ContractJointMapArgumentException(ContractJointMapRefusal.StanceNodeMissing,
+                        $"The stance animates glTF node {track.TargetNode}, which is not a"
+                        + " contract joint of this skeleton.", nameof(stance))
+                    { TargetNode = track.TargetNode, ClipName = stance.Name };
                 string joint = skeleton.NodeNames[node];
                 if (!contract.Contains(joint))
-                    throw new ArgumentException($"The stance animates glTF node {track.TargetNode} '{joint}', which is"
-                        + " not a contract joint.", nameof(stance));
+                    throw new ContractJointMapArgumentException(ContractJointMapRefusal.StanceNodeOutsideContract,
+                        $"The stance animates glTF node {track.TargetNode} '{joint}', which is"
+                        + " not a contract joint.", nameof(stance))
+                    { TargetNode = track.TargetNode, JointName = joint, ClipName = stance.Name };
                 if (track.Scale is not null)
-                    throw new ArgumentException($"The stance scales '{joint}'. A stance may only turn and move joints.",
-                        nameof(stance));
+                    throw new ContractJointMapArgumentException(ContractJointMapRefusal.StanceScaleTrack,
+                        $"The stance scales '{joint}'. A stance may only turn and move joints.", nameof(stance))
+                    { JointName = joint, ClipName = stance.Name };
                 int keys = track.Rotation is { Times.Length: not 1 } rotation ? rotation.Times.Length
                     : track.Translation is { Times.Length: not 1 } translation ? translation.Times.Length
                     : 1;
                 if (keys != 1)
-                    throw new ArgumentException($"The stance keys '{joint}' {keys} times, expected once. A stance is"
-                        + " one pose.", nameof(stance));
+                    throw new ContractJointMapArgumentException(ContractJointMapRefusal.StanceTrackKeyCountMismatch,
+                        $"The stance keys '{joint}' {keys} times, expected once. A stance is"
+                        + " one pose.", nameof(stance))
+                    { JointName = joint, KeyCount = keys, ExpectedKeyCount = 1, ClipName = stance.Name };
             }
             return AnimationSampler.SamplePose(stance, skeleton, 0f);
         }

@@ -1676,7 +1676,9 @@ in the `KhaozEngine.Render3D.Ecs` arm under the same namespace, so a render-only
     `ParentBaseInverse` and `BodyAlignment` expose the base frames, and the frame accessors refuse a node outside
     the contract. `BodyAlignment` pairs with `BoneSocket.ComposeRigid` to seat a piece authored in the body's axes.
     Its homogeneous component stays exactly one when general inversion rounds it for oblique base axes.
-    `SkinAtBase` deforms a skin to the base on the CPU and allocates, so call it at load.
+    `SkinAtBase` deforms a skin to the base on the CPU and allocates, so call it at load. The three
+    `ContractJointMap` exception types share `ContractJointMapRefusal` and carry node, joint, parent and clip
+    identifiers. See [Animation refusals](#animation-refusals).
   - `ClipRefusals` words a skin loader's clip refusals one way, naming the clip, the rule and the joint. `Only`
     throws `ClipAdmissionArgumentException` with `DuplicateClipName` and `ClipName` on a second clip of one name.
     `NoLength`, `Unkeyed`, `Uncovered` and `Breach` return null for a clean clip and a message otherwise, so a
@@ -1693,7 +1695,8 @@ in the `KhaozEngine.Render3D.Ecs` arm under the same namespace, so a render-only
     one moment or none, with quiet ends, an empty share, a cap on empty runs and a salt. A family is drawn by
     weight, and a mirrored family plays left or right with even odds. `At(seed, seconds)` allocates nothing, and
     `At(seed, seconds, stoppedAt)` skips a moment that began before the body last stopped. `Moment.None` is the
-    default value.
+    default value. Construction throws `MomentScheduleArgumentException` with `MomentScheduleRefusal` and
+    option or family identifiers. See [Animation refusals](#animation-refusals).
   - `LayeredAnimator` / `AnimationLayer` / `BoneMask` / `LayerMode` - N animation layers composited into one final
     skeleton pose: a base locomotion layer below, masked `Override` / `Additive` action layers above (attack while
     running). Each `AnimationLayer` is a clip + its own looping playhead + a blend weight + an optional `BoneMask` +
@@ -1772,6 +1775,46 @@ The subtree overload using retained skeleton names forwards the `Skeleton` name-
 |---|---|---|
 | `DuplicateClipName` | `Only` is given a clip when one was already taken | `ClipName` |
 | `RequiredJointMissing` | `Unkeyed` requires a joint absent from the skeleton | `JointName` |
+
+`ContractJointMapArgumentException`, `ContractJointMapKeyNotFoundException` and `ContractJointMapStateException`
+share `ContractJointMapRefusal`. The lookup type derives from `KeyNotFoundException` and the state type from
+`InvalidOperationException`. `Bone` forwards a missing name through the lookup type. Numerical base-frame
+refusals can be reached by finite non-unit rotations and scale, so they carry joint and node identifiers too.
+
+| ContractJointMapRefusal | Refused input | Identifiers |
+|---|---|---|
+| `NodeLimitExceeded` | A skeleton exceeding the skinned-draw node limit | `NodeCount`, `MaximumNodeCount` |
+| `DuplicateNodeName` | Ambiguous skeleton node names | `NodeName`, `NodeIndex` |
+| `ContractJointMissing` | A required contract joint absent from the skeleton | `JointName` |
+| `ParentIndexInvalid` | A contract joint whose parent index is outside the skeleton | `JointName`, `ParentIndex`, `NodeCount` |
+| `ParentNameMismatch` | A joint under a different parent than the contract declares | `JointName`, `ActualParentName`, `ExpectedParentName` |
+| `ContractJointOutsideSkin` | A non-root contract joint outside the skin | `JointName`, `NodeIndex` |
+| `ParentBaseFrameSingular` | An uninvertible parent base frame | `JointName`, `ParentNodeIndex` |
+| `BaseFrameSingular` | An uninvertible rigid base frame | `JointName`, `NodeIndex` |
+| `MeshSkeletonMismatch` | A mesh using a different skeleton instance | `ParamName` |
+| `NodeOutsideContract` | A frame lookup for a node outside the contract | `NodeIndex`, `NodeName` |
+| `StanceNameMismatch` | A stance with a different name than requested | `ClipName`, `ExpectedClipName` |
+| `StanceNodeMissing` | A stance track targeting no skeleton node | `TargetNode`, `ClipName` |
+| `StanceNodeOutsideContract` | A stance track on a non-contract joint | `TargetNode`, `JointName`, `ClipName` |
+| `StanceScaleTrack` | A stance scale channel | `JointName`, `ClipName` |
+| `StanceTrackKeyCountMismatch` | A stance channel with other than one key | `JointName`, `KeyCount`, `ExpectedKeyCount`, `ClipName` |
+| `NodeNameMissing` | A name lookup absent from the joint map | `JointName` |
+| `NamedNodeOutsideSkin` | A bone lookup for a named node outside the skin | `JointName` |
+
+`MomentScheduleArgumentException` carries `MomentScheduleRefusal` for option and weighted-family admission.
+`OptionValue` is a nullable double for every option, including the integer `MaxEmptySlots` limit.
+
+| MomentScheduleRefusal | Refused input | Identifiers |
+|---|---|---|
+| `SlotSecondsInvalid` | A non-finite or non-positive slot duration | `OptionName`, `OptionValue` |
+| `QuietSecondsInvalid` | A non-finite or negative quiet duration | `OptionName`, `OptionValue` |
+| `EmptyShareInvalid` | An empty share outside the finite half-open unit interval | `OptionName`, `OptionValue` |
+| `MaxEmptySlotsInvalid` | A negative empty-run limit | `OptionName`, `OptionValue` |
+| `FamiliesEmpty` | A schedule with no moment families | `FamilyCount` |
+| `FamilyWeightInvalid` | A non-finite or non-positive family weight | `FamilyName`, `FamilyIndex`, `Weight` |
+| `FamilyLengthInvalid` | A non-finite or non-positive family duration | `FamilyName`, `FamilyIndex`, `LengthSeconds` |
+| `FamilyDoesNotFitSlot` | A family longer than the space between quiet ends | `FamilyName`, `FamilyIndex`, `LengthSeconds`, `AvailableSeconds`, `SlotSeconds`, `QuietSeconds` |
+| `WeightTotalNotFinite` | A non-finite sum of family weights | `TotalWeight` |
 
 ## Persistent grass and foliage
 

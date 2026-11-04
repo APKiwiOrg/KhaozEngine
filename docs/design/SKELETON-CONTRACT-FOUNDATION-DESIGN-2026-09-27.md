@@ -45,8 +45,9 @@ reuse its list.
 
 The map refuses a skeleton with more nodes than `SkinningMath.MaxBonesPerDraw`, two nodes of one
 name, and a contract joint that is missing, misparented or, other than the root, outside the skin.
-The misparent message names both the actual and the expected parent. Unnamed nodes are left alone,
-as `Skeleton` leaves them, so helper nodes a rig exports without names cost nothing.
+`ContractJointMapArgumentException` carries a `ContractJointMapRefusal` reason and the refused node, joint or
+clip identifiers. `ParentNameMismatch` carries `JointName`, `ActualParentName` and `ExpectedParentName`.
+Unnamed nodes are left alone, as `Skeleton` leaves them, so helper nodes a rig exports without names cost nothing.
 
 The base is the body's zero. It is an optional one-key stance clip, sampled once, or the bind rest
 without one. The stance must carry the caller's clip name (`stance` by default), key each track
@@ -58,8 +59,12 @@ From the base the map derives each contract joint's model frame, its parent-base
 alignment that takes the joint's base orientation back out so a rigid piece authored in the body's
 axes sits at the joint with those axes. `SkinAtBase` deforms a skin to the base on the CPU, the same
 deform the shader applies. The frames exist for contract joints only. `Node` resolves any named node,
-so the frame accessors refuse a node outside the contract, naming it, rather than hand back a zero
-matrix that would collapse an attached piece to the origin.
+so the frame accessors refuse a node outside the contract with `NodeOutsideContract`, `NodeIndex` and
+`NodeName`, rather than hand back a zero matrix that would collapse an attached piece to the origin.
+Name lookup and bone lookup retain their original BCL bases through `ContractJointMapKeyNotFoundException`
+and `ContractJointMapStateException`, with `NodeNameMissing` or `NamedNodeOutsideSkin` and `JointName`.
+Finite non-unit rotations and scale can reach the inversion guards, which report `BaseFrameSingular` with
+`JointName` and `NodeIndex`, or `ParentBaseFrameSingular` with `JointName` and `ParentNodeIndex`.
 
 The arithmetic runs in the same order as Grimhollow's `HumanoidJointMap`. The humanoid can then wrap
 this map and keep its palettes bit for bit. The humanoid's hip pivot is a humanoid fact and stays in
@@ -103,8 +108,10 @@ The table is copied at construction and `At` allocates nothing. The constructor 
 weight that is not finite and above zero, weights whose total is not finite, and a length that is not
 finite and above zero or does not fit between a slot's quiet ends. It refuses a slot length that is not
 finite and above zero, a quiet end that is not finite and at least zero, an empty share that is not
-finite, below 0 or at least 1, and a negative cap. The none moment, family -1, is `Moment.None`, and it
-is the default `Moment`. The struct keeps the family one up, so a value type built without a moment
+finite, below 0 or at least 1, and a negative cap. These are `MomentScheduleArgumentException` refusals with a
+`MomentScheduleRefusal` reason, `OptionName` and double `OptionValue` for options, `FamilyName` and
+`FamilyIndex` for families, and the refused weight, duration, count or total as applicable. The none moment,
+family -1, is `Moment.None`, and it is the default `Moment`. The struct keeps the family one up, so a value type built without a moment
 carries none, as a default `IdleTurn` does.
 
 ## What stays in games

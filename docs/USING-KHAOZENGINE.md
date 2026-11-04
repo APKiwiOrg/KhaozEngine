@@ -7339,14 +7339,24 @@ Matrix4x4 bellWorld = bellLocal * joints.BodyAlignment(joints.Node("head"))
 ```
 
 `ContractJointMap` refuses a skeleton with more nodes than `SkinningMath.MaxBonesPerDraw`, two nodes of one name,
-and a contract joint that is missing, misparented or, other than the root, outside the skin. A misparent message
-names both parents. Unnamed nodes are left alone, as `Skeleton` leaves them. The base is the body's zero: an
+and a contract joint that is missing, misparented or, other than the root, outside the skin.
+`ContractJointMapArgumentException.Reason` identifies the rule through `ContractJointMapRefusal`. A
+`ParentNameMismatch` refusal carries `JointName`, `ActualParentName` and `ExpectedParentName`. Missing and
+unskinned joints carry `JointName`, and duplicate names carry `NodeName` and `NodeIndex`. Numerical inversion
+refusals carry `JointName` with `ParentNodeIndex` for `ParentBaseFrameSingular` or `NodeIndex` for
+`BaseFrameSingular`. Unnamed nodes are left alone, as `Skeleton` leaves them. The base is the body's zero: an
 optional one-key stance clip sampled once, or the bind rest without one. A stance must carry the
 `stanceClipName` argument (`stance` by default), key each track exactly once, animate contract joints only and
 carry no scale track, or it is refused before it is sampled. `BaseLocal` is the base local pose per node.
 `BaseWorld`, `ParentBaseInverse` and `BodyAlignment` return a contract joint's base model frame, the inverse of its
 parent's, and the rotation that takes its base orientation back out. They refuse a node outside the contract
-rather than return a zero matrix. `Node` resolves any named node and `Bone` its skin bone.
+rather than return a zero matrix, with `NodeOutsideContract`, `NodeIndex` and `NodeName`.
+`Node` resolves any named node and `Bone` its skin bone. A missing name throws
+`ContractJointMapKeyNotFoundException` with `NodeNameMissing` and `JointName`. A named node outside the skin
+throws `ContractJointMapStateException` with `NamedNodeOutsideSkin` and `JointName`. These types retain
+`KeyNotFoundException` and `InvalidOperationException` as their respective bases. Argument refusals retain
+`ArgumentException` and `ParamName`. The [Render3D refusal tables](../KhaozEngine.Render3D/README.md#animation-refusals)
+list every reason and identifier.
 The alignment's homogeneous component is exactly one, including when general inversion rounds it for oblique
 base axes. External attachment matrices still require an exact affine column.
 
@@ -7409,7 +7419,12 @@ weight, and a mirrored one plays `MomentSide.Left` or `Right` with even odds. Th
 Salt 0 over a glance and turn table reproduces Grimhollow's standing-player schedule to the bit. The overload with
 `stoppedAt` skips a moment that began before the body last stopped. `At` allocates nothing. `Moment.None`, family
 -1, is the default value. The constructor refuses an empty table, a weight or length out of range, and options
-that are not finite or out of range, naming the option or family.
+that are not finite or out of range with `MomentScheduleArgumentException`, derived from `ArgumentException`.
+Its `MomentScheduleRefusal` reason identifies the rule. `OptionName` and `OptionValue` identify a refused option,
+with `OptionValue` stored as a double even for `MaxEmptySlots`. `FamilyName` and `FamilyIndex` identify a
+refused family, with `Weight` or `LengthSeconds` for the refused value. `FamilyDoesNotFitSlot` also carries
+`AvailableSeconds`, `SlotSeconds` and `QuietSeconds`. `FamiliesEmpty` carries `FamilyCount`, and
+`WeightTotalNotFinite` carries `TotalWeight`. `ParamName` remains `options` or `families`.
 
 ### Layered / masked animation (attack while running)
 

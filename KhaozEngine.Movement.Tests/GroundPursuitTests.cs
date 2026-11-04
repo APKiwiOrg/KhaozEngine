@@ -327,6 +327,93 @@ public class GroundPursuitTests(GroundPursuitFixture fixture) : IClassFixture<Gr
     }
 
     [Theory]
+    [InlineData(0.05f)]
+    [InlineData(null)]
+    public void GroundCommitmentCrossesLayeredDetourWithoutReversing(float? acceptRadius)
+    {
+        var scene = fixture.Detour;
+        const float dt = 1f / 30, speed = 12;
+        var body = scene.Body(surface: 0.9f);
+        var target = scene.Target();
+        var pursuit = new GroundPursuit(scene.Navigation, new PathFollowConfig
+        { AcceptRadius = acceptRadius ?? PathFollowConfig.Default.AcceptRadius });
+        var ready = pursuit.Admit(body, Tuning, target, Limits, scene.Context);
+        Assert.Equal(GroundPursuitStatus.Ready, ready.Status);
+        body.Commitment = MovementCommitment.ForGroundTravel(1, ready.Direction, speed, ready.RemainingPathLength, timeoutSeconds: 10);
+        Vector2? previousDirection = null;
+        int? previousLayer = null;
+        bool changedLayer = false, arrived = false;
+        for (int tick = 0; tick < 100; tick++)
+        {
+            Vector3 feet = body.Position - Vector3.UnitY * Tuning.CapsuleHalfHeight;
+            int layer = scene.Navigation.Space.LayerAt(feet);
+            var update = pursuit.Tick(body, Tuning, target, dt, scene.Context);
+            if (update.Status == GroundPursuitStatus.Arrived) { arrived = true; break; }
+            Assert.Equal(GroundPursuitStatus.Travelling, update.Status);
+            AssertCommand(update, positive: false);
+            if (previousLayer is int before && before != layer)
+            {
+                changedLayer = true;
+                // Crossing a supported layer boundary must not reverse the previous steering basis.
+                Assert.True(Vector2.Dot(previousDirection!.Value, update.Direction) > -0.9999f);
+            }
+            previousDirection = update.Direction;
+            previousLayer = layer;
+            body.Commitment = GroundTravelCommitment.Steer(body.Commitment, 1, update.Direction, update.RemainingPathLength);
+            body = scene.Context.Step(body, Vector2.Zero, false, dt, Tuning);
+            Assert.True(body.Commitment.IsActive);
+        }
+        Assert.True(changedLayer);
+        Assert.True(arrived);
+        Assert.True(ReachGeometry.Within(new(body.Position, Tuning.CapsuleRadius, Tuning.CapsuleHalfHeight), target, Limits.StopDistance));
+    }
+
+    [Theory]
+    [InlineData(0, true)]
+    [InlineData(1, true)]
+    [InlineData(2, true)]
+    [InlineData(1, false)]
+    [InlineData(2, false)]
+    public void LayerChangesAdvanceOnlyAfterCrossingOrMakeReplanningDue(int actorLayer, bool crossed)
+    {
+        var scene = fixture.Flat;
+        float[] heights = [0, 0.3f, -0.3f];
+        var space = new NavSpace(heights.Select(height => NavGrid.FromBlockedSurfaces(8, 8, 0.5f, -2, -2,
+            new bool[64], Enumerable.Repeat(height, 64).ToArray())).ToArray());
+        var path = new NavPath(NavPathStatus.Complete,
+            [new(new(0.25f, 0.25f), 0), new(new(0.25f, 1.75f), 1)]);
+        var planner = new MoveToRangeTests.ScriptPlanner((start, _) => start.Y < -0.1f ? NavPath.Unreachable : path);
+        // Isolate layer policy with admissible entries, including the segment back to the old waypoint.
+        var pursuit = new GroundPursuit(planner, space, (_, _) => true,
+            new PathFollowConfig { ReplanCooldownSeconds = 10 });
+        var body = scene.Body(-0.75f);
+        var target = ReachTarget.Point(new(0.25f, heights[1] + Tuning.CapsuleHalfHeight, 1.75f));
+        Assert.Equal(GroundPursuitStatus.Ready, pursuit.Admit(body, Tuning, target, Limits, scene.Context).Status);
+        body.Position = new(crossed ? 1 : -0.125f, heights[actorLayer] + Tuning.CapsuleHalfHeight, 0.25f);
+        Assert.Equal(actorLayer, space.LayerAt(body.Position - Vector3.UnitY * Tuning.CapsuleHalfHeight));
+        var update = pursuit.Tick(body, Tuning, target, 0.01f, scene.Context);
+        Assert.Equal(GroundPursuitStatus.Travelling, update.Status);
+        if (crossed && actorLayer == 2)
+        {
+            Assert.Equal(0, update.RemainingPathLength);
+            Assert.Equal(Vector2.UnitX, update.Direction);
+            var refreshed = pursuit.Tick(body, Tuning, target, 10, scene.Context);
+            Assert.Equal(GroundPursuitStatus.NoPath, refreshed.Status);
+            Assert.Equal(GroundPursuitDetail.UnreachableRoute, refreshed.Detail);
+        }
+        else
+        {
+            AssertCommand(update, positive: true);
+            if (crossed) Assert.True(update.Direction.Y > 0);
+            else
+            {
+                Assert.Equal(Vector2.UnitX, update.Direction);
+                Assert.Equal(1.875f, update.RemainingPathLength);
+            }
+        }
+    }
+
+    [Theory]
     [InlineData(false, false)]
     [InlineData(true, false)]
     [InlineData(false, true)]

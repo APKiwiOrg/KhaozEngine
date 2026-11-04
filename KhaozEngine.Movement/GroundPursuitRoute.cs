@@ -59,14 +59,19 @@ internal sealed class GroundPursuitRoute
         return GroundPursuitDetail.None;
     }
 
-    // Returns false when a crossed waypoint cannot admit entry to the next leg. Near a corner that has
-    // not been crossed, a refused shortcut still permits steering toward the retained corner itself.
+    // A crossed waypoint may enter the next layer through segment admission. A third layer is off-route.
+    // Without crossing, proximity only advances on the active layer and a refused shortcut still permits approach.
     internal bool Advance(Vector3 position, float radius, Func<Vector3, Vector3, bool> allowsSegment)
     {
         int layer = _space.LayerAt(position);
-        while (_index < _feet.Length - 1 && _path.Waypoints[_index].Layer == layer)
+        while (_index < _feet.Length - 1)
         {
             bool passed = PassedActive(position, radius);
+            if (layer != _path.Waypoints[_index].Layer)
+            {
+                if (!passed) break;
+                if (layer != _path.Waypoints[_index + 1].Layer) return false;
+            }
             if (!passed && Distance(position, Active) > radius) break;
             if (!allowsSegment(position, _feet[_index + 1])) return !passed;
             _index++;

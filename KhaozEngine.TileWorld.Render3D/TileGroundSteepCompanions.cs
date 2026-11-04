@@ -36,13 +36,15 @@ static class TileGroundSteepCompanions
     {
         TileGroundSteepShading.Validate(layers);
         if (layers[missingSlot].Steep is not null)
-            throw new ArgumentException(
+            throw new TileGroundMaterialSetArgumentException(TileGroundMaterialSetRefusal.MissingLayerHasCompanion,
                 $"layer {missingSlot} is the reserved missing-material layer and cannot carry a steep companion.",
-                nameof(layers));
+                nameof(layers))
+            { LayerIndex = missingSlot };
         for (int slot = 0; slot < missingSlot; slot++)
             if (layers[slot].Steep is { } steep && (steep.CompanionSlot < 0 || steep.CompanionSlot >= missingSlot))
-                throw new ArgumentException(
+                throw new TileGroundMaterialSetArgumentException(TileGroundMaterialSetRefusal.CompanionIsMissingLayer,
                     $"layer {slot} names slot {steep.CompanionSlot} as its steep companion, which is not one of the " +
-                    $"set's material slots 0 to {missingSlot - 1}.", nameof(layers));
+                    $"set's material slots 0 to {missingSlot - 1}.", nameof(layers))
+                { LayerIndex = slot, CompanionSlot = steep.CompanionSlot, MaterialSlotCount = missingSlot };
     }
 }

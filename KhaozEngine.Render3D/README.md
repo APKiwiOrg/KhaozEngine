@@ -226,9 +226,12 @@ in the `KhaozEngine.Render3D.Ecs` arm under the same namespace, so a render-only
     1 to `TileGroundMaterialConfig.MaxMaterials` (64) tileable albedo layers, all the same `width` x `height`
     RGBA8, into ONE texture array with a full mip chain, plus a params UBO carrying each layer's `Tint` and
     `TilesPerMetre`. A layer's INDEX in the list is the SLOT a mesh vertex names, so the caller owns the
-    material-to-slot mapping. A non-positive size throws naming `width` or `height`, a layer count outside 1..64
-    throws naming the count, and a layer whose bytes are not `width * height * 4` throws naming that layer's index
-    and both sizes. Albedo only by design: there is no normal array,
+    material-to-slot mapping. A non-positive size throws `ArgumentOutOfRangeException` with `ParamName`
+    (`width` or `height`) and `ActualValue`. Unsupported layer counts carry
+    `TileGroundUploadRefusal.LayerCountOutsideRange` with `LayerCount`, `MinimumLayerCount` and
+    `MaximumLayerCount`. Wrong RGBA slice sizes carry `TileGroundUploadRefusal.LayerByteLengthMismatch`
+    with `LayerIndex`, `ActualByteLength`, `ExpectedByteLength`, `Width` and `Height` on
+    `TileGroundUploadArgumentException`. Albedo only by design: there is no normal array,
     and the specular exponent is a constant 28 (what the splat pass reaches at roughness 0.5) with
     `baseSpecStrength` as the whole set's strength, because an albedo layer carries no roughness channel. A set of
     exactly ONE layer is a one-layer array, not a padded two-layer one: between 17.38.0 and 17.39.0 it was
@@ -1992,3 +1995,20 @@ allocation. This is a lit-pipeline requirement owned by Render3D.
 | LitReceiverRefusal | Refused input | Identifiers |
 |---|---|---|
 | `FragmentStorageBufferLimitInsufficient` | The device reports fewer fragment storage buffers than lit receivers require | `RequiredCount`, `AvailableCount`, `CapabilityName` |
+
+## Tile-ground render refusals
+
+`TileGroundSteepArgumentException` and `TileGroundUploadArgumentException` derive from `ArgumentException`
+and carry a non-null `Reason` with the identifiers below. Optional identifiers are null when unused.
+`TileGroundSteepShading.Validate` owns companion and band checks shared by params packing, scene upload and
+TileWorld material sets. Upload and params construction share `TileGroundUploadRefusal.LayerCountOutsideRange`.
+Numeric width and height checks remain `ArgumentOutOfRangeException` with `ParamName` and `ActualValue`.
+
+| Reason | Refused input | Identifiers |
+|---|---|---|
+| `TileGroundSteepRefusal.CompanionIsSelf` | a layer using itself as its steep companion | `LayerIndex`, `CompanionSlot` |
+| `TileGroundSteepRefusal.CompanionOutsideSet` | a companion slot outside the render-layer set | `LayerIndex`, `CompanionSlot`, `LayerCount` |
+| `TileGroundSteepRefusal.BandOutsideRightAngle` | a steep band not rising strictly inside a right angle | `LayerIndex`, `FromDegrees`, `ToDegrees` |
+| `TileGroundSteepRefusal.BandCosinesNotDistinct` | a steep band whose endpoints pack to the same cosine | `LayerIndex`, `FromDegrees`, `ToDegrees` |
+| `TileGroundUploadRefusal.LayerCountOutsideRange` | a tile-ground upload or params pack with an unsupported layer count | `LayerCount`, `MinimumLayerCount`, `MaximumLayerCount` |
+| `TileGroundUploadRefusal.LayerByteLengthMismatch` | an upload slice with the wrong RGBA byte length | `LayerIndex`, `ActualByteLength`, `ExpectedByteLength`, `Width`, `Height` |

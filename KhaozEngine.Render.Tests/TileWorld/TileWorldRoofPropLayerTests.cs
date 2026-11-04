@@ -28,11 +28,13 @@ public sealed class TileWorldRoofPropLayerTests
     public void Roof_layer_refuses_interior_cut_before_uploading()
     {
         var scene = new RecordingTileWorldScene();
-        ArgumentException error = Assert.Throws<ArgumentException>(() => new TileWorldView(scene,
+        TilePropLayerArgumentException error = Assert.Throws<TilePropLayerArgumentException>(() => new TileWorldView(scene,
             World(), TileRenderTestData.Catalogs, new Resolver(),
             new TileWorldViewOptions { PropLayers = new[] { Roofs() with { CutInsideInteriors = true } } }));
 
         Assert.Equal("definitions", error.ParamName);
+        Assert.Equal(TilePropLayerRefusal.RoofInteriorCutEnabled, error.Reason);
+        Assert.Equal(Roofs().Id, error.LayerId);
         Assert.Empty(scene.MaterialLoads);
         Assert.Empty(scene.PropMeshLoads);
     }

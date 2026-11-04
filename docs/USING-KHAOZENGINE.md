@@ -13119,8 +13119,10 @@ options.GroundCover.ModelCastsShadows = new Dictionary<string, bool> { ["reeds"]
 starts empty and maps exact authored selected archetype IDs to `AnimatedFoliageStyle(Motion, CastsShadows)`.
 Use IDs from your catalogs. An omitted style is Blade with casting off, independent of short-cover
 casting. Entries outside the selection or not exactly naming an authored selected archetype throw
-`ArgumentException` naming the ID. Selected archetypes sharing a catalog mesh reference or any resolved
-mesh part must agree on their effective style, including omitted defaults. Conflicts name both IDs.
+`AnimatedFoliageStyleArgumentException` with `AnimatedFoliageStyleRefusal.StyleOutsideSelection` and
+`ArchetypeId`. Selected archetypes sharing a catalog mesh reference or any resolved mesh part must agree
+on their effective style, including omitted defaults. Conflicts carry
+`AnimatedFoliageStyleRefusal.SharedMeshStyleConflict`, `FirstArchetypeId` and `SecondArchetypeId`.
 Styles are detached snapshots validated before submission and compared by value each draw. A changed
 selection or style, including an in-place map edit, invalidates only the splits that draw a changed
 archetype, and other splits keep their retained batches. Removing a style restores
@@ -13304,13 +13306,22 @@ var regions = new TileRegionResidency(
 
 Each definition owns a disjoint, non-empty archetype set. The view validates finite distances, unique layer IDs,
 known archetypes, and that LOD and HLOD do not exceed the draw radius. Each layer selects either only catalog
-roofs or no roofs. A mixed layer fails before upload and names both kinds. Roof layers cannot enable
+roofs or no roofs. A mixed layer fails before upload with `TilePropLayerArgumentException`,
+`TilePropLayerRefusal.RoofAndOrdinaryMixed`, `LayerId`, `RoofArchetypeId` and `OrdinaryArchetypeId`. Roof layers cannot enable
 `CutInsideInteriors`. When HLOD is enabled, its positive distance must
 also exceed `LodDistance`. A selected object is removed from ordinary prop submission and
 appears in exactly one `TilePropLayerSnapshot`, so it cannot double-draw. `TileRegionProps` is an immutable,
 generation-tagged region-plane snapshot. It carries object IDs and detached placements in stable order. Worker
 builds read that snapshot and resolved CPU mesh data only. They never read the live document, overrides, resolver
 caches or scene.
+
+Prop-layer definition failures carry `TilePropLayerArgumentException.Reason` from `TilePropLayerRefusal`:
+`DefinitionNull` and `LayerIdMissing` identify `LayerIndex`, `LayerIdDuplicate` adds `LayerId`,
+`SelectionEmpty` identifies `LayerId`, `ArchetypeMissing` adds `ArchetypeId`, and `ArchetypeSelectedTwice`
+carries `ArchetypeId`, `FirstLayerId` and `SecondLayerId`. `RoofInteriorCutEnabled` carries `LayerId`.
+Aggregate distance ordering throws `TilePropLayerRangeException` with `DistanceOrderingInvalid`, `LayerId`,
+`LodDistance`, `HlodDistance` and `DrawRadius`. Scalar finite and range checks stay BCL exceptions.
+Both subtypes preserve their original BCL catch contracts and `ParamName`, with unchanged `ActualValue`.
 
 A roof layer preserves `RoofVisibility` through the same observer, plane and footprint predicate as ordinary
 roofs. Its snapshots retain authored object IDs, planes and roof footprints for each presentation generation.
@@ -13425,6 +13436,27 @@ the first textured material fixes it. And every layer costs that size whether it
 colour layer is a full-size fill), so a 1024 texture makes each untextured material in the same catalog a 4 MB
 layer. 256 is plenty at this grain. Leave `GroundMaterials` null and the view builds the all-flat set itself,
 which is what a colour-only world wants.
+
+Hand-built `TileGroundMaterialSet` failures carry `TileGroundMaterialSetArgumentException.Reason` from
+`TileGroundMaterialSetRefusal`. `LayerCountMismatch` carries `MaterialCount`, `ActualLayerCount` and
+`RequiredLayerCount`. `LayerLimitExceeded` carries `LayerCount` and `MaximumLayerCount`.
+`LayerByteLengthMismatch` carries `LayerIndex`, `ActualByteLength`, `ExpectedByteLength`, `Width` and `Height`.
+`DuplicateMaterialId` carries `MaterialId`, `FirstSlot` and `DuplicateSlot`. `MissingLayerHasCompanion`
+carries `LayerIndex`, and `CompanionIsMissingLayer` adds `CompanionSlot` and `MaterialSlotCount`.
+These exceptions derive from `ArgumentException` and preserve `ParamName`.
+
+`Scene3D.LoadTileGroundMaterial` and `TileGroundMaterialConfig.BuildParams` refuse unsupported layer counts
+with `TileGroundUploadArgumentException`, `TileGroundUploadRefusal.LayerCountOutsideRange`, `LayerCount`,
+`MinimumLayerCount` and `MaximumLayerCount`. Scene upload uses `LayerByteLengthMismatch` for a wrong RGBA slice,
+carrying `LayerIndex`, `ActualByteLength`, `ExpectedByteLength`, `Width` and `Height`. Width and height numeric
+checks stay `ArgumentOutOfRangeException` with `ParamName` and `ActualValue`.
+
+Shared render-slot companion checks in `TileGroundSteepShading.Validate` throw `TileGroundSteepArgumentException`
+with `TileGroundSteepRefusal`. `CompanionIsSelf` carries `LayerIndex` and `CompanionSlot`,
+`CompanionOutsideSet` also carries `LayerCount`, and `BandOutsideRightAngle` and `BandCosinesNotDistinct`
+carry `LayerIndex`, `FromDegrees` and `ToDegrees`. Params construction, scene upload and TileWorld material
+sets forward the same reason for the same input. Both Render3D exception types derive from `ArgumentException`
+and preserve `ParamName`. Messages are developer prose, and unused optional identifiers are null.
 
 **Cliffs take a steep companion and are drawn from the side.** A ground material can name the material it
 becomes on steep ground. The corner vote is unchanged, so a one-tile cliff of rock beside flat grass still votes

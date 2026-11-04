@@ -14646,7 +14646,56 @@ Ground controls edit carried state without placement admission, so an unresolved
 can hold physical movement without refusing begin, steer, end or abort, advancing timers, or duplicating events.
 Arrival and end publish before snapshots, so effects applied from event handlers are served that frame.
 Sequence checks persist across same-host handoff, and active ground travel retains the movement anomaly
-exemption at speeds above ordinary walking while respecting bounds. Pursuit remains pending.
+exemption at speeds above ordinary walking while respecting bounds.
+
+`KhaozEngine.Movement.GroundPursuit` supplies guarded walk-only planning for those controls. Keep one object per
+active pursuit. Construct it with a `GroundNavigation` profile and optional `PathFollowConfig`. Admission checks
+current exact 3D shape reach, then the independent `TriggerRange`. It requires a Complete walking route ending
+inside current reach and fitting `MaximumPathLength`. Both limits are finite and positive. `StopDistance` is finite
+and nonnegative. Trigger range is checked only at admission, while the path cap is checked on every replan.
+Path length and `RemainingPathLength` are horizontal XZ metres, so slope rise does not consume budget. Arrival
+and endpoint membership use exact 3D reach including capsule extent and target height.
+
+Pursuit always sets `PathQueryBudget.WalkOnly`, which makes the grid planner skip Hop and Drop links while keeping
+Stair and ordinary accepted walking exits. The default is false for existing queries. The profile planner and
+route straightener preserve the option. Pursuit also refuses every non-Walk waypoint, even from another planner.
+Actual-to-route entry and shortcuts use the profile's supported-walk segment guard. Partial, unreachable, empty,
+non-walk and invalid endpoint or entry routes return NoPath with `GroundPursuitDetail`. Profile mismatch,
+airborne, swimming and incompatible commitment state return UnsupportedState. Malformed parameters throw BCL
+exceptions. The lower-level constructor accepts equivalent guarded planning, space and segment admission, with
+runtime profile compatibility owned by its caller.
+
+```csharp
+var pursuit = new GroundPursuit(navigation);
+var limits = new GroundPursuitSettings(triggerRange, maximumPathLength, stopDistance);
+GroundPursuitResult admitted = pursuit.Admit(actorState, tuning, targetShape, limits, context);
+if (admitted.Status == GroundPursuitStatus.Ready)
+    sequence = server.BeginMovementCommitment(actor,
+        MovementCommitmentRequest.ForGroundTravel(admitted.Direction, speed, admitted.RemainingPathLength));
+
+// In OnBeforeTick for an admitted pursuit. targetShapeOrNull is refreshed by the game each tick.
+GroundPursuitResult update = pursuit.Tick(actorState, tuning, targetShapeOrNull, dt, context);
+if (update.Status == GroundPursuitStatus.Travelling)
+    server.SteerMovementCommitment(actor, sequence, update.Direction, update.RemainingPathLength);
+else if (update.Status == GroundPursuitStatus.Arrived)
+    server.EndMovementCommitment(actor, sequence, MovementCommitmentStopReason.Arrived);
+// Map TargetLost, NoPath, TooLong and UnsupportedState to their corresponding end reason, then stop ticking.
+```
+
+Ready always carries finite nonzero direction and positive remaining length. AlreadyInRange and OutOfRange
+are separate admission results and must not begin a commitment. Travelling always carries finite nonzero
+direction and nonnegative remaining length. A due replan cooling down holds with the last valid direction and
+zero distance. It does not arrive or terminate. Target drift, corridor exit, route consumption and invalid cached
+endpoint membership trigger replanning. Invalid membership includes sub-threshold target motion. A formerly
+nonterminal corridor reaching a stale terminal refreshes once immediately under radius and layer checks. A fresh
+query already terminal keeps the cooldown. The defaults for budget, drift, corridor and cooldown come from
+`PathFollowConfig`. Consumed routes, spent commitment distance and cached endpoints never witness arrival.
+
+Pass null when the target disappears. Call `Reset` before replacing target identity, teleporting or manually
+cancelling, then admit afresh. Do not tick during recovery or after a terminal result. Use commitment timeout
+for the total pursuit duration, the authoritative arrival event for game-validated effects, and the ended event
+for lifecycle cleanup. Pursuit performs no physics stepping, position writes, actor lookup or ability logic.
+Clients replay the server-carried direction and distance rather than planning their own route.
 
 For a server-authored ballistic leap, knockback, or similar move that player input must not steer, queue a movement
 commitment. This example authors an 8 metre same-height arc with a 2 metre apex, then holds a rooted recovery pose

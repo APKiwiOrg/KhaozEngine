@@ -841,7 +841,10 @@ movement or spending preparation, recovery or timeout timers. Ground control rem
 same-host cell handoff. Ground begin, steer, end and abort edit carried state without placement admission. They
 remain effective while an unresolved explicit environment holds physical movement, without spending timers or
 repeating arrival or end events. Ballistic begin keeps its existing placement path. Fast ground travel retains
-the active-commitment anomaly exemption and ordinary bounds. Pursuit remains pending.
+the active-commitment anomaly exemption and ordinary bounds. Opt-in
+[`GroundPursuit`](../KhaozEngine.Movement/README.md#ground-pursuit-for-committed-travel) supplies walking route
+admission and per-tick direction and remaining length. Games forward its results through these controls from
+`OnBeforeTick`, and use commitment arrival and ended events for effects and cleanup.
 
 The full state rides as `MoveState.Commitment` locally and `MovementState.Commitment` remotely. A client begins from
 the first authoritative snapshot carrying the sequence, then prediction replays pending commands through the same

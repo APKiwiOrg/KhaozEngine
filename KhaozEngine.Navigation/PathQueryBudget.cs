@@ -15,6 +15,11 @@ public readonly struct PathQueryBudget
     /// the query returns <see cref="NavPath.Unreachable"/>.</summary>
     public float SnapRadius { get; init; }
 
+    /// <summary>Restricts link expansion to supported walking, including Stair links. Hop and Drop links
+    /// are skipped. Default false preserves existing queries. Planners other than GridPathPlanner may
+    /// ignore this option, so callers requiring walking must also check the returned waypoints.</summary>
+    public bool WalkOnly { get; init; }
+
     /// <summary>Default budget: 4096 expanded nodes, a 3 world-unit snap radius.</summary>
     public static PathQueryBudget Default => new() { MaxExpandedNodes = 4096, SnapRadius = 3f };
 }

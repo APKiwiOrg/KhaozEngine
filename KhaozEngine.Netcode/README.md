@@ -624,7 +624,10 @@ refused sequence with `UnsupportedState`. `MovementCommitmentArrived` fires once
 immediately after the admin drain and before movement advances optional recovery. Commands queued by its handlers
 apply on the next frame. The travel timeout stops applying at accepted ground arrival. `MovementCommitmentEnded`
 fires once at release and reports `Arrived` after accepted arrival, including when recovery is interrupted.
-Arrival precedes end when both happen in one frame, and both precede snapshots. Pursuit remains pending.
+Arrival precedes end when both happen in one frame, and both precede snapshots. Opt-in
+[`GroundPursuit`](../KhaozEngine.Movement/README.md#ground-pursuit-for-committed-travel) supplies walking route
+admission and per-tick direction and remaining length. Games forward its results through these controls from
+`OnBeforeTick`, and use commitment arrival and ended events for effects and cleanup.
 
 The three decorators are public and compose on their own when a head wants a different order, or only one of them.
 They forward both optional verified-claim companions. Version and world gates unwrap their own token layer before

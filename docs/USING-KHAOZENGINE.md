@@ -12720,6 +12720,12 @@ the same reason and identifiers, adds the manifest path in `SourceName` and keep
 `Field` = `density` and the original `ArgumentNullException` retained. A null manifest layer instead uses
 `FoliageLayerNull` with its zero-based `LayerIndex`. Messages remain developer prose.
 
+Required foliage queries, density edits, painting and removal throw the existing `TileWorldException` with
+`TileWorldRefusal.FoliageLayerMissing` and the requested `LayerId`. The document's optional `GetFoliageLayer`
+still returns null for an absent id. TileEdit validates catalog references before replacing a layer, using
+`FoliageCatalogArchetypeMissing` with `LayerId` and `ArchetypeId`, or `FoliageCatalogUnderlayMissing` with
+`LayerId` and `MaterialId`. A refused lookup or reference change leaves the document and undo history unchanged.
+
 **Clearance is an authoring check, never a runtime rule.** An optional `clearance` manifest block
 (`TileWorldDocument.Clearance`, a `TileClearanceSettings`) declares rules such as "objects whose archetype is
 tagged `tree` keep their meshes clear of objects tagged `structure`", with a mesh root (relative to the world
@@ -13782,8 +13788,10 @@ rect's pre-image first). An object placed and then undone comes back with the id
 referring to it by id keeps resolving.
 
 Required object commands use `TileWorldException` with `TileWorldRefusal.ObjectMissing` and `ObjectId`.
-`RemoveMarkerCommand` uses `MarkerMissing` and `MarkerName`. Other document admission reasons propagate
-unchanged. The [editing refusal table](../KhaozEngine.TileWorld.Editing/README.md#refusals) documents these
+`RemoveMarkerCommand` uses `MarkerMissing` and `MarkerName`. `RemoveFoliageLayerCommand` uses
+`FoliageLayerMissing` and `LayerId` before changing the document or undo history. Other document admission
+reasons propagate unchanged. The
+[editing refusal table](../KhaozEngine.TileWorld.Editing/README.md#refusals) documents these
 required lookups.
 
 **`TileEditOps` builds the commands, it does not mutate.** `Raise` (with an edge falloff), `Flatten`, `Smooth`
@@ -13834,9 +13842,11 @@ mutation runs through `KhaozEngine.TileWorld.Editing`, the same command layer th
 an MCP edit and a GUI edit are the same undoable operation.
 
 Direct in-process calls to `QueryService.ObjectGet` refuse an absent id with the exact `TileWorldException`
-type, `TileWorldRefusal.ObjectMissing` and `ObjectId`. Mutation service calls propagate the command and
-document reasons. MCP error responses retain human-readable text. See the
-[tool refusal table](../KhaozEngine.TileEdit.Tool/README.md#refusals).
+type, `TileWorldRefusal.ObjectMissing` and `ObjectId`. Required foliage calls use `FoliageLayerMissing` and
+`LayerId`. Foliage configuration uses `FoliageCatalogArchetypeMissing` with `LayerId` and `ArchetypeId`, or
+`FoliageCatalogUnderlayMissing` with `LayerId` and `MaterialId`, before changing the document or undo history.
+Mutation service calls propagate the command and document reasons. MCP error responses retain human-readable
+text. See the [tool refusal table](../KhaozEngine.TileEdit.Tool/README.md#refusals).
 
 **Wiring into Claude Code.** Register the tool as an MCP server, repo-local for development:
 

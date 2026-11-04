@@ -272,7 +272,7 @@ public sealed class TileWorldException : Exception
         init => _requiredTools = value is null ? null : Array.AsReadOnly<string>([.. value]);
     }
 
-    /// <summary>The refused foliage layer id, as supplied.</summary>
+    /// <summary>The refused or required foliage layer id, as supplied.</summary>
     public string? LayerId { get; init; }
 
     /// <summary>The zero-based index of a null foliage layer entry, when the caller supplied an index.</summary>

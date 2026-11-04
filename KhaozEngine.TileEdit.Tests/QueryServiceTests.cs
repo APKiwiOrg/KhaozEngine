@@ -288,7 +288,16 @@ public class QueryServiceTests
         Assert.Equal("tree", unchanged.Archetypes[0].Id);
         Assert.Equal(1, unchanged.AllowedUnderlays[0]);
         Assert.Equal(new[] { "meadow" }, f.Query.FoliageGet().Select(x => x.Id).ToArray());
-        Assert.Throws<TileWorldException>(() => f.Query.FoliageGet("missing"));
+        int depth = f.Session.Summary().UndoDepth;
+        string hash = f.Session.Summary().WorldHash;
+        TileFoliageLayer original = f.Session.Read(e => e.Document.GetFoliageLayer("meadow")!);
+
+        TileWorldException ex = Assert.Throws<TileWorldException>(() => f.Query.FoliageGet("missing"));
+        Assert.Equal(TileWorldRefusal.FoliageLayerMissing, ex.Reason);
+        Assert.Equal("missing", ex.LayerId);
+        Assert.Equal(depth, f.Session.Summary().UndoDepth);
+        Assert.Equal(hash, f.Session.Summary().WorldHash);
+        Assert.Same(original, Assert.Single(f.Session.Read(e => e.Document.FoliageLayers)));
     }
 
     /// <summary>The collision map answers Blocked for a plane it does not have, so a query handed a bad plane

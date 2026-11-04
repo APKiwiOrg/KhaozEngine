@@ -172,6 +172,8 @@ undo stack.
 layer before applying and report its world-metre raster extent as tile dirty rects, including both planes when
 a replacement moves between them. Collision rebaking receives those rects through the ordinary command path,
 but foliage itself contributes no flags, so collision remains byte identical across apply, undo and redo.
+Removing an absent layer throws `TileWorldException` with `TileWorldRefusal.FoliageLayerMissing` and `LayerId`
+before changing the document or undo history.
 
 **`SetClearanceCommand`** replaces the whole `TileClearanceSettings` declaration, or removes it when the
 settings are null, and puts the previous one back on revert. The settings are immutable, so every clearance edit
@@ -233,7 +235,7 @@ carries on.
 
 ## Refusals
 
-Required object and marker lookups and PGM heightmap reads keep the exact `TileWorldException` type.
+Required object, marker and foliage lookups and PGM heightmap reads keep the exact `TileWorldException` type.
 Inspect its `Reason` and the identifiers below, rather than parsing the message.
 
 | `TileWorldRefusal` reason | Refuses | Identifiers |
@@ -241,6 +243,7 @@ Inspect its `Reason` and the identifiers below, rather than parsing the message.
 | `CatalogArchetypeMissing` | Constructing a placement for an archetype absent from the catalogs | `ArchetypeId` |
 | `ObjectMissing` | Moving, rotating, removing or setting tags on an absent object id | `ObjectId` |
 | `MarkerMissing` | Removing an absent marker name | `MarkerName` |
+| `FoliageLayerMissing` | Constructing a foliage removal for an absent layer | `LayerId` |
 | `PgmReadFailed` | A PGM file that cannot be read | `SourceName`, original `InnerException` |
 | `PgmMagicUnsupported` | An image without the binary PGM P5 signature | `SourceName`, `ExpectedMagic` = `P5`, owned read-only `ActualMagic` snapshot of up to two bytes |
 | `PgmDimensionsNonPositive` | A PGM with a non-positive width or height | `SourceName`, `Width`, `Height` |

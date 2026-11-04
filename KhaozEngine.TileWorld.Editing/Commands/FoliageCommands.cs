@@ -74,7 +74,8 @@ public sealed class RemoveFoliageLayerCommand : TileCommandBase
     {
         ArgumentNullException.ThrowIfNull(doc);
         ArgumentException.ThrowIfNullOrWhiteSpace(id);
-        _old = doc.GetFoliageLayer(id) ?? throw new TileWorldException($"foliage layer '{id}' does not exist");
+        _old = doc.GetFoliageLayer(id) ?? throw new TileWorldException(TileWorldRefusal.FoliageLayerMissing,
+            $"foliage layer '{id}' does not exist") { LayerId = id };
         Dirty.Add(SetFoliageLayerCommand.Extent(_old, doc.TileSize));
     }
 

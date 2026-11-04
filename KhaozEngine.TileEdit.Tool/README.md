@@ -92,9 +92,10 @@ goes through.
 
 ## Refusals
 
-Direct in-process calls to `QueryService.ObjectGet` keep the exact `TileWorldException` type. Inspect its
-`Reason` and identifier rather than parsing the message. MCP error responses retain the human-readable text
-described above. Every tool guard retains the original exception in `McpException.InnerException`, so
+Direct in-process object and foliage queries and foliage mutations keep the exact `TileWorldException` type
+for the refusals below. Inspect its `Reason` and identifiers rather than parsing the message. MCP error
+responses retain the human-readable text described above. Every tool guard retains the original exception
+in `McpException.InnerException`, so
 in-process tool callers inspect the inner family's reason and identifiers. An existing `McpException`
 passes through unchanged.
 
@@ -103,6 +104,9 @@ passes through unchanged.
 | `CatalogArchetypeMissing` | Placing or scattering an archetype absent from the catalogs | `ArchetypeId` |
 | `ObjectMissing` | Querying an absent object id through `QueryService.ObjectGet` | `ObjectId` |
 | `ClearanceBlockMissing` | Setting or removing a rule before declaring a clearance block | `WorldId`, owned read-only `RequiredTools` containing `clearance_set` |
+| `FoliageLayerMissing` | Querying, replacing density, painting or removing an absent foliage layer | `LayerId` |
+| `FoliageCatalogArchetypeMissing` | Setting a foliage layer with an archetype absent from the catalogs | `LayerId`, `ArchetypeId` |
+| `FoliageCatalogUnderlayMissing` | Setting a foliage layer with an allowed material absent from the catalogs | `LayerId`, `MaterialId` |
 
 Direct mutation service calls propagate the command and document reasons. See the
 [editing refusal table](../KhaozEngine.TileWorld.Editing/README.md#refusals) and the
@@ -175,6 +179,9 @@ positive world Z. This is a world-space raster convention, so it differs from th
 height rows above. Tile north maps to negative world Z. `allowedUnderlays` applies to the visible material at
 the sample, including the painted part of a shaped overlay. A door clearance uses objects tagged `door` on the
 layer plane.
+
+Required foliage lookups and catalog reference checks use the reasons in the [refusal table](#refusals).
+These refusals leave the document and undo history unchanged, including when replacing an existing layer.
 
 `tiles_get_rect` legends, one character per tile:
 

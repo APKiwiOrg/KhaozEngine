@@ -270,6 +270,13 @@ region file and is null for these in-memory attachment, restoration and save che
 | `FoliageLayerDuplicate` | A repeated ordinal layer id | `LayerId` |
 | `FoliagePlaneOutsideWorld` | A layer on a plane the world does not have | `LayerId`, `Plane`, `PlaneCount` |
 | `FoliageDensityNull` | A null density array in a manifest layer | `SourceName`, `LayerId`, `Field` = `density`, original `ArgumentNullException` with `ParamName` = `density` in `InnerException` |
+| `FoliageLayerMissing` | A required foliage query, density edit, paint or removal for an absent layer | `LayerId` |
+| `FoliageCatalogArchetypeMissing` | A TileEdit foliage configuration referencing an archetype absent from the catalogs | `LayerId`, `ArchetypeId` |
+| `FoliageCatalogUnderlayMissing` | A TileEdit foliage configuration allowing a material absent from the catalogs | `LayerId`, `MaterialId` |
+
+Required foliage adapters share `FoliageLayerMissing`. The document's optional `GetFoliageLayer` still returns
+null for an absent id. TileEdit checks catalog references before replacing a layer. A refused lookup or
+reference change leaves the document and undo history unchanged.
 
 `MoveObject`, required object commands and `QueryService.ObjectGet` share `ObjectMissing`. A stale object
 index can follow direct edits to a region's public object list. `MoveObject` checks the destination region

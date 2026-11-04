@@ -262,4 +262,12 @@ public enum TileWorldRefusal
     FoliagePlaneOutsideWorld,
     /// <summary>Refuses a foliage manifest layer whose density is null.</summary>
     FoliageDensityNull,
+
+    // Required foliage lookups and catalog references.
+    /// <summary>Refuses a required lookup for a foliage layer that does not exist.</summary>
+    FoliageLayerMissing,
+    /// <summary>Refuses a foliage configuration referencing an archetype absent from the catalogs.</summary>
+    FoliageCatalogArchetypeMissing,
+    /// <summary>Refuses a foliage configuration allowing an underlay absent from the catalogs.</summary>
+    FoliageCatalogUnderlayMissing,
 }

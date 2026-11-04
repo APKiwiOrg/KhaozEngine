@@ -13,7 +13,8 @@ public sealed partial class QueryService
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(id);
         return session.Read(e => FoliageLayerInfo.Of(e.Document.GetFoliageLayer(id)
-            ?? throw new TileWorldException($"foliage layer '{id}' does not exist")));
+            ?? throw new TileWorldException(TileWorldRefusal.FoliageLayerMissing,
+                $"foliage layer '{id}' does not exist") { LayerId = id }));
     }
 
     /// <summary>Lists detached layers in authoring order.</summary>

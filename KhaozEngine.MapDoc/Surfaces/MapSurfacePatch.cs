@@ -56,13 +56,23 @@ public sealed partial class MapSurfacePatch
     void RequireCorner(int x, int z)
     {
         if (!ValidRectangle(CellMinX, CellMinZ, Width, Depth) || x < 0 || x > Width || z < 0 || z > Depth)
-            throw new MapDocumentException("corner outside patch rectangle");
+            throw new MapDocumentException(!ValidRectangle(CellMinX, CellMinZ, Width, Depth)
+                ? MapDocumentRefusal.BoundsInvalid : MapDocumentRefusal.SurfaceAddressOutOfPatch, "corner outside patch rectangle")
+            {
+                Patch = Key, Width = Width, Depth = Depth, CellX = x, CellZ = z,
+                FieldPath = !ValidRectangle(CellMinX, CellMinZ, Width, Depth) ? "rectangle" : x < 0 || x > Width ? "x" : "z",
+                ActualInteger = !ValidRectangle(CellMinX, CellMinZ, Width, Depth) ? null : x < 0 || x > Width ? x : z,
+                MinimumInteger = !ValidRectangle(CellMinX, CellMinZ, Width, Depth) ? null : 0,
+                MaximumInteger = !ValidRectangle(CellMinX, CellMinZ, Width, Depth) ? null : x < 0 || x > Width ? Width : Depth,
+            };
     }
     public int Height(int cornerX, int cornerZ)
     {
         RequireCorner(cornerX, cornerZ);
         if (Heights is null || Heights.Length != (Width + 1) * (Depth + 1))
-            throw new MapDocumentException("invalid heights length");
+            throw new MapDocumentException(Heights is null ? MapDocumentRefusal.SchemaValueRequired
+                : MapDocumentRefusal.SchemaArrayLengthMismatch, "invalid heights length")
+            { Patch = Key, FieldPath = nameof(Heights), ActualCount = Heights?.LongLength, ExpectedCount = (Width + 1) * (Depth + 1) };
         return Heights[cornerZ * (Width + 1) + cornerX];
     }
     public MapLatticeAddress CornerAddress(int cornerX, int cornerZ)
@@ -94,31 +104,56 @@ public sealed partial class MapSurfacePatch
         return copy;
     }
 
-    public IReadOnlyList<string> ValidateLocal()
+    public IReadOnlyList<string> ValidateLocal() => ValidateLocal(null);
+
+    internal IReadOnlyList<string> ValidateLocal(List<MapDocumentFinding>? findings)
     {
         var errors = new List<string>();
-        if (string.IsNullOrWhiteSpace(Key.SurfaceId)) errors.Add("surface id is required");
+        if (string.IsNullOrWhiteSpace(Key.SurfaceId))
+            Add(new(MapDocumentRefusal.SchemaValueRequired, "surface id is required") { FieldPath = "Key.SurfaceId" });
         if (!ValidRectangle(CellMinX, CellMinZ, Width, Depth))
         {
-            errors.Add("invalid patch width, depth or cell minimum");
+            Add(new(MapDocumentRefusal.BoundsInvalid, "invalid patch width, depth or cell minimum")
+            { FieldPath = "rectangle", Width = Width, Depth = Depth });
             return errors;
         }
         int count = Width * Depth;
-        if (Heights is null || Heights.Length != (Width + 1) * (Depth + 1)) errors.Add("invalid heights length");
-        if (Cells is null || Cells.Length != count) errors.Add("invalid cells length");
+        if (Heights is null || Heights.Length != (Width + 1) * (Depth + 1))
+            Add(new(Heights is null ? MapDocumentRefusal.SchemaValueRequired : MapDocumentRefusal.SchemaArrayLengthMismatch, "invalid heights length")
+            { FieldPath = nameof(Heights), ActualCount = Heights?.LongLength, ExpectedCount = (Width + 1) * (Depth + 1) });
+        if (Cells is null || Cells.Length != count)
+            Add(new(Cells is null ? MapDocumentRefusal.SchemaValueRequired : MapDocumentRefusal.SchemaArrayLengthMismatch, "invalid cells length")
+            { FieldPath = nameof(Cells), ActualCount = Cells?.LongLength, ExpectedCount = count });
         else
-            foreach (MapSurfaceCell cell in Cells)
+            for (int i = 0; i < Cells.Length; i++)
             {
-                if (cell.Rotation > 3) errors.Add("invalid cell rotation");
-                if ((byte)cell.Flags > 31) errors.Add("invalid cell flags");
-                if (cell.Cut > MapOverlayCut.CornerThreeQuarter) errors.Add("invalid cell cut");
-                if (cell.Topology > MapCellTopology.ForceNwSe) errors.Add("invalid cell topology");
+                MapSurfaceCell cell = Cells[i];
+                if (cell.Rotation > 3)
+                    Add(new(MapDocumentRefusal.ValueOutsideRange, "invalid cell rotation")
+                    { FieldPath = $"Cells[{i}].Rotation", Index = i, ActualInteger = cell.Rotation, MinimumInteger = 0, MaximumInteger = 3 });
+                if ((byte)cell.Flags > 31)
+                    Add(new(MapDocumentRefusal.SchemaEnumUnsupported, "invalid cell flags")
+                    { FieldPath = $"Cells[{i}].Flags", Index = i, ActualInteger = (byte)cell.Flags, EnumType = typeof(MapCellFlags) });
+                if (cell.Cut > MapOverlayCut.CornerThreeQuarter)
+                    Add(new(MapDocumentRefusal.SchemaEnumUnsupported, "invalid cell cut")
+                    { FieldPath = $"Cells[{i}].Cut", Index = i, ActualInteger = (byte)cell.Cut, EnumType = typeof(MapOverlayCut) });
+                if (cell.Topology > MapCellTopology.ForceNwSe)
+                    Add(new(MapDocumentRefusal.SchemaEnumUnsupported, "invalid cell topology")
+                    { FieldPath = $"Cells[{i}].Topology", Index = i, ActualInteger = (byte)cell.Topology, EnumType = typeof(MapCellTopology) });
             }
         bool validPresence = Presence is not null && Presence.Length == (count + 63) / 64;
-        if (!validPresence) errors.Add("invalid presence length");
-        else if (count % 64 != 0 && (Presence![^1] >> (count % 64)) != 0) errors.Add("nonzero unused presence bits");
-        if (CornerDependencies.Count > (Width + 1) * (Depth + 1)) errors.Add("too many corner dependencies");
-        if (EdgeSubdivisions.Count > count * 4) errors.Add("too many edge subdivisions");
+        if (!validPresence)
+            Add(new(Presence is null ? MapDocumentRefusal.SchemaValueRequired : MapDocumentRefusal.SchemaArrayLengthMismatch, "invalid presence length")
+            { FieldPath = nameof(Presence), ActualCount = Presence?.LongLength, ExpectedCount = (count + 63) / 64 });
+        else if (count % 64 != 0 && (Presence![^1] >> (count % 64)) != 0)
+            Add(new(MapDocumentRefusal.SurfacePresencePaddingNonzero, "nonzero unused presence bits")
+            { FieldPath = nameof(Presence), Index = Presence.Length - 1 });
+        if (CornerDependencies.Count > (Width + 1) * (Depth + 1))
+            Add(new(MapDocumentRefusal.WorkCapacityExceeded, "too many corner dependencies")
+            { FieldPath = nameof(CornerDependencies), Budget = nameof(CornerDependencies), ActualCount = CornerDependencies.Count, Limit = (Width + 1) * (Depth + 1) });
+        if (EdgeSubdivisions.Count > count * 4)
+            Add(new(MapDocumentRefusal.WorkCapacityExceeded, "too many edge subdivisions")
+            { FieldPath = nameof(EdgeSubdivisions), Budget = nameof(EdgeSubdivisions), ActualCount = EdgeSubdivisions.Count, Limit = count * 4 });
         if (errors.Count != 0) return errors;
 
         var corners = new HashSet<(int, int)>();
@@ -158,5 +193,11 @@ public sealed partial class MapSurfacePatch
                 errors.Add("subdivision on interior present-cell edge");
         }
         return errors;
+
+        void Add(MapDocumentFinding finding)
+        {
+            errors.Add(finding.Message);
+            findings?.Add(finding with { Patch = Key });
+        }
     }
 }

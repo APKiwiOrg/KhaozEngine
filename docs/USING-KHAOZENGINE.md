@@ -12693,10 +12693,15 @@ Surface scalar and cell admission also keep the exact `MapDocumentException` typ
 `SurfaceUnitUnreduced` with `Numerator` and `Denominator`, or `ValueOutsideRange` for nonpositive parts.
 Address denominators use `ValueOutsideRange` with inclusive limits and `ActualInteger` when the common
 denominator fits in `long`. Unsupported frame enumerations use `SchemaEnumUnsupported` with `EnumType`,
-`ActualInteger` and `FieldPath`. Missing surface identities and null presence arrays use `SchemaValueRequired`,
-while mismatched presence lengths use `SchemaArrayLengthMismatch` with the known counts. Invalid patch
-rectangles and reversed exact rectangles use `BoundsInvalid`. A cell outside a valid patch uses
-`SurfaceAddressOutOfPatch` with `Patch`, `CellX`, `CellZ` and its inclusive coordinate limits.
+`ActualInteger` and `FieldPath`. Missing surface identities and null patch height, cell or presence arrays use `SchemaValueRequired`,
+while mismatched array lengths use `SchemaArrayLengthMismatch` with the known counts. Invalid patch
+rectangles and reversed exact rectangles use `BoundsInvalid`. A cell or corner outside a valid patch uses
+`SurfaceAddressOutOfPatch` with `Patch`, `CellX`, `CellZ` and its inclusive coordinate limits. Corners
+include `Width`, `Depth`, while cells end one earlier on each axis. Local validation additionally
+collects typed cell-field, padding (`SurfacePresencePaddingNonzero`) and metadata-capacity
+(`WorkCapacityExceeded`) findings. Capacity findings retain `Budget`, `ActualCount` and `Limit`.
+Its public string results stay unchanged. Dependency and edge-detail findings remain prose, so
+aggregate adapters wait for those remaining rules before consuming the typed findings.
 
 Native metadata adds typed findings beside its unchanged string diagnostics. Compound findings select
 the first failing predicate branch. Missing asset-reference and indoor-span values use `SchemaValueRequired`, nonfinite

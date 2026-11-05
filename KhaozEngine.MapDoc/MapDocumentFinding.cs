@@ -74,6 +74,8 @@ public sealed record MapDocumentFinding(MapDocumentRefusal Reason, string Messag
     public long? ActualByteCount { get; init; }
     /// <summary>The required decoded byte count, when checked.</summary>
     public long? ExpectedByteCount { get; init; }
+    /// <summary>The work or metadata budget whose checked capacity was exceeded.</summary>
+    public string? Budget { get; init; }
     /// <summary>The inclusive byte, work or whole-metre world coordinate limit, when checked.</summary>
     public long? Limit { get; init; }
     /// <summary>The refused payload version, when read as an integer.</summary>
@@ -247,6 +249,7 @@ public sealed record MapDocumentFinding(MapDocumentRefusal Reason, string Messag
             FoliageChunk = error.FoliageChunk,
             ActualByteCount = error.ActualByteCount,
             ExpectedByteCount = error.ExpectedByteCount,
+            Budget = error.Budget,
             Limit = error.Limit,
             ActualVersion = error.ActualVersion,
             ActualNumber = error.ActualNumber,

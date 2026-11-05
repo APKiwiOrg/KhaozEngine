@@ -178,11 +178,17 @@ public enum MapDocumentRefusal
     /// <summary>Refuses adoption without exactly one explicit height or authored support choice.</summary>
     SupportAdoptionChoiceMissing,
 
+    // Bounded work admission.
+    /// <summary>Refuses authored work or metadata beyond its checked capacity.</summary>
+    WorkCapacityExceeded,
+
     // Surface scalar and local patch admission.
     /// <summary>Refuses a lattice unit not in reduced form.</summary>
     SurfaceUnitUnreduced,
     /// <summary>Refuses a cell or corner coordinate outside its patch rectangle.</summary>
     SurfaceAddressOutOfPatch,
+    /// <summary>Refuses nonzero bits beyond the authored cell count in a presence word.</summary>
+    SurfacePresencePaddingNonzero,
 
     // Foliage JSON converter.
     /// <summary>Refuses a foliage section larger than its UTF-8 byte budget.</summary>

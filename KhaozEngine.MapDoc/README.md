@@ -1404,8 +1404,16 @@ adapters continue reporting prose until all of their producing rules carry typed
 Surface scalar and cell checks preserve their original messages. `FieldPath` names the failed unit part,
 frame enumeration, rectangle axis, cell coordinate or required surface identity. Denominator checks carry
 `ActualInteger` when the computed common denominator fits in `long`, plus the checked inclusive limits.
-A wider `Int128` denominator leaves `ActualInteger` null. Null presence arrays use `SchemaValueRequired`,
-while a wrong array length uses `SchemaArrayLengthMismatch` with `ActualCount` and `ExpectedCount`.
+A wider `Int128` denominator leaves `ActualInteger` null. Null height, cell and presence arrays use
+`SchemaValueRequired`, while a wrong array length uses `SchemaArrayLengthMismatch` with `ActualCount`
+and `ExpectedCount`. Corner access includes the final corner at `Width`, `Depth`, while cell access ends
+at `Width - 1`, `Depth - 1`.
+
+Local validation collects typed shape, cell-field, padding and metadata-capacity findings beside its
+unchanged string API. Cell fields retain their array `Index` and field-specific `FieldPath`. Capacity
+findings carry the collection name in `Budget`, its `ActualCount` and inclusive `Limit`. Dependency and
+edge-detail findings remain prose, so forwarding adapters keep their existing constructors until those
+remaining producer rules are typed.
 
 | Reason | Refused rule | Identifiers when known |
 | --- | --- | --- |
@@ -1419,7 +1427,7 @@ while a wrong array length uses `SchemaArrayLengthMismatch` with `ActualCount` a
 | `SchemaArrayRequired` | A foliage member that must be an array | `FieldPath`, `Index` |
 | `SchemaBooleanRequired` | A foliage member that must be a boolean | `FieldPath`, `LayerId`, `Index` |
 | `SchemaBase64Malformed` | A foliage density token that is invalid or noncanonical base64 | `FieldPath`, `LayerId`, `Index`, `FoliageChunk` |
-| `SchemaArrayLengthMismatch` | Decoded foliage density with the wrong byte length, embedded records in a prefab surface geometry patch, or a cell presence array with the wrong length | `FieldPath`, `LayerId`, `Index`, `FoliageChunk`, `ActualByteCount`, `ExpectedByteCount`, `Child`, `SurfaceId`, `Patch`, `ActualCount`, `ExpectedCount` |
+| `SchemaArrayLengthMismatch` | Decoded foliage density with the wrong byte length, embedded records in a prefab surface geometry patch, or a patch height, cell or presence array with the wrong length | `FieldPath`, `LayerId`, `Index`, `FoliageChunk`, `ActualByteCount`, `ExpectedByteCount`, `Child`, `SurfaceId`, `Patch`, `ActualCount`, `ExpectedCount` |
 | `SchemaPayloadVersionUnsupported` | An unsupported asset-reference, resolver-identity, support, foliage, prefab asset, local light or local marker payload version | `FieldPath`, `MarkerId`, `ResourceId`, `Index`, `ActualVersion`, `SupportedVersions`, `MinimumInteger` |
 | `ValueNonfinite` | A nonfinite manifest source-unit scale, foliage scalar, playable-bound component, placement support-search value, resolved support height, adoption height or yaw, or marker position/yaw | `FieldPath`, `MarkerId`, `AssetId`, `LayerId`, `PlacementId`, `Index`, `ActualNumber` (null for nonfinite marker values, nonfinite for prefab scalar guards) |
 | `ValueOutsideRange` | A finite nonpositive manifest source-unit scale, foliage integer outside its domain, negative support-search extent or high-water mark, nonpositive numeric identity, nonpositive lattice unit parts, an address denominator outside its domain or a slot cell outside 0 through 4095 | `FieldPath`, `AssetId`, `LayerId`, `PlacementId`, `EntityId`, `SubjectKind`, `Index`, `ActualNumber`, `ActualInteger`, `MinimumNumber`, `MinimumInteger`, `MaximumInteger`, `NumericId`, `HighWaterMark` |
@@ -1430,8 +1438,10 @@ while a wrong array length uses `SchemaArrayLengthMismatch` with `ActualCount` a
 | `AssetClosureRequired` | Foliage edit preflight without a verified asset closure | `DocumentId` |
 | `DigestMismatch` | Resource bytes, an attached child's descriptor digest, a stored surface semantic aggregate or a verified tile's lists differing from its pin | `DigestKind`, `SourceName`, `Tile`, `ResourceId`, `Path`, `EntityId`, `WorldId`, `ChildKind`, `Child`, `InstanceId`, `PlacementId`, `SurfaceId`, `SubjectKind`, `ExpectedHash`, `ActualHash` |
 | `BoundsInvalid` | Invalid prefab patch dimensions, manifest local bounds, playable bounds, reversed exact rectangles or invalid surface patch rectangles | `FieldPath`, `Width`, `Depth`, `AssetId`, `SurfaceId`, `Patch`, `CellX`, `CellZ`, `Index`, `MinimumNumber`, `MaximumNumber` |
+| `WorkCapacityExceeded` | Local corner-dependency or edge-subdivision metadata beyond its count budget | `Patch`, `FieldPath`, `Budget`, `ActualCount`, `Limit` |
+| `SurfacePresencePaddingNonzero` | Nonzero bits beyond the authored cell count in the last presence word | `Patch`, `FieldPath`, `Index` |
 | `SurfaceUnitUnreduced` | An authored lattice unit whose positive numerator and denominator have a common factor | `Numerator`, `Denominator` |
-| `SurfaceAddressOutOfPatch` | A patch-local cell coordinate outside the valid rectangle | `Patch`, `Width`, `Depth`, `CellX`, `CellZ`, `FieldPath`, `ActualInteger`, `MinimumInteger`, `MaximumInteger` |
+| `SurfaceAddressOutOfPatch` | A patch-local cell or corner coordinate outside the valid rectangle | `Patch`, `Width`, `Depth`, `CellX`, `CellZ`, `FieldPath`, `ActualInteger`, `MinimumInteger`, `MaximumInteger` |
 | `DigestMalformed` | An asset-reference, materialized source, prefab or surface semantic digest outside lowercase SHA-256 representation | `FieldPath`, `ResourceId`, `SurfaceId`, `AssetId`, `PlacementId`, `ActualHash`, `Index` |
 | `AssetKindUnsupported` | An undefined resource kind | `ResourceId`, `FieldPath`, `ActualResourceKind` |
 | `AssetDependencyCycle` | A cycle in the resource dependency graph | `ResourceIds` of all resources left unresolved |

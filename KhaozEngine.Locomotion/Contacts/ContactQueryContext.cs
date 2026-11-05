@@ -152,6 +152,5 @@ internal sealed class ContactQueryFailure(MovementAvailability availability,
     MovementStepOutcome? outcome = null) : Exception("Contact query evidence is unavailable.")
 {
     internal MovementAvailability Availability { get; } = availability;
-    internal MovementStepOutcome Outcome { get; } = outcome ?? (availability == MovementAvailability.Invalid
-        ? MovementStepOutcome.EnvironmentInvalid : MovementStepOutcome.EnvironmentUnresolved);
+    internal MovementStepOutcome Outcome { get; } = outcome ?? ExplicitCharacterMovement.Outcome(availability);
 }

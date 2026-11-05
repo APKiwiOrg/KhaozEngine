@@ -282,7 +282,9 @@ The water field and certified ground delegates retain immutable captured data. W
 per-thread scratch and precomputed exterior topology. A proved constant captured bed can use an exact rectangular
 union specialization. Trace certificates include represented height-evaluation and geometric arithmetic error.
 Point membership retains exact half-open comparisons, and an error beyond the existing coverage limit refuses
-the whole trace. Independent readers do not share mutable scratch.
+the whole trace. A finite over-budget certificate reports `MovementAvailability.PrecisionExceeded` without
+publishing spans or contacts. Unresolved geometry and unavailable evidence keep their existing refusal kinds.
+Independent readers do not share mutable scratch.
 An owned lateral column with no reachable captured bed answers unresolved. Represented loaded rectangles use
 directed lower and upper bounds, retaining a coordinate even when the nominal region is narrower than one float step.
 

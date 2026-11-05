@@ -37,36 +37,36 @@ internal static class TileWaterPrismCoverage
         int candidateCount = index.Collect(new(query, origin), candidates);
         if (candidateCount < 0) return Refuse(MovementAvailability.CapacityExceeded, identity, 0, ContactLimit + 1);
         for (int c = 0; c < candidateCount; c++)
-        for (int i = prismStarts[candidates[c]]; i < prismStarts[candidates[c] + 1]; i++)
-        {
-            TileWaterPrism piece = pieces[i];
-            if (!piece.Candidate(query, origin)) continue;
-            R range = piece.Shape.Intersect(piece.Start(query, origin), drive, core, query.Body.Radius, heightError: piece.HeightError, horizontalError: piece.HorizontalError);
-            if (!range.Resolved) return Refuse(MovementAvailability.Unresolved, identity);
-            if (!range.Hit) continue;
-            // A certified rejection has no reported contact location. Only intersected pieces charge
-            // their projection and representation uncertainty to the published trace certificate.
-            error = Math.Max(error, Math.Max(range.Error, piece.RepresentationError));
-            if (pieceCount == scratch.Pieces.Length || !AddRange(range, scratch.Cuts, ref cuts, query.Delta, ref error))
-                return Refuse(MovementAvailability.CapacityExceeded, identity, SpanLimit + 1, ContactLimit + 1);
-            scratch.Pieces[pieceCount++] = new(i, range);
-        }
+            for (int i = prismStarts[candidates[c]]; i < prismStarts[candidates[c] + 1]; i++)
+            {
+                TileWaterPrism piece = pieces[i];
+                if (!piece.Candidate(query, origin)) continue;
+                R range = piece.Shape.Intersect(piece.Start(query, origin), drive, core, query.Body.Radius, heightError: piece.HeightError, horizontalError: piece.HorizontalError);
+                if (!range.Resolved) return Refuse(MovementAvailability.Unresolved, identity);
+                if (!range.Hit) continue;
+                // A certified rejection has no reported contact location. Only intersected pieces charge
+                // their projection and representation uncertainty to the published trace certificate.
+                error = Math.Max(error, Math.Max(range.Error, piece.RepresentationError));
+                if (pieceCount == scratch.Pieces.Length || !AddRange(range, scratch.Cuts, ref cuts, query.Delta, ref error))
+                    return Refuse(MovementAvailability.CapacityExceeded, identity, SpanLimit + 1, ContactLimit + 1);
+                scratch.Pieces[pieceCount++] = new(i, range);
+            }
         for (int c = 0; c < candidateCount; c++)
-        for (int i = faceStarts[candidates[c]]; i < faceStarts[candidates[c] + 1]; i++)
-        {
-            TileWaterPrismFace face = faces[i];
-            TileWaterPrism piece = pieces[face.Prism];
-            if (!piece.Candidate(query, origin)) continue;
-            R range = face.Shape.Intersect(piece.Start(query, origin), drive, core, query.Body.Radius, heightError: piece.HeightError, horizontalError: piece.HorizontalError);
-            if (!range.Resolved) return Refuse(MovementAvailability.Unresolved, identity);
-            if (!range.Hit) continue;
-            // A certified rejection has no reported contact location. Only intersected pieces charge
-            // their projection and representation uncertainty to the published trace certificate.
-            error = Math.Max(error, Math.Max(range.Error, piece.RepresentationError));
-            if (faceCount == scratch.Faces.Length || !AddRange(range, scratch.Cuts, ref cuts, query.Delta, ref error))
-                return Refuse(MovementAvailability.CapacityExceeded, identity, SpanLimit + 1, ContactLimit + 1);
-            scratch.Faces[faceCount++] = new(i, range);
-        }
+            for (int i = faceStarts[candidates[c]]; i < faceStarts[candidates[c] + 1]; i++)
+            {
+                TileWaterPrismFace face = faces[i];
+                TileWaterPrism piece = pieces[face.Prism];
+                if (!piece.Candidate(query, origin)) continue;
+                R range = face.Shape.Intersect(piece.Start(query, origin), drive, core, query.Body.Radius, heightError: piece.HeightError, horizontalError: piece.HorizontalError);
+                if (!range.Resolved) return Refuse(MovementAvailability.Unresolved, identity);
+                if (!range.Hit) continue;
+                // A certified rejection has no reported contact location. Only intersected pieces charge
+                // their projection and representation uncertainty to the published trace certificate.
+                error = Math.Max(error, Math.Max(range.Error, piece.RepresentationError));
+                if (faceCount == scratch.Faces.Length || !AddRange(range, scratch.Cuts, ref cuts, query.Delta, ref error))
+                    return Refuse(MovementAvailability.CapacityExceeded, identity, SpanLimit + 1, ContactLimit + 1);
+                scratch.Faces[faceCount++] = new(i, range);
+            }
         int spanCount = cuts - 1;
         if (spanCount > SpanLimit) return Refuse(MovementAvailability.CapacityExceeded, identity, spanCount);
         try
@@ -111,8 +111,9 @@ internal static class TileWaterPrismCoverage
                 scratch.Spans[s] = new(enter, exit, first, contactCount - first, dry || first == contactCount);
             }
             float certificate = TileWaterColumnCoverage.Upper(error);
-            if (!float.IsFinite(certificate) || certificate > MovementQueryLease.CoverageSkinMetres)
-                return Refuse(MovementAvailability.Unresolved, identity);
+            if (!float.IsFinite(certificate)) return Refuse(MovementAvailability.Unresolved, identity);
+            if (certificate > MovementQueryLease.CoverageSkinMetres)
+                return Refuse(MovementAvailability.PrecisionExceeded, identity);
             if (spanCount > spans.Length || contactCount > contacts.Length)
                 return Refuse(MovementAvailability.CapacityExceeded, identity, spanCount, contactCount);
             scratch.Spans.AsSpan(0, spanCount).CopyTo(spans);
@@ -162,12 +163,12 @@ internal static class TileWaterPrismCoverage
         V drive = V.Point(query.Delta.X, query.Delta.Y, query.Delta.Z);
         bool inside = false;
         for (int c = 0; c < candidates.Length && !inside; c++)
-        for (int p = prismStarts[candidates[c]]; p < prismStarts[candidates[c] + 1]; p++)
-        {
-            TileWaterPrism piece = pieces[p];
-            if (piece.Candidate(query, origin) && piece.Shape.Contains(piece.Start(query, origin) + drive * I.Point(middle)))
-            { inside = true; break; }
-        }
+            for (int p = prismStarts[candidates[c]]; p < prismStarts[candidates[c] + 1]; p++)
+            {
+                TileWaterPrism piece = pieces[p];
+                if (piece.Candidate(query, origin) && piece.Shape.Contains(piece.Start(query, origin) + drive * I.Point(middle)))
+                { inside = true; break; }
+            }
         if (!inside) return true;
         double squared = (double)query.Body.Radius * query.Body.Radius;
         I core = I.Point(query.Body.HalfHeight) - I.Point(query.Body.Radius);

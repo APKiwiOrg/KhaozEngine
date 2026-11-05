@@ -45,6 +45,9 @@ Every supported conversion checks its final numerical displacement against the e
 budget, including the exact world-to-frame residual and any final upward increment. The explicit composition's
 fixed placement offset remains separate from that numerical error. An unrepresentable pose is unresolved
 and holds the input pose and velocity through the normal refusal path. It is never clamped into admission.
+Finite geometric coverage error above the existing precision budget reports `MovementAvailability.PrecisionExceeded`.
+Contact holds that proposal as `MovementStepOutcome.PrecisionRefused`. Unresolved evidence, stale queries and
+frame failures retain their environment-refusal outcomes.
 Unsupported integration and speculative body queries retain their nearest centre mapping. A falling body
 does not receive a support lift when a tiny vertical integration cannot change its represented feet.
 The static installer publishes fixed authored provenance in `OrdinaryMovementRegistration` under its source read lease,

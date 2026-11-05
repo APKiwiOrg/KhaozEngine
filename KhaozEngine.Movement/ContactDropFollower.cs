@@ -146,8 +146,9 @@ internal sealed class ContactDropFollower(GroundNavigation navigation, NavDropTr
         => result.State.State.Grounded && result.ContactWalkableSupport && result.State.Selection?.Support is not null;
 
     internal static RangeMoveStatus Status(in MovementStepResult result, RangeMoveStatus known)
-        => result.Outcome is MovementStepOutcome.EnvironmentInvalid or MovementStepOutcome.EnvironmentUnresolved or MovementStepOutcome.FrameMismatch
-            ? RangeMoveStatus.Suspended : known;
+        => result.Outcome == MovementStepOutcome.PrecisionRefused ? RangeMoveStatus.Blocked :
+            result.Outcome is MovementStepOutcome.EnvironmentInvalid or MovementStepOutcome.EnvironmentUnresolved or MovementStepOutcome.FrameMismatch
+                ? RangeMoveStatus.Suspended : known;
 
     static RangeSteering Hold(RangeMoveStatus status) => new(Vector2.Zero, status);
 }

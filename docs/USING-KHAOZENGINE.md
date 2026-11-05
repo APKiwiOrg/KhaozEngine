@@ -9672,6 +9672,11 @@ required whole solid groups. Sharp dependencies, refused attempts, recipe closur
 are omitted. Excluded evidence throws `DependencyMissing`. Runtime policy selection must use the persisted route,
 never infer it from retained geometry. Certificates reconstruct lazily with persisted thresholds, avoiding platform
 trigonometric classification on load. Disabled profiles keep their original policy. Formats 1, 2 and 3 stay frozen.
+Finite water-coverage uncertainty above the existing 1 mm budget refuses a Drop as `PrecisionExceeded`.
+The Contact step reports `PrecisionRefused`, so sharp and terrain following return `Blocked`, including during
+alignment. Actual unresolved, invalid or mismatched environment evidence retains its prior error/suspension path.
+No precision threshold or physical gate is widened.
+
 Call `GroundNavigation.PrepareTerrainDescents()` during loading, outside a frame or simulation tick. It builds the
 synchronized certificate cache without physics and is safe for concurrent callers. First use can exceed a frame
 or tick budget. Preparation caches immutable topology only and never replaces the live preview or actual Hold.

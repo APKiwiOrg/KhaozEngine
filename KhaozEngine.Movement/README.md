@@ -723,6 +723,11 @@ Evidence is pooled across enabled profiles and retains only accepted terrain pro
 including whole queried columns, original raw identities and required complete solid groups. Neither sharp proof
 reads, refused attempts, recipe closure nor the global steep inventory is retained. Certificate reconstruction and
 terrain policy reads are local. Certificates reconstruct lazily on first use with the persisted threshold bits.
+Finite water-coverage uncertainty above the existing 1 mm budget refuses a Drop as `PrecisionExceeded`.
+The Contact step reports `PrecisionRefused`, so sharp and terrain following return `Blocked`, including during
+alignment. Actual unresolved, invalid or mismatched environment evidence retains its prior error/suspension path.
+No precision threshold or physical gate is widened.
+
 Call `GroundNavigation.PrepareTerrainDescents()` during loading, outside a frame or simulation tick. It builds the
 synchronized certificate cache without physics and is safe for concurrent callers. First use can exceed a frame
 or tick budget. Preparation caches immutable topology only and never replaces the live preview or actual Hold.

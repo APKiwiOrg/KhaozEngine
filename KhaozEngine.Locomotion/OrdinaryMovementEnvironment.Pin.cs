@@ -98,7 +98,7 @@ internal sealed partial class OrdinaryMovementEnvironmentPin : IMovementEnvironm
                     contact.Fraction, contact.BoundaryId, contact.CoverageRegionHandle, contact.Overlap, contact.SpanOverlap);
             }
             float error = OrdinaryServedDomain.Upper(result.CertifiedErrorMetres + conversionError);
-            if (error > MovementQueryLease.CoverageSkinMetres) return NoTrace(MovementAvailability.Unresolved);
+            if (error > MovementQueryLease.CoverageSkinMetres) return NoTrace(MovementAvailability.PrecisionExceeded);
             sourceSpans[..result.SpansWritten].CopyTo(spans);
             sourceContacts[..result.ContactsWritten].CopyTo(contacts);
             return new(result.Availability, result.SpansWritten, result.RequiredSpanCapacity, result.ContactsWritten,

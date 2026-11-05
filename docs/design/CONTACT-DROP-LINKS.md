@@ -87,6 +87,11 @@ evidence. Sharp-route links retain the existing sharp preview and follower. Ever
 corridor, selected-support witness and phase state. Cached certificates contain immutable topology and their
 first construction is synchronized across callers. Loading a file needs no physics and grants no new permission.
 The consumer must opt in and rebake, then supply its ordinary live movement context and actual body to execute.
+Finite water-coverage uncertainty above the existing 1 mm budget refuses a Drop as `PrecisionExceeded`.
+The Contact step reports `PrecisionRefused`, so sharp and terrain following return `Blocked`, including during
+alignment. Actual unresolved, invalid or mismatched environment evidence retains its prior error/suspension path.
+No precision threshold or physical gate is widened.
+
 Call `GroundNavigation.PrepareTerrainDescents()` during loading, outside a frame or simulation tick. It builds the
 synchronized certificate cache without physics and is safe for concurrent callers. First use can exceed a frame
 or tick budget. Preparation caches immutable topology only and never replaces the live preview or actual Hold.

@@ -9,7 +9,7 @@ internal enum ContactTerrainDropPhase : byte { LaunchPrefix, Descending, Landing
 internal enum ContactTerrainDropRefusal : byte
 {
     None, Certificate, Movement, Evidence, Boundary, Swimming, DescentAllowance, UnknownSupport,
-    SteepOutsideChain, UnexpectedSupport, AirAfterLanding, SourceHold, Terminal, Budget
+    SteepOutsideChain, UnexpectedSupport, AirAfterLanding, SourceHold, Terminal, Budget, PrecisionExceeded
 }
 
 /// <summary>Attempt-local transition ownership. Callbacks consume only selected, authenticated route evidence.</summary>
@@ -72,6 +72,7 @@ internal sealed class ContactTerrainDropPolicy(ContactTerrainDropCertificate cer
     internal bool AcceptTick(in MovementStepResult result, in ContactDescentSummary summary, bool initial, bool hold)
     {
         if (Refusal != ContactTerrainDropRefusal.None) return false;
+        if (result.Outcome == MovementStepOutcome.PrecisionRefused) return Refuse(ContactTerrainDropRefusal.PrecisionExceeded);
         MoveState body = result.State.State;
         Vector3 feet = body.Position + frame.PhysicsOrigin - Vector3.UnitY * tuning.CapsuleHalfHeight;
         if (result.Outcome != MovementStepOutcome.Advanced || body.Commitment.IsActive || body.JumpBufferRemaining != 0 ||

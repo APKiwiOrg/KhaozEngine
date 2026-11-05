@@ -51,10 +51,11 @@ public sealed class MapDocumentExceptionTests
     }
 
     [Theory]
-    [InlineData(false, false)]
-    [InlineData(true, false)]
-    [InlineData(false, true)]
-    public void Source_context_preserves_every_identifier_and_the_original_refusal(bool legacy, bool throughJson)
+    [InlineData(false, false, false)]
+    [InlineData(true, false, false)]
+    [InlineData(false, true, false)]
+    [InlineData(false, true, true)]
+    public void Source_context_preserves_every_identifier_and_the_original_refusal(bool legacy, bool throughJson, bool withoutSource)
     {
         PropertyInfo[] identifiers = typeof(MapDocumentException)
             .GetProperties(BindingFlags.Public | BindingFlags.Instance | BindingFlags.DeclaredOnly)
@@ -66,12 +67,12 @@ public sealed class MapDocumentExceptionTests
 
         MapDocumentException named = throughJson
             ? MapDocumentJsonErrors.Wrap(new JsonException("converter failure", new InvalidOperationException("nested", refusal)),
-                "map.json", "map.json: converter failure")
+                withoutSource ? null : "map.json", "map.json: converter failure", resourceId: "outer-prefab")
             : refusal.WithSourceName("map.json");
 
         Assert.Equal(refusal.Reason, named.Reason);
         Assert.Same(refusal, named.InnerException);
-        Assert.Equal("map.json", named.SourceName);
+        Assert.Equal(withoutSource ? refusal.SourceName : "map.json", named.SourceName);
         Assert.Empty(identifiers.Where(p => p.Name != nameof(MapDocumentException.SourceName) &&
             !Matches(p.GetValue(refusal), p.GetValue(named))).Select(p => p.Name));
     }

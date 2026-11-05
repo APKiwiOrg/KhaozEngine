@@ -6,16 +6,17 @@ namespace KhaozEngine.MapDoc;
 /// <summary>Preserves structured JSON causes and the source context known by document readers.</summary>
 internal static class MapDocumentJsonErrors
 {
-    internal static MapDocumentException Wrap(JsonException error, string sourceName, string message,
-        MapTileCoord? tile = null, string? path = null)
+    internal static MapDocumentException Wrap(Exception error, string? sourceName, string message,
+        MapTileCoord? tile = null, string? path = null, string? resourceId = null)
     {
         for (Exception? cause = error.InnerException; cause is not null; cause = cause.InnerException)
             if (cause is MapDocumentException { Reason: not null } known)
-                return known.WithSourceName(sourceName, message, tile, path);
+                return known.WithSourceName(sourceName, message, tile, path, resourceId);
+        var json = error as JsonException;
         return new MapDocumentException(MapDocumentRefusal.SchemaMalformed, message, error)
         {
-            SourceName = sourceName, Path = path, Tile = tile,
-            FieldPath = error.Path, LineNumber = error.LineNumber, BytePositionInLine = error.BytePositionInLine,
+            SourceName = sourceName, Path = path, Tile = tile, ResourceId = resourceId,
+            FieldPath = json?.Path, LineNumber = json?.LineNumber, BytePositionInLine = json?.BytePositionInLine,
         };
     }
 

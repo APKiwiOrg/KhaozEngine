@@ -10,6 +10,12 @@ public sealed record MapDocumentFinding(MapDocumentRefusal Reason, string Messag
     public string? SourceName { get; init; }
     /// <summary>The source file path, when known separately from the source name.</summary>
     public string? Path { get; init; }
+    /// <summary>The resource being decoded, when known.</summary>
+    public string? ResourceId { get; init; }
+    /// <summary>The refused patch width, when checked.</summary>
+    public int? Width { get; init; }
+    /// <summary>The refused patch depth, when checked.</summary>
+    public int? Depth { get; init; }
     /// <summary>The document tile being read, when known.</summary>
     public MapTileCoord? Tile { get; init; }
     /// <summary>The zero-based JSON line number exposed by the reader, when available.</summary>

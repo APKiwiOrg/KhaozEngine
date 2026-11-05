@@ -12507,7 +12507,7 @@ message-only constructor leaves `Reason` null. `SourceName` carries available so
 `Findings` list is an ordered read-only snapshot. Existing string validation APIs retain their prose,
 and aggregate adapters retain their existing behavior until all their producing rules are typed.
 
-Root, manifest and tile schema admission also preserves `MapDocumentException`. Its reasons distinguish
+Root, manifest, tile and prefab schema admission also preserves `MapDocumentException`. Its reasons distinguish
 `SchemaMemberUnknown`, `SchemaMemberDuplicate`, `SchemaMemberMissing`, `SchemaMemberNull`,
 `SchemaObjectRequired`, `SchemaValueRequired` and `SchemaMalformed`. Closed-member failures carry a JSON
 `FieldPath` in `System.Text.Json.JsonException.Path` format, such as `$.nativeAssets[0].id` or
@@ -12515,8 +12515,16 @@ Root, manifest and tile schema admission also preserves `MapDocumentException`. 
 retains the known source context, with `Tile` and file `Path` on tile reads. JSON failures carry the
 reader's path, zero-based `LineNumber` and UTF-8 `BytePositionInLine` where available. A JSON wrapper
 containing a known structured document refusal retains its reason, every identifier and that original
-refusal as its cause. Inspect these members rather than parsing error prose. Other codec and aggregate
-admission remains on its existing contract until all its producing rules are typed.
+refusal as its cause. A prefab file JSON failure supplies its known `ResourceId`, and an existing resource
+identity survives the context copy. Prefab preflight paths retain array positions from the supplied root.
+Child and override converter member paths are relative to that converter's object, with placement payload
+fields below `$.value`. Null prefab members and blank marker-adoption identity fields use
+`SchemaValueRequired`. Marker option and adoption schema guards identify their refused field through
+`FieldPath`. Prefab patch dimensions outside 1 through 64 inclusive use `BoundsInvalid`, with `Width`,
+`Depth` and the patch object's `FieldPath`. Binding and enum converters without a structured cause use
+`SchemaMalformed` and the reader's path. Inspect these members rather than parsing error prose.
+Payload-version validators, marker authoring rules and other aggregate admission retain their existing
+contracts until all their producing rules are typed.
 
 **Whole authored surface identity.** Scheme 2, new in 20.30.0, is the resolver-2 whole-document identity. Resolver-2
 documents use `MapAuthoredIdentityV2` from `KhaozEngine.MapDoc.Identity`, with an explicitly verified

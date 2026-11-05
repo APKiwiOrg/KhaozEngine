@@ -18,8 +18,10 @@ public enum MapDocumentRefusal
     SchemaMemberNull,
     /// <summary>Refuses a member not declared by a closed schema object.</summary>
     SchemaMemberUnknown,
-    /// <summary>Refuses a document, manifest or tile root that is not a JSON object.</summary>
+    /// <summary>Refuses a required document, tile, prefab or marker-options JSON object.</summary>
     SchemaObjectRequired,
-    /// <summary>Refuses a deserialization result without a required value.</summary>
+    /// <summary>Refuses a missing, null or blank required value.</summary>
     SchemaValueRequired,
+    /// <summary>Refuses bounds or dimensions outside the ordered nonempty finite domain.</summary>
+    BoundsInvalid,
 }

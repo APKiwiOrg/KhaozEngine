@@ -1328,20 +1328,21 @@ ran on a worker thread. The handoff did not.
 
 ## Loud failures
 
-Resolver and root schema admission refusals keep the exact `MapDocumentException` type. Inspect its nullable
+Resolver, root and prefab schema admission refusals keep the exact `MapDocumentException` type. Inspect its nullable
 `MapDocumentRefusal Reason` and applicable identifiers instead of classifying its message. The public
 message-only constructors remain available to consumers and leave `Reason` null. Other validation
 adapters continue reporting prose until all of their producing rules carry typed findings.
 
 | Reason | Refused rule | Identifiers when known |
 | --- | --- | --- |
-| `SchemaMalformed` | Invalid JSON, a deserialization failure without a known structured cause, or malformed tile sculpt data | `FieldPath`, `SourceName`, `Tile`, `Path`, `LineNumber`, `BytePositionInLine` |
+| `SchemaMalformed` | Invalid JSON, a deserialization failure without a known structured cause, or malformed tile sculpt data | `FieldPath`, `SourceName`, `Tile`, `Path`, `ResourceId`, `LineNumber`, `BytePositionInLine` |
 | `SchemaMemberDuplicate` | A repeated or case-variant JSON member | `FieldPath` of the containing object, `SourceName`, `Tile`, `Path` |
-| `SchemaMemberMissing` | A missing required native member, or a missing or non-integer `formatVersion` | `FieldPath`, `SourceName`, `Tile`, `Path` |
+| `SchemaMemberMissing` | A missing required native or prefab member, or a missing or non-integer `formatVersion` | `FieldPath`, `SourceName`, `Tile`, `Path` |
 | `SchemaMemberNull` | A native member that cannot be null | `FieldPath`, `SourceName`, `Tile`, `Path` |
 | `SchemaMemberUnknown` | A member outside a closed schema object | `FieldPath`, `SourceName`, `Tile`, `Path` |
-| `SchemaObjectRequired` | A document, manifest or tile root that is not an object | `FieldPath`, `SourceName`, `Tile`, `Path` |
-| `SchemaValueRequired` | A required deserialization result that is null | `FieldPath`, `SourceName`, `Tile`, `Path` |
+| `SchemaObjectRequired` | A document, manifest, tile, prefab payload or marker-options value that must be an object | `FieldPath`, `SourceName`, `Tile`, `Path` |
+| `SchemaValueRequired` | A required deserialization result or prefab member that is null, a missing prism domain, or blank marker-adoption identity text | `FieldPath`, `SourceName`, `Tile`, `Path` |
+| `BoundsInvalid` | Prefab patch width or depth outside 1 through 64 inclusive | `FieldPath`, `Width`, `Depth` |
 | `ResolverContractMismatch` | The document resolver, support recipe or caller's resolver options cannot serve the requested operation | `PayloadVersion`, `ResolverVersion`, `OptionsResolverVersion`, `ExpectedResolverVersion`, `SupportRecipe`, `ExpectedSupportRecipe`, `FieldPath`, `SubjectKind` |
 
 `ResolverVersion` is the document's declared version. `OptionsResolverVersion` is the version supplied
@@ -1358,8 +1359,17 @@ typed duplicate name. A tile reader supplies the document `Tile` and its file `P
 keeps the directory context. JSON failures use the reader's path, zero-based `LineNumber` and zero-based
 UTF-8 `BytePositionInLine` when available. No identifier is reconstructed from error prose. A JSON wrapper
 containing a known structured document refusal preserves that refusal's reason, identifiers and original
-object as its cause through the same source-copy method. Other codec admission and aggregate validation
-adapters retain their existing contracts until their producing rules are typed.
+object as its cause through the same source-copy method. A prefab file JSON failure also carries its known
+`ResourceId`. The copy keeps an existing resource identity and source name when the wrapper has no new source name.
+
+Prefab preflight paths start at the supplied payload root and retain array positions. Child and override
+converter member paths start at that converter's object, with placement fields below `$.value`. Duplicate
+prefab members identify their containing object. Null prefab members use `SchemaValueRequired`, while native
+required-member nulls use `SchemaMemberNull`. Marker option and adoption schema guards use the same paths.
+Plain JSON converter failures, including binding shape and exact enum checks, use `SchemaMalformed` with
+the reader's path until the converter supplies its own structured cause. Payload-version validators,
+marker authoring rules and other aggregate validation adapters retain their existing contracts until
+all of their producing rules are typed.
 
 `MapDocumentFinding` is an immutable record with `Reason`, developer prose in `Message` and the same
 typed context. Resolver diagnostic producers retain these findings beside the existing string API's

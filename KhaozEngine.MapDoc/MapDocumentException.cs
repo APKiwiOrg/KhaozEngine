@@ -27,6 +27,12 @@ public sealed class MapDocumentException : Exception
     public string? SourceName { get; init; }
     /// <summary>The source file path, when known separately from the source name.</summary>
     public string? Path { get; init; }
+    /// <summary>The resource being decoded, when known.</summary>
+    public string? ResourceId { get; init; }
+    /// <summary>The refused patch width, when checked.</summary>
+    public int? Width { get; init; }
+    /// <summary>The refused patch depth, when checked.</summary>
+    public int? Depth { get; init; }
     /// <summary>The document tile being read, when known.</summary>
     public MapTileCoord? Tile { get; init; }
     /// <summary>The zero-based JSON line number exposed by the reader, when available.</summary>
@@ -63,16 +69,20 @@ public sealed class MapDocumentException : Exception
 
     /// <summary>Adds source context while preserving the reason, every identifier and this refusal as the cause.
     /// A supplied wrapper message retains the caller's released wording. Existing tile and path identifiers
-    /// take precedence over additional source context.</summary>
-    internal MapDocumentException WithSourceName(string sourceName, string? message = null,
-        MapTileCoord? tile = null, string? path = null) => new(this, sourceName, message, tile, path);
+    /// take precedence over additional source context. A null source name keeps the existing source,
+    /// and an existing resource identity takes precedence over an additional resource identity.</summary>
+    internal MapDocumentException WithSourceName(string? sourceName, string? message = null,
+        MapTileCoord? tile = null, string? path = null, string? resourceId = null) => new(this, sourceName, message, tile, path, resourceId);
 
-    MapDocumentException(MapDocumentException inner, string sourceName, string? message,
-        MapTileCoord? tile, string? path) : base(message ?? $"{sourceName}: {inner.Message}", inner)
+    MapDocumentException(MapDocumentException inner, string? sourceName, string? message,
+        MapTileCoord? tile, string? path, string? resourceId) : base(message ?? $"{sourceName}: {inner.Message}", inner)
     {
         Reason = inner.Reason;
-        SourceName = sourceName;
+        SourceName = sourceName ?? inner.SourceName;
         Path = inner.Path ?? path;
+        ResourceId = inner.ResourceId ?? resourceId;
+        Width = inner.Width;
+        Depth = inner.Depth;
         Tile = inner.Tile ?? tile;
         LineNumber = inner.LineNumber;
         BytePositionInLine = inner.BytePositionInLine;

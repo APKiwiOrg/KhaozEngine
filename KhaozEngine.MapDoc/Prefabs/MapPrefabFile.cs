@@ -19,7 +19,7 @@ public static class MapPrefabFile
             MapPrefabValidation.RequireAsset(asset);
             return asset;
         }
-        catch (JsonException ex) { throw new MapDocumentException("Invalid prefab payload '" + resourceId + "'.", ex); }
+        catch (JsonException ex) { throw MapDocumentJsonErrors.Wrap(ex, null, "Invalid prefab payload '" + resourceId + "'.", resourceId: resourceId); }
     }
 
     internal static MapPrefabAsset Read(ReadOnlyMemory<byte> bytes, string resourceId, MapAssetClosure assets)

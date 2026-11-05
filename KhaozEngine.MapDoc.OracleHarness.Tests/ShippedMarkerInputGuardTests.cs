@@ -183,6 +183,8 @@ public sealed class ShippedMarkerInputGuardTests
     [InlineData("tile-size", PrivateOracleDataRefusal.SourceCoordinateContractMismatch)]
     [InlineData("upper-plane", PrivateOracleDataRefusal.SourceCoordinateContractMismatch)]
     [InlineData("absent-owner", PrivateOracleDataRefusal.ReferenceMissing)]
+    [InlineData("missing-support", PrivateOracleDataRefusal.ReferenceMissing)]
+    [InlineData("unused-support", PrivateOracleDataRefusal.CorrespondenceMismatch)]
     [InlineData("nonpositive-owner", PrivateOracleDataRefusal.ValueOutsideDomain)]
     [InlineData("nonfinite-offset", PrivateOracleDataRefusal.ValueNonfinite)]
     [InlineData("wrong-owner-plane", PrivateOracleDataRefusal.OwnershipMismatch)]

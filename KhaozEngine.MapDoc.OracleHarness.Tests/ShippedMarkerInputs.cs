@@ -90,7 +90,10 @@ internal sealed class ShippedMarkerInputs
         Require(names.SequenceEqual(roles.Keys.Order(StringComparer.Ordinal)) && names.SequenceEqual(correspondences.Keys.Order(StringComparer.Ordinal)), Refusal.CorrespondenceMismatch,
             "incomplete or extra marker correspondence");
         Require(roles.Values.Select(r => r.Id).Distinct(StringComparer.Ordinal).Count() == roles.Count, Refusal.IdentityNotUniqueOrCanonical, "duplicate destination marker");
-        Require(supports.Keys.ToHashSet(StringComparer.Ordinal).SetEquals(roles.Values.Select(r => r.SupportName)), Refusal.ReferenceMissing, "missing or unused named support");
+        var declaredSupports = supports.Keys.ToHashSet(StringComparer.Ordinal);
+        Require(declaredSupports.SetEquals(roles.Values.Select(r => r.SupportName)),
+            roles.Values.Any(r => !declaredSupports.Contains(r.SupportName)) ? Refusal.ReferenceMissing : Refusal.CorrespondenceMismatch,
+            "missing or unused named support");
         foreach (var marker in sourceMarkers)
         {
             var row = correspondences[marker.Name];

@@ -348,6 +348,7 @@ internal static class ShippedMarkerGuardFixtures
             case "parents": markerRows[1]!["parents"] = new JsonArray("imaginary-parent"); break;
             case "binding": nativeMarkers[1] = nativeMarkers[1] with { SupportBinding = nativeMarkers[0].SupportBinding }; break;
             case "missing-support": supports.RemoveAt(1); break;
+            case "unused-support": supports.Add(Support("spare-terrain", "plane-0", "terrain", null)); break;
             case "wrong-owner-plane": supports[1]!["source"]!["plane"] = 1; break;
             case "extra-native": nativeMarkers.Add(nativeMarkers[3] with { Id = "extra", Name = "extra" }); break;
             case "expectation": comparison["expectations"]!["total"] = 5; break;

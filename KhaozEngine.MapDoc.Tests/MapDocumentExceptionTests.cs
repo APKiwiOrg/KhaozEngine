@@ -152,6 +152,10 @@ public sealed class MapDocumentExceptionTests
         if (property.Name == nameof(MapDocumentException.CellX)) return 64;
         if (property.Name == nameof(MapDocumentException.CellZ)) return -1;
         if (property.Name == nameof(MapDocumentException.Edge)) return MapCellEdge.West;
+        if (property.Name == nameof(MapDocumentException.PreviousInteger)) return 17L;
+        if (property.Name == nameof(MapDocumentException.ActualText)) return "future";
+        if (property.Name == nameof(MapDocumentException.ExpectedPatch)) return new MapPatchKey("expected", 2, -3);
+        if (property.Name == nameof(MapDocumentException.RecordType)) return typeof(MapBoundaryChain);
         if (property.Name == nameof(MapDocumentException.Budget)) return "CornerDependencies";
         if (type == typeof(Type)) return typeof(MapLocalLightDoc);
         if (type == typeof(string)) return property.Name;

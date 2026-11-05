@@ -87,7 +87,11 @@ public sealed class SurfacePatchCodecTests
         clone.CornerDependencies.Reverse();
         Assert.Equal(encoded, MapSurfacePatchCodec.Encode(clone));
         Assert.Equal(encoded, MapSurfacePatchCodec.Encode(MapSurfacePatchCodec.Decode(encoded, patch.Key)));
-        Assert.Throws<MapDocumentException>(() => MapSurfacePatchCodec.Decode(encoded, new("wrong", 0, 0)));
+        var key = Assert.Throws<MapDocumentException>(() => MapSurfacePatchCodec.Decode(encoded, new("wrong", 0, 0)));
+        Assert.Equal(MapDocumentRefusal.SurfacePatchKeyMismatch, key.Reason);
+        Assert.Equal(patch.Key, key.Patch);
+        Assert.Equal(new MapPatchKey("wrong", 0, 0), key.ExpectedPatch);
+        Assert.Equal(patch.Key, MapSurfacePatchCodec.Decode(encoded, patch.Key).Key);
         clone.Heights[0] = 12;
         clone.Cells[0] = default;
         clone.SetPresent(0, 0, false);

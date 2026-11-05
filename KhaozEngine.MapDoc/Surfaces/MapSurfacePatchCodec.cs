@@ -15,8 +15,8 @@ public static partial class MapSurfacePatchCodec
     public static byte[] Encode(MapSurfacePatch patch)
     {
         ArgumentNullException.ThrowIfNull(patch);
-        IReadOnlyList<string> errors = patch.ValidateLocal();
-        if (errors.Count != 0) throw new MapDocumentException(errors[0]);
+        IReadOnlyList<MapDocumentFinding> errors = patch.ValidateLocalFindings();
+        if (errors.Count != 0) throw LocalRefusal(errors);
         using var output = new BoundedOutput();
         using (var writer = new Utf8JsonWriter(output))
         {
@@ -68,16 +68,19 @@ public static partial class MapSurfacePatchCodec
             // The parser's storage is bounded by the input cap. Size-based payload arrays follow dimension/length checks.
             var reader = new Utf8JsonReader(bytes, new JsonReaderOptions { MaxDepth = 16 });
             using JsonDocument document = JsonDocument.ParseValue(ref reader);
-            if (reader.Read()) throw new MapDocumentException("trailing patch payload");
+            RequireNoTrailingValue(reader.Read(), expectedKey);
             JsonElement root = document.RootElement;
             Members(root, "key", "cellMinX", "cellMinZ", "width", "depth", "heights", "cells", "presence",
                 "cornerDependencies", "edgeSubdivisions", "records");
             MapPatchKey key = ReadKey(root.GetProperty("key"));
-            if (key != expectedKey) throw new MapDocumentException("patch key does not match expected key");
+            if (key != expectedKey)
+                throw new MapDocumentException(MapDocumentRefusal.SurfacePatchKeyMismatch, "patch key does not match expected key")
+                { Patch = key, ExpectedPatch = expectedKey };
             int minX = root.GetProperty("cellMinX").GetInt32(), minZ = root.GetProperty("cellMinZ").GetInt32();
             int width = root.GetProperty("width").GetInt32(), depth = root.GetProperty("depth").GetInt32();
             if (!MapSurfacePatch.ValidRectangle(minX, minZ, width, depth))
-                throw new MapDocumentException("invalid patch width, depth or cell minimum");
+                throw new MapDocumentException(MapDocumentRefusal.BoundsInvalid, "invalid patch width, depth or cell minimum")
+                { Patch = key, FieldPath = "rectangle", Width = width, Depth = depth };
             int cornerCount = (width + 1) * (depth + 1), cellCount = width * depth, wordCount = (cellCount + 63) / 64;
             byte[] heightBytes = Base64(root.GetProperty("heights"), cornerCount * 4, "heights");
             byte[] cellBytes = Base64(root.GetProperty("cells"), cellCount * 8, "cells");
@@ -135,6 +138,27 @@ public static partial class MapSurfacePatchCodec
             throw new MapDocumentException("invalid surface patch payload", ex);
         }
     }
+
+    static MapDocumentException LocalRefusal(IReadOnlyList<MapDocumentFinding> findings)
+    {
+        MapDocumentFinding first = findings[0];
+        return new(first.Reason, first.Message)
+        {
+            Patch = first.Patch, FieldPath = first.FieldPath, Index = first.Index, Width = first.Width, Depth = first.Depth,
+            CellX = first.CellX, CellZ = first.CellZ, Edge = first.Edge, EnumType = first.EnumType,
+            ActualInteger = first.ActualInteger, MinimumInteger = first.MinimumInteger, MaximumInteger = first.MaximumInteger,
+            ActualCount = first.ActualCount, ExpectedCount = first.ExpectedCount, Budget = first.Budget, Limit = first.Limit, Findings = findings,
+        };
+    }
+
+    static void RequireNoTrailingValue(bool hasTrailingValue, MapPatchKey key)
+    {
+        if (hasTrailingValue)
+            throw new MapDocumentException(MapDocumentRefusal.SurfacePatchTrailingBytes, "trailing patch payload") { Patch = key };
+    }
+
+    // The reader currently refuses a second root before returning true. Inject only that guard value.
+    internal static void RequireNoTrailingValueForTests(bool hasTrailingValue, MapPatchKey key) => RequireNoTrailingValue(hasTrailingValue, key);
 
     static string Decimal(long value) => MapSignedDecimal.Format(value);
     static long Long(JsonElement value)

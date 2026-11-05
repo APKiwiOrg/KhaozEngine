@@ -12713,6 +12713,18 @@ or topology, retaining the first failing field, actual integer and applicable en
 An incompatible forced diagonal uses `SurfaceForcedTopologyConflict` and the submitted topology.
 The scalar topology API has no patch or slot-cell identifier to attach.
 
+Surface codec record guards distinguish missing values, duplicate identities, unsupported kinds,
+invalid enums, cardinality and prism payload versions through the corresponding schema, identity and
+`OperationKindUnsupported` reasons. Helper `FieldPath` values identify their local object fields.
+Unsupported decoded kinds retain `ActualText`, and unsupported runtime records retain `RecordType`.
+Chains admit 2 through 4097 vertices, slot lists 1 through 4096 entries, and slot values 0 through 4095.
+Slot ordering uses `OrderInvalid` with `Index`, `ActualInteger` and `PreviousInteger`. Prism versions
+carry `ActualVersion` and `SupportedVersions`. The encoder preserves the first local finding's reason
+and identifiers and attaches every ordered local finding as `Findings`. Decoded key mismatches use
+`SurfacePatchKeyMismatch` with `Patch` and `ExpectedPatch`, rectangle checks use `BoundsInvalid` with
+the patch and dimensions, and the trailing-value guard uses `SurfacePatchTrailingBytes` with the requested
+patch. Other codec schema, byte-budget and decode-local forwarding conversions remain with their later task.
+
 Native metadata adds typed findings beside its unchanged string diagnostics. Compound findings select
 the first failing predicate branch. Missing asset-reference and indoor-span values use `SchemaValueRequired`, nonfinite
 bounds or support-search values use `ValueNonfinite`, finite unordered bounds use `BoundsInvalid`, and

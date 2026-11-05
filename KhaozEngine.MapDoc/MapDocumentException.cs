@@ -102,6 +102,10 @@ public sealed class MapDocumentException : Exception
     public double? ActualNumber { get; init; }
     /// <summary>The refused numeric value, when representable as a signed 64-bit integer.</summary>
     public long? ActualInteger { get; init; }
+    /// <summary>The preceding sequence value, when canonical ordering is checked.</summary>
+    public long? PreviousInteger { get; init; }
+    /// <summary>The submitted text or record discriminant, when checked directly.</summary>
+    public string? ActualText { get; init; }
     /// <summary>The inclusive minimum integer accepted by the checked field.</summary>
     public long? MinimumInteger { get; init; }
     /// <summary>The inclusive maximum integer accepted by the checked field.</summary>
@@ -170,6 +174,10 @@ public sealed class MapDocumentException : Exception
     public string? SpaceId { get; init; }
     /// <summary>The submitted or referenced authored patch, when known.</summary>
     public MapPatchKey? Patch { get; init; }
+    /// <summary>The patch key required by the payload request.</summary>
+    public MapPatchKey? ExpectedPatch { get; init; }
+    /// <summary>The submitted runtime topology record type, when unsupported.</summary>
+    public Type? RecordType { get; init; }
     /// <summary>The actual standalone record anchor found by the guard, when known.</summary>
     public MapPatchKey? ActualAnchor { get; init; }
     /// <summary>The captured mathematical frame submitted by a materialized row.</summary>
@@ -294,6 +302,8 @@ public sealed class MapDocumentException : Exception
         ActualVersion = inner.ActualVersion;
         ActualNumber = inner.ActualNumber;
         ActualInteger = inner.ActualInteger;
+        PreviousInteger = inner.PreviousInteger;
+        ActualText = inner.ActualText;
         MinimumInteger = inner.MinimumInteger;
         MaximumInteger = inner.MaximumInteger;
         EntityId = inner.EntityId;
@@ -327,6 +337,8 @@ public sealed class MapDocumentException : Exception
         RecordId = inner.RecordId;
         SpaceId = inner.SpaceId;
         Patch = inner.Patch;
+        ExpectedPatch = inner.ExpectedPatch;
+        RecordType = inner.RecordType;
         ActualAnchor = inner.ActualAnchor;
         ActualTransform = inner.ActualTransform;
         ExpectedTransform = inner.ExpectedTransform;

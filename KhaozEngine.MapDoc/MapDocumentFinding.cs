@@ -86,6 +86,10 @@ public sealed record MapDocumentFinding(MapDocumentRefusal Reason, string Messag
     public double? ActualNumber { get; init; }
     /// <summary>The refused numeric value, when representable as a signed 64-bit integer.</summary>
     public long? ActualInteger { get; init; }
+    /// <summary>The preceding sequence value, when canonical ordering is checked.</summary>
+    public long? PreviousInteger { get; init; }
+    /// <summary>The submitted text or record discriminant, when checked directly.</summary>
+    public string? ActualText { get; init; }
     /// <summary>The inclusive minimum integer accepted by the checked field.</summary>
     public long? MinimumInteger { get; init; }
     /// <summary>The inclusive maximum integer accepted by the checked field.</summary>
@@ -154,6 +158,10 @@ public sealed record MapDocumentFinding(MapDocumentRefusal Reason, string Messag
     public string? SpaceId { get; init; }
     /// <summary>The submitted or referenced authored patch, when known.</summary>
     public MapPatchKey? Patch { get; init; }
+    /// <summary>The patch key required by the payload request.</summary>
+    public MapPatchKey? ExpectedPatch { get; init; }
+    /// <summary>The submitted runtime topology record type, when unsupported.</summary>
+    public Type? RecordType { get; init; }
     /// <summary>The actual standalone record anchor found by the guard, when known.</summary>
     public MapPatchKey? ActualAnchor { get; init; }
     /// <summary>The captured mathematical frame submitted by a materialized row.</summary>
@@ -257,6 +265,8 @@ public sealed record MapDocumentFinding(MapDocumentRefusal Reason, string Messag
             ActualVersion = error.ActualVersion,
             ActualNumber = error.ActualNumber,
             ActualInteger = error.ActualInteger,
+            PreviousInteger = error.PreviousInteger,
+            ActualText = error.ActualText,
             MinimumInteger = error.MinimumInteger,
             MaximumInteger = error.MaximumInteger,
             EntityId = error.EntityId,
@@ -290,6 +300,8 @@ public sealed record MapDocumentFinding(MapDocumentRefusal Reason, string Messag
             RecordId = error.RecordId,
             SpaceId = error.SpaceId,
             Patch = error.Patch,
+            ExpectedPatch = error.ExpectedPatch,
+            RecordType = error.RecordType,
             ActualAnchor = error.ActualAnchor,
             ActualTransform = error.ActualTransform,
             ExpectedTransform = error.ExpectedTransform,

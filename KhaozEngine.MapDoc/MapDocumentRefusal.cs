@@ -58,6 +58,10 @@ public enum MapDocumentRefusal
     DigestMismatch,
     /// <summary>Refuses an identity repeated within its owning namespace.</summary>
     IdentityDuplicate,
+    /// <summary>Refuses a persisted sequence outside its required canonical ordering.</summary>
+    OrderInvalid,
+    /// <summary>Refuses an operation or record kind unsupported by its editor or codec.</summary>
+    OperationKindUnsupported,
     /// <summary>Refuses a numeric identity above its reserved high-water mark.</summary>
     NumericIdHighWaterExceeded,
     /// <summary>Refuses a referenced resource of a different kind than required.</summary>
@@ -195,6 +199,10 @@ public enum MapDocumentRefusal
     SurfaceSubdivisionInteriorEdge,
     /// <summary>Refuses a forced diagonal incompatible with the cell's diagonal-half rotation.</summary>
     SurfaceForcedTopologyConflict,
+    /// <summary>Refuses a patch payload with values remaining after its root.</summary>
+    SurfacePatchTrailingBytes,
+    /// <summary>Refuses a patch payload whose key differs from the requested key.</summary>
+    SurfacePatchKeyMismatch,
 
     // Foliage JSON converter.
     /// <summary>Refuses a foliage section larger than its UTF-8 byte budget.</summary>

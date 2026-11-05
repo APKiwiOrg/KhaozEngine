@@ -33,12 +33,23 @@ public sealed class PrivateOracleGuardTests
         foreach (string name in Names)
         {
             var env = new Dictionary<string, string?>(full) { [name] = null };
-            Assert.Equal($"missing {name}", Refuse<PrivateOracleInputException>(() => PrivateOracleInputs.Require(env)).Message);
+            PrivateOracleInputException missing = Refuse<PrivateOracleInputException>(() => PrivateOracleInputs.Require(env));
+            Assert.Equal(PrivateOracleInputRefusal.MissingInput, missing.Reason);
+            Assert.Equal(name, missing.InputName);
+            Assert.Null(missing.MismatchCount);
+            Assert.False(File.Exists(full[Names[3]]!));
         }
+        PrivateOracleInputs.Require(full);
+        string digest = full[Names[2]]!;
         full["KHAOZ_R2_ORACLE_PROVENANCE_SHA256"] = new string('0', 64);
         PrivateOracleInputException mismatch = Refuse<PrivateOracleInputException>(() => PrivateOracleInputs.Require(full));
-        Assert.Equal("provenance digest mismatch", mismatch.Message);
+        Assert.Equal(PrivateOracleInputRefusal.ProvenanceDigestMismatch, mismatch.Reason);
+        Assert.Null(mismatch.InputName);
+        Assert.Null(mismatch.MismatchCount);
         Assert.DoesNotContain(root, mismatch.ToString());
+        Assert.False(File.Exists(full[Names[3]]!));
+        full[Names[2]] = digest;
+        PrivateOracleInputs.Require(full);
     });
 
     [Theory, InlineData("missing"), InlineData("garbage")]
@@ -46,9 +57,17 @@ public sealed class PrivateOracleGuardTests
     {
         Dictionary<string, string?> env = PrivateOracleFixtures.SyntheticEnvironment(root, Secret);
         string provenance = env["KHAOZ_R2_ORACLE_PROVENANCE"]!;
+        byte[] original = File.ReadAllBytes(provenance);
         if (fault == "missing") File.Delete(provenance);
         else { File.WriteAllText(provenance, "{" + Secret); env["KHAOZ_R2_ORACLE_PROVENANCE_SHA256"] = AssertFixtures.Sha256(provenance); }
-        Assert.Equal("provenance unreadable", Refuse<PrivateOracleInputException>(() => PrivateOracleInputs.Require(env)).Message);
+        PrivateOracleInputException failure = Refuse<PrivateOracleInputException>(() => PrivateOracleInputs.Require(env));
+        Assert.Equal(PrivateOracleInputRefusal.ProvenanceUnreadable, failure.Reason);
+        Assert.Null(failure.InputName);
+        Assert.Null(failure.MismatchCount);
+        Assert.False(File.Exists(env[Names[3]]!));
+        File.WriteAllBytes(provenance, original);
+        env[Names[2]] = AssertFixtures.Sha256(provenance);
+        PrivateOracleInputs.Require(env);
     });
 
     [Fact]
@@ -58,21 +77,37 @@ public sealed class PrivateOracleGuardTests
         Directory.CreateDirectory(Path.Combine(root, "repo", ".git"));
         Directory.CreateDirectory(Path.Combine(root, "repo", "out"));
         env["KHAOZ_R2_ORACLE_REPORT"] = Path.Combine(root, "repo", "out", "r.json");
-        Assert.Equal("report path inside a git work tree", Refuse<PrivateOracleInputException>(() => PrivateOracleInputs.Require(env)).Message);
+        PrivateOracleInputException inside = Refuse<PrivateOracleInputException>(() => PrivateOracleInputs.Require(env));
+        Assert.Equal(PrivateOracleInputRefusal.ReportInsideWorktree, inside.Reason);
+        Assert.False(File.Exists(env[Names[3]]!));
+        Directory.Delete(Path.Combine(root, "repo", ".git"));
+        PrivateOracleInputs.Require(env);
         string existing = Path.Combine(root, "out", "existing.json");
         File.WriteAllText(existing, "{}");
         env["KHAOZ_R2_ORACLE_REPORT"] = existing;
-        Assert.Equal("report path already exists", Refuse<PrivateOracleInputException>(() => PrivateOracleInputs.Require(env)).Message);
+        PrivateOracleInputException present = Refuse<PrivateOracleInputException>(() => PrivateOracleInputs.Require(env));
+        Assert.Equal(PrivateOracleInputRefusal.ReportAlreadyExists, present.Reason);
+        Assert.Equal("{}", File.ReadAllText(existing));
+        File.Delete(existing);
+        PrivateOracleInputs.Require(env);
     });
 
     [Fact]
-    public void FromEnvironment_ReadsOnlyTheFourNamedVariables()
+    public void FromEnvironment_ReadsOnlyTheFourNamedVariables() => PrivateOracleFixtures.InSecureTemp(root =>
     {
         var asked = new List<string>();
-        Assert.Equal("missing KHAOZ_R2_SHIPPED_SOURCE",
-            Refuse<PrivateOracleInputException>(() => PrivateOracleInputs.FromEnvironment(n => { asked.Add(n); return null; })).Message);
+        PrivateOracleInputException failure = Refuse<PrivateOracleInputException>(() =>
+            PrivateOracleInputs.FromEnvironment(n => { asked.Add(n); return null; }));
+        Assert.Equal(PrivateOracleInputRefusal.MissingInput, failure.Reason);
+        Assert.Equal(Names[0], failure.InputName);
         Assert.Equal(Names, asked);
-    }
+        Dictionary<string, string?> env = PrivateOracleFixtures.SyntheticEnvironment(root, Secret);
+        PrivateOracleInputException unreadable = Refuse<PrivateOracleInputException>(() =>
+            PrivateOracleInputs.FromEnvironment(_ => throw new IOException(Secret)));
+        Assert.Equal(PrivateOracleInputRefusal.ProvenanceUnreadable, unreadable.Reason);
+        Assert.False(File.Exists(env[Names[3]]!));
+        PrivateOracleInputs.FromEnvironment(n => env[n]);
+    });
 
     [Fact]
     public void Report_FailureMessageCarriesOnlyCategoryCountAndDigest() => PrivateOracleFixtures.InSecureTemp(root =>
@@ -84,10 +119,17 @@ public sealed class PrivateOracleGuardTests
         report.Check("vertex", false, "{\"x\":12.5}");
         report.Check("vertex", false, "{\"x\":12.5}");
         PrivateOracleFailure e = Assert.Throws<PrivateOracleFailure>(report.ThrowIfAnyFailed);
-        Assert.Matches("^private oracle: 2 vertex mismatches, report sha256 [0-9a-f]{64}$", e.Message);
+        Assert.Equal(PrivateOracleFailureRefusal.ComparisonMismatches, e.Reason);
+        Assert.Equal("vertex", e.Category);
+        Assert.Equal(2, e.MismatchCount);
+        Assert.Equal(AssertFixtures.Sha256(path), e.ReportSha256);
+        Assert.Null(e.InnerException);
         Assert.DoesNotContain("12.5", e.ToString());
         Assert.Contains("12.5", File.ReadAllText(path));
         Assert.Equal(UnixFileMode.UserRead | UnixFileMode.UserWrite, File.GetUnixFileMode(path));
+        using PrivateOracleReport control = PrivateOracleReport.Open(Path.Combine(root, "out", "passing.json"));
+        control.Check("vertex", true, "{\"x\":12.5}");
+        control.ThrowIfAnyFailed();
     });
 
     [Theory, InlineData("filesystem"), InlineData("json"), InlineData("loader"), InlineData("arithmetic")]
@@ -95,8 +137,13 @@ public sealed class PrivateOracleGuardTests
     {
         Dictionary<string, string?> env = PrivateOracleFixtures.SyntheticEnvironment(root, Secret);
         PrivateOracleFailure e = Refuse<PrivateOracleFailure>(() => PrivateOracleEntry.Run(env, (inputs, _) => PrivateOracleFixtures.Throw(fault, inputs.SourceRoot)));
-        Assert.Matches("^private oracle: exception failure, report sha256 [0-9a-f]{64}$", e.Message);
+        Assert.Equal(PrivateOracleFailureRefusal.ExecutionFailed, e.Reason);
+        Assert.Null(e.Category);
+        Assert.Null(e.MismatchCount);
+        Assert.Equal(AssertFixtures.Sha256(env[Names[3]]!), e.ReportSha256);
         Assert.Contains(Secret, File.ReadAllText(env["KHAOZ_R2_ORACLE_REPORT"]!));
+        File.Delete(env[Names[3]]!);
+        PrivateOracleEntry.Run(env, (_, _) => { });
     });
 
     [Fact]
@@ -105,10 +152,16 @@ public sealed class PrivateOracleGuardTests
         Dictionary<string, string?> env = PrivateOracleFixtures.SyntheticEnvironment(root, Secret);
         File.SetUnixFileMode(Path.Combine(root, "out"), UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute | UnixFileMode.GroupRead | UnixFileMode.GroupExecute);
         bool ran = false;
-        Assert.Equal("private oracle: report could not be created securely",
-            Refuse<PrivateOracleFailure>(() => PrivateOracleEntry.Run(env, (_, _) => ran = true)).Message);
+        PrivateOracleFailure failure = Refuse<PrivateOracleFailure>(() => PrivateOracleEntry.Run(env, (_, _) => ran = true));
+        Assert.Equal(PrivateOracleFailureRefusal.SecureReportUnavailable, failure.Reason);
+        Assert.Null(failure.Category);
+        Assert.Null(failure.MismatchCount);
+        Assert.Null(failure.ReportSha256);
         Assert.False(ran);
         Assert.False(File.Exists(env["KHAOZ_R2_ORACLE_REPORT"]!));
+        File.SetUnixFileMode(Path.Combine(root, "out"), PrivateOracleFixtures.SecureDirectoryMode);
+        PrivateOracleEntry.Run(env, (_, _) => ran = true);
+        Assert.True(ran);
     });
 
     [Fact]
@@ -118,11 +171,14 @@ public sealed class PrivateOracleGuardTests
         string report = env[Names[3]]!;
         string target = Path.Combine(root, "out", "absent.json");
         File.CreateSymbolicLink(report, target);
-        Assert.Equal("report path already exists",
-            Refuse<PrivateOracleInputException>(() => PrivateOracleInputs.Require(env)).Message);
-        Assert.Equal(PrivateOracleReport.SecureFailure,
-            Refuse<PrivateOracleFailure>(() => { using var unused = PrivateOracleReport.Open(report); }).Message);
+        PrivateOracleInputException present = Refuse<PrivateOracleInputException>(() => PrivateOracleInputs.Require(env));
+        Assert.Equal(PrivateOracleInputRefusal.ReportAlreadyExists, present.Reason);
+        PrivateOracleFailure unsafeReport = Refuse<PrivateOracleFailure>(() => { using var unused = PrivateOracleReport.Open(report); });
+        Assert.Equal(PrivateOracleFailureRefusal.SecureReportUnavailable, unsafeReport.Reason);
+        Assert.Null(unsafeReport.ReportSha256);
         Assert.False(File.Exists(target));
+        File.Delete(report);
+        PrivateOracleEntry.Run(env, (_, _) => { });
     });
 
     [Fact]
@@ -144,25 +200,39 @@ public sealed class PrivateOracleGuardTests
     });
 
     [Theory]
-    [InlineData("missing")]
-    [InlineData("extra")]
-    [InlineData("modified")]
-    [InlineData("symlink")]
-    public void Require_RefusesChangedSourceWithoutEchoingNames(string change) => PrivateOracleFixtures.InSecureTemp(root =>
+    [InlineData("missing", 1)]
+    [InlineData("extra", 1)]
+    [InlineData("modified", 1)]
+    [InlineData("symlink", 1)]
+    [InlineData("modified-and-extra", 2)]
+    [InlineData("invalid-root", 1)]
+    public void Require_RefusesChangedSourceWithoutEchoingNames(string change, int mismatches) => PrivateOracleFixtures.InSecureTemp(root =>
     {
         Dictionary<string, string?> env = PrivateOracleFixtures.SyntheticEnvironment(root, Secret);
         string source = env[Names[0]]!;
         string file = Path.Combine(source, "region.txt");
+        byte[] original = File.ReadAllBytes(file);
         switch (change)
         {
             case "missing": File.Delete(file); break;
             case "extra": File.WriteAllText(Path.Combine(source, Secret), "extra"); break;
             case "modified": File.AppendAllText(file, Secret); break;
             case "symlink": File.CreateSymbolicLink(Path.Combine(source, Secret), file); break;
+            case "modified-and-extra":
+                File.AppendAllText(file, Secret);
+                File.WriteAllText(Path.Combine(source, Secret), "extra");
+                break;
+            case "invalid-root": env[Names[0]] = source + '\0' + Secret; break;
         }
-        Assert.Equal("source verification failed: 1 files",
-            Refuse<PrivateOracleInputException>(() => PrivateOracleInputs.Require(env)).Message);
+        PrivateOracleInputException failure = Refuse<PrivateOracleInputException>(() => PrivateOracleInputs.Require(env));
+        Assert.Equal(PrivateOracleInputRefusal.SourceVerificationFailed, failure.Reason);
+        Assert.Equal(mismatches, failure.MismatchCount);
+        Assert.Null(failure.InputName);
         Assert.False(File.Exists(env[Names[3]]!));
+        if (change is "extra" or "symlink" or "modified-and-extra") File.Delete(Path.Combine(source, Secret));
+        if (change is "missing" or "modified" or "modified-and-extra") File.WriteAllBytes(file, original);
+        env[Names[0]] = source;
+        PrivateOracleInputs.Require(env);
     });
 
     [Theory]
@@ -175,6 +245,7 @@ public sealed class PrivateOracleGuardTests
     {
         Dictionary<string, string?> env = PrivateOracleFixtures.SyntheticEnvironment(root, Secret);
         string file = env[Names[1]]!;
+        byte[] original = File.ReadAllBytes(file);
         JsonObject json = JsonNode.Parse(File.ReadAllText(file))!.AsObject();
         switch (change)
         {
@@ -192,8 +263,12 @@ public sealed class PrivateOracleGuardTests
         }
         File.WriteAllText(file, json.ToJsonString());
         env[Names[2]] = AssertFixtures.Sha256(file);
-        Assert.Equal("provenance unreadable",
-            Refuse<PrivateOracleInputException>(() => PrivateOracleInputs.Require(env)).Message);
+        PrivateOracleInputException failure = Refuse<PrivateOracleInputException>(() => PrivateOracleInputs.Require(env));
+        Assert.Equal(PrivateOracleInputRefusal.ProvenanceUnreadable, failure.Reason);
+        Assert.False(File.Exists(env[Names[3]]!));
+        File.WriteAllBytes(file, original);
+        env[Names[2]] = AssertFixtures.Sha256(file);
+        PrivateOracleInputs.Require(env);
     });
 
     [Fact]

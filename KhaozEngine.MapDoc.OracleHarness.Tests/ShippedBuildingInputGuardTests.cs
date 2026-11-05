@@ -94,7 +94,8 @@ public sealed class ShippedBuildingInputGuardTests
         Assert.Equal(PrivateOracleFixtures.SecureDirectoryMode, File.GetUnixFileMode(Path.GetDirectoryName(reportPath)!));
         Assert.Equal(UnixFileMode.UserRead | UnixFileMode.UserWrite, File.GetUnixFileMode(reportPath));
         Assert.Contains("independent-heads", File.ReadAllText(reportPath));
-        Assert.Throws<PrivateOracleInputException>(() => PrivateOracleInputs.Require(fixture.Environment));
+        var existing = Assert.Throws<PrivateOracleInputException>(() => PrivateOracleInputs.Require(fixture.Environment));
+        Assert.Equal(PrivateOracleInputRefusal.ReportAlreadyExists, existing.Reason);
     }
 
     [Fact]
@@ -165,7 +166,10 @@ public sealed class ShippedBuildingInputGuardTests
         Assert.Contains(category, compared.Failures);
         Assert.Null(failure.InnerException);
         Assert.DoesNotContain(ShippedBuildingGuardFixtures.PublicSecretMarker, failure.ToString());
-        Assert.Contains("building-parity", failure.Message);
+        Assert.Equal(PrivateOracleFailureRefusal.ComparisonMismatches, failure.Reason);
+        Assert.Equal("building-parity", failure.Category);
+        Assert.Equal(1, failure.MismatchCount);
+        Assert.Equal(AssertFixtures.Sha256(fixture.Environment["KHAOZ_R2_ORACLE_REPORT"]!), failure.ReportSha256);
         Assert.Contains("failures", File.ReadAllText(fixture.Environment["KHAOZ_R2_ORACLE_REPORT"]!));
     }
     [Theory]
@@ -226,12 +230,15 @@ public sealed class ShippedBuildingInputGuardTests
             native.Vertices[native.Indices[i * 3 + 2]] - native.Vertices[native.Indices[i * 3]]))).ToArray();
         Assert.Equal(new[] { -Vector3.UnitX, Vector3.UnitX, -Vector3.UnitY, Vector3.UnitY, -Vector3.UnitZ, Vector3.UnitZ }, normals);
         ShippedBuildingReport? compared = null;
-        Assert.Throws<PrivateOracleFailure>(() => PrivateOracleEntry.Run(fixture.Environment, (i, report) =>
+        var failure = Assert.Throws<PrivateOracleFailure>(() => PrivateOracleEntry.Run(fixture.Environment, (i, report) =>
         {
             compared = ShippedBuildingComparison.Compare(ShippedBuildingInputs.Read(i));
             report.Record("buildings", compared.DetailJson);
             report.Check("building-parity", compared.Failures.Count == 0, compared.DetailJson);
         }));
+        Assert.Equal(PrivateOracleFailureRefusal.ComparisonMismatches, failure.Reason);
+        Assert.Equal("building-parity", failure.Category);
+        Assert.Equal(1, failure.MismatchCount);
         Assert.True(compared is not null, File.ReadAllText(fixture.Environment["KHAOZ_R2_ORACLE_REPORT"]!));
         Assert.Contains(compared.Failures, category => category.StartsWith("physical-collider", StringComparison.Ordinal));
     }

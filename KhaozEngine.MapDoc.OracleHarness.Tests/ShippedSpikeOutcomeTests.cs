@@ -3,6 +3,7 @@ using System.IO;
 using System.Linq;
 using System.Runtime.Versioning;
 using System.Text.Json;
+using KhaozEngine.Tests.MapDoc;
 using KhaozEngine.TileWorld;
 using Xunit;
 
@@ -20,7 +21,10 @@ public sealed class ShippedSpikeOutcomeTests
     {
         Dictionary<string, string?> env = Environment(root, new { policy = "exact" });
         PrivateOracleFailure e = Assert.Throws<PrivateOracleFailure>(() => PrivateOracleEntry.Run(env, CompareAll));
-        Assert.Matches("^private oracle: 1 spike-point-named mismatches, report sha256 [0-9a-f]{64}$", e.Message);
+        Assert.Equal(PrivateOracleFailureRefusal.ComparisonMismatches, e.Reason);
+        Assert.Equal("spike-point-named", e.Category);
+        Assert.Equal(1, e.MismatchCount);
+        Assert.Equal(AssertFixtures.Sha256(env["KHAOZ_R2_ORACLE_REPORT"]!), e.ReportSha256);
         Assert.DoesNotContain(Secret, e.ToString());
         Assert.Single(Lines(env, "spike-point-named"));
         Assert.Empty(Lines(env, "spike-point"));
@@ -46,7 +50,10 @@ public sealed class ShippedSpikeOutcomeTests
     {
         Dictionary<string, string?> env = Environment(root, new { spikePoint = new { worldX = "east" } });
         PrivateOracleFailure e = Assert.Throws<PrivateOracleFailure>(() => PrivateOracleEntry.Run(env, CompareAll));
-        Assert.Matches("^private oracle: exception failure, report sha256 [0-9a-f]{64}$", e.Message);
+        Assert.Equal(PrivateOracleFailureRefusal.ExecutionFailed, e.Reason);
+        Assert.Null(e.Category);
+        Assert.Null(e.MismatchCount);
+        Assert.Equal(AssertFixtures.Sha256(env["KHAOZ_R2_ORACLE_REPORT"]!), e.ReportSha256);
         Assert.Empty(Lines(env, "spike-point"));
     });
 

@@ -33,8 +33,9 @@ internal static class PrivateOracleEntry
                 report.Dispose();
                 digest = report.Sha256;
             }
-            catch (Exception) { throw new PrivateOracleFailure(PrivateOracleReport.SecureFailure); }
-            throw new PrivateOracleFailure($"private oracle: exception failure, report sha256 {digest}");
+            catch (Exception) { throw new PrivateOracleFailure(PrivateOracleFailureRefusal.SecureReportUnavailable, PrivateOracleReport.SecureFailure); }
+            throw new PrivateOracleFailure(PrivateOracleFailureRefusal.ExecutionFailed, $"private oracle: exception failure, report sha256 {digest}")
+                { ReportSha256 = digest };
         }
         report.ThrowIfAnyFailed();
     }

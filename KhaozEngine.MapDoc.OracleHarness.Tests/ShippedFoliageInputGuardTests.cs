@@ -6,6 +6,7 @@ using System.Runtime.Versioning;
 using System.Text.Json;
 using KhaozEngine.MapDoc.Foliage;
 using KhaozEngine.Terrain;
+using KhaozEngine.Tests.MapDoc;
 using KhaozEngine.TileWorld;
 using Xunit;
 using static KhaozEngine.Tests.MapDocOracle.ShippedFoliageGuardFixtures;
@@ -108,7 +109,11 @@ public sealed class ShippedFoliageInputGuardTests
         Assert.Contains(category, Categories(fixture));
         Assert.Null(failure.InnerException);
         Assert.DoesNotContain(fixture.PublicSecretMarker, publicFailureMessage);
-        Assert.Matches("^private oracle: [0-9]+ [a-z0-9-]+ mismatches, report sha256 [0-9a-f]{64}$", failure.Message);
+        Assert.Equal(PrivateOracleFailureRefusal.ComparisonMismatches, failure.Reason);
+        Assert.NotNull(failure.Category);
+        Assert.Contains(failure.Category, Categories(fixture));
+        Assert.Equal(1, failure.MismatchCount);
+        Assert.Equal(AssertFixtures.Sha256(Report(fixture)), failure.ReportSha256);
         Assert.Equal(UnixFileMode.UserRead | UnixFileMode.UserWrite, File.GetUnixFileMode(Report(fixture)));
     }
 
@@ -117,15 +122,17 @@ public sealed class ShippedFoliageInputGuardTests
     {
         using (var fixture = Create("changed-byte"))
         {
-            Assert.Throws<PrivateOracleFailure>(() => PrivateOracleEntry.Run(fixture.Environment, (inputs, report) =>
+            var failure = Assert.Throws<PrivateOracleFailure>(() => PrivateOracleEntry.Run(fixture.Environment, (inputs, report) =>
                 ShippedFoliageComparison.Compare(ShippedFoliageInputs.Read(inputs), report)));
+            Assert.Equal(PrivateOracleFailureRefusal.ComparisonMismatches, failure.Reason);
             IReadOnlyList<string> changedByteCategories = Categories(fixture);
             Assert.Contains("foliage-byte", changedByteCategories);
         }
         using (var fixture = Create("changed-decision"))
         {
-            Assert.Throws<PrivateOracleFailure>(() => PrivateOracleEntry.Run(fixture.Environment, (inputs, report) =>
+            var failure = Assert.Throws<PrivateOracleFailure>(() => PrivateOracleEntry.Run(fixture.Environment, (inputs, report) =>
                 ShippedFoliageComparison.Compare(ShippedFoliageInputs.Read(inputs), report)));
+            Assert.Equal(PrivateOracleFailureRefusal.ComparisonMismatches, failure.Reason);
             IReadOnlyList<string> changedDecisionCategories = Categories(fixture);
             Assert.Contains("foliage-decision", changedDecisionCategories);
             Assert.DoesNotContain("foliage-byte", changedDecisionCategories);

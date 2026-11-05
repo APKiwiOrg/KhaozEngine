@@ -12167,6 +12167,11 @@ for payload/storage ceilings, compatibility owner fallback, paint tie-break, typ
 cosmetic and never join statics, navigation captures or world bounds. Interactive painting stays R9, complete verb
 parity stays R10, actual import/source acceptance stays R11/G2 and appearance stays R8/G3. The
 [private harness](../KhaozEngine.MapDoc.OracleHarness.Tests/README.md) owns its test-only dependency boundary.
+Its internal input and execution exceptions require `PrivateOracleInputRefusal` and
+`PrivateOracleFailureRefusal` reasons. Guard callers inspect `Reason` and only the documented safe
+input name, mismatch count, fixed comparison category and secure report digest. Private paths, input
+values, coordinates and original exceptions remain behind the entry boundary. These types are not
+engine consumer APIs. See the [sanitized refusal contract](../KhaozEngine.MapDoc.OracleHarness.Tests/README.md#sanitized-refusals).
 
 ### Free buildings and effective resources
 

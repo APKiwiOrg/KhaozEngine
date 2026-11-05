@@ -75,6 +75,35 @@ including dangling links. Parent directory links are resolved before containment
 Missing or mismatched private inputs fail, never skip. Actual private source
 selection, extraction and execution belong to the controller's separate acceptance step.
 
+### Sanitized refusals
+
+`PrivateOracleInputException` and `PrivateOracleFailure` are internal to this non-packable harness.
+Every constructor requires its family's reason. Their messages remain prose, and guards assert
+`Reason` and the safe members below. Neither type accepts a private inner exception. Source paths,
+coordinates, input values, provenance digests and original exception objects stay behind the entry
+boundary. `InputName` is only one of the four static variable names above. `ReportSha256` identifies
+the completed secure report, never the source or provenance content.
+
+| Family | Reason | Refused input or failure | Safe members |
+|---|---|---|---|
+| `PrivateOracleInputRefusal` | `MissingInput` | A required input is absent or blank | `InputName` |
+| `PrivateOracleInputRefusal` | `ProvenanceDigestMismatch` | Provenance bytes differ from the supplied digest | None |
+| `PrivateOracleInputRefusal` | `ProvenanceUnreadable` | Input reading, provenance parsing or path admission failed | None |
+| `PrivateOracleInputRefusal` | `ReportAlreadyExists` | The report path already names a file, directory or link | None |
+| `PrivateOracleInputRefusal` | `ReportInsideWorktree` | The report destination is inside a git worktree | None |
+| `PrivateOracleInputRefusal` | `SourceVerificationFailed` | Source verification or catalog attestation failed | `MismatchCount` |
+| `PrivateOracleFailureRefusal` | `ComparisonMismatches` | A comparison category failed | `Category`, `MismatchCount`, `ReportSha256` |
+| `PrivateOracleFailureRefusal` | `ExecutionFailed` | The body threw and its details were written securely | `ReportSha256` |
+| `PrivateOracleFailureRefusal` | `SecureReportUnavailable` | Secure report creation, completion or digest reading failed | None |
+
+Members not applicable to a reason are null. A comparison refusal carries the first failing category
+and the number of failed `Check` calls for that category, rather than any count nested in its private
+details. A source verification refusal carries only its mismatch count, never the source file names.
+The closed-report `Record` lifetime check remains `ObjectDisposedException` with its object name.
+Public guard runs select only `PrivateOracleGuardTests`, `ShippedBuildingInputGuardTests`,
+`ShippedFoliageInputGuardTests`, `ShippedMarkerInputGuardTests` and `ShippedSpikeOutcomeTests` through
+explicit fully qualified name filters. They never enable private comparison or recording inputs.
+
 ## Exhaustive terrain comparison
 
 `ShippedTerrainComparisonTests` enters through `PrivateOracleEntry.Run`. `ShippedSourceInventory.ReadRegions`

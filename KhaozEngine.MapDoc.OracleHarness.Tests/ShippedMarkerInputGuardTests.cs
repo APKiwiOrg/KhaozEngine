@@ -6,6 +6,7 @@ using System.Runtime.Versioning;
 using System.Text.Json;
 using KhaozEngine.MapDoc;
 using KhaozEngine.MapDoc.Prefabs;
+using KhaozEngine.Tests.MapDoc;
 using KhaozEngine.TileWorld;
 using KhaozEngine.TileWorld.Netcode;
 using KhaozEngine.TileWorld.Physics;
@@ -105,7 +106,10 @@ public sealed class ShippedMarkerInputGuardTests
         Assert.Contains(category, compared.Failures);
         Assert.Null(failure.InnerException);
         Assert.DoesNotContain(fixture.PublicSecretMarker, failure.ToString());
-        Assert.Matches("^private oracle: [0-9]+ marker-parity mismatches, report sha256 [0-9a-f]{64}$", failure.Message);
+        Assert.Equal(PrivateOracleFailureRefusal.ComparisonMismatches, failure.Reason);
+        Assert.Equal("marker-parity", failure.Category);
+        Assert.Equal(1, failure.MismatchCount);
+        Assert.Equal(AssertFixtures.Sha256(fixture.ReportPath), failure.ReportSha256);
         Assert.Contains("failures", File.ReadAllText(fixture.ReportPath));
         Assert.Equal(UnixFileMode.UserRead | UnixFileMode.UserWrite, File.GetUnixFileMode(fixture.ReportPath));
     }

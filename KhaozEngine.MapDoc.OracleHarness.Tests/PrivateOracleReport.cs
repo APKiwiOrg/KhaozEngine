@@ -8,8 +8,6 @@ using System.Text.Json;
 
 namespace KhaozEngine.Tests.MapDocOracle;
 
-internal sealed class PrivateOracleFailure(string message) : Exception(message);
-
 [UnsupportedOSPlatform("windows")]
 internal sealed class PrivateOracleReport : IDisposable
 {
@@ -31,14 +29,14 @@ internal sealed class PrivateOracleReport : IDisposable
         FileStream? stream = null;
         try
         {
-            if (OperatingSystem.IsWindows()) throw new PrivateOracleFailure(SecureFailure);
+            if (OperatingSystem.IsWindows()) throw new PrivateOracleFailure(PrivateOracleFailureRefusal.SecureReportUnavailable, SecureFailure);
             path = PrivateOraclePaths.CanonicalReportPath(path);
-            if (new FileInfo(path).LinkTarget is not null) throw new PrivateOracleFailure(SecureFailure);
+            if (new FileInfo(path).LinkTarget is not null) throw new PrivateOracleFailure(PrivateOracleFailureRefusal.SecureReportUnavailable, SecureFailure);
             string parent = Path.GetDirectoryName(path)!;
             const UnixFileMode parentMode = UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute;
             const UnixFileMode fileMode = UnixFileMode.UserRead | UnixFileMode.UserWrite;
             if (!Directory.Exists(parent) || File.GetUnixFileMode(parent) != parentMode)
-                throw new PrivateOracleFailure(SecureFailure);
+                throw new PrivateOracleFailure(PrivateOracleFailureRefusal.SecureReportUnavailable, SecureFailure);
             stream = new FileStream(path, new FileStreamOptions
             {
                 Mode = FileMode.CreateNew,
@@ -46,14 +44,14 @@ internal sealed class PrivateOracleReport : IDisposable
                 Share = FileShare.Read,
                 UnixCreateMode = fileMode,
             });
-            if (File.GetUnixFileMode(path) != fileMode) throw new PrivateOracleFailure(SecureFailure);
+            if (File.GetUnixFileMode(path) != fileMode) throw new PrivateOracleFailure(PrivateOracleFailureRefusal.SecureReportUnavailable, SecureFailure);
             return new(path, new StreamWriter(stream, new UTF8Encoding(false)));
         }
         catch (Exception)
         {
             try { stream?.Dispose(); }
             catch (Exception) { }
-            throw new PrivateOracleFailure(SecureFailure);
+            throw new PrivateOracleFailure(PrivateOracleFailureRefusal.SecureReportUnavailable, SecureFailure);
         }
     }
 
@@ -78,7 +76,14 @@ internal sealed class PrivateOracleReport : IDisposable
         if (_failureOrder.Count == 0) return;
         string category = _failureOrder[0];
         Dispose();
-        throw new PrivateOracleFailure($"private oracle: {_failed[category]} {category} mismatches, report sha256 {Sha256}");
+        string digest = Sha256;
+        throw new PrivateOracleFailure(PrivateOracleFailureRefusal.ComparisonMismatches,
+            $"private oracle: {_failed[category]} {category} mismatches, report sha256 {digest}")
+        {
+            Category = category,
+            MismatchCount = _failed[category],
+            ReportSha256 = digest,
+        };
     }
 
     internal string Sha256
@@ -91,7 +96,7 @@ internal sealed class PrivateOracleReport : IDisposable
                 using FileStream stream = File.OpenRead(_path);
                 return Convert.ToHexStringLower(SHA256.HashData(stream));
             }
-            catch (Exception) { throw new PrivateOracleFailure(SecureFailure); }
+            catch (Exception) { throw new PrivateOracleFailure(PrivateOracleFailureRefusal.SecureReportUnavailable, SecureFailure); }
         }
     }
 
@@ -99,7 +104,7 @@ internal sealed class PrivateOracleReport : IDisposable
     {
         if (_closed) return;
         try { _writer.Dispose(); }
-        catch (Exception) { throw new PrivateOracleFailure(SecureFailure); }
+        catch (Exception) { throw new PrivateOracleFailure(PrivateOracleFailureRefusal.SecureReportUnavailable, SecureFailure); }
         finally { _closed = true; }
     }
 

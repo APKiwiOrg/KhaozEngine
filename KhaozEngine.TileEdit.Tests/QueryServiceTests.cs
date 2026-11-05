@@ -313,7 +313,9 @@ public class QueryServiceTests
 
         ArgumentOutOfRangeException ex = Assert.Throws<ArgumentOutOfRangeException>(() =>
             f.Query.IsWalkable(0, 0, 9));
-        Assert.Contains("0..3", ex.Message, StringComparison.Ordinal);
+        Assert.Equal("plane", ex.ParamName);
+        Assert.Equal(9, ex.ActualValue);
+        Assert.Null(Record.Exception(() => f.Query.IsWalkable(0, 0, 3)));
 
         Assert.Throws<ArgumentOutOfRangeException>(() => f.Query.CollisionAt(0, 0, 9));
         Assert.Throws<ArgumentOutOfRangeException>(() => f.Query.Path(0, 0, 1, 1, 9));

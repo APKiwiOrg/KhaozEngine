@@ -257,8 +257,12 @@ public class MutationServiceTests
         // every point and report a successful placement of nothing.
         ArgumentOutOfRangeException ex = Assert.Throws<ArgumentOutOfRangeException>(
             () => f.Mutate.ObjectScatter("tree", new TileRect(20, 20, 8, 8), 9, 3, 1, seed: 7));
-        Assert.Contains("0..3", ex.Message, StringComparison.Ordinal);
+        Assert.Equal("plane", ex.ParamName);
+        Assert.Equal(9, ex.ActualValue);
         Assert.Empty(f.Query.ObjectFind(archetypeId: "tree"));
+
+        // The top plane of the four is in range, so the same scatter there is not refused.
+        Assert.Null(Record.Exception(() => f.Mutate.ObjectScatter("tree", new TileRect(20, 20, 8, 8), 3, 3, 1, seed: 7)));
     }
 
     [Fact]

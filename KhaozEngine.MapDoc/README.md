@@ -1412,6 +1412,8 @@ adapters continue reporting prose until all of their producing rules carry typed
 | `AssetCollisionNestedMesh` | A triangle mesh nested in a compound collider | `AssetId`, `ResourceId` |
 | `SchemaEnumUnsupported` | An undefined prefab enumeration value | `EnumType`, `ActualInteger`, `FieldPath`, `EntityId`, `ChildKind` |
 | `AuthoredReferenceKindInvalid` | A local light owner, roof inventory, roof room or roof group reference of the wrong child kind | `EntityId`, `ChildKind`, `FieldPath`, `SubjectKind` |
+| `PrefabAssetPinMismatch` | A live instance digest differing from its verified prefab resource pin | `InstanceId`, `ResourceId`, `ExpectedHash` from the instance, `ActualHash` from the closure, `ExpectedResourceKind`, `ActualResourceKind` |
+| `PrefabAddedChildExists` | An add override repeating a declared child | `InstanceId`, `Child` |
 | `PrefabPayloadIdMismatch` | A child key differing from its payload identity or kind | `Child` for the submitted key, `EntityId` for the payload identity, `ChildKind` and `SubjectKind` for the payload kind, `FieldPath` |
 | `PrefabPlacementTransformDuplicated` | A placement child with an additional local transform | `Child`, `FieldPath` |
 | `PrefabLocalAnchorInvalid` | A record anchor whose surface slot is not Local | `Child`, `RecordId`, `FieldPath` |
@@ -1442,8 +1444,21 @@ An implicit child collision uses `IdentityDuplicate`, with `Child`, `EntityId`, 
 `EntityId` and `ChildKind`. Leaf water
 material kind uses `ReferenceKindMismatch`, with `ResourceId`, both resource kinds and `Child`.
 An undeclared leaf dependency uses `ReferenceMissing`, `ResourceId` and `SubjectKind` `prefab dependency`.
-Prefab document validation still projects prose and its aggregate adapter retains its existing
-constructor until every producing rule has typed findings.
+Prefab validation adds immutable typed findings beside its unchanged string diagnostics in internal
+collectors. A typed exception contributes all its identifier context, or its existing ordered findings.
+Legacy failures keep their prose without an invented reason. `AttachmentKind` distinguishes the typed
+attachment namespace on a child-kind refusal. The shared source-context copy preserves it too.
+The aggregate document adapter retains its existing constructor until every producing rule has typed findings.
+
+Prefab resolver admission distinguishes a missing identity (`SchemaValueRequired`), an unsupported
+identity payload (`SchemaPayloadVersionUnsupported`) and an incompatible resolver or support recipe
+(`ResolverContractMismatch`). Set, expansion, building and storey payload versions identify their actual
+field and supported version 1. A missing storey owner uses `ReferenceMissing` with `InstanceId` and
+`EntityId`. Missing bindings name the required `Child` and `InstanceId`. Liveness and source-inventory
+mismatches use `AuthoredOwnershipMismatch` with `WorldId` when known. Transfer counts use
+`ActualCount` and `ExpectedCount`, zero for a dormant source and exactly one for a transferred child.
+Precise binary64 poses use the same first-failed-field scalar rules as float poses. Malformed digest
+representation uses `DigestMalformed` with the submitted `ActualHash` rather than parsing the message.
 
 Manifest source-unit scales must be finite and strictly positive. A nonfinite scale leaves `ActualNumber`
 and `MinimumNumber` null. A finite nonpositive scale carries `ActualNumber` and `MinimumNumber` 0,
@@ -1499,7 +1514,7 @@ marker authoring rules and other aggregate validation adapters retain their exis
 all of their producing rules are typed.
 
 `MapDocumentFinding` is an immutable record with `Reason`, developer prose in `Message` and the same
-typed context. Resolver and native-metadata diagnostic producers retain these findings beside the existing string API's
+typed context. Resolver, native-metadata and prefab diagnostic producers retain these findings beside the existing string API's
 prose projection. `MapDocumentException.Findings` can carry the full ordered finding list as an owned
 read-only snapshot. Neither a change to the input list nor a cast of the exposed collection can change
 that snapshot. A source wrapper using the source-copy method preserves the reason, all identifiers and the

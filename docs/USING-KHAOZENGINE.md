@@ -12631,8 +12631,21 @@ radius and scale. Nonfinite prefab scalars use `ValueNonfinite` and retain the f
 Surface ownership differs from an embedded record count. The former uses `AuthoredOwnershipMismatch`
 with `Child`, `SurfaceId` and `Patch`, the latter `SchemaArrayLengthMismatch` with `ActualCount` and
 `ExpectedCount` 0. Leaf material kind and undeclared dependency refusals carry `ResourceId` through
-`ReferenceKindMismatch` and `ReferenceMissing`. Prefab document aggregate adapters continue reporting
-prose until all their producing rules carry typed findings.
+`ReferenceKindMismatch` and `ReferenceMissing`.
+
+Live prefab instance pin refusals distinguish a wrong kind (`ReferenceKindMismatch`) from a digest pin
+mismatch (`PrefabAssetPinMismatch`). Both retain `InstanceId`, `ResourceId`, expected and actual kinds,
+and `ExpectedHash` from the instance versus `ActualHash` from the verified closure. An add override
+repeating a declared child uses `PrefabAddedChildExists` and its `Child`. Source binding ownership
+refusals carry `InstanceId`, `Child` and known `WorldId`, plus `ActualCount` and `ExpectedCount` where
+a transfer count is checked. An incompatible attachment child also carries its typed `AttachmentKind`.
+
+Internal prefab validation collectors preserve typed findings alongside the unchanged string results.
+Each finding copies the full identifier context, including owned collection snapshots. Untyped failures
+keep their prose. Missing resolver identity, unsupported payload and incompatible resolver/recipe
+branches retain their own reasons. Precise poses retain their first failed component and value, and
+malformed digests retain `ActualHash`. Aggregate document adapters still report prose until every
+producing rule has typed findings.
 
 **Whole authored surface identity.** Scheme 2, new in 20.30.0, is the resolver-2 whole-document identity. Resolver-2
 documents use `MapAuthoredIdentityV2` from `KhaozEngine.MapDoc.Identity`, with an explicitly verified

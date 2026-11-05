@@ -127,15 +127,15 @@ public sealed class MapDocumentException : Exception
     public MapPatchKey? Patch { get; init; }
     /// <summary>The actual standalone record anchor found by the guard, when known.</summary>
     public MapPatchKey? ActualAnchor { get; init; }
-    /// <summary>The standalone owner count measured by the guard.</summary>
+    /// <summary>The count measured by the guard.</summary>
     public long? ActualCount { get; init; }
-    /// <summary>The exact standalone owner count required by the guard.</summary>
+    /// <summary>The exact count required by the guard.</summary>
     public long? ExpectedCount { get; init; }
     /// <summary>The transferred numeric identity required of its standalone placement, when present.</summary>
     public long? ExpectedNumericId { get; init; }
     /// <summary>The resource, descriptor or surface semantic digest required by its pin, when known.</summary>
     public string? ExpectedHash { get; init; }
-    /// <summary>The resource, descriptor or surface semantic digest compared with its pin, when known.</summary>
+    /// <summary>The compared digest, or the submitted digest when its representation is malformed.</summary>
     public string? ActualHash { get; init; }
 
     /// <summary>The digest domain checked by the guard, such as resource bytes.</summary>
@@ -148,6 +148,9 @@ public sealed class MapDocumentException : Exception
     public string? StoragePath { get; init; }
     /// <summary>The explicit storage form whose writer owns the refused path.</summary>
     public MapDocumentForm? DocumentForm { get; init; }
+
+    /// <summary>The attachment namespace whose child or identity rule was refused.</summary>
+    public MapPrefabAttachmentKind? AttachmentKind { get; init; }
 
     /// <summary>The enumeration type whose submitted numeric value is undefined.</summary>
     public Type? EnumType { get; init; }
@@ -250,6 +253,7 @@ public sealed class MapDocumentException : Exception
         ExpectedSchema = inner.ExpectedSchema;
         StoragePath = inner.StoragePath;
         DocumentForm = inner.DocumentForm;
+        AttachmentKind = inner.AttachmentKind;
         EnumType = inner.EnumType;
         Uri = inner.Uri;
         ShapeType = inner.ShapeType;

@@ -59,11 +59,16 @@ public sealed class MapDocumentExceptionTests
     {
         string[] source = ["a", "b"];
         var refusal = new MapDocumentException(MapDocumentRefusal.AssetDependencyCycle, "cycle") { ResourceIds = source };
+        var finding = new MapDocumentFinding(MapDocumentRefusal.AssetDependencyCycle, "cycle") { ResourceIds = source };
         source[0] = "changed";
         Assert.Equal(new[] { "a", "b" }, refusal.ResourceIds);
         if (refusal.ResourceIds is IList<string> list)
             Assert.Throws<NotSupportedException>(() => list[0] = "changed");
         Assert.Equal(new[] { "a", "b" }, refusal.ResourceIds);
+        Assert.Equal(new[] { "a", "b" }, finding.ResourceIds);
+        if (finding.ResourceIds is IList<string> findingList)
+            Assert.Throws<NotSupportedException>(() => findingList[0] = "changed");
+        Assert.Equal(new[] { "a", "b" }, finding.ResourceIds);
     }
 
     [Theory]
@@ -93,6 +98,30 @@ public sealed class MapDocumentExceptionTests
             !Matches(p.GetValue(refusal), p.GetValue(named))).Select(p => p.Name));
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void Validation_finding_projection_preserves_every_identifier_and_leaves_legacy_refusals_untyped(bool legacy)
+    {
+        PropertyInfo[] identifiers = typeof(MapDocumentException)
+            .GetProperties(BindingFlags.Public | BindingFlags.Instance | BindingFlags.DeclaredOnly)
+            .Where(p => p.CanWrite && p.Name != nameof(MapDocumentException.Findings)).ToArray();
+        Assert.NotEmpty(identifiers);
+        Assert.Empty(identifiers.Where(p => typeof(MapDocumentFinding).GetProperty(p.Name) is null).Select(p => p.Name));
+        var refusal = legacy ? new MapDocumentException("consumer refusal")
+            : new MapDocumentException(MapDocumentRefusal.IdentityDuplicate, "validation refusal");
+        for (int i = 0; i < identifiers.Length; i++) identifiers[i].SetValue(refusal, Sample(identifiers[i], i));
+        if (legacy) Assert.Null(MapDocumentFinding.FromException(refusal));
+        else
+        {
+            var finding = Assert.IsType<MapDocumentFinding>(MapDocumentFinding.FromException(refusal));
+            Assert.Equal(refusal.Reason, finding.Reason);
+            Assert.Empty(identifiers.Where(p => !Matches(p.GetValue(refusal),
+                typeof(MapDocumentFinding).GetProperty(p.Name)!.GetValue(finding))).Select(p => p.Name));
+        }
+        Assert.NotNull(MapDocumentFinding.FromException(new(MapDocumentRefusal.IdentityDuplicate, "accepted typed projection")));
+    }
+
     static object Sample(PropertyInfo property, int index)
     {
         Type type = Nullable.GetUnderlyingType(property.PropertyType) ?? property.PropertyType;
@@ -105,6 +134,7 @@ public sealed class MapDocumentExceptionTests
         if (type == typeof(IReadOnlyList<int>)) return new[] { 1, 5 };
         if (type == typeof(IReadOnlyList<string>)) return new[] { "a", "b" };
         if (type == typeof(MapTileCoord)) return new MapTileCoord(-7, index);
+        if (type == typeof(MapPrefabAttachmentKind)) return (MapPrefabAttachmentKind)(7000 + index);
         if (type == typeof(MapPrefabChildKind)) return (MapPrefabChildKind)(6000 + index);
         if (type == typeof(MapPrefabChildKey)) return new MapPrefabChildKey(MapPrefabChildKind.Record, property.Name);
         if (type == typeof(MapPatchKey)) return new MapPatchKey(property.Name, -2, index);

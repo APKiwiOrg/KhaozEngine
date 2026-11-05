@@ -21,8 +21,13 @@ public static class MapPrefabValidation
     {
         ArgumentNullException.ThrowIfNull(document);
         var errors = new List<string>();
-        try { ValidateDocument(document, assets, findings); }
-        catch (MapDocumentException ex) { errors.Add(ex.Message); }
+        try { ValidateDocument(document, assets); }
+        catch (MapDocumentException ex)
+        {
+            errors.Add(ex.Message);
+            if (ex.Findings is { Count: > 0 } nested) findings?.AddRange(nested);
+            else if (MapDocumentFinding.FromException(ex) is { } finding) findings?.Add(finding);
+        }
         catch (Exception ex) when (ex is ArgumentException or InvalidOperationException or NullReferenceException or JsonException)
         { errors.Add("Invalid prefab state: " + ex.Message); }
         return errors;
@@ -34,20 +39,33 @@ public static class MapPrefabValidation
         if (errors.Count != 0) throw new MapDocumentException(string.Join("\n", errors));
     }
 
-    static void ValidateDocument(MapDocument doc, MapAssetClosure? assets, List<MapDocumentFinding>? findings)
+    static void ValidateDocument(MapDocument doc, MapAssetClosure? assets)
     {
         MapPrismCoverage.RequireStandaloneStoreys(doc);
         bool present = doc.Prefabs is not null || doc.BuildingIntent is not null || doc.NativeResourceTransforms is not null;
         if (present && (doc.ResolverIdentity is not { PayloadVersion: 1, ResolverVersion: 2 } || doc.SupportRecipe != MapSupportRecipe.AuthoredBindingsV2))
         {
-            var finding = MapDocumentFinding.ResolverContract(doc, "Prefab sections require resolver identity (1, 2) and AuthoredBindingsV2.",
-                doc.ResolverIdentity is not { PayloadVersion: 1, ResolverVersion: 2 } ? "resolverIdentity" : "supportRecipe", "prefab", 2, MapSupportRecipe.AuthoredBindingsV2);
-            findings?.Add(finding);
-            Fail(finding.Message);
+            var identity = doc.ResolverIdentity;
+            var reason = identity is null ? MapDocumentRefusal.SchemaValueRequired
+                : identity.PayloadVersion != 1 ? MapDocumentRefusal.SchemaPayloadVersionUnsupported : MapDocumentRefusal.ResolverContractMismatch;
+            throw new MapDocumentException(reason, "Prefab sections require resolver identity (1, 2) and AuthoredBindingsV2.")
+            {
+                PayloadVersion = identity?.PayloadVersion, ResolverVersion = identity?.ResolverVersion, SupportRecipe = doc.SupportRecipe,
+                ExpectedResolverVersion = 2, ExpectedSupportRecipe = MapSupportRecipe.AuthoredBindingsV2, SubjectKind = "prefab",
+                FieldPath = identity is null || identity.ResolverVersion != 2 && identity.PayloadVersion == 1 ? "resolverIdentity"
+                    : identity.PayloadVersion != 1 ? "resolverIdentity.payloadVersion" : "supportRecipe",
+                ActualVersion = identity is { PayloadVersion: not 1 } ? identity.PayloadVersion : null,
+                SupportedVersions = identity is { PayloadVersion: not 1 } ? [1] : null,
+            };
         }
         if (doc.Prefabs is { } set)
         {
-            if (set.PayloadVersion != 1 || set.ExpansionVersion != 1) Fail("Unsupported prefab set or expansion version.");
+            if (set.PayloadVersion != 1 || set.ExpansionVersion != 1)
+                throw new MapDocumentException(MapDocumentRefusal.SchemaPayloadVersionUnsupported, "Unsupported prefab set or expansion version.")
+                {
+                    FieldPath = set.PayloadVersion != 1 ? "$.prefabs.payloadVersion" : "$.prefabs.expansionVersion",
+                    ActualVersion = set.PayloadVersion != 1 ? set.PayloadVersion : set.ExpansionVersion, SupportedVersions = [1],
+                };
             if (set.Instances is null || set.Instances.Count > MapPrefabJson.Limits.MaxInstances ||
                 set.Transfers is null || set.Transfers.Count > MapPrefabJson.Limits.MaxTransfers ||
                 set.Attachments is null || set.Attachments.Count > MapPrefabJson.Limits.MaxTransfers)
@@ -60,26 +78,35 @@ public static class MapPrefabValidation
                 foreach (MapPrefabBinding binding in instance.Bindings.Entries) Binding(binding);
                 Unique(instance.Overrides, o => o.Child, "override");
                 foreach (MapPrefabOverride value in instance.Overrides) Override(value);
-                if (instance.Unpacked && !instance.Removed) Fail("An unpacked source must remain a removed instance.");
+                if (instance.Unpacked && !instance.Removed) throw new MapDocumentException(MapDocumentRefusal.AuthoredOwnershipMismatch, "An unpacked source must remain a removed instance.")
+                    { InstanceId = instance.Id, FieldPath = "$.removed", SubjectKind = "unpacked source" };
                 // Unpacked inventory is historical. Ordinary deleted instances retain their existing reservation semantics.
                 if (instance.Removed)
                 {
                     if (instance.Unpacked) RequireRemovedBindings(instance, set.Transfers);
-                    else if (set.Transfers.Any(t => t.InstanceId == instance.Id)) Fail("A source with transfers must be marked unpacked.");
+                    else if (set.Transfers.Any(t => t.InstanceId == instance.Id)) throw new MapDocumentException(MapDocumentRefusal.AuthoredOwnershipMismatch, "A source with transfers must be marked unpacked.")
+                        { InstanceId = instance.Id, FieldPath = "$.unpacked", SubjectKind = "transfer source" };
                     continue;
                 }
                 if (assets is null) continue;
                 MapResolvedResource resource = assets.GetResource(instance.ResourceId);
                 if (resource.Kind != MapResourceKind.Prefab || resource.Reference.Sha256 != instance.ResourceSha256)
-                    Fail("Instance '" + instance.Id + "' does not match its verified Prefab resource.");
+                    throw new MapDocumentException(resource.Kind != MapResourceKind.Prefab ? MapDocumentRefusal.ReferenceKindMismatch : MapDocumentRefusal.PrefabAssetPinMismatch,
+                        "Instance '" + instance.Id + "' does not match its verified Prefab resource.")
+                    {
+                        InstanceId = instance.Id, ResourceId = instance.ResourceId, ExpectedHash = instance.ResourceSha256, ActualHash = resource.Reference.Sha256,
+                        ExpectedResourceKind = MapResourceKind.Prefab, ActualResourceKind = resource.Kind,
+                    };
                 MapPrefabAsset asset = assets.GetPrefab(instance.ResourceId);
                 RequireAsset(asset, assets);
                 MapPrefabLocalMaterializations.Validate(asset, assets);
                 var keys = asset.Children.Select(c => c.Key).ToHashSet();
                 foreach (MapPrefabAddOverride add in Intents(instance.Overrides).OfType<MapPrefabAddOverride>())
-                    if (!keys.Add(add.Child)) Fail("Add override duplicates a declared child.");
+                    if (!keys.Add(add.Child)) throw new MapDocumentException(MapDocumentRefusal.PrefabAddedChildExists, "Add override duplicates a declared child.")
+                        { InstanceId = instance.Id, Child = add.Child };
                 foreach (MapPrefabOverride value in instance.Overrides)
-                    if (!keys.Contains(value.Child)) Fail("Override names an undeclared child.");
+                    if (!keys.Contains(value.Child)) throw new MapDocumentException(MapDocumentRefusal.ReferenceMissing, "Override names an undeclared child.")
+                        { InstanceId = instance.Id, Child = value.Child, SubjectKind = "override target" };
                 var reconciled = MapPrefabMaterializationOverrides.Reconcile(asset, instance.Overrides);
                 var childSet = MapPrefabChildSet.Compute(asset, assets, instance.Overrides);
                 RequireBindings(instance, childSet);
@@ -93,7 +120,8 @@ public static class MapPrefabValidation
                 }
                 bool needsParent = effective.Values.Any(c => c is MapPrefabRecordChild { Value: MapSpaceDoc } or MapPrefabWaterChild ||
                     c.References.Any(r => r.Target.Id == "$parent"));
-                if (needsParent && instance.ParentSpace is null) Fail("Prefab rooms and $parent references require ParentSpace.");
+                if (needsParent && instance.ParentSpace is null) throw new MapDocumentException(MapDocumentRefusal.SchemaValueRequired, "Prefab rooms and $parent references require ParentSpace.")
+                    { InstanceId = instance.Id, FieldPath = "$.parentSpace" };
                 if (instance.ParentSpace is { } parent) { Text(parent.Id); Text(parent.Anchor.SurfaceId); }
                 RequireAsset(reconciled.LiveAsset, assets);
                 MapPrefabLocalMaterializations.Validate(reconciled.LiveAsset, assets);
@@ -112,11 +140,15 @@ public static class MapPrefabValidation
                 Unique(attachment.Children, c => c.LocalChild, "attached child");
                 foreach (MapPrefabAttachedChild child in attachment.Children)
                 {
-                    Key(child.LocalChild); Text(child.WorldId); Pose(child.OwnerLocalPose); Digest(child.SourceDigest);
+                    Key(child.LocalChild); Text(child.WorldId); Pose(child.OwnerLocalPose, "$.ownerLocalPose"); Digest(child.SourceDigest);
                     if (child.Anchor is { } anchor) Text(anchor.SurfaceId);
                     if (attachment.Kind == MapPrefabAttachmentKind.Support && child.LocalChild.Kind is not (MapPrefabChildKind.Surface or MapPrefabChildKind.Record) ||
                         attachment.Kind == MapPrefabAttachmentKind.Light && child.LocalChild.Kind != MapPrefabChildKind.Light)
-                        Fail("Attached child kind does not match its attachment.");
+                        throw new MapDocumentException(MapDocumentRefusal.AuthoredReferenceKindInvalid, "Attached child kind does not match its attachment.")
+                        {
+                            AttachmentKind = attachment.Kind, Child = child.LocalChild, ChildKind = child.LocalChild.Kind,
+                            PlacementId = attachment.PlacementId, ResourceId = attachment.ResourceId, WorldId = child.WorldId,
+                        };
                 }
             }
             // Run the same finite preflight over in-memory state before publication.
@@ -125,7 +157,8 @@ public static class MapPrefabValidation
         }
         if (doc.BuildingIntent is { } intent)
         {
-            if (intent.PayloadVersion != 1) Fail("Unsupported building intent payload version.");
+            if (intent.PayloadVersion != 1) throw new MapDocumentException(MapDocumentRefusal.SchemaPayloadVersionUnsupported, "Unsupported building intent payload version.")
+                { FieldPath = "$.buildingIntent.payloadVersion", ActualVersion = intent.PayloadVersion, SupportedVersions = [1] };
             Unique(intent.Lights, l => l.Id, "light"); foreach (var l in intent.Lights) Light(l);
             Unique(intent.Markers, m => m.Id, "marker"); foreach (var m in intent.Markers) Marker(m);
             Unique(intent.RoofLinks, r => r.Id, "roof link"); foreach (var r in intent.RoofLinks) Roof(r);
@@ -135,9 +168,12 @@ public static class MapPrefabValidation
             Unique(intent.Storeys, s => s.Id, "storey");
             foreach (var s in intent.Storeys)
             {
-                if (s.PayloadVersion != 1) Fail("Unsupported storey payload version.");
+                if (s.PayloadVersion != 1) throw new MapDocumentException(MapDocumentRefusal.SchemaPayloadVersionUnsupported, "Unsupported storey payload version.")
+                    { FieldPath = "$.payloadVersion", ActualVersion = s.PayloadVersion, SupportedVersions = [1], EntityId = s.Id };
                 Text(s.Name);
-                if (s.InstanceId is { } owner && (doc.Prefabs is null || !doc.Prefabs.Instances.Any(i => i.Id == owner))) Fail("Storey names an unknown instance.");
+                if (s.InstanceId is { } owner && (doc.Prefabs is null || !doc.Prefabs.Instances.Any(i => i.Id == owner)))
+                    throw new MapDocumentException(MapDocumentRefusal.ReferenceMissing, "Storey names an unknown instance.")
+                        { InstanceId = owner, EntityId = s.Id, SubjectKind = "storey owner" };
             }
             using var json = JsonDocument.Parse(MapPrefabJson.Bytes(intent));
             MapPrefabJson.Preflight(json.RootElement);
@@ -145,7 +181,7 @@ public static class MapPrefabValidation
         if (doc.NativeResourceTransforms is { } poses)
         {
             Unique(poses, p => (p.Kind, p.OwnerId), "standalone resource transform");
-            foreach (var p in poses) { Defined(p.Kind); Text(p.OwnerId); Pose(p.Transform); Digest(p.SourceDigest); }
+            foreach (var p in poses) { Defined(p.Kind); Text(p.OwnerId); Pose(p.Transform, "$.transform"); Digest(p.SourceDigest); }
             using var json = JsonDocument.Parse(MapPrefabJson.Bytes(poses));
             MapPrefabJson.Preflight(json.RootElement);
         }
@@ -296,23 +332,28 @@ public static class MapPrefabValidation
         {
             if (binding.Removed)
             {
-                if (owned.ContainsKey(binding.Child)) Fail("Dormant source bindings must remain reserved without a transfer.");
+                if (owned.ContainsKey(binding.Child)) throw new MapDocumentException(MapDocumentRefusal.AuthoredOwnershipMismatch, "Dormant source bindings must remain reserved without a transfer.")
+                    { InstanceId = instance.Id, Child = binding.Child, WorldId = binding.WorldId, ActualCount = 1, ExpectedCount = 0, SubjectKind = "dormant source binding" };
             }
             else if (!owned.TryGetValue(binding.Child, out var transfer) || transfer.Binding != binding)
-                Fail("The source inventory requires exactly one matching transfer for every transferred child.");
+                throw new MapDocumentException(MapDocumentRefusal.AuthoredOwnershipMismatch, "The source inventory requires exactly one matching transfer for every transferred child.")
+                    { InstanceId = instance.Id, Child = binding.Child, WorldId = binding.WorldId, ActualCount = owned.ContainsKey(binding.Child) ? 1 : 0, ExpectedCount = 1, SubjectKind = "transferred source binding" };
         }
         foreach (var transfer in owned.Values)
-            if (!inventory.ContainsKey(transfer.Binding.Child)) Fail("A transfer must belong to its retained source inventory.");
+            if (!inventory.ContainsKey(transfer.Binding.Child)) throw new MapDocumentException(MapDocumentRefusal.AuthoredOwnershipMismatch, "A transfer must belong to its retained source inventory.")
+                { InstanceId = instance.Id, Child = transfer.Binding.Child, WorldId = transfer.Binding.WorldId, SubjectKind = "retained source inventory" };
     }
 
     static void RequireBindings(MapPrefabInstance instance, MapPrefabChildSet children)
     {
         var bindings = instance.Bindings.Entries.ToDictionary(b => b.Child);
         foreach (MapPrefabChildKey key in children.Known.Concat(children.Live.Keys))
-            if (!bindings.ContainsKey(key)) Fail("Prefab bindings must completely describe every child.");
+            if (!bindings.ContainsKey(key)) throw new MapDocumentException(MapDocumentRefusal.ReferenceMissing, "Prefab bindings must completely describe every child.")
+                { InstanceId = instance.Id, Child = key, SubjectKind = "prefab binding" };
         foreach (MapPrefabBinding binding in instance.Bindings.Entries)
             if (binding.Removed == children.Live.ContainsKey(binding.Child))
-                Fail($"Binding for {binding.Child.Kind} '{binding.Child.Key}' must be Removed exactly when its child is absent.");
+                throw new MapDocumentException(MapDocumentRefusal.AuthoredOwnershipMismatch, $"Binding for {binding.Child.Kind} '{binding.Child.Key}' must be Removed exactly when its child is absent.")
+                    { InstanceId = instance.Id, Child = binding.Child, WorldId = binding.WorldId, SubjectKind = "prefab binding liveness" };
     }
 
     sealed class ChildTargets : IMapPrefabTargets
@@ -505,7 +546,11 @@ public static class MapPrefabValidation
         if (string.IsNullOrWhiteSpace(value)) throw new MapDocumentException(MapDocumentRefusal.SchemaValueRequired, "A nonempty prefab identifier/name is required.")
             { FieldPath = path, EntityId = value, ChildKind = kind };
     }
-    static void Digest(string value) { if (value is not { Length: 64 } || value.Any(c => c is not (>= '0' and <= '9' or >= 'a' and <= 'f'))) Fail("Expected lowercase SHA-256 digest."); }
+    static void Digest(string value)
+    {
+        if (value is not { Length: 64 } || value.Any(c => c is not (>= '0' and <= '9' or >= 'a' and <= 'f')))
+            throw new MapDocumentException(MapDocumentRefusal.DigestMalformed, "Expected lowercase SHA-256 digest.") { ActualHash = value };
+    }
     static void Vector(Vector3 value, string? path = null)
     {
         if (!float.IsFinite(value.X) || !float.IsFinite(value.Y) || !float.IsFinite(value.Z))
@@ -529,10 +574,15 @@ public static class MapPrefabValidation
             };
         }
     }
-    static void Pose(MapEffectiveTransform value)
+    static void Pose(MapEffectiveTransform value, string? path = null)
     {
         if (!double.IsFinite(value.X) || !double.IsFinite(value.Y) || !double.IsFinite(value.Z) || !double.IsFinite(value.YawRadians) || !double.IsFinite(value.Scale) || value.Scale <= 0)
-            Fail("Expected finite precise pose and positive uniform scale.");
+        {
+            (string Field, double Number) failed = !double.IsFinite(value.X) ? (".x", value.X) : !double.IsFinite(value.Y) ? (".y", value.Y)
+                : !double.IsFinite(value.Z) ? (".z", value.Z) : !double.IsFinite(value.YawRadians) ? (".yawRadians", value.YawRadians) : (".scale", value.Scale);
+            throw new MapDocumentException(double.IsFinite(failed.Number) ? MapDocumentRefusal.ValueOutsideRange : MapDocumentRefusal.ValueNonfinite, "Expected finite precise pose and positive uniform scale.")
+                { FieldPath = path is null ? null : path + failed.Field, ActualNumber = failed.Number, MinimumNumber = double.IsFinite(failed.Number) ? 0 : null };
+        }
     }
     static void Unique<T, TKey>(IReadOnlyList<T> values, Func<T, TKey> key, string what) where TKey : notnull
     {

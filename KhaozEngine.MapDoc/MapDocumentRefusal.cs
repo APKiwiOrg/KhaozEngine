@@ -97,6 +97,10 @@ public enum MapDocumentRefusal
     AssetCollisionNestedMesh,
 
     // Prefab structural admission.
+    /// <summary>Refuses a prefab instance or asset update whose verified pins disagree.</summary>
+    PrefabAssetPinMismatch,
+    /// <summary>Refuses adding a child that already exists.</summary>
+    PrefabAddedChildExists,
     /// <summary>Refuses a child whose declared key differs from its payload identity or kind.</summary>
     PrefabPayloadIdMismatch,
     /// <summary>Refuses a placement child carrying an additional local transform.</summary>

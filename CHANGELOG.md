@@ -4,6 +4,17 @@ All notable changes to KhaozEngine. One shared version line `<KhaozEngineVersion
 governs every package, including the four umbrella metapackages. Planned work lives in the repo's GitHub
 Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
+## 23.1.0
+
+2026-11-05
+
+- `GroundNavigation.ExcludingAreas(uint)` creates an immutable query view over the same baked graph and
+  captured surface areas. Pursuits can refuse water or other game-defined areas while finding a permitted
+  walking detour, without a second baked profile. Exclusions accumulate and only narrow the baked policy.
+- Ground pursuit checks the exclusion on admission, every replan, search nodes and edges, route straightening,
+  actual-to-route entry and supported-walk shortcuts. `NoPath` carries `GroundPursuitDetail.ExcludedArea` when
+  the original profile admits a complete walking route under the same query budget. Default queries are unchanged.
+
 ## 23.0.0
 
 2026-11-05

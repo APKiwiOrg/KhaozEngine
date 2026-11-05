@@ -20,6 +20,23 @@ so a drop-enabled profile can choose a longer walking detour. It also checks ret
 that ignore that option. `RouteStraightener` drops only guarded walking shortcuts. Actual-to-route entry and every
 kept segment use the supplied supported-walk guard.
 
+For an ability that refuses an area the actor may otherwise enter, pass
+`navigation.ExcludingAreas(wetSurfaceBit)` to `GroundPursuit`. The mask uses the game's captured `uint` area
+bits. This immutable view shares the baked graph and captured columns, including those loaded from a bake,
+without another capture or profile bake. Reuse a view across pursuits. Zero returns the same instance and
+chained calls accumulate exclusions. The baked required and excluded masks remain in force, so excluding a
+required bit refuses every affected surface rather than replacing the original filter.
+
+The full capsule footprint checks the exclusion at search nodes and along directed edges, including Stair
+links with dry endpoints. Admission, every replan, straightening, actual-to-route entry and waypoint advancement
+use the narrowed supported-walk guard. If a filtered route fails, pursuit tries one diagnostic walking query
+against the original baked profile with the same budget. A complete, valid original route produces NoPath with
+`GroundPursuitDetail.ExcludedArea`. Otherwise the filtered query's existing detail is retained. This diagnostic
+can consume one extra query budget and never supplies steering or authorizes travel. Default construction
+without a narrowed view retains its existing behavior.
+Use the profile constructor for area-specific diagnostics. The lower-level constructor has no original
+profile policy to compare.
+
 `GroundPursuitSettings(triggerRange, maximumPathLength, stopDistance)` requires finite positive trigger and path
 limits, and finite nonnegative stop distance. Trigger range applies only at admission. The path cap applies to the
 remaining route at admission and every replan, not total distance travelled. Route length and
@@ -30,7 +47,7 @@ The commitment timeout bounds total pursuit duration.
 Ready always supplies a finite nonzero unit `Direction` and positive finite remaining length for
 `MovementCommitmentRequest.ForGroundTravel`. AlreadyInRange and OutOfRange are separate admission outcomes.
 NoPath, TooLong and UnsupportedState refuse or terminate. `GroundPursuitDetail` distinguishes partial,
-unreachable, non-walk, empty, invalid endpoint, invalid entry and unusable direction routes, plus unsupported
+unreachable, excluded-area, non-walk, empty, invalid endpoint, invalid entry and unusable direction routes, plus unsupported
 state and profile diagnostics. Malformed parameters remain BCL exceptions.
 
 Call `Tick(in MoveState, in MoveTuning, ReachTarget? target, float dt, GroundMoveContext)` from the authoritative
@@ -305,6 +322,7 @@ public sealed class GroundNavigation
     public bool Aquatic { get; }
     public float MaxDropMetres { get; }
     public bool AllowTerrainDescents { get; }
+    public GroundNavigation ExcludingAreas(uint excludedAreas);
     public bool AllowsSegment(Vector3 fromFeet, Vector3 toFeet);
     public void Validate(EffectiveMovementBinding binding);
     public void Validate(in MoveTuning tuning);

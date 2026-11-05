@@ -9372,7 +9372,7 @@ outside every umbrella and carries no physics backend, input or
 rendering dependency:
 
 ```xml
-<PackageReference Include="KhaozEngine.Movement" Version="23.0.0" />
+<PackageReference Include="KhaozEngine.Movement" Version="23.1.0" />
 ```
 
 The package composes `KhaozEngine.Locomotion`, `KhaozEngine.Navigation` and `KhaozEngine.Physics`. It does not
@@ -9530,6 +9530,7 @@ public sealed class GroundNavigation
     public bool Aquatic { get; }
     public float MaxDropMetres { get; }
     public bool AllowTerrainDescents { get; }
+    public GroundNavigation ExcludingAreas(uint excludedAreas);
     public bool AllowsSegment(Vector3 fromFeet, Vector3 toFeet);
     public void Validate(EffectiveMovementBinding binding);
     public void Validate(in MoveTuning tuning);
@@ -9929,7 +9930,7 @@ option does not enter bake identity or change canonical bytes. See the
 Round 2 D adds the driver layer in the same opt-in package. Keep the package reference explicit:
 
 ```xml
-<PackageReference Include="KhaozEngine.Movement" Version="23.0.0" />
+<PackageReference Include="KhaozEngine.Movement" Version="23.1.0" />
 ```
 
 `MoveToRange` consumes a `GroundNavigation` profile or an equivalent guarded `IRegionPathPlanner` composition.
@@ -10776,7 +10777,7 @@ same opt-in-backend pattern the `WorldStore.*` durable backends use.
 **Backend (`KhaozEngine.Physics.Bepu`)** - add this package to your game head / server:
 
 ```xml
-<PackageReference Include="KhaozEngine.Physics.Bepu" Version="23.0.0" />
+<PackageReference Include="KhaozEngine.Physics.Bepu" Version="23.1.0" />
 ```
 
 ```csharp
@@ -15120,6 +15121,22 @@ airborne, swimming and incompatible commitment state return UnsupportedState. Ma
 exceptions. The lower-level constructor accepts equivalent guarded planning, space and segment admission, with
 runtime profile compatibility owned by its caller.
 
+An ability can refuse an area that ordinary movement permits by supplying
+`navigation.ExcludingAreas(wetSurfaceBit)`. Area bits come from the game's `NavAreaClassifier`.
+The immutable view shares the baked graph and captured columns, including loaded bake data. It can be shared
+across pursuits. No extra capture, whole-world profile or bake format change is needed. Zero keeps the same
+instance and chained calls accumulate exclusions. Baked required and excluded masks still apply. Excluding
+a required bit makes affected surfaces ineligible and never widens the original profile.
+
+The exclusion checks the complete capsule footprint on search nodes and directed edges, including Stair links,
+and guards straightening, actual-to-route entry, every kept segment and waypoint shortcuts. It applies at Admit
+and on every Tick replan. A failed filtered route runs one additional diagnostic walking query against the
+original profile with the same budget. When that original route is complete and passes supported-walk admission,
+the result is NoPath with `GroundPursuitDetail.ExcludedArea` and zero direction. Otherwise the existing filtered
+route detail remains. The diagnostic route never authorizes travel. Each failed filtered plan can therefore
+consume two query budgets. Omitting the view preserves existing pursuit behavior.
+Use the profile constructor for this diagnostic. The lower-level constructor has no original profile to compare.
+
 Load a server-side `GroundNavigation` profile for the actor's actual capsule and movement binding before
 constructing the pursuit. `GroundMoveContext` is caller-owned and used sequentially. The authoritative actor state
 must be grounded, neither swimming nor airborne from water, have no buffered jump, and have no incompatible active
@@ -15134,9 +15151,11 @@ using KhaozEngine.Locomotion;
 using KhaozEngine.Movement;
 using KhaozEngine.NetWorld;
 
+// Share this immutable view across pursuits with the same area policy.
+var pursuitNavigation = navigation.ExcludingAreas(wetSurfaceBit);
 var actor = PlayerRef.Account(actorId);
 string targetId = ""; // The game supplies stable target identifiers.
-var pursuit = new GroundPursuit(navigation);
+var pursuit = new GroundPursuit(pursuitNavigation);
 var limits = new GroundPursuitSettings(triggerRange, maximumPathLength, stopDistance);
 uint sequence = 0;
 bool awaitingRelease = false;
@@ -19548,7 +19567,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="23.0.0" />
+<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="23.1.0" />
 ```
 
 ```csharp
@@ -19584,7 +19603,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="23.0.0" />
+<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="23.1.0" />
 ```
 
 ```csharp
@@ -19829,7 +19848,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Metal" Version="23.0.0" />
+<PackageReference Include="KhaozEngine.Gpu.Metal" Version="23.1.0" />
 ```
 
 ```csharp
@@ -24545,7 +24564,7 @@ socket a shipping build does not contain. It is in NO umbrella, and a game head 
 
 ```xml
 <ItemGroup Condition="'$(Configuration)' == 'Debug'">
-  <PackageReference Include="KhaozEngine.Automation" Version="23.0.0" />
+  <PackageReference Include="KhaozEngine.Automation" Version="23.1.0" />
 </ItemGroup>
 ```
 

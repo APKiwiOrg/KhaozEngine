@@ -132,7 +132,11 @@ public sealed class MapMarkerAdoptionTests
         var legacy = FormatFourFixtures.Build().Document;
         string before = MapDocumentFile.SaveText(legacy);
         var error = Assert.Throws<MapDocumentException>(() => MapMarkerAdoption.ConvertSpawns(legacy, MarkerFixtures.Choices()));
-        Assert.Contains("MapResolverAdoption.ConvertToAuthoredSupport", error.Message, StringComparison.Ordinal);
+        Assert.Equal(MapDocumentRefusal.ResolverContractMismatch, error.Reason);
+        Assert.Equal(1, error.PayloadVersion);
+        Assert.Equal(1, error.ResolverVersion);
+        Assert.Equal(2, error.ExpectedResolverVersion);
         Assert.Equal(before, MapDocumentFile.SaveText(legacy));
+        Assert.NotNull(MapMarkerAdoption.ConvertSpawns(MarkerFixtures.LegacyLists().Document, MarkerFixtures.Choices()));
     }
 }

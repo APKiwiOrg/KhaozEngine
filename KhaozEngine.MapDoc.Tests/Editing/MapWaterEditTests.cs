@@ -39,8 +39,16 @@ public class MapWaterEditTests
     [InlineData("remove-unknown-body")]
     [InlineData("upsert-without-section")]
     [InlineData("bounded-on-resolver-one")]
-    public void InvalidEdits_Refuse(string variant) =>
-        Assert.Throws<MapDocumentException>(() => WaterFixtures.ApplyEdit(variant));
+    public void InvalidEdits_Refuse(string variant)
+    {
+        var error = Assert.Throws<MapDocumentException>(() => WaterFixtures.ApplyEdit(variant));
+        if (variant == "bounded-on-resolver-one")
+        {
+            Assert.Equal(MapDocumentRefusal.ResolverContractMismatch, error.Reason);
+            Assert.Equal(2, error.ExpectedResolverVersion);
+            Assert.Equal(MapSupportRecipe.AuthoredBindingsV2, error.ExpectedSupportRecipe);
+        }
+    }
 
     [Fact]
     public void NameAffectedBodies_UsesCoveredSpaces()

@@ -781,8 +781,9 @@ standalone marker stores it as given. A framed standalone marker, such as one tr
 frame verbatim and stores the frame-local point, yaw, height and binding, so expansion applies the frame once. A
 component whose world value is unchanged keeps its stored local bits, so a metadata edit never rounds them.
 
-Preparation refuses a resolver (1, 1) document and names resolver adoption through
-`MapResolverAdoption.ConvertToAuthoredSupport` as the prerequisite. A live prefab marker belongs to its instance, so
+Preparation refuses a resolver (1, 1) document with `MapDocumentRefusal.ResolverContractMismatch`, its
+`PayloadVersion`, `ResolverVersion` and `ExpectedResolverVersion`. Adopt authored support through
+`MapResolverAdoption.ConvertToAuthoredSupport` before editing markers. A live prefab marker belongs to its instance, so
 set and remove refuse with `prefab_override` guidance. An ID held by any marker reservation, live or dormant, refuses
 unless it is the active transfer of the standalone marker being edited, so a set never seizes a retired reservation.
 Removing a transferred marker retires its transfer and removes only its own frame. Payload rules, unique IDs and
@@ -1326,6 +1327,26 @@ with no lock, and the engine never registers, owns, or frees one. The file read 
 ran on a worker thread. The handoff did not.
 
 ## Loud failures
+
+Resolver admission refusals keep the exact `MapDocumentException` type. Inspect its nullable
+`MapDocumentRefusal Reason` and applicable identifiers instead of classifying its message. The public
+message-only constructors remain available to consumers and leave `Reason` null. Other validation
+adapters continue reporting prose until all of their producing rules carry typed findings.
+
+| Reason | Refused rule | Identifiers when known |
+| --- | --- | --- |
+| `ResolverContractMismatch` | The document resolver, support recipe or caller's resolver options cannot serve the requested operation | `PayloadVersion`, `ResolverVersion`, `OptionsResolverVersion`, `ExpectedResolverVersion`, `SupportRecipe`, `ExpectedSupportRecipe`, `FieldPath`, `SubjectKind` |
+
+`ResolverVersion` is the document's declared version. `OptionsResolverVersion` is the version supplied
+by the caller, and `ExpectedResolverVersion` is the version the operation requires. A guard accepting
+several versions leaves the expected version null. Recipe identifiers retain `MapSupportRecipe` values.
+`SourceName` identifies source context when supplied. Unavailable identifiers remain null.
+
+`MapDocumentFinding` is an immutable record with `Reason`, developer prose in `Message` and the same
+typed context. Resolver diagnostic producers retain these findings beside the existing string API's
+prose projection. `MapDocumentException.Findings` can carry the full ordered finding list as an owned
+read-only snapshot. Neither a change to the input list nor a cast of the exposed collection can change
+that snapshot. Source wrappers preserve the reason, all identifiers and the original refusal as the cause.
 
 Map documents are dev-authored content, not runtime state: `MapDocumentFile.Load`/`Save` throw
 `MapDocumentException` on a read error, invalid JSON, a missing or out-of-range `formatVersion`, a

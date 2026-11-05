@@ -73,7 +73,12 @@ public static class MapNativeResolution
     {
         { PayloadVersion: 1, ResolverVersion: 1 } => 1,
         { PayloadVersion: 1, ResolverVersion: 2 } => 2,
-        _ => throw new MapDocumentException($"Unsupported native resolver identity {Describe(identity)}."),
+        _ => throw new MapDocumentException(MapDocumentRefusal.ResolverContractMismatch, $"Unsupported native resolver identity {Describe(identity)}.")
+        {
+            PayloadVersion = identity?.PayloadVersion,
+            ResolverVersion = identity?.ResolverVersion,
+            FieldPath = "resolverIdentity",
+        },
     };
 
     /// <summary>The resolver version <paramref name="identity"/> selects, after refusing an unsupported identity and
@@ -82,8 +87,15 @@ public static class MapNativeResolution
     {
         int resolver = ResolverVersionOf(identity);
         if (options.ResolverVersion != resolver)
-            throw new MapDocumentException($"Native resolver identity {Describe(identity)} " +
-                $"does not match options resolver version {options.ResolverVersion}.");
+            throw new MapDocumentException(MapDocumentRefusal.ResolverContractMismatch, $"Native resolver identity {Describe(identity)} " +
+                $"does not match options resolver version {options.ResolverVersion}.")
+            {
+                PayloadVersion = identity!.PayloadVersion,
+                ResolverVersion = identity.ResolverVersion,
+                OptionsResolverVersion = options.ResolverVersion,
+                ExpectedResolverVersion = resolver,
+                FieldPath = "options.resolverVersion",
+            };
         return resolver;
     }
 

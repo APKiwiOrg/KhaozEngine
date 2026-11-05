@@ -34,7 +34,16 @@ public static class MapWaterEdits
                 {
                     if (document.ResolverIdentity is not { PayloadVersion: 1, ResolverVersion: 2 } ||
                         document.SupportRecipe != MapSupportRecipe.AuthoredBindingsV2)
-                        throw new MapDocumentException("bounded water requires a resolver-2 native document");
+                        throw new MapDocumentException(MapDocumentRefusal.ResolverContractMismatch, "bounded water requires a resolver-2 native document")
+                        {
+                            PayloadVersion = document.ResolverIdentity?.PayloadVersion,
+                            ResolverVersion = document.ResolverIdentity?.ResolverVersion,
+                            SupportRecipe = document.SupportRecipe,
+                            ExpectedResolverVersion = 2,
+                            ExpectedSupportRecipe = MapSupportRecipe.AuthoredBindingsV2,
+                            FieldPath = document.ResolverIdentity is not { PayloadVersion: 1, ResolverVersion: 2 } ? "resolverIdentity" : "supportRecipe",
+                            SubjectKind = "water",
+                        };
                     after ??= new MapWaterSet();
                 }
                 else

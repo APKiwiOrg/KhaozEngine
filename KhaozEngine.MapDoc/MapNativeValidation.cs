@@ -8,10 +8,10 @@ namespace KhaozEngine.MapDoc;
 /// <summary>Native metadata checks shared by loading, editing and saving.</summary>
 internal static class MapNativeValidation
 {
-    internal static void Validate(MapDocument doc, List<string> errors)
+    internal static void Validate(MapDocument doc, List<string> errors, List<MapDocumentFinding>? findings = null)
     {
         ValidateNumericIds(doc, errors);
-        ValidateSupport(doc, errors);
+        ValidateSupport(doc, errors, findings);
         if (doc.ResolverIdentity is { } identity && (identity.PayloadVersion <= 0 || identity.ResolverVersion <= 0))
             errors.Add("resolverIdentity payloadVersion and resolverVersion must be positive.");
         if (doc.NativeAssets is null)
@@ -41,25 +41,32 @@ internal static class MapNativeValidation
             errors.Add("playableBounds must be contained in bounds.");
     }
 
-    static void ValidateSupport(MapDocument doc, List<string> errors)
+    static void ValidateSupport(MapDocument doc, List<string> errors, List<MapDocumentFinding>? findings)
     {
-        if (!Enum.IsDefined(doc.SupportRecipe)) errors.Add("supportRecipe is unsupported.");
+        if (!Enum.IsDefined(doc.SupportRecipe)) Resolver("supportRecipe is unsupported.", "supportRecipe");
         if (doc.Surfaces is null) errors.Add("surfaces must not be null.");
         bool legacy = doc.ResolverIdentity is null or { PayloadVersion: 1, ResolverVersion: 1 };
         if (legacy)
         {
             if (doc.SupportRecipe != MapSupportRecipe.LegacyXzCallbackV1)
-                errors.Add("Resolver version 1 requires supportRecipe LegacyXzCallbackV1.");
-            if (doc.Surfaces is { IsEmpty: false }) errors.Add("Resolver version 1 requires no surfaces.");
+                Resolver("Resolver version 1 requires supportRecipe LegacyXzCallbackV1.", "supportRecipe", 1, MapSupportRecipe.LegacyXzCallbackV1);
+            if (doc.Surfaces is { IsEmpty: false }) Resolver("Resolver version 1 requires no surfaces.", "surfaces", 1);
             if (doc.Placements.Any(p => p.SupportBinding is not null))
-                errors.Add("Resolver version 1 requires no support bindings.");
+                Resolver("Resolver version 1 requires no support bindings.", "placements.supportBinding", 1);
         }
         else if (doc.ResolverIdentity is { PayloadVersion: 1, ResolverVersion: 2 })
         {
             if (doc.SupportRecipe != MapSupportRecipe.AuthoredBindingsV2)
-                errors.Add("Resolver version 2 requires supportRecipe AuthoredBindingsV2.");
+                Resolver("Resolver version 2 requires supportRecipe AuthoredBindingsV2.", "supportRecipe", 2, MapSupportRecipe.AuthoredBindingsV2);
         }
-        else errors.Add("resolverIdentity requires payload version 1 and resolver version 1 or 2.");
+        else Resolver("resolverIdentity requires payload version 1 and resolver version 1 or 2.", "resolverIdentity");
+
+        void Resolver(string message, string field, int? version = null, MapSupportRecipe? recipe = null)
+        {
+            var finding = MapDocumentFinding.ResolverContract(doc, message, field, "document", version, recipe);
+            errors.Add(finding.Message);
+            findings?.Add(finding);
+        }
 
         var surfaces = new Dictionary<string, MapSurfaceRef>(StringComparer.Ordinal);
         if (doc.Surfaces is { } set)

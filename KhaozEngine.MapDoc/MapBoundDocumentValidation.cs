@@ -31,7 +31,14 @@ public static class MapBoundDocumentValidation
         ArgumentNullException.ThrowIfNull(document);
         if (document.Tiles is { IsPartial: true }) throw new MapDocumentException("Native document validation requires every tile to be loaded.");
         if (document.ResolverIdentity is not { PayloadVersion: 1, ResolverVersion: 1 or 2 })
-            throw new MapDocumentException("Native document requires payload version 1 and resolver version 1 or 2.");
+            throw new MapDocumentException(MapDocumentRefusal.ResolverContractMismatch,
+                "Native document requires payload version 1 and resolver version 1 or 2.")
+            {
+                PayloadVersion = document.ResolverIdentity?.PayloadVersion,
+                ResolverVersion = document.ResolverIdentity?.ResolverVersion,
+                SupportRecipe = document.SupportRecipe,
+                FieldPath = "resolverIdentity",
+            };
         if (document.PlayableBounds is null) throw new MapDocumentException("Native document requires playable bounds.");
         Require(MapDocumentValidator.Validate(document, registry ?? MapDocRegistry.CreateDefault()));
         if (!float.IsFinite(document.Bounds.MinX) || !float.IsFinite(document.Bounds.MinZ) ||

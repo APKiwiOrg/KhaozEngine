@@ -125,7 +125,9 @@ the nominal level, whether the upper boundary is free and any refusal detail.
 `MutationService.WaterApply(MapWaterEdit)` runs `WaterEditCommand` under the session's native mutation lock.
 It returns `MapWaterMutationResult` with the mutation and accepted effects, and produces the same document bytes
 and effects as the editor command. Publication checks the complete water set's containment and bound material
-closure before changing the session. Analytic and resolver-1 documents refuse water edits.
+closure before changing the session. Analytic and resolver-1 documents refuse water edits with
+`MapDocumentRefusal.ResolverContractMismatch`, the known `PayloadVersion`, `ResolverVersion` and `SupportRecipe`,
+and `ExpectedResolverVersion` 2 with `ExpectedSupportRecipe` `AuthoredBindingsV2`.
 These are service APIs. Water MCP registrations remain with R10, so the registered verb count is unchanged.
 
 ## Prefab assets and native history
@@ -199,8 +201,9 @@ with no invalidation, and spatial edits add both point boxes with Residency only
 ordinal ID order with resolved heights. Every given filter must match. The name is an exact optional filter, never a
 key. The rectangle is half-open, minima included and maxima excluded, and its four bounds are given together or not
 at all. A document with neither building intent nor prefabs returns an empty list without expansion. A resolver
-(1, 1) native document refuses `marker_set` and `marker_remove` and names resolver adoption through
-`MapResolverAdoption.ConvertToAuthoredSupport` as the prerequisite.
+(1, 1) native document refuses `marker_set` and `marker_remove` with
+`MapDocumentRefusal.ResolverContractMismatch`, its `PayloadVersion`, `ResolverVersion` and
+`ExpectedResolverVersion`. Adopt authored support through `MapResolverAdoption.ConvertToAuthoredSupport` first.
 
 `spawns_adopt(choicesJson)` calls `MutationService.SpawnsAdopt` through the shared `AdoptSpawnsCommand`. It returns
 `MapPrefabMutationResult` with `Mutation.Verb` `spawns_adopt`, `WorldChanged` false and the shared marker effects.

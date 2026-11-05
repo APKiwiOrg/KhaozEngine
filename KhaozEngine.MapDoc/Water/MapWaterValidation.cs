@@ -18,12 +18,17 @@ internal static class MapWaterValidation
 
     /// <summary>Validates against <paramref name="budget"/>. Once it is spent the call reports the body or space that
     /// passed it and skips the remaining geometry checks.</summary>
-    internal static void Validate(MapDocument doc, List<string> errors, MapWaterWorkBudget budget)
+    internal static void Validate(MapDocument doc, List<string> errors, MapWaterWorkBudget budget, List<MapDocumentFinding>? findings = null)
     {
         if (doc.Water is not { } water) return;
         if (doc.ResolverIdentity is not { PayloadVersion: 1, ResolverVersion: 2 } ||
             doc.SupportRecipe != MapSupportRecipe.AuthoredBindingsV2)
-            errors.Add("water: bounded water requires a resolver-2 native document.");
+        {
+            var finding = MapDocumentFinding.ResolverContract(doc, "water: bounded water requires a resolver-2 native document.",
+                doc.ResolverIdentity is not { PayloadVersion: 1, ResolverVersion: 2 } ? "resolverIdentity" : "supportRecipe", "water", 2, MapSupportRecipe.AuthoredBindingsV2);
+            errors.Add(finding.Message);
+            findings?.Add(finding);
+        }
 
         var media = new HashSet<string>(StringComparer.Ordinal);
         foreach (MapWaterMediumDoc medium in water.Media) ValidateMedium(medium, media, errors);

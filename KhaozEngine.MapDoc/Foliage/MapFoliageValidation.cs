@@ -80,13 +80,19 @@ public static class MapFoliageValidation
 
     /// <summary>The document-level gate run by <see cref="MapDocumentValidator"/>: foliage needs a resolver-2 document, then
     /// the set rules.</summary>
-    internal static void ValidateDocument(MapDocument doc, List<string> errors)
+    internal static void ValidateDocument(MapDocument doc, List<string> errors, List<MapDocumentFinding>? findings = null)
     {
         if (doc.Foliage is not { } set) return;
         if (MapFoliageStorageWork.Current is { } work) work.DocumentGates++;
         if (doc.ResolverIdentity is not { PayloadVersion: 1, ResolverVersion: 2 } || doc.SupportRecipe != MapSupportRecipe.AuthoredBindingsV2)
-            errors.Add("foliage: requires resolver identity (1, 2) and supportRecipe AuthoredBindingsV2. Adopt authored support " +
-                "with MapResolverAdoption.ConvertToAuthoredSupport before adding foliage.");
+        {
+            var finding = MapDocumentFinding.ResolverContract(doc,
+                "foliage: requires resolver identity (1, 2) and supportRecipe AuthoredBindingsV2. Adopt authored support " +
+                "with MapResolverAdoption.ConvertToAuthoredSupport before adding foliage.",
+                doc.ResolverIdentity is not { PayloadVersion: 1, ResolverVersion: 2 } ? "resolverIdentity" : "supportRecipe", "foliage", 2, MapSupportRecipe.AuthoredBindingsV2);
+            errors.Add(finding.Message);
+            findings?.Add(finding);
+        }
         errors.AddRange(Validate(set));
     }
 

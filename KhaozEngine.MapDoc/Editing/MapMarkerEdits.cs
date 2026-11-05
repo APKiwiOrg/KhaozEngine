@@ -95,9 +95,18 @@ public static class MapMarkerEdits
     {
         if (document.ResolverIdentity is null) throw new MapDocumentException("Marker editing requires a native document.");
         if (document.ResolverIdentity.ResolverVersion != 2)
-            throw new MapDocumentException($"Marker editing requires resolver identity (1, 2), but this document has resolver ({document.ResolverIdentity.PayloadVersion}, " +
+            throw new MapDocumentException(MapDocumentRefusal.ResolverContractMismatch,
+                $"Marker editing requires resolver identity (1, 2), but this document has resolver ({document.ResolverIdentity.PayloadVersion}, " +
                 $"{document.ResolverIdentity.ResolverVersion}). Complete resolver adoption first with MapResolverAdoption.ConvertToAuthoredSupport, " +
-                "the prerequisite for marker edits.");
+                "the prerequisite for marker edits.")
+            {
+                PayloadVersion = document.ResolverIdentity.PayloadVersion,
+                ResolverVersion = document.ResolverIdentity.ResolverVersion,
+                ExpectedResolverVersion = 2,
+                SupportRecipe = document.SupportRecipe,
+                FieldPath = "resolverIdentity",
+                SubjectKind = "marker",
+            };
     }
 
     // A live prefab child belongs to its instance. Any marker reservation, live or dormant, belongs to its prefab unless

@@ -109,8 +109,17 @@ public sealed class NativeResolverTests
             case "scale-infinity": f.Document.Placements[0].Scale = float.PositiveInfinity; break;
             case "bounds": f.Document.Bounds.MinX = float.NegativeInfinity; break;
         }
-        Assert.Throws<MapDocumentException>(() => MapAuthoredIdentity.Compute(f.Document, f.Assets, f.Options));
-        Assert.Throws<MapDocumentException>(() => MapResolver.Resolve(f.Document, f.Assets, (_, _) => 0, f.Options));
+        var identity = Assert.Throws<MapDocumentException>(() => MapAuthoredIdentity.Compute(f.Document, f.Assets, f.Options));
+        var resolved = Assert.Throws<MapDocumentException>(() => MapResolver.Resolve(f.Document, f.Assets, (_, _) => 0, f.Options));
+        if (fault is "payload" or "resolver" or "missing")
+        {
+            Assert.Equal(MapDocumentRefusal.ResolverContractMismatch, identity.Reason);
+            Assert.Equal(identity.Reason, resolved.Reason);
+            Assert.Equal(f.Document.ResolverIdentity?.PayloadVersion, identity.PayloadVersion);
+            Assert.Equal(f.Document.ResolverIdentity?.ResolverVersion, identity.ResolverVersion);
+            f.Document.ResolverIdentity = new(1, 1);
+            Assert.False(string.IsNullOrEmpty(MapAuthoredIdentity.Compute(f.Document, f.Assets, f.Options)));
+        }
     }
 
     [Theory]

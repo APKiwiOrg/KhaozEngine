@@ -49,8 +49,17 @@ public sealed class StoredWholeIdentityTests
         MapStoredSurfaceSource source = MapStoredSurfaceSource.Open(directory);
         MapResolveOptions options = invalid == "options" ? V2 with { ResolverVersion = 1 } : V2;
         var work = new MapWholeIdentityWork();
-        Assert.Throws<MapDocumentException>(() => MapAuthoredIdentityV2.Compute(source, SurfaceStorageFixtures.Assets(), options, work));
+        var metadataError = Assert.Throws<MapDocumentException>(() => MapAuthoredIdentityV2.Compute(source, SurfaceStorageFixtures.Assets(), options, work));
         Assert.Equal(0, work.PayloadReads);
+        if (invalid == "resolver")
+        {
+            Assert.Equal(MapDocumentRefusal.ResolverContractMismatch, metadataError.Reason);
+            Assert.Equal(1, metadataError.PayloadVersion);
+            Assert.Equal(1, metadataError.ResolverVersion);
+            Assert.Equal(MapSupportRecipe.LegacyXzCallbackV1, metadataError.SupportRecipe);
+            Assert.Equal(2, metadataError.ExpectedResolverVersion);
+            Assert.Equal(MapSupportRecipe.AuthoredBindingsV2, metadataError.ExpectedSupportRecipe);
+        }
     });
 
     [Fact]

@@ -15,11 +15,13 @@ namespace KhaozEngine.MapDoc.Prefabs;
 /// <summary>Structural prefab validity and closure checks. Validation never allocates world identities.</summary>
 public static class MapPrefabValidation
 {
-    public static IReadOnlyList<string> Validate(MapDocument document, MapAssetClosure? assets)
+    public static IReadOnlyList<string> Validate(MapDocument document, MapAssetClosure? assets) => Validate(document, assets, null);
+
+    internal static IReadOnlyList<string> Validate(MapDocument document, MapAssetClosure? assets, List<MapDocumentFinding>? findings)
     {
         ArgumentNullException.ThrowIfNull(document);
         var errors = new List<string>();
-        try { ValidateDocument(document, assets); }
+        try { ValidateDocument(document, assets, findings); }
         catch (MapDocumentException ex) { errors.Add(ex.Message); }
         catch (Exception ex) when (ex is ArgumentException or InvalidOperationException or NullReferenceException or JsonException)
         { errors.Add("Invalid prefab state: " + ex.Message); }
@@ -32,12 +34,17 @@ public static class MapPrefabValidation
         if (errors.Count != 0) throw new MapDocumentException(string.Join("\n", errors));
     }
 
-    static void ValidateDocument(MapDocument doc, MapAssetClosure? assets)
+    static void ValidateDocument(MapDocument doc, MapAssetClosure? assets, List<MapDocumentFinding>? findings)
     {
         MapPrismCoverage.RequireStandaloneStoreys(doc);
         bool present = doc.Prefabs is not null || doc.BuildingIntent is not null || doc.NativeResourceTransforms is not null;
         if (present && (doc.ResolverIdentity is not { PayloadVersion: 1, ResolverVersion: 2 } || doc.SupportRecipe != MapSupportRecipe.AuthoredBindingsV2))
-            Fail("Prefab sections require resolver identity (1, 2) and AuthoredBindingsV2.");
+        {
+            var finding = MapDocumentFinding.ResolverContract(doc, "Prefab sections require resolver identity (1, 2) and AuthoredBindingsV2.",
+                doc.ResolverIdentity is not { PayloadVersion: 1, ResolverVersion: 2 } ? "resolverIdentity" : "supportRecipe", "prefab", 2, MapSupportRecipe.AuthoredBindingsV2);
+            findings?.Add(finding);
+            Fail(finding.Message);
+        }
         if (doc.Prefabs is { } set)
         {
             if (set.PayloadVersion != 1 || set.ExpansionVersion != 1) Fail("Unsupported prefab set or expansion version.");

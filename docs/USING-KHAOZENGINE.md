@@ -12498,6 +12498,15 @@ unknown scatter layer reference, a `terrainOverrides` tile that leaves the docum
 quarantines a corrupt runtime cell blob and carries on. See the `KhaozEngine.MapDoc` package README for
 the full section list and a complete example document.
 
+Resolver admission keeps the exact `MapDocumentException` catch contract. Its `Reason` is
+`MapDocumentRefusal.ResolverContractMismatch`, with the known `PayloadVersion`, `ResolverVersion`,
+`OptionsResolverVersion`, `ExpectedResolverVersion`, `SupportRecipe`, `ExpectedSupportRecipe`,
+`FieldPath` and `SubjectKind`. Inspect those members rather than parsing prose. A consumer's
+message-only constructor leaves `Reason` null. `SourceName` carries available source context.
+`MapDocumentFinding` carries an immutable reason, prose and typed context. The exception's optional
+`Findings` list is an ordered read-only snapshot. Existing string validation APIs retain their prose,
+and aggregate adapters retain their existing behavior until all their producing rules are typed.
+
 **Whole authored surface identity.** Scheme 2, new in 20.30.0, is the resolver-2 whole-document identity. Resolver-2
 documents use `MapAuthoredIdentityV2` from `KhaozEngine.MapDoc.Identity`, with an explicitly verified
 `MapAssetClosure` and resolver-2 options:

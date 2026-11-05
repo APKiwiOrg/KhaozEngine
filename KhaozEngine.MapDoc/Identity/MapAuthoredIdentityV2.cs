@@ -54,7 +54,16 @@ public static class MapAuthoredIdentityV2
     static void Validate(MapResolverIdentityDoc? resolver, MapSupportRecipe recipe, MapResolveOptions options)
     {
         if (resolver is not { PayloadVersion: 1, ResolverVersion: 2 } || recipe != MapSupportRecipe.AuthoredBindingsV2)
-            throw new MapDocumentException("Whole authored identity requires resolver (1, 2) and supportRecipe AuthoredBindingsV2.");
+            throw new MapDocumentException(MapDocumentRefusal.ResolverContractMismatch,
+                "Whole authored identity requires resolver (1, 2) and supportRecipe AuthoredBindingsV2.")
+            {
+                PayloadVersion = resolver?.PayloadVersion,
+                ResolverVersion = resolver?.ResolverVersion,
+                SupportRecipe = recipe,
+                ExpectedResolverVersion = 2,
+                ExpectedSupportRecipe = MapSupportRecipe.AuthoredBindingsV2,
+                FieldPath = resolver is not { PayloadVersion: 1, ResolverVersion: 2 } ? "resolverIdentity" : "supportRecipe",
+            };
         if (options.ResolverVersion != 2 || string.IsNullOrWhiteSpace(options.BuilderId) ||
             options.BuilderVersion <= 0 || string.IsNullOrWhiteSpace(options.OptionsHash))
             throw new MapDocumentException("Whole authored identity requires resolver 2, builder ID, positive version and options hash.");

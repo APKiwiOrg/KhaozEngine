@@ -22,7 +22,12 @@ public class MapWorldBuilderTests
     public void InvalidInputs_Refuse()
     {
         Assert.Contains("partial", Assert.Throws<MapDocumentException>(() => NativeWorldFixtures.BuildPartialWindow()).Message);
-        Assert.Contains("resolver", Assert.Throws<MapDocumentException>(() => NativeWorldFixtures.BuildWithResolverMismatch()).Message);
+        var resolver = Assert.Throws<MapDocumentException>(() => NativeWorldFixtures.BuildWithResolverMismatch());
+        Assert.Equal(MapDocumentRefusal.ResolverContractMismatch, resolver.Reason);
+        Assert.Equal(1, resolver.PayloadVersion);
+        Assert.Equal(2, resolver.ResolverVersion);
+        Assert.Equal(1, resolver.OptionsResolverVersion);
+        Assert.Equal(2, resolver.ExpectedResolverVersion);
         Assert.Contains("legacy support height", Assert.Throws<MapDocumentException>(() => NativeWorldFixtures.BuildLegacyWithoutHeight()).Message);
         Assert.Throws<MapDocumentException>(() => NativeWorldFixtures.BuildWithPlacementScale(float.NaN));
         Assert.Throws<MapDocumentException>(() => NativeWorldFixtures.BuildWithPlacementScale(0f));

@@ -99,7 +99,16 @@ public sealed class WaterServiceTests : IDisposable
         {
             var mutation = new MutationService(session);
             var error = Assert.Throws<MapDocumentException>(() => mutation.WaterApply(new MapSetBoundedWater(true)));
-            Assert.Equal("Water edits require a resolver-2 native document.", error.Message);
+            Assert.Equal(MapDocumentRefusal.ResolverContractMismatch, error.Reason);
+            Assert.Equal(2, error.ExpectedResolverVersion);
+            Assert.Equal(MapSupportRecipe.AuthoredBindingsV2, error.ExpectedSupportRecipe);
+            session.WithDocument((doc, _) =>
+            {
+                Assert.Equal(doc.ResolverIdentity?.PayloadVersion, error.PayloadVersion);
+                Assert.Equal(doc.ResolverIdentity?.ResolverVersion, error.ResolverVersion);
+                Assert.Equal(doc.SupportRecipe, error.SupportRecipe);
+                return 0;
+            });
             Assert.False(session.IsDirty);
         }
     }

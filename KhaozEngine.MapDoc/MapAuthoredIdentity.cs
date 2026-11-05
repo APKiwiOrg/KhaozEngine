@@ -46,7 +46,14 @@ public static class MapAuthoredIdentity
     static void Validate(MapDocument doc, MapAssetClosure assets, MapResolveOptions options)
     {
         if (doc.ResolverIdentity is { ResolverVersion: 2 })
-            throw new MapDocumentException("Resolver version 2 requires MapAuthoredIdentityV2.");
+            throw new MapDocumentException(MapDocumentRefusal.ResolverContractMismatch, "Resolver version 2 requires MapAuthoredIdentityV2.")
+            {
+                PayloadVersion = doc.ResolverIdentity.PayloadVersion,
+                ResolverVersion = doc.ResolverIdentity.ResolverVersion,
+                SupportRecipe = doc.SupportRecipe,
+                ExpectedResolverVersion = 1,
+                FieldPath = "resolverIdentity",
+            };
         if (options.ResolverVersion != 1 || string.IsNullOrWhiteSpace(options.BuilderId) ||
             options.BuilderVersion <= 0 || string.IsNullOrWhiteSpace(options.OptionsHash))
             throw new MapDocumentException("Native build identity requires supported resolver, builder ID, positive version and options hash.");

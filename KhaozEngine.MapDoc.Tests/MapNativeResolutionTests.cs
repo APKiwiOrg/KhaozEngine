@@ -37,7 +37,14 @@ public sealed class MapNativeResolutionTests
     {
         MapDocument document = SupportFixtures.CaveWithPlacements();
         var options = SupportFixtures.V2 with { ResolverVersion = 1 };
-        Assert.Throws<MapDocumentException>(() =>
+        var error = Assert.Throws<MapDocumentException>(() =>
             MapNativeResolution.Resolve(document, SupportFixtures.Assets(), options, (_, _) => 0f));
+        Assert.Equal(MapDocumentRefusal.ResolverContractMismatch, error.Reason);
+        Assert.Equal(1, error.PayloadVersion);
+        Assert.Equal(2, error.ResolverVersion);
+        Assert.Equal(1, error.OptionsResolverVersion);
+        Assert.Equal(2, error.ExpectedResolverVersion);
+        Assert.Equal("options.resolverVersion", error.FieldPath);
+        Assert.NotNull(MapNativeResolution.Resolve(document, SupportFixtures.Assets(), SupportFixtures.V2));
     }
 }

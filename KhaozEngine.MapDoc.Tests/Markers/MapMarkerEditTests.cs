@@ -153,9 +153,15 @@ public sealed class MapMarkerEditTests
         foreach (MapMarkerEdit edit in new MapMarkerEdit[] { new MapSetMarker(MarkerFixtures.BasicMarker()), new MapRemoveMarker("m") })
         {
             var refused = Assert.Throws<MapDocumentException>(() => MapMarkerEdits.Prepare(document, assets, edit));
-            Assert.Contains("MapResolverAdoption.ConvertToAuthoredSupport", refused.Message, StringComparison.Ordinal);
+            Assert.Equal(MapDocumentRefusal.ResolverContractMismatch, refused.Reason);
+            Assert.Equal(1, refused.PayloadVersion);
+            Assert.Equal(1, refused.ResolverVersion);
+            Assert.Equal(2, refused.ExpectedResolverVersion);
         }
         Assert.Equal(before, MapDocumentFile.SaveText(document));
+        document.ResolverIdentity = new(1, 2);
+        MapMarkerEdits.RequireResolver(document);
+        Accepts(MarkerFixtures.Create(), new MapSetMarker(MarkerFixtures.BasicMarker()));
     }
 
     [Fact]

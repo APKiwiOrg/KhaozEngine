@@ -68,11 +68,16 @@ public sealed class NativeDocumentServiceResolverTests
         using var fixture = new ResolverFixture(documentVersion);
         var source = new UnreadableSource();
         MapResolveOptions options = NativeDocumentService.SessionOptions with { ResolverVersion = optionsVersion };
-        string message = Assert.Throws<MapDocumentException>(() =>
-            NativeDocumentService.ValidateComplete(fixture.Document, source, options)).Message;
+        var error = Assert.Throws<MapDocumentException>(() =>
+            NativeDocumentService.ValidateComplete(fixture.Document, source, options));
         Assert.Equal(0, source.Reads);
-        Assert.Contains($"(1, {documentVersion})", message);
-        Assert.Contains($"options resolver version {optionsVersion}", message);
+        Assert.Equal(MapDocumentRefusal.ResolverContractMismatch, error.Reason);
+        Assert.Equal(1, error.PayloadVersion);
+        Assert.Equal(documentVersion, error.ResolverVersion);
+        Assert.Equal(optionsVersion, error.OptionsResolverVersion);
+        Assert.Equal(documentVersion, error.ExpectedResolverVersion);
+        Assert.NotNull(NativeDocumentService.ValidateComplete(fixture.Document, fixture.Source,
+            options with { ResolverVersion = documentVersion }));
     }
 
     [Theory]
@@ -83,10 +88,14 @@ public sealed class NativeDocumentServiceResolverTests
         using var fixture = new ResolverFixture(1);
         fixture.Document.ResolverIdentity = new(payload, resolver);
         var source = new UnreadableSource();
-        string message = Assert.Throws<MapDocumentException>(() => NativeDocumentService.ValidateComplete(
-            fixture.Document, source, NativeDocumentService.SessionOptions with { ResolverVersion = optionsVersion })).Message;
+        var error = Assert.Throws<MapDocumentException>(() => NativeDocumentService.ValidateComplete(
+            fixture.Document, source, NativeDocumentService.SessionOptions with { ResolverVersion = optionsVersion }));
         Assert.Equal(0, source.Reads);
-        Assert.Contains($"({payload}, {resolver})", message);
+        Assert.Equal(MapDocumentRefusal.ResolverContractMismatch, error.Reason);
+        Assert.Equal(payload, error.PayloadVersion);
+        Assert.Equal(resolver, error.ResolverVersion);
+        fixture.Document.ResolverIdentity = new(1, 1);
+        Assert.NotNull(NativeDocumentService.ValidateComplete(fixture.Document, fixture.Source, NativeDocumentService.SessionOptions));
     }
 
     sealed class UnreadableSource : IMapAssetSource

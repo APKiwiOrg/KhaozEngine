@@ -86,15 +86,16 @@ public sealed class MapTypedResourceSchemaTests
     }
 
     [Theory]
-    [InlineData("light", "missing-member")]
-    [InlineData("light", "unknown-member")]
-    [InlineData("light", "wrong-schema")]
-    [InlineData("light", "truncated")]
-    [InlineData("surface", "missing-member")]
-    [InlineData("surface", "unknown-member")]
-    [InlineData("surface", "wrong-schema")]
-    [InlineData("surface", "truncated")]
-    public void MalformedTypedPayload_RefusesTheClosure(string id, string fault)
+    [InlineData("light", "missing-member", MapDocumentRefusal.SchemaMalformed)]
+    [InlineData("light", "unknown-member", MapDocumentRefusal.SchemaMalformed)]
+    [InlineData("light", "wrong-schema", MapDocumentRefusal.SchemaValueRequired)]
+    [InlineData("light", "truncated", MapDocumentRefusal.SchemaMalformed)]
+    [InlineData("light", "unknown-contains-id", MapDocumentRefusal.SchemaMalformed)]
+    [InlineData("surface", "missing-member", MapDocumentRefusal.SchemaMemberMissing)]
+    [InlineData("surface", "unknown-member", MapDocumentRefusal.SchemaMemberUnknown)]
+    [InlineData("surface", "wrong-schema", MapDocumentRefusal.SchemaValueRequired)]
+    [InlineData("surface", "truncated", MapDocumentRefusal.SchemaMalformed)]
+    public void MalformedTypedPayload_RefusesTheClosure(string id, string fault, MapDocumentRefusal reason)
     {
         byte[] valid = id == "light" ? MapLightFile.Write(PrefabFixtures.GlowLight()) : MapSupportResourceFile.Write(PrefabFixtures.DeckSupport());
         var root = JsonNode.Parse(valid)!.AsObject();
@@ -102,13 +103,41 @@ public sealed class MapTypedResourceSchemaTests
         {
             case "missing-member": root.Remove(id == "light" ? "radius" : "references"); break;
             case "unknown-member": root["extra"] = true; break;
+            case "unknown-contains-id": root["'light'"] = true; break;
             case "wrong-schema": root["resourceSchema"] = id == "light" ? "kemap/support-resource" : "kemap/light-resource"; break;
         }
         string text = root.ToJsonString();
         if (fault == "truncated") text = text[..(text.Length / 2)];
         var (roots, source) = NativeAssetFixtures.WithResourceBytes(id, Encoding.UTF8.GetBytes(text));
         var error = Assert.Throws<MapDocumentException>(() => MapAssetClosure.Load(roots, source));
-        Assert.Contains("'" + id + "'", error.Message);
+        Assert.Equal(reason, error.Reason);
+        Assert.Equal(id, error.ResourceId);
+        var (controlRoots, controlSource) = NativeAssetFixtures.WithResourceBytes(id, valid);
+        Assert.True(id == "light" ? MapAssetClosure.Load(controlRoots, controlSource).HasLight(id)
+            : MapAssetClosure.Load(controlRoots, controlSource).HasSupport(id));
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void LeafLightOwner_RequiresTheLocalPlacementToken(bool read)
+    {
+        var valid = PrefabFixtures.GlowLight();
+        var invalid = valid with { Owner = new(MapPrefabReferenceScope.Local, MapPrefabChildKind.Placement, "other") };
+        MapDocumentException error;
+        if (read)
+        {
+            var root = JsonNode.Parse(MapLightFile.Write(valid))!.AsObject();
+            root["owner"]!["id"] = "other";
+            error = Assert.Throws<MapDocumentException>(() => MapLightFile.Read(Encoding.UTF8.GetBytes(root.ToJsonString()), "leaf"));
+        }
+        else error = Assert.Throws<MapDocumentException>(() => MapLightFile.Write(invalid));
+        Assert.Equal(MapDocumentRefusal.PrefabLightOwnerInvalid, error.Reason);
+        Assert.Equal(read ? "leaf" : valid.Id, error.ResourceId);
+        Assert.Equal("$.owner", error.FieldPath);
+        Assert.Equal(valid, MapLightFile.Read(MapLightFile.Write(valid), "leaf"));
+        var unowned = valid with { Owner = null };
+        Assert.Equal(unowned, MapLightFile.Read(MapLightFile.Write(unowned), "leaf"));
     }
 
     [Theory]

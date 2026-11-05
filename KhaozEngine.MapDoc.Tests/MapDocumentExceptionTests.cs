@@ -96,6 +96,7 @@ public sealed class MapDocumentExceptionTests
     static object Sample(PropertyInfo property, int index)
     {
         Type type = Nullable.GetUnderlyingType(property.PropertyType) ?? property.PropertyType;
+        if (type == typeof(Type)) return typeof(MapLocalLightDoc);
         if (type == typeof(string)) return property.Name;
         if (type == typeof(int)) return 1000 + index;
         if (type == typeof(long)) return 3000L + index;

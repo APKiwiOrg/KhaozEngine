@@ -24,9 +24,9 @@ public static class MapLightFile
             Require(light, resourceId);
             return light;
         }
-        catch (JsonException ex) { throw new MapDocumentException("Invalid light payload '" + resourceId + "'.", ex); }
-        catch (MapDocumentException ex) when (!ex.Message.Contains("'" + resourceId + "'", StringComparison.Ordinal))
-        { throw new MapDocumentException("Invalid light payload '" + resourceId + "': " + ex.Message, ex); }
+        catch (JsonException ex) { throw MapDocumentJsonErrors.Wrap(ex, null, "Invalid light payload '" + resourceId + "'.", resourceId: resourceId); }
+        catch (MapDocumentException ex) when (ex.ResourceId is null)
+        { throw ex.WithSourceName(null, "Invalid light payload '" + resourceId + "': " + ex.Message, resourceId: resourceId); }
     }
 
     public static byte[] Write(MapLocalLightDoc light)
@@ -42,6 +42,7 @@ public static class MapLightFile
     {
         MapPrefabValidation.RequireLight(light);
         if (light.Owner is { } owner && owner != new MapPrefabReference(MapPrefabReferenceScope.Local, MapPrefabChildKind.Placement, Owner))
-            throw new MapDocumentException($"Light payload '{resourceId}' owner must be null or the Local placement token {Owner}.");
+            throw new MapDocumentException(MapDocumentRefusal.PrefabLightOwnerInvalid, $"Light payload '{resourceId}' owner must be null or the Local placement token {Owner}.")
+            { ResourceId = resourceId, FieldPath = "$.owner" };
     }
 }

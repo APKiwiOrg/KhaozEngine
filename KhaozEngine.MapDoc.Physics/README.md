@@ -64,6 +64,17 @@ blocking.
 - a hull or mesh has no points,
 - a support resource has no validated MapDoc support payload.
 
+The exception's `MapDocumentRefusal Reason` distinguishes these causes without reading prose.
+
+| Reason | Refused rule | Identifiers when known |
+| --- | --- | --- |
+| `AssetPayloadUnreadable` | Collision bytes the decoder cannot read | `AssetId`, `ResourceId`, `ExpectedHash`, original `InnerException` |
+| `AssetCollisionTrailingBytes` | Bytes after one decoded shape | `AssetId`, `ResourceId`, `ActualByteCount` of trailing bytes |
+| `AssetCollisionEmptyPoints` | A hull or mesh with no points | `AssetId`, `ResourceId`, `ShapeType` |
+| `AssetCollisionNestedMesh` | A triangle mesh nested inside a compound | `AssetId`, `ResourceId` |
+| `AssetTypedPayloadOpaque` | A support resource without the required typed payload | `ResourceId`, `ExpectedSchema`, `SubjectKind` |
+| `ReferenceKindMismatch` | A collider or selection reference of the wrong kind | `AssetId`, `ResourceId`, `ExpectedResourceKind`, `ActualResourceKind` |
+
 `PropCollisionFormat.Read` refuses a non-finite or non-positive box half extent or cylinder size, a non-finite hull
 point, mesh vertex or compound child pose, a mesh index count that is not a multiple of 3 or an index outside the
 vertices, a compound with no children, compound nesting deeper than 16 levels, and a compound child orientation that

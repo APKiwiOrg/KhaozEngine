@@ -64,7 +64,7 @@ internal static class NativeEditorAssetFixtures
     }
 
     // A one-asset closure whose mesh resource holds glb.
-    static NativeScaledMeshAsset MeshAsset(string id, byte[] glb)
+    internal static NativeScaledMeshAsset MeshAsset(string id, byte[] glb)
     {
         var source = new MemoryAssetSource();
         MapAssetRef mesh = source.Add(id + ".mesh", "kit/" + id + "-body.glb", glb);

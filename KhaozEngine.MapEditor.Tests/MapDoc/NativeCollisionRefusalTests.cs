@@ -12,22 +12,75 @@ namespace KhaozEngine.Tests.MapDoc;
 /// <summary>The collider edit's refusals and edge cases, and the native mesh loader's self-containment rule.</summary>
 public class NativeCollisionRefusalTests
 {
-    [Fact]
-    public void NativeLoader_RefusesAMeshThatNamesAnExternalBuffer()
+    [Theory]
+    [InlineData(false, "body.bin", "$.buffers[0].uri")]
+    [InlineData(true, "albedo.png", "$.images[0].uri")]
+    public void NativeLoader_RefusesExternalUris(bool image, string uri, string field)
     {
-        var f = NativeEditorAssetFixtures.ExternalBufferMeshAsset();
-        string message = Assert.Throws<MapDocumentException>(() => NativeMapAssetLoader.Load(f.Asset, f.Closure)).Message;
-        Assert.Contains("'external'", message);
-        Assert.Contains("body.bin", message);
+        var f = image ? NativeEditorAssetFixtures.ExternalImageMeshAsset() : NativeEditorAssetFixtures.ExternalBufferMeshAsset();
+        var error = Assert.Throws<MapDocumentException>(() => NativeMapAssetLoader.Load(f.Asset, f.Closure));
+        Assert.Equal(MapDocumentRefusal.AssetGlbExternalUri, error.Reason);
+        Assert.Equal(f.Asset.Id, error.AssetId);
+        Assert.Equal(f.Asset.MeshResourceId, error.ResourceId);
+        Assert.Equal(uri, error.Uri);
+        Assert.Equal(field, error.FieldPath);
+        var control = NativeEditorAssetFixtures.DataBufferMeshAsset();
+        Assert.NotEmpty(NativeMapAssetLoader.Load(control.Asset, control.Closure).Vertices);
     }
 
     [Fact]
-    public void NativeLoader_RefusesAMeshThatNamesAnExternalImage()
+    public void NativeLoader_RejectsADescriptorFromAnotherClosure()
     {
-        var f = NativeEditorAssetFixtures.ExternalImageMeshAsset();
-        string message = Assert.Throws<MapDocumentException>(() => NativeMapAssetLoader.Load(f.Asset, f.Closure)).Message;
-        Assert.Contains("'external-image'", message);
-        Assert.Contains("albedo.png", message);
+        var f = NativeEditorAssetFixtures.DataBufferMeshAsset();
+        var other = NativeEditorAssetFixtures.DataBufferMeshAsset();
+        var error = Assert.Throws<MapDocumentException>(() => NativeMapAssetLoader.Load(other.Asset, f.Closure));
+        Assert.Equal(MapDocumentRefusal.AssetDescriptorMismatch, error.Reason);
+        Assert.Equal(f.Asset.Id, error.AssetId);
+        Assert.NotEmpty(NativeMapAssetLoader.Load(f.Asset, f.Closure).Vertices);
+    }
+
+    [Theory]
+    [InlineData("header")]
+    [InlineData("chunk")]
+    [InlineData("json")]
+    [InlineData("mesh")]
+    public void NativeLoader_ReportsMalformedAndUnreadableMeshes(string fault)
+    {
+        byte[] bytes = fault == "header" ? new byte[19] : NativeEditorAssetFixtures.GlbWithJson(fault == "json" ? "{" : "{}");
+        if (fault == "chunk") bytes[16] = 0;
+        var f = NativeEditorAssetFixtures.MeshAsset("malformed", bytes);
+        var error = Assert.Throws<MapDocumentException>(() => NativeMapAssetLoader.Load(f.Asset, f.Closure));
+        Assert.Equal(fault == "mesh" ? MapDocumentRefusal.AssetPayloadUnreadable : MapDocumentRefusal.SchemaMalformed, error.Reason);
+        Assert.Equal(f.Asset.Id, error.AssetId);
+        Assert.Equal(f.Asset.MeshResourceId, error.ResourceId);
+        var control = NativeEditorAssetFixtures.DataBufferMeshAsset();
+        Assert.NotEmpty(NativeMapAssetLoader.Load(control.Asset, control.Closure).Vertices);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void NativeLoader_KeepsKnownExternalLoaderRefusals(bool nested)
+    {
+        var f = NativeEditorAssetFixtures.DataBufferMeshAsset();
+        var original = new MapDocumentException(MapDocumentRefusal.SchemaMemberDuplicate, "known refusal")
+        {
+            ResourceId = "nested-resource", SourceName = "nested-source", FieldPath = "$.member",
+            ResourceRoot = "nested-root", SupportedVersions = [1, 3], Uri = "nested-uri", ShapeType = typeof(MapDocument),
+        };
+        var error = NativeMapAssetLoader.MeshLoadFailure(nested ? new InvalidOperationException("loader", original) : original,
+            f.Asset, f.Closure.GetResource(f.Asset.MeshResourceId));
+        Assert.Equal(original.Reason, error.Reason);
+        Assert.Equal(original.ResourceId, error.ResourceId);
+        Assert.Equal(original.SourceName, error.SourceName);
+        Assert.Equal(original.FieldPath, error.FieldPath);
+        Assert.Equal(original.ResourceRoot, error.ResourceRoot);
+        Assert.Equal(original.SupportedVersions, error.SupportedVersions);
+        Assert.Equal(original.Uri, error.Uri);
+        Assert.Equal(original.ShapeType, error.ShapeType);
+        Assert.Equal(f.Asset.Id, error.AssetId);
+        Assert.Same(original, error.InnerException);
+        Assert.NotEmpty(NativeMapAssetLoader.Load(f.Asset, f.Closure).Vertices);
     }
 
     [Fact]

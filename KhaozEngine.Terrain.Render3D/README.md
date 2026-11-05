@@ -343,6 +343,21 @@ Kept separate from the render-free field so a server/sim never drags in `Render3
   closure, a resource that is not a binary glTF, an external URI or a mesh that does not load throws
   `MapDocumentException`.
 
+Native adapter refusals preserve `MapDocumentException` and share `MapDocumentRefusal` with MapDoc.
+
+| Reason | Refused rule | Identifiers when known |
+| --- | --- | --- |
+| `AssetDescriptorMismatch` | A descriptor from another closure | `AssetId` |
+| `ReferenceKindMismatch` | A native mesh reference with a different resource kind | `AssetId`, `ResourceId`, `ExpectedResourceKind`, `ActualResourceKind` |
+| `SchemaMalformed` | An invalid GLB header, JSON chunk header or JSON payload | `AssetId`, `ResourceId`, JSON `FieldPath`, `LineNumber`, `BytePositionInLine` |
+| `AssetGlbExternalUri` | An external buffer or image URI | `AssetId`, `ResourceId`, indexed `FieldPath`, `Uri` |
+| `AssetPayloadUnreadable` | A mesh decode failure or a missing or unreadable adapter file | `AssetId`, `ResourceId`, `Path`, `ExpectedHash`, original `InnerException` |
+| `DigestMismatch` | Adapter file bytes differing from their verified pin | `DigestKind` `resource bytes`, `SubjectKind` `resource`, `EntityId`, `ResourceId`, `Path`, `ExpectedHash`, `ActualHash` |
+
+The loader preserves a known structured document refusal found in an external loader failure through
+the shared context-copy method, keeping its identifiers and original cause. Other loader failures use
+`AssetPayloadUnreadable`. Unavailable identifiers remain null.
+
 R5's format-7 effective prefab resources retain this one-way leaf mesh loader. Prefabs have no mesh of their
 own. Partial-face paint drawing, room-based roof colour/shadows, camera policy and local-light presentation
 remain R8 work. Consume the effective MapDoc snapshot rather than re-expanding children in this adapter.

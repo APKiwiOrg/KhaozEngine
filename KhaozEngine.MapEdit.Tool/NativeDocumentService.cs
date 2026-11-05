@@ -67,8 +67,8 @@ public static class NativeDocumentService
         }
         catch (MapDocumentException ex)
         {
-            throw new MapDocumentException(
-                $"{context}: native document failed complete validation against resources under '{resourceRoot}'. {ex.Message}", ex);
+            throw ex.WithSourceName(storagePath,
+                $"{context}: native document failed complete validation against resources under '{resourceRoot}'. {ex.Message}", resourceRoot: resourceRoot);
         }
     }
 

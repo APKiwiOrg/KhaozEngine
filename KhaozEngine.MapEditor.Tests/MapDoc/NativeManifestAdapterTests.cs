@@ -62,27 +62,40 @@ public sealed class NativeManifestAdapterTests
         Assert.Throws<ArgumentNullException>(() => MapAssetManifestAdapter.ToAssetEntry(null!, "prop", f.ResourceRoot));
     }
 
-    [Fact]
-    public void Adapter_RejectsStaleOrMissingMeshAndLodFiles()
+    [Theory]
+    [InlineData(false, false)]
+    [InlineData(false, true)]
+    [InlineData(true, false)]
+    [InlineData(true, true)]
+    public void Adapter_RejectsStaleOrMissingMeshAndLodFiles(bool lod, bool missing)
     {
         using var f = new NativeLifecycleFixture();
         string other = Path.Combine(f.ResourceRoot, "other-root");
-        Directory.CreateDirectory(other);
-        Assert.Throws<MapDocumentException>(() => MapAssetManifestAdapter.ToAssetEntry(f.Closure, "prop", other));
         f.CopyResourcesTo(other);
+        string resourceId = lod ? "prop.lod0" : "prop.mesh";
+        string path = Path.Combine(other, lod ? NativeLifecycleFixture.LodRelativePath : NativeLifecycleFixture.MeshRelativePath);
+        byte[] valid = File.ReadAllBytes(path);
+        byte[] saved = f.ReadSavedBytes();
+        if (missing) File.Delete(path);
+        else File.WriteAllText(path, "changed");
+        var error = Assert.Throws<MapDocumentException>(() => MapAssetManifestAdapter.ToAssetEntry(f.Closure, "prop", other));
+        Assert.Equal(missing ? MapDocumentRefusal.AssetPayloadUnreadable : MapDocumentRefusal.DigestMismatch, error.Reason);
+        Assert.Equal(resourceId, error.ResourceId);
+        Assert.Equal(path, error.Path);
+        Assert.Equal(f.Closure.GetResource(resourceId).Reference.Sha256, error.ExpectedHash);
+        if (!missing)
+        {
+            Assert.Equal("resource bytes", error.DigestKind);
+            Assert.Equal("resource", error.SubjectKind);
+            Assert.Equal(resourceId, error.EntityId);
+            Assert.Equal(NativeLifecycleFixture.Digest(File.ReadAllBytes(path)), error.ActualHash);
+        }
+        Assert.Equal(saved, f.ReadSavedBytes());
+        if (missing) Assert.False(File.Exists(path));
+        else Assert.Equal(Encoding.UTF8.GetBytes("changed"), File.ReadAllBytes(path));
+        File.WriteAllBytes(path, valid);
         Assert.Equal(Path.GetFullPath(NativeLifecycleFixture.MeshRelativePath, other),
             MapAssetManifestAdapter.ToAssetEntry(f.Closure, "prop", other).File);
-
-        f.CorruptLod();
-        Assert.Throws<MapDocumentException>(() => MapAssetManifestAdapter.ToAssetEntry(f.Closure, "prop", f.ResourceRoot));
-        string otherMesh = Path.Combine(other, NativeLifecycleFixture.MeshRelativePath);
-        File.WriteAllText(otherMesh, "mesh-v2");
-        Assert.Throws<MapDocumentException>(() => MapAssetManifestAdapter.ToAssetEntry(f.Closure, "prop", other));
-        File.Delete(otherMesh);
-        Assert.Throws<MapDocumentException>(() => MapAssetManifestAdapter.ToAssetEntry(f.Closure, "prop", other));
-        File.Delete(Path.Combine(other, NativeLifecycleFixture.LodRelativePath));
-        File.Delete(Path.Combine(f.ResourceRoot, NativeLifecycleFixture.LodRelativePath));
-        Assert.Throws<MapDocumentException>(() => MapAssetManifestAdapter.ToAssetEntry(f.Closure, "prop", f.ResourceRoot));
     }
 
     // Absolute fixture references on Windows carry backslashes and a quote is the other character JSON must

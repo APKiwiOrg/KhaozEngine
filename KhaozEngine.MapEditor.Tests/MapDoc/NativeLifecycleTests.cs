@@ -19,10 +19,20 @@ public sealed class NativeLifecycleTests
         using var f = new NativeLifecycleFixture();
         byte[] before = f.ReadSavedBytes();
         Assert.True(f.Session.Validate().Valid);
+        byte[] meshBytes = File.ReadAllBytes(f.MeshPath);
         f.CorruptResource();
-        Assert.Throws<MapDocumentException>(() => f.Session.Save());
+        var error = Assert.Throws<MapDocumentException>(() => f.Session.Save());
+        Assert.Equal(MapDocumentRefusal.DigestMismatch, error.Reason);
+        Assert.Equal("prop.mesh", error.ResourceId);
+        Assert.Equal(f.ValidPath, error.SourceName);
+        Assert.Equal(f.ResourceRoot, error.ResourceRoot);
+        Assert.Equal(f.Closure.GetResource("prop.mesh").Reference.Sha256, error.ExpectedHash);
+        Assert.Equal(NativeLifecycleFixture.Digest(File.ReadAllBytes(f.MeshPath)), error.ActualHash);
+        Assert.NotNull(error.InnerException);
         Assert.Equal(before, f.ReadSavedBytes());
         Assert.False(f.Session.Validate(verifyWholeWorld: true).Valid);
+        File.WriteAllBytes(f.MeshPath, meshBytes);
+        Assert.True(f.Session.Save().Saved);
     }
 
     [Fact]

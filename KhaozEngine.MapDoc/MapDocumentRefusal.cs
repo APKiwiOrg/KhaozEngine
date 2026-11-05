@@ -8,7 +8,7 @@ public enum MapDocumentRefusal
     ResolverContractMismatch,
 
     // Schema and scalar admission.
-    /// <summary>Refuses malformed JSON or a malformed tile sculpt payload.</summary>
+    /// <summary>Refuses malformed JSON, typed payload encoding or tile sculpt data.</summary>
     SchemaMalformed,
     /// <summary>Refuses a repeated or case-variant JSON member.</summary>
     SchemaMemberDuplicate,
@@ -70,12 +70,27 @@ public enum MapDocumentRefusal
     AssetDependencyCycle,
     /// <summary>Refuses access to a resource payload not captured in the closure.</summary>
     AssetPayloadNotCaptured,
-    /// <summary>Refuses a required resource whose bytes cannot be read.</summary>
+    /// <summary>Refuses a required resource whose bytes cannot be read or decoded.</summary>
     AssetPayloadUnreadable,
     /// <summary>Refuses a resource path owned by a map storage writer.</summary>
     AssetStoragePathReserved,
     /// <summary>Refuses a typed consumer given an opaque resource.</summary>
     AssetTypedPayloadOpaque,
+
+    /// <summary>Refuses a descriptor differing from its verified closure descriptor.</summary>
+    AssetDescriptorMismatch,
+    /// <summary>Refuses an external buffer or image URI in a self-contained native mesh.</summary>
+    AssetGlbExternalUri,
+    /// <summary>Refuses bytes remaining after the collision shape.</summary>
+    AssetCollisionTrailingBytes,
+    /// <summary>Refuses a collision hull or mesh without points.</summary>
+    AssetCollisionEmptyPoints,
+    /// <summary>Refuses a triangle mesh nested inside a compound collider.</summary>
+    AssetCollisionNestedMesh,
+
+    // Prefab leaf resource admission.
+    /// <summary>Refuses a leaf light owner other than null or its Local placement token.</summary>
+    PrefabLightOwnerInvalid,
 
     // Foliage JSON converter.
     /// <summary>Refuses a foliage section larger than its UTF-8 byte budget.</summary>

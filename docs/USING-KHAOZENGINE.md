@@ -12680,6 +12680,19 @@ does: it parses the verified mesh resource from the closure's bytes, refusing an
 external URI, and multiplies every vertex position by `SourceUnitsToMetres` once. It never fits the mesh to a height, drops its base or recentres it, so a native mesh keeps
 its authored origin and agrees with its collider.
 
+Native mesh refusals distinguish `AssetDescriptorMismatch`, `ReferenceKindMismatch`, `SchemaMalformed`,
+`AssetGlbExternalUri` and `AssetPayloadUnreadable` through `MapDocumentException.Reason`. They carry
+`AssetId` and `ResourceId` where known. External URI refusals also carry `Uri` and indexed `FieldPath`.
+The file adapter uses `AssetPayloadUnreadable` for read failures and `DigestMismatch` for changed bytes,
+with `ResourceId`, `Path`, `ExpectedHash` and, for a mismatch, `ActualHash`, `DigestKind` `resource bytes`,
+`SubjectKind` `resource` and `EntityId`. Known structured causes retain their reason and identifiers.
+Complete native storage verification adds `SourceName` and `ResourceRoot` through the same context-copy
+method, retaining the original refusal as `InnerException`.
+Leaf light ownership uses `PrefabLightOwnerInvalid` with `ResourceId` and `FieldPath`. Support payload
+schema checks distinguish object, required, unknown and duplicate fields through the shared schema reasons.
+They carry the resource identity and field path. Support payload versions carry `ActualVersion` and
+`SupportedVersions`, and duplicate patches or records carry `IdentityDuplicate` with `Patch` or `RecordId`.
+
 ---
 
 ## Physics for a native map document (`KhaozEngine.MapDoc.Physics`)
@@ -12749,6 +12762,11 @@ metres. Physics consumes the captured transformed surfaces with canonical owners
 builds refuse room coverage findings and independently authored coincident floors, even without water.
 `MapBackendPoseAdapter` makes the frame-local binary32 approximation explicit and reports its error in metres.
 The pre/post `Affected` and `AffectedTiles` overloads retain removed owners and old tile captures.
+`MapAssetShapes.Read` reports decoder failures as `AssetPayloadUnreadable`, trailing bytes as
+`AssetCollisionTrailingBytes`, empty point sets as `AssetCollisionEmptyPoints`, and nested meshes as
+`AssetCollisionNestedMesh`. These retain `AssetId` and `ResourceId`. Decoder failures also retain
+`ExpectedHash` and their original cause. Trailing bytes carry `ActualByteCount`, and an empty point set
+carries `ShapeType`. Opaque support uses `AssetTypedPayloadOpaque` with `ExpectedSchema` and `ResourceId`.
 `Read` also refuses a compound holding a triangle mesh,
 a hull or mesh with no points and a payload with bytes after its shape. The `PropCollisionFormat` reader beneath it
 refuses non-finite or non-positive box and cylinder sizes, non-finite points and poses, a mesh index count that is

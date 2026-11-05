@@ -29,27 +29,34 @@ public static class MapSupportResourceFile
         {
             using JsonDocument json = JsonDocument.Parse(bytes, new JsonDocumentOptions { MaxDepth = 64 });
             JsonElement root = json.RootElement;
-            if (root.ValueKind != JsonValueKind.Object) Fail(resourceId, "expected an object");
+            if (root.ValueKind != JsonValueKind.Object) Fail(MapDocumentRefusal.SchemaObjectRequired, resourceId, "expected an object", "$");
             MapTypedResourceSchema.Require(root, MapTypedResourceSchema.Support, "Support resource", resourceId);
             var seen = new HashSet<string>(StringComparer.Ordinal);
             foreach (JsonProperty property in root.EnumerateObject())
+            {
+                bool duplicate = seen.Contains(property.Name);
                 if (!seen.Add(property.Name) || !Required.Contains(property.Name, StringComparer.Ordinal) && property.Name != "space")
-                    Fail(resourceId, "unknown or duplicate member '" + property.Name + "'");
+                    Fail(duplicate ? MapDocumentRefusal.SchemaMemberDuplicate : MapDocumentRefusal.SchemaMemberUnknown,
+                        resourceId, "unknown or duplicate member '" + property.Name + "'", MapDocumentJsonPath.AppendProperty("$", property.Name));
+            }
             foreach (string name in Required)
-                if (!seen.Contains(name)) Fail(resourceId, "missing member '" + name + "'");
+                if (!seen.Contains(name)) Fail(MapDocumentRefusal.SchemaMemberMissing, resourceId, "missing member '" + name + "'", MapDocumentJsonPath.AppendProperty("$", name));
             MapPrefabJson.Preflight(root);
             JsonElement payload = root.GetProperty("payloadVersion");
-            int version = payload.ValueKind == JsonValueKind.Number && payload.TryGetInt32(out int number) ? number : 0;
+            bool versionIsInteger = payload.ValueKind == JsonValueKind.Number && payload.TryGetInt32(out _);
+            int version = versionIsInteger ? payload.GetInt32() : 0;
             var surfaces = new MapSurfaceSet();
             surfaces.Refs.AddRange(MapPrefabJson.Read<MapSurfaceRef[]>(root.GetProperty("surfaces")));
             foreach (MapSurfacePatch patch in MapPrefabJson.Read<MapSurfacePatch[]>(root.GetProperty("patches")))
-                if (!surfaces.Patches.TryAdd(patch.Key, patch)) Fail(resourceId, "duplicate patch");
+                if (!surfaces.Patches.TryAdd(patch.Key, patch)) Fail(MapDocumentRefusal.IdentityDuplicate, resourceId, "duplicate patch", "$.patches", patch.Key);
             MapRecordRef? space = root.TryGetProperty("space", out JsonElement value) ? MapPrefabJson.Read<MapRecordRef>(value) : null;
             var resource = new MapSupportResource(version, surfaces, space, MapPrefabJson.Read<MapPrefabReferenceSlot[]>(root.GetProperty("references")));
-            Require(resource);
+            Require(resource, resourceId, versionIsInteger);
             return resource;
         }
-        catch (JsonException ex) { throw new MapDocumentException("Invalid support resource '" + resourceId + "'.", ex); }
+        catch (JsonException ex) { throw MapDocumentJsonErrors.Wrap(ex, null, "Invalid support resource '" + resourceId + "'.", resourceId: resourceId); }
+        catch (MapDocumentException ex) when (ex.ResourceId is null)
+        { throw ex.WithSourceName(null, ex.Message, resourceId: resourceId); }
     }
 
     public static byte[] Write(MapSupportResource resource)
@@ -76,10 +83,12 @@ public static class MapSupportResourceFile
     }
 
     /// <summary>Payload, geometry and scope checks. Local references name this resource's own surfaces and records.</summary>
-    internal static void Require(MapSupportResource resource)
+    internal static void Require(MapSupportResource resource, string? resourceId = null, bool versionIsInteger = true)
     {
-        if (resource.PayloadVersion != 1) throw new MapDocumentException("Unsupported support resource payload version.");
-        if (resource.Surfaces is null || resource.References is null) throw new MapDocumentException("Support resource collections must not be null.");
+        if (resource.PayloadVersion != 1) throw new MapDocumentException(versionIsInteger ? MapDocumentRefusal.SchemaPayloadVersionUnsupported : MapDocumentRefusal.SchemaValueRequired, "Unsupported support resource payload version.")
+        { ResourceId = resourceId, FieldPath = "$.payloadVersion", ActualVersion = versionIsInteger ? resource.PayloadVersion : null, SupportedVersions = [1] };
+        if (resource.Surfaces is null || resource.References is null) throw new MapDocumentException(MapDocumentRefusal.SchemaValueRequired, "Support resource collections must not be null.")
+        { ResourceId = resourceId, FieldPath = resource.Surfaces is null ? "$.surfaces" : "$.references" };
         var surfaces = new HashSet<string>(StringComparer.Ordinal);
         foreach (MapSurfaceRef surface in resource.Surfaces.Refs)
         {
@@ -99,7 +108,8 @@ public static class MapSupportResourceFile
             if (MapSurfaceCompiler.Compile(surface, patch).LegacyFallbackCells.Count != 0)
                 throw new MapDocumentException("Support resources cannot declare analytic fallback cells.");
             foreach (MapTopologyRecord record in patch.Records)
-                if (!anchors.TryAdd(record.Id, key)) throw new MapDocumentException($"Duplicate support resource record '{record.Id}'.");
+                if (!anchors.TryAdd(record.Id, key)) throw new MapDocumentException(MapDocumentRefusal.IdentityDuplicate, $"Duplicate support resource record '{record.Id}'.")
+                { ResourceId = resourceId, RecordId = record.Id, EntityId = record.Id, Patch = key, SubjectKind = "support resource record" };
         }
         var (_, occurrences) = MapPrefabReferenceWalker.Resource(resource, MapPrefabReferenceMap.Identity);
         MapPrefabReferences.RequireSlots(resource.References, occurrences, new Targets(surfaces, anchors, resource.Surfaces), null, "support resource");
@@ -119,5 +129,7 @@ public static class MapSupportResourceFile
     }
 
     [DoesNotReturn]
-    static void Fail(string resourceId, string message) => throw new MapDocumentException($"Invalid support resource '{resourceId}': {message}.");
+    static void Fail(MapDocumentRefusal reason, string resourceId, string message, string fieldPath, MapPatchKey? patch = null) =>
+        throw new MapDocumentException(reason, $"Invalid support resource '{resourceId}': {message}.")
+        { ResourceId = resourceId, FieldPath = fieldPath, Patch = patch, SubjectKind = patch is null ? null : "support resource patch" };
 }

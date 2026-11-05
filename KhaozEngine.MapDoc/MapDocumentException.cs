@@ -149,6 +149,13 @@ public sealed class MapDocumentException : Exception
     /// <summary>The explicit storage form whose writer owns the refused path.</summary>
     public MapDocumentForm? DocumentForm { get; init; }
 
+    /// <summary>The external URI refused by a self-contained mesh resource.</summary>
+    public string? Uri { get; init; }
+    /// <summary>The collision shape type whose point set is empty.</summary>
+    public Type? ShapeType { get; init; }
+    /// <summary>The resource root used by complete document validation, when known.</summary>
+    public string? ResourceRoot { get; init; }
+
     /// <summary>The resource identities left unresolved by a dependency cycle, in ordinal order,
     /// as an owned read-only snapshot. This includes resources blocked behind the cycle.</summary>
     public IReadOnlyList<string>? ResourceIds
@@ -175,12 +182,13 @@ public sealed class MapDocumentException : Exception
     /// <summary>Adds source context while preserving the reason, every identifier and this refusal as the cause.
     /// A supplied wrapper message retains the caller's released wording. Existing tile and path identifiers
     /// take precedence over additional source context. A null source name keeps the existing source,
-    /// and an existing resource identity takes precedence over an additional resource identity.</summary>
+    /// and existing resource, asset and resource-root identifiers take precedence over additional context.</summary>
     internal MapDocumentException WithSourceName(string? sourceName, string? message = null,
-        MapTileCoord? tile = null, string? path = null, string? resourceId = null) => new(this, sourceName, message, tile, path, resourceId);
+        MapTileCoord? tile = null, string? path = null, string? resourceId = null, string? resourceRoot = null, string? assetId = null) =>
+        new(this, sourceName, message, tile, path, resourceId, resourceRoot, assetId);
 
     MapDocumentException(MapDocumentException inner, string? sourceName, string? message,
-        MapTileCoord? tile, string? path, string? resourceId) : base(message ?? $"{sourceName}: {inner.Message}", inner)
+        MapTileCoord? tile, string? path, string? resourceId, string? resourceRoot, string? assetId) : base(message ?? $"{sourceName}: {inner.Message}", inner)
     {
         Reason = inner.Reason;
         SourceName = sourceName ?? inner.SourceName;
@@ -211,7 +219,7 @@ public sealed class MapDocumentException : Exception
         MinimumInteger = inner.MinimumInteger;
         MaximumInteger = inner.MaximumInteger;
         EntityId = inner.EntityId;
-        AssetId = inner.AssetId;
+        AssetId = inner.AssetId ?? assetId;
         SurfaceId = inner.SurfaceId;
         PlacementId = inner.PlacementId;
         ExpectedResourceKind = inner.ExpectedResourceKind;
@@ -239,6 +247,9 @@ public sealed class MapDocumentException : Exception
         ExpectedSchema = inner.ExpectedSchema;
         StoragePath = inner.StoragePath;
         DocumentForm = inner.DocumentForm;
+        Uri = inner.Uri;
+        ShapeType = inner.ShapeType;
+        ResourceRoot = inner.ResourceRoot ?? resourceRoot;
         _resourceIds = inner._resourceIds;
         _supportedVersions = inner._supportedVersions;
         // Findings already owns a read-only snapshot whose elements are immutable records.

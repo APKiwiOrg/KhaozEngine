@@ -557,6 +557,10 @@ just wrote and append ", host kinds match no kind in the host layer" to the resu
 (mirroring the GUI editor's read-only warning row wording), so an MCP client sees the same warning a human
 operator would see in the inspector without a separate `procedural_info` round trip.
 
+Complete native validation wrappers preserve the original `MapDocumentException.Reason` and every
+identifier through the shared context-copy method. `SourceName` identifies the storage being verified,
+and `ResourceRoot` identifies the resources used. The original refusal remains `InnerException`.
+
 Every mutation returns what changed. An exception from a lower layer (`MapDocumentException`,
 `InvalidOperationException`, `ArgumentException`) reaches the client with its original, precise message
 rather than a generic one.

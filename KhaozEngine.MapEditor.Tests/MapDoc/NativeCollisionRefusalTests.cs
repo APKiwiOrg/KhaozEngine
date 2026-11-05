@@ -24,7 +24,9 @@ public class NativeCollisionRefusalTests
         Assert.Equal(f.Asset.MeshResourceId, error.ResourceId);
         Assert.Equal(uri, error.Uri);
         Assert.Equal(field, error.FieldPath);
-        var control = NativeEditorAssetFixtures.DataBufferMeshAsset();
+        const string dataImageUri = "data:image/png;base64," +
+            "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIHWP4z8DwHwAFgAI/ScLbtAAAAABJRU5ErkJggg==";
+        var control = NativeEditorAssetFixtures.DataBufferMeshAsset(image ? dataImageUri : null);
         Assert.NotEmpty(NativeMapAssetLoader.Load(control.Asset, control.Closure).Vertices);
     }
 

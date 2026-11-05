@@ -41,19 +41,19 @@ internal static class NativeEditorAssetFixtures
         GlbWithJson("""{"asset":{"version":"2.0"},"buffers":[{"uri":"body.bin","byteLength":36}]}"""));
 
     /// <summary>One asset whose verified mesh is a binary glTF that names an external image, <c>albedo.png</c>.</summary>
-    internal static NativeScaledMeshAsset ExternalImageMeshAsset() => MeshAsset("external-image",
-        GlbWithJson("""{"asset":{"version":"2.0"},"images":[{"uri":"albedo.png"}]}"""));
+    internal static NativeScaledMeshAsset ExternalImageMeshAsset() => DataBufferMeshAsset("albedo.png");
 
     /// <summary>One asset whose verified mesh is a binary glTF holding one triangle, (0, 0, 0), (1, 0, 0) and
-    /// (0, 2, 0), in a buffer embedded as a <c>data:</c> URI.</summary>
-    internal static NativeScaledMeshAsset DataBufferMeshAsset()
+    /// (0, 2, 0), in a buffer embedded as a <c>data:</c> URI, with an optional image at <paramref name="imageUri"/>.</summary>
+    internal static NativeScaledMeshAsset DataBufferMeshAsset(string? imageUri = null)
     {
         var data = new byte[42];
         Buffer.BlockCopy(new[] { 0f, 0f, 0f, 1f, 0f, 0f, 0f, 2f, 0f }, 0, data, 0, 36);
         Buffer.BlockCopy(new ushort[] { 0, 1, 2 }, 0, data, 36, 6);
         string uri = "data:application/octet-stream;base64," + Convert.ToBase64String(data);
+        string images = imageUri is null ? "" : $$""","images":[{"uri":"{{imageUri}}"}]""";
         return MeshAsset("embedded", GlbWithJson($$"""
-            {"asset":{"version":"2.0"},"buffers":[{"byteLength":42,"uri":"{{uri}}"}],
+            {"asset":{"version":"2.0"}{{images}},"buffers":[{"byteLength":42,"uri":"{{uri}}"}],
              "bufferViews":[{"buffer":0,"byteOffset":0,"byteLength":36,"target":34962},
               {"buffer":0,"byteOffset":36,"byteLength":6,"target":34963}],
              "accessors":[{"bufferView":0,"componentType":5126,"count":3,"type":"VEC3","min":[0,0,0],"max":[1,2,0]},

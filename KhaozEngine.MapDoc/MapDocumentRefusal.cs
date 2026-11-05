@@ -45,6 +45,9 @@ public enum MapDocumentRefusal
     /// <summary>Refuses a source-unit transform that is not finite and positive.</summary>
     TransformInvalid,
 
+    /// <summary>Refuses a value outside the declared enumeration.</summary>
+    SchemaEnumUnsupported,
+
     // Shared identity admission.
     /// <summary>Refuses foliage editing without a verified asset closure.</summary>
     AssetClosureRequired,
@@ -62,6 +65,9 @@ public enum MapDocumentRefusal
     NumericIdHighWaterExceeded,
     /// <summary>Refuses a referenced resource of a different kind than required.</summary>
     ReferenceKindMismatch,
+
+    /// <summary>Refuses an authored reference of a different child kind than its role requires.</summary>
+    AuthoredReferenceKindInvalid,
 
     // Asset manifest admission.
     /// <summary>Refuses an undefined resource kind.</summary>
@@ -89,6 +95,14 @@ public enum MapDocumentRefusal
     AssetCollisionEmptyPoints,
     /// <summary>Refuses a triangle mesh nested inside a compound collider.</summary>
     AssetCollisionNestedMesh,
+
+    // Prefab structural admission.
+    /// <summary>Refuses a child whose declared key differs from its payload identity or kind.</summary>
+    PrefabPayloadIdMismatch,
+    /// <summary>Refuses a placement child carrying an additional local transform.</summary>
+    PrefabPlacementTransformDuplicated,
+    /// <summary>Refuses a prefab record anchored outside a declared local surface.</summary>
+    PrefabLocalAnchorInvalid,
 
     // Prefab leaf resource admission.
     /// <summary>Refuses a leaf light owner other than null or its Local placement token.</summary>

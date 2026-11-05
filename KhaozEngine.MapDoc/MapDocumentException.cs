@@ -149,6 +149,9 @@ public sealed class MapDocumentException : Exception
     /// <summary>The explicit storage form whose writer owns the refused path.</summary>
     public MapDocumentForm? DocumentForm { get; init; }
 
+    /// <summary>The enumeration type whose submitted numeric value is undefined.</summary>
+    public Type? EnumType { get; init; }
+
     /// <summary>The external URI refused by a self-contained mesh resource.</summary>
     public string? Uri { get; init; }
     /// <summary>The collision shape type whose point set is empty.</summary>
@@ -247,6 +250,7 @@ public sealed class MapDocumentException : Exception
         ExpectedSchema = inner.ExpectedSchema;
         StoragePath = inner.StoragePath;
         DocumentForm = inner.DocumentForm;
+        EnumType = inner.EnumType;
         Uri = inner.Uri;
         ShapeType = inner.ShapeType;
         ResourceRoot = inner.ResourceRoot ?? resourceRoot;

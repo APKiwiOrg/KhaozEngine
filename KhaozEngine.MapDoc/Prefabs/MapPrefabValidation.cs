@@ -159,8 +159,9 @@ public static class MapPrefabValidation
     internal static void RequireAsset(MapPrefabAsset asset, MapAssetClosure? assets,
         IReadOnlyList<MapPrefabLocalMaterialization>? suppressed = null)
     {
-        if (asset.PayloadVersion != 1) Fail("Unsupported prefab payload version.");
-        Text(asset.Id);
+        if (asset.PayloadVersion != 1) throw new MapDocumentException(MapDocumentRefusal.SchemaPayloadVersionUnsupported, "Unsupported prefab payload version.")
+            { FieldPath = "$.payloadVersion", ActualVersion = asset.PayloadVersion, SupportedVersions = [1], AssetId = asset.Id };
+        Text(asset.Id, "$.id");
         if (asset.Children is null || asset.Children.Count > MapPrefabJson.Limits.MaxChildren) Fail("Prefab child limit exceeded or collection missing.");
         Unique(asset.Children, c => c.Key, "prefab child");
         var children = asset.Children.ToDictionary(c => c.Key);
@@ -173,17 +174,21 @@ public static class MapPrefabValidation
             MapPrefabReferences.RequireSlots(child.References!, occurrences, targets,
                 child is MapPrefabRecordChild ? child.LocalTransform : null, $"Prefab {child.Key.Kind} '{child.Key.Key}'");
             if (child is MapPrefabRecordChild && child.References!.Single(s => s.Path == "/anchor/surfaceId").Target.Scope != MapPrefabReferenceScope.Local)
-                Fail($"Prefab record '{child.Key.Key}' must be anchored on a declared local surface.");
+                throw new MapDocumentException(MapDocumentRefusal.PrefabLocalAnchorInvalid, $"Prefab record '{child.Key.Key}' must be anchored on a declared local surface.")
+                    { Child = child.Key, RecordId = child.Key.Key, FieldPath = "$.anchor.surfaceId" };
             // Annotation references carry their scope directly and take no slots.
             foreach (MapPrefabReference reference in MapPrefabReferences.Annotations(child))
                 if (reference.Scope == MapPrefabReferenceScope.Local && !targets.Has(reference.Kind, reference.Id))
-                    Fail($"Prefab {child.Key.Kind} '{child.Key.Key}' names undeclared local {reference.Kind} '{reference.Id}'.");
+                    throw new MapDocumentException(MapDocumentRefusal.ReferenceMissing, $"Prefab {child.Key.Kind} '{child.Key.Key}' names undeclared local {reference.Kind} '{reference.Id}'.")
+                        { Child = child.Key, ChildKind = reference.Kind, EntityId = reference.Id, SubjectKind = "local annotation target" };
         }
         Unique(asset.Roofs, r => (r.Scope, r.Kind, r.Id), "roof inventory");
         foreach (MapPrefabReference roof in asset.Roofs)
         {
             RoofReference(roof);
-            if (roof.Scope == MapPrefabReferenceScope.Local && !children.ContainsKey(new(roof.Kind, roof.Id))) Fail("Roof inventory names an undeclared placement.");
+            if (roof.Scope == MapPrefabReferenceScope.Local && !children.ContainsKey(new(roof.Kind, roof.Id)))
+                throw new MapDocumentException(MapDocumentRefusal.ReferenceMissing, "Roof inventory names an undeclared placement.")
+                    { EntityId = roof.Id, ChildKind = roof.Kind, SubjectKind = "roof placement" };
         }
         MapPrefabLocalMaterializations.RequireStructure(asset);
         using var json = JsonDocument.Parse(MapPrefabJson.Bytes(asset));
@@ -203,19 +208,24 @@ public static class MapPrefabValidation
             if (child is MapPrefabWaterChild water)
             {
                 string id = water.Value.RenderMaterial;
-                if (assets.GetResource(id).Kind != MapResourceKind.Material) Fail("Prefab leaf requires Material resource '" + id + "'.");
+                MapResolvedResource resource = assets.GetResource(id);
+                if (resource.Kind != MapResourceKind.Material)
+                    throw new MapDocumentException(MapDocumentRefusal.ReferenceKindMismatch, "Prefab leaf requires Material resource '" + id + "'.")
+                        { ResourceId = id, ExpectedResourceKind = MapResourceKind.Material, ActualResourceKind = resource.Kind, Child = child.Key };
                 RequireDependency(id);
             }
         }
         void RequireDependency(string id)
         {
-            if (dependencies is not null && !dependencies.Contains(id, StringComparer.Ordinal)) Fail("Prefab payload resource edge '" + id + "' is not a declared dependency.");
+            if (dependencies is not null && !dependencies.Contains(id, StringComparer.Ordinal))
+                throw new MapDocumentException(MapDocumentRefusal.ReferenceMissing, "Prefab payload resource edge '" + id + "' is not a declared dependency.")
+                    { ResourceId = id, SubjectKind = "prefab dependency" };
         }
     }
 
     static void Child(MapPrefabChild child)
     {
-        Key(child.Key); Pose(child.LocalTransform);
+        Key(child.Key, "$.key"); Pose(child.LocalTransform, "$.localTransform", child.Key);
         (MapPrefabChildKind Kind, string Id) identity = child switch
         {
             MapPrefabPlacementChild p => (MapPrefabChildKind.Placement, p.Value.Id),
@@ -230,26 +240,42 @@ public static class MapPrefabValidation
             MapPrefabRoofGroupChild g => (MapPrefabChildKind.RoofGroup, g.Value.Id),
             _ => throw new MapDocumentException("Unsupported prefab child."),
         };
-        if (identity.Kind != child.Key.Kind || identity.Id != child.Key.Key) Fail("Prefab child key does not match its payload ID/kind.");
+        if (identity.Kind != child.Key.Kind || identity.Id != child.Key.Key)
+            throw new MapDocumentException(MapDocumentRefusal.PrefabPayloadIdMismatch, "Prefab child key does not match its payload ID/kind.")
+                { Child = child.Key, ChildKind = identity.Kind, EntityId = identity.Id, SubjectKind = identity.Kind.ToString(), FieldPath = "$.key" };
         switch (child)
         {
             case MapPrefabPlacementChild p:
-                if (p.Value.NumericId is not null) Fail("Prefab placement numeric IDs belong to instance bindings.");
-                if (p.LocalTransform != new MapTransform(Vector3.Zero, 0, 1)) Fail("Placement children must use only their placement transform.");
+                if (p.Value.NumericId is not null) throw new MapDocumentException(MapDocumentRefusal.AuthoredOwnershipMismatch, "Prefab placement numeric IDs belong to instance bindings.")
+                    { Child = child.Key, NumericId = p.Value.NumericId, FieldPath = "$.value.numericId" };
+                if (p.LocalTransform != new MapTransform(Vector3.Zero, 0, 1))
+                    throw new MapDocumentException(MapDocumentRefusal.PrefabPlacementTransformDuplicated, "Placement children must use only their placement transform.")
+                        { Child = child.Key, FieldPath = "$.localTransform" };
                 Pose(new MapTransform(new(p.Value.X, p.Value.Y ?? 0, p.Value.Z), p.Value.Yaw, p.Value.Scale));
                 Text(p.Value.AssetId!); Text(p.Value.Kind);
-                if (p.Value.Tags is null || p.Value.Tags.Any(t => t is null)) Fail("Placement tags must not be null.");
+                if (p.Value.Tags is null || p.Value.Tags.Any(t => t is null))
+                    throw new MapDocumentException(MapDocumentRefusal.SchemaValueRequired, "Placement tags must not be null.")
+                        { Child = child.Key, FieldPath = "$.value.tags" };
                 break;
             case MapPrefabSurfaceChild s:
                 Unique(s.Patches, p => p.Key, "surface patch");
                 foreach (MapSurfacePatch patch in s.Patches)
                 {
-                    if (patch.Key.SurfaceId != s.Surface.Id || patch.Records.Count != 0) Fail("Surface children must contain only their geometry and no embedded records.");
+                    if (patch.Key.SurfaceId != s.Surface.Id || patch.Records.Count != 0)
+                        throw new MapDocumentException(patch.Key.SurfaceId != s.Surface.Id ? MapDocumentRefusal.AuthoredOwnershipMismatch : MapDocumentRefusal.SchemaArrayLengthMismatch,
+                            "Surface children must contain only their geometry and no embedded records.")
+                        {
+                            Child = child.Key, SurfaceId = s.Surface.Id, Patch = patch.Key,
+                            FieldPath = patch.Key.SurfaceId != s.Surface.Id ? "$.key.surfaceId" : "$.records",
+                            ActualCount = patch.Key.SurfaceId != s.Surface.Id ? null : patch.Records.Count,
+                            ExpectedCount = patch.Key.SurfaceId != s.Surface.Id ? null : 0,
+                        };
                     _ = MapSurfacePatchCodec.Encode(patch);
                 }
                 break;
             case MapPrefabRecordChild { Value: MapPrismDomain prism }:
-                if (prism.InstanceId != "") Fail("Prefab-local prism ownership is assigned by expansion.");
+                if (prism.InstanceId != "") throw new MapDocumentException(MapDocumentRefusal.AuthoredOwnershipMismatch, "Prefab-local prism ownership is assigned by expansion.")
+                    { Child = child.Key, RecordId = prism.Id, InstanceId = prism.InstanceId, FieldPath = "$.value.instanceId" };
                 break;
             case MapPrefabStoreyChild s: Text(s.Name); break;
             case MapPrefabLightChild l: Light(l.Value); break;
@@ -302,7 +328,9 @@ public static class MapPrefabValidation
             if (assets is null) return;
             var owned = children.Values.ToArray();
             foreach (var child in MapEffectiveSupport.Enumerate(assets, owned, suppressed).Concat(MapPrefabAttachedLights.Enumerate(assets, owned, suppressed)))
-                if (children.ContainsKey(child.Key) || !_implicit.TryAdd(child.Key, child)) Fail("Implicit child collides with an explicit or implicit child.");
+                if (children.ContainsKey(child.Key) || !_implicit.TryAdd(child.Key, child))
+                    throw new MapDocumentException(MapDocumentRefusal.IdentityDuplicate, "Implicit child collides with an explicit or implicit child.")
+                        { Child = child.Key, ChildKind = child.Key.Kind, EntityId = child.Key.Key, SubjectKind = "implicit child" };
         }
         bool Parsed(MapPrefabChildKind kind, string id, out MapPrefabPlacementChild? owner) =>
             MapPrefabReferences.ImplicitOwner(kind, id, _explicit.Values, _suppressed, out owner);
@@ -393,34 +421,113 @@ public static class MapPrefabValidation
     internal static void RequireLight(MapLocalLightDoc light) => Light(light);
     static void Light(MapLocalLightDoc l)
     {
-        if (l.PayloadVersion != 1) Fail("Unsupported local light payload version.");
-        Text(l.Id); Vector(l.Position); Vector(l.Colour);
-        if (!float.IsFinite(l.Intensity) || l.Intensity < 0 || !float.IsFinite(l.Radius) || l.Radius <= 0) Fail("Invalid local light intensity/radius.");
-        if (l.Colour.X < 0 || l.Colour.Y < 0 || l.Colour.Z < 0) Fail("Light colour must be nonnegative.");
-        if (l.Owner is { } owner) { Reference(owner); if (owner.Kind != MapPrefabChildKind.Placement) Fail("Light owner requires a Placement reference."); }
+        if (l.PayloadVersion != 1) throw new MapDocumentException(MapDocumentRefusal.SchemaPayloadVersionUnsupported, "Unsupported local light payload version.")
+            { FieldPath = "$.payloadVersion", ActualVersion = l.PayloadVersion, SupportedVersions = [1], EntityId = l.Id };
+        Text(l.Id, "$.id"); Vector(l.Position, "$.position"); Vector(l.Colour, "$.colour");
+        if (!float.IsFinite(l.Intensity) || l.Intensity < 0 || !float.IsFinite(l.Radius) || l.Radius <= 0)
+        {
+            bool intensity = !float.IsFinite(l.Intensity) || l.Intensity < 0;
+            float value = intensity ? l.Intensity : l.Radius;
+            throw new MapDocumentException(!float.IsFinite(value) ? MapDocumentRefusal.ValueNonfinite : MapDocumentRefusal.ValueOutsideRange, "Invalid local light intensity/radius.")
+                { EntityId = l.Id, FieldPath = intensity ? "$.intensity" : "$.radius", ActualNumber = value, MinimumNumber = float.IsFinite(value) ? 0 : null };
+        }
+        if (l.Colour.X < 0 || l.Colour.Y < 0 || l.Colour.Z < 0)
+            throw new MapDocumentException(MapDocumentRefusal.ValueOutsideRange, "Light colour must be nonnegative.")
+            {
+                EntityId = l.Id, FieldPath = l.Colour.X < 0 ? "$.colour.x" : l.Colour.Y < 0 ? "$.colour.y" : "$.colour.z",
+                ActualNumber = l.Colour.X < 0 ? l.Colour.X : l.Colour.Y < 0 ? l.Colour.Y : l.Colour.Z, MinimumNumber = 0,
+            };
+        if (l.Owner is { } owner)
+        {
+            Reference(owner, "$.owner");
+            if (owner.Kind != MapPrefabChildKind.Placement)
+                throw new MapDocumentException(MapDocumentRefusal.AuthoredReferenceKindInvalid, "Light owner requires a Placement reference.")
+                    { FieldPath = "$.owner.kind", EntityId = owner.Id, ChildKind = owner.Kind, SubjectKind = "light owner" };
+        }
     }
     static void Marker(MapLocalMarkerDoc m) => MapMarkerValidation.Require(m);
     static void Roof(MapRoofLinkDoc roof)
     {
         Text(roof.Id); RoofReference(roof.Roof);
-        foreach (var room in roof.Rooms) { Reference(room); if (room.Kind != MapPrefabChildKind.Record) Fail("Roof room requires a Record reference."); }
-        foreach (var group in roof.Groups) { Reference(group); if (group.Kind != MapPrefabChildKind.RoofGroup) Fail("Roof group requires a RoofGroup reference."); }
-        if (!float.IsFinite(roof.AboveY)) Fail("Roof link height must be finite.");
+        foreach (var room in roof.Rooms)
+        {
+            Reference(room);
+            if (room.Kind != MapPrefabChildKind.Record)
+                throw new MapDocumentException(MapDocumentRefusal.AuthoredReferenceKindInvalid, "Roof room requires a Record reference.")
+                    { EntityId = room.Id, ChildKind = room.Kind, SubjectKind = "roof room", FieldPath = "$.rooms" };
+        }
+        foreach (var group in roof.Groups)
+        {
+            Reference(group);
+            if (group.Kind != MapPrefabChildKind.RoofGroup)
+                throw new MapDocumentException(MapDocumentRefusal.AuthoredReferenceKindInvalid, "Roof group requires a RoofGroup reference.")
+                    { EntityId = group.Id, ChildKind = group.Kind, SubjectKind = "roof group", FieldPath = "$.groups" };
+        }
+        if (!float.IsFinite(roof.AboveY)) throw new MapDocumentException(MapDocumentRefusal.ValueNonfinite, "Roof link height must be finite.")
+            { EntityId = roof.Id, ActualNumber = roof.AboveY, FieldPath = "$.aboveY" };
     }
     static void Group(MapRoofGroupDoc group)
     {
-        Text(group.Id); foreach (var room in group.Rooms) { Reference(room); if (room.Kind != MapPrefabChildKind.Record) Fail("Roof group room requires a Record reference."); }
+        Text(group.Id);
+        foreach (var room in group.Rooms)
+        {
+            Reference(room);
+            if (room.Kind != MapPrefabChildKind.Record)
+                throw new MapDocumentException(MapDocumentRefusal.AuthoredReferenceKindInvalid, "Roof group room requires a Record reference.")
+                    { EntityId = room.Id, ChildKind = room.Kind, SubjectKind = "roof group room", FieldPath = "$.rooms" };
+        }
     }
-    static void RoofReference(MapPrefabReference roof) { Reference(roof); if (roof.Kind != MapPrefabChildKind.Placement) Fail("Roof inventory requires Placement references."); }
-    static void Reference(MapPrefabReference reference) { Defined(reference.Scope); Defined(reference.Kind); Text(reference.Id); }
-    static void Key(MapPrefabChildKey key) { Defined(key.Kind); Text(key.Key); }
-    static void Defined<T>(T value) where T : struct, Enum { if (!Enum.IsDefined(value)) Fail("Unsupported enum value."); }
-    static void Text(string value) { if (string.IsNullOrWhiteSpace(value)) Fail("A nonempty prefab identifier/name is required."); }
-    static void Digest(string value) { if (value is not { Length: 64 } || value.Any(c => c is not (>= '0' and <= '9' or >= 'a' and <= 'f'))) Fail("Expected lowercase SHA-256 digest."); }
-    static void Vector(Vector3 value) { if (!float.IsFinite(value.X) || !float.IsFinite(value.Y) || !float.IsFinite(value.Z)) Fail("Expected finite XYZ."); }
-    static void Pose(MapTransform value)
+    static void RoofReference(MapPrefabReference roof)
     {
-        Vector(value.Position); if (!float.IsFinite(value.YawRadians) || !float.IsFinite(value.Scale) || value.Scale <= 0) Fail("Expected finite yaw and positive uniform scale.");
+        Reference(roof);
+        if (roof.Kind != MapPrefabChildKind.Placement)
+            throw new MapDocumentException(MapDocumentRefusal.AuthoredReferenceKindInvalid, "Roof inventory requires Placement references.")
+                { EntityId = roof.Id, ChildKind = roof.Kind, SubjectKind = "roof placement" };
+    }
+    static void Reference(MapPrefabReference reference, string? path = null)
+    {
+        Defined(reference.Scope, path is null ? null : path + ".scope", reference.Id, reference.Kind);
+        Defined(reference.Kind, path is null ? null : path + ".kind", reference.Id, reference.Kind);
+        Text(reference.Id, path is null ? null : path + ".id", reference.Kind);
+    }
+    static void Key(MapPrefabChildKey key, string? path = null)
+    {
+        Defined(key.Kind, path is null ? null : path + ".kind", key.Key, key.Kind);
+        Text(key.Key, path is null ? null : path + ".key", key.Kind);
+    }
+    static void Defined<T>(T value, string? path = null, string? id = null, MapPrefabChildKind? kind = null) where T : struct, Enum
+    {
+        if (!Enum.IsDefined(value)) throw new MapDocumentException(MapDocumentRefusal.SchemaEnumUnsupported, "Unsupported enum value.")
+            { EnumType = typeof(T), ActualInteger = Convert.ToInt64(value), FieldPath = path, EntityId = id, ChildKind = kind };
+    }
+    static void Text(string value, string? path = null, MapPrefabChildKind? kind = null)
+    {
+        if (string.IsNullOrWhiteSpace(value)) throw new MapDocumentException(MapDocumentRefusal.SchemaValueRequired, "A nonempty prefab identifier/name is required.")
+            { FieldPath = path, EntityId = value, ChildKind = kind };
+    }
+    static void Digest(string value) { if (value is not { Length: 64 } || value.Any(c => c is not (>= '0' and <= '9' or >= 'a' and <= 'f'))) Fail("Expected lowercase SHA-256 digest."); }
+    static void Vector(Vector3 value, string? path = null)
+    {
+        if (!float.IsFinite(value.X) || !float.IsFinite(value.Y) || !float.IsFinite(value.Z))
+            throw new MapDocumentException(MapDocumentRefusal.ValueNonfinite, "Expected finite XYZ.")
+            {
+                FieldPath = path is null ? null : path + (!float.IsFinite(value.X) ? ".x" : !float.IsFinite(value.Y) ? ".y" : ".z"),
+                ActualNumber = !float.IsFinite(value.X) ? value.X : !float.IsFinite(value.Y) ? value.Y : value.Z,
+            };
+    }
+    static void Pose(MapTransform value, string? path = null, MapPrefabChildKey? child = null)
+    {
+        Vector(value.Position, path is null ? null : path + ".position");
+        if (!float.IsFinite(value.YawRadians) || !float.IsFinite(value.Scale) || value.Scale <= 0)
+        {
+            bool yaw = !float.IsFinite(value.YawRadians);
+            float number = yaw ? value.YawRadians : value.Scale;
+            throw new MapDocumentException(!float.IsFinite(number) ? MapDocumentRefusal.ValueNonfinite : MapDocumentRefusal.ValueOutsideRange, "Expected finite yaw and positive uniform scale.")
+            {
+                Child = child, FieldPath = path is null ? null : path + (yaw ? ".yawRadians" : ".scale"),
+                ActualNumber = number, MinimumNumber = float.IsFinite(number) ? 0 : null,
+            };
+        }
     }
     static void Pose(MapEffectiveTransform value)
     {

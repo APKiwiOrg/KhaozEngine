@@ -1389,9 +1389,9 @@ adapters continue reporting prose until all of their producing rules carry typed
 | `SchemaArrayRequired` | A foliage member that must be an array | `FieldPath`, `Index` |
 | `SchemaBooleanRequired` | A foliage member that must be a boolean | `FieldPath`, `LayerId`, `Index` |
 | `SchemaBase64Malformed` | A foliage density token that is invalid or noncanonical base64 | `FieldPath`, `LayerId`, `Index`, `FoliageChunk` |
-| `SchemaArrayLengthMismatch` | Decoded foliage density whose byte length differs from the required chunk length | `FieldPath`, `LayerId`, `Index`, `FoliageChunk`, `ActualByteCount`, `ExpectedByteCount` |
-| `SchemaPayloadVersionUnsupported` | An unsupported asset-reference, resolver-identity, support or foliage payload version | `FieldPath`, `ResourceId`, `Index`, `ActualVersion`, `SupportedVersions`, `MinimumInteger` |
-| `ValueNonfinite` | A nonfinite manifest source-unit scale, foliage scalar, playable-bound component, placement support-search value or resolved support height | `FieldPath`, `AssetId`, `LayerId`, `PlacementId`, `Index`, finite-only `ActualNumber` |
+| `SchemaArrayLengthMismatch` | Decoded foliage density with the wrong byte length, or embedded records in a prefab surface geometry patch | `FieldPath`, `LayerId`, `Index`, `FoliageChunk`, `ActualByteCount`, `ExpectedByteCount`, `Child`, `SurfaceId`, `Patch`, `ActualCount`, `ExpectedCount` |
+| `SchemaPayloadVersionUnsupported` | An unsupported asset-reference, resolver-identity, support, foliage, prefab asset or local light payload version | `FieldPath`, `ResourceId`, `Index`, `ActualVersion`, `SupportedVersions`, `MinimumInteger` |
+| `ValueNonfinite` | A nonfinite manifest source-unit scale, foliage scalar, playable-bound component, placement support-search value or resolved support height | `FieldPath`, `AssetId`, `LayerId`, `PlacementId`, `Index`, `ActualNumber` (nonfinite for prefab scalar guards) |
 | `ValueOutsideRange` | A finite nonpositive manifest source-unit scale, foliage integer outside its domain, negative support-search extent or high-water mark, or nonpositive numeric identity | `FieldPath`, `AssetId`, `LayerId`, `PlacementId`, `EntityId`, `SubjectKind`, `Index`, `ActualNumber`, `ActualInteger`, `MinimumNumber`, `MinimumInteger`, `MaximumInteger`, `NumericId`, `HighWaterMark` |
 | `IdentityDuplicate` | A repeated asset or resource closure identity, support patch or record identity, exact foliage JSON member name, surface or numeric identity, world binding, transfer or attachment producer, or a standalone owner colliding with a prefab binding | `FieldPath`, `Index`, `EntityId`, `SubjectKind`, `AssetId`, `ResourceId`, `SurfaceId`, `PlacementId`, `RecordId`, `Patch`, `NumericId`, `HighWaterMark`, `WorldId`, `ChildKind`, `Child`, `InstanceId` |
 | `IdentityReserved` | A live standalone owner using a retired transfer's world identity | `EntityId`, `WorldId`, `ChildKind`, `Child`, `InstanceId`, `SubjectKind` |
@@ -1410,6 +1410,11 @@ adapters continue reporting prose until all of their producing rules carry typed
 | `AssetCollisionTrailingBytes` | Bytes after the decoded collision shape | `AssetId`, `ResourceId`, `ActualByteCount` of trailing bytes |
 | `AssetCollisionEmptyPoints` | A collision hull or mesh with no points | `AssetId`, `ResourceId`, `ShapeType` |
 | `AssetCollisionNestedMesh` | A triangle mesh nested in a compound collider | `AssetId`, `ResourceId` |
+| `SchemaEnumUnsupported` | An undefined prefab enumeration value | `EnumType`, `ActualInteger`, `FieldPath`, `EntityId`, `ChildKind` |
+| `AuthoredReferenceKindInvalid` | A local light owner, roof inventory, roof room or roof group reference of the wrong child kind | `EntityId`, `ChildKind`, `FieldPath`, `SubjectKind` |
+| `PrefabPayloadIdMismatch` | A child key differing from its payload identity or kind | `Child` for the submitted key, `EntityId` for the payload identity, `ChildKind` and `SubjectKind` for the payload kind, `FieldPath` |
+| `PrefabPlacementTransformDuplicated` | A placement child with an additional local transform | `Child`, `FieldPath` |
+| `PrefabLocalAnchorInvalid` | A record anchor whose surface slot is not Local | `Child`, `RecordId`, `FieldPath` |
 | `PrefabLightOwnerInvalid` | A leaf light owner other than null or the Local placement token `$owner` | `ResourceId`, `FieldPath` |
 | `AssetStoragePathReserved` | A resource path owned by the selected map storage writer | `ResourceId`, normalized `Path`, `StoragePath`, `DocumentForm` |
 | `AssetTypedPayloadOpaque` | An opaque resource supplied to a typed light or support consumer | `ResourceId`, `ExpectedSchema`, `SubjectKind` |
@@ -1417,6 +1422,28 @@ adapters continue reporting prose until all of their producing rules carry typed
 | `NumericIdHighWaterExceeded` | A placement, prefab binding or retired transfer above the reserved mark | `EntityId`, `SubjectKind`, `PlacementId`, `FieldPath`, `NumericId`, `HighWaterMark` |
 | `ResolverContractMismatch` | The document resolver, support recipe or caller's resolver options cannot serve the requested operation | `PayloadVersion`, `ResolverVersion`, `OptionsResolverVersion`, `ExpectedResolverVersion`, `SupportRecipe`, `ExpectedSupportRecipe`, `FieldPath`, `SubjectKind` |
 | `SupportLegacyHeightRequired` | Resolver-1 resolution without an analytic support callback | `ResolverVersion`, `FieldPath` `legacySupportHeight` |
+
+
+Direct prefab asset and light validation also carries structured scalar and child refusals. Local light
+intensity and colour must be nonnegative. Radius and uniform pose scale must be strictly positive.
+`ValueOutsideRange` carries the refused `ActualNumber` and `MinimumNumber` 0, exclusive for radius and
+scale. `ValueNonfinite` carries the first nonfinite `ActualNumber`, including NaN or infinity. Compound
+guards select their first failing branch in predicate order. `FieldPath` is relative to the checked
+asset, child, light or patch, when the caller supplied that location. Missing text uses
+`SchemaValueRequired`, and unsupported asset and light versions carry `ActualVersion` and a read-only
+`SupportedVersions` snapshot containing 1.
+
+A prefab surface patch with a different surface owner uses `AuthoredOwnershipMismatch`, with `Child`,
+`SurfaceId` and `Patch`. Embedded records instead use `SchemaArrayLengthMismatch`, with `ActualCount`
+and `ExpectedCount` 0. Placement numeric identity and prism instance ownership also use
+`AuthoredOwnershipMismatch`, with the local `Child` and the submitted `NumericId` or `InstanceId`.
+An implicit child collision uses `IdentityDuplicate`, with `Child`, `EntityId`, `ChildKind` and
+`SubjectKind` `implicit child`. Local annotation and roof targets use `ReferenceMissing`, with
+`EntityId` and `ChildKind`. Leaf water
+material kind uses `ReferenceKindMismatch`, with `ResourceId`, both resource kinds and `Child`.
+An undeclared leaf dependency uses `ReferenceMissing`, `ResourceId` and `SubjectKind` `prefab dependency`.
+Prefab document validation still projects prose and its aggregate adapter retains its existing
+constructor until every producing rule has typed findings.
 
 Manifest source-unit scales must be finite and strictly positive. A nonfinite scale leaves `ActualNumber`
 and `MinimumNumber` null. A finite nonpositive scale carries `ActualNumber` and `MinimumNumber` 0,

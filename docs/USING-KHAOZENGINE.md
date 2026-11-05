@@ -12614,6 +12614,26 @@ companion lookup also use `ReferenceMissing`, with `DocumentId`, `LayerId`, `Ent
 of `scatter layer` or `companion layer`. Foliage edit preflight without a verified closure uses
 `AssetClosureRequired` and `DocumentId`. Editor transaction admission retains its current contract.
 
+
+Direct prefab asset and local light checks retain `MapDocumentException`. Inspect `SchemaEnumUnsupported`
+with `EnumType` and `ActualInteger` for an undefined enumeration. `PrefabPayloadIdMismatch` distinguishes
+the submitted local `Child` key from the payload's `EntityId` and `ChildKind`.
+`PrefabPlacementTransformDuplicated` names the local `Child`, while `PrefabLocalAnchorInvalid` names
+`Child` and `RecordId`. `AuthoredReferenceKindInvalid` carries the wrong reference's `EntityId` and
+`ChildKind`. An implicit child collision uses `IdentityDuplicate`, with its local `Child` and
+`SubjectKind` `implicit child`. Paths are relative to the asset, child, light or patch being checked, when known.
+
+Local light intensity and colour accept zero. Radius and uniform pose scale require positive values.
+Finite domain refusals use `ValueOutsideRange`, `ActualNumber` and `MinimumNumber` 0, exclusive for
+radius and scale. Nonfinite prefab scalars use `ValueNonfinite` and retain the first refused
+`ActualNumber`, including NaN and infinity. Unsupported prefab asset and light payload versions carry
+`SchemaPayloadVersionUnsupported`, `ActualVersion` and a read-only `SupportedVersions` snapshot.
+Surface ownership differs from an embedded record count. The former uses `AuthoredOwnershipMismatch`
+with `Child`, `SurfaceId` and `Patch`, the latter `SchemaArrayLengthMismatch` with `ActualCount` and
+`ExpectedCount` 0. Leaf material kind and undeclared dependency refusals carry `ResourceId` through
+`ReferenceKindMismatch` and `ReferenceMissing`. Prefab document aggregate adapters continue reporting
+prose until all their producing rules carry typed findings.
+
 **Whole authored surface identity.** Scheme 2, new in 20.30.0, is the resolver-2 whole-document identity. Resolver-2
 documents use `MapAuthoredIdentityV2` from `KhaozEngine.MapDoc.Identity`, with an explicitly verified
 `MapAssetClosure` and resolver-2 options:

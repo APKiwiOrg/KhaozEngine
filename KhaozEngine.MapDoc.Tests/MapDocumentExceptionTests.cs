@@ -55,11 +55,15 @@ public sealed class MapDocumentExceptionTests
     }
 
     [Fact]
-    public void Resource_ids_are_an_owned_read_only_snapshot()
+    public void Resource_marker_and_source_ids_are_owned_read_only_snapshots()
     {
         string[] source = ["a", "b"];
         var refusal = new MapDocumentException(MapDocumentRefusal.AssetDependencyCycle, "cycle") { ResourceIds = source };
         var finding = new MapDocumentFinding(MapDocumentRefusal.AssetDependencyCycle, "cycle") { ResourceIds = source };
+        var choices = new MapDocumentException(MapDocumentRefusal.MarkerAdoptionChoiceSetMismatch, "choices") { SourceIds = source };
+        var choiceFinding = new MapDocumentFinding(MapDocumentRefusal.MarkerAdoptionChoiceSetMismatch, "choices") { SourceIds = source };
+        var collision = new MapDocumentException(MapDocumentRefusal.MarkerNameDuplicate, "collision") { MarkerIds = source };
+        var collisionFinding = new MapDocumentFinding(MapDocumentRefusal.MarkerNameDuplicate, "collision") { MarkerIds = source };
         source[0] = "changed";
         Assert.Equal(new[] { "a", "b" }, refusal.ResourceIds);
         if (refusal.ResourceIds is IList<string> list)
@@ -69,6 +73,18 @@ public sealed class MapDocumentExceptionTests
         if (finding.ResourceIds is IList<string> findingList)
             Assert.Throws<NotSupportedException>(() => findingList[0] = "changed");
         Assert.Equal(new[] { "a", "b" }, finding.ResourceIds);
+        Assert.Equal(new[] { "a", "b" }, choices.SourceIds);
+        Assert.Equal(new[] { "a", "b" }, choiceFinding.SourceIds);
+        if (choices.SourceIds is IList<string> choiceList) Assert.Throws<NotSupportedException>(() => choiceList[0] = "changed");
+        if (choiceFinding.SourceIds is IList<string> choiceFindingList) Assert.Throws<NotSupportedException>(() => choiceFindingList[0] = "changed");
+        Assert.Equal(new[] { "a", "b" }, choices.SourceIds);
+        Assert.Equal(new[] { "a", "b" }, choiceFinding.SourceIds);
+        Assert.Equal(new[] { "a", "b" }, collision.MarkerIds);
+        Assert.Equal(new[] { "a", "b" }, collisionFinding.MarkerIds);
+        if (collision.MarkerIds is IList<string> markerList) Assert.Throws<NotSupportedException>(() => markerList[0] = "changed");
+        if (collisionFinding.MarkerIds is IList<string> markerFindingList) Assert.Throws<NotSupportedException>(() => markerFindingList[0] = "changed");
+        Assert.Equal(new[] { "a", "b" }, collision.MarkerIds);
+        Assert.Equal(new[] { "a", "b" }, collisionFinding.MarkerIds);
     }
 
     [Theory]
@@ -125,6 +141,9 @@ public sealed class MapDocumentExceptionTests
     static object Sample(PropertyInfo property, int index)
     {
         Type type = Nullable.GetUnderlyingType(property.PropertyType) ?? property.PropertyType;
+        if (property.Name == nameof(MapDocumentException.MarkerId)) return "marker-owner";
+        if (property.Name == nameof(MapDocumentException.SourceId)) return "spawn-source";
+        if (property.Name == nameof(MapDocumentException.MarkerName)) return "arrival";
         if (property.Name == nameof(MapDocumentException.OwnerId)) return "terrain-owner";
         if (property.Name == nameof(MapDocumentException.Operation)) return "Prepare";
         if (type == typeof(Type)) return typeof(MapLocalLightDoc);

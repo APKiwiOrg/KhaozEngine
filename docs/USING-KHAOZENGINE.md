@@ -12266,6 +12266,14 @@ membership.
 vocabulary through `MapMarkerConsumerOptions`. Native editor and tool consumers use the same named support readout,
 so they do not invent a role or fall back to the analytic terrain field.
 
+Standalone marker admission keeps `MapDocumentException` and exposes `MarkerPrefabOwnershipProtected` with
+`MarkerId` and `InstanceId`, `IdentityReserved` or `ReferenceMissing` with `MarkerId`, and
+`MarkerNativeDocumentRequired` with `Operation`. Spawn adoption distinguishes `MarkerAdoptionChoiceSetMismatch`
+with counts and an owned read-only `SourceIds` snapshot from `MarkerAdoptionChoiceMissing` with `SourceId` and
+source kind. Destination collisions carry `IdentityDuplicate` and `MarkerId`, or `MarkerNameDuplicate`,
+`MarkerName` and `MarkerId`. The metadata uniqueness guard retains every collision in ordered typed `Findings`
+and read-only `MarkerIds`. Aggregate adapters keep prose until their complete producer is typed.
+
 Doors remain AuthoredOpen. `MapRoofPolicy` returns separate colour, shadow, camera-boom and sky-picking flags.
 Auto concealment uses occupied rooms and explicit links/groups, and leaves unlinked shelters visible. Hidden
 roofs still cast shadows and block sky picking, and never change physics statics. R8 owns rendering, cameras

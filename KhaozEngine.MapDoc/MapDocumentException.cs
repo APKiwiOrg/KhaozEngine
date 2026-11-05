@@ -15,6 +15,8 @@ public sealed class MapDocumentException : Exception
     IReadOnlyList<MapDocumentFinding>? _findings;
     IReadOnlyList<int>? _supportedVersions;
     IReadOnlyList<string>? _resourceIds;
+    IReadOnlyList<string>? _sourceIds;
+    IReadOnlyList<string>? _markerIds;
 
     public MapDocumentException(string message) : base(message) { }
     public MapDocumentException(string message, Exception inner) : base(message, inner) { }
@@ -106,6 +108,12 @@ public sealed class MapDocumentException : Exception
     public string? AssetId { get; init; }
     /// <summary>The declared surface whose metadata failed validation, when known.</summary>
     public string? SurfaceId { get; init; }
+    /// <summary>The legacy spawn source whose adoption choice was refused, when known.</summary>
+    public string? SourceId { get; init; }
+    /// <summary>The repeated effective or destination marker name, when checked.</summary>
+    public string? MarkerName { get; init; }
+    /// <summary>The marker whose authoring or identity rule was refused, when known.</summary>
+    public string? MarkerId { get; init; }
     /// <summary>The placement whose admission failed, when known.</summary>
     public string? PlacementId { get; init; }
     /// <summary>The referenced resource kind required by the asset.</summary>
@@ -194,6 +202,21 @@ public sealed class MapDocumentException : Exception
         init => _resourceIds = value is null ? null : Array.AsReadOnly<string>([.. value]);
     }
 
+    /// <summary>The required legacy spawn source IDs, in Spawn then PlayerSpawn order, as an owned read-only
+    /// snapshot. Equal source IDs in different lists remain separate entries.</summary>
+    public IReadOnlyList<string>? SourceIds
+    {
+        get => _sourceIds;
+        init => _sourceIds = value is null ? null : Array.AsReadOnly<string>([.. value]);
+    }
+
+    /// <summary>The colliding marker IDs in ordinal order, as an owned read-only snapshot.</summary>
+    public IReadOnlyList<string>? MarkerIds
+    {
+        get => _markerIds;
+        init => _markerIds = value is null ? null : Array.AsReadOnly<string>([.. value]);
+    }
+
     /// <summary>The supported payload versions, as an owned read-only snapshot.</summary>
     public IReadOnlyList<int>? SupportedVersions
     {
@@ -257,6 +280,9 @@ public sealed class MapDocumentException : Exception
         PositionZ = inner.PositionZ;
         AssetId = inner.AssetId ?? assetId;
         SurfaceId = inner.SurfaceId;
+        MarkerId = inner.MarkerId;
+        MarkerName = inner.MarkerName;
+        SourceId = inner.SourceId;
         PlacementId = inner.PlacementId;
         ExpectedResourceKind = inner.ExpectedResourceKind;
         ActualResourceKind = inner.ActualResourceKind;
@@ -295,6 +321,8 @@ public sealed class MapDocumentException : Exception
         ShapeType = inner.ShapeType;
         ResourceRoot = inner.ResourceRoot ?? resourceRoot;
         _resourceIds = inner._resourceIds;
+        _sourceIds = inner._sourceIds;
+        _markerIds = inner._markerIds;
         _supportedVersions = inner._supportedVersions;
         // Findings already owns a read-only snapshot whose elements are immutable records.
         _findings = inner._findings;

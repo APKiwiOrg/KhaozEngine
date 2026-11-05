@@ -15,6 +15,8 @@ public sealed record MapDocumentFinding(MapDocumentRefusal Reason, string Messag
 {
     IReadOnlyList<int>? _supportedVersions;
     IReadOnlyList<string>? _resourceIds;
+    IReadOnlyList<string>? _sourceIds;
+    IReadOnlyList<string>? _markerIds;
 
     /// <summary>The source file or content name, when known.</summary>
     public string? SourceName { get; init; }
@@ -90,6 +92,12 @@ public sealed record MapDocumentFinding(MapDocumentRefusal Reason, string Messag
     public string? AssetId { get; init; }
     /// <summary>The declared surface whose metadata failed validation, when known.</summary>
     public string? SurfaceId { get; init; }
+    /// <summary>The legacy spawn source whose adoption choice was refused, when known.</summary>
+    public string? SourceId { get; init; }
+    /// <summary>The repeated effective or destination marker name, when checked.</summary>
+    public string? MarkerName { get; init; }
+    /// <summary>The marker whose authoring or identity rule was refused, when known.</summary>
+    public string? MarkerId { get; init; }
     /// <summary>The placement whose admission failed, when known.</summary>
     public string? PlacementId { get; init; }
     /// <summary>The referenced resource kind required by the asset.</summary>
@@ -173,6 +181,21 @@ public sealed record MapDocumentFinding(MapDocumentRefusal Reason, string Messag
         init => _resourceIds = value is null ? null : Array.AsReadOnly<string>([.. value]);
     }
 
+    /// <summary>The required legacy spawn source IDs, in Spawn then PlayerSpawn order, as an owned read-only
+    /// snapshot. Equal source IDs in different lists remain separate entries.</summary>
+    public IReadOnlyList<string>? SourceIds
+    {
+        get => _sourceIds;
+        init => _sourceIds = value is null ? null : Array.AsReadOnly<string>([.. value]);
+    }
+
+    /// <summary>The colliding marker IDs in ordinal order, as an owned read-only snapshot.</summary>
+    public IReadOnlyList<string>? MarkerIds
+    {
+        get => _markerIds;
+        init => _markerIds = value is null ? null : Array.AsReadOnly<string>([.. value]);
+    }
+
     /// <summary>The supported payload versions, as an owned read-only snapshot.</summary>
     public IReadOnlyList<int>? SupportedVersions
     {
@@ -220,6 +243,9 @@ public sealed record MapDocumentFinding(MapDocumentRefusal Reason, string Messag
             PositionZ = error.PositionZ,
             AssetId = error.AssetId,
             SurfaceId = error.SurfaceId,
+            MarkerId = error.MarkerId,
+            MarkerName = error.MarkerName,
+            SourceId = error.SourceId,
             PlacementId = error.PlacementId,
             ExpectedResourceKind = error.ExpectedResourceKind,
             ActualResourceKind = error.ActualResourceKind,
@@ -258,6 +284,8 @@ public sealed record MapDocumentFinding(MapDocumentRefusal Reason, string Messag
             ShapeType = error.ShapeType,
             ResourceRoot = error.ResourceRoot,
             ResourceIds = error.ResourceIds,
+            SourceIds = error.SourceIds,
+            MarkerIds = error.MarkerIds,
             SupportedVersions = error.SupportedVersions,
         } : null;
 

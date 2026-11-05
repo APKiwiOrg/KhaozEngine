@@ -191,8 +191,9 @@ one closed local marker in world terms, read by `MapPrefabJson.ReadMarker`. Payl
 `Position.Y`. Payload 2 requires `heightMode`. Explicit keeps `Position.Y` as the height, and Support carries a
 `supportBinding` with `Position.Y` exactly 0. The marker ID is the upsert key. A set with a new name renames the
 marker and keeps its ID. A framed standalone marker stores the frame-local equivalent of the world values. A live
-prefab marker refuses with `prefab_override` guidance, and an ID held by a retained prefab reservation refuses. Both
-edit verbs return `MapPrefabMutationResult`, whose `Mutation.Verb` is the verb name, `Mutation.Id` the marker ID and
+prefab marker refuses with `MarkerPrefabOwnershipProtected`, `MarkerId` and `InstanceId`, retaining the
+`prefab_override` guidance. An ID held by a retained prefab reservation refuses with `IdentityReserved` and
+`MarkerId`. Both edit verbs return `MapPrefabMutationResult`, whose `Mutation.Verb` is the verb name, `Mutation.Id` the marker ID and
 `Mutation.WorldChanged` false. `Effects` is the shared marker diff: metadata edits carry the marker ID and rename row
 with no invalidation, and spatial edits add both point boxes with Residency only. Undo and redo use `prefab_undo` and
 `prefab_redo`.

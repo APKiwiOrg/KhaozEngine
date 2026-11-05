@@ -61,17 +61,32 @@ internal static class MapMarkerExpansion
     internal static void RequireUnique(MapDocument document, MapAssetClosure assets)
     {
         IReadOnlyList<MapMarkerCandidate> candidates = Capture(document, assets);
-        var errors = new List<string>();
-        Duplicates(candidates, c => c.Value.Id, "ID", "", errors);
+        var findings = new List<MapDocumentFinding>();
+        Duplicates(candidates, c => c.Value.Id, "ID", "", MapDocumentRefusal.IdentityDuplicate, findings);
         Duplicates(candidates, c => c.Value.Name, "name",
-            " Give a prefab marker an explicit marker replace override with a new name, or rename the world marker.", errors);
-        if (errors.Count != 0) throw new MapDocumentException(string.Join("\n", errors));
+            " Give a prefab marker an explicit marker replace override with a new name, or rename the world marker.", MapDocumentRefusal.MarkerNameDuplicate, findings);
+        if (findings.Count != 0)
+        {
+            MapDocumentFinding first = findings[0];
+            throw new MapDocumentException(first.Reason, string.Join("\n", findings.Select(f => f.Message)))
+            {
+                MarkerId = first.MarkerId, MarkerName = first.MarkerName, MarkerIds = first.MarkerIds,
+                EntityId = first.EntityId, SubjectKind = first.SubjectKind, Findings = findings,
+            };
+        }
     }
 
     static void Duplicates(IReadOnlyList<MapMarkerCandidate> candidates, Func<MapMarkerCandidate, string> key, string what, string remedy,
-        List<string> errors)
+        MapDocumentRefusal reason, List<MapDocumentFinding> findings)
     {
         foreach (var group in candidates.GroupBy(key, StringComparer.Ordinal).Where(g => g.Skip(1).Any()).OrderBy(g => g.Key, StringComparer.Ordinal))
-            errors.Add($"Markers {string.Join(", ", group.Select(c => "'" + c.Value.Id + "'").Order(StringComparer.Ordinal))} have duplicate marker {what} '{group.Key}'.{remedy}");
+            findings.Add(new(reason,
+                $"Markers {string.Join(", ", group.Select(c => "'" + c.Value.Id + "'").Order(StringComparer.Ordinal))} have duplicate marker {what} '{group.Key}'.{remedy}")
+            {
+                MarkerId = reason == MapDocumentRefusal.IdentityDuplicate ? group.Key : null,
+                EntityId = reason == MapDocumentRefusal.IdentityDuplicate ? group.Key : null,
+                MarkerName = reason == MapDocumentRefusal.MarkerNameDuplicate ? group.Key : null,
+                MarkerIds = group.Select(c => c.Value.Id).Order(StringComparer.Ordinal).ToArray(), SubjectKind = "marker",
+            });
     }
 }

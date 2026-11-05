@@ -64,6 +64,8 @@ public sealed class MapMarkerAdoptionTests
     [InlineData("both")]
     [InlineData("neither")]
     [InlineData("bad-yaw")]
+    [InlineData("null-choice")]
+    [InlineData("missing-height")]
     public void InvalidChoices_RefuseWithoutMutation(string variant)
     {
         var fixture = MarkerFixtures.LegacyLists();
@@ -72,6 +74,8 @@ public sealed class MapMarkerAdoptionTests
         var player = new MapLegacySpawnKey(MapLegacySpawnKind.PlayerSpawn, "old");
         switch (variant)
         {
+            case "null-choice": choices[actor] = null!; break;
+            case "missing-height": choices[actor] = choices[actor] with { Height = null! }; break;
             case "missing": choices.Remove(player); break;
             case "extra": choices.Add(new(MapLegacySpawnKind.Spawn, "extra"), choices[player] with { MarkerId = "extra" }); break;
             case "destination": choices[player] = choices[player] with { MarkerId = "actor-new" }; break;
@@ -90,8 +94,37 @@ public sealed class MapMarkerAdoptionTests
             case "bad-yaw": choices[actor] = choices[actor] with { YawRadians = float.NaN }; break;
         }
         string before = MapDocumentFile.SaveText(fixture.Document);
-        Assert.Throws<MapDocumentException>(() => MapMarkerAdoption.ConvertSpawns(fixture.Document, choices));
+        var error = Assert.Throws<MapDocumentException>(() => MapMarkerAdoption.ConvertSpawns(fixture.Document, choices));
+        switch (variant)
+        {
+            case "missing": case "extra":
+                Assert.Equal(MapDocumentRefusal.MarkerAdoptionChoiceSetMismatch, error.Reason);
+                Assert.Equal(new[] { "old", "old" }, error.SourceIds);
+                Assert.Equal(2L, error.ExpectedCount);
+                Assert.Equal(variant == "missing" ? 1L : 3L, error.ActualCount);
+                break;
+            case "null-choice": case "missing-height":
+                Assert.Equal(MapDocumentRefusal.MarkerAdoptionChoiceMissing, error.Reason);
+                Assert.Equal("old", error.SourceId);
+                Assert.Equal("Spawn", error.SubjectKind);
+                break;
+            case "destination": case "live-id": case "reservation":
+                Assert.Equal(MapDocumentRefusal.IdentityDuplicate, error.Reason);
+                Assert.Equal(variant == "reservation" ? "a/entry" : "actor-new", error.MarkerId);
+                break;
+            case "name": case "live-name":
+                Assert.Equal(MapDocumentRefusal.MarkerNameDuplicate, error.Reason);
+                Assert.Equal("actor-home", error.MarkerName);
+                Assert.Equal(variant == "name" ? "start-new" : "actor-new", error.MarkerId);
+                break;
+        }
         Assert.Equal(before, MapDocumentFile.SaveText(fixture.Document));
+        var control = MarkerFixtures.Choices().ToDictionary();
+        if (variant == "live-id") control[actor] = control[actor] with { MarkerId = "free-id" };
+        if (variant == "live-name") control[actor] = control[actor] with { Name = "free-name" };
+        MapDocument accepted = MapMarkerAdoption.ConvertSpawns(fixture.Document, control);
+        Assert.Empty(accepted.Spawns);
+        Assert.Empty(accepted.PlayerSpawns);
     }
 
     [Fact]
@@ -128,7 +161,11 @@ public sealed class MapMarkerAdoptionTests
     public void AnalyticAndResolverOne_RequireNativeResolverTwo()
     {
         var analytic = MapDocumentFile.LoadText(MarkerFixtures.FormatSevenJson(true));
-        Assert.Throws<MapDocumentException>(() => MapMarkerAdoption.ConvertSpawns(analytic, MarkerFixtures.Choices()));
+        string analyticBefore = MapDocumentFile.SaveText(analytic);
+        var nonnative = Assert.Throws<MapDocumentException>(() => MapMarkerAdoption.ConvertSpawns(analytic, MarkerFixtures.Choices()));
+        Assert.Equal(MapDocumentRefusal.MarkerNativeDocumentRequired, nonnative.Reason);
+        Assert.Equal(nameof(MapMarkerAdoption.ConvertSpawns), nonnative.Operation);
+        Assert.Equal(analyticBefore, MapDocumentFile.SaveText(analytic));
         var legacy = FormatFourFixtures.Build().Document;
         string before = MapDocumentFile.SaveText(legacy);
         var error = Assert.Throws<MapDocumentException>(() => MapMarkerAdoption.ConvertSpawns(legacy, MarkerFixtures.Choices()));

@@ -29,6 +29,27 @@ public sealed class MapMarkerAnchorTests
         Assert.Equal(2 * markers, MapMarkerAnchors.Read(control.Document, control.Assets).Count(a => a.Id.Contains("/bound-", System.StringComparison.Ordinal)));
     }
 
+    [Theory]
+    [InlineData("playerStartRole")]
+    [InlineData("spawnRole")]
+    [InlineData("landmarkRole")]
+    [InlineData("legacySpawnSurfaceId")]
+    public void ConsumerOptions_IdentifyTheMissingValue(string field)
+    {
+        var control = new MapMarkerConsumerOptions(new("start", "spawn", "landmark"), "floor");
+        var invalid = field switch
+        {
+            "playerStartRole" => control with { Roles = control.Roles! with { PlayerStartRole = " " } },
+            "spawnRole" => control with { Roles = control.Roles! with { SpawnRole = " " } },
+            "landmarkRole" => control with { Roles = control.Roles! with { LandmarkRole = " " } },
+            _ => control with { LegacySpawnSurfaceId = " " },
+        };
+        var error = Assert.Throws<MapDocumentException>(() => invalid.Require());
+        Assert.Equal(MapDocumentRefusal.SchemaValueRequired, error.Reason);
+        Assert.Equal(field == "legacySpawnSurfaceId" ? field : "roles." + field, error.FieldPath);
+        control.Require();
+    }
+
     // The released room prefab with markers Surface-bound to its local floor, placed once through the released binding
     // planner and then copied under distinct instance and world IDs.
     static MarkerFixture ManyBoundMarkers(int instances, int markers)

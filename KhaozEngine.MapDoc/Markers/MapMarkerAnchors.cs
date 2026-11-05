@@ -23,9 +23,12 @@ public sealed record MapMarkerConsumerOptions(MapMarkerConsumerRoles? Roles, str
     {
         if (Roles is { } roles &&
             (string.IsNullOrWhiteSpace(roles.PlayerStartRole) || string.IsNullOrWhiteSpace(roles.SpawnRole) || string.IsNullOrWhiteSpace(roles.LandmarkRole)))
-            throw new MapDocumentException("Marker consumer roles require a nonblank player start, spawn and landmark role.");
+            throw new MapDocumentException(MapDocumentRefusal.SchemaValueRequired, "Marker consumer roles require a nonblank player start, spawn and landmark role.")
+            { FieldPath = string.IsNullOrWhiteSpace(roles.PlayerStartRole) ? "roles.playerStartRole"
+                : string.IsNullOrWhiteSpace(roles.SpawnRole) ? "roles.spawnRole" : "roles.landmarkRole" };
         if (LegacySpawnSurfaceId is not null && string.IsNullOrWhiteSpace(LegacySpawnSurfaceId))
-            throw new MapDocumentException("The legacy spawn Surface owner must be nonblank when given.");
+            throw new MapDocumentException(MapDocumentRefusal.SchemaValueRequired, "The legacy spawn Surface owner must be nonblank when given.")
+            { FieldPath = "legacySpawnSurfaceId" };
     }
 }
 

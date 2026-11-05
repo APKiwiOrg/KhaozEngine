@@ -84,6 +84,30 @@ public sealed class MapMarkerRegistryTests
         Assert.Contains(stackedName, e => e.Contains("duplicate marker name 'stacked-surface-name'", StringComparison.Ordinal));
     }
 
+    [Theory]
+    [InlineData(false, MapDocumentRefusal.MarkerNameDuplicate)]
+    [InlineData(true, MapDocumentRefusal.IdentityDuplicate)]
+    public void MetadataUniqueness_ReportsTheTypedCollision(bool duplicateId, MapDocumentRefusal reason)
+    {
+        MarkerFixture basis = MarkerFixtures.DuplicateNames("disabled-world");
+        MapLocalMarkerDoc world = MarkerFixtures.DuplicateWorldMarker("disabled-world");
+        if (duplicateId) world = world with { Id = "a/entry", Name = "arrival-world" };
+        MarkerFixture invalid = MarkerFixtures.WithWorldMarkers(basis, world);
+        var error = Assert.Throws<MapDocumentException>(() => MapMarkerExpansion.RequireUnique(invalid.Document, invalid.Assets));
+        Assert.Equal(reason, error.Reason);
+        Assert.Equal(duplicateId ? "a/entry" : null, error.MarkerId);
+        Assert.Equal(duplicateId ? null : "arrival", error.MarkerName);
+        Assert.Equal(duplicateId ? new[] { "a/entry", "a/entry" } : new[] { "a/entry", "w" }, error.MarkerIds);
+        MapDocumentFinding finding = Assert.Single(error.Findings!);
+        Assert.Equal(reason, finding.Reason);
+        Assert.Equal(error.MarkerId, finding.MarkerId);
+        Assert.Equal(error.MarkerName, finding.MarkerName);
+        Assert.Equal(error.MarkerIds, finding.MarkerIds);
+        Assert.Equal(new[] { world }, invalid.Document.BuildingIntent!.Markers);
+        MarkerFixture control = MarkerFixtures.WithWorldMarkers(basis, world with { Id = "w", Name = "arrival-world" });
+        MapMarkerExpansion.RequireUnique(control.Document, control.Assets);
+    }
+
     [Fact]
     public void HalfOpenRect_ContainsNegativeMinAndExcludesBothMaxEdges()
     {

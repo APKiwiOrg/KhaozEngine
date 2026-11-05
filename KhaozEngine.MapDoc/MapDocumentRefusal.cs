@@ -153,6 +153,20 @@ public enum MapDocumentRefusal
     /// <summary>Refuses a static whose world position exceeds the installed limit on any axis.</summary>
     PrefabWorldCoordinateLimitExceeded,
 
+    // Marker authoring admission.
+    /// <summary>Refuses adoption choices that do not cover exactly the source spawns.</summary>
+    MarkerAdoptionChoiceSetMismatch,
+    /// <summary>Refuses adoption without a destination and height choice for a source spawn.</summary>
+    MarkerAdoptionChoiceMissing,
+    /// <summary>Refuses a repeated effective or destination marker name.</summary>
+    MarkerNameDuplicate,
+    /// <summary>Refuses a marker height outside its canonical authored encoding.</summary>
+    MarkerHeightChoiceInvalid,
+    /// <summary>Refuses marker authoring without a native document.</summary>
+    MarkerNativeDocumentRequired,
+    /// <summary>Refuses direct editing of a live prefab-owned marker.</summary>
+    MarkerPrefabOwnershipProtected,
+
     // Foliage JSON converter.
     /// <summary>Refuses a foliage section larger than its UTF-8 byte budget.</summary>
     FoliageSectionByteLimitExceeded,

@@ -713,6 +713,10 @@ in both checks and removed children do not. Closure-bound validation of a comple
 stored path, refuses a duplicate effective ID or name from root globals and verified prefab payloads before any patch
 read, support query, callback or static installation. Names are never normalized or suffixed. A repeated
 marker-bearing prefab gives each copy's marker its own name through an explicit replace override.
+The metadata uniqueness guard carries `IdentityDuplicate` or `MarkerNameDuplicate`, the repeated `MarkerId` or
+`MarkerName`, and colliding `MarkerIds` as a read-only snapshot. Its ordered `Findings` retain every collision, IDs
+first and then names, each in ordinal order. Aggregate validation adapters keep their existing prose projection
+until all of their producer's findings are typed.
 
 Compatibility: duplicate marker names were accepted before R6. A document whose repeated prefab instances share a
 marker name now refuses to load and build until each repeated instance carries such an override. Format 8 moves every
@@ -748,6 +752,7 @@ or tile body, resolves nothing and certifies no whole-world identity. A missing 
 ordinally, orders them by squared distance to the centre over binary64 differences, then by ordinal ID, and returns
 null when none match. The engine never guesses a role. `MapMarkerConsumerOptions(Roles, LegacySpawnSurfaceId)` carries
 the caller's `MapMarkerConsumerRoles` and the one Surface owner for unadopted legacy spawns. Nothing is defaulted.
+Blank configured roles or legacy Surface owners use `SchemaValueRequired` with the offending `FieldPath`.
 
 `MapNativePointReadout.SurfaceAt(resources, point, surfaceId)` samples the named Surface owner at an exact XZ through
 the shared seat query, with no reference height and the default scoped budgets. Every status stays typed, and only
@@ -810,10 +815,14 @@ component whose world value is unchanged keeps its stored local bits, so a metad
 Preparation refuses a resolver (1, 1) document with `MapDocumentRefusal.ResolverContractMismatch`, its
 `PayloadVersion`, `ResolverVersion` and `ExpectedResolverVersion`. Adopt authored support through
 `MapResolverAdoption.ConvertToAuthoredSupport` before editing markers. A live prefab marker belongs to its instance, so
-set and remove refuse with `prefab_override` guidance. An ID held by any marker reservation, live or dormant, refuses
-unless it is the active transfer of the standalone marker being edited, so a set never seizes a retired reservation.
-Removing a transferred marker retires its transfer and removes only its own frame. Payload rules, unique IDs and
-names, binding owners and every support-bound height are validated before the result exists. `MapPrefabJson.ReadMarker`
+set and remove refuse with `MarkerPrefabOwnershipProtected`, `MarkerId` and `InstanceId`, and retain the
+`prefab_override` guidance. An ID held by any marker reservation, live or dormant, refuses with `IdentityReserved`
+and `MarkerId` unless it is the active transfer of the standalone marker being edited, so a set never seizes a
+retired reservation.
+A missing standalone removal target uses `ReferenceMissing` and `MarkerId`. A non-native document uses
+`MarkerNativeDocumentRequired` and `Operation`. Removing a transferred marker retires its transfer and removes
+only its own frame. Payload rules, unique IDs and names, binding owners and every support-bound height are
+validated before the result exists. `MapPrefabJson.ReadMarker`
 is the closed decoder the tool uses, sharing the prefab child codec and binding converter.
 
 Marker effects come only from `MapMarkerEffects.Describe` over the before and after expansions. A metadata edit names
@@ -827,6 +836,11 @@ same source ID in both lists stays distinct. Every source needs a `MapMarkerAdop
 Height, YawRadians?)` and extra choices refuse. Destinations must be distinct and cannot reuse live or retained
 marker IDs. Each `MapMarkerHeight` explicitly chooses Y or a support binding. The pure conversion encodes the height
 without sampling support. Bound command preparation validates the complete closure, names and support before acceptance.
+A choice-set mismatch carries `MarkerAdoptionChoiceSetMismatch`, `ActualCount`, `ExpectedCount` and a read-only
+`SourceIds` snapshot in Spawn then PlayerSpawn order, retaining equal IDs from different lists. A missing destination
+or height choice carries `MarkerAdoptionChoiceMissing`, `SourceId` and the source kind in `SubjectKind`. Repeated
+destinations use `IdentityDuplicate` with `MarkerId`, and repeated names use `MarkerNameDuplicate` with `MarkerName`
+and the destination `MarkerId`.
 
 Adoption preserves XZ, enabled state, ordered tags and the NPC archetype. Without an explicit yaw choice, NPC yaw is
 0 and player yaw is copied. Both source lists clear only after every conversion succeeds. Partial and analytic
@@ -1388,18 +1402,18 @@ adapters continue reporting prose until all of their producing rules carry typed
 | `SchemaMemberNull` | A native member that cannot be null | `FieldPath`, `SourceName`, `Tile`, `Path` |
 | `SchemaMemberUnknown` | A member outside a closed schema object | `FieldPath`, `ResourceId`, `SourceName`, `Tile`, `Path`, `LayerId`, `Index` |
 | `SchemaObjectRequired` | A document, manifest, tile, prefab payload, marker-options or foliage value that must be an object | `FieldPath`, `SourceName`, `Tile`, `Path`, `LayerId`, `Index` |
-| `SchemaValueRequired` | A missing or misplaced typed resource discriminant, null deserialization result, required native, indoor-span, manifest, prefab or foliage value, missing prism domain, blank marker-adoption identity text, or a missing attachment anchor or standalone descriptor pin | `FieldPath`, `SourceName`, `Tile`, `Path`, `AssetId`, `ResourceId`, `ExpectedSchema`, `SurfaceId`, `PlacementId`, `LayerId`, `Index`, `EntityId`, `WorldId`, `ChildKind`, `Child`, `InstanceId`, `Patch`, `ActualAnchor`, `SubjectKind` |
+| `SchemaValueRequired` | A missing or misplaced typed resource discriminant, null deserialization result, required native, indoor-span, manifest, prefab or foliage value, missing prism domain, missing marker edit values, blank marker-adoption identity text or blank marker consumer configuration, or a missing attachment anchor or standalone descriptor pin | `MarkerId`, `FieldPath`, `SourceName`, `Tile`, `Path`, `AssetId`, `ResourceId`, `ExpectedSchema`, `SurfaceId`, `PlacementId`, `LayerId`, `Index`, `EntityId`, `WorldId`, `ChildKind`, `Child`, `InstanceId`, `Patch`, `ActualAnchor`, `SubjectKind` |
 | `SchemaArrayRequired` | A foliage member that must be an array | `FieldPath`, `Index` |
 | `SchemaBooleanRequired` | A foliage member that must be a boolean | `FieldPath`, `LayerId`, `Index` |
 | `SchemaBase64Malformed` | A foliage density token that is invalid or noncanonical base64 | `FieldPath`, `LayerId`, `Index`, `FoliageChunk` |
 | `SchemaArrayLengthMismatch` | Decoded foliage density with the wrong byte length, or embedded records in a prefab surface geometry patch | `FieldPath`, `LayerId`, `Index`, `FoliageChunk`, `ActualByteCount`, `ExpectedByteCount`, `Child`, `SurfaceId`, `Patch`, `ActualCount`, `ExpectedCount` |
-| `SchemaPayloadVersionUnsupported` | An unsupported asset-reference, resolver-identity, support, foliage, prefab asset or local light payload version | `FieldPath`, `ResourceId`, `Index`, `ActualVersion`, `SupportedVersions`, `MinimumInteger` |
-| `ValueNonfinite` | A nonfinite manifest source-unit scale, foliage scalar, playable-bound component, placement support-search value or resolved support height | `FieldPath`, `AssetId`, `LayerId`, `PlacementId`, `Index`, `ActualNumber` (nonfinite for prefab scalar guards) |
+| `SchemaPayloadVersionUnsupported` | An unsupported asset-reference, resolver-identity, support, foliage, prefab asset, local light or local marker payload version | `FieldPath`, `MarkerId`, `ResourceId`, `Index`, `ActualVersion`, `SupportedVersions`, `MinimumInteger` |
+| `ValueNonfinite` | A nonfinite manifest source-unit scale, foliage scalar, playable-bound component, placement support-search value, resolved support height or marker position/yaw | `FieldPath`, `MarkerId`, `AssetId`, `LayerId`, `PlacementId`, `Index`, `ActualNumber` (null for nonfinite marker values, nonfinite for prefab scalar guards) |
 | `ValueOutsideRange` | A finite nonpositive manifest source-unit scale, foliage integer outside its domain, negative support-search extent or high-water mark, or nonpositive numeric identity | `FieldPath`, `AssetId`, `LayerId`, `PlacementId`, `EntityId`, `SubjectKind`, `Index`, `ActualNumber`, `ActualInteger`, `MinimumNumber`, `MinimumInteger`, `MaximumInteger`, `NumericId`, `HighWaterMark` |
-| `IdentityDuplicate` | A repeated asset or resource closure identity, support patch or record identity, exact foliage JSON member name, surface or numeric identity, world binding, transfer or attachment producer, a standalone owner colliding with a prefab binding, or a repeated extraction reference or resulting local key | `FieldPath`, `Index`, `EntityId`, `SubjectKind`, `AssetId`, `ResourceId`, `SurfaceId`, `PlacementId`, `RecordId`, `Patch`, `NumericId`, `HighWaterMark`, `WorldId`, `ChildKind`, `Child`, `InstanceId` |
-| `IdentityReserved` | A placement reusing a live or retained instance ID, a live standalone owner using a retired transfer's world identity, or a planned binding colliding with another owner's world or numeric identity | `EntityId`, `WorldId`, `ChildKind`, `Child`, `InstanceId`, `NumericId`, `SubjectKind` |
-| `AuthoredOwnershipMismatch` | A transfer inconsistent with its source or standalone owner, an attachment inconsistent with its owner, transfer or record anchor, or a prefab-owned interior submitted as standalone | `EntityId`, `WorldId`, `ChildKind`, `Child`, `InstanceId`, `PlacementId`, `RecordId`, `SpaceId`, `Patch`, `ActualAnchor`, `NumericId`, `ExpectedNumericId`, `ActualCount`, `ExpectedCount`, `SubjectKind` |
-| `ReferenceMissing` | An asset, resource, prefab or dependency missing from its closure, or a requested placement, attachment transfer, standalone record target, interior anchor, scatter layer or companion layer missing from its required scope, an absent effective extraction target, or an undeclared asset child removal | `AssetId`, `ResourceId`, `DependencyId`, `ExpectedResourceKind`, `EntityId`, `WorldId`, `ChildKind`, `Child`, `InstanceId`, `PlacementId`, `RecordId`, `SpaceId`, `Patch`, `DocumentId`, `LayerId`, `SubjectKind`, `FieldPath`, `Index`, `ReferenceScope` |
+| `IdentityDuplicate` | A repeated marker, adoption destination, asset or resource closure identity, support patch or record identity, exact foliage JSON member name, surface or numeric identity, world binding, transfer or attachment producer, a standalone owner colliding with a prefab binding, or a repeated extraction reference or resulting local key | `MarkerId`, `MarkerIds`, `FieldPath`, `Index`, `EntityId`, `SubjectKind`, `AssetId`, `ResourceId`, `SurfaceId`, `PlacementId`, `RecordId`, `Patch`, `NumericId`, `HighWaterMark`, `WorldId`, `ChildKind`, `Child`, `InstanceId` |
+| `IdentityReserved` | A marker reusing a retained prefab reservation, a placement reusing a live or retained instance ID, a live standalone owner using a retired transfer's world identity, or a planned binding colliding with another owner's world or numeric identity | `MarkerId`, `EntityId`, `WorldId`, `ChildKind`, `Child`, `InstanceId`, `NumericId`, `SubjectKind` |
+| `AuthoredOwnershipMismatch` | A marker carrying fields forbidden by its payload or height mode, a transfer inconsistent with its source or standalone owner, an attachment inconsistent with its owner, transfer or record anchor, or a prefab-owned interior submitted as standalone | `MarkerId`, `FieldPath`, `EntityId`, `WorldId`, `ChildKind`, `Child`, `InstanceId`, `PlacementId`, `RecordId`, `SpaceId`, `Patch`, `ActualAnchor`, `NumericId`, `ExpectedNumericId`, `ActualCount`, `ExpectedCount`, `SubjectKind` |
+| `ReferenceMissing` | A standalone marker removal target, asset, resource, prefab or dependency missing from its closure, or a requested placement, attachment transfer, standalone record target, interior anchor, scatter layer or companion layer missing from its required scope, an absent effective extraction target, or an undeclared asset child removal | `MarkerId`, `AssetId`, `ResourceId`, `DependencyId`, `ExpectedResourceKind`, `EntityId`, `WorldId`, `ChildKind`, `Child`, `InstanceId`, `PlacementId`, `RecordId`, `SpaceId`, `Patch`, `DocumentId`, `LayerId`, `SubjectKind`, `FieldPath`, `Index`, `ReferenceScope` |
 | `AssetClosureRequired` | Foliage edit preflight without a verified asset closure | `DocumentId` |
 | `DigestMismatch` | Resource bytes, an attached child's descriptor digest or a stored surface semantic aggregate differing from its pin | `DigestKind`, `ResourceId`, `Path`, `EntityId`, `WorldId`, `ChildKind`, `Child`, `InstanceId`, `PlacementId`, `SurfaceId`, `SubjectKind`, `ExpectedHash`, `ActualHash` |
 | `BoundsInvalid` | Invalid prefab patch dimensions, manifest local bounds, playable bounds or lattice frame | `FieldPath`, `Width`, `Depth`, `AssetId`, `SurfaceId`, `Index`, `MinimumNumber`, `MaximumNumber` |
@@ -1413,8 +1427,14 @@ adapters continue reporting prose until all of their producing rules carry typed
 | `AssetCollisionTrailingBytes` | Bytes after the decoded collision shape | `AssetId`, `ResourceId`, `ActualByteCount` of trailing bytes |
 | `AssetCollisionEmptyPoints` | A collision hull or mesh with no points | `AssetId`, `ResourceId`, `ShapeType` |
 | `AssetCollisionNestedMesh` | A triangle mesh nested in a compound collider | `AssetId`, `ResourceId` |
-| `SchemaEnumUnsupported` | An undefined prefab enumeration value | `EnumType`, `ActualInteger`, `FieldPath`, `EntityId`, `ChildKind` |
+| `SchemaEnumUnsupported` | An undefined prefab or marker height-mode enumeration value | `MarkerId`, `EnumType`, `ActualInteger`, `FieldPath`, `EntityId`, `ChildKind` |
 | `AuthoredReferenceKindInvalid` | A light owner, roof reference, placement override or numeric binding of the wrong child kind | `EntityId`, `Child`, `ChildKind`, `ExpectedChildKind`, `WorldId`, `NumericId`, `ReferenceScope`, `ExpectedReferenceScope`, `FieldPath`, `SubjectKind` |
+| `MarkerHeightChoiceInvalid` | A Support marker whose finite Y is not canonical +0 | `MarkerId`, `FieldPath`, finite `ActualNumber` |
+| `MarkerNativeDocumentRequired` | Marker editing or adoption without a native document | `Operation` |
+| `MarkerPrefabOwnershipProtected` | Direct editing of a live prefab-owned marker | `MarkerId`, `InstanceId` |
+| `MarkerAdoptionChoiceSetMismatch` | Adoption choices not covering exactly the source spawns | `SourceIds`, `ActualCount`, `ExpectedCount` |
+| `MarkerAdoptionChoiceMissing` | A source spawn without a destination and height choice | `SourceId`, `SubjectKind` |
+| `MarkerNameDuplicate` | A repeated effective or adoption destination marker name | `MarkerName`, destination `MarkerId` or colliding `MarkerIds`, ordered `Findings` for metadata collisions |
 | `PrefabCapturedUpdateRequired` | An asset update passed to the single-closure preparation API | `Operation` |
 | `PrefabInstanceMissing` | An edit of an absent or removed instance | `InstanceId` |
 | `PrefabChildAlreadyRemoved` | A remove override submitted for an already removed child | `InstanceId`, `Child` |

@@ -7,6 +7,8 @@ using System.Text.Json;
 using KhaozEngine.MapDoc;
 using KhaozEngine.MapDoc.Foliage;
 using KhaozEngine.MapDoc.Assets;
+using KhaozEngine.MapDoc.Prefabs;
+using KhaozEngine.MapDoc.Surfaces;
 using Xunit;
 
 namespace KhaozEngine.Tests.MapDoc;
@@ -89,6 +91,9 @@ public sealed class MapDocumentExceptionTests
         if (type == typeof(MapFoliageChunkKey)) return new MapFoliageChunkKey(-3, index);
         if (type == typeof(IReadOnlyList<int>)) return new[] { 1, 5 };
         if (type == typeof(MapTileCoord)) return new MapTileCoord(-7, index);
+        if (type == typeof(MapPrefabChildKind)) return (MapPrefabChildKind)(6000 + index);
+        if (type == typeof(MapPrefabChildKey)) return new MapPrefabChildKey(MapPrefabChildKind.Record, property.Name);
+        if (type == typeof(MapPatchKey)) return new MapPatchKey(property.Name, -2, index);
         if (type == typeof(MapResourceKind)) return (MapResourceKind)(5000 + index);
         if (type == typeof(MapSupportRecipe)) return (MapSupportRecipe)(2000 + index);
         if (type == typeof(IReadOnlyList<MapDocumentFinding>))

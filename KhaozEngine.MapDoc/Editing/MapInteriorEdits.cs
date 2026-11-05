@@ -31,9 +31,17 @@ public static class MapInteriorEdits
         {
             case MapSetInterior set:
                 ArgumentNullException.ThrowIfNull(set.Domain);
-                if (set.Domain.InstanceId != "") throw new MapDocumentException("Standalone interior edits require standalone ownership.");
+                if (set.Domain.InstanceId != "") throw new MapDocumentException(MapDocumentRefusal.AuthoredOwnershipMismatch, "Standalone interior edits require standalone ownership.")
+                {
+                    EntityId = set.Domain.Id, RecordId = set.Domain.Id, SpaceId = set.Domain.Space?.Id, Patch = set.Domain.Space?.Anchor,
+                    InstanceId = set.Domain.InstanceId, ChildKind = MapPrefabChildKind.Record, SubjectKind = "interior",
+                };
                 if (!after.Surfaces.Patches.TryGetValue(set.Domain.Space.Anchor, out var anchor))
-                    throw new MapDocumentException("Interior space anchor must name an authored patch.");
+                    throw new MapDocumentException(MapDocumentRefusal.ReferenceMissing, "Interior space anchor must name an authored patch.")
+                    {
+                        EntityId = set.Domain.Id, RecordId = set.Domain.Id, SpaceId = set.Domain.Space.Id, Patch = set.Domain.Space.Anchor,
+                        ChildKind = MapPrefabChildKind.Record, SubjectKind = "interior anchor",
+                    };
                 if (!after.Surfaces.TryGetRecord(set.Domain.Space, out var space))
                 {
                     if (after.Surfaces.AllRecords().Any(r => r.Id == set.Domain.Space.Id))

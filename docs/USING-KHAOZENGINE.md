@@ -12567,6 +12567,30 @@ closed supported-version set. Native metadata still has three prose-only rules. 
 adapters, including document validation and numeric reservation adapters, retain their existing
 constructors until the remaining producer conversion.
 
+Identity registry checks preserve `MapDocumentException` and distinguish `IdentityDuplicate`,
+`IdentityReserved`, `AuthoredOwnershipMismatch`, `ReferenceMissing`, `SchemaValueRequired` and
+`DigestMismatch`. `EntityId` and `WorldId` identify the world subject, `ChildKind` gives its typed
+namespace, `Child` is the prefab-local key and `InstanceId` is the known source instance. Equal world ID
+text in different child kinds is allowed. Loaded and stored registry refusals retain the same reason
+and relevant identifiers. The surrounding aggregate validators keep their existing contracts until
+all of their producing rules carry typed findings.
+
+For attachments, `PlacementId` names the standalone owner. A missing transfer uses `ReferenceMissing`,
+a missing anchor or descriptor pin uses `SchemaValueRequired`, and a mismatched existing transfer,
+owner or anchor uses `AuthoredOwnershipMismatch`. `Patch` carries the submitted record anchor and
+`ActualAnchor` carries its actual standalone anchor when known. `$.anchor` is relative to the attached
+child, while `$.nativeResourceTransforms` identifies the document pin collection. Numeric ownership
+compares the placement's `NumericId` against its transfer's `ExpectedNumericId`. An active transfer
+requires exactly `ExpectedCount` 1 standalone owner and reports `ActualCount`. Descriptor digest
+mismatch reports the pin in `ExpectedHash` and the attachment in `ActualHash`. Inspect these values
+instead of parsing the message. The package README lists the role carried by `SubjectKind`.
+
+Standalone interior admission carries `RecordId`, `SpaceId` and `Patch`, with the submitted `InstanceId`
+on `AuthoredOwnershipMismatch`. A missing authored anchor uses `ReferenceMissing`. Runtime scatter and
+companion lookup also use `ReferenceMissing`, with `DocumentId`, `LayerId`, `EntityId` and `SubjectKind`
+of `scatter layer` or `companion layer`. Foliage edit preflight without a verified closure uses
+`AssetClosureRequired` and `DocumentId`. Editor transaction admission retains its current contract.
+
 **Whole authored surface identity.** Scheme 2, new in 20.30.0, is the resolver-2 whole-document identity. Resolver-2
 documents use `MapAuthoredIdentityV2` from `KhaozEngine.MapDoc.Identity`, with an explicitly verified
 `MapAssetClosure` and resolver-2 options:

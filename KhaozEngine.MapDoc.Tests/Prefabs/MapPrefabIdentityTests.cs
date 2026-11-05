@@ -44,8 +44,20 @@ public sealed class MapPrefabIdentityTests
         var stored = Assert.Throws<MapDocumentException>(() => MapPrefabIdentity.RequireStored(PrefabFixtures.Stored(missing.Document), missing.Assets));
         Assert.Equal(loaded.Message, stored.Message);
         var collision = PrefabFixtures.Create("standalone-collision");
-        Assert.Equal(Assert.Throws<MapDocumentException>(() => MapPrefabIdentity.Require(collision.Document, collision.Assets)).Message,
-            Assert.Throws<MapDocumentException>(() => MapPrefabIdentity.RequireStored(PrefabFixtures.Stored(collision.Document), collision.Assets)).Message);
+        string before = MapDocumentFile.SaveText(collision.Document);
+        var loadedCollision = Assert.Throws<MapDocumentException>(() => MapPrefabIdentity.Require(collision.Document, collision.Assets));
+        var storedCollision = Assert.Throws<MapDocumentException>(() => MapPrefabIdentity.RequireStored(PrefabFixtures.Stored(collision.Document), collision.Assets));
+        Assert.Equal(MapDocumentRefusal.IdentityDuplicate, loadedCollision.Reason);
+        Assert.Equal(loadedCollision.Reason, storedCollision.Reason);
+        Assert.Equal(("a/item", "a/item", MapPrefabChildKind.Placement, "a", "standalone owner"),
+            (loadedCollision.EntityId, loadedCollision.WorldId, loadedCollision.ChildKind, loadedCollision.InstanceId, loadedCollision.SubjectKind));
+        Assert.Equal(new MapPrefabChildKey(MapPrefabChildKind.Placement, "item"), loadedCollision.Child);
+        Assert.Equal((loadedCollision.EntityId, loadedCollision.WorldId, loadedCollision.ChildKind, loadedCollision.Child, loadedCollision.InstanceId, loadedCollision.SubjectKind),
+            (storedCollision.EntityId, storedCollision.WorldId, storedCollision.ChildKind, storedCollision.Child, storedCollision.InstanceId, storedCollision.SubjectKind));
+        Assert.Equal(before, MapDocumentFile.SaveText(collision.Document));
+        collision.Document.Placements.Single().Id = "standalone-free";
+        MapPrefabIdentity.Require(collision.Document, collision.Assets);
+        MapPrefabIdentity.RequireStored(PrefabFixtures.Stored(collision.Document), collision.Assets);
     }
 
     [Fact]

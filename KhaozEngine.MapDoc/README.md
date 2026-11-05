@@ -109,7 +109,9 @@ The stored overload also reads the tile files named by the generation pinned at 
 by their pinned names. Each tile's parsed content must hash to its pinned tile hash before any entry is
 used. A removed tile file refuses with `Missing` and altered content with `Corrupt`. Identity never rereads
 the manifest, lists directories or trusts a stored hash without reading the file. Stored identity validates
-the same document rules as the loaded document, through the same code and with the same messages.
+the same document rules as the loaded document. Ownership-registry refusals expose the same `Reason` and typed
+identity, child-kind, instance and anchor context on both paths. Other aggregate validators retain their prose
+until their producing rules are typed.
 
 Both overloads hash exactly these inputs under `kemap/native-authored/2`: the root digest, the authored
 content digest, ordered `(patchKey, semanticDigest)` facts, `kemap/effective-resources/1`, query policy 2,
@@ -1349,7 +1351,7 @@ ran on a worker thread. The handoff did not.
 
 ## Loud failures
 
-Resolver, root, prefab, foliage codec and asset-manifest admission refusals keep the exact `MapDocumentException` type. Inspect its nullable
+Resolver, root, prefab, identity registry, runtime layer, foliage codec and asset-manifest admission refusals keep the exact `MapDocumentException` type. Inspect its nullable
 `MapDocumentRefusal Reason` and applicable identifiers instead of classifying its message. The public
 message-only constructors remain available to consumers and leave `Reason` null. Other validation
 adapters continue reporting prose until all of their producing rules carry typed findings.
@@ -1362,7 +1364,7 @@ adapters continue reporting prose until all of their producing rules carry typed
 | `SchemaMemberNull` | A native member that cannot be null | `FieldPath`, `SourceName`, `Tile`, `Path` |
 | `SchemaMemberUnknown` | A member outside a closed schema object | `FieldPath`, `SourceName`, `Tile`, `Path`, `LayerId`, `Index` |
 | `SchemaObjectRequired` | A document, manifest, tile, prefab payload, marker-options or foliage value that must be an object | `FieldPath`, `SourceName`, `Tile`, `Path`, `LayerId`, `Index` |
-| `SchemaValueRequired` | A null deserialization result, required native, manifest, prefab or foliage value, missing prism domain, or blank marker-adoption identity text | `FieldPath`, `SourceName`, `Tile`, `Path`, `AssetId`, `ResourceId`, `SurfaceId`, `PlacementId`, `LayerId`, `Index` |
+| `SchemaValueRequired` | A null deserialization result, required native, manifest, prefab or foliage value, missing prism domain, blank marker-adoption identity text, or a missing attachment anchor or standalone descriptor pin | `FieldPath`, `SourceName`, `Tile`, `Path`, `AssetId`, `ResourceId`, `SurfaceId`, `PlacementId`, `LayerId`, `Index`, `EntityId`, `WorldId`, `ChildKind`, `Child`, `InstanceId`, `Patch`, `ActualAnchor`, `SubjectKind` |
 | `SchemaArrayRequired` | A foliage member that must be an array | `FieldPath`, `Index` |
 | `SchemaBooleanRequired` | A foliage member that must be a boolean | `FieldPath`, `LayerId`, `Index` |
 | `SchemaBase64Malformed` | A foliage density token that is invalid or noncanonical base64 | `FieldPath`, `LayerId`, `Index`, `FoliageChunk` |
@@ -1370,7 +1372,12 @@ adapters continue reporting prose until all of their producing rules carry typed
 | `SchemaPayloadVersionUnsupported` | An unsupported asset-reference, resolver-identity or foliage payload version | `FieldPath`, `ResourceId`, `Index`, `ActualVersion`, `SupportedVersions`, `MinimumInteger` |
 | `ValueNonfinite` | A nonfinite foliage scalar, playable-bound component or placement support-search value | `FieldPath`, `LayerId`, `PlacementId`, `Index`, `ActualNumber` |
 | `ValueOutsideRange` | A foliage integer outside its domain, negative support-search extent or high-water mark, or nonpositive numeric identity | `FieldPath`, `LayerId`, `PlacementId`, `EntityId`, `SubjectKind`, `Index`, `ActualNumber`, `ActualInteger`, `MinimumNumber`, `MinimumInteger`, `MaximumInteger`, `NumericId`, `HighWaterMark` |
-| `IdentityDuplicate` | A repeated exact foliage JSON member name, surface identity or reserved numeric identity | `FieldPath`, `Index`, `EntityId`, `SubjectKind`, `SurfaceId`, `PlacementId`, `NumericId`, `HighWaterMark` |
+| `IdentityDuplicate` | A repeated exact foliage JSON member name, surface or numeric identity, world binding, transfer or attachment producer, or a standalone owner colliding with a prefab binding | `FieldPath`, `Index`, `EntityId`, `SubjectKind`, `SurfaceId`, `PlacementId`, `NumericId`, `HighWaterMark`, `WorldId`, `ChildKind`, `Child`, `InstanceId` |
+| `IdentityReserved` | A live standalone owner using a retired transfer's world identity | `EntityId`, `WorldId`, `ChildKind`, `Child`, `InstanceId`, `SubjectKind` |
+| `AuthoredOwnershipMismatch` | A transfer inconsistent with its source or standalone owner, an attachment inconsistent with its owner, transfer or record anchor, or a prefab-owned interior submitted as standalone | `EntityId`, `WorldId`, `ChildKind`, `Child`, `InstanceId`, `PlacementId`, `RecordId`, `SpaceId`, `Patch`, `ActualAnchor`, `NumericId`, `ExpectedNumericId`, `ActualCount`, `ExpectedCount`, `SubjectKind` |
+| `ReferenceMissing` | An attachment transfer or standalone record target, interior anchor, scatter layer or companion layer missing from its required scope | `EntityId`, `WorldId`, `ChildKind`, `Child`, `InstanceId`, `PlacementId`, `RecordId`, `SpaceId`, `Patch`, `DocumentId`, `LayerId`, `SubjectKind`, `FieldPath` |
+| `AssetClosureRequired` | Foliage edit preflight without a verified asset closure | `DocumentId` |
+| `DigestMismatch` | An attached child's descriptor digest differing from its standalone pin | `EntityId`, `WorldId`, `ChildKind`, `Child`, `InstanceId`, `PlacementId`, `SubjectKind`, `ExpectedHash`, `ActualHash` |
 | `BoundsInvalid` | Invalid prefab patch dimensions, manifest local bounds, playable bounds, lattice frame or indoor-span metadata | `FieldPath`, `Width`, `Depth`, `AssetId`, `SurfaceId`, `Index`, `MinimumNumber`, `MaximumNumber` |
 | `DigestMalformed` | An asset-reference or surface semantic digest outside lowercase SHA-256 representation | `FieldPath`, `ResourceId`, `SurfaceId`, `Index` |
 | `TransformInvalid` | Asset source units that are not finite and positive | `AssetId`, `FieldPath`, finite `ActualNumber` |
@@ -1378,6 +1385,26 @@ adapters continue reporting prose until all of their producing rules carry typed
 | `ReferenceKindMismatch` | An asset resource missing or declared with the wrong kind | `AssetId`, `ResourceId`, `ExpectedResourceKind`, available `ActualResourceKind` |
 | `NumericIdHighWaterExceeded` | A placement, prefab binding or retired transfer above the reserved mark | `EntityId`, `SubjectKind`, `PlacementId`, `FieldPath`, `NumericId`, `HighWaterMark` |
 | `ResolverContractMismatch` | The document resolver, support recipe or caller's resolver options cannot serve the requested operation | `PayloadVersion`, `ResolverVersion`, `OptionsResolverVersion`, `ExpectedResolverVersion`, `SupportRecipe`, `ExpectedSupportRecipe`, `FieldPath`, `SubjectKind` |
+
+Identity registry refusals keep `EntityId` and `WorldId` distinct from the prefab-local `Child` and the
+source `InstanceId`. `ChildKind` is the typed world ID namespace, so equal text in different kinds is
+not a collision. `SubjectKind` names the checked role, such as `prefab binding`, `prefab transfer`,
+`standalone owner`, `attachment producer`, `attachment owner`, `attachment transfer`, `attachment anchor`
+or `standalone descriptor pin`. A missing anchor uses `SchemaValueRequired`, a missing transfer uses
+`ReferenceMissing`, and an existing but inconsistent owner or anchor uses `AuthoredOwnershipMismatch`.
+For record anchors, `Patch` is the submitted anchor and `ActualAnchor` is the standalone record's
+actual anchor, if found. An anchor field path is relative to the attached child (`$.anchor`).
+A missing descriptor pin identifies the document's `$.nativeResourceTransforms` collection.
+`NumericId` is the placement's submitted value and `ExpectedNumericId` is its transfer's value.
+The active-transfer owner count must equal `ExpectedCount` 1, with `ActualCount` carrying the measured count.
+Descriptor comparison uses the standalone pin as `ExpectedHash` and the attachment as `ActualHash`.
+Unavailable identifiers stay null. Collection identifiers remain owned read-only snapshots.
+
+Runtime layer lookup uses `ReferenceMissing`, `DocumentId`, `LayerId` and `EntityId`, with `SubjectKind`
+`scatter layer` or `companion layer`. Interior admission carries its `RecordId`, `SpaceId` and requested
+`Patch`, plus the submitted `InstanceId` for a standalone-ownership refusal. Foliage edit preflight
+uses `AssetClosureRequired` with `DocumentId`. Editor transaction admission keeps its existing contract
+until its own guards are converted.
 
 `ResolverVersion` is the document's declared version. `OptionsResolverVersion` is the version supplied
 by the caller, and `ExpectedResolverVersion` is the version the operation requires. A guard accepting

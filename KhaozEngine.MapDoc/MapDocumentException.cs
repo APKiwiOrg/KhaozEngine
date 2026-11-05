@@ -2,6 +2,8 @@ using System;
 using System.Collections.Generic;
 using KhaozEngine.MapDoc.Foliage;
 using KhaozEngine.MapDoc.Assets;
+using KhaozEngine.MapDoc.Prefabs;
+using KhaozEngine.MapDoc.Surfaces;
 
 namespace KhaozEngine.MapDoc;
 
@@ -62,7 +64,7 @@ public sealed class MapDocumentException : Exception
     /// <summary>The kind of document content or identity whose rule was refused.</summary>
     public string? SubjectKind { get; init; }
 
-    /// <summary>The foliage layer identity, after it has been read.</summary>
+    /// <summary>The foliage, scatter or companion layer identity, when known.</summary>
     public string? LayerId { get; init; }
     /// <summary>The zero-based position of the containing or refused JSON array item, when known.</summary>
     public int? Index { get; init; }
@@ -105,6 +107,35 @@ public sealed class MapDocumentException : Exception
     public double? MinimumNumber { get; init; }
     /// <summary>The maximum of the checked numeric domain, or the submitted upper endpoint when bounds are invalid.</summary>
     public double? MaximumNumber { get; init; }
+
+    /// <summary>The document containing the refused reference or edit, when known.</summary>
+    public string? DocumentId { get; init; }
+    /// <summary>The world identity in the namespace identified by ChildKind, when known.</summary>
+    public string? WorldId { get; init; }
+    /// <summary>The prefab source or submitted owner instance, when known.</summary>
+    public string? InstanceId { get; init; }
+    /// <summary>The typed world identity namespace checked by the guard.</summary>
+    public MapPrefabChildKind? ChildKind { get; init; }
+    /// <summary>The prefab-local child key associated with the world identity, when known.</summary>
+    public MapPrefabChildKey? Child { get; init; }
+    /// <summary>The authored record whose admission failed, when known.</summary>
+    public string? RecordId { get; init; }
+    /// <summary>The space referenced by the refused authored record, when known.</summary>
+    public string? SpaceId { get; init; }
+    /// <summary>The submitted or referenced authored patch, when known.</summary>
+    public MapPatchKey? Patch { get; init; }
+    /// <summary>The actual standalone record anchor found by the guard, when known.</summary>
+    public MapPatchKey? ActualAnchor { get; init; }
+    /// <summary>The standalone owner count measured by the guard.</summary>
+    public long? ActualCount { get; init; }
+    /// <summary>The exact standalone owner count required by the guard.</summary>
+    public long? ExpectedCount { get; init; }
+    /// <summary>The transferred numeric identity required of its standalone placement, when present.</summary>
+    public long? ExpectedNumericId { get; init; }
+    /// <summary>The descriptor digest required by the standalone pin, when known.</summary>
+    public string? ExpectedHash { get; init; }
+    /// <summary>The submitted descriptor digest compared with its standalone pin, when known.</summary>
+    public string? ActualHash { get; init; }
 
     /// <summary>The supported payload versions, as an owned read-only snapshot.</summary>
     public IReadOnlyList<int>? SupportedVersions
@@ -169,6 +200,20 @@ public sealed class MapDocumentException : Exception
         HighWaterMark = inner.HighWaterMark;
         MinimumNumber = inner.MinimumNumber;
         MaximumNumber = inner.MaximumNumber;
+        DocumentId = inner.DocumentId;
+        WorldId = inner.WorldId;
+        InstanceId = inner.InstanceId;
+        ChildKind = inner.ChildKind;
+        Child = inner.Child;
+        RecordId = inner.RecordId;
+        SpaceId = inner.SpaceId;
+        Patch = inner.Patch;
+        ActualAnchor = inner.ActualAnchor;
+        ActualCount = inner.ActualCount;
+        ExpectedCount = inner.ExpectedCount;
+        ExpectedNumericId = inner.ExpectedNumericId;
+        ExpectedHash = inner.ExpectedHash;
+        ActualHash = inner.ActualHash;
         _supportedVersions = inner._supportedVersions;
         // Findings already owns a read-only snapshot whose elements are immutable records.
         _findings = inner._findings;

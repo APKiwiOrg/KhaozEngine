@@ -239,9 +239,22 @@ public sealed class MapPrefabBindingTests
     public void ActiveAttachment_RequiresDescriptorPinsAndRecordAnchorsOnBothPaths(string variant)
     {
         var f = PrefabFixtures.Create(variant);
+        string before = MapPrefabJson.Digest("test/attachment-admission", f.Document);
         var loaded = Assert.Throws<MapDocumentException>(() => Identity(f));
         var stored = Assert.Throws<MapDocumentException>(() => StoredIdentity(f));
-        Assert.Equal(loaded.Message, stored.Message);
+        var expected = variant == "attachment-digest" ? MapDocumentRefusal.DigestMismatch : MapDocumentRefusal.SchemaValueRequired;
+        Assert.Equal(expected, loaded.Reason);
+        Assert.Equal(loaded.Reason, stored.Reason);
+        Assert.Equal(variant == "attachment-missing-anchor" ? "unpacked-edge" : "unpacked-top", loaded.EntityId);
+        Assert.Equal(variant == "attachment-missing-anchor" ? MapPrefabChildKind.Record : MapPrefabChildKind.Surface, loaded.ChildKind);
+        Assert.Equal("unpacked-deck", loaded.PlacementId);
+        Assert.Equal((loaded.EntityId, loaded.WorldId, loaded.ChildKind, loaded.Child, loaded.InstanceId, loaded.PlacementId,
+                loaded.SubjectKind, loaded.FieldPath, loaded.Patch, loaded.ActualAnchor, loaded.ExpectedHash, loaded.ActualHash),
+            (stored.EntityId, stored.WorldId, stored.ChildKind, stored.Child, stored.InstanceId, stored.PlacementId,
+                stored.SubjectKind, stored.FieldPath, stored.Patch, stored.ActualAnchor, stored.ExpectedHash, stored.ActualHash));
+        Assert.Equal(before, MapPrefabJson.Digest("test/attachment-admission", f.Document));
+        var control = PrefabFixtures.Create("attachment");
+        Assert.Equal(Identity(control), StoredIdentity(control));
     }
 
     [Fact]

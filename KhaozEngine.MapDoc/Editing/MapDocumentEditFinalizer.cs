@@ -101,7 +101,8 @@ public static class MapDocumentEditFinalizer
     internal static void Preflight(MapDocument document, MapAssetClosure? assets, MapFoliageSet? foliage)
     {
         if (foliage is null) return;
-        if (assets is null) throw new MapDocumentException("Native foliage editing requires a verified asset closure.");
+        if (assets is null) throw new MapDocumentException(MapDocumentRefusal.AssetClosureRequired, "Native foliage editing requires a verified asset closure.")
+        { DocumentId = document?.Id };
         MapFoliageContextMeasure measure = MapFoliageContextPreflight.Measure(document, assets, new(), foliage);
         if (measure.Status != MapFoliageStatus.Complete)
             throw MapFoliageEditRefusal.Create(measure.Status, "the document exceeds the foliage context budget before any copy");

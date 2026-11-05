@@ -73,11 +73,32 @@ namespace KhaozEngine.Tests.MapDoc
             Assert.Empty(grass.Overrides);
         }
 
-        [Fact]
-        public void BuildScatterConfig_UnknownLayer_Throws()
+        [Theory]
+        [InlineData(false)]
+        [InlineData(true)]
+        public void BuildLayerConfig_UnknownLayer_IdentifiesTheNamespace(bool companion)
         {
-            Assert.Throws<MapDocumentException>(() =>
-                MapRuntime.BuildScatterConfig(MapDocumentFileTests.SampleDoc(), "nope"));
+            var doc = MapDocumentFileTests.SampleDoc();
+            string before = MapDocumentFile.SaveText(doc);
+            var refusal = Assert.Throws<MapDocumentException>(() =>
+            {
+                if (companion) MapRuntime.BuildCompanionConfig(doc, "nope");
+                else MapRuntime.BuildScatterConfig(doc, "nope");
+            });
+            Assert.Equal(MapDocumentRefusal.ReferenceMissing, refusal.Reason);
+            Assert.Equal((doc.Id, "nope", "nope", companion ? "companion layer" : "scatter layer"),
+                (refusal.DocumentId, refusal.EntityId, refusal.LayerId, refusal.SubjectKind));
+            Assert.Equal(before, MapDocumentFile.SaveText(doc));
+            if (companion)
+            {
+                doc.CompanionLayers.Single().Name = "nope";
+                Assert.NotEmpty(MapRuntime.BuildCompanionConfig(doc, "nope").Kinds);
+            }
+            else
+            {
+                doc.ScatterLayers.Single().Name = "nope";
+                Assert.NotEmpty(MapRuntime.BuildScatterConfig(doc, "nope").Biomes);
+            }
         }
 
         [Fact]

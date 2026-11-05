@@ -44,6 +44,16 @@ public enum MapDocumentRefusal
     TransformInvalid,
 
     // Shared identity admission.
+    /// <summary>Refuses foliage editing without a verified asset closure.</summary>
+    AssetClosureRequired,
+    /// <summary>Refuses authored ownership inconsistent with its standalone owner or retained source.</summary>
+    AuthoredOwnershipMismatch,
+    /// <summary>Refuses reuse of an identity held by a retained owner.</summary>
+    IdentityReserved,
+    /// <summary>Refuses a target missing from the required authored or captured scope.</summary>
+    ReferenceMissing,
+    /// <summary>Refuses a descriptor whose digest differs from its standalone pin.</summary>
+    DigestMismatch,
     /// <summary>Refuses an identity repeated within its owning namespace.</summary>
     IdentityDuplicate,
     /// <summary>Refuses a numeric identity above its reserved high-water mark.</summary>

@@ -12647,6 +12647,24 @@ branches retain their own reasons. Precise poses retain their first failed compo
 malformed digests retain `ActualHash`. Aggregate document adapters still report prose until every
 producing rule has typed findings.
 
+Prefab binding planning uses `AuthoredValueRequired` with `InstanceId` and `FieldPath` for a missing
+parent space. `IdentityReserved` identifies the planned `InstanceId`, typed local `Child`, `ChildKind`
+and `WorldId`, plus `NumericId` for a numeric collision. Duplicate child keys or planned world IDs use
+`IdentityDuplicate`, while missing binding entries or blank world IDs use `SchemaValueRequired`. Numeric exhaustion uses
+`PrefabNumericIdSpaceExhausted` with `HighWaterMark`, without publishing a reservation. The final
+signed 64-bit identity remains allocatable.
+
+Reference admission keeps the owning local `Child` or support `ResourceId` separate from the target's
+`EntityId`, `ChildKind`, `RecordId` and `Patch`. `ReferencePath` is a canonical JSON pointer, distinct
+from the `FieldPath` of the references collection. Missing slots and targets use `ReferenceMissing`,
+wrong kinds `AuthoredReferenceKindInvalid`, inconsistent IDs `AuthoredValueMismatch`, and missing scope
+`PrefabReferenceScopeMissing`. Slot-count disagreements use `SchemaArrayLengthMismatch` with the actual
+and expected counts. Local ownership, anchor and pose disagreements use `AuthoredOwnershipMismatch`,
+retaining the known `ActualAnchor`. Parent remapping without a supplied space uses `AuthoredValueRequired`.
+An absent effective light owner uses `PrefabEffectiveLightOwnerMissing`, with `PlacementId` for the
+owner and typed `WorldId` for the light. A prefab file's resource mismatch uses `PrefabPayloadIdMismatch`,
+with `ResourceId` and the payload's `EntityId`. Inspect these members instead of parsing message text.
+
 
 Override admission uses `PrefabPreviousOverrideNestedRemove` for nested remove history and
 `AuthoredValueMismatch` for a mismatched previous, replacement or add key. `Child` is the submitted key,

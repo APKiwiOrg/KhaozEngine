@@ -71,6 +71,8 @@ public enum MapDocumentRefusal
 
     /// <summary>Refuses an authored replacement or reference differing from its declared target.</summary>
     AuthoredValueMismatch,
+    /// <summary>Refuses an authored prefab value required by its parent or reference contract.</summary>
+    AuthoredValueRequired,
 
     // Asset manifest admission.
     /// <summary>Refuses an undefined resource kind.</summary>
@@ -106,7 +108,7 @@ public enum MapDocumentRefusal
     PrefabAssetPinMismatch,
     /// <summary>Refuses adding a child that already exists.</summary>
     PrefabAddedChildExists,
-    /// <summary>Refuses a child whose declared key differs from its payload identity or kind.</summary>
+    /// <summary>Refuses a prefab resource or child key differing from its payload identity or kind.</summary>
     PrefabPayloadIdMismatch,
     /// <summary>Refuses a placement child carrying an additional local transform.</summary>
     PrefabPlacementTransformDuplicated,
@@ -116,6 +118,14 @@ public enum MapDocumentRefusal
     // Prefab leaf resource admission.
     /// <summary>Refuses a leaf light owner other than null or its Local placement token.</summary>
     PrefabLightOwnerInvalid,
+
+    // Prefab bindings and reference admission.
+    /// <summary>Refuses allocation beyond the signed 64-bit numeric identity space.</summary>
+    PrefabNumericIdSpaceExhausted,
+    /// <summary>Refuses a reference occurrence without an explicit or inherited scope.</summary>
+    PrefabReferenceScopeMissing,
+    /// <summary>Refuses an effective light whose world placement owner is missing.</summary>
+    PrefabEffectiveLightOwnerMissing,
 
     // Foliage JSON converter.
     /// <summary>Refuses a foliage section larger than its UTF-8 byte budget.</summary>

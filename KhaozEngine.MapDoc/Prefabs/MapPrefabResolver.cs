@@ -176,7 +176,8 @@ public static class MapPrefabResolver
         {
             string key = MapEffectiveContext.Key(MapPrefabChildKind.Light, id);
             if (!transforms.TryGetValue(MapEffectiveContext.Key(MapPrefabChildKind.Placement, owners[key]), out var owner))
-                throw new MapDocumentException($"Unknown effective light owner '{owners[key]}'.");
+                throw new MapDocumentException(MapDocumentRefusal.PrefabEffectiveLightOwnerMissing, $"Unknown effective light owner '{owners[key]}'.")
+                    { PlacementId = owners[key], WorldId = id, ChildKind = MapPrefabChildKind.Light };
             transforms[key] = MapEffectiveTransform.Compose(owner, local);
         }
         observer?.EnterStage("Sorts");

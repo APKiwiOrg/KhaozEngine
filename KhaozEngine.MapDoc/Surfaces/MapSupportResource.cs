@@ -112,7 +112,7 @@ public static class MapSupportResourceFile
                 { ResourceId = resourceId, RecordId = record.Id, EntityId = record.Id, Patch = key, SubjectKind = "support resource record" };
         }
         var (_, occurrences) = MapPrefabReferenceWalker.Resource(resource, MapPrefabReferenceMap.Identity);
-        MapPrefabReferences.RequireSlots(resource.References, occurrences, new Targets(surfaces, anchors, resource.Surfaces), null, "support resource");
+        MapPrefabReferences.RequireSlots(resource.References, occurrences, new Targets(surfaces, anchors, resource.Surfaces), null, "support resource", resourceId: resourceId);
     }
 
     sealed class Targets(HashSet<string> surfaces, Dictionary<string, MapPatchKey> anchors, MapSurfaceSet set) : IMapPrefabTargets

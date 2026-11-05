@@ -62,6 +62,8 @@ public sealed class MapDocumentException : Exception
     /// a plain member, <c>['name']</c> for a member containing special characters, and <c>[index]</c>
     /// for an array element.</summary>
     public string? FieldPath { get; init; }
+    /// <summary>The canonical JSON pointer of a prefab reference occurrence or slot, when known.</summary>
+    public string? ReferencePath { get; init; }
     /// <summary>The kind of document content or identity whose rule was refused.</summary>
     public string? SubjectKind { get; init; }
 
@@ -220,6 +222,7 @@ public sealed class MapDocumentException : Exception
         SupportRecipe = inner.SupportRecipe;
         ExpectedSupportRecipe = inner.ExpectedSupportRecipe;
         FieldPath = inner.FieldPath;
+        ReferencePath = inner.ReferencePath;
         SubjectKind = inner.SubjectKind;
         LayerId = inner.LayerId;
         Index = inner.Index;

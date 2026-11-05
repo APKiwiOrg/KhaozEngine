@@ -16,6 +16,30 @@ namespace KhaozEngine.Tests.MapDoc.Prefabs;
 public sealed class MapPrefabExpansionTests
 {
     [Fact]
+    public void Effective_light_requires_its_world_placement_owner()
+    {
+        var f = PrefabFixtures.Create("roomless");
+        var asset = f.Assets.GetPrefab("hut");
+        var light = new MapPrefabLightChild(new(MapPrefabChildKind.Light, "light"), PrefabFixtures.GlowLight() with
+            { Id = "light", Owner = PrefabFixtures.World(MapPrefabChildKind.Placement, "owner") });
+        asset = asset with { Children = [.. asset.Children, light] };
+        var assets = PrefabFixtures.PublishPrefab(f.Assets, asset);
+        f.Document.NativeAssets = assets.Roots.ToList();
+        var instance = Assert.Single(f.Document.Prefabs!.Instances) with { ResourceSha256 = assets.GetResource("hut").Reference.Sha256 };
+        var plan = MapPrefabBindingPlanner.Plan(f.Document, asset, assets, instance.Id, instance.Bindings);
+        f.Document.Prefabs = new(1, 1, [instance with { Bindings = plan.Bindings }], []);
+        string before = MapDocumentFile.SaveText(f.Document);
+        var error = Assert.Throws<MapDocumentException>(() => MapPrefabResolver.Expand(f.Document, assets));
+        Assert.Equal(MapDocumentRefusal.PrefabEffectiveLightOwnerMissing, error.Reason);
+        Assert.Equal("owner", error.PlacementId);
+        Assert.Equal("prefab/a/Light/light", error.WorldId);
+        Assert.Equal(MapPrefabChildKind.Light, error.ChildKind);
+        Assert.Equal(before, MapDocumentFile.SaveText(f.Document));
+        f.Document.Placements.Add(new MapPlacement { Id = "owner", Kind = "item", AssetId = "item", Y = 0, Scale = 1 });
+        Assert.Contains(MapPrefabResolver.Expand(f.Document, assets).Placements, p => p.PlacementId == "owner");
+    }
+
+    [Fact]
     public void ResolveAndReload_NeverAllocateOrMutate()
     {
         var f = PrefabFixtures.Create();
@@ -92,7 +116,14 @@ public sealed class MapPrefabExpansionTests
         var asset = PrefabFixtures.ImplicitReferenceAsset(target);
         byte[] bytes = MapPrefabFile.Write(asset);
         Assert.Equal(target, ((MapPrefabPlacementChild)MapPrefabFile.Read(bytes, "hut").Children.Single(c => c.Key.Key == "low-item")).Value.SupportBinding!.SurfaceId);
-        Assert.Contains(target, Assert.Throws<MapDocumentException>(() => PrefabFixtures.LoadAssets(bytes, true)).Message);
+        var error = Assert.Throws<MapDocumentException>(() => PrefabFixtures.LoadAssets(bytes, true));
+        Assert.Equal(MapDocumentRefusal.ReferenceMissing, error.Reason);
+        Assert.Equal(target, error.EntityId);
+        Assert.Equal(MapPrefabChildKind.Surface, error.ChildKind);
+        Assert.Equal(new MapPrefabChildKey(MapPrefabChildKind.Placement, "low-item"), error.Child);
+        Assert.Equal("/value/supportBinding/surfaceId", error.ReferencePath);
+        Assert.Equal(bytes, MapPrefabFile.Write(asset));
+        Assert.NotEmpty(PrefabFixtures.LoadAssets(MapPrefabFile.Write(PrefabFixtures.ImplicitReferenceAsset("deck/deck-support/top")), true).GetPrefab("hut").Children);
     }
 
     [Theory]

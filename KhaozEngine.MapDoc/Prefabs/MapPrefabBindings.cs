@@ -28,10 +28,14 @@ public static class MapPrefabBindingPlanner
         MapPrefabChildSet children = MapPrefabChildSet.Compute(asset, assets, instance?.Overrides ?? []);
         // A new parent-dependent instance must first be placed in the detached candidate with its ParentSpace.
         if (children.NeedsParent && instance?.ParentSpace is null)
-            throw new MapDocumentException($"Prefab instance '{instanceId}' needs a ParentSpace for its rooms or $parent references.");
+            throw new MapDocumentException(MapDocumentRefusal.AuthoredValueRequired, $"Prefab instance '{instanceId}' needs a ParentSpace for its rooms or $parent references.")
+                { InstanceId = instanceId, FieldPath = "$.parentSpace" };
         var previous = new Dictionary<MapPrefabChildKey, MapPrefabBinding>();
-        foreach (MapPrefabBinding binding in existing.Entries ?? throw new MapDocumentException("Existing bindings must not be null."))
-            if (binding is null || !previous.TryAdd(binding.Child, binding)) throw new MapDocumentException("Existing bindings must name distinct children.");
+        foreach (MapPrefabBinding binding in existing.Entries ?? throw new MapDocumentException(MapDocumentRefusal.SchemaValueRequired, "Existing bindings must not be null.")
+                     { InstanceId = instanceId, FieldPath = "$.bindings" })
+            if (binding is null || !previous.TryAdd(binding.Child, binding))
+                throw new MapDocumentException(binding is null ? MapDocumentRefusal.SchemaValueRequired : MapDocumentRefusal.IdentityDuplicate, "Existing bindings must name distinct children.")
+                    { InstanceId = instanceId, Child = binding?.Child, ChildKind = binding?.Child.Kind, FieldPath = "$.bindings", SubjectKind = "prefab binding" };
 
         var keys = children.Known.Concat(children.Live.Keys).Concat(previous.Keys).Distinct()
             .OrderBy(k => k.Kind.ToString(), StringComparer.Ordinal).ThenBy(k => k.Key, StringComparer.Ordinal).ToArray();
@@ -47,14 +51,17 @@ public static class MapPrefabBindingPlanner
                 ? kept with { Removed = !live }
                 : new(key, WorldId(instanceId, key), null, !live);
             if (used.Contains((key.Kind, binding.WorldId)))
-                throw new MapDocumentException($"Prefab world ID '{binding.WorldId}' collides with an existing {key.Kind} identity.");
+                throw new MapDocumentException(MapDocumentRefusal.IdentityReserved, $"Prefab world ID '{binding.WorldId}' collides with an existing {key.Kind} identity.")
+                    { InstanceId = instanceId, Child = key, ChildKind = key.Kind, WorldId = binding.WorldId };
             if (binding.NumericId is { } number && usedNumbers.Contains(number))
-                throw new MapDocumentException($"Prefab numeric ID '{number}' for '{binding.WorldId}' is already reserved by another owner.");
+                throw new MapDocumentException(MapDocumentRefusal.IdentityReserved, $"Prefab numeric ID '{number}' for '{binding.WorldId}' is already reserved by another owner.")
+                    { InstanceId = instanceId, Child = key, ChildKind = key.Kind, WorldId = binding.WorldId, NumericId = number };
             if (kept is null && key.Kind == MapPrefabChildKind.Placement && allocateNumericPlacements) numbered.Add(entries.Count);
             entries.Add(binding);
         }
         var duplicate = entries.GroupBy(b => (b.Child.Kind, b.WorldId)).FirstOrDefault(g => g.Count() > 1);
-        if (duplicate is not null) throw new MapDocumentException($"Prefab world ID '{duplicate.Key.WorldId}' is bound more than once.");
+        if (duplicate is not null) throw new MapDocumentException(MapDocumentRefusal.IdentityDuplicate, $"Prefab world ID '{duplicate.Key.WorldId}' is bound more than once.")
+            { InstanceId = instanceId, WorldId = duplicate.Key.WorldId, ChildKind = duplicate.Key.Kind, SubjectKind = "prefab binding" };
 
         var candidate = new MapDocument
         {
@@ -69,7 +76,8 @@ public static class MapPrefabBindingPlanner
         }
         catch (OverflowException ex)
         {
-            throw new MapDocumentException("Numeric identity space exhausted. No reservation was published.", ex);
+            throw new MapDocumentException(MapDocumentRefusal.PrefabNumericIdSpaceExhausted, "Numeric identity space exhausted. No reservation was published.", ex)
+                { InstanceId = instanceId, HighWaterMark = candidate.NumericIdHighWaterMark };
         }
         return new(new(entries.ToArray()), candidate.NumericIdHighWaterMark);
     }
@@ -152,7 +160,8 @@ internal sealed record MapPrefabChildSet(IReadOnlyDictionary<MapPrefabChildKey, 
         foreach (MapPrefabChild child in MapEffectiveSupport.Enumerate(assets, explicitChildren, asset.MaterializedAttachments)
                      .Concat(MapPrefabAttachedLights.Enumerate(assets, explicitChildren, asset.MaterializedAttachments)))
             if (known.Contains(child.Key) || !live.TryAdd(child.Key, child))
-                throw new MapDocumentException($"Implicit {child.Key.Kind} child '{child.Key.Key}' collides with another child key.");
+                throw new MapDocumentException(MapDocumentRefusal.IdentityDuplicate, $"Implicit {child.Key.Kind} child '{child.Key.Key}' collides with another child key.")
+                    { Child = child.Key, ChildKind = child.Key.Kind, EntityId = child.Key.Key, SubjectKind = "implicit child" };
         bool needsParent = live.Values.Any(c => c is MapPrefabRecordChild { Value: Spaces.MapSpaceDoc } or MapPrefabWaterChild ||
             c.References.Any(r => r.Target.Id == MapPrefabReferences.Parent));
         return new(live, known, needsParent);

@@ -208,7 +208,7 @@ public static class MapPrefabValidation
             foreach (MapPrefabReferenceSlot slot in child.References ?? []) if (slot?.Target is { } target) Reference(target);
             var (_, occurrences) = MapPrefabReferenceWalker.Child(child, MapPrefabReferenceMap.Identity);
             MapPrefabReferences.RequireSlots(child.References!, occurrences, targets,
-                child is MapPrefabRecordChild ? child.LocalTransform : null, $"Prefab {child.Key.Kind} '{child.Key.Key}'");
+                child is MapPrefabRecordChild ? child.LocalTransform : null, $"Prefab {child.Key.Kind} '{child.Key.Key}'", child.Key);
             if (child is MapPrefabRecordChild && child.References!.Single(s => s.Path == "/anchor/surfaceId").Target.Scope != MapPrefabReferenceScope.Local)
                 throw new MapDocumentException(MapDocumentRefusal.PrefabLocalAnchorInvalid, $"Prefab record '{child.Key.Key}' must be anchored on a declared local surface.")
                     { Child = child.Key, RecordId = child.Key.Key, FieldPath = "$.anchor.surfaceId" };

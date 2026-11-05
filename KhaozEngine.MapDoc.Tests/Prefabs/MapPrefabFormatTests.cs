@@ -13,6 +13,19 @@ namespace KhaozEngine.Tests.MapDoc.Prefabs;
 public sealed class MapPrefabFormatTests
 {
     [Fact]
+    public void PayloadResourceIdentity_RefusesTheWrongLogicalId()
+    {
+        byte[] bytes = PrefabFixtures.AssetBytes("roomless");
+        byte[] before = bytes.ToArray();
+        var error = Assert.Throws<MapDocumentException>(() => MapPrefabFile.Read(bytes, "other"));
+        Assert.Equal(MapDocumentRefusal.PrefabPayloadIdMismatch, error.Reason);
+        Assert.Equal("other", error.ResourceId);
+        Assert.Equal("hut", error.EntityId);
+        Assert.Equal(before, bytes);
+        Assert.Equal("hut", MapPrefabFile.Read(bytes, "hut").Id);
+    }
+
+    [Fact]
     public void SixToSeven_IsPureAndAnalyticExecutionUnchanged()
     {
         var old = JsonNode.Parse(PrefabFixtures.FormatSixJson(true))!.AsObject();

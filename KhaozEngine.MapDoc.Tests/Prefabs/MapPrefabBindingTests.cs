@@ -108,23 +108,39 @@ public sealed class MapPrefabBindingTests
         f.Document.NumericIdHighWaterMark = long.MaxValue;
         string before = MapDocumentFile.SaveText(f.Document);
         var asset = f.Assets.GetPrefab("hut");
-        Assert.Throws<MapDocumentException>(() => MapPrefabBindingPlanner.Plan(f.Document, asset, f.Assets, "b", new([])));
+        var error = Assert.Throws<MapDocumentException>(() => MapPrefabBindingPlanner.Plan(f.Document, asset, f.Assets, "b", new([])));
+        Assert.Equal(MapDocumentRefusal.PrefabNumericIdSpaceExhausted, error.Reason);
+        Assert.Equal(long.MaxValue, error.HighWaterMark);
+        Assert.Equal("b", error.InstanceId);
         Assert.Equal(before, MapDocumentFile.SaveText(f.Document));
         var unnumbered = MapPrefabBindingPlanner.Plan(f.Document, asset, f.Assets, "b", new([]), allocateNumericPlacements: false);
+        Assert.Single(unnumbered.Bindings.Entries);
         Assert.All(unnumbered.Bindings.Entries, b => Assert.Null(b.NumericId));
         Assert.Equal(long.MaxValue, unnumbered.HighWaterMark);
+        f.Document.NumericIdHighWaterMark = long.MaxValue - 1;
+        var last = MapPrefabBindingPlanner.Plan(f.Document, asset, f.Assets, "b", new([]));
+        Assert.Equal(long.MaxValue, Assert.Single(last.Bindings.Entries).NumericId);
+        Assert.Equal(long.MaxValue, last.HighWaterMark);
     }
 
     [Fact]
     public void NewParentDependentInstance_RefusesBeforeAllocation()
     {
         var f = PrefabFixtures.Create();
-        f.Document.NumericIdHighWaterMark = long.MaxValue;
+        // Exactly enough numeric IDs remain, so missing ParentSpace is the only fault.
+        f.Document.NumericIdHighWaterMark = long.MaxValue - f.Assets.GetPrefab("hut").Children.Count(c => c.Key.Kind == MapPrefabChildKind.Placement);
         string before = MapDocumentFile.SaveText(f.Document);
         var error = Assert.Throws<MapDocumentException>(() => MapPrefabBindingPlanner.Plan(f.Document, f.Assets.GetPrefab("hut"), f.Assets, "b", new([])));
-        Assert.Contains("ParentSpace", error.Message);
+        Assert.Equal(MapDocumentRefusal.AuthoredValueRequired, error.Reason);
+        Assert.Equal("b", error.InstanceId);
+        Assert.Equal("$.parentSpace", error.FieldPath);
         Assert.DoesNotContain("exhaust", error.Message, StringComparison.OrdinalIgnoreCase);
         Assert.Equal(before, MapDocumentFile.SaveText(f.Document));
+        var original = Assert.Single(f.Document.Prefabs!.Instances);
+        f.Document.Prefabs = new(1, 1, [original, original with { Id = "b", Bindings = new([]) }], []);
+        var accepted = MapPrefabBindingPlanner.Plan(f.Document, f.Assets.GetPrefab("hut"), f.Assets, "b", new([]));
+        Assert.Equal(long.MaxValue, accepted.HighWaterMark);
+        Assert.Equal(f.Assets.GetPrefab("hut").Children.Count, accepted.Bindings.Entries.Count);
     }
 
     [Fact]
@@ -138,15 +154,26 @@ public sealed class MapPrefabBindingTests
         var item = new MapPrefabChildKey(MapPrefabChildKind.Placement, "item");
         foreach (var reused in new[]
         {
-            own,
+            new MapPrefabBindings(own.Entries.Select(b => b with { NumericId = null }).ToArray()),
             new MapPrefabBindings(new[] { new MapPrefabBinding(item, "b/item", 50, false) }),
             new MapPrefabBindings(new[] { new MapPrefabBinding(item, "keeper", null, false) }),
             new MapPrefabBindings(new[] { new MapPrefabBinding(item, "b/item", own.Entries.Single().NumericId, false) }),
         })
         {
             string supplied = System.Text.Json.JsonSerializer.Serialize(reused.Entries.Select(b => (b.Child.Key, b.WorldId, b.NumericId)).ToArray());
-            Assert.Throws<MapDocumentException>(() => MapPrefabBindingPlanner.Plan(f.Document, asset, f.Assets, "b", reused));
+            var error = Assert.Throws<MapDocumentException>(() => MapPrefabBindingPlanner.Plan(f.Document, asset, f.Assets, "b", reused));
+            Assert.Equal(MapDocumentRefusal.IdentityReserved, error.Reason);
+            Assert.Equal("b", error.InstanceId);
+            Assert.Equal(item, error.Child);
+            Assert.Equal(MapPrefabChildKind.Placement, error.ChildKind);
+            Assert.Equal(reused.Entries.Single().WorldId, error.WorldId);
+            if (reused.Entries.Single().WorldId == "b/item") Assert.Equal(reused.Entries.Single().NumericId, error.NumericId);
+            else Assert.Null(error.NumericId);
             Assert.Equal(supplied, System.Text.Json.JsonSerializer.Serialize(reused.Entries.Select(b => (b.Child.Key, b.WorldId, b.NumericId)).ToArray()));
+            Assert.Equal(before, MapDocumentFile.SaveText(f.Document));
+            var entry = Assert.Single(reused.Entries);
+            var repaired = new MapPrefabBindings([entry.WorldId == "b/item" ? entry with { NumericId = 51 } : entry with { WorldId = "b/free" }]);
+            Assert.Equal(repaired.Entries, MapPrefabBindingPlanner.Plan(f.Document, asset, f.Assets, "b", repaired).Bindings.Entries);
         }
         Assert.Equal(before, MapDocumentFile.SaveText(f.Document));
         Assert.Equal(own.Entries, MapPrefabBindingPlanner.Plan(f.Document, asset, f.Assets, "a", own).Bindings.Entries);
@@ -422,7 +449,13 @@ public sealed class MapPrefabBindingTests
             Children = asset.Children.Append(new MapPrefabLightChild(new(MapPrefabChildKind.Light, "deck/glow-light/glow"),
                 PrefabFixtures.GlowLight() with { Id = "deck/glow-light/glow", Owner = null })).ToArray(),
         };
-        Assert.Throws<MapDocumentException>(() => MapPrefabBindingPlanner.Plan(f.Document, explicitClash, f.Assets, "a", before));
+        string unchanged = MapDocumentFile.SaveText(f.Document);
+        var error = Assert.Throws<MapDocumentException>(() => MapPrefabBindingPlanner.Plan(f.Document, explicitClash, f.Assets, "a", before));
+        Assert.Equal(MapDocumentRefusal.IdentityDuplicate, error.Reason);
+        Assert.Equal(new MapPrefabChildKey(MapPrefabChildKind.Light, "deck/glow-light/glow"), error.Child);
+        Assert.Equal("implicit child", error.SubjectKind);
+        Assert.Equal(unchanged, MapDocumentFile.SaveText(f.Document));
+        Assert.Equal(before.Entries, MapPrefabBindingPlanner.Plan(f.Document, asset, f.Assets, "a", before).Bindings.Entries);
     }
 
     [Fact]

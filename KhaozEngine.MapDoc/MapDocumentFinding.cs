@@ -46,6 +46,8 @@ public sealed record MapDocumentFinding(MapDocumentRefusal Reason, string Messag
     public MapSupportRecipe? ExpectedSupportRecipe { get; init; }
     /// <summary>The document or options field whose contract was refused.</summary>
     public string? FieldPath { get; init; }
+    /// <summary>The canonical JSON pointer of a prefab reference occurrence or slot, when known.</summary>
+    public string? ReferencePath { get; init; }
     /// <summary>The kind of document content or identity whose rule was refused.</summary>
     public string? SubjectKind { get; init; }
 
@@ -183,6 +185,7 @@ public sealed record MapDocumentFinding(MapDocumentRefusal Reason, string Messag
             SupportRecipe = error.SupportRecipe,
             ExpectedSupportRecipe = error.ExpectedSupportRecipe,
             FieldPath = error.FieldPath,
+            ReferencePath = error.ReferencePath,
             SubjectKind = error.SubjectKind,
             LayerId = error.LayerId,
             Index = error.Index,

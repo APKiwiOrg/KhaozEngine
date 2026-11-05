@@ -621,7 +621,8 @@ and the reference `Path`. The original error remains the inner exception. This r
 `MapPrefabFile.Read` and `Write` use a closed codec. The payload keeps its logical asset ID. A resource ID
 may be that bare ID or exactly `prefab/<escaped-logical-id>/<sha256>`. The escape is the world-ID UTF-8
 percent escape, and the version suffix is 64 lowercase hex characters. Read independently verifies the
-suffix against the bytes, preserving the released ID-mismatch refusal for every other identity. Children have a typed stable key, one local pose and scoped
+suffix against the bytes. Every other identity uses `PrefabPayloadIdMismatch`, with `ResourceId` and
+the payload's `EntityId`. Children have a typed stable key, one local pose and scoped
 reference slots. Explicit Surface children contain geometry with empty `Records`. Topology is persisted in separate
 Record children with declared anchors. Each reference occurrence requires its own supported typed slot. A local
 anchor or geometry reference must agree with the record pose. A World reference retains its standalone meaning.
@@ -1394,7 +1395,7 @@ adapters continue reporting prose until all of their producing rules carry typed
 | `ValueNonfinite` | A nonfinite manifest source-unit scale, foliage scalar, playable-bound component, placement support-search value or resolved support height | `FieldPath`, `AssetId`, `LayerId`, `PlacementId`, `Index`, `ActualNumber` (nonfinite for prefab scalar guards) |
 | `ValueOutsideRange` | A finite nonpositive manifest source-unit scale, foliage integer outside its domain, negative support-search extent or high-water mark, or nonpositive numeric identity | `FieldPath`, `AssetId`, `LayerId`, `PlacementId`, `EntityId`, `SubjectKind`, `Index`, `ActualNumber`, `ActualInteger`, `MinimumNumber`, `MinimumInteger`, `MaximumInteger`, `NumericId`, `HighWaterMark` |
 | `IdentityDuplicate` | A repeated asset or resource closure identity, support patch or record identity, exact foliage JSON member name, surface or numeric identity, world binding, transfer or attachment producer, or a standalone owner colliding with a prefab binding | `FieldPath`, `Index`, `EntityId`, `SubjectKind`, `AssetId`, `ResourceId`, `SurfaceId`, `PlacementId`, `RecordId`, `Patch`, `NumericId`, `HighWaterMark`, `WorldId`, `ChildKind`, `Child`, `InstanceId` |
-| `IdentityReserved` | A live standalone owner using a retired transfer's world identity | `EntityId`, `WorldId`, `ChildKind`, `Child`, `InstanceId`, `SubjectKind` |
+| `IdentityReserved` | A live standalone owner using a retired transfer's world identity, or a planned binding colliding with another owner's world or numeric identity | `EntityId`, `WorldId`, `ChildKind`, `Child`, `InstanceId`, `NumericId`, `SubjectKind` |
 | `AuthoredOwnershipMismatch` | A transfer inconsistent with its source or standalone owner, an attachment inconsistent with its owner, transfer or record anchor, or a prefab-owned interior submitted as standalone | `EntityId`, `WorldId`, `ChildKind`, `Child`, `InstanceId`, `PlacementId`, `RecordId`, `SpaceId`, `Patch`, `ActualAnchor`, `NumericId`, `ExpectedNumericId`, `ActualCount`, `ExpectedCount`, `SubjectKind` |
 | `ReferenceMissing` | An asset, resource, prefab or dependency missing from its closure, or a requested placement, attachment transfer, standalone record target, interior anchor, scatter layer or companion layer missing from its required scope | `AssetId`, `ResourceId`, `DependencyId`, `ExpectedResourceKind`, `EntityId`, `WorldId`, `ChildKind`, `Child`, `InstanceId`, `PlacementId`, `RecordId`, `SpaceId`, `Patch`, `DocumentId`, `LayerId`, `SubjectKind`, `FieldPath` |
 | `AssetClosureRequired` | Foliage edit preflight without a verified asset closure | `DocumentId` |
@@ -1416,10 +1417,14 @@ adapters continue reporting prose until all of their producing rules carry typed
 | `PrefabAddedChildExists` | An add override repeating a declared child | `InstanceId`, `Child` |
 | `AuthoredValueMismatch` | A previous, replacement or add key differing from its required child, or an effective reference outside the World namespace | `Child`, `ExpectedChild`, `EntityId`, `ReferenceScope`, `ExpectedReferenceScope`, `ChildKind`, `ExpectedChildKind`, `FieldPath`, `SubjectKind` |
 | `PrefabPreviousOverrideNestedRemove` | A remove override whose Previous is another remove | `Child`, `FieldPath` |
-| `PrefabPayloadIdMismatch` | A child key differing from its payload identity or kind | `Child` for the submitted key, `EntityId` for the payload identity, `ChildKind` and `SubjectKind` for the payload kind, `FieldPath` |
+| `PrefabPayloadIdMismatch` | A resource ID or child key differing from its payload identity or kind | `ResourceId` for a resource mismatch, `Child` for the submitted key, `EntityId` for the payload identity, `ChildKind` and `SubjectKind` for the payload kind, `FieldPath` |
 | `PrefabPlacementTransformDuplicated` | A placement child with an additional local transform | `Child`, `FieldPath` |
 | `PrefabLocalAnchorInvalid` | A record anchor whose surface slot is not Local | `Child`, `RecordId`, `FieldPath` |
 | `PrefabLightOwnerInvalid` | A leaf light owner other than null or the Local placement token `$owner` | `ResourceId`, `FieldPath` |
+| `AuthoredValueRequired` | A parent-dependent instance or local `$parent` remap without its supplied parent space | `InstanceId`, `FieldPath`, `ReferencePath`, `EntityId`, `ChildKind`, `RecordId`, `Patch` |
+| `PrefabNumericIdSpaceExhausted` | Binding allocation beyond the last signed 64-bit identity | `InstanceId`, `HighWaterMark` |
+| `PrefabReferenceScopeMissing` | A reference occurrence with neither an explicit nor an inherited scope | `ReferencePath`, `EntityId`, `ChildKind`, `RecordId`, `Patch` |
+| `PrefabEffectiveLightOwnerMissing` | An effective light whose world placement owner is absent | `PlacementId` for the missing owner, `WorldId` and `ChildKind` for the light |
 | `AssetStoragePathReserved` | A resource path owned by the selected map storage writer | `ResourceId`, normalized `Path`, `StoragePath`, `DocumentForm` |
 | `AssetTypedPayloadOpaque` | An opaque resource supplied to a typed light or support consumer | `ResourceId`, `ExpectedSchema`, `SubjectKind` |
 | `ReferenceKindMismatch` | An asset resource missing or declared with the wrong kind | `AssetId`, `ResourceId`, `ExpectedResourceKind`, available `ActualResourceKind` |
@@ -1427,6 +1432,17 @@ adapters continue reporting prose until all of their producing rules carry typed
 | `ResolverContractMismatch` | The document resolver, support recipe or caller's resolver options cannot serve the requested operation | `PayloadVersion`, `ResolverVersion`, `OptionsResolverVersion`, `ExpectedResolverVersion`, `SupportRecipe`, `ExpectedSupportRecipe`, `FieldPath`, `SubjectKind` |
 | `SupportLegacyHeightRequired` | Resolver-1 resolution without an analytic support callback | `ResolverVersion`, `FieldPath` `legacySupportHeight` |
 
+
+Reference-slot admission carries the owning local `Child` or known support `ResourceId` separately from
+the referenced `EntityId`, `ChildKind`, `RecordId` and `Patch`. `ReferencePath` is the canonical JSON
+pointer emitted by the typed walker. `FieldPath` identifies the `$.references` collection. Null slots
+use `SchemaValueRequired`, duplicate paths `IdentityDuplicate`, and a slot-count mismatch
+`SchemaArrayLengthMismatch` with `ActualCount` and `ExpectedCount`. A missing slot or local target uses
+`ReferenceMissing`, a wrong child kind `AuthoredReferenceKindInvalid`, and an inconsistent target ID
+`AuthoredValueMismatch`. Undefined scopes use `SchemaEnumUnsupported`. Ownership, scope-pair, local
+anchor and pose disagreements use `AuthoredOwnershipMismatch`, with `ActualAnchor` when checked.
+Remapped support patches retain their typed `Patch` and `SurfaceId` on an `IdentityDuplicate` refusal.
+Binding exhaustion publishes no reservation, and allocating the final signed 64-bit ID is accepted.
 
 Direct prefab asset and light validation also carries structured scalar and child refusals. Local light
 intensity and colour must be nonnegative. Radius and uniform pose scale must be strictly positive.

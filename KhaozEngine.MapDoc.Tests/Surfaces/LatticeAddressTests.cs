@@ -35,8 +35,12 @@ public sealed class LatticeAddressTests
         Assert.Equal(MapLatticeAddress.Create(4, 3, 3), coarse.AddressOf(new(4, 3), new(1, 1)));
         Assert.Equal(new MapExactXz(new(4, 3), new(-1, 1)), MapLatticeFrame.ImportedMetreCentimetre.WorldXz(MapLatticeAddress.Create(4, 3, 3)));
         Assert.Equal(MapLatticeAddress.Create(1, 0, 64), coarse.AddressOf(new(1, 64), new(0, 1)));
-        Assert.Throws<MapDocumentException>(() => coarse.AddressOf(new(1, 128), new(0, 1)));
-        Assert.Throws<MapDocumentException>(() => MapLatticeAddress.Create(1, 0, 65));
+        var ex = Assert.Throws<MapDocumentException>(() => coarse.AddressOf(new(1, 128), new(0, 1)));
+        Assert.Equal(MapDocumentRefusal.ValueOutsideRange, ex.Reason);
+        Assert.Equal("denominator", ex.FieldPath);
+        Assert.Equal(128L, ex.ActualInteger);
+        Assert.Equal(64L, ex.MaximumInteger);
+        Assert.Equal(MapLatticeAddress.Create(1, 0, 64), coarse.AddressOf(new(1, 64), new(0, 1)));
     }
     [Fact]
     public void Subdivision_LegalOnlyOnThePatchBoundaryOrAPresenceRim()
@@ -82,8 +86,19 @@ public sealed class LatticeAddressTests
         Assert.Throws<MapExactOverflowException>(() => new MapExactValue(long.MinValue, 1).Negate());
         Assert.Throws<ArgumentException>(() => new MapExactValue(1, 0));
         Assert.Throws<ArgumentException>(() => large.Divide(default));
-        Assert.Throws<MapDocumentException>(() => MapLatticeFrame.ImportedMetreCentimetre.WorldXz(default));
-        Assert.Throws<MapDocumentException>(() => new MapLatticeFrame(default, new(1, 100),
+        var address = Assert.Throws<MapDocumentException>(() => MapLatticeFrame.ImportedMetreCentimetre.WorldXz(default));
+        Assert.Equal(MapDocumentRefusal.ValueOutsideRange, address.Reason);
+        Assert.Equal(0L, address.ActualInteger);
+        Assert.Equal(1L, address.MinimumInteger);
+        Assert.Equal(64L, address.MaximumInteger);
+        Assert.Equal(default, MapLatticeFrame.ImportedMetreCentimetre.WorldXz(MapLatticeAddress.Corner(0, 0)));
+        var unit = Assert.Throws<MapDocumentException>(() => new MapLatticeFrame(default, new(1, 100),
+            MapRowDirection.PositiveZ, MapHeightDatum.WorldY0).WorldXz(MapLatticeAddress.Corner(0, 0)));
+        Assert.Equal(MapDocumentRefusal.ValueOutsideRange, unit.Reason);
+        Assert.Equal("numerator", unit.FieldPath);
+        Assert.Equal(0L, unit.ActualInteger);
+        Assert.Equal(1L, unit.MinimumInteger);
+        Assert.Equal(default, new MapLatticeFrame(new(1, 1), new(1, 100),
             MapRowDirection.PositiveZ, MapHeightDatum.WorldY0).WorldXz(MapLatticeAddress.Corner(0, 0)));
         Assert.Equal(MapLatticeAddress.Corner(long.MinValue, 0), MapLatticeAddress.Create(long.MinValue, 0, 1));
     }

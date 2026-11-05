@@ -7,7 +7,8 @@ public readonly record struct MapPatchKey(string SurfaceId, long SlotX, long Slo
     public const int SlotCells = 64;
     public static MapPatchKey ForCell(string surfaceId, long cellX, long cellZ)
     {
-        if (string.IsNullOrWhiteSpace(surfaceId)) throw new MapDocumentException("surface id is required");
+        if (string.IsNullOrWhiteSpace(surfaceId))
+            throw new MapDocumentException(MapDocumentRefusal.SchemaValueRequired, "surface id is required") { FieldPath = "surfaceId" };
         return new(surfaceId, FloorSlot(cellX), FloorSlot(cellZ));
     }
     static long FloorSlot(long cell) => cell / SlotCells - (cell % SlotCells < 0 ? 1 : 0);

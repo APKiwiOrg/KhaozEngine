@@ -25,14 +25,24 @@ public sealed partial class MapSurfacePatch
     int CellIndex(int x, int z)
     {
         if (!ValidRectangle(CellMinX, CellMinZ, Width, Depth) || x < 0 || x >= Width || z < 0 || z >= Depth)
-            throw new MapDocumentException("cell outside patch rectangle");
+            throw new MapDocumentException(!ValidRectangle(CellMinX, CellMinZ, Width, Depth)
+                ? MapDocumentRefusal.BoundsInvalid : MapDocumentRefusal.SurfaceAddressOutOfPatch, "cell outside patch rectangle")
+            {
+                Patch = Key, Width = Width, Depth = Depth, CellX = x, CellZ = z,
+                FieldPath = !ValidRectangle(CellMinX, CellMinZ, Width, Depth) ? "rectangle" : x < 0 || x >= Width ? "x" : "z",
+                ActualInteger = !ValidRectangle(CellMinX, CellMinZ, Width, Depth) ? null : x < 0 || x >= Width ? x : z,
+                MinimumInteger = !ValidRectangle(CellMinX, CellMinZ, Width, Depth) ? null : 0,
+                MaximumInteger = !ValidRectangle(CellMinX, CellMinZ, Width, Depth) ? null : x < 0 || x >= Width ? Width - 1 : Depth - 1,
+            };
         return z * Width + x;
     }
     public bool IsPresent(int x, int z)
     {
         int index = CellIndex(x, z);
         if (Presence is null || Presence.Length != (Width * Depth + 63) / 64)
-            throw new MapDocumentException("invalid presence length");
+            throw new MapDocumentException(Presence is null ? MapDocumentRefusal.SchemaValueRequired
+                : MapDocumentRefusal.SchemaArrayLengthMismatch, "invalid presence length")
+            { Patch = Key, FieldPath = nameof(Presence), ActualCount = Presence?.LongLength, ExpectedCount = (Width * Depth + 63) / 64 };
         return (Presence[index / 64] & (1UL << (index % 64))) != 0;
     }
     public void SetPresent(int x, int z, bool present)

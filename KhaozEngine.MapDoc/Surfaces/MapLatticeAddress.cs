@@ -13,17 +13,23 @@ public readonly struct MapLatticeAddress : IEquatable<MapLatticeAddress>, ICompa
 
     public static MapLatticeAddress Create(long x, long z, int denominator)
     {
-        if (denominator < 1) throw new MapDocumentException("address denominator must be positive");
+        if (denominator < 1)
+            throw new MapDocumentException(MapDocumentRefusal.ValueOutsideRange, "address denominator must be positive")
+            { FieldPath = "denominator", ActualInteger = denominator, MinimumInteger = 1 };
         Int128 gcd = MapExactValue.Gcd(MapExactValue.Gcd(x, z), denominator);
         denominator /= (int)gcd;
-        if (denominator > MaxDenominator) throw new MapDocumentException("address denominator exceeds 64");
+        if (denominator > MaxDenominator)
+            throw new MapDocumentException(MapDocumentRefusal.ValueOutsideRange, "address denominator exceeds 64")
+            { FieldPath = "denominator", ActualInteger = denominator, MinimumInteger = 1, MaximumInteger = MaxDenominator };
         return new((long)((Int128)x / gcd), (long)((Int128)z / gcd), denominator);
     }
 
     public static MapLatticeAddress Corner(long x, long z) => new(x, z, 1);
     internal void RequireValid()
     {
-        if (Denominator is < 1 or > MaxDenominator) throw new MapDocumentException("invalid address denominator");
+        if (Denominator is < 1 or > MaxDenominator)
+            throw new MapDocumentException(MapDocumentRefusal.ValueOutsideRange, "invalid address denominator")
+            { FieldPath = "denominator", ActualInteger = Denominator, MinimumInteger = 1, MaximumInteger = MaxDenominator };
     }
     public int CompareTo(MapLatticeAddress other)
     {

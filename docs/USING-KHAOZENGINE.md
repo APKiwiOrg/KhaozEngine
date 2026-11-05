@@ -12689,6 +12689,15 @@ Manifest paths retain array positions, while a direct reference or resource chec
 root. JSON failures preserve known structured inner refusals, otherwise they use `SchemaMalformed` and
 the reader's path and location metadata.
 
+Surface scalar and cell admission also keep the exact `MapDocumentException` type. Lattice units use
+`SurfaceUnitUnreduced` with `Numerator` and `Denominator`, or `ValueOutsideRange` for nonpositive parts.
+Address denominators use `ValueOutsideRange` with inclusive limits and `ActualInteger` when the common
+denominator fits in `long`. Unsupported frame enumerations use `SchemaEnumUnsupported` with `EnumType`,
+`ActualInteger` and `FieldPath`. Missing surface identities and null presence arrays use `SchemaValueRequired`,
+while mismatched presence lengths use `SchemaArrayLengthMismatch` with the known counts. Invalid patch
+rectangles and reversed exact rectangles use `BoundsInvalid`. A cell outside a valid patch uses
+`SurfaceAddressOutOfPatch` with `Patch`, `CellX`, `CellZ` and its inclusive coordinate limits.
+
 Native metadata adds typed findings beside its unchanged string diagnostics. Compound findings select
 the first failing predicate branch. Missing asset-reference and indoor-span values use `SchemaValueRequired`, nonfinite
 bounds or support-search values use `ValueNonfinite`, finite unordered bounds use `BoundsInvalid`, and

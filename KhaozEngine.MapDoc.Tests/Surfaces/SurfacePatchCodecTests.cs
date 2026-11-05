@@ -45,7 +45,11 @@ public sealed class SurfacePatchCodecTests
     {
         Assert.Contains("1048576", Assert.Throws<MapDocumentException>(() => MapSurfacePatchCodec.Decode(new byte[1_048_577], SurfacePatchFixtures.Sample().Key)).Message);
         Assert.Equal(new MapExactValue(1, 100), new MapRational(1, 100).Exact());
-        Assert.Throws<MapDocumentException>(() => new MapRational(2, 200));
+        var unit = Assert.Throws<MapDocumentException>(() => new MapRational(2, 200));
+        Assert.Equal(MapDocumentRefusal.SurfaceUnitUnreduced, unit.Reason);
+        Assert.Equal(2, unit.Numerator);
+        Assert.Equal(200, unit.Denominator);
+        Assert.Equal(new MapExactValue(1, 100), new MapRational(1, 100).Exact());
         Assert.Equal(new MapExactValue(1, 1), new MapRational(1, 1).Exact());
         Assert.Throws<MapDocumentException>(() => new MapRational(0, 1));
         Assert.Equal(new MapExactPoint(new(4, 1), new(1433, 100), new(-64, 1)), MapLatticeFrame.ImportedMetreCentimetre.Corner(4, 64, 1433));

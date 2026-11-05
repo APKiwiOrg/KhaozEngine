@@ -1396,10 +1396,16 @@ ran on a worker thread. The handoff did not.
 
 ## Loud failures
 
-Resolver, root, prefab, identity registry, runtime layer, foliage codec, asset-manifest, asset-closure, light, support and native adapter admission refusals keep the exact `MapDocumentException` type. Inspect its nullable
+Resolver, root, prefab, identity registry, runtime layer, surface scalar and cell admission, foliage codec, asset-manifest, asset-closure, light, support and native adapter admission refusals keep the exact `MapDocumentException` type. Inspect its nullable
 `MapDocumentRefusal Reason` and applicable identifiers instead of classifying its message. The public
 message-only constructors remain available to consumers and leave `Reason` null. Other validation
 adapters continue reporting prose until all of their producing rules carry typed findings.
+
+Surface scalar and cell checks preserve their original messages. `FieldPath` names the failed unit part,
+frame enumeration, rectangle axis, cell coordinate or required surface identity. Denominator checks carry
+`ActualInteger` when the computed common denominator fits in `long`, plus the checked inclusive limits.
+A wider `Int128` denominator leaves `ActualInteger` null. Null presence arrays use `SchemaValueRequired`,
+while a wrong array length uses `SchemaArrayLengthMismatch` with `ActualCount` and `ExpectedCount`.
 
 | Reason | Refused rule | Identifiers when known |
 | --- | --- | --- |
@@ -1413,17 +1419,19 @@ adapters continue reporting prose until all of their producing rules carry typed
 | `SchemaArrayRequired` | A foliage member that must be an array | `FieldPath`, `Index` |
 | `SchemaBooleanRequired` | A foliage member that must be a boolean | `FieldPath`, `LayerId`, `Index` |
 | `SchemaBase64Malformed` | A foliage density token that is invalid or noncanonical base64 | `FieldPath`, `LayerId`, `Index`, `FoliageChunk` |
-| `SchemaArrayLengthMismatch` | Decoded foliage density with the wrong byte length, or embedded records in a prefab surface geometry patch | `FieldPath`, `LayerId`, `Index`, `FoliageChunk`, `ActualByteCount`, `ExpectedByteCount`, `Child`, `SurfaceId`, `Patch`, `ActualCount`, `ExpectedCount` |
+| `SchemaArrayLengthMismatch` | Decoded foliage density with the wrong byte length, embedded records in a prefab surface geometry patch, or a cell presence array with the wrong length | `FieldPath`, `LayerId`, `Index`, `FoliageChunk`, `ActualByteCount`, `ExpectedByteCount`, `Child`, `SurfaceId`, `Patch`, `ActualCount`, `ExpectedCount` |
 | `SchemaPayloadVersionUnsupported` | An unsupported asset-reference, resolver-identity, support, foliage, prefab asset, local light or local marker payload version | `FieldPath`, `MarkerId`, `ResourceId`, `Index`, `ActualVersion`, `SupportedVersions`, `MinimumInteger` |
 | `ValueNonfinite` | A nonfinite manifest source-unit scale, foliage scalar, playable-bound component, placement support-search value, resolved support height, adoption height or yaw, or marker position/yaw | `FieldPath`, `MarkerId`, `AssetId`, `LayerId`, `PlacementId`, `Index`, `ActualNumber` (null for nonfinite marker values, nonfinite for prefab scalar guards) |
-| `ValueOutsideRange` | A finite nonpositive manifest source-unit scale, foliage integer outside its domain, negative support-search extent or high-water mark, or nonpositive numeric identity | `FieldPath`, `AssetId`, `LayerId`, `PlacementId`, `EntityId`, `SubjectKind`, `Index`, `ActualNumber`, `ActualInteger`, `MinimumNumber`, `MinimumInteger`, `MaximumInteger`, `NumericId`, `HighWaterMark` |
+| `ValueOutsideRange` | A finite nonpositive manifest source-unit scale, foliage integer outside its domain, negative support-search extent or high-water mark, nonpositive numeric identity, nonpositive lattice unit parts, an address denominator outside its domain or a slot cell outside 0 through 4095 | `FieldPath`, `AssetId`, `LayerId`, `PlacementId`, `EntityId`, `SubjectKind`, `Index`, `ActualNumber`, `ActualInteger`, `MinimumNumber`, `MinimumInteger`, `MaximumInteger`, `NumericId`, `HighWaterMark` |
 | `IdentityDuplicate` | A repeated marker, adoption source or destination, asset or resource closure identity, support patch or record identity, surface or numeric identity, world binding, transfer or attachment producer, a standalone owner colliding with a prefab binding, or a repeated extraction reference or resulting local key | `MarkerId`, `MarkerIds`, `FieldPath`, `Index`, `EntityId`, `SubjectKind`, `SourceId`, `AssetId`, `ResourceId`, `SurfaceId`, `PlacementId`, `RecordId`, `Patch`, `NumericId`, `HighWaterMark`, `WorldId`, `ChildKind`, `Child`, `InstanceId` |
 | `IdentityReserved` | A marker reusing a retained prefab reservation, a placement reusing a live or retained instance ID, a live standalone owner using a retired transfer's world identity, or a planned binding colliding with another owner's world or numeric identity | `MarkerId`, `EntityId`, `WorldId`, `ChildKind`, `Child`, `InstanceId`, `NumericId`, `SubjectKind` |
 | `AuthoredOwnershipMismatch` | A marker carrying fields forbidden by its payload or height mode, a transfer inconsistent with its source or standalone owner, an attachment inconsistent with its owner, transfer or record anchor, a prefab placement carrying a numeric ID its instance binding owns, or a prefab-owned interior submitted as standalone | `MarkerId`, `FieldPath`, `EntityId`, `WorldId`, `ChildKind`, `Child`, `InstanceId`, `PlacementId`, `RecordId`, `SpaceId`, `Patch`, `ActualAnchor`, `NumericId`, `ExpectedNumericId`, `ActualCount`, `ExpectedCount`, `SubjectKind` |
 | `ReferenceMissing` | A standalone marker removal target, asset, resource, prefab or dependency missing from its closure, or a requested placement, attachment transfer, standalone record target, interior anchor, scatter layer or companion layer missing from its required scope, an absent effective extraction target, or an undeclared asset child removal | `MarkerId`, `AssetId`, `ResourceId`, `DependencyId`, `ExpectedResourceKind`, `EntityId`, `WorldId`, `ChildKind`, `Child`, `InstanceId`, `PlacementId`, `RecordId`, `SpaceId`, `Patch`, `DocumentId`, `LayerId`, `SubjectKind`, `FieldPath`, `Index`, `ReferenceScope` |
 | `AssetClosureRequired` | Foliage edit preflight without a verified asset closure | `DocumentId` |
 | `DigestMismatch` | Resource bytes, an attached child's descriptor digest, a stored surface semantic aggregate or a verified tile's lists differing from its pin | `DigestKind`, `SourceName`, `Tile`, `ResourceId`, `Path`, `EntityId`, `WorldId`, `ChildKind`, `Child`, `InstanceId`, `PlacementId`, `SurfaceId`, `SubjectKind`, `ExpectedHash`, `ActualHash` |
-| `BoundsInvalid` | Invalid prefab patch dimensions, manifest local bounds, playable bounds or lattice frame | `FieldPath`, `Width`, `Depth`, `AssetId`, `SurfaceId`, `Index`, `MinimumNumber`, `MaximumNumber` |
+| `BoundsInvalid` | Invalid prefab patch dimensions, manifest local bounds, playable bounds, reversed exact rectangles or invalid surface patch rectangles | `FieldPath`, `Width`, `Depth`, `AssetId`, `SurfaceId`, `Patch`, `CellX`, `CellZ`, `Index`, `MinimumNumber`, `MaximumNumber` |
+| `SurfaceUnitUnreduced` | An authored lattice unit whose positive numerator and denominator have a common factor | `Numerator`, `Denominator` |
+| `SurfaceAddressOutOfPatch` | A patch-local cell coordinate outside the valid rectangle | `Patch`, `Width`, `Depth`, `CellX`, `CellZ`, `FieldPath`, `ActualInteger`, `MinimumInteger`, `MaximumInteger` |
 | `DigestMalformed` | An asset-reference, materialized source, prefab or surface semantic digest outside lowercase SHA-256 representation | `FieldPath`, `ResourceId`, `SurfaceId`, `AssetId`, `PlacementId`, `ActualHash`, `Index` |
 | `AssetKindUnsupported` | An undefined resource kind | `ResourceId`, `FieldPath`, `ActualResourceKind` |
 | `AssetDependencyCycle` | A cycle in the resource dependency graph | `ResourceIds` of all resources left unresolved |
@@ -1434,7 +1442,7 @@ adapters continue reporting prose until all of their producing rules carry typed
 | `AssetCollisionTrailingBytes` | Bytes after the decoded collision shape | `AssetId`, `ResourceId`, `ActualByteCount` of trailing bytes |
 | `AssetCollisionEmptyPoints` | A collision hull or mesh with no points | `AssetId`, `ResourceId`, `ShapeType` |
 | `AssetCollisionNestedMesh` | A triangle mesh nested in a compound collider | `AssetId`, `ResourceId` |
-| `SchemaEnumUnsupported` | An undefined prefab, marker height-mode or support-binding enumeration value | `MarkerId`, `EnumType`, `ActualInteger`, `FieldPath`, `EntityId`, `ChildKind` |
+| `SchemaEnumUnsupported` | An undefined prefab, marker height-mode, support-binding or lattice-frame enumeration value | `MarkerId`, `EnumType`, `ActualInteger`, `FieldPath`, `EntityId`, `ChildKind` |
 | `AuthoredReferenceKindInvalid` | A light owner, roof reference, placement override or numeric binding of the wrong child kind | `EntityId`, `Child`, `ChildKind`, `ExpectedChildKind`, `WorldId`, `NumericId`, `ReferenceScope`, `ExpectedReferenceScope`, `FieldPath`, `SubjectKind` |
 | `MarkerHeightChoiceInvalid` | A height choice without exactly one authority, or a Support marker whose finite Y is not canonical +0 | `MarkerId`, `FieldPath`, finite `ActualNumber` |
 | `MarkerSupportUnresolved` | A marker seat query that is not Supported | `MarkerId`, typed `SupportStatus` |

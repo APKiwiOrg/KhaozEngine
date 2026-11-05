@@ -147,6 +147,10 @@ public sealed class MapDocumentExceptionTests
         if (property.Name == nameof(MapDocumentException.MarkerName)) return "arrival";
         if (property.Name == nameof(MapDocumentException.OwnerId)) return "terrain-owner";
         if (property.Name == nameof(MapDocumentException.Operation)) return "Prepare";
+        if (property.Name == nameof(MapDocumentException.Numerator)) return 2;
+        if (property.Name == nameof(MapDocumentException.Denominator)) return 200;
+        if (property.Name == nameof(MapDocumentException.CellX)) return 64;
+        if (property.Name == nameof(MapDocumentException.CellZ)) return -1;
         if (type == typeof(Type)) return typeof(MapLocalLightDoc);
         if (type == typeof(string)) return property.Name;
         if (type == typeof(int)) return 1000 + index;

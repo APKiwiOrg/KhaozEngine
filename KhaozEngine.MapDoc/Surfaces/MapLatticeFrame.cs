@@ -17,7 +17,12 @@ public sealed record MapLatticeFrame(MapRational CellUnitMetres, MapRational Hei
         _ = CellUnitMetres.Exact();
         _ = HeightUnitMetres.Exact();
         if (RowDirection is not (MapRowDirection.PositiveZ or MapRowDirection.NegativeZ) || Datum != MapHeightDatum.WorldY0)
-            throw new MapDocumentException("invalid lattice frame");
+            throw new MapDocumentException(MapDocumentRefusal.SchemaEnumUnsupported, "invalid lattice frame")
+            {
+                FieldPath = RowDirection is not (MapRowDirection.PositiveZ or MapRowDirection.NegativeZ) ? nameof(RowDirection) : nameof(Datum),
+                EnumType = RowDirection is not (MapRowDirection.PositiveZ or MapRowDirection.NegativeZ) ? typeof(MapRowDirection) : typeof(MapHeightDatum),
+                ActualInteger = RowDirection is not (MapRowDirection.PositiveZ or MapRowDirection.NegativeZ) ? (long)RowDirection : (long)Datum,
+            };
     }
 
     public MapExactXz WorldXz(MapLatticeAddress address)
@@ -46,7 +51,9 @@ public sealed record MapLatticeFrame(MapRational CellUnitMetres, MapRational Hei
         MapExactValue z = worldZ.Divide(CellUnitMetres.Exact());
         if (RowDirection == MapRowDirection.NegativeZ) z = z.Negate();
         Int128 d = (Int128)x.Denominator / MapExactValue.Gcd(x.Denominator, z.Denominator) * z.Denominator;
-        if (d > MapLatticeAddress.MaxDenominator) throw new MapDocumentException("address denominator exceeds 64");
+        if (d > MapLatticeAddress.MaxDenominator)
+            throw new MapDocumentException(MapDocumentRefusal.ValueOutsideRange, "address denominator exceeds 64")
+            { FieldPath = "denominator", ActualInteger = d <= long.MaxValue ? (long)d : null, MinimumInteger = 1, MaximumInteger = MapLatticeAddress.MaxDenominator };
         Int128 nx = (Int128)x.Numerator * (d / x.Denominator);
         Int128 nz = (Int128)z.Numerator * (d / z.Denominator);
         if (nx < long.MinValue || nx > long.MaxValue || nz < long.MinValue || nz > long.MaxValue)

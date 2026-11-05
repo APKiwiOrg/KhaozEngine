@@ -42,6 +42,14 @@ public sealed class MapDocumentException : Exception
     public int? Width { get; init; }
     /// <summary>The refused patch depth, when checked.</summary>
     public int? Depth { get; init; }
+    /// <summary>The numerator of the refused authored lattice unit.</summary>
+    public int? Numerator { get; init; }
+    /// <summary>The denominator of the refused authored lattice unit.</summary>
+    public int? Denominator { get; init; }
+    /// <summary>The submitted patch-local cell or corner X coordinate.</summary>
+    public int? CellX { get; init; }
+    /// <summary>The submitted patch-local cell or corner Z coordinate.</summary>
+    public int? CellZ { get; init; }
     /// <summary>The document tile being read, when known.</summary>
     public MapTileCoord? Tile { get; init; }
     /// <summary>The zero-based JSON line number exposed by the reader, when available.</summary>
@@ -254,6 +262,10 @@ public sealed class MapDocumentException : Exception
         ResourceId = inner.ResourceId ?? resourceId;
         Width = inner.Width;
         Depth = inner.Depth;
+        Numerator = inner.Numerator;
+        Denominator = inner.Denominator;
+        CellX = inner.CellX;
+        CellZ = inner.CellZ;
         Tile = inner.Tile ?? tile;
         LineNumber = inner.LineNumber;
         BytePositionInLine = inner.BytePositionInLine;

@@ -143,6 +143,13 @@ internal static class ShippedFoliageGuardFixtures
         if (variant == "case-manifest-field") manifestText = manifestText.Replace("\"nativeLayerId\":\"cover-a\"", "\"NativeLayerId\":\"cover-a\"", StringComparison.Ordinal);
         if (variant == "case-duplicate-manifest-field") manifestText = manifestText.Replace("\"nativeLayerId\":\"cover-a\"", "\"nativeLayerId\":\"cover-a\",\"NativeLayerId\":\"cover-a\"", StringComparison.Ordinal);
         File.WriteAllText(Path.Combine(root, "foliage.json"), manifestText);
+        if (variant == "region-hash")
+        {
+            string path = Path.Combine(root, "world/world.json");
+            var header = JsonNode.Parse(File.ReadAllText(path))!;
+            header["regions"]![0]!["hash"] = new string('0', 64);
+            File.WriteAllText(path, header.ToJsonString());
+        }
         if (variant == "building-manifest") File.WriteAllText(Path.Combine(root, "building.json"), "{}");
 
         (long owned, long accepted) = LegacyCounts(world, catalogs);
@@ -165,6 +172,8 @@ internal static class ShippedFoliageGuardFixtures
                 ["rejected"] = variant == "negative-expectation" ? -1 : owned - accepted,
             },
         };
+        if (variant == "missing-text") comparison["nativeDocumentPath"] = "";
+        if (variant == "zero-expectation") comparison["expectations"]!["rejected"] = 0;
         return comparison;
     }
 

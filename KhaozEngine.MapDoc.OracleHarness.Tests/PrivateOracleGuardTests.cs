@@ -263,6 +263,17 @@ public sealed class PrivateOracleGuardTests
         }
         File.WriteAllText(file, json.ToJsonString());
         env[Names[2]] = AssertFixtures.Sha256(file);
+        if (change != "missing-tag")
+        {
+            var data = Refuse<PrivateOracleDataException>(() => ShippedSourceProvenance.Parse(File.ReadAllBytes(file)));
+            Assert.Equal(change switch
+            {
+                "aggregate" => PrivateOracleDataRefusal.AttestedDigestMismatch,
+                "unsafe-path" => PrivateOracleDataRefusal.PathUnsafe,
+                "duplicate-path" => PrivateOracleDataRefusal.IdentityNotUniqueOrCanonical,
+                _ => PrivateOracleDataRefusal.ValueRequired,
+            }, data.Reason);
+        }
         PrivateOracleInputException failure = Refuse<PrivateOracleInputException>(() => PrivateOracleInputs.Require(env));
         Assert.Equal(PrivateOracleInputRefusal.ProvenanceUnreadable, failure.Reason);
         Assert.False(File.Exists(env[Names[3]]!));
@@ -284,6 +295,14 @@ public sealed class PrivateOracleGuardTests
         Assert.Equal("", inputs.Provenance.Tag);
         Assert.Equal(new string('1', 40), inputs.Provenance.Commit);
     });
+
+    [Fact]
+    public void DataRefusal_DoesNotRetainAPrivateOriginalException()
+    {
+        var error = new PrivateOracleDataException(PrivateOracleDataRefusal.SchemaShapeInvalid, "invalid provenance", new IOException(Secret));
+        Assert.Null(error.InnerException);
+        Assert.DoesNotContain(Secret, error.ToString());
+    }
 
     static void RewriteAggregate(JsonObject json)
     {

@@ -12171,7 +12171,10 @@ Its internal input and execution exceptions require `PrivateOracleInputRefusal` 
 `PrivateOracleFailureRefusal` reasons. Guard callers inspect `Reason` and only the documented safe
 input name, mismatch count, fixed comparison category and secure report digest. Private paths, input
 values, coordinates and original exceptions remain behind the entry boundary. These types are not
-engine consumer APIs. See the [sanitized refusal contract](../KhaozEngine.MapDoc.OracleHarness.Tests/README.md#sanitized-refusals).
+engine consumer APIs. Attested provenance, foliage and marker readers use the internal
+`PrivateOracleDataException`, derived from `MalformedDataException`, with a required
+`PrivateOracleDataRefusal`. It exposes no private identifiers and retains no private original exception.
+The entry boundary continues to sanitize those failures. See the [sanitized refusal contract](../KhaozEngine.MapDoc.OracleHarness.Tests/README.md#sanitized-refusals).
 
 ### Free buildings and effective resources
 

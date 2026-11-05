@@ -22,7 +22,10 @@ public sealed class ShippedMarkerInputGuardTests
     {
         using var fixture = ShippedMarkerGuardFixtures.Create("claimed-bound");
         var inputs = ShippedMarkerInputs.Read(PrivateOracleInputs.Require(fixture.Environment));
-        Assert.Throws<InvalidDataException>(inputs.RequireBoundImports);
+        var error = Assert.Throws<PrivateOracleDataException>(inputs.RequireBoundImports);
+        Assert.Equal(PrivateOracleDataRefusal.KindUnsupported, error.Reason);
+        using var valid = ShippedMarkerGuardFixtures.Create("all-bound");
+        ShippedMarkerInputs.Read(PrivateOracleInputs.Require(valid.Environment)).RequireBoundImports();
     }
 
     [Theory]
@@ -45,7 +48,11 @@ public sealed class ShippedMarkerInputGuardTests
         Assert.Equal(7, detail.RootElement.GetProperty("sourceMarkers").GetInt32());
         Assert.Contains("deferred R11 acceptance", compared.DetailJson);
         if (variant == "all-bound") inputs.RequireBoundImports();
-        else Assert.Throws<InvalidDataException>(inputs.RequireBoundImports);
+        else
+        {
+            var error = Assert.Throws<PrivateOracleDataException>(inputs.RequireBoundImports);
+            Assert.Equal(PrivateOracleDataRefusal.KindUnsupported, error.Reason);
+        }
     }
 
     [Fact]
@@ -165,24 +172,42 @@ public sealed class ShippedMarkerInputGuardTests
         Assert.DoesNotContain(fixture.PublicSecretMarker, failure.ToString());
     }
 
-    // Each variant passes the entry boundary and only the marker reader refuses it, so the message names the rule.
+    // Each variant passes the entry boundary and reaches the named reader rule.
     // The reader's own link check in its snapshot is not here. Verify already refuses every reparse point in the
     // extraction before the snapshot walks a path, so only a race could reach it.
     [Theory]
-    [InlineData("duplicate-comparison", "duplicate or case-variant JSON member")]
-    [InlineData("duplicate-role-field", "duplicate or case-variant JSON member")]
-    [InlineData("case-duplicate-role-field", "duplicate or case-variant JSON member")]
-    [InlineData("unattested-generator", "unattested marker dependency")]
-    [InlineData("tile-size", "marker source terrain conversion requires metre tiles")]
-    [InlineData("upper-plane", "server marker height covers plane 0 only")]
-    [InlineData("absent-owner", "unknown source support owner")]
-    [InlineData("nonpositive-owner", "unknown source support owner")]
-    public void ReaderOnlyRefusal_NamesItsSpecificReason(string variant, string reason)
+    [InlineData("duplicate-comparison", PrivateOracleDataRefusal.IdentityNotUniqueOrCanonical)]
+    [InlineData("duplicate-role-field", PrivateOracleDataRefusal.IdentityNotUniqueOrCanonical)]
+    [InlineData("case-duplicate-role-field", PrivateOracleDataRefusal.IdentityNotUniqueOrCanonical)]
+    [InlineData("unattested-generator", PrivateOracleDataRefusal.DependencyUnattested)]
+    [InlineData("tile-size", PrivateOracleDataRefusal.SourceCoordinateContractMismatch)]
+    [InlineData("upper-plane", PrivateOracleDataRefusal.SourceCoordinateContractMismatch)]
+    [InlineData("absent-owner", PrivateOracleDataRefusal.ReferenceMissing)]
+    [InlineData("nonpositive-owner", PrivateOracleDataRefusal.ValueOutsideDomain)]
+    [InlineData("nonfinite-offset", PrivateOracleDataRefusal.ValueNonfinite)]
+    [InlineData("wrong-owner-plane", PrivateOracleDataRefusal.OwnershipMismatch)]
+    public void ReaderOnlyRefusal_NamesItsSpecificReason(string variant, PrivateOracleDataRefusal reason)
     {
         using var fixture = ShippedMarkerGuardFixtures.Create(variant);
         var entry = PrivateOracleInputs.Require(fixture.Environment);
-        var error = Assert.Throws<InvalidDataException>(() => ShippedMarkerInputs.Read(entry));
-        Assert.Equal(reason, error.Message);
+        var error = Assert.Throws<PrivateOracleDataException>(() => ShippedMarkerInputs.Read(entry));
+        Assert.Equal(reason, error.Reason);
+        Assert.IsAssignableFrom<MalformedDataException>(error);
+        using var valid = ShippedMarkerGuardFixtures.Create("valid");
+        ShippedMarkerInputs.Read(PrivateOracleInputs.Require(valid.Environment));
+    }
+
+    [Fact]
+    public void SourceOffset_RefusesFiniteValuesOutsideTheFloatDomain()
+    {
+        using var fixture = ShippedMarkerGuardFixtures.Create("float-offset");
+        var inputs = ShippedMarkerInputs.Read(PrivateOracleInputs.Require(fixture.Environment));
+        var error = Assert.Throws<PrivateOracleDataException>(() => ShippedMarkerComparison.Compare(inputs));
+        Assert.Equal(PrivateOracleDataRefusal.ValueOutsideDomain, error.Reason);
+        ShippedMarkerComparison.RequireSourceCoordinatesForTests(float.MaxValue, -float.MaxValue);
+        using var valid = ShippedMarkerGuardFixtures.Create("valid");
+        var comparison = ShippedMarkerComparison.Compare(ShippedMarkerInputs.Read(PrivateOracleInputs.Require(valid.Environment)));
+        Assert.Empty(comparison.Failures);
     }
 
     [Theory]
@@ -194,8 +219,13 @@ public sealed class ShippedMarkerInputGuardTests
     {
         using var fixture = ShippedMarkerGuardFixtures.Create("valid");
         var entry = PrivateOracleInputs.Require(fixture.Environment);
-        File.AppendAllText(Path.Combine(fixture.SourceRoot, path), fixture.PublicSecretMarker);
-        Assert.Throws<InvalidDataException>(() => ShippedMarkerInputs.Read(entry));
+        string file = Path.Combine(fixture.SourceRoot, path);
+        byte[] original = File.ReadAllBytes(file);
+        File.AppendAllText(file, fixture.PublicSecretMarker);
+        var error = Assert.Throws<PrivateOracleDataException>(() => ShippedMarkerInputs.Read(entry));
+        Assert.Equal(PrivateOracleDataRefusal.ExtractionChanged, error.Reason);
+        File.WriteAllBytes(file, original);
+        ShippedMarkerInputs.Read(entry);
     }
 
     [Fact]

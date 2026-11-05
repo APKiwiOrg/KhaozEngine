@@ -104,6 +104,37 @@ Public guard runs select only `PrivateOracleGuardTests`, `ShippedBuildingInputGu
 `ShippedFoliageInputGuardTests`, `ShippedMarkerInputGuardTests` and `ShippedSpikeOutcomeTests` through
 explicit fully qualified name filters. They never enable private comparison or recording inputs.
 
+### Attested comparison data refusals
+
+The internal, non-packable `PrivateOracleDataException` derives from `KhaozEngine.MalformedDataException`.
+It requires a non-nullable `PrivateOracleDataRefusal` reason. Its reason-taking constructors retain no
+private original exception. The readers carry no identifier fields because source paths, coordinates,
+identities, tags, content digests and inventory counts belong only in the secure report. The existing
+messages remain developer prose. The entry boundary still sanitizes all failures.
+
+| Reason | Refused data | Identifiers |
+|---|---|---|
+| `AttestedDigestMismatch` | Captured bytes or semantic data differ from their attestation | None |
+| `CorrespondenceMismatch` | Source and native inventories or captures disagree | None |
+| `DependencyUnattested` | A required dependency is absent from the attested capture | None |
+| `ExtractionChanged` | The extraction changed before capture or during loading | None |
+| `IdentityNotUniqueOrCanonical` | An identity or JSON member is duplicated or noncanonical | None |
+| `KindUnsupported` | A kind, binding mode or convention is outside the comparison contract | None |
+| `OwnershipMismatch` | A source owner or support belongs to the wrong scope or plane | None |
+| `PathUnsafe` | A dependency path violates extraction containment or path admission | None |
+| `ReferenceMissing` | A reference has no declared source or correspondence target | None |
+| `SchemaShapeInvalid` | A JSON value does not have the required shape | None |
+| `SourceCoordinateContractMismatch` | Source units, coordinates or region ownership violate the contract | None |
+| `SymlinkUnsupported` | An attested dependency path contains a link | None |
+| `ValueNonfinite` | A numeric field is nonfinite | None |
+| `ValueOutsideDomain` | A finite value lies outside its admitted domain | None |
+| `ValueRequired` | A required value is absent or empty | None |
+| `VersionUnsupported` | A schema, document, resolver or payload version is unsupported | None |
+
+The provenance, foliage input and manifest, and marker readers use these reasons. Building readers and
+foliage correspondence checks retain their earlier exceptions until their own conversion. The shared
+foliage helper keeps its message-only overload solely for those correspondence callers.
+
 ## Exhaustive terrain comparison
 
 `ShippedTerrainComparisonTests` enters through `PrivateOracleEntry.Run`. `ShippedSourceInventory.ReadRegions`

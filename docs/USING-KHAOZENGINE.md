@@ -12817,8 +12817,8 @@ kind as separate identifiers. Equal text across distinct namespaces is allowed. 
 item uses `SchemaValueRequired`, with the known role and index. Numeric bindings require at least 1
 when present, reporting `ValueOutsideRange`, `NumericId` and `MinimumInteger`. A positive numeric
 identity on another child kind uses `AuthoredReferenceKindInvalid`. The package README lists the
-identifiers for each key shape. Wave 6 still owns the aggregate document adapter, bounded collection
-guards and unsupported child arm, which keep their message-only behavior.
+identifiers for each key shape. The aggregate document adapter, bounded collection guards and unsupported
+child arm still use message-only constructors, so their `Reason` is null.
 
 **Whole authored surface identity.** Scheme 2, new in 20.30.0, is the resolver-2 whole-document identity. Resolver-2
 documents use `MapAuthoredIdentityV2` from `KhaozEngine.MapDoc.Identity`, with an explicitly verified

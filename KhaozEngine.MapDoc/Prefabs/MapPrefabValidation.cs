@@ -620,7 +620,7 @@ public static class MapPrefabValidation
             NumericId = subject.NumericId, MinimumInteger = subject.MinimumInteger, FieldPath = subject.FieldPath, SubjectKind = subject.SubjectKind, Index = subject.Index,
         };
 
-    // Only the two wave 6 bounded collection guards call this overload. Their constructors remain unchanged under X14.
+    // Only the two bounded collection guards call this overload. Their shared capacity reason does not exist yet.
     [DoesNotReturn]
     static void Fail(string message) => throw new MapDocumentException(message);
 }

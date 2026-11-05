@@ -42,7 +42,12 @@ can absorb another contributor's staged files. Never use the shared stash for wo
   original as the inner exception. It never flattens a known reason into a generic one. When the wrapper and
   the refusal it wraps share one type, one copy method on that type carries the reason and every identifier,
   as `TileWorldException.WithSourceName` does, and a test that sets every public identifier fails by name
-  when a new one is not copied.
+  when a new one is not copied. A compound guard selects its reason from the branch that failed, in the
+  predicate's own order, and leaves the predicate and message alone. A throw on behalf of a string validator
+  takes its reason from the validator's first typed finding, so it converts only once every finding the
+  validator can return is typed, and it never stamps a generic reason. A reason names the rule the guard enforces,
+  even when an inventory or plan labels it differently. A reason only test code can throw stays off the public
+  enum, in a test-only family beside that code.
 - A test that reaches a numerical guard, such as a singular matrix, a collapsed cosine or a zero length, never
   depends on floating-point cancellation landing on a threshold or on subnormal inputs. CI runs on x64 and
   arm64, whose fused multiply-add, SIMD and denormal modes differ, so the same input can pass one check on one

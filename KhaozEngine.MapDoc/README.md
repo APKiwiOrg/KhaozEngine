@@ -1576,7 +1576,7 @@ Its identifiers retain the actual key namespaces:
 Equal text in different namespaces remains admissible. No identifier is parsed from its prose.
 Duplicate null string identities retain the duplicate admission point, before later required-text
 validation. The aggregate document adapter, bounded collection guards and unsupported child arm
-retain message-only constructors for wave 6.
+still use message-only constructors, so their `Reason` is null.
 
 Manifest source-unit scales must be finite and strictly positive. A nonfinite scale leaves `ActualNumber`
 and `MinimumNumber` null. A finite nonpositive scale carries `ActualNumber` and `MinimumNumber` 0,

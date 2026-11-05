@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.IO;
 using System.Linq;
 using System.Numerics;
 using System.Runtime.Versioning;
@@ -23,7 +22,7 @@ internal sealed record ShippedRegion(RegionCoord Coord, TileWorldDocument Docume
     internal static IReadOnlyList<ShippedRegion> All(TileWorldDocument document, JsonElement comparison)
     {
         TileRegion[] regions = document.Regions.Values.OrderBy(r => r.Coord.Rz).ThenBy(r => r.Coord.Rx).ToArray();
-        if (regions.Length == 0) throw new InvalidDataException("source world has no regions");
+        if (regions.Length == 0) throw new PrivateOracleDataException(PrivateOracleDataRefusal.ValueRequired, "source world has no regions");
         ShippedSpikePoint? point = ShippedSpikePoint.From(comparison);
         RegionCoord? named = point?.Owner(document.TileSize);
         int owner = Array.FindIndex(regions, r => r.Coord == named);
@@ -55,13 +54,20 @@ internal sealed record ShippedSpikePoint(float WorldX, float WorldZ)
     {
         if (comparison.ValueKind != JsonValueKind.Object || !comparison.TryGetProperty(Property, out JsonElement point))
             return null;
-        if (point.ValueKind != JsonValueKind.Object ||
-            !point.TryGetProperty("worldX", out JsonElement x) || !x.TryGetSingle(out float worldX) ||
-            !point.TryGetProperty("worldZ", out JsonElement z) || !z.TryGetSingle(out float worldZ) ||
-            !float.IsFinite(worldX) || !float.IsFinite(worldZ))
-            throw new InvalidDataException("invalid spike point");
+        if (point.ValueKind != JsonValueKind.Object) throw Invalid(PrivateOracleDataRefusal.SchemaShapeInvalid);
+        float worldX = Coordinate(point, "worldX"), worldZ = Coordinate(point, "worldZ");
+        if (!float.IsFinite(worldX) || !float.IsFinite(worldZ)) throw Invalid(PrivateOracleDataRefusal.ValueNonfinite);
         return new(worldX, worldZ);
     }
+
+    static float Coordinate(JsonElement point, string name)
+    {
+        if (!point.TryGetProperty(name, out JsonElement value)) throw Invalid(PrivateOracleDataRefusal.ValueRequired);
+        if (value.ValueKind != JsonValueKind.Number || !value.TryGetSingle(out float coordinate)) throw Invalid(PrivateOracleDataRefusal.SchemaShapeInvalid);
+        return coordinate;
+    }
+
+    static PrivateOracleDataException Invalid(PrivateOracleDataRefusal reason) => new(reason, "invalid spike point");
 
     internal float TileX(float tileSize) => TileWorldSpace.TileX(WorldX, tileSize);
     internal float TileZ(float tileSize) => TileWorldSpace.TileZ(WorldZ, tileSize);

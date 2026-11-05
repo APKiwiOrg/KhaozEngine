@@ -43,6 +43,11 @@ public sealed class StoredWholeIdentityTests
             Assert.All(payloadFiles, payloadFile => Assert.False(File.Exists(payloadFile)));
             MapDocumentException error = Assert.Throws<MapDocumentException>(() => MapStoredSurfaceSource.Open(directory));
             Assert.Contains("Resolver version 2 requires supportRecipe AuthoredBindingsV2.", error.Message);
+
+            manifest["supportRecipe"] = nameof(MapSupportRecipe.AuthoredBindingsV2);
+            File.WriteAllText(manifestPath, manifest.ToJsonString());
+            MapStoredSurfaceSource accepted = MapStoredSurfaceSource.Open(directory);
+            Assert.Equal(new[] { "far", "ground", "ridge" }, accepted.Surfaces.Select(s => s.Id));
             return;
         }
 
@@ -59,7 +64,17 @@ public sealed class StoredWholeIdentityTests
             Assert.Equal(MapSupportRecipe.LegacyXzCallbackV1, metadataError.SupportRecipe);
             Assert.Equal(2, metadataError.ExpectedResolverVersion);
             Assert.Equal(MapSupportRecipe.AuthoredBindingsV2, metadataError.ExpectedSupportRecipe);
+
+            doc.ResolverIdentity = new(1, 2);
+            doc.SupportRecipe = MapSupportRecipe.AuthoredBindingsV2;
+            MapTiledFile.Save(doc, directory, MapDocRegistry.CreateDefault(), null,
+                new MapSurfacePacking(IndexBlockSlots: 1, DirectoryBlockPages: 2));
+            source = MapStoredSurfaceSource.Open(directory);
         }
+
+        MapAssetClosure assets = SurfaceStorageFixtures.Assets();
+        Assert.Equal(MapAuthoredIdentityV2.Compute(doc, assets, V2), MapAuthoredIdentityV2.Compute(source, assets, V2, work));
+        Assert.Equal(invalid == "resolver" ? 0 : 5, work.PayloadReads);
     });
 
     [Fact]

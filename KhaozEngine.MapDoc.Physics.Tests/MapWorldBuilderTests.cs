@@ -22,16 +22,34 @@ public class MapWorldBuilderTests
     public void InvalidInputs_Refuse()
     {
         Assert.Contains("partial", Assert.Throws<MapDocumentException>(() => NativeWorldFixtures.BuildPartialWindow()).Message);
+        Assert.Equal(new[] { "crate", "far-crate" },
+            NativeWorldFixtures.BuildPartialWindow(loadWholeWorld: true).Document.Placements.Select(p => p.PlacementId));
+
         var resolver = Assert.Throws<MapDocumentException>(() => NativeWorldFixtures.BuildWithResolverMismatch());
         Assert.Equal(MapDocumentRefusal.ResolverContractMismatch, resolver.Reason);
         Assert.Equal(1, resolver.PayloadVersion);
         Assert.Equal(2, resolver.ResolverVersion);
         Assert.Equal(1, resolver.OptionsResolverVersion);
         Assert.Equal(2, resolver.ExpectedResolverVersion);
+        var matching = NativeWorldFixtures.Crate();
+        MapBuiltWorld matched = MapWorldBuilder.Build(matching.Document, matching.Assets, NativeWorldFixtures.Options());
+        Assert.True(matched.IsNative);
+        Assert.Equal("crate", Assert.Single(matched.Document.Placements).PlacementId);
+
         Assert.Contains("legacy support height", Assert.Throws<MapDocumentException>(() => NativeWorldFixtures.BuildLegacyWithoutHeight()).Message);
+        var legacy = NativeWorldFixtures.LegacyCrate();
+        MapBuiltWorld supported = MapWorldBuilder.Build(legacy.Document, legacy.Assets,
+            NativeWorldFixtures.Options() with { Resolve = NativeWorldFixtures.LegacyResolveOptions, LegacySupportHeight = (_, _) => 0f });
+        Assert.False(supported.IsNative);
+        Assert.Equal("crate", Assert.Single(supported.Document.Placements).PlacementId);
+
         Assert.Throws<MapDocumentException>(() => NativeWorldFixtures.BuildWithPlacementScale(float.NaN));
+        Assert.Equal(1f, Assert.Single(NativeWorldFixtures.BuildWithPlacementScale(1f).Document.Placements).Transform.Scale);
         Assert.Throws<MapDocumentException>(() => NativeWorldFixtures.BuildWithPlacementScale(0f));
+        Assert.Equal(0.5f, Assert.Single(NativeWorldFixtures.BuildWithPlacementScale(0.5f).Document.Placements).Transform.Scale);
         Assert.Contains("1,000,000", Assert.Throws<MapDocumentException>(() => NativeWorldFixtures.BuildWithPlacementAt(1_000_001f)).Message);
+        Assert.Equal(1_000_000f,
+            Assert.Single(NativeWorldFixtures.BuildWithPlacementAt(1_000_000f).Document.Placements).Transform.Position.X);
     }
 
     [Fact]

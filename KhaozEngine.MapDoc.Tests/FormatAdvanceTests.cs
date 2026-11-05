@@ -79,6 +79,13 @@ public sealed class FormatAdvanceTests
         Assert.Equal(2, error.ResolverVersion);
         Assert.Equal(1, error.ExpectedResolverVersion);
         Assert.Equal(0, calls);
+
+        doc.ResolverIdentity = new(1, 1);
+        doc.SupportRecipe = MapSupportRecipe.LegacyXzCallbackV1;
+        MapResolvedDocument accepted = MapResolver.Resolve(doc, FormatFourFixtures.Assets(),
+            (x, z) => { calls++; return 0f; }, FormatFourFixtures.Options);
+        Assert.Equal(new[] { "a", "b", "c" }, accepted.Placements.Select(p => p.PlacementId));
+        Assert.Equal(0f, accepted.Placements.Single(p => p.PlacementId == "a").Transform.Position.Y);
     }
 
     [Theory]

@@ -48,6 +48,20 @@ public class MapWaterEditTests
             Assert.Equal(2, error.ExpectedResolverVersion);
             Assert.Equal(MapSupportRecipe.AuthoredBindingsV2, error.ExpectedSupportRecipe);
         }
+
+        MapWaterEditResult accepted = WaterFixtures.ApplyEdit(variant, corrected: true);
+        switch (variant)
+        {
+            case "remove-used-medium": Assert.Empty(accepted.After!.Media); break;
+            case "legacy-with-bodies": Assert.Null(accepted.After); break;
+            case "remove-unknown-body": Assert.DoesNotContain(accepted.After!.Bodies, b => b.Id == "ocean"); break;
+            case "upsert-without-section": Assert.Contains(accepted.After!.Bodies, b => b.Id == "ocean"); break;
+            case "bounded-on-resolver-one":
+                Assert.NotNull(accepted.After);
+                Assert.Empty(accepted.After.Bodies);
+                Assert.Empty(accepted.After.Media);
+                break;
+        }
     }
 
     [Fact]

@@ -87,7 +87,10 @@ public sealed class WaterServiceTests : IDisposable
     [Fact]
     public void LegacyDocument_RefusesWaterEdits()
     {
-        MapEditSession analytic = Open(WaterToolFixtures.LegacyAnalytic());
+        MapDocument analyticDocument = WaterFixtures.Document(new MapSurfaceSet(), null);
+        analyticDocument.ResolverIdentity = null;
+        analyticDocument.SupportRecipe = MapSupportRecipe.LegacyXzCallbackV1;
+        MapEditSession analytic = Open(analyticDocument);
         Refuses(analytic);
 
         MapDocument legacy = WaterFixtures.Document(new MapSurfaceSet(), null);
@@ -95,7 +98,7 @@ public sealed class WaterServiceTests : IDisposable
         legacy.SupportRecipe = MapSupportRecipe.LegacyXzCallbackV1;
         Refuses(Open(legacy));
 
-        static void Refuses(MapEditSession session)
+        void Refuses(MapEditSession session)
         {
             var mutation = new MutationService(session);
             var error = Assert.Throws<MapDocumentException>(() => mutation.WaterApply(new MapSetBoundedWater(true)));
@@ -110,6 +113,15 @@ public sealed class WaterServiceTests : IDisposable
                 return 0;
             });
             Assert.False(session.IsDirty);
+
+            MapDocument corrected = MapDocumentFile.LoadText(MapDocumentFile.SaveText(WaterToolFixtures.Document(session)));
+            corrected.ResolverIdentity = new(1, 2);
+            corrected.SupportRecipe = MapSupportRecipe.AuthoredBindingsV2;
+            MapEditSession accepted = Open(corrected);
+            MapWaterMutationResult applied = new MutationService(accepted).WaterApply(new MapSetBoundedWater(true));
+            Assert.True(applied.Mutation.WorldChanged);
+            Assert.NotNull(WaterToolFixtures.Document(accepted).Water);
+            Assert.True(accepted.IsDirty);
         }
     }
 

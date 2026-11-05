@@ -1362,7 +1362,9 @@ adapters retain their existing contracts until their producing rules are typed.
 typed context. Resolver diagnostic producers retain these findings beside the existing string API's
 prose projection. `MapDocumentException.Findings` can carry the full ordered finding list as an owned
 read-only snapshot. Neither a change to the input list nor a cast of the exposed collection can change
-that snapshot. Source wrappers preserve the reason, all identifiers and the original refusal as the cause.
+that snapshot. A source wrapper using the source-copy method preserves the reason, all identifiers and the
+original refusal as the cause. Wrappers still using message-only constructors, such as
+`NativeDocumentService.Verify`, convert in later tasks.
 
 Map documents are dev-authored content, not runtime state: `MapDocumentFile.Load`/`Save` throw
 `MapDocumentException` on a read error, invalid JSON, a missing or out-of-range `formatVersion`, a

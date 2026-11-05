@@ -23,22 +23,28 @@ internal static partial class WaterFixtures
     internal static MapWaterBodyDoc SecondLakeOverlappingCaveLake() =>
         Broken("overlapping-bodies").Water!.Bodies.Single(b => b.Id == "second-lake");
 
-    internal static MapWaterEditResult ApplyEdit(string variant)
+    internal static MapWaterEditResult ApplyEdit(string variant, bool corrected = false)
     {
         MapDocument doc = OceanOverCaves();
         MapWaterEdit edit;
         switch (variant)
         {
-            case "remove-used-medium": edit = new MapRemoveWaterMedium("sea-water"); break;
-            case "legacy-with-bodies": edit = new MapSetBoundedWater(false); break;
-            case "remove-unknown-body": edit = new MapRemoveWaterBody("nowhere"); break;
+            case "remove-used-medium":
+                if (corrected) doc.Water!.Bodies.Clear();
+                edit = new MapRemoveWaterMedium("sea-water");
+                break;
+            case "legacy-with-bodies":
+                if (corrected) doc.Water!.Bodies.Clear();
+                edit = new MapSetBoundedWater(false);
+                break;
+            case "remove-unknown-body": edit = new MapRemoveWaterBody(corrected ? "ocean" : "nowhere"); break;
             case "upsert-without-section":
                 edit = new MapUpsertWaterBody(doc.Water!.Bodies[0]);
-                doc.Water = null;
+                if (!corrected) doc.Water = null;
                 break;
             case "bounded-on-resolver-one":
                 doc.Water = null;
-                doc.ResolverIdentity = new(1, 1);
+                doc.ResolverIdentity = new(1, corrected ? 2 : 1);
                 edit = new MapSetBoundedWater(true);
                 break;
             default: throw new ArgumentException("unknown water edit fixture", nameof(variant));

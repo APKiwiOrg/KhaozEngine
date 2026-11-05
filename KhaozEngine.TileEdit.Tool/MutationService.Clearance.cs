@@ -26,11 +26,12 @@ public sealed partial class MutationService
 
     /// <summary>Removes the named rule.</summary>
     /// <exception cref="TileWorldException">The world has no clearance block.</exception>
-    /// <exception cref="ArgumentException">No rule has that name.</exception>
+    /// <exception cref="TileClearanceArgumentException">No rule has that name.</exception>
     public MutationResult ClearanceRuleRemove(string name) =>
         session.Execute(e => new SetClearanceCommand(e.Document, RequireClearance(e.Document).WithoutRule(name)));
 
     static TileClearanceSettings RequireClearance(TileWorldDocument doc) =>
-        doc.Clearance ?? throw new TileWorldException(
-            $"world '{doc.Id}' has no clearance block, call clearance_set first");
+        doc.Clearance ?? throw new TileWorldException(TileWorldRefusal.ClearanceBlockMissing,
+            $"world '{doc.Id}' has no clearance block, call clearance_set first")
+        { WorldId = doc.Id, RequiredTools = new[] { "clearance_set" } };
 }

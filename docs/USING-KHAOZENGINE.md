@@ -12763,6 +12763,24 @@ tagged `door` within `DoorClearance`. Its height and normal use the selected `Ti
 the same interpolated lattice values as the rendered ground. Non-solid decorative objects remain eligible.
 Validation resolves the foliage archetype and material ids against the same catalogs as the rest of the world.
 
+Foliage construction and DTO or document admission use `TileFoliageArgumentException`, preserving
+`ArgumentException` catches and the original null `ParamName`. Its non-nullable `TileWorldRefusal Reason`
+distinguishes invalid raster geometry, density length, placement settings, archetype ids and weights,
+underlays, duplicate layers and world-plane admission. Inspect `LayerId` and the reason-specific values in
+the [TileWorld refusal table](../KhaozEngine.TileWorld/README.md#refusals), including the offending entry
+index or the actual and expected density counts. Manifest loading throws `TileWorldException` with exactly
+the same reason and identifiers, adds the manifest path in `SourceName` and keeps the original refusal in
+`InnerException`. Direct null `density` and `archetypes` constructor parameters remain plain
+`ArgumentNullException`s with `ParamName`. A null manifest density is `FoliageDensityNull` with `LayerId`,
+`Field` = `density` and the original `ArgumentNullException` retained. A null manifest layer instead uses
+`FoliageLayerNull` with its zero-based `LayerIndex`. Messages remain developer prose.
+
+Required foliage queries, density edits, painting and removal throw the existing `TileWorldException` with
+`TileWorldRefusal.FoliageLayerMissing` and the requested `LayerId`. The document's optional `GetFoliageLayer`
+still returns null for an absent id. TileEdit validates catalog references before replacing a layer, using
+`FoliageCatalogArchetypeMissing` with `LayerId` and `ArchetypeId`, or `FoliageCatalogUnderlayMissing` with
+`LayerId` and `MaterialId`. A refused lookup or reference change leaves the document and undo history unchanged.
+
 **Clearance is an authoring check, never a runtime rule.** An optional `clearance` manifest block
 (`TileWorldDocument.Clearance`, a `TileClearanceSettings`) declares rules such as "objects whose archetype is
 tagged `tree` keep their meshes clear of objects tagged `structure`", with a mesh root (relative to the world
@@ -12770,11 +12788,23 @@ directory, forward slashes only, refused when rooted or holding a backslash on e
 an object waiver tag. `TileWorldClearance.Check(doc, catalogs, meshes)` places every loaded object's mesh as the
 prop renderer draws it and returns `clearance.overlap`, `clearance.mesh` and `clearance.rule` issues, reading
 meshes through `ITileMeshGeometry` (the glb implementation is `GltfTileMeshGeometry` in
-`KhaozEngine.TileWorld.Render3D`). `TileWorldValidator.Validate` never runs it, the block is outside
+`KhaozEngine.TileWorld.Render3D`). Overlap issues expose `TileWorldIssue.Overlap`, an immutable
+`TileClearanceOverlap` containing the rule name, both object ids and the full sampled depth in metres.
+`TileWorldValidator.Validate` never runs it, the block is outside
 `TileWorldHash.OfWorld`, and the geometry core is `ClearanceMesh`, `ClearanceSolid`, `ClearanceSamples` and
 `ClearanceProbe` in `KhaozEngine.Primitives`. An obstacle is solid from its lowest point to its top surface, so a
 hollow piece such as a bridge deck must not carry an obstacle tag. Field contracts, rule matching and the issue
 order are in the `KhaozEngine.TileWorld` package README under Clearance.
+
+Clearance declaration validation throws `TileClearanceArgumentException`, an `ArgumentException` subtype
+with non-nullable `TileWorldRefusal Reason`. Rooted and backslash paths expose `ClearanceMeshRootRooted` or
+`ClearanceMeshRootBackslash` with `MeshRoot`. Other reasons expose the rule name, tag field and index,
+tolerance, cell-size bounds or required rule count where applicable. See the package's refusal table for
+the complete identifiers. Direct null `meshRoot` and `WithRule` arguments remain plain
+`ArgumentNullException`s with `ParamName`. File loading wraps a clearance refusal in `TileWorldException`
+with the same reason and identifiers, the manifest path in `SourceName` and the original exception in
+`InnerException`. A null file mesh root instead exposes `ClearanceMeshRootNull`, `Field` = `meshRoot` and
+the original `ArgumentNullException`.
 
 ```csharp
 var meshes = new GltfTileMeshGeometry(TileWorldClearance.ResolveMeshRoot(worldDir, doc.Clearance!));
@@ -12804,6 +12834,82 @@ Editor region deletion and create-undo use that explicit deletion path. `TileWor
 is that plus load-everything. A region the manifest knows about but that is not in memory cannot be created
 blind: `GetOrCreateRegion` and `RequireRegion` both throw for it, so a save can never blank authored terrain.
 
+These refusals keep the exact `TileWorldException` type. Inspect `Reason` as a `TileWorldRefusal`, with
+`RegionMissing` for a required region that does not exist, `RegionNotLoaded` for a known but unloaded region,
+and `RegionDirty` for an attempted unload with unsaved changes. `Region` is the refused planar coordinate.
+`RequireRegion(x, z)` also fills nullable `TileX` and `TileZ` with the requested tile coordinates, with no
+implied plane. Guards that received only a region leave those two values null.
+
+`TileWorldSource.Open` and `TileWorldHash.OfManifestRegions` share `ManifestRegionDuplicate` and `Region`
+for duplicate rows. `Open` also carries the manifest path in `SourceName`. The hash composer uses
+`ManifestRegionHashMissing` and `Region` for a null region hash. Eager and lazy loads use
+`RegionHashMismatch`, carrying `Region`, the region file path in `SourceName`, and `ExpectedHash` and
+`ActualHash`. Messages are developer prose. Both message-only constructors remain available to consumers,
+and `Reason` is null only for such an externally constructed instance.
+
+World-file I/O and manifest admission also retain `TileWorldException`. `ManifestReadFailed` and
+`RegionReadFailed` carry the refused file path in `SourceName` and the original cause in `InnerException`.
+`RegionReadFailed` also carries `Region`. A save that cannot delete a stale region uses
+`WorldStaleRegionDeleteFailed` with `SourceName`, `Region` and the original cause. It still leaves dirty
+regions dirty until the new manifest lands.
+
+Manifest parsing uses `ManifestNotObject` for a non-object JSON root and `ManifestJsonMalformed` for parse
+or deserialization errors, with `SourceName`, the parser's nullable JSON path in `Field` and the original
+`JsonException` in `InnerException`. A null deserialization result uses `ManifestEmpty` and `SourceName`.
+`ManifestFormatVersionMissing` and `ManifestFormatVersionNotInteger` carry `SourceName` and
+`Field = "formatVersion"`. `ManifestFormatVersionUnsupported` carries `SourceName`, the requested
+`FormatVersion` and `SupportedFormatVersion`. `ManifestMigrationMissing` carries `SourceName`, the
+original `FormatVersion`, `MigrationFrom` and `MigrationTo`. `ManifestMigrationReturnedNull` carries
+`SourceName`, `MigrationFrom` and `MigrationTo`. `ManifestPlaneCountInvalid`, `ManifestTileSizeInvalid`
+and `ManifestIdMissing` carry `SourceName` and `Field` naming `planeCount`, `tileSize` or `id`, respectively.
+The first two also carry the refused `PlaneCount` or `TileSize`. These reasons pass through eager
+`TileWorldFile.Load` and streaming `TileWorldSource.Open` without changing their identity.
+
+Region parsing, saving, attachment and undo restoration share `RegionPlaneCountMismatch` with `Region`,
+`ActualPlaneCount` and `ExpectedPlaneCount`. Parse and save share `RegionObjectOutsideBounds`,
+`RegionObjectPlaneOutsideRange`, `RegionMarkerOutsideBounds` and `RegionMarkerPlaneOutsideRange`.
+These carry the containing `Region`, the object's `ObjectId` and `ArchetypeId` or the marker's `MarkerName`,
+and either the full authored `Tile` for a bounds refusal or `Plane` and `PlaneCount` for a plane refusal.
+These save checks run before the first write. Parsing also sets `SourceName` to the region file path.
+Attachment, restoration and these save checks leave `SourceName` null.
+
+Object and marker identity refusals use the same exact `TileWorldException` type. `ObjectMissing` carries
+`ObjectId` for `MoveObject`, required object commands and `QueryService.ObjectGet`. `ObjectIdDuplicate`
+carries the occupied `ObjectId` on insertion. `ObjectIndexStale` carries `ObjectId` and the indexed `Region`
+when direct edits to a region's public object list leave the index pointing at an absent object. `MoveObject`
+still checks the destination region first. Use `RebuildObjectIndex` after bulk list edits.
+`MarkerMissing` carries `MarkerName` for a required marker removal.
+
+`RegionCoordinateMismatch` carries the manifest's expected `Region`, the file's `ActualRegion` and
+`SourceName`. `RegionFileEmpty` carries `SourceName` for JSON that deserializes to no region.
+`RegionJsonMalformed` carries `SourceName`, the parser's JSON path in nullable `Field`, and the original
+`JsonException` in `InnerException`. Use these members rather than message wording. The
+[TileWorld refusal table](../KhaozEngine.TileWorld/README.md#refusals) lists the identifiers for each reason.
+
+Region and prefab dense layers share `LayerBase64Malformed` and `LayerByteCountMismatch`. Both carry
+`LayerName`, the file or content name in `SourceName`, and the decoded plane index in `Plane`.
+Layer names are `heights` (including prefab relative heights), `underlay`, `overlay`, `overlayShape`,
+`overlayRotation` and `settings`. Malformed base64 retains its original `FormatException` in `InnerException`.
+A length refusal adds `ActualByteCount` and `ExpectedByteCount`. Context comes directly from the loader,
+so callers never need to parse the message. `TileWorldSchema.GetCatalogJson()` uses `SchemaResourceMissing`
+with `ResourceName` if its embedded catalog schema is absent.
+
+Catalog admission keeps `TileWorldException` and uses the `Catalog*` reasons in the
+[TileWorld refusal table](../KhaozEngine.TileWorld/README.md#refusals). `CatalogJsonMalformed` and
+`CatalogReadFailed` carry `SourceName` and the original cause, with the parser path in nullable `Field` for
+malformed JSON. Duplicate reasons add `FirstSourceName` and the material or archetype id. Semantic walk-surface
+and collision-height refusals carry `SourceName`, `ArchetypeId` and their typed field, index and value members.
+`CatalogSchemaMismatch` carries owned read-only `SchemaFields` (distinct JSON Pointer instance locations) and
+`SchemaFindings` snapshots. The latter contains immutable `KhaozEngine.Content.JsonSchemaFinding` values,
+including an unknown property's full path such as `/materials/0/steep/chain`. Placement commands and scatter
+use `CatalogArchetypeMissing` with `ArchetypeId`, while null-returning catalog queries remain unchanged.
+
+`TileWorldValidator.ValidateOrThrow` uses `WorldValidationFailed` with `WorldId`, total `IssueCount` and
+the complete `Issues` collection. The exception copies `Issues` when set into an owned read-only snapshot,
+which cannot be changed through its source collection or a cast. Inspect each `TileWorldIssue.Code` to
+distinguish individual findings. The developer message summarizes only the first five findings, while the
+snapshot retains every finding. `Validate` still returns findings without throwing on bad content.
+
 `source.FindMarker("spawn")` answers off the manifest's marker index with NO region read, which is what a client
 needs before it has streamed anything: `TileWorldDocument.FindMarker` walks LOADED regions only, so asking it
 first means materialising regions one at a time until one carries the marker and unloading the ones that did not.
@@ -12824,11 +12930,12 @@ through the region that carries it.
 
 **A marker name is unique across the WHOLE world, not just the loaded part.** `SetMarker` consults the same
 index through `document.Source` (the `TileWorldSource` it was opened through, null for a document built in
-memory) and refuses a name an unloaded region already carries, naming that region, rather than authoring a
-second marker that only collides once both regions are in. A loaded region outranks its index row, so re-homing
-a marker inside the part of the world you hold is unaffected. `Unload` refreshes the rows of the region it is
-dropping from that region, the same way it refreshes the known hash, so a marker deleted and saved before the
-unload really does free its name.
+memory) and refuses a name an unloaded region already carries with `MarkerNameInUnloadedRegion`.
+`MarkerName`, `Region` and the existing marker's full `Tile`, including its known plane, identify what holds
+the name. Load that region before moving the marker, or choose a different name. A loaded region outranks its
+index row, so re-homing a marker inside the part of the world you hold is unaffected. `Unload` refreshes the
+rows of the region it is dropping from that region, the same way it refreshes the known hash, so a marker
+deleted and saved before the unload really does free its name.
 
 **Collision is derived, never authored.** `TileCollisionBaker.Bake` builds the whole `TileCollisionMap` from
 settings plus object archetypes, `Rebake(map, doc, catalogs, dirtyRect, plane)` re-derives one rect after an
@@ -12881,6 +12988,23 @@ relative heights, objects, markers) and stamp it elsewhere at any rotation, with
 form. Pass `includeDerivedHeights: false` to `TilePrefabs.Extract` when an unauthored upper plane should keep
 deriving its height from the destination ground. Explicit height layers remain authored, even when their
 values happen to match the derived surface. The default includes derived heights for compatibility.
+
+Prefab admission retains `TileWorldException` and uses `PrefabSizeNonPositive`, `PrefabPlaneCountMismatch`,
+`PrefabObjectPlaneOutsideRange` and `PrefabMarkerPlaneOutsideRange` for the same shape rules in a file or a
+hand-built stamp. `PrefabName` is the authored name, which can be empty. File admission also supplies
+`SourceName`, while hand-built admission leaves it null. Size refusals carry `Width` and `Height`, plane-list
+refusals carry `ActualPlaneCount` and `ExpectedPlaneCount`, and object/marker plane refusals carry
+`ArchetypeId` or `MarkerName`, `Plane`, `PlaneCount` and the full prefab-relative `Tile`.
+
+`Load` additionally uses `PrefabPlaneCountNonPositive` with `PlaneCount`, and `PrefabObjectOutsideBounds`
+or `PrefabMarkerOutsideBounds` with the object or marker identity, full relative `Tile`, `Width` and `Height`.
+Hand-built layer lengths use `PrefabLayerCountMismatch`, with `Plane`, `LayerName`, `ActualCount`,
+`ExpectedCount`, `Width` and `Height`. Serialized layer errors keep the codec reasons described above.
+`PrefabEmpty`, `PrefabJsonMalformed` and `PrefabReadFailed` identify file admission failures with `SourceName`
+and no known `PrefabName`. Malformed JSON also carries the parser's nullable path in `Field` and the original
+`JsonException` in `InnerException`. A read failure retains its original cause in `InnerException`.
+Use these members and the [refusal table](../KhaozEngine.TileWorld/README.md#refusals) instead of message text.
+
 A stamp is additive per layer, so clear the rect first if you want a replace. Full API summary: the
 `KhaozEngine.TileWorld` package README. Design rationale: `docs/design/TILE-WORLD-DESIGN-2026-08-15.md`.
 
@@ -13070,8 +13194,14 @@ details rollback, default/all-true compatibility and the matching-load/policy-on
 The contract a consumer has to keep:
 
 - **Every `Solid`, `Diagonal`, `Wall` and `WallCorner` archetype needs a `collisionHeight`**, whose field rules are
-  in the `KhaozEngine.TileWorld` README. `Build` throws a `TileWorldException` naming an archetype placed without
-  one. `ke-tileedit`'s `archetype_measure_heights` and `archetype_set_collision_heights` fill them from the kit.
+  in the `KhaozEngine.TileWorld` README. `Build` throws a `TileWorldException` with
+  `TileWorldRefusal.ColliderCollisionHeightMissing`, `ArchetypeId`, `CollisionKind`, `ObjectId` and `Tile` including
+  its known plane when a placed archetype has none. `ke-tileedit`'s `archetype_measure_heights` and
+  `archetype_set_collision_heights` fill them from the kit.
+- **Collider thicknesses and a set blocked height must be finite and positive.** `Build` throws
+  `TileColliderOptionsRangeException` with `TileColliderOptionsRefusal.OptionNotFinitePositive`, `OptionName`,
+  `ParamName = options` and the numeric `ActualValue`. It derives from `ArgumentOutOfRangeException`, so existing
+  range catches still match.
 - **Rebuild after an edit.** Remove the old registration, `Build` again and `AddTo` again. The samplers answer for
   the world as it was built.
 - **The samplers speak absolute document coordinates.** `AddTo` subtracts `world.Origin` once, so in a rebased world
@@ -13454,6 +13584,21 @@ one from the catalogs on its own unless `TileWorldViewOptions.GroundMaterials` h
 points the mesher at it (the slots in a vertex only mean anything against the set the mesh is drawn with), and
 frees it on `Dispose`. So a colour-only world and a textured one take exactly the same path.
 
+Catalog-to-set refusals keep `TileWorldException` and carry a `TileWorldRefusal` reason. A catalog above the
+single-set capacity selects `GroundMaterialLayerLimitExceeded` with `MaterialCount` and
+`MaximumMaterialCount` (the reserved layer is excluded from that maximum). A texture size disagreement selects
+`GroundMaterialTextureSizeMismatch` with `MaterialId`, `MaterialName`, `Width`, `Height`, `ReferenceMaterialId`,
+`ReferenceMaterialName`, `ExpectedWidth` and `ExpectedHeight`, all dimensions in texels. A relative texture on a
+catalog without a source file selects `GroundMaterialTextureSourceMissing` with `MaterialId`, `MaterialName`
+and `TexturePath`.
+
+`TileColors.Parse` accepts `#rrggbb` and `#rrggbbaa`, including through its `GroundMaterial` overload. Bad
+authored colours keep `TileWorldException`: `TileWorldRefusal.ColourNull` carries no identifiers,
+`ColourShapeInvalid` carries `ColourText`, and `ColourDigitInvalid` carries `ColourText`, the zero-based
+`CharacterIndex` in that string (including its leading `#`) and the refused `Character`. Messages remain
+developer prose. The [render refusal table](../KhaozEngine.TileWorld.Render3D/README.md#tileworld-render-refusals)
+lists the reasons and identifiers.
+
 **Feather selected overlay edges.** Author `TileSettings.FeatherOverlay` on the intended road tiles with
 `ke-tileedit` (`tile_set` or `tiles_fill`, `settings: "FeatherOverlay"`). Preserve other required flags in the
 comma list. Give those tiles the surrounding grass as their underlay and the road as their overlay.
@@ -13535,6 +13680,18 @@ The two rules are independent. Below 45 degrees the projection is unchanged for 
 with a companion already blends from its `fromDegrees`, 40 by default. A material with no companion renders
 exactly as before below 45 degrees. The triplanar constants are `TileGroundSteepShading`'s in Render3D.
 
+Catalog companion validation uses `GroundMaterialSteepRules.ThrowIfInvalid` and the existing
+`TileWorldException`. Its `TileWorldRefusal` reason is `SteepSelfReference`, `SteepCompanionMissing`,
+`SteepCompanionWater`, `SteepFromOutsideRightAngle`, `SteepToOutsideRightAngle`, `SteepBandUnordered` or
+`SteepCosinesCollapsed`. Every one carries `SourceName`, `MaterialId` and `MaterialName`, selecting the
+first invalid material in ascending id order. Companion reasons carry `CompanionMaterialId`, with
+`CompanionMaterialName` also set for water. Endpoint and band reasons carry resolved `FromDegrees` and
+`ToDegrees`. An outside-angle reason also carries `Field`, and `SteepBandUnordered` carries
+`FromIsDefault` and `ToIsDefault`. `Problem` uses the same finding for developer prose.
+`TileGroundMaterials.Build` delegates catalog checks to these rules with `SourceName` equal to
+`ground material set`, preserving the core reason. Hand-built render-slot validation continues to use
+`TileGroundSteepRefusal` as described above. Unused optional identifiers remain null.
+
 **Water is carved, not placed.** A tile is water when its underlay material's `kind` is `Water`, and you sink the
 bed by lowering the corner heights, so the material's texture is the river BED and the surface height is computed.
 `TileWaterPlanes.Collect(doc, catalogs, region, plane, look?)` turns the bodies of the GPU-free
@@ -13604,7 +13761,8 @@ Only `PrimeAround` and explicit offline `SettleForCapture` calls do. Active same
 the ground-cover reach beyond the fixed mesh margin. Streaming a region rebuilds every loaded ground mesh or cover cache affected by its border
 data, solid footprints, upper roofs or tagged doors. A dirty region is never streamed out (unloading unsaved edits
 would throw, so it stays resident and logs once), and a torn region file throws `TileWorldException` straight out of
-`Update` rather than drawing a hole.
+`Update` rather than drawing a hole. The refusal carries `TileWorldRefusal.RegionHashMismatch`, `Region`,
+`SourceName`, `ExpectedHash` and `ActualHash`.
 
 **Translucent overlays.** `ITileWorldScene.DrawOverlayMesh(mesh, world)` forwards the scene's unlit,
 depth-tested, alpha-blended overlay pass, which does not write depth. Use it for route highlights or range
@@ -13707,6 +13865,13 @@ back whole when a child throws) and `SnapshotRectCommand` (an arbitrary mutation
 rect's pre-image first). An object placed and then undone comes back with the id it HAD on redo, so anything
 referring to it by id keeps resolving.
 
+Required object commands use `TileWorldException` with `TileWorldRefusal.ObjectMissing` and `ObjectId`.
+`RemoveMarkerCommand` uses `MarkerMissing` and `MarkerName`. `RemoveFoliageLayerCommand` uses
+`FoliageLayerMissing` and `LayerId` before changing the document or undo history. Other document admission
+reasons propagate unchanged. The
+[editing refusal table](../KhaozEngine.TileWorld.Editing/README.md#refusals) documents these
+required lookups.
+
 **`TileEditOps` builds the commands, it does not mutate.** `Raise` (with an edge falloff), `Flatten`, `Smooth`
 (an iterated box blur reading its outside neighbours from the document, so a patch blends into the terrain
 around it), `SetHeights`, `Line` (Bresenham, one object per tile, one undo step), `Scatter` (a jittered grid
@@ -13716,6 +13881,17 @@ whose offsets come from a hash of the point and the seed, so the same arguments 
 `PngReader` in Imaging supports every PNG colour type and bit depth, noninterlaced or Adam7, using grayscale
 or the red channel as height and ignoring alpha. A palette PNG supplies the red channel of each entry. Both formats preserve 16-bit sample precision. Write PGM files with LF line endings: a CRLF header spends its CR as the single delimiter byte and leaves the LF as sample 0, which shifts
 the whole raster.
+
+`PgmReader.Read` and the PGM path through `TileEditOps.ImportHeights(string, ...)` retain the exact
+`TileWorldException` type. Inspect its `TileWorldRefusal Reason` and the
+[editing refusal identifiers](../KhaozEngine.TileWorld.Editing/README.md#refusals).
+`PgmReadFailed` preserves the file-read cause as `InnerException`. All nine PGM reasons carry `SourceName`,
+using the supplied path or name, `<empty path>` for an empty path, and `<bytes>` for unnamed in-memory input.
+`PgmMagicUnsupported` carries `ExpectedMagic` = `P5` and an owned read-only `ActualMagic` byte snapshot.
+Header refusals identify their `Field`, `ByteOffset`, dimensions or maxval and bounds as applicable.
+`PgmHeaderIntegerOverflow` also carries `ParsedValue` through the digit that first exceeded the integer range.
+`PgmRasterTruncated` records `Width`, `Height`, `BitsPerSample` and `long` byte counts in `RequiredByteCount`
+and `AvailableByteCount`, before allocating samples. Messages remain developer prose.
 
 `PngReader.Decode` and the PNG path through `TileEditOps.ImportHeights(string, ...)` throw
 `PngDecodeDataException : MalformedDataException` for malformed PNG input. Catch `MalformedDataException`
@@ -13742,6 +13918,13 @@ The `ke-tileedit` dotnet tool is an MCP (Model Context Protocol) server over std
 validates, renders and saves tile worlds, so an AI client can author one before any GUI editor exists. Every
 mutation runs through `KhaozEngine.TileWorld.Editing`, the same command layer the later GUI editor drives, so
 an MCP edit and a GUI edit are the same undoable operation.
+
+Direct in-process calls to `QueryService.ObjectGet` refuse an absent id with the exact `TileWorldException`
+type, `TileWorldRefusal.ObjectMissing` and `ObjectId`. Required foliage calls use `FoliageLayerMissing` and
+`LayerId`. Foliage configuration uses `FoliageCatalogArchetypeMissing` with `LayerId` and `ArchetypeId`, or
+`FoliageCatalogUnderlayMissing` with `LayerId` and `MaterialId`, before changing the document or undo history.
+Mutation service calls propagate the command and document reasons. MCP error responses retain human-readable
+text. See the [tool refusal table](../KhaozEngine.TileEdit.Tool/README.md#refusals).
 
 **Wiring into Claude Code.** Register the tool as an MCP server, repo-local for development:
 
@@ -13796,6 +13979,29 @@ relative to yet: pass them an absolute path.
 with every argument and the ASCII map legends, is the
 [`KhaozEngine.TileEdit.Tool` README](../KhaozEngine.TileEdit.Tool/README.md).
 
+**Session and prefab refusals carry data.** `TileEditSession` keeps the exact `TileWorldException` type.
+`SessionWorldExists` exposes the supplied `WorldDirectory` and manifest path as `SourceName`.
+`SessionNotOpen` exposes an owned read-only `RequiredTools` list containing `world_open` and `world_create`.
+`Open` passes known tile-world refusals through unchanged. Other world-load failures carry
+`SessionOpenFailed`, the supplied path as `SourceName` and the original `InnerException`. A failed open or
+create leaves the current world open. `QueryService.PrefabList` refuses a missing resolved directory with
+`PrefabDirectoryMissing` and its normalized absolute path as `SourceName`. Plain parameter checks stay BCL.
+MCP tool callers inspect these members through `McpException.InnerException`, which retains the original
+exception. See the [tool refusal table](../KhaozEngine.TileEdit.Tool/README.md#refusals).
+
+**Catalog edits preserve refusal details.** Direct `CatalogWriter` callers inspect the shared
+`TileWorldRefusal` reason instead of parsing messages. `CatalogEditRangeException` remains catchable as
+`ArgumentOutOfRangeException` and carries `CatalogEditHeightInvalid`, the offending `ArchetypeId`,
+`ParamName = heights` and the original `ActualValue`. The exact `TileWorldException` type carries
+`CatalogEditJsonMalformed`, `CatalogEditReadFailed`, `CatalogEditNotObject`, `CatalogEditArchetypesMissing`,
+`CatalogEditArchetypeDuplicate` or `CatalogEditHeightDuplicate`. Missing archetypes are the complete
+ordinal-sorted, owned read-only `ArchetypeIds` snapshot. Duplicate refusals carry `ArchetypeId`, and duplicate
+heights also carry `Field = collisionHeight`. `Prepare` and `WriteCollisionHeights` add `SourceName` to a
+byte-splice refusal while retaining its reason, identifiers and exact original exception in `InnerException`.
+Read failures retain their original cause, and malformed JSON retains its parser cause. These refusals leave
+the file untouched. The [catalog edit refusal table](../KhaozEngine.TileEdit.Tool/README.md#catalog-edit-refusals)
+lists each rule. The height service continues to report per-entry errors through its existing response payload.
+
 **Coordinates and row order.** Tile space throughout (x east, z north, plane a storey index from 0), a rect is
 `x, z, width, height` with the far edges EXCLUSIVE, heights live on CORNERS so their rects are one wider and
 one deeper than the tiles they carry, and rotation is quarter turns clockwise (0 west, 1 north, 2 east, 3
@@ -13808,12 +14014,26 @@ centre and radius. Every configure, density, paint and remove call is one undo s
 `render_view` is the one verb in WORLD metres, where y is up and world z is MINUS tile z: to look at tile
 (10, 20) from the south-east, target world (10.5, 0, -20.5) with the eye at (18, 8, -12).
 
+**Clearance tool refusals retain their cause.** In-process tool callers inspect
+`McpException.InnerException` for the original family's reason and identifiers. Existing `McpException`s
+pass through unchanged, and MCP clients still receive the same human-readable error text. Setting or
+removing a rule without a block exposes `TileWorldException` with `ClearanceBlockMissing`, `WorldId` and an
+owned read-only `RequiredTools` list containing `clearance_set`. Declare the block before editing rules.
+Invalid settings and unknown rule removal expose the shared clearance reasons on
+`TileClearanceArgumentException`, with `MeshRoot`, `RuleName` or the applicable tag identifiers.
+
 **Clearance refuses the save.** When the world declares clearance rules, `world_save` runs
 `TileWorldClearance.Check` after the validator against the glb meshes under the block's mesh root, and any
-`clearance.overlap`, `clearance.mesh` or `clearance.rule` issue refuses the save with every issue listed and
-nothing written. `world_validate` appends the same issues and `clearance_check` reports them alone, neither
-writing. `clearance_set` replaces the mesh root, cell size and waiver tag on every call, so an omitted value
-resets to its default. The session reads meshes through one `GltfTileMeshGeometry` per open world, which
+`clearance.overlap`, `clearance.mesh` or `clearance.rule` issue refuses the save with
+`TileWorldRefusal.SessionClearanceFailed`, nothing written and the dirty state retained. Through
+`McpException.InnerException`, the `TileWorldException` carries `WorldId`, total `IssueCount`, complete
+`Issues`, authored `MeshRoot` and normalized absolute `ResolvedMeshRoot`. Its owned read-only `Overlaps`
+snapshot carries every pair's `RuleName`, `SubjectObjectId`, `ObstacleObjectId` and sampled `Depth` in metres.
+Each overlap issue also exposes that immutable `TileClearanceOverlap` through `TileWorldIssue.Overlap`,
+which is null for non-overlap issues. `Issues` is also an owned read-only snapshot, and the original issue
+constructor and stable codes stay available. MCP text still lists every issue one per line.
+`world_validate` appends the same issues and `clearance_check` reports them alone, neither writing.
+`clearance_set` replaces the mesh root, cell size and waiver tag on every call, so an omitted value resets to its default. The session reads meshes through one `GltfTileMeshGeometry` per open world, which
 re-reads a glb whose last write time or length changed, so a glb written or re-exported while the world is open
 is seen at the next save or check with no `world_open`. The block and the check are under
 [Tile world](#tile-world-khaozenginetileworld).
@@ -16179,6 +16399,22 @@ The SIBLING of the section above, for a world made of tiles rather than of metre
 `TileDirection` facing and a `TileMoveMode`, and a step COMMITS every N ticks along a deterministic `TileRoute`.
 Click, walk at once, the server is right when the two disagree.
 
+`TileWorldServer.SetPlayerState` refuses malformed authoritative state before writing either component.
+`TileServerStateArgumentException` remains catchable as `ArgumentException`, preserves `ParamName = "state"`
+and carries a non-nullable `TileServerStateRefusal Reason`. `PlaneOutsideWorld` carries `Tile`, `Plane` and
+`PlaneCount`, `RegionNotLoaded` carries `Tile` and `Region`, `StepOriginInvalid` carries `Tile` and `StepFrom`,
+`StepProgressNotBelowTotal` carries `StepTicks` and `StepTotal`, and `RouteLimitExceeded` carries
+`RemainingSteps` and `MaximumSteps`. Actor, ground-item, object-state and static-entity placement use the same
+validator and reasons. The player-only `PlayerFootprintNotOne` carries `FootprintSize` and is checked even
+before teleport normalization. A teleport normalizes the origin and progress before validating them.
+Route adjacency is still forwarded from `TileRoute.RemainingSteps` before any state write as
+`TileRouteArgumentException`, an `ArgumentException` with `TileRouteRefusal.TilesNotAdjacent`, `From`, `To` and
+`ParamName = "b"`. Adjacency stays planar. `Next` on an idle route throws `TileRouteStateException`, an
+`InvalidOperationException` with `IdleHasNoNext`, `Index` and `TileCount`. `End` on an empty route throws the
+same type with `EmptyHasNoEnd` and `TileCount`. A finished nonempty route still answers its destination. See the
+[route refusal table](../KhaozEngine.TileWorld.Netcode/README.md#route-refusals) and
+[server state refusal table](../KhaozEngine.TileWorld.Netcode/README.md#server-state-refusals).
+
 **A step commits its tile when it STARTS.** `TileMoveState.Tile` is the tile the simulation OWNS: it flips on the
 tick the step begins, and the remaining ticks glide the DRAWN body into it from `TileMoveState.StepFrom`, the tile
 being left. So the rules run a little ahead of the picture, by strictly less than one step, and every question
@@ -16484,6 +16720,29 @@ it has no document count. Extension ids are length-prefixed, so a client whose r
 SKIPS it rather than failing, which is the forward compatibility the wire wants and also the trap. The components
 never arrive, movement and the owner route and the display name all keep working, and nothing anywhere says a
 thing.
+
+Tile component refusals carry `TileComponentCodecRefusal Reason` and typed identifiers. Encoder size refusals
+throw `TileComponentCodecArgumentException`, an `ArgumentException` subtype keeping `ParamName = "v"`.
+`RouteWriteLimitExceeded` carries `ActualCount` and `MaximumCount`. `InstanceWriteLimitExceeded` carries
+`ActualByteCount` and `MaximumByteCount`.
+
+Malformed component data throws `TileComponentCodecDataException`, derived from `MalformedDataException`.
+This replaces the sealed `InvalidDataException` catch contract. `RouteReadLimitExceeded` and
+`NameReadLimitExceeded` carry the declared count and its limit. `RoutePayloadTruncated` and
+`NamePayloadTruncated` carry the declared count and `AvailableByteCount`. `RouteStreamShortRead` and
+`NameStreamShortRead` carry the declared count and `ActualReadCount`. Route counts use `DeclaredCount` and
+`MaximumCount`, while UTF-8 name counts use `DeclaredByteCount` and `MaximumByteCount`. `PlaneOutsideWorld`
+carries `ComponentName`, `Plane` and `PlaneCount`. The [codec refusal table](../KhaozEngine.TileWorld.Netcode/README.md#component-codec-refusals)
+lists all reasons and their identifiers.
+
+Catch `MalformedDataException` around direct `ClientReplicationView.Apply` or `ApplyDelta` calls that use either
+`TileProtocol.CreateRegistry` overload. Keep an `InvalidDataException` catch too when another source still raises
+it. `TryApply`, `TryApplyRetainingUnknown` and `TryApplyDelta` retain their false/error contract. Format 2 staging
+wraps codec faults in `DeltaRebuildException` with `Failure = MalformedPacket` and preserves the original as
+`InnerException`. `ClientDeltaRebuild.TryApply` still maps that failure to `Invalid`. A `SnapshotBlobReader`
+built-in resolver that invokes a codec preserves the fault inside its `InvalidOperationException`.
+`SnapshotWriter` encoding methods can propagate the argument subtype. Frame `TryDecode` methods and the
+item-instance component's total reader retain their existing behavior.
 
 `Presenter` starts as a placeholder and is REPLACED once the document is loaded
 (`client.Presenter = new TilePresenter(document)`), so it carries the world's real tile size and plane height and
@@ -17159,7 +17418,8 @@ crosses a region handoff and reaches both heads with no second lookup.
   plane)` is off the delayed sample the body is drawn from, for click bounds and a target highlight.
   `client.TryGetLatestRemoteFootprint` is off the newest snapshot, for a rule, and it is what `TileRemoteTargets`
   resolves a remote to, so a predicted approach to a cow stops on the same tile the server stops on.
-- **Players are one tile.** `TileWorldServer.SetPlayerState` refuses a state with a `FootprintSize` above 1.
+- **Players are one tile.** `TileWorldServer.SetPlayerState` refuses a state with a `FootprintSize` above 1 as
+  `TileServerStateArgumentException` with `TileServerStateRefusal.PlayerFootprintNotOne` and `FootprintSize`.
 - **There is no simulator-wide size.** `TileMoveOptions.AgentSize` and `TileMoveSimulator.AgentSize` were removed in
   19.0.0 ([#900](https://github.com/APKiwiOrg/KhaozEngine/issues/900)). Every body is stepped, pathed and reached at
   its own state's `FootprintSize`, and `TileMoveSimulator.FootprintOf(state)` stays as the name the combat roll asks
@@ -17175,8 +17435,16 @@ crosses a region handoff and reaches both heads with no second lookup.
   own diagonal behind the near tile that put it in range and the home cell has to hold that anchor as a ghost. At
   the default 15 tile radius that is 16.42 for a 2x2 and 24.9 for an 8x8. The default `OverlapMargin` of 25 covers
   every legal body at the default radius, so only a game that narrows the band or widens the radius has to do this
-  sum, and one that does MUST keep the margin above it. `TileActorHost.Add` and `TileWorldServer.SpawnActor` refuse a
-  body the margin cannot cover, naming both numbers, rather than throwing out of the first serve. A world of
+  sum, and one that does MUST keep the margin at least the required query radius. Server construction refuses
+  `InterestRadius > OverlapMargin`
+  with `TileInterestArgumentException`, an `ArgumentException` carrying
+  `TileInterestRefusal.ConfiguredRadiusExceedsMargin`, `InterestRadius`, `OverlapMargin` and `ParamName = "config"`.
+  `TileActorHost.Add`, `TileWorldServer.SpawnActor` and `SpawnStaticEntity` refuse a body the margin cannot cover
+  with `TileInterestRangeException`, an `ArgumentOutOfRangeException` carrying `FootprintRadiusExceedsMargin`.
+  `RequiredQueryRadius` and `OverlapMargin` carry both numbers, alongside `InterestRadius`, `FootprintSize` and the
+  original `ParamName` (`"definition"` or `"spec"`) and `ActualValue` (the footprint size). See the
+  [interest refusal table](../KhaozEngine.TileWorld.Netcode/README.md#interest-refusals). Refusal happens before
+  admission, keeping it out of the first serve. A world of
   one-tile bodies is served exactly the set it was served before footprints existed and pays nothing for any of
   this.
 
@@ -21091,6 +21359,14 @@ The renderer-free foundation, one line each (all pure .NET / `System.Numerics`, 
   server-side append-only log - see "Batched async writes" below).
 - **`KhaozEngine.Content`**: config loading + JSON-schema validation: `ConfigLoader` (disk-then-embedded),
   `JsonSchemaValidator`, build-time schema enforcement via the bundled `Content.Validator` tool.
+  `ValidationReport` keeps its positional `(bool IsValid, IReadOnlyList<string> Errors)` constructor and
+  developer-facing error strings. Its additive `Findings` collection is an owned read-only snapshot, empty by
+  default, on success and for an unparseable schema. Each immutable `JsonSchemaFinding` carries an
+  `InstanceLocation` JSON Pointer, a nullable schema `Keyword`, and the decoded `PropertyName` when the
+  location addresses an object property. A required-property failure addresses the containing object,
+  without inferring the missing name from prose. Root and array-element locations have no property name.
+  An unknown property rejected by `additionalProperties` has its full instance path and property name.
+  Malformed instance JSON still throws `JsonException`.
 - **`KhaozEngine.Serialization`**: shared `System.Text.Json` baselines. **JSONC (JSON with `//` / `/* */`
   comments and trailing commas) is the engine standard for hand-authored config, manifests, settings, and
   saves**: the `Jsonc` class is the single read policy every engine JSON load routes through (`Jsonc.Deserialize`

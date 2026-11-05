@@ -18,7 +18,10 @@ public sealed partial class TileWorldServer
     /// <exception cref="ArgumentException"><paramref name="at"/> is outside the configured world or the default
     /// traversal map does not admit the footprint.</exception>
     /// <exception cref="ArgumentOutOfRangeException"><paramref name="spec"/> has a footprint outside 1 through
-    /// <see cref="TileMoveState.MaxFootprintSize"/>, or the configured interest margin cannot serve it.</exception>
+    /// <see cref="TileMoveState.MaxFootprintSize"/>.</exception>
+    /// <exception cref="TileInterestRangeException">The configured interest margin cannot serve the footprint.
+    /// Carries <see cref="TileInterestRefusal.FootprintRadiusExceedsMargin"/>, the required query radius,
+    /// configured interest radius, overlap margin and footprint size, with the original parameter and value.</exception>
     public long SpawnStaticEntity(TileCoord at, in TileStaticEntitySpawn spec)
     {
         if (spec.FootprintSize < 1 || spec.FootprintSize > TileMoveState.MaxFootprintSize)

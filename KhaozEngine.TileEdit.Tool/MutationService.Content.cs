@@ -69,7 +69,8 @@ public sealed partial class MutationService
         (MutationResult result, CompositeCommand command) = ExecuteCapturing(e =>
         {
             if (e.Catalogs.Archetype(archetypeId) is null)
-                throw new TileWorldException($"archetype '{archetypeId}' is not in the catalogs");
+                throw new TileWorldException(TileWorldRefusal.CatalogArchetypeMissing, $"archetype '{archetypeId}' is not in the catalogs")
+                { ArchetypeId = archetypeId };
             return TileEditOps.Scatter(e, archetypeId, rect, plane, spacing, jitter, seed);
         });
         return new PlacementBatchResult(result, PlacedIds(command));

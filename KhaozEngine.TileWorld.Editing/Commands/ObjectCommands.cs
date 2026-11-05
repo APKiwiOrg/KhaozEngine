@@ -27,7 +27,8 @@ public sealed class PlaceObjectCommand : TileCommandBase
         ArgumentNullException.ThrowIfNull(catalogs);
         ArgumentException.ThrowIfNullOrWhiteSpace(archetypeId);
         TileObjectArchetype a = catalogs.Archetype(archetypeId)
-            ?? throw new TileWorldException($"archetype '{archetypeId}' is not in the catalogs");
+            ?? throw new TileWorldException(TileWorldRefusal.CatalogArchetypeMissing, $"archetype '{archetypeId}' is not in the catalogs")
+            { ArchetypeId = archetypeId };
         _archetypeId = archetypeId;
         _x = x;
         _z = z;
@@ -269,12 +270,13 @@ public sealed class SetObjectTagsCommand : TileCommandBase
 }
 
 // The three things every object command needs and the document does not offer directly: the lookup that turns a
-// missing id into the same message MoveObject gives, the footprint of an instance, and the region dirty flag
-// for the fields (rotation, tags) that are written through the object rather than through a document method.
+// missing id into the same ObjectMissing refusal MoveObject gives, the footprint of an instance, and the
+// region dirty flag for fields (rotation, tags) written through the object rather than a document method.
 static class TileObjectEdit
 {
     internal static TileObject Require(TileWorldDocument doc, long id) =>
-        doc.FindObject(id) ?? throw new TileWorldException($"object {id} does not exist");
+        doc.FindObject(id) ?? throw new TileWorldException(TileWorldRefusal.ObjectMissing, $"object {id} does not exist")
+            { ObjectId = id };
 
     // An archetype the catalogs do not define is a content error the validator reports, never a reason to fault
     // an edit, so a dangling one falls back to the single tile the object is anchored on. The fallback is not

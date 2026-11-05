@@ -39,9 +39,11 @@ of its own and raises no events: every mutation marks its region `Dirty`, and th
 
 - Regions: `GetRegion`, `GetOrCreateRegion`, `RegionAt`, `RequireRegion`, `RemoveRegion`, `DeleteRegion`,
   `RegionsTouching`.
-  `GetOrCreateRegion` and `RequireRegion` are the two that THROW. `RequireRegion` throws for a region that does
-  not exist at all, and both throw for one the manifest knows about but that is not in memory (creating it
-  blind would let the next save overwrite authored terrain), so load that one through `TileWorldSource` first.
+  `RequireRegion` refuses a region that does not exist with `TileWorldRefusal.RegionMissing`. Both it and
+  `GetOrCreateRegion` refuse one the manifest knows about but that is not in memory with `RegionNotLoaded`
+  (creating it blind would let the next save overwrite authored terrain), so load that one through
+  `TileWorldSource` first. Both carry `TileWorldException.Region`, and `RequireRegion` also carries the
+  requested planar `TileX` and `TileZ`.
 - Tiles: `Get`/`Set` pairs for `Underlay`, `Overlay`, `OverlayShape`, `OverlayRotation` and `Settings`, where
   `TileSettings` is `Blocked`, `Indoors`, `Bridge`, `NoDraw`, `FeatherOverlay` and `TileOverlayShape` is `Full`, `DiagonalHalf`,
   `CornerQuarter`, `CornerThreeQuarter`. Reads outside a loaded region answer the default, writes require it.
@@ -78,12 +80,37 @@ through a tmp plus rename, and clears `Dirty` only once the manifest naming thos
 `TileWorldLoadOptions.RegisterMigration` complete the surface. Region file names are invariant-culture and
 strictly canonical, so `r_+1_2.json` is not region (1, 2) and the stale sweep will not delete a file the
 manifest never named. A torn write is DETECTED, not rolled back: bytes are replaced in place, so an interrupted
-save leaves what it already wrote, and the next load refuses the world naming the first disagreeing file.
+save leaves what it already wrote, and the next load refuses the world with `RegionHashMismatch`.
+`TileWorldException.SourceName` identifies the first disagreeing file, `Region` identifies its coordinate,
+and `ExpectedHash` and `ActualHash` carry the manifest and file-byte hashes.
+
+Manifest loading distinguishes read, JSON, format-version, migration and field admission failures through
+`TileWorldRefusal`. Each carries the manifest path in `SourceName`. `ManifestJsonMalformed` retains the
+original `JsonException` and its nullable JSON path in `Field`. Required or invalid manifest fields use
+their property name in `Field`, with the refused `PlaneCount` or `TileSize` where applicable.
+`ManifestFormatVersionUnsupported` carries the requested `FormatVersion` and `SupportedFormatVersion`.
+`ManifestMigrationMissing` carries the original `FormatVersion` and the missing step's `MigrationFrom`
+and `MigrationTo`. `ManifestMigrationReturnedNull` carries the step's `MigrationFrom` and `MigrationTo`.
+`ManifestNotObject` distinguishes a non-object JSON root from `ManifestEmpty`, a null deserialization result.
+`ManifestReadFailed`, `RegionReadFailed` and `WorldStaleRegionDeleteFailed` retain their original I/O cause
+in `InnerException`. The region read and stale-delete failures also carry the file path and region coordinate.
+The [refusal table](#refusals) lists each reason and identifier.
 
 Foliage layers are an optional manifest block. Their density bytes use base64 and retain the row convention
 above. An empty layer list is omitted, so old world JSON and old world hashes stay unchanged. Non-empty foliage
 is part of `TileWorldHash.OfWorld`, including every placement and exclusion setting. `TileWorldSource.Open`
 loads the global layers without materialising a region, and a partial save carries them forward.
+
+Layer construction, DTO admission and document admission throw `TileFoliageArgumentException`, an
+`ArgumentException` subtype with non-nullable `TileWorldRefusal Reason` and the foliage identifiers in the
+[refusal table](#refusals). `ParamName` retains its original null value. File loading adds the manifest path
+in `TileWorldException.SourceName`, preserves the same reason and every identifier, and retains the original
+refusal in `InnerException`. Direct null `density` and `archetypes` constructor arguments stay plain
+`ArgumentNullException`s with their original `ParamName`. A null manifest density instead uses
+`FoliageDensityNull`, `LayerId` and `Field` = `density`, retaining the original null-parameter exception.
+`ExpectedCount` is `long?` on the foliage subtype and retains the existing `int?` type on `TileWorldException`.
+The density-length guard runs after the sample limit, so its expected count fits both types without loss.
+A null layer entry carries `LayerIndex` only when the caller knows its position. No placeholder index is used.
 
 The optional `clearance` block is the other manifest-level authoring block. It is outside every world hash and
 is described under [Clearance](#clearance).
@@ -93,6 +120,7 @@ only, `EnsureLoaded(coord)`/`EnsureLoaded(rect)` materialise regions on demand h
 `IsLoaded`, `KnownRegions` and `Document` expose the state, and `Unload(coord)` drops a CLEAN region while
 refreshing its known-hash table from that region's current bytes, so a region that was edited and saved is not
 later mistaken for a torn write, and refreshing its marker rows the same way and for the same reason.
+Unsaved changes are refused with `RegionDirty` and the region coordinate in `TileWorldException.Region`.
 `Document.RemoveRegion(coord)` takes that same safe unload path on a source-backed document. Use
 `Document.DeleteRegion(coord)` for permanent deletion: it accepts dirty or unloaded regions and clears the
 source's known hash, unloaded hash and marker rows so the next save removes the file and manifest entry.
@@ -117,6 +145,163 @@ two, and it is the one a netcode connect gate should compare. `OfWorld` alone ca
 then disagree on the baked collision map, which reads as a per-step correction on every wall instead of a refusal
 at the door. `OfWorld` is unchanged, so moving a gate to the composed digest is a change on BOTH heads at once.
 
+## Refusals
+
+`TileWorldException` retains its exact type and both message-only constructors. Use `Reason` and the
+identifiers below to distinguish region residency, content, world-file, manifest-region, object, marker, dense-layer,
+embedded-schema, validation, prefab, catalog, steep-companion, clearance and foliage refusals.
+Messages remain developer prose. `Reason` is nullable only for a message-only instance built outside the
+engine. Its reason-taking constructors also accept an original cause through `InnerException`.
+`TileWorldRefusalConstructorFenceTests` guards engine callers against both message-only constructors.
+It scans the complete TileWorld, Editing, Physics, Render3D and TileEdit.Tool assemblies, including
+compiler-generated lambda bodies, so every engine-created refusal supplies a reason.
+PGM heightmap reads also use this type and enum. Their source, header and raster identifiers are listed in
+the [editing refusal table](../KhaozEngine.TileWorld.Editing/README.md#refusals).
+Byte-preserving catalog edits share this enum and use `ArchetypeIds` for the complete ordinal-sorted list
+of missing archetypes, copied into an owned read-only snapshot. See the
+[catalog edit refusal table](../KhaozEngine.TileEdit.Tool/README.md#catalog-edit-refusals) for their reasons
+and the `ArgumentOutOfRangeException`-compatible `CatalogEditRangeException`.
+TileEdit session admission and prefab discovery also share this type and enum. The
+[tool refusal table](../KhaozEngine.TileEdit.Tool/README.md#refusals) lists their session, source-path and
+clearance aggregate identifiers.
+Placed collider geometry also shares this type and enum. The
+[physics refusal table](../KhaozEngine.TileWorld.Physics/README.md#refusals) lists `ColliderCollisionHeightMissing`
+and its archetype, collision-kind, object and tile identifiers.
+
+Regions are planar. `Region` is a `RegionCoord?`, and `TileX` and `TileZ` are `int?` values set only when the
+guard received tile coordinates. They never imply a plane. A region-only operation leaves both null.
+For an authored object or marker outside its containing region, `Tile` carries its full address, including
+the plane supplied by that content. Region content is checked on parse and before the first save write.
+Region attachment and undo restoration also check plane counts. `SourceName` is set when parsing a named
+region file and is null for these in-memory attachment, restoration and save checks.
+
+| `TileWorldRefusal` reason | Refuses | Identifiers |
+| --- | --- | --- |
+| `RegionMissing` | An operation requiring a region that does not exist | `Region`, plus `TileX` and `TileZ` for a tile lookup |
+| `RegionNotLoaded` | An operation requiring a known region that is not loaded | `Region`, plus `TileX` and `TileZ` for a tile lookup |
+| `RegionDirty` | Unloading a region with unsaved changes | `Region` |
+| `ManifestRegionDuplicate` | A repeated region coordinate in `Open` or `OfManifestRegions` | `Region`, plus `SourceName` for `Open` |
+| `ManifestRegionHashMissing` | A null region hash passed to `OfManifestRegions` | `Region` |
+| `RegionHashMismatch` | Region bytes that disagree with the manifest's hash | `Region`, `SourceName`, `ExpectedHash`, `ActualHash` |
+| `WorldStaleRegionDeleteFailed` | A save whose stale region file cannot be deleted | `SourceName`, `Region`, original `InnerException` |
+| `ManifestReadFailed` | A world manifest that cannot be read | `SourceName`, original `InnerException` |
+| `ManifestNotObject` | A manifest whose JSON root is not an object | `SourceName` |
+| `ManifestJsonMalformed` | Manifest JSON that cannot be parsed or deserialized | `SourceName`, nullable parser path in `Field`, original `JsonException` in `InnerException` |
+| `ManifestFormatVersionMissing` | A manifest with no format version | `SourceName`, `Field` = `formatVersion` |
+| `ManifestFormatVersionNotInteger` | A manifest whose format version is not an integer | `SourceName`, `Field` = `formatVersion` |
+| `ManifestFormatVersionUnsupported` | A manifest newer than the supported format | `SourceName`, `FormatVersion`, `SupportedFormatVersion` |
+| `ManifestMigrationMissing` | A manifest requiring an unregistered migration step | `SourceName`, original `FormatVersion`, `MigrationFrom`, `MigrationTo` |
+| `ManifestMigrationReturnedNull` | A migration that returns no JSON object | `SourceName`, `MigrationFrom`, `MigrationTo` |
+| `ManifestEmpty` | A manifest that deserializes to no value | `SourceName` |
+| `ManifestPlaneCountInvalid` | A manifest whose plane count is below one | `SourceName`, `Field` = `planeCount`, `PlaneCount` |
+| `ManifestTileSizeInvalid` | A manifest whose tile size is not positive | `SourceName`, `Field` = `tileSize`, `TileSize` |
+| `ManifestIdMissing` | A manifest with a missing or blank world id | `SourceName`, `Field` = `id` |
+| `RegionReadFailed` | A region file that cannot be read | `SourceName`, `Region`, original `InnerException` |
+| `RegionPlaneCountMismatch` | A region whose plane count differs from the document | `Region`, `ActualPlaneCount`, `ExpectedPlaneCount`, plus `SourceName` on parse |
+| `RegionObjectOutsideBounds` | An object anchored outside its containing region | `Region`, `ObjectId`, `ArchetypeId`, `Tile`, plus `SourceName` on parse |
+| `RegionObjectPlaneOutsideRange` | An object on a plane the document does not have | `Region`, `ObjectId`, `ArchetypeId`, `Plane`, `PlaneCount`, plus `SourceName` on parse |
+| `RegionMarkerOutsideBounds` | A marker outside its containing region | `Region`, `MarkerName`, `Tile`, plus `SourceName` on parse |
+| `RegionMarkerPlaneOutsideRange` | A marker on a plane the document does not have | `Region`, `MarkerName`, `Plane`, `PlaneCount`, plus `SourceName` on parse |
+| `RegionCoordinateMismatch` | A region file whose coordinate differs from its manifest row | Expected `Region`, `ActualRegion`, `SourceName` |
+| `RegionFileEmpty` | A region file that deserializes to no region | `SourceName` |
+| `RegionJsonMalformed` | Region JSON that cannot be parsed or deserialized | `SourceName`, `Field` when the parser supplies a JSON path, original `JsonException` in `InnerException` |
+| `ObjectMissing` | Moving, editing or querying a required object id that is absent | `ObjectId` |
+| `ObjectIdDuplicate` | Inserting an object id already in use | `ObjectId` |
+| `ObjectIndexStale` | Moving an indexed object absent from its indexed region | `ObjectId`, indexed `Region` |
+| `MarkerMissing` | Removing a required marker name that is absent | `MarkerName` |
+| `MarkerNameInUnloadedRegion` | Authoring a marker name already held by an unloaded region | `MarkerName`, holding `Region`, existing marker's full `Tile` |
+| `LayerBase64Malformed` | A dense layer with malformed base64 | `LayerName`, `SourceName` and `Plane` when loading a region or prefab, original `FormatException` in `InnerException` |
+| `LayerByteCountMismatch` | A dense layer whose decoded byte count differs from its shape | `LayerName`, `ActualByteCount`, `ExpectedByteCount`, plus `SourceName` and `Plane` when loading a region or prefab |
+| `SchemaResourceMissing` | An embedded catalog schema resource absent from the assembly | `ResourceName` |
+| `CatalogJsonMalformed` | Catalog JSON that cannot be parsed or deserialized | `SourceName`, nullable parser path in `Field`, original `JsonException` in `InnerException` |
+| `CatalogSchemaMismatch` | A catalog that fails its JSON schema | `SourceName`, owned read-only `SchemaFields` and `SchemaFindings` snapshots |
+| `CatalogReadFailed` | A catalog file that cannot be read | `SourceName`, original `InnerException` |
+| `CatalogMaterialIdReserved` | A material using id 0, reserved for void | `SourceName`, `MaterialId` |
+| `CatalogMaterialDuplicate` | A material id already defined | `SourceName`, `FirstSourceName`, `MaterialId`, `MaterialName` |
+| `CatalogArchetypeIdMissing` | An archetype with a missing or blank id | `SourceName`, `ArchetypeId` as supplied |
+| `CatalogArchetypeDuplicate` | An archetype id already defined | `SourceName`, `FirstSourceName`, `ArchetypeId` |
+| `CatalogWalkSurfaceNull` | A null entry in an archetype's walk surfaces | `SourceName`, `ArchetypeId`, `SurfaceIndex` |
+| `CatalogCollisionHeightInvalid` | A collision height that is not finite and positive | `SourceName`, `ArchetypeId`, `Field`, `Value` |
+| `CatalogWalkSurfaceNonFinite` | A non-finite walk-surface height or extent | `SourceName`, `ArchetypeId`, `SurfaceIndex`, `Field`, `Value` |
+| `CatalogWalkSurfaceBoundsUnordered` | Walk-surface bounds whose minimum is not below the maximum | `SourceName`, `ArchetypeId`, `SurfaceIndex`, `MinField`, `MaxField`, `Minimum`, `Maximum` |
+| `CatalogArchetypeMissing` | Placement or scatter requiring an archetype absent from the catalogs | `ArchetypeId` |
+| `SteepSelfReference` | A material using itself as its steep companion | `SourceName`, `MaterialId`, `MaterialName`, `CompanionMaterialId` |
+| `SteepCompanionMissing` | A steep companion absent from the same catalog | `SourceName`, `MaterialId`, `MaterialName`, `CompanionMaterialId` |
+| `SteepCompanionWater` | A water material used as a steep companion | `SourceName`, `MaterialId`, `MaterialName`, `CompanionMaterialId`, `CompanionMaterialName` |
+| `SteepFromOutsideRightAngle` | A resolved steep blend start outside (0, 90) | `SourceName`, `MaterialId`, `MaterialName`, `Field` = `fromDegrees`, `FromDegrees`, `ToDegrees` |
+| `SteepToOutsideRightAngle` | A resolved steep blend end outside (0, 90) | `SourceName`, `MaterialId`, `MaterialName`, `Field` = `toDegrees`, `FromDegrees`, `ToDegrees` |
+| `SteepBandUnordered` | A resolved steep blend start not below its end | `SourceName`, `MaterialId`, `MaterialName`, `FromDegrees`, `ToDegrees`, `FromIsDefault`, `ToIsDefault` |
+| `SteepCosinesCollapsed` | A steep blend whose endpoint cosines cannot be ordered in single precision | `SourceName`, `MaterialId`, `MaterialName`, `FromDegrees`, `ToDegrees` |
+| `WorldValidationFailed` | A document with semantic validation issues | `WorldId`, total `IssueCount`, complete owned read-only `Issues` snapshot |
+| `PrefabSizeNonPositive` | A prefab whose width or height is not positive | `PrefabName`, `Width`, `Height`, plus `SourceName` on load |
+| `PrefabPlaneCountNonPositive` | A prefab file whose plane count is not positive | `SourceName`, `PrefabName`, `PlaneCount` |
+| `PrefabPlaneCountMismatch` | A prefab whose plane list differs from its declaration | `PrefabName`, `ActualPlaneCount`, `ExpectedPlaneCount`, plus `SourceName` on load |
+| `PrefabLayerCountMismatch` | A hand-built prefab layer whose entry count differs from its size | `PrefabName`, `Plane`, `LayerName`, `ActualCount`, `ExpectedCount`, `Width`, `Height` |
+| `PrefabObjectOutsideBounds` | A prefab file with an object anchored outside its footprint | `SourceName`, `PrefabName`, `ArchetypeId`, full relative `Tile`, `Width`, `Height` |
+| `PrefabObjectPlaneOutsideRange` | A prefab object on a plane the prefab does not have | `PrefabName`, `ArchetypeId`, `Plane`, `PlaneCount`, full relative `Tile`, plus `SourceName` on load |
+| `PrefabMarkerOutsideBounds` | A prefab file with a marker outside its footprint | `SourceName`, `PrefabName`, `MarkerName`, full relative `Tile`, `Width`, `Height` |
+| `PrefabMarkerPlaneOutsideRange` | A prefab marker on a plane the prefab does not have | `PrefabName`, `MarkerName`, `Plane`, `PlaneCount`, full relative `Tile`, plus `SourceName` on load |
+| `PrefabEmpty` | A prefab file that deserializes to no value | `SourceName` |
+| `PrefabJsonMalformed` | Prefab JSON that cannot be parsed or deserialized | `SourceName`, nullable parser path in `Field`, original `JsonException` in `InnerException` |
+| `PrefabReadFailed` | A prefab file that cannot be read | `SourceName`, original `InnerException` |
+| `ClearanceMeshRootRooted` | A rooted clearance mesh root | `MeshRoot` |
+| `ClearanceMeshRootBackslash` | A clearance mesh root containing a backslash | `MeshRoot` |
+| `ClearanceCellSizeOutsideRange` | A non-finite or out-of-range sampling cell edge | `CellSize`, `Minimum`, `Maximum` |
+| `ClearanceWaiverTagBlank` | A supplied blank waiver tag | `WaiverTag` |
+| `ClearanceRuleDuplicate` | A repeated ordinal rule name | `RuleName` |
+| `ClearanceMeshRootRequired` | Rules with a missing or blank mesh root | `MeshRoot`, `RuleCount` |
+| `ClearanceRuleMissing` | Removing an unknown rule | `RuleName` |
+| `ClearanceRuleNull` | A null rule entry | Zero-based `RuleIndex` |
+| `ClearanceRuleNameBlank` | A null or blank rule name | Nullable `RuleName` |
+| `ClearanceToleranceInvalid` | A negative or non-finite tolerance | `RuleName`, `Tolerance` |
+| `ClearanceTagsEmpty` | A missing or empty tag list | `RuleName`, `Field`, `TagCount` (null for a null list) |
+| `ClearanceTagBlank` | A null or blank tag | `RuleName`, `Field`, zero-based `TagIndex`, nullable `Tag` |
+| `ClearanceRulesNull` | A file block with a null rule list | `Field` = `rules` |
+| `ClearanceMeshRootNull` | A file block with a null mesh root | `SourceName`, `Field` = `meshRoot`, original `ArgumentNullException` with `ParamName` = `meshRoot` in `InnerException` |
+| `ClearanceBlockMissing` | Editing rules before declaring a clearance block through TileEdit | `WorldId`, owned read-only `RequiredTools` snapshot containing `clearance_set` |
+| `FoliageIdBlank` | A null or blank foliage layer id | Nullable `LayerId` |
+| `FoliagePlaneNegative` | A negative foliage plane | `LayerId`, `Plane` |
+| `FoliageOriginNonFinite` | A non-finite raster origin | `LayerId`, `OriginX`, `OriginZ` |
+| `FoliageCellSizeInvalid` | A non-finite or non-positive cell edge | `LayerId`, `CellSize` |
+| `FoliageDimensionsNonPositive` | A non-positive raster dimension | `LayerId`, `Width`, `Height` |
+| `FoliageSampleLimitExceeded` | A raster exceeding the supported sample count | `LayerId`, `SampleCount` (`long`), `MaximumSampleCount` |
+| `FoliageDensityLengthMismatch` | Density length differing from the raster dimensions | `LayerId`, `ActualCount`, `ExpectedCount`, `Width`, `Height` |
+| `FoliageSpacingInvalid` | Non-finite or non-positive placement spacing | `LayerId`, `Spacing` |
+| `FoliageScaleRangeInvalid` | A non-finite, non-positive or unordered scale range | `LayerId`, `ScaleMin`, `ScaleMax` |
+| `FoliageRootOffsetNonFinite` | A non-finite root offset | `LayerId`, `RootOffset` |
+| `FoliageDoorClearanceInvalid` | A negative or non-finite door clearance | `LayerId`, `DoorClearance` |
+| `FoliageEdgeFadeInvalid` | A negative or non-finite edge fade | `LayerId`, `EdgeFade` |
+| `FoliageArchetypesEmpty` | A layer without an archetype | `LayerId`, `ArchetypeCount` |
+| `FoliageArchetypeIdBlank` | A null or blank archetype id | `LayerId`, nullable `ArchetypeId`, zero-based `ArchetypeIndex` |
+| `FoliageArchetypeDuplicate` | A repeated ordinal archetype id | `LayerId`, `ArchetypeId` |
+| `FoliageWeightInvalid` | A non-finite or non-positive archetype weight | `LayerId`, `ArchetypeId`, `Weight` |
+| `FoliageTotalWeightNonFinite` | A non-finite accumulated archetype weight | `LayerId`, `TotalWeight` |
+| `FoliageUnderlayVoid` | Void material zero as an allowed underlay | `LayerId`, `MaterialId` = `0` |
+| `FoliageLayerNull` | A null layer entry in a manifest | Zero-based `LayerIndex` when the caller knows the index |
+| `FoliageArchetypesNull` | A null archetype list in a manifest layer | `LayerId` |
+| `FoliageArchetypeNull` | A null archetype entry in a manifest layer | `LayerId`, zero-based `ArchetypeIndex` |
+| `FoliageLayerDuplicate` | A repeated ordinal layer id | `LayerId` |
+| `FoliagePlaneOutsideWorld` | A layer on a plane the world does not have | `LayerId`, `Plane`, `PlaneCount` |
+| `FoliageDensityNull` | A null density array in a manifest layer | `SourceName`, `LayerId`, `Field` = `density`, original `ArgumentNullException` with `ParamName` = `density` in `InnerException` |
+| `FoliageLayerMissing` | A required foliage query, density edit, paint or removal for an absent layer | `LayerId` |
+| `FoliageCatalogArchetypeMissing` | A TileEdit foliage configuration referencing an archetype absent from the catalogs | `LayerId`, `ArchetypeId` |
+| `FoliageCatalogUnderlayMissing` | A TileEdit foliage configuration allowing a material absent from the catalogs | `LayerId`, `MaterialId` |
+
+Required foliage adapters share `FoliageLayerMissing`. The document's optional `GetFoliageLayer` still returns
+null for an absent id. TileEdit checks catalog references before replacing a layer. A refused lookup or
+reference change leaves the document and undo history unchanged.
+
+`MoveObject`, required object commands and `QueryService.ObjectGet` share `ObjectMissing`. A stale object
+index can follow direct edits to a region's public object list. `MoveObject` checks the destination region
+before reporting `ObjectIndexStale`, and `RebuildObjectIndex` repairs the index after bulk list edits.
+`MarkerNameInUnloadedRegion` identifies the existing marker's tile, including its known plane, rather than
+the requested destination. Load that region before moving the marker, or choose a different name.
+
+Region and prefab loaders pass dense-layer context directly to the codec. `LayerName` is `heights`,
+`underlay`, `overlay`, `overlayShape`, `overlayRotation` or `settings`, with `heights` also used for prefab
+relative heights. `SourceName` is the file name or supplied content name, and `Plane` is the decoded plane's
+index. Neither identifier is reconstructed from message text.
+
 ## Catalogs and validation
 
 Catalogs are game content, referenced by id and never stored in the world. `TileWorldCatalogs.Load(paths)` reads
@@ -124,8 +309,15 @@ catalog JSON files (schema-checked, JSONC tolerated), `LoadJson` parses one in m
 loaded ones, and `Greybox()` is the engine's six-material, twelve-archetype test catalog covering every
 collision kind with square and non-square footprints. `Material(id)` and `Archetype(id)` are the lookups, and
 `Archetype` is null-tolerant, so a null archetype id in content is a validator finding rather than a throw.
-Malformed or duplicate content throws a `TileWorldException` naming the source file, and
-`TileWorldSchema.GetCatalogJson()` returns the embedded catalog schema. `GroundMaterial` is
+Required-archetype adapters in placement commands and scatter use `CatalogArchetypeMissing` and `ArchetypeId`.
+The null-returning queries keep their existing behavior.
+Malformed or duplicate content throws the exact `TileWorldException` type with a catalog reason from the
+[refusal table](#refusals). `SourceName` identifies the content label or file path, and duplicates also carry
+`FirstSourceName` plus the material or archetype id. `CatalogSchemaMismatch` carries `SchemaFields` as distinct
+failing instance locations and immutable `KhaozEngine.Content.JsonSchemaFinding` values in `SchemaFindings`.
+Locations are JSON Pointers, including unknown properties such as `/materials/0/steep/chain`. Both collections
+are owned read-only snapshots. `TileWorldSchema.GetCatalogJson()` returns the embedded catalog schema. If the
+resource is missing, it throws `SchemaResourceMissing` with `ResourceName`. `GroundMaterial` is
 `{ Id, Name, Color, Texture, Kind, TilesPerMetre, Steep }` (`Ground` or `Water`, id 0 reserved for void) and
 `TileObjectArchetype` is
 `{ Id, Name, MeshRef, LodMeshRef, SizeX, SizeZ, CollisionKind, IsRoof, Interactive, YawOffsetDegrees, Tags, WalkSurfaces, CollisionHeight }`, with
@@ -167,9 +359,10 @@ unrotated), and an extent may reach past the footprint, the way a bridge landing
 }
 ```
 
-The schema requires `height` and refuses any other key. The loader refuses a non-finite height or extent, and a min
-that is not below its max when both are given, naming the source and the archetype. `Merge` re-runs that check on
-every archetype it adds, so an in-memory edit cannot carry a NaN through it. A pair with one null side is not
+The schema requires `height` and refuses any other key. The loader uses `CatalogWalkSurfaceNonFinite` for a
+non-finite height or extent and `CatalogWalkSurfaceBoundsUnordered` for a min that is not below its max when
+both are given. Both carry `SourceName`, `ArchetypeId` and `SurfaceIndex`, plus the field and value or both
+bound fields and values. `Merge` re-runs that check on every archetype it adds, so an in-memory edit cannot carry a NaN through it. A pair with one null side is not
 judged at load, because its resolved edge depends on a tile size the catalog does not know, and a rectangle that
 comes out inverted simply covers nothing. An empty list loads as null. Walk surfaces change no footprint, no
 collision and no pathing. `OfCatalogs` digests them, writing nothing for an archetype without any, so a catalog
@@ -178,8 +371,9 @@ with no walk surfaces keeps the digest it had before the field existed.
 `CollisionHeight` is the optional `collisionHeight` catalog field: how tall the object stands for collision, in
 metres above the mesh's local base, so a collider's top is the height the model stands at plus this. Absent loads
 as null, and a present value must be a finite number above 0. The schema refuses 0, a negative number and a JSON
-`null`. `Merge` refuses any such value edited in after load, NaN and infinity included, naming the source and the
-archetype. The tile collision map and pathing never read it. `KhaozEngine.TileWorld.Physics` requires it on every
+`null`. `Merge` refuses any such value edited in after load, NaN and infinity included, with
+`CatalogCollisionHeightInvalid`, `SourceName`, `ArchetypeId`, `Field` = `collisionHeight` and `Value`.
+The tile collision map and pathing never read it. `KhaozEngine.TileWorld.Physics` requires it on every
 `Solid`, `Diagonal`, `Wall` and `WallCorner` archetype, and `ke-tileedit`'s `archetype_measure_heights` and
 `archetype_set_collision_heights` fill it from the kit. `OfCatalogs` digests it only when present, so a catalog
 without heights keeps its digest.
@@ -198,14 +392,23 @@ are optional and default to `GroundMaterialSteep.DefaultFromDegrees` (40) and `D
 blends every tap of the material toward the companion over that band of the ground normal's slope, whichever corner
 or overlay slot the material fills, so a cliff face renders the companion even where the corner vote picked the
 material at its foot. A companion's own `steep` is never followed. The schema refuses a missing `material`, an
-unknown key, and a band end outside (0, 90). `GroundMaterialSteepRules` then refuses, naming the source file and
-the material, a companion that is not another material of the SAME catalog file, a self reference, a `Water`
-companion, a band whose resolved start is not below its resolved end, and a band too narrow for its ends to differ
-in single precision cosine, which is what the renderer blends on. `OfCatalogs` digests it only when
-present, so a catalog without companions keeps its digest.
+unknown key, and a band end outside (0, 90). `GroundMaterialSteepRules.ThrowIfInvalid` throws
+`TileWorldException` with one of the seven `Steep` reasons in the refusal table. `SourceName`, `MaterialId`
+and `MaterialName` identify the source and first invalid material in ascending id order.
+`SteepSelfReference`, `SteepCompanionMissing` and `SteepCompanionWater` carry `CompanionMaterialId`, with
+`CompanionMaterialName` also set for water. Companions must belong to the SAME catalog file.
+`SteepFromOutsideRightAngle` and `SteepToOutsideRightAngle` name the invalid endpoint in `Field`.
+All four endpoint and band reasons carry resolved `FromDegrees` and `ToDegrees`, and `SteepBandUnordered`
+also carries `FromIsDefault` and `ToIsDefault`. `SteepCosinesCollapsed` refuses ends that cannot be ordered
+in single precision cosine, which is what the renderer blends on. `Problem` reports the same validation
+finding as developer prose without throwing. `OfCatalogs` digests the companion only when present, so a
+catalog without companions keeps its digest.
 
 `TileWorldValidator.Validate(doc, catalogs)` returns `TileWorldIssue(Code, Message, Region, Tile)` records and
-never throws on bad content, while `ValidateOrThrow` throws once quoting the first five. The codes are stable
+never throws on bad content. `ValidateOrThrow` throws `WorldValidationFailed` with `WorldId`, total
+`IssueCount` and the complete `Issues` list, including findings beyond the first five summarized in the
+developer message. `Issues` is copied when set and exposed as a read-only snapshot, so changing the source
+collection or casting the exposed list cannot mutate it. The codes are stable
 and callers may branch on them: `header.planeCount`, `header.tileSize`, `header.planeHeight`,
 `region.planeCount`, `material.missing`, `overlay.shape`, `archetype.missing`, `object.plane`,
 `object.footprint`, `object.duplicateId`, `object.region`, `marker.plane`, `marker.duplicateName`,
@@ -235,7 +438,7 @@ none, and `SetClearance(settings)` replaces it. The constructor validates every 
 
 | Field | Contract |
 |---|---|
-| `meshRoot` | Directory the archetypes' `meshRef` paths resolve under, relative to the directory holding `world.json`, with forward slashes only (`../models`). A rooted path is refused with `ArgumentException`, because world files are committed and shared. The rule is the same on every OS: a leading `/` or `\`, a drive prefix such as `C:` and any backslash are refused. Required while rules exist. |
+| `meshRoot` | Directory the archetypes' `meshRef` paths resolve under, relative to the directory holding `world.json`, with forward slashes only (`../models`). A rooted path is refused with `TileClearanceArgumentException` (`ClearanceMeshRootRooted`), because world files are committed and shared. The rule is the same on every OS: a leading `/` or `\`, a drive prefix such as `C:` and any backslash are refused. Required while rules exist. |
 | `cellSize` | Sampling and rasterizing pitch in metres, 0.02 through 1. Default 0.1 (`TileClearanceSettings.DefaultCellSize`). |
 | `waiverTag` | Object tag that exempts an object from every rule. Optional. Null waives nothing. |
 | `rules` | `TileClearanceRule(Name, SubjectTags, ObstacleTags, Tolerance)` in authoring order. Names are unique by ordinal comparison, both tag lists are non-empty with no blank tag, and `tolerance` is metres of allowed depth, finite and at least 0, default 0. |
@@ -243,7 +446,15 @@ none, and `SetClearance(settings)` replaces it. The constructor validates every 
 `TileClearanceRule` compares by value: the name and every tag ordinally, tag order included, and the tolerance.
 A save writes every default out. An absent block stays absent, so an older world keeps its bytes. The block is
 outside `TileWorldHash.OfWorld`, so adding or tuning a rule changes no world digest and forces no navigation
-rebake. A malformed block, a rooted `meshRoot` included, fails the load as a `TileWorldException`.
+rebake. Direct validation throws `TileClearanceArgumentException`, an `ArgumentException` subtype with a
+non-nullable `TileWorldRefusal Reason` and the identifiers in the [refusal table](#refusals). Its `ParamName`
+remains null, as before. A null constructor `meshRoot` and a null `WithRule` argument remain plain
+`ArgumentNullException`s with their original `ParamName`.
+
+A malformed block, a rooted `meshRoot` included, fails the load as a `TileWorldException`. The file wrapper
+adds the manifest path in `SourceName` and preserves the exact reason, all applicable clearance identifiers
+and the original exception in `InnerException`. A null file mesh root translates the plain parameter check
+to `ClearanceMeshRootNull`, with `Field` = `meshRoot` and the original `ArgumentNullException` retained.
 
 **Rule matching.** An object is a subject of a rule when its archetype's catalog `tags` contain any of the rule's
 `subjectTags`, and an obstacle when they contain any `obstacleTags`. Matching reads archetype tags only, and the
@@ -276,6 +487,10 @@ The codes are stable (`TileWorldClearance.OverlapCode`, `MeshCode`, `RuleCode`):
   above `ClearanceSolid.MaxCells` and a mesh source that reports success with no mesh). Reported once per archetype, and its objects are never silently passed.
 - `clearance.overlap`: one per penetrating pair, at its deepest sample, naming the rule, both objects with their
   ids, archetypes, tiles and planes, and the depth in metres. `Region` and `Tile` are the subject's.
+  `TileWorldIssue.Overlap` carries an immutable `TileClearanceOverlap` with `RuleName`, `SubjectObjectId`,
+  `ObstacleObjectId` and the full sampled `Depth` in metres. Other issues leave `Overlap` null. The original
+  four-argument `TileWorldIssue` constructor and stable `Code` remain available, so callers need no message
+  parsing to identify a pair.
 
 Issues come back rule issues first, then mesh issues by archetype id, then overlaps by rule order, subject id and
 obstacle id. An object whose archetype the catalogs lack is skipped, because `Validate` reports it as
@@ -452,6 +667,13 @@ the tile actually draws with, so a shape whose overlay material is missing is pa
 `TilePrefab` is a rect of tiles lifted out of a world (every layer, corner heights relative to the rect's SW
 corner, objects and markers in prefab-relative coordinates) that can be stamped elsewhere with a rotation.
 `TilePrefabFile.Save`/`Load` are its JSON form (base64 layers, indented for git, atomic replace).
+`Load` and hand-built `Place` share the size, plane-list and object/marker plane reasons in the
+[refusal table](#refusals). `PrefabName` is the authored name, including an empty unnamed label.
+`Load` also carries the file path in `SourceName`, while hand-built admission leaves it null. Empty,
+malformed and unreadable files have no admitted prefab value, so `PrefabName` remains null.
+File admission additionally checks positive plane counts and object/marker footprints. Serialized dense-layer
+errors retain `LayerBase64Malformed` or `LayerByteCountMismatch`, while hand-built layer lengths use
+`PrefabLayerCountMismatch`.
 
 - `Extract(doc, catalogs, rect, planeFrom, planeCount, includeObjects, includeMarkers, name,
   includeDerivedHeights)` lifts it, stamping each object's UNROTATED `SizeX`/`SizeZ` so a rotation later needs no

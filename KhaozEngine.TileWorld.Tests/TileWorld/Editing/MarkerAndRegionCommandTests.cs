@@ -108,7 +108,8 @@ public class MarkerAndRegionCommandTests
     {
         TileEditingDocument ed = Editing(out TileWorldDocument doc);
         TileWorldException ex = Assert.Throws<TileWorldException>(() => ed.Execute(new RemoveMarkerCommand("ghost")));
-        Assert.Contains("ghost", ex.Message);
+        Assert.Equal(TileWorldRefusal.MarkerMissing, ex.Reason);
+        Assert.Equal("ghost", ex.MarkerName);
         Assert.Empty(doc.AllMarkers());
     }
 
@@ -296,7 +297,10 @@ public class MarkerAndRegionCommandTests
     {
         TileEditingDocument ed = Editing(out TileWorldDocument doc);
         TileWorldException ex = Assert.Throws<TileWorldException>(() => ed.Execute(new DeleteRegionCommand(new RegionCoord(3, 3))));
-        Assert.Contains("(3, 3)", ex.Message);
+        Assert.Equal(TileWorldRefusal.RegionMissing, ex.Reason);
+        Assert.Equal(new RegionCoord(3, 3), ex.Region);
+        Assert.Null(ex.TileX);
+        Assert.Null(ex.TileZ);
         Assert.Single(doc.Regions);
     }
 }

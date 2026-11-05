@@ -91,12 +91,15 @@ public sealed partial class TileWorldColliders
     /// <param name="options">Thicknesses and the blocked height, defaults when null.</param>
     /// <exception cref="ArgumentNullException"><paramref name="document"/> or <paramref name="catalogs"/> is
     /// null.</exception>
-    /// <exception cref="ArgumentOutOfRangeException"><see cref="TileColliderOptions.WallThickness"/>,
+    /// <exception cref="TileColliderOptionsRangeException"><see cref="TileColliderOptions.WallThickness"/>,
     /// <see cref="TileColliderOptions.WalkSurfaceThickness"/> or a set <see cref="TileColliderOptions.BlockedHeight"/>
-    /// is not a finite number above 0. The message names the option.</exception>
+    /// is not a finite number above 0. Carries <see cref="TileColliderOptionsRefusal.OptionNotFinitePositive"/>,
+    /// <see cref="TileColliderOptionsRangeException.OptionName"/>, ParamName = options and ActualValue.</exception>
     /// <exception cref="TileWorldException">A placed <c>Solid</c>, <c>Diagonal</c>, <c>Wall</c> or <c>WallCorner</c>
-    /// object's archetype has no <see cref="TileObjectArchetype.CollisionHeight"/>. The message names the
-    /// archetype.</exception>
+    /// object's archetype has no <see cref="TileObjectArchetype.CollisionHeight"/>. Carries
+    /// <see cref="TileWorldRefusal.ColliderCollisionHeightMissing"/>, <see cref="TileWorldException.ArchetypeId"/>,
+    /// <see cref="TileWorldException.CollisionKind"/>, <see cref="TileWorldException.ObjectId"/> and
+    /// <see cref="TileWorldException.Tile"/>.</exception>
     public static TileWorldColliders Build(TileWorldDocument document, TileWorldCatalogs catalogs,
                                            TileColliderOptions? options = null)
     {
@@ -182,8 +185,9 @@ public sealed partial class TileWorldColliders
     static void RequirePositive(float value, string option)
     {
         if (!(float.IsFinite(value) && value > 0f))
-            throw new ArgumentOutOfRangeException("options", value,
-                $"{nameof(TileColliderOptions)}.{option} must be a finite number above 0.");
+            throw new TileColliderOptionsRangeException(TileColliderOptionsRefusal.OptionNotFinitePositive,
+                $"{nameof(TileColliderOptions)}.{option} must be a finite number above 0.", "options", value)
+            { OptionName = option };
     }
 
     static byte[] HashOf(TileCollider[] colliders)

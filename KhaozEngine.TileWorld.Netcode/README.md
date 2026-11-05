@@ -104,6 +104,82 @@ and cuts settled losers to zero through a caller-supplied comparison. A body AT 
 under either policy, so a one-tile body standing in a cow's rump is in the cow's stack and one of the two is
 hidden.
 
+## Server state refusals
+
+`SetPlayerState` validates before writing either state component. State admission throws
+`TileServerStateArgumentException`, an `ArgumentException` with a non-nullable `TileServerStateRefusal Reason`
+and `ParamName = "state"`. Actor, ground-item, object-state and static-entity placement share the world and
+step admission validator and carry the same reasons for the same input. Identifiers are populated only where
+the refusing guard knows them. Messages remain developer prose.
+
+| Reason | What it refuses | Identifiers |
+| --- | --- | --- |
+| `PlayerFootprintNotOne` | A player footprint other than one tile, including a teleport | `FootprintSize` |
+| `PlaneOutsideWorld` | A plane below zero or at or above the configured plane count | `Tile`, `Plane`, `PlaneCount` |
+| `RegionNotLoaded` | A tile in a region the collision map has not loaded | `Tile`, `Region` |
+| `StepOriginInvalid` | An origin neither the tile itself nor one adjacent tile on the same plane | `Tile`, `StepFrom` |
+| `StepProgressNotBelowTotal` | Nonzero step progress at or beyond its total duration | `StepTicks`, `StepTotal` |
+| `RouteLimitExceeded` | More remaining route steps than configured | `RemainingSteps`, `MaximumSteps` |
+
+A teleport normalizes the origin and progress before validation, after checking the player footprint.
+Nonadjacent route tiles are still refused by `TileRoute.RemainingSteps` before any state write, through the
+route family's `TileRouteArgumentException`.
+
+## Route refusals
+
+`TileRouteArgumentException` derives from `ArgumentException` and `TileRouteStateException` derives from
+`InvalidOperationException`. Both carry a non-nullable `TileRouteRefusal Reason`. Adjacency compares planar
+coordinates and adds no plane restriction. The negative constructor index and null arguments stay BCL checks.
+
+| Reason | What it refuses | Identifiers |
+| --- | --- | --- |
+| `TilesNotAdjacent` | `Direction` or `RemainingSteps` cannot join the two tiles in one planar step | `From`, `To`, `ParamName = "b"` |
+| `IdleHasNoNext` | Reading `Next` when there are no remaining route tiles | `Index`, `TileCount` |
+| `EmptyHasNoEnd` | Reading `End` when the route has no tiles | `TileCount` |
+
+A finished nonempty route still has an `End`. An empty route does not. Messages remain developer prose.
+
+## Interest refusals
+
+`TileInterestArgumentException` derives from `ArgumentException` and `TileInterestRangeException` derives from
+`ArgumentOutOfRangeException`. Both carry a non-nullable `TileInterestRefusal Reason`. The configured-radius
+check runs at server construction. The footprint check is shared by `TileActorHost.Add`, `SpawnActor` and
+`SpawnStaticEntity`, before a definition or entity is admitted.
+
+| Reason | What it refuses | Identifiers |
+| --- | --- | --- |
+| `ConfiguredRadiusExceedsMargin` | The configured interest radius exceeds the overlap margin | `InterestRadius`, `OverlapMargin`, `ParamName = "config"` |
+| `FootprintRadiusExceedsMargin` | The footprint's inflated interest query radius exceeds the overlap margin | `RequiredQueryRadius`, `InterestRadius`, `OverlapMargin`, `FootprintSize`, `ParamName = "spec"` or `"definition"`, `ActualValue` equal to the footprint size |
+
+Use these members to distinguish refusals and read their values. Messages remain developer prose.
+
+## Component codec refusals
+
+`TileComponentCodecArgumentException` derives from `ArgumentException` and keeps `ParamName = "v"` on both
+encoder size refusals. `TileComponentCodecDataException` derives from `MalformedDataException`. Both carry a
+non-nullable `TileComponentCodecRefusal Reason`. Messages remain developer prose.
+
+| Reason | What it refuses | Identifiers |
+| --- | --- | --- |
+| `RouteWriteLimitExceeded` | Encoding a route above the wire step limit | `ActualCount`, `MaximumCount`, `ParamName` |
+| `RouteReadLimitExceeded` | A declared route count above the wire limit | `DeclaredCount`, `MaximumCount` |
+| `RoutePayloadTruncated` | A route count larger than its bounded component payload | `DeclaredCount`, `AvailableByteCount` |
+| `RouteStreamShortRead` | An unbounded route stream returning fewer bytes than declared | `DeclaredCount`, `ActualReadCount` |
+| `NameReadLimitExceeded` | A declared UTF-8 name length above the wire limit | `DeclaredByteCount`, `MaximumByteCount` |
+| `NamePayloadTruncated` | A name length larger than its bounded component payload | `DeclaredByteCount`, `AvailableByteCount` |
+| `NameStreamShortRead` | An unbounded name stream returning fewer bytes than declared | `DeclaredByteCount`, `ActualReadCount` |
+| `InstanceWriteLimitExceeded` | Encoding an item-instance payload above the wire byte limit | `ActualByteCount`, `MaximumByteCount`, `ParamName` |
+| `PlaneOutsideWorld` | A whole-int ground-item or pending-command plane outside the configured world | `ComponentName`, `Plane`, `PlaneCount` |
+
+This is a breaking catch change for malformed component data, which previously threw the sealed
+`InvalidDataException`. Catch `MalformedDataException` for codecs installed by either `TileProtocol.CreateRegistry`
+overload. Direct `ClientReplicationView.Apply` and `ApplyDelta` can propagate the data refusal. `TryApply`,
+`TryApplyRetainingUnknown` and `TryApplyDelta` keep their false/error recovery contract. Format 2 staging keeps the
+codec fault as the `InnerException` of `DeltaRebuildException` with `Failure = MalformedPacket`, which
+`ClientDeltaRebuild.TryApply` maps to `Invalid`. A `SnapshotBlobReader` built-in resolver that invokes a codec keeps
+the fault inside its `InvalidOperationException`. `SnapshotWriter` encoding methods can propagate the argument
+subtype. Frame `TryDecode` methods and the total item-instance reader retain their existing behavior.
+
 ## The types
 
 **State and commands**
@@ -1045,8 +1121,10 @@ one as its anchor, so a future source cannot make `Math.Clamp` throw inside the 
 in range, and the home cell has to be holding that anchor as a ghost. At the default 15 tile radius that is 16.42
 for a 2x2 and 24.9 for an 8x8. The default `OverlapMargin` of 25 covers every legal body at the default radius, so
 only a game that narrows the band or widens the radius has to do this sum. A body the margin cannot cover is
-refused at `TileActorHost.Add` and at `SpawnActor`, with an `ArgumentOutOfRangeException` naming both numbers,
-rather than throwing out of the first serve and taking the tick down for every player.
+refused at `TileActorHost.Add`, `SpawnActor` and `SpawnStaticEntity` with
+`TileInterestRangeException` and `FootprintRadiusExceedsMargin`. `RequiredQueryRadius` and `OverlapMargin` carry
+both numbers alongside `InterestRadius`, `FootprintSize` and the original `ParamName` and `ActualValue`.
+This keeps the refusal out of the first serve and the shared tick.
 
 `LargestFootprintSize` never decreases. Despawning the world's only cow leaves the query as wide as the cow made
 it, which costs a slightly wider grid sweep and cannot cost correctness.
@@ -1448,7 +1526,8 @@ unauthenticated peer an amplifier of two bytes in and about 7 KB out.
 - **A large actor is an NxN body everywhere the RULES look, and since 19.0.0 everywhere interest and the draw
   rule look too.** Interest is measured from the nearest footprint tile (see the interest section above), and a
   settled body's draw stack is every tile of its square, so a one-tile body standing in a cow's rump no longer
-  overlaps it on screen. Players stay one tile: `SetPlayerState` refuses a `FootprintSize` above 1.
+  overlaps it on screen. Players stay one tile: `SetPlayerState` refuses a `FootprintSize` above 1 with
+  `TileServerStateArgumentException`, `TileServerStateRefusal.PlayerFootprintNotOne` and `FootprintSize`.
 - **Actors do not block movement.** Players walk through monsters. Making an actor block would put a DYNAMIC entry
   in a collision map each head bakes for itself from files, so the two heads would disagree on every occupied tile
   and every chase would become a correction storm. The honest answer is a server-owned occupancy overlay the

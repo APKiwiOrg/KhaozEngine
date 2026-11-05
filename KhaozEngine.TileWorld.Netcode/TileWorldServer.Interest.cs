@@ -66,11 +66,17 @@ public sealed partial class TileWorldServer
         if (size <= LargestFootprintSize) return;
         float radius = QueryRadiusFor(size);
         if (radius <= config.OverlapMargin) return;
-        throw new ArgumentOutOfRangeException(paramName, size,
+        throw new TileInterestRangeException(TileInterestRefusal.FootprintRadiusExceedsMargin, paramName, size,
             $"A footprint of {size} needs an interest query of {radius} tiles (InterestRadius "
           + $"{config.InterestRadius} plus the body's diagonal), which exceeds OverlapMargin "
           + $"{config.OverlapMargin}: the home cell cannot hold the whole area of interest as ghosts. Raise "
-          + "OverlapMargin to at least that query radius, or author a smaller body.");
+          + "OverlapMargin to at least that query radius, or author a smaller body.")
+        {
+            RequiredQueryRadius = radius,
+            InterestRadius = config.InterestRadius,
+            OverlapMargin = config.OverlapMargin,
+            FootprintSize = size,
+        };
     }
 
     // Raised only once the spawn is committed, so a placement or a cap refusal cannot leave the serve paying for a

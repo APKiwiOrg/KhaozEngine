@@ -72,9 +72,14 @@ public class FoliageCommandTests
         Assert.Same(layer, doc.GetFoliageLayer("meadow"));
 
         int depth = editing.History.UndoDepth;
-        Assert.Throws<TileWorldException>(() => new RemoveFoliageLayerCommand(doc, "missing"));
+        string hash = TileWorldHash.OfWorld(doc);
+        TileWorldException ex = Assert.Throws<TileWorldException>(() => new RemoveFoliageLayerCommand(doc, "missing"));
+        Assert.Equal(TileWorldRefusal.FoliageLayerMissing, ex.Reason);
+        Assert.Equal("missing", ex.LayerId);
         Assert.Equal(depth, editing.History.UndoDepth);
+        Assert.Equal(hash, TileWorldHash.OfWorld(doc));
         Assert.Same(layer, doc.GetFoliageLayer("meadow"));
+        Assert.Same(layer, Assert.Single(doc.FoliageLayers));
     }
 
     [Fact]

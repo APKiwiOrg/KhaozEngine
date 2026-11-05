@@ -1,7 +1,6 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
-using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Numerics;
@@ -98,7 +97,12 @@ public class TileWorldClearanceTests
                 + @"\d+\.\d\d\d"
                 + Regex.Escape($" m inside wall #{wall.Id} at (12, 9) plane 0") + "$",
             issue.Message);
-        Assert.InRange(Depth(issue), 0.05f, 0.2f);
+        Assert.NotNull(issue.Overlap);
+        TileClearanceOverlap overlap = issue.Overlap.Value;
+        Assert.Equal(RuleName, overlap.RuleName);
+        Assert.Equal(tree.Id, overlap.SubjectObjectId);
+        Assert.Equal(wall.Id, overlap.ObstacleObjectId);
+        Assert.InRange(overlap.Depth, 0.05f, 0.2f);
         Assert.Equal(new RegionCoord(0, 0), issue.Region);
         Assert.Equal(new TileCoord(12, 9, 0), issue.Tile);
     }
@@ -285,13 +289,14 @@ public class TileWorldClearanceTests
         TileObject wallB1 = doc.AddObject("wall", 70, 10, 0, 1);
         TileObject wallB2 = doc.AddObject("wall", 70, 10, 0, 0);
 
-        string[] pairs = Check(doc)
-            .Select(i => Regex.Match(i.Message, @"#(\d+) at .* inside \w+ #(\d+) at ").Groups)
-            .Select(g => $"{g[1].Value}-{g[2].Value}")
-            .ToArray();
+        var pairs = Check(doc).Select(i =>
+        {
+            Assert.NotNull(i.Overlap);
+            return (i.Overlap.Value.SubjectObjectId, i.Overlap.Value.ObstacleObjectId);
+        });
 
         Assert.Equal(
-            new[] { $"{treeA.Id}-{wallA1.Id}", $"{treeA.Id}-{wallA2.Id}", $"{treeB.Id}-{wallB1.Id}", $"{treeB.Id}-{wallB2.Id}" },
+            new[] { (treeA.Id, wallA1.Id), (treeA.Id, wallA2.Id), (treeB.Id, wallB1.Id), (treeB.Id, wallB2.Id) },
             pairs);
     }
 
@@ -312,8 +317,11 @@ public class TileWorldClearanceTests
         return doc;
     }
 
-    static float Depth(TileWorldIssue issue) => float.Parse(
-        Regex.Match(issue.Message, @" is (\d+\.\d+) m inside ").Groups[1].Value, CultureInfo.InvariantCulture);
+    static float Depth(TileWorldIssue issue)
+    {
+        Assert.NotNull(issue.Overlap);
+        return issue.Overlap.Value.Depth;
+    }
 
     static ClearanceMesh Box(Vector3 min, Vector3 max)
     {

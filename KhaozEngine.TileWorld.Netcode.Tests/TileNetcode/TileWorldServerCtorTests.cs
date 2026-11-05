@@ -15,6 +15,29 @@ namespace KhaozEngine.Tests.TileNetcode;
 public class TileWorldServerCtorTests
 {
     [Fact]
+    public void An_interest_radius_wider_than_the_overlap_margin_is_refused_at_construction()
+    {
+        TileWorldDocument doc = TileMoveSimulatorTests.FlatWorld();
+        TileCollisionMap map = TileMoveSimulatorTests.Bake(doc);
+        var hub = new InMemoryTransportHub();
+        TileWorldServerConfig config = TileWorldServerTickTests.Config(new TileCoord(1, 1, 0)) with
+        {
+            InterestRadius = 15f,
+            OverlapMargin = 14f,
+        };
+
+        var error = Assert.Throws<TileInterestArgumentException>(() => new TileWorldServer(hub.Server, config, map));
+
+        Assert.IsAssignableFrom<ArgumentException>(error);
+        Assert.Equal(TileInterestRefusal.ConfiguredRadiusExceedsMargin, error.Reason);
+        Assert.Equal("config", error.ParamName);
+        Assert.Equal(15f, error.InterestRadius);
+        Assert.Equal(14f, error.OverlapMargin);
+        using var admitted = new TileWorldServer(hub.Server, config with { OverlapMargin = 15f }, map);
+        Assert.Equal(0, admitted.TickCount);
+    }
+
+    [Fact]
     public void A_plane_count_that_disagrees_with_the_baked_map_is_refused_at_construction()
     {
         TileWorldDocument doc = TileMoveSimulatorTests.FlatWorld(4, new RegionCoord(0, 0));

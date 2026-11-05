@@ -140,8 +140,6 @@
 2 KETEST001 KhaozEngine.Movement.Tests/NavBakeExecutionTests.cs
 3 KETEST001 KhaozEngine.Movement.Tests/ParallelContactBakeTests.cs
 2 KETEST001 KhaozEngine.Movement.Tests/RuntimeStaticNavigationTests.cs
-4 KETEST001 KhaozEngine.Render.Tests/TileWorld/TileGroundMaterialsTests.cs
-2 KETEST001 KhaozEngine.Render.Tests/TileWorld/TileGroundSteepCompanionsTests.cs
 1 KETEST001 KhaozEngine.Server.Tests/Catalog/ContentAuthoringStoreConformance.Schema.cs
 3 KETEST001 KhaozEngine.Server.Tests/Catalog/SqlServer/SqlServerCatalogNonmutatingOpenTests.cs
 3 KETEST001 KhaozEngine.Server.Tests/Catalog/SqlServer/SqlServerCatalogResetRepairTests.cs
@@ -169,29 +167,6 @@
 2 KETEST001 KhaozEngine.Server.Tests/WorldStore/Journal/SqliteJournalRowTimestampTests.cs
 3 KETEST001 KhaozEngine.Server.Tests/WorldStore/Journal/SqliteMutationJournalReadOnlyTests.cs
 6 KETEST001 KhaozEngine.Server.Tests/WorldStore/Journal/SqliteMutationJournalStoreTests.cs
-1 KETEST001 KhaozEngine.TileEdit.Tests/CatalogWriterTests.cs
-5 KETEST001 KhaozEngine.TileEdit.Tests/ClearanceToolsTests.cs
-2 KETEST001 KhaozEngine.TileEdit.Tests/MutationServiceTests.cs
-2 KETEST001 KhaozEngine.TileEdit.Tests/QueryServiceTests.cs
-1 KETEST001 KhaozEngine.TileEdit.Tests/RenderServiceTests.cs
-3 KETEST001 KhaozEngine.TileEdit.Tests/TileEditSessionTests.cs
-2 KETEST001 KhaozEngine.TileWorld.Netcode.Tests/TileNetcode/TileFootprintInterestTests.cs
-2 KETEST001 KhaozEngine.TileWorld.Netcode.Tests/TileNetcode/TileWorldServerTickTests.cs
-2 KETEST001 KhaozEngine.TileWorld.Physics.Tests/TileWorldCollidersTests.cs
-1 KETEST001 KhaozEngine.TileWorld.Tests/TileWorld/Editing/LayerCommandTests.cs
-2 KETEST001 KhaozEngine.TileWorld.Tests/TileWorld/Editing/MarkerAndRegionCommandTests.cs
-1 KETEST001 KhaozEngine.TileWorld.Tests/TileWorld/Editing/ObjectCommandTests.cs
-12 KETEST001 KhaozEngine.TileWorld.Tests/TileWorld/Editing/PgmReaderTests.cs
-7 KETEST001 KhaozEngine.TileWorld.Tests/TileWorld/GroundMaterialSteepTests.cs
-1 KETEST001 KhaozEngine.TileWorld.Tests/TileWorld/TileFoliageLayerPersistenceTests.cs
-2 KETEST001 KhaozEngine.TileWorld.Tests/TileWorld/TileHeightsTests.cs
-4 KETEST001 KhaozEngine.TileWorld.Tests/TileWorld/TilePrefabTests.cs
-28 KETEST001 KhaozEngine.TileWorld.Tests/TileWorld/TileWorldCatalogsTests.cs
-5 KETEST001 KhaozEngine.TileWorld.Tests/TileWorld/TileWorldClearanceSettingsTests.cs
-2 KETEST001 KhaozEngine.TileWorld.Tests/TileWorld/TileWorldDocumentMarkerScopeTests.cs
-6 KETEST001 KhaozEngine.TileWorld.Tests/TileWorld/TileWorldDocumentTests.cs
-13 KETEST001 KhaozEngine.TileWorld.Tests/TileWorld/TileWorldFileTests.cs
-2 KETEST001 KhaozEngine.TileWorld.Tests/TileWorld/TileWorldValidatorTests.cs
 
 # Bitwise state comparer for locomotion determinism parity (rule 8), merged from five per-file copies (owner decision D17)
 exempt KETEST002 KhaozEngine.Game.Tests/Locomotion/Contacts/LocomotionStateBits.cs

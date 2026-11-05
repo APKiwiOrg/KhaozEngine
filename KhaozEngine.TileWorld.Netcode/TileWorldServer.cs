@@ -107,8 +107,8 @@ public sealed partial class TileWorldServer : IDisposable
     /// <paramref name="map"/> is null.</exception>
     /// <exception cref="ArgumentOutOfRangeException"><paramref name="config"/> asks for a tick of zero seconds or
     /// less.</exception>
-    /// <exception cref="ArgumentException"><paramref name="config"/> asks for an interest radius wider than its
-    /// overlap margin.</exception>
+    /// <exception cref="TileInterestArgumentException"><paramref name="config"/> asks for an interest radius wider than its
+    /// overlap margin. Carries <see cref="TileInterestRefusal.ConfiguredRadiusExceedsMargin"/> and both values.</exception>
     public TileWorldServer(INetTransport transport, TileWorldServerConfig config, TileCollisionMap map,
         ITileTargets? targets = null, IConnectionAuthenticator? authenticator = null,
         ReplicationRegistry? registry = null)
@@ -130,9 +130,13 @@ public sealed partial class TileWorldServer : IDisposable
         // would land on the tick a player first walked near a cell edge, on a live server, hours after the
         // misconfiguration shipped.
         if (config.InterestRadius > config.OverlapMargin)
-            throw new ArgumentException(
+            throw new TileInterestArgumentException(TileInterestRefusal.ConfiguredRadiusExceedsMargin,
                 $"InterestRadius {config.InterestRadius} exceeds OverlapMargin {config.OverlapMargin}: the home cell "
-              + "cannot hold the full area of interest as ghosts.", nameof(config));
+              + "cannot hold the full area of interest as ghosts.", nameof(config))
+            {
+                InterestRadius = config.InterestRadius,
+                OverlapMargin = config.OverlapMargin,
+            };
         // The same reasoning for the plane count: TileWorldPersistence refuses a stored plane against the MAP's
         // count while SetPlayerState refuses against the CONFIG's, and a head that bakes more planes than it
         // configures would have the binding admit a record the door still throws on, out of Update(dt) on a
@@ -326,21 +330,33 @@ public sealed partial class TileWorldServer : IDisposable
     /// one-tile teleport CUTS rather than gliding: an origin one step out is a legal step, so a placement copied
     /// from a state that was mid-glide would otherwise be walked in like an ordinary step. The normalization runs
     /// AHEAD of the validation, so a teleport is never refused for the origin or progress it was handed.</param>
-    /// <exception cref="ArgumentException"><paramref name="state"/> stands on a plane at or above
+    /// <exception cref="TileServerStateArgumentException"><paramref name="state"/> stands on a plane below zero or at or above
     /// <see cref="TileWorldServerConfig.PlaneCount"/>, on a region the collision map has not loaded, carries a
     /// route longer than <see cref="TileMoveOptions.MaxRouteSteps"/>, names a
     /// <see cref="TileMoveState.StepFrom"/> that is neither <see cref="TileMoveState.Tile"/> itself nor one step
     /// from it on the same plane, or carries mid-step progress at or past its own
     /// <see cref="TileMoveState.StepTotal"/>, both shapes a step in flight the simulator could not have produced
-    /// and neither reachable through a teleport, which is normalized first. A route whose tiles are not adjacent
-    /// to each other is refused too, by <see cref="TileRoute.RemainingSteps"/>, with its own message.</exception>
-    /// <exception cref="ArgumentException"><paramref name="state"/> carries a <see cref="TileMoveState.FootprintSize"/>
+    /// and neither reachable through a teleport, which is normalized first. The refusal carries
+    /// <see cref="TileServerStateArgumentException.Reason"/> from <see cref="TileServerStateRefusal"/>:
+    /// <c>PlaneOutsideWorld</c> with <c>Tile</c>, <c>Plane</c> and <c>PlaneCount</c>, <c>RegionNotLoaded</c> with
+    /// <c>Tile</c> and <c>Region</c>, <c>StepOriginInvalid</c> with <c>Tile</c> and <c>StepFrom</c>,
+    /// <c>StepProgressNotBelowTotal</c> with <c>StepTicks</c> and <c>StepTotal</c>, or <c>RouteLimitExceeded</c>
+    /// with <c>RemainingSteps</c> and <c>MaximumSteps</c>. <see cref="ArgumentException.ParamName"/> stays
+    /// <c>state</c>.</exception>
+    /// <exception cref="TileRouteArgumentException">A route whose tiles are not adjacent to each other is refused by
+    /// <see cref="TileRoute.RemainingSteps"/> before any state is written. Carries
+    /// <see cref="TileRouteRefusal.TilesNotAdjacent"/> and the two supplied tiles.</exception>
+    /// <exception cref="TileServerStateArgumentException"><paramref name="state"/> carries a <see cref="TileMoveState.FootprintSize"/>
     /// above 1. A player is one tile, and a larger footprint is for actors. Refused ahead of the teleport
-    /// normalization, so a teleport is refused for it too.</exception>
+    /// normalization, so a teleport is refused for it too. The reason is
+    /// <see cref="TileServerStateRefusal.PlayerFootprintNotOne"/> and
+    /// <see cref="TileServerStateArgumentException.FootprintSize"/> carries the supplied size.</exception>
     public void SetPlayerState(int slot, in TileMoveState state, bool teleport = false)
     {
         if (state.FootprintSize != 1)
-            throw new ArgumentException("A player is one tile. FootprintSize above 1 is for actors.", nameof(state));
+            throw new TileServerStateArgumentException(TileServerStateRefusal.PlayerFootprintNotOne,
+                "A player is one tile. FootprintSize above 1 is for actors.", nameof(state))
+            { FootprintSize = state.FootprintSize };
         TileMoveState next = state;
         if (teleport)
         {
@@ -461,12 +477,14 @@ public sealed partial class TileWorldServer : IDisposable
     TileDirection[] ValidatePlayerState(in TileMoveState state)
     {
         if (state.Tile.Plane < 0 || state.Tile.Plane >= config.PlaneCount)
-            throw new ArgumentException(
-                $"Plane {state.Tile.Plane} is outside the world's {config.PlaneCount} planes.", nameof(state));
+            throw new TileServerStateArgumentException(TileServerStateRefusal.PlaneOutsideWorld,
+                $"Plane {state.Tile.Plane} is outside the world's {config.PlaneCount} planes.", nameof(state))
+            { Tile = state.Tile, Plane = state.Tile.Plane, PlaneCount = config.PlaneCount };
         if (!simulator.Map.HasRegion(state.Tile.Region))
-            throw new ArgumentException(
+            throw new TileServerStateArgumentException(TileServerStateRefusal.RegionNotLoaded,
                 $"Tile {state.Tile} is in region {state.Tile.Region}, which the collision map has not loaded.",
-                nameof(state));
+                nameof(state))
+            { Tile = state.Tile, Region = state.Tile.Region };
         // A glide origin the stepper could never have produced, refused by TileMoveState.IsStepOrigin, which is the
         // same rule the wire decoder clamps a frame's pair with. This is the ONE write path that does not run
         // through the simulator, so it is the one way such an origin can exist at all, and the reachable form is the
@@ -483,20 +501,23 @@ public sealed partial class TileWorldServer : IDisposable
         // which SetPlayerState normalizes rather than refuses, because a caller asking for one has already said the
         // placement is discontinuous.
         if (!TileMoveState.IsStepOrigin(state.StepFrom, state.Tile))
-            throw new ArgumentException(
+            throw new TileServerStateArgumentException(TileServerStateRefusal.StepOriginInvalid,
                 $"StepFrom {state.StepFrom} is not a tile a step into {state.Tile} could have come from. A glide's "
               + "origin is either the tile itself (nothing in flight) or one step from it on the same plane, which "
-              + "is all TileMoveSimulator ever produces.", nameof(state));
+              + "is all TileMoveSimulator ever produces.", nameof(state))
+            { Tile = state.Tile, StepFrom = state.StepFrom };
         if (state.StepTicks != 0 && state.StepTicks >= state.StepTotal)
-            throw new ArgumentException(
+            throw new TileServerStateArgumentException(TileServerStateRefusal.StepProgressNotBelowTotal,
                 $"StepTicks {state.StepTicks} is not below StepTotal {state.StepTotal}. Progress the simulator "
               + "shows between ticks is always below the step's total, because a step that fills commits and "
-              + "resets inside the same Advance.", nameof(state));
+              + "resets inside the same Advance.", nameof(state))
+            { StepTicks = state.StepTicks, StepTotal = state.StepTotal };
         if (state.Route.Remaining > config.Move.MaxRouteSteps)
-            throw new ArgumentException(
+            throw new TileServerStateArgumentException(TileServerStateRefusal.RouteLimitExceeded,
                 $"A route is capped at {config.Move.MaxRouteSteps} steps and this one carries {state.Route.Remaining}."
               + " TileMoveSimulator truncates at TileMoveOptions.MaxRouteSteps, so this route was built elsewhere.",
-                nameof(state));
+                nameof(state))
+            { RemainingSteps = state.Route.Remaining, MaximumSteps = config.Move.MaxRouteSteps };
         return state.Route.RemainingSteps(state.Tile);
     }
 

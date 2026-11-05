@@ -1528,8 +1528,8 @@ ContentValidationReport Validate(ContentSnapshot candidate, ContentSnapshot? pre
   and is the LAST PUBLISHED version at publish, loaded by the caller and handed in.
 - OUTPUT is a report: a bool plus an ordered list of findings, each carrying a content type id, an id, a
   code and a message. It accumulates rather than stopping at the first, following
-  `JsonSchemaValidator.ValidationReport(bool IsValid, IReadOnlyList<string> Errors)` and its
-  run-to-the-end sweep (`KhaozEngine.Content/JsonSchemaValidator.cs:11-101`, `a-engine.md:275-292`).
+  `KhaozEngine.Content.ValidationReport(bool IsValid, IReadOnlyList<string> Errors)` and its
+  run-to-the-end sweep (`KhaozEngine.Content/ValidationReport.cs`, `KhaozEngine.Content/JsonSchemaValidator.cs`).
 - NO SIDE EFFECTS. It does not log, does not mutate the candidate, does not touch a counter and does not
   throw for content reasons. A throw from it is a bug in the validator.
 

@@ -41,7 +41,9 @@ public sealed class TileEditSession
     /// stands) and loaded before the editing document is built, so a world whose catalogs are missing fails here
     /// rather than half open. There is no dirty guard: the client's git diff is the safety net, and
     /// <see cref="WorldSummary.Dirty"/> reports unsaved state.</summary>
-    /// <exception cref="TileWorldException">The world, or one of its catalogs, could not be loaded.</exception>
+    /// <exception cref="TileWorldException">The world or a catalog could not be loaded. Known tile-world refusals
+    /// pass through unchanged. Other world-load failures carry <see cref="TileWorldRefusal.SessionOpenFailed"/>,
+    /// the supplied path in <see cref="TileWorldException.SourceName"/> and the original cause.</exception>
     public OpenResult Open(string path)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(path);
@@ -54,7 +56,8 @@ public sealed class TileEditSession
             }
             catch (Exception ex) when (ex is not TileWorldException)
             {
-                throw new TileWorldException($"{path}: cannot open world. {ex.Message}", ex);
+                throw new TileWorldException(TileWorldRefusal.SessionOpenFailed,
+                    $"{path}: cannot open world. {ex.Message}", ex) { SourceName = path };
             }
             IReadOnlyList<string> resolved = ResolveCatalogPaths(path, doc.CatalogPaths);
             OpenLocked(doc, TileWorldCatalogs.Load(resolved), path, resolved);
@@ -68,7 +71,9 @@ public sealed class TileEditSession
     /// them to load the catalogs now. Refuses a directory that already holds a world: this writes a manifest,
     /// and overwriting one would discard whatever regions it named.</summary>
     /// <exception cref="TileWorldException">A world already exists at <paramref name="path"/>, or one of the
-    /// catalogs could not be loaded.</exception>
+    /// catalogs could not be loaded. An existing world carries <see cref="TileWorldRefusal.SessionWorldExists"/>,
+    /// the supplied <see cref="TileWorldException.WorldDirectory"/> and the manifest path in
+    /// <see cref="TileWorldException.SourceName"/>.</exception>
     public OpenResult Create(string path, string id, string displayName, int planeCount, float tileSize,
         IReadOnlyList<string> catalogPaths)
     {
@@ -81,9 +86,10 @@ public sealed class TileEditSession
         lock (_lock)
         {
             if (TileWorldFile.Exists(path))
-                throw new TileWorldException(
+                throw new TileWorldException(TileWorldRefusal.SessionWorldExists,
                     $"{path}: a world already exists there ({TileWorldFile.ManifestPath(path)}). Open it, or " +
-                    "choose a different directory.");
+                    "choose a different directory.")
+                { WorldDirectory = path, SourceName = TileWorldFile.ManifestPath(path) };
 
             var doc = new TileWorldDocument
             {
@@ -110,7 +116,8 @@ public sealed class TileEditSession
     /// <summary>Validates the open world and checks its clearance rules and, when both pass, writes it back to its
     /// own directory and marks the current history position as saved. An invalid world throws and nothing is
     /// written, so the directory never holds a world this engine would refuse to load. A clearance failure throws
-    /// listing every issue, one per line.</summary>
+    /// with <see cref="TileWorldRefusal.SessionClearanceFailed"/>, the world id, total issue count, all issues,
+    /// both mesh-root forms and an owned read-only overlap snapshot. The message lists every issue, one per line.</summary>
     public SaveResult Save()
     {
         lock (_lock)
@@ -119,9 +126,15 @@ public sealed class TileEditSession
             TileWorldValidator.ValidateOrThrow(e.Document, e.Catalogs);
             IReadOnlyList<TileWorldIssue> clearance = ClearanceIssuesLocked(e);
             if (clearance.Count > 0)
-                throw new TileWorldException(
+                throw new TileWorldException(TileWorldRefusal.SessionClearanceFailed,
                     $"world '{e.Document.Id}' has {clearance.Count} clearance {(clearance.Count == 1 ? "issue" : "issues")}:\n" +
-                    string.Join('\n', clearance.Select(i => $"[{i.Code}] {i.Message}")));
+                    string.Join('\n', clearance.Select(i => $"[{i.Code}] {i.Message}")))
+                {
+                    WorldId = e.Document.Id, IssueCount = clearance.Count, Issues = clearance,
+                    MeshRoot = e.Document.Clearance!.MeshRoot,
+                    ResolvedMeshRoot = TileWorldClearance.ResolveMeshRoot(_path!, e.Document.Clearance),
+                    Overlaps = clearance.Where(i => i.Overlap.HasValue).Select(i => i.Overlap!.Value).ToArray(),
+                };
             TileWorldFile.Save(e.Document, _path!);
             e.MarkSaved();
             return new SaveResult(_path!, TileWorldHash.OfWorld(e.Document));
@@ -327,8 +340,9 @@ public sealed class TileEditSession
         lock (_lock) RequireOpenLocked().SealGesture();
     }
 
-    /// <summary>Throws when no world is open, naming the two verbs that open one. Every other member calls this
-    /// for itself, so a client never has to.</summary>
+    /// <summary>Throws <see cref="TileWorldRefusal.SessionNotOpen"/> when no world is open, with
+    /// <see cref="TileWorldException.RequiredTools"/> naming world_open and world_create. Every other member
+    /// calls this for itself, so a client never has to.</summary>
     /// <exception cref="TileWorldException">No world is open.</exception>
     public void RequireOpen()
     {
@@ -434,5 +448,7 @@ public sealed class TileEditSession
     }
 
     TileEditingDocument RequireOpenLocked() =>
-        _editing ?? throw new TileWorldException("no world is open, call world_open or world_create first");
+        _editing ?? throw new TileWorldException(TileWorldRefusal.SessionNotOpen,
+            "no world is open, call world_open or world_create first")
+        { RequiredTools = new[] { "world_open", "world_create" } };
 }

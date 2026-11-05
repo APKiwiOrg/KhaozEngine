@@ -17,22 +17,25 @@ public class TileWorldClearanceSettingsTests
         new("../../models", 0.1f, "clearance-waived", [TreesClearBuildings()]);
 
     [Theory]
-    [InlineData("empty-mesh-root-with-rules")]
-    [InlineData("blank-mesh-root-with-rules")]
-    [InlineData("cell-size-below-range")]
-    [InlineData("cell-size-above-range")]
-    [InlineData("cell-size-nan")]
-    [InlineData("duplicate-rule-name")]
-    [InlineData("empty-rule-name")]
-    [InlineData("empty-subject-tags")]
-    [InlineData("empty-obstacle-tags")]
-    [InlineData("empty-subject-tag-string")]
-    [InlineData("empty-obstacle-tag-string")]
-    [InlineData("negative-tolerance")]
-    [InlineData("nan-tolerance")]
-    [InlineData("infinite-tolerance")]
-    [InlineData("empty-waiver-tag")]
-    public void SettingsRefuseInvalidValues(string refusal)
+    [InlineData("empty-mesh-root-with-rules", TileWorldRefusal.ClearanceMeshRootRequired)]
+    [InlineData("blank-mesh-root-with-rules", TileWorldRefusal.ClearanceMeshRootRequired)]
+    [InlineData("cell-size-below-range", TileWorldRefusal.ClearanceCellSizeOutsideRange)]
+    [InlineData("cell-size-above-range", TileWorldRefusal.ClearanceCellSizeOutsideRange)]
+    [InlineData("cell-size-nan", TileWorldRefusal.ClearanceCellSizeOutsideRange)]
+    [InlineData("duplicate-rule-name", TileWorldRefusal.ClearanceRuleDuplicate)]
+    [InlineData("empty-rule-name", TileWorldRefusal.ClearanceRuleNameBlank)]
+    [InlineData("empty-subject-tags", TileWorldRefusal.ClearanceTagsEmpty)]
+    [InlineData("empty-obstacle-tags", TileWorldRefusal.ClearanceTagsEmpty)]
+    [InlineData("empty-subject-tag-string", TileWorldRefusal.ClearanceTagBlank)]
+    [InlineData("empty-obstacle-tag-string", TileWorldRefusal.ClearanceTagBlank)]
+    [InlineData("negative-tolerance", TileWorldRefusal.ClearanceToleranceInvalid)]
+    [InlineData("nan-tolerance", TileWorldRefusal.ClearanceToleranceInvalid)]
+    [InlineData("infinite-tolerance", TileWorldRefusal.ClearanceToleranceInvalid)]
+    [InlineData("empty-waiver-tag", TileWorldRefusal.ClearanceWaiverTagBlank)]
+    [InlineData("null-rule", TileWorldRefusal.ClearanceRuleNull)]
+    [InlineData("null-subject-tags", TileWorldRefusal.ClearanceTagsEmpty)]
+    [InlineData("null-obstacle-tag", TileWorldRefusal.ClearanceTagBlank)]
+    public void SettingsRefuseInvalidValues(string refusal, TileWorldRefusal reason)
     {
         Func<TileClearanceSettings> build = refusal switch
         {
@@ -51,9 +54,73 @@ public class TileWorldClearanceSettingsTests
             "nan-tolerance" => () => new TileClearanceSettings("m", rules: [TreesClearBuildings(float.NaN)]),
             "infinite-tolerance" => () => new TileClearanceSettings("m", rules: [TreesClearBuildings(float.PositiveInfinity)]),
             "empty-waiver-tag" => () => new TileClearanceSettings("m", waiverTag: ""),
+            "null-rule" => () => new TileClearanceSettings("m", rules: [TreesClearBuildings(), null!]),
+            "null-subject-tags" => () => new TileClearanceSettings("m", rules: [new TileClearanceRule("r", null!, ["structure"])]),
+            "null-obstacle-tag" => () => new TileClearanceSettings("m", rules: [new TileClearanceRule("r", ["tree"], [null!])]),
             _ => throw new ArgumentOutOfRangeException(nameof(refusal), refusal, "unknown refusal row"),
         };
-        Assert.ThrowsAny<ArgumentException>(build);
+        var ex = Assert.Throws<TileClearanceArgumentException>(build);
+        Assert.IsAssignableFrom<ArgumentException>(ex);
+        Assert.Null(ex.ParamName);
+        Assert.Equal(reason, ex.Reason);
+        switch (reason)
+        {
+            case TileWorldRefusal.ClearanceMeshRootRequired:
+                Assert.Equal(refusal == "empty-mesh-root-with-rules" ? "" : "  ", ex.MeshRoot);
+                Assert.Equal(1, ex.RuleCount);
+                break;
+            case TileWorldRefusal.ClearanceCellSizeOutsideRange:
+                Assert.Equal(refusal switch
+                {
+                    "cell-size-below-range" => TileClearanceSettings.MinCellSize / 2f,
+                    "cell-size-above-range" => TileClearanceSettings.MaxCellSize * 2f,
+                    _ => float.NaN,
+                }, ex.CellSize);
+                Assert.Equal(TileClearanceSettings.MinCellSize, ex.Minimum);
+                Assert.Equal(TileClearanceSettings.MaxCellSize, ex.Maximum);
+                break;
+            case TileWorldRefusal.ClearanceWaiverTagBlank:
+                Assert.Equal("", ex.WaiverTag);
+                break;
+            case TileWorldRefusal.ClearanceRuleDuplicate:
+                Assert.Equal("trees-clear-buildings", ex.RuleName);
+                break;
+            case TileWorldRefusal.ClearanceRuleNameBlank:
+                Assert.Equal("", ex.RuleName);
+                break;
+            case TileWorldRefusal.ClearanceRuleNull:
+                Assert.Equal(1, ex.RuleIndex);
+                break;
+            case TileWorldRefusal.ClearanceToleranceInvalid:
+                Assert.Equal("trees-clear-buildings", ex.RuleName);
+                Assert.Equal(refusal switch
+                {
+                    "negative-tolerance" => -0.01f,
+                    "infinite-tolerance" => float.PositiveInfinity,
+                    _ => float.NaN,
+                }, ex.Tolerance);
+                break;
+            case TileWorldRefusal.ClearanceTagsEmpty:
+                Assert.Equal("r", ex.RuleName);
+                Assert.Equal(refusal == "empty-obstacle-tags" ? "obstacleTags" : "subjectTags", ex.Field);
+                Assert.Equal(refusal == "null-subject-tags" ? (int?)null : 0, ex.TagCount);
+                break;
+            case TileWorldRefusal.ClearanceTagBlank:
+                Assert.Equal("r", ex.RuleName);
+                Assert.Equal(refusal == "empty-subject-tag-string" ? "subjectTags" : "obstacleTags", ex.Field);
+                Assert.Equal(refusal == "empty-subject-tag-string" ? 1 : 0, ex.TagIndex);
+                Assert.Equal(refusal == "null-obstacle-tag" ? null : "", ex.Tag);
+                break;
+        }
+    }
+
+    [Fact]
+    public void NullParametersKeepTheirBclContext()
+    {
+        var meshRoot = Assert.Throws<ArgumentNullException>(() => new TileClearanceSettings(null!));
+        Assert.Equal("meshRoot", meshRoot.ParamName);
+        var rule = Assert.Throws<ArgumentNullException>(() => Settings().WithRule(null!));
+        Assert.Equal("rule", rule.ParamName);
     }
 
     [Fact]
@@ -69,18 +136,24 @@ public class TileWorldClearanceSettingsTests
 
     // The same refusals on every OS, so a root accepted on one head never fails to load on another.
     [Theory]
-    [InlineData(@"C:\kit")]
-    [InlineData("C:/kit")]
-    [InlineData("c:kit")]
-    [InlineData(@"\kit")]
-    [InlineData("/kit")]
-    [InlineData(@"..\models")]
-    public void SettingsRefuseAMeshRootThatIsNotPortable(string meshRoot)
+    [InlineData(@"C:\kit", TileWorldRefusal.ClearanceMeshRootRooted)]
+    [InlineData("C:/kit", TileWorldRefusal.ClearanceMeshRootRooted)]
+    [InlineData("c:kit", TileWorldRefusal.ClearanceMeshRootRooted)]
+    [InlineData(@"\kit", TileWorldRefusal.ClearanceMeshRootRooted)]
+    [InlineData("/kit", TileWorldRefusal.ClearanceMeshRootRooted)]
+    [InlineData(@"..\models", TileWorldRefusal.ClearanceMeshRootBackslash)]
+    public void SettingsRefuseAMeshRootThatIsNotPortable(string meshRoot, TileWorldRefusal reason)
     {
-        ArgumentException ex = Assert.Throws<ArgumentException>(() => new TileClearanceSettings(meshRoot));
-        Assert.Contains($"meshRoot '{meshRoot}'", ex.Message, StringComparison.Ordinal);
-        Assert.Throws<ArgumentException>(() => new TileClearanceSettings(meshRoot, rules: [TreesClearBuildings()]));
-        Assert.Throws<ArgumentException>(() => Settings().With(meshRoot, 0.1f, null));
+        var ex = Assert.Throws<TileClearanceArgumentException>(() => new TileClearanceSettings(meshRoot));
+        Assert.Equal(reason, ex.Reason);
+        Assert.Equal(meshRoot, ex.MeshRoot);
+        var withRules = Assert.Throws<TileClearanceArgumentException>(
+            () => new TileClearanceSettings(meshRoot, rules: [TreesClearBuildings()]));
+        Assert.Equal(reason, withRules.Reason);
+        Assert.Equal(meshRoot, withRules.MeshRoot);
+        var with = Assert.Throws<TileClearanceArgumentException>(() => Settings().With(meshRoot, 0.1f, null));
+        Assert.Equal(reason, with.Reason);
+        Assert.Equal(meshRoot, with.MeshRoot);
     }
 
     [Theory]
@@ -131,7 +204,9 @@ public class TileWorldClearanceSettingsTests
         TileClearanceSettings removed = replaced.WithoutRule("trees-clear-buildings");
         Assert.Equal(["rocks-clear-paths"], removed.Rules.Select(r => r.Name));
         Assert.Null(removed.Rule("trees-clear-buildings"));
-        Assert.Throws<ArgumentException>(() => removed.WithoutRule("trees-clear-buildings"));
+        var missing = Assert.Throws<TileClearanceArgumentException>(() => removed.WithoutRule("trees-clear-buildings"));
+        Assert.Equal(TileWorldRefusal.ClearanceRuleMissing, missing.Reason);
+        Assert.Equal("trees-clear-buildings", missing.RuleName);
 
         TileClearanceSettings moved = replaced.With("../models", 0.25f, null);
         Assert.Equal("../models", moved.MeshRoot);
@@ -221,12 +296,28 @@ public class TileWorldClearanceSettingsTests
         File.WriteAllText(path, root.ToJsonString());
 
         var ex = Assert.Throws<TileWorldException>(() => TileWorldFile.Load(dir));
-        Assert.Contains(path, ex.Message, StringComparison.Ordinal);
-        Assert.Contains("/abs/models", ex.Message, StringComparison.Ordinal);
+        Assert.Equal(TileWorldRefusal.ClearanceMeshRootRooted, ex.Reason);
+        Assert.Equal(path, ex.SourceName);
+        Assert.Equal("/abs/models", ex.MeshRoot);
+        var inner = Assert.IsType<TileClearanceArgumentException>(ex.InnerException);
+        Assert.Equal(TileWorldRefusal.ClearanceMeshRootRooted, inner.Reason);
+        Assert.Equal("/abs/models", inner.MeshRoot);
     }
 
-    [Fact]
-    public void BadBlockFailsToLoad()
+    [Theory]
+    [InlineData(TileWorldRefusal.ClearanceRuleDuplicate)]
+    [InlineData(TileWorldRefusal.ClearanceMeshRootBackslash)]
+    [InlineData(TileWorldRefusal.ClearanceCellSizeOutsideRange)]
+    [InlineData(TileWorldRefusal.ClearanceWaiverTagBlank)]
+    [InlineData(TileWorldRefusal.ClearanceMeshRootRequired)]
+    [InlineData(TileWorldRefusal.ClearanceRuleNull)]
+    [InlineData(TileWorldRefusal.ClearanceRuleNameBlank)]
+    [InlineData(TileWorldRefusal.ClearanceToleranceInvalid)]
+    [InlineData(TileWorldRefusal.ClearanceTagsEmpty)]
+    [InlineData(TileWorldRefusal.ClearanceTagBlank)]
+    [InlineData(TileWorldRefusal.ClearanceRulesNull)]
+    [InlineData(TileWorldRefusal.ClearanceMeshRootNull)]
+    public void BadBlockFailsToLoad(TileWorldRefusal reason)
     {
         using var tmp = new TempDir();
         TileWorldDocument doc = TileWorldTestData.FlatWorld();
@@ -236,12 +327,82 @@ public class TileWorldClearanceSettingsTests
 
         string path = TileWorldFile.ManifestPath(dir);
         JsonObject root = JsonNode.Parse(File.ReadAllText(path))!.AsObject();
-        JsonArray rules = root["clearance"]!["rules"]!.AsArray();
-        rules.Add(rules[0]!.DeepClone());
+        JsonNode block = root["clearance"]!;
+        JsonArray rules = block["rules"]!.AsArray();
+        switch (reason)
+        {
+            case TileWorldRefusal.ClearanceRuleDuplicate: rules.Add(rules[0]!.DeepClone()); break;
+            case TileWorldRefusal.ClearanceMeshRootBackslash: block["meshRoot"] = @"..\models"; break;
+            case TileWorldRefusal.ClearanceCellSizeOutsideRange: block["cellSize"] = 2f; break;
+            case TileWorldRefusal.ClearanceWaiverTagBlank: block["waiverTag"] = " "; break;
+            case TileWorldRefusal.ClearanceMeshRootRequired: block["meshRoot"] = ""; break;
+            case TileWorldRefusal.ClearanceRuleNull: rules.Add((JsonNode?)null); break;
+            case TileWorldRefusal.ClearanceRuleNameBlank: rules[0]!["name"] = ""; break;
+            case TileWorldRefusal.ClearanceToleranceInvalid: rules[0]!["tolerance"] = -1f; break;
+            case TileWorldRefusal.ClearanceTagsEmpty: rules[0]!["subjectTags"] = new JsonArray(); break;
+            case TileWorldRefusal.ClearanceTagBlank: rules[0]!["obstacleTags"] = new JsonArray("structure", ""); break;
+            case TileWorldRefusal.ClearanceRulesNull: block["rules"] = null; break;
+            case TileWorldRefusal.ClearanceMeshRootNull: block["meshRoot"] = null; break;
+        }
         File.WriteAllText(path, root.ToJsonString());
 
         var ex = Assert.Throws<TileWorldException>(() => TileWorldFile.Load(dir));
-        Assert.Contains(path, ex.Message, StringComparison.Ordinal);
-        Assert.Contains("trees-clear-buildings", ex.Message, StringComparison.Ordinal);
+        Assert.Equal(reason, ex.Reason);
+        Assert.Equal(path, ex.SourceName);
+        if (reason == TileWorldRefusal.ClearanceMeshRootNull)
+        {
+            Assert.Equal("meshRoot", ex.Field);
+            var nullInput = Assert.IsType<ArgumentNullException>(ex.InnerException);
+            Assert.Equal("meshRoot", nullInput.ParamName);
+            return;
+        }
+        var inner = Assert.IsType<TileClearanceArgumentException>(ex.InnerException);
+        Assert.Equal(reason, inner.Reason);
+        Assert.Equal(inner.MeshRoot, ex.MeshRoot);
+        Assert.Equal(inner.CellSize, ex.CellSize);
+        Assert.Equal(inner.Minimum, ex.Minimum);
+        Assert.Equal(inner.Maximum, ex.Maximum);
+        Assert.Equal(inner.WaiverTag, ex.WaiverTag);
+        Assert.Equal(inner.RuleName, ex.RuleName);
+        Assert.Equal(inner.RuleCount, ex.RuleCount);
+        Assert.Equal(inner.RuleIndex, ex.RuleIndex);
+        Assert.Equal(inner.Field, ex.Field);
+        Assert.Equal(inner.Tolerance, ex.Tolerance);
+        Assert.Equal(inner.TagCount, ex.TagCount);
+        Assert.Equal(inner.TagIndex, ex.TagIndex);
+        Assert.Equal(inner.Tag, ex.Tag);
+        switch (reason)
+        {
+            case TileWorldRefusal.ClearanceRuleDuplicate: Assert.Equal("trees-clear-buildings", ex.RuleName); break;
+            case TileWorldRefusal.ClearanceMeshRootBackslash: Assert.Equal(@"..\models", ex.MeshRoot); break;
+            case TileWorldRefusal.ClearanceCellSizeOutsideRange:
+                Assert.Equal(2f, ex.CellSize);
+                Assert.Equal(TileClearanceSettings.MinCellSize, ex.Minimum);
+                Assert.Equal(TileClearanceSettings.MaxCellSize, ex.Maximum);
+                break;
+            case TileWorldRefusal.ClearanceWaiverTagBlank: Assert.Equal(" ", ex.WaiverTag); break;
+            case TileWorldRefusal.ClearanceMeshRootRequired:
+                Assert.Equal("", ex.MeshRoot);
+                Assert.Equal(1, ex.RuleCount);
+                break;
+            case TileWorldRefusal.ClearanceRuleNull: Assert.Equal(1, ex.RuleIndex); break;
+            case TileWorldRefusal.ClearanceRuleNameBlank: Assert.Equal("", ex.RuleName); break;
+            case TileWorldRefusal.ClearanceToleranceInvalid:
+                Assert.Equal("trees-clear-buildings", ex.RuleName);
+                Assert.Equal(-1f, ex.Tolerance);
+                break;
+            case TileWorldRefusal.ClearanceTagsEmpty:
+                Assert.Equal("trees-clear-buildings", ex.RuleName);
+                Assert.Equal("subjectTags", ex.Field);
+                Assert.Equal(0, ex.TagCount);
+                break;
+            case TileWorldRefusal.ClearanceTagBlank:
+                Assert.Equal("trees-clear-buildings", ex.RuleName);
+                Assert.Equal("obstacleTags", ex.Field);
+                Assert.Equal(1, ex.TagIndex);
+                Assert.Equal("", ex.Tag);
+                break;
+            case TileWorldRefusal.ClearanceRulesNull: Assert.Equal("rules", ex.Field); break;
+        }
     }
 }

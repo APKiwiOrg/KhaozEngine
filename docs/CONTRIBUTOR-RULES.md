@@ -39,7 +39,10 @@ can absorb another contributor's staged files. Never use the shared stash for wo
   site's type converts every test that asserts the old exact type in the same change, GPU facts included,
   because they skip in a local run and fail only on the GPU legs. A wrapper that adds context, such as a
   source name, rethrows the inner refusal in its own family with its reason and identifiers and keeps the
-  original as the inner exception. It never flattens a known reason into a generic one.
+  original as the inner exception. It never flattens a known reason into a generic one. When the wrapper and
+  the refusal it wraps share one type, one copy method on that type carries the reason and every identifier,
+  as `TileWorldException.WithSourceName` does, and a test that sets every public identifier fails by name
+  when a new one is not copied.
 - A test that reaches a numerical guard, such as a singular matrix, a collapsed cosine or a zero length, never
   depends on floating-point cancellation landing on a threshold or on subnormal inputs. CI runs on x64 and
   arm64, whose fused multiply-add, SIMD and denormal modes differ, so the same input can pass one check on one
@@ -192,7 +195,10 @@ keep the two in step and change the shared wording in both.
 15. **A refusal test breaks one rule.** A test that expects a refusal feeds an input that breaks only the rule
     under test, beside a passing control that fixes that one defect. An input that breaks two rules still
     passes when the wrong check refuses it, because the exception type cannot tell the refusals apart. When no
-    input can break one rule alone, assert the structured member that names the rule.
+    input can break one rule alone, assert the structured member that names the rule. A rule with a limit gets
+    its control at the limit, such as a route of exactly the cap or the last plane the world has, so a check
+    tightened by one fails. The control follows the refusal's no-write assertions, so they still prove the
+    refusal wrote nothing.
 
 In this repository:
 

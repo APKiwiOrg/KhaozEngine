@@ -209,9 +209,30 @@ public class TileMoveStateTests
         Assert.NotEqual(s, bumped);
     }
 
-    [Fact]
-    public void Next_on_an_idle_route_throws_rather_than_answering_a_tile()
+    [Theory]
+    [InlineData(0)]
+    [InlineData(2)]
+    public void Next_on_an_idle_route_throws_rather_than_answering_a_tile(int tileCount)
     {
-        Assert.Throws<InvalidOperationException>(() => TileRoute.None.Next);
+        TileRoute route = tileCount == 0 ? TileRoute.None : new TileRoute(RouteOf((1, 0), (2, 0)).Tiles, 2);
+
+        var error = Assert.Throws<TileRouteStateException>(() => route.Next);
+
+        Assert.IsAssignableFrom<InvalidOperationException>(error);
+        Assert.Equal(TileRouteRefusal.IdleHasNoNext, error.Reason);
+        Assert.Equal(tileCount, error.Index);
+        Assert.Equal(tileCount, error.TileCount);
+        Assert.Equal(new TileCoord(1, 0, 0), RouteOf((1, 0)).Next);
+    }
+
+    [Fact]
+    public void End_refuses_an_empty_route_but_keeps_the_destination_of_a_finished_walk()
+    {
+        var error = Assert.Throws<TileRouteStateException>(() => TileRoute.None.End);
+
+        Assert.Equal(TileRouteRefusal.EmptyHasNoEnd, error.Reason);
+        Assert.Equal(0, error.TileCount);
+        Assert.Null(error.Index);
+        Assert.Equal(new TileCoord(1, 0, 0), RouteOf((1, 0)).Advanced().End);
     }
 }

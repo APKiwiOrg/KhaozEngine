@@ -91,7 +91,10 @@ public class LayerCommandTests
         TileWorldException ex = Assert.Throws<TileWorldException>(
             () => ed.Execute(FullFill(new TileRect(62, 5, 4, 1), 0)));
 
-        Assert.Contains("(1, 0)", ex.Message);
+        Assert.Equal(TileWorldRefusal.RegionMissing, ex.Reason);
+        Assert.Equal(new RegionCoord(1, 0), ex.Region);
+        Assert.Equal(64, ex.TileX);
+        Assert.Equal(5, ex.TileZ);
         AssertTile(doc, 62, 5, 1, 0, TileOverlayShape.Full, 0, TileSettings.None);
         AssertTile(doc, 63, 5, 1, 0, TileOverlayShape.Full, 0, TileSettings.None);
         Assert.Equal(0, ed.History.UndoDepth);

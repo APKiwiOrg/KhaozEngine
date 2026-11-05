@@ -2999,8 +2999,8 @@ rather than in section 7 because a tooltip is not a network concern.
 ### 12.2 The instance validator's checks
 
 `InstanceValidator.Validate(page, snapshot)` accumulates and never throws, following contracts 10.4's
-shape and `JsonSchemaValidator.ValidationReport`'s run-to-the-end sweep
-(`KhaozEngine.Content/JsonSchemaValidator.cs:11-101`). It is side effect free: it does not log, does not
+shape and `KhaozEngine.Content.ValidationReport`'s run-to-the-end sweep
+(`KhaozEngine.Content/ValidationReport.cs`, `KhaozEngine.Content/JsonSchemaValidator.cs`). It is side effect free: it does not log, does not
 touch a counter and does not mutate the page. The caller does all three.
 
 | # | Check | Class | Failure | Outcome |

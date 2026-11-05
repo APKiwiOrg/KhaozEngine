@@ -8,7 +8,16 @@ public sealed class DeltaRebuildException : InvalidOperationException
     /// <summary>Creates the exception.</summary>
     /// <param name="failure">The typed reason. Never <see cref="DeltaRebuildFailure.None"/>.</param>
     /// <param name="message">A developer facing description.</param>
-    public DeltaRebuildException(DeltaRebuildFailure failure, string message) : base(message)
+    public DeltaRebuildException(DeltaRebuildFailure failure, string message) : this(failure, message, null)
+    {
+    }
+
+    /// <summary>Creates the exception while preserving the original codec fault, if any.</summary>
+    /// <param name="failure">The typed reason. Never <see cref="DeltaRebuildFailure.None"/>.</param>
+    /// <param name="message">A developer facing description.</param>
+    /// <param name="innerException">The original fault.</param>
+    public DeltaRebuildException(DeltaRebuildFailure failure, string message, Exception? innerException)
+        : base(message, innerException)
     {
         if (failure == DeltaRebuildFailure.None)
             throw new ArgumentOutOfRangeException(nameof(failure), failure, "A rebuild failure needs a reason.");

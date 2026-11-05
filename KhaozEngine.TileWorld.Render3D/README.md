@@ -92,7 +92,9 @@ so nothing in the upload path moves.
 - **The colour path stays, and nothing in the mesh path reads it.** `TileGroundMesher.CornerColor` still blends
   the up-to-four sharing visible underlays' jittered material colours (`TileColors.Blend`, all-void blends to
   `TileColors.Void`), and `TileColors.Parse` still reads `#rrggbb` or `#rrggbbaa` and throws
-  `TileWorldException` on anything else, a null colour included. That pair is the GPU-free
+  `TileWorldException` on anything else, selecting `TileWorldRefusal.ColourNull`, `ColourShapeInvalid` or
+  `ColourDigitInvalid`. Malformed strings carry `ColourText`, and a bad digit also carries `CharacterIndex`
+  and `Character`. A null colour carries no identifiers. That pair is the GPU-free
   colour surface, for a caller that wants a tile's colour without the textured pipeline behind it: a minimap, a
   2D painter, a tool query. The vertices do not carry it any more, and the mesher itself only calls
   `TileColors.Jitter`.
@@ -148,13 +150,17 @@ a catalog id with its layer and `MissingSlot` is that trailing layer, which is w
 - **Paths resolve against the catalog FILE.** A relative `Texture` is combined with the directory of the catalog
   the material was declared in (`TileWorldCatalogs.MaterialSource`), the same rule `world.json` uses for its
   catalog paths. An absolute path is taken as written. A catalog built in memory has no directory to resolve
-  against, so a relative texture on one throws a `TileWorldException` naming the material.
+  against, so a relative texture on one throws a `TileWorldException` with
+  `TileWorldRefusal.GroundMaterialTextureSourceMissing`, `MaterialId`, `MaterialName` and `TexturePath`.
 - **One size for the whole set.** Every layer is one slice of ONE texture array, so the first textured material
-  decides the size and any other textured material of a different size throws, naming the material and both sizes,
-  rather than being resampled behind your back. With nothing textured the flat fills are 1x1.
+  decides the size and any other textured material of a different size throws `TileWorldException` with
+  `TileWorldRefusal.GroundMaterialTextureSizeMismatch`. It carries `MaterialId`, `MaterialName`, `Width`,
+  `Height`, `ReferenceMaterialId`, `ReferenceMaterialName`, `ExpectedWidth` and `ExpectedHeight`, rather than
+  resampling behind your back. With nothing textured the flat fills are 1x1.
 - `TilesPerMetre` is the material's own value or `TileGroundMaterials.DefaultTilesPerMetre` (0.5, a 2 m repeat).
-  A catalog larger than `TileGroundMaterialConfig.MaxMaterials - 1` materials throws: the set is one uniform
-  buffer, and splitting a catalog across several sets is not built.
+  A catalog larger than `TileGroundMaterialConfig.MaxMaterials - 1` materials throws `TileWorldException` with
+  `TileWorldRefusal.GroundMaterialLayerLimitExceeded`, `MaterialCount` and `MaximumMaterialCount`: the set is
+  one uniform buffer, and splitting a catalog across several sets is not built.
 
 Hand-build a `TileGroundMaterialSet` directly when the layers come from somewhere other than a catalog. The
 constructor takes the size, the material id of each leading slot, and one layer per id PLUS the trailing reserved
@@ -882,8 +888,9 @@ collision, navigation, simulation, replication or hashes.
   change eligibility, including regions reached by the door clearance.
 - A DIRTY region is never dropped: unloading one with unsaved edits would throw, so it stays resident past the
   ring and says so once through `Log`. Regions the manifest does not list are skipped and do not spend the budget.
-- A torn region file throws `TileWorldException` straight out of `Update`. A world whose files no longer match
-  what wrote them is not something a streaming loop should paper over by drawing a hole.
+- A torn region file throws `TileWorldException` straight out of `Update`, with
+  `TileWorldRefusal.RegionHashMismatch`, `Region`, `SourceName`, `ExpectedHash` and `ActualHash`. A world whose
+  files no longer match what wrote them is not something a streaming loop should paper over by drawing a hole.
 
 The first shared one-metre-tile profile is:
 
@@ -990,9 +997,19 @@ its interior cut uniforms. The default frame and the frameless core query overlo
 `ArgumentOutOfRangeException`. Each carries a non-null `Reason` and preserves `ParamName` and any `ActualValue`.
 Optional identifiers are null when that reason does not use them. Messages remain developer prose.
 Shared steep-band rules forward `TileGroundSteepArgumentException` from Render3D without translation.
+Catalog companion checks in `TileGroundMaterials.Build` delegate to `GroundMaterialSteepRules` and throw
+`TileWorldException` with the core `TileWorldRefusal` reason, `SourceName` equal to `ground material set`,
+`MaterialId`, `MaterialName` and the applicable companion or band identifiers. See the
+[core refusal table](../KhaozEngine.TileWorld/README.md#refusals) for the seven steep reasons.
 
 | Reason | Refused input | Identifiers |
 |---|---|---|
+| `TileWorldRefusal.GroundMaterialLayerLimitExceeded` | a catalog with too many materials for one set including its reserved layer | `MaterialCount`, `MaximumMaterialCount` |
+| `TileWorldRefusal.GroundMaterialTextureSizeMismatch` | a texture whose dimensions differ from the first textured material | `MaterialId`, `MaterialName`, `Width`, `Height`, `ReferenceMaterialId`, `ReferenceMaterialName`, `ExpectedWidth`, `ExpectedHeight` |
+| `TileWorldRefusal.GroundMaterialTextureSourceMissing` | a relative texture on a catalog with no source file | `MaterialId`, `MaterialName`, `TexturePath` |
+| `TileWorldRefusal.ColourNull` | a null authored colour | none |
+| `TileWorldRefusal.ColourShapeInvalid` | a colour without the `#rrggbb` or `#rrggbbaa` shape | `ColourText` |
+| `TileWorldRefusal.ColourDigitInvalid` | a non-hex character in a correctly shaped colour | `ColourText`, `CharacterIndex`, `Character` |
 | `AnimatedFoliageStyleRefusal.StyleOutsideSelection` | a style key that does not exactly name a selected authored archetype | `ArchetypeId` |
 | `AnimatedFoliageStyleRefusal.SharedMeshStyleConflict` | selected archetypes sharing geometry with different effective styles | `FirstArchetypeId`, `SecondArchetypeId` |
 | `TileGroundMaterialSetRefusal.LayerCountMismatch` | layers not matching material count plus the reserved layer | `MaterialCount`, `ActualLayerCount`, `RequiredLayerCount` |

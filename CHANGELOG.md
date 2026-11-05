@@ -29,6 +29,32 @@ Issues (the `kind/roadmap` label), not a checked-in roadmap file.
   water frames, lit receivers, chunk sink configuration and the tile-ground and prop-layer validators. Messages
   are unchanged.
 
+- **Breaking API change.** `TileProtocol` component readers no longer throw `InvalidDataException` for a
+  malformed route, name or plane. They throw `TileComponentCodecDataException`, a `MalformedDataException`
+  with a `TileComponentCodecRefusal` reason and identifiers. Catch `MalformedDataException` where code caught
+  `InvalidDataException` from `ClientReplicationView.Apply` or `ApplyDelta` over a `TileProtocol` registry.
+  The two encoder size refusals throw `TileComponentCodecArgumentException`, an `ArgumentException`.
+  `ProjectionStaging` keeps the codec fault as the inner exception of the `DeltaRebuildException` it raises.
+- `TileWorldException` carries a `TileWorldRefusal` reason and identifiers at every engine throw site: world
+  documents, objects and markers, region, manifest, layer and prefab files, catalogs and their schema, ground
+  material steep bands, foliage layers, clearance settings and saves, PGM height import, the editing commands,
+  collider spans, ground material sets, tile colours and the TileEdit session, catalog edit and query
+  services. Clearance, foliage and catalog-edit argument checks throw `TileClearanceArgumentException`,
+  `TileFoliageArgumentException` and `CatalogEditRangeException`, subtypes of the exception thrown before that
+  share `TileWorldRefusal`. The message-only constructors stay for callers outside the engine, and a
+  constructor fence keeps engine code on the reason-taking ones. Messages are unchanged.
+- Tile netcode refusals carry reason enums through subtypes of the exception thrown before:
+  `TileServerStateArgumentException` for the player, actor, ground-item, object-state and static-entity state
+  doors, `TileRouteArgumentException` and `TileRouteStateException` for route adjacency and access, and
+  `TileInterestArgumentException` and `TileInterestRangeException` for the interest radius against the overlap
+  margin. `TileColliderOptionsRangeException` names which collider option is not finite and positive.
+- `TileWorldIssue` gains `Overlap`, the typed `TileClearanceOverlap` for a `clearance.overlap` finding. It takes
+  part in the record's equality and printed form, and is null on every other issue. A refused clearance save
+  carries every issue and overlap as read-only snapshots.
+- `ValidationReport.Findings` lists each JSON schema failure as a `JsonSchemaFinding` with its instance
+  location, keyword and property name, so a caller need not parse the error text.
+- `CatalogWriter.Prepare` keeps every identifier of the refusal it wraps when it adds the catalog path.
+
 - Add opt-in terrain Drops for non-aquatic OrdinaryContact profiles, with shared bake, preview and execution
   policy. Consumers must set `PhysicsNavBakeOptions.CaptureTerrainDescentEvidence` and
   `NavBakeProfile.AllowTerrainDescents`, retain a positive `MaxDropMetres`, rebake navigation, and call

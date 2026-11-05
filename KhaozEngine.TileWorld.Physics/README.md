@@ -189,12 +189,24 @@ complete collider hash and tuning unchanged. Consumer material policies belong i
 - **`TileCollider(Kind, Shape, Pose)`**: one static. `TileColliderKind` is `Ground`, `Wall`, `Blocked`, `Object` or
   `WalkSurface`, and its declaration order is the canonical order.
 - **`TileColliderOptions`**: `WallThickness` (0.1 m), `BlockedHeight` (null means the document's plane height) and
-  `WalkSurfaceThickness` (0.1 m). `Build` refuses a value that is not a finite number above 0 with an
-  `ArgumentOutOfRangeException` naming the option.
+  `WalkSurfaceThickness` (0.1 m). `Build` refuses a value that is not a finite number above 0 with a
+  `TileColliderOptionsRangeException` carrying `TileColliderOptionsRefusal.OptionNotFinitePositive`, `OptionName`,
+  `ParamName = options` and the numeric `ActualValue`.
 - **`TileColliderRegistration`**: compact `Handles`, original `ColliderIndices`, selected `GroundHandles`,
   `Remove` and `Dispose`.
 - **`TileGroundSampler`**: `HeightAt(worldX, worldZ)` and `NormalAt(worldX, worldZ)`.
 - **`TileMediumSampler`**: `MediumAt(worldX, worldZ, feetY)`.
+
+## Refusals
+
+Inspect the reason and identifiers rather than parsing the developer-facing message.
+`TileColliderOptionsRangeException` derives from `ArgumentOutOfRangeException`, so existing range catches still
+match. Missing collision heights keep the exact `TileWorldException` type.
+
+| Exception and reason | What it refuses | Identifiers |
+| --- | --- | --- |
+| `TileColliderOptionsRangeException`, `TileColliderOptionsRefusal.OptionNotFinitePositive` | A thickness or set blocked height that is not finite and positive | `OptionName`, `ParamName = options`, `ActualValue` |
+| `TileWorldException`, `TileWorldRefusal.ColliderCollisionHeightMissing` | A collidable placed archetype without a collision height | `ArchetypeId`, `CollisionKind`, `ObjectId`, `Tile` including its known plane |
 
 ## What becomes a collider
 
@@ -221,7 +233,8 @@ an object top. A deck, a crate or a bridge holds a body up only as a physics sta
 high deck on the ground and stand on it from above.
 
 **Every Solid, Diagonal, Wall and WallCorner archetype needs a `collisionHeight`.** `Build` throws a
-`TileWorldException` naming the archetype when a placed one has none. `ke-tileedit` fills them from the kit:
+`TileWorldException` with `TileWorldRefusal.ColliderCollisionHeightMissing`, `ArchetypeId`, `CollisionKind`,
+`ObjectId` and `Tile` when a placed one has none. `ke-tileedit` fills them from the kit:
 `archetype_measure_heights` reads each model's top and `archetype_set_collision_heights` writes the heights into the
 catalog files.
 

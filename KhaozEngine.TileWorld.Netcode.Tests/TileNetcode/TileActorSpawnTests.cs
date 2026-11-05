@@ -124,8 +124,21 @@ public class TileActorSpawnTests
     {
         var hub = new InMemoryTransportHub();
         using TileWorldServer s = Server(hub.Server, new TileCoord(10, 10, 0));
-        Assert.Throws<ArgumentException>(() => s.SpawnActor(new TileCoord(12, 12, 99), Rat));
-        Assert.Throws<ArgumentException>(() => s.SpawnActor(new TileCoord(9_000, 9_000, 0), Rat));
+        var plane = Assert.Throws<TileServerStateArgumentException>(() =>
+            s.SpawnActor(new TileCoord(12, 12, 99), Rat));
+        Assert.IsAssignableFrom<ArgumentException>(plane);
+        Assert.Equal(TileServerStateRefusal.PlaneOutsideWorld, plane.Reason);
+        Assert.Equal("state", plane.ParamName);
+        Assert.Equal(new TileCoord(12, 12, 99), plane.Tile);
+        Assert.Equal(99, plane.Plane);
+        Assert.Equal(4, plane.PlaneCount);
+        var region = Assert.Throws<TileServerStateArgumentException>(() =>
+            s.SpawnActor(new TileCoord(9_000, 9_000, 0), Rat));
+        Assert.IsAssignableFrom<ArgumentException>(region);
+        Assert.Equal(TileServerStateRefusal.RegionNotLoaded, region.Reason);
+        Assert.Equal("state", region.ParamName);
+        Assert.Equal(new TileCoord(9_000, 9_000, 0), region.Tile);
+        Assert.Equal(new RegionCoord(140, 140), region.Region);
         Assert.Throws<ArgumentOutOfRangeException>(
             () => s.SpawnActor(new TileCoord(12, 12, 0), Rat with { MaxHealth = 0 }));
         Assert.Equal(0, s.ActorCount);
@@ -134,6 +147,10 @@ public class TileActorSpawnTests
         // indexes, served to every viewer around it forever. The GRID is what says nothing was built, so that is
         // what the door test asserts.
         foreach (CellSim cell in s.Host.Cells) Assert.Equal(0, cell.OwnedCount);
+
+        // Each repaired at its limit is accepted: the top plane and the far corner of the second loaded region.
+        Assert.True(s.SpawnActor(new TileCoord(12, 12, 3), Rat) > 0);
+        Assert.True(s.SpawnActor(new TileCoord(127, 63, 0), Rat) > 0);
     }
 
     [Fact]

@@ -201,7 +201,8 @@ internal static class CatalogRefusal
                 finding.Code,
                 registry.TryGet(finding.Type, out ContentTypeRegistration? type) ? type.TypeKey : string.Empty,
                 finding.Id,
-                finding.Message) { Key = finding.Key });
+                finding.Message)
+            { Key = finding.Key });
         }
 
         return rendered;

@@ -12,8 +12,11 @@ namespace KhaozEngine.Tests.TileWorld.Physics.Fixtures;
 /// Walkable landing membership is a shared-edge connected component of the named target's own source.</summary>
 public sealed class ContactTerrainEvidenceValidator
 {
-    public enum Refusal { None, AnalyticIdentityUnavailable, SupportOwnerChanged, FirstSupportOutsideLandingPatch,
-        SteepOutsideChain, AirAfterLanding, Water, UnavailableEvidence, MovementRefused }
+    public enum Refusal
+    {
+        None, AnalyticIdentityUnavailable, SupportOwnerChanged, FirstSupportOutsideLandingPatch,
+        SteepOutsideChain, AirAfterLanding, Water, UnavailableEvidence, MovementRefused
+    }
     readonly IMovementAnalyticSupportSource _source;
     readonly HashSet<MovementSurfaceFeatureKey> _steep, _landing;
     readonly Vector3 _target;

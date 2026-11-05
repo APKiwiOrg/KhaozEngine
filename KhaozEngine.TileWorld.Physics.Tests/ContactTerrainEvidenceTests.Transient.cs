@@ -26,8 +26,10 @@ public partial class ContactTerrainEvidenceTests
         var frame = scene.Context.NavigationFrame;
         var state = new FramedMovementState(new MoveState
         {
-            Position = new(1.9f, 1.15f, -1.375f), Grounded = false,
-            HorizontalVelocity = new(15, 0), VerticalVelocity = -40,
+            Position = new(1.9f, 1.15f, -1.375f),
+            Grounded = false,
+            HorizontalVelocity = new(15, 0),
+            VerticalVelocity = -40,
         }, frame, null);
         var evidence = new ContactDescentEvidence();
         Assert.Equal(MovementAvailability.Known, binding.TryAcquire(binding.CreateOrdinaryScope(frame), out var lease));

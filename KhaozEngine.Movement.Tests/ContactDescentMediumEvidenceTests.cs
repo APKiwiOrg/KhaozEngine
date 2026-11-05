@@ -59,7 +59,8 @@ public class ContactDescentMediumEvidenceTests
         float gap = tuning.GroundedEpsilon + tuning.StepHeight;
         var state = new FramedMovementState(new MoveState
         {
-            Position = new(0.25f, tuning.CapsuleHalfHeight + gap, 0), Grounded = false,
+            Position = new(0.25f, tuning.CapsuleHalfHeight + gap, 0),
+            Grounded = false,
             VerticalVelocity = -gap / ContactDropFixture.Options.EdgeProbeSeconds,
             WaterExcursion = WaterExcursionState.AirborneFromWater,
         }, frame, null);

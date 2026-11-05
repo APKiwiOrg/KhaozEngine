@@ -1418,7 +1418,7 @@ Missing items or owners use `SchemaValueRequired`, out-of-patch coordinates use 
 and unsupported edge values use `SchemaEnumUnsupported`. Repeated corner or cell-edge keys use
 `IdentityDuplicate`. Invalid owner-address denominators and subdivision segment counts use
 `ValueOutsideRange` with the actual value and inclusive limits. Segments admit both 2 and 64.
-Forwarding adapters consume this completed producer in their owning conversion tasks.
+The encoder consumes these typed findings. Other forwarding adapters still expose prose.
 
 `SplitSwNe` distinguishes an out-of-range rotation (`ValueOutsideRange`, 0 through 3) from an undefined
 cut or topology (`SchemaEnumUnsupported`). It carries the failing `FieldPath`, `ActualInteger` and,
@@ -1438,7 +1438,7 @@ carry `ActualVersion` and the owned `SupportedVersions` snapshot. Record-specifi
 The encoder forwards the first local finding's reason and applicable identifiers and attaches the full
 ordered snapshot in `Findings`. Decoded patch-key mismatches carry `Patch` and `ExpectedPatch`, and
 rectangle refusals carry the patch and dimensions. The trailing-value guard carries its requested patch.
-Remaining codec schema, byte-budget and decode-local forwarding conversions belong to their later task.
+Other codec schema, byte-budget and decode-local forwarding failures still use message-only constructors.
 
 | Reason | Refused rule | Identifiers when known |
 | --- | --- | --- |

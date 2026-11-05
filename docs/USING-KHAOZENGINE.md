@@ -12707,7 +12707,7 @@ coordinates use `SurfaceAddressOutOfPatch`, unsupported edges use `SchemaEnumUns
 corner or cell-edge keys use `IdentityDuplicate`. Denominators and segment counts use `ValueOutsideRange`
 with their inclusive limits, including segments 2 through 64. An absent cell uses
 `SurfaceSubdivisionAbsentCell`, while an edge adjoining another present cell uses
-`SurfaceSubdivisionInteriorEdge`. Forwarding adapters adopt the completed producer in their owning tasks.
+`SurfaceSubdivisionInteriorEdge`. The encoder consumes these typed findings. Other forwarding adapters still expose prose.
 `SplitSwNe` uses `ValueOutsideRange` for rotation outside 0 through 3 and `SchemaEnumUnsupported` for cut
 or topology, retaining the first failing field, actual integer and applicable enum type.
 An incompatible forced diagonal uses `SurfaceForcedTopologyConflict` and the submitted topology.
@@ -12723,7 +12723,7 @@ carry `ActualVersion` and `SupportedVersions`. The encoder preserves the first l
 and identifiers and attaches every ordered local finding as `Findings`. Decoded key mismatches use
 `SurfacePatchKeyMismatch` with `Patch` and `ExpectedPatch`, rectangle checks use `BoundsInvalid` with
 the patch and dimensions, and the trailing-value guard uses `SurfacePatchTrailingBytes` with the requested
-patch. Other codec schema, byte-budget and decode-local forwarding conversions remain with their later task.
+patch. Other codec schema, byte-budget and decode-local forwarding failures still use message-only constructors.
 
 Native metadata adds typed findings beside its unchanged string diagnostics. Compound findings select
 the first failing predicate branch. Missing asset-reference and indoor-span values use `SchemaValueRequired`, nonfinite

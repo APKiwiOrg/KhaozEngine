@@ -133,9 +133,9 @@ public sealed class MapDocumentException : Exception
     public long? ExpectedCount { get; init; }
     /// <summary>The transferred numeric identity required of its standalone placement, when present.</summary>
     public long? ExpectedNumericId { get; init; }
-    /// <summary>The resource or descriptor digest required by its pin, when known.</summary>
+    /// <summary>The resource, descriptor or surface semantic digest required by its pin, when known.</summary>
     public string? ExpectedHash { get; init; }
-    /// <summary>The resource or descriptor digest compared with its pin, when known.</summary>
+    /// <summary>The resource, descriptor or surface semantic digest compared with its pin, when known.</summary>
     public string? ActualHash { get; init; }
 
     /// <summary>The digest domain checked by the guard, such as resource bytes.</summary>

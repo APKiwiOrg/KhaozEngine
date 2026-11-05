@@ -29,8 +29,9 @@ public static class MapNativeResolution
         if (resolver == 2)
             return MapResolverV2.Resolve(document, assets, MapDocumentSurfaceSource.Capture(document), options).Document;
         if (legacySupportHeight is null)
-            throw new MapDocumentException(
-                "Native resolver identity (1, 1) places unbound placements on the analytic terrain and requires a legacy support height.");
+            throw new MapDocumentException(MapDocumentRefusal.SupportLegacyHeightRequired,
+                "Native resolver identity (1, 1) places unbound placements on the analytic terrain and requires a legacy support height.")
+            { ResolverVersion = resolver, FieldPath = "legacySupportHeight" };
         return MapResolver.Resolve(document, assets, legacySupportHeight, options);
     }
 
@@ -51,7 +52,8 @@ public static class MapNativeResolution
         {
             var effective = MapPrefabResolver.Expand(document, assets);
             return ids.Select(id => effective.Placements.FirstOrDefault(p => p.PlacementId == id)
-                ?? throw new MapDocumentException($"No placement with id '{id}'.")).ToArray();
+                ?? throw new MapDocumentException(MapDocumentRefusal.ReferenceMissing, $"No placement with id '{id}'.")
+                { PlacementId = id, EntityId = id, SubjectKind = "placement" }).ToArray();
         }
         var byId = new Dictionary<string, MapPlacement>(StringComparer.Ordinal);
         foreach (MapPlacement placement in document.Placements)
@@ -59,11 +61,13 @@ public static class MapNativeResolution
         var selected = new List<MapPlacement>(ids.Count);
         foreach (string id in ids)
             selected.Add(byId.TryGetValue(id, out MapPlacement? placement)
-                ? placement : throw new MapDocumentException($"No placement with id '{id}'."));
+                ? placement : throw new MapDocumentException(MapDocumentRefusal.ReferenceMissing, $"No placement with id '{id}'.")
+                { PlacementId = id, EntityId = id, SubjectKind = "placement" });
         if (resolver == 2) return MapResolverV2.ResolvePlacements(document, assets, selected);
         if (legacySupportHeight is null)
-            throw new MapDocumentException(
-                "Native resolver identity (1, 1) places unbound placements on the analytic terrain and requires a legacy support height.");
+            throw new MapDocumentException(MapDocumentRefusal.SupportLegacyHeightRequired,
+                "Native resolver identity (1, 1) places unbound placements on the analytic terrain and requires a legacy support height.")
+            { ResolverVersion = resolver, FieldPath = "legacySupportHeight" };
         return Array.AsReadOnly(selected.Select(p => MapResolver.ResolveOne(p, (_, x, z) => legacySupportHeight(x, z))).ToArray());
     }
 

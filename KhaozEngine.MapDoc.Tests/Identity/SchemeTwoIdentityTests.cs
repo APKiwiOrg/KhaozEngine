@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Text.Json.Nodes;
 using KhaozEngine.MapDoc;
 using KhaozEngine.MapDoc.Identity;
 using KhaozEngine.MapDoc.Storage;
@@ -63,6 +64,44 @@ public sealed class SchemeTwoIdentityTests
         {
             SurfaceStorageFixtures.RewriteIndexSemanticDigest(dir, new("ridge", 0, 0), new string('0', 64));
             Assert.Contains("Corrupt", Assert.Throws<MapDocumentException>(() => MapAuthoredIdentityV2.Compute(MapStoredSurfaceSource.Open(dir), SurfaceStorageFixtures.Assets(), V2)).Message);
+        }
+        finally
+        {
+            Directory.Delete(dir, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void SchemeTwo_StoredSurfaceDigestMustMatchItsVerifiedPatchAggregate()
+    {
+        var document = SurfaceStorageFixtures.ThreeSurfaces();
+        string dir = SurfaceStorageFixtures.SaveToTemp(document);
+        try
+        {
+            string path = Path.Combine(dir, "map.json");
+            string original = File.ReadAllText(path);
+            var manifest = JsonNode.Parse(original)!;
+            var surface = manifest["surfaces"]!.AsArray().Single(s => s!["id"]!.GetValue<string>() == "ridge")!;
+            string actual = surface["semanticSha256"]!.GetValue<string>();
+            string expected = new('0', 64);
+            surface["semanticSha256"] = expected;
+            string corrupt = manifest.ToJsonString();
+            File.WriteAllText(path, corrupt);
+
+            var error = Assert.Throws<MapDocumentException>(() =>
+                MapAuthoredIdentityV2.Compute(MapStoredSurfaceSource.Open(dir), SurfaceStorageFixtures.Assets(), V2));
+            Assert.Equal(MapDocumentRefusal.DigestMismatch, error.Reason);
+            Assert.Equal("surface semantics", error.DigestKind);
+            Assert.Equal("surface", error.SubjectKind);
+            Assert.Equal("ridge", error.SurfaceId);
+            Assert.Equal("ridge", error.EntityId);
+            Assert.Equal(expected, error.ExpectedHash);
+            Assert.Equal(actual, error.ActualHash);
+            Assert.NotEqual(expected, actual);
+            Assert.Equal(corrupt, File.ReadAllText(path));
+
+            File.WriteAllText(path, original);
+            Assert.Equal(Token(document), MapAuthoredIdentityV2.Compute(MapStoredSurfaceSource.Open(dir), SurfaceStorageFixtures.Assets(), V2));
         }
         finally
         {

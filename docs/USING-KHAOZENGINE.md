@@ -12537,6 +12537,10 @@ Resolver admission keeps the exact `MapDocumentException` catch contract. Its `R
 `OptionsResolverVersion`, `ExpectedResolverVersion`, `SupportRecipe`, `ExpectedSupportRecipe`,
 `FieldPath` and `SubjectKind`. Inspect those members rather than parsing prose. A consumer's
 message-only constructor leaves `Reason` null. `SourceName` carries available source context.
+Missing legacy support callbacks use `SupportLegacyHeightRequired`, with `ResolverVersion` and
+`FieldPath` `legacySupportHeight`. A nonfinite resolved support height uses `ValueNonfinite` with
+`PlacementId`, leaving `ActualNumber` null. A requested placement absent from the resolution scope uses
+`ReferenceMissing`, with `PlacementId`, `EntityId` and `SubjectKind` `placement`.
 `MapDocumentFinding` carries an immutable reason, prose and typed context. The exception's optional
 `Findings` list is an ordered read-only snapshot. Existing string validation APIs retain their prose,
 and aggregate adapters retain their existing behavior until all their producing rules are typed.
@@ -12626,8 +12630,10 @@ A partial editing window refuses with `window` before other validation. Both ove
 `(1, 2)`, `AuthoredBindingsV2`, valid builder options and exact native root membership in the supplied
 closure. The stored overload retains the original manifest metadata, traverses every pinned directory
 and index, verifies and hashes one payload at a time, and checks per-surface aggregates. It rereads payload
-bytes even with warm metadata caches. A swept payload refuses with `Missing`, while byte or semantic
-mismatches refuse with `Corrupt`. A changed manifest requires a new `Open`, never an implicit replacement.
+bytes even with warm metadata caches. A swept payload refuses with `Missing`, while payload byte or patch semantic
+mismatches refuse with `Corrupt`. A stored surface aggregate mismatch uses `DigestMismatch` with
+`DigestKind` `surface semantics`, `SubjectKind` `surface`, `SurfaceId`, `EntityId`, the pinned `ExpectedHash`
+and computed `ActualHash`. A changed manifest requires a new `Open`, never an implicit replacement.
 It also reads the tile files the pinned generation names, one at a time by their pinned names, and checks
 each tile's parsed content against its pinned tile hash. A removed tile file refuses with `Missing` and
 altered content with `Corrupt`.

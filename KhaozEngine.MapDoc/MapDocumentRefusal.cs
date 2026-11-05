@@ -6,6 +6,8 @@ public enum MapDocumentRefusal
     // Shared resolver contract.
     /// <summary>Refuses a document recipe or options identity incompatible with its resolver.</summary>
     ResolverContractMismatch,
+    /// <summary>Refuses legacy resolver work without an analytic support callback.</summary>
+    SupportLegacyHeightRequired,
 
     // Schema and scalar admission.
     /// <summary>Refuses malformed JSON, typed payload encoding or tile sculpt data.</summary>
@@ -52,7 +54,7 @@ public enum MapDocumentRefusal
     IdentityReserved,
     /// <summary>Refuses a target missing from the required authored or captured scope.</summary>
     ReferenceMissing,
-    /// <summary>Refuses resource bytes or a descriptor whose digest differs from its pin.</summary>
+    /// <summary>Refuses bytes, a descriptor or surface semantics whose digest differs from its pin.</summary>
     DigestMismatch,
     /// <summary>Refuses an identity repeated within its owning namespace.</summary>
     IdentityDuplicate,

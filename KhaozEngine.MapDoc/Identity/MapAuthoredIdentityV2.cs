@@ -46,8 +46,19 @@ public static class MapAuthoredIdentityV2
         foreach (MapSurfaceIndexEntry entry in source.EnumeratePinnedEntries(work))
             patches.Add(entry.Key, source.IdentityPatchDigest(entry, work));
         foreach (MapSurfaceRef surface in source.Surfaces)
-            if (MapSurfaceSemantics.SurfaceDigest(surface, patches.Where(p => p.Key.SurfaceId == surface.Id)) != surface.SemanticSha256)
-                throw new MapDocumentException($"Corrupt surface semantic digest for '{surface.Id}'.");
+        {
+            string actual = MapSurfaceSemantics.SurfaceDigest(surface, patches.Where(p => p.Key.SurfaceId == surface.Id));
+            if (actual != surface.SemanticSha256)
+                throw new MapDocumentException(MapDocumentRefusal.DigestMismatch, $"Corrupt surface semantic digest for '{surface.Id}'.")
+                {
+                    DigestKind = "surface semantics",
+                    SubjectKind = "surface",
+                    SurfaceId = surface.Id,
+                    EntityId = surface.Id,
+                    ExpectedHash = surface.SemanticSha256,
+                    ActualHash = actual,
+                };
+        }
         return MapAuthoredIdentityProjection.Compute(source.RootSha256, source.IdentityContentDigest(assets), patches, assets, options);
     }
 

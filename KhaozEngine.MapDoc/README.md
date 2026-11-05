@@ -26,7 +26,11 @@ need no synthetic builder options and never resolve relative resource paths impl
 closure passed in, for binding and resource lookup without a second load. `MapNativeResolution.Resolve(document,
 assets, options, legacySupportHeight)` routes a native document to its resolver by identity: `(1, 1)` resolves with
 `MapResolver` over the caller's legacy support height and `(1, 2)` with `MapResolverV2` over the document's own
-surfaces. Options with a different resolver version refuse. This package loads no meshes and has no render
+surfaces. Options with a different resolver version refuse. A missing legacy callback uses
+`MapDocumentRefusal.SupportLegacyHeightRequired` with `ResolverVersion` and `FieldPath` `legacySupportHeight`.
+A nonfinite resolved support height uses `ValueNonfinite` with `PlacementId`, leaving `ActualNumber` null.
+Placement lookup failures use `ReferenceMissing` with the requested `PlacementId`, `EntityId` and
+`SubjectKind` `placement`. This package loads no meshes and has no render
 dependency. `KhaozEngine.Terrain.Render3D` owns the one-way `MapAssetManifestAdapter` and `NativeMapAssetLoader`,
 which loads a native mesh with its source units applied once.
 
@@ -101,8 +105,10 @@ closure. `Open(directory)` retains the original resolver, support recipe, roots 
 checks those metadata and closure roots before payload reads, then verifies every directory and index
 address, reads and hashes one payload at a time, and checks patch and per-surface semantic digests. Index
 metadata may be cached, but every identity call rereads payload bytes. A freshly opened lazy source is
-valid input. A swept payload refuses with `Missing`, and mismatched bytes or semantics refuse with
-`Corrupt`. Replacing `map.json` never switches an existing source to the new generation. Open a new source
+valid input. A swept payload refuses with `Missing`, and mismatched payload bytes or patch semantics refuse with
+`Corrupt`. A per-surface semantic aggregate mismatch carries `DigestMismatch`, `DigestKind` `surface semantics`,
+`SubjectKind` `surface`, `SurfaceId`, `EntityId`, the pinned `ExpectedHash` and computed `ActualHash`.
+Replacing `map.json` never switches an existing source to the new generation. Open a new source
 to select that generation.
 
 The stored overload also reads the tile files named by the generation pinned at `Open`, one tile at a time,
@@ -1385,14 +1391,14 @@ adapters continue reporting prose until all of their producing rules carry typed
 | `SchemaBase64Malformed` | A foliage density token that is invalid or noncanonical base64 | `FieldPath`, `LayerId`, `Index`, `FoliageChunk` |
 | `SchemaArrayLengthMismatch` | Decoded foliage density whose byte length differs from the required chunk length | `FieldPath`, `LayerId`, `Index`, `FoliageChunk`, `ActualByteCount`, `ExpectedByteCount` |
 | `SchemaPayloadVersionUnsupported` | An unsupported asset-reference, resolver-identity, support or foliage payload version | `FieldPath`, `ResourceId`, `Index`, `ActualVersion`, `SupportedVersions`, `MinimumInteger` |
-| `ValueNonfinite` | A nonfinite manifest source-unit scale, foliage scalar, playable-bound component or placement support-search value | `FieldPath`, `AssetId`, `LayerId`, `PlacementId`, `Index`, `ActualNumber` |
+| `ValueNonfinite` | A nonfinite manifest source-unit scale, foliage scalar, playable-bound component, placement support-search value or resolved support height | `FieldPath`, `AssetId`, `LayerId`, `PlacementId`, `Index`, finite-only `ActualNumber` |
 | `ValueOutsideRange` | A finite nonpositive manifest source-unit scale, foliage integer outside its domain, negative support-search extent or high-water mark, or nonpositive numeric identity | `FieldPath`, `AssetId`, `LayerId`, `PlacementId`, `EntityId`, `SubjectKind`, `Index`, `ActualNumber`, `ActualInteger`, `MinimumNumber`, `MinimumInteger`, `MaximumInteger`, `NumericId`, `HighWaterMark` |
 | `IdentityDuplicate` | A repeated asset or resource closure identity, support patch or record identity, exact foliage JSON member name, surface or numeric identity, world binding, transfer or attachment producer, or a standalone owner colliding with a prefab binding | `FieldPath`, `Index`, `EntityId`, `SubjectKind`, `AssetId`, `ResourceId`, `SurfaceId`, `PlacementId`, `RecordId`, `Patch`, `NumericId`, `HighWaterMark`, `WorldId`, `ChildKind`, `Child`, `InstanceId` |
 | `IdentityReserved` | A live standalone owner using a retired transfer's world identity | `EntityId`, `WorldId`, `ChildKind`, `Child`, `InstanceId`, `SubjectKind` |
 | `AuthoredOwnershipMismatch` | A transfer inconsistent with its source or standalone owner, an attachment inconsistent with its owner, transfer or record anchor, or a prefab-owned interior submitted as standalone | `EntityId`, `WorldId`, `ChildKind`, `Child`, `InstanceId`, `PlacementId`, `RecordId`, `SpaceId`, `Patch`, `ActualAnchor`, `NumericId`, `ExpectedNumericId`, `ActualCount`, `ExpectedCount`, `SubjectKind` |
-| `ReferenceMissing` | An asset, resource, prefab or dependency missing from its closure, or an attachment transfer, standalone record target, interior anchor, scatter layer or companion layer missing from its required scope | `AssetId`, `ResourceId`, `DependencyId`, `ExpectedResourceKind`, `EntityId`, `WorldId`, `ChildKind`, `Child`, `InstanceId`, `PlacementId`, `RecordId`, `SpaceId`, `Patch`, `DocumentId`, `LayerId`, `SubjectKind`, `FieldPath` |
+| `ReferenceMissing` | An asset, resource, prefab or dependency missing from its closure, or a requested placement, attachment transfer, standalone record target, interior anchor, scatter layer or companion layer missing from its required scope | `AssetId`, `ResourceId`, `DependencyId`, `ExpectedResourceKind`, `EntityId`, `WorldId`, `ChildKind`, `Child`, `InstanceId`, `PlacementId`, `RecordId`, `SpaceId`, `Patch`, `DocumentId`, `LayerId`, `SubjectKind`, `FieldPath` |
 | `AssetClosureRequired` | Foliage edit preflight without a verified asset closure | `DocumentId` |
-| `DigestMismatch` | Resource bytes or an attached child's descriptor digest differing from its pin | `DigestKind`, `ResourceId`, `Path`, `EntityId`, `WorldId`, `ChildKind`, `Child`, `InstanceId`, `PlacementId`, `SubjectKind`, `ExpectedHash`, `ActualHash` |
+| `DigestMismatch` | Resource bytes, an attached child's descriptor digest or a stored surface semantic aggregate differing from its pin | `DigestKind`, `ResourceId`, `Path`, `EntityId`, `WorldId`, `ChildKind`, `Child`, `InstanceId`, `PlacementId`, `SurfaceId`, `SubjectKind`, `ExpectedHash`, `ActualHash` |
 | `BoundsInvalid` | Invalid prefab patch dimensions, manifest local bounds, playable bounds or lattice frame | `FieldPath`, `Width`, `Depth`, `AssetId`, `SurfaceId`, `Index`, `MinimumNumber`, `MaximumNumber` |
 | `DigestMalformed` | An asset-reference or surface semantic digest outside lowercase SHA-256 representation | `FieldPath`, `ResourceId`, `SurfaceId`, `Index` |
 | `AssetKindUnsupported` | An undefined resource kind | `ResourceId`, `FieldPath`, `ActualResourceKind` |
@@ -1410,6 +1416,7 @@ adapters continue reporting prose until all of their producing rules carry typed
 | `ReferenceKindMismatch` | An asset resource missing or declared with the wrong kind | `AssetId`, `ResourceId`, `ExpectedResourceKind`, available `ActualResourceKind` |
 | `NumericIdHighWaterExceeded` | A placement, prefab binding or retired transfer above the reserved mark | `EntityId`, `SubjectKind`, `PlacementId`, `FieldPath`, `NumericId`, `HighWaterMark` |
 | `ResolverContractMismatch` | The document resolver, support recipe or caller's resolver options cannot serve the requested operation | `PayloadVersion`, `ResolverVersion`, `OptionsResolverVersion`, `ExpectedResolverVersion`, `SupportRecipe`, `ExpectedSupportRecipe`, `FieldPath`, `SubjectKind` |
+| `SupportLegacyHeightRequired` | Resolver-1 resolution without an analytic support callback | `ResolverVersion`, `FieldPath` `legacySupportHeight` |
 
 Manifest source-unit scales must be finite and strictly positive. A nonfinite scale leaves `ActualNumber`
 and `MinimumNumber` null. A finite nonpositive scale carries `ActualNumber` and `MinimumNumber` 0,

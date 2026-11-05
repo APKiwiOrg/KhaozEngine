@@ -152,6 +152,8 @@ and collider floors duplicated by support surfaces are refused.
 `Build` refuses a partial window, options that do not match the resolver identity, a missing legacy support height
 for resolver 1, every resolution, placement and terrain refusal, a static beyond `MapWorldBuilder.MaxCoordinateMetres`
 (1,000,000 m) on an axis and two statics with one owner id.
+The missing legacy callback carries `MapDocumentRefusal.SupportLegacyHeightRequired`, `ResolverVersion` and
+`FieldPath` `legacySupportHeight` on the same `MapDocumentException`.
 The released world-limit refusal precedes effective placement-coordinate representability checks.
 Options that disagree with the document resolver retain `MapDocumentException` with
 `MapDocumentRefusal.ResolverContractMismatch`, `PayloadVersion`, `ResolverVersion`, `OptionsResolverVersion`

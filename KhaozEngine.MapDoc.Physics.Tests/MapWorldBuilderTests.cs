@@ -36,8 +36,14 @@ public class MapWorldBuilderTests
         Assert.True(matched.IsNative);
         Assert.Equal("crate", Assert.Single(matched.Document.Placements).PlacementId);
 
-        Assert.Contains("legacy support height", Assert.Throws<MapDocumentException>(() => NativeWorldFixtures.BuildLegacyWithoutHeight()).Message);
         var legacy = NativeWorldFixtures.LegacyCrate();
+        string beforeLegacy = MapDocumentFile.SaveText(legacy.Document);
+        var height = Assert.Throws<MapDocumentException>(() => MapWorldBuilder.Build(legacy.Document, legacy.Assets,
+            NativeWorldFixtures.Options() with { Resolve = NativeWorldFixtures.LegacyResolveOptions }));
+        Assert.Equal(MapDocumentRefusal.SupportLegacyHeightRequired, height.Reason);
+        Assert.Equal(1, height.ResolverVersion);
+        Assert.Equal("legacySupportHeight", height.FieldPath);
+        Assert.Equal(beforeLegacy, MapDocumentFile.SaveText(legacy.Document));
         MapBuiltWorld supported = MapWorldBuilder.Build(legacy.Document, legacy.Assets,
             NativeWorldFixtures.Options() with { Resolve = NativeWorldFixtures.LegacyResolveOptions, LegacySupportHeight = (_, _) => 0f });
         Assert.False(supported.IsNative);

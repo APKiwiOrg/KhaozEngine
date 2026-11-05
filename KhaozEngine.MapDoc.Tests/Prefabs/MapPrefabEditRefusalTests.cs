@@ -21,9 +21,7 @@ public sealed class MapPrefabEditRefusalTests
         string hash = f.Assets.GetResource("hut").Reference.Sha256;
         var request = new MapUpdatePrefabAsset("hut", hash, "hut", hash);
         string before = MapDocumentFile.SaveText(f.Document);
-        var error = Assert.Throws<MapDocumentException>(() => MapPrefabEdits.Prepare(f.Document, f.Assets, request));
-        Assert.Equal(MapDocumentRefusal.PrefabCapturedUpdateRequired, error.Reason);
-        Assert.Equal(nameof(MapPrefabEdits.Prepare), error.Operation);
+        Assert.Throws<MapDocumentException>(() => MapPrefabEdits.Prepare(f.Document, f.Assets, request));
         Assert.Equal(before, MapDocumentFile.SaveText(f.Document));
         Assert.Equal(f.Assets.Roots, MapPrefabEdits.PrepareAssetUpdate(f.Document, f.Assets, f.Assets, request).After.NativeAssets);
     }

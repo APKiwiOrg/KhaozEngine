@@ -1435,7 +1435,6 @@ adapters continue reporting prose until all of their producing rules carry typed
 | `MarkerAdoptionChoiceSetMismatch` | Adoption choices not covering exactly the source spawns | `SourceIds`, `ActualCount`, `ExpectedCount` |
 | `MarkerAdoptionChoiceMissing` | A source spawn without a destination and height choice | `SourceId`, `SubjectKind` |
 | `MarkerNameDuplicate` | A repeated effective or adoption destination marker name | `MarkerName`, destination `MarkerId` or colliding `MarkerIds`, ordered `Findings` for metadata collisions |
-| `PrefabCapturedUpdateRequired` | An asset update passed to the single-closure preparation API | `Operation` |
 | `PrefabInstanceMissing` | An edit of an absent or removed instance | `InstanceId` |
 | `PrefabChildAlreadyRemoved` | A remove override submitted for an already removed child | `InstanceId`, `Child` |
 | `PrefabOverrideDuplicate` | Initial overrides repeating one typed child | `InstanceId`, `Child`, `Index`, `FieldPath` |

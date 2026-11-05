@@ -12675,8 +12675,7 @@ branches retain their own reasons. Precise poses retain their first failed compo
 malformed digests retain `ActualHash`. Aggregate document adapters still report prose until every
 producing rule has typed findings.
 
-Prefab edit preparation carries `PrefabCapturedUpdateRequired` and `Operation` when an asset update
-requires the two-closure entry point. `PrefabInstanceMissing` identifies an absent or removed `InstanceId`,
+In prefab edit preparation, `PrefabInstanceMissing` identifies an absent or removed `InstanceId`,
 while `IdentityReserved` identifies a placement reusing a live or retained instance ID.
 `PrefabChildAlreadyRemoved` and a restore's `AuthoredValueRequired` retain `InstanceId` and local `Child`.
 Initial override nulls use `AuthoredValueRequired` with `InstanceId`, `FieldPath` and the available `Index`.

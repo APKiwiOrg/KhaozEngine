@@ -61,8 +61,7 @@ public static class MapPrefabEdits
             MapRestorePrefabChild p => p.InstanceId,
             MapRemovePrefab p => p.InstanceId,
             MapUnpackPrefab p => p.InstanceId,
-            _ => throw new MapDocumentException(MapDocumentRefusal.PrefabCapturedUpdateRequired,
-                "Asset updates require PrepareAssetUpdate and both captured closures.") { Operation = nameof(Prepare) },
+            _ => throw new MapDocumentException("Asset updates require PrepareAssetUpdate and both captured closures."),
         };
         ArgumentException.ThrowIfNullOrWhiteSpace(id);
         MapPrefabInstance? instance = set.Instances.SingleOrDefault(i => i.Id == id);

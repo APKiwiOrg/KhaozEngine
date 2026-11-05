@@ -102,8 +102,6 @@ public enum MapDocumentRefusal
     AssetCollisionNestedMesh,
 
     // Prefab edit admission.
-    /// <summary>Refuses an asset update without both captured closures.</summary>
-    PrefabCapturedUpdateRequired,
     /// <summary>Refuses an absent or removed prefab instance.</summary>
     PrefabInstanceMissing,
     /// <summary>Refuses removing a child already held by a remove override.</summary>

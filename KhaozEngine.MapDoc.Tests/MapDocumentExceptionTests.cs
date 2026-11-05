@@ -6,6 +6,7 @@ using System.Reflection;
 using System.Text.Json;
 using KhaozEngine.MapDoc;
 using KhaozEngine.MapDoc.Foliage;
+using KhaozEngine.MapDoc.Assets;
 using Xunit;
 
 namespace KhaozEngine.Tests.MapDoc;
@@ -88,6 +89,7 @@ public sealed class MapDocumentExceptionTests
         if (type == typeof(MapFoliageChunkKey)) return new MapFoliageChunkKey(-3, index);
         if (type == typeof(IReadOnlyList<int>)) return new[] { 1, 5 };
         if (type == typeof(MapTileCoord)) return new MapTileCoord(-7, index);
+        if (type == typeof(MapResourceKind)) return (MapResourceKind)(5000 + index);
         if (type == typeof(MapSupportRecipe)) return (MapSupportRecipe)(2000 + index);
         if (type == typeof(IReadOnlyList<MapDocumentFinding>))
             return new[] { new MapDocumentFinding(MapDocumentRefusal.ResolverContractMismatch, property.Name) { ResolverVersion = index } };

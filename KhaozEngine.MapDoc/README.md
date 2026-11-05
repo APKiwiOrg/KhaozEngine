@@ -1349,7 +1349,7 @@ ran on a worker thread. The handoff did not.
 
 ## Loud failures
 
-Resolver, root, prefab and foliage codec schema admission refusals keep the exact `MapDocumentException` type. Inspect its nullable
+Resolver, root, prefab, foliage codec and asset-manifest admission refusals keep the exact `MapDocumentException` type. Inspect its nullable
 `MapDocumentRefusal Reason` and applicable identifiers instead of classifying its message. The public
 message-only constructors remain available to consumers and leave `Reason` null. Other validation
 adapters continue reporting prose until all of their producing rules carry typed findings.
@@ -1362,16 +1362,21 @@ adapters continue reporting prose until all of their producing rules carry typed
 | `SchemaMemberNull` | A native member that cannot be null | `FieldPath`, `SourceName`, `Tile`, `Path` |
 | `SchemaMemberUnknown` | A member outside a closed schema object | `FieldPath`, `SourceName`, `Tile`, `Path`, `LayerId`, `Index` |
 | `SchemaObjectRequired` | A document, manifest, tile, prefab payload, marker-options or foliage value that must be an object | `FieldPath`, `SourceName`, `Tile`, `Path`, `LayerId`, `Index` |
-| `SchemaValueRequired` | A null deserialization result, a required prefab or foliage member that is missing, null or incorrectly typed, a missing prism domain, or blank marker-adoption identity text | `FieldPath`, `SourceName`, `Tile`, `Path`, `LayerId`, `Index` |
+| `SchemaValueRequired` | A null deserialization result, required native, manifest, prefab or foliage value, missing prism domain, or blank marker-adoption identity text | `FieldPath`, `SourceName`, `Tile`, `Path`, `AssetId`, `ResourceId`, `SurfaceId`, `PlacementId`, `LayerId`, `Index` |
 | `SchemaArrayRequired` | A foliage member that must be an array | `FieldPath`, `Index` |
 | `SchemaBooleanRequired` | A foliage member that must be a boolean | `FieldPath`, `LayerId`, `Index` |
 | `SchemaBase64Malformed` | A foliage density token that is invalid or noncanonical base64 | `FieldPath`, `LayerId`, `Index`, `FoliageChunk` |
 | `SchemaArrayLengthMismatch` | Decoded foliage density whose byte length differs from the required chunk length | `FieldPath`, `LayerId`, `Index`, `FoliageChunk`, `ActualByteCount`, `ExpectedByteCount` |
-| `SchemaPayloadVersionUnsupported` | A foliage set or layer payload version other than 1 | `FieldPath`, `Index`, `ActualVersion`, `SupportedVersions` |
-| `ValueNonfinite` | A foliage scalar that is not a finite binary32 number | `FieldPath`, `LayerId`, `Index`, `ActualNumber` |
-| `ValueOutsideRange` | A foliage integer outside signed 32-bit or material-ID admission | `FieldPath`, `LayerId`, `Index`, `ActualNumber`, `ActualInteger`, `MinimumInteger`, `MaximumInteger` |
-| `IdentityDuplicate` | A repeated exact foliage JSON member name | `FieldPath`, `Index`, `EntityId`, `SubjectKind` |
-| `BoundsInvalid` | Prefab patch width or depth outside 1 through 64 inclusive | `FieldPath`, `Width`, `Depth` |
+| `SchemaPayloadVersionUnsupported` | An unsupported asset-reference, resolver-identity or foliage payload version | `FieldPath`, `ResourceId`, `Index`, `ActualVersion`, `SupportedVersions`, `MinimumInteger` |
+| `ValueNonfinite` | A nonfinite foliage scalar, playable-bound component or placement support-search value | `FieldPath`, `LayerId`, `PlacementId`, `Index`, `ActualNumber` |
+| `ValueOutsideRange` | A foliage integer outside its domain, negative support-search extent or high-water mark, or nonpositive numeric identity | `FieldPath`, `LayerId`, `PlacementId`, `EntityId`, `SubjectKind`, `Index`, `ActualNumber`, `ActualInteger`, `MinimumNumber`, `MinimumInteger`, `MaximumInteger`, `NumericId`, `HighWaterMark` |
+| `IdentityDuplicate` | A repeated exact foliage JSON member name, surface identity or reserved numeric identity | `FieldPath`, `Index`, `EntityId`, `SubjectKind`, `SurfaceId`, `PlacementId`, `NumericId`, `HighWaterMark` |
+| `BoundsInvalid` | Invalid prefab patch dimensions, manifest local bounds, playable bounds, lattice frame or indoor-span metadata | `FieldPath`, `Width`, `Depth`, `AssetId`, `SurfaceId`, `Index`, `MinimumNumber`, `MaximumNumber` |
+| `DigestMalformed` | An asset-reference or surface semantic digest outside lowercase SHA-256 representation | `FieldPath`, `ResourceId`, `SurfaceId`, `Index` |
+| `TransformInvalid` | Asset source units that are not finite and positive | `AssetId`, `FieldPath`, finite `ActualNumber` |
+| `AssetKindUnsupported` | An undefined resource kind | `ResourceId`, `FieldPath`, `ActualResourceKind` |
+| `ReferenceKindMismatch` | An asset resource missing or declared with the wrong kind | `AssetId`, `ResourceId`, `ExpectedResourceKind`, available `ActualResourceKind` |
+| `NumericIdHighWaterExceeded` | A placement, prefab binding or retired transfer above the reserved mark | `EntityId`, `SubjectKind`, `PlacementId`, `FieldPath`, `NumericId`, `HighWaterMark` |
 | `ResolverContractMismatch` | The document resolver, support recipe or caller's resolver options cannot serve the requested operation | `PayloadVersion`, `ResolverVersion`, `OptionsResolverVersion`, `ExpectedResolverVersion`, `SupportRecipe`, `ExpectedSupportRecipe`, `FieldPath`, `SubjectKind` |
 
 `ResolverVersion` is the document's declared version. `OptionsResolverVersion` is the version supplied
@@ -1402,12 +1407,25 @@ marker authoring rules and other aggregate validation adapters retain their exis
 all of their producing rules are typed.
 
 `MapDocumentFinding` is an immutable record with `Reason`, developer prose in `Message` and the same
-typed context. Resolver diagnostic producers retain these findings beside the existing string API's
+typed context. Resolver and native-metadata diagnostic producers retain these findings beside the existing string API's
 prose projection. `MapDocumentException.Findings` can carry the full ordered finding list as an owned
 read-only snapshot. Neither a change to the input list nor a cast of the exposed collection can change
 that snapshot. A source wrapper using the source-copy method preserves the reason, all identifiers and the
 original refusal as the cause. Wrappers still using message-only constructors, such as
 `NativeDocumentService.Verify`, convert in later tasks.
+
+Asset-manifest field paths start at the payload root, retaining asset, resource and dependency array
+positions. Direct reference and resource checks start at the supplied object's root. Required-value
+findings retain the first failed field in predicate order. Native playable bounds distinguish nonfinite
+components from finite unordered or empty extents, and support-search findings distinguish nonfinite
+values from finite negative extents. `MinimumNumber` and `MaximumNumber` carry the submitted pair when
+bounds are refused. Native metadata and manifest admission set `ActualNumber` only for finite values.
+Payload checks requiring version 1 carry `SupportedVersions` as an owned read-only snapshot. A check
+requiring only a positive version carries `MinimumInteger` 1 instead. Native metadata's string diagnostics
+and admission points are unchanged. Its three remaining document-kind and paint-priority rules are
+still prose-only, so adapters for native metadata, numeric reservations and document validation retain
+their message-only constructors until the remaining producer conversion. No typed finding is inferred
+from those aggregate messages.
 
 Map documents are dev-authored content, not runtime state: `MapDocumentFile.Load`/`Save` throw
 `MapDocumentException` on a read error, invalid JSON, a missing or out-of-range `formatVersion`, a

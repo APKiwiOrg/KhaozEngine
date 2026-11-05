@@ -33,8 +33,9 @@ public sealed class MapResolverFindingTests
         var errors = new List<string>();
         var findings = new List<MapDocumentFinding>();
         MapNativeValidation.Validate(doc, errors, findings);
-        Assert.Equal(count, findings.Count);
-        Assert.All(findings, finding =>
+        var resolverFindings = findings.Where(f => f.Reason == MapDocumentRefusal.ResolverContractMismatch).ToArray();
+        Assert.Equal(count, resolverFindings.Length);
+        Assert.All(resolverFindings, finding =>
         {
             Assert.Equal(MapDocumentRefusal.ResolverContractMismatch, finding.Reason);
             Assert.Equal(doc.ResolverIdentity!.PayloadVersion, finding.PayloadVersion);

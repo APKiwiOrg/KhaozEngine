@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using KhaozEngine.MapDoc.Foliage;
+using KhaozEngine.MapDoc.Assets;
 
 namespace KhaozEngine.MapDoc;
 
@@ -69,6 +70,25 @@ public sealed record MapDocumentFinding(MapDocumentRefusal Reason, string Messag
     public long? MaximumInteger { get; init; }
     /// <summary>The refused identity, such as a repeated JSON member name, when known.</summary>
     public string? EntityId { get; init; }
+
+    /// <summary>The asset descriptor whose admission failed, when known.</summary>
+    public string? AssetId { get; init; }
+    /// <summary>The declared surface whose metadata failed validation, when known.</summary>
+    public string? SurfaceId { get; init; }
+    /// <summary>The placement whose admission failed, when known.</summary>
+    public string? PlacementId { get; init; }
+    /// <summary>The referenced resource kind required by the asset.</summary>
+    public MapResourceKind? ExpectedResourceKind { get; init; }
+    /// <summary>The declared resource kind, when a resource is available.</summary>
+    public MapResourceKind? ActualResourceKind { get; init; }
+    /// <summary>The refused numeric identity, when present.</summary>
+    public long? NumericId { get; init; }
+    /// <summary>The reserved numeric identity high-water mark checked by the guard.</summary>
+    public long? HighWaterMark { get; init; }
+    /// <summary>The minimum of the checked numeric domain, or the submitted lower endpoint when bounds are invalid.</summary>
+    public double? MinimumNumber { get; init; }
+    /// <summary>The maximum of the checked numeric domain, or the submitted upper endpoint when bounds are invalid.</summary>
+    public double? MaximumNumber { get; init; }
 
     /// <summary>The supported payload versions, as an owned read-only snapshot.</summary>
     public IReadOnlyList<int>? SupportedVersions

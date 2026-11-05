@@ -38,10 +38,22 @@ public enum MapDocumentRefusal
     ValueNonfinite,
     /// <summary>Refuses a numeric field outside its stated domain.</summary>
     ValueOutsideRange,
+    /// <summary>Refuses a digest outside its canonical lowercase SHA-256 representation.</summary>
+    DigestMalformed,
+    /// <summary>Refuses a source-unit transform that is not finite and positive.</summary>
+    TransformInvalid,
 
     // Shared identity admission.
     /// <summary>Refuses an identity repeated within its owning namespace.</summary>
     IdentityDuplicate,
+    /// <summary>Refuses a numeric identity above its reserved high-water mark.</summary>
+    NumericIdHighWaterExceeded,
+    /// <summary>Refuses a referenced resource of a different kind than required.</summary>
+    ReferenceKindMismatch,
+
+    // Asset manifest admission.
+    /// <summary>Refuses an undefined resource kind.</summary>
+    AssetKindUnsupported,
 
     // Foliage JSON converter.
     /// <summary>Refuses a foliage section larger than its UTF-8 byte budget.</summary>

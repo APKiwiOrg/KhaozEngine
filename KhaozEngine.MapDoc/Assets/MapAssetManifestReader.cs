@@ -145,7 +145,7 @@ internal static class MapAssetManifestReader
     {
         foreach (var (id, kind) in ResourceReferences(asset))
             if (!resources.TryGetValue(id, out MapResourceDoc? resource) || resource.Kind != kind)
-                throw new MapDocumentException(MapDocumentRefusal.ReferenceKindMismatch, $"Asset '{asset.Id}' requires {kind} resource '{id}'.")
+                throw new MapDocumentException(resource is null ? MapDocumentRefusal.ReferenceMissing : MapDocumentRefusal.ReferenceKindMismatch, $"Asset '{asset.Id}' requires {kind} resource '{id}'.")
                 { AssetId = asset.Id, ResourceId = id, ExpectedResourceKind = kind, ActualResourceKind = resource?.Kind };
     }
 

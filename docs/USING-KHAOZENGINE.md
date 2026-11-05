@@ -12680,7 +12680,8 @@ Payload-version validators, marker authoring rules and other aggregate admission
 contracts until all their producing rules are typed.
 
 Asset-manifest admission exposes `AssetKindUnsupported`, `DigestMalformed`, `ValueNonfinite`,
-`ValueOutsideRange`, `BoundsInvalid`, `SchemaValueRequired`, `SchemaPayloadVersionUnsupported` and `ReferenceKindMismatch`.
+`ValueOutsideRange`, `BoundsInvalid`, `SchemaValueRequired`, `SchemaPayloadVersionUnsupported`, `ReferenceMissing` and
+`ReferenceKindMismatch`.
 Inspect `AssetId`, `ResourceId`, `ExpectedResourceKind`, `ActualResourceKind` and `FieldPath` where known.
 Nonfinite source-unit scales use `ValueNonfinite` with null `ActualNumber` and `MinimumNumber`.
 Finite nonpositive scales use `ValueOutsideRange` with `ActualNumber` and an exclusive `MinimumNumber` 0.

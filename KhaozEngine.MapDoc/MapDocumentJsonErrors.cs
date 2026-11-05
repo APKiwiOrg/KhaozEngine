@@ -10,17 +10,22 @@ internal static class MapDocumentJsonErrors
     internal static MapDocumentException Wrap(Exception error, string? sourceName, string message,
         MapTileCoord? tile = null, string? path = null, string? resourceId = null)
     {
+        MapDocumentException? context = null;
         for (Exception? cause = error.InnerException; cause is not null; cause = cause.InnerException)
-            if (cause is MapDocumentException { Reason: not null } known)
-                return known.WithSourceName(sourceName, message, tile, path, resourceId);
+            if (cause is MapDocumentException inner)
+            {
+                if (inner.Reason is not null) return inner.WithSourceName(sourceName, message, tile, path, resourceId);
+                context ??= inner;
+            }
         for (Exception? cause = error; cause is not null; cause = cause.InnerException)
             if (cause is MapFoliageJsonException foliage)
                 return foliage.ToDocument(sourceName, message, tile, path, resourceId);
         var json = error as JsonException;
         return new MapDocumentException(MapDocumentRefusal.SchemaMalformed, message, error)
         {
-            SourceName = sourceName, Path = path, Tile = tile, ResourceId = resourceId,
-            FieldPath = json?.Path, LineNumber = json?.LineNumber, BytePositionInLine = json?.BytePositionInLine,
+            // A message-only inner refusal has no reason to keep, but the context it carries still applies.
+            SourceName = sourceName ?? context?.SourceName, Path = context?.Path ?? path, Tile = context?.Tile ?? tile, ResourceId = context?.ResourceId ?? resourceId,
+            FieldPath = context?.FieldPath ?? json?.Path, LineNumber = json?.LineNumber, BytePositionInLine = json?.BytePositionInLine,
         };
     }
 

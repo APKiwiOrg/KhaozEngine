@@ -147,6 +147,18 @@ public sealed class MapTypedResourceSchemaTests
         Assert.Equal(unowned, MapLightFile.Read(MapLightFile.Write(unowned), "leaf"));
     }
 
+    [Fact]
+    public void A_light_refusal_carries_its_resource_when_the_failed_member_shares_its_name()
+    {
+        byte[] valid = MapLightFile.Write(PrefabFixtures.GlowLight());
+        var root = JsonNode.Parse(valid)!.AsObject();
+        root["radius"] = null;
+        var error = Assert.Throws<MapDocumentException>(() => MapLightFile.Read(Encoding.UTF8.GetBytes(root.ToJsonString()), "radius"));
+        Assert.Equal(MapDocumentRefusal.SchemaValueRequired, error.Reason);
+        Assert.Equal("radius", error.ResourceId);
+        Assert.Equal(PrefabFixtures.GlowLight(), MapLightFile.Read(valid, "radius"));
+    }
+
     [Theory]
     [InlineData("glow-light", "light")]
     [InlineData("deck-support", "support")]

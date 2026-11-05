@@ -20,14 +20,13 @@ internal readonly record struct MapFoliageJsonContext(string Label, string? Fiel
     internal MapDocumentException Refuse(MapDocumentRefusal reason, string message,
         long? actualByteCount = null, long? expectedByteCount = null, int? actualVersion = null,
         double? actualNumber = null, long? actualInteger = null, long? minimumInteger = null,
-        long? maximumInteger = null, string? entityId = null, string? subjectKind = null) => new(reason, message)
+        long? maximumInteger = null) => new(reason, message)
     {
         FieldPath = FieldPath, LayerId = LayerId, Index = Index, FoliageChunk = FoliageChunk,
         ActualByteCount = actualByteCount, ExpectedByteCount = expectedByteCount,
         ActualVersion = actualVersion, SupportedVersions = actualVersion is null ? null : [1],
         ActualNumber = actualNumber, ActualInteger = actualInteger,
         MinimumInteger = minimumInteger, MaximumInteger = maximumInteger,
-        EntityId = entityId, SubjectKind = subjectKind,
     };
 
     public override string ToString() => Label;

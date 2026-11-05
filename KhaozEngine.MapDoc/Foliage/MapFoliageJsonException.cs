@@ -20,8 +20,6 @@ public sealed class MapFoliageJsonException : JsonException
 
     /// <summary>The JSON field in JsonException.Path format, relative to the foliage section.</summary>
     public string? FieldPath { get; init; }
-    /// <summary>The kind of identity refused, when known.</summary>
-    public string? SubjectKind { get; init; }
     /// <summary>The foliage layer identity, after it has been read.</summary>
     public string? LayerId { get; init; }
     /// <summary>The zero-based position of the containing or refused JSON array item, when known.</summary>
@@ -44,8 +42,6 @@ public sealed class MapFoliageJsonException : JsonException
     public long? MinimumInteger { get; init; }
     /// <summary>The inclusive maximum integer accepted by the checked field.</summary>
     public long? MaximumInteger { get; init; }
-    /// <summary>The refused identity, such as a repeated JSON member name, when known.</summary>
-    public string? EntityId { get; init; }
 
     /// <summary>The supported payload versions, as an owned read-only snapshot.</summary>
     public IReadOnlyList<int>? SupportedVersions
@@ -60,7 +56,6 @@ public sealed class MapFoliageJsonException : JsonException
         new(inner.Reason ?? MapDocumentRefusal.SchemaMalformed, inner.Message, inner)
         {
             FieldPath = inner.FieldPath,
-            SubjectKind = inner.SubjectKind,
             LayerId = inner.LayerId,
             Index = inner.Index,
             FoliageChunk = inner.FoliageChunk,
@@ -72,7 +67,6 @@ public sealed class MapFoliageJsonException : JsonException
             ActualInteger = inner.ActualInteger,
             MinimumInteger = inner.MinimumInteger,
             MaximumInteger = inner.MaximumInteger,
-            EntityId = inner.EntityId,
             SupportedVersions = inner.SupportedVersions,
         };
 
@@ -82,7 +76,6 @@ public sealed class MapFoliageJsonException : JsonException
         SourceName = sourceName, Tile = tile, Path = path, ResourceId = resourceId,
         LineNumber = LineNumber, BytePositionInLine = BytePositionInLine,
         FieldPath = FieldPath ?? Path,
-        SubjectKind = SubjectKind,
         LayerId = LayerId,
         Index = Index,
         FoliageChunk = FoliageChunk,
@@ -94,7 +87,6 @@ public sealed class MapFoliageJsonException : JsonException
         ActualInteger = ActualInteger,
         MinimumInteger = MinimumInteger,
         MaximumInteger = MaximumInteger,
-        EntityId = EntityId,
         SupportedVersions = SupportedVersions,
     };
 }

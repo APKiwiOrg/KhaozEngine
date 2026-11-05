@@ -25,8 +25,12 @@ public static class MapLightFile
             return light;
         }
         catch (JsonException ex) { throw MapDocumentJsonErrors.Wrap(ex, null, "Invalid light payload '" + resourceId + "'.", resourceId: resourceId); }
-        catch (MapDocumentException ex) when (ex.ResourceId is null)
-        { throw ex.WithSourceName(null, "Invalid light payload '" + resourceId + "': " + ex.Message, resourceId: resourceId); }
+        // The released text gains its prefix only when it does not already name the resource. No reason depends on it.
+        catch (MapDocumentException ex) when (ex.ResourceId is null || !ex.Message.Contains("'" + resourceId + "'", StringComparison.Ordinal))
+        {
+            throw ex.WithSourceName(null, ex.Message.Contains("'" + resourceId + "'", StringComparison.Ordinal) ? ex.Message
+                : "Invalid light payload '" + resourceId + "': " + ex.Message, resourceId: resourceId);
+        }
     }
 
     public static byte[] Write(MapLocalLightDoc light)

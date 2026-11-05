@@ -136,14 +136,14 @@ public sealed class MapAssetManifestAdmissionTests
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
-    public void Asset_resource_kind_refusal_keeps_the_expected_and_available_actual_kind(bool missing)
+    public void Asset_resource_refusal_separates_an_absent_resource_from_a_wrong_kind(bool missing)
     {
         var asset = new MapAssetDoc { Id = "tree", MeshResourceId = "mesh" };
         var resource = new MapResourceDoc { Kind = MapResourceKind.Material };
         var resources = new Dictionary<string, MapResourceDoc>();
         if (!missing) resources.Add("mesh", resource);
         var error = Assert.Throws<MapDocumentException>(() => MapAssetManifestReader.ValidateAssetResources(asset, resources));
-        Assert.Equal(MapDocumentRefusal.ReferenceKindMismatch, error.Reason);
+        Assert.Equal(missing ? MapDocumentRefusal.ReferenceMissing : MapDocumentRefusal.ReferenceKindMismatch, error.Reason);
         Assert.Equal("tree", error.AssetId);
         Assert.Equal("mesh", error.ResourceId);
         Assert.Equal(MapResourceKind.Mesh, error.ExpectedResourceKind);

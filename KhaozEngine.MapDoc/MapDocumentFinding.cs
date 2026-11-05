@@ -78,7 +78,7 @@ public sealed record MapDocumentFinding(MapDocumentRefusal Reason, string Messag
     public long? MinimumInteger { get; init; }
     /// <summary>The inclusive maximum integer accepted by the checked field.</summary>
     public long? MaximumInteger { get; init; }
-    /// <summary>The refused identity, such as a repeated JSON member name, when known.</summary>
+    /// <summary>The refused identity, when known.</summary>
     public string? EntityId { get; init; }
     /// <summary>The static owner whose world position was checked, such as a placement or terrain chunk.</summary>
     public string? OwnerId { get; init; }

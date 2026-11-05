@@ -206,6 +206,29 @@ public sealed class MapDocumentExceptionTests
             typeof(MapDocumentException).GetProperty(p.Name)!.GetValue(outer))).Select(p => p.Name));
     }
 
+    [Fact]
+    public void A_json_wrapper_keeps_the_context_of_a_message_only_inner_refusal()
+    {
+        var tile = new MapTileCoord(1, 2);
+        var consumer = new MapDocumentException("consumer refusal") { Path = "inner.json", FieldPath = "$.custom", ResourceId = "inner", Tile = tile, SourceName = "inner-source" };
+        MapDocumentException outer = MapDocumentJsonErrors.Wrap(new JsonException("converter failure", consumer), null, "converter failure", path: "outer.json", resourceId: "outer");
+        Assert.Equal(MapDocumentRefusal.SchemaMalformed, outer.Reason);
+        Assert.Equal("inner.json", outer.Path);
+        Assert.Equal("$.custom", outer.FieldPath);
+        Assert.Equal("inner", outer.ResourceId);
+        Assert.Equal(tile, outer.Tile);
+        Assert.Equal("inner-source", outer.SourceName);
+
+        // An inner refusal with no context leaves the wrapper's own context in place.
+        MapDocumentException plain = MapDocumentJsonErrors.Wrap(new JsonException("converter failure", new MapDocumentException("consumer refusal")),
+            "map.json", "converter failure", path: "outer.json", resourceId: "outer");
+        Assert.Equal(MapDocumentRefusal.SchemaMalformed, plain.Reason);
+        Assert.Equal("outer.json", plain.Path);
+        Assert.Equal("outer", plain.ResourceId);
+        Assert.Equal("map.json", plain.SourceName);
+        Assert.Null(plain.FieldPath);
+    }
+
     static bool Matches(object? expected, object? actual) =>
         expected is IEnumerable sequence and not string && actual is IEnumerable other
             ? sequence.Cast<object?>().SequenceEqual(other.Cast<object?>()) : Equals(expected, actual);

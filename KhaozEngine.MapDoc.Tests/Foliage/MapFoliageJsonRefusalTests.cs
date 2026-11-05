@@ -21,7 +21,7 @@ public sealed class MapFoliageJsonRefusalTests
     [InlineData("models-array", MapDocumentRefusal.SchemaArrayRequired, "$.layers[0].models", 0)]
     [InlineData("set-unknown", MapDocumentRefusal.SchemaMemberUnknown, "$.extra", null)]
     [InlineData("special-member", MapDocumentRefusal.SchemaMemberUnknown, "$['extra.member']", null)]
-    [InlineData("set-duplicate", MapDocumentRefusal.IdentityDuplicate, "$.payloadVersion", null)]
+    [InlineData("set-duplicate", MapDocumentRefusal.SchemaMemberDuplicate, "$.payloadVersion", null)]
     [InlineData("set-null", MapDocumentRefusal.SchemaValueRequired, "$.payloadVersion", null)]
     [InlineData("layer-missing", MapDocumentRefusal.SchemaValueRequired, "$.layers[0].seed", 0)]
     [InlineData("support-kind-missing", MapDocumentRefusal.SchemaValueRequired, "$.layers[0].support.kind", 0)]
@@ -63,11 +63,6 @@ public sealed class MapFoliageJsonRefusalTests
         {
             Assert.Equal(2, error.ActualVersion);
             Assert.Equal(new[] { 1 }, error.SupportedVersions);
-        }
-        if (variant == "set-duplicate")
-        {
-            Assert.Equal("payloadVersion", error.EntityId);
-            Assert.Equal("JSON member", error.SubjectKind);
         }
         if (variant == "cell-nonfinite") Assert.Equal(1e39, error.ActualNumber);
         // A literal beyond double range has no representable value to report.

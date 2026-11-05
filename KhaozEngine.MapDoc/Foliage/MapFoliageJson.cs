@@ -407,8 +407,7 @@ internal static class MapFoliageJson
         {
             if (!required.Contains(p.Name, StringComparer.Ordinal) && (optional is null || !optional.Contains(p.Name, StringComparer.Ordinal)))
                 throw label.Property(p.Name).Refuse(MapDocumentRefusal.SchemaMemberUnknown, $"{label}: unknown property '{p.Name}'.");
-            if (!seen.Add(p.Name)) throw label.Property(p.Name).Refuse(MapDocumentRefusal.IdentityDuplicate,
-                $"{label}: duplicate property '{p.Name}'.", entityId: p.Name, subjectKind: "JSON member");
+            if (!seen.Add(p.Name)) throw label.Property(p.Name).Refuse(MapDocumentRefusal.SchemaMemberDuplicate, $"{label}: duplicate property '{p.Name}'.");
             if (p.Value.ValueKind == JsonValueKind.Null) throw label.Property(p.Name).Refuse(MapDocumentRefusal.SchemaValueRequired,
                 $"{label}: property '{p.Name}' must not be null.");
         }

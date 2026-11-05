@@ -171,6 +171,10 @@ the terrain comparison through `PrivateOracleEntry.Run`. `ShippedSourceInventory
 attested world and its catalogs. Catalog entries resolve against the world directory and must name files
 in the verified provenance. Missing or unverified inputs fail through the existing private entry boundary.
 The harness links `LegacyWaterConverter` and `LegacyWaterComparison` without the synthetic oracle world.
+Its comparison-scope guards throw the internal test-only `LegacyWaterComparisonException`.
+`Reason` is `LegacyWaterComparisonRefusal.PlaneUnsupported` with the refused `Plane` for water off plane
+zero, or `RegionMissing` with no `Plane` when there is no plane-zero source region. These reasons belong
+only to the comparison harness and are absent from the shipped `MapDocumentRefusal` enum.
 
 The test records only counts through `report.Record`, covering bodies, rectangles, cells, boundary samples,
 boundary ownership changes and floors above the water surface. Comparison failures are checked only through

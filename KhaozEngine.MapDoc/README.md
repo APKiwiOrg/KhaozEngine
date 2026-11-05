@@ -664,7 +664,7 @@ Typed Light and Support resource payloads begin with the discriminant `"resource
 released. Prefab leaf lights and typed support refuse an opaque resource with `AssetTypedPayloadOpaque`,
 `ResourceId`, `ExpectedSchema` and the `light` or `support` role in `SubjectKind`. A missing or misplaced typed
 discriminant uses `SchemaValueRequired`, `FieldPath` `$.resourceSchema`, `ResourceId` and `ExpectedSchema`.
-Physics support also refuses an opaque resource with a message naming it.
+Physics support also refuses an opaque resource with `AssetTypedPayloadOpaque`, `ResourceId` and `ExpectedSchema`.
 
 `MapEffectiveAnnotations.Lights(resources)` and `Markers(resources)` return immutable records in stable ID order.
 Both carry their own payload version. Light positions and radii are owner-frame metres, independent of leaf
@@ -1575,8 +1575,8 @@ Its identifiers retain the actual key namespaces:
 
 Equal text in different namespaces remains admissible. No identifier is parsed from its prose.
 Duplicate null string identities retain the duplicate admission point, before later required-text
-validation. The remaining message-only prefab constructions belong to the wave 6 aggregate document
-adapter, bounded collection guards and unsupported child arm.
+validation. The aggregate document adapter, bounded collection guards and unsupported child arm
+retain message-only constructors for wave 6.
 
 Manifest source-unit scales must be finite and strictly positive. A nonfinite scale leaves `ActualNumber`
 and `MinimumNumber` null. A finite nonpositive scale carries `ActualNumber` and `MinimumNumber` 0,

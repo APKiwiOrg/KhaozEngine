@@ -42,9 +42,6 @@ public enum MapDocumentRefusal
     ValueOutsideRange,
     /// <summary>Refuses a digest outside its canonical lowercase SHA-256 representation.</summary>
     DigestMalformed,
-    /// <summary>Refuses a source-unit transform that is not finite and positive.</summary>
-    TransformInvalid,
-
     /// <summary>Refuses a value outside the declared enumeration.</summary>
     SchemaEnumUnsupported,
 

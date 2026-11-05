@@ -113,23 +113,44 @@ public sealed class MapPrefabSchemaAdmissionTests
     [InlineData("text")]
     [InlineData("enum")]
     [InlineData("file")]
+    [InlineData("file-enum")]
     public void Json_wrappers_keep_the_readers_path_and_metadata_until_the_inner_rule_is_typed(string form)
     {
+        // W5c review regression: a deserialization refusal must retain the prefab resource context.
+        string payload = form == "file-enum"
+            ? "{\"payloadVersion\":1,\"id\":\"p\",\"children\":[" + Storey.Replace("\"kind\":\"Storey\"", "\"kind\":\"Future\"", StringComparison.Ordinal) + "]}"
+            : "{ invalid";
+        byte[] bytes = Encoding.UTF8.GetBytes(payload);
+        byte[] before = (byte[])bytes.Clone();
         MapDocumentException error = form switch
         {
-            "file" => Assert.Throws<MapDocumentException>(() => MapPrefabFile.Read(Encoding.UTF8.GetBytes("{ invalid"), "p")),
+            "file" or "file-enum" => Assert.Throws<MapDocumentException>(() => MapPrefabFile.Read(bytes, "p")),
             "text" => Assert.Throws<MapDocumentException>(() => MapPrefabJson.ReadChild("{ invalid")),
             _ => Assert.Throws<MapDocumentException>(() => MapPrefabJson.ReadChild(Storey.Replace("\"kind\":\"Storey\"", "\"kind\":\"Future\"", StringComparison.Ordinal))),
         };
         Assert.Equal(MapDocumentRefusal.SchemaMalformed, error.Reason);
-        var json = Assert.IsAssignableFrom<JsonException>(error.InnerException);
+        bool file = form is "file" or "file-enum";
+        if (file) Assert.Equal("p", error.ResourceId);
+        MapDocumentException? original = form == "file-enum" ? Assert.IsType<MapDocumentException>(error.InnerException) : null;
+        if (original is not null)
+        {
+            Assert.Equal(original.Reason, error.Reason);
+            Assert.Equal(original.FieldPath, error.FieldPath);
+            Assert.Equal(original.SourceName, error.SourceName);
+            Assert.Equal(original.Path, error.Path);
+            Assert.Null(original.ResourceId);
+        }
+        var json = Assert.IsAssignableFrom<JsonException>(original?.InnerException ?? error.InnerException);
         Assert.Equal(json.Path, error.FieldPath);
         Assert.Equal(json.LineNumber, error.LineNumber);
         Assert.Equal(json.BytePositionInLine, error.BytePositionInLine);
-        if (form == "file")
+        if (file)
         {
-            Assert.Equal("p", error.ResourceId);
-            Assert.Equal("p", MapPrefabFile.Read(MapPrefabFile.Write(new MapPrefabAsset(1, "p", [])), "p").Id);
+            Assert.Equal(before, bytes);
+            string accepted = form == "file-enum"
+                ? payload.Replace("\"kind\":\"Future\"", "\"kind\":\"Storey\"", StringComparison.Ordinal)
+                : "{\"payloadVersion\":1,\"id\":\"p\",\"children\":[]}";
+            Assert.Equal("p", MapPrefabFile.Read(Encoding.UTF8.GetBytes(accepted), "p").Id);
         }
         else Assert.IsType<MapPrefabStoreyChild>(MapPrefabJson.ReadChild(Storey));
     }

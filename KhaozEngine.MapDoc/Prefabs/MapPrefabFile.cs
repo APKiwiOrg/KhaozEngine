@@ -19,6 +19,10 @@ public static class MapPrefabFile
             MapPrefabValidation.RequireAsset(asset);
             return asset;
         }
+        catch (MapDocumentException ex) when (ex.ResourceId is null)
+        {
+            throw ex.WithSourceName(null, ex.Message, resourceId: resourceId);
+        }
         catch (JsonException ex) { throw MapDocumentJsonErrors.Wrap(ex, null, "Invalid prefab payload '" + resourceId + "'.", resourceId: resourceId); }
     }
 

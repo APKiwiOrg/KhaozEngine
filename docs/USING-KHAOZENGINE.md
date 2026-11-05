@@ -12534,7 +12534,8 @@ Root, manifest, tile and prefab schema admission also preserves `MapDocumentExce
 retains the known source context, with `Tile` and file `Path` on tile reads. JSON failures carry the
 reader's path, zero-based `LineNumber` and UTF-8 `BytePositionInLine` where available. A JSON wrapper
 containing a known structured document refusal retains its reason, every identifier and that original
-refusal as its cause. A prefab file JSON failure supplies its known `ResourceId`, and an existing resource
+refusal as its cause. A prefab file JSON failure supplies its known `ResourceId`, including when deserialization
+has already wrapped the JSON failure as a document refusal. An existing resource
 identity survives the context copy. Prefab preflight paths retain array positions from the supplied root.
 Child and override converter member paths are relative to that converter's object, with placement payload
 fields below `$.value`. Null prefab members and blank marker-adoption identity fields use

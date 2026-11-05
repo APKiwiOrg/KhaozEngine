@@ -1389,7 +1389,8 @@ keeps the directory context. JSON failures use the reader's path, zero-based `Li
 UTF-8 `BytePositionInLine` when available. No identifier is reconstructed from error prose. A JSON wrapper
 containing a known structured document refusal preserves that refusal's reason, identifiers and original
 object as its cause through the same source-copy method. A prefab file JSON failure also carries its known
-`ResourceId`. The copy keeps an existing resource identity and source name when the wrapper has no new source name.
+`ResourceId`, including when deserialization has already wrapped the JSON failure as a document refusal.
+The copy keeps an existing resource identity and source name when the wrapper has no new source name.
 
 Prefab preflight paths start at the supplied payload root and retain array positions. Child and override
 converter member paths start at that converter's object, with placement fields below `$.value`. Duplicate

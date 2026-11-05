@@ -30,7 +30,8 @@ public sealed class MapDirectoryAssetSource : IMapAssetSource
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException or NotSupportedException)
         {
-            throw new MapDocumentException($"Cannot read native resource '{reference.Id}' at '{reference.Path}'.", ex);
+            throw new MapDocumentException(MapDocumentRefusal.AssetPayloadUnreadable, $"Cannot read native resource '{reference.Id}' at '{reference.Path}'.", ex)
+            { ResourceId = reference.Id, ExpectedHash = reference.Sha256, Path = reference.Path };
         }
     }
 }

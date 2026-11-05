@@ -144,8 +144,9 @@ public sealed class MapPrefabExpansionTests
         string expected = PrefabFixtures.Create().Assets.GetResource("hut").Reference.Sha256;
         source.MissingPrefab = true;
         var refusal = Assert.Throws<MapDocumentException>(() => MapAssetClosure.Load(roots, source));
-        Assert.Contains("hut", refusal.Message);
-        Assert.Contains(expected, refusal.Message);
+        Assert.Equal(MapDocumentRefusal.AssetPayloadUnreadable, refusal.Reason);
+        Assert.Equal("hut", refusal.ResourceId);
+        Assert.Equal(expected, refusal.ExpectedHash);
         source.MissingPrefab = false;
         var captured = MapAssetClosure.Load(roots, source);
         var f = PrefabFixtures.Create();

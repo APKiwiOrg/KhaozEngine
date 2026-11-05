@@ -43,9 +43,10 @@ public sealed class MapStorageGuardedAssetSource : IMapAssetSource
             return _inner.Read(reference);
         }
         if (MapDocumentStorage.IsReserved(_storagePath, _form, path))
-            throw new MapDocumentException(
+            throw new MapDocumentException(MapDocumentRefusal.AssetStoragePathReserved,
                 $"Native resource '{reference.Id}' at '{path}' is inside storage reserved for the {_form} map writer " +
-                $"at '{_storagePath}'. Move it outside the map's manifest, lock, temp and tiles paths.");
+                $"at '{_storagePath}'. Move it outside the map's manifest, lock, temp and tiles paths.")
+            { ResourceId = reference.Id, Path = path, StoragePath = _storagePath, DocumentForm = _form };
         return _inner.Read(reference);
     }
 }

@@ -69,9 +69,19 @@ public sealed class MapTypedResourceSchemaTests
             var root = JsonNode.Parse(bytes)!.AsObject();
             string schema = root["resourceSchema"]!.GetValue<string>();
             root.Remove("resourceSchema");
-            Assert.Contains("resourceSchema", Assert.Throws<MapDocumentException>(() => read(Encoding.UTF8.GetBytes(root.ToJsonString()))).Message);
+            var missing = Assert.Throws<MapDocumentException>(() => read(Encoding.UTF8.GetBytes(root.ToJsonString())));
+            Assert.Equal(MapDocumentRefusal.SchemaValueRequired, missing.Reason);
+            Assert.Equal("$.resourceSchema", missing.FieldPath);
+            Assert.Equal(schema, missing.ExpectedSchema);
+            Assert.Equal(schema == MapTypedResourceSchema.Light ? "glow-light" : "deck-support", missing.ResourceId);
+            read(bytes);
             root["resourceSchema"] = schema;
-            Assert.Contains("resourceSchema", Assert.Throws<MapDocumentException>(() => read(Encoding.UTF8.GetBytes(root.ToJsonString()))).Message);
+            var misplaced = Assert.Throws<MapDocumentException>(() => read(Encoding.UTF8.GetBytes(root.ToJsonString())));
+            Assert.Equal(MapDocumentRefusal.SchemaValueRequired, misplaced.Reason);
+            Assert.Equal("$.resourceSchema", misplaced.FieldPath);
+            Assert.Equal(schema, misplaced.ExpectedSchema);
+            Assert.Equal(missing.ResourceId, misplaced.ResourceId);
+            read(bytes);
         }
     }
 
@@ -113,8 +123,10 @@ public sealed class MapTypedResourceSchemaTests
             var assets = PrefabFixtures.PublishPrefab(f.Assets, f.Assets.GetPrefab("hut"), new Dictionary<string, byte[]> { [id] = legacy });
             return PrefabFixtures.Effective(new(f.Document, assets));
         });
-        Assert.Contains("'" + id + "'", error.Message);
-        Assert.Contains("opaque", error.Message);
-        Assert.Contains("kemap/" + role + "-resource", error.Message);
+        Assert.Equal(MapDocumentRefusal.AssetTypedPayloadOpaque, error.Reason);
+        Assert.Equal(id, error.ResourceId);
+        Assert.Equal(role, error.SubjectKind);
+        Assert.Equal("kemap/" + role + "-resource", error.ExpectedSchema);
+        Assert.NotNull(PrefabFixtures.Effective(new(f.Document, f.Assets)));
     }
 }

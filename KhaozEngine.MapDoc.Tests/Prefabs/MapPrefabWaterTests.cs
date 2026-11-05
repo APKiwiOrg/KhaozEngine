@@ -304,8 +304,9 @@ public class MapPrefabWaterTests
         var f = PrefabFixtures.Create("all-resources");
         source.MissingPrefab = true;
         var error = Assert.Throws<MapDocumentException>(() => MapAssetClosure.Load(roots, source));
-        Assert.Contains("hut", error.Message);
-        Assert.Contains(f.Assets.GetResource("hut").Reference.Sha256, error.Message);
+        Assert.Equal(MapDocumentRefusal.AssetPayloadUnreadable, error.Reason);
+        Assert.Equal("hut", error.ResourceId);
+        Assert.Equal(f.Assets.GetResource("hut").Reference.Sha256, error.ExpectedHash);
         source.MissingPrefab = false;
         var captured = MapAssetClosure.Load(roots, source);
         var r = MapPrefabResolver.Expand(f.Document, captured);

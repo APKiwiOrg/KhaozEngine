@@ -36,7 +36,8 @@ internal static class MapTypedResourceSchema
             if (members.MoveNext() && members.Current.NameEquals(Property) &&
                 members.Current.Value.ValueKind == JsonValueKind.String && members.Current.Value.ValueEquals(schema)) return;
         }
-        throw new MapDocumentException($"{payload} '{resourceId}' must begin with {Property} '{schema}'.");
+        throw new MapDocumentException(MapDocumentRefusal.SchemaValueRequired, $"{payload} '{resourceId}' must begin with {Property} '{schema}'.")
+        { ResourceId = resourceId, ExpectedSchema = schema, FieldPath = MapDocumentJsonPath.AppendProperty("$", Property) };
     }
 
     /// <summary>The payload members after the leading discriminant, for a closed member decoder.</summary>
@@ -75,6 +76,7 @@ internal static class MapTypedResourceSchema
 
     /// <summary>The refusal for a typed consumer that finds an opaque resource.</summary>
     internal static MapDocumentException Opaque(string role, string resourceId, string schema) =>
-        new($"Native {role} '{resourceId}' is not captured as a typed payload. Its resource is opaque, and a typed {role} " +
-            $"consumer requires a payload that begins with {Property} '{schema}'.");
+        new(MapDocumentRefusal.AssetTypedPayloadOpaque, $"Native {role} '{resourceId}' is not captured as a typed payload. Its resource is opaque, and a typed {role} " +
+            $"consumer requires a payload that begins with {Property} '{schema}'.")
+        { ResourceId = resourceId, ExpectedSchema = schema, SubjectKind = role };
 }

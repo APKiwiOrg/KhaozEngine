@@ -367,6 +367,7 @@ a directory prepared with resources.
 `MapStorageGuardedAssetSource(storagePath, form)` reads under that resource root and refuses a reserved
 reference before reading it. Because `MapAssetClosure.Load` reads every root, declared and transitive resource
 through its source, a closure loaded through it never contains a reference whose normalized path is writer-owned.
+The refusal is `AssetStoragePathReserved`, with `ResourceId`, normalized `Path`, `StoragePath` and `DocumentForm`.
 
 ## Sections
 
@@ -599,6 +600,17 @@ A manifest `Prefab` resource carries payload 1. `MapAssetClosure.Load` verifies 
 acyclic declared dependencies, decodes bounded prefab snapshots and validates every leaf resource edge before
 publishing. `GetPrefab` returns a detached copy of that verified snapshot. Prefabs have no mesh of their own and
 cannot contain nested instances. Mesh, collider, selection, LOD, material, support and light resources belong to leaves.
+Missing closure lookups use `ReferenceMissing`, while uncaptured payload borrows use `AssetPayloadNotCaptured`.
+Both identify the requested asset or resource. A missing dependency carries its source `ResourceId` and missing
+`DependencyId`. A cycle uses `AssetDependencyCycle` and an ordinal read-only `ResourceIds` snapshot of all resources
+left unresolved, including resources blocked behind the cycle. Duplicate closure identities use `IdentityDuplicate`
+and the `asset` or `resource` namespace in `SubjectKind`.
+
+A resource digest mismatch uses `DigestMismatch`, `DigestKind` `resource bytes`, `ResourceId`, the reference `Path`,
+`ExpectedHash` and `ActualHash`. Source read failures use `AssetPayloadUnreadable` with `ResourceId`, `ExpectedHash`
+and the reference `Path`. The original error remains the inner exception. This resource-read boundary also wraps
+`MalformedDataException` from an `IMapAssetSource` callback, preserving its concrete cause and the existing
+`MapDocumentException` catch contract.
 
 `MapPrefabFile.Read` and `Write` use a closed codec. The payload keeps its logical asset ID. A resource ID
 may be that bare ID or exactly `prefab/<escaped-logical-id>/<sha256>`. The escape is the world-ID UTF-8
@@ -639,7 +651,10 @@ integration.
 Typed Light and Support resource payloads begin with the discriminant `"resourceSchema"`, valued
 `kemap/light-resource` or `kemap/support-resource`. Their writers emit it first and their closed decoders require it.
 `MapAssetClosure.Load` decodes only bytes that carry it, so every other resource, JSON or not, stays opaque as
-released. Prefab leaf lights, typed support and Physics support refuse an opaque resource with a message naming it.
+released. Prefab leaf lights and typed support refuse an opaque resource with `AssetTypedPayloadOpaque`,
+`ResourceId`, `ExpectedSchema` and the `light` or `support` role in `SubjectKind`. A missing or misplaced typed
+discriminant uses `SchemaValueRequired`, `FieldPath` `$.resourceSchema`, `ResourceId` and `ExpectedSchema`.
+Physics support also refuses an opaque resource with a message naming it.
 
 `MapEffectiveAnnotations.Lights(resources)` and `Markers(resources)` return immutable records in stable ID order.
 Both carry their own payload version. Light positions and radii are owner-frame metres, independent of leaf
@@ -1351,7 +1366,7 @@ ran on a worker thread. The handoff did not.
 
 ## Loud failures
 
-Resolver, root, prefab, identity registry, runtime layer, foliage codec and asset-manifest admission refusals keep the exact `MapDocumentException` type. Inspect its nullable
+Resolver, root, prefab, identity registry, runtime layer, foliage codec, asset-manifest and asset-closure admission refusals keep the exact `MapDocumentException` type. Inspect its nullable
 `MapDocumentRefusal Reason` and applicable identifiers instead of classifying its message. The public
 message-only constructors remain available to consumers and leave `Reason` null. Other validation
 adapters continue reporting prose until all of their producing rules carry typed findings.
@@ -1364,7 +1379,7 @@ adapters continue reporting prose until all of their producing rules carry typed
 | `SchemaMemberNull` | A native member that cannot be null | `FieldPath`, `SourceName`, `Tile`, `Path` |
 | `SchemaMemberUnknown` | A member outside a closed schema object | `FieldPath`, `SourceName`, `Tile`, `Path`, `LayerId`, `Index` |
 | `SchemaObjectRequired` | A document, manifest, tile, prefab payload, marker-options or foliage value that must be an object | `FieldPath`, `SourceName`, `Tile`, `Path`, `LayerId`, `Index` |
-| `SchemaValueRequired` | A null deserialization result, required native, indoor-span, manifest, prefab or foliage value, missing prism domain, blank marker-adoption identity text, or a missing attachment anchor or standalone descriptor pin | `FieldPath`, `SourceName`, `Tile`, `Path`, `AssetId`, `ResourceId`, `SurfaceId`, `PlacementId`, `LayerId`, `Index`, `EntityId`, `WorldId`, `ChildKind`, `Child`, `InstanceId`, `Patch`, `ActualAnchor`, `SubjectKind` |
+| `SchemaValueRequired` | A missing or misplaced typed resource discriminant, null deserialization result, required native, indoor-span, manifest, prefab or foliage value, missing prism domain, blank marker-adoption identity text, or a missing attachment anchor or standalone descriptor pin | `FieldPath`, `SourceName`, `Tile`, `Path`, `AssetId`, `ResourceId`, `ExpectedSchema`, `SurfaceId`, `PlacementId`, `LayerId`, `Index`, `EntityId`, `WorldId`, `ChildKind`, `Child`, `InstanceId`, `Patch`, `ActualAnchor`, `SubjectKind` |
 | `SchemaArrayRequired` | A foliage member that must be an array | `FieldPath`, `Index` |
 | `SchemaBooleanRequired` | A foliage member that must be a boolean | `FieldPath`, `LayerId`, `Index` |
 | `SchemaBase64Malformed` | A foliage density token that is invalid or noncanonical base64 | `FieldPath`, `LayerId`, `Index`, `FoliageChunk` |
@@ -1372,15 +1387,20 @@ adapters continue reporting prose until all of their producing rules carry typed
 | `SchemaPayloadVersionUnsupported` | An unsupported asset-reference, resolver-identity or foliage payload version | `FieldPath`, `ResourceId`, `Index`, `ActualVersion`, `SupportedVersions`, `MinimumInteger` |
 | `ValueNonfinite` | A nonfinite manifest source-unit scale, foliage scalar, playable-bound component or placement support-search value | `FieldPath`, `AssetId`, `LayerId`, `PlacementId`, `Index`, `ActualNumber` |
 | `ValueOutsideRange` | A finite nonpositive manifest source-unit scale, foliage integer outside its domain, negative support-search extent or high-water mark, or nonpositive numeric identity | `FieldPath`, `AssetId`, `LayerId`, `PlacementId`, `EntityId`, `SubjectKind`, `Index`, `ActualNumber`, `ActualInteger`, `MinimumNumber`, `MinimumInteger`, `MaximumInteger`, `NumericId`, `HighWaterMark` |
-| `IdentityDuplicate` | A repeated exact foliage JSON member name, surface or numeric identity, world binding, transfer or attachment producer, or a standalone owner colliding with a prefab binding | `FieldPath`, `Index`, `EntityId`, `SubjectKind`, `SurfaceId`, `PlacementId`, `NumericId`, `HighWaterMark`, `WorldId`, `ChildKind`, `Child`, `InstanceId` |
+| `IdentityDuplicate` | A repeated asset or resource closure identity, exact foliage JSON member name, surface or numeric identity, world binding, transfer or attachment producer, or a standalone owner colliding with a prefab binding | `FieldPath`, `Index`, `EntityId`, `SubjectKind`, `AssetId`, `ResourceId`, `SurfaceId`, `PlacementId`, `NumericId`, `HighWaterMark`, `WorldId`, `ChildKind`, `Child`, `InstanceId` |
 | `IdentityReserved` | A live standalone owner using a retired transfer's world identity | `EntityId`, `WorldId`, `ChildKind`, `Child`, `InstanceId`, `SubjectKind` |
 | `AuthoredOwnershipMismatch` | A transfer inconsistent with its source or standalone owner, an attachment inconsistent with its owner, transfer or record anchor, or a prefab-owned interior submitted as standalone | `EntityId`, `WorldId`, `ChildKind`, `Child`, `InstanceId`, `PlacementId`, `RecordId`, `SpaceId`, `Patch`, `ActualAnchor`, `NumericId`, `ExpectedNumericId`, `ActualCount`, `ExpectedCount`, `SubjectKind` |
-| `ReferenceMissing` | An attachment transfer or standalone record target, interior anchor, scatter layer or companion layer missing from its required scope | `EntityId`, `WorldId`, `ChildKind`, `Child`, `InstanceId`, `PlacementId`, `RecordId`, `SpaceId`, `Patch`, `DocumentId`, `LayerId`, `SubjectKind`, `FieldPath` |
+| `ReferenceMissing` | An asset, resource, prefab or dependency missing from its closure, or an attachment transfer, standalone record target, interior anchor, scatter layer or companion layer missing from its required scope | `AssetId`, `ResourceId`, `DependencyId`, `ExpectedResourceKind`, `EntityId`, `WorldId`, `ChildKind`, `Child`, `InstanceId`, `PlacementId`, `RecordId`, `SpaceId`, `Patch`, `DocumentId`, `LayerId`, `SubjectKind`, `FieldPath` |
 | `AssetClosureRequired` | Foliage edit preflight without a verified asset closure | `DocumentId` |
-| `DigestMismatch` | An attached child's descriptor digest differing from its standalone pin | `EntityId`, `WorldId`, `ChildKind`, `Child`, `InstanceId`, `PlacementId`, `SubjectKind`, `ExpectedHash`, `ActualHash` |
+| `DigestMismatch` | Resource bytes or an attached child's descriptor digest differing from its pin | `DigestKind`, `ResourceId`, `Path`, `EntityId`, `WorldId`, `ChildKind`, `Child`, `InstanceId`, `PlacementId`, `SubjectKind`, `ExpectedHash`, `ActualHash` |
 | `BoundsInvalid` | Invalid prefab patch dimensions, manifest local bounds, playable bounds or lattice frame | `FieldPath`, `Width`, `Depth`, `AssetId`, `SurfaceId`, `Index`, `MinimumNumber`, `MaximumNumber` |
 | `DigestMalformed` | An asset-reference or surface semantic digest outside lowercase SHA-256 representation | `FieldPath`, `ResourceId`, `SurfaceId`, `Index` |
 | `AssetKindUnsupported` | An undefined resource kind | `ResourceId`, `FieldPath`, `ActualResourceKind` |
+| `AssetDependencyCycle` | A cycle in the resource dependency graph | `ResourceIds` of all resources left unresolved |
+| `AssetPayloadNotCaptured` | A borrowed payload absent from the verified closure | `ResourceId`, `ExpectedResourceKind` when the API requires a kind |
+| `AssetPayloadUnreadable` | A resource source read failure | `ResourceId`, `ExpectedHash`, reference `Path`, original `InnerException` |
+| `AssetStoragePathReserved` | A resource path owned by the selected map storage writer | `ResourceId`, normalized `Path`, `StoragePath`, `DocumentForm` |
+| `AssetTypedPayloadOpaque` | An opaque resource supplied to a typed light or support consumer | `ResourceId`, `ExpectedSchema`, `SubjectKind` |
 | `ReferenceKindMismatch` | An asset resource missing or declared with the wrong kind | `AssetId`, `ResourceId`, `ExpectedResourceKind`, available `ActualResourceKind` |
 | `NumericIdHighWaterExceeded` | A placement, prefab binding or retired transfer above the reserved mark | `EntityId`, `SubjectKind`, `PlacementId`, `FieldPath`, `NumericId`, `HighWaterMark` |
 | `ResolverContractMismatch` | The document resolver, support recipe or caller's resolver options cannot serve the requested operation | `PayloadVersion`, `ResolverVersion`, `OptionsResolverVersion`, `ExpectedResolverVersion`, `SupportRecipe`, `ExpectedSupportRecipe`, `FieldPath`, `SubjectKind` |

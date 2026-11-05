@@ -52,7 +52,7 @@ public enum MapDocumentRefusal
     IdentityReserved,
     /// <summary>Refuses a target missing from the required authored or captured scope.</summary>
     ReferenceMissing,
-    /// <summary>Refuses a descriptor whose digest differs from its standalone pin.</summary>
+    /// <summary>Refuses resource bytes or a descriptor whose digest differs from its pin.</summary>
     DigestMismatch,
     /// <summary>Refuses an identity repeated within its owning namespace.</summary>
     IdentityDuplicate,
@@ -64,6 +64,18 @@ public enum MapDocumentRefusal
     // Asset manifest admission.
     /// <summary>Refuses an undefined resource kind.</summary>
     AssetKindUnsupported,
+
+    // Asset closure and typed payload admission.
+    /// <summary>Refuses a cycle in the resource dependency graph.</summary>
+    AssetDependencyCycle,
+    /// <summary>Refuses access to a resource payload not captured in the closure.</summary>
+    AssetPayloadNotCaptured,
+    /// <summary>Refuses a required resource whose bytes cannot be read.</summary>
+    AssetPayloadUnreadable,
+    /// <summary>Refuses a resource path owned by a map storage writer.</summary>
+    AssetStoragePathReserved,
+    /// <summary>Refuses a typed consumer given an opaque resource.</summary>
+    AssetTypedPayloadOpaque,
 
     // Foliage JSON converter.
     /// <summary>Refuses a foliage section larger than its UTF-8 byte budget.</summary>

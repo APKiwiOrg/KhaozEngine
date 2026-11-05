@@ -12201,7 +12201,22 @@ and composition refuse missing closure, unsupported work reporting and capacity 
 Typed Light and Support payloads begin with `resourceSchema`, valued `kemap/light-resource` or
 `kemap/support-resource`. Writers emit it first and closed decoders require it. Closure reads decode only
 marked bytes. Released opaque resources, including JSON, stay opaque. A prefab light or typed support consumer
-refuses opaque bytes clearly. Shared leaf resource pins remain distinct from prefab version addresses.
+refuses opaque bytes with `MapDocumentRefusal.AssetTypedPayloadOpaque`, its `ResourceId`, `ExpectedSchema`
+and the `light` or `support` role in `SubjectKind`. A missing or misplaced typed discriminant carries
+`SchemaValueRequired`, `FieldPath` `$.resourceSchema`, `ResourceId` and `ExpectedSchema`.
+Shared leaf resource pins remain distinct from prefab version addresses.
+
+`MapAssetClosure.Load` keeps its `MapDocumentException` catch contract. A byte digest mismatch carries
+`DigestMismatch`, `DigestKind` `resource bytes`, `ResourceId`, the reference `Path`, `ExpectedHash` and `ActualHash`.
+A source read failure carries `AssetPayloadUnreadable`, `ResourceId`, `ExpectedHash`, the reference `Path` and
+the original `InnerException`, including a concrete `MalformedDataException` raised by an `IMapAssetSource` callback.
+A cycle carries `AssetDependencyCycle` and an ordinal read-only `ResourceIds` snapshot of resources left unresolved,
+including resources blocked behind the cycle. Missing lookups use `ReferenceMissing` with `AssetId` or `ResourceId`,
+and a missing dependency also identifies `DependencyId`. Uncaptured borrows use `AssetPayloadNotCaptured` with
+`ResourceId` and the required `ExpectedResourceKind`, when the API requires one. Duplicate closure identities carry
+`IdentityDuplicate` and their `asset` or `resource` namespace in `SubjectKind`.
+`MapStorageGuardedAssetSource` refuses writer-owned paths before reading them with `AssetStoragePathReserved`,
+`ResourceId`, normalized `Path`, `StoragePath` and `DocumentForm`.
 
 A prefab resource keeps its logical asset ID and accepts either that ID or
 `prefab/<escaped-logical-id>/<sha256>`. The lowercase SHA-256 suffix must match its immutable bytes.

@@ -14,6 +14,7 @@ public sealed class MapDocumentException : Exception
 {
     IReadOnlyList<MapDocumentFinding>? _findings;
     IReadOnlyList<int>? _supportedVersions;
+    IReadOnlyList<string>? _resourceIds;
 
     public MapDocumentException(string message) : base(message) { }
     public MapDocumentException(string message, Exception inner) : base(message, inner) { }
@@ -132,10 +133,29 @@ public sealed class MapDocumentException : Exception
     public long? ExpectedCount { get; init; }
     /// <summary>The transferred numeric identity required of its standalone placement, when present.</summary>
     public long? ExpectedNumericId { get; init; }
-    /// <summary>The descriptor digest required by the standalone pin, when known.</summary>
+    /// <summary>The resource or descriptor digest required by its pin, when known.</summary>
     public string? ExpectedHash { get; init; }
-    /// <summary>The submitted descriptor digest compared with its standalone pin, when known.</summary>
+    /// <summary>The resource or descriptor digest compared with its pin, when known.</summary>
     public string? ActualHash { get; init; }
+
+    /// <summary>The digest domain checked by the guard, such as resource bytes.</summary>
+    public string? DigestKind { get; init; }
+    /// <summary>The missing resource required by the resource identified by ResourceId.</summary>
+    public string? DependencyId { get; init; }
+    /// <summary>The required in-band typed resource schema discriminant.</summary>
+    public string? ExpectedSchema { get; init; }
+    /// <summary>The map storage file or directory whose writer owns the refused path.</summary>
+    public string? StoragePath { get; init; }
+    /// <summary>The explicit storage form whose writer owns the refused path.</summary>
+    public MapDocumentForm? DocumentForm { get; init; }
+
+    /// <summary>The resource identities left unresolved by a dependency cycle, in ordinal order,
+    /// as an owned read-only snapshot. This includes resources blocked behind the cycle.</summary>
+    public IReadOnlyList<string>? ResourceIds
+    {
+        get => _resourceIds;
+        init => _resourceIds = value is null ? null : Array.AsReadOnly<string>([.. value]);
+    }
 
     /// <summary>The supported payload versions, as an owned read-only snapshot.</summary>
     public IReadOnlyList<int>? SupportedVersions
@@ -214,6 +234,12 @@ public sealed class MapDocumentException : Exception
         ExpectedNumericId = inner.ExpectedNumericId;
         ExpectedHash = inner.ExpectedHash;
         ActualHash = inner.ActualHash;
+        DigestKind = inner.DigestKind;
+        DependencyId = inner.DependencyId;
+        ExpectedSchema = inner.ExpectedSchema;
+        StoragePath = inner.StoragePath;
+        DocumentForm = inner.DocumentForm;
+        _resourceIds = inner._resourceIds;
         _supportedVersions = inner._supportedVersions;
         // Findings already owns a read-only snapshot whose elements are immutable records.
         _findings = inner._findings;

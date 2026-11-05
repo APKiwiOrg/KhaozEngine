@@ -54,6 +54,18 @@ public sealed class MapDocumentExceptionTests
         Assert.Equal(new[] { first, second }, refusal.Findings);
     }
 
+    [Fact]
+    public void Resource_ids_are_an_owned_read_only_snapshot()
+    {
+        string[] source = ["a", "b"];
+        var refusal = new MapDocumentException(MapDocumentRefusal.AssetDependencyCycle, "cycle") { ResourceIds = source };
+        source[0] = "changed";
+        Assert.Equal(new[] { "a", "b" }, refusal.ResourceIds);
+        if (refusal.ResourceIds is IList<string> list)
+            Assert.Throws<NotSupportedException>(() => list[0] = "changed");
+        Assert.Equal(new[] { "a", "b" }, refusal.ResourceIds);
+    }
+
     [Theory]
     [InlineData(false, false, false)]
     [InlineData(true, false, false)]
@@ -90,11 +102,13 @@ public sealed class MapDocumentExceptionTests
         if (type == typeof(double)) return 4000.5 + index;
         if (type == typeof(MapFoliageChunkKey)) return new MapFoliageChunkKey(-3, index);
         if (type == typeof(IReadOnlyList<int>)) return new[] { 1, 5 };
+        if (type == typeof(IReadOnlyList<string>)) return new[] { "a", "b" };
         if (type == typeof(MapTileCoord)) return new MapTileCoord(-7, index);
         if (type == typeof(MapPrefabChildKind)) return (MapPrefabChildKind)(6000 + index);
         if (type == typeof(MapPrefabChildKey)) return new MapPrefabChildKey(MapPrefabChildKind.Record, property.Name);
         if (type == typeof(MapPatchKey)) return new MapPatchKey(property.Name, -2, index);
         if (type == typeof(MapResourceKind)) return (MapResourceKind)(5000 + index);
+        if (type == typeof(MapDocumentForm)) return MapDocumentForm.Tiled;
         if (type == typeof(MapSupportRecipe)) return (MapSupportRecipe)(2000 + index);
         if (type == typeof(IReadOnlyList<MapDocumentFinding>))
             return new[] { new MapDocumentFinding(MapDocumentRefusal.ResolverContractMismatch, property.Name) { ResolverVersion = index } };

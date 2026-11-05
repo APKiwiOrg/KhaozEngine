@@ -189,6 +189,26 @@ public sealed class SurfaceLocalDetailRefusalTests
             field == "topology" ? (MapCellTopology)value : MapCellTopology.Auto);
     }
 
+    [Theory]
+    [InlineData((byte)0)]
+    [InlineData((byte)1)]
+    [InlineData((byte)2)]
+    [InlineData((byte)3)]
+    public void Forced_topology_must_agree_with_the_diagonal_rotation(byte rotation)
+    {
+        MapCellTopology refused = rotation % 2 == 0 ? MapCellTopology.ForceNwSe : MapCellTopology.ForceSwNe;
+        var ex = Assert.Throws<MapDocumentException>(() => MapSurfaceTopology.SplitSwNe(0, 0, 0, 0,
+            MapOverlayCut.DiagonalHalf, rotation, refused));
+        Assert.Equal(MapDocumentRefusal.SurfaceForcedTopologyConflict, ex.Reason);
+        Assert.Equal("topology", ex.FieldPath);
+        Assert.Equal(typeof(MapCellTopology), ex.EnumType);
+        Assert.Equal((long)refused, ex.ActualInteger);
+        Assert.Null(ex.Patch);
+        MapCellTopology accepted = rotation % 2 == 0 ? MapCellTopology.ForceSwNe : MapCellTopology.ForceNwSe;
+        Assert.Equal(rotation % 2 == 0, MapSurfaceTopology.SplitSwNe(0, 0, 0, 0,
+            MapOverlayCut.DiagonalHalf, rotation, accepted));
+    }
+
     [Fact]
     public void Local_findings_preserve_projection_order_and_own_their_snapshot()
     {

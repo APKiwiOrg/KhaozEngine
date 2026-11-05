@@ -193,6 +193,8 @@ public enum MapDocumentRefusal
     SurfaceSubdivisionAbsentCell,
     /// <summary>Refuses an edge subdivision adjoining another present cell inside the patch.</summary>
     SurfaceSubdivisionInteriorEdge,
+    /// <summary>Refuses a forced diagonal incompatible with the cell's diagonal-half rotation.</summary>
+    SurfaceForcedTopologyConflict,
 
     // Foliage JSON converter.
     /// <summary>Refuses a foliage section larger than its UTF-8 byte budget.</summary>

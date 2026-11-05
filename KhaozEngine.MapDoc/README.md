@@ -1423,6 +1423,8 @@ Forwarding adapters consume this completed producer in their owning conversion t
 `SplitSwNe` distinguishes an out-of-range rotation (`ValueOutsideRange`, 0 through 3) from an undefined
 cut or topology (`SchemaEnumUnsupported`). It carries the failing `FieldPath`, `ActualInteger` and,
 for an enumeration, `EnumType`, selecting the first failed branch in predicate order.
+A forced diagonal contradicting `DiagonalHalf` rotation uses `SurfaceForcedTopologyConflict` with the
+submitted topology. This scalar API has no patch or slot-cell context and does not invent it.
 
 | Reason | Refused rule | Identifiers when known |
 | --- | --- | --- |
@@ -1451,6 +1453,7 @@ for an enumeration, `EnumType`, selecting the first failed branch in predicate o
 | `SurfacePresencePaddingNonzero` | Nonzero bits beyond the authored cell count in the last presence word | `Patch`, `FieldPath`, `Index` |
 | `SurfaceSubdivisionAbsentCell` | An edge subdivision on an absent cell | `Patch`, `FieldPath`, `Index`, `CellX`, `CellZ`, `Edge` |
 | `SurfaceSubdivisionInteriorEdge` | An edge subdivision adjoining another present cell inside the patch | `Patch`, `FieldPath`, `Index`, `CellX`, `CellZ`, `Edge` |
+| `SurfaceForcedTopologyConflict` | A forced topology contradicting the diagonal-half rotation | `FieldPath`, `ActualInteger`, `EnumType` |
 | `SurfaceUnitUnreduced` | An authored lattice unit whose positive numerator and denominator have a common factor | `Numerator`, `Denominator` |
 | `SurfaceAddressOutOfPatch` | A patch-local cell or corner coordinate outside the valid rectangle | `Patch`, `Width`, `Depth`, `CellX`, `CellZ`, `FieldPath`, `ActualInteger`, `MinimumInteger`, `MaximumInteger` |
 | `DigestMalformed` | An asset-reference, materialized source, prefab or surface semantic digest outside lowercase SHA-256 representation | `FieldPath`, `ResourceId`, `SurfaceId`, `AssetId`, `PlacementId`, `ActualHash`, `Index` |
@@ -1463,7 +1466,7 @@ for an enumeration, `EnumType`, selecting the first failed branch in predicate o
 | `AssetCollisionTrailingBytes` | Bytes after the decoded collision shape | `AssetId`, `ResourceId`, `ActualByteCount` of trailing bytes |
 | `AssetCollisionEmptyPoints` | A collision hull or mesh with no points | `AssetId`, `ResourceId`, `ShapeType` |
 | `AssetCollisionNestedMesh` | A triangle mesh nested in a compound collider | `AssetId`, `ResourceId` |
-| `SchemaEnumUnsupported` | An undefined prefab, marker height-mode, support-binding or lattice-frame enumeration value | `MarkerId`, `EnumType`, `ActualInteger`, `FieldPath`, `EntityId`, `ChildKind` |
+| `SchemaEnumUnsupported` | An undefined prefab, marker height-mode, support-binding, lattice-frame, cell, subdivision-edge or topology enumeration value | `MarkerId`, `EnumType`, `ActualInteger`, `FieldPath`, `EntityId`, `ChildKind`, `Patch`, `Index`, `CellX`, `CellZ`, `Edge` |
 | `AuthoredReferenceKindInvalid` | A light owner, roof reference, placement override or numeric binding of the wrong child kind | `EntityId`, `Child`, `ChildKind`, `ExpectedChildKind`, `WorldId`, `NumericId`, `ReferenceScope`, `ExpectedReferenceScope`, `FieldPath`, `SubjectKind` |
 | `MarkerHeightChoiceInvalid` | A height choice without exactly one authority, or a Support marker whose finite Y is not canonical +0 | `MarkerId`, `FieldPath`, finite `ActualNumber` |
 | `MarkerSupportUnresolved` | A marker seat query that is not Supported | `MarkerId`, typed `SupportStatus` |

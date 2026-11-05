@@ -12710,6 +12710,8 @@ with their inclusive limits, including segments 2 through 64. An absent cell use
 `SurfaceSubdivisionInteriorEdge`. Forwarding adapters adopt the completed producer in their owning tasks.
 `SplitSwNe` uses `ValueOutsideRange` for rotation outside 0 through 3 and `SchemaEnumUnsupported` for cut
 or topology, retaining the first failing field, actual integer and applicable enum type.
+An incompatible forced diagonal uses `SurfaceForcedTopologyConflict` and the submitted topology.
+The scalar topology API has no patch or slot-cell identifier to attach.
 
 Native metadata adds typed findings beside its unchanged string diagnostics. Compound findings select
 the first failing predicate branch. Missing asset-reference and indoor-span values use `SchemaValueRequired`, nonfinite

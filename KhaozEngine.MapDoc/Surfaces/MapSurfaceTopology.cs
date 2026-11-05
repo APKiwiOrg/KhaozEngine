@@ -24,7 +24,8 @@ public static class MapSurfaceTopology
         {
             bool forced = topology == MapCellTopology.ForceSwNe;
             if (cut == MapOverlayCut.DiagonalHalf && forced != (rotation % 2 == 0))
-                throw new MapDocumentException("forced topology contradicts DiagonalHalf rotation");
+                throw new MapDocumentException(MapDocumentRefusal.SurfaceForcedTopologyConflict, "forced topology contradicts DiagonalHalf rotation")
+                { FieldPath = "topology", ActualInteger = (byte)topology, EnumType = typeof(MapCellTopology) };
             return forced;
         }
         return cut == MapOverlayCut.DiagonalHalf ? rotation % 2 == 0

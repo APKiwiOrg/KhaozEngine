@@ -1435,10 +1435,21 @@ JSON path. Unsupported decoded kinds retain `ActualText`, while unsupported runt
 carry `ActualVersion` and the owned `SupportedVersions` snapshot. Record-specific guards also retain
 `RecordId` when available to that guard.
 
-The encoder forwards the first local finding's reason and applicable identifiers and attaches the full
+The encoder and decoder forward the first local finding's reason and applicable identifiers and attaches the full
 ordered snapshot in `Findings`. Decoded patch-key mismatches carry `Patch` and `ExpectedPatch`, and
 rectangle refusals carry the patch and dimensions. The trailing-value guard carries its requested patch.
-Other codec schema, byte-budget and decode-local forwarding failures still use message-only constructors.
+Codec closed-schema guards use the shared object, member, array and required-value reasons.
+Canonical decimal slots and addresses use `SchemaInt64Malformed` with `FieldPath`, `ActualText` and the
+signed 64-bit limits. Base64 token-length mismatches retain character counts in `ActualCount` and
+`ExpectedCount` plus `ExpectedByteCount`. Invalid encoding uses `SchemaBase64Malformed`, while a
+successful decode with the wrong byte count uses `SchemaArrayLengthMismatch` and `ActualByteCount`.
+Malformed JSON or scalar conversion uses `SchemaMalformed` with the requested `Patch` and reader
+location when available. No helper reconstructs a JSON path or byte count from prose.
+
+The 1,048,576-byte codec ceiling uses `WorkCapacityExceeded`, `Budget = "SurfacePatchEncodedBytes"`
+and `Limit`. `ActualByteCount` is present only when the reader or writer knows the attempted byte count.
+Early text and collection checks instead retain `ActualCount` and the local `FieldPath` when known.
+An array beyond its own count cap uses that field name as `Budget`, with its `ActualCount` and `Limit`.
 
 | Reason | Refused rule | Identifiers when known |
 | --- | --- | --- |
@@ -1449,10 +1460,11 @@ Other codec schema, byte-budget and decode-local forwarding failures still use m
 | `SchemaMemberUnknown` | A member outside a closed schema object | `FieldPath`, `ResourceId`, `SourceName`, `Tile`, `Path`, `LayerId`, `Index` |
 | `SchemaObjectRequired` | A document, manifest, tile, prefab payload, marker-options or foliage value that must be an object | `FieldPath`, `SourceName`, `Tile`, `Path`, `LayerId`, `Index` |
 | `SchemaValueRequired` | A missing or misplaced typed resource discriminant, null deserialization result, required native, indoor-span, manifest, prefab or foliage value, missing prism domain, missing marker edit values, blank marker-adoption identity text or blank marker consumer configuration, or a missing attachment anchor or standalone descriptor pin, a null codec record or required record text | `MarkerId`, `FieldPath`, `SourceName`, `Tile`, `Path`, `AssetId`, `ResourceId`, `ExpectedSchema`, `SurfaceId`, `PlacementId`, `LayerId`, `Index`, `EntityId`, `WorldId`, `ChildKind`, `Child`, `InstanceId`, `Patch`, `ActualAnchor`, `SubjectKind` |
-| `SchemaArrayRequired` | A foliage member that must be an array | `FieldPath`, `Index` |
+| `SchemaArrayRequired` | A foliage or surface codec member that must be an array | `FieldPath`, `Index` |
 | `SchemaBooleanRequired` | A foliage member that must be a boolean | `FieldPath`, `LayerId`, `Index` |
-| `SchemaBase64Malformed` | A foliage density token that is invalid or noncanonical base64 | `FieldPath`, `LayerId`, `Index`, `FoliageChunk` |
+| `SchemaBase64Malformed` | An invalid surface codec token or invalid or noncanonical foliage density base64 | `FieldPath`, `LayerId`, `Index`, `FoliageChunk`, `ExpectedByteCount` |
 | `SchemaArrayLengthMismatch` | Decoded foliage density with the wrong byte length, embedded records in a prefab surface geometry patch, or a patch height, cell or presence array with the wrong length | `FieldPath`, `LayerId`, `Index`, `FoliageChunk`, `ActualByteCount`, `ExpectedByteCount`, `Child`, `SurfaceId`, `Patch`, `ActualCount`, `ExpectedCount` |
+| `SchemaInt64Malformed` | Surface codec text outside canonical signed 64-bit decimal representation | `FieldPath`, `ActualText`, `MinimumInteger`, `MaximumInteger` |
 | `SchemaPayloadVersionUnsupported` | An unsupported asset-reference, resolver-identity, support, foliage, prefab asset, local light or local marker or prism payload version | `FieldPath`, `MarkerId`, `ResourceId`, `Index`, `ActualVersion`, `SupportedVersions`, `MinimumInteger` |
 | `ValueNonfinite` | A nonfinite manifest source-unit scale, foliage scalar, playable-bound component, placement support-search value, resolved support height, adoption height or yaw, or marker position/yaw | `FieldPath`, `MarkerId`, `AssetId`, `LayerId`, `PlacementId`, `Index`, `ActualNumber` (null for nonfinite marker values, nonfinite for prefab scalar guards) |
 | `ValueOutsideRange` | A finite nonpositive manifest source-unit scale, foliage integer outside its domain, negative support-search extent or high-water mark, nonpositive numeric identity, nonpositive lattice unit parts, an address denominator outside its domain, a rotation or subdivision segment count, chain or slot-list cardinality, or a slot cell outside 0 through 4095 | `FieldPath`, `AssetId`, `LayerId`, `PlacementId`, `EntityId`, `SubjectKind`, `Index`, `ActualNumber`, `ActualInteger`, `MinimumNumber`, `MinimumInteger`, `MaximumInteger`, `NumericId`, `HighWaterMark` |
@@ -1463,7 +1475,7 @@ Other codec schema, byte-budget and decode-local forwarding failures still use m
 | `AssetClosureRequired` | Foliage edit preflight without a verified asset closure | `DocumentId` |
 | `DigestMismatch` | Resource bytes, an attached child's descriptor digest, a stored surface semantic aggregate or a verified tile's lists differing from its pin | `DigestKind`, `SourceName`, `Tile`, `ResourceId`, `Path`, `EntityId`, `WorldId`, `ChildKind`, `Child`, `InstanceId`, `PlacementId`, `SurfaceId`, `SubjectKind`, `ExpectedHash`, `ActualHash` |
 | `BoundsInvalid` | Invalid prefab patch dimensions, manifest local bounds, playable bounds, reversed exact rectangles or invalid surface patch rectangles | `FieldPath`, `Width`, `Depth`, `AssetId`, `SurfaceId`, `Patch`, `CellX`, `CellZ`, `Index`, `MinimumNumber`, `MaximumNumber` |
-| `WorkCapacityExceeded` | Local corner-dependency or edge-subdivision metadata beyond its count budget | `Patch`, `FieldPath`, `Budget`, `ActualCount`, `Limit` |
+| `WorkCapacityExceeded` | Surface codec work beyond its encoded byte or array-count budget, or local corner-dependency or edge-subdivision metadata beyond its count budget | `Patch`, `FieldPath`, `Budget`, `ActualCount`, `ActualByteCount`, `Limit` |
 | `SurfacePresencePaddingNonzero` | Nonzero bits beyond the authored cell count in the last presence word | `Patch`, `FieldPath`, `Index` |
 | `SurfaceSubdivisionAbsentCell` | An edge subdivision on an absent cell | `Patch`, `FieldPath`, `Index`, `CellX`, `CellZ`, `Edge` |
 | `SurfaceSubdivisionInteriorEdge` | An edge subdivision adjoining another present cell inside the patch | `Patch`, `FieldPath`, `Index`, `CellX`, `CellZ`, `Edge` |

@@ -12719,11 +12719,20 @@ invalid enums, cardinality and prism payload versions through the corresponding 
 Unsupported decoded kinds retain `ActualText`, and unsupported runtime records retain `RecordType`.
 Chains admit 2 through 4097 vertices, slot lists 1 through 4096 entries, and slot values 0 through 4095.
 Slot ordering uses `OrderInvalid` with `Index`, `ActualInteger` and `PreviousInteger`. Prism versions
-carry `ActualVersion` and `SupportedVersions`. The encoder preserves the first local finding's reason
+carry `ActualVersion` and `SupportedVersions`. The encoder and decoder preserve the first local finding's reason
 and identifiers and attaches every ordered local finding as `Findings`. Decoded key mismatches use
 `SurfacePatchKeyMismatch` with `Patch` and `ExpectedPatch`, rectangle checks use `BoundsInvalid` with
 the patch and dimensions, and the trailing-value guard uses `SurfacePatchTrailingBytes` with the requested
-patch. Other codec schema, byte-budget and decode-local forwarding failures still use message-only constructors.
+patch. Codec schema guards use the shared object, member, array and required-value reasons. Canonical
+decimal slots and addresses use `SchemaInt64Malformed` with `FieldPath`, `ActualText` and signed 64-bit
+limits. Base64 failures distinguish invalid encoding (`SchemaBase64Malformed`) from token or decoded
+length mismatches (`SchemaArrayLengthMismatch`). Token lengths are character counts in `ActualCount`
+and `ExpectedCount`, and byte lengths use `ExpectedByteCount` and `ActualByteCount` only when known.
+Other malformed JSON or scalar conversions use `SchemaMalformed` with the requested `Patch` and
+available reader location. The 1,048,576-byte codec cap uses `WorkCapacityExceeded`,
+`Budget = "SurfacePatchEncodedBytes"` and `Limit`. Exact attempted byte counts use `ActualByteCount`,
+while preflight collection and text checks retain `ActualCount` and a local `FieldPath` when known.
+Per-array count caps use the field name as `Budget`, with `ActualCount` and `Limit`.
 
 Native metadata adds typed findings beside its unchanged string diagnostics. Compound findings select
 the first failing predicate branch. Missing asset-reference and indoor-span values use `SchemaValueRequired`, nonfinite

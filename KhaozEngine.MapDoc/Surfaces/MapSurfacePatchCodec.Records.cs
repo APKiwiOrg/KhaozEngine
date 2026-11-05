@@ -12,7 +12,7 @@ public static partial class MapSurfacePatchCodec
     static void WriteRecords(Utf8JsonWriter writer, IReadOnlyList<MapTopologyRecord> records)
     {
         // Every supported record needs more than 24 encoded bytes, even with minimal empty collections.
-        if (records.Count > MaxEncodedBytes / 24) throw Limit();
+        if (records.Count > MaxEncodedBytes / 24) throw Limit(fieldPath: "records", actualCount: records.Count);
         var ids = new HashSet<string>(StringComparer.Ordinal);
         for (int i = 0; i < records.Count; i++)
         {
@@ -203,7 +203,7 @@ public static partial class MapSurfacePatchCodec
     {
         Members(v, "surfaceId", "address"); string id = v.GetProperty("surfaceId").GetString()!; RequireText(id, "surfaceId");
         JsonElement a = v.GetProperty("address"); Members(a, "x", "z", "d");
-        return new(id, MapLatticeAddress.Create(Long(a.GetProperty("x")), Long(a.GetProperty("z")), a.GetProperty("d").GetInt32()));
+        return new(id, MapLatticeAddress.Create(Long(a.GetProperty("x"), "x"), Long(a.GetProperty("z"), "z"), a.GetProperty("d").GetInt32()));
     }
     static void WriteEdge(Utf8JsonWriter w, MapSurfaceEdgeRef edge)
     {
@@ -303,7 +303,7 @@ public static partial class MapSurfacePatchCodec
     {
         if (string.IsNullOrWhiteSpace(value))
             throw new MapDocumentException(MapDocumentRefusal.SchemaValueRequired, "record text is required") { FieldPath = fieldPath, ActualText = value };
-        if (value.Length > MaxEncodedBytes) throw Limit();
+        if (value.Length > MaxEncodedBytes) throw Limit(fieldPath: fieldPath, actualCount: value.Length);
     }
     static T[] ReadList<T>(JsonElement array, Func<JsonElement, T> read)
     {
@@ -326,11 +326,11 @@ public static partial class MapSurfacePatchCodec
     // These checks precede LINQ buffering and do not restrict geometry that fits the payload budget.
     static void WireCount(int count, int minimumItemBytes)
     {
-        if (count < 0 || checked((long)count * minimumItemBytes) > MaxEncodedBytes) throw Limit();
+        if (count < 0 || checked((long)count * minimumItemBytes) > MaxEncodedBytes) throw Limit(actualCount: count);
     }
     static void FlushBudget(Utf8JsonWriter w)
     {
-        if (w.BytesCommitted + w.BytesPending > MaxEncodedBytes) throw Limit();
+        if (w.BytesCommitted + w.BytesPending > MaxEncodedBytes) throw Limit(actualByteCount: w.BytesCommitted + w.BytesPending);
         w.Flush();
     }
 }

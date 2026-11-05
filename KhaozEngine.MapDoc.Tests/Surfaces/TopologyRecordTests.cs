@@ -73,7 +73,15 @@ public sealed class TopologyRecordTests
         for (int i = 0; i < 40; i++)
             p.Records.Add(new MapBoundaryChain($"c{i}", MapChainKind.Authored, null,
                 Enumerable.Range(0, 4097).Select(x => new MapChainVertex(new MapLatticeVertex("r", MapLatticeAddress.Corner(x, 0)), 0)).ToList()));
-        Assert.Contains("1048576", Assert.Throws<MapDocumentException>(() => MapSurfacePatchCodec.Encode(p)).Message);
+        var ex = Assert.Throws<MapDocumentException>(() => MapSurfacePatchCodec.Encode(p));
+        Assert.Equal(MapDocumentRefusal.WorkCapacityExceeded, ex.Reason);
+        Assert.Equal("SurfacePatchEncodedBytes", ex.Budget);
+        Assert.Equal(1_048_576L, ex.Limit);
+        Assert.Equal(40, p.Records.Count);
+        var capped = SurfacePatchFixtures.PayloadAtByteCap();
+        byte[] bytes = MapSurfacePatchCodec.Encode(capped);
+        Assert.Equal(MapSurfacePatchCodec.MaxEncodedBytes, bytes.Length);
+        Assert.Equal(capped.Key, MapSurfacePatchCodec.Decode(bytes, capped.Key).Key);
     }
 
     [Fact]
@@ -210,7 +218,15 @@ public sealed class TopologyRecordTests
                 field == "geometryOwners" ? new UnenumerableList<MapRecordRef>() : Array.Empty<MapRecordRef>()),
         };
         patch.Records.Add(record);
-        Assert.Contains("1048576", Assert.Throws<MapDocumentException>(() => MapSurfacePatchCodec.Encode(patch)).Message);
+        var ex = Assert.Throws<MapDocumentException>(() => MapSurfacePatchCodec.Encode(patch));
+        Assert.Equal(MapDocumentRefusal.WorkCapacityExceeded, ex.Reason);
+        Assert.Equal("SurfacePatchEncodedBytes", ex.Budget);
+        Assert.Equal(1_048_576L, ex.Limit);
+        Assert.Equal(int.MaxValue, ex.ActualCount);
+        Assert.Null(ex.ActualByteCount);
+        Assert.Single(patch.Records);
+        patch.Records.Clear();
+        Assert.Empty(MapSurfacePatchCodec.Decode(MapSurfacePatchCodec.Encode(patch), patch.Key).Records);
     }
 
     sealed class UnenumerableList<T> : IReadOnlyList<T>

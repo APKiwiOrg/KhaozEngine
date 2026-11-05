@@ -31,19 +31,32 @@ public sealed class SurfacePatchCodecTests
         Assert.True(new MapPatchKey("a", 5, 5).CompareTo(new MapPatchKey("b", -9, -9)) < 0);
         Assert.True(new MapPatchKey("a", 9, -1).CompareTo(new MapPatchKey("a", 0, 0)) < 0);
     }
-    [Theory, InlineData("width", "\"width\":4", "\"width\":65"), InlineData("heights", "\"depth\":2", "\"depth\":3"),
-     InlineData("presence", "/QAAAAAAAAA=", "/QAAAAABAAA="), InlineData("unknown", "\"width\":4", "\"width\":4,\"extra\":1")]
-    public void Decode_RefusesMalformedPayloadBeforeAllocation(string member, string from, string to)
+    [Theory, InlineData("rectangle", "\"width\":4", "\"width\":65", MapDocumentRefusal.BoundsInvalid),
+     InlineData("heights", "\"depth\":2", "\"depth\":3", MapDocumentRefusal.SchemaArrayLengthMismatch),
+     InlineData("Presence", "/QAAAAAAAAA=", "/QAAAAABAAA=", MapDocumentRefusal.SurfacePresencePaddingNonzero),
+     InlineData("extra", "\"width\":4", "\"width\":4,\"extra\":1", MapDocumentRefusal.SchemaMemberUnknown)]
+    public void Decode_RefusesMalformedPayloadBeforeAllocation(string member, string from, string to, MapDocumentRefusal reason)
     {
         string text = Encoding.UTF8.GetString(MapSurfacePatchCodec.Encode(SurfacePatchFixtures.Sample()));
         Assert.Contains(from, text);
         byte[] bad = Encoding.UTF8.GetBytes(text.Replace(from, to));
-        Assert.Contains(member, Assert.Throws<MapDocumentException>(() => MapSurfacePatchCodec.Decode(bad, SurfacePatchFixtures.Sample().Key)).Message);
+        var ex = Assert.Throws<MapDocumentException>(() => MapSurfacePatchCodec.Decode(bad, SurfacePatchFixtures.Sample().Key));
+        Assert.Equal(reason, ex.Reason);
+        Assert.Equal(member, ex.FieldPath);
+        Assert.Equal(SurfacePatchFixtures.Sample().Key, MapSurfacePatchCodec.Decode(Encoding.UTF8.GetBytes(text), SurfacePatchFixtures.Sample().Key).Key);
     }
     [Fact]
     public void Decode_RefusesOversizedInputUnreducedUnitsAndOverflow()
     {
-        Assert.Contains("1048576", Assert.Throws<MapDocumentException>(() => MapSurfacePatchCodec.Decode(new byte[1_048_577], SurfacePatchFixtures.Sample().Key)).Message);
+        var capacity = Assert.Throws<MapDocumentException>(() => MapSurfacePatchCodec.Decode(new byte[1_048_577], SurfacePatchFixtures.Sample().Key));
+        Assert.Equal(MapDocumentRefusal.WorkCapacityExceeded, capacity.Reason);
+        Assert.Equal("SurfacePatchEncodedBytes", capacity.Budget);
+        Assert.Equal(1_048_576L, capacity.Limit);
+        Assert.Equal(1_048_577L, capacity.ActualByteCount);
+        var capped = SurfacePatchFixtures.PayloadAtByteCap();
+        byte[] encoded = MapSurfacePatchCodec.Encode(capped);
+        Assert.Equal(MapSurfacePatchCodec.MaxEncodedBytes, encoded.Length);
+        Assert.Equal(capped.Key, MapSurfacePatchCodec.Decode(encoded, capped.Key).Key);
         Assert.Equal(new MapExactValue(1, 100), new MapRational(1, 100).Exact());
         var unit = Assert.Throws<MapDocumentException>(() => new MapRational(2, 200));
         Assert.Equal(MapDocumentRefusal.SurfaceUnitUnreduced, unit.Reason);

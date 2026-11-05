@@ -45,6 +45,9 @@ public enum MapDocumentRefusal
     /// <summary>Refuses a value outside the declared enumeration.</summary>
     SchemaEnumUnsupported,
 
+    /// <summary>Refuses text outside canonical signed 64-bit decimal representation.</summary>
+    SchemaInt64Malformed,
+
     // Shared identity admission.
     /// <summary>Refuses foliage editing without a verified asset closure.</summary>
     AssetClosureRequired,

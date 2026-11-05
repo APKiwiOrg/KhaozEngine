@@ -40,6 +40,19 @@ public class TileFoliageLayerRefusalTests
         if (reason == TileWorldRefusal.FoliageLayerNull) Assert.Null(ex.LayerIndex);
     }
 
+    // The sample limit is inclusive: a raster of exactly MaxDensitySamples is a layer, so a guard tightened by one
+    // fails here while the overflow row above still refuses.
+    [Fact]
+    public void A_raster_of_exactly_the_sample_limit_is_a_layer()
+    {
+        TileFoliageLayerDto dto = ValidDto();
+        dto.Width = 4096;
+        dto.Height = TileFoliageLayer.MaxDensitySamples / dto.Width;
+        dto.Density = new byte[TileFoliageLayer.MaxDensitySamples];
+        TileFoliageLayer layer = TileWorldFile.FoliageFromDto(dto);
+        Assert.Equal(TileFoliageLayer.MaxDensitySamples, (long)layer.Width * layer.Height);
+    }
+
     [Theory]
     [InlineData(TileWorldRefusal.FoliageIdBlank)]
     [InlineData(TileWorldRefusal.FoliagePlaneNegative)]

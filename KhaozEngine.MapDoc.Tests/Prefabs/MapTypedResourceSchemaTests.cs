@@ -82,6 +82,13 @@ public sealed class MapTypedResourceSchemaTests
             Assert.Equal(schema, misplaced.ExpectedSchema);
             Assert.Equal(missing.ResourceId, misplaced.ResourceId);
             read(bytes);
+            // A root that is not an object is a shape refusal at the root, not a missing discriminant. The support
+            // reader refuses it before the discriminant check, so only the shape and the resource are common.
+            var array = Assert.Throws<MapDocumentException>(() => read("[]"u8.ToArray()));
+            Assert.Equal(MapDocumentRefusal.SchemaObjectRequired, array.Reason);
+            Assert.Equal("$", array.FieldPath);
+            Assert.Equal(missing.ResourceId, array.ResourceId);
+            read(bytes);
         }
     }
 

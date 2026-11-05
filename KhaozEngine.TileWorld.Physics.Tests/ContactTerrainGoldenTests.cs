@@ -19,7 +19,7 @@ public class ContactTerrainGoldenTests
         var options = ContactTerrainOptInTests.Options with { CaptureTerrainDescentEvidence = true };
         var profiles = new[] { new NavBakeProfile("player", ContactTerrainScene.Tuning, default)
             { MaxDropMetres = 6, AllowTerrainDescents = true } };
-        var loaded = GroundNavigationBake.Load(original, new(options, new NavBakeSources().Add("world", new byte[32]), profiles), "22.0.1");
+        var loaded = GroundNavigationBake.Load(original, new(options, new NavBakeSources().Add("world", new byte[32]), profiles), "23.1.0");
         Assert.Equal(NavBakeLoadStatus.Loaded, loaded.Status);
         var nav = loaded.Bake!.GetProfile("player");
         var terrain = nav.Graph.Links.Where(link => nav.Terrain!.Route(link) == ContactDropRoute.Terrain).ToArray();

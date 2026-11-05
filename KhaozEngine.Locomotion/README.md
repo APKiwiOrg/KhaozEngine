@@ -1004,6 +1004,29 @@ peaks at the requested height. Its sampled peak is lower by at most `gravity * s
 float rounding. The helper does not change the default tuning or compensate for variable steps, ceilings,
 swimming, support changes or other forces.
 
+## Player state publication
+
+`PlayerMovementPublication` owns the state a player carries between steps. `MovementStateQuantization` owns
+its unchanged wire grids. `EffectiveMovementBinding.StepPlayer` and `StepPlayerTowards` prepare the canonical
+input, execute the real controller and publish the canonical result under the same query lease. Use them for
+player simulation and certified Drop execution. NetWorld applies this policy to forward prediction, pending
+replay, both authorities and admitted placements. The local Contact `CharacterController3D` uses it too.
+
+Horizontal velocity rounds independently per axis to 1/256 m/s and clamps to +/-127 m/s. Speed scale uses the
+existing offset-from-one 1/1024 grid and 0 through 8 range. Heading and climb rate keep their existing wire grids.
+The next ascent average starts from the positive decoded climb signal, exactly as owner reconstruction and
+handoff do. A previous `StepDeltaY` is cleared before the next step. New step events and the unconstrained
+`CommandedVelocity` remain available to their consumers without quantization. Pose, vertical velocity, both feel
+timers, water excursion and commitment remain exact.
+
+Rounding is IEEE binary32 ties-to-even implemented with bit operations. The grid arithmetic uses explicit
+float operations and no platform math library. The same input bits therefore publish the same bits on Linux,
+macOS and Windows. Horizontal and speed-scale quanta are powers of two, so their decodes are exact.
+
+Raw `Step` and `StepTowards` remain full precision for unreplicated locomotion. Ordinary NPC steering does not
+inherit player wire limits. An NPC explicitly executing a certified Contact Drop must execute that proof's
+publication policy, which `NpcGroundMovement.Step` does for `Dropping`.
+
 ## Airborne momentum (16.0.0, opt-in)
 
 Off by default. With `MoveTuning.AirMomentum = false` a character in free flight has no inertia: the horizontal is

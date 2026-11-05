@@ -70,6 +70,7 @@ public class ContactDropLaunchTests
 
     [Theory]
     [InlineData("body")]
+    [InlineData("one-bit")]
     [InlineData("scale")]
     [InlineData("run")]
     [InlineData("dt")]
@@ -88,6 +89,7 @@ public class ContactDropLaunchTests
         }
         Assert.False(body.Grounded);
         if (changed == "body") body.HorizontalVelocity += new Vector2(0, 1);
+        if (changed == "one-bit") body.HorizontalVelocity.X = System.MathF.BitIncrement(body.HorizontalVelocity.X);
         if (changed == "scale") body.SpeedScale = 0.5f;
         var refused = move.Tick(body, tuning, target, 0.01f, changed == "run", changed == "dt" ? 1f / 60 : 1f / 30, fixture.Context);
         Assert.Equal(RangeMoveStatus.Suspended, refused.Status);

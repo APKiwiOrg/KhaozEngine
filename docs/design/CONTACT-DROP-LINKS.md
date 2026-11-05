@@ -161,9 +161,9 @@ means absent geometry or selects the sharp policy. Flight requests ordinary boun
 Airborne descent is excluded from ground-stall accounting.
 
 Player hosts pass one `PlayerPathInput` carrying this tick's finite camera yaw to `MoveToRange.Tick`, then create
-the submitted command through that same value. Preview and live continuation use `EffectiveMovementBinding.Step`
+the submitted command through that same value. Preview and live continuation use `EffectiveMovementBinding.StepPlayer`
 with the exact ordinary camera-relative command, including fractional axis rounding. NPC callers retain the
-world-space `StepTowards` contract. Exact body, run mode, timestep, frame and read-basis authentication remains in
+world-space `StepPlayerTowards` contract during a certified Drop. Exact body, run mode, timestep, frame and read-basis authentication remains in
 force. Camera rotation between ticks is valid when the host shares that tick's input with the preview.
 
 Supported completion comes from the actual supplied body, target cell/layer, non-swimming support and the 3D arrival
@@ -172,7 +172,32 @@ Reset releases traversal while ordinary gravity and collision continue. `RangeMo
 input. Both `NpcGroundMovement.Step` and `PlayerPathMovement.Command` transmit it alongside Following. Hosts still
 own authority, advance the real controller and decide interaction timing from actual reach.
 
+## Canonical carried state
+
+A certificate proves the complete player step, including `PlayerMovementPublication` from Locomotion.
+Sharp and terrain proofs, previews, expected continuation, local Contact control, client forward prediction,
+pending replay and both authoritative heads use it. Horizontal velocity uses the existing signed 1/256 m/s
+per-axis grid. Speed scale, heading and climb signal use their existing wire grids. The ascent average uses the
+same decoded positive climb seed as reconciliation and handoff. Step-only events do not become carried input.
+
+The follower's exact body comparison stays exact. It compares pose, both velocities, grounded, swimming, water
+excursion, commitment, both feel timers and speed scale. A snapshot with zero position error can still replace a
+carried velocity. Canonicalizing only the expected comparison would leave the proof's next trajectory different
+from the actual player, so canonicalization belongs to simulation itself. A truly different supplied body still
+interrupts, even when only one representable velocity bit differs.
+
+Raw unreplicated creature and NPC locomotion keeps full precision. An NPC opting into a certified Contact Drop
+also opts into its publication policy while `Dropping`. IEEE-defined scalar and bit operations implement
+round-to-nearest with ties to even, without a platform math library. Horizontal and speed decodes use exact binary
+power-of-two scales. No geometric tolerance, raw association, footprint protection or duration budget changes.
+
 ## Storage and compatibility
+
+Every Contact bake, including a disabled Drop profile, binds the policy through the engine-owned
+`engine/player-publication` source digest. Every consumer must rebake. Older policy identities still decode,
+but return `SourcesChanged` at the same engine version before payload use. Frozen formats retain their layouts.
+Legacy-only bakes add no policy source and keep their usual identity behavior. Consumers never provide the
+reserved source label themselves.
 
 | Format | Selection | Identity and topology |
 | --- | --- | --- |

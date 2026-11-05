@@ -153,8 +153,9 @@ public struct MoveState
     /// average, no half-riser hover and no crest snap). Updated ONLY on a detected continuous-run tick and reset to 0
     /// otherwise, so a fall / jump / flat / single-riser never accumulates into it (the fall-sink stays correct by
     /// construction). It is carried tick-to-tick like <see cref="VerticalVelocity"/> but rides no wire: MoveState is
-    /// sim-local and only the derived <see cref="ClimbRate"/> (as <c>MovementState.ClimbRateQ</c>) replicates, and both
-    /// heads run the same deterministic update so their EWMA - and therefore the stamped signal - agree by construction.
+    /// sim-local and only the derived <see cref="ClimbRate"/> (as <c>MovementState.ClimbRateQ</c>) replicates.
+    /// <see cref="PlayerMovementPublication"/> seeds the next player average from that decoded positive signal,
+    /// matching owner reconstruction and handoff. Raw unreplicated locomotion retains the full average.
     /// <c>default</c> is 0 (byte-identical to a pre-feature state).</summary>
     public float ClimbRateEwma;
 

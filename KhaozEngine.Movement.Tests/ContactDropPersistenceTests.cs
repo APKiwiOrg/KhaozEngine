@@ -26,7 +26,7 @@ public class ContactDropPersistenceTests(ITestOutputHelper output)
         byte[] normalized = ContactNavigationBaselineTests.NormalizeFile(new(bake, expected));
         string hash = Convert.ToHexStringLower(SHA256.HashData(normalized));
         output.WriteLine(hash);
-        Assert.Equal("988d8cc3603cc87ae3f283990cd809f2e18b44edc4fffacc8064121e94874e39", hash);
+        Assert.Equal("fb146348c01b5e09631228d72de835f47a4b5aab3406eaf1637f552b48287112", hash);
     }
 
     [Fact]

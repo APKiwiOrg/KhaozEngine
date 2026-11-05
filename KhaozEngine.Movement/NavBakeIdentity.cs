@@ -87,6 +87,7 @@ internal static partial class NavBakeIdentity
         ushort version = FormatFor(options, profiles);
         if (sources.Count == 0)
             throw new ArgumentException("A bake needs at least one source.", nameof(expected));
+        sources = BindPlayerPublication(sources, profiles);
         if (sources.Count > ushort.MaxValue)
             throw new ArgumentException("A bake holds at most 65535 sources.", nameof(expected));
 

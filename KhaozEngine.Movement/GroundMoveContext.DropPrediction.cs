@@ -39,8 +39,8 @@ public sealed partial class GroundMoveContext
                 MovementBoundary boundary = corridor?.Compose(ordinary, frame) ?? ordinary;
                 var start = new FramedMovementState(state.State, frame, null);
                 MovementStepResult result = playerInput is { } input
-                    ? binding.Step(start, input.Command(new(direction, RangeMoveStatus.Dropping), run), dt, queries, boundary)
-                    : binding.StepTowards(start, direction, run, dt, queries, boundary);
+                    ? binding.StepPlayer(start, input.Command(new(direction, RangeMoveStatus.Dropping), run), dt, queries, boundary)
+                    : binding.StepPlayerTowards(start, direction, run, dt, queries, boundary);
                 queries.AssertCurrent();
                 EnsureOrigin();
                 if (NavigationFrame != frame) throw new InvalidOperationException("The Contact prediction frame changed.");

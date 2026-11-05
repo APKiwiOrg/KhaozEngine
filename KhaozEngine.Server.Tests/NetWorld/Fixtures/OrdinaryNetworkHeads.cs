@@ -13,6 +13,7 @@ internal sealed class OrdinaryNetworkHeads : IDisposable
 {
     readonly LoopbackTransport serverTransport;
     readonly LoopbackTransport clientTransport;
+    readonly float tickSeconds;
     public OrdinaryPlayerWorld ServerWorld { get; }
     public OrdinaryPlayerWorld ClientWorld { get; }
     public WorldServer? Single { get; }
@@ -20,11 +21,12 @@ internal sealed class OrdinaryNetworkHeads : IDisposable
     public WorldClient Client { get; }
     public Dictionary<CellCoord, OrdinaryPlayerWorld> Cells { get; } = new();
     public OrdinaryNetworkHeads(bool sharded, bool roof = false, MoveTuning? tuning = null, bool water = false,
-        float h = 0, bool stairs = false, float? resumeY = null, IMovementWaterField? field = null, Vector3? spawn = null, bool pump = true, IMovementWaterField? clientField = null, WorldBounds? bounds = null, MovementBoundary? boundary = null)
+        float h = 0, bool stairs = false, float? resumeY = null, IMovementWaterField? field = null, Vector3? spawn = null, bool pump = true, IMovementWaterField? clientField = null, WorldBounds? bounds = null, MovementBoundary? boundary = null, float? dropHeight = null, bool terrain = false, float tickSeconds = 0.1f)
     {
+        this.tickSeconds = tickSeconds;
         var selected = tuning ?? OrdinaryPlayerWorld.Tuning;
-        ServerWorld = new(roof: roof, water: water, groundY: h, stairs: stairs, field: field);
-        ClientWorld = new(roof: roof, water: water, groundY: h, stairs: stairs, field: clientField ?? field);
+        ServerWorld = new(roof: roof, water: water, groundY: h, stairs: stairs, field: field, dropHeight: dropHeight, terrain: terrain);
+        ClientWorld = new(roof: roof, water: water, groundY: h, stairs: stairs, field: clientField ?? field, dropHeight: dropHeight, terrain: terrain);
         (serverTransport, clientTransport) = LoopbackTransport.CreatePair();
         if (sharded)
         {
@@ -34,20 +36,20 @@ internal sealed class OrdinaryNetworkHeads : IDisposable
                 CellSize = 128,
                 OverlapMargin = 4,
                 InterestRadius = 2,
-                TickSeconds = 0.1f,
+                TickSeconds = tickSeconds,
                 MaxPlayers = 2,
                 SpawnPosition = _ => spawn ?? new(4, h + 0.75f, 4),
                 PhysicsWorldFactory = coord =>
                 {
                     var island = new OrdinaryPlayerWorld(created!.FrameFor(coord).Anchor, roof: roof,
-                        water: water, groundY: h, stairs: stairs, island: 96, field: field);
+                        water: water, groundY: h, stairs: stairs, island: 96, field: field, dropHeight: dropHeight, terrain: terrain);
                     Cells.Add(coord, island);
                     return island.Physics;
                 },
                 MovementRegistrationFactory = cell => Cells[cell.Coord].Registration,
                 MovementBoundaryFactory = cell => boundary ?? MovementBoundary.Rectangle(-100000, -100000, 100000, 100000),
                 MovementWaterFieldFactory = cell => Cells[cell.Coord].Field
-            }, (_, _) => h, selected, bounds: bounds);
+            }, ServerWorld.Ground, selected, bounds: bounds, groundNormal: ServerWorld.Normal);
             if (resumeY is { } saved) Sharded.SetResumePositionProvider((string _, out Vector3 p) => { p = new(4, saved, 4); return true; });
         }
         else
@@ -55,23 +57,23 @@ internal sealed class OrdinaryNetworkHeads : IDisposable
             Single = new(serverTransport, new()
             {
                 FrameAnchoring = false,
-                TickSeconds = 0.1f,
+                TickSeconds = tickSeconds,
                 MaxPlayers = 2,
                 SpawnPosition = _ => spawn ?? new(0, h + 0.75f, 0),
                 MovementRegistration = ServerWorld.Registration,
                 MovementBoundary = boundary ?? ServerWorld.Boundary,
                 MovementWaterField = ServerWorld.Field
-            }, ServerWorld.Ground, selected, bounds: bounds, physics: ServerWorld.Physics);
+            }, ServerWorld.Ground, selected, bounds: bounds, physics: ServerWorld.Physics, groundNormal: ServerWorld.Normal);
             if (resumeY is { } saved) Single.SetResumePositionProvider((string _, out Vector3 p) => { p = new(0, saved, 0); return true; });
         }
         Client = new(clientTransport, ClientWorld.Ground, selected, new()
         {
             FrameAnchoring = false,
-            TickSeconds = 0.1f,
+            TickSeconds = tickSeconds,
             MovementRegistration = ClientWorld.Registration,
             MovementBoundary = boundary ?? ClientWorld.Boundary,
             MovementWaterField = ClientWorld.Field
-        }, bounds: bounds, physics: ClientWorld.Physics);
+        }, bounds: bounds, physics: ClientWorld.Physics, groundNormal: ClientWorld.Normal);
         if (pump) Pump(6);
     }
     public PlayerMoveState State
@@ -88,8 +90,9 @@ internal sealed class OrdinaryNetworkHeads : IDisposable
     public bool Reset() => Single is { } single ? single.TryResetToConfiguredSpawn(0) : Sharded!.TryResetToConfiguredSpawn(0);
     public void Pump(int count)
     {
-        for (int tick = 0; tick < count; tick++) { Single?.Poll(); Sharded?.Poll(); Single?.Tick(0.1f); Sharded?.Tick(0.1f); Client.Poll(); }
+        for (int tick = 0; tick < count; tick++) { Serve(); Client.Poll(); }
     }
+    public void Serve() { Single?.Poll(); Sharded?.Poll(); Single?.Tick(tickSeconds); Sharded?.Tick(tickSeconds); }
     public void Dispose()
     {
         Client.Dispose(); Single?.Dispose(); Sharded?.Dispose();

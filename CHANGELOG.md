@@ -6,7 +6,12 @@ Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
 ## 23.1.0
 
-2026-11-05
+2026-11-06
+
+- Player movement now carries the same canonical published state through Contact Drop proofs, previews,
+  prediction, replay, both authorities and handoff. Exact Drop continuation survives owner reconciliation,
+  including snapshots with zero position error. Wire encoding and geometric protections stay unchanged.
+  Every consumer must rebake Contact navigation, including profiles with Drops disabled.
 
 - `GroundNavigation.ExcludingAreas(uint)` creates an immutable query view over the same baked graph and
   captured surface areas. Pursuits can refuse water or other game-defined areas while finding a permitted

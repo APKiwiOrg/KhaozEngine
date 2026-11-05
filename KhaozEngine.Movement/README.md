@@ -1381,6 +1381,25 @@ This API adds no native sampler, tiled bake or legacy bake-format change. Adopti
 surface motion, a live wall, exact-view matching, refusal after earlier steps, all tuning inputs,
 semantic-source order and synthetic adjacent-frame equivalence. Real native adoption remains G1b.
 
+## Certified movement and publication
+
+Every sharp and terrain Drop proof, launch preview and continuation executes the same
+`PlayerMovementPublication` policy from Locomotion. Publication is part of each step, including the next
+slice's input. The follower still matches the actual supplied body exactly. Rounding only its saved expectation
+would certify a trajectory the authority never ran. Position error alone cannot establish agreement because
+publication can change carried velocity while leaving position identical.
+
+Player hosts execute `EffectiveMovementBinding.StepPlayer`, or NetWorld's `PlayerMoveSimulator`, with the same
+`PlayerPathInput` command used for preview. World-space Drop hosts use `StepPlayerTowards`.
+`NpcGroundMovement.Step` applies this policy during certified Contact `Dropping`. Ordinary creature and NPC
+steering keeps the raw full-precision contract. No arrival, footprint, roof, raw-layer or proof-budget rule changes.
+
+Every Contact bake identity contains the engine-owned `engine/player-publication` source digest. Consumers must
+rebake, including Contact profiles with Drops disabled. An older policy returns `SourcesChanged` even at the same
+engine version. Callers supply their own source digests and must not supply that reserved label. Frozen KENB
+formats still decode with their original layouts. Legacy-only identities keep their ordinary engine, source and
+profile checks, with no player-publication source row.
+
 ## Internal terrain descent evidence
 
 The internal `PhysicsNavBake.CaptureDescent` entry captures immutable physical evidence beside ordinary

@@ -9646,6 +9646,19 @@ MoveCommand command = input.Command(steering, run);
 // NPC hosts use NpcGroundMovement.Step for Following and Dropping, and Hold otherwise.
 ```
 
+Player proofs, preview, forward simulation, replay and both authorities include
+`PlayerMovementPublication` from Locomotion in every step. A custom leased player host uses
+`EffectiveMovementBinding.StepPlayer`, or `StepPlayerTowards` for a world-space Drop command. These APIs
+canonicalize the actual carried state, including the existing 1/256 m/s horizontal grid, before the next slice.
+The follower's body comparison remains exact. NetWorld's `PlayerMoveSimulator` and the local Contact controller
+already include the policy. Raw unreplicated NPC motion keeps its original precision, while
+`NpcGroundMovement.Step` applies the certified policy during Contact `Dropping`.
+
+Every consumer must rebake Contact navigation, including profiles with Drops disabled. The engine adds the
+reserved `engine/player-publication` source digest to the identity. Supply only consumer source digests.
+An earlier policy returns `SourcesChanged` even with the same engine version. Wire representation and frozen
+KENB layouts are unchanged. Legacy-only bakes retain their normal identity behavior.
+
 Standalone construction uses `BuildProfile(tuning, areas, new GroundProfileOptions { MaxDropMetres = allowance })`.
 Explicit terrain capture retains complete physical geometry and original raw associations, with a pure
 geometry-derived candidate envelope and corridor coverage checks. Terrain Drop publication requires its real

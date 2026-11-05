@@ -130,7 +130,7 @@ internal sealed partial class ContactDropProof : IDisposable
         Vector2 input = hold ? Vector2.Zero : ContactDropControl.Input(absolute, target, _binding.Tuning,
             run, landScale, _options.EdgeProbeSeconds);
         SupportQueryDiagnostics.Record(SupportQueryCounter.DropSteps);
-        MovementStepResult result = _binding.StepTowards(unselected, input, run, _options.EdgeProbeSeconds, queries, boundary);
+        MovementStepResult result = _binding.StepPlayerTowards(unselected, input, run, _options.EdgeProbeSeconds, queries, boundary);
         queries.AssertCurrent();
         _hooks?.DropStep?.Invoke(new(source, Feet(result), run, hold, result.Outcome, result.State.State.Grounded,
             result.State.State.CommandedVelocity)

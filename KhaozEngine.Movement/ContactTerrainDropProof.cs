@@ -86,7 +86,7 @@ internal sealed class ContactTerrainDropProof(PhysicsNavBakeOptions options, Eff
         var absolute = state.State with { Position = state.State.Position + frame.PhysicsOrigin };
         Vector2 input = hold ? Vector2.Zero : ContactDropControl.Input(absolute, certificate.To, _binding.Tuning, run, scale, options.EdgeProbeSeconds);
         SupportQueryDiagnostics.Record(SupportQueryCounter.DropSteps);
-        var result = _binding.StepTowards(start, input, run, options.EdgeProbeSeconds, queries, boundary);
+        var result = _binding.StepPlayerTowards(start, input, run, options.EdgeProbeSeconds, queries, boundary);
         queries.AssertCurrent();
         _hooks?.DropStep?.Invoke(new(certificate.From, Feet(result), run, hold, result.Outcome,
             result.State.State.Grounded, result.State.State.CommandedVelocity)

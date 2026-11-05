@@ -42,12 +42,12 @@ public partial class CharacterController3DContactTests
             var command = new MoveCommand(Vector2.UnitX, true, 0.3f, jump);
             var frame = new MovementFrameDescriptor(default, physics.Origin, 1);
             var local = expected with { Position = expected.Position - physics.Origin };
-            MoveState? dry = !wet ? CharacterMovement.Step(local, command, Dt, (_, _) => -0.9f - originY,
-                Tuning, world: physics) : null;
+            MoveState? dry = !wet ? PlayerMovementPublication.Canonicalize(CharacterMovement.Step(PlayerMovementPublication.PrepareStep(local), command, Dt, (_, _) => -0.9f - originY,
+                Tuning, world: physics)) : null;
             Assert.Equal(MovementAvailability.Known, reference.TryAcquire(reference.CreateOrdinaryScope(frame), out var queries));
             using (queries)
             {
-                var result = reference.Step(new(local, frame, null), command, Dt, queries!);
+                var result = reference.StepPlayer(new(local, frame, null), command, Dt, queries!);
                 Assert.Equal(MovementStepOutcome.Advanced, result.Outcome);
                 if (dry.HasValue) Assert.Equal(dry.Value, result.State.State);
                 expected = result.State.State with { Position = result.State.State.Position + physics.Origin };

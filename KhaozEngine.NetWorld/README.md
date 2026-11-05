@@ -112,7 +112,7 @@ movement core to the authoritative netcode stack ([Netcode](../KhaozEngine.Netco
   source. The climb EWMA stays server-local and absent from observer and migration payloads. A destination shard seeds
   it from the migrated `ClimbRateQ` before its next stair step, so the signal does not dip at a mid-climb cell crossing.
   Since 17.26.0 the same list carries **`FacingYaw`** (the authoritative heading, decoded from
-  `MovementState.FacingYawQ` for a remote and predicted un-quantized for the local player), which the position
+  `MovementState.FacingYawQ` for a remote and predicted with canonical publication for the local player), which the position
   delta could not supply at all for a stationary entity. With `InterpolateYaw` set on
   `WorldClientConfig.Prediction` (default false) the local `FacingYaw` eases between ticks like the
   position instead of stepping once per tick. **`LandingImpactSpeed`** rides alongside it but is
@@ -955,6 +955,25 @@ setter with the result. Return to `1f` when no speed modifiers remain. Content, 
   server-only creature driven by `StepTowards`, a single-player controller - can set it directly and rides no wire.
   Only what replicates is bound by `MaxSpeedScale`.
 
+## Canonical player carry
+
+`PlayerMoveSimulator` includes Locomotion's `PlayerMovementPublication` in every player step. Forward prediction,
+pending-command replay, single-world authority and sharded authority carry the same published values into the
+next tick. Admitted state overrides use it too. The single-world head no longer retains a different full-float
+horizontal carrier from the sharded head. Handoff and owner reconciliation restore the same state through the
+existing components and codec. Wire generation 15, component sizes, clamp ranges and encoded bytes are unchanged.
+
+`MovementState` delegates its quantizers to Locomotion's `MovementStateQuantization`. Horizontal velocity uses
+1/256 m/s per axis, and speed scale uses the offset-from-one 1/1024 grid. Heading and climb signals keep their
+existing grids. Canonical player steps seed the next ascent average from the positive decoded climb signal,
+matching owner reconstruction and handoff. Step-only events remain local and are consumed only for their real
+step. `CommandedVelocity` remains the unconstrained drive used by anomaly checks.
+
+Contact proofs and previews execute this publication policy too. An exact follower match therefore survives a
+snapshot that has zero position error, without hiding a changed velocity behind a tolerance. Every consumer
+must rebake Contact navigation because its identity now binds the publication policy. Raw unreplicated NPC
+locomotion keeps its full-precision contract unless it opts into a certified Contact Drop.
+
 ## Airborne momentum (since 16.0.0, opt-in)
 
 `MoveTuning.AirMomentum` (default `false`) makes a jump travel its whole arc at the speed it launched at. The
@@ -1051,7 +1070,7 @@ render-state exports.
   footing this tick" - the safe direction, since a missed grant costs one sample and a fabricated one accuses a
   legitimate player.
 - **`EntityRenderState.FacingYaw` and `EntityRenderState.LandingImpactSpeed`** are the client-side exports. The
-  heading is predicted un-quantized for the local player and the decoded replicated value for a remote,
+  heading is predicted with canonical publication for the local player and the decoded replicated value for a remote,
   discrete-sampled to the same delayed render time as the interpolated position, so a remote's flags, heading and
   feet never skew apart. It is exactly the feed `CharacterSample.FacingYaw` / `ReplicatedCharacterAnimators` want,
   though the two bases sit half a turn apart (the bridge reads 0 as +Z, the sim reads 0 as -Z) and nothing wires

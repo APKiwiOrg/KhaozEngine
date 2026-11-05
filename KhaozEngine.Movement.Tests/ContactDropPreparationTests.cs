@@ -168,7 +168,7 @@ public class ContactDropPreparationTests
         Assert.Equal(MovementAvailability.Known, binding.TryAcquire(binding.CreateOrdinaryScope(frame), out var queries));
         using (queries)
         {
-            var result = binding.Step(new(body with { Position = body.Position - frame.PhysicsOrigin }, frame, null),
+            var result = binding.StepPlayer(new(body with { Position = body.Position - frame.PhysicsOrigin }, frame, null),
                 input.Command(steering, false), Dt, queries!);
             Assert.Equal(MovementStepOutcome.Advanced, result.Outcome);
             return result.State.State with { Position = result.State.State.Position + frame.PhysicsOrigin };

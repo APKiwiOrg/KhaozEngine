@@ -168,7 +168,8 @@ namespace KhaozEngine.Tests.MapDoc
 
                 string tile = Path.Combine(directory, TiledDocFixture.TileFiles(directory)
                     .Single(f => f.Contains("t_0_0.", StringComparison.Ordinal)));
-                JsonNode node = JsonNode.Parse(File.ReadAllText(tile))!;
+                string saved = File.ReadAllText(tile);
+                JsonNode node = JsonNode.Parse(saved)!;
                 node["placements"]![0]!["yaw"] = 9.5f;
                 File.WriteAllText(tile, node.ToJsonString());
 
@@ -177,8 +178,18 @@ namespace KhaozEngine.Tests.MapDoc
 
                 // Load is trusting by default and strict on request.
                 Assert.Equal(9.5f, MapDocumentFile.LoadTiled(directory).Placements.Single(p => p.Id == "p-a").Yaw);
-                Assert.Throws<MapDocumentException>(() =>
+                var error = Assert.Throws<MapDocumentException>(() =>
                     MapDocumentFile.LoadTiled(directory, new MapDocumentLoadOptions { VerifyTileHashes = true }));
+                Assert.Equal(MapDocumentRefusal.DigestMismatch, error.Reason);
+                Assert.Equal("tile lists", error.DigestKind);
+                Assert.Equal(directory, error.SourceName);
+                Assert.Equal(new MapTileCoord(0, 0), error.Tile);
+                Assert.Equal(tile, error.Path);
+                Assert.Contains(error.ExpectedHash!, Path.GetFileName(tile), StringComparison.Ordinal);
+                Assert.NotEqual(error.ExpectedHash, error.ActualHash);
+
+                File.WriteAllText(tile, saved);
+                MapDocumentFile.LoadTiled(directory, new MapDocumentLoadOptions { VerifyTileHashes = true });
             });
         }
 

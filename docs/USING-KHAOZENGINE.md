@@ -12416,7 +12416,8 @@ release. On a tiled document it reads the stored hashes and never opens a tile f
 `$schema` are excluded (renaming a zone must not desync a live server), and `tileSize` is included, so
 re-tiling changes world identity and a converter must PRESERVE `tileSize` rather than re-derive it.
 `MapDocumentFile.VerifyTiled(directory)` re-derives every tile hash and reports mismatches, orphans and
-stray temp files, and `MapDocumentLoadOptions.VerifyTileHashes` is the per-load opt-in.
+stray temp files, and `MapDocumentLoadOptions.VerifyTileHashes` is the per-load opt-in. A mismatch on
+that load refuses with `DigestMismatch`, `DigestKind` `tile lists`, `Tile`, `ExpectedHash` and `ActualHash`.
 
 **On-demand tile reads.** `MapDocumentSource.OpenTiled(directory)` reads the manifest and nothing else.
 `ReadTile(coord)` parses and validates one tile and is free of shared mutable state, so a caller may run it

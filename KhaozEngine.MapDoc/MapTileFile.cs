@@ -63,8 +63,9 @@ internal static class MapTileFile
         {
             string actual = MapDocumentHash.OfLists(content.Lists, options.Registry);
             if (!string.Equals(actual, hash, StringComparison.Ordinal))
-                throw new MapDocumentException(
-                    $"{directory}: tile ({coord.X}, {coord.Z}) hashes to {actual} but the manifest names it {hash}.");
+                throw new MapDocumentException(MapDocumentRefusal.DigestMismatch,
+                    $"{directory}: tile ({coord.X}, {coord.Z}) hashes to {actual} but the manifest names it {hash}.")
+                { SourceName = directory, Tile = coord, Path = PathOf(directory, coord, hash), DigestKind = "tile lists", ExpectedHash = hash, ActualHash = actual };
         }
         return content;
     }

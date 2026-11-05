@@ -136,10 +136,23 @@ internal static class MapPrefabJson
                 throw new MapDocumentException(MapDocumentRefusal.SchemaValueRequired, "spawns_adopt requires a source ID, marker ID, name and role.")
                 { FieldPath = MapDocumentJsonPath.AppendProperty($"$[{index}]", field) };
             }
-            if (!keys.Add(new(row.Kind, row.Id))) throw new MapDocumentException($"Duplicate spawns_adopt source {row.Kind} '{row.Id}'.");
-            if ((row.Height.ExplicitY is null) == (row.Height.SupportBinding is null) ||
-                row.Height.ExplicitY is { } y && !float.IsFinite(y) || row.YawRadians is { } yaw && !float.IsFinite(yaw))
-                throw new MapDocumentException("spawns_adopt requires exactly one finite explicitY or supportBinding, and a finite optional yawRadians.");
+            if (!keys.Add(new(row.Kind, row.Id)))
+                throw new MapDocumentException(MapDocumentRefusal.IdentityDuplicate, $"Duplicate spawns_adopt source {row.Kind} '{row.Id}'.")
+                { SourceId = row.Id, SubjectKind = row.Kind.ToString(), Index = index, FieldPath = MapDocumentJsonPath.AppendProperty($"$[{index}]", "id") };
+            bool oneHeight = (row.Height.ExplicitY is null) != (row.Height.SupportBinding is null);
+            if (!oneHeight || row.Height.ExplicitY is { } y && !float.IsFinite(y) || row.YawRadians is { } yaw && !float.IsFinite(yaw))
+            {
+                const string Message = "spawns_adopt requires exactly one finite explicitY or supportBinding, and a finite optional yawRadians.";
+                string height = MapDocumentJsonPath.AppendProperty($"$[{index}]", "height");
+                throw !oneHeight
+                    ? new MapDocumentException(MapDocumentRefusal.MarkerHeightChoiceInvalid, Message) { MarkerId = row.MarkerId, FieldPath = height }
+                    : new MapDocumentException(MapDocumentRefusal.ValueNonfinite, Message)
+                    {
+                        MarkerId = row.MarkerId,
+                        FieldPath = row.Height.ExplicitY is { } explicitY && !float.IsFinite(explicitY)
+                            ? MapDocumentJsonPath.AppendProperty(height, "explicitY") : MapDocumentJsonPath.AppendProperty($"$[{index}]", "yawRadians"),
+                    };
+            }
         }
         return rows.ToDictionary(r => new MapLegacySpawnKey(r.Kind, r.Id),
             r => new MapMarkerAdoptionChoice(r.MarkerId, r.Name, r.Role, new(r.Height.ExplicitY, r.Height.SupportBinding), r.YawRadians));
@@ -366,7 +379,8 @@ internal static class MapPrefabJson
                 JsonElement value = root.GetProperty("value");
                 Members(value, MapDocumentJsonPath.AppendProperty("$", "value"), ["id", "kind", "assetId", "x", "z", "yaw", "scale", "tags"], "y", "numericId", "displayName", "supportBinding");
                 if (value.TryGetProperty("numericId", out var numericId) && numericId.ValueKind != JsonValueKind.Null)
-                    throw new MapDocumentException("Prefab placement numeric IDs belong to instance bindings.");
+                    throw new MapDocumentException(MapDocumentRefusal.AuthoredOwnershipMismatch, "Prefab placement numeric IDs belong to instance bindings.")
+                    { ChildKind = MapPrefabChildKind.Placement, FieldPath = MapDocumentJsonPath.AppendProperty(MapDocumentJsonPath.AppendProperty("$", "value"), "numericId") };
             }
             var key = MapPrefabJson.Read<MapPrefabChildKey>(root.GetProperty("key"));
             MapPrefabChild child = type switch

@@ -95,6 +95,48 @@ public sealed class MapPrefabSchemaAdmissionTests
         Assert.Single(MapPrefabJson.ReadMarkerAdoption(Adoption));
     }
 
+    [Fact]
+    public void Adoption_refuses_a_repeated_source_key_and_keys_on_kind_and_id()
+    {
+        const string Row = """{"kind":"Spawn","id":"s","markerId":"m","name":"n","role":"r","height":{"explicitY":0}}""";
+        var error = Assert.Throws<MapDocumentException>(() => MapPrefabJson.ReadMarkerAdoption($"[{Row},{Row}]"));
+        Assert.Equal(MapDocumentRefusal.IdentityDuplicate, error.Reason);
+        Assert.Equal("s", error.SourceId);
+        Assert.Equal("Spawn", error.SubjectKind);
+        Assert.Equal(1, error.Index);
+        Assert.Equal("$[1].id", error.FieldPath);
+        string otherKind = Row.Replace("\"Spawn\"", "\"PlayerSpawn\"", StringComparison.Ordinal);
+        Assert.Equal(2, MapPrefabJson.ReadMarkerAdoption($"[{Row},{otherKind}]").Count);
+    }
+
+    [Theory]
+    [InlineData("""{}""", null, MapDocumentRefusal.MarkerHeightChoiceInvalid, "$[0].height")]
+    [InlineData("""{"explicitY":0,"supportBinding":{"kind":"Surface","surfaceId":"f"}}""", null, MapDocumentRefusal.MarkerHeightChoiceInvalid, "$[0].height")]
+    [InlineData("""{}""", "1e400", MapDocumentRefusal.MarkerHeightChoiceInvalid, "$[0].height")]
+    [InlineData("""{"explicitY":1e400}""", null, MapDocumentRefusal.ValueNonfinite, "$[0].height.explicitY")]
+    [InlineData("""{"explicitY":-1e400}""", "1e400", MapDocumentRefusal.ValueNonfinite, "$[0].height.explicitY")]
+    [InlineData("""{"explicitY":0}""", "1e400", MapDocumentRefusal.ValueNonfinite, "$[0].yawRadians")]
+    public void Adoption_height_and_yaw_name_the_rule_that_failed_first(string height, string? yaw, MapDocumentRefusal reason, string fieldPath)
+    {
+        static string Row(string height, string? yaw) =>
+            $$"""[{"kind":"Spawn","id":"s","markerId":"m","name":"n","role":"r","height":{{height}}{{(yaw is null ? "" : ",\"yawRadians\":" + yaw)}}}]""";
+        var error = Assert.Throws<MapDocumentException>(() => MapPrefabJson.ReadMarkerAdoption(Row(height, yaw)));
+        Assert.Equal(reason, error.Reason);
+        Assert.Equal("m", error.MarkerId);
+        Assert.Equal(fieldPath, error.FieldPath);
+        Assert.Single(MapPrefabJson.ReadMarkerAdoption(Row("""{"explicitY":3.4028235e38}""", "-3.4028235e38")));
+    }
+
+    [Fact]
+    public void Placement_numeric_ids_belong_to_instance_bindings()
+    {
+        var error = Assert.Throws<MapDocumentException>(() => MapPrefabFile.Read(PrefabFixtures.AssetBytes("placement-numeric-id"), "hut"));
+        Assert.Equal(MapDocumentRefusal.AuthoredOwnershipMismatch, error.Reason);
+        Assert.Equal(MapPrefabChildKind.Placement, error.ChildKind);
+        Assert.Equal("$.value.numericId", error.FieldPath);
+        MapPrefabFile.Read(PrefabFixtures.AssetBytes("valid"), "hut");
+    }
+
     [Theory]
     [InlineData("null", "$", Adoption)]
     [InlineData("[null]", "$[0]", Adoption)]

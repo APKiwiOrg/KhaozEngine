@@ -71,21 +71,21 @@ public sealed class ShippedFoliageInputGuardTests
         }
         foreach (var (variant, reason) in new[]
         {
-            ("seat-lower", "seated support differs from the source plane"),
-            ("manifest-seat-lower", "seated support differs from the source plane"),
-            ("explicit-lower", "seated support differs from the source plane"),
-            ("table-wrong-ordinal", "compatibility table differs from source planes"),
-            ("table-missing-row", "compatibility table differs from source planes"),
-            ("table-extra-row", "compatibility table differs from source planes"),
-            ("manifest-missing-row", "compatibility table differs from source planes"),
-            ("target-peer-roof", "foliage clearing targets differ from source"),
-            ("target-missing", "foliage clearing targets differ from source"),
+            ("seat-lower", PrivateOracleDataRefusal.OwnershipMismatch),
+            ("manifest-seat-lower", PrivateOracleDataRefusal.OwnershipMismatch),
+            ("explicit-lower", PrivateOracleDataRefusal.OwnershipMismatch),
+            ("table-wrong-ordinal", PrivateOracleDataRefusal.CorrespondenceMismatch),
+            ("table-missing-row", PrivateOracleDataRefusal.CorrespondenceMismatch),
+            ("table-extra-row", PrivateOracleDataRefusal.CorrespondenceMismatch),
+            ("manifest-missing-row", PrivateOracleDataRefusal.CorrespondenceMismatch),
+            ("target-peer-roof", PrivateOracleDataRefusal.CorrespondenceMismatch),
+            ("target-missing", PrivateOracleDataRefusal.CorrespondenceMismatch),
         })
         {
             using var fixture = Create(variant);
             var entry = PrivateOracleInputs.Require(fixture.Environment);
-            var error = Assert.Throws<InvalidDataException>(() => ShippedFoliageInputs.Read(entry));
-            Assert.True(reason == error.Message, variant + ": " + error.Message);
+            var error = Assert.Throws<PrivateOracleDataException>(() => ShippedFoliageInputs.Read(entry));
+            Assert.Equal(reason, error.Reason);
         }
     }
 
@@ -253,7 +253,7 @@ public sealed class ShippedFoliageInputGuardTests
         Assert.DoesNotContain(fixture.PublicSecretMarker, failure.ToString());
     }
 
-    // Each invented defect reaches a specific reader guard. Correspondence callers convert in W5q.
+    // Each invented defect reaches a specific reader or correspondence guard.
     [Theory]
     [InlineData("duplicate-comparison", PrivateOracleDataRefusal.IdentityNotUniqueOrCanonical)]
     [InlineData("duplicate-manifest-field", PrivateOracleDataRefusal.IdentityNotUniqueOrCanonical)]
@@ -276,6 +276,16 @@ public sealed class ShippedFoliageInputGuardTests
     [InlineData("region-hash", PrivateOracleDataRefusal.AttestedDigestMismatch)]
     [InlineData("missing-text", PrivateOracleDataRefusal.ValueRequired)]
     [InlineData("duplicate-owner", PrivateOracleDataRefusal.IdentityNotUniqueOrCanonical)]
+    [InlineData("patch-cells", PrivateOracleDataRefusal.AttestedDigestMismatch)]
+    [InlineData("missing-owner", PrivateOracleDataRefusal.CorrespondenceMismatch)]
+    [InlineData("extra-owner", PrivateOracleDataRefusal.CorrespondenceMismatch)]
+    [InlineData("owner-rules", PrivateOracleDataRefusal.CorrespondenceMismatch)]
+    [InlineData("unknown-rule", PrivateOracleDataRefusal.CorrespondenceMismatch)]
+    [InlineData("model-row", PrivateOracleDataRefusal.CorrespondenceMismatch)]
+    [InlineData("material-kind", PrivateOracleDataRefusal.CorrespondenceMismatch)]
+    [InlineData("missing-material", PrivateOracleDataRefusal.CorrespondenceMismatch)]
+    [InlineData("rule-footprint", PrivateOracleDataRefusal.CorrespondenceMismatch)]
+    [InlineData("rule-kind", PrivateOracleDataRefusal.CorrespondenceMismatch)]
     public void ReaderOnlyRefusal_NamesItsSpecificReason(string variant, PrivateOracleDataRefusal reason)
     {
         using var fixture = Create(variant);
@@ -285,24 +295,6 @@ public sealed class ShippedFoliageInputGuardTests
         Assert.IsAssignableFrom<MalformedDataException>(error);
         using var valid = Create(variant == "negative-expectation" ? "zero-expectation" : "valid");
         ShippedFoliageInputs.Read(PrivateOracleInputs.Require(valid.Environment));
-    }
-
-    [Theory]
-    [InlineData("patch-cells", "native support surface does not derive from its source plane")]
-    [InlineData("missing-owner", "incomplete foliage owner correspondence")]
-    [InlineData("extra-owner", "incomplete foliage owner correspondence")]
-    [InlineData("owner-rules", "foliage owner rule references differ")]
-    [InlineData("unknown-rule", "unknown or missing foliage clearance rule")]
-    [InlineData("model-row", "foliage model correspondence differs")]
-    [InlineData("material-kind", "foliage material kind differs from the source catalog")]
-    [InlineData("missing-material", "incomplete foliage material correspondence")]
-    [InlineData("rule-footprint", "clearance rule disagrees with the source footprint")]
-    [InlineData("rule-kind", "clearance rule disagrees with the source collision, roof or door")]
-    public void CorrespondenceRefusal_WaitsForW5q(string variant, string reason)
-    {
-        using var fixture = Create(variant);
-        var error = Assert.Throws<InvalidDataException>(() => ShippedFoliageInputs.Read(PrivateOracleInputs.Require(fixture.Environment)));
-        Assert.Equal(reason, error.Message);
     }
 
     [Fact]

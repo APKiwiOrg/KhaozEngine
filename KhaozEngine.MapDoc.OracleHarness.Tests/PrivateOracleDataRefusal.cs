@@ -13,9 +13,11 @@ public enum PrivateOracleDataRefusal
     ExtractionChanged,
     /// <summary>Refuses duplicate or noncanonical identities or JSON member names.</summary>
     IdentityNotUniqueOrCanonical,
+    /// <summary>Refuses input whose room-cell closure exceeds the comparison work budget.</summary>
+    InputBudgetExceeded,
     /// <summary>Refuses a kind, binding mode or convention outside the comparison contract.</summary>
     KindUnsupported,
-    /// <summary>Refuses a source owner or support assigned to the wrong scope or plane.</summary>
+    /// <summary>Refuses source ownership, membership or support assigned to the wrong scope or plane.</summary>
     OwnershipMismatch,
     /// <summary>Refuses a dependency path outside the permitted extraction-relative shape.</summary>
     PathUnsafe,

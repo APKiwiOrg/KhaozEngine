@@ -101,7 +101,7 @@ and the number of failed `Check` calls for that category, rather than any count 
 details. A source verification refusal carries only its mismatch count, never the source file names.
 The closed-report `Record` lifetime check remains `ObjectDisposedException` with its object name.
 Public guard runs select only `PrivateOracleGuardTests`, `ShippedBuildingInputGuardTests`,
-`ShippedFoliageInputGuardTests`, `ShippedMarkerInputGuardTests` and `ShippedSpikeOutcomeTests` through
+`ShippedFoliageInputGuardTests`, `ShippedFoliagePolygonGuardTests`, `ShippedMarkerInputGuardTests` and `ShippedSpikeOutcomeTests` through
 explicit fully qualified name filters. They never enable private comparison or recording inputs.
 
 ### Attested comparison data refusals
@@ -119,8 +119,9 @@ messages remain developer prose. The entry boundary still sanitizes all failures
 | `DependencyUnattested` | A required dependency is absent from the attested capture | None |
 | `ExtractionChanged` | The extraction changed before capture or during loading | None |
 | `IdentityNotUniqueOrCanonical` | An identity or JSON member is duplicated or noncanonical | None |
+| `InputBudgetExceeded` | Room-cell closure would exceed the comparison work budget | None |
 | `KindUnsupported` | A kind, binding mode or convention is outside the comparison contract | None |
-| `OwnershipMismatch` | A source owner or support belongs to the wrong scope or plane | None |
+| `OwnershipMismatch` | Source ownership, membership or support belongs to the wrong scope or plane | None |
 | `PathUnsafe` | A dependency path violates extraction containment or path admission | None |
 | `ReferenceMissing` | A reference has no declared source or correspondence target | None |
 | `SchemaShapeInvalid` | A JSON value does not have the required shape | None |
@@ -131,9 +132,12 @@ messages remain developer prose. The entry boundary still sanitizes all failures
 | `ValueRequired` | A required value is absent or empty | None |
 | `VersionUnsupported` | A schema, document, resolver or payload version is unsupported | None |
 
-The provenance, foliage input and manifest, and marker readers use these reasons. Building readers and
-foliage correspondence checks retain their earlier exceptions until their own conversion. The shared
-foliage helper keeps its message-only overload solely for those correspondence callers.
+The provenance, building, foliage input and manifest, marker readers and foliage correspondence checks
+use these reasons. Building geometry refuses unsupported primitives with `KindUnsupported`. Shared
+guard helpers require a reason. Compound guards select the first failing rule, with source and native
+inventory mismatches classified as `CorrespondenceMismatch`, support ownership as `OwnershipMismatch`
+and semantic support-patch digest mismatches as `AttestedDigestMismatch`. A foliage closure miss remains
+`DependencyUnattested`, translated from `MapDocumentException` without attaching private context.
 
 ## Exhaustive terrain comparison
 
@@ -349,7 +353,7 @@ native scaffold carries it as a standalone placement with the original numeric I
 inventory entry and no roof link. No prefab definition is fabricated for it. It counts toward `originalLeaves`
 and `roofs`, never toward `buildings` or `definitions`. Its transform, mesh, collider, selection and numeric ID
 compare like any other leaf, and Auto must keep it visible. A standalone roof with concealment links refuses,
-and a standalone leaf that is not a roof refuses as an unassigned building leaf. `worldId`, `key` and `assetId` identify
+and a standalone leaf that is not a roof refuses with `OwnershipMismatch`. `worldId`, `key` and `assetId` identify
 that effective leaf without changing its original ID. `meshPath` must equal the source archetype's
 `meshRef`. `selectionPath` is the original authored KECL selection, or null when no selection was authored.
 Metadata is the frozen original asset metadata. Bounds use finite XYZ arrays in asset source units.

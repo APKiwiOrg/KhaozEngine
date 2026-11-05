@@ -172,9 +172,6 @@ internal static class ShippedFoliageManifest
         return long.Parse(text!, NumberStyles.None, CultureInfo.InvariantCulture);
     }
 
-    // W5q converts the remaining ShippedFoliageCorrespondence callers and removes this overload.
-    internal static void Require(bool ok, string reason) { if (!ok) throw new InvalidDataException(reason); }
-
     internal static void Require(bool ok, Refusal reason, string message) { if (!ok) throw new PrivateOracleDataException(reason, message); }
 
     static void Schema(JsonElement value, string reason)

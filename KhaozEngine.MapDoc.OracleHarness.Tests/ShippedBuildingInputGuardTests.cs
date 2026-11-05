@@ -173,14 +173,34 @@ public sealed class ShippedBuildingInputGuardTests
         Assert.Contains("failures", File.ReadAllText(fixture.Environment["KHAOZ_R2_ORACLE_REPORT"]!));
     }
     [Theory]
-    [InlineData("standalone-roof-linked", "standalone roof has concealment")]
-    [InlineData("standalone-wall", "unassigned building leaf")]
-    public void StandaloneLeaf_RefusesForItsSpecificReason(string variant, string reason)
+    [InlineData("standalone-roof-linked", PrivateOracleDataRefusal.OwnershipMismatch)]
+    [InlineData("standalone-wall", PrivateOracleDataRefusal.OwnershipMismatch)]
+    public void StandaloneLeaf_RefusesForItsSpecificReason(string variant, PrivateOracleDataRefusal reason)
     {
         // F-R6. Only an inventoried unlinked roof may stand outside every nominated building.
         using var fixture = ShippedBuildingGuardFixtures.Create(variant);
-        var error = Assert.Throws<InvalidDataException>(() => ShippedBuildingInputs.Read(PrivateOracleInputs.Require(fixture.Environment)));
-        Assert.Equal(reason, error.Message);
+        var error = Assert.Throws<PrivateOracleDataException>(() => ShippedBuildingInputs.Read(PrivateOracleInputs.Require(fixture.Environment)));
+        Assert.Equal(reason, error.Reason);
+        Assert.IsAssignableFrom<MalformedDataException>(error);
+        using var valid = ShippedBuildingGuardFixtures.Create("standalone-roof");
+        ShippedBuildingInputs.Read(PrivateOracleInputs.Require(valid.Environment));
+    }
+
+    [Fact]
+    public void RoomCellClosure_RefusesAboveTheBudgetAndAcceptsItsExactLimit()
+    {
+        var error = Assert.Throws<PrivateOracleDataException>(() => ShippedBuildingInputs.RequireRoomCellBudgetForTests(0, 1025, 0, 1024));
+        Assert.Equal(PrivateOracleDataRefusal.InputBudgetExceeded, error.Reason);
+        ShippedBuildingInputs.RequireRoomCellBudgetForTests(0, 1024, 0, 1024);
+    }
+
+    [Fact]
+    public void GeometryCapture_RefusesUnsupportedPrimitives()
+    {
+        var error = Assert.Throws<PrivateOracleDataException>(() =>
+            ShippedBuildingGeometry.Capture(new SphereShape(1), p => p, n => n).ToArray());
+        Assert.Equal(PrivateOracleDataRefusal.KindUnsupported, error.Reason);
+        Assert.Single(ShippedBuildingGeometry.Capture(new BoxShape(Vector3.One), p => p, n => n));
     }
 
     [Fact]

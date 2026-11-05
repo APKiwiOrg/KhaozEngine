@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.IO;
 using System.Runtime.Versioning;
 using KhaozEngine.MapDoc.Foliage;
 using KhaozEngine.MapDoc.Prefabs;
@@ -23,13 +22,14 @@ public sealed class ShippedFoliagePolygonGuardTests
         float half = MathF.Sqrt(0.5f) * 0.5f;
         var ids = new HashSet<string>();
 
+        // The 45 degree square is a diamond inside the source square. Its extents match within the existing 0.0001 m.
+        Assert.InRange(Math.Abs(half * Math.Sqrt(2) - 0.5), 0, 0.0001);
+        var error = Assert.Throws<PrivateOracleDataException>(() => ShippedFoliageCorrespondence.RequireRule(kind,
+            new(-half, -half, half, half), new(0.5, 0, -0.5, Math.PI / 4, 1), footprint, obj, archetype, ids, "diamond"));
+        Assert.Equal(PrivateOracleDataRefusal.CorrespondenceMismatch, error.Reason);
+        Assert.DoesNotContain("diamond", ids);
         ShippedFoliageCorrespondence.RequireRule(kind, new(-0.5f, -0.5f, 0.5f, 0.5f),
             new(0.5, 0, -0.5, 0, 1), footprint, obj, archetype, ids, "control");
         Assert.Contains("control", ids);
-        // The 45 degree square is a diamond inside the source square. Its extents match within the existing 0.0001 m.
-        Assert.InRange(Math.Abs(half * Math.Sqrt(2) - 0.5), 0, 0.0001);
-        Assert.Throws<InvalidDataException>(() => ShippedFoliageCorrespondence.RequireRule(kind,
-            new(-half, -half, half, half), new(0.5, 0, -0.5, Math.PI / 4, 1), footprint, obj, archetype, ids, "diamond"));
-        Assert.DoesNotContain("diamond", ids);
     }
 }

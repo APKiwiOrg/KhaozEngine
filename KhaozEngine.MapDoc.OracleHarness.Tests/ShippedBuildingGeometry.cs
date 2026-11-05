@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.IO;
 using System.Linq;
 using System.Numerics;
 using KhaozEngine.Physics;
@@ -67,7 +66,7 @@ internal static class ShippedBuildingGeometry
             yield return new("Cylinder", new[] { start, end }, [], radius);
             yield break;
         }
-        throw new InvalidDataException("unsupported comparison shape");
+        throw new PrivateOracleDataException(PrivateOracleDataRefusal.KindUnsupported, "unsupported comparison shape");
     }
 
     internal static void Compare(string category, Primitive[] expected, Primitive[] actual, object owner,

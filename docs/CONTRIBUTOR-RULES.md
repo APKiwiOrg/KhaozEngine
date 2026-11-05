@@ -37,7 +37,8 @@ can absorb another contributor's staged files. Never use the shared stash for wo
   same reason for the same input. A collection identifier is a read-only snapshot the exception copies when
   it is set, so neither the caller's source nor a cast of the exposed list can change it. A change to a throw
   site's type converts every test that asserts the old exact type in the same change, GPU facts included,
-  because they skip in a local run and fail only on the GPU legs. A wrapper that adds context, such as a
+  because they skip in a local run and fail only on the GPU legs. So do test projects outside the solution, such
+  as those under `tools/`, because only their own workflow runs them. A wrapper that adds context, such as a
   source name, rethrows the inner refusal in its own family with its reason and identifiers and keeps the
   original as the inner exception. It never flattens a known reason into a generic one. When the wrapper and
   the refusal it wraps share one type, one copy method on that type carries the reason and every identifier,

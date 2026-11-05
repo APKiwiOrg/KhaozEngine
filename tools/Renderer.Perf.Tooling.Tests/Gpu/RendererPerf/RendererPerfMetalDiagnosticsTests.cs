@@ -113,7 +113,8 @@ public sealed partial class RendererPerfMetalDiagnosticsTests
         var native = new MetalTimestampTestNative { CounterSet = counter, FailSamples = failSamples };
         var api = new MetalTimestampApi(native);
         Assert.False(api.SupportsTimestampCounters);
-        Assert.Throws<System.NotSupportedException>(() => api.CreatePool(2, true));
+        var refusal = Assert.Throws<GpuTimestampUnsupportedException>(() => api.CreatePool(2, true));
+        Assert.Equal(GpuTimestampRefusal.TimestampUnsupported, refusal.Reason);
         Assert.Equal(0, native.ClockReads);
         var capability = api.ReadCounterMetadata().TimestampCapability!;
         Assert.Equal(GpuDiagnosticStatus.Unsupported, capability.Status);
@@ -243,7 +244,8 @@ public sealed partial class RendererPerfMetalDiagnosticsTests
         Assert.False(api.SupportsTimestampCounters);
         Assert.Equal(unsupported ? GpuDiagnosticStatus.Unsupported : GpuDiagnosticStatus.Invalid, api.CapabilityStatus);
         Assert.Contains(unsupported ? "missing native counter selector" : "native discovery failed", api.UnavailableReason);
-        Assert.Throws<NotSupportedException>(() => api.CreatePool(2, true));
+        var refusal = Assert.Throws<GpuTimestampUnsupportedException>(() => api.CreatePool(2, true));
+        Assert.Equal(GpuTimestampRefusal.TimestampUnsupported, refusal.Reason);
         Assert.Equal(0, native.Allocations);
     }
 

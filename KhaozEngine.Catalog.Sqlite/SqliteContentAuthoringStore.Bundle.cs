@@ -59,7 +59,7 @@ public sealed partial class SqliteContentAuthoringStore
     }
 
     /// <summary>
-    /// The ONE import both routes share: the empty-store and pack-target refusals, the type agreement, the
+    /// The import trusted and operator seed routes share: the empty-store and pack-target refusals, the type agreement, the
     /// staging of families, marks and rules, the draft and the publish, and the reset on any refusal after
     /// staging began. A row-only import passes no text. A companion import passes the bundle's complete text,
     /// whose targets are checked BEFORE anything is staged, and lands it in the same draft transaction as the
@@ -72,6 +72,7 @@ public sealed partial class SqliteContentAuthoringStore
     /// <param name="note">The operator's note.</param>
     /// <param name="member">The public member importing, which a refusal names.</param>
     /// <param name="cancellationToken">Cancels the call.</param>
+    /// <param name="publishPolicy">The operator policy, or null for a trusted server seed.</param>
     async Task<ContentPublishResult> ImportAsync(
         ContentBundle bundle,
         ContentBundleTextState? text,
@@ -79,7 +80,8 @@ public sealed partial class SqliteContentAuthoringStore
         string operatorId,
         string note,
         string member,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        IContentPublishPolicy? publishPolicy = null)
     {
         // The reset below is destructive by design, so it may not run until this import has actually written
         // something. The two refusals above the staging (a database that already published, a store with no
@@ -140,7 +142,7 @@ public sealed partial class SqliteContentAuthoringStore
             }
 
             ContentPublishResult published = await PublishAsync(
-                new ContentPublishRequest(actor, operatorId, note, 0), cancellationToken).ConfigureAwait(false);
+                new ContentPublishRequest(actor, operatorId, note, 0) { PublishPolicy = publishPolicy }, cancellationToken).ConfigureAwait(false);
 
             using SqliteStoreLease lease = await _connection.EnterAsync(cancellationToken).ConfigureAwait(false);
             using SqliteTransaction transaction = _connection.BeginTransaction();

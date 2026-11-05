@@ -139,7 +139,7 @@ public readonly struct EntityRenderState
     public float LandingImpactSpeed { get; }
 
     /// <summary>The entity's AUTHORITATIVE heading this frame (radians, in <c>MoveCommand.CameraYaw</c>'s convention:
-    /// 0 faces world -Z, positive swings toward -X). Local: the PREDICTED <c>MoveState.FacingYaw</c>, un-quantized, so
+    /// 0 faces world -Z, positive swings toward -X). Local: the PREDICTED canonical <c>MoveState.FacingYaw</c>, so
     /// a turn appears on the frame the input was sent rather than a round trip later, and eased between ticks when
     /// <c>PredictionSettings.InterpolateYaw</c> is set. Remote: the decoded replicated
     /// <c>MovementState.FacingYawQ</c>, discrete-sampled to the same delayed render time as the interpolated position

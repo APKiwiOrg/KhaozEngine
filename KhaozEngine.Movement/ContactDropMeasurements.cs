@@ -9,4 +9,6 @@ internal readonly record struct ContactDropStepObservation(Vector3 Source, Vecto
     MovementStepOutcome Outcome, bool Grounded, Vector2 CommandedVelocity)
 {
     internal bool UnwalkableSupport { get; init; }
+    internal bool Swimming { get; init; }
+    internal bool EnteredSwimming { get; init; }
 }

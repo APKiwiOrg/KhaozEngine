@@ -166,13 +166,30 @@ validator would make boot the only real gate while boot fails closed. The repair
 an engine patch: export the failing candidate and replay it in a unit test.
 
 `catalog-validate` builds the candidate and runs the full sweep without allocating an id and without writing
-a version or a row, so a green validate followed by a red publish can only mean the draft changed in between.
+a version or a row. A preview uses provisional new ids and never replaces the frozen publication check.
 Its baseline read does perform the same stale-freeze recovery a publish's does, clearing a marker that names a
 base version the store no longer stands at, which is a recovery rather than a side effect: only a publish that
 died between its commit and its own cleanup leaves one, and the draft it names would otherwise refuse every
 edit forever. Ids on
 rows the draft ADDS are provisional there and in a diff against the candidate, which `provisionalIds` says:
 the allocator issues the real ones at publish.
+
+Set `CatalogAdminActionOptions.PublishPolicy` during registration to a host-owned `IContentPublishPolicy`
+when a value a game's baked artifacts depend on must remain compatible with those artifacts. Validate
+checks the preview baseline and candidate, and the original store's publisher checks the actual frozen
+rows again before publication. The HTTP caller cannot supply, omit or override the policy. HTTP
+`catalog-import` binds the same policy through `IContentPolicyImportStore`, implemented by the bundled
+stores. A custom store without that capability refuses imports under `IContentPolicyImportStore.UnavailableReason`
+when a policy is configured. Trusted server seed, release and upgrade callers keep their existing store
+paths without an operator policy.
+
+Policies receive detached `ContentPublishPolicySnapshot` row views with typed field values and no store
+or registry. `row.Finding(code, reason)` includes the structured type, id and stable row key. The response
+adds `key` only when a finding carries it and preserves the consumer's code. A policy throw refuses under
+`KEC0044`. Refusal preserves the active version and draft and releases its freeze. No configured policy
+keeps the existing validation sequence and published bytes.
+See the [authoring policy guide](../KhaozEngine.Catalog.Authoring/README.md#consumer-operator-publication-policy)
+for the implementation contract.
 
 `catalog-diff` reads 0 on `from` as the active version and 0 on `to` as the draft-applied candidate. Any
 NON-zero endpoint the store does not hold is a 400 under the unknown-version reason, the same as
@@ -183,6 +200,19 @@ When the authoring store implements `IContentVersionRowSource`, a published-to-p
 reads each version once through `ReadVersionRowsAsync`, with no page reads. The same capability reads the
 target rows when rendering rollback blockers. Both paths keep only types in the admin registry and include
 retired rows. Stores implementing only `IContentAuthoringStore` retain the existing 500-row paging fallback.
+
+With `PublishPolicy` configured, `catalog-pin` checks changes to the operator's effective selection,
+using the current pin or active version as baseline and the requested pin or active version as target.
+An already effective selection succeeds without rereading rows or invoking the policy. Changed selections
+load verified published snapshots, including retired rows. Incompatible values and policy exceptions
+refuse with structured findings and preserve the hold. A consumer protecting row existence also compares
+membership and retirement, rather than field values alone.
+
+The provider's `IContentVersionSelectionStore` conditional setter checks the catalog epoch, active version
+and pin before writing, so an unpin cannot select an active version that moved during validation.
+Unreadable or mismatched snapshots, unsupported conditional pinning and changed selection metadata refuse
+under `KEC0045`. A policy throw uses `KEC0044`. Trusted server calls to `SetPinnedVersionAsync` remain a separate in-process recovery path. With no policy the existing action,
+warnings and direct setter behavior remain unchanged.
 
 `catalog-pin` writes the operator's hold, and a version pinned in the SERVER'S OWN CONFIG wins over it,
 always. A pin against such a server is a 200 carrying `configPinnedVersion` and a warning naming it, because

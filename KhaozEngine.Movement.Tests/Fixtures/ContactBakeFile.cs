@@ -25,7 +25,7 @@ internal static class ContactBakeFile
     internal static GroundNavigationBake Load(byte[] file, NavBakeExpectation expected)
         => GroundNavigationBakeRoundTripTests.LoadOk(file, expected);
 
-    // Hand-authored format 2 fixture. The legacy encoder supplies only the unchanged identity prefix and tuning block.
+    // Hand-authored format 2 fixture. The encoder supplies the shared identity prefix and tuning block, including policy sources.
     internal static byte[] FlatFile(int width, int height, MoveTuning tuning, float resting,
         out NavBakeExpectation expected, bool sampleWater = false)
     {
@@ -35,11 +35,9 @@ internal static class ContactBakeFile
         { SampleWater = sampleWater };
         var profile = new NavBakeProfile("player", tuning, default);
         expected = new(options, Sources(), [profile]);
-        byte[] prefix = NavBakeIdentity.Encode(expected with
-        { Profiles = [profile with { Tuning = tuning with { Controller = MovementControllerKind.Legacy, FootRadiusFraction = 0.5f, Water = default } }] },
-            NavBakeIdentity.CurrentEngineVersion);
+        byte[] contact = NavBakeIdentity.Encode(expected, NavBakeIdentity.CurrentEngineVersion);
         var identity = new NavBakeWriter();
-        identity.WriteBytes(prefix);
+        identity.WriteBytes(contact.AsSpan(0, contact.Length - 14));
         identity.WriteUInt8(1);
         identity.WriteSingle(tuning.FootRadiusFraction);
         identity.WriteUInt8((byte)tuning.Water.Mode);

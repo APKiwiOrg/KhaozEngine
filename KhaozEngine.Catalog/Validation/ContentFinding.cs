@@ -13,9 +13,14 @@ namespace KhaozEngine.Catalog;
 /// </summary>
 /// <param name="Type">The content type the defect is in.</param>
 /// <param name="Id">The definition id, or 0 when the finding is about the candidate as a whole.</param>
-/// <param name="Code">The stable <c>KEC</c> token.</param>
+/// <param name="Code">The stable finding token. Engine findings use <c>KEC</c> codes.</param>
 /// <param name="Message">The human-readable detail, naming the values that failed.</param>
-public readonly record struct ContentFinding(ContentTypeId Type, int Id, string Code, string Message);
+public readonly record struct ContentFinding(ContentTypeId Type, int Id, string Code, string Message)
+{
+    /// <summary>The stable row key on a consumer policy finding, or null for an existing engine finding.</summary>
+    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    public string? Key { get; init; }
+}
 
 /// <summary>
 /// What one validation run produced (spec 5.1): whether the candidate may be published or loaded, and

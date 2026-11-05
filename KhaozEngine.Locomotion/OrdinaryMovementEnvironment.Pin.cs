@@ -6,7 +6,7 @@ using KhaozEngine.Physics;
 namespace KhaozEngine.Locomotion;
 
 /// <summary>Non-owning evidence for one physical read and runtime registration publication.</summary>
-internal sealed class OrdinaryMovementEnvironmentPin : IMovementEnvironmentPin, IMovementContactSupportPin
+internal sealed partial class OrdinaryMovementEnvironmentPin : IMovementEnvironmentPin, IMovementContactSupportPin
 {
     readonly OrdinaryMovementEnvironment _owner;
     readonly IPhysicsQueryLease _physics;
@@ -98,7 +98,7 @@ internal sealed class OrdinaryMovementEnvironmentPin : IMovementEnvironmentPin, 
                     contact.Fraction, contact.BoundaryId, contact.CoverageRegionHandle, contact.Overlap, contact.SpanOverlap);
             }
             float error = OrdinaryServedDomain.Upper(result.CertifiedErrorMetres + conversionError);
-            if (error > MovementQueryLease.CoverageSkinMetres) return NoTrace(MovementAvailability.Unresolved);
+            if (error > MovementQueryLease.CoverageSkinMetres) return NoTrace(MovementAvailability.PrecisionExceeded);
             sourceSpans[..result.SpansWritten].CopyTo(spans);
             sourceContacts[..result.ContactsWritten].CopyTo(contacts);
             return new(result.Availability, result.SpansWritten, result.RequiredSpanCapacity, result.ContactsWritten,

@@ -663,7 +663,8 @@ no ambient static, mutates nothing, and never throws for a content reason. It AC
 reports every defect rather than the earliest.
 
 - `ContentValidationReport` is `(bool IsValid, IReadOnlyList<ContentFinding> Findings)`, and
-  `ContentFinding` is the value `(ContentTypeId Type, int Id, string Code, string Message)`. The CODE is a
+  `ContentFinding` is the value `(ContentTypeId Type, int Id, string Code, string Message)`, with an optional
+  structured `Key` for consumer publication policy findings. The CODE is a
   stable token a counter, a test and an operator runbook all key on, so a code is never renumbered and a
   withdrawn one is never reissued.
 - `previous` is the base version's snapshot at publish and NULL everywhere else, including at boot. The
@@ -671,7 +672,9 @@ reports every defect rather than the earliest.
   when it is null and the report carries `KEC0000` naming them. That is a property of the ARGUMENT rather
   than a mode flag, and `KEC0000` is the one finding that leaves `IsValid` true.
 - **Five passes, in order, none of them stopping early**: structure, schema, references, visibility and
-  codec, then the remap rules. `KEC0001` to `KEC0099` are the engine's own and 1 to 43 are issued.
+  codec, then the remap rules. `KEC0001` to `KEC0099` are the engine's own and 1 to 45 are issued.
+  `KEC0044` is emitted outside this sweep when a consumer policy throws. `KEC0045` reports an operator
+  version selection that cannot be verified safely or whose metadata moved before the conditional write.
 - **Pass 6 is the item-instances band**, which runs INSIDE the sweep after pass 5 and emits the reserved
   `KEC0100` to `KEC0199`. It reaches a registration the way every other pass does, through the registry: a
   type registered in the `Instances` band whose registration carries a validator has that validator run HERE,

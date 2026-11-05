@@ -10,7 +10,9 @@ public enum MovementStepOutcome
     Blocked,
     EnvironmentInvalid,
     PlacementRefused,
-    FrameMismatch
+    FrameMismatch,
+    /// <summary>The proposed geometry could not meet the coverage precision budget.</summary>
+    PrecisionRefused
 }
 
 /// <summary>Pure state to publish while the caller still owns the MovementQueryLease.</summary>

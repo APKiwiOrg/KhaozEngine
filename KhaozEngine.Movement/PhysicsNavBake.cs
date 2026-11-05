@@ -87,6 +87,7 @@ public sealed partial class PhysicsNavBake : IDisposable
             GroundMobility = QueryMobility.Statics,
         };
         int stored = 0;
+        var captureHooks = ContactTerrainCaptureHooks.Current;
         for (int z = 0; z < height; z++)
         {
             for (int x = 0; x < width; x++)
@@ -127,12 +128,19 @@ public sealed partial class PhysicsNavBake : IDisposable
                 EnsureOrigin(world, origin);
                 water[wet++] = new PhysicsNavWater(cell, sample.WaterSurfaceY, waterAreas);
             }
+            captureHooks?.Progress?.Invoke(ContactTerrainCaptureStage.RawColumns, z + 1, height);
         }
         starts[cells] = stored;
         basis?.AssertCurrent();
         EnsureOrigin(world, origin);
         var columns = new PhysicsNavColumns(options, width, height, starts, surfaces.AsSpan(0, stored), water.AsSpan(0, wet));
-        return new PhysicsNavBake(context, options, origin, columns, basis, classify);
+        var capture = new PhysicsNavBake(context, options, origin, columns, basis, classify);
+        try
+        {
+            if (options.CaptureTerrainDescentEvidence) capture.DescentEvidence = PhysicsNavDescentCapture.Capture(capture);
+            return capture;
+        }
+        catch { capture.Dispose(); throw; }
     }
 
     /// <summary>Releases retained builder providers without disposing or changing caller-owned physics.</summary>

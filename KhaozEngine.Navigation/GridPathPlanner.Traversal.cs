@@ -46,10 +46,11 @@ public sealed partial class GridPathPlanner
     bool Blocks(int layer, float agentRadius, int x, int z)
         => _traversal is null
             ? Blocks(_space.Layers[layer], agentRadius, x, z)
-            : Blocks(_space.Layers[layer], 0f, x, z) || !_traversal.IsNodePassable(layer, x, z);
+            : Blocks(_space.Layers[layer], 0f, x, z) || !_traversal.IsNodePassable(layer, x, z) || !AllowsNode(layer, x, z);
 
     bool CanTraverse(int fromLayer, int fromX, int fromZ, int toLayer, int toX, int toZ)
-        => _traversal is null || _traversal.CanTraverse(fromLayer, fromX, fromZ, toLayer, toX, toZ);
+        => (_traversal is null || _traversal.CanTraverse(fromLayer, fromX, fromZ, toLayer, toX, toZ)) &&
+            AllowsEdge(fromLayer, fromX, fromZ, toLayer, toX, toZ);
 
     Vector2? SnapTraversal(int layer, int x, int z, out bool snappedToOwnCell)
     {

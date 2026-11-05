@@ -106,6 +106,27 @@ Create scopes outside timed regions where possible and materialize results after
 their existing gates and allocate no widened worker records. This API supplies counts, not timers or RSS.
 Hosted timing, allocation and world-bake acceptance gates still require their separate approval and evidence.
 
+## Installed static evidence
+
+`IPhysicsStaticEvidence` is an optional complete static-geometry capture under the source's authenticated read
+lease. The caller supplies an aperture, a feature cap and a callback. `Complete` certifies the whole aperture,
+not a callback prefix. `Unavailable`, `Unsupported`, `Unresolved` and `CapacityExceeded` refuse it explicitly.
+The callback receives exact represented polygon coordinates or the installed curved primitive definition.
+Local static addresses and callback spans stay inside the interval and never become portable source identity.
+Navigation binds them to its installer's canonical provenance before retaining data.
+
+`IPhysicsStaticEvidenceRaycast` optionally preserves the installed leaf selected by a static column ray in the
+same authenticated lease. A complete miss returns a null hit and leaf -1. Bepu uses its ordinary nearest-hit
+rule, including compound child selection. The leaf resolves curved raw support to the captured primitive without
+inventing a plane. It does not identify a convex polygon face and is not portable outside its source interval.
+
+The Bepu implementation validates the installed registry and broad-phase coverage. It retains all faces of an
+intersecting solid, including faces outside the vertical aperture, and every relevant mesh triangle independent
+of slope. Existing source limits remain in force. A coordinate that cannot be certified exactly is unresolved.
+Complete static enumeration is bounded by the installed inventory and the caller's feature cap. It does not inherit
+the local capsule sweep's examined-static ceiling. The local sweep ceiling remains unchanged.
+Ordinary column probes, support admission and movement do not request this capability.
+
 ## Types
 
 - **`IPhysicsWorld`** - static bodies (`AddStatic`/`RemoveStatic`), dynamic bodies

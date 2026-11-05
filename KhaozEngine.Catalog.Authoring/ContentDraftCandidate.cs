@@ -77,6 +77,16 @@ public sealed class ContentDraftCandidate
         ContentChangeSet changes,
         ContentTypeRegistry registry)
     {
+        return Build(baseline, changes, registry, null);
+    }
+
+    /// <summary>Builds a preview with the host's operator publication policy after the existing sweep.</summary>
+    public static ContentDraftCandidate Build(
+        ContentPublishBaseline baseline,
+        ContentChangeSet changes,
+        ContentTypeRegistry registry,
+        IContentPublishPolicy? publishPolicy)
+    {
         ArgumentNullException.ThrowIfNull(baseline);
         ArgumentNullException.ThrowIfNull(changes);
         ArgumentNullException.ThrowIfNull(registry);
@@ -131,7 +141,7 @@ public sealed class ContentDraftCandidate
             rules,
             appended,
             candidate,
-            ContentValidator.Validate(candidate, previous, rules, registry));
+            ContentPublishPolicyValidation.Validate(candidate, previous, rules, registry, publishPolicy));
     }
 
     /// <summary>

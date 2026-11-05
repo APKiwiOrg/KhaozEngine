@@ -27,6 +27,7 @@ public sealed partial class ShardedWorldServer
             return false;
         uint epoch = TeleportEpochGuard.BaseEpoch(source.World, entity, slot);
         PlayerMoveState next = state.Absolute;
+        next.Move = PlayerMovementPublication.Canonicalize(next.Move);
         if (teleport)
         {
             next.Move.Commitment = default;

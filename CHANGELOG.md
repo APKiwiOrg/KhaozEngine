@@ -4,9 +4,25 @@ All notable changes to KhaozEngine. One shared version line `<KhaozEngineVersion
 governs every package, including the four umbrella metapackages. Planned work lives in the repo's GitHub
 Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
+## 23.1.0
+
+2026-11-06
+
+- Player movement now carries the same canonical published state through Contact Drop proofs, previews,
+  prediction, replay, both authorities and handoff. Exact Drop continuation survives owner reconciliation,
+  including snapshots with zero position error. Wire encoding and geometric protections stay unchanged.
+  Every consumer must rebake Contact navigation, including profiles with Drops disabled.
+
+- `GroundNavigation.ExcludingAreas(uint)` creates an immutable query view over the same baked graph and
+  captured surface areas. Pursuits can refuse water or other game-defined areas while finding a permitted
+  walking detour, without a second baked profile. Exclusions accumulate and only narrow the baked policy.
+- Ground pursuit checks the exclusion on admission, every replan, search nodes and edges, route straightening,
+  actual-to-route entry and supported-walk shortcuts. `NoPath` carries `GroundPursuitDetail.ExcludedArea` when
+  the original profile admits a complete walking route under the same query budget. Default queries are unchanged.
+
 ## 23.0.0
 
-2026-11-04
+2026-11-05
 
 - **Breaking API change.** Loader refusals for malformed data no longer throw `InvalidDataException`. glTF import,
   the attachment GLB, geometry, rig-identity, set and binding readers, and PNG decoding throw per-family
@@ -54,6 +70,28 @@ Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 - `ValidationReport.Findings` lists each JSON schema failure as a `JsonSchemaFinding` with its instance
   location, keyword and property name, so a caller need not parse the error text.
 - `CatalogWriter.Prepare` keeps every identifier of the refusal it wraps when it adds the catalog path.
+
+- Add opt-in terrain Drops for non-aquatic OrdinaryContact profiles, with shared bake, preview and execution
+  policy. Consumers must set `PhysicsNavBakeOptions.CaptureTerrainDescentEvidence` and
+  `NavBakeProfile.AllowTerrainDescents`, retain a positive `MaxDropMetres`, rebake navigation, and call
+  `GroundNavigation.PrepareTerrainDescents()` during loading before frame or simulation-tick work (#1697).
+- KENB 4 stores authenticated ordered candidates, accepted proving routes and sparse terrain evidence. Loading
+  reconstructs certificates without regenerating enabled workloads or replaying physics. Formats 1, 2 and 3
+  retain their exact bytes and candidate meanings.
+- Terrain admission is additive and sharp-first. Existing sharp candidates attempt the sharp proof first,
+  and only a sharp refusal with applicable terrain can try terrain proof. Preview and following select the
+  stored route. Terrain completion waits for the actual terminal Hold command to be acknowledged.
+- Add `MovementAvailability.PrecisionExceeded` and `MovementStepOutcome.PrecisionRefused` for finite coverage
+  uncertainty above the existing 1 mm budget. Sharp and terrain followers report `Blocked` for that refusal.
+  Unresolved, invalid and mismatched evidence keep their existing paths. No precision budget is widened.
+- Add host-owned `IContentPublishPolicy` through `CatalogAdminActionOptions.PublishPolicy` for consumer rules
+  over detached baseline and candidate rows. Preview, frozen publication and operator imports enforce it,
+  preserve structured field keys and consumer reason codes, and refuse policy exceptions with `KEC0044`.
+  HTTP callers cannot select a bypass. Trusted server publication, seeds and upgrades retain their own paths (#1700).
+- Apply the same consumer policy to operator pin and unpin changes, comparing the currently selected published
+  snapshot with the requested selection. Conditional writes prevent concurrent active-version or pin changes
+  from bypassing validation. Unreadable or mismatched snapshots, unsupported conditional pinning and selection
+  races refuse with `KEC0045`. Trusted in-process pin recovery remains available.
 
 ## 22.0.1
 

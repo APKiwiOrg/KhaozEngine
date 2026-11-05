@@ -1,6 +1,7 @@
 using System;
 using System.Numerics;
 using KhaozEngine.Locomotion;
+using KhaozEngine.Locomotion.Contacts;
 
 namespace KhaozEngine.Movement;
 
@@ -10,7 +11,7 @@ public sealed partial class GroundMoveContext
     /// positions are physics-frame local. Callers bound total work with ContactDropControl.PreviewSteps.</summary>
     internal MovementStepResult PredictContactStep(in FramedMovementState state, Vector2 direction, bool run,
         float dt, in MoveTuning tuning, ContactDropPredictionBasis basis, NavDropFootprint? corridor = null,
-        PlayerPathInput? playerInput = null)
+        PlayerPathInput? playerInput = null, ContactDescentEvidence? descentEvidence = null)
     {
         ArgumentNullException.ThrowIfNull(basis);
         if (_stepping) throw new InvalidOperationException("Ground movement steps cannot overlap or recurse.");
@@ -33,12 +34,13 @@ public sealed partial class GroundMoveContext
             using (queries)
             {
                 basis.Authenticate(queries);
+                queries.DescentEvidence = descentEvidence;
                 MovementBoundary ordinary = binding.CaptureOrdinaryBoundary(frame);
                 MovementBoundary boundary = corridor?.Compose(ordinary, frame) ?? ordinary;
                 var start = new FramedMovementState(state.State, frame, null);
                 MovementStepResult result = playerInput is { } input
-                    ? binding.Step(start, input.Command(new(direction, RangeMoveStatus.Dropping), run), dt, queries, boundary)
-                    : binding.StepTowards(start, direction, run, dt, queries, boundary);
+                    ? binding.StepPlayer(start, input.Command(new(direction, RangeMoveStatus.Dropping), run), dt, queries, boundary)
+                    : binding.StepPlayerTowards(start, direction, run, dt, queries, boundary);
                 queries.AssertCurrent();
                 EnsureOrigin();
                 if (NavigationFrame != frame) throw new InvalidOperationException("The Contact prediction frame changed.");

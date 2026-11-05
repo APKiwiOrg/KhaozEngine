@@ -45,6 +45,9 @@ Every supported conversion checks its final numerical displacement against the e
 budget, including the exact world-to-frame residual and any final upward increment. The explicit composition's
 fixed placement offset remains separate from that numerical error. An unrepresentable pose is unresolved
 and holds the input pose and velocity through the normal refusal path. It is never clamped into admission.
+Finite geometric coverage error above the existing precision budget reports `MovementAvailability.PrecisionExceeded`.
+Contact holds that proposal as `MovementStepOutcome.PrecisionRefused`. Unresolved evidence, stale queries and
+frame failures retain their environment-refusal outcomes.
 Unsupported integration and speculative body queries retain their nearest centre mapping. A falling body
 does not receive a support lift when a tiny vertical integration cannot change its represented feet.
 The static installer publishes fixed authored provenance in `OrdinaryMovementRegistration` under its source read lease,
@@ -53,6 +56,33 @@ Several pieces may alias one owner. Ambiguous, missing, excluded and stale featu
 Register excluded statics before publication so their provenance participates in portable identity.
 The optional `IPhysicsStaticGeometrySource` marker keeps a registration valid across steps and pure rebases.
 Without it, a fresh physics geometry generation requires a fresh registration.
+
+### Analytic support provenance
+
+`OrdinaryMovementRegistration.Builder.WithAnalyticSupport` optionally attaches an immutable
+`IMovementAnalyticSupportSource`. It must recognize the exact height and normal delegates through `Matches`,
+including their coordinate convention. Ordinary movement does not query this capability or change its owner,
+selection, coarse flags or result. Existing delegates remain valid without it.
+
+`Describe` identifies the same authored face the field selects. `MovementSurfaceFeatureKey` contains a source
+provenance string, an opaque source address and a part number. `GetFeature` resolves that exact address to copied
+triangle geometry and its canonical owner. `AreAdjacent` authenticates both keys and uses source topology,
+never height similarity. An unknown address or a field without provenance returns unavailable evidence.
+`IMovementAnalyticSupportPin` provides the same facts within an authenticated movement read.
+
+`IMovementAnalyticSupportCandidates` optionally accelerates source-topology lookup. A Known visitation must include
+every key that `AreAdjacent` could accept. It supplies candidates, never adjacency permission. Consumers still call
+the unchanged exact predicate and fall back to all pairs when no complete candidate capability is available.
+
+The internal Contact descent witness records selected steep support and first walkable support from Air, Slide
+and water handoffs, including support left again inside one tick and recertification after horizontal rounding.
+It copies analytic feature identity while the
+lease is current. Physics addresses are visible only to an in-lease validator, and no continuity arena escapes.
+Its fixed 256-event storage is opt-in and reusable. Overflow, unavailable support and missing analytic identity
+have distinct structured statuses and never alter movement. Selected-pose wetness and selected swimming and
+water-excursion history accumulate across subsegments. They do not replace a swept water certificate.
+This evidence does not enable terrain Drop transitions. Their separate capture and physical certificate remain
+required by the [Drop contract](../docs/design/CONTACT-DROP-LINKS.md).
 
 ### Runtime statics
 
@@ -973,6 +1003,29 @@ free flight under constant gravity, with no collision or other vertical interven
 peaks at the requested height. Its sampled peak is lower by at most `gravity * stepSeconds^2 / 8`, before
 float rounding. The helper does not change the default tuning or compensate for variable steps, ceilings,
 swimming, support changes or other forces.
+
+## Player state publication
+
+`PlayerMovementPublication` owns the state a player carries between steps. `MovementStateQuantization` owns
+its unchanged wire grids. `EffectiveMovementBinding.StepPlayer` and `StepPlayerTowards` prepare the canonical
+input, execute the real controller and publish the canonical result under the same query lease. Use them for
+player simulation and certified Drop execution. NetWorld applies this policy to forward prediction, pending
+replay, both authorities and admitted placements. The local Contact `CharacterController3D` uses it too.
+
+Horizontal velocity rounds independently per axis to 1/256 m/s and clamps to +/-127 m/s. Speed scale uses the
+existing offset-from-one 1/1024 grid and 0 through 8 range. Heading and climb rate keep their existing wire grids.
+The next ascent average starts from the positive decoded climb signal, exactly as owner reconstruction and
+handoff do. A previous `StepDeltaY` is cleared before the next step. New step events and the unconstrained
+`CommandedVelocity` remain available to their consumers without quantization. Pose, vertical velocity, both feel
+timers, water excursion and commitment remain exact.
+
+Rounding is IEEE binary32 ties-to-even implemented with bit operations. The grid arithmetic uses explicit
+float operations and no platform math library. The same input bits therefore publish the same bits on Linux,
+macOS and Windows. Horizontal and speed-scale quanta are powers of two, so their decodes are exact.
+
+Raw `Step` and `StepTowards` remain full precision for unreplicated locomotion. Ordinary NPC steering does not
+inherit player wire limits. An NPC explicitly executing a certified Contact Drop must execute that proof's
+publication policy, which `NpcGroundMovement.Step` does for `Dropping`.
 
 ## Airborne momentum (16.0.0, opt-in)
 

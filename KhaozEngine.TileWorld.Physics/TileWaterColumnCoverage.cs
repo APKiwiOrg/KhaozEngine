@@ -51,8 +51,9 @@ internal static class TileWaterColumnCoverage
             if (!AddRange(face.Minimum, face.Maximum, query, origin, cuts, ref cutCount, ref error))
                 return Refuse(MovementAvailability.CapacityExceeded, identity, SpanLimit + 1);
         float certified = Upper(error);
-        if (!float.IsFinite(certified) || certified > MovementQueryLease.CoverageSkinMetres)
-            return Refuse(MovementAvailability.Unresolved, identity);
+        if (!float.IsFinite(certified)) return Refuse(MovementAvailability.Unresolved, identity);
+        if (certified > MovementQueryLease.CoverageSkinMetres)
+            return Refuse(MovementAvailability.PrecisionExceeded, identity);
         int spanCount = cutCount - 1;
         if (spanCount > SpanLimit) return Refuse(MovementAvailability.CapacityExceeded, identity, spanCount);
         int contactCount = 0;
@@ -87,8 +88,9 @@ internal static class TileWaterColumnCoverage
                 scratch.Spans[i] = new(enter, exit, first, contactCount - first, dry);
             }
             certified = Upper(error + locationError);
-            if (!float.IsFinite(certified) || certified > MovementQueryLease.CoverageSkinMetres)
-                return Refuse(MovementAvailability.Unresolved, identity);
+            if (!float.IsFinite(certified)) return Refuse(MovementAvailability.Unresolved, identity);
+            if (certified > MovementQueryLease.CoverageSkinMetres)
+                return Refuse(MovementAvailability.PrecisionExceeded, identity);
             if (spanCount > spans.Length || contactCount > contacts.Length)
                 return Refuse(MovementAvailability.CapacityExceeded, identity, spanCount, contactCount, certified);
             scratch.Spans.AsSpan(0, spanCount).CopyTo(spans);

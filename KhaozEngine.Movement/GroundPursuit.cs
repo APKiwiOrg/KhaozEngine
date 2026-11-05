@@ -130,7 +130,9 @@ public sealed class GroundPursuit
     {
         NavPath path = _planner.FindPath(feet, goal, radius, _budget);
         GroundPursuitDetail detail = GroundPursuitRoute.Validate(path, _space, goal, feet, _allowsSegment, out var route);
-        if (detail != GroundPursuitDetail.None) return Finish(GroundPursuitStatus.NoPath, detail);
+        if (detail != GroundPursuitDetail.None)
+            return Finish(GroundPursuitStatus.NoPath,
+                GroundPursuitAreaDiagnostic.Classify(_navigation, feet, goal, radius, _budget, detail));
         _route = route!;
         _route.Advance(feet, _follow.AcceptRadius, _allowsSegment);
         _plannedAnchor = goal.Anchor;

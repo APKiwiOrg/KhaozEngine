@@ -186,7 +186,8 @@ public sealed partial class PlayerMovementSystem : ISystem, IDisposable
             SupportQueryDiagnostics.Record(tuning.Controller == MovementControllerKind.Contact
                 ? SupportQueryCounter.PlayerContactSteps : SupportQueryCounter.PlayerLegacySteps);
             state = explicitSimulator is null
-                ? CharacterMovement.Step(state, move.Command, dt, ground, tuning, normal, physics, clampXz, fluid)
+                ? PlayerMovementPublication.Canonicalize(CharacterMovement.Step(PlayerMovementPublication.PrepareStep(state),
+                    move.Command, dt, ground, tuning, normal, physics, clampXz, fluid))
                 : explicitSimulator.Step(basis, move.Command, dt).Move;
 
             pos = localPosition.WithLocal(state.Position);   // frame preserved by construction, never re-derived
@@ -245,10 +246,8 @@ public sealed partial class PlayerMovementSystem : ISystem, IDisposable
             // reads it as input decides on the wire value, so this head decides as the single-World head and the
             // client do.
             ClimbRate = MovementState.DecodeClimbRate(ms.ClimbRateQ),
-            // Carry the full sim-local average during ordinary ticks. A shard handoff reconstructs the component
-            // through its observer-safe codec, which intentionally omits that float but preserves ClimbRateQ.
-            // Seed only that zero slot from the decoded ascent signal, matching PlayerMoveState.From's reconcile
-            // seed. The next stair step then continues within one wire quantum instead of warming from zero.
+            // Publication stores the decoded ascent seed. A handoff omits the redundant slot, so seed its zero
+            // from the same climb byte. PrepareStep also normalizes caller-supplied or pre-policy component state.
             ClimbRateEwma = ms.ClimbRateEwma != 0f
                 ? ms.ClimbRateEwma
                 : MathF.Max(0f, MovementState.DecodeClimbRate(ms.ClimbRateQ)),
@@ -256,12 +255,8 @@ public sealed partial class PlayerMovementSystem : ISystem, IDisposable
             // below it is never written back OUT: the step does not derive it, SetSpeedScale is its only author,
             // and re-quantizing an already-quantized value every tick would only invite drift.
             SpeedScale = MovementState.DecodeSpeedScale(ms.SpeedScaleQ),
-            // Carry the airborne arc IN. Unlike SpeedScale this one is a step OUTPUT as well, so it round-trips
-            // through the wire quantum every tick on this head where the single-World WorldServer keeps it at full
-            // float precision in its own PlayerMoveState. That costs at most half a quantum (0.002 m/s) of rounding
-            // per tick, which is the same resolution the client already reconciles against, and it buys the arc
-            // surviving a cell handoff: the component is what migrates, so a full-precision copy parked beside it
-            // would be a second source of truth that silently loses to this one at the border.
+            // The shared player publication policy already applied this exact grid to the simulated step.
+            // Both authorities and owner prediction therefore carry the same value before a snapshot or handoff.
             HorizontalVelocity = new Vector2(
                 MovementState.DecodeHorizontalVelocity(ms.HorizontalVelocityXQ),
                 MovementState.DecodeHorizontalVelocity(ms.HorizontalVelocityZQ)),

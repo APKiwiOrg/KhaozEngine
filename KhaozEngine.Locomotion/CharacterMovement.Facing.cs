@@ -37,7 +37,7 @@ public static partial class CharacterMovement
     {
         if (yaw >= -MathF.PI && yaw < MathF.PI) return yaw;   // already canonical: returned untouched, bit for bit
         if (!float.IsFinite(yaw)) return 0f;
-        float wrapped = yaw - FacingTau * MathF.Round(yaw * (1f / FacingTau));
+        float wrapped = yaw - FacingTau * MovementStateQuantization.RoundToEven(yaw * (1f / FacingTau));
         // The reduction lands inside the range up to one float rounding at its edges, so close the two edges
         // explicitly rather than trusting it. Both heads run the identical branches on the identical operand.
         if (wrapped >= MathF.PI) wrapped -= FacingTau;

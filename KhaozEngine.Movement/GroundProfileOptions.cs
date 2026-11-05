@@ -11,6 +11,9 @@ public sealed record GroundProfileOptions
     /// non-aquatic OrdinaryContact navigation. This grants route topology, not a manual fall or damage limit.</summary>
     public float MaxDropMetres { get => _maxDropMetres; init => _maxDropMetres = value == 0 ? 0 : value; }
 
+    /// <summary>Allows authenticated continuous terrain descents. Requires captured evidence and positive Drop permission.</summary>
+    public bool AllowTerrainDescents { get; init; }
+
     /// <summary>A ground profile.</summary>
     public static GroundProfileOptions Default { get; } = new();
 

@@ -11,7 +11,7 @@ namespace KhaozEngine.Locomotion;
 
 public sealed partial class OrdinaryMovementRegistration
 {
-    public sealed class Builder
+    public sealed partial class Builder
     {
         readonly List<Entry> _entries = [];
         readonly HashSet<StaticHandle> _excluded = [];

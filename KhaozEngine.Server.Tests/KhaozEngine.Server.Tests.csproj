@@ -80,6 +80,7 @@
     <!-- Items/InstancePayloadCapParityTests.cs holds TileProtocol.MaxInstancePayloadBytes against
          ItemSlot.MaxPayloadBytes. The tile netcode cannot reference the item packages, so the two constants
          can drift, and this is the only project that sees both. -->
+    <ProjectReference Include="../KhaozEngine.TileWorld.Physics/KhaozEngine.TileWorld.Physics.csproj" />
     <ProjectReference Include="../KhaozEngine.TileWorld.Netcode/KhaozEngine.TileWorld.Netcode.csproj" />
     <ProjectReference Include="../KhaozEngine.WorldStore/KhaozEngine.WorldStore.csproj" />
     <ProjectReference Include="../KhaozEngine.WorldStore.Sqlite/KhaozEngine.WorldStore.Sqlite.csproj" />

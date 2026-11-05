@@ -9,7 +9,7 @@ internal static partial class NavBakeIdentity
     internal const ushort DropFormatVersion = 3;
     private const int DropIdentityBytes = 13;
 
-    internal static bool HasContactIdentity(ushort version) => version is ContactFormatVersion or DropFormatVersion;
+    internal static bool HasContactIdentity(ushort version) => version is ContactFormatVersion or DropFormatVersion or TerrainFormatVersion;
 
     private static void WriteDropIdentity(NavBakeWriter writer, NavBakeProfile profile)
     {

@@ -9372,7 +9372,7 @@ outside every umbrella and carries no physics backend, input or
 rendering dependency:
 
 ```xml
-<PackageReference Include="KhaozEngine.Movement" Version="23.0.0" />
+<PackageReference Include="KhaozEngine.Movement" Version="23.1.0" />
 ```
 
 The package composes `KhaozEngine.Locomotion`, `KhaozEngine.Navigation` and `KhaozEngine.Physics`. It does not
@@ -9529,9 +9529,12 @@ public sealed class GroundNavigation
     public float AgentHeight { get; }
     public bool Aquatic { get; }
     public float MaxDropMetres { get; }
+    public bool AllowTerrainDescents { get; }
+    public GroundNavigation ExcludingAreas(uint excludedAreas);
     public bool AllowsSegment(Vector3 fromFeet, Vector3 toFeet);
     public void Validate(EffectiveMovementBinding binding);
     public void Validate(in MoveTuning tuning);
+    public void PrepareTerrainDescents();
 }
 ```
 
@@ -9643,7 +9646,31 @@ MoveCommand command = input.Command(steering, run);
 // NPC hosts use NpcGroundMovement.Step for Following and Dropping, and Hold otherwise.
 ```
 
+Player proofs, preview, forward simulation, replay and both authorities include
+`PlayerMovementPublication` from Locomotion in every step. A custom leased player host uses
+`EffectiveMovementBinding.StepPlayer`, or `StepPlayerTowards` for a world-space Drop command. These APIs
+canonicalize the actual carried state, including the existing 1/256 m/s horizontal grid, before the next slice.
+The follower's body comparison remains exact. NetWorld's `PlayerMoveSimulator` and the local Contact controller
+already include the policy. Raw unreplicated NPC motion keeps its original precision, while
+`NpcGroundMovement.Step` applies the certified policy during Contact `Dropping`.
+
+Every consumer must rebake Contact navigation, including profiles with Drops disabled. The engine adds the
+reserved `engine/player-publication` source digest to the identity. Supply only consumer source digests.
+An earlier policy returns `SourcesChanged` even with the same engine version. Wire representation and frozen
+KENB layouts are unchanged. Legacy-only bakes retain their normal identity behavior.
+
 Standalone construction uses `BuildProfile(tuning, areas, new GroundProfileOptions { MaxDropMetres = allowance })`.
+Explicit terrain capture retains complete physical geometry and original raw associations, with a pure
+geometry-derived candidate envelope and corridor coverage checks. Terrain Drop publication requires its real
+motion certificate, KENB 4 workload identity and explicit per-profile permission.
+See the [internal descent evidence contract](../KhaozEngine.Movement/README.md#internal-terrain-descent-evidence).
+
+Certified tile installations expose optional analytic feature provenance through
+`OrdinaryMovementRegistration.AnalyticSupport`. It supports internal selected-route identity checks while ordinary
+height delegates and movement results keep their existing behavior. Continuous terrain Drop transitions still
+require their separate capture and physical certificate. See
+[analytic support provenance](../KhaozEngine.Locomotion/README.md#analytic-support-provenance).
+
 The allowance must be finite and nonnegative. Legacy, aquatic and public explicit selections refuse positive values.
 Full-tuning walk/run proofs certify the local walk-off, airborne corridor, first supported landing and final Hold.
 Neither transient swimming nor an unwalkable contact can disappear inside a tick. Supported wading remains eligible.
@@ -9744,9 +9771,51 @@ GroundNavigation? playerProfile = result.Status == NavBakeLoadStatus.Loaded
 
 `Create` builds each profile through the live capture, so it is exactly the fresh build, and `WriteTo` is
 byte-deterministic. All-Legacy sets with zero allowance retain KENB format 1. A zero-allowance set containing
-Contact profiles uses format 2, storing effective identity and resting feet heights. Any positive allowance selects
+Contact profiles uses format 2, storing effective identity and resting feet heights. Without evidence capture, any positive allowance selects
 format 3, retaining the format-2 layout plus per-profile allowance, actual walk/run speeds and momentum, and the
 ordered Stair-plus-Drop acceptance bits. Formats 1 and 2 keep their original candidate recipe and bytes.
+To bake continuous terrain transitions, explicitly set `PhysicsNavBakeOptions.CaptureTerrainDescentEvidence = true`
+and the player's `NavBakeProfile.AllowTerrainDescents = true` with its positive `MaxDropMetres`. Both flags default
+false. The profile must select non-aquatic OrdinaryContact. Capture permission never grants profile permission,
+and a terrain profile with zero allowance is invalid. Adopt the released engine and rebake, rather than relabeling
+an older file. Creature profiles remain disabled unless explicitly granted their own positive allowance and flag.
+
+Evidence capture selects KENB 4. Terrain opt-in first tries the unchanged sharp proof on every sharp-topology
+candidate, then tries terrain only after refusal when terrain applies. New terrain topology uses terrain only.
+The height prerequisite tests ground inside the exact doubled-radius capsule projection, including its circular
+caps. Height limits stay fixed. Coverage, source identity, overlap, exact ground area and obstruction checks
+keep their whole-cell scope. Physical proof and the terrain policy still decide every Drop.
+
+Each accepted link retains its proving route. The file stores its ordered integer endpoints, acceptance bits,
+route bits and bake-time slope/footprint threshold bits. A workload digest binds those facts, identity, canonical
+pooled evidence and frozen profile bytes. Endpoints are checked for canonical encoding, bounds and admission.
+Disabled profiles must match their frozen recipe and order without terrain regeneration or trigonometry.
+Enabled profiles validate link shapes and Drop permission without regenerating their candidates. Loading never
+replays refusals. Refusals are decided at bake time and authenticated.
+
+Only accepted terrain proof dependencies and certificate inputs survive, with original raw associations and
+required whole solid groups. Sharp dependencies, refused attempts, recipe closure and the global steep inventory
+are omitted. Excluded evidence throws `DependencyMissing`. Runtime policy selection must use the persisted route,
+never infer it from retained geometry. Certificates reconstruct lazily with persisted thresholds, avoiding platform
+trigonometric classification on load. Disabled profiles keep their original policy. Formats 1, 2 and 3 stay frozen.
+Finite water-coverage uncertainty above the existing 1 mm budget refuses a Drop as `PrecisionExceeded`.
+The Contact step reports `PrecisionRefused`, so sharp and terrain following return `Blocked`, including during
+alignment. Actual unresolved, invalid or mismatched environment evidence retains its prior error/suspension path.
+No precision threshold or physical gate is widened.
+
+Call `GroundNavigation.PrepareTerrainDescents()` during loading, outside a frame or simulation tick. It builds the
+synchronized certificate cache without physics and is safe for concurrent callers. First use can exceed a frame
+or tick budget. Preparation caches immutable topology only and never replaces the live preview or actual Hold.
+
+Terrain Drops execute through `MoveToRange` using the same policy as the bake. Stored routes select sharp or
+terrain behavior before evidence access. Preview and submission share the current `PlayerPathInput` when using
+player commands. Supported preparation remains reversible. Certified descent, including steep sliding, owns the
+route through the lower fringe until the actual body reaches the named raw landing within 1 mm and survives its
+ordinary supported Hold. No fringe node becomes ordinary walkable ground. `Blocked` with
+`RangeSteering.DropRefusal == ContactDropRuntimeRefusal.DependencyMissing` ends an attempt whose retained evidence
+is incomplete, without sharp fallback or an exception to the host. Certificates reconstruct under a shared lock,
+while each preview and follower owns its mutable corridor and policy state.
+
 Load needs no new movement proof. The identity covers the engine version, every capture option including
 `SampleWater`, the labelled digests, and each profile's name, area filter, `Aquatic` flag and every `MoveTuning` field except
 `WalkSpeed`, `RunSpeed` and `AirMomentum` for disabled Drop profiles. Enabled profiles retain those three actual
@@ -9874,7 +9943,7 @@ option does not enter bake identity or change canonical bytes. See the
 Round 2 D adds the driver layer in the same opt-in package. Keep the package reference explicit:
 
 ```xml
-<PackageReference Include="KhaozEngine.Movement" Version="23.0.0" />
+<PackageReference Include="KhaozEngine.Movement" Version="23.1.0" />
 ```
 
 `MoveToRange` consumes a `GroundNavigation` profile or an equivalent guarded `IRegionPathPlanner` composition.
@@ -10721,7 +10790,7 @@ same opt-in-backend pattern the `WorldStore.*` durable backends use.
 **Backend (`KhaozEngine.Physics.Bepu`)** - add this package to your game head / server:
 
 ```xml
-<PackageReference Include="KhaozEngine.Physics.Bepu" Version="23.0.0" />
+<PackageReference Include="KhaozEngine.Physics.Bepu" Version="23.1.0" />
 ```
 
 ```csharp
@@ -15338,6 +15407,22 @@ airborne, swimming and incompatible commitment state return UnsupportedState. Ma
 exceptions. The lower-level constructor accepts equivalent guarded planning, space and segment admission, with
 runtime profile compatibility owned by its caller.
 
+An ability can refuse an area that ordinary movement permits by supplying
+`navigation.ExcludingAreas(wetSurfaceBit)`. Area bits come from the game's `NavAreaClassifier`.
+The immutable view shares the baked graph and captured columns, including loaded bake data. It can be shared
+across pursuits. No extra capture, whole-world profile or bake format change is needed. Zero keeps the same
+instance and chained calls accumulate exclusions. Baked required and excluded masks still apply. Excluding
+a required bit makes affected surfaces ineligible and never widens the original profile.
+
+The exclusion checks the complete capsule footprint on search nodes and directed edges, including Stair links,
+and guards straightening, actual-to-route entry, every kept segment and waypoint shortcuts. It applies at Admit
+and on every Tick replan. A failed filtered route runs one additional diagnostic walking query against the
+original profile with the same budget. When that original route is complete and passes supported-walk admission,
+the result is NoPath with `GroundPursuitDetail.ExcludedArea` and zero direction. Otherwise the existing filtered
+route detail remains. The diagnostic route never authorizes travel. Each failed filtered plan can therefore
+consume two query budgets. Omitting the view preserves existing pursuit behavior.
+Use the profile constructor for this diagnostic. The lower-level constructor has no original profile to compare.
+
 Load a server-side `GroundNavigation` profile for the actor's actual capsule and movement binding before
 constructing the pursuit. `GroundMoveContext` is caller-owned and used sequentially. The authoritative actor state
 must be grounded, neither swimming nor airborne from water, have no buffered jump, and have no incompatible active
@@ -15352,9 +15437,11 @@ using KhaozEngine.Locomotion;
 using KhaozEngine.Movement;
 using KhaozEngine.NetWorld;
 
+// Share this immutable view across pursuits with the same area policy.
+var pursuitNavigation = navigation.ExcludingAreas(wetSurfaceBit);
 var actor = PlayerRef.Account(actorId);
 string targetId = ""; // The game supplies stable target identifiers.
-var pursuit = new GroundPursuit(navigation);
+var pursuit = new GroundPursuit(pursuitNavigation);
 var limits = new GroundPursuitSettings(triggerRange, maximumPathLength, stopDistance);
 uint sequence = 0;
 bool awaitingRelease = false;
@@ -19766,7 +19853,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="23.0.0" />
+<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="23.1.0" />
 ```
 
 ```csharp
@@ -19802,7 +19889,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="23.0.0" />
+<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="23.1.0" />
 ```
 
 ```csharp
@@ -20047,7 +20134,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Metal" Version="23.0.0" />
+<PackageReference Include="KhaozEngine.Gpu.Metal" Version="23.1.0" />
 ```
 
 ```csharp
@@ -22811,6 +22898,43 @@ CatalogAdminActions.Register(
     new CatalogAdminActionOptions { ConfiguredVersion = config.ContentVersion, ServerBuild = buildOrdinal });
 ```
 
+A host can constrain operator publication when a value a game's baked artifacts depend on must stay
+unchanged until matching artifacts ship. Set `CatalogAdminActionOptions.PublishPolicy` to an
+`IContentPublishPolicy` during registration. `catalog-validate` evaluates it against the preview baseline
+and candidate. The store's existing `ContentPublisher` evaluates it again after freezing the real draft,
+after the existing validators and before encoding or committing. A passing preview never authorizes a
+later edit.
+
+The policy receives `ContentPublishPolicySnapshot` views. `Rows(type)` and `TryGetRow(type, key, out row)`
+expose old and new rows, and `row.GetValue(fieldName)` returns typed `ContentFieldValue` values. The views
+are detached, their row collections are read-only, and byte values are copied on access. They expose no
+store or mutable registry. Implementations must remain deterministic and side-effect free.
+Use `row.Finding(code, reason)` to append a `ContentFinding` with structured `Type`, `Id`, `Key` and `Code`.
+The admin response preserves that key and code, so a consumer never needs to parse the reason prose.
+A policy throw refuses publication under `IContentPublishPolicy.FailureCode` (`KEC0044`).
+
+The HTTP caller cannot supply, clear or override the registered policy. The handler binds it to the
+in-process `ContentPublishRequest.PublishPolicy`, which is excluded from JSON. HTTP `catalog-import` also
+binds it, through `IContentPolicyImportStore.ImportWithPolicyAsync` and a required-policy
+`ContentPolicyImportRequest`. The bundled in-memory, SQLite and SQL Server stores carry that policy through
+their existing seed pipeline to the frozen publication. A custom store without this capability refuses
+operator imports when a policy is configured, rather than dropping the policy. Trusted server calls to
+`ImportBundleAsync` or `ImportTextBundleAsync`, release tooling and `ContentUpgradeRunner` keep their
+existing publication paths and do not acquire an operator policy. A custom operator surface must bind its own host policy both at preview and on its
+publish request. There is no HTTP bypass mode. With no policy configured, the existing validation sequence,
+published bytes and version numbering are unchanged. A policy refusal preserves the active version and
+all pending draft work, and releases its publication freeze.
+
+The registered policy also guards `catalog-pin` and clearing a hold when the effective version changes.
+The baseline is the current pin, falling back to the active version. The target is the requested pin, or
+the active version for an unpin. Already effective selections succeed without a policy call. Changed
+selections load complete published snapshots, evaluate the policy and use the store's conditional pin
+setter to confirm the catalog epoch, active version and pin before writing. Incompatible selections and
+policy exceptions leave the hold unchanged. Unreadable snapshots, missing conditional pin support and
+selection metadata that changed under the check refuse under `KEC0045`. Direct trusted server
+`SetPinnedVersionAsync` recovery calls stay separate. Consumer policies protecting existence compare
+membership in both snapshots and retirement as well as field values.
+
 The sixteen are `catalog-schema`, `catalog-list`, `catalog-get`, `catalog-edit`, `catalog-draft`,
 `catalog-discard`, `catalog-validate`, `catalog-diff`, `catalog-publish`, `catalog-versions`, `catalog-pin`,
 `catalog-rollback`, `catalog-import`, `catalog-export`, `catalog-sweep` and `catalog-verify`. None returns
@@ -24726,7 +24850,7 @@ socket a shipping build does not contain. It is in NO umbrella, and a game head 
 
 ```xml
 <ItemGroup Condition="'$(Configuration)' == 'Debug'">
-  <PackageReference Include="KhaozEngine.Automation" Version="23.0.0" />
+  <PackageReference Include="KhaozEngine.Automation" Version="23.1.0" />
 </ItemGroup>
 ```
 

@@ -20,6 +20,23 @@ so a drop-enabled profile can choose a longer walking detour. It also checks ret
 that ignore that option. `RouteStraightener` drops only guarded walking shortcuts. Actual-to-route entry and every
 kept segment use the supplied supported-walk guard.
 
+For an ability that refuses an area the actor may otherwise enter, pass
+`navigation.ExcludingAreas(wetSurfaceBit)` to `GroundPursuit`. The mask uses the game's captured `uint` area
+bits. This immutable view shares the baked graph and captured columns, including those loaded from a bake,
+without another capture or profile bake. Reuse a view across pursuits. Zero returns the same instance and
+chained calls accumulate exclusions. The baked required and excluded masks remain in force, so excluding a
+required bit refuses every affected surface rather than replacing the original filter.
+
+The full capsule footprint checks the exclusion at search nodes and along directed edges, including Stair
+links with dry endpoints. Admission, every replan, straightening, actual-to-route entry and waypoint advancement
+use the narrowed supported-walk guard. If a filtered route fails, pursuit tries one diagnostic walking query
+against the original baked profile with the same budget. A complete, valid original route produces NoPath with
+`GroundPursuitDetail.ExcludedArea`. Otherwise the filtered query's existing detail is retained. This diagnostic
+can consume one extra query budget and never supplies steering or authorizes travel. Default construction
+without a narrowed view retains its existing behavior.
+Use the profile constructor for area-specific diagnostics. The lower-level constructor has no original
+profile policy to compare.
+
 `GroundPursuitSettings(triggerRange, maximumPathLength, stopDistance)` requires finite positive trigger and path
 limits, and finite nonnegative stop distance. Trigger range applies only at admission. The path cap applies to the
 remaining route at admission and every replan, not total distance travelled. Route length and
@@ -30,7 +47,7 @@ The commitment timeout bounds total pursuit duration.
 Ready always supplies a finite nonzero unit `Direction` and positive finite remaining length for
 `MovementCommitmentRequest.ForGroundTravel`. AlreadyInRange and OutOfRange are separate admission outcomes.
 NoPath, TooLong and UnsupportedState refuse or terminate. `GroundPursuitDetail` distinguishes partial,
-unreachable, non-walk, empty, invalid endpoint, invalid entry and unusable direction routes, plus unsupported
+unreachable, excluded-area, non-walk, empty, invalid endpoint, invalid entry and unusable direction routes, plus unsupported
 state and profile diagnostics. Malformed parameters remain BCL exceptions.
 
 Call `Tick(in MoveState, in MoveTuning, ReachTarget? target, float dt, GroundMoveContext)` from the authoritative
@@ -304,9 +321,12 @@ public sealed class GroundNavigation
     public float AgentHeight { get; }
     public bool Aquatic { get; }
     public float MaxDropMetres { get; }
+    public bool AllowTerrainDescents { get; }
+    public GroundNavigation ExcludingAreas(uint excludedAreas);
     public bool AllowsSegment(Vector3 fromFeet, Vector3 toFeet);
     public void Validate(EffectiveMovementBinding binding);
     public void Validate(in MoveTuning tuning);
+    public void PrepareTerrainDescents();
 }
 ```
 
@@ -395,7 +415,8 @@ and is not fixed in this release. Check routes over sloped physics ground in the
 
 Set finite nonnegative `GroundProfileOptions.MaxDropMetres` or `NavBakeProfile.MaxDropMetres` per body profile.
 Zero preserves existing topology and identity. Positive allowance requires an OrdinaryContact ground profile,
-independently of manual falls and fall damage. The local candidate horizon is `1 + ceil(2 * radius / cellSize)`.
+independently of manual falls and fall damage. The sharp candidate horizon is `1 + ceil(2 * radius / cellSize)`. Opted-in terrain routes use their authenticated
+geometry-derived band and bounded fringe instead.
 Only the nearest eligible lower admitted surface is considered in a direction without a supported ordinary exit.
 Both usable walk/run modes must prove an unpowered fall, supported target arrival and post-landing Hold within
 the existing total edge duration. Full tuning includes actual pace and momentum. First landing, unwalkable contact
@@ -427,7 +448,10 @@ A target that moves past retarget tolerance refreshes at the Drop source and thr
 rooted holds and the supported launch prefix, even inside the cooldown. Current range membership cancels preparation
 without acknowledging an untraversed Drop. Refresh uses the follower's single query site and retains the fresh
 result's ordinary cooldown. A replacement without that Drop releases its preparation. The first command that
-leaves support commits the physical flight, whose source and landing then remain fixed until supported completion.
+enters certified descent commits the transition, including steep sliding. Its source and landing remain fixed
+through the supported lower fringe until terminal Hold. Refresh still requires ordinary raw admission at the
+actual supported pose. A prefix outside that admission can return Unreachable and cancel preparation. It never
+borrows the old source node as a substitute query origin.
 See [Contact Drop links](../docs/design/CONTACT-DROP-LINKS.md) for costs, follower acknowledgement and storage reasons.
 
 ### Parallel contact bake
@@ -679,7 +703,7 @@ public sealed class GroundNavigationBake
 }
 ```
 
-`Create` builds every profile through `capture.BuildProfile` with its `Aquatic` and `MaxDropMetres` options while the capture is live, so each
+`Create` builds every profile through `capture.BuildProfile` with its `Aquatic`, `MaxDropMetres` and `AllowTerrainDescents` options while the capture is live, so each
 profile is exactly the fresh build. The `execution` overload builds profiles one after another and passes the setting to
 each contact profile, as [Parallel contact bake](#parallel-contact-bake) describes. An aquatic profile from a capture
 without `SampleWater` is refused there.
@@ -689,7 +713,53 @@ without `SampleWater` is refused there.
 | --- | --- | --- |
 | 1 | All profiles are Legacy with zero Drop allowance | Original supported tuning and Stair recipe |
 | 2 | Contact exists and every Drop allowance is zero | Format 1 plus effective kind, foot fraction, water policy and zero placement offset |
-| 3 | Any profile has positive `MaxDropMetres` | Format 2 plus f32 allowance, f32 walk speed, f32 run speed and u8 air momentum per profile. Ordered Stair candidates precede Drop candidates |
+| 3 | Evidence capture is off and any profile has positive `MaxDropMetres` | Format 2 plus f32 allowance, f32 walk speed, f32 run speed and u8 air momentum per profile. Ordered Stair candidates precede Drop candidates |
+| 4 | `CaptureTerrainDescentEvidence` is true | Format 3 identity plus explicit capture/profile terrain flags, canonical physical evidence and authenticated per-profile ordered workloads |
+
+`PhysicsNavBakeOptions.CaptureTerrainDescentEvidence` and per-profile `AllowTerrainDescents` are non-positional,
+explicit opt-ins, both false by default. An enabled terrain profile requires non-aquatic OrdinaryContact, positive
+finite `MaxDropMetres`, and captured evidence. Capture alone never enables a profile, and zero permission is invalid
+with the profile flag. Consumers must opt in and rebake after adopting the released capability.
+
+Terrain opt-in is additive. Every candidate with sharp topology attempts the unchanged sharp proof first.
+Only a sharp refusal with applicable terrain can attempt the terrain proof. New terrain topology uses the terrain
+proof alone. Every accepted Drop retains its proving route. Policy selection reads that route, never geometry.
+
+Format 4 stores the ordered candidate list as canonical unsigned LEB128 counts and ZigZag LEB128 deltas of flattened
+integer layer/cell endpoints, followed by link-kind bytes. Each profile retains its original layer data and acceptance
+bits, then a facts block with the bake-time f32 slope cosine, f64 footprint surface reach, length-prefixed endpoints
+and a terrain-route bitset. Disabled profiles store a zero cosine and no terrain routes. A terrain bit must name an
+accepted Drop on an enabled profile. The workload digest binds the full identity, canonical container evidence,
+profile name, frozen profile bytes and exact facts bytes. Loading validates counts against remaining bytes and
+storage capacity, canonical integers, bounds, duplicate endpoints, endpoint admission, routes and the digest.
+Disabled profiles must match their frozen candidate recipe and order, using scalar arithmetic without terrain
+regeneration. Enabled profiles require legal Stair/Drop shapes and positive non-aquatic OrdinaryContact Drop
+permission. Their candidates are never regenerated. Loading never replays refused verdicts. Refusals remain
+authenticated bake-time facts.
+
+Evidence is pooled across enabled profiles and retains only accepted terrain proofs' reads and certificate inputs,
+including whole queried columns, original raw identities and required complete solid groups. Neither sharp proof
+reads, refused attempts, recipe closure nor the global steep inventory is retained. Certificate reconstruction and
+terrain policy reads are local. Certificates reconstruct lazily on first use with the persisted threshold bits.
+Finite water-coverage uncertainty above the existing 1 mm budget refuses a Drop as `PrecisionExceeded`.
+The Contact step reports `PrecisionRefused`, so sharp and terrain following return `Blocked`, including during
+alignment. Actual unresolved, invalid or mismatched environment evidence retains its prior error/suspension path.
+No precision threshold or physical gate is widened.
+
+Call `GroundNavigation.PrepareTerrainDescents()` during loading, outside a frame or simulation tick. It builds the
+synchronized certificate cache without physics and is safe for concurrent callers. First use can exceed a frame
+or tick budget. Preparation caches immutable topology only and never replaces the live preview or actual Hold.
+Loading and reconstruction use no platform trigonometric functions. Excluded evidence always throws
+`DependencyMissing`, including steep-presence queries. It cannot select a fallback policy. No trajectories or
+per-mode physics verdicts are stored. Formats 1, 2 and 3 keep their exact bytes and candidate meanings.
+
+Terrain preview and following use the same `ContactTerrainDropPolicy` as the bake. The stored route selects the
+policy before evidence access. Sharp routes retain their existing preview and follower. Each terrain preview and
+follower owns its corridor, support witness and descent state. Cached certificates hold immutable topology only.
+The terrain follower returns a zero-input `Dropping` command for terminal Hold and retains ownership until the
+next supplied body authenticates that command. A later Walk cannot replace the Hold before submission.
+A missing retained dependency returns `Blocked` with `RangeSteering.DropRefusal` set to
+`ContactDropRuntimeRefusal.DependencyMissing`, ending that attempt without sharp fallback or a host exception.
 
 In format 3, disabled profiles encode those four appended values as 0, 1, 1 and false. Enabled profiles
 retain their actual flight inputs. The 13 added identity bytes per profile change neither the layer layout
@@ -1310,3 +1380,91 @@ This API adds no native sampler, tiled bake or legacy bake-format change. Adopti
 [#1344](https://github.com/APKiwiOrg/KhaozEngine/issues/1344) small bodies. Generic tests cover dry and
 surface motion, a live wall, exact-view matching, refusal after earlier steps, all tuning inputs,
 semantic-source order and synthetic adjacent-frame equivalence. Real native adoption remains G1b.
+
+## Certified movement and publication
+
+Every sharp and terrain Drop proof, launch preview and continuation executes the same
+`PlayerMovementPublication` policy from Locomotion. Publication is part of each step, including the next
+slice's input. The follower still matches the actual supplied body exactly. Rounding only its saved expectation
+would certify a trajectory the authority never ran. Position error alone cannot establish agreement because
+publication can change carried velocity while leaving position identical.
+
+Player hosts execute `EffectiveMovementBinding.StepPlayer`, or NetWorld's `PlayerMoveSimulator`, with the same
+`PlayerPathInput` command used for preview. World-space Drop hosts use `StepPlayerTowards`.
+`NpcGroundMovement.Step` applies this policy during certified Contact `Dropping`. Ordinary creature and NPC
+steering keeps the raw full-precision contract. No arrival, footprint, roof, raw-layer or proof-budget rule changes.
+
+Every Contact bake identity contains the engine-owned `engine/player-publication` source digest. Consumers must
+rebake, including Contact profiles with Drops disabled. An older policy returns `SourcesChanged` even at the same
+engine version. Callers supply their own source digests and must not supply that reserved label. Frozen KENB
+formats still decode with their original layouts. Legacy-only identities keep their ordinary engine, source and
+profile checks, with no player-publication source row.
+
+## Internal terrain descent evidence
+
+The internal `PhysicsNavBake.CaptureDescent` entry captures immutable physical evidence beside ordinary
+`PhysicsNavColumns`. The public capture path is unchanged. The new path retains exact installed face geometry,
+source adjacency, classified column references, complete coverage or known emptiness, and original raw surface
+addresses. It observes the unchanged column probe's real rays to bind the original ordinal and raw height bits.
+The optional `IPhysicsStaticEvidenceRaycast` capability retains the actual selected installed leaf from that same
+ray. Bepu supplies it for standalone and compound primitives. Curved raw surfaces bind to their represented
+primitive identity without a fabricated plane or a slope-normal filter. Curved geometry inside a descent corridor
+still refuses certification conservatively, while an unrelated curved prop does not abort capture.
+Analytic faces retain both the installed mesh owner and the canonical field owner. Selected support must match
+the latter and the captured canonical feature geometry, while physical installation provenance remains intact.
+`ContactTerrainProfileEvidence` associates admitted original layer/cell addresses with those raw sources, without
+looking up a layer by resting-height proximity. Missing capability, source identity, ambiguous raw support or
+capacity has a structured `PhysicsNavDescentEvidenceException` reason. No partial evidence is published.
+
+Capture uses inclusive projected bounds to narrow cell candidates and processes them in original face ordinal
+order. Boundary-only touches, vertical faces and zero-area projections remain candidates. The original exact
+clip, overlap and source adjacency predicates decide retention. A source may provide a complete adjacency-key
+candidate visitation, otherwise capture keeps the all-pairs path. The test-only all-face/all-pairs oracle checks
+the entire capture output. The independent oracle lives only in the test project. Index arrays and conservative bookkeeping share a checked aggregate byte budget bounded
+by `Array.MaxLength`. `IndexStorageExceeded` reports requested and maximum bytes before unsupported storage is
+allocated. Existing feature, reference, sweep and proof budgets are unchanged.
+Frozen evidence builds exact raw-address and full-solid interval lookups once. Raw lookup preserves height bits
+and the original duplicate ambiguity result. Solid ranges retain every matching Source/Address part, including
+roofs outside the aperture. Their queries record only contributing group dependencies. Receipts share privately
+immutable face membership, so constructing a worker or candidate receipt never scans the world. These derived
+lookups share the checked index reserve and add no persisted geometry bytes.
+
+`ContactTerrainDropCandidates` is pure and deterministic. It retains the fixed source and neighbor order,
+ordinary exit suppression, nearest eligible lower column, highest eligible layer, step-band stop and exact
+allowance subtraction. Connected steep geometry and the unchanged capsule/cell intersection helper derive its
+rasterized fringes and finite reach. Per-body directional band endpoints and a next-admitted-column index remove
+repeated band walks. Each ray stops at the first gap in its contiguous dilated band, with only the first downstream
+cell included. A later arm of the same connected component cannot bridge an unadmitted apron.
+Band endpoints occupy sparse component/cell records, with a checked aggregate limit of `MaxLayerCells` before
+endpoint-array allocation. Overlapping components remain ambiguous. Source lookup reads one indexed cell rather
+than scanning every component. Numeric index payload is at most 36 bytes per counted record, excluding managed
+collection overhead and bounded construction scratch. Exceeding the record limit reports `CapacityExceeded`.
+There is no radius-only terrain horizon or universal height-over-slope reach formula.
+Gentle slopes receive no terrain extension. Each source still contributes at most eight candidates.
+
+`ContactTerrainDropCorridor` checks exact column coverage over the doubled-radius projection, first physical
+obstructions and solid occupancy. The height band tests only ground inside the exact projected capsule, including
+its circular caps. `ContactTerrainHeightBand` intersects each violating height half-plane with that capsule
+using rational clips and squared-distance predicates. Ground outside that projection cannot refuse solely
+through height. The height limits and doubled radius stay fixed. Coverage, single-source identity, overlapping-layer checks, exact ground area, minimum bed
+and all obstruction checks retain their whole-cell scope. Foreign geometry below complete ground cannot replace
+that ground, and a roof cannot be skipped to reach an allowed floor. Mesh faces are clipped exactly against the ground and vertical body
+envelope, including intersections whose original vertices all lie outside that envelope.
+The original narrow center corridor, play boundary and highest-launch
+descent bound remain composed through `NavDropFootprint`. Geometry supplies evidence, not collision permission.
+The internal fresh-bake proof opts in through `ContactNavigationProof.EnableTerrainDescents`. One
+`ContactTerrainDropPolicy` authenticates launch, descending support, the bounded lower fringe and terminal Hold.
+It keeps the full actual walk/run tuning, original raw target layer, ordinary terminal footprint, 1 mm sphere,
+original boundary and 64-slice duration. Selected support binds canonical feature geometry and owner separately
+from the ordinary adapter's selector owner, which must remain unchanged after the real source Hold.
+Explicit capture/profile flags publish these certified links and retain their evidence in KENB 4. Runtime preview
+and following use this same policy, selected by the stored route. Supported alignment and launch preparation stay
+reversible. The first accepted command entering descent commits the transition through the supported lower fringe
+until the actual body supplies terminal support and a real Hold. Ordinary `AllowsSegment` remains unchanged.
+
+Calling-thread dependency receipts retain only accepted terrain proof reads and their certificate inputs.
+The subset includes observed coverage and columns, original raw rows, local faces and complete solid groups needed
+by occupancy checks. Other cells are explicitly `Excluded` and a later query throws `DependencyMissing`.
+Raw bindings use original captured column ordinals and raw grid heights, never resting-height proximity.
+The stored candidates and route facts remove any need for recipe closure or a global steep inventory.
+Another tuning or workload needs a new bake. Accepted terrain certificates reconstruct on first use.

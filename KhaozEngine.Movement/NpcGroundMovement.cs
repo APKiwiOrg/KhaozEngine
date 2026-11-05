@@ -17,6 +17,10 @@ public static class NpcGroundMovement
             ? SupportQueryCounter.NpcContactSteps : SupportQueryCounter.NpcLegacySteps);
         Vector2 direction = steering.Status is RangeMoveStatus.Following or RangeMoveStatus.Dropping
             ? steering.WorldDirection : Vector2.Zero;
+        // Opting into a certified Drop also opts into the state trajectory its proof executed.
+        // Ordinary unreplicated steering remains full precision.
+        if (tuning.Controller == MovementControllerKind.Contact && steering.Status == RangeMoveStatus.Dropping)
+            return PlayerMovementPublication.Canonicalize(context.Step(PlayerMovementPublication.PrepareStep(body), direction, run, dt, tuning));
         return context.Step(body, direction, run, dt, tuning);
     }
 

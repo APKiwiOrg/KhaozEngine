@@ -10,6 +10,8 @@ namespace KhaozEngine.Movement;
 /// Launch preview proves the actual body and controls, never an alternative edge or a predicted arrival.</summary>
 internal sealed class ContactDropFollower(GroundNavigation navigation, NavDropTraversal traversal)
 {
+    readonly ContactTerrainDropFollower? _terrain = navigation.Terrain?.Route(traversal.Link) == ContactDropRoute.Terrain
+        ? new(navigation, traversal) : null;
     enum Phase { Align, Launch, Falling, Landed }
     Phase _phase;
     NavDropFootprint? _corridor;
@@ -17,12 +19,15 @@ internal sealed class ContactDropFollower(GroundNavigation navigation, NavDropTr
     bool _interrupted;
     float _highest = traversal.StartFeet.Y;
 
-    internal bool Preparing => _phase is Phase.Align or Phase.Launch;
+    internal bool Preparing => _terrain?.Preparing ?? _phase is Phase.Align or Phase.Launch;
+    internal ContactDropRuntimeRefusal Refusal => _terrain?.Refusal ?? ContactDropRuntimeRefusal.None;
     internal NavDropTraversal Traversal => traversal;
 
     internal RangeSteering Tick(in MoveState body, in MoveTuning tuning, bool run, float dt,
         GroundMoveContext context, PlayerPathInput? playerInput, out bool complete, out bool replan)
     {
+        if (_terrain is not null)
+            return _terrain.Tick(body, tuning, run, dt, context, playerInput, out complete, out replan);
         complete = replan = false;
         Vector3 feet = Feet(body, tuning);
         if (_execution is not null && !_execution.Matches(body, run, dt, context.NavigationFrame)) _interrupted = true;
@@ -141,8 +146,9 @@ internal sealed class ContactDropFollower(GroundNavigation navigation, NavDropTr
         => result.State.State.Grounded && result.ContactWalkableSupport && result.State.Selection?.Support is not null;
 
     internal static RangeMoveStatus Status(in MovementStepResult result, RangeMoveStatus known)
-        => result.Outcome is MovementStepOutcome.EnvironmentInvalid or MovementStepOutcome.EnvironmentUnresolved or MovementStepOutcome.FrameMismatch
-            ? RangeMoveStatus.Suspended : known;
+        => result.Outcome == MovementStepOutcome.PrecisionRefused ? RangeMoveStatus.Blocked :
+            result.Outcome is MovementStepOutcome.EnvironmentInvalid or MovementStepOutcome.EnvironmentUnresolved or MovementStepOutcome.FrameMismatch
+                ? RangeMoveStatus.Suspended : known;
 
     static RangeSteering Hold(RangeMoveStatus status) => new(Vector2.Zero, status);
 }

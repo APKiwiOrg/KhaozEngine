@@ -16,6 +16,9 @@ public sealed record NavBakeProfile(string Name, MoveTuning Tuning, NavAreaFilte
     /// walk speed, run speed and air momentum in format 3 identity. Either signed zero is stored as positive zero.</summary>
     public float MaxDropMetres { get => _maxDropMetres; init => _maxDropMetres = value == 0 ? 0 : value; }
 
+    /// <summary>Allows authenticated continuous terrain descents. Default false, independent for each profile.</summary>
+    public bool AllowTerrainDescents { get; init; }
+
     internal const string DeferredAquaticMessage =
         "Contact aquatic navigation is not supported yet. See https://github.com/APKiwiOrg/KhaozEngine/issues/1389.";
 
@@ -35,6 +38,8 @@ public sealed record NavBakeProfile(string Name, MoveTuning Tuning, NavAreaFilte
         EffectiveMovementBinding.Preflight(Tuning, kind);
         if (!float.IsFinite(MaxDropMetres) || MaxDropMetres < 0)
             throw new ArgumentOutOfRangeException(nameof(MaxDropMetres), "Drop allowance must be finite and nonnegative.");
+        if (AllowTerrainDescents && MaxDropMetres == 0)
+            throw new ArgumentException("Terrain descents require positive Drop permission.", nameof(AllowTerrainDescents));
         if (MaxDropMetres > 0 && (kind != EffectiveMovementBindingKind.OrdinaryContact || Aquatic))
             throw new NotSupportedException("Drop navigation requires non-aquatic OrdinaryContact movement.");
         if (kind == EffectiveMovementBindingKind.OrdinaryContact && Aquatic)

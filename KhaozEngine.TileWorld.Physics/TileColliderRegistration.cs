@@ -15,6 +15,7 @@ namespace KhaozEngine.TileWorld.Physics;
 /// </summary>
 public sealed partial class TileColliderRegistration : IDisposable
 {
+    readonly IMovementAnalyticSupportSource? _analyticSupport;
     readonly IPhysicsWorld _world;
     readonly StaticHandle[] _handles;
     readonly StaticHandle[] _groundHandles;
@@ -41,8 +42,9 @@ public sealed partial class TileColliderRegistration : IDisposable
     }
 
     internal TileColliderRegistration(IPhysicsWorld world, StaticHandle[] handles, StaticHandle[] groundHandles,
-        TileColliderProvenance[]? provenance, string? worldId, OrdinaryMovementExtent extent, int[] colliderIndices)
+        TileColliderProvenance[]? provenance, string? worldId, OrdinaryMovementExtent extent, int[] colliderIndices, IMovementAnalyticSupportSource? analyticSupport = null)
     {
+        _analyticSupport = analyticSupport;
         _provenance = provenance;
         _worldId = worldId;
         _extent = extent;

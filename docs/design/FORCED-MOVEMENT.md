@@ -38,6 +38,23 @@ waypoint kind, because another planner can ignore that option. Actual-to-route e
 supported-walk admission. A server-side navigation profile must match the actor's capsule, tuning and resolved
 movement context, so a route certified for another body cannot authorize this actor.
 
+An ability may narrow that profile with `GroundNavigation.ExcludingAreas(uint excludedAreas)`. The immutable
+view shares the baked graph and captured per-surface area bits, so an actor allowed to wade can pursue through a
+dry bridge without a second whole-world bake. Exclusions accumulate and are checked in addition to the original
+required and excluded masks. Zero keeps the original profile. Even an exclusion overlapping a required bit can
+only refuse more routes. The existing bake format and runtime movement binding remain unchanged.
+
+The query restriction trusts the graph's existing support and clearance proofs. Requiring a link's straight
+chord to satisfy supported-walk height checks would reject a permitted tall dry Drop even when the excluded
+bit is absent. Area filtering adds only its area checks there. Pursuit separately keeps its walk-only policy.
+
+Search checks full captured footprints at nodes and along directed edges, including links. The same view guards
+straightening, actual-to-route entry, kept segments and waypoint advancement at admission and every replan.
+If a filtered route fails, a diagnostic query uses the original baked policy with the same walk-only budget.
+Only a complete original route that passes supported-walk admission produces NoPath with
+`GroundPursuitDetail.ExcludedArea`. Other failures keep the filtered query's detail. The extra bounded query
+distinguishes an area restriction from an already unreachable target without ever steering along its route.
+
 Target drift, corridor departure, route exhaustion and invalid cached endpoint membership make replanning due.
 An endpoint outside current reach needs refresh even below the ordinary drift threshold. During replan cooldown,
 pursuit returns its last valid direction with zero length to hold travel rather than continue toward a stale goal.

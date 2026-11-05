@@ -127,7 +127,7 @@ public sealed partial class GridPathPlanner
                 int nx = cx + NeighborDx[i];
                 int nz = cz + NeighborDz[i];
                 if (!grid.InBounds(nx, nz) || Blocks(layer, agentRadius, nx, nz) ||
-                    !(_traversal?.CanWalkNeighbor(layer, cx, cz, nx, nz) ?? true))
+                    !CanWalkNeighbor(layer, cx, cz, nx, nz))
                 {
                     continue;
                 }

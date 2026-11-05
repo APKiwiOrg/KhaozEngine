@@ -205,7 +205,8 @@ public class FacingReplicationTests
         ecs.Set(e, new MovementState { Grounded = true });
         ecs.Set(e, new PendingMove { Command = MoveCommand.Idle });
 
-        // The single-World head reference: the full MoveState carried tick to tick, as WorldServer keeps it per slot.
+        // The real single-world player adapter includes the same publication as the cell step.
+        using var reference = new PlayerMoveSimulator(Flat, t);
         var refState = new MoveState { Position = seed, Grounded = true };
 
         const int Ticks = 50;   // 2.5 rad at 2 rad/s is 1.25 s, i.e. 38 ticks, plus room to sit on the target
@@ -214,26 +215,18 @@ public class FacingReplicationTests
         {
             MoveCommand cmd = Face(2.5f);
             ecs.Set(e, new PendingMove { Command = cmd });
-            refState = CharacterMovement.Step(refState, cmd, Dt, Flat, t);
+            refState = reference.Step(new PlayerMoveState { Move = refState }, cmd, Dt).Move;
             sys.Update(ecs, Dt);
 
             float sharded = MovementState.DecodeFacingYaw(ecs.Get<MovementState>(e).FacingYawQ);
             maxGap = MathF.Max(maxGap, MathF.Abs(CharacterMovement.WrapYaw(sharded - refState.FacingYaw)));
         }
 
-        Assert.Equal(2.5f, refState.FacingYaw, 4);   // the reference completed the turn, so the fixture turned at all
-        // The two heads cannot be BIT-identical: this one runs its carried heading through the wire quantum EVERY
-        // tick where the single-World head keeps full float precision. And unlike a per-tick input, the error of a
-        // carried integrator ACCUMULATES while the turn is in progress - the per-tick step is a fixed number of
-        // radians, so its sub-quantum remainder rounds the same way every tick and adds up, bounded by half a quantum
-        // per turning tick. It is still a fraction of a degree, and it UNWINDS: both heads land on the target exactly
-        // once the last of the gap fits inside one step's budget, so the drift is a transient of the turn itself and
-        // never a permanent offset between the two heads.
-        Assert.True(maxGap < 0.5f * Ticks * Quantum + Quantum,
-            $"the sharded heading diverged {maxGap} rad from the single-World head (quantum {Quantum})");
-        Assert.True(maxGap < 0.01f, $"the sharded drift reached {maxGap} rad, past a fraction of a degree");
+        float target = MovementState.DecodeFacingYaw(MovementState.QuantizeFacingYaw(2.5f));
+        Assert.Equal(target, refState.FacingYaw);
+        Assert.Equal(0f, maxGap);
         float ended = MovementState.DecodeFacingYaw(ecs.Get<MovementState>(e).FacingYawQ);
-        Assert.Equal(2.5f, ended, 3);   // and the drift is gone by the end of the turn, on both heads
+        Assert.Equal(target, ended);
     }
 
     [Fact]
@@ -298,7 +291,7 @@ public class FacingReplicationTests
         client.Poll(); server.Poll(); server.Tick(cfg.TickSeconds);
 
         Assert.True(server.TryGetPlayerState(client.Slot, out PlayerMoveState st));
-        Assert.Equal(1.9f, st.Move.FacingYaw, 5);
+        Assert.Equal(MovementState.DecodeFacingYaw(MovementState.QuantizeFacingYaw(1.9f)), st.Move.FacingYaw);
         Assert.Equal(Vector3.Zero.X, st.Position.X, 5);   // and the turn moved nothing
 
         // Without the flag the heading follows the commanded direction instead: +X is -pi/2 in the camera-yaw basis.

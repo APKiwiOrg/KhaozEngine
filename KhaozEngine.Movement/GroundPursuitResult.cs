@@ -20,7 +20,9 @@ public enum GroundPursuitStatus
 /// retain planner outcomes. NonWalkRoute includes Hop, Drop and unknown waypoint kinds. InvalidEndpoint means
 /// missing physical heights or an endpoint outside current exact reach. InvalidEntry means a kept segment,
 /// including actual-to-route entry or a shortcut, failed supported-walk admission. NoDirection means the route
-/// cannot supply a usable horizontal commitment direction. ProfileMismatch includes unsupported context bindings.</summary>
+/// cannot supply a usable horizontal commitment direction. ProfileMismatch includes unsupported context bindings.
+/// ExcludedArea means the additional area exclusion refused the route while the original baked profile admits
+/// a complete supported-walk route under the same query budget.</summary>
 public enum GroundPursuitDetail
 {
     None,
@@ -37,6 +39,7 @@ public enum GroundPursuitDetail
     JumpPending,
     ActiveCommitment,
     NotAdmitted,
+    ExcludedArea,
 }
 
 /// <summary>A pursuit decision, with no actor identity, physics mutation or player-facing text.</summary>

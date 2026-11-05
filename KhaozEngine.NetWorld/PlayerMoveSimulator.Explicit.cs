@@ -111,7 +111,7 @@ public sealed partial class PlayerMoveSimulator
             // Replay reconstructs each corrected pose from the null-hint witness. No predicted
             // selection or local handle survives through the player state or this adapter.
             var framed = new FramedMovementState(OrdinaryPlayerMovement.ToPhysics(state.Move, queries.Frame), queries.Frame, null);
-            MovementStepResult result = Binding.Step(framed, command, dt, queries, read.Boundary);
+            MovementStepResult result = Binding.StepPlayer(framed, command, dt, queries, read.Boundary);
             LastExplicitOutcome = result.Outcome;
             return new PlayerMoveState
             {
@@ -127,7 +127,7 @@ public sealed partial class PlayerMoveSimulator
     {
         LastExplicitOutcome = outcome;
         PlayerMoveState held = state;
-        held.Move = MovementStepResult.HoldState(state.Move);
+        held.Move = PlayerMovementPublication.Canonicalize(MovementStepResult.HoldState(state.Move));
         return held;
     }
 }

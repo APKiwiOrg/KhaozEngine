@@ -34,8 +34,12 @@ public static partial class ExplicitCharacterMovement
         return new(new(held, state.Frame, null), outcome);
     }
 
-    internal static MovementStepOutcome Outcome(MovementAvailability status) => status == MovementAvailability.Invalid
-        ? MovementStepOutcome.EnvironmentInvalid : MovementStepOutcome.EnvironmentUnresolved;
+    internal static MovementStepOutcome Outcome(MovementAvailability status) => status switch
+    {
+        MovementAvailability.Invalid => MovementStepOutcome.EnvironmentInvalid,
+        MovementAvailability.PrecisionExceeded => MovementStepOutcome.PrecisionRefused,
+        _ => MovementStepOutcome.EnvironmentUnresolved
+    };
 
     internal static bool ValidCarriedState(in MoveState state) =>
         Nonnegative(state.TimeSinceGrounded) && Nonnegative(state.JumpBufferRemaining) &&

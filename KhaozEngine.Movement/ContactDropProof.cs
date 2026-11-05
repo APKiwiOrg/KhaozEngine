@@ -8,7 +8,7 @@ namespace KhaozEngine.Movement;
 
 /// <summary>One worker's full-tuning, unpowered fall proof. Holds, launch and flight are real Contact steps.
 /// A fresh canonical state and initial Hold belong to each mode attempt. Ground Hold caches are never read.</summary>
-internal sealed class ContactDropProof : IDisposable
+internal sealed partial class ContactDropProof : IDisposable
 {
     readonly PhysicsNavBakeOptions _options;
     readonly EffectiveMovementBinding _binding;
@@ -33,7 +33,7 @@ internal sealed class ContactDropProof : IDisposable
         _reuse = reuse;
     }
 
-    internal bool TryEdge(NavSpace space, NavLink link)
+    bool TrySharpEdge(NavSpace space, NavLink link)
     {
         Vector3 from = Feet(space.Layers[link.FromLayer], link.FromX, link.FromZ);
         Vector3 to = Feet(space.Layers[link.ToLayer], link.ToX, link.ToZ);
@@ -130,10 +130,15 @@ internal sealed class ContactDropProof : IDisposable
         Vector2 input = hold ? Vector2.Zero : ContactDropControl.Input(absolute, target, _binding.Tuning,
             run, landScale, _options.EdgeProbeSeconds);
         SupportQueryDiagnostics.Record(SupportQueryCounter.DropSteps);
-        MovementStepResult result = _binding.StepTowards(unselected, input, run, _options.EdgeProbeSeconds, queries, boundary);
+        MovementStepResult result = _binding.StepPlayerTowards(unselected, input, run, _options.EdgeProbeSeconds, queries, boundary);
         queries.AssertCurrent();
         _hooks?.DropStep?.Invoke(new(source, Feet(result), run, hold, result.Outcome, result.State.State.Grounded,
-            result.State.State.CommandedVelocity) { UnwalkableSupport = result.ContactUnwalkableSupport });
+            result.State.State.CommandedVelocity)
+        {
+            UnwalkableSupport = result.ContactUnwalkableSupport,
+            Swimming = result.State.State.Swimming,
+            EnteredSwimming = result.ContactEnteredSwimming
+        });
         if (result.Outcome is MovementStepOutcome.EnvironmentInvalid or MovementStepOutcome.EnvironmentUnresolved or MovementStepOutcome.FrameMismatch)
             throw new ContactDropProofException(result.Outcome);
         return result;
@@ -167,5 +172,9 @@ internal sealed class ContactDropProof : IDisposable
         return new(centre.X, grid.RestingHeightAt(x, z)!.Value, centre.Y);
     }
 
-    public void Dispose() => _binding.Dispose();
+    public void Dispose()
+    {
+        try { _terrain?.Dispose(); }
+        finally { _binding.Dispose(); }
+    }
 }

@@ -121,22 +121,11 @@ public struct MovementState : IComponent
     /// <see cref="WireGenerationAuthenticator"/>.</summary>
     public short FacingYawQ;
 
-    /// <summary>SIM-LOCAL ascent-EWMA storage (NOT replicated, NOT migrated): the sharded head's per-entity, tick-to-tick
-    /// slot for <see cref="KhaozEngine.Locomotion.MoveState.ClimbRateEwma"/> (the exponentially-weighted moving average of
-    /// the actually-applied per-tick rise over a paced stair run). It exists ONLY because the sharded per-cell step
-    /// (<see cref="PlayerMovementSystem"/>) reconstructs a fresh <see cref="KhaozEngine.Locomotion.MoveState"/> from this
-    /// component every tick (unlike the single-<see cref="World"/> <see cref="WorldServer"/>, which keeps the full
-    /// <see cref="PlayerMoveState"/> per slot), so without a persistence slot the ascent EWMA would restart from 0 every
-    /// tick and the exported <see cref="ClimbRateQ"/> would never converge to the achieved rise. It is DELIBERATELY absent
-    /// from the movement codec (see <see cref="MoveProtocol.CreateRegistry"/>): it rides no wire (both heads derive it
-    /// deterministically from the identical <see cref="KhaozEngine.Locomotion.CharacterMovement"/> step, so replicating it
-    /// is redundant and would only widen the built-in wire) and is not part of the
-    /// <see cref="KhaozEngine.Replication.ReplicationChannels.Migrate"/> capture. A handoff therefore reconstructs this
-    /// slot as 0 while preserving <see cref="ClimbRateQ"/>. Before the destination's next movement step,
-    /// <see cref="PlayerMovementSystem"/> seeds that zero slot from the decoded positive climb rate, matching the client
-    /// reconcile seed. This keeps the next exported signal within one wire quantum of the pre-handoff value without
-    /// putting the full-precision average on the observer wire. Set at spawn/teleport to 0 via <see cref="From"/> (a fresh climb state). <c>default</c> is 0
-    /// (byte-identical to a pre-feature state). The single-<see cref="World"/> head never reads this field.</summary>
+    /// <summary>SIM-LOCAL ascent-average storage (NOT replicated or migrated). Player publication seeds the
+    /// next average from the positive decoded <see cref="ClimbRateQ"/>, matching owner reconstruction and handoff.
+    /// The component retains that canonical seed between cell ticks. The codec omits it because the climb byte
+    /// already determines it, and a restored or migrated zero slot is seeded from that byte before stepping.
+    /// Raw unreplicated locomotion can retain its full-precision average instead.</summary>
     public float ClimbRateEwma;
 
     /// <summary>SIM-LOCAL commanded-velocity storage (NOT replicated, NOT migrated): the sharded head's per-entity slot
@@ -204,39 +193,36 @@ public struct MovementState : IComponent
     /// <summary>Fixed wire scale for <see cref="ClimbRateQ"/> (m/s per quantum unit): 0.05, giving +/-6.35 m/s over an
     /// <see cref="sbyte"/> at 0.05 m/s resolution. Consumer-agnostic (independent of any consumer's
     /// <see cref="KhaozEngine.Locomotion.MoveTuning.MaxStepClimbSpeed"/>), so the codec round-trips the same for every game.</summary>
-    public const float ClimbRateQuantum = MoveState.ClimbRateQuantum;
+    public const float ClimbRateQuantum = MovementStateQuantization.ClimbRateQuantum;
 
     /// <summary>Quantizes a signed climb rate (m/s) to the wire <see cref="sbyte"/>: rounded to the nearest
     /// <see cref="ClimbRateQuantum"/> and clamped to the symmetric +/-127 range (leaving -128 unused). A sub-quantum
     /// rate rounds to 0 (the implicit not-climbing dead-zone).</summary>
     public static sbyte QuantizeClimbRate(float rate) =>
-        (sbyte)Math.Clamp((int)MathF.Round(rate / ClimbRateQuantum), -127, 127);
+        MovementStateQuantization.QuantizeClimbRate(rate);
 
     /// <summary>Decodes a wire <see cref="ClimbRateQ"/> back to a signed climb rate (m/s): <c>q * ClimbRateQuantum</c>.
     /// 0 decodes to exactly 0 (not climbing).</summary>
-    public static float DecodeClimbRate(sbyte q) => q * ClimbRateQuantum;
+    public static float DecodeClimbRate(sbyte q) => MovementStateQuantization.DecodeClimbRate(q);
 
     /// <summary>Fixed wire scale for <see cref="SpeedScaleQ"/>: 1/1024, an exact negative power of two.
     /// Representable multipliers are exact binary floats on both heads. A requested 1.1x becomes 1.099609375x.
     /// Generation 15 widened the original signed byte in place to a signed 16-bit value.</summary>
-    public const float SpeedScaleQuantum = 1f / 1024f;
+    public const float SpeedScaleQuantum = MovementStateQuantization.SpeedScaleQuantum;
 
     /// <summary>The largest replicable speed multiplier (8x), the clamp <see cref="QuantizeSpeedScale"/> applies.
     /// A server-only NPC is not bound by this because it rides no wire.</summary>
-    public const float MaxSpeedScale = 8f;
+    public const float MaxSpeedScale = MovementStateQuantization.MaxSpeedScale;
 
     /// <summary>Quantizes a multiplier to the wire short: NaN becomes 1, values clamp to
     /// <c>[0, MaxSpeedScale]</c>, and the offset from 1 rounds to the nearest quantum with ties to even.
     /// Legitimate values span -1024 (root) through 7168 (8x). Zero is exactly unmodified.</summary>
-    public static short QuantizeSpeedScale(float scale)
-    {
-        float clamped = Math.Clamp(float.IsNaN(scale) ? 1f : scale, 0f, MaxSpeedScale);
-        return (short)MathF.Round((clamped - 1f) / SpeedScaleQuantum);
-    }
+    public static short QuantizeSpeedScale(float scale) =>
+        MovementStateQuantization.QuantizeSpeedScale(scale);
 
     /// <summary>Decodes <c>1 + q * SpeedScaleQuantum</c>, floored at zero. A corrupt value below -1024
     /// cannot reverse movement. There is no ceiling because a high value is fast rather than inverted.</summary>
-    public static float DecodeSpeedScale(short q) => MathF.Max(0f, 1f + q * SpeedScaleQuantum);
+    public static float DecodeSpeedScale(short q) => MovementStateQuantization.DecodeSpeedScale(q);
 
     /// <summary>Fixed wire scale for <see cref="HorizontalVelocityXQ"/> / <see cref="HorizontalVelocityZQ"/> (m/s per
     /// quantum unit): 1/256, giving 0.0039 m/s resolution and a <see cref="short"/> reach of +/-127.996 m/s, of which
@@ -253,7 +239,7 @@ public struct MovementState : IComponent
     /// <para>That hair is the difference between this field and every other quantized one on this component: a
     /// carried velocity FEEDS THE NEXT TICK, so unlike a per-tick input its error does not wash out on the following
     /// frame. It compounds for the length of the flight.</para></summary>
-    public const float HorizontalVelocityQuantum = 1f / 256f;
+    public const float HorizontalVelocityQuantum = MovementStateQuantization.HorizontalVelocityQuantum;
 
     /// <summary>The largest replicable horizontal speed PER AXIS (127 m/s), the clamp
     /// <see cref="QuantizeHorizontalVelocity"/> applies. The <see cref="short"/> reaches +/-127.996 m/s at
@@ -263,7 +249,7 @@ public struct MovementState : IComponent
     /// room to spare. Being a per-axis bound it lets a diagonal arc carry up to about 179 m/s of total speed, which is
     /// the safe direction: the clamp exists to keep the encoding honest, not to cap what a game may fly at. A
     /// server-only NPC is not bound by this at all (it rides no wire), only what replicates is.</summary>
-    public const float MaxHorizontalSpeed = 127f;
+    public const float MaxHorizontalSpeed = MovementStateQuantization.MaxHorizontalSpeed;
 
     /// <summary>Quantizes one axis of a carried horizontal velocity (m/s) to the wire <see cref="short"/>: NaN reads
     /// as 0, the value is CLAMPED to <c>[-MaxHorizontalSpeed, MaxHorizontalSpeed]</c> rather than wrapped, and the
@@ -273,11 +259,8 @@ public struct MovementState : IComponent
     /// <see cref="short"/> would REVERSE a hurtling arc rather than cap it, turning an out-of-range speed into a
     /// character flung backwards. The final clamp to the symmetric +/-32767 range leaves -32768 unused, as
     /// <see cref="QuantizeClimbRate"/> leaves -128.</summary>
-    public static short QuantizeHorizontalVelocity(float v)
-    {
-        float clamped = Math.Clamp(float.IsNaN(v) ? 0f : v, -MaxHorizontalSpeed, MaxHorizontalSpeed);
-        return (short)Math.Clamp((int)MathF.Round(clamped / HorizontalVelocityQuantum), -32767, 32767);
-    }
+    public static short QuantizeHorizontalVelocity(float v) =>
+        MovementStateQuantization.QuantizeHorizontalVelocity(v);
 
     /// <summary>Decodes one axis of a wire carried velocity back to m/s: <c>q * HorizontalVelocityQuantum</c>, exact
     /// at the power-of-two quantum. 0 decodes to exactly 0 (carrying nothing). There is deliberately no floor or
@@ -286,7 +269,7 @@ public struct MovementState : IComponent
     /// every representable value IS a legitimate velocity and a negative one simply means travelling the other way.
     /// The worst a corrupt frame can produce is a fast arc in an odd direction, which the server's own step and the
     /// anomaly check both already measure.</summary>
-    public static float DecodeHorizontalVelocity(short q) => q * HorizontalVelocityQuantum;
+    public static float DecodeHorizontalVelocity(short q) => MovementStateQuantization.DecodeHorizontalVelocity(q);
 
     /// <summary>Fixed wire scale for <see cref="FacingYawQ"/> (radians per quantum unit): <c>pi / 32768</c>, i.e. one
     /// 65536th of a full turn, so the <see cref="short"/>'s entire range maps onto exactly one revolution with no
@@ -299,7 +282,7 @@ public struct MovementState : IComponent
     /// SIMULATION state that FEEDS THE NEXT TICK: the client decodes it into its reconcile basis and turns from it
     /// while the server turns from its own copy, so a decimal quantum's rounding inside the multiply would not wash
     /// out on the following frame, it would sit between the two heads for the whole length of a turn.</para></summary>
-    public const float FacingYawQuantum = MathF.PI / 32768f;
+    public const float FacingYawQuantum = MovementStateQuantization.FacingYawQuantum;
 
     /// <summary>Quantizes a heading (radians) to the wire <see cref="short"/>: NaN and infinity read as 0 (the default
     /// heading), the angle is WRAPPED into <c>[-pi, pi)</c> rather than clamped, and the result is rounded to the
@@ -310,13 +293,8 @@ public struct MovementState : IComponent
     /// carried state, it would never self-correct. The one integer that can fall out of range is <c>pi</c> itself
     /// (exactly 32768 units), and the unchecked cast wraps it to -32768, which decodes to <c>-pi</c>: the SAME
     /// heading, so the wrap is not a defect here but the correct arithmetic for the quantity.</para></summary>
-    public static short QuantizeFacingYaw(float yaw)
-    {
-        // WrapYaw bounds the operand before the divide, so the rounded value cannot overflow the int cast, and it maps
-        // every non-finite (and every absurd-but-finite) angle onto 0 before it gets here.
-        float wrapped = KhaozEngine.Locomotion.CharacterMovement.WrapYaw(yaw);
-        return unchecked((short)(int)MathF.Round(wrapped / FacingYawQuantum));
-    }
+    public static short QuantizeFacingYaw(float yaw) =>
+        MovementStateQuantization.QuantizeFacingYaw(yaw);
 
     /// <summary>Decodes a wire <see cref="FacingYawQ"/> back to a heading in radians: <c>q * FacingYawQuantum</c>,
     /// which lands in <c>[-pi, pi)</c> - <see cref="KhaozEngine.Locomotion.MoveState.FacingYaw"/>'s canonical range -
@@ -325,7 +303,7 @@ public struct MovementState : IComponent
     /// there a corrupt low value decodes NEGATIVE and drives the character backwards against its own command, while
     /// here every representable value IS a legal heading and the worst a corrupt frame can do is point a character
     /// somewhere odd, which its own next command corrects.</summary>
-    public static float DecodeFacingYaw(short q) => q * FacingYawQuantum;
+    public static float DecodeFacingYaw(short q) => MovementStateQuantization.DecodeFacingYaw(q);
 
     /// <summary>The observer-visible vertical part of a full <see cref="PlayerMoveState"/> (the position is in
     /// <see cref="ReplicatedPosition"/> and the owner-only feel timers in <see cref="MovementOwnerState.From"/>).</summary>

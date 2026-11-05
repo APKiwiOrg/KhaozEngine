@@ -62,7 +62,7 @@ public sealed partial class NavGrid
         _heights = heights;
         _restingHeights = restingHeights;
         YawRadians = yawRadians;
-        (_sinYaw, _cosYaw) = MathF.SinCos(yawRadians);
+        (_sinYaw, _cosYaw) = yawRadians == 0 ? (yawRadians, 1f) : MathF.SinCos(yawRadians);
     }
 
     /// <summary>

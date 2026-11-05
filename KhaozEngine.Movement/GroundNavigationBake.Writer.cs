@@ -34,7 +34,15 @@ public sealed partial class GroundNavigationBake
 
     private byte[] EncodePayload()
     {
+        if (_formatVersion == NavBakeIdentity.TerrainFormatVersion) return EncodeTerrainPayload();
         var writer = new NavBakeWriter();
+        WriteCapture(writer);
+        foreach (GroundNavigation profile in _profiles) WriteProfile(writer, profile);
+        return writer.ToArray();
+    }
+
+    private void WriteCapture(NavBakeWriter writer)
+    {
         int width = _columns.Width, height = _columns.Height;
         writer.WriteInt32(width);
         writer.WriteInt32(height);
@@ -66,8 +74,6 @@ public sealed partial class GroundNavigationBake
             writer.WriteSingle(entry.SurfaceY);
             writer.WriteUInt32(entry.Areas);
         }
-        foreach (GroundNavigation profile in _profiles) WriteProfile(writer, profile);
-        return writer.ToArray();
     }
 
     private static void WriteProfile(NavBakeWriter writer, GroundNavigation profile)

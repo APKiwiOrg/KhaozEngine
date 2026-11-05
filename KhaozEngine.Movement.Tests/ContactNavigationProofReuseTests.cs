@@ -28,7 +28,7 @@ public class ContactNavigationProofReuseTests(ITestOutputHelper output)
             string normalizedHash = Convert.ToHexStringLower(SHA256.HashData(
                 ContactNavigationBaselineTests.NormalizeFile(bake)));
             SupportQueryCounts counts = SupportQueryDiagnostics.Snapshot();
-            Assert.Equal("494ab0951ab46de04665351bf1e39ad9156f30aefa73cb43b34f4ecaba72e922", normalizedHash);
+            Assert.Equal("85705e68a74cebb3f79657d31a006f23e24082df5a44da0119e20fadbd955bf8", normalizedHash);
             Assert.True(counts.FootprintReuseHits > 0);
             Assert.Equal(0, counts.InitialHoldReuseHits);
         }

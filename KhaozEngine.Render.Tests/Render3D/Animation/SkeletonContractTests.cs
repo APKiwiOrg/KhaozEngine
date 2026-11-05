@@ -10,7 +10,7 @@ namespace KhaozEngine.Tests.Render3D.Animation
         [Fact]
         public void RefusesADuplicateName()
         {
-            var error = Assert.Throws<ArgumentException>(() => new SkeletonContract(new[]
+            var error = Assert.Throws<SkeletonContractArgumentException>(() => new SkeletonContract(new[]
             {
                 new ContractJoint("root", null, false),
                 new ContractJoint("hips", "root", true),
@@ -18,50 +18,105 @@ namespace KhaozEngine.Tests.Render3D.Animation
                 new ContractJoint("hips", "root", true),
             }));
 
-            Assert.Contains("'hips'", error.Message, StringComparison.Ordinal);
+            Assert.Equal(SkeletonContractRefusal.DuplicateJointName, error.Reason);
+            Assert.Equal("hips", error.JointName);
+            Assert.Equal("joints", error.ParamName);
+            Assert.IsAssignableFrom<ArgumentException>(error);
+            Assert.True(new SkeletonContract(new[]
+            {
+                new ContractJoint("root", null, false),
+                new ContractJoint("hips", "root", true),
+                new ContractJoint("spine", "hips", true),
+                new ContractJoint("other", "root", true),
+            }).Contains("other"));
         }
 
         [Fact]
         public void RefusesAParentNotDeclaredBefore()
         {
-            var late = Assert.Throws<ArgumentException>(() => new SkeletonContract(new[]
+            var late = Assert.Throws<SkeletonContractArgumentException>(() => new SkeletonContract(new[]
             {
                 new ContractJoint("root", null, false),
                 new ContractJoint("spine", "hips", true),
                 new ContractJoint("hips", "root", true),
             }));
-            Assert.Contains("'spine'", late.Message, StringComparison.Ordinal);
-            Assert.Contains("'hips'", late.Message, StringComparison.Ordinal);
+            Assert.Equal(SkeletonContractRefusal.ParentNotDeclaredBeforeChild, late.Reason);
+            Assert.Equal("spine", late.JointName);
+            Assert.Equal("hips", late.ParentName);
+            Assert.Equal("joints", late.ParamName);
 
-            var own = Assert.Throws<ArgumentException>(() => new SkeletonContract(new[]
+            var own = Assert.Throws<SkeletonContractArgumentException>(() => new SkeletonContract(new[]
             {
                 new ContractJoint("root", null, false),
                 new ContractJoint("tail", "tail", true),
             }));
-            Assert.Contains("'tail'", own.Message, StringComparison.Ordinal);
+            Assert.Equal(SkeletonContractRefusal.ParentNotDeclaredBeforeChild, own.Reason);
+            Assert.Equal("tail", own.JointName);
+            Assert.Equal("tail", own.ParentName);
+            Assert.True(new SkeletonContract(new[]
+            {
+                new ContractJoint("root", null, false),
+                new ContractJoint("hips", "root", true),
+                new ContractJoint("spine", "hips", true),
+                new ContractJoint("tail", "root", true),
+            }).Contains("tail"));
         }
 
         [Fact]
         public void RefusesASecondRootAndAnEmptyTable()
         {
-            var second = Assert.Throws<ArgumentException>(() => new SkeletonContract(new[]
+            var second = Assert.Throws<SkeletonContractArgumentException>(() => new SkeletonContract(new[]
             {
                 new ContractJoint("root", null, false),
                 new ContractJoint("hips", "root", true),
                 new ContractJoint("prop", null, false),
             }));
-            Assert.Contains("'prop'", second.Message, StringComparison.Ordinal);
-            Assert.Contains("'root'", second.Message, StringComparison.Ordinal);
+            Assert.Equal(SkeletonContractRefusal.AdditionalRoot, second.Reason);
+            Assert.Equal("prop", second.JointName);
+            Assert.Equal("root", second.RootName);
+            Assert.True(new SkeletonContract(new[]
+            {
+                new ContractJoint("root", null, false),
+                new ContractJoint("hips", "root", true),
+                new ContractJoint("prop", "root", false),
+            }).Contains("prop"));
 
-            var notFirst = Assert.Throws<ArgumentException>(() => new SkeletonContract(new[]
+            var notFirst = Assert.Throws<SkeletonContractArgumentException>(() => new SkeletonContract(new[]
             {
                 new ContractJoint("hips", "root", true),
                 new ContractJoint("root", null, false),
             }));
-            Assert.Contains("'hips'", notFirst.Message, StringComparison.Ordinal);
+            Assert.Equal(SkeletonContractRefusal.FirstJointHasParent, notFirst.Reason);
+            Assert.Equal("hips", notFirst.JointName);
+            Assert.Equal("root", notFirst.ParentName);
 
-            Assert.Throws<ArgumentException>(() => new SkeletonContract(Array.Empty<ContractJoint>()));
+            var empty = Assert.Throws<SkeletonContractArgumentException>(
+                () => new SkeletonContract(Array.Empty<ContractJoint>()));
+            Assert.Equal(SkeletonContractRefusal.EmptyJointTable, empty.Reason);
+            Assert.Equal(0, empty.JointCount);
+            Assert.Equal("root", new SkeletonContract(new[] { new ContractJoint("root", null, false) }).Root);
             Assert.Throws<ArgumentNullException>(() => new SkeletonContract(null!));
+        }
+
+        [Theory]
+        [InlineData(null)]
+        [InlineData("")]
+        public void RefusesAnUnnamedJoint(string? name)
+        {
+            var error = Assert.Throws<SkeletonContractArgumentException>(() => new SkeletonContract(new[]
+            {
+                new ContractJoint("root", null, false),
+                new ContractJoint(name!, "root", true),
+            }));
+            Assert.Equal(SkeletonContractRefusal.JointUnnamed, error.Reason);
+            Assert.Equal(1, error.JointIndex);
+            Assert.Equal(name, error.JointName);
+            Assert.Equal("joints", error.ParamName);
+            Assert.True(new SkeletonContract(new[]
+            {
+                new ContractJoint("root", null, false),
+                new ContractJoint("hips", "root", true),
+            }).Contains("hips"));
         }
 
         [Fact]

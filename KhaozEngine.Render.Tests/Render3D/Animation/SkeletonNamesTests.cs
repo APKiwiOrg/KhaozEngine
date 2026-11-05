@@ -1,5 +1,8 @@
 using System;
 using System.IO;
+using System.Linq;
+using System.Collections;
+using System.Collections.Generic;
 using System.Numerics;
 using KhaozEngine.Render3D;
 using SharpGLTF.Geometry;
@@ -92,13 +95,16 @@ namespace KhaozEngine.Tests.Render3D.Animation
         {
             Skeleton skeleton = NamedSkeleton();
 
-            ArgumentException error = Assert.Throws<ArgumentException>(() => skeleton.IndexOf("Head"));
+            SkeletonArgumentException error = Assert.Throws<SkeletonArgumentException>(() => skeleton.IndexOf("Head"));
 
-            Assert.Contains("Head", error.Message, StringComparison.Ordinal);
-            Assert.Contains("Armature", error.Message, StringComparison.Ordinal);
-            Assert.Contains("Hips", error.Message, StringComparison.Ordinal);
-            Assert.Contains("Spine", error.Message, StringComparison.Ordinal);
-            Assert.Contains("Hand.R", error.Message, StringComparison.Ordinal);
+            Assert.Equal(SkeletonRefusal.JointNameMissing, error.Reason);
+            Assert.Equal("Head", error.RequestedName);
+            Assert.NotNull(error.KnownNames);
+            Assert.Equal(new[] { "Armature", "Hand.R", "Hips", "Spine" },
+                error.KnownNames.OrderBy(name => name, StringComparer.Ordinal));
+            Assert.Equal("nodeName", error.ParamName);
+            Assert.IsAssignableFrom<ArgumentException>(error);
+            Assert.Equal(1, skeleton.IndexOf("Hips"));
         }
 
         [Fact]
@@ -111,7 +117,36 @@ namespace KhaozEngine.Tests.Render3D.Animation
                 new[] { 0, 1, 2 },
                 new[] { "root", "arm", "arm" });
 
-            Assert.Throws<InvalidOperationException>(() => skeleton.IndexOf("arm"));
+            var error = Assert.Throws<SkeletonStateException>(() => skeleton.IndexOf("arm"));
+            Assert.Equal(SkeletonRefusal.DuplicateNodeName, error.Reason);
+            Assert.Equal("arm", error.NodeName);
+            Assert.Equal(1, error.FirstNodeIndex);
+            Assert.Equal(2, error.DuplicateNodeIndex);
+            Assert.IsAssignableFrom<InvalidOperationException>(error);
+            Assert.Equal(3, NamedSkeleton().IndexOf("Hand.R"));
+        }
+
+        [Fact]
+        public void MissingNameOwnsAnImmutableKnownNamesSnapshot()
+        {
+            var source = new List<string> { "root", "hips" };
+            var error = new SkeletonArgumentException(SkeletonRefusal.JointNameMissing, "Missing joint.", "nodeName")
+            {
+                RequestedName = "tail",
+                KnownNames = source,
+            };
+            source[0] = "changed";
+            source.Clear();
+
+            Assert.NotNull(error.KnownNames);
+            Assert.Equal(new[] { "root", "hips" }, error.KnownNames);
+            if (error.KnownNames is IList<string> list)
+                Assert.Throws<NotSupportedException>(() => list[0] = "changed");
+            if (error.KnownNames is ICollection<string> collection)
+                Assert.Throws<NotSupportedException>(() => collection.Add("changed"));
+            if (error.KnownNames is IList untyped)
+                Assert.Throws<NotSupportedException>(() => untyped[0] = "changed");
+            Assert.Equal(new[] { "root", "hips" }, error.KnownNames);
         }
 
         [Fact]

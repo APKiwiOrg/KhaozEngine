@@ -47,22 +47,34 @@ namespace KhaozEngine.Tests.Render3D.Animation
             Assert.Equal(3, map.Bone("socket_head"));
             Assert.Equal(4, map.Bone("leg.L"));
 
-            Assert.Throws<InvalidOperationException>(() => map.Bone("root"));
-            Assert.Throws<KeyNotFoundException>(() => map.Node("tail"));
+            var root = Assert.Throws<ContractJointMapStateException>(() => map.Bone("root"));
+            Assert.Equal(ContractJointMapRefusal.NamedNodeOutsideSkin, root.Reason);
+            Assert.Equal("root", root.JointName);
+            Assert.IsAssignableFrom<InvalidOperationException>(root);
+            var tail = Assert.Throws<ContractJointMapKeyNotFoundException>(() => map.Node("tail"));
+            Assert.Equal(ContractJointMapRefusal.NodeNameMissing, tail.Reason);
+            Assert.Equal("tail", tail.JointName);
+            Assert.IsAssignableFrom<KeyNotFoundException>(tail);
         }
 
         [Fact]
         public void RefusesAMissingJointNamingIt()
         {
             var longer = new List<ContractJoint>(Contract.Joints) { new("tail", "hips", true) };
-            var extra = Assert.Throws<ArgumentException>(
+            var extra = Assert.Throws<ContractJointMapArgumentException>(
                 () => new ContractJointMap(Build(), new SkeletonContract(longer)));
-            Assert.Contains("contract joint 'tail'", extra.Message, StringComparison.Ordinal);
+            Assert.Equal(ContractJointMapRefusal.ContractJointMissing, extra.Reason);
+            Assert.Equal("tail", extra.JointName);
+            Assert.Equal("skeleton", extra.ParamName);
+            Assert.IsAssignableFrom<ArgumentException>(extra);
 
             string[] names = (string[])Names.Clone();
             names[HeadNode] = "skull";
-            var renamed = Assert.Throws<ArgumentException>(() => new ContractJointMap(Build(names: names), Contract));
-            Assert.Contains("contract joint 'head'", renamed.Message, StringComparison.Ordinal);
+            var renamed = Assert.Throws<ContractJointMapArgumentException>(
+                () => new ContractJointMap(Build(names: names), Contract));
+            Assert.Equal(ContractJointMapRefusal.ContractJointMissing, renamed.Reason);
+            Assert.Equal("head", renamed.JointName);
+            _ = new ContractJointMap(Build(), Contract);
         }
 
         [Fact]
@@ -71,12 +83,58 @@ namespace KhaozEngine.Tests.Render3D.Animation
             int[] parents = (int[])Parents.Clone();
             parents[LegNode] = SpineNode;
 
-            var error = Assert.Throws<ArgumentException>(
+            var error = Assert.Throws<ContractJointMapArgumentException>(
                 () => new ContractJointMap(Build(parents: parents), Contract));
 
-            Assert.Contains("'leg.L'", error.Message, StringComparison.Ordinal);
-            Assert.Contains("parent 'spine'", error.Message, StringComparison.Ordinal);
-            Assert.Contains("expected 'hips'", error.Message, StringComparison.Ordinal);
+            Assert.Equal(ContractJointMapRefusal.ParentNameMismatch, error.Reason);
+            Assert.Equal("leg.L", error.JointName);
+            Assert.Equal("spine", error.ActualParentName);
+            Assert.Equal("hips", error.ExpectedParentName);
+            _ = new ContractJointMap(Build(), Contract);
+        }
+
+        [Theory]
+        [InlineData(-2)]
+        [InlineData(7)]
+        public void RefusesAParentIndexOutsideTheSkeleton(int parent)
+        {
+            int[] parents = (int[])Parents.Clone();
+            parents[LegNode] = parent;
+            var error = Assert.Throws<ContractJointMapArgumentException>(
+                () => new ContractJointMap(Build(parents: parents), Contract));
+            Assert.Equal(ContractJointMapRefusal.ParentIndexInvalid, error.Reason);
+            Assert.Equal("leg.L", error.JointName);
+            Assert.Equal(parent, error.ParentIndex);
+            Assert.Equal(7, error.NodeCount);
+            Assert.Equal("skeleton", error.ParamName);
+            _ = new ContractJointMap(Build(), Contract);
+        }
+
+        [Theory]
+        [InlineData(10000f, ContractJointMapRefusal.BaseFrameSingular, "root")]
+        [InlineData(1000f, ContractJointMapRefusal.ParentBaseFrameSingular, "child")]
+        public void RefusesSingularBaseFrames(float scale, ContractJointMapRefusal reason, string joint)
+        {
+            // Inject only the inversion result, without depending on floating-point cancellation.
+            Action<bool> refuseSingularFrame = reason == ContractJointMapRefusal.ParentBaseFrameSingular
+                ? inverted => ContractJointMap.RefuseSingularParentBaseFrame(inverted, joint, 0)
+                : inverted => ContractJointMap.RefuseSingularBaseFrame(inverted, joint, 0);
+
+            var error = Assert.Throws<ContractJointMapArgumentException>(() => refuseSingularFrame(false));
+            Assert.Equal(reason, error.Reason);
+            Assert.Equal(joint, error.JointName);
+            Assert.Equal("skeleton", error.ParamName);
+            if (reason == ContractJointMapRefusal.BaseFrameSingular)
+                Assert.Equal(0, error.NodeIndex);
+            else
+                Assert.Equal(0, error.ParentNodeIndex);
+
+            refuseSingularFrame(true);
+            var contract = new SkeletonContract([new("root", null, false), new("child", "root", true)]);
+            var pose = JointPose.Identity;
+            pose.Scale = new Vector3(scale);
+            _ = new ContractJointMap(new Skeleton([-1, 0], [pose, JointPose.Identity], [0, 1], [1],
+                ["root", "child"]), contract);
         }
 
         [Fact]
@@ -84,8 +142,12 @@ namespace KhaozEngine.Tests.Render3D.Animation
         {
             string[] joint = (string[])Names.Clone();
             joint[6] = "spine";
-            var onAJoint = Assert.Throws<ArgumentException>(() => new ContractJointMap(Build(names: joint), Contract));
-            Assert.Contains("Duplicate skeleton node name 'spine'", onAJoint.Message, StringComparison.Ordinal);
+            var onAJoint = Assert.Throws<ContractJointMapArgumentException>(
+                () => new ContractJointMap(Build(names: joint), Contract));
+            Assert.Equal(ContractJointMapRefusal.DuplicateNodeName, onAJoint.Reason);
+            Assert.Equal("spine", onAJoint.NodeName);
+            Assert.Equal(6, onAJoint.NodeIndex);
+            _ = new ContractJointMap(Build(), Contract);
 
             // A name the contract never mentions is still ambiguous, and the refusal says it is a node's name.
             Skeleton plain = Build();
@@ -95,8 +157,13 @@ namespace KhaozEngine.Tests.Render3D.Animation
                 [.. plain.NodeLogicalIndex, 17],
                 (int[])plain.JointToNode.Clone(),
                 [.. plain.NodeNames, "lantern"]);
-            var offTheContract = Assert.Throws<ArgumentException>(() => new ContractJointMap(twoLanterns, Contract));
-            Assert.Contains("Duplicate skeleton node name 'lantern'", offTheContract.Message, StringComparison.Ordinal);
+            var offTheContract = Assert.Throws<ContractJointMapArgumentException>(
+                () => new ContractJointMap(twoLanterns, Contract));
+            Assert.Equal(ContractJointMapRefusal.DuplicateNodeName, offTheContract.Reason);
+            Assert.Equal("lantern", offTheContract.NodeName);
+            Assert.Equal(7, offTheContract.NodeIndex);
+            _ = new ContractJointMap(new Skeleton(twoLanterns.ParentIndices, twoLanterns.RestLocal,
+                twoLanterns.NodeLogicalIndex, twoLanterns.JointToNode, [.. plain.NodeNames, "torch"]), Contract);
             Assert.DoesNotContain("contract joint", offTheContract.Message, StringComparison.Ordinal);
         }
 
@@ -122,18 +189,25 @@ namespace KhaozEngine.Tests.Render3D.Animation
                 Assert.Equal(without.BodyAlignment(node), map.BodyAlignment(node));
             }
             Assert.Equal(helpers.RestLocal, map.BaseLocal.ToArray());
-            Assert.Throws<KeyNotFoundException>(() => map.Node(""));
-            var helper = Assert.Throws<ArgumentException>(() => map.BaseWorld(7));
+            var unnamed = Assert.Throws<ContractJointMapKeyNotFoundException>(() => map.Node(""));
+            Assert.Equal(ContractJointMapRefusal.NodeNameMissing, unnamed.Reason);
+            Assert.Equal("", unnamed.JointName);
+            var helper = Assert.Throws<ContractJointMapArgumentException>(() => map.BaseWorld(7));
+            Assert.Equal(ContractJointMapRefusal.NodeOutsideContract, helper.Reason);
+            Assert.Equal(7, helper.NodeIndex);
+            Assert.Equal("", helper.NodeName);
             Assert.Equal("node", helper.ParamName);
         }
 
         [Fact]
         public void AnUnnamedSkeletonMissesItsRootRatherThanDuplicatingIt()
         {
-            var error = Assert.Throws<ArgumentException>(
+            var error = Assert.Throws<ContractJointMapArgumentException>(
                 () => new ContractJointMap(Build(names: new string[Names.Length]), Contract));
 
-            Assert.Contains("Missing contract joint 'root'", error.Message, StringComparison.Ordinal);
+            Assert.Equal(ContractJointMapRefusal.ContractJointMissing, error.Reason);
+            Assert.Equal("root", error.JointName);
+            _ = new ContractJointMap(Build(), Contract);
         }
 
         [Fact]
@@ -146,7 +220,10 @@ namespace KhaozEngine.Tests.Render3D.Animation
 
             foreach (Func<int, Matrix4x4> read in accessors)
             {
-                var error = Assert.Throws<ArgumentException>(() => read(lantern));
+                var error = Assert.Throws<ContractJointMapArgumentException>(() => read(lantern));
+                Assert.Equal(ContractJointMapRefusal.NodeOutsideContract, error.Reason);
+                Assert.Equal(lantern, error.NodeIndex);
+                Assert.Equal("lantern", error.NodeName);
                 Assert.Equal("node", error.ParamName);
                 Assert.Throws<ArgumentOutOfRangeException>(() => read(-1));
                 Assert.Throws<ArgumentOutOfRangeException>(() => read(skeleton.NodeCount));
@@ -180,11 +257,13 @@ namespace KhaozEngine.Tests.Render3D.Animation
         [Fact]
         public void RefusesANonRootJointOutsideTheSkin()
         {
-            var error = Assert.Throws<ArgumentException>(() => new ContractJointMap(
+            var error = Assert.Throws<ContractJointMapArgumentException>(() => new ContractJointMap(
                 Build(skin: new[] { HeadNode, HipsNode, SpineNode, SocketNode }), Contract));
 
-            Assert.Contains("'leg.L'", error.Message, StringComparison.Ordinal);
-            Assert.Contains("not in the skin", error.Message, StringComparison.Ordinal);
+            Assert.Equal(ContractJointMapRefusal.ContractJointOutsideSkin, error.Reason);
+            Assert.Equal("leg.L", error.JointName);
+            Assert.Equal(LegNode, error.NodeIndex);
+            _ = new ContractJointMap(Build(), Contract);
         }
 
         [Fact]
@@ -196,7 +275,10 @@ namespace KhaozEngine.Tests.Render3D.Animation
             _ = new ContractJointMap(Chain(SkinningMath.MaxBonesPerDraw), contract);
             Skeleton over = Chain(SkinningMath.MaxBonesPerDraw + 1);
 
-            Assert.Throws<ArgumentException>(() => new ContractJointMap(over, contract));
+            var error = Assert.Throws<ContractJointMapArgumentException>(() => new ContractJointMap(over, contract));
+            Assert.Equal(ContractJointMapRefusal.NodeLimitExceeded, error.Reason);
+            Assert.Equal(SkinningMath.MaxBonesPerDraw + 1, error.NodeCount);
+            Assert.Equal(SkinningMath.MaxBonesPerDraw, error.MaximumNodeCount);
 
             static Skeleton Chain(int count)
             {
@@ -257,68 +339,68 @@ namespace KhaozEngine.Tests.Render3D.Animation
             Skeleton skeleton = Build();
             AnimationClip idle = Clip("idle", Turn(Logical[HeadNode], Quaternion.Identity));
 
-            var error = Assert.Throws<ArgumentException>(() => new ContractJointMap(skeleton, Contract, idle));
-            Assert.Contains("'idle'", error.Message, StringComparison.Ordinal);
-            Assert.Contains("'stance'", error.Message, StringComparison.Ordinal);
+            var error = Assert.Throws<ContractJointMapArgumentException>(() => new ContractJointMap(skeleton, Contract, idle));
+            Assert.Equal(ContractJointMapRefusal.StanceNameMismatch, error.Reason);
+            Assert.Equal("idle", error.ClipName);
+            Assert.Equal("stance", error.ExpectedClipName);
+            _ = new ContractJointMap(skeleton, Contract, idle, stanceClipName: "idle");
 
             AnimationClip stance = Clip("stance", Turn(Logical[HeadNode], Quaternion.Identity));
-            var renamed = Assert.Throws<ArgumentException>(
+            var renamed = Assert.Throws<ContractJointMapArgumentException>(
                 () => new ContractJointMap(skeleton, Contract, stance, stanceClipName: "rest_pose"));
-            Assert.Contains("'stance'", renamed.Message, StringComparison.Ordinal);
-            Assert.Contains("'rest_pose'", renamed.Message, StringComparison.Ordinal);
+            Assert.Equal(ContractJointMapRefusal.StanceNameMismatch, renamed.Reason);
+            Assert.Equal("stance", renamed.ClipName);
+            Assert.Equal("rest_pose", renamed.ExpectedClipName);
+            _ = new ContractJointMap(skeleton, Contract, stance);
 
             AnimationClip restPose = Clip("rest_pose", Turn(Logical[HeadNode], Quaternion.Identity));
             var map = new ContractJointMap(skeleton, Contract, restPose, stanceClipName: "rest_pose");
             Assert.Equal(AnimationSampler.SamplePose(restPose, skeleton, 0f), map.BaseLocal.ToArray());
         }
 
-        [Fact]
-        public void RefusesAStanceKeyingATrackTwice()
+        [Theory]
+        [InlineData(true, 2)]
+        [InlineData(false, 2)]
+        [InlineData(true, 0)]
+        public void RefusesAStanceKeyingATrackTwice(bool rotation, int keyCount)
         {
             Skeleton skeleton = Build();
             int head = Logical[HeadNode];
-            var turned = new JointTrack(head)
-            {
-                Rotation = new QuaternionTrack(new[] { 0f, 1f }, new[] { Quaternion.Identity, Quaternion.Identity },
-                    InterpolationMode.Linear),
-            };
-            var moved = new JointTrack(head)
-            {
-                Translation = new Vector3Track(new[] { 0f, 1f }, new[] { Vector3.Zero, Vector3.UnitY },
-                    InterpolationMode.Linear),
-            };
-            var unkeyed = new JointTrack(head)
-            {
-                Rotation = new QuaternionTrack(Array.Empty<float>(), Array.Empty<Quaternion>(), InterpolationMode.Step),
-            };
+            float[] times = keyCount == 0 ? [] : [0f, 1f];
+            JointTrack track = rotation
+                ? new JointTrack(head) { Rotation = new QuaternionTrack(times,
+                    keyCount == 0 ? [] : [Quaternion.Identity, Quaternion.Identity], InterpolationMode.Linear) }
+                : new JointTrack(head) { Translation = new Vector3Track(times,
+                    [Vector3.Zero, Vector3.UnitY], InterpolationMode.Linear) };
 
-            var cases = new[] { (turned, "2 times"), (moved, "2 times"), (unkeyed, "0 times") };
-            foreach ((JointTrack track, string times) in cases)
-            {
-                var error = Assert.Throws<ArgumentException>(
-                    () => new ContractJointMap(skeleton, Contract, Clip("stance", track)));
-
-                Assert.Contains("'head'", error.Message, StringComparison.Ordinal);
-                Assert.Contains(times, error.Message, StringComparison.Ordinal);
-            }
+            var error = Assert.Throws<ContractJointMapArgumentException>(
+                () => new ContractJointMap(skeleton, Contract, Clip("stance", track)));
+            Assert.Equal(ContractJointMapRefusal.StanceTrackKeyCountMismatch, error.Reason);
+            Assert.Equal("head", error.JointName);
+            Assert.Equal("stance", error.ClipName);
+            Assert.Equal(keyCount, error.KeyCount);
+            Assert.Equal(1, error.ExpectedKeyCount);
+            JointTrack single = rotation ? Turn(head, Quaternion.Identity) : Move(head, Vector3.Zero);
+            _ = new ContractJointMap(skeleton, Contract, Clip("stance", single));
         }
 
-        [Fact]
-        public void RefusesAStanceOnAJointOutsideTheContract()
+        [Theory]
+        [InlineData(LanternLogical, ContractJointMapRefusal.StanceNodeOutsideContract, "lantern")]
+        [InlineData(99, ContractJointMapRefusal.StanceNodeMissing, null)]
+        public void RefusesAStanceOnAJointOutsideTheContract(int logical, ContractJointMapRefusal reason,
+            string? jointName)
         {
             Skeleton skeleton = Build();
             Assert.Equal(6, skeleton.NodeForLogicalIndex(LanternLogical));
             Assert.Equal(-1, skeleton.NodeForLogicalIndex(99));
 
-            var cases = new[] { (LanternLogical, "glTF node 16 'lantern'"), (99, "glTF node 99") };
-            foreach ((int logical, string named) in cases)
-            {
-                var error = Assert.Throws<ArgumentException>(
-                    () => new ContractJointMap(skeleton, Contract, Clip("stance", Turn(logical, Quaternion.Identity))));
-
-                Assert.Contains(named, error.Message, StringComparison.Ordinal);
-                Assert.Contains("not a contract joint", error.Message, StringComparison.Ordinal);
-            }
+            var error = Assert.Throws<ContractJointMapArgumentException>(
+                () => new ContractJointMap(skeleton, Contract, Clip("stance", Turn(logical, Quaternion.Identity))));
+            Assert.Equal(reason, error.Reason);
+            Assert.Equal(logical, error.TargetNode);
+            Assert.Equal(jointName, error.JointName);
+            Assert.Equal("stance", error.ClipName);
+            _ = new ContractJointMap(skeleton, Contract, Clip("stance", Turn(Logical[HeadNode], Quaternion.Identity)));
         }
 
         [Fact]
@@ -329,10 +411,13 @@ namespace KhaozEngine.Tests.Render3D.Animation
                 Scale = new Vector3Track(new[] { 0f }, new[] { new Vector3(1.1f) }, InterpolationMode.Step),
             };
 
-            var error = Assert.Throws<ArgumentException>(
+            var error = Assert.Throws<ContractJointMapArgumentException>(
                 () => new ContractJointMap(Build(), Contract, Clip("stance", track)));
 
-            Assert.Contains("scales 'spine'", error.Message, StringComparison.Ordinal);
+            Assert.Equal(ContractJointMapRefusal.StanceScaleTrack, error.Reason);
+            Assert.Equal("spine", error.JointName);
+            Assert.Equal("stance", error.ClipName);
+            _ = new ContractJointMap(Build(), Contract, Clip("stance", new JointTrack(Logical[SpineNode])));
         }
 
         [Fact]
@@ -370,7 +455,8 @@ namespace KhaozEngine.Tests.Render3D.Animation
                 AssertNear(mesh.Vertices[i].Position, positions[i], $"vertex {i}");
 
             SkinnedGltfMesh other = Mesh(Build());
-            var error = Assert.Throws<ArgumentException>(() => map.SkinAtBase(other));
+            var error = Assert.Throws<ContractJointMapArgumentException>(() => map.SkinAtBase(other));
+            Assert.Equal(ContractJointMapRefusal.MeshSkeletonMismatch, error.Reason);
             Assert.Equal("mesh", error.ParamName);
         }
 

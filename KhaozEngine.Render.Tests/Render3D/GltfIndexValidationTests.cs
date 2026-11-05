@@ -55,10 +55,12 @@ namespace KhaozEngine.Tests.Render3D
 
         internal static void AssertBadIndex(Action load, string identity)
         {
-            InvalidOperationException ex = Assert.Throws<InvalidOperationException>(load);
-            Assert.Contains(identity, ex.Message);
-            Assert.Contains("index 7", ex.Message);
-            Assert.Contains("vertex count 3", ex.Message);
+            MeshIndexStateException ex = Assert.Throws<MeshIndexStateException>(load);
+            Assert.Equal(MeshIndexRefusal.SourceIndexOutsideVertexCount, ex.Reason);
+            Assert.Equal(identity, ex.Identity);
+            Assert.Equal(7L, ex.Index);
+            Assert.Equal(3, ex.VertexCount);
+            Assert.IsAssignableFrom<InvalidOperationException>(ex);
         }
 
         [Fact]
@@ -96,41 +98,65 @@ namespace KhaozEngine.Tests.Render3D
             try
             {
                 var full = new AssetEntry("bad-oak", path, 2f, "test", "CC0");
-                AssertBadIndex(() => PropLoader.LoadProp(full), "bad-oak");
-                AssertBadIndex(() => PropLoader.LoadPropWithMaterial(full), "bad-oak");
-                AssertBadIndex(() => PropLoader.LoadPropParts(full), "bad-oak");
-                AssertBadIndex(() => PropLoader.LoadPropAuto(full), "bad-oak");
+                AssertBadPropIndex(() => PropLoader.LoadProp(full), full.Id, path);
+                AssertBadPropIndex(() => PropLoader.LoadPropWithMaterial(full), full.Id, path);
+                AssertBadPropIndex(() => PropLoader.LoadPropParts(full), full.Id, path);
+                AssertBadPropIndex(() => PropLoader.LoadPropAuto(full), full.Id, path);
 
                 var textured = new AssetEntry("bad-oak-textured", path, 2f, "test", "CC0", textured: true);
-                AssertBadIndex(() => PropLoader.LoadPropAuto(textured), "bad-oak-textured");
+                AssertBadPropIndex(() => PropLoader.LoadPropAuto(textured), textured.Id, path);
 
                 var lod = new AssetEntry("bad-oak-lod", "unused.glb", 2f, "test", "CC0", lodFile: path);
-                AssertBadIndex(() => PropLoader.LoadPropLodAuto(lod), "bad-oak-lod");
+                AssertBadPropIndex(() => PropLoader.LoadPropLodAuto(lod), lod.Id, path);
                 var texturedLod = new AssetEntry("bad-oak-textured-lod", "unused.glb", 2f, "test", "CC0",
                     textured: true, lodFile: path);
-                AssertBadIndex(() => PropLoader.LoadPropLodAuto(texturedLod), "bad-oak-textured-lod");
+                AssertBadPropIndex(() => PropLoader.LoadPropLodAuto(texturedLod), texturedLod.Id, path);
             }
             finally { File.Delete(path); }
+        }
+
+        static void AssertBadPropIndex(Action load, string entryId, string path)
+        {
+            var outer = Assert.Throws<PropLoadStateException>(load);
+            Assert.Equal(PropLoadRefusal.AssetLoadFailed, outer.Reason);
+            Assert.Equal(entryId, outer.EntryId);
+            Assert.Equal(path, outer.Path);
+            var inner = Assert.IsType<MeshIndexStateException>(outer.InnerException);
+            Assert.Equal(MeshIndexRefusal.SourceIndexOutsideVertexCount, inner.Reason);
+            Assert.Equal(path, inner.Identity);
+            Assert.Equal(entryId, inner.EntryId);
+            Assert.Equal(7L, inner.Index);
+            Assert.Equal(3, inner.VertexCount);
         }
 
         [Fact]
         public void NegativeSourceIndexIsRejectedBeforeRebase()
         {
-            InvalidOperationException ex = Assert.Throws<InvalidOperationException>(
+            Assert.Equal(10u, MeshIndexValidation.Rebase(0, 3, 10, "rig.glb"));
+            var ex = Assert.Throws<MeshIndexStateException>(
                 () => MeshIndexValidation.Rebase(-1, vertexCount: 3, baseIndex: 10, "rig.glb"));
 
-            Assert.Contains("index -1", ex.Message);
-            Assert.Contains("vertex count 3", ex.Message);
-            Assert.Contains("rig.glb", ex.Message);
+            Assert.Equal(MeshIndexRefusal.SourceIndexOutsideVertexCount, ex.Reason);
+            Assert.Equal(-1L, ex.Index);
+            Assert.Equal(3, ex.VertexCount);
+            Assert.Equal("rig.glb", ex.Identity);
         }
 
-        [Fact]
-        public void RebaseOverflowIsRejectedWithAssetIdentity()
+        [Theory]
+        [InlineData((long)uint.MaxValue)]
+        [InlineData(long.MaxValue)]
+        [InlineData(-2L)]
+        public void RebaseOverflowIsRejectedWithAssetIdentity(long baseIndex)
         {
-            InvalidOperationException ex = Assert.Throws<InvalidOperationException>(
-                () => MeshIndexValidation.Rebase(1, vertexCount: 3, baseIndex: uint.MaxValue, "huge-rig.glb"));
+            Assert.Equal(1u, MeshIndexValidation.Rebase(1, 3, 0, "huge-rig.glb"));
+            var ex = Assert.Throws<MeshIndexStateException>(
+                () => MeshIndexValidation.Rebase(1, vertexCount: 3, baseIndex, "huge-rig.glb"));
 
-            Assert.Contains("huge-rig.glb", ex.Message);
+            Assert.Equal(MeshIndexRefusal.RebasedIndexOverflow, ex.Reason);
+            Assert.Equal("huge-rig.glb", ex.Identity);
+            Assert.Equal(1L, ex.Index);
+            Assert.Equal(3, ex.VertexCount);
+            Assert.Equal(baseIndex, ex.BaseIndex);
         }
     }
 }

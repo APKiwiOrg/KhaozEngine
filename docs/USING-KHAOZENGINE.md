@@ -4303,7 +4303,9 @@ scene.UnloadSharedTexture("art/hull.png");     // false when nothing was cached 
   also fixes the frame's render targets and prepares bound optical water (see **Independent optical bed** under
   Water). The no-argument `PrepareFrame()` is the legacy form and throws when bound water is queued. Only a
   frame that queues bound water freezes its inputs at preparation: a changed viewport, HDR, MSAA, grid mode or
-  water input then throws at recording. A frame with no bound water keeps the legacy late binding on either form.
+  water input then throws at recording. The water renderer reports `WaterFrameStateException` with
+  `WaterFrameRefusal.OpticsInputsChangedOrUnprepared`, `Prepared`, `PreparedPlaneCount` and `ActualPlaneCount`.
+  A frame with no bound water keeps the legacy late binding on either form.
   Every host the engine ships prepares for you, so a game needs no change. `GameApp3D` prepares with its frame size.
   `Render3DPreview.Capture` and the `Render3DSnapshot` captures call `Begin` themselves and prepare with their own
   target size, so a draw callback needs no preparation, and one that also calls `PrepareFrame` with that size is a
@@ -4678,7 +4680,8 @@ Every older `Draw(MeshHandle, ...)`, `Draw(PropHandle, ...)`, `DrawShadowOnly` a
 descriptor with no key and forwards to these two, so existing code queues exactly what it did and needs no change. A
 new draw knob becomes a descriptor property rather than another overload. Both descriptors also carry
 `ShadowOnly`, `InvertShadowDissolve` and `DissolveComplement`. `ShadowOnly = true` with `CastsShadows = false` draws
-nowhere and throws the same `ArgumentException` the instance queue has always thrown for that pair. A `default`
+nowhere and throws `DrawAdmissionArgumentException` with `DrawAdmissionRefusal.ShadowOnlyWithoutCasting`,
+`ShadowOnly`, `CastsShadows` and the entry point's `ParamName`. A `default`
 descriptor is not the plain draw (its tint is transparent, its material is not `Material.None` and it casts no
 shadow), so build one with the constructor.
 
@@ -5931,6 +5934,22 @@ trails are not depth-sorted against each other - keep alpha trails for cases whe
     and `MsaaResolveTargetGoldenTests` reads the resolved depth and normal targets back. The tonemap runs
     on the engine's existing display-referred shading values (no separate scene-linear conversion pass), so the
     current art direction is preserved, just with headroom added.
+The internal post chain reports `PostChainRefusal` on `PostChainArgumentException` (an `ArgumentException`)
+and `PostChainStateException` (an `InvalidOperationException`). `SourceSlotCountUnsupported` carries
+`SourceSlotCount`, `MinimumSourceSlotCount`, `MaximumSourceSlotCount` and `ParamName` without replacing the
+previous binding. `TargetsNotBoundAtCurrentGeneration` carries `BoundGeneration`, `ActualGeneration` and
+`TargetsMatch`, so a caller can distinguish an unbound chain, another target object and stale generation.
+`SourceSlotNotBuilt` carries `SourceSlot` and `BoundGeneration`. `TemporalPingPairMissing` carries
+`PingsAllocated`. State identifiers unrelated to a reason are null. See the
+[Render3D refusal tables](../KhaozEngine.Render3D/README.md#post-chain-and-water-frame-refusals).
+
+Water preparation and recording report `WaterFrameRefusal`. `AbsoluteQueueCountMismatch` is on
+`WaterFrameArgumentException` (an `ArgumentException`), with `AbsoluteCount`, `PlaneCount` and `ParamName`.
+`WaterFrameStateException` (an `InvalidOperationException`) carries `OceanDemandChanged` with
+`PreparedOceanDemand` and `ActualOceanDemand`, or `OpticsInputsChangedOrUnprepared` with `Prepared`,
+`PreparedPlaneCount` and `ActualPlaneCount`, including the pipeline fallback. The last successful plane count
+is retained after a failed preparation and is zero before the first success. Unrelated state identifiers are null.
+
 - **Water** (`Scene3D.DrawWater(in WaterPlane)` + `Post.Water`, a `WaterSettings`, **default off/no-op**): an opt-in
   stylized ocean surface - a Gerstner swell displacing the surface grid, a domain-warped three-layer procedural
   ripple normal on top, a camera-distance detail fade, per-channel Beer-Lambert depth grading of the body colour, a
@@ -5962,8 +5981,10 @@ trails are not depth-sorted against each other - keep alpha trails for cases whe
     splat and tile ground. A layout gains a binding with its first shader reader because optimization removes
     unread declarations and shifts Direct3D11 registers. Shaderc preserve-bindings stays unchanged.
     Scene and standalone lit renderer construction require `GpuCapabilities.MaxFragmentStorageBuffers >= 3`
-    before GPU allocation, including when water is disabled. Lower reports throw `NotSupportedException`
-    naming `maxPerStageDescriptorStorageBuffers`. See the
+    before GPU allocation, including when water is disabled. Lower reports throw
+    `LitReceiverNotSupportedException` (a `NotSupportedException`) with
+    `LitReceiverRefusal.FragmentStorageBufferLimitInsufficient`, `RequiredCount`, `AvailableCount` and
+    `CapabilityName` (`maxPerStageDescriptorStorageBuffers`). See the
     [Render3D water reference](../KhaozEngine.Render3D/README.md) for packing, caps and diagnostics.
   - **Per-plane look** (`WaterPlane.Look`, a `WaterLook`, since 17.7.0, **default `null` = the scene's look, byte-
     identical**): the optional `look` constructor parameter, so every ordinary call written before this existed still
@@ -7163,12 +7184,21 @@ with X right and Y forward. `Advance` refuses a sample span shorter than `ClipCo
 a nonfinite velocity. `n` is 0 only until a movement has eased a weight in after construction or `Reset`.
 
 `GltfLoader.LoadSkinned` retains the glTF name of every skeleton node in `Skeleton.NodeNames`, using an empty
-string for an unnamed node. `Skeleton.IndexOf(name)` resolves a required name and lists the known names if it is
-missing. `TryIndexOf(name, out node)` is the non-throwing missing-name form. Duplicate non-empty names throw when
-name lookup is used because the target would be ambiguous. `BoneIndexOfNode(node)` maps a skeleton node back to
-its skin bone, or returns `-1` for a non-joint ancestor. A loaded skeleton contains every `skin.joints` node and
+string for an unnamed node. `Skeleton.IndexOf(name)` resolves a required name or throws
+`SkeletonArgumentException` with `SkeletonRefusal.JointNameMissing`, `RequestedName` and `KnownNames`.
+`KnownNames` is an owned read-only snapshot of the non-empty names, copied when set so source
+mutation and collection casts cannot change it. `TryIndexOf(name, out node)` is the non-throwing missing-name
+form. Duplicate non-empty names throw `SkeletonStateException` with `SkeletonRefusal.DuplicateNodeName`,
+`NodeName`, `FirstNodeIndex` and `DuplicateNodeIndex` when name lookup is used because the target is ambiguous.
+`BoneIndexOfNode(node)` maps a skeleton node back to its skin bone, or returns `-1` for a non-joint ancestor. A loaded skeleton contains every `skin.joints` node and
 the ancestors needed to compose those joints. It does not include a child outside `skin.joints`, so an authored
 socket that needs name lookup remains a zero-weight skin joint.
+
+`SkeletonArgumentException` derives from `ArgumentException`. Its other reasons are
+`NodeArrayLengthsMismatch` with `ParentCount`, `RestCount` and `LogicalIndexCount`, `NameCountMismatch` with
+`NameCount` and `NodeCount`, and `LocalPoseCountMismatch` or `BonePaletteCountMismatch` with `ActualCount` and
+`ExpectedCount` for `ComposeInto` buffers. `SkeletonStateException` derives from `InvalidOperationException`.
+Argument refusals preserve `ParamName`, including null on the node-array and compose-buffer guards.
 
 `BoneSocket` composes a rigid piece onto one of those posed joints without a scene or GPU. System.Numerics uses
 row vectors, so the piece-local transform stays innermost:
@@ -7187,7 +7217,7 @@ because no rigid orientation can be recovered.
 
 ### Attachment sets
 
-`KhaozEngine.Attachments` is a GPU-free, BCL-only package with immutable `AttachmentSetDefinition`
+`KhaozEngine.Attachments` is a GPU-free package referencing only the dependency-free Primitives, with immutable `AttachmentSetDefinition`
 values whose `AttachmentPartDefinition` parts are either `RigidAttachmentPartDefinition` or
 `SkinnedAttachmentPartDefinition`. `AttachmentSetJson` reads format 1 as rigid and format 2 with a
 required exact `rigid` or `skinned` kind on every part. Rigid parts keep `joint` and `local`. Skinned
@@ -7195,12 +7225,45 @@ parts contain only `id`, `kind` and `mesh`. Unknown or duplicate members are ref
 write the original canonical format-1 bytes and keep their semantic hashes. Mixed or skinned sets
 write format 2. Reference this package explicitly from headless publishers.
 
+Set constructor admission throws `AttachmentSetArgumentException`, which remains catchable as
+`ArgumentException` and retains `ParamName`. `ValidateReferences` and `AttachmentSetJson.Parse`
+throw `AttachmentSetDataException`, derived from `MalformedDataException`. Both family types carry
+non-nullable `AttachmentSetRefusal Reason` and the part, mesh, hash, joint or schema identifiers
+listed in the [set refusal table](../KhaozEngine.Attachments/README.md#set-refusals).
+Catch `MalformedDataException` where a set-data caller previously caught `InvalidDataException`.
+Plain null-argument and source-name checks stay BCL.
+
+The JSON wrapper preserves a known set reason and every identifier, including a constructor's
+`ParamName`, adds `SourceName` and keeps the original as `InnerException`. Native syntax and
+framework accessor failures use `JsonMalformed` and `JsonValueShapeInvalid`. For schema checks,
+`JsonPath` names the canonical value location, or the containing object alongside `PropertyName` for missing, duplicate
+and unknown properties. `PartIndex` and `ComponentIndex` are zero-based. `ActualCount` is null for
+a non-array transform and `ActualHash` is null for a missing reference. `AttachmentSetCache.Get`
+propagates these JSON refusals before mesh reads or uploads. Messages remain developer prose.
+
 `AttachmentGlb.ValidateRigidEmbedded` and `ValidateSkinnedEmbedded` check self-contained glTF 2.0
 GLBs before import. The garment policy requires one embedded buffer, exactly one skin referenced by
 every mesh node, unique non-blank joint names and at most 128 joints. Every primitive needs
 `JOINTS_0` and `WEIGHTS_0` with at most four influences. External URIs, duplicate keys, further
 influence sets, all-zero weights, out-of-range joints, animations, morph targets and mesh weights
 are refused. Rigid and skinned imports retain the same material factors, vertex colours and maps.
+
+The GLB checks throw `AttachmentGlbContainerDataException`, `AttachmentAccessorDataException`,
+`AttachmentHierarchyDataException`, `AttachmentRigidGeometryDataException`,
+`AttachmentSkinnedGeometryDataException` or `RigIdentityDataException`. Each derives from
+`MalformedDataException` and carries its family's non-nullable `Reason`, `SourceName` and typed
+identifiers. Catch `MalformedDataException` for these families. Existing `InvalidDataException`
+catches need this additional base because `InvalidDataException` is sealed. `JsonPath` identifies
+the canonical schema location. Accessor `Index` preserves signed table references and unsigned
+sparse indexes as `long?`. The [GLB refusal tables](../KhaozEngine.Attachments/README.md#glb-refusals)
+list every reason and identifier. Messages remain developer prose.
+
+All three public GLB APIs preserve a known refusal's family, reason and identifiers when adding
+`SourceName`, and keep the original error as `InnerException`. JSON syntax failures use the
+container's `JsonMalformed` reason. Framework JSON shape and numeric conversion failures use
+`ValueShapeInvalid`. Shared skin checks retain `AttachmentSkinnedGeometryRefusal` through rig identity,
+including joint names and inverse binds. Rig-specific fit and rest-transform checks use `RigIdentityRefusal`.
+`AttachmentSetCache.Get` propagates the rigid and skinned policy families before decoding and uploading.
 
 For body fit revisions, call `AttachmentGlb.ComputeRigIdentity(bodyGlbBytes, sourceName)` from a
 headless publisher or the client. Persist the complete `rig-v1:<sha256>` result. It covers ordered
@@ -7226,7 +7289,17 @@ Garment joints match host skin bones by ordinal name, including reordered subset
 outside the skin is insufficient. Every garment inverse bind must be finite and match the host
 within an inclusive absolute `1e-4` per element over all 16 elements. Binding precomputes the index
 table. Rigid parts retain part-local correction, body alignment and scale-free joint composition.
-Rigid-only `loaded.Bind(map)` remains valid and refuses garments with `InvalidDataException`.
+Rigid-only `loaded.Bind(map)` remains valid and refuses garments with `AttachmentBindingDataException`,
+`AttachmentBindingRefusal.HostMeshRequired` and `PartId`. Binding data refusals derive from
+`MalformedDataException`. Callers handling malformed data from either `AttachmentSetBinding`
+constructor or either `LoadedAttachmentSet.Bind` overload catch that base. `RigidJointUnresolved`
+carries `PartId`, `JointName` and the original `InnerException`. Garment refusals preserve `PartId`,
+`MeshKey`, joint names and counts where applicable. `GarmentBindMismatch` carries `BindTolerance`.
+Frame and palette access refusals use `AttachmentBindingArgumentException`, an `ArgumentException`
+with `Reason`, `ParamName` and the applicable identifiers. `PoseCompositionFailed` keeps the original
+error as `InnerException`, including a joint or world validation reason when one was thrown by the
+binding. The [binding refusal table](../KhaozEngine.Attachments.Render3D/README.md#binding-refusals)
+lists every member and its identifiers.
 
 One cache owns uploads for one scene, shares verified mesh revisions by key, hash and kind, and
 refuses a mesh reference requested under both kinds even when its upload is warm. Dispose it before
@@ -7259,8 +7332,18 @@ for (int i = 0; i < count; i++)
 synchronously before the next preparation or submission on that view, or cache disposal. Scene3D
 records the current and previous palettes for motion. Rigid-only `WriteDraws` with
 `Span<RigidInstanceDraw>` remains valid. A set containing garments refuses that overload with
-`InvalidOperationException` before writing anything. Insufficient capacity, an invalid later pose
-or an invalid template changes no descriptor and queues no prefix. The unused output suffix stays intact.
+`AttachmentSubmissionStateException`, an `InvalidOperationException`, with
+`AttachmentSubmissionRefusal.MixedDrawRequired` and `SkinnedPartCount` before writing anything.
+Insufficient capacity throws `AttachmentSubmissionArgumentException`, an `ArgumentException`, with
+`AttachmentSubmissionRefusal.OutputTooSmall`, `ActualCapacity`, `RequiredCapacity` and `ParamName`.
+A shadow-only template without casting throws the Render3D `DrawAdmissionArgumentException` with
+`DrawAdmissionRefusal.ShadowOnlyWithoutCasting`, `ShadowOnly`, `CastsShadows` and `ParamName`.
+Rigid and skinned instance construction, Scene3D descriptor admission and the tile-world rigid fallback
+use that same shared family and reason, retaining each entry point's parameter name.
+Insufficient capacity, an invalid later pose or an invalid template changes no descriptor and queues
+no prefix. The unused output suffix stays intact. See the
+[submission refusal table](../KhaozEngine.Attachments.Render3D/README.md#submission-refusals) and
+[draw admission table](../KhaozEngine.Render3D/README.md#draw-admission-refusals).
 
 Create one outline group through the scene, then add the complete mixed set:
 
@@ -7294,16 +7377,22 @@ Besides the set type renames in the design record table:
   `AttachmentSetJson.RigidOnlyFormatVersion`.
 - `GltfLoader.LoadPartsWithMaterials(ReadOnlyMemory<byte>, string)`,
   `GltfLoader.LoadSkinnedPartsWithMaterials(ReadOnlyMemory<byte>, string)` and
-  `GltfLoader.LoadSkinned(ReadOnlyMemory<byte>, string)` throw `InvalidDataException` for a malformed glTF.
-  The message names the identity and the importer's diagnostic is the inner exception. Catch that instead of a
-  SharpGLTF type.
+  `GltfLoader.LoadSkinned(ReadOnlyMemory<byte>, string)` throw `GltfImportDataException` for a malformed glTF.
+  `Reason` is `GltfImportRefusal.MalformedModel`, `Identity` is the supplied raw identity and the importer's
+  diagnostic is `InnerException`. This type derives from `MalformedDataException` in Primitives because
+  `InvalidDataException` is sealed. Update existing malformed-data catches to include `MalformedDataException`.
+  Callers never need a SharpGLTF exception type.
 
 ### Skinned body contracts (any body shape)
 
 A game with more than one skinned body states each body's joints once as a `SkeletonContract` and checks every
 loaded skin against it. Each `ContractJoint` carries a glTF node name, its parent's name (`null` for the root) and
 whether it deforms the skin. The root comes first and each parent before its children. Construction refuses an
-empty table, an unnamed or repeated joint, a second root and a parent declared after its child, naming the joint.
+empty table, an unnamed or repeated joint, a first joint with a parent, a second root and a parent declared after
+its child. `SkeletonContractArgumentException` derives from `ArgumentException`, retains `ParamName` as `joints`
+and carries `SkeletonContractRefusal`: `EmptyJointTable` with `JointCount`, `JointUnnamed` with `JointIndex` and
+`JointName`, `FirstJointHasParent` or `ParentNotDeclaredBeforeChild` with `JointName` and `ParentName`,
+`AdditionalRoot` with `JointName` and `RootName`, and `DuplicateJointName` with `JointName`.
 The table is copied, so a caller may reuse its list.
 
 ```csharp
@@ -7326,19 +7415,30 @@ Matrix4x4 bellWorld = bellLocal * joints.BodyAlignment(joints.Node("head"))
 ```
 
 `ContractJointMap` refuses a skeleton with more nodes than `SkinningMath.MaxBonesPerDraw`, two nodes of one name,
-and a contract joint that is missing, misparented or, other than the root, outside the skin. A misparent message
-names both parents. Unnamed nodes are left alone, as `Skeleton` leaves them. The base is the body's zero: an
+and a contract joint that is missing, misparented or, other than the root, outside the skin.
+`ContractJointMapArgumentException.Reason` identifies the rule through `ContractJointMapRefusal`. A
+`ParentNameMismatch` refusal carries `JointName`, `ActualParentName` and `ExpectedParentName`. Missing and
+unskinned joints carry `JointName`, and duplicate names carry `NodeName` and `NodeIndex`. Numerical inversion
+refusals carry `JointName` with `ParentNodeIndex` for `ParentBaseFrameSingular` or `NodeIndex` for
+`BaseFrameSingular`. Unnamed nodes are left alone, as `Skeleton` leaves them. The base is the body's zero: an
 optional one-key stance clip sampled once, or the bind rest without one. A stance must carry the
 `stanceClipName` argument (`stance` by default), key each track exactly once, animate contract joints only and
 carry no scale track, or it is refused before it is sampled. `BaseLocal` is the base local pose per node.
 `BaseWorld`, `ParentBaseInverse` and `BodyAlignment` return a contract joint's base model frame, the inverse of its
 parent's, and the rotation that takes its base orientation back out. They refuse a node outside the contract
-rather than return a zero matrix. `Node` resolves any named node and `Bone` its skin bone.
+rather than return a zero matrix, with `NodeOutsideContract`, `NodeIndex` and `NodeName`.
+`Node` resolves any named node and `Bone` its skin bone. A missing name throws
+`ContractJointMapKeyNotFoundException` with `NodeNameMissing` and `JointName`. A named node outside the skin
+throws `ContractJointMapStateException` with `NamedNodeOutsideSkin` and `JointName`. These types retain
+`KeyNotFoundException` and `InvalidOperationException` as their respective bases. Argument refusals retain
+`ArgumentException` and `ParamName`. The [Render3D refusal tables](../KhaozEngine.Render3D/README.md#animation-refusals)
+list every reason and identifier.
 The alignment's homogeneous component is exactly one, including when general inversion rounds it for oblique
 base axes. External attachment matrices still require an exact affine column.
 
 `ClipRefusals` words a skin loader's clip refusals one way, naming the clip, the rule and the joint. `Only` throws
-on a second clip of one name. The other checks return null for a clean clip and a message otherwise, so a loader
+`ClipAdmissionArgumentException` on a second clip of one name, with `ClipAdmissionRefusal.DuplicateClipName`
+and `ClipName`. The other checks return null for a clean clip and a diagnostic message otherwise, so a loader
 chains them and throws the first:
 
 ```csharp
@@ -7352,8 +7452,11 @@ if (refusal is not null) throw new InvalidDataException(refusal);
 ```
 
 `Unkeyed` checks each `turned` joint's rotation, then its translation when `moved` names it too, then the joints
-only `moved` names, and throws for a joint name the skeleton lacks. `Uncovered` refuses a channel the stance keys
-and the clip leaves unkeyed on a node the filter takes, and returns null without a stance. `Breach` reports the
+only `moved` names. A joint name the skeleton lacks throws `ClipAdmissionArgumentException` with
+`ClipAdmissionRefusal.RequiredJointMissing` and `JointName`. The exception derives from `ArgumentException`,
+retaining the caller's `paramName` for `Only` and `turned` or `moved` for `Unkeyed`. These admission failures are
+separate from the returned diagnostics. `Uncovered` refuses a channel the stance keys and the clip leaves
+unkeyed on a node the filter takes, and returns null without a stance. `Breach` reports the
 first `ClipHygiene` finding of a policy. Each check allocates, so run them at load.
 
 `SkinnedGrounding.MinimumY` returns the lowest world y of the DEFORMED skin, not its rest box, so a body lowered
@@ -7392,7 +7495,12 @@ weight, and a mirrored one plays `MomentSide.Left` or `Right` with even odds. Th
 Salt 0 over a glance and turn table reproduces Grimhollow's standing-player schedule to the bit. The overload with
 `stoppedAt` skips a moment that began before the body last stopped. `At` allocates nothing. `Moment.None`, family
 -1, is the default value. The constructor refuses an empty table, a weight or length out of range, and options
-that are not finite or out of range, naming the option or family.
+that are not finite or out of range with `MomentScheduleArgumentException`, derived from `ArgumentException`.
+Its `MomentScheduleRefusal` reason identifies the rule. `OptionName` and `OptionValue` identify a refused option,
+with `OptionValue` stored as a double even for `MaxEmptySlots`. `FamilyName` and `FamilyIndex` identify a
+refused family, with `Weight` or `LengthSeconds` for the refused value. `FamilyDoesNotFitSlot` also carries
+`AvailableSeconds`, `SlotSeconds` and `QuietSeconds`. `FamiliesEmpty` carries `FamilyCount`, and
+`WeightTotalNotFinite` carries `TotalWeight`. `ParamName` remains `options` or `families`.
 
 ### Layered / masked animation (attack while running)
 
@@ -7407,8 +7515,12 @@ its descendants (the torso + arms + head) at `weight`, everything else 0 - the u
 `BoneMask.Subtree(skeleton, "spine", weight)` resolves the root through `Skeleton.NodeNames`. The older overload
 that accepts an explicit name list remains available for code-driven rigs. When a body's groups are lists of joints
 rather than one subtree, `BoneMask.ForJoints(skeleton, new[] { "neck", "head" }, weight)` weighs exactly the named
-joints, never their descendants. A name listed twice is taken once, and a name the skeleton lacks throws
-`ArgumentException` naming it.
+joints, never their descendants. A name listed twice is taken once. A missing name throws
+`BoneMaskArgumentException` with `BoneMaskRefusal.JointNameMissing` and `JointName`, which can be null for a
+null list entry. The explicit-name subtree overload throws `NameCountMismatch` with `NameCount` and `NodeCount`,
+or `SubtreeRootMissing` with `JointName`. The retained-name overload forwards the `Skeleton` name-lookup
+refusal. `BoneMaskArgumentException` derives from `ArgumentException` and preserves `ParamName` as `jointNames`,
+`boneNames` or `rootBoneName` for those guards. Null arguments and numeric root ranges keep their BCL checks.
 
     var anim = new LayeredAnimator(skeleton);
     // Base: full-body locomotion (drive its clip/playhead however you like - e.g. from your own state machine).
@@ -9260,7 +9372,7 @@ outside every umbrella and carries no physics backend, input or
 rendering dependency:
 
 ```xml
-<PackageReference Include="KhaozEngine.Movement" Version="22.0.1" />
+<PackageReference Include="KhaozEngine.Movement" Version="23.0.0" />
 ```
 
 The package composes `KhaozEngine.Locomotion`, `KhaozEngine.Navigation` and `KhaozEngine.Physics`. It does not
@@ -9817,7 +9929,7 @@ option does not enter bake identity or change canonical bytes. See the
 Round 2 D adds the driver layer in the same opt-in package. Keep the package reference explicit:
 
 ```xml
-<PackageReference Include="KhaozEngine.Movement" Version="22.0.1" />
+<PackageReference Include="KhaozEngine.Movement" Version="23.0.0" />
 ```
 
 `MoveToRange` consumes a `GroundNavigation` profile or an equivalent guarded `IRegionPathPlanner` composition.
@@ -10664,7 +10776,7 @@ same opt-in-backend pattern the `WorldStore.*` durable backends use.
 **Backend (`KhaozEngine.Physics.Bepu`)** - add this package to your game head / server:
 
 ```xml
-<PackageReference Include="KhaozEngine.Physics.Bepu" Version="22.0.1" />
+<PackageReference Include="KhaozEngine.Physics.Bepu" Version="23.0.0" />
 ```
 
 ```csharp
@@ -11509,7 +11621,23 @@ multiplying the fields yourself: a blind per-field multiply lands on a set `Vali
 `Scene3DChunkSink.MergeStats` forwards its cumulative `HlodMergeStats`. `MalformedCornersDropped` counts each
 out-of-range source corner contained during HLOD building, including repeated placements. A nonzero count
 identifies malformed source content even when containment keeps the live client running. At authoring ingress,
-`GltfLoader` and every `PropLoader` path reject invalid indices with asset identity, bad index and vertex count.
+`GltfLoader` rejects invalid indices with `MeshIndexStateException`,
+`MeshIndexRefusal.SourceIndexOutsideVertexCount` and raw `Identity`, `Index` and `VertexCount` members.
+`PropLoader` asset loads wrap the original refusal in `PropLoadStateException` with
+`PropLoadRefusal.AssetLoadFailed`, `EntryId` and `Path`. The inner mesh refusal also preserves `EntryId`.
+Direct `Normalize` and `NormalizeParts` throw the mesh refusal directly with `Identity = "prop"` and null
+`EntryId`, and `NormalizeParts` includes the zero-based `PartIndex`. Rebase failures use
+`MeshIndexRefusal.RebasedIndexOverflow` with the same index values and `BaseIndex`.
+
+Other model refusals use `GltfImportStateException` and `GltfImportRefusal` for strict validation, no triangles,
+no usable skin, too many skin joints or an influence outside the skin joint count. Each carries raw `Identity`,
+and joint refusals also carry the counts or the vertex's `BoneIndices`, `VertexIndex` and `PartIndex`.
+`PropLoader` normalization uses `PropLoadRefusal.DeclaredHeightOutsideRange`, `NoMeasurableHeight` or
+`ScaleOutsideRange` with the declared or measured values and validation bounds. Empty material parts use
+`PropLoadArgumentException`, `PropLoadRefusal.MaterialPartsEmpty`, `PartCount` and `ParamName`.
+The state exceptions remain `InvalidOperationException` subtypes and the argument exception remains an
+`ArgumentException` subtype. See the [mesh import and prop refusal tables](../KhaozEngine.Render3D/README.md#mesh-import-and-prop-refusals)
+for the identifiers of each reason. Messages are developer prose.
 
 
 The decor ring makes far *terrain* visible for free, but its props still pop in only at the gameplay radius. HLOD
@@ -12362,6 +12490,15 @@ the chunk's props instead of rebuilding it. `streamer.RefreshPlacements(coord)` 
 layers of that loaded chunk through `Scene3DChunkSink`'s `IChunkPlacementRefreshSink` and leaves its terrain mesh
 and collider alone. `Invalidate` is still the call for a field change.
 
+`Scene3DChunkSink` configuration guards carry `ChunkSinkConfigurationRefusal` in `KhaozEngine.Terrain`.
+`DynamicsRequiresPhysics` and `CollisionRequiresPhysics` use `ChunkSinkConfigurationArgumentException`
+(an `ArgumentException`) and retain the offending `ParamName`. `UpdateField`, `UpdateLayers` and
+`ReconfigureLod` refuse executing CPU builds through `ChunkSinkConfigurationStateException`
+(an `InvalidOperationException`), with `FieldChangeDuringBuild`, `LayersChangeDuringBuild` or
+`LodChangeDuringBuild` and the active `BuildCount`. Flush or drain the streamer before changing configuration.
+A negative `collisionLod` stays a BCL parameter check, and layer topology remains a separate policy. See the
+[terrain configuration refusal table](../KhaozEngine.Terrain.Render3D/README.md#configuration-refusals).
+
 The same holds for a change to scatter or companion configs that leaves the field alone, such as a moved
 exclusion. Hand the sink the new layers, then refresh the props of the chunks the change can reach:
 
@@ -13037,8 +13174,10 @@ options.GroundCover.ModelCastsShadows = new Dictionary<string, bool> { ["reeds"]
 starts empty and maps exact authored selected archetype IDs to `AnimatedFoliageStyle(Motion, CastsShadows)`.
 Use IDs from your catalogs. An omitted style is Blade with casting off, independent of short-cover
 casting. Entries outside the selection or not exactly naming an authored selected archetype throw
-`ArgumentException` naming the ID. Selected archetypes sharing a catalog mesh reference or any resolved
-mesh part must agree on their effective style, including omitted defaults. Conflicts name both IDs.
+`AnimatedFoliageStyleArgumentException` with `AnimatedFoliageStyleRefusal.StyleOutsideSelection` and
+`ArchetypeId`. Selected archetypes sharing a catalog mesh reference or any resolved mesh part must agree
+on their effective style, including omitted defaults. Conflicts carry
+`AnimatedFoliageStyleRefusal.SharedMeshStyleConflict`, `FirstArchetypeId` and `SecondArchetypeId`.
 Styles are detached snapshots validated before submission and compared by value each draw. A changed
 selection or style, including an in-place map edit, invalidates only the splits that draw a changed
 archetype, and other splits keep their retained batches. Removing a style restores
@@ -13222,13 +13361,22 @@ var regions = new TileRegionResidency(
 
 Each definition owns a disjoint, non-empty archetype set. The view validates finite distances, unique layer IDs,
 known archetypes, and that LOD and HLOD do not exceed the draw radius. Each layer selects either only catalog
-roofs or no roofs. A mixed layer fails before upload and names both kinds. Roof layers cannot enable
+roofs or no roofs. A mixed layer fails before upload with `TilePropLayerArgumentException`,
+`TilePropLayerRefusal.RoofAndOrdinaryMixed`, `LayerId`, `RoofArchetypeId` and `OrdinaryArchetypeId`. Roof layers cannot enable
 `CutInsideInteriors`. When HLOD is enabled, its positive distance must
 also exceed `LodDistance`. A selected object is removed from ordinary prop submission and
 appears in exactly one `TilePropLayerSnapshot`, so it cannot double-draw. `TileRegionProps` is an immutable,
 generation-tagged region-plane snapshot. It carries object IDs and detached placements in stable order. Worker
 builds read that snapshot and resolved CPU mesh data only. They never read the live document, overrides, resolver
 caches or scene.
+
+Prop-layer definition failures carry `TilePropLayerArgumentException.Reason` from `TilePropLayerRefusal`:
+`DefinitionNull` and `LayerIdMissing` identify `LayerIndex`, `LayerIdDuplicate` adds `LayerId`,
+`SelectionEmpty` identifies `LayerId`, `ArchetypeMissing` adds `ArchetypeId`, and `ArchetypeSelectedTwice`
+carries `ArchetypeId`, `FirstLayerId` and `SecondLayerId`. `RoofInteriorCutEnabled` carries `LayerId`.
+Aggregate distance ordering throws `TilePropLayerRangeException` with `DistanceOrderingInvalid`, `LayerId`,
+`LodDistance`, `HlodDistance` and `DrawRadius`. Scalar finite and range checks stay BCL exceptions.
+Both subtypes preserve their original BCL catch contracts and `ParamName`, with unchanged `ActualValue`.
 
 A roof layer preserves `RoofVisibility` through the same observer, plane and footprint predicate as ordinary
 roofs. Its snapshots retain authored object IDs, planes and roof footprints for each presentation generation.
@@ -13343,6 +13491,27 @@ the first textured material fixes it. And every layer costs that size whether it
 colour layer is a full-size fill), so a 1024 texture makes each untextured material in the same catalog a 4 MB
 layer. 256 is plenty at this grain. Leave `GroundMaterials` null and the view builds the all-flat set itself,
 which is what a colour-only world wants.
+
+Hand-built `TileGroundMaterialSet` failures carry `TileGroundMaterialSetArgumentException.Reason` from
+`TileGroundMaterialSetRefusal`. `LayerCountMismatch` carries `MaterialCount`, `ActualLayerCount` and
+`RequiredLayerCount`. `LayerLimitExceeded` carries `LayerCount` and `MaximumLayerCount`.
+`LayerByteLengthMismatch` carries `LayerIndex`, `ActualByteLength`, `ExpectedByteLength`, `Width` and `Height`.
+`DuplicateMaterialId` carries `MaterialId`, `FirstSlot` and `DuplicateSlot`. `MissingLayerHasCompanion`
+carries `LayerIndex`, and `CompanionIsMissingLayer` adds `CompanionSlot` and `MaterialSlotCount`.
+These exceptions derive from `ArgumentException` and preserve `ParamName`.
+
+`Scene3D.LoadTileGroundMaterial` and `TileGroundMaterialConfig.BuildParams` refuse unsupported layer counts
+with `TileGroundUploadArgumentException`, `TileGroundUploadRefusal.LayerCountOutsideRange`, `LayerCount`,
+`MinimumLayerCount` and `MaximumLayerCount`. Scene upload uses `LayerByteLengthMismatch` for a wrong RGBA slice,
+carrying `LayerIndex`, `ActualByteLength`, `ExpectedByteLength`, `Width` and `Height`. Width and height numeric
+checks stay `ArgumentOutOfRangeException` with `ParamName` and `ActualValue`.
+
+Shared render-slot companion checks in `TileGroundSteepShading.Validate` throw `TileGroundSteepArgumentException`
+with `TileGroundSteepRefusal`. `CompanionIsSelf` carries `LayerIndex` and `CompanionSlot`,
+`CompanionOutsideSet` also carries `LayerCount`, and `BandOutsideRightAngle` and `BandCosinesNotDistinct`
+carry `LayerIndex`, `FromDegrees` and `ToDegrees`. Params construction, scene upload and TileWorld material
+sets forward the same reason for the same input. Both Render3D exception types derive from `ArgumentException`
+and preserve `ParamName`. Messages are developer prose, and unused optional identifiers are null.
 
 **Cliffs take a steep companion and are drawn from the side.** A ground material can name the material it
 becomes on steep ground. The corner vote is unchanged, so a one-tile cliff of rock beside flat grass still votes
@@ -13542,10 +13711,21 @@ referring to it by id keeps resolving.
 (an iterated box blur reading its outside neighbours from the document, so a patch blends into the terrain
 around it), `SetHeights`, `Line` (Bresenham, one object per tile, one undo step), `Scatter` (a jittered grid
 whose offsets come from a hash of the point and the seed, so the same arguments always produce the same world),
-`PlacePrefab` and `ImportHeights`. Height imports detect binary PGM (netpbm P5) or PNG by signature.
+`PlacePrefab` and `ImportHeights`. The path overload selects PNG for a `.png` extension and binary PGM
+(netpbm P5) otherwise.
 `PngReader` in Imaging supports every PNG colour type and bit depth, noninterlaced or Adam7, using grayscale
 or the red channel as height and ignoring alpha. A palette PNG supplies the red channel of each entry. Both formats preserve 16-bit sample precision. Write PGM files with LF line endings: a CRLF header spends its CR as the single delimiter byte and leaves the LF as sample 0, which shifts
 the whole raster.
+
+`PngReader.Decode` and the PNG path through `TileEditOps.ImportHeights(string, ...)` throw
+`PngDecodeDataException : MalformedDataException` for malformed PNG input. Catch `MalformedDataException`
+for the shared malformed-data boundary, replacing a PNG-specific `InvalidDataException` catch.
+Unsupported PNG features throw `PngDecodeNotSupportedException : NotSupportedException`.
+Both carry `PngDecodeRefusal Reason` and the identifiers listed in the
+[Imaging refusal table](../KhaozEngine.Imaging/README.md#refusals), including chunk offsets, lengths,
+CRCs, palette indices and allocation sizes. `CompressedStreamCorrupt` preserves the native zlib error
+in `InnerException`. `DecodedLengthMismatch` separately records the bytes read and trailing-data probe.
+Messages are developer prose, so callers branch on `Reason`.
 
 Two limits are worth knowing before leaning on the general case. A `SnapshotRectCommand` owns what was inside
 its rect when it looked and nothing else, so an object anchored outside but overhanging in is not restored, and
@@ -19100,7 +19280,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="22.0.1" />
+<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="23.0.0" />
 ```
 
 ```csharp
@@ -19136,7 +19316,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="22.0.1" />
+<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="23.0.0" />
 ```
 
 ```csharp
@@ -19381,7 +19561,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Metal" Version="22.0.1" />
+<PackageReference Include="KhaozEngine.Gpu.Metal" Version="23.0.0" />
 ```
 
 ```csharp
@@ -20632,7 +20812,8 @@ custom scene keeps compiling. The rigid default keeps the mesh, the transform an
 a descriptor whose `Dissolve` is above 0 through `DrawMeshDissolved`. It draws nothing for a shadow-only descriptor.
 It also draws nothing for a complement phase above one half with no dissolve. `Scene3D` shows no body for that draw, at
 most a shadow, so the fallback treats it like a shadow-only draw. A shadow-only descriptor with `CastsShadows = false`
-throws the same `ArgumentException` the scene's instance queue throws. The rigid default drops the key, the tint, the
+throws the shared Render3D `DrawAdmissionArgumentException` with
+`DrawAdmissionRefusal.ShadowOnlyWithoutCasting`, both shadow flags and `ParamName` set to `draw`. The rigid default drops the key, the tint, the
 material, `CastsShadows` and `InvertShadowDissolve`, and does not forward `DissolveComplement`. The skinned default
 keeps the tint as well and drops the key, the material and `CastsShadows`. On a scene that does not implement the older
 skinned draws it still throws `NotSupportedException`.
@@ -20893,6 +21074,10 @@ The renderer-free foundation, one line each (all pure .NET / `System.Numerics`, 
 
 - **`KhaozEngine.Primitives`**: the zero-dependency leaf: `Color` (`FromHex`/`ToHex`, `* float`, `Lerp`),
   `DeterministicRng`, `XorRng`, `MathUtil`, `ViewportMath`, `Easing`. The bottom of the dependency graph.
+  Its abstract `KhaozEngine.MalformedDataException` is the base for every engine refusal for malformed input
+  data whose BCL type would have been the sealed `InvalidDataException`. Catch the base when handling any
+  such refusal, or catch a concrete family type and inspect its `Reason` to distinguish that family's
+  refusals. The base has no reason member and is available on both `net8.0` and `net10.0`.
 - **`KhaozEngine.App`**: app identity / data paths: `AppDataPaths` (publisher-rooted: `<base>/APKiwiOrg/<game>/`),
   `BuildMetadata`, `ServiceLocator`, and `AppInstallStamp` (local first-ran/updated stamp; see "Install / update
   stamp" below), plus `EnvFile` for ordered optional-file assignments with caller-owned precedence.
@@ -24047,7 +24232,7 @@ socket a shipping build does not contain. It is in NO umbrella, and a game head 
 
 ```xml
 <ItemGroup Condition="'$(Configuration)' == 'Debug'">
-  <PackageReference Include="KhaozEngine.Automation" Version="22.0.1" />
+  <PackageReference Include="KhaozEngine.Automation" Version="23.0.0" />
 </ItemGroup>
 ```
 

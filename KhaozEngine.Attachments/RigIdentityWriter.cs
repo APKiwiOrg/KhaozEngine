@@ -22,6 +22,7 @@ internal sealed class RigIdentityWriter : IDisposable
 
     internal void Text(string value)
     {
+        // Invariant: callers supply constants, canonical numbers or already-decoded JSON strings.
         if (!AttachmentText.IsWellFormedUtf16(value))
             throw new InvalidDataException("Rig identity text must be well-formed UTF-16.");
         byte[] bytes = Encoding.UTF8.GetBytes(value);
@@ -29,36 +30,47 @@ internal sealed class RigIdentityWriter : IDisposable
         hash.AppendData(bytes);
     }
 
-    internal void Transform(JsonElement node)
+    internal void Transform(JsonElement node, int nodeIndex)
     {
         bool matrix = node.TryGetProperty("matrix", out JsonElement value);
         if (matrix && (node.TryGetProperty("translation", out _) || node.TryGetProperty("rotation", out _) || node.TryGetProperty("scale", out _)))
-            throw new InvalidDataException("A rest node must use matrix or TRS, not both.");
+            throw new RigIdentityDataException(RigIdentityRefusal.MatrixAndTrsBothPresent, "A rest node must use matrix or TRS, not both.") { NodeIndex = nodeIndex };
         Integer(matrix ? 1 : 0);
-        if (matrix) Numbers(value, 16);
+        if (matrix) Numbers(value, 16, nodeIndex);
         else
         {
-            Numbers(node, "translation", new[] { "0", "0", "0" });
-            Numbers(node, "rotation", new[] { "0", "0", "0", "1e0" });
-            Numbers(node, "scale", new[] { "1e0", "1e0", "1e0" });
+            Numbers(node, "translation", new[] { "0", "0", "0" }, nodeIndex);
+            Numbers(node, "rotation", new[] { "0", "0", "0", "1e0" }, nodeIndex);
+            Numbers(node, "scale", new[] { "1e0", "1e0", "1e0" }, nodeIndex);
         }
     }
 
-    void Numbers(JsonElement node, string name, string[] defaults)
+    void Numbers(JsonElement node, string name, string[] defaults, int nodeIndex)
     {
-        if (node.TryGetProperty(name, out JsonElement values)) Numbers(values, defaults.Length);
+        if (node.TryGetProperty(name, out JsonElement values)) Numbers(values, defaults.Length, nodeIndex);
         else foreach (string value in defaults) Text(value);
     }
 
-    void Numbers(JsonElement values, int count)
+    void Numbers(JsonElement values, int count, int nodeIndex)
     {
         if (values.ValueKind != JsonValueKind.Array || values.GetArrayLength() != count)
-            throw new InvalidDataException($"Rest transform must contain {count} finite numbers.");
+            throw new RigIdentityDataException(RigIdentityRefusal.RestTransformLengthMismatch, $"Rest transform must contain {count} finite numbers.")
+            {
+                NodeIndex = nodeIndex,
+                ExpectedCount = count,
+                ActualCount = values.ValueKind == JsonValueKind.Array ? values.GetArrayLength() : null,
+            };
+        int component = 0;
         foreach (JsonElement number in values.EnumerateArray())
         {
             if (number.ValueKind != JsonValueKind.Number || !number.TryGetSingle(out float finite) || !float.IsFinite(finite))
-                throw new InvalidDataException("Rest transform must contain finite numbers.");
+                throw new RigIdentityDataException(RigIdentityRefusal.RestTransformComponentInvalid, "Rest transform must contain finite numbers.")
+                {
+                    NodeIndex = nodeIndex,
+                    ComponentIndex = component,
+                };
             Text(CanonicalNumber(number.GetRawText()));
+            component++;
         }
     }
 

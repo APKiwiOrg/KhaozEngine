@@ -98,9 +98,9 @@ namespace KhaozEngine.Render3D.Rendering
 
         /// <summary>Bind the geometry and optical capability when either differs from the previous draw.
         /// Consecutive planes sharing both reuse their pipeline and buffer bindings.</summary>
-        void BindRoute(IGpuCommandList cl, PlaneRoute route, bool triangle)
+        void BindRoute(IGpuCommandList cl, PlaneRoute route, bool triangle, int planeCount)
         {
-            cl.SetPipeline(PreparedWaterPipeline(route, triangle));
+            cl.SetPipeline(PreparedWaterPipeline(route, triangle, planeCount));
             switch (route)
             {
                 case PlaneRoute.FlatQuad:
@@ -130,7 +130,7 @@ namespace KhaozEngine.Render3D.Rendering
                 bool triangle = _opticsPrepared && _preparedPlanes[i].OpticalMode == 2;
                 if (route != bound || triangle != boundTriangle)
                 {
-                    BindRoute(cl, route, triangle);
+                    BindRoute(cl, route, triangle, planeCount);
                     boundTriangle = triangle;
                     bound = route;
                 }

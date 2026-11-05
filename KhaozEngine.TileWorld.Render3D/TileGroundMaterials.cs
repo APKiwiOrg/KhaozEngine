@@ -36,13 +36,18 @@ public sealed class TileGroundMaterialSet : ITileGroundSlotMap
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(width);
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(height);
         if (layers.Count != materialIds.Count + 1)
-            throw new ArgumentException(
+            throw new TileGroundMaterialSetArgumentException(TileGroundMaterialSetRefusal.LayerCountMismatch,
                 $"a set of {materialIds.Count} materials needs {materialIds.Count + 1} layers (one each plus the " +
-                $"reserved missing-material layer), got {layers.Count}.", nameof(layers));
+                $"reserved missing-material layer), got {layers.Count}.", nameof(layers))
+            {
+                MaterialCount = materialIds.Count, ActualLayerCount = layers.Count,
+                RequiredLayerCount = materialIds.Count + 1,
+            };
         if (layers.Count > TileGroundMaterialConfig.MaxMaterials)
-            throw new ArgumentException(
+            throw new TileGroundMaterialSetArgumentException(TileGroundMaterialSetRefusal.LayerLimitExceeded,
                 $"a tile-ground material set holds at most {TileGroundMaterialConfig.MaxMaterials} layers, got {layers.Count}.",
-                nameof(layers));
+                nameof(layers))
+            { LayerCount = layers.Count, MaximumLayerCount = TileGroundMaterialConfig.MaxMaterials };
 
         int expected = width * height * 4;
         var copy = new TileGroundLayerImage[layers.Count];
@@ -53,9 +58,13 @@ public sealed class TileGroundMaterialSet : ITileGroundSlotMap
             // Caught here rather than at the upload, because the slot is what names the culprit: by the time the
             // renderer sees it, the layers are one flat array of bytes with no material left attached to them.
             if (layer.AlbedoRgba.Length != expected)
-                throw new ArgumentException(
+                throw new TileGroundMaterialSetArgumentException(TileGroundMaterialSetRefusal.LayerByteLengthMismatch,
                     $"layer {slot} is {layer.AlbedoRgba.Length} bytes, expected {expected} for {width}x{height} RGBA8.",
-                    nameof(layers));
+                    nameof(layers))
+                {
+                    LayerIndex = slot, ActualByteLength = layer.AlbedoRgba.Length,
+                    ExpectedByteLength = expected, Width = width, Height = height,
+                };
             copy[slot] = layer;
         }
         TileGroundSteepCompanions.CheckSet(copy, copy.Length - 1);
@@ -66,9 +75,12 @@ public sealed class TileGroundMaterialSet : ITileGroundSlotMap
         {
             ids[slot] = materialIds[slot];
             if (!_slots.TryAdd(materialIds[slot], slot))
-                throw new ArgumentException(
+                throw new TileGroundMaterialSetArgumentException(TileGroundMaterialSetRefusal.DuplicateMaterialId,
                     $"material {materialIds[slot]} is in slot {_slots[materialIds[slot]]} already, so slot {slot} would shadow it.",
-                    nameof(materialIds));
+                    nameof(materialIds))
+                {
+                    MaterialId = materialIds[slot], FirstSlot = _slots[materialIds[slot]], DuplicateSlot = slot,
+                };
         }
 
         Width = width;

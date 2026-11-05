@@ -1,5 +1,4 @@
 using System;
-using System.IO;
 using System.Linq;
 using System.Numerics;
 using KhaozEngine.Attachments;
@@ -22,7 +21,10 @@ public sealed class RigidAttachmentBindingTests
         var skinned = new SkinnedAttachmentPartDefinition(7, Part(1, "hip").Mesh);
         var definition = new AttachmentSetDefinition(mixed ? [Part(1, "hip"), skinned] : [skinned]);
 
-        Assert.Throws<InvalidDataException>(() => new AttachmentSetBinding(definition, Map(skeleton)));
+        var error = Assert.Throws<AttachmentBindingDataException>(() => new AttachmentSetBinding(definition, Map(skeleton)));
+        Assert.Equal(AttachmentBindingRefusal.HostMeshRequired, error.Reason);
+        Assert.Equal(7u, error.PartId);
+        Assert.IsAssignableFrom<MalformedDataException>(error);
     }
 
     [Fact]
@@ -115,7 +117,10 @@ public sealed class RigidAttachmentBindingTests
         var model = Matrix4x4.Identity;
         var worlds = new Matrix4x4[1];
 
-        Assert.Throws<ArgumentException>(() => binding.ComposeWorlds(other, palette, model, worlds));
+        var error = Assert.Throws<AttachmentBindingArgumentException>(() => binding.ComposeWorlds(other, palette, model, worlds));
+        Assert.Equal(AttachmentBindingRefusal.SkeletonMismatch, error.Reason);
+        Assert.Equal("skeleton", error.ParamName);
+        Assert.IsAssignableFrom<ArgumentException>(error);
     }
 
     [Fact]
@@ -151,7 +156,11 @@ public sealed class RigidAttachmentBindingTests
         var palette = new Matrix4x4[length];
         var worlds = new Matrix4x4[1];
 
-        Assert.Throws<ArgumentException>(() => binding.ComposeWorlds(skeleton, palette, Matrix4x4.Identity, worlds));
+        var error = Assert.Throws<AttachmentBindingArgumentException>(() => binding.ComposeWorlds(skeleton, palette, Matrix4x4.Identity, worlds));
+        Assert.Equal(AttachmentBindingRefusal.HostPaletteLengthMismatch, error.Reason);
+        Assert.Equal(length, error.ActualCount);
+        Assert.Equal(2, error.RequiredCount);
+        Assert.Equal("palette", error.ParamName);
     }
 
     [Fact]
@@ -161,7 +170,11 @@ public sealed class RigidAttachmentBindingTests
         var binding = Bind(skeleton, Part(1, "hip"), Part(2, "knee"));
         Matrix4x4[] worlds = [Matrix4x4.CreateTranslation(99, 0, 0)];
 
-        Assert.Throws<ArgumentException>(() => binding.ComposeWorlds(skeleton, skeleton.ComposeRestPose(), Matrix4x4.Identity, worlds));
+        var error = Assert.Throws<AttachmentBindingArgumentException>(() => binding.ComposeWorlds(skeleton, skeleton.ComposeRestPose(), Matrix4x4.Identity, worlds));
+        Assert.Equal(AttachmentBindingRefusal.WorldOutputTooSmall, error.Reason);
+        Assert.Equal(1, error.ActualCapacity);
+        Assert.Equal(2, error.RequiredCapacity);
+        Assert.Equal("destination", error.ParamName);
         Assert.Equal(new Vector3(99, 0, 0), worlds[0].Translation);
     }
 
@@ -173,10 +186,12 @@ public sealed class RigidAttachmentBindingTests
         Skeleton skeleton = Create();
         var definition = new AttachmentSetDefinition([Part(1, "hip"), Part(7, joint)]);
 
-        var error = Assert.Throws<InvalidDataException>(() => new AttachmentSetBinding(definition, Map(skeleton)));
+        var error = Assert.Throws<AttachmentBindingDataException>(() => new AttachmentSetBinding(definition, Map(skeleton)));
 
-        Assert.Contains("7", error.Message);
-        Assert.Contains(joint, error.Message);
+        Assert.Equal(AttachmentBindingRefusal.RigidJointUnresolved, error.Reason);
+        Assert.Equal(7u, error.PartId);
+        Assert.Equal(joint, error.JointName);
+        Assert.NotNull(error.InnerException);
     }
 
     [Theory]
@@ -193,7 +208,9 @@ public sealed class RigidAttachmentBindingTests
         Matrix4x4[] worlds = [Matrix4x4.CreateTranslation(99, 0, 0)];
         Matrix4x4 model = InvalidMatrix(kind);
 
-        Assert.Throws<ArgumentException>(() => binding.ComposeWorlds(skeleton, skeleton.ComposeRestPose(), model, worlds));
+        var error = Assert.Throws<AttachmentBindingArgumentException>(() => binding.ComposeWorlds(skeleton, skeleton.ComposeRestPose(), model, worlds));
+        Assert.Equal(AttachmentBindingRefusal.ModelTransformInvalid, error.Reason);
+        Assert.Equal("model", error.ParamName);
         Assert.Equal(new Vector3(99, 0, 0), worlds[0].Translation);
     }
 
@@ -212,9 +229,50 @@ public sealed class RigidAttachmentBindingTests
         palette[0] = InvalidMatrix(kind);
         Matrix4x4[] worlds = [Matrix4x4.CreateTranslation(99, 0, 0), Matrix4x4.CreateTranslation(98, 0, 0)];
 
-        Assert.Throws<ArgumentException>(() => binding.ComposeWorlds(skeleton, palette, Matrix4x4.Identity, worlds));
+        var error = Assert.Throws<AttachmentBindingArgumentException>(() => binding.ComposeWorlds(skeleton, palette, Matrix4x4.Identity, worlds));
+        Assert.Equal(AttachmentBindingRefusal.PoseCompositionFailed, error.Reason);
+        Assert.Equal(2u, error.PartId);
+        Assert.Equal("knee", error.JointName);
+        Assert.Equal("palette", error.ParamName);
+        var joint = Assert.IsType<AttachmentBindingArgumentException>(error.InnerException);
+        Assert.Equal(AttachmentBindingRefusal.JointPoseInvalid, joint.Reason);
+        Assert.Equal(2u, joint.PartId);
+        Assert.Equal("knee", joint.JointName);
         Assert.Equal(new Vector3(99, 0, 0), worlds[0].Translation);
         Assert.Equal(new Vector3(98, 0, 0), worlds[1].Translation);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void Composition_faults_keep_part_context_and_leave_output_untouched(bool overflow)
+    {
+        Skeleton skeleton = Create();
+        float translation = overflow ? MathF.ScaleB(1f, 127) : 0f;
+        var binding = Bind(skeleton, Part(7, "hip", Matrix4x4.CreateTranslation(translation, 0, 0)));
+        Matrix4x4[] palette = skeleton.ComposeRestPose();
+        Matrix4x4[] worlds = [Matrix4x4.CreateTranslation(99, 0, 0)];
+        binding.ComposeWorlds(skeleton, palette, Matrix4x4.Identity, worlds);
+        Matrix4x4 before = worlds[0];
+        Matrix4x4 model = Matrix4x4.CreateTranslation(translation, 0, 0);
+        if (!overflow) palette[1] = Matrix4x4.CreateScale(MathF.ScaleB(1f, -21), 1, 1);
+
+        var error = Assert.Throws<AttachmentBindingArgumentException>(() =>
+            binding.ComposeWorlds(skeleton, palette, model, worlds));
+
+        Assert.Equal(AttachmentBindingRefusal.PoseCompositionFailed, error.Reason);
+        Assert.Equal(7u, error.PartId);
+        Assert.Equal("hip", error.JointName);
+        Assert.Equal("palette", error.ParamName);
+        Assert.NotNull(error.InnerException);
+        if (overflow)
+        {
+            var world = Assert.IsType<AttachmentBindingArgumentException>(error.InnerException);
+            Assert.Equal(AttachmentBindingRefusal.WorldTransformInvalid, world.Reason);
+            Assert.Equal(7u, world.PartId);
+            Assert.Equal("hip", world.JointName);
+        }
+        Assert.Equal(before, worlds[0]);
     }
 
     static AttachmentSetBinding Bind(Skeleton skeleton, params RigidAttachmentPartDefinition[] parts) =>

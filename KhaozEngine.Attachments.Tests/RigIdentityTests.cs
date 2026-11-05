@@ -1,6 +1,5 @@
 using System;
 using System.Buffers.Binary;
-using System.IO;
 using System.Linq;
 using System.Numerics;
 using System.Text.Json.Nodes;
@@ -85,7 +84,12 @@ public class RigIdentityTests
         body.Accessors[0]!["componentType"] = 5122;
         body.Root["extensionsUsed"] = new JsonArray("KHR_mesh_quantization");
         body.Root["extensionsRequired"] = new JsonArray("KHR_mesh_quantization");
-        Assert.Throws<InvalidDataException>(() => Identity(body));
+        var error = Assert.Throws<AttachmentAccessorDataException>(() => Identity(body));
+        Assert.Equal(AttachmentAccessorRefusal.EncodingUnsupported, error.Reason);
+        Assert.Equal("body.glb", error.SourceName);
+        Assert.Equal("$.accessors[0]", error.JsonPath);
+        Assert.Equal(5122, error.ComponentType);
+        Assert.False(error.Normalized);
     }
 
     [Theory]
@@ -279,10 +283,27 @@ public class RigIdentityTests
         var body = new SkinnedAttachmentGlbFixture();
         body.Views[0]!["extensions"] = new JsonObject { ["EXT_meshopt_compression"] = new JsonObject() };
         if (required) body.Root["extensionsRequired"] = new JsonArray("EXT_meshopt_compression");
-        Assert.Throws<InvalidDataException>(() => Identity(body));
+        var error = Assert.Throws<AttachmentAccessorDataException>(() => Identity(body));
+        Assert.Equal(AttachmentAccessorRefusal.CompressionUnsupported, error.Reason);
+        Assert.Equal("body.glb", error.SourceName);
+        Assert.Equal("$.bufferViews[0]", error.JsonPath);
+        Assert.Equal(0, error.BufferViewIndex);
+        Assert.Equal("EXT_meshopt_compression", error.ExtensionName);
     }
 
     [Theory]
+    [InlineData("no-buffer")]
+    [InlineData("other-skin")]
+    [InlineData("skin-no-mesh")]
+    [InlineData("node-morph")]
+    [InlineData("mesh-morph")]
+    [InlineData("empty-primitives")]
+    [InlineData("bad-mode")]
+    [InlineData("malformed-influence")]
+    [InlineData("no-first-set")]
+    [InlineData("zero-weights")]
+    [InlineData("attribute-count")]
+    [InlineData("rest-nonfinite")]
     [InlineData("no-skin")]
     [InlineData("two-skins")]
     [InlineData("no-mesh")]
@@ -303,8 +324,21 @@ public class RigIdentityTests
     public void Unsafe_fit_input_is_refused_with_source_context(string defect)
     {
         var body = DetailedBody();
+        Assert.StartsWith("rig-v1:", Identity(body));
         switch (defect)
         {
+            case "no-buffer": body.Root["buffers"] = new JsonArray(); break;
+            case "other-skin": body.MeshNode["skin"] = 1; break;
+            case "skin-no-mesh": body.MeshNode.Remove("mesh"); break;
+            case "node-morph": body.MeshNode["weights"] = new JsonArray(); break;
+            case "mesh-morph": body.Mesh["weights"] = new JsonArray(); break;
+            case "empty-primitives": body.Mesh["primitives"] = new JsonArray(); break;
+            case "bad-mode": body.Primitives[0]!["mode"] = 7; break;
+            case "malformed-influence": Attributes(body)["JOINTS_01"] = 6; break;
+            case "no-first-set": Attributes(body).Remove("JOINTS_0"); Attributes(body).Remove("WEIGHTS_0"); break;
+            case "zero-weights": body.SetElement(2, 1, 0, 0, 0, 0); body.SetElement(7, 1, 0, 0, 0, 0); break;
+            case "attribute-count": body.Accessors[4]!["count"] = 2; break;
+            case "rest-nonfinite": body.Nodes[1]!["translation"] = new JsonArray(0, double.MaxValue, 0); break;
             case "no-skin": body.Root.Remove("skins"); break;
             case "two-skins": body.Root["skins"]!.AsArray().Add(body.Skin.DeepClone()); break;
             case "no-mesh": body.MeshNode.Remove("skin"); break;
@@ -326,8 +360,9 @@ public class RigIdentityTests
                 body.Nodes[1]!["translation"] = new JsonArray(0, 0, 0);
                 break;
         }
-        var error = Assert.Throws<InvalidDataException>(() => Identity(body));
-        Assert.Contains("body.glb", error.Message);
+        Action validate = () => Identity(body);
+        if (AttachmentRefusalAssertions.Rig(defect, validate)) return;
+        RigIdentityRefusalAssertions.Verify(defect, validate);
     }
 
     static string Identity(SkinnedAttachmentGlbFixture body) => AttachmentGlb.ComputeRigIdentity(body.Build(), "body.glb");

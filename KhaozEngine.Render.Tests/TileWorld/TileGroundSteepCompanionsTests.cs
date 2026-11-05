@@ -82,7 +82,9 @@ public class TileGroundSteepCompanionsTests
     public void A_hand_built_set_refuses_a_companion_on_the_missing_slot()
     {
         var layers = new[] { Flat(), Flat(new TileGroundSteepLayer { CompanionSlot = 0, FromDegrees = 40f, ToDegrees = 55f }) };
-        var ex = Assert.Throws<ArgumentException>(() => new TileGroundMaterialSet(1, 1, new ushort[] { 1 }, layers));
+        var ex = Assert.Throws<TileGroundMaterialSetArgumentException>(() => new TileGroundMaterialSet(1, 1, new ushort[] { 1 }, layers));
+        Assert.Equal(TileGroundMaterialSetRefusal.MissingLayerHasCompanion, ex.Reason);
+        Assert.Equal(1, ex.LayerIndex);
         Assert.Equal("layers", ex.ParamName);
     }
 
@@ -101,9 +103,26 @@ public class TileGroundSteepCompanionsTests
             Flat(),
             Flat(),
         };
-        var ex = Assert.Throws<ArgumentException>(() => new TileGroundMaterialSet(1, 1, new ushort[] { 1, 2 }, layers));
-        Assert.Equal("layers", ex.ParamName);
-        Assert.Contains("layer 0", ex.Message, StringComparison.Ordinal);
+        if (companionSlot == 2)
+        {
+            var ex = Assert.Throws<TileGroundMaterialSetArgumentException>(() =>
+                new TileGroundMaterialSet(1, 1, new ushort[] { 1, 2 }, layers));
+            Assert.Equal(TileGroundMaterialSetRefusal.CompanionIsMissingLayer, ex.Reason);
+            Assert.Equal("layers", ex.ParamName);
+            Assert.Equal(0, ex.LayerIndex);
+            Assert.Equal(companionSlot, ex.CompanionSlot);
+            Assert.Equal(2, ex.MaterialSlotCount);
+        }
+        else
+        {
+            var ex = Assert.Throws<TileGroundSteepArgumentException>(() =>
+                new TileGroundMaterialSet(1, 1, new ushort[] { 1, 2 }, layers));
+            Assert.Equal(TileGroundSteepRefusal.BandOutsideRightAngle, ex.Reason);
+            Assert.Equal("layers", ex.ParamName);
+            Assert.Equal(0, ex.LayerIndex);
+            Assert.Equal(fromDegrees, ex.FromDegrees);
+            Assert.Equal(toDegrees, ex.ToDegrees);
+        }
     }
 
     [Fact]

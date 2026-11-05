@@ -72,8 +72,9 @@ The public seams, from lowest to highest:
   entry is `Blade`.
 - **TileWorld.** `TileWorldViewOptions` gains `AnimatedFoliageStyles`, a map from archetype id to
   `AnimatedFoliageStyle(FoliageMotionProfile Motion, bool CastsShadows)`. `AnimatedFoliageArchetypes` remains the
-  only selection. A style for an id outside the set is refused with an `ArgumentException` naming the id. Two
-  selected archetypes that share one mesh must share one style, and a conflict is refused the same way. A selected
+  only selection. A style outside the set throws `AnimatedFoliageStyleArgumentException` with
+  `AnimatedFoliageStyleRefusal.StyleOutsideSelection` and `ArchetypeId`. Selected archetypes sharing a mesh
+  must share a style. A conflict carries `SharedMeshStyleConflict`, `FirstArchetypeId` and `SecondArchetypeId`. A selected
   archetype with no style behaves exactly as today. Changing styles invalidates the animated split the way changing
   the selection does, limited to splits that draw a changed archetype.
 - **Native world.** Native foliage (world-authoring R7, then the shared native rendering path in R8) reaches

@@ -516,9 +516,17 @@ exposes the property. `World.DefaultScheduler` itself is the per-world seam in `
 `SingleThreadedJobScheduler`, so a world stays byte-identical until a game opts in, and an explicit per-call
 scheduler still wins over it.
 
-## Attachment definitions: a GPU-free leaf
+## PNG I/O: shared malformed-data base
 
-`KhaozEngine.Attachments` has no project or third-party dependency. It owns immutable definitions,
+`KhaozEngine.Imaging` references only `KhaozEngine.Primitives` for `MalformedDataException`, the shared
+base of `PngDecodeDataException`. PNG and JPEG codecs use BCL APIs, including zlib, and take no
+third-party image dependency. Unsupported PNG features use `PngDecodeNotSupportedException` on the
+BCL `NotSupportedException` base. Both carry `PngDecodeRefusal`.
+
+## Attachment definitions: GPU-free with shared primitives
+
+`KhaozEngine.Attachments` references only the dependency-free `KhaozEngine.Primitives` for the shared
+`MalformedDataException` base. It has no third-party dependency. It owns immutable definitions,
 canonical JSON, reference checks, the `IAttachmentAssetSource` byte seam, directory source policy and
 embedded rigid and skinned GLB preflight. `AttachmentGlb.ComputeRigIdentity` provides versioned body
 fit evidence from raw accessor bytes and canonical rest frames, excluding animation and appearance.
@@ -526,7 +534,8 @@ JSON uses `System.Text.Json` and hashing uses SHA-256 from the BCL. No renderer 
 skeleton type appears in its API. Publishers reference it directly. Foundation and Server do not
 gain an attachment dependency.
 
-`ArchitectureTests.ZeroDependencyLeaves_CarryNoProjectReferences` pins the leaf alongside Primitives.
+`ArchitectureTests.Attachment_definitions_reference_only_the_shared_primitives` pins this single edge.
+`ZeroDependencyLeaves_CarryNoProjectReferences` continues to pin Primitives as a leaf.
 The renderer's existing dependency allowlist and ECS-free closure remain unchanged.
 
 `KhaozEngine.Attachments.Render3D` references only Attachments and Render3D. It resolves contract
@@ -894,8 +903,10 @@ the older draws above. The rigid default keeps the mesh, the transform and the d
 material, `CastsShadows` and `InvertShadowDissolve`, and does not forward `DissolveComplement`. It draws nothing for a
 shadow-only descriptor, which an older scene never cast. It also draws nothing for a complement phase above one half
 with no dissolve. `Scene3D` shows no body for that draw, at most a shadow, so the fallback treats it like a
-shadow-only draw. A shadow-only descriptor with `CastsShadows = false` throws the same `ArgumentException` the scene's
-instance queue throws. The skinned default keeps the tint as well, drops the key, the material
+shadow-only draw. A shadow-only descriptor with `CastsShadows = false` throws the shared Render3D
+`DrawAdmissionArgumentException` with `DrawAdmissionRefusal.ShadowOnlyWithoutCasting`, `ShadowOnly`,
+`CastsShadows` and `ParamName` set to `draw`. The scene's instance queue uses the same reason.
+The skinned default keeps the tint as well, drops the key, the material
 and `CastsShadows`, and still throws `NotSupportedException` where the older skinned draws do.
 `CreatePropClusterOwner()` returns the view-owned `ITileWorldPropClusterOwner` used for detached CPU builds,
 scene-thread apply and draw, invalidation, unload and disposal. Its default also throws `NotSupportedException`.

@@ -1,7 +1,8 @@
 # KhaozEngine.Imaging
 
-Dependency-free image IO for KhaozEngine. Everything here is BCL-only so no third-party image library
-ever enters your dependency graph: a minimal PNG encoder for 8-bit RGBA buffers, a baseline JPEG
+Image IO for KhaozEngine with no third-party image library. The sole engine dependency is
+`KhaozEngine.Primitives`, which supplies the shared `MalformedDataException` base. Image codecs use the BCL:
+a minimal PNG encoder for 8-bit RGBA buffers, a baseline JPEG
 encoder for the same buffers, and a tolerance-based golden-grid regression primitive. This is the
 canonical home of the PNG encoder the headless snapshot harness (`KhaozEngine.Snapshot`) and
 Render2D's clipboard-copy path use, plus the grid-compare core the golden-image tests and the
@@ -67,6 +68,57 @@ image is returned in ordinary raster order.
 
 This stays a focused PNG utility rather than a general image-processing library. Encoding is RGBA8 only.
 Decoding deliberately excludes color conversion, transforms and other metadata interpretation.
+
+### Refusals
+
+`PngDecodeDataException : MalformedDataException` carries malformed PNG refusals, including corrupt zlib
+streams. This replaces the sealed `InvalidDataException` at PNG admission sites. Catch `MalformedDataException`
+to handle malformed engine data across families. `PngDecodeNotSupportedException : NotSupportedException`
+carries unsupported PNG features. Both require a non-nullable `PngDecodeRefusal Reason` in every constructor.
+Messages are developer prose. Branch on `Reason` and read the nullable identifiers for that reason instead.
+
+The decoder translates a native `ZLibStream` `InvalidDataException` to `CompressedStreamCorrupt`, preserving
+its message and the original error in `InnerException`. A short decompressed payload or extra decompressed byte
+still has reason `DecodedLengthMismatch`. Its `ActualLength` counts bytes read into the expected-size buffer,
+while `HasTrailingData` records the extra-byte probe. `AvailableBytes` counts bytes from the refused chunk's
+`Offset`, including its envelope, or the total input length for `SignatureInvalid`.
+
+| `PngDecodeRefusal` | Refuses | Identifiers |
+|---|---|---|
+| `SignatureInvalid` | Input without the PNG signature. | `AvailableBytes` |
+| `ChunkHeaderTruncated` | Input shorter than a complete PNG chunk envelope. | `Offset`, `AvailableBytes` |
+| `ChunkLengthUnsupported` | A PNG chunk longer than the supported signed length. | `Offset`, `DeclaredLength` |
+| `ChunkDataTruncated` | A PNG chunk extending beyond the input. | `Offset`, `DeclaredLength`, `AvailableBytes` |
+| `ChunkCrcMismatch` | A PNG chunk with a mismatched CRC. | `ChunkType`, `Offset`, `ExpectedCrc`, `ActualCrc` |
+| `HeaderOutOfOrder` | A repeated IHDR or one not first. | `Offset` |
+| `DataOutOfOrder` | IDAT before IHDR or after the data sequence ends. | `ChunkType`, `Offset` |
+| `CompressedAllocationCapExceeded` | Compressed input above the allocation cap. | `RequiredBytes`, `MaximumBytes` |
+| `EndChunkInvalid` | An IEND with missing preceding chunks or payload bytes. | `Offset`, `PayloadLength`, `HeaderSeen`, `DataSeen` |
+| `PaletteOutOfOrder` | A misplaced repeated or post-transparency PLTE chunk. | `Offset` |
+| `TransparencyOutOfOrder` | A misplaced or repeated tRNS chunk. | `Offset` |
+| `PaletteTransparencyBeforePalette` | Indexed transparency before the palette. | `Offset` |
+| `DataAfterEnd` | Trailing bytes after IEND. | `Offset`, `TrailingBytes` |
+| `EndChunkMissing` | A PNG without IEND. | `HeaderSeen`, `DataSeen` |
+| `PaletteMissing` | An indexed PNG without PLTE. | `ColorType` |
+| `HeaderLengthMismatch` | An IHDR not containing thirteen bytes. | `ActualLength`, `ExpectedLength` |
+| `DimensionsInvalid` | Zero or unsupported PNG dimensions. | `Width`, `Height` |
+| `DecodedAllocationCapExceeded` | The decoded or filtered raster above the allocation cap. | `RasterBytes`, `ExpandedBytes`, `FilteredBytes`, `MaximumBytes` |
+| `DecodedLengthMismatch` | Decompressed data of a different length than IHDR requires. | `ExpectedLength`, `ActualLength`, `HasTrailingData` |
+| `CriticalChunkUnsupported` | An unimplemented critical PNG chunk. | `ChunkType` |
+| `ColorTypeUnsupported` | An unsupported PNG colour type. | `ColorType` |
+| `BitDepthUnsupported` | A bit depth unsupported for the PNG colour type. | `BitDepth`, `ColorType` |
+| `CompressionOrFilterMethodUnsupported` | Unsupported PNG compression or filter methods. | `CompressionMethod`, `FilterMethod` |
+| `InterlaceUnsupported` | An unsupported interlace method. | `InterlaceMethod` |
+| `PaletteLengthInvalid` | An empty malformed or oversized PLTE table. | `ByteLength` |
+| `PaletteExceedsIndexDepth` | A palette exceeding its index bit depth. | `EntryCount`, `BitDepth` |
+| `PaletteTransparencyTooLong` | A transparency table longer than its palette. | `AlphaCount`, `PaletteCount` |
+| `PaletteIndexOutsideRange` | A pixel index outside the PNG palette. | `PixelIndex`, `Index`, `PaletteCount` |
+| `TransparencyWithAlphaColorType` | A tRNS chunk for a colour type already carrying alpha. | `ColorType` |
+| `TransparencyLengthMismatch` | A colour key with a byte length incompatible with its colour type. | `ActualLength`, `ExpectedLength`, `ColorType` |
+| `TransparencySampleOutsideDepth` | A colour-key sample outside its image bit depth. | `BitDepth`, `SampleIndex`, `SampleValue` |
+| `TransparencyAllocationCapExceeded` | Transparency expansion above the decoded allocation cap. | `RequiredBytes`, `MaximumBytes`, `Width`, `Height`, `OutputChannels` |
+| `RowFilterUnsupported` | An unimplemented PNG row filter. | `FilterType`, `RowIndex` |
+| `CompressedStreamCorrupt` | A zlib decode failure inside IDAT. | `InnerException` |
 
 ## GoldenGrid
 

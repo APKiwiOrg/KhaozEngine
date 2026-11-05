@@ -9,6 +9,10 @@ color anywhere in the engine's public API is the `Color` from here.
 Linux Consumption plan, which has no .NET 10. A `net10.0` consumer resolves the `net10.0` asset
 automatically, so this is transparent to every other package.
 
+- `MalformedDataException` (namespace `KhaozEngine`) - abstract base for every engine refusal for malformed
+  input data whose BCL type would have been the sealed `InvalidDataException`. Catch this base to handle
+  malformed data across families. Catch a concrete family type and inspect its `Reason` to distinguish
+  that family's refusals. The base has no reason member and adds no dependency, including on `net8.0`.
 - `Color` - RGBA float struct, a typed wrapper over `Vector4` (implicit to `Vector4`, explicit back).
   `FromBytes`, `FromHex`/`ToHex`, `WithAlpha`, `ScaleRgb` (scale RGB, keep alpha - dim a color without
   making it translucent, unlike `* float`), `ScaleRgbClamped` (`ScaleRgb`, but each scaled channel clamped

@@ -529,10 +529,12 @@ namespace KhaozEngine.Render3D.Rendering
             // its OWN for already ran in PrepareFrame, before this list was opened.
             // The demand is re-derived here and compared: a host that queued a plane AFTER preparing would
             // otherwise render an ocean plane procedurally with nothing to show for it.
-            if (AnyPlaneWantsOcean(planes, settings) != _preparedWantOcean)
-                throw new InvalidOperationException(
+            bool wantOcean = AnyPlaneWantsOcean(planes, settings);
+            if (wantOcean != _preparedWantOcean)
+                throw new WaterFrameStateException(WaterFrameRefusal.OceanDemandChanged,
                     "The water planes changed between PrepareFrame and Draw. Queue every plane before calling "
-                    + "Scene3D.PrepareFrame() (see IFramePreparer).");
+                    + "Scene3D.PrepareFrame() (see IFramePreparer).")
+                { PreparedOceanDemand = _preparedWantOcean, ActualOceanDemand = wantOcean };
             _ocean.Record(cl);
             var oceanMaps = OceanMaps.From(_ocean);
             // The depth field, likewise once per frame and ahead of BindTargets. Uploads only when the field

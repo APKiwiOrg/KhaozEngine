@@ -154,9 +154,10 @@ namespace KhaozEngine.Render3D
                 // nothing. Refused at the queue rather than dropped silently later, where it would read as a
                 // missing shadow nobody could account for.
                 if (shadowOnly && !castsShadows)
-                    throw new ArgumentException(
+                    throw new DrawAdmissionArgumentException(DrawAdmissionRefusal.ShadowOnlyWithoutCasting,
                         "A shadow-only instance must cast shadows: shadowOnly with castsShadows false draws in neither pass.",
-                        nameof(shadowOnly));
+                        nameof(shadowOnly))
+                    { ShadowOnly = shadowOnly, CastsShadows = castsShadows };
                 Mesh = mesh; World = world; Tint = tint; Material = material;
                 DissolveThreshold = dissolveThreshold; DissolveEdgeWidth = dissolveEdgeWidth; DissolveEdge = dissolveEdge;
                 CastsShadows = castsShadows; InvertShadowDissolve = invertShadowDissolve;

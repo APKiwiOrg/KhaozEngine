@@ -37,8 +37,9 @@ namespace KhaozEngine.Render3D
         /// (<see cref="GltfLoader.AverageAlbedo"/>) is folded into the material's flattened per-vertex colour, so a
         /// textures-ON kit still renders a sensible flat colour here (the same glb renders textured via
         /// <see cref="LoadPropParts"/>). A material WITHOUT a texture is untouched, so an existing untextured prop is
-        /// byte-identical to before (the goldens-hold guarantee). Throws <see cref="InvalidOperationException"/>
-        /// (with the entry id in the message) if the file cannot be loaded or the size is implausible.</summary>
+        /// byte-identical to before (the goldens-hold guarantee). Throws <see cref="PropLoadStateException"/>
+        /// with Reason and EntryId if the file cannot be loaded or the size is implausible. AssetLoadFailed also
+        /// carries Path and the original load error as InnerException.</summary>
         public static GltfMesh LoadProp(AssetEntry entry, PropValidation? validation = null)
             => Normalize(LoadRaw(entry), entry.HeightMeters, validation, entry.Id);
 
@@ -46,16 +47,17 @@ namespace KhaozEngine.Render3D
 
         static GltfMesh LoadRaw(string file, string id)
         {
-            try { return GltfLoader.LoadFlattenedAlbedo(file); }
+            try { return GltfLoader.LoadFlattenedAlbedo(file, id); }
             catch (Exception ex)
             {
-                throw new InvalidOperationException($"PropLoader could not load prop '{id}' from '{file}': {ex.Message}", ex);
+                throw new PropLoadStateException(PropLoadRefusal.AssetLoadFailed,
+                    $"PropLoader could not load prop '{id}' from '{file}': {ex.Message}", ex) { EntryId = id, Path = file };
             }
         }
 
         /// <summary>Load + normalize a manifest entry like <see cref="LoadProp"/>, AND auto-read the glTF's first
         /// textured material's baseColor/normal/metallicRoughness textures (opt-in, via
-        /// <see cref="GltfLoader.LoadWithMaterial"/>). Upload the mesh + maps with
+        /// <see cref="GltfLoader.LoadWithMaterial(string)"/>). Upload the mesh + maps with
         /// <see cref="Scene3D.LoadMesh(GltfMesh,GltfMaterialMaps)"/>. A prop whose glTF has no textures yields an
         /// all-absent <see cref="GltfMaterialMaps"/> (<see cref="GltfMaterialMaps.IsEmpty"/>), never a throw, so it
         /// renders exactly as <see cref="LoadProp"/>. The mesh is identical to <see cref="LoadProp"/>'s.</summary>
@@ -68,10 +70,12 @@ namespace KhaozEngine.Render3D
 
         static (GltfMesh, GltfMaterialMaps) LoadRawWithMaterial(AssetEntry entry)
         {
-            try { return GltfLoader.LoadWithMaterial(entry.File); }
+            try { return GltfLoader.LoadWithMaterial(entry.File, entry.Id); }
             catch (Exception ex)
             {
-                throw new InvalidOperationException($"PropLoader could not load prop '{entry.Id}' from '{entry.File}': {ex.Message}", ex);
+                throw new PropLoadStateException(PropLoadRefusal.AssetLoadFailed,
+                    $"PropLoader could not load prop '{entry.Id}' from '{entry.File}': {ex.Message}", ex)
+                { EntryId = entry.Id, Path = entry.File };
             }
         }
 
@@ -105,10 +109,11 @@ namespace KhaozEngine.Render3D
 
         static IReadOnlyList<GltfMeshPart> LoadRawParts(string file, string id)
         {
-            try { return GltfLoader.LoadPartsWithMaterials(file); }
+            try { return GltfLoader.LoadPartsWithMaterials(file, id); }
             catch (Exception ex)
             {
-                throw new InvalidOperationException($"PropLoader could not load prop '{id}' from '{file}': {ex.Message}", ex);
+                throw new PropLoadStateException(PropLoadRefusal.AssetLoadFailed,
+                    $"PropLoader could not load prop '{id}' from '{file}': {ex.Message}", ex) { EntryId = id, Path = file };
             }
         }
 
@@ -121,8 +126,8 @@ namespace KhaozEngine.Render3D
         /// returned parts exactly like the full mesh (<see cref="Scene3D.LoadPropMeshes"/> for a per-kit part list, or
         /// wrap the single flat part as one handle) into a parallel LOD mesh set. The engine ships no mesh decimator,
         /// so this is never generated for you - author the low-poly glTF by hand. Throws
-        /// <see cref="InvalidOperationException"/> (with the entry id) if the declared LOD file cannot be loaded or is
-        /// implausibly sized.</summary>
+        /// <see cref="PropLoadStateException"/> with Reason and EntryId if the declared LOD file cannot be loaded or
+        /// is implausibly sized. AssetLoadFailed carries the LOD Path and original InnerException.</summary>
         public static IReadOnlyList<GltfMeshPart>? LoadPropLodAuto(AssetEntry entry, PropValidation? validation = null)
         {
             if (string.IsNullOrWhiteSpace(entry.LodFile)) return null;
@@ -143,15 +148,18 @@ namespace KhaozEngine.Render3D
                                                           PropValidation? validation, string? id)
         {
             if (parts == null) throw new ArgumentNullException(nameof(parts));
-            if (parts.Count == 0) throw new ArgumentException("a prop needs at least one material part.", nameof(parts));
+            if (parts.Count == 0) throw new PropLoadArgumentException(PropLoadRefusal.MaterialPartsEmpty,
+                "a prop needs at least one material part.", nameof(parts)) { PartCount = parts.Count };
             PropValidation v = validation ?? PropValidation.Default;
             string what = id == null ? "prop" : $"prop '{id}'";
             for (int p = 0; p < parts.Count; p++)
-                MeshIndexValidation.All(parts[p].Mesh, $"{what} part {p}");
+                MeshIndexValidation.All(parts[p].Mesh, id ?? "prop", id, p, $"{what} part {p}");
 
             if (heightMeters < v.MinHeightMeters || heightMeters > v.MaxHeightMeters)
-                throw new InvalidOperationException(
-                    $"{what} declares an implausible height {heightMeters} m (outside {v.MinHeightMeters}..{v.MaxHeightMeters} m).");
+                throw new PropLoadStateException(PropLoadRefusal.DeclaredHeightOutsideRange,
+                    $"{what} declares an implausible height {heightMeters} m (outside {v.MinHeightMeters}..{v.MaxHeightMeters} m).")
+                { EntryId = id, HeightMeters = heightMeters, MinimumHeightMeters = v.MinHeightMeters,
+                    MaximumHeightMeters = v.MaxHeightMeters };
 
             // Combined bounds over EVERY part, so a single shared transform keeps the parts aligned.
             var mn = new Vector3(float.MaxValue);
@@ -164,12 +172,15 @@ namespace KhaozEngine.Render3D
 
             float rawHeight = mx.Y - mn.Y;
             if (rawHeight <= 1e-6f)
-                throw new InvalidOperationException($"{what} mesh has no measurable height (degenerate or non-Y-up).");
+                throw new PropLoadStateException(PropLoadRefusal.NoMeasurableHeight,
+                    $"{what} mesh has no measurable height (degenerate or non-Y-up).") { EntryId = id, RawHeight = rawHeight };
             float scale = heightMeters / rawHeight;
             if (scale < v.MinScale || scale > v.MaxScale)
-                throw new InvalidOperationException(
+                throw new PropLoadStateException(PropLoadRefusal.ScaleOutsideRange,
                     $"{what} needs a {scale:G4} scale to reach {heightMeters} m from a {rawHeight:G4}-unit mesh " +
-                    $"(outside {v.MinScale:G4}..{v.MaxScale:G4}); the asset is likely in the wrong units (authored ~1u=1m).");
+                    $"(outside {v.MinScale:G4}..{v.MaxScale:G4}); the asset is likely in the wrong units (authored ~1u=1m).")
+                { EntryId = id, Scale = scale, HeightMeters = heightMeters, RawHeight = rawHeight,
+                    MinimumScale = v.MinScale, MaximumScale = v.MaxScale };
 
             float cx = (mn.X + mx.X) * 0.5f;
             float cz = (mn.Z + mx.Z) * 0.5f;
@@ -183,8 +194,9 @@ namespace KhaozEngine.Render3D
 
         /// <summary>Scale a raw mesh uniformly so its vertical (Y) extent equals <paramref name="heightMeters"/>,
         /// drop the base to y=0, and re-centre X/Z on the origin. Validates the declared height and the implied
-        /// scale against <paramref name="validation"/> (default <see cref="PropValidation.Default"/>); throws
-        /// <see cref="InvalidOperationException"/> on a degenerate mesh or an implausible size.</summary>
+        /// scale against <paramref name="validation"/> (default <see cref="PropValidation.Default"/>). Throws
+        /// <see cref="PropLoadStateException"/> with Reason and measured values on a degenerate mesh or an
+        /// implausible size. Invalid indices throw <see cref="MeshIndexStateException"/>.</summary>
         public static GltfMesh Normalize(GltfMesh raw, float heightMeters, PropValidation? validation = null)
             => Normalize(raw, heightMeters, validation, null);
 
@@ -193,11 +205,13 @@ namespace KhaozEngine.Render3D
             if (raw == null) throw new ArgumentNullException(nameof(raw));
             PropValidation v = validation ?? PropValidation.Default;
             string what = id == null ? "prop" : $"prop '{id}'";
-            MeshIndexValidation.All(raw, what);
+            MeshIndexValidation.All(raw, id ?? "prop", id, diagnosticIdentity: what);
 
             if (heightMeters < v.MinHeightMeters || heightMeters > v.MaxHeightMeters)
-                throw new InvalidOperationException(
-                    $"{what} declares an implausible height {heightMeters} m (outside {v.MinHeightMeters}..{v.MaxHeightMeters} m).");
+                throw new PropLoadStateException(PropLoadRefusal.DeclaredHeightOutsideRange,
+                    $"{what} declares an implausible height {heightMeters} m (outside {v.MinHeightMeters}..{v.MaxHeightMeters} m).")
+                { EntryId = id, HeightMeters = heightMeters, MinimumHeightMeters = v.MinHeightMeters,
+                    MaximumHeightMeters = v.MaxHeightMeters };
 
             // Measure the loaded mesh.
             var mn = new Vector3(float.MaxValue);
@@ -207,13 +221,16 @@ namespace KhaozEngine.Render3D
 
             float rawHeight = mx.Y - mn.Y;
             if (rawHeight <= 1e-6f)
-                throw new InvalidOperationException($"{what} mesh has no measurable height (degenerate or non-Y-up).");
+                throw new PropLoadStateException(PropLoadRefusal.NoMeasurableHeight,
+                    $"{what} mesh has no measurable height (degenerate or non-Y-up).") { EntryId = id, RawHeight = rawHeight };
 
             float scale = heightMeters / rawHeight;
             if (scale < v.MinScale || scale > v.MaxScale)
-                throw new InvalidOperationException(
+                throw new PropLoadStateException(PropLoadRefusal.ScaleOutsideRange,
                     $"{what} needs a {scale:G4} scale to reach {heightMeters} m from a {rawHeight:G4}-unit mesh " +
-                    $"(outside {v.MinScale:G4}..{v.MaxScale:G4}); the asset is likely in the wrong units (authored ~1u=1m).");
+                    $"(outside {v.MinScale:G4}..{v.MaxScale:G4}); the asset is likely in the wrong units (authored ~1u=1m).")
+                { EntryId = id, Scale = scale, HeightMeters = heightMeters, RawHeight = rawHeight,
+                    MinimumScale = v.MinScale, MaximumScale = v.MaxScale };
 
             float cx = (mn.X + mx.X) * 0.5f;
             float cz = (mn.Z + mx.Z) * 0.5f;

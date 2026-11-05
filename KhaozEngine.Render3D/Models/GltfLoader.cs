@@ -22,7 +22,7 @@ namespace KhaozEngine.Render3D
         public DecodedImage(byte[] rgba, int width, int height) { Rgba = rgba; Width = width; Height = height; }
     }
 
-    /// <summary>The optional textures auto-read from a glTF material by <see cref="GltfLoader.LoadWithMaterial"/> /
+    /// <summary>The optional textures auto-read from a glTF material by <see cref="GltfLoader.LoadWithMaterial(string)"/> /
     /// <see cref="GltfLoader.LoadSkinnedWithMaterial"/>, each decoded to raw RGBA8 (the loader has no GPU device, so
     /// it never creates a <see cref="Scene3D.TextureHandle"/>; the upload stays in <see cref="Scene3D"/>). Any map a
     /// material doesn't reference - or whose image is missing/external-unresolved/undecodable - is left
@@ -84,7 +84,7 @@ namespace KhaozEngine.Render3D
     /// picks up a shading crease where two shades meet (glTF exporters almost always write NORMAL, which wins
     /// over the computed one). By
     /// default material textures (normal/roughness) are NOT auto-read - bind them explicitly via
-    /// <see cref="Scene3D.SurfaceMaps"/>. Opt into auto-read with <see cref="LoadWithMaterial"/> /
+    /// <see cref="Scene3D.SurfaceMaps"/>. Opt into auto-read with <see cref="LoadWithMaterial(string)"/> /
     /// <see cref="LoadSkinnedWithMaterial"/>, which also return the material's decoded
     /// <see cref="GltfMaterialMaps"/>.</summary>
     public static partial class GltfLoader
@@ -122,7 +122,7 @@ namespace KhaozEngine.Render3D
                 if (corners.Count > 0) groups.Add(MeshAssembler.Build(corners));
             }
 
-            if (groups.Count == 0) throw new InvalidOperationException("glTF has no triangles: " + path);
+            if (groups.Count == 0) throw new GltfImportStateException(GltfImportRefusal.NoTriangles, "glTF has no triangles: " + path) { Identity = path };
             return groups;
         }
 
@@ -142,9 +142,12 @@ namespace KhaozEngine.Render3D
         /// to the untextured render. Embedded GLB images and external image files (resolved by SharpGLTF relative to
         /// the glb on load) are both read.</summary>
         public static (GltfMesh Mesh, GltfMaterialMaps Maps) LoadWithMaterial(string path)
+            => LoadWithMaterial(path, null);
+
+        internal static (GltfMesh Mesh, GltfMaterialMaps Maps) LoadWithMaterial(string path, string? entryId)
         {
-            ModelRoot root = LoadModel(path);
-            GltfMesh mesh = BuildRigid(root, path);
+            ModelRoot root = LoadModel(path, entryId);
+            GltfMesh mesh = BuildRigid(root, path, entryId: entryId);
             return (mesh, ReadMaterialMaps(FirstTexturedMaterial(root)));
         }
 
@@ -155,18 +158,20 @@ namespace KhaozEngine.Render3D
         /// textures-ON glb can render either textured (via <see cref="LoadPartsWithMaterials(string)"/>) or flat (here) with
         /// no separate flattened asset. A material with NO baseColorTexture is untouched, so the whole-scene weld,
         /// topology, and every vertex attribute are byte-identical to <see cref="Load"/> for an untextured asset (the
-        /// existing-goldens-hold guarantee). Throws <see cref="InvalidOperationException"/> if the glTF has no
+        /// existing-goldens-hold guarantee). Throws <see cref="GltfImportStateException"/> with NoTriangles if the glTF has no
         /// triangles.</summary>
-        public static GltfMesh LoadFlattenedAlbedo(string path)
+        public static GltfMesh LoadFlattenedAlbedo(string path) => LoadFlattenedAlbedo(path, null);
+
+        internal static GltfMesh LoadFlattenedAlbedo(string path, string? entryId)
         {
-            ModelRoot root = LoadModel(path);
-            return BuildRigid(root, path, MakeAlbedoFlattenResolver());
+            ModelRoot root = LoadModel(path, entryId);
+            return BuildRigid(root, path, MakeAlbedoFlattenResolver(), entryId);
         }
 
         /// <summary><see cref="LoadFlattenedAlbedo(string)"/> over a binary glTF held in memory. Only
         /// <paramref name="glb"/> is parsed: there is no directory to resolve a relative external buffer or image
         /// against, so a caller that must not read outside its bytes refuses external URIs first.
-        /// <paramref name="identity"/> names the asset in error messages where the path overload names the file.
+        /// <paramref name="identity"/> is the raw MeshIndex or GltfImport refusal Identity where the path overload uses the file.
         /// Array-backed bytes are read in place without a copy, so they must not change during the call.</summary>
         public static GltfMesh LoadFlattenedAlbedo(ReadOnlyMemory<byte> glb, string identity)
         {
@@ -178,7 +183,7 @@ namespace KhaozEngine.Render3D
         // The flat scene weld. <paramref name="baseColorFor"/> resolves a primitive's per-vertex base colour. When
         // null the default per-material factor (<see cref="ReadBaseColor"/>) is used, so Load / LoadWithMaterial stay
         // byte-identical. LoadFlattenedAlbedo passes a resolver that folds averaged albedo in.
-        static GltfMesh BuildRigid(ModelRoot root, string path, Func<GltfMaterial?, Vector4>? baseColorFor = null)
+        static GltfMesh BuildRigid(ModelRoot root, string path, Func<GltfMaterial?, Vector4>? baseColorFor = null, string? entryId = null)
         {
             var corners = new List<MeshCorner>();
 
@@ -194,11 +199,11 @@ namespace KhaozEngine.Render3D
                 {
                     if (node.Mesh != mesh) continue;
                     placed = true;
-                    AppendMeshCorners(corners, mesh, node.WorldMatrix, path, baseColorFor);
+                    AppendMeshCorners(corners, mesh, node.WorldMatrix, path, baseColorFor, entryId);
                 }
-                if (!placed) AppendMeshCorners(corners, mesh, Matrix4x4.Identity, path, baseColorFor);
+                if (!placed) AppendMeshCorners(corners, mesh, Matrix4x4.Identity, path, baseColorFor, entryId);
             }
-            if (corners.Count == 0) throw new InvalidOperationException("glTF has no triangles: " + path);
+            if (corners.Count == 0) throw new GltfImportStateException(GltfImportRefusal.NoTriangles, "glTF has no triangles: " + path) { Identity = path };
 
             return MeshAssembler.Build(corners);
         }
@@ -212,11 +217,11 @@ namespace KhaozEngine.Render3D
         // transformed corners. SharpGLTF exposes the standard glTF attributes by name (same accessor pattern as
         // POSITION); a missing NORMAL/TANGENT is left null for MeshAssembler to compute from winding / UV.
         static void AppendMeshCorners(List<MeshCorner> corners, Mesh mesh, Matrix4x4 world, string path,
-                                      Func<GltfMaterial?, Vector4>? baseColorFor = null)
+                                      Func<GltfMaterial?, Vector4>? baseColorFor = null, string? entryId = null)
         {
             (bool identity, Matrix4x4 normalMatrix) = TransformFor(world);
             foreach (var prim in mesh.Primitives)
-                AppendPrimitiveCorners(corners, prim, world, normalMatrix, identity, path, baseColorFor);
+                AppendPrimitiveCorners(corners, prim, world, normalMatrix, identity, path, baseColorFor, entryId);
         }
 
         // The identity fast-path flag + normal matrix for a node world transform. Normal matrix =
@@ -237,7 +242,7 @@ namespace KhaozEngine.Render3D
         // attributes by name; a missing NORMAL/TANGENT is left null for MeshAssembler to compute from winding / UV.
         static void AppendPrimitiveCorners(List<MeshCorner> corners, MeshPrimitive prim, Matrix4x4 world,
                                            Matrix4x4 normalMatrix, bool identity, string path,
-                                           Func<GltfMaterial?, Vector4>? baseColorFor = null)
+                                           Func<GltfMaterial?, Vector4>? baseColorFor = null, string? entryId = null)
         {
             var pos = prim.GetVertexAccessor("POSITION")?.AsVector3Array();
             if (pos == null) return;
@@ -282,9 +287,9 @@ namespace KhaozEngine.Render3D
 
             foreach (var (a, b, c) in prim.GetTriangleIndices())
             {
-                int ai = MeshIndexValidation.Source(a, pos.Count, assetIdentity);
-                int bi = MeshIndexValidation.Source(b, pos.Count, assetIdentity);
-                int ci = MeshIndexValidation.Source(c, pos.Count, assetIdentity);
+                int ai = MeshIndexValidation.Source(a, pos.Count, path, entryId, diagnosticIdentity: assetIdentity);
+                int bi = MeshIndexValidation.Source(b, pos.Count, path, entryId, diagnosticIdentity: assetIdentity);
+                int ci = MeshIndexValidation.Source(c, pos.Count, path, entryId, diagnosticIdentity: assetIdentity);
                 // The source flag distinguishes quantized COLOR_0 paint from exact flat material colors.
                 // Both kinds preserve their colour seams in the flattened weld.
                 corners.Add(new MeshCorner(Pos(ai), Norm(ai), Color(ai), Uv(ai), Tan(ai), perVertexColor));

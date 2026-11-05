@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.IO;
 using System.Numerics;
 using KhaozEngine.Render3D;
 
@@ -39,7 +38,9 @@ public sealed class AttachmentSetBinding
         {
             foreach (AttachmentPartDefinition part in definition.Parts)
                 if (part is SkinnedAttachmentPartDefinition)
-                    throw new InvalidDataException($"Attachment part {part.Id}: skinned parts require an explicit host mesh, not a map-only binding.");
+                    throw new AttachmentBindingDataException(AttachmentBindingRefusal.HostMeshRequired,
+                        $"Attachment part {part.Id}: skinned parts require an explicit host mesh, not a map-only binding.")
+                    { PartId = part.Id };
         }
         else SkinnedAttachmentBinding.ValidateHost(map, hostMesh);
         _parts = new ResolvedPart[definition.Parts.Count];
@@ -65,7 +66,9 @@ public sealed class AttachmentSetBinding
             }
             catch (Exception error) when (error is KeyNotFoundException or InvalidOperationException or ArgumentException)
             {
-                throw new InvalidDataException($"Attachment part {part.Id}: joint '{part.Joint}' cannot bind to the contract skin.", error);
+                throw new AttachmentBindingDataException(AttachmentBindingRefusal.RigidJointUnresolved,
+                    $"Attachment part {part.Id}: joint '{part.Joint}' cannot bind to the contract skin.", error)
+                { PartId = part.Id, JointName = part.Joint };
             }
         }
         _worlds = new Matrix4x4[_parts.Length];
@@ -84,21 +87,28 @@ public sealed class AttachmentSetBinding
     {
         ValidateFrame(skeleton, hostPalette);
         SkinnedAttachmentBinding skin = Part(partId).Skin
-            ?? throw new ArgumentException($"Attachment part {partId} is rigid and has no garment palette.", nameof(partId));
+            ?? throw new AttachmentBindingArgumentException(AttachmentBindingRefusal.PartHasNoGarmentPalette,
+                $"Attachment part {partId} is rigid and has no garment palette.", nameof(partId))
+            { PartId = partId };
         skin.CopyPalette(hostPalette, destination);
     }
 
     /// <summary>Write canonical part-ID order after validating the whole result. Output may overlap the palette.</summary>
     /// <remarks>Valid calls allocate no managed memory. Calls on the same binding must not overlap.</remarks>
-    /// <exception cref="ArgumentException">The skeleton, palette, capacity or pose matrices are invalid.</exception>
+    /// <exception cref="AttachmentBindingArgumentException">The skeleton, palette, capacity or pose matrices are invalid.
+    /// <see cref="AttachmentBindingArgumentException.Reason"/> identifies the rule. Pose composition failures retain
+    /// the original error as <see cref="Exception.InnerException"/>.</exception>
     public void ComposeWorlds(Skeleton skeleton, ReadOnlySpan<Matrix4x4> palette,
         in Matrix4x4 model, Span<Matrix4x4> destination)
     {
         ValidateFrame(skeleton, palette);
         if (destination.Length < PartCount)
-            throw new ArgumentException($"Output capacity {destination.Length} must hold {PartCount} attachment parts.", nameof(destination));
+            throw new AttachmentBindingArgumentException(AttachmentBindingRefusal.WorldOutputTooSmall,
+                $"Output capacity {destination.Length} must hold {PartCount} attachment parts.", nameof(destination))
+            { ActualCapacity = destination.Length, RequiredCapacity = PartCount };
         if (!ValidMatrix(model))
-            throw new ArgumentException("The model matrix must be finite, affine and invertible.", nameof(model));
+            throw new AttachmentBindingArgumentException(AttachmentBindingRefusal.ModelTransformInvalid,
+                "The model matrix must be finite, affine and invertible.", nameof(model));
 
         Span<Matrix4x4> worlds = _worlds;
         for (int i = 0; i < _parts.Length; i++)
@@ -114,15 +124,21 @@ public sealed class AttachmentSetBinding
             try
             {
                 if (!ValidMatrix(joint))
-                    throw new ArgumentException("The joint matrix must be finite, affine and invertible.");
+                    throw new AttachmentBindingArgumentException(AttachmentBindingRefusal.JointPoseInvalid,
+                        "The joint matrix must be finite, affine and invertible.", null)
+                    { PartId = part.Id, JointName = part.Joint };
                 worlds[i] = BoneSocket.ComposeRigid(part.LocalAligned, joint, model);
                 if (!ValidMatrix(worlds[i]))
-                    throw new ArgumentException("The composed world matrix must be finite, affine and invertible.");
+                    throw new AttachmentBindingArgumentException(AttachmentBindingRefusal.WorldTransformInvalid,
+                        "The composed world matrix must be finite, affine and invertible.", null)
+                    { PartId = part.Id, JointName = part.Joint };
             }
             catch (ArgumentException error)
             {
-                throw new ArgumentException($"Attachment part {part.Id}: joint '{part.Joint}' has an invalid pose or world transform.",
-                    nameof(palette), error);
+                throw new AttachmentBindingArgumentException(AttachmentBindingRefusal.PoseCompositionFailed,
+                    $"Attachment part {part.Id}: joint '{part.Joint}' has an invalid pose or world transform.",
+                    nameof(palette), error)
+                { PartId = part.Id, JointName = part.Joint };
             }
         }
         worlds.CopyTo(destination);
@@ -130,14 +146,19 @@ public sealed class AttachmentSetBinding
 
     ResolvedPart Part(uint partId) => _partIndices.TryGetValue(partId, out int index)
         ? _parts[index]
-        : throw new ArgumentException($"Attachment part {partId} is not in this binding.", nameof(partId));
+        : throw new AttachmentBindingArgumentException(AttachmentBindingRefusal.PartMissing,
+            $"Attachment part {partId} is not in this binding.", nameof(partId))
+        { PartId = partId };
 
     void ValidateFrame(Skeleton skeleton, ReadOnlySpan<Matrix4x4> palette)
     {
         if (!ReferenceEquals(skeleton, Skeleton))
-            throw new ArgumentException("The attachment binding requires its exact skeleton instance.", nameof(skeleton));
+            throw new AttachmentBindingArgumentException(AttachmentBindingRefusal.SkeletonMismatch,
+                "The attachment binding requires its exact skeleton instance.", nameof(skeleton));
         if (palette.Length != Skeleton.BoneCount)
-            throw new ArgumentException($"Palette length {palette.Length} must equal skin bone count {Skeleton.BoneCount}.", nameof(palette));
+            throw new AttachmentBindingArgumentException(AttachmentBindingRefusal.HostPaletteLengthMismatch,
+                $"Palette length {palette.Length} must equal skin bone count {Skeleton.BoneCount}.", nameof(palette))
+            { ActualCount = palette.Length, RequiredCount = Skeleton.BoneCount };
     }
 
     internal static bool ValidMatrix(in Matrix4x4 matrix) => Finite(matrix)

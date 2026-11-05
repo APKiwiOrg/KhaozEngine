@@ -45,9 +45,11 @@ Beyond the renames above:
   `AttachmentSetJson.RigidOnlyFormatVersion`.
 - `GltfLoader.LoadPartsWithMaterials(ReadOnlyMemory<byte>, string)`,
   `GltfLoader.LoadSkinnedPartsWithMaterials(ReadOnlyMemory<byte>, string)` and
-  `GltfLoader.LoadSkinned(ReadOnlyMemory<byte>, string)` throw `InvalidDataException` for a malformed glTF.
-  The message names the identity and the importer's diagnostic is the inner exception. Catch that instead of a
-  SharpGLTF type.
+  `GltfLoader.LoadSkinned(ReadOnlyMemory<byte>, string)` throw `GltfImportDataException` for a malformed glTF.
+  `Reason` is `GltfImportRefusal.MalformedModel`, `Identity` is the supplied raw identity and the importer's
+  diagnostic is `InnerException`. This type derives from `MalformedDataException` in Primitives because
+  `InvalidDataException` is sealed. Update existing malformed-data catches to include `MalformedDataException`.
+  Callers never need a SharpGLTF exception type.
 
 `AttachmentPartDefinition` has two concrete kinds, `RigidAttachmentPartDefinition` and
 `SkinnedAttachmentPartDefinition`. The rigid kind keeps its existing joint and local correction.
@@ -131,7 +133,7 @@ Historical rigid-feature exceptions are not a waiver. Main movement invalidates 
 
 Pre-merge package proof uses a private temporary feed. Packages and symbols must carry 21.0.0,
 the committed proof head and tested assembly bytes. Dependency edges remain governed by the
-[dependency reference](../DEPENDENCY-SEAMS.md#attachment-definitions-a-gpu-free-leaf).
+[dependency reference](../DEPENDENCY-SEAMS.md#attachment-definitions-gpu-free-with-shared-primitives).
 The orchestrator owns whole-branch review, integration, main push checks and the guarded shared-feed
 pack. Consumer adoption waits for owner approval of the exact major tag and the separate
 engine-rooted release handoff with independently verified release evidence.

@@ -97,6 +97,7 @@ public sealed partial class GpuFrameSubmissionTests
         Assert.True(submission.TryRetain(ring, out var completion));
         Assert.True(ring.TryRecord(gpu, source, 0, 16, 1, completion!));
         gpu.FailSubmit = !successfulSubmit;
+        InvalidOperationException fault = gpu.SubmitFault;
         if (successfulSubmit)
         {
             var notification = Assert.Single(Assert.Throws<GpuDiagnosticFailureException>(() => submission.Submit(gpu)).Failures);
@@ -108,7 +109,7 @@ public sealed partial class GpuFrameSubmissionTests
             var failure = Assert.Throws<GpuDiagnosticFailureException>(() => submission.Submit(gpu));
             Assert.Equal(2, failure.Failures.Length);
             Assert.Equal("renderer.frame", failure.Failures[0].Stage);
-            Assert.Equal("planned submit failure", failure.Failures[0].Error.Message);
+            Assert.Same(fault, failure.Failures[0].Error);
             Assert.Equal("renderer.frame.submission.participant.0", failure.Failures[1].Stage);
             Assert.Same(faulty.AbandonedError, failure.Failures[1].Error);
         }

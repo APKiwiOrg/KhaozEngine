@@ -1,5 +1,4 @@
 using System;
-using System.IO;
 using KhaozEngine.Imaging;
 using Xunit;
 using static KhaozEngine.Tests.Imaging.PngReaderPaletteInterlaceTests;
@@ -46,13 +45,25 @@ public class PngReaderGreyscaleTests
         Assert.Equal(new byte[] { 85, 0, 102, 255, 255, 255, 85, 0, 0, 255 }, image.Bytes);
     }
 
-    [Fact]
-    public void Low_depth_greyscale_colour_key_outside_the_depth_is_rejected()
+    [Theory]
+    [InlineData(0, 2, 0, 4)]
+    [InlineData(2, 8, 1, 256)]
+    public void Colour_key_outside_the_depth_is_rejected(byte color, int depth, int sampleIndex, ushort sampleValue)
     {
-        byte[] png = Png(1, 1, 2, 0, 0, Filtered(1, 1, 2, new byte[] { 0 }, interlaced: false),
-            Chunk("tRNS", new byte[] { 0, 4 }));
+        byte[] key = color == 0 ? new byte[] { 0, 4 } : new byte[] { 0, 1, 1, 0, 0, 2 };
+        byte[] filtered = color == 0 ? new byte[] { 0, 0 } : new byte[] { 0, 1, 2, 3 };
+        byte[] png = Png(1, 1, depth, color, 0, filtered, Chunk("tRNS", key));
 
-        Assert.Throws<InvalidDataException>(() => PngReader.Decode(png));
+        PngDecodeDataException error = Assert.Throws<PngDecodeDataException>(() => PngReader.Decode(png));
+
+        Assert.Equal(PngDecodeRefusal.TransparencySampleOutsideDepth, error.Reason);
+        Assert.Equal(depth, error.BitDepth);
+        Assert.Equal(sampleIndex, error.SampleIndex);
+        Assert.Equal(sampleValue, error.SampleValue);
+        key[sampleIndex * 2] = 0;
+        key[sampleIndex * 2 + 1] = color == 0 ? (byte)3 : (byte)2;
+        Assert.Equal(color == 0 ? new byte[] { 0, 255 } : new byte[] { 1, 2, 3, 255 },
+            PngReader.Decode(Png(1, 1, depth, color, 0, filtered, Chunk("tRNS", key))).Bytes);
     }
 
     private static byte[] Ramp(int count, int depth)

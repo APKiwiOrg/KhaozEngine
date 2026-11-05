@@ -1,5 +1,4 @@
 using System;
-using System.IO;
 using System.Text.Json;
 
 namespace KhaozEngine.Attachments;
@@ -16,9 +15,14 @@ public static partial class AttachmentGlb
             using var container = new Container(glb, validateImages: false);
             return RigIdentity.Compute(container.Root, container.Binary);
         }
-        catch (Exception error) when (error is InvalidDataException or JsonException or InvalidOperationException or FormatException or OverflowException)
+        catch (MalformedDataException error)
         {
-            throw new InvalidDataException($"{sourceName}: {error.Message}", error);
+            if (error is IAttachmentDataException sourced) throw sourced.WithSource(sourceName);
+            throw;
+        }
+        catch (Exception error) when (error is JsonException or InvalidOperationException or FormatException or OverflowException)
+        {
+            throw SourceFailure(error, sourceName);
         }
     }
 }

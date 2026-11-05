@@ -53,9 +53,13 @@ namespace KhaozEngine.Render3D
             JointToNode = jointToNode ?? throw new ArgumentNullException(nameof(jointToNode));
             if (nodeNames is null) throw new ArgumentNullException(nameof(nodeNames));
             if (restLocal.Length != parentIndices.Length || nodeLogicalIndex.Length != parentIndices.Length)
-                throw new ArgumentException("parentIndices, restLocal, and nodeLogicalIndex must have one entry per skeleton node.");
+                throw new SkeletonArgumentException(SkeletonRefusal.NodeArrayLengthsMismatch,
+                    "parentIndices, restLocal, and nodeLogicalIndex must have one entry per skeleton node.", null)
+                { ParentCount = parentIndices.Length, RestCount = restLocal.Length, LogicalIndexCount = nodeLogicalIndex.Length };
             if (nodeNames.Count != parentIndices.Length)
-                throw new ArgumentException("nodeNames must have one entry per skeleton node.", nameof(nodeNames));
+                throw new SkeletonArgumentException(SkeletonRefusal.NameCountMismatch,
+                    "nodeNames must have one entry per skeleton node.", nameof(nodeNames))
+                { NameCount = nodeNames.Count, NodeCount = parentIndices.Length };
 
             var names = new string[nodeNames.Count];
             for (int i = 0; i < names.Length; i++) names[i] = nodeNames[i] ?? string.Empty;
@@ -68,9 +72,12 @@ namespace KhaozEngine.Render3D
             return new string[parentIndices.Length];
         }
 
-        /// <summary>Find a skeleton node by its case-sensitive glTF name. Throws an <see cref="ArgumentException"/>
-        /// naming the requested and known names when no node matches. Duplicate non-empty names are ambiguous and
-        /// throw an <see cref="InvalidOperationException"/> when name lookup is first used.</summary>
+        /// <summary>Find a skeleton node by its case-sensitive glTF name. A missing name throws
+        /// <see cref="SkeletonArgumentException"/> with <see cref="SkeletonRefusal.JointNameMissing"/>,
+        /// <see cref="SkeletonArgumentException.RequestedName"/> and an immutable
+        /// <see cref="SkeletonArgumentException.KnownNames"/> snapshot. Duplicate non-empty names throw
+        /// <see cref="SkeletonStateException"/> with <see cref="SkeletonRefusal.DuplicateNodeName"/>
+        /// when name lookup is first used.</summary>
         public int IndexOf(string nodeName)
         {
             if (TryIndexOf(nodeName, out int node)) return node;
@@ -79,12 +86,15 @@ namespace KhaozEngine.Render3D
             for (int i = 0; i < NodeNames.Count; i++)
                 if (NodeNames[i].Length > 0) known.Add(NodeNames[i]);
             string knownText = known.Count > 0 ? string.Join(", ", known) : "(none)";
-            throw new ArgumentException(
-                $"Skeleton joint '{nodeName}' was not found. Known names: {knownText}.", nameof(nodeName));
+            throw new SkeletonArgumentException(SkeletonRefusal.JointNameMissing,
+                $"Skeleton joint '{nodeName}' was not found. Known names: {knownText}.", nameof(nodeName))
+            { RequestedName = nodeName, KnownNames = known };
         }
 
         /// <summary>Try to find a skeleton node by its case-sensitive glTF name. Returns <c>false</c> and
-        /// <c>node = -1</c> when no node matches. Duplicate non-empty names throw because the lookup is ambiguous.</summary>
+        /// <c>node = -1</c> when no node matches. Duplicate non-empty names throw
+        /// <see cref="SkeletonStateException"/> with <see cref="SkeletonRefusal.DuplicateNodeName"/>,
+        /// <see cref="SkeletonStateException.NodeName"/> and both node indices.</summary>
         public bool TryIndexOf(string nodeName, out int node)
         {
             if (nodeName is null) throw new ArgumentNullException(nameof(nodeName));
@@ -103,7 +113,9 @@ namespace KhaozEngine.Render3D
                 string name = NodeNames[i];
                 if (name.Length == 0) continue;
                 if (!lookup.TryAdd(name, i))
-                    throw new InvalidOperationException($"Skeleton node name '{name}' is duplicated and cannot be resolved.");
+                    throw new SkeletonStateException(SkeletonRefusal.DuplicateNodeName,
+                        $"Skeleton node name '{name}' is duplicated and cannot be resolved.")
+                    { NodeName = name, FirstNodeIndex = lookup[name], DuplicateNodeIndex = i };
             }
             _nameToNode = lookup;
             return lookup;
@@ -150,9 +162,13 @@ namespace KhaozEngine.Render3D
         public void ComposeInto(ReadOnlySpan<JointPose> localByNode, Matrix4x4[] bonePaletteOut)
         {
             if (localByNode.Length != NodeCount)
-                throw new ArgumentException($"localByNode length {localByNode.Length} must equal node count {NodeCount}.");
+                throw new SkeletonArgumentException(SkeletonRefusal.LocalPoseCountMismatch,
+                    $"localByNode length {localByNode.Length} must equal node count {NodeCount}.", null)
+                { ActualCount = localByNode.Length, ExpectedCount = NodeCount };
             if (bonePaletteOut.Length != BoneCount)
-                throw new ArgumentException($"bonePaletteOut length {bonePaletteOut.Length} must equal bone count {BoneCount}.");
+                throw new SkeletonArgumentException(SkeletonRefusal.BonePaletteCountMismatch,
+                    $"bonePaletteOut length {bonePaletteOut.Length} must equal bone count {BoneCount}.", null)
+                { ActualCount = bonePaletteOut.Length, ExpectedCount = BoneCount };
             Span<Matrix4x4> world = NodeCount <= 128 ? stackalloc Matrix4x4[NodeCount] : new Matrix4x4[NodeCount];
             for (int i = 0; i < NodeCount; i++)
             {

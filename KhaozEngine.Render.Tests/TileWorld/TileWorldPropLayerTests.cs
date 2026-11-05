@@ -54,11 +54,16 @@ public class TileWorldPropLayerTests
         TilePropLayerDefinition second = Trees() with { Id = "other-trees" };
         var options = new TileWorldViewOptions { PropLayers = new[] { Trees(), second } };
 
-        ArgumentException error = Assert.Throws<ArgumentException>(() =>
+        TilePropLayerArgumentException error = Assert.Throws<TilePropLayerArgumentException>(() =>
             new TileWorldView(scene, TileRenderTestData.HouseWorld(), TileRenderTestData.Catalogs,
                 new GreyboxMeshResolver(), options));
 
         Assert.Equal("definitions", error.ParamName);
+        Assert.IsAssignableFrom<ArgumentException>(error);
+        Assert.Equal(TilePropLayerRefusal.ArchetypeSelectedTwice, error.Reason);
+        Assert.Equal("tree", error.ArchetypeId);
+        Assert.Equal("trees", error.FirstLayerId);
+        Assert.Equal("other-trees", error.SecondLayerId);
         Assert.Empty(scene.MaterialLoads);
         Assert.Empty(scene.PropMeshLoads);
 
@@ -81,13 +86,15 @@ public class TileWorldPropLayerTests
             Id = "mixed-buildings",
             ArchetypeIds = new HashSet<string>(StringComparer.Ordinal) { "roof_flat", "wall" },
         };
-        ArgumentException error = Assert.Throws<ArgumentException>(() =>
+        TilePropLayerArgumentException error = Assert.Throws<TilePropLayerArgumentException>(() =>
             new TileWorldView(scene, TileRenderTestData.HouseWorld(), TileRenderTestData.Catalogs,
                 new GreyboxMeshResolver(), new TileWorldViewOptions { PropLayers = new[] { mixed } }));
 
-        Assert.Contains("mixed-buildings", error.Message, StringComparison.Ordinal);
-        Assert.Contains("roof_flat", error.Message, StringComparison.Ordinal);
-        Assert.Contains("wall", error.Message, StringComparison.Ordinal);
+        Assert.Equal("definitions", error.ParamName);
+        Assert.Equal(TilePropLayerRefusal.RoofAndOrdinaryMixed, error.Reason);
+        Assert.Equal("mixed-buildings", error.LayerId);
+        Assert.Equal("roof_flat", error.RoofArchetypeId);
+        Assert.Equal("wall", error.OrdinaryArchetypeId);
         Assert.Empty(scene.MaterialLoads);
         Assert.Empty(scene.PropMeshLoads);
     }
@@ -115,7 +122,15 @@ public class TileWorldPropLayerTests
             DrawRadius = drawRadius,
         };
 
-        Assert.Throws<ArgumentOutOfRangeException>(() => ViewWith(invalid));
+        var error = Assert.Throws<TilePropLayerRangeException>(() => ViewWith(invalid));
+        Assert.IsAssignableFrom<ArgumentOutOfRangeException>(error);
+        Assert.Equal("definitions", error.ParamName);
+        Assert.Null(error.ActualValue);
+        Assert.Equal(TilePropLayerRefusal.DistanceOrderingInvalid, error.Reason);
+        Assert.Equal("trees", error.LayerId);
+        Assert.Equal(lodDistance, error.LodDistance);
+        Assert.Equal(hlodDistance, error.HlodDistance);
+        Assert.Equal(drawRadius, error.DrawRadius);
     }
 
     [Theory]
@@ -132,6 +147,51 @@ public class TileWorldPropLayerTests
         };
 
         Assert.Throws<ArgumentOutOfRangeException>(() => ViewWith(invalid));
+    }
+
+    [Theory]
+    [InlineData(TilePropLayerRefusal.DefinitionNull)]
+    [InlineData(TilePropLayerRefusal.LayerIdMissing)]
+    [InlineData(TilePropLayerRefusal.LayerIdDuplicate)]
+    [InlineData(TilePropLayerRefusal.SelectionEmpty)]
+    [InlineData(TilePropLayerRefusal.ArchetypeMissing)]
+    public void View_refuses_invalid_layer_definitions(TilePropLayerRefusal reason)
+    {
+        TilePropLayerDefinition valid = Trees();
+        TilePropLayerDefinition invalid = reason switch
+        {
+            TilePropLayerRefusal.DefinitionNull => null!,
+            TilePropLayerRefusal.LayerIdMissing => valid with { Id = " " },
+            TilePropLayerRefusal.LayerIdDuplicate => valid with
+            {
+                ArchetypeIds = new HashSet<string>(StringComparer.Ordinal) { "bush" },
+            },
+            TilePropLayerRefusal.SelectionEmpty => valid with { ArchetypeIds = new HashSet<string>() },
+            TilePropLayerRefusal.ArchetypeMissing => valid with { ArchetypeIds = new HashSet<string> { "absent" } },
+            _ => throw new ArgumentOutOfRangeException(nameof(reason)),
+        };
+        TilePropLayerDefinition[] definitions = reason == TilePropLayerRefusal.LayerIdDuplicate
+            ? new[] { valid, invalid } : new[] { invalid };
+        var scene = new RecordingTileWorldScene();
+
+        var error = Assert.Throws<TilePropLayerArgumentException>(() => new TileWorldView(scene,
+            TileRenderTestData.HouseWorld(), TileRenderTestData.Catalogs, new GreyboxMeshResolver(),
+            new TileWorldViewOptions { PropLayers = definitions }));
+
+        Assert.Equal("definitions", error.ParamName);
+        Assert.Equal(reason, error.Reason);
+        if (reason is TilePropLayerRefusal.DefinitionNull or TilePropLayerRefusal.LayerIdMissing)
+            Assert.Equal(0, error.LayerIndex);
+        if (reason == TilePropLayerRefusal.LayerIdDuplicate)
+            Assert.Equal(1, error.LayerIndex);
+        if (reason is TilePropLayerRefusal.LayerIdDuplicate or TilePropLayerRefusal.SelectionEmpty
+            or TilePropLayerRefusal.ArchetypeMissing)
+            Assert.Equal("trees", error.LayerId);
+        if (reason == TilePropLayerRefusal.ArchetypeMissing)
+            Assert.Equal("absent", error.ArchetypeId);
+        Assert.Empty(scene.MaterialLoads);
+        Assert.Empty(scene.PropMeshLoads);
+        using TileWorldView control = ViewWith(valid);
     }
 
     [Fact]

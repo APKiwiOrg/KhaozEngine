@@ -372,7 +372,9 @@ because generated key-visibility exports splice immediately after them. A bindin
 shader reader. The optimizer removes unread declarations and would shift Direct3D11 material registers away
 from C# layouts. Shaderc preserve-bindings stays unchanged. Scene and standalone lit renderer construction
 require `GpuCapabilities.MaxFragmentStorageBuffers >= 3` before GPU allocation, even without opted-in water.
-Lower reports throw `NotSupportedException` naming Vulkan's `maxPerStageDescriptorStorageBuffers`. The three
+Lower reports throw `LitReceiverNotSupportedException` with
+`LitReceiverRefusal.FragmentStorageBufferLimitInsufficient`, `RequiredCount`, `AvailableCount` and
+`CapabilityName` (`maxPerStageDescriptorStorageBuffers`). The three
 buffers are point-light records, point-light clusters and water volumes.
 
 For a submerged receiver `P` at depth `h`, Snell refraction uses the still-water surface and constant index

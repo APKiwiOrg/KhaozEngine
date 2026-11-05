@@ -133,7 +133,12 @@ public sealed class RigidAttachmentSubmissionTests
         using var fixture = new SubmissionFixture();
         BoundAttachmentSet bound = fixture.Load(2);
         RigidInstanceDraw[] shortBuffer = [Template];
-        Assert.Throws<ArgumentException>(() => bound.WriteDraws(fixture.Skeleton, fixture.Palette, Model, Key, Template, shortBuffer));
+        var capacity = Assert.Throws<AttachmentSubmissionArgumentException>(() => bound.WriteDraws(fixture.Skeleton, fixture.Palette, Model, Key, Template, shortBuffer));
+        Assert.Equal(AttachmentSubmissionRefusal.OutputTooSmall, capacity.Reason);
+        Assert.Equal(1, capacity.ActualCapacity);
+        Assert.Equal(2, capacity.RequiredCapacity);
+        Assert.Equal("destination", capacity.ParamName);
+        Assert.IsAssignableFrom<ArgumentException>(capacity);
         Assert.Equal(Template, shortBuffer[0]);
     }
 
@@ -144,10 +149,16 @@ public sealed class RigidAttachmentSubmissionTests
         BoundAttachmentSet bound = fixture.Load(2, twoParts: true);
         fixture.Palette[0].M41 = float.NaN;
         RigidInstanceDraw[] draws = Enumerable.Repeat(Template, bound.DrawCount).ToArray();
-        Assert.Throws<ArgumentException>(() => bound.Queue(fixture.Skeleton, fixture.Palette, Model, Key, Template));
+        var queued = Assert.Throws<AttachmentBindingArgumentException>(() => bound.Queue(fixture.Skeleton, fixture.Palette, Model, Key, Template));
+        Assert.Equal(AttachmentBindingRefusal.PoseCompositionFailed, queued.Reason);
+        Assert.Equal(2u, queued.PartId);
+        Assert.Equal("knee", queued.JointName);
         Assert.Equal(0, fixture.Capability.Count);
         Assert.Empty(fixture.Rig.Scene.QueuedInstancesForTests);
-        Assert.Throws<ArgumentException>(() => bound.WriteDraws(fixture.Skeleton, fixture.Palette, Model, Key, Template, draws));
+        var written = Assert.Throws<AttachmentBindingArgumentException>(() => bound.WriteDraws(fixture.Skeleton, fixture.Palette, Model, Key, Template, draws));
+        Assert.Equal(AttachmentBindingRefusal.PoseCompositionFailed, written.Reason);
+        Assert.Equal(2u, written.PartId);
+        Assert.Equal("knee", written.JointName);
         Assert.All(draws, draw => Assert.Equal(Template, draw));
     }
 
@@ -159,9 +170,17 @@ public sealed class RigidAttachmentSubmissionTests
         RigidInstanceDraw invalid = Template with { ShadowOnly = true, CastsShadows = false };
         RigidInstanceDraw[] draws = Enumerable.Repeat(Template, bound.DrawCount).ToArray();
 
-        Assert.Throws<ArgumentException>(() => bound.WriteDraws(fixture.Skeleton, fixture.Palette, Model, Key, invalid, draws));
+        var written = Assert.Throws<DrawAdmissionArgumentException>(() => bound.WriteDraws(fixture.Skeleton, fixture.Palette, Model, Key, invalid, draws));
+        Assert.Equal(DrawAdmissionRefusal.ShadowOnlyWithoutCasting, written.Reason);
+        Assert.Equal("template", written.ParamName);
+        Assert.True(written.ShadowOnly);
+        Assert.False(written.CastsShadows);
         Assert.All(draws, draw => Assert.Equal(Template, draw));
-        Assert.Throws<ArgumentException>(() => bound.Queue(fixture.Skeleton, fixture.Palette, Model, Key, invalid));
+        var queued = Assert.Throws<DrawAdmissionArgumentException>(() => bound.Queue(fixture.Skeleton, fixture.Palette, Model, Key, invalid));
+        Assert.Equal(DrawAdmissionRefusal.ShadowOnlyWithoutCasting, queued.Reason);
+        Assert.Equal("template", queued.ParamName);
+        Assert.True(queued.ShadowOnly);
+        Assert.False(queued.CastsShadows);
         Assert.Equal(0, fixture.Capability.Count);
         Assert.Empty(fixture.Rig.Scene.QueuedInstancesForTests);
     }

@@ -37,15 +37,17 @@ beside `Skeleton` and `BoneMask`. Each is pure, headless and free of a graphics 
 The table is validated once. It is not empty, every name is unique, exactly one joint has no parent
 and it comes first, and every other joint's parent is declared before it. One forward pass over the
 joints therefore meets each parent before its children, the order a `Skeleton` keeps its nodes in. A
-refusal is an `ArgumentException` naming the offending joint. The table is copied, so a caller may
+refusal is a `SkeletonContractArgumentException`, derived from `ArgumentException`, whose
+`SkeletonContractRefusal` reason and joint identifiers describe the rule. The table is copied, so a caller may
 reuse its list.
 
 ## ContractJointMap
 
 The map refuses a skeleton with more nodes than `SkinningMath.MaxBonesPerDraw`, two nodes of one
 name, and a contract joint that is missing, misparented or, other than the root, outside the skin.
-The misparent message names both the actual and the expected parent. Unnamed nodes are left alone,
-as `Skeleton` leaves them, so helper nodes a rig exports without names cost nothing.
+`ContractJointMapArgumentException` carries a `ContractJointMapRefusal` reason and the refused node, joint or
+clip identifiers. `ParentNameMismatch` carries `JointName`, `ActualParentName` and `ExpectedParentName`.
+Unnamed nodes are left alone, as `Skeleton` leaves them, so helper nodes a rig exports without names cost nothing.
 
 The base is the body's zero. It is an optional one-key stance clip, sampled once, or the bind rest
 without one. The stance must carry the caller's clip name (`stance` by default), key each track
@@ -57,8 +59,14 @@ From the base the map derives each contract joint's model frame, its parent-base
 alignment that takes the joint's base orientation back out so a rigid piece authored in the body's
 axes sits at the joint with those axes. `SkinAtBase` deforms a skin to the base on the CPU, the same
 deform the shader applies. The frames exist for contract joints only. `Node` resolves any named node,
-so the frame accessors refuse a node outside the contract, naming it, rather than hand back a zero
-matrix that would collapse an attached piece to the origin.
+so the frame accessors refuse a node outside the contract with `NodeOutsideContract`, `NodeIndex` and
+`NodeName`, rather than hand back a zero matrix that would collapse an attached piece to the origin.
+Name lookup and bone lookup retain their original BCL bases through `ContractJointMapKeyNotFoundException`
+and `ContractJointMapStateException`, with `NodeNameMissing` or `NamedNodeOutsideSkin` and `JointName`.
+The inversion guards report `BaseFrameSingular` with
+`JointName` and `NodeIndex`, or `ParentBaseFrameSingular` with `JointName` and `ParentNodeIndex`.
+Their refusal tests supply inversion results through internal value-taking fault seams. A singular source can
+fail BoneSocket's rigid-basis check first, and cancellation-based inputs do not portably reach either guard.
 
 The arithmetic runs in the same order as Grimhollow's `HumanoidJointMap`. The humanoid can then wrap
 this map and keep its palettes bit for bit. The humanoid's hip pivot is a humanoid fact and stays in
@@ -66,17 +74,20 @@ the game.
 
 ## The other four
 
-`ClipRefusals` returns a message for two clips of one name, a clip of no length, a required joint's
+`ClipRefusals.Only` throws `ClipAdmissionArgumentException` with `DuplicateClipName` and `ClipName` for two
+clips of one name. The other checks return a diagnostic message for a clip of no length, a required joint's
 rotation or a named joint's translation left unkeyed, a channel the stance keys left unkeyed on the
 nodes a filter takes, and the first `ClipHygiene` finding. The messages keep Grimhollow's wording,
 with the caller's clip family and rule in place of the player's own. `Unkeyed` walks the turned joints
 in order, each rotation and then its translation when the moved list names it too, then the joints
 only the moved list names. A loader that lists its joints as the player does therefore meets the
 player's first refusal. The humanoid clause of the player's message, which names its first contract,
-stays in the game. A joint name the skeleton lacks is the caller's error and throws.
+stays in the game. A joint name the skeleton lacks is the caller's error and throws
+`ClipAdmissionArgumentException` with `RequiredJointMissing` and `JointName`.
 
 `BoneMask.ForJoints` builds the named-group masks a layered animator composites through. It weighs
-the named joints only, never their descendants, and refuses a name the skeleton does not carry.
+the named joints only, never their descendants, and refuses a name the skeleton does not carry with
+`BoneMaskArgumentException`, `BoneMaskRefusal.JointNameMissing` and `JointName`.
 
 `SkinnedGrounding.MinimumY` finds where a posed skin meets the floor without a per-frame allocation.
 The caller lends one scratch column per bone. A vertex whose weights total under the threshold
@@ -99,8 +110,10 @@ The table is copied at construction and `At` allocates nothing. The constructor 
 weight that is not finite and above zero, weights whose total is not finite, and a length that is not
 finite and above zero or does not fit between a slot's quiet ends. It refuses a slot length that is not
 finite and above zero, a quiet end that is not finite and at least zero, an empty share that is not
-finite, below 0 or at least 1, and a negative cap. The none moment, family -1, is `Moment.None`, and it
-is the default `Moment`. The struct keeps the family one up, so a value type built without a moment
+finite, below 0 or at least 1, and a negative cap. These are `MomentScheduleArgumentException` refusals with a
+`MomentScheduleRefusal` reason, `OptionName` and double `OptionValue` for options, `FamilyName` and
+`FamilyIndex` for families, and the refused weight, duration, count or total as applicable. The none moment,
+family -1, is `Moment.None`, and it is the default `Moment`. The struct keeps the family one up, so a value type built without a moment
 carries none, as a default `IdleTurn` does.
 
 ## What stays in games

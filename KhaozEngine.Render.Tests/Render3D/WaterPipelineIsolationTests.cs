@@ -161,7 +161,7 @@ public sealed class WaterPipelineIsolationTests
         if (shaderFailure) h.Factory.ThrowOnShaderCreate = h.Factory.ShaderRequests.Count + 1;
         else h.Factory.ThrowOnPipelineCreate = h.Factory.GraphicsPipelines.Count + 1;
         Assert.Throws<InvalidOperationException>(h.Prepare);
-        Assert.Throws<InvalidOperationException>(h.Draw);
+        Assert.Equal(WaterFrameRefusal.OpticsInputsChangedOrUnprepared, Assert.Throws<WaterFrameStateException>(h.Draw).Reason);
         if (!shaderFailure) Assert.Equal(1, h.Factory.ShaderSets[shaders].DisposeCount);
         h.Factory.ThrowOnShaderCreate = h.Factory.ThrowOnPipelineCreate = 0;
         h.Prepare(); h.Draw();
@@ -180,7 +180,7 @@ public sealed class WaterPipelineIsolationTests
         Assert.Throws<InvalidOperationException>(() => h.Renderer.SetOutputs(h.Targets.ColorDepthFB.Outputs));
         Assert.False(previous.Disposed);
         Assert.True(h.Factory.Pipelines[^1].Disposed);
-        Assert.Throws<InvalidOperationException>(h.Draw);
+        Assert.Equal(WaterFrameRefusal.OpticsInputsChangedOrUnprepared, Assert.Throws<WaterFrameStateException>(h.Draw).Reason);
         h.Factory.ThrowOnPipelineCreate = 0;
         h.Prepare(); h.Draw();
         Assert.NotSame(previous, h.Commands.IndexedDraws[0].Pipeline);
@@ -205,7 +205,7 @@ public sealed class WaterPipelineIsolationTests
         h.Factory.ThrowOnPipelineCreate = h.Factory.GraphicsPipelines.Count + 2;
         Assert.Throws<InvalidOperationException>(() => h.Renderer.SetOutputs(h.Targets.ColorDepthFB.Outputs));
         Assert.False(previous.Disposed);
-        Assert.Throws<InvalidOperationException>(h.Draw);
+        Assert.Equal(WaterFrameRefusal.OpticsInputsChangedOrUnprepared, Assert.Throws<WaterFrameStateException>(h.Draw).Reason);
         h.Factory.ThrowOnPipelineCreate = 0;
         h.Prepare(); h.Draw();
         FakePipeline retried = Assert.IsType<FakePipeline>(h.Commands.IndexedDraws[0].Pipeline);

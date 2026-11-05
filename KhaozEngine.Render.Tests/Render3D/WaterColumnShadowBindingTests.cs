@@ -121,7 +121,7 @@ public sealed class WaterColumnShadowBindingTests
         bool readersRetiredFirst = false;
         atlas.OnDispose = () => readersRetiredFirst = oldSets.All(s => s.Disposed);
         Assert.True(h.Scene.ReplaceShadowLayout(512, 3));
-        Assert.Throws<InvalidOperationException>(h.VerifyPrepared);
+        Assert.Equal(WaterFrameRefusal.OpticsInputsChangedOrUnprepared, Assert.Throws<WaterFrameStateException>(h.VerifyPrepared).Reason);
         Assert.False(atlas.Disposed);
         h.Prepare();
         FakeResourceSet[] replacements = h.WaterSets.Except(oldSets).ToArray();
@@ -210,7 +210,7 @@ public sealed class WaterColumnShadowBindingTests
         h.Scene.SetWaterShadowBindingsForTests(changed == "atlas" ? replacementAtlas : bindings.Atlas,
             changed == "sampler" ? replacementSampler : bindings.Sampler,
             changed == "frame" ? replacementFrame : bindings.FrameUniforms);
-        Assert.Throws<InvalidOperationException>(h.VerifyPrepared);
+        Assert.Equal(WaterFrameRefusal.OpticsInputsChangedOrUnprepared, Assert.Throws<WaterFrameStateException>(h.VerifyPrepared).Reason);
         h.Scene.PrepareWaterOpticsForTests();
         h.VerifyPrepared();
         FakeResourceSet[] replacements = h.WaterSets.Except(oldSets).ToArray();

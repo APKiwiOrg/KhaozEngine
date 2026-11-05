@@ -5,7 +5,7 @@ using System.IO.Compression;
 namespace KhaozEngine.Imaging;
 
 /// <summary>
-/// Dependency-free decoder for every PNG colour type and bit depth, noninterlaced or Adam7-interlaced. Palette and
+/// Decoder for every PNG colour type and bit depth, noninterlaced or Adam7-interlaced. Palette and
 /// greyscale images below 8 bits decode to 8-bit samples. All other samples keep their stored depth.
 /// </summary>
 public static class PngReader
@@ -21,10 +21,13 @@ public static class PngReader
     /// or to RGBA when it carries a tRNS chunk. Greyscale at 1, 2 or 4 bits scales to 8 bits as
     /// <c>value * 255 / (2^depth - 1)</c>. A 16-bit sample remains two bytes, most-significant byte first.
     /// </summary>
+    /// <exception cref="PngDecodeDataException">The PNG is malformed, with a reason and applicable identifiers.</exception>
+    /// <exception cref="PngDecodeNotSupportedException">A PNG feature is unsupported, with a reason and its identifiers.</exception>
     public static PngImage Decode(ReadOnlySpan<byte> png)
     {
         if (png.Length < Signature.Length || !png[..Signature.Length].SequenceEqual(Signature))
-            throw new InvalidDataException("invalid PNG signature");
+            throw new PngDecodeDataException(PngDecodeRefusal.SignatureInvalid, "invalid PNG signature")
+            { AvailableBytes = png.Length };
 
         int offset = Signature.Length;
         bool sawHeader = false;
@@ -40,57 +43,71 @@ public static class PngReader
 
         while (offset < png.Length)
         {
-            if (png.Length - offset < 12) throw new InvalidDataException("truncated PNG chunk");
+            if (png.Length - offset < 12)
+                throw new PngDecodeDataException(PngDecodeRefusal.ChunkHeaderTruncated, "truncated PNG chunk")
+                { Offset = offset, AvailableBytes = png.Length - offset };
             uint unsignedLength = Read32(png, offset);
-            if (unsignedLength > int.MaxValue) throw new InvalidDataException("PNG chunk is too large");
+            if (unsignedLength > int.MaxValue)
+                throw new PngDecodeDataException(PngDecodeRefusal.ChunkLengthUnsupported, "PNG chunk is too large")
+                { Offset = offset, DeclaredLength = unsignedLength };
             int length = (int)unsignedLength;
             long end = (long)offset + 12 + length;
-            if (end > png.Length) throw new InvalidDataException("truncated PNG chunk data");
+            if (end > png.Length)
+                throw new PngDecodeDataException(PngDecodeRefusal.ChunkDataTruncated, "truncated PNG chunk data")
+                { Offset = offset, DeclaredLength = unsignedLength, AvailableBytes = png.Length - offset };
 
             ReadOnlySpan<byte> type = png.Slice(offset + 4, 4);
             ReadOnlySpan<byte> data = png.Slice(offset + 8, length);
             uint expectedCrc = Read32(png, offset + 8 + length);
-            if (PngCrc.Compute(type, data) != expectedCrc)
-                throw new InvalidDataException("PNG chunk CRC mismatch");
+            uint actualCrc = PngCrc.Compute(type, data);
+            if (actualCrc != expectedCrc)
+                throw new PngDecodeDataException(PngDecodeRefusal.ChunkCrcMismatch, "PNG chunk CRC mismatch")
+                { ChunkType = TypeName(type), Offset = offset, ExpectedCrc = expectedCrc, ActualCrc = actualCrc };
 
             if (sawData && !IsType(type, "IDAT")) dataEnded = true;
             if (IsType(type, "IHDR"))
             {
                 if (sawHeader || offset != Signature.Length)
-                    throw new InvalidDataException("PNG IHDR must be the first and only header chunk");
+                    throw new PngDecodeDataException(PngDecodeRefusal.HeaderOutOfOrder, "PNG IHDR must be the first and only header chunk")
+                    { Offset = offset };
                 header = ParseHeader(data);
                 sawHeader = true;
             }
             else if (IsType(type, "IDAT"))
             {
                 if (!sawHeader || dataEnded || sawEnd)
-                    throw new InvalidDataException("PNG IDAT chunks are out of order");
-                if ((long)compressed.Length + data.Length > MaxDecodedBytes)
-                    throw new InvalidDataException("PNG compressed payload exceeds the allocation cap");
+                    throw new PngDecodeDataException(PngDecodeRefusal.DataOutOfOrder, "PNG IDAT chunks are out of order")
+                    { ChunkType = TypeName(type), Offset = offset };
+                ValidateCompressedAllocation(compressed.Length, data.Length);
                 compressed.Write(data);
                 sawData = true;
             }
             else if (IsType(type, "IEND"))
             {
                 if (!sawHeader || !sawData || sawEnd || data.Length != 0)
-                    throw new InvalidDataException("invalid PNG IEND chunk");
+                    throw new PngDecodeDataException(PngDecodeRefusal.EndChunkInvalid, "invalid PNG IEND chunk")
+                    { Offset = offset, PayloadLength = data.Length, HeaderSeen = sawHeader, DataSeen = sawData };
                 sawEnd = true;
             }
             else if (IsType(type, "PLTE"))
             {
                 if (!sawHeader || sawPalette || sawTransparency || sawData || sawEnd)
-                    throw new InvalidDataException("PNG PLTE chunk is out of order");
+                    throw new PngDecodeDataException(PngDecodeRefusal.PaletteOutOfOrder, "PNG PLTE chunk is out of order")
+                    { Offset = offset };
                 sawPalette = true;
                 if (header.ColorType == 3) palette = PngPalette.Parse(data, header.BitDepth);
             }
             else if (IsType(type, "tRNS"))
             {
                 if (!sawHeader || sawTransparency || sawData || sawEnd)
-                    throw new InvalidDataException("PNG tRNS chunk is out of order");
+                    throw new PngDecodeDataException(PngDecodeRefusal.TransparencyOutOfOrder, "PNG tRNS chunk is out of order")
+                    { Offset = offset };
                 sawTransparency = true;
                 if (header.ColorType == 3)
                 {
-                    if (palette is null) throw new InvalidDataException("PNG tRNS must follow PLTE in a palette image");
+                    if (palette is null)
+                        throw new PngDecodeDataException(PngDecodeRefusal.PaletteTransparencyBeforePalette, "PNG tRNS must follow PLTE in a palette image")
+                        { Offset = offset };
                     palette.SetTransparency(data);
                 }
                 else
@@ -101,29 +118,39 @@ public static class PngReader
             }
             else if ((type[0] & 0x20) == 0 && !IsType(type, "PLTE"))
             {
-                throw new NotSupportedException("unsupported critical PNG chunk " + TypeName(type));
+                throw new PngDecodeNotSupportedException(PngDecodeRefusal.CriticalChunkUnsupported, "unsupported critical PNG chunk " + TypeName(type))
+                { ChunkType = TypeName(type) };
             }
 
             offset = (int)end;
             if (sawEnd)
             {
-                if (offset != png.Length) throw new InvalidDataException("PNG contains data after IEND");
+                if (offset != png.Length)
+                    throw new PngDecodeDataException(PngDecodeRefusal.DataAfterEnd, "PNG contains data after IEND")
+                    { Offset = offset, TrailingBytes = png.Length - offset };
                 break;
             }
         }
 
-        if (!sawEnd) throw new InvalidDataException("PNG is missing IEND");
-        if (header.ColorType == 3 && palette is null) throw new InvalidDataException("PNG palette image is missing PLTE");
+        if (!sawEnd)
+            throw new PngDecodeDataException(PngDecodeRefusal.EndChunkMissing, "PNG is missing IEND")
+            { HeaderSeen = sawHeader, DataSeen = sawData };
+        if (header.ColorType == 3 && palette is null)
+            throw new PngDecodeDataException(PngDecodeRefusal.PaletteMissing, "PNG palette image is missing PLTE")
+            { ColorType = header.ColorType };
         return DecodePayload(header, palette, transparency, compressed.ToArray());
     }
 
     private static Header ParseHeader(ReadOnlySpan<byte> data)
     {
-        if (data.Length != 13) throw new InvalidDataException("PNG IHDR must contain 13 bytes");
+        if (data.Length != 13)
+            throw new PngDecodeDataException(PngDecodeRefusal.HeaderLengthMismatch, "PNG IHDR must contain 13 bytes")
+            { ActualLength = data.Length, ExpectedLength = 13 };
         uint width = Read32(data, 0);
         uint height = Read32(data, 4);
         if (width == 0 || height == 0 || width > int.MaxValue || height > int.MaxValue)
-            throw new InvalidDataException("PNG dimensions must be positive supported integers");
+            throw new PngDecodeDataException(PngDecodeRefusal.DimensionsInvalid, "PNG dimensions must be positive supported integers")
+            { Width = width, Height = height };
 
         int bitDepth = data[8];
         int colorType = data[9];
@@ -133,7 +160,8 @@ public static class PngReader
             2 => 3,
             4 => 2,
             6 => 4,
-            _ => throw new NotSupportedException($"PNG color type {colorType} is not supported"),
+            _ => throw new PngDecodeNotSupportedException(PngDecodeRefusal.ColorTypeUnsupported, $"PNG color type {colorType} is not supported")
+            { ColorType = colorType },
         };
         bool supportedDepth = colorType switch
         {
@@ -142,10 +170,14 @@ public static class PngReader
             _ => bitDepth is 8 or 16,
         };
         if (!supportedDepth)
-            throw new NotSupportedException($"PNG bit depth {bitDepth} is not supported for color type {colorType}");
+            throw new PngDecodeNotSupportedException(PngDecodeRefusal.BitDepthUnsupported, $"PNG bit depth {bitDepth} is not supported for color type {colorType}")
+            { BitDepth = bitDepth, ColorType = colorType };
         if (data[10] != 0 || data[11] != 0)
-            throw new NotSupportedException("unsupported PNG compression or filter method");
-        if (data[12] > 1) throw new NotSupportedException($"PNG interlace method {data[12]} is not supported");
+            throw new PngDecodeNotSupportedException(PngDecodeRefusal.CompressionOrFilterMethodUnsupported, "unsupported PNG compression or filter method")
+            { CompressionMethod = data[10], FilterMethod = data[11] };
+        if (data[12] > 1)
+            throw new PngDecodeNotSupportedException(PngDecodeRefusal.InterlaceUnsupported, $"PNG interlace method {data[12]} is not supported")
+            { InterlaceMethod = data[12] };
         bool interlaced = data[12] == 1;
 
         // A palette expands to at most four 8-bit samples per pixel.
@@ -155,7 +187,8 @@ public static class PngReader
         long expanded = colorType == 3 ? pixels * 4 : raster;
         long filtered = PngInterlace.FilteredLength((int)width, (int)height, bitsPerPixel, interlaced);
         if (raster > MaxDecodedBytes || expanded > MaxDecodedBytes || filtered > MaxDecodedBytes)
-            throw new InvalidDataException($"PNG decoded payload exceeds the {MaxDecodedBytes}-byte allocation cap");
+            throw new PngDecodeDataException(PngDecodeRefusal.DecodedAllocationCapExceeded, $"PNG decoded payload exceeds the {MaxDecodedBytes}-byte allocation cap")
+            { RasterBytes = raster, ExpandedBytes = expanded, FilteredBytes = filtered, MaximumBytes = MaxDecodedBytes };
         return new Header((int)width, (int)height, colorType, channels, bitDepth, interlaced, (int)filtered);
     }
 
@@ -164,16 +197,25 @@ public static class PngReader
     {
         var filtered = new byte[header.FilteredLength];
         using var input = new MemoryStream(compressed, writable: false);
-        using var zlib = new ZLibStream(input, CompressionMode.Decompress);
         int read = 0;
-        while (read < filtered.Length)
+        try
         {
-            int count = zlib.Read(filtered, read, filtered.Length - read);
-            if (count == 0) break;
-            read += count;
+            using var zlib = new ZLibStream(input, CompressionMode.Decompress);
+            while (read < filtered.Length)
+            {
+                int count = zlib.Read(filtered, read, filtered.Length - read);
+                if (count == 0) break;
+                read += count;
+            }
+            bool hasTrailingData = read == filtered.Length && zlib.ReadByte() != -1;
+            if (read != filtered.Length || hasTrailingData)
+                throw new PngDecodeDataException(PngDecodeRefusal.DecodedLengthMismatch, "PNG decoded payload size does not match IHDR")
+                { ExpectedLength = filtered.Length, ActualLength = read, HasTrailingData = hasTrailingData };
         }
-        if (read != filtered.Length || zlib.ReadByte() != -1)
-            throw new InvalidDataException("PNG decoded payload size does not match IHDR");
+        catch (InvalidDataException error)
+        {
+            throw new PngDecodeDataException(PngDecodeRefusal.CompressedStreamCorrupt, error.Message, error);
+        }
 
         byte[] decoded = PngInterlace.Reconstruct(
             filtered, header.Width, header.Height, header.Channels * header.BitDepth, header.Interlaced);
@@ -186,6 +228,18 @@ public static class PngReader
 
         byte[] expanded = transparent.Expand(decoded, header.BitDepth);
         return new PngImage(header.Width, header.Height, transparent.OutputChannels, header.BitDepth, expanded);
+    }
+
+    // Injects only the accumulated-size fault, without allocating a cap-sized compressed stream.
+    internal static void RejectCompressedAllocationForTests(long compressedBytes, int chunkBytes) =>
+        ValidateCompressedAllocation(compressedBytes, chunkBytes);
+
+    private static void ValidateCompressedAllocation(long compressedBytes, int chunkBytes)
+    {
+        long required = compressedBytes + chunkBytes;
+        if (required > MaxDecodedBytes)
+            throw new PngDecodeDataException(PngDecodeRefusal.CompressedAllocationCapExceeded, "PNG compressed payload exceeds the allocation cap")
+            { RequiredBytes = required, MaximumBytes = MaxDecodedBytes };
     }
 
     private static bool IsType(ReadOnlySpan<byte> type, string expected) =>

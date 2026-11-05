@@ -151,10 +151,12 @@ namespace KhaozEngine.Terrain
             _physics = physics;
             _collisionShapes = collisionShapes;
             if (dynamicsSource is not null && physics is null)
-                throw new ArgumentException("A chunk dynamics source requires a physics world.", nameof(dynamicsSource));
+                throw new ChunkSinkConfigurationArgumentException(ChunkSinkConfigurationRefusal.DynamicsRequiresPhysics,
+                    "A chunk dynamics source requires a physics world.", nameof(dynamicsSource));
             _dynamicsSource = dynamicsSource;
             if (collideTerrain && physics is null)
-                throw new ArgumentException("Terrain collision requires a physics world.", nameof(collideTerrain));
+                throw new ChunkSinkConfigurationArgumentException(ChunkSinkConfigurationRefusal.CollisionRequiresPhysics,
+                    "Terrain collision requires a physics world.", nameof(collideTerrain));
             _collideTerrain = collideTerrain;
             _lodConfig = lodConfig ?? TerrainLodConfig.Default;
             if (collisionLod < 0)
@@ -289,7 +291,7 @@ namespace KhaozEngine.Terrain
         /// fixed at ctor time, so a swap never changes what it serves. A SOURCE-BACKED placement layer is queried
         /// live per build, so what it serves can change on its own without a field swap.
         /// <para><b>That precondition is enforced, not merely documented</b> (issue #105). A swap while any
-        /// <c>BuildCpu</c> is EXECUTING throws <see cref="InvalidOperationException"/>, because that build
+        /// <c>BuildCpu</c> is EXECUTING throws <see cref="ChunkSinkConfigurationStateException"/>, because that build
         /// reads <c>_field</c> at several points (mesh, collision surface, companion scatter) and would otherwise
         /// mesh half a chunk from each field with nothing anywhere to say so. A build that has already RETURNED and
         /// is waiting to apply is not visible here, and is the half <see cref="TerrainStreamer.FlushPendingBuilds"/>
@@ -299,10 +301,11 @@ namespace KhaozEngine.Terrain
             if (field is null) throw new ArgumentNullException(nameof(field));
             int inFlight = Volatile.Read(ref _buildsInFlight);
             if (inFlight > 0)
-                throw new InvalidOperationException(
+                throw new ChunkSinkConfigurationStateException(ChunkSinkConfigurationRefusal.FieldChangeDuringBuild,
                     $"UpdateField was called while {inFlight} chunk build(s) are still running against the current field. " +
                     "Flush the streamer first (TerrainStreamer.FlushPendingBuilds), or run it synchronously " +
-                    "(StreamerConfig.Synchronous), so no build can mesh one chunk from two different fields.");
+                    "(StreamerConfig.Synchronous), so no build can mesh one chunk from two different fields.")
+                { BuildCount = inFlight };
             _field = field;
         }
 
@@ -320,9 +323,10 @@ namespace KhaozEngine.Terrain
             ArgumentNullException.ThrowIfNull(layers);
             int inFlight = Volatile.Read(ref _buildsInFlight);
             if (inFlight > 0)
-                throw new InvalidOperationException(
+                throw new ChunkSinkConfigurationStateException(ChunkSinkConfigurationRefusal.LayersChangeDuringBuild,
                     $"UpdateLayers was called while {inFlight} chunk build(s) are still running. " +
-                    "Flush the streamer before replacing captured generation config.");
+                    "Flush the streamer before replacing captured generation config.")
+                { BuildCount = inFlight };
             PropLayer[] next = layers.ToArray();
             PropLayerTopology.Validate(next, nameof(layers));
             PropLayerTopology.RequireSameTopology(_layers, next, nameof(layers));
@@ -348,9 +352,10 @@ namespace KhaozEngine.Terrain
             ArgumentNullException.ThrowIfNull(lodConfig);
             int inFlight = Volatile.Read(ref _buildsInFlight);
             if (inFlight > 0)
-                throw new InvalidOperationException(
+                throw new ChunkSinkConfigurationStateException(ChunkSinkConfigurationRefusal.LodChangeDuringBuild,
                     $"ReconfigureLod was called while {inFlight} chunk build(s) are still running. " +
-                    "Drain or reset the streamer before changing its LOD table.");
+                    "Drain or reset the streamer before changing its LOD table.")
+                { BuildCount = inFlight };
             _lodConfig = lodConfig;
         }
 

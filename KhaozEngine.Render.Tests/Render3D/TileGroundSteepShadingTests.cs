@@ -99,8 +99,12 @@ namespace KhaozEngine.Tests.Render3D
         public void A_companion_naming_its_own_layer_is_refused()
         {
             var layers = new[] { Layer(new TileGroundSteepLayer { CompanionSlot = 0, FromDegrees = 40f, ToDegrees = 55f }), Layer() };
-            var ex = Assert.Throws<ArgumentException>(() => TileGroundMaterialConfig.BuildParams(layers, 0.15f));
+            var ex = Assert.Throws<TileGroundSteepArgumentException>(() => TileGroundMaterialConfig.BuildParams(layers, 0.15f));
             Assert.Equal("layers", ex.ParamName);
+            Assert.Equal(TileGroundSteepRefusal.CompanionIsSelf, ex.Reason);
+            Assert.IsAssignableFrom<ArgumentException>(ex);
+            Assert.Equal(0, ex.LayerIndex);
+            Assert.Equal(0, ex.CompanionSlot);
         }
 
         [Theory]
@@ -109,8 +113,12 @@ namespace KhaozEngine.Tests.Render3D
         public void A_companion_outside_the_set_is_refused(int slot)
         {
             var layers = new[] { Layer(new TileGroundSteepLayer { CompanionSlot = slot, FromDegrees = 40f, ToDegrees = 55f }), Layer() };
-            var ex = Assert.Throws<ArgumentException>(() => TileGroundMaterialConfig.BuildParams(layers, 0.15f));
+            var ex = Assert.Throws<TileGroundSteepArgumentException>(() => TileGroundMaterialConfig.BuildParams(layers, 0.15f));
             Assert.Equal("layers", ex.ParamName);
+            Assert.Equal(TileGroundSteepRefusal.CompanionOutsideSet, ex.Reason);
+            Assert.Equal(0, ex.LayerIndex);
+            Assert.Equal(slot, ex.CompanionSlot);
+            Assert.Equal(2, ex.LayerCount);
         }
 
         [Theory]
@@ -122,18 +130,33 @@ namespace KhaozEngine.Tests.Render3D
         public void A_band_that_does_not_rise_inside_a_right_angle_is_refused(float from, float to)
         {
             var layers = new[] { Layer(new TileGroundSteepLayer { CompanionSlot = 1, FromDegrees = from, ToDegrees = to }), Layer() };
-            var ex = Assert.Throws<ArgumentException>(() => TileGroundMaterialConfig.BuildParams(layers, 0.15f));
+            var ex = Assert.Throws<TileGroundSteepArgumentException>(() => TileGroundMaterialConfig.BuildParams(layers, 0.15f));
             Assert.Equal("layers", ex.ParamName);
+            Assert.Equal(TileGroundSteepRefusal.BandOutsideRightAngle, ex.Reason);
+            Assert.Equal(0, ex.LayerIndex);
+            Assert.Equal(from, ex.FromDegrees);
+            Assert.Equal(to, ex.ToDegrees);
         }
 
         [Fact]
         public void A_band_whose_ends_pack_to_the_same_cosine_is_refused()
         {
-            // 0.001 and 0.002 degrees both pack to cos 1f, and smoothstep(1, 1, ny) is undefined in GLSL.
-            Assert.Equal(Cos(0.001f), Cos(0.002f));
-            var layers = new[] { Layer(new TileGroundSteepLayer { CompanionSlot = 1, FromDegrees = 0.001f, ToDegrees = 0.002f }), Layer() };
-            var ex = Assert.Throws<ArgumentException>(() => TileGroundMaterialConfig.BuildParams(layers, 0.15f));
+            // Exact normal powers of two keep denormal modes (DAZ, flush to zero) out of the path. Both radian
+            // values stay below 2^-20, so each cosine's deficit is under 2^-41, far below the 2^-25 rounding
+            // midpoint, and both round to exactly one on every arithmetic path.
+            float from = 1f / 65536f, to = 1f / 32768f;
+            var layers = new[] { Layer(new TileGroundSteepLayer { CompanionSlot = 1, FromDegrees = from, ToDegrees = to }), Layer() };
+            var ex = Assert.Throws<TileGroundSteepArgumentException>(() => TileGroundMaterialConfig.BuildParams(layers, 0.15f));
             Assert.Equal("layers", ex.ParamName);
+            Assert.Equal(TileGroundSteepRefusal.BandCosinesNotDistinct, ex.Reason);
+            Assert.Equal(0, ex.LayerIndex);
+            Assert.Equal(from, ex.FromDegrees);
+            Assert.Equal(to, ex.ToDegrees);
+
+            // The same layer with a band whose ends pack to distinct cosines is accepted.
+            TileGroundMaterialConfig.BuildParams(
+                new[] { Layer(new TileGroundSteepLayer { CompanionSlot = 1, FromDegrees = 40f, ToDegrees = 55f }), Layer() },
+                0.15f);
         }
 
         [Fact]

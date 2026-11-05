@@ -598,8 +598,10 @@ whole. Their defaults fall back to the older draws, so an older scene keeps comp
 The rigid default drops the key, the tint, the material, `ShadowMobility`, `CastsShadows` and `InvertShadowDissolve`, and does not
 forward `DissolveComplement`. It draws nothing for a shadow-only descriptor. It also draws nothing for a complement
 phase above one half with no dissolve. `Scene3D` shows no body for that draw, at most a shadow, so the fallback treats
-it like a shadow-only draw. A shadow-only descriptor with `CastsShadows = false` throws the same `ArgumentException`
-the scene's instance queue throws. The skinned default keeps the tint, drops the key, the material and the shadow opt-out, and
+it like a shadow-only draw. A shadow-only descriptor with `CastsShadows = false` throws
+`DrawAdmissionArgumentException` with `DrawAdmissionRefusal.ShadowOnlyWithoutCasting`, `ShadowOnly`,
+`CastsShadows` and `ParamName` set to `draw`. The scene's instance queue uses the same shared reason.
+The skinned default keeps the tint, drops the key, the material and the shadow opt-out, and
 still refuses the call on a scene without skinned meshes.
 `CreatePropClusterOwner()` is the opt-in cluster seam. Its default throws `NotSupportedException`, so a custom
 scene can continue to host an ordinary view and fails clearly only when `PropLayers` asks it for large-world
@@ -647,8 +649,9 @@ catalog archetype up front, so a region load is placements alone.
   `ArchetypeIds`, `DrawRadius`, `LodDistance`, `LodCrossfadeWidth`, `HlodDistance`, `HlodCrossfadeWidth`,
   `HlodWeldCell`, and `CastsShadows` (default true). Construction rejects missing archetypes, duplicate layer IDs,
   duplicate archetype selection, non-finite or negative tuning, and a LOD or HLOD distance past
-  the draw radius. A layer selects either only catalog roofs or no roofs. Mixing them fails before upload,
-  naming the layer and both kinds. Roof layers cannot enable `CutInsideInteriors`.
+  the draw radius. A layer selects either only catalog roofs or no roofs. Mixing them fails before upload.
+  `TilePropLayerArgumentException` carries `TilePropLayerRefusal.RoofAndOrdinaryMixed`, `LayerId`,
+  `RoofArchetypeId` and `OrdinaryArchetypeId`. Roof layers cannot enable `CutInsideInteriors`.
   When HLOD is enabled, its positive distance must also be greater than `LodDistance`.
   A selected object leaves the ordinary prop list and enters exactly one `TilePropLayerSnapshot`, so it cannot
   double-submit. `TileRegionProps` publishes these detached, object-ID-ordered batches with region, plane and
@@ -790,9 +793,11 @@ The host advances `Scene3D.EffectTimeSeconds`.
 `AnimatedFoliageStyle(FoliageMotionProfile Motion, bool CastsShadows)`. It starts empty and refuses
 null. A selected archetype without a style uses `FoliageMotionProfile.Blade` `(1, 0.65, 1, 0)` with
 casting off, independently of short cover's global casting. A style outside the selection or not
-exactly naming an authored selected archetype throws `ArgumentException` naming its ID. Selected
+exactly naming an authored selected archetype throws `AnimatedFoliageStyleArgumentException` with
+`Reason = AnimatedFoliageStyleRefusal.StyleOutsideSelection` and `ArchetypeId`. Selected
 archetypes sharing a catalog mesh reference or any resolved multipart mesh handle must have the same
-effective motion and casting style, including omitted defaults. A conflict names both IDs.
+effective motion and casting style, including omitted defaults. A conflict carries
+`AnimatedFoliageStyleRefusal.SharedMeshStyleConflict`, `FirstArchetypeId` and `SecondArchetypeId`.
 
 ```csharp
 options.AnimatedFoliageArchetypes = new HashSet<string> { "grass_tall", "bush" };
@@ -977,3 +982,31 @@ it can gate, or a Metal-only bake turns `main` red on every other backend.
 Cut-aware object and walk-surface picks use `ITileWorldScene.InteriorCutFrame` from the current picture.
 `Scene3DTileWorldScene` supplies the live scene origin. A custom scene supplies the same frame it used for
 its interior cut uniforms. The default frame and the frameless core query overloads use origin zero.
+
+## TileWorld render refusals
+
+`AnimatedFoliageStyleArgumentException`, `TileGroundMaterialSetArgumentException` and
+`TilePropLayerArgumentException` derive from `ArgumentException`. `TilePropLayerRangeException` derives from
+`ArgumentOutOfRangeException`. Each carries a non-null `Reason` and preserves `ParamName` and any `ActualValue`.
+Optional identifiers are null when that reason does not use them. Messages remain developer prose.
+Shared steep-band rules forward `TileGroundSteepArgumentException` from Render3D without translation.
+
+| Reason | Refused input | Identifiers |
+|---|---|---|
+| `AnimatedFoliageStyleRefusal.StyleOutsideSelection` | a style key that does not exactly name a selected authored archetype | `ArchetypeId` |
+| `AnimatedFoliageStyleRefusal.SharedMeshStyleConflict` | selected archetypes sharing geometry with different effective styles | `FirstArchetypeId`, `SecondArchetypeId` |
+| `TileGroundMaterialSetRefusal.LayerCountMismatch` | layers not matching material count plus the reserved layer | `MaterialCount`, `ActualLayerCount`, `RequiredLayerCount` |
+| `TileGroundMaterialSetRefusal.LayerLimitExceeded` | a hand-built set above the material layer limit | `LayerCount`, `MaximumLayerCount` |
+| `TileGroundMaterialSetRefusal.LayerByteLengthMismatch` | a material layer with the wrong RGBA byte length | `LayerIndex`, `ActualByteLength`, `ExpectedByteLength`, `Width`, `Height` |
+| `TileGroundMaterialSetRefusal.DuplicateMaterialId` | a material id assigned to more than one render slot | `MaterialId`, `FirstSlot`, `DuplicateSlot` |
+| `TileGroundMaterialSetRefusal.MissingLayerHasCompanion` | a steep companion on the reserved missing-material layer | `LayerIndex` |
+| `TileGroundMaterialSetRefusal.CompanionIsMissingLayer` | a steep companion referencing the reserved missing slot | `LayerIndex`, `CompanionSlot`, `MaterialSlotCount` |
+| `TilePropLayerRefusal.DefinitionNull` | a null prop-layer definition | `LayerIndex` |
+| `TilePropLayerRefusal.LayerIdMissing` | a prop layer without an id | `LayerIndex` |
+| `TilePropLayerRefusal.LayerIdDuplicate` | duplicate prop-layer ids | `LayerId`, `LayerIndex` |
+| `TilePropLayerRefusal.SelectionEmpty` | a prop layer selecting no archetypes | `LayerId` |
+| `TilePropLayerRefusal.ArchetypeMissing` | a prop layer naming an unknown archetype | `LayerId`, `ArchetypeId` |
+| `TilePropLayerRefusal.ArchetypeSelectedTwice` | an archetype selected by multiple prop layers | `ArchetypeId`, `FirstLayerId`, `SecondLayerId` |
+| `TilePropLayerRefusal.RoofAndOrdinaryMixed` | a layer mixing roof and ordinary archetypes | `LayerId`, `RoofArchetypeId`, `OrdinaryArchetypeId` |
+| `TilePropLayerRefusal.RoofInteriorCutEnabled` | a roof layer enabling interior cuts | `LayerId` |
+| `TilePropLayerRefusal.DistanceOrderingInvalid` | aggregate LOD HLOD and draw distances with an invalid ordering | `LayerId`, `LodDistance`, `HlodDistance`, `DrawRadius` |

@@ -1,6 +1,5 @@
 using System;
 using System.Buffers.Binary;
-using System.IO;
 using System.Text;
 using KhaozEngine.Attachments;
 using Xunit;
@@ -20,6 +19,8 @@ public class GlbPolicyTests
     [InlineData("data-uri")]
     [InlineData("skins")]
     [InlineData("node-skin")]
+    [InlineData("node-weights")]
+    [InlineData("mesh-weights")]
     [InlineData("joints-attribute")]
     [InlineData("weights-attribute")]
     [InlineData("morph-target")]
@@ -28,15 +29,30 @@ public class GlbPolicyTests
     [InlineData("short-binary")]
     [InlineData("invalid-json")]
     [InlineData("duplicate-json")]
+    [InlineData("root-array")]
+    [InlineData("asset-version")]
+    [InlineData("two-buffers")]
+    [InlineData("array-shape")]
+    [InlineData("array-entry")]
+    [InlineData("value-shape")]
     public void Policy_RejectsExternalOrNonRigidData(string name)
     {
+        AttachmentGlb.ValidateRigidEmbedded(Container(Embedded), "control.glb");
         string json = name switch
         {
+            "root-array" => "[]",
+            "asset-version" => Embedded.Replace("2.0", "1.0", StringComparison.Ordinal),
+            "two-buffers" => Embedded.Replace("[{\"byteLength\":4}]", "[{\"byteLength\":4},{\"byteLength\":4}]", StringComparison.Ordinal),
+            "array-shape" => Embedded.Replace("[{\"byteLength\":4}]", "{}", StringComparison.Ordinal),
+            "array-entry" => Embedded.Replace("[{\"byteLength\":4}]", "[null]", StringComparison.Ordinal),
+            "value-shape" => Embedded.Replace("\"byteLength\":4", "\"byteLength\":\"four\"", StringComparison.Ordinal),
             "buffer-uri" => Embedded.Replace("\"byteLength\":4", "\"uri\":\"other.bin\",\"byteLength\":4", StringComparison.Ordinal),
             "image-uri" => Embedded.Replace("\"mimeType\":", "\"uri\":\"image.png\",\"mimeType\":", StringComparison.Ordinal),
             "data-uri" => Embedded.Replace("\"mimeType\":", "\"uri\":\"data:image/png;base64,AAAA\",\"mimeType\":", StringComparison.Ordinal),
             "skins" => Embedded.Replace("\"meshes\":", "\"skins\":[{\"joints\":[0]}],\"meshes\":", StringComparison.Ordinal),
             "node-skin" => Embedded.Replace("\"meshes\":", "\"nodes\":[{\"skin\":0}],\"meshes\":", StringComparison.Ordinal),
+            "node-weights" => Embedded.Replace("\"meshes\":", "\"nodes\":[{\"weights\":[]}],\"meshes\":", StringComparison.Ordinal),
+            "mesh-weights" => Embedded.Replace("\"primitives\":", "\"weights\":[],\"primitives\":", StringComparison.Ordinal),
             "joints-attribute" => Embedded.Replace("\"POSITION\":0", "\"POSITION\":0,\"JOINTS_0\":1", StringComparison.Ordinal),
             "weights-attribute" => Embedded.Replace("\"POSITION\":0", "\"POSITION\":0,\"WEIGHTS_0\":1", StringComparison.Ordinal),
             "morph-target" => Embedded.Replace("\"attributes\":", "\"targets\":[{}],\"attributes\":", StringComparison.Ordinal),
@@ -47,8 +63,9 @@ public class GlbPolicyTests
             _ => Embedded,
         };
         byte[] glb = Container(json, binary: name != "missing-binary");
-        InvalidDataException error = Assert.Throws<InvalidDataException>(() => AttachmentGlb.ValidateRigidEmbedded(glb, name + ".glb"));
-        Assert.Contains(name + ".glb", error.Message);
+        Action validate = () => AttachmentGlb.ValidateRigidEmbedded(glb, name + ".glb");
+        if (AttachmentRefusalAssertions.ContainerPolicy(name, validate, name + ".glb")) return;
+        AttachmentGeometryRefusalAssertions.Rigid(name, validate, name + ".glb");
     }
 
     [Theory]
@@ -62,11 +79,13 @@ public class GlbPolicyTests
     [InlineData("json-not-first")]
     [InlineData("trailing-header")]
     [InlineData("overflow-binary")]
+    [InlineData("unexpected-chunk")]
     public void Envelope_RejectsMalformedLengthsBeforeSlicing(string name)
     {
         byte[] glb = Container(Embedded);
         switch (name)
         {
+            case "unexpected-chunk": BinaryPrimitives.WriteUInt32LittleEndian(glb.AsSpan(glb.Length - 8), 42); break;
             case "header": glb = new byte[11]; break;
             case "magic": glb[0] = 0; break;
             case "version": BinaryPrimitives.WriteUInt32LittleEndian(glb.AsSpan(4), 1); break;
@@ -78,10 +97,8 @@ public class GlbPolicyTests
             case "trailing-header": Array.Resize(ref glb, glb.Length + 4); BinaryPrimitives.WriteUInt32LittleEndian(glb.AsSpan(8), (uint)glb.Length); break;
             case "overflow-binary": BinaryPrimitives.WriteUInt32LittleEndian(glb.AsSpan(glb.Length - 12), uint.MaxValue - 3); break;
         }
-        InvalidDataException rigid = Assert.Throws<InvalidDataException>(() => AttachmentGlb.ValidateRigidEmbedded(glb, name + ".glb"));
-        InvalidDataException skinned = Assert.Throws<InvalidDataException>(() => AttachmentGlb.ValidateSkinnedEmbedded(glb, name + ".glb"));
-        Assert.Contains(name + ".glb", rigid.Message);
-        Assert.Contains(name + ".glb", skinned.Message);
+        AttachmentRefusalAssertions.Envelope(name, glb, () => AttachmentGlb.ValidateRigidEmbedded(glb, name + ".glb"));
+        AttachmentRefusalAssertions.Envelope(name, glb, () => AttachmentGlb.ValidateSkinnedEmbedded(glb, name + ".glb"));
     }
 
     static byte[] Container(string json, bool binary = true)

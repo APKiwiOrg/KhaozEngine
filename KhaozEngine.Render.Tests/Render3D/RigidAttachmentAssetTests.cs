@@ -99,7 +99,9 @@ public sealed class RigidAttachmentAssetTests
         using var cache = new AttachmentSetCache(harness.Scene, source);
         int buffers = harness.Factory.Buffers.Count;
 
-        Assert.Throws<InvalidDataException>(() => cache.Get("set.json", hash));
+        var error = Assert.Throws<AttachmentGlbContainerDataException>(() => cache.Get("set.json", hash));
+        Assert.Equal(AttachmentGlbContainerRefusal.HeaderInvalid, error.Reason);
+        Assert.NotNull(error.SourceName);
 
         Assert.Equal(buffers, harness.Factory.Buffers.Count);
     }
@@ -214,10 +216,13 @@ public sealed class RigidAttachmentAssetTests
         using var cache = new AttachmentSetCache(harness.Scene, source);
         LoadedAttachmentSet loaded = cache.Get("set.json", hash);
 
-        InvalidDataException error = Assert.Throws<InvalidDataException>(() =>
+        var error = Assert.Throws<AttachmentBindingDataException>(() =>
             loaded.Bind(RigidAttachmentTestRig.Map(RigidAttachmentTestRig.Create())));
 
-        Assert.Contains("unknown", error.Message);
+        Assert.Equal(AttachmentBindingRefusal.RigidJointUnresolved, error.Reason);
+        Assert.Equal(1u, error.PartId);
+        Assert.Equal("unknown", error.JointName);
+        Assert.NotNull(error.InnerException);
         Assert.Same(loaded, cache.Get("set.json", hash));
     }
 

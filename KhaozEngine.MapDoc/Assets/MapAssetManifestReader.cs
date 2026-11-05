@@ -105,8 +105,13 @@ internal static class MapAssetManifestReader
         RequireText(asset.Source, "asset.source", Field(fieldPath, "source"), asset.Id);
         RequireText(asset.License, "asset.license", Field(fieldPath, "license"), asset.Id);
         if (!float.IsFinite(asset.SourceUnitsToMetres) || asset.SourceUnitsToMetres <= 0)
-            throw new MapDocumentException(MapDocumentRefusal.TransformInvalid, $"Asset '{asset.Id}' sourceUnitsToMetres must be finite and positive.")
-            { AssetId = asset.Id, FieldPath = Field(fieldPath, "sourceUnitsToMetres"), ActualNumber = float.IsFinite(asset.SourceUnitsToMetres) ? asset.SourceUnitsToMetres : null };
+            throw new MapDocumentException(float.IsFinite(asset.SourceUnitsToMetres) ? MapDocumentRefusal.ValueOutsideRange : MapDocumentRefusal.ValueNonfinite,
+                $"Asset '{asset.Id}' sourceUnitsToMetres must be finite and positive.")
+            {
+                AssetId = asset.Id, FieldPath = Field(fieldPath, "sourceUnitsToMetres"),
+                ActualNumber = float.IsFinite(asset.SourceUnitsToMetres) ? asset.SourceUnitsToMetres : null,
+                MinimumNumber = float.IsFinite(asset.SourceUnitsToMetres) ? 0 : null,
+            };
         ValidateBounds(asset.RenderBounds, asset.Id, Field(fieldPath, "renderBounds"));
         if (asset.LodBounds is { } lod) ValidateBounds(lod, asset.Id, Field(fieldPath, "lodBounds"));
         if (asset.LightBounds is { } light) ValidateBounds(light, asset.Id, Field(fieldPath, "lightBounds"));

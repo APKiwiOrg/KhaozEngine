@@ -1364,27 +1364,32 @@ adapters continue reporting prose until all of their producing rules carry typed
 | `SchemaMemberNull` | A native member that cannot be null | `FieldPath`, `SourceName`, `Tile`, `Path` |
 | `SchemaMemberUnknown` | A member outside a closed schema object | `FieldPath`, `SourceName`, `Tile`, `Path`, `LayerId`, `Index` |
 | `SchemaObjectRequired` | A document, manifest, tile, prefab payload, marker-options or foliage value that must be an object | `FieldPath`, `SourceName`, `Tile`, `Path`, `LayerId`, `Index` |
-| `SchemaValueRequired` | A null deserialization result, required native, manifest, prefab or foliage value, missing prism domain, blank marker-adoption identity text, or a missing attachment anchor or standalone descriptor pin | `FieldPath`, `SourceName`, `Tile`, `Path`, `AssetId`, `ResourceId`, `SurfaceId`, `PlacementId`, `LayerId`, `Index`, `EntityId`, `WorldId`, `ChildKind`, `Child`, `InstanceId`, `Patch`, `ActualAnchor`, `SubjectKind` |
+| `SchemaValueRequired` | A null deserialization result, required native, indoor-span, manifest, prefab or foliage value, missing prism domain, blank marker-adoption identity text, or a missing attachment anchor or standalone descriptor pin | `FieldPath`, `SourceName`, `Tile`, `Path`, `AssetId`, `ResourceId`, `SurfaceId`, `PlacementId`, `LayerId`, `Index`, `EntityId`, `WorldId`, `ChildKind`, `Child`, `InstanceId`, `Patch`, `ActualAnchor`, `SubjectKind` |
 | `SchemaArrayRequired` | A foliage member that must be an array | `FieldPath`, `Index` |
 | `SchemaBooleanRequired` | A foliage member that must be a boolean | `FieldPath`, `LayerId`, `Index` |
 | `SchemaBase64Malformed` | A foliage density token that is invalid or noncanonical base64 | `FieldPath`, `LayerId`, `Index`, `FoliageChunk` |
 | `SchemaArrayLengthMismatch` | Decoded foliage density whose byte length differs from the required chunk length | `FieldPath`, `LayerId`, `Index`, `FoliageChunk`, `ActualByteCount`, `ExpectedByteCount` |
 | `SchemaPayloadVersionUnsupported` | An unsupported asset-reference, resolver-identity or foliage payload version | `FieldPath`, `ResourceId`, `Index`, `ActualVersion`, `SupportedVersions`, `MinimumInteger` |
-| `ValueNonfinite` | A nonfinite foliage scalar, playable-bound component or placement support-search value | `FieldPath`, `LayerId`, `PlacementId`, `Index`, `ActualNumber` |
-| `ValueOutsideRange` | A foliage integer outside its domain, negative support-search extent or high-water mark, or nonpositive numeric identity | `FieldPath`, `LayerId`, `PlacementId`, `EntityId`, `SubjectKind`, `Index`, `ActualNumber`, `ActualInteger`, `MinimumNumber`, `MinimumInteger`, `MaximumInteger`, `NumericId`, `HighWaterMark` |
+| `ValueNonfinite` | A nonfinite manifest source-unit scale, foliage scalar, playable-bound component or placement support-search value | `FieldPath`, `AssetId`, `LayerId`, `PlacementId`, `Index`, `ActualNumber` |
+| `ValueOutsideRange` | A finite nonpositive manifest source-unit scale, foliage integer outside its domain, negative support-search extent or high-water mark, or nonpositive numeric identity | `FieldPath`, `AssetId`, `LayerId`, `PlacementId`, `EntityId`, `SubjectKind`, `Index`, `ActualNumber`, `ActualInteger`, `MinimumNumber`, `MinimumInteger`, `MaximumInteger`, `NumericId`, `HighWaterMark` |
 | `IdentityDuplicate` | A repeated exact foliage JSON member name, surface or numeric identity, world binding, transfer or attachment producer, or a standalone owner colliding with a prefab binding | `FieldPath`, `Index`, `EntityId`, `SubjectKind`, `SurfaceId`, `PlacementId`, `NumericId`, `HighWaterMark`, `WorldId`, `ChildKind`, `Child`, `InstanceId` |
 | `IdentityReserved` | A live standalone owner using a retired transfer's world identity | `EntityId`, `WorldId`, `ChildKind`, `Child`, `InstanceId`, `SubjectKind` |
 | `AuthoredOwnershipMismatch` | A transfer inconsistent with its source or standalone owner, an attachment inconsistent with its owner, transfer or record anchor, or a prefab-owned interior submitted as standalone | `EntityId`, `WorldId`, `ChildKind`, `Child`, `InstanceId`, `PlacementId`, `RecordId`, `SpaceId`, `Patch`, `ActualAnchor`, `NumericId`, `ExpectedNumericId`, `ActualCount`, `ExpectedCount`, `SubjectKind` |
 | `ReferenceMissing` | An attachment transfer or standalone record target, interior anchor, scatter layer or companion layer missing from its required scope | `EntityId`, `WorldId`, `ChildKind`, `Child`, `InstanceId`, `PlacementId`, `RecordId`, `SpaceId`, `Patch`, `DocumentId`, `LayerId`, `SubjectKind`, `FieldPath` |
 | `AssetClosureRequired` | Foliage edit preflight without a verified asset closure | `DocumentId` |
 | `DigestMismatch` | An attached child's descriptor digest differing from its standalone pin | `EntityId`, `WorldId`, `ChildKind`, `Child`, `InstanceId`, `PlacementId`, `SubjectKind`, `ExpectedHash`, `ActualHash` |
-| `BoundsInvalid` | Invalid prefab patch dimensions, manifest local bounds, playable bounds, lattice frame or indoor-span metadata | `FieldPath`, `Width`, `Depth`, `AssetId`, `SurfaceId`, `Index`, `MinimumNumber`, `MaximumNumber` |
+| `BoundsInvalid` | Invalid prefab patch dimensions, manifest local bounds, playable bounds or lattice frame | `FieldPath`, `Width`, `Depth`, `AssetId`, `SurfaceId`, `Index`, `MinimumNumber`, `MaximumNumber` |
 | `DigestMalformed` | An asset-reference or surface semantic digest outside lowercase SHA-256 representation | `FieldPath`, `ResourceId`, `SurfaceId`, `Index` |
-| `TransformInvalid` | Asset source units that are not finite and positive | `AssetId`, `FieldPath`, finite `ActualNumber` |
 | `AssetKindUnsupported` | An undefined resource kind | `ResourceId`, `FieldPath`, `ActualResourceKind` |
 | `ReferenceKindMismatch` | An asset resource missing or declared with the wrong kind | `AssetId`, `ResourceId`, `ExpectedResourceKind`, available `ActualResourceKind` |
 | `NumericIdHighWaterExceeded` | A placement, prefab binding or retired transfer above the reserved mark | `EntityId`, `SubjectKind`, `PlacementId`, `FieldPath`, `NumericId`, `HighWaterMark` |
 | `ResolverContractMismatch` | The document resolver, support recipe or caller's resolver options cannot serve the requested operation | `PayloadVersion`, `ResolverVersion`, `OptionsResolverVersion`, `ExpectedResolverVersion`, `SupportRecipe`, `ExpectedSupportRecipe`, `FieldPath`, `SubjectKind` |
+
+Manifest source-unit scales must be finite and strictly positive. A nonfinite scale leaves `ActualNumber`
+and `MinimumNumber` null. A finite nonpositive scale carries `ActualNumber` and `MinimumNumber` 0,
+with that minimum exclusive. Indoor-span findings identify the first missing required subfield in
+predicate order through `FieldPath`, including the parent-space identity, anchor surface identity and
+individual domain-tag entries. They retain `SurfaceId` and the surface `Index`.
 
 Identity registry refusals keep `EntityId` and `WorldId` distinct from the prefab-local `Child` and the
 source `InstanceId`. `ChildKind` is the typed world ID namespace, so equal text in different kinds is

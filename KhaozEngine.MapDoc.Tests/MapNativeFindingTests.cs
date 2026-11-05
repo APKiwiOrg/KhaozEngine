@@ -134,13 +134,19 @@ public sealed class MapNativeFindingTests
     [InlineData("duplicate", "$.surfaces.refs[1].id", MapDocumentRefusal.IdentityDuplicate)]
     [InlineData("frame", "$.surfaces.refs[0].frame", MapDocumentRefusal.BoundsInvalid)]
     [InlineData("digest", "$.surfaces.refs[0].semanticSha256", MapDocumentRefusal.DigestMalformed)]
-    [InlineData("span", "$.surfaces.refs[0].indoorSpan", MapDocumentRefusal.BoundsInvalid)]
+    [InlineData("span-id", "$.surfaces.refs[0].indoorSpan.id", MapDocumentRefusal.SchemaValueRequired)]
+    [InlineData("span-parent", "$.surfaces.refs[0].indoorSpan.parentSpace", MapDocumentRefusal.SchemaValueRequired)]
+    [InlineData("span-parent-id", "$.surfaces.refs[0].indoorSpan.parentSpace.id", MapDocumentRefusal.SchemaValueRequired)]
+    [InlineData("span-anchor", "$.surfaces.refs[0].indoorSpan.parentSpace.anchor.surfaceId", MapDocumentRefusal.SchemaValueRequired)]
+    [InlineData("span-tags", "$.surfaces.refs[0].indoorSpan.domainTags", MapDocumentRefusal.SchemaValueRequired)]
+    [InlineData("span-tag", "$.surfaces.refs[0].indoorSpan.domainTags[1]", MapDocumentRefusal.SchemaValueRequired)]
     public void Surface_metadata_findings_keep_the_surface_and_field(string fault, string field, MapDocumentRefusal reason)
     {
         var doc = NativeResolverFixtures.Create().Document;
         doc.ResolverIdentity = new(1, 2);
         doc.SupportRecipe = MapSupportRecipe.AuthoredBindingsV2;
-        var good = Surface();
+        var span = new MapIndoorSpan("span", new("room", new("floor", 0, 0)), 0, 1, ["inside", "room"]);
+        var good = Surface() with { IndoorSpan = span };
         doc.Surfaces.Refs.Add(good);
         switch (fault)
         {
@@ -149,7 +155,12 @@ public sealed class MapNativeFindingTests
             case "duplicate": doc.Surfaces.Refs.Add(good); break;
             case "frame": doc.Surfaces.Refs[0] = good with { Frame = good.Frame with { RowDirection = (MapRowDirection)99 } }; break;
             case "digest": doc.Surfaces.Refs[0] = good with { SemanticSha256 = new string('A', 64) }; break;
-            case "span": doc.Surfaces.Refs[0] = good with { IndoorSpan = new("", new("room", new("floor", 0, 0)), 0, 1, []) }; break;
+            case "span-id": doc.Surfaces.Refs[0] = good with { IndoorSpan = span with { Id = "" } }; break;
+            case "span-parent": doc.Surfaces.Refs[0] = good with { IndoorSpan = span with { ParentSpace = null! } }; break;
+            case "span-parent-id": doc.Surfaces.Refs[0] = good with { IndoorSpan = span with { ParentSpace = span.ParentSpace with { Id = "" } } }; break;
+            case "span-anchor": doc.Surfaces.Refs[0] = good with { IndoorSpan = span with { ParentSpace = span.ParentSpace with { Anchor = new("", 0, 0) } } }; break;
+            case "span-tags": doc.Surfaces.Refs[0] = good with { IndoorSpan = span with { DomainTags = null! } }; break;
+            case "span-tag": doc.Surfaces.Refs[0] = good with { IndoorSpan = span with { DomainTags = ["inside", null!] } }; break;
         }
         var finding = Assert.Single(Findings(doc));
         Assert.Equal(reason, finding.Reason);

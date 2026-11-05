@@ -12546,18 +12546,22 @@ fields below `$.value`. Null prefab members and blank marker-adoption identity f
 Payload-version validators, marker authoring rules and other aggregate admission retain their existing
 contracts until all their producing rules are typed.
 
-Asset-manifest admission exposes `AssetKindUnsupported`, `DigestMalformed`, `TransformInvalid`,
-`BoundsInvalid`, `SchemaValueRequired`, `SchemaPayloadVersionUnsupported` and `ReferenceKindMismatch`.
+Asset-manifest admission exposes `AssetKindUnsupported`, `DigestMalformed`, `ValueNonfinite`,
+`ValueOutsideRange`, `BoundsInvalid`, `SchemaValueRequired`, `SchemaPayloadVersionUnsupported` and `ReferenceKindMismatch`.
 Inspect `AssetId`, `ResourceId`, `ExpectedResourceKind`, `ActualResourceKind` and `FieldPath` where known.
+Nonfinite source-unit scales use `ValueNonfinite` with null `ActualNumber` and `MinimumNumber`.
+Finite nonpositive scales use `ValueOutsideRange` with `ActualNumber` and an exclusive `MinimumNumber` 0.
 Manifest paths retain array positions, while a direct reference or resource check starts at that object's
 root. JSON failures preserve known structured inner refusals, otherwise they use `SchemaMalformed` and
 the reader's path and location metadata.
 
 Native metadata adds typed findings beside its unchanged string diagnostics. Compound findings select
-the first failing predicate branch. Missing asset-reference values use `SchemaValueRequired`, nonfinite
+the first failing predicate branch. Missing asset-reference and indoor-span values use `SchemaValueRequired`, nonfinite
 bounds or support-search values use `ValueNonfinite`, finite unordered bounds use `BoundsInvalid`, and
 finite negative search extents use `ValueOutsideRange` with minimum 0. `MinimumNumber` and
 `MaximumNumber` carry a refused bound pair. These producers set `ActualNumber` only for finite values.
+Indoor-span findings retain `SurfaceId` and the surface `Index`, with `FieldPath` naming the first missing
+required subfield, including parent-space identity, anchor surface identity or an individual domain-tag entry.
 Numeric findings carry `NumericId`, `HighWaterMark`, `EntityId` and `SubjectKind`, plus `PlacementId`
 where known. `IdentityDuplicate` distinguishes repeated identities from `NumericIdHighWaterExceeded`.
 An unsupported resolver payload uses `SchemaPayloadVersionUnsupported`, with `ActualVersion` and an

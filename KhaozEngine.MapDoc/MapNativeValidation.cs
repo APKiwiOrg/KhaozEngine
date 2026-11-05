@@ -135,8 +135,22 @@ internal static class MapNativeValidation
                     (string.IsNullOrWhiteSpace(span.Id) || span.ParentSpace is null ||
                      string.IsNullOrWhiteSpace(span.ParentSpace.Id) || string.IsNullOrWhiteSpace(span.ParentSpace.Anchor.SurfaceId) ||
                      span.DomainTags is null || span.DomainTags.Any(t => t is null)))
-                    Add(errors, findings, new(MapDocumentRefusal.BoundsInvalid, $"surface '{surface.Id}': invalid indoor span.")
-                    { SurfaceId = surface.Id, FieldPath = Field(path, "indoorSpan"), Index = i });
+                {
+                    string spanPath = Field(path, "indoorSpan");
+                    string parentPath = Field(spanPath, "parentSpace");
+                    string? requiredPath = string.IsNullOrWhiteSpace(span.Id) ? Field(spanPath, "id") :
+                        span.ParentSpace is null ? parentPath :
+                        string.IsNullOrWhiteSpace(span.ParentSpace.Id) ? Field(parentPath, "id") :
+                        string.IsNullOrWhiteSpace(span.ParentSpace.Anchor.SurfaceId) ? Field(Field(parentPath, "anchor"), "surfaceId") :
+                        span.DomainTags is null ? Field(spanPath, "domainTags") : null;
+                    if (requiredPath is null && span.DomainTags is { } tags)
+                    {
+                        int tagIndex = Enumerable.Range(0, tags.Count).First(index => tags[index] is null);
+                        requiredPath = $"{Field(spanPath, "domainTags")}[{tagIndex}]";
+                    }
+                    Add(errors, findings, new(MapDocumentRefusal.SchemaValueRequired, $"surface '{surface.Id}': invalid indoor span.")
+                    { SurfaceId = surface.Id, FieldPath = requiredPath, Index = i });
+                }
             }
         }
         for (int i = 0; i < doc.Placements.Count; i++)

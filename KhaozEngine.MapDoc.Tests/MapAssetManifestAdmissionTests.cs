@@ -81,7 +81,8 @@ public sealed class MapAssetManifestAdmissionTests
     [InlineData("blank-source", "$.assets[0].source", MapDocumentRefusal.SchemaValueRequired)]
     [InlineData("null-list", "$.assets[0].supportResourceIds", MapDocumentRefusal.SchemaValueRequired)]
     [InlineData("blank-list-id", "$.assets[0].supportResourceIds[0]", MapDocumentRefusal.SchemaValueRequired)]
-    [InlineData("units", "$.assets[0].sourceUnitsToMetres", MapDocumentRefusal.TransformInvalid)]
+    [InlineData("units", "$.assets[0].sourceUnitsToMetres", MapDocumentRefusal.ValueOutsideRange)]
+    [InlineData("units-nonfinite", "$.assets[0].sourceUnitsToMetres", MapDocumentRefusal.ValueNonfinite)]
     [InlineData("bounds", "$.assets[0].renderBounds", MapDocumentRefusal.BoundsInvalid)]
     [InlineData("reference-payload", "$.resources[0].reference.payloadVersion", MapDocumentRefusal.SchemaPayloadVersionUnsupported)]
     [InlineData("resource-null", null, MapDocumentRefusal.SchemaMalformed)]
@@ -99,6 +100,8 @@ public sealed class MapAssetManifestAdmissionTests
             case "null-list": root["assets"]![0]!["supportResourceIds"] = null; break;
             case "blank-list-id": root["assets"]![0]!["supportResourceIds"]![0] = " "; break;
             case "units": root["assets"]![0]!["sourceUnitsToMetres"] = 0; break;
+            // A valid JSON number beyond binary32 range reaches the nonfinite scale branch.
+            case "units-nonfinite": root["assets"]![0]!["sourceUnitsToMetres"] = JsonNode.Parse("1e100"); break;
             case "bounds": root["assets"]![0]!["renderBounds"]!["min"]!["x"] = 3; break;
             case "reference-payload": root["resources"]![0]!["reference"]!["payloadVersion"] = 2; break;
             case "resource-null": root["resources"]![0] = null; break;
@@ -109,8 +112,17 @@ public sealed class MapAssetManifestAdmissionTests
         Assert.Equal(reason, error.Reason);
         if (field is not null) Assert.Equal(field, error.FieldPath);
         Assert.Equal(before, bytes);
-        if (fault is "bounds" or "units" or "blank-source" or "null-list" or "blank-list-id") Assert.Equal("tree", error.AssetId);
-        if (fault == "units") Assert.Equal(0, error.ActualNumber);
+        if (fault is "bounds" or "units" or "units-nonfinite" or "blank-source" or "null-list" or "blank-list-id") Assert.Equal("tree", error.AssetId);
+        if (fault == "units")
+        {
+            Assert.Equal(0, error.ActualNumber);
+            Assert.Equal(0, error.MinimumNumber);
+        }
+        if (fault == "units-nonfinite")
+        {
+            Assert.Null(error.ActualNumber);
+            Assert.Null(error.MinimumNumber);
+        }
         if (fault == "json") Assert.Equal("root-a", error.ResourceId);
         // Local bounds admit equality. Repair only the inverted axis at that exact boundary.
         if (fault == "bounds")

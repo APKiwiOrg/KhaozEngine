@@ -24,7 +24,14 @@ public readonly record struct MapEffectiveTransform(double X, double Y, double Z
     {
         if (!double.IsFinite(pose.X) || !double.IsFinite(pose.Y) || !double.IsFinite(pose.Z) ||
             !double.IsFinite(pose.YawRadians) || !double.IsFinite(pose.Scale) || pose.Scale <= 0)
-            throw new MapDocumentException("Effective pose must be finite with positive uniform scale.");
+        {
+            string field = !double.IsFinite(pose.X) ? "x" : !double.IsFinite(pose.Y) ? "y" : !double.IsFinite(pose.Z) ? "z"
+                : !double.IsFinite(pose.YawRadians) ? "yawRadians" : "scale";
+            bool range = field == "scale" && double.IsFinite(pose.Scale) && pose.Scale <= 0;
+            throw new MapDocumentException(range ? MapDocumentRefusal.ValueOutsideRange : MapDocumentRefusal.ValueNonfinite,
+                "Effective pose must be finite with positive uniform scale.")
+                { FieldPath = "$." + field, ActualNumber = range ? pose.Scale : null, MinimumNumber = range ? 0 : null };
+        }
         return pose with { X = Zero(pose.X), Y = Zero(pose.Y), Z = Zero(pose.Z), YawRadians = Zero(pose.YawRadians) };
     }
     static double Zero(double value) => value == 0 ? 0 : value;

@@ -125,11 +125,18 @@ public sealed class MapDocumentExceptionTests
     static object Sample(PropertyInfo property, int index)
     {
         Type type = Nullable.GetUnderlyingType(property.PropertyType) ?? property.PropertyType;
+        if (property.Name == nameof(MapDocumentException.OwnerId)) return "terrain-owner";
         if (type == typeof(Type)) return typeof(MapLocalLightDoc);
         if (type == typeof(string)) return property.Name;
         if (type == typeof(int)) return 1000 + index;
         if (type == typeof(long)) return 3000L + index;
-        if (type == typeof(double)) return 4000.5 + index;
+        if (type == typeof(double)) return property.Name switch
+        {
+            nameof(MapDocumentException.PositionX) => 1_000_001d,
+            nameof(MapDocumentException.PositionY) => -1_000_000d,
+            nameof(MapDocumentException.PositionZ) => 0.25d,
+            _ => 4000.5 + index,
+        };
         if (type == typeof(MapFoliageChunkKey)) return new MapFoliageChunkKey(-3, index);
         if (type == typeof(IReadOnlyList<int>)) return new[] { 1, 5 };
         if (type == typeof(IReadOnlyList<string>)) return new[] { "a", "b" };

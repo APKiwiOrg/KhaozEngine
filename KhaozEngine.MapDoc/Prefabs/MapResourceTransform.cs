@@ -53,8 +53,9 @@ public sealed record MapResourceTransform(MapEffectiveTransform Transform)
     internal static void RequireWithinWorld(string owner, double x, double y, double z)
     {
         if (Math.Abs(x) > MaxCoordinateMetres || Math.Abs(y) > MaxCoordinateMetres || Math.Abs(z) > MaxCoordinateMetres)
-            throw new MapDocumentException(FormattableString.Invariant(
-                $"Static '{owner}' at ({x}, {y}, {z}) lies beyond {MaxCoordinateMetres:N0} m from the world origin on an axis."));
+            throw new MapDocumentException(MapDocumentRefusal.PrefabWorldCoordinateLimitExceeded, FormattableString.Invariant(
+                $"Static '{owner}' at ({x}, {y}, {z}) lies beyond {MaxCoordinateMetres:N0} m from the world origin on an axis."))
+                { OwnerId = owner, PositionX = x, PositionY = y, PositionZ = z, Limit = (long)MaxCoordinateMetres };
     }
 
     public Vector3 ToFrame(MapExactPoint world, WorldFrame frame)

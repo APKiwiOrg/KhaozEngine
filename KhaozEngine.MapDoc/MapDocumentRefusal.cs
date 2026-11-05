@@ -132,6 +132,8 @@ public enum MapDocumentRefusal
     PrefabMaterializedAnchorMismatch,
     /// <summary>Refuses an effective paint override without its target surface.</summary>
     PrefabPaintTargetRequired,
+    /// <summary>Refuses a static whose world position exceeds the installed limit on any axis.</summary>
+    PrefabWorldCoordinateLimitExceeded,
 
     // Foliage JSON converter.
     /// <summary>Refuses a foliage section larger than its UTF-8 byte budget.</summary>

@@ -53,7 +53,19 @@ public class MapWorldBuilderTests
         Assert.Equal(1f, Assert.Single(NativeWorldFixtures.BuildWithPlacementScale(1f).Document.Placements).Transform.Scale);
         Assert.Throws<MapDocumentException>(() => NativeWorldFixtures.BuildWithPlacementScale(0f));
         Assert.Equal(0.5f, Assert.Single(NativeWorldFixtures.BuildWithPlacementScale(0.5f).Document.Placements).Transform.Scale);
-        Assert.Contains("1,000,000", Assert.Throws<MapDocumentException>(() => NativeWorldFixtures.BuildWithPlacementAt(1_000_001f)).Message);
+        var outside = NativeWorldFixtures.LegacyCrate();
+        outside.Document.Bounds = new() { MinX = -64, MinZ = -64, MaxX = 1_000_065f, MaxZ = 64 };
+        outside.Document.Placements[0].X = 1_000_001f;
+        string beforeLimit = MapDocumentFile.SaveText(outside.Document);
+        var coordinate = Assert.Throws<MapDocumentException>(() => MapWorldBuilder.Build(outside.Document, outside.Assets,
+            NativeWorldFixtures.Options() with { Resolve = NativeWorldFixtures.LegacyResolveOptions, LegacySupportHeight = (_, _) => 0f }));
+        Assert.Equal(MapDocumentRefusal.PrefabWorldCoordinateLimitExceeded, coordinate.Reason);
+        Assert.Equal("crate", coordinate.OwnerId);
+        Assert.Equal(1_000_001d, coordinate.PositionX);
+        Assert.Equal(0d, coordinate.PositionY);
+        Assert.Equal(0d, coordinate.PositionZ);
+        Assert.Equal(1_000_000L, coordinate.Limit);
+        Assert.Equal(beforeLimit, MapDocumentFile.SaveText(outside.Document));
         Assert.Equal(1_000_000f,
             Assert.Single(NativeWorldFixtures.BuildWithPlacementAt(1_000_000f).Document.Placements).Transform.Position.X);
     }

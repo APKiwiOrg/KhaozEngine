@@ -12238,6 +12238,12 @@ Reused attachments identify missing descriptors with `ReferenceMissing`, or chan
 `DigestMismatch` and `DigestKind` `captured descriptor`. Their local child keys, world IDs and known
 anchor patches stay separate. Effective paint without a target uses `PrefabPaintTargetRequired`
 with the paint `SurfaceId`. Missing effective surfaces and support slots keep their typed subjects.
+Effective pose composition identifies its first nonfinite scalar with `ValueNonfinite` and a
+pose-relative `FieldPath`. Finite nonpositive scale uses `ValueOutsideRange`, `ActualNumber` and
+exclusive `MinimumNumber` 0. Nonfinite `ActualNumber` stays unset.
+World positions outside the installed axis limit use `PrefabWorldCoordinateLimitExceeded` with
+the static `OwnerId`, binary64 `PositionX`, `PositionY`, `PositionZ` and whole-metre `Limit`.
+Each axis accepts coordinates exactly at the positive or negative limit.
 `PrefabService` edits detached assets, then publishes immutable bytes and a verified replacement closure before
 one accepted switch of every referring instance in the open complete map. Other maps retain their pins.
 

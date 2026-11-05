@@ -155,6 +155,9 @@ for resolver 1, every resolution, placement and terrain refusal, a static beyond
 The missing legacy callback carries `MapDocumentRefusal.SupportLegacyHeightRequired`, `ResolverVersion` and
 `FieldPath` `legacySupportHeight` on the same `MapDocumentException`.
 The released world-limit refusal precedes effective placement-coordinate representability checks.
+It carries `MapDocumentRefusal.PrefabWorldCoordinateLimitExceeded`, the static `OwnerId`, its
+binary64 `PositionX`, `PositionY`, `PositionZ` and inclusive whole-metre `Limit` on `MapDocumentException`.
+Positions exactly at the limit on an axis are accepted.
 Options that disagree with the document resolver retain `MapDocumentException` with
 `MapDocumentRefusal.ResolverContractMismatch`, `PayloadVersion`, `ResolverVersion`, `OptionsResolverVersion`
 and `ExpectedResolverVersion`. The identifiers follow the shared [MapDoc refusal contract](../KhaozEngine.MapDoc/README.md#loud-failures).

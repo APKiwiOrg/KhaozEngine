@@ -77,7 +77,7 @@ public sealed class MapDocumentException : Exception
     public long? ActualByteCount { get; init; }
     /// <summary>The required decoded byte count, when checked.</summary>
     public long? ExpectedByteCount { get; init; }
-    /// <summary>The inclusive byte or work limit, when checked.</summary>
+    /// <summary>The inclusive byte, work or whole-metre world coordinate limit, when checked.</summary>
     public long? Limit { get; init; }
     /// <summary>The refused payload version, when read as an integer.</summary>
     public int? ActualVersion { get; init; }
@@ -91,6 +91,14 @@ public sealed class MapDocumentException : Exception
     public long? MaximumInteger { get; init; }
     /// <summary>The refused identity, such as a repeated JSON member name, when known.</summary>
     public string? EntityId { get; init; }
+    /// <summary>The static owner whose world position was checked, such as a placement or terrain chunk.</summary>
+    public string? OwnerId { get; init; }
+    /// <summary>The checked absolute world X coordinate in metres, before any frame projection.</summary>
+    public double? PositionX { get; init; }
+    /// <summary>The checked absolute world Y coordinate in metres, before any frame projection.</summary>
+    public double? PositionY { get; init; }
+    /// <summary>The checked absolute world Z coordinate in metres, before any frame projection.</summary>
+    public double? PositionZ { get; init; }
 
     /// <summary>The asset descriptor whose admission failed, when known.</summary>
     public string? AssetId { get; init; }
@@ -240,6 +248,10 @@ public sealed class MapDocumentException : Exception
         MinimumInteger = inner.MinimumInteger;
         MaximumInteger = inner.MaximumInteger;
         EntityId = inner.EntityId;
+        OwnerId = inner.OwnerId;
+        PositionX = inner.PositionX;
+        PositionY = inner.PositionY;
+        PositionZ = inner.PositionZ;
         AssetId = inner.AssetId ?? assetId;
         SurfaceId = inner.SurfaceId;
         PlacementId = inner.PlacementId;

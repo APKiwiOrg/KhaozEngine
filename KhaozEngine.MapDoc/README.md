@@ -1428,6 +1428,7 @@ adapters continue reporting prose until all of their producing rules carry typed
 | `PrefabMaterializedFrameMismatch` | Two materialized rows for one placement with different mathematical frames | `AssetId`, `PlacementId`, `FieldPath`, `ActualTransform`, `ExpectedTransform` |
 | `PrefabMaterializedAnchorMismatch` | A materialized record anchored outside its row's captured surfaces | `AssetId`, `PlacementId`, `EntityId`, `Child`, `ChildKind`, `FieldPath`, `Patch` |
 | `PrefabPaintTargetRequired` | An effective paint override without a target surface | `SurfaceId` |
+| `PrefabWorldCoordinateLimitExceeded` | A static world position outside the inclusive axis limit of 1,000,000 metres | `OwnerId`, binary64 `PositionX`, `PositionY`, `PositionZ`, `Limit` in metres |
 | `AssetStoragePathReserved` | A resource path owned by the selected map storage writer | `ResourceId`, normalized `Path`, `StoragePath`, `DocumentForm` |
 | `AssetTypedPayloadOpaque` | An opaque resource supplied to a typed light or support consumer | `ResourceId`, `ExpectedSchema`, `SubjectKind` |
 | `ReferenceKindMismatch` | An asset resource missing or declared with the wrong kind | `AssetId`, `ResourceId`, `ExpectedResourceKind`, available `ActualResourceKind` |
@@ -1490,6 +1491,12 @@ local `Child`, `ChildKind`, `PlacementId`, `ResourceId`, `AttachmentKind` and th
 Effective support installation identifies duplicate surfaces or records through `IdentityDuplicate`
 and missing anchors through `ReferenceMissing`. Missing support slots retain their `ReferencePath`,
 resource and local placement. Effective surface lookups retain the missing `SurfaceId`.
+Effective mathematical pose composition also uses the first failed scalar's `ValueNonfinite` or
+`ValueOutsideRange` reason, with a pose-relative `FieldPath`. Nonfinite `ActualNumber` stays unset.
+A finite nonpositive scale carries `ActualNumber` and exclusive `MinimumNumber` 0.
+World-position refusals carry the full checked binary64 position and its static `OwnerId`, which
+may name a placement or terrain chunk. Each axis accepts both positive and negative coordinates
+exactly at `Limit`. The owner is independent of prefab instance, child and frame identifiers.
 
 Prefab resolver admission distinguishes a missing identity (`SchemaValueRequired`), an unsupported
 identity payload (`SchemaPayloadVersionUnsupported`) and an incompatible resolver or support recipe

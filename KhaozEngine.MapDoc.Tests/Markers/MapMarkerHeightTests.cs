@@ -17,6 +17,21 @@ public sealed class MapMarkerHeightTests
     const string BasicAnnotationDigest = "aa710fcabca84ac29c1c2a2595a379c8c69b5d8354c0b12f625a147cddbe8265";
     const string PrefabBasicAnnotationDigest = "209f69c59b44046c602bd8431c29502d8bfbc0f64f7c7dcf1b57a404e8d6ad36";
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void HeightChoice_RequiresExactlyOneAuthority(bool both)
+    {
+        var marker = MarkerFixtures.BasicMarker();
+        var height = new MapMarkerHeight(both ? 0f : null, both ? MarkerFixtures.SurfaceBinding("floor") : null);
+        var error = Assert.Throws<MapDocumentException>(() => MapMarkerHeights.Apply(marker, height));
+        Assert.Equal(MapDocumentRefusal.MarkerHeightChoiceInvalid, error.Reason);
+        Assert.Equal(marker.Id, error.MarkerId);
+        Assert.Equal(1, marker.PayloadVersion);
+        Assert.Null(marker.HeightMode);
+        Assert.Equal(0f, MapMarkerHeights.Apply(marker, new(0f, null)).Position.Y);
+    }
+
     [Fact]
     public void StackedCaveMarkerSupport_DoesNotSnapToSurface()
     {
@@ -156,23 +171,28 @@ public sealed class MapMarkerHeightTests
         Assert.Equal(MapEffectiveAnnotations.Markers(MarkerFixtures.Effective(fixture)).Select(m => (m.Position, m.HeightProvenance)),
             markers.Select(m => (m.Position, m.HeightProvenance)));
         // Each per-point scope holds the eight stacked floor and eight ceiling patches, so sixteen is the exact limit.
+        var error = Assert.Throws<MapDocumentException>(() => MapMarkerResolution.Resolve(candidates, source, sha, new MapQueryLimits(MaxCandidatePatches: 15)));
+        Assert.Equal(MapDocumentRefusal.MarkerSupportUnresolved, error.Reason);
+        Assert.Equal(MapSupportStatus.CapacityExceeded, error.SupportStatus);
+        Assert.Equal("stacked-surface", error.MarkerId);
+
         var exact = MapMarkerResolution.Resolve(candidates, source, sha, new MapQueryLimits(MaxCandidatePatches: 16));
         Assert.Equal(supports.Select(s => s.Support.WorldY), exact.Supports.Select(s => s.Support.WorldY));
-        var error = Assert.Throws<MapDocumentException>(() => MapMarkerResolution.Resolve(candidates, source, sha, new MapQueryLimits(MaxCandidatePatches: 15)));
-        Assert.Contains(nameof(MapSupportStatus.CapacityExceeded), error.Message, StringComparison.Ordinal);
 
         // The captured document source visits two index pages for each of the sixteen surfaces in a per-point scope.
+        error = Assert.Throws<MapDocumentException>(() => MapMarkerResolution.Resolve(candidates, source, sha, new MapQueryLimits(MaxPageReads: 31)));
+        Assert.Equal(MapDocumentRefusal.MarkerSupportUnresolved, error.Reason);
+        Assert.Equal(MapSupportStatus.CapacityExceeded, error.SupportStatus);
+        Assert.Equal("stacked-surface", error.MarkerId);
         var pages = MapMarkerResolution.Resolve(candidates, source, sha, new MapQueryLimits(MaxPageReads: 32));
         Assert.Equal(supports.Select(s => s.Support.WorldY), pages.Supports.Select(s => s.Support.WorldY));
-        error = Assert.Throws<MapDocumentException>(() => MapMarkerResolution.Resolve(candidates, source, sha, new MapQueryLimits(MaxPageReads: 31)));
-        Assert.Contains(nameof(MapSupportStatus.CapacityExceeded), error.Message, StringComparison.Ordinal);
     }
 
     [Fact]
     public void AsymmetricSpaceSearch_SeatsPlacementAndMarkerAtOneHeight()
     {
-        // The floor at 20 is 0.6 below the reference height: a 0.7 search below finds it and a 0.1 search above does not need to.
-        MapSupportBinding binding = MarkerFixtures.SpaceBinding("level-2", 20.6f, 0.7f, 0.1f);
+        // Binary-exact 20.5 - 0.5 puts the floor on the lower boundary. The 0.1 upper search need not find it.
+        MapSupportBinding binding = MarkerFixtures.SpaceBinding("level-2", 20.5f, 0.5f, 0.1f);
         MarkerFixture both = Seated(binding, placement: true, marker: true);
         MapEffectiveResources resources = MarkerFixtures.Effective(both);
         MapPlacementSupport seat = Assert.Single(resources.PlacementSupports);
@@ -184,12 +204,20 @@ public sealed class MapMarkerHeightTests
         Assert.Equal(seat.Support.WorldY, marker.HeightProvenance!.WorldY);
         Assert.Equal(seat.Support.Face, marker.HeightProvenance.Face);
 
-        // Swapped extents put the floor 0.5 below the 0.1 lower bound, so both seats refuse it the same way.
-        MapSupportBinding swapped = binding with { SearchBelow = 0.1f, SearchAbove = 0.7f };
+        // Swapped extents put the floor 0.4 below the 0.1 lower bound, so both seats refuse it the same way.
+        MapSupportBinding swapped = binding with { SearchBelow = 0.1f, SearchAbove = 0.5f };
         var placementError = Assert.Throws<MapDocumentException>(() => MarkerFixtures.Effective(Seated(swapped, placement: true, marker: false)));
         var markerError = Assert.Throws<MapDocumentException>(() => MarkerFixtures.Effective(Seated(swapped, placement: false, marker: true)));
-        Assert.Contains(nameof(MapSupportStatus.NoSupport), placementError.Message, StringComparison.Ordinal);
-        Assert.Contains(nameof(MapSupportStatus.NoSupport), markerError.Message, StringComparison.Ordinal);
+        Assert.Equal(MapDocumentRefusal.SupportUnresolved, placementError.Reason);
+        Assert.Equal("seat", placementError.PlacementId);
+        Assert.Equal(MapDocumentRefusal.MarkerSupportUnresolved, markerError.Reason);
+        Assert.Equal("seated", markerError.MarkerId);
+        Assert.Equal(MapSupportStatus.NoSupport, placementError.SupportStatus);
+        Assert.Equal(placementError.SupportStatus, markerError.SupportStatus);
+        // Binary-exact reference and search values put the floor exactly on the lower search boundary.
+        MapEffectiveResources boundary = MarkerFixtures.Effective(Seated(swapped with { SearchBelow = 0.5f }, placement: true, marker: true));
+        Assert.Equal(20f, Assert.Single(boundary.PlacementSupports).Support.WorldY);
+        Assert.Equal(20f, Assert.Single(boundary.MarkerSupports).Support.WorldY);
     }
 
     static MarkerFixture Seated(MapSupportBinding binding, bool placement, bool marker)

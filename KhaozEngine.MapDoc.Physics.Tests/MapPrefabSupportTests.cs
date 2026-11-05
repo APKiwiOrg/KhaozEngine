@@ -161,10 +161,12 @@ public class MapPrefabSupportTests
         var f = PrefabFixtures.MissingYProvider(materialized, space);
         long highWater = f.Document.NumericIdHighWaterMark;
         var error = Assert.Throws<MapDocumentException>(() => PrefabPhysicsFixtures.Build(f));
-        Assert.Contains("consumer", error.Message);
-        Assert.Contains("provider", error.Message);
-        Assert.Contains("missing Y", error.Message);
+        Assert.Equal(MapDocumentRefusal.SupportProviderHeightMissing, error.Reason);
+        Assert.Equal("consumer", error.PlacementId);
+        Assert.Equal("provider", error.ProviderPlacementId);
         Assert.Equal(highWater, f.Document.NumericIdHighWaterMark);
+        var control = PrefabFixtures.MissingYProvider(materialized, space, explicitProvider: true);
+        Assert.Contains(PrefabPhysicsFixtures.Build(control).Document.Placements, p => p.PlacementId == "consumer");
     }
 
     [Fact]

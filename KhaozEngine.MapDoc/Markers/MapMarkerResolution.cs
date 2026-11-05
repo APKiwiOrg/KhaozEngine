@@ -104,7 +104,8 @@ internal static class MapMarkerResolution
             throw new MapDocumentException($"Marker '{id}' support status NotRepresentable: overflow.");
         }
         if (support.Status != MapSupportStatus.Supported)
-            throw new MapDocumentException($"Marker '{id}' support status {support.Status}: {support.Detail}");
+            throw new MapDocumentException(MapDocumentRefusal.MarkerSupportUnresolved, $"Marker '{id}' support status {support.Status}: {support.Detail}")
+                { MarkerId = id, SupportStatus = support.Status };
         return support;
     }
 

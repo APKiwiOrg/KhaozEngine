@@ -157,6 +157,8 @@ public sealed class NativeMarkerSupportEditTests
         Assert.Equal(genericError.Message, error.Message);
         Assert.Equal(stateBefore, MarkerEditorFixtures.State(session));
         Assert.Equal(0, hooks);
+        session.Mutate((document, registry) => { session.ApplyNative(Corner(2010), document, registry); return 0; }, true);
+        Assert.Equal(20.1f, Bound(session).Position.Y.ToSingle());
     }
 
     static void RaiseAll(MapDocument document, int height)
@@ -299,8 +301,13 @@ public sealed class NativeMarkerSupportEditTests
     {
         var stateBefore = PrefabEditorFixtures.State(session);
         var removal = Assert.Throws<MapDocumentException>(() => session.ExecuteNativeCommand(command));
-        Assert.Contains("Marker 'bound'", removal.Message, StringComparison.Ordinal);
+        Assert.Equal(MapDocumentRefusal.MarkerSupportUnresolved, removal.Reason);
+        Assert.Equal("bound", removal.MarkerId);
+        Assert.NotNull(removal.SupportStatus);
         var stateAfterRefusal = PrefabEditorFixtures.State(session);
         Assert.Equal(stateBefore, stateAfterRefusal);
+        var control = Session(MarkerFixtures.WithExplicit(Fixture(session), "bound"));
+        control.ExecuteNativeCommand(command);
+        Assert.Equal(1, control.NativeHistoryState.Cursor);
     }
 }

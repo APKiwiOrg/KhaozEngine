@@ -20,7 +20,10 @@ public static class MapResolverAdoption
             if (!choices.TryGetValue(placement.Id, out MapPlacementSupportChoice? choice) || choice is null ||
                 (choice.ExplicitY is null) == (choice.Binding is null) ||
                 (choice.ExplicitY is { } height && !float.IsFinite(height)))
-                throw new MapDocumentException($"Placement '{placement.Id}' requires exactly one explicit Y or authored support choice.");
+                throw new MapDocumentException(choice is { ExplicitY: { } invalidHeight, Binding: null } && !float.IsFinite(invalidHeight)
+                    ? MapDocumentRefusal.ValueNonfinite : MapDocumentRefusal.SupportAdoptionChoiceMissing,
+                    $"Placement '{placement.Id}' requires exactly one explicit Y or authored support choice.")
+                    { PlacementId = placement.Id, FieldPath = choice is { ExplicitY: { }, Binding: null } ? "$.explicitY" : null };
         }
         var options = MapDocumentFile.CreateOptions(MapDocRegistry.CreateDefault(), write: false);
         // Detach DTOs without routing a complete tiled world's resident patches through monolithic embedding limits.

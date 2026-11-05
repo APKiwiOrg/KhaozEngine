@@ -84,19 +84,48 @@ public sealed class MapMarkerValidationTests
             Assert.Equal(typeof(MapMarkerHeightMode), finding.EnumType);
             Assert.Equal(99L, finding.ActualInteger);
         }
+        var error = Assert.Throws<MapDocumentException>(() => MapMarkerValidation.Require(invalid));
+        Assert.Equal(reason, error.Reason);
+        Assert.Equal(field, error.FieldPath);
+        var aggregate = Assert.Single(error.Findings!);
+        Assert.Equal(finding.Reason, aggregate.Reason);
+        Assert.Equal(finding.MarkerId, aggregate.MarkerId);
+        Assert.Equal(finding.FieldPath, aggregate.FieldPath);
+        Assert.Equal(finding.SupportedVersions, aggregate.SupportedVersions);
         Assert.Empty(MapMarkerValidation.Validate(control));
         MapMarkerValidation.Require(control);
     }
-    [Fact]
-    public void SupportBindingFindings_KeepTheAggregateUntypedUntilItsProducerConverts()
+    [Theory]
+    [InlineData("foreign-member", MapDocumentRefusal.AuthoredOwnershipMismatch, "$.supportBinding.searchAbove")]
+    [InlineData("surface-id", MapDocumentRefusal.SchemaValueRequired, "$.supportBinding.surfaceId")]
+    [InlineData("space-id", MapDocumentRefusal.SchemaValueRequired, "$.supportBinding.spaceId")]
+    [InlineData("reference-y", MapDocumentRefusal.ValueNonfinite, "$.supportBinding.referenceY")]
+    [InlineData("search-above", MapDocumentRefusal.ValueOutsideRange, "$.supportBinding.searchAbove")]
+    public void SupportBindingFindings_KeepTheTypedAggregate(string invalid, MapDocumentRefusal reason, string path)
     {
-        var control = MapMarkerHeights.Apply(MarkerFixtures.BasicMarker(), MarkerFixtures.SurfaceHeight());
-        var invalid = control with { SupportBinding = control.SupportBinding! with { SearchAbove = 0 } };
+        var control = MapMarkerHeights.Apply(MarkerFixtures.BasicMarker(),
+            invalid is "foreign-member" or "surface-id" ? MarkerFixtures.SurfaceHeight() : MarkerFixtures.SpaceHeight());
+        if (invalid == "search-above") control = control with { SupportBinding = control.SupportBinding! with { SearchAbove = 0 } };
+        var binding = control.SupportBinding!;
+        var broken = invalid switch
+        {
+            "foreign-member" => binding with { SearchAbove = 0 },
+            "surface-id" => binding with { SurfaceId = " " },
+            "space-id" => binding with { SpaceId = " " },
+            "reference-y" => binding with { ReferenceY = float.NaN },
+            _ => binding with { SearchAbove = -1 },
+        };
+        var marker = control with { SupportBinding = broken };
         var findings = new List<MapDocumentFinding>();
-        Assert.Single(MapMarkerValidation.Validate(invalid, findings));
-        Assert.Empty(findings);
-        var error = Assert.Throws<MapDocumentException>(() => MapMarkerValidation.Require(invalid));
-        Assert.Null(error.Reason);
+        Assert.Single(MapMarkerValidation.Validate(marker, findings));
+        var finding = Assert.Single(findings);
+        var error = Assert.Throws<MapDocumentException>(() => MapMarkerValidation.Require(marker));
+        Assert.Equal(reason, error.Reason);
+        Assert.Equal(control.Id, error.MarkerId);
+        Assert.Equal(path, error.FieldPath);
+        Assert.Equal(path, finding.FieldPath);
+        Assert.Equal(findings, error.Findings);
+        Assert.Same(binding, control.SupportBinding);
         Assert.Empty(MapMarkerValidation.Validate(control));
         MapMarkerValidation.Require(control);
     }

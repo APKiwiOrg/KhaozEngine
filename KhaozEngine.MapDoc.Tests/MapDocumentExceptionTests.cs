@@ -9,6 +9,7 @@ using KhaozEngine.MapDoc.Foliage;
 using KhaozEngine.MapDoc.Assets;
 using KhaozEngine.MapDoc.Prefabs;
 using KhaozEngine.MapDoc.Surfaces;
+using KhaozEngine.MapDoc.Support;
 using Xunit;
 
 namespace KhaozEngine.Tests.MapDoc;
@@ -169,6 +170,7 @@ public sealed class MapDocumentExceptionTests
         if (type == typeof(MapEffectiveTransform)) return new MapEffectiveTransform(index, 2, 3, 0, 1);
         if (type == typeof(MapResourceKind)) return (MapResourceKind)(5000 + index);
         if (type == typeof(MapDocumentForm)) return MapDocumentForm.Tiled;
+        if (type == typeof(MapSupportStatus)) return MapSupportStatus.MissingGeometry;
         if (type == typeof(MapSupportRecipe)) return (MapSupportRecipe)(2000 + index);
         if (type == typeof(IReadOnlyList<MapDocumentFinding>))
             return new[] { new MapDocumentFinding(MapDocumentRefusal.ResolverContractMismatch, property.Name) { ResolverVersion = index } };

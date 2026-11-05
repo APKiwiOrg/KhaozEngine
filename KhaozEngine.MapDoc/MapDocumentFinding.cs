@@ -4,6 +4,7 @@ using KhaozEngine.MapDoc.Foliage;
 using KhaozEngine.MapDoc.Assets;
 using KhaozEngine.MapDoc.Prefabs;
 using KhaozEngine.MapDoc.Surfaces;
+using KhaozEngine.MapDoc.Support;
 
 namespace KhaozEngine.MapDoc;
 
@@ -100,6 +101,10 @@ public sealed record MapDocumentFinding(MapDocumentRefusal Reason, string Messag
     public string? MarkerId { get; init; }
     /// <summary>The placement whose admission failed, when known.</summary>
     public string? PlacementId { get; init; }
+    /// <summary>The placement supplying support whose explicit height is missing.</summary>
+    public string? ProviderPlacementId { get; init; }
+    /// <summary>The support query status that prevented marker or placement seating.</summary>
+    public MapSupportStatus? SupportStatus { get; init; }
     /// <summary>The referenced resource kind required by the asset.</summary>
     public MapResourceKind? ExpectedResourceKind { get; init; }
     /// <summary>The declared resource kind, when a resource is available.</summary>
@@ -247,6 +252,8 @@ public sealed record MapDocumentFinding(MapDocumentRefusal Reason, string Messag
             MarkerName = error.MarkerName,
             SourceId = error.SourceId,
             PlacementId = error.PlacementId,
+            ProviderPlacementId = error.ProviderPlacementId,
+            SupportStatus = error.SupportStatus,
             ExpectedResourceKind = error.ExpectedResourceKind,
             ActualResourceKind = error.ActualResourceKind,
             NumericId = error.NumericId,

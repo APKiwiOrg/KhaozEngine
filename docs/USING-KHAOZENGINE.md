@@ -12272,7 +12272,13 @@ Standalone marker admission keeps `MapDocumentException` and exposes `MarkerPref
 with counts and an owned read-only `SourceIds` snapshot from `MarkerAdoptionChoiceMissing` with `SourceId` and
 source kind. Destination collisions carry `IdentityDuplicate` and `MarkerId`, or `MarkerNameDuplicate`,
 `MarkerName` and `MarkerId`. The metadata uniqueness guard retains every collision in ordered typed `Findings`
-and read-only `MarkerIds`. Aggregate adapters keep prose until their complete producer is typed.
+and read-only `MarkerIds`. Marker payload and support-binding validation carry their first typed finding's
+reason and identifiers and the full ordered read-only `Findings` snapshot. Invalid height authority choices use
+`MarkerHeightChoiceInvalid` with `MarkerId`. Failed seating uses `MarkerSupportUnresolved` with `MarkerId`
+and typed `SupportStatus`. Placement seating uses `SupportUnresolved`, `PlacementId` and the same status type.
+Missing-Y support providers use `SupportProviderHeightMissing` with `PlacementId` and `ProviderPlacementId`.
+Missing bindings, bounded searches, spaces and adoption choices have distinct support reasons listed in the
+MapDoc refusal table. Broad document validation keeps its prose adapter until its complete producer is typed.
 
 Doors remain AuthoredOpen. `MapRoofPolicy` returns separate colour, shadow, camera-boom and sky-picking flags.
 Auto concealment uses occupied rooms and explicit links/groups, and leaves unlinked shelters visible. Hidden

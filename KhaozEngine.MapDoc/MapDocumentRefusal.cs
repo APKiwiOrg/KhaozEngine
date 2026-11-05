@@ -165,6 +165,22 @@ public enum MapDocumentRefusal
     /// <summary>Refuses direct editing of a live prefab-owned marker.</summary>
     MarkerPrefabOwnershipProtected,
 
+    // Authored support resolution.
+    /// <summary>Refuses a marker whose support query did not succeed.</summary>
+    MarkerSupportUnresolved,
+    /// <summary>Refuses a placement whose support query did not succeed.</summary>
+    SupportUnresolved,
+    /// <summary>Refuses support supplied by a placement with no explicit height.</summary>
+    SupportProviderHeightMissing,
+    /// <summary>Refuses a missing authored placement support binding.</summary>
+    SupportBindingMissing,
+    /// <summary>Refuses a space binding without reference height and bounded search.</summary>
+    SupportSpaceSearchMissing,
+    /// <summary>Refuses an undeclared support space.</summary>
+    SupportSpaceMissing,
+    /// <summary>Refuses adoption without exactly one explicit height or authored support choice.</summary>
+    SupportAdoptionChoiceMissing,
+
     // Foliage JSON converter.
     /// <summary>Refuses a foliage section larger than its UTF-8 byte budget.</summary>
     FoliageSectionByteLimitExceeded,

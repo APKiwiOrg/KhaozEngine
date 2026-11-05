@@ -258,7 +258,10 @@ Queries and acquisition return `NotRepresentable`. Document operations refuse wi
 **Resolver version 2.** `MapResolverV2.Resolve` resolves documents whose recipe is `AuthoredBindingsV2`. It
 keeps explicit Y, refuses any binding whose support is not `Supported`, and refuses a space binding without a
 reference height and bounded search. `MapResolverAdoption.ConvertToAuthoredSupport` returns a detached
-version-2 copy. Resolver version 1, its options and its execution are unchanged.
+version-2 copy. Seating failures carry `SupportUnresolved`, `PlacementId` and the typed `SupportStatus`.
+Missing bindings, bounded space searches and adoption choices use their distinct reasons in the refusal table.
+A missing-height provider carries both `PlacementId` and `ProviderPlacementId` before any physics installation.
+Resolver version 1, its options and its execution are unchanged.
 
 **Fine-patch conversion.** `MapFinePatchConversion.Convert` turns coarse regions into exact finer patches.
 Each coarse cell is classified before anything mutates as `ExactCoplanar`, `ExactDiagonal`,
@@ -685,7 +688,11 @@ An optional nonempty `archetypeId` is caller vocabulary.
 Expansion resolves a Support height through the shared seat query that support-bound placements use, after the
 placement seats are installed. A prefab-local or framed standalone binding is stored frame-local and passes through
 its frame once. The effective Y is the exact value of the query's float `WorldY`, and only Supported resolves. A
-removed or unsupported owner refuses the load, build or edit, disabled markers included. Effective markers carry
+removed or unsupported owner refuses the load, build or edit, disabled markers included. The refusal carries
+`MarkerSupportUnresolved`, `MarkerId` and the typed `SupportStatus`. Marker payload validation keeps its string
+API and also produces typed findings for every marker and support-binding rule. Its throwing adapter takes the
+first finding's `Reason` and identifiers and attaches the full ordered read-only `Findings` snapshot.
+Effective markers carry
 value-only `HeightProvenance`, with the mode, the world request, face, space, via record and float height for Support,
 and the mode alone for Explicit. Payload-1 markers carry none. The witness-bearing answers live separately in
 `MapEffectiveResources.MarkerSupports`, one row per Support marker in ID order. A document whose effective markers
@@ -1427,9 +1434,16 @@ adapters continue reporting prose until all of their producing rules carry typed
 | `AssetCollisionTrailingBytes` | Bytes after the decoded collision shape | `AssetId`, `ResourceId`, `ActualByteCount` of trailing bytes |
 | `AssetCollisionEmptyPoints` | A collision hull or mesh with no points | `AssetId`, `ResourceId`, `ShapeType` |
 | `AssetCollisionNestedMesh` | A triangle mesh nested in a compound collider | `AssetId`, `ResourceId` |
-| `SchemaEnumUnsupported` | An undefined prefab or marker height-mode enumeration value | `MarkerId`, `EnumType`, `ActualInteger`, `FieldPath`, `EntityId`, `ChildKind` |
+| `SchemaEnumUnsupported` | An undefined prefab, marker height-mode or support-binding enumeration value | `MarkerId`, `EnumType`, `ActualInteger`, `FieldPath`, `EntityId`, `ChildKind` |
 | `AuthoredReferenceKindInvalid` | A light owner, roof reference, placement override or numeric binding of the wrong child kind | `EntityId`, `Child`, `ChildKind`, `ExpectedChildKind`, `WorldId`, `NumericId`, `ReferenceScope`, `ExpectedReferenceScope`, `FieldPath`, `SubjectKind` |
-| `MarkerHeightChoiceInvalid` | A Support marker whose finite Y is not canonical +0 | `MarkerId`, `FieldPath`, finite `ActualNumber` |
+| `MarkerHeightChoiceInvalid` | A height choice without exactly one authority, or a Support marker whose finite Y is not canonical +0 | `MarkerId`, `FieldPath`, finite `ActualNumber` |
+| `MarkerSupportUnresolved` | A marker seat query that is not Supported | `MarkerId`, typed `SupportStatus` |
+| `SupportUnresolved` | A placement seat query that is not Supported | `PlacementId`, typed `SupportStatus` |
+| `SupportProviderHeightMissing` | Support supplied by another missing-Y placement | `PlacementId`, `ProviderPlacementId` |
+| `SupportBindingMissing` | A missing authored placement binding | `PlacementId` |
+| `SupportSpaceSearchMissing` | A space binding without reference Y or both search bounds | `PlacementId`, `SpaceId` |
+| `SupportSpaceMissing` | An undeclared support space at the selection lookup | `SpaceId`, projected to MissingGeometry by the query |
+| `SupportAdoptionChoiceMissing` | Adoption without exactly one height or binding choice | `PlacementId`, a nonfinite explicit height instead uses `ValueNonfinite` and `FieldPath` |
 | `MarkerNativeDocumentRequired` | Marker editing or adoption without a native document | `Operation` |
 | `MarkerPrefabOwnershipProtected` | Direct editing of a live prefab-owned marker | `MarkerId`, `InstanceId` |
 | `MarkerAdoptionChoiceSetMismatch` | Adoption choices not covering exactly the source spawns | `SourceIds`, `ActualCount`, `ExpectedCount` |

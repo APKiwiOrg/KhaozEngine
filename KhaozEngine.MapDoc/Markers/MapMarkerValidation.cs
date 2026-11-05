@@ -77,7 +77,7 @@ public static class MapMarkerValidation
                         Add(float.IsFinite(marker.Position.Y) ? MapDocumentRefusal.MarkerHeightChoiceInvalid : MapDocumentRefusal.ValueNonfinite,
                             "$.position.y", "a Support height stores Position.Y exactly +0.", float.IsFinite(marker.Position.Y) ? marker.Position.Y : null);
                     if (marker.SupportBinding is not { } binding) Add(MapDocumentRefusal.SchemaValueRequired, "$.supportBinding", "a Support height requires a support binding.");
-                    else MapSupportBindingRules.Validate(binding, at, errors);
+                    else MapSupportBindingRules.Validate(binding, at, errors, findings, marker.Id);
                     break;
                 default:
                     Add(marker.HeightMode is null ? MapDocumentRefusal.SchemaValueRequired : MapDocumentRefusal.SchemaEnumUnsupported,
@@ -89,8 +89,19 @@ public static class MapMarkerValidation
 
     internal static void Require(MapLocalMarkerDoc marker)
     {
-        // Support-binding findings remain owned by the support validator. Convert this aggregate when all are typed.
-        IReadOnlyList<string> errors = Validate(marker);
-        if (errors.Count != 0) throw new MapDocumentException(string.Join("\n", errors));
+        var findings = new List<MapDocumentFinding>();
+        IReadOnlyList<string> errors = Validate(marker, findings);
+        if (errors.Count != 0)
+        {
+            MapDocumentFinding first = findings[0];
+            throw new MapDocumentException(first.Reason, string.Join("\n", errors))
+            {
+                MarkerId = first.MarkerId, SubjectKind = first.SubjectKind, FieldPath = first.FieldPath,
+                ActualNumber = first.ActualNumber, MinimumNumber = first.MinimumNumber,
+                ActualVersion = first.ActualVersion, SupportedVersions = first.SupportedVersions,
+                EnumType = first.EnumType, ActualInteger = first.ActualInteger,
+                SurfaceId = first.SurfaceId, SpaceId = first.SpaceId, Findings = findings,
+            };
+        }
     }
 }

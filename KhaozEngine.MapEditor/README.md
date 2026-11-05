@@ -1037,7 +1037,10 @@ remaining GUI, rendering and broader wire proofs.
 The history staging seam prepares command acceptance, stack capacity and gesture adoption before an
 outer publisher runs. The publisher validates and publishes first, then accepts the prepared history
 movement. Callback snapshots delegate to the complete-snapshot command and capture every semantic
-root. Failed outer publication leaves both stacks and command retry state unchanged.
+root. Failed outer publication leaves both stacks and command retry state unchanged. Owner-removal commands that
+reach marker seating retain `MapDocumentRefusal.MarkerSupportUnresolved`, `MarkerId` and typed `SupportStatus`.
+Callback edits can fail earlier in space-coverage validation, whose aggregate remains a prose diagnostic until
+all its producing rules carry typed findings.
 
 Unpacked placement commands preserve binary64 pose components outside the explicit edit intent. Moves
 replace XZ and supplied Y, rotations replace yaw, scales replace scale, and label edits retain the pose.

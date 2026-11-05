@@ -210,21 +210,99 @@ public sealed class MapMarkerFormatTests
         var asset = JsonNode.Parse(fixture.Assets.GetResource(MarkerFixtures.PayloadTwoResource).Bytes.ToArray())!.AsObject();
         Assert.NotNull(MapPrefabFile.Read(Encoding.UTF8.GetBytes(asset.ToJsonString()), MarkerFixtures.PayloadTwoResource));
         mutate(PrefabMarker(asset, form));
-        Assert.Contains(prefabRefusal, Assert.Throws<MapDocumentException>(() =>
-            MapPrefabFile.Read(Encoding.UTF8.GetBytes(Duplicated(asset.ToJsonString(), duplicate)), MarkerFixtures.PayloadTwoResource)).Message, StringComparison.Ordinal);
+        var prefabError = Assert.Throws<MapDocumentException>(() =>
+            MapPrefabFile.Read(Encoding.UTF8.GetBytes(Duplicated(asset.ToJsonString(), duplicate)), MarkerFixtures.PayloadTwoResource));
+        if (variant is "future-payload" or "payload-two-missing-height" or "payload-one-height" or "payload-one-binding" or "payload-one-archetype" or
+            "explicit-binding" or "support-without-binding" or "support-y-one" or "support-negative-zero" or "nonfinite-yaw" or
+            "null-tags" or "null-tag" or "empty-archetype" or "blank-archetype" or "negative-search")
+            AssertMarkerFinding(variant, form, prefabError);
+        else Assert.Contains(prefabRefusal, prefabError.Message, StringComparison.Ordinal);
+        if (variant == "negative-search")
+        {
+            PrefabMarker(asset, form)["supportBinding"]!["searchBelow"] = 0;
+            Assert.NotNull(MapPrefabFile.Read(Encoding.UTF8.GetBytes(asset.ToJsonString()), MarkerFixtures.PayloadTwoResource));
+        }
+        else Assert.NotNull(MapPrefabFile.Read(fixture.Assets.GetResource(MarkerFixtures.PayloadTwoResource).Bytes, MarkerFixtures.PayloadTwoResource));
 
         // The same rule refuses the typed value before any write.
         if (Typed(variant, MarkerFixtures.PayloadTwoMarkers("").Single(m => m.Id == form)) is { } typed)
         {
             Assert.NotNull(writeRefusal);
-            Assert.Contains(MapMarkerValidation.Validate(typed), e => e.Contains(writeRefusal, StringComparison.Ordinal));
-            var invalid = MarkerFixtures.PayloadTwoAsset() with
+            var original = MarkerFixtures.PayloadTwoAsset();
+            if (variant is "negative-search" or "space-null-search" or "nonfinite-search")
+                original = original with { Children = original.Children.Select(c => c is MapPrefabMarkerChild m && m.Value.Id == typed.Id
+                    ? m with { Value = m.Value with { SupportBinding = variant == "negative-search" ? m.Value.SupportBinding! with { SearchBelow = 0 } : m.Value.SupportBinding! with { SearchAbove = 0 } } } : c).ToArray() };
+            var bytes = MapPrefabFile.Write(original);
+            var invalid = original with
             {
-                Children = [new MapPrefabMarkerChild(new(MapPrefabChildKind.Marker, typed.Id), typed)],
+                Children = original.Children.Select(c => c is MapPrefabMarkerChild m && m.Value.Id == typed.Id ? m with { Value = typed } : c).ToArray(),
             };
-            Assert.Contains(writeRefusal, Assert.Throws<MapDocumentException>(() => MapPrefabFile.Write(invalid)).Message, StringComparison.Ordinal);
+            AssertMarkerFinding(variant, typed.Id, Assert.Throws<MapDocumentException>(() => MapPrefabFile.Write(invalid)));
+            Assert.Equal(bytes, MapPrefabFile.Write(original));
         }
         else Assert.Null(writeRefusal);
+    }
+
+    [Fact]
+    public void MarkerFindings_KeepEveryFailureInValidatorOrder()
+    {
+        var valid = MarkerFixtures.PayloadTwoMarkers("").Single(m => m.Id == "surface");
+        var invalid = valid with { Name = "", Tags = null!, Position = valid.Position with { Y = 1 } };
+        var error = Assert.Throws<MapDocumentException>(() => MapMarkerValidation.Require(invalid));
+        Assert.Equal(MapDocumentRefusal.SchemaValueRequired, error.Reason);
+        Assert.Equal("$.name", error.FieldPath);
+        Assert.Equal(new[] { "$.name", "$.tags", "$.position.y" }, error.Findings!.Select(f => f.FieldPath));
+        Assert.Equal(new[] { MapDocumentRefusal.SchemaValueRequired, MapDocumentRefusal.SchemaValueRequired, MapDocumentRefusal.MarkerHeightChoiceInvalid }, error.Findings!.Select(f => f.Reason));
+        Assert.Equal(MapMarkerValidation.Validate(invalid), error.Findings!.Select(f => f.Message));
+        MapMarkerValidation.Require(valid);
+    }
+
+    static void AssertMarkerFinding(string variant, string id, MapDocumentException error)
+    {
+        (MapDocumentRefusal reason, string path) = variant switch
+        {
+            "future-payload" => (MapDocumentRefusal.SchemaPayloadVersionUnsupported, "$.payloadVersion"),
+            "payload-two-missing-height" or "payload-two-null-height" => (MapDocumentRefusal.SchemaValueRequired, "$.heightMode"),
+            "payload-one-height" => (MapDocumentRefusal.AuthoredOwnershipMismatch, "$.heightMode"),
+            "payload-one-binding" or "explicit-binding" => (MapDocumentRefusal.AuthoredOwnershipMismatch, "$.supportBinding"),
+            "payload-one-archetype" => (MapDocumentRefusal.AuthoredOwnershipMismatch, "$.archetypeId"),
+            "support-without-binding" or "support-null-binding" => (MapDocumentRefusal.SchemaValueRequired, "$.supportBinding"),
+            "support-y-one" or "support-negative-zero" => (MapDocumentRefusal.MarkerHeightChoiceInvalid, "$.position.y"),
+            "nonfinite-y" => (MapDocumentRefusal.ValueNonfinite, "$.position.y"),
+            "nonfinite-yaw" => (MapDocumentRefusal.ValueNonfinite, "$.yawRadians"),
+            "null-tags" => (MapDocumentRefusal.SchemaValueRequired, "$.tags"),
+            "null-tag" => (MapDocumentRefusal.SchemaValueRequired, "$.tags[1]"),
+            "empty-archetype" or "blank-archetype" => (MapDocumentRefusal.SchemaValueRequired, "$.archetypeId"),
+            "unknown-height-mode" => (MapDocumentRefusal.SchemaEnumUnsupported, "$.heightMode"),
+            "unknown-binding-kind" => (MapDocumentRefusal.SchemaEnumUnsupported, "$.supportBinding.kind"),
+            "surface-reference-y" => (MapDocumentRefusal.AuthoredOwnershipMismatch, "$.supportBinding.referenceY"),
+            "surface-search-below" => (MapDocumentRefusal.AuthoredOwnershipMismatch, "$.supportBinding.searchBelow"),
+            "surface-space-id" => (MapDocumentRefusal.AuthoredOwnershipMismatch, "$.supportBinding.spaceId"),
+            "space-missing-reference-y" => (MapDocumentRefusal.SchemaValueRequired, "$.supportBinding.referenceY"),
+            "space-surface-id" => (MapDocumentRefusal.AuthoredOwnershipMismatch, "$.supportBinding.surfaceId"),
+            "space-null-search" => (MapDocumentRefusal.SchemaValueRequired, "$.supportBinding.searchAbove"),
+            "negative-search" => (MapDocumentRefusal.ValueOutsideRange, "$.supportBinding.searchBelow"),
+            "nonfinite-search" => (MapDocumentRefusal.ValueNonfinite, "$.supportBinding.searchAbove"),
+            _ => throw new ArgumentException("No typed marker case " + variant),
+        };
+        Assert.Equal(reason, error.Reason);
+        Assert.Equal(id, error.MarkerId);
+        Assert.Equal(path, error.FieldPath);
+        var finding = Assert.Single(error.Findings!);
+        Assert.Equal(reason, finding.Reason);
+        Assert.Equal(id, finding.MarkerId);
+        Assert.Equal(path, finding.FieldPath);
+        if (reason == MapDocumentRefusal.ValueOutsideRange) Assert.Equal(0d, error.MinimumNumber);
+        if (reason == MapDocumentRefusal.SchemaEnumUnsupported)
+        {
+            Assert.Equal(variant == "unknown-binding-kind" ? typeof(MapSupportBindingKind) : typeof(MapMarkerHeightMode), error.EnumType);
+            Assert.Equal(variant == "unknown-binding-kind" ? 9L : 7L, error.ActualInteger);
+        }
+        if (variant == "future-payload")
+        {
+            Assert.Equal(3, error.ActualVersion);
+            Assert.Equal(new[] { 1, 2 }, error.SupportedVersions);
+        }
     }
 
     // The refusal each path names: the document member gate or codec, the prefab codec, and the typed rule. Each path

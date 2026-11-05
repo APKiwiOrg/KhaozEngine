@@ -52,7 +52,8 @@ declared resource and keeps the shapes in asset source units. `SourceUnitsToMetr
 MapDoc payload-1 descriptors. Their lattice frames already declare metres, so asset source units are not applied
 to support again. MapDoc installs and remaps those surfaces before resolving missing-Y placements. Physics then
 compiles that captured effective view into statics with canonical face owners. A support resource never installs a
-duplicate collider floor.
+duplicate collider floor. A missing-Y consumer bound to a missing-Y provider refuses before physics installation
+with `MapDocumentRefusal.SupportProviderHeightMissing`, `PlacementId` and `ProviderPlacementId`.
 
 An asset is solid exactly when it declares a collider. A selection volume alone makes it examinable without
 blocking.

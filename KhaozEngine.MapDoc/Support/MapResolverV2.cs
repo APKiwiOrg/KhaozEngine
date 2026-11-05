@@ -47,10 +47,12 @@ public static class MapResolverV2
                 var binding = RequireBinding(placement);
                 var support = SeatSupport(new MapResourceTransform(pose).Point(new(default, default, default)), binding, surfaces,
                     assets.Roots.Select(a => a.Sha256).ToArray(), new());
-                if (support.Status != MapSupportStatus.Supported) throw new MapDocumentException($"Placement '{placement.Id}' support status {support.Status}: {support.Detail}");
+                if (support.Status != MapSupportStatus.Supported) throw new MapDocumentException(MapDocumentRefusal.SupportUnresolved, $"Placement '{placement.Id}' support status {support.Status}: {support.Detail}")
+                    { PlacementId = placement.Id, SupportStatus = support.Status };
                 if (support.Face is { } face && owners is not null &&
                     owners.TryGetValue(MapEffectiveContext.Key(MapPrefabChildKind.Surface, face.OwnerId), out var provider) && missingY.Contains(provider))
-                    throw new MapDocumentException($"Placement '{placement.Id}' with missing Y cannot bind support supplied by placement '{provider}' with missing Y.");
+                    throw new MapDocumentException(MapDocumentRefusal.SupportProviderHeightMissing, $"Placement '{placement.Id}' with missing Y cannot bind support supplied by placement '{provider}' with missing Y.")
+                        { PlacementId = placement.Id, ProviderPlacementId = provider };
                 y = support.WorldY;
                 selected.Add(new(placement.Id, support));
             }
@@ -103,10 +105,12 @@ public static class MapResolverV2
     static MapSupportBinding RequireBinding(MapPlacement placement)
     {
         MapSupportBinding binding = placement.SupportBinding ??
-            throw new MapDocumentException($"Placement '{placement.Id}' support status Invalid: missing authored binding.");
+            throw new MapDocumentException(MapDocumentRefusal.SupportBindingMissing, $"Placement '{placement.Id}' support status Invalid: missing authored binding.")
+                { PlacementId = placement.Id };
         if (binding.Kind == MapSupportBindingKind.Space &&
             (binding.ReferenceY is null || binding.SearchBelow is null || binding.SearchAbove is null))
-            throw new MapDocumentException($"Placement '{placement.Id}' support status Invalid: space binding requires reference Y and bounded search.");
+            throw new MapDocumentException(MapDocumentRefusal.SupportSpaceSearchMissing, $"Placement '{placement.Id}' support status Invalid: space binding requires reference Y and bounded search.")
+                { PlacementId = placement.Id, SpaceId = binding.SpaceId };
         return binding with { };
     }
 
@@ -134,7 +138,8 @@ public static class MapResolverV2
             ? query.SampleSurface(point, binding.SurfaceId!)
             : query.Select(new(point, null, binding.SpaceId, null, binding.SearchAbove!.Value, binding.SearchBelow!.Value, null));
         if (support.Status != MapSupportStatus.Supported)
-            throw new MapDocumentException($"Placement '{id}' support status {support.Status}: {support.Detail}");
+            throw new MapDocumentException(MapDocumentRefusal.SupportUnresolved, $"Placement '{id}' support status {support.Status}: {support.Detail}")
+                { PlacementId = id, SupportStatus = support.Status };
         supports?.Add(new(id, support));
         return support.WorldY;
     }

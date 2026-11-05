@@ -122,46 +122,7 @@ public sealed partial class InMemoryContentAuthoringStore : IContentAuthoringSto
         string actor,
         string operatorId,
         CancellationToken cancellationToken = default)
-    {
-        ArgumentNullException.ThrowIfNull(actor);
-        ArgumentNullException.ThrowIfNull(operatorId);
-
-        lock (_gate)
-        {
-            if (version is int held && FindVersion(held) is null)
-            {
-                throw new ContentAuthoringException(
-                    FormattableString.Invariant(
-                        $"Version {held} does not exist, so it cannot be pinned."),
-                    default,
-                    0,
-                    ContentAuthoringException.UnknownTypeReason);
-            }
-
-            // STAGE, then move the pin, then COMMIT. Everything that can fail is in the staging, so a pin
-            // with no audit row against it is not a state this store can be left in. A provider gets the
-            // same property from its one transaction.
-            string? before = InMemoryContentAuditLog.Render(_pinnedVersion);
-            var staged = new List<ContentAuditEntry>(1);
-            _audit.Stage(
-                staged,
-                ContentAuditActions.Pin,
-                actor,
-                operatorId,
-                default,
-                0,
-                default,
-                string.Empty,
-                before,
-                InMemoryContentAuditLog.Render(version),
-                0,
-                string.Empty);
-
-            _pinnedVersion = version;
-            _audit.Commit(staged);
-            return Task.CompletedTask;
-        }
-    }
+        => SetPinAsync(version, actor, operatorId, null, cancellationToken);
 
     /// <inheritdoc />
     public Task<IReadOnlyList<ContentVersionRecord>> ListVersionsAsync(

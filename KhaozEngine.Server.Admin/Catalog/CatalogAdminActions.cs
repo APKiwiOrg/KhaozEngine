@@ -9,7 +9,7 @@ namespace KhaozEngine.Server.Admin.Catalog;
 /// What the catalog actions need to know about the SERVER they are registered on, none of which the
 /// authoring store can answer.
 /// <para>
-/// Both properties exist for <c>catalog-pin</c>. Which version a server boots has one order of precedence,
+/// The version and build properties exist for <c>catalog-pin</c>. Which version a server boots has one order of precedence,
 /// config first, and an action that could not see the config pin would answer a bare 200 to a call with no
 /// effect on the next restart.
 /// </para>
@@ -28,6 +28,9 @@ public sealed record CatalogAdminActionOptions
     /// ahead of an upgrade on purpose and the boot check is the real gate.
     /// </summary>
     public int ServerBuild { get; init; }
+
+    /// <summary>The host's operator publication policy, captured at registration and never supplied by HTTP.</summary>
+    public IContentPublishPolicy? PublishPolicy { get; init; }
 }
 
 /// <summary>
@@ -183,9 +186,9 @@ public static class CatalogAdminActions
         CatalogAdminActionOptions resolved = options ?? new CatalogAdminActionOptions();
         RegisterReads(admin, store, registry);
         new CatalogEditActions(store, registry).Register(admin);
-        new CatalogPublishActions(store, registry).Register(admin);
+        new CatalogPublishActions(store, registry, resolved.PublishPolicy).Register(admin);
         new CatalogVersionActions(store, registry, resolved).Register(admin);
-        new CatalogBundleActions(store, registry).Register(admin);
+        new CatalogBundleActions(store, registry, resolved.PublishPolicy).Register(admin);
         new CatalogOperationalActions(store, registry).Register(admin);
     }
 

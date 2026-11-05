@@ -81,12 +81,12 @@ internal sealed class PrivateOracleInputs
         catch (Exception)
         {
             throw new PrivateOracleInputException(PrivateOracleInputRefusal.SourceVerificationFailed, "source verification failed: 1 files")
-                { MismatchCount = 1 };
+            { MismatchCount = 1 };
         }
         int mismatches = provenance.Verify(sourceRoot);
         if (mismatches != 0)
             throw new PrivateOracleInputException(PrivateOracleInputRefusal.SourceVerificationFailed, $"source verification failed: {mismatches} files")
-                { MismatchCount = mismatches };
+            { MismatchCount = mismatches };
         return new(sourceRoot, provenance, reportPath);
     }
 }

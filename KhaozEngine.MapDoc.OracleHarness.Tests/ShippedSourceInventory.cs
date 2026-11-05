@@ -36,7 +36,7 @@ internal sealed record ShippedSourceInventory(IReadOnlyList<InventoryRegion> Reg
         foreach (string path in catalogs)
             if (!inputs.Provenance.Paths.Any(p => Path.GetFullPath(Path.Combine(inputs.SourceRoot, p.Path)) == path))
                 throw new PrivateOracleInputException(PrivateOracleInputRefusal.SourceVerificationFailed, "source verification failed: 1 files")
-                    { MismatchCount = 1 };
+                { MismatchCount = 1 };
         return (document, TileWorldCatalogs.Load(catalogs));
     }
 

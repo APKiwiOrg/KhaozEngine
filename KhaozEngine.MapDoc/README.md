@@ -1409,11 +1409,20 @@ A wider `Int128` denominator leaves `ActualInteger` null. Null height, cell and 
 and `ExpectedCount`. Corner access includes the final corner at `Width`, `Depth`, while cell access ends
 at `Width - 1`, `Depth - 1`.
 
-Local validation collects typed shape, cell-field, padding and metadata-capacity findings beside its
-unchanged string API. Cell fields retain their array `Index` and field-specific `FieldPath`. Capacity
-findings carry the collection name in `Budget`, its `ActualCount` and inclusive `Limit`. Dependency and
-edge-detail findings remain prose, so forwarding adapters keep their existing constructors until those
-remaining producer rules are typed.
+`ValidateLocalFindings` returns an owned read-only snapshot of every local shape, cell-field, padding,
+capacity, dependency and subdivision finding in the same order as the unchanged `ValidateLocal` string
+projection. Cell fields and metadata retain their array `Index` and field-specific `FieldPath`. Capacity
+findings carry the collection name in `Budget`, its `ActualCount` and inclusive `Limit`. Dependency
+corners and subdivision cells retain `CellX`, `CellZ` and `Patch`. A subdivision also carries `Edge`.
+Missing items or owners use `SchemaValueRequired`, out-of-patch coordinates use `SurfaceAddressOutOfPatch`,
+and unsupported edge values use `SchemaEnumUnsupported`. Repeated corner or cell-edge keys use
+`IdentityDuplicate`. Invalid owner-address denominators and subdivision segment counts use
+`ValueOutsideRange` with the actual value and inclusive limits. Segments admit both 2 and 64.
+Forwarding adapters consume this completed producer in their owning conversion tasks.
+
+`SplitSwNe` distinguishes an out-of-range rotation (`ValueOutsideRange`, 0 through 3) from an undefined
+cut or topology (`SchemaEnumUnsupported`). It carries the failing `FieldPath`, `ActualInteger` and,
+for an enumeration, `EnumType`, selecting the first failed branch in predicate order.
 
 | Reason | Refused rule | Identifiers when known |
 | --- | --- | --- |
@@ -1440,6 +1449,8 @@ remaining producer rules are typed.
 | `BoundsInvalid` | Invalid prefab patch dimensions, manifest local bounds, playable bounds, reversed exact rectangles or invalid surface patch rectangles | `FieldPath`, `Width`, `Depth`, `AssetId`, `SurfaceId`, `Patch`, `CellX`, `CellZ`, `Index`, `MinimumNumber`, `MaximumNumber` |
 | `WorkCapacityExceeded` | Local corner-dependency or edge-subdivision metadata beyond its count budget | `Patch`, `FieldPath`, `Budget`, `ActualCount`, `Limit` |
 | `SurfacePresencePaddingNonzero` | Nonzero bits beyond the authored cell count in the last presence word | `Patch`, `FieldPath`, `Index` |
+| `SurfaceSubdivisionAbsentCell` | An edge subdivision on an absent cell | `Patch`, `FieldPath`, `Index`, `CellX`, `CellZ`, `Edge` |
+| `SurfaceSubdivisionInteriorEdge` | An edge subdivision adjoining another present cell inside the patch | `Patch`, `FieldPath`, `Index`, `CellX`, `CellZ`, `Edge` |
 | `SurfaceUnitUnreduced` | An authored lattice unit whose positive numerator and denominator have a common factor | `Numerator`, `Denominator` |
 | `SurfaceAddressOutOfPatch` | A patch-local cell or corner coordinate outside the valid rectangle | `Patch`, `Width`, `Depth`, `CellX`, `CellZ`, `FieldPath`, `ActualInteger`, `MinimumInteger`, `MaximumInteger` |
 | `DigestMalformed` | An asset-reference, materialized source, prefab or surface semantic digest outside lowercase SHA-256 representation | `FieldPath`, `ResourceId`, `SurfaceId`, `AssetId`, `PlacementId`, `ActualHash`, `Index` |

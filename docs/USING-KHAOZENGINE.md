@@ -12700,8 +12700,16 @@ rectangles and reversed exact rectangles use `BoundsInvalid`. A cell or corner o
 include `Width`, `Depth`, while cells end one earlier on each axis. Local validation additionally
 collects typed cell-field, padding (`SurfacePresencePaddingNonzero`) and metadata-capacity
 (`WorkCapacityExceeded`) findings. Capacity findings retain `Budget`, `ActualCount` and `Limit`.
-Its public string results stay unchanged. Dependency and edge-detail findings remain prose, so
-aggregate adapters wait for those remaining rules before consuming the typed findings.
+`ValidateLocalFindings` returns every local finding as an owned read-only snapshot in diagnostic order.
+Its public string results stay unchanged. Metadata findings carry `Index`, `FieldPath`, `Patch`,
+`CellX`, `CellZ` and, for subdivisions, `Edge`. Missing dependencies or owners use `SchemaValueRequired`,
+coordinates use `SurfaceAddressOutOfPatch`, unsupported edges use `SchemaEnumUnsupported`, and repeated
+corner or cell-edge keys use `IdentityDuplicate`. Denominators and segment counts use `ValueOutsideRange`
+with their inclusive limits, including segments 2 through 64. An absent cell uses
+`SurfaceSubdivisionAbsentCell`, while an edge adjoining another present cell uses
+`SurfaceSubdivisionInteriorEdge`. Forwarding adapters adopt the completed producer in their owning tasks.
+`SplitSwNe` uses `ValueOutsideRange` for rotation outside 0 through 3 and `SchemaEnumUnsupported` for cut
+or topology, retaining the first failing field, actual integer and applicable enum type.
 
 Native metadata adds typed findings beside its unchanged string diagnostics. Compound findings select
 the first failing predicate branch. Missing asset-reference and indoor-span values use `SchemaValueRequired`, nonfinite

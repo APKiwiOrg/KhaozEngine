@@ -189,6 +189,10 @@ public enum MapDocumentRefusal
     SurfaceAddressOutOfPatch,
     /// <summary>Refuses nonzero bits beyond the authored cell count in a presence word.</summary>
     SurfacePresencePaddingNonzero,
+    /// <summary>Refuses an edge subdivision on an absent cell.</summary>
+    SurfaceSubdivisionAbsentCell,
+    /// <summary>Refuses an edge subdivision adjoining another present cell inside the patch.</summary>
+    SurfaceSubdivisionInteriorEdge,
 
     // Foliage JSON converter.
     /// <summary>Refuses a foliage section larger than its UTF-8 byte budget.</summary>

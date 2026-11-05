@@ -106,6 +106,14 @@ public sealed partial class MapSurfacePatch
 
     public IReadOnlyList<string> ValidateLocal() => ValidateLocal(null);
 
+    /// <summary>Returns the local validation rules and their typed subjects in diagnostic order.</summary>
+    public IReadOnlyList<MapDocumentFinding> ValidateLocalFindings()
+    {
+        var findings = new List<MapDocumentFinding>();
+        ValidateLocal(findings);
+        return findings.AsReadOnly();
+    }
+
     internal IReadOnlyList<string> ValidateLocal(List<MapDocumentFinding>? findings)
     {
         var errors = new List<string>();
@@ -157,31 +165,73 @@ public sealed partial class MapSurfacePatch
         if (errors.Count != 0) return errors;
 
         var corners = new HashSet<(int, int)>();
-        foreach (MapCornerDependency dependency in CornerDependencies)
+        for (int i = 0; i < CornerDependencies.Count; i++)
         {
+            MapCornerDependency dependency = CornerDependencies[i];
             if (dependency is null || dependency.CornerX < 0 || dependency.CornerX > Width ||
                 dependency.CornerZ < 0 || dependency.CornerZ > Depth || dependency.Owner is null ||
                 string.IsNullOrWhiteSpace(dependency.Owner.Patch.SurfaceId))
             {
-                errors.Add("invalid corner dependency");
+                bool badX = dependency is not null && (dependency.CornerX < 0 || dependency.CornerX > Width);
+                bool badZ = dependency is not null && !badX && (dependency.CornerZ < 0 || dependency.CornerZ > Depth);
+                string field = dependency is null ? "" : badX ? ".CornerX" : badZ ? ".CornerZ"
+                    : dependency.Owner is null ? ".Owner" : ".Owner.Patch.SurfaceId";
+                Add(new(badX || badZ ? MapDocumentRefusal.SurfaceAddressOutOfPatch : MapDocumentRefusal.SchemaValueRequired,
+                    "invalid corner dependency")
+                {
+                    FieldPath = $"CornerDependencies[{i}]{field}", Index = i,
+                    CellX = dependency?.CornerX, CellZ = dependency?.CornerZ,
+                    ActualInteger = badX ? dependency!.CornerX : badZ ? dependency!.CornerZ : null,
+                    MinimumInteger = badX || badZ ? 0 : null, MaximumInteger = badX ? Width : badZ ? Depth : null,
+                    Width = Width, Depth = Depth,
+                });
                 continue;
             }
-            if (!corners.Add((dependency.CornerX, dependency.CornerZ))) errors.Add("duplicate corner dependency");
+            if (!corners.Add((dependency.CornerX, dependency.CornerZ)))
+                Add(new(MapDocumentRefusal.IdentityDuplicate, "duplicate corner dependency")
+                { FieldPath = $"CornerDependencies[{i}]", Index = i, CellX = dependency.CornerX, CellZ = dependency.CornerZ });
             try { dependency.Owner.Address.RequireValid(); }
-            catch (MapDocumentException) { errors.Add("invalid dependency address denominator"); }
+            catch (MapDocumentException error)
+            {
+                Add(MapDocumentFinding.FromException(error)! with
+                {
+                    Message = "invalid dependency address denominator", FieldPath = $"CornerDependencies[{i}].Owner.Address.Denominator",
+                    Index = i, CellX = dependency.CornerX, CellZ = dependency.CornerZ,
+                });
+            }
         }
         var edges = new HashSet<(int, int, MapCellEdge)>();
-        foreach (MapEdgeSubdivision edge in EdgeSubdivisions)
+        for (int i = 0; i < EdgeSubdivisions.Count; i++)
         {
+            MapEdgeSubdivision edge = EdgeSubdivisions[i];
             if (edge is null || edge.CellX < 0 || edge.CellX >= Width || edge.CellZ < 0 || edge.CellZ >= Depth ||
                 edge.Edge > MapCellEdge.West)
             {
-                errors.Add("invalid subdivision edge");
+                bool badX = edge is not null && (edge.CellX < 0 || edge.CellX >= Width);
+                bool badZ = edge is not null && !badX && (edge.CellZ < 0 || edge.CellZ >= Depth);
+                string field = edge is null ? "" : badX ? ".CellX" : badZ ? ".CellZ" : ".Edge";
+                Add(new(edge is null ? MapDocumentRefusal.SchemaValueRequired : badX || badZ
+                    ? MapDocumentRefusal.SurfaceAddressOutOfPatch : MapDocumentRefusal.SchemaEnumUnsupported, "invalid subdivision edge")
+                {
+                    FieldPath = $"EdgeSubdivisions[{i}]{field}", Index = i, CellX = edge?.CellX, CellZ = edge?.CellZ, Edge = edge?.Edge,
+                    ActualInteger = edge is null ? null : badX ? edge.CellX : badZ ? edge.CellZ : (byte)edge.Edge,
+                    MinimumInteger = badX || badZ ? 0 : null, MaximumInteger = badX ? Width - 1 : badZ ? Depth - 1 : null,
+                    EnumType = edge is not null && !badX && !badZ ? typeof(MapCellEdge) : null, Width = Width, Depth = Depth,
+                });
                 continue;
             }
-            if (edge.Segments is < 2 or > 64) errors.Add("subdivision segments must be 2 to 64");
-            if (!edges.Add((edge.CellX, edge.CellZ, edge.Edge))) errors.Add("duplicate edge subdivision");
-            if (!IsPresent(edge.CellX, edge.CellZ)) errors.Add("subdivision on absent cell");
+            if (edge.Segments is < 2 or > 64)
+                Add(new(MapDocumentRefusal.ValueOutsideRange, "subdivision segments must be 2 to 64")
+                {
+                    FieldPath = $"EdgeSubdivisions[{i}].Segments", Index = i, CellX = edge.CellX, CellZ = edge.CellZ, Edge = edge.Edge,
+                    ActualInteger = edge.Segments, MinimumInteger = 2, MaximumInteger = 64,
+                });
+            if (!edges.Add((edge.CellX, edge.CellZ, edge.Edge)))
+                Add(new(MapDocumentRefusal.IdentityDuplicate, "duplicate edge subdivision")
+                { FieldPath = $"EdgeSubdivisions[{i}]", Index = i, CellX = edge.CellX, CellZ = edge.CellZ, Edge = edge.Edge });
+            if (!IsPresent(edge.CellX, edge.CellZ))
+                Add(new(MapDocumentRefusal.SurfaceSubdivisionAbsentCell, "subdivision on absent cell")
+                { FieldPath = $"EdgeSubdivisions[{i}]", Index = i, CellX = edge.CellX, CellZ = edge.CellZ, Edge = edge.Edge });
             (int x, int z) = edge.Edge switch
             {
                 MapCellEdge.South => (edge.CellX, edge.CellZ - 1),
@@ -190,7 +240,8 @@ public sealed partial class MapSurfacePatch
                 _ => (edge.CellX - 1, edge.CellZ),
             };
             if (x >= 0 && x < Width && z >= 0 && z < Depth && IsPresent(x, z))
-                errors.Add("subdivision on interior present-cell edge");
+                Add(new(MapDocumentRefusal.SurfaceSubdivisionInteriorEdge, "subdivision on interior present-cell edge")
+                { FieldPath = $"EdgeSubdivisions[{i}]", Index = i, CellX = edge.CellX, CellZ = edge.CellZ, Edge = edge.Edge });
         }
         return errors;
 

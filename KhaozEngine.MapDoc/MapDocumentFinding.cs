@@ -37,6 +37,8 @@ public sealed record MapDocumentFinding(MapDocumentRefusal Reason, string Messag
     public int? CellX { get; init; }
     /// <summary>The submitted patch-local cell or corner Z coordinate.</summary>
     public int? CellZ { get; init; }
+    /// <summary>The patch-local edge whose metadata rule was refused.</summary>
+    public MapCellEdge? Edge { get; init; }
     /// <summary>The document tile being read, when known.</summary>
     public MapTileCoord? Tile { get; init; }
     /// <summary>The zero-based JSON line number exposed by the reader, when available.</summary>
@@ -231,6 +233,7 @@ public sealed record MapDocumentFinding(MapDocumentRefusal Reason, string Messag
             Denominator = error.Denominator,
             CellX = error.CellX,
             CellZ = error.CellZ,
+            Edge = error.Edge,
             Tile = error.Tile,
             LineNumber = error.LineNumber,
             BytePositionInLine = error.BytePositionInLine,

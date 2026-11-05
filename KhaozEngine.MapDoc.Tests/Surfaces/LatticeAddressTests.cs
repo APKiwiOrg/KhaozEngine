@@ -50,13 +50,13 @@ public sealed class LatticeAddressTests
         p.EdgeSubdivisions.Add(new(2, 0, MapCellEdge.East, 64));
         Assert.Empty(p.ValidateLocal());
         p.EdgeSubdivisions.Add(new(0, 0, MapCellEdge.East, 2));
-        Assert.Contains(p.ValidateLocal(), f => f.Contains("interior"));
+        Assert.Equal(MapDocumentRefusal.SurfaceSubdivisionInteriorEdge, Assert.Single(p.ValidateLocalFindings()).Reason);
         p.SetPresent(1, 0, false);
         Assert.Empty(p.ValidateLocal());                                 // cell 1 is now a rim, cell 0 East is legal
         p.EdgeSubdivisions.Add(new(0, 0, MapCellEdge.East, 2));
-        Assert.Contains(p.ValidateLocal(), f => f.Contains("duplicate"));
+        Assert.Equal(MapDocumentRefusal.IdentityDuplicate, Assert.Single(p.ValidateLocalFindings()).Reason);
         p.EdgeSubdivisions[^1] = new(0, 0, MapCellEdge.South, 65);
-        Assert.Contains(p.ValidateLocal(), f => f.Contains("segments"));
+        Assert.Equal(MapDocumentRefusal.ValueOutsideRange, Assert.Single(p.ValidateLocalFindings()).Reason);
     }
 
     [Fact]

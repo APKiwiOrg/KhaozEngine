@@ -76,6 +76,10 @@ public sealed record MapDocumentFinding(MapDocumentRefusal Reason, string Messag
     public long? ActualByteCount { get; init; }
     /// <summary>The required decoded byte count, when checked.</summary>
     public long? ExpectedByteCount { get; init; }
+    /// <summary>The producer's declared patch status, when acquisition admission checks it.</summary>
+    public KhaozEngine.MapDoc.Storage.MapPatchStatus? PatchStatus { get; init; }
+    /// <summary>The runtime source type lacking required acquisition support.</summary>
+    public Type? SourceType { get; init; }
     /// <summary>The work or metadata budget whose checked capacity was exceeded.</summary>
     public string? Budget { get; init; }
     /// <summary>The inclusive byte, work or whole-metre world coordinate limit, when checked.</summary>
@@ -260,6 +264,8 @@ public sealed record MapDocumentFinding(MapDocumentRefusal Reason, string Messag
             FoliageChunk = error.FoliageChunk,
             ActualByteCount = error.ActualByteCount,
             ExpectedByteCount = error.ExpectedByteCount,
+            PatchStatus = error.PatchStatus,
+            SourceType = error.SourceType,
             Budget = error.Budget,
             Limit = error.Limit,
             ActualVersion = error.ActualVersion,

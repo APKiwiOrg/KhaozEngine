@@ -32,7 +32,17 @@ internal sealed class MapAcquiredFacts
     {
         if (surface is null || string.IsNullOrWhiteSpace(surface.Id) || surface.Frame is null ||
             !Enum.IsDefined(surface.Role) || !Enum.IsDefined(surface.PresencePolicy))
-            throw new MapDocumentException("invalid acquired surface metadata");
+            throw new MapDocumentException(surface is null || string.IsNullOrWhiteSpace(surface.Id) || surface.Frame is null
+                ? MapDocumentRefusal.SchemaValueRequired : MapDocumentRefusal.SchemaEnumUnsupported, "invalid acquired surface metadata")
+            {
+                SurfaceId = surface?.Id,
+                FieldPath = surface is null ? "surface" : string.IsNullOrWhiteSpace(surface.Id) ? nameof(surface.Id)
+                    : surface.Frame is null ? nameof(surface.Frame) : !Enum.IsDefined(surface.Role) ? nameof(surface.Role) : nameof(surface.PresencePolicy),
+                EnumType = surface is not null && !string.IsNullOrWhiteSpace(surface.Id) && surface.Frame is not null
+                    ? !Enum.IsDefined(surface.Role) ? typeof(MapSurfaceRole) : typeof(MapPresencePolicy) : null,
+                ActualInteger = surface is not null && !string.IsNullOrWhiteSpace(surface.Id) && surface.Frame is not null
+                    ? !Enum.IsDefined(surface.Role) ? (long)surface.Role : (long)surface.PresencePolicy : null,
+            };
         _ = surface.Frame.WorldXz(MapLatticeAddress.Corner(0, 0));
         _surfaces.Add(surface.Id, CopySurface(surface));
     }
@@ -44,31 +54,55 @@ internal sealed class MapAcquiredFacts
     {
         ValidateKey(read.Key);
         if (!Enum.IsDefined(read.Status) || read.PagesRead < 0 || _reads.ContainsKey(read.Key))
-            throw new MapDocumentException("incoherent acquired patch result");
+            throw new MapDocumentException(!Enum.IsDefined(read.Status) ? MapDocumentRefusal.SchemaEnumUnsupported
+                : read.PagesRead < 0 ? MapDocumentRefusal.ValueOutsideRange : MapDocumentRefusal.IdentityDuplicate,
+                "incoherent acquired patch result")
+            {
+                Patch = read.Key, PatchStatus = read.Status,
+                FieldPath = !Enum.IsDefined(read.Status) ? nameof(read.Status) : read.PagesRead < 0 ? nameof(read.PagesRead) : nameof(read.Key),
+                EnumType = !Enum.IsDefined(read.Status) ? typeof(MapPatchStatus) : null,
+                ActualInteger = !Enum.IsDefined(read.Status) ? (long)read.Status : read.PagesRead < 0 ? read.PagesRead : null,
+                MinimumInteger = Enum.IsDefined(read.Status) && read.PagesRead < 0 ? 0 : null,
+            };
         if (read.Status == MapPatchStatus.Present)
         {
             if (read.Patch is null || read.Patch.Key != read.Key || MapSurfaceSemantics.PatchDigest(read.Patch) != read.SemanticSha256)
-                throw new MapDocumentException("incoherent acquired patch key or semantic digest");
+                throw new MapDocumentException(read.Patch is null ? MapDocumentRefusal.SchemaValueRequired
+                    : read.Patch.Key != read.Key ? MapDocumentRefusal.AuthoredValueMismatch : MapDocumentRefusal.DigestMismatch,
+                    "incoherent acquired patch key or semantic digest")
+                {
+                    Patch = read.Patch is not null && read.Patch.Key != read.Key ? read.Patch.Key : read.Key, PatchStatus = read.Status,
+                    ExpectedPatch = read.Patch is not null && read.Patch.Key != read.Key ? read.Key : null,
+                    FieldPath = read.Patch is null ? nameof(read.Patch) : read.Patch.Key != read.Key ? "Patch.Key" : nameof(read.SemanticSha256),
+                    ExpectedHash = read.Patch is not null && read.Patch.Key == read.Key ? read.SemanticSha256 : null,
+                    ActualHash = read.Patch is not null && read.Patch.Key == read.Key ? MapSurfaceSemantics.PatchDigest(read.Patch) : null,
+                };
             read = read with { Patch = read.Patch.Clone() };
             foreach (MapTopologyRecord record in read.Patch.Records)
                 if (!_recordIds.TryAdd(record.Id, new(record.Id, read.Key)))
-                    throw new MapDocumentException("duplicate acquired record id");
+                    throw new MapDocumentException(MapDocumentRefusal.IdentityDuplicate, "duplicate acquired record id")
+                    { RecordId = record.Id, Patch = read.Key, FieldPath = nameof(record.Id) };
         }
-        else if (read.Patch is not null) throw new MapDocumentException("unavailable patch carries a payload");
+        else if (read.Patch is not null) throw new MapDocumentException(MapDocumentRefusal.AcquisitionContractMismatch, "unavailable patch carries a payload")
+            { Patch = read.Key, PatchStatus = read.Status, FieldPath = nameof(read.Patch) };
         _reads.Add(read.Key, read);
         if (read.Status == MapPatchStatus.KnownEmpty) AddEmpty(new(read.Key.SurfaceId, MapSurfaceAcquisitionRead.KeyRange(read.Key)));
         else if (read.Status != MapPatchStatus.Present) AddUnavailable("patch", read.Key, read.Status);
     }
     internal void AddEmpty(MapCoveredRange range)
     {
-        if (range is null || string.IsNullOrWhiteSpace(range.SurfaceId)) throw new MapDocumentException("invalid acquired empty range");
+        if (range is null || string.IsNullOrWhiteSpace(range.SurfaceId))
+            throw new MapDocumentException(MapDocumentRefusal.SchemaValueRequired, "invalid acquired empty range")
+            { SurfaceId = range?.SurfaceId, FieldPath = range is null ? "range" : nameof(range.SurfaceId) };
         MapSurfacePages.ValidateRect(range.Slots);
         _empty.Add(range);
     }
     internal void AddUnavailable(string what, MapPatchKey key, MapPatchStatus status) => _unavailable.Add(new(what, key, status));
     internal static void ValidateKey(MapPatchKey key)
     {
-        if (string.IsNullOrWhiteSpace(key.SurfaceId)) throw new MapDocumentException("invalid acquired patch key");
+        if (string.IsNullOrWhiteSpace(key.SurfaceId))
+            throw new MapDocumentException(MapDocumentRefusal.SchemaValueRequired, "invalid acquired patch key")
+            { Patch = key, SurfaceId = key.SurfaceId, FieldPath = nameof(key.SurfaceId) };
     }
     internal MapPatchStatus Status(MapPatchKey key) => _reads.TryGetValue(key, out MapPatchRead? read) ? read.Status : MapPatchStatus.Unloaded;
     internal MapSurfacePatch? OwnedPatch(MapPatchKey key) => _reads.TryGetValue(key, out MapPatchRead? read) ? read.Patch : null;

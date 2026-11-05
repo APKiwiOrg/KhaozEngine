@@ -327,3 +327,13 @@ internal sealed class R2LegacyProbeSource : IMapSurfaceSource
         return new(MapFindStatus.Complete, scope, SnapshotId, Array.Empty<MapPatchRead>(), Array.Empty<MapCoveredRange>(), Array.Empty<MapPatchRead>(), 0);
     }
 }
+
+// This producer exposes native metadata but cannot perform scoped acquisition. Traversal must never begin.
+internal sealed class R2UnscopedSurfaceSource(IMapSurfaceSource inner) : IMapSurfaceSource
+{
+    public string SnapshotId => inner.SnapshotId;
+    public string RootSha256 => inner.RootSha256;
+    public IReadOnlyList<MapSurfaceRef> Surfaces => inner.Surfaces;
+    public MapPatchRead ReadPatch(MapPatchKey key) => throw new InvalidOperationException("unscoped producer traversed");
+    public MapPatchFindResult FindPatches(MapSurfaceScope scope) => throw new InvalidOperationException("unscoped producer traversed");
+}

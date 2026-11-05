@@ -92,6 +92,10 @@ public sealed class MapDocumentException : Exception
     public long? ActualByteCount { get; init; }
     /// <summary>The required decoded byte count, when checked.</summary>
     public long? ExpectedByteCount { get; init; }
+    /// <summary>The producer's declared patch status, when acquisition admission checks it.</summary>
+    public KhaozEngine.MapDoc.Storage.MapPatchStatus? PatchStatus { get; init; }
+    /// <summary>The runtime source type lacking required acquisition support.</summary>
+    public Type? SourceType { get; init; }
     /// <summary>The work or metadata budget whose checked capacity was exceeded.</summary>
     public string? Budget { get; init; }
     /// <summary>The inclusive byte, work or whole-metre world coordinate limit, when checked.</summary>
@@ -297,6 +301,8 @@ public sealed class MapDocumentException : Exception
         FoliageChunk = inner.FoliageChunk;
         ActualByteCount = inner.ActualByteCount;
         ExpectedByteCount = inner.ExpectedByteCount;
+        PatchStatus = inner.PatchStatus;
+        SourceType = inner.SourceType;
         Budget = inner.Budget;
         Limit = inner.Limit;
         ActualVersion = inner.ActualVersion;

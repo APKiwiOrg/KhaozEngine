@@ -189,6 +189,12 @@ public enum MapDocumentRefusal
     /// <summary>Refuses authored work or metadata beyond its checked capacity.</summary>
     WorkCapacityExceeded,
 
+    // Scoped acquisition producer admission.
+    /// <summary>Refuses a producer result inconsistent with its declared acquisition contract.</summary>
+    AcquisitionContractMismatch,
+    /// <summary>Refuses a source without bounded scoped acquisition support.</summary>
+    AcquisitionUnsupported,
+
     // Surface scalar and local patch admission.
     /// <summary>Refuses a lattice unit not in reduced form.</summary>
     SurfaceUnitUnreduced,

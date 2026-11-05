@@ -155,8 +155,10 @@ public sealed class MapDocumentExceptionTests
         if (property.Name == nameof(MapDocumentException.PreviousInteger)) return 17L;
         if (property.Name == nameof(MapDocumentException.ActualText)) return "future";
         if (property.Name == nameof(MapDocumentException.ExpectedPatch)) return new MapPatchKey("expected", 2, -3);
+        if (property.Name == nameof(MapDocumentException.SourceType)) return typeof(KhaozEngine.MapDoc.Storage.MapDocumentSurfaceSource);
         if (property.Name == nameof(MapDocumentException.RecordType)) return typeof(MapBoundaryChain);
         if (property.Name == nameof(MapDocumentException.Budget)) return "CornerDependencies";
+        if (type == typeof(KhaozEngine.MapDoc.Storage.MapPatchStatus)) return KhaozEngine.MapDoc.Storage.MapPatchStatus.Corrupt;
         if (type == typeof(Type)) return typeof(MapLocalLightDoc);
         if (type == typeof(string)) return property.Name;
         if (type == typeof(int)) return 1000 + index;

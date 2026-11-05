@@ -12734,6 +12734,16 @@ available reader location. The 1,048,576-byte codec cap uses `WorkCapacityExceed
 while preflight collection and text checks retain `ActualCount` and a local `FieldPath` when known.
 Per-array count caps use the field name as `Budget`, with `ActualCount` and `Limit`.
 
+Acquired fact admission distinguishes missing values (`SchemaValueRequired`), undefined enums
+(`SchemaEnumUnsupported`), negative `PagesRead` (`ValueOutsideRange` with a zero minimum), repeated
+patch or record identities (`IdentityDuplicate`), mismatched present-payload keys (`AuthoredValueMismatch`
+with `Patch` and `ExpectedPatch`) and semantic pins (`DigestMismatch` with both hashes). The carrier
+retains the first failed `FieldPath` and known `SurfaceId`, `RecordId`, `Patch` and `PatchStatus`.
+A non-present acquired result carrying a payload uses `AcquisitionContractMismatch`. A missing bound
+surface names the footprint's record and lower or upper field. A composed source without bounded native
+acquisition uses `AcquisitionUnsupported` with `SourceType`. Source-context wrapping and finding
+projection preserve these identifiers.
+
 Native metadata adds typed findings beside its unchanged string diagnostics. Compound findings select
 the first failing predicate branch. Missing asset-reference and indoor-span values use `SchemaValueRequired`, nonfinite
 bounds or support-search values use `ValueNonfinite`, finite unordered bounds use `BoundsInvalid`, and

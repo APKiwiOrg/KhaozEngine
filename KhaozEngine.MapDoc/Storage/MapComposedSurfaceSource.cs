@@ -70,7 +70,8 @@ internal sealed partial class MapComposedSurfaceSource : IMapSurfaceAcquisitionS
             try
             {
                 if (groups.Length != 0 && source._native is not IMapSurfaceAcquisitionSource)
-                    throw new MapDocumentException("surface source does not support bounded scoped acquisition");
+                    throw new MapDocumentException(MapDocumentRefusal.AcquisitionUnsupported, "surface source does not support bounded scoped acquisition")
+                    { SourceType = source._native.GetType() };
                 foreach (var group in groups)
                 {
                     var request = group.Key is { } pose ? LocalScope(scope, pose) : scope;

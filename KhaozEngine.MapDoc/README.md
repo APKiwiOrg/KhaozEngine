@@ -147,6 +147,17 @@ known-empty coverage. Later reservations must exactly match the coordinator's re
 return the requested key, present payloads must match their semantic digests, and surface lookups must
 return the requested declared surface. Violations refuse instead of publishing incoherent facts.
 
+Acquired fact admission uses `SchemaValueRequired` for missing surface metadata, frame, patch, key
+identity or empty range, and `SchemaEnumUnsupported` for undefined role, presence or patch status.
+`FieldPath` names the first failed branch. Negative `PagesRead` uses `ValueOutsideRange` with
+`ActualInteger` and `MinimumInteger = 0`. Repeated patch keys or record identities use `IdentityDuplicate`.
+A present patch with a different key uses `AuthoredValueMismatch`, `Patch` and `ExpectedPatch`, while a
+semantic digest mismatch uses `DigestMismatch`, `ExpectedHash` and `ActualHash`. A non-present status
+carrying a payload uses `AcquisitionContractMismatch`, `Patch`, `PatchStatus` and `FieldPath`.
+A missing bound surface identity also carries the footprint's `RecordId` and the lower or upper field.
+Composed sources without bounded native acquisition use `AcquisitionUnsupported` and `SourceType`.
+These carriers preserve identifiers through source-context wrapping and typed finding projection.
+
 After a key is served, `TryGetIncidentRecords` returns true with a detached list when incidence is known.
 A true empty list certifies no incidents. False with null means unknown incidence, including an unread
 partial-window key, and makes acquisition incomplete. Incident-only remote anchors remain required even
@@ -1475,6 +1486,8 @@ An array beyond its own count cap uses that field name as `Budget`, with its `Ac
 | `AssetClosureRequired` | Foliage edit preflight without a verified asset closure | `DocumentId` |
 | `DigestMismatch` | Resource bytes, an attached child's descriptor digest, a stored surface semantic aggregate or a verified tile's lists differing from its pin | `DigestKind`, `SourceName`, `Tile`, `ResourceId`, `Path`, `EntityId`, `WorldId`, `ChildKind`, `Child`, `InstanceId`, `PlacementId`, `SurfaceId`, `SubjectKind`, `ExpectedHash`, `ActualHash` |
 | `BoundsInvalid` | Invalid prefab patch dimensions, manifest local bounds, playable bounds, reversed exact rectangles or invalid surface patch rectangles | `FieldPath`, `Width`, `Depth`, `AssetId`, `SurfaceId`, `Patch`, `CellX`, `CellZ`, `Index`, `MinimumNumber`, `MaximumNumber` |
+| `AcquisitionContractMismatch` | A non-present acquired patch result carrying a payload | `Patch`, `PatchStatus`, `FieldPath` |
+| `AcquisitionUnsupported` | A composed native producer without bounded scoped acquisition support | `SourceType` |
 | `WorkCapacityExceeded` | Surface codec work beyond its encoded byte or array-count budget, or local corner-dependency or edge-subdivision metadata beyond its count budget | `Patch`, `FieldPath`, `Budget`, `ActualCount`, `ActualByteCount`, `Limit` |
 | `SurfacePresencePaddingNonzero` | Nonzero bits beyond the authored cell count in the last presence word | `Patch`, `FieldPath`, `Index` |
 | `SurfaceSubdivisionAbsentCell` | An edge subdivision on an absent cell | `Patch`, `FieldPath`, `Index`, `CellX`, `CellZ`, `Edge` |

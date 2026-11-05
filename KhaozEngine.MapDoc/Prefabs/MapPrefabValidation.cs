@@ -403,18 +403,18 @@ public static class MapPrefabValidation
         Key(value.Child);
         switch (value)
         {
-            case MapPrefabRemoveOverride r when r.Previous is MapPrefabRemoveOverride: Fail("Previous must not be a remove override."); break;
+            case MapPrefabRemoveOverride r when r.Previous is MapPrefabRemoveOverride: Fail(MapDocumentRefusal.PrefabPreviousOverrideNestedRemove, "Previous must not be a remove override.", new() { Child = r.Child, FieldPath = "$.previous" }); break;
             case MapPrefabRemoveOverride r when r.Previous is not null:
-                if (r.Previous.Child != r.Child) Fail("Previous override must retain the same child key.");
+                if (r.Previous.Child != r.Child) Fail(MapDocumentRefusal.AuthoredValueMismatch, "Previous override must retain the same child key.", new() { Child = r.Previous.Child, ExpectedChild = r.Child, FieldPath = "$.previous.child" });
                 Override(r.Previous); break;
-            case MapPrefabReplaceOverride r: Child(r.Value); if (r.Child != r.Value.Key) Fail("Replacement key differs."); break;
-            case MapPrefabAddOverride a: Child(a.Value); if (a.Child != a.Value.Key) Fail("Added key differs."); break;
+            case MapPrefabReplaceOverride r: Child(r.Value); if (r.Child != r.Value.Key) Fail(MapDocumentRefusal.AuthoredValueMismatch, "Replacement key differs.", new() { Child = r.Value.Key, ExpectedChild = r.Child, FieldPath = "$.value.key" }); break;
+            case MapPrefabAddOverride a: Child(a.Value); if (a.Child != a.Value.Key) Fail(MapDocumentRefusal.AuthoredValueMismatch, "Added key differs.", new() { Child = a.Value.Key, ExpectedChild = a.Child, FieldPath = "$.value.key" }); break;
             case MapPrefabTransformOverride t: Pose(t.Transform); break;
             case MapPrefabPlacementOverride p:
-                if (p.Child.Kind != MapPrefabChildKind.Placement) Fail("Placement override requires a Placement child.");
+                if (p.Child.Kind != MapPrefabChildKind.Placement) Fail(MapDocumentRefusal.AuthoredReferenceKindInvalid, "Placement override requires a Placement child.", new() { Child = p.Child, ChildKind = p.Child.Kind, ExpectedChildKind = MapPrefabChildKind.Placement, FieldPath = "$.child.kind", SubjectKind = "placement override" });
                 if (p.Transform is { } transform) Pose(transform);
                 if (p.AssetId is { } assetId) Text(assetId);
-                if (p.Tags is { } tags && tags.Any(t => t is null)) Fail("Override tags must not contain null.");
+                if (p.Tags is { } tags && tags.Any(t => t is null)) Fail(MapDocumentRefusal.SchemaValueRequired, "Override tags must not contain null.", new() { Child = p.Child, FieldPath = "$.tags" });
                 break;
         }
     }
@@ -435,7 +435,13 @@ public static class MapPrefabValidation
         void Require(MapPrefabReference reference, MapPrefabChildKind kind, HashSet<string> ids, string what)
         {
             if (reference.Scope != MapPrefabReferenceScope.World || reference.Kind != kind || !ids.Contains(reference.Id))
-                Fail($"Unknown effective {what} '{reference.Id}'.");
+                Fail(reference.Scope != MapPrefabReferenceScope.World ? MapDocumentRefusal.AuthoredValueMismatch
+                    : reference.Kind != kind ? MapDocumentRefusal.AuthoredReferenceKindInvalid : MapDocumentRefusal.ReferenceMissing,
+                    $"Unknown effective {what} '{reference.Id}'.", new()
+                    {
+                        EntityId = reference.Id, ReferenceScope = reference.Scope, ExpectedReferenceScope = MapPrefabReferenceScope.World,
+                        ChildKind = reference.Kind, ExpectedChildKind = kind, SubjectKind = what,
+                    });
         }
         foreach (var roof in intent.Roofs) Require(roof, MapPrefabChildKind.Placement, owners, "roof placement");
         foreach (var group in intent.RoofGroups)
@@ -457,7 +463,13 @@ public static class MapPrefabValidation
     static void Binding(MapPrefabBinding binding)
     {
         Key(binding.Child); Text(binding.WorldId);
-        if (binding.NumericId is { } numeric && (numeric <= 0 || binding.Child.Kind != MapPrefabChildKind.Placement)) Fail("Only placement bindings may have positive numeric IDs.");
+        if (binding.NumericId is { } numeric && (numeric <= 0 || binding.Child.Kind != MapPrefabChildKind.Placement)) Fail(numeric <= 0 ? MapDocumentRefusal.ValueOutsideRange : MapDocumentRefusal.AuthoredReferenceKindInvalid,
+                "Only placement bindings may have positive numeric IDs.", new()
+                {
+                    Child = binding.Child, ChildKind = binding.Child.Kind, WorldId = binding.WorldId, NumericId = numeric,
+                    MinimumInteger = numeric <= 0 ? 1 : null, ExpectedChildKind = numeric <= 0 ? null : MapPrefabChildKind.Placement,
+                    FieldPath = numeric <= 0 ? "$.numericId" : "$.child.kind", SubjectKind = "prefab binding",
+                });
     }
     internal static void RequireLight(MapLocalLightDoc light) => Light(light);
     static void Light(MapLocalLightDoc l)
@@ -541,10 +553,10 @@ public static class MapPrefabValidation
         if (!Enum.IsDefined(value)) throw new MapDocumentException(MapDocumentRefusal.SchemaEnumUnsupported, "Unsupported enum value.")
             { EnumType = typeof(T), ActualInteger = Convert.ToInt64(value), FieldPath = path, EntityId = id, ChildKind = kind };
     }
-    static void Text(string value, string? path = null, MapPrefabChildKind? kind = null)
+    static void Text(string value, string? path = null, MapPrefabChildKind? kind = null, string? subjectKind = null, int? index = null)
     {
         if (string.IsNullOrWhiteSpace(value)) throw new MapDocumentException(MapDocumentRefusal.SchemaValueRequired, "A nonempty prefab identifier/name is required.")
-            { FieldPath = path, EntityId = value, ChildKind = kind };
+            { FieldPath = path, EntityId = value, ChildKind = kind, SubjectKind = subjectKind, Index = index };
     }
     static void Digest(string value)
     {
@@ -586,14 +598,29 @@ public static class MapPrefabValidation
     }
     static void Unique<T, TKey>(IReadOnlyList<T> values, Func<T, TKey> key, string what) where TKey : notnull
     {
-        if (values is null) Fail(what + " collection must not be null.");
+        if (values is null) Fail(MapDocumentRefusal.SchemaValueRequired, what + " collection must not be null.", new() { SubjectKind = what });
         var seen = new HashSet<TKey>();
+        int index = 0;
         foreach (T value in values!)
         {
-            if (value is null) Fail(what + " must not be null.");
-            TKey id = key(value); if (id is string text) Text(text); if (!seen.Add(id)) Fail("Duplicate " + what + " '" + id + "'.");
+            if (value is null) Fail(MapDocumentRefusal.SchemaValueRequired, what + " must not be null.", new() { SubjectKind = what, Index = index });
+            TKey id = key(value); if (id is string text) Text(text, subjectKind: what, index: index);
+            if (!seen.Add(id)) Fail(MapDocumentRefusal.IdentityDuplicate, "Duplicate " + what + " '" + id + "'.", MapPrefabValidationSubject.FromKey(id, what, index));
+            index++;
         }
     }
+    [DoesNotReturn]
+    static void Fail(MapDocumentRefusal reason, string message, MapPrefabValidationSubject subject) =>
+        throw new MapDocumentException(reason, message)
+        {
+            EntityId = subject.EntityId, InstanceId = subject.InstanceId, PlacementId = subject.PlacementId, ResourceId = subject.ResourceId,
+            WorldId = subject.WorldId, SurfaceId = subject.SurfaceId, Patch = subject.Patch,
+            Child = subject.Child, ExpectedChild = subject.ExpectedChild, ChildKind = subject.ChildKind, ExpectedChildKind = subject.ExpectedChildKind,
+            AttachmentKind = subject.AttachmentKind, ReferenceScope = subject.ReferenceScope, ExpectedReferenceScope = subject.ExpectedReferenceScope,
+            NumericId = subject.NumericId, MinimumInteger = subject.MinimumInteger, FieldPath = subject.FieldPath, SubjectKind = subject.SubjectKind, Index = subject.Index,
+        };
+
+    // Only the two wave 6 bounded collection guards call this overload. Their constructors remain unchanged under X14.
     [DoesNotReturn]
     static void Fail(string message) => throw new MapDocumentException(message);
 }

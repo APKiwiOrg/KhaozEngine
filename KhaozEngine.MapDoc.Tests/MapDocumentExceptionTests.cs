@@ -134,6 +134,7 @@ public sealed class MapDocumentExceptionTests
         if (type == typeof(IReadOnlyList<int>)) return new[] { 1, 5 };
         if (type == typeof(IReadOnlyList<string>)) return new[] { "a", "b" };
         if (type == typeof(MapTileCoord)) return new MapTileCoord(-7, index);
+        if (type == typeof(MapPrefabReferenceScope)) return (MapPrefabReferenceScope)(8000 + index);
         if (type == typeof(MapPrefabAttachmentKind)) return (MapPrefabAttachmentKind)(7000 + index);
         if (type == typeof(MapPrefabChildKind)) return (MapPrefabChildKind)(6000 + index);
         if (type == typeof(MapPrefabChildKey)) return new MapPrefabChildKey(MapPrefabChildKind.Record, property.Name);

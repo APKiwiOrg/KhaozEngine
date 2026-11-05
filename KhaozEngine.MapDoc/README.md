@@ -1411,9 +1411,11 @@ adapters continue reporting prose until all of their producing rules carry typed
 | `AssetCollisionEmptyPoints` | A collision hull or mesh with no points | `AssetId`, `ResourceId`, `ShapeType` |
 | `AssetCollisionNestedMesh` | A triangle mesh nested in a compound collider | `AssetId`, `ResourceId` |
 | `SchemaEnumUnsupported` | An undefined prefab enumeration value | `EnumType`, `ActualInteger`, `FieldPath`, `EntityId`, `ChildKind` |
-| `AuthoredReferenceKindInvalid` | A local light owner, roof inventory, roof room or roof group reference of the wrong child kind | `EntityId`, `ChildKind`, `FieldPath`, `SubjectKind` |
+| `AuthoredReferenceKindInvalid` | A light owner, roof reference, placement override or numeric binding of the wrong child kind | `EntityId`, `Child`, `ChildKind`, `ExpectedChildKind`, `WorldId`, `NumericId`, `ReferenceScope`, `ExpectedReferenceScope`, `FieldPath`, `SubjectKind` |
 | `PrefabAssetPinMismatch` | A live instance digest differing from its verified prefab resource pin | `InstanceId`, `ResourceId`, `ExpectedHash` from the instance, `ActualHash` from the closure, `ExpectedResourceKind`, `ActualResourceKind` |
 | `PrefabAddedChildExists` | An add override repeating a declared child | `InstanceId`, `Child` |
+| `AuthoredValueMismatch` | A previous, replacement or add key differing from its required child, or an effective reference outside the World namespace | `Child`, `ExpectedChild`, `EntityId`, `ReferenceScope`, `ExpectedReferenceScope`, `ChildKind`, `ExpectedChildKind`, `FieldPath`, `SubjectKind` |
+| `PrefabPreviousOverrideNestedRemove` | A remove override whose Previous is another remove | `Child`, `FieldPath` |
 | `PrefabPayloadIdMismatch` | A child key differing from its payload identity or kind | `Child` for the submitted key, `EntityId` for the payload identity, `ChildKind` and `SubjectKind` for the payload kind, `FieldPath` |
 | `PrefabPlacementTransformDuplicated` | A placement child with an additional local transform | `Child`, `FieldPath` |
 | `PrefabLocalAnchorInvalid` | A record anchor whose surface slot is not Local | `Child`, `RecordId`, `FieldPath` |
@@ -1459,6 +1461,33 @@ mismatches use `AuthoredOwnershipMismatch` with `WorldId` when known. Transfer c
 `ActualCount` and `ExpectedCount`, zero for a dormant source and exactly one for a transferred child.
 Precise binary64 poses use the same first-failed-field scalar rules as float poses. Malformed digest
 representation uses `DigestMalformed` with the submitted `ActualHash` rather than parsing the message.
+
+
+Override key mismatches keep the submitted payload or previous `Child` separate from `ExpectedChild`.
+Effective-reference admission first checks World scope, then the required child kind, then target
+existence. These branches use `AuthoredValueMismatch`, `AuthoredReferenceKindInvalid` and
+`ReferenceMissing`, retaining both actual and expected scope/kind and the referenced `EntityId`.
+Numeric bindings first require positive `NumericId`, with `ValueOutsideRange` and `MinimumInteger` 1.
+A positive numeric identity on another child kind uses `AuthoredReferenceKindInvalid`.
+
+Unique collection admission uses `SchemaValueRequired` for a null collection or item, with `SubjectKind`
+and the known item `Index`. Duplicate admission uses `IdentityDuplicate` with that role and index.
+Its identifiers retain the actual key namespaces:
+
+| Key | Typed identifiers |
+| --- | --- |
+| String identity or name | `EntityId` |
+| Local child | `Child`, `ChildKind`, `EntityId` |
+| Surface patch | `Patch`, `SurfaceId` |
+| Source transfer | `InstanceId`, `Child`, `ChildKind`, `EntityId` |
+| Attachment transfer | `PlacementId`, `AttachmentKind`, `ResourceId` |
+| Scoped roof reference | `ReferenceScope`, `ChildKind`, `EntityId` |
+| Standalone transform | `ChildKind`, `WorldId`, `EntityId` |
+
+Equal text in different namespaces remains admissible. No identifier is parsed from its prose.
+Duplicate null string identities retain the duplicate admission point, before later required-text
+validation. The remaining message-only prefab constructions belong to the wave 6 aggregate document
+adapter, bounded collection guards and unsupported child arm.
 
 Manifest source-unit scales must be finite and strictly positive. A nonfinite scale leaves `ActualNumber`
 and `MinimumNumber` null. A finite nonpositive scale carries `ActualNumber` and `MinimumNumber` 0,

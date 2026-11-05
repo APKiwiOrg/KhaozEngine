@@ -12647,6 +12647,23 @@ branches retain their own reasons. Precise poses retain their first failed compo
 malformed digests retain `ActualHash`. Aggregate document adapters still report prose until every
 producing rule has typed findings.
 
+
+Override admission uses `PrefabPreviousOverrideNestedRemove` for nested remove history and
+`AuthoredValueMismatch` for a mismatched previous, replacement or add key. `Child` is the submitted key,
+with its target in `ExpectedChild`. Effective references distinguish wrong World scope, wrong child
+kind and a missing target, in that order, using `AuthoredValueMismatch`, `AuthoredReferenceKindInvalid`
+and `ReferenceMissing`. Inspect `ReferenceScope`/`ExpectedReferenceScope` and
+`ChildKind`/`ExpectedChildKind` alongside `EntityId` and the checked role in `SubjectKind`.
+
+Duplicate prefab collections use `IdentityDuplicate`, with the duplicate `Index`, collection role and
+typed key. Tuple keys retain their source instance, attachment kind, reference scope or world child
+kind as separate identifiers. Equal text across distinct namespaces is allowed. A null collection or
+item uses `SchemaValueRequired`, with the known role and index. Numeric bindings require at least 1
+when present, reporting `ValueOutsideRange`, `NumericId` and `MinimumInteger`. A positive numeric
+identity on another child kind uses `AuthoredReferenceKindInvalid`. The package README lists the
+identifiers for each key shape. Wave 6 still owns the aggregate document adapter, bounded collection
+guards and unsupported child arm, which keep their message-only behavior.
+
 **Whole authored surface identity.** Scheme 2, new in 20.30.0, is the resolver-2 whole-document identity. Resolver-2
 documents use `MapAuthoredIdentityV2` from `KhaozEngine.MapDoc.Identity`, with an explicitly verified
 `MapAssetClosure` and resolver-2 options:

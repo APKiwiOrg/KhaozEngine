@@ -69,6 +69,9 @@ public enum MapDocumentRefusal
     /// <summary>Refuses an authored reference of a different child kind than its role requires.</summary>
     AuthoredReferenceKindInvalid,
 
+    /// <summary>Refuses an authored replacement or reference differing from its declared target.</summary>
+    AuthoredValueMismatch,
+
     // Asset manifest admission.
     /// <summary>Refuses an undefined resource kind.</summary>
     AssetKindUnsupported,
@@ -97,6 +100,8 @@ public enum MapDocumentRefusal
     AssetCollisionNestedMesh,
 
     // Prefab structural admission.
+    /// <summary>Refuses a remove override whose Previous is another remove override.</summary>
+    PrefabPreviousOverrideNestedRemove,
     /// <summary>Refuses a prefab instance or asset update whose verified pins disagree.</summary>
     PrefabAssetPinMismatch,
     /// <summary>Refuses adding a child that already exists.</summary>

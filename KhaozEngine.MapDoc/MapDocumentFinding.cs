@@ -101,8 +101,16 @@ public sealed record MapDocumentFinding(MapDocumentRefusal Reason, string Messag
     public string? InstanceId { get; init; }
     /// <summary>The typed world identity namespace checked by the guard.</summary>
     public MapPrefabChildKind? ChildKind { get; init; }
+    /// <summary>The child kind required by the refused reference or binding role.</summary>
+    public MapPrefabChildKind? ExpectedChildKind { get; init; }
+    /// <summary>The submitted reference namespace, when the guard knows it.</summary>
+    public MapPrefabReferenceScope? ReferenceScope { get; init; }
+    /// <summary>The reference namespace required by the refused role.</summary>
+    public MapPrefabReferenceScope? ExpectedReferenceScope { get; init; }
     /// <summary>The prefab-local child key associated with the world identity, when known.</summary>
     public MapPrefabChildKey? Child { get; init; }
+    /// <summary>The local child key required by a previous, replacement or added override.</summary>
+    public MapPrefabChildKey? ExpectedChild { get; init; }
     /// <summary>The authored record whose admission failed, when known.</summary>
     public string? RecordId { get; init; }
     /// <summary>The space referenced by the refused authored record, when known.</summary>
@@ -201,6 +209,10 @@ public sealed record MapDocumentFinding(MapDocumentRefusal Reason, string Messag
             WorldId = error.WorldId,
             InstanceId = error.InstanceId,
             ChildKind = error.ChildKind,
+            ExpectedChildKind = error.ExpectedChildKind,
+            ReferenceScope = error.ReferenceScope,
+            ExpectedReferenceScope = error.ExpectedReferenceScope,
+            ExpectedChild = error.ExpectedChild,
             Child = error.Child,
             RecordId = error.RecordId,
             SpaceId = error.SpaceId,

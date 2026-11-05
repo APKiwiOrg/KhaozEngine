@@ -478,7 +478,10 @@ internal static class MapFoliageJson
             actualNumber: Number(e), actualInteger: Integer(e), minimumInteger: 0, maximumInteger: ushort.MaxValue);
     }
 
-    static double? Number(JsonElement e) => e.ValueKind == JsonValueKind.Number && e.TryGetDouble(out double number) ? number : null;
+    // TryGetDouble reads an out-of-range literal such as 1e400 as an infinity the input never held, so only a finite
+    // value is kept as the refused number.
+    static double? Number(JsonElement e) =>
+        e.ValueKind == JsonValueKind.Number && e.TryGetDouble(out double number) && double.IsFinite(number) ? number : null;
     static long? Integer(JsonElement e) => e.ValueKind == JsonValueKind.Number && e.TryGetInt64(out long number) ? number : null;
 
     static MapRowDirection RowDirection(JsonElement e, MapFoliageJsonContext label) => Name<MapRowDirection>(e, "rowDirection", label);

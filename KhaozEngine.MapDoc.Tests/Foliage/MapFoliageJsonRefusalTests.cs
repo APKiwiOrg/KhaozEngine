@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using KhaozEngine.MapDoc;
@@ -28,6 +29,8 @@ public sealed class MapFoliageJsonRefusalTests
     [InlineData("set-payload-two", MapDocumentRefusal.SchemaPayloadVersionUnsupported, "$.payloadVersion", null)]
     [InlineData("layer-payload-two", MapDocumentRefusal.SchemaPayloadVersionUnsupported, "$.layers[0].payloadVersion", 0)]
     [InlineData("cell-nonfinite", MapDocumentRefusal.ValueNonfinite, "$.layers[0].cellSize", 0)]
+    [InlineData("cell-overflow-positive", MapDocumentRefusal.ValueNonfinite, "$.layers[0].cellSize", 0)]
+    [InlineData("cell-overflow-negative", MapDocumentRefusal.ValueNonfinite, "$.layers[0].cellSize", 0)]
     [InlineData("width-fraction", MapDocumentRefusal.ValueOutsideRange, "$.layers[0].width", 0)]
     [InlineData("seed-overflow", MapDocumentRefusal.ValueOutsideRange, "$.layers[0].seed", 0)]
     [InlineData("material-id-overflow", MapDocumentRefusal.ValueOutsideRange, "$.layers[0].materials[2].id", 2)]
@@ -45,7 +48,7 @@ public sealed class MapFoliageJsonRefusalTests
         Assert.Equal(path, error.FieldPath);
         Assert.Equal(index, error.Index);
         if (variant is "support-object" or "model-object" or "policy-object" or "support-kind-missing" or
-            "cell-nonfinite" or "width-fraction" or "seed-overflow" or "material-id-overflow" or "allowed-fraction" or
+            "cell-nonfinite" or "cell-overflow-positive" or "cell-overflow-negative" or "width-fraction" or "seed-overflow" or "material-id-overflow" or "allowed-fraction" or
             "exclude-type" or "density-base64" or "density-noncanonical" or "density-1023")
             Assert.Equal(FoliageFixtures.LayerId, error.LayerId);
         else Assert.Null(error.LayerId);
@@ -67,6 +70,8 @@ public sealed class MapFoliageJsonRefusalTests
             Assert.Equal("JSON member", error.SubjectKind);
         }
         if (variant == "cell-nonfinite") Assert.Equal(1e39, error.ActualNumber);
+        // A literal beyond double range has no representable value to report.
+        if (variant is "cell-overflow-positive" or "cell-overflow-negative") Assert.Null(error.ActualNumber);
         if (variant == "width-fraction") Assert.Equal(35.5, error.ActualNumber);
         if (variant == "seed-overflow") Assert.Equal(2147483648L, error.ActualInteger);
         if (variant is "width-fraction" or "seed-overflow")
@@ -158,11 +163,14 @@ public sealed class MapFoliageJsonRefusalTests
         if (finding.SupportedVersions is IList<int> findingList) Assert.Throws<NotSupportedException>(() => findingList[0] = 3);
     }
 
+    const double OverflowMarker = 12345.25;
+
     static string Section(string variant)
     {
         if (variant == "set-object") return "[]";
         string fixtureVariant = variant is "layer-object" or "support-object" or "model-object" or "policy-object" or
-            "layers-array" or "models-array" or "special-member" or "support-kind-missing" or "id-type" or "seed-overflow" or "exclude-type"
+            "layers-array" or "models-array" or "special-member" or "support-kind-missing" or "id-type" or "seed-overflow" or "exclude-type" or
+            "cell-overflow-positive" or "cell-overflow-negative"
                 ? "control" : variant;
         // JsonDocument retains duplicate members, which JsonNode cannot represent.
         using JsonDocument fixture = JsonDocument.Parse(FoliageFixtures.Malformed(fixtureVariant));
@@ -183,8 +191,16 @@ public sealed class MapFoliageJsonRefusalTests
             case "id-type": layer["id"] = false; break;
             case "seed-overflow": layer["seed"] = 2147483648L; break;
             case "exclude-type": layer["excludeIndoors"] = "true"; break;
+            case "cell-overflow-positive" or "cell-overflow-negative": layer["cellSize"] = OverflowMarker; break;
         }
-        return root.ToJsonString();
+        // JsonNode cannot hold a number beyond double range, so the overflow literal replaces a unique marker as text.
+        string text = root.ToJsonString();
+        return variant switch
+        {
+            "cell-overflow-positive" => text.Replace($"\"cellSize\":{OverflowMarker.ToString(CultureInfo.InvariantCulture)}", "\"cellSize\":1e400", StringComparison.Ordinal),
+            "cell-overflow-negative" => text.Replace($"\"cellSize\":{OverflowMarker.ToString(CultureInfo.InvariantCulture)}", "\"cellSize\":-1e400", StringComparison.Ordinal),
+            _ => text,
+        };
     }
 
     static string Control(string variant)
@@ -196,7 +212,7 @@ public sealed class MapFoliageJsonRefusalTests
         if (variant == "seed-overflow") layer["seed"] = int.MaxValue;
         if (variant == "material-id-overflow") layer["materials"]![2]!["id"] = ushort.MaxValue;
         if (variant == "allowed-fraction") layer["allowedVisibleMaterials"] = new JsonArray(0);
-        if (variant == "cell-nonfinite") layer["cellSize"] = float.MaxValue;
+        if (variant is "cell-nonfinite" or "cell-overflow-positive" or "cell-overflow-negative") layer["cellSize"] = float.MaxValue;
         return root.ToJsonString();
     }
 }

@@ -101,6 +101,24 @@ public enum MapDocumentRefusal
     /// <summary>Refuses a triangle mesh nested inside a compound collider.</summary>
     AssetCollisionNestedMesh,
 
+    // Prefab edit admission.
+    /// <summary>Refuses an asset update without both captured closures.</summary>
+    PrefabCapturedUpdateRequired,
+    /// <summary>Refuses an absent or removed prefab instance.</summary>
+    PrefabInstanceMissing,
+    /// <summary>Refuses removing a child already held by a remove override.</summary>
+    PrefabChildAlreadyRemoved,
+    /// <summary>Refuses multiple initial overrides of the same typed child.</summary>
+    PrefabOverrideDuplicate,
+    /// <summary>Refuses an extraction selection outside the required World reference scope.</summary>
+    PrefabExtractionReferenceInvalid,
+    /// <summary>Refuses extraction without selected children.</summary>
+    PrefabExtractionEmpty,
+    /// <summary>Refuses extracting an attachment owner without every live associated child.</summary>
+    PrefabExtractionAttachmentIncomplete,
+    /// <summary>Refuses partial room, floor or roof extraction that is not lossless.</summary>
+    PrefabExtractionNotLossless,
+
     // Prefab structural admission.
     /// <summary>Refuses a remove override whose Previous is another remove override.</summary>
     PrefabPreviousOverrideNestedRemove,

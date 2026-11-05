@@ -12667,6 +12667,31 @@ branches retain their own reasons. Precise poses retain their first failed compo
 malformed digests retain `ActualHash`. Aggregate document adapters still report prose until every
 producing rule has typed findings.
 
+Prefab edit preparation carries `PrefabCapturedUpdateRequired` and `Operation` when an asset update
+requires the two-closure entry point. `PrefabInstanceMissing` identifies an absent or removed `InstanceId`,
+while `IdentityReserved` identifies a placement reusing a live or retained instance ID.
+`PrefabChildAlreadyRemoved` and a restore's `AuthoredValueRequired` retain `InstanceId` and local `Child`.
+Initial override nulls use `AuthoredValueRequired` with `InstanceId`, `FieldPath` and the available `Index`.
+Duplicate initial overrides use `PrefabOverrideDuplicate` and also retain the local `Child`.
+A parent reference that does not name an authored space at its anchor uses `AuthoredValueMismatch`,
+with `InstanceId`, `SpaceId`, `Patch` and `FieldPath`.
+
+Asset update requests report the first failed check in order: old resource kind, new resource kind,
+old digest, then new digest. Kinds use `ReferenceKindMismatch`, digests `PrefabAssetPinMismatch`.
+`ResourceId` names the refused side, `ExpectedHash` is its requested pin and `ActualHash` its verified
+closure digest, with expected and actual kinds and the request's `FieldPath`. A referring-instance
+pin check keeps the requested old pin in `ExpectedHash` and that instance's pin in `ActualHash`,
+with its own `InstanceId` and `ResourceId`.
+
+Extraction uses `PrefabExtractionReferenceInvalid` for a non-World reference, `SchemaValueRequired` for
+a null entry, `IdentityDuplicate` for a repeated typed World reference and `ReferenceMissing` for an
+absent effective target. These carry `FieldPath`, `Index` and the submitted `EntityId`, `ChildKind` and
+`ReferenceScope` when known. `PrefabExtractionEmpty` retains `Operation`. A collision remaining after
+local-name fallback uses `IdentityDuplicate` with the resulting local `Child`.
+`PrefabExtractionAttachmentIncomplete` keeps the materialized `PlacementId`, local `Child` and its
+`WorldId` separate. `PrefabExtractionNotLossless` identifies the missing World `EntityId` and `ChildKind`.
+Asset child removal uses `ReferenceMissing` with `AssetId` and the undeclared local `Child`.
+
 Prefab binding planning uses `AuthoredValueRequired` with `InstanceId` and `FieldPath` for a missing
 parent space. `IdentityReserved` identifies the planned `InstanceId`, typed local `Child`, `ChildKind`
 and `WorldId`, plus `NumericId` for a numeric collision. Duplicate child keys or planned world IDs use

@@ -720,7 +720,9 @@ native root identity once, as format 7 did, so identity-keyed caches and navigat
 
 `MapPlacePrefab.InitialOverrides` lets one placement request carry keyed overrides, such as that marker rename, so a
 second instance is accepted in a single placement with no intermediate duplicate. Duplicate keys refuse before any
-binding is allocated. The overrides persist only as the instance's `Overrides`. The `prefab_place` tool accepts them as
+binding is allocated, with `PrefabOverrideDuplicate`, the `InstanceId`, typed `Child`, `Index` and
+`FieldPath`. Missing lists or null entries use `AuthoredValueRequired` with the known instance, path and index.
+The overrides persist only as the instance's `Overrides`. The `prefab_place` tool accepts them as
 the optional `overridesJson` array.
 
 `MapMarkerRegistry(markers)` is an immutable lookup over effective markers with `All`, `Enabled`, `FindById`,
@@ -1394,10 +1396,10 @@ adapters continue reporting prose until all of their producing rules carry typed
 | `SchemaPayloadVersionUnsupported` | An unsupported asset-reference, resolver-identity, support, foliage, prefab asset or local light payload version | `FieldPath`, `ResourceId`, `Index`, `ActualVersion`, `SupportedVersions`, `MinimumInteger` |
 | `ValueNonfinite` | A nonfinite manifest source-unit scale, foliage scalar, playable-bound component, placement support-search value or resolved support height | `FieldPath`, `AssetId`, `LayerId`, `PlacementId`, `Index`, `ActualNumber` (nonfinite for prefab scalar guards) |
 | `ValueOutsideRange` | A finite nonpositive manifest source-unit scale, foliage integer outside its domain, negative support-search extent or high-water mark, or nonpositive numeric identity | `FieldPath`, `AssetId`, `LayerId`, `PlacementId`, `EntityId`, `SubjectKind`, `Index`, `ActualNumber`, `ActualInteger`, `MinimumNumber`, `MinimumInteger`, `MaximumInteger`, `NumericId`, `HighWaterMark` |
-| `IdentityDuplicate` | A repeated asset or resource closure identity, support patch or record identity, exact foliage JSON member name, surface or numeric identity, world binding, transfer or attachment producer, or a standalone owner colliding with a prefab binding | `FieldPath`, `Index`, `EntityId`, `SubjectKind`, `AssetId`, `ResourceId`, `SurfaceId`, `PlacementId`, `RecordId`, `Patch`, `NumericId`, `HighWaterMark`, `WorldId`, `ChildKind`, `Child`, `InstanceId` |
-| `IdentityReserved` | A live standalone owner using a retired transfer's world identity, or a planned binding colliding with another owner's world or numeric identity | `EntityId`, `WorldId`, `ChildKind`, `Child`, `InstanceId`, `NumericId`, `SubjectKind` |
+| `IdentityDuplicate` | A repeated asset or resource closure identity, support patch or record identity, exact foliage JSON member name, surface or numeric identity, world binding, transfer or attachment producer, a standalone owner colliding with a prefab binding, or a repeated extraction reference or resulting local key | `FieldPath`, `Index`, `EntityId`, `SubjectKind`, `AssetId`, `ResourceId`, `SurfaceId`, `PlacementId`, `RecordId`, `Patch`, `NumericId`, `HighWaterMark`, `WorldId`, `ChildKind`, `Child`, `InstanceId` |
+| `IdentityReserved` | A placement reusing a live or retained instance ID, a live standalone owner using a retired transfer's world identity, or a planned binding colliding with another owner's world or numeric identity | `EntityId`, `WorldId`, `ChildKind`, `Child`, `InstanceId`, `NumericId`, `SubjectKind` |
 | `AuthoredOwnershipMismatch` | A transfer inconsistent with its source or standalone owner, an attachment inconsistent with its owner, transfer or record anchor, or a prefab-owned interior submitted as standalone | `EntityId`, `WorldId`, `ChildKind`, `Child`, `InstanceId`, `PlacementId`, `RecordId`, `SpaceId`, `Patch`, `ActualAnchor`, `NumericId`, `ExpectedNumericId`, `ActualCount`, `ExpectedCount`, `SubjectKind` |
-| `ReferenceMissing` | An asset, resource, prefab or dependency missing from its closure, or a requested placement, attachment transfer, standalone record target, interior anchor, scatter layer or companion layer missing from its required scope | `AssetId`, `ResourceId`, `DependencyId`, `ExpectedResourceKind`, `EntityId`, `WorldId`, `ChildKind`, `Child`, `InstanceId`, `PlacementId`, `RecordId`, `SpaceId`, `Patch`, `DocumentId`, `LayerId`, `SubjectKind`, `FieldPath` |
+| `ReferenceMissing` | An asset, resource, prefab or dependency missing from its closure, or a requested placement, attachment transfer, standalone record target, interior anchor, scatter layer or companion layer missing from its required scope, an absent effective extraction target, or an undeclared asset child removal | `AssetId`, `ResourceId`, `DependencyId`, `ExpectedResourceKind`, `EntityId`, `WorldId`, `ChildKind`, `Child`, `InstanceId`, `PlacementId`, `RecordId`, `SpaceId`, `Patch`, `DocumentId`, `LayerId`, `SubjectKind`, `FieldPath`, `Index`, `ReferenceScope` |
 | `AssetClosureRequired` | Foliage edit preflight without a verified asset closure | `DocumentId` |
 | `DigestMismatch` | Resource bytes, an attached child's descriptor digest or a stored surface semantic aggregate differing from its pin | `DigestKind`, `ResourceId`, `Path`, `EntityId`, `WorldId`, `ChildKind`, `Child`, `InstanceId`, `PlacementId`, `SurfaceId`, `SubjectKind`, `ExpectedHash`, `ActualHash` |
 | `BoundsInvalid` | Invalid prefab patch dimensions, manifest local bounds, playable bounds or lattice frame | `FieldPath`, `Width`, `Depth`, `AssetId`, `SurfaceId`, `Index`, `MinimumNumber`, `MaximumNumber` |
@@ -1413,15 +1415,23 @@ adapters continue reporting prose until all of their producing rules carry typed
 | `AssetCollisionNestedMesh` | A triangle mesh nested in a compound collider | `AssetId`, `ResourceId` |
 | `SchemaEnumUnsupported` | An undefined prefab enumeration value | `EnumType`, `ActualInteger`, `FieldPath`, `EntityId`, `ChildKind` |
 | `AuthoredReferenceKindInvalid` | A light owner, roof reference, placement override or numeric binding of the wrong child kind | `EntityId`, `Child`, `ChildKind`, `ExpectedChildKind`, `WorldId`, `NumericId`, `ReferenceScope`, `ExpectedReferenceScope`, `FieldPath`, `SubjectKind` |
-| `PrefabAssetPinMismatch` | A live instance digest differing from its verified prefab resource pin | `InstanceId`, `ResourceId`, `ExpectedHash` from the instance, `ActualHash` from the closure, `ExpectedResourceKind`, `ActualResourceKind` |
+| `PrefabCapturedUpdateRequired` | An asset update passed to the single-closure preparation API | `Operation` |
+| `PrefabInstanceMissing` | An edit of an absent or removed instance | `InstanceId` |
+| `PrefabChildAlreadyRemoved` | A remove override submitted for an already removed child | `InstanceId`, `Child` |
+| `PrefabOverrideDuplicate` | Initial overrides repeating one typed child | `InstanceId`, `Child`, `Index`, `FieldPath` |
+| `PrefabExtractionReferenceInvalid` | An extraction reference outside the World scope | `FieldPath`, `Index`, `EntityId`, `ChildKind`, `ReferenceScope` |
+| `PrefabExtractionEmpty` | An extraction without selected children | `Operation` |
+| `PrefabExtractionAttachmentIncomplete` | A materialized owner selected without every live associated child | `PlacementId`, local `Child`, `WorldId` |
+| `PrefabExtractionNotLossless` | A partial room, floor or roof selection | `EntityId` and `ChildKind` of the missing World reference |
+| `PrefabAssetPinMismatch` | A live instance or requested asset update digest differing from its captured pin | `InstanceId` when known, `ResourceId`, `ExpectedHash`, `ActualHash`, expected and actual resource kinds and `FieldPath` when checked by the update request |
 | `PrefabAddedChildExists` | An add override repeating a declared child | `InstanceId`, `Child` |
-| `AuthoredValueMismatch` | A previous, replacement or add key differing from its required child, or an effective reference outside the World namespace | `Child`, `ExpectedChild`, `EntityId`, `ReferenceScope`, `ExpectedReferenceScope`, `ChildKind`, `ExpectedChildKind`, `FieldPath`, `SubjectKind` |
+| `AuthoredValueMismatch` | An edit parent not naming an authored space at its declared anchor, a previous, replacement or add key differing from its required child, or an effective reference outside the World namespace | `InstanceId`, `SpaceId`, `Patch`, `Child`, `ExpectedChild`, `EntityId`, `ReferenceScope`, `ExpectedReferenceScope`, `ChildKind`, `ExpectedChildKind`, `FieldPath`, `SubjectKind` |
 | `PrefabPreviousOverrideNestedRemove` | A remove override whose Previous is another remove | `Child`, `FieldPath` |
 | `PrefabPayloadIdMismatch` | A resource ID or child key differing from its payload identity or kind | `ResourceId` for a resource mismatch, `Child` for the submitted key, `EntityId` for the payload identity, `ChildKind` and `SubjectKind` for the payload kind, `FieldPath` |
 | `PrefabPlacementTransformDuplicated` | A placement child with an additional local transform | `Child`, `FieldPath` |
 | `PrefabLocalAnchorInvalid` | A record anchor whose surface slot is not Local | `Child`, `RecordId`, `FieldPath` |
 | `PrefabLightOwnerInvalid` | A leaf light owner other than null or the Local placement token `$owner` | `ResourceId`, `FieldPath` |
-| `AuthoredValueRequired` | A parent-dependent instance or local `$parent` remap without its supplied parent space | `InstanceId`, `FieldPath`, `ReferencePath`, `EntityId`, `ChildKind`, `RecordId`, `Patch` |
+| `AuthoredValueRequired` | A required removed-child override or initial override value missing, or a parent-dependent instance or local `$parent` remap without its supplied parent space | `InstanceId`, `Child`, `Index`, `FieldPath`, `ReferencePath`, `EntityId`, `ChildKind`, `RecordId`, `Patch` |
 | `PrefabNumericIdSpaceExhausted` | Binding allocation beyond the last signed 64-bit identity | `InstanceId`, `HighWaterMark` |
 | `PrefabReferenceScopeMissing` | A reference occurrence with neither an explicit nor an inherited scope | `ReferencePath`, `EntityId`, `ChildKind`, `RecordId`, `Patch` |
 | `PrefabEffectiveLightOwnerMissing` | An effective light whose world placement owner is absent | `PlacementId` for the missing owner, `WorldId` and `ChildKind` for the light |

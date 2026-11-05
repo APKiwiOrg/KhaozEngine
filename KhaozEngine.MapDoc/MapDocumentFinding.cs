@@ -50,6 +50,8 @@ public sealed record MapDocumentFinding(MapDocumentRefusal Reason, string Messag
     public string? ReferencePath { get; init; }
     /// <summary>The kind of document content or identity whose rule was refused.</summary>
     public string? SubjectKind { get; init; }
+    /// <summary>The API operation whose entry-point contract was refused.</summary>
+    public string? Operation { get; init; }
 
     /// <summary>The foliage layer identity, after it has been read.</summary>
     public string? LayerId { get; init; }
@@ -199,6 +201,7 @@ public sealed record MapDocumentFinding(MapDocumentRefusal Reason, string Messag
             FieldPath = error.FieldPath,
             ReferencePath = error.ReferencePath,
             SubjectKind = error.SubjectKind,
+            Operation = error.Operation,
             LayerId = error.LayerId,
             Index = error.Index,
             FoliageChunk = error.FoliageChunk,

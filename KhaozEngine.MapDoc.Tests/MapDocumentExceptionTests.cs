@@ -126,6 +126,7 @@ public sealed class MapDocumentExceptionTests
     {
         Type type = Nullable.GetUnderlyingType(property.PropertyType) ?? property.PropertyType;
         if (property.Name == nameof(MapDocumentException.OwnerId)) return "terrain-owner";
+        if (property.Name == nameof(MapDocumentException.Operation)) return "Prepare";
         if (type == typeof(Type)) return typeof(MapLocalLightDoc);
         if (type == typeof(string)) return property.Name;
         if (type == typeof(int)) return 1000 + index;

@@ -66,6 +66,8 @@ public sealed class MapDocumentException : Exception
     public string? ReferencePath { get; init; }
     /// <summary>The kind of document content or identity whose rule was refused.</summary>
     public string? SubjectKind { get; init; }
+    /// <summary>The API operation whose entry-point contract was refused.</summary>
+    public string? Operation { get; init; }
 
     /// <summary>The foliage, scatter or companion layer identity, when known.</summary>
     public string? LayerId { get; init; }
@@ -236,6 +238,7 @@ public sealed class MapDocumentException : Exception
         FieldPath = inner.FieldPath;
         ReferencePath = inner.ReferencePath;
         SubjectKind = inner.SubjectKind;
+        Operation = inner.Operation;
         LayerId = inner.LayerId;
         Index = inner.Index;
         FoliageChunk = inner.FoliageChunk;

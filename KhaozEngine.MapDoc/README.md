@@ -1425,6 +1425,9 @@ adapters continue reporting prose until all of their producing rules carry typed
 | `PrefabNumericIdSpaceExhausted` | Binding allocation beyond the last signed 64-bit identity | `InstanceId`, `HighWaterMark` |
 | `PrefabReferenceScopeMissing` | A reference occurrence with neither an explicit nor an inherited scope | `ReferencePath`, `EntityId`, `ChildKind`, `RecordId`, `Patch` |
 | `PrefabEffectiveLightOwnerMissing` | An effective light whose world placement owner is absent | `PlacementId` for the missing owner, `WorldId` and `ChildKind` for the light |
+| `PrefabMaterializedFrameMismatch` | Two materialized rows for one placement with different mathematical frames | `AssetId`, `PlacementId`, `FieldPath`, `ActualTransform`, `ExpectedTransform` |
+| `PrefabMaterializedAnchorMismatch` | A materialized record anchored outside its row's captured surfaces | `AssetId`, `PlacementId`, `EntityId`, `Child`, `ChildKind`, `FieldPath`, `Patch` |
+| `PrefabPaintTargetRequired` | An effective paint override without a target surface | `SurfaceId` |
 | `AssetStoragePathReserved` | A resource path owned by the selected map storage writer | `ResourceId`, normalized `Path`, `StoragePath`, `DocumentForm` |
 | `AssetTypedPayloadOpaque` | An opaque resource supplied to a typed light or support consumer | `ResourceId`, `ExpectedSchema`, `SubjectKind` |
 | `ReferenceKindMismatch` | An asset resource missing or declared with the wrong kind | `AssetId`, `ResourceId`, `ExpectedResourceKind`, available `ActualResourceKind` |
@@ -1467,6 +1470,26 @@ collectors. A typed exception contributes all its identifier context, or its exi
 Legacy failures keep their prose without an invented reason. `AttachmentKind` distinguishes the typed
 attachment namespace on a child-kind refusal. The shared source-context copy preserves it too.
 The aggregate document adapter retains its existing constructor until every producing rule has typed findings.
+
+Asset-local materialization checks carry the owning `AssetId`, local `PlacementId` and known `FieldPath`.
+An unadvertised resource edge uses `AuthoredOwnershipMismatch` with `ResourceId` and `AttachmentKind`.
+Resource and captured-definition pin failures use `DigestMismatch`, `DigestKind` (`resource bytes` or
+`captured definition`), `ExpectedHash` from the pin and `ActualHash` from the verified resource or definition.
+Missing definitions use `ReferenceMissing`. Repeated edges and multiply produced children use
+`IdentityDuplicate`, with the edge's resource and attachment kind or the child's typed key respectively.
+Local reference guards distinguish scope, kind and missing text. Mathematical frames distinguish the
+first nonfinite field (`ValueNonfinite`, with `ActualNumber` unset) from nonpositive uniform scale
+(`ValueOutsideRange`, with finite `ActualNumber` and exclusive `MinimumNumber` 0).
+Captured record anchors remain `Patch` values, separate from mathematical `ActualTransform` and
+`ExpectedTransform`. Source wrappers and typed findings preserve both frames. Asset-local checks do
+not invent a world `InstanceId`. Reconciliation uses `ReferenceMissing`, `AuthoredValueMismatch` and
+`PrefabAddedChildExists`, retaining the local `Child` and a differing target as `ExpectedChild`.
+Captured-descriptor reuse uses `ReferenceMissing` for missing pins, surfaces, record anchors and lights,
+or `DigestMismatch` with `DigestKind` `captured descriptor` and both digests. It retains `WorldId`,
+local `Child`, `ChildKind`, `PlacementId`, `ResourceId`, `AttachmentKind` and the known anchor `Patch`.
+Effective support installation identifies duplicate surfaces or records through `IdentityDuplicate`
+and missing anchors through `ReferenceMissing`. Missing support slots retain their `ReferencePath`,
+resource and local placement. Effective surface lookups retain the missing `SurfaceId`.
 
 Prefab resolver admission distinguishes a missing identity (`SchemaValueRequired`), an unsupported
 identity payload (`SchemaPayloadVersionUnsupported`) and an incompatible resolver or support recipe

@@ -12224,6 +12224,20 @@ A prefab resource keeps its logical asset ID and accepts either that ID or
 sets. MapEditor publishes them through `PrefabEditCommand`, `InteriorEditCommand` and `PrefabAssetEditCommand`.
 Unpack transfers live children with their IDs and precise poses, retaining removed-source reservations and
 materialized support/light pins. Extraction preserves explicit parent context and the requested origin.
+Asset-local materialization refusals retain `AssetId`, local `PlacementId` and known `FieldPath` on
+`MapDocumentException`. Inspect `PrefabMaterializedFrameMismatch` with `ActualTransform` and
+`ExpectedTransform`, or `PrefabMaterializedAnchorMismatch` with the record's `Child` and anchor `Patch`.
+`DigestMismatch` distinguishes `resource bytes` from `captured definition` through `DigestKind`, with
+`ExpectedHash` from the pin and `ActualHash` from the verified content. Unadvertised attachment edges
+use `AuthoredOwnershipMismatch` with `ResourceId` and `AttachmentKind`. Local scope, kind and required
+text use their distinct authored or schema reasons. Frame scalar guards select the first failed field,
+keep nonfinite `ActualNumber` unset, and identify finite nonpositive scale with `ValueOutsideRange`.
+These checks carry no world instance identity. Reconciliation keeps a submitted replacement `Child`
+distinct from its target `ExpectedChild` and identifies missing or already declared children.
+Reused attachments identify missing descriptors with `ReferenceMissing`, or changed content with
+`DigestMismatch` and `DigestKind` `captured descriptor`. Their local child keys, world IDs and known
+anchor patches stay separate. Effective paint without a target uses `PrefabPaintTargetRequired`
+with the paint `SurfaceId`. Missing effective surfaces and support slots keep their typed subjects.
 `PrefabService` edits detached assets, then publishes immutable bytes and a verified replacement closure before
 one accepted switch of every referring instance in the open complete map. Other maps retain their pins.
 

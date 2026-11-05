@@ -521,16 +521,18 @@ public sealed class MapPrefabBindingTests
     }
 
     [Theory]
-    [InlineData("world-scope")]
-    [InlineData("wrong-kind")]
-    [InlineData("dangling-child")]
-    [InlineData("duplicate-edge")]
-    [InlineData("shared-child")]
-    [InlineData("frame-mismatch")]
-    [InlineData("source-digest")]
-    public void AttachmentRows_RefuseStructuralFaults(string fault)
+    [InlineData("world-scope", MapDocumentRefusal.AuthoredValueMismatch, "$.materializedAttachments[0].placement")]
+    [InlineData("wrong-kind", MapDocumentRefusal.AuthoredReferenceKindInvalid, "$.materializedAttachments[0].children[0].child")]
+    [InlineData("dangling-child", MapDocumentRefusal.ReferenceMissing, "$.materializedAttachments[1].children[0].child")]
+    [InlineData("duplicate-edge", MapDocumentRefusal.IdentityDuplicate, "$.materializedAttachments[2]")]
+    [InlineData("shared-child", MapDocumentRefusal.IdentityDuplicate, "$.materializedAttachments[2].children[0].child")]
+    [InlineData("frame-mismatch", MapDocumentRefusal.PrefabMaterializedFrameMismatch, "$.materializedAttachments[1].placementFrame")]
+    [InlineData("source-digest", MapDocumentRefusal.DigestMismatch, "$.materializedAttachments[1].children[0].sourceDigest")]
+    [InlineData("anchor", MapDocumentRefusal.PrefabMaterializedAnchorMismatch, "$.materializedAttachments[0].children[0].child")]
+    public void AttachmentRows_RefuseStructuralFaults(string fault, MapDocumentRefusal reason, string path)
     {
         var asset = MapPrefabFile.Read(PrefabFixtures.AssetBytes("materialized"), "hut");
+        asset = PrefabFixtures.Materialized(asset.Children.OfType<MapPrefabPlacementChild>().ToArray());
         var rows = asset.MaterializedAttachments.ToList();
         var support = rows.Single(r => r.Kind == MapPrefabAttachmentKind.Support);
         var light = rows.Single(r => r.Kind == MapPrefabAttachmentKind.Light);
@@ -545,8 +547,46 @@ public sealed class MapPrefabBindingTests
             case "frame-mismatch": rows[rows.IndexOf(light)] = light with { PlacementFrame = light.PlacementFrame with { X = 9 } }; break;
             case "source-digest":
                 rows[rows.IndexOf(light)] = light with { Children = new[] { light.Children[0] with { SourceDigest = new string('c', 64) } } }; break;
+            case "anchor": rows[rows.IndexOf(support)] = support with { Children = support.Children.Where(c => c.Child.Kind == MapPrefabChildKind.Record).ToArray() }; break;
         }
-        Assert.Throws<MapDocumentException>(() => MapPrefabFile.Write(asset with { MaterializedAttachments = rows }));
+        var before = rows.ToArray();
+        var error = Assert.Throws<MapDocumentException>(() => MapPrefabFile.Write(asset with { MaterializedAttachments = rows }));
+        Assert.Equal(reason, error.Reason);
+        Assert.Equal("hut", error.AssetId);
+        Assert.Equal(path, error.FieldPath);
+        Assert.Equal("deck", error.PlacementId);
+        Assert.Null(error.InstanceId);
+        if (fault == "world-scope")
+        {
+            Assert.Equal(MapPrefabReferenceScope.World, error.ReferenceScope);
+            Assert.Equal(MapPrefabReferenceScope.Local, error.ExpectedReferenceScope);
+        }
+        if (fault == "wrong-kind")
+        {
+            Assert.Equal(MapPrefabChildKind.Surface, error.ChildKind);
+            Assert.Equal(MapPrefabAttachmentKind.Light, error.AttachmentKind);
+        }
+        if (fault == "dangling-child") Assert.Equal("missing", error.EntityId);
+        if (fault == "shared-child") Assert.Equal(support.Children[0].Child.Id, error.Child?.Key);
+        if (fault == "frame-mismatch")
+        {
+            Assert.Equal(light.PlacementFrame with { X = 9 }, error.ActualTransform);
+            Assert.Equal(support.PlacementFrame, error.ExpectedTransform);
+        }
+        if (fault == "source-digest")
+        {
+            Assert.Equal("captured definition", error.DigestKind);
+            Assert.Equal(light.Children[0].Child.Id, error.EntityId);
+            Assert.Equal(new string('c', 64), error.ExpectedHash);
+            Assert.Equal(light.Children[0].SourceDigest, error.ActualHash);
+        }
+        if (fault == "anchor")
+        {
+            Assert.Equal("deck/deck-support/top-edge", error.EntityId);
+            Assert.Equal(new MapPatchKey("deck/deck-support/top", 0, 0), error.Patch);
+        }
+        Assert.Equal(before, rows);
+        Assert.NotEmpty(MapPrefabFile.Write(asset));
     }
 
     [Theory]
@@ -566,6 +606,19 @@ public sealed class MapPrefabBindingTests
             ResourceId = fault == "edge" ? "glow-light" : row.ResourceId,
         };
         var faulty = asset with { MaterializedAttachments = asset.MaterializedAttachments.Select(r => r == row ? changed : r).ToArray() };
-        Assert.Throws<MapDocumentException>(() => MapPrefabLocalMaterializations.Validate(faulty, f.Assets));
+        var error = Assert.Throws<MapDocumentException>(() => MapPrefabLocalMaterializations.Validate(faulty, f.Assets));
+        Assert.Equal(fault == "sha" ? MapDocumentRefusal.DigestMismatch : MapDocumentRefusal.AuthoredOwnershipMismatch, error.Reason);
+        Assert.Equal("hut", error.AssetId);
+        Assert.Equal("deck", error.PlacementId);
+        Assert.Equal(changed.ResourceId, error.ResourceId);
+        Assert.Equal(MapPrefabAttachmentKind.Support, error.AttachmentKind);
+        if (fault == "sha")
+        {
+            Assert.Equal("resource bytes", error.DigestKind);
+            Assert.Equal(changed.ResourceSha256, error.ExpectedHash);
+            Assert.Equal(row.ResourceSha256, error.ActualHash);
+        }
+        Assert.Equal(changed, faulty.MaterializedAttachments.Single(r => r.Kind == MapPrefabAttachmentKind.Support));
+        MapPrefabLocalMaterializations.Validate(asset, f.Assets);
     }
 }

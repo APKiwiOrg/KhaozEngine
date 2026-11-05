@@ -139,6 +139,7 @@ public sealed class MapDocumentExceptionTests
         if (type == typeof(MapPrefabChildKind)) return (MapPrefabChildKind)(6000 + index);
         if (type == typeof(MapPrefabChildKey)) return new MapPrefabChildKey(MapPrefabChildKind.Record, property.Name);
         if (type == typeof(MapPatchKey)) return new MapPatchKey(property.Name, -2, index);
+        if (type == typeof(MapEffectiveTransform)) return new MapEffectiveTransform(index, 2, 3, 0, 1);
         if (type == typeof(MapResourceKind)) return (MapResourceKind)(5000 + index);
         if (type == typeof(MapDocumentForm)) return MapDocumentForm.Tiled;
         if (type == typeof(MapSupportRecipe)) return (MapSupportRecipe)(2000 + index);

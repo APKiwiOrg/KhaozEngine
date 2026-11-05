@@ -137,6 +137,10 @@ public sealed class MapDocumentException : Exception
     public MapPatchKey? Patch { get; init; }
     /// <summary>The actual standalone record anchor found by the guard, when known.</summary>
     public MapPatchKey? ActualAnchor { get; init; }
+    /// <summary>The captured mathematical frame submitted by a materialized row.</summary>
+    public MapEffectiveTransform? ActualTransform { get; init; }
+    /// <summary>The captured mathematical frame required by an earlier row for the same placement.</summary>
+    public MapEffectiveTransform? ExpectedTransform { get; init; }
     /// <summary>The count measured by the guard.</summary>
     public long? ActualCount { get; init; }
     /// <summary>The exact count required by the guard.</summary>
@@ -258,6 +262,8 @@ public sealed class MapDocumentException : Exception
         SpaceId = inner.SpaceId;
         Patch = inner.Patch;
         ActualAnchor = inner.ActualAnchor;
+        ActualTransform = inner.ActualTransform;
+        ExpectedTransform = inner.ExpectedTransform;
         ActualCount = inner.ActualCount;
         ExpectedCount = inner.ExpectedCount;
         ExpectedNumericId = inner.ExpectedNumericId;

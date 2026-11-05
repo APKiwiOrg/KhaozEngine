@@ -126,6 +126,12 @@ public enum MapDocumentRefusal
     PrefabReferenceScopeMissing,
     /// <summary>Refuses an effective light whose world placement owner is missing.</summary>
     PrefabEffectiveLightOwnerMissing,
+    /// <summary>Refuses materialized rows for one placement with different captured frames.</summary>
+    PrefabMaterializedFrameMismatch,
+    /// <summary>Refuses a materialized record anchored outside its row's captured surfaces.</summary>
+    PrefabMaterializedAnchorMismatch,
+    /// <summary>Refuses an effective paint override without its target surface.</summary>
+    PrefabPaintTargetRequired,
 
     // Foliage JSON converter.
     /// <summary>Refuses a foliage section larger than its UTF-8 byte budget.</summary>

@@ -16,6 +16,7 @@ internal static class MapEffectiveAttachments
         IReadOnlyDictionary<MapPrefabChildKey, string> bindings, MapEffectiveTransform instance, MapRecordRef? parent)
     {
         var asset = reconciled.EffectiveAsset;
+        // Remap below requires every live binding before this lookup. A miss here is an internal invariant.
         string Id(MapPrefabChildKind kind, string id) => bindings.TryGetValue(new(kind, id), out var world)
             ? world : throw new MapDocumentException($"No binding for captured {kind} '{id}'.");
         var children = asset.Children.ToDictionary(c => c.Key);
@@ -50,33 +51,43 @@ internal static class MapEffectiveAttachments
         foreach (var child in attachment.Children)
         {
             if (!document.NativeResourceTransforms!.Any(t => t.Kind == child.LocalChild.Kind && t.OwnerId == child.WorldId && t.SourceDigest == child.SourceDigest))
-                throw new MapDocumentException($"Missing captured descriptor pin for '{child.WorldId}'.");
+                throw Refusal(MapDocumentRefusal.ReferenceMissing, $"Missing captured descriptor pin for '{child.WorldId}'.", attachment, child);
             var key = new MapPrefabChildKey(child.LocalChild.Kind, child.WorldId);
             switch (child.LocalChild.Kind)
             {
                 case MapPrefabChildKind.Surface:
                     var surface = document.Surfaces.Refs.SingleOrDefault(s => s.Id == child.WorldId)
-                        ?? throw new MapDocumentException("Missing captured support surface.");
+                        ?? throw Refusal(MapDocumentRefusal.ReferenceMissing, "Missing captured support surface.", attachment, child);
                     result.Add(new MapPrefabSurfaceChild(key, surface, document.Surfaces.Patches.Values.Where(p => p.Key.SurfaceId == child.WorldId).Select(p =>
                     { var copy = p.Clone(); copy.Records.Clear(); return copy; }).ToArray()));
                     break;
                 case MapPrefabChildKind.Record:
                     if (child.Anchor is not { } anchor || !document.Surfaces.TryGetRecord(new(child.WorldId, anchor), out var record))
-                        throw new MapDocumentException("Missing captured record anchor.");
+                        throw Refusal(MapDocumentRefusal.ReferenceMissing, "Missing captured record anchor.", attachment, child);
                     result.Add(new MapPrefabRecordChild(key, record!, anchor));
                     break;
                 case MapPrefabChildKind.Light:
                     var light = document.BuildingIntent?.Lights.SingleOrDefault(l => l.Id == child.WorldId)
-                        ?? throw new MapDocumentException("Missing captured light.");
+                        ?? throw Refusal(MapDocumentRefusal.ReferenceMissing, "Missing captured light.", attachment, child);
                     result.Add(new MapPrefabLightChild(key, light));
                     break;
                 default: throw new MapDocumentException("Invalid captured attachment child kind.");
             }
             var descriptor = result[^1];
             var frame = document.NativeResourceTransforms!.Single(t => t.Kind == child.LocalChild.Kind && t.OwnerId == child.WorldId).Transform;
-            if (MapPrefabAttachmentDescriptors.Digest(descriptor, frame) != child.SourceDigest)
-                throw new MapDocumentException($"Captured descriptor '{child.WorldId}' differs from its persisted digest.");
+            string digest = MapPrefabAttachmentDescriptors.Digest(descriptor, frame);
+            if (digest != child.SourceDigest)
+                throw Refusal(MapDocumentRefusal.DigestMismatch, $"Captured descriptor '{child.WorldId}' differs from its persisted digest.", attachment, child, digest);
         }
         return result.AsReadOnly();
     }
+
+    static MapDocumentException Refusal(MapDocumentRefusal reason, string message, MapPrefabAttachmentTransfer attachment,
+        MapPrefabAttachedChild child, string? actualHash = null) => new(reason, message)
+        {
+            PlacementId = attachment.PlacementId, ResourceId = attachment.ResourceId, AttachmentKind = attachment.Kind,
+            EntityId = child.WorldId, WorldId = child.WorldId, Child = child.LocalChild, ChildKind = child.LocalChild.Kind,
+            Patch = child.Anchor, DigestKind = actualHash is null ? null : "captured descriptor",
+            ExpectedHash = child.SourceDigest, ActualHash = actualHash,
+        };
 }

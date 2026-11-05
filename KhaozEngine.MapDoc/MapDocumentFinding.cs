@@ -8,6 +8,14 @@ public sealed record MapDocumentFinding(MapDocumentRefusal Reason, string Messag
 {
     /// <summary>The source file or content name, when known.</summary>
     public string? SourceName { get; init; }
+    /// <summary>The source file path, when known separately from the source name.</summary>
+    public string? Path { get; init; }
+    /// <summary>The document tile being read, when known.</summary>
+    public MapTileCoord? Tile { get; init; }
+    /// <summary>The zero-based JSON line number exposed by the reader, when available.</summary>
+    public long? LineNumber { get; init; }
+    /// <summary>The zero-based UTF-8 byte position within the JSON line, when exposed by the reader.</summary>
+    public long? BytePositionInLine { get; init; }
     /// <summary>The resolver identity's declared payload version, when present.</summary>
     public int? PayloadVersion { get; init; }
     /// <summary>The document's declared resolver version, when present.</summary>

@@ -43,12 +43,13 @@ internal static partial class MapTiledFile
         try
         {
             root = Jsonc.ParseNode(json) as JsonObject
-                ?? throw new MapDocumentException($"{path}: manifest root must be a JSON object.");
+                ?? throw new MapDocumentException(MapDocumentRefusal.SchemaObjectRequired, $"{path}: manifest root must be a JSON object.")
+                { SourceName = path, FieldPath = "$" };
             MapDocumentMembers.RequireUniqueMembers(root, path);
         }
         catch (JsonException ex)
         {
-            throw new MapDocumentException($"{path}: invalid JSON. {ex.Message}", ex);
+            throw MapDocumentJsonErrors.Wrap(ex, path, $"{path}: invalid JSON. {ex.Message}");
         }
 
         root = MapDocumentFile.Migrate(root, options, path);
@@ -79,12 +80,12 @@ internal static partial class MapTiledFile
         MapDocument doc;
         try
         {
-            doc = root.Deserialize<MapDocument>(MapDocumentFile.CreateOptions(options.Registry, write: false))
-                ?? throw new MapDocumentException($"{path}: manifest deserialized to null.");
+            doc = MapDocumentJsonErrors.RequireDeserializedValue(root.Deserialize<MapDocument>(MapDocumentFile.CreateOptions(options.Registry, write: false)),
+                $"{path}: manifest deserialized to null.", path);
         }
         catch (JsonException ex)
         {
-            throw new MapDocumentException($"{path}: {ex.Message}", ex);
+            throw MapDocumentJsonErrors.Wrap(ex, path, $"{path}: {ex.Message}");
         }
 
         doc.Foliage = foliage;

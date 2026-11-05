@@ -129,7 +129,23 @@ public sealed class NativeStorageIdentityTests
         };
         modified["unknownNativeMember"] = 17;
         File.WriteAllText(path, root.ToJsonString());
-        Assert.Throws<MapDocumentException>(() => MapDocumentFile.LoadTiled(storage.TiledPath));
+        var error = Assert.Throws<MapDocumentException>(() => MapDocumentFile.LoadTiled(storage.TiledPath));
+        Assert.Equal(MapDocumentRefusal.SchemaMemberUnknown, error.Reason);
+        Assert.Equal(target switch
+        {
+            "native-ref" => "$.nativeAssets[0].unknownNativeMember",
+            "placement" => "$.placements[0].unknownNativeMember",
+            _ => "$.unknownNativeMember",
+        }, error.FieldPath);
+        Assert.Equal(target is "manifest" or "native-ref" ? path : storage.TiledPath, error.SourceName);
+        if (target is "tile" or "placement")
+        {
+            Assert.NotNull(error.Tile);
+            Assert.Equal(path, error.Path);
+        }
+        modified.Remove("unknownNativeMember");
+        File.WriteAllText(path, root.ToJsonString());
+        Assert.Equal(storage.Complete.Id, MapDocumentFile.LoadTiled(storage.TiledPath).Id);
     }
 
     [Theory]
@@ -144,6 +160,16 @@ public sealed class NativeStorageIdentityTests
         var (name, value) = root.First();
         string compact = root.ToJsonString();
         File.WriteAllText(path, $"{{{JsonSerializer.Serialize(name)}:{value!.ToJsonString()},{compact[1..]}");
-        Assert.Throws<MapDocumentException>(() => MapDocumentFile.LoadTiled(storage.TiledPath));
+        var error = Assert.Throws<MapDocumentException>(() => MapDocumentFile.LoadTiled(storage.TiledPath));
+        Assert.Equal(MapDocumentRefusal.SchemaMemberDuplicate, error.Reason);
+        Assert.Equal("$", error.FieldPath);
+        Assert.Equal(target == "manifest" ? path : storage.TiledPath, error.SourceName);
+        if (target == "tile")
+        {
+            Assert.NotNull(error.Tile);
+            Assert.Equal(path, error.Path);
+        }
+        File.WriteAllText(path, compact);
+        Assert.Equal(storage.Complete.Id, MapDocumentFile.LoadTiled(storage.TiledPath).Id);
     }
 }

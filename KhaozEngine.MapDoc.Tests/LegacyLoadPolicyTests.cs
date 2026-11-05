@@ -34,7 +34,17 @@ public sealed class LegacyLoadPolicyTests
         };
         modified["notes"] = "kept nowhere";
         var error = Assert.Throws<MapDocumentException>(() => MapDocumentFile.LoadText(root.ToJsonString()));
-        Assert.Contains("notes", error.Message);
+        Assert.Equal(MapDocumentRefusal.SchemaMemberUnknown, error.Reason);
+        Assert.Equal(target switch
+        {
+            "bounds" => "$.bounds.notes",
+            "terrain" => "$.terrain.notes",
+            "placement" => "$.placements[0].notes",
+            _ => "$.notes",
+        }, error.FieldPath);
+        Assert.Equal("(inline)", error.SourceName);
+        modified.Remove("notes");
+        Assert.Equal("legacy", MapDocumentFile.LoadText(root.ToJsonString()).Id);
     }
 
     [Fact]

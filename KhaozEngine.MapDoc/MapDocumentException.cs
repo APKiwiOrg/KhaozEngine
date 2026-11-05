@@ -25,6 +25,14 @@ public sealed class MapDocumentException : Exception
 
     /// <summary>The source file or content name, when known.</summary>
     public string? SourceName { get; init; }
+    /// <summary>The source file path, when known separately from the source name.</summary>
+    public string? Path { get; init; }
+    /// <summary>The document tile being read, when known.</summary>
+    public MapTileCoord? Tile { get; init; }
+    /// <summary>The zero-based JSON line number exposed by the reader, when available.</summary>
+    public long? LineNumber { get; init; }
+    /// <summary>The zero-based UTF-8 byte position within the JSON line, when exposed by the reader.</summary>
+    public long? BytePositionInLine { get; init; }
     /// <summary>The resolver identity's declared payload version, when present.</summary>
     public int? PayloadVersion { get; init; }
     /// <summary>The document's declared resolver version, when present.</summary>
@@ -51,13 +59,20 @@ public sealed class MapDocumentException : Exception
     }
 
     /// <summary>Adds source context while preserving the reason, every identifier and this refusal as the cause.
-    /// The wrapper message keeps the source prefix used by document loaders.</summary>
-    internal MapDocumentException WithSourceName(string sourceName) => new(this, sourceName);
+    /// A supplied wrapper message retains the caller's released wording. Existing tile and path identifiers
+    /// take precedence over additional source context.</summary>
+    internal MapDocumentException WithSourceName(string sourceName, string? message = null,
+        MapTileCoord? tile = null, string? path = null) => new(this, sourceName, message, tile, path);
 
-    MapDocumentException(MapDocumentException inner, string sourceName) : base($"{sourceName}: {inner.Message}", inner)
+    MapDocumentException(MapDocumentException inner, string sourceName, string? message,
+        MapTileCoord? tile, string? path) : base(message ?? $"{sourceName}: {inner.Message}", inner)
     {
         Reason = inner.Reason;
         SourceName = sourceName;
+        Path = inner.Path ?? path;
+        Tile = inner.Tile ?? tile;
+        LineNumber = inner.LineNumber;
+        BytePositionInLine = inner.BytePositionInLine;
         PayloadVersion = inner.PayloadVersion;
         ResolverVersion = inner.ResolverVersion;
         OptionsResolverVersion = inner.OptionsResolverVersion;

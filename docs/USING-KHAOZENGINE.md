@@ -12507,6 +12507,16 @@ message-only constructor leaves `Reason` null. `SourceName` carries available so
 `Findings` list is an ordered read-only snapshot. Existing string validation APIs retain their prose,
 and aggregate adapters retain their existing behavior until all their producing rules are typed.
 
+Root, manifest and tile schema admission also preserves `MapDocumentException`. Its reasons distinguish
+`SchemaMemberUnknown`, `SchemaMemberDuplicate`, `SchemaMemberMissing`, `SchemaMemberNull`,
+`SchemaObjectRequired`, `SchemaValueRequired` and `SchemaMalformed`. Closed-member failures carry a JSON
+`FieldPath` such as `$.nativeAssets[0].id`, while duplicates identify the containing object. `SourceName`
+retains the known source context, with `Tile` and file `Path` on tile reads. JSON failures carry the
+reader's path, zero-based `LineNumber` and UTF-8 `BytePositionInLine` where available. A JSON wrapper
+containing a known structured document refusal retains its reason, every identifier and that original
+refusal as its cause. Inspect these members rather than parsing error prose. Other codec and aggregate
+admission remains on its existing contract until all its producing rules are typed.
+
 **Whole authored surface identity.** Scheme 2, new in 20.30.0, is the resolver-2 whole-document identity. Resolver-2
 documents use `MapAuthoredIdentityV2` from `KhaozEngine.MapDoc.Identity`, with an explicitly verified
 `MapAssetClosure` and resolver-2 options:

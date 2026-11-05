@@ -72,21 +72,27 @@ internal static class MapTileFile
     internal static MapTileContent Parse(string json, string where, MapTileCoord coord, string hash,
                                          MapDocRegistry registry)
     {
+        string path = PathOf(where, coord, hash);
         MapTileFileDoc dto;
         try
         {
             JsonNode? node = Jsonc.ParseNode(json);
             if (node is not JsonObject root)
-                throw new MapDocumentException($"{where}: tile ({coord.X}, {coord.Z}) root must be a JSON object.");
+                throw new MapDocumentException(MapDocumentRefusal.SchemaObjectRequired, $"{where}: tile ({coord.X}, {coord.Z}) root must be a JSON object.")
+                { SourceName = where, FieldPath = "$", Tile = coord, Path = path };
             MapDocumentMembers.RequireUniqueMembers(root, where);
             MapDocumentMembers.ValidateTile(root, where);
-            dto = node.Deserialize<MapTileFileDoc>(MapDocumentFile.CreateOptions(registry, write: false))
-                ?? throw new MapDocumentException($"{where}: tile ({coord.X}, {coord.Z}) deserialized to null.");
+            dto = MapDocumentJsonErrors.RequireDeserializedValue(node.Deserialize<MapTileFileDoc>(MapDocumentFile.CreateOptions(registry, write: false)),
+                $"{where}: tile ({coord.X}, {coord.Z}) deserialized to null.", where, coord, path);
+        }
+        catch (MapDocumentException ex) when (ex.Reason is not null)
+        {
+            throw ex.WithSourceName(where, ex.Message, coord, path);
         }
         catch (JsonException ex)
         {
-            throw new MapDocumentException(
-                $"{where}: tile ({coord.X}, {coord.Z}) at '{FileName(coord, hash)}' is invalid JSON. {ex.Message}", ex);
+            throw MapDocumentJsonErrors.Wrap(ex, where,
+                $"{where}: tile ({coord.X}, {coord.Z}) at '{FileName(coord, hash)}' is invalid JSON. {ex.Message}", coord, path);
         }
 
         var sculpt = new List<MapSculptTile>(dto.Sculpt.Count);
@@ -95,9 +101,10 @@ internal static class MapTileFile
             try { sculpt.Add(new MapSculptTile(t.TileX, t.TileZ, t.Deltas)); }
             catch (ArgumentException ex)
             {
-                throw new MapDocumentException(
+                throw new MapDocumentException(MapDocumentRefusal.SchemaMalformed,
                     $"{where}: tile ({coord.X}, {coord.Z}) in '{FileName(coord, hash)}': sculpt tile " +
-                    $"({t.TileX}, {t.TileZ}): {ex.Message}", ex);
+                    $"({t.TileX}, {t.TileZ}): {ex.Message}", ex)
+                { SourceName = where, Tile = coord, Path = path, FieldPath = $"$.sculpt[{sculpt.Count}].deltas" };
             }
         }
         return new MapTileContent(coord, dto.Placements, dto.Spawns, dto.PlayerSpawns, sculpt);

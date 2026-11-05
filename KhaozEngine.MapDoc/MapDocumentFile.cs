@@ -151,12 +151,13 @@ public static class MapDocumentFile
         {
             JsonNode? node = Jsonc.ParseNode(json);
             root = node as JsonObject
-                ?? throw new MapDocumentException($"{where}: document root must be a JSON object.");
+                ?? throw new MapDocumentException(MapDocumentRefusal.SchemaObjectRequired, $"{where}: document root must be a JSON object.")
+                { SourceName = where, FieldPath = "$" };
             MapDocumentMembers.RequireUniqueMembers(root, where);
         }
         catch (JsonException ex)
         {
-            throw new MapDocumentException($"{where}: invalid JSON. {ex.Message}", ex);
+            throw MapDocumentJsonErrors.Wrap(ex, where, $"{where}: invalid JSON. {ex.Message}");
         }
 
         root = Migrate(root, options, where);
@@ -169,12 +170,12 @@ public static class MapDocumentFile
         MapDocument doc;
         try
         {
-            doc = root.Deserialize<MapDocument>(CreateOptions(options.Registry, write: false))
-                ?? throw new MapDocumentException($"{where}: document deserialized to null.");
+            doc = MapDocumentJsonErrors.RequireDeserializedValue(root.Deserialize<MapDocument>(CreateOptions(options.Registry, write: false)),
+                $"{where}: document deserialized to null.", where);
         }
         catch (JsonException ex)
         {
-            throw new MapDocumentException($"{where}: {ex.Message}", ex);
+            throw MapDocumentJsonErrors.Wrap(ex, where, $"{where}: {ex.Message}");
         }
         foreach (var patch in patches.Patches) doc.Surfaces.Patches.Add(patch.Key, patch.Value);
 
@@ -189,7 +190,8 @@ public static class MapDocumentFile
     internal static JsonObject Migrate(JsonObject root, MapDocumentLoadOptions options, string where)
     {
         if (root["formatVersion"] is not JsonValue versionValue || !versionValue.TryGetValue(out int version))
-            throw new MapDocumentException($"{where}: missing or non-integer formatVersion.");
+            throw new MapDocumentException(MapDocumentRefusal.SchemaMemberMissing, $"{where}: missing or non-integer formatVersion.")
+            { SourceName = where, FieldPath = "$.formatVersion" };
 
         if (version > CurrentFormatVersion)
             throw new MapDocumentException(

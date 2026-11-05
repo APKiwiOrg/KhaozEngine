@@ -3,6 +3,7 @@ using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
+using System.Text.Json;
 using KhaozEngine.MapDoc;
 using Xunit;
 
@@ -50,9 +51,10 @@ public sealed class MapDocumentExceptionTests
     }
 
     [Theory]
-    [InlineData(false)]
-    [InlineData(true)]
-    public void Source_context_preserves_every_identifier_and_the_original_refusal(bool legacy)
+    [InlineData(false, false)]
+    [InlineData(true, false)]
+    [InlineData(false, true)]
+    public void Source_context_preserves_every_identifier_and_the_original_refusal(bool legacy, bool throughJson)
     {
         PropertyInfo[] identifiers = typeof(MapDocumentException)
             .GetProperties(BindingFlags.Public | BindingFlags.Instance | BindingFlags.DeclaredOnly)
@@ -62,7 +64,10 @@ public sealed class MapDocumentExceptionTests
             : new MapDocumentException(MapDocumentRefusal.ResolverContractMismatch, "resolver refusal");
         for (int i = 0; i < identifiers.Length; i++) identifiers[i].SetValue(refusal, Sample(identifiers[i], i));
 
-        MapDocumentException named = refusal.WithSourceName("map.json");
+        MapDocumentException named = throughJson
+            ? MapDocumentJsonErrors.Wrap(new JsonException("converter failure", new InvalidOperationException("nested", refusal)),
+                "map.json", "map.json: converter failure")
+            : refusal.WithSourceName("map.json");
 
         Assert.Equal(refusal.Reason, named.Reason);
         Assert.Same(refusal, named.InnerException);
@@ -76,6 +81,8 @@ public sealed class MapDocumentExceptionTests
         Type type = Nullable.GetUnderlyingType(property.PropertyType) ?? property.PropertyType;
         if (type == typeof(string)) return property.Name;
         if (type == typeof(int)) return 1000 + index;
+        if (type == typeof(long)) return 3000L + index;
+        if (type == typeof(MapTileCoord)) return new MapTileCoord(-7, index);
         if (type == typeof(MapSupportRecipe)) return (MapSupportRecipe)(2000 + index);
         if (type == typeof(IReadOnlyList<MapDocumentFinding>))
             return new[] { new MapDocumentFinding(MapDocumentRefusal.ResolverContractMismatch, property.Name) { ResolverVersion = index } };

@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Text.Json;
 using System.Text.Json.Nodes;
@@ -9,6 +10,19 @@ namespace KhaozEngine.Tests.MapDoc;
 
 public sealed class MapDocumentSchemaAdmissionTests
 {
+    [Theory]
+    [InlineData("notes.extra")]
+    [InlineData("notes[extra]")]
+    [InlineData("plain_name-0")]
+    public void Structured_property_segments_match_the_json_reader_path(string name)
+    {
+        string refused = JsonSerializer.Serialize(new Dictionary<string, string> { [name] = "invalid" });
+        var error = Assert.Throws<JsonException>(() => JsonSerializer.Deserialize<Dictionary<string, int>>(refused));
+        Assert.Equal(error.Path, MapDocumentJsonPath.AppendProperty("$", name));
+        string accepted = JsonSerializer.Serialize(new Dictionary<string, int> { [name] = 1 });
+        Assert.Equal(1, JsonSerializer.Deserialize<Dictionary<string, int>>(accepted)![name]);
+    }
+
     [Theory]
     [InlineData(false, MapDocumentRefusal.SchemaMemberMissing)]
     [InlineData(true, MapDocumentRefusal.SchemaMemberNull)]
@@ -71,14 +85,38 @@ public sealed class MapDocumentSchemaAdmissionTests
         Assert.Equal(storage.Complete.Id, Read(accepted).Id);
     }
 
-    [Fact]
-    public void Nested_case_variant_duplicates_identify_the_containing_object_without_parsing_prose()
+    [Theory]
+    [InlineData("notes.extra", "$['notes.extra']")]
+    [InlineData("notes[extra]", "$['notes[extra]']")]
+    public void Unknown_members_with_special_characters_identify_the_literal_field(string name, string expectedPath)
     {
-        string accepted = NativeFixtures.AnalyticV3Json().Replace("\"seed\": 7", "\"seed\": 7, \"features\": [{\"type\":\"lake\",\"radius\":10}]");
-        string refused = accepted.Replace("\"radius\":10", "\"radius\":10,\"RADIUS\":10");
+        // W5b review regression: punctuation in one property name must not look like nested fields.
+        var root = JsonNode.Parse(NativeFixtures.AnalyticV3Json())!.AsObject();
+        root[name] = 17;
+        var error = Assert.Throws<MapDocumentException>(() => MapDocumentFile.LoadText(root.ToJsonString()));
+        Assert.Equal(MapDocumentRefusal.SchemaMemberUnknown, error.Reason);
+        Assert.Equal(expectedPath, error.FieldPath);
+        root.Remove(name);
+        Assert.Equal("legacy", MapDocumentFile.LoadText(root.ToJsonString()).Id);
+    }
+
+    [Theory]
+    [InlineData(null, "$.terrain.features[0]")]
+    [InlineData("notes.extra", "$.terrain.features[0]['notes.extra']")]
+    [InlineData("notes[extra]", "$.terrain.features[0]['notes[extra]']")]
+    public void Nested_case_variant_duplicates_identify_the_containing_object_without_parsing_prose(string? name, string expectedPath)
+    {
+        var root = JsonNode.Parse(NativeFixtures.AnalyticV3Json())!.AsObject();
+        var feature = new JsonObject { ["type"] = "lake", ["radius"] = 10 };
+        if (name is not null) feature[name] = new JsonObject { [name] = 10 };
+        root["terrain"]!["features"] = new JsonArray(feature);
+        string accepted = root.ToJsonString();
+        string member = JsonSerializer.Serialize(name ?? "radius");
+        string repeated = JsonSerializer.Serialize(name?.ToUpperInvariant() ?? "RADIUS");
+        string refused = accepted.Replace($"{member}:10", $"{member}:10,{repeated}:10", StringComparison.Ordinal);
         var error = Assert.Throws<MapDocumentException>(() => MapDocumentFile.LoadText(refused));
         Assert.Equal(MapDocumentRefusal.SchemaMemberDuplicate, error.Reason);
-        Assert.Equal("$.terrain.features[0]", error.FieldPath);
+        Assert.Equal(expectedPath, error.FieldPath);
         Assert.Equal("(inline)", error.SourceName);
         Assert.Single(MapDocumentFile.LoadText(accepted).Terrain.Features);
     }

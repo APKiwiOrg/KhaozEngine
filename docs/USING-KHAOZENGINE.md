@@ -12510,7 +12510,8 @@ and aggregate adapters retain their existing behavior until all their producing 
 Root, manifest and tile schema admission also preserves `MapDocumentException`. Its reasons distinguish
 `SchemaMemberUnknown`, `SchemaMemberDuplicate`, `SchemaMemberMissing`, `SchemaMemberNull`,
 `SchemaObjectRequired`, `SchemaValueRequired` and `SchemaMalformed`. Closed-member failures carry a JSON
-`FieldPath` such as `$.nativeAssets[0].id`, while duplicates identify the containing object. `SourceName`
+`FieldPath` in `System.Text.Json.JsonException.Path` format, such as `$.nativeAssets[0].id` or
+`$['notes.extra']` for a literal name containing `.`, while duplicates identify the containing object. `SourceName`
 retains the known source context, with `Tile` and file `Path` on tile reads. JSON failures carry the
 reader's path, zero-based `LineNumber` and UTF-8 `BytePositionInLine` where available. A JSON wrapper
 containing a known structured document refusal retains its reason, every identifier and that original

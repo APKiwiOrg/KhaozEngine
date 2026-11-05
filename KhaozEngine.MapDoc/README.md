@@ -1349,7 +1349,10 @@ by the caller, and `ExpectedResolverVersion` is the version the operation requir
 several versions leaves the expected version null. Recipe identifiers retain `MapSupportRecipe` values.
 `SourceName` identifies source context when supplied. Unavailable identifiers remain null.
 
-Closed-member admission identifies a JSON field through `FieldPath`, such as `$.nativeAssets[0].id`.
+Closed-member admission identifies a JSON field through `FieldPath` in `System.Text.Json.JsonException.Path`
+format: `$` is the root, `.name` is a plain member, `['name']` is a member containing special characters,
+and `[index]` is an array element. For example, `$.nativeAssets[0].id` identifies an ordinary member,
+while `$['notes.extra']` and `$['notes[extra]']` identify literal names containing `.` and `[`.
 Duplicate admission identifies the containing object because the JSON member dictionary does not expose a
 typed duplicate name. A tile reader supplies the document `Tile` and its file `Path`, while `SourceName`
 keeps the directory context. JSON failures use the reader's path, zero-based `LineNumber` and zero-based

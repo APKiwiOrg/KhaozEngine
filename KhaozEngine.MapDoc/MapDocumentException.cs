@@ -45,7 +45,10 @@ public sealed class MapDocumentException : Exception
     public MapSupportRecipe? SupportRecipe { get; init; }
     /// <summary>The support recipe required by this operation, when one recipe is required.</summary>
     public MapSupportRecipe? ExpectedSupportRecipe { get; init; }
-    /// <summary>The document or options field whose contract was refused.</summary>
+    /// <summary>The document or options field whose contract was refused. JSON fields use
+    /// <see cref="System.Text.Json.JsonException.Path"/> format: <c>$</c> for the root, <c>.name</c> for
+    /// a plain member, <c>['name']</c> for a member containing special characters, and <c>[index]</c>
+    /// for an array element.</summary>
     public string? FieldPath { get; init; }
     /// <summary>The kind of document content requiring this resolver contract.</summary>
     public string? SubjectKind { get; init; }

@@ -4,6 +4,20 @@ All notable changes to KhaozEngine. One shared version line `<KhaozEngineVersion
 governs every package, including the four umbrella metapackages. Planned work lives in the repo's GitHub
 Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
+## 23.2.0
+
+2026-11-06
+
+- `MapDocumentException` carries a `MapDocumentRefusal Reason` and typed identifiers for document persistence, tile
+  files, foliage JSON, assets and typed resources, identity, the resolver contract, prefabs, markers and support
+  resolution. Read the reason, never the text. Messages do not change. `Reason` is null on a construction not yet
+  converted, such as the aggregate document adapters.
+- String validators gain an additive immutable `MapDocumentFinding`, and `MapDocumentException.Findings` carries the
+  ordered findings. An aggregate refusal takes its `Reason` and identifiers from its first finding.
+- Foliage JSON refusals throw `MapFoliageJsonException`, which derives from `JsonException`, so existing catches work.
+- `MapAssetClosure` reports an `IMapAssetSource` callback that throws `MalformedDataException` as
+  `AssetPayloadUnreadable`, as it reports an I/O failure, and keeps the callback's exception as the inner exception.
+
 ## 23.1.0
 
 2026-11-06
@@ -19,16 +33,6 @@ Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 - Ground pursuit checks the exclusion on admission, every replan, search nodes and edges, route straightening,
   actual-to-route entry and supported-walk shortcuts. `NoPath` carries `GroundPursuitDetail.ExcludedArea` when
   the original profile admits a complete walking route under the same query budget. Default queries are unchanged.
-
-- `MapDocumentException` carries a `MapDocumentRefusal Reason` and typed identifiers for document persistence, tile
-  files, foliage JSON, assets and typed resources, identity, the resolver contract, prefabs, markers and support
-  resolution. Read the reason, never the text. Messages do not change. `Reason` is null on a construction not yet
-  converted, such as the aggregate document adapters.
-- String validators gain an additive immutable `MapDocumentFinding`, and `MapDocumentException.Findings` carries the
-  ordered findings. An aggregate refusal takes its `Reason` and identifiers from its first finding.
-- Foliage JSON refusals throw `MapFoliageJsonException`, which derives from `JsonException`, so existing catches work.
-- `MapAssetClosure` reports an `IMapAssetSource` callback that throws `MalformedDataException` as
-  `AssetPayloadUnreadable`, as it reports an I/O failure, and keeps the callback's exception as the inner exception.
 
 ## 23.0.0
 

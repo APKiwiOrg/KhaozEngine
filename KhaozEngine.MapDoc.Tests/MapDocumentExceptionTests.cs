@@ -5,6 +5,7 @@ using System.Linq;
 using System.Reflection;
 using System.Text.Json;
 using KhaozEngine.MapDoc;
+using KhaozEngine.MapDoc.Foliage;
 using Xunit;
 
 namespace KhaozEngine.Tests.MapDoc;
@@ -83,11 +84,43 @@ public sealed class MapDocumentExceptionTests
         if (type == typeof(string)) return property.Name;
         if (type == typeof(int)) return 1000 + index;
         if (type == typeof(long)) return 3000L + index;
+        if (type == typeof(double)) return 4000.5 + index;
+        if (type == typeof(MapFoliageChunkKey)) return new MapFoliageChunkKey(-3, index);
+        if (type == typeof(IReadOnlyList<int>)) return new[] { 1, 5 };
         if (type == typeof(MapTileCoord)) return new MapTileCoord(-7, index);
         if (type == typeof(MapSupportRecipe)) return (MapSupportRecipe)(2000 + index);
         if (type == typeof(IReadOnlyList<MapDocumentFinding>))
             return new[] { new MapDocumentFinding(MapDocumentRefusal.ResolverContractMismatch, property.Name) { ResolverVersion = index } };
         throw new InvalidOperationException($"Add a sample for identifier {property.Name} of type {property.PropertyType}.");
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void Foliage_json_wrappers_preserve_every_codec_identifier(bool nested)
+    {
+        PropertyInfo[] identifiers = typeof(MapFoliageJsonException)
+            .GetProperties(BindingFlags.Public | BindingFlags.Instance | BindingFlags.DeclaredOnly)
+            .Where(p => p.CanWrite).ToArray();
+        Assert.Contains(identifiers, p => p.Name == nameof(MapFoliageJsonException.FieldPath));
+        var original = new MapDocumentException(MapDocumentRefusal.SchemaArrayLengthMismatch, "density refused");
+        var json = new MapFoliageJsonException(MapDocumentRefusal.SchemaArrayLengthMismatch, "density refused");
+        for (int i = 0; i < identifiers.Length; i++)
+        {
+            object value = Sample(identifiers[i], i);
+            identifiers[i].SetValue(json, value);
+            typeof(MapDocumentException).GetProperty(identifiers[i].Name)!.SetValue(original, value);
+        }
+        MapFoliageJsonException converted = MapFoliageJsonException.FromDocument(original);
+        Assert.Equal(original.Reason, converted.Reason);
+        Assert.Same(original, converted.InnerException);
+        Assert.Empty(identifiers.Where(p => !Matches(p.GetValue(json), p.GetValue(converted))).Select(p => p.Name));
+        MapDocumentException outer = MapDocumentJsonErrors.Wrap(nested ? new JsonException("outer JSON", json) : json,
+            "map.json", "document refused");
+        Assert.Equal(json.Reason, outer.Reason);
+        Assert.Same(json, outer.InnerException);
+        Assert.Empty(identifiers.Where(p => !Matches(p.GetValue(json),
+            typeof(MapDocumentException).GetProperty(p.Name)!.GetValue(outer))).Select(p => p.Name));
     }
 
     static bool Matches(object? expected, object? actual) =>

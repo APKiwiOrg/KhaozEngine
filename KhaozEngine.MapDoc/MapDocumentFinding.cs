@@ -1,3 +1,7 @@
+using System;
+using System.Collections.Generic;
+using KhaozEngine.MapDoc.Foliage;
+
 namespace KhaozEngine.MapDoc;
 
 /// <summary>An immutable validation finding. Message is its prose projection, while Reason and the applicable
@@ -6,6 +10,8 @@ namespace KhaozEngine.MapDoc;
 /// <param name="Message">The developer-facing explanation, not a classification token.</param>
 public sealed record MapDocumentFinding(MapDocumentRefusal Reason, string Message)
 {
+    IReadOnlyList<int>? _supportedVersions;
+
     /// <summary>The source file or content name, when known.</summary>
     public string? SourceName { get; init; }
     /// <summary>The source file path, when known separately from the source name.</summary>
@@ -36,8 +42,40 @@ public sealed record MapDocumentFinding(MapDocumentRefusal Reason, string Messag
     public MapSupportRecipe? ExpectedSupportRecipe { get; init; }
     /// <summary>The document or options field whose contract was refused.</summary>
     public string? FieldPath { get; init; }
-    /// <summary>The kind of document content requiring this resolver contract.</summary>
+    /// <summary>The kind of document content or identity whose rule was refused.</summary>
     public string? SubjectKind { get; init; }
+
+    /// <summary>The foliage layer identity, after it has been read.</summary>
+    public string? LayerId { get; init; }
+    /// <summary>The zero-based position of the containing or refused JSON array item, when known.</summary>
+    public int? Index { get; init; }
+    /// <summary>The foliage chunk coordinates, after both coordinates have been read.</summary>
+    public MapFoliageChunkKey? FoliageChunk { get; init; }
+    /// <summary>The measured or decoded byte count, when the whole value can be measured.</summary>
+    public long? ActualByteCount { get; init; }
+    /// <summary>The required decoded byte count, when checked.</summary>
+    public long? ExpectedByteCount { get; init; }
+    /// <summary>The inclusive byte or work limit, when checked.</summary>
+    public long? Limit { get; init; }
+    /// <summary>The refused payload version, when read as an integer.</summary>
+    public int? ActualVersion { get; init; }
+    /// <summary>The refused numeric value, when representable as a double.</summary>
+    public double? ActualNumber { get; init; }
+    /// <summary>The refused numeric value, when representable as a signed 64-bit integer.</summary>
+    public long? ActualInteger { get; init; }
+    /// <summary>The inclusive minimum integer accepted by the checked field.</summary>
+    public long? MinimumInteger { get; init; }
+    /// <summary>The inclusive maximum integer accepted by the checked field.</summary>
+    public long? MaximumInteger { get; init; }
+    /// <summary>The refused identity, such as a repeated JSON member name, when known.</summary>
+    public string? EntityId { get; init; }
+
+    /// <summary>The supported payload versions, as an owned read-only snapshot.</summary>
+    public IReadOnlyList<int>? SupportedVersions
+    {
+        get => _supportedVersions;
+        init => _supportedVersions = value is null ? null : Array.AsReadOnly<int>([.. value]);
+    }
 
     internal static MapDocumentFinding ResolverContract(MapDocument document, string message, string fieldPath,
         string subjectKind, int? expectedResolverVersion = null, MapSupportRecipe? expectedSupportRecipe = null) =>

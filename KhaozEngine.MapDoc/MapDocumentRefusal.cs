@@ -18,10 +18,36 @@ public enum MapDocumentRefusal
     SchemaMemberNull,
     /// <summary>Refuses a member not declared by a closed schema object.</summary>
     SchemaMemberUnknown,
-    /// <summary>Refuses a required document, tile, prefab or marker-options JSON object.</summary>
+    /// <summary>Refuses a JSON value that is not the required object.</summary>
     SchemaObjectRequired,
-    /// <summary>Refuses a missing, null or blank required value.</summary>
+    /// <summary>Refuses a missing, null, blank or incorrectly typed required value.</summary>
     SchemaValueRequired,
     /// <summary>Refuses bounds or dimensions outside the ordered nonempty finite domain.</summary>
     BoundsInvalid,
+    /// <summary>Refuses a collection or payload whose shape differs from its declared count.</summary>
+    SchemaArrayLengthMismatch,
+    /// <summary>Refuses a JSON value that is not the required array.</summary>
+    SchemaArrayRequired,
+    /// <summary>Refuses malformed or noncanonical base64 data.</summary>
+    SchemaBase64Malformed,
+    /// <summary>Refuses a JSON value that is not a boolean.</summary>
+    SchemaBooleanRequired,
+    /// <summary>Refuses a payload version outside the supported set.</summary>
+    SchemaPayloadVersionUnsupported,
+    /// <summary>Refuses a numeric field requiring a finite value.</summary>
+    ValueNonfinite,
+    /// <summary>Refuses a numeric field outside its stated domain.</summary>
+    ValueOutsideRange,
+
+    // Shared identity admission.
+    /// <summary>Refuses an identity repeated within its owning namespace.</summary>
+    IdentityDuplicate,
+
+    // Foliage JSON converter.
+    /// <summary>Refuses a foliage section larger than its UTF-8 byte budget.</summary>
+    FoliageSectionByteLimitExceeded,
+    /// <summary>Refuses reading a foliage section that is not fully buffered.</summary>
+    FoliageSectionIncomplete,
+    /// <summary>Refuses an explicit null foliage section.</summary>
+    FoliageSectionNull,
 }

@@ -206,7 +206,13 @@ public sealed class MapFoliageStorageTests
         if (failure == "pack-type") root["foliage"]!["packs"]![0] = 1;
         else root["foliage"]!["packs"]![0]!["region"] = 1;
         using var json = System.Text.Json.JsonDocument.Parse(root["foliage"]!.ToJsonString());
-        Assert.Throws<MapDocumentException>(() => MapFoliageStorage.ReadManifest(json.RootElement));
+        var error = Assert.Throws<MapDocumentException>(() => MapFoliageStorage.ReadManifest(json.RootElement));
+        Assert.Equal(MapDocumentRefusal.SchemaObjectRequired, error.Reason);
+        // These label-only shared calls do not know an indexed JSON path or layer identity.
+        Assert.Null(error.FieldPath);
+        Assert.Null(error.LayerId);
+        using var control = System.Text.Json.JsonDocument.Parse(FoliageStorageFixtures.Manifest(dir.Root)["foliage"]!.ToJsonString());
+        Assert.Single(MapFoliageStorage.ReadManifest(control.RootElement).Set.Layers);
     }
 
     [Fact]

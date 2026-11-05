@@ -1,5 +1,6 @@
 using System;
 using System.Text.Json;
+using KhaozEngine.MapDoc.Foliage;
 
 namespace KhaozEngine.MapDoc;
 
@@ -12,6 +13,9 @@ internal static class MapDocumentJsonErrors
         for (Exception? cause = error.InnerException; cause is not null; cause = cause.InnerException)
             if (cause is MapDocumentException { Reason: not null } known)
                 return known.WithSourceName(sourceName, message, tile, path, resourceId);
+        for (Exception? cause = error; cause is not null; cause = cause.InnerException)
+            if (cause is MapFoliageJsonException foliage)
+                return foliage.ToDocument(sourceName, message, tile, path, resourceId);
         var json = error as JsonException;
         return new MapDocumentException(MapDocumentRefusal.SchemaMalformed, message, error)
         {

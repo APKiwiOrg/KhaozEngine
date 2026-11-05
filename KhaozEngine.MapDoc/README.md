@@ -835,6 +835,27 @@ identity. `CopyDensity()` returns detached bytes.
 | Clearance rules, exception masks and owner correspondences per layer | 4096, 4096 and 65,536 |
 | Foliage JSON and base64 chunk token | 134,217,728 UTF-8 bytes and 1368 characters |
 
+Foliage converter admission throws `MapFoliageJsonException`, a `System.Text.Json.JsonException` subtype with a
+required `MapDocumentRefusal Reason`. Existing JSON catches still apply. The document reader preserves the reason
+and available identifiers on its outer `MapDocumentException`.
+
+| Converter reason | Refused rule | Identifiers when known |
+| --- | --- | --- |
+| `FoliageSectionNull` | An explicit null section instead of omission | `FieldPath` |
+| `FoliageSectionIncomplete` | A section that is not fully buffered | `FieldPath`, with `ActualByteCount` unset because the complete size cannot be measured |
+| `FoliageSectionByteLimitExceeded` | A complete section beyond its UTF-8 byte ceiling | `FieldPath`, `ActualByteCount`, `Limit` |
+
+The [schema refusal table](#loud-failures) describes the codec's shared reasons. Foliage `FieldPath` starts at
+`$` for the section and retains real member names and array positions. `LayerId` is available only after the ID has
+been read, and `FoliageChunk` only after both coordinates have been read. `Index` names the innermost array position
+known at the guard. Repeated exact member names use `IdentityDuplicate`, with the member path, `EntityId` and
+`SubjectKind` of `JSON member`. Foliage required-member failures use `SchemaValueRequired`.
+Storage helpers supplied only a prose label leave unavailable paths and identities unset. Known inner document
+refusals retain their reason, identifiers and original cause through the converter. Untyped converter failures
+use `SchemaMalformed` with the reader's path. Runtime kind and work-capacity rules retain their existing admission.
+`SupportedVersions` is an owned read-only snapshot on the exception and finding types. Numeric identifiers describe
+only representable input values, while integer bounds describe the domain the guard actually checks.
+
 The closed codec checks counts, sizes and arithmetic before allocation. Monolithic storage embeds density.
 Tiled storage writes one verified content-addressed pack per (layer, storage region), with logical chunk digests
 independent of pack layout. The stored schema accepts pack references, the inline schema accepts inline bytes, and
@@ -1328,7 +1349,7 @@ ran on a worker thread. The handoff did not.
 
 ## Loud failures
 
-Resolver, root and prefab schema admission refusals keep the exact `MapDocumentException` type. Inspect its nullable
+Resolver, root, prefab and foliage codec schema admission refusals keep the exact `MapDocumentException` type. Inspect its nullable
 `MapDocumentRefusal Reason` and applicable identifiers instead of classifying its message. The public
 message-only constructors remain available to consumers and leave `Reason` null. Other validation
 adapters continue reporting prose until all of their producing rules carry typed findings.
@@ -1339,9 +1360,17 @@ adapters continue reporting prose until all of their producing rules carry typed
 | `SchemaMemberDuplicate` | A repeated or case-variant JSON member | `FieldPath` of the containing object, `SourceName`, `Tile`, `Path` |
 | `SchemaMemberMissing` | A missing required native or prefab member, or a missing or non-integer `formatVersion` | `FieldPath`, `SourceName`, `Tile`, `Path` |
 | `SchemaMemberNull` | A native member that cannot be null | `FieldPath`, `SourceName`, `Tile`, `Path` |
-| `SchemaMemberUnknown` | A member outside a closed schema object | `FieldPath`, `SourceName`, `Tile`, `Path` |
-| `SchemaObjectRequired` | A document, manifest, tile, prefab payload or marker-options value that must be an object | `FieldPath`, `SourceName`, `Tile`, `Path` |
-| `SchemaValueRequired` | A required deserialization result or prefab member that is null, a missing prism domain, or blank marker-adoption identity text | `FieldPath`, `SourceName`, `Tile`, `Path` |
+| `SchemaMemberUnknown` | A member outside a closed schema object | `FieldPath`, `SourceName`, `Tile`, `Path`, `LayerId`, `Index` |
+| `SchemaObjectRequired` | A document, manifest, tile, prefab payload, marker-options or foliage value that must be an object | `FieldPath`, `SourceName`, `Tile`, `Path`, `LayerId`, `Index` |
+| `SchemaValueRequired` | A null deserialization result, a required prefab or foliage member that is missing, null or incorrectly typed, a missing prism domain, or blank marker-adoption identity text | `FieldPath`, `SourceName`, `Tile`, `Path`, `LayerId`, `Index` |
+| `SchemaArrayRequired` | A foliage member that must be an array | `FieldPath`, `Index` |
+| `SchemaBooleanRequired` | A foliage member that must be a boolean | `FieldPath`, `LayerId`, `Index` |
+| `SchemaBase64Malformed` | A foliage density token that is invalid or noncanonical base64 | `FieldPath`, `LayerId`, `Index`, `FoliageChunk` |
+| `SchemaArrayLengthMismatch` | Decoded foliage density whose byte length differs from the required chunk length | `FieldPath`, `LayerId`, `Index`, `FoliageChunk`, `ActualByteCount`, `ExpectedByteCount` |
+| `SchemaPayloadVersionUnsupported` | A foliage set or layer payload version other than 1 | `FieldPath`, `Index`, `ActualVersion`, `SupportedVersions` |
+| `ValueNonfinite` | A foliage scalar that is not a finite binary32 number | `FieldPath`, `LayerId`, `Index`, `ActualNumber` |
+| `ValueOutsideRange` | A foliage integer outside signed 32-bit or material-ID admission | `FieldPath`, `LayerId`, `Index`, `ActualNumber`, `ActualInteger`, `MinimumInteger`, `MaximumInteger` |
+| `IdentityDuplicate` | A repeated exact foliage JSON member name | `FieldPath`, `Index`, `EntityId`, `SubjectKind` |
 | `BoundsInvalid` | Prefab patch width or depth outside 1 through 64 inclusive | `FieldPath`, `Width`, `Depth` |
 | `ResolverContractMismatch` | The document resolver, support recipe or caller's resolver options cannot serve the requested operation | `PayloadVersion`, `ResolverVersion`, `OptionsResolverVersion`, `ExpectedResolverVersion`, `SupportRecipe`, `ExpectedSupportRecipe`, `FieldPath`, `SubjectKind` |
 
@@ -1354,7 +1383,7 @@ Closed-member admission identifies a JSON field through `FieldPath` in `System.T
 format: `$` is the root, `.name` is a plain member, `['name']` is a member containing special characters,
 and `[index]` is an array element. For example, `$.nativeAssets[0].id` identifies an ordinary member,
 while `$['notes.extra']` and `$['notes[extra]']` identify literal names containing `.` and `[`.
-Duplicate admission identifies the containing object because the JSON member dictionary does not expose a
+Native and prefab duplicate admission identifies the containing object because the JSON member dictionary does not expose a
 typed duplicate name. A tile reader supplies the document `Tile` and its file `Path`, while `SourceName`
 keeps the directory context. JSON failures use the reader's path, zero-based `LineNumber` and zero-based
 UTF-8 `BytePositionInLine` when available. No identifier is reconstructed from error prose. A JSON wrapper

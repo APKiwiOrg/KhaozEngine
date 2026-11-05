@@ -12137,6 +12137,25 @@ if (captured.Status == MapFoliageStatus.Complete)
 }
 ```
 
+Foliage JSON converter admission throws `MapFoliageJsonException`, derived from `JsonException`, with a required
+`MapDocumentRefusal Reason`. `FoliageSectionNull` identifies explicit null, `FoliageSectionIncomplete` identifies an
+unbuffered section, and `FoliageSectionByteLimitExceeded` carries measured `ActualByteCount` and inclusive `Limit`.
+An incomplete section has no measured complete byte count. Document loading preserves those reasons on the outer
+`MapDocumentException`, so existing document and JSON catches keep working.
+
+The codec uses `SchemaObjectRequired`, `SchemaArrayRequired`, `SchemaBooleanRequired`, `SchemaMemberUnknown`,
+`SchemaValueRequired`, `SchemaPayloadVersionUnsupported`, `SchemaBase64Malformed`, `SchemaArrayLengthMismatch`,
+`ValueNonfinite` and `ValueOutsideRange` for their corresponding shape, encoding and scalar rules. Repeated exact
+foliage member names use `IdentityDuplicate`, with `EntityId` naming the member and `SubjectKind` of `JSON member`.
+`FieldPath` uses `JsonException.Path` syntax relative to the foliage section, with real array positions and escaped
+property names. Available context includes `LayerId`, `Index` and `FoliageChunk`. They remain unset until the guard
+knows them, and storage helpers without a typed path leave it unset. Payload version refusals carry `ActualVersion`
+and an owned read-only `SupportedVersions` snapshot. Density length refusals carry `ActualByteCount` and
+`ExpectedByteCount`. Numeric refusals retain representable `ActualNumber` or `ActualInteger` and the checked
+`MinimumInteger` and `MaximumInteger` bounds. Known inner refusals survive wrappers with every identifier and the
+original cause. A converter failure without a typed inner reason uses `SchemaMalformed` with the reader's JSON path.
+See the [package refusal table](../KhaozEngine.MapDoc/README.md#loud-failures) for the complete field contract.
+
 Motion padding is explicit caller policy in metres. Transform all eight source-unit-adjusted mesh corners by each
 sample's exact CPU matrix, then expand XYZ. Preserve CPU selection, live blade/shrub profiles and shadow flags. Use the
 render dependency digest plus generation to reject stale work. Keep one owned batch across every intersected residency
@@ -12511,7 +12530,7 @@ Root, manifest, tile and prefab schema admission also preserves `MapDocumentExce
 `SchemaMemberUnknown`, `SchemaMemberDuplicate`, `SchemaMemberMissing`, `SchemaMemberNull`,
 `SchemaObjectRequired`, `SchemaValueRequired` and `SchemaMalformed`. Closed-member failures carry a JSON
 `FieldPath` in `System.Text.Json.JsonException.Path` format, such as `$.nativeAssets[0].id` or
-`$['notes.extra']` for a literal name containing `.`, while duplicates identify the containing object. `SourceName`
+`$['notes.extra']` for a literal name containing `.`, while native and prefab duplicates identify the containing object. `SourceName`
 retains the known source context, with `Tile` and file `Path` on tile reads. JSON failures carry the
 reader's path, zero-based `LineNumber` and UTF-8 `BytePositionInLine` where available. A JSON wrapper
 containing a known structured document refusal retains its reason, every identifier and that original

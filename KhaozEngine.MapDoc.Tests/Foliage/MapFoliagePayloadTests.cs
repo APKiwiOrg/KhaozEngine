@@ -130,10 +130,16 @@ public sealed class MapFoliagePayloadTests
             reader.Read();
             return new MapFoliageSetJsonConverter(limit).Read(ref reader, typeof(MapFoliageSet), options);
         }
+        var oversized = Assert.Throws<MapFoliageJsonException>(() => Convert(section.Length - 1, complete: true));
+        Assert.Equal(MapDocumentRefusal.FoliageSectionByteLimitExceeded, oversized.Reason);
+        Assert.Equal(section.Length, oversized.ActualByteCount);
+        Assert.Equal(section.Length - 1, oversized.Limit);
+        Assert.IsAssignableFrom<JsonException>(oversized);
+        var partial = Assert.Throws<MapFoliageJsonException>(() => Convert(section.Length, complete: false));
+        Assert.Equal(MapDocumentRefusal.FoliageSectionIncomplete, partial.Reason);
+        // The incomplete buffer has no measured whole-section length.
+        Assert.Null(partial.ActualByteCount);
         Assert.Single(Convert(section.Length, complete: true).Layers);
-        Assert.Throws<JsonException>(() => Convert(section.Length - 1, complete: true));
-        var partial = Assert.Throws<JsonException>(() => Convert(section.Length, complete: false));
-        Assert.Contains("fully buffered", partial.Message, StringComparison.Ordinal);
     }
 
     [Fact]

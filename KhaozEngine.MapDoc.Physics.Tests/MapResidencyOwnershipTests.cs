@@ -1,9 +1,12 @@
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Numerics;
 using KhaozEngine.MapDoc;
 using KhaozEngine.MapDoc.Editing;
 using KhaozEngine.MapDoc.Physics;
+using KhaozEngine.MapDoc.Surfaces;
+using KhaozEngine.MapDoc.Water;
 using Xunit;
 
 namespace KhaozEngine.Tests.MapDoc.Physics;
@@ -199,5 +202,37 @@ public class MapResidencyOwnershipTests
         Assert.Equal(max, error.MaximumNumber);
         Assert.Equal(new MapTileRect(new(0, 0), new(0, 0)),
             MapResidencyOwnership.RequireFiniteStorageBoundsForTests(new(0, 0, 0, 0, 0, 0), 64));
+    }
+
+    [Fact]
+    public void WaterTileUnion_ReportsItsOwnerAndAdmitsTheCapAndOneBelow()
+    {
+        var original = Assert.Single(NativeWorldFixtures.BuildBridgeOverRiver().Water);
+        // Two disjoint triangle bounds claim 1023 * 1024 + 1023 tiles, exactly 2^20 - 1.
+        // The two single-tile bounds then reach the cap and exceed it by one without any rectangle exceeding it.
+        var triangles = new List<MapExactTriangle>
+        {
+            Triangle(0, 0, 1023, 1024), Triangle(1023, 0, 1024, 1023),
+            Triangle(1023, 1023, 1024, 1024), Triangle(1024, 1023, 1025, 1024),
+        };
+        var grids = new MapWorldGrids(16, 4, 16, Vector2.Zero);
+        MapCompiledWaterBody Body() => original with
+        {
+            BodyId = "reservoir", SurfaceY = 0, DeepestBedY = -1, Bounds = new(0, -1, 0, 16400, 0, 16384),
+            Regions = [new("reservoir-space", MapWaterRegionKind.FreeSurface, triangles.ToArray())],
+        };
+        var error = Assert.Throws<MapDocumentException>(() => MapResidencyOwnership.WaterTiles(Body(), grids));
+        Assert.Equal(MapDocumentRefusal.WorkCapacityExceeded, error.Reason);
+        Assert.Equal("water:reservoir", error.OwnerId);
+        Assert.Equal("MaxStorageTiles", error.Budget);
+        Assert.Equal(1_048_577, error.ActualCount);
+        Assert.Equal(1_048_576, error.Limit);
+        triangles.RemoveAt(3);
+        Assert.Equal(1_048_576, MapResidencyOwnership.WaterTiles(Body(), grids).Length);
+        triangles.RemoveAt(2);
+        Assert.Equal(1_048_575, MapResidencyOwnership.WaterTiles(Body(), grids).Length);
+
+        static MapExactPoint Point(long x, long z) => new(new(x * 16, 1), new(0, 1), new(z * 16, 1));
+        static MapExactTriangle Triangle(long x0, long z0, long x1, long z1) => new(Point(x0, z0), Point(x1, z0), Point(x1, z1));
     }
 }

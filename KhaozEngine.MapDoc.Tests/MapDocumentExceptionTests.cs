@@ -158,6 +158,7 @@ public sealed class MapDocumentExceptionTests
         if (property.Name == nameof(MapDocumentException.CellX)) return 64;
         if (property.Name == nameof(MapDocumentException.CellZ)) return -1;
         if (property.Name == nameof(MapDocumentException.SlotCell)) return 65;
+        if (property.Name == nameof(MapDocumentException.RelatedSlotCell)) return 66;
         if (property.Name == nameof(MapDocumentException.Edge)) return MapCellEdge.West;
         if (property.Name == nameof(MapDocumentException.PreviousInteger)) return 17L;
         if (property.Name == nameof(MapDocumentException.ActualText)) return "future";

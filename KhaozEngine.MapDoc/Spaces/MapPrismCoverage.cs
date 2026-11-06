@@ -15,7 +15,7 @@ public static class MapPrismCoverage
 
     // Findings remain additive until refinement and water work supply every failure.
     internal static IReadOnlyList<string> Validate(MapScopedSurfaces view, MapRefinementLimits limits,
-        List<MapDocumentFinding>? typedFindings)
+        List<MapDocumentFinding>? typedFindings, List<MapSpaceDiagnostic>? diagnostics = null)
     {
         ArgumentNullException.ThrowIfNull(view);
         ArgumentNullException.ThrowIfNull(limits);
@@ -132,12 +132,20 @@ public static class MapPrismCoverage
         typedFindings?.AddRange(findings.DistinctBy(f => f.Message).OrderBy(f => f.Message, StringComparer.Ordinal));
         return Array.AsReadOnly(errors.Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal).ToArray());
 
-        void Add(MapDocumentFinding finding) { errors.Add(finding.Message); findings.Add(finding); }
+        void Add(MapDocumentFinding finding)
+        {
+            errors.Add(finding.Message); findings.Add(finding);
+            string owner = finding.RecordId ?? finding.SpaceId ?? "";
+            // Peer diagnostics name both spaces. Their first ordinal owner keeps the released ordering.
+            if (finding.Reason == MapDocumentRefusal.SpaceOccupiedOverlap && finding.RelatedRecordId is { } other &&
+                StringComparer.Ordinal.Compare(owner, other) > 0) owner = other;
+            diagnostics?.Add(new(owner, finding.Message, finding));
+        }
         void AddError(Exception error, string message, MapPrismDomain? prism)
         {
             MapDocumentFinding? finding = error is MapDocumentException refusal ? MapDocumentFinding.FromException(refusal)
                 : new(MapDocumentRefusal.GeometryNotRepresentable, error.Message) { Operation = "prism coverage" };
-            if (finding is null) errors.Add(message);
+            if (finding is null) { errors.Add(message); diagnostics?.Add(new(prism?.Id ?? "", message, null)); }
             else Add(finding with { Message = message, RecordId = finding.RecordId ?? prism?.Id,
                 SpaceId = finding.SpaceId ?? prism?.Space.Id });
         }

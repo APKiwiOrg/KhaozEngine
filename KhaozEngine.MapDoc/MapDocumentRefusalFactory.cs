@@ -85,6 +85,7 @@ internal static class MapDocumentRefusalFactory
             Patch = finding.Patch,
             Address = finding.Address,
             SlotCell = finding.SlotCell,
+            RelatedSlotCell = finding.RelatedSlotCell,
             ExpectedPatch = finding.ExpectedPatch,
             RecordType = finding.RecordType,
             ExpectedRecordType = finding.ExpectedRecordType,

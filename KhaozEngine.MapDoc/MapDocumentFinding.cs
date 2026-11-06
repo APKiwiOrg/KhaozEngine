@@ -176,6 +176,8 @@ public sealed record MapDocumentFinding(MapDocumentRefusal Reason, string Messag
     public MapLatticeAddress? Address { get; init; }
     /// <summary>The selected zero-based cell within its 64 by 64 patch slot.</summary>
     public int? SlotCell { get; init; }
+    /// <summary>The zero-based cell of RelatedRecordId in a second footprint involved in an overlap.</summary>
+    public int? RelatedSlotCell { get; init; }
     /// <summary>The patch key required by a payload request or declared corner owner.</summary>
     public MapPatchKey? ExpectedPatch { get; init; }
     /// <summary>The submitted runtime topology record type, when unsupported.</summary>
@@ -329,6 +331,7 @@ public sealed record MapDocumentFinding(MapDocumentRefusal Reason, string Messag
             Patch = error.Patch,
             Address = error.Address,
             SlotCell = error.SlotCell,
+            RelatedSlotCell = error.RelatedSlotCell,
             ExpectedPatch = error.ExpectedPatch,
             RecordType = error.RecordType,
             ExpectedRecordType = error.ExpectedRecordType,

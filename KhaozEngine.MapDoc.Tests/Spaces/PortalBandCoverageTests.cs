@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using System.Linq;
+using KhaozEngine.MapDoc;
 using KhaozEngine.MapDoc.Spaces;
 using Xunit;
 
@@ -15,6 +16,32 @@ public sealed class PortalBandCoverageTests
     {
         IReadOnlyList<string> findings = MapSpaceCoverageValidator.Validate(CaveFixtures.View(PortalBandFixtures.Build(variant)));
         if (finding is null) Assert.Empty(findings); else Assert.Contains(findings, f => f.Contains(finding));
+        var typed = new List<MapDocumentFinding>();
+        Assert.Equal(findings, MapSpaceCoverageValidator.Validate(CaveFixtures.View(PortalBandFixtures.Build(variant)), new(), typed));
+        if (finding is null) Assert.Empty(typed);
+        else
+        {
+            MapDocumentRefusal reason = finding switch
+            {
+                "gap" => MapDocumentRefusal.SpaceBoundaryGap,
+                "overlap" => MapDocumentRefusal.SpaceBoundaryOverlap,
+                "vertex sequence" => MapDocumentRefusal.SchemaArrayLengthMismatch,
+                "air interval" => MapDocumentRefusal.SpacePortalAirIntervalInvalid,
+                _ => MapDocumentRefusal.IdentityDuplicate,
+            };
+            Assert.Contains(typed, f => f.Reason == reason && f.RecordId is not null);
+            if (variant == "arch-mismatch")
+            {
+                var mismatch = Assert.Single(typed, f => f.Reason == reason);
+                Assert.Equal("Upper.Points", mismatch.FieldPath);
+                Assert.Equal(3L, mismatch.ActualCount);
+                Assert.Equal(2L, mismatch.ExpectedCount);
+            }
+            var control = new List<MapDocumentFinding>();
+            Assert.Empty(MapSpaceCoverageValidator.Validate(CaveFixtures.View(PortalBandFixtures.Build(
+                variant == "arch-mismatch" ? "arch" : "header")), new(), control));
+            Assert.Empty(control);
+        }
     }
     [Fact]
     public void PortalBandCoverage_EachFaceIsEmittedOnce()

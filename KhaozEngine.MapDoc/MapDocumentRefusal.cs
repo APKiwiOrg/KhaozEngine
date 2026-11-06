@@ -312,6 +312,18 @@ public enum MapDocumentRefusal
     SpaceOccupiedOverlap,
     /// <summary>Refuses an unpacked prism without matching live record and storey transfers.</summary>
     SpaceStoreyTransferMissing,
+    /// <summary>Refuses an uncovered interval on an occupied column boundary.</summary>
+    SpaceBoundaryGap,
+    /// <summary>Refuses overlapping authored intervals on an occupied column boundary.</summary>
+    SpaceBoundaryOverlap,
+    /// <summary>Refuses a footprint cell whose lower or upper bounds do not cover its whole area.</summary>
+    SpaceCoverageMissingBound,
+    /// <summary>Refuses nonpositive separation between a footprint cell's refined bounds.</summary>
+    SpaceCoverageSeparationInvalid,
+    /// <summary>Refuses a portal band outside an endpoint space's occupied air interval.</summary>
+    SpacePortalAirIntervalInvalid,
+    /// <summary>Refuses coincident physical support owned by different authored surfaces.</summary>
+    SpaceSupportCoincident,
 
     // Foliage JSON converter.
     /// <summary>Refuses a foliage section larger than its UTF-8 byte budget.</summary>

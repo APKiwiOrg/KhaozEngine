@@ -12393,6 +12393,16 @@ Prism containment findings use `SpacePrismOutsideParent` or `SpacePrismParentSep
 with `RecordId`, `SpaceId` and parent `RelatedRecordId`. `SpaceOccupiedOverlap` names both occupied
 spaces through `SpaceId` and `RelatedRecordId`. The released validation strings retain their order
 and prose. Aggregate adapters wait for the remaining refinement and water producers.
+Boundary coverage distinguishes `SpaceBoundaryGap`, `SpaceBoundaryOverlap`,
+`SpaceCoverageMissingBound` and `SpaceCoverageSeparationInvalid`, retaining footprint `RecordId`,
+`SpaceId` and `SlotCell`. Portal air-band failures use `SpacePortalAirIntervalInvalid` with the
+portal `RecordId`, endpoint `SpaceId` and segment `Index`. Sequence findings retain the chain or
+portal subject instead of replacing it with wrapper context. Coverage still exposes its released
+string API while the remaining refinement and water producers finish carrying every failure.
+Coincident supports use `SpaceSupportCoincident`. Footprint overlap findings retain both footprint
+identities and both cells with `RecordId`, `RelatedRecordId`, `SlotCell` and `RelatedSlotCell`.
+The coverage collector forwards known overlap and prism findings without reading identifiers from
+prose. Deeper refinement and water producers still gate complete public finding snapshots.
 
 Doors remain AuthoredOpen. `MapRoofPolicy` returns separate colour, shadow, camera-boom and sky-picking flags.
 Auto concealment uses occupied rooms and explicit links/groups, and leaves unlinked shelters visible. Hidden

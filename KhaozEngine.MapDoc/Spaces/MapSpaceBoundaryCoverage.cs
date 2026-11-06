@@ -32,13 +32,7 @@ internal static class MapSpaceBoundaryCoverage
                 MapCompiledStrip compiled = MapWallStripCompiler.Compile(strip, lower, upper);
                 strips.Add(strip.Id, new(strip.Id, lower.Points.Select(MapWidePoint.From).ToArray(), upper.Points.Select(MapWidePoint.From).ToArray(), compiled.Faces.Select(f => f.Key.Side).Distinct().ToArray()));
             }
-            catch (MapDocumentException error)
-            {
-                string message = $"{error.Message}: strip '{strip.Id}'";
-                add(strip.Id, -1, message);
-                if (MapDocumentFinding.FromException(error) is { } finding)
-                    addFinding?.Invoke(strip.Id, -1, finding with { Message = message, RecordId = finding.RecordId ?? strip.Id });
-            }
+            catch (MapDocumentException error) { Forward(error, strip.Id, -1, $"{error.Message}: strip '{strip.Id}'"); }
         }
         foreach (MapCavePortal portal in records.OfType<MapCavePortal>())
         {
@@ -49,7 +43,8 @@ internal static class MapSpaceBoundaryCoverage
                 MapWideXz[] interval = portal.Interval.Select(v => MapWideXz.From(MapEffectiveGeometry.Vertex(view, v))).ToArray();
                 if (!interval.SequenceEqual(bottom.Points.Select(p => MapWidePoint.From(p).Xz)) ||
                     (top is not null && !interval.SequenceEqual(top.Points.Select(p => MapWidePoint.From(p).Xz))))
-                { add(portal.Id, -1, $"vertex sequence: portal '{portal.Id}'"); continue; }
+                { Add(portal.Id, -1, new(MapDocumentRefusal.GeometryVertexSequenceInvalid, $"vertex sequence: portal '{portal.Id}'")
+                    { RecordId = portal.Id, FieldPath = "Interval" }); continue; }
                 var band = new Band(portal.Id, bottom.Points.Select(MapWidePoint.From).ToArray(), top?.Points.Select(MapWidePoint.From).ToArray());
                 portals.Add(portal.Id, band);
                 foreach (MapRecordRef endpoint in new[] { portal.FromSpace, portal.ToSpace })
@@ -67,13 +62,15 @@ internal static class MapSpaceBoundaryCoverage
                             // Every bound and band is linear on this piece. Endpoints prove the whole interval.
                             if (!owned.Any(c => Contains(c, first) && Contains(c, last) &&
                                 AirContains(c, band, first) && AirContains(c, band, last)))
-                                add(portal.Id, -1, $"air interval: portal '{portal.Id}' side '{space.Id}'");
+                                Add(portal.Id, -1, new(MapDocumentRefusal.SpacePortalAirIntervalInvalid, $"air interval: portal '{portal.Id}' side '{space.Id}'")
+                                { RecordId = portal.Id, SpaceId = space.Id, Index = segment });
                         }
                     }
                 }
             }
-            catch (MapDocumentException error) { add(portal.Id, -1, $"missing geometry: portal '{portal.Id}' ({error.Message})"); }
-            catch (MapExactOverflowException) { add(portal.Id, -1, $"not representable: portal '{portal.Id}'"); }
+            catch (MapDocumentException error) { Forward(error, portal.Id, -1, $"missing geometry: portal '{portal.Id}' ({error.Message})"); }
+            catch (MapExactOverflowException) { Add(portal.Id, -1, new(MapDocumentRefusal.GeometryNotRepresentable, $"not representable: portal '{portal.Id}'")
+                { RecordId = portal.Id }); }
         }
         IReadOnlyList<MapSpaceColumn>[] near = Near(columns);
         for (int index = 0; index < columns.Count; index++)
@@ -114,14 +111,19 @@ internal static class MapSpaceBoundaryCoverage
                                 coverage.Add(new(bottom, top, true));
                             }
                         string label = $"footprint '{column.Footprint.Id}' cell {column.Cell}";
-                        if (Gap(lo, hi, coverage)) add(column.Footprint.Id, column.Cell, $"gap: {label}");
+                        if (Gap(lo, hi, coverage)) Add(column.Footprint.Id, column.Cell, new(MapDocumentRefusal.SpaceBoundaryGap, $"gap: {label}")
+                        { RecordId = column.Footprint.Id, SpaceId = column.Space.Id, SlotCell = column.Cell });
                         if (Overlap(lo, hi, coverage.Where(c => c.Authored).ToArray()))
-                            add(column.Footprint.Id, column.Cell, $"overlap: {label}");
+                            Add(column.Footprint.Id, column.Cell, new(MapDocumentRefusal.SpaceBoundaryOverlap, $"overlap: {label}")
+                            { RecordId = column.Footprint.Id, SpaceId = column.Space.Id, SlotCell = column.Cell });
                     }
                 }
             }
-            catch (MapExactOverflowException) { add(column.Footprint.Id, column.Cell, $"not representable: footprint '{column.Footprint.Id}' cell {column.Cell}"); }
-            catch (MapDocumentException error) { add(column.Footprint.Id, column.Cell, $"missing geometry: footprint '{column.Footprint.Id}' cell {column.Cell} ({error.Message})"); }
+            catch (MapExactOverflowException) { Add(column.Footprint.Id, column.Cell, new(MapDocumentRefusal.GeometryNotRepresentable,
+                $"not representable: footprint '{column.Footprint.Id}' cell {column.Cell}")
+                { RecordId = column.Footprint.Id, SpaceId = column.Space.Id, SlotCell = column.Cell }); }
+            catch (MapDocumentException error) { Forward(error, column.Footprint.Id, column.Cell,
+                $"missing geometry: footprint '{column.Footprint.Id}' cell {column.Cell} ({error.Message})"); }
         }
 
         MapChainResolution Chain(MapRecordRef reference)
@@ -132,15 +134,29 @@ internal static class MapSpaceBoundaryCoverage
             if (chain.SourcePatch is { } key)
             {
                 MapBoundarySurface source = MapBoundaryGeometry.Read(key, view, out string? detail)
-                    ?? throw new MapDocumentException(detail ?? "missing geometry: chain source");
+                    ?? throw new MapDocumentException(MapDocumentRefusal.PatchUnavailable, detail ?? "missing geometry: chain source")
+                    { RecordId = chain.Id, Patch = key };
                 for (int i = 0; i + 1 < resolved.Points.Count; i++)
                 {
                     MapExactXz a = MapSpaceGeometry.Xz(resolved.Points[i]), b = MapSpaceGeometry.Xz(resolved.Points[i + 1]);
                     if (source.Vertices.Values.Select(MapSpaceGeometry.Xz).Any(p => p != a && p != b && MapSpaceGeometry.OnSegment(p, a, b)))
-                        throw new MapDocumentException("vertex sequence: chain omits a source edge vertex");
+                        throw new MapDocumentException(MapDocumentRefusal.GeometryVertexSequenceInvalid, "vertex sequence: chain omits a source edge vertex")
+                        { RecordId = chain.Id, Patch = key, FieldPath = "Vertices", Index = i };
                 }
             }
             return resolved;
+        }
+
+        void Add(string id, int cell, MapDocumentFinding finding)
+        {
+            add(id, cell, finding.Message);
+            addFinding?.Invoke(id, cell, finding);
+        }
+        void Forward(MapDocumentException error, string id, int cell, string message)
+        {
+            add(id, cell, message);
+            if (MapDocumentFinding.FromException(error) is { } finding)
+                addFinding?.Invoke(id, cell, finding with { Message = message, RecordId = finding.RecordId ?? id });
         }
     }
 

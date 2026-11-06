@@ -138,6 +138,9 @@ public sealed class MapPrismCoverageRefusalTests
             Assert.Equal(prism.Space.Id, f.SpaceId);
             Assert.Equal(prism.Parent.Id, f.RelatedRecordId);
         });
+        var coverage = new List<MapDocumentFinding>();
+        MapSpaceCoverageValidator.Validate(MapOccupiedPartitionRefusalTests.View(set), new(), coverage);
+        Assert.Contains(coverage, f => f.Reason == reason && f.RecordId == prism.Id && f.RelatedRecordId == prism.Parent.Id);
         Replace(patch, prism);
         Assert.Empty(Findings(MapOccupiedPartitionRefusalTests.View(set)));
     }
@@ -188,7 +191,7 @@ public sealed class MapPrismCoverageRefusalTests
         {
             var view = MapScopedSurfaces.CompleteView(set);
             MapSpaceBoundaryCoverage.Validate(view, MapSpaceGeometry.Records(view).ToArray(), [],
-                (_, _, text) => messages.Add(text), (_, _, f) => findings.Add(f));
+                (_, _, text) => messages.Add(text), (id, _, f) => { if (id == "strip") findings.Add(f); });
         }
     }
 

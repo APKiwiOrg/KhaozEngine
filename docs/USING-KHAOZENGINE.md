@@ -12854,6 +12854,13 @@ arithmetic or narrowing overflow remains `NotRepresentable`. Capacity findings e
 source, pair, emitted face, vertex or context `Budget`, its measured `ActualCount` and inclusive `Limit`.
 Refusals expose no partial refinement. A count that overflowed its representation remains null.
 
+Effective coordinate freezing carries `Operation = "Freeze"` and `ActualNumber`, using `ValueNonfinite`
+for nonfinite input or `ValueOutsideRange` with the inclusive `MinimumNumber` and `MaximumNumber`.
+Effective frame conversion uses `FrameRadiusExceeded` with its checked local position and inclusive `Limit`,
+or `ValueNonfinite` for nonfinite local height. Marker and placement support-seat arithmetic overflow uses
+`GeometryNotRepresentable`, the caller's `MarkerId` or `PlacementId` and `SupportStatus = NotRepresentable`.
+Relations preserve the chain or aperture's original invalid or missing projection independently of its reason.
+
 Fine-patch conversion retains `MapDocumentException` and exposes `MapCellConversion.Finding` alongside
 the unchanged classification and prose. `TerrainCornerCutCreaseUnsupported` and
 `TerrainCornerCutSubdivisionOdd` distinguish the two unsupported corner-cut rules.

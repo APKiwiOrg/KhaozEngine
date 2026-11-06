@@ -67,6 +67,8 @@ public sealed record MapDocumentFinding(MapDocumentRefusal Reason, string Messag
     /// <summary>The API operation whose entry-point contract was refused.</summary>
     public string? Operation { get; init; }
 
+    internal MapResolveStatus? ResolutionStatus { get; init; }
+
     /// <summary>The foliage layer identity, after it has been read.</summary>
     public string? LayerId { get; init; }
     /// <summary>The foliage sampling policy identity checked by the guard.</summary>
@@ -295,6 +297,7 @@ public sealed record MapDocumentFinding(MapDocumentRefusal Reason, string Messag
             ReferencePath = error.ReferencePath,
             SubjectKind = error.SubjectKind,
             Operation = error.Operation,
+            ResolutionStatus = error.ResolutionStatus,
             LayerId = error.LayerId,
             PolicyId = error.PolicyId,
             ExpectedPolicyId = error.ExpectedPolicyId,

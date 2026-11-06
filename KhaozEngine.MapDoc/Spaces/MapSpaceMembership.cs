@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using KhaozEngine.MapDoc.Prefabs;
 using KhaozEngine.MapDoc.Identity;
 using KhaozEngine.MapDoc.Storage;
 using KhaozEngine.MapDoc.Surfaces;
@@ -315,7 +316,9 @@ public sealed class MapSpaceMembership
                 foreach (MapCellDemand cell in cells) _ = context.Faces(cell);
                 MapChainResolution chain = MapBoundaryGeometry.ResolveChain(source, _view,
                     key => new MapBoundarySurface(context.ValidatedPatch(key), MapSlotCellMask.Of(cells.Select(cell => cell.SlotCell))));
-                if (chain.Detail?.Contains("not representable", StringComparison.Ordinal) == true) throw new MapExactOverflowException();
+                if (chain.Finding is { Reason: MapDocumentRefusal.GeometryNotRepresentable } or
+                    { Reason: MapDocumentRefusal.ValueNonfinite or MapDocumentRefusal.ValueOutsideRange, Operation: nameof(MapResourceTransform.Freeze) })
+                    throw new MapExactOverflowException();
                 if (chain.Status != MapResolveStatus.Resolved) throw chain.Refuse(chain.Detail ?? "missing geometry: portal band", reference);
                 return MapSpaceGeometry.ChainHeight(chain.Points, xz) ?? throw new MapDocumentException(MapDocumentRefusal.GeometryVertexSequenceInvalid,
                     "invalid portal vertex sequence") { RecordId = reference.Id, Patch = reference.Anchor, FieldPath = "Vertices" };

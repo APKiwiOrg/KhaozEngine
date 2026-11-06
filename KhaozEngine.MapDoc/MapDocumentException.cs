@@ -83,6 +83,9 @@ public sealed class MapDocumentException : Exception
     /// <summary>The API operation whose entry-point contract was refused.</summary>
     public string? Operation { get; init; }
 
+    // A chain or aperture adapter's released projection is independent of its concrete refusal reason.
+    internal MapResolveStatus? ResolutionStatus { get; init; }
+
     /// <summary>The foliage, scatter or companion layer identity, when known.</summary>
     public string? LayerId { get; init; }
     /// <summary>The foliage sampling policy identity checked by the guard.</summary>
@@ -302,11 +305,13 @@ public sealed class MapDocumentException : Exception
     /// take precedence over additional source context. A null source name keeps the existing source,
     /// and existing resource, asset and resource-root identifiers take precedence over additional context.</summary>
     internal MapDocumentException WithSourceName(string? sourceName, string? message = null,
-        MapTileCoord? tile = null, string? path = null, string? resourceId = null, string? resourceRoot = null, string? assetId = null) =>
-        new(this, sourceName, message, tile, path, resourceId, resourceRoot, assetId);
+        MapTileCoord? tile = null, string? path = null, string? resourceId = null, string? resourceRoot = null, string? assetId = null,
+        MapResolveStatus? resolutionStatus = null) =>
+        new(this, sourceName, message, tile, path, resourceId, resourceRoot, assetId, resolutionStatus);
 
     MapDocumentException(MapDocumentException inner, string? sourceName, string? message,
-        MapTileCoord? tile, string? path, string? resourceId, string? resourceRoot, string? assetId) : base(message ?? $"{sourceName}: {inner.Message}", inner)
+        MapTileCoord? tile, string? path, string? resourceId, string? resourceRoot, string? assetId,
+        MapResolveStatus? resolutionStatus) : base(message ?? $"{sourceName}: {inner.Message}", inner)
     {
         Reason = inner.Reason;
         SourceName = sourceName ?? inner.SourceName;
@@ -332,6 +337,7 @@ public sealed class MapDocumentException : Exception
         ReferencePath = inner.ReferencePath;
         SubjectKind = inner.SubjectKind;
         Operation = inner.Operation;
+        ResolutionStatus = resolutionStatus ?? inner.ResolutionStatus;
         LayerId = inner.LayerId;
         PolicyId = inner.PolicyId;
         ExpectedPolicyId = inner.ExpectedPolicyId;

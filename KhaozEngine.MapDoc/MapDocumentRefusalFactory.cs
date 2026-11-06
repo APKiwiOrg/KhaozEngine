@@ -33,6 +33,7 @@ internal static class MapDocumentRefusalFactory
             ReferencePath = finding.ReferencePath,
             SubjectKind = finding.SubjectKind,
             Operation = finding.Operation,
+            ResolutionStatus = finding.ResolutionStatus,
             LayerId = finding.LayerId,
             PolicyId = finding.PolicyId,
             ExpectedPolicyId = finding.ExpectedPolicyId,

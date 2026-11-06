@@ -125,7 +125,8 @@ public static class MapResolverV2
     {
         try { return SelectHeight(id, binding, x, z, surfaces, assets, supports); }
         catch (Exception error) when (error is MapExactOverflowException or OverflowException)
-        { throw new MapDocumentException($"Placement '{id}' support status NotRepresentable: overflow."); }
+        { throw new MapDocumentException(MapDocumentRefusal.GeometryNotRepresentable, $"Placement '{id}' support status NotRepresentable: overflow.")
+            { PlacementId = id, SupportStatus = MapSupportStatus.NotRepresentable, Operation = nameof(SupportHeight) }; }
     }
 
     static float SelectHeight(string id, MapSupportBinding binding, float x, float z, IMapSurfaceSource surfaces,

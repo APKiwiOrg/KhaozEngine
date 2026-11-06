@@ -14,9 +14,9 @@ public sealed record MapChainResolution(MapResolveStatus Status, IReadOnlyList<M
 
     internal MapDocumentException Refuse(string message, MapRecordRef? reference = null,
         MapDocumentRefusal fallback = MapDocumentRefusal.SpaceChainUnresolved) =>
-        Cause is MapDocumentException { Reason: not null } refusal ? refusal.WithSourceName(null, message) :
-        Finding is { } finding ? MapDocumentRefusalFactory.FromFinding(finding, message, Cause) :
-        new(fallback, message) { RecordId = reference?.Id, Patch = reference?.Anchor };
+        Cause is MapDocumentException { Reason: not null } refusal ? refusal.WithSourceName(null, message, resolutionStatus: Status) :
+        Finding is { } finding ? MapDocumentRefusalFactory.FromFinding(finding with { ResolutionStatus = Status }, message, Cause) :
+        new(fallback, message) { RecordId = reference?.Id, Patch = reference?.Anchor, ResolutionStatus = Status };
 }
 
 /// <summary>Resolves authored and source-edge chains without substituting missing geometry.</summary>

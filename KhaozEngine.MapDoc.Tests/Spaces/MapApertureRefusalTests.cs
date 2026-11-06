@@ -17,6 +17,7 @@ public sealed class MapApertureRefusalTests
     [InlineData("repeated", MapDocumentRefusal.GeometryVertexSequenceInvalid)]
     [InlineData("open", MapDocumentRefusal.SpacePortalOpenTopInvalid)]
     [InlineData("chain", MapDocumentRefusal.SpaceChainUnresolved)]
+    [InlineData("chain-invalid", MapDocumentRefusal.SpaceChainUnresolved)]
     public void PortalGuard_ReportsTheRuleAndPortalWithoutChangingAdmission(string defect, MapDocumentRefusal reason)
     {
         var (set, portal) = Portal();
@@ -28,12 +29,15 @@ public sealed class MapApertureRefusalTests
             int owner = patch.Records.FindIndex(r => r.Id == "from");
             patch.Records[owner] = ((MapSpaceDoc)patch.Records[owner]) with { Kind = MapSpaceKind.Cave };
         }
-        else if (defect == "chain")
+        else if (defect is "chain" or "chain-invalid")
         {
             int chain = patch.Records.FindIndex(r => r.Id == "bottom");
             var original = (MapBoundaryChain)patch.Records[chain];
-            patch.Records[chain] = original with { Vertices = original.Vertices.Select(v =>
-                v with { Vertex = new("missing", v.Vertex.Address) }).ToArray() };
+            patch.Records[chain] = defect == "chain-invalid" ? original with
+            {
+                Kind = MapChainKind.SurfaceEdge, SourcePatch = patch.Key,
+                Vertices = [new(new("floor", MapLatticeAddress.Corner(0, 0)), null), new(new("floor", MapLatticeAddress.Corner(2, 0)), null)],
+            } : original with { Vertices = original.Vertices.Select(v => v with { Vertex = new("missing", v.Vertex.Address) }).ToArray() };
         }
         else if (defect == "height")
         {
@@ -54,7 +58,9 @@ public sealed class MapApertureRefusalTests
         patch.Records[patch.Records.FindIndex(r => r.Id == portal.Id)] = portal;
         MapDocumentException error = Assert.Throws<MapDocumentException>(() => Compile(set, portal));
         Assert.Equal(reason, error.Reason);
-        Assert.Equal(defect == "chain" ? "bottom" : "portal", error.RecordId);
+        Assert.Equal(defect.StartsWith("chain", StringComparison.Ordinal) ? "bottom" : "portal", error.RecordId);
+        Assert.Equal(defect == "chain" ? MapRelationStatus.MissingGeometry : MapRelationStatus.Invalid,
+            MapSpaceRelations.RefusalStatus(error));
         if (defect == "height") Assert.Equal(0, error.Index);
         var (repaired, accepted) = Portal();
         Assert.Equal(MapPortalKind.WallPortal, Compile(repaired, accepted).Kind);

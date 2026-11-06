@@ -122,10 +122,15 @@ internal sealed class MapBoundFaceContext
             }
             if (!freshCell && !freshOpeningCell) continue;
             try { count = checked(count + faces); }
-            catch (OverflowException) { refusal = "context faces"; continue; }
+            catch (OverflowException)
+            { preparation.RecordContextCapacity("MaxContextFaces", null, maxFaces, demand.Patch); refusal = "context faces"; continue; }
             if (work is not null) work.ContextFacesCounted = count;
             if (count > maxFaces || entry.PhysicalFaces > MapSurfaceCompiler.MaxFacesPerPatch)
-            { refusal = "context faces"; continue; }
+            {
+                preparation.RecordContextCapacity(count > maxFaces ? "MaxContextFaces" : "MaxFacesPerPatch",
+                    count > maxFaces ? count : entry.PhysicalFaces, count > maxFaces ? maxFaces : MapSurfaceCompiler.MaxFacesPerPatch, demand.Patch);
+                refusal = "context faces"; continue;
+            }
             entry.Add(demand.SlotCell);
             if (freshOpeningCell)
             {

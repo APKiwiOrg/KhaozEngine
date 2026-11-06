@@ -52,8 +52,15 @@ public sealed partial class MapPrismCoverageTests
         Assert.Equal(MapRefinementStatus.Complete, refined.Status);
         Assert.Equal(expected.Length, refined.Faces.Count);
         Assert.Equal(MapEffectiveGeometry.AreaWide(ring), refined.LowerArea);
-        Assert.Equal(MapRefinementStatus.NotRepresentable, refined.Narrow().Status);
-        Assert.Equal(MapRefinementStatus.NotRepresentable, partition.Narrow().Status);
+        var boundedRefinement = refined.Narrow();
+        Assert.Equal(MapRefinementStatus.NotRepresentable, boundedRefinement.Status);
+        Assert.Equal(MapDocumentRefusal.GeometryNotRepresentable, boundedRefinement.Finding!.Reason);
+        Assert.Empty(boundedRefinement.Faces);
+        Assert.Empty(boundedRefinement.Vertices);
+        var boundedPartition = partition.Narrow();
+        Assert.Equal(MapRefinementStatus.NotRepresentable, boundedPartition.Status);
+        Assert.Equal(MapDocumentRefusal.GeometryNotRepresentable, boundedPartition.Finding!.Reason);
+        Assert.Empty(boundedPartition.Pieces);
     }
 
     [Theory]

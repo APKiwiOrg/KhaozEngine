@@ -271,6 +271,14 @@ recipe refusal keeps `InvalidRecipe`. A caught patch refusal retains its origina
 Legacy height refusals identify the first failed `h00`, `h10`, `h01` or `h11` corner, its `ActualInteger`
 and the inclusive signed-short range. Internal bound plans carry the same finding without changing status
 or detail, including source-face and context-patch budgets with their measured counts and inclusive limits.
+`MapBoundFaceSet.Finding` and `MapCellRefinement.Finding` retain those findings through bound preparation,
+wide refinement and bounded conversion. A caught degenerate-triangle refusal still projects to `Invalid`,
+even though its concrete reason is `GeometryNotRepresentable`. Exact arithmetic and narrowing overflow
+retain their existing `NotRepresentable` projection. No refusal returns partial faces or vertices.
+Refinement capacity findings name `MaxSourceFacesPerBound`, `MaxPairChecks`, `MaxRefinementFaces`,
+`MaxRefinementVertices`, `MaxContextPatches`, `MaxContextFaces` or `MaxFacesPerPatch` in `Budget`, with
+`ActualCount` and the inclusive `Limit`. Source-face findings identify the failed `lower` or `upper` input.
+An unrepresentable measured count leaves `ActualCount` null rather than substituting a truncated value.
 Declared seam and strip vertex sequences stay strict. Refinement never waives a matching subdivision.
 
 **Broad-phase budgets.** `MapPartialPaintCompiler` charges `MapRefinementLimits` pair checks per broad-phase

@@ -217,6 +217,9 @@ internal sealed class MapBoundPreparation
         return validated;
     }
     MapSurfaceRef? Surface(string? id) => _view.Surfaces.FirstOrDefault(s => s.Id == id);
+    internal void RecordContextCapacity(string budget, long? count, long limit, MapPatchKey patch) =>
+        Finding ??= new(MapDocumentRefusal.WorkCapacityExceeded, "context faces")
+        { Budget = budget, ActualCount = count, Limit = limit, SurfaceId = patch.SurfaceId, Patch = patch };
     static Plan ClassificationFailure(MapLowerCellClassification classification) => Failure(
         classification.Class == MapLowerCellClass.InvalidRecipe ? MapRefinementStatus.Invalid : MapRefinementStatus.MissingGeometry,
         classification.Detail, classification.Finding);

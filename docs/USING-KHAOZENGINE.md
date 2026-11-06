@@ -12846,6 +12846,12 @@ and aggregate adapters retain their existing behavior until all their producing 
 `Detail`. Missing and wrong-kind reads stay `Unavailable`, and legacy recipe refusals stay `InvalidRecipe`.
 An out-of-range legacy height identifies its first failed corner, `ActualInteger` and the inclusive
 `MinimumInteger` and `MaximumInteger`. Caught patch failures retain their concrete reason and identifiers.
+`MapBoundFaceSet.Finding` and `MapCellRefinement.Finding` carry the same rule through bound, wide and
+bounded refinement. Their existing status values and `Detail` text remain independent of the reason.
+For example a caught degenerate triangle remains `Invalid` with `GeometryNotRepresentable`, while an
+arithmetic or narrowing overflow remains `NotRepresentable`. Capacity findings expose the actual
+source, pair, emitted face, vertex or context `Budget`, its measured `ActualCount` and inclusive `Limit`.
+Refusals expose no partial refinement. A count that overflowed its representation remains null.
 
 Fine-patch conversion retains `MapDocumentException` and exposes `MapCellConversion.Finding` alongside
 the unchanged classification and prose. `TerrainCornerCutCreaseUnsupported` and

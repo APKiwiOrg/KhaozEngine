@@ -206,19 +206,28 @@ internal static class MapEffectiveGeometry
     {
         try
         {
-            if (lower.Count > limits.MaxSourceFacesPerBound || upper?.Count > limits.MaxSourceFacesPerBound)
-                return MapWideCellRefinement.Failure(MapRefinementStatus.CapacityExceeded, "source faces");
+            int lowerCount = lower.Count;
+            int? upperCount = null;
+            if (lowerCount > limits.MaxSourceFacesPerBound || (upperCount = upper?.Count) > limits.MaxSourceFacesPerBound)
+                return MapWideCellRefinement.Failure(MapRefinementStatus.CapacityExceeded, "source faces",
+                    new(MapDocumentRefusal.WorkCapacityExceeded, "source faces")
+                    { Budget = "MaxSourceFacesPerBound", ActualCount = lowerCount > limits.MaxSourceFacesPerBound ? lowerCount : upperCount,
+                        Limit = limits.MaxSourceFacesPerBound, FieldPath = lowerCount > limits.MaxSourceFacesPerBound ? "lower" : "upper" });
             var clip = boundary.ToList();
-            if (AreaWide(clip).Sign == 0) return MapWideCellRefinement.Failure(MapRefinementStatus.Invalid, "cell");
+            if (AreaWide(clip).Sign == 0) return MapWideCellRefinement.Failure(MapRefinementStatus.Invalid, "cell",
+                new(MapDocumentRefusal.BoundsInvalid, "cell") { FieldPath = "boundary" });
             if (AreaWide(clip).Sign < 0) clip.Reverse();
-            budget?.Charge((long)lower.Count + (upper?.Count ?? 0));
+            budget?.Charge((long)lowerCount + (upperCount ?? 0));
             var bottom = ClipFaces(lower); var top = upper is null ? new List<WideFace>() : ClipFaces(upper);
             long pairs = upper is null ? 0 : checked((long)bottom.Count * top.Count);
             budget?.Charge(pairs);
             if (work is not null) work.ChargedPairs = pairs;
-            if (pairs > limits.MaxPairChecks) return MapWideCellRefinement.Failure(MapRefinementStatus.CapacityExceeded, "pair checks");
+            if (pairs > limits.MaxPairChecks) return MapWideCellRefinement.Failure(MapRefinementStatus.CapacityExceeded, "pair checks",
+                new(MapDocumentRefusal.WorkCapacityExceeded, "pair checks")
+                { Budget = "MaxPairChecks", ActualCount = pairs, Limit = limits.MaxPairChecks });
             var vertices = new SortedSet<MapWideXz>();
             var faces = new List<MapWideRefinementFace>();
+            MapDocumentFinding? capacity = null;
             MapWideRational? separation = null;
             foreach (var lo in bottom)
                 if (upper is null) { if (!Emit(lo, null, lo.Polygon)) return Capacity(); }
@@ -253,13 +262,23 @@ internal static class MapEffectiveGeometry
             }
             bool Emit(WideFace lo, WideFace? hi, IReadOnlyList<MapWideXz> polygon)
             {
-                if (faces.Count >= limits.MaxRefinementFaces) return false;
+                if (faces.Count >= limits.MaxRefinementFaces)
+                {
+                    capacity = new(MapDocumentRefusal.WorkCapacityExceeded, "refinement faces or vertices")
+                    { Budget = "MaxRefinementFaces", ActualCount = (long)faces.Count + 1, Limit = limits.MaxRefinementFaces };
+                    return false;
+                }
                 var points = new List<MapWideXz>();
                 MapWideRational? faceSeparation = null;
                 foreach (var wide in polygon)
                 {
                     var point = wide;
-                    if (!vertices.Contains(point) && vertices.Count >= limits.MaxRefinementVertices) return false;
+                    if (!vertices.Contains(point) && vertices.Count >= limits.MaxRefinementVertices)
+                    {
+                        capacity = new(MapDocumentRefusal.WorkCapacityExceeded, "refinement faces or vertices")
+                        { Budget = "MaxRefinementVertices", ActualCount = (long)vertices.Count + 1, Limit = limits.MaxRefinementVertices };
+                        return false;
+                    }
                     vertices.Add(point); points.Add(point);
                     if (hi is not null)
                     {
@@ -271,11 +290,13 @@ internal static class MapEffectiveGeometry
                 faces.Add(new(lo.Face.Key, hi?.Face.Key, MapWideRefinementGeometry.Normalize(points), faceSeparation));
                 return true;
             }
-            MapWideCellRefinement Capacity() => MapWideCellRefinement.Failure(MapRefinementStatus.CapacityExceeded, "refinement faces or vertices");
+            MapWideCellRefinement Capacity() => MapWideCellRefinement.Failure(MapRefinementStatus.CapacityExceeded, "refinement faces or vertices", capacity);
         }
         catch (Exception error) when (error is MapExactOverflowException or OverflowException)
-        { return MapWideCellRefinement.Failure(MapRefinementStatus.NotRepresentable, "overflow"); }
-        catch (MapDocumentException error) { return MapWideCellRefinement.Failure(MapRefinementStatus.Invalid, error.Message); }
+        { return MapWideCellRefinement.Failure(MapRefinementStatus.NotRepresentable, "overflow",
+            new(MapDocumentRefusal.GeometryNotRepresentable, "overflow") { Operation = nameof(RefinePolygonWide) }); }
+        catch (MapDocumentException error)
+        { return MapWideCellRefinement.Failure(MapRefinementStatus.Invalid, error.Message, MapDocumentFinding.FromException(error)); }
     }
     sealed record WideFace(MapBoundFace Face, IReadOnlyList<MapWideXz> Polygon);
     static MapWideRational Sum(IEnumerable<WideFace> faces) => faces.Aggregate(default(MapWideRational), (sum, f) => sum.Add(AreaWide(f.Polygon)));

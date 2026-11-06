@@ -113,7 +113,9 @@ public sealed class MapTileResidency : IDisposable, IPlacementSource
                 nameof(config))
             { FieldPath = nameof(config.UnloadRadius), ActualInteger = config.UnloadRadius, MinimumInteger = (long)config.OuterRadius + 1 };
         if (config.MaxLoadsPerUpdate <= 0)
-            throw new ArgumentException($"MaxLoadsPerUpdate ({config.MaxLoadsPerUpdate}) must be positive.", nameof(config));
+            throw new MapResidencyArgumentException(MapDocumentRefusal.ValueOutsideRange,
+                $"MaxLoadsPerUpdate ({config.MaxLoadsPerUpdate}) must be positive.", nameof(config))
+            { FieldPath = nameof(config.MaxLoadsPerUpdate), ActualInteger = config.MaxLoadsPerUpdate, MinimumInteger = 1 };
         _config = config;
         _dispatcher = dispatcher ?? new TaskChunkBuildDispatcher();
         _field = field;
@@ -481,8 +483,13 @@ public sealed class MapTileResidency : IDisposable, IPlacementSource
                 continue;   // cancelled or superseded: drop the parsed tile
             _inFlight.Remove(c.Coord);
             if (c.Error is not null)
-                throw new MapDocumentException(
-                    $"reading document tile ({c.Coord.X}, {c.Coord.Z}) failed: {c.Error.Message}", c.Error);
+            {
+                string message = $"reading document tile ({c.Coord.X}, {c.Coord.Z}) failed: {c.Error.Message}";
+                throw c.Error is MapDocumentException { Reason: not null } known
+                    ? known.WithSourceName(null, message, tile: c.Coord)
+                    : new MapDocumentException(MapDocumentRefusal.DocumentTileReadFailed, message, c.Error)
+                    { Tile = c.Coord, SourceName = _source.Tiles.SourceDirectory };
+            }
             _ready[c.Coord] = c.Content!;
         }
     }

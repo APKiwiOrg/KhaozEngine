@@ -28,14 +28,16 @@ internal static partial class MapTiledFile
     {
         string path = Path.Combine(directory, ManifestName);
         if (!File.Exists(path))
-            throw new MapDocumentException(
-                $"{directory}: not a tiled map document (no {ManifestName}). A directory without a manifest has no form.");
+            throw new MapDocumentException(MapDocumentRefusal.DocumentManifestMissing,
+                $"{directory}: not a tiled map document (no {ManifestName}). A directory without a manifest has no form.")
+            { SourceName = directory, Path = path, FileName = ManifestName };
 
         byte[] manifestBytes;
         try { manifestBytes = File.ReadAllBytes(path); }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
-            throw new MapDocumentException($"{path}: cannot read map manifest. {ex.Message}", ex);
+            throw new MapDocumentException(MapDocumentRefusal.DocumentManifestReadFailed, $"{path}: cannot read map manifest. {ex.Message}", ex)
+            { SourceName = path, Path = path };
         }
         string json = DecodeManifest(manifestBytes);
 
@@ -95,7 +97,9 @@ internal static partial class MapTiledFile
         try { doc.TerrainOverrides = new MapTerrainOverrides(sculptCellSize); }
         catch (ArgumentOutOfRangeException ex)
         {
-            throw new MapDocumentException($"{path}: sculptCellSize {sculptCellSize} is not positive and finite.", ex);
+            throw new MapDocumentException(float.IsFinite(sculptCellSize) ? MapDocumentRefusal.ValueOutsideRange : MapDocumentRefusal.ValueNonfinite,
+                $"{path}: sculptCellSize {sculptCellSize} is not positive and finite.", ex)
+            { SourceName = path, Path = path, FieldPath = "$.sculptCellSize", ActualNumber = sculptCellSize };
         }
 
         IReadOnlyList<MapDocumentFinding> findings = MapDocumentValidator.ValidateFindings(doc, options.Registry);
@@ -133,9 +137,11 @@ internal static partial class MapTiledFile
         // verbatim while recomputing the loaded ones, so it cannot upgrade what it cannot read. A whole load
         // is fine, and the next full save upgrades the document.
         if (window is not null && index.SchemeVersion != MapDocumentHash.SchemeVersion)
-            throw new MapDocumentException(
+            throw new MapDocumentException(MapDocumentRefusal.DocumentHashSchemeUnsupported,
                 $"{directory}: manifest hashes were written under hash scheme {index.SchemeVersion}, this engine composes scheme " +
-                $"{MapDocumentHash.SchemeVersion}. Load the whole document and save it to upgrade before windowing.");
+                $"{MapDocumentHash.SchemeVersion}. Load the whole document and save it to upgrade before windowing.")
+            { SourceName = directory, Path = Path.Combine(directory, ManifestName), ActualVersion = index.SchemeVersion,
+                ExpectedVersion = MapDocumentHash.SchemeVersion, FieldPath = "$.schemeVersion" };
 
         MapTerrainOverrides overrides = doc.TerrainOverrides!;
         float sculptCellSize = overrides.CellSize;
@@ -304,7 +310,8 @@ internal static partial class MapTiledFile
         foreach (JsonNode? node in array)
         {
             if (node is not JsonObject o)
-                throw new MapDocumentException($"{where}: every tiles[] entry must be a JSON object.");
+                throw new MapDocumentException(MapDocumentRefusal.SchemaObjectRequired, $"{where}: every tiles[] entry must be a JSON object.")
+                { SourceName = where, Path = where, Index = entries.Count, FieldPath = $"$.tiles[{entries.Count}]" };
             int? x = ReadInt(o, "x"), z = ReadInt(o, "z");
             string? hash = o["hash"]?.GetValue<string>();
             if (x is null || z is null || string.IsNullOrEmpty(hash))

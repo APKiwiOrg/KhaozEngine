@@ -102,11 +102,16 @@ namespace KhaozEngine.Tests.MapDoc
                 Assert.Equal(1, MapDocumentFile.LoadTiled(directory, OriginWindow).Tiles!.LoadedCount);
                 SetSchemeVersion(directory, MapDocumentHash.SchemeVersion + 7);
 
-                Assert.Throws<MapDocumentException>(() => MapDocumentFile.LoadTiled(directory, OriginWindow));
+                var error = Assert.Throws<MapDocumentException>(() => MapDocumentFile.LoadTiled(directory, OriginWindow));
+                Assert.Equal(MapDocumentRefusal.DocumentHashSchemeUnsupported, error.Reason);
+                Assert.Equal(MapDocumentHash.SchemeVersion + 7, error.ActualVersion);
+                Assert.Equal(MapDocumentHash.SchemeVersion, error.ExpectedVersion);
 
                 // A WHOLE load at a mismatched scheme is fine: it can upgrade what it can read.
                 MapDocument whole = MapDocumentFile.LoadTiled(directory);
                 Assert.Equal(MapDocumentHash.SchemeVersion + 7, whole.Tiles!.SchemeVersion);
+                SetSchemeVersion(directory, MapDocumentHash.SchemeVersion);
+                Assert.Equal(1, MapDocumentFile.LoadTiled(directory, OriginWindow).Tiles!.LoadedCount);
             });
         }
 

@@ -165,6 +165,10 @@ public sealed class MapDocumentExceptionTests
     static object Sample(PropertyInfo property, int index)
     {
         Type type = Nullable.GetUnderlyingType(property.PropertyType) ?? property.PropertyType;
+        if (property.Name == nameof(MapDocumentException.ExpectedVersion)) return 1;
+        if (property.Name == nameof(MapDocumentException.ExpectedNumber)) return 512d;
+        if (property.Name == nameof(MapDocumentException.ExpectedDocumentForm)) return MapDocumentForm.Tiled;
+        if (property.Name == nameof(MapDocumentException.FileName)) return "map.json";
         if (property.Name == nameof(MapDocumentException.TargetVersion)) return 4;
         if (property.Name == nameof(MapDocumentException.PreviousTile)) return new MapTileCoord(-8, index);
         if (property.Name == nameof(MapDocumentException.ExpectedResourceIds)) return new[] { "expected-root", "second-root" };

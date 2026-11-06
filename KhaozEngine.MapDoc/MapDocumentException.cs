@@ -37,6 +37,15 @@ public sealed class MapDocumentException : Exception
     /// by consumer code outside the engine.</summary>
     public MapDocumentRefusal? Reason { get; }
 
+    /// <summary>The version required by an operation that accepts one version.</summary>
+    public int? ExpectedVersion { get; init; }
+    /// <summary>The numeric value required by an equality guard.</summary>
+    public double? ExpectedNumber { get; init; }
+    /// <summary>The document storage form required by the refused operation.</summary>
+    public MapDocumentForm? ExpectedDocumentForm { get; init; }
+    /// <summary>The required file name, when the storage contract names one.</summary>
+    public string? FileName { get; init; }
+
     /// <summary>The source file or content name, when known.</summary>
     public string? SourceName { get; init; }
     /// <summary>The source file path, when known separately from the source name.</summary>
@@ -334,6 +343,10 @@ public sealed class MapDocumentException : Exception
         MapResolveStatus? resolutionStatus, MapPatchStatus? patchStatus, string? expectedHash, MapPatchKey? patch) : base(message ?? $"{sourceName}: {inner.Message}", inner)
     {
         Reason = inner.Reason;
+        ExpectedVersion = inner.ExpectedVersion;
+        ExpectedNumber = inner.ExpectedNumber;
+        ExpectedDocumentForm = inner.ExpectedDocumentForm;
+        FileName = inner.FileName;
         SourceName = sourceName ?? inner.SourceName;
         Path = inner.Path ?? path;
         ResourceId = inner.ResourceId ?? resourceId;

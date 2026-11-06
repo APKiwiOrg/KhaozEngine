@@ -40,6 +40,23 @@ public enum MapDocumentRefusal
     /// <summary>Refuses a document tile file that cannot be read.</summary>
     DocumentTileReadFailed,
 
+    /// <summary>Refuses overwriting a tiled document without its loaded tile index.</summary>
+    DocumentLoadedIndexRequired,
+    /// <summary>Refuses opening a tiled directory without its required manifest.</summary>
+    DocumentManifestMissing,
+    /// <summary>Refuses a manifest that exists but cannot be read.</summary>
+    DocumentManifestReadFailed,
+    /// <summary>Refuses saving a partial window after its manifest generation changed or became unreadable.</summary>
+    DocumentStaleWindow,
+    /// <summary>Refuses a tiled save whose target is a monolithic file.</summary>
+    DocumentStorageFormConflict,
+    /// <summary>Refuses saving content moved into a tile the partial window did not load.</summary>
+    DocumentUnloadedDestinationTile,
+    /// <summary>Refuses saving a partial window outside its source directory.</summary>
+    DocumentWindowTargetMismatch,
+    /// <summary>Refuses saving a partial window whose tile size differs from its loaded index.</summary>
+    DocumentWindowTileSizeMismatch,
+
     // Schema and scalar admission.
     /// <summary>Refuses malformed JSON, typed payload encoding or tile sculpt data.</summary>
     SchemaMalformed,

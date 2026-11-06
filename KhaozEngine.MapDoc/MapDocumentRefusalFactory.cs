@@ -10,6 +10,10 @@ internal static class MapDocumentRefusalFactory
         IReadOnlyList<MapDocumentFinding>? findings = null) =>
         new(finding.Reason, message, inner)
         {
+            ExpectedVersion = finding.ExpectedVersion,
+            ExpectedNumber = finding.ExpectedNumber,
+            ExpectedDocumentForm = finding.ExpectedDocumentForm,
+            FileName = finding.FileName,
             SourceName = finding.SourceName,
             Path = finding.Path,
             ResourceId = finding.ResourceId,

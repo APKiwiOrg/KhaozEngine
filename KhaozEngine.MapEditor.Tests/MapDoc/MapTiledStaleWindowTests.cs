@@ -21,12 +21,15 @@ public sealed class MapTiledStaleWindowTests
         byte[] newer = File.ReadAllBytes(manifest);
         var newerFiles = TiledDocFixture.TileFiles(dir);
         P(window, "p-a").Yaw = 2.75f;
-        Assert.Contains("stale window", SaveRefusal(window, dir));
+        var saved = AssertFixtures.Files(dir);
+        SaveRefusal(window, dir);
+        Assert.Equal(saved, AssertFixtures.Files(dir));
         Assert.Equal(newer, File.ReadAllBytes(manifest));
         Assert.Equal(newerFiles, TiledDocFixture.TileFiles(dir));
         Assert.Empty(MapDocumentFile.VerifyTiled(dir));
         MapDocument reloaded = MapDocumentFile.LoadTiled(dir);
         Assert.Equal(("barn", 0.5f), (P(reloaded, "p-c").Kind, P(reloaded, "p-a").Yaw));
+        MapDocumentFile.SaveTiled(MapDocumentFile.LoadTiled(dir, OriginWindow), dir);
     });
 
     [Fact]
@@ -36,8 +39,11 @@ public sealed class MapTiledStaleWindowTests
         ReplaceUnloadedTile(dir);
         string temp = Path.Combine(dir, "map.json.tmp");
         File.WriteAllText(temp, "left by a crashed writer");
-        Assert.Contains("stale window", SaveRefusal(window, dir));
+        var saved = AssertFixtures.Files(dir);
+        SaveRefusal(window, dir);
+        Assert.Equal(saved, AssertFixtures.Files(dir));
         Assert.Equal("left by a crashed writer", File.ReadAllText(temp));
+        MapDocumentFile.SaveTiled(MapDocumentFile.LoadTiled(dir, OriginWindow), dir);
     });
 
     [Theory]
@@ -47,14 +53,19 @@ public sealed class MapTiledStaleWindowTests
     {
         MapDocument window = SaveAndOpenWindow(dir);
         string manifest = Path.Combine(dir, "map.json");
+        byte[] original = File.ReadAllBytes(manifest);
         if (fault == "garbage") File.WriteAllText(manifest, "{");
         else File.Delete(manifest);
         var files = TiledDocFixture.TileFiles(dir);
         P(window, "p-a").Yaw = 2.75f;
-        Assert.Contains("stale window", SaveRefusal(window, dir));
+        var saved = AssertFixtures.Files(dir);
+        SaveRefusal(window, dir);
+        Assert.Equal(saved, AssertFixtures.Files(dir));
         Assert.Equal(files, TiledDocFixture.TileFiles(dir));
         Assert.Equal(fault == "garbage", File.Exists(manifest));
         if (fault == "garbage") Assert.Equal("{", File.ReadAllText(manifest));
+        File.WriteAllBytes(manifest, original);
+        MapDocumentFile.SaveTiled(window, dir);
     });
 
     [Fact]
@@ -129,6 +140,13 @@ public sealed class MapTiledStaleWindowTests
         MapDocumentFile.SaveTiled(whole, dir);
     }
 
-    static string SaveRefusal(MapDocument doc, string dir) =>
-        Assert.Throws<MapDocumentException>(() => MapDocumentFile.SaveTiled(doc, dir)).Message;
+    static void SaveRefusal(MapDocument doc, string dir)
+    {
+        var error = Assert.Throws<MapDocumentException>(() => MapDocumentFile.SaveTiled(doc, dir));
+        Assert.Equal(MapDocumentRefusal.DocumentStaleWindow, error.Reason);
+        string path = Path.Combine(dir, "map.json");
+        Assert.Equal(path, error.Path);
+        Assert.Equal(doc.Tiles!.ManifestSha256, error.ExpectedHash);
+        Assert.Equal(File.Exists(path) ? Sha256(path) : null, error.ActualHash);
+    }
 }

@@ -1680,8 +1680,9 @@ expand it by one cell, and load intersecting patches through covering directory 
 and patches. `HasUnloadedTiles` retains the tile-only meaning.
 
 A window records the SHA-256 of the manifest it loaded. `SaveTiled` refuses every partial save, including a
-surfaces-only window, with `stale window` when the current manifest cannot be read or has changed since the
-window was loaded, so a window never overwrites another writer's commit
+surfaces-only window, with `DocumentStaleWindow` when the current manifest cannot be read or has changed since the
+window was loaded. It carries manifest `Path`, pinned `ExpectedHash` and `ActualHash` only when the bytes were read,
+so a window never overwrites another writer's commit
 ([#1310](https://github.com/APKiwiOrg/KhaozEngine/issues/1310)). The save lock alone does not give that
 guarantee.
 
@@ -1721,7 +1722,8 @@ Equal bounds and zero allowances are valid. Record copies are readmitted when us
 Surface storage directory references select the first failed object, member-count or required-value rule,
 carrying `FieldPath` and the row `Index`. Count mismatches expose `ActualCount` and `ExpectedCount`.
 An unknown storage surface uses `ReferenceMissing` with `SurfaceId` and the directory `ExpectedHash`.
-Overlapping directory covers use `StorageDirectoryPagesOverlap` with that surface and both indices.
+Overlapping directory covers use `StorageDirectoryPagesOverlap` with that surface and the original
+`surfaceStorage` array positions in `Index` and `OtherIndex`, preserved through sorting and grouping.
 A patch key repeated across index pages uses `IdentityDuplicate` with `Patch` and the page `ExpectedHash`.
 Storage names are admitted as lowercase SHA-256 before any file is addressed. Malformed names use
 `DigestMalformed`, `FieldPath` `sha256` and the submitted `ActualHash`. Empty storage files or buffers
@@ -1738,8 +1740,23 @@ its expected digest. Overflow during surface storage preparation uses `GeometryN
 `SaveAs`), because the data-loss path is a windowed document reaching a whole-document writer: that write
 silently drops every unloaded tile and looks like a successful save. The guard is stated on the DOCUMENT
 (`MapTileIndex.IsPartial`), not on one writer, so a save path added later inherits it. `SaveTiled` also
-throws when a bucketed item lands in a tile the index marks occupied but not loaded, naming the item and
-the target tile, rather than replacing that tile's real content with just the moved item.
+uses `DocumentUnloadedDestinationTile` when a bucketed item lands in a tile the index marks occupied but not
+loaded. It carries the target `Tile`, the item's `SubjectKind` and known `EntityId`, or its `SculptTile` coordinates.
+The refusal happens before tile writes. Widen the window before saving the moved content.
+
+Tiled save admission uses `DocumentStorageFormConflict` for a file at the target `Path`, carrying actual
+`DocumentForm` and `ExpectedDocumentForm`. `DocumentLoadedIndexRequired` refuses overwriting an existing
+manifest without its tile index. A partial save outside its source uses `DocumentWindowTargetMismatch`
+with target `Path` and source `SourceName`. A changed tile size uses `DocumentWindowTileSizeMismatch`,
+`FieldPath`, `ActualNumber` and `ExpectedNumber`. Each refused save keeps existing file bytes unchanged.
+
+Manifest admission uses `DocumentManifestMissing`, `Path` and `FileName`, or `DocumentManifestReadFailed`
+with source context and the original read cause. Non-object tile entries use `SchemaObjectRequired` with
+array `Index` and `FieldPath`. Invalid sculpt cell sizes distinguish `ValueNonfinite` from `ValueOutsideRange`
+with the submitted `ActualNumber`. Asynchronous residency reads preserve a typed tile refusal's reason and
+identifiers. A read failure without a typed cause uses `DocumentTileReadFailed` and the requested `Tile`.
+A nonpositive residency apply budget uses `MapResidencyArgumentException`, `ValueOutsideRange`,
+`ParamName = "config"`, `FieldPath = "MaxLoadsPerUpdate"`, `ActualInteger` and inclusive `MinimumInteger` one.
 
 ### World identity (`MapDocumentHash`)
 
@@ -1770,8 +1787,8 @@ sole authority on which tiles exist and what each is called.
 
 `MapDocumentHash.SchemeVersion` is folded into every composed digest and is recorded in the manifest.
 Loading a whole document at a mismatched scheme is fine and the next save upgrades it. A WINDOWED load
-refuses, because a partial save carries stored hashes through verbatim and cannot upgrade what it cannot
-read.
+uses `DocumentHashSchemeUnsupported`, `ActualVersion` and `ExpectedVersion`, because a partial save
+carries stored hashes through verbatim and cannot upgrade what it cannot read.
 
 ### On-demand tile reads (`MapDocumentSource`)
 
@@ -1957,7 +1974,7 @@ their joined diagnostic text.
 | Reason | Refused rule | Identifiers when known |
 | --- | --- | --- |
 | `WaterBodiesPreventLegacyMode` | Switching to legacy global water while bounded bodies remain | `FieldPath`, `ActualCount` |
-| `DocumentHashSchemeUnsupported` | Whole authored identity under an unsupported pinned tile hash scheme | `FieldPath`, `ActualVersion`, owned `SupportedVersions` |
+| `DocumentHashSchemeUnsupported` | Whole authored identity or window loading under an unsupported pinned tile hash scheme | `FieldPath`, `ActualVersion`, owned `SupportedVersions` for identity or `ExpectedVersion` for window loading, source context |
 | `StoragePatchKeyMismatch` | A surface dictionary entry whose key differs from its payload key | dictionary `ExpectedPatch`, payload `Patch` |
 | `StorageSaveSnapshotChanged` | A prepared surface payload changed before its write | `Patch`, prepared `ExpectedHash`, encoded `ActualHash` |
 | `StorageEmbeddingChanged` | An embedded payload whose encoded length changed after measurement | `ExpectedByteCount`, `ActualByteCount` |
@@ -2127,6 +2144,14 @@ their joined diagnostic text.
 | `ResolverContractMismatch` | The document resolver, support recipe or caller's resolver options cannot serve the requested operation | `PayloadVersion`, `ResolverVersion`, `OptionsResolverVersion`, `ExpectedResolverVersion`, `SupportRecipe`, `ExpectedSupportRecipe`, `FieldPath`, `SubjectKind` |
 | `SupportLegacyHeightRequired` | Resolver-1 resolution without an analytic support callback | `ResolverVersion`, `FieldPath` `legacySupportHeight` |
 | `CompleteDocumentRequired` | Complete prefab expansion, authored-support adoption, whole authored identity or native validation over a partial document | `DocumentId`, `Operation` |
+| `DocumentLoadedIndexRequired` | Overwriting an existing tiled document without its tile index | target `Path` |
+| `DocumentManifestMissing` | A tiled directory without its required manifest | `SourceName`, `Path`, `FileName` |
+| `DocumentManifestReadFailed` | A manifest that exists but cannot be read | `SourceName`, `Path`, original cause |
+| `DocumentStaleWindow` | A partial window whose manifest changed or became unreadable | `Path`, pinned `ExpectedHash`, `ActualHash` when readable |
+| `DocumentStorageFormConflict` | A file at a requested tiled-save path | `Path`, `DocumentForm`, `ExpectedDocumentForm` |
+| `DocumentUnloadedDestinationTile` | Content moved into an indexed tile that the window did not load | `Tile`, `EntityId`, `SubjectKind`, `SculptTile` when known |
+| `DocumentWindowTargetMismatch` | A partial save outside its source directory | target `Path`, source `SourceName` |
+| `DocumentWindowTileSizeMismatch` | A partial window whose tile size changed | `Path`, `FieldPath`, `ActualNumber`, `ExpectedNumber` |
 | `DocumentTileReadFailed` | A tile file that cannot be read | `Tile`, `SourceName`, `Path`, pinned `ExpectedHash`, original cause |
 | `DocumentTileNotIndexed` | A requested tile absent from the occupied index | `Tile`, `SourceName` |
 | `DocumentReadFailed` | An unreadable document source | `SourceName`, `Path`, original cause |

@@ -12412,6 +12412,17 @@ Authored-support adoption over a partial document uses the same reason with
 `Operation = "ConvertToAuthoredSupport"`. Unrepresentable binary32 placement presentation uses
 `GeometryNotRepresentable`, `PlacementId`, the failed component's `FieldPath`, binary64 `ActualNumber` and
 `Operation = "ResolveEffectivePlacements"`.
+Tiled persistence distinguishes `DocumentManifestMissing` (`Path`, `FileName`) from
+`DocumentManifestReadFailed` (`SourceName`, `Path`, original cause). A window under a different hash scheme
+uses `DocumentHashSchemeUnsupported`, stored `ActualVersion` and `ExpectedVersion`. Save refusals distinguish
+`DocumentStorageFormConflict` (target `Path`, actual `DocumentForm`, `ExpectedDocumentForm`),
+`DocumentLoadedIndexRequired` (target `Path`), `DocumentWindowTargetMismatch` (target `Path`, source `SourceName`)
+and `DocumentWindowTileSizeMismatch` (`FieldPath`, `ActualNumber`, `ExpectedNumber`). Content moved into an
+unloaded tile uses `DocumentUnloadedDestinationTile`, destination `Tile`, `SubjectKind` and known `EntityId`
+or `SculptTile`. These refusals leave existing bytes unchanged. Asynchronous residency reads preserve a typed
+cause's reason and identifiers. A nonpositive apply budget uses `MapResidencyArgumentException`,
+`ValueOutsideRange`, `ParamName = "config"`, `FieldPath = "MaxLoadsPerUpdate"`, `ActualInteger` and inclusive
+`MinimumInteger` one.
 Sculpt shape guards use `MapTerrainOverridesJsonException`, derived from `JsonException`, with concrete
 `Reason`, relative `FieldPath`, tile array `Index` and `SculptTile` only once both coordinates were read.
 Delta length failures retain observed `ActualCount` and exact `ExpectedCount`. Document wrappers preserve them.
@@ -12680,8 +12691,9 @@ unloaded surface patches. `HasUnloadedTiles` retains the tile-only meaning. `Sav
 directory carries cold content through unchanged, subject to its reference and partial-edit guards.
 Whole-document writers refuse partial views, including surface-only windows, rather than silently dropping
 cold content. A window remembers the manifest it loaded. A windowed `SaveTiled`, including a surfaces-only
-window, refuses with `stale window` when another writer has changed the manifest since the window was loaded,
-or when the current manifest cannot be read. Reload the window and reapply the edit.
+window, refuses with `DocumentStaleWindow` when another writer changed the manifest after the window loaded
+or the current manifest cannot be read. It carries manifest `Path`, pinned `ExpectedHash` and `ActualHash`
+when readable. Reload the window and reapply the edit.
 
 Document read failures use `DocumentReadFailed` with source name, path and original cause. A future format
 version uses `DocumentVersionUnsupported` with the actual and supported versions. A missing migration uses

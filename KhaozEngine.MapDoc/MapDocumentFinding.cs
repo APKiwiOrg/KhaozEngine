@@ -22,6 +22,15 @@ public sealed record MapDocumentFinding(MapDocumentRefusal Reason, string Messag
     IReadOnlyList<string>? _sourceIds;
     IReadOnlyList<string>? _markerIds;
 
+    /// <summary>The version required by an operation that accepts one version.</summary>
+    public int? ExpectedVersion { get; init; }
+    /// <summary>The numeric value required by an equality guard.</summary>
+    public double? ExpectedNumber { get; init; }
+    /// <summary>The document storage form required by the refused operation.</summary>
+    public MapDocumentForm? ExpectedDocumentForm { get; init; }
+    /// <summary>The required file name, when the storage contract names one.</summary>
+    public string? FileName { get; init; }
+
     /// <summary>The source file or content name, when known.</summary>
     public string? SourceName { get; init; }
     /// <summary>The source file path, when known separately from the source name.</summary>
@@ -291,6 +300,10 @@ public sealed record MapDocumentFinding(MapDocumentRefusal Reason, string Messag
     internal static MapDocumentFinding? FromException(MapDocumentException error) => error.Reason is { } reason
         ? new(reason, error.Message)
         {
+            ExpectedVersion = error.ExpectedVersion,
+            ExpectedNumber = error.ExpectedNumber,
+            ExpectedDocumentForm = error.ExpectedDocumentForm,
+            FileName = error.FileName,
             SourceName = error.SourceName,
             Path = error.Path,
             ResourceId = error.ResourceId,

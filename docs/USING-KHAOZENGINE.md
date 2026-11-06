@@ -12370,6 +12370,10 @@ Preparation keeps `MapDocumentException` and distinguishes missing references, u
 opening patch ownership and opening cell ownership. Occupied-bound refusals retain `SpaceId`, boundary
 `OwnerId` and `FieldPath` `Lower` or `Upper`. The prism record budget reports `WorkCapacityExceeded`
 with `Budget` `MaxRecordReads`, `ActualCount` and inclusive `Limit`.
+Prism ancestry distinguishes non-Room references, mismatched parents, parent cycles and missing
+parent footprints, retaining the prism `RecordId`, `SpaceId` and `RelatedRecordId`.
+Depth, face and vertex work refusals identify their own budget and measured count. Existing query
+statuses and developer-facing messages keep their released behavior.
 
 Doors remain AuthoredOpen. `MapRoofPolicy` returns separate colour, shadow, camera-boom and sky-picking flags.
 Auto concealment uses occupied rooms and explicit links/groups, and leaves unlinked shelters visible. Hidden

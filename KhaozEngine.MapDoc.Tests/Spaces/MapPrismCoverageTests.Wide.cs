@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using KhaozEngine.MapDoc;
 using KhaozEngine.MapDoc.Spaces;
 using KhaozEngine.MapDoc.Support;
 using KhaozEngine.MapDoc.Surfaces;
@@ -163,6 +164,10 @@ public sealed partial class MapPrismCoverageTests
         Assert.Equal(MapRefinementStatus.MissingGeometry, result.Status);
         Assert.Empty(result.Pieces);
         Assert.False(result.Witness.Complete);
+        Assert.Equal(MapDocumentRefusal.AcquisitionIncomplete, result.Finding!.Reason);
+        Assert.Equal(view.Status, result.Finding.AcquireStatus);
+        Assert.Equal(MapRefinementStatus.Complete, MapOccupiedPartitions.BuildWide(r.CompleteView(),
+            new(new(0, 1), new(-4, 1)), new(new(4, 1), new(0, 1)), new(), true).Status);
     }
 
     // Independent canonical ordering of the exact polygons used in equality assertions.

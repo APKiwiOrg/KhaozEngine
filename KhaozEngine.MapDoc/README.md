@@ -1547,6 +1547,8 @@ An array beyond its own count cap uses that field name as `Budget`, with its `Ac
 | `LegacyExteriorOpenTopRequired` | Legacy exterior coverage without an open-top upper bound | `RecordId`, `SpaceId`, `SurfaceId`, `Patch`, `FieldPath` |
 | `SurfaceLegacyRecipeRequired` | Legacy coverage or effective sampling through an incompatible lower surface recipe | `RecordId`, `SpaceId`, `SurfaceId`, `Patch`, `FieldPath` |
 | `SpacePrismParentMismatch` | A prism parent differing from its Room space's parent | `RecordId`, `SpaceId`, `RelatedRecordId`, `FieldPath` |
+| `SpacePrismParentCycle` | A cycle in point or wide prism parent traversal | `RecordId`, `SpaceId`, `RelatedRecordId` |
+| `SpacePrismParentFootprintMissing` | A prism's required parent without occupied geometry at the query point | `RecordId`, `SpaceId`, `RelatedRecordId` |
 | `SpaceRoomOccupancyInvalid` | A Room with zero or multiple prism domains, or occupied through a lattice footprint | `SpaceId`, `RecordId`, `FieldPath`, `ActualCount`, `ExpectedCount` |
 | `SpaceParentCycle` | A cycle in space ancestry | `SpaceId` |
 | `GeometryVertexSequenceInvalid` | A portal interval with fewer than two vertices, seam pairs not covering both complete edge vertex sets, or strip vertices without ordered XZ correspondence | `RecordId`, `Index`, `FieldPath`, `SurfaceId`, `ActualCount`, `ExpectedCount`, `MinimumInteger` when known |
@@ -1899,6 +1901,15 @@ slot indices (`ValueOutsideRange` with limits 0 through 4095), cells outside the
 Missing occupied lower or upper geometry uses `PatchUnavailable` with `SpaceId`, boundary `OwnerId`
 and `FieldPath` `Lower` or `Upper`. Prism record-count refusal uses `WorkCapacityExceeded` with
 `Budget` `MaxRecordReads`, the measured `ActualCount` and inclusive `Limit`.
+Prism parent traversal distinguishes a non-Room space (`ReferenceKindMismatch`, with `EnumType` and
+`ActualInteger`), a differing parent (`SpacePrismParentMismatch`), a parent cycle
+(`SpacePrismParentCycle`) and missing parent occupied geometry (`SpacePrismParentFootprintMissing`).
+Depth and geometry work refusals retain the actual `Budget`, `ActualCount` and inclusive `Limit`.
+These budgets are `MaxRecordDepth`, `MaxRecordReads`, `MaxInspectedFaces`, `MaxRefinementFaces` and
+`MaxRefinementVertices`. An incomplete occupied acquisition carries `AcquisitionIncomplete` and
+`AcquireStatus`. Wide partition status results retain an available original typed `Finding` through
+narrowing. Their status and prose remain unchanged. Adapters whose producers are not yet fully typed
+retain their existing prose projection.
 
 Map documents are dev-authored content, not runtime state: `MapDocumentFile.Load`/`Save` throw
 `MapDocumentException` on a read error, invalid JSON, a missing or out-of-range `formatVersion`, a

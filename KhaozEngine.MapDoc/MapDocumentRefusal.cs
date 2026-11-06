@@ -290,6 +290,10 @@ public enum MapDocumentRefusal
     SpaceOpeningCellsInvalid,
     /// <summary>Refuses an opening-cell demand not owned by its referenced opening.</summary>
     SpaceOpeningOwnershipInvalid,
+    /// <summary>Refuses cyclic prism parent traversal.</summary>
+    SpacePrismParentCycle,
+    /// <summary>Refuses a prism whose required parent has no occupied footprint at the query point.</summary>
+    SpacePrismParentFootprintMissing,
 
     // Foliage JSON converter.
     /// <summary>Refuses a foliage section larger than its UTF-8 byte budget.</summary>

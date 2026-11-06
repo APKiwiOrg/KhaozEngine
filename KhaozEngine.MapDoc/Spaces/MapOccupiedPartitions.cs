@@ -84,18 +84,27 @@ internal static class MapOccupiedPartitions
         void Add(MapPrismDomain prism, int depth)
         {
             if (done.Contains(prism.Id)) return;
-            if (depth > view.Scope.Limits.MaxRecordDepth) throw new MapDocumentException("capacity exceeded: prism parent depth");
-            if (!visiting.Add(prism.Id)) throw new MapDocumentException("invalid prism parent cycle");
+            if (depth > view.Scope.Limits.MaxRecordDepth) throw new MapDocumentException(MapDocumentRefusal.WorkCapacityExceeded, "capacity exceeded: prism parent depth")
+            { Budget = "MaxRecordDepth", ActualCount = depth, Limit = view.Scope.Limits.MaxRecordDepth, RecordId = prism.Id, SpaceId = prism.Space.Id };
+            if (!visiting.Add(prism.Id)) throw new MapDocumentException(MapDocumentRefusal.SpacePrismParentCycle, "invalid prism parent cycle")
+            { RecordId = prism.Id, SpaceId = prism.Space.Id, RelatedRecordId = prism.Parent.Id };
             MapPrismCoverage.RequireStorey(view, prism);
             var space = MapSpaceGeometry.Record<MapSpaceDoc>(view, prism.Space);
             string parentOwner = MapSpaceGeometry.Owner(view, MapSpaceGeometry.Record<MapSpaceDoc>(view, prism.Parent));
-            if (space.Kind != MapSpaceKind.Room || space.Parent != prism.Parent) throw new MapDocumentException("missing geometry: prism parent mismatch");
+            if (space.Kind != MapSpaceKind.Room || space.Parent != prism.Parent) throw new MapDocumentException(
+                space.Kind != MapSpaceKind.Room ? MapDocumentRefusal.ReferenceKindMismatch : MapDocumentRefusal.SpacePrismParentMismatch,
+                "missing geometry: prism parent mismatch")
+            { RecordId = prism.Id, SpaceId = space.Id, RelatedRecordId = prism.Parent.Id,
+                FieldPath = space.Kind != MapSpaceKind.Room ? "Kind" : "Parent",
+                EnumType = space.Kind != MapSpaceKind.Room ? typeof(MapSpaceKind) : null,
+                ActualInteger = space.Kind != MapSpaceKind.Room ? (int)space.Kind : null };
             foreach (var parent in prisms.Where(p => MapSpaceGeometry.Owner(view, MapSpaceGeometry.Record<MapSpaceDoc>(view, p.Space)) == parentOwner)) Add(parent, depth + 1);
             var polygon = MapPrismGeometry.Compile(view, prism);
             if (polygon.Contains(xz))
             {
                 var parents = raw.Where(p => p.Owner == parentOwner).ToArray();
-                if (parents.Length == 0) throw new MapDocumentException("missing geometry: prism parent footprint");
+                if (parents.Length == 0) throw new MapDocumentException(MapDocumentRefusal.SpacePrismParentFootprintMissing, "missing geometry: prism parent footprint")
+                { RecordId = prism.Id, SpaceId = prism.Space.Id, RelatedRecordId = prism.Parent.Id };
                 var (low, high) = MapPrismGeometry.Heights(view, prism);
                 foreach (var parent in parents)
                 {
@@ -126,7 +135,7 @@ internal static class MapOccupiedPartitions
     internal static bool Ancestor(MapScopedSurfaces view, string ancestor, string child)
     {
         var space = MapSpaceGeometry.Records(view).OfType<MapSpaceDoc>().FirstOrDefault(s => s.Id == child)
-            ?? throw new MapDocumentException("missing geometry: occupied space");
+            ?? throw new MapDocumentException(MapDocumentRefusal.ReferenceMissing, "missing geometry: occupied space") { SpaceId = child };
         return MapSpaceGeometry.Ancestors(view, space).Skip(1).Any(s => MapSpaceGeometry.Owner(view, s) == ancestor);
     }
 
@@ -179,18 +188,24 @@ internal static class MapOccupiedPartitions
             var status = error.Message.Contains("capacity exceeded", StringComparison.Ordinal) || error.Message.Contains("domain work exceeds", StringComparison.Ordinal)
                 ? MapRefinementStatus.CapacityExceeded : MapCommonRefinement.NotRepresentable(error) || error.Message.Contains("not representable", StringComparison.OrdinalIgnoreCase)
                     ? MapRefinementStatus.NotRepresentable : MapRefinementStatus.MissingGeometry;
-            return new(status, [], error.Message, view.ReadWitness);
+            return new(status, [], error.Message, view.ReadWitness)
+            { Finding = error is MapDocumentException refusal ? MapDocumentFinding.FromException(refusal) : null };
         }
     }
 
     static IReadOnlyList<MapOccupiedPiece> BuildCore(MapScopedSurfaces view, MapExactXz min, MapExactXz max,
         MapRefinementLimits limits, bool carve, MapWaterWorkMeter? meter)
     {
-        if (!view.Witness.Complete) throw new MapDocumentException("missing geometry: occupied partition acquisition");
+        if (!view.Witness.Complete) throw new MapDocumentException(MapDocumentRefusal.AcquisitionIncomplete, "missing geometry: occupied partition acquisition")
+        { AcquireStatus = view.Status };
         var records = MapSpaceGeometry.Records(view).ToArray();
         var domains = records.OfType<MapPrismDomain>().ToArray();
-        if (domains.Length > view.Scope.Limits.MaxRecordReads || domains.Sum(MapPrismGeometry.Cost) > limits.MaxRefinementVertices)
-            throw new MapDocumentException("capacity exceeded: prism records or vertices");
+        long domainVertices = 0;
+        if (domains.Length > view.Scope.Limits.MaxRecordReads || (domainVertices = domains.Sum(MapPrismGeometry.Cost)) > limits.MaxRefinementVertices)
+            throw new MapDocumentException(MapDocumentRefusal.WorkCapacityExceeded, "capacity exceeded: prism records or vertices")
+            { Budget = domains.Length > view.Scope.Limits.MaxRecordReads ? "MaxRecordReads" : "MaxRefinementVertices",
+                ActualCount = domains.Length > view.Scope.Limits.MaxRecordReads ? domains.Length : domainVertices,
+                Limit = domains.Length > view.Scope.Limits.MaxRecordReads ? view.Scope.Limits.MaxRecordReads : limits.MaxRefinementVertices };
         var footprints = records.OfType<MapSpaceFootprint>().ToArray();
         var prepared = MapCommonRefinement.PrepareFootprints(view, footprints, limits, null, meter);
         if (prepared.Context is not { } context) throw new MapDocumentException("capacity exceeded: " + prepared.Refusal);
@@ -216,7 +231,9 @@ internal static class MapOccupiedPartitions
                 var refined = MapCommonRefinement.RefineWide(lower.Faces, upper?.Faces, polygon, limits, budget: meter is null ? null : work);
                 if (refined.Status != MapRefinementStatus.Complete) throw Refusal(refined.Status, refined.Detail);
                 if (!refined.LowerArea.Equals(refined.CellArea) || upper is not null && !refined.UpperArea!.Value.Equals(refined.CellArea))
-                    throw new MapDocumentException("missing geometry: canonical occupied bounds");
+                    throw new MapDocumentException(MapDocumentRefusal.PatchUnavailable, "missing geometry: canonical occupied bounds")
+                    { RecordId = footprint.Id, SpaceId = footprint.Space.Id, Patch = footprint.Lattice,
+                        FieldPath = !refined.LowerArea.Equals(refined.CellArea) ? "Lower" : "Upper" };
                 foreach (var face in refined.Faces)
                 {
                     var lo = Boundary(view, footprint.Lower.SurfaceId ?? footprint.Lower.Opening!.Id, "canonical-floor");
@@ -303,7 +320,10 @@ internal static class MapOccupiedPartitions
             piece = piece with { Polygon = MapWideRefinementGeometry.Normalize(piece.Polygon) };
             long count = vertices.GetValueOrDefault(target) + piece.Polygon.Count;
             if (target.Count >= limits.MaxRefinementFaces || count > limits.MaxRefinementVertices)
-                throw new MapDocumentException("capacity exceeded: occupied pieces");
+                throw new MapDocumentException(MapDocumentRefusal.WorkCapacityExceeded, "capacity exceeded: occupied pieces")
+                { Budget = target.Count >= limits.MaxRefinementFaces ? "MaxRefinementFaces" : "MaxRefinementVertices",
+                    ActualCount = target.Count >= limits.MaxRefinementFaces ? target.Count + 1L : count,
+                    Limit = target.Count >= limits.MaxRefinementFaces ? limits.MaxRefinementFaces : limits.MaxRefinementVertices, SpaceId = piece.SpaceId };
             vertices[target] = count;
             target.Add(piece);
             if (ReferenceEquals(target, raw)) parentIndexes.Remove(piece.SpaceId);
@@ -319,12 +339,20 @@ internal static class MapOccupiedPartitions
         void Room(MapPrismDomain prism, int depth)
         {
             if (done.Contains(prism.Id)) return;
-            if (depth > view.Scope.Limits.MaxRecordDepth) throw new MapDocumentException("capacity exceeded: prism depth");
-            if (!visiting.Add(prism.Id)) throw new MapDocumentException("invalid prism parent cycle");
+            if (depth > view.Scope.Limits.MaxRecordDepth) throw new MapDocumentException(MapDocumentRefusal.WorkCapacityExceeded, "capacity exceeded: prism depth")
+            { Budget = "MaxRecordDepth", ActualCount = depth, Limit = view.Scope.Limits.MaxRecordDepth, RecordId = prism.Id, SpaceId = prism.Space.Id };
+            if (!visiting.Add(prism.Id)) throw new MapDocumentException(MapDocumentRefusal.SpacePrismParentCycle, "invalid prism parent cycle")
+            { RecordId = prism.Id, SpaceId = prism.Space.Id, RelatedRecordId = prism.Parent.Id };
             MapPrismCoverage.RequireStorey(view, prism);
             var space = MapSpaceGeometry.Record<MapSpaceDoc>(view, prism.Space);
             string parentOwner = MapSpaceGeometry.Owner(view, MapSpaceGeometry.Record<MapSpaceDoc>(view, prism.Parent));
-            if (space.Kind != MapSpaceKind.Room || space.Parent != prism.Parent) throw new MapDocumentException("missing geometry: prism parent mismatch");
+            if (space.Kind != MapSpaceKind.Room || space.Parent != prism.Parent) throw new MapDocumentException(
+                space.Kind != MapSpaceKind.Room ? MapDocumentRefusal.ReferenceKindMismatch : MapDocumentRefusal.SpacePrismParentMismatch,
+                "missing geometry: prism parent mismatch")
+            { RecordId = prism.Id, SpaceId = space.Id, RelatedRecordId = prism.Parent.Id,
+                FieldPath = space.Kind != MapSpaceKind.Room ? "Kind" : "Parent",
+                EnumType = space.Kind != MapSpaceKind.Room ? typeof(MapSpaceKind) : null,
+                ActualInteger = space.Kind != MapSpaceKind.Room ? (int)space.Kind : null };
             foreach (var parent in prisms.Where(p => MapSpaceGeometry.Owner(view, MapSpaceGeometry.Record<MapSpaceDoc>(view, p.Space)) == parentOwner)) Room(parent, depth + 1);
             var domain = MapPrismGeometry.Compile(view, prism);
             var (lower, upper) = MapPrismGeometry.Heights(view, prism);
@@ -378,8 +406,9 @@ internal static class MapOccupiedPartitions
             MapWideRefinementGeometry.Normalize(polygon), lowerFaces, upperFaces, lowerPlane, upperPlane)
         { Path = path };
     internal static bool Positive(IReadOnlyList<MapWideXz> polygon) => polygon.Count >= 3 && MapEffectiveGeometry.AreaWide(polygon).Sign != 0;
+    // Parent partition algorithms select an upper height only after establishing a finite top.
     internal static MapWideRational Height(MapOccupiedPiece piece, MapWideXz point, bool upper) => upper ? piece.Top(point)
-        ?? throw new MapDocumentException("open top has no plane") : piece.Bottom(point);
+        ?? throw new InvalidOperationException("open top has no plane") : piece.Bottom(point);
     internal static List<MapWideXz> Clip(IReadOnlyList<MapWideXz> polygon, Func<MapWideXz, MapWideRational> distance)
     {
         var result = new List<MapWideXz>();

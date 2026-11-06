@@ -16,7 +16,9 @@ public static class MapPrismGeometry
         ArgumentNullException.ThrowIfNull(view);
         ArgumentNullException.ThrowIfNull(domain);
         RequirePayload(domain);
-        if (Cost(domain) > view.Scope.Limits.MaxInspectedFaces) throw new MapDocumentException("capacity exceeded: prism vertices");
+        long cost = Cost(domain);
+        if (cost > view.Scope.Limits.MaxInspectedFaces) throw new MapDocumentException(MapDocumentRefusal.WorkCapacityExceeded, "capacity exceeded: prism vertices")
+        { Budget = "MaxInspectedFaces", ActualCount = cost, Limit = view.Scope.Limits.MaxInspectedFaces, RecordId = domain.Id, SpaceId = domain.Space.Id };
         var local = MapWaterDomain.Compile(domain.Footprint);
         var kernel = view.EffectiveContext?.Transform(MapPrefabChildKind.Record, domain.Id);
         if (kernel is null) return local;

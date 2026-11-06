@@ -11,9 +11,12 @@ namespace KhaozEngine.MapDoc.Spaces;
 internal sealed record MapOccupiedPartitionResult(MapRefinementStatus Status, IReadOnlyList<MapOccupiedPiece> Pieces,
     string? Detail, MapReadWitness Witness)
 {
+    /// <summary>The original typed refusal, when its producer has supplied one.</summary>
+    internal MapDocumentFinding? Finding { get; init; }
+
     internal MapBoundedOccupiedPartition Narrow()
     {
-        if (Status != MapRefinementStatus.Complete) return new(Status, [], Detail, Witness);
+        if (Status != MapRefinementStatus.Complete) return new(Status, [], Detail, Witness) { Finding = Finding };
         try
         {
             var pieces = Pieces.Select(p =>
@@ -41,4 +44,7 @@ internal sealed record MapBoundedOccupiedPiece(string SpaceId, string FragmentId
     IReadOnlyList<string> Path, MapRecordRef? AuthoredParent);
 
 internal sealed record MapBoundedOccupiedPartition(MapRefinementStatus Status, IReadOnlyList<MapBoundedOccupiedPiece> Pieces,
-    string? Detail, MapReadWitness Witness);
+    string? Detail, MapReadWitness Witness)
+{
+    internal MapDocumentFinding? Finding { get; init; }
+}

@@ -254,7 +254,7 @@ public enum MapDocumentRefusal
     SurfaceSupportRoleInvalid,
     /// <summary>Refuses a wall strip whose lower chain is above its upper chain.</summary>
     SurfaceWallHeightInverted,
-    /// <summary>Refuses paint compilation without complete captured geometry or the required paint role.</summary>
+    /// <summary>Refuses an operation without the captured geometry or residency needed to prove its required view.</summary>
     AcquisitionIncomplete,
     /// <summary>Refuses a paint override incompatible with its declared physical target.</summary>
     SurfacePaintTargetInvalid,
@@ -380,6 +380,13 @@ public enum MapDocumentRefusal
     WaterNoSpaceFootprint,
     /// <summary>Refuses covered spaces without a connection below the water surface.</summary>
     WaterSpacesDisconnected,
+
+    /// <summary>Refuses a body with no covered authored spaces.</summary>
+    WaterNoCoveredSpace,
+    /// <summary>Refuses positive-area overlap between pieces of one water domain.</summary>
+    WaterDomainPiecesOverlap,
+    /// <summary>Refuses positive-area overlap between water bodies covering the same space.</summary>
+    WaterBodiesOverlap,
 
     // Water domain admission.
     /// <summary>Refuses a water domain with no rectangle or ring pieces.</summary>

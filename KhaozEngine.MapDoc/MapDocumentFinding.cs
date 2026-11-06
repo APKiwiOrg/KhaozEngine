@@ -114,7 +114,7 @@ public sealed record MapDocumentFinding(MapDocumentRefusal Reason, string Messag
     public long? MaximumInteger { get; init; }
     /// <summary>The refused identity, when known.</summary>
     public string? EntityId { get; init; }
-    /// <summary>The static owner whose world position was checked, such as a placement or terrain chunk.</summary>
+    /// <summary>The owner of the refused operation or geometry, such as a placement, terrain chunk or water body.</summary>
     public string? OwnerId { get; init; }
     /// <summary>The checked X coordinate in metres, absolute world or local to the refused frame operation.</summary>
     public double? PositionX { get; init; }
@@ -236,8 +236,8 @@ public sealed record MapDocumentFinding(MapDocumentRefusal Reason, string Messag
         init => _resourceIds = value is null ? null : Array.AsReadOnly<string>([.. value]);
     }
 
-    /// <summary>The required legacy spawn source IDs, in Spawn then PlayerSpawn order, as an owned read-only
-    /// snapshot. Equal source IDs in different lists remain separate entries.</summary>
+    /// <summary>The source identities associated with the refusal, as an owned read-only snapshot in producer
+    /// order. Legacy spawn sources retain Spawn then PlayerSpawn order, including equal IDs in different lists.</summary>
     public IReadOnlyList<string>? SourceIds
     {
         get => _sourceIds;

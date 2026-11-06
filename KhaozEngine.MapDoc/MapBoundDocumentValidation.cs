@@ -87,11 +87,19 @@ public static class MapBoundDocumentValidation
     {
         ArgumentNullException.ThrowIfNull(assets);
         if (water is null) return;
-        var errors = new List<string>();
+        var findings = new List<MapDocumentFinding>();
         foreach (MapWaterBodyDoc body in water.Bodies.OrderBy(b => b.Id, StringComparer.Ordinal))
-            if (!assets.TryGetResource(body.RenderMaterial, out MapResolvedResource? resource) || resource!.Kind != MapResourceKind.Material)
-                errors.Add($"water body '{body.Id}': render material '{body.RenderMaterial}' is not a Material resource");
-        Require(errors);
+        {
+            bool found = assets.TryGetResource(body.RenderMaterial, out MapResolvedResource? resource);
+            MapResourceKind? kind = found ? resource!.Kind : null;
+            if (!found || kind != MapResourceKind.Material)
+                findings.Add(new(!found ? MapDocumentRefusal.ReferenceMissing : MapDocumentRefusal.ReferenceKindMismatch,
+                    $"water body '{body.Id}': render material '{body.RenderMaterial}' is not a Material resource")
+                { EntityId = body.Id, ResourceId = body.RenderMaterial, ExpectedResourceKind = MapResourceKind.Material,
+                    ActualResourceKind = kind });
+        }
+        if (findings.Count != 0) throw MapDocumentRefusalFactory.FromFinding(findings[0],
+            string.Join("\n", findings.Select(f => f.Message)), findings: findings);
     }
 
     static void Require(IReadOnlyList<string> errors)

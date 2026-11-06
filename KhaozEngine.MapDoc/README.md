@@ -1608,7 +1608,7 @@ another type (`ReferenceKindMismatch`), retaining `RecordId`, `Patch`, `PatchSta
 `ExpectedRecordType`. The latter also carries `RecordType`.
 `MapWaterContainmentReport.Findings` is an owned read-only snapshot of known typed refusals in report
 order. It carries the original reason and identifiers through caught failures and adds the water body
-as `OwnerId`. Surface-level arithmetic refusals retain body `EntityId`, `FieldPath` and `ActualNumber`.
+as `OwnerId` when that identifier is unset. Surface-level arithmetic refusals retain body `EntityId`, `FieldPath` and `ActualNumber`.
 Alias traversal retains `SpaceAliasCycle` with `SpaceId`, `RecordId` and `Patch`.
 Water medium and body findings retain `EntityId` and `FieldPath`. Unsupported medium kinds also carry
 `EnumType` and `ActualInteger`. Wade speed and surface level distinguish `ValueNonfinite` from
@@ -1621,6 +1621,17 @@ Untyped upstream
 failures still appear in `Errors`. Compiler, containment and query status classification keeps its
 existing prose predicates until every upstream producer supplies a typed finding.
 
+The water edit adapter forwards its first document-level water finding and retains every finding in
+`MapDocumentException.Findings`. Domain and cover fields use their actual failing path and stored
+index. Frame failures reuse the concrete lattice reason with a `Domain.Frame` path prefix. A finite
+corner beyond the world limit carries `ValueOutsideRange` with `PositionX`, `PositionZ` and the
+numeric limits. Arithmetic overflow instead carries `GeometryNotRepresentable` and `Address`.
+Nested geometry and work-budget findings retain their reason and measured identifiers. Material
+closure reuses `ReferenceMissing` for absent resources and `ReferenceKindMismatch` for wrong kinds,
+retaining body `EntityId`, `ResourceId`, `ExpectedResourceKind` and the available `ActualResourceKind`.
+Checks keep the full body-id order on both identity paths and carry all findings without changing
+their joined diagnostic text.
+
 | Reason | Refused rule | Identifiers when known |
 | --- | --- | --- |
 | `WaterBodiesPreventLegacyMode` | Switching to legacy global water while bounded bodies remain | `FieldPath`, `ActualCount` |
@@ -1629,6 +1640,9 @@ existing prose predicates until every upstream producer supplies a typed finding
 | `WaterCoversAlias` | Covering a space alias instead of its owner | body `EntityId`, alias `RecordId`, owner `SpaceId`, `Patch` |
 | `WaterNoSpaceFootprint` | A domain meeting no covered footprint with positive area | body `EntityId`, covered `SourceIds` |
 | `WaterSpacesDisconnected` | Covered spaces without a connection strictly below the surface | body `EntityId`, covered `SourceIds` |
+| `WaterNoCoveredSpace` | A body with an empty cover list | body `EntityId`, `FieldPath`, `ActualCount` |
+| `WaterDomainPiecesOverlap` | Positive overlap between two pieces of one domain | body `EntityId`, `FieldPath`, `Index`, `OtherIndex` in rects-then-rings order |
+| `WaterBodiesOverlap` | Positive overlap between bodies covering the same space | body `SourceIds`, `SpaceId` |
 | `WaterDomainEmpty` | A domain with no rectangle or ring pieces | `FieldPath`, `ActualCount`, effective body `EntityId` |
 | `WaterDomainZeroArea` | A domain piece whose vertices are collinear | `FieldPath`, `SubjectKind`, `Index`, effective body `EntityId` |
 | `WaterDomainSelfIntersects` | A ring with intersecting edges or a fold back | `FieldPath`, `SubjectKind`, `Index`, effective body `EntityId` |
@@ -1704,7 +1718,7 @@ existing prose predicates until every upstream producer supplies a typed finding
 | `SurfaceSeamEdgeInvalid` | A collapsed or diagonal seam source edge | `RecordId`, `Patch`, `SurfaceId`, `FieldPath` |
 | `SurfaceSupportRoleInvalid` | A support resource surface outside the native support-floor policy | `ResourceId`, `SurfaceId`, `Index`, `FieldPath`, `EnumType`, `ActualInteger` |
 | `SurfaceWallHeightInverted` | A wall strip lower vertex above its matching upper vertex | `RecordId`, `Index` |
-| `AcquisitionIncomplete` | Partial paint without complete captured facts or the required paint role | `SurfaceId`, `AcquireStatus`, `FieldPath` |
+| `AcquisitionIncomplete` | An operation whose captured geometry or residency does not prove its required view | `SurfaceId`, `AcquireStatus`, `FieldPath`, `Patch`, `PatchStatus`, `SubjectKind` |
 | `SurfacePaintTargetInvalid` | A paint-only physical target or a whole-face override with incompatible role or declared target | `SurfaceId`, `OtherSurfaceId`, `FieldPath`, `EnumType`, `ActualInteger`, `ActualText` when known |
 | `SurfacePaintPriorityMisplaced` | Nonzero priority on a non-paint surface | `SurfaceId`, `FieldPath`, `ActualInteger` |
 | `SurfacePaintPriorityConflict` | Equal-priority overlapping paint with different materials | `SurfaceId`, `OtherSurfaceId`, priority in `ActualInteger` |
@@ -1771,7 +1785,7 @@ existing prose predicates until every upstream producer supplies a typed finding
 | `PrefabWorldCoordinateLimitExceeded` | A static world position outside the inclusive axis limit of 1,000,000 metres | `OwnerId`, binary64 `PositionX`, `PositionY`, `PositionZ`, `Limit` in metres |
 | `AssetStoragePathReserved` | A resource path owned by the selected map storage writer | `ResourceId`, normalized `Path`, `StoragePath`, `DocumentForm` |
 | `AssetTypedPayloadOpaque` | An opaque resource supplied to a typed light or support consumer | `ResourceId`, `ExpectedSchema`, `SubjectKind` |
-| `ReferenceKindMismatch` | A referenced resource or topology record of a different kind than required | `AssetId`, `ResourceId`, `ExpectedResourceKind`, `ActualResourceKind`, `RecordId`, `RelatedRecordId`, `Patch`, `PatchStatus`, `SurfaceId`, `RecordType`, `ExpectedRecordType`, `SpaceId`, `FieldPath`, `EnumType`, `ActualInteger` |
+| `ReferenceKindMismatch` | A referenced resource or topology record of a different kind than required | `EntityId`, `AssetId`, `ResourceId`, `ExpectedResourceKind`, `ActualResourceKind`, `RecordId`, `RelatedRecordId`, `Patch`, `PatchStatus`, `SurfaceId`, `RecordType`, `ExpectedRecordType`, `SpaceId`, `FieldPath`, `EnumType`, `ActualInteger` |
 | `NumericIdHighWaterExceeded` | A placement, prefab binding or retired transfer above the reserved mark | `EntityId`, `SubjectKind`, `PlacementId`, `FieldPath`, `NumericId`, `HighWaterMark` |
 | `ResolverContractMismatch` | The document resolver, support recipe or caller's resolver options cannot serve the requested operation | `PayloadVersion`, `ResolverVersion`, `OptionsResolverVersion`, `ExpectedResolverVersion`, `SupportRecipe`, `ExpectedSupportRecipe`, `FieldPath`, `SubjectKind` |
 | `SupportLegacyHeightRequired` | Resolver-1 resolution without an analytic support callback | `ResolverVersion`, `FieldPath` `legacySupportHeight` |

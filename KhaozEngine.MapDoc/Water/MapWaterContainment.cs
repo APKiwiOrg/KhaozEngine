@@ -100,7 +100,7 @@ public static class MapWaterContainment
         if (unverified is null) return true;
         string detail = $"water body '{body.Id}': unverified ({unverified})";
         errors.Add(detail);
-        if (unverifiedFinding is not null) findings.Add(unverifiedFinding with { Message = detail, OwnerId = body.Id });
+        if (unverifiedFinding is not null) findings.Add(unverifiedFinding with { Message = detail, OwnerId = unverifiedFinding.OwnerId ?? body.Id });
         return false;
     }
 
@@ -222,7 +222,7 @@ public static class MapWaterContainment
     static void Forward(MapDocumentException error, string bodyId, string message, List<MapDocumentFinding> findings)
     {
         if (MapDocumentFinding.FromException(error) is { } finding)
-            findings.Add(finding with { Message = message, OwnerId = bodyId });
+            findings.Add(finding with { Message = message, OwnerId = finding.OwnerId ?? bodyId });
     }
 
     /// <summary>True when the domain shares positive area with a footprint rectangle of a covered space. A prepared body

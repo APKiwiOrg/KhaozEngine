@@ -92,13 +92,14 @@ public static class MapWaterEdits
         // Upserts can carry caller-owned nested collections. Detach them before validation or returning the set.
         after = after?.Clone();
         var errors = new List<string>();
+        var findings = new List<MapDocumentFinding>();
         MapWaterValidation.Validate(new MapDocument
         {
             ResolverIdentity = document.ResolverIdentity,
             SupportRecipe = document.SupportRecipe,
             Water = after,
-        }, errors);
-        if (errors.Count != 0) throw new MapDocumentException(errors[0]);
+        }, errors, new MapWaterWorkBudget(), findings);
+        if (errors.Count != 0) throw MapDocumentRefusalFactory.FromFinding(findings[0], errors[0], findings: findings);
         MapNativeEditEffects effects = Describe(document.Water, after, edit);
         MapNativeWriteSet writes = MapNativeWriteSet.PlacementsOnly with { Placements = false, Water = true };
         return new(after, writes, effects);

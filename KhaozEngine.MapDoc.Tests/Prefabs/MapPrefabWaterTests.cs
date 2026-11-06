@@ -343,7 +343,9 @@ public class MapPrefabWaterTests
     {
         var placement = new MapWaterPlacement(new(10.25f, 5, -3.125f), 0.371f, 0.8f);
         var domain = PrefabFixtures.Domain(0, 0, 4, 4);
+        var rects = domain.Rects.ToArray();
         Assert.NotEmpty(MapWaterDomain.Compile(domain, placement).Pieces);
+        var valid = placement;
         placement = fault switch
         {
             "scale" => placement with { Scale = 0 },
@@ -351,7 +353,12 @@ public class MapPrefabWaterTests
             _ => placement with { Position = new(10.25f, float.NaN, -3.125f) },
         };
         var error = Assert.Throws<MapDocumentException>(() => MapWaterDomain.Compile(domain, placement));
-        Assert.Equal("water domain: placement must be finite with a positive scale.", error.Message);
+        Assert.Equal(fault == "scale" ? MapDocumentRefusal.ValueOutsideRange : MapDocumentRefusal.ValueNonfinite, error.Reason);
+        Assert.Equal(fault == "scale" ? "Placement.Scale" : fault == "yaw" ? "Placement.YawRadians" : "Placement.Y", error.FieldPath);
+        if (fault == "scale") Assert.Equal(0d, error.ActualNumber);
+        else Assert.True(double.IsNaN(error.ActualNumber!.Value));
+        Assert.Equal(rects, domain.Rects);
+        Assert.NotEmpty(MapWaterDomain.Compile(domain, valid).Pieces);
     }
 
     [Fact]

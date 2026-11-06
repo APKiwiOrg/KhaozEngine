@@ -12441,10 +12441,15 @@ Water edits distinguish `WaterBodiesPreventLegacyMode`, `WaterBoundedModeRequire
 typed refusals in the owned read-only `MapWaterContainmentReport.Findings` snapshot, retaining cover
 record identities and the body context. `WaterCoversAlias`, `WaterNoSpaceFootprint` and
 `WaterSpacesDisconnected` name the authored rules. Caught typed causes keep their original
-identifiers and add body `OwnerId`. Medium and body scalar findings name the field and identity,
-and separate nonfinite numbers from finite range refusals. Occupied-water admission retains
-`AcquireStatus` and the unavailable patch and status where known. The released `Complete`, `Errors` and downstream status
-classifications remain unchanged. Untyped upstream failures remain in `Errors` during producer closure.
+identifiers and add body `OwnerId` when unset. Medium and body scalar findings name the field and
+identity, and separate nonfinite numbers from finite range refusals. Occupied-water admission retains
+`AcquireStatus` and the unavailable patch and status where known. The released `Complete`, `Errors`
+and downstream status classifications remain unchanged. Untyped upstream failures remain in `Errors` during producer closure.
+The water edit adapter now retains its first concrete validator reason and ordered `Findings`.
+Domain-piece and shared-space body overlap use `WaterDomainPiecesOverlap` and `WaterBodiesOverlap`,
+with both piece indices or body identities. Missing render resources reuse `ReferenceMissing`, and
+wrong kinds use `ReferenceKindMismatch`. Both carry body `EntityId`, `ResourceId` and the required
+resource kind on in-memory and stored identity paths, plus the actual kind when a resource exists.
 
 `MapWaterQuery(view, document.Water)` captures the water set and digest. `Sample(point)` returns a wet
 interval only when the point's occupied space is covered, its XZ is in the body domain and

@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using KhaozEngine.MapDoc;
+using KhaozEngine.MapDoc.Assets;
 using KhaozEngine.MapDoc.Identity;
 using KhaozEngine.MapDoc.Spaces;
 using KhaozEngine.MapDoc.Storage;
@@ -25,6 +26,19 @@ public class MapWaterContainmentTests
         var report = Check(doc);
         Assert.True(report.Complete);
         Assert.Equal("water body 'ocean': water domain: domain is empty.", Assert.Single(report.Errors));
+    }
+
+    [Fact]
+    public void ContainmentFindings_AreOwnedReadOnlySnapshots()
+    {
+        var original = Assert.Single(Check(WaterFixtures.Broken("alias-cover")).Findings);
+        var source = new[] { original };
+        var report = new MapWaterContainmentReport(true, [original.Message]) { Findings = source };
+        source[0] = original with { EntityId = "changed" };
+        Assert.Equal(original, Assert.Single(report.Findings));
+        if (report.Findings is IList<MapDocumentFinding> list)
+            Assert.Throws<NotSupportedException>(() => list[0] = source[0]);
+        Assert.Equal(original, Assert.Single(report.Findings));
     }
 
     [Fact]
@@ -101,21 +115,27 @@ public class MapWaterContainmentTests
     public void PreparedOccupiedBody_RetainsDisconnectedSpacesAndAcceptsAWetPortal(float? portalBottomY)
     {
         var doc = WaterFixtures.SeaConnectedCave(portalBottomY);
-        var view = CaveFixtures.View(doc);
-        var body = Assert.Single(doc.Water!.Bodies);
-        var domain = MapWaterDomain.Compile(body.Domain);
-        var prepared = new MapWaterContainment.Prepared(MapExactValue.FromSingle(body.SurfaceY), domain, Empty,
-            new MapWaterWorkBudget(), new HashSet<MapPatchKey>(),
-            id => MapWaterOccupiedPieces.Of(view, id, domain.Min, domain.Max, new()));
-        MapWaterConnectivity? graph = null;
-        var report = MapWaterContainment.ValidateBody(view, body, prepared, ref graph);
+        string before = doc.Water!.Digest();
+        var report = PreparedReport(doc);
         Assert.True(report.Complete);
         var finding = Assert.Single(report.Findings);
         Assert.Equal(MapDocumentRefusal.WaterSpacesDisconnected, finding.Reason);
-        Assert.Equal(body.Id, finding.EntityId);
+        Assert.Equal("ocean", finding.EntityId);
         Assert.Equal(new[] { "sea", "grotto" }, finding.SourceIds);
-        Assert.Empty(Check(WaterFixtures.SeaConnectedCave(-5f)).Errors);
+        Assert.Equal(before, doc.Water.Digest());
+        Assert.Empty(PreparedReport(WaterFixtures.SeaConnectedCave(-5f)).Errors);
 
+        static MapWaterContainmentReport PreparedReport(MapDocument doc)
+        {
+            var view = CaveFixtures.View(doc);
+            var body = Assert.Single(doc.Water!.Bodies);
+            var domain = MapWaterDomain.Compile(body.Domain);
+            var prepared = new MapWaterContainment.Prepared(MapExactValue.FromSingle(body.SurfaceY), domain, Empty,
+                new MapWaterWorkBudget(), new HashSet<MapPatchKey>(),
+                id => MapWaterOccupiedPieces.Of(view, id, domain.Min, domain.Max, new()));
+            MapWaterConnectivity? graph = null;
+            return MapWaterContainment.ValidateBody(view, body, prepared, ref graph);
+        }
         static IReadOnlyList<MapWaterFootprintRect> Empty(string _, out bool complete)
         { complete = true; return []; }
     }
@@ -363,16 +383,33 @@ public class MapWaterContainmentTests
         Assert.Contains(report.Errors, e => e.Contains("water body 'cave-lake': unverified", StringComparison.Ordinal));
     }
 
-    [Fact]
-    public void MaterialClosure_IsCheckedOnBothIdentityPaths()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void MaterialClosure_IsCheckedOnBothIdentityPaths(bool wrongKind)
     {
         MapDocument doc = WaterFixtures.OceanOverCaves();
         Assert.Equal(MapAuthoredIdentityV2.Compute(doc, WaterFixtures.Assets(), WaterFixtures.ResolveOptions()),
             MapAuthoredIdentityV2.Compute(WaterFixtures.StoredSource(doc), WaterFixtures.Assets(), WaterFixtures.ResolveOptions()));
         MapDocument bad = WaterFixtures.Broken("unknown-material");
-        const string message = "water body 'ocean': render material 'no-such-material' is not a Material resource";
-        Assert.Contains(message, Assert.Throws<MapDocumentException>(() => MapAuthoredIdentityV2.Compute(bad, WaterFixtures.Assets(), WaterFixtures.ResolveOptions())).Message, StringComparison.Ordinal);
-        Assert.Contains(message, Assert.Throws<MapDocumentException>(() => MapAuthoredIdentityV2.Compute(WaterFixtures.StoredSource(bad), WaterFixtures.Assets(), WaterFixtures.ResolveOptions())).Message, StringComparison.Ordinal);
+        if (wrongKind)
+        {
+            int index = bad.Water!.Bodies.FindIndex(b => b.Id == "ocean");
+            bad.Water.Bodies[index] = bad.Water.Bodies[index] with { RenderMaterial = "mesh" };
+        }
+        string badBefore = bad.Water!.Digest();
+        var memory = Assert.Throws<MapDocumentException>(() => MapAuthoredIdentityV2.Compute(bad, WaterFixtures.Assets(), WaterFixtures.ResolveOptions()));
+        var stored = Assert.Throws<MapDocumentException>(() => MapAuthoredIdentityV2.Compute(WaterFixtures.StoredSource(bad), WaterFixtures.Assets(), WaterFixtures.ResolveOptions()));
+        foreach (var refusal in new[] { memory, stored })
+        {
+            Assert.Equal(wrongKind ? MapDocumentRefusal.ReferenceKindMismatch : MapDocumentRefusal.ReferenceMissing, refusal.Reason);
+            Assert.Equal("ocean", refusal.EntityId);
+            Assert.Equal(wrongKind ? "mesh" : "no-such-material", refusal.ResourceId);
+            Assert.Equal(MapResourceKind.Material, refusal.ExpectedResourceKind);
+            Assert.Equal(wrongKind ? MapResourceKind.Mesh : (MapResourceKind?)null, refusal.ActualResourceKind);
+        }
+
+        Assert.Equal(badBefore, bad.Water.Digest());
 
         // Water enters the resolver-2 authored identity on both paths, so a level edit moves both tokens alike.
         MapDocument raised = WaterFixtures.OceanOverCaves();

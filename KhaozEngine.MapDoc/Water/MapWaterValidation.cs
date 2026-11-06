@@ -36,7 +36,7 @@ internal static class MapWaterValidation
         var compiled = new List<(MapWaterBodyDoc Body, MapWaterDomain Domain)>();
         foreach (MapWaterBodyDoc body in water.Bodies)
             if (ValidateBody(body, media, bodies, errors, budget, findings) is { } domain) compiled.Add((body, domain));
-        ValidateSharedSpaces(compiled, errors, budget);
+        ValidateSharedSpaces(compiled, errors, budget, findings);
     }
 
     static void ValidateMedium(MapWaterMediumDoc medium, HashSet<string> keys, List<string> errors, List<MapDocumentFinding>? findings)
@@ -93,8 +93,8 @@ internal static class MapWaterValidation
         if (string.IsNullOrWhiteSpace(body.RenderMaterial))
             Add(new(MapDocumentRefusal.SchemaValueRequired, $"{label}: renderMaterial must be non-empty.")
             { EntityId = body.Id, FieldPath = "RenderMaterial" }, errors, findings);
-        MapWaterDomain? domain = ValidateDomain(body.Domain, label, errors, budget);
-        bool covers = ValidateCovers(body.Covers, label, errors);
+        MapWaterDomain? domain = ValidateDomain(body.Domain, body.Id, label, errors, budget, findings);
+        bool covers = ValidateCovers(body.Covers, body.Id, label, errors, findings);
         return unique && covers ? domain : null;
     }
 
@@ -104,55 +104,76 @@ internal static class MapWaterValidation
         findings?.Add(finding);
     }
 
-    static MapWaterDomain? ValidateDomain(MapWaterDomainDoc domain, string label, List<string> errors, MapWaterWorkBudget budget)
+    static MapWaterDomain? ValidateDomain(MapWaterDomainDoc domain, string bodyId, string label, List<string> errors,
+        MapWaterWorkBudget budget, List<MapDocumentFinding>? findings)
     {
         if (domain?.Rects is null || domain.Rings is null)
         {
-            errors.Add($"{label}: domain is required.");
+            Add(new(MapDocumentRefusal.SchemaValueRequired, $"{label}: domain is required.")
+            { EntityId = bodyId, FieldPath = domain is null ? "Domain" : domain.Rects is null ? "Domain.Rects" : "Domain.Rings" }, errors, findings);
             return null;
         }
-        if (!ValidFrame(domain.Frame))
+        if (!ValidFrame(domain.Frame, out var frameFinding))
         {
-            errors.Add($"{label}: invalid lattice frame.");
+            Add(frameFinding! with { Message = $"{label}: invalid lattice frame.", EntityId = bodyId }, errors, findings);
             return null;
         }
         // Piece and vertex limits come before any per-piece or geometry work.
         var limits = new List<string>();
-        if (!MapWaterDomain.WithinLimits(domain, limits))
+        var limitFindings = new List<MapDocumentFinding>();
+        if (!MapWaterDomain.WithinLimits(domain, limits, limitFindings))
         {
-            errors.Add($"{label}: {limits[0]}.");
+            Add(limitFindings[0] with { Message = $"{label}: {limits[0]}.", EntityId = bodyId }, errors, findings);
             return null;
         }
         int before = errors.Count;
-        if (domain.Rects.Count == 0 && domain.Rings.Count == 0) errors.Add($"{label}: domain is empty.");
+        if (domain.Rects.Count == 0 && domain.Rings.Count == 0)
+            Add(new(MapDocumentRefusal.WaterDomainEmpty, $"{label}: domain is empty.")
+            { EntityId = bodyId, FieldPath = "Domain", ActualCount = 0 }, errors, findings);
         bool far = false;
+        MapDocumentFinding? farFinding = null;
         for (int i = 0; i < domain.Rects.Count; i++)
         {
             MapWaterRect rect = domain.Rects[i];
-            if (rect.MinX >= rect.MaxX || rect.MinZ >= rect.MaxZ) errors.Add($"{label}: rect {i} is empty.");
-            far |= Far(domain.Frame, MapLatticeAddress.Corner(rect.MinX, rect.MinZ)) ||
-                Far(domain.Frame, MapLatticeAddress.Corner(rect.MaxX, rect.MaxZ));
+            if (rect.MinX >= rect.MaxX || rect.MinZ >= rect.MaxZ)
+                Add(new(MapDocumentRefusal.BoundsInvalid, $"{label}: rect {i} is empty.")
+                { EntityId = bodyId, FieldPath = $"Domain.Rects[{i}]", Index = i, SubjectKind = "rect",
+                    Address = MapLatticeAddress.Corner(rect.MinX, rect.MinZ) }, errors, findings);
+            far |= FarAt(MapLatticeAddress.Corner(rect.MinX, rect.MinZ), $"Domain.Rects[{i}]", i) ||
+                FarAt(MapLatticeAddress.Corner(rect.MaxX, rect.MaxZ), $"Domain.Rects[{i}]", i);
         }
         for (int i = 0; i < domain.Rings.Count; i++)
         {
             IReadOnlyList<MapLatticeAddress>? vertices = domain.Rings[i]?.Vertices;
-            if (vertices is null || vertices.Count < 3)
+            int? vertexCount = vertices?.Count;
+            if (vertices is null || vertexCount < 3)
             {
-                errors.Add($"{label}: ring {i} needs at least 3 vertices.");
+                Add(new(vertices is null ? MapDocumentRefusal.SchemaValueRequired : MapDocumentRefusal.ValueOutsideRange,
+                    $"{label}: ring {i} needs at least 3 vertices.")
+                { EntityId = bodyId, FieldPath = domain.Rings[i] is null ? $"Domain.Rings[{i}]" : $"Domain.Rings[{i}].Vertices",
+                    Index = i, ActualCount = vertexCount, MinimumInteger = vertices is null ? null : 3 }, errors, findings);
                 if (vertices is null) continue;
             }
             for (int v = 0; v < vertices.Count; v++)
             {
-                try { far |= Far(domain.Frame, vertices[v]); }
-                catch (MapDocumentException) { errors.Add($"{label}: ring {i} vertex {v} is not a valid lattice address."); }
+                try { far |= FarAt(vertices[v], $"Domain.Rings[{i}].Vertices[{v}]", i); }
+                catch (MapDocumentException error)
+                {
+                    var finding = MapDocumentFinding.FromException(error)!;
+                    Add(finding with { Message = $"{label}: ring {i} vertex {v} is not a valid lattice address.",
+                        EntityId = bodyId, FieldPath = $"Domain.Rings[{i}].Vertices[{v}].{finding.FieldPath}", Index = i,
+                        OtherIndex = v, Address = vertices[v] }, errors, findings);
+                }
             }
         }
-        if (far) errors.Add($"{label}: domain exceeds {MaxMetres} m.");
+        if (far) Add(farFinding! with { Message = $"{label}: domain exceeds {MaxMetres} m.", EntityId = bodyId }, errors, findings);
         if (errors.Count != before || budget.Exhausted) return null;
 
         var geometry = new List<string>();
-        MapWaterDomain? compiled = MapWaterDomain.TryCompile(domain, null, geometry, budget);
-        foreach (string error in geometry) errors.Add($"{label}: {error}.");
+        var geometryFindings = new List<MapDocumentFinding>();
+        MapWaterDomain? compiled = MapWaterDomain.TryCompile(domain, null, geometry, budget, geometryFindings);
+        foreach (var finding in geometryFindings)
+            Add(finding with { Message = $"{label}: {finding.Message}.", EntityId = bodyId }, errors, findings);
         if (compiled is null) return null;
         var overlaps = new List<(int A, int B)>();
         try
@@ -161,19 +182,28 @@ internal static class MapWaterValidation
         }
         catch (MapDocumentException e)
         {
-            errors.Add($"{label}: {e.Message}.");
+            Add(MapDocumentFinding.FromException(e)! with { Message = $"{label}: {e.Message}.", EntityId = bodyId }, errors, findings);
             return null;
         }
         overlaps.Sort();
-        foreach ((int a, int b) in overlaps) errors.Add($"{label}: {compiled.PieceName(a)} and {compiled.PieceName(b)} overlap.");
+        foreach ((int a, int b) in overlaps)
+            Add(new(MapDocumentRefusal.WaterDomainPiecesOverlap, $"{label}: {compiled.PieceName(a)} and {compiled.PieceName(b)} overlap.")
+            { EntityId = bodyId, FieldPath = "Domain", Index = a, OtherIndex = b }, errors, findings);
         return overlaps.Count == 0 ? compiled : null;
+
+        bool FarAt(MapLatticeAddress address, string field, int index)
+        {
+            bool result = Far(domain.Frame, address, out var finding);
+            if (result) farFinding ??= finding! with { FieldPath = field, Index = index, Address = address };
+            return result;
+        }
     }
 
     /// <summary>Refuses positive-area overlap between bodies that cover the same space. Pieces of every body in one
     /// space meet through one bounds sweep. Pairs within one body, already checked, and pairs of bodies already
     /// reported skip the exact test.</summary>
     static void ValidateSharedSpaces(List<(MapWaterBodyDoc Body, MapWaterDomain Domain)> compiled, List<string> errors,
-        MapWaterWorkBudget budget)
+        MapWaterWorkBudget budget, List<MapDocumentFinding>? findings)
     {
         var bySpace = new SortedDictionary<string, List<int>>(StringComparer.Ordinal);
         for (int i = 0; i < compiled.Count; i++)
@@ -204,26 +234,31 @@ internal static class MapWaterValidation
             }
             catch (MapDocumentException e)
             {
-                errors.Add($"water bodies covering space '{space}': {e.Message}.");
+                Add(MapDocumentFinding.FromException(e)! with { Message = $"water bodies covering space '{space}': {e.Message}.",
+                    SpaceId = space }, errors, findings);
                 return;
             }
-            var messages = new List<string>();
+            var messages = new List<MapDocumentFinding>();
             foreach ((int first, int second) in reported)
             {
                 string[] ids = { compiled[first].Body.Id, compiled[second].Body.Id };
                 Array.Sort(ids, StringComparer.Ordinal);
-                messages.Add($"water bodies '{ids[0]}' and '{ids[1]}' overlap in space '{space}'.");
+                messages.Add(new(MapDocumentRefusal.WaterBodiesOverlap,
+                    $"water bodies '{ids[0]}' and '{ids[1]}' overlap in space '{space}'.") { SourceIds = ids, SpaceId = space });
             }
-            messages.Sort(StringComparer.Ordinal);
-            errors.AddRange(messages);
+            messages.Sort((a, b) => StringComparer.Ordinal.Compare(a.Message, b.Message));
+            foreach (var finding in messages) Add(finding, errors, findings);
         }
     }
 
-    static bool ValidateCovers(IReadOnlyList<MapRecordRef> covers, string label, List<string> errors)
+    static bool ValidateCovers(IReadOnlyList<MapRecordRef> covers, string bodyId, string label, List<string> errors,
+        List<MapDocumentFinding>? findings)
     {
-        if (covers is null || covers.Count == 0)
+        int? coverCount = covers?.Count;
+        if (covers is null || coverCount == 0)
         {
-            errors.Add($"{label}: covers no space.");
+            Add(new(covers is null ? MapDocumentRefusal.SchemaValueRequired : MapDocumentRefusal.WaterNoCoveredSpace,
+                $"{label}: covers no space.") { EntityId = bodyId, FieldPath = "Covers", ActualCount = coverCount }, errors, findings);
             return false;
         }
         int before = errors.Count;
@@ -232,30 +267,51 @@ internal static class MapWaterValidation
         {
             MapRecordRef cover = covers[i];
             if (cover is null || string.IsNullOrWhiteSpace(cover.Id) || string.IsNullOrWhiteSpace(cover.Anchor.SurfaceId))
-                errors.Add($"{label}: cover {i} needs a space id and an anchor surface.");
-            else if (!seen.Add(cover.Id)) errors.Add($"{label}: cover '{cover.Id}' is repeated.");
+                Add(new(MapDocumentRefusal.SchemaValueRequired, $"{label}: cover {i} needs a space id and an anchor surface.")
+                { EntityId = bodyId, Index = i, RecordId = cover?.Id, Patch = cover?.Anchor,
+                    FieldPath = cover is null ? $"Covers[{i}]" : string.IsNullOrWhiteSpace(cover.Id) ? $"Covers[{i}].Id" : $"Covers[{i}].Anchor.SurfaceId" }, errors, findings);
+            else if (!seen.Add(cover.Id)) Add(new(MapDocumentRefusal.IdentityDuplicate, $"{label}: cover '{cover.Id}' is repeated.")
+            { EntityId = bodyId, RecordId = cover.Id, Patch = cover.Anchor, Index = i, FieldPath = $"Covers[{i}]" }, errors, findings);
         }
         return errors.Count == before;
     }
 
-    static bool ValidFrame(MapLatticeFrame? frame)
+    static bool ValidFrame(MapLatticeFrame? frame, out MapDocumentFinding? finding)
     {
-        if (frame is null) return false;
+        finding = null;
+        if (frame is null)
+        {
+            finding = new(MapDocumentRefusal.SchemaValueRequired, "invalid lattice frame") { FieldPath = "Domain.Frame" };
+            return false;
+        }
         try { _ = frame.WorldXz(MapLatticeAddress.Corner(0, 0)); }
-        catch (MapDocumentException) { return false; }
+        catch (MapDocumentException error)
+        {
+            var inner = MapDocumentFinding.FromException(error)!;
+            finding = inner with { FieldPath = "Domain.Frame." + inner.FieldPath };
+            return false;
+        }
         return true;
     }
 
     /// <summary>True when either world axis of the corner lies more than <see cref="MaxMetres"/> from the origin,
     /// including a corner too large to convert exactly.</summary>
-    static bool Far(MapLatticeFrame frame, MapLatticeAddress address)
+    static bool Far(MapLatticeFrame frame, MapLatticeAddress address, out MapDocumentFinding? finding)
     {
+        finding = null;
         try
         {
             MapExactXz world = frame.WorldXz(address);
-            return world.X.CompareTo(MaxExtent) > 0 || world.X.CompareTo(MinExtent) < 0 ||
+            bool far = world.X.CompareTo(MaxExtent) > 0 || world.X.CompareTo(MinExtent) < 0 ||
                 world.Z.CompareTo(MaxExtent) > 0 || world.Z.CompareTo(MinExtent) < 0;
+            if (far) finding = new(MapDocumentRefusal.ValueOutsideRange, "domain exceeds world extent")
+            { PositionX = world.X.ToDouble(), PositionZ = world.Z.ToDouble(), MinimumNumber = -MaxMetres, MaximumNumber = MaxMetres };
+            return far;
         }
-        catch (MapExactOverflowException) { return true; }
+        catch (MapExactOverflowException)
+        {
+            finding = new(MapDocumentRefusal.GeometryNotRepresentable, "domain corner is not representable") { Address = address };
+            return true;
+        }
     }
 }

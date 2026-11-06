@@ -127,7 +127,7 @@ internal sealed class MapWaterConnectivity
             {
                 string message = $"{label}: {what} is invalid ({error.Message})";
                 errors.Add(message);
-                if (finding is not null) findings.Add(finding with { Message = message, OwnerId = bodyId });
+                if (finding is not null) findings.Add(finding with { Message = message, OwnerId = finding.OwnerId ?? bodyId });
             }
             else Unknown($"{what} ({error.Message})", finding);
         }

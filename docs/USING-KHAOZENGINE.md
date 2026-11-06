@@ -12759,8 +12759,10 @@ Later effective snapshot, root or reservation changes use `AcquisitionSnapshotCh
 changed field and both pins when available. Negative page deltas use `ValueOutsideRange` with a zero
 minimum. Other page inconsistencies use `AcquisitionContractMismatch` with reported and observed
 counts. Ordinary session admission uses the same pin identifiers. A collapsed effective cell uses
-`GeometryNotRepresentable` with its surface, patch and local cell. Ordinary reservation, reconciliation
-and page-observation guards and shared surface-query guards retain their current message-only behavior.
+`GeometryNotRepresentable` with its surface, patch and local cell. Ordinary and effective coordinators
+share these reservation, reconciliation and page-observation reasons. Complete resident publication
+distinguishes mismatched patch keys (`AuthoredValueMismatch` with both keys) from undeclared surfaces
+(`ReferenceMissing` with surface and patch). Shared surface-query guards retain their current behavior.
 
 Native metadata adds typed findings beside its unchanged string diagnostics. Compound findings select
 the first failing predicate branch. Missing asset-reference and indoor-span values use `SchemaValueRequired`, nonfinite
@@ -12936,7 +12938,7 @@ coverage, read and identity witnesses. Stored sources and `MapDocumentSurfaceSou
 support it. Custom producers must implement
 `IMapSurfaceAcquisitionSource` and open one pinned session across discovery, record expansion and bound
 reads. A source implementing only `IMapSurfaceSource` refuses with
-`surface source does not support bounded scoped acquisition` before legacy callbacks run.
+`AcquisitionUnsupported` with `SourceType` before legacy callbacks run.
 
 Sessions report ordered `ReservedPatchKeys` before work for every discovery or explicitly read key,
 including known-empty and unavailable keys, against one unique-key budget. Returned keys, reservations,

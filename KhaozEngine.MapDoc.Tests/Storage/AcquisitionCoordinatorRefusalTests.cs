@@ -58,6 +58,9 @@ public sealed class AcquisitionCoordinatorRefusalTests
     [InlineData(true, "capacity", MapDocumentRefusal.WorkCapacityExceeded)]
     [InlineData(true, "duplicate", MapDocumentRefusal.OrderInvalid)]
     [InlineData(true, "order", MapDocumentRefusal.OrderInvalid)]
+    [InlineData(false, "capacity", MapDocumentRefusal.WorkCapacityExceeded)]
+    [InlineData(false, "duplicate", MapDocumentRefusal.OrderInvalid)]
+    [InlineData(false, "order", MapDocumentRefusal.OrderInvalid)]
     public void Reservations_distinguish_capacity_from_canonical_order(bool effective, string fault, MapDocumentRefusal reason)
     {
         var probe = AcquisitionConformanceFixtures.TwoAnchors();
@@ -88,6 +91,9 @@ public sealed class AcquisitionCoordinatorRefusalTests
     [InlineData(true, "snapshot")]
     [InlineData(true, "root")]
     [InlineData(true, "reservations")]
+    [InlineData(false, "snapshot")]
+    [InlineData(false, "root")]
+    [InlineData(false, "reservations")]
     public void Reconciliation_preserves_the_pin_that_changed(bool effective, string fault)
     {
         var probe = AcquisitionConformanceFixtures.OneSeed();
@@ -122,6 +128,9 @@ public sealed class AcquisitionCoordinatorRefusalTests
     [InlineData(true, "negative", MapDocumentRefusal.ValueOutsideRange)]
     [InlineData(true, "backward", MapDocumentRefusal.AcquisitionContractMismatch)]
     [InlineData(true, "delta", MapDocumentRefusal.AcquisitionContractMismatch)]
+    [InlineData(false, "negative", MapDocumentRefusal.ValueOutsideRange)]
+    [InlineData(false, "backward", MapDocumentRefusal.AcquisitionContractMismatch)]
+    [InlineData(false, "delta", MapDocumentRefusal.AcquisitionContractMismatch)]
     public void Page_observations_distinguish_negative_backward_and_inconsistent_counts(bool effective, string fault, MapDocumentRefusal reason)
     {
         var probe = AcquisitionConformanceFixtures.OneSeed();
@@ -148,6 +157,28 @@ public sealed class AcquisitionCoordinatorRefusalTests
         probe.FindFault = null;
         probe.PageCount = 0;
         Assert.Equal(MapAcquireStatus.Complete, AcquisitionConformanceFixtures.Run(probe, effective).Status);
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void Resident_publication_distinguishes_key_and_surface_ownership(bool mismatchedKey)
+    {
+        var probe = AcquisitionConformanceFixtures.OneSeed();
+        var set = AcquisitionConformanceFixtures.Context(probe).Surfaces;
+        MapSurfacePatch patch = set.Patches[AcquisitionConformanceFixtures.Seed];
+        if (mismatchedKey) patch.Key = new("seed", 1, 0);
+        else set.Refs.Clear();
+        var ex = Assert.Throws<MapDocumentException>(() => MapScopedSurfaces.CompleteView(set));
+        Assert.Equal(mismatchedKey ? MapDocumentRefusal.AuthoredValueMismatch : MapDocumentRefusal.ReferenceMissing, ex.Reason);
+        Assert.Equal(mismatchedKey ? "Patches.Key" : "Patches.SurfaceId", ex.FieldPath);
+        Assert.Equal(mismatchedKey ? patch.Key : AcquisitionConformanceFixtures.Seed, ex.Patch);
+        if (mismatchedKey) Assert.Equal(AcquisitionConformanceFixtures.Seed, ex.ExpectedPatch);
+        else Assert.Equal("seed", ex.SurfaceId);
+        Assert.Equal(AcquisitionConformanceFixtures.Seed, Assert.Single(set.Patches).Key);
+        if (mismatchedKey) patch.Key = AcquisitionConformanceFixtures.Seed;
+        else set.Refs.AddRange(probe.Metadata);
+        Assert.Equal(MapAcquireStatus.Complete, MapScopedSurfaces.CompleteView(set).Status);
     }
 
     [Fact]

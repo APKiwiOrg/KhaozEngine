@@ -136,8 +136,7 @@ Resolver 1 continues to use `MapAuthoredIdentity`.
 Every API in this section is new in 20.30.0.
 `MapScopedSurfaces.Acquire(source, scope, assetSha256)` requires `IMapSurfaceAcquisitionSource`, implemented
 by `MapStoredSurfaceSource` and `MapDocumentSurfaceSource.Capture(document)`. A producer implementing only
-`IMapSurfaceSource` refuses with `surface source does not support bounded scoped acquisition` before its
-legacy callbacks run. Custom producers must open one pinned `IMapSurfaceAcquisitionSession` for discovery,
+`IMapSurfaceSource` refuses with `AcquisitionUnsupported` and `SourceType` before its legacy callbacks run. Custom producers must open one pinned `IMapSurfaceAcquisitionSession` for discovery,
 record-anchor expansion and bound reads. Snapshot, root and copied request stay fixed for that session.
 
 `ReservedPatchKeys` is a detached, ordered unique-key snapshot. Every discovery key and explicitly read
@@ -155,7 +154,7 @@ A present patch with a different key uses `AuthoredValueMismatch`, `Patch` and `
 semantic digest mismatch uses `DigestMismatch`, `ExpectedHash` and `ActualHash`. A non-present status
 carrying a payload uses `AcquisitionContractMismatch`, `Patch`, `PatchStatus` and `FieldPath`.
 A missing bound surface identity also carries the footprint's `RecordId` and the lower or upper field.
-Composed sources without bounded native acquisition use `AcquisitionUnsupported` and `SourceType`.
+Sources without bounded acquisition, including composed native sources, use `AcquisitionUnsupported` and `SourceType`.
 These carriers preserve identifiers through source-context wrapping and typed finding projection.
 
 Ordinary and effective acquisition's discovery snapshot mismatch uses `AcquisitionSnapshotChanged` with
@@ -169,7 +168,7 @@ Ordinary and effective explicit-read key mismatches use `AcquisitionContractMism
 and `FieldPath`. Their surface lookups distinguish an undeclared surface (`ReferenceMissing`), a
 successful lookup returning null (`SchemaValueRequired`) and a different identity (`AuthoredValueMismatch`).
 They retain the requested `SurfaceId`, the field and the returned identity as `ActualText` when known.
-Effective reservation snapshots use `WorkCapacityExceeded` with `Budget = "MaxCandidatePatches"`,
+Ordinary and effective reservation snapshots use `WorkCapacityExceeded` with `Budget = "MaxCandidatePatches"`,
 `ActualCount` and `Limit` before checking canonical ordering with `OrderInvalid`. Later snapshot, root
 or reservation changes use `AcquisitionSnapshotChanged`, retaining the changed field and both pins
 when applicable. Negative page deltas use `ValueOutsideRange` with a zero minimum. Backward or
@@ -177,8 +176,9 @@ inconsistent page observations use `AcquisitionContractMismatch` with the report
 observed `ExpectedCount`. Ordinary and effective session admission use the same pin identifiers.
 A collapsed effective cell uses `GeometryNotRepresentable`, `SurfaceId`, `Patch`, `CellX` and `CellZ`.
 The resident snapshot merge and post-capture dictionary lookup treat impossible failures as internal
-invariants. Public scope-coordinate admission remains in the shared surface query. Ordinary acquisition
-reservation, reconciliation and page-observation guards retain their current message-only behavior.
+invariants. Complete resident views distinguish a mismatched dictionary/payload key
+(`AuthoredValueMismatch` with both patch keys) from an undeclared surface (`ReferenceMissing` with its
+surface and patch). Public scope-coordinate admission remains in the shared surface query.
 
 After a key is served, `TryGetIncidentRecords` returns true with a detached list when incidence is known.
 A true empty list certifies no incidents. False with null means unknown incidence, including an unread
@@ -1508,18 +1508,18 @@ An array beyond its own count cap uses that field name as `Budget`, with its `Ac
 | `AssetClosureRequired` | Foliage edit preflight without a verified asset closure | `DocumentId` |
 | `DigestMismatch` | Acquired patch semantic pins, resource bytes, an attached child's descriptor digest, a stored surface semantic aggregate or a verified tile's lists differing from its pin | `DigestKind`, `SourceName`, `Tile`, `ResourceId`, `Path`, `EntityId`, `WorldId`, `ChildKind`, `Child`, `InstanceId`, `PlacementId`, `SurfaceId`, `SubjectKind`, `ExpectedHash`, `ActualHash` |
 | `BoundsInvalid` | Invalid prefab patch dimensions, manifest local bounds, playable bounds, reversed exact rectangles or invalid surface patch rectangles | `FieldPath`, `Width`, `Depth`, `AssetId`, `SurfaceId`, `Patch`, `CellX`, `CellZ`, `Index`, `MinimumNumber`, `MaximumNumber` |
-| `AcquisitionContractMismatch` | An incoherent acquired payload, discovery fact, read key or effective page observation, session pin mismatch, or inconsistent incidence contract | `Patch`, `ExpectedPatch`, `PatchStatus`, `FieldPath`, `ExpectedSnapshot`, `ActualSnapshot`, `ExpectedHash`, `ActualHash`, `ActualCount`, `ExpectedCount` |
-| `AcquisitionSnapshotChanged` | Discovery or later effective session facts with changed snapshot, root or reservations | `FieldPath`, `ExpectedSnapshot`, `ActualSnapshot`, `ExpectedHash`, `ActualHash` |
-| `AcquisitionUnsupported` | A composed native producer without bounded scoped acquisition support | `SourceType` |
+| `AcquisitionContractMismatch` | An incoherent acquired payload, discovery fact, read key or page observation, session pin mismatch, or inconsistent incidence contract | `Patch`, `ExpectedPatch`, `PatchStatus`, `FieldPath`, `ExpectedSnapshot`, `ActualSnapshot`, `ExpectedHash`, `ActualHash`, `ActualCount`, `ExpectedCount` |
+| `AcquisitionSnapshotChanged` | Discovery or later session facts with changed snapshot, root or reservations | `FieldPath`, `ExpectedSnapshot`, `ActualSnapshot`, `ExpectedHash`, `ActualHash` |
+| `AcquisitionUnsupported` | A producer without bounded scoped acquisition support | `SourceType` |
 | `GeometryNotRepresentable` | A collapsed effective cell | `SurfaceId`, `Patch`, `CellX`, `CellZ` |
-| `WorkCapacityExceeded` | Effective reservation keys beyond the candidate cap, surface codec work beyond its encoded byte or array-count budget, or local corner-dependency or edge-subdivision metadata beyond its count budget | `Patch`, `FieldPath`, `Budget`, `ActualCount`, `ActualByteCount`, `Limit` |
+| `WorkCapacityExceeded` | Reservation keys beyond the candidate cap, surface codec work beyond its encoded byte or array-count budget, or local corner-dependency or edge-subdivision metadata beyond its count budget | `Patch`, `FieldPath`, `Budget`, `ActualCount`, `ActualByteCount`, `Limit` |
 | `SurfacePresencePaddingNonzero` | Nonzero bits beyond the authored cell count in the last presence word | `Patch`, `FieldPath`, `Index` |
 | `SurfaceSubdivisionAbsentCell` | An edge subdivision on an absent cell | `Patch`, `FieldPath`, `Index`, `CellX`, `CellZ`, `Edge` |
 | `SurfaceSubdivisionInteriorEdge` | An edge subdivision adjoining another present cell inside the patch | `Patch`, `FieldPath`, `Index`, `CellX`, `CellZ`, `Edge` |
 | `SurfaceForcedTopologyConflict` | A forced topology contradicting the diagonal-half rotation | `FieldPath`, `ActualInteger`, `EnumType` |
 | `SurfacePatchTrailingBytes` | A patch payload with values remaining after its root | Requested `Patch` |
 | `SurfacePatchKeyMismatch` | A decoded patch key differing from the requested key | `Patch`, `ExpectedPatch` |
-| `OrderInvalid` | Effective reservation keys or slot cells outside unique canonical order | `FieldPath`, `Index`, `ActualInteger`, `PreviousInteger` |
+| `OrderInvalid` | Reservation keys or slot cells outside unique canonical order | `FieldPath`, `Index`, `ActualInteger`, `PreviousInteger` |
 | `OperationKindUnsupported` | An unsupported decoded or runtime topology record kind | `RecordId`, `FieldPath`, `ActualText` or `RecordType` |
 | `SurfaceUnitUnreduced` | An authored lattice unit whose positive numerator and denominator have a common factor | `Numerator`, `Denominator` |
 | `SurfaceAddressOutOfPatch` | A patch-local cell or corner coordinate outside the valid rectangle | `Patch`, `Width`, `Depth`, `CellX`, `CellZ`, `FieldPath`, `ActualInteger`, `MinimumInteger`, `MaximumInteger` |

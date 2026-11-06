@@ -360,9 +360,10 @@ namespace KhaozEngine.Tests.MapEditTool
                     mutation.ElementDuplicate("feature", index: 99));
                 Assert.Equal("index", outOfRange.ParamName);
 
-                InvalidOperationException unresolvedId = Assert.Throws<InvalidOperationException>(() =>
+                var unresolvedId = Assert.Throws<MapMutationException>(() =>
                     mutation.ElementDuplicate("placement", id: "does-not-exist"));
-                Assert.Contains("No placement with id 'does-not-exist'", unresolvedId.Message);
+                Assert.Equal(MapDocumentRefusal.ReferenceMissing, unresolvedId.Reason);
+                Assert.Equal("does-not-exist", unresolvedId.PlacementId);
 
                 string after = session.WithDocument((doc, r) => MapDocumentFile.SaveText(doc, r));
                 Assert.Equal(before, after);

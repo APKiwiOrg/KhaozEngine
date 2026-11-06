@@ -247,14 +247,18 @@ namespace KhaozEngine.Tests.MapEditTool
                 (MapEditSession session, MutationService mutation) = OpenSample(dir);
                 int before = session.WithDocument((doc, _) => doc.Exclusions.Count);
                 bool dirtyBefore = session.IsDirty;
+                string content = session.WithDocument((doc, registry) => MapDocumentFile.SaveText(doc, registry));
 
-                InvalidOperationException ex = Assert.Throws<InvalidOperationException>(() =>
+                var ex = Assert.Throws<MapMutationException>(() =>
                     mutation.ExclusionAdd("{\"type\":\"disc\",\"centerX\":0,\"centerZ\":0,\"radius\":5}",
                         layers: new[] { "ghost" }));
 
-                Assert.Contains("unknown scatter layer 'ghost'", ex.Message);
+                Assert.Equal(MapDocumentRefusal.ReferenceMissing, ex.Reason);
+                Assert.Equal("ghost", ex.LayerId);
+                Assert.Equal(content, session.WithDocument((doc, registry) => MapDocumentFile.SaveText(doc, registry)));
                 Assert.Equal(before, session.WithDocument((doc, _) => doc.Exclusions.Count));
                 Assert.Equal(dirtyBefore, session.IsDirty);
+                Assert.NotNull(mutation.ExclusionAdd("{\"type\":\"disc\",\"radius\":5}", layers: new[] { "trees" }));
             }
             finally { Directory.Delete(dir, recursive: true); }
         }
@@ -312,13 +316,17 @@ namespace KhaozEngine.Tests.MapEditTool
 
                 int before = session.WithDocument((doc, _) => doc.ScatterOverrides.Count);
                 bool dirtyBefore = session.IsDirty;
+                string content = session.WithDocument((doc, registry) => MapDocumentFile.SaveText(doc, registry));
 
-                InvalidOperationException ex = Assert.Throws<InvalidOperationException>(() =>
+                var ex = Assert.Throws<MapMutationException>(() =>
                     mutation.ScatterOverrideAdd(CoverRectJson, layers: new[] { "ghost" }));
 
-                Assert.Contains("unknown scatter layer 'ghost'", ex.Message);
+                Assert.Equal(MapDocumentRefusal.ReferenceMissing, ex.Reason);
+                Assert.Equal("ghost", ex.LayerId);
+                Assert.Equal(content, session.WithDocument((doc, registry) => MapDocumentFile.SaveText(doc, registry)));
                 Assert.Equal(before, session.WithDocument((doc, _) => doc.ScatterOverrides.Count));
                 Assert.Equal(dirtyBefore, session.IsDirty);
+                Assert.NotNull(mutation.ScatterOverrideAdd(CoverRectJson, layers: new[] { "trees" }));
             }
             finally { Directory.Delete(dir, recursive: true); }
         }

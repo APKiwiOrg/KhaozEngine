@@ -21,12 +21,12 @@ public sealed partial class MutationService
         if (dryRun)
         {
             if (edit is not MapSetFoliageLayer layer)
-                throw new MapDocumentException("A foliage dry run previews one layer set, not " + edit.Label.ToLowerInvariant() + ".");
+                throw new MapDocumentException(MapDocumentRefusal.FoliagePreviewEditUnsupported, "A foliage dry run previews one layer set, not " + edit.Label.ToLowerInvariant() + ".") { EditType = edit.GetType() };
             return session.WithNativeAssets(c =>
             {
                 // The core gate needs no differential for a layer the document does not have yet, so there is none to preview.
                 if (c.Document.Foliage?.Layers.Any(l => string.Equals(l.Id, layer.Layer.Id, StringComparison.Ordinal)) != true)
-                    throw new MapDocumentException($"Foliage layer '{layer.Layer.Id}' is new, so it needs no differential. Apply it directly without dryRun.");
+                    throw new MapDocumentException(MapDocumentRefusal.FoliagePreviewLayerNew, $"Foliage layer '{layer.Layer.Id}' is new, so it needs no differential. Apply it directly without dryRun.") { LayerId = layer.Layer.Id };
                 MapFoliageDifferentialResult differential = MapFoliageEdits.PreviewPolicyChange(c.Document, c.Assets, layer);
                 return Result(false, differential.Status, c.Document, c.Assets, "", differential);
             });

@@ -165,6 +165,8 @@ public sealed record MapDocumentFinding(MapDocumentRefusal Reason, string Messag
     public string? TargetId { get; init; }
     /// <summary>The runtime command type refused by native transaction admission.</summary>
     public Type? CommandType { get; init; }
+    /// <summary>The runtime edit type refused by an operation that supports only selected edits.</summary>
+    public Type? EditType { get; init; }
     /// <summary>The owner of the refused operation or geometry, such as a placement, terrain chunk or water body.</summary>
     public string? OwnerId { get; init; }
     /// <summary>The compiled water body whose world or residency admission failed.</summary>
@@ -395,6 +397,7 @@ public sealed record MapDocumentFinding(MapDocumentRefusal Reason, string Messag
             EntityId = error.EntityId,
             TargetId = error.TargetId,
             CommandType = error.CommandType,
+            EditType = error.EditType,
             OwnerId = error.OwnerId,
             BodyId = error.BodyId,
             PositionX = error.PositionX,

@@ -20,73 +20,6 @@ namespace KhaozEngine.MapEdit;
 /// the committed document, history and dirty state untouched on rejection.</summary>
 public sealed partial class MutationService(MapEditSession session)
 {
-    /// <summary>The shared mutation choke point used by every verb below: applies <paramref name="command"/> to
-    /// the open document, validates the result with <see cref="MapDocumentValidator"/>, and on any validation
-    /// error reverts the command and throws <see cref="InvalidOperationException"/> with the joined errors.
-    /// <see cref="MutationResult.WorldChanged"/> mirrors the command's AffectsWorld flag, which also selects
-    /// whether the session's cached terrain field is invalidated by this mutation.</summary>
-    internal MutationResult Apply(EditorCommand command, string verb, string detail)
-    {
-        ArgumentNullException.ThrowIfNull(command);
-        bool worldChanged = command.AffectsWorld;
-        return session.Mutate((doc, registry) =>
-        {
-            if (doc.ResolverIdentity is not null)
-            {
-                session.ApplyNative(command, doc, registry);
-                return new MutationResult(verb, detail, worldChanged);
-            }
-            command.Apply(doc);
-            IReadOnlyList<string> errors = MapDocumentValidator.Validate(doc, registry);
-            if (errors.Count > 0)
-            {
-                command.Revert(doc);
-                throw new InvalidOperationException("mutation rejected: " + string.Join("; ", errors));
-            }
-            return new MutationResult(verb, detail, worldChanged);
-        }, worldChanged);
-    }
-
-    /// <summary>Overload of <see cref="Apply(EditorCommand, string, string)"/> for verbs whose command needs a
-    /// document read to construct (a precondition lookup, or a captured "old" value the command needs to be
-    /// reversible). <paramref name="factory"/> runs INSIDE the <see cref="MapEditSession.Mutate{T}"/> callback,
-    /// so the read, the apply, the validate, and any revert all happen under the same lock acquisition: no other
-    /// call can mutate the document between the read and the apply. <paramref name="worldChanged"/> must equal
-    /// the constructed command's <see cref="EditorCommand.AffectsWorld"/>. <see cref="MapEditSession.Mutate{T}"/>
-    /// needs that flag before the callback runs (to decide whether to invalidate the cached field), so it cannot
-    /// be read off the command itself, and a mismatch throws rather than silently mis-tagging the mutation.</summary>
-    internal MutationResult Apply(Func<MapDocument, MapDocRegistry, EditorCommand> factory, string verb,
-        Func<EditorCommand, string> detail, bool worldChanged)
-    {
-        ArgumentNullException.ThrowIfNull(factory);
-        ArgumentNullException.ThrowIfNull(detail);
-        return session.Mutate((doc, registry) =>
-        {
-            EditorCommand command = factory(doc, registry);
-            if (command.AffectsWorld != worldChanged)
-            {
-                throw new InvalidOperationException(
-                    $"internal error: Apply was called with worldChanged={worldChanged} but " +
-                    $"{command.GetType().Name}.AffectsWorld={command.AffectsWorld}.");
-            }
-
-            if (doc.ResolverIdentity is not null)
-            {
-                string message = detail(command);
-                session.ApplyNative(command, doc, registry);
-                return new MutationResult(verb, message, worldChanged);
-            }
-            command.Apply(doc);
-            IReadOnlyList<string> errors = MapDocumentValidator.Validate(doc, registry);
-            if (errors.Count > 0)
-            {
-                command.Revert(doc);
-                throw new InvalidOperationException("mutation rejected: " + string.Join("; ", errors));
-            }
-            return new MutationResult(verb, detail(command), worldChanged);
-        }, worldChanged);
-    }
-
     // ---- regions --------------------------------------------------------------------------------------------
 
     /// <summary>Adds a named region marker.</summary>
@@ -119,9 +52,11 @@ public sealed partial class MutationService(MapEditSession session)
         return Apply((doc, _) =>
         {
             MapRegion region = doc.Regions.FirstOrDefault(r => string.Equals(r.Name, name, StringComparison.Ordinal))
-                ?? throw new InvalidOperationException($"No region named '{name}' in the document.");
+                ?? throw new MapMutationException(MapDocumentRefusal.ReferenceMissing, $"No region named '{name}' in the document.")
+                { DocumentId = doc.Id, EntityId = name, SubjectKind = "region", FieldPath = "regions" };
             MapShapeDoc oldShape = region.Shape
-                ?? throw new InvalidOperationException($"region '{name}' has no shape to edit.");
+                ?? throw new MapMutationException(MapDocumentRefusal.SchemaValueRequired, $"region '{name}' has no shape to edit.")
+                { DocumentId = doc.Id, EntityId = name, SubjectKind = "region", FieldPath = "shape" };
             return new EditRegionShapeCommand(name, shape, oldShape);
         }, "region_edit_shape", _ => $"edited region {name} shape", worldChanged: false);
     }
@@ -157,7 +92,7 @@ public sealed partial class MutationService(MapEditSession session)
     {
         if (waterLevel is null && seed is null && biomeBlend is null && gentleFrequency is null &&
             gentleAmplitude is null && detailFrequency is null && detailOctaves is null)
-            throw new ArgumentException("terrain_edit needs at least one field to change.");
+            throw new MapMutationArgumentException(MapDocumentRefusal.ToolMutationEmpty, "terrain_edit needs at least one field to change.") { Operation = "terrain_edit" };
 
         return session.Mutate((doc, registry) =>
         {
@@ -174,11 +109,11 @@ public sealed partial class MutationService(MapEditSession session)
                 newDetailOctaves: detailOctaves, oldDetailOctaves: detailOctaves is null ? null : t.DetailOctaves);
             command.Apply(doc);
 
-            IReadOnlyList<string> errors = MapDocumentValidator.Validate(doc, registry);
+            IReadOnlyList<MapDocumentFinding> errors = MapDocumentValidator.ValidateFindings(doc, registry);
             if (errors.Count > 0)
             {
                 command.Revert(doc);
-                throw new InvalidOperationException("mutation rejected: " + string.Join("; ", errors));
+                throw MapMutationException.FromFindings(errors, "mutation rejected: " + string.Join("; ", errors.Select(e => e.Message)));
             }
 
             var parts = new List<string>(7);
@@ -299,7 +234,8 @@ public sealed partial class MutationService(MapEditSession session)
         return Apply((doc, _) =>
         {
             MapScatterLayer old = doc.ScatterLayers.FirstOrDefault(l => string.Equals(l.Name, name, StringComparison.Ordinal))
-                ?? throw new InvalidOperationException($"No scatter layer named '{name}' in the document.");
+                ?? throw new MapMutationException(MapDocumentRefusal.ReferenceMissing, $"No scatter layer named '{name}' in the document.")
+                { DocumentId = doc.Id, EntityId = name, LayerId = name, SubjectKind = "scatter layer", FieldPath = "scatterLayers" };
             var newValue = new MapScatterLayer
             {
                 Name = old.Name,

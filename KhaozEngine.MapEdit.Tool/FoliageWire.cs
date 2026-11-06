@@ -56,9 +56,9 @@ public static class FoliageWire
     /// foliage section, through the payload codec and its limits.</summary>
     internal static MapFoliageLayer ReadLayer(string layerJson)
     {
-        if (string.IsNullOrWhiteSpace(layerJson)) throw new MapDocumentException("foliage_layer_set requires layerJson.");
+        if (string.IsNullOrWhiteSpace(layerJson)) throw new MapDocumentException(MapDocumentRefusal.SchemaValueRequired, "foliage_layer_set requires layerJson.") { FieldPath = "layerJson" };
         using JsonDocument layer = JsonDocument.Parse(layerJson);
-        if (layer.RootElement.ValueKind != JsonValueKind.Object) throw new MapDocumentException("layerJson must be one foliage layer object.");
+        if (layer.RootElement.ValueKind != JsonValueKind.Object) throw new MapDocumentException(MapDocumentRefusal.SchemaObjectRequired, "layerJson must be one foliage layer object.") { FieldPath = "layerJson" };
         var buffer = new ArrayBufferWriter<byte>();
         using (var writer = new Utf8JsonWriter(buffer))
         {
@@ -76,10 +76,10 @@ public static class FoliageWire
     /// <summary>Reads a closed chunk address {x, z}.</summary>
     internal static MapFoliageChunkKey ReadChunkKey(string chunkJson)
     {
-        if (string.IsNullOrWhiteSpace(chunkJson)) throw new MapDocumentException("previewChunkJson must be a chunk address object.");
+        if (string.IsNullOrWhiteSpace(chunkJson)) throw new MapDocumentException(MapDocumentRefusal.SchemaValueRequired, "previewChunkJson must be a chunk address object.") { FieldPath = "previewChunkJson" };
         using JsonDocument json = JsonDocument.Parse(chunkJson);
         JsonElement e = json.RootElement;
-        if (e.ValueKind != JsonValueKind.Object) throw new MapDocumentException("previewChunkJson must be a chunk address object.");
+        if (e.ValueKind != JsonValueKind.Object) throw new MapDocumentException(MapDocumentRefusal.SchemaObjectRequired, "previewChunkJson must be a chunk address object.") { FieldPath = "previewChunkJson" };
         MapFoliageJson.Closed(e, "previewChunkJson", ["x", "z"]);
         return new(MapFoliageJson.Int(e, "x", "previewChunkJson"), MapFoliageJson.Int(e, "z", "previewChunkJson"));
     }
@@ -92,7 +92,7 @@ public static class FoliageWire
         {
             using JsonDocument json = JsonDocument.ParseValue(ref reader);
             try { return MapFoliageJson.ReadBinding(json.RootElement, "foliage support binding"); }
-            catch (MapDocumentException ex) { throw new JsonException(ex.Message, ex); }
+            catch (MapDocumentException ex) { throw MapFoliageJsonException.FromDocument(ex); }
         }
 
         public override void Write(Utf8JsonWriter writer, MapSupportBinding value, JsonSerializerOptions options) =>

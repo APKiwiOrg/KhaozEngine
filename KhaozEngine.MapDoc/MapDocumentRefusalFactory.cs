@@ -81,6 +81,7 @@ internal static class MapDocumentRefusalFactory
             EntityId = finding.EntityId,
             TargetId = finding.TargetId,
             CommandType = finding.CommandType,
+            EditType = finding.EditType,
             OwnerId = finding.OwnerId,
             BodyId = finding.BodyId,
             PositionX = finding.PositionX,

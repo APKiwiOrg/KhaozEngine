@@ -15766,8 +15766,21 @@ the manifest paths it was opened with, a dirty flag, and a cached `TerrainField`
 world-affecting mutation (terrain features, terrain globals, exclusions, scatter overrides, bake). `map_open` (or
 `map_create`) replaces whatever was open, with no dirty guard, since the git diff is the safety net and
 `map_summary` reports the dirty flag. Every mutation validates before it lands
-(`MapDocumentValidator`, then a schema check on save) and reverts with the validation errors folded
-into the thrown message on failure, so the in-session document is never left invalid.
+(`MapDocumentValidator`, then a schema check on save) and reverts on failure, so the in-session document is never left invalid. The shared mutation adapters and
+`TerrainEdit` throw `MapMutationException`, preserving the original `InvalidOperationException` catch contract.
+`Reason` is the first producer reason and `Findings` retains the complete ordered immutable snapshot and typed
+context. Direct region, scatter-layer and duplicate-placement lookups use `ReferenceMissing` with the subject
+identity, while a missing region shape uses `SchemaValueRequired`. Specialized callback adapters retain their
+existing exception base until their own conversion completes.
+
+An empty `terrain_edit` uses `MapMutationArgumentException` and `ToolMutationEmpty`, retaining `Operation` and
+the original null `ParamName`. A null decoded feature or shape uses `MapToolJsonException`,
+`SchemaValueRequired`, root `FieldPath` and `SubjectKind`, still catchable through `JsonException`.
+Foliage dry runs distinguish unsupported edit kinds (`FoliagePreviewEditUnsupported`, `EditType`) from new
+layers (`FoliagePreviewLayerNew`, `LayerId`). Missing or non-object foliage JSON parameters use
+`SchemaValueRequired` or `SchemaObjectRequired` with the parameter's `FieldPath`. The foliage binding converter
+keeps the existing `MapFoliageJsonException` producer family. MCP inner exceptions keep these typed reasons
+reachable without changing transport text.
 
 Session work without a document uses `MapSessionException`, `ToolDocumentRequired` and the refused `Operation`.
 Conversion onto a tiled target uses `DocumentStorageFormConflict`, `Path`, actual and expected document forms.

@@ -457,6 +457,13 @@ public enum MapDocumentRefusal
     /// <summary>Refuses staged publication to a path without a parent directory.</summary>
     ToolParentDirectoryMissing,
 
+    /// <summary>Refuses a foliage dry run for an edit other than setting a layer.</summary>
+    FoliagePreviewEditUnsupported,
+    /// <summary>Refuses a differential preview for a layer not yet present in the document.</summary>
+    FoliagePreviewLayerNew,
+    /// <summary>Refuses a mutation with no supplied field to change.</summary>
+    ToolMutationEmpty,
+
     // Physics navigation and envelope admission.
     /// <summary>Refuses an interaction envelope sweep for an unsupported source shape.</summary>
     PhysicsSweepShapeUnsupported,

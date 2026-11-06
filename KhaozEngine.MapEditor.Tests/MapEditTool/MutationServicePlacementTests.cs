@@ -432,10 +432,13 @@ namespace KhaozEngine.Tests.MapEditTool
                 bool dirtyBefore = session.IsDirty;
 
                 var rect = new RectShapeDoc { MinX = -5f, MinZ = -5f, MaxX = 5f, MaxZ = 5f };
-                InvalidOperationException ex = Assert.Throws<InvalidOperationException>(() =>
-                    mutation.RegionEditShape("camp", rect));
-
-                Assert.Contains("duplicate placement id", ex.Message);
+                string before = session.WithDocument((doc, registry) => System.Text.Json.JsonSerializer.Serialize(doc,
+                    MapDocumentFile.CreateOptions(registry, write: false)));
+                var ex = Assert.Throws<MapMutationException>(() => mutation.RegionEditShape("camp", rect));
+                Assert.Equal(MapDocumentRefusal.IdentityDuplicate, ex.Reason);
+                Assert.Equal("dup", ex.EntityId);
+                Assert.Equal(before, session.WithDocument((doc, registry) => System.Text.Json.JsonSerializer.Serialize(doc,
+                    MapDocumentFile.CreateOptions(registry, write: false))));
 
                 DiscShapeDoc reverted = Assert.IsType<DiscShapeDoc>(
                     session.WithDocument((doc, _) => doc.Regions.Single(r => r.Name == "camp").Shape));
@@ -443,6 +446,8 @@ namespace KhaozEngine.Tests.MapEditTool
                 Assert.Equal(disc.CenterZ, reverted.CenterZ);
                 Assert.Equal(disc.Radius, reverted.Radius);
                 Assert.Equal(dirtyBefore, session.IsDirty);
+                session.WithDocument((doc, _) => { doc.Placements.RemoveAt(doc.Placements.Count - 1); return 0; });
+                Assert.NotNull(mutation.RegionEditShape("camp", rect));
             }
             finally { Directory.Delete(dir, recursive: true); }
         }

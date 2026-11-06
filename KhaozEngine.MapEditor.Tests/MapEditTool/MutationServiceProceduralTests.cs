@@ -209,18 +209,6 @@ namespace KhaozEngine.Tests.MapEditTool
             finally { Directory.Delete(dir, recursive: true); }
         }
 
-        [Fact]
-        public void TerrainEdit_NoParams_Throws()
-        {
-            string dir = NewTempDir();
-            try
-            {
-                (MapEditSession session, MutationService mutation) = OpenSample(dir);
-                Assert.Throws<ArgumentException>(() => mutation.TerrainEdit());
-            }
-            finally { Directory.Delete(dir, recursive: true); }
-        }
-
         // ---- biome bands ------------------------------------------------------------------------------------
 
         [Fact]
@@ -621,12 +609,14 @@ namespace KhaozEngine.Tests.MapEditTool
                 string before = session.WithDocument((doc, r) => MapDocumentFile.SaveText(doc, r));
                 bool dirtyBefore = session.IsDirty;
 
-                InvalidOperationException ex = Assert.Throws<InvalidOperationException>(() =>
-                    mutation.CompanionLayerAdd("ghost-fans", "ghost-layer"));
-                Assert.Contains("not a scatter layer", ex.Message);
+                var ex = Assert.Throws<MapMutationException>(() => mutation.CompanionLayerAdd("ghost-fans", "ghost-layer"));
+                Assert.Equal(MapDocumentRefusal.ReferenceMissing, ex.Reason);
+                Assert.Equal("ghost-layer", ex.LayerId);
+                Assert.Equal("ghost-fans", ex.EntityId);
 
                 Assert.Equal(before, session.WithDocument((doc, r) => MapDocumentFile.SaveText(doc, r)));
                 Assert.Equal(dirtyBefore, session.IsDirty);
+                Assert.NotNull(mutation.CompanionLayerAdd("ghost-fans", "trees"));
             }
             finally { Directory.Delete(dir, recursive: true); }
         }

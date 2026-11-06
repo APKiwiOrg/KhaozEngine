@@ -1999,6 +1999,9 @@ their joined diagnostic text.
 | `ToolPublicationPathInvalid` | A rooted or escaping publication path | submitted `Path`, `StoragePath`, `DocumentForm`, known `ResourceRoot` |
 | `ToolTiledSessionRequired` | A window move without tiled source storage, carried by `MapSessionException` | `DocumentId`, `Path`, `Operation`, `FieldPath`, `DocumentForm`, `ExpectedDocumentForm` |
 | `ToolUnsavedChanges` | A window move discarding dirty content without permission, carried by `MapSessionException` | `DocumentId`, `Path`, `Operation`, `FieldPath` `IsDirty`, `DocumentForm` |
+| `FoliagePreviewEditUnsupported` | A tool dry run for an edit other than setting a layer | `EditType` |
+| `FoliagePreviewLayerNew` | A tool differential preview for a new layer | `LayerId` |
+| `ToolMutationEmpty` | A tool terrain mutation with no supplied field, carried by `MapMutationArgumentException` | `Operation`, original `ParamName` |
 | `ToolStorageFormChanged` | Expected native source storage disappeared or changed form | `Path`, actual `DocumentForm`, `ExpectedDocumentForm`, `Operation` |
 | `ToolParentDirectoryMissing` | A staged save path without a parent directory | `Path`, `Operation` |
 | `ToolDocumentRequired` | Session work without an open document, carried by `MapSessionException` | `Operation` |

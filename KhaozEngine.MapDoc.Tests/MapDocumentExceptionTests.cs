@@ -181,6 +181,7 @@ public sealed class MapDocumentExceptionTests
         if (property.Name == nameof(MapDocumentException.SourceId)) return "spawn-source";
         if (property.Name == nameof(MapDocumentException.MarkerName)) return "arrival";
         if (property.Name == nameof(MapDocumentException.OwnerId)) return "terrain-owner";
+        if (property.Name == nameof(MapDocumentException.EditType)) return typeof(KhaozEngine.MapDoc.Editing.MapRemoveFoliage);
         if (property.Name == nameof(MapDocumentException.Operation)) return "Prepare";
         if (property.Name == nameof(MapDocumentException.Numerator)) return 2;
         if (property.Name == nameof(MapDocumentException.Denominator)) return 200;

@@ -185,6 +185,8 @@ public sealed class MapDocumentException : Exception
     public string? TargetId { get; init; }
     /// <summary>The runtime command type refused by native transaction admission.</summary>
     public Type? CommandType { get; init; }
+    /// <summary>The runtime edit type refused by an operation that supports only selected edits.</summary>
+    public Type? EditType { get; init; }
     /// <summary>The owner of the refused operation or geometry, such as a placement, terrain chunk or water body.</summary>
     public string? OwnerId { get; init; }
     /// <summary>The compiled water body whose world or residency admission failed.</summary>
@@ -438,6 +440,7 @@ public sealed class MapDocumentException : Exception
         EntityId = inner.EntityId;
         TargetId = inner.TargetId;
         CommandType = inner.CommandType;
+        EditType = inner.EditType;
         OwnerId = inner.OwnerId;
         BodyId = inner.BodyId;
         PositionX = inner.PositionX;

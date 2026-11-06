@@ -56,7 +56,7 @@ paths it was opened with, a dirty flag, and a cached `TerrainField` invalidated 
 mutation (terrain features, terrain globals, exclusions, bake). `map_open` (or `map_create`) replaces
 whatever was open, with no dirty guard, since the git diff is the safety net and `map_summary` reports
 the dirty flag. Every mutation validates the document before it lands (`MapDocumentValidator`, then a
-JSON schema check on save) and reverts with the validation errors folded into the thrown message on
+JSON schema check on save) and reverts with the first typed validation reason and all ordered findings on
 failure, so the in-session document is never left invalid.
 
 Session window admission uses `MapSessionException`, catchable as `InvalidOperationException`, with a non-null
@@ -325,6 +325,32 @@ The [MapDoc foliage contract](../KhaozEngine.MapDoc/README.md#native-foliage-con
 compatibility/refusal semantics and the padded CPU handoff. The inventory is 101 verbs. R7 supplies CPU preview only.
 Windowed generation/residency and interior cut remain R8, interactive painting R9, complete verb parity and native
 placement ID rename R10, actual import/source acceptance R11/G2 and appearance R8/G3.
+
+## Mutation and JSON refusals
+
+The shared `Apply` overloads and `TerrainEdit` validate through `MapDocumentValidator.ValidateFindings`.
+Their `MapMutationException` derives from the original `InvalidOperationException` and takes `Reason` from the
+first finding. `Findings` is an owned read-only snapshot of every finding in producer order, retaining each
+finding's complete typed context. `EntityId`, `SubjectKind`, `FieldPath`, `LayerId`, `PlacementId` and `Index`
+also expose the first finding's corresponding values. Rejected commands revert before the exception escapes.
+Direct missing region, scatter-layer and duplicate-placement lookups use the same carrier with
+`ReferenceMissing`. An absent region shape instead uses `SchemaValueRequired`. These direct guards carry the
+known `DocumentId` and entity or placement identity. Later specialized callback adapters keep their current
+exception base until their own conversion completes.
+
+| Carrier and reason | Refused rule | Identifiers |
+| --- | --- | --- |
+| `MapMutationArgumentException.ToolMutationEmpty` | `terrain_edit` without any supplied field | `Operation`, original null `ParamName` |
+| `MapToolJsonException.SchemaValueRequired` | A null deserialized shape or terrain feature | root `FieldPath`, `SubjectKind` |
+| `MapDocumentException.SchemaValueRequired` or `SchemaObjectRequired` | Absent foliage JSON parameter or a non-object root | `FieldPath` `layerJson` or `previewChunkJson` |
+| `MapDocumentException.FoliagePreviewEditUnsupported` | A dry run for an edit other than setting a layer | runtime `EditType` |
+| `MapDocumentException.FoliagePreviewLayerNew` | A differential preview for a newly created layer | `LayerId` |
+
+`MapMutationArgumentException` remains catchable as `ArgumentException`, preserving `ParamName`.
+`MapToolJsonException` remains catchable as `JsonException`. The foliage binding converter reuses
+`MapFoliageJsonException` and keeps its producer reason and original `MapDocumentException`. Tool adapters retain
+these original exceptions and identifiers through `McpException.InnerException`, with transport text unchanged.
+Refused mutations and previews preserve live content, saved map bytes, dirty state and existing history.
 
 ## Native colliders
 

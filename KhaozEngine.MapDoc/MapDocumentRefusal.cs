@@ -189,6 +189,10 @@ public enum MapDocumentRefusal
     /// <summary>Refuses authored work or metadata beyond its checked capacity.</summary>
     WorkCapacityExceeded,
 
+    // Exact geometry admission.
+    /// <summary>Refuses geometry whose effective representation collapses or exceeds its exact domain.</summary>
+    GeometryNotRepresentable,
+
     // Scoped acquisition producer admission.
     /// <summary>Refuses acquisition facts differing from the session's captured snapshot.</summary>
     AcquisitionSnapshotChanged,

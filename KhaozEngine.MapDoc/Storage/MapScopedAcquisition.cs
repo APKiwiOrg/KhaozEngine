@@ -30,7 +30,9 @@ internal sealed class MapScopedAcquisition
         _work = work;
         _snapshot = session.SnapshotId;
         _root = session.RootSha256;
-        if (string.IsNullOrWhiteSpace(_snapshot)) throw new MapDocumentException("invalid acquisition snapshot");
+        if (string.IsNullOrWhiteSpace(_snapshot))
+            throw new MapDocumentException(MapDocumentRefusal.SchemaValueRequired, "invalid acquisition snapshot")
+            { FieldPath = "SnapshotId", ActualSnapshot = _snapshot };
         MapSurfaceStorageLayout.RequireDigest(_root);
     }
     internal static Result Run(IMapSurfaceAcquisitionSource source, MapSurfaceScope scope, MapAcquisitionWork? work)
@@ -38,7 +40,14 @@ internal sealed class MapScopedAcquisition
         using IMapSurfaceAcquisitionSession session = source.OpenAcquisition(scope);
         var acquisition = new MapScopedAcquisition(session, scope, work);
         if (source.SnapshotId != session.SnapshotId || source.RootSha256 != session.RootSha256)
-            throw new MapDocumentException("acquisition session differs from its pinned source");
+            throw new MapDocumentException(MapDocumentRefusal.AcquisitionContractMismatch, "acquisition session differs from its pinned source")
+            {
+                FieldPath = source.SnapshotId != session.SnapshotId ? "SnapshotId" : "RootSha256",
+                ExpectedSnapshot = source.SnapshotId != session.SnapshotId ? source.SnapshotId : null,
+                ActualSnapshot = source.SnapshotId != session.SnapshotId ? session.SnapshotId : null,
+                ExpectedHash = source.SnapshotId == session.SnapshotId ? source.RootSha256 : null,
+                ActualHash = source.SnapshotId == session.SnapshotId ? session.RootSha256 : null,
+            };
         return acquisition.Run();
     }
     Result Run()

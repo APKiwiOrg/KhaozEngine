@@ -165,9 +165,20 @@ identities, root and scope pins carry `ExpectedHash` and `ActualHash`, and paylo
 `Patch` and `PatchStatus`. A null scope or known incidence without a list uses `SchemaValueRequired`.
 Unsupported discovery or unavailable statuses use `SchemaEnumUnsupported` with the numeric value and
 enum type. A composed read whose surface has no owner uses `ReferenceMissing`, `SurfaceId` and `Patch`.
-The resident snapshot merge treats arithmetic overflow after admitted patch keys as an internal invariant
-failure. Public scope-coordinate admission remains in the shared surface query. Other acquisition
-reconciliation, reservation and surface-query checks retain their current message-only behavior.
+Effective explicit-read key mismatches use `AcquisitionContractMismatch` with `Patch`, `ExpectedPatch`
+and `FieldPath`. Effective surface lookups distinguish an undeclared surface (`ReferenceMissing`), a
+successful lookup returning null (`SchemaValueRequired`) and a different identity (`AuthoredValueMismatch`).
+They retain the requested `SurfaceId`, the field and the returned identity as `ActualText` when known.
+Effective reservation snapshots use `WorkCapacityExceeded` with `Budget = "MaxCandidatePatches"`,
+`ActualCount` and `Limit` before checking canonical ordering with `OrderInvalid`. Later snapshot, root
+or reservation changes use `AcquisitionSnapshotChanged`, retaining the changed field and both pins
+when applicable. Negative page deltas use `ValueOutsideRange` with a zero minimum. Backward or
+inconsistent page observations use `AcquisitionContractMismatch` with the reported `ActualCount` and
+observed `ExpectedCount`. Ordinary and effective session admission use the same pin identifiers.
+A collapsed effective cell uses `GeometryNotRepresentable`, `SurfaceId`, `Patch`, `CellX` and `CellZ`.
+The resident snapshot merge and post-capture dictionary lookup treat impossible failures as internal
+invariants. Public scope-coordinate admission remains in the shared surface query. Ordinary acquisition
+discovery and reconciliation guards retain their current message-only behavior.
 
 After a key is served, `TryGetIncidentRecords` returns true with a detached list when incidence is known.
 A true empty list certifies no incidents. False with null means unknown incidence, including an unread
@@ -1493,21 +1504,22 @@ An array beyond its own count cap uses that field name as `Budget`, with its `Ac
 | `IdentityDuplicate` | A repeated marker, adoption source or destination, asset or resource closure identity, support patch or record identity, surface, numeric, codec record, acquired patch or acquired record identity, corner or cell-edge metadata key, world binding, transfer or attachment producer, a standalone owner colliding with a prefab binding, or a repeated extraction reference or resulting local key | `MarkerId`, `MarkerIds`, `FieldPath`, `Index`, `EntityId`, `SubjectKind`, `SourceId`, `AssetId`, `ResourceId`, `SurfaceId`, `PlacementId`, `RecordId`, `Patch`, `NumericId`, `HighWaterMark`, `WorldId`, `ChildKind`, `Child`, `InstanceId` |
 | `IdentityReserved` | A marker reusing a retained prefab reservation, a placement reusing a live or retained instance ID, a live standalone owner using a retired transfer's world identity, or a planned binding colliding with another owner's world or numeric identity | `MarkerId`, `EntityId`, `WorldId`, `ChildKind`, `Child`, `InstanceId`, `NumericId`, `SubjectKind` |
 | `AuthoredOwnershipMismatch` | A marker carrying fields forbidden by its payload or height mode, a transfer inconsistent with its source or standalone owner, an attachment inconsistent with its owner, transfer or record anchor, a prefab placement carrying a numeric ID its instance binding owns, or a prefab-owned interior submitted as standalone | `MarkerId`, `FieldPath`, `EntityId`, `WorldId`, `ChildKind`, `Child`, `InstanceId`, `PlacementId`, `RecordId`, `SpaceId`, `Patch`, `ActualAnchor`, `NumericId`, `ExpectedNumericId`, `ActualCount`, `ExpectedCount`, `SubjectKind` |
-| `ReferenceMissing` | A standalone marker removal target, asset, resource, prefab or dependency missing from its closure, or a composed read surface owner or requested placement, attachment transfer, standalone record target, interior anchor, scatter layer or companion layer missing from its required scope, an absent effective extraction target, or an undeclared asset child removal | `MarkerId`, `AssetId`, `ResourceId`, `DependencyId`, `ExpectedResourceKind`, `EntityId`, `WorldId`, `ChildKind`, `Child`, `InstanceId`, `PlacementId`, `RecordId`, `SpaceId`, `Patch`, `DocumentId`, `LayerId`, `SubjectKind`, `FieldPath`, `Index`, `ReferenceScope` |
+| `ReferenceMissing` | A standalone marker removal target, asset, resource, prefab or dependency missing from its closure, or an undeclared effective surface or composed read surface owner or requested placement, attachment transfer, standalone record target, interior anchor, scatter layer or companion layer missing from its required scope, an absent effective extraction target, or an undeclared asset child removal | `MarkerId`, `AssetId`, `ResourceId`, `DependencyId`, `ExpectedResourceKind`, `EntityId`, `WorldId`, `ChildKind`, `Child`, `InstanceId`, `PlacementId`, `RecordId`, `SpaceId`, `Patch`, `DocumentId`, `LayerId`, `SurfaceId`, `SubjectKind`, `FieldPath`, `Index`, `ReferenceScope` |
 | `AssetClosureRequired` | Foliage edit preflight without a verified asset closure | `DocumentId` |
 | `DigestMismatch` | Acquired patch semantic pins, resource bytes, an attached child's descriptor digest, a stored surface semantic aggregate or a verified tile's lists differing from its pin | `DigestKind`, `SourceName`, `Tile`, `ResourceId`, `Path`, `EntityId`, `WorldId`, `ChildKind`, `Child`, `InstanceId`, `PlacementId`, `SurfaceId`, `SubjectKind`, `ExpectedHash`, `ActualHash` |
 | `BoundsInvalid` | Invalid prefab patch dimensions, manifest local bounds, playable bounds, reversed exact rectangles or invalid surface patch rectangles | `FieldPath`, `Width`, `Depth`, `AssetId`, `SurfaceId`, `Patch`, `CellX`, `CellZ`, `Index`, `MinimumNumber`, `MaximumNumber` |
-| `AcquisitionContractMismatch` | An incoherent acquired payload or effective discovery fact, effective or composed session pin mismatch, or inconsistent effective incidence contract | `Patch`, `PatchStatus`, `FieldPath`, `ExpectedSnapshot`, `ActualSnapshot`, `ExpectedHash`, `ActualHash`, `ActualCount` |
-| `AcquisitionSnapshotChanged` | Effective discovery facts from a different snapshot | `FieldPath`, `ExpectedSnapshot`, `ActualSnapshot` |
+| `AcquisitionContractMismatch` | An incoherent acquired payload, effective discovery fact, effective read key or page observation, session pin mismatch, or inconsistent effective incidence contract | `Patch`, `ExpectedPatch`, `PatchStatus`, `FieldPath`, `ExpectedSnapshot`, `ActualSnapshot`, `ExpectedHash`, `ActualHash`, `ActualCount`, `ExpectedCount` |
+| `AcquisitionSnapshotChanged` | Effective discovery or later session facts with changed snapshot, root or reservations | `FieldPath`, `ExpectedSnapshot`, `ActualSnapshot`, `ExpectedHash`, `ActualHash` |
 | `AcquisitionUnsupported` | A composed native producer without bounded scoped acquisition support | `SourceType` |
-| `WorkCapacityExceeded` | Surface codec work beyond its encoded byte or array-count budget, or local corner-dependency or edge-subdivision metadata beyond its count budget | `Patch`, `FieldPath`, `Budget`, `ActualCount`, `ActualByteCount`, `Limit` |
+| `GeometryNotRepresentable` | A collapsed effective cell | `SurfaceId`, `Patch`, `CellX`, `CellZ` |
+| `WorkCapacityExceeded` | Effective reservation keys beyond the candidate cap, surface codec work beyond its encoded byte or array-count budget, or local corner-dependency or edge-subdivision metadata beyond its count budget | `Patch`, `FieldPath`, `Budget`, `ActualCount`, `ActualByteCount`, `Limit` |
 | `SurfacePresencePaddingNonzero` | Nonzero bits beyond the authored cell count in the last presence word | `Patch`, `FieldPath`, `Index` |
 | `SurfaceSubdivisionAbsentCell` | An edge subdivision on an absent cell | `Patch`, `FieldPath`, `Index`, `CellX`, `CellZ`, `Edge` |
 | `SurfaceSubdivisionInteriorEdge` | An edge subdivision adjoining another present cell inside the patch | `Patch`, `FieldPath`, `Index`, `CellX`, `CellZ`, `Edge` |
 | `SurfaceForcedTopologyConflict` | A forced topology contradicting the diagonal-half rotation | `FieldPath`, `ActualInteger`, `EnumType` |
 | `SurfacePatchTrailingBytes` | A patch payload with values remaining after its root | Requested `Patch` |
 | `SurfacePatchKeyMismatch` | A decoded patch key differing from the requested key | `Patch`, `ExpectedPatch` |
-| `OrderInvalid` | Slot cells outside strictly increasing canonical order | `FieldPath`, `Index`, `ActualInteger`, `PreviousInteger` |
+| `OrderInvalid` | Effective reservation keys or slot cells outside unique canonical order | `FieldPath`, `Index`, `ActualInteger`, `PreviousInteger` |
 | `OperationKindUnsupported` | An unsupported decoded or runtime topology record kind | `RecordId`, `FieldPath`, `ActualText` or `RecordType` |
 | `SurfaceUnitUnreduced` | An authored lattice unit whose positive numerator and denominator have a common factor | `Numerator`, `Denominator` |
 | `SurfaceAddressOutOfPatch` | A patch-local cell or corner coordinate outside the valid rectangle | `Patch`, `Width`, `Depth`, `CellX`, `CellZ`, `FieldPath`, `ActualInteger`, `MinimumInteger`, `MaximumInteger` |

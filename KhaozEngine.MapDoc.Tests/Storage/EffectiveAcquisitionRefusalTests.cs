@@ -89,16 +89,18 @@ public sealed class EffectiveAcquisitionRefusalTests
     }
 
     [Theory]
-    [InlineData("blank")]
-    [InlineData("snapshot")]
-    [InlineData("root")]
-    public void Effective_session_admission_preserves_the_expected_pin(string fault)
+    [InlineData(true, "blank")]
+    [InlineData(true, "snapshot")]
+    [InlineData(true, "root")]
+    [InlineData(false, "blank")]
+    [InlineData(false, "snapshot")]
+    [InlineData(false, "root")]
+    public void Session_admission_preserves_the_expected_pin(bool effective, string fault)
     {
         var probe = AcquisitionConformanceFixtures.OneSeed();
-        MapEffectiveContext context = Context(probe);
         if (fault != "root") probe.SessionSnapshotId = fault == "blank" ? " " : "changed";
         else probe.SessionRootSha256 = new string('f', 64);
-        var ex = Assert.Throws<MapDocumentException>(() => Run(probe, context));
+        var ex = Assert.Throws<MapDocumentException>(() => AcquisitionConformanceFixtures.Run(probe, effective));
         Assert.Equal(fault == "blank" ? MapDocumentRefusal.SchemaValueRequired : MapDocumentRefusal.AcquisitionContractMismatch, ex.Reason);
         Assert.Equal(fault == "root" ? "RootSha256" : "SnapshotId", ex.FieldPath);
         if (fault == "snapshot")
@@ -112,7 +114,7 @@ public sealed class EffectiveAcquisitionRefusalTests
             Assert.Equal(probe.SessionRootSha256, ex.ActualHash);
         }
         probe.SessionSnapshotId = probe.SessionRootSha256 = null;
-        Assert.Equal(MapAcquireStatus.Complete, Run(probe, context).Status);
+        Assert.Equal(MapAcquireStatus.Complete, AcquisitionConformanceFixtures.Run(probe, effective).Status);
     }
 
     [Theory]

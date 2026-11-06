@@ -64,7 +64,9 @@ internal sealed class MapEffectiveSurfaceSource : IMapSurfaceAcquisitionSource, 
             if (!patch.IsPresent(localX, localZ)) continue;
             var polygon = MapEffectiveGeometry.CellPolygon(EffectiveContext, patch.Key, (localZ + patch.CellMinZ) * 64 + localX + patch.CellMinX);
             if (MapEffectiveGeometry.Area(polygon).Sign == 0)
-                throw new MapDocumentException("Collapsed effective cell is not representable.", new MapExactOverflowException());
+                throw new MapDocumentException(MapDocumentRefusal.GeometryNotRepresentable,
+                    "Collapsed effective cell is not representable.", new MapExactOverflowException())
+                { SurfaceId = patch.Key.SurfaceId, Patch = patch.Key, CellX = localX, CellZ = localZ };
         }
         return MapEffectiveGeometry.Bounds(new[] { MapLatticeAddress.Corner(x, z), MapLatticeAddress.Corner(x + patch.Width, z),
             MapLatticeAddress.Corner(x + patch.Width, z + patch.Depth), MapLatticeAddress.Corner(x, z + patch.Depth) }

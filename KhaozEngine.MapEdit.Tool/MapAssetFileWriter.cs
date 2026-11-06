@@ -51,12 +51,14 @@ public sealed class MapAssetFileWriter
             if (!File.Exists(path)) Publish(bytes, path);
             string existing = Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(path))).ToLowerInvariant();
             if (!StringComparer.Ordinal.Equals(existing, reference.Sha256))
-                throw new MapDocumentException(
-                    $"'{path}' already holds other content. A content-addressed resource is never overwritten.");
+                throw new MapDocumentException(MapDocumentRefusal.ToolImmutableResourceConflict,
+                    $"'{path}' already holds other content. A content-addressed resource is never overwritten.")
+                { Path = path, ResourceId = reference.Id, ExpectedHash = reference.Sha256, ActualHash = existing };
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
-            throw new MapDocumentException($"Cannot write native resource '{path}': {ex.Message}", ex);
+            throw new MapDocumentException(MapDocumentRefusal.ToolResourceWriteFailed, $"Cannot write native resource '{path}': {ex.Message}", ex)
+            { Path = path, ResourceId = reference.Id, ResourceRoot = _root, Operation = nameof(WriteResource) };
         }
         return reference;
     }
@@ -96,7 +98,10 @@ public sealed class MapAssetFileWriter
         }
         catch (JsonException ex)
         {
-            throw new MapDocumentException($"Native manifest '{id}' cannot be serialized: {ex.Message}", ex);
+            string message = $"Native manifest '{id}' cannot be serialized: {ex.Message}";
+            if (MapDocumentJsonErrors.TryWrapKnown(ex, null, message, out _, resourceId: id) is { } known) throw known;
+            throw new MapDocumentException(MapDocumentRefusal.ToolManifestSerializationFailed,
+                message, ex) { ResourceId = id, Operation = nameof(Serialize) };
         }
         MapAssetManifestReader.Read(bytes, id);
         return bytes;

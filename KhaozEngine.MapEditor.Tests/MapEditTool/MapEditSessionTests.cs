@@ -13,7 +13,7 @@ namespace KhaozEngine.Tests.MapEditTool
 {
     /// <summary>Headless tests for the map-edit session document core: open/create/save/validate,
     /// the summary counts, the dirty flag, and the cached terrain field's invalidation rules.</summary>
-    public class MapEditSessionTests
+    public partial class MapEditSessionTests
     {
         static string NewTempDir()
         {
@@ -311,56 +311,9 @@ namespace KhaozEngine.Tests.MapEditTool
             finally { TiledFixture.Delete(dir); }
         }
 
-        [Fact]
-        public void SetWindow_ThrowsOnMonolithicDocument()
-        {
-            string dir = NewTempDir();
-            try
-            {
-                string path = Path.Combine(dir, "zone.map.json");
-                MapDocumentFile.Save(SampleDocs.SampleDoc(), path);
-                var session = new MapEditSession();
-                session.Open(path);
 
-                Assert.True(session.HasDocument);
-                Assert.False(session.IsDirty);
-                Assert.False(session.WindowStatus().Tiled);
-                Assert.Throws<InvalidOperationException>(() => session.SetWindow(-10f, -10f, 10f, 10f));
 
-                session.ConvertToTiled(Path.Combine(dir, "tiled"));
-                Assert.True(session.SetWindow(-10f, -10f, 10f, 10f).Tiled);
-            }
-            finally { Directory.Delete(dir, recursive: true); }
-        }
 
-        [Fact]
-        public void SetWindow_ThrowsWhenDirtyWithoutDiscard()
-        {
-            string dir = TiledFixture.NewDirectory();
-            try
-            {
-                MapDocumentFile.SaveTiled(TiledFixture.SampleDoc(), dir);
-                var session = new MapEditSession();
-                session.Open(dir);
-
-                session.Mutate((d, r) =>
-                {
-                    d.Placements.Add(new MapPlacement { Id = "new-1", Kind = "rock", X = 1f, Z = 1f });
-                    return 0;
-                }, worldChanged: false);
-                Assert.True(session.IsDirty);
-
-                string before = session.WithDocument((doc, registry) => MapDocumentFile.SaveText(doc, registry));
-                Assert.Throws<InvalidOperationException>(() => session.SetWindow(-100f, -100f, 100f, 100f));
-                Assert.Equal(before, session.WithDocument((doc, registry) => MapDocumentFile.SaveText(doc, registry)));
-                Assert.True(session.IsDirty);
-
-                session.SetWindow(-100f, -100f, 100f, 100f, discard: true);
-                Assert.False(session.IsDirty);
-                Assert.False(session.WithDocument((doc, _) => doc.Placements.Any(p => p.Id == "new-1")));
-            }
-            finally { TiledFixture.Delete(dir); }
-        }
 
         [Fact]
         public void SetWindow_DiscardMovesWindowAndClearsUnsavedState()
@@ -782,19 +735,6 @@ namespace KhaozEngine.Tests.MapEditTool
             finally { TiledFixture.Delete(dir); }
         }
 
-        [Fact]
-        public void Create_RefusesAnExistingTiledDirectory()
-        {
-            string dir = TiledFixture.NewDirectory();
-            try
-            {
-                MapDocumentFile.SaveTiled(TiledFixture.SampleDoc(), dir);
-                var session = new MapEditSession();
 
-                Assert.Throws<IOException>(() =>
-                    session.Create(dir, "new-id", "New", -10f, -10f, 10f, 10f, overwrite: false));
-            }
-            finally { TiledFixture.Delete(dir); }
-        }
     }
 }

@@ -60,10 +60,9 @@ public sealed partial class MapEditSession
         lock (_lock)
         {
             RequireDocumentLocked();
-            if (!NativeDocumentService.IsNative(_doc!) || _nativeAssets is null || _storagePath is null)
-                throw new MapDocumentException("Native asset editing requires an open native document with a bound asset closure.");
-            string storagePath = Path.GetFullPath(_storagePath);
-            return fn(new NativeAssetContext(_doc!, _nativeAssets, MapDocumentStorage.ResourceRoot(storagePath, _storageForm),
+            MapSessionAdmission.RequireNativeAssets(_doc!, _nativeAssets, _storagePath);
+            string storagePath = Path.GetFullPath(_storagePath!);
+            return fn(new NativeAssetContext(_doc!, _nativeAssets!, MapDocumentStorage.ResourceRoot(storagePath, _storageForm),
                 new MapStorageGuardedAssetSource(storagePath, _storageForm), _registry));
         }
     }
@@ -139,10 +138,10 @@ public sealed partial class MapEditSession
             if (existingForm != MapDocumentForm.None && !overwrite)
                 throw new IOException($"{path}: already exists. Pass overwrite to replace it.");
             if (existingForm == MapDocumentForm.Tiled)
-                throw new MapDocumentException(
+                throw new MapDocumentException(MapDocumentRefusal.DocumentStorageFormConflict,
                     $"{path}: a tiled document (a directory) already exists there. Create always writes a " +
                     "monolithic file, so overwrite cannot replace a directory. Delete it first or choose a " +
-                    "different path.");
+                    "different path.") { Path = path, DocumentForm = existingForm, ExpectedDocumentForm = MapDocumentForm.Monolithic, Operation = nameof(Create) };
 
             string? parent = Path.GetDirectoryName(path);
             if (!string.IsNullOrEmpty(parent)) Directory.CreateDirectory(parent);
@@ -224,13 +223,16 @@ public sealed partial class MapEditSession
         {
             RequireDocumentLocked();
             if (_doc!.Tiles is not { SourceDirectory: { } directory })
-                throw new InvalidOperationException(
+                throw new MapSessionException(MapDocumentRefusal.ToolTiledSessionRequired,
                     "set_window only applies to a tiled document opened from (or converted to) a directory. " +
-                    "This document is monolithic or was built in memory.");
+                    "This document is monolithic or was built in memory.")
+                { DocumentId = _doc.Id, Path = _storagePath, Operation = nameof(SetWindow), FieldPath = "Tiles.SourceDirectory",
+                    DocumentForm = _storageForm, ExpectedDocumentForm = MapDocumentForm.Tiled };
             if (_dirty && !discard)
-                throw new InvalidOperationException(
+                throw new MapSessionException(MapDocumentRefusal.ToolUnsavedChanges,
                     "the open document has unsaved changes. Save first (map_save), then move the window, or " +
-                    "pass discard to move it now and lose them.");
+                    "pass discard to move it now and lose them.")
+                { DocumentId = _doc.Id, Path = _storagePath, Operation = nameof(SetWindow), FieldPath = nameof(IsDirty), DocumentForm = _storageForm };
 
             var options = new MapDocumentLoadOptions { Registry = _registry };
             var rect = MapTileGrid.RectOf(new RectArea(minX, minZ, maxX, maxZ), _doc.TileSize);

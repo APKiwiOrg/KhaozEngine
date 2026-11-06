@@ -13323,7 +13323,9 @@ Standalone interior admission carries `RecordId`, `SpaceId` and `Patch`, with th
 on `AuthoredOwnershipMismatch`. A missing authored anchor uses `ReferenceMissing`. Runtime scatter and
 companion lookup also use `ReferenceMissing`, with `DocumentId`, `LayerId`, `EntityId` and `SubjectKind`
 of `scatter layer` or `companion layer`. Foliage edit preflight without a verified closure uses
-`AssetClosureRequired` and `DocumentId`. Editor transaction admission retains its current contract.
+`AssetClosureRequired` and `DocumentId`. Editor transaction adapters preserve the first producer finding's
+reason and identifiers and its complete ordered `Findings` snapshot. Native staging and snapshots use
+`CompleteDocumentRequired` with `DocumentId` and `Operation` for a partial document.
 
 
 Direct prefab asset and local light checks retain `MapDocumentException`. Inspect `SchemaEnumUnsupported`
@@ -15761,6 +15763,20 @@ world-affecting mutation (terrain features, terrain globals, exclusions, scatter
 `map_summary` reports the dirty flag. Every mutation validates before it lands
 (`MapDocumentValidator`, then a schema check on save) and reverts with the validation errors folded
 into the thrown message on failure, so the in-session document is never left invalid.
+
+Window admission uses `MapSessionException`, still catchable as `InvalidOperationException`, with
+`ToolTiledSessionRequired` or `ToolUnsavedChanges`. It carries the known `DocumentId`, source `Path`,
+`Operation`, failing `FieldPath`, current `DocumentForm` and required `ExpectedDocumentForm` for tiled admission.
+Native publication uses `MapDocumentException` with `ToolNativeDocumentRequired`, `ToolStagedMutationRequired`,
+`ToolNestedMutationUnsupported` or `ToolPublishedClosureMismatch`. The mismatch retains supplied `ExpectedHash`
+and staged `ActualHash`. Binding guards distinguish the missing native document, verified closure and storage
+path in predicate order. Publication paths distinguish `ToolPublicationPathInvalid` from `AssetStoragePathReserved`
+and retain the submitted `Path`, `StoragePath` and form. Resource writers use `ToolImmutableResourceConflict`,
+`ToolResourceWriteFailed` or `ToolManifestSerializationFailed` with the known path, resource identity, digests
+and original cause. Refusals preserve live content and session history. MCP adapters keep their text and expose
+the original exception through `McpException.InnerException`, with an existing `McpException` passed through unchanged.
+Manifest serialization preserves a known typed JSON refusal's own reason and identifiers before using the
+ordinary `ToolManifestSerializationFailed` fallback.
 
 **Native lifecycle.** A document with `ResolverIdentity` is verified completely by
 `NativeDocumentService.ValidateComplete(document, source, options)` at open, window moves, save, validate,

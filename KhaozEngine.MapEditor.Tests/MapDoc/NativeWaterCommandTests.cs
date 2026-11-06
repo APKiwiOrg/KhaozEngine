@@ -184,7 +184,7 @@ public sealed class WaterPublicationTests
         IEditorCommand command = edit == "placement" ? WaterFixtures.AddMarkerPlacementCommand()
             : new WaterEditCommand(new MapUpsertWaterMedium(new("sea-water", MapWaterMediumKind.Water, 0.5f)));
         var error = Assert.Throws<MapDocumentException>(() => NativeDocumentTransaction.Run(doc, command, false, null, localOnly: true));
-        Assert.Equal(MapDocumentRefusal.ReferenceMissing, error.Reason);
+        Assert.Equal(MapDocumentRefusal.PatchUnavailable, error.Reason);
         var first = report.Findings[0];
         Assert.Equal(first.Reason, error.Reason);
         Assert.Equal(first.RecordId, error.RecordId);

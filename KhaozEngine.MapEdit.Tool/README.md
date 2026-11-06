@@ -59,6 +59,32 @@ the dirty flag. Every mutation validates the document before it lands (`MapDocum
 JSON schema check on save) and reverts with the validation errors folded into the thrown message on
 failure, so the in-session document is never left invalid.
 
+Session window admission uses `MapSessionException`, catchable as `InvalidOperationException`, with a non-null
+`MapDocumentRefusal` reason. `ToolTiledSessionRequired` carries `DocumentId`, source `Path`, `Operation`,
+`FieldPath` `Tiles.SourceDirectory`, current `DocumentForm` and required `ExpectedDocumentForm` `Tiled`.
+`ToolUnsavedChanges` carries the same known session context and `FieldPath` `IsDirty`. A refused transition
+preserves document content, closure, dirty state and history before any successful discard or replacement.
+
+Native publication uses `MapDocumentException` with these reasons. Existing diagnostic text is unchanged.
+
+| Reason | Refused rule | Identifiers when known |
+| --- | --- | --- |
+| `ToolNativeDocumentRequired` | Native work through an analytic document | `DocumentId`, `Operation`, `FieldPath`, known `CommandType` |
+| `AssetClosureRequired` | Native work without its verified closure | `DocumentId`, `Operation`, `FieldPath` |
+| `SchemaValueRequired` | A native binding without its storage path | `DocumentId`, `Operation`, `FieldPath` `DocumentPath` |
+| `ToolStagedMutationRequired` | A native command outside a mutation or after another command was staged | `DocumentId`, `Operation`, `CommandType` |
+| `ToolNestedMutationUnsupported` | A nested native session mutation | `DocumentId`, `Operation` |
+| `ToolPublishedClosureMismatch` | A staged closure different from the supplied publication closure | supplied `ExpectedHash`, staged `ActualHash`, `DocumentId`, `Operation` |
+| `ToolPublicationPathInvalid` | A rooted publication path or one escaping the resource root | submitted `Path`, `StoragePath`, `DocumentForm`, known `ResourceRoot` |
+| `AssetStoragePathReserved` | A publication path entering writer-owned map storage | submitted `Path`, `StoragePath`, `DocumentForm`, `ResourceRoot` |
+| `DocumentStorageFormConflict` | Creating a monolithic map over an existing tiled map | `Path`, existing `DocumentForm`, required `ExpectedDocumentForm`, `Operation` |
+| `ToolImmutableResourceConflict` | Different content at an immutable resource address | absolute `Path`, `ResourceId`, `ExpectedHash`, `ActualHash` |
+| `ToolResourceWriteFailed` | Resource publication failed through I/O or access admission | absolute `Path`, `ResourceId`, `ResourceRoot`, `Operation`, original `InnerException` |
+| `ToolManifestSerializationFailed` | Manifest serialization failed without a known lower refusal | `ResourceId`, `Operation`, original `InnerException` |
+
+A known typed JSON refusal keeps its original reason and identifiers through the shared document wrapper,
+including the submitted vector component for `ValueNonfinite`.
+
 Native opted-in documents (non-null `ResolverIdentity`) are validated completely at every lifecycle boundary by
 `NativeDocumentService.ValidateComplete(document, source, options)`. It checks the document locally, reloads and
 digest-verifies the whole asset closure, then resolves placements under the document's resolver identity.
@@ -565,6 +591,8 @@ and `ResourceRoot` identifies the resources used. The original refusal remains `
 Every mutation returns what changed. An exception from a lower layer (`MapDocumentException`,
 `InvalidOperationException`, `ArgumentException`) reaches the client with its original, precise message
 rather than a generic one.
+`ToolGuard` retains that original exception in `McpException.InnerException`, keeping its family reason and
+identifiers reachable. An existing `McpException` passes through unchanged.
 
 Full document format, the runtime builders, and the GUI editor sharing this same model:
 [`KhaozEngine.MapDoc`](../KhaozEngine.MapDoc/README.md),

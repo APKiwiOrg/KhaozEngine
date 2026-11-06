@@ -417,6 +417,28 @@ public enum MapDocumentRefusal
     /// <summary>Refuses publication when the available report cannot prove complete water containment.</summary>
     WaterContainmentUnverified,
 
+    // Tool session and immutable publication admission.
+    /// <summary>Refuses different content already stored at an immutable resource address.</summary>
+    ToolImmutableResourceConflict,
+    /// <summary>Refuses an immutable resource write that failed through I/O or access admission.</summary>
+    ToolResourceWriteFailed,
+    /// <summary>Refuses a native manifest that cannot be serialized.</summary>
+    ToolManifestSerializationFailed,
+    /// <summary>Refuses a native command without exactly one staged session mutation.</summary>
+    ToolStagedMutationRequired,
+    /// <summary>Refuses native editing through an analytic document.</summary>
+    ToolNativeDocumentRequired,
+    /// <summary>Refuses an asset command whose staged closure differs from its publication closure.</summary>
+    ToolPublishedClosureMismatch,
+    /// <summary>Refuses a nested native session mutation.</summary>
+    ToolNestedMutationUnsupported,
+    /// <summary>Refuses a rooted publication path or one escaping its resource root.</summary>
+    ToolPublicationPathInvalid,
+    /// <summary>Refuses moving the loaded window of a session without tiled source storage.</summary>
+    ToolTiledSessionRequired,
+    /// <summary>Refuses a session transition that would discard unsaved changes without permission.</summary>
+    ToolUnsavedChanges,
+
     // Physics navigation and envelope admission.
     /// <summary>Refuses an interaction envelope sweep for an unsupported source shape.</summary>
     PhysicsSweepShapeUnsupported,

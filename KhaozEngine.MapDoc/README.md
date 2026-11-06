@@ -1989,6 +1989,16 @@ their joined diagnostic text.
 | `EditorRetainedReferenceRemoved` | A retained record referring to a removed child | `DocumentId`, `RecordId`, `TargetId`, target `ChildKind`, reference `FieldPath` |
 | `ToolAssetRootRequired` | Detached prefab work or publication without a manifest root | `AssetId` when known, `Operation` |
 | `WaterContainmentUnverified` | A publication report without a concrete finding that cannot prove water containment | Known findings take precedence |
+| `ToolImmutableResourceConflict` | Different content at an immutable resource address | `Path`, `ResourceId`, `ExpectedHash`, `ActualHash` |
+| `ToolResourceWriteFailed` | Resource publication failed through I/O or access admission | `Path`, `ResourceId`, `ResourceRoot`, `Operation`, original `InnerException` |
+| `ToolManifestSerializationFailed` | Manifest serialization failed without a known lower refusal | `ResourceId`, `Operation`, original `InnerException` |
+| `ToolStagedMutationRequired` | A native command without exactly one staged session mutation | `DocumentId`, `Operation`, `CommandType` |
+| `ToolNativeDocumentRequired` | Native tool work through an analytic document | `DocumentId`, `Operation`, `FieldPath`, known `CommandType` |
+| `ToolPublishedClosureMismatch` | A staged closure different from its supplied publication closure | supplied `ExpectedHash`, staged `ActualHash`, `DocumentId`, `Operation` |
+| `ToolNestedMutationUnsupported` | A nested native session mutation | `DocumentId`, `Operation` |
+| `ToolPublicationPathInvalid` | A rooted or escaping publication path | submitted `Path`, `StoragePath`, `DocumentForm`, known `ResourceRoot` |
+| `ToolTiledSessionRequired` | A window move without tiled source storage, carried by `MapSessionException` | `DocumentId`, `Path`, `Operation`, `FieldPath`, `DocumentForm`, `ExpectedDocumentForm` |
+| `ToolUnsavedChanges` | A window move discarding dirty content without permission, carried by `MapSessionException` | `DocumentId`, `Path`, `Operation`, `FieldPath` `IsDirty`, `DocumentForm` |
 | `WaterBodiesPreventLegacyMode` | Switching to legacy global water while bounded bodies remain | `FieldPath`, `ActualCount` |
 | `DocumentHashSchemeUnsupported` | Whole authored identity or window loading under an unsupported pinned tile hash scheme | `FieldPath`, `ActualVersion`, owned `SupportedVersions` for identity or `ExpectedVersion` for window loading, source context |
 | `StoragePatchKeyMismatch` | A surface dictionary entry whose key differs from its payload key | dictionary `ExpectedPatch`, payload `Patch` |

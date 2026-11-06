@@ -1038,6 +1038,7 @@ and available identifiers on its outer `MapDocumentException`.
 | `FoliageSectionNull` | An explicit null section instead of omission | `FieldPath` |
 | `FoliageChunkUnavailable` | Reading advertised nonresident density | `LayerId`, `FoliageChunk` |
 | `FoliageChunkOutOfDomain` | An advertised or resident chunk outside its layer's sample domain | `LayerId`, `FoliageChunk`, `FieldPath`, `Index`, `Width`, `Depth`, checked axis value and integer limits |
+| `FoliageRectangleOutOfBounds` | A density edit rectangle outside the layer raster | `LayerId`, `FieldPath`, `CellX`, `CellZ`, raster `Width`, `Depth`, checked endpoint and integer limits |
 | `FoliagePaddingNonzero` | Nonzero resident density outside the layer domain | `LayerId`, `FoliageChunk`, `FieldPath`, byte `Index`, chunk-local `CellX`, `CellZ`, `ActualInteger`, `Width`, `Depth` |
 | `FoliageSectionIncomplete` | A section that is not fully buffered | `FieldPath`, with `ActualByteCount` unset because the complete size cannot be measured |
 | `FoliageSectionByteLimitExceeded` | A complete section beyond its UTF-8 byte ceiling | `FieldPath`, `ActualByteCount`, `Limit` |
@@ -1114,6 +1115,15 @@ missing value, World scope, permitted child kind and nonempty ID in that order. 
 findings select the first nonfinite coordinate or finite collapsed dimension and retain the item identity.
 The document-level foliage collector forwards every local finding. Broader document, storage and editing
 adapters still wait for their own final producer conversions.
+Brush admission uses `AuthoredValueMismatch` for a submitted `LayerId` different from the target layer,
+with the target in `LayerId` and submitted ID in `ActualText`. Nonfinite brush and raster scalars use
+`ValueNonfinite`, finite nonpositive cell size or radius and out-of-range hardness use `ValueOutsideRange`.
+Empty raster or rectangle dimensions use `BoundsInvalid`. Hardness accepts 0 and 1. Rectangle domain
+failures use `FoliageRectangleOutOfBounds`, retaining the raster dimensions, submitted cell and first
+failing coordinate or endpoint. Raster work uses `WorkCapacityExceeded` with `Budget` equal to
+`addresses per raster edit` or `chunks per raster edit`, `ActualCount` and inclusive `Limit`.
+Required edit lists, steps and layer values use `SchemaValueRequired` with `FieldPath` and the document
+identity or step index when available. These refusals precede density writes.
 
 The closed codec checks counts, sizes and arithmetic before allocation. Monolithic storage embeds density.
 Tiled storage writes one verified content-addressed pack per (layer, storage region), with logical chunk digests

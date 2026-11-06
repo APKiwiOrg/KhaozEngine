@@ -53,12 +53,16 @@ public static class MapFoliageEdits
             MapEffectiveResources? expanded = Validate(document, candidate, assets, [edit], owners: false);
             return Result(document, candidate, assets, null, new(null, expanded, Shared: true));
         }
-        if (sequence.Edits is null) throw new MapDocumentException("A foliage edit sequence requires its edit list.");
+        if (sequence.Edits is null) throw new MapDocumentException(MapDocumentRefusal.SchemaValueRequired, "A foliage edit sequence requires its edit list.")
+            { DocumentId = document.Id, FieldPath = "Edits" };
         MapFoliageSet? set = document.Foliage;
+        int index = 0;
         foreach (MapFoliageEdit step in sequence.Edits)
         {
-            if (step is null) throw new MapDocumentException("A foliage edit sequence must not contain null.");
+            if (step is null) throw new MapDocumentException(MapDocumentRefusal.SchemaValueRequired, "A foliage edit sequence must not contain null.")
+            { DocumentId = document.Id, FieldPath = $"Edits[{index}]", Index = index };
             set = Apply(set, step);
+            index++;
         }
         MapPrefabEditResult? owner = null;
         MapDocument after;
@@ -114,7 +118,8 @@ public static class MapFoliageEdits
         MapFoliageSet? foliage = document.Foliage;
         if (edit is MapFoliageEditSequence sequence)
         {
-            if (sequence.Edits is null) throw new MapDocumentException("A foliage edit sequence requires its edit list.");
+            if (sequence.Edits is null) throw new MapDocumentException(MapDocumentRefusal.SchemaValueRequired, "A foliage edit sequence requires its edit list.")
+            { DocumentId = document.Id, FieldPath = "Edits" };
             foreach (MapFoliageEdit step in sequence.Edits) foliage = Apply(foliage, step);
         }
         else foliage = Apply(foliage, edit);
@@ -126,7 +131,8 @@ public static class MapFoliageEdits
         switch (edit)
         {
             case MapSetFoliageLayer replace:
-                return SetLayer(set, replace.Layer ?? throw new MapDocumentException("A foliage layer set requires a layer."));
+                return SetLayer(set, replace.Layer ?? throw new MapDocumentException(MapDocumentRefusal.SchemaValueRequired, "A foliage layer set requires a layer.")
+                { FieldPath = "Layer" });
             case MapSetFoliageDensity density:
                 return Replace(set, density.LayerId, layer => SetDensity(layer, density));
             case MapPaintFoliage paint:

@@ -366,6 +366,8 @@ public enum MapDocumentRefusal
     FoliageChunkOutOfDomain,
     /// <summary>Refuses nonzero foliage density padding outside the layer domain.</summary>
     FoliagePaddingNonzero,
+    /// <summary>Refuses a foliage edit rectangle outside its layer raster.</summary>
+    FoliageRectangleOutOfBounds,
     /// <summary>Refuses reading an advertised foliage chunk whose density is not resident.</summary>
     FoliageChunkUnavailable,
     /// <summary>Refuses a foliage section larger than its UTF-8 byte budget.</summary>

@@ -12268,6 +12268,13 @@ select the first nonfinite coordinate or collapsed finite dimension. `ValidateFi
 `ValidateBoundFindings` expose complete owned read-only snapshots in string-validation order, and the
 document-level foliage collector forwards them. Broader document and storage adapters still wait for their
 other producer conversions.
+Brush layer mismatches use `AuthoredValueMismatch`, carrying the target `LayerId` and submitted
+`ActualText`. Scalar guards select `ValueNonfinite`, `ValueOutsideRange` or `BoundsInvalid` from the
+first failed branch and retain `FieldPath` and the checked value or limits. Hardness accepts both 0 and 1.
+`FoliageRectangleOutOfBounds` retains the submitted cell, raster dimensions and failed endpoint.
+Raster work limits use `WorkCapacityExceeded` with the address or chunk `Budget`, `ActualCount` and
+inclusive `Limit`. Required sequence lists, steps and layers use `SchemaValueRequired` with their local
+path and available document identity or step index, before writing density.
 
 Motion padding is explicit caller policy in metres. Transform all eight source-unit-adjusted mesh corners by each
 sample's exact CPU matrix, then expand XYZ. Preserve CPU selection, live blade/shrub profiles and shadow flags. Use the

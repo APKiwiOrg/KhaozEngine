@@ -111,6 +111,30 @@ public sealed class MapWaterJsonRefusalTests
         Assert.NotEmpty(MapEffectiveWater.Resolve(view, body).Domain.Pieces);
     }
 
+    [Theory]
+    [InlineData("frame")]
+    [InlineData("rects")]
+    [InlineData("rings")]
+    [InlineData("ring")]
+    [InlineData("vertices")]
+    public void BodyDigest_RequiredDomainValuesRetainTheBodyIdentity(string fault)
+    {
+        var body = WaterFixtures.OceanOverCaves().Water!.Bodies.Single(b => b.Id == "ocean");
+        var domain = fault switch
+        {
+            "frame" => body.Domain with { Frame = null! },
+            "rects" => body.Domain with { Rects = null! },
+            "rings" => body.Domain with { Rings = null! },
+            "ring" => body.Domain with { Rings = [null!] },
+            _ => body.Domain with { Rings = [new(null!)] },
+        };
+        var error = Assert.Throws<MapDocumentException>(() => MapWaterSet.BodyDigest(body with { Domain = domain }));
+        Assert.Equal(MapDocumentRefusal.SchemaValueRequired, error.Reason);
+        Assert.Equal(fault == "ring" ? "rings" : fault, error.FieldPath);
+        Assert.Equal(body.Id, error.EntityId);
+        Assert.NotEmpty(MapWaterSet.BodyDigest(body));
+    }
+
     [Fact]
     public void ScalarConversionFallback_UsesSchemaMalformedWithoutInventingAPath()
     {

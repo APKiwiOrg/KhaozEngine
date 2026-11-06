@@ -73,7 +73,7 @@ internal static class MapWaterJson
         w.WriteString("medium", body.Medium);
         w.WriteString("renderMaterial", body.RenderMaterial);
         w.WritePropertyName("domain");
-        WriteDomain(w, domain, label);
+        WriteDomain(w, domain, label, body.Id);
         w.WriteStartArray("covers");
         foreach (MapRecordRef cover in Require(body.Covers, label + " covers", "covers", body.Id))
         {
@@ -92,14 +92,14 @@ internal static class MapWaterJson
         w.WriteEndObject();
     }
 
-    internal static void WriteDomain(Utf8JsonWriter w, MapWaterDomainDoc domain, string label = "water domain")
+    internal static void WriteDomain(Utf8JsonWriter w, MapWaterDomainDoc domain, string label = "water domain", string? entityId = null)
     {
-        Require(domain, label, "domain");
+        Require(domain, label, "domain", entityId);
         w.WriteStartObject();
         w.WritePropertyName("frame");
-        WriteFrame(w, Require(domain.Frame, label + " frame", "frame"));
+        WriteFrame(w, Require(domain.Frame, label + " frame", "frame", entityId));
         w.WriteStartArray("rects");
-        foreach (MapWaterRect rect in Require(domain.Rects, label + " rects", "rects"))
+        foreach (MapWaterRect rect in Require(domain.Rects, label + " rects", "rects", entityId))
         {
             w.WriteStartObject();
             w.WriteString("minX", MapSignedDecimal.Format(rect.MinX));
@@ -110,11 +110,11 @@ internal static class MapWaterJson
         }
         w.WriteEndArray();
         w.WriteStartArray("rings");
-        foreach (MapWaterRing ring in Require(domain.Rings, label + " rings", "rings"))
+        foreach (MapWaterRing ring in Require(domain.Rings, label + " rings", "rings", entityId))
         {
             w.WriteStartObject();
             w.WriteStartArray("vertices");
-            foreach (MapLatticeAddress address in Require(Require(ring, label + " ring", "rings").Vertices, label + " ring vertices", "vertices"))
+            foreach (MapLatticeAddress address in Require(Require(ring, label + " ring", "rings", entityId).Vertices, label + " ring vertices", "vertices", entityId))
                 WriteAddress(w, address);
             w.WriteEndArray();
             w.WriteEndObject();

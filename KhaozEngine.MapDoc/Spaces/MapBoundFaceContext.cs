@@ -89,8 +89,11 @@ internal sealed class MapBoundFaceContext
             if (!pending.TryGetValue(demand.Patch, out Pending? entry))
             {
                 MapSurfaceRef? surface = view.Surfaces.FirstOrDefault(s => s.Id == demand.Patch.SurfaceId);
-                if (surface is null || !view.TryAcquiredPatch(demand.Patch, out MapSurfacePatch? patch, out MapPatchStatus status) || patch is null)
-                    throw new MapDocumentException($"context demand patch {demand.Patch}: unavailable");
+                MapPatchStatus status = default;
+                if (surface is null || !view.TryAcquiredPatch(demand.Patch, out MapSurfacePatch? patch, out status) || patch is null)
+                    throw new MapDocumentException(surface is null ? MapDocumentRefusal.ReferenceMissing : MapDocumentRefusal.PatchUnavailable,
+                        $"context demand patch {demand.Patch}: unavailable")
+                    { SurfaceId = demand.Patch.SurfaceId, Patch = demand.Patch, PatchStatus = surface is null ? null : status };
                 MapValidatedSurfacePatch? validatedPatch = preparation.ValidatedPatch(surface, patch);
                 if (validatedPatch is null) { refusal = preparation.Refusal; continue; }
                 entry = new(validatedPatch);
@@ -109,7 +112,11 @@ internal sealed class MapBoundFaceContext
                 else if (view.TryRecord(reference, out MapTopologyRecord? record, out _, borrow: true) &&
                     record is MapHorizontalOpening found) opening = found;
                 if (opening is null || opening.Patch != demand.Patch || !opening.SlotCells.Contains(demand.SlotCell))
-                    throw new MapDocumentException("context demand opening is unavailable or does not own the cell");
+                    throw new MapDocumentException(opening is null ? MapDocumentRefusal.ReferenceMissing :
+                        opening.Patch != demand.Patch ? MapDocumentRefusal.AuthoredOwnershipMismatch : MapDocumentRefusal.SpaceOpeningOwnershipInvalid,
+                        "context demand opening is unavailable or does not own the cell")
+                    { RecordId = reference.Id, Patch = demand.Patch, SlotCell = demand.SlotCell,
+                        ActualAnchor = opening is not null && opening.Patch != demand.Patch ? opening.Patch : null };
                 freshOpeningCell = requested is null || !requested.Cells.Contains(demand.SlotCell);
                 if (freshOpeningCell) faces = checked(faces + OpeningFaceCount(entry.Patch, demand.SlotCell));
             }
@@ -185,24 +192,32 @@ internal sealed class MapBoundFaceContext
     internal IReadOnlyList<MapBoundFace> Faces(MapCellDemand cell)
     {
         if (!_entries.TryGetValue(cell.Patch, out Entry? entry) || !entry.Mask.Contains(cell.SlotCell))
-            throw new InvalidOperationException("context demand was not prepared");
+            throw new MapBoundContextException(MapDocumentRefusal.ContextDemandUnprepared, "context demand was not prepared")
+            { Patch = cell.Patch, SlotCell = cell.SlotCell, Operation = nameof(Faces) };
         return entry.Cells.TryGetValue(cell.SlotCell, out IReadOnlyList<MapBoundFace>? faces) ? faces : Array.Empty<MapBoundFace>();
     }
     internal MapCompiledPatch LocalCompiled(MapPatchKey key) => _entries.TryGetValue(key, out Entry? entry) ? entry.LocalCompiled
-        : throw new InvalidOperationException("context demand patch was not prepared");
+        : throw new MapBoundContextException(MapDocumentRefusal.ContextDemandUnprepared, "context demand patch was not prepared")
+        { Patch = key, Operation = nameof(LocalCompiled) };
     internal MapSlotCellMask Mask(MapPatchKey key) => _entries.TryGetValue(key, out Entry? entry) ? entry.Mask
-        : throw new InvalidOperationException("context demand patch was not prepared");
+        : throw new MapBoundContextException(MapDocumentRefusal.ContextDemandUnprepared, "context demand patch was not prepared")
+        { Patch = key, Operation = nameof(Mask) };
     internal MapCompiledPatch Compiled(MapPatchKey key) => _entries.TryGetValue(key, out Entry? entry)
-        ? entry.Compiled : throw new InvalidOperationException("context demand patch was not prepared");
+        ? entry.Compiled : throw new MapBoundContextException(MapDocumentRefusal.ContextDemandUnprepared, "context demand patch was not prepared")
+        { Patch = key, Operation = nameof(Compiled) };
     /// <summary>A compiled face of a prepared patch by key, from an index built once per patch.</summary>
     internal MapCompiledFace CompiledFace(MapFaceKey key) => key.Patch is { } patch && _entries.TryGetValue(patch, out Entry? entry) &&
-        entry.ByKey.TryGetValue(key, out MapCompiledFace face) ? face : throw new InvalidOperationException("context demand face was not prepared");
+        entry.ByKey.TryGetValue(key, out MapCompiledFace face) ? face :
+        throw new MapBoundContextException(MapDocumentRefusal.ContextDemandUnprepared, "context demand face was not prepared")
+        { Patch = key.Patch, Face = key, Operation = nameof(CompiledFace) };
     internal MapValidatedSurfacePatch ValidatedPatch(MapPatchKey key) => _validated.TryGetValue(key, out MapValidatedSurfacePatch? validated)
-        ? validated : throw new InvalidOperationException("context demand patch was not prepared");
+        ? validated : throw new MapBoundContextException(MapDocumentRefusal.ContextDemandUnprepared, "context demand patch was not prepared")
+        { Patch = key, Operation = nameof(ValidatedPatch) };
     internal IReadOnlyList<MapBoundFace> Opening(MapRecordRef reference, MapCellDemand cell)
     {
         if (!_openings.TryGetValue(reference, out OpeningEntry? entry) || entry.Patch != cell.Patch || !entry.Mask.Contains(cell.SlotCell))
-            throw new InvalidOperationException("context demand opening cell was not prepared");
+            throw new MapBoundContextException(MapDocumentRefusal.ContextDemandUnprepared, "context demand opening cell was not prepared")
+            { Patch = cell.Patch, SlotCell = cell.SlotCell, RecordId = reference.Id, Operation = nameof(Opening) };
         return entry.Cells.TryGetValue(cell.SlotCell, out IReadOnlyList<MapBoundFace>? faces) ? faces : Array.Empty<MapBoundFace>();
     }
 
@@ -210,7 +225,11 @@ internal sealed class MapBoundFaceContext
     {
         int x = slot % 64 - patch.CellMinX, z = slot / 64 - patch.CellMinZ;
         if (slot is < 0 or >= 4096 || x < 0 || x >= patch.Width || z < 0 || z >= patch.Depth || patch.IsPresent(x, z))
-            throw new MapDocumentException("opening must name absent cells in its patch");
+            throw new MapDocumentException(slot is < 0 or >= 4096 ? MapDocumentRefusal.ValueOutsideRange :
+                x < 0 || x >= patch.Width || z < 0 || z >= patch.Depth ? MapDocumentRefusal.SurfaceAddressOutOfPatch :
+                MapDocumentRefusal.SpaceOpeningCellsInvalid, "opening must name absent cells in its patch")
+            { Patch = patch.Key, SlotCell = slot, CellX = x, CellZ = z, ActualInteger = slot,
+                MinimumInteger = slot is < 0 or >= 4096 ? 0 : null, MaximumInteger = slot is < 0 or >= 4096 ? 4095 : null };
         Span<MapLatticeTriangle> triangles = stackalloc MapLatticeTriangle[4];
         return MapSurfaceCompiler.Describe(patch, x, z, triangles);
     }

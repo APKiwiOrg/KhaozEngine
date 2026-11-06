@@ -15,11 +15,14 @@ internal sealed record MapOccupiedPiece(string SpaceId, string FragmentId, MapOc
     internal IReadOnlyList<string> Path { get; init; } = Array.Empty<string>();
     internal MapRecordRef? AuthoredParent { get; init; }
     internal MapWideRational Bottom(MapWideXz p) => LowerPlane is { } plane ? MapWideRational.From(plane) :
-        MapSpaceGeometry.HeightWide(LowerFaces, p) ?? throw new MapDocumentException("missing geometry: occupied lower bound");
+        MapSpaceGeometry.HeightWide(LowerFaces, p) ?? throw new MapDocumentException(MapDocumentRefusal.PatchUnavailable, "missing geometry: occupied lower bound")
+        { SpaceId = SpaceId, OwnerId = LowerBoundary.OwnerId, FieldPath = "Lower" };
     internal MapWideRational? Top(MapWideXz p) => UpperPlane is { } plane ? MapWideRational.From(plane) : UpperFaces is null ? null :
-        MapSpaceGeometry.HeightWide(UpperFaces, p) ?? throw new MapDocumentException("missing geometry: occupied upper bound");
+        MapSpaceGeometry.HeightWide(UpperFaces, p) ?? throw new MapDocumentException(MapDocumentRefusal.PatchUnavailable, "missing geometry: occupied upper bound")
+        { SpaceId = SpaceId, OwnerId = UpperBoundary.OwnerId, FieldPath = "Upper" };
+    // Upper lifts are selected only after a finite Top, including the water region builder's finite-top branches.
     internal MapWidePoint Lift(MapWideXz p, bool upper) => new(p.X, upper ? Top(p)
-        ?? throw new MapDocumentException("open top has no plane") : Bottom(p), p.Z);
+        ?? throw new InvalidOperationException("open top has no plane") : Bottom(p), p.Z);
 }
 
 /// <summary>One identified partition shared by membership, columns and downstream water geometry. Planes never
@@ -63,7 +66,9 @@ internal static class MapOccupiedPartitions
     internal static IReadOnlyList<MapSpaceBoundsPart> At(MapScopedSurfaces view, MapExactXz xz,
         IReadOnlyList<MapSpaceBoundsPart> canonical, IReadOnlyList<MapPrismDomain> prisms)
     {
-        if (prisms.Count > view.Scope.Limits.MaxRecordReads) throw new MapDocumentException("capacity exceeded: prism records");
+        int prismCount = prisms.Count, maxRecordReads = view.Scope.Limits.MaxRecordReads;
+        if (prismCount > maxRecordReads) throw new MapDocumentException(MapDocumentRefusal.WorkCapacityExceeded, "capacity exceeded: prism records")
+        { Budget = "MaxRecordReads", ActualCount = prismCount, Limit = maxRecordReads };
         var raw = canonical.Select(p => Identify(view, p)).ToList();
         var visiting = new HashSet<string>(StringComparer.Ordinal);
         var done = new HashSet<string>(StringComparer.Ordinal);

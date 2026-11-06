@@ -31,9 +31,13 @@ public sealed class BoundFaceContextDemandTests
         Assert.All(faces.Faces, face => Assert.Equal((opening.Id, 0), (face.Key.OwnerId, face.Key.Primitive)));
 
         MapExactXz[] undemanded = MapLatticeRanges.CellRect(view.Surfaces.Single().Frame, opening.Patch, 1);
-        InvalidOperationException error = Assert.Throws<InvalidOperationException>(() =>
+        MapBoundContextException error = Assert.Throws<MapBoundContextException>(() =>
             MapCommonRefinement.BoundFaces(context, footprint, bound, undemanded[0], undemanded[1], new()));
-        Assert.Contains("context demand", error.Message);
+        Assert.Equal(KhaozEngine.MapDoc.MapDocumentRefusal.ContextDemandUnprepared, error.Reason);
+        Assert.Equal(opening.Patch, error.Patch);
+        Assert.Equal(opening.Id, error.RecordId);
+        Assert.Equal(1, error.SlotCell);
+        Assert.Equal("Opening", error.Operation);
     }
 
     [Theory]

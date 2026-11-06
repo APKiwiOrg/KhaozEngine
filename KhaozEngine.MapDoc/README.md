@@ -1558,6 +1558,8 @@ An array beyond its own count cap uses that field name as `Budget`, with its `Ac
 | `SpaceOpenTopInvalid` | An open-top lower bound, an open top on a non-Exterior space, or an open top carrying a surface or opening | `RecordId`, `SpaceId`, `SurfaceId`, `RelatedRecordId`, first failed `FieldPath` |
 | `SpaceBoundRoleMismatch` | A bound kind or surface role incompatible with the lower or upper bound role | `RecordId`, `SpaceId`, `SurfaceId`, `FieldPath`, `EnumType`, `ActualInteger` |
 | `SpaceOpeningCellsInvalid` | A horizontal opening over a present cell | `RecordId`, `Patch`, `FieldPath`, `Index`, `ActualInteger`, `CellX`, `CellZ` |
+| `SpaceOpeningOwnershipInvalid` | A prepared opening demand for a cell outside that opening's authored slot set | `RecordId`, `Patch`, `SlotCell` |
+| `ContextDemandUnprepared` | A bound context read outside its prepared demands, carried by `MapBoundContextException` deriving from `InvalidOperationException` | `Operation`, `Patch`, opening `RecordId`, `SlotCell`, exact requested `Face` when applicable |
 | `GeometryNotRepresentable` | A collapsed effective cell, exact triangle or unrepresentable surface emission | `SurfaceId`, `Patch`, `CellX`, `CellZ`, `SlotCell`, `Operation` when known |
 | `GeometryVertexHeightMismatch` | Different exact heights for a shared compiled, opening, boundary or seam vertex | `SurfaceId`, `Patch`, `RecordId`, `Address`, `Index`, `FieldPath` when known |
 | `FrameRadiusExceeded` | Local frame radius or checked anchor subtraction overflow | `Patch` when available, `Limit`, local `PositionX`/`PositionZ` only after successful subtraction |
@@ -1884,6 +1886,19 @@ uses `SpaceOpenTopInvalid`. Slot lists distinguish count limits (`ValueOutsideRa
 findings retain `RecordId`, `Patch`, `Index` and `ActualInteger`, with the genuine `PreviousInteger`
 only when a preceding entry exists. Patch-address findings also retain local coordinates and dimensions.
 Topology findings are complete. Broader throwing adapters still wait for their other finding producers.
+
+Prepared bound-context reads use `MapBoundContextException` with `ContextDemandUnprepared` as their
+`Reason`, with the requested operation and patch, face or opening-cell identifiers. Existing
+`InvalidOperationException` catches still receive these refusals. Preparation distinguishes an
+undeclared surface or opening (`ReferenceMissing`), unavailable patch payload (`PatchUnavailable`),
+an opening on another patch (`AuthoredOwnershipMismatch` with `ActualAnchor`) and a cell outside its
+opening's ownership (`SpaceOpeningOwnershipInvalid`). Opening face counting distinguishes invalid
+slot indices (`ValueOutsideRange` with limits 0 through 4095), cells outside the patch
+(`SurfaceAddressOutOfPatch`) and present cells (`SpaceOpeningCellsInvalid`), retaining `Patch` and
+`SlotCell`. A missing footprint lattice retains `SurfaceId`, `Patch`, `RecordId` and `SpaceId`.
+Missing occupied lower or upper geometry uses `PatchUnavailable` with `SpaceId`, boundary `OwnerId`
+and `FieldPath` `Lower` or `Upper`. Prism record-count refusal uses `WorkCapacityExceeded` with
+`Budget` `MaxRecordReads`, the measured `ActualCount` and inclusive `Limit`.
 
 Map documents are dev-authored content, not runtime state: `MapDocumentFile.Load`/`Save` throw
 `MapDocumentException` on a read error, invalid JSON, a missing or out-of-range `formatVersion`, a

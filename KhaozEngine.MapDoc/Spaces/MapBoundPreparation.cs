@@ -50,7 +50,8 @@ internal sealed class MapBoundPreparation
     internal MapExactXz[] Rectangle(MapSpaceFootprint footprint, int cell)
     {
         MapSurfaceRef? lattice = Surface(footprint.Lattice.SurfaceId);
-        if (lattice is null) throw new MapDocumentException($"missing footprint lattice '{footprint.Lattice.SurfaceId}'");
+        if (lattice is null) throw new MapDocumentException(MapDocumentRefusal.ReferenceMissing, $"missing footprint lattice '{footprint.Lattice.SurfaceId}'")
+        { SurfaceId = footprint.Lattice.SurfaceId, Patch = footprint.Lattice, RecordId = footprint.Id, SpaceId = footprint.Space.Id };
         if (_view.EffectiveContext is null) return MapLatticeRanges.CellRect(lattice.Frame, footprint.Lattice, cell);
         var bounds = MapEffectiveGeometry.Bounds(MapEffectiveGeometry.CellPolygon(_view, footprint.Lattice, cell));
         return new[] { new MapExactXz(bounds.MinX, bounds.MinZ), new MapExactXz(bounds.MaxX, bounds.MaxZ) };

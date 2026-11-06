@@ -12363,6 +12363,14 @@ Missing-Y support providers use `SupportProviderHeightMissing` with `PlacementId
 Missing bindings, bounded searches, spaces and adoption choices have distinct support reasons listed in the
 MapDoc refusal table. Broad document validation keeps its prose adapter until its complete producer is typed.
 
+Bound geometry reads outside their prepared demand set throw `MapBoundContextException`, an
+`InvalidOperationException` subtype whose `Reason` is `MapDocumentRefusal.ContextDemandUnprepared`.
+`Operation`, `Patch`, `Face`, `RecordId` and `SlotCell` identify the requested demand when applicable.
+Preparation keeps `MapDocumentException` and distinguishes missing references, unavailable patches,
+opening patch ownership and opening cell ownership. Occupied-bound refusals retain `SpaceId`, boundary
+`OwnerId` and `FieldPath` `Lower` or `Upper`. The prism record budget reports `WorkCapacityExceeded`
+with `Budget` `MaxRecordReads`, `ActualCount` and inclusive `Limit`.
+
 Doors remain AuthoredOpen. `MapRoofPolicy` returns separate colour, shadow, camera-boom and sky-picking flags.
 Auto concealment uses occupied rooms and explicit links/groups, and leaves unlinked shelters visible. Hidden
 roofs still cast shadows and block sky picking, and never change physics statics. R8 owns rendering, cameras

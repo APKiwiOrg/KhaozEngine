@@ -188,6 +188,8 @@ public enum MapDocumentRefusal
     // Bounded work admission.
     /// <summary>Refuses authored work or metadata beyond its checked capacity.</summary>
     WorkCapacityExceeded,
+    /// <summary>Refuses a bound context read outside its prepared patch, face or opening-cell demand set.</summary>
+    ContextDemandUnprepared,
 
     // Exact geometry admission.
     /// <summary>Refuses geometry whose effective representation collapses or exceeds its exact domain.</summary>
@@ -286,6 +288,8 @@ public enum MapDocumentRefusal
     SpaceBoundRoleMismatch,
     /// <summary>Refuses a horizontal opening over a present cell.</summary>
     SpaceOpeningCellsInvalid,
+    /// <summary>Refuses an opening-cell demand not owned by its referenced opening.</summary>
+    SpaceOpeningOwnershipInvalid,
 
     // Foliage JSON converter.
     /// <summary>Refuses a foliage section larger than its UTF-8 byte budget.</summary>

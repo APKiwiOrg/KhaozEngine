@@ -23,10 +23,12 @@ public sealed class MapNumericIdJsonConverter : JsonConverter<long>
             throw Malformed("Numeric identities must use canonical int64 decimal strings.", text, allowZero);
         foreach (char digit in text)
             if (digit < '0' || digit > '9')
-                throw new JsonException("Numeric identities must contain only ASCII decimal digits.");
-        if (!long.TryParse(text, NumberStyles.None, CultureInfo.InvariantCulture, out long value) ||
-            (!allowZero && value == 0))
-            throw new JsonException("Numeric identity is outside its permitted int64 range.");
+                throw Malformed("Numeric identities must contain only ASCII decimal digits.", text, allowZero);
+        bool parsed = long.TryParse(text, NumberStyles.None, CultureInfo.InvariantCulture, out long value);
+        if (!parsed || (!allowZero && value == 0))
+            throw new MapNumericIdJsonException(MapDocumentRefusal.ValueOutsideRange, "Numeric identity is outside its permitted int64 range.")
+            { FieldPath = "$", ActualText = text, ActualInteger = parsed ? value : null,
+                MinimumInteger = allowZero ? 0 : 1, MaximumInteger = long.MaxValue };
         return value;
     }
 
@@ -37,7 +39,8 @@ public sealed class MapNumericIdJsonConverter : JsonConverter<long>
     internal static void WriteDecimal(Utf8JsonWriter writer, long value, bool allowZero)
     {
         if (value < 0 || (!allowZero && value == 0))
-            throw new JsonException("Numeric identity is outside its permitted int64 range.");
+            throw new MapNumericIdJsonException(MapDocumentRefusal.ValueOutsideRange, "Numeric identity is outside its permitted int64 range.")
+            { FieldPath = "$", ActualInteger = value, MinimumInteger = allowZero ? 0 : 1, MaximumInteger = long.MaxValue };
         writer.WriteStringValue(value.ToString(CultureInfo.InvariantCulture));
     }
 }

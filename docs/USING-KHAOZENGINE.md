@@ -12412,13 +12412,26 @@ Authored-support adoption over a partial document uses the same reason with
 `Operation = "ConvertToAuthoredSupport"`. Unrepresentable binary32 placement presentation uses
 `GeometryNotRepresentable`, `PlacementId`, the failed component's `FieldPath`, binary64 `ActualNumber` and
 `Operation = "ResolveEffectivePlacements"`.
+Sculpt shape guards use `MapTerrainOverridesJsonException`, derived from `JsonException`, with concrete
+`Reason`, relative `FieldPath`, tile array `Index` and `SculptTile` only once both coordinates were read.
+Delta length failures retain observed `ActualCount` and exact `ExpectedCount`. Document wrappers preserve them.
+Surface migration accepts source formats 4 and 5. Its refusal distinguishes `SchemaMemberMissing`,
+`SchemaValueRequired` and `DocumentMigrationSourceVersionInvalid`, retaining known `ActualVersion`,
+`FieldPath` and owned `SupportedVersions`.
+Residency radius admission uses `MapResidencyArgumentException`, derived from `ArgumentException`, with
+`ValueOutsideRange`, `ParamName = "config"`, specific `FieldPath`, `ActualInteger` and inclusive `MinimumInteger`.
+An unload band accepts `OuterRadius + 1`. Duplicate tile index entries use `IdentityDuplicate`, `Tile`,
+`SubjectKind = "tile index entry"` and known `SourceName`. Unreadable tile files use `DocumentTileReadFailed`
+with `Tile`, `SourceName`, full `Path` and pinned `ExpectedHash`.
 Native-vector, terrain-feature and numeric identity converter refusals remain catchable as `JsonException`
 through `MapNativeVectorJsonException`, `MapFeatureJsonException` and `MapNumericIdJsonException`. Their
 required `Reason` and typed identifiers survive document and prefab wrappers. Vectors name the refused
 component in relative `FieldPath`, retaining parsed `ActualNumber` for `ValueNonfinite`. Features name
 `$.type` and discriminator `ActualText`, distinguishing `SchemaValueRequired` from
 `DocumentTerrainFeatureUnknown`. Non-string and noncanonical identity text uses `SchemaInt64Malformed`
-with submitted `ActualText` when known and the inclusive integer limits. An unindexed `ReadTile` request
+with submitted `ActualText` when known and the inclusive integer limits. Invalid digits keep that reason.
+Out-of-range identities use `ValueOutsideRange`, those limits and `ActualInteger` only when representable.
+An unindexed `ReadTile` request
 uses `DocumentTileNotIndexed`, the requested `Tile` and `SourceName`. Native migration accepts source
 formats 3 and 4, reporting `SchemaMemberMissing`, `SchemaValueRequired` or
 `DocumentMigrationSourceVersionInvalid` with `FieldPath`, known `ActualVersion` and owned `SupportedVersions`.

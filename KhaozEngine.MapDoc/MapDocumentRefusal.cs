@@ -37,6 +37,8 @@ public enum MapDocumentRefusal
 
     /// <summary>Refuses reading a tile absent from the occupied-tile index.</summary>
     DocumentTileNotIndexed,
+    /// <summary>Refuses a document tile file that cannot be read.</summary>
+    DocumentTileReadFailed,
 
     // Schema and scalar admission.
     /// <summary>Refuses malformed JSON, typed payload encoding or tile sculpt data.</summary>

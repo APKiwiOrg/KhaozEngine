@@ -13,8 +13,9 @@ public static class DocJson
 {
     /// <summary>Parses a single terrain feature object (registry-open tagged union) using the document's own
     /// serializer options. The options carry <c>MapFeatureConverter</c>, so the registry discriminators drive the
-    /// parse and an unknown discriminator throws <see cref="JsonException"/> with the SDK's precise message. A null
-    /// deserialization result also throws.</summary>
+    /// parse. An unknown discriminator throws <see cref="MapFeatureJsonException"/> with
+    /// <see cref="MapDocumentRefusal.DocumentTerrainFeatureUnknown"/>, its ActualText and FieldPath.
+    /// A null deserialization result also throws.</summary>
     public static MapFeature ParseFeature(string featureJson, MapDocRegistry registry)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(featureJson);

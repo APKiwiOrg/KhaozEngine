@@ -434,6 +434,34 @@ namespace KhaozEngine.Tests.MapDoc
             Assert.Throws<InvalidOperationException>(() => residency.Update(ResidencyFixture.At(0, 0)));
         }
 
+        [Theory]
+        [InlineData(-1, 0, 1, "LoadRadius", -1, 0)]
+        [InlineData(0, -1, 1, "DecorRadius", -1, 0)]
+        [InlineData(2, 0, 2, "UnloadRadius", 2, 3)]
+        [InlineData(0, 2, 2, "UnloadRadius", 2, 3)]
+        public void Constructor_IdentifiesTheInvalidRadiusAndAcceptsItsInclusiveMinimum(int load, int decor, int unload, string field, long actual, long minimum)
+        {
+            using MapDocumentSource source = ResidencyFixture.Source((0, 0));
+            var sink = new RecordingTileSink();
+            var config = new MapResidencyConfig(load, unload, 1, decor, Async: false);
+            var error = Assert.Throws<MapResidencyArgumentException>(() => new MapTileResidency(source, config, sink));
+            Assert.IsAssignableFrom<ArgumentException>(error);
+            Assert.Equal("config", error.ParamName);
+            Assert.Equal(MapDocumentRefusal.ValueOutsideRange, error.Reason);
+            Assert.Equal(field, error.FieldPath);
+            Assert.Equal(actual, error.ActualInteger);
+            Assert.Equal(minimum, error.MinimumInteger);
+            var repaired = field switch
+            {
+                "LoadRadius" => config with { LoadRadius = (int)minimum },
+                "DecorRadius" => config with { DecorRadius = (int)minimum },
+                _ => config with { UnloadRadius = (int)minimum },
+            };
+            using var control = new MapTileResidency(source, repaired, sink);
+            control.Update(Vector3.Zero);
+            Assert.Equal(new[] { new MapTileCoord(0, 0) }, control.Resident);
+        }
+
         [Fact]
         public void Constructor_RejectsDegenerateConfig()
         {
@@ -443,11 +471,7 @@ namespace KhaozEngine.Tests.MapDoc
             Assert.Throws<ArgumentNullException>(() => new MapTileResidency(null!, MapResidencyConfig.Default, sink));
             Assert.Throws<ArgumentNullException>(() => new MapTileResidency(source, MapResidencyConfig.Default, null!));
             Assert.Throws<ArgumentException>(() =>
-                new MapTileResidency(source, new MapResidencyConfig(2, 2, 2), sink));       // no hysteresis band
-            Assert.Throws<ArgumentException>(() =>
                 new MapTileResidency(source, new MapResidencyConfig(2, 3, 0), sink));       // no budget
-            Assert.Throws<ArgumentException>(() =>
-                new MapTileResidency(source, new MapResidencyConfig(-1, 3, 2), sink));      // negative radius
         }
     }
 }

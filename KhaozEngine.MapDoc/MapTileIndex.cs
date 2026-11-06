@@ -38,7 +38,8 @@ public sealed class MapTileIndex
         foreach (MapTileEntry e in list)
         {
             if (!_byCoord.TryAdd(e.Coord, e))
-                throw new MapDocumentException($"duplicate tile index entry for tile ({e.Coord.X}, {e.Coord.Z}).");
+                throw new MapDocumentException(MapDocumentRefusal.IdentityDuplicate, $"duplicate tile index entry for tile ({e.Coord.X}, {e.Coord.Z}).")
+                { Tile = e.Coord, SubjectKind = "tile index entry", SourceName = sourceDirectory };
             if (e.Loaded) loaded++;
         }
 

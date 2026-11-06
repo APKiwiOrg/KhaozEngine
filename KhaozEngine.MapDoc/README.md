@@ -155,7 +155,9 @@ Feature admission distinguishes missing `SchemaValueRequired` from `DocumentTerr
 `FieldPath` and discriminator `ActualText`. A consumer converter returning no feature uses `SchemaValueRequired`
 with its discriminator and root field. Non-string or noncanonical numeric identity text uses
 `SchemaInt64Malformed`, relative `FieldPath`, submitted `ActualText` when known and inclusive
-`MinimumInteger` and `MaximumInteger`. Native migration distinguishes absent `SchemaMemberMissing`,
+`MinimumInteger` and `MaximumInteger`. Invalid digits use the same reason. Out-of-range numeric identities
+use `ValueOutsideRange` with those limits, submitted text on reads and `ActualInteger` only when representable.
+Native migration distinguishes absent `SchemaMemberMissing`,
 incorrectly typed `SchemaValueRequired` and unsupported `DocumentMigrationSourceVersionInvalid`, with
 `FieldPath`, known `ActualVersion` and an owned `SupportedVersions` snapshot.
 
@@ -819,6 +821,12 @@ var field = MapRuntime.BuildField(doc, MapDocRegistry.CreateDefault());
 float h = field.SampleHeight(6f, -2f);   // analytic height + the bilinear sculpt delta
 ```
 
+Sculpt shape guards throw `MapTerrainOverridesJsonException`, derived from `JsonException` and sharing
+`MapDocumentRefusal`. They distinguish `SchemaObjectRequired`, `SchemaArrayRequired`, `SchemaMemberMissing`
+and `SchemaArrayLengthMismatch`. Identifiers include relative `FieldPath`, tile array `Index` and `SculptTile`
+only after both coordinates were read. Delta length refusals retain observed `ActualCount` and exact
+`ExpectedCount`. Document wrappers preserve those fields.
+
 A global cell `(cellX, cellZ)` has its center at world `(cellX * cellSize, cellZ * cellSize)`; deltas are
 meters, bilinearly interpolated between cell centers so sculpts stay smooth at any query resolution. Only
 touched tiles are stored, and an absent or empty block leaves terrain byte-identical to the analytic field
@@ -1477,6 +1485,9 @@ v3 -> v4 (`MapNativeMigration.Upgrade`) adds `playableBounds` from `bounds` when
 v4 -> v5 (`MapSurfaceMigration.Upgrade`) stamps `LegacyXzCallbackV1` without changing resolver-v1
 execution. The format advance changes authored identity once. It does not preserve the old token.
 `MapSurfaceMigration.Upgrade` clones its input and leaves a format-5 input semantically unchanged.
+It distinguishes missing `SchemaMemberMissing`, incorrectly typed `SchemaValueRequired` and unsupported
+`DocumentMigrationSourceVersionInvalid`, with `FieldPath`, known `ActualVersion` and owned `SupportedVersions`
+containing 4 and 5.
 v5 -> v6 (`MapWaterMigration.Upgrade`) adds no member, so a migrated document has no `water` section and keeps
 legacy global water. It accepts only format 5 or 6 input.
 Missing or non-integer water migration versions use `SchemaValueRequired` with `FieldPath`
@@ -1815,6 +1826,13 @@ ring guarantees exactly `LoadRadius * tileSize` of loaded world in every directi
 Euclidean ring guarantees 0 at radius 1 and an awkward 2.83 tiles at radius 4. `MapResidencyConfig` is a
 distinct type from `StreamerConfig` so the two cannot be confused.
 
+Negative load or decor radii and a degenerate unload band throw `MapResidencyArgumentException`, derived
+from `ArgumentException`, with `Reason = ValueOutsideRange`, `ParamName = "config"`, the failed `FieldPath`,
+`ActualInteger` and inclusive `MinimumInteger`. The unload minimum is `OuterRadius + 1`.
+Duplicate tile index coordinates use `IdentityDuplicate`, `SubjectKind = "tile index entry"`, `Tile` and
+known `SourceName`. A tile read failure uses `DocumentTileReadFailed`, `Tile`, `SourceName`, full `Path`
+and pinned `ExpectedHash`.
+
 `ValidateAgainst` is the wiring-time check that a chunk can never build or REBUILD against a non-resident
 tile: the data rule measures to the streamer's UNLOAD radius (chunks persist that far and `Invalidate`
 rebuilds any of them), the collider rule keeps every gameplay chunk over Gameplay tiles, and both subtract
@@ -2109,6 +2127,7 @@ their joined diagnostic text.
 | `ResolverContractMismatch` | The document resolver, support recipe or caller's resolver options cannot serve the requested operation | `PayloadVersion`, `ResolverVersion`, `OptionsResolverVersion`, `ExpectedResolverVersion`, `SupportRecipe`, `ExpectedSupportRecipe`, `FieldPath`, `SubjectKind` |
 | `SupportLegacyHeightRequired` | Resolver-1 resolution without an analytic support callback | `ResolverVersion`, `FieldPath` `legacySupportHeight` |
 | `CompleteDocumentRequired` | Complete prefab expansion, authored-support adoption, whole authored identity or native validation over a partial document | `DocumentId`, `Operation` |
+| `DocumentTileReadFailed` | A tile file that cannot be read | `Tile`, `SourceName`, `Path`, pinned `ExpectedHash`, original cause |
 | `DocumentTileNotIndexed` | A requested tile absent from the occupied index | `Tile`, `SourceName` |
 | `DocumentReadFailed` | An unreadable document source | `SourceName`, `Path`, original cause |
 | `DocumentMigrationMissing` | An older document without its next migration | `SourceName`, `FieldPath`, source `ActualVersion`, next `TargetVersion` |
@@ -2116,7 +2135,7 @@ their joined diagnostic text.
 | `DocumentSaveSourceMissing` | A save-back path with no existing form | `Path`, `DocumentForm` `None` |
 | `DocumentSaveFormInvalid` | A requested form that cannot be written | `Path`, submitted `DocumentForm` |
 | `DocumentAssetRootsMismatch` | Native document roots differing from the verified asset closure | submitted `ResourceIds` and `ExpectedResourceIds`, both owned read-only snapshots in their producer order |
-| `DocumentMigrationSourceVersionInvalid` | A native migration source outside format 3 or 4, or a prefab migration source outside format 6 or 7 | `FieldPath`, `ActualVersion`, owned `SupportedVersions` |
+| `DocumentMigrationSourceVersionInvalid` | A native, surface or prefab migration source outside its supported source versions | `FieldPath`, `ActualVersion`, owned `SupportedVersions` |
 | `PrefabStateUnreadable` | A producer failure while reading prefab state without a concrete lower refusal | `DocumentId`, original `InnerException` on the throwing adapter |
 
 

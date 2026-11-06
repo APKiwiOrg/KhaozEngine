@@ -70,6 +70,55 @@ public sealed class NativeJsonAdmissionRefusalTests
     }
 
     [Theory]
+    [InlineData("\"a\"", false, MapDocumentRefusal.SchemaInt64Malformed, "a", null)]
+    [InlineData("\"9223372036854775808\"", false, MapDocumentRefusal.ValueOutsideRange, "9223372036854775808", null)]
+    [InlineData("\"0\"", true, MapDocumentRefusal.ValueOutsideRange, "0", 0L)]
+    public void NumericIdentity_ReportsInvalidDigitsOverflowAndPositiveOnlyZero(string json, bool positive, MapDocumentRefusal reason, string text, long? actual)
+    {
+        var options = new JsonSerializerOptions();
+        if (positive) options.Converters.Add(new MapNullableNumericIdJsonConverter());
+        else options.Converters.Add(new MapNumericIdJsonConverter());
+        var error = Assert.Throws<MapNumericIdJsonException>(() =>
+        {
+            if (positive) _ = JsonSerializer.Deserialize<long?>(json, options);
+            else _ = JsonSerializer.Deserialize<long>(json, options);
+        });
+        Assert.Equal(reason, error.Reason);
+        Assert.Equal("$", error.FieldPath);
+        Assert.Equal(text, error.ActualText);
+        Assert.Equal(actual, error.ActualInteger);
+        Assert.Equal(positive ? 1 : 0, error.MinimumInteger);
+        Assert.Equal(long.MaxValue, error.MaximumInteger);
+        if (positive)
+        {
+            Assert.Equal(1, JsonSerializer.Deserialize<long?>("\"1\"", options));
+            Assert.Equal(long.MaxValue, JsonSerializer.Deserialize<long?>("\"9223372036854775807\"", options));
+        }
+        else Assert.Equal(long.MaxValue, JsonSerializer.Deserialize<long>("\"9223372036854775807\"", options));
+    }
+
+    [Theory]
+    [InlineData(false, -1L)]
+    [InlineData(true, 0L)]
+    public void NumericIdentityWrite_RefusesOutsideTheInclusiveDomain(bool positive, long value)
+    {
+        var options = new JsonSerializerOptions();
+        if (positive) options.Converters.Add(new MapNullableNumericIdJsonConverter());
+        else options.Converters.Add(new MapNumericIdJsonConverter());
+        var error = Assert.Throws<MapNumericIdJsonException>(() =>
+        {
+            if (positive) _ = JsonSerializer.Serialize<long?>(value, options);
+            else _ = JsonSerializer.Serialize(value, options);
+        });
+        Assert.Equal(MapDocumentRefusal.ValueOutsideRange, error.Reason);
+        Assert.Equal(value, error.ActualInteger);
+        Assert.Equal("$", error.FieldPath);
+        Assert.Equal(positive ? 1 : 0, error.MinimumInteger);
+        Assert.Equal(long.MaxValue, error.MaximumInteger);
+        Assert.Equal(positive ? "\"1\"" : "\"0\"", positive ? JsonSerializer.Serialize<long?>(1, options) : JsonSerializer.Serialize(0L, options));
+    }
+
+    [Theory]
     [InlineData("{}", MapDocumentRefusal.SchemaMemberMissing, null)]
     [InlineData("{\"formatVersion\":null}", MapDocumentRefusal.SchemaValueRequired, null)]
     [InlineData("{\"formatVersion\":\"3\"}", MapDocumentRefusal.SchemaValueRequired, null)]

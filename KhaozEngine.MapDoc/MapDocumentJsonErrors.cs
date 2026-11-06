@@ -36,6 +36,8 @@ internal static class MapDocumentJsonErrors
             }
         for (Exception? cause = error; cause is not null; cause = cause.InnerException)
         {
+            if (cause is MapTerrainOverridesJsonException sculpt)
+                return sculpt.ToDocument(sourceName, message, tile, path, resourceId);
             if (cause is MapFeatureJsonException feature)
                 return feature.ToDocument(sourceName, message, tile, path, resourceId);
             if (cause is MapNativeVectorJsonException vector)

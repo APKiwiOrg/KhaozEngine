@@ -14,7 +14,7 @@ public sealed partial class GridPathPlanner
     /// an orthogonal step is <see cref="NavGrid.CellSize"/>, a diagonal <see cref="NavGrid.CellSize"/> *
     /// sqrt(2). A diagonal step is taken only when both orthogonal companions are passable, blocking
     /// corner cuts. After the eight grid neighbors, each link out of the current node is expanded at its
-    /// precomputed meters cost (a <see cref="NavLinkKind.Stair"/> the source layer's
+    /// precomputed meters cost (a <see cref="NavLinkKind.Stair"/> at least its spatial span and the source layer's
     /// <see cref="NavGrid.CellSize"/>, a <see cref="NavLinkKind.Hop"/> the constructor's hop cost), skipped
     /// when the link's far endpoint is not passable for the agent radius on its own layer. A construction-time
     /// spatial cost ratio scales one metric across every layer: octile in a shared frame, world XZ distance
@@ -162,7 +162,7 @@ public sealed partial class GridPathPlanner
             }
 
             // Cross-layer (and same-grid hop) edges: each link out of this cell carries its own precomputed
-            // meters cost (a Stair one cell of the source layer, a Hop the knob's multiple). The source
+            // meters cost (a Stair at least its span and one source cell, a Hop the knob's multiple). The source
             // endpoint is passable by construction (it is a reached search node). The far endpoint must
             // still fit the agent on its own layer, else the link is not traversable.
             if (_linkEdges.TryGetValue(current, out List<PlannerLink>? links))

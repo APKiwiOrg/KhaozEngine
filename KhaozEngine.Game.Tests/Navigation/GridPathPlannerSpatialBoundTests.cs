@@ -11,16 +11,16 @@ public class GridPathPlannerSpatialBoundTests
     [Fact]
     public void PointPartialProgressUsesPhysicalFeetBelowARoof()
     {
-        // #1712: a cheap stair reaches the goal's XZ on a roof, but ordinary ground is
+        // #1712: a cheap hop reaches the goal's XZ on a roof, but ordinary ground is
         // closer to its physical feet. The budget pops both before choosing a Partial.
         NavGrid ground = NavGrid.FromBlockedSurfaces(5, 1, 1f, 0f, 0f,
             new bool[5], new float[5]);
         NavGrid roof = NavGrid.FromBlockedSurfaces(5, 1, 1f, 0f, 0f,
             new[] { true, true, true, true, false }, new[] { 10f, 10f, 10f, 10f, 10f });
-        var space = new NavSpace(new[] { ground, roof }, new[] { new NavLink(0, 0, 0, 1, 4, 0) });
+        var space = new NavSpace(new[] { ground, roof }, new[] { new NavLink(0, 0, 0, 1, 4, 0) { Kind = NavLinkKind.Hop } });
         var budget = new PathQueryBudget { MaxExpandedNodes = 3, SnapRadius = 0f };
 
-        NavPath path = new GridPathPlanner(space).FindPath(new(0.5f, 0f, 0.5f),
+        NavPath path = new GridPathPlanner(space, hopCostCells: 1f).FindPath(new(0.5f, 0f, 0.5f),
             new Vector3(4.5f, 0f, 0.5f), 0f, budget);
 
         Assert.Equal(NavPathStatus.Partial, path.Status);
@@ -34,8 +34,8 @@ public class GridPathPlannerSpatialBoundTests
     [InlineData(true)]
     public void DiagonalCrossLayerStairsKeepAUsefulBoundWithDrops(bool region)
     {
-        // #1712: each diagonal stair costs one cell, so unscaled octile overestimates.
-        // Alternating layers makes the scaled bound tight. Dijkstra floods both open planes.
+        // #1712: each diagonal stair covers its span, keeping the spatial bound at one.
+        // Alternating layers retains the cross-layer search. Dijkstra floods both open planes.
         const int side = 128, target = 101;
         var heights = new float[side * side];
         heights[120 * side + 120] = 3f;
@@ -69,7 +69,7 @@ public class GridPathPlannerSpatialBoundTests
     [InlineData(true)]
     public void SeededMultilayerCostsEqualExhaustiveDijkstra(bool differentFrames)
     {
-        // #1712: a popped node must remain final through cheap stairs and same-layer Drops.
+        // #1712: a popped node must remain final through metric-priced stairs and same-layer Drops.
         const int seeds = 12, queries = 8;
         for (int seed = 1; seed <= seeds; seed++)
         {
@@ -132,11 +132,11 @@ public class GridPathPlannerSpatialBoundTests
         NavGrid grid = NavGrid.FromWalkable(10, 1, 1f, 0f, 0f, (_, _) => true);
         var space = new NavSpace(new[] { grid }, new[]
         {
-            new NavLink(0, 0, 0, 0, 9, 0),
-            new NavLink(0, 9, 0, 0, 3, 0),
+            new NavLink(0, 0, 0, 0, 9, 0) { Kind = NavLinkKind.Hop },
+            new NavLink(0, 9, 0, 0, 3, 0) { Kind = NavLinkKind.Hop },
         });
 
-        NavPath path = new GridPathPlanner(space).FindPath(new(0.5f, 0f, 0.5f), new Vector3(3.5f, 0f, 0.5f),
+        NavPath path = new GridPathPlanner(space, hopCostCells: 1f).FindPath(new(0.5f, 0f, 0.5f), new Vector3(3.5f, 0f, 0.5f),
             0f, PathQueryBudget.Default);
 
         Assert.Equal(NavPathStatus.Complete, path.Status);

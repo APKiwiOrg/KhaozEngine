@@ -71,7 +71,7 @@ the missing piece is purely the bake: extracting the layers and their links from
    them.** `NavLayerLinks.Generate` emits, for every Chebyshev-distance-1 cross-layer pair of
    passable cells: a directed `Stair` pair when the rise is within `stepHeight` (a walked seam, the
    bridge deck meeting its abutment), and a directed `Hop` pair when the rise is in
-   (`stepHeight`, `jumpHeight`] (a cliff edge, a rock top). Stair links cost one source cell and are
+   (`stepHeight`, `jumpHeight`] (a cliff edge, a rock top). Stair links cost at least their spatial metric span and one source cell, and are
    walked with no special state, exactly the dungeon semantics; Hop links cost `hopCostCells` and
    surface the follower's `Hopping` seam, exactly the hop-slice semantics. Same-layer islands keep
    `NavHopLinks.Generate` per layer. Same-column (Chebyshev 0) cross-layer links are deliberately not

@@ -324,7 +324,8 @@ A* implementation over a `NavSpace`.
 
 A query snaps both endpoints onto a passable cell (within `PathQueryBudget.SnapRadius`, else
 `NavPath.Unreachable`), tries a same-layer line-of-sight shortcut, then searches eight-connected grid exits and
-accepted links. Diagonals require both companion cells. Stair costs one source cell, Hop costs `hopCostCells`
+accepted links. Diagonals require both companion cells. Stair costs the greater of its spatial metric span and
+one source cell, rounded upward when needed to cover that span. Hop costs `hopCostCells`
 source cells and Drop costs world XZ octile displacement plus positive physical descent in metres. Expansion is
 bounded by `MaxExpandedNodes`. An incomplete query returns its closest reached node as Partial or Unreachable
 when no progress was made. Legacy point routes string-pull ordinary runs. Incoming edge identity preserves Hop
@@ -408,7 +409,7 @@ without changing their costs.
 Point priority uses that scaled metric to the goal cell on every layer. Region priority scales the XZ
 distance to the region's world-axis extent square on every layer. Feet and edge spans use the same XZ
 cell centres, with surface height supplying only Y. Each edge costs at least its scaled spatial
-span, so these bounds are admissible and consistent even for cheap diagonal stairs, long links and
+span, so these bounds are admissible and consistent even for cheap Hops, long links and
 paths leaving and re-entering the goal layer. A popped node is final. Preserving links leave the ratio
 at one. Point progress uses squared physical 3D distance to the goal cell's feet across layers, while
 region progress uses squared 3D distance to actual members. Legacy height-less point grids use a zero-height
@@ -416,7 +417,10 @@ plane. Progress still selects a useful partial endpoint when the safe
 priority is zero. The legacy point line-of-sight shortcut is used only when the ratio is one, since a
 cheap link can otherwise beat a visible direct walk.
 
-The bound and partial progress apply on every layer for every graph. Route choices change in 23.3.0.
+The bound and partial progress apply on every layer for every graph. Route choices change in 23.3.0,
+including the correction of discounted diagonal Stairs. A zero-span Stair retains its source-cell minimum.
+Stair weights are computed at load, so this policy changes no bake bytes, topology, format or identity fields
+at a fixed engine version. A released engine version still requires the normal consumer rebake.
 Complete searches retain optimal graph-edge cost. With `MaxExpandedNodes = int.MaxValue`, a query completes
 exactly when the admitted graph connects its start to a goal, otherwise it returns Partial or Unreachable.
 Finite-budget results are best effort. Changing the search order can improve or worsen a status or the

@@ -10,7 +10,7 @@ namespace KhaozEngine.Navigation;
 /// visible on the start's layer, otherwise runs an 8-connected A* search. The search prevents diagonal
 /// corner-cutting (a diagonal step needs both orthogonal companions passable), crosses layers over
 /// <see cref="NavSpace.Links"/>. Each link is a graph edge whose meters cost is precomputed per
-/// <see cref="NavLinkKind"/>: a <see cref="NavLinkKind.Stair"/> costs one cell of its source layer, a
+/// <see cref="NavLinkKind"/>: a <see cref="NavLinkKind.Stair"/> costs at least its spatial span and one source cell, a
 /// <see cref="NavLinkKind.Hop"/> costs the constructor's <c>hopCostCells</c> cells, and Drop costs its XZ octile
 /// displacement plus physical descent. Each far endpoint is
 /// re-checked for the agent radius. The search caps its work at <see cref="PathQueryBudget.MaxExpandedNodes"/>
@@ -67,7 +67,8 @@ public sealed partial class GridPathPlanner : IRegionPathPlanner
     /// <summary>Builds a planner that searches <paramref name="space"/>. <paramref name="hopCostCells"/> is
     /// the cost of crossing a <see cref="NavLinkKind.Hop"/> link, in multiples of the source layer's
     /// <see cref="NavGrid.CellSize"/> (default 4). It must be positive. A <see cref="NavLinkKind.Stair"/>
-    /// link keeps its one-cell cost. The planner scales its spatial lower bound once at construction
+    /// link costs the greater of its spatial metric span and one source cell. The planner scales its spatial
+    /// lower bound once at construction
     /// to account for links cheaper than their displacement, keeping search costs optimal.</summary>
     public GridPathPlanner(NavSpace space, float hopCostCells = 4f)
         : this(space, hopCostCells, null)
@@ -92,6 +93,7 @@ public sealed partial class GridPathPlanner : IRegionPathPlanner
         }
         _totalNodes = total;
 
+        _spatialBound = new PlannerSpatialBound(_space, _traversal, LinkCost);
         _linkEdges = new Dictionary<int, List<PlannerLink>>();
         foreach (NavLink link in traversal?.Links ?? _space.Links)
         {
@@ -105,7 +107,6 @@ public sealed partial class GridPathPlanner : IRegionPathPlanner
             }
             targets.Add(new(toId, costMeters, link.Kind));
         }
-        _spatialBound = new PlannerSpatialBound(_space, _traversal, LinkCost);
     }
 
     /// <summary>

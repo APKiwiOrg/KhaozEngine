@@ -9216,7 +9216,8 @@ Region discovery scans the full admitted topology before expansion. Search prior
 to the extent square by a construction-time minimum edge-cost-to-span ratio on every layer. Separate
 finite-safe progress compares actual admitted members. Point progress compares physical 3D feet positions.
 Complete searches are optimal, unlimited searches are exact, and finite-budget results are best effort.
-Route choices change in 23.3.0. The Navigation README owns the complete cost contract.
+Route choices change in 23.3.0. Stair links cost at least their spatial metric span and one source cell,
+so diagonal Stairs no longer receive a discount. The Navigation README owns the complete cost contract.
 Work is `O(N + E*M)` and storage is `O(N + M)`.
 The AABB reduces exact predicate calls, not `M` for valid predicates. `MaxExpandedNodes` bounds expanded
 nodes only, so it does not bound topology discovery or all query work.
@@ -10049,7 +10050,7 @@ Player routed walk-up gets it through the same driver.
 1 to 65,535 ticks and a finite positive travel, validated as `DirectApproachOptions` is, with no engine default. Every
 tick that returns `Following` or `WaitingForPath` is counted except the hold for a zero travel bound, so refused steps,
 zero offset waypoints and a partial route waiting on its cooldown count, while `Suspended`, `InRange`, `Unreachable` and
-`UnsupportedTransition` do not. When net horizontal feet displacement across the last `WindowTicks` counted intervals
+`UnsupportedTransition` do not. When accumulated horizontal feet travel across the last `WindowTicks` counted intervals
 is under `TravelMetres`, that tick returns `Blocked` with zero input (the 16th counted tick for 15). The latch holds
 until `InRange`, `Reset` or a change of target shape, range or capsule. `InRange` also clears the window, and a replan,
 a straightening fallback or a target translation does not. A body rooted for good never latches, and a body whose
@@ -10246,7 +10247,7 @@ public sealed class DirectMoveToRange
 ```
 
 The options have no defaults. Windows are 1 to 65,535 ticks and distances are finite and positive. A window of N
-ticks spans N intervals and is first eligible on the (N + 1)th counted tick. When net horizontal travel across the
+ticks spans N intervals and is first eligible on the (N + 1)th counted tick. When accumulated horizontal feet travel across the
 stall window falls below `stallTravelMetres`, or reach distance across the approach window gains less than
 `approachGainMetres` for a static target, the driver latches `RangeMoveStatus.Blocked` until `InRange`, `Reset`, or a
 change of target shape, range or capsule geometry. A step that would leave the ground or start swimming is refused

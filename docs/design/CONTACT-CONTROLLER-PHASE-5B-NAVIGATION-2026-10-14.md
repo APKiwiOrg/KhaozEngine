@@ -116,7 +116,7 @@ every `Load` expectation, before any stream read:
   profile compatibility and KENB identity never include runtime contents. Existing physical basis checks refuse
   a sanctioned change between reads, including add-then-remove. A bare Legacy context without registration still
   requires the host to supply authored-only physics. Runtime collision can stop an unaware route and its stall
-  window then measures actual displacement. Removing the blocker does not reset a latched follower.
+  window then measures accumulated horizontal travel. Removing the blocker does not reset a latched follower.
 - A new internal Locomotion factory derives a **proof binding** from the profile's source binding. It shares the source
   binding's ordinary provider, environment context, selected view and composition, and changes only `WalkSpeed`,
   `RunSpeed` and `AirMomentum` to the legacy probe values. Those fields are outside the environment identity and the

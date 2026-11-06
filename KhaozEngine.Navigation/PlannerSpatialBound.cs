@@ -13,7 +13,7 @@ internal sealed class PlannerSpatialBound
 
     internal float Scale { get; }
 
-    internal PlannerSpatialBound(NavSpace space, NavTraversalGraph? traversal, Func<NavLink, float> linkCost)
+    internal PlannerSpatialBound(NavSpace space, NavTraversalGraph? traversal, Func<NavLink, double, float> linkCost)
     {
         _layers = space.Layers;
         _sharedFrame = true;
@@ -30,8 +30,8 @@ internal sealed class PlannerSpatialBound
                 scale = Math.Min(scale, WalkingScale(layer, traversal));
         foreach (NavLink link in traversal?.Links ?? space.Links)
         {
-            float cost = linkCost(link);
             double span = Distance(link.FromLayer, link.FromX, link.FromZ, link.ToLayer, link.ToX, link.ToZ);
+            float cost = linkCost(link, span);
             scale = Constrain(scale, cost, span);
         }
         // Round downward so storing the ratio cannot raise the promised lower bound.

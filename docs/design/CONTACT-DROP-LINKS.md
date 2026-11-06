@@ -103,7 +103,7 @@ Neighbor expansion reads only exit masks, while `GroundNavigation.AllowsSegment`
 links. A Drop cannot become ordinary walking because it joins adjacent cells.
 
 A Drop costs its world XZ octile displacement plus its positive physical descent in metres. Hop retains its cost
-knob and Stair its source-cell cost. Incoming edge kinds travel with search parents, so reconstruction annotates
+knob. Stair costs at least its spatial metric span and one source cell. Incoming edge kinds travel with search parents, so reconstruction annotates
 the edge actually chosen. A cheaper ordinary exit remains Walk. Drop source and landing are mandatory physical
 centers, including first, final and consecutive transitions. Smoothing and straightening cannot remove either.
 An unguarded exact point goal gets a separate final Walk waypoint when it differs from a Drop landing.

@@ -15,7 +15,7 @@ public sealed partial class MoveToRange
         if (_stallRing is null) return steering;
         _stallRing.Record(new Vector2(body.Position.X, body.Position.Z), 0f);
         RouteStallOptions stall = _options.Stall!;
-        if (!_stallRing.StallBreached(stall.TravelMetres, stall.WindowTicks)) return steering;
+        if (!_stallRing.StallBreached(stall.TravelMetres)) return steering;
         _stalled = true;
         return Hold(RangeMoveStatus.Blocked);
     }

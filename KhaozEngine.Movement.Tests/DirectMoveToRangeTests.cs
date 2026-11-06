@@ -180,7 +180,7 @@ public class DirectMoveToRangeTests
         {
             samples.Add(new Vector2(body.Position.X, body.Position.Z));
             int count = samples.Count;
-            if (expected < 0 && count > 15 && Vector2.Distance(samples[count - 1], samples[count - 16]) < 0.1f)
+            if (expected < 0 && count > 15 && RangeTravelTests.WindowTravel(samples, count - 16, count - 1) < 0.1f)
                 expected = count;
             RangeSteering steering = driver.Tick(body, Tuning, target, 0.5f, false, false, Dt, context);
             if (steering.Status == RangeMoveStatus.Blocked)

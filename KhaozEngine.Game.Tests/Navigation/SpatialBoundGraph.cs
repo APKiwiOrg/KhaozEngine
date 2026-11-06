@@ -70,6 +70,23 @@ internal sealed class SpatialBoundGraph
                     (double)target.RestingHeightAt(link.ToX, link.ToZ)!.Value;
                 cost = (float)(Math.Max(x, z) + (MathF.Sqrt(2f) - 1d) * Math.Min(x, z) + fall);
             }
+            else
+            {
+                double span;
+                if (differentFrames)
+                {
+                    Vector2 a = source.CellCenter(link.FromX, link.FromZ), b = target.CellCenter(link.ToX, link.ToZ);
+                    span = Math.Sqrt(Math.Pow((double)a.X - b.X, 2) + Math.Pow((double)a.Y - b.Y, 2));
+                }
+                else
+                {
+                    int x = Math.Abs(link.FromX - link.ToX), z = Math.Abs(link.FromZ - link.ToZ);
+                    span = source.CellSize * (MathF.Sqrt(2f) * Math.Min(x, z) + Math.Abs(x - z));
+                }
+                double minimum = Math.Max(source.CellSize, span);
+                cost = (float)minimum;
+                if (cost < minimum) cost = MathF.BitIncrement(cost);
+            }
             Edges.Add(new(new(link.FromLayer, link.FromX, link.FromZ), new(link.ToLayer, link.ToX, link.ToZ),
                 cost, link.Kind == NavLinkKind.Drop ? NavWaypointKind.Drop : NavWaypointKind.Walk));
         }

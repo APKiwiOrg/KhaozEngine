@@ -52,7 +52,7 @@ public sealed partial class MoveToRange
         _allowsSegment = allowsSegment ?? throw new ArgumentNullException(nameof(allowsSegment));
         _options = options ?? throw new ArgumentNullException(nameof(options));
         if (options.StraightenRoutes) _straightener = new RouteStraightener(planner, space, allowsSegment);
-        if (options.Stall is { } stall) _stallRing = new RangeProgressRing(stall.WindowTicks + 1);
+        if (options.Stall is { } stall) _stallRing = new RangeProgressRing(stall.WindowTicks);
         _follower = new PathFollower(_straightener ?? planner,
             StrictConfig(follow ?? PathFollowConfig.Default, options.CarryThroughStraightRuns), space);
         _contains = Contains;

@@ -182,7 +182,7 @@ public sealed class MapPrefabFormatTests
         int calls = 0;
         var error = Assert.Throws<MapDocumentException>(() => MapResolver.Resolve(f.Document, f.Assets,
             (_, _) => { calls++; return 0; }, new("fixture", 1, "fixture")));
-        // W6-D3-01 closes this whole-document adapter after the W6-D1 producer family.
+        // W6-D3-02 closes this whole-document adapter after the W6-D1 producer family.
         Assert.Contains("Prefab sections require resolver identity (1, 2) and AuthoredBindingsV2.", error.Message);
         Assert.Equal(0, calls);
         var finding = Assert.Throws<MapDocumentException>(() => MapPrefabValidation.RequireDocument(f.Document, f.Assets));

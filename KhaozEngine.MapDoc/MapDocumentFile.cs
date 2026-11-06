@@ -244,11 +244,18 @@ public static class MapDocumentFile
     /// consumers use it, and documented as SMALL DOCUMENTS ONLY: it is no longer the way to obtain bytes to
     /// hash (<see cref="MapDocumentHash.OfWorld"/> is), and it is subject to the single-object ceiling
     /// <see cref="SaveTo"/> exists to clear.</summary>
-    public static string SaveText(MapDocument doc, MapDocRegistry? registry = null)
+    public static string SaveText(MapDocument doc, MapDocRegistry? registry = null) =>
+        SaveTextCore(doc, registry, MapSurfaceEmbedding.MaxPatches, MapSurfaceEmbedding.MaxEncodedBytes);
+
+    /// <summary>Runs the real text save with per-call embedding limits, without changing shared defaults.</summary>
+    internal static string SaveTextWithEmbeddingLimitsForTests(MapDocument doc, int maxPatches, long maxEncodedBytes) =>
+        SaveTextCore(doc, null, maxPatches, maxEncodedBytes);
+
+    static string SaveTextCore(MapDocument doc, MapDocRegistry? registry, int maxPatches, long maxEncodedBytes)
     {
         ArgumentNullException.ThrowIfNull(doc);
         registry ??= MapDocRegistry.CreateDefault();
-        MapDocument writable = PrepareWholeWrite(doc, registry);
+        MapDocument writable = PrepareWholeWrite(doc, registry, maxPatches: maxPatches, maxEncodedBytes: maxEncodedBytes);
         return JsonSerializer.Serialize(writable, CreateOptions(registry, write: true));
     }
 
@@ -324,7 +331,8 @@ public static class MapDocumentFile
     /// the tiled form byte-stable, since the tiled reader always rebuilds a block header. An empty block at a
     /// NON-default cell size is kept, because that cell size is authored information a save must not
     /// silently drop.</para></summary>
-    static MapDocument PrepareWholeWrite(MapDocument doc, MapDocRegistry registry, bool foliage = true)
+    static MapDocument PrepareWholeWrite(MapDocument doc, MapDocRegistry registry, bool foliage = true,
+        int maxPatches = MapSurfaceEmbedding.MaxPatches, long maxEncodedBytes = MapSurfaceEmbedding.MaxEncodedBytes)
     {
         if (doc.Tiles is { IsPartial: true })
             throw new MapDocumentException(
@@ -334,7 +342,7 @@ public static class MapDocumentFile
         IReadOnlyList<MapDocumentFinding> findings = MapDocumentValidator.ValidateFindings(doc, registry);
         if (findings.Count > 0)
             throw MapDocumentRefusalFactory.FromFinding(findings[0], "refusing to save an invalid map document:\n  " + string.Join("\n  ", findings.Select(f => f.Message)), findings: findings);
-        MapSurfaceEmbedding.Check(doc.Surfaces, MapSurfaceEmbedding.MaxPatches, MapSurfaceEmbedding.MaxEncodedBytes);
+        MapSurfaceEmbedding.Check(doc.Surfaces, maxPatches, maxEncodedBytes);
         MapSurfaceSaveGuard.Whole(doc.Surfaces);
 
         MapDocument copy = MapTiledFile.GlobalsOnly(doc);

@@ -88,24 +88,43 @@ public sealed class SurfaceEmbeddingAdmissionTests
         Assert.Single(Read(false, array));
     }
 
-    [Fact]
-    public void WriterBudgets_KeepTheFailedCountOrByteDomain()
+    [Theory]
+    [InlineData(true, 2)]
+    [InlineData(false, 0)]
+    [InlineData(false, 1)]
+    [InlineData(false, 2)]
+    public void WriterBudgets_RunTheRealSaveAtTheCountAndByteLimits(bool countBudget, int patchCount)
     {
-        var set = new MapSurfaceSet();
-        set.Patches.Add(Patch(0).Key, Patch(0));
-        var count = Assert.Throws<MapDocumentException>(() => MapSurfaceEmbedding.Check(set, 0, long.MaxValue));
-        Assert.Equal(MapDocumentRefusal.WorkCapacityExceeded, count.Reason);
-        Assert.Equal("MaxEmbeddedPatches", count.Budget);
-        Assert.Equal(1, count.ActualCount);
-        Assert.Equal(0, count.Limit);
-        MapSurfaceEmbedding.Check(set, 1, long.MaxValue);
-        var empty = new MapSurfaceSet();
-        var bytes = Assert.Throws<MapDocumentException>(() => MapSurfaceEmbedding.Check(empty, 0, 1));
-        Assert.Equal(MapDocumentRefusal.ValueOutsideRange, bytes.Reason);
-        Assert.Equal("maxEncodedBytes", bytes.FieldPath);
-        Assert.Equal(1, bytes.ActualInteger);
-        Assert.Equal(2, bytes.MinimumInteger);
-        MapSurfaceEmbedding.Check(empty, 0, 2);
+        MapDocument doc = SurfaceStorageFixtures.FlatPatches(patchCount);
+        string before = MapDocumentFile.SaveText(doc);
+        // The canonical array has two brackets and one comma between adjacent payloads.
+        long exactBytes = 2 + Math.Max(0, patchCount - 1) + doc.Surfaces.Patches.Values.Sum(p => (long)MapSurfacePatchCodec.Encode(p).Length);
+        int countLimit = countBudget ? 1 : 2;
+        long byteLimit = countBudget ? exactBytes : exactBytes - 1;
+        var error = Assert.Throws<MapDocumentException>(() =>
+            MapDocumentFile.SaveTextWithEmbeddingLimitsForTests(doc, countLimit, byteLimit));
+        Assert.Equal(patchCount == 0 ? MapDocumentRefusal.ValueOutsideRange : MapDocumentRefusal.WorkCapacityExceeded, error.Reason);
+        if (patchCount == 0)
+        {
+            Assert.Equal("maxEncodedBytes", error.FieldPath);
+            Assert.Equal(1, error.ActualInteger);
+            Assert.Equal(2, error.MinimumInteger);
+        }
+        else
+        {
+            Assert.Equal(countBudget ? "MaxEmbeddedPatches" : "MaxEmbeddingBytes", error.Budget);
+            Assert.Equal(countBudget ? countLimit : byteLimit, error.Limit);
+            if (countBudget) Assert.Equal(2, error.ActualCount);
+            else Assert.Equal(exactBytes, error.ActualByteCount);
+        }
+        Assert.Equal(before, MapDocumentFile.SaveText(doc));
+        if (countBudget) doc.Surfaces.Patches.Remove(doc.Surfaces.Patches.Keys.Last());
+        int acceptedCount = countBudget ? countLimit : patchCount;
+        string accepted = MapDocumentFile.SaveTextWithEmbeddingLimitsForTests(doc, countBudget ? countLimit : 2, exactBytes);
+        Assert.Equal(acceptedCount, MapDocumentFile.LoadText(accepted).Surfaces.Patches.Count);
+        if (countBudget) doc.Surfaces.Patches.Remove(doc.Surfaces.Patches.Keys.Last());
+        else exactBytes++;
+        Assert.NotEmpty(MapDocumentFile.SaveTextWithEmbeddingLimitsForTests(doc, countBudget ? countLimit : 2, exactBytes));
     }
 
     static MapDocumentException Refuses(bool node, Action action)

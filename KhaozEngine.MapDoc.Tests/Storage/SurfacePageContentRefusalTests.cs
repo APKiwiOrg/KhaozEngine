@@ -1,6 +1,8 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.IO;
+using KhaozEngine.MapDoc.Spaces;
 using System.Text.Json.Nodes;
 using KhaozEngine.MapDoc;
 using KhaozEngine.MapDoc.Storage;
@@ -166,20 +168,44 @@ public sealed class SurfacePageContentRefusalTests
     }
 
     [Fact]
-    public void PageWriterByteCapacity_AdmitsAValidPageAtExactlyTheReportedLimit()
+    public void PageWriterByteCapacity_RefusesBeforeAnySavedFileChanges()
     {
-        MapSurfaceIndexEntry entry = Entry(0) with { RecordIds = ["x"] };
-        int overhead = MapSurfacePages.EncodeIndex("r", Covers, [entry]).Length - 1;
-        var refused = entry with { RecordIds = [new string('x', MapSurfaceStorageLayout.MaxPageBytes - overhead + 1)] };
-        var error = Assert.Throws<MapDocumentException>(() => MapSurfacePages.EncodeIndex("r", Covers, [refused]));
-        Assert.Equal(MapDocumentRefusal.WorkCapacityExceeded, error.Reason);
-        Assert.Equal("MaxPageBytes", error.Budget);
-        Assert.Equal(MapSurfaceStorageLayout.MaxPageBytes, error.Limit);
-        Assert.True(error.ActualByteCount > error.Limit);
-        var accepted = entry with { RecordIds = [new string('x', (int)error.Limit! - overhead)] };
-        byte[] bytes = MapSurfacePages.EncodeIndex("r", Covers, [accepted]);
-        Assert.Equal(error.Limit, bytes.LongLength);
-        Assert.Single(MapSurfacePages.DecodeIndex(bytes, "r", new(Covers, Digest, 1)));
+        MapDocument doc = SurfaceStorageFixtures.FlatPatches(1);
+        MapSurfacePatch patch = Assert.Single(doc.Surfaces.Patches.Values);
+        Array.Fill(patch.Heights, 0);
+        patch.Records.Add(Space("x"));
+        string directory = SurfaceStorageFixtures.SaveToTemp(doc);
+        try
+        {
+            int overhead = Assert.Single(MapSurfaceTiledStore.Prepare(doc, directory, null).Files, f => f.Kind == 'i').Bytes.Length - 2;
+            // A space id occurs once in recordIds and once in spaceIds. A two-digit maximum height fixes odd padding.
+            if ((MapSurfaceStorageLayout.MaxPageBytes - overhead) % 2 != 0)
+            {
+                patch.Heights[^1] = 10;
+                overhead++;
+            }
+            int idLength = (MapSurfaceStorageLayout.MaxPageBytes - overhead) / 2;
+            patch.Records[0] = Space(new string('x', idLength + 1));
+            doc.Placements.Add(SurfaceStorageFixtures.ExplicitYPlacement("new-tree", 0, 0));
+            var saved = AssertFixtures.Files(directory);
+            Assert.NotEmpty(saved);
+            var error = Assert.Throws<MapDocumentException>(() => MapDocumentFile.SaveTiled(doc, directory));
+            Assert.Equal(MapDocumentRefusal.WorkCapacityExceeded, error.Reason);
+            Assert.Equal("MaxPageBytes", error.Budget);
+            Assert.Equal(MapSurfaceStorageLayout.MaxPageBytes, error.Limit);
+            Assert.True(error.ActualByteCount > error.Limit);
+            Assert.Equal(saved, AssertFixtures.Files(directory));
+            patch.Records[0] = Space(new string('x', idLength));
+            MapDocumentFile.SaveTiled(doc, directory);
+            string page = Assert.Single(Directory.GetFiles(Path.Combine(directory, "tiles", "surfaces", "i"), "*.json"));
+            Assert.Equal(error.Limit, new FileInfo(page).Length);
+            Assert.Empty(MapDocumentFile.VerifyTiled(directory));
+            patch.Records[0] = Space(new string('x', idLength - 1));
+            MapDocumentFile.SaveTiled(doc, directory);
+            Assert.Empty(MapDocumentFile.VerifyTiled(directory));
+        }
+        finally { Directory.Delete(directory, recursive: true); }
+        static MapSpaceDoc Space(string id) => new(id, MapSpaceKind.Exterior, null, null, [], [], [], []);
     }
 
     [Theory]

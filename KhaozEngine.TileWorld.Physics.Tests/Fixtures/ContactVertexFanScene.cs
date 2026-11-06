@@ -15,7 +15,7 @@ internal sealed class ContactVertexFanScene : IDisposable
     readonly BepuPhysicsWorld _world = new(Vector3.Zero);
     internal GroundMoveContext Context { get; }
 
-    internal ContactVertexFanScene(string? fault = null)
+    internal ContactVertexFanScene(string? fault = null, Vector3 origin = default)
     {
         var source = new FanSource(fault);
         var vertices = source.Installed.SelectMany(f => new[] { f.C, f.B, f.A }).ToArray();
@@ -26,6 +26,7 @@ internal sealed class ContactVertexFanScene : IDisposable
         OrdinaryMovementRegistration registration;
         using (var lease = _world.AcquireQueryReadLease()) registration = builder.Build(lease);
         Context = new(source.Height, source.Normal, _world, null, null, null, null, registration, null);
+        _world.Rebase(origin);
     }
 
     public void Dispose() { Context.Dispose(); _world.Dispose(); }

@@ -1413,7 +1413,9 @@ still refuses certification conservatively, while an unrelated curved prop does 
 Analytic faces retain both the installed mesh owner and the canonical field owner. Selected support must match
 the latter and the captured canonical feature geometry, while physical installation provenance remains intact.
 At a raw ray point shared by analytic triangles, capture collects every containing face at the exact selected
-height. The faces must form one incident component through source-certified positive shared edges, with no
+height. Candidate bounds, containment and canonical selection use the returned ray point reconstructed in
+absolute coordinates, since a float rebase round trip can shift it from the requested anchor. The faces must
+form one incident component through source-certified positive shared edges, with no
 duplicate identities or positive-area overlaps between any pair. Point-only neighbours can join through other
 members of the fan, but a shared point alone never certifies an edge. Capture then binds the field's canonical
 `Describe` member within that component. Missing canonical identity, disconnected owners and gaps separating

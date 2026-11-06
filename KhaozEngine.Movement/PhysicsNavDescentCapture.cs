@@ -138,8 +138,6 @@ internal static class PhysicsNavDescentCapture
                 if (refs.Count == starts[cell]) coverage[cell] = DescentCoverage.KnownEmpty;
                 observer.Hits.Clear();
                 float ax = options.MinX + (x + 0.5f) * options.CellSize, az = options.MinZ + (z + 0.5f) * options.CellSize;
-                // Raw probes use float anchors. At large coordinates rounding can place one outside the double cell bounds.
-                candidates = index.Query(ax, az, ax, az);
                 int count = probe.Sample(ax - lease.Origin.X, az - lease.Origin.Z, output);
                 var originals = bake.Columns.GetColumn(x, z);
                 if (count != originals.Length) throw Refuse(PhysicsNavDescentEvidenceReason.RawAssociationAmbiguous);
@@ -163,6 +161,8 @@ internal static class PhysicsNavDescentCapture
                     }
                     DescentNumber highest = default;
                     var axis = new Vector2(hits[0].Result.Point.X + lease.Origin.X, hits[0].Result.Point.Z + lease.Origin.Z);
+                    // Float anchors can leave the double cell bounds, and rebasing can shift the returned ray axis.
+                    candidates = index.Query(axis.X, axis.Y, axis.X, axis.Y);
                     foreach (int f in candidates)
                     {
                         var face = faces[f];

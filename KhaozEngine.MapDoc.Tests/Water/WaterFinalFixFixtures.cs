@@ -10,7 +10,7 @@ namespace KhaozEngine.Tests.MapDoc.Water;
 
 internal static partial class WaterFixtures
 {
-    internal sealed class RepairingVertices : IReadOnlyList<MapLatticeAddress>
+    internal sealed class RepairingVertices(bool failRead = false) : IReadOnlyList<MapLatticeAddress>
     {
         readonly MapLatticeAddress[] valid = [MapLatticeAddress.Corner(14, 0), MapLatticeAddress.Corner(15, 0), MapLatticeAddress.Corner(14, 1)];
         bool refused;
@@ -22,6 +22,8 @@ internal static partial class WaterFixtures
             {
                 if (index != 0 || refused) return valid[index];
                 refused = true;
+                if (failRead) throw new MapDocumentException(MapDocumentRefusal.AcquisitionIncomplete, "vertex read refused")
+                { FieldPath = "Read" };
                 return default;
             }
         }

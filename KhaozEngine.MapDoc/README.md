@@ -1666,7 +1666,8 @@ Alias traversal retains `SpaceAliasCycle` with `SpaceId`, `RecordId` and `Patch`
 Water medium and body findings retain `EntityId` and `FieldPath`. Unsupported medium kinds also carry
 `EnumType` and `ActualInteger`. A null body medium uses `SchemaValueRequired`, while an unresolved key uses
 `ReferenceMissing`. Invalid ring vertices retain the single captured `Address` that failed validation and its
-denominator identifiers. Wade speed and surface level distinguish `ValueNonfinite` from
+denominator identifiers. Reader-thrown refusals stay inside the same finding boundary and retain an
+address only when one was captured or supplied by the reader. Wade speed and surface level distinguish `ValueNonfinite` from
 `ValueOutsideRange`, retaining `ActualNumber` and the checked numeric limits. An exactly
 unrepresentable finite surface level uses `GeometryNotRepresentable`.
 Occupied-water admission carries `AcquireStatus` on both `GeometryNotRepresentable` and

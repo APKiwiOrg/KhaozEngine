@@ -157,14 +157,18 @@ internal static class MapWaterValidation
             }
             for (int v = 0; v < vertices.Count; v++)
             {
-                MapLatticeAddress vertex = vertices[v];
-                try { far |= FarAt(vertex, $"Domain.Rings[{i}].Vertices[{v}]", i); }
+                MapLatticeAddress? vertex = null;
+                try
+                {
+                    vertex = vertices[v];
+                    far |= FarAt(vertex.Value, $"Domain.Rings[{i}].Vertices[{v}]", i);
+                }
                 catch (MapDocumentException error)
                 {
                     var finding = MapDocumentFinding.FromException(error)!;
                     Add(finding with { Message = $"{label}: ring {i} vertex {v} is not a valid lattice address.",
                         EntityId = bodyId, FieldPath = $"Domain.Rings[{i}].Vertices[{v}].{finding.FieldPath}", Index = i,
-                        OtherIndex = v, Address = vertex }, errors, findings);
+                        OtherIndex = v, Address = vertex ?? finding.Address }, errors, findings);
                 }
             }
         }

@@ -12,6 +12,35 @@ namespace KhaozEngine.Tests.MapDoc.Water;
 public sealed class MapWaterDomainValidationRefusalTests
 {
     [Fact]
+    public void VertexReaderRefusal_StaysInsideTheDomainFindingBoundary()
+    {
+        var doc = WaterFixtures.OceanOverCaves();
+        int index = doc.Water!.Bodies.FindIndex(b => b.Id == "ocean");
+        var body = doc.Water.Bodies[index];
+        doc.Water.Bodies[index] = body with
+        {
+            Domain = body.Domain with { Rings = [new(new WaterFixtures.RepairingVertices(failRead: true))] },
+        };
+        var before = doc.Water.Bodies.ToArray();
+        var errors = new List<string>();
+        var findings = new List<MapDocumentFinding>();
+        MapWaterValidation.Validate(doc, errors, new MapWaterWorkBudget(), findings);
+        var finding = Assert.Single(findings);
+        Assert.Equal(MapDocumentRefusal.AcquisitionIncomplete, finding.Reason);
+        Assert.Equal("Domain.Rings[0].Vertices[0].Read", finding.FieldPath);
+        Assert.Equal(body.Id, finding.EntityId);
+        Assert.Equal(0, finding.Index);
+        Assert.Equal(0, finding.OtherIndex);
+        Assert.Null(finding.Address);
+        Assert.Equal(before, doc.Water.Bodies);
+        errors.Clear();
+        findings.Clear();
+        MapWaterValidation.Validate(doc, errors, new MapWaterWorkBudget(), findings);
+        Assert.Empty(errors);
+        Assert.Empty(findings);
+    }
+
+    [Fact]
     public void InvalidVertex_RetainsTheAddressThatFailedWhenTheSourceChanges()
     {
         var doc = WaterFixtures.OceanOverCaves();

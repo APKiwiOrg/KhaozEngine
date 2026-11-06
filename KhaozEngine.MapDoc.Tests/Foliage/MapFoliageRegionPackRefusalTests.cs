@@ -67,7 +67,7 @@ public sealed class MapFoliageRegionPackRefusalTests
         byte[] bytes = (byte[])valid.Clone();
         switch (fault)
         {
-            case "short-header": bytes = new byte[MapFoliageRegionPack.HeaderLength - 1]; break;
+            case "short-header": bytes = valid.AsSpan(0, MapFoliageRegionPack.HeaderLength - 1).ToArray(); break;
             case "byte-cap": bytes = new byte[MapFoliageRegionPack.MaxByteLength + 1]; valid.AsSpan().CopyTo(bytes); break;
             case "magic": bytes[0] = 0; break;
             case "length": Array.Resize(ref bytes, bytes.Length - 1); break;

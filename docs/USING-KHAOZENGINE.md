@@ -12670,6 +12670,16 @@ Wrong allocator lengths use `SchemaArrayLengthMismatch` with expected and availa
 A payload shrinking after measurement uses `StorageEmbeddingChanged` with measured and written byte counts.
 Malformed scalar values use `SchemaMalformed`. Nonfinite numbers use `ValueNonfinite` with `RecordType`
 and `ActualNumber`. Internal numeric formatting and default encoder progress checks remain invariants.
+Embedding array guards expose `SchemaArrayRequired` and `FieldPath` `$.surfacePatches`. Patch-count
+capacity exposes `WorkCapacityExceeded` with `Budget` `MaxEmbeddedPatches`, `ActualCount` and inclusive
+`Limit`. Invalid reader budgets expose `ValueOutsideRange` with the option's path, submitted integer
+and inclusive minimum. Repeated DOM patch keys use `IdentityDuplicate`, `Patch` and `Index`.
+The streaming converter's `MapSurfaceEmbeddingJsonException` remains catchable as `JsonException`.
+Document wrappers retain its concrete reason and the complete typed inner cause.
+Surface page envelopes report object shape, member count, missing, duplicate and null fields through
+their schema reasons and `FieldPath`. Declared count mismatches carry both counts. Surface identity
+mismatches use `AuthoredValueMismatch`, cover mismatches `BoundsInvalid`, and page byte capacity
+`WorkCapacityExceeded` with `Budget` `MaxPageBytes`, measured `ActualByteCount` and inclusive `Limit`.
 `SaveTiled` writes one tile at a time and **does not rewrite a tile whose
 canonical hash is unchanged**. Its ordering is crash-consistent: changed tiles are written at names nothing
 points at yet, then a single `map.json` rename commits, then a best-effort sweep collects what the new

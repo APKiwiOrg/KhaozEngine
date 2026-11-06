@@ -1472,6 +1472,27 @@ An allocator returning another byte length uses `SchemaArrayLengthMismatch`, `Su
 `StorageEmbeddingChanged` with both byte counts. Unsupported scalar types or undefined JSON values use
 `SchemaMalformed`, with known `RecordType` or `ValueKind`. Nonfinite scalar values use `ValueNonfinite`,
 their `RecordType` and `ActualNumber`. Numeric formatting and default encoder progress remain internal invariants.
+
+Embedding array admission uses `SchemaArrayRequired` with `FieldPath` `$.surfacePatches`. The patch-count
+budget uses `WorkCapacityExceeded`, `Budget` `MaxEmbeddedPatches`, `ActualCount` and inclusive `Limit`.
+Invalid configured patch or aggregate byte budgets use `ValueOutsideRange`, naming `maxPatchBytes` or
+`maxEncodedBytes` with `ActualInteger` and `MinimumInteger`. A non-object DOM patch uses
+`SchemaObjectRequired` with its item path and `Index`. Repeated embedded keys reuse `IdentityDuplicate`
+with `Patch`, `Index` and the key's path.
+Streaming converter guards throw `MapSurfaceEmbeddingJsonException`, a `JsonException` subtype sharing
+`MapDocumentRefusal`. It retains its producer as the inner exception and document readers preserve the
+producer's reason and identifiers. Consumer-built message-only causes retain the JSON fallback.
+
+Surface page envelope refusals keep `MapDocumentException` and the released developer prose.
+
+| Reason | Refused input | Identifiers |
+| --- | --- | --- |
+| `SchemaObjectRequired`, `SchemaArrayLengthMismatch` | Wrong object shape or member count | `FieldPath`, known `ActualCount` and `ExpectedCount` |
+| `SchemaMemberMissing`, `SchemaMemberDuplicate`, `SchemaMemberNull` | Missing, repeated or null member | `FieldPath` |
+| `AuthoredValueMismatch`, `BoundsInvalid` | Different surface identity or cover | `FieldPath`, decoded `SurfaceId` |
+| `SchemaArrayLengthMismatch` | Index count differing from its declared count | `FieldPath`, `SurfaceId`, `ActualCount`, `ExpectedCount` |
+| `ValueOutsideRange` | Empty page bytes | `FieldPath`, `ActualByteCount`, minimum 1 |
+| `WorkCapacityExceeded` | Page bytes beyond their inclusive capacity | `FieldPath`, `Budget` `MaxPageBytes`, `ActualByteCount`, `Limit` |
 Any default is as arbitrary as any other for a document that had no tile concept, so the rule is
 "deterministic and documented" rather than "derived". A document newer than the engine, or an old one with
 no migration path, fails to load. Saving always writes the current version.

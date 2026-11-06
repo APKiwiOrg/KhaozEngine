@@ -50,7 +50,7 @@ internal static class SurfaceEmbeddingRegressionFixtures
 
     internal static void Refuses(bool useNode, Action action)
     {
-        Exception error = useNode ? Assert.Throws<MapDocumentException>(action) : Assert.Throws<JsonException>(action);
+        Exception error = useNode ? Assert.Throws<MapDocumentException>(action) : Assert.Throws<MapSurfaceEmbeddingJsonException>(action);
         Assert.Contains("tiled", error.Message);
     }
 

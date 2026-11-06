@@ -3,6 +3,7 @@ using System.Text.Json;
 using KhaozEngine.MapDoc.Foliage;
 using KhaozEngine.MapDoc.Surfaces;
 using KhaozEngine.MapDoc.Prefabs;
+using KhaozEngine.MapDoc.Storage;
 
 namespace KhaozEngine.MapDoc;
 
@@ -41,6 +42,8 @@ internal static class MapDocumentJsonErrors
                 return surface.ToDocument(sourceName, message, tile, path, resourceId);
             if (cause is MapPrefabJsonException prefab)
                 return prefab.ToDocument(sourceName, message, tile, path, resourceId);
+            if (cause is MapSurfaceEmbeddingJsonException embedding)
+                return embedding.ToDocument(sourceName, message, tile, path, resourceId);
         }
         return null;
     }

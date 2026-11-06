@@ -154,6 +154,8 @@ public sealed class AcquisitionCoordinatorRefusalTests
         probe.FindFault = found =>
         {
             probe.PageCount = fault == "delta" ? 1 : 0;
+            // A negative delta refuses without reading the session again.
+            probe.PagesReadFaults = fault == "negative";
             return found with { PagesRead = fault == "negative" ? -1 : 0 };
         };
         var ex = Assert.Throws<MapDocumentException>(() => AcquisitionConformanceFixtures.Run(probe, effective));
@@ -177,6 +179,7 @@ public sealed class AcquisitionCoordinatorRefusalTests
             Assert.Equal(1L, ex.ExpectedCount);
         }
         probe.FindFault = null;
+        probe.PagesReadFaults = false;
         probe.PageCount = fault == "backward" ? 1 : 0;
         Assert.Equal(MapAcquireStatus.Complete, AcquisitionConformanceFixtures.Run(probe, effective).Status);
     }

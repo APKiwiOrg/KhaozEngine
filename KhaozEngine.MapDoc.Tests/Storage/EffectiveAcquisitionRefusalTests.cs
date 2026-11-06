@@ -140,11 +140,14 @@ public sealed class EffectiveAcquisitionRefusalTests
         composed.OpenAcquisition(AcquisitionConformanceFixtures.Scope()).Dispose();
 
         // The acquisition's own admission reads the snapshot once before the pin comparison.
-        var effectiveProbe = AcquisitionConformanceFixtures.OneSeed();
-        effectiveProbe.SessionSnapshotReads.Enqueue(effectiveProbe.SnapshotId);
-        effectiveProbe.SessionSnapshotReads.Enqueue("changed");
-        AssertComparedSnapshot(effectiveProbe, Assert.Throws<MapDocumentException>(() => AcquisitionConformanceFixtures.Run(effectiveProbe, true)));
-        Assert.Equal(MapAcquireStatus.Complete, AcquisitionConformanceFixtures.Run(effectiveProbe, true).Status);
+        foreach (bool effective in new[] { true, false })
+        {
+            var probe = AcquisitionConformanceFixtures.OneSeed();
+            probe.SessionSnapshotReads.Enqueue(probe.SnapshotId);
+            probe.SessionSnapshotReads.Enqueue("changed");
+            AssertComparedSnapshot(probe, Assert.Throws<MapDocumentException>(() => AcquisitionConformanceFixtures.Run(probe, effective)));
+            Assert.Equal(MapAcquireStatus.Complete, AcquisitionConformanceFixtures.Run(probe, effective).Status);
+        }
 
         static void AssertComparedSnapshot(R2AcquisitionProbeSource probe, MapDocumentException error)
         {

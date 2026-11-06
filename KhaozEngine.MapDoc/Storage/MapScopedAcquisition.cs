@@ -39,14 +39,18 @@ internal sealed class MapScopedAcquisition
     {
         using IMapSurfaceAcquisitionSession session = source.OpenAcquisition(scope);
         var acquisition = new MapScopedAcquisition(session, scope, work);
-        if (source.SnapshotId != session.SnapshotId || source.RootSha256 != session.RootSha256)
+        // Each producer value is read once, so the refusal describes the comparison that failed.
+        string expectedSnapshot = source.SnapshotId, actualSnapshot = session.SnapshotId;
+        bool snapshotDiffers = expectedSnapshot != actualSnapshot;
+        string? expectedRoot = snapshotDiffers ? null : source.RootSha256, actualRoot = snapshotDiffers ? null : session.RootSha256;
+        if (snapshotDiffers || expectedRoot != actualRoot)
             throw new MapDocumentException(MapDocumentRefusal.AcquisitionContractMismatch, "acquisition session differs from its pinned source")
             {
-                FieldPath = source.SnapshotId != session.SnapshotId ? "SnapshotId" : "RootSha256",
-                ExpectedSnapshot = source.SnapshotId != session.SnapshotId ? source.SnapshotId : null,
-                ActualSnapshot = source.SnapshotId != session.SnapshotId ? session.SnapshotId : null,
-                ExpectedHash = source.SnapshotId == session.SnapshotId ? source.RootSha256 : null,
-                ActualHash = source.SnapshotId == session.SnapshotId ? session.RootSha256 : null,
+                FieldPath = snapshotDiffers ? "SnapshotId" : "RootSha256",
+                ExpectedSnapshot = snapshotDiffers ? expectedSnapshot : null,
+                ActualSnapshot = snapshotDiffers ? actualSnapshot : null,
+                ExpectedHash = expectedRoot,
+                ActualHash = actualRoot,
             };
         return acquisition.Run();
     }
@@ -280,18 +284,17 @@ internal sealed class MapScopedAcquisition
     }
     void CheckPages(int before, int delta)
     {
+        const string Message = "incoherent acquisition page observations";
+        // A negative delta needs no session read, so a faulty getter cannot replace this refusal.
+        if (delta < 0)
+            throw new MapDocumentException(MapDocumentRefusal.ValueOutsideRange, Message) { FieldPath = "PagesRead", ActualInteger = delta, MinimumInteger = 0 };
         int pages = _session.PagesRead;
-        if (delta < 0 || pages < before || pages - before != delta)
-            throw new MapDocumentException(delta < 0 ? MapDocumentRefusal.ValueOutsideRange : MapDocumentRefusal.AcquisitionContractMismatch,
-                "incoherent acquisition page observations")
-            {
-                FieldPath = "PagesRead",
-                ActualInteger = delta < 0 ? delta : pages < before ? pages : null,
-                PreviousInteger = delta >= 0 && pages < before ? before : null,
-                MinimumInteger = delta < 0 ? 0 : pages < before ? before : null,
-                ActualCount = delta >= 0 && pages >= before ? delta : null,
-                ExpectedCount = delta >= 0 && pages >= before ? (long)pages - before : null,
-            };
+        if (pages < before)
+            throw new MapDocumentException(MapDocumentRefusal.AcquisitionContractMismatch, Message)
+            { FieldPath = "PagesRead", ActualInteger = pages, PreviousInteger = before, MinimumInteger = before };
+        if (pages - before != delta)
+            throw new MapDocumentException(MapDocumentRefusal.AcquisitionContractMismatch, Message)
+            { FieldPath = "PagesRead", ActualCount = delta, ExpectedCount = (long)pages - before };
     }
     readonly record struct Need(MapRecordRef Reference, int Depth) : IComparable<Need>
     {

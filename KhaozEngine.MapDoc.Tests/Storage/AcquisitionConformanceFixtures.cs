@@ -189,6 +189,7 @@ internal sealed class R2AcquisitionProbeSource : IMapSurfaceAcquisitionSource
     internal Func<string, (bool Found, MapSurfaceRef? Surface)>? SurfaceFault { get; set; }
     internal Func<IReadOnlyList<MapPatchKey>, IReadOnlyList<MapPatchKey>>? ReservationsFault { get; set; }
     internal int PageCount { get; set; }
+    internal bool PagesReadFaults { get; set; }
     internal Action? DuringOpen { get; set; }
     internal Func<MapPatchFindResult, MapPatchFindResult>? FindFault { get; set; }
     internal Func<MapPatchKey, MapPatchRead, MapPatchRead>? ReadFault { get; set; }
@@ -227,7 +228,7 @@ internal sealed class R2AcquisitionProbeSession : IMapSurfaceAcquisitionSession
     internal MapSurfaceScope Scope { get; }
     public string SnapshotId => _source.SessionSnapshotReads.TryDequeue(out string? read) ? read : _source.SessionSnapshotId ?? _source.SnapshotId;
     public string RootSha256 => _source.SessionRootSha256 ?? _source.RootSha256;
-    public int PagesRead => _source.PageCount;
+    public int PagesRead => _source.PagesReadFaults ? throw new InvalidOperationException("injected page read fault") : _source.PageCount;
     internal int Finds { get; private set; }
     internal int Disposals { get; private set; }
     internal List<string> SurfaceLookups { get; } = new();

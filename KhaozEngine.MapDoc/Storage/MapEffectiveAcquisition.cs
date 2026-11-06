@@ -332,18 +332,17 @@ internal sealed class MapEffectiveAcquisition
     }
     void CheckPages(int before, int delta)
     {
+        const string Message = "incoherent acquisition page observations";
+        // A negative delta needs no session read, so a faulty getter cannot replace this refusal.
+        if (delta < 0)
+            throw new MapDocumentException(MapDocumentRefusal.ValueOutsideRange, Message) { FieldPath = "PagesRead", ActualInteger = delta, MinimumInteger = 0 };
         int pages = _session.PagesRead;
-        if (delta < 0 || pages < before || pages - before != delta)
-            throw new MapDocumentException(delta < 0 ? MapDocumentRefusal.ValueOutsideRange : MapDocumentRefusal.AcquisitionContractMismatch,
-                "incoherent acquisition page observations")
-            {
-                FieldPath = "PagesRead",
-                ActualInteger = delta < 0 ? delta : pages < before ? pages : null,
-                PreviousInteger = delta >= 0 && pages < before ? before : null,
-                MinimumInteger = delta < 0 ? 0 : pages < before ? before : null,
-                ActualCount = delta >= 0 && pages >= before ? delta : null,
-                ExpectedCount = delta >= 0 && pages >= before ? (long)pages - before : null,
-            };
+        if (pages < before)
+            throw new MapDocumentException(MapDocumentRefusal.AcquisitionContractMismatch, Message)
+            { FieldPath = "PagesRead", ActualInteger = pages, PreviousInteger = before, MinimumInteger = before };
+        if (pages - before != delta)
+            throw new MapDocumentException(MapDocumentRefusal.AcquisitionContractMismatch, Message)
+            { FieldPath = "PagesRead", ActualCount = delta, ExpectedCount = (long)pages - before };
     }
     readonly record struct Need(MapRecordRef Reference, int Depth) : IComparable<Need>
     {

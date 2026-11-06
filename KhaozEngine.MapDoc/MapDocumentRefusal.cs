@@ -242,6 +242,14 @@ public enum MapDocumentRefusal
     SpacePortalMembershipMismatch,
     /// <summary>Refuses vertical-link membership inconsistent with its endpoint spaces.</summary>
     SpaceLinkMembershipMismatch,
+    /// <summary>Refuses a space alias targeting another alias or a space of different ancestry or kind.</summary>
+    SpaceAliasPeerInvalid,
+    /// <summary>Refuses an open-top bound used below a space or carrying incompatible space or surface fields.</summary>
+    SpaceOpenTopInvalid,
+    /// <summary>Refuses a surface bound whose kind or surface role is incompatible with its lower or upper role.</summary>
+    SpaceBoundRoleMismatch,
+    /// <summary>Refuses a horizontal opening over a present cell.</summary>
+    SpaceOpeningCellsInvalid,
 
     // Foliage JSON converter.
     /// <summary>Refuses a foliage section larger than its UTF-8 byte budget.</summary>

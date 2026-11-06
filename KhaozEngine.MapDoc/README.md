@@ -1504,11 +1504,11 @@ An array beyond its own count cap uses that field name as `Budget`, with its `Ac
 | `SchemaInt64Malformed` | Surface codec text outside canonical signed 64-bit decimal representation | `FieldPath`, `ActualText`, `MinimumInteger`, `MaximumInteger` |
 | `SchemaPayloadVersionUnsupported` | An unsupported asset-reference, resolver-identity, support, foliage, prefab asset, local light or local marker or prism payload version | `FieldPath`, `MarkerId`, `ResourceId`, `Index`, `ActualVersion`, `SupportedVersions`, `MinimumInteger` |
 | `ValueNonfinite` | A nonfinite manifest source-unit scale, foliage scalar, playable-bound component, placement support-search value, resolved support height, adoption height or yaw, or marker position/yaw | `FieldPath`, `MarkerId`, `AssetId`, `LayerId`, `PlacementId`, `Index`, `ActualNumber` (null for nonfinite marker values, nonfinite for prefab scalar guards) |
-| `ValueOutsideRange` | A finite nonpositive manifest source-unit scale, foliage integer outside its domain, negative acquired page count, support-search extent or high-water mark, nonpositive numeric identity, nonpositive lattice unit parts, an address denominator outside its domain, a rotation or subdivision segment count, chain or slot-list cardinality, or a slot cell outside 0 through 4095 | `FieldPath`, `AssetId`, `LayerId`, `PlacementId`, `EntityId`, `SubjectKind`, `Index`, `ActualNumber`, `ActualInteger`, `MinimumNumber`, `MinimumInteger`, `MaximumInteger`, `NumericId`, `HighWaterMark` |
-| `IdentityDuplicate` | A repeated marker, adoption source or destination, asset or resource closure identity, support patch or record identity, surface, numeric, codec record, acquired patch or acquired record identity, corner or cell-edge metadata key, world binding, transfer or attachment producer, a standalone owner colliding with a prefab binding, or a repeated extraction reference or resulting local key | `MarkerId`, `MarkerIds`, `FieldPath`, `Index`, `EntityId`, `SubjectKind`, `SourceId`, `AssetId`, `ResourceId`, `SurfaceId`, `PlacementId`, `RecordId`, `Patch`, `NumericId`, `HighWaterMark`, `WorldId`, `ChildKind`, `Child`, `InstanceId` |
+| `ValueOutsideRange` | A finite nonpositive manifest source-unit scale, foliage integer outside its domain, negative acquired page count, support-search extent or high-water mark, nonpositive numeric identity, nonpositive lattice unit parts, an address denominator outside its domain, a rotation or subdivision segment count, chain or slot-list cardinality, or a slot cell outside 0 through 4095 | `FieldPath`, `AssetId`, `LayerId`, `PlacementId`, `EntityId`, `SubjectKind`, `Index`, `ActualNumber`, `ActualInteger`, `MinimumNumber`, `MinimumInteger`, `MaximumInteger`, `NumericId`, `HighWaterMark`, `RecordId`, `Patch`, `ActualCount` |
+| `IdentityDuplicate` | A repeated marker, adoption source or destination, asset or resource closure identity, support patch or record identity, surface, numeric, codec record, acquired patch or acquired record identity, corner or cell-edge metadata key, world binding, transfer or attachment producer, a standalone owner colliding with a prefab binding, or a repeated extraction reference or resulting local key, or a repeated topology reference, boundary side or adjacent slot cell | `MarkerId`, `MarkerIds`, `FieldPath`, `Index`, `EntityId`, `SubjectKind`, `SourceId`, `AssetId`, `ResourceId`, `SurfaceId`, `PlacementId`, `RecordId`, `Patch`, `NumericId`, `HighWaterMark`, `WorldId`, `ChildKind`, `Child`, `InstanceId`, `RelatedRecordId`, `EnumType`, `ActualInteger`, `PreviousInteger` |
 | `IdentityReserved` | A marker reusing a retained prefab reservation, a placement reusing a live or retained instance ID, a live standalone owner using a retired transfer's world identity, or a planned binding colliding with another owner's world or numeric identity | `MarkerId`, `EntityId`, `WorldId`, `ChildKind`, `Child`, `InstanceId`, `NumericId`, `SubjectKind` |
-| `AuthoredOwnershipMismatch` | A marker carrying fields forbidden by its payload or height mode, a transfer inconsistent with its source or standalone owner, an attachment inconsistent with its owner, transfer or record anchor, a prefab placement carrying a numeric ID its instance binding owns, or a prefab-owned interior submitted as standalone | `MarkerId`, `FieldPath`, `EntityId`, `WorldId`, `ChildKind`, `Child`, `InstanceId`, `PlacementId`, `RecordId`, `SpaceId`, `Patch`, `ActualAnchor`, `NumericId`, `ExpectedNumericId`, `ActualCount`, `ExpectedCount`, `SubjectKind` |
-| `ReferenceMissing` | A standalone marker removal target, asset, resource, prefab or dependency missing from its closure, or an undeclared effective surface or composed read surface owner or requested placement, attachment transfer, standalone record target, interior anchor, scatter layer or companion layer missing from its required scope, an absent effective extraction target, or an undeclared asset child removal | `MarkerId`, `AssetId`, `ResourceId`, `DependencyId`, `ExpectedResourceKind`, `EntityId`, `WorldId`, `ChildKind`, `Child`, `InstanceId`, `PlacementId`, `RecordId`, `SpaceId`, `Patch`, `DocumentId`, `LayerId`, `SurfaceId`, `SubjectKind`, `FieldPath`, `Index`, `ReferenceScope` |
+| `AuthoredOwnershipMismatch` | A marker carrying fields forbidden by its payload or height mode, a transfer inconsistent with its source or standalone owner, an attachment inconsistent with its owner, transfer or record anchor, a prefab placement carrying a numeric ID its instance binding owns, or a prefab-owned interior submitted as standalone, or a topology reference with the wrong anchor, an edge crossing surface owners or an authored chain carrying a source patch | `MarkerId`, `FieldPath`, `EntityId`, `WorldId`, `ChildKind`, `Child`, `InstanceId`, `PlacementId`, `RecordId`, `SpaceId`, `Patch`, `ActualAnchor`, `NumericId`, `ExpectedNumericId`, `ActualCount`, `ExpectedCount`, `SubjectKind`, `RelatedRecordId`, `SurfaceId` |
+| `ReferenceMissing` | A standalone marker removal target, asset, resource, prefab or dependency missing from its closure, or an undeclared effective surface or composed read surface owner or requested placement, attachment transfer, standalone record target, interior anchor, scatter layer or companion layer missing from its required scope, an absent effective extraction target, or an undeclared asset child removal, or an undeclared topology target, vertex surface, edge patch, chain source or footprint lattice | `MarkerId`, `AssetId`, `ResourceId`, `DependencyId`, `ExpectedResourceKind`, `EntityId`, `WorldId`, `ChildKind`, `Child`, `InstanceId`, `PlacementId`, `RecordId`, `SpaceId`, `Patch`, `DocumentId`, `LayerId`, `SurfaceId`, `SubjectKind`, `FieldPath`, `Index`, `ReferenceScope`, `RelatedRecordId` |
 | `AssetClosureRequired` | Foliage edit preflight without a verified asset closure | `DocumentId` |
 | `DigestMismatch` | Acquired patch semantic pins, resource bytes, an attached child's descriptor digest, a stored surface semantic aggregate or a verified tile's lists differing from its pin | `DigestKind`, `SourceName`, `Tile`, `ResourceId`, `Path`, `EntityId`, `WorldId`, `ChildKind`, `Child`, `InstanceId`, `PlacementId`, `SurfaceId`, `SubjectKind`, `ExpectedHash`, `ActualHash` |
 | `BoundsInvalid` | Invalid prefab patch dimensions, manifest local bounds, playable bounds, reversed exact rectangles or invalid surface patch rectangles | `FieldPath`, `Width`, `Depth`, `AssetId`, `SurfaceId`, `Patch`, `CellX`, `CellZ`, `Index`, `MinimumNumber`, `MaximumNumber` |
@@ -1519,13 +1519,17 @@ An array beyond its own count cap uses that field name as `Budget`, with its `Ac
 | `LegacyExteriorOpenTopRequired` | Legacy exterior coverage without an open-top upper bound | `RecordId`, `SpaceId`, `SurfaceId`, `Patch`, `FieldPath` |
 | `SurfaceLegacyRecipeRequired` | Legacy coverage through an incompatible lower surface recipe | `RecordId`, `SpaceId`, `SurfaceId`, `Patch`, `FieldPath` |
 | `SpacePrismParentMismatch` | A prism parent differing from its Room space's parent | `RecordId`, `SpaceId`, `RelatedRecordId`, `FieldPath` |
-| `SpaceRoomOccupancyInvalid` | A Room with zero or multiple prism domains | `SpaceId`, `ActualCount`, `ExpectedCount` |
+| `SpaceRoomOccupancyInvalid` | A Room with zero or multiple prism domains, or occupied through a lattice footprint | `SpaceId`, `RecordId`, `FieldPath`, `ActualCount`, `ExpectedCount` |
 | `SpaceParentCycle` | A cycle in space ancestry | `SpaceId` |
 | `GeometryVertexSequenceInvalid` | A portal interval with fewer than two vertices | `RecordId`, `FieldPath`, `ActualCount`, `MinimumInteger` |
 | `SpaceChainHeightKindMismatch` | A surface-edge vertex with an authored height, or an authored vertex without one | `RecordId`, `Index`, `FieldPath`, `ActualInteger` when present |
 | `SpacePortalOpenTopInvalid` | An open-top portal with a non-Exterior endpoint | `RecordId`, `SpaceId`, `FieldPath`, `EnumType`, `ActualInteger` |
-| `SpacePortalMembershipMismatch` | An endpoint space not listing its portal exactly once on the required side | `RecordId`, `SpaceId`, `FieldPath`, `ActualCount`, `ExpectedCount` |
-| `SpaceLinkMembershipMismatch` | An upper endpoint space not listing its vertical link exactly once | `RecordId`, `SpaceId`, `FieldPath`, `ActualCount`, `ExpectedCount` |
+| `SpacePortalMembershipMismatch` | An endpoint space not listing its portal exactly once on the required side, or a space listing another endpoint's side | `RecordId`, `SpaceId`, `RelatedRecordId`, actual endpoint `EntityId`, `FieldPath`, `ActualCount`, `ExpectedCount` |
+| `SpaceLinkMembershipMismatch` | An endpoint space not listing its vertical link exactly once, or a link listed by an unrelated space | `RecordId`, `SpaceId`, `RelatedRecordId`, `FieldPath`, `ActualCount`, `ExpectedCount` |
+| `SpaceAliasPeerInvalid` | An alias targeting another alias or a space with a different parent or kind | `RecordId`, `SpaceId`, `RelatedRecordId`, first failed `FieldPath` |
+| `SpaceOpenTopInvalid` | An open-top lower bound, an open top on a non-Exterior space, or an open top carrying a surface or opening | `RecordId`, `SpaceId`, `SurfaceId`, `RelatedRecordId`, first failed `FieldPath` |
+| `SpaceBoundRoleMismatch` | A bound kind or surface role incompatible with the lower or upper bound role | `RecordId`, `SpaceId`, `SurfaceId`, `FieldPath`, `EnumType`, `ActualInteger` |
+| `SpaceOpeningCellsInvalid` | A horizontal opening over a present cell | `RecordId`, `Patch`, `FieldPath`, `Index`, `ActualInteger`, `CellX`, `CellZ` |
 | `GeometryNotRepresentable` | A collapsed effective cell | `SurfaceId`, `Patch`, `CellX`, `CellZ` |
 | `WorkCapacityExceeded` | Reservation keys beyond the candidate cap, surface codec work beyond its encoded byte or array-count budget, or local corner-dependency or edge-subdivision metadata beyond its count budget | `Patch`, `FieldPath`, `Budget`, `ActualCount`, `ActualByteCount`, `Limit` |
 | `SurfacePresencePaddingNonzero` | Nonzero bits beyond the authored cell count in the last presence word | `Patch`, `FieldPath`, `Index` |
@@ -1534,7 +1538,7 @@ An array beyond its own count cap uses that field name as `Budget`, with its `Ac
 | `SurfaceForcedTopologyConflict` | A forced topology contradicting the diagonal-half rotation | `FieldPath`, `ActualInteger`, `EnumType` |
 | `SurfacePatchTrailingBytes` | A patch payload with values remaining after its root | Requested `Patch` |
 | `SurfacePatchKeyMismatch` | A decoded patch key differing from the requested key | `Patch`, `ExpectedPatch` |
-| `OrderInvalid` | Reservation keys or slot cells outside unique canonical order | `FieldPath`, `ActualCount`, `Index`, `ActualInteger`, `PreviousInteger` |
+| `OrderInvalid` | Reservation keys or slot cells outside unique canonical order, or a backwards step in a topology slot-cell list | `FieldPath`, `ActualCount`, `Index`, `ActualInteger`, `PreviousInteger`, `RecordId`, `Patch` |
 | `OperationKindUnsupported` | An unsupported decoded or runtime topology record kind | `RecordId`, `FieldPath`, `ActualText` or `RecordType` |
 | `SurfaceUnitUnreduced` | An authored lattice unit whose positive numerator and denominator have a common factor | `Numerator`, `Denominator` |
 | `SurfaceAddressOutOfPatch` | A patch-local cell or corner coordinate outside the valid rectangle | `Patch`, `Width`, `Depth`, `CellX`, `CellZ`, `FieldPath`, `ActualInteger`, `MinimumInteger`, `MaximumInteger` |
@@ -1549,7 +1553,7 @@ An array beyond its own count cap uses that field name as `Budget`, with its `Ac
 | `AssetCollisionEmptyPoints` | A collision hull or mesh with no points | `AssetId`, `ResourceId`, `ShapeType` |
 | `AssetCollisionNestedMesh` | A triangle mesh nested in a compound collider | `AssetId`, `ResourceId` |
 | `SchemaEnumUnsupported` | An undefined prefab, marker height-mode, support-binding, lattice-frame, cell, subdivision-edge, cell topology, topology-record or acquired metadata/status enumeration value | `MarkerId`, `EnumType`, `ActualInteger`, `FieldPath`, `EntityId`, `ChildKind`, `Patch`, `Index`, `CellX`, `CellZ`, `Edge`, `PatchStatus` |
-| `AuthoredReferenceKindInvalid` | A light owner, roof reference, placement override or numeric binding of the wrong child kind | `EntityId`, `Child`, `ChildKind`, `ExpectedChildKind`, `WorldId`, `NumericId`, `ReferenceScope`, `ExpectedReferenceScope`, `FieldPath`, `SubjectKind` |
+| `AuthoredReferenceKindInvalid` | A light owner, roof reference, placement override or numeric binding of the wrong child kind, or a vertical link geometry owner of a forbidden topology type | `EntityId`, `Child`, `ChildKind`, `ExpectedChildKind`, `WorldId`, `NumericId`, `ReferenceScope`, `ExpectedReferenceScope`, `FieldPath`, `SubjectKind`, `RecordId`, `RelatedRecordId`, `RecordType`, `Patch` |
 | `MarkerHeightChoiceInvalid` | A height choice without exactly one authority, or a Support marker whose finite Y is not canonical +0 | `MarkerId`, `FieldPath`, finite `ActualNumber` |
 | `MarkerSupportUnresolved` | A marker seat query that is not Supported | `MarkerId`, typed `SupportStatus` |
 | `SupportUnresolved` | A placement seat query that is not Supported | `PlacementId`, typed `SupportStatus` |
@@ -1572,7 +1576,7 @@ An array beyond its own count cap uses that field name as `Budget`, with its `Ac
 | `PrefabExtractionNotLossless` | A partial room, floor or roof selection | `EntityId` and `ChildKind` of the missing World reference |
 | `PrefabAssetPinMismatch` | A live instance or requested asset update digest differing from its captured pin | `InstanceId` when known, `ResourceId`, `ExpectedHash`, `ActualHash`, expected and actual resource kinds and `FieldPath` when checked by the update request |
 | `PrefabAddedChildExists` | An add override repeating a declared child | `InstanceId`, `Child` |
-| `AuthoredValueMismatch` | An acquired or resident patch key differing from its requested or dictionary key, an acquisition surface lookup returning a different identity, an edit parent not naming an authored space at its declared anchor, a previous, replacement or add key differing from its required child, or an effective reference outside the World namespace | `InstanceId`, `SpaceId`, `Patch`, `Child`, `ExpectedChild`, `EntityId`, `ReferenceScope`, `ExpectedReferenceScope`, `ChildKind`, `ExpectedChildKind`, `ExpectedPatch`, `PatchStatus`, `SurfaceId`, `ActualText`, `FieldPath`, `SubjectKind` |
+| `AuthoredValueMismatch` | An acquired or resident patch key differing from its requested or dictionary key, an acquisition surface lookup returning a different identity, an edit parent not naming an authored space at its declared anchor, a previous, replacement or add key differing from its required child, or an effective reference outside the World namespace, or a chain vertex on a different source surface or a bound carrying a conflicting opening or surface field | `InstanceId`, `SpaceId`, `Patch`, `Child`, `ExpectedChild`, `EntityId`, `ReferenceScope`, `ExpectedReferenceScope`, `ChildKind`, `ExpectedChildKind`, `ExpectedPatch`, `PatchStatus`, `SurfaceId`, `ActualText`, `FieldPath`, `SubjectKind`, `RecordId`, `RelatedRecordId` |
 | `PrefabPreviousOverrideNestedRemove` | A remove override whose Previous is another remove | `Child`, `FieldPath` |
 | `PrefabPayloadIdMismatch` | A resource ID or child key differing from its payload identity or kind | `ResourceId` for a resource mismatch, `Child` for the submitted key, `EntityId` for the payload identity, `ChildKind` and `SubjectKind` for the payload kind, `FieldPath` |
 | `PrefabPlacementTransformDuplicated` | A placement child with an additional local transform | `Child`, `FieldPath` |
@@ -1776,21 +1780,36 @@ still prose-only, so adapters for native metadata, numeric reservations and docu
 their message-only constructors until the remaining producer conversion. No typed finding is inferred
 from those aggregate messages.
 
-Topology reference admission carries typed metadata, patch-local, identity, strip-facing, prism and
-ancestry findings beside the unchanged public string diagnostics. Record lookups distinguish missing
+`MapTopologyReferenceValidator.ValidateFindings` returns the complete ordered reference-integrity
+findings as a read-only list. `Validate` retains their unchanged string projection. Admission carries
+typed metadata, patch-local, identity, strip-facing, prism and ancestry findings. Record lookups distinguish missing
 targets (`ReferenceMissing`), wrong anchors (`AuthoredOwnershipMismatch`, with requested `Patch` and
 `ActualAnchor`) and wrong record types (`ReferenceKindMismatch`, with `RecordType`). They retain the
 owning `RecordId` or separately supplied `SurfaceId`, and the target `RelatedRecordId`. Vertex checks
 retain missing surface identity or the original denominator refusal. Chain checks distinguish enum,
 cardinality, source ownership, height kind and source surface, with the vertex `Index` when applicable.
 Portals retain the non-Exterior endpoint, interval count or missing endpoint membership. Vertical links
-retain a forbidden geometry owner's `RelatedRecordId` and `RecordType`, or the upper endpoint's
+retain a forbidden geometry owner's `RelatedRecordId` and `RecordType`, or either endpoint's
 membership count. Prism payload versions use
 `SchemaPayloadVersionUnsupported`, missing Room references use `ReferenceMissing`, and a referenced
 non-Room space uses `ReferenceKindMismatch`. A differing parent uses `SpacePrismParentMismatch` with
-`RelatedRecordId`. Frame wrappers preserve the original scalar reason and identifiers. Remaining
-space membership and footprint findings are still prose, so topology throwing adapters
-wait for those producers rather than inferring a rule from an aggregate diagnostic.
+`RelatedRecordId`. Frame wrappers preserve the original scalar reason and identifiers. Space listings
+retain their `SpaceId`, the portal or link `RelatedRecordId`, and the actual portal endpoint `EntityId`
+when resolved. Alias checks identify the first incompatible peer field. Room footprints use
+`SpaceRoomOccupancyInvalid` with their `RecordId`, separately from the Room prism count check.
+Footprints forward the original legacy-recipe finding with their existing display suffix.
+
+Bound findings identify the first incompatible lower or upper field. A missing surface uses
+`SchemaValueRequired`, an undeclared one uses `ReferenceMissing`, an undefined bound kind uses
+`SchemaEnumUnsupported`, and a conflicting opening uses `AuthoredValueMismatch`. Incompatible bound
+kinds and surface roles use `SpaceBoundRoleMismatch`. An open-top bound outside its allowed role
+uses `SpaceOpenTopInvalid`. Slot lists distinguish count limits (`ValueOutsideRange` with
+`ActualCount` and limits 1 through 4096), adjacent duplicates (`IdentityDuplicate`), backwards order
+(`OrderInvalid`), cells outside 0 through 4095 (`ValueOutsideRange`), in-slot cells outside the patch
+(`SurfaceAddressOutOfPatch`) and openings over present cells (`SpaceOpeningCellsInvalid`). Cell
+findings retain `RecordId`, `Patch`, `Index` and `ActualInteger`, with the genuine `PreviousInteger`
+only when a preceding entry exists. Patch-address findings also retain local coordinates and dimensions.
+Topology findings are complete. Broader throwing adapters still wait for their other finding producers.
 
 Map documents are dev-authored content, not runtime state: `MapDocumentFile.Load`/`Save` throw
 `MapDocumentException` on a read error, invalid JSON, a missing or out-of-range `formatVersion`, a

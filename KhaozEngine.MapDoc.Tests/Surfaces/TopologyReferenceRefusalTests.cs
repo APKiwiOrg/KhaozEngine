@@ -171,6 +171,7 @@ public sealed class TopologyReferenceRefusalTests
     [Theory]
     [InlineData("owner", MapDocumentRefusal.AuthoredReferenceKindInvalid)]
     [InlineData("upper", MapDocumentRefusal.SpaceLinkMembershipMismatch)]
+    [InlineData("lower", MapDocumentRefusal.SpaceLinkMembershipMismatch)]
     public void Link_retains_the_forbidden_owner_or_unlisted_endpoint(string fault, MapDocumentRefusal reason)
     {
         var world = TopologyRecordFixtures.WithEveryRecordKind();

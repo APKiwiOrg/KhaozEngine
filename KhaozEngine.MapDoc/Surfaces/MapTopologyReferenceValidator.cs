@@ -11,6 +11,16 @@ public static class MapTopologyReferenceValidator
     public static IReadOnlyList<string> Validate(IReadOnlyList<MapSurfaceRef> surfaces, IReadOnlyCollection<MapSurfacePatch> patches) =>
         Validate(surfaces, patches, null);
 
+    /// <summary>Returns reference-integrity refusals and their known subjects in diagnostic order.
+    /// The string validator is the prose projection of these findings.</summary>
+    public static IReadOnlyList<MapDocumentFinding> ValidateFindings(IReadOnlyList<MapSurfaceRef> surfaces,
+        IReadOnlyCollection<MapSurfacePatch> patches)
+    {
+        var findings = new List<MapDocumentFinding>();
+        Validate(surfaces, patches, findings);
+        return findings.AsReadOnly();
+    }
+
     internal static IReadOnlyList<string> Validate(IReadOnlyList<MapSurfaceRef> surfaces, IReadOnlyCollection<MapSurfacePatch> patches,
         List<MapDocumentFinding>? findings)
     {
@@ -262,15 +272,16 @@ public static class MapTopologyReferenceValidator
         }
         void Chain(MapBoundaryChain chain)
         {
-            if (!Enum.IsDefined(chain.Kind) || chain.Vertices.Count is < 2 or > 4097)
-                Add(new(!Enum.IsDefined(chain.Kind) ? MapDocumentRefusal.SchemaEnumUnsupported : MapDocumentRefusal.ValueOutsideRange,
+            bool supportedKind = Enum.IsDefined(chain.Kind);
+            int? vertexCount = supportedKind ? chain.Vertices.Count : null;
+            if (!supportedKind || vertexCount is < 2 or > 4097)
+                Add(new(!supportedKind ? MapDocumentRefusal.SchemaEnumUnsupported : MapDocumentRefusal.ValueOutsideRange,
                     $"invalid chain kind/vertices '{chain.Id}'")
                 {
-                    RecordId = chain.Id, FieldPath = !Enum.IsDefined(chain.Kind) ? nameof(chain.Kind) : nameof(chain.Vertices),
-                    EnumType = !Enum.IsDefined(chain.Kind) ? typeof(MapChainKind) : null,
-                    ActualInteger = !Enum.IsDefined(chain.Kind) ? (long)chain.Kind : null,
-                    ActualCount = Enum.IsDefined(chain.Kind) ? chain.Vertices.Count : null,
-                    MinimumInteger = Enum.IsDefined(chain.Kind) ? 2 : null, MaximumInteger = Enum.IsDefined(chain.Kind) ? 4097 : null,
+                    RecordId = chain.Id, FieldPath = !supportedKind ? nameof(chain.Kind) : nameof(chain.Vertices),
+                    EnumType = !supportedKind ? typeof(MapChainKind) : null,
+                    ActualInteger = !supportedKind ? (long)chain.Kind : null, ActualCount = vertexCount,
+                    MinimumInteger = supportedKind ? 2 : null, MaximumInteger = supportedKind ? 4097 : null,
                 });
             if (chain.Kind == MapChainKind.SurfaceEdge && (chain.SourcePatch is null || !_patches.ContainsKey(chain.SourcePatch.Value)))
                 Add(new(chain.SourcePatch is null ? MapDocumentRefusal.SchemaValueRequired : MapDocumentRefusal.ReferenceMissing,
@@ -304,9 +315,10 @@ public static class MapTopologyReferenceValidator
                     EnumType = typeof(MapSpaceKind), ActualInteger = (long)(from.Kind != MapSpaceKind.Exterior ? from.Kind : to.Kind),
                     FieldPath = nameof(portal.BandTop),
                 });
-            if (portal.Interval.Count < 2)
+            int intervalCount = portal.Interval.Count;
+            if (intervalCount < 2)
                 Add(new(MapDocumentRefusal.GeometryVertexSequenceInvalid, $"invalid portal interval '{portal.Id}'")
-                { RecordId = portal.Id, FieldPath = nameof(portal.Interval), ActualCount = portal.Interval.Count, MinimumInteger = 2 });
+                { RecordId = portal.Id, FieldPath = nameof(portal.Interval), ActualCount = intervalCount, MinimumInteger = 2 });
             foreach (MapLatticeVertex v in portal.Interval) Vertex(v, portal.Id);
             var reference = new MapRecordRef(portal.Id, anchor);
             bool semanticRoom = from?.Kind == MapSpaceKind.Room || to?.Kind == MapSpaceKind.Room;
@@ -330,26 +342,38 @@ public static class MapTopologyReferenceValidator
             if (upper is not null && _linkMembership.GetValueOrDefault((upper.Id, reference)) != 1)
                 Add(new(MapDocumentRefusal.SpaceLinkMembershipMismatch, $"link list mismatch '{link.Id}'")
                 { RecordId = link.Id, SpaceId = upper.Id, FieldPath = nameof(link.UpperSpace), ActualCount = _linkMembership.GetValueOrDefault((upper.Id, reference)), ExpectedCount = 1 });
-            if (lower is not null && _linkMembership.GetValueOrDefault((lower.Id, reference)) != 1) Errors.Add($"link list mismatch '{link.Id}'");
+            if (lower is not null && _linkMembership.GetValueOrDefault((lower.Id, reference)) != 1)
+                Add(new(MapDocumentRefusal.SpaceLinkMembershipMismatch, $"link list mismatch '{link.Id}'")
+                { RecordId = link.Id, SpaceId = lower.Id, FieldPath = nameof(link.LowerSpace), ActualCount = _linkMembership.GetValueOrDefault((lower.Id, reference)), ExpectedCount = 1 });
         }
         void RefSet<T>(IReadOnlyList<MapRecordRef> refs, string source) where T : MapTopologyRecord
         {
             var seen = new HashSet<MapRecordRef>();
+            int index = 0;
             foreach (MapRecordRef reference in refs)
             {
-                if (!seen.Add(reference)) Errors.Add($"duplicate reference '{reference.Id}' in '{source}'");
+                if (!seen.Add(reference))
+                    Add(new(MapDocumentRefusal.IdentityDuplicate, $"duplicate reference '{reference.Id}' in '{source}'")
+                    { RecordId = source, RelatedRecordId = reference.Id, Patch = reference.Anchor, Index = index, SubjectKind = "record reference" });
                 _ = Find<T>(reference, source);
+                index++;
             }
         }
         void Space(MapSpaceDoc space)
         {
-            if (!Enum.IsDefined(space.Kind)) Errors.Add($"invalid space kind '{space.Id}'");
+            if (!Enum.IsDefined(space.Kind))
+                Add(new(MapDocumentRefusal.SchemaEnumUnsupported, $"invalid space kind '{space.Id}'")
+                { RecordId = space.Id, SpaceId = space.Id, FieldPath = nameof(space.Kind), EnumType = typeof(MapSpaceKind), ActualInteger = (long)space.Kind });
             if (space.Parent is not null) _ = Find<MapSpaceDoc>(space.Parent, space.Id);
             if (space.AliasOf is not null)
             {
                 MapSpaceDoc? target = Find<MapSpaceDoc>(space.AliasOf, space.Id);
                 if (target is not null && (target.AliasOf is not null || target.Parent != space.Parent || target.Kind != space.Kind))
-                    Errors.Add($"alias must target an alias-free peer '{space.Id}'");
+                    Add(new(MapDocumentRefusal.SpaceAliasPeerInvalid, $"alias must target an alias-free peer '{space.Id}'")
+                    {
+                        RecordId = space.Id, SpaceId = space.Id, RelatedRecordId = target.Id,
+                        FieldPath = target.AliasOf is not null ? "AliasOf.AliasOf" : target.Parent != space.Parent ? "AliasOf.Parent" : "AliasOf.Kind",
+                    });
             }
             foreach (MapBoundaryRef wall in space.Walls)
             {
@@ -361,64 +385,116 @@ public static class MapTopologyReferenceValidator
                 if (portal is not null)
                 {
                     MapRecordRef endpoint = boundary.Side == MapSide.Front ? portal.FromSpace : portal.ToSpace;
-                    if (Find<MapSpaceDoc>(endpoint, portal.Id)?.Id != space.Id) Errors.Add($"portal list mismatch '{space.Id}'");
+                    var endpointSpace = Find<MapSpaceDoc>(endpoint, portal.Id);
+                    if (endpointSpace?.Id != space.Id)
+                        Add(new(MapDocumentRefusal.SpacePortalMembershipMismatch, $"portal list mismatch '{space.Id}'")
+                        { RecordId = space.Id, SpaceId = space.Id, RelatedRecordId = portal.Id, EntityId = endpointSpace?.Id, FieldPath = nameof(space.Portals) });
                 }
             }
             RefSet<MapVerticalLink>(space.Links, space.Id);
             foreach (MapRecordRef reference in space.Links)
                 if (_records.TryGetValue(reference.Id, out var row) && row.Record is MapVerticalLink link &&
                     link.UpperSpace.Id != space.Id && link.LowerSpace.Id != space.Id)
-                    Errors.Add($"link list mismatch '{space.Id}'");
+                    Add(new(MapDocumentRefusal.SpaceLinkMembershipMismatch, $"link list mismatch '{space.Id}'")
+                    { RecordId = space.Id, SpaceId = space.Id, RelatedRecordId = link.Id, FieldPath = nameof(space.Links) });
         }
         void Side(MapBoundaryRef boundary, string source)
         {
-            if (!Enum.IsDefined(boundary.Side)) Errors.Add($"invalid boundary side in '{source}'");
-            if (!_sides.Add((boundary.Record.Id, boundary.Side))) Errors.Add($"duplicate boundary side '{boundary.Record.Id}'");
+            if (!Enum.IsDefined(boundary.Side))
+                Add(new(MapDocumentRefusal.SchemaEnumUnsupported, $"invalid boundary side in '{source}'")
+                { RecordId = source, RelatedRecordId = boundary.Record.Id, FieldPath = nameof(boundary.Side), EnumType = typeof(MapSide), ActualInteger = (long)boundary.Side });
+            if (!_sides.Add((boundary.Record.Id, boundary.Side)))
+                Add(new(MapDocumentRefusal.IdentityDuplicate, $"duplicate boundary side '{boundary.Record.Id}'")
+                { RecordId = source, RelatedRecordId = boundary.Record.Id, FieldPath = nameof(boundary.Side), EnumType = typeof(MapSide), ActualInteger = (long)boundary.Side, SubjectKind = "boundary side" });
         }
         void Footprint(MapSpaceFootprint footprint)
         {
             MapSpaceDoc? space = Find<MapSpaceDoc>(footprint.Space, footprint.Id);
-            if (space?.Kind == MapSpaceKind.Room) Errors.Add($"room occupancy requires its prism, not a lattice footprint '{footprint.Id}'");
+            if (space?.Kind == MapSpaceKind.Room)
+                Add(new(MapDocumentRefusal.SpaceRoomOccupancyInvalid, $"room occupancy requires its prism, not a lattice footprint '{footprint.Id}'")
+                { RecordId = footprint.Id, SpaceId = space.Id, FieldPath = nameof(footprint.Space) });
             Slots(footprint.Lattice, footprint.SlotCells, footprint.Id, requireAbsent: false);
             Bound(footprint.Lower, lower: true, space, footprint.Id);
             Bound(footprint.Upper, lower: false, space, footprint.Id);
             _surfaces.TryGetValue(footprint.Lower.SurfaceId ?? "", out MapSurfaceRef? lowerSurface);
-            if (space is not null && MapLegacyExteriorRecipe.Check(footprint, space, lowerSurface) is { } failure)
-                Errors.Add($"{failure}: footprint '{footprint.Id}'");
+            if (space is not null && MapLegacyExteriorRecipe.CheckFinding(footprint, space, lowerSurface) is { } failure)
+                Add(failure with { Message = $"{failure.Message}: footprint '{footprint.Id}'" });
         }
         void Bound(MapBoundRef bound, bool lower, MapSpaceDoc? space, string source)
         {
+            string role = lower ? "Lower" : "Upper";
             if (bound.Kind == MapBoundKind.OpenTop)
             {
                 if (lower || space?.Kind != MapSpaceKind.Exterior || bound.SurfaceId is not null || bound.Opening is not null)
-                    Errors.Add($"invalid open top bound '{source}'");
+                    Add(new(MapDocumentRefusal.SpaceOpenTopInvalid, $"invalid open top bound '{source}'")
+                    {
+                        RecordId = source, SpaceId = space?.Id, SurfaceId = bound.SurfaceId, RelatedRecordId = bound.Opening?.Id,
+                        FieldPath = lower ? "Lower.Kind" : space?.Kind != MapSpaceKind.Exterior ? "Space.Kind"
+                            : bound.SurfaceId is not null ? "Upper.SurfaceId" : "Upper.Opening",
+                    });
                 return;
             }
             if (bound.Kind == MapBoundKind.HorizontalOpening)
             {
                 _ = Find<MapHorizontalOpening>(bound.Opening, source);
-                if (bound.SurfaceId is not null) Errors.Add($"invalid opening bound surface '{source}'");
+                if (bound.SurfaceId is not null)
+                    Add(new(MapDocumentRefusal.AuthoredValueMismatch, $"invalid opening bound surface '{source}'")
+                    { RecordId = source, SpaceId = space?.Id, SurfaceId = bound.SurfaceId, RelatedRecordId = bound.Opening?.Id, FieldPath = $"{role}.SurfaceId" });
                 return;
             }
             MapSurfaceRole expected = lower ? MapSurfaceRole.SupportFloor : MapSurfaceRole.Ceiling;
             bool kind = lower ? bound.Kind is MapBoundKind.SupportFloor or MapBoundKind.LegacyExteriorV1 : bound.Kind == MapBoundKind.Ceiling;
+            MapSurfaceRef? surface = null;
             if (!kind || bound.Opening is not null || bound.SurfaceId is null ||
-                !_surfaces.TryGetValue(bound.SurfaceId, out MapSurfaceRef? surface) || surface.Role != expected)
-                Errors.Add($"bound surface role mismatch '{source}'");
+                !_surfaces.TryGetValue(bound.SurfaceId, out surface) || surface.Role != expected)
+                Add(new(!kind ? !Enum.IsDefined(bound.Kind) ? MapDocumentRefusal.SchemaEnumUnsupported : MapDocumentRefusal.SpaceBoundRoleMismatch
+                    : bound.Opening is not null ? MapDocumentRefusal.AuthoredValueMismatch
+                    : bound.SurfaceId is null ? MapDocumentRefusal.SchemaValueRequired
+                    : surface is null ? MapDocumentRefusal.ReferenceMissing : MapDocumentRefusal.SpaceBoundRoleMismatch,
+                    $"bound surface role mismatch '{source}'")
+                {
+                    RecordId = source, SpaceId = space?.Id, SurfaceId = bound.SurfaceId, RelatedRecordId = bound.Opening?.Id,
+                    FieldPath = !kind ? $"{role}.Kind" : bound.Opening is not null ? $"{role}.Opening"
+                        : surface is null ? $"{role}.SurfaceId" : $"{role}.Surface.Role",
+                    EnumType = !kind ? typeof(MapBoundKind) : surface is not null ? typeof(MapSurfaceRole) : null,
+                    ActualInteger = !kind ? (long)bound.Kind : surface is not null ? (long)surface.Role : null,
+                });
         }
         void Slots(MapPatchKey key, IReadOnlyList<int> cells, string source, bool requireAbsent)
         {
-            if (!_patches.TryGetValue(key, out MapSurfacePatch? patch)) { Errors.Add($"missing lattice patch '{source}'"); return; }
-            if (cells.Count is < 1 or > 4096) Errors.Add($"invalid slot cell count '{source}'");
+            if (!_patches.TryGetValue(key, out MapSurfacePatch? patch))
+            {
+                Add(new(MapDocumentRefusal.ReferenceMissing, $"missing lattice patch '{source}'") { RecordId = source, Patch = key });
+                return;
+            }
+            int cellCount = cells.Count;
+            if (cellCount is < 1 or > 4096)
+                Add(new(MapDocumentRefusal.ValueOutsideRange, $"invalid slot cell count '{source}'")
+                { RecordId = source, Patch = key, FieldPath = "SlotCells.Count", ActualCount = cellCount, MinimumInteger = 1, MaximumInteger = 4096 });
             int previous = -1;
+            int index = 0;
             foreach (int cell in cells)
             {
-                if (cell <= previous) Errors.Add($"duplicate or unordered slot cell '{source}'");
+                if (cell <= previous)
+                    Add(new(index == 0 ? MapDocumentRefusal.ValueOutsideRange
+                        : cell == previous ? MapDocumentRefusal.IdentityDuplicate : MapDocumentRefusal.OrderInvalid,
+                        $"duplicate or unordered slot cell '{source}'")
+                    { RecordId = source, Patch = key, FieldPath = "SlotCells", Index = index, ActualInteger = cell,
+                        PreviousInteger = index == 0 ? null : previous, MinimumInteger = index == 0 ? 0 : null });
                 previous = cell;
                 int x = cell % 64 - patch.CellMinX, z = cell / 64 - patch.CellMinZ;
                 if (cell is < 0 or >= 4096 || x < 0 || x >= patch.Width || z < 0 || z >= patch.Depth)
-                    Errors.Add($"slot cell outside patch '{source}'");
-                else if (requireAbsent && patch.IsPresent(x, z)) Errors.Add($"opening over present cell '{source}'");
+                    Add(new(cell is < 0 or >= 4096 ? MapDocumentRefusal.ValueOutsideRange : MapDocumentRefusal.SurfaceAddressOutOfPatch,
+                        $"slot cell outside patch '{source}'")
+                    {
+                        RecordId = source, Patch = key, FieldPath = "SlotCells", Index = index, ActualInteger = cell,
+                        MinimumInteger = cell is < 0 or >= 4096 ? 0 : null, MaximumInteger = cell is < 0 or >= 4096 ? 4095 : null,
+                        CellX = x, CellZ = z, Width = patch.Width, Depth = patch.Depth,
+                    });
+                else if (requireAbsent && patch.IsPresent(x, z))
+                    Add(new(MapDocumentRefusal.SpaceOpeningCellsInvalid, $"opening over present cell '{source}'")
+                    { RecordId = source, Patch = key, FieldPath = "SlotCells", Index = index, ActualInteger = cell, CellX = x, CellZ = z });
+                index++;
             }
         }
     }

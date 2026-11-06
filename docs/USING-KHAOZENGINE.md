@@ -12769,7 +12769,8 @@ distinguishes mismatched patch keys (`AuthoredValueMismatch` with both keys) fro
 lower surface, `SurfaceLegacyRecipeRequired` for an incompatible surface or `AuthoredOwnershipMismatch`
 for a different footprint lattice. It retains the footprint, space, surface, patch and first failed field.
 `Check` remains its prose projection. Topology admission also carries metadata, local patch, identity,
-strip-facing, prism and ancestry findings internally alongside the unchanged string validator. Record
+strip-facing, prism and ancestry findings. `MapTopologyReferenceValidator.ValidateFindings` returns the
+complete ordered read-only finding list, and `Validate` remains its unchanged string projection. Record
 lookups distinguish missing targets, wrong anchors and wrong types through `ReferenceMissing`,
 `AuthoredOwnershipMismatch` and `ReferenceKindMismatch`. They retain the source `RecordId` or surface,
 target `RelatedRecordId`, requested `Patch`, actual anchor and actual record type when checked.
@@ -12777,13 +12778,21 @@ Vertex denominator findings preserve their original scalar reason and limits. Ch
 kind, cardinality, source patch, height kind and vertex surface. Portal findings use
 `SpacePortalOpenTopInvalid`, `GeometryVertexSequenceInvalid` and `SpacePortalMembershipMismatch`,
 with the endpoint or measured count. Vertical-link findings retain forbidden geometry owner identity
-and type, or `SpaceLinkMembershipMismatch` with the upper endpoint and its actual and expected count.
+and type, or `SpaceLinkMembershipMismatch` with either endpoint and its actual and expected count.
 Prism versions use `SchemaPayloadVersionUnsupported`, a missing Room uses `ReferenceMissing`, a
 non-Room uses `ReferenceKindMismatch`, and parent disagreement uses `SpacePrismParentMismatch` with
 `RelatedRecordId`. Room prism counts use `SpaceRoomOccupancyInvalid` with actual and expected counts,
 and ancestry cycles use `SpaceParentCycle` with `SpaceId`. The source-copy and finding projection preserve
-`RelatedRecordId`. Topology adapters still wait for the remaining space membership and
-footprint finding conversion, so they do not classify aggregate prose.
+`RelatedRecordId`. Space listings retain their owner, referenced portal or link, and the actual portal
+endpoint when resolved. Alias peer failures use `SpaceAliasPeerInvalid` and the first incompatible
+field. Room footprints use `SpaceRoomOccupancyInvalid` with their footprint identity, and legacy recipe
+findings keep their original reason, identifiers and display suffix when forwarded through a footprint.
+Bound checks distinguish required or missing surfaces, unsupported kinds, incompatible bound roles,
+conflicting opening fields and invalid open tops. Their `FieldPath` names the first failing lower or
+upper field. Slot checks retain the patch, cell index and value. They distinguish cardinality, duplicate
+entries, backwards ordering, numerical range, patch coordinates and openings over present cells.
+Count controls accept exactly 1 and 4096 slots. `PreviousInteger` is set only for an actual predecessor.
+The topology producer is complete. Broader adapters still wait for their other finding producers.
 
 Native metadata adds typed findings beside its unchanged string diagnostics. Compound findings select
 the first failing predicate branch. Missing asset-reference and indoor-span values use `SchemaValueRequired`, nonfinite

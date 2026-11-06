@@ -245,7 +245,6 @@ internal static class MapSurfaceTiledStore
     }
     internal static void Write(string root, Prepared prepared, MapDocumentSaveOptions save, HashSet<string> touched)
     {
-        var admitted = new List<byte[]>(prepared.Payloads.Count);
         foreach (var payload in prepared.Payloads)
         {
             byte[] bytes = MapSurfacePatchCodec.Encode(payload.Patch);
@@ -253,9 +252,8 @@ internal static class MapSurfaceTiledStore
             if (actualHash != payload.Digest)
                 throw new MapDocumentException(MapDocumentRefusal.StorageSaveSnapshotChanged, "document changed during surface save")
                     { Patch = payload.Patch.Key, ExpectedHash = payload.Digest, ActualHash = actualHash };
-            admitted.Add(bytes);
+            WriteFile(root, 'p', bytes, save, touched);
         }
-        foreach (byte[] bytes in admitted) WriteFile(root, 'p', bytes, save, touched);
         foreach (var file in prepared.Files.OrderBy(f => f.Kind == 'i' ? 0 : 1))
             WriteFile(root, file.Kind, file.Bytes, save, touched);
     }

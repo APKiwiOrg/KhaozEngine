@@ -12735,8 +12735,9 @@ or `SculptTile` for a sculpt duplicate.
 
 Tiled surface saves report dictionary key disagreement as `StoragePatchKeyMismatch` with the dictionary
 `ExpectedPatch` and payload `Patch`. A payload changed after preparation uses `StorageSaveSnapshotChanged`
-with `Patch` and the expected and actual hashes. All payload snapshots are admitted before the first
-persistent write, so a changed later payload leaves every saved file untouched. Packing limits use `ValueOutsideRange`, the failed
+with `Patch` and the expected and actual hashes. The manifest rename commits a tiled save. A refusal before
+that commit preserves the previous live content, and the next successful save sweeps unreferenced payloads.
+Packing limits use `ValueOutsideRange`, the failed
 `FieldPath` (`IndexBlockSlots` or `DirectoryBlockPages`), actual integer and inclusive limits 1 and 16.
 Unrepresentable page blocks and load windows use `GeometryNotRepresentable` with `Operation`
 `PackSurfaces` or `LoadSurfaces` and `FieldPath` `Covers` or `Window`. Stored semantic digest mismatches

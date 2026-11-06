@@ -78,16 +78,21 @@ public sealed class SurfaceTiledStoreRefusalTests
     }
 
     [Fact]
-    public void ChangedPreparedPayload_ReportsBothDigestsBeforeWriting()
+    public void ChangedPreparedPayload_PreservesManifestAndSweepsUnreferencedPayload()
     {
         MapDocument doc = SurfaceStorageFixtures.FlatPatches(2);
         string root = SurfaceStorageFixtures.SaveToTemp(doc);
         try
         {
-            // W6-D2d regression: the first payload is new, while a later snapshot is refused.
-            doc.Surfaces.Patches.Values.First().Heights[0]++;
+            byte[] manifest = File.ReadAllBytes(Path.Combine(root, "map.json"));
+            string saved = MapDocumentFile.SaveText(MapDocumentFile.LoadTiled(root));
+            // X27: unreferenced content may be written before the manifest commits.
+            MapSurfacePatch first = doc.Surfaces.Patches.Values.First();
+            first.Heights[0]++;
             MapSurfaceTiledStore.Prepared prepared = MapSurfaceTiledStore.Prepare(doc, root, null);
             Assert.Equal(2, prepared.Payloads.Count);
+            string stray = MapSurfaceStorageLayout.PathOf(root, 'p', prepared.Payloads[0].Digest);
+            Assert.False(File.Exists(stray));
             var payload = prepared.Payloads[1];
             payload.Patch.Heights[0]++;
             string changed = MapSurfaceStorageLayout.Digest(MapSurfacePatchCodec.Encode(payload.Patch));
@@ -98,11 +103,15 @@ public sealed class SurfaceTiledStoreRefusalTests
             Assert.Equal(payload.Patch.Key, error.Patch);
             Assert.Equal(payload.Digest, error.ExpectedHash);
             Assert.Equal(changed, error.ActualHash);
-            Assert.Equal(before, AssertFixtures.Files(root));
+            Assert.Equal(manifest, File.ReadAllBytes(Path.Combine(root, "map.json")));
+            Assert.Equal(saved, MapDocumentFile.SaveText(MapDocumentFile.LoadTiled(root)));
+            Assert.All(before, file => Assert.Equal(file.Sha256, AssertFixtures.Sha256(Path.Combine(root, file.Path))));
+            Assert.True(File.Exists(stray));
             payload.Patch.Heights[0]--;
-            MapSurfaceTiledStore.Write(root, prepared, new(), new HashSet<string>());
+            first.Heights[0]--;
             MapDocumentFile.SaveTiled(doc, root);
             Assert.Empty(MapDocumentFile.VerifyTiled(root));
+            Assert.False(File.Exists(stray));
         }
         finally { Directory.Delete(root, true); }
     }

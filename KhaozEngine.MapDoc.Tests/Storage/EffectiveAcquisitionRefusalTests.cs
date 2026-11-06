@@ -12,16 +12,25 @@ namespace KhaozEngine.Tests.MapDoc.Storage;
 public sealed class EffectiveAcquisitionRefusalTests
 {
     [Theory]
-    [InlineData("snapshot", MapDocumentRefusal.AcquisitionSnapshotChanged, "SnapshotId")]
-    [InlineData("scope-null", MapDocumentRefusal.SchemaValueRequired, "Scope")]
-    [InlineData("scope", MapDocumentRefusal.AcquisitionContractMismatch, "Scope.Digest")]
-    [InlineData("status", MapDocumentRefusal.SchemaEnumUnsupported, "Status")]
-    [InlineData("payload-status", MapDocumentRefusal.AcquisitionContractMismatch, "Patches.Status")]
-    [InlineData("unreserved", MapDocumentRefusal.AcquisitionContractMismatch, "Patches.Key")]
-    [InlineData("unavailable-status", MapDocumentRefusal.SchemaEnumUnsupported, "Unavailable.Status")]
-    [InlineData("unavailable-payload", MapDocumentRefusal.AcquisitionContractMismatch, "Unavailable.Patch")]
-    [InlineData("missing-fact", MapDocumentRefusal.AcquisitionContractMismatch, "ReservedPatchKeys")]
-    public void Effective_discovery_identifies_each_producer_contract_branch(string fault, MapDocumentRefusal reason, string field)
+    [InlineData(true, "snapshot", MapDocumentRefusal.AcquisitionSnapshotChanged, "SnapshotId")]
+    [InlineData(true, "scope-null", MapDocumentRefusal.SchemaValueRequired, "Scope")]
+    [InlineData(true, "scope", MapDocumentRefusal.AcquisitionContractMismatch, "Scope.Digest")]
+    [InlineData(true, "status", MapDocumentRefusal.SchemaEnumUnsupported, "Status")]
+    [InlineData(true, "payload-status", MapDocumentRefusal.AcquisitionContractMismatch, "Patches.Status")]
+    [InlineData(true, "unreserved", MapDocumentRefusal.AcquisitionContractMismatch, "Patches.Key")]
+    [InlineData(true, "unavailable-status", MapDocumentRefusal.SchemaEnumUnsupported, "Unavailable.Status")]
+    [InlineData(true, "unavailable-payload", MapDocumentRefusal.AcquisitionContractMismatch, "Unavailable.Patch")]
+    [InlineData(true, "missing-fact", MapDocumentRefusal.AcquisitionContractMismatch, "ReservedPatchKeys")]
+    [InlineData(false, "snapshot", MapDocumentRefusal.AcquisitionSnapshotChanged, "SnapshotId")]
+    [InlineData(false, "scope-null", MapDocumentRefusal.SchemaValueRequired, "Scope")]
+    [InlineData(false, "scope", MapDocumentRefusal.AcquisitionContractMismatch, "Scope.Digest")]
+    [InlineData(false, "status", MapDocumentRefusal.SchemaEnumUnsupported, "Status")]
+    [InlineData(false, "payload-status", MapDocumentRefusal.AcquisitionContractMismatch, "Patches.Status")]
+    [InlineData(false, "unreserved", MapDocumentRefusal.AcquisitionContractMismatch, "Patches.Key")]
+    [InlineData(false, "unavailable-status", MapDocumentRefusal.SchemaEnumUnsupported, "Unavailable.Status")]
+    [InlineData(false, "unavailable-payload", MapDocumentRefusal.AcquisitionContractMismatch, "Unavailable.Patch")]
+    [InlineData(false, "missing-fact", MapDocumentRefusal.AcquisitionContractMismatch, "ReservedPatchKeys")]
+    public void Discovery_identifies_each_producer_contract_branch(bool effective, string fault, MapDocumentRefusal reason, string field)
     {
         var probe = AcquisitionConformanceFixtures.OneSeed();
         MapEffectiveContext context = Context(probe);
@@ -37,7 +46,7 @@ public sealed class EffectiveAcquisitionRefusalTests
             "unavailable-payload" => found with { Unavailable = new[] { OtherRead(probe) with { Status = MapPatchStatus.Unloaded } } },
             _ => found with { Patches = Array.Empty<MapPatchRead>() },
         };
-        var ex = Assert.Throws<MapDocumentException>(() => Run(probe, context));
+        var ex = Assert.Throws<MapDocumentException>(() => Run(probe, context, effective));
         Assert.Equal(reason, ex.Reason);
         Assert.Equal(field, ex.FieldPath);
         if (fault == "snapshot")
@@ -59,15 +68,19 @@ public sealed class EffectiveAcquisitionRefusalTests
         if (fault is "unreserved" or "unavailable-status" or "unavailable-payload") Assert.Equal(new MapPatchKey("seed", 1, 0), ex.Patch);
         Assert.Equal(AcquisitionConformanceFixtures.Seed, Assert.Single(context.Surfaces.Patches).Key);
         probe.FindFault = null;
-        Assert.Equal(MapAcquireStatus.Complete, Run(probe, context).Status);
+        Assert.Equal(MapAcquireStatus.Complete, Run(probe, context, effective).Status);
     }
 
     [Theory]
-    [InlineData("unknown", MapDocumentRefusal.AcquisitionContractMismatch)]
-    [InlineData("known-null", MapDocumentRefusal.SchemaValueRequired)]
-    [InlineData("reference-null", MapDocumentRefusal.SchemaValueRequired)]
-    [InlineData("reference-id", MapDocumentRefusal.SchemaValueRequired)]
-    public void Effective_incidence_distinguishes_unknown_known_and_required_references(string fault, MapDocumentRefusal reason)
+    [InlineData(true, "unknown", MapDocumentRefusal.AcquisitionContractMismatch)]
+    [InlineData(true, "known-null", MapDocumentRefusal.SchemaValueRequired)]
+    [InlineData(true, "reference-null", MapDocumentRefusal.SchemaValueRequired)]
+    [InlineData(true, "reference-id", MapDocumentRefusal.SchemaValueRequired)]
+    [InlineData(false, "unknown", MapDocumentRefusal.AcquisitionContractMismatch)]
+    [InlineData(false, "known-null", MapDocumentRefusal.SchemaValueRequired)]
+    [InlineData(false, "reference-null", MapDocumentRefusal.SchemaValueRequired)]
+    [InlineData(false, "reference-id", MapDocumentRefusal.SchemaValueRequired)]
+    public void Incidence_distinguishes_unknown_known_and_required_references(bool effective, string fault, MapDocumentRefusal reason)
     {
         var probe = AcquisitionConformanceFixtures.OneSeed();
         MapEffectiveContext context = Context(probe);
@@ -78,14 +91,14 @@ public sealed class EffectiveAcquisitionRefusalTests
             "reference-null" => (true, new MapRecordRef[] { null! }),
             _ => (true, new[] { new MapRecordRef(" ", AcquisitionConformanceFixtures.Seed) }),
         };
-        var ex = Assert.Throws<MapDocumentException>(() => Run(probe, context));
+        var ex = Assert.Throws<MapDocumentException>(() => Run(probe, context, effective));
         Assert.Equal(reason, ex.Reason);
         Assert.Equal(fault is "unknown" or "known-null" ? "IncidentRecords" : fault == "reference-null" ? "reference" : "Id", ex.FieldPath);
         if (fault != "reference-null") Assert.Equal(AcquisitionConformanceFixtures.Seed, ex.Patch);
         if (fault == "reference-id") Assert.Equal(" ", ex.RecordId);
         Assert.Single(context.Surfaces.Patches);
         probe.IncidentFault = null;
-        Assert.Equal(MapAcquireStatus.Complete, Run(probe, context).Status);
+        Assert.Equal(MapAcquireStatus.Complete, Run(probe, context, effective).Status);
     }
 
     [Theory]
@@ -159,8 +172,9 @@ public sealed class EffectiveAcquisitionRefusalTests
         Assert.Equal(MapPatchStatus.Present, session.ReadPatch(AcquisitionConformanceFixtures.Seed).Status);
     }
 
-    static MapScopedAcquisition.Result Run(R2AcquisitionProbeSource probe, MapEffectiveContext context) =>
-        MapEffectiveAcquisition.Run(probe, AcquisitionConformanceFixtures.Scope(), null, context);
+    static MapScopedAcquisition.Result Run(R2AcquisitionProbeSource probe, MapEffectiveContext context, bool effective = true) =>
+        effective ? MapEffectiveAcquisition.Run(probe, AcquisitionConformanceFixtures.Scope(), null, context)
+            : MapScopedAcquisition.Run(probe, AcquisitionConformanceFixtures.Scope(), null);
     static MapEffectiveContext Context(R2AcquisitionProbeSource probe)
     {
         var set = new MapSurfaceSet();

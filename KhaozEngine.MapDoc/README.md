@@ -158,15 +158,15 @@ A missing bound surface identity also carries the footprint's `RecordId` and the
 Composed sources without bounded native acquisition use `AcquisitionUnsupported` and `SourceType`.
 These carriers preserve identifiers through source-context wrapping and typed finding projection.
 
-Effective acquisition's discovery snapshot mismatch uses `AcquisitionSnapshotChanged` with
+Ordinary and effective acquisition's discovery snapshot mismatch uses `AcquisitionSnapshotChanged` with
 `ExpectedSnapshot`, `ActualSnapshot` and `FieldPath`. Its session pin, scope, reservation, payload and
 incidence contract mismatches use `AcquisitionContractMismatch`. Snapshot pins carry both snapshot
 identities, root and scope pins carry `ExpectedHash` and `ActualHash`, and payload checks retain
 `Patch` and `PatchStatus`. A null scope or known incidence without a list uses `SchemaValueRequired`.
 Unsupported discovery or unavailable statuses use `SchemaEnumUnsupported` with the numeric value and
 enum type. A composed read whose surface has no owner uses `ReferenceMissing`, `SurfaceId` and `Patch`.
-Effective explicit-read key mismatches use `AcquisitionContractMismatch` with `Patch`, `ExpectedPatch`
-and `FieldPath`. Effective surface lookups distinguish an undeclared surface (`ReferenceMissing`), a
+Ordinary and effective explicit-read key mismatches use `AcquisitionContractMismatch` with `Patch`, `ExpectedPatch`
+and `FieldPath`. Their surface lookups distinguish an undeclared surface (`ReferenceMissing`), a
 successful lookup returning null (`SchemaValueRequired`) and a different identity (`AuthoredValueMismatch`).
 They retain the requested `SurfaceId`, the field and the returned identity as `ActualText` when known.
 Effective reservation snapshots use `WorkCapacityExceeded` with `Budget = "MaxCandidatePatches"`,
@@ -178,7 +178,7 @@ observed `ExpectedCount`. Ordinary and effective session admission use the same 
 A collapsed effective cell uses `GeometryNotRepresentable`, `SurfaceId`, `Patch`, `CellX` and `CellZ`.
 The resident snapshot merge and post-capture dictionary lookup treat impossible failures as internal
 invariants. Public scope-coordinate admission remains in the shared surface query. Ordinary acquisition
-discovery and reconciliation guards retain their current message-only behavior.
+reservation, reconciliation and page-observation guards retain their current message-only behavior.
 
 After a key is served, `TryGetIncidentRecords` returns true with a detached list when incidence is known.
 A true empty list certifies no incidents. False with null means unknown incidence, including an unread
@@ -1508,8 +1508,8 @@ An array beyond its own count cap uses that field name as `Budget`, with its `Ac
 | `AssetClosureRequired` | Foliage edit preflight without a verified asset closure | `DocumentId` |
 | `DigestMismatch` | Acquired patch semantic pins, resource bytes, an attached child's descriptor digest, a stored surface semantic aggregate or a verified tile's lists differing from its pin | `DigestKind`, `SourceName`, `Tile`, `ResourceId`, `Path`, `EntityId`, `WorldId`, `ChildKind`, `Child`, `InstanceId`, `PlacementId`, `SurfaceId`, `SubjectKind`, `ExpectedHash`, `ActualHash` |
 | `BoundsInvalid` | Invalid prefab patch dimensions, manifest local bounds, playable bounds, reversed exact rectangles or invalid surface patch rectangles | `FieldPath`, `Width`, `Depth`, `AssetId`, `SurfaceId`, `Patch`, `CellX`, `CellZ`, `Index`, `MinimumNumber`, `MaximumNumber` |
-| `AcquisitionContractMismatch` | An incoherent acquired payload, effective discovery fact, effective read key or page observation, session pin mismatch, or inconsistent effective incidence contract | `Patch`, `ExpectedPatch`, `PatchStatus`, `FieldPath`, `ExpectedSnapshot`, `ActualSnapshot`, `ExpectedHash`, `ActualHash`, `ActualCount`, `ExpectedCount` |
-| `AcquisitionSnapshotChanged` | Effective discovery or later session facts with changed snapshot, root or reservations | `FieldPath`, `ExpectedSnapshot`, `ActualSnapshot`, `ExpectedHash`, `ActualHash` |
+| `AcquisitionContractMismatch` | An incoherent acquired payload, discovery fact, read key or effective page observation, session pin mismatch, or inconsistent incidence contract | `Patch`, `ExpectedPatch`, `PatchStatus`, `FieldPath`, `ExpectedSnapshot`, `ActualSnapshot`, `ExpectedHash`, `ActualHash`, `ActualCount`, `ExpectedCount` |
+| `AcquisitionSnapshotChanged` | Discovery or later effective session facts with changed snapshot, root or reservations | `FieldPath`, `ExpectedSnapshot`, `ActualSnapshot`, `ExpectedHash`, `ActualHash` |
 | `AcquisitionUnsupported` | A composed native producer without bounded scoped acquisition support | `SourceType` |
 | `GeometryNotRepresentable` | A collapsed effective cell | `SurfaceId`, `Patch`, `CellX`, `CellZ` |
 | `WorkCapacityExceeded` | Effective reservation keys beyond the candidate cap, surface codec work beyond its encoded byte or array-count budget, or local corner-dependency or edge-subdivision metadata beyond its count budget | `Patch`, `FieldPath`, `Budget`, `ActualCount`, `ActualByteCount`, `Limit` |

@@ -12742,7 +12742,7 @@ retains the first failed `FieldPath` and known `SurfaceId`, `RecordId`, `Patch` 
 A non-present acquired result carrying a payload uses `AcquisitionContractMismatch`. A missing bound
 surface names the footprint's record and lower or upper field. A composed source without bounded native
 acquisition uses `AcquisitionUnsupported` with `SourceType`. Source-context wrapping and finding
-projection preserve these identifiers. Effective discovery snapshot changes use
+projection preserve these identifiers. Ordinary and effective discovery snapshot changes use
 `AcquisitionSnapshotChanged` with `ExpectedSnapshot`, `ActualSnapshot` and `FieldPath`. Effective or
 composed session pin mismatches, scope or reservation discrepancies and inconsistent incidence use
 `AcquisitionContractMismatch`, retaining both snapshot identities or both root/scope hashes when known.
@@ -12750,8 +12750,8 @@ Null scopes and known incidence without a list use `SchemaValueRequired`, and un
 unavailable statuses use `SchemaEnumUnsupported`. A composed read without a surface owner uses
 `ReferenceMissing` with `SurfaceId` and `Patch`. Scope-coordinate admission remains in the shared
 surface query. Arithmetic overflow in the resident merge after patch-key admission is an internal
-invariant failure. Effective read-key mismatches use `AcquisitionContractMismatch` with `Patch` and
-`ExpectedPatch`. Effective surface lookups distinguish undeclared, null and wrong-identity results
+invariant failure. Ordinary and effective read-key mismatches use `AcquisitionContractMismatch` with `Patch` and
+`ExpectedPatch`. Their surface lookups distinguish undeclared, null and wrong-identity results
 with `ReferenceMissing`, `SchemaValueRequired` and `AuthoredValueMismatch`, retaining `SurfaceId`,
 `FieldPath` and the actual identity when known. Effective reservation snapshots distinguish
 `WorkCapacityExceeded` (`Budget = "MaxCandidatePatches"`, count and limit) from `OrderInvalid`.
@@ -12759,8 +12759,8 @@ Later effective snapshot, root or reservation changes use `AcquisitionSnapshotCh
 changed field and both pins when available. Negative page deltas use `ValueOutsideRange` with a zero
 minimum. Other page inconsistencies use `AcquisitionContractMismatch` with reported and observed
 counts. Ordinary session admission uses the same pin identifiers. A collapsed effective cell uses
-`GeometryNotRepresentable` with its surface, patch and local cell. Ordinary discovery and
-reconciliation guards and shared surface-query guards retain their current message-only behavior.
+`GeometryNotRepresentable` with its surface, patch and local cell. Ordinary reservation, reconciliation
+and page-observation guards and shared surface-query guards retain their current message-only behavior.
 
 Native metadata adds typed findings beside its unchanged string diagnostics. Compound findings select
 the first failing predicate branch. Missing asset-reference and indoor-span values use `SchemaValueRequired`, nonfinite

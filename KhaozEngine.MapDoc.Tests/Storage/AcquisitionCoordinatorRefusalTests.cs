@@ -13,6 +13,7 @@ public sealed class AcquisitionCoordinatorRefusalTests
 {
     [Theory]
     [InlineData(true)]
+    [InlineData(false)]
     public void Explicit_read_must_return_the_requested_key(bool effective)
     {
         var probe = AcquisitionConformanceFixtures.TwoAnchors();
@@ -31,6 +32,9 @@ public sealed class AcquisitionCoordinatorRefusalTests
     [InlineData(true, "missing", MapDocumentRefusal.ReferenceMissing)]
     [InlineData(true, "null", MapDocumentRefusal.SchemaValueRequired)]
     [InlineData(true, "identity", MapDocumentRefusal.AuthoredValueMismatch)]
+    [InlineData(false, "missing", MapDocumentRefusal.ReferenceMissing)]
+    [InlineData(false, "null", MapDocumentRefusal.SchemaValueRequired)]
+    [InlineData(false, "identity", MapDocumentRefusal.AuthoredValueMismatch)]
     public void Surface_lookup_identifies_the_actual_failed_branch(bool effective, string fault, MapDocumentRefusal reason)
     {
         var probe = AcquisitionConformanceFixtures.OneSeed();

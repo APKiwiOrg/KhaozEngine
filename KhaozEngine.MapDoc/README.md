@@ -2029,6 +2029,9 @@ Coincident supports and peer cell overlaps retain both footprint identities and 
 `RecordId`, `RelatedRecordId`, `SlotCell` and `RelatedSlotCell`. Their concrete producer findings
 survive the coverage collector. Diagnostic ordering uses producer-owned record context, including
 prism diagnostics whose deeper refinement or water cause is not yet typed. It does not classify prose.
+Topology producers also supply private sort subjects independently of their public identifiers.
+Coverage retains the first ordinal record owner named by each diagnostic, then orders by cell and text.
+Space-only findings and reference diagnostics naming several records keep that same ordering.
 
 Map documents are dev-authored content, not runtime state: `MapDocumentFile.Load`/`Save` throw
 `MapDocumentException` on a read error, invalid JSON, a missing or out-of-range `formatVersion`, a

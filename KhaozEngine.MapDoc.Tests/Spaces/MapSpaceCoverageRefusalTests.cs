@@ -12,6 +12,28 @@ namespace KhaozEngine.Tests.MapDoc;
 public sealed class MapSpaceCoverageRefusalTests
 {
     [Fact]
+    public void MixedTopologyDiagnostics_KeepTheirReleasedOwnerOrder()
+    {
+        // W6-P1d review regression. A SpaceId-only finding must not sort before record a.
+        var set = MapOccupiedPartitionRefusalTests.Scene(0);
+        var patch = set.Patches.Values.Single();
+        patch.Records.Add(new MapSpaceDoc("a", MapSpaceKind.Exterior, null, null, [], [], [], []));
+        var room = new MapSpaceDoc("z", MapSpaceKind.Room, null, null, [], [], [], []);
+        patch.Records.Add(room);
+        var view = MapScopedSurfaces.CompleteView(set);
+        view.InjectInvalidSpaceKindForTests(new("a", patch.Key), (MapSpaceKind)255);
+
+        Assert.Equal(new[] { "invalid space kind 'a'", "room requires one prism 'z'" },
+            MapSpaceCoverageValidator.Validate(view));
+
+        Replace(patch, room with { Kind = MapSpaceKind.Exterior });
+        view = MapScopedSurfaces.CompleteView(set);
+        view.InjectInvalidSpaceKindForTests(new("a", patch.Key), (MapSpaceKind)255);
+        Assert.Equal(new[] { "invalid space kind 'a'" },
+            MapSpaceCoverageValidator.Validate(view));
+    }
+
+    [Fact]
     public void MissingCoverage_NamesItsFootprintAndCell()
     {
         var set = MapOccupiedPartitionRefusalTests.Scene(0);

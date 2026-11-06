@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using KhaozEngine.MapDoc.Identity;
+using KhaozEngine.MapDoc.Spaces;
 using KhaozEngine.MapDoc.Surfaces;
 
 namespace KhaozEngine.MapDoc.Storage;
@@ -107,6 +108,14 @@ internal sealed class MapAcquiredFacts
     internal MapPatchStatus Status(MapPatchKey key) => _reads.TryGetValue(key, out MapPatchRead? read) ? read.Status : MapPatchStatus.Unloaded;
     internal MapSurfacePatch? OwnedPatch(MapPatchKey key) => _reads.TryGetValue(key, out MapPatchRead? read) ? read.Patch : null;
     internal bool HasRecord(MapRecordRef reference) => OwnedPatch(reference.Anchor)?.Records.Any(r => r.Id == reference.Id) == true;
+
+    // Injects the invalid enum after snapshot admission so coverage's defensive validation is reachable.
+    internal void InjectInvalidSpaceKindForTests(MapRecordRef reference, MapSpaceKind kind)
+    {
+        var records = OwnedPatch(reference.Anchor)!.Records;
+        int index = records.FindIndex(r => r.Id == reference.Id);
+        records[index] = ((MapSpaceDoc)records[index]) with { Kind = kind };
+    }
     internal IEnumerable<MapTopologyRecord> OwnedRecords => _reads.Values.Where(r => r.Patch is not null).SelectMany(r => r.Patch!.Records);
 
     internal MapPatchRead CopyPatch(MapPatchKey key) => _reads.TryGetValue(key, out MapPatchRead? read) &&

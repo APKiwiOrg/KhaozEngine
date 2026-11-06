@@ -28,8 +28,9 @@ public static class MapSpaceCoverageValidator
         var findings = new List<(string Id, int Cell, string Text)>();
         var typed = new Dictionary<(string Id, int Cell, string Text), MapDocumentFinding>();
         var patches = new MapSpaceGeometry.Patches(view);
-        foreach (MapDocumentFinding finding in MapTopologyReferenceValidator.ValidateFindings(view.Surfaces, patches))
-            AddFinding(finding.RecordId ?? "", -1, finding);
+        foreach (MapSpaceDiagnostic diagnostic in MapTopologyReferenceValidator.ValidateDiagnostics(view.Surfaces, patches))
+            if (diagnostic.Finding is { } finding) AddFinding(diagnostic.SortOwnerId, -1, finding);
+            else Add(diagnostic.SortOwnerId, -1, diagnostic.Message);
         foreach (MapSurfacePatch patch in patches)
             foreach (MapDocumentFinding finding in MapSeamValidator.ValidateCornerDependencyFindings(patch, view))
                 AddFinding(patch.Key.ToString(), -1, finding);

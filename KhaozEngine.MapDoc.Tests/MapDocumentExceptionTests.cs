@@ -107,7 +107,7 @@ public sealed class MapDocumentExceptionTests
         MapDocumentException named = throughJson
             ? MapDocumentJsonErrors.Wrap(new JsonException("converter failure", new InvalidOperationException("nested", refusal)),
                 withoutSource ? null : "map.json", "map.json: converter failure", resourceId: "outer-prefab")
-            : refusal.WithSourceName("map.json");
+            : refusal.WithSourceName("map.json", patch: new("outer", 9, 9));
 
         Assert.Equal(refusal.Reason, named.Reason);
         Assert.Equal(MapResolveStatus.Invalid, named.ResolutionStatus);

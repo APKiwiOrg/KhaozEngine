@@ -13,9 +13,9 @@ namespace KhaozEngine.Tests.MapDoc;
 public sealed class MapMembershipClassificationRefusalTests
 {
     [Theory]
-    [InlineData(false, MapMembershipStatus.MissingGeometry)]
-    [InlineData(true, MapMembershipStatus.Invalid)]
-    public void LegacySurfaceAdmission_DistinguishesCompilerMetadataFromTheLegacyRecipe(bool recipe, MapMembershipStatus expected)
+    [InlineData(false, MapMembershipStatus.MissingGeometry, "LegacyTileWorld requires ImportedMetreCentimetre")]
+    [InlineData(true, MapMembershipStatus.Invalid, "footprint 'footprint': legacy recipe: surface")]
+    public void LegacySurfaceAdmission_DistinguishesCompilerMetadataFromTheLegacyRecipe(bool recipe, MapMembershipStatus expected, string detail)
     {
         // W6-C1 review regression: the compiler's frame refusal was never an Invalid recipe projection.
         var set = MapOccupiedPartitionRefusalTests.Scene(0);
@@ -29,7 +29,7 @@ public sealed class MapMembershipClassificationRefusalTests
         var result = new MapSpaceMembership(MapScopedSurfaces.CompleteView(set)).Query(point);
         Assert.Equal(expected, result.Status);
         Assert.Null(result.SpaceId);
-        Assert.NotNull(result.Detail);
+        Assert.Equal(detail, result.Detail);
         patch.Records[index] = footprint;
         set.Refs[0] = original;
         Assert.Equal(MapMembershipStatus.Resolved, new MapSpaceMembership(MapScopedSurfaces.CompleteView(set)).Query(point).Status);

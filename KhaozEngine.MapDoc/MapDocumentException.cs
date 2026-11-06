@@ -311,15 +311,15 @@ public sealed class MapDocumentException : Exception
     /// <summary>Adds source context while preserving the reason, every identifier and this refusal as the cause.
     /// A supplied wrapper message retains the caller's released wording. Existing tile and path identifiers
     /// take precedence over additional source context. A null source name keeps the existing source,
-    /// and existing resource, asset, resource-root, patch status and expected hash identifiers take precedence over additional context.</summary>
+    /// and existing resource, asset, resource-root, patch, patch status and expected hash identifiers take precedence over additional context.</summary>
     internal MapDocumentException WithSourceName(string? sourceName, string? message = null,
         MapTileCoord? tile = null, string? path = null, string? resourceId = null, string? resourceRoot = null, string? assetId = null,
-        MapResolveStatus? resolutionStatus = null, MapPatchStatus? patchStatus = null, string? expectedHash = null) =>
-        new(this, sourceName, message, tile, path, resourceId, resourceRoot, assetId, resolutionStatus, patchStatus, expectedHash);
+        MapResolveStatus? resolutionStatus = null, MapPatchStatus? patchStatus = null, string? expectedHash = null, MapPatchKey? patch = null) =>
+        new(this, sourceName, message, tile, path, resourceId, resourceRoot, assetId, resolutionStatus, patchStatus, expectedHash, patch);
 
     MapDocumentException(MapDocumentException inner, string? sourceName, string? message,
         MapTileCoord? tile, string? path, string? resourceId, string? resourceRoot, string? assetId,
-        MapResolveStatus? resolutionStatus, MapPatchStatus? patchStatus, string? expectedHash) : base(message ?? $"{sourceName}: {inner.Message}", inner)
+        MapResolveStatus? resolutionStatus, MapPatchStatus? patchStatus, string? expectedHash, MapPatchKey? patch) : base(message ?? $"{sourceName}: {inner.Message}", inner)
     {
         Reason = inner.Reason;
         SourceName = sourceName ?? inner.SourceName;
@@ -408,7 +408,7 @@ public sealed class MapDocumentException : Exception
         RecordId = inner.RecordId;
         RelatedRecordId = inner.RelatedRecordId;
         SpaceId = inner.SpaceId;
-        Patch = inner.Patch;
+        Patch = inner.Patch ?? patch;
         Address = inner.Address;
         SlotCell = inner.SlotCell;
         RelatedSlotCell = inner.RelatedSlotCell;

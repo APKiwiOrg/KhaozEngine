@@ -13335,7 +13335,8 @@ altered content with `Corrupt`. These are the typed `PatchStatus` values. Missin
 inner document refusal keeps its concrete reason and identifiers through the common copy operation.
 Tile and payload semantic mismatches use `DigestMismatch` with both hashes. Mismatched index metadata
 uses `AuthoredValueMismatch` with its failed `FieldPath`. `MapPatchRead.Finding` exposes a known payload
-failure beside the unchanged read status and detail. Unsupported pinned tile schemes use
+failure beside the unchanged read status and detail. Payload reads and stored identity attach the known
+patch when a schema refusal lacks one, preserving existing identifiers. Unsupported pinned tile schemes use
 `DocumentHashSchemeUnsupported` with `ActualVersion`, `SupportedVersions` and `FieldPath` `schemeVersion`.
 Stored identity's foliage validator forwards the first concrete finding and the complete ordered snapshot.
 

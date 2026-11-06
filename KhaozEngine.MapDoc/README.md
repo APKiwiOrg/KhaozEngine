@@ -118,7 +118,8 @@ used. A removed tile file carries `PinnedContentUnavailable`, `PatchStatus` `Mis
 Known inner document refusals retain their reason and identifiers through the common copy operation.
 Pinned directory, index and payload failures retain their storage `SubjectKind`, available `Patch`,
 `PatchStatus` and `ExpectedHash`. `MapPatchRead.Finding` exposes a known structured payload failure
-beside its unchanged status and detail. A semantic mismatch uses `DigestMismatch`. Mismatched index
+beside its unchanged status and detail. Both payload reads and stored identity attach the known patch to
+a schema refusal that lacks one, preserving any existing patch and all other inner identifiers. A semantic mismatch uses `DigestMismatch`. Mismatched index
 cells, height extrema, dependency keys or record IDs use `AuthoredValueMismatch` and the failed `FieldPath`.
 Unsupported pinned tile schemes use `DocumentHashSchemeUnsupported`, `ActualVersion` and `SupportedVersions`.
 Identity never rereads

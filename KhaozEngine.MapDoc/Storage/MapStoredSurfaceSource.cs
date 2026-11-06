@@ -112,8 +112,10 @@ public sealed partial class MapStoredSurfaceSource : IMapSurfaceAcquisitionSourc
         catch (Exception ex) when (IsStorageFailure(ex))
         {
             MapPatchStatus status = ex is FileNotFoundException or DirectoryNotFoundException ? MapPatchStatus.Missing : MapPatchStatus.Corrupt;
+            MapDocumentException? refusal = ex is MapDocumentException known
+                ? known.WithSourceName(null, known.Message, patch: entry.Key) : null;
             return new(entry.Key, status, null, entry.SemanticSha256, ex.Message, 0)
-                { Finding = ex is MapDocumentException refusal ? MapDocumentFinding.FromException(refusal) : null, Cause = ex };
+                { Finding = refusal is null ? null : MapDocumentFinding.FromException(refusal), Cause = refusal ?? ex };
         }
     }
     internal static bool IsStorageFailure(Exception ex) => ex is IOException or UnauthorizedAccessException or

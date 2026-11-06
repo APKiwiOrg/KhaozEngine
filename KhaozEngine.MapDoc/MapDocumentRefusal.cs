@@ -192,6 +192,16 @@ public enum MapDocumentRefusal
     ContextDemandUnprepared,
 
     // Fine conversion and terrain editing.
+    /// <summary>Refuses fine conversion without any selected region.</summary>
+    TerrainConversionRegionsMissing,
+    /// <summary>Refuses overlapping fine-conversion regions.</summary>
+    TerrainConversionRegionsOverlap,
+    /// <summary>Refuses fine conversion of a paint-only surface.</summary>
+    TerrainPhysicalSurfaceRequired,
+    /// <summary>Refuses a fine-conversion region intersecting an authored boundary record.</summary>
+    TerrainBoundaryRecordIntersects,
+    /// <summary>Refuses standalone interior replacement of an alias Room.</summary>
+    InteriorAliasUnsupported,
     /// <summary>Refuses conversion without acceptance of the legacy arithmetic or fallback difference.</summary>
     TerrainAuthoredDifference,
     /// <summary>Refuses conversion of an absent authored cell.</summary>

@@ -81,4 +81,43 @@ public sealed class MapConversionRefusalTests
         for (int i = 0; i < patch.Heights.Length; i++) patch.Heights[i] = int.MaxValue / 2;
         Assert.Equal(int.MaxValue - 1, new MapConversionCellGeometry(surface, patch, 1, 1).FineHeight(0, 0, 2));
     }
+    [Theory]
+    [InlineData("missing", MapDocumentRefusal.TerrainConversionRegionsMissing)]
+    [InlineData("empty", MapDocumentRefusal.BoundsInvalid)]
+    [InlineData("overlap", MapDocumentRefusal.TerrainConversionRegionsOverlap)]
+    [InlineData("surface", MapDocumentRefusal.ReferenceMissing)]
+    [InlineData("duplicate", MapDocumentRefusal.IdentityDuplicate)]
+    [InlineData("cell", MapDocumentRefusal.TerrainCellMissing)]
+    [InlineData("paint", MapDocumentRefusal.TerrainPhysicalSurfaceRequired)]
+    public void ConversionAdmission_RefusesOneDefectWithoutChangingTheSource(string defect, MapDocumentRefusal reason)
+    {
+        var set = ConversionFixtures.Slopes();
+        var request = ConversionFixtures.Request(2, false);
+        var validSurface = set.Refs.Single();
+        request = defect switch
+        {
+            "missing" => request with { Regions = [] },
+            "empty" => request with { Regions = [new(1, 1, 1, 2)] },
+            "overlap" => request with { Regions = [new(1, 1, 2, 2), new(1, 1, 2, 2)] },
+            "surface" => request with { SourceSurfaceId = "missing" },
+            "cell" => request with { Regions = [new(3, 1, 4, 2)] },
+            _ => request
+        };
+        if (defect == "duplicate") set.Refs.Add(validSurface with { Id = request.FineSurfaceId });
+        if (defect == "paint") set.Refs[0] = validSurface with { Role = MapSurfaceRole.PaintOverride };
+        var before = MapSurfaceSemantics.PatchDigest(set.Patches.Values.Single());
+        var refs = set.Refs.ToArray();
+        var error = Assert.Throws<MapDocumentException>(() => MapFinePatchConversion.Convert(set, request));
+        Assert.Equal(reason, error.Reason);
+        if (defect == "empty") Assert.Equal(0, error.Index);
+        if (defect == "overlap") Assert.Equal(1, error.Index);
+        if (defect == "cell") Assert.Equal(MapLatticeAddress.Corner(3, 1), error.Address);
+        if (defect == "surface") Assert.Equal("missing", error.SurfaceId);
+        if (defect == "duplicate") Assert.Equal(request.FineSurfaceId, error.SurfaceId);
+        Assert.Equal(before, MapSurfaceSemantics.PatchDigest(set.Patches.Values.Single()));
+        Assert.Equal(refs, set.Refs);
+        set.Refs.Clear();
+        set.Refs.Add(validSurface);
+        Assert.NotEmpty(MapFinePatchConversion.Convert(set, ConversionFixtures.Request(2, false)).Cells);
+    }
 }

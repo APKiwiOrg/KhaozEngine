@@ -341,8 +341,9 @@ Conversion never subdivides a footprint automatically.
 `MapCellConversion.Finding` retains the typed rule requiring authored-difference acceptance. Its
 existing `Class` and `Reason` prose are unchanged. A legacy arithmetic policy can require acceptance
 even when the cell's class is exact. World cell coordinates use the signed 64-bit `Address`, while
-`CellX` and `CellZ` remain patch-local coordinates. Conversion's remaining aggregate adapters retain
-their current constructors until all their producers are typed.
+`CellX` and `CellZ` remain patch-local coordinates. Conversion's authored-difference adapter uses its
+first refused cell's finding and retains every refused cell in ordered `Findings`. Topology, seam and
+corner-dependency admission likewise forwards the first concrete finding and its complete ordered list.
 
 | Reason | Refused conversion rule | Identifiers when known |
 | --- | --- | --- |
@@ -352,6 +353,11 @@ their current constructors until all their producers are typed.
 | `TerrainCornerCutSubdivisionOdd` | Corner-cut paint requires an even subdivision | `SurfaceId`, `Patch`, `Address`, `ActualInteger` subdivision |
 | `TerrainFootprintStraddlesRegion` | A region crosses part of a footprint cell | `RecordId`, `SlotCell` |
 | `TerrainOwnerRetargetUnavailable` | No fine vertex preserves the exact owner point and height | Dependent `Patch`, patch-local `CellX` and `CellZ`, owner's `ExpectedPatch` and `Address` |
+| `TerrainConversionRegionsMissing` | No conversion region was selected | `FieldPath`, `ActualCount` |
+| `TerrainConversionRegionsOverlap` | Conversion regions overlap | `FieldPath`, later region's `Index` |
+| `TerrainPhysicalSurfaceRequired` | Conversion source is paint-only | `SurfaceId`, `FieldPath` |
+| `TerrainBoundaryRecordIntersects` | A conversion region intersects a boundary record | `SurfaceId`, `RecordId` |
+| `InteriorAliasUnsupported` | Standalone interior replacement targets an alias Room | `RecordId`, `SpaceId`, alias target's `RelatedRecordId` |
 
 The shared `ValueOutsideRange` reason names `Subdivision` through `FieldPath`, `ActualInteger` and
 inclusive `MinimumInteger` 2 and `MaximumInteger` 64. Required source and destination identity text
@@ -359,6 +365,11 @@ uses `SchemaValueRequired`, while equal identities use `AuthoredValueMismatch`. 
 `FieldPath` and known surface identities. Geometric representation refusals use `GeometryNotRepresentable`
 with the known surface, patch, address or patch-local corner. Duplicate footprint and seam identities use
 `IdentityDuplicate` with `RecordId` and `SubjectKind`.
+Empty conversion rectangles use `BoundsInvalid` and the region's `Index`. Interior editing reuses
+`AuthoredOwnershipMismatch` for a wrong anchor, `ReferenceKindMismatch` for a non-Room target,
+`AuthoredValueMismatch` for a replacement ID change, `ReferenceMissing` for a missing standalone
+interior and `OperationKindUnsupported` for an unknown edit. Known record and space identities remain
+structured on each refusal. The original messages and admission points are unchanged.
 
 **Generation pinning and acquisitions.** A `MapStoredSurfaceSource` pins one manifest generation until it is
 reopened. `MapScopedSurfaces` is a further step: it publishes a detached, immutable set of acquired facts,

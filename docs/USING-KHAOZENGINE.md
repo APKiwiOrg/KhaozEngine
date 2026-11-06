@@ -12716,7 +12716,14 @@ the signed 64-bit world-cell `Address` and `ActualInteger` subdivision. Absent c
 the owner's `ExpectedPatch` and `Address`. Subdivision limits use `ValueOutsideRange` with
 `FieldPath = "Subdivision"`, `ActualInteger` and inclusive limits 2 and 64. Blank surface identities
 use `SchemaValueRequired`, while equal identities use `AuthoredValueMismatch`, with the first failed
-field and known surface identities. Conversion's aggregate adapters wait for complete typed producers.
+field and known surface identities. Conversion adapters forward the first concrete producer finding and
+the complete ordered `Findings`, including each refused authored-difference cell. Empty selections use
+`TerrainConversionRegionsMissing`, overlapping selections `TerrainConversionRegionsOverlap` with the
+later `Index`, empty rectangles `BoundsInvalid` with `Index`, paint-only sources
+`TerrainPhysicalSurfaceRequired`, and intersecting boundary records `TerrainBoundaryRecordIntersects`
+with `RecordId`. Standalone interior alias replacement uses `InteriorAliasUnsupported` with `RecordId`,
+`SpaceId` and the alias target's `RelatedRecordId`. Other interior guards reuse ownership, reference,
+value and operation reasons with the identities known at admission.
 
 Root, manifest, tile and prefab schema admission also preserves `MapDocumentException`. Its reasons distinguish
 `SchemaMemberUnknown`, `SchemaMemberDuplicate`, `SchemaMemberMissing`, `SchemaMemberNull`,

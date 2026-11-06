@@ -1,11 +1,13 @@
 using System;
+using System.Collections.Generic;
 
 namespace KhaozEngine.MapDoc;
 
 /// <summary>Reconstitutes a typed producer finding without dropping identifiers at throwing adapters.</summary>
 internal static class MapDocumentRefusalFactory
 {
-    internal static MapDocumentException FromFinding(MapDocumentFinding finding, string message, Exception? inner = null) =>
+    internal static MapDocumentException FromFinding(MapDocumentFinding finding, string message, Exception? inner = null,
+        IReadOnlyList<MapDocumentFinding>? findings = null) =>
         new(finding.Reason, message, inner)
         {
             SourceName = finding.SourceName,
@@ -111,6 +113,6 @@ internal static class MapDocumentRefusalFactory
             SourceIds = finding.SourceIds,
             MarkerIds = finding.MarkerIds,
             SupportedVersions = finding.SupportedVersions,
-            Findings = new[] { finding },
+            Findings = findings ?? new[] { finding },
         };
 }

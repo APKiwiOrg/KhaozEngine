@@ -191,6 +191,20 @@ public enum MapDocumentRefusal
     /// <summary>Refuses a bound context read outside its prepared patch, face or opening-cell demand set.</summary>
     ContextDemandUnprepared,
 
+    // Fine conversion and terrain editing.
+    /// <summary>Refuses conversion without acceptance of the legacy arithmetic or fallback difference.</summary>
+    TerrainAuthoredDifference,
+    /// <summary>Refuses conversion of an absent authored cell.</summary>
+    TerrainCellMissing,
+    /// <summary>Refuses exact corner-cut conversion whose crease crosses the regular fine lattice.</summary>
+    TerrainCornerCutCreaseUnsupported,
+    /// <summary>Refuses exact corner-cut paint conversion at an odd subdivision.</summary>
+    TerrainCornerCutSubdivisionOdd,
+    /// <summary>Refuses a conversion boundary crossing part of a footprint cell.</summary>
+    TerrainFootprintStraddlesRegion,
+    /// <summary>Refuses retargeting a corner owner without a fine vertex at the same exact point and height.</summary>
+    TerrainOwnerRetargetUnavailable,
+
     // Exact geometry admission.
     /// <summary>Refuses geometry whose effective representation collapses or exceeds its exact domain.</summary>
     GeometryNotRepresentable,

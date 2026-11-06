@@ -17,15 +17,27 @@ public static class MapFinePatchConversion
         try { return ConvertCore(surfaces, request); }
         catch (Exception error) when (error is MapExactOverflowException or OverflowException)
         {
-            throw new MapDocumentException("fine-patch conversion is not representable", error);
+            throw new MapDocumentException(MapDocumentRefusal.GeometryNotRepresentable, "fine-patch conversion is not representable", error)
+                { SurfaceId = request.SourceSurfaceId, OtherSurfaceId = request.FineSurfaceId, Operation = nameof(Convert) };
         }
     }
 
     static MapConversionResult ConvertCore(MapSurfaceSet surfaces, MapFinePatchRequest request)
     {
-        if (request.Subdivision is < 2 or > 64) throw new MapDocumentException("subdivision must be 2 to 64");
+        if (request.Subdivision is < 2 or > 64) throw new MapDocumentException(MapDocumentRefusal.ValueOutsideRange, "subdivision must be 2 to 64")
+            { FieldPath = "Subdivision", ActualInteger = request.Subdivision, MinimumInteger = 2, MaximumInteger = 64 };
         if (string.IsNullOrWhiteSpace(request.SourceSurfaceId) || string.IsNullOrWhiteSpace(request.FineSurfaceId) ||
-            request.SourceSurfaceId == request.FineSurfaceId) throw new MapDocumentException("distinct surface ids are required");
+            request.SourceSurfaceId == request.FineSurfaceId)
+        {
+            bool missingSource = string.IsNullOrWhiteSpace(request.SourceSurfaceId);
+            bool missingFine = string.IsNullOrWhiteSpace(request.FineSurfaceId);
+            throw new MapDocumentException(missingSource || missingFine ? MapDocumentRefusal.SchemaValueRequired
+                : MapDocumentRefusal.AuthoredValueMismatch, "distinct surface ids are required")
+            {
+                FieldPath = missingSource ? "SourceSurfaceId" : "FineSurfaceId",
+                SurfaceId = request.SourceSurfaceId, OtherSurfaceId = request.FineSurfaceId
+            };
+        }
         ArgumentNullException.ThrowIfNull(request.Regions);
         if (request.Regions.Count == 0) throw new MapDocumentException("conversion regions are required");
         for (int i = 0; i < request.Regions.Count; i++)

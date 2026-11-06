@@ -12704,6 +12704,20 @@ Missing legacy support callbacks use `SupportLegacyHeightRequired`, with `Resolv
 `Findings` list is an ordered read-only snapshot. Existing string validation APIs retain their prose,
 and aggregate adapters retain their existing behavior until all their producing rules are typed.
 
+Fine-patch conversion retains `MapDocumentException` and exposes `MapCellConversion.Finding` alongside
+the unchanged classification and prose. `TerrainCornerCutCreaseUnsupported` and
+`TerrainCornerCutSubdivisionOdd` distinguish the two unsupported corner-cut rules.
+`TerrainAuthoredDifference` names legacy arithmetic or non-capture fallback requiring explicit acceptance,
+including an exact cell whose legacy arithmetic still changes. Findings carry `SurfaceId`, `Patch`,
+the signed 64-bit world-cell `Address` and `ActualInteger` subdivision. Absent cells use
+`TerrainCellMissing` with the known surface, patch and address. Footprint straddles use
+`TerrainFootprintStraddlesRegion`, `RecordId` and `SlotCell`. Failed owner retargets use
+`TerrainOwnerRetargetUnavailable` with the dependent `Patch`, patch-local `CellX` and `CellZ`, and
+the owner's `ExpectedPatch` and `Address`. Subdivision limits use `ValueOutsideRange` with
+`FieldPath = "Subdivision"`, `ActualInteger` and inclusive limits 2 and 64. Blank surface identities
+use `SchemaValueRequired`, while equal identities use `AuthoredValueMismatch`, with the first failed
+field and known surface identities. Conversion's aggregate adapters wait for complete typed producers.
+
 Root, manifest, tile and prefab schema admission also preserves `MapDocumentException`. Its reasons distinguish
 `SchemaMemberUnknown`, `SchemaMemberDuplicate`, `SchemaMemberMissing`, `SchemaMemberNull`,
 `SchemaObjectRequired`, `SchemaValueRequired` and `SchemaMalformed`. Closed-member failures carry a JSON

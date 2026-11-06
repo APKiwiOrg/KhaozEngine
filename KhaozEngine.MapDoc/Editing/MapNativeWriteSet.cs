@@ -54,7 +54,11 @@ public sealed record MapNativeWriteSet(IReadOnlyList<MapPatchKey> Patches, IRead
 public sealed record MapFinePatchRequest(string SourceSurfaceId, IReadOnlyList<MapCellRect> Regions,
     int Subdivision, string FineSurfaceId, bool AcceptAuthoredDifferences);
 public enum MapCellConversionClass : byte { ExactCoplanar, ExactDiagonal, UnsupportedEncoding, NotRepresentable }
-public sealed record MapCellConversion(long CellX, long CellZ, MapCellConversionClass Class, string? Reason);
+public sealed record MapCellConversion(long CellX, long CellZ, MapCellConversionClass Class, string? Reason)
+{
+    /// <summary>The rule requiring authored-difference acceptance, independent of the prose projection.</summary>
+    public MapDocumentFinding? Finding { get; init; }
+}
 public enum MapDifferenceKind : byte { Geometry, Paint, FallbackRemoved, FlagRemoved, ArithmeticPolicy, Retessellated }
 public sealed record MapAuthoredDifference(MapDifferenceKind Kind, long CellX, long CellZ,
     MapFaceKey? OldFace, MapFaceKey? NewFace, string Detail);

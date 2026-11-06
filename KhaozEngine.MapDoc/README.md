@@ -335,8 +335,30 @@ Each coarse cell is classified before anything mutates as `ExactCoplanar`, `Exac
 over a converted bound moves its wholly inside cells to the fine surface, retargets in place when every cell
 moves, and otherwise splits into `<footprintId>-<fineSurfaceId>`. A moved `LegacyExteriorV1` lower bound
 becomes `SupportFloor`. A footprint cell that the region boundary crosses refuses the whole conversion
-atomically with `footprint straddle: footprint '<id>' cell <slotCell> crosses the conversion region boundary`.
+atomically with `TerrainFootprintStraddlesRegion`, `RecordId` and `SlotCell`.
 Conversion never subdivides a footprint automatically.
+
+`MapCellConversion.Finding` retains the typed rule requiring authored-difference acceptance. Its
+existing `Class` and `Reason` prose are unchanged. A legacy arithmetic policy can require acceptance
+even when the cell's class is exact. World cell coordinates use the signed 64-bit `Address`, while
+`CellX` and `CellZ` remain patch-local coordinates. Conversion's remaining aggregate adapters retain
+their current constructors until all their producers are typed.
+
+| Reason | Refused conversion rule | Identifiers when known |
+| --- | --- | --- |
+| `TerrainAuthoredDifference` | Legacy arithmetic or non-capture fallback requires explicit acceptance | `SurfaceId`, `Patch`, `Address`, `ActualInteger` subdivision |
+| `TerrainCellMissing` | Source cell is absent | `SurfaceId`, `Patch`, `Address` |
+| `TerrainCornerCutCreaseUnsupported` | A corner-cut crease crosses the regular fine lattice | `SurfaceId`, `Patch`, `Address`, `ActualInteger` subdivision |
+| `TerrainCornerCutSubdivisionOdd` | Corner-cut paint requires an even subdivision | `SurfaceId`, `Patch`, `Address`, `ActualInteger` subdivision |
+| `TerrainFootprintStraddlesRegion` | A region crosses part of a footprint cell | `RecordId`, `SlotCell` |
+| `TerrainOwnerRetargetUnavailable` | No fine vertex preserves the exact owner point and height | Dependent `Patch`, patch-local `CellX` and `CellZ`, owner's `ExpectedPatch` and `Address` |
+
+The shared `ValueOutsideRange` reason names `Subdivision` through `FieldPath`, `ActualInteger` and
+inclusive `MinimumInteger` 2 and `MaximumInteger` 64. Required source and destination identity text
+uses `SchemaValueRequired`, while equal identities use `AuthoredValueMismatch`. Both retain the failed
+`FieldPath` and known surface identities. Geometric representation refusals use `GeometryNotRepresentable`
+with the known surface, patch, address or patch-local corner. Duplicate footprint and seam identities use
+`IdentityDuplicate` with `RecordId` and `SubjectKind`.
 
 **Generation pinning and acquisitions.** A `MapStoredSurfaceSource` pins one manifest generation until it is
 reopened. `MapScopedSurfaces` is a further step: it publishes a detached, immutable set of acquired facts,

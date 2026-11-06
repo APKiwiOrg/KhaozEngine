@@ -40,8 +40,11 @@ internal sealed class MapSpacePointBounds
         }
         MapHorizontalOpening? opening = bound.Kind == MapBoundKind.HorizontalOpening
             ? MapSpaceGeometry.Record<MapHorizontalOpening>(_view,
-                bound.Opening ?? throw new MapDocumentException("missing geometry: opening reference")) : null;
-        string id = opening?.Patch.SurfaceId ?? bound.SurfaceId ?? throw new MapDocumentException("missing geometry: bound surface");
+                bound.Opening ?? throw new MapDocumentException(MapDocumentRefusal.SchemaValueRequired, "missing geometry: opening reference")
+                { RecordId = footprint.Id, SpaceId = footprint.Space.Id, FieldPath = lower ? "Lower.Opening" : "Upper.Opening" }) : null;
+        string id = opening?.Patch.SurfaceId ?? bound.SurfaceId ?? throw new MapDocumentException(MapDocumentRefusal.SchemaValueRequired,
+            "missing geometry: bound surface")
+        { RecordId = footprint.Id, SpaceId = footprint.Space.Id, FieldPath = lower ? "Lower.SurfaceId" : "Upper.SurfaceId" };
         MapSurfaceRef surface = MapSpaceGeometry.Surface(_view, id);
         foreach (var (x, z) in MapEffectiveGeometry.CellCandidates(_view, id, point)) return PlanCell(x, z);
         return Failure(MapMembershipStatus.MissingGeometry, "missing bound at exact XZ");
@@ -85,7 +88,8 @@ internal sealed class MapSpacePointBounds
     {
         MapSurfaceRef surface = MapSpaceGeometry.Surface(_view, key.SurfaceId);
         if (!_view.TryAcquiredPatch(key, out MapSurfacePatch? patch, out MapPatchStatus status) || patch is null)
-            throw new MapDocumentException($"missing geometry: patch {key} ({status})");
+            throw new MapDocumentException(MapDocumentRefusal.PatchUnavailable, $"missing geometry: patch {key} ({status})")
+            { Patch = key, PatchStatus = status };
         var (x, z) = MapSpaceGeometry.Cell(surface.Frame, point);
         long minX = checked(key.SlotX * 64 + patch.CellMinX), minZ = checked(key.SlotZ * 64 + patch.CellMinZ);
         // A source edge owns its declared patch, including the patch's closed outer rim.
@@ -100,7 +104,8 @@ internal sealed class MapSpacePointBounds
         if (segment.SourcePatch is not { } key) yield break;
         MapSurfaceRef surface = MapSpaceGeometry.Surface(_view, key.SurfaceId);
         if (!_view.TryAcquiredPatch(key, out MapSurfacePatch? patch, out MapPatchStatus status) || patch is null)
-            throw new MapDocumentException($"missing geometry: patch {key} ({status})");
+            throw new MapDocumentException(MapDocumentRefusal.PatchUnavailable, $"missing geometry: patch {key} ({status})")
+            { Patch = key, PatchStatus = status, RecordId = segment.Id };
         _ = _preparation.ValidatedPatch(surface, patch);
         long minX = checked(key.SlotX * 64 + patch.CellMinX), minZ = checked(key.SlotZ * 64 + patch.CellMinZ);
         long maxX = checked(minX + patch.Width), maxZ = checked(minZ + patch.Depth);

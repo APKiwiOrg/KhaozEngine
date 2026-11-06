@@ -32,7 +32,8 @@ internal static class MapSpaceGeometry
     }
 
     internal static MapSurfaceRef Surface(MapScopedSurfaces view, string id) =>
-        view.Surfaces.FirstOrDefault(s => s.Id == id) ?? throw new MapDocumentException($"missing geometry: surface '{id}'");
+        view.Surfaces.FirstOrDefault(s => s.Id == id) ?? throw new MapDocumentException(MapDocumentRefusal.ReferenceMissing,
+            $"missing geometry: surface '{id}'") { SurfaceId = id };
 
     internal static (long X, long Z) Cell(MapLatticeFrame frame, MapExactXz point)
     {
@@ -139,7 +140,8 @@ internal static class MapSpaceGeometry
         var seen = new HashSet<string>(StringComparer.Ordinal);
         while (space.AliasOf is { } alias)
         {
-            if (!seen.Add(space.Id)) throw new MapDocumentException("invalid space alias cycle");
+            if (!seen.Add(space.Id)) throw new MapDocumentException(MapDocumentRefusal.SpaceAliasCycle, "invalid space alias cycle")
+            { SpaceId = space.Id };
             space = Record<MapSpaceDoc>(view, alias);
         }
         return space.Id;
@@ -151,7 +153,8 @@ internal static class MapSpaceGeometry
         var seen = new HashSet<string>(StringComparer.Ordinal);
         while (true)
         {
-            if (!seen.Add(space.Id)) throw new MapDocumentException("invalid space parent cycle");
+            if (!seen.Add(space.Id)) throw new MapDocumentException(MapDocumentRefusal.SpaceParentCycle, "invalid space parent cycle")
+            { SpaceId = space.Id };
             result.Add(space);
             if (space.Parent is not { } parent) return result.AsReadOnly();
             space = Record<MapSpaceDoc>(view, parent);
@@ -167,7 +170,8 @@ internal static class MapSpaceGeometry
             foreach (var entry in view.Witness.Present)
             {
                 if (!view.TryAcquiredPatch(entry.Key, out MapSurfacePatch? patch, out MapPatchStatus status) || patch is null)
-                    throw new MapDocumentException($"missing geometry: patch {entry.Key} ({status})");
+                    throw new MapDocumentException(MapDocumentRefusal.PatchUnavailable, $"missing geometry: patch {entry.Key} ({status})")
+                    { Patch = entry.Key, PatchStatus = status };
                 yield return patch;
             }
         }

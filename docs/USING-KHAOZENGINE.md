@@ -12380,6 +12380,11 @@ the original reason and identifiers. They use `SpaceChainUnresolved` or `Physics
 only without a typed producer finding. Record lookups retain the requested `ExpectedRecordType`
 alongside an actual `RecordType` when present. Prism versions, nonfinite endpoints and separation have
 distinct reasons. Portal height refusals retain the owning `RecordId` and column `Index`.
+Space alias cycles use `SpaceAliasCycle`, while ancestry cycles use `SpaceParentCycle`, both with
+the repeated `SpaceId`. Missing point-bound references retain their footprint `RecordId`, `SpaceId`
+and `FieldPath` on `SchemaValueRequired`. Unavailable source-cell and membership-demand patches
+retain `Patch` and `PatchStatus`. Portal point-sequence refusals use `GeometryVertexSequenceInvalid`
+with the chain `RecordId` and `FieldPath` `Vertices`.
 
 Doors remain AuthoredOpen. `MapRoofPolicy` returns separate colour, shadow, camera-boom and sky-picking flags.
 Auto concealment uses occupied rooms and explicit links/groups, and leaves unlinked shelters visible. Hidden

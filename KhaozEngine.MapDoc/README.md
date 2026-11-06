@@ -1524,7 +1524,7 @@ An array beyond its own count cap uses that field name as `Budget`, with its `Ac
 | `SchemaMemberNull` | A native member that cannot be null | `FieldPath`, `SourceName`, `Tile`, `Path` |
 | `SchemaMemberUnknown` | A member outside a closed schema object | `FieldPath`, `ResourceId`, `SourceName`, `Tile`, `Path`, `LayerId`, `Index` |
 | `SchemaObjectRequired` | A document, manifest, tile, prefab payload, marker-options, surface codec or foliage value that must be an object | `FieldPath`, `SourceName`, `Tile`, `Path`, `LayerId`, `Index` |
-| `SchemaValueRequired` | A missing or misplaced typed resource discriminant, null deserialization result, required native, indoor-span, manifest, prefab or foliage value, missing prism domain, missing marker edit values, blank marker-adoption identity text or blank marker consumer configuration, or a missing attachment anchor or standalone descriptor pin, a null codec record or required record text, or missing acquired metadata, frame, payload, empty range or surface identity | `MarkerId`, `FieldPath`, `SourceName`, `Tile`, `Path`, `AssetId`, `ResourceId`, `ExpectedSchema`, `SurfaceId`, `PlacementId`, `LayerId`, `Index`, `EntityId`, `WorldId`, `ChildKind`, `Child`, `InstanceId`, `Patch`, `ActualAnchor`, `SubjectKind` |
+| `SchemaValueRequired` | A missing or misplaced typed resource discriminant, null deserialization result, required native, indoor-span, manifest, prefab or foliage value, missing prism domain, missing marker edit values, blank marker-adoption identity text or blank marker consumer configuration, or a missing attachment anchor or standalone descriptor pin, a null codec record or required record text, a missing point-bound opening reference or surface, or missing acquired metadata, frame, payload, empty range or surface identity | `MarkerId`, `FieldPath`, `SourceName`, `Tile`, `Path`, `AssetId`, `ResourceId`, `ExpectedSchema`, `SurfaceId`, `PlacementId`, `LayerId`, `Index`, `EntityId`, `WorldId`, `ChildKind`, `Child`, `InstanceId`, `Patch`, `ActualAnchor`, `SubjectKind`, `RecordId`, `SpaceId` |
 | `SchemaArrayRequired` | A foliage or surface codec member that must be an array | `FieldPath`, `Index` |
 | `SchemaBooleanRequired` | A foliage member that must be a boolean | `FieldPath`, `LayerId`, `Index` |
 | `SchemaBase64Malformed` | An invalid surface codec token or invalid or noncanonical foliage density base64 | `FieldPath`, `LayerId`, `Index`, `FoliageChunk`, `ExpectedByteCount` |
@@ -1555,6 +1555,7 @@ An array beyond its own count cap uses that field name as `Budget`, with its `Ac
 | `PhysicsWallChainUnresolved` | An unresolved terrain physics wall chain without a specific producer finding | chain `RecordId` and anchor `Patch` |
 | `SpaceRoomOccupancyInvalid` | A Room with zero or multiple prism domains, or occupied through a lattice footprint | `SpaceId`, `RecordId`, `FieldPath`, `ActualCount`, `ExpectedCount` |
 | `SpaceParentCycle` | A cycle in space ancestry | `SpaceId` |
+| `SpaceAliasCycle` | A cycle in space alias traversal | `SpaceId` |
 | `GeometryVertexSequenceInvalid` | A portal interval with fewer than two vertices, seam pairs not covering both complete edge vertex sets, or strip vertices without ordered XZ correspondence | `RecordId`, `Index`, `FieldPath`, `SurfaceId`, `ActualCount`, `ExpectedCount`, `MinimumInteger` when known |
 | `SpaceChainHeightKindMismatch` | A surface-edge vertex with an authored height, or an authored vertex without one | `RecordId`, `Index`, `FieldPath`, `ActualInteger` when present |
 | `SpacePortalOpenTopInvalid` | An open-top portal with a non-Exterior endpoint | `RecordId`, `SpaceId`, `FieldPath`, `EnumType`, `ActualInteger` |
@@ -1569,7 +1570,7 @@ An array beyond its own count cap uses that field name as `Budget`, with its `Ac
 | `GeometryNotRepresentable` | A collapsed effective cell, exact triangle or unrepresentable surface emission | `SurfaceId`, `Patch`, `CellX`, `CellZ`, `SlotCell`, `Operation` when known |
 | `GeometryVertexHeightMismatch` | Different exact heights for a shared compiled, opening, boundary or seam vertex | `SurfaceId`, `Patch`, `RecordId`, `Address`, `Index`, `FieldPath` when known |
 | `FrameRadiusExceeded` | Local frame radius or checked anchor subtraction overflow | `Patch` when available, `Limit`, local `PositionX`/`PositionZ` only after successful subtraction |
-| `PatchUnavailable` | A requested effective, seam or corner-owner patch, record or occupied bound is unavailable | `RecordId`, `SpaceId`, boundary `OwnerId`, `FieldPath`, `SurfaceId`, `Patch`, `ExpectedPatch`, `Address`, `Index`, `PatchStatus`, `ExpectedRecordType` when known |
+| `PatchUnavailable` | A requested effective, seam or corner-owner patch, record, point-bound source or membership demand, or occupied bound is unavailable | `RecordId`, `SpaceId`, boundary `OwnerId`, `FieldPath`, `SurfaceId`, `Patch`, `ExpectedPatch`, `Address`, `Index`, `PatchStatus`, `SlotCell`, `ExpectedRecordType` when known |
 | `SurfaceLegacySampleOutOfCell` | A legacy sample outside its selected cell or patch | `SurfaceId`, `Patch`, `SlotCell` |
 | `SurfacePaintPhysicalCompileUnsupported` | Physical-face compilation of a paint-only surface | `SurfaceId`, `Patch` |
 | `SurfaceNativeNoDrawUnsupported` | A native cell carrying the legacy NoDraw flag | `SurfaceId`, `Patch`, `SlotCell`, `FieldPath` |
@@ -1923,6 +1924,12 @@ that finding. They use the unresolved-chain reason only when no typed cause exis
 wrappers retain the original exception and every identifier through the common copy operation.
 Lookup refusals distinguish unavailable records from wrong record kinds, retaining the requested
 `RecordId`, anchor `Patch`, `PatchStatus`, actual `RecordType` and `ExpectedRecordType`.
+Space traversal distinguishes alias cycles (`SpaceAliasCycle`) from ancestry cycles (`SpaceParentCycle`),
+with the repeated `SpaceId`. Point-bound admission uses `SchemaValueRequired` with the footprint
+`RecordId`, `SpaceId` and `FieldPath` for a missing opening reference or bound surface.
+Unavailable source-cell and membership-demand patches retain `Patch` and `PatchStatus`, with the
+chain `RecordId` or demanded `SlotCell` when known. A portal chain with no segment or height at the
+query point uses `GeometryVertexSequenceInvalid` with the chain `RecordId` and `FieldPath` `Vertices`.
 Prism payload admission selects version, lower finiteness, upper finiteness and separation in that
 order. Aperture admission retains portal interval or repeated-vertex context and the column index
 for an invalid height. Empty aperture geometry retains its record and anchor. Provenance membership

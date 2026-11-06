@@ -272,6 +272,8 @@ public enum MapDocumentRefusal
     SpaceRoomOccupancyInvalid,
     /// <summary>Refuses cyclic space ancestry.</summary>
     SpaceParentCycle,
+    /// <summary>Refuses cyclic space alias traversal.</summary>
+    SpaceAliasCycle,
     /// <summary>Refuses chain heights inconsistent with the authored or surface-edge kind.</summary>
     SpaceChainHeightKindMismatch,
     /// <summary>Refuses an open-top portal whose endpoints are not both Exterior spaces.</summary>

@@ -316,7 +316,8 @@ public sealed class MapSpaceMembership
                 MapChainResolution chain = MapBoundaryGeometry.ResolveChain(source, _view,
                     key => new MapBoundarySurface(context.ValidatedPatch(key), MapSlotCellMask.Of(cells.Select(cell => cell.SlotCell))));
                 if (chain.Status != MapResolveStatus.Resolved) throw chain.Refuse(chain.Detail ?? "missing geometry: portal band", reference);
-                return MapSpaceGeometry.ChainHeight(chain.Points, xz) ?? throw new MapDocumentException("invalid portal vertex sequence");
+                return MapSpaceGeometry.ChainHeight(chain.Points, xz) ?? throw new MapDocumentException(MapDocumentRefusal.GeometryVertexSequenceInvalid,
+                    "invalid portal vertex sequence") { RecordId = reference.Id, Patch = reference.Anchor, FieldPath = "Vertices" };
             }
             MapMembershipResult Resolve(MapSpaceDoc space, MapLegacyCellTag? compatibility, MapBoundFaceContext prepared,
                 MapSpaceBoundsPart? selected)
@@ -379,8 +380,9 @@ public sealed class MapSpaceMembership
             bool freshOpening = demand.Opening is { } opening && openings.Add((opening, cell.SlotCell));
             if (!freshCell && !freshOpening) continue;
             MapSurfaceRef surface = MapSpaceGeometry.Surface(_view, cell.Patch.SurfaceId);
-            if (!_view.TryAcquiredPatch(cell.Patch, out MapSurfacePatch? patch, out _) || patch is null)
-                throw new MapDocumentException($"context demand patch {cell.Patch}: unavailable");
+            if (!_view.TryAcquiredPatch(cell.Patch, out MapSurfacePatch? patch, out MapPatchStatus status) || patch is null)
+                throw new MapDocumentException(MapDocumentRefusal.PatchUnavailable, $"context demand patch {cell.Patch}: unavailable")
+                { Patch = cell.Patch, SlotCell = cell.SlotCell, PatchStatus = status };
             if (freshCell) count = checked(count + MapSurfaceCompiler.CountFaces(surface, patch, cell.SlotCell));
             if (freshOpening) count = checked(count + MapBoundFaceContext.OpeningFaceCount(patch, cell.SlotCell));
             if (count > maxFaces) return false;
@@ -411,6 +413,7 @@ public sealed class MapSpaceMembership
             if (!MapSpaceGeometry.OnSegment(point, a, b) || (point == b && i + 2 < chain.Vertices.Count)) continue;
             return chain with { Vertices = Array.AsReadOnly(new[] { chain.Vertices[i], chain.Vertices[i + 1] }) };
         }
-        throw new MapDocumentException("invalid portal vertex sequence");
+        throw new MapDocumentException(MapDocumentRefusal.GeometryVertexSequenceInvalid, "invalid portal vertex sequence")
+        { RecordId = chain.Id, Patch = chain.SourcePatch, FieldPath = "Vertices" };
     }
 }

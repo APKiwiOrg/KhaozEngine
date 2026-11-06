@@ -14,7 +14,7 @@ namespace KhaozEngine.Tests.Navigation;
 /// visible on the start's layer, otherwise runs an 8-connected A* search. The search prevents diagonal
 /// corner-cutting (a diagonal step needs both orthogonal companions passable), crosses layers over
 /// <see cref="NavSpace.Links"/> (each link is a graph edge whose meters cost is precomputed per
-/// <see cref="NavLinkKind"/>: a <see cref="NavLinkKind.Stair"/> costs one cell of its source layer, a
+/// <see cref="NavLinkKind"/>: a <see cref="NavLinkKind.Stair"/> costs at least its spatial span and one source cell, a
 /// <see cref="NavLinkKind.Hop"/> costs the constructor's <c>hopCostCells</c> cells, its far endpoint
 /// re-checked for the agent radius), caps its work at <see cref="PathQueryBudget.MaxExpandedNodes"/>
 /// expansions, and on an unreachable goal returns a <see cref="NavPathStatus.Partial"/> route to the
@@ -54,8 +54,8 @@ internal sealed partial class ReferenceGridPathPlanner : IRegionPathPlanner
 
     /// <summary>Link edges as an adjacency list: source node id to its reachable node ids each paired with
     /// its precomputed traversal cost in meters. Built once from <see cref="NavSpace.Links"/> (directed, so
-    /// a two-way stair contributes two entries). A <see cref="NavLinkKind.Stair"/> link costs one cell of
-    /// its source layer (<see cref="NavGrid.CellSize"/>, the historical hardcoded value), a
+    /// a two-way stair contributes two entries). A <see cref="NavLinkKind.Stair"/> link costs at least its spatial span and
+    /// its source layer's <see cref="NavGrid.CellSize"/>, a
     /// <see cref="NavLinkKind.Hop"/> link costs <see cref="_hopCostCells"/> of them. The far endpoint's own
     /// passability is still checked at expansion time.</summary>
     readonly Dictionary<int, List<(int ToId, float CostMeters)>> _linkEdges;
@@ -72,7 +72,7 @@ internal sealed partial class ReferenceGridPathPlanner : IRegionPathPlanner
     /// <summary>Builds a planner that searches <paramref name="space"/>. <paramref name="hopCostCells"/> is
     /// the cost of crossing a <see cref="NavLinkKind.Hop"/> link, in multiples of the source layer's
     /// <see cref="NavGrid.CellSize"/> (default 4). It must be positive. A <see cref="NavLinkKind.Stair"/>
-    /// link keeps its one-cell cost. The cached ratio bounds links on every layer.</summary>
+    /// link costs at least its spatial metric span and one source cell. The cached ratio bounds links on every layer.</summary>
     public ReferenceGridPathPlanner(NavSpace space, float hopCostCells = 4f)
         : this(space, hopCostCells, null)
     {
@@ -96,6 +96,7 @@ internal sealed partial class ReferenceGridPathPlanner : IRegionPathPlanner
         }
         _totalNodes = total;
 
+        _spatialBound = new ReferencePlannerSpatialBound(_space, _traversal, LinkCost);
         _linkEdges = new Dictionary<int, List<(int ToId, float CostMeters)>>();
         _hopEdges = new HashSet<(int FromId, int ToId)>();
         foreach (NavLink link in traversal?.Links ?? _space.Links)
@@ -103,10 +104,8 @@ internal sealed partial class ReferenceGridPathPlanner : IRegionPathPlanner
             int fromId = _layerOffset[link.FromLayer] + link.FromZ * layers[link.FromLayer].Width + link.FromX;
             int toId = _layerOffset[link.ToLayer] + link.ToZ * layers[link.ToLayer].Width + link.ToX;
 
-            // A Stair keeps exactly the source layer's cell size, the historical hardcoded link cost, so a
-            // hop-free space plans byte-identically. A Hop is charged the knob's multiple of it.
-            float costCells = link.Kind == NavLinkKind.Hop ? _hopCostCells : 1f;
-            float costMeters = costCells * layers[link.FromLayer].CellSize;
+            float costMeters = LinkCost(link, _spatialBound.Distance(
+                link.FromLayer, link.FromX, link.FromZ, link.ToLayer, link.ToX, link.ToZ));
 
             if (!_linkEdges.TryGetValue(fromId, out List<(int ToId, float CostMeters)>? targets))
             {
@@ -118,8 +117,6 @@ internal sealed partial class ReferenceGridPathPlanner : IRegionPathPlanner
             if (link.Kind == NavLinkKind.Hop)
                 _hopEdges.Add((fromId, toId));
         }
-        _spatialBound = new ReferencePlannerSpatialBound(_space, _traversal,
-            link => layers[link.FromLayer].CellSize * (link.Kind == NavLinkKind.Hop ? _hopCostCells : 1f));
     }
 
     /// <summary>

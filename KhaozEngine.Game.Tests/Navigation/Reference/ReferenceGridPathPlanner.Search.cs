@@ -18,7 +18,7 @@ internal sealed partial class ReferenceGridPathPlanner
     /// an orthogonal step is <see cref="NavGrid.CellSize"/>, a diagonal <see cref="NavGrid.CellSize"/> *
     /// sqrt(2). A diagonal step is taken only when both orthogonal companions are passable, blocking
     /// corner cuts. After the eight grid neighbors, each link out of the current node is expanded at its
-    /// precomputed meters cost (a <see cref="NavLinkKind.Stair"/> the source layer's
+    /// precomputed meters cost (a <see cref="NavLinkKind.Stair"/> at least its span and the source layer's
     /// <see cref="NavGrid.CellSize"/>, a <see cref="NavLinkKind.Hop"/> the constructor's hop cost), skipped
     /// when the link's far endpoint is not passable for the agent radius on its own layer. A cached scaled spatial bound spans every layer.
     /// Physical 3D feet distance chooses partial progress independently. The search stops when the goal is popped (<see cref="NavPathStatus.Complete"/>),

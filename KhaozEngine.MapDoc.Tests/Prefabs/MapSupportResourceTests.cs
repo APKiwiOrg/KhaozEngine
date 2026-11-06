@@ -14,6 +14,31 @@ namespace KhaozEngine.Tests.MapDoc.Prefabs;
 public class MapSupportResourceTests
 {
     [Theory]
+    [InlineData("null", MapDocumentRefusal.SchemaValueRequired)]
+    [InlineData("key", MapDocumentRefusal.AuthoredValueMismatch)]
+    [InlineData("surface", MapDocumentRefusal.ReferenceMissing)]
+    public void Support_patch_admission_names_the_first_failed_rule(string fault, MapDocumentRefusal reason)
+    {
+        var resource = PrefabFixtures.DeckSupport();
+        var (key, patch) = resource.Surfaces.Patches.First();
+        resource.Surfaces.Patches.Remove(key);
+        var submitted = fault == "surface" ? new MapPatchKey("missing", key.SlotX, key.SlotZ) : key;
+        if (fault == "surface") patch.Key = submitted;
+        if (fault == "key") patch.Key = key with { SlotX = key.SlotX + 1 };
+        resource.Surfaces.Patches.Add(submitted, fault == "null" ? null! : patch);
+        var error = Assert.Throws<MapDocumentException>(() => MapSupportResourceFile.Require(resource, "support"));
+        Assert.Equal(reason, error.Reason);
+        Assert.Equal("support", error.ResourceId);
+        Assert.Equal(submitted, error.ExpectedPatch);
+        Assert.Equal(fault == "null" ? (MapPatchKey?)null : patch.Key, error.Patch);
+        Assert.Equal(submitted.SurfaceId, error.SurfaceId);
+        resource.Surfaces.Patches.Remove(submitted);
+        patch.Key = key;
+        resource.Surfaces.Patches.Add(key, patch);
+        MapSupportResourceFile.Require(resource, "support");
+    }
+
+    [Theory]
     [InlineData("object", MapDocumentRefusal.SchemaObjectRequired, "$")]
     [InlineData("missing", MapDocumentRefusal.SchemaMemberMissing, "$.references")]
     [InlineData("unknown", MapDocumentRefusal.SchemaMemberUnknown, "$.extra")]

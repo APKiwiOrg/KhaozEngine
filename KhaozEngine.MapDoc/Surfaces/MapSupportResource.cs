@@ -125,11 +125,15 @@ public static class MapSupportResourceFile
         foreach (var (key, patch) in resource.Surfaces.Patches)
         {
             if (patch is null || patch.Key != key || !surfaces.Contains(key.SurfaceId))
-                throw new MapDocumentException("Support resource patches must belong to a declared surface.");
+                throw new MapDocumentException(patch is null ? MapDocumentRefusal.SchemaValueRequired :
+                    patch.Key != key ? MapDocumentRefusal.AuthoredValueMismatch : MapDocumentRefusal.ReferenceMissing,
+                    "Support resource patches must belong to a declared surface.")
+                { ResourceId = resourceId, Patch = patch?.Key, ExpectedPatch = key, SurfaceId = key.SurfaceId, FieldPath = "$.patches" };
             _ = MapSurfacePatchCodec.Encode(patch);
             var surface = resource.Surfaces.Refs.Single(s => s.Id == key.SurfaceId);
             if (MapSurfaceCompiler.Compile(surface, patch).LegacyFallbackCells.Count != 0)
-                throw new MapDocumentException("Support resources cannot declare analytic fallback cells.");
+                // Native support admission above excludes the legacy-only fallback branch.
+                throw new InvalidOperationException("Support resources cannot declare analytic fallback cells.");
             foreach (MapTopologyRecord record in patch.Records)
                 if (!anchors.TryAdd(record.Id, key)) throw new MapDocumentException(MapDocumentRefusal.IdentityDuplicate, $"Duplicate support resource record '{record.Id}'.")
                 { ResourceId = resourceId, RecordId = record.Id, EntityId = record.Id, Patch = key, SubjectKind = "support resource record" };

@@ -216,6 +216,8 @@ public enum MapDocumentRefusal
     SurfaceSeamEdgeInvalid,
     /// <summary>Refuses a support resource surface outside the native support-floor policy.</summary>
     SurfaceSupportRoleInvalid,
+    /// <summary>Refuses a wall strip whose lower chain is above its upper chain.</summary>
+    SurfaceWallHeightInverted,
 
     // Scoped acquisition producer admission.
     /// <summary>Refuses acquisition facts differing from the session's captured snapshot.</summary>

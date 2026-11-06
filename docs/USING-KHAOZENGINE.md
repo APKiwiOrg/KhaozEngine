@@ -12830,6 +12830,13 @@ Support resource read and write size checks carry `WorkCapacityExceeded`, `Budge
 `ActualByteCount` and `Limit`. Surface identities distinguish required values and duplicates. Defined role
 or presence values outside native support floors use `SurfaceSupportRoleInvalid`, while undefined values
 use `SchemaEnumUnsupported` with their enum type and value. Both retain the surface index and failed field.
+Support patch checks preserve the submitted `Patch` and required `ExpectedPatch`, distinguishing null
+payloads, mismatching keys and undeclared surfaces through their concrete schema, authored-value and
+reference reasons. Wall-strip guards retain `RecordId`, the failed field or vertex index and the actual
+count where measured. Lower-chain cardinality accepts 2..4097, unequal chain lengths use
+`SchemaArrayLengthMismatch`, ordered XZ disagreement uses `GeometryVertexSequenceInvalid`, and an
+inverted height uses `SurfaceWallHeightInverted`. Exact arithmetic or normal failures carry
+`GeometryNotRepresentable` and their `Operation`, with the segment `Index` for a normal failure.
 
 Native metadata adds typed findings beside its unchanged string diagnostics. Compound findings select
 the first failing predicate branch. Missing asset-reference and indoor-span values use `SchemaValueRequired`, nonfinite

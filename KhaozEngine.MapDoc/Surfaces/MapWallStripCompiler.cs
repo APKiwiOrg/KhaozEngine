@@ -37,17 +37,28 @@ public static class MapWallStripCompiler
         if (lower.Status != MapResolveStatus.Resolved || upper.Status != MapResolveStatus.Resolved)
             throw new MapDocumentException(lower.Status != MapResolveStatus.Resolved
                 ? lower.Detail ?? "unresolved lower chain" : upper.Detail ?? "unresolved upper chain");
-        if (!Enum.IsDefined(strip.Facing)) throw new MapDocumentException("invalid strip facing");
-        if (lower.Points.Count is < 2 or > 4097 || lower.Points.Count != upper.Points.Count)
-            throw new MapDocumentException("wall strip vertex sequence mismatch");
+        if (!Enum.IsDefined(strip.Facing)) throw new MapDocumentException(MapDocumentRefusal.SchemaEnumUnsupported, "invalid strip facing")
+        { RecordId = strip.Id, FieldPath = "Facing", EnumType = typeof(MapStripFacing), ActualInteger = (byte)strip.Facing };
+        int lowerCount = lower.Points.Count;
+        int? upperCount = lowerCount is < 2 or > 4097 ? null : upper.Points.Count;
+        if (lowerCount is < 2 or > 4097 || lowerCount != upperCount)
+            throw new MapDocumentException(lowerCount is < 2 or > 4097 ? MapDocumentRefusal.ValueOutsideRange :
+                MapDocumentRefusal.SchemaArrayLengthMismatch, "wall strip vertex sequence mismatch")
+            {
+                RecordId = strip.Id, FieldPath = upperCount is null ? "Lower.Points" : "Upper.Points",
+                ActualCount = upperCount ?? lowerCount, ExpectedCount = upperCount is null ? null : lowerCount,
+                MinimumInteger = upperCount is null ? 2 : null, MaximumInteger = upperCount is null ? 4097 : null,
+            };
         try
         {
-            int count = lower.Points.Count;
+            int count = lowerCount;
             for (int i = 0; i < count; i++)
             {
                 MapExactPoint l = lower.Points[i], u = upper.Points[i];
-                if (l.X != u.X || l.Z != u.Z) throw new MapDocumentException("wall strip vertex sequence mismatch");
-                if (l.Y.CompareTo(u.Y) > 0) throw new MapDocumentException("wall strip lower chain is above upper chain");
+                if (l.X != u.X || l.Z != u.Z) throw new MapDocumentException(MapDocumentRefusal.GeometryVertexSequenceInvalid, "wall strip vertex sequence mismatch")
+                { RecordId = strip.Id, Index = i };
+                if (l.Y.CompareTo(u.Y) > 0) throw new MapDocumentException(MapDocumentRefusal.SurfaceWallHeightInverted, "wall strip lower chain is above upper chain")
+                { RecordId = strip.Id, Index = i };
             }
             MapExactPoint[] vertices = lower.Points.Concat(upper.Points).ToArray();
             MapExactValue minX = vertices.Min(p => p.X), maxX = vertices.Max(p => p.X);
@@ -62,7 +73,7 @@ public static class MapWallStripCompiler
                 MapExactValue dx = lower.Points[i + 1].X.Subtract(lower.Points[i].X);
                 MapExactValue dz = lower.Points[i + 1].Z.Subtract(lower.Points[i].Z);
                 if (dx.Sign == 0 && dz.Sign == 0) continue;
-                Vector3 normal = FrontNormal(dx, dz);
+                Vector3 normal = FrontNormal(dx, dz, strip.Id, i);
                 // Matching XZ makes each triangle degenerate exactly when its vertical end is zero.
                 if (lower.Points[i + 1].Y != upper.Points[i + 1].Y) Emit(i, 0, i, i + 1, count + i + 1, normal);
                 if (lower.Points[i].Y != upper.Points[i].Y) Emit(i, 1, i, count + i + 1, count + i, normal);
@@ -80,17 +91,25 @@ public static class MapWallStripCompiler
         }
         catch (Exception error) when (error is MapExactOverflowException or OverflowException)
         {
-            throw new MapDocumentException("wall strip geometry is not representable", error);
+            throw new MapDocumentException(MapDocumentRefusal.GeometryNotRepresentable, "wall strip geometry is not representable", error)
+            { RecordId = strip.Id, Operation = "wall strip geometry" };
         }
     }
 
-    static Vector3 FrontNormal(MapExactValue dx, MapExactValue dz)
+    static Vector3 FrontNormal(MapExactValue dx, MapExactValue dz, string stripId, int segment)
     {
         double x = dz.ToDouble(), z = -dx.ToDouble();
         double scale = Math.Max(Math.Abs(x), Math.Abs(z));
         Vector3 normal = Vector3.Normalize(new((float)(x / scale), 0, (float)(z / scale)));
-        if (!float.IsFinite(normal.X) || !float.IsFinite(normal.Z))
-            throw new MapDocumentException("wall strip normal is not representable");
+        RequireFiniteNormal(normal, stripId, segment);
         return normal;
+    }
+
+    // Value-taking admission exercises a faulty computed normal without relying on platform cancellation.
+    internal static void RequireFiniteNormal(Vector3 normal, string stripId, int segment)
+    {
+        if (!float.IsFinite(normal.X) || !float.IsFinite(normal.Z))
+            throw new MapDocumentException(MapDocumentRefusal.GeometryNotRepresentable, "wall strip normal is not representable")
+            { RecordId = stripId, Index = segment, Operation = "wall strip normal" };
     }
 }

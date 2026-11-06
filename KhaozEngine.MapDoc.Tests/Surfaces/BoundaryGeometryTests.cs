@@ -25,8 +25,11 @@ public sealed class BoundaryGeometryTests
     [Fact]
     public void WallStrip_LowerAboveUpperRefuses()
     {
+        var error = Assert.Throws<MapDocumentException>(() => BoundaryFixtures.CompileStrip(new[] { 0, 400 }, new[] { 300, 300 }, MapStripFacing.Front));
+        Assert.Equal(MapDocumentRefusal.SurfaceWallHeightInverted, error.Reason);
+        Assert.Equal("w", error.RecordId);
+        Assert.Equal(1, error.Index);
         Assert.NotEmpty(BoundaryFixtures.CompileStrip(new[] { 0, 300 }, new[] { 300, 300 }, MapStripFacing.Front).Faces);
-        Assert.Throws<MapDocumentException>(() => BoundaryFixtures.CompileStrip(new[] { 0, 400 }, new[] { 300, 300 }, MapStripFacing.Front));
     }
 
     [Fact]

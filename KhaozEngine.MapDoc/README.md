@@ -1543,7 +1543,7 @@ An array beyond its own count cap uses that field name as `Budget`, with its `Ac
 | `SpacePrismParentMismatch` | A prism parent differing from its Room space's parent | `RecordId`, `SpaceId`, `RelatedRecordId`, `FieldPath` |
 | `SpaceRoomOccupancyInvalid` | A Room with zero or multiple prism domains, or occupied through a lattice footprint | `SpaceId`, `RecordId`, `FieldPath`, `ActualCount`, `ExpectedCount` |
 | `SpaceParentCycle` | A cycle in space ancestry | `SpaceId` |
-| `GeometryVertexSequenceInvalid` | A portal interval with fewer than two vertices, or seam pairs not covering both complete edge vertex sets | `RecordId`, `FieldPath`, `SurfaceId`, `ActualCount`, `ExpectedCount`, `MinimumInteger` when known |
+| `GeometryVertexSequenceInvalid` | A portal interval with fewer than two vertices, seam pairs not covering both complete edge vertex sets, or strip vertices without ordered XZ correspondence | `RecordId`, `Index`, `FieldPath`, `SurfaceId`, `ActualCount`, `ExpectedCount`, `MinimumInteger` when known |
 | `SpaceChainHeightKindMismatch` | A surface-edge vertex with an authored height, or an authored vertex without one | `RecordId`, `Index`, `FieldPath`, `ActualInteger` when present |
 | `SpacePortalOpenTopInvalid` | An open-top portal with a non-Exterior endpoint | `RecordId`, `SpaceId`, `FieldPath`, `EnumType`, `ActualInteger` |
 | `SpacePortalMembershipMismatch` | An endpoint space not listing its portal exactly once on the required side, or a space listing another endpoint's side | `RecordId`, `SpaceId`, `RelatedRecordId`, actual endpoint `EntityId`, `FieldPath`, `ActualCount`, `ExpectedCount` |
@@ -1563,6 +1563,7 @@ An array beyond its own count cap uses that field name as `Budget`, with its `Ac
 | `SurfaceSeamVertexUndeclared` | A paired vertex or corner owner absent from its declared source geometry | `RecordId`, `SurfaceId`, `Patch`, `ExpectedPatch`, `Address`, `Index`, `FieldPath` when known |
 | `SurfaceSeamEdgeInvalid` | A collapsed or diagonal seam source edge | `RecordId`, `Patch`, `SurfaceId`, `FieldPath` |
 | `SurfaceSupportRoleInvalid` | A support resource surface outside the native support-floor policy | `ResourceId`, `SurfaceId`, `Index`, `FieldPath`, `EnumType`, `ActualInteger` |
+| `SurfaceWallHeightInverted` | A wall strip lower vertex above its matching upper vertex | `RecordId`, `Index` |
 | `WorkCapacityExceeded` | Reservation keys beyond the candidate cap, surface codec work beyond its encoded byte or array-count budget, or local corner-dependency or edge-subdivision metadata beyond its count budget, or compiled faces beyond MaxFacesPerPatch or support resource bytes beyond MaxPayloadBytes | `Patch`, `FieldPath`, `Budget`, `ActualCount`, `ActualByteCount`, `Limit` |
 | `SurfacePresencePaddingNonzero` | Nonzero bits beyond the authored cell count in the last presence word | `Patch`, `FieldPath`, `Index` |
 | `SurfaceSubdivisionAbsentCell` | An edge subdivision on an absent cell | `Patch`, `FieldPath`, `Index`, `CellX`, `CellZ`, `Edge` |
@@ -1797,7 +1798,15 @@ versions carry `SchemaPayloadVersionUnsupported`, `ActualVersion` and the owned 
 snapshot. A support version that is not an integer uses `SchemaValueRequired` with no `ActualVersion`,
 so the decoder's internal fallback is never presented as a supplied version. Required support collections
 carry `SchemaValueRequired` and the first missing `FieldPath`.
-Support geometry and bounded-work guards retain their existing validation contracts.
+Support patch admission distinguishes a null payload (`SchemaValueRequired`), a key mismatch
+(`AuthoredValueMismatch`) and an undeclared owner (`ReferenceMissing`). It carries `ResourceId`,
+`SurfaceId`, the submitted `Patch` when present and the dictionary's required `ExpectedPatch`.
+Wall strips carry `RecordId` on facing, count, ordered-XZ, height and exact-representation refusals.
+Cardinality uses `ValueOutsideRange` with the inclusive 2..4097 limits, while different chain lengths
+use `SchemaArrayLengthMismatch` with actual and expected counts. Both name the failed `FieldPath`.
+Height inversion uses `SurfaceWallHeightInverted` with the vertex `Index`. Exact arithmetic and normal
+failures use `GeometryNotRepresentable` with `Operation`, and normal failures also name the segment
+`Index`. Unresolved chain adapters retain their prose projection until their producer carries findings.
 
 Asset-manifest field paths start at the payload root, retaining asset, resource and dependency array
 positions. Direct reference and resource checks start at the supplied object's root. Required-value

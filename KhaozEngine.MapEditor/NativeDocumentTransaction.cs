@@ -89,7 +89,7 @@ internal static class NativeDocumentTransaction
         MapAssetClosure? selected = command is INativeAssetClosureCommand closures ? closures.Closure(undo) : assets;
         if (command is INativeBoundDocumentCommand && selected is null)
             throw new MapDocumentException(MapDocumentRefusal.AssetClosureRequired, "Prefab editing requires a verified asset closure.")
-            { DocumentId = document.Id, Operation = nameof(Stage), CommandType = command.GetType(), SubjectKind = "prefab" };
+            { DocumentId = document.Id, Operation = nameof(Stage), CommandType = command.GetType() };
         if (!localOnly && selected is null)
             throw new MapDocumentException(MapDocumentRefusal.AssetClosureRequired, "Native editing requires an explicit asset closure binding.")
             { DocumentId = document.Id, Operation = nameof(Stage), CommandType = command.GetType() };

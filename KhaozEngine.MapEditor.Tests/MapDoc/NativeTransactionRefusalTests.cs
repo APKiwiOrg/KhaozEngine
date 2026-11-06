@@ -7,12 +7,29 @@ using KhaozEngine.MapDoc.Prefabs;
 using KhaozEngine.MapDoc.Water;
 using KhaozEngine.MapEditor;
 using KhaozEngine.Tests.MapDoc.Prefabs;
+using KhaozEngine.Tests.MapDoc.Markers;
 using Xunit;
 
 namespace KhaozEngine.Tests.MapDoc;
 
 public sealed class NativeTransactionRefusalTests
 {
+    [Fact]
+    public void BoundMarkerWithoutClosure_ReportsOnlyKnownContextAndAdmitsItsClosure()
+    {
+        var fixture = MarkerFixtures.Create();
+        var command = new MarkerEditCommand(new MapRemoveMarker("m"));
+        string before = MapDocumentFile.SaveText(fixture.Document);
+        var error = Assert.Throws<MapDocumentException>(() =>
+            NativeDocumentTransaction.Stage(fixture.Document, command, false, null, localOnly: true));
+        Assert.Equal(MapDocumentRefusal.AssetClosureRequired, error.Reason);
+        Assert.Equal(fixture.Document.Id, error.DocumentId);
+        Assert.Equal(typeof(MarkerEditCommand), error.CommandType);
+        Assert.Null(error.SubjectKind);
+        Assert.Equal(before, MapDocumentFile.SaveText(fixture.Document));
+        Assert.NotNull(NativeDocumentTransaction.Stage(fixture.Document, command, false, fixture.Assets, localOnly: true));
+    }
+
     [Fact]
     public void ForeignMarkerCallbackFailure_RetainsItsCauseAndAdmitsAWorkingCallback()
     {

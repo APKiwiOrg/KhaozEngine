@@ -36,7 +36,10 @@ public sealed class TerrainTransactionTests
             Assert.NotNull(error.SlotCell);
             Assert.Equal(state, gui.State());
         }
-        gui.Editor.Execute(new TerrainEditCommand(CaveFixtures.OpenMouthEdit()));
+        var repairedCeiling = CaveFixtures.CeilingCrossingEdit();
+        var ceiling = CaveFixtures.Patch(CaveFixtures.RampChamberShaft().Surfaces, "cave-ceiling");
+        repairedCeiling = repairedCeiling with { UpsertPatches = new[] { ceiling } };
+        gui.Editor.Execute(new TerrainEditCommand(repairedCeiling));
         state = gui.State();
         var halo = Assert.Throws<MapDocumentException>(() => gui.Editor.Execute(new TerrainEditCommand(
             new MapSmoothCorners(new("outer", 0, 0), 0, 0, 1, 1, 1))));

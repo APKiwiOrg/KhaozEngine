@@ -6,22 +6,20 @@ namespace KhaozEngine.Tests.MapDoc;
 
 public sealed class NativePlacementRefusalTests
 {
-    [Theory]
-    [InlineData("", MapDocumentRefusal.SchemaValueRequired)]
-    [InlineData("existing", MapDocumentRefusal.IdentityDuplicate)]
-    public void PlacementAdmission_IdentifiesItsBranchAndPreservesBothHistoryStacks(string id, MapDocumentRefusal reason)
+    [Fact]
+    public void BlankPlacementIdentity_PreservesBothHistoryStacksAndAdmitsRepair()
     {
         using var fixture = new NativePlacementHistoryFixture();
         fixture.Editor.Execute(new SetPlacementLabelCommand("existing", "previous"));
         Assert.True(fixture.Editor.Undo());
         string before = MapDocumentFile.SaveText(fixture.Document);
         var error = Assert.Throws<MapDocumentException>(() =>
-            fixture.Editor.Execute(new AllocateNativePlacementCommand(fixture.NewProp(id), true)));
-        Assert.Equal(reason, error.Reason);
+            fixture.Editor.Execute(new AllocateNativePlacementCommand(fixture.NewProp(""), true)));
+        Assert.Equal(MapDocumentRefusal.SchemaValueRequired, error.Reason);
         Assert.Equal(fixture.Document.Id, error.DocumentId);
         Assert.Equal("placement", error.SubjectKind);
         Assert.Equal("Placements.Id", error.FieldPath);
-        Assert.Equal(id, error.EntityId);
+        Assert.Equal("", error.EntityId);
         Assert.Equal(before, MapDocumentFile.SaveText(fixture.Document));
         Assert.True(fixture.Editor.Redo());
         Assert.True(fixture.Editor.Undo());

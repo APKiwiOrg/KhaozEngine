@@ -3,6 +3,8 @@ using System.IO;
 using System.Linq;
 using System.Numerics;
 using System.Security.Cryptography;
+using System.Collections.Generic;
+using System.Threading.Tasks;
 using KhaozEngine.MapDoc;
 using KhaozEngine.MapDoc.Assets;
 using KhaozEngine.MapDoc.Editing;
@@ -14,19 +16,28 @@ using KhaozEngine.Tests.MapDoc;
 using KhaozEngine.Tests.MapDoc.Prefabs;
 using Xunit;
 using ModelContextProtocol;
+using ModelContextProtocol.Protocol;
+using ModelContextProtocol.Server;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace KhaozEngine.Tests.MapEditTool;
 
+[Collection(McpWireCollection.Name)]
 public sealed class SessionPublicationRefusalTests
 {
     [Fact]
-    public void ToolGuard_RetainsTheOriginalRefusalAndPassesThroughExistingMcpErrors()
+    public async Task ToolGuard_RetainsTheOriginalRefusalAndPassesThroughExistingMcpErrors()
     {
         var refusal = new MapDocumentException(MapDocumentRefusal.ToolNativeDocumentRequired, "caller payload");
         var wrapped = Assert.Throws<McpException>(() => ToolGuard.Guard<int>(() => throw refusal));
         Assert.Same(refusal, wrapped.InnerException);
         var existing = new McpException("caller payload");
         Assert.Same(existing, Assert.Throws<McpException>(() => ToolGuard.Guard<int>(() => throw existing)));
+        await using var harness = await McpWire.StartAsync(server => server.WithTools([
+            McpServerTool.Create((Func<int>)(() => ToolGuard.Guard<int>(() => throw refusal)), new() { Name = "caller_payload" })]));
+        var result = await harness.Client.CallAsync("caller_payload", new Dictionary<string, object?>());
+        Assert.True(result.IsError == true);
+        Assert.Contains("caller payload", string.Concat(result.Content.OfType<TextContentBlock>().Select(c => c.Text)), StringComparison.Ordinal);
     }
 
     [Theory]

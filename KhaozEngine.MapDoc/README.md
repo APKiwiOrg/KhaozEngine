@@ -1499,6 +1499,10 @@ v7 -> v8 (`MapMarkerMigration.Upgrade`) clones input and changes only `formatVer
 reads no source, terrain, closure or role. Format 8 again moves every native root digest and resolver-2 authored
 identity once. Rebuild identity-keyed caches and navigation captures after either migration. Absent prefab sections preserve
 analytic execution and document hashing. Portals remain AuthoredOpen, with live state gated by #1363.
+Marker migration distinguishes missing or non-integer `formatVersion` (`SchemaValueRequired`) from an
+unsupported integer (`DocumentMigrationSourceVersionInvalid`), retaining `FieldPath`, known `ActualVersion`
+and owned `SupportedVersions` containing 7 and 8. Spawn adoption on a partial document uses
+`CompleteDocumentRequired`, `DocumentId` and `Operation = "ConvertSpawns"` before copying records.
 Headless doorway clearance and roof intent are available. Native controller routes and R8 rendering retain
 the separate gates in the handoff table above.
 v8 -> v9 (`MapFoliageMigration.Upgrade`) clones input and changes only `formatVersion`, accepting 8 or 9.
@@ -2152,6 +2156,7 @@ their joined diagnostic text.
 | `DocumentUnloadedDestinationTile` | Content moved into an indexed tile that the window did not load | `Tile`, `EntityId`, `SubjectKind`, `SculptTile` when known |
 | `DocumentWindowTargetMismatch` | A partial save outside its source directory | target `Path`, source `SourceName` |
 | `DocumentWindowTileSizeMismatch` | A partial window whose tile size changed | `Path`, `FieldPath`, `ActualNumber`, `ExpectedNumber` |
+| `DocumentSaveLockUnavailable` | A tiled save while another writer holds the directory lock | normalized directory `Path`, original cause |
 | `DocumentTileReadFailed` | A tile file that cannot be read | `Tile`, `SourceName`, `Path`, pinned `ExpectedHash`, original cause |
 | `DocumentTileNotIndexed` | A requested tile absent from the occupied index | `Tile`, `SourceName` |
 | `DocumentReadFailed` | An unreadable document source | `SourceName`, `Path`, original cause |
@@ -2160,7 +2165,7 @@ their joined diagnostic text.
 | `DocumentSaveSourceMissing` | A save-back path with no existing form | `Path`, `DocumentForm` `None` |
 | `DocumentSaveFormInvalid` | A requested form that cannot be written | `Path`, submitted `DocumentForm` |
 | `DocumentAssetRootsMismatch` | Native document roots differing from the verified asset closure | submitted `ResourceIds` and `ExpectedResourceIds`, both owned read-only snapshots in their producer order |
-| `DocumentMigrationSourceVersionInvalid` | A native, surface or prefab migration source outside its supported source versions | `FieldPath`, `ActualVersion`, owned `SupportedVersions` |
+| `DocumentMigrationSourceVersionInvalid` | A native, surface, prefab or marker migration source outside its supported source versions | `FieldPath`, `ActualVersion`, owned `SupportedVersions` |
 | `PrefabStateUnreadable` | A producer failure while reading prefab state without a concrete lower refusal | `DocumentId`, original `InnerException` on the throwing adapter |
 
 

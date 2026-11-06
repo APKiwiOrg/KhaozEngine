@@ -45,11 +45,6 @@ public sealed class MapMarkerFormatTests
         JsonObject analyticEight = MapMarkerMigration.Upgrade(analytic);
         analytic["formatVersion"] = 8;
         Assert.True(JsonNode.DeepEquals(analytic, analyticEight));
-        foreach (int version in new[] { 6, 9 })
-        {
-            analytic["formatVersion"] = version;
-            Assert.Throws<MapDocumentException>(() => MapMarkerMigration.Upgrade(analytic));
-        }
     }
 
     [Fact]

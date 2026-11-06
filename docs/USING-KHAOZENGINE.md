@@ -12164,6 +12164,10 @@ from an unsupported integer (`SchemaPayloadVersionUnsupported` with `ActualVersi
 `SupportedVersions` 5 and 6). The source object remains unchanged.
 The v6 to v7 step (`MapPrefabMigration.Upgrade`) clones input and changes only `formatVersion`.
 The v7 to v8 step (`MapMarkerMigration.Upgrade`) clones input and changes only `formatVersion`.
+Its refused source distinguishes `SchemaValueRequired` for missing or non-integer `formatVersion` from
+`DocumentMigrationSourceVersionInvalid` for an unsupported integer, with `FieldPath`, known `ActualVersion`
+and owned `SupportedVersions` containing 7 and 8. `MapMarkerAdoption.ConvertSpawns` refuses partial
+documents through `CompleteDocumentRequired`, retaining `DocumentId` and `Operation` before copying records.
 The v8 to v9 step (`MapFoliageMigration.Upgrade`) clones input and changes only `formatVersion`.
 `MapDocumentFile.CurrentFormatVersion` is 9, and saving always writes it. Version and layout are independent
 axes, so a monolithic file at the current version is legal. Format 5 and the v4 to v5 step arrived in
@@ -12423,6 +12427,9 @@ or `SculptTile`. These refusals leave existing bytes unchanged. Asynchronous res
 cause's reason and identifiers. A nonpositive apply budget uses `MapResidencyArgumentException`,
 `ValueOutsideRange`, `ParamName = "config"`, `FieldPath = "MaxLoadsPerUpdate"`, `ActualInteger` and inclusive
 `MinimumInteger` one.
+An overlapping tiled save uses `DocumentSaveLockUnavailable` with the normalized directory `Path` and
+original cause. Missing or non-integer tile coordinates and missing or empty tile hashes use
+`SchemaValueRequired` with the first failed member's `FieldPath`, entry `Index`, manifest `SourceName` and `Path`.
 Sculpt shape guards use `MapTerrainOverridesJsonException`, derived from `JsonException`, with concrete
 `Reason`, relative `FieldPath`, tile array `Index` and `SculptTile` only once both coordinates were read.
 Delta length failures retain observed `ActualCount` and exact `ExpectedCount`. Document wrappers preserve them.

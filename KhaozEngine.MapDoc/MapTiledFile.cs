@@ -315,7 +315,12 @@ internal static partial class MapTiledFile
             int? x = ReadInt(o, "x"), z = ReadInt(o, "z");
             string? hash = o["hash"]?.GetValue<string>();
             if (x is null || z is null || string.IsNullOrEmpty(hash))
-                throw new MapDocumentException($"{where}: every tiles[] entry needs integer x, integer z and a non-empty hash.");
+                throw new MapDocumentException(MapDocumentRefusal.SchemaValueRequired,
+                    $"{where}: every tiles[] entry needs integer x, integer z and a non-empty hash.")
+                {
+                    SourceName = where, Path = where, Index = entries.Count,
+                    FieldPath = $"$.tiles[{entries.Count}].{(x is null ? "x" : z is null ? "z" : "hash")}",
+                };
             entries.Add(new MapTileEntry(new MapTileCoord(x.Value, z.Value), hash, Loaded: false));
         }
         return entries;

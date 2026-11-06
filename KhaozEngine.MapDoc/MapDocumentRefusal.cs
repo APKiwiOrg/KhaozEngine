@@ -56,6 +56,8 @@ public enum MapDocumentRefusal
     DocumentWindowTargetMismatch,
     /// <summary>Refuses saving a partial window whose tile size differs from its loaded index.</summary>
     DocumentWindowTileSizeMismatch,
+    /// <summary>Refuses a tiled save while another writer owns the directory lock.</summary>
+    DocumentSaveLockUnavailable,
 
     // Schema and scalar admission.
     /// <summary>Refuses malformed JSON, typed payload encoding or tile sculpt data.</summary>

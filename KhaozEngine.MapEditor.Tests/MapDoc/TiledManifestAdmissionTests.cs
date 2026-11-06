@@ -11,6 +11,9 @@ public sealed class TiledManifestAdmissionTests
     [InlineData("missing", MapDocumentRefusal.DocumentManifestMissing)]
     [InlineData("read", MapDocumentRefusal.DocumentManifestReadFailed)]
     [InlineData("tile", MapDocumentRefusal.SchemaObjectRequired)]
+    [InlineData("tile-x", MapDocumentRefusal.SchemaValueRequired)]
+    [InlineData("tile-z", MapDocumentRefusal.SchemaValueRequired)]
+    [InlineData("tile-hash", MapDocumentRefusal.SchemaValueRequired)]
     [InlineData("nonfinite", MapDocumentRefusal.ValueNonfinite)]
     [InlineData("zero", MapDocumentRefusal.ValueOutsideRange)]
     public void ManifestAdmission_IdentifiesTheRefusedInputAndAcceptsItsRepair(string variant, MapDocumentRefusal reason) => TiledDocFixture.InDirectory(dir =>
@@ -24,6 +27,8 @@ public sealed class TiledManifestAdmissionTests
         {
             var root = JsonNode.Parse(original)!.AsObject();
             if (variant == "tile") root["tiles"]![0] = 0;
+            else if (variant.StartsWith("tile-", System.StringComparison.Ordinal))
+                root["tiles"]![0]!.AsObject().Remove(variant[5..]);
             else root["sculptCellSize"] = variant == "zero" ? JsonValue.Create(0) : JsonNode.Parse("1e100");
             File.WriteAllText(path, root.ToJsonString());
         }
@@ -37,9 +42,9 @@ public sealed class TiledManifestAdmissionTests
         Assert.Equal(reason, error.Reason);
         Assert.Equal(path, error.Path);
         if (variant == "missing") Assert.Equal("map.json", error.FileName);
-        else if (variant == "tile")
+        else if (variant == "tile" || variant.StartsWith("tile-", System.StringComparison.Ordinal))
         {
-            Assert.Equal("$.tiles[0]", error.FieldPath);
+            Assert.Equal("$.tiles[0]" + (variant == "tile" ? "" : "." + variant[5..]), error.FieldPath);
             Assert.Equal(0, error.Index);
         }
         else if (variant is "nonfinite" or "zero")

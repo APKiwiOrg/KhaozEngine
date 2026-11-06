@@ -382,7 +382,7 @@ public static class MapFoliageValidation
             if (owner.Owner is not null && !owners.Add(owner.Owner)) Add(new(MapDocumentRefusal.IdentityDuplicate, at + " is listed twice.")
             { FieldPath = $"OwnerSupports[{i}].Owner", Index = i, EntityId = owner.Owner.Id,
                 ChildKind = owner.Owner.Kind, ReferenceScope = owner.Owner.Scope, SubjectKind = "owner support" });
-            Binding(owner.Support, at + " support", errors, findings, layer.Id, $"OwnerSupports[{i}].Support", i);
+            Binding(owner.Support, at + " support", errors, findings, layer.Id, $"OwnerSupports[{i}].Support", i, owner.Owner?.Id);
         }
 
         void Add(MapDocumentFinding finding) => AddFinding(finding with { LayerId = layer.Id }, errors, findings);

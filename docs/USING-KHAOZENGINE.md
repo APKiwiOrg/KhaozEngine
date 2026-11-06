@@ -13117,6 +13117,11 @@ and duplicate names, and the referenced `LayerId` for missing companion hosts. N
 their finite actual values and limits through `ValueOutsideRange`, while nonfinite failures use
 `ValueNonfinite`. Root format admission uses `DocumentVersionUnsupported`, `ActualVersion` and
 `SupportedVersions`. Whole-document adapters still wait for the remaining finding producers.
+Per-content findings retain the entity identity and item path. Unknown terrain discriminators use
+`DocumentTerrainFeatureUnknown` with their captured `ActualText`. Layer filters retain the referenced
+`LayerId`. Sculpt extent findings carry the sculpt `Tile`, first escaping axis, actual extent and
+document limits. Tile-size findings retain their positive or sculpt-span minimum, and native misplaced
+paint priority uses `SurfacePaintPriorityMisplaced` with the surface and submitted priority.
 
 Native metadata adds typed findings beside its unchanged string diagnostics. Compound findings select
 the first failing predicate branch. Missing asset-reference and indoor-span values use `SchemaValueRequired`, nonfinite
@@ -13130,8 +13135,8 @@ where known. `IdentityDuplicate` distinguishes repeated identities from `Numeric
 An unsupported resolver payload uses `SchemaPayloadVersionUnsupported`, with `ActualVersion` and an
 owned read-only `SupportedVersions` snapshot containing 1. Unsupported resolver versions keep
 `ResolverContractMismatch`. Positive-only version checks carry `MinimumInteger` 1 without claiming a
-closed supported-version set. Native metadata still has three prose-only rules. Its aggregate throwing
-adapters, including document validation and numeric reservation adapters, retain their existing
+closed supported-version set. Native metadata still has prose-only frame, enumeration and support-binding
+kind rules. Its aggregate throwing adapters for document validation retain their existing
 constructors until the remaining producer conversion.
 
 Identity registry checks preserve `MapDocumentException` and distinguish `IdentityDuplicate`,

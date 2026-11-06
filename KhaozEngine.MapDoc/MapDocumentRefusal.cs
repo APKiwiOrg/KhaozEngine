@@ -12,6 +12,8 @@ public enum MapDocumentRefusal
     // Whole-document and migration admission.
     /// <summary>Refuses a document format version other than the current writable version.</summary>
     DocumentVersionUnsupported,
+    /// <summary>Refuses a terrain feature discriminator absent from the supplied registry.</summary>
+    DocumentTerrainFeatureUnknown,
     /// <summary>Refuses an operation requiring a complete document when content is unloaded.</summary>
     CompleteDocumentRequired,
     /// <summary>Refuses a migration source outside that migration's supported format versions.</summary>

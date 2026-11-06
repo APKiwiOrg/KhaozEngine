@@ -1803,6 +1803,7 @@ their joined diagnostic text.
 | --- | --- | --- |
 | `WaterBodiesPreventLegacyMode` | Switching to legacy global water while bounded bodies remain | `FieldPath`, `ActualCount` |
 | `DocumentVersionUnsupported` | A root document format version other than the current writable version | `FieldPath`, `ActualVersion`, `SupportedVersions` |
+| `DocumentTerrainFeatureUnknown` | A terrain feature discriminator absent from the supplied registry | discriminator `ActualText`, `EntityId`, `SubjectKind`, `FieldPath`, `Index` |
 | `WaterBoundedModeRequired` | A water edit while bounded water is off | `FieldPath` |
 | `WaterMediumInUse` | Removing a medium still used by a body | using body `EntityId`, medium key `ActualText`, `FieldPath` |
 | `WaterCoversAlias` | Covering a space alias instead of its owner | body `EntityId`, alias `RecordId`, owner `SpaceId`, `Patch` |
@@ -2219,8 +2220,8 @@ values from finite negative extents. `MinimumNumber` and `MaximumNumber` carry t
 bounds are refused. Native metadata and manifest admission set `ActualNumber` only for finite values.
 Payload checks requiring version 1 carry `SupportedVersions` as an owned read-only snapshot. A check
 requiring only a positive version carries `MinimumInteger` 1 instead. Native metadata's string diagnostics
-and admission points are unchanged. Its three remaining document-kind and paint-priority rules are
-still prose-only, so adapters for native metadata, numeric reservations and document validation retain
+and admission points are unchanged. Its remaining frame, enumeration and support-binding kind rules are
+still prose-only, so adapters for native metadata and document validation retain
 their message-only constructors until the remaining producer conversion. No typed finding is inferred
 from those aggregate messages.
 
@@ -2261,6 +2262,12 @@ Structural document findings identify required or duplicate names with `FieldPat
 actual values and limits. The existing validation predicates and diagnostic order remain unchanged.
 Root format admission uses `DocumentVersionUnsupported` with `ActualVersion` and `SupportedVersions`.
 Whole-document adapters still wait for the remaining native and per-content finding producers.
+Per-content findings retain placement, spawn and player-spawn identities and field paths. Unknown
+terrain types carry the captured discriminator in `ActualText`. Missing layer filters retain their
+referenced `LayerId`, item identity and array path. Sculpt bounds findings retain the sculpt `Tile`,
+the first escaping axis, actual extent and document limits. Tile-size findings carry the positive
+minimum or the full sculpt-span minimum. Native paint priority reuses `SurfacePaintPriorityMisplaced`
+with `SurfaceId`, `Index`, `FieldPath` and `ActualInteger`.
 
 Prepared bound-context reads use `MapBoundContextException` with `ContextDemandUnprepared` as their
 `Reason`, with the requested operation and patch, face or opening-cell identifiers. Existing

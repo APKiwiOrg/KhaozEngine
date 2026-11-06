@@ -382,6 +382,14 @@ public enum MapDocumentRefusal
     StorageEmbeddingChanged,
     /// <summary>Refuses overlapping surface storage page covers.</summary>
     StorageDirectoryPagesOverlap,
+    /// <summary>Refuses a partial save whose outgoing reference needs an unloaded patch.</summary>
+    StorageReferencedPatchUnloaded,
+    /// <summary>Refuses a partial save without complete reverse-dependant page knowledge.</summary>
+    StorageReverseKnowledgeUnknown,
+    /// <summary>Refuses a partial save whose reverse dependant is not resident.</summary>
+    StorageReverseDependantUnloaded,
+    /// <summary>Refuses a surface, structural or record edit requiring a complete document.</summary>
+    StoragePartialEditUnsupported,
 
     // Foliage storage admission.
     /// <summary>Refuses a foliage chunk offset differing from its canonical position in the pack.</summary>

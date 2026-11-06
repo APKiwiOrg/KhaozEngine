@@ -117,10 +117,16 @@ public sealed class SurfaceStorageTests
         Assert.Equal((true, false), (w2.Surfaces.Patches.ContainsKey(Ground1), w2.Surfaces.Patches.ContainsKey(Ground0)));
         var files = SurfaceStorageFixtures.SurfaceFiles(dir);
         byte[] manifest = File.ReadAllBytes(Path.Combine(dir, "map.json"));
+        var saved = AssertFixtures.Files(dir);
         w2.Surfaces.Patches[Ground1].Heights[0] = 1200; // the dependent corner at cell X 64
-        Assert.Contains("unloaded", Refusal(w2, dir));
+        var refusal = Assert.Throws<MapDocumentException>(() => MapDocumentFile.SaveTiled(w2, dir));
+        Assert.Equal(MapDocumentRefusal.StorageReferencedPatchUnloaded, refusal.Reason);
+        Assert.Equal(Ground0, refusal.Patch);
+        Assert.Equal(saved, AssertFixtures.Files(dir));
         Assert.Equal(files, SurfaceStorageFixtures.SurfaceFiles(dir));
         Assert.Equal(manifest, File.ReadAllBytes(Path.Combine(dir, "map.json")));
+        w2.Surfaces.Patches[Ground1].Heights[0] = 1000;
+        MapDocumentFile.SaveTiled(w2, dir);
     });
     [Fact]
     public void SurfaceStorage_NewPatchUnderAnUnreadIndexPageRefuses() => TiledDocFixture.InDirectory(dir =>
@@ -135,10 +141,16 @@ public sealed class SurfaceStorageTests
         Assert.Equal(MapPatchStatus.Unloaded, w0.Tiles!.Surfaces!.StatusOf(key));
         var files = SurfaceStorageFixtures.SurfaceFiles(dir);
         byte[] manifest = File.ReadAllBytes(Path.Combine(dir, "map.json"));
+        var saved = AssertFixtures.Files(dir);
         w0.Surfaces.Patches.Add(key, SurfaceStorageFixtures.FlatPatch(key, 1000));
-        Assert.Contains("unloaded", Refusal(w0, dir));
+        var refusal = Assert.Throws<MapDocumentException>(() => MapDocumentFile.SaveTiled(w0, dir));
+        Assert.Equal(MapDocumentRefusal.StorageReferencedPatchUnloaded, refusal.Reason);
+        Assert.Equal(key, refusal.Patch);
+        Assert.Equal(saved, AssertFixtures.Files(dir));
         Assert.Equal(files, SurfaceStorageFixtures.SurfaceFiles(dir));
         Assert.Equal(manifest, File.ReadAllBytes(Path.Combine(dir, "map.json")));
+        w0.Surfaces.Patches.Remove(key);
+        MapDocumentFile.SaveTiled(w0, dir);
     });
     [Theory]
     [InlineData("dependant")]
@@ -157,12 +169,15 @@ public sealed class SurfaceStorageTests
         var files = SurfaceStorageFixtures.SurfaceFiles(dir);
         byte[] manifest = File.ReadAllBytes(Path.Combine(dir, "map.json"));
         MapDocument w0 = SurfaceStorageFixtures.LoadSlotWindow(dir, 0);
-        string expected = "unsupported partial edit: structure";
+        var saved = AssertFixtures.Files(dir);
+        MapSurfaceSet original = w0.Surfaces.Clone();
+        var expected = MapDocumentRefusal.StoragePartialEditUnsupported;
+        string field = "Structure";
         switch (variant)
         {
             case "records":
                 Assert.Equal(1, w0.Surfaces.Patches[Ridge].Records.RemoveAll(r => r.Id == "ridge-rim")); // nothing references it, still refused
-                expected = "unsupported partial edit: records";
+                field = "Records";
                 break;
             case "delete":
                 Assert.False(w0.Surfaces.Patches.ContainsKey(SurfaceStorageFixtures.YardFar)); // yard's only referrer: unloaded, not spatial, not incident
@@ -174,22 +189,49 @@ public sealed class SurfaceStorageTests
             default:
                 Assert.False(w0.Surfaces.Patches.ContainsKey(SurfaceStorageFixtures.Edge1));
                 w0.Surfaces.Patches[SurfaceStorageFixtures.Wide0].Heights[1] = 1100; // corner (1, 0), never a dependency target
-                expected = variant == "page" ? "unloaded: reverse dependants unknown" : "unloaded: reverse dependant 'edge";
+                expected = variant == "page" ? MapDocumentRefusal.StorageReverseKnowledgeUnknown : MapDocumentRefusal.StorageReverseDependantUnloaded;
                 break;
         }
-        Assert.Contains(expected, Refusal(w0, dir));
+        var refusal = Assert.Throws<MapDocumentException>(() => MapDocumentFile.SaveTiled(w0, dir));
+        Assert.Equal(expected, refusal.Reason);
+        if (expected == MapDocumentRefusal.StoragePartialEditUnsupported) Assert.Equal(field, refusal.FieldPath);
+        else
+        {
+            Assert.Equal(expected == MapDocumentRefusal.StorageReverseKnowledgeUnknown ? SurfaceStorageFixtures.Wide0 : SurfaceStorageFixtures.Edge1, refusal.Patch);
+            if (expected == MapDocumentRefusal.StorageReverseDependantUnloaded) Assert.Equal(SurfaceStorageFixtures.Wide0, refusal.ExpectedPatch);
+        }
+        Assert.Equal(saved, AssertFixtures.Files(dir));
         Assert.Equal(files, SurfaceStorageFixtures.SurfaceFiles(dir));
         Assert.Equal(manifest, File.ReadAllBytes(Path.Combine(dir, "map.json")));
+        w0.Surfaces = original;
+        MapDocumentFile.SaveTiled(w0, dir);
     });
-    [Fact]
-    public void RawSave_RefusesACornerDependencyWhoseOwnerVertexIsElsewhere() => TiledDocFixture.InDirectory(dir =>
+    [Theory]
+    [InlineData(63)]
+    [InlineData(65)]
+    public void RawSave_RefusesACornerDependencyWhoseOwnerVertexIsElsewhere(long ownerX) => TiledDocFixture.InDirectory(dir =>
     {
         MapDocument doc = SurfaceStorageFixtures.ThreeSurfaces();
+        MapDocumentFile.SaveTiled(doc, dir);
+        var saved = AssertFixtures.Files(dir);
         var deps = doc.Surfaces.Patches[Ground1].CornerDependencies;
-        deps[0] = deps[0] with { Owner = new MapVertexOwner(Ground0, MapLatticeAddress.Corner(63, 0)) }; // a real vertex of ground(0,0), 1 m west of cell X 64
-        Assert.Contains("dependency position", Refusal(doc, dir));
-        Assert.Contains("dependency position", Assert.Throws<MapDocumentException>(() => MapDocumentFile.SaveText(doc)).Message);
-        Assert.Empty(SurfaceStorageFixtures.SurfaceFiles(dir));
+        MapCornerDependency original = deps[0];
+        var wrong = MapLatticeAddress.Corner(ownerX, 0);
+        deps[0] = deps[0] with { Owner = new MapVertexOwner(Ground0, wrong) }; // 63 is a real vertex elsewhere, 65 is outside the owner rectangle
+        var refusal = Assert.Throws<MapDocumentException>(() => MapDocumentFile.SaveTiled(doc, dir));
+        Assert.Equal(MapDocumentRefusal.SurfaceSeamPositionMismatch, refusal.Reason);
+        Assert.Equal(Ground1, refusal.Patch);
+        Assert.Equal(Ground0, refusal.ExpectedPatch);
+        Assert.Equal(wrong, refusal.Address);
+        Assert.Equal((0, 0), (refusal.CellX, refusal.CellZ));
+        var textRefusal = Assert.Throws<MapDocumentException>(() => MapDocumentFile.SaveText(doc));
+        Assert.Equal(refusal.Reason, textRefusal.Reason);
+        Assert.Equal(Ground1, textRefusal.Patch);
+        Assert.Equal(saved, AssertFixtures.Files(dir));
+        deps[0] = original;
+        MapDocumentFile.SaveTiled(doc, dir);
+        Assert.NotEmpty(MapDocumentFile.SaveText(doc));
+        Assert.Empty(MapDocumentFile.VerifyTiled(dir));
     });
     [Fact]
     public void StaleWindow_RefusesAfterAnotherWriterReplacedAnUnloadedSurfacePatch() => TiledDocFixture.InDirectory(dir =>
@@ -246,15 +288,23 @@ public sealed class SurfaceStorageTests
         var files = SurfaceStorageFixtures.SurfaceFiles(dir);
         MapDocument removedRef = SurfaceStorageFixtures.LoadSlotWindow(dir, 300);
         Assert.Equal(1, removedRef.Surfaces.Refs.RemoveAll(s => s.Id == "ridge"));
-        Assert.Contains("unsupported partial edit: surface", Refusal(removedRef, dir));
+        var saved = AssertFixtures.Files(dir);
+        var removed = Assert.Throws<MapDocumentException>(() => MapDocumentFile.SaveTiled(removedRef, dir));
+        Assert.Equal(MapDocumentRefusal.StoragePartialEditUnsupported, removed.Reason);
+        Assert.Equal("Surfaces", removed.FieldPath);
         MapDocument reframed = SurfaceStorageFixtures.LoadSlotWindow(dir, 300);
         int farIndex = reframed.Surfaces.Refs.FindIndex(s => s.Id == "far");
         Assert.True(farIndex >= 0);
         MapSurfaceRef far = reframed.Surfaces.Refs[farIndex];
         reframed.Surfaces.Refs[farIndex] = far with { Frame = far.Frame with { RowDirection = MapRowDirection.NegativeZ } };
-        Assert.Contains("unsupported partial edit: surface", Refusal(reframed, dir));
+        var changed = Assert.Throws<MapDocumentException>(() => MapDocumentFile.SaveTiled(reframed, dir));
+        Assert.Equal(MapDocumentRefusal.StoragePartialEditUnsupported, changed.Reason);
+        Assert.Equal("Surfaces", changed.FieldPath);
+        Assert.Equal(saved, AssertFixtures.Files(dir));
         Assert.Equal(files, SurfaceStorageFixtures.SurfaceFiles(dir));
         Assert.Equal(manifest, File.ReadAllBytes(Path.Combine(dir, "map.json")));
+        reframed.Surfaces.Refs[farIndex] = far;
+        MapDocumentFile.SaveTiled(reframed, dir);
     });
     [Fact]
     public void SurfaceStorage_MonolithicEmbeddingIsBounded() => TiledDocFixture.InDirectory(dir =>

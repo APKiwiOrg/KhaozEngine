@@ -26,16 +26,8 @@ public sealed record MapSurfaceScope(WorldFrame Frame, Vector2 LocalMin, Vector2
     }
     internal void Validate() => ValidateValues(LocalMin, LocalMax, MinY, MaxY, Roles, SpaceIds, Limits);
     static void ValidateValues(Vector2 min, Vector2 max, float? minY, float? maxY,
-        IReadOnlyList<MapSurfaceRole> roles, IReadOnlyList<string>? spaces, MapQueryLimits limits)
-    {
-        if (!float.IsFinite(min.X) || !float.IsFinite(min.Y) || !float.IsFinite(max.X) || !float.IsFinite(max.Y) ||
-            min.X > max.X || min.Y > max.Y ||
-            (minY is { } low && !float.IsFinite(low)) || (maxY is { } high && !float.IsFinite(high)) || minY > maxY ||
-            roles is null || roles.Any(r => !Enum.IsDefined(r)) || spaces?.Any(string.IsNullOrWhiteSpace) == true || limits is null ||
-            limits.MaxCandidatePatches < 0 || limits.MaxPageReads < 0 || limits.MaxInspectedFaces < 0 ||
-            limits.MaxSupportIntersections < 0 || limits.MaxRecordReads < 0 || limits.MaxRecordDepth < 0)
-            throw new ArgumentException("invalid surface scope bounds or limits");
-    }
+        IReadOnlyList<MapSurfaceRole> roles, IReadOnlyList<string>? spaces, MapQueryLimits limits) =>
+        MapSurfaceScopeAdmission.Validate(min, max, minY, maxY, roles, spaces, limits);
     public string Digest
     {
         get

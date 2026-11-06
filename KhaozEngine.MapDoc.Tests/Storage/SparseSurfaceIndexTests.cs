@@ -101,13 +101,13 @@ public sealed class SparseSurfaceIndexTests
             Assert.Equal(MapFindStatus.Complete, roleFiltered.Status);
             Assert.Empty(roleFiltered.Patches);
             Assert.NotEqual(scope.Digest, (scope with { Limits = new MapQueryLimits(MaxPageReads: 3) }).Digest);
-            Assert.Throws<ArgumentException>(() => new MapSurfaceScope(WorldFrame.Origin,
+            Assert.Throws<MapSurfaceScopeArgumentException>(() => new MapSurfaceScope(WorldFrame.Origin,
                 new Vector2(float.NaN, 1), new Vector2(62, 2), null, null,
                 new[] { MapSurfaceRole.SupportFloor }, null, limits));
-            Assert.Throws<ArgumentException>(() => new MapSurfaceScope(WorldFrame.Origin,
+            Assert.Throws<MapSurfaceScopeArgumentException>(() => new MapSurfaceScope(WorldFrame.Origin,
                 new Vector2(63, 1), new Vector2(62, 2), null, null,
                 new[] { MapSurfaceRole.SupportFloor }, null, limits));
-            Assert.Throws<ArgumentException>(() => new MapSurfaceScope(WorldFrame.Origin,
+            Assert.Throws<MapSurfaceScopeArgumentException>(() => new MapSurfaceScope(WorldFrame.Origin,
                 new Vector2(61, 1), new Vector2(62, 2), float.PositiveInfinity, null,
                 new[] { MapSurfaceRole.SupportFloor }, null, limits));
 

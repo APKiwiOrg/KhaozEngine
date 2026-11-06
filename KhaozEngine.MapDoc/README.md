@@ -1629,10 +1629,15 @@ guarantee.
 Raw partial surface saves permit payload edits only after outgoing references, reverse page knowledge,
 reverse dependants, structure and record checks. A raw save certifies reference integrity, including exact
 XZ agreement between each corner owner's address and its dependent corner, and never geometry. It refuses a
-dependency position that disagrees. An unrepresentable owner position carries `GeometryNotRepresentable`,
-`Operation` `SaveSurfaces` and `FieldPath` `CornerDependencies`. A partial raw save also refuses an unloaded
-reverse dependant (`unloaded: reverse dependant`) and an unsupported partial edit of a surface declaration,
-patch structure or records. Geometry, seam heights and separation require complete native transactions.
+dependency position that disagrees with `SurfaceSeamPositionMismatch`, the dependent `Patch`, owner
+`ExpectedPatch` and `Address`, and dependent corner `CellX` and `CellZ`. A missing owner surface uses
+`ReferenceMissing` instead. An unrepresentable owner position carries `GeometryNotRepresentable`,
+`Operation` `SaveSurfaces` and `FieldPath` `CornerDependencies`. Partial-save refusals distinguish unloaded
+outgoing patches, unknown reverse knowledge, unloaded reverse dependants and unsupported surface, structure
+or record edits through the storage reasons below. Missing outgoing patches or indoor-span parents carry
+`ReferenceMissing` with their known patch, record and surface. A parent of the wrong topology type carries
+`ReferenceKindMismatch` with `RecordType` and `ExpectedRecordType`. A refused save leaves existing files
+byte-identical. Geometry, seam heights and separation require complete native transactions.
 
 `IMapSurfaceSource` reads report `MapPatchStatus` as `Present`, `KnownEmpty`, `Unloaded`, `Missing` or `Corrupt`,
 and `FindPatches` reports `MapFindStatus` as `Complete`, `Incomplete` or `CapacityExceeded`. Only `Present` and
@@ -1644,6 +1649,15 @@ work through `MapQueryLimits`, and capacity refusal returns no partial patches. 
 Index `SpaceIds` summarizes payload records and incidence only. Queries also consider the current surface's
 `IndoorSpan.ParentSpace`, so metadata-only edits cannot leave space filtering tied to an older page generation.
 `MapSurfaceSemantics.RootDigest` includes surface semantics and excludes storage names and page packing.
+
+`MapSurfaceScopeArgumentException` derives from `ArgumentException` and carries `MapDocumentRefusal`.
+Scope admission selects the first failed predicate in its original order. Nonfinite coordinates carry
+`ValueNonfinite`, `FieldPath` and `ActualNumber`. Unordered bounds carry `BoundsInvalid` with the refused
+maximum and inclusive `MinimumNumber`. Null roles or limits and blank space IDs use `SchemaValueRequired`.
+An undefined role uses `SchemaEnumUnsupported`, `EnumType` and `ActualInteger`. Negative query allowances
+use `ValueOutsideRange`, the nested `Limits` path, `ActualInteger` and inclusive `MinimumInteger` zero.
+Equal bounds and zero allowances are valid. Record copies are readmitted when used by a query or digest.
+
 
 **Every save entry point refuses a partial document** (`Save`, `SaveText`, `SaveTo`, `SaveAuto`,
 `SaveAs`), because the data-loss path is a windowed document reaching a whole-document writer: that write
@@ -1864,6 +1878,10 @@ their joined diagnostic text.
 | `DocumentHashSchemeUnsupported` | Whole authored identity under an unsupported pinned tile hash scheme | `FieldPath`, `ActualVersion`, owned `SupportedVersions` |
 | `StorageEmbeddingChanged` | An embedded payload whose encoded length changed after measurement | `ExpectedByteCount`, `ActualByteCount` |
 | `StorageDirectoryPagesOverlap` | Overlapping surface storage page covers | `FieldPath`, `Index`, `OtherIndex` |
+| `StorageReferencedPatchUnloaded` | A partial-save outgoing reference needing an unloaded patch | `Patch`, `PatchStatus` `Unloaded` |
+| `StorageReverseKnowledgeUnknown` | A partial save without the reverse directory or index knowledge needed for its edit | changed `Patch`, searched `SurfaceId`, directory `ExpectedHash` |
+| `StorageReverseDependantUnloaded` | A partial save with a nonresident reverse dependant | dependant `Patch`, changed `ExpectedPatch`, incident `RecordId` |
+| `StoragePartialEditUnsupported` | A partial surface declaration, structure or record edit | `FieldPath` `Surfaces`, `Structure` or `Records`, changed `Patch` when known |
 | `PinnedContentUnavailable` | Required pinned tile, directory, index or payload content whose read failed without a more specific document cause | `PatchStatus`, `Tile`, `Patch`, `SubjectKind`, `ExpectedHash` |
 | `DocumentVersionUnsupported` | A root document format version other than the current writable version | `FieldPath`, `ActualVersion`, `SupportedVersions` |
 | `DocumentTerrainFeatureUnknown` | A terrain feature discriminator absent from the supplied registry | discriminator `ActualText`, `EntityId`, `SubjectKind`, `FieldPath`, `Index` |

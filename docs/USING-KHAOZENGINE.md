@@ -12690,6 +12690,19 @@ Dependency-position overflow uses `GeometryNotRepresentable`, `Operation` `SaveS
 `FieldPath` `CornerDependencies`. Surface query conversion overflow uses `GeometryNotRepresentable`,
 `Operation` `FindPatches` and `FieldPath` `scope`. Raw saves still certify references and exact owner
 positions without certifying geometric seams or equal heights.
+A mismatched dependency owner address uses `SurfaceSeamPositionMismatch` with the dependent `Patch`,
+owner `ExpectedPatch` and `Address`, and dependent corner coordinates. Partial saves distinguish
+`StorageReferencedPatchUnloaded`, `StorageReverseKnowledgeUnknown`, `StorageReverseDependantUnloaded`
+and `StoragePartialEditUnsupported`. These identify the missing patch, affected surface, directory digest,
+incident record or unsupported field when known. Missing references retain `ReferenceMissing`, while an
+indoor-span parent of the wrong topology type retains `ReferenceKindMismatch` and both types. Refused saves
+leave every existing file byte-identical.
+Scope admission throws `MapSurfaceScopeArgumentException`, catchable as `ArgumentException`. Its shared
+`MapDocumentRefusal` distinguishes nonfinite coordinates, unordered bounds, missing required values,
+undefined roles and negative allowances in predicate order. `FieldPath` names the failed option, numeric
+identifiers retain its value and inclusive minimum, and enum failures retain their type and integer.
+Equal bounds and zero allowances remain valid, including when a record copy is readmitted by a query.
+
 `SaveTiled` writes one tile at a time and **does not rewrite a tile whose
 canonical hash is unchanged**. Its ordering is crash-consistent: changed tiles are written at names nothing
 points at yet, then a single `map.json` rename commits, then a best-effort sweep collects what the new

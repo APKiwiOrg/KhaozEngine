@@ -348,7 +348,7 @@ digest.
 `SetHeights(assetId, bottom, top, dryRun = true)` resizes a box collider or a compound of upright boxes to span
 `bottom` to `top` in asset-local metres. Every box keeps its X and Z, and its centre and half height map linearly
 from the collider's current vertical extent onto the requested one. A lone box becomes a one-child compound. Any
-other collider refuses with "compound boxes". The `NativeCollisionEditResult` carries the collider digests before
+other collider uses `ToolColliderShapeUnsupported`, carrying `AssetId`, `ResourceId` and `ShapeType`. The `NativeCollisionEditResult` carries the collider digests before
 and after, every placement of the asset in ordinal order and `MapNativeEditEffects` with the placements' old and new
 world collider and interaction envelope bounds and `Physics`, `Nav` and `Residency` invalidation.
 `OldBounds` and `NewBounds` retain the tight envelope report. `OldSpatialBounds` and `NewSpatialBounds` carry the
@@ -371,6 +371,24 @@ reloads and verifies the closure from disk, then swaps the root reference in one
 captured old or new verified closure. The mesh resource and every placement transform stay unchanged. The asset and its
 collider must be declared in one root manifest, and no other asset may share the collider resource. An edit that
 leaves the collider bytes unchanged reports `Applied` false with no invalidation.
+
+Collider refusals use `MapDocumentException.Reason` and preserve live document content, dirty state and history.
+
+| Reason | Refused rule | Identifiers |
+| --- | --- | --- |
+| `ReferenceMissing` | An unknown placement, or an asset or collider not declared directly in its root manifest | `PlacementId` and `DocumentId`, or `AssetId`, `ResourceId` and the known root `SourceName` |
+| `ToolColliderMissing` | Measurement or a height edit without a collider | `AssetId` |
+| `ToolColliderResourceShared` | A height edit would change another asset's collider | `AssetId`, `OtherAssetId`, `ResourceId` |
+| `ToolColliderShapeUnsupported` | A collider other than boxes or compound boxes | `AssetId`, `ResourceId`, `ShapeType` |
+| `ToolColliderBoxTilted` | A compound box whose local Y axis is tilted | `AssetId`, `ResourceId`, child `Index` |
+| `ValueNonfinite`, `BoundsInvalid` | Nonfinite requested heights or finite unordered endpoints | `AssetId`, first failed `FieldPath`, `ActualNumber`, submitted `MinimumNumber` and `MaximumNumber` |
+| `ValueNonfinite`, `ValueOutsideRange` | A resized box with nonfinite position or nonpositive or nonfinite height | `AssetId`, child `Index`, `FieldPath`, `ActualNumber`, exclusive zero `MinimumNumber` for height |
+| `ToolColliderPublicationMismatch` | Published resources differ from the verified plan | `AssetId`, first mismatching `ResourceId`, `ExpectedHash`, `ActualHash` |
+
+Session work without an open document throws `MapSessionException` with `ToolDocumentRequired` and `Operation`,
+still catchable as `InvalidOperationException`. Conversion onto an occupied tiled target uses
+`DocumentStorageFormConflict`, `Path`, actual `DocumentForm` and required `ExpectedDocumentForm`. Retiling a
+partial document uses `CompleteDocumentRequired`, `DocumentId`, `Path` and `Operation` `Retile`.
 
 `MapAssetFileWriter(assetRoot)` writes resources under an explicit absolute asset root, the root the document's
 resource references resolve against. `WriteResource(bytes, extension)` writes `assets/<sha256>.<extension>` and

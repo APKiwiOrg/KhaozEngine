@@ -178,6 +178,8 @@ public sealed record MapDocumentFinding(MapDocumentRefusal Reason, string Messag
 
     /// <summary>The asset descriptor whose admission failed, when known.</summary>
     public string? AssetId { get; init; }
+    /// <summary>The other asset sharing the refused collider resource.</summary>
+    public string? OtherAssetId { get; init; }
     /// <summary>The declared surface whose metadata failed validation, when known.</summary>
     public string? SurfaceId { get; init; }
     /// <summary>The other paint surface in a priority conflict or the required physical paint target.</summary>
@@ -399,6 +401,7 @@ public sealed record MapDocumentFinding(MapDocumentRefusal Reason, string Messag
             PositionY = error.PositionY,
             PositionZ = error.PositionZ,
             AssetId = error.AssetId,
+            OtherAssetId = error.OtherAssetId,
             SurfaceId = error.SurfaceId,
             OtherSurfaceId = error.OtherSurfaceId,
             MarkerId = error.MarkerId,

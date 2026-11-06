@@ -1999,6 +1999,12 @@ their joined diagnostic text.
 | `ToolPublicationPathInvalid` | A rooted or escaping publication path | submitted `Path`, `StoragePath`, `DocumentForm`, known `ResourceRoot` |
 | `ToolTiledSessionRequired` | A window move without tiled source storage, carried by `MapSessionException` | `DocumentId`, `Path`, `Operation`, `FieldPath`, `DocumentForm`, `ExpectedDocumentForm` |
 | `ToolUnsavedChanges` | A window move discarding dirty content without permission, carried by `MapSessionException` | `DocumentId`, `Path`, `Operation`, `FieldPath` `IsDirty`, `DocumentForm` |
+| `ToolDocumentRequired` | Session work without an open document, carried by `MapSessionException` | `Operation` |
+| `ToolColliderMissing` | Measurement or editing of an asset without a collider | `AssetId` |
+| `ToolColliderResourceShared` | A height edit to a resource used by another asset | `AssetId`, `OtherAssetId`, `ResourceId` |
+| `ToolColliderShapeUnsupported` | Height edits to a collider other than boxes or compound boxes | `AssetId`, `ResourceId`, `ShapeType` |
+| `ToolColliderBoxTilted` | Height edits to a tilted compound box | `AssetId`, `ResourceId`, child `Index` |
+| `ToolColliderPublicationMismatch` | Published resources differ from the verified collider plan | `AssetId`, `ResourceId`, `ExpectedHash`, `ActualHash` |
 | `WaterBodiesPreventLegacyMode` | Switching to legacy global water while bounded bodies remain | `FieldPath`, `ActualCount` |
 | `DocumentHashSchemeUnsupported` | Whole authored identity or window loading under an unsupported pinned tile hash scheme | `FieldPath`, `ActualVersion`, owned `SupportedVersions` for identity or `ExpectedVersion` for window loading, source context |
 | `StoragePatchKeyMismatch` | A surface dictionary entry whose key differs from its payload key | dictionary `ExpectedPatch`, payload `Patch` |
@@ -2174,7 +2180,7 @@ their joined diagnostic text.
 | `DocumentManifestMissing` | A tiled directory without its required manifest | `SourceName`, `Path`, `FileName` |
 | `DocumentManifestReadFailed` | A manifest that exists but cannot be read | `SourceName`, `Path`, original cause |
 | `DocumentStaleWindow` | A partial window whose manifest changed or became unreadable | `Path`, pinned `ExpectedHash`, `ActualHash` when readable |
-| `DocumentStorageFormConflict` | A file at a requested tiled-save path | `Path`, `DocumentForm`, `ExpectedDocumentForm` |
+| `DocumentStorageFormConflict` | A file at a requested tiled-save path or an occupied tiled conversion target | `Path`, `DocumentForm`, `ExpectedDocumentForm` |
 | `DocumentUnloadedDestinationTile` | Content moved into an indexed tile that the window did not load | `Tile`, `EntityId`, `SubjectKind`, `SculptTile` when known |
 | `DocumentWindowTargetMismatch` | A partial save outside its source directory | target `Path`, source `SourceName` |
 | `DocumentWindowTileSizeMismatch` | A partial window whose tile size changed | `Path`, `FieldPath`, `ActualNumber`, `ExpectedNumber` |

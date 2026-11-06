@@ -87,6 +87,7 @@ internal static class MapDocumentRefusalFactory
             PositionY = finding.PositionY,
             PositionZ = finding.PositionZ,
             AssetId = finding.AssetId,
+            OtherAssetId = finding.OtherAssetId,
             SurfaceId = finding.SurfaceId,
             OtherSurfaceId = finding.OtherSurfaceId,
             SourceId = finding.SourceId,

@@ -439,6 +439,19 @@ public enum MapDocumentRefusal
     /// <summary>Refuses a session transition that would discard unsaved changes without permission.</summary>
     ToolUnsavedChanges,
 
+    /// <summary>Refuses a session operation without an open document.</summary>
+    ToolDocumentRequired,
+    /// <summary>Refuses measuring or resizing an asset without a collider.</summary>
+    ToolColliderMissing,
+    /// <summary>Refuses a height edit to a collider shared by another asset.</summary>
+    ToolColliderResourceShared,
+    /// <summary>Refuses a height edit to a collider other than boxes or compound boxes.</summary>
+    ToolColliderShapeUnsupported,
+    /// <summary>Refuses a height edit to a box whose local Y axis is tilted.</summary>
+    ToolColliderBoxTilted,
+    /// <summary>Refuses published collider resources that differ from their verified plan.</summary>
+    ToolColliderPublicationMismatch,
+
     // Physics navigation and envelope admission.
     /// <summary>Refuses an interaction envelope sweep for an unsupported source shape.</summary>
     PhysicsSweepShapeUnsupported,

@@ -163,9 +163,10 @@ namespace KhaozEngine.Tests.MapEditTool
             var session = new MapEditSession();
             var render = new RenderService(session);
 
-            InvalidOperationException ex = Assert.Throws<InvalidOperationException>(() =>
-                render.RenderTopDown(width: 64, height: 64));
-            Assert.Contains("map_open", ex.Message, StringComparison.Ordinal);
+            var ex = Assert.Throws<MapSessionException>(() => render.RenderTopDown(width: 64, height: 64));
+            Assert.IsAssignableFrom<InvalidOperationException>(ex);
+            Assert.Equal(MapDocumentRefusal.ToolDocumentRequired, ex.Reason);
+            Assert.False(session.HasDocument);
         }
 
         // The MCP `textured` parameter on render_topdown/render_view threads into the throwaway ViewportWorld's

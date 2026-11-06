@@ -13673,7 +13673,12 @@ a compound child orientation that is not a unit quaternion. `PropCollisionFormat
 too, so a writer never produces such a payload.
 
 **Editing colliders.** ke-mapedit's `NativeCollisionService` measures a placement's mesh top against its collider
-and resizes box colliders through content-addressed resources written by `MapAssetFileWriter`. See the
+and resizes box colliders through content-addressed resources written by `MapAssetFileWriter`.
+The `MapDocumentException.Reason` distinguishes missing colliders, shared collider resources, unsupported shapes,
+tilted boxes and published-plan mismatches. Identifiers retain `AssetId`, `ResourceId`, `OtherAssetId`, `ShapeType`,
+child `Index` or expected and actual hashes where the guard knows them. Requested and computed heights distinguish
+`ValueNonfinite`, `BoundsInvalid` and `ValueOutsideRange`, with the first failed field and actual value.
+Refused edits preserve document content and history. See the
 [ke-mapedit README](../KhaozEngine.MapEdit.Tool/README.md#native-colliders).
 
 ---
@@ -15763,6 +15768,10 @@ world-affecting mutation (terrain features, terrain globals, exclusions, scatter
 `map_summary` reports the dirty flag. Every mutation validates before it lands
 (`MapDocumentValidator`, then a schema check on save) and reverts with the validation errors folded
 into the thrown message on failure, so the in-session document is never left invalid.
+
+Session work without a document uses `MapSessionException`, `ToolDocumentRequired` and the refused `Operation`.
+Conversion onto a tiled target uses `DocumentStorageFormConflict`, `Path`, actual and expected document forms.
+Retiling partial content uses `CompleteDocumentRequired`, `DocumentId`, `Path` and `Operation` `Retile`.
 
 Window admission uses `MapSessionException`, still catchable as `InvalidOperationException`, with
 `ToolTiledSessionRequired` or `ToolUnsavedChanges`. It carries the known `DocumentId`, source `Path`,

@@ -198,6 +198,8 @@ public sealed class MapDocumentException : Exception
 
     /// <summary>The asset descriptor whose admission failed, when known.</summary>
     public string? AssetId { get; init; }
+    /// <summary>The other asset sharing the refused collider resource.</summary>
+    public string? OtherAssetId { get; init; }
     /// <summary>The declared surface whose metadata failed validation, when known.</summary>
     public string? SurfaceId { get; init; }
     /// <summary>The other paint surface in a priority conflict or the required physical paint target.</summary>
@@ -442,6 +444,7 @@ public sealed class MapDocumentException : Exception
         PositionY = inner.PositionY;
         PositionZ = inner.PositionZ;
         AssetId = inner.AssetId ?? assetId;
+        OtherAssetId = inner.OtherAssetId;
         SurfaceId = inner.SurfaceId;
         OtherSurfaceId = inner.OtherSurfaceId;
         MarkerId = inner.MarkerId;

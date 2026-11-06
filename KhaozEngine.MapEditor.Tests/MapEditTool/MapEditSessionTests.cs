@@ -164,7 +164,11 @@ namespace KhaozEngine.Tests.MapEditTool
             {
                 var session = new MapEditSession();
                 Assert.False(session.HasDocument);
-                Assert.Throws<InvalidOperationException>(() => session.Summary());
+                var error = Assert.Throws<MapSessionException>(() => session.Summary());
+                Assert.IsAssignableFrom<InvalidOperationException>(error);
+                Assert.Equal(MapDocumentRefusal.ToolDocumentRequired, error.Reason);
+                Assert.Equal("Summary", error.Operation);
+                Assert.False(session.HasDocument);
 
                 session.Create(Path.Combine(dir, "summary.map.json"), "summary-control", "Summary", -10, -10, 10, 10);
                 Assert.Equal("summary-control", session.Summary().Id);
@@ -455,8 +459,10 @@ namespace KhaozEngine.Tests.MapEditTool
         /// world two's tiles as orphans. The fix refuses whenever the target already holds a tiled document,
         /// the same as <see cref="MapEditSession.ConvertToSingle"/> already refused an existing tiled
         /// target, and world two is left completely untouched.</summary>
-        [Fact]
-        public void ConvertToTiled_RefusesAnExistingTiledDirectory()
+        [Theory]
+        [InlineData(false)]
+        [InlineData(true)]
+        public void Conversion_RefusesAnExistingTiledDirectory(bool single)
         {
             string worldOneDir = TiledFixture.NewDirectory();
             string worldTwoDir = TiledFixture.NewDirectory();
@@ -473,12 +479,24 @@ namespace KhaozEngine.Tests.MapEditTool
                 var session = new MapEditSession();
                 session.Open(worldOneDir);   // whole load, not windowed
 
-                Assert.Throws<MapDocumentException>(() => session.ConvertToTiled(worldTwoDir));
+                string before = session.WithDocument((doc, registry) => MapDocumentFile.SaveText(doc, registry));
+                var error = Assert.Throws<MapDocumentException>(() =>
+                {
+                    if (single) session.ConvertToSingle(worldTwoDir);
+                    else session.ConvertToTiled(worldTwoDir);
+                });
+                Assert.Equal(MapDocumentRefusal.DocumentStorageFormConflict, error.Reason);
+                Assert.Equal(worldTwoDir, error.Path);
+                Assert.Equal(MapDocumentForm.Tiled, error.DocumentForm);
+                Assert.Equal(single ? MapDocumentForm.Monolithic : MapDocumentForm.Tiled, error.ExpectedDocumentForm);
+                Assert.Equal(before, session.WithDocument((doc, registry) => MapDocumentFile.SaveText(doc, registry)));
 
                 // World two is untouched: same content, same tile files on disk.
                 Assert.Equal(worldTwoHashBefore, MapDocumentHash.OfWorld(MapDocumentFile.LoadTiled(worldTwoDir)));
                 Assert.Equal(worldTwoFilesBefore, TiledFixture.TileFiles(worldTwoDir));
                 Assert.Equal(3f, MapDocumentFile.LoadTiled(worldTwoDir).Placements.Single(p => p.Id == "p-a").Yaw);
+                string target = Path.Combine(worldOneDir, single ? "control.map.json" : "control");
+                Assert.NotNull(single ? session.ConvertToSingle(target) : session.ConvertToTiled(target));
             }
             finally { TiledFixture.Delete(worldOneDir); TiledFixture.Delete(worldTwoDir); }
         }
@@ -518,7 +536,15 @@ namespace KhaozEngine.Tests.MapEditTool
                 var session = new MapEditSession { WholeWorldTileLimit = 1, EditorWindowRadius = 0 };
                 session.Open(dir);
 
-                Assert.Throws<MapDocumentException>(() => session.Retile(256f));
+                string before = session.WithDocument((doc, _) => System.Text.Json.JsonSerializer.Serialize(doc));
+                byte[] saved = File.ReadAllBytes(Path.Combine(dir, "map.json"));
+                var error = Assert.Throws<MapDocumentException>(() => session.Retile(256f));
+                Assert.Equal(MapDocumentRefusal.CompleteDocumentRequired, error.Reason);
+                Assert.Equal("Retile", error.Operation);
+                Assert.Equal(before, session.WithDocument((doc, _) => System.Text.Json.JsonSerializer.Serialize(doc)));
+                Assert.Equal(saved, File.ReadAllBytes(Path.Combine(dir, "map.json")));
+                session.SetWindow(-10000, -10000, 10000, 10000);
+                Assert.Equal(256f, session.Retile(256f).TileSize);
             }
             finally { TiledFixture.Delete(dir); }
         }

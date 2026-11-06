@@ -3,6 +3,7 @@ using System.IO;
 using System.Security.Cryptography;
 using KhaozEngine.MapDoc;
 using KhaozEngine.MapDoc.Editing;
+using KhaozEngine.Physics;
 using KhaozEngine.MapEdit;
 using KhaozEngine.Terrain;
 using Xunit;
@@ -95,23 +96,130 @@ public class NativeCollisionRefusalTests
     }
 
     [Theory]
-    [InlineData("tilted-wall", "compound boxes")]
-    [InlineData("shared-a", "shared.collider")]
-    [InlineData("nested-wall", "nested-wall")]
-    [InlineData("split-wall", "kit")]
-    [InlineData("rock-mesh", "compound boxes")]
-    public void UnsupportedColliderOrManifest_RefusesHeightEdits(string assetId, string diagnostic)
+    [InlineData("tilted-wall", MapDocumentRefusal.ToolColliderBoxTilted, "tilted.collider", null)]
+    [InlineData("shared-a", MapDocumentRefusal.ToolColliderResourceShared, "shared.collider", null)]
+    [InlineData("nested-wall", MapDocumentRefusal.ReferenceMissing, "nested.collider", null)]
+    [InlineData("split-wall", MapDocumentRefusal.ReferenceMissing, "split.collider", "kit")]
+    [InlineData("rock-mesh", MapDocumentRefusal.ToolColliderShapeUnsupported, "rock.collider", null)]
+    public void UnsupportedColliderOrManifest_RefusesHeightEdits(string assetId, MapDocumentRefusal reason,
+        string resourceId, string? rootId)
     {
         using var f = new NativeCollisionToolFixture();
         byte[] before = f.ReadAssetDirectoryDigest();
-
-        var error = Assert.Throws<MapDocumentException>(() => f.Service.SetHeights(assetId, 0f, 1f));
-
-        Assert.Contains(diagnostic, error.Message, StringComparison.Ordinal);
-        Assert.Contains(assetId, error.Message, StringComparison.Ordinal);
+        string content = Content(f);
+        var history = f.Session.NativeHistoryState;
+        var error = Assert.Throws<MapDocumentException>(() => f.Service.SetHeights(assetId, 0f, 1f, dryRun: false));
+        Assert.Equal(reason, error.Reason);
+        Assert.Equal(assetId, error.AssetId);
+        Assert.Equal(resourceId, error.ResourceId);
+        Assert.Equal(rootId, error.SourceName);
+        if (assetId == "shared-a") Assert.Equal("shared-b", error.OtherAssetId);
+        if (assetId == "tilted-wall") Assert.Equal(0, error.Index);
+        if (assetId == "rock-mesh") Assert.Equal(typeof(TriangleMeshShape), error.ShapeType);
         Assert.Equal(before, f.ReadAssetDirectoryDigest());
+        Assert.Equal(content, Content(f));
+        Assert.Equal(history, f.Session.NativeHistoryState);
         Assert.False(f.Session.IsDirty);
+        using var control = new NativeCollisionToolFixture(assetId);
+        Assert.True(control.Service.SetHeights(assetId, 0f, 1f, dryRun: false).Applied);
     }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void MissingCollider_IdentifiesTheAssetWithoutChangingTheSession(bool measure)
+    {
+        using var f = new NativeCollisionToolFixture();
+        byte[] before = f.ReadAssetDirectoryDigest();
+        string content = Content(f);
+        var history = f.Session.NativeHistoryState;
+        var error = Assert.Throws<MapDocumentException>(() =>
+        {
+            if (measure) f.Service.Measure("no-collider-1");
+            else f.Service.SetHeights("no-collider", 0, 1, dryRun: false);
+        });
+        Assert.Equal(MapDocumentRefusal.ToolColliderMissing, error.Reason);
+        Assert.Equal("no-collider", error.AssetId);
+        Assert.Equal(before, f.ReadAssetDirectoryDigest());
+        Assert.Equal(content, Content(f));
+        Assert.Equal(history, f.Session.NativeHistoryState);
+        using var control = new NativeCollisionToolFixture("no-collider");
+        if (measure) Assert.Equal("no-collider", control.Service.Measure("no-collider-1").AssetId);
+        else Assert.True(control.Service.SetHeights("no-collider", 0, 1, dryRun: false).Applied);
+    }
+
+    [Fact]
+    public void MissingPlacement_IdentifiesTheReferenceAndPreservesContent()
+    {
+        using var f = new NativeCollisionToolFixture();
+        string before = Content(f);
+        var error = Assert.Throws<MapDocumentException>(() => f.Service.Measure("missing-placement"));
+        Assert.Equal(MapDocumentRefusal.ReferenceMissing, error.Reason);
+        Assert.Equal("missing-placement", error.PlacementId);
+        Assert.Equal(before, Content(f));
+        Assert.Equal("lone-box", f.Service.Measure("lone-1").AssetId);
+    }
+
+    [Theory]
+    [InlineData(float.NaN, 1f, MapDocumentRefusal.ValueNonfinite, "bottom")]
+    [InlineData(0f, float.PositiveInfinity, MapDocumentRefusal.ValueNonfinite, "top")]
+    [InlineData(1f, 1f, MapDocumentRefusal.BoundsInvalid, "top")]
+    [InlineData(2f, 1f, MapDocumentRefusal.BoundsInvalid, "top")]
+    public void InvalidHeights_SelectTheFirstFailedBranchAndPreserveContent(float bottom, float top,
+        MapDocumentRefusal reason, string field)
+    {
+        using var f = new NativeCollisionToolFixture();
+        byte[] before = f.ReadAssetDirectoryDigest();
+        string content = Content(f);
+        var history = f.Session.NativeHistoryState;
+        var error = Assert.Throws<MapDocumentException>(() => f.Service.SetHeights("lone-box", bottom, top, dryRun: false));
+        Assert.Equal(reason, error.Reason);
+        Assert.Equal("lone-box", error.AssetId);
+        Assert.Equal(field, error.FieldPath);
+        Assert.Equal(field == "bottom" ? (double)bottom : top, error.ActualNumber);
+        Assert.Equal(before, f.ReadAssetDirectoryDigest());
+        Assert.Equal(content, Content(f));
+        Assert.Equal(history, f.Session.NativeHistoryState);
+        Assert.True(f.Service.SetHeights("lone-box", 0f, 1f, dryRun: false).Applied);
+    }
+
+    [Theory]
+    [InlineData(float.PositiveInfinity, 1f, MapDocumentRefusal.ValueNonfinite, "Position.Y")]
+    [InlineData(0f, float.PositiveInfinity, MapDocumentRefusal.ValueNonfinite, "HalfExtents.Y")]
+    [InlineData(0f, 0f, MapDocumentRefusal.ValueOutsideRange, "HalfExtents.Y")]
+    public void ResizedBoxAdmission_ReportsTheActualComputedField(float position, float halfHeight,
+        MapDocumentRefusal reason, string field)
+    {
+        var error = Assert.Throws<MapDocumentException>(() =>
+            NativeColliderAdmission.RequireFiniteResizedBoxForTests("box", 2, position, halfHeight));
+        Assert.Equal(reason, error.Reason);
+        Assert.Equal("box", error.AssetId);
+        Assert.Equal(2, error.Index);
+        Assert.Equal(field, error.FieldPath);
+        Assert.Equal((double)(field == "Position.Y" ? position : halfHeight), error.ActualNumber);
+        NativeColliderAdmission.RequireFiniteResizedBoxForTests("box", 2, 0f, 1f);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void PublishedPlanAdmission_IdentifiesTheFirstMismatchingResource(bool manifest)
+    {
+        var collider = new MapAssetRef("collider", "collider.coll", new string('a', 64), 1);
+        var root = new MapAssetRef("root", "root.json", new string('b', 64), 1);
+        var different = (manifest ? root : collider) with { Sha256 = new string('c', 64) };
+        var error = Assert.Throws<MapDocumentException>(() => NativeColliderAdmission.RequirePublishedColliderPlanForTests(
+            "box", collider, root, manifest ? collider : different, manifest ? different : root));
+        Assert.Equal(MapDocumentRefusal.ToolColliderPublicationMismatch, error.Reason);
+        Assert.Equal("box", error.AssetId);
+        Assert.Equal(manifest ? root.Id : collider.Id, error.ResourceId);
+        Assert.Equal(manifest ? root.Sha256 : collider.Sha256, error.ExpectedHash);
+        Assert.Equal(different.Sha256, error.ActualHash);
+        NativeColliderAdmission.RequirePublishedColliderPlanForTests("box", collider, root, collider, root);
+    }
+
+    static string Content(NativeCollisionToolFixture fixture) => fixture.Session.WithDocument((doc, registry) =>
+        MapDocumentFile.SaveText(doc, registry));
 
     [Fact]
     public void LoneBox_BecomesACompoundAtTheRequestedHeights()

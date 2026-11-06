@@ -1976,7 +1976,7 @@ their joined diagnostic text.
 | `WaterBodiesPreventLegacyMode` | Switching to legacy global water while bounded bodies remain | `FieldPath`, `ActualCount` |
 | `DocumentHashSchemeUnsupported` | Whole authored identity or window loading under an unsupported pinned tile hash scheme | `FieldPath`, `ActualVersion`, owned `SupportedVersions` for identity or `ExpectedVersion` for window loading, source context |
 | `StoragePatchKeyMismatch` | A surface dictionary entry whose key differs from its payload key | dictionary `ExpectedPatch`, payload `Patch` |
-| `StorageSaveSnapshotChanged` | A prepared surface payload changed before its write | `Patch`, prepared `ExpectedHash`, encoded `ActualHash` |
+| `StorageSaveSnapshotChanged` | A prepared surface payload changed before the first persistent write, leaving saved content untouched | `Patch`, prepared `ExpectedHash`, encoded `ActualHash` |
 | `StorageEmbeddingChanged` | An embedded payload whose encoded length changed after measurement | `ExpectedByteCount`, `ActualByteCount` |
 | `StorageReadChanged` | Additional bytes after a surface storage read's captured length | `ExpectedHash`, `ExpectedByteCount`, minimum observed `ActualByteCount`, `FieldPath` `ByteCount` |
 | `StorageDirectoryPagesOverlap` | Overlapping surface storage page covers | `FieldPath`, `SurfaceId`, `Index`, `OtherIndex` |

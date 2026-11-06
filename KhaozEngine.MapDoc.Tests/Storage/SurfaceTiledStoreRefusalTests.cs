@@ -80,12 +80,15 @@ public sealed class SurfaceTiledStoreRefusalTests
     [Fact]
     public void ChangedPreparedPayload_ReportsBothDigestsBeforeWriting()
     {
-        MapDocument doc = SurfaceStorageFixtures.FlatPatches(1);
+        MapDocument doc = SurfaceStorageFixtures.FlatPatches(2);
         string root = SurfaceStorageFixtures.SaveToTemp(doc);
         try
         {
+            // W6-D2d regression: the first payload is new, while a later snapshot is refused.
+            doc.Surfaces.Patches.Values.First().Heights[0]++;
             MapSurfaceTiledStore.Prepared prepared = MapSurfaceTiledStore.Prepare(doc, root, null);
-            var payload = Assert.Single(prepared.Payloads);
+            Assert.Equal(2, prepared.Payloads.Count);
+            var payload = prepared.Payloads[1];
             payload.Patch.Heights[0]++;
             string changed = MapSurfaceStorageLayout.Digest(MapSurfacePatchCodec.Encode(payload.Patch));
             var before = AssertFixtures.Files(root);

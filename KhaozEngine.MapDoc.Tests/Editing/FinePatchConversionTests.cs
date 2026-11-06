@@ -130,13 +130,19 @@ public sealed class FinePatchConversionTests
     [Theory, InlineData(2, MapCellConversionClass.ExactCoplanar), InlineData(3, MapCellConversionClass.UnsupportedEncoding)]
     public void Conversion_CoplanarCornerCutPaintNeedsAnEvenSubdivision(int k, MapCellConversionClass expected)
     {
-        var coarse = ConversionFixtures.Coarse(ConversionFixtures.Slopes(MapOverlayCut.CornerQuarter, coplanarCentre: true));
+        var input = ConversionFixtures.Slopes(MapOverlayCut.CornerQuarter, coplanarCentre: true);
+        var coarse = ConversionFixtures.Coarse(input);
         MapCellConversion c = MapConversionClassifier.Classify(coarse.Surface, coarse.Patch, 1, 1, k);
         Assert.Equal(expected, c.Class);
         if (expected == MapCellConversionClass.UnsupportedEncoding)
         {
             Assert.Equal(MapDocumentRefusal.TerrainCornerCutSubdivisionOdd, c.Finding?.Reason);
             Assert.Equal(k, c.Finding?.ActualInteger);
+            var before = Digests(input);
+            var error = Assert.Throws<MapDocumentException>(() => Convert(input, ConversionFixtures.Request(k, false)));
+            Assert.Equal(MapDocumentRefusal.TerrainCornerCutSubdivisionOdd, error.Reason);
+            Assert.Equal(before, Digests(input));
+            Assert.Equal(MapCellConversionClass.ExactCoplanar, Assert.Single(Convert(input, ConversionFixtures.Request(2, false)).Cells).Class);
             Assert.Equal(MapCellConversionClass.ExactCoplanar,
                 MapConversionClassifier.Classify(coarse.Surface, coarse.Patch, 1, 1, 2).Class);
         }

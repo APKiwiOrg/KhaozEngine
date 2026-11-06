@@ -371,6 +371,27 @@ Empty conversion rectangles use `BoundsInvalid` and the region's `Index`. Interi
 interior and `OperationKindUnsupported` for an unknown edit. Known record and space identities remain
 structured on each refusal. The original messages and admission points are unchanged.
 
+Terrain preparation also forwards complete topology, seam and patch-local findings. Its direct guards
+preserve the same source set on refusal. Edit rectangles use `TerrainEditRegionOutOfBounds` with
+`Patch`, patch-local `CellX` and `CellZ`, `Width` and `Depth`. Slot-domain failures carry `ActualInteger`
+and `FieldPath = "SlotCells"`, while an in-domain slot outside the authored patch retains
+`SurfaceAddressOutOfPatch`. Mismatched height or cell arrays use `SchemaArrayLengthMismatch`, the
+failed field and actual and expected counts.
+
+| Reason | Refused terrain rule | Identifiers when known |
+| --- | --- | --- |
+| `TerrainEditRegionOutOfBounds` | An edit rectangle or presence slot lies outside its domain | `Patch`, `CellX`, `CellZ`, `Width`, `Depth`, `ActualInteger`, `FieldPath` |
+| `TerrainOwnerChangeStale` | The expected old corner owner no longer matches | Dependent `Patch`, `CellX`, `CellZ`, expected owner's `ExpectedPatch`, actual owner's `Address` |
+| `TerrainSmoothingHaloUnavailable` | A smoothing halo corner is outside the surface or unloaded | `Patch`, world-corner `Address` |
+| `TerrainTopologyWritesConflict` | The same topology identity is both upserted and removed | `FieldPath` |
+
+Owner self-address disagreement reuses `SurfaceSeamPositionMismatch`, with the dependent patch,
+local corner and submitted owner `Address`. Disagreeing incident smoothing heights reuse
+`GeometryVertexHeightMismatch`, with `Patch`, world-corner `Address` and smoothing `Operation`.
+Duplicate owner changes or topology writes use `IdentityDuplicate`, selecting the first failed
+predicate branch before a conflicting-write reason. Missing edit patches use `ReferenceMissing`
+with `Patch` and `SurfaceId`. Unknown edit types use `OperationKindUnsupported` with `Operation`.
+
 **Generation pinning and acquisitions.** A `MapStoredSurfaceSource` pins one manifest generation until it is
 reopened. `MapScopedSurfaces` is a further step: it publishes a detached, immutable set of acquired facts,
 so no later read touches the producer, even one pinned to the same generation.

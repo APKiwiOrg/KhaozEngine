@@ -16,15 +16,18 @@ internal static class MapTerrainTopologyEdits
         foreach (MapCornerOwnerChange change in edit.Changes)
         {
             if (!seen.Add((change.Dependent, change.CornerX, change.CornerZ)))
-                throw new MapDocumentException("duplicate corner owner change");
+                throw new MapDocumentException(MapDocumentRefusal.IdentityDuplicate, "duplicate corner owner change")
+                    { Patch = change.Dependent, CellX = change.CornerX, CellZ = change.CornerZ, SubjectKind = "corner owner change" };
             MapSurfacePatch patch = MapTerrainEdits.Patch(set, change.Dependent);
             MapLatticeAddress address = patch.CornerAddress(change.CornerX, change.CornerZ);
             int index = patch.CornerDependencies.FindIndex(d => d.CornerX == change.CornerX && d.CornerZ == change.CornerZ);
             MapVertexOwner? old = index < 0 ? null : patch.CornerDependencies[index].Owner;
-            if (old != change.OldOwner) throw new MapDocumentException("corner owner change has a stale old owner");
+            if (old != change.OldOwner) throw new MapDocumentException(MapDocumentRefusal.TerrainOwnerChangeStale, "corner owner change has a stale old owner")
+                { Patch = change.Dependent, CellX = change.CornerX, CellZ = change.CornerZ, ExpectedPatch = change.OldOwner?.Patch, Address = old?.Address };
             ArgumentNullException.ThrowIfNull(change.NewOwner);
             bool owns = change.NewOwner.Patch == patch.Key;
-            if (owns && change.NewOwner.Address != address) throw new MapDocumentException("corner owner has the wrong self address");
+            if (owns && change.NewOwner.Address != address) throw new MapDocumentException(MapDocumentRefusal.SurfaceSeamPositionMismatch, "corner owner has the wrong self address")
+                { Patch = patch.Key, CellX = change.CornerX, CellZ = change.CornerZ, Address = change.NewOwner.Address };
             if (index >= 0) patch.CornerDependencies.RemoveAt(index);
             if (!owns) patch.CornerDependencies.Add(new(change.CornerX, change.CornerZ, change.NewOwner));
         }
@@ -36,10 +39,15 @@ internal static class MapTerrainTopologyEdits
         ArgumentNullException.ThrowIfNull(edit.RemovePatches);
         ArgumentNullException.ThrowIfNull(edit.UpsertSurfaces);
         ArgumentNullException.ThrowIfNull(edit.RemoveSurfaces);
-        if (edit.UpsertPatches.Select(p => p.Key).Distinct().Count() != edit.UpsertPatches.Count ||
-            edit.RemovePatches.Distinct().Count() != edit.RemovePatches.Count ||
+        bool duplicateUpsert, duplicateRemove = false;
+        if ((duplicateUpsert = edit.UpsertPatches.Select(p => p.Key).Distinct().Count() != edit.UpsertPatches.Count) ||
+            (duplicateRemove = edit.RemovePatches.Distinct().Count() != edit.RemovePatches.Count) ||
             edit.UpsertPatches.Any(p => edit.RemovePatches.Contains(p.Key)))
-            throw new MapDocumentException("duplicate or conflicting topology patch writes");
+        {
+            throw new MapDocumentException(duplicateUpsert || duplicateRemove ? MapDocumentRefusal.IdentityDuplicate
+                : MapDocumentRefusal.TerrainTopologyWritesConflict, "duplicate or conflicting topology patch writes")
+            { FieldPath = duplicateUpsert ? "UpsertPatches" : duplicateRemove ? "RemovePatches" : "UpsertPatches/RemovePatches" };
+        }
         if (edit.UpsertSurfaces.Select(s => s.Id).Distinct(StringComparer.Ordinal).Count() != edit.UpsertSurfaces.Count ||
             edit.RemoveSurfaces.Distinct(StringComparer.Ordinal).Count() != edit.RemoveSurfaces.Count ||
             edit.UpsertSurfaces.Any(s => edit.RemoveSurfaces.Contains(s.Id, StringComparer.Ordinal)))
@@ -69,7 +77,7 @@ internal static class MapTerrainTopologyEdits
         foreach (MapSurfacePatch supplied in edit.UpsertPatches.OrderBy(p => p.Key))
         {
             MapSurfacePatch patch = supplied.Clone();
-            MapTerrainEdits.RequireValid(patch.ValidateLocal());
+            MapTerrainEdits.RequireValid(patch.ValidateLocalFindings());
             for (int z = 0; z <= patch.Depth; z++)
                 for (int x = 0; x <= patch.Width; x++)
                 {

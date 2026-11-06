@@ -32,7 +32,17 @@ public sealed class TerrainEditsTests
     }
     [Fact]
     public void Smooth_RefusesAMissingHalo()
-        => Assert.Throws<MapDocumentException>(() => Prepare(TerrainEditFixtures.Bump(), new MapSmoothCorners(TerrainEditFixtures.BumpKey, 0, 0, 1, 1, 1)));
+    {
+        var set = TerrainEditFixtures.Bump();
+        var before = TerrainEditFixtures.Digest(set);
+        var error = Assert.Throws<MapDocumentException>(() => Prepare(set, new MapSmoothCorners(TerrainEditFixtures.BumpKey, 0, 0, 1, 1, 1)));
+        Assert.Equal(MapDocumentRefusal.TerrainSmoothingHaloUnavailable, error.Reason);
+        Assert.Equal(TerrainEditFixtures.BumpKey, error.Patch);
+        Assert.Equal(MapLatticeAddress.Corner(-1, -1), error.Address);
+        Assert.Equal(before, TerrainEditFixtures.Digest(set));
+        // For the control, smooth an interior corner whose entire halo is already captured.
+        Assert.NotNull(Prepare(set, new MapSmoothCorners(TerrainEditFixtures.BumpKey, 1, 1, 1, 1, 1)));
+    }
     [Theory, InlineData("heights", MapNativeInvalidation.Terrain | MapNativeInvalidation.Physics | MapNativeInvalidation.Nav | MapNativeInvalidation.Residency),
      InlineData("ids", MapNativeInvalidation.Terrain | MapNativeInvalidation.Material),
      InlineData("cut", MapNativeInvalidation.Terrain | MapNativeInvalidation.Physics | MapNativeInvalidation.Nav | MapNativeInvalidation.Material | MapNativeInvalidation.Residency)]

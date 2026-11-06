@@ -12725,6 +12725,16 @@ with `RecordId`. Standalone interior alias replacement uses `InteriorAliasUnsupp
 `SpaceId` and the alias target's `RelatedRecordId`. Other interior guards reuse ownership, reference,
 value and operation reasons with the identities known at admission.
 
+Terrain edits retain complete ordered producer findings and the unchanged source on refusal.
+`TerrainEditRegionOutOfBounds` carries the patch and submitted rectangle, or the out-of-domain presence
+slot. `TerrainOwnerChangeStale` identifies the dependent patch and corner and known old-owner context.
+`TerrainSmoothingHaloUnavailable` identifies the required world corner through `Address`.
+`TerrainTopologyWritesConflict` distinguishes conflicting patch writes from `IdentityDuplicate`.
+Owner self-address mismatches reuse `SurfaceSeamPositionMismatch`, while disagreeing incident halo
+heights reuse `GeometryVertexHeightMismatch`. These reuse the same rules as seam and shared-corner
+admission. Height and cell count mismatches use `SchemaArrayLengthMismatch` with the failed field and
+actual and expected counts. Plain smoothing iteration parameter checks remain BCL exceptions.
+
 Root, manifest, tile and prefab schema admission also preserves `MapDocumentException`. Its reasons distinguish
 `SchemaMemberUnknown`, `SchemaMemberDuplicate`, `SchemaMemberMissing`, `SchemaMemberNull`,
 `SchemaObjectRequired`, `SchemaValueRequired` and `SchemaMalformed`. Closed-member failures carry a JSON

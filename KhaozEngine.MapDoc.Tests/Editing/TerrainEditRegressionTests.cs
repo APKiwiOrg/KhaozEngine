@@ -83,10 +83,14 @@ public sealed class TerrainEditRegressionTests
     {
         MapSurfaceSet set = FourPatches((_, _) => 500);
         set.Patches[Tile(0, 1)].Heights[63] = 501;
-        string message = Assert.Throws<MapDocumentException>(() =>
-            Prepare(set, new MapSmoothCorners(Tile(1, 1), 0, 0, 1, 1, 1))).Message;
-        Assert.Contains("halo", message);
-        Assert.Contains("ambiguous", message);
+        var before = TerrainEditFixtures.Digest(set);
+        var error = Assert.Throws<MapDocumentException>(() =>
+            Prepare(set, new MapSmoothCorners(Tile(1, 1), 0, 0, 1, 1, 1)));
+        Assert.Equal(MapDocumentRefusal.GeometryVertexHeightMismatch, error.Reason);
+        Assert.Equal(MapLatticeAddress.Corner(63, 64), error.Address);
+        Assert.Equal(before, TerrainEditFixtures.Digest(set));
+        set.Patches[Tile(0, 1)].Heights[63] = 500;
+        Assert.Equal(500, Prepare(set, new MapSmoothCorners(Tile(1, 1), 0, 0, 1, 1, 1)).Candidate.Patches[Tile(1, 1)].Height(0, 0));
     }
 
     [Fact]
@@ -121,7 +125,13 @@ public sealed class TerrainEditRegressionTests
     {
         MapSurfaceSet set = TerrainEditFixtures.Bump();
         int count = Math.Max(0, width) * Math.Max(0, depth);
-        Assert.Throws<MapDocumentException>(() => Prepare(set, new MapSetCornerHeights(Bump, x, z, width, depth, new int[count])));
+        var before = TerrainEditFixtures.Digest(set);
+        var error = Assert.Throws<MapDocumentException>(() => Prepare(set, new MapSetCornerHeights(Bump, x, z, width, depth, new int[count])));
+        Assert.Equal(MapDocumentRefusal.TerrainEditRegionOutOfBounds, error.Reason);
+        Assert.Equal((x, z, width, depth), (error.CellX, error.CellZ, error.Width, error.Depth));
+        Assert.Equal(before, TerrainEditFixtures.Digest(set));
+        // The final corner at (Width, Depth) is accepted, with the smallest nonempty region.
+        Assert.NotNull(Prepare(set, new MapSetCornerHeights(Bump, 4, 4, 1, 1, [0])));
     }
 
     [Theory, InlineData(3), InlineData(5)]

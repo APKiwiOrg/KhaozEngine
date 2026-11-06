@@ -192,6 +192,14 @@ public enum MapDocumentRefusal
     ContextDemandUnprepared,
 
     // Fine conversion and terrain editing.
+    /// <summary>Refuses topology replacement that upserts and removes the same patch or surface.</summary>
+    TerrainTopologyWritesConflict,
+    /// <summary>Refuses a terrain edit region outside its patch rectangle.</summary>
+    TerrainEditRegionOutOfBounds,
+    /// <summary>Refuses a corner owner change whose expected old owner is stale.</summary>
+    TerrainOwnerChangeStale,
+    /// <summary>Refuses smoothing when a required halo corner is outside the surface or unloaded.</summary>
+    TerrainSmoothingHaloUnavailable,
     /// <summary>Refuses fine conversion without any selected region.</summary>
     TerrainConversionRegionsMissing,
     /// <summary>Refuses overlapping fine-conversion regions.</summary>

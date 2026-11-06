@@ -1601,8 +1601,26 @@ and `Limit`. `ActualByteCount` is present only when the reader or writer knows t
 Early text and collection checks instead retain `ActualCount` and the local `FieldPath` when known.
 An array beyond its own count cap uses that field name as `Budget`, with its `ActualCount` and `Limit`.
 
+Water edits report missing body or medium identities with `ReferenceMissing`, `EntityId` and
+`SubjectKind`. An unsupported edit reports `OperationKindUnsupported` with `Operation` and its runtime
+`ActualText`. Containment distinguishes an absent cover (`ReferenceMissing`) from a present cover of
+another type (`ReferenceKindMismatch`), retaining `RecordId`, `Patch`, `PatchStatus` when known and
+`ExpectedRecordType`. The latter also carries `RecordType`.
+`MapWaterContainmentReport.Findings` is an owned read-only snapshot of known typed refusals in report
+order. It carries the original reason and identifiers through caught failures and adds the water body
+as `OwnerId`. Surface-level arithmetic refusals retain body `EntityId`, `FieldPath` and `ActualNumber`.
+Alias traversal retains `SpaceAliasCycle` with `SpaceId`, `RecordId` and `Patch`. Untyped upstream
+failures still appear in `Errors`. Compiler, containment and query status classification keeps its
+existing prose predicates until every upstream producer supplies a typed finding.
+
 | Reason | Refused rule | Identifiers when known |
 | --- | --- | --- |
+| `WaterBodiesPreventLegacyMode` | Switching to legacy global water while bounded bodies remain | `FieldPath`, `ActualCount` |
+| `WaterBoundedModeRequired` | A water edit while bounded water is off | `FieldPath` |
+| `WaterMediumInUse` | Removing a medium still used by a body | using body `EntityId`, medium key `ActualText`, `FieldPath` |
+| `WaterCoversAlias` | Covering a space alias instead of its owner | body `EntityId`, alias `RecordId`, owner `SpaceId`, `Patch` |
+| `WaterNoSpaceFootprint` | A domain meeting no covered footprint with positive area | body `EntityId`, covered `SourceIds` |
+| `WaterSpacesDisconnected` | Covered spaces without a connection strictly below the surface | body `EntityId`, covered `SourceIds` |
 | `WaterDomainEmpty` | A domain with no rectangle or ring pieces | `FieldPath`, `ActualCount`, effective body `EntityId` |
 | `WaterDomainZeroArea` | A domain piece whose vertices are collinear | `FieldPath`, `SubjectKind`, `Index`, effective body `EntityId` |
 | `WaterDomainSelfIntersects` | A ring with intersecting edges or a fold back | `FieldPath`, `SubjectKind`, `Index`, effective body `EntityId` |

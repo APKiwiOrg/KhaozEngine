@@ -367,6 +367,20 @@ public enum MapDocumentRefusal
     /// <summary>Refuses an explicit null foliage section.</summary>
     FoliageSectionNull,
 
+    // Water editing and containment.
+    /// <summary>Refuses legacy global water while bounded bodies remain.</summary>
+    WaterBodiesPreventLegacyMode,
+    /// <summary>Refuses a water edit when bounded water is off.</summary>
+    WaterBoundedModeRequired,
+    /// <summary>Refuses removal of a medium used by a water body.</summary>
+    WaterMediumInUse,
+    /// <summary>Refuses a water body covering an alias instead of its owner.</summary>
+    WaterCoversAlias,
+    /// <summary>Refuses a water domain meeting no covered space footprint.</summary>
+    WaterNoSpaceFootprint,
+    /// <summary>Refuses covered spaces without a connection below the water surface.</summary>
+    WaterSpacesDisconnected,
+
     // Water domain admission.
     /// <summary>Refuses a water domain with no rectangle or ring pieces.</summary>
     WaterDomainEmpty,

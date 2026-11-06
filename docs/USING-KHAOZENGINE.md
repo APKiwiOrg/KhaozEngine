@@ -12436,6 +12436,14 @@ the concrete reason, water-relative `FieldPath` and known scalar identifiers. Do
 the same reason and identifiers into `MapDocumentException`. Canonical decimal failures retain
 `ActualText` and signed integer limits, and unsupported enum text retains `EnumType` and `ActualText`.
 
+Water edits distinguish `WaterBodiesPreventLegacyMode`, `WaterBoundedModeRequired` and
+`WaterMediumInUse`. Missing body or medium identities use `ReferenceMissing`. Containment adds known
+typed refusals in the owned read-only `MapWaterContainmentReport.Findings` snapshot, retaining cover
+record identities and the body context. `WaterCoversAlias`, `WaterNoSpaceFootprint` and
+`WaterSpacesDisconnected` name the authored rules. Caught typed causes keep their original
+identifiers and add body `OwnerId`. The released `Complete`, `Errors` and downstream status
+classifications remain unchanged. Untyped upstream failures remain in `Errors` during producer closure.
+
 `MapWaterQuery(view, document.Water)` captures the water set and digest. `Sample(point)` returns a wet
 interval only when the point's occupied space is covered, its XZ is in the body domain and
 `lowerY <= y < min(surfaceY, upperY)` in exact arithmetic. `Column(point)` returns wet intervals at that

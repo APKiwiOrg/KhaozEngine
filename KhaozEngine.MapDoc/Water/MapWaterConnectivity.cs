@@ -64,11 +64,14 @@ internal sealed class MapWaterConnectivity
     /// <summary>Whether <paramref name="covered"/> forms one set over the edges joining two of its spaces whose exact
     /// aperture bottom is strictly below <paramref name="surface"/>. An edge with one endpoint outside the set is
     /// skipped, and <paramref name="read"/> collects the record anchors of every edge evaluated. An edge whose geometry
-    /// is definitely invalid adds an error under <paramref name="label"/> and joins nothing. Returns why an edge that
+    /// is definitely invalid adds an error for <paramref name="bodyId"/> and joins nothing. Returns why an edge that
     /// could join the set could not be evaluated, or null.</summary>
-    internal string? Join(string label, MapExactValue surface, IReadOnlyList<string> covered, List<string> errors, out bool connected,
+    internal string? Join(string bodyId, MapExactValue surface, IReadOnlyList<string> covered, List<string> errors,
+        List<MapDocumentFinding> findings, out bool connected, out MapDocumentFinding? unknownFinding,
         ISet<MapPatchKey>? read = null, ISet<MapRecordRef>? records = null)
     {
+        string label = $"water body '{bodyId}'";
+        MapDocumentFinding? unknownCause = null;
         var adjacency = covered.ToDictionary(id => id, _ => new List<string>(), StringComparer.Ordinal);
         var candidates = new SortedSet<int>(_unresolved);
         foreach (string id in covered)
@@ -82,6 +85,7 @@ internal sealed class MapWaterConnectivity
             foreach (string next in adjacency[current])
                 if (reached.Add(next)) pending.Enqueue(next);
         connected = reached.Count == adjacency.Count;
+        unknownFinding = unknownCause;
         return unknown;
 
         void Evaluate(Edge edge)
@@ -93,7 +97,7 @@ internal sealed class MapWaterConnectivity
             if (edge.From.Error is { } fromError && edge.To.Error is not null)
             {
                 // With both endpoints unresolved the edge may join any spaces, so it leaves every disconnected body unknown.
-                unknown ??= $"{edge.Relation} (space '{edge.FromRef.Id}' {fromError.Message})";
+                Unknown($"{edge.Relation} (space '{edge.FromRef.Id}' {fromError.Message})", MapDocumentFinding.FromException(fromError));
                 return;
             }
             if ((edge.From.Error ?? edge.To.Error) is { } error)
@@ -105,7 +109,9 @@ internal sealed class MapWaterConnectivity
             if (records is not null)
                 foreach (var source in edge.Provenance)
                 { records.Add(source); read?.Add(source.Anchor); }
-            if (edge.Overflow) unknown ??= $"{edge.Relation} is not representable";
+            if (edge.Overflow) Unknown($"{edge.Relation} is not representable",
+                new(MapDocumentRefusal.GeometryNotRepresentable, $"{edge.Relation} is not representable")
+                { RecordId = edge.Aperture.Id, Patch = edge.Aperture.Anchor });
             else if (edge.Error is { } apertureError) Fail(edge.Relation, apertureError);
             else if (edge.BottomY!.Value.CompareTo(surface) < 0)
             {
@@ -116,8 +122,21 @@ internal sealed class MapWaterConnectivity
 
         void Fail(string what, MapDocumentException error)
         {
-            if (MapWaterContainment.Invalid(error)) errors.Add($"{label}: {what} is invalid ({error.Message})");
-            else unknown ??= $"{what} ({error.Message})";
+            var finding = MapDocumentFinding.FromException(error);
+            if (MapWaterContainment.Invalid(error))
+            {
+                string message = $"{label}: {what} is invalid ({error.Message})";
+                errors.Add(message);
+                if (finding is not null) findings.Add(finding with { Message = message, OwnerId = bodyId });
+            }
+            else Unknown($"{what} ({error.Message})", finding);
+        }
+
+        void Unknown(string message, MapDocumentFinding? finding)
+        {
+            if (unknown is not null) return;
+            unknown = message;
+            unknownCause = finding;
         }
     }
 
@@ -149,7 +168,8 @@ internal sealed class MapWaterConnectivity
             var seen = new HashSet<string>(StringComparer.Ordinal);
             while (space.AliasOf is { } alias)
             {
-                if (!seen.Add(space.Id)) throw new MapDocumentException("invalid space alias cycle");
+                if (!seen.Add(space.Id)) throw new MapDocumentException(MapDocumentRefusal.SpaceAliasCycle, "invalid space alias cycle")
+                { SpaceId = space.Id, RecordId = space.Id, Patch = owner.Anchor };
                 owner = alias;
                 space = MapSpaceGeometry.Record<MapSpaceDoc>(_view, alias);
             }

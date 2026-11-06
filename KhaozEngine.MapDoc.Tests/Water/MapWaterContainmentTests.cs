@@ -91,6 +91,31 @@ public class MapWaterContainmentTests
         Assert.Contains(report.Errors, e => e.Contains("water body 'ocean': covered spaces are not connected below its surface", StringComparison.Ordinal));
     }
 
+    [Theory]
+    [InlineData(1f)]
+    [InlineData(null)]
+    public void PreparedOccupiedBody_RetainsDisconnectedSpacesAndAcceptsAWetPortal(float? portalBottomY)
+    {
+        var doc = WaterFixtures.SeaConnectedCave(portalBottomY);
+        var view = CaveFixtures.View(doc);
+        var body = Assert.Single(doc.Water!.Bodies);
+        var domain = MapWaterDomain.Compile(body.Domain);
+        var prepared = new MapWaterContainment.Prepared(MapExactValue.FromSingle(body.SurfaceY), domain, Empty,
+            new MapWaterWorkBudget(), new HashSet<MapPatchKey>(),
+            id => MapWaterOccupiedPieces.Of(view, id, domain.Min, domain.Max, new()));
+        MapWaterConnectivity? graph = null;
+        var report = MapWaterContainment.ValidateBody(view, body, prepared, ref graph);
+        Assert.True(report.Complete);
+        var finding = Assert.Single(report.Findings);
+        Assert.Equal(MapDocumentRefusal.WaterSpacesDisconnected, finding.Reason);
+        Assert.Equal(body.Id, finding.EntityId);
+        Assert.Equal(new[] { "sea", "grotto" }, finding.SourceIds);
+        Assert.Empty(Check(WaterFixtures.SeaConnectedCave(-5f)).Errors);
+
+        static IReadOnlyList<MapWaterFootprintRect> Empty(string _, out bool complete)
+        { complete = true; return []; }
+    }
+
     // Scoped acquisition never follows a space's relation lists, so a view without the portal cannot prove the covered
     // spaces apart, whether the portal is listed on the covers or only on their aliases.
     [Theory]
@@ -161,11 +186,79 @@ public class MapWaterContainmentTests
     }
 
     [Theory]
-    [InlineData("domain-off-footprint", "water body 'ocean' covers no space footprint")]
-    [InlineData("missing-cover", "water body 'ocean': cover 'nowhere' is not a space")]
-    [InlineData("alias-cover", "water body 'ocean': cover 'sea-alias' is an alias")]
-    public void BadCovers_Refuse(string variant, string message) =>
-        Assert.Contains(Check(WaterFixtures.Broken(variant)).Errors, e => e.Contains(message, StringComparison.Ordinal));
+    [InlineData("domain-off-footprint", MapDocumentRefusal.WaterNoSpaceFootprint)]
+    [InlineData("missing-cover", MapDocumentRefusal.ReferenceMissing)]
+    [InlineData("alias-cover", MapDocumentRefusal.WaterCoversAlias)]
+    public void BadCovers_Refuse(string variant, MapDocumentRefusal reason)
+    {
+        var doc = WaterFixtures.Broken(variant);
+        string before = doc.Water!.Digest();
+        var finding = Assert.Single(Check(doc).Findings);
+        Assert.Equal(reason, finding.Reason);
+        Assert.Equal("ocean", finding.EntityId);
+        if (variant == "missing-cover") Assert.Equal("nowhere", finding.RecordId);
+        if (variant == "alias-cover") Assert.Equal("sea-alias", finding.RecordId);
+        Assert.Equal(before, doc.Water.Digest());
+        var valid = WaterFixtures.OceanOverCaves().Water!;
+        int ocean = doc.Water.Bodies.FindIndex(b => b.Id == "ocean");
+        doc.Water.Bodies[ocean] = valid.Bodies.Single(b => b.Id == "ocean");
+        Assert.Empty(Check(doc).Errors);
+    }
+
+    [Fact]
+    public void CoverOfWrongKind_ReportsItsRecordTypeAndAcceptsTheSpace()
+    {
+        var doc = WaterFixtures.OceanOverCaves();
+        int ocean = doc.Water!.Bodies.FindIndex(b => b.Id == "ocean");
+        var body = doc.Water.Bodies[ocean];
+        var cover = body.Covers[0];
+        var footprint = doc.Surfaces.Patches[cover.Anchor].Records.OfType<MapSpaceFootprint>().First();
+        doc.Water.Bodies[ocean] = body with { Covers = [new(footprint.Id, cover.Anchor)] };
+        string before = doc.Water.Digest();
+        var finding = Assert.Single(Check(doc).Findings);
+        Assert.Equal(MapDocumentRefusal.ReferenceKindMismatch, finding.Reason);
+        Assert.Equal(footprint.Id, finding.RecordId);
+        Assert.Equal(typeof(MapSpaceFootprint), finding.RecordType);
+        Assert.Equal(typeof(MapSpaceDoc), finding.ExpectedRecordType);
+        Assert.Equal(before, doc.Water.Digest());
+        doc.Water.Bodies[ocean] = body;
+        Assert.Empty(Check(doc).Errors);
+    }
+
+    [Fact]
+    public void UnrepresentableLevel_RetainsItsBodyAndAcceptsAnExactLevel()
+    {
+        var doc = WaterFixtures.Broken("tiny-level");
+        string before = doc.Water!.Digest();
+        var finding = Assert.Single(Check(doc).Findings);
+        Assert.Equal(MapDocumentRefusal.GeometryNotRepresentable, finding.Reason);
+        Assert.Equal("ocean", finding.EntityId);
+        Assert.Equal("SurfaceY", finding.FieldPath);
+        Assert.Equal((double)1e-20f, finding.ActualNumber);
+        Assert.Equal(before, doc.Water.Digest());
+        int ocean = doc.Water.Bodies.FindIndex(b => b.Id == "ocean");
+        doc.Water.Bodies[ocean] = doc.Water.Bodies[ocean] with { SurfaceY = 0 };
+        Assert.Empty(Check(doc).Errors);
+    }
+
+    [Fact]
+    public void CyclicPortalAlias_RetainsTheSpaceRefusalAndAcceptsTheOwner()
+    {
+        var doc = WaterFixtures.SeaConnectedCaveThroughAliases("sea");
+        var anchor = doc.Surfaces.Patches.Values.Single(p => p.Records.Any(r => r.Id == "sea-alias"));
+        int index = anchor.Records.FindIndex(r => r.Id == "sea-alias");
+        var alias = (MapSpaceDoc)anchor.Records[index];
+        anchor.Records[index] = alias with { AliasOf = new(alias.Id, anchor.Key) };
+        var report = Check(doc);
+        Assert.True(report.Complete);
+        var finding = Assert.Single(report.Findings);
+        Assert.Equal(MapDocumentRefusal.SpaceAliasCycle, finding.Reason);
+        Assert.Equal(alias.Id, finding.SpaceId);
+        Assert.Equal("ocean", finding.OwnerId);
+        Assert.Equal(new MapRecordRef(alias.Id, anchor.Key), ((MapSpaceDoc)anchor.Records[index]).AliasOf);
+        anchor.Records[index] = alias;
+        Assert.Empty(Check(doc).Errors);
+    }
 
     // A view built from the whole document lists every declared surface, so an anchor on an undeclared surface is absent.
     [Fact]

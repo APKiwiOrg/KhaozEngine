@@ -182,8 +182,15 @@ public sealed class MapPrefabFormatTests
         int calls = 0;
         var error = Assert.Throws<MapDocumentException>(() => MapResolver.Resolve(f.Document, f.Assets,
             (_, _) => { calls++; return 0; }, new("fixture", 1, "fixture")));
-        // W6-D3-02 closes this whole-document adapter after the W6-D1 producer family.
-        Assert.Contains("Prefab sections require resolver identity (1, 2) and AuthoredBindingsV2.", error.Message);
+        Assert.Equal(MapDocumentRefusal.ResolverContractMismatch, error.Reason);
+        Assert.Equal("prefab", error.SubjectKind);
+        Assert.Equal(1, error.PayloadVersion);
+        Assert.Equal(1, error.ResolverVersion);
+        Assert.Equal(2, error.ExpectedResolverVersion);
+        Assert.Equal(MapSupportRecipe.LegacyXzCallbackV1, error.SupportRecipe);
+        Assert.Equal(MapSupportRecipe.AuthoredBindingsV2, error.ExpectedSupportRecipe);
+        Assert.Equal("resolverIdentity", error.FieldPath);
+        Assert.NotEmpty(error.Findings!);
         Assert.Equal(0, calls);
         var finding = Assert.Throws<MapDocumentException>(() => MapPrefabValidation.RequireDocument(f.Document, f.Assets));
         Assert.Equal(MapDocumentRefusal.ResolverContractMismatch, finding.Reason);

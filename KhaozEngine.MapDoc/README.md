@@ -146,6 +146,18 @@ content. Storage paths, tile and page packing, embedding and incident index book
 whole identity. Equivalent complete in-memory, monolithic, tiled and repacked documents share one token.
 Resolver 1 continues to use `MapAuthoredIdentity`.
 
+Document load, validation and whole-save adapters retain the first typed finding and the complete ordered
+`Findings` snapshot. A future format version uses `DocumentVersionUnsupported` with `ActualVersion`,
+`SupportedVersions`, `SourceName` and `FieldPath`. Surface JSON setters use `MapSurfaceJsonException`
+(derived from `JsonException`) with `SchemaMemberNull` and `FieldPath` for null collections. Duplicate
+embedded keys use `IdentityDuplicate`, `Patch` and zero-based `Index`, all preserved by document wrapping.
+Placement transform guards select the first nonfinite X, Z, optional Y, yaw or scale before nonpositive
+scale, missing tags or a null tag. They report `ValueNonfinite`, `ValueOutsideRange` or `SchemaValueRequired`
+with `PlacementId`, the failed `FieldPath`, numeric value when applicable and null-tag `Index` when known.
+Scale remains strictly positive. Registry build failures use `DocumentTerrainFeatureUnknown` with the
+captured discriminator in `ActualText` and `FieldPath` `Type`. World hash ordering uses `OrderInvalid`,
+`PreviousTile` and the refused `Tile`, for reversed and repeated coordinates alike.
+
 Authored content duplicates report `IdentityDuplicate`, `SubjectKind` and `EntityId`, or `SculptTile` for
 sculpt content. The digest's existing string result remains a prose projection of that typed finding.
 Whole authored identity over a window reports `CompleteDocumentRequired` with `DocumentId` and `Operation`
@@ -2084,6 +2096,11 @@ their joined diagnostic text.
 | `ResolverContractMismatch` | The document resolver, support recipe or caller's resolver options cannot serve the requested operation | `PayloadVersion`, `ResolverVersion`, `OptionsResolverVersion`, `ExpectedResolverVersion`, `SupportRecipe`, `ExpectedSupportRecipe`, `FieldPath`, `SubjectKind` |
 | `SupportLegacyHeightRequired` | Resolver-1 resolution without an analytic support callback | `ResolverVersion`, `FieldPath` `legacySupportHeight` |
 | `CompleteDocumentRequired` | Complete prefab expansion, authored-support adoption, whole authored identity or native validation over a partial document | `DocumentId`, `Operation` |
+| `DocumentReadFailed` | An unreadable document source | `SourceName`, `Path`, original cause |
+| `DocumentMigrationMissing` | An older document without its next migration | `SourceName`, `FieldPath`, source `ActualVersion`, next `TargetVersion` |
+| `DocumentMigrationReturnedNull` | A registered migration returning no root object | `SourceName`, `FieldPath`, source `ActualVersion` |
+| `DocumentSaveSourceMissing` | A save-back path with no existing form | `Path`, `DocumentForm` `None` |
+| `DocumentSaveFormInvalid` | A requested form that cannot be written | `Path`, submitted `DocumentForm` |
 | `DocumentAssetRootsMismatch` | Native document roots differing from the verified asset closure | submitted `ResourceIds` and `ExpectedResourceIds`, both owned read-only snapshots in their producer order |
 | `DocumentMigrationSourceVersionInvalid` | A prefab migration source outside format 6 or 7 | `FieldPath`, `ActualVersion`, owned `SupportedVersions` |
 | `PrefabStateUnreadable` | A producer failure while reading prefab state without a concrete lower refusal | `DocumentId`, original `InnerException` on the throwing adapter |

@@ -10,6 +10,16 @@ public enum MapDocumentRefusal
     SupportLegacyHeightRequired,
 
     // Whole-document and migration admission.
+    /// <summary>Refuses a document source that cannot be read.</summary>
+    DocumentReadFailed,
+    /// <summary>Refuses an older document without its next registered migration.</summary>
+    DocumentMigrationMissing,
+    /// <summary>Refuses a registered document migration that returns no JSON object.</summary>
+    DocumentMigrationReturnedNull,
+    /// <summary>Refuses saving back to a source path that has no existing document form.</summary>
+    DocumentSaveSourceMissing,
+    /// <summary>Refuses a document form that cannot be written.</summary>
+    DocumentSaveFormInvalid,
     /// <summary>Refuses native document roots different from the verified asset closure roots.</summary>
     DocumentAssetRootsMismatch,
     /// <summary>Refuses a document format version other than the current writable version.</summary>

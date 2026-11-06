@@ -59,6 +59,8 @@ public sealed class MapDocumentException : Exception
     public MapCellEdge? Edge { get; init; }
     /// <summary>The document tile being read, when known.</summary>
     public MapTileCoord? Tile { get; init; }
+    /// <summary>The preceding tile in a refused canonical world-hash ordering.</summary>
+    public MapTileCoord? PreviousTile { get; init; }
     /// <summary>The authored sculpt tile whose identity or extent failed validation.</summary>
     public MapTileCoord? SculptTile { get; init; }
     /// <summary>The zero-based JSON line number exposed by the reader, when available.</summary>
@@ -138,6 +140,8 @@ public sealed class MapDocumentException : Exception
     public long? Limit { get; init; }
     /// <summary>The refused payload version, when read as an integer.</summary>
     public int? ActualVersion { get; init; }
+    /// <summary>The next format version required by a missing document migration.</summary>
+    public int? TargetVersion { get; init; }
     /// <summary>The refused numeric value, when representable as a double.</summary>
     public double? ActualNumber { get; init; }
     /// <summary>The refused numeric value, when representable as a signed 64-bit integer.</summary>
@@ -341,6 +345,7 @@ public sealed class MapDocumentException : Exception
         CellZ = inner.CellZ;
         Edge = inner.Edge;
         Tile = inner.Tile ?? tile;
+        PreviousTile = inner.PreviousTile;
         SculptTile = inner.SculptTile;
         LineNumber = inner.LineNumber;
         BytePositionInLine = inner.BytePositionInLine;
@@ -378,6 +383,7 @@ public sealed class MapDocumentException : Exception
         Budget = inner.Budget;
         Limit = inner.Limit;
         ActualVersion = inner.ActualVersion;
+        TargetVersion = inner.TargetVersion;
         ActualNumber = inner.ActualNumber;
         ActualInteger = inner.ActualInteger;
         PreviousInteger = inner.PreviousInteger;

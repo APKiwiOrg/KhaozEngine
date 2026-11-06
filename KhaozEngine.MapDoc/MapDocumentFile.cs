@@ -126,7 +126,8 @@ public static class MapDocumentFile
         try { json = File.ReadAllText(path); }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
-            throw new MapDocumentException($"{path}: cannot read map document. {ex.Message}", ex);
+            throw new MapDocumentException(MapDocumentRefusal.DocumentReadFailed, $"{path}: cannot read map document. {ex.Message}", ex)
+                { SourceName = path, Path = path };
         }
         return LoadText(json, options, path);
     }
@@ -194,15 +195,19 @@ public static class MapDocumentFile
             { SourceName = where, FieldPath = "$.formatVersion" };
 
         if (version > CurrentFormatVersion)
-            throw new MapDocumentException(
-                $"{where}: formatVersion {version} is newer than this engine supports ({CurrentFormatVersion}). Update the engine.");
+            throw new MapDocumentException(MapDocumentRefusal.DocumentVersionUnsupported,
+                $"{where}: formatVersion {version} is newer than this engine supports ({CurrentFormatVersion}). Update the engine.")
+                { SourceName = where, FieldPath = "$.formatVersion", ActualVersion = version, SupportedVersions = [CurrentFormatVersion] };
 
         while (version < CurrentFormatVersion)
         {
             if (!options.Migrations.TryGetValue(version, out Func<JsonObject, JsonObject>? step))
-                throw new MapDocumentException(
-                    $"{where}: formatVersion {version} needs a migration to {version + 1} and none is registered.");
-            root = step(root) ?? throw new MapDocumentException($"{where}: migration from formatVersion {version} returned null.");
+                throw new MapDocumentException(MapDocumentRefusal.DocumentMigrationMissing,
+                    $"{where}: formatVersion {version} needs a migration to {version + 1} and none is registered.")
+                    { SourceName = where, FieldPath = "$.formatVersion", ActualVersion = version, TargetVersion = version + 1 };
+            root = step(root) ?? throw new MapDocumentException(MapDocumentRefusal.DocumentMigrationReturnedNull,
+                $"{where}: migration from formatVersion {version} returned null.")
+                { SourceName = where, FieldPath = "$.formatVersion", ActualVersion = version };
             version++;
             root["formatVersion"] = version;
         }
@@ -290,8 +295,9 @@ public static class MapDocumentFile
         ArgumentException.ThrowIfNullOrWhiteSpace(path);
         MapDocumentForm form = DetectForm(path);
         if (form == MapDocumentForm.None)
-            throw new MapDocumentException(
-                $"{path}: nothing exists here, so this path has no form to save back into. Name one with SaveAs.");
+            throw new MapDocumentException(MapDocumentRefusal.DocumentSaveSourceMissing,
+                $"{path}: nothing exists here, so this path has no form to save back into. Name one with SaveAs.")
+                { Path = path, DocumentForm = form };
         SaveAs(doc, path, form, registry, save);
     }
 
@@ -306,7 +312,9 @@ public static class MapDocumentFile
             case MapDocumentForm.Tiled: SaveTiled(doc, path, registry, save); break;
             case MapDocumentForm.Monolithic: Save(doc, path, registry); break;
             default:
-                throw new MapDocumentException($"{path}: MapDocumentForm.None is not a form a document can be written in.");
+                throw new MapDocumentException(MapDocumentRefusal.DocumentSaveFormInvalid,
+                    $"{path}: MapDocumentForm.None is not a form a document can be written in.")
+                    { Path = path, DocumentForm = form };
         }
     }
 
@@ -335,9 +343,10 @@ public static class MapDocumentFile
         int maxPatches = MapSurfaceEmbedding.MaxPatches, long maxEncodedBytes = MapSurfaceEmbedding.MaxEncodedBytes)
     {
         if (doc.Tiles is { IsPartial: true })
-            throw new MapDocumentException(
+            throw new MapDocumentException(MapDocumentRefusal.CompleteDocumentRequired,
                 "refusing to write a windowed document as a whole document: it would silently drop every tile the " +
-                "window did not load. Save it back to its own directory with SaveTiled, or load the whole world first.");
+                "window did not load. Save it back to its own directory with SaveTiled, or load the whole world first.")
+                { DocumentId = doc.Id, Operation = "SaveWholeDocument" };
 
         IReadOnlyList<MapDocumentFinding> findings = MapDocumentValidator.ValidateFindings(doc, registry);
         if (findings.Count > 0)

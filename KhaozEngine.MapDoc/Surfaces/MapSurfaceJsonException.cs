@@ -28,6 +28,10 @@ public sealed class MapSurfaceJsonException : JsonException
     public string? SurfaceId { get; init; }
     /// <summary>The submitted noncanonical slot text, when a string was supplied.</summary>
     public string? ActualText { get; init; }
+    /// <summary>The repeated patch key, when known.</summary>
+    public MapPatchKey? Patch { get; init; }
+    /// <summary>The zero-based index of the refused embedded patch.</summary>
+    public int? Index { get; init; }
 
     // Keep the complete scalar refusal as the cause so document wrappers use its source-copy path.
     internal static MapSurfaceJsonException FromDocument(MapDocumentException inner) => new(inner.Reason!.Value, inner.Message, inner)
@@ -42,6 +46,6 @@ public sealed class MapSurfaceJsonException : JsonException
         SourceName = sourceName, Tile = tile, Path = path, ResourceId = resourceId,
         FieldPath = FieldPath ?? Path, LineNumber = LineNumber, BytePositionInLine = BytePositionInLine,
         Numerator = Numerator, Denominator = Denominator, ActualInteger = ActualInteger, MinimumInteger = MinimumInteger,
-        SurfaceId = SurfaceId, ActualText = ActualText,
+        SurfaceId = SurfaceId, ActualText = ActualText, Patch = Patch, Index = Index,
     };
 }

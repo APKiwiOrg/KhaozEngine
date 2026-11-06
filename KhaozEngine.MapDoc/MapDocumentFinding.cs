@@ -44,6 +44,8 @@ public sealed record MapDocumentFinding(MapDocumentRefusal Reason, string Messag
     public MapCellEdge? Edge { get; init; }
     /// <summary>The document tile being read, when known.</summary>
     public MapTileCoord? Tile { get; init; }
+    /// <summary>The preceding tile in a refused canonical world-hash ordering.</summary>
+    public MapTileCoord? PreviousTile { get; init; }
     /// <summary>The authored sculpt tile whose identity or extent failed validation.</summary>
     public MapTileCoord? SculptTile { get; init; }
     /// <summary>The zero-based JSON line number exposed by the reader, when available.</summary>
@@ -118,6 +120,8 @@ public sealed record MapDocumentFinding(MapDocumentRefusal Reason, string Messag
     public long? Limit { get; init; }
     /// <summary>The refused payload version, when read as an integer.</summary>
     public int? ActualVersion { get; init; }
+    /// <summary>The next format version required by a missing document migration.</summary>
+    public int? TargetVersion { get; init; }
     /// <summary>The refused numeric value, when representable as a double.</summary>
     public double? ActualNumber { get; init; }
     /// <summary>The refused numeric value, when representable as a signed 64-bit integer.</summary>
@@ -298,6 +302,7 @@ public sealed record MapDocumentFinding(MapDocumentRefusal Reason, string Messag
             CellZ = error.CellZ,
             Edge = error.Edge,
             Tile = error.Tile,
+            PreviousTile = error.PreviousTile,
             SculptTile = error.SculptTile,
             LineNumber = error.LineNumber,
             BytePositionInLine = error.BytePositionInLine,
@@ -335,6 +340,7 @@ public sealed record MapDocumentFinding(MapDocumentRefusal Reason, string Messag
             Budget = error.Budget,
             Limit = error.Limit,
             ActualVersion = error.ActualVersion,
+            TargetVersion = error.TargetVersion,
             ActualNumber = error.ActualNumber,
             ActualInteger = error.ActualInteger,
             PreviousInteger = error.PreviousInteger,

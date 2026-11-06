@@ -12660,6 +12660,22 @@ cold content. A window remembers the manifest it loaded. A windowed `SaveTiled`,
 window, refuses with `stale window` when another writer has changed the manifest since the window was loaded,
 or when the current manifest cannot be read. Reload the window and reapply the edit.
 
+Document read failures use `DocumentReadFailed` with source name, path and original cause. A future format
+version uses `DocumentVersionUnsupported` with the actual and supported versions. A missing migration uses
+`DocumentMigrationMissing`, source `ActualVersion` and next `TargetVersion`. A null migration result uses
+`DocumentMigrationReturnedNull`. Both retain `SourceName` and the format-version field path. Save-back to a
+missing source uses `DocumentSaveSourceMissing`. An unwritable requested form uses `DocumentSaveFormInvalid`.
+These save refusals retain `Path` and `DocumentForm`, and whole-save admission runs before opening its target.
+Document adapters forward the producer's first reason and complete ordered `Findings` snapshot.
+
+Null surface collections throw `MapSurfaceJsonException` with `SchemaMemberNull` and their `FieldPath`.
+Duplicate surface patches use `IdentityDuplicate`, `Patch` and zero-based `Index`. Document JSON wrappers
+preserve those identifiers. Native placement transform refusals distinguish nonfinite components,
+nonpositive scale, missing tags and null tag entries through the applicable scalar or required-value
+reason, `PlacementId`, field path, numeric value and tag index. Registry builds refuse unknown terrain
+features with `DocumentTerrainFeatureUnknown` and captured discriminator. World-hash ordering failures use
+`OrderInvalid`, `PreviousTile` and the offending `Tile`.
+
 Native validation and whole authored identity require a complete document. Their refusals expose
 `CompleteDocumentRequired`, `DocumentId` and `Operation` `ValidateNativeDocument` or
 `ComputeWholeAuthoredIdentity`. Scoped identity `RequireComplete()` uses `AcquisitionIncomplete` with

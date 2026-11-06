@@ -128,10 +128,28 @@ public static class MapBoundDocumentValidation
     {
         if (string.IsNullOrWhiteSpace(p.AssetId)) throw new MapDocumentException(MapDocumentRefusal.SchemaValueRequired, $"Placement '{p.Id}' requires a native asset ID.")
             { PlacementId = p.Id, FieldPath = nameof(p.AssetId) };
+        RequirePlacementTransform(p);
+    }
+
+    static void RequirePlacementTransform(MapPlacement p)
+    {
         if (!float.IsFinite(p.X) || !float.IsFinite(p.Z) || (p.Y is { } y && !float.IsFinite(y)) ||
             !float.IsFinite(p.Yaw) || !float.IsFinite(p.Scale) || p.Scale <= 0 || p.Tags is null || p.Tags.Any(t => t is null))
-            throw new MapDocumentException($"Placement '{p.Id}' has invalid transform or tags.");
+        {
+            string field = !float.IsFinite(p.X) ? nameof(p.X) : !float.IsFinite(p.Z) ? nameof(p.Z)
+                : p.Y is { } height && !float.IsFinite(height) ? nameof(p.Y) : !float.IsFinite(p.Yaw) ? nameof(p.Yaw)
+                : !float.IsFinite(p.Scale) || p.Scale <= 0 ? nameof(p.Scale) : nameof(p.Tags);
+            double? number = field == nameof(p.X) ? p.X : field == nameof(p.Z) ? p.Z : field == nameof(p.Y) ? p.Y
+                : field == nameof(p.Yaw) ? p.Yaw : field == nameof(p.Scale) ? p.Scale : null;
+            int? index = field == nameof(p.Tags) && p.Tags is not null ? p.Tags.FindIndex(t => t is null) : null;
+            throw new MapDocumentException(number is { } n ? double.IsFinite(n) ? MapDocumentRefusal.ValueOutsideRange : MapDocumentRefusal.ValueNonfinite
+                : MapDocumentRefusal.SchemaValueRequired, $"Placement '{p.Id}' has invalid transform or tags.")
+                { PlacementId = p.Id, FieldPath = index is { } i ? $"Tags[{i}]" : field, ActualNumber = number, Index = index };
+        }
     }
+
+    /// <summary>Exercises the real placement transform guard on caller-owned input without earlier document admission.</summary>
+    internal static void RequirePlacementTransformForTests(MapPlacement placement) => RequirePlacementTransform(placement);
 
     static void RequireClosureAsset(MapPlacement placement, MapAssetClosure assets) => assets.GetAsset(placement.AssetId!);
 }

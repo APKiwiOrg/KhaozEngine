@@ -406,11 +406,15 @@ vertical link imposes no spatial constraint. A non-finite cost or a nonpositive 
 Walking costs are uniform, with no area or terrain cost multiplier. Traversal profiles remove edges
 without changing their costs.
 
-Point priority uses that scaled metric to the goal cell on every layer. Region priority scales the XZ
-distance to the region's world-axis extent square on every layer. Feet and edge spans use the same XZ
-cell centres, with surface height supplying only Y. Each edge costs at least its scaled spatial
-span, so these bounds are admissible and consistent even for cheap Hops, long links and
-paths leaving and re-entering the goal layer. A popped node is final. Preserving links leave the ratio
+Point priority uses that scaled metric to the goal cell on every layer. In a shared frame, region priority
+uses octile distance to the local cell-index box containing every admitted member. Membership records that
+box by value in reused scratch, alongside the existing feet list. Rounded world centres at large origins
+cannot distort this local bound. Distance to the containing box changes no faster than the same octile
+metric used for edge spans, and it is zero at every member. With differing frames, region priority retains
+world XZ distance to the extent square, using the same rounded centres as its construction-time scale.
+Physical feet still supply membership and 3D progress. Each edge costs at least its scaled spatial span,
+so the bounds are admissible and consistent for cheap Hops, long links and paths leaving and re-entering
+the goal layer. A popped node is final. Preserving links leave the ratio
 at one. Point progress uses squared physical 3D distance to the goal cell's feet across layers, while
 region progress uses squared 3D distance to actual members. Legacy height-less point grids use a zero-height
 plane. Progress still selects a useful partial endpoint when the safe
@@ -418,7 +422,9 @@ priority is zero. The legacy point line-of-sight shortcut is used only when the 
 cheap link can otherwise beat a visible direct walk.
 
 The bound and partial progress apply on every layer for every graph. Route choices change in 23.3.0,
-including the correction of discounted diagonal Stairs. A zero-span Stair retains its source-cell minimum.
+including the correction of discounted diagonal Stairs and the shared-frame region metric.
+The local member box can change region order even on exact binary coordinates. Point priorities and link
+prices keep their existing metric. Finite-budget status, goal member and waypoint choices may change. A zero-span Stair retains its source-cell minimum.
 Stair weights are computed at load, so this policy changes no bake bytes, topology, format or identity fields
 at a fixed engine version. A released engine version still requires the normal consumer rebake.
 Complete searches retain optimal graph-edge cost. With `MaxExpandedNodes = int.MaxValue`, a query completes

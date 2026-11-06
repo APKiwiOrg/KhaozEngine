@@ -9212,9 +9212,12 @@ discovery. There is no anchor substitution or target-Y guess, and heightless gri
 ends in `Contains`, while region routes retain every validated cell edge and link endpoint without
 shortcuts or string pulling.
 
-Region discovery scans the full admitted topology before expansion. Search priority scales world XZ distance
-to the extent square by a construction-time minimum edge-cost-to-span ratio on every layer. Separate
-finite-safe progress compares actual admitted members. Point progress compares physical 3D feet positions.
+Region discovery records admitted members before expansion. In shared frames, priority scales local octile
+distance to the admitted members' containing cell-index box. This uses the same metric as the cached cost
+ratio despite rounded world centres at large origins. Differing frames retain scaled world XZ distance to
+the extent square. Both apply on every layer. The member box is a value in reused scratch and introduces
+no query allocation. Separate finite-safe progress compares actual admitted members. Point progress compares
+physical 3D feet positions.
 Complete searches are optimal, unlimited searches are exact, and finite-budget results are best effort.
 Route choices change in 23.3.0. Stair links cost at least their spatial metric span and one source cell,
 so diagonal Stairs no longer receive a discount. The Navigation README owns the complete cost contract.

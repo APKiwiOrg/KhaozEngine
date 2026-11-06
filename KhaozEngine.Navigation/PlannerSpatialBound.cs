@@ -53,6 +53,26 @@ internal sealed class PlannerSpatialBound
         return WorldDistance(_layers[layer].CellCenter(x, z), _layers[goalLayer].CellCenter(gx, gz));
     }
 
+    internal float Region(int layer, int x, int z, PlannerRegionBounds members, Vector2 anchor, float extent)
+    {
+        if (Scale == 0f) return 0f;
+        double span;
+        if (_sharedFrame)
+        {
+            // Membership uses rounded world feet. Its actual cell indices still share the cost metric.
+            (int gx, int gz) = members.Closest(x, z);
+            span = Distance(layer, x, z, layer, gx, gz);
+        }
+        else
+        {
+            Vector2 centre = _layers[layer].CellCenter(x, z);
+            double dx = Math.Max(Math.Abs((double)centre.X - anchor.X) - extent, 0d);
+            double dz = Math.Max(Math.Abs((double)centre.Y - anchor.Y) - extent, 0d);
+            span = Math.Sqrt(dx * dx + dz * dz);
+        }
+        return (float)Math.Min(float.MaxValue, Scale * span);
+    }
+
     double WalkingScale(int layer, NavTraversalGraph? traversal)
     {
         NavGrid grid = _layers[layer];

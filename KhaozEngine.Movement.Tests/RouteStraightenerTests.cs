@@ -101,8 +101,11 @@ public class RouteStraightenerTests
     public void SideLineRefusalBesideAWall()
     {
         NavSpace space = Surfaces(-4f, -4f);
-        var planner = new GridPathPlanner(space);
         Vector3 start = Centre(-4f, 2, 2), goal = Centre(-4f, 10, 6);
+        // #1712 F1 changes A* order. Keep every candidate centre line on the same clear ray,
+        // so only a side-line refusal can prevent the shortcut, independent of planner ties.
+        NavPath raw = CellRoute(NavPathStatus.Complete, (4, 3), (6, 4), (8, 5), (10, 6));
+        var planner = new ScriptPlanner((_, _) => raw);
         Vector2 a = new(start.X, start.Z), b = new(goal.X, goal.Z);
         var centre = PointsAlong(a, b).Select(p => CellIndex(-4f, p)).ToHashSet();
         (Vector2 sideA, Vector2 sideB) = MinusSide(a, b);
@@ -111,7 +114,6 @@ public class RouteStraightenerTests
         var guard = new Sampled(standable, -4f, -4f);
         var straightener = new RouteStraightener(planner, space, guard.Allows);
         var openStraightener = new RouteStraightener(planner, space, new Sampled(Everywhere, -4f, -4f).Allows);
-        NavPath raw = planner.FindPath(start, GoalAt(goal), Tuning.CapsuleRadius, PathQueryBudget.Default);
 
         NavPath path = straightener.FindPath(start, GoalAt(goal), Tuning.CapsuleRadius, PathQueryBudget.Default);
 

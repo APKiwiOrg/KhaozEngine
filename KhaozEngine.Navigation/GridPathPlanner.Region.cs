@@ -73,7 +73,7 @@ public sealed partial class GridPathPlanner
                     scratch.SetMember(layer, x, z, member);
                     if (!member) continue;
                     scratch.MemberLayers[layer] = true;
-                    scratch.Members.Add(feet);
+                    scratch.AddMember(feet, x, z);
                 }
         }
         return scratch.Members.Count > 0;
@@ -118,9 +118,9 @@ public sealed partial class GridPathPlanner
     }
 
     /// <summary>
-    /// A region query's goal: any member cell. Priority is the XZ distance to the extent square,
-    /// scaled by the cached spatial cost ratio on every layer. Progress is the squared 3D distance
-    /// to the nearest member's feet.
+    /// A region query's goal: any member cell. Priority uses the cached metric and scale on every layer.
+    /// Shared frames bound the actual members' cell box, so rounded world centres cannot change the metric.
+    /// Progress is the squared 3D distance to the nearest member's feet.
     /// </summary>
     readonly struct RegionGoal(GridPathPlanner planner, SearchScratch scratch,
         Vector2 anchorXz, float horizontalExtent) : ISearchGoal
@@ -128,10 +128,7 @@ public sealed partial class GridPathPlanner
         public bool IsGoal(int layer, int x, int z) => scratch.IsMember(layer, x, z);
 
         public float Priority(int layer, int x, int z)
-            => planner._spatialBound.Scale > 0f
-                ? (float)Math.Min(float.MaxValue, planner._spatialBound.Scale *
-                    DistanceToRegionSquare(planner._space.Layers[layer].CellCenter(x, z), anchorXz, horizontalExtent))
-                : 0f;
+            => planner._spatialBound.Region(layer, x, z, scratch.MemberBounds, anchorXz, horizontalExtent);
 
         public double Progress(int layer, int x, int z)
         {
@@ -154,15 +151,6 @@ public sealed partial class GridPathPlanner
         Vector2 centre = grid.CellCenter(x, z);
         // Height-less legacy point grids represent a plane. Region queries require physical heights.
         return new Vector3(centre.X, grid.RestingHeightAt(x, z) ?? 0f, centre.Y);
-    }
-
-    static double DistanceToRegionSquare(Vector2 from, Vector2 anchor, float extent)
-    {
-        // Feet use this same XZ cell centre. The extent admits a world-axis square, including
-        // its corners, so distance to an inscribed circle would overestimate at valid goals.
-        double dx = Math.Max(Math.Abs((double)from.X - anchor.X) - extent, 0d);
-        double dz = Math.Max(Math.Abs((double)from.Y - anchor.Y) - extent, 0d);
-        return Math.Sqrt(dx * dx + dz * dz);
     }
 
 }

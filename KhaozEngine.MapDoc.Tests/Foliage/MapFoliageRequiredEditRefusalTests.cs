@@ -16,6 +16,7 @@ public sealed class MapFoliageRequiredEditRefusalTests
     {
         var fixture = FoliageFixtures.Create();
         var original = fixture.Document.Foliage;
+        string before = FoliageStorageFixtures.Snapshot(fixture.Document);
         MapFoliageEdit edit = fault switch
         {
             "list" => new MapFoliageEditSequence(null!, null),
@@ -28,6 +29,7 @@ public sealed class MapFoliageRequiredEditRefusalTests
         if (fault != "layer") Assert.Equal(fixture.Document.Id, error.DocumentId);
         if (fault == "step") Assert.Equal(0, error.Index);
         Assert.Same(original, fixture.Document.Foliage);
+        Assert.Equal(before, FoliageStorageFixtures.Snapshot(fixture.Document));
         Run(fault == "layer" ? new MapSetFoliageLayer(original!.Layers[0]) : new MapFoliageEditSequence([], null));
 
         void Run(MapFoliageEdit request)

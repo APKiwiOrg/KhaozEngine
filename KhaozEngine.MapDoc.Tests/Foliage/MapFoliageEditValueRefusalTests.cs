@@ -39,6 +39,7 @@ public sealed class MapFoliageEditValueRefusalTests
             _ => new MapSetFoliageLayer(proposed),
         };
         var original = fixture.Document.Foliage;
+        string before = FoliageStorageFixtures.Snapshot(fixture.Document);
         byte[] bytes = layer.Chunks[0].CopyDensity();
         var error = Assert.Throws<MapDocumentException>(() => MapFoliageEdits.Prepare(fixture.Document, fixture.Assets, edit));
         Assert.Equal(reason, error.Reason);
@@ -58,6 +59,7 @@ public sealed class MapFoliageEditValueRefusalTests
         if (fault == "unavailable") Assert.Equal(new MapFoliageChunkKey(1, 0), error.FoliageChunk);
         Assert.Same(original, fixture.Document.Foliage);
         Assert.Equal(bytes, layer.Chunks[0].CopyDensity());
+        Assert.Equal(before, FoliageStorageFixtures.Snapshot(fixture.Document));
         MapFoliageEdit control = fault switch
         {
             "nested" => new MapFoliageEditSequence([], null),
@@ -74,10 +76,12 @@ public sealed class MapFoliageEditValueRefusalTests
     {
         var fixture = FoliageFixtures.Create();
         var edit = new MapSetFoliageDensity(FoliageFixtures.LayerId, 0, 0, 2, 1, new ChangingCount());
+        string before = FoliageStorageFixtures.Snapshot(fixture.Document);
         var error = Assert.Throws<MapDocumentException>(() => MapFoliageEdits.Prepare(fixture.Document, fixture.Assets, edit));
         Assert.Equal(MapDocumentRefusal.SchemaArrayLengthMismatch, error.Reason);
         Assert.Equal(1L, error.ActualCount);
         Assert.Equal(2L, error.ExpectedCount);
+        Assert.Equal(before, FoliageStorageFixtures.Snapshot(fixture.Document));
         Assert.NotNull(MapFoliageEdits.Prepare(fixture.Document, fixture.Assets, edit with { Density = [0, 255] }).After.Foliage);
     }
 

@@ -88,6 +88,7 @@ public sealed class MapFoliageBrushRefusalTests
     [InlineData(0, 0, 0, 1, MapDocumentRefusal.BoundsInvalid, "Width")]
     [InlineData(0, 0, 1, 0, MapDocumentRefusal.BoundsInvalid, "Depth")]
     [InlineData(-1, 0, 1, 1, MapDocumentRefusal.FoliageRectangleOutOfBounds, "X")]
+    [InlineData(-1, 0, 2, 1, MapDocumentRefusal.FoliageRectangleOutOfBounds, "X")]
     [InlineData(0, -1, 1, 1, MapDocumentRefusal.FoliageRectangleOutOfBounds, "Z")]
     [InlineData(35, 0, 1, 1, MapDocumentRefusal.FoliageRectangleOutOfBounds, "X+Width")]
     [InlineData(0, 3, 1, 1, MapDocumentRefusal.FoliageRectangleOutOfBounds, "Z+Depth")]
@@ -111,10 +112,22 @@ public sealed class MapFoliageBrushRefusalTests
             Assert.Equal(z, error.CellZ);
             Assert.Equal(layer.Width, error.Width);
             Assert.Equal(layer.Depth, error.Depth);
+            long maximum = field switch
+            {
+                "X" => layer.Width - width,
+                "Z" => layer.Depth - depth,
+                "X+Width" => layer.Width,
+                _ => layer.Depth,
+            };
+            Assert.Equal(maximum, error.MaximumInteger);
+            int lastX = field == "X" ? (int)maximum : layer.Width - width;
+            int lastZ = field == "Z" ? (int)maximum : layer.Depth - depth;
+            Assert.Equal((layer.Width - 1, layer.Depth - 1), MapFoliageBrush.RequireRectangle(layer, lastX, lastZ, width, depth));
         }
         int repairedX = x < 0 ? 0 : x >= layer.Width ? layer.Width - 1 : x;
         int repairedZ = z < 0 ? 0 : z >= layer.Depth ? layer.Depth - 1 : z;
-        Assert.Equal((repairedX, repairedZ), MapFoliageBrush.RequireRectangle(layer, repairedX, repairedZ, Math.Max(1, width), Math.Max(1, depth)));
+        Assert.Equal((repairedX + Math.Max(1, width) - 1, repairedZ + Math.Max(1, depth) - 1),
+            MapFoliageBrush.RequireRectangle(layer, repairedX, repairedZ, Math.Max(1, width), Math.Max(1, depth)));
     }
 
     [Theory]

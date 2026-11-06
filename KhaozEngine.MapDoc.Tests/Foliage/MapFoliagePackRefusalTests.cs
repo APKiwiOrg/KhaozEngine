@@ -26,6 +26,7 @@ public sealed class MapFoliagePackRefusalTests
             partial.Foliage = new(1, [MapFoliageLayer.FromStorage(metadata, layer.ChunkDigests, [])]);
         }
         var proposed = partial.Foliage;
+        string before = FoliageStorageFixtures.Snapshot(partial);
         var error = Assert.Throws<MapDocumentException>(() => MapFoliagePackPreparation.Prepare(partial, dir.Root));
         Assert.Equal(reason, error.Reason);
         Assert.Equal(layer.Id, error.LayerId);
@@ -40,6 +41,7 @@ public sealed class MapFoliagePackRefusalTests
             Assert.Single(error.Findings!);
         }
         Assert.Same(proposed, partial.Foliage);
+        Assert.Equal(before, FoliageStorageFixtures.Snapshot(partial));
         partial.Foliage = original;
         Assert.NotNull(MapFoliagePackPreparation.Prepare(partial, dir.Root).Index);
     }
@@ -52,11 +54,13 @@ public sealed class MapFoliagePackRefusalTests
         var layer = fixture.Document.Foliage!.Layers[0];
         fixture.Document.Foliage = new(1, [MapFoliageLayer.FromStorage(layer, layer.ChunkDigests, [])]);
         var original = fixture.Document.Foliage;
+        string before = FoliageStorageFixtures.Snapshot(fixture.Document);
         var error = Assert.Throws<MapDocumentException>(() => MapFoliagePackPreparation.Prepare(fixture.Document, dir.Root));
         Assert.Equal(MapDocumentRefusal.FoliageChunkUnavailable, error.Reason);
         Assert.Equal(layer.Id, error.LayerId);
         Assert.Contains(layer.ChunkDigests, d => d.Key == error.FoliageChunk && d.Sha256 == error.ExpectedHash);
         Assert.Same(original, fixture.Document.Foliage);
+        Assert.Equal(before, FoliageStorageFixtures.Snapshot(fixture.Document));
         fixture.Document.Foliage = new(1, [layer]);
         Assert.NotEmpty(MapFoliagePackPreparation.Prepare(fixture.Document, dir.Root).Index.Chunks);
     }

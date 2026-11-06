@@ -113,7 +113,9 @@ public static class MapFoliageBrush
             { LayerId = layer.Id, CellX = x, CellZ = z, Width = layer.Width, Depth = layer.Depth,
                 FieldPath = x < 0 ? "X" : z < 0 ? "Z" : (long)x + width > layer.Width ? "X+Width" : "Z+Depth",
                 ActualInteger = x < 0 ? x : z < 0 ? z : (long)x + width > layer.Width ? (long)x + width : (long)z + depth,
-                MinimumInteger = 0, MaximumInteger = x < 0 || (z >= 0 && (long)x + width > layer.Width) ? layer.Width : layer.Depth };
+                MinimumInteger = 0, MaximumInteger = x < 0 ? (width <= layer.Width ? layer.Width - (long)width : null)
+                    : z < 0 ? (depth <= layer.Depth ? layer.Depth - (long)depth : null)
+                    : (long)x + width > layer.Width ? layer.Width : layer.Depth };
         int hiX = x + width - 1, hiZ = z + depth - 1;
         RequireBudget(layer, x, z, hiX, hiZ);
         return (hiX, hiZ);

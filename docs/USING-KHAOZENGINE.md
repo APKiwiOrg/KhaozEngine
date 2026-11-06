@@ -12660,6 +12660,16 @@ cold content. A window remembers the manifest it loaded. A windowed `SaveTiled`,
 window, refuses with `stale window` when another writer has changed the manifest since the window was loaded,
 or when the current manifest cannot be read. Reload the window and reapply the edit.
 
+Tiled surface saves report dictionary key disagreement as `StoragePatchKeyMismatch` with the dictionary
+`ExpectedPatch` and payload `Patch`. A payload changed after preparation uses `StorageSaveSnapshotChanged`
+with `Patch` and the expected and actual hashes. Packing limits use `ValueOutsideRange`, the failed
+`FieldPath` (`IndexBlockSlots` or `DirectoryBlockPages`), actual integer and inclusive limits 1 and 16.
+Unrepresentable page blocks and load windows use `GeometryNotRepresentable` with `Operation`
+`PackSurfaces` or `LoadSurfaces` and `FieldPath` `Covers` or `Window`. Stored semantic digest mismatches
+retain the surface and both hashes. Missing or corrupt pages report `PatchUnavailable`, `PatchStatus`,
+`SurfaceId` and pinned `ExpectedHash`. Payload failures also name `Patch` and retain a known producer
+reason and its identifiers.
+
 **Streamed content and bounded surface embedding.** `SaveTo(doc, stream)` serializes through a
 `Utf8JsonWriter`, and `Save` uses it without building one whole-document text buffer. Native surface
 embedding has separate limits of 256 patches and 8 MiB. Larger native surfaces require tiled storage.

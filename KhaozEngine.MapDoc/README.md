@@ -1501,6 +1501,15 @@ Surface page envelope refusals keep `MapDocumentException` and the released deve
 | `AuthoredOwnershipMismatch`, `BoundsInvalid`, `OrderInvalid` | An entry for another surface, outside its page or slot, with inverted heights, or outside canonical key order | `FieldPath`, `SurfaceId`, known `Patch`, `Index` |
 | `IdentityDuplicate` | Repeated dependency keys, record IDs, incident references or space IDs | `FieldPath`, `SurfaceId`, `Patch`, `Index`, actual and distinct counts |
 
+Tiled surface packing uses `ValueOutsideRange` with the first failed `FieldPath` (`IndexBlockSlots` or
+`DirectoryBlockPages`), `ActualInteger` and inclusive `MinimumInteger` 1 and `MaximumInteger` 16.
+Checked page-block overflow uses `GeometryNotRepresentable`, `Operation` `PackSurfaces` and `FieldPath`
+`Covers`. Window arithmetic overflow keeps that reason with `Operation` `LoadSurfaces` and `FieldPath`
+`Window`. A whole-surface semantic mismatch reports `DigestMismatch`, `SurfaceId`, `DigestKind`
+`surface semantics` and both hashes. An unavailable directory or index reports `PatchUnavailable`,
+`SurfaceId`, `PatchStatus` and its pinned `ExpectedHash`. Payloads also identify `Patch` and preserve a
+known inner refusal's reason and identifiers instead of replacing them with the status.
+
 Page cardinality guards capture interface-backed counts once. Their reported counts describe the failed
 comparison even when a faulty producer returns a different count on a later read. A page holds at most
 256 entries and at most 1,048,576 encoded bytes. Decoded metadata arrays admit at most `MaxPageBytes / 24`
@@ -1892,6 +1901,8 @@ their joined diagnostic text.
 | --- | --- | --- |
 | `WaterBodiesPreventLegacyMode` | Switching to legacy global water while bounded bodies remain | `FieldPath`, `ActualCount` |
 | `DocumentHashSchemeUnsupported` | Whole authored identity under an unsupported pinned tile hash scheme | `FieldPath`, `ActualVersion`, owned `SupportedVersions` |
+| `StoragePatchKeyMismatch` | A surface dictionary entry whose key differs from its payload key | dictionary `ExpectedPatch`, payload `Patch` |
+| `StorageSaveSnapshotChanged` | A prepared surface payload changed before its write | `Patch`, prepared `ExpectedHash`, encoded `ActualHash` |
 | `StorageEmbeddingChanged` | An embedded payload whose encoded length changed after measurement | `ExpectedByteCount`, `ActualByteCount` |
 | `StorageReadChanged` | Additional bytes after a surface storage read's captured length | `ExpectedHash`, `ExpectedByteCount`, minimum observed `ActualByteCount`, `FieldPath` `ByteCount` |
 | `StorageDirectoryPagesOverlap` | Overlapping surface storage page covers | `FieldPath`, `SurfaceId`, `Index`, `OtherIndex` |

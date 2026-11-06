@@ -378,6 +378,10 @@ public enum MapDocumentRefusal
     SpaceSupportCoincident,
 
     // Surface storage and embedding admission.
+    /// <summary>Refuses a surface dictionary entry whose key differs from its patch key.</summary>
+    StoragePatchKeyMismatch,
+    /// <summary>Refuses a prepared surface payload that changed before its write.</summary>
+    StorageSaveSnapshotChanged,
     /// <summary>Refuses a payload whose encoded length changed after measurement.</summary>
     StorageEmbeddingChanged,
     /// <summary>Refuses a surface storage file with additional bytes after its captured read length.</summary>

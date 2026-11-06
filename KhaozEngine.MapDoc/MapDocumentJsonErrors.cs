@@ -36,6 +36,12 @@ internal static class MapDocumentJsonErrors
             }
         for (Exception? cause = error; cause is not null; cause = cause.InnerException)
         {
+            if (cause is MapFeatureJsonException feature)
+                return feature.ToDocument(sourceName, message, tile, path, resourceId);
+            if (cause is MapNativeVectorJsonException vector)
+                return vector.ToDocument(sourceName, message, tile, path, resourceId);
+            if (cause is MapNumericIdJsonException numeric)
+                return numeric.ToDocument(sourceName, message, tile, path, resourceId);
             if (cause is MapFoliageJsonException foliage)
                 return foliage.ToDocument(sourceName, message, tile, path, resourceId);
             if (cause is MapSurfaceJsonException surface)

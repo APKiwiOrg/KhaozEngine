@@ -146,6 +146,19 @@ content. Storage paths, tile and page packing, embedding and incident index book
 whole identity. Equivalent complete in-memory, monolithic, tiled and repacked documents share one token.
 Resolver 1 continues to use `MapAuthoredIdentity`.
 
+Native vectors, feature discriminators and numeric identity text use `MapNativeVectorJsonException`,
+`MapFeatureJsonException` and `MapNumericIdJsonException`, each derived from `JsonException` with a required
+`MapDocumentRefusal`. Document and prefab wrappers preserve their reason and identifiers. Vector admission
+uses `SchemaObjectRequired`, `SchemaMemberUnknown`, `SchemaMemberDuplicate`, `SchemaMemberMissing`,
+`SchemaValueRequired` or `ValueNonfinite` with the relative `FieldPath` and parsed `ActualNumber` when known.
+Feature admission distinguishes missing `SchemaValueRequired` from `DocumentTerrainFeatureUnknown`, with
+`FieldPath` and discriminator `ActualText`. A consumer converter returning no feature uses `SchemaValueRequired`
+with its discriminator and root field. Non-string or noncanonical numeric identity text uses
+`SchemaInt64Malformed`, relative `FieldPath`, submitted `ActualText` when known and inclusive
+`MinimumInteger` and `MaximumInteger`. Native migration distinguishes absent `SchemaMemberMissing`,
+incorrectly typed `SchemaValueRequired` and unsupported `DocumentMigrationSourceVersionInvalid`, with
+`FieldPath`, known `ActualVersion` and an owned `SupportedVersions` snapshot.
+
 Document load, validation and whole-save adapters retain the first typed finding and the complete ordered
 `Findings` snapshot. A future format version uses `DocumentVersionUnsupported` with `ActualVersion`,
 `SupportedVersions`, `SourceName` and `FieldPath`. Surface JSON setters use `MapSurfaceJsonException`
@@ -2096,13 +2109,14 @@ their joined diagnostic text.
 | `ResolverContractMismatch` | The document resolver, support recipe or caller's resolver options cannot serve the requested operation | `PayloadVersion`, `ResolverVersion`, `OptionsResolverVersion`, `ExpectedResolverVersion`, `SupportRecipe`, `ExpectedSupportRecipe`, `FieldPath`, `SubjectKind` |
 | `SupportLegacyHeightRequired` | Resolver-1 resolution without an analytic support callback | `ResolverVersion`, `FieldPath` `legacySupportHeight` |
 | `CompleteDocumentRequired` | Complete prefab expansion, authored-support adoption, whole authored identity or native validation over a partial document | `DocumentId`, `Operation` |
+| `DocumentTileNotIndexed` | A requested tile absent from the occupied index | `Tile`, `SourceName` |
 | `DocumentReadFailed` | An unreadable document source | `SourceName`, `Path`, original cause |
 | `DocumentMigrationMissing` | An older document without its next migration | `SourceName`, `FieldPath`, source `ActualVersion`, next `TargetVersion` |
 | `DocumentMigrationReturnedNull` | A registered migration returning no root object | `SourceName`, `FieldPath`, source `ActualVersion` |
 | `DocumentSaveSourceMissing` | A save-back path with no existing form | `Path`, `DocumentForm` `None` |
 | `DocumentSaveFormInvalid` | A requested form that cannot be written | `Path`, submitted `DocumentForm` |
 | `DocumentAssetRootsMismatch` | Native document roots differing from the verified asset closure | submitted `ResourceIds` and `ExpectedResourceIds`, both owned read-only snapshots in their producer order |
-| `DocumentMigrationSourceVersionInvalid` | A prefab migration source outside format 6 or 7 | `FieldPath`, `ActualVersion`, owned `SupportedVersions` |
+| `DocumentMigrationSourceVersionInvalid` | A native migration source outside format 3 or 4, or a prefab migration source outside format 6 or 7 | `FieldPath`, `ActualVersion`, owned `SupportedVersions` |
 | `PrefabStateUnreadable` | A producer failure while reading prefab state without a concrete lower refusal | `DocumentId`, original `InnerException` on the throwing adapter |
 
 

@@ -202,7 +202,7 @@ public sealed class MapMarkerFormatTests
         var root = JsonNode.Parse(MapDocumentFile.SaveText(fixture.Document))!.AsObject();
         Assert.NotNull(MapDocumentFile.LoadText(root.ToJsonString()));
         mutate(DocumentMarker(root, "w-" + form));
-        var (documentRefusal, prefabRefusal, writeRefusal) = Refusal(variant);
+        var (documentRefusal, _, writeRefusal) = Refusal(variant);
         Assert.Contains(documentRefusal, Assert.Throws<MapDocumentException>(() =>
             MapDocumentFile.LoadText(Duplicated(root.ToJsonString(), duplicate))).Message, StringComparison.Ordinal);
 
@@ -216,8 +216,13 @@ public sealed class MapMarkerFormatTests
             "explicit-binding" or "support-without-binding" or "support-y-one" or "support-negative-zero" or "nonfinite-yaw" or
             "null-tags" or "null-tag" or "empty-archetype" or "blank-archetype" or "negative-search")
             AssertMarkerFinding(variant, form, prefabError);
-        // The native-vector producer remains message-shaped until W6-D3-03 closes its family.
-        else if (variant == "nonfinite-y") Assert.Contains(prefabRefusal, prefabError.Message, StringComparison.Ordinal);
+        else if (variant == "nonfinite-y")
+        {
+            Assert.Equal(MapDocumentRefusal.ValueNonfinite, prefabError.Reason);
+            Assert.Equal("$.y", prefabError.FieldPath);
+            Assert.Equal(double.PositiveInfinity, prefabError.ActualNumber);
+            Assert.Equal(MarkerFixtures.PayloadTwoResource, prefabError.ResourceId);
+        }
         else AssertPrefabCodecFinding(variant, form, asset, prefabError);
         if (variant == "negative-search")
         {

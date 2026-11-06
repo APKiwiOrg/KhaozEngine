@@ -12412,6 +12412,16 @@ Authored-support adoption over a partial document uses the same reason with
 `Operation = "ConvertToAuthoredSupport"`. Unrepresentable binary32 placement presentation uses
 `GeometryNotRepresentable`, `PlacementId`, the failed component's `FieldPath`, binary64 `ActualNumber` and
 `Operation = "ResolveEffectivePlacements"`.
+Native-vector, terrain-feature and numeric identity converter refusals remain catchable as `JsonException`
+through `MapNativeVectorJsonException`, `MapFeatureJsonException` and `MapNumericIdJsonException`. Their
+required `Reason` and typed identifiers survive document and prefab wrappers. Vectors name the refused
+component in relative `FieldPath`, retaining parsed `ActualNumber` for `ValueNonfinite`. Features name
+`$.type` and discriminator `ActualText`, distinguishing `SchemaValueRequired` from
+`DocumentTerrainFeatureUnknown`. Non-string and noncanonical identity text uses `SchemaInt64Malformed`
+with submitted `ActualText` when known and the inclusive integer limits. An unindexed `ReadTile` request
+uses `DocumentTileNotIndexed`, the requested `Tile` and `SourceName`. Native migration accepts source
+formats 3 and 4, reporting `SchemaMemberMissing`, `SchemaValueRequired` or
+`DocumentMigrationSourceVersionInvalid` with `FieldPath`, known `ActualVersion` and owned `SupportedVersions`.
 Prefab migration distinguishes missing, incorrectly typed and unsupported source versions. Its unsupported-version
 reason is `DocumentMigrationSourceVersionInvalid`, with `ActualVersion`, `FieldPath` and owned `SupportedVersions`.
 Exact-enum codecs use `SchemaEnumUnsupported` with `EnumType` and submitted text or numeric value. A marker binding's

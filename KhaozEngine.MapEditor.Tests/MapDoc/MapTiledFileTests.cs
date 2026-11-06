@@ -334,7 +334,11 @@ namespace KhaozEngine.Tests.MapDoc
                 Assert.Equal(new[] { "p-a", "p-b" }, origin.Placements.Select(p => p.Id).OrderBy(i => i, StringComparer.Ordinal));
                 Assert.Single(origin.SculptTiles);
 
-                Assert.Throws<MapDocumentException>(() => source.ReadTile(new MapTileCoord(42, 42)));
+                var error = Assert.Throws<MapDocumentException>(() => source.ReadTile(new MapTileCoord(42, 42)));
+                Assert.Equal(MapDocumentRefusal.DocumentTileNotIndexed, error.Reason);
+                Assert.Equal(new MapTileCoord(42, 42), error.Tile);
+                Assert.Equal(directory, error.SourceName);
+                Assert.Equal(2, source.ReadTile(new MapTileCoord(0, 0)).Placements.Count);
             });
         }
 

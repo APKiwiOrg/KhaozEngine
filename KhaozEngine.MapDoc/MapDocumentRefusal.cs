@@ -35,6 +35,9 @@ public enum MapDocumentRefusal
     /// <summary>Refuses a migration source outside that migration's supported format versions.</summary>
     DocumentMigrationSourceVersionInvalid,
 
+    /// <summary>Refuses reading a tile absent from the occupied-tile index.</summary>
+    DocumentTileNotIndexed,
+
     // Schema and scalar admission.
     /// <summary>Refuses malformed JSON, typed payload encoding or tile sculpt data.</summary>
     SchemaMalformed,

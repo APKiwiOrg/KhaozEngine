@@ -103,7 +103,7 @@ namespace KhaozEngine.Tests.MapEditTool
         }
 
         [Fact]
-        public void FeatureAdd_UnknownType_ThrowsPreciseMessage()
+        public void FeatureAdd_UnknownType_RefusesWithoutMutatingTheDocument()
         {
             string dir = NewTempDir();
             try
@@ -112,12 +112,16 @@ namespace KhaozEngine.Tests.MapEditTool
                 string before = session.WithDocument((doc, r) => MapDocumentFile.SaveText(doc, r));
                 bool dirtyBefore = session.IsDirty;
 
-                JsonException ex = Assert.Throws<JsonException>(() =>
+                MapFeatureJsonException ex = Assert.Throws<MapFeatureJsonException>(() =>
                     mutation.FeatureAdd("{\"type\":\"volcano\",\"centerX\":0,\"centerZ\":0}"));
 
-                Assert.Contains("Unknown terrain feature type 'volcano'", ex.Message);
+                Assert.Equal(MapDocumentRefusal.DocumentTerrainFeatureUnknown, ex.Reason);
+                Assert.Equal("volcano", ex.ActualText);
+                Assert.Equal("$.type", ex.FieldPath);
                 Assert.Equal(before, session.WithDocument((doc, r) => MapDocumentFile.SaveText(doc, r)));
                 Assert.Equal(dirtyBefore, session.IsDirty);
+                mutation.FeatureAdd("{\"type\":\"lake\",\"centerX\":0,\"centerZ\":0}");
+                Assert.IsType<LakeFeatureDoc>(session.WithDocument((doc, _) => doc.Terrain.Features[^1]));
             }
             finally { Directory.Delete(dir, recursive: true); }
         }

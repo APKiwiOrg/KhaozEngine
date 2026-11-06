@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using KhaozEngine.MapDoc;
 using KhaozEngine.MapDoc.Editing;
+using KhaozEngine.MapDoc.Prefabs;
 using KhaozEngine.MapDoc.Spaces;
 using KhaozEngine.MapDoc.Storage;
 using KhaozEngine.MapDoc.Surfaces;
@@ -74,6 +75,37 @@ public sealed class SpaceMembershipTests
     [Fact]
     public void TinyLocalCoordinate_IsNotRepresentableNeverSnapped()
         => Assert.Equal(MapMembershipStatus.NotRepresentable, CaveFixtures.Query(CaveFixtures.RampChamberShaft(), 1e-30f, 10.5f, 4.5f).Status);
+
+    [Fact]
+    public void PortalBandBeyondEffectiveCoordinateLimit_KeepsOverflowClassification()
+    {
+        // W6-P1 regression: chain refusal forwarding must preserve the released membership projection.
+        MapDocument cave = PortalBandFixtures.Build("arch");
+        MapSurfacePatch patch = CaveFixtures.Patch(cave.Surfaces, "hall-floor");
+        int index = patch.Records.FindIndex(r => r.Id == "arch");
+        var chain = (MapBoundaryChain)patch.Records[index];
+        patch.Records[index] = chain with
+        {
+            Vertices = chain.Vertices.Select(v => v with { HeightUnits = 100_000_100 }).ToArray()
+        };
+        MapMembershipResult refused = Query();
+        Assert.Equal(MapMembershipStatus.NotRepresentable, refused.Status);
+        Assert.Equal("overflow", refused.Detail);
+        // The authored height unit is 1/100 metre. The repaired band is exactly at the coordinate cap.
+        patch.Records[index] = chain with
+        {
+            Vertices = chain.Vertices.Select(v => v with { HeightUnits = 100_000_000 }).ToArray()
+        };
+        Assert.Equal(MapMembershipStatus.Resolved, Query().Status);
+
+        MapMembershipResult Query()
+        {
+            var context = new MapEffectiveContext(cave.Surfaces, new Dictionary<string, MapEffectiveTransform>
+            { ["Surface:hall-floor"] = new(0, 0, 0, 0, 1) }, new string('a', 64));
+            return new MapSpaceMembership(MapScopedSurfaces.CompleteEffective(context))
+                .Query(new(WorldFrame.Origin, new(2, 1, 1)));
+        }
+    }
     [Fact]
     public void ImportedIndoorMask_IsANestedDomainWithAnExplicitSpan()
     {

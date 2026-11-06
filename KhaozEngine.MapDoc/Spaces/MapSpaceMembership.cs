@@ -315,6 +315,7 @@ public sealed class MapSpaceMembership
                 foreach (MapCellDemand cell in cells) _ = context.Faces(cell);
                 MapChainResolution chain = MapBoundaryGeometry.ResolveChain(source, _view,
                     key => new MapBoundarySurface(context.ValidatedPatch(key), MapSlotCellMask.Of(cells.Select(cell => cell.SlotCell))));
+                if (chain.Detail?.Contains("not representable", StringComparison.Ordinal) == true) throw new MapExactOverflowException();
                 if (chain.Status != MapResolveStatus.Resolved) throw chain.Refuse(chain.Detail ?? "missing geometry: portal band", reference);
                 return MapSpaceGeometry.ChainHeight(chain.Points, xz) ?? throw new MapDocumentException(MapDocumentRefusal.GeometryVertexSequenceInvalid,
                     "invalid portal vertex sequence") { RecordId = reference.Id, Patch = reference.Anchor, FieldPath = "Vertices" };

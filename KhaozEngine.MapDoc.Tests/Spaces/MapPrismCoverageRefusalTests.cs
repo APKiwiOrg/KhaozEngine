@@ -14,6 +14,42 @@ namespace KhaozEngine.Tests.MapDoc;
 public sealed class MapPrismCoverageRefusalTests
 {
     [Theory]
+    [InlineData(false, MapDocumentRefusal.WaterDomainEmpty)]
+    [InlineData(true, MapDocumentRefusal.WaterDomainZeroArea)]
+    public void DomainCompilation_KeepsItsConcreteRuleThroughThePublicSnapshotAndAdapter(bool collinear, MapDocumentRefusal reason)
+    {
+        var set = MapOccupiedPartitionRefusalTests.Scene(1);
+        var patch = set.Patches.Values.Single();
+        var prism = patch.Records.OfType<MapPrismDomain>().Single();
+        var refused = prism.Footprint with { Rects = [], Rings = collinear
+            ? [new([MapLatticeAddress.Corner(0, 0), MapLatticeAddress.Corner(1, 0), MapLatticeAddress.Corner(2, 0)])] : [] };
+        Replace(patch, prism with { Footprint = refused });
+        var finding = Assert.Single(Findings(MapOccupiedPartitionRefusalTests.View(set)));
+        Assert.Equal(reason, finding.Reason);
+        Assert.Equal(prism.Id, finding.RecordId);
+        Assert.Equal(prism.Space.Id, finding.SpaceId);
+        Replace(patch, prism);
+        Assert.Empty(Findings(MapOccupiedPartitionRefusalTests.View(set)));
+    }
+
+    [Fact]
+    public void ParentPairBudget_KeepsTheMeasuredFindingAndAcceptsItsInclusiveBoundary()
+    {
+        var view = MapOccupiedPartitionRefusalTests.View(MapOccupiedPartitionRefusalTests.Scene(1));
+        // One rectangular prism is checked against the parent's two triangular floor pieces.
+        var findings = MapPrismCoverage.ValidateFindings(view, new(MaxPairChecks: 1));
+        var finding = Assert.Single(findings);
+        Assert.Equal(MapDocumentRefusal.WorkCapacityExceeded, finding.Reason);
+        Assert.Equal("WaterDomainPairChecks", finding.Budget);
+        Assert.Equal(2, finding.ActualCount);
+        Assert.Equal(1, finding.Limit);
+        var error = Assert.Throws<MapDocumentException>(() => MapPrismCoverage.Require(view, new(MaxPairChecks: 1)));
+        Assert.Equal(findings, error.Findings);
+        Assert.Empty(MapPrismCoverage.ValidateFindings(view, new(MaxPairChecks: 2)));
+        MapPrismCoverage.Require(view, new(MaxPairChecks: 2));
+    }
+
+    [Theory]
     [InlineData("kind", MapDocumentRefusal.ReferenceKindMismatch)]
     [InlineData("parent", MapDocumentRefusal.SpacePrismParentMismatch)]
     [InlineData("footprint", MapDocumentRefusal.SpaceRoomOccupancyInvalid)]
@@ -195,11 +231,17 @@ public sealed class MapPrismCoverageRefusalTests
         }
     }
 
-    static List<MapDocumentFinding> Findings(MapScopedSurfaces view)
+    static IReadOnlyList<MapDocumentFinding> Findings(MapScopedSurfaces view)
     {
-        var findings = new List<MapDocumentFinding>();
-        var messages = MapPrismCoverage.Validate(view, new(), findings);
-        Assert.Equal(messages, findings.Select(f => f.Message));
+        var findings = MapPrismCoverage.ValidateFindings(view, new());
+        Assert.Equal(MapPrismCoverage.Validate(view, new()), findings.Select(f => f.Message));
+        if (findings.Count != 0)
+        {
+            var error = Assert.Throws<MapDocumentException>(() => MapPrismCoverage.Require(view, new()));
+            Assert.Equal(findings[0].Reason, error.Reason);
+            Assert.Equal(findings, error.Findings);
+        }
+        else MapPrismCoverage.Require(view, new());
         return findings;
     }
 

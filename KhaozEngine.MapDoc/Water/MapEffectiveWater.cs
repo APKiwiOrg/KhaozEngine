@@ -33,7 +33,8 @@ internal static class MapEffectiveWater
         if (domain is null)
         {
             var contextual = findings.Select(f => f with { EntityId = f.EntityId ?? body.Id }).ToArray();
-            throw MapDocumentRefusalFactory.FromFinding(contextual[0],
+            throw MapDocumentRefusalFactory.FromFinding(contextual[0] with
+                { InvalidPrefixSuppressed = transform is null || contextual[0].InvalidPrefixSuppressed },
                 transform is null ? "water domain: " + errors[0] + "." : errors[0], inner: cause, findings: contextual);
         }
         string digest = transform is null ? "" : MapPrefabJson.Digest("kemap/effective-water/1", new

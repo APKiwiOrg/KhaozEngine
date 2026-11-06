@@ -78,8 +78,8 @@ internal static class MapFoliageContextPreflight
         try { expansion = MapPrefabPreflight.Count(document, assets, new()); }
         catch (MapDocumentException error)
         {
-            bool capacity = error.Message.Contains("limit exceeded", StringComparison.Ordinal) ||
-                error.Message.Contains("overflow", StringComparison.Ordinal);
+            bool capacity = error is { Reason: MapDocumentRefusal.WorkCapacityExceeded,
+                Operation: nameof(MapPrefabPreflight.Count) or nameof(MapPrefabPreflight.AddProduct) };
             return Refusal(capacity ? MapFoliageStatus.CapacityExceeded : MapFoliageStatus.Invalid,
                 MapDocumentFinding.FromException(error)!);
         }

@@ -12862,6 +12862,20 @@ arithmetic or narrowing overflow remains `NotRepresentable`. Capacity findings e
 source, pair, emitted face, vertex or context `Budget`, its measured `ActualCount` and inclusive `Limit`.
 Refusals expose no partial refinement. A count that overflowed its representation remains null.
 
+`MapPrismCoverage.ValidateFindings(view, limits)` and
+`MapSpaceCoverageValidator.ValidateFindings(view, limits?)` expose complete ordered read-only snapshots.
+Their string APIs keep their existing projection. Their `Require` adapters throw the first concrete
+reason and retain all findings, including the owning record and cell where known. Prefab preparation
+and the effective physics-world gate use these adapters. Partition refusals preserve their original
+status projection separately from the lower reason, including invalid refinement projected as missing geometry.
+Classification does not interpret keywords inside user-supplied identifiers.
+`MapCompiledWaterBody.Finding` carries a refused compile's original rule and body owner. Complete bodies
+have no finding. Capacity identifies the actual compile budget, measured `ActualCount` and inclusive
+`Limit`. Unverified cover and footprint discovery use `PatchUnavailable` or `AcquisitionIncomplete`.
+An uncovered bound area uses `SpaceCoverageMissingBound`, without changing the existing status or Detail.
+The effective-water publication gate forwards the first refused body's finding and typed context,
+retaining its existing detail and first-body admission order.
+
 Effective coordinate freezing carries `Operation = "Freeze"` and `ActualNumber`, using `ValueNonfinite`
 for nonfinite input or `ValueOutsideRange` with the inclusive `MinimumNumber` and `MaximumNumber`.
 Effective frame conversion uses `FrameRadiusExceeded` with its checked local position and inclusive `Limit`,

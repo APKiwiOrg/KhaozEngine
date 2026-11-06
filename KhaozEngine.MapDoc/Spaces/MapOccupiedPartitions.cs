@@ -175,7 +175,7 @@ internal static class MapOccupiedPartitions
         MapRefinementLimits limits, bool carve)
     {
         var result = BuildWide(view, min, max, limits, carve);
-        if (result.Status != MapRefinementStatus.Complete) throw Refusal(result.Status, result.Detail);
+        if (result.Status != MapRefinementStatus.Complete) throw Refusal(result.Status, result.Detail, result.Finding!);
         return result.Pieces;
     }
 
@@ -185,11 +185,13 @@ internal static class MapOccupiedPartitions
         try { return new(MapRefinementStatus.Complete, BuildCore(view, min, max, limits, carve, meter), null, view.ReadWitness); }
         catch (Exception error) when (error is MapDocumentException or MapExactOverflowException or OverflowException)
         {
-            var status = error.Message.Contains("capacity exceeded", StringComparison.Ordinal) || error.Message.Contains("domain work exceeds", StringComparison.Ordinal)
-                ? MapRefinementStatus.CapacityExceeded : MapCommonRefinement.NotRepresentable(error) || error.Message.Contains("not representable", StringComparison.OrdinalIgnoreCase)
+            var status = error is MapDocumentException capacity && MapGeometryRefusals.Capacity(capacity)
+                ? MapRefinementStatus.CapacityExceeded : MapCommonRefinement.NotRepresentable(error) ||
+                    error is MapDocumentException numeric && MapGeometryRefusals.Representability(numeric)
                     ? MapRefinementStatus.NotRepresentable : MapRefinementStatus.MissingGeometry;
             return new(status, [], error.Message, view.ReadWitness)
-            { Finding = error is MapDocumentException refusal ? MapDocumentFinding.FromException(refusal) : null };
+            { Finding = error is MapDocumentException refusal ? MapDocumentFinding.FromException(refusal)
+                : new(MapDocumentRefusal.GeometryNotRepresentable, error.Message) { Operation = nameof(BuildWide) } };
         }
     }
 
@@ -208,7 +210,8 @@ internal static class MapOccupiedPartitions
                 Limit = domains.Length > view.Scope.Limits.MaxRecordReads ? view.Scope.Limits.MaxRecordReads : limits.MaxRefinementVertices };
         var footprints = records.OfType<MapSpaceFootprint>().ToArray();
         var prepared = MapCommonRefinement.PrepareFootprints(view, footprints, limits, null, meter);
-        if (prepared.Context is not { } context) throw new MapDocumentException("capacity exceeded: " + prepared.Refusal);
+        if (prepared.Context is not { } context) throw MapDocumentRefusalFactory.FromFinding(
+            prepared.Finding! with { RefinementStatus = MapRefinementStatus.CapacityExceeded, InvalidPrefixSuppressed = true }, "capacity exceeded: " + prepared.Refusal);
         var raw = new List<MapOccupiedPiece>();
         var parentIndexes = new Dictionary<string, (MapOccupiedPiece[] Parents, MapWaterPolygons.Bounds[] Bounds, MapBoundsIndex Index)>(StringComparer.Ordinal);
         var vertices = new Dictionary<List<MapOccupiedPiece>, long>();
@@ -229,7 +232,7 @@ internal static class MapOccupiedPartitions
                     MapCommonRefinement.BoundFaces(context, footprint, footprint.Upper, new(rect.MinX, rect.MinZ), new(rect.MaxX, rect.MaxZ), limits);
                 Require(lower); if (upper is not null) Require(upper);
                 var refined = MapCommonRefinement.RefineWide(lower.Faces, upper?.Faces, polygon, limits, budget: meter is null ? null : work);
-                if (refined.Status != MapRefinementStatus.Complete) throw Refusal(refined.Status, refined.Detail);
+                if (refined.Status != MapRefinementStatus.Complete) throw Refusal(refined.Status, refined.Detail, refined.Finding!);
                 if (!refined.LowerArea.Equals(refined.CellArea) || upper is not null && !refined.UpperArea!.Value.Equals(refined.CellArea))
                     throw new MapDocumentException(MapDocumentRefusal.PatchUnavailable, "missing geometry: canonical occupied bounds")
                     { RecordId = footprint.Id, SpaceId = footprint.Space.Id, Patch = footprint.Lattice,
@@ -441,12 +444,14 @@ internal static class MapOccupiedPartitions
             remaining = Clip(remaining, p => MapWaterPolygons.Cross(a, b, p));
         }
     }
-    internal static MapDocumentException Refusal(MapRefinementStatus status, string? detail) => new(status switch
-    {
-        MapRefinementStatus.CapacityExceeded => "capacity exceeded: " + detail,
-        MapRefinementStatus.NotRepresentable => "not representable: " + detail,
-        _ => "missing geometry: " + detail
-    });
-    static void Require(MapBoundFaceSet bound) { if (bound.Status != MapRefinementStatus.Complete) throw Refusal(bound.Status, bound.Detail); }
+    internal static MapDocumentException Refusal(MapRefinementStatus status, string? detail, MapDocumentFinding finding) =>
+        MapDocumentRefusalFactory.FromFinding(finding with { RefinementStatus = status, InvalidPrefixSuppressed = true }, status switch
+        {
+            MapRefinementStatus.CapacityExceeded => "capacity exceeded: " + detail,
+            MapRefinementStatus.NotRepresentable => "not representable: " + detail,
+            _ => "missing geometry: " + detail
+        });
+    static void Require(MapBoundFaceSet bound)
+    { if (bound.Status != MapRefinementStatus.Complete) throw Refusal(bound.Status, bound.Detail, bound.Finding!); }
     static MapWideRational W(MapExactValue value) => MapWideRational.From(value);
 }

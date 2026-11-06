@@ -42,7 +42,7 @@ public sealed partial class MapSurfacePatch
         if (Presence is null || Presence.Length != (Width * Depth + 63) / 64)
             throw new MapDocumentException(Presence is null ? MapDocumentRefusal.SchemaValueRequired
                 : MapDocumentRefusal.SchemaArrayLengthMismatch, "invalid presence length")
-            { Patch = Key, FieldPath = nameof(Presence), ActualCount = Presence?.LongLength, ExpectedCount = (Width * Depth + 63) / 64 };
+            { ResolutionStatus = MapResolveStatus.Invalid, Patch = Key, FieldPath = nameof(Presence), ActualCount = Presence?.LongLength, ExpectedCount = (Width * Depth + 63) / 64 };
         return (Presence[index / 64] & (1UL << (index % 64))) != 0;
     }
     public void SetPresent(int x, int z, bool present)
@@ -72,7 +72,7 @@ public sealed partial class MapSurfacePatch
         if (Heights is null || Heights.Length != (Width + 1) * (Depth + 1))
             throw new MapDocumentException(Heights is null ? MapDocumentRefusal.SchemaValueRequired
                 : MapDocumentRefusal.SchemaArrayLengthMismatch, "invalid heights length")
-            { Patch = Key, FieldPath = nameof(Heights), ActualCount = Heights?.LongLength, ExpectedCount = (Width + 1) * (Depth + 1) };
+            { ResolutionStatus = MapResolveStatus.Invalid, Patch = Key, FieldPath = nameof(Heights), ActualCount = Heights?.LongLength, ExpectedCount = (Width + 1) * (Depth + 1) };
         return Heights[cornerZ * (Width + 1) + cornerX];
     }
     public MapLatticeAddress CornerAddress(int cornerX, int cornerZ)
@@ -122,37 +122,37 @@ public sealed partial class MapSurfacePatch
         if (!ValidRectangle(CellMinX, CellMinZ, Width, Depth))
         {
             Add(new(MapDocumentRefusal.BoundsInvalid, "invalid patch width, depth or cell minimum")
-            { FieldPath = "rectangle", Width = Width, Depth = Depth });
+            { ResolutionStatus = MapResolveStatus.Invalid, FieldPath = "rectangle", Width = Width, Depth = Depth });
             return errors;
         }
         int count = Width * Depth;
         if (Heights is null || Heights.Length != (Width + 1) * (Depth + 1))
             Add(new(Heights is null ? MapDocumentRefusal.SchemaValueRequired : MapDocumentRefusal.SchemaArrayLengthMismatch, "invalid heights length")
-            { FieldPath = nameof(Heights), ActualCount = Heights?.LongLength, ExpectedCount = (Width + 1) * (Depth + 1) });
+            { ResolutionStatus = MapResolveStatus.Invalid, FieldPath = nameof(Heights), ActualCount = Heights?.LongLength, ExpectedCount = (Width + 1) * (Depth + 1) });
         if (Cells is null || Cells.Length != count)
             Add(new(Cells is null ? MapDocumentRefusal.SchemaValueRequired : MapDocumentRefusal.SchemaArrayLengthMismatch, "invalid cells length")
-            { FieldPath = nameof(Cells), ActualCount = Cells?.LongLength, ExpectedCount = count });
+            { ResolutionStatus = MapResolveStatus.Invalid, FieldPath = nameof(Cells), ActualCount = Cells?.LongLength, ExpectedCount = count });
         else
             for (int i = 0; i < Cells.Length; i++)
             {
                 MapSurfaceCell cell = Cells[i];
                 if (cell.Rotation > 3)
                     Add(new(MapDocumentRefusal.ValueOutsideRange, "invalid cell rotation")
-                    { FieldPath = $"Cells[{i}].Rotation", Index = i, ActualInteger = cell.Rotation, MinimumInteger = 0, MaximumInteger = 3 });
+                    { ResolutionStatus = MapResolveStatus.Invalid, FieldPath = $"Cells[{i}].Rotation", Index = i, ActualInteger = cell.Rotation, MinimumInteger = 0, MaximumInteger = 3 });
                 if ((byte)cell.Flags > 31)
                     Add(new(MapDocumentRefusal.SchemaEnumUnsupported, "invalid cell flags")
-                    { FieldPath = $"Cells[{i}].Flags", Index = i, ActualInteger = (byte)cell.Flags, EnumType = typeof(MapCellFlags) });
+                    { ResolutionStatus = MapResolveStatus.Invalid, FieldPath = $"Cells[{i}].Flags", Index = i, ActualInteger = (byte)cell.Flags, EnumType = typeof(MapCellFlags) });
                 if (cell.Cut > MapOverlayCut.CornerThreeQuarter)
                     Add(new(MapDocumentRefusal.SchemaEnumUnsupported, "invalid cell cut")
-                    { FieldPath = $"Cells[{i}].Cut", Index = i, ActualInteger = (byte)cell.Cut, EnumType = typeof(MapOverlayCut) });
+                    { ResolutionStatus = MapResolveStatus.Invalid, FieldPath = $"Cells[{i}].Cut", Index = i, ActualInteger = (byte)cell.Cut, EnumType = typeof(MapOverlayCut) });
                 if (cell.Topology > MapCellTopology.ForceNwSe)
                     Add(new(MapDocumentRefusal.SchemaEnumUnsupported, "invalid cell topology")
-                    { FieldPath = $"Cells[{i}].Topology", Index = i, ActualInteger = (byte)cell.Topology, EnumType = typeof(MapCellTopology) });
+                    { ResolutionStatus = MapResolveStatus.Invalid, FieldPath = $"Cells[{i}].Topology", Index = i, ActualInteger = (byte)cell.Topology, EnumType = typeof(MapCellTopology) });
             }
         bool validPresence = Presence is not null && Presence.Length == (count + 63) / 64;
         if (!validPresence)
             Add(new(Presence is null ? MapDocumentRefusal.SchemaValueRequired : MapDocumentRefusal.SchemaArrayLengthMismatch, "invalid presence length")
-            { FieldPath = nameof(Presence), ActualCount = Presence?.LongLength, ExpectedCount = (count + 63) / 64 });
+            { ResolutionStatus = MapResolveStatus.Invalid, FieldPath = nameof(Presence), ActualCount = Presence?.LongLength, ExpectedCount = (count + 63) / 64 });
         else if (count % 64 != 0 && (Presence![^1] >> (count % 64)) != 0)
             Add(new(MapDocumentRefusal.SurfacePresencePaddingNonzero, "nonzero unused presence bits")
             { FieldPath = nameof(Presence), Index = Presence.Length - 1 });
@@ -178,7 +178,7 @@ public sealed partial class MapSurfacePatch
                     : dependency.Owner is null ? ".Owner" : ".Owner.Patch.SurfaceId";
                 Add(new(badX || badZ ? MapDocumentRefusal.SurfaceAddressOutOfPatch : MapDocumentRefusal.SchemaValueRequired,
                     "invalid corner dependency")
-                {
+                { ResolutionStatus = MapResolveStatus.Invalid,
                     FieldPath = $"CornerDependencies[{i}]{field}", Index = i,
                     CellX = dependency?.CornerX, CellZ = dependency?.CornerZ,
                     ActualInteger = badX ? dependency!.CornerX : badZ ? dependency!.CornerZ : null,
@@ -195,7 +195,7 @@ public sealed partial class MapSurfacePatch
             {
                 Add(MapDocumentFinding.FromException(error)! with
                 {
-                    Message = "invalid dependency address denominator", FieldPath = $"CornerDependencies[{i}].Owner.Address.Denominator",
+                    ResolutionStatus = MapResolveStatus.Invalid, Message = "invalid dependency address denominator", FieldPath = $"CornerDependencies[{i}].Owner.Address.Denominator",
                     Index = i, CellX = dependency.CornerX, CellZ = dependency.CornerZ,
                 });
             }
@@ -212,7 +212,7 @@ public sealed partial class MapSurfacePatch
                 string field = edge is null ? "" : badX ? ".CellX" : badZ ? ".CellZ" : ".Edge";
                 Add(new(edge is null ? MapDocumentRefusal.SchemaValueRequired : badX || badZ
                     ? MapDocumentRefusal.SurfaceAddressOutOfPatch : MapDocumentRefusal.SchemaEnumUnsupported, "invalid subdivision edge")
-                {
+                { ResolutionStatus = MapResolveStatus.Invalid,
                     FieldPath = $"EdgeSubdivisions[{i}]{field}", Index = i, CellX = edge?.CellX, CellZ = edge?.CellZ, Edge = edge?.Edge,
                     ActualInteger = edge is null ? null : badX ? edge.CellX : badZ ? edge.CellZ : (byte)edge.Edge,
                     MinimumInteger = badX || badZ ? 0 : null, MaximumInteger = badX ? Width - 1 : badZ ? Depth - 1 : null,

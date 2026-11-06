@@ -86,8 +86,10 @@ public static class MapCommonRefinement
         NotRepresentable(error) ? MapRefinementStatus.NotRepresentable : MapRefinementStatus.Invalid,
         NotRepresentable(error) ? "overflow: " + error.Message : error.Message, Finding(error, error.Message, nameof(BoundFaces)));
     internal static bool NotRepresentable(Exception error) =>
-        error is MapExactOverflowException or OverflowException or MapDocumentException { Reason: MapDocumentRefusal.GeometryNotRepresentable }
-        || error.InnerException is { } inner && NotRepresentable(inner);
+        error is not MapDocumentException { RefinementStatus: not null } &&
+        !(error is MapDocumentException document && MapGeometryRefusals.PreserveNonArithmeticProjection(document)) &&
+        (error is MapExactOverflowException or OverflowException or MapDocumentException { Reason: MapDocumentRefusal.GeometryNotRepresentable }
+        || error.InnerException is { } inner && NotRepresentable(inner));
 
     static MapDocumentFinding? Finding(Exception error, string detail, string operation) =>
         error is MapDocumentException document && MapDocumentFinding.FromException(document) is { } finding ? finding

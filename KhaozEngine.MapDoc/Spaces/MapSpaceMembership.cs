@@ -356,9 +356,9 @@ public sealed class MapSpaceMembership
         { return Failure(MapMembershipStatus.NotRepresentable, "overflow"); }
         catch (MapDocumentException error)
         {
-            return Failure(error.Message.Contains("capacity exceeded", StringComparison.Ordinal) || error.Message.Contains("domain work exceeds", StringComparison.Ordinal) ? MapMembershipStatus.CapacityExceeded :
-                MapCommonRefinement.NotRepresentable(error) || error.Message.Contains("not representable", StringComparison.OrdinalIgnoreCase) ? MapMembershipStatus.NotRepresentable :
-                error.Message.Contains("invalid", StringComparison.Ordinal) || error.Message.Contains("legacy recipe", StringComparison.Ordinal)
+            return Failure(MapGeometryRefusals.Capacity(error) ? MapMembershipStatus.CapacityExceeded :
+                MapGeometryRefusals.Representability(error) ? MapMembershipStatus.NotRepresentable :
+                MapGeometryRefusals.Invalid(error) || error.Reason == MapDocumentRefusal.SurfaceLegacyRecipeRequired
                     ? MapMembershipStatus.Invalid : MapMembershipStatus.MissingGeometry, error.Message);
         }
 

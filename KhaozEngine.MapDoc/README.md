@@ -281,6 +281,15 @@ Refinement capacity findings name `MaxSourceFacesPerBound`, `MaxPairChecks`, `Ma
 An unrepresentable measured count leaves `ActualCount` null rather than substituting a truncated value.
 Declared seam and strip vertex sequences stay strict. Refinement never waives a matching subdivision.
 
+`MapPrismCoverage.ValidateFindings(view, limits)` and
+`MapSpaceCoverageValidator.ValidateFindings(view, limits?)` return complete ordered read-only snapshots.
+Their existing `Validate` APIs retain the same string projection. Their `Require` adapters use the
+first concrete reason and attach every ordered finding as `MapDocumentException.Findings`.
+Prefab edit preparation and the effective physics-world gate use these adapters.
+Occupied partition adapters retain both the concrete finding and their original refinement projection.
+An invalid refinement projected as missing geometry stays distinct from arithmetic overflow or capacity,
+even when two failures have the same public reason. Classifiers do not interpret words inside user IDs.
+
 **Broad-phase budgets.** `MapPartialPaintCompiler` charges `MapRefinementLimits` pair checks per broad-phase
 candidate, a target face and paint source whose exact bounds openly overlap, found by an exact bounds sweep. Its
 slab, conflict and occlusion checks are charged to the same pair counter. Work therefore follows the painted area,
@@ -532,6 +541,14 @@ medium and the patches it read. `MapWaterCompileLimits` bounds pieces, vertices,
 checks and triangles. `MaxBoundCells` caps the cumulative bound-lattice slot and cell candidates before reads and
 sweeps, including absent, empty, skipped and face-free candidates. Negative limits throw at compile entry.
 Incomplete geometry remains explicit, and a capacity refusal keeps its counted work and no regions.
+The body's additive `Finding` carries the original failed rule and body ownership without changing
+`Status`, `Detail` or its digest. A complete body has no finding. Compile capacity findings name
+`MaxPieces`, `MaxPieceVertices`, `MaxFootprintCells`, `MaxBoundCells`, `MaxBoundFaces`, `MaxPairChecks`
+or `MaxTriangles`, with measured `ActualCount` and inclusive `Limit`. A single-cell source-face refusal
+names `MaxSourceFacesPerBound` and the measured face count. Unverified cover or footprint discovery
+uses `PatchUnavailable` or `AcquisitionIncomplete`, and uncovered bound area uses `SpaceCoverageMissingBound`.
+`MapBoundDocumentValidation.ValidateEffectiveWater` forwards the first refused body's finding and its
+typed context, retaining the original detail and the gate's first-body admission order.
 
 ## Storage ownership
 

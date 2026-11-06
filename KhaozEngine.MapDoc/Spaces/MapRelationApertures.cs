@@ -95,7 +95,8 @@ internal static class MapRelationApertures
             MapBoundaryChain chain = MapSpaceGeometry.Record<MapBoundaryChain>(view, source);
             MapChainResolution resolved = MapBoundaryGeometry.ResolveChain(chain, view);
             if (resolved.Status != MapResolveStatus.Resolved)
-                throw resolved.Refuse($"{(resolved.Status == MapResolveStatus.Invalid ? "invalid" : "missing geometry")}: chain '{source.Id}' {source.Anchor} ({resolved.Detail})", source);
+                throw resolved.Refuse($"{(resolved.Status == MapResolveStatus.Invalid ? "invalid" : "missing geometry")}: chain '{source.Id}' {source.Anchor} ({resolved.Detail})",
+                    source, diagnosticStatus: resolved.Status);
             provenance.Add(source);
             return resolved.Points;
         }

@@ -13,6 +13,21 @@ public static class MapSpaceCoverageValidator
     public static IReadOnlyList<string> Validate(MapScopedSurfaces completeView) => Validate(completeView, new());
     public static IReadOnlyList<string> Validate(MapScopedSurfaces completeView, MapRefinementLimits limits) =>
         ValidateCore(completeView, limits, null);
+
+    /// <summary>Returns the full ordered immutable snapshot behind coverage diagnostics.</summary>
+    public static IReadOnlyList<MapDocumentFinding> ValidateFindings(MapScopedSurfaces completeView, MapRefinementLimits? limits = null)
+    {
+        var findings = new List<MapDocumentFinding>();
+        _ = ValidateCore(completeView, limits ?? new(), null, findings);
+        return findings.AsReadOnly();
+    }
+
+    /// <summary>Refuses with the first concrete rule and the full ordered finding snapshot.</summary>
+    public static void Require(MapScopedSurfaces completeView, MapRefinementLimits? limits = null)
+    {
+        var findings = ValidateFindings(completeView, limits);
+        if (findings.Count != 0) throw MapDocumentRefusalFactory.FromFinding(findings[0], string.Join("\n", findings.Select(f => f.Message)), findings: findings);
+    }
     internal static IReadOnlyList<string> Validate(MapScopedSurfaces completeView, MapRefinementLimits limits, MapBoundFaceWork work) =>
         ValidateCore(completeView, limits, work);
     internal static IReadOnlyList<string> Validate(MapScopedSurfaces completeView, MapRefinementLimits limits,
@@ -50,7 +65,8 @@ public static class MapSpaceCoverageValidator
                 {
                     if (!contextFinding)
                     {
-                        Add(footprint.Id, -1, $"refinement capacity: footprint '{footprint.Id}' ({prepared.Refusal})");
+                        AddFinding(footprint.Id, -1, prepared.Finding! with
+                        { Message = $"refinement capacity: footprint '{footprint.Id}' ({prepared.Refusal})" });
                         contextFinding = true;
                     }
                     continue;
@@ -68,7 +84,7 @@ public static class MapSpaceCoverageValidator
                     };
                     string detail = refinement.Status == MapRefinementStatus.Invalid && refinement.Detail is not null
                         ? $" ({refinement.Detail})" : "";
-                    Add(footprint.Id, cell, $"{kind}: {label}{detail}");
+                    AddFinding(footprint.Id, cell, refinement.Finding! with { Message = $"{kind}: {label}{detail}" });
                     continue;
                 }
                 if (!refinement.LowerArea.Add(refinement.CompatibilityArea).Equals(refinement.CellArea) ||

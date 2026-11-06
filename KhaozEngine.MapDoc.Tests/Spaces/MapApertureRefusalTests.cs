@@ -56,6 +56,14 @@ public sealed class MapApertureRefusalTests
             }
         }
         patch.Records[patch.Records.FindIndex(r => r.Id == portal.Id)] = portal;
+        if (defect == "chain-invalid")
+        {
+            var view = MapScopedSurfaces.CompleteView(set);
+            var source = patch.Records.OfType<MapBoundaryChain>().Single(c => c.Id == "bottom");
+            var resolution = MapBoundaryGeometry.ResolveChain(source, view);
+            var unprefixed = resolution.Refuse(resolution.Detail!, portal.BandBottom);
+            Assert.False(MapGeometryRefusals.Invalid(unprefixed));
+        }
         MapDocumentException error = Assert.Throws<MapDocumentException>(() => Compile(set, portal));
         Assert.Equal(reason, error.Reason);
         Assert.Equal(defect.StartsWith("chain", StringComparison.Ordinal) ? "bottom" : "portal", error.RecordId);

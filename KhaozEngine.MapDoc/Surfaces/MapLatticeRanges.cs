@@ -12,7 +12,7 @@ public static class MapLatticeRanges
         if (string.IsNullOrWhiteSpace(lattice.SurfaceId) || slotCell is < 0 or >= 4096)
             throw new MapDocumentException(string.IsNullOrWhiteSpace(lattice.SurfaceId)
                 ? MapDocumentRefusal.SchemaValueRequired : MapDocumentRefusal.ValueOutsideRange, "invalid lattice cell")
-            {
+            { ResolutionStatus = MapResolveStatus.Invalid,
                 Patch = lattice, FieldPath = string.IsNullOrWhiteSpace(lattice.SurfaceId) ? "SurfaceId" : "slotCell",
                 ActualInteger = string.IsNullOrWhiteSpace(lattice.SurfaceId) ? null : slotCell,
                 MinimumInteger = string.IsNullOrWhiteSpace(lattice.SurfaceId) ? null : 0,
@@ -34,7 +34,7 @@ public static class MapLatticeRanges
         _ = frame.WorldXz(MapLatticeAddress.Corner(0, 0));
         if (min.X.CompareTo(max.X) > 0 || min.Z.CompareTo(max.Z) > 0)
             throw new MapDocumentException(MapDocumentRefusal.BoundsInvalid, "invalid exact rectangle")
-            {
+            { ResolutionStatus = MapResolveStatus.Invalid,
                 FieldPath = min.X.CompareTo(max.X) > 0 ? "X" : "Z",
                 MinimumNumber = (min.X.CompareTo(max.X) > 0 ? min.X : min.Z).ToDouble(),
                 MaximumNumber = (min.X.CompareTo(max.X) > 0 ? max.X : max.Z).ToDouble(),

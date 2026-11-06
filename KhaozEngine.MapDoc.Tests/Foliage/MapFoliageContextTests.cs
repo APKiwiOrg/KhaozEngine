@@ -111,6 +111,24 @@ public sealed class MapFoliageContextTests
         Assert.Equal(1, complete.Work.Expansions);
     }
 
+    [Theory]
+    [InlineData("overflow")]
+    [InlineData("limit exceeded")]
+    [InlineData("missing")]
+    public void MissingAssetKeyword_DoesNotTurnAReferenceRefusalIntoCapacity(string assetId)
+    {
+        var fixture = FoliageFixtures.Create();
+        var placement = new MapPlacement { Id = "unavailable", Kind = "item", AssetId = assetId, Y = 0 };
+        fixture.Document.Placements.Add(placement);
+        string before = MapDocumentFile.SaveText(fixture.Document);
+        var refused = MapFoliageContextPreflight.Measure(fixture.Document, fixture.Assets, new());
+        Assert.Equal(MapFoliageStatus.Invalid, refused.Status);
+        Assert.Equal(MapDocumentRefusal.ReferenceMissing, refused.Finding!.Reason);
+        Assert.Equal(before, MapDocumentFile.SaveText(fixture.Document));
+        placement.AssetId = fixture.Assets.Assets.First().Id;
+        Assert.Equal(MapFoliageStatus.Complete, MapFoliageContextPreflight.Measure(fixture.Document, fixture.Assets, new()).Status);
+    }
+
     [Fact]
     public void ContextBudget_RefusesBeforeExpansionOrStagingAllocation()
     {

@@ -84,7 +84,8 @@ public static class MapWaterContainment
             unverified = "not representable";
             unverifiedFinding = new(MapDocumentRefusal.GeometryNotRepresentable, unverified);
         }
-        catch (MapWaterCapacityException error) when (prepared is null) { unverified = error.Message; }
+        catch (MapWaterCapacityException error) when (prepared is null)
+        { unverified = error.Message; unverifiedFinding = error.Finding; }
         catch (MapDocumentException error) when (Invalid(error))
         {
             string message = $"water body '{body.Id}': {error.Message}";
@@ -124,7 +125,8 @@ public static class MapWaterContainment
             try { surface = MapExactValue.FromSingle(body.SurfaceY); }
             catch (Exception error) when (error is MapExactOverflowException or OverflowException or ArgumentException)
             {
-                Add(new(MapDocumentRefusal.GeometryNotRepresentable, $"{label}: surfaceY is not representable")
+                Add(new(float.IsFinite(body.SurfaceY) ? MapDocumentRefusal.GeometryNotRepresentable : MapDocumentRefusal.ValueNonfinite,
+                    $"{label}: surfaceY is not representable")
                 { EntityId = body.Id, FieldPath = "SurfaceY", ActualNumber = body.SurfaceY }, errors, findings);
                 return null;
             }
@@ -160,13 +162,23 @@ public static class MapWaterContainment
             {
                 // A present or known-empty anchor proves the record is absent, and so does an unread anchor the view
                 // proves does not exist. Any other anchor hides it.
-                if (effective) unavailable ??= $"cover '{cover.Id}' {cover.Anchor} is {status}";
+                if (effective)
+                {
+                    unavailable ??= $"cover '{cover.Id}' {cover.Anchor} is {status}";
+                    unverifiedFinding ??= new(MapDocumentRefusal.PatchUnavailable, unavailable)
+                        { EntityId = body.Id, RecordId = cover.Id, Patch = cover.Anchor, PatchStatus = status };
+                }
                 else if (status is MapPatchStatus.Missing or MapPatchStatus.KnownEmpty ||
                     status == MapPatchStatus.Unloaded && MapWaterFootprints.ProvesAbsent(view, cover.Anchor))
                     Add(new(MapDocumentRefusal.ReferenceMissing, $"{label}: cover '{cover.Id}' is not a space")
                     { EntityId = body.Id, RecordId = cover.Id, Patch = cover.Anchor, PatchStatus = status,
                         ExpectedRecordType = typeof(MapSpaceDoc) }, errors, findings);
-                else unavailable ??= $"cover '{cover.Id}' is {status}";
+                else
+                {
+                    unavailable ??= $"cover '{cover.Id}' is {status}";
+                    unverifiedFinding ??= new(MapDocumentRefusal.PatchUnavailable, unavailable)
+                        { EntityId = body.Id, RecordId = cover.Id, Patch = cover.Anchor, PatchStatus = status };
+                }
                 continue;
             }
             if (record is not MapSpaceDoc space)
@@ -189,14 +201,24 @@ public static class MapWaterContainment
             if (apertureUnknown is not null) return apertureUnknown;
             if (!joined)
             {
-                if (!view.ListsEverySurface) return "covered spaces not proven connected in this view";
+                if (!view.ListsEverySurface)
+                {
+                    unverifiedFinding = new(MapDocumentRefusal.AcquisitionIncomplete, "covered spaces not proven connected in this view")
+                        { EntityId = body.Id, SourceIds = covered, FieldPath = "Covers" };
+                    return "covered spaces not proven connected in this view";
+                }
                 Add(new(MapDocumentRefusal.WaterSpacesDisconnected, $"{label}: covered spaces are not connected below its surface")
                 { EntityId = body.Id, SourceIds = covered }, errors, findings);
             }
         }
         if (!MeetsFootprint(view, domain, covered, prepared, out bool footprintsComplete))
         {
-            if (!footprintsComplete) return "covered footprints are unavailable";
+            if (!footprintsComplete)
+            {
+                unverifiedFinding = new(MapDocumentRefusal.AcquisitionIncomplete, "covered footprints are unavailable")
+                    { EntityId = body.Id, SourceIds = covered, FieldPath = "Footprints" };
+                return "covered footprints are unavailable";
+            }
             Add(new(MapDocumentRefusal.WaterNoSpaceFootprint, $"{label} covers no space footprint")
             { EntityId = body.Id, SourceIds = covered }, errors, findings);
         }
@@ -207,7 +229,12 @@ public static class MapWaterContainment
         if (unknown is not null) return unknown;
         // Scoped acquisition never follows a space's relation lists, so only a view of the whole document proves that
         // no unacquired relation joins the covered spaces.
-        if (!view.ListsEverySurface) return "covered spaces not proven connected in this view";
+        if (!view.ListsEverySurface)
+        {
+            unverifiedFinding = new(MapDocumentRefusal.AcquisitionIncomplete, "covered spaces not proven connected in this view")
+                { EntityId = body.Id, SourceIds = covered, FieldPath = "Covers" };
+            return "covered spaces not proven connected in this view";
+        }
         Add(new(MapDocumentRefusal.WaterSpacesDisconnected, $"{label}: covered spaces are not connected below its surface")
         { EntityId = body.Id, SourceIds = covered }, errors, findings);
         return null;
@@ -266,5 +293,5 @@ public static class MapWaterContainment
     /// <summary>True when an exception reports definitely invalid authored data, as opposed to missing, unavailable
     /// or unrepresentable data that a complete or wider view could still resolve.</summary>
     internal static bool Invalid(MapDocumentException error) => !MapCommonRefinement.NotRepresentable(error) &&
-        !error.Message.Contains("not representable", StringComparison.Ordinal) && error.Message.StartsWith("invalid", StringComparison.Ordinal);
+        !MapGeometryRefusals.Representability(error, arithmetic: false) && MapGeometryRefusals.InvalidPrefix(error);
 }

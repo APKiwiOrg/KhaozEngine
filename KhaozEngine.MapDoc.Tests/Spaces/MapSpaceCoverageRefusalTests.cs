@@ -105,11 +105,20 @@ public sealed class MapSpaceCoverageRefusalTests
         Assert.Empty(Findings(set));
     }
 
-    static List<MapDocumentFinding> Findings(MapSurfaceSet set)
+    static IReadOnlyList<MapDocumentFinding> Findings(MapSurfaceSet set)
     {
-        var findings = new List<MapDocumentFinding>();
-        var messages = MapSpaceCoverageValidator.Validate(MapScopedSurfaces.CompleteView(set), new(), findings);
-        Assert.All(findings, f => Assert.Contains(f.Message, messages));
+        var view = MapScopedSurfaces.CompleteView(set);
+        var findings = MapSpaceCoverageValidator.ValidateFindings(view);
+        Assert.Equal(MapSpaceCoverageValidator.Validate(view), findings.Select(f => f.Message));
+        if (findings.Count != 0)
+        {
+            var error = Assert.Throws<MapDocumentException>(() => MapSpaceCoverageValidator.Require(view));
+            Assert.Equal(findings[0].Reason, error.Reason);
+            Assert.Equal(findings, error.Findings);
+            if (findings is IList<MapDocumentFinding> mutable)
+                Assert.Throws<NotSupportedException>(() => mutable[0] = findings[0]);
+        }
+        else MapSpaceCoverageValidator.Require(view);
         return findings;
     }
     static void Replace(MapSurfacePatch patch, MapTopologyRecord replacement) => patch.Records[patch.Records.FindIndex(r => r.Id == replacement.Id)] = replacement;

@@ -27,7 +27,7 @@ internal static class MapEffectiveGeometry
     {
         if (!view.TryAcquiredPatch(key, out var patch, out var status) || patch is null)
             throw new MapDocumentException(MapDocumentRefusal.PatchUnavailable, $"Missing effective patch '{key}' ({status}).")
-            { Patch = key, SurfaceId = key.SurfaceId, PatchStatus = status };
+            { Patch = key, SurfaceId = key.SurfaceId, PatchStatus = status, Operation = nameof(Patch) };
         return TransformPatch(view, MapSurfaceCompiler.Compile(MapSpaceGeometry.Surface(view, key.SurfaceId), patch));
     }
     internal static MapCompiledStrip Strip(MapScopedSurfaces view, MapWallStrip strip) => MapWallStripCompiler.Compile(strip,

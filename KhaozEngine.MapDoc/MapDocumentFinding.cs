@@ -6,6 +6,7 @@ using KhaozEngine.MapDoc.Assets;
 using KhaozEngine.MapDoc.Prefabs;
 using KhaozEngine.MapDoc.Surfaces;
 using KhaozEngine.MapDoc.Support;
+using KhaozEngine.MapDoc.Spaces;
 
 namespace KhaozEngine.MapDoc;
 
@@ -68,6 +69,8 @@ public sealed record MapDocumentFinding(MapDocumentRefusal Reason, string Messag
     public string? Operation { get; init; }
 
     internal MapResolveStatus? ResolutionStatus { get; init; }
+    internal bool InvalidPrefixSuppressed { get; init; }
+    internal MapRefinementStatus? RefinementStatus { get; init; }
 
     /// <summary>The foliage layer identity, after it has been read.</summary>
     public string? LayerId { get; init; }
@@ -298,6 +301,8 @@ public sealed record MapDocumentFinding(MapDocumentRefusal Reason, string Messag
             SubjectKind = error.SubjectKind,
             Operation = error.Operation,
             ResolutionStatus = error.ResolutionStatus,
+            InvalidPrefixSuppressed = error.InvalidPrefixSuppressed,
+            RefinementStatus = error.RefinementStatus,
             LayerId = error.LayerId,
             PolicyId = error.PolicyId,
             ExpectedPolicyId = error.ExpectedPolicyId,

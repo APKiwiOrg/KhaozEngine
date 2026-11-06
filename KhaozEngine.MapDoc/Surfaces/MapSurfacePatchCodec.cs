@@ -148,13 +148,7 @@ public static partial class MapSurfacePatchCodec
     internal static MapDocumentException LocalRefusal(IReadOnlyList<MapDocumentFinding> findings)
     {
         MapDocumentFinding first = findings[0];
-        return new(first.Reason, first.Message)
-        {
-            Patch = first.Patch, FieldPath = first.FieldPath, Index = first.Index, Width = first.Width, Depth = first.Depth,
-            CellX = first.CellX, CellZ = first.CellZ, Edge = first.Edge, EnumType = first.EnumType,
-            ActualInteger = first.ActualInteger, MinimumInteger = first.MinimumInteger, MaximumInteger = first.MaximumInteger,
-            ActualCount = first.ActualCount, ExpectedCount = first.ExpectedCount, Budget = first.Budget, Limit = first.Limit, Findings = findings,
-        };
+        return MapDocumentRefusalFactory.FromFinding(first, first.Message, findings: findings);
     }
 
     static void RequireNoTrailingValue(bool hasTrailingValue, MapPatchKey key)

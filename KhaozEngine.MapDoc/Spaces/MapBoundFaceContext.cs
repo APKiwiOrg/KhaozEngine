@@ -93,7 +93,7 @@ internal sealed class MapBoundFaceContext
                 if (surface is null || !view.TryAcquiredPatch(demand.Patch, out MapSurfacePatch? patch, out status) || patch is null)
                     throw new MapDocumentException(surface is null ? MapDocumentRefusal.ReferenceMissing : MapDocumentRefusal.PatchUnavailable,
                         $"context demand patch {demand.Patch}: unavailable")
-                    { SurfaceId = demand.Patch.SurfaceId, Patch = demand.Patch, PatchStatus = surface is null ? null : status };
+                    { SurfaceId = demand.Patch.SurfaceId, Patch = demand.Patch, PatchStatus = surface is null ? null : status, Operation = nameof(PrepareBounds) };
                 MapValidatedSurfacePatch? validatedPatch = preparation.ValidatedPatch(surface, patch);
                 if (validatedPatch is null) { refusal = preparation.Refusal; continue; }
                 entry = new(validatedPatch);
@@ -115,7 +115,7 @@ internal sealed class MapBoundFaceContext
                     throw new MapDocumentException(opening is null ? MapDocumentRefusal.ReferenceMissing :
                         opening.Patch != demand.Patch ? MapDocumentRefusal.AuthoredOwnershipMismatch : MapDocumentRefusal.SpaceOpeningOwnershipInvalid,
                         "context demand opening is unavailable or does not own the cell")
-                    { RecordId = reference.Id, Patch = demand.Patch, SlotCell = demand.SlotCell,
+                    { RecordId = reference.Id, Patch = demand.Patch, SlotCell = demand.SlotCell, Operation = nameof(PrepareBounds),
                         ActualAnchor = opening is not null && opening.Patch != demand.Patch ? opening.Patch : null };
                 freshOpeningCell = requested is null || !requested.Cells.Contains(demand.SlotCell);
                 if (freshOpeningCell) faces = checked(faces + OpeningFaceCount(entry.Patch, demand.SlotCell));

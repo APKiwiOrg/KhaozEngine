@@ -100,8 +100,8 @@ public sealed class MapDocumentExceptionTests
             .GetProperties(BindingFlags.Public | BindingFlags.Instance | BindingFlags.DeclaredOnly)
             .Where(p => p.CanWrite).ToArray();
         Assert.Contains(identifiers, p => p.Name == nameof(MapDocumentException.SourceName));
-        var refusal = legacy ? new MapDocumentException("consumer refusal") { ResolutionStatus = MapResolveStatus.Invalid }
-            : new MapDocumentException(MapDocumentRefusal.ResolverContractMismatch, "resolver refusal") { ResolutionStatus = MapResolveStatus.Invalid };
+        var refusal = legacy ? new MapDocumentException("consumer refusal") { ResolutionStatus = MapResolveStatus.Invalid, RefinementStatus = KhaozEngine.MapDoc.Spaces.MapRefinementStatus.Invalid, InvalidPrefixSuppressed = true }
+            : new MapDocumentException(MapDocumentRefusal.ResolverContractMismatch, "resolver refusal") { ResolutionStatus = MapResolveStatus.Invalid, RefinementStatus = KhaozEngine.MapDoc.Spaces.MapRefinementStatus.Invalid, InvalidPrefixSuppressed = true };
         for (int i = 0; i < identifiers.Length; i++) identifiers[i].SetValue(refusal, Sample(identifiers[i], i));
 
         MapDocumentException named = throughJson
@@ -111,6 +111,8 @@ public sealed class MapDocumentExceptionTests
 
         Assert.Equal(refusal.Reason, named.Reason);
         Assert.Equal(MapResolveStatus.Invalid, named.ResolutionStatus);
+        Assert.Equal(KhaozEngine.MapDoc.Spaces.MapRefinementStatus.Invalid, named.RefinementStatus);
+        Assert.True(named.InvalidPrefixSuppressed);
         Assert.Same(refusal, named.InnerException);
         Assert.Equal(withoutSource ? refusal.SourceName : "map.json", named.SourceName);
         Assert.Empty(identifiers.Where(p => p.Name != nameof(MapDocumentException.SourceName) &&
@@ -128,7 +130,7 @@ public sealed class MapDocumentExceptionTests
         Assert.NotEmpty(identifiers);
         Assert.Empty(identifiers.Where(p => typeof(MapDocumentFinding).GetProperty(p.Name) is null).Select(p => p.Name));
         var refusal = legacy ? new MapDocumentException("consumer refusal")
-            : new MapDocumentException(MapDocumentRefusal.IdentityDuplicate, "validation refusal") { ResolutionStatus = MapResolveStatus.Invalid };
+            : new MapDocumentException(MapDocumentRefusal.IdentityDuplicate, "validation refusal") { ResolutionStatus = MapResolveStatus.Invalid, RefinementStatus = KhaozEngine.MapDoc.Spaces.MapRefinementStatus.Invalid, InvalidPrefixSuppressed = true };
         for (int i = 0; i < identifiers.Length; i++) identifiers[i].SetValue(refusal, Sample(identifiers[i], i));
         if (legacy) Assert.Null(MapDocumentFinding.FromException(refusal));
         else
@@ -136,12 +138,16 @@ public sealed class MapDocumentExceptionTests
             var finding = Assert.IsType<MapDocumentFinding>(MapDocumentFinding.FromException(refusal));
             Assert.Equal(refusal.Reason, finding.Reason);
             Assert.Equal(MapResolveStatus.Invalid, finding.ResolutionStatus);
+            Assert.Equal(KhaozEngine.MapDoc.Spaces.MapRefinementStatus.Invalid, finding.RefinementStatus);
+            Assert.True(finding.InvalidPrefixSuppressed);
             Assert.Empty(identifiers.Where(p => !Matches(p.GetValue(refusal),
                 typeof(MapDocumentFinding).GetProperty(p.Name)!.GetValue(finding))).Select(p => p.Name));
             var cause = new ArithmeticException("original cause");
             MapDocumentException restored = MapDocumentRefusalFactory.FromFinding(finding, "forwarded finding", cause);
             Assert.Equal(refusal.Reason, restored.Reason);
             Assert.Equal(MapResolveStatus.Invalid, restored.ResolutionStatus);
+            Assert.Equal(KhaozEngine.MapDoc.Spaces.MapRefinementStatus.Invalid, restored.RefinementStatus);
+            Assert.True(restored.InvalidPrefixSuppressed);
             Assert.Same(cause, restored.InnerException);
             Assert.Empty(identifiers.Where(p => !Matches(p.GetValue(refusal), p.GetValue(restored))).Select(p => p.Name));
         }

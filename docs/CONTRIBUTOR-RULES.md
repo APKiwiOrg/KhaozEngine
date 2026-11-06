@@ -32,7 +32,9 @@ can absorb another contributor's staged files. Never use the shared stash for wo
   `InvalidDataException` derives from `MalformedDataException`, and code that handles malformed data catches
   the base. A new refusal in a family adds a reason member. The message stays developer prose
   and is never a contract. A plain parameter check whose `ParamName` and `ActualValue` already name the
-  problem stays a BCL exception. A rule that every implementation of a shared contract enforces, such as an
+  problem stays a BCL exception. An adapter's status projection remains distinct from the lower refusal
+  reason. Classifiers use typed reasons and producer context, never keywords inside user identifiers or
+  exception prose. A rule that every implementation of a shared contract enforces, such as an
   `IGpu*` command or resource rule, is one family in the contract's package, and every backend throws the
   same reason for the same input. A collection identifier is a read-only snapshot the exception copies when
   it is set, so neither the caller's source nor a cast of the exposed list can change it. A change to a throw

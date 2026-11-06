@@ -131,6 +131,12 @@ public sealed class MapOccupiedPartitionRefusalTests
         Assert.Equal(budget == "faces" ? "MaxRefinementFaces" : "MaxRefinementVertices", result.Finding.Budget);
         Assert.Equal(accepted, result.Finding.ActualCount);
         Assert.Equal(accepted - 1, result.Finding.Limit);
+        var error = Assert.Throws<MapDocumentException>(() => MapOccupiedPartitions.Build(view,
+            new(new(0, 1), new(0, 1)), new(new(1, 1), new(1, 1)), limits, false));
+        Assert.Equal(result.Finding.Reason, error.Reason);
+        Assert.Equal(result.Finding.Budget, error.Budget);
+        Assert.Equal(result.Finding.Limit, error.Limit);
+        Assert.Equal(result.Finding.ActualCount, error.ActualCount);
         Assert.Equal(MapRefinementStatus.Complete, Build(view, budget == "faces" ? limits with { MaxRefinementFaces = accepted }
             : limits with { MaxRefinementVertices = accepted }).Status);
     }

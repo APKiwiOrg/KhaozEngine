@@ -57,7 +57,11 @@ public static class MapBoundDocumentValidation
         RequireWaterMaterials(water, assets);
         foreach (var body in MapWaterCompiler.Compile(resources.CompleteView(), water))
             if (body.Status != MapWaterCompileStatus.Complete)
-                throw new MapDocumentException(body.Detail ?? $"water body '{body.BodyId}': {body.Status}");
+            {
+                var finding = body.Finding!;
+                throw MapDocumentRefusalFactory.FromFinding(finding,
+                    body.Detail ?? $"water body '{body.BodyId}': {body.Status}", findings: [finding]);
+            }
     }
 
     /// <summary>Validates one slice of a document's content, such as one stored tile, with the rules and messages

@@ -72,7 +72,16 @@ public sealed class CommonRefinementTests
         static void Empty(MapCellRefinement r, MapRefinementStatus status, MapDocumentRefusal? reason)
         {
             Assert.Equal((status, 0, 0), (r.Status, r.Faces.Count, r.Vertices.Count));
-            if (reason is not null) Assert.Equal(reason, r.Finding!.Reason);
+            if (reason is not null)
+            {
+                Assert.Equal(reason, r.Finding!.Reason);
+                var adapter = MapOccupiedPartitions.Refusal(r.Status, r.Detail, r.Finding);
+                Assert.Equal(reason, adapter.Reason);
+                Assert.Equal(status, adapter.RefinementStatus);
+                Assert.False(MapCommonRefinement.NotRepresentable(adapter));
+                Assert.Equal(status == MapRefinementStatus.NotRepresentable, MapGeometryRefusals.Representability(adapter));
+                Assert.False(KhaozEngine.MapDoc.Water.MapWaterContainment.Invalid(adapter));
+            }
         }
         Empty(MapCommonRefinement.Refine(RefinementFixtures.CollinearTriangle(), RefinementFixtures.UnitSquareSwNe("up", 300), RefinementFixtures.Origin00, RefinementFixtures.One11, new()),
             MapRefinementStatus.Invalid, MapDocumentRefusal.GeometryNotRepresentable);
@@ -83,6 +92,11 @@ public sealed class CommonRefinementTests
         var near = MixedResolutionFixtures.HalfUnderThird(far: false);
         foreach (MapRefinementLimits tight in new MapRefinementLimits[] { new(MaxSourceFacesPerBound: 3), new(MaxPairChecks: 5), new(MaxRefinementFaces: 4), new(MaxRefinementVertices: 7) })
             Empty(Cell(near, 1, tight), MapRefinementStatus.CapacityExceeded, null);
+        var normal = Assert.Throws<MapDocumentException>(() => MapEffectiveGeometry.Normal(RefinementFixtures.CollinearTriangle().Single().Triangle));
+        Assert.True(MapGeometryRefusals.Representability(normal));
+        Assert.False(MapGeometryRefusals.Representability(normal, arithmetic: false));
+        Assert.Equal(MapRefinementStatus.Complete, MapCommonRefinement.Refine(RefinementFixtures.UnitSquareSwNe("lo", 0),
+            RefinementFixtures.UnitSquareSwNe("up", 300), RefinementFixtures.Origin00, RefinementFixtures.One11, new()).Status);
     }
     [Fact]
     public void SixtyFourthFloorUnderOneMetreRoof_MeetsAndRefusesItsDeclaredBudgets()

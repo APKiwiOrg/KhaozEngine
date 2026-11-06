@@ -11,12 +11,15 @@ public sealed record MapChainResolution(MapResolveStatus Status, IReadOnlyList<M
     /// <summary>The original typed geometry refusal, when resolution caught one.</summary>
     public MapDocumentFinding? Finding { get; init; }
     internal Exception? Cause { get; init; }
+    internal MapResolveStatus? DetailStatus { get; init; }
 
     internal MapDocumentException Refuse(string message, MapRecordRef? reference = null,
-        MapDocumentRefusal fallback = MapDocumentRefusal.SpaceChainUnresolved) =>
-        Cause is MapDocumentException { Reason: not null } refusal ? refusal.WithSourceName(null, message, resolutionStatus: Status) :
-        Finding is { } finding ? MapDocumentRefusalFactory.FromFinding(finding with { ResolutionStatus = Status }, message, Cause) :
-        new(fallback, message) { RecordId = reference?.Id, Patch = reference?.Anchor, ResolutionStatus = Status };
+        MapDocumentRefusal fallback = MapDocumentRefusal.SpaceChainUnresolved, MapResolveStatus? diagnosticStatus = null) =>
+        Cause is MapDocumentException { Reason: not null } refusal ? refusal.WithSourceName(null, message, resolutionStatus: diagnosticStatus ?? DetailStatus) :
+        Finding is { } finding ? MapDocumentRefusalFactory.FromFinding(
+            finding with { ResolutionStatus = diagnosticStatus ?? DetailStatus ?? finding.ResolutionStatus,
+                InvalidPrefixSuppressed = diagnosticStatus is null && finding.InvalidPrefixSuppressed }, message, Cause) :
+        new(fallback, message) { RecordId = reference?.Id, Patch = reference?.Anchor, ResolutionStatus = diagnosticStatus ?? DetailStatus };
 }
 
 /// <summary>Resolves authored and source-edge chains without substituting missing geometry.</summary>
@@ -34,7 +37,7 @@ public static class MapBoundaryGeometry
         {
             if (!Enum.IsDefined(chain.Kind) || chain.Vertices.Count is < 2 or > 4097 ||
                 (chain.Kind == MapChainKind.SurfaceEdge) != chain.SourcePatch.HasValue)
-                return Failure(MapResolveStatus.Invalid, "invalid chain kind, source patch or vertex sequence");
+                return Failure(MapResolveStatus.Invalid, "invalid chain kind, source patch or vertex sequence", MapResolveStatus.Invalid);
             MapBoundarySurface? source = null;
             if (chain.SourcePatch is { } key)
             {
@@ -76,8 +79,8 @@ public static class MapBoundaryGeometry
         }
     }
 
-    static MapChainResolution Failure(MapResolveStatus status, string detail) =>
-        new(status, Array.Empty<MapExactPoint>(), detail);
+    static MapChainResolution Failure(MapResolveStatus status, string detail, MapResolveStatus? detailStatus = null) =>
+        new(status, Array.Empty<MapExactPoint>(), detail) { DetailStatus = detailStatus };
 
     internal static MapSurfaceRef? Surface(MapScopedSurfaces view, string id) =>
         view.Surfaces.FirstOrDefault(surface => surface.Id == id);

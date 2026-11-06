@@ -89,6 +89,13 @@ public sealed class MapWaterValidationRefusalTests
         Assert.Equal(reason, finding.Reason);
         Assert.Equal(field, finding.FieldPath);
         if (body is not null) Assert.Equal(body.Id, finding.EntityId);
+        if (defect is "nonfinite" or "exact")
+        {
+            var containment = MapWaterContainment.Validate(KhaozEngine.MapDoc.Storage.MapScopedSurfaces.CompleteView(doc.Surfaces), doc.Water);
+            var level = Assert.Single(containment.Findings, f => f.EntityId == body!.Id && f.FieldPath == "SurfaceY");
+            Assert.Equal(reason, level.Reason);
+            Assert.Equal((double)body!.SurfaceY, level.ActualNumber);
+        }
         if (defect == "far")
         {
             Assert.Equal(1_000_001d, finding.ActualNumber);
@@ -101,6 +108,9 @@ public sealed class MapWaterValidationRefusalTests
         if (defect == "duplicate") doc.Water.Bodies.RemoveAt(doc.Water.Bodies.Count - 1);
         else doc.Water.Bodies[index] = valid;
         Assert.Empty(Findings(doc));
+        if (defect is "nonfinite" or "exact")
+            Assert.DoesNotContain(MapWaterContainment.Validate(KhaozEngine.MapDoc.Storage.MapScopedSurfaces.CompleteView(doc.Surfaces), doc.Water).Findings,
+                f => f.EntityId == valid.Id && f.FieldPath == "SurfaceY");
     }
 
     static IReadOnlyList<MapDocumentFinding> Findings(MapDocument doc)

@@ -29,7 +29,7 @@ public readonly struct MapLatticeAddress : IEquatable<MapLatticeAddress>, ICompa
     {
         if (Denominator is < 1 or > MaxDenominator)
             throw new MapDocumentException(MapDocumentRefusal.ValueOutsideRange, "invalid address denominator")
-            { FieldPath = "denominator", ActualInteger = Denominator, MinimumInteger = 1, MaximumInteger = MaxDenominator };
+            { ResolutionStatus = MapResolveStatus.Invalid, FieldPath = "denominator", ActualInteger = Denominator, MinimumInteger = 1, MaximumInteger = MaxDenominator };
     }
     public int CompareTo(MapLatticeAddress other)
     {

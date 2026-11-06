@@ -60,7 +60,7 @@ public static class MapPrismGeometry
             domain.LowerY >= domain.UpperY) throw new MapDocumentException(domain.PayloadVersion != 1 ? MapDocumentRefusal.SchemaPayloadVersionUnsupported :
                 !float.IsFinite(domain.LowerY) || !float.IsFinite(domain.UpperY) ? MapDocumentRefusal.ValueNonfinite : MapDocumentRefusal.SpacePrismSeparationInvalid,
                 "invalid prism payload or separation")
-            { RecordId = domain.Id, SpaceId = domain.Space.Id,
+            { RecordId = domain.Id, SpaceId = domain.Space.Id, ResolutionStatus = MapResolveStatus.Invalid,
                 FieldPath = domain.PayloadVersion != 1 ? "PayloadVersion" : !float.IsFinite(domain.LowerY) ? "LowerY" : "UpperY",
                 ActualVersion = domain.PayloadVersion != 1 ? domain.PayloadVersion : null,
                 SupportedVersions = domain.PayloadVersion != 1 ? new[] { 1 } : null,

@@ -46,7 +46,7 @@ internal static class MapWaterOccupiedPieces
             throw new MapDocumentException(MapDocumentRefusal.AcquisitionIncomplete, "missing geometry: occupied water window is not proven complete in this view")
             { AcquireStatus = status, FieldPath = "Scope" };
         var result = MapOccupiedPartitions.BuildWide(view, min, max, limits, carve: true, meter);
-        if (result.Status != MapRefinementStatus.Complete) throw MapOccupiedPartitions.Refusal(result.Status, result.Detail);
+        if (result.Status != MapRefinementStatus.Complete) throw MapOccupiedPartitions.Refusal(result.Status, result.Detail, result.Finding!);
         return result.Pieces;
     }
 

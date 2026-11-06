@@ -6,6 +6,7 @@ using KhaozEngine.MapDoc.Assets;
 using KhaozEngine.MapDoc.Prefabs;
 using KhaozEngine.MapDoc.Surfaces;
 using KhaozEngine.MapDoc.Support;
+using KhaozEngine.MapDoc.Spaces;
 
 namespace KhaozEngine.MapDoc;
 
@@ -85,6 +86,9 @@ public sealed class MapDocumentException : Exception
 
     // A chain or aperture adapter's released projection is independent of its concrete refusal reason.
     internal MapResolveStatus? ResolutionStatus { get; init; }
+    internal bool InvalidPrefixSuppressed { get; init; }
+    // A refinement adapter's formatting projection does not replace its original finding's reason.
+    internal MapRefinementStatus? RefinementStatus { get; init; }
 
     /// <summary>The foliage, scatter or companion layer identity, when known.</summary>
     public string? LayerId { get; init; }
@@ -338,6 +342,8 @@ public sealed class MapDocumentException : Exception
         SubjectKind = inner.SubjectKind;
         Operation = inner.Operation;
         ResolutionStatus = resolutionStatus ?? inner.ResolutionStatus;
+        InvalidPrefixSuppressed = resolutionStatus is null && inner.InvalidPrefixSuppressed;
+        RefinementStatus = inner.RefinementStatus;
         LayerId = inner.LayerId;
         PolicyId = inner.PolicyId;
         ExpectedPolicyId = inner.ExpectedPolicyId;

@@ -16,7 +16,10 @@ namespace KhaozEngine.MapDoc.Water;
 /// faces were read on, null when the bound's surface is unavailable.</summary>
 internal sealed record MapWaterBoundRead(MapRefinementStatus Status, string? Detail, MapLatticeFrame? Frame,
     IReadOnlyList<MapBoundFace> Faces, IReadOnlyList<MapLegacyCellTag> Compatibility, IReadOnlyList<MapPatchKey> PatchesRead,
-    string? SurfaceId, string? Gap);
+    string? SurfaceId, string? Gap)
+{
+    internal MapDocumentFinding? Finding { get; init; }
+}
 
 /// <summary>Reads one bound over a world rectangle in chunks that each stay within one <see cref="MapRefinementLimits"/>
 /// read. Chunks are cut in the bound surface's own lattice, one 64-cell slot at a time so each read touches one patch,
@@ -55,6 +58,7 @@ internal static class MapWaterBoundReads
         var compatibility = new List<MapLegacyCellTag>();
         var read = new List<MapPatchKey>();
         string? gap = null;
+        MapDocumentFinding? finding = null;
         MapCellRect range = MapLatticeRanges.CellRange(surface.Frame, min, max);
         if (range.MaxXExclusive > range.MinX && range.MaxZExclusive > range.MinZ)
         {
@@ -72,12 +76,14 @@ internal static class MapWaterBoundReads
                 if (!view.TryAcquiredPatch(key, out MapSurfacePatch? patch, out MapPatchStatus status))
                 {
                     gap ??= $"patch {key}: {status}";
+                    finding ??= new(MapDocumentRefusal.PatchUnavailable, gap) { Patch = key, SurfaceId = surface.Id, PatchStatus = status };
                     continue;
                 }
                 if (status == MapPatchStatus.KnownEmpty) continue;
                 if (patch is null)
                 {
                     gap ??= $"patch {key}: {status} without payload";
+                    finding ??= new(MapDocumentRefusal.PatchUnavailable, gap) { Patch = key, SurfaceId = surface.Id, PatchStatus = status };
                     continue;
                 }
                 read.Add(key);
@@ -85,7 +91,9 @@ internal static class MapWaterBoundReads
                 long z0 = Math.Max(range.MinZ, sz * MapPatchKey.SlotCells), z1 = Math.Min(range.MaxZExclusive, (sz + 1) * MapPatchKey.SlotCells);
                 foreach (Chunk chunk in Chunks(x0, z0, x1, z1, limit, (x, z) => Faces(surface, patch, opening, x, z)))
                 {
-                    if (chunk.Faces < 0) return Failure(MapRefinementStatus.CapacityExceeded, "water bound read: source faces in one cell", surface, read);
+                    if (chunk.Faces < 0) return Failure(MapRefinementStatus.CapacityExceeded, "water bound read: source faces in one cell", surface, read,
+                        new(MapDocumentRefusal.WorkCapacityExceeded, "water bound read: source faces in one cell")
+                        { Budget = "MaxSourceFacesPerBound", ActualCount = -chunk.Faces, Limit = limit, Patch = key, SurfaceId = surface.Id });
                     // A face-free chunk can still carry legacy compatibility coverage, which only a legacy recipe tags.
                     if (chunk.Faces == 0 && bound.Kind != MapBoundKind.LegacyExteriorV1) continue;
                     meter.ChargeRead(chunk.Faces);
@@ -97,16 +105,17 @@ internal static class MapWaterBoundReads
                     if (set.Status == MapRefinementStatus.MissingGeometry)
                     {
                         gap ??= set.Detail ?? "missing geometry";
+                        finding ??= set.Finding;
                         continue;
                     }
-                    if (set.Status != MapRefinementStatus.Complete) return Failure(set.Status, set.Detail, surface, read);
+                    if (set.Status != MapRefinementStatus.Complete) return Failure(set.Status, set.Detail, surface, read, set.Finding);
                     faces.AddRange(set.Faces);
                     compatibility.AddRange(set.Compatibility);
                     meter.CountFaces(upper, set.Faces.Count);
                 }
             }
         return new(gap is null ? MapRefinementStatus.Complete : MapRefinementStatus.MissingGeometry, gap, surface.Frame, faces.AsReadOnly(),
-            compatibility.AsReadOnly(), read.AsReadOnly(), surface.Id, gap);
+            compatibility.AsReadOnly(), read.AsReadOnly(), surface.Id, gap) { Finding = finding };
     }
 
     /// <summary>The released face count of one lattice cell of the bound: an opening counts only its own cells.</summary>
@@ -153,7 +162,7 @@ internal static class MapWaterBoundReads
                 long cellFaces = row[x - x0];
                 if (cellFaces > limit)
                 {
-                    yield return new(x, z, x + 1, z + 1, -1);
+                    yield return new(x, z, x + 1, z + 1, -cellFaces);
                     yield break;
                 }
                 if (x > runStart && (x - runStart + 1 > limit || runFaces + cellFaces > limit))
@@ -172,8 +181,10 @@ internal static class MapWaterBoundReads
     static long SlotOf(long cell) => cell >= 0 ? cell / MapPatchKey.SlotCells : -((-cell + MapPatchKey.SlotCells - 1) / MapPatchKey.SlotCells);
 
     static MapWaterBoundRead Unread(string? surfaceId, string gap) => new(MapRefinementStatus.MissingGeometry, gap, null,
-        Array.Empty<MapBoundFace>(), Array.Empty<MapLegacyCellTag>(), Array.Empty<MapPatchKey>(), surfaceId, gap);
+        Array.Empty<MapBoundFace>(), Array.Empty<MapLegacyCellTag>(), Array.Empty<MapPatchKey>(), surfaceId, gap)
+        { Finding = new(MapDocumentRefusal.ReferenceMissing, gap) { SurfaceId = surfaceId } };
 
-    static MapWaterBoundRead Failure(MapRefinementStatus status, string? detail, MapSurfaceRef surface, List<MapPatchKey> read) =>
-        new(status, detail, surface.Frame, Array.Empty<MapBoundFace>(), Array.Empty<MapLegacyCellTag>(), read.AsReadOnly(), surface.Id, null);
+    static MapWaterBoundRead Failure(MapRefinementStatus status, string? detail, MapSurfaceRef surface, List<MapPatchKey> read,
+        MapDocumentFinding? finding) =>
+        new(status, detail, surface.Frame, Array.Empty<MapBoundFace>(), Array.Empty<MapLegacyCellTag>(), read.AsReadOnly(), surface.Id, null) { Finding = finding };
 }

@@ -18,7 +18,7 @@ public sealed record MapLatticeFrame(MapRational CellUnitMetres, MapRational Hei
         _ = HeightUnitMetres.Exact();
         if (RowDirection is not (MapRowDirection.PositiveZ or MapRowDirection.NegativeZ) || Datum != MapHeightDatum.WorldY0)
             throw new MapDocumentException(MapDocumentRefusal.SchemaEnumUnsupported, "invalid lattice frame")
-            {
+            { ResolutionStatus = MapResolveStatus.Invalid,
                 FieldPath = RowDirection is not (MapRowDirection.PositiveZ or MapRowDirection.NegativeZ) ? nameof(RowDirection) : nameof(Datum),
                 EnumType = RowDirection is not (MapRowDirection.PositiveZ or MapRowDirection.NegativeZ) ? typeof(MapRowDirection) : typeof(MapHeightDatum),
                 ActualInteger = RowDirection is not (MapRowDirection.PositiveZ or MapRowDirection.NegativeZ) ? (long)RowDirection : (long)Datum,

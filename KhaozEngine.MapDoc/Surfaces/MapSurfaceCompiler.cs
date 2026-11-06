@@ -235,7 +235,7 @@ public static class MapSurfaceCompiler
                 : surface.Frame is null ? MapDocumentRefusal.SchemaValueRequired : MapDocumentRefusal.SchemaEnumUnsupported,
                 "invalid surface metadata or patch surface id")
             {
-                SurfaceId = surface.Id, Patch = patch.Key,
+                SurfaceId = surface.Id, Patch = patch.Key, ResolutionStatus = MapResolveStatus.Invalid,
                 FieldPath = surface.Id != patch.Key.SurfaceId ? "Key.SurfaceId" : surface.Frame is null ? "Frame"
                     : !Enum.IsDefined(surface.Role) ? "Role" : "PresencePolicy",
                 EnumType = surface.Id != patch.Key.SurfaceId || surface.Frame is null ? null

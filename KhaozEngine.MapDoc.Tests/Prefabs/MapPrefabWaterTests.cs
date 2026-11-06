@@ -281,7 +281,12 @@ public class MapPrefabWaterTests
         var body = Assert.Single(MapWaterCompiler.Compile(r.CompleteView(), r.Water!));
         Assert.Equal(MapWaterCompileStatus.Invalid, body.Status);
         Assert.Contains("not connected below its surface", body.Detail);
-        Assert.Throws<MapDocumentException>(() => MapBoundDocumentValidation.ValidateEffectiveWater(r, invalid.Assets));
+        var error = Assert.Throws<MapDocumentException>(() => MapBoundDocumentValidation.ValidateEffectiveWater(r, invalid.Assets));
+        Assert.Equal(MapDocumentRefusal.WaterSpacesDisconnected, error.Reason);
+        Assert.Equal(r.Water!.Bodies.Single().Id, error.EntityId);
+        Assert.Equal(2, error.SourceIds!.Count);
+        Assert.Equal(MapDocumentRefusal.WaterSpacesDisconnected, Assert.Single(error.Findings!).Reason);
+        MapBoundDocumentValidation.ValidateEffectiveWater(control, valid.Assets);
     }
 
     [Fact]

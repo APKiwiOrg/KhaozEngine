@@ -15224,6 +15224,18 @@ and undo/redo history unchanged, and the status strip keeps its existing text.
 Freeze-zone host lookup uses `MapDocumentException.ReferenceMissing`, companion `LayerId`, missing host
 `EntityId`, `DocumentId` and `FieldPath` `CompanionLayers.HostLayer`. A `MarkerAssets` callback returning no
 closure uses `AssetClosureRequired`, `DocumentId` and callback `FieldPath` `MarkerAssets`.
+Callback failures use `EditorMarkerAssetsFailed` with the same callback and document identifiers and retain the
+original `InnerException`. Native snapshot and transaction admission use `CompleteDocumentRequired` with
+`DocumentId` and `Operation`, or `AssetClosureRequired` with the known `CommandType` and `SubjectKind`.
+Unsupported native commands use `OperationKindUnsupported` and `CommandType`. Validator adapters preserve the
+first concrete reason and identifiers and the complete ordered `Findings`, while retaining their diagnostic text.
+Native legacy spawn writes outside their admitted adoption transition use `EditorLegacySpawnEditProtected`,
+`DocumentId`, `ResolverVersion`, `Operation` and owned `SourceIds` in spawn then player-spawn order.
+Detached prefab work uses `EditorPrefabSessionCancelled` with `AssetId` and `Operation`, or `ToolAssetRootRequired`
+when the verified closure has no manifest root. A retained reference to a removed child uses
+`EditorRetainedReferenceRemoved` with `RecordId`, target `TargetId`, target `ChildKind` and reference `FieldPath`.
+The publication fallback `WaterContainmentUnverified` applies only when the containment report has no concrete
+finding. These refusals leave live document content and undo/redo history unchanged.
 
 **Wiring.** Fill `MapEditorOptions` and push the scene directly onto your `SceneManager`, the same way
 every other room/scene gets pushed:

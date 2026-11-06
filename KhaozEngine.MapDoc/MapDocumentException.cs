@@ -181,6 +181,10 @@ public sealed class MapDocumentException : Exception
     public long? MaximumInteger { get; init; }
     /// <summary>The refused identity, when known.</summary>
     public string? EntityId { get; init; }
+    /// <summary>The removed or unavailable target of a retained reference.</summary>
+    public string? TargetId { get; init; }
+    /// <summary>The runtime command type refused by native transaction admission.</summary>
+    public Type? CommandType { get; init; }
     /// <summary>The owner of the refused operation or geometry, such as a placement, terrain chunk or water body.</summary>
     public string? OwnerId { get; init; }
     /// <summary>The compiled water body whose world or residency admission failed.</summary>
@@ -430,6 +434,8 @@ public sealed class MapDocumentException : Exception
         MinimumInteger = inner.MinimumInteger;
         MaximumInteger = inner.MaximumInteger;
         EntityId = inner.EntityId;
+        TargetId = inner.TargetId;
+        CommandType = inner.CommandType;
         OwnerId = inner.OwnerId;
         BodyId = inner.BodyId;
         PositionX = inner.PositionX;

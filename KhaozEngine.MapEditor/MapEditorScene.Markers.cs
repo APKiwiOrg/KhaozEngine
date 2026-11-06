@@ -105,7 +105,9 @@ public partial class MapEditorScene
         }
         catch (Exception error) when (error is not MapDocumentException)
         {
-            throw new MapDocumentException("MapEditorOptions.MarkerAssets failed: " + error.Message, error);
+            throw new MapDocumentException(MapDocumentRefusal.EditorMarkerAssetsFailed,
+                "MapEditorOptions.MarkerAssets failed: " + error.Message, error)
+            { DocumentId = document.Id, FieldPath = nameof(MapEditorOptions.MarkerAssets), Operation = nameof(HostAssets) };
         }
     }
 

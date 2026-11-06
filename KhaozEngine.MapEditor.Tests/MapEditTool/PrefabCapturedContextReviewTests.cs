@@ -1,4 +1,5 @@
 using System.Linq;
+using System.Collections.Generic;
 using System.Numerics;
 using KhaozEngine.MapDoc;
 using KhaozEngine.MapDoc.Editing;
@@ -7,6 +8,7 @@ using KhaozEngine.MapDoc.Spaces;
 using KhaozEngine.MapDoc.Surfaces;
 using KhaozEngine.MapDoc.Water;
 using KhaozEngine.MapEdit;
+using KhaozEngine.MapEditor;
 using KhaozEngine.Tests.MapDoc;
 using KhaozEngine.Tests.MapDoc.Prefabs;
 using Xunit;
@@ -87,9 +89,14 @@ public sealed class PrefabCapturedContextReviewTests
         var session = PrefabEditorFixtures.Session(new(unpacked, f.Assets));
         var before = PrefabEditorFixtures.State(session);
         var error = Assert.Throws<MapDocumentException>(() => new PrefabService(session).Open("hut"));
+        Assert.Equal(MapDocumentRefusal.EditorRetainedReferenceRemoved, error.Reason);
+        Assert.Equal("external-edge", error.RecordId);
+        Assert.Equal("a/floor", error.TargetId);
+        Assert.Equal(MapPrefabChildKind.Surface, error.ChildKind);
         Assert.Contains("external-edge", error.Message); Assert.Contains("a/floor", error.Message);
         Assert.Contains("references removed", error.Message);
         Assert.Equal(before, PrefabEditorFixtures.State(session));
+        Assert.NotNull(MapPrefabAuthoringContext.Create(unpacked, f.Assets, new HashSet<MapPrefabChildKey>()));
     }
 
     [Fact]
@@ -112,10 +119,16 @@ public sealed class PrefabCapturedContextReviewTests
         var session = PrefabEditorFixtures.Session(new(placed, assets));
         var before = PrefabEditorFixtures.State(session);
         var error = Assert.Throws<MapDocumentException>(() => new PrefabService(session).Open("hut"));
+        Assert.Equal(MapDocumentRefusal.EditorRetainedReferenceRemoved, error.Reason);
+        Assert.Equal("prefab/foreign/Record/alias", error.RecordId);
+        Assert.Equal("a/floor", error.TargetId);
+        Assert.Equal(MapPrefabChildKind.Surface, error.ChildKind);
+        Assert.Equal("/value/aliasOf/anchor/surfaceId", error.FieldPath);
         Assert.Contains("alias", error.Message); Assert.Contains("a/floor", error.Message);
         Assert.Contains("/value/aliasOf/anchor/surfaceId", error.Message);
         Assert.Contains("references removed", error.Message);
         Assert.Equal(before, PrefabEditorFixtures.State(session));
+        Assert.NotNull(MapPrefabAuthoringContext.Create(placed, assets, new HashSet<MapPrefabChildKey>()));
     }
 
     [Fact]

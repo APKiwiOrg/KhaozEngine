@@ -161,6 +161,10 @@ public sealed record MapDocumentFinding(MapDocumentRefusal Reason, string Messag
     public long? MaximumInteger { get; init; }
     /// <summary>The refused identity, when known.</summary>
     public string? EntityId { get; init; }
+    /// <summary>The removed or unavailable target of a retained reference.</summary>
+    public string? TargetId { get; init; }
+    /// <summary>The runtime command type refused by native transaction admission.</summary>
+    public Type? CommandType { get; init; }
     /// <summary>The owner of the refused operation or geometry, such as a placement, terrain chunk or water body.</summary>
     public string? OwnerId { get; init; }
     /// <summary>The compiled water body whose world or residency admission failed.</summary>
@@ -387,6 +391,8 @@ public sealed record MapDocumentFinding(MapDocumentRefusal Reason, string Messag
             MinimumInteger = error.MinimumInteger,
             MaximumInteger = error.MaximumInteger,
             EntityId = error.EntityId,
+            TargetId = error.TargetId,
+            CommandType = error.CommandType,
             OwnerId = error.OwnerId,
             BodyId = error.BodyId,
             PositionX = error.PositionX,

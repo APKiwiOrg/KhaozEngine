@@ -79,6 +79,8 @@ internal static class MapDocumentRefusalFactory
             MinimumInteger = finding.MinimumInteger,
             MaximumInteger = finding.MaximumInteger,
             EntityId = finding.EntityId,
+            TargetId = finding.TargetId,
+            CommandType = finding.CommandType,
             OwnerId = finding.OwnerId,
             BodyId = finding.BodyId,
             PositionX = finding.PositionX,

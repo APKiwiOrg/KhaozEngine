@@ -42,7 +42,10 @@ internal static class MapPrefabAuthoringContext
             if (removed.Contains(child.Key)) continue;
             foreach (var reference in child.References)
                 if (removed.Contains(new(reference.Target.Kind, reference.Target.Id)))
-                    throw new MapDocumentException($"Retained record '{child.Key.Key}' references removed {reference.Target.Kind} '{reference.Target.Id}' at '{reference.Path}'.");
+                    throw new MapDocumentException(MapDocumentRefusal.EditorRetainedReferenceRemoved,
+                        $"Retained record '{child.Key.Key}' references removed {reference.Target.Kind} '{reference.Target.Id}' at '{reference.Path}'.")
+                    { DocumentId = context.Id, RecordId = child.Key.Key, TargetId = reference.Target.Id,
+                        ChildKind = reference.Target.Kind, FieldPath = reference.Path };
         }
         var document = NativeDocumentSnapshot.Clone(context, MapDocRegistry.CreateDefault());
         document.Tiles = null;

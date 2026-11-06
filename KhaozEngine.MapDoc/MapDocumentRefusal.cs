@@ -404,6 +404,18 @@ public enum MapDocumentRefusal
     // Editor command admission.
     /// <summary>Refuses removing a scatter layer still named by authored references.</summary>
     EditorScatterLayerReferenced,
+    /// <summary>Refuses changing native legacy spawn lists outside their admitted adoption transition.</summary>
+    EditorLegacySpawnEditProtected,
+    /// <summary>Refuses a marker asset callback that failed before returning a verified closure.</summary>
+    EditorMarkerAssetsFailed,
+    /// <summary>Refuses an operation on a cancelled detached prefab session.</summary>
+    EditorPrefabSessionCancelled,
+    /// <summary>Refuses removing a child still referenced by a retained authored record.</summary>
+    EditorRetainedReferenceRemoved,
+    /// <summary>Refuses prefab authoring or publication without an asset manifest root.</summary>
+    ToolAssetRootRequired,
+    /// <summary>Refuses publication when the available report cannot prove complete water containment.</summary>
+    WaterContainmentUnverified,
 
     // Physics navigation and envelope admission.
     /// <summary>Refuses an interaction envelope sweep for an unsupported source shape.</summary>

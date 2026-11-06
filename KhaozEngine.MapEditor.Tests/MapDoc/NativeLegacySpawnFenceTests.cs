@@ -272,6 +272,10 @@ public sealed class NativeLegacySpawnFenceTests
 
     static void Guidance(MapDocumentException error)
     {
+        Assert.Equal(MapDocumentRefusal.EditorLegacySpawnEditProtected, error.Reason);
+        Assert.Equal(2, error.ResolverVersion);
+        Assert.Equal(new[] { "old", "old" }, error.SourceIds);
+        Assert.False(string.IsNullOrEmpty(error.Operation));
         Assert.Contains("marker_set", error.Message, StringComparison.Ordinal);
         Assert.Contains("marker_remove", error.Message, StringComparison.Ordinal);
         Assert.Contains("spawns_adopt", error.Message, StringComparison.Ordinal);

@@ -87,6 +87,22 @@ public sealed class NativeDocumentTransactionTests
         MapDocument window = SurfaceStorageFixtures.LoadSlotWindow(dir, 300);
         Assert.False(window.Tiles!.HasUnloadedTiles);                                  // surfaces-only window
         var e = new EditorDocument(window);
-        Assert.Contains("window", Assert.Throws<MapDocumentException>(() => e.Execute(new TestPatchHeightCommand(new("far", 300, 0), 0, 2100))).Message);
+        string State() => System.Text.Json.JsonSerializer.Serialize(window) + "\n" + MapSurfaceSemantics.RootDigest(window);
+        string before = State();
+        var error = Assert.Throws<MapDocumentException>(() => e.Execute(new TestPatchHeightCommand(new("far", 300, 0), 0, 2100)));
+        Assert.Equal(MapDocumentRefusal.CompleteDocumentRequired, error.Reason);
+        Assert.Equal(window.Id, error.DocumentId);
+        Assert.Equal("Stage", error.Operation);
+        Assert.Contains("window", error.Message);
+        var snapshot = Assert.Throws<MapDocumentException>(() => NativeDocumentSnapshot.Clone(window, e.Registry));
+        Assert.Equal(MapDocumentRefusal.CompleteDocumentRequired, snapshot.Reason);
+        Assert.Equal(window.Id, snapshot.DocumentId);
+        Assert.Equal("Clone", snapshot.Operation);
+        Assert.Equal(before, State());
+        var whole = MapDocumentFile.LoadTiled(dir);
+        Assert.NotNull(NativeDocumentSnapshot.Clone(whole, e.Registry));
+        var control = new EditorDocument(whole);
+        control.BindNativeAssets(SurfaceStorageFixtures.Assets());
+        control.Execute(new TestPatchHeightCommand(new("far", 300, 0), 0, 2100));
     });
 }

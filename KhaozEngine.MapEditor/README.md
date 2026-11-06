@@ -978,8 +978,10 @@ services and the MCP verbs with identical documents, effects and history at ever
 refusal, a local replace override, prefab moves at yaw 0.371 and scales 0.8 and 1.2, unpack, adoption, undo, redo and
 save and reopen. The full GUI host, marker inspectors and windowed native editing remain R9 work.
 
-Legacy native spawn commands refuse with `marker_set`, `marker_remove` and `spawns_adopt` guidance. Resolver (1, 1)
-also names resolver adoption through `MapResolverAdoption.ConvertToAuthoredSupport` as the prerequisite. Analytic
+Legacy native spawn commands refuse with `MapDocumentRefusal.EditorLegacySpawnEditProtected`, `DocumentId`,
+`ResolverVersion`, `Operation` and an owned `SourceIds` snapshot in spawn then player-spawn order. Resolver (1, 1)
+requires resolver adoption through `MapResolverAdoption.ConvertToAuthoredSupport` first. Existing `marker_set`,
+`marker_remove`, `spawns_adopt` and resolver-adoption guidance stays in the status text. Analytic
 spawn commands retain their released behavior. Native transactions compare canonical legacy-list bytes during
 staging and again as the first publication step, including undo and redo. Only the adoption command can obtain a
 permit for its exact captured transition. Generic snapshots and a `LegacySpawns` write-set flag cannot obtain one.
@@ -1406,3 +1408,19 @@ Freeze-zone companion-host admission uses `MapDocumentException.ReferenceMissing
 companion `LayerId`, missing host `EntityId`, `SubjectKind` `scatter layer` and `FieldPath`
 `CompanionLayers.HostLayer`. A host `MarkerAssets` callback returning no closure uses
 `MapDocumentException.AssetClosureRequired`, `DocumentId` and `FieldPath` `MarkerAssets`.
+
+Native transaction guards and detached prefab sessions use `MapDocumentException` and the same public enum.
+Validator adapters retain the first concrete reason and identifiers and the full ordered `Findings` snapshot.
+Their joined diagnostic text and the first water-containment diagnostic stay unchanged.
+
+| Reason | Refused transaction rule | Identifiers |
+| --- | --- | --- |
+| `CompleteDocumentRequired` | Native snapshot or staging over a partial document | `DocumentId`, `Operation` |
+| `AssetClosureRequired` | Native or prefab work without its verified closure | `DocumentId`, `Operation`, known `CommandType` or `SubjectKind` |
+| `OperationKindUnsupported` | A command without native atomic preparation support | `DocumentId`, `Operation`, `CommandType` |
+| `EditorLegacySpawnEditProtected` | Legacy spawn changes outside the captured adoption transition | `DocumentId`, `ResolverVersion`, `Operation`, owned `SourceIds` |
+| `EditorMarkerAssetsFailed` | A failed host marker-assets callback | `DocumentId`, callback `FieldPath`, `Operation`, original `InnerException` |
+| `EditorPrefabSessionCancelled` | An operation on a cancelled local prefab session | `AssetId`, `Operation` |
+| `ToolAssetRootRequired` | Detached prefab work without a manifest root | `AssetId`, `Operation` |
+| `EditorRetainedReferenceRemoved` | Removing a child still referenced by a retained record | `DocumentId`, `RecordId`, `TargetId`, target `ChildKind`, reference `FieldPath` |
+| `WaterContainmentUnverified` | A report without a concrete finding that cannot prove containment | Concrete producer findings take precedence |

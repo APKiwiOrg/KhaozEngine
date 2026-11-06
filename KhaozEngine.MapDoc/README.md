@@ -1983,6 +1983,12 @@ their joined diagnostic text.
 | `PhysicsWaterBoundsMissing` | Compiled water regions without body bounds | `BodyId` |
 | `PhysicsWaterFragmentBoundsMissing` | Occupied water regions without fragment bounds | `BodyId` |
 | `EditorScatterLayerReferenced` | Editor command removal of a referenced scatter layer, carried by `MapEditorCommandException` | `DocumentId`, `LayerId`, `EntityId`, `SubjectKind`, `FieldPath`, owned `SourceIds` |
+| `EditorLegacySpawnEditProtected` | Native legacy spawn changes outside their admitted adoption transition | `DocumentId`, `ResolverVersion`, `Operation`, owned `SourceIds` in spawn then player-spawn order |
+| `EditorMarkerAssetsFailed` | A failed host marker-asset callback | `DocumentId`, callback `FieldPath`, `Operation`, original `InnerException` |
+| `EditorPrefabSessionCancelled` | Work on a cancelled detached prefab session | `AssetId`, `Operation` |
+| `EditorRetainedReferenceRemoved` | A retained record referring to a removed child | `DocumentId`, `RecordId`, `TargetId`, target `ChildKind`, reference `FieldPath` |
+| `ToolAssetRootRequired` | Detached prefab work or publication without a manifest root | `AssetId` when known, `Operation` |
+| `WaterContainmentUnverified` | A publication report without a concrete finding that cannot prove water containment | Known findings take precedence |
 | `WaterBodiesPreventLegacyMode` | Switching to legacy global water while bounded bodies remain | `FieldPath`, `ActualCount` |
 | `DocumentHashSchemeUnsupported` | Whole authored identity or window loading under an unsupported pinned tile hash scheme | `FieldPath`, `ActualVersion`, owned `SupportedVersions` for identity or `ExpectedVersion` for window loading, source context |
 | `StoragePatchKeyMismatch` | A surface dictionary entry whose key differs from its payload key | dictionary `ExpectedPatch`, payload `Patch` |
@@ -2352,8 +2358,12 @@ Prefab expansion preflight reports the first failing `MaxInstances`, `MaxChildre
 `MaxPayloadBytes` budget in the same order as its guard. Checked-count overflow names
 `PrefabExpansionCount` with `Limit = long.MaxValue` and leaves the unrepresentable `ActualCount` null.
 The generation-context throwing adapter forwards its concrete finding and every ordered validator finding.
-Editor transaction admission keeps its existing contract
-until its own guards are converted.
+Editor transactions forward the first validator finding's reason and identifiers and the full ordered `Findings`
+snapshot, with the released joined diagnostic or first water diagnostic unchanged. Native snapshots and staging
+use `CompleteDocumentRequired` with `DocumentId` and `Operation`. Missing verified closures use
+`AssetClosureRequired` with the operation and known `CommandType` or `SubjectKind`. An unsupported native
+command uses `OperationKindUnsupported` with its `CommandType`. Refused staging leaves the live document and
+history unchanged.
 
 `ResolverVersion` is the document's declared version. `OptionsResolverVersion` is the version supplied
 by the caller, and `ExpectedResolverVersion` is the version the operation requires. A guard accepting

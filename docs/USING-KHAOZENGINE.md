@@ -12814,6 +12814,15 @@ upper field. Slot checks retain the patch, cell index and value. They distinguis
 entries, backwards ordering, numerical range, patch coordinates and openings over present cells.
 Count controls accept exactly 1 and 4096 slots. `PreviousInteger` is set only for an actual predecessor.
 The topology producer is complete. Broader adapters still wait for their other finding producers.
+Opening compilation carries the actual ownership, cardinality, slot range, patch address, duplicate or
+presence rule, retaining the opening identity and selected cell. Its exact geometry failures retain the
+opening and patch. Seam validation accumulates typed pair and patch findings internally beside its
+unchanged public string result while the remaining edge, corner and catch producers await conversion.
+A mismatching pair surface reuses `AuthoredValueMismatch`, with the submitted surface and declared edge
+patch. Pair alignment uses `SurfaceSeamPositionMismatch`, undeclared vertices use
+`SurfaceSeamVertexUndeclared`, height disagreement uses `GeometryVertexHeightMismatch`, and incomplete
+edge coverage uses `GeometryVertexSequenceInvalid` with actual and expected vertex counts. These findings
+retain the seam record and the relevant pair index or address.
 
 Native metadata adds typed findings beside its unchanged string diagnostics. Compound findings select
 the first failing predicate branch. Missing asset-reference and indoor-span values use `SchemaValueRequired`, nonfinite

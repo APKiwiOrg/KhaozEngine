@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using System;
 using System.Linq;
 using KhaozEngine.MapDoc;
@@ -211,10 +212,17 @@ public sealed class BoundaryContractTests
         Assert.Equal(new MapExactValue(1, cellUnitDenominator), mismatch);
         if (cellUnitDenominator > 1) Assert.True(mismatch.CompareTo(new(1, 10000)) < 0);
 
-        var findings = MapSeamValidator.Validate(seam, view);
+        var typed = new List<MapDocumentFinding>();
+        var findings = MapSeamValidator.Validate(seam, view, typed);
 
         Assert.Equal(2, findings.Count(f => f.Contains("position", StringComparison.Ordinal)));
         Assert.DoesNotContain(findings, f => f.Contains("subdivide", StringComparison.Ordinal));
+        Assert.Equal(2, typed.Count(f => f.Reason == MapDocumentRefusal.SurfaceSeamPositionMismatch));
+        Assert.All(typed.Where(f => f.Reason == MapDocumentRefusal.SurfaceSeamPositionMismatch), f => Assert.Equal(seam.Id, f.RecordId));
+        var repaired = seam with { Pairs = originalSeam.Pairs };
+        typed.Clear();
+        Assert.Empty(MapSeamValidator.Validate(repaired, view, typed));
+        Assert.Empty(typed);
     }
 
     [Theory]

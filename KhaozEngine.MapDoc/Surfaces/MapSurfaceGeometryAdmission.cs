@@ -5,10 +5,11 @@ internal static class MapSurfaceGeometryAdmission
 {
     // Value-taking admission also lets headless tests inject a disagreeing producer vertex without
     // corrupting a validated patch or depending on floating-point cancellation.
-    internal static void RequireSharedVertexHeight(MapExactPoint expected, MapSurfaceVertex vertex, MapPatchKey patch)
+    internal static void RequireSharedVertexHeight(MapExactPoint expected, MapSurfaceVertex vertex, MapPatchKey patch,
+        string message = "inconsistent exact height for shared surface vertex", string? recordId = null)
     {
         if (expected != vertex.Exact)
-            throw new MapDocumentException(MapDocumentRefusal.GeometryVertexHeightMismatch, "inconsistent exact height for shared surface vertex")
-            { SurfaceId = patch.SurfaceId, Patch = patch, Address = vertex.Address };
+            throw new MapDocumentException(MapDocumentRefusal.GeometryVertexHeightMismatch, message)
+            { SurfaceId = patch.SurfaceId, Patch = patch, Address = vertex.Address, RecordId = recordId };
     }
 }

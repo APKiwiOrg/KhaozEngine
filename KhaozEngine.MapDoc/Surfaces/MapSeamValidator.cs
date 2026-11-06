@@ -8,7 +8,10 @@ namespace KhaozEngine.MapDoc.Surfaces;
 /// <summary>Checks complete authored edge sequences and owner dependencies with exact comparisons.</summary>
 public static class MapSeamValidator
 {
-    public static IReadOnlyList<string> Validate(MapSurfaceSeam seam, MapScopedSurfaces view)
+    public static IReadOnlyList<string> Validate(MapSurfaceSeam seam, MapScopedSurfaces view) => Validate(seam, view, null);
+
+    // Typed findings are accumulated beside prose until the remaining edge and catch producers are converted.
+    internal static IReadOnlyList<string> Validate(MapSurfaceSeam seam, MapScopedSurfaces view, List<MapDocumentFinding>? typedFindings)
     {
         ArgumentNullException.ThrowIfNull(seam);
         ArgumentNullException.ThrowIfNull(view);
@@ -18,32 +21,59 @@ public static class MapSeamValidator
             MapBoundarySurface? first = MapBoundaryGeometry.Read(seam.First.Patch, view, out string? firstDetail);
             MapBoundarySurface? second = seam.First.Patch == seam.Second.Patch ? first
                 : MapBoundaryGeometry.Read(seam.Second.Patch, view, out _);
-            if (first is null) findings.Add(firstDetail!);
-            if (second is null) findings.Add($"unresolved seam second patch '{seam.Second.Patch}'");
+            if (first is null) Add(new(MapDocumentRefusal.PatchUnavailable, firstDetail!)
+            { Patch = seam.First.Patch, FieldPath = "First.Patch" });
+            if (second is null) Add(new(MapDocumentRefusal.PatchUnavailable, $"unresolved seam second patch '{seam.Second.Patch}'")
+            { Patch = seam.Second.Patch, FieldPath = "Second.Patch" });
             if (first is null || second is null) return findings.AsReadOnly();
             Dictionary<MapLatticeAddress, MapExactPoint> firstEdge = Edge(seam.First, first);
             Dictionary<MapLatticeAddress, MapExactPoint> secondEdge = Edge(seam.Second, second);
             var firstPairs = new HashSet<MapLatticeAddress>();
             var secondPairs = new HashSet<MapLatticeAddress>();
+            int index = -1;
             foreach (var pair in seam.Pairs)
             {
+                index++;
                 if (pair.First.SurfaceId != first.Surface.Id || pair.Second.SurfaceId != second.Surface.Id)
                 {
-                    findings.Add("seam position: pair surface does not match its edge");
+                    bool firstMismatch = pair.First.SurfaceId != first.Surface.Id;
+                    Add(new(MapDocumentRefusal.AuthoredValueMismatch, "seam position: pair surface does not match its edge")
+                    {
+                        SurfaceId = firstMismatch ? pair.First.SurfaceId : pair.Second.SurfaceId,
+                        Patch = firstMismatch ? seam.First.Patch : seam.Second.Patch, Index = index,
+                        FieldPath = $"Pairs[{index}].{(firstMismatch ? "First" : "Second")}.SurfaceId",
+                    });
                     continue;
                 }
                 MapExactXz a = first.Surface.Frame.WorldXz(pair.First.Address);
                 MapExactXz b = second.Surface.Frame.WorldXz(pair.Second.Address);
-                if (a != b) findings.Add("seam position: paired vertices disagree in world XZ");
-                if (!firstPairs.Add(pair.First.Address) || !secondPairs.Add(pair.Second.Address))
-                    findings.Add("seam subdivide: duplicate paired vertex");
+                if (a != b) Add(new(MapDocumentRefusal.SurfaceSeamPositionMismatch, "seam position: paired vertices disagree in world XZ")
+                { Index = index, Address = pair.First.Address, SurfaceId = first.Surface.Id, FieldPath = $"Pairs[{index}]" });
+                bool firstRepeated;
+                if ((firstRepeated = !firstPairs.Add(pair.First.Address)) || !secondPairs.Add(pair.Second.Address))
+                    Add(new(MapDocumentRefusal.IdentityDuplicate, "seam subdivide: duplicate paired vertex")
+                    {
+                        Index = index, Address = firstRepeated ? pair.First.Address : pair.Second.Address,
+                        SurfaceId = firstRepeated ? first.Surface.Id : second.Surface.Id, FieldPath = $"Pairs[{index}]",
+                    });
                 bool hasFirst = firstEdge.TryGetValue(pair.First.Address, out MapExactPoint firstPoint);
                 bool hasSecond = secondEdge.TryGetValue(pair.Second.Address, out MapExactPoint secondPoint);
-                if (!hasFirst || !hasSecond) findings.Add("seam subdivide: pair is not a declared edge vertex");
-                else if (firstPoint.Y != secondPoint.Y) findings.Add("seam height: paired vertices disagree");
+                if (!hasFirst || !hasSecond) Add(new(MapDocumentRefusal.SurfaceSeamVertexUndeclared, "seam subdivide: pair is not a declared edge vertex")
+                {
+                    Index = index, Address = !hasFirst ? pair.First.Address : pair.Second.Address,
+                    SurfaceId = !hasFirst ? first.Surface.Id : second.Surface.Id, FieldPath = $"Pairs[{index}]",
+                });
+                else if (firstPoint.Y != secondPoint.Y) Add(new(MapDocumentRefusal.GeometryVertexHeightMismatch, "seam height: paired vertices disagree")
+                { Index = index, Address = pair.First.Address, SurfaceId = first.Surface.Id, FieldPath = $"Pairs[{index}]" });
             }
-            if (!firstPairs.SetEquals(firstEdge.Keys) || !secondPairs.SetEquals(secondEdge.Keys))
-                findings.Add("seam subdivide: pairs must cover every vertex of both edges");
+            bool firstIncomplete;
+            if ((firstIncomplete = !firstPairs.SetEquals(firstEdge.Keys)) || !secondPairs.SetEquals(secondEdge.Keys))
+                Add(new(MapDocumentRefusal.GeometryVertexSequenceInvalid, "seam subdivide: pairs must cover every vertex of both edges")
+                {
+                    SurfaceId = firstIncomplete ? first.Surface.Id : second.Surface.Id,
+                    ActualCount = firstIncomplete ? firstPairs.Count : secondPairs.Count,
+                    ExpectedCount = firstIncomplete ? firstEdge.Count : secondEdge.Count, FieldPath = "Pairs",
+                });
         }
         catch (Exception error) when (error is MapExactOverflowException or OverflowException)
         {
@@ -54,6 +84,12 @@ public static class MapSeamValidator
             findings.Add(error.Message);
         }
         return findings.AsReadOnly();
+
+        void Add(MapDocumentFinding finding)
+        {
+            findings.Add(finding.Message);
+            typedFindings?.Add(finding with { RecordId = seam.Id });
+        }
     }
 
     public static IReadOnlyList<string> ValidateCornerDependencies(MapSurfacePatch patch, MapScopedSurfaces view)

@@ -245,7 +245,10 @@ with the complete ordered `Findings` snapshot. Metadata checks distinguish a mis
 (`SchemaEnumUnsupported`). A legacy policy on a different frame reuses `SurfaceLegacyRecipeRequired`.
 Surface identity calculation distinguishes missing metadata, unsupported enums, a patch with the wrong
 surface owner (`AuthoredOwnershipMismatch`), a duplicate patch (`IdentityDuplicate`) and a malformed
-semantic digest (`DigestMalformed`). Patch cloning retains the patch and record type when refusing an
+semantic digest (`DigestMalformed`). Opening compilation distinguishes wrong patch ownership, an empty
+cell list, an out-of-slot cell, an out-of-patch address, duplicate cells and a present cell. It retains the
+opening `RecordId`, requested `Patch`, selected `SlotCell` and the actual count or numerical limits when
+checked. Opening exact geometry failures retain their record and patch. Patch cloning retains the patch and record type when refusing an
 unsupported topology record, or `SchemaValueRequired` for a null record.
 
 **Mixed-resolution bounds.** A `MapSpaceFootprint` names a lower and an upper `MapBoundRef` that may sit on
@@ -1534,7 +1537,7 @@ An array beyond its own count cap uses that field name as `Budget`, with its `Ac
 | `SpacePrismParentMismatch` | A prism parent differing from its Room space's parent | `RecordId`, `SpaceId`, `RelatedRecordId`, `FieldPath` |
 | `SpaceRoomOccupancyInvalid` | A Room with zero or multiple prism domains, or occupied through a lattice footprint | `SpaceId`, `RecordId`, `FieldPath`, `ActualCount`, `ExpectedCount` |
 | `SpaceParentCycle` | A cycle in space ancestry | `SpaceId` |
-| `GeometryVertexSequenceInvalid` | A portal interval with fewer than two vertices | `RecordId`, `FieldPath`, `ActualCount`, `MinimumInteger` |
+| `GeometryVertexSequenceInvalid` | A portal interval with fewer than two vertices, or seam pairs not covering both complete edge vertex sets | `RecordId`, `FieldPath`, `SurfaceId`, `ActualCount`, `ExpectedCount`, `MinimumInteger` when known |
 | `SpaceChainHeightKindMismatch` | A surface-edge vertex with an authored height, or an authored vertex without one | `RecordId`, `Index`, `FieldPath`, `ActualInteger` when present |
 | `SpacePortalOpenTopInvalid` | An open-top portal with a non-Exterior endpoint | `RecordId`, `SpaceId`, `FieldPath`, `EnumType`, `ActualInteger` |
 | `SpacePortalMembershipMismatch` | An endpoint space not listing its portal exactly once on the required side, or a space listing another endpoint's side | `RecordId`, `SpaceId`, `RelatedRecordId`, actual endpoint `EntityId`, `FieldPath`, `ActualCount`, `ExpectedCount` |
@@ -1544,12 +1547,14 @@ An array beyond its own count cap uses that field name as `Budget`, with its `Ac
 | `SpaceBoundRoleMismatch` | A bound kind or surface role incompatible with the lower or upper bound role | `RecordId`, `SpaceId`, `SurfaceId`, `FieldPath`, `EnumType`, `ActualInteger` |
 | `SpaceOpeningCellsInvalid` | A horizontal opening over a present cell | `RecordId`, `Patch`, `FieldPath`, `Index`, `ActualInteger`, `CellX`, `CellZ` |
 | `GeometryNotRepresentable` | A collapsed effective cell, exact triangle or unrepresentable surface emission | `SurfaceId`, `Patch`, `CellX`, `CellZ`, `SlotCell`, `Operation` when known |
-| `GeometryVertexHeightMismatch` | Different exact heights for a shared compiled or boundary vertex | `SurfaceId`, `Patch`, `Address` |
+| `GeometryVertexHeightMismatch` | Different exact heights for a shared compiled, opening, boundary or seam vertex | `SurfaceId`, `Patch`, `RecordId`, `Address`, `Index`, `FieldPath` when known |
 | `FrameRadiusExceeded` | Local frame radius or checked anchor subtraction overflow | `Patch` when available, `Limit`, local `PositionX`/`PositionZ` only after successful subtraction |
 | `PatchUnavailable` | A requested effective patch has no acquired payload | `SurfaceId`, `Patch`, `PatchStatus` |
 | `SurfaceLegacySampleOutOfCell` | A legacy sample outside its selected cell or patch | `SurfaceId`, `Patch`, `SlotCell` |
 | `SurfacePaintPhysicalCompileUnsupported` | Physical-face compilation of a paint-only surface | `SurfaceId`, `Patch` |
 | `SurfaceNativeNoDrawUnsupported` | A native cell carrying the legacy NoDraw flag | `SurfaceId`, `Patch`, `SlotCell`, `FieldPath` |
+| `SurfaceSeamPositionMismatch` | Paired seam vertices at different exact world XZ positions | `RecordId`, `SurfaceId`, `Address`, `Index`, `FieldPath` |
+| `SurfaceSeamVertexUndeclared` | A paired vertex absent from its declared edge | `RecordId`, `SurfaceId`, `Address`, `Index`, `FieldPath` |
 | `WorkCapacityExceeded` | Reservation keys beyond the candidate cap, surface codec work beyond its encoded byte or array-count budget, or local corner-dependency or edge-subdivision metadata beyond its count budget, or compiled faces beyond MaxFacesPerPatch | `Patch`, `FieldPath`, `Budget`, `ActualCount`, `ActualByteCount`, `Limit` |
 | `SurfacePresencePaddingNonzero` | Nonzero bits beyond the authored cell count in the last presence word | `Patch`, `FieldPath`, `Index` |
 | `SurfaceSubdivisionAbsentCell` | An edge subdivision on an absent cell | `Patch`, `FieldPath`, `Index`, `CellX`, `CellZ`, `Edge` |

@@ -208,6 +208,10 @@ public enum MapDocumentRefusal
     SurfacePaintPhysicalCompileUnsupported,
     /// <summary>Refuses legacy NoDraw flags on a native surface cell.</summary>
     SurfaceNativeNoDrawUnsupported,
+    /// <summary>Refuses seam pairs at different exact world positions.</summary>
+    SurfaceSeamPositionMismatch,
+    /// <summary>Refuses a seam vertex absent from its declared source edge.</summary>
+    SurfaceSeamVertexUndeclared,
 
     // Scoped acquisition producer admission.
     /// <summary>Refuses acquisition facts differing from the session's captured snapshot.</summary>

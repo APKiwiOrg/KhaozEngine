@@ -13,6 +13,25 @@ namespace KhaozEngine.Tests.MapDoc;
 public sealed class MapGeometryClassificationRefusalTests
 {
     [Fact]
+    public void WaterPairBudget_KeepsCapacityThroughAnInvalidRefinementProjection()
+    {
+        // W6-C1 review regression: refinement's Invalid projection must retain the capacity cause.
+        var view = MapOccupiedPartitionRefusalTests.View(MapOccupiedPartitionRefusalTests.Scene(0));
+        var min = new MapExactXz(new(0, 1), new(0, 1));
+        var max = new MapExactXz(new(1, 1), new(1, 1));
+        var result = MapOccupiedPartitions.BuildWide(view, min, max, new(MaxPairChecks: 1), false, new(new()));
+        Assert.Equal(MapRefinementStatus.CapacityExceeded, result.Status);
+        Assert.Empty(result.Pieces);
+        Assert.Equal(MapDocumentRefusal.WorkCapacityExceeded, result.Finding!.Reason);
+        Assert.Equal("WaterDomainPairChecks", result.Finding.Budget);
+        Assert.Equal(2, result.Finding.ActualCount);
+        Assert.Equal(1, result.Finding.Limit);
+        Assert.Equal(result.Finding.Message, result.Detail);
+        Assert.Equal(MapRefinementStatus.Complete,
+            MapOccupiedPartitions.BuildWide(view, min, max, new(MaxPairChecks: 2), false, new(new())).Status);
+    }
+
+    [Fact]
     public void DomainPrefix_KeepsContainedInvalidDetailUnverified()
     {
         var frame = MapLatticeFrame.ImportedMetreCentimetre;

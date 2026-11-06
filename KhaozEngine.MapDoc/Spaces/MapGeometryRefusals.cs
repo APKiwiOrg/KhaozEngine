@@ -16,9 +16,10 @@ internal static class MapGeometryRefusals
 
     internal static bool Capacity(MapDocumentException error) =>
         error.RefinementStatus == MapRefinementStatus.CapacityExceeded ||
+        error is { Reason: MapDocumentRefusal.WorkCapacityExceeded, Budget: "WaterDomainPairChecks" } ||
         error is { RefinementStatus: null, Reason: MapDocumentRefusal.WorkCapacityExceeded,
             Budget: "MaxRecordReads" or "MaxRecordDepth" or "MaxInspectedFaces" or "MaxRefinementFaces" or
-                "MaxRefinementVertices" or "WaterDomainPairChecks" };
+                "MaxRefinementVertices" };
 
     internal static bool MissingGeometry(MapDocumentException error) =>
         error.RefinementStatus is { } status ? status is not (MapRefinementStatus.CapacityExceeded or MapRefinementStatus.NotRepresentable)

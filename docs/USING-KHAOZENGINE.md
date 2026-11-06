@@ -12860,6 +12860,8 @@ bounded refinement. Their existing status values and `Detail` text remain indepe
 For example a caught degenerate triangle remains `Invalid` with `GeometryNotRepresentable`, while an
 arithmetic or narrowing overflow remains `NotRepresentable`. Capacity findings expose the actual
 source, pair, emitted face, vertex or context `Budget`, its measured `ActualCount` and inclusive `Limit`.
+Occupied partition classification retains `WaterDomainPairChecks` capacity provenance through an
+intermediate `Invalid` refinement status.
 Refusals expose no partial refinement. A count that overflowed its representation remains null.
 
 `MapPrismCoverage.ValidateFindings(view, limits)` and

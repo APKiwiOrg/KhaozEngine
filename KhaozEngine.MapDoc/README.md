@@ -2302,6 +2302,8 @@ These budgets are `MaxRecordDepth`, `MaxRecordReads`, `MaxInspectedFaces`, `MaxR
 `AcquireStatus`. Wide partition status results retain an available original typed `Finding` through
 narrowing. Their status and prose remain unchanged. Adapters whose producers are not yet fully typed
 retain their existing prose projection.
+Occupied partition classification retains `WaterDomainPairChecks` capacity provenance even when an
+intermediate refinement projected the failure to `Invalid`.
 
 `MapChainResolution.Finding` is an additive init property. Its existing positional constructor,
 deconstruction, status and `Detail` remain unchanged. Caught document refusals retain their original

@@ -225,22 +225,35 @@ public static class MapSurfaceCompiler
     {
         ArgumentNullException.ThrowIfNull(patch);
         if (work is not null) work.PatchValidations++;
-        IReadOnlyList<string> findings = patch.ValidateLocal();
-        if (findings.Count != 0) throw new MapDocumentException(findings[0]);
+        IReadOnlyList<MapDocumentFinding> findings = patch.ValidateLocalFindings();
+        if (findings.Count != 0) throw MapSurfacePatchCodec.LocalRefusal(findings);
         ArgumentNullException.ThrowIfNull(surface);
         MapSurfaceJson.RequirePaintPriority(surface);
         if (surface.Id != patch.Key.SurfaceId || surface.Frame is null ||
             !Enum.IsDefined(surface.Role) || !Enum.IsDefined(surface.PresencePolicy))
-            throw new MapDocumentException("invalid surface metadata or patch surface id");
+            throw new MapDocumentException(surface.Id != patch.Key.SurfaceId ? MapDocumentRefusal.AuthoredValueMismatch
+                : surface.Frame is null ? MapDocumentRefusal.SchemaValueRequired : MapDocumentRefusal.SchemaEnumUnsupported,
+                "invalid surface metadata or patch surface id")
+            {
+                SurfaceId = surface.Id, Patch = patch.Key,
+                FieldPath = surface.Id != patch.Key.SurfaceId ? "Key.SurfaceId" : surface.Frame is null ? "Frame"
+                    : !Enum.IsDefined(surface.Role) ? "Role" : "PresencePolicy",
+                EnumType = surface.Id != patch.Key.SurfaceId || surface.Frame is null ? null
+                    : !Enum.IsDefined(surface.Role) ? typeof(MapSurfaceRole) : typeof(MapPresencePolicy),
+                ActualInteger = surface.Id != patch.Key.SurfaceId || surface.Frame is null ? null
+                    : !Enum.IsDefined(surface.Role) ? (byte)surface.Role : (byte)surface.PresencePolicy,
+            };
         if (surface.PresencePolicy == MapPresencePolicy.LegacyTileWorld &&
             surface.Frame != MapLatticeFrame.ImportedMetreCentimetre)
-            throw new MapDocumentException("LegacyTileWorld requires ImportedMetreCentimetre");
+            throw new MapDocumentException(MapDocumentRefusal.SurfaceLegacyRecipeRequired, "LegacyTileWorld requires ImportedMetreCentimetre")
+            { SurfaceId = surface.Id, Patch = patch.Key, FieldPath = "Frame" };
         for (int z = 0; z < patch.Depth; z++)
             for (int x = 0; x < patch.Width; x++)
             {
                 MapSurfaceCell cell = patch.Cells[z * patch.Width + x];
                 if (surface.PresencePolicy == MapPresencePolicy.Native && (cell.Flags & MapCellFlags.NoDraw) != 0)
-                    throw new MapDocumentException("Native surfaces refuse NoDraw");
+                    throw new MapDocumentException(MapDocumentRefusal.SurfaceNativeNoDrawUnsupported, "Native surfaces refuse NoDraw")
+                    { SurfaceId = surface.Id, Patch = patch.Key, SlotCell = SlotCell(patch, x, z), FieldPath = $"Cells[{z * patch.Width + x}].Flags" };
                 _ = MapSurfaceTopology.SplitSwNe(patch.Height(x, z), patch.Height(x + 1, z),
                     patch.Height(x, z + 1), patch.Height(x + 1, z + 1), cell.Cut, cell.Rotation, cell.Topology);
             }
@@ -272,7 +285,8 @@ public static class MapSurfaceCompiler
         }
         catch (MapExactOverflowException error)
         {
-            throw new MapDocumentException("surface height is not representable", error);
+            throw new MapDocumentException(MapDocumentRefusal.GeometryNotRepresentable, "surface height is not representable", error)
+            { SurfaceId = surface.Id, Patch = patch.Key, Operation = nameof(ExactHeight) };
         }
     }
 

@@ -206,6 +206,8 @@ public enum MapDocumentRefusal
     SurfaceLegacySampleOutOfCell,
     /// <summary>Refuses physical-face compilation of a paint-only surface.</summary>
     SurfacePaintPhysicalCompileUnsupported,
+    /// <summary>Refuses legacy NoDraw flags on a native surface cell.</summary>
+    SurfaceNativeNoDrawUnsupported,
 
     // Scoped acquisition producer admission.
     /// <summary>Refuses acquisition facts differing from the session's captured snapshot.</summary>

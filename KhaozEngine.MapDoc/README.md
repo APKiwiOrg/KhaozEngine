@@ -239,7 +239,14 @@ flags, topology and presence bits, and only occupied patches are stored. A canon
 most 1 MiB, a compiled patch at most 65,536 faces, and an edge subdivision 2 to 64 segments. Index pages
 hold at most 256 entries and 1 MiB. `MapSurfaceCompiler.Compile` emits canonical floor or ceiling faces
 keyed by `MapFaceKey`, with exact triangles and the released float arithmetic only in compiled offsets and
-legacy normals.
+legacy normals. Compiler admission forwards the first `ValidateLocalFindings` reason and its identifiers
+with the complete ordered `Findings` snapshot. Metadata checks distinguish a mismatching surface identity
+(`AuthoredValueMismatch`), a missing frame (`SchemaValueRequired`) and unsupported role or presence
+(`SchemaEnumUnsupported`). A legacy policy on a different frame reuses `SurfaceLegacyRecipeRequired`.
+Surface identity calculation distinguishes missing metadata, unsupported enums, a patch with the wrong
+surface owner (`AuthoredOwnershipMismatch`), a duplicate patch (`IdentityDuplicate`) and a malformed
+semantic digest (`DigestMalformed`). Patch cloning retains the patch and record type when refusing an
+unsupported topology record, or `SchemaValueRequired` for a null record.
 
 **Mixed-resolution bounds.** A `MapSpaceFootprint` names a lower and an upper `MapBoundRef` that may sit on
 different rational lattices. `MapCommonRefinement` clips them to their exact common refinement per footprint
@@ -1542,6 +1549,7 @@ An array beyond its own count cap uses that field name as `Budget`, with its `Ac
 | `PatchUnavailable` | A requested effective patch has no acquired payload | `SurfaceId`, `Patch`, `PatchStatus` |
 | `SurfaceLegacySampleOutOfCell` | A legacy sample outside its selected cell or patch | `SurfaceId`, `Patch`, `SlotCell` |
 | `SurfacePaintPhysicalCompileUnsupported` | Physical-face compilation of a paint-only surface | `SurfaceId`, `Patch` |
+| `SurfaceNativeNoDrawUnsupported` | A native cell carrying the legacy NoDraw flag | `SurfaceId`, `Patch`, `SlotCell`, `FieldPath` |
 | `WorkCapacityExceeded` | Reservation keys beyond the candidate cap, surface codec work beyond its encoded byte or array-count budget, or local corner-dependency or edge-subdivision metadata beyond its count budget, or compiled faces beyond MaxFacesPerPatch | `Patch`, `FieldPath`, `Budget`, `ActualCount`, `ActualByteCount`, `Limit` |
 | `SurfacePresencePaddingNonzero` | Nonzero bits beyond the authored cell count in the last presence word | `Patch`, `FieldPath`, `Index` |
 | `SurfaceSubdivisionAbsentCell` | An edge subdivision on an absent cell | `Patch`, `FieldPath`, `Index`, `CellX`, `CellZ`, `Edge` |

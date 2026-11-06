@@ -145,7 +145,7 @@ public static partial class MapSurfacePatchCodec
         }
     }
 
-    static MapDocumentException LocalRefusal(IReadOnlyList<MapDocumentFinding> findings)
+    internal static MapDocumentException LocalRefusal(IReadOnlyList<MapDocumentFinding> findings)
     {
         MapDocumentFinding first = findings[0];
         return new(first.Reason, first.Message)

@@ -12775,6 +12775,15 @@ for an out-of-cell sample, retaining surface, patch and selected `SlotCell` when
 `MapFrameLocal.ToFrame` uses `FrameRadiusExceeded` with `Limit` and the checked local planar coordinates.
 A subtraction overflow retains the limit without inventing local coordinates. A nonfinite coordinate
 uses `ValueNonfinite` with the first failed field and value. These refusals retain the patch when available.
+The compiler's local-validation adapter forwards the first concrete finding and the complete ordered
+`Findings` snapshot. Compiler metadata uses `AuthoredValueMismatch` for a different surface identity,
+`SchemaValueRequired` for a missing frame and `SchemaEnumUnsupported` with the refused enum type/value.
+Legacy frame-policy mismatch reuses `SurfaceLegacyRecipeRequired`. A native NoDraw cell uses
+`SurfaceNativeNoDrawUnsupported`, `SurfaceId`, `Patch` and its slot-relative `SlotCell`.
+`MapSurfaceSemantics.SurfaceDigest` distinguishes required metadata, unsupported enum values, wrong
+patch ownership, duplicate patch keys and malformed hashes. The last three preserve the submitted patch
+and the supplied digest. `MapSurfacePatch.Clone` carries `OperationKindUnsupported` with its patch,
+record identity and runtime type for an unsupported record, and `SchemaValueRequired` for a null record.
 
 `MapLegacyExteriorRecipe.CheckFinding` reports the first eligibility rule as
 `LegacyExteriorSpaceRequired`, `LegacyExteriorOpenTopRequired`, `SchemaValueRequired` for a missing

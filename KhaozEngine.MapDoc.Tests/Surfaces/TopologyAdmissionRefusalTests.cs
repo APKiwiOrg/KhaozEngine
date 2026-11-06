@@ -78,13 +78,29 @@ public sealed class TopologyAdmissionRefusalTests
         Assert.Equal(patch.Key, finding.Patch);
         if (fault == "surface") Assert.Equal("r", finding.SurfaceId);
         if (fault == "record-duplicate") Assert.Equal("same", finding.RecordId);
-        if (fault == "kind") Assert.Equal(typeof(UnsupportedRecord), finding.RecordType);
+        if (fault == "record-null")
+        {
+            var error = Assert.Throws<MapDocumentException>(() => patch.Clone());
+            Assert.Equal(MapDocumentRefusal.SchemaValueRequired, error.Reason);
+            Assert.Equal("Records", error.FieldPath);
+            Assert.Equal(patch.Key, error.Patch);
+        }
+        if (fault == "kind")
+        {
+            Assert.Equal(typeof(UnsupportedRecord), finding.RecordType);
+            var error = Assert.Throws<MapDocumentException>(() => patch.Clone());
+            Assert.Equal(MapDocumentRefusal.OperationKindUnsupported, error.Reason);
+            Assert.Equal("unknown", error.RecordId);
+            Assert.Equal(typeof(UnsupportedRecord), error.RecordType);
+            Assert.Equal(patch.Key, error.Patch);
+        }
         Assert.Equal(new MapPatchKey("r", 0, 0), patch.Key);
         world.Surfaces.Clear();
         world.Surfaces.Add(Surface());
         world.Patches.RemoveRange(1, world.Patches.Count - 1);
         patch.Width = 1;
         patch.Records.Clear();
+        Assert.NotNull(patch.Clone());
         Assert.Empty(world.Validate());
     }
 

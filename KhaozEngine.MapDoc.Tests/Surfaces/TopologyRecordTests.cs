@@ -156,11 +156,24 @@ public sealed class TopologyRecordTests
         string digest = MapSurfaceSemantics.SurfaceDigest(surface, new[] { first, second });
         Assert.Equal(digest, MapSurfaceSemantics.SurfaceDigest(surface with { SemanticSha256 = "ignored" }, new[] { second, first }));
         Assert.NotEqual(digest, MapSurfaceSemantics.SurfaceDigest(surface with { Role = MapSurfaceRole.Ceiling }, new[] { first, second }));
-        Assert.Throws<MapDocumentException>(() => MapSurfaceSemantics.SurfaceDigest(surface, new[] { first, first }));
-        Assert.Throws<MapDocumentException>(() => MapSurfaceSemantics.SurfaceDigest(surface, new[]
+        var duplicate = Assert.Throws<MapDocumentException>(() => MapSurfaceSemantics.SurfaceDigest(surface, new[] { first, first }));
+        Assert.Equal(MapDocumentRefusal.IdentityDuplicate, duplicate.Reason);
+        Assert.Equal(first.Key, duplicate.Patch);
+        var owner = Assert.Throws<MapDocumentException>(() => MapSurfaceSemantics.SurfaceDigest(surface, new[]
         {
             new KeyValuePair<MapPatchKey, string>(Ceiling00, first.Value),
         }));
+        Assert.Equal(MapDocumentRefusal.AuthoredOwnershipMismatch, owner.Reason);
+        Assert.Equal(surface.Id, owner.SurfaceId);
+        Assert.Equal(Ceiling00, owner.Patch);
+        var malformed = Assert.Throws<MapDocumentException>(() => MapSurfaceSemantics.SurfaceDigest(surface, new[]
+        {
+            new KeyValuePair<MapPatchKey, string>(first.Key, "bad"),
+        }));
+        Assert.Equal(MapDocumentRefusal.DigestMalformed, malformed.Reason);
+        Assert.Equal(first.Key, malformed.Patch);
+        Assert.Equal("bad", malformed.ActualHash);
+        Assert.Equal(digest, MapSurfaceSemantics.SurfaceDigest(surface, new[] { first, second }));
     }
 
     [Theory]

@@ -304,6 +304,14 @@ public enum MapDocumentRefusal
     SpacePortalHeightInvalid,
     /// <summary>Refuses a prism with unordered or collapsed lower and upper heights.</summary>
     SpacePrismSeparationInvalid,
+    /// <summary>Refuses a prism footprint outside its occupied parent footprint.</summary>
+    SpacePrismOutsideParent,
+    /// <summary>Refuses a prism with no positive vertical separation inside its refined parent bounds.</summary>
+    SpacePrismParentSeparationInvalid,
+    /// <summary>Refuses overlapping occupied volumes owned by unrelated spaces.</summary>
+    SpaceOccupiedOverlap,
+    /// <summary>Refuses an unpacked prism without matching live record and storey transfers.</summary>
+    SpaceStoreyTransferMissing,
 
     // Foliage JSON converter.
     /// <summary>Refuses a foliage section larger than its UTF-8 byte budget.</summary>

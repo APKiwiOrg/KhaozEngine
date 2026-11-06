@@ -11,13 +11,18 @@ namespace KhaozEngine.MapDoc.Spaces;
 /// <summary>Room ancestry, storey ownership and exact containment in the canonical variable-bound parent.</summary>
 public static class MapPrismCoverage
 {
-    public static IReadOnlyList<string> Validate(MapScopedSurfaces view, MapRefinementLimits limits)
+    public static IReadOnlyList<string> Validate(MapScopedSurfaces view, MapRefinementLimits limits) => Validate(view, limits, null);
+
+    // Findings remain additive until refinement and water work supply every failure.
+    internal static IReadOnlyList<string> Validate(MapScopedSurfaces view, MapRefinementLimits limits,
+        List<MapDocumentFinding>? typedFindings)
     {
         ArgumentNullException.ThrowIfNull(view);
         ArgumentNullException.ThrowIfNull(limits);
         var prisms = MapSpaceGeometry.Records(view).OfType<MapPrismDomain>().OrderBy(p => p.Id, StringComparer.Ordinal).ToArray();
         if (prisms.Length == 0) return Array.Empty<string>();
         var errors = new List<string>();
+        var findings = new List<MapDocumentFinding>();
         var domains = new Dictionary<string, MapWaterDomain>(StringComparer.Ordinal);
         foreach (var prism in prisms)
         {
@@ -26,18 +31,26 @@ public static class MapPrismCoverage
                 var space = MapSpaceGeometry.Record<MapSpaceDoc>(view, prism.Space);
                 _ = MapSpaceGeometry.Record<MapSpaceDoc>(view, prism.Parent);
                 if (space.Kind != MapSpaceKind.Room || space.Parent != prism.Parent)
-                    throw new MapDocumentException("prism parent mismatch");
+                    throw new MapDocumentException(space.Kind != MapSpaceKind.Room ? MapDocumentRefusal.ReferenceKindMismatch
+                        : MapDocumentRefusal.SpacePrismParentMismatch, "prism parent mismatch")
+                    { RecordId = prism.Id, SpaceId = space.Id, RelatedRecordId = prism.Parent.Id,
+                        FieldPath = space.Kind != MapSpaceKind.Room ? "Kind" : "Parent",
+                        EnumType = space.Kind != MapSpaceKind.Room ? typeof(MapSpaceKind) : null,
+                        ActualInteger = space.Kind != MapSpaceKind.Room ? (int)space.Kind : null };
                 if (MapSpaceGeometry.Records(view).OfType<MapSpaceFootprint>().Any(f => f.Space.Id == space.Id))
-                    throw new MapDocumentException("room occupancy requires only its prism domain");
+                    throw new MapDocumentException(MapDocumentRefusal.SpaceRoomOccupancyInvalid, "room occupancy requires only its prism domain")
+                    { RecordId = prism.Id, SpaceId = space.Id, FieldPath = "Footprints" };
                 _ = MapSpaceGeometry.Ancestors(view, space);
                 RequireStorey(view, prism);
-                if (prisms.Count(p => p.Space.Id == prism.Space.Id) != 1) throw new MapDocumentException("room requires one prism");
+                int count = prisms.Count(p => p.Space.Id == prism.Space.Id);
+                if (count != 1) throw new MapDocumentException(MapDocumentRefusal.SpaceRoomOccupancyInvalid, "room requires one prism")
+                { RecordId = prism.Id, SpaceId = space.Id, FieldPath = "Prisms", ActualCount = count, ExpectedCount = 1 };
                 domains.Add(prism.Id, MapPrismGeometry.Compile(view, prism));
             }
             catch (Exception error) when (error is MapDocumentException or MapExactOverflowException or OverflowException)
-            { errors.Add($"prism '{prism.Id}': {Detail(error)}"); }
+            { AddError(error, $"prism '{prism.Id}': {Detail(error)}", prism); }
         }
-        if (errors.Count != 0) return errors.AsReadOnly();
+        if (errors.Count != 0) { typedFindings?.AddRange(findings); return errors.AsReadOnly(); }
         try
         {
             var min = new MapExactXz(domains.Values.Min(d => d.Min.X), domains.Values.Min(d => d.Min.Z));
@@ -82,13 +95,16 @@ public static class MapPrismCoverage
                             var clip = MapOccupiedPartitions.Intersect(polygon, parent.Polygon);
                             if (!MapOccupiedPartitions.Positive(clip)) continue;
                             if (clip.Any(p => MapWideRational.Min(parent.Top(p) ?? hi, hi).CompareTo(MapWideRational.Max(parent.Bottom(p), lo)) <= 0))
-                                errors.Add($"prism '{prism.Id}': effective separation over parent refinement");
+                                Add(new(MapDocumentRefusal.SpacePrismParentSeparationInvalid, $"prism '{prism.Id}': effective separation over parent refinement")
+                                { RecordId = prism.Id, SpaceId = prism.Space.Id, RelatedRecordId = prism.Parent.Id });
                             var next = new List<IReadOnlyList<MapWideXz>>();
                             foreach (var remaining in uncovered)
                                 next.AddRange(MapOccupiedPartitions.Difference(remaining, parent.Polygon));
                             uncovered = next;
                         }
-                        if (uncovered.Any(MapOccupiedPartitions.Positive)) errors.Add($"prism '{prism.Id}': outside parent footprint");
+                        if (uncovered.Any(MapOccupiedPartitions.Positive)) Add(new(MapDocumentRefusal.SpacePrismOutsideParent,
+                            $"prism '{prism.Id}': outside parent footprint")
+                        { RecordId = prism.Id, SpaceId = prism.Space.Id, RelatedRecordId = prism.Parent.Id });
                     }
             }
             // The sweep only compares bounds, in work proportional to the pairs whose bounds overlap or touch, and stays uncharged.
@@ -107,20 +123,39 @@ public static class MapPrismCoverage
                 if (MapOccupiedPartitions.Positive(polygon) &&
                     polygon.Any(p => a.Top(p) is not { } ta || ta.CompareTo(b.Bottom(p)) > 0) &&
                     polygon.Any(p => b.Top(p) is not { } tb || tb.CompareTo(a.Bottom(p)) > 0))
-                    errors.Add($"peer occupied overlap: '{a.SpaceId}' with '{b.SpaceId}'");
+                    Add(new(MapDocumentRefusal.SpaceOccupiedOverlap, $"peer occupied overlap: '{a.SpaceId}' with '{b.SpaceId}'")
+                    { SpaceId = a.SpaceId, RelatedRecordId = b.SpaceId });
             }
         }
         catch (Exception error) when (error is MapDocumentException or MapExactOverflowException or OverflowException)
-        { errors.Add("prism coverage: " + Detail(error)); }
+        { AddError(error, "prism coverage: " + Detail(error), null); }
+        typedFindings?.AddRange(findings.DistinctBy(f => f.Message).OrderBy(f => f.Message, StringComparer.Ordinal));
         return Array.AsReadOnly(errors.Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal).ToArray());
+
+        void Add(MapDocumentFinding finding) { errors.Add(finding.Message); findings.Add(finding); }
+        void AddError(Exception error, string message, MapPrismDomain? prism)
+        {
+            MapDocumentFinding? finding = error is MapDocumentException refusal ? MapDocumentFinding.FromException(refusal)
+                : new(MapDocumentRefusal.GeometryNotRepresentable, error.Message) { Operation = "prism coverage" };
+            if (finding is null) errors.Add(message);
+            else Add(finding with { Message = message, RecordId = finding.RecordId ?? prism?.Id,
+                SpaceId = finding.SpaceId ?? prism?.Space.Id });
+        }
     }
 
     internal static void RequireStorey(MapScopedSurfaces view, MapPrismDomain prism)
     {
         var storey = view.EffectiveContext?.Storeys.SingleOrDefault(s => s.Id == prism.StoreyId)
-            ?? throw new MapDocumentException("missing geometry: declared prism storey");
+            ?? throw new MapDocumentException(MapDocumentRefusal.ReferenceMissing, "missing geometry: declared prism storey")
+            { RecordId = prism.Id, SpaceId = prism.Space.Id, EntityId = prism.StoreyId, SubjectKind = "storey", FieldPath = "StoreyId" };
         if (storey.PayloadVersion != 1 || (storey.InstanceId ?? "") != prism.InstanceId)
-            throw new MapDocumentException("invalid prism/storey instance ownership");
+            throw new MapDocumentException(storey.PayloadVersion != 1 ? MapDocumentRefusal.SchemaPayloadVersionUnsupported
+                : MapDocumentRefusal.AuthoredOwnershipMismatch, "invalid prism/storey instance ownership")
+            { RecordId = prism.Id, SpaceId = prism.Space.Id, EntityId = storey.Id, SubjectKind = "storey", InstanceId = prism.InstanceId,
+                FieldPath = storey.PayloadVersion != 1 ? "Storey.PayloadVersion" : "Storey.InstanceId",
+                ActualVersion = storey.PayloadVersion != 1 ? storey.PayloadVersion : null,
+                SupportedVersions = storey.PayloadVersion != 1 ? [1] : null,
+                ActualText = storey.PayloadVersion == 1 ? storey.InstanceId : null };
     }
 
     internal static void RequireStandaloneStoreys(MapDocument document)
@@ -128,14 +163,22 @@ public static class MapPrismCoverage
         foreach (var prism in document.Surfaces.Patches.Values.SelectMany(p => p.Records).OfType<MapPrismDomain>())
         {
             var storey = document.BuildingIntent?.Storeys.SingleOrDefault(s => s.Id == prism.StoreyId)
-                ?? throw new MapDocumentException("Prism names an undeclared standalone storey.");
+                ?? throw new MapDocumentException(MapDocumentRefusal.ReferenceMissing, "Prism names an undeclared standalone storey.")
+                { RecordId = prism.Id, SpaceId = prism.Space.Id, EntityId = prism.StoreyId, SubjectKind = "storey", FieldPath = "StoreyId" };
             if (storey.PayloadVersion != 1 || prism.InstanceId != "" || storey.InstanceId is not null)
-                throw new MapDocumentException("Standalone prism and storey must have standalone ownership.");
+                throw new MapDocumentException(storey.PayloadVersion != 1 ? MapDocumentRefusal.SchemaPayloadVersionUnsupported
+                    : MapDocumentRefusal.AuthoredOwnershipMismatch, "Standalone prism and storey must have standalone ownership.")
+                { RecordId = prism.Id, SpaceId = prism.Space.Id, EntityId = storey.Id, SubjectKind = "storey", InstanceId = prism.InstanceId,
+                    FieldPath = storey.PayloadVersion != 1 ? "Storey.PayloadVersion" : prism.InstanceId != "" ? "InstanceId" : "Storey.InstanceId",
+                    ActualVersion = storey.PayloadVersion != 1 ? storey.PayloadVersion : null,
+                    SupportedVersions = storey.PayloadVersion != 1 ? [1] : null,
+                    ActualText = storey.PayloadVersion != 1 ? null : prism.InstanceId != "" ? prism.InstanceId : storey.InstanceId };
             var transfer = document.Prefabs?.Transfers.SingleOrDefault(t => t.Binding.Child.Kind == MapPrefabChildKind.Record && t.Binding.WorldId == prism.Id);
             if (transfer is not null && (transfer.Retired || transfer.Binding.Removed ||
                 !document.Prefabs!.Transfers.Any(t => t.InstanceId == transfer.InstanceId && t.Binding.Child.Kind == MapPrefabChildKind.Storey &&
                     t.Binding.WorldId == storey.Id && !t.Retired && !t.Binding.Removed)))
-                throw new MapDocumentException("Unpacked prism requires a matching live storey transfer.");
+                throw new MapDocumentException(MapDocumentRefusal.SpaceStoreyTransferMissing, "Unpacked prism requires a matching live storey transfer.")
+                { RecordId = prism.Id, InstanceId = transfer.InstanceId, EntityId = storey.Id, FieldPath = "Transfers" };
         }
     }
 

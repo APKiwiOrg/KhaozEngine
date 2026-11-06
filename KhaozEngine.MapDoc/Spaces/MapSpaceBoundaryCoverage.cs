@@ -19,7 +19,8 @@ internal static class MapSpaceBoundaryCoverage
     internal static long ThreadNeighbourTests => t_neighbourTests;
 
     internal static void Validate(MapScopedSurfaces view, IReadOnlyList<MapTopologyRecord> records,
-        IReadOnlyList<MapSpaceColumn> columns, Action<string, int, string> add)
+        IReadOnlyList<MapSpaceColumn> columns, Action<string, int, string> add,
+        Action<string, int, MapDocumentFinding>? addFinding = null)
     {
         var strips = new Dictionary<string, Band>(StringComparer.Ordinal);
         var portals = new Dictionary<string, Band>(StringComparer.Ordinal);
@@ -31,7 +32,13 @@ internal static class MapSpaceBoundaryCoverage
                 MapCompiledStrip compiled = MapWallStripCompiler.Compile(strip, lower, upper);
                 strips.Add(strip.Id, new(strip.Id, lower.Points.Select(MapWidePoint.From).ToArray(), upper.Points.Select(MapWidePoint.From).ToArray(), compiled.Faces.Select(f => f.Key.Side).Distinct().ToArray()));
             }
-            catch (MapDocumentException error) { add(strip.Id, -1, $"{error.Message}: strip '{strip.Id}'"); }
+            catch (MapDocumentException error)
+            {
+                string message = $"{error.Message}: strip '{strip.Id}'";
+                add(strip.Id, -1, message);
+                if (MapDocumentFinding.FromException(error) is { } finding)
+                    addFinding?.Invoke(strip.Id, -1, finding with { Message = message, RecordId = finding.RecordId ?? strip.Id });
+            }
         }
         foreach (MapCavePortal portal in records.OfType<MapCavePortal>())
         {

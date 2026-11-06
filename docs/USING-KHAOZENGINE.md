@@ -12385,6 +12385,14 @@ the repeated `SpaceId`. Missing point-bound references retain their footprint `R
 and `FieldPath` on `SchemaValueRequired`. Unavailable source-cell and membership-demand patches
 retain `Patch` and `PatchStatus`. Portal point-sequence refusals use `GeometryVertexSequenceInvalid`
 with the chain `RecordId` and `FieldPath` `Vertices`.
+Prism admission distinguishes Room kind, parent agreement and single-prism occupancy. Storey
+refusals identify the prism `RecordId`, storey `EntityId` and failed `FieldPath`, checking version
+before ownership. Unpacked prisms require matching live record and storey transfers and report
+`SpaceStoreyTransferMissing` with `InstanceId` when that pair is absent or retired.
+Prism containment findings use `SpacePrismOutsideParent` or `SpacePrismParentSeparationInvalid`,
+with `RecordId`, `SpaceId` and parent `RelatedRecordId`. `SpaceOccupiedOverlap` names both occupied
+spaces through `SpaceId` and `RelatedRecordId`. The released validation strings retain their order
+and prose. Aggregate adapters wait for the remaining refinement and water producers.
 
 Doors remain AuthoredOpen. `MapRoofPolicy` returns separate colour, shadow, camera-boom and sky-picking flags.
 Auto concealment uses occupied rooms and explicit links/groups, and leaves unlinked shelters visible. Hidden

@@ -1802,6 +1802,7 @@ their joined diagnostic text.
 | Reason | Refused rule | Identifiers when known |
 | --- | --- | --- |
 | `WaterBodiesPreventLegacyMode` | Switching to legacy global water while bounded bodies remain | `FieldPath`, `ActualCount` |
+| `DocumentVersionUnsupported` | A root document format version other than the current writable version | `FieldPath`, `ActualVersion`, `SupportedVersions` |
 | `WaterBoundedModeRequired` | A water edit while bounded water is off | `FieldPath` |
 | `WaterMediumInUse` | Removing a medium still used by a body | using body `EntityId`, medium key `ActualText`, `FieldPath` |
 | `WaterCoversAlias` | Covering a space alias instead of its owner | body `EntityId`, alias `RecordId`, owner `SpaceId`, `Patch` |
@@ -2253,6 +2254,13 @@ uses `SpaceOpenTopInvalid`. Slot lists distinguish count limits (`ValueOutsideRa
 findings retain `RecordId`, `Patch`, `Index` and `ActualInteger`, with the genuine `PreviousInteger`
 only when a preceding entry exists. Patch-address findings also retain local coordinates and dimensions.
 Topology findings are complete. Broader throwing adapters still wait for their other finding producers.
+
+Structural document findings identify required or duplicate names with `FieldPath`, `EntityId`,
+`SubjectKind` and the containing item `Index`. Missing companion hosts additionally retain the referenced
+`LayerId`. Scalar findings use `ValueOutsideRange` or `ValueNonfinite` with the failed field and finite
+actual values and limits. The existing validation predicates and diagnostic order remain unchanged.
+Root format admission uses `DocumentVersionUnsupported` with `ActualVersion` and `SupportedVersions`.
+Whole-document adapters still wait for the remaining native and per-content finding producers.
 
 Prepared bound-context reads use `MapBoundContextException` with `ContextDemandUnprepared` as their
 `Reason`, with the requested operation and patch, face or opening-cell identifiers. Existing

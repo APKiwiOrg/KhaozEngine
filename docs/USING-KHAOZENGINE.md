@@ -13112,6 +13112,12 @@ and physical `OtherSurfaceId`, with the failed role or target field. Undefined r
 the target `Patch`, face `Index` and `FieldPath` `Material` or `Presence`, without changing either
 input. Exact override overflow uses `GeometryNotRepresentable` and `Operation = "paint override"`.
 
+Structural document findings retain `FieldPath`, `EntityId`, `SubjectKind` and item `Index` for required
+and duplicate names, and the referenced `LayerId` for missing companion hosts. Numeric rules carry
+their finite actual values and limits through `ValueOutsideRange`, while nonfinite failures use
+`ValueNonfinite`. Root format admission uses `DocumentVersionUnsupported`, `ActualVersion` and
+`SupportedVersions`. Whole-document adapters still wait for the remaining finding producers.
+
 Native metadata adds typed findings beside its unchanged string diagnostics. Compound findings select
 the first failing predicate branch. Missing asset-reference and indoor-span values use `SchemaValueRequired`, nonfinite
 bounds or support-search values use `ValueNonfinite`, finite unordered bounds use `BoundsInvalid`, and

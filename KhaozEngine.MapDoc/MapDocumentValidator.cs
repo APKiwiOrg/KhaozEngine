@@ -15,51 +15,84 @@ namespace KhaozEngine.MapDoc;
 public static class MapDocumentValidator
 {
     public static IReadOnlyList<string> Validate(MapDocument doc, MapDocRegistry registry)
+        => Validate(doc, registry, null);
+
+    internal static IReadOnlyList<string> Validate(MapDocument doc, MapDocRegistry registry, List<MapDocumentFinding>? findings)
     {
         ArgumentNullException.ThrowIfNull(doc);
         ArgumentNullException.ThrowIfNull(registry);
         var errors = new List<string>();
 
         if (doc.FormatVersion != MapDocumentFile.CurrentFormatVersion)
-            errors.Add($"formatVersion is {doc.FormatVersion}, expected {MapDocumentFile.CurrentFormatVersion}.");
+            Add(new(MapDocumentRefusal.DocumentVersionUnsupported, $"formatVersion is {doc.FormatVersion}, expected {MapDocumentFile.CurrentFormatVersion}.")
+            { FieldPath = "$.formatVersion", ActualVersion = doc.FormatVersion, SupportedVersions = [MapDocumentFile.CurrentFormatVersion] });
         if (string.IsNullOrWhiteSpace(doc.Id))
-            errors.Add("id must be non-empty.");
+            Add(new(MapDocumentRefusal.SchemaValueRequired, "id must be non-empty.") { FieldPath = "$.id", DocumentId = doc.Id });
         if (!(doc.Bounds.MaxX > doc.Bounds.MinX) || !(doc.Bounds.MaxZ > doc.Bounds.MinZ))
-            errors.Add("bounds must satisfy MaxX > MinX and MaxZ > MinZ.");
-        MapNativeValidation.Validate(doc, errors);
-        MapWaterValidation.Validate(doc, errors);
-        errors.AddRange(MapPrefabValidation.Validate(doc, null));
-        MapFoliageValidation.ValidateDocument(doc, errors);
+        {
+            bool x = !(doc.Bounds.MaxX > doc.Bounds.MinX);
+            float min = x ? doc.Bounds.MinX : doc.Bounds.MinZ, max = x ? doc.Bounds.MaxX : doc.Bounds.MaxZ;
+            bool finite = float.IsFinite(min) && float.IsFinite(max);
+            Add(new(finite ? MapDocumentRefusal.BoundsInvalid : MapDocumentRefusal.ValueNonfinite,
+                "bounds must satisfy MaxX > MinX and MaxZ > MinZ.")
+            { FieldPath = "$.bounds." + (!float.IsFinite(min) ? x ? "minX" : "minZ" : x ? "maxX" : "maxZ"),
+                MinimumNumber = finite ? min : null, MaximumNumber = finite ? max : null });
+        }
+        MapNativeValidation.Validate(doc, errors, findings);
+        MapWaterValidation.Validate(doc, errors, new MapWaterWorkBudget(), findings);
+        errors.AddRange(MapPrefabValidation.Validate(doc, null, findings));
+        MapFoliageValidation.ValidateDocument(doc, errors, findings);
         ValidateTileSize(doc, errors);
         if (doc.TerrainOverrides is { } overrides)
             ValidateOverrides(overrides, doc.Bounds, errors);
 
         var layerNames = new HashSet<string>(StringComparer.Ordinal);
-        foreach (MapScatterLayer layer in doc.ScatterLayers)
+        for (int i = 0; i < doc.ScatterLayers.Count; i++)
         {
-            if (string.IsNullOrWhiteSpace(layer.Name)) { errors.Add("every scatter layer needs a non-empty name."); continue; }
-            if (!layerNames.Add(layer.Name)) errors.Add($"duplicate scatter layer name '{layer.Name}'.");
-            if (layer.CellSize <= 0f) errors.Add($"scatter layer '{layer.Name}': cellSize must be positive.");
-            if (layer.ScaleMax < layer.ScaleMin) errors.Add($"scatter layer '{layer.Name}': scaleMax must be >= scaleMin.");
+            MapScatterLayer layer = doc.ScatterLayers[i];
+            if (string.IsNullOrWhiteSpace(layer.Name)) { Add(Item(MapDocumentRefusal.SchemaValueRequired,
+                "every scatter layer needs a non-empty name.", "scatterLayers", i, "name", layer.Name, "scatter layer")); continue; }
+            if (!layerNames.Add(layer.Name)) Add(Item(MapDocumentRefusal.IdentityDuplicate,
+                $"duplicate scatter layer name '{layer.Name}'.", "scatterLayers", i, "name", layer.Name, "scatter layer"));
+            if (layer.CellSize <= 0f) Add(Item(float.IsFinite(layer.CellSize) ? MapDocumentRefusal.ValueOutsideRange : MapDocumentRefusal.ValueNonfinite,
+                $"scatter layer '{layer.Name}': cellSize must be positive.", "scatterLayers", i, "cellSize", layer.Name, "scatter layer") with
+                { ActualNumber = float.IsFinite(layer.CellSize) ? layer.CellSize : null, MinimumNumber = 0 });
+            if (layer.ScaleMax < layer.ScaleMin)
+            {
+                bool finite = float.IsFinite(layer.ScaleMin) && float.IsFinite(layer.ScaleMax);
+                Add(Item(finite ? MapDocumentRefusal.ValueOutsideRange : MapDocumentRefusal.ValueNonfinite,
+                    $"scatter layer '{layer.Name}': scaleMax must be >= scaleMin.", "scatterLayers", i,
+                    !float.IsFinite(layer.ScaleMin) ? "scaleMin" : "scaleMax", layer.Name, "scatter layer") with
+                    { ActualNumber = finite ? layer.ScaleMax : null, MinimumNumber = finite ? layer.ScaleMin : null });
+            }
         }
 
         var companionNames = new HashSet<string>(StringComparer.Ordinal);
-        foreach (MapCompanionLayer layer in doc.CompanionLayers)
+        for (int i = 0; i < doc.CompanionLayers.Count; i++)
         {
-            if (string.IsNullOrWhiteSpace(layer.Name)) { errors.Add("every companion layer needs a non-empty name."); continue; }
-            if (!companionNames.Add(layer.Name)) errors.Add($"duplicate companion layer name '{layer.Name}'.");
+            MapCompanionLayer layer = doc.CompanionLayers[i];
+            if (string.IsNullOrWhiteSpace(layer.Name)) { Add(Item(MapDocumentRefusal.SchemaValueRequired,
+                "every companion layer needs a non-empty name.", "companionLayers", i, "name", layer.Name, "companion layer")); continue; }
+            if (!companionNames.Add(layer.Name)) Add(Item(MapDocumentRefusal.IdentityDuplicate,
+                $"duplicate companion layer name '{layer.Name}'.", "companionLayers", i, "name", layer.Name, "companion layer"));
             if (!layerNames.Contains(layer.HostLayer))
-                errors.Add($"companion layer '{layer.Name}': host layer '{layer.HostLayer}' is not a scatter layer in this document.");
-            if (layer.CountMax < layer.CountMin) errors.Add($"companion layer '{layer.Name}': countMax must be >= countMin.");
+                Add(Item(MapDocumentRefusal.ReferenceMissing,
+                    $"companion layer '{layer.Name}': host layer '{layer.HostLayer}' is not a scatter layer in this document.",
+                    "companionLayers", i, "hostLayer", layer.Name, "companion layer") with { LayerId = layer.HostLayer });
+            if (layer.CountMax < layer.CountMin) Add(Item(MapDocumentRefusal.ValueOutsideRange,
+                $"companion layer '{layer.Name}': countMax must be >= countMin.", "companionLayers", i, "countMax", layer.Name, "companion layer") with
+                { ActualInteger = layer.CountMax, MinimumInteger = layer.CountMin });
         }
 
         var exclusionNames = new HashSet<string>(StringComparer.Ordinal);
         for (int i = 0; i < doc.Exclusions.Count; i++)
         {
             MapExclusion e = doc.Exclusions[i];
-            if (e.Shape is null) errors.Add($"exclusions[{i}]: shape is required.");
+            if (e.Shape is null) Add(Item(MapDocumentRefusal.SchemaValueRequired, $"exclusions[{i}]: shape is required.",
+                "exclusions", i, "shape", e.Name, "exclusion"));
             if (!string.IsNullOrEmpty(e.Name) && !exclusionNames.Add(e.Name))
-                errors.Add($"duplicate exclusion name '{e.Name}'.");
+                Add(Item(MapDocumentRefusal.IdentityDuplicate, $"duplicate exclusion name '{e.Name}'.",
+                    "exclusions", i, "name", e.Name, "exclusion"));
             CheckLayerRefs(e.Layers, layerNames, $"exclusions[{i}]", errors);
         }
 
@@ -67,10 +100,14 @@ public static class MapDocumentValidator
         for (int i = 0; i < doc.ScatterOverrides.Count; i++)
         {
             MapScatterOverrideDoc o = doc.ScatterOverrides[i];
-            if (o.Shape is null) errors.Add($"scatterOverrides[{i}]: shape is required.");
-            if (o.DensityMultiplier < 0f) errors.Add($"scatterOverrides[{i}]: densityMultiplier must be >= 0.");
+            if (o.Shape is null) Add(Item(MapDocumentRefusal.SchemaValueRequired, $"scatterOverrides[{i}]: shape is required.",
+                "scatterOverrides", i, "shape", o.Name, "scatter override"));
+            if (o.DensityMultiplier < 0f) Add(Item(float.IsFinite(o.DensityMultiplier) ? MapDocumentRefusal.ValueOutsideRange : MapDocumentRefusal.ValueNonfinite,
+                $"scatterOverrides[{i}]: densityMultiplier must be >= 0.", "scatterOverrides", i, "densityMultiplier", o.Name, "scatter override") with
+                { ActualNumber = float.IsFinite(o.DensityMultiplier) ? o.DensityMultiplier : null, MinimumNumber = 0 });
             if (!string.IsNullOrEmpty(o.Name) && !scatterOverrideNames.Add(o.Name))
-                errors.Add($"duplicate scatter override name '{o.Name}'.");
+                Add(Item(MapDocumentRefusal.IdentityDuplicate, $"duplicate scatter override name '{o.Name}'.",
+                    "scatterOverrides", i, "name", o.Name, "scatter override"));
             CheckLayerRefs(o.Layers, layerNames, $"scatterOverrides[{i}]", errors);
         }
 
@@ -84,10 +121,13 @@ public static class MapDocumentValidator
         foreach (MapPlayerSpawn s in doc.PlayerSpawns) ValidatePlayerSpawn(s, playerSpawnIds, errors);
 
         var regionNames = new HashSet<string>(StringComparer.Ordinal);
-        foreach (MapRegion r in doc.Regions)
+        for (int i = 0; i < doc.Regions.Count; i++)
         {
-            if (string.IsNullOrWhiteSpace(r.Name)) errors.Add("every region needs a non-empty name.");
-            else if (!regionNames.Add(r.Name)) errors.Add($"duplicate region name '{r.Name}'.");
+            MapRegion r = doc.Regions[i];
+            if (string.IsNullOrWhiteSpace(r.Name)) Add(Item(MapDocumentRefusal.SchemaValueRequired,
+                "every region needs a non-empty name.", "regions", i, "name", r.Name, "region"));
+            else if (!regionNames.Add(r.Name)) Add(Item(MapDocumentRefusal.IdentityDuplicate,
+                $"duplicate region name '{r.Name}'.", "regions", i, "name", r.Name, "region"));
             if (r.Shape is null) errors.Add($"region '{r.Name}': shape is required.");
         }
 
@@ -101,10 +141,20 @@ public static class MapDocumentValidator
         }
 
         return errors;
+
+        void Add(MapDocumentFinding finding)
+        {
+            errors.Add(finding.Message);
+            findings?.Add(finding);
+        }
     }
 
-    /// <summary>The per-entity rules of <see cref="Validate"/> for one slice of a document's content, such as one
-    /// stored tile, in the order <see cref="Validate"/> reports them. <paramref name="globals"/> carries the
+    static MapDocumentFinding Item(MapDocumentRefusal reason, string message, string collection, int index,
+        string field, string? id, string kind) => new(reason, message)
+        { FieldPath = $"$.{collection}[{index}].{field}", Index = index, EntityId = id, SubjectKind = kind };
+
+    /// <summary>The per-entity rules of <see cref="Validate(MapDocument, MapDocRegistry)"/> for one slice of a document's content, such as one
+    /// stored tile, in the order <see cref="Validate(MapDocument, MapDocRegistry)"/> reports them. <paramref name="globals"/> carries the
     /// document's globals, already validated, and <paramref name="surfaces"/> its declared surfaces.
     /// <paramref name="numericIds"/> accumulates numeric IDs across slices. Duplicate string IDs across slices stay
     /// with the caller.</summary>

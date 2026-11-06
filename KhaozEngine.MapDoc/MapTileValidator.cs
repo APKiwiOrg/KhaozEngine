@@ -6,7 +6,7 @@ namespace KhaozEngine.MapDoc;
 
 /// <summary>The per-tile validation subset a tile read runs, keeping the format's loud-fail stance for a read
 /// that cannot see the whole document.
-/// <para><see cref="MapDocumentValidator.Validate"/> needs globals a tile file does not carry (bounds, layer
+/// <para><see cref="MapDocumentValidator.Validate(MapDocument, MapDocRegistry)"/> needs globals a tile file does not carry (bounds, layer
 /// names), so a tile read cannot use it. What IS checkable from a tile plus the manifest's grid headers is
 /// checked here, and bounds and cross-tile reference checks stay with the whole-document validator, with
 /// <see cref="MapDocumentFile.VerifyTiled"/> as the whole-world check.</para>

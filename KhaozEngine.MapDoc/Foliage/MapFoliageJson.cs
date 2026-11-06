@@ -92,8 +92,10 @@ internal static class MapFoliageJson
     {
         var at = new MapFoliageJsonContext("foliage", "$");
         if (value.ValueKind != JsonValueKind.Object) throw at.Refuse(MapDocumentRefusal.SchemaObjectRequired, "foliage must be an object.");
-        if (JsonMarshal.GetRawUtf8Value(value).Length > maxUtf8Bytes)
-            throw Fail($"foliage: the section exceeds {maxUtf8Bytes} UTF-8 bytes.");
+        int utf8Length = JsonMarshal.GetRawUtf8Value(value).Length;
+        if (utf8Length > maxUtf8Bytes)
+            throw at.Refuse(MapDocumentRefusal.FoliageSectionByteLimitExceeded, $"foliage: the section exceeds {maxUtf8Bytes} UTF-8 bytes.",
+                actualByteCount: utf8Length, limit: maxUtf8Bytes);
         Closed(value, at, stored ? ["payloadVersion", "layers", "packs"] : SetMembers);
         RequireVersion(value, at);
         JsonElement layers = RequireArray(value, "layers", at, MapFoliagePayloadLimits.MaxLayers);
@@ -117,7 +119,10 @@ internal static class MapFoliageJson
             RequireArray(layer, "ownerSupports", label, MapFoliagePayloadLimits.MaxOwnerSupports);
             documentChunks += RequireArray(layer, "chunks", label, MapFoliagePayloadLimits.MaxChunksPerLayer).GetArrayLength();
             if (documentChunks > MapFoliagePayloadLimits.MaxDocumentChunks)
-                throw Fail($"foliage: density exceeds {MapFoliagePayloadLimits.MaxDensityBytes} decoded bytes per document.");
+                throw label.Property("chunks").Refuse(MapDocumentRefusal.WorkCapacityExceeded,
+                    $"foliage: density exceeds {MapFoliagePayloadLimits.MaxDensityBytes} decoded bytes per document.",
+                    budget: "decoded density bytes per document", actualByteCount: documentChunks * MapFoliageChunk.ByteLength,
+                    limit: MapFoliagePayloadLimits.MaxDensityBytes);
         }
         return new MapFoliageSet(1, layers.EnumerateArray().Select((l, i) => ReadLayer(l, new($"foliage layer [{i}]", $"$.layers[{i}]", Index: i), !stored)).ToArray());
     }
@@ -187,13 +192,34 @@ internal static class MapFoliageJson
                 Closed(e, label, SpaceMembers);
                 return new(MapSupportBindingKind.Space, null, Text(e, "spaceId", label), Finite(e, "referenceY", label),
                     Finite(e, "searchBelow", label), Finite(e, "searchAbove", label));
-            default: throw Fail(label + ": 'kind' must be Surface or Space.");
+            default: throw label.Property("kind").Refuse(MapDocumentRefusal.SchemaEnumUnsupported, label + ": 'kind' must be Surface or Space.",
+                actualText: kind.ValueKind == JsonValueKind.String ? kind.GetString() : null, enumType: typeof(MapSupportBindingKind));
         }
     }
 
-    internal static void WriteBinding(Utf8JsonWriter w, MapSupportBinding value, string label)
+    internal static void WriteBinding(Utf8JsonWriter w, MapSupportBinding value, string label, string? layerId = null)
     {
-        if (!MapSupportBindingRules.TryWrite(w, value)) throw Fail(label + " carries exactly the members of its kind.");
+        if (!MapSupportBindingRules.TryWrite(w, value))
+        {
+            (MapDocumentRefusal reason, string field) = value.Kind switch
+            {
+                MapSupportBindingKind.Surface when value.SurfaceId is null => (MapDocumentRefusal.SchemaValueRequired, "surfaceId"),
+                MapSupportBindingKind.Surface => (MapDocumentRefusal.AuthoredOwnershipMismatch,
+                    value.SpaceId is not null ? "spaceId" : value.ReferenceY is not null ? "referenceY" :
+                    value.SearchBelow is not null ? "searchBelow" : "searchAbove"),
+                MapSupportBindingKind.Space when value.SpaceId is null => (MapDocumentRefusal.SchemaValueRequired, "spaceId"),
+                MapSupportBindingKind.Space when value.SurfaceId is not null => (MapDocumentRefusal.AuthoredOwnershipMismatch, "surfaceId"),
+                MapSupportBindingKind.Space => (MapDocumentRefusal.SchemaValueRequired,
+                    value.ReferenceY is null ? "referenceY" : value.SearchBelow is null ? "searchBelow" : "searchAbove"),
+                _ => (MapDocumentRefusal.SchemaEnumUnsupported, "kind"),
+            };
+            throw new MapDocumentException(reason, label + " carries exactly the members of its kind.")
+            {
+                LayerId = layerId, FieldPath = "support." + field, SurfaceId = value.SurfaceId, SpaceId = value.SpaceId,
+                EnumType = reason == MapDocumentRefusal.SchemaEnumUnsupported ? typeof(MapSupportBindingKind) : null,
+                ActualInteger = reason == MapDocumentRefusal.SchemaEnumUnsupported ? (long)value.Kind : null,
+            };
+        }
     }
 
     internal static void Write(Utf8JsonWriter w, MapFoliageSet set)
@@ -217,7 +243,7 @@ internal static class MapFoliageJson
         w.WriteNumber("payloadVersion", layer.PayloadVersion);
         w.WriteString("id", layer.Id);
         w.WritePropertyName("support");
-        WriteBinding(w, layer.Support, label + " support");
+        WriteBinding(w, layer.Support, label + " support", layer.Id);
         w.WriteNumber("originX", layer.OriginX);
         w.WriteNumber("originZ", layer.OriginZ);
         w.WriteNumber("cellSize", layer.CellSize);
@@ -288,7 +314,7 @@ internal static class MapFoliageJson
             w.WriteString("id", mask.Id);
             WriteReference(w, mask.Owner);
             w.WritePropertyName("support");
-            WriteBinding(w, mask.Support, $"{label} mask '{mask.Id}' support");
+            WriteBinding(w, mask.Support, $"{label} mask '{mask.Id}' support", layer.Id);
             w.WriteString("kind", mask.Kind.ToString());
             WriteRect(w, mask.Footprint);
             w.WriteEndObject();
@@ -300,7 +326,7 @@ internal static class MapFoliageJson
             w.WriteStartObject();
             WriteReference(w, owner.Owner);
             w.WritePropertyName("support");
-            WriteBinding(w, owner.Support, $"{label} owner support");
+            WriteBinding(w, owner.Support, $"{label} owner support", layer.Id);
             w.WriteEndObject();
         }
         w.WriteEndArray();
@@ -361,14 +387,19 @@ internal static class MapFoliageJson
         var key = new MapFoliageChunkKey(Int(e, "x", label), Int(e, "z", label));
         label = label with { Label = $"{label} ({key.X}, {key.Z})", FoliageChunk = key };
         JsonElement token = e.GetProperty("density");
-        if (token.ValueKind != JsonValueKind.String) throw Fail(label + ": density must be a base64 string.");
+        if (token.ValueKind != JsonValueKind.String) throw label.Property("density").Refuse(MapDocumentRefusal.SchemaValueRequired, label + ": density must be a base64 string.");
         // An escaped token may spell each character in six bytes. Anything longer cannot be a legal token, so it refuses
         // before the string is materialized.
-        if (JsonMarshal.GetRawUtf8Value(token).Length > 6 * MapFoliagePayloadLimits.MaxTokenChars + 2)
-            throw Fail($"{label}: density token exceeds {MapFoliagePayloadLimits.MaxTokenChars} characters.");
+        int tokenBytes = JsonMarshal.GetRawUtf8Value(token).Length;
+        if (tokenBytes > 6 * MapFoliagePayloadLimits.MaxTokenChars + 2)
+            throw label.Property("density").Refuse(MapDocumentRefusal.WorkCapacityExceeded,
+                $"{label}: density token exceeds {MapFoliagePayloadLimits.MaxTokenChars} characters.",
+                budget: "density token UTF-8 bytes", actualByteCount: tokenBytes, limit: 6 * MapFoliagePayloadLimits.MaxTokenChars + 2);
         string text = token.GetString()!;
         if (text.Length > MapFoliagePayloadLimits.MaxTokenChars)
-            throw Fail($"{label}: density token exceeds {MapFoliagePayloadLimits.MaxTokenChars} characters.");
+            throw label.Property("density").Refuse(MapDocumentRefusal.WorkCapacityExceeded,
+                $"{label}: density token exceeds {MapFoliagePayloadLimits.MaxTokenChars} characters.",
+                budget: "density token characters", actualCount: text.Length, limit: MapFoliagePayloadLimits.MaxTokenChars);
         Span<byte> bytes = stackalloc byte[MapFoliagePayloadLimits.MaxTokenChars];
         if (!Convert.TryFromBase64String(text, bytes, out int written))
             throw label.Property("density").Refuse(MapDocumentRefusal.SchemaBase64Malformed, label + ": density is not valid base64.");
@@ -430,7 +461,8 @@ internal static class MapFoliageJson
     {
         JsonElement value = e.GetProperty(name);
         if (value.ValueKind != JsonValueKind.Array) throw label.Property(name).Refuse(MapDocumentRefusal.SchemaArrayRequired, $"{label}: '{name}' must be an array.");
-        if (value.GetArrayLength() > max) throw Fail($"{label}: '{name}' exceeds {max} entries.");
+        if (value.GetArrayLength() > max) throw label.Property(name).Refuse(MapDocumentRefusal.WorkCapacityExceeded, $"{label}: '{name}' exceeds {max} entries.",
+            budget: name, actualCount: value.GetArrayLength(), limit: max);
         return value;
     }
 
@@ -486,10 +518,12 @@ internal static class MapFoliageJson
     static MapRowDirection RowDirection(JsonElement e, MapFoliageJsonContext label) => Name<MapRowDirection>(e, "rowDirection", label);
 
     // Exact declared names only. Numeric spellings and case variants refuse.
-    static T Name<T>(JsonElement e, string name, MapFoliageJsonContext label) where T : struct, Enum =>
-        e.GetProperty(name) is { ValueKind: JsonValueKind.String } value && value.GetString() is { } text &&
-        Enum.GetNames<T>().Contains(text, StringComparer.Ordinal)
-            ? Enum.Parse<T>(text) : throw Fail($"{label}: '{name}' must be one of {string.Join(", ", Enum.GetNames<T>())}.");
-
-    static MapDocumentException Fail(string message) => new(message);
+    static T Name<T>(JsonElement e, string name, MapFoliageJsonContext label) where T : struct, Enum
+    {
+        JsonElement value = e.GetProperty(name);
+        string? text = value.ValueKind == JsonValueKind.String ? value.GetString() : null;
+        if (text is not null && Enum.GetNames<T>().Contains(text, StringComparer.Ordinal)) return Enum.Parse<T>(text);
+        throw label.Property(name).Refuse(MapDocumentRefusal.SchemaEnumUnsupported,
+            $"{label}: '{name}' must be one of {string.Join(", ", Enum.GetNames<T>())}.", actualText: text, enumType: typeof(T));
+    }
 }

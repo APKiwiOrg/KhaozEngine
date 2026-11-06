@@ -116,7 +116,10 @@ public sealed class MapFoliagePayloadTests
         JsonElement foliage = json.RootElement.GetProperty("foliage");
         int size = JsonMarshal.GetRawUtf8Value(foliage).Length;
         Assert.Single(MapFoliageJson.Read(foliage, size).Layers);
-        Assert.Throws<MapDocumentException>(() => MapFoliageJson.Read(foliage, size - 1));
+        var error = Assert.Throws<MapDocumentException>(() => MapFoliageJson.Read(foliage, size - 1));
+        Assert.Equal(MapDocumentRefusal.FoliageSectionByteLimitExceeded, error.Reason);
+        Assert.Equal(size, error.ActualByteCount);
+        Assert.Equal(size - 1, error.Limit);
     }
 
     [Fact]

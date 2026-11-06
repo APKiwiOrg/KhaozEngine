@@ -359,7 +359,9 @@ public enum MapDocumentRefusal
     /// <summary>Refuses coincident physical support owned by different authored surfaces.</summary>
     SpaceSupportCoincident,
 
-    // Foliage JSON converter.
+    // Foliage payload and JSON converter.
+    /// <summary>Refuses reading an advertised foliage chunk whose density is not resident.</summary>
+    FoliageChunkUnavailable,
     /// <summary>Refuses a foliage section larger than its UTF-8 byte budget.</summary>
     FoliageSectionByteLimitExceeded,
     /// <summary>Refuses reading a foliage section that is not fully buffered.</summary>

@@ -30,6 +30,14 @@ public sealed class MapFoliageJsonException : JsonException
     public long? ActualByteCount { get; init; }
     /// <summary>The required decoded byte count, when checked.</summary>
     public long? ExpectedByteCount { get; init; }
+    /// <summary>The capacity budget whose limit was exceeded.</summary>
+    public string? Budget { get; init; }
+    /// <summary>The number of refused entries or characters, when measured.</summary>
+    public long? ActualCount { get; init; }
+    /// <summary>The refused enumeration spelling, when read as text.</summary>
+    public string? ActualText { get; init; }
+    /// <summary>The enumeration required by the checked field.</summary>
+    public Type? EnumType { get; init; }
     /// <summary>The inclusive byte or work limit, when checked.</summary>
     public long? Limit { get; init; }
     /// <summary>The refused payload version, when read as an integer.</summary>
@@ -61,7 +69,7 @@ public sealed class MapFoliageJsonException : JsonException
             FoliageChunk = inner.FoliageChunk,
             ActualByteCount = inner.ActualByteCount,
             ExpectedByteCount = inner.ExpectedByteCount,
-            Limit = inner.Limit,
+            Limit = inner.Limit, Budget = inner.Budget, ActualCount = inner.ActualCount, ActualText = inner.ActualText, EnumType = inner.EnumType,
             ActualVersion = inner.ActualVersion,
             ActualNumber = inner.ActualNumber,
             ActualInteger = inner.ActualInteger,
@@ -81,7 +89,7 @@ public sealed class MapFoliageJsonException : JsonException
         FoliageChunk = FoliageChunk,
         ActualByteCount = ActualByteCount,
         ExpectedByteCount = ExpectedByteCount,
-        Limit = Limit,
+        Limit = Limit, Budget = Budget, ActualCount = ActualCount, ActualText = ActualText, EnumType = EnumType,
         ActualVersion = ActualVersion,
         ActualNumber = ActualNumber,
         ActualInteger = ActualInteger,

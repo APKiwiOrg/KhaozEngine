@@ -278,8 +278,9 @@ public static class MapPrefabResolver
             // extra work.
             SourceFingerprint = document.Foliage is null ? null : Editing.MapDocumentEditFinalizer.BaseFingerprint(document),
         };
-        var foliageErrors = Foliage.MapFoliageReferences.ValidateOwners(authored, resources);
-        if (foliageErrors.Count != 0) throw new MapDocumentException(string.Join("\n", foliageErrors));
+        var foliageFindings = Foliage.MapFoliageReferences.ValidateOwnerFindings(authored, resources);
+        if (foliageFindings.Count != 0) throw MapDocumentRefusalFactory.FromFinding(foliageFindings[0],
+            string.Join("\n", foliageFindings.Select(f => f.Message)), findings: foliageFindings);
         return resources;
     }
 

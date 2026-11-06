@@ -8,9 +8,9 @@ using KhaozEngine.MapDoc.Surfaces;
 
 namespace KhaozEngine.MapDoc.Foliage;
 
-/// <summary>Foliage payload 1 rules. <see cref="Validate"/> checks a set on its own, the same rules the closed codec and
-/// the schema state. <see cref="ValidateBound"/> adds metadata and resource roles against a verified closure without
-/// expanding prefabs. Effective owners and effective support surfaces are checked after expansion.</summary>
+/// <summary>Foliage payload 1 rules. <see cref="Validate(MapFoliageSet)"/> checks a set on its own, the same rules the
+/// closed codec and schema state. <see cref="ValidateBound(MapDocument, MapAssetClosure)"/> adds metadata and resource
+/// roles against a verified closure without expanding prefabs. Effective owners and support surfaces are checked after expansion.</summary>
 public static class MapFoliageValidation
 {
     internal const string LegacyTilePolicy = "legacy-tile";
@@ -19,34 +19,57 @@ public static class MapFoliageValidation
     static readonly MapPrefabChildKind[] OwnerKinds =
         [MapPrefabChildKind.Placement, MapPrefabChildKind.Surface, MapPrefabChildKind.Record, MapPrefabChildKind.Marker];
 
-    public static IReadOnlyList<string> Validate(MapFoliageSet set)
+    public static IReadOnlyList<string> Validate(MapFoliageSet set) => Validate(set, null);
+
+    // Findings remain internal while the remaining layer rules are converted in their own chunks.
+    internal static IReadOnlyList<string> Validate(MapFoliageSet set, List<MapDocumentFinding>? findings)
     {
         ArgumentNullException.ThrowIfNull(set);
         var errors = new List<string>();
-        if (set.PayloadVersion != 1) errors.Add("foliage: unsupported payloadVersion, only payload 1 is supported.");
+        if (set.PayloadVersion != 1) Add(new(MapDocumentRefusal.SchemaPayloadVersionUnsupported,
+            "foliage: unsupported payloadVersion, only payload 1 is supported.")
+        { FieldPath = "PayloadVersion", ActualVersion = set.PayloadVersion, SupportedVersions = [1] });
         if (set.Layers.Count > MapFoliagePayloadLimits.MaxLayers)
-            errors.Add($"foliage: more than {MapFoliagePayloadLimits.MaxLayers} layers.");
-        if (set.Layers.Sum(l => (long)l.ChunkDigests.Count) > MapFoliagePayloadLimits.MaxDocumentChunks)
-            errors.Add($"foliage: density exceeds {MapFoliagePayloadLimits.MaxDensityBytes} decoded bytes per document.");
+            Add(new(MapDocumentRefusal.WorkCapacityExceeded, $"foliage: more than {MapFoliagePayloadLimits.MaxLayers} layers.")
+            { FieldPath = "Layers", Budget = "layers", ActualCount = set.Layers.Count, Limit = MapFoliagePayloadLimits.MaxLayers });
+        long documentChunks = set.Layers.Sum(l => (long)l.ChunkDigests.Count);
+        if (documentChunks > MapFoliagePayloadLimits.MaxDocumentChunks)
+            Add(new(MapDocumentRefusal.WorkCapacityExceeded, $"foliage: density exceeds {MapFoliagePayloadLimits.MaxDensityBytes} decoded bytes per document.")
+            {
+                FieldPath = "Layers", Budget = "decoded density bytes per document", ActualCount = documentChunks,
+                ActualByteCount = documentChunks * MapFoliageChunk.ByteLength, Limit = MapFoliagePayloadLimits.MaxDensityBytes,
+            });
         var ids = new HashSet<string>(StringComparer.Ordinal);
+        int index = 0;
         foreach (MapFoliageLayer layer in set.Layers)
         {
-            if (string.IsNullOrEmpty(layer.Id)) errors.Add("foliage: every layer needs a non-empty id.");
-            else if (!ids.Add(layer.Id)) errors.Add($"foliage: duplicate layer id '{layer.Id}'.");
+            if (string.IsNullOrEmpty(layer.Id)) Add(new(MapDocumentRefusal.SchemaValueRequired, "foliage: every layer needs a non-empty id.")
+            { LayerId = layer.Id, FieldPath = $"Layers[{index}].Id", Index = index });
+            else if (!ids.Add(layer.Id)) Add(new(MapDocumentRefusal.IdentityDuplicate, $"foliage: duplicate layer id '{layer.Id}'.")
+            { LayerId = layer.Id, FieldPath = $"Layers[{index}].Id", Index = index, SubjectKind = "foliage layer" });
             ValidateLayer(layer, $"foliage layer '{layer.Id}'", errors);
+            index++;
         }
         return errors;
+
+        void Add(MapDocumentFinding finding)
+        {
+            errors.Add(finding.Message);
+            findings?.Add(finding);
+        }
     }
 
     /// <summary>Checks the set, then every role a verified closure and the document's declared surfaces can answer: model
     /// and clearance assets exist, material resources are Material resources, and Surface supports and compatibility
     /// rows name a declared support floor or a bound prefab surface. Never expands prefabs.</summary>
-    public static IReadOnlyList<string> ValidateBound(MapDocument document, MapAssetClosure assets)
+    public static IReadOnlyList<string> ValidateBound(MapDocument document, MapAssetClosure assets) => ValidateBound(document, assets, null);
+
+    internal static IReadOnlyList<string> ValidateBound(MapDocument document, MapAssetClosure assets, List<MapDocumentFinding>? findings)
     {
         ArgumentNullException.ThrowIfNull(document);
         ArgumentNullException.ThrowIfNull(assets);
         if (document.Foliage is not { } set) return Array.Empty<string>();
-        var errors = new List<string>(Validate(set));
+        var errors = new List<string>(Validate(set, findings));
         var assetIds = new HashSet<string>(assets.Assets.Select(a => a.Id), StringComparer.Ordinal);
         var declared = (document.Surfaces?.Refs ?? []).Where(s => s?.Id is not null).GroupBy(s => s.Id, StringComparer.Ordinal)
             .ToDictionary(g => g.Key, g => g.First().Role, StringComparer.Ordinal);
@@ -59,8 +82,18 @@ public static class MapFoliageValidation
         foreach (MapFoliageLayer layer in set.Layers)
         {
             string label = $"foliage layer '{layer.Id}'";
-            foreach (MapFoliageModel model in layer.Models)
-                if (!assetIds.Contains(model.AssetId)) errors.Add($"{label}: model asset '{model.AssetId}' is not in the verified closure.");
+            for (int i = 0; i < layer.Models.Count; i++)
+            {
+                MapFoliageModel model = layer.Models[i];
+                if (!assetIds.Contains(model.AssetId))
+                {
+                    var finding = new MapDocumentFinding(MapDocumentRefusal.ReferenceMissing,
+                        $"{label}: model asset '{model.AssetId}' is not in the verified closure.")
+                    { LayerId = layer.Id, FieldPath = $"Models[{i}].AssetId", Index = i, AssetId = model.AssetId };
+                    errors.Add(finding.Message);
+                    findings?.Add(finding);
+                }
+            }
             foreach (MapFoliageMaterial material in layer.Materials)
                 if (!assets.TryGetResource(material.ResourceId, out MapResolvedResource? resource) || resource!.Kind != MapResourceKind.Material)
                     errors.Add($"{label}: material {material.Id} resource '{material.ResourceId}' is not a Material resource.");

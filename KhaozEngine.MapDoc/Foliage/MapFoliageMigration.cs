@@ -11,7 +11,14 @@ public static class MapFoliageMigration
     {
         ArgumentNullException.ThrowIfNull(source);
         if (source["formatVersion"] is not JsonValue value || !value.TryGetValue(out int version) || version is not (8 or 9))
-            throw new MapDocumentException("Foliage migration requires formatVersion 8 or 9.");
+            throw new MapDocumentException(source["formatVersion"] is JsonValue submitted && submitted.TryGetValue(out int actual)
+                ? MapDocumentRefusal.SchemaPayloadVersionUnsupported : MapDocumentRefusal.SchemaValueRequired,
+                "Foliage migration requires formatVersion 8 or 9.")
+            {
+                FieldPath = "formatVersion",
+                ActualVersion = source["formatVersion"] is JsonValue number && number.TryGetValue(out int declared) ? declared : null,
+                SupportedVersions = [8, 9],
+            };
         var result = (JsonObject)source.DeepClone();
         result["formatVersion"] = 9;
         return result;

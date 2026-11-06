@@ -79,11 +79,18 @@ internal static class MapPrefabJson
         return options;
     }
 
-    internal static T Read<T>(JsonElement value)
+    internal static T Read<T>(JsonElement value) => Read<T>(value, Limits.MaxPayloadBytes);
+
+    // Run real byte measurement and deserialization with a small ceiling instead of a 256 MiB fixture.
+    internal static T ReadWithPayloadByteLimitForTests<T>(JsonElement value, long maximumPayloadBytes) =>
+        Read<T>(value, maximumPayloadBytes);
+
+    static T Read<T>(JsonElement value, long maximumPayloadBytes)
     {
         try
         {
-            MapPrefabCapacity.RequirePayloadBytes(Encoding.UTF8.GetByteCount(value.GetRawText()), "Prefab");
+            MapPrefabCapacity.RequirePayloadBytes(Encoding.UTF8.GetByteCount(value.GetRawText()), "Prefab",
+                maximumPayloadBytes: maximumPayloadBytes);
             Preflight(value);
             T result = value.Deserialize<T>(Options) ?? throw new MapDocumentException(MapDocumentRefusal.SchemaValueRequired, "Prefab value must not be null.") { FieldPath = "$" };
             if (result is MapSurfaceRef surface) MapSurfaceJson.RequirePaintPriority(surface);
@@ -283,7 +290,13 @@ internal static class MapPrefabJson
         .OrderBy(r => r.Scope.ToString(), StringComparer.Ordinal).ThenBy(r => r.Kind.ToString(), StringComparer.Ordinal).ThenBy(r => r.Id, StringComparer.Ordinal).ToArray();
 
     // Check finite ceilings and duplicate names before creating payload collections or DTOs.
-    internal static void Preflight(JsonElement value)
+    internal static void Preflight(JsonElement value) => Preflight(value, Limits);
+
+    // Keep traversal and accounting on the production path while bounding the fixture allocation.
+    internal static void PreflightWithCapacityLimitsForTests(JsonElement value, MapPrefabExpansionLimits limits) =>
+        Preflight(value, limits);
+
+    static void Preflight(JsonElement value, MapPrefabExpansionLimits limits)
     {
         long edges = 0, patches = 0, records = 0, geometry = 0;
         var totals = new Dictionary<string, long>(StringComparer.Ordinal);
@@ -298,7 +311,7 @@ internal static class MapPrefabJson
                     if (x is < 1 or > 64 || z is < 1 or > 64) throw new MapDocumentException(MapDocumentRefusal.BoundsInvalid, "Invalid prefab patch dimensions.")
                     { Width = (int)x, Depth = (int)z, FieldPath = path };
                     geometry += (x + 1) * (z + 1) + x * z;
-                    MapPrefabCapacity.RequireGeometry(geometry, path);
+                    MapPrefabCapacity.RequireGeometry(geometry, path, limits);
                 }
                 // A marker binding has no null members. The placement binding keeps its released null allowance below.
                 if (node.TryGetProperty("heightMode", out _) && node.TryGetProperty("supportBinding", out var markerBinding) &&
@@ -321,15 +334,15 @@ internal static class MapPrefabJson
                 {
                     totals.TryGetValue(name, out long total);
                     totals[name] = total + count;
-                    MapPrefabCapacity.RequireCollection(totals[name], name, path, true);
+                    MapPrefabCapacity.RequireCollection(totals[name], name, path, true, limits);
                 }
-                MapPrefabCapacity.RequireCollection(count, name, path, false);
+                MapPrefabCapacity.RequireCollection(count, name, path, false, limits);
                 if (name == "references") edges += count;
                 if (name == "patches") patches += count;
                 if (name == "records") records += count;
                 geometry += count;
-                if (edges > Limits.MaxReferenceEdges || patches > Limits.MaxPatches || records > Limits.MaxRecords || geometry > Limits.MaxGeometryElements)
-                    throw MapPrefabCapacity.AggregateRefusal(edges, patches, records, geometry, path);
+                if (edges > limits.MaxReferenceEdges || patches > limits.MaxPatches || records > limits.MaxRecords || geometry > limits.MaxGeometryElements)
+                    throw MapPrefabCapacity.AggregateRefusal(edges, patches, records, geometry, path, limits);
                 int index = 0;
                 foreach (JsonElement item in node.EnumerateArray()) Visit(item, name, $"{path}[{index++}]", parent);
             }

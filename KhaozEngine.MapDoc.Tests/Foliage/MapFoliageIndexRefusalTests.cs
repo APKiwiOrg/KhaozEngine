@@ -55,6 +55,12 @@ public sealed class MapFoliageIndexRefusalTests
         var control = new MapFoliageStorageIndex(packs, chunks);
         Assert.Equal(limit, control.Chunks.Count);
         Assert.Equal(limit / perPack, control.Packs.Count);
+        var belowPacks = chunkLimit ? packs.ToArray() : packs[..^1];
+        if (chunkLimit) belowPacks[^1] = belowPacks[^1] with
+        { ChunkCount = perPack - 1, ByteLength = MapFoliageRegionPack.ByteLength(perPack - 1) };
+        var below = new MapFoliageStorageIndex(belowPacks, chunks[..^1]);
+        Assert.Equal(limit - 1, below.Chunks.Count);
+        Assert.Equal(chunkLimit ? packs.Length : packs.Length - 1, below.Packs.Count);
     }
 
     [Theory]
@@ -106,6 +112,11 @@ public sealed class MapFoliageIndexRefusalTests
             chunk = chunk with { PackSha256 = Pack().PayloadSha256 };
         }
         Assert.Single(new MapFoliageStorageIndex([Pack()], [chunk]).Chunks);
+        if (fault == "regions")
+        {
+            var below = chunk with { Regions = chunk.Regions.Take(4095).ToArray() };
+            Assert.Equal(4095, Assert.Single(new MapFoliageStorageIndex([Pack()], [below]).Chunks).Regions.Count);
+        }
     }
 
     [Theory]

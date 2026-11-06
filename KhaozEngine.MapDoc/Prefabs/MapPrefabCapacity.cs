@@ -12,9 +12,9 @@ internal static class MapPrefabCapacity
             Budget = field, ActualCount = count, Limit = count is null ? null : limit, DocumentId = documentId, AssetId = assetId,
         };
 
-    internal static MapDocumentException AggregateRefusal(long edges, long patches, long records, long geometry, string path)
+    internal static MapDocumentException AggregateRefusal(long edges, long patches, long records, long geometry, string path,
+        MapPrefabExpansionLimits limits)
     {
-        var limits = MapPrefabJson.Limits;
         (string budget, long count, long limit) = edges > limits.MaxReferenceEdges ? ("ReferenceEdges", edges, limits.MaxReferenceEdges)
             : patches > limits.MaxPatches ? ("Patches", patches, limits.MaxPatches)
             : records > limits.MaxRecords ? ("Records", records, limits.MaxRecords)
@@ -23,35 +23,37 @@ internal static class MapPrefabCapacity
         { Budget = "Aggregate." + budget, ActualCount = count, Limit = limit, FieldPath = path };
     }
 
-    internal static void RequirePayloadBytes(long byteCount, string payloadKind, string? resourceId = null)
+    internal static void RequirePayloadBytes(long byteCount, string payloadKind, string? resourceId = null,
+        long? maximumPayloadBytes = null)
     {
-        if (byteCount > MapPrefabJson.Limits.MaxPayloadBytes)
+        long limit = maximumPayloadBytes ?? MapPrefabJson.Limits.MaxPayloadBytes;
+        if (byteCount > limit)
             throw new MapDocumentException(MapDocumentRefusal.WorkCapacityExceeded, payloadKind + " payload byte limit exceeded.")
             {
-                Budget = "PayloadBytes", ActualByteCount = byteCount, Limit = MapPrefabJson.Limits.MaxPayloadBytes,
+                Budget = "PayloadBytes", ActualByteCount = byteCount, Limit = limit,
                 FieldPath = "ByteLength", ResourceId = resourceId,
             };
     }
 
-    internal static void RequireGeometry(long count, string path)
+    internal static void RequireGeometry(long count, string path, MapPrefabExpansionLimits limits)
     {
-        if (count > MapPrefabJson.Limits.MaxGeometryElements)
+        if (count > limits.MaxGeometryElements)
             throw new MapDocumentException(MapDocumentRefusal.WorkCapacityExceeded, "Prefab geometry limit exceeded.")
-            { Budget = "GeometryElements", ActualCount = count, Limit = MapPrefabJson.Limits.MaxGeometryElements, FieldPath = path };
+            { Budget = "GeometryElements", ActualCount = count, Limit = limits.MaxGeometryElements, FieldPath = path };
     }
 
-    internal static void RequireCollection(long count, string name, string path, bool aggregate)
+    internal static void RequireCollection(long count, string name, string path, bool aggregate, MapPrefabExpansionLimits limits)
     {
         int limit = name switch
         {
-            "instances" => MapPrefabJson.Limits.MaxInstances,
-            "children" => MapPrefabJson.Limits.MaxChildren,
-            "references" => MapPrefabJson.Limits.MaxReferenceEdges,
-            "patches" => MapPrefabJson.Limits.MaxPatches,
-            "entries" => MapPrefabJson.Limits.MaxBindings,
-            "overrides" => MapPrefabJson.Limits.MaxOverrides,
-            "transfers" or "attachments" or "materializedAttachments" => MapPrefabJson.Limits.MaxTransfers,
-            _ => MapPrefabJson.Limits.MaxGeometryElements,
+            "instances" => limits.MaxInstances,
+            "children" => limits.MaxChildren,
+            "references" => limits.MaxReferenceEdges,
+            "patches" => limits.MaxPatches,
+            "entries" => limits.MaxBindings,
+            "overrides" => limits.MaxOverrides,
+            "transfers" or "attachments" or "materializedAttachments" => limits.MaxTransfers,
+            _ => limits.MaxGeometryElements,
         };
         if (count > limit)
             throw new MapDocumentException(MapDocumentRefusal.WorkCapacityExceeded,

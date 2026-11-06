@@ -128,6 +128,36 @@ public sealed class MapFoliageStorageRefusalTests
         else Assert.True(control.Count > 0);
     }
 
+    [Fact]
+    public void SaveMemberships_PreservesContentOnRefusalAndAcceptsTheLimitAndOneBelow()
+    {
+        var fixture = FoliageFixtures.Create();
+        using var directory = new FoliageStorageFixtures.DirectoryScope();
+        MapDocumentFile.SaveTiled(fixture.Document, directory.Root);
+        string manifest = Path.Combine(directory.Root, "map.json");
+        byte[] saved = File.ReadAllBytes(manifest);
+        var draft = new FoliageLayerDraft(FoliageFixtures.BasicLayer([new(new(0, 0), new byte[MapFoliageChunk.ByteLength])]))
+        { OriginX = 0, OriginZ = 0, CellSize = 4096, Width = 32, Depth = 1 };
+        fixture.Document.TileSize = 31;
+        fixture.Document.Foliage = new(1, [draft.Build()]);
+        string proposal = FoliageStorageFixtures.Snapshot(fixture.Document);
+        var error = Assert.Throws<MapDocumentException>(() => MapDocumentFile.SaveTiled(fixture.Document, directory.Root));
+        Assert.Equal(MapDocumentRefusal.WorkCapacityExceeded, error.Reason);
+        Assert.Equal("RegionMemberships", error.Budget);
+        Assert.Equal(4097L, error.ActualCount);
+        Assert.Equal(4096L, error.Limit);
+        Assert.Equal(saved, File.ReadAllBytes(manifest));
+        Assert.Equal(proposal, FoliageStorageFixtures.Snapshot(fixture.Document));
+        draft.CellSize = 4095;
+        fixture.Document.Foliage = new(1, [draft.Build()]);
+        MapDocumentFile.SaveTiled(fixture.Document, directory.Root);
+        Assert.Equal(4096, Assert.Single(MapDocumentFile.LoadTiled(directory.Root).Tiles!.Foliage!.Chunks).Regions.Count);
+        draft.CellSize = 4094;
+        fixture.Document.Foliage = new(1, [draft.Build()]);
+        MapDocumentFile.SaveTiled(fixture.Document, directory.Root);
+        Assert.Equal(4095, Assert.Single(MapDocumentFile.LoadTiled(directory.Root).Tiles!.Foliage!.Chunks).Regions.Count);
+    }
+
     [Theory]
     [InlineData("missing", MapDocumentRefusal.FoliageChunkUnavailable)]
     [InlineData("key", MapDocumentRefusal.AuthoredValueMismatch)]

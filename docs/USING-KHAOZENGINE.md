@@ -12842,6 +12842,10 @@ Missing legacy support callbacks use `SupportLegacyHeightRequired`, with `Resolv
 `MapDocumentFinding` carries an immutable reason, prose and typed context. The exception's optional
 `Findings` list is an ordered read-only snapshot. Existing string validation APIs retain their prose,
 and aggregate adapters retain their existing behavior until all their producing rules are typed.
+`MapLowerCellClassification.Finding` exposes the original failed rule without changing its class or
+`Detail`. Missing and wrong-kind reads stay `Unavailable`, and legacy recipe refusals stay `InvalidRecipe`.
+An out-of-range legacy height identifies its first failed corner, `ActualInteger` and the inclusive
+`MinimumInteger` and `MaximumInteger`. Caught patch failures retain their concrete reason and identifiers.
 
 Fine-patch conversion retains `MapDocumentException` and exposes `MapCellConversion.Finding` alongside
 the unchanged classification and prose. `TerrainCornerCutCreaseUnsupported` and

@@ -51,4 +51,8 @@ internal sealed class MapBoundFaceWork
 public enum MapLowerCellClass : byte { Physical, LegacyNonCapture, KnownHole, UntaggedLegacy, Unavailable, InvalidRecipe }
 public readonly record struct MapLegacyCellTag(MapPatchKey Patch, int SlotCell, string Policy);
 public sealed record MapLowerCellClassification(MapLowerCellClass Class, MapPatchKey Patch,
-    int SlotCell, MapLegacyCellTag? Legacy, string? Detail);
+    int SlotCell, MapLegacyCellTag? Legacy, string? Detail)
+{
+    /// <summary>The concrete failed rule, independently of the unchanged class and detail projection.</summary>
+    public MapDocumentFinding? Finding { get; init; }
+}

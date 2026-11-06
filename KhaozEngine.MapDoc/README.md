@@ -265,6 +265,12 @@ pair check before any bounding-box rejection. One compiled bound-face context pe
 is limited to 256 unique bound patches and 262,144 compiled faces, counted from cell bytes before any
 compile. Those two context values are proposed operational defaults, not world limits. A refinement ends
 `Complete`, `CapacityExceeded` (with no partial result), `NotRepresentable`, `Invalid` or `MissingGeometry`.
+`MapLowerCellClassification.Finding` retains the concrete failed rule and its typed context alongside
+the existing class and `Detail`. Missing and wrong-kind record reads keep `Unavailable`, while a legacy
+recipe refusal keeps `InvalidRecipe`. A caught patch refusal retains its original reason and identifiers.
+Legacy height refusals identify the first failed `h00`, `h10`, `h01` or `h11` corner, its `ActualInteger`
+and the inclusive signed-short range. Internal bound plans carry the same finding without changing status
+or detail, including source-face and context-patch budgets with their measured counts and inclusive limits.
 Declared seam and strip vertex sequences stay strict. Refinement never waives a matching subdivision.
 
 **Broad-phase budgets.** `MapPartialPaintCompiler` charges `MapRefinementLimits` pair checks per broad-phase

@@ -178,6 +178,8 @@ public sealed class MapDocumentException : Exception
     public MapPrefabChildKey? ExpectedChild { get; init; }
     /// <summary>The authored record whose admission failed, when known.</summary>
     public string? RecordId { get; init; }
+    /// <summary>The related authored record required by the refused rule, such as a prism parent.</summary>
+    public string? RelatedRecordId { get; init; }
     /// <summary>The space referenced by the refused authored record, when known.</summary>
     public string? SpaceId { get; init; }
     /// <summary>The submitted or referenced authored patch, when known.</summary>
@@ -347,6 +349,7 @@ public sealed class MapDocumentException : Exception
         ExpectedChild = inner.ExpectedChild;
         Child = inner.Child;
         RecordId = inner.RecordId;
+        RelatedRecordId = inner.RelatedRecordId;
         SpaceId = inner.SpaceId;
         Patch = inner.Patch;
         ExpectedPatch = inner.ExpectedPatch;

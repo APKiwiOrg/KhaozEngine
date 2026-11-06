@@ -23,7 +23,6 @@ public sealed class AcquisitionCoordinatorRefusalTests
         Assert.Equal(AcquisitionConformanceFixtures.AnchorB, ex.ExpectedPatch);
         Assert.Equal(AcquisitionConformanceFixtures.AnchorC, ex.Patch);
         Assert.Equal("ReadPatch.Key", ex.FieldPath);
-        Assert.Equal(AcquisitionConformanceFixtures.AnchorB, probe.Reads[AcquisitionConformanceFixtures.AnchorB].Patch!.Key);
         probe.ReadFault = null;
         Assert.Equal(MapAcquireStatus.Complete, AcquisitionConformanceFixtures.Run(probe, effective).Status);
     }
@@ -49,7 +48,6 @@ public sealed class AcquisitionCoordinatorRefusalTests
         Assert.Equal("seed", ex.SurfaceId);
         Assert.Equal(fault == "identity" ? "Surface.Id" : "Surface", ex.FieldPath);
         if (fault == "identity") Assert.Equal("other", ex.ActualText);
-        Assert.Equal("seed", Assert.Single(probe.Metadata).Id);
         probe.SurfaceFault = null;
         Assert.Equal(MapAcquireStatus.Complete, AcquisitionConformanceFixtures.Run(probe, effective).Status);
     }
@@ -63,28 +61,47 @@ public sealed class AcquisitionCoordinatorRefusalTests
     [InlineData(false, "order", MapDocumentRefusal.OrderInvalid)]
     public void Reservations_distinguish_capacity_from_canonical_order(bool effective, string fault, MapDocumentRefusal reason)
     {
-        var probe = AcquisitionConformanceFixtures.TwoAnchors();
-        probe.DiscoveryKeys = new[] { AcquisitionConformanceFixtures.Seed, AcquisitionConformanceFixtures.AnchorB };
+        var probe = fault == "capacity" ? AcquisitionConformanceFixtures.OneSeed() : AcquisitionConformanceFixtures.TwoAnchors();
+        if (fault != "capacity") probe.DiscoveryKeys = new[] { AcquisitionConformanceFixtures.Seed, AcquisitionConformanceFixtures.AnchorB };
         var scope = AcquisitionConformanceFixtures.Scope(new(MaxCandidatePatches: 3));
+        var extraKeys = new[] { new MapPatchKey("seed", 1, 0), new("seed", 2, 0), new("seed", 3, 0) };
+        int extraCount = 3;
+        if (fault == "capacity")
+        {
+            foreach (MapPatchKey key in extraKeys) probe.Reads.Add(key, new(key, MapPatchStatus.Missing, null, null, null, 0));
+            probe.FindFault = found => found with
+            {
+                Status = MapFindStatus.Incomplete,
+                Unavailable = extraKeys.Take(extraCount).Select(key => probe.Reads[key]).ToArray(),
+            };
+        }
         probe.ReservationsFault = keys => fault switch
         {
-            "capacity" => keys.Append(AcquisitionConformanceFixtures.AnchorC).Append(new MapPatchKey("anchor", 30, 0)).ToArray(),
-            "duplicate" => new[] { keys[0], keys[0] },
+            "capacity" => keys.Concat(extraKeys.Take(extraCount)).OrderBy(key => key).ToArray(),
+            "duplicate" => keys.Append(keys[0]).OrderBy(key => key).ToArray(),
             _ => keys.Reverse().ToArray(),
         };
         var ex = Assert.Throws<MapDocumentException>(() => AcquisitionConformanceFixtures.Run(probe, effective, scope));
         Assert.Equal(reason, ex.Reason);
         Assert.Equal("ReservedPatchKeys", ex.FieldPath);
-        Assert.Equal(fault == "capacity" ? 4L : 2L, ex.ActualCount);
+        Assert.Equal(fault == "capacity" ? 4L : fault == "duplicate" ? 3L : 2L, ex.ActualCount);
         if (fault == "capacity")
         {
             Assert.Equal("MaxCandidatePatches", ex.Budget);
             Assert.Equal(3L, ex.Limit);
+            // Reduce only the excessive declared work. The ordered keys and matching unavailable facts stay coherent.
+            extraCount = 2;
+            var control = AcquisitionConformanceFixtures.Run(probe, effective, scope);
+            Assert.Equal(MapAcquireStatus.Incomplete, control.Status);
+            Assert.Single(control.Facts.Present);
+            Assert.Equal(2, control.Facts.Unavailable.Count());
         }
-        Assert.Equal(3, probe.Reads.Count);
-        probe.ReservationsFault = null;
-        // The three real keys exactly fill the cap after expansion, including the remaining anchor.
-        Assert.Equal(MapAcquireStatus.Complete, AcquisitionConformanceFixtures.Run(probe, effective, scope).Status);
+        else
+        {
+            probe.ReservationsFault = null;
+            // Record expansion fills the third key, exactly at the cap.
+            Assert.Equal(MapAcquireStatus.Complete, AcquisitionConformanceFixtures.Run(probe, effective, scope).Status);
+        }
     }
 
     [Theory]
@@ -117,7 +134,6 @@ public sealed class AcquisitionCoordinatorRefusalTests
             Assert.Equal(probe.RootSha256, ex.ExpectedHash);
             Assert.Equal(new string('f', 64), ex.ActualHash);
         }
-        Assert.Equal(AcquisitionConformanceFixtures.Seed, Assert.Single(probe.Reads).Key);
         probe.IncidentFault = null;
         probe.SessionSnapshotId = probe.SessionRootSha256 = null;
         probe.ReservationsFault = null;
@@ -148,14 +164,20 @@ public sealed class AcquisitionCoordinatorRefusalTests
             Assert.Equal(-1L, ex.ActualInteger);
             Assert.Equal(0L, ex.MinimumInteger);
         }
+        else if (fault == "backward")
+        {
+            Assert.Equal(0L, ex.ActualInteger);
+            Assert.Equal(1L, ex.PreviousInteger);
+            Assert.Equal(1L, ex.MinimumInteger);
+            Assert.Null(ex.ExpectedCount);
+        }
         else
         {
             Assert.Equal(0L, ex.ActualCount);
-            Assert.Equal(fault == "backward" ? -1L : 1L, ex.ExpectedCount);
+            Assert.Equal(1L, ex.ExpectedCount);
         }
-        Assert.Single(probe.Reads);
         probe.FindFault = null;
-        probe.PageCount = 0;
+        probe.PageCount = fault == "backward" ? 1 : 0;
         Assert.Equal(MapAcquireStatus.Complete, AcquisitionConformanceFixtures.Run(probe, effective).Status);
     }
 

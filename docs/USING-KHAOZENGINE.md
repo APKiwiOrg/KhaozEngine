@@ -12753,16 +12753,29 @@ surface query. Arithmetic overflow in the resident merge after patch-key admissi
 invariant failure. Ordinary and effective read-key mismatches use `AcquisitionContractMismatch` with `Patch` and
 `ExpectedPatch`. Their surface lookups distinguish undeclared, null and wrong-identity results
 with `ReferenceMissing`, `SchemaValueRequired` and `AuthoredValueMismatch`, retaining `SurfaceId`,
-`FieldPath` and the actual identity when known. Effective reservation snapshots distinguish
+`FieldPath` and the actual identity when known. Reservation snapshots distinguish
 `WorkCapacityExceeded` (`Budget = "MaxCandidatePatches"`, count and limit) from `OrderInvalid`.
-Later effective snapshot, root or reservation changes use `AcquisitionSnapshotChanged`, naming the
+Later snapshot, root or reservation changes use `AcquisitionSnapshotChanged`, naming the
 changed field and both pins when available. Negative page deltas use `ValueOutsideRange` with a zero
-minimum. Other page inconsistencies use `AcquisitionContractMismatch` with reported and observed
-counts. Ordinary session admission uses the same pin identifiers. A collapsed effective cell uses
+minimum. Backward observations use `AcquisitionContractMismatch` with current, previous and minimum
+integer page counts. Inconsistent deltas use that reason with reported and observed counts. Ordinary session admission uses the same pin identifiers. A collapsed effective cell uses
 `GeometryNotRepresentable` with its surface, patch and local cell. Ordinary and effective coordinators
 share these reservation, reconciliation and page-observation reasons. Complete resident publication
 distinguishes mismatched patch keys (`AuthoredValueMismatch` with both keys) from undeclared surfaces
 (`ReferenceMissing` with surface and patch). Shared surface-query guards retain their current behavior.
+
+`MapLegacyExteriorRecipe.CheckFinding` reports the first eligibility rule as
+`LegacyExteriorSpaceRequired`, `LegacyExteriorOpenTopRequired`, `SchemaValueRequired` for a missing
+lower surface, `SurfaceLegacyRecipeRequired` for an incompatible surface or `AuthoredOwnershipMismatch`
+for a different footprint lattice. It retains the footprint, space, surface, patch and first failed field.
+`Check` remains its prose projection. Topology admission also carries metadata, local patch, identity,
+strip-facing, prism and ancestry findings internally alongside the unchanged string validator.
+Prism versions use `SchemaPayloadVersionUnsupported`, a missing Room uses `ReferenceMissing`, a
+non-Room uses `ReferenceKindMismatch`, and parent disagreement uses `SpacePrismParentMismatch` with
+`RelatedRecordId`. Room prism counts use `SpaceRoomOccupancyInvalid` with actual and expected counts,
+and ancestry cycles use `SpaceParentCycle` with `SpaceId`. The source-copy and finding projection preserve
+`RelatedRecordId`. Topology adapters still wait for the remaining reference, geometry, membership and
+footprint finding conversion, so they do not classify aggregate prose.
 
 Native metadata adds typed findings beside its unchanged string diagnostics. Compound findings select
 the first failing predicate branch. Missing asset-reference and indoor-span values use `SchemaValueRequired`, nonfinite

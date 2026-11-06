@@ -8,11 +8,15 @@ namespace KhaozEngine.MapDoc.Surfaces;
 /// <summary>Complete-view reference integrity. Geometry certification is a separate operation.</summary>
 public static class MapTopologyReferenceValidator
 {
-    public static IReadOnlyList<string> Validate(IReadOnlyList<MapSurfaceRef> surfaces, IReadOnlyCollection<MapSurfacePatch> patches)
+    public static IReadOnlyList<string> Validate(IReadOnlyList<MapSurfaceRef> surfaces, IReadOnlyCollection<MapSurfacePatch> patches) =>
+        Validate(surfaces, patches, null);
+
+    internal static IReadOnlyList<string> Validate(IReadOnlyList<MapSurfaceRef> surfaces, IReadOnlyCollection<MapSurfacePatch> patches,
+        List<MapDocumentFinding>? findings)
     {
         ArgumentNullException.ThrowIfNull(surfaces);
         ArgumentNullException.ThrowIfNull(patches);
-        var context = new Context(surfaces, patches);
+        var context = new Context(surfaces, patches, findings);
         context.Validate();
         return context.Errors;
     }
@@ -25,30 +29,78 @@ public static class MapTopologyReferenceValidator
         readonly HashSet<(string Record, MapSide Side)> _sides = new();
         readonly Dictionary<(string Space, MapRecordRef Reference, MapSide Side), int> _portalMembership = new();
         readonly Dictionary<(string Space, MapRecordRef Reference), int> _linkMembership = new();
+        readonly List<MapDocumentFinding>? _findings;
         internal List<string> Errors { get; } = new();
 
-        internal Context(IReadOnlyList<MapSurfaceRef> surfaces, IReadOnlyCollection<MapSurfacePatch> patches)
+        void Add(MapDocumentFinding finding)
         {
+            Errors.Add(finding.Message);
+            _findings?.Add(finding);
+        }
+
+        internal Context(IReadOnlyList<MapSurfaceRef> surfaces, IReadOnlyCollection<MapSurfacePatch> patches, List<MapDocumentFinding>? findings)
+        {
+            _findings = findings;
             foreach (MapSurfaceRef surface in surfaces)
             {
-                if (surface is null || string.IsNullOrWhiteSpace(surface.Id)) { Errors.Add("invalid surface id"); continue; }
-                if (!_surfaces.TryAdd(surface.Id, surface)) Errors.Add($"duplicate id '{surface.Id}' in surfaces");
+                if (surface is null || string.IsNullOrWhiteSpace(surface.Id))
+                {
+                    Add(new(MapDocumentRefusal.SchemaValueRequired, "invalid surface id")
+                    { FieldPath = surface is null ? "surface" : nameof(surface.Id), SurfaceId = surface?.Id });
+                    continue;
+                }
+                if (!_surfaces.TryAdd(surface.Id, surface))
+                    Add(new(MapDocumentRefusal.IdentityDuplicate, $"duplicate id '{surface.Id}' in surfaces")
+                    { SurfaceId = surface.Id, EntityId = surface.Id, SubjectKind = "surface", FieldPath = "surfaces" });
                 if (!Enum.IsDefined(surface.Role) || !Enum.IsDefined(surface.PresencePolicy) || surface.Frame is null)
-                    Errors.Add($"invalid surface role/frame '{surface.Id}'");
+                    Add(new(!Enum.IsDefined(surface.Role) || !Enum.IsDefined(surface.PresencePolicy)
+                        ? MapDocumentRefusal.SchemaEnumUnsupported : MapDocumentRefusal.SchemaValueRequired,
+                        $"invalid surface role/frame '{surface.Id}'")
+                    {
+                        SurfaceId = surface.Id,
+                        FieldPath = !Enum.IsDefined(surface.Role) ? nameof(surface.Role)
+                            : !Enum.IsDefined(surface.PresencePolicy) ? nameof(surface.PresencePolicy) : nameof(surface.Frame),
+                        EnumType = !Enum.IsDefined(surface.Role) ? typeof(MapSurfaceRole)
+                            : !Enum.IsDefined(surface.PresencePolicy) ? typeof(MapPresencePolicy) : null,
+                        ActualInteger = !Enum.IsDefined(surface.Role) ? (long)surface.Role
+                            : !Enum.IsDefined(surface.PresencePolicy) ? (long)surface.PresencePolicy : null,
+                    });
                 else
                     try { _ = surface.Frame.WorldXz(MapLatticeAddress.Corner(0, 0)); }
-                    catch (MapDocumentException) { Errors.Add($"invalid surface frame '{surface.Id}'"); }
+                    catch (MapDocumentException ex)
+                    {
+                        string message = $"invalid surface frame '{surface.Id}'";
+                        if (MapDocumentFinding.FromException(ex) is { } finding) Add(finding with { Message = message, SurfaceId = surface.Id });
+                        else Errors.Add(message);
+                    }
             }
             foreach (MapSurfacePatch patch in patches.OrderBy(p => p.Key))
             {
-                IReadOnlyList<string> local = patch.ValidateLocal();
-                if (local.Count != 0) { Errors.AddRange(local); continue; }
-                if (!_surfaces.ContainsKey(patch.Key.SurfaceId)) Errors.Add($"missing surface '{patch.Key.SurfaceId}'");
-                if (!_patches.TryAdd(patch.Key, patch)) Errors.Add("duplicate patch key");
+                var localFindings = _findings is null ? null : new List<MapDocumentFinding>();
+                IReadOnlyList<string> local = patch.ValidateLocal(localFindings);
+                if (local.Count != 0)
+                {
+                    Errors.AddRange(local);
+                    if (localFindings is not null) _findings!.AddRange(localFindings);
+                    continue;
+                }
+                if (!_surfaces.ContainsKey(patch.Key.SurfaceId))
+                    Add(new(MapDocumentRefusal.ReferenceMissing, $"missing surface '{patch.Key.SurfaceId}'")
+                    { SurfaceId = patch.Key.SurfaceId, Patch = patch.Key, FieldPath = "Key.SurfaceId" });
+                if (!_patches.TryAdd(patch.Key, patch))
+                    Add(new(MapDocumentRefusal.IdentityDuplicate, "duplicate patch key")
+                    { Patch = patch.Key, SubjectKind = "patch", FieldPath = "patches" });
                 foreach (MapTopologyRecord record in patch.Records)
                 {
-                    if (record is null || string.IsNullOrWhiteSpace(record.Id)) { Errors.Add("invalid record id"); continue; }
-                    if (!_records.TryAdd(record.Id, (patch.Key, record))) Errors.Add($"duplicate id '{record.Id}'");
+                    if (record is null || string.IsNullOrWhiteSpace(record.Id))
+                    {
+                        Add(new(MapDocumentRefusal.SchemaValueRequired, "invalid record id")
+                        { Patch = patch.Key, RecordId = record?.Id, FieldPath = record is null ? "record" : nameof(record.Id) });
+                        continue;
+                    }
+                    if (!_records.TryAdd(record.Id, (patch.Key, record)))
+                        Add(new(MapDocumentRefusal.IdentityDuplicate, $"duplicate id '{record.Id}'")
+                        { Patch = patch.Key, RecordId = record.Id, SubjectKind = "record", FieldPath = "Records" });
                 }
             }
             foreach (MapSpaceDoc space in _records.Values.Select(r => r.Record).OfType<MapSpaceDoc>())
@@ -70,7 +122,7 @@ public static class MapTopologyReferenceValidator
         {
             foreach (MapSurfaceRef surface in _surfaces.Values.OrderBy(s => s.Id, StringComparer.Ordinal))
                 if (surface.IndoorSpan is { } span)
-                    _ = Find<MapSpaceDoc>(span.ParentSpace, $"indoor span '{span.Id}' on surface '{surface.Id}'");
+                    _ = Find<MapSpaceDoc>(span.ParentSpace, $"indoor span '{span.Id}' on surface '{surface.Id}'", surface.Id);
             foreach (var row in _records.OrderBy(r => r.Key, StringComparer.Ordinal).Select(r => r.Value))
             {
                 MapTopologyRecord record = row.Record;
@@ -83,7 +135,9 @@ public static class MapTopologyReferenceValidator
                     case MapBoundaryChain chain: Chain(chain); break;
                     case MapWallStrip strip:
                         _ = Find<MapBoundaryChain>(strip.LowerChain, strip.Id); _ = Find<MapBoundaryChain>(strip.UpperChain, strip.Id);
-                        if (!Enum.IsDefined(strip.Facing)) Errors.Add($"invalid strip facing '{strip.Id}'");
+                        if (!Enum.IsDefined(strip.Facing))
+                            Add(new(MapDocumentRefusal.SchemaEnumUnsupported, $"invalid strip facing '{strip.Id}'")
+                            { RecordId = strip.Id, FieldPath = nameof(strip.Facing), EnumType = typeof(MapStripFacing), ActualInteger = (long)strip.Facing });
                         break;
                     case MapCavePortal portal: Portal(portal, row.Anchor); break;
                     case MapHorizontalOpening opening: Slots(opening.Patch, opening.SlotCells, opening.Id, requireAbsent: true); break;
@@ -93,15 +147,34 @@ public static class MapTopologyReferenceValidator
                         var room = Find<MapSpaceDoc>(prism.Space, prism.Id);
                         _ = Find<MapSpaceDoc>(prism.Parent, prism.Id);
                         if (prism.PayloadVersion != 1 || room?.Kind != MapSpaceKind.Room || room.Parent != prism.Parent)
-                            Errors.Add($"invalid prism parent/room '{prism.Id}'");
+                            Add(new(prism.PayloadVersion != 1 ? MapDocumentRefusal.SchemaPayloadVersionUnsupported
+                                : room is null ? MapDocumentRefusal.ReferenceMissing
+                                : room.Kind != MapSpaceKind.Room ? MapDocumentRefusal.ReferenceKindMismatch : MapDocumentRefusal.SpacePrismParentMismatch,
+                                $"invalid prism parent/room '{prism.Id}'")
+                            {
+                                RecordId = prism.Id, SpaceId = prism.Space?.Id, RelatedRecordId = prism.Parent?.Id,
+                                FieldPath = prism.PayloadVersion != 1 ? nameof(prism.PayloadVersion)
+                                    : room is null ? nameof(prism.Space) : room.Kind != MapSpaceKind.Room ? "Space.Kind" : "Space.Parent",
+                                ActualVersion = prism.PayloadVersion != 1 ? prism.PayloadVersion : null,
+                                SupportedVersions = prism.PayloadVersion != 1 ? new[] { 1 } : null,
+                                EnumType = prism.PayloadVersion == 1 && room is not null && room.Kind != MapSpaceKind.Room ? typeof(MapSpaceKind) : null,
+                                ActualInteger = prism.PayloadVersion == 1 && room is not null && room.Kind != MapSpaceKind.Room ? (long)room.Kind : null,
+                            });
                         break;
                     case MapSpaceFootprint footprint: Footprint(footprint); break;
-                    default: Errors.Add($"unknown record type '{record.Id}'"); break;
+                    default:
+                        Add(new(MapDocumentRefusal.OperationKindUnsupported, $"unknown record type '{record.Id}'")
+                        { RecordId = record.Id, RecordType = record.GetType(), Patch = row.Anchor });
+                        break;
                 }
             }
             foreach (var room in _records.Values.Select(r => r.Record).OfType<MapSpaceDoc>().Where(s => s.Kind == MapSpaceKind.Room && s.AliasOf is null))
-                if (_records.Values.Count(r => r.Record is MapPrismDomain p && p.Space.Id == room.Id) != 1)
-                    Errors.Add($"room requires one prism '{room.Id}'");
+            {
+                int count = _records.Values.Count(r => r.Record is MapPrismDomain p && p.Space.Id == room.Id);
+                if (count != 1)
+                    Add(new(MapDocumentRefusal.SpaceRoomOccupancyInvalid, $"room requires one prism '{room.Id}'")
+                    { SpaceId = room.Id, ActualCount = count, ExpectedCount = 1 });
+            }
             ValidateParentCycles();
         }
 
@@ -118,7 +191,8 @@ public static class MapTopologyReferenceValidator
                     byte seen = state.GetValueOrDefault(current.Id);
                     if (seen != 0)
                     {
-                        if (seen == 1) Errors.Add($"parent cycle at '{current.Id}'");
+                        if (seen == 1)
+                            Add(new(MapDocumentRefusal.SpaceParentCycle, $"parent cycle at '{current.Id}'") { SpaceId = current.Id });
                         break;
                     }
                     state[current.Id] = 1;
@@ -131,9 +205,17 @@ public static class MapTopologyReferenceValidator
             }
         }
 
-        T? Find<T>(MapRecordRef? reference, string source) where T : MapTopologyRecord
+        T? Find<T>(MapRecordRef? reference, string source, string? surfaceId = null) where T : MapTopologyRecord
         {
-            if (reference is null || string.IsNullOrWhiteSpace(reference.Id)) { Errors.Add($"missing reference in '{source}'"); return null; }
+            if (reference is null || string.IsNullOrWhiteSpace(reference.Id))
+            {
+                Add(new(MapDocumentRefusal.SchemaValueRequired, $"missing reference in '{source}'")
+                {
+                    RecordId = surfaceId is null ? source : null, ActualText = reference?.Id,
+                    Patch = reference?.Anchor, SurfaceId = surfaceId, FieldPath = reference is null ? "reference" : "reference.Id",
+                });
+                return null;
+            }
             if (!_records.TryGetValue(reference.Id, out var row)) { Errors.Add($"missing record '{reference.Id}' in '{source}'"); return null; }
             if (row.Anchor != reference.Anchor) { Errors.Add($"wrong anchor for '{reference.Id}' in '{source}'"); return null; }
             if (row.Record is not T typed) { Errors.Add($"wrong type for '{reference.Id}' in '{source}'"); return null; }

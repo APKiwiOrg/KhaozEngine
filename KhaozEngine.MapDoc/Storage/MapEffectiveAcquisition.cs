@@ -327,8 +327,12 @@ internal sealed class MapEffectiveAcquisition
             throw new MapDocumentException(delta < 0 ? MapDocumentRefusal.ValueOutsideRange : MapDocumentRefusal.AcquisitionContractMismatch,
                 "incoherent acquisition page observations")
             {
-                FieldPath = "PagesRead", ActualInteger = delta < 0 ? delta : null, MinimumInteger = delta < 0 ? 0 : null,
-                ActualCount = delta < 0 ? null : delta, ExpectedCount = delta < 0 ? null : (long)_session.PagesRead - before,
+                FieldPath = "PagesRead",
+                ActualInteger = delta < 0 ? delta : _session.PagesRead < before ? _session.PagesRead : null,
+                PreviousInteger = delta >= 0 && _session.PagesRead < before ? before : null,
+                MinimumInteger = delta < 0 ? 0 : _session.PagesRead < before ? before : null,
+                ActualCount = delta >= 0 && _session.PagesRead >= before ? delta : null,
+                ExpectedCount = delta >= 0 && _session.PagesRead >= before ? (long)_session.PagesRead - before : null,
             };
     }
     readonly record struct Need(MapRecordRef Reference, int Depth) : IComparable<Need>

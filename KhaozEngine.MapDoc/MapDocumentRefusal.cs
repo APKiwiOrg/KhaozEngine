@@ -67,7 +67,7 @@ public enum MapDocumentRefusal
     OperationKindUnsupported,
     /// <summary>Refuses a numeric identity above its reserved high-water mark.</summary>
     NumericIdHighWaterExceeded,
-    /// <summary>Refuses a referenced resource of a different kind than required.</summary>
+    /// <summary>Refuses a referenced resource or topology space of a different kind than required.</summary>
     ReferenceKindMismatch,
 
     /// <summary>Refuses an authored reference of a different child kind than its role requires.</summary>
@@ -218,6 +218,20 @@ public enum MapDocumentRefusal
     SurfacePatchTrailingBytes,
     /// <summary>Refuses a patch payload whose key differs from the requested key.</summary>
     SurfacePatchKeyMismatch,
+
+    // Closed topology and legacy exterior admission.
+    /// <summary>Refuses a legacy exterior recipe attached to a non-Exterior space.</summary>
+    LegacyExteriorSpaceRequired,
+    /// <summary>Refuses legacy exterior coverage without an open-top upper bound.</summary>
+    LegacyExteriorOpenTopRequired,
+    /// <summary>Refuses legacy-cell coverage or sampling through an incompatible surface recipe.</summary>
+    SurfaceLegacyRecipeRequired,
+    /// <summary>Refuses prism ancestry inconsistent with its Room space.</summary>
+    SpacePrismParentMismatch,
+    /// <summary>Refuses Room occupancy outside its single prism domain.</summary>
+    SpaceRoomOccupancyInvalid,
+    /// <summary>Refuses cyclic space ancestry.</summary>
+    SpaceParentCycle,
 
     // Foliage JSON converter.
     /// <summary>Refuses a foliage section larger than its UTF-8 byte budget.</summary>

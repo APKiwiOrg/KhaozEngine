@@ -162,6 +162,8 @@ public sealed record MapDocumentFinding(MapDocumentRefusal Reason, string Messag
     public MapPrefabChildKey? ExpectedChild { get; init; }
     /// <summary>The authored record whose admission failed, when known.</summary>
     public string? RecordId { get; init; }
+    /// <summary>The related authored record required by the refused rule, such as a prism parent.</summary>
+    public string? RelatedRecordId { get; init; }
     /// <summary>The space referenced by the refused authored record, when known.</summary>
     public string? SpaceId { get; init; }
     /// <summary>The submitted or referenced authored patch, when known.</summary>
@@ -310,6 +312,7 @@ public sealed record MapDocumentFinding(MapDocumentRefusal Reason, string Messag
             ExpectedChild = error.ExpectedChild,
             Child = error.Child,
             RecordId = error.RecordId,
+            RelatedRecordId = error.RelatedRecordId,
             SpaceId = error.SpaceId,
             Patch = error.Patch,
             ExpectedPatch = error.ExpectedPatch,

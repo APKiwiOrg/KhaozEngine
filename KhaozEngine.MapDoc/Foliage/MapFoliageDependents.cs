@@ -208,6 +208,10 @@ internal static class MapFoliageDependents
 /// message starts with the status name, so every caller and wire reply carries it.</summary>
 internal static class MapFoliageEditRefusal
 {
+    internal static MapDocumentException Create(MapFoliageContextMeasure measure, string detail) =>
+        MapDocumentRefusalFactory.FromFinding(measure.Finding!,
+            string.Create(CultureInfo.InvariantCulture, $"Foliage {measure.Status}: {detail}."));
+
     internal static MapDocumentException Create(MapFoliageStatus status, string detail) =>
         new(string.Create(CultureInfo.InvariantCulture, $"Foliage {status}: {detail}."));
 }

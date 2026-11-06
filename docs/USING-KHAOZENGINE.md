@@ -12397,6 +12397,14 @@ wrappers preserve this structured cause and add their source context without cha
 Throwing validation uses the first finding, attaches the complete `Findings` snapshot and retains its original cause.
 The complete snapshot survives state-read exceptions wrapping aggregate document refusals too.
 An unclassified state producer failure uses `PrefabStateUnreadable` with `DocumentId`, without a fabricated field path.
+Prefab expansion preflight uses `WorkCapacityExceeded`, selecting the first failing expansion-limit name in
+`Budget` with the measured `ActualCount` and inclusive `Limit`. Payload-byte budgets also carry `ActualByteCount`.
+Checked count overflow names `PrefabExpansionCount`, carries `Limit = long.MaxValue` and leaves `ActualCount` null.
+Foliage context preflight carries its concrete `Finding` on `MapFoliageContextMeasure` and preflight-refused
+capture results. Its five context limits use `WorkCapacityExceeded`, `FoliageStatus`, `Budget`, `ActualCount`,
+inclusive `Limit` and `DocumentId`, with `ActualByteCount` for source bytes. Partial residency uses
+`CompleteDocumentRequired`. Edit preflight forwards the finding and retains its released text.
+The generation-context throwing adapter waits for numeric aggregate producer closure.
 Missing root or asset child collections use `SchemaValueRequired`. Their capacity refusals use `WorkCapacityExceeded`
 with the collection `Budget`, captured `ActualCount`, inclusive `Limit`, `FieldPath` and known document or asset ID.
 Complete expansion over a partial document uses `CompleteDocumentRequired`, `DocumentId` and `Operation = "Expand"`.

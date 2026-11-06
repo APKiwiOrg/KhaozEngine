@@ -183,10 +183,17 @@ public sealed class MapFoliageFinalizationTests
         foreach (Action entry in entries)
         {
             long expansions = MapPrefabResolver.ThreadExpansions, copies = MapPrefabEditPreparation.ThreadCopies;
-            Assert.Contains(nameof(MapFoliageStatus.CapacityExceeded), Assert.Throws<MapDocumentException>(entry).Message, StringComparison.Ordinal);
+            var error = Assert.Throws<MapDocumentException>(entry);
+            Assert.Equal(MapDocumentRefusal.WorkCapacityExceeded, error.Reason);
+            Assert.Equal(MapFoliageStatus.CapacityExceeded, error.FoliageStatus);
+            Assert.Equal("MaxPaintTargets", error.Budget);
+            Assert.Equal(4097, error.ActualCount);
+            Assert.Equal(4096, error.Limit);
             Assert.Equal((0L, 0L), (MapPrefabResolver.ThreadExpansions - expansions, MapPrefabEditPreparation.ThreadCopies - copies));
         }
         Assert.Equal(state, MapDocumentFile.SaveText(grown.Document));
+        document.Surfaces.Refs.RemoveAll(s => s.Id is "paint-4096" or "target-4096");
+        entries[0]();
     }
 
     [Fact]

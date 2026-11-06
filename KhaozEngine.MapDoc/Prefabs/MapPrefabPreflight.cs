@@ -111,15 +111,19 @@ internal static class MapPrefabPreflight
             return new(count.Instances, count.Children, count.ReferenceEdges, count.Patches, count.Records,
                 count.GeometryElements, count.Bindings, count.Overrides, count.Transfers, count.PayloadBytes);
         }
-        catch (OverflowException) { throw new MapDocumentException("Prefab expansion preflight count overflow."); }
+        catch (OverflowException) { throw CountOverflow(nameof(Count), document.Id); }
     }
 
     internal static long AddProduct(long accumulated, long items, long copies)
     {
         if (accumulated < 0 || items < 0 || copies < 0) throw new ArgumentOutOfRangeException(nameof(items));
         try { return checked(accumulated + checked(items * copies)); }
-        catch (OverflowException) { throw new MapDocumentException("Prefab expansion preflight count overflow."); }
+        catch (OverflowException) { throw CountOverflow(nameof(AddProduct)); }
     }
+
+    static MapDocumentException CountOverflow(string operation, string? documentId = null) =>
+        new(MapDocumentRefusal.WorkCapacityExceeded, "Prefab expansion preflight count overflow.")
+        { Budget = "PrefabExpansionCount", Limit = long.MaxValue, Operation = operation, DocumentId = documentId };
 
     sealed class Counter(MapPrefabExpansionLimits limits, IReadOnlyList<MapPrefabAttachmentTransfer>? standaloneAttachments)
     {
@@ -135,7 +139,21 @@ internal static class MapPrefabPreflight
             if (Instances > limits.MaxInstances || Children > limits.MaxChildren || ReferenceEdges > limits.MaxReferenceEdges ||
                 Patches > limits.MaxPatches || Records > limits.MaxRecords || GeometryElements > limits.MaxGeometryElements ||
                 Bindings > limits.MaxBindings || Overrides > limits.MaxOverrides || Transfers > limits.MaxTransfers || PayloadBytes > limits.MaxPayloadBytes)
-                throw new MapDocumentException("Prefab expansion preflight limit exceeded.");
+            {
+                (string budget, long actual, long limit) = Instances > limits.MaxInstances ? ("MaxInstances", Instances, limits.MaxInstances)
+                    : Children > limits.MaxChildren ? ("MaxChildren", Children, limits.MaxChildren)
+                    : ReferenceEdges > limits.MaxReferenceEdges ? ("MaxReferenceEdges", ReferenceEdges, limits.MaxReferenceEdges)
+                    : Patches > limits.MaxPatches ? ("MaxPatches", Patches, limits.MaxPatches)
+                    : Records > limits.MaxRecords ? ("MaxRecords", Records, limits.MaxRecords)
+                    : GeometryElements > limits.MaxGeometryElements ? ("MaxGeometryElements", GeometryElements, limits.MaxGeometryElements)
+                    : Bindings > limits.MaxBindings ? ("MaxBindings", Bindings, limits.MaxBindings)
+                    : Overrides > limits.MaxOverrides ? ("MaxOverrides", Overrides, limits.MaxOverrides)
+                    : Transfers > limits.MaxTransfers ? ("MaxTransfers", Transfers, limits.MaxTransfers)
+                    : ("MaxPayloadBytes", PayloadBytes, limits.MaxPayloadBytes);
+                throw new MapDocumentException(MapDocumentRefusal.WorkCapacityExceeded, "Prefab expansion preflight limit exceeded.")
+                    { Budget = budget, ActualCount = actual, ActualByteCount = budget == "MaxPayloadBytes" ? actual : null,
+                        Limit = limit, Operation = nameof(Count) };
+            }
         }
         internal void Child(MapAssetClosure assets, MapPrefabChild child, IReadOnlyList<MapPrefabLocalMaterialization>? rows, bool expandResources = true)
         {

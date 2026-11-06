@@ -1874,7 +1874,7 @@ their joined diagnostic text.
 | `SurfacePaintPriorityConflict` | Equal-priority overlapping paint with different materials | `SurfaceId`, `OtherSurfaceId`, priority in `ActualInteger` |
 | `SurfacePaintBoundaryInvalid` | An open or nonmanifold material boundary | `SurfaceId` |
 | `SurfacePaintCrossesPhysicalFace` | A whole-face paint material or presence boundary crossing a physical face | `SurfaceId`, `OtherSurfaceId`, `Patch`, face `Index`, `FieldPath` |
-| `WorkCapacityExceeded` | Prefab and light payload bytes, codec array counts or patch geometry, foliage codec counts or density token sizes beyond their limits, reservation keys beyond the candidate cap, surface codec work beyond its encoded byte or array-count budget, or local corner-dependency or edge-subdivision metadata beyond its count budget, or compiled faces beyond MaxFacesPerPatch or support resource bytes beyond MaxPayloadBytes, or water-domain piece, vertex or pair-check work beyond its budget | `Patch`, `FieldPath`, `Budget`, `ActualCount`, `ActualByteCount`, `Limit`, `LayerId`, `Index`, `FoliageChunk` |
+| `WorkCapacityExceeded` | Prefab and light payload bytes, codec array counts or patch geometry, foliage codec counts or density token sizes beyond their limits, reservation keys beyond the candidate cap, surface codec work beyond its encoded byte or array-count budget, or local corner-dependency or edge-subdivision metadata beyond its count budget, or compiled faces beyond MaxFacesPerPatch or support resource bytes beyond MaxPayloadBytes, or water-domain piece, vertex or pair-check work beyond its budget, or prefab expansion and foliage context preflight budgets | `Patch`, `FieldPath`, `Budget`, `ActualCount`, `ActualByteCount`, `Limit`, `LayerId`, `Index`, `FoliageChunk` |
 | `SurfacePresencePaddingNonzero` | Nonzero bits beyond the authored cell count in the last presence word | `Patch`, `FieldPath`, `Index` |
 | `SurfaceSubdivisionAbsentCell` | An edge subdivision on an absent cell | `Patch`, `FieldPath`, `Index`, `CellX`, `CellZ`, `Edge` |
 | `SurfaceSubdivisionInteriorEdge` | An edge subdivision adjoining another present cell inside the patch | `Patch`, `FieldPath`, `Index`, `CellX`, `CellZ`, `Edge` |
@@ -2105,7 +2105,17 @@ Unavailable identifiers stay null. Collection identifiers remain owned read-only
 Runtime layer lookup uses `ReferenceMissing`, `DocumentId`, `LayerId` and `EntityId`, with `SubjectKind`
 `scatter layer` or `companion layer`. Interior admission carries its `RecordId`, `SpaceId` and requested
 `Patch`, plus the submitted `InstanceId` for a standalone-ownership refusal. Foliage edit preflight
-uses `AssetClosureRequired` with `DocumentId`. Editor transaction admission keeps its existing contract
+uses `AssetClosureRequired` with `DocumentId`. Context preflight exposes its concrete `Finding` on
+`MapFoliageContextMeasure` and on a refused capture result. Its five context budgets use
+`WorkCapacityExceeded`, `FoliageStatus`, the limit's name in `Budget`, measured `ActualCount`, inclusive
+`Limit` and `DocumentId`, plus `ActualByteCount` for source bytes. Partial residency uses
+`CompleteDocumentRequired`. The preflight throwing adapter forwards that finding without changing its text.
+Prefab expansion preflight reports the first failing `MaxInstances`, `MaxChildren`, `MaxReferenceEdges`,
+`MaxPatches`, `MaxRecords`, `MaxGeometryElements`, `MaxBindings`, `MaxOverrides`, `MaxTransfers` or
+`MaxPayloadBytes` budget in the same order as its guard. Checked-count overflow names
+`PrefabExpansionCount` with `Limit = long.MaxValue` and leaves the unrepresentable `ActualCount` null.
+The generation-context throwing adapter still waits for numeric aggregate producer closure.
+Editor transaction admission keeps its existing contract
 until its own guards are converted.
 
 `ResolverVersion` is the document's declared version. `OptionsResolverVersion` is the version supplied
@@ -2143,7 +2153,8 @@ that snapshot. A source wrapper using the source-copy method preserves the reaso
 original refusal as the cause. `NativeDocumentService.Verify` uses this copy method, adding the storage
 `SourceName` and `ResourceRoot` while retaining the released wrapper text and the original refusal.
 Light and support JSON wrappers preserve known structured causes and otherwise use `SchemaMalformed`.
-Light context classification checks `ResourceId` rather than message text. Support root checks use
+Light wrappers carry `ResourceId`. Their released prefix formatting still checks whether the quoted
+resource name appears in the developer prose. Support root checks use
 `SchemaObjectRequired`, `SchemaMemberMissing`, `SchemaMemberUnknown` and `SchemaMemberDuplicate`,
 with `ResourceId` and `FieldPath`. Duplicate patches carry `IdentityDuplicate` and `Patch`. Duplicate
 records carry `RecordId`, `Patch` and `SubjectKind` `support resource record`. Unsupported support payload

@@ -94,8 +94,14 @@ public sealed class MapPrefabExpansionTests
         Assert.True(count > 0);
         var stages = new List<string>();
         var limits = Limit(counter, count - 1);
-        Assert.Throws<MapDocumentException>(() => MapPrefabResolver.Expand(f.Document, f.Assets, limits, new(stages.Add)));
+        string before = MapDocumentFile.SaveText(f.Document);
+        var error = Assert.Throws<MapDocumentException>(() => MapPrefabResolver.Expand(f.Document, f.Assets, limits, new(stages.Add)));
+        Assert.Equal(MapDocumentRefusal.WorkCapacityExceeded, error.Reason);
+        Assert.Equal("Max" + counter, error.Budget);
+        Assert.Equal(count, error.ActualCount);
+        Assert.Equal(count - 1, error.Limit);
         Assert.Empty(stages);
+        Assert.Equal(before, MapDocumentFile.SaveText(f.Document));
         MapPrefabResolver.Expand(f.Document, f.Assets, Limit(counter, count), new(stages.Add));
         foreach (string name in new[] { "Copies", "Remaps", "Sorts", "ExpandedGeometry" }) Assert.Contains(name, stages);
     }
@@ -206,8 +212,14 @@ public sealed class MapPrefabExpansionTests
         Assert.True(work.GeometryElements >= 4 * (4225 + 4096 + 8192));
         long count = (long)typeof(MapPrefabExpansionWork).GetProperty(counter)!.GetValue(work)!;
         var stages = new List<string>();
-        Assert.Throws<MapDocumentException>(() => MapPrefabResolver.Expand(f.Document, f.Assets, Limit(counter, count - 1), new(stages.Add)));
+        string before = MapDocumentFile.SaveText(f.Document);
+        var error = Assert.Throws<MapDocumentException>(() => MapPrefabResolver.Expand(f.Document, f.Assets, Limit(counter, count - 1), new(stages.Add)));
+        Assert.Equal(MapDocumentRefusal.WorkCapacityExceeded, error.Reason);
+        Assert.Equal("Max" + counter, error.Budget);
+        Assert.Equal(count, error.ActualCount);
+        Assert.Equal(count - 1, error.Limit);
         Assert.Empty(stages);
+        Assert.Equal(before, MapDocumentFile.SaveText(f.Document));
         MapPrefabResolver.Expand(f.Document, f.Assets, Limit(counter, count), new(stages.Add));
         Assert.Contains("ExpandedGeometry", stages);
     }
@@ -232,9 +244,19 @@ public sealed class MapPrefabExpansionTests
     [Fact]
     public void ExpansionPreflight_CheckedProductsAndSumsRefuseOverflow()
     {
+        foreach (var error in new[]
+        {
+            Assert.Throws<MapDocumentException>(() => MapPrefabPreflight.AddProduct(0, long.MaxValue, 2)),
+            Assert.Throws<MapDocumentException>(() => MapPrefabPreflight.AddProduct(long.MaxValue, 1, 1)),
+        })
+        {
+            Assert.Equal(MapDocumentRefusal.WorkCapacityExceeded, error.Reason);
+            Assert.Equal("PrefabExpansionCount", error.Budget);
+            Assert.Equal(long.MaxValue, error.Limit);
+            Assert.Null(error.ActualCount);
+        }
+        Assert.Equal(long.MaxValue, MapPrefabPreflight.AddProduct(0, long.MaxValue, 1));
         Assert.Equal(long.MaxValue, MapPrefabPreflight.AddProduct(long.MaxValue - 4, 2, 2));
-        Assert.Throws<MapDocumentException>(() => MapPrefabPreflight.AddProduct(0, long.MaxValue, 2));
-        Assert.Throws<MapDocumentException>(() => MapPrefabPreflight.AddProduct(long.MaxValue, 1, 1));
     }
 
     [Fact]

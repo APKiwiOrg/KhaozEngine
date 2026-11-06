@@ -306,7 +306,7 @@ public sealed class MapPreparedFoliageSupport
                 : error.Message.Contains("invalid", StringComparison.Ordinal) ? MapFoliageStatus.Invalid : MapFoliageStatus.Unavailable);
         }
         // Only a demand outside the prepared chunk context: this point's facts were not prepared.
-        catch (InvalidOperationException error) when (error.Message.StartsWith("context demand", StringComparison.Ordinal))
+        catch (MapBoundContextException error) when (error.Reason == MapDocumentRefusal.ContextDemandUnprepared)
         { return Refusal(MapFoliageStatus.Unavailable); }
     }
 

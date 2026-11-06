@@ -12,7 +12,11 @@ using KhaozEngine.MapDoc.Surfaces;
 namespace KhaozEngine.MapDoc.Foliage;
 
 /// <summary>A capture outcome. Complete always carries a context, a refusal never does.</summary>
-public sealed record MapFoliageContextResult(MapFoliageStatus Status, MapFoliageGenerationContext? Context, MapFoliageContextWork Work);
+public sealed record MapFoliageContextResult(MapFoliageStatus Status, MapFoliageGenerationContext? Context, MapFoliageContextWork Work)
+{
+    /// <summary>The original typed preflight finding, when refusal occurs before context capture.</summary>
+    public MapDocumentFinding? Finding { get; init; }
+}
 
 /// <summary>One immutable foliage generation input per accepted document snapshot. Capture admits its budget from
 /// metadata, expands the effective resources exactly once, then copies the foliage and indexes owner and paint
@@ -81,7 +85,7 @@ public sealed class MapFoliageGenerationContext
         ArgumentNullException.ThrowIfNull(assets);
         long expansions = MapPrefabResolver.ThreadExpansions, writes = MapFoliageJson.ThreadPayloadWrites;
         MapFoliageContextMeasure measure = MapFoliageContextPreflight.Measure(document, assets, limits ?? new());
-        if (measure.Status != MapFoliageStatus.Complete) return new(measure.Status, null, measure.Work);
+        if (measure.Status != MapFoliageStatus.Complete) return new(measure.Status, null, measure.Work) { Finding = measure.Finding };
         if (MapFoliageValidation.ValidateBound(document, assets).Count != 0) return new(MapFoliageStatus.Invalid, null, measure.Work);
         MapEffectiveResources resources;
         try { resources = MapPrefabResolver.Expand(document, assets); }
@@ -105,7 +109,7 @@ public sealed class MapFoliageGenerationContext
         ArgumentNullException.ThrowIfNull(resources);
         long expansions = MapPrefabResolver.ThreadExpansions, writes = MapFoliageJson.ThreadPayloadWrites;
         MapFoliageContextMeasure measure = MapFoliageContextPreflight.Measure(document, assets, limits ?? new());
-        if (measure.Status != MapFoliageStatus.Complete) return new(measure.Status, null, measure.Work);
+        if (measure.Status != MapFoliageStatus.Complete) return new(measure.Status, null, measure.Work) { Finding = measure.Finding };
         if (MapFoliageValidation.ValidateBound(document, assets).Count != 0 || !Corresponds(document, assets, resources))
             return new(MapFoliageStatus.Invalid, null, measure.Work);
         // A snapshot expanded from another document or closure never stands in for this one. An expansion of a document

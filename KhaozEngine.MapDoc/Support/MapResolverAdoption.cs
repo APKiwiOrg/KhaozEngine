@@ -14,7 +14,9 @@ public static class MapResolverAdoption
     {
         ArgumentNullException.ThrowIfNull(document);
         ArgumentNullException.ThrowIfNull(choices);
-        if (document.Tiles is { IsPartial: true }) throw new MapDocumentException("Cannot adopt authored support from a partial window.");
+        if (document.Tiles is { IsPartial: true }) throw new MapDocumentException(MapDocumentRefusal.CompleteDocumentRequired,
+            "Cannot adopt authored support from a partial window.")
+            { DocumentId = document.Id, Operation = nameof(ConvertToAuthoredSupport) };
         foreach (MapPlacement placement in document.Placements.Where(p => p.Y is null).OrderBy(p => p.Id, StringComparer.Ordinal))
         {
             if (!choices.TryGetValue(placement.Id, out MapPlacementSupportChoice? choice) || choice is null ||

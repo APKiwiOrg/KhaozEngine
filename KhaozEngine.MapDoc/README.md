@@ -325,6 +325,10 @@ keeps explicit Y, refuses any binding whose support is not `Supported`, and refu
 reference height and bounded search. `MapResolverAdoption.ConvertToAuthoredSupport` returns a detached
 version-2 copy. Seating failures carry `SupportUnresolved`, `PlacementId` and the typed `SupportStatus`.
 Missing bindings, bounded space searches and adoption choices use their distinct reasons in the refusal table.
+A partial-window adoption uses `CompleteDocumentRequired`, the `DocumentId` and
+`Operation = "ConvertToAuthoredSupport"`. An effective placement whose scale or yaw cannot be presented in
+binary32 uses `GeometryNotRepresentable`, `PlacementId`, the component's `FieldPath` and binary64 `ActualNumber`,
+with `Operation = "ResolveEffectivePlacements"`.
 A missing-height provider carries both `PlacementId` and `ProviderPlacementId` before any physics installation.
 Resolver version 1, its options and its execution are unchanged.
 
@@ -1829,7 +1833,7 @@ their joined diagnostic text.
 | `SpaceOpeningCellsInvalid` | A horizontal opening over a present cell | `RecordId`, `Patch`, `FieldPath`, `Index`, `ActualInteger`, `CellX`, `CellZ` |
 | `SpaceOpeningOwnershipInvalid` | A prepared opening demand for a cell outside that opening's authored slot set | `RecordId`, `Patch`, `SlotCell` |
 | `ContextDemandUnprepared` | A bound context read outside its prepared demands, carried by `MapBoundContextException` deriving from `InvalidOperationException` | `Operation`, `Patch`, opening `RecordId`, `SlotCell`, exact requested `Face` when applicable |
-| `GeometryNotRepresentable` | A collapsed effective cell, exact triangle, unrepresentable surface emission, water-domain corner or boundary arithmetic | `SurfaceId`, `Patch`, `CellX`, `CellZ`, `SlotCell`, `RecordId`, `SpaceId`, `Operation`, `FieldPath`, `Index`, `OtherIndex`, `SubjectKind` when known |
+| `GeometryNotRepresentable` | A collapsed effective cell, exact triangle, unrepresentable surface emission, water-domain corner, boundary arithmetic or backend placement pose | `SurfaceId`, `Patch`, `CellX`, `CellZ`, `SlotCell`, `RecordId`, `SpaceId`, `PlacementId`, `ActualNumber`, `Operation`, `FieldPath`, `Index`, `OtherIndex`, `SubjectKind` when known |
 | `GeometryVertexHeightMismatch` | Different exact heights for a shared compiled, opening, boundary or seam vertex | `SurfaceId`, `Patch`, `RecordId`, `Address`, `Index`, `FieldPath` when known |
 | `FrameRadiusExceeded` | Local frame radius or checked anchor subtraction overflow | `Patch` when available, `Limit`, local `PositionX`/`PositionZ` only after successful subtraction |
 | `PatchUnavailable` | A requested effective, seam or corner-owner patch, record, point-bound source or membership demand, or occupied bound is unavailable | `RecordId`, `SpaceId`, boundary `OwnerId`, `FieldPath`, `SurfaceId`, `Patch`, `ExpectedPatch`, `Address`, `Index`, `PatchStatus`, `SlotCell`, `ExpectedRecordType` when known |
@@ -1913,7 +1917,7 @@ their joined diagnostic text.
 | `NumericIdHighWaterExceeded` | A placement, prefab binding or retired transfer above the reserved mark | `EntityId`, `SubjectKind`, `PlacementId`, `FieldPath`, `NumericId`, `HighWaterMark` |
 | `ResolverContractMismatch` | The document resolver, support recipe or caller's resolver options cannot serve the requested operation | `PayloadVersion`, `ResolverVersion`, `OptionsResolverVersion`, `ExpectedResolverVersion`, `SupportRecipe`, `ExpectedSupportRecipe`, `FieldPath`, `SubjectKind` |
 | `SupportLegacyHeightRequired` | Resolver-1 resolution without an analytic support callback | `ResolverVersion`, `FieldPath` `legacySupportHeight` |
-| `CompleteDocumentRequired` | Complete prefab expansion over a partial document | `DocumentId`, `Operation` |
+| `CompleteDocumentRequired` | Complete prefab expansion or authored-support adoption over a partial document | `DocumentId`, `Operation` |
 | `DocumentMigrationSourceVersionInvalid` | A prefab migration source outside format 6 or 7 | `FieldPath`, `ActualVersion`, owned `SupportedVersions` |
 | `PrefabStateUnreadable` | A producer failure while reading prefab state without a concrete lower refusal | `DocumentId`, original `InnerException` on the throwing adapter |
 

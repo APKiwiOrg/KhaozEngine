@@ -216,7 +216,9 @@ public sealed class MapMarkerFormatTests
             "explicit-binding" or "support-without-binding" or "support-y-one" or "support-negative-zero" or "nonfinite-yaw" or
             "null-tags" or "null-tag" or "empty-archetype" or "blank-archetype" or "negative-search")
             AssertMarkerFinding(variant, form, prefabError);
-        else Assert.Contains(prefabRefusal, prefabError.Message, StringComparison.Ordinal);
+        // The native-vector producer remains message-shaped until W6-D3-03 closes its family.
+        else if (variant == "nonfinite-y") Assert.Contains(prefabRefusal, prefabError.Message, StringComparison.Ordinal);
+        else AssertPrefabCodecFinding(variant, form, asset, prefabError);
         if (variant == "negative-search")
         {
             PrefabMarker(asset, form)["supportBinding"]!["searchBelow"] = 0;
@@ -303,6 +305,45 @@ public sealed class MapMarkerFormatTests
             Assert.Equal(3, error.ActualVersion);
             Assert.Equal(new[] { 1, 2 }, error.SupportedVersions);
         }
+    }
+
+    static void AssertPrefabCodecFinding(string variant, string form, JsonObject asset, MapDocumentException error)
+    {
+        int child = asset["children"]!.AsArray().IndexOf(PrefabMarker(asset, form).Parent);
+        Assert.True(child >= 0);
+        string marker = $"$.children[{child}].value";
+        (MapDocumentRefusal reason, string path) = variant switch
+        {
+            "unknown-member" => (MapDocumentRefusal.SchemaMalformed, "$.extra"),
+            "case-member" => (MapDocumentRefusal.SchemaMalformed, "$.HeightMode"),
+            "duplicate-member" => (MapDocumentRefusal.SchemaMemberDuplicate, marker),
+            "binding-duplicate-member" => (MapDocumentRefusal.SchemaMemberDuplicate, marker + ".supportBinding"),
+            "payload-two-null-height" => (MapDocumentRefusal.SchemaValueRequired, marker + ".heightMode"),
+            "support-null-binding" => (MapDocumentRefusal.SchemaValueRequired, marker + ".supportBinding"),
+            "null-archetype" => (MapDocumentRefusal.SchemaValueRequired, marker + ".archetypeId"),
+            "binding-null-member" => (MapDocumentRefusal.SchemaValueRequired, marker + ".supportBinding.spaceId"),
+            "space-null-search" => (MapDocumentRefusal.SchemaValueRequired, marker + ".supportBinding.searchAbove"),
+            "unknown-height-mode" => (MapDocumentRefusal.SchemaEnumUnsupported, "$.heightMode"),
+            "unknown-binding-kind" => (MapDocumentRefusal.SchemaEnumUnsupported, "$.kind"),
+            "binding-unknown-member" => (MapDocumentRefusal.SchemaMemberUnknown, "$.extra"),
+            "binding-case-member" => (MapDocumentRefusal.SchemaMemberUnknown, "$.SurfaceId"),
+            "surface-reference-y" => (MapDocumentRefusal.SchemaMemberUnknown, "$.referenceY"),
+            "surface-search-below" => (MapDocumentRefusal.SchemaMemberUnknown, "$.searchBelow"),
+            "surface-space-id" => (MapDocumentRefusal.SchemaMemberUnknown, "$.spaceId"),
+            "space-surface-id" => (MapDocumentRefusal.SchemaMemberUnknown, "$.surfaceId"),
+            "space-missing-reference-y" => (MapDocumentRefusal.SchemaMemberMissing, "$.referenceY"),
+            "nonfinite-search" => (MapDocumentRefusal.ValueNonfinite, "$.searchAbove"),
+            _ => throw new ArgumentException("No codec case " + variant),
+        };
+        Assert.Equal(reason, error.Reason);
+        Assert.Equal(path, error.FieldPath);
+        Assert.Equal(MarkerFixtures.PayloadTwoResource, error.ResourceId);
+        if (variant is "unknown-height-mode" or "unknown-binding-kind")
+        {
+            Assert.Equal(variant == "unknown-height-mode" ? typeof(MapMarkerHeightMode) : typeof(MapSupportBindingKind), error.EnumType);
+            Assert.Equal(variant == "unknown-height-mode" ? "Floating" : "Volume", error.ActualText);
+        }
+        if (variant == "nonfinite-search") Assert.Equal(double.PositiveInfinity, error.ActualNumber);
     }
 
     // The refusal each path names: the document member gate or codec, the prefab codec, and the typed rule. Each path

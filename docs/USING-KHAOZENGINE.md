@@ -12399,6 +12399,10 @@ An unclassified state producer failure uses `PrefabStateUnreadable` with `Docume
 Missing root or asset child collections use `SchemaValueRequired`. Their capacity refusals use `WorkCapacityExceeded`
 with the collection `Budget`, captured `ActualCount`, inclusive `Limit`, `FieldPath` and known document or asset ID.
 Complete expansion over a partial document uses `CompleteDocumentRequired`, `DocumentId` and `Operation = "Expand"`.
+Authored-support adoption over a partial document uses the same reason with
+`Operation = "ConvertToAuthoredSupport"`. Unrepresentable binary32 placement presentation uses
+`GeometryNotRepresentable`, `PlacementId`, the failed component's `FieldPath`, binary64 `ActualNumber` and
+`Operation = "ResolveEffectivePlacements"`.
 Prefab migration distinguishes missing, incorrectly typed and unsupported source versions. Its unsupported-version
 reason is `DocumentMigrationSourceVersionInvalid`, with `ActualVersion`, `FieldPath` and owned `SupportedVersions`.
 Exact-enum codecs use `SchemaEnumUnsupported` with `EnumType` and submitted text or numeric value. A marker binding's

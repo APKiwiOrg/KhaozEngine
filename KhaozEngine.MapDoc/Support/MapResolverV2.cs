@@ -40,7 +40,13 @@ public static class MapResolverV2
             _ = new MapResourceTransform(pose).Point(new(default, default, default));
             float presentationScale = (float)pose.Scale, presentationYaw = (float)pose.YawRadians;
             if (!float.IsFinite(presentationScale) || presentationScale <= 0 || !float.IsFinite(presentationYaw))
-                throw new MapDocumentException($"Placement '{placement.Id}' backend pose is NotRepresentable.");
+                throw new MapDocumentException(MapDocumentRefusal.GeometryNotRepresentable,
+                    $"Placement '{placement.Id}' backend pose is NotRepresentable.")
+                {
+                    PlacementId = placement.Id, Operation = nameof(ResolveEffectivePlacements),
+                    FieldPath = !float.IsFinite(presentationScale) || presentationScale <= 0 ? "$.scale" : "$.yawRadians",
+                    ActualNumber = !float.IsFinite(presentationScale) || presentationScale <= 0 ? pose.Scale : pose.YawRadians,
+                };
             float y = (float)pose.Y;
             if (placement.Y is null)
             {

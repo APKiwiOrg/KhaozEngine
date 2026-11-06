@@ -222,6 +222,12 @@ trip. They are new in 20.30.0, and R5 consumes them.
 `ValueNonfinite` with the first failed `FieldPath` and `ActualNumber`. Anchor overflow does not invent a
 local position.
 
+Support resource size refusal uses `WorkCapacityExceeded`, `Budget = "MaxPayloadBytes"`,
+`ActualByteCount` and `Limit`, plus `ResourceId` on reads. Null or blank surface identities use
+`SchemaValueRequired`, duplicate identities use `IdentityDuplicate`, and undefined role or presence values
+use `SchemaEnumUnsupported`. Defined values outside the native support-floor policy use
+`SurfaceSupportRoleInvalid`. These surface findings retain the surface index and failed field.
+
 ## Authored surfaces, caves and support
 
 Every API in this section is new in 20.30.0. It proves geometry inputs and legacy compatibility, not a
@@ -1549,13 +1555,15 @@ An array beyond its own count cap uses that field name as `Budget`, with its `Ac
 | `GeometryNotRepresentable` | A collapsed effective cell, exact triangle or unrepresentable surface emission | `SurfaceId`, `Patch`, `CellX`, `CellZ`, `SlotCell`, `Operation` when known |
 | `GeometryVertexHeightMismatch` | Different exact heights for a shared compiled, opening, boundary or seam vertex | `SurfaceId`, `Patch`, `RecordId`, `Address`, `Index`, `FieldPath` when known |
 | `FrameRadiusExceeded` | Local frame radius or checked anchor subtraction overflow | `Patch` when available, `Limit`, local `PositionX`/`PositionZ` only after successful subtraction |
-| `PatchUnavailable` | A requested effective patch has no acquired payload | `SurfaceId`, `Patch`, `PatchStatus` |
+| `PatchUnavailable` | A requested effective, seam or corner-owner patch is unavailable | `RecordId`, `SurfaceId`, `Patch`, `ExpectedPatch`, `Address`, `Index`, `PatchStatus` when known |
 | `SurfaceLegacySampleOutOfCell` | A legacy sample outside its selected cell or patch | `SurfaceId`, `Patch`, `SlotCell` |
 | `SurfacePaintPhysicalCompileUnsupported` | Physical-face compilation of a paint-only surface | `SurfaceId`, `Patch` |
 | `SurfaceNativeNoDrawUnsupported` | A native cell carrying the legacy NoDraw flag | `SurfaceId`, `Patch`, `SlotCell`, `FieldPath` |
-| `SurfaceSeamPositionMismatch` | Paired seam vertices at different exact world XZ positions | `RecordId`, `SurfaceId`, `Address`, `Index`, `FieldPath` |
-| `SurfaceSeamVertexUndeclared` | A paired vertex absent from its declared edge | `RecordId`, `SurfaceId`, `Address`, `Index`, `FieldPath` |
-| `WorkCapacityExceeded` | Reservation keys beyond the candidate cap, surface codec work beyond its encoded byte or array-count budget, or local corner-dependency or edge-subdivision metadata beyond its count budget, or compiled faces beyond MaxFacesPerPatch | `Patch`, `FieldPath`, `Budget`, `ActualCount`, `ActualByteCount`, `Limit` |
+| `SurfaceSeamPositionMismatch` | Paired seam or corner vertices at different exact world XZ positions | `RecordId`, `SurfaceId`, `Patch`, `ExpectedPatch`, `Address`, `Index`, `CellX`, `CellZ`, `FieldPath` when known |
+| `SurfaceSeamVertexUndeclared` | A paired vertex or corner owner absent from its declared source geometry | `RecordId`, `SurfaceId`, `Patch`, `ExpectedPatch`, `Address`, `Index`, `FieldPath` when known |
+| `SurfaceSeamEdgeInvalid` | A collapsed or diagonal seam source edge | `RecordId`, `Patch`, `SurfaceId`, `FieldPath` |
+| `SurfaceSupportRoleInvalid` | A support resource surface outside the native support-floor policy | `ResourceId`, `SurfaceId`, `Index`, `FieldPath`, `EnumType`, `ActualInteger` |
+| `WorkCapacityExceeded` | Reservation keys beyond the candidate cap, surface codec work beyond its encoded byte or array-count budget, or local corner-dependency or edge-subdivision metadata beyond its count budget, or compiled faces beyond MaxFacesPerPatch or support resource bytes beyond MaxPayloadBytes | `Patch`, `FieldPath`, `Budget`, `ActualCount`, `ActualByteCount`, `Limit` |
 | `SurfacePresencePaddingNonzero` | Nonzero bits beyond the authored cell count in the last presence word | `Patch`, `FieldPath`, `Index` |
 | `SurfaceSubdivisionAbsentCell` | An edge subdivision on an absent cell | `Patch`, `FieldPath`, `Index`, `CellX`, `CellZ`, `Edge` |
 | `SurfaceSubdivisionInteriorEdge` | An edge subdivision adjoining another present cell inside the patch | `Patch`, `FieldPath`, `Index`, `CellX`, `CellZ`, `Edge` |

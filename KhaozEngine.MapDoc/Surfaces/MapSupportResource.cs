@@ -24,7 +24,7 @@ public static class MapSupportResourceFile
     public static MapSupportResource Read(ReadOnlyMemory<byte> bytes, string resourceId)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(resourceId);
-        if (bytes.Length > MapPrefabJson.Limits.MaxPayloadBytes) throw new MapDocumentException("Support resource byte limit exceeded.");
+        RequirePayloadSize(bytes.Length, resourceId);
         try
         {
             using JsonDocument json = JsonDocument.Parse(bytes, new JsonDocumentOptions { MaxDepth = 64 });
@@ -78,8 +78,18 @@ public static class MapSupportResourceFile
             MapPrefabJson.Write(w, resource.References.OrderBy(s => s.Path, StringComparer.Ordinal).ToArray());
             w.WriteEndObject();
         }
-        if (stream.Length > MapPrefabJson.Limits.MaxPayloadBytes) throw new MapDocumentException("Support resource byte limit exceeded.");
+        RequirePayloadSize(stream.Length);
         return stream.ToArray();
+    }
+
+    // The same value-taking guard admits both actual byte counts and exact-cap fault tests without
+    // allocating a 256 MiB payload. It does not bypass serialization or change the read/write boundary.
+    internal static void RequirePayloadSize(long byteCount, string? resourceId = null)
+    {
+        long limit = MapPrefabJson.Limits.MaxPayloadBytes;
+        if (byteCount > limit)
+            throw new MapDocumentException(MapDocumentRefusal.WorkCapacityExceeded, "Support resource byte limit exceeded.")
+            { ResourceId = resourceId, Budget = "MaxPayloadBytes", ActualByteCount = byteCount, Limit = limit };
     }
 
     /// <summary>Payload, geometry and scope checks. Local references name this resource's own surfaces and records.</summary>
@@ -90,12 +100,25 @@ public static class MapSupportResourceFile
         if (resource.Surfaces is null || resource.References is null) throw new MapDocumentException(MapDocumentRefusal.SchemaValueRequired, "Support resource collections must not be null.")
         { ResourceId = resourceId, FieldPath = resource.Surfaces is null ? "$.surfaces" : "$.references" };
         var surfaces = new HashSet<string>(StringComparer.Ordinal);
+        int index = -1;
         foreach (MapSurfaceRef surface in resource.Surfaces.Refs)
         {
+            index++;
             if (surface is null || string.IsNullOrWhiteSpace(surface.Id) || !surfaces.Add(surface.Id))
-                throw new MapDocumentException("Support resource surfaces need distinct nonempty IDs.");
+                throw new MapDocumentException(surface is null || string.IsNullOrWhiteSpace(surface.Id)
+                    ? MapDocumentRefusal.SchemaValueRequired : MapDocumentRefusal.IdentityDuplicate,
+                    "Support resource surfaces need distinct nonempty IDs.")
+                { ResourceId = resourceId, SurfaceId = surface?.Id, Index = index, FieldPath = $"$.surfaces[{index}]" + (surface is null ? "" : ".id") };
             if (surface.Role != MapSurfaceRole.SupportFloor || surface.PresencePolicy != MapPresencePolicy.Native)
-                throw new MapDocumentException("Support resources declare native support floors only, without analytic terrain.");
+                throw new MapDocumentException(!Enum.IsDefined(surface.Role) || surface.Role == MapSurfaceRole.SupportFloor && !Enum.IsDefined(surface.PresencePolicy)
+                    ? MapDocumentRefusal.SchemaEnumUnsupported : MapDocumentRefusal.SurfaceSupportRoleInvalid,
+                    "Support resources declare native support floors only, without analytic terrain.")
+                {
+                    ResourceId = resourceId, SurfaceId = surface.Id, Index = index,
+                    FieldPath = $"$.surfaces[{index}]." + (surface.Role != MapSurfaceRole.SupportFloor ? "role" : "presencePolicy"),
+                    EnumType = surface.Role != MapSurfaceRole.SupportFloor ? typeof(MapSurfaceRole) : typeof(MapPresencePolicy),
+                    ActualInteger = surface.Role != MapSurfaceRole.SupportFloor ? (byte)surface.Role : (byte)surface.PresencePolicy,
+                };
             _ = surface.Frame.Corner(0, 0, 0);
         }
         var anchors = new Dictionary<string, MapPatchKey>(StringComparer.Ordinal);

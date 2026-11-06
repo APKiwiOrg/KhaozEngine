@@ -10,7 +10,7 @@ public static class MapSeamValidator
 {
     public static IReadOnlyList<string> Validate(MapSurfaceSeam seam, MapScopedSurfaces view) => Validate(seam, view, null);
 
-    // Typed findings are accumulated beside prose until the remaining edge and catch producers are converted.
+    // Typed findings remain beside prose until paint-priority admission completes the lower producers.
     internal static IReadOnlyList<string> Validate(MapSurfaceSeam seam, MapScopedSurfaces view, List<MapDocumentFinding>? typedFindings)
     {
         ArgumentNullException.ThrowIfNull(seam);
@@ -26,8 +26,8 @@ public static class MapSeamValidator
             if (second is null) Add(new(MapDocumentRefusal.PatchUnavailable, $"unresolved seam second patch '{seam.Second.Patch}'")
             { Patch = seam.Second.Patch, FieldPath = "Second.Patch" });
             if (first is null || second is null) return findings.AsReadOnly();
-            Dictionary<MapLatticeAddress, MapExactPoint> firstEdge = Edge(seam.First, first);
-            Dictionary<MapLatticeAddress, MapExactPoint> secondEdge = Edge(seam.Second, second);
+            Dictionary<MapLatticeAddress, MapExactPoint> firstEdge = Edge(seam.First, first, seam.Id, "First");
+            Dictionary<MapLatticeAddress, MapExactPoint> secondEdge = Edge(seam.Second, second, seam.Id, "Second");
             var firstPairs = new HashSet<MapLatticeAddress>();
             var secondPairs = new HashSet<MapLatticeAddress>();
             int index = -1;
@@ -77,22 +77,28 @@ public static class MapSeamValidator
         }
         catch (Exception error) when (error is MapExactOverflowException or OverflowException)
         {
-            findings.Add("seam geometry is not representable");
+            Add(new(MapDocumentRefusal.GeometryNotRepresentable, "seam geometry is not representable")
+            { Operation = nameof(Validate) });
         }
         catch (MapDocumentException error)
         {
-            findings.Add(error.Message);
+            if (MapDocumentFinding.FromException(error) is { } finding) Add(finding);
+            else findings.Add(error.Message); // Paint-priority admission is converted with its producer.
         }
         return findings.AsReadOnly();
 
         void Add(MapDocumentFinding finding)
         {
             findings.Add(finding.Message);
-            typedFindings?.Add(finding with { RecordId = seam.Id });
+            typedFindings?.Add(finding with { RecordId = finding.RecordId ?? seam.Id });
         }
     }
 
-    public static IReadOnlyList<string> ValidateCornerDependencies(MapSurfacePatch patch, MapScopedSurfaces view)
+    public static IReadOnlyList<string> ValidateCornerDependencies(MapSurfacePatch patch, MapScopedSurfaces view) =>
+        ValidateCornerDependencies(patch, view, null);
+
+    internal static IReadOnlyList<string> ValidateCornerDependencies(MapSurfacePatch patch, MapScopedSurfaces view,
+        List<MapDocumentFinding>? typedFindings)
     {
         ArgumentNullException.ThrowIfNull(patch);
         ArgumentNullException.ThrowIfNull(view);
@@ -100,12 +106,19 @@ public static class MapSeamValidator
         try
         {
             MapSurfaceRef? surface = MapBoundaryGeometry.Surface(view, patch.Key.SurfaceId);
-            if (surface is null) return Array.AsReadOnly(new[] { "unresolved dependent surface" });
+            if (surface is null)
+            {
+                Add(new(MapDocumentRefusal.ReferenceMissing, "unresolved dependent surface")
+                { Patch = patch.Key, SurfaceId = patch.Key.SurfaceId, FieldPath = "Key.SurfaceId" });
+                return findings.AsReadOnly();
+            }
             MapSurfaceCompiler.Validate(surface, patch);
             var builder = new MapSurfaceVertexBuilder(surface, patch, MapSurfaceCompiler.Anchor(surface, patch));
             var owners = new Dictionary<MapPatchKey, MapBoundarySurface?>();
+            int index = -1;
             foreach (MapCornerDependency dependency in patch.CornerDependencies)
             {
+                index++;
                 if (!owners.TryGetValue(dependency.Owner.Patch, out MapBoundarySurface? owner))
                 {
                     owner = MapBoundaryGeometry.Read(dependency.Owner.Patch, view, out _);
@@ -113,42 +126,69 @@ public static class MapSeamValidator
                 }
                 if (owner is null)
                 {
-                    findings.Add($"unresolved corner owner patch '{dependency.Owner.Patch}'");
+                    Add(new(MapDocumentRefusal.PatchUnavailable, $"unresolved corner owner patch '{dependency.Owner.Patch}'")
+                    { Patch = patch.Key, ExpectedPatch = dependency.Owner.Patch, Address = dependency.Owner.Address, Index = index });
                     continue;
                 }
                 MapExactPoint dependent = builder.Point(dependency.CornerX, dependency.CornerZ, MapLatticePoint.Sw).Exact;
                 MapExactXz ownerPosition = owner.Surface.Frame.WorldXz(dependency.Owner.Address);
                 if (dependent.X != ownerPosition.X || dependent.Z != ownerPosition.Z)
-                    findings.Add("corner dependency position: dependent and owner disagree in world XZ");
+                    Add(new(MapDocumentRefusal.SurfaceSeamPositionMismatch, "corner dependency position: dependent and owner disagree in world XZ")
+                    {
+                        Patch = patch.Key, ExpectedPatch = dependency.Owner.Patch, Address = dependency.Owner.Address,
+                        Index = index, CellX = dependency.CornerX, CellZ = dependency.CornerZ,
+                    });
                 if (!owner.Vertices.TryGetValue(dependency.Owner.Address, out MapExactPoint ownerPoint))
-                    findings.Add("corner dependency owner: address is not a declared surface vertex");
+                    Add(new(MapDocumentRefusal.SurfaceSeamVertexUndeclared, "corner dependency owner: address is not a declared surface vertex")
+                    { Patch = patch.Key, ExpectedPatch = dependency.Owner.Patch, Address = dependency.Owner.Address, Index = index });
                 else if (dependent.Y != ownerPoint.Y)
-                    findings.Add("corner dependency owner: exact height disagrees");
+                    Add(new(MapDocumentRefusal.GeometryVertexHeightMismatch, "corner dependency owner: exact height disagrees")
+                    { Patch = patch.Key, ExpectedPatch = dependency.Owner.Patch, Address = dependency.Owner.Address, Index = index });
             }
         }
         catch (Exception error) when (error is MapExactOverflowException or OverflowException)
         {
-            findings.Add("corner dependency geometry is not representable");
+            Add(new(MapDocumentRefusal.GeometryNotRepresentable, "corner dependency geometry is not representable")
+            { Patch = patch.Key, Operation = nameof(ValidateCornerDependencies) });
         }
         catch (MapDocumentException error)
         {
-            findings.Add(error.Message);
+            if (MapDocumentFinding.FromException(error) is { } finding) Add(finding);
+            else findings.Add(error.Message); // Paint-priority admission is converted with its producer.
         }
         return findings.AsReadOnly();
+
+        void Add(MapDocumentFinding finding)
+        {
+            findings.Add(finding.Message);
+            typedFindings?.Add(finding);
+        }
     }
 
-    static Dictionary<MapLatticeAddress, MapExactPoint> Edge(MapSurfaceEdgeRef edge, MapBoundarySurface source)
+    static Dictionary<MapLatticeAddress, MapExactPoint> Edge(MapSurfaceEdgeRef edge, MapBoundarySurface source,
+        string seamId, string side)
     {
         if (edge.From.SurfaceId != source.Surface.Id || edge.To.SurfaceId != source.Surface.Id)
-            throw new MapDocumentException("seam position: edge surface mismatch");
+            throw new MapDocumentException(MapDocumentRefusal.AuthoredValueMismatch, "seam position: edge surface mismatch")
+            {
+                RecordId = seamId, Patch = edge.Patch,
+                SurfaceId = edge.From.SurfaceId != source.Surface.Id ? edge.From.SurfaceId : edge.To.SurfaceId,
+                FieldPath = side + (edge.From.SurfaceId != source.Surface.Id ? ".From.SurfaceId" : ".To.SurfaceId"),
+            };
         MapExactXz from = source.Surface.Frame.WorldXz(edge.From.Address);
         MapExactXz to = source.Surface.Frame.WorldXz(edge.To.Address);
         if (from == to || (from.X != to.X && from.Z != to.Z))
-            throw new MapDocumentException("seam position: edge must be a nonzero lattice edge");
+            throw new MapDocumentException(MapDocumentRefusal.SurfaceSeamEdgeInvalid, "seam position: edge must be a nonzero lattice edge")
+            { RecordId = seamId, Patch = edge.Patch, SurfaceId = source.Surface.Id, FieldPath = side };
         var vertices = source.Vertices.Where(vertex => OnEdge(vertex.Value, from, to))
             .ToDictionary(vertex => vertex.Key, vertex => vertex.Value);
-        if (!vertices.ContainsKey(edge.From.Address) || !vertices.ContainsKey(edge.To.Address))
-            throw new MapDocumentException("seam subdivide: edge endpoints must be declared surface vertices");
+        bool missingFrom = !vertices.ContainsKey(edge.From.Address);
+        if (missingFrom || !vertices.ContainsKey(edge.To.Address))
+            throw new MapDocumentException(MapDocumentRefusal.SurfaceSeamVertexUndeclared, "seam subdivide: edge endpoints must be declared surface vertices")
+            {
+                RecordId = seamId, Patch = edge.Patch, SurfaceId = source.Surface.Id,
+                Address = missingFrom ? edge.From.Address : edge.To.Address, FieldPath = side + (missingFrom ? ".From" : ".To"),
+            };
         return vertices;
     }
 

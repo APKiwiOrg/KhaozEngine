@@ -132,9 +132,16 @@ public sealed class BoundaryContractTests
     {
         var (view, _, dependent) = UnavailableSource(status);
 
-        string finding = Assert.Single(MapSeamValidator.ValidateCornerDependencies(dependent, view));
+        var typed = new List<MapDocumentFinding>();
+        string finding = Assert.Single(MapSeamValidator.ValidateCornerDependencies(dependent, view, typed));
 
         Assert.Contains("unresolved corner owner patch", finding);
+        var refusal = Assert.Single(typed);
+        Assert.Equal(MapDocumentRefusal.PatchUnavailable, refusal.Reason);
+        Assert.Equal(dependent.Key, refusal.Patch);
+        Assert.Equal(dependent.CornerDependencies[0].Owner.Patch, refusal.ExpectedPatch);
+        var (repaired, _, repairedDependent) = UnavailableSource(status, ownerAvailable: true);
+        Assert.Empty(MapSeamValidator.ValidateCornerDependencies(repairedDependent, repaired));
     }
 
     [Theory]
@@ -265,7 +272,7 @@ public sealed class BoundaryContractTests
                 }
     }
 
-    static (MapScopedSurfaces View, MapBoundaryChain Chain, MapSurfacePatch Dependent) UnavailableSource(MapPatchStatus status)
+    static (MapScopedSurfaces View, MapBoundaryChain Chain, MapSurfacePatch Dependent) UnavailableSource(MapPatchStatus status, bool ownerAvailable = false)
     {
         var (surface, source) = CompilerFixtures.OneCell(101, 239, 367, 503, CompilerFixtures.Full);
         var chain = new MapBoundaryChain("rim", MapChainKind.SurfaceEdge, source.Key, new[]
@@ -279,6 +286,7 @@ public sealed class BoundaryContractTests
         dependent.CellMinX = 63;
         dependent.CornerDependencies.Add(new(1, 0, new(source.Key, MapLatticeAddress.Corner(0, 0))));
         AssertValid(new[] { surface }, source, dependent);
+        if (ownerAvailable) return (CompleteView(new[] { surface }, source, dependent), chain, dependent);
         MapDocument doc = AcquisitionBoundFixtures.Document();
         doc.Surfaces.Refs.Add(surface);
         doc.Surfaces.Patches.Add(source.Key, source);

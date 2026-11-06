@@ -12817,12 +12817,19 @@ The topology producer is complete. Broader adapters still wait for their other f
 Opening compilation carries the actual ownership, cardinality, slot range, patch address, duplicate or
 presence rule, retaining the opening identity and selected cell. Its exact geometry failures retain the
 opening and patch. Seam validation accumulates typed pair and patch findings internally beside its
-unchanged public string result while the remaining edge, corner and catch producers await conversion.
+unchanged public string result. Edge and corner findings preserve the exact lower reason, both the
+dependent `Patch` and requested owner `ExpectedPatch` when relevant, and the offending address.
+The public typed projection still waits for the paint-priority guard's producer conversion.
 A mismatching pair surface reuses `AuthoredValueMismatch`, with the submitted surface and declared edge
 patch. Pair alignment uses `SurfaceSeamPositionMismatch`, undeclared vertices use
 `SurfaceSeamVertexUndeclared`, height disagreement uses `GeometryVertexHeightMismatch`, and incomplete
 edge coverage uses `GeometryVertexSequenceInvalid` with actual and expected vertex counts. These findings
-retain the seam record and the relevant pair index or address.
+retain the seam record and the relevant pair index or address. Collapsed or diagonal source edges use
+`SurfaceSeamEdgeInvalid`, and edge surface mismatches reuse `AuthoredValueMismatch`.
+Support resource read and write size checks carry `WorkCapacityExceeded`, `Budget = "MaxPayloadBytes"`,
+`ActualByteCount` and `Limit`. Surface identities distinguish required values and duplicates. Defined role
+or presence values outside native support floors use `SurfaceSupportRoleInvalid`, while undefined values
+use `SchemaEnumUnsupported` with their enum type and value. Both retain the surface index and failed field.
 
 Native metadata adds typed findings beside its unchanged string diagnostics. Compound findings select
 the first failing predicate branch. Missing asset-reference and indoor-span values use `SchemaValueRequired`, nonfinite

@@ -195,7 +195,7 @@ public enum MapDocumentRefusal
     /// <summary>Refuses a vertex sequence lacking the required ordered correspondence or cardinality.</summary>
     GeometryVertexSequenceInvalid,
 
-    // Surface compilation and frame emission.
+    // Surface geometry and payload admission.
     /// <summary>Refuses different exact heights for a shared surface vertex.</summary>
     GeometryVertexHeightMismatch,
     /// <summary>Refuses geometry outside the local frame radius or its checked anchor domain.</summary>
@@ -208,10 +208,14 @@ public enum MapDocumentRefusal
     SurfacePaintPhysicalCompileUnsupported,
     /// <summary>Refuses legacy NoDraw flags on a native surface cell.</summary>
     SurfaceNativeNoDrawUnsupported,
-    /// <summary>Refuses seam pairs at different exact world positions.</summary>
+    /// <summary>Refuses paired boundary or corner vertices at different exact world positions.</summary>
     SurfaceSeamPositionMismatch,
-    /// <summary>Refuses a seam vertex absent from its declared source edge.</summary>
+    /// <summary>Refuses a seam or corner vertex absent from its declared source geometry.</summary>
     SurfaceSeamVertexUndeclared,
+    /// <summary>Refuses a collapsed or non-axis-aligned seam source edge.</summary>
+    SurfaceSeamEdgeInvalid,
+    /// <summary>Refuses a support resource surface outside the native support-floor policy.</summary>
+    SurfaceSupportRoleInvalid,
 
     // Scoped acquisition producer admission.
     /// <summary>Refuses acquisition facts differing from the session's captured snapshot.</summary>

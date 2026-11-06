@@ -384,12 +384,16 @@ namespace KhaozEngine.Tests.MapEditTool
                 // Both the shape and the layer filter change in one call, and the layer filter is invalid: the
                 // whole edit (one sealed gesture, two commands) must revert together, leaving the document
                 // byte-for-byte unchanged, not just the values half.
-                InvalidOperationException ex = Assert.Throws<InvalidOperationException>(() =>
+                var ex = Assert.Throws<MapMutationException>(() =>
                     mutation.ScatterOverrideEdit(index, shapeJson: CoverRectJson, layers: new[] { "ghost" }));
 
-                Assert.Contains("unknown scatter layer 'ghost'", ex.Message);
+                Assert.Equal(MapDocumentRefusal.ReferenceMissing, ex.Reason);
+                Assert.Equal("ghost", ex.LayerId);
+                Assert.Equal(index, ex.Index);
+                Assert.Single(ex.Findings!);
                 Assert.Equal(before, session.WithDocument((doc, r) => MapDocumentFile.SaveText(doc, r)));
                 Assert.Equal(dirtyBefore, session.IsDirty);
+                mutation.ScatterOverrideEdit(index, shapeJson: CoverRectJson, layers: new[] { "trees" });
             }
             finally { Directory.Delete(dir, recursive: true); }
         }

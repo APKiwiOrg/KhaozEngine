@@ -327,7 +327,8 @@ public sealed partial class MutationService(MapEditSession session)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(layerName);
         if (biome is null && density is null && kinds is null)
-            throw new ArgumentException("scatter_rule_edit needs at least one field to change.");
+            throw new MapMutationArgumentException(MapDocumentRefusal.ToolMutationEmpty, "scatter_rule_edit needs at least one field to change.")
+            { Operation = "scatter_rule_edit", LayerId = layerName, Index = ruleIndex };
         BiomeId? parsedBiome = biome is null ? null : ParseBiome(biome);
 
         MutationResult result = Apply((doc, _) =>
@@ -432,7 +433,8 @@ public sealed partial class MutationService(MapEditSession session)
         return Apply((doc, _) =>
         {
             MapCompanionLayer old = doc.CompanionLayers.FirstOrDefault(l => string.Equals(l.Name, name, StringComparison.Ordinal))
-                ?? throw new InvalidOperationException($"No companion layer named '{name}' in the document.");
+                ?? throw new MapMutationException(MapDocumentRefusal.ReferenceMissing, $"No companion layer named '{name}' in the document.")
+                { DocumentId = doc.Id, EntityId = name, SubjectKind = "companion layer", FieldPath = "CompanionLayers", LayerId = name };
             var newValue = new MapCompanionLayer
             {
                 Name = old.Name,
@@ -590,7 +592,8 @@ public sealed partial class MutationService(MapEditSession session)
             RequireIndexInRange(index, doc.Exclusions.Count, "exclusion", nameof(index));
             MapShapeDoc newShape = DocJson.ParseShape(shapeJson, registry);
             MapShapeDoc old = doc.Exclusions[index].Shape
-                ?? throw new InvalidOperationException($"exclusion at index {index} has no shape to edit.");
+                ?? throw new MapMutationException(MapDocumentRefusal.SchemaValueRequired, $"exclusion at index {index} has no shape to edit.")
+                { DocumentId = doc.Id, Index = index, SubjectKind = "exclusion", FieldPath = "Exclusions.Shape" };
             return new EditExclusionShapeCommand(index, newShape, old);
         }, "exclusion_edit", _ => $"edited exclusion shape at index {index}", worldChanged: true);
         return result with { Index = index };
@@ -696,8 +699,9 @@ public sealed partial class MutationService(MapEditSession session)
 
             EditScatterOverrideShapeCommand? shapeCommand = shapeJson is null ? null
                 : new EditScatterOverrideShapeCommand(index, DocJson.ParseShape(shapeJson, registry),
-                    old.Shape ?? throw new InvalidOperationException(
-                        $"scatter override at index {index} has no shape to edit."));
+                    old.Shape ?? throw new MapMutationException(MapDocumentRefusal.SchemaValueRequired,
+                        $"scatter override at index {index} has no shape to edit.")
+                    { DocumentId = doc.Id, Index = index, SubjectKind = "scatter override", FieldPath = "ScatterOverrides.Shape" });
 
             EditScatterOverrideValuesCommand? valuesCommand =
                 densityMultiplier is null && kinds is null && layers is null ? null
@@ -713,12 +717,12 @@ public sealed partial class MutationService(MapEditSession session)
             valuesCommand?.Apply(doc);
             shapeCommand?.Apply(doc);
 
-            IReadOnlyList<string> errors = MapDocumentValidator.Validate(doc, registry);
+            IReadOnlyList<MapDocumentFinding> errors = MapDocumentValidator.ValidateFindings(doc, registry);
             if (errors.Count > 0)
             {
                 shapeCommand?.Revert(doc);
                 valuesCommand?.Revert(doc);
-                throw new InvalidOperationException("mutation rejected: " + string.Join("; ", errors));
+                throw MapMutationException.FromFindings(errors, "mutation rejected: " + string.Join("; ", errors.Select(e => e.Message)));
             }
 
             return new MutationResult("scatter_override_edit", $"edited scatter override at index {index}",
@@ -800,11 +804,11 @@ public sealed partial class MutationService(MapEditSession session)
 
             command.Apply(doc);   // throws MapDocumentException for an unknown layer, before it mutates anything
 
-            IReadOnlyList<string> errors = MapDocumentValidator.Validate(doc, registry);
+            IReadOnlyList<MapDocumentFinding> errors = MapDocumentValidator.ValidateFindings(doc, registry);
             if (errors.Count > 0)
             {
                 command.Revert(doc);
-                throw new InvalidOperationException("mutation rejected: " + string.Join("; ", errors));
+                throw MapMutationException.FromFindings(errors, "mutation rejected: " + string.Join("; ", errors.Select(e => e.Message)));
             }
 
             List<string> bakedIds = doc.Placements.Select(p => p.Id).Where(id => !before.Contains(id)).ToList();
@@ -853,9 +857,11 @@ public sealed partial class MutationService(MapEditSession session)
             "exclusion" => DuplicateExclusion(RequireIndex(kind, id, index)),
             "scatter_override" => DuplicateScatterOverride(RequireIndex(kind, id, index)),
             "biome_band" => DuplicateBiomeBand(RequireIndex(kind, id, index)),
-            _ => throw new ArgumentException(
+            _ => throw new MapMutationArgumentException(MapDocumentRefusal.SchemaEnumUnsupported,
                 $"Unknown element kind '{kind}'. Valid kinds: placement, spawn, player_spawn, feature, " +
-                "exclusion, scatter_override, region, biome_band, scatter_layer, companion_layer.", nameof(kind)),
+                "exclusion, scatter_override, region, biome_band, scatter_layer, companion_layer.", nameof(kind))
+            { FieldPath = "kind", SubmittedText = kind, AcceptedValues = ["placement", "spawn", "player_spawn", "feature",
+                "exclusion", "scatter_override", "region", "biome_band", "scatter_layer", "companion_layer"] },
         };
     }
 
@@ -885,7 +891,8 @@ public sealed partial class MutationService(MapEditSession session)
         MutationResult result = Apply((doc, _) =>
         {
             MapSpawn source = doc.Spawns.FirstOrDefault(s => string.Equals(s.Id, id, StringComparison.Ordinal))
-                ?? throw new InvalidOperationException($"No spawn with id '{id}' in the document.");
+                ?? throw new MapMutationException(MapDocumentRefusal.ReferenceMissing, $"No spawn with id '{id}' in the document.")
+                { DocumentId = doc.Id, EntityId = id, SubjectKind = "spawn", FieldPath = "Spawns" };
             newId = UniqueDuplicateName("spawn",
                 n => doc.Spawns.Any(s => string.Equals(s.Id, n, StringComparison.Ordinal)));
             return new AddSpawnCommand(new MapSpawn
@@ -907,7 +914,8 @@ public sealed partial class MutationService(MapEditSession session)
         MutationResult result = Apply((doc, _) =>
         {
             MapPlayerSpawn source = doc.PlayerSpawns.FirstOrDefault(s => string.Equals(s.Id, id, StringComparison.Ordinal))
-                ?? throw new InvalidOperationException($"No player spawn with id '{id}' in the document.");
+                ?? throw new MapMutationException(MapDocumentRefusal.ReferenceMissing, $"No player spawn with id '{id}' in the document.")
+                { DocumentId = doc.Id, EntityId = id, SubjectKind = "player spawn", FieldPath = "PlayerSpawns" };
             newId = UniqueDuplicateName("player",
                 n => doc.PlayerSpawns.Any(s => string.Equals(s.Id, n, StringComparison.Ordinal)));
             // AddPlayerSpawnCommand deep-copies at construction (a fresh Tags list), the same behavior the GUI's
@@ -931,7 +939,8 @@ public sealed partial class MutationService(MapEditSession session)
         MutationResult result = Apply((doc, _) =>
         {
             MapRegion source = doc.Regions.FirstOrDefault(r => string.Equals(r.Name, name, StringComparison.Ordinal))
-                ?? throw new InvalidOperationException($"No region named '{name}' in the document.");
+                ?? throw new MapMutationException(MapDocumentRefusal.ReferenceMissing, $"No region named '{name}' in the document.")
+                { DocumentId = doc.Id, EntityId = name, SubjectKind = "region", FieldPath = "Regions" };
             // A region's Name IS its identity, always set and always unique, so the duplicate takes a fresh
             // generated name exactly like a freshly drawn region rather than deriving one from the source name
             // (mirrors the GUI's own region duplicate).
@@ -971,7 +980,8 @@ public sealed partial class MutationService(MapEditSession session)
         MutationResult result = Apply((doc, _) =>
         {
             MapCompanionLayer source = doc.CompanionLayers.FirstOrDefault(l => string.Equals(l.Name, name, StringComparison.Ordinal))
-                ?? throw new InvalidOperationException($"No companion layer named '{name}' in the document.");
+                ?? throw new MapMutationException(MapDocumentRefusal.ReferenceMissing, $"No companion layer named '{name}' in the document.")
+                { DocumentId = doc.Id, EntityId = name, SubjectKind = "companion layer", FieldPath = "CompanionLayers", LayerId = name };
             MapCompanionLayer clone = MapEditorScene.CloneCompanionLayer(source);
             cloneName = UniqueDuplicateName(name + "-copy",
                 n => doc.CompanionLayers.Any(l => string.Equals(l.Name, n, StringComparison.Ordinal)));
@@ -994,11 +1004,7 @@ public sealed partial class MutationService(MapEditSession session)
             // discriminators, so an unregistered type fails to parse or load before a session could ever hold
             // one), but the guard stays so a future registry extension still fails clean instead of silently
             // adding an un-offset clone.
-            if (FeatureGeometry.Translated(source, DuplicateOffset, DuplicateOffset) is not { } clone)
-            {
-                throw new InvalidOperationException(
-                    $"feature at index {index} (type '{source.Type}') cannot be duplicated: its type has no known offset.");
-            }
+            MapFeature clone = TranslateDuplicateFeature(source, index, doc.Id);
             // A feature Name is optional and unique-when-set, but AddFeatureCommand carries no add-time guard for
             // that, so a straight clone of a named feature would silently collide. Uniquify it. An unnamed
             // feature's null Name carries no key to collide on and needs no change.
@@ -1133,19 +1139,23 @@ public sealed partial class MutationService(MapEditSession session)
     static List<MapPropKind> ParseKinds(IReadOnlyList<string> kinds)
     {
         var result = new List<MapPropKind>(kinds.Count);
+        int index = -1;
         foreach (string entry in kinds)
         {
+            index++;
             int colon = entry.LastIndexOf(':');
             string id = colon < 0 ? entry : entry[..colon];
             if (string.IsNullOrWhiteSpace(id))
-                throw new ArgumentException($"scatter kind '{entry}': id must be non-empty.");
+                throw new MapMutationArgumentException(MapDocumentRefusal.SchemaValueRequired, $"scatter kind '{entry}': id must be non-empty.")
+                { FieldPath = "Kinds.Id", SubmittedText = entry, Index = index };
 
             float weight = 1f;
             if (colon >= 0)
             {
                 string weightText = entry[(colon + 1)..];
                 if (!float.TryParse(weightText, NumberStyles.Float, CultureInfo.InvariantCulture, out weight))
-                    throw new ArgumentException($"scatter kind '{entry}': weight '{weightText}' is not a number.");
+                    throw new MapMutationArgumentException(MapDocumentRefusal.SchemaMalformed, $"scatter kind '{entry}': weight '{weightText}' is not a number.")
+                    { FieldPath = "Kinds.Weight", SubmittedText = entry, Index = index };
             }
             result.Add(new MapPropKind { Id = id, Weight = weight });
         }
@@ -1158,9 +1168,10 @@ public sealed partial class MutationService(MapEditSession session)
     static BiomeId ParseBiome(string biome)
     {
         if (Enum.TryParse(biome, ignoreCase: true, out BiomeId parsed)) return parsed;
-        throw new ArgumentException(
+        throw new MapMutationArgumentException(MapDocumentRefusal.SchemaEnumUnsupported,
             $"biome '{biome}' is not a recognized BiomeId. Valid values: {string.Join(", ", Enum.GetNames<BiomeId>())}.",
-            nameof(biome));
+            nameof(biome))
+        { FieldPath = "biome", SubmittedText = biome, EnumType = typeof(BiomeId), AcceptedValues = Enum.GetNames<BiomeId>() };
     }
 
     /// <summary>Deep-clones a scatter kind list (each <see cref="MapPropKind"/> copied, not shared), the
@@ -1194,7 +1205,8 @@ public sealed partial class MutationService(MapEditSession session)
     /// <see cref="ScatterLayerEdit"/> uses when no layer carries that name.</summary>
     static MapScatterLayer FindScatterLayer(MapDocument doc, string name) =>
         doc.ScatterLayers.FirstOrDefault(l => string.Equals(l.Name, name, StringComparison.Ordinal))
-            ?? throw new InvalidOperationException($"No scatter layer named '{name}' in the document.");
+            ?? throw new MapMutationException(MapDocumentRefusal.ReferenceMissing, $"No scatter layer named '{name}' in the document.")
+                { DocumentId = doc.Id, EntityId = name, SubjectKind = "scatter layer", FieldPath = "ScatterLayers", LayerId = name };
 
     /// <summary>Builds a fresh <see cref="MapScatterLayer"/> carrying <paramref name="old"/>'s scalars and
     /// <paramref name="rules"/> as its Rules, the whole-value copy the <see cref="ScatterRuleAdd"/>/

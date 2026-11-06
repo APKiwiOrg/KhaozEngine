@@ -332,13 +332,20 @@ namespace KhaozEngine.Tests.MapEditTool
                 (MapEditSession session, MutationService mutation) = OpenSample(dir);
                 string before = session.WithDocument((doc, r) => MapDocumentFile.SaveText(doc, r));
 
-                ArgumentException unknownKind = Assert.Throws<ArgumentException>(() =>
+                var unknownKind = Assert.Throws<MapMutationArgumentException>(() =>
                     mutation.ElementDuplicate("waypoint", id: "inn"));
                 Assert.Equal("kind", unknownKind.ParamName);
+                Assert.IsAssignableFrom<ArgumentException>(unknownKind);
+                Assert.Equal(MapDocumentRefusal.SchemaEnumUnsupported, unknownKind.Reason);
+                Assert.Equal("waypoint", unknownKind.SubmittedText);
+                Assert.Equal(new[] { "placement", "spawn", "player_spawn", "feature", "exclusion", "scatter_override", "region",
+                    "biome_band", "scatter_layer", "companion_layer" }, unknownKind.AcceptedValues);
 
-                ArgumentException terrainKind = Assert.Throws<ArgumentException>(() =>
+                var terrainKind = Assert.Throws<MapMutationArgumentException>(() =>
                     mutation.ElementDuplicate("terrain", id: "anything"));
                 Assert.Equal("kind", terrainKind.ParamName);
+                Assert.Equal(MapDocumentRefusal.SchemaEnumUnsupported, terrainKind.Reason);
+                Assert.Equal("terrain", terrainKind.SubmittedText);
 
                 ArgumentException missingId = Assert.Throws<ArgumentException>(() =>
                     mutation.ElementDuplicate("placement"));

@@ -15767,14 +15767,20 @@ world-affecting mutation (terrain features, terrain globals, exclusions, scatter
 `map_create`) replaces whatever was open, with no dirty guard, since the git diff is the safety net and
 `map_summary` reports the dirty flag. Every mutation validates before it lands
 (`MapDocumentValidator`, then a schema check on save) and reverts on failure, so the in-session document is never left invalid. The shared mutation adapters and
-`TerrainEdit` throw `MapMutationException`, preserving the original `InvalidOperationException` catch contract.
+`TerrainEdit`, scatter override edits, bake, freeze and sculpt dabs throw `MapMutationException`, preserving the
+original `InvalidOperationException` catch contract.
 `Reason` is the first producer reason and `Findings` retains the complete ordered immutable snapshot and typed
-context. Direct region, scatter-layer and duplicate-placement lookups use `ReferenceMissing` with the subject
-identity, while a missing region shape uses `SchemaValueRequired`. Specialized callback adapters retain their
-existing exception base until their own conversion completes.
+context. Direct region, scatter-layer, companion-layer and duplicate-source lookups use `ReferenceMissing`
+with the subject identity. Missing edited region, exclusion and scatter override shapes use
+`SchemaValueRequired` with `FieldPath` and the known identity or index. A feature without a duplicate
+translation uses `ToolFeatureTranslationUnsupported`, retaining `Index`, `FeatureType` and `Operation`.
 
-An empty `terrain_edit` uses `MapMutationArgumentException` and `ToolMutationEmpty`, retaining `Operation` and
-the original null `ParamName`. A null decoded feature or shape uses `MapToolJsonException`,
+An empty `terrain_edit` or `scatter_rule_edit` uses `MapMutationArgumentException` and `ToolMutationEmpty`,
+retaining `Operation`, the known layer and rule index, and the original null `ParamName`. Unknown duplicate
+kinds and biome names use `SchemaEnumUnsupported`, with `SubmittedText`, owned read-only `AcceptedValues`,
+`EnumType` for biomes and the original `ParamName`. Empty scatter kind IDs use `SchemaValueRequired`, while
+unparseable weights use `SchemaMalformed`, both carrying the input `Index`, `FieldPath` and `SubmittedText`.
+A null decoded feature or shape uses `MapToolJsonException`,
 `SchemaValueRequired`, root `FieldPath` and `SubjectKind`, still catchable through `JsonException`.
 Foliage dry runs distinguish unsupported edit kinds (`FoliagePreviewEditUnsupported`, `EditType`) from new
 layers (`FoliagePreviewLayerNew`, `LayerId`). Missing or non-object foliage JSON parameters use

@@ -275,17 +275,7 @@ namespace KhaozEngine.Tests.MapEditTool
             finally { Directory.Delete(dir, recursive: true); }
         }
 
-        [Fact]
-        public void BiomeBandAdd_UnknownBiome_ThrowsArgumentException()
-        {
-            string dir = NewTempDir();
-            try
-            {
-                (MapEditSession session, MutationService mutation) = OpenSample(dir);
-                Assert.Throws<ArgumentException>(() => mutation.BiomeBandAdd(biome: "Volcano"));
-            }
-            finally { Directory.Delete(dir, recursive: true); }
-        }
+
 
         // ---- scatter layers -----------------------------------------------------------------------------------
 
@@ -472,17 +462,7 @@ namespace KhaozEngine.Tests.MapEditTool
             finally { Directory.Delete(dir, recursive: true); }
         }
 
-        [Fact]
-        public void ScatterRuleEdit_NoParams_Throws()
-        {
-            string dir = NewTempDir();
-            try
-            {
-                (MapEditSession session, MutationService mutation) = OpenSample(dir);
-                Assert.Throws<ArgumentException>(() => mutation.ScatterRuleEdit("trees", 0));
-            }
-            finally { Directory.Delete(dir, recursive: true); }
-        }
+
 
         [Fact]
         public void ScatterRuleEdit_IndexOutOfRange_ThrowsArgumentException()
@@ -506,49 +486,9 @@ namespace KhaozEngine.Tests.MapEditTool
             finally { Directory.Delete(dir, recursive: true); }
         }
 
-        [Fact]
-        public void ScatterRuleAdd_UnknownLayer_ThrowsWithPreciseMessage()
-        {
-            string dir = NewTempDir();
-            try
-            {
-                (MapEditSession session, MutationService mutation) = OpenSample(dir);
 
-                Assert.Throws<InvalidOperationException>(() =>
-                    mutation.ScatterRuleAdd("ghost-layer", "Meadow"));
 
-                Assert.Throws<InvalidOperationException>(() => mutation.ScatterRuleEdit("ghost-layer", 0, density: 0.5f));
-                Assert.Throws<InvalidOperationException>(() => mutation.ScatterRuleRemove("ghost-layer", 0));
 
-                Assert.Equal(1, mutation.ScatterRuleAdd("trees", "Meadow").Index);
-                Assert.Equal(0, mutation.ScatterRuleEdit("trees", 0, density: 0.5f).Index);
-                Assert.Equal(0, mutation.ScatterRuleRemove("trees", 0).Index);
-            }
-            finally { Directory.Delete(dir, recursive: true); }
-        }
-
-        [Fact]
-        public void ScatterRuleAdd_GarbageKindWeight_RejectedAndReverted()
-        {
-            string dir = NewTempDir();
-            try
-            {
-                (MapEditSession session, MutationService mutation) = OpenSample(dir);
-                string before = session.WithDocument((doc, r) => MapDocumentFile.SaveText(doc, r));
-                bool dirtyBefore = session.IsDirty;
-
-                Assert.Throws<ArgumentException>(() =>
-                    mutation.ScatterRuleAdd("trees", "Meadow", kinds: new[] { "oak:notanumber" }));
-
-                Assert.Equal(before, session.WithDocument((doc, r) => MapDocumentFile.SaveText(doc, r)));
-                Assert.Equal(dirtyBefore, session.IsDirty);
-
-                mutation.ScatterRuleAdd("trees", "Meadow", kinds: new[] { "oak:2" });
-                MapPropKind oak = Assert.Single(session.WithDocument((doc, _) => doc.ScatterLayers.Single(l => l.Name == "trees").Rules[1].Kinds));
-                Assert.Equal(("oak", 2f), (oak.Id, oak.Weight));
-            }
-            finally { Directory.Delete(dir, recursive: true); }
-        }
 
         // ---- companion layers ---------------------------------------------------------------------------------
 

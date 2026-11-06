@@ -328,19 +328,22 @@ placement ID rename R10, actual import/source acceptance R11/G2 and appearance R
 
 ## Mutation and JSON refusals
 
-The shared `Apply` overloads and `TerrainEdit` validate through `MapDocumentValidator.ValidateFindings`.
+The shared `Apply` overloads, `TerrainEdit`, scatter override edits, bake, freeze and sculpt dabs validate through
+`MapDocumentValidator.ValidateFindings`.
 Their `MapMutationException` derives from the original `InvalidOperationException` and takes `Reason` from the
 first finding. `Findings` is an owned read-only snapshot of every finding in producer order, retaining each
 finding's complete typed context. `EntityId`, `SubjectKind`, `FieldPath`, `LayerId`, `PlacementId` and `Index`
 also expose the first finding's corresponding values. Rejected commands revert before the exception escapes.
-Direct missing region, scatter-layer and duplicate-placement lookups use the same carrier with
-`ReferenceMissing`. An absent region shape instead uses `SchemaValueRequired`. These direct guards carry the
-known `DocumentId` and entity or placement identity. Later specialized callback adapters keep their current
-exception base until their own conversion completes.
+Direct missing region, scatter-layer, companion-layer and duplicate-source lookups use the same carrier with
+`ReferenceMissing`. An absent edited region, exclusion or scatter override shape instead uses
+`SchemaValueRequired`. These direct guards carry the known `DocumentId`, identity or index and `FieldPath`.
 
 | Carrier and reason | Refused rule | Identifiers |
 | --- | --- | --- |
-| `MapMutationArgumentException.ToolMutationEmpty` | `terrain_edit` without any supplied field | `Operation`, original null `ParamName` |
+| `MapMutationArgumentException.ToolMutationEmpty` | `terrain_edit` or `scatter_rule_edit` without any supplied field | `Operation`, known `LayerId` and `Index`, original null `ParamName` |
+| `MapMutationArgumentException.SchemaEnumUnsupported` | An unknown duplicate kind or biome name | `SubmittedText`, owned read-only `AcceptedValues`, `EnumType` for biomes, original `ParamName` |
+| `MapMutationArgumentException.SchemaValueRequired` or `SchemaMalformed` | An empty scatter kind ID or unparseable weight | input `Index`, `FieldPath`, `SubmittedText` |
+| `MapMutationException.ToolFeatureTranslationUnsupported` | A feature without a supported duplicate translation | `DocumentId`, `Index`, `FeatureType`, `Operation` |
 | `MapToolJsonException.SchemaValueRequired` | A null deserialized shape or terrain feature | root `FieldPath`, `SubjectKind` |
 | `MapDocumentException.SchemaValueRequired` or `SchemaObjectRequired` | Absent foliage JSON parameter or a non-object root | `FieldPath` `layerJson` or `previewChunkJson` |
 | `MapDocumentException.FoliagePreviewEditUnsupported` | A dry run for an edit other than setting a layer | runtime `EditType` |

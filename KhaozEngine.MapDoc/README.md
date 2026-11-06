@@ -2001,7 +2001,8 @@ their joined diagnostic text.
 | `ToolUnsavedChanges` | A window move discarding dirty content without permission, carried by `MapSessionException` | `DocumentId`, `Path`, `Operation`, `FieldPath` `IsDirty`, `DocumentForm` |
 | `FoliagePreviewEditUnsupported` | A tool dry run for an edit other than setting a layer | `EditType` |
 | `FoliagePreviewLayerNew` | A tool differential preview for a new layer | `LayerId` |
-| `ToolMutationEmpty` | A tool terrain mutation with no supplied field, carried by `MapMutationArgumentException` | `Operation`, original `ParamName` |
+| `ToolMutationEmpty` | A tool terrain or scatter rule mutation with no supplied field, carried by `MapMutationArgumentException` | `Operation`, known `LayerId` and `Index`, original `ParamName` |
+| `ToolFeatureTranslationUnsupported` | A terrain feature without a supported duplicate translation, carried by `MapMutationException` | `DocumentId`, `Index`, `FeatureType`, `Operation` |
 | `ToolStorageFormChanged` | Expected native source storage disappeared or changed form | `Path`, actual `DocumentForm`, `ExpectedDocumentForm`, `Operation` |
 | `ToolParentDirectoryMissing` | A staged save path without a parent directory | `Path`, `Operation` |
 | `ToolDocumentRequired` | Session work without an open document, carried by `MapSessionException` | `Operation` |

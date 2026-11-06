@@ -26,6 +26,10 @@ public sealed class MapMutationException : InvalidOperationException
     public string? PlacementId { get; init; }
     /// <summary>The index of the invalid document item, when known.</summary>
     public int? Index { get; init; }
+    /// <summary>The feature discriminator without a supported duplicate translation.</summary>
+    public string? FeatureType { get; init; }
+    /// <summary>The refused tool verb, when known.</summary>
+    public string? Operation { get; init; }
     /// <summary>All ordered producer findings and their complete typed context, copied as an owned read-only snapshot.</summary>
     public IReadOnlyList<MapDocumentFinding>? Findings
     {

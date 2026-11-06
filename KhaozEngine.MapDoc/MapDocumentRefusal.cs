@@ -463,6 +463,8 @@ public enum MapDocumentRefusal
     FoliagePreviewLayerNew,
     /// <summary>Refuses a mutation with no supplied field to change.</summary>
     ToolMutationEmpty,
+    /// <summary>Refuses duplicating a terrain feature without a supported translation.</summary>
+    ToolFeatureTranslationUnsupported,
 
     // Physics navigation and envelope admission.
     /// <summary>Refuses an interaction envelope sweep for an unsupported source shape.</summary>

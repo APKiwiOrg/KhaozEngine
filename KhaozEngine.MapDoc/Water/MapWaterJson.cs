@@ -18,7 +18,8 @@ public sealed class MapWaterSetJsonConverter : JsonConverter<MapWaterSet>
         try { return MapWaterJson.Read(json.RootElement); }
         catch (Exception ex) when (ex is MapDocumentException or InvalidOperationException or FormatException)
         {
-            throw new JsonException("water: " + ex.Message, ex);
+            if (ex is MapDocumentException known) throw MapWaterJsonException.FromDocument(known, "water: " + ex.Message);
+            throw new MapWaterJsonException(MapDocumentRefusal.SchemaMalformed, "water: " + ex.Message, ex);
         }
     }
 
@@ -38,8 +39,8 @@ internal static class MapWaterJson
     internal static void Write(Utf8JsonWriter w, MapWaterSet water)
     {
         // Null entries refuse before ordering reads their keys.
-        foreach (MapWaterMediumDoc medium in water.Media) Require(medium, "water medium");
-        foreach (MapWaterBodyDoc body in water.Bodies) Require(body, "water body");
+        foreach (MapWaterMediumDoc medium in water.Media) Require(medium, "water medium", "media");
+        foreach (MapWaterBodyDoc body in water.Bodies) Require(body, "water body", "bodies");
         w.WriteStartObject();
         w.WriteStartArray("media");
         foreach (MapWaterMediumDoc medium in water.Media.OrderBy(m => m.Key, StringComparer.Ordinal)) WriteMedium(w, medium);
@@ -52,7 +53,7 @@ internal static class MapWaterJson
 
     internal static void WriteMedium(Utf8JsonWriter w, MapWaterMediumDoc medium)
     {
-        Require(medium, "water medium");
+        Require(medium, "water medium", "media");
         w.WriteStartObject();
         w.WriteString("key", medium.Key);
         w.WriteString("kind", medium.Kind.ToString());
@@ -62,9 +63,9 @@ internal static class MapWaterJson
 
     internal static void WriteBody(Utf8JsonWriter w, MapWaterBodyDoc body)
     {
-        Require(body, "water body");
+        Require(body, "water body", "bodies");
         string label = $"water body '{body.Id}'";
-        MapWaterDomainDoc domain = Require(body.Domain, label + " domain");
+        MapWaterDomainDoc domain = Require(body.Domain, label + " domain", "domain", body.Id);
         w.WriteStartObject();
         w.WriteString("id", body.Id);
         // Negative zero is the same level as zero, so it writes as zero and shares one identity.
@@ -74,9 +75,9 @@ internal static class MapWaterJson
         w.WritePropertyName("domain");
         WriteDomain(w, domain, label);
         w.WriteStartArray("covers");
-        foreach (MapRecordRef cover in Require(body.Covers, label + " covers"))
+        foreach (MapRecordRef cover in Require(body.Covers, label + " covers", "covers", body.Id))
         {
-            Require(cover, label + " cover");
+            Require(cover, label + " cover", "covers", body.Id);
             w.WriteStartObject();
             w.WriteString("id", cover.Id);
             w.WriteStartObject("anchor");
@@ -93,12 +94,12 @@ internal static class MapWaterJson
 
     internal static void WriteDomain(Utf8JsonWriter w, MapWaterDomainDoc domain, string label = "water domain")
     {
-        Require(domain, label);
+        Require(domain, label, "domain");
         w.WriteStartObject();
         w.WritePropertyName("frame");
-        WriteFrame(w, Require(domain.Frame, label + " frame"));
+        WriteFrame(w, Require(domain.Frame, label + " frame", "frame"));
         w.WriteStartArray("rects");
-        foreach (MapWaterRect rect in Require(domain.Rects, label + " rects"))
+        foreach (MapWaterRect rect in Require(domain.Rects, label + " rects", "rects"))
         {
             w.WriteStartObject();
             w.WriteString("minX", MapSignedDecimal.Format(rect.MinX));
@@ -109,11 +110,11 @@ internal static class MapWaterJson
         }
         w.WriteEndArray();
         w.WriteStartArray("rings");
-        foreach (MapWaterRing ring in Require(domain.Rings, label + " rings"))
+        foreach (MapWaterRing ring in Require(domain.Rings, label + " rings", "rings"))
         {
             w.WriteStartObject();
             w.WriteStartArray("vertices");
-            foreach (MapLatticeAddress address in Require(Require(ring, label + " ring").Vertices, label + " ring vertices"))
+            foreach (MapLatticeAddress address in Require(Require(ring, label + " ring", "rings").Vertices, label + " ring vertices", "vertices"))
                 WriteAddress(w, address);
             w.WriteEndArray();
             w.WriteEndObject();
@@ -124,51 +125,58 @@ internal static class MapWaterJson
 
     internal static MapWaterSet Read(JsonElement json)
     {
-        Members(json, "water", ["media", "bodies"]);
+        Members(json, "water", "$", ["media", "bodies"]);
         var water = new MapWaterSet();
-        foreach (JsonElement medium in Items(json.GetProperty("media"), "water media"))
+        int index = 0;
+        foreach (JsonElement medium in Items(json.GetProperty("media"), "water media", "$.media"))
         {
-            Members(medium, "water medium", ["key", "kind", "wadeSpeedScale"]);
-            water.Media.Add(new MapWaterMediumDoc(Text(medium.GetProperty("key")),
-                Named<MapWaterMediumKind>(medium.GetProperty("kind")), Finite(medium.GetProperty("wadeSpeedScale"))));
+            string path = $"$.media[{index++}]";
+            Members(medium, "water medium", path, ["key", "kind", "wadeSpeedScale"]);
+            water.Media.Add(new MapWaterMediumDoc(Text(medium.GetProperty("key"), path + ".key"),
+                Named<MapWaterMediumKind>(medium.GetProperty("kind"), path + ".kind"), Finite(medium.GetProperty("wadeSpeedScale"), path + ".wadeSpeedScale")));
         }
-        foreach (JsonElement body in Items(json.GetProperty("bodies"), "water bodies")) water.Bodies.Add(ReadBody(body));
+        index = 0;
+        foreach (JsonElement body in Items(json.GetProperty("bodies"), "water bodies", "$.bodies")) water.Bodies.Add(ReadBody(body, $"$.bodies[{index++}]"));
         return water;
     }
 
-    static MapWaterBodyDoc ReadBody(JsonElement body)
+    static MapWaterBodyDoc ReadBody(JsonElement body, string path)
     {
-        Members(body, "water body", ["id", "surfaceY", "medium", "renderMaterial", "domain", "covers"], "displayName");
-        MapWaterDomainDoc domain = ReadDomain(body.GetProperty("domain"));
-        MapRecordRef[] covers = Items(body.GetProperty("covers"), "water covers").Select(cover =>
+        Members(body, "water body", path, ["id", "surfaceY", "medium", "renderMaterial", "domain", "covers"], "displayName");
+        MapWaterDomainDoc domain = ReadDomain(body.GetProperty("domain"), path + ".domain");
+        MapRecordRef[] covers = Items(body.GetProperty("covers"), "water covers", path + ".covers").Select((cover, index) =>
         {
-            Members(cover, "water cover", ["id", "anchor"]);
+            string item = $"{path}.covers[{index}]";
+            Members(cover, "water cover", item, ["id", "anchor"]);
             JsonElement anchor = cover.GetProperty("anchor");
-            Members(anchor, "water cover anchor", ["surfaceId", "slotX", "slotZ"]);
-            return new MapRecordRef(Text(cover.GetProperty("id")), new MapPatchKey(Text(anchor.GetProperty("surfaceId")),
-                Long(anchor.GetProperty("slotX")), Long(anchor.GetProperty("slotZ"))));
+            Members(anchor, "water cover anchor", item + ".anchor", ["surfaceId", "slotX", "slotZ"]);
+            return new MapRecordRef(Text(cover.GetProperty("id"), item + ".id"), new MapPatchKey(Text(anchor.GetProperty("surfaceId"), item + ".anchor.surfaceId"),
+                Long(anchor.GetProperty("slotX"), item + ".anchor.slotX"), Long(anchor.GetProperty("slotZ"), item + ".anchor.slotZ")));
         }).ToArray();
-        return new MapWaterBodyDoc(Text(body.GetProperty("id")), Finite(body.GetProperty("surfaceY")),
-            Text(body.GetProperty("medium")), Text(body.GetProperty("renderMaterial")),
+        return new MapWaterBodyDoc(Text(body.GetProperty("id"), path + ".id"), Finite(body.GetProperty("surfaceY"), path + ".surfaceY"),
+            Text(body.GetProperty("medium"), path + ".medium"), Text(body.GetProperty("renderMaterial"), path + ".renderMaterial"),
             domain, covers,
-            body.TryGetProperty("displayName", out JsonElement name) ? Text(name) : null);
+            body.TryGetProperty("displayName", out JsonElement name) ? Text(name, path + ".displayName") : null);
     }
 
-    internal static MapWaterDomainDoc ReadDomain(JsonElement domain)
+    internal static MapWaterDomainDoc ReadDomain(JsonElement domain, string path = "$")
     {
-        Members(domain, "water domain", ["frame", "rects", "rings"]);
-        MapWaterRect[] rects = Items(domain.GetProperty("rects"), "water rects").Select(rect =>
+        Members(domain, "water domain", path, ["frame", "rects", "rings"]);
+        MapWaterRect[] rects = Items(domain.GetProperty("rects"), "water rects", path + ".rects").Select((rect, index) =>
         {
-            Members(rect, "water rect", ["minX", "minZ", "maxX", "maxZ"]);
-            return new MapWaterRect(Long(rect.GetProperty("minX")), Long(rect.GetProperty("minZ")),
-                Long(rect.GetProperty("maxX")), Long(rect.GetProperty("maxZ")));
+            string item = $"{path}.rects[{index}]";
+            Members(rect, "water rect", item, ["minX", "minZ", "maxX", "maxZ"]);
+            return new MapWaterRect(Long(rect.GetProperty("minX"), item + ".minX"), Long(rect.GetProperty("minZ"), item + ".minZ"),
+                Long(rect.GetProperty("maxX"), item + ".maxX"), Long(rect.GetProperty("maxZ"), item + ".maxZ"));
         }).ToArray();
-        MapWaterRing[] rings = Items(domain.GetProperty("rings"), "water rings").Select(ring =>
+        MapWaterRing[] rings = Items(domain.GetProperty("rings"), "water rings", path + ".rings").Select((ring, index) =>
         {
-            Members(ring, "water ring", ["vertices"]);
-            return new MapWaterRing(Items(ring.GetProperty("vertices"), "water ring vertices").Select(ReadAddress).ToArray());
+            string item = $"{path}.rings[{index}]";
+            Members(ring, "water ring", item, ["vertices"]);
+            return new MapWaterRing(Items(ring.GetProperty("vertices"), "water ring vertices", item + ".vertices")
+                .Select((address, vertex) => ReadAddress(address, $"{item}.vertices[{vertex}]")).ToArray());
         }).ToArray();
-        return new(ReadFrame(domain.GetProperty("frame")), rects, rings);
+        return new(ReadFrame(domain.GetProperty("frame"), path + ".frame"), rects, rings);
     }
 
     internal static void WriteFrame(Utf8JsonWriter w, MapLatticeFrame frame)
@@ -181,11 +189,11 @@ internal static class MapWaterJson
         w.WriteEndObject();
     }
 
-    static MapLatticeFrame ReadFrame(JsonElement frame)
+    static MapLatticeFrame ReadFrame(JsonElement frame, string path)
     {
-        Members(frame, "water frame", ["cellUnitMetres", "heightUnitMetres", "rowDirection", "datum"]);
-        return new MapLatticeFrame(ReadRational(frame.GetProperty("cellUnitMetres")), ReadRational(frame.GetProperty("heightUnitMetres")),
-            Named<MapRowDirection>(frame.GetProperty("rowDirection")), Named<MapHeightDatum>(frame.GetProperty("datum")));
+        Members(frame, "water frame", path, ["cellUnitMetres", "heightUnitMetres", "rowDirection", "datum"]);
+        return new MapLatticeFrame(ReadRational(frame.GetProperty("cellUnitMetres"), path + ".cellUnitMetres"), ReadRational(frame.GetProperty("heightUnitMetres"), path + ".heightUnitMetres"),
+            Named<MapRowDirection>(frame.GetProperty("rowDirection"), path + ".rowDirection"), Named<MapHeightDatum>(frame.GetProperty("datum"), path + ".datum"));
     }
 
     static void WriteRational(Utf8JsonWriter w, string name, MapRational value)
@@ -196,9 +204,9 @@ internal static class MapWaterJson
         w.WriteEndObject();
     }
 
-    static MapRational ReadRational(JsonElement value)
+    static MapRational ReadRational(JsonElement value, string path)
     {
-        Members(value, "lattice unit", ["numerator", "denominator"]);
+        Members(value, "lattice unit", path, ["numerator", "denominator"]);
         return new MapRational(value.GetProperty("numerator").GetInt32(), value.GetProperty("denominator").GetInt32());
     }
 
@@ -212,10 +220,10 @@ internal static class MapWaterJson
         w.WriteEndObject();
     }
 
-    static MapLatticeAddress ReadAddress(JsonElement address)
+    static MapLatticeAddress ReadAddress(JsonElement address, string path)
     {
-        Members(address, "lattice address", ["x", "z", "d"]);
-        return MapLatticeAddress.Create(Long(address.GetProperty("x")), Long(address.GetProperty("z")),
+        Members(address, "lattice address", path, ["x", "z", "d"]);
+        return MapLatticeAddress.Create(Long(address.GetProperty("x"), path + ".x"), Long(address.GetProperty("z"), path + ".z"),
             address.GetProperty("d").GetInt32());
     }
 
@@ -232,41 +240,56 @@ internal static class MapWaterJson
         return Convert.ToHexStringLower(sink.GetHashAndReset());
     }
 
-    static void Members(JsonElement value, string what, string[] required, params string[] optional)
+    static void Members(JsonElement value, string what, string path, string[] required, params string[] optional)
     {
-        if (value.ValueKind != JsonValueKind.Object) throw new MapDocumentException($"{what} must be an object");
+        if (value.ValueKind != JsonValueKind.Object) throw new MapDocumentException(MapDocumentRefusal.SchemaObjectRequired, $"{what} must be an object")
+        { FieldPath = path };
         var seen = new HashSet<string>(StringComparer.Ordinal);
         foreach (JsonProperty property in value.EnumerateObject())
         {
             if (!required.Contains(property.Name, StringComparer.Ordinal) && !optional.Contains(property.Name, StringComparer.Ordinal))
-                throw new MapDocumentException($"{what}: unknown member '{property.Name}'");
-            if (!seen.Add(property.Name)) throw new MapDocumentException($"{what}: duplicate member '{property.Name}'");
+                throw new MapDocumentException(MapDocumentRefusal.SchemaMemberUnknown, $"{what}: unknown member '{property.Name}'")
+                { FieldPath = MapDocumentJsonPath.AppendProperty(path, property.Name) };
+            if (!seen.Add(property.Name)) throw new MapDocumentException(MapDocumentRefusal.SchemaMemberDuplicate, $"{what}: duplicate member '{property.Name}'")
+            { FieldPath = MapDocumentJsonPath.AppendProperty(path, property.Name) };
         }
         foreach (string name in required)
-            if (!seen.Contains(name)) throw new MapDocumentException($"{what}: missing member '{name}'");
+            if (!seen.Contains(name)) throw new MapDocumentException(MapDocumentRefusal.SchemaMemberMissing, $"{what}: missing member '{name}'")
+            { FieldPath = MapDocumentJsonPath.AppendProperty(path, name) };
     }
 
-    static IEnumerable<JsonElement> Items(JsonElement value, string what) => value.ValueKind == JsonValueKind.Array
-        ? value.EnumerateArray() : throw new MapDocumentException($"{what} must be an array");
+    static IEnumerable<JsonElement> Items(JsonElement value, string what, string path) => value.ValueKind == JsonValueKind.Array
+        ? value.EnumerateArray() : throw new MapDocumentException(MapDocumentRefusal.SchemaArrayRequired, $"{what} must be an array") { FieldPath = path };
 
-    static string Text(JsonElement value) => value.ValueKind == JsonValueKind.String
-        ? value.GetString()! : throw new MapDocumentException("expected a string");
+    static string Text(JsonElement value, string path) => value.ValueKind == JsonValueKind.String
+        ? value.GetString()! : throw new MapDocumentException(MapDocumentRefusal.SchemaValueRequired, "expected a string") { FieldPath = path };
 
-    static float Finite(JsonElement value) =>
-        value.ValueKind == JsonValueKind.Number && value.TryGetSingle(out float result) && float.IsFinite(result)
-            ? result : throw new MapDocumentException("expected a finite number");
-
-    static long Long(JsonElement value) => MapSignedDecimal.TryParse(Text(value), out long result)
-        ? result : throw new MapDocumentException("invalid decimal int64 string");
-
-    static T Named<T>(JsonElement value) where T : struct, Enum
+    static float Finite(JsonElement value, string path)
     {
-        string text = Text(value);
+        if (value.ValueKind == JsonValueKind.Number && value.TryGetSingle(out float result) && float.IsFinite(result)) return result;
+        throw new MapDocumentException(value.ValueKind == JsonValueKind.Number ? MapDocumentRefusal.ValueNonfinite : MapDocumentRefusal.SchemaValueRequired,
+            "expected a finite number")
+        { FieldPath = path, ActualNumber = value.ValueKind == JsonValueKind.Number && value.TryGetDouble(out double number) && double.IsFinite(number) ? number : null };
+    }
+
+    static long Long(JsonElement value, string path)
+    {
+        string text = Text(value, path);
+        return MapSignedDecimal.TryParse(text, out long result) ? result
+            : throw new MapDocumentException(MapDocumentRefusal.SchemaInt64Malformed, "invalid decimal int64 string")
+            { FieldPath = path, ActualText = text, MinimumInteger = long.MinValue, MaximumInteger = long.MaxValue };
+    }
+
+    static T Named<T>(JsonElement value, string path) where T : struct, Enum
+    {
+        string text = Text(value, path);
         foreach (T candidate in Enum.GetValues<T>())
             if (string.Equals(candidate.ToString(), text, StringComparison.Ordinal)) return candidate;
-        throw new MapDocumentException($"unknown {typeof(T).Name} '{text}'");
+        throw new MapDocumentException(MapDocumentRefusal.SchemaEnumUnsupported, $"unknown {typeof(T).Name} '{text}'")
+        { FieldPath = path, ActualText = text, EnumType = typeof(T) };
     }
 
-    static T Require<T>(T? value, string what) where T : class =>
-        value ?? throw new MapDocumentException($"{what} is required");
+    static T Require<T>(T? value, string what, string fieldPath, string? entityId = null) where T : class =>
+        value ?? throw new MapDocumentException(MapDocumentRefusal.SchemaValueRequired, $"{what} is required")
+        { FieldPath = fieldPath, EntityId = entityId };
 }

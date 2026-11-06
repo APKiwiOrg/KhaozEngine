@@ -28,14 +28,16 @@ internal sealed class MapWaterWorkBudget
     public bool Exhausted => Charged > Limit;
 
     /// <summary>Charges <paramref name="checks"/> pair checks and throws <see cref="MapDocumentException"/>, or
-    /// <see cref="MapWaterCapacityException"/> for a compile budget, once the total passes the limit.</summary>
+    /// <see cref="MapWaterCapacityException"/> for a compile budget, once the total passes the limit.
+    /// Document refusals carry WorkCapacityExceeded with Budget, ActualCount and Limit.</summary>
     public void Charge(long checks)
     {
         Charged += checks;
         _parent?.Charge(checks);
         if (Charged <= Limit) return;
         if (_compile) throw new MapWaterCapacityException(MapWaterWorkMeter.PairChecks);
-        throw new MapDocumentException($"domain work exceeds {Limit} pair checks");
+        throw new MapDocumentException(MapDocumentRefusal.WorkCapacityExceeded, $"domain work exceeds {Limit} pair checks")
+        { Budget = "WaterDomainPairChecks", ActualCount = Charged, Limit = Limit };
     }
 }
 

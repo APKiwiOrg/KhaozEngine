@@ -366,4 +366,14 @@ public enum MapDocumentRefusal
     FoliageSectionIncomplete,
     /// <summary>Refuses an explicit null foliage section.</summary>
     FoliageSectionNull,
+
+    // Water domain admission.
+    /// <summary>Refuses a water domain with no rectangle or ring pieces.</summary>
+    WaterDomainEmpty,
+    /// <summary>Refuses a water domain piece whose vertices are collinear.</summary>
+    WaterDomainZeroArea,
+    /// <summary>Refuses a water domain ring whose edges intersect or fold back.</summary>
+    WaterDomainSelfIntersects,
+    /// <summary>Refuses a water domain piece whose triangulation cannot complete.</summary>
+    WaterDomainTriangulationFailed,
 }

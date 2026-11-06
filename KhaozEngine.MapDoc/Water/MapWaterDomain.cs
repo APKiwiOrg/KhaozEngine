@@ -36,11 +36,13 @@ public sealed class MapWaterDomain
     readonly MapWaterPolygons.Bounds[] _bounds;
     readonly MapWaterPolygons.Bounds _extent;
     readonly IReadOnlyList<IReadOnlyList<MapWideXz>>?[] _convexParts;
+    readonly int _rectCount;
 
-    MapWaterDomain(MapWideXz[][] rings, string[] names)
+    MapWaterDomain(MapWideXz[][] rings, string[] names, int rectCount)
     {
         _rings = rings;
         _names = names;
+        _rectCount = rectCount;
         _bounds = rings.Select(MapWaterPolygons.Bounds.Of).ToArray();
         _extent = _bounds.Skip(1).Aggregate(_bounds[0], (all, b) => all.Include(b.Min).Include(b.Max));
         _convexParts = new IReadOnlyList<IReadOnlyList<MapWideXz>>?[rings.Length];
@@ -56,52 +58,76 @@ public sealed class MapWaterDomain
     public MapExactXz Max { get; }
 
     /// <summary>Compiles rects then rings, in stored order, into pieces. Throws <see cref="MapDocumentException"/>
-    /// for an invalid domain, including "not representable" when a placed corner cannot convert exactly and
-    /// "domain work exceeds" when the checks pass <see cref="MaxPairChecks"/>.</summary>
+    /// for an invalid domain, with the first finding's reason and the ordered Findings snapshot.
+    /// GeometryNotRepresentable names a corner that cannot convert exactly, while WorkCapacityExceeded
+    /// names a domain count or pair-check budget.</summary>
     public static MapWaterDomain Compile(MapWaterDomainDoc doc, MapWaterPlacement? placement = null)
     {
         ArgumentNullException.ThrowIfNull(doc);
         var errors = new List<string>();
-        return TryCompile(doc, placement, errors, new MapWaterWorkBudget())
-            ?? throw new MapDocumentException("water domain: " + errors[0] + ".");
+        var findings = new List<MapDocumentFinding>();
+        return TryCompile(doc, placement, errors, new MapWaterWorkBudget(), findings, out var cause)
+            ?? throw MapDocumentRefusalFactory.FromFinding(findings[0], "water domain: " + errors[0] + ".", inner: cause, findings: findings);
     }
 
     /// <summary>Compiles the domain or records why it cannot, without a label. Counts are checked before any
     /// geometry work, and the simplicity checks charge <paramref name="budget"/>.</summary>
     internal static MapWaterDomain? TryCompile(MapWaterDomainDoc doc, MapWaterPlacement? placement, List<string> errors,
-        MapWaterWorkBudget budget) => TryCompileEffective(doc, placement?.Kernel, errors, budget, releasedPlacement: placement is not null);
+        MapWaterWorkBudget budget, List<MapDocumentFinding>? findings = null) =>
+        TryCompile(doc, placement, errors, budget, findings, out _);
+
+    internal static MapWaterDomain? TryCompile(MapWaterDomainDoc doc, MapWaterPlacement? placement, List<string> errors,
+        MapWaterWorkBudget budget, List<MapDocumentFinding>? findings, out MapDocumentException? firstCause) =>
+        TryCompileEffective(doc, placement?.Kernel, errors, budget, out firstCause, releasedPlacement: placement is not null, findings: findings);
 
     internal static MapWaterDomain? TryCompileEffective(MapWaterDomainDoc doc, MapResourceTransform? transform, List<string> errors,
-        MapWaterWorkBudget budget, bool releasedPlacement = false)
+        MapWaterWorkBudget budget, bool releasedPlacement = false, List<MapDocumentFinding>? findings = null) =>
+        TryCompileEffective(doc, transform, errors, budget, out _, releasedPlacement, findings);
+
+    internal static MapWaterDomain? TryCompileEffective(MapWaterDomainDoc doc, MapResourceTransform? transform, List<string> errors,
+        MapWaterWorkBudget budget, out MapDocumentException? firstCause, bool releasedPlacement = false, List<MapDocumentFinding>? findings = null)
     {
+        firstCause = null;
         if (doc.Rects is null || doc.Rings is null || doc.Frame is null)
         {
-            errors.Add("domain is required");
+            Add(new(MapDocumentRefusal.SchemaValueRequired, "domain is required")
+            { FieldPath = doc.Rects is null ? nameof(doc.Rects) : doc.Rings is null ? nameof(doc.Rings) : nameof(doc.Frame) });
             return null;
         }
-        if (!WithinLimits(doc, errors)) return null;
+        if (!WithinLimits(doc, errors, findings)) return null;
         if (doc.Rects.Count + doc.Rings.Count == 0)
         {
-            errors.Add("domain is empty");
+            Add(new(MapDocumentRefusal.WaterDomainEmpty, "domain is empty") { FieldPath = "Domain", ActualCount = 0 });
             return null;
         }
         if (transform is { Transform: var p } && (!double.IsFinite(p.X) || !double.IsFinite(p.Y) ||
             !double.IsFinite(p.Z) || !double.IsFinite(p.YawRadians) || !double.IsFinite(p.Scale) || !(p.Scale > 0d)))
         {
-            errors.Add("placement must be finite with a positive scale");
+            string field = !double.IsFinite(p.X) ? nameof(p.X) : !double.IsFinite(p.Y) ? nameof(p.Y)
+                : !double.IsFinite(p.Z) ? nameof(p.Z) : !double.IsFinite(p.YawRadians) ? nameof(p.YawRadians) : nameof(p.Scale);
+            double value = field == nameof(p.X) ? p.X : field == nameof(p.Y) ? p.Y : field == nameof(p.Z) ? p.Z
+                : field == nameof(p.YawRadians) ? p.YawRadians : p.Scale;
+            Add(new(double.IsFinite(value) ? MapDocumentRefusal.ValueOutsideRange : MapDocumentRefusal.ValueNonfinite,
+                "placement must be finite with a positive scale")
+            { FieldPath = "Placement." + field, ActualNumber = value, MinimumNumber = double.IsFinite(value) ? 0 : null });
             return null;
         }
         int before = errors.Count;
         var rings = new List<MapWideXz[]>(doc.Rects.Count + doc.Rings.Count);
         var names = new List<string>(rings.Capacity);
+        string? currentField = null;
+        int? currentIndex = null;
         try
         {
             for (int i = 0; i < doc.Rects.Count; i++)
             {
+                currentField = $"Rects[{i}]";
+                currentIndex = i;
                 MapWaterRect rect = doc.Rects[i];
                 if (rect.MinX >= rect.MaxX || rect.MinZ >= rect.MaxZ)
                 {
-                    errors.Add($"rect {i} is empty");
+                    Add(new(MapDocumentRefusal.BoundsInvalid, $"rect {i} is empty")
+                    { FieldPath = currentField, SubjectKind = "rect", Index = i });
                     continue;
                 }
                 MapExactXz a = doc.Frame.WorldXz(MapLatticeAddress.Corner(rect.MinX, rect.MinZ));
@@ -109,29 +135,40 @@ public sealed class MapWaterDomain
                 // Ordering by world coordinates lets a negative-Z frame own its world minimum.
                 MapExactValue minX = Least(a.X, b.X), maxX = Most(a.X, b.X), minZ = Least(a.Z, b.Z), maxZ = Most(a.Z, b.Z);
                 MapExactXz[] corners = { new(minX, minZ), new(maxX, minZ), new(maxX, maxZ), new(minX, maxZ) };
-                AddRing(rings, names, $"rect {i}", corners, rect: true, transform, errors, budget, releasedPlacement);
+                AddRing(rings, names, $"rect {i}", corners, rect: true, i, transform, errors, budget, releasedPlacement, findings);
             }
             for (int i = 0; i < doc.Rings.Count; i++)
             {
+                currentField = $"Rings[{i}]";
+                currentIndex = i;
                 IReadOnlyList<MapLatticeAddress>? vertices = doc.Rings[i]?.Vertices;
-                if (vertices is null || vertices.Count < 3)
+                int? vertexCount = vertices?.Count;
+                if (vertices is null || vertexCount < 3)
                 {
-                    errors.Add($"ring {i} needs at least 3 vertices");
+                    Add(new(vertices is null ? MapDocumentRefusal.SchemaValueRequired : MapDocumentRefusal.ValueOutsideRange,
+                        $"ring {i} needs at least 3 vertices")
+                    { FieldPath = doc.Rings[i] is null ? currentField : currentField + ".Vertices", Index = i,
+                        ActualCount = vertexCount, MinimumInteger = vertices is null ? null : 3 });
                     continue;
                 }
-                AddRing(rings, names, $"ring {i}", vertices.Select(doc.Frame.WorldXz).ToArray(), rect: false, transform,
-                    errors, budget, releasedPlacement);
+                AddRing(rings, names, $"ring {i}", vertices.Select(doc.Frame.WorldXz).ToArray(), rect: false, i, transform,
+                    errors, budget, releasedPlacement, findings);
             }
         }
         catch (MapExactOverflowException)
         {
-            errors.Add("a domain corner is not representable");
+            Add(new(MapDocumentRefusal.GeometryNotRepresentable, "a domain corner is not representable")
+            { FieldPath = currentField, Index = currentIndex, Operation = "water domain" });
         }
         catch (MapDocumentException e)
         {
+            if (errors.Count == before) firstCause = e;
             errors.Add(e.Message);
+            if (MapDocumentFinding.FromException(e) is { } finding) findings?.Add(finding);
         }
-        return errors.Count == before ? new MapWaterDomain(rings.ToArray(), names.ToArray()) : null;
+        return errors.Count == before ? new MapWaterDomain(rings.ToArray(), names.ToArray(), doc.Rects.Count) : null;
+
+        void Add(MapDocumentFinding finding) => AddFinding(errors, findings, finding);
     }
 
     /// <summary>True when the domain holds the point under the OA7 half-open rule.</summary>
@@ -192,31 +229,41 @@ public sealed class MapWaterDomain
         OverlappingPairs(Enumerable.Range(0, _rings.Length).Select(i => (this, i)).ToArray(), static (_, _) => true, budget);
 
     /// <summary>The piece as convex counter-clockwise parts: itself when convex, else its triangles, computed once.
-    /// Throws <see cref="MapDocumentException"/> naming the piece when it cannot be triangulated.</summary>
+    /// Throws <see cref="MapDocumentException"/> with WaterDomainTriangulationFailed and the stored
+    /// piece Index, SubjectKind and FieldPath when it cannot be triangulated.</summary>
     internal IReadOnlyList<IReadOnlyList<MapWideXz>> ConvexParts(int piece, MapWaterWorkBudget budget)
     {
         if (_convexParts[piece] is { } cached) return cached;
         IReadOnlyList<IReadOnlyList<MapWideXz>> parts = MapWaterPolygons.IsConvex(_rings[piece])
             ? new IReadOnlyList<MapWideXz>[] { _rings[piece] }
-            : MapWaterPolygons.Triangulate(_rings[piece], budget)
-                ?? throw new MapDocumentException($"{_names[piece]} cannot be triangulated");
+            : RequireTriangulation(MapWaterPolygons.Triangulate(_rings[piece], budget), piece);
         return _convexParts[piece] = parts;
     }
 
+    IReadOnlyList<IReadOnlyList<MapWideXz>> RequireTriangulation(IReadOnlyList<IReadOnlyList<MapWideXz>>? parts, int piece) =>
+        parts ?? throw new MapDocumentException(MapDocumentRefusal.WaterDomainTriangulationFailed, $"{_names[piece]} cannot be triangulated")
+        { FieldPath = piece < _rectCount ? $"Rects[{piece}]" : $"Rings[{piece - _rectCount}]",
+            SubjectKind = piece < _rectCount ? "rect" : "ring", Index = piece < _rectCount ? piece : piece - _rectCount };
+
+    // Injects the failed triangulator result without mutating a compiled domain or weakening ring admission.
+    internal void RejectTriangulationForTests(int piece) => _ = RequireTriangulation(null, piece);
+
     /// <summary>Refuses a domain over <see cref="MaxPieces"/> pieces or <see cref="MaxPieceVertices"/> vertices.</summary>
-    internal static bool WithinLimits(MapWaterDomainDoc doc, List<string> errors)
+    internal static bool WithinLimits(MapWaterDomainDoc doc, List<string> errors, List<MapDocumentFinding>? findings = null)
     {
         long pieces = (long)doc.Rects.Count + doc.Rings.Count;
         if (pieces > MaxPieces)
         {
-            errors.Add($"domain exceeds {MaxPieces} pieces");
+            AddFinding(errors, findings, new(MapDocumentRefusal.WorkCapacityExceeded, $"domain exceeds {MaxPieces} pieces")
+            { Budget = "WaterDomainPieces", ActualCount = pieces, Limit = MaxPieces, FieldPath = "Domain" });
             return false;
         }
         long vertices = 4L * doc.Rects.Count;
         foreach (MapWaterRing ring in doc.Rings) vertices += ring?.Vertices?.Count ?? 0;
         if (vertices > MaxPieceVertices)
         {
-            errors.Add($"domain exceeds {MaxPieceVertices} vertices");
+            AddFinding(errors, findings, new(MapDocumentRefusal.WorkCapacityExceeded, $"domain exceeds {MaxPieceVertices} vertices")
+            { Budget = "WaterDomainVertices", ActualCount = vertices, Limit = MaxPieceVertices, FieldPath = "Domain" });
             return false;
         }
         return true;
@@ -225,8 +272,10 @@ public sealed class MapWaterDomain
     /// <summary>Places, checks and normalizes one piece. An unplaced rect has four distinct ordered corners, so it
     /// is simple once it has area and skips the simplicity sweep.</summary>
     static void AddRing(List<MapWideXz[]> rings, List<string> names, string name, MapExactXz[] corners, bool rect,
-        MapResourceTransform? transform, List<string> errors, MapWaterWorkBudget budget, bool releasedPlacement)
+        int index, MapResourceTransform? transform, List<string> errors, MapWaterWorkBudget budget, bool releasedPlacement,
+        List<MapDocumentFinding>? findings)
     {
+        string path = rect ? $"Rects[{index}]" : $"Rings[{index}]";
         if (transform is not null)
         {
             for (int i = 0; i < corners.Length; i++)
@@ -234,18 +283,25 @@ public sealed class MapWaterDomain
                 string unrepresentable = $"{name} corner {i} is not representable under its placement";
                 try { corners[i] = releasedPlacement ? transform.ReleasedWaterXz(corners[i]) : transform.Xz(corners[i]); }
                 catch (Exception error) when (error is MapExactOverflowException or MapDocumentException or OverflowException)
-                { throw new MapDocumentException(unrepresentable); }
+                {
+                    if (error is MapDocumentException { Reason: not null } known)
+                        throw known.WithSourceName(null, unrepresentable);
+                    throw new MapDocumentException(MapDocumentRefusal.GeometryNotRepresentable, unrepresentable, error)
+                    { Operation = "water placement", FieldPath = path, SubjectKind = rect ? "rect" : "ring", Index = index, OtherIndex = i };
+                }
             }
         }
         MapWideXz[] ring = corners.Select(MapWideXz.From).ToArray();
         if (MapWaterPolygons.IsCollinear(ring))
         {
-            errors.Add($"{name} has zero area");
+            AddFinding(errors, findings, new(MapDocumentRefusal.WaterDomainZeroArea, $"{name} has zero area")
+            { FieldPath = path, SubjectKind = rect ? "rect" : "ring", Index = index });
             return;
         }
         if (!(rect && transform is null) && !MapWaterPolygons.IsSimple(ring, budget))
         {
-            errors.Add($"{name} self-intersects");
+            AddFinding(errors, findings, new(MapDocumentRefusal.WaterDomainSelfIntersects, $"{name} self-intersects")
+            { FieldPath = path, SubjectKind = rect ? "rect" : "ring", Index = index });
             return;
         }
         if (MapWaterPolygons.SignedArea(ring).Sign < 0) Array.Reverse(ring);
@@ -253,8 +309,15 @@ public sealed class MapWaterDomain
         names.Add(name);
     }
 
+    static void AddFinding(List<string> errors, List<MapDocumentFinding>? findings, MapDocumentFinding finding)
+    {
+        errors.Add(finding.Message);
+        findings?.Add(finding);
+    }
+
+    // Every stored vertex came directly from a MapExactXz. Bounds select those same values without arithmetic.
     static MapExactXz Narrow(MapWideXz point) =>
-        point.TryNarrow(out MapExactXz exact) ? exact : throw new MapDocumentException("water domain vertex is not representable");
+        point.TryNarrow(out MapExactXz exact) ? exact : throw new InvalidOperationException("water domain vertex is not representable");
 
     static MapExactValue Least(MapExactValue a, MapExactValue b) => a.CompareTo(b) <= 0 ? a : b;
     static MapExactValue Most(MapExactValue a, MapExactValue b) => a.CompareTo(b) >= 0 ? a : b;

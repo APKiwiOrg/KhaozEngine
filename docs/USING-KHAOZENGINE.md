@@ -12159,6 +12159,9 @@ version or the load fails. The engine's own steps are pre-registered: v1 to v2 d
 `terrainOverrides` placeholder, v2 to v3 stamps `tileSize` with `MapDocumentFile.DefaultTileSize`
 (512 m), v3 to v4 adds `playableBounds` from `bounds` when it is absent, and v4 to v5 stamps the
 `LegacyXzCallbackV1` support recipe. The v5 to v6 step (`MapWaterMigration.Upgrade`) adds no member.
+Its version refusal distinguishes a missing or non-integer `formatVersion` (`SchemaValueRequired`)
+from an unsupported integer (`SchemaPayloadVersionUnsupported` with `ActualVersion` and
+`SupportedVersions` 5 and 6). The source object remains unchanged.
 The v6 to v7 step (`MapPrefabMigration.Upgrade`) clones input and changes only `formatVersion`.
 The v7 to v8 step (`MapMarkerMigration.Upgrade`) clones input and changes only `formatVersion`.
 The v8 to v9 step (`MapFoliageMigration.Upgrade`) clones input and changes only `formatVersion`.
@@ -12421,6 +12424,17 @@ A resolver-2 native document with `AuthoredBindingsV2` can carry an optional `Ma
 Each body has one level, exact half-open lattice rectangle or polygon domains, explicit covered authored
 spaces, a medium from the document's table and a render material from its verified asset closure.
 A present empty section selects bounded mode and is dry everywhere. Resolver-1 documents keep global water.
+
+`MapWaterDomain.Compile` reports its first concrete `MapDocumentRefusal` and preserves all ordered
+domain findings on `MapDocumentException.Findings`. Piece failures carry the stored `Index`,
+`SubjectKind` and `FieldPath`. Placement failures distinguish nonfinite components from nonpositive
+scale. Capacity refusals carry the exact `Budget`, `ActualCount` and `Limit`. Effective water adapters
+also retain the body `EntityId`. The [MapDoc refusal table](../KhaozEngine.MapDoc/README.md#loud-failures)
+lists the water domain reasons.
+Water JSON conversion throws `MapWaterJsonException`, which derives from `JsonException` and retains
+the concrete reason, water-relative `FieldPath` and known scalar identifiers. Document readers carry
+the same reason and identifiers into `MapDocumentException`. Canonical decimal failures retain
+`ActualText` and signed integer limits, and unsupported enum text retains `EnumType` and `ActualText`.
 
 `MapWaterQuery(view, document.Water)` captures the water set and digest. `Sample(point)` returns a wet
 interval only when the point's occupied space is covered, its XZ is in the body domain and

@@ -428,6 +428,17 @@ a non-empty render material, a non-empty domain whose rects are non-empty, whose
 and whose corners lie within 1,000,000 m of the origin on each world axis, and a non-empty list of distinct
 covered spaces.
 
+`MapWaterDomain.Compile` throws `MapDocumentException` with the first concrete domain finding's
+`Reason` and identifiers, plus the full ordered, owned `Findings` snapshot. Domain findings distinguish
+missing components, empty domains, empty rectangles, ring cardinality, collinearity, self-intersection
+and failed triangulation. Piece findings retain their stored `Index`, `SubjectKind` and `FieldPath`.
+Placement admission uses `ValueNonfinite` or `ValueOutsideRange` with the failed component and
+`ActualNumber`. Unrepresentable placed corners use `GeometryNotRepresentable`, with the corner's
+`OtherIndex` when known. Effective water adapters also retain the body id as `EntityId`.
+Count and pair-check refusals use `WorkCapacityExceeded`, `ActualCount`, `Limit` and a `Budget`
+of `WaterDomainPieces`, `WaterDomainVertices` or `WaterDomainPairChecks`.
+Forwarded lattice and placement refusals retain the original exception as the inner cause.
+
 One canonical codec (`MapWaterSetJsonConverter` over `MapWaterJson`) writes the section in the monolithic file,
 the tiled manifest and every identity. It writes media by key and bodies by id in ordinal order, each record's
 members in a fixed order, and rects, rings and covers in stored order, so reordering media or bodies changes
@@ -435,6 +446,15 @@ neither bytes nor hash. A `surfaceY` of negative zero writes as zero, so one lev
 object is closed, and a null medium or body refuses as a document error. Lattice addresses are `{ "x", "z", "d" }`
 objects whose coordinates, like rect bounds and cover slots, are canonical signed int64 decimal strings
 (`MapSignedDecimal`, the grammar the topology codec uses), and they read back through `MapLatticeAddress.Create`.
+Codec schema guards use the shared object, array, member, required-value, enum and canonical-int64
+reasons. `FieldPath` identifies the actual water-relative JSON location, while writer required-value
+guards retain their local field and a known body `EntityId`. Decimal guards retain `ActualText` and
+the signed integer limits. Enum guards retain `ActualText` and `EnumType`. A numeric value that cannot
+be a finite float uses `ValueNonfinite`, retaining `ActualNumber` when representable as a double.
+The converter throws `MapWaterJsonException`, a `JsonException` subtype with the concrete `Reason`
+and scalar identifiers. It retains the original cause, and document readers preserve every known
+identifier through their common source-context copy operation. Other scalar conversion failures use
+`SchemaMalformed` without inventing a JSON location.
 The section enters `MapDocumentHash` through the manifest globals only when present, so documents without water keep
 their document hash. Format 6 moves every native root digest and every resolver-2 authored identity once, including
 documents without water. Rebuild caches and navigation captures keyed on them. `MapWaterSet.Digest`, `BodyDigest`
@@ -1246,6 +1266,9 @@ execution. The format advance changes authored identity once. It does not preser
 `MapSurfaceMigration.Upgrade` clones its input and leaves a format-5 input semantically unchanged.
 v5 -> v6 (`MapWaterMigration.Upgrade`) adds no member, so a migrated document has no `water` section and keeps
 legacy global water. It accepts only format 5 or 6 input.
+Missing or non-integer water migration versions use `SchemaValueRequired` with `FieldPath`
+`formatVersion`. Unsupported integer versions use `SchemaPayloadVersionUnsupported`,
+`ActualVersion` and an owned `SupportedVersions` snapshot containing 5 and 6.
 v6 -> v7 (`MapPrefabMigration.Upgrade`) clones input and changes only `formatVersion`. It accepts format 6 or 7.
 Format 7 moves every native root digest and resolver-2 authored identity once, including maps without prefabs.
 v7 -> v8 (`MapMarkerMigration.Upgrade`) clones input and changes only `formatVersion`. It accepts format 7 or 8 and
@@ -1580,6 +1603,10 @@ An array beyond its own count cap uses that field name as `Budget`, with its `Ac
 
 | Reason | Refused rule | Identifiers when known |
 | --- | --- | --- |
+| `WaterDomainEmpty` | A domain with no rectangle or ring pieces | `FieldPath`, `ActualCount`, effective body `EntityId` |
+| `WaterDomainZeroArea` | A domain piece whose vertices are collinear | `FieldPath`, `SubjectKind`, `Index`, effective body `EntityId` |
+| `WaterDomainSelfIntersects` | A ring with intersecting edges or a fold back | `FieldPath`, `SubjectKind`, `Index`, effective body `EntityId` |
+| `WaterDomainTriangulationFailed` | A piece whose triangulation cannot complete | `FieldPath`, `SubjectKind`, `Index` |
 | `SchemaMalformed` | Invalid JSON, a deserialization failure without a known structured cause, malformed surface codec or GLB encoding, or tile sculpt data | `Patch`, `FieldPath`, `SourceName`, `Tile`, `Path`, `AssetId`, `ResourceId`, `LineNumber`, `BytePositionInLine` |
 | `SchemaMemberDuplicate` | A repeated or case-variant JSON member | `FieldPath` of the containing object or the known duplicate field, `ResourceId`, `SourceName`, `Tile`, `Path` |
 | `SchemaMemberMissing` | A missing required native, prefab or support member, or a missing or non-integer `formatVersion` | `FieldPath`, `ResourceId`, `SourceName`, `Tile`, `Path` |
@@ -1639,7 +1666,7 @@ An array beyond its own count cap uses that field name as `Budget`, with its `Ac
 | `SpaceOpeningCellsInvalid` | A horizontal opening over a present cell | `RecordId`, `Patch`, `FieldPath`, `Index`, `ActualInteger`, `CellX`, `CellZ` |
 | `SpaceOpeningOwnershipInvalid` | A prepared opening demand for a cell outside that opening's authored slot set | `RecordId`, `Patch`, `SlotCell` |
 | `ContextDemandUnprepared` | A bound context read outside its prepared demands, carried by `MapBoundContextException` deriving from `InvalidOperationException` | `Operation`, `Patch`, opening `RecordId`, `SlotCell`, exact requested `Face` when applicable |
-| `GeometryNotRepresentable` | A collapsed effective cell, exact triangle, unrepresentable surface emission or boundary arithmetic | `SurfaceId`, `Patch`, `CellX`, `CellZ`, `SlotCell`, `RecordId`, `SpaceId`, `Operation` when known |
+| `GeometryNotRepresentable` | A collapsed effective cell, exact triangle, unrepresentable surface emission, water-domain corner or boundary arithmetic | `SurfaceId`, `Patch`, `CellX`, `CellZ`, `SlotCell`, `RecordId`, `SpaceId`, `Operation`, `FieldPath`, `Index`, `OtherIndex`, `SubjectKind` when known |
 | `GeometryVertexHeightMismatch` | Different exact heights for a shared compiled, opening, boundary or seam vertex | `SurfaceId`, `Patch`, `RecordId`, `Address`, `Index`, `FieldPath` when known |
 | `FrameRadiusExceeded` | Local frame radius or checked anchor subtraction overflow | `Patch` when available, `Limit`, local `PositionX`/`PositionZ` only after successful subtraction |
 | `PatchUnavailable` | A requested effective, seam or corner-owner patch, record, point-bound source or membership demand, or occupied bound is unavailable | `RecordId`, `SpaceId`, boundary `OwnerId`, `FieldPath`, `SurfaceId`, `Patch`, `ExpectedPatch`, `Address`, `Index`, `PatchStatus`, `SlotCell`, `ExpectedRecordType` when known |
@@ -1657,7 +1684,7 @@ An array beyond its own count cap uses that field name as `Budget`, with its `Ac
 | `SurfacePaintPriorityConflict` | Equal-priority overlapping paint with different materials | `SurfaceId`, `OtherSurfaceId`, priority in `ActualInteger` |
 | `SurfacePaintBoundaryInvalid` | An open or nonmanifold material boundary | `SurfaceId` |
 | `SurfacePaintCrossesPhysicalFace` | A whole-face paint material or presence boundary crossing a physical face | `SurfaceId`, `OtherSurfaceId`, `Patch`, face `Index`, `FieldPath` |
-| `WorkCapacityExceeded` | Reservation keys beyond the candidate cap, surface codec work beyond its encoded byte or array-count budget, or local corner-dependency or edge-subdivision metadata beyond its count budget, or compiled faces beyond MaxFacesPerPatch or support resource bytes beyond MaxPayloadBytes | `Patch`, `FieldPath`, `Budget`, `ActualCount`, `ActualByteCount`, `Limit` |
+| `WorkCapacityExceeded` | Reservation keys beyond the candidate cap, surface codec work beyond its encoded byte or array-count budget, or local corner-dependency or edge-subdivision metadata beyond its count budget, or compiled faces beyond MaxFacesPerPatch or support resource bytes beyond MaxPayloadBytes, or water-domain piece, vertex or pair-check work beyond its budget | `Patch`, `FieldPath`, `Budget`, `ActualCount`, `ActualByteCount`, `Limit` |
 | `SurfacePresencePaddingNonzero` | Nonzero bits beyond the authored cell count in the last presence word | `Patch`, `FieldPath`, `Index` |
 | `SurfaceSubdivisionAbsentCell` | An edge subdivision on an absent cell | `Patch`, `FieldPath`, `Index`, `CellX`, `CellZ`, `Edge` |
 | `SurfaceSubdivisionInteriorEdge` | An edge subdivision adjoining another present cell inside the patch | `Patch`, `FieldPath`, `Index`, `CellX`, `CellZ`, `Edge` |

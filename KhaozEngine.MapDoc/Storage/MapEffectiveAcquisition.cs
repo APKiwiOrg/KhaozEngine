@@ -32,7 +32,9 @@ internal sealed class MapEffectiveAcquisition
         _work = work;
         _snapshot = session.SnapshotId;
         _root = session.RootSha256;
-        if (string.IsNullOrWhiteSpace(_snapshot)) throw new MapDocumentException("invalid acquisition snapshot");
+        if (string.IsNullOrWhiteSpace(_snapshot))
+            throw new MapDocumentException(MapDocumentRefusal.SchemaValueRequired, "invalid acquisition snapshot")
+            { FieldPath = "SnapshotId", ActualSnapshot = _snapshot };
         MapSurfaceStorageLayout.RequireDigest(_root);
     }
     internal static MapScopedAcquisition.Result Run(IMapSurfaceAcquisitionSource source, MapSurfaceScope scope, MapAcquisitionWork? work, MapEffectiveContext context)
@@ -40,7 +42,14 @@ internal sealed class MapEffectiveAcquisition
         using IMapSurfaceAcquisitionSession session = source.OpenAcquisition(scope);
         var acquisition = new MapEffectiveAcquisition(session, scope, work, context);
         if (source.SnapshotId != session.SnapshotId || source.RootSha256 != session.RootSha256)
-            throw new MapDocumentException("acquisition session differs from its pinned source");
+            throw new MapDocumentException(MapDocumentRefusal.AcquisitionContractMismatch, "acquisition session differs from its pinned source")
+            {
+                FieldPath = source.SnapshotId != session.SnapshotId ? "SnapshotId" : "RootSha256",
+                ExpectedSnapshot = source.SnapshotId != session.SnapshotId ? source.SnapshotId : null,
+                ActualSnapshot = source.SnapshotId != session.SnapshotId ? session.SnapshotId : null,
+                ExpectedHash = source.SnapshotId == session.SnapshotId ? source.RootSha256 : null,
+                ActualHash = source.SnapshotId == session.SnapshotId ? session.RootSha256 : null,
+            };
         return acquisition.Run();
     }
     MapScopedAcquisition.Result Run()
@@ -116,7 +125,19 @@ internal sealed class MapEffectiveAcquisition
         MapPatchFindResult found = _session.FindPatches();
         CheckPages(before, found.PagesRead);
         if (found.SnapshotId != _snapshot || found.Scope is null || found.Scope.Digest != _scope.Digest || !Enum.IsDefined(found.Status))
-            throw new MapDocumentException("incoherent acquisition discovery snapshot or scope");
+        {
+            const string message = "incoherent acquisition discovery snapshot or scope";
+            if (found.SnapshotId != _snapshot)
+                throw new MapDocumentException(MapDocumentRefusal.AcquisitionSnapshotChanged, message)
+                { FieldPath = "SnapshotId", ExpectedSnapshot = _snapshot, ActualSnapshot = found.SnapshotId };
+            if (found.Scope is null)
+                throw new MapDocumentException(MapDocumentRefusal.SchemaValueRequired, message) { FieldPath = "Scope" };
+            if (found.Scope.Digest != _scope.Digest)
+                throw new MapDocumentException(MapDocumentRefusal.AcquisitionContractMismatch, message)
+                { FieldPath = "Scope.Digest", ExpectedHash = _scope.Digest, ActualHash = found.Scope.Digest };
+            throw new MapDocumentException(MapDocumentRefusal.SchemaEnumUnsupported, message)
+            { FieldPath = "Status", EnumType = typeof(MapFindStatus), ActualInteger = (long)found.Status };
+        }
         foreach (MapPatchKey key in ReservationSnapshot()) _reserved.Add(key);
         if (found.Status == MapFindStatus.CapacityExceeded) throw new MapSurfaceCapacityException(found.Diagnostic);
         foreach (MapCoveredRange range in found.KnownEmpty)
@@ -127,7 +148,8 @@ internal sealed class MapEffectiveAcquisition
         foreach (MapPatchRead read in found.Patches)
         {
             if (read.Status != MapPatchStatus.Present || !_reserved.Contains(read.Key))
-                throw new MapDocumentException("unreserved discovery payload");
+                throw new MapDocumentException(MapDocumentRefusal.AcquisitionContractMismatch, "unreserved discovery payload")
+                { Patch = read.Key, PatchStatus = read.Status, FieldPath = read.Status != MapPatchStatus.Present ? "Patches.Status" : "Patches.Key" };
             Surface(read.Key.SurfaceId);
             _facts.AddRead(read);
         }
@@ -135,7 +157,15 @@ internal sealed class MapEffectiveAcquisition
         {
             MapAcquiredFacts.ValidateKey(read.Key);
             if (read.Status is not (MapPatchStatus.Missing or MapPatchStatus.Corrupt or MapPatchStatus.Unloaded) || read.Patch is not null)
-                throw new MapDocumentException("incoherent unavailable discovery fact");
+                throw new MapDocumentException(read.Status is not (MapPatchStatus.Missing or MapPatchStatus.Corrupt or MapPatchStatus.Unloaded)
+                    ? MapDocumentRefusal.SchemaEnumUnsupported : MapDocumentRefusal.AcquisitionContractMismatch,
+                    "incoherent unavailable discovery fact")
+                {
+                    Patch = read.Key, PatchStatus = read.Status,
+                    FieldPath = read.Status is not (MapPatchStatus.Missing or MapPatchStatus.Corrupt or MapPatchStatus.Unloaded) ? "Unavailable.Status" : "Unavailable.Patch",
+                    EnumType = read.Status is not (MapPatchStatus.Missing or MapPatchStatus.Corrupt or MapPatchStatus.Unloaded) ? typeof(MapPatchStatus) : null,
+                    ActualInteger = read.Status is not (MapPatchStatus.Missing or MapPatchStatus.Corrupt or MapPatchStatus.Unloaded) ? (long)read.Status : null,
+                };
             Surface(read.Key.SurfaceId);
             if (_reserved.Contains(read.Key)) _facts.AddRead(read);
             else _facts.AddUnavailable("patch", read.Key, read.Status);
@@ -145,7 +175,8 @@ internal sealed class MapEffectiveAcquisition
             if (!_facts.HasRead(key))
             {
                 if (!found.KnownEmpty.Any(r => r.SurfaceId == key.SurfaceId && r.Slots.Contains(key.SlotX, key.SlotZ)))
-                    throw new MapDocumentException("reserved discovery key has no fact");
+                    throw new MapDocumentException(MapDocumentRefusal.AcquisitionContractMismatch, "reserved discovery key has no fact")
+                    { Patch = key, FieldPath = "ReservedPatchKeys" };
                 _facts.AddRead(new(key, MapPatchStatus.KnownEmpty, null, null, null, 0));
             }
         }
@@ -189,20 +220,26 @@ internal sealed class MapEffectiveAcquisition
         bool known = _session.TryGetIncidentRecords(key, out IReadOnlyList<MapRecordRef>? incidents);
         if (!known)
         {
-            if (incidents is not null) throw new MapDocumentException("unknown incidents carry records");
+            if (incidents is not null)
+                throw new MapDocumentException(MapDocumentRefusal.AcquisitionContractMismatch, "unknown incidents carry records")
+                { Patch = key, FieldPath = "IncidentRecords", ActualCount = incidents.Count };
             _unknownIncidents = true;
             _facts.AddUnavailable("patch", key, MapPatchStatus.Unloaded);
         }
         else
         {
-            if (incidents is null) throw new MapDocumentException("known incidents have no record list");
+            if (incidents is null)
+                throw new MapDocumentException(MapDocumentRefusal.SchemaValueRequired, "known incidents have no record list")
+                { Patch = key, FieldPath = "IncidentRecords" };
             foreach (MapRecordRef reference in incidents.ToArray()) Schedule(reference, depth + 1);
         }
         ReconcileReservations();
     }
     void Schedule(MapRecordRef reference, int depth)
     {
-        if (reference is null || string.IsNullOrWhiteSpace(reference.Id)) throw new MapDocumentException("invalid acquired record reference");
+        if (reference is null || string.IsNullOrWhiteSpace(reference.Id))
+            throw new MapDocumentException(MapDocumentRefusal.SchemaValueRequired, "invalid acquired record reference")
+            { Patch = reference?.Anchor, RecordId = reference?.Id, FieldPath = reference is null ? "reference" : nameof(reference.Id) };
         MapAcquiredFacts.ValidateKey(reference.Anchor);
         if (_scheduled.Add(reference)) _pending.Add(new(reference, depth));
     }

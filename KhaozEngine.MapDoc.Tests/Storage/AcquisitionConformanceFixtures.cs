@@ -170,6 +170,9 @@ internal sealed class R2AcquisitionProbeSource : IMapSurfaceAcquisitionSource
     internal Dictionary<MapPatchKey, IReadOnlyList<MapRecordRef>?> Incidents { get; } = new();
     internal List<MapCoveredRange> CoveredEmpty { get; } = new();
     internal List<MapPatchRead> Sentinels { get; } = new();
+    internal string? SessionSnapshotId { get; set; }
+    internal string? SessionRootSha256 { get; set; }
+    internal Func<MapPatchKey, (bool Known, IReadOnlyList<MapRecordRef>? Records)>? IncidentFault { get; set; }
     internal Action? DuringOpen { get; set; }
     internal Func<MapPatchFindResult, MapPatchFindResult>? FindFault { get; set; }
     internal Func<MapPatchKey, MapPatchRead, MapPatchRead>? ReadFault { get; set; }
@@ -206,8 +209,8 @@ internal sealed class R2AcquisitionProbeSession : IMapSurfaceAcquisitionSession
         Scope = scope with { Roles = Array.AsReadOnly(scope.Roles.ToArray()), SpaceIds = scope.SpaceIds is null ? null : Array.AsReadOnly(scope.SpaceIds.ToArray()) };
     }
     internal MapSurfaceScope Scope { get; }
-    public string SnapshotId => _source.SnapshotId;
-    public string RootSha256 => _source.RootSha256;
+    public string SnapshotId => _source.SessionSnapshotId ?? _source.SnapshotId;
+    public string RootSha256 => _source.SessionRootSha256 ?? _source.RootSha256;
     public int PagesRead => 0;
     internal int Finds { get; private set; }
     internal int Disposals { get; private set; }
@@ -297,6 +300,12 @@ internal sealed class R2AcquisitionProbeSession : IMapSurfaceAcquisitionSession
         Found();
         if (!_served.Contains(acquiredKey)) throw new InvalidOperationException("probe incident key not served");
         IncidentQueries.Add(acquiredKey);
+        if (_source.IncidentFault is { } fault)
+        {
+            var result = fault(acquiredKey);
+            records = result.Records;
+            return result.Known;
+        }
         IReadOnlyList<MapRecordRef>? value = _source.Incidents.TryGetValue(acquiredKey, out var supplied) ? supplied : Array.Empty<MapRecordRef>();
         records = value is null ? null : Array.AsReadOnly(value.ToArray());
         return records is not null;

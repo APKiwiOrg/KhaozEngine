@@ -94,6 +94,10 @@ public sealed class MapDocumentException : Exception
     public long? ExpectedByteCount { get; init; }
     /// <summary>The producer's declared patch status, when acquisition admission checks it.</summary>
     public KhaozEngine.MapDoc.Storage.MapPatchStatus? PatchStatus { get; init; }
+    /// <summary>The pinned acquisition snapshot identity required by the producer.</summary>
+    public string? ExpectedSnapshot { get; init; }
+    /// <summary>The acquisition snapshot identity returned by the producer.</summary>
+    public string? ActualSnapshot { get; init; }
     /// <summary>The runtime source type lacking required acquisition support.</summary>
     public Type? SourceType { get; init; }
     /// <summary>The work or metadata budget whose checked capacity was exceeded.</summary>
@@ -303,6 +307,8 @@ public sealed class MapDocumentException : Exception
         ExpectedByteCount = inner.ExpectedByteCount;
         PatchStatus = inner.PatchStatus;
         SourceType = inner.SourceType;
+        ExpectedSnapshot = inner.ExpectedSnapshot;
+        ActualSnapshot = inner.ActualSnapshot;
         Budget = inner.Budget;
         Limit = inner.Limit;
         ActualVersion = inner.ActualVersion;

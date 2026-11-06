@@ -12742,7 +12742,16 @@ retains the first failed `FieldPath` and known `SurfaceId`, `RecordId`, `Patch` 
 A non-present acquired result carrying a payload uses `AcquisitionContractMismatch`. A missing bound
 surface names the footprint's record and lower or upper field. A composed source without bounded native
 acquisition uses `AcquisitionUnsupported` with `SourceType`. Source-context wrapping and finding
-projection preserve these identifiers.
+projection preserve these identifiers. Effective discovery snapshot changes use
+`AcquisitionSnapshotChanged` with `ExpectedSnapshot`, `ActualSnapshot` and `FieldPath`. Effective or
+composed session pin mismatches, scope or reservation discrepancies and inconsistent incidence use
+`AcquisitionContractMismatch`, retaining both snapshot identities or both root/scope hashes when known.
+Null scopes and known incidence without a list use `SchemaValueRequired`, and unsupported discovery or
+unavailable statuses use `SchemaEnumUnsupported`. A composed read without a surface owner uses
+`ReferenceMissing` with `SurfaceId` and `Patch`. Scope-coordinate admission remains in the shared
+surface query. Arithmetic overflow in the resident merge after patch-key admission is an internal
+invariant failure. Other acquisition reservation, reconciliation and surface-query guards still use
+their message-only behavior.
 
 Native metadata adds typed findings beside its unchanged string diagnostics. Compound findings select
 the first failing predicate branch. Missing asset-reference and indoor-span values use `SchemaValueRequired`, nonfinite

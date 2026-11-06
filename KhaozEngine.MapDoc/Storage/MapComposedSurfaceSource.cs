@@ -80,7 +80,18 @@ internal sealed partial class MapComposedSurfaceSource : IMapSurfaceAcquisitionS
                         ? ids.Where(selected.Contains).ToHashSet(StringComparer.Ordinal) : ids;
                     var session = ((IMapSurfaceAcquisitionSource)source._native).OpenAcquisition(request with { SharedBudget = budget, DiscoverySurfaces = discovery });
                     if (session.SnapshotId != source._nativeSnapshot || session.RootSha256 != source._nativeRoot)
-                    { session.Dispose(); throw new MapDocumentException("native producer differs from its pinned composition"); }
+                    {
+                        var refusal = new MapDocumentException(MapDocumentRefusal.AcquisitionContractMismatch, "native producer differs from its pinned composition")
+                        {
+                            FieldPath = session.SnapshotId != source._nativeSnapshot ? "SnapshotId" : "RootSha256",
+                            ExpectedSnapshot = session.SnapshotId != source._nativeSnapshot ? source._nativeSnapshot : null,
+                            ActualSnapshot = session.SnapshotId != source._nativeSnapshot ? session.SnapshotId : null,
+                            ExpectedHash = session.SnapshotId == source._nativeSnapshot ? source._nativeRoot : null,
+                            ActualHash = session.SnapshotId == source._nativeSnapshot ? session.RootSha256 : null,
+                        };
+                        session.Dispose();
+                        throw refusal;
+                    }
                     _parts.Add(new(session, ids));
                     // Several parts share one ceiling only while every native session reports its work before doing it.
                     _unobservable = Unobservable(session, pages: groups.Length > 1, work: groups.Length > 1 || generated);
@@ -150,7 +161,8 @@ internal sealed partial class MapComposedSurfaceSource : IMapSurfaceAcquisitionS
             if (_unobservable is not null) throw new MapSurfaceCapacityException(_unobservable);
             Reserve(key);
             int before = PagesRead;
-            var part = Owner(key.SurfaceId) ?? throw new MapDocumentException("required surface is undeclared: " + key.SurfaceId);
+            var part = Owner(key.SurfaceId) ?? throw new MapDocumentException(MapDocumentRefusal.ReferenceMissing, "required surface is undeclared: " + key.SurfaceId)
+            { SurfaceId = key.SurfaceId, Patch = key, FieldPath = nameof(key.SurfaceId) };
             var read = part.Session.ReadPatch(key);
             return read with { PagesRead = PagesRead - before };
         }

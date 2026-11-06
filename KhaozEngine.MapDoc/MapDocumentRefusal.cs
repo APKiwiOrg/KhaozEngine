@@ -190,6 +190,8 @@ public enum MapDocumentRefusal
     WorkCapacityExceeded,
 
     // Scoped acquisition producer admission.
+    /// <summary>Refuses acquisition facts differing from the session's captured snapshot.</summary>
+    AcquisitionSnapshotChanged,
     /// <summary>Refuses a producer result inconsistent with its declared acquisition contract.</summary>
     AcquisitionContractMismatch,
     /// <summary>Refuses a source without bounded scoped acquisition support.</summary>

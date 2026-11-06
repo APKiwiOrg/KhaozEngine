@@ -1,4 +1,6 @@
 using System;
+using System.Collections;
+using System.Collections.Generic;
 using KhaozEngine.MapDoc;
 using KhaozEngine.MapDoc.Spaces;
 using KhaozEngine.MapDoc.Surfaces;
@@ -8,6 +10,25 @@ namespace KhaozEngine.Tests.MapDoc.Water;
 
 internal static partial class WaterFixtures
 {
+    internal sealed class RepairingVertices : IReadOnlyList<MapLatticeAddress>
+    {
+        readonly MapLatticeAddress[] valid = [MapLatticeAddress.Corner(14, 0), MapLatticeAddress.Corner(15, 0), MapLatticeAddress.Corner(14, 1)];
+        bool refused;
+
+        public int Count => valid.Length;
+        public MapLatticeAddress this[int index]
+        {
+            get
+            {
+                if (index != 0 || refused) return valid[index];
+                refused = true;
+                return default;
+            }
+        }
+        public IEnumerator<MapLatticeAddress> GetEnumerator() => ((IEnumerable<MapLatticeAddress>)valid).GetEnumerator();
+        IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
+    }
+
     internal static MapDocument TangentialCeiling(bool vertexOnly)
     {
         MapDocument doc = OceanOverCaves();

@@ -12459,7 +12459,9 @@ typed refusals in the owned read-only `MapWaterContainmentReport.Findings` snaps
 record identities and the body context. `WaterCoversAlias`, `WaterNoSpaceFootprint` and
 `WaterSpacesDisconnected` name the authored rules. Caught typed causes keep their original
 identifiers and add body `OwnerId` when unset. Medium and body scalar findings name the field and
-identity, and separate nonfinite numbers from finite range refusals. Occupied-water admission retains
+identity, and separate nonfinite numbers from finite range refusals. Invalid ring findings retain
+the captured invalid ring `Address` with its denominator identifiers. A null body medium uses
+`SchemaValueRequired`, while an unresolved medium key uses `ReferenceMissing`. Occupied-water admission retains
 `AcquireStatus` and the unavailable patch and status where known. The released `Complete`, `Errors`
 and downstream status classifications remain unchanged. Untyped upstream failures remain in `Errors` during producer closure.
 The water edit adapter now retains its first concrete validator reason and ordered `Findings`.

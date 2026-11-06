@@ -88,7 +88,8 @@ internal static class MapWaterValidation
             }
         }
         if (body.Medium is null || !media.Contains(body.Medium))
-            Add(new(MapDocumentRefusal.ReferenceMissing, $"{label}: unknown medium '{body.Medium}'.")
+            Add(new(body.Medium is null ? MapDocumentRefusal.SchemaValueRequired : MapDocumentRefusal.ReferenceMissing,
+                $"{label}: unknown medium '{body.Medium}'.")
             { EntityId = body.Id, FieldPath = "Medium", ActualText = body.Medium, SubjectKind = "water medium" }, errors, findings);
         if (string.IsNullOrWhiteSpace(body.RenderMaterial))
             Add(new(MapDocumentRefusal.SchemaValueRequired, $"{label}: renderMaterial must be non-empty.")
@@ -156,13 +157,14 @@ internal static class MapWaterValidation
             }
             for (int v = 0; v < vertices.Count; v++)
             {
-                try { far |= FarAt(vertices[v], $"Domain.Rings[{i}].Vertices[{v}]", i); }
+                MapLatticeAddress vertex = vertices[v];
+                try { far |= FarAt(vertex, $"Domain.Rings[{i}].Vertices[{v}]", i); }
                 catch (MapDocumentException error)
                 {
                     var finding = MapDocumentFinding.FromException(error)!;
                     Add(finding with { Message = $"{label}: ring {i} vertex {v} is not a valid lattice address.",
                         EntityId = bodyId, FieldPath = $"Domain.Rings[{i}].Vertices[{v}].{finding.FieldPath}", Index = i,
-                        OtherIndex = v, Address = vertices[v] }, errors, findings);
+                        OtherIndex = v, Address = vertex }, errors, findings);
                 }
             }
         }

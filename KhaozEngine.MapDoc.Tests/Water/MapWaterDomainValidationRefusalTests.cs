@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using KhaozEngine.MapDoc;
 using KhaozEngine.MapDoc.Editing;
@@ -10,6 +11,37 @@ namespace KhaozEngine.Tests.MapDoc.Water;
 
 public sealed class MapWaterDomainValidationRefusalTests
 {
+    [Fact]
+    public void InvalidVertex_RetainsTheAddressThatFailedWhenTheSourceChanges()
+    {
+        var doc = WaterFixtures.OceanOverCaves();
+        int index = doc.Water!.Bodies.FindIndex(b => b.Id == "ocean");
+        var body = doc.Water.Bodies[index];
+        doc.Water.Bodies[index] = body with
+        {
+            Domain = body.Domain with { Rings = [new(new WaterFixtures.RepairingVertices())] },
+        };
+        var before = doc.Water.Bodies.ToArray();
+        var errors = new List<string>();
+        var findings = new List<MapDocumentFinding>();
+        MapWaterValidation.Validate(doc, errors, new MapWaterWorkBudget(), findings);
+        var finding = Assert.Single(findings);
+        Assert.Equal(MapDocumentRefusal.ValueOutsideRange, finding.Reason);
+        Assert.Equal("Domain.Rings[0].Vertices[0].denominator", finding.FieldPath);
+        Assert.Equal(default(MapLatticeAddress), finding.Address);
+        Assert.Equal(0L, finding.ActualInteger);
+        Assert.Equal(1L, finding.MinimumInteger);
+        Assert.Equal(64L, finding.MaximumInteger);
+        Assert.Equal(0, finding.Index);
+        Assert.Equal(0, finding.OtherIndex);
+        Assert.Equal(before, doc.Water.Bodies);
+        errors.Clear();
+        findings.Clear();
+        MapWaterValidation.Validate(doc, errors, new MapWaterWorkBudget(), findings);
+        Assert.Empty(errors);
+        Assert.Empty(findings);
+    }
+
     [Theory]
     [InlineData("domain", MapDocumentRefusal.SchemaValueRequired, "Domain")]
     [InlineData("rects", MapDocumentRefusal.SchemaValueRequired, "Domain.Rects")]

@@ -62,6 +62,7 @@ public sealed class MapWaterValidationRefusalTests
     [InlineData("far", MapDocumentRefusal.ValueOutsideRange, "SurfaceY")]
     [InlineData("exact", MapDocumentRefusal.GeometryNotRepresentable, "SurfaceY")]
     [InlineData("medium", MapDocumentRefusal.ReferenceMissing, "Medium")]
+    [InlineData("null-medium", MapDocumentRefusal.SchemaValueRequired, "Medium")]
     [InlineData("material", MapDocumentRefusal.SchemaValueRequired, "RenderMaterial")]
     public void Body_ReportsOneDefectAndAcceptsTheCorrectedBody(string defect, MapDocumentRefusal reason, string field)
     {
@@ -78,6 +79,7 @@ public sealed class MapWaterValidationRefusalTests
             // This normal float needs a denominator beyond the bounded exact-value representation.
             "exact" => valid with { SurfaceY = 1e-20f },
             "medium" => valid with { Medium = "absent" },
+            "null-medium" => valid with { Medium = null! },
             _ => valid with { RenderMaterial = " " },
         };
         if (defect == "duplicate") doc.Water.Bodies.Add(body);

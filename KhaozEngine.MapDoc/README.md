@@ -20,7 +20,13 @@ See the [consumer contract](../docs/USING-KHAOZENGINE.md#free-buildings-and-effe
 against a verified immutable `MapAssetClosure`, including exact roots, asset membership, identities and
 finite transforms. `ValidateLocal(document, registry)` checks document-local validity only.
 `MapAuthoredIdentity` and complete-document `MapAuthoredIdentityV2` reuse the bound checks and separately
-validate builder/hash options. Editing callers
+validate builder/hash options. These option guards select the first failed field in order: an unsupported
+`ResolverVersion` uses `ResolverContractMismatch`, blank `BuilderId` uses `SchemaValueRequired`, nonpositive
+`BuilderVersion` uses `ValueOutsideRange`, and blank `OptionsHash` uses `SchemaValueRequired`. Refusals retain
+`FieldPath`, submitted and expected resolver versions, and the failed text or integer. Builder version 1 is
+accepted. Missing playable bounds and a missing native placement asset use `SchemaValueRequired`, their
+`FieldPath` and the known document or placement identity. Nonfinite native storage bounds use
+`ValueNonfinite`, the first failed component in `FieldPath` and `ActualNumber`. Editing callers
 need no synthetic builder options and never resolve relative resource paths implicitly.
 `MapResolver.Resolve` publishes an immutable `MapResolvedDocument`. Its `AssetClosure` is the exact verified
 closure passed in, for binding and resource lookup without a second load. `MapNativeResolution.Resolve(document,
@@ -140,6 +146,14 @@ content. Storage paths, tile and page packing, embedding and incident index book
 whole identity. Equivalent complete in-memory, monolithic, tiled and repacked documents share one token.
 Resolver 1 continues to use `MapAuthoredIdentity`.
 
+Authored content duplicates report `IdentityDuplicate`, `SubjectKind` and `EntityId`, or `SculptTile` for
+sculpt content. The digest's existing string result remains a prose projection of that typed finding.
+Whole authored identity over a window reports `CompleteDocumentRequired` with `DocumentId` and `Operation`
+`ComputeWholeAuthoredIdentity`. Native validation uses the same reason with `Operation`
+`ValidateNativeDocument`. Asset-root comparison reports `DocumentAssetRootsMismatch` with submitted
+`ResourceIds` and closure `ExpectedResourceIds`. Both lists are owned snapshots and remain stable when the
+caller edits its root list.
+
 ## Bounded scoped acquisition
 
 Every API in this section is new in 20.30.0.
@@ -216,7 +230,7 @@ The returned view, `MapCoverageWitness`, `MapReadWitness` and `MapScopedIdentity
 immutable. They detach payloads, nested record and span lists, scope filters and asset digests. `Patch`
 returns a fresh clone and no access after publication rereads the producer. Scoped identity stays under
 `kemap/scoped/1` and describes the acquired facts, frame, scope and policies. `RequireComplete()` refuses an
-incomplete identity. A complete scoped acquisition from a partial editing window still cannot replace a
+incomplete identity with `AcquisitionIncomplete` and `Operation` `RequireCompleteIdentity`. A complete scoped acquisition from a partial editing window still cannot replace a
 whole current-edit identity. `CompleteView(set)` captures all resident patches and records without bound
 enumeration for complete in-memory surface sets.
 
@@ -2069,7 +2083,8 @@ their joined diagnostic text.
 | `NumericIdHighWaterExceeded` | A placement, prefab binding or retired transfer above the reserved mark | `EntityId`, `SubjectKind`, `PlacementId`, `FieldPath`, `NumericId`, `HighWaterMark` |
 | `ResolverContractMismatch` | The document resolver, support recipe or caller's resolver options cannot serve the requested operation | `PayloadVersion`, `ResolverVersion`, `OptionsResolverVersion`, `ExpectedResolverVersion`, `SupportRecipe`, `ExpectedSupportRecipe`, `FieldPath`, `SubjectKind` |
 | `SupportLegacyHeightRequired` | Resolver-1 resolution without an analytic support callback | `ResolverVersion`, `FieldPath` `legacySupportHeight` |
-| `CompleteDocumentRequired` | Complete prefab expansion or authored-support adoption over a partial document | `DocumentId`, `Operation` |
+| `CompleteDocumentRequired` | Complete prefab expansion, authored-support adoption, whole authored identity or native validation over a partial document | `DocumentId`, `Operation` |
+| `DocumentAssetRootsMismatch` | Native document roots differing from the verified asset closure | submitted `ResourceIds` and `ExpectedResourceIds`, both owned read-only snapshots in their producer order |
 | `DocumentMigrationSourceVersionInvalid` | A prefab migration source outside format 6 or 7 | `FieldPath`, `ActualVersion`, owned `SupportedVersions` |
 | `PrefabStateUnreadable` | A producer failure while reading prefab state without a concrete lower refusal | `DocumentId`, original `InnerException` on the throwing adapter |
 

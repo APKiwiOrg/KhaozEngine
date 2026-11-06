@@ -41,8 +41,10 @@ public sealed partial class MapStoredSurfaceSource
             }
             catch (MapDocumentException ex) { throw PinnedTileRefusal(MapPatchStatus.Corrupt, entry, ex); }
             // Duplicate IDs across tiles refuse here, so the content rules above leave them to the digest.
-            if (digest.Add(content.Placements, content.Spawns, content.PlayerSpawns, content.SculptTiles) is not null)
-                throw PinnedTileRefusal(MapPatchStatus.Corrupt, entry, null);
+            MapDocumentFinding? duplicate = digest.AddFinding(content.Placements, content.Spawns, content.PlayerSpawns, content.SculptTiles);
+            if (duplicate is not null)
+                throw PinnedTileRefusal(MapPatchStatus.Corrupt, entry,
+                    MapDocumentRefusalFactory.FromFinding(duplicate, duplicate.Message));
         }
         identities.Finish();
         return digest.Finish();

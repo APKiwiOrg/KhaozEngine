@@ -195,7 +195,9 @@ public sealed class StoredContentIdentityTests
         MapTiledFile.ReadManifest(directory, new MapDocumentLoadOptions(), out MapTileIndex index);
         MapTileCoord later = index.Entries.Last(e => e.Coord == first || e.Coord == second).Coord;
         var error = Refusal(directory);
-        Assert.Equal(MapDocumentRefusal.PinnedContentUnavailable, error.Reason);
+        Assert.Equal(MapDocumentRefusal.IdentityDuplicate, error.Reason);
+        Assert.Equal("placement", error.SubjectKind);
+        Assert.Equal("tree-1", error.EntityId);
         Assert.Equal(MapPatchStatus.Corrupt, error.PatchStatus);
         Assert.Equal(later, error.Tile);
         AssertNamesNoPathOrFile(error.Message, directory);

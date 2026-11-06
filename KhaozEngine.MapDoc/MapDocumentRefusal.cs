@@ -10,6 +10,8 @@ public enum MapDocumentRefusal
     SupportLegacyHeightRequired,
 
     // Whole-document and migration admission.
+    /// <summary>Refuses native document roots different from the verified asset closure roots.</summary>
+    DocumentAssetRootsMismatch,
     /// <summary>Refuses a document format version other than the current writable version.</summary>
     DocumentVersionUnsupported,
     /// <summary>Refuses a terrain feature discriminator absent from the supplied registry.</summary>

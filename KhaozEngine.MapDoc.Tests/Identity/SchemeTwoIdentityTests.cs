@@ -116,7 +116,10 @@ public sealed class SchemeTwoIdentityTests
         try
         {
             MapDocument window = SurfaceStorageFixtures.LoadSlotWindow(dir, 300);
-            Assert.Contains("window", Assert.Throws<MapDocumentException>(() => Token(window)).Message);
+            var refusal = Assert.Throws<MapDocumentException>(() => Token(window));
+            Assert.Equal(MapDocumentRefusal.CompleteDocumentRequired, refusal.Reason);
+            Assert.Equal(window.Id, refusal.DocumentId);
+            Assert.Equal("ComputeWholeAuthoredIdentity", refusal.Operation);
             var far = new MapPatchKey("far", 300, 0);
             MapSurfaceScope scope = ScopeFixtures.Around(new WorldFrame(150, 0), 2, 2);
             MapDocumentSurfaceSource beforeSource = MapDocumentSurfaceSource.Capture(window);
@@ -134,7 +137,8 @@ public sealed class SchemeTwoIdentityTests
             Assert.NotEqual(beforeSource.SnapshotId, afterSource.SnapshotId);
             Assert.NotEqual(before.Identity.Digest, after.Identity.Digest);
             Assert.Contains(new KeyValuePair<MapPatchKey, string>(far, MapSurfaceSemantics.PatchDigest(window.Surfaces.Patches[far])), after.Identity.Patches);
-            Assert.Contains("window", Assert.Throws<MapDocumentException>(() => Token(window)).Message);
+            Assert.Equal(MapDocumentRefusal.CompleteDocumentRequired, Assert.Throws<MapDocumentException>(() => Token(window)).Reason);
+            Assert.NotEmpty(Token(MapDocumentFile.LoadTiled(dir)));
         }
         finally
         {

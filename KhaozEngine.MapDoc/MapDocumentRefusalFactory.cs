@@ -122,6 +122,7 @@ internal static class MapDocumentRefusalFactory
             ShapeType = finding.ShapeType,
             ResourceRoot = finding.ResourceRoot,
             ResourceIds = finding.ResourceIds,
+            ExpectedResourceIds = finding.ExpectedResourceIds,
             SourceIds = finding.SourceIds,
             MarkerIds = finding.MarkerIds,
             SupportedVersions = finding.SupportedVersions,

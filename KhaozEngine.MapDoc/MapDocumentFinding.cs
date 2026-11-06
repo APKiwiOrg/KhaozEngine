@@ -18,6 +18,7 @@ public sealed record MapDocumentFinding(MapDocumentRefusal Reason, string Messag
 {
     IReadOnlyList<int>? _supportedVersions;
     IReadOnlyList<string>? _resourceIds;
+    IReadOnlyList<string>? _expectedResourceIds;
     IReadOnlyList<string>? _sourceIds;
     IReadOnlyList<string>? _markerIds;
 
@@ -246,11 +247,18 @@ public sealed record MapDocumentFinding(MapDocumentRefusal Reason, string Messag
     /// <summary>The resource root used by complete document validation, when known.</summary>
     public string? ResourceRoot { get; init; }
 
-    /// <summary>The unresolved resource identities, as an owned read-only snapshot.</summary>
+    /// <summary>The resource identities associated with the refusal, as an owned read-only snapshot in producer order.</summary>
     public IReadOnlyList<string>? ResourceIds
     {
         get => _resourceIds;
         init => _resourceIds = value is null ? null : Array.AsReadOnly<string>([.. value]);
+    }
+
+    /// <summary>The expected verified root resource identities, as an owned read-only snapshot in closure order.</summary>
+    public IReadOnlyList<string>? ExpectedResourceIds
+    {
+        get => _expectedResourceIds;
+        init => _expectedResourceIds = value is null ? null : Array.AsReadOnly<string>([.. value]);
     }
 
     /// <summary>The source identities associated with the refusal, as an owned read-only snapshot in producer
@@ -391,6 +399,7 @@ public sealed record MapDocumentFinding(MapDocumentRefusal Reason, string Messag
             ShapeType = error.ShapeType,
             ResourceRoot = error.ResourceRoot,
             ResourceIds = error.ResourceIds,
+            ExpectedResourceIds = error.ExpectedResourceIds,
             SourceIds = error.SourceIds,
             MarkerIds = error.MarkerIds,
             SupportedVersions = error.SupportedVersions,

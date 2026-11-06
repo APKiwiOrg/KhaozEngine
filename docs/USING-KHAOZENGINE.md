@@ -12660,6 +12660,21 @@ cold content. A window remembers the manifest it loaded. A windowed `SaveTiled`,
 window, refuses with `stale window` when another writer has changed the manifest since the window was loaded,
 or when the current manifest cannot be read. Reload the window and reapply the edit.
 
+Native validation and whole authored identity require a complete document. Their refusals expose
+`CompleteDocumentRequired`, `DocumentId` and `Operation` `ValidateNativeDocument` or
+`ComputeWholeAuthoredIdentity`. Scoped identity `RequireComplete()` uses `AcquisitionIncomplete` with
+`Operation` `RequireCompleteIdentity`. A native root mismatch reports `DocumentAssetRootsMismatch` and
+owned snapshots of the submitted `ResourceIds` and closure `ExpectedResourceIds`.
+
+Both authored identity schemes select the first invalid build option. Resolver mismatch uses
+`ResolverContractMismatch` with submitted and expected resolver versions. Blank builder ID or options hash
+uses `SchemaValueRequired` with `FieldPath` and `ActualText`. Nonpositive builder version uses
+`ValueOutsideRange` with `ActualInteger` and inclusive `MinimumInteger` 1. Missing playable bounds or a
+native placement asset also uses `SchemaValueRequired` with its field and known document or placement ID.
+Nonfinite storage bounds identify the first failed component through `ValueNonfinite`, `FieldPath` and
+`ActualNumber`. Authored duplicate content uses `IdentityDuplicate`, its typed `SubjectKind` and `EntityId`,
+or `SculptTile` for a sculpt duplicate.
+
 Tiled surface saves report dictionary key disagreement as `StoragePatchKeyMismatch` with the dictionary
 `ExpectedPatch` and payload `Patch`. A payload changed after preparation uses `StorageSaveSnapshotChanged`
 with `Patch` and the expected and actual hashes. Packing limits use `ValueOutsideRange`, the failed

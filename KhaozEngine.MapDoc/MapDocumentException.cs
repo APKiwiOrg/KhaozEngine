@@ -20,6 +20,7 @@ public sealed class MapDocumentException : Exception
     IReadOnlyList<MapDocumentFinding>? _findings;
     IReadOnlyList<int>? _supportedVersions;
     IReadOnlyList<string>? _resourceIds;
+    IReadOnlyList<string>? _expectedResourceIds;
     IReadOnlyList<string>? _sourceIds;
     IReadOnlyList<string>? _markerIds;
 
@@ -270,12 +271,19 @@ public sealed class MapDocumentException : Exception
     /// <summary>The resource root used by complete document validation, when known.</summary>
     public string? ResourceRoot { get; init; }
 
-    /// <summary>The resource identities left unresolved by a dependency cycle, in ordinal order,
-    /// as an owned read-only snapshot. This includes resources blocked behind the cycle.</summary>
+    /// <summary>The resource identities associated with a refusal, as an owned read-only snapshot. Dependency
+    /// cycles use ordinal order including blocked resources. Root mismatches retain submitted root order.</summary>
     public IReadOnlyList<string>? ResourceIds
     {
         get => _resourceIds;
         init => _resourceIds = value is null ? null : Array.AsReadOnly<string>([.. value]);
+    }
+
+    /// <summary>The expected verified root resource identities, as an owned read-only snapshot in closure order.</summary>
+    public IReadOnlyList<string>? ExpectedResourceIds
+    {
+        get => _expectedResourceIds;
+        init => _expectedResourceIds = value is null ? null : Array.AsReadOnly<string>([.. value]);
     }
 
     /// <summary>The source identities associated with the refusal, as an owned read-only snapshot in producer
@@ -434,6 +442,7 @@ public sealed class MapDocumentException : Exception
         ShapeType = inner.ShapeType;
         ResourceRoot = inner.ResourceRoot ?? resourceRoot;
         _resourceIds = inner._resourceIds;
+        _expectedResourceIds = inner._expectedResourceIds;
         _sourceIds = inner._sourceIds;
         _markerIds = inner._markerIds;
         _supportedVersions = inner._supportedVersions;

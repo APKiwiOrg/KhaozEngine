@@ -62,11 +62,19 @@ public sealed class MapDocumentExceptionTests
         string[] source = ["a", "b"];
         var refusal = new MapDocumentException(MapDocumentRefusal.AssetDependencyCycle, "cycle") { ResourceIds = source };
         var finding = new MapDocumentFinding(MapDocumentRefusal.AssetDependencyCycle, "cycle") { ResourceIds = source };
+        var roots = new MapDocumentException(MapDocumentRefusal.DocumentAssetRootsMismatch, "roots") { ExpectedResourceIds = source };
+        var rootFinding = new MapDocumentFinding(MapDocumentRefusal.DocumentAssetRootsMismatch, "roots") { ExpectedResourceIds = source };
         var choices = new MapDocumentException(MapDocumentRefusal.MarkerAdoptionChoiceSetMismatch, "choices") { SourceIds = source };
         var choiceFinding = new MapDocumentFinding(MapDocumentRefusal.MarkerAdoptionChoiceSetMismatch, "choices") { SourceIds = source };
         var collision = new MapDocumentException(MapDocumentRefusal.MarkerNameDuplicate, "collision") { MarkerIds = source };
         var collisionFinding = new MapDocumentFinding(MapDocumentRefusal.MarkerNameDuplicate, "collision") { MarkerIds = source };
         source[0] = "changed";
+        Assert.Equal(new[] { "a", "b" }, roots.ExpectedResourceIds);
+        Assert.Equal(new[] { "a", "b" }, rootFinding.ExpectedResourceIds);
+        if (roots.ExpectedResourceIds is IList<string> rootList) Assert.Throws<NotSupportedException>(() => rootList[0] = "changed");
+        if (rootFinding.ExpectedResourceIds is IList<string> rootFindingList) Assert.Throws<NotSupportedException>(() => rootFindingList[0] = "changed");
+        Assert.Equal(new[] { "a", "b" }, roots.ExpectedResourceIds);
+        Assert.Equal(new[] { "a", "b" }, rootFinding.ExpectedResourceIds);
         Assert.Equal(new[] { "a", "b" }, refusal.ResourceIds);
         if (refusal.ResourceIds is IList<string> list)
             Assert.Throws<NotSupportedException>(() => list[0] = "changed");
@@ -157,6 +165,7 @@ public sealed class MapDocumentExceptionTests
     static object Sample(PropertyInfo property, int index)
     {
         Type type = Nullable.GetUnderlyingType(property.PropertyType) ?? property.PropertyType;
+        if (property.Name == nameof(MapDocumentException.ExpectedResourceIds)) return new[] { "expected-root", "second-root" };
         if (property.Name == nameof(MapDocumentException.MarkerId)) return "marker-owner";
         if (property.Name == nameof(MapDocumentException.SourceId)) return "spawn-source";
         if (property.Name == nameof(MapDocumentException.MarkerName)) return "arrival";

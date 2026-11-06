@@ -4,6 +4,7 @@ using System.Linq;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using KhaozEngine.MapDoc.Assets;
+using KhaozEngine.MapDoc.Identity;
 
 namespace KhaozEngine.MapDoc;
 
@@ -54,9 +55,7 @@ public static class MapAuthoredIdentity
                 ExpectedResolverVersion = 1,
                 FieldPath = "resolverIdentity",
             };
-        if (options.ResolverVersion != 1 || string.IsNullOrWhiteSpace(options.BuilderId) ||
-            options.BuilderVersion <= 0 || string.IsNullOrWhiteSpace(options.OptionsHash))
-            throw new MapDocumentException("Native build identity requires supported resolver, builder ID, positive version and options hash.");
+        MapAuthoredIdentityOptions.Require(options, 1, "Native build identity requires supported resolver, builder ID, positive version and options hash.");
         MapBoundDocumentValidation.Validate(doc, assets);
     }
 

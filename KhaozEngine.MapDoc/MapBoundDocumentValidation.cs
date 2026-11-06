@@ -29,7 +29,8 @@ public static class MapBoundDocumentValidation
     public static void ValidateLocal(MapDocument document, MapDocRegistry? registry = null)
     {
         ArgumentNullException.ThrowIfNull(document);
-        if (document.Tiles is { IsPartial: true }) throw new MapDocumentException("Native document validation requires every tile to be loaded.");
+        if (document.Tiles is { IsPartial: true }) throw new MapDocumentException(MapDocumentRefusal.CompleteDocumentRequired, "Native document validation requires every tile to be loaded.")
+            { DocumentId = document.Id, Operation = "ValidateNativeDocument" };
         if (document.ResolverIdentity is not { PayloadVersion: 1, ResolverVersion: 1 or 2 })
             throw new MapDocumentException(MapDocumentRefusal.ResolverContractMismatch,
                 "Native document requires payload version 1 and resolver version 1 or 2.")
@@ -39,11 +40,20 @@ public static class MapBoundDocumentValidation
                 SupportRecipe = document.SupportRecipe,
                 FieldPath = "resolverIdentity",
             };
-        if (document.PlayableBounds is null) throw new MapDocumentException("Native document requires playable bounds.");
+        if (document.PlayableBounds is null) throw new MapDocumentException(MapDocumentRefusal.SchemaValueRequired, "Native document requires playable bounds.")
+            { DocumentId = document.Id, FieldPath = nameof(document.PlayableBounds) };
         Require(MapDocumentValidator.ValidateFindings(document, registry ?? MapDocRegistry.CreateDefault()));
         if (!float.IsFinite(document.Bounds.MinX) || !float.IsFinite(document.Bounds.MinZ) ||
             !float.IsFinite(document.Bounds.MaxX) || !float.IsFinite(document.Bounds.MaxZ))
-            throw new MapDocumentException("Native storage bounds must be finite.");
+        {
+            string field = !float.IsFinite(document.Bounds.MinX) ? nameof(document.Bounds.MinX)
+                : !float.IsFinite(document.Bounds.MinZ) ? nameof(document.Bounds.MinZ)
+                : !float.IsFinite(document.Bounds.MaxX) ? nameof(document.Bounds.MaxX) : nameof(document.Bounds.MaxZ);
+            throw new MapDocumentException(MapDocumentRefusal.ValueNonfinite, "Native storage bounds must be finite.")
+            { FieldPath = "Bounds." + field, DocumentId = document.Id,
+                ActualNumber = field == nameof(document.Bounds.MinX) ? document.Bounds.MinX : field == nameof(document.Bounds.MinZ) ? document.Bounds.MinZ
+                    : field == nameof(document.Bounds.MaxX) ? document.Bounds.MaxX : document.Bounds.MaxZ };
+        }
         foreach (MapPlacement p in document.Placements) ValidatePlacement(p);
     }
 
@@ -83,7 +93,8 @@ public static class MapBoundDocumentValidation
     {
         var roots = new HashSet<MapAssetRef>(nativeAssets);
         if (roots.Count != nativeAssets.Count || roots.Count != assets.Roots.Count || !roots.SetEquals(assets.Roots))
-            throw new MapDocumentException("Native document roots do not match the verified asset closure.");
+            throw new MapDocumentException(MapDocumentRefusal.DocumentAssetRootsMismatch, "Native document roots do not match the verified asset closure.")
+                { ResourceIds = nativeAssets.Select(a => a.Id).ToArray(), ExpectedResourceIds = assets.Roots.Select(a => a.Id).ToArray() };
     }
 
     /// <summary>Requires every water body's render material to be a <see cref="MapResourceKind.Material"/> resource in
@@ -115,7 +126,8 @@ public static class MapBoundDocumentValidation
 
     static void ValidatePlacement(MapPlacement p)
     {
-        if (string.IsNullOrWhiteSpace(p.AssetId)) throw new MapDocumentException($"Placement '{p.Id}' requires a native asset ID.");
+        if (string.IsNullOrWhiteSpace(p.AssetId)) throw new MapDocumentException(MapDocumentRefusal.SchemaValueRequired, $"Placement '{p.Id}' requires a native asset ID.")
+            { PlacementId = p.Id, FieldPath = nameof(p.AssetId) };
         if (!float.IsFinite(p.X) || !float.IsFinite(p.Z) || (p.Y is { } y && !float.IsFinite(y)) ||
             !float.IsFinite(p.Yaw) || !float.IsFinite(p.Scale) || p.Scale <= 0 || p.Tags is null || p.Tags.Any(t => t is null))
             throw new MapDocumentException($"Placement '{p.Id}' has invalid transform or tags.");

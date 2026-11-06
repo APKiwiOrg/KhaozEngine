@@ -24,6 +24,10 @@ public sealed class MapSurfaceJsonException : JsonException
     public long? ActualInteger { get; init; }
     /// <summary>The inclusive minimum accepted by the scalar guard.</summary>
     public long? MinimumInteger { get; init; }
+    /// <summary>The patch surface identity after it has been read or submitted to the writer.</summary>
+    public string? SurfaceId { get; init; }
+    /// <summary>The submitted noncanonical slot text, when a string was supplied.</summary>
+    public string? ActualText { get; init; }
 
     // Keep the complete scalar refusal as the cause so document wrappers use its source-copy path.
     internal static MapSurfaceJsonException FromDocument(MapDocumentException inner) => new(inner.Reason!.Value, inner.Message, inner)
@@ -38,5 +42,6 @@ public sealed class MapSurfaceJsonException : JsonException
         SourceName = sourceName, Tile = tile, Path = path, ResourceId = resourceId,
         FieldPath = FieldPath ?? Path, LineNumber = LineNumber, BytePositionInLine = BytePositionInLine,
         Numerator = Numerator, Denominator = Denominator, ActualInteger = ActualInteger, MinimumInteger = MinimumInteger,
+        SurfaceId = SurfaceId, ActualText = ActualText,
     };
 }

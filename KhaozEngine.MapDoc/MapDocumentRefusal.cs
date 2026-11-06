@@ -220,7 +220,7 @@ public enum MapDocumentRefusal
     SurfaceWallHeightInverted,
     /// <summary>Refuses paint compilation without complete captured geometry or the required paint role.</summary>
     AcquisitionIncomplete,
-    /// <summary>Refuses a paint target that is not a physical surface.</summary>
+    /// <summary>Refuses a paint override incompatible with its declared physical target.</summary>
     SurfacePaintTargetInvalid,
     /// <summary>Refuses nonzero paint priority on a surface other than PaintOverride.</summary>
     SurfacePaintPriorityMisplaced,
@@ -228,6 +228,8 @@ public enum MapDocumentRefusal
     SurfacePaintPriorityConflict,
     /// <summary>Refuses an open or nonmanifold paint material boundary.</summary>
     SurfacePaintBoundaryInvalid,
+    /// <summary>Refuses whole-face paint whose material or presence boundary crosses a physical face.</summary>
+    SurfacePaintCrossesPhysicalFace,
 
     // Scoped acquisition producer admission.
     /// <summary>Refuses acquisition facts differing from the session's captured snapshot.</summary>

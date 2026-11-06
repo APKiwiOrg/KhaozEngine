@@ -12849,6 +12849,13 @@ material boundaries carry `SurfacePaintBoundaryInvalid` and the paint surface.
 Lattice-unit converters throw `MapSurfaceJsonException`, retaining the `JsonException` base contract.
 Schema refusals carry the relative `FieldPath`. Lower scalar refusals retain their original reason and
 unit or numeric identifiers, including when document readers add source context.
+Patch-key JSON uses the same carrier, preserving the first failed field, the surface identity when
+already read and the exact `ActualText` for `SchemaInt64Malformed` slot strings. Both signed int64
+endpoints remain valid canonical strings. Whole-face paint admission retains its paint `SurfaceId`
+and physical `OtherSurfaceId`, with the failed role or target field. Undefined roles use
+`SchemaEnumUnsupported`. Material or presence crossings use `SurfacePaintCrossesPhysicalFace`,
+the target `Patch`, face `Index` and `FieldPath` `Material` or `Presence`, without changing either
+input. Exact override overflow uses `GeometryNotRepresentable` and `Operation = "paint override"`.
 
 Native metadata adds typed findings beside its unchanged string diagnostics. Compound findings select
 the first failing predicate branch. Missing asset-reference and indoor-span values use `SchemaValueRequired`, nonfinite

@@ -1571,10 +1571,11 @@ An array beyond its own count cap uses that field name as `Budget`, with its `Ac
 | `SurfaceSupportRoleInvalid` | A support resource surface outside the native support-floor policy | `ResourceId`, `SurfaceId`, `Index`, `FieldPath`, `EnumType`, `ActualInteger` |
 | `SurfaceWallHeightInverted` | A wall strip lower vertex above its matching upper vertex | `RecordId`, `Index` |
 | `AcquisitionIncomplete` | Partial paint without complete captured facts or the required paint role | `SurfaceId`, `AcquireStatus`, `FieldPath` |
-| `SurfacePaintTargetInvalid` | A paint target that is itself a PaintOverride | `SurfaceId`, `FieldPath` |
+| `SurfacePaintTargetInvalid` | A paint-only physical target or a whole-face override with incompatible role or declared target | `SurfaceId`, `OtherSurfaceId`, `FieldPath`, `EnumType`, `ActualInteger`, `ActualText` when known |
 | `SurfacePaintPriorityMisplaced` | Nonzero priority on a non-paint surface | `SurfaceId`, `FieldPath`, `ActualInteger` |
 | `SurfacePaintPriorityConflict` | Equal-priority overlapping paint with different materials | `SurfaceId`, `OtherSurfaceId`, priority in `ActualInteger` |
 | `SurfacePaintBoundaryInvalid` | An open or nonmanifold material boundary | `SurfaceId` |
+| `SurfacePaintCrossesPhysicalFace` | A whole-face paint material or presence boundary crossing a physical face | `SurfaceId`, `OtherSurfaceId`, `Patch`, face `Index`, `FieldPath` |
 | `WorkCapacityExceeded` | Reservation keys beyond the candidate cap, surface codec work beyond its encoded byte or array-count budget, or local corner-dependency or edge-subdivision metadata beyond its count budget, or compiled faces beyond MaxFacesPerPatch or support resource bytes beyond MaxPayloadBytes | `Patch`, `FieldPath`, `Budget`, `ActualCount`, `ActualByteCount`, `Limit` |
 | `SurfacePresencePaddingNonzero` | Nonzero bits beyond the authored cell count in the last presence word | `Patch`, `FieldPath`, `Index` |
 | `SurfaceSubdivisionAbsentCell` | An edge subdivision on an absent cell | `Patch`, `FieldPath`, `Index`, `CellX`, `CellZ`, `Edge` |
@@ -1831,6 +1832,14 @@ Lattice-unit JSON checks throw `MapSurfaceJsonException`, a `JsonException` subt
 their relative `FieldPath`. Constructor failures preserve the scalar reason, numerator and denominator
 or actual integer and minimum, with the original scalar refusal as their cause. Document JSON wrappers
 preserve the known reason and identifiers while adding source context.
+Patch-key JSON uses the same carrier for object, duplicate, unknown and required-value rules, with
+the first failed `FieldPath` and `SurfaceId` only after it is read. Noncanonical or out-of-int64 slot
+strings use `SchemaInt64Malformed` with the unmodified `ActualText`. Writer admission retains the
+submitted surface identity. Whole-face paint failures identify the paint `SurfaceId` and physical
+`OtherSurfaceId`. Material and presence crossings use `SurfacePaintCrossesPhysicalFace`, the target
+`Patch`, face `Index` and `FieldPath` `Material` or `Presence`. All original source-preservation and
+atomicity guarantees remain. Exact override overflow uses `GeometryNotRepresentable` and
+`Operation = "paint override"`.
 
 Asset-manifest field paths start at the payload root, retaining asset, resource and dependency array
 positions. Direct reference and resource checks start at the supplied object's root. Required-value

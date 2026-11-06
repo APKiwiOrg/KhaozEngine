@@ -119,7 +119,7 @@ public sealed record MapDocumentFinding(MapDocumentRefusal Reason, string Messag
     public string? AssetId { get; init; }
     /// <summary>The declared surface whose metadata failed validation, when known.</summary>
     public string? SurfaceId { get; init; }
-    /// <summary>The other paint surface participating in a material-priority conflict.</summary>
+    /// <summary>The other paint surface in a priority conflict or the required physical paint target.</summary>
     public string? OtherSurfaceId { get; init; }
     /// <summary>The legacy spawn source whose adoption choice was refused, when known.</summary>
     public string? SourceId { get; init; }

@@ -389,6 +389,12 @@ public enum MapDocumentRefusal
     /// <summary>Refuses a wall chain unresolved by terrain physics without a more specific producer finding.</summary>
     PhysicsWallChainUnresolved,
 
+    // Physics registration admission.
+    /// <summary>Refuses registration at a nonintegral or out-of-world physics origin.</summary>
+    PhysicsRegistrationOriginInvalid,
+    /// <summary>Refuses a legacy movement context for a native contact world.</summary>
+    PhysicsLegacyMoveContextUnsupported,
+
     // Physics navigation and envelope admission.
     /// <summary>Refuses an interaction envelope sweep for an unsupported source shape.</summary>
     PhysicsSweepShapeUnsupported,

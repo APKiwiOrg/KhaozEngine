@@ -21,7 +21,10 @@ public class MapWorldBuilderTests
     [Fact]
     public void InvalidInputs_Refuse()
     {
-        Assert.Contains("partial", Assert.Throws<MapDocumentException>(() => NativeWorldFixtures.BuildPartialWindow()).Message);
+        var partial = Assert.Throws<MapDocumentException>(() => NativeWorldFixtures.BuildPartialWindow());
+        Assert.Equal(MapDocumentRefusal.CompleteDocumentRequired, partial.Reason);
+        Assert.Equal("BuildWorld", partial.Operation);
+        Assert.NotNull(partial.DocumentId);
         Assert.Equal(new[] { "crate", "far-crate" },
             NativeWorldFixtures.BuildPartialWindow(loadWholeWorld: true).Document.Placements.Select(p => p.PlacementId));
 

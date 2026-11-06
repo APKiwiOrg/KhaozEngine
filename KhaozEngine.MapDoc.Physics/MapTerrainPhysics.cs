@@ -118,33 +118,43 @@ public static class MapTerrainPhysics
     /// most the cap and every exact vertex lies within 64 m of its anchor on every axis. Faces are
     /// R2's, never retriangulated. A slot cell is split by face only to meet the extent, and a single face that fits
     /// no anchor keeps a chunk of its own. Throws <see cref="MapDocumentException"/> for a view that is not complete,
-    /// a slot cell over the cap ("physics chunk capacity"), a wall strip chain that does not resolve ("unresolved
-    /// chain"), and geometry that is not representable.</summary>
+    /// a slot cell over the cap, a wall strip chain that does not resolve, and geometry that is not representable.
+    /// The refusal carries the rule and the known patch, cell or record identifiers.</summary>
     public static MapTerrainChunkSet Compile(MapScopedSurfaces view, MapTerrainChunkPolicy policy)
     {
         ArgumentNullException.ThrowIfNull(view);
         ArgumentNullException.ThrowIfNull(policy);
         if (policy.MaxTrianglesPerChunk is < MinTrianglesPerChunk or > MaxTrianglesPerChunk)
-            throw new ArgumentOutOfRangeException(nameof(policy),
-                $"MaxTrianglesPerChunk must be {MinTrianglesPerChunk} to {MaxTrianglesPerChunk}.");
+            throw new MapWorldBuildRangeException(MapDocumentRefusal.ValueOutsideRange,
+                $"MaxTrianglesPerChunk must be {MinTrianglesPerChunk} to {MaxTrianglesPerChunk}.", nameof(policy))
+            { FieldPath = nameof(policy.MaxTrianglesPerChunk), ActualInteger = policy.MaxTrianglesPerChunk,
+                MinimumInteger = MinTrianglesPerChunk, MaximumInteger = MaxTrianglesPerChunk };
         if (view.Status != MapAcquireStatus.Complete)
-            throw new MapDocumentException($"terrain physics needs a complete surface view, not {view.Status}" +
-                (view.Detail is null ? "" : ": " + view.Detail));
+            throw new MapDocumentException(MapDocumentRefusal.AcquisitionIncomplete,
+                $"terrain physics needs a complete surface view, not {view.Status}" +
+                (view.Detail is null ? "" : ": " + view.Detail))
+            { AcquireStatus = view.Status, Operation = "CompileTerrainPhysics" };
         var surfaces = view.Surfaces.ToDictionary(s => s.Id, StringComparer.Ordinal);
         var chunker = new Chunker(policy.MaxTrianglesPerChunk);
         int skipped = 0;
         string owner = "the view";
+        MapPatchKey? ownerPatch = null;
+        string? ownerRecord = null;
         try
         {
             foreach (MapPatchKey key in view.Witness.Present.Select(p => p.Key).Order())
             {
                 if (!surfaces.TryGetValue(key.SurfaceId, out MapSurfaceRef? surface))
-                    throw new MapDocumentException($"terrain physics patch '{key}' has no declared surface");
+                    throw new MapDocumentException(MapDocumentRefusal.ReferenceMissing, $"terrain physics patch '{key}' has no declared surface")
+                    { SurfaceId = key.SurfaceId, Patch = key };
                 if (surface.Role != MapSurfaceRole.PaintOverride)
                 {
                     owner = $"patch '{key}'";
+                    ownerPatch = key;
+                    ownerRecord = null;
                     MapSurfacePatch patch = view.Patch(key).Patch ??
-                        throw new MapDocumentException($"terrain physics patch '{key}' is unavailable");
+                        throw new MapDocumentException(MapDocumentRefusal.PatchUnavailable, $"terrain physics patch '{key}' is unavailable")
+                        { Patch = key, SurfaceId = key.SurfaceId };
                     MapCompiledPatch compiled = MapEffectiveGeometry.TransformPatch(view, MapSurfaceCompiler.Compile(surface, patch));
                     skipped += compiled.LegacyFallbackCells.Count;
                     chunker.AddPatch(key, compiled.ExactVertices, compiled.Faces);
@@ -152,6 +162,8 @@ public static class MapTerrainPhysics
                 foreach (MapWallStrip strip in view.RecordsIn(key).OfType<MapWallStrip>())
                 {
                     owner = $"wall strip '{strip.Id}'";
+                    ownerPatch = key;
+                    ownerRecord = strip.Id;
                     MapCompiledStrip compiled = MapWallStripCompiler.Compile(strip,
                         Chain(view, strip, strip.LowerChain), Chain(view, strip, strip.UpperChain));
                     chunker.AddStrip(strip.Id, compiled.ExactVertices, compiled.Faces);
@@ -160,7 +172,9 @@ public static class MapTerrainPhysics
         }
         catch (Exception error) when (error is MapExactOverflowException or OverflowException)
         {
-            throw new MapDocumentException($"terrain physics geometry is not representable in {owner}", error);
+            throw new MapDocumentException(MapDocumentRefusal.GeometryNotRepresentable,
+                $"terrain physics geometry is not representable in {owner}", error)
+            { Operation = "CompileTerrainPhysics", Patch = ownerPatch, RecordId = ownerRecord };
         }
         return new(chunker.Finish(), view.ReadWitness, skipped);
     }
@@ -169,8 +183,9 @@ public static class MapTerrainPhysics
     {
         if (!view.TryRecord(reference, out MapTopologyRecord? record, out MapPatchStatus status) ||
             record is not MapBoundaryChain chain)
-            throw new MapDocumentException(
-                $"unresolved chain '{reference.Id}' for wall strip '{strip.Id}': no boundary chain in '{reference.Anchor}' ({status})");
+            throw new MapDocumentException(MapDocumentRefusal.PhysicsWallChainUnresolved,
+                $"unresolved chain '{reference.Id}' for wall strip '{strip.Id}': no boundary chain in '{reference.Anchor}' ({status})")
+            { RecordId = reference.Id, RelatedRecordId = strip.Id, Patch = reference.Anchor, PatchStatus = status };
         MapChainResolution resolved = MapBoundaryGeometry.ResolveChain(chain, view);
         if (resolved.Status != MapResolveStatus.Resolved)
             throw resolved.Refuse(
@@ -204,8 +219,10 @@ public static class MapTerrainPhysics
             if (size == 1)
             {
                 if (faces.Length > cap)
-                    throw new MapDocumentException(FormattableString.Invariant(
-                        $"physics chunk capacity: patch '{key}' slot cell {minZ * MapPatchKey.SlotCells + minX} ({minX}, {minZ}) compiles to {faces.Length} faces, over the cap of {cap}"));
+                    throw new MapDocumentException(MapDocumentRefusal.WorkCapacityExceeded, FormattableString.Invariant(
+                        $"physics chunk capacity: patch '{key}' slot cell {minZ * MapPatchKey.SlotCells + minX} ({minX}, {minZ}) compiles to {faces.Length} faces, over the cap of {cap}"))
+                    { Budget = "MaxTrianglesPerChunk", Patch = key, SlotCell = minZ * MapPatchKey.SlotCells + minX,
+                        CellX = minX, CellZ = minZ, ActualCount = faces.Length, Limit = cap };
                 SplitByFace(exact, faces, k => id + FormattableString.Invariant($"/{k.ParentTriangle}.{k.Child}"));
                 return;
             }
@@ -345,7 +362,8 @@ public static class MapTerrainPhysics
             MapTerrainChunk[] ordered = _chunks.OrderBy(c => c.ChunkId, StringComparer.Ordinal).ToArray();
             for (int i = 1; i < ordered.Length; i++)
                 if (string.Equals(ordered[i - 1].ChunkId, ordered[i].ChunkId, StringComparison.Ordinal))
-                    throw new MapDocumentException($"duplicate physics chunk id '{ordered[i].ChunkId}'");
+                    throw new MapDocumentException(MapDocumentRefusal.IdentityDuplicate, $"duplicate physics chunk id '{ordered[i].ChunkId}'")
+                    { EntityId = ordered[i].ChunkId, SubjectKind = "physics chunk" };
             return Array.AsReadOnly(ordered);
         }
     }

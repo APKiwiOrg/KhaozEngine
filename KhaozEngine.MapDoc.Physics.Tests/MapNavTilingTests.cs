@@ -182,6 +182,12 @@ public class MapNavTilingTests
         };
         var error = Assert.Throws<MapDocumentException>(() =>
             MapNavTiling.AffectedTiles(NativeWorldFixtures.BuildLegacyStrip(), Grids, Options, effects));
-        Assert.Contains("1,000,000", error.Message);
+        Assert.Equal(MapDocumentRefusal.ValueOutsideRange, error.Reason);
+        Assert.Equal("MinX", error.FieldPath);
+        Assert.Equal(2_000_000, error.ActualNumber);
+        Assert.Equal(-1_000_000, error.MinimumNumber);
+        Assert.Equal(1_000_000, error.MaximumNumber);
+        Assert.NotEmpty(MapNavTiling.AffectedTiles(NativeWorldFixtures.BuildLegacyStrip(), Grids, Options,
+            effects with { NewBounds = new(999_999, 0, 0, 1_000_000, 1, 1) }));
     }
 }

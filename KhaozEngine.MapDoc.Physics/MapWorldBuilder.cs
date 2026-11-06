@@ -45,8 +45,9 @@ public static class MapWorldBuilder
         ArgumentNullException.ThrowIfNull(assets);
         ArgumentNullException.ThrowIfNull(options);
         if (document.Tiles is { IsPartial: true })
-            throw new MapDocumentException(
-                "A world builds from a complete document, not a partial window. Load every tile before building.");
+            throw new MapDocumentException(MapDocumentRefusal.CompleteDocumentRequired,
+                "A world builds from a complete document, not a partial window. Load every tile before building.")
+            { DocumentId = document.Id, Operation = "BuildWorld" };
         ValidateOptions(options);
 
         MapResolvedDocument resolved =

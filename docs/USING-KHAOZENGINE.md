@@ -13556,6 +13556,26 @@ with concrete `Reason`, nested `FieldPath` and the original `ParamName`. Nonfini
 use `SchemaValueRequired` with `ActualText`. Tile Y disagreement uses `AuthoredValueMismatch`, `Tile`,
 `ActualNumber` and `ExpectedNumber`. Duplicate coordinates use `IdentityDuplicate`. Disjoint neighbouring
 tile edges use `NavigationTilesNotAdjacent`, submitted `Tile` and preceding `OtherTile`.
+
+World builds over partial documents use `CompleteDocumentRequired`, `DocumentId` and `Operation` `BuildWorld`.
+Terrain compilation uses `AcquisitionIncomplete` with `AcquireStatus` and `Operation` `CompileTerrainPhysics`,
+or `WorkCapacityExceeded` with `Budget` `MaxTrianglesPerChunk`, `Patch`, `SlotCell`, cell coordinates,
+`ActualCount` and inclusive `Limit`. Missing terrain declarations and payloads use `ReferenceMissing` or
+`PatchUnavailable`, with `SurfaceId` and `Patch`. Geometry overflow retains the known patch or wall record
+under `GeometryNotRepresentable`. Repeated chunk IDs use `IdentityDuplicate`, `EntityId` and `SubjectKind`
+`physics chunk`. Wall-chain refusals preserve a known producer finding. Without one they use
+`PhysicsWallChainUnresolved`, chain `RecordId`, anchor `Patch`, and known strip `RelatedRecordId` and `PatchStatus`.
+Chunk-policy limits use `MapWorldBuildRangeException`, catchable as `ArgumentOutOfRangeException`, with
+`ValueOutsideRange`, original `ParamName` and `ActualValue`, nested `FieldPath`, submitted `ActualInteger`,
+and inclusive integer limits 64 and 1024.
+
+Registration origin refusals use `PhysicsRegistrationOriginInvalid`, `FieldPath` `Origin`, all three position
+components and the inclusive absolute coordinate `Limit`. A native world's legacy-context refusal uses
+`PhysicsLegacyMoveContextUnsupported` and `ResolverVersion`. Storage membership budgets use
+`WorkCapacityExceeded`, `Budget` `MaxStorageTiles`, `ActualCount`, inclusive `Limit` and the known `OwnerId`.
+Edit-bound refusals use `ValueNonfinite` or `ValueOutsideRange`, failed endpoint `FieldPath`, `ActualNumber`
+and inclusive world-coordinate limits. Storage interval refusals use `MapNavigationArgumentException`,
+`ValueNonfinite` or `BoundsInvalid`, axis `FieldPath` and both submitted numeric endpoints.
 Navigation partition and interaction envelope capacity use `MapDocumentException.WorkCapacityExceeded`,
 `Budget`, measured `ActualCount` and inclusive `Limit`. Envelopes also name `OwnerId` and binary64 `ActualNumber`,
 leaving `ActualCount` null when it cannot fit in a signed 64-bit value. Navigation index refusals use

@@ -155,8 +155,49 @@ public class MapResidencyOwnershipTests
         var world = MapWorldBuilder.Build(f.Document, f.Assets, NativeWorldFixtures.Options());
         var error = Assert.Throws<MapDocumentException>(() =>
             MapResidencyOwnership.Build(world, new MapWorldGrids(16f, 4, 16, Vector2.Zero)));
-        Assert.Contains("'large-building'", error.Message);
-        Assert.Contains("1,065,024", error.Message);
-        Assert.Contains("1,048,576", error.Message);
+        Assert.Equal(MapDocumentRefusal.WorkCapacityExceeded, error.Reason);
+        Assert.Equal("large-building", error.OwnerId);
+        Assert.Equal("MaxStorageTiles", error.Budget);
+        Assert.Equal(1_065_024, error.ActualCount);
+        Assert.Equal(1_048_576, error.Limit);
+        // 50 * 163.75 = 8187.5 exactly, inside the outer seams at +/-8192 even after registration allowance.
+        // Both axes cover exactly 1024 tiles, so the real membership list reaches the inclusive 2^20 cap.
+        NativeFixture control = NativeWorldFixtures.Placed("large-building", scale: 163.75f);
+        control.Document.TileSize = 16f;
+        var admitted = MapWorldBuilder.Build(control.Document, control.Assets, NativeWorldFixtures.Options());
+        Assert.Equal(1_048_576, Assert.Single(MapResidencyOwnership.Build(admitted, new(16f, 4, 16, Vector2.Zero)),
+            entry => entry.OwnerId == "large-building").Membership.Count);
+    }
+
+    [Theory]
+    [InlineData(double.NaN, MapDocumentRefusal.ValueNonfinite)]
+    [InlineData(1_000_001d, MapDocumentRefusal.ValueOutsideRange)]
+    public void EditBounds_IdentifyTheFailedCoordinateAndAdmitTheWorldLimit(double value, MapDocumentRefusal reason)
+    {
+        var error = Assert.Throws<MapDocumentException>(() => MapResidencyOwnership.RequireWithinWorld(new(0, 0, 0, 1, value, 1)));
+        Assert.Equal(reason, error.Reason);
+        Assert.Equal("MaxY", error.FieldPath);
+        Assert.Equal(value, error.ActualNumber);
+        Assert.Equal(-1_000_000, error.MinimumNumber);
+        Assert.Equal(1_000_000, error.MaximumNumber);
+        MapResidencyOwnership.RequireWithinWorld(new(0, 0, 0, 1, 1_000_000, 1));
+    }
+
+    [Theory]
+    [InlineData(double.NaN, 1d, MapDocumentRefusal.ValueNonfinite)]
+    [InlineData(0d, double.PositiveInfinity, MapDocumentRefusal.ValueNonfinite)]
+    [InlineData(2d, 1d, MapDocumentRefusal.BoundsInvalid)]
+    public void StorageBounds_IdentifyNonfiniteOrInvertedEndpoints(double min, double max, MapDocumentRefusal reason)
+    {
+        var error = Assert.Throws<MapNavigationArgumentException>(() =>
+            MapResidencyOwnership.RequireFiniteStorageBoundsForTests(new(min, 0, 0, max, 0, 0), 64));
+        Assert.IsAssignableFrom<ArgumentException>(error);
+        Assert.Null(error.ParamName);
+        Assert.Equal(reason, error.Reason);
+        Assert.Equal("X", error.FieldPath);
+        Assert.Equal(min, error.MinimumNumber);
+        Assert.Equal(max, error.MaximumNumber);
+        Assert.Equal(new MapTileRect(new(0, 0), new(0, 0)),
+            MapResidencyOwnership.RequireFiniteStorageBoundsForTests(new(0, 0, 0, 0, 0, 0), 64));
     }
 }

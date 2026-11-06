@@ -134,9 +134,21 @@ triangle meshes of at most `MaxTrianglesPerChunk` triangles (64 to 1,024), each 
 `Anchor` on every axis. Faces are R2's, never retriangulated. Each `MapTerrainChunk` has a stable `ChunkId`, its
 `TriangleOwners` and `TriangleRoles`, and a `Digest`. `MapTerrainChunkSet` carries the chunks in ordinal id order,
 the view's read witness and the count of legacy fallback cells, which compile to no faces. An incomplete view, a slot
-cell over the cap ("physics chunk capacity") and an unresolved wall strip chain refuse with `MapDocumentException`.
+cell over the cap and an unresolved wall strip chain refuse with `MapDocumentException`.
 An unresolved wall chain keeps its producer's typed reason and identifiers when available. Otherwise
 `Reason` is `PhysicsWallChainUnresolved`, with the chain `RecordId` and anchor `Patch`.
+
+| Reason | Refused terrain rule | Identifiers |
+| --- | --- | --- |
+| `AcquisitionIncomplete` | A terrain compile without a complete view | `AcquireStatus`, `Operation` `CompileTerrainPhysics` |
+| `ReferenceMissing`, `PatchUnavailable` | A present witness patch without its surface declaration or payload | `SurfaceId`, `Patch` |
+| `WorkCapacityExceeded` | A slot cell with more faces than the chunk cap | `Budget` `MaxTrianglesPerChunk`, `Patch`, `SlotCell`, `CellX`, `CellZ`, `ActualCount`, inclusive `Limit` |
+| `GeometryNotRepresentable` | Unrepresentable terrain chunk geometry | `Operation` `CompileTerrainPhysics`, known `Patch` and wall `RecordId` |
+| `IdentityDuplicate` | Repeated compiled chunk identity | `EntityId`, `SubjectKind` `physics chunk` |
+
+Chunk-policy limits use `MapWorldBuildRangeException`, catchable as `ArgumentOutOfRangeException`, with
+`ValueOutsideRange`, the original `ParamName` and `ActualValue`, `FieldPath` `MaxTrianglesPerChunk`,
+`ActualInteger`, and inclusive `MinimumInteger` 64 and `MaximumInteger` 1024.
 
 ## World build
 
@@ -359,11 +371,13 @@ registration.TryFaceOwner(feature.Target, incident.FaceId, out MapFaceKey canoni
 
 `Register` installs every static of a built world into a caller-owned `IPhysicsWorld`, in static order, at
 `Position - physics.Origin`. The origin must be whole metres within `MaxCoordinateMetres`, or it refuses with
-"whole-metre origin". `TryOwner` maps a handle back to its placement id or terrain chunk id. `TryFaceOwner` maps a
+`PhysicsRegistrationOriginInvalid`, carrying `FieldPath` `Origin`, `PositionX`, `PositionY`, `PositionZ` and the
+inclusive absolute coordinate `Limit`. `TryOwner` maps a handle back to its placement id or terrain chunk id. `TryFaceOwner` maps a
 feature query's incident face id on a terrain chunk to its canonical `MapFaceKey`. A feature id is not a triangle
 index, since edges and vertices number after faces. `CreateLegacyMoveContext` gives a resolver 1 world a ground move
-context over its analytic support height and playable bounds. A native world refuses it, since it moves on the
-contact controller. The parameterless overload supplies no medium. Opt into resolver-1 global water with
+context over its analytic support height and playable bounds. A native world refuses it with
+`PhysicsLegacyMoveContextUnsupported` and `ResolverVersion`, since it moves on the contact controller.
+The parameterless overload supplies no medium. Opt into resolver-1 global water with
 `CreateLegacyMoveContext(legacyGlobalWater: true)`: feet strictly below `MapBuiltWorld.LegacyWaterLevel` are wet.
 
 Any failure during `Register` removes what it added, in reverse order. `Dispose` removes every static in reverse
@@ -404,6 +418,13 @@ built after the edit and names the owners and tiles the edit invalidates from it
 every listed patch, including the chunks of the wall strips recorded in it.
 
 `Affected(before, after, grids, effects)` also retains removed owner IDs and their old memberships.
+
+Storage membership capacity uses `WorkCapacityExceeded`, `Budget` `MaxStorageTiles`, the measured `ActualCount`,
+inclusive `Limit` and the known static, chunk, annotation or `water:{bodyId}` `OwnerId`. Edit bounds outside the
+world use `ValueOutsideRange`, or `ValueNonfinite` for a nonfinite endpoint, with the first failed `FieldPath`,
+`ActualNumber` and inclusive numeric limits. Invalid storage intervals use `MapNavigationArgumentException`,
+catchable as `ArgumentException`, with `ValueNonfinite` or `BoundsInvalid`, axis `FieldPath` and the submitted
+`MinimumNumber` and `MaximumNumber` endpoints.
 The matching `AffectedTiles(before, after, grids, options, effects)` retains old capture tiles, including tiles
 that leave the post-edit partition. Preparation must widen effects with the old and new extents of leaves reseated
 by a support edit. The 150 m leaf counterexample at a 64 m seam proves why patch-only bounds miss neighbor tiles.

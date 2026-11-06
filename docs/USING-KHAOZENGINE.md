@@ -13169,6 +13169,8 @@ numeric finding and the complete ordered snapshot.
 Tile ownership failures use `DocumentTileOwnershipMismatch`, retaining source document `Tile`, item
 identity and path, checked positions or `SculptTile`, `SourceName` and `Path`. The separate `SculptTile`
 identifier preserves sculpt coordinates through document-tile wrappers without replacing the source tile.
+Sculpt ownership positions widen the checked float coordinates into `PositionX` and `PositionZ`, so
+fractional sculpt cell sizes retain the ownership check's tile-boundary rounding.
 
 Identity registry checks preserve `MapDocumentException` and distinguish `IdentityDuplicate`,
 `IdentityReserved`, `AuthoredOwnershipMismatch`, `ReferenceMissing`, `SchemaValueRequired` and

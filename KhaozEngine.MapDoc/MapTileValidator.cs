@@ -60,12 +60,14 @@ internal static class MapTileValidator
             if (!sculptCoords.Add((t.TileX, t.TileZ)))
                 Add(new(MapDocumentRefusal.IdentityDuplicate, $"duplicate sculpt tile ({t.TileX}, {t.TileZ}) within the tile.")
                 { SculptTile = new(t.TileX, t.TileZ), SubjectKind = "sculpt tile", Index = i, FieldPath = $"$.sculpt[{i}]" });
-            MapTileCoord owner = MapTileGrid.OwnerOfSculptTile(t.TileX, t.TileZ, sculptCellSize, tileSize);
+            float span = TerrainSculpt.TileSize * sculptCellSize;
+            float x = t.TileX * span, z = t.TileZ * span;
+            MapTileCoord owner = MapTileGrid.CoordOf(x, z, tileSize);
             if (owner != content.Coord)
                 Add(new(MapDocumentRefusal.DocumentTileOwnershipMismatch,
                     $"sculpt tile ({t.TileX}, {t.TileZ}) is owned by document tile ({owner.X}, {owner.Z}), not this one.")
                 { SculptTile = new(t.TileX, t.TileZ), SubjectKind = "sculpt tile", Index = i, FieldPath = $"$.sculpt[{i}]",
-                    PositionX = (double)t.TileX * TerrainSculpt.TileSize * sculptCellSize, PositionZ = (double)t.TileZ * TerrainSculpt.TileSize * sculptCellSize });
+                    PositionX = x, PositionZ = z });
         }
         if (findings.Count > 0)
             throw MapDocumentRefusalFactory.FromFinding(findings[0],

@@ -105,6 +105,24 @@ public sealed class MapDocumentClosureFindingTests
     }
 
     [Fact]
+    public void SculptOwnershipFinding_ReportsTheFloatPositionUsedForOwnership()
+    {
+        // 3 * (32 * 0.1f) rounds to 9.6f, exactly the start of document tile 1.
+        var content = new MapTileContent(new(0, 0), [], [], [], [new(3, 0)]);
+        var error = Assert.Throws<MapDocumentException>(() => MapTileValidator.Validate(content, "source", "tile.json", 9.6f, 0.1f));
+        Assert.Equal(MapDocumentRefusal.DocumentTileOwnershipMismatch, error.Reason);
+        Assert.Equal(new MapTileCoord(0, 0), error.Tile);
+        Assert.Equal(new MapTileCoord(3, 0), error.SculptTile);
+        Assert.Equal((double)9.6f, error.PositionX);
+        Assert.Equal(0d, error.PositionZ);
+        var finding = Assert.Single(error.Findings!);
+        Assert.Equal(error.PositionX, finding.PositionX);
+        Assert.Equal(error.PositionZ, finding.PositionZ);
+        var repaired = new MapTileContent(new(1, 0), [], [], [], content.SculptTiles);
+        MapTileValidator.Validate(repaired, "source", "tile.json", 9.6f, 0.1f);
+    }
+
+    [Fact]
     public void WholeDocumentAdapters_KeepEveryFindingInProducerOrder()
     {
         var doc = MapDocumentFindingTests.ValidDocument();

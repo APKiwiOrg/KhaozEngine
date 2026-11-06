@@ -1540,7 +1540,8 @@ delegates to `ChunkGrid.CoordOf`, so the floor rule has one implementation, and 
 both axes: a point exactly on a tile's max edge belongs to the next tile, which is what makes a partition
 of rects reproduce the whole document exactly. A sculpt tile is owned by the document tile containing its
 **origin corner** (`MapTileGrid.OwnerOfSculptTile`), single-owner for every sculpt cell size, including
-the ones where the tile size is not an integer multiple of the sculpt span.
+the ones where the tile size is not an integer multiple of the sculpt span. Ownership refusals report
+the same float origin coordinates used by the ownership check in `PositionX` and `PositionZ`.
 
 `MapSpatialIndex.Build(doc)` buckets a loaded document's point content by tile once, O(n) to build and
 O(k) per query, and works on both forms, so a whole-document workflow keeps region queries.

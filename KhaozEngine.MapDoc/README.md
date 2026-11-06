@@ -1630,7 +1630,8 @@ Raw partial surface saves permit payload edits only after outgoing references, r
 reverse dependants, structure and record checks. A raw save certifies reference integrity, including exact
 XZ agreement between each corner owner's address and its dependent corner, and never geometry. It refuses a
 dependency position that disagrees with `SurfaceSeamPositionMismatch`, the dependent `Patch`, owner
-`ExpectedPatch` and `Address`, and dependent corner `CellX` and `CellZ`. A missing owner surface uses
+`ExpectedPatch` and `Address`, and dependent corner `CellX` and `CellZ`. An address absent from its owner
+uses `SurfaceSeamVertexUndeclared` with the same context. A missing owner surface uses
 `ReferenceMissing` instead. An unrepresentable owner position carries `GeometryNotRepresentable`,
 `Operation` `SaveSurfaces` and `FieldPath` `CornerDependencies`. Partial-save refusals distinguish unloaded
 outgoing patches, unknown reverse knowledge, unloaded reverse dependants and unsupported surface, structure
@@ -1657,6 +1658,21 @@ maximum and inclusive `MinimumNumber`. Null roles or limits and blank space IDs 
 An undefined role uses `SchemaEnumUnsupported`, `EnumType` and `ActualInteger`. Negative query allowances
 use `ValueOutsideRange`, the nested `Limits` path, `ActualInteger` and inclusive `MinimumInteger` zero.
 Equal bounds and zero allowances are valid. Record copies are readmitted when used by a query or digest.
+
+Surface storage directory references select the first failed object, member-count or required-value rule,
+carrying `FieldPath` and the row `Index`. Count mismatches expose `ActualCount` and `ExpectedCount`.
+An unknown storage surface uses `ReferenceMissing` with `SurfaceId` and the directory `ExpectedHash`.
+Overlapping directory covers use `StorageDirectoryPagesOverlap` with that surface and both indices.
+A patch key repeated across index pages uses `IdentityDuplicate` with `Patch` and the page `ExpectedHash`.
+Storage names are admitted as lowercase SHA-256 before any file is addressed. Malformed names use
+`DigestMalformed`, `FieldPath` `sha256` and the submitted `ActualHash`. Empty storage files or buffers
+use `ValueOutsideRange`, `ActualByteCount` and inclusive `MinimumInteger` one. Larger-than-page input
+uses `WorkCapacityExceeded`, `Budget` `MaxPageBytes`, the observed byte count and inclusive `Limit`.
+Both read and write paths accept the exact upper limit. A byte mismatch uses `DigestMismatch` with
+both hashes. A read with an additional byte after its captured length uses `StorageReadChanged`,
+`ExpectedByteCount` and the minimum observed `ActualByteCount` (the captured length plus one), retaining
+its expected digest. Overflow during surface storage preparation uses `GeometryNotRepresentable`,
+`Operation` `SaveSurfaces` and `FieldPath` `Surfaces`.
 
 
 **Every save entry point refuses a partial document** (`Save`, `SaveText`, `SaveTo`, `SaveAuto`,
@@ -1877,7 +1893,8 @@ their joined diagnostic text.
 | `WaterBodiesPreventLegacyMode` | Switching to legacy global water while bounded bodies remain | `FieldPath`, `ActualCount` |
 | `DocumentHashSchemeUnsupported` | Whole authored identity under an unsupported pinned tile hash scheme | `FieldPath`, `ActualVersion`, owned `SupportedVersions` |
 | `StorageEmbeddingChanged` | An embedded payload whose encoded length changed after measurement | `ExpectedByteCount`, `ActualByteCount` |
-| `StorageDirectoryPagesOverlap` | Overlapping surface storage page covers | `FieldPath`, `Index`, `OtherIndex` |
+| `StorageReadChanged` | Additional bytes after a surface storage read's captured length | `ExpectedHash`, `ExpectedByteCount`, minimum observed `ActualByteCount`, `FieldPath` `ByteCount` |
+| `StorageDirectoryPagesOverlap` | Overlapping surface storage page covers | `FieldPath`, `SurfaceId`, `Index`, `OtherIndex` |
 | `StorageReferencedPatchUnloaded` | A partial-save outgoing reference needing an unloaded patch | `Patch`, `PatchStatus` `Unloaded` |
 | `StorageReverseKnowledgeUnknown` | A partial save without the reverse directory or index knowledge needed for its edit | changed `Patch`, searched `SurfaceId`, directory `ExpectedHash` |
 | `StorageReverseDependantUnloaded` | A partial save with a nonresident reverse dependant | dependant `Patch`, changed `ExpectedPatch`, incident `RecordId` |

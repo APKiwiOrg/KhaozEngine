@@ -17,27 +17,53 @@ internal static class MapSurfaceTiledStore
     internal static IReadOnlyList<MapDirectoryPageRef> ReadDirectory(JsonObject root)
     {
         if (!MapDocumentMembers.TryGetProperty(root, "surfaceStorage", out JsonNode? node)) return Array.Empty<MapDirectoryPageRef>();
-        if (node is not JsonArray array) throw new MapDocumentException("invalid surfaceStorage");
+        if (node is not JsonArray array) throw new MapDocumentException(MapDocumentRefusal.SchemaArrayRequired, "invalid surfaceStorage")
+            { FieldPath = "surfaceStorage" };
         var pages = new List<MapDirectoryPageRef>(array.Count);
         JsonSerializerOptions options = MapDocumentFile.CreateCompactOptions(MapDocRegistry.CreateDefault());
+        int index = 0;
         foreach (JsonNode? item in array)
         {
             if (item is not JsonObject value || value.Count != 3 || value["surfaceId"] is null || value["sha256"] is null ||
                 value["covers"] is not JsonObject covers || covers.Count != 4 ||
                 new[] { "minX", "minZ", "maxXExclusive", "maxZExclusive" }.Any(n => covers[n] is null))
-                throw new MapDocumentException("invalid surface directory reference members");
-            MapDirectoryPageRef page = item?.Deserialize<MapDirectoryPageRef>(options) ?? throw new MapDocumentException("invalid surface directory reference");
+                throw DirectoryReferenceRefusal(item, index);
+            MapDirectoryPageRef page = item?.Deserialize<MapDirectoryPageRef>(options) ?? throw new MapDocumentException(
+                MapDocumentRefusal.SchemaValueRequired, "invalid surface directory reference")
+                { FieldPath = $"surfaceStorage[{index}]", Index = index };
             MapSurfacePages.Validate(page);
             pages.Add(page);
+            index++;
         }
         return pages;
     }
+    static MapDocumentException DirectoryReferenceRefusal(JsonNode? item, int index)
+    {
+        const string message = "invalid surface directory reference members";
+        string path = $"surfaceStorage[{index}]";
+        if (item is not JsonObject value) return new(MapDocumentRefusal.SchemaObjectRequired, message)
+            { FieldPath = path, Index = index };
+        if (value.Count != 3) return new(MapDocumentRefusal.SchemaArrayLengthMismatch, message)
+            { FieldPath = path, Index = index, ActualCount = value.Count, ExpectedCount = 3 };
+        foreach (string field in new[] { "surfaceId", "sha256" })
+            if (value[field] is null) return new(MapDocumentRefusal.SchemaValueRequired, message)
+                { FieldPath = path + "." + field, Index = index };
+        path += ".covers";
+        if (value["covers"] is not JsonObject covers) return new(MapDocumentRefusal.SchemaObjectRequired, message)
+            { FieldPath = path, Index = index };
+        if (covers.Count != 4) return new(MapDocumentRefusal.SchemaArrayLengthMismatch, message)
+            { FieldPath = path, Index = index, ActualCount = covers.Count, ExpectedCount = 4 };
+        string missing = new[] { "minX", "minZ", "maxXExclusive", "maxZExclusive" }.First(n => covers[n] is null);
+        return new(MapDocumentRefusal.SchemaValueRequired, message) { FieldPath = path + "." + missing, Index = index };
+    }
+
     internal static Prepared Prepare(MapDocument doc, string root, MapSurfacePacking? packing)
     {
         try { return PrepareCore(doc, root, packing); }
         catch (Exception ex) when (ex is MapExactOverflowException or OverflowException)
         {
-            throw new MapDocumentException("surface storage not representable", ex);
+            throw new MapDocumentException(MapDocumentRefusal.GeometryNotRepresentable, "surface storage not representable", ex)
+                { Operation = "SaveSurfaces", FieldPath = "Surfaces" };
         }
     }
     static Prepared PrepareCore(MapDocument doc, string root, MapSurfacePacking? packing)

@@ -380,6 +380,8 @@ public enum MapDocumentRefusal
     // Surface storage and embedding admission.
     /// <summary>Refuses a payload whose encoded length changed after measurement.</summary>
     StorageEmbeddingChanged,
+    /// <summary>Refuses a surface storage file with additional bytes after its captured read length.</summary>
+    StorageReadChanged,
     /// <summary>Refuses overlapping surface storage page covers.</summary>
     StorageDirectoryPagesOverlap,
     /// <summary>Refuses a partial save whose outgoing reference needs an unloaded patch.</summary>

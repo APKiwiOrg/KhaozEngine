@@ -24,14 +24,16 @@ public sealed class MapSurfaceStorageIndex
         foreach (MapDirectoryPageRef page in Directory)
         {
             MapSurfacePages.Validate(page);
-            if (!OriginalRefs.Any(s => s.Id == page.SurfaceId)) throw new MapDocumentException("unknown storage surface");
+            if (!OriginalRefs.Any(s => s.Id == page.SurfaceId)) throw new MapDocumentException(MapDocumentRefusal.ReferenceMissing, "unknown storage surface")
+                { SurfaceId = page.SurfaceId, SubjectKind = "surface", ExpectedHash = page.Sha256, FieldPath = "surfaceStorage" };
         }
         foreach (var surface in Directory.GroupBy(d => d.SurfaceId))
         {
             var pages = surface.ToArray();
             for (int i = 0; i < pages.Length; i++)
                 for (int j = i + 1; j < pages.Length; j++)
-                    if (pages[i].Covers.Overlaps(pages[j].Covers)) throw new MapDocumentException("overlapping directory pages");
+                    if (pages[i].Covers.Overlaps(pages[j].Covers)) throw new MapDocumentException(MapDocumentRefusal.StorageDirectoryPagesOverlap, "overlapping directory pages")
+                        { SurfaceId = surface.Key, FieldPath = "surfaceStorage", Index = i, OtherIndex = j };
         }
     }
     public IReadOnlyList<MapDirectoryPageRef> Directory { get; }
@@ -61,7 +63,8 @@ public sealed class MapSurfaceStorageIndex
     {
         IndexPages.Add(page.Sha256, entries);
         foreach (MapSurfaceIndexEntry entry in entries)
-            if (!ByKey.TryAdd(entry.Key, entry)) throw new MapDocumentException("duplicate surface index key");
+            if (!ByKey.TryAdd(entry.Key, entry)) throw new MapDocumentException(MapDocumentRefusal.IdentityDuplicate, "duplicate surface index key")
+                { Patch = entry.Key, SubjectKind = "surface index key", ExpectedHash = page.Sha256 };
     }
     internal void Loaded(MapSurfacePatch patch)
     {

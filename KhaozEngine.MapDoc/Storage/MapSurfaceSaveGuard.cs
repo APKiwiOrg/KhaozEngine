@@ -138,9 +138,11 @@ internal static class MapSurfaceSaveGuard
                 throw new MapDocumentException(MapDocumentRefusal.ReferenceMissing, "missing dependency owner")
                     { Patch = dependent.Key, ExpectedPatch = dependency.Owner.Patch, SubjectKind = "dependency owner" };
             MapSurfaceRef? ownerSurface = set.Refs.FirstOrDefault(s => s.Id == owner.Key.SurfaceId);
-            if (ownerSurface is null || !IsVertex(owner, dependency.Owner.Address) ||
+            bool vertex = ownerSurface is not null && IsVertex(owner, dependency.Owner.Address);
+            if (ownerSurface is null || !vertex ||
                 surface.Frame.WorldXz(dependent.CornerAddress(dependency.CornerX, dependency.CornerZ)) != ownerSurface.Frame.WorldXz(dependency.Owner.Address))
-                throw new MapDocumentException(ownerSurface is null ? MapDocumentRefusal.ReferenceMissing : MapDocumentRefusal.SurfaceSeamPositionMismatch,
+                throw new MapDocumentException(ownerSurface is null ? MapDocumentRefusal.ReferenceMissing
+                    : !vertex ? MapDocumentRefusal.SurfaceSeamVertexUndeclared : MapDocumentRefusal.SurfaceSeamPositionMismatch,
                     "dependency position: owner address and dependent corner disagree")
                 { Patch = dependent.Key, ExpectedPatch = dependency.Owner.Patch, Address = dependency.Owner.Address,
                     CellX = dependency.CornerX, CellZ = dependency.CornerZ, SurfaceId = ownerSurface?.Id ?? owner.Key.SurfaceId,

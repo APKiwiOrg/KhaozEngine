@@ -12691,7 +12691,8 @@ Dependency-position overflow uses `GeometryNotRepresentable`, `Operation` `SaveS
 `Operation` `FindPatches` and `FieldPath` `scope`. Raw saves still certify references and exact owner
 positions without certifying geometric seams or equal heights.
 A mismatched dependency owner address uses `SurfaceSeamPositionMismatch` with the dependent `Patch`,
-owner `ExpectedPatch` and `Address`, and dependent corner coordinates. Partial saves distinguish
+owner `ExpectedPatch` and `Address`, and dependent corner coordinates. An address outside the owner
+geometry uses `SurfaceSeamVertexUndeclared` with that context. Partial saves distinguish
 `StorageReferencedPatchUnloaded`, `StorageReverseKnowledgeUnknown`, `StorageReverseDependantUnloaded`
 and `StoragePartialEditUnsupported`. These identify the missing patch, affected surface, directory digest,
 incident record or unsupported field when known. Missing references retain `ReferenceMissing`, while an
@@ -12702,6 +12703,16 @@ Scope admission throws `MapSurfaceScopeArgumentException`, catchable as `Argumen
 undefined roles and negative allowances in predicate order. `FieldPath` names the failed option, numeric
 identifiers retain its value and inclusive minimum, and enum failures retain their type and integer.
 Equal bounds and zero allowances remain valid, including when a record copy is readmitted by a query.
+
+Storage directory references preserve schema reasons, the failed `FieldPath`, row `Index` and both counts
+when a member-count guard fails. Unknown surface declarations use `ReferenceMissing`, overlapping directory
+covers `StorageDirectoryPagesOverlap`, and repeated index patch keys `IdentityDuplicate`.
+A malformed storage digest uses `DigestMalformed` before file access. Empty bytes use `ValueOutsideRange`
+with minimum one. Oversized bytes use `WorkCapacityExceeded`, `Budget` `MaxPageBytes`, the measured count
+and inclusive limit, accepted exactly by both read and write. Changed bytes use `DigestMismatch` with the
+pinned and actual hashes. A file with more bytes after the captured read length uses `StorageReadChanged`,
+the captured `ExpectedByteCount` and minimum observed `ActualByteCount` (that length plus one).
+Preparation overflow uses `GeometryNotRepresentable`, `Operation` `SaveSurfaces` and `FieldPath` `Surfaces`.
 
 `SaveTiled` writes one tile at a time and **does not rewrite a tile whose
 canonical hash is unchanged**. Its ordering is crash-consistent: changed tiles are written at names nothing

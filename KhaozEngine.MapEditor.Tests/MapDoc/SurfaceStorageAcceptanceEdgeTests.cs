@@ -49,12 +49,6 @@ public sealed class SurfaceStorageAcceptanceEdgeTests
             using (var stream = new FileStream(path, FileMode.CreateNew, FileAccess.Write, FileShare.None))
                 stream.SetLength(1_048_577L);
 
-            // A tiny valid file keeps an unconditional read refusal from satisfying this case.
-            byte[] tiny = { (byte)'{', (byte)'}' };
-            string tinyDigest = Convert.ToHexStringLower(SHA256.HashData(tiny));
-            File.WriteAllBytes(MapSurfaceStorageLayout.PathOf(dir, 'i', tinyDigest), tiny);
-            Assert.Equal(tiny, MapSurfaceStorageLayout.Read(dir, 'i', tinyDigest));
-
             MapDocumentException? refusal = null;
             long allocated = AllocationMeasurement.Measure("An oversized surface file read", () =>
             {
@@ -62,10 +56,17 @@ public sealed class SurfaceStorageAcceptanceEdgeTests
                 catch (MapDocumentException ex) { refusal = ex; }
             });
             Assert.NotNull(refusal);
-            Assert.Contains("byte limit", refusal!.Message);
+            Assert.Equal(MapDocumentRefusal.WorkCapacityExceeded, refusal!.Reason);
+            Assert.Equal("MaxPageBytes", refusal.Budget);
+            Assert.Equal(1_048_577L, refusal.ActualByteCount);
+            Assert.Equal(MapSurfaceStorageLayout.MaxPageBytes, refusal.Limit);
             // The entire measured call must allocate less than the oversized file's byte count.
             Assert.InRange(allocated, 0L, 1_048_576L);
             Assert.Equal(1_048_577L, new FileInfo(path).Length);
+            byte[] capped = Encoding.UTF8.GetBytes("0" + new string(' ', MapSurfaceStorageLayout.MaxPageBytes - 1));
+            string cappedDigest = Convert.ToHexStringLower(SHA256.HashData(capped));
+            File.WriteAllBytes(MapSurfaceStorageLayout.PathOf(dir, 'i', cappedDigest), capped);
+            Assert.Equal(capped, MapSurfaceStorageLayout.Read(dir, 'i', cappedDigest));
         });
     }
 

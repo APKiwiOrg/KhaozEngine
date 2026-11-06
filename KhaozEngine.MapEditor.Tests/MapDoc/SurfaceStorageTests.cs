@@ -219,7 +219,7 @@ public sealed class SurfaceStorageTests
         var wrong = MapLatticeAddress.Corner(ownerX, 0);
         deps[0] = deps[0] with { Owner = new MapVertexOwner(Ground0, wrong) }; // 63 is a real vertex elsewhere, 65 is outside the owner rectangle
         var refusal = Assert.Throws<MapDocumentException>(() => MapDocumentFile.SaveTiled(doc, dir));
-        Assert.Equal(MapDocumentRefusal.SurfaceSeamPositionMismatch, refusal.Reason);
+        Assert.Equal(ownerX == 65 ? MapDocumentRefusal.SurfaceSeamVertexUndeclared : MapDocumentRefusal.SurfaceSeamPositionMismatch, refusal.Reason);
         Assert.Equal(Ground1, refusal.Patch);
         Assert.Equal(Ground0, refusal.ExpectedPatch);
         Assert.Equal(wrong, refusal.Address);

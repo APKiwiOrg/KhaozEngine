@@ -243,7 +243,7 @@ internal static class MapEffectiveGeometry
                 {
                     var t = face.Triangle;
                     if (MapSubdividedTriangle.CrossWide(t.A, t.B, t.C).Sign == 0) throw new MapDocumentException(MapDocumentRefusal.GeometryNotRepresentable, "degenerate triangle")
-                        { Patch = face.Key.Patch, SurfaceId = face.Key.OwnerId, SlotCell = face.Key.Primitive, Operation = nameof(RefinePolygonWide) };
+                        { Patch = face.Key.Patch, SurfaceId = face.Key.Patch?.SurfaceId, SlotCell = face.Key.Primitive, Operation = nameof(RefinePolygonWide) };
                     var triangle = new[] { new MapExactXz(t.A.X, t.A.Z), new(t.B.X, t.B.Z), new(t.C.X, t.C.Z) }.Select(MapWideXz.From).ToList();
                     if (AreaWide(triangle).Sign < 0) triangle.Reverse();
                     var polygon = Intersect(triangle, clip);

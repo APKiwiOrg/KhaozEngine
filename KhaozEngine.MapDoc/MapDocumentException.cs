@@ -8,6 +8,8 @@ using KhaozEngine.MapDoc.Surfaces;
 using KhaozEngine.MapDoc.Support;
 using KhaozEngine.MapDoc.Spaces;
 
+using KhaozEngine.MapDoc.Storage;
+
 namespace KhaozEngine.MapDoc;
 
 /// <summary>Thrown when a map document fails to load, validate, migrate, or save. Map documents are
@@ -309,15 +311,15 @@ public sealed class MapDocumentException : Exception
     /// <summary>Adds source context while preserving the reason, every identifier and this refusal as the cause.
     /// A supplied wrapper message retains the caller's released wording. Existing tile and path identifiers
     /// take precedence over additional source context. A null source name keeps the existing source,
-    /// and existing resource, asset and resource-root identifiers take precedence over additional context.</summary>
+    /// and existing resource, asset, resource-root, patch status and expected hash identifiers take precedence over additional context.</summary>
     internal MapDocumentException WithSourceName(string? sourceName, string? message = null,
         MapTileCoord? tile = null, string? path = null, string? resourceId = null, string? resourceRoot = null, string? assetId = null,
-        MapResolveStatus? resolutionStatus = null) =>
-        new(this, sourceName, message, tile, path, resourceId, resourceRoot, assetId, resolutionStatus);
+        MapResolveStatus? resolutionStatus = null, MapPatchStatus? patchStatus = null, string? expectedHash = null) =>
+        new(this, sourceName, message, tile, path, resourceId, resourceRoot, assetId, resolutionStatus, patchStatus, expectedHash);
 
     MapDocumentException(MapDocumentException inner, string? sourceName, string? message,
         MapTileCoord? tile, string? path, string? resourceId, string? resourceRoot, string? assetId,
-        MapResolveStatus? resolutionStatus) : base(message ?? $"{sourceName}: {inner.Message}", inner)
+        MapResolveStatus? resolutionStatus, MapPatchStatus? patchStatus, string? expectedHash) : base(message ?? $"{sourceName}: {inner.Message}", inner)
     {
         Reason = inner.Reason;
         SourceName = sourceName ?? inner.SourceName;
@@ -360,7 +362,7 @@ public sealed class MapDocumentException : Exception
         FoliageReadStatus = inner.FoliageReadStatus;
         ActualByteCount = inner.ActualByteCount;
         ExpectedByteCount = inner.ExpectedByteCount;
-        PatchStatus = inner.PatchStatus;
+        PatchStatus = inner.PatchStatus ?? patchStatus;
         AcquireStatus = inner.AcquireStatus;
         SourceType = inner.SourceType;
         ExpectedSnapshot = inner.ExpectedSnapshot;
@@ -419,7 +421,7 @@ public sealed class MapDocumentException : Exception
         ActualCount = inner.ActualCount;
         ExpectedCount = inner.ExpectedCount;
         ExpectedNumericId = inner.ExpectedNumericId;
-        ExpectedHash = inner.ExpectedHash;
+        ExpectedHash = inner.ExpectedHash ?? expectedHash;
         ActualHash = inner.ActualHash;
         DigestKind = inner.DigestKind;
         DependencyId = inner.DependencyId;

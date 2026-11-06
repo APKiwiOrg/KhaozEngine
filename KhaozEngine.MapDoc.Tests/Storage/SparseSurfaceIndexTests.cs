@@ -124,6 +124,10 @@ public sealed class SparseSurfaceIndexTests
             var files = SurfaceStorageFixtures.SurfaceFiles(dir);
             MapPatchRead semanticMismatch = MapStoredSurfaceSource.Open(dir).ReadPatch(new("ground", 0, 0));
             Assert.Equal(MapPatchStatus.Corrupt, semanticMismatch.Status);
+            Assert.Equal(MapDocumentRefusal.DigestMismatch, semanticMismatch.Finding!.Reason);
+            Assert.Equal(new MapPatchKey("ground", 0, 0), semanticMismatch.Finding.Patch);
+            Assert.Equal(new string('0', 64), semanticMismatch.Finding.ExpectedHash);
+            Assert.NotEqual(semanticMismatch.Finding.ExpectedHash, semanticMismatch.Finding.ActualHash);
             Assert.Null(semanticMismatch.Patch);
             Assert.Equal(files, SurfaceStorageFixtures.SurfaceFiles(dir));
             Assert.Equal(manifest, File.ReadAllBytes(Path.Combine(dir, "map.json")));

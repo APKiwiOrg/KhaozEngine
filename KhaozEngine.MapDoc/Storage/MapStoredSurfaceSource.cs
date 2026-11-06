@@ -95,18 +95,25 @@ public sealed partial class MapStoredSurfaceSource : IMapSurfaceAcquisitionSourc
         {
             byte[] bytes = MapSurfaceStorageLayout.Read(_directory, 'p', entry.PayloadSha256);
             MapSurfacePatch patch = MapSurfacePatchCodec.Decode(bytes, entry.Key);
-            if (MapSurfaceSemantics.PatchDigest(patch) != entry.SemanticSha256 ||
-                MapSurfaceRanges.Rectangle(patch) != entry.Cells || patch.Heights.Min() != entry.MinHeightUnits ||
-                patch.Heights.Max() != entry.MaxHeightUnits ||
-                !patch.CornerDependencies.Select(d => d.Owner.Patch).Distinct().OrderBy(k => k).SequenceEqual(entry.Dependencies) ||
-                !patch.Records.Select(r => r.Id).OrderBy(s => s, StringComparer.Ordinal).SequenceEqual(entry.RecordIds))
-                throw new MapDocumentException("surface semantic or index digest mismatch");
+            string actualHash = MapSurfaceSemantics.PatchDigest(patch);
+            string? field = actualHash != entry.SemanticSha256 ? "SemanticSha256"
+                : MapSurfaceRanges.Rectangle(patch) != entry.Cells ? "Cells"
+                : patch.Heights.Min() != entry.MinHeightUnits ? "MinHeightUnits"
+                : patch.Heights.Max() != entry.MaxHeightUnits ? "MaxHeightUnits"
+                : !patch.CornerDependencies.Select(d => d.Owner.Patch).Distinct().OrderBy(k => k).SequenceEqual(entry.Dependencies) ? "Dependencies"
+                : !patch.Records.Select(r => r.Id).OrderBy(s => s, StringComparer.Ordinal).SequenceEqual(entry.RecordIds) ? "RecordIds" : null;
+            if (field is not null)
+                throw new MapDocumentException(field == "SemanticSha256" ? MapDocumentRefusal.DigestMismatch
+                    : MapDocumentRefusal.AuthoredValueMismatch, "surface semantic or index digest mismatch")
+                { Patch = entry.Key, SurfaceId = entry.Key.SurfaceId, FieldPath = field,
+                    ExpectedHash = entry.SemanticSha256, ActualHash = actualHash };
             return new(entry.Key, MapPatchStatus.Present, patch, entry.SemanticSha256, null, 0);
         }
         catch (Exception ex) when (IsStorageFailure(ex))
         {
             MapPatchStatus status = ex is FileNotFoundException or DirectoryNotFoundException ? MapPatchStatus.Missing : MapPatchStatus.Corrupt;
-            return new(entry.Key, status, null, entry.SemanticSha256, ex.Message, 0);
+            return new(entry.Key, status, null, entry.SemanticSha256, ex.Message, 0)
+                { Finding = ex is MapDocumentException refusal ? MapDocumentFinding.FromException(refusal) : null, Cause = ex };
         }
     }
     internal static bool IsStorageFailure(Exception ex) => ex is IOException or UnauthorizedAccessException or

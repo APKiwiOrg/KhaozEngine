@@ -113,7 +113,15 @@ to select that generation.
 
 The stored overload also reads the tile files named by the generation pinned at `Open`, one tile at a time,
 by their pinned names. Each tile's parsed content must hash to its pinned tile hash before any entry is
-used. A removed tile file refuses with `Missing` and altered content with `Corrupt`. Identity never rereads
+used. A removed tile file carries `PinnedContentUnavailable`, `PatchStatus` `Missing`, `Tile` and
+`ExpectedHash`. Altered content carries `DigestMismatch` with both hashes and `PatchStatus` `Corrupt`.
+Known inner document refusals retain their reason and identifiers through the common copy operation.
+Pinned directory, index and payload failures retain their storage `SubjectKind`, available `Patch`,
+`PatchStatus` and `ExpectedHash`. `MapPatchRead.Finding` exposes a known structured payload failure
+beside its unchanged status and detail. A semantic mismatch uses `DigestMismatch`. Mismatched index
+cells, height extrema, dependency keys or record IDs use `AuthoredValueMismatch` and the failed `FieldPath`.
+Unsupported pinned tile schemes use `DocumentHashSchemeUnsupported`, `ActualVersion` and `SupportedVersions`.
+Identity never rereads
 the manifest, lists directories or trusts a stored hash without reading the file. Stored identity validates
 the same document rules as the loaded document. Ownership-registry refusals expose the same `Reason` and typed
 identity, child-kind, instance and anchor context on both paths. Other aggregate validators retain their prose
@@ -1455,6 +1463,15 @@ use default JSON escaping and packed base64 retains the codec's ASCII spelling. 
 decoded scalar strings remain bounded by the supplied input. Larger worlds use tiled storage under
 `tiles/surfaces/`, with SHA-256 payloads, index pages and directory pages. The manifest's `surfaceStorage`
 commits their closure last.
+Embedding byte and nesting refusals use `WorkCapacityExceeded`, with `Budget` `MaxEmbeddingBytes` or
+`MaxEmbeddingDepth` and an inclusive `Limit`. Byte refusals carry the minimum required `ActualByteCount`
+known at the failed token. Depth counts containers, admitting 16 and refusing 17. A negative byte budget
+uses `ValueOutsideRange`, `FieldPath` `maxBytes`, `ActualInteger` and minimum 0.
+An allocator returning another byte length uses `SchemaArrayLengthMismatch`, `SubjectKind` `embedding allocation`,
+`ExpectedByteCount` and available `ActualByteCount`. Encoding a payload that shrank after measurement uses
+`StorageEmbeddingChanged` with both byte counts. Unsupported scalar types or undefined JSON values use
+`SchemaMalformed`, with known `RecordType` or `ValueKind`. Nonfinite scalar values use `ValueNonfinite`,
+their `RecordType` and `ActualNumber`. Numeric formatting and default encoder progress remain internal invariants.
 Any default is as arbitrary as any other for a document that had no tile concept, so the rule is
 "deterministic and documented" rather than "derived". A document newer than the engine, or an old one with
 no migration path, fails to load. Saving always writes the current version.
@@ -1803,6 +1820,9 @@ their joined diagnostic text.
 | Reason | Refused rule | Identifiers when known |
 | --- | --- | --- |
 | `WaterBodiesPreventLegacyMode` | Switching to legacy global water while bounded bodies remain | `FieldPath`, `ActualCount` |
+| `DocumentHashSchemeUnsupported` | Whole authored identity under an unsupported pinned tile hash scheme | `FieldPath`, `ActualVersion`, owned `SupportedVersions` |
+| `StorageEmbeddingChanged` | An embedded payload whose encoded length changed after measurement | `ExpectedByteCount`, `ActualByteCount` |
+| `PinnedContentUnavailable` | Required pinned tile, directory, index or payload content whose read failed without a more specific document cause | `PatchStatus`, `Tile`, `Patch`, `SubjectKind`, `ExpectedHash` |
 | `DocumentVersionUnsupported` | A root document format version other than the current writable version | `FieldPath`, `ActualVersion`, `SupportedVersions` |
 | `DocumentTerrainFeatureUnknown` | A terrain feature discriminator absent from the supplied registry | discriminator `ActualText`, `EntityId`, `SubjectKind`, `FieldPath`, `Index` |
 | `DocumentTileOwnershipMismatch` | An entity or sculpt tile whose owner differs from its containing document tile | document `Tile`, `EntityId`, `SubjectKind`, `FieldPath`, `Index`, positions or `SculptTile`, `SourceName`, `Path` |
@@ -1818,7 +1838,7 @@ their joined diagnostic text.
 | `WaterDomainZeroArea` | A domain piece whose vertices are collinear | `FieldPath`, `SubjectKind`, `Index`, effective body `EntityId` |
 | `WaterDomainSelfIntersects` | A ring with intersecting edges or a fold back | `FieldPath`, `SubjectKind`, `Index`, effective body `EntityId` |
 | `WaterDomainTriangulationFailed` | A piece whose triangulation cannot complete | `FieldPath`, `SubjectKind`, `Index` |
-| `SchemaMalformed` | Invalid JSON, a deserialization failure without a known structured cause, malformed surface codec or GLB encoding, or tile sculpt data | `Patch`, `FieldPath`, `SourceName`, `Tile`, `Path`, `AssetId`, `ResourceId`, `LineNumber`, `BytePositionInLine` |
+| `SchemaMalformed` | Invalid JSON, a deserialization failure without a known structured cause, malformed surface codec, embedded scalar/value or GLB encoding, or tile sculpt data | `RecordType`, `SubjectKind`, `ActualInteger`, `Patch`, `FieldPath`, `SourceName`, `Tile`, `Path`, `AssetId`, `ResourceId`, `LineNumber`, `BytePositionInLine` |
 | `SchemaMemberDuplicate` | A repeated or case-variant JSON member | `FieldPath` of the containing object or the known duplicate field, `ResourceId`, `SourceName`, `Tile`, `Path` |
 | `SchemaMemberMissing` | A missing required native, prefab or support member, or a missing or non-integer `formatVersion` | `FieldPath`, `ResourceId`, `SourceName`, `Tile`, `Path` |
 | `SchemaMemberNull` | A native member that cannot be null | `FieldPath`, `SourceName`, `Tile`, `Path` |
@@ -1828,10 +1848,10 @@ their joined diagnostic text.
 | `SchemaArrayRequired` | A foliage or surface codec member that must be an array | `FieldPath`, `Index` |
 | `SchemaBooleanRequired` | A foliage member that must be a boolean | `FieldPath`, `LayerId`, `Index` |
 | `SchemaBase64Malformed` | An invalid surface codec token or invalid or noncanonical foliage density base64 | `FieldPath`, `LayerId`, `Index`, `FoliageChunk`, `ExpectedByteCount` |
-| `SchemaArrayLengthMismatch` | Decoded foliage density with the wrong byte length, embedded records in a prefab surface geometry patch, or a patch height, cell or presence array with the wrong length | `FieldPath`, `LayerId`, `Index`, `FoliageChunk`, `ActualByteCount`, `ExpectedByteCount`, `Child`, `SurfaceId`, `Patch`, `ActualCount`, `ExpectedCount` |
+| `SchemaArrayLengthMismatch` | Decoded foliage density with the wrong byte length, embedded records in a prefab surface geometry patch, or a patch height, cell or presence array with the wrong length, or an embedding allocator returning another byte length | `SubjectKind`, `FieldPath`, `LayerId`, `Index`, `FoliageChunk`, `ActualByteCount`, `ExpectedByteCount`, `Child`, `SurfaceId`, `Patch`, `ActualCount`, `ExpectedCount` |
 | `SchemaInt64Malformed` | Surface codec text outside canonical signed 64-bit decimal representation | `FieldPath`, `ActualText`, `MinimumInteger`, `MaximumInteger` |
 | `SchemaPayloadVersionUnsupported` | An unsupported asset-reference, resolver-identity, support, foliage, prefab asset, local light, local marker, prism or storey payload version | `FieldPath`, `MarkerId`, `ResourceId`, `Index`, `ActualVersion`, `SupportedVersions`, `MinimumInteger`, `RecordId`, `SpaceId`, `EntityId`, `InstanceId` |
-| `ValueNonfinite` | A nonfinite manifest source-unit scale, foliage scalar, playable-bound component, placement support-search value, resolved support height, adoption height or yaw, or marker position/yaw, or a nonfinite frame-local position or effective coordinate freeze | `FieldPath`, `MarkerId`, `AssetId`, `LayerId`, `PlacementId`, `Index`, `ActualNumber` (null for nonfinite marker values, nonfinite for prefab scalar guards) |
+| `ValueNonfinite` | A nonfinite manifest source-unit scale, foliage scalar, playable-bound component, placement support-search value, resolved support height, adoption height or yaw, or marker position/yaw, or a nonfinite frame-local position, effective coordinate freeze or embedded scalar | `RecordType`, `SubjectKind`, `FieldPath`, `MarkerId`, `AssetId`, `LayerId`, `PlacementId`, `Index`, `ActualNumber` (null for nonfinite marker values, nonfinite for prefab scalar guards) |
 | `ValueOutsideRange` | A finite nonpositive manifest source-unit scale, foliage integer outside its domain, negative acquired page count, support-search extent or high-water mark, nonpositive numeric identity, nonpositive lattice unit parts, an effective coordinate outside the installed metre range, an address denominator outside its domain, a rotation or subdivision segment count, chain or slot-list cardinality, or a slot cell outside 0 through 4095 | `FieldPath`, `AssetId`, `LayerId`, `PlacementId`, `EntityId`, `SubjectKind`, `Index`, `ActualNumber`, `ActualInteger`, `MinimumNumber`, `MinimumInteger`, `MaximumInteger`, `NumericId`, `HighWaterMark`, `RecordId`, `Patch`, `ActualCount` |
 | `IdentityDuplicate` | A repeated advertised foliage chunk key, marker, adoption source or destination, asset or resource closure identity, support patch or record identity, surface, numeric, codec record, acquired patch or acquired record identity, corner or cell-edge metadata key, world binding, transfer or attachment producer, a standalone owner colliding with a prefab binding, or a repeated extraction reference or resulting local key, or a repeated topology reference, boundary side or adjacent slot cell | `MarkerId`, `MarkerIds`, `FieldPath`, `Index`, `EntityId`, `SubjectKind`, `SourceId`, `AssetId`, `ResourceId`, `SurfaceId`, `PlacementId`, `RecordId`, `Patch`, `NumericId`, `HighWaterMark`, `WorldId`, `ChildKind`, `Child`, `InstanceId`, `RelatedRecordId`, `EnumType`, `ActualInteger`, `PreviousInteger`, `LayerId`, `FoliageChunk` |
 | `IdentityReserved` | A marker reusing a retained prefab reservation, a placement reusing a live or retained instance ID, a live standalone owner using a retired transfer's world identity, or a planned binding colliding with another owner's world or numeric identity | `MarkerId`, `EntityId`, `WorldId`, `ChildKind`, `Child`, `InstanceId`, `NumericId`, `SubjectKind` |
@@ -1841,7 +1861,7 @@ their joined diagnostic text.
 | `DigestMismatch` | Foliage pack density, acquired patch semantic pins, resource bytes, an attached child's descriptor digest, a stored surface semantic aggregate or a verified tile's lists differing from its pin | `DigestKind`, `SourceName`, `Tile`, `ResourceId`, `Path`, `EntityId`, `WorldId`, `ChildKind`, `Child`, `InstanceId`, `PlacementId`, `SurfaceId`, `SubjectKind`, `ExpectedHash`, `ActualHash`, `FoliageChunk`, `Index` |
 | `BoundsInvalid` | Invalid prefab patch dimensions, manifest local bounds, playable bounds, reversed exact rectangles or invalid surface patch rectangles | `FieldPath`, `Width`, `Depth`, `AssetId`, `SurfaceId`, `Patch`, `CellX`, `CellZ`, `Index`, `MinimumNumber`, `MaximumNumber` |
 | `AcquisitionContractMismatch` | An incoherent acquired payload, discovery fact, read key or page observation, session pin mismatch, or inconsistent incidence contract | `Patch`, `ExpectedPatch`, `PatchStatus`, `FieldPath`, `ExpectedSnapshot`, `ActualSnapshot`, `ExpectedHash`, `ActualHash`, `ActualCount`, `ExpectedCount`, `ActualInteger`, `PreviousInteger`, `MinimumInteger` |
-| `AcquisitionSnapshotChanged` | Discovery or later session facts with changed snapshot, root or reservations | `FieldPath`, `ExpectedSnapshot`, `ActualSnapshot`, `ExpectedHash`, `ActualHash` |
+| `AcquisitionSnapshotChanged` | Discovery or later session facts with changed snapshot, root or reservations, or a foliage context with mismatched effective resources | `DocumentId`, `FoliageStatus`, `Operation`, `FieldPath`, `ExpectedSnapshot`, `ActualSnapshot`, `ExpectedHash`, `ActualHash` |
 | `AcquisitionUnsupported` | A producer without bounded scoped acquisition support | `SourceType` |
 | `LegacyExteriorSpaceRequired` | Legacy exterior coverage on a non-Exterior space | `RecordId`, `SpaceId`, `SurfaceId`, `Patch`, `FieldPath` |
 | `LegacyExteriorOpenTopRequired` | Legacy exterior coverage without an open-top upper bound | `RecordId`, `SpaceId`, `SurfaceId`, `Patch`, `FieldPath` |
@@ -1895,7 +1915,7 @@ their joined diagnostic text.
 | `SurfacePaintPriorityConflict` | Equal-priority overlapping paint with different materials | `SurfaceId`, `OtherSurfaceId`, priority in `ActualInteger` |
 | `SurfacePaintBoundaryInvalid` | An open or nonmanifold material boundary | `SurfaceId` |
 | `SurfacePaintCrossesPhysicalFace` | A whole-face paint material or presence boundary crossing a physical face | `SurfaceId`, `OtherSurfaceId`, `Patch`, face `Index`, `FieldPath` |
-| `WorkCapacityExceeded` | Prefab and light payload bytes, codec array counts or patch geometry, foliage codec counts or density token sizes beyond their limits, reservation keys beyond the candidate cap, surface codec work beyond its encoded byte or array-count budget, or local corner-dependency or edge-subdivision metadata beyond its count budget, or compiled faces beyond MaxFacesPerPatch or support resource bytes beyond MaxPayloadBytes, or water-domain piece, vertex or pair-check work beyond its budget, or prefab expansion and foliage context preflight budgets | `Patch`, `FieldPath`, `Budget`, `ActualCount`, `ActualByteCount`, `Limit`, `LayerId`, `Index`, `FoliageChunk` |
+| `WorkCapacityExceeded` | Prefab and light payload bytes, codec array counts or patch geometry, foliage codec counts or density token sizes beyond their limits, reservation keys beyond the candidate cap, surface codec work beyond its encoded byte or array-count budget, or local corner-dependency or edge-subdivision metadata beyond its count budget, or compiled faces beyond MaxFacesPerPatch or support resource bytes beyond MaxPayloadBytes, or water-domain piece, vertex or pair-check work beyond its budget, or prefab expansion, foliage context preflight and embedding byte/depth budgets | `Operation`, `SubjectKind`, `Patch`, `FieldPath`, `Budget`, `ActualCount`, `ActualByteCount`, `Limit`, `LayerId`, `Index`, `FoliageChunk` |
 | `SurfacePresencePaddingNonzero` | Nonzero bits beyond the authored cell count in the last presence word | `Patch`, `FieldPath`, `Index` |
 | `SurfaceSubdivisionAbsentCell` | An edge subdivision on an absent cell | `Patch`, `FieldPath`, `Index`, `CellX`, `CellZ`, `Edge` |
 | `SurfaceSubdivisionInteriorEdge` | An edge subdivision adjoining another present cell inside the patch | `Patch`, `FieldPath`, `Index`, `CellX`, `CellZ`, `Edge` |

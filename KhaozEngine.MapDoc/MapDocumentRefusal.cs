@@ -16,6 +16,8 @@ public enum MapDocumentRefusal
     DocumentTerrainFeatureUnknown,
     /// <summary>Refuses content whose owner differs from its containing document tile.</summary>
     DocumentTileOwnershipMismatch,
+    /// <summary>Refuses whole authored identity under an unsupported tile hash scheme.</summary>
+    DocumentHashSchemeUnsupported,
     /// <summary>Refuses an operation requiring a complete document when content is unloaded.</summary>
     CompleteDocumentRequired,
     /// <summary>Refuses a migration source outside that migration's supported format versions.</summary>
@@ -374,6 +376,10 @@ public enum MapDocumentRefusal
     SpacePortalAirIntervalInvalid,
     /// <summary>Refuses coincident physical support owned by different authored surfaces.</summary>
     SpaceSupportCoincident,
+
+    // Surface embedding admission.
+    /// <summary>Refuses a payload whose encoded length changed after measurement.</summary>
+    StorageEmbeddingChanged,
 
     // Foliage storage admission.
     /// <summary>Refuses a foliage chunk offset differing from its canonical position in the pack.</summary>

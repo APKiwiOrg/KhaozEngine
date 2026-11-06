@@ -19,8 +19,10 @@ public sealed partial class MapStoredSurfaceSource
     internal string IdentityContentDigest(MapAssetClosure assets)
     {
         if (_pinnedTiles.SchemeVersion != MapDocumentHash.SchemeVersion)
-            throw new MapDocumentException($"Whole authored identity requires tile hash scheme {MapDocumentHash.SchemeVersion}, " +
-                $"the pinned manifest uses {_pinnedTiles.SchemeVersion}.");
+            throw new MapDocumentException(MapDocumentRefusal.DocumentHashSchemeUnsupported,
+                $"Whole authored identity requires tile hash scheme {MapDocumentHash.SchemeVersion}, " +
+                $"the pinned manifest uses {_pinnedTiles.SchemeVersion}.")
+                { ActualVersion = _pinnedTiles.SchemeVersion, SupportedVersions = [MapDocumentHash.SchemeVersion], FieldPath = "schemeVersion" };
         MapDocRegistry registry = MapDocRegistry.CreateDefault();
         var digest = new MapAuthoredContentDigest();
         var numericIds = new HashSet<long>(MapNativeValidation.PrefabNumericIds(_globals).Select(p => p.Id));
@@ -66,8 +68,10 @@ public sealed partial class MapStoredSurfaceSource
             using var reader = new StreamReader(new MemoryStream(bytes, writable: false), detectEncodingFromByteOrderMarks: true);
             MapTileContent content = MapTileFile.Parse(reader.ReadToEnd(), "pinned tile", entry.Coord, entry.Hash, registry);
             // A tile hash is canonical over the four lists, so the check runs on the parsed lists.
-            if (!string.Equals(MapDocumentHash.OfLists(content.Lists, registry), entry.Hash, StringComparison.Ordinal))
-                throw new MapDocumentException("tile content does not match its pinned hash");
+            string actualHash = MapDocumentHash.OfLists(content.Lists, registry);
+            if (!string.Equals(actualHash, entry.Hash, StringComparison.Ordinal))
+                throw new MapDocumentException(MapDocumentRefusal.DigestMismatch, "tile content does not match its pinned hash")
+                { Tile = entry.Coord, ExpectedHash = entry.Hash, ActualHash = actualHash, DigestKind = "tile content" };
             return content;
         }
         catch (Exception ex) when (IsStorageFailure(ex))
@@ -76,6 +80,12 @@ public sealed partial class MapStoredSurfaceSource
         }
     }
 
-    static MapDocumentException PinnedTileRefusal(MapPatchStatus status, MapTileEntry entry, Exception? inner) =>
-        new(string.Create(CultureInfo.InvariantCulture, $"{status} pinned tile ({entry.Coord.X}, {entry.Coord.Z})."), inner!);
+    static MapDocumentException PinnedTileRefusal(MapPatchStatus status, MapTileEntry entry, Exception? inner)
+    {
+        string message = string.Create(CultureInfo.InvariantCulture, $"{status} pinned tile ({entry.Coord.X}, {entry.Coord.Z}).");
+        return inner is MapDocumentException refusal ? refusal.WithSourceName(null, message, tile: entry.Coord,
+            patchStatus: status, expectedHash: entry.Hash)
+            : new(MapDocumentRefusal.PinnedContentUnavailable, message, inner!)
+                { PatchStatus = status, Tile = entry.Coord, ExpectedHash = entry.Hash, SubjectKind = "tile" };
+    }
 }

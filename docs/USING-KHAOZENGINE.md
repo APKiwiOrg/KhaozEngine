@@ -12663,6 +12663,13 @@ or when the current manifest cannot be read. Reload the window and reapply the e
 **Streamed content and bounded surface embedding.** `SaveTo(doc, stream)` serializes through a
 `Utf8JsonWriter`, and `Save` uses it without building one whole-document text buffer. Native surface
 embedding has separate limits of 256 patches and 8 MiB. Larger native surfaces require tiled storage.
+The embedded payload writer reports byte and container-depth limits as `WorkCapacityExceeded`, with
+`Budget` `MaxEmbeddingBytes` or `MaxEmbeddingDepth`, required bytes or container count, and inclusive `Limit`.
+The depth budget admits 16 containers. A negative byte budget uses `ValueOutsideRange` and minimum 0.
+Wrong allocator lengths use `SchemaArrayLengthMismatch` with expected and available actual byte counts.
+A payload shrinking after measurement uses `StorageEmbeddingChanged` with measured and written byte counts.
+Malformed scalar values use `SchemaMalformed`. Nonfinite numbers use `ValueNonfinite` with `RecordType`
+and `ActualNumber`. Internal numeric formatting and default encoder progress checks remain invariants.
 `SaveTiled` writes one tile at a time and **does not rewrite a tile whose
 canonical hash is unchanged**. Its ordering is crash-consistent: changed tiles are written at names nothing
 points at yet, then a single `map.json` rename commits, then a best-effort sweep collects what the new
@@ -13301,7 +13308,14 @@ mismatches refuse with `Corrupt`. A stored surface aggregate mismatch uses `Dige
 and computed `ActualHash`. A changed manifest requires a new `Open`, never an implicit replacement.
 It also reads the tile files the pinned generation names, one at a time by their pinned names, and checks
 each tile's parsed content against its pinned tile hash. A removed tile file refuses with `Missing` and
-altered content with `Corrupt`.
+altered content with `Corrupt`. These are the typed `PatchStatus` values. Missing pinned content carries
+`PinnedContentUnavailable`, known `Tile` or `Patch`, storage `SubjectKind` and `ExpectedHash`. A known
+inner document refusal keeps its concrete reason and identifiers through the common copy operation.
+Tile and payload semantic mismatches use `DigestMismatch` with both hashes. Mismatched index metadata
+uses `AuthoredValueMismatch` with its failed `FieldPath`. `MapPatchRead.Finding` exposes a known payload
+failure beside the unchanged read status and detail. Unsupported pinned tile schemes use
+`DocumentHashSchemeUnsupported` with `ActualVersion`, `SupportedVersions` and `FieldPath` `schemeVersion`.
+Stored identity's foliage validator forwards the first concrete finding and the complete ordered snapshot.
 
 The `kemap/native-authored/2` token covers exactly the root digest, the authored content digest, ordered
 patch keys and semantic digests, the effective resource policy and query policy 2, the closure hash,

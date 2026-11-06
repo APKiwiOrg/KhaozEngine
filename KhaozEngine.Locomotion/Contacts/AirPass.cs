@@ -141,14 +141,15 @@ internal static class AirPass
             moved = onPlan ? next : moved + flight.Achieved;
             float remainingTime = stepTime * (substeps - i - 1);
             bool rising = current.Y > 0f;
-            if (rising)
+            if (rising && !buoyant)
             {
                 if (medium?.ChangesOwner(start + moved, current.Y, NoSupport, false) == true)
                 {
                     acceptedRoute.Accept(from, start + moved);
                     return Handoff(start + moved, NoSupport, AirOutcome.Airborne, remainingTime);
                 }
-                if (!buoyant) { acceptedRoute.Accept(from, start + moved); continue; }
+                acceptedRoute.Accept(from, start + moved);
+                continue;
             }
 
             Vector3 at = start + moved;
@@ -168,6 +169,8 @@ internal static class AirPass
                     (double)support.Height - support.HeightError > high))
             {
                 acceptedRoute.Accept(from, at);
+                if (medium?.ChangesOwner(at, current.Y, NoSupport, false) == true)
+                    return Handoff(at, NoSupport, AirOutcome.Airborne, remainingTime);
                 continue;
             }
             var remaining = new Vector2(displacement.X - next.X, displacement.Z - next.Z);

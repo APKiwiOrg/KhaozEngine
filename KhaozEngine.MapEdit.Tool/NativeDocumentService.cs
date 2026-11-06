@@ -57,9 +57,10 @@ public static class NativeDocumentService
     {
         string resourceRoot = MapDocumentStorage.ResourceRoot(storagePath, form);
         if (document.Tiles is { IsPartial: true })
-            throw new MapDocumentException(
+            throw new MapDocumentException(MapDocumentRefusal.CompleteDocumentRequired,
                 $"{context}: a native document must load every tile. Windowed native editing is not supported " +
-                "yet, so open it whole (raise WholeWorldTileLimit) or move the window over the whole world.");
+                "yet, so open it whole (raise WholeWorldTileLimit) or move the window over the whole world.")
+            { DocumentId = document.Id, Path = storagePath, SourceName = context, ResourceRoot = resourceRoot, Operation = nameof(Verify) };
         try
         {
             return ValidateComplete(document, new MapStorageGuardedAssetSource(Path.GetFullPath(storagePath), form),
@@ -83,9 +84,10 @@ public static class NativeDocumentService
     {
         MapDocumentForm actual = MapDocumentFile.DetectForm(path);
         if (actual == form || (allowMissingFile && form == MapDocumentForm.Monolithic && actual == MapDocumentForm.None)) return;
-        throw new MapDocumentException(actual == MapDocumentForm.None
+        throw new MapDocumentException(MapDocumentRefusal.ToolStorageFormChanged, actual == MapDocumentForm.None
             ? $"{path}: the {form} storage this document was opened from no longer exists. Nothing was written."
-            : $"{path}: expected {form} storage but found {actual}. Nothing was written.");
+            : $"{path}: expected {form} storage but found {actual}. Nothing was written.")
+        { Path = path, DocumentForm = actual, ExpectedDocumentForm = form, Operation = nameof(RequireStorage) };
     }
 
     /// <summary>Writes a verified native document in its known <paramref name="form"/>. Tiled storage keeps the
@@ -102,7 +104,8 @@ public static class NativeDocumentService
     /// mode and ACL metadata rather than the previous entry's.</summary>
     internal static void SaveMonolithicStaged(MapDocument document, string path, MapDocRegistry registry)
     {
-        string directory = Path.GetDirectoryName(path) ?? throw new MapDocumentException($"{path}: no parent directory.");
+        string directory = Path.GetDirectoryName(path) ?? throw new MapDocumentException(MapDocumentRefusal.ToolParentDirectoryMissing, $"{path}: no parent directory.")
+        { Path = path, Operation = nameof(SaveMonolithicStaged) };
         string staging = Path.Combine(directory, $".{Path.GetFileName(path)}.{Guid.NewGuid():N}.tmp");
         try
         {

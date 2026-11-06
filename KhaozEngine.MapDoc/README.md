@@ -1999,6 +1999,8 @@ their joined diagnostic text.
 | `ToolPublicationPathInvalid` | A rooted or escaping publication path | submitted `Path`, `StoragePath`, `DocumentForm`, known `ResourceRoot` |
 | `ToolTiledSessionRequired` | A window move without tiled source storage, carried by `MapSessionException` | `DocumentId`, `Path`, `Operation`, `FieldPath`, `DocumentForm`, `ExpectedDocumentForm` |
 | `ToolUnsavedChanges` | A window move discarding dirty content without permission, carried by `MapSessionException` | `DocumentId`, `Path`, `Operation`, `FieldPath` `IsDirty`, `DocumentForm` |
+| `ToolStorageFormChanged` | Expected native source storage disappeared or changed form | `Path`, actual `DocumentForm`, `ExpectedDocumentForm`, `Operation` |
+| `ToolParentDirectoryMissing` | A staged save path without a parent directory | `Path`, `Operation` |
 | `ToolDocumentRequired` | Session work without an open document, carried by `MapSessionException` | `Operation` |
 | `ToolColliderMissing` | Measurement or editing of an asset without a collider | `AssetId` |
 | `ToolColliderResourceShared` | A height edit to a resource used by another asset | `AssetId`, `OtherAssetId`, `ResourceId` |

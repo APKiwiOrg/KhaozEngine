@@ -239,14 +239,20 @@ public sealed class NativeLifecycleTests
         string[] before = Directory.GetFileSystemEntries(tiled, "*", SearchOption.AllDirectories).OrderBy(e => e, StringComparer.Ordinal).ToArray();
         var document = f.SessionDocument;
 
+        string content = MapDocumentFile.SaveText(f.SessionDocument);
         var ex = Assert.Throws<MapDocumentException>(() => f.Session.ConvertToTiled(tiled));
-        Assert.Contains("already exists", ex.Message, StringComparison.Ordinal);
+        Assert.Equal(MapDocumentRefusal.DocumentStorageFormConflict, ex.Reason);
+        Assert.Equal(tiled, ex.Path);
         Assert.Equal(manifestBytes, File.ReadAllBytes(manifest));
         Assert.Equal(meshBytes, File.ReadAllBytes(mesh));
         Assert.Equal(before, Directory.GetFileSystemEntries(tiled, "*", SearchOption.AllDirectories).OrderBy(e => e, StringComparer.Ordinal));
         Assert.Same(document, f.SessionDocument);
         Assert.Equal(f.ValidPath, f.Session.DocumentPath);
         Assert.Equal("native-lifecycle", f.Session.Summary().Id);
+        Assert.Equal(content, MapDocumentFile.SaveText(f.SessionDocument));
+        string fresh = Path.Combine(f.ResourceRoot, "fresh-tiled");
+        f.CopyResourcesTo(fresh);
+        Assert.NotNull(f.Session.ConvertToTiled(fresh));
     }
 
     [Fact]
@@ -291,12 +297,20 @@ public sealed class NativeLifecycleTests
         f.Session.EditorWindowRadius = 0;
         string id = f.Session.Summary().Id;
         var document = f.SessionDocument;
+        string before = MapDocumentFile.SaveText(document);
+        var history = f.Session.NativeHistoryState;
         var ex = Assert.Throws<MapDocumentException>(() => f.Session.Open(tiled));
-        Assert.Contains("tile", ex.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.Equal(MapDocumentRefusal.CompleteDocumentRequired, ex.Reason);
+        Assert.Equal(tiled, ex.Path);
+        Assert.Equal("Verify", ex.Operation);
+        Assert.Equal(before, MapDocumentFile.SaveText(f.SessionDocument));
+        Assert.Equal(history, f.Session.NativeHistoryState);
         Assert.Same(document, f.SessionDocument);
         Assert.Equal(id, f.Session.Summary().Id);
         Assert.Equal(f.ValidPath, f.Session.DocumentPath);
         new MutationService(f.Session).PlacementLabel("gate", "still bound");
+        f.Session.WholeWorldTileLimit = int.MaxValue;
+        Assert.NotNull(f.Session.Open(tiled));
     }
 }
 

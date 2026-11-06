@@ -105,6 +105,7 @@ public class NativeCollisionRefusalTests
         string resourceId, string? rootId)
     {
         using var f = new NativeCollisionToolFixture();
+        PrimeHistory(f);
         byte[] before = f.ReadAssetDirectoryDigest();
         string content = Content(f);
         var history = f.Session.NativeHistoryState;
@@ -130,6 +131,7 @@ public class NativeCollisionRefusalTests
     public void MissingCollider_IdentifiesTheAssetWithoutChangingTheSession(bool measure)
     {
         using var f = new NativeCollisionToolFixture();
+        PrimeHistory(f);
         byte[] before = f.ReadAssetDirectoryDigest();
         string content = Content(f);
         var history = f.Session.NativeHistoryState;
@@ -169,6 +171,7 @@ public class NativeCollisionRefusalTests
         MapDocumentRefusal reason, string field)
     {
         using var f = new NativeCollisionToolFixture();
+        PrimeHistory(f);
         byte[] before = f.ReadAssetDirectoryDigest();
         string content = Content(f);
         var history = f.Session.NativeHistoryState;
@@ -216,6 +219,13 @@ public class NativeCollisionRefusalTests
         Assert.Equal(manifest ? root.Sha256 : collider.Sha256, error.ExpectedHash);
         Assert.Equal(different.Sha256, error.ActualHash);
         NativeColliderAdmission.RequirePublishedColliderPlanForTests("box", collider, root, collider, root);
+    }
+
+    static void PrimeHistory(NativeCollisionToolFixture fixture)
+    {
+        new MutationService(fixture.Session).PlacementLabel("lone-1", "history-before-refusal");
+        fixture.Session.Save();
+        Assert.True(fixture.Session.NativeHistoryState.Depth > 0);
     }
 
     static string Content(NativeCollisionToolFixture fixture) => fixture.Session.WithDocument((doc, registry) =>

@@ -25,14 +25,20 @@ public sealed class PrefabServiceTests
     public void AssetPublicationFailure_LeavesSessionAndOtherMapsUntouched(string checkpoint)
     {
         var session = PrefabEditorFixtures.Session(PrefabEditorFixtures.Create("two-instances"));
+        string otherIdentity = PrefabEditorFixtures.State(session).Identity;
+        new MutationService(session).TerrainEdit(seed: 42);
         var before = PrefabEditorFixtures.State(session);
+        Assert.True(session.NativeHistoryState.Depth > 0);
         string other = PrefabEditorFixtures.OtherMapBefore(session);
-        Assert.Contains("publication fault " + checkpoint, Assert.Throws<MapDocumentException>(() => PrefabEditorFixtures.PublishMarkerChange(session, checkpoint)).Message);
+        var fault = new MapDocumentException("selected publication fault");
+        Assert.Same(fault, Assert.Throws<MapDocumentException>(() => PrefabEditorFixtures.PublishMarkerChange(session, checkpoint, fault)));
         Assert.Equal(before, PrefabEditorFixtures.State(session));
         Assert.Equal(other, PrefabEditorFixtures.OtherMapNow(session));
         var otherSession = new MapEditSession();
         otherSession.Open(Path.Combine(Path.GetDirectoryName(session.DocumentPath)!, "other.map.json"));
-        Assert.Equal(before.Identity, PrefabEditorFixtures.State(otherSession).Identity);
+        Assert.Equal(otherIdentity, PrefabEditorFixtures.State(otherSession).Identity);
+        PrefabEditorFixtures.PublishMarkerChange(session, "no-fault");
+        Assert.NotEqual(before.Identity, PrefabEditorFixtures.State(session).Identity);
     }
     [Fact]
     public void Publication_UpdatesEveryReferrerAndKeepsOtherMapPinned()

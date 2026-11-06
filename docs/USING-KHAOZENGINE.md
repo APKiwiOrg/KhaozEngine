@@ -15790,7 +15790,13 @@ ordinary `ToolManifestSerializationFailed` fallback.
 **Native lifecycle.** A document with `ResolverIdentity` is verified completely by
 `NativeDocumentService.ValidateComplete(document, source, options)` at open, window moves, save, validate,
 summary, conversion and retile. Its resource root is the monolithic file's directory or the tiled directory,
-anchored as an absolute path at open. Resolver identity `(1, 1)` uses the unchanged analytic `SessionOptions`
+anchored as an absolute path at open.
+Partial native verification reuses `CompleteDocumentRequired` with the document, path, resource root and
+`Operation` `Verify`. Changed or missing opened storage uses `ToolStorageFormChanged` and actual and expected
+forms. A parentless staging target uses `ToolParentDirectoryMissing` and `Path`. Prefab publication requires a
+manifest root (`ToolAssetRootRequired`) and verified immutable bytes (`ToolImmutableResourceConflict`).
+Resource write failures retain `ToolResourceWriteFailed`, their path, resource identity and original cause.
+A known lower refusal keeps its own reason and identifiers when publication adds context. Resolver identity `(1, 1)` uses the unchanged analytic `SessionOptions`
 (`khaozengine.mapedit.analytic-support`, builder version 1, options hash
 `mapruntime-buildfield-default-registry-v1`). The resolver identity `(1, 2)`, new in 20.30.0, uses `SessionOptionsV2`
 (`khaozengine.mapedit.authored-support`, builder version 1, options hash

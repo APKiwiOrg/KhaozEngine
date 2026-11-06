@@ -48,7 +48,7 @@ public enum MapDocumentRefusal
     DocumentManifestReadFailed,
     /// <summary>Refuses saving a partial window after its manifest generation changed or became unreadable.</summary>
     DocumentStaleWindow,
-    /// <summary>Refuses a tiled save whose target is a monolithic file.</summary>
+    /// <summary>Refuses a save or conversion target occupied by an incompatible document form.</summary>
     DocumentStorageFormConflict,
     /// <summary>Refuses saving content moved into a tile the partial window did not load.</summary>
     DocumentUnloadedDestinationTile,
@@ -451,6 +451,11 @@ public enum MapDocumentRefusal
     ToolColliderBoxTilted,
     /// <summary>Refuses published collider resources that differ from their verified plan.</summary>
     ToolColliderPublicationMismatch,
+
+    /// <summary>Refuses native publication when the expected source storage disappeared or changed form.</summary>
+    ToolStorageFormChanged,
+    /// <summary>Refuses staged publication to a path without a parent directory.</summary>
+    ToolParentDirectoryMissing,
 
     // Physics navigation and envelope admission.
     /// <summary>Refuses an interaction envelope sweep for an unsupported source shape.</summary>

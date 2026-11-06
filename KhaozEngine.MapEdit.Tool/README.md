@@ -390,6 +390,22 @@ still catchable as `InvalidOperationException`. Conversion onto an occupied tile
 `DocumentStorageFormConflict`, `Path`, actual `DocumentForm` and required `ExpectedDocumentForm`. Retiling a
 partial document uses `CompleteDocumentRequired`, `DocumentId`, `Path` and `Operation` `Retile`.
 
+Native verification of a partial document also reuses `CompleteDocumentRequired`, with `DocumentId`, `Path`,
+`SourceName`, `ResourceRoot` and `Operation` `Verify`. It refuses before replacing the session. Native storage
+publication uses the following reasons, keeping the original text and live history unchanged.
+
+| Reason | Refused rule | Identifiers |
+| --- | --- | --- |
+| `ToolStorageFormChanged` | The opened storage disappeared or changed form | `Path`, actual `DocumentForm`, `ExpectedDocumentForm`, `Operation` |
+| `ToolParentDirectoryMissing` | The staged-save target has no parent directory | `Path`, `Operation` |
+| `ToolAssetRootRequired` | Prefab publication has no manifest root | `AssetId`, `Operation` |
+| `ToolImmutableResourceConflict` | An immutable prefab address holds other bytes or publication left it absent | `Path`, `ResourceId`, `ExpectedHash`, `ActualHash` when present |
+| `ToolResourceWriteFailed` | Immutable prefab I/O or access failed | `Path`, `ResourceId`, `Operation`, original cause |
+
+Prefab publication adds known resource context through the shared same-type exception copy. An existing lower
+reason and every identifier survive, with the original refusal retained as `InnerException`. Files published
+before a later refusal remain unreferenced. The live document and its undo and redo history stay unchanged.
+
 `MapAssetFileWriter(assetRoot)` writes resources under an explicit absolute asset root, the root the document's
 resource references resolve against. `WriteResource(bytes, extension)` writes `assets/<sha256>.<extension>` and
 returns a `MapAssetRef` with that relative path, the lowercase digest as its ID and payload version 1. Equal bytes

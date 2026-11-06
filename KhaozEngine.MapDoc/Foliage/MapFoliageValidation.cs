@@ -227,9 +227,9 @@ public static class MapFoliageValidation
         { FieldPath = "Policy.NormalBoundaryHeight", ActualNumber = layer.Policy.NormalBoundaryHeight });
         Models(layer, label, errors, findings);
         Materials(layer, label, errors, findings);
-        Ordinals(layer, label, errors);
-        Clearance(layer, label, errors);
-        Chunks(layer, label, errors);
+        Ordinals(layer, label, errors, findings);
+        Clearance(layer, label, errors, findings);
+        Chunks(layer, label, errors, findings);
 
         void Add(MapDocumentFinding finding) => AddFinding(finding with { LayerId = layer.Id }, errors, findings);
     }
@@ -280,82 +280,121 @@ public static class MapFoliageValidation
             { FieldPath = $"Materials[{i}].Id", Index = i, ActualInteger = material.Id, ResourceId = material.ResourceId, SubjectKind = "foliage material" });
             if (string.IsNullOrEmpty(material.ResourceId)) Add(new(MapDocumentRefusal.SchemaValueRequired, $"{label}: material {material.Id} needs a resourceId.")
             { FieldPath = $"Materials[{i}].ResourceId", Index = i, ActualInteger = material.Id, ResourceId = material.ResourceId });
-            if (!Enum.IsDefined(material.Kind)) errors.Add($"{label}: material {material.Id} has an unsupported kind.");
+            if (!Enum.IsDefined(material.Kind)) Add(new(MapDocumentRefusal.SchemaEnumUnsupported,
+                $"{label}: material {material.Id} has an unsupported kind.")
+            { FieldPath = $"Materials[{i}].Kind", Index = i, NumericId = material.Id, ResourceId = material.ResourceId,
+                EnumType = typeof(MapFoliageMaterialKind), ActualInteger = (long)material.Kind });
         }
         // A sorted distinct nonzero set, each a declared material.
         for (int i = 0; i < layer.AllowedVisibleMaterials.Count; i++)
         {
             ushort id = layer.AllowedVisibleMaterials[i];
             if (i > 0 && id <= layer.AllowedVisibleMaterials[i - 1])
-                errors.Add(label + ": allowedVisibleMaterials must be sorted ascending without repeats.");
-            if (!declared.Contains(id)) errors.Add($"{label}: allowed visible material {id} is not a declared material.");
+                Add(new(MapDocumentRefusal.OrderInvalid, label + ": allowedVisibleMaterials must be sorted ascending without repeats.")
+                { FieldPath = $"AllowedVisibleMaterials[{i}]", Index = i, ActualInteger = id, PreviousInteger = layer.AllowedVisibleMaterials[i - 1] });
+            if (!declared.Contains(id)) Add(new(MapDocumentRefusal.ReferenceMissing, $"{label}: allowed visible material {id} is not a declared material.")
+            { FieldPath = $"AllowedVisibleMaterials[{i}]", Index = i, ActualInteger = id, SubjectKind = "visible material" });
         }
 
         void Add(MapDocumentFinding finding) => AddFinding(finding with { LayerId = layer.Id }, errors, findings);
     }
 
-    static void Ordinals(MapFoliageLayer layer, string label, List<string> errors)
+    static void Ordinals(MapFoliageLayer layer, string label, List<string> errors, List<MapDocumentFinding>? findings)
     {
         var surfaces = new HashSet<string>(StringComparer.Ordinal);
-        foreach (MapFoliageCompatibilityOrdinal row in layer.CompatibilityOrdinals)
+        for (int i = 0; i < layer.CompatibilityOrdinals.Count; i++)
         {
-            if (string.IsNullOrEmpty(row.SurfaceId)) errors.Add(label + ": every compatibility ordinal needs a surfaceId.");
-            else if (!surfaces.Add(row.SurfaceId)) errors.Add($"{label}: compatibility ordinal surface '{row.SurfaceId}' is listed twice.");
-            if (row.Ordinal < 0) errors.Add($"{label}: compatibility ordinal of '{row.SurfaceId}' must be nonnegative.");
+            MapFoliageCompatibilityOrdinal row = layer.CompatibilityOrdinals[i];
+            if (string.IsNullOrEmpty(row.SurfaceId)) Add(new(MapDocumentRefusal.SchemaValueRequired, label + ": every compatibility ordinal needs a surfaceId.")
+            { FieldPath = $"CompatibilityOrdinals[{i}].SurfaceId", Index = i, SurfaceId = row.SurfaceId });
+            else if (!surfaces.Add(row.SurfaceId)) Add(new(MapDocumentRefusal.IdentityDuplicate,
+                $"{label}: compatibility ordinal surface '{row.SurfaceId}' is listed twice.")
+            { FieldPath = $"CompatibilityOrdinals[{i}].SurfaceId", Index = i, SurfaceId = row.SurfaceId, SubjectKind = "compatibility ordinal" });
+            if (row.Ordinal < 0) Add(new(MapDocumentRefusal.ValueOutsideRange, $"{label}: compatibility ordinal of '{row.SurfaceId}' must be nonnegative.")
+            { FieldPath = $"CompatibilityOrdinals[{i}].Ordinal", Index = i, SurfaceId = row.SurfaceId, ActualInteger = row.Ordinal, MinimumInteger = 0 });
         }
+
+        void Add(MapDocumentFinding finding) => AddFinding(finding with { LayerId = layer.Id }, errors, findings);
     }
 
-    static void Clearance(MapFoliageLayer layer, string label, List<string> errors)
+    static void Clearance(MapFoliageLayer layer, string label, List<string> errors, List<MapDocumentFinding>? findings)
     {
         if (layer.ClearanceRules.Count > MapFoliagePayloadLimits.MaxClearanceRules)
-            errors.Add($"{label}: more than {MapFoliagePayloadLimits.MaxClearanceRules} clearance rules.");
+            Add(new(MapDocumentRefusal.WorkCapacityExceeded, $"{label}: more than {MapFoliagePayloadLimits.MaxClearanceRules} clearance rules.")
+            { FieldPath = "ClearanceRules", Budget = "clearance rules", ActualCount = layer.ClearanceRules.Count, Limit = MapFoliagePayloadLimits.MaxClearanceRules });
         if (layer.ExceptionMasks.Count > MapFoliagePayloadLimits.MaxExceptionMasks)
-            errors.Add($"{label}: more than {MapFoliagePayloadLimits.MaxExceptionMasks} exception masks.");
+            Add(new(MapDocumentRefusal.WorkCapacityExceeded, $"{label}: more than {MapFoliagePayloadLimits.MaxExceptionMasks} exception masks.")
+            { FieldPath = "ExceptionMasks", Budget = "exception masks", ActualCount = layer.ExceptionMasks.Count, Limit = MapFoliagePayloadLimits.MaxExceptionMasks });
         if (layer.OwnerSupports.Count > MapFoliagePayloadLimits.MaxOwnerSupports)
-            errors.Add($"{label}: more than {MapFoliagePayloadLimits.MaxOwnerSupports} owner supports.");
+            Add(new(MapDocumentRefusal.WorkCapacityExceeded, $"{label}: more than {MapFoliagePayloadLimits.MaxOwnerSupports} owner supports.")
+            { FieldPath = "OwnerSupports", Budget = "owner supports", ActualCount = layer.OwnerSupports.Count, Limit = MapFoliagePayloadLimits.MaxOwnerSupports });
         var rules = new HashSet<string>(StringComparer.Ordinal);
-        foreach (MapFoliageClearanceRule rule in layer.ClearanceRules)
+        for (int i = 0; i < layer.ClearanceRules.Count; i++)
         {
+            MapFoliageClearanceRule rule = layer.ClearanceRules[i];
             string at = $"{label} rule '{rule.Id}'";
-            if (string.IsNullOrEmpty(rule.Id)) errors.Add(label + ": every clearance rule needs a non-empty id.");
-            else if (!rules.Add(rule.Id)) errors.Add(at + " is listed twice.");
-            if (string.IsNullOrEmpty(rule.AssetId)) errors.Add(at + ": assetId must be non-empty.");
-            if (rule.PlacementTag is { Length: 0 }) errors.Add(at + ": placementTag must be omitted or non-empty.");
+            if (string.IsNullOrEmpty(rule.Id)) Add(new(MapDocumentRefusal.SchemaValueRequired, label + ": every clearance rule needs a non-empty id.")
+            { FieldPath = $"ClearanceRules[{i}].Id", Index = i, EntityId = rule.Id });
+            else if (!rules.Add(rule.Id)) Add(new(MapDocumentRefusal.IdentityDuplicate, at + " is listed twice.")
+            { FieldPath = $"ClearanceRules[{i}].Id", Index = i, EntityId = rule.Id, SubjectKind = "clearance rule" });
+            if (string.IsNullOrEmpty(rule.AssetId)) Add(new(MapDocumentRefusal.SchemaValueRequired, at + ": assetId must be non-empty.")
+            { FieldPath = $"ClearanceRules[{i}].AssetId", Index = i, EntityId = rule.Id, AssetId = rule.AssetId });
+            if (rule.PlacementTag is { Length: 0 }) Add(new(MapDocumentRefusal.SchemaValueRequired, at + ": placementTag must be omitted or non-empty.")
+            { FieldPath = $"ClearanceRules[{i}].PlacementTag", Index = i, EntityId = rule.Id, ActualText = rule.PlacementTag });
             Kind(rule.Kind, at, errors);
             Rect(rule.Footprint, at, errors);
         }
         var masks = new HashSet<string>(StringComparer.Ordinal);
-        foreach (MapFoliageMask mask in layer.ExceptionMasks)
+        for (int i = 0; i < layer.ExceptionMasks.Count; i++)
         {
+            MapFoliageMask mask = layer.ExceptionMasks[i];
             string at = $"{label} mask '{mask.Id}'";
-            if (string.IsNullOrEmpty(mask.Id)) errors.Add(label + ": every exception mask needs a non-empty id.");
-            else if (!masks.Add(mask.Id)) errors.Add(at + " is listed twice.");
+            if (string.IsNullOrEmpty(mask.Id)) Add(new(MapDocumentRefusal.SchemaValueRequired, label + ": every exception mask needs a non-empty id.")
+            { FieldPath = $"ExceptionMasks[{i}].Id", Index = i, EntityId = mask.Id });
+            else if (!masks.Add(mask.Id)) Add(new(MapDocumentRefusal.IdentityDuplicate, at + " is listed twice.")
+            { FieldPath = $"ExceptionMasks[{i}].Id", Index = i, EntityId = mask.Id, SubjectKind = "exception mask" });
             Owner(mask.Owner, at, errors);
             Binding(mask.Support, at + " support", errors);
             Kind(mask.Kind, at, errors);
             Rect(mask.Footprint, at, errors);
         }
         var owners = new HashSet<MapPrefabReference>();
-        foreach (MapFoliageOwnerSupport owner in layer.OwnerSupports)
+        for (int i = 0; i < layer.OwnerSupports.Count; i++)
         {
+            MapFoliageOwnerSupport owner = layer.OwnerSupports[i];
             string at = $"{label} owner support '{owner.Owner?.Id}'";
             Owner(owner.Owner, at, errors);
-            if (owner.Owner is not null && !owners.Add(owner.Owner)) errors.Add(at + " is listed twice.");
+            if (owner.Owner is not null && !owners.Add(owner.Owner)) Add(new(MapDocumentRefusal.IdentityDuplicate, at + " is listed twice.")
+            { FieldPath = $"OwnerSupports[{i}].Owner", Index = i, EntityId = owner.Owner.Id,
+                ChildKind = owner.Owner.Kind, ReferenceScope = owner.Owner.Scope, SubjectKind = "owner support" });
             Binding(owner.Support, at + " support", errors);
         }
+
+        void Add(MapDocumentFinding finding) => AddFinding(finding with { LayerId = layer.Id }, errors, findings);
     }
 
     // Keys inside the chunk grid of the domain, unique, with zero padding outside [0, Width) by [0, Depth).
-    static void Chunks(MapFoliageLayer layer, string label, List<string> errors)
+    static void Chunks(MapFoliageLayer layer, string label, List<string> errors, List<MapDocumentFinding>? findings)
     {
         if (layer.ChunkDigests.Count > MapFoliagePayloadLimits.MaxChunksPerLayer)
-            errors.Add($"{label}: more than {MapFoliagePayloadLimits.MaxChunksPerLayer} chunks.");
+            AddFinding(new(MapDocumentRefusal.WorkCapacityExceeded, $"{label}: more than {MapFoliagePayloadLimits.MaxChunksPerLayer} chunks.")
+            { LayerId = layer.Id, FieldPath = "ChunkDigests", Budget = "chunks per layer", ActualCount = layer.ChunkDigests.Count,
+                Limit = MapFoliagePayloadLimits.MaxChunksPerLayer }, errors, findings);
         if (layer.Width is < 1 or > MapFoliagePayloadLimits.MaxExtent || layer.Depth is < 1 or > MapFoliagePayloadLimits.MaxExtent) return;
         int columns = (layer.Width + MapFoliageChunk.Size - 1) / MapFoliageChunk.Size;
         int rows = (layer.Depth + MapFoliageChunk.Size - 1) / MapFoliageChunk.Size;
-        foreach (MapFoliageChunkDigest advertised in layer.ChunkDigests)
+        for (int i = 0; i < layer.ChunkDigests.Count; i++)
+        {
+            MapFoliageChunkDigest advertised = layer.ChunkDigests[i];
             if (advertised.Key.X < 0 || advertised.Key.X >= columns || advertised.Key.Z < 0 || advertised.Key.Z >= rows)
-                errors.Add($"{label} advertised chunk {advertised.Key} lies outside the density domain.");
+            {
+                bool x = advertised.Key.X < 0 || advertised.Key.X >= columns;
+                AddFinding(new(MapDocumentRefusal.FoliageChunkOutOfDomain, $"{label} advertised chunk {advertised.Key} lies outside the density domain.")
+                { LayerId = layer.Id, FieldPath = $"ChunkDigests[{i}].Key.{(x ? "X" : "Z")}", Index = i, FoliageChunk = advertised.Key,
+                    Width = layer.Width, Depth = layer.Depth, ActualInteger = x ? advertised.Key.X : advertised.Key.Z,
+                    MinimumInteger = 0, MaximumInteger = (x ? columns : rows) - 1 }, errors, findings);
+            }
+        }
         var keys = new HashSet<MapFoliageChunkKey>();
         foreach (MapFoliageChunk chunk in layer.Chunks)
         {

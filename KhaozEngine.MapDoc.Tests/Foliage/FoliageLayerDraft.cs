@@ -18,10 +18,13 @@ internal sealed class FoliageLayerDraft(MapFoliageLayer source)
     internal IReadOnlyList<MapFoliageModel> Models = source.Models;
     internal IReadOnlyList<MapFoliageMaterial> Materials = source.Materials;
     internal IReadOnlyList<ushort> AllowedVisibleMaterials = source.AllowedVisibleMaterials;
+    internal IReadOnlyList<MapFoliageCompatibilityOrdinal> CompatibilityOrdinals = source.CompatibilityOrdinals;
+    internal IReadOnlyList<MapFoliageClearanceRule> ClearanceRules = source.ClearanceRules;
+    internal IReadOnlyList<MapFoliageMask> ExceptionMasks = source.ExceptionMasks;
+    internal IReadOnlyList<MapFoliageOwnerSupport> OwnerSupports = source.OwnerSupports;
 
     internal MapFoliageLayer Build() => new(PayloadVersion, source.Id, source.Support, OriginX, OriginZ, CellSize,
         Width, Depth, RowDirection, source.Seed, Spacing, ScaleMin, ScaleMax, RootOffset, Models,
         AllowedVisibleMaterials, Materials, Policy, source.ExcludeIndoors, source.ExcludeSolidObjects,
-        DoorClearance, EdgeFade, source.CompatibilityOrdinals, source.ClearanceRules, source.ExceptionMasks,
-        source.OwnerSupports, source.Chunks);
+        DoorClearance, EdgeFade, CompatibilityOrdinals, ClearanceRules, ExceptionMasks, OwnerSupports, source.Chunks);
 }

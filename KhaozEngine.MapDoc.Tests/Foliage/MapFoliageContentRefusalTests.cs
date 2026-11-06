@@ -80,6 +80,7 @@ public sealed class MapFoliageContentRefusalTests
     [InlineData("zero", MapDocumentRefusal.ValueOutsideRange, "Materials[2].Id")]
     [InlineData("duplicate", MapDocumentRefusal.IdentityDuplicate, "Materials[2].Id")]
     [InlineData("resource", MapDocumentRefusal.SchemaValueRequired, "Materials[2].ResourceId")]
+    [InlineData("kind", MapDocumentRefusal.SchemaEnumUnsupported, "Materials[2].Kind")]
     public void Materials_KeepTheirDeclaredIdentityAndCapacity(string fault, MapDocumentRefusal reason, string field)
     {
         var draft = new FoliageLayerDraft(FoliageFixtures.BasicLayer([]));
@@ -100,6 +101,7 @@ public sealed class MapFoliageContentRefusalTests
             {
                 "zero" => materials[2] with { Id = 0 },
                 "duplicate" => materials[2] with { Id = 10 },
+                "kind" => materials[2] with { Kind = (MapFoliageMaterialKind)99 },
                 _ => materials[2] with { ResourceId = "" },
             };
             draft.Materials = materials;
@@ -107,7 +109,7 @@ public sealed class MapFoliageContentRefusalTests
         var findings = new List<MapDocumentFinding>();
         var errors = MapFoliageValidation.Validate(new(1, [draft.Build()]), findings);
         // A collection above the entire ushort nonzero domain necessarily repeats an identity.
-        Assert.Equal(fault == "materials" ? 2 : 1, findings.Count);
+        Assert.Equal(fault is "materials" or "allowed" ? 2 : 1, findings.Count);
         var finding = findings[0];
         Assert.Equal(reason, finding.Reason);
         Assert.Equal(FoliageFixtures.LayerId, finding.LayerId);
@@ -121,12 +123,17 @@ public sealed class MapFoliageContentRefusalTests
         else
         {
             Assert.Equal(2, finding.Index);
-            Assert.Equal(draft.Materials[2].Id, finding.ActualInteger);
+            if (fault == "kind")
+            {
+                Assert.Equal(99L, finding.ActualInteger);
+                Assert.Equal(12L, finding.NumericId);
+                Assert.Equal(typeof(MapFoliageMaterialKind), finding.EnumType);
+            }
+            else Assert.Equal(draft.Materials[2].Id, finding.ActualInteger);
             Assert.Equal(draft.Materials[2].ResourceId, finding.ResourceId);
             if (fault == "zero") Assert.Equal(1L, finding.MinimumInteger);
         }
-        // W6-F1-05 still owns the allowed-list ordering finding, which remains prose for now.
-        Assert.Equal(fault == "allowed" ? findings.Count + 1 : findings.Count, errors.Count);
+        Assert.Equal(errors, findings.Select(f => f.Message));
         if (fault == "materials") draft.Materials = draft.Materials.Take(MapFoliagePayloadLimits.MaxMaterials).ToArray();
         else if (fault == "allowed") draft.AllowedVisibleMaterials = draft.AllowedVisibleMaterials.Take(MapFoliagePayloadLimits.MaxMaterials).ToArray();
         else

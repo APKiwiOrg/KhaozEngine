@@ -12256,6 +12256,13 @@ Policy admission distinguishes a missing ID (`SchemaValueRequired`), another pol
 `ExpectedPolicyId`. Model and material checks retain their array index and asset or material identity.
 Count capacities use `WorkCapacityExceeded` with `Budget`, `ActualCount` and `Limit`. Accumulated model
 weight uses that reason with `ActualNumber` and its supported `MaximumNumber`.
+Allowed-material ordering uses `OrderInvalid` with both `ActualInteger` and `PreviousInteger`. Missing
+declarations use `ReferenceMissing`. Ordinal findings retain `SurfaceId`, rule and mask findings retain
+`EntityId`, and duplicate owner supports retain their typed child kind and reference scope.
+Advertised keys outside the density domain use `FoliageChunkOutOfDomain` with `FoliageChunk`, sample
+dimensions and the first failing axis's value and bounds. Descriptor-count guards validate sparse layers
+without materializing density. Resident chunk, binding, owner-kind and footprint findings remain in their
+remaining layer conversion, so the public finding snapshot is still deferred.
 
 Motion padding is explicit caller policy in metres. Transform all eight source-unit-adjusted mesh corners by each
 sample's exact CPU matrix, then expand XYZ. Preserve CPU selection, live blade/shrub profiles and shadow flags. Use the

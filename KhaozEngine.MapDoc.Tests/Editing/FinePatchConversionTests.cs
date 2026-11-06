@@ -155,6 +155,8 @@ public sealed class FinePatchConversionTests
     public void Conversion_LegacyFallbackIsNotRepresentableAndArithmeticIsAnExplicitDifference()
     {
         MapSurfaceSet input = ConversionFixtures.LegacyRowWithNoDraw();
+        var before = Digests(input);
+        var refs = input.Refs.ToArray();
         var refusal = Assert.Throws<MapDocumentException>(() => Convert(input, ConversionFixtures.LegacyRequest(2, false)));
         Assert.Equal(MapDocumentRefusal.TerrainAuthoredDifference, refusal.Reason);
         Assert.Equal(2, refusal.Findings!.Count);
@@ -165,6 +167,8 @@ public sealed class FinePatchConversionTests
         Assert.Equal(MapCellConversionClass.NotRepresentable, c.Finding?.ConversionClass);
         Assert.Equal(MapPresencePolicy.LegacyTileWorld, c.Finding?.PresencePolicy);
         Assert.Equal(MapLatticeAddress.Corner(1, 0), c.Finding?.Address);
+        Assert.Equal(before, Digests(input));
+        Assert.Equal(refs, input.Refs);
         MapConversionResult r = Convert(input, ConversionFixtures.LegacyRequest(2, true));
         Assert.Contains(r.Differences, d => d.Kind == MapDifferenceKind.FallbackRemoved && d.CellX == 1);
         Assert.Contains(r.Differences, d => d.Kind == MapDifferenceKind.FlagRemoved && d.CellX == 1);

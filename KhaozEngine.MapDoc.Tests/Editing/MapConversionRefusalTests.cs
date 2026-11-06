@@ -42,10 +42,13 @@ public sealed class MapConversionRefusalTests
     {
         var set = ConversionFixtures.Slopes();
         var request = ConversionFixtures.Request(2, false) with { SourceSurfaceId = source!, FineSurfaceId = fine };
+        var patches = set.Patches.ToDictionary(p => p.Key, p => MapSurfaceSemantics.PatchDigest(p.Value));
+        var refs = set.Refs.ToArray();
         var error = Assert.Throws<MapDocumentException>(() => MapFinePatchConversion.Convert(set, request));
         Assert.Equal(reason, error.Reason);
         Assert.Equal(field, error.FieldPath);
-        Assert.Single(set.Refs);
+        Assert.Equal(patches, set.Patches.ToDictionary(p => p.Key, p => MapSurfaceSemantics.PatchDigest(p.Value)));
+        Assert.Equal(refs, set.Refs);
         Assert.NotEmpty(MapFinePatchConversion.Convert(set, ConversionFixtures.Request(2, false)).Cells);
     }
 

@@ -20,7 +20,7 @@ namespace KhaozEngine.Tests.MapEditTool
     /// override's name back to unnamed. Every mutation runs against <see cref="SampleDocs.SampleDoc"/> opened
     /// through a fresh session and holds the shared apply, validate, revert-on-error invariant the rest of the
     /// suite already exercises.</summary>
-    public class MutationServiceProceduralTests
+    public partial class MutationServiceProceduralTests
     {
         static string NewTempDir()
         {
@@ -58,8 +58,8 @@ namespace KhaozEngine.Tests.MapEditTool
                 string before = session.WithDocument((doc, r) => MapDocumentFile.SaveText(doc, r));
                 bool dirtyBefore = session.IsDirty;
 
-                Assert.Throws<InvalidOperationException>(() =>
-                    mutation.FeatureRename(1, "big-lake"));
+                AssertProceduralRefusal(() =>
+                    mutation.FeatureRename(1, "big-lake"), "terrain feature", "big-lake");
 
                 Assert.Equal(before, session.WithDocument((doc, r) => MapDocumentFile.SaveText(doc, r)));
                 Assert.Equal(dirtyBefore, session.IsDirty);
@@ -91,8 +91,8 @@ namespace KhaozEngine.Tests.MapEditTool
                 string before = session.WithDocument((doc, r) => MapDocumentFile.SaveText(doc, r));
                 bool dirtyBefore = session.IsDirty;
 
-                Assert.Throws<InvalidOperationException>(() =>
-                    mutation.ExclusionRename(1, "no-scatter-camp"));
+                AssertProceduralRefusal(() =>
+                    mutation.ExclusionRename(1, "no-scatter-camp"), "exclusion", "no-scatter-camp");
 
                 Assert.Equal(before, session.WithDocument((doc, r) => MapDocumentFile.SaveText(doc, r)));
                 Assert.Equal(dirtyBefore, session.IsDirty);
@@ -154,8 +154,8 @@ namespace KhaozEngine.Tests.MapEditTool
                 string before = session.WithDocument((doc, r) => MapDocumentFile.SaveText(doc, r));
                 bool dirtyBefore = session.IsDirty;
 
-                Assert.Throws<InvalidOperationException>(() =>
-                    mutation.ScatterOverrideRename(1, "no-scatter-camp"));
+                AssertProceduralRefusal(() =>
+                    mutation.ScatterOverrideRename(1, "no-scatter-camp"), "scatter override", "no-scatter-camp");
 
                 Assert.Equal(before, session.WithDocument((doc, r) => MapDocumentFile.SaveText(doc, r)));
                 Assert.Equal(dirtyBefore, session.IsDirty);
@@ -354,8 +354,8 @@ namespace KhaozEngine.Tests.MapEditTool
                 string before = session.WithDocument((doc, r) => MapDocumentFile.SaveText(doc, r));
                 bool dirtyBefore = session.IsDirty;
 
-                Assert.Throws<InvalidOperationException>(() =>
-                    mutation.ScatterLayerAdd("trees"));
+                AssertProceduralRefusal(() =>
+                    mutation.ScatterLayerAdd("trees"), "scatter layer", "trees");
 
                 Assert.Equal(before, session.WithDocument((doc, r) => MapDocumentFile.SaveText(doc, r)));
                 Assert.Equal(dirtyBefore, session.IsDirty);
@@ -403,10 +403,10 @@ namespace KhaozEngine.Tests.MapEditTool
                 string before = session.WithDocument((doc, r) => MapDocumentFile.SaveText(doc, r));
                 bool dirtyBefore = session.IsDirty;
 
-                InvalidOperationException ex = Assert.Throws<InvalidOperationException>(() =>
-                    mutation.ScatterLayerRemove("trees"));
-                Assert.Contains("trees", ex.Message);
-                Assert.Contains("understory", ex.Message);
+                var ex = AssertProceduralRefusal(() =>
+                    mutation.ScatterLayerRemove("trees"), "scatter layer", "trees", MapDocumentRefusal.EditorScatterLayerReferenced);
+                Assert.Equal("trees", ex.LayerId);
+                Assert.Equal(new[] { "understory", "ScatterOverrides[0]" }, ex.SourceIds);
 
                 Assert.Equal(before, session.WithDocument((doc, r) => MapDocumentFile.SaveText(doc, r)));
                 Assert.Equal(dirtyBefore, session.IsDirty);

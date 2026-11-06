@@ -1386,3 +1386,23 @@ viewport), remember to unsubscribe any handler you attach to `DocumentChanged`/`
 when you tear the host down. `EditorDocument` outlives nothing on its own: a forgotten unsubscribe keeps
 your handler (and whatever it closes over, such as a disposed `ViewportWorld`) reachable from the document
 for as long as the document itself is referenced.
+
+## Command admission refusals
+
+Identity and reference guards use `MapEditorCommandException`, catchable as `InvalidOperationException`.
+The status strip keeps the same diagnostic text. Refused edits preserve document content and undo/redo history.
+
+| Reason | Refused command rule | Identifiers |
+| --- | --- | --- |
+| `ReferenceMissing` | A missing placement, spawn, player spawn, region, scatter layer or companion layer | `DocumentId`, `SubjectKind`, `EntityId`, collection `FieldPath`, known `LayerId` |
+| `IdentityDuplicate` | A repeated ID or name in a command's target namespace | `DocumentId`, `SubjectKind`, `EntityId`, collection `FieldPath`, known colliding `Index` or `LayerId` |
+| `EditorScatterLayerReferenced` | Removing a scatter layer still named by a companion host or explicit layer filter | `DocumentId`, `LayerId`, `EntityId`, `SubjectKind`, `FieldPath`, owned read-only `SourceIds` |
+
+`SourceIds` contains companion names, then exclusion paths such as `Exclusions[0]`, then override paths
+such as `ScatterOverrides[0]`, each in document order. Index-addressed unnamed sources keep their path.
+These identities come from the producer alongside its prose, without parsing a description.
+
+Freeze-zone companion-host admission uses `MapDocumentException.ReferenceMissing` with `DocumentId`, the
+companion `LayerId`, missing host `EntityId`, `SubjectKind` `scatter layer` and `FieldPath`
+`CompanionLayers.HostLayer`. A host `MarkerAssets` callback returning no closure uses
+`MapDocumentException.AssetClosureRequired`, `DocumentId` and `FieldPath` `MarkerAssets`.

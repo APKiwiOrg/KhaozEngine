@@ -99,7 +99,7 @@ public enum MapDocumentRefusal
     SchemaInt64Malformed,
 
     // Shared identity admission.
-    /// <summary>Refuses foliage editing without a verified asset closure.</summary>
+    /// <summary>Refuses an operation requiring a verified asset closure.</summary>
     AssetClosureRequired,
     /// <summary>Refuses authored ownership inconsistent with its standalone owner or retained source.</summary>
     AuthoredOwnershipMismatch,
@@ -400,6 +400,10 @@ public enum MapDocumentRefusal
     PhysicsWaterBoundsMissing,
     /// <summary>Refuses occupied water regions without their fragment bounds.</summary>
     PhysicsWaterFragmentBoundsMissing,
+
+    // Editor command admission.
+    /// <summary>Refuses removing a scatter layer still named by authored references.</summary>
+    EditorScatterLayerReferenced,
 
     // Physics navigation and envelope admission.
     /// <summary>Refuses an interaction envelope sweep for an unsupported source shape.</summary>

@@ -15215,6 +15215,16 @@ select/place/draw/bake tools from the editor building blocks above, and undo/red
 umbrella (the `Server.Admin` precedent), so add it explicitly to a game head that wants to edit its zone
 documents.
 
+Command identity admission uses `MapEditorCommandException`, catchable as `InvalidOperationException`, with
+`MapDocumentRefusal.ReferenceMissing`, `IdentityDuplicate` or `EditorScatterLayerReferenced`. It carries
+`DocumentId`, `SubjectKind`, `EntityId`, collection `FieldPath`, known colliding `Index` and `LayerId`.
+Referenced scatter removal also carries owned read-only `SourceIds`: companion names, exclusion index paths
+and scatter-override index paths in their original document order. A refused edit leaves document content
+and undo/redo history unchanged, and the status strip keeps its existing text.
+Freeze-zone host lookup uses `MapDocumentException.ReferenceMissing`, companion `LayerId`, missing host
+`EntityId`, `DocumentId` and `FieldPath` `CompanionLayers.HostLayer`. A `MarkerAssets` callback returning no
+closure uses `AssetClosureRequired`, `DocumentId` and callback `FieldPath` `MarkerAssets`.
+
 **Wiring.** Fill `MapEditorOptions` and push the scene directly onto your `SceneManager`, the same way
 every other room/scene gets pushed:
 

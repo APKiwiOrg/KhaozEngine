@@ -24,15 +24,17 @@ public sealed class SurfaceStorageAcceptanceEdgeTests
     {
         // Moving the cardinality check after traversal must trip the count-only sentinel.
         var entries = new CountOnlyEntries(257);
-        Assert.Throws<MapDocumentException>(() => MapSurfacePages.EncodeIndex("ground", new(0, 0, 16, 16), entries));
-        Assert.Equal(0, entries.EnumerationRequests);
-        Assert.Equal(0, entries.IndexerRequests);
-
-        // The legal upper count reaches traversal, without allocating 256 entry objects.
-        var atLimit = new CountOnlyEntries(256);
-        Assert.Throws<InvalidOperationException>(() => MapSurfacePages.EncodeIndex("ground", new(0, 0, 16, 16), atLimit));
-        Assert.Equal(1, atLimit.EnumerationRequests);
-        Assert.Equal(0, atLimit.IndexerRequests);
+        var error = Assert.Throws<MapDocumentException>(() => MapSurfacePages.EncodeIndex("ground", new(0, 0, 16, 16), entries));
+        Assert.Equal(MapDocumentRefusal.WorkCapacityExceeded, error.Reason);
+        Assert.Equal("MaxEntries", error.Budget);
+        Assert.Equal(257, error.ActualCount);
+        Assert.Equal(256, error.Limit);
+        string digest = new('a', 64);
+        var atLimit = Enumerable.Range(0, 256).Select(i => new MapSurfaceIndexEntry(new("ground", i % 16, i / 16),
+            new(i % 16 * 64, i / 16 * 64, i % 16 * 64 + 1, i / 16 * 64 + 1), 0, 0, digest, digest, [], [], [], [], false))
+            .OrderBy(e => e.Key).ToArray();
+        byte[] bytes = MapSurfacePages.EncodeIndex("ground", new(0, 0, 16, 16), atLimit);
+        Assert.Equal(256, MapSurfacePages.DecodeIndex(bytes, "ground", new(new(0, 0, 16, 16), digest, 256)).Count);
     }
 
     [Fact]
@@ -170,20 +172,18 @@ public sealed class SurfaceStorageAcceptanceEdgeTests
 
     sealed class CountOnlyEntries(int count) : IReadOnlyList<MapSurfaceIndexEntry>
     {
-        public int Count => count;
-        internal int EnumerationRequests { get; private set; }
-        internal int IndexerRequests { get; private set; }
+        bool _read;
+        // A faulty producer must not change the count reported by the comparison that refused it.
+        public int Count { get { int value = _read ? 0 : count; _read = true; return value; } }
         public MapSurfaceIndexEntry this[int index]
         {
             get
             {
-                IndexerRequests++;
                 throw new InvalidOperationException("count-only entries must not be indexed");
             }
         }
         public IEnumerator<MapSurfaceIndexEntry> GetEnumerator()
         {
-            EnumerationRequests++;
             throw new InvalidOperationException("count-only entries must not be enumerated");
         }
         IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();

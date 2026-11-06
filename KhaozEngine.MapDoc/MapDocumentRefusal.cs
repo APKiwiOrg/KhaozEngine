@@ -377,9 +377,11 @@ public enum MapDocumentRefusal
     /// <summary>Refuses coincident physical support owned by different authored surfaces.</summary>
     SpaceSupportCoincident,
 
-    // Surface embedding admission.
+    // Surface storage and embedding admission.
     /// <summary>Refuses a payload whose encoded length changed after measurement.</summary>
     StorageEmbeddingChanged,
+    /// <summary>Refuses overlapping surface storage page covers.</summary>
+    StorageDirectoryPagesOverlap,
 
     // Foliage storage admission.
     /// <summary>Refuses a foliage chunk offset differing from its canonical position in the pack.</summary>

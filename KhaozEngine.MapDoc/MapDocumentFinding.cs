@@ -82,7 +82,7 @@ public sealed record MapDocumentFinding(MapDocumentRefusal Reason, string Messag
     public string? ExpectedPolicyId { get; init; }
     /// <summary>The zero-based position of the containing or refused JSON array item, when known.</summary>
     public int? Index { get; init; }
-    /// <summary>The other zero-based region index participating in an overlap.</summary>
+    /// <summary>The other zero-based region or page index participating in an overlap.</summary>
     public int? OtherIndex { get; init; }
     /// <summary>The authored cell classification requiring explicit conversion acceptance.</summary>
     public MapCellConversionClass? ConversionClass { get; init; }

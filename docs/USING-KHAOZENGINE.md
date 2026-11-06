@@ -12680,6 +12680,16 @@ Surface page envelopes report object shape, member count, missing, duplicate and
 their schema reasons and `FieldPath`. Declared count mismatches carry both counts. Surface identity
 mismatches use `AuthoredValueMismatch`, cover mismatches `BoundsInvalid`, and page byte capacity
 `WorkCapacityExceeded` with `Budget` `MaxPageBytes`, measured `ActualByteCount` and inclusive `Limit`.
+Page contents retain missing-field, bounds, ownership, ordering and duplicate-identity reasons with their
+`FieldPath` and known `SurfaceId`, `Patch` and `Index`. Page counts use `MaxEntries`, decoded metadata
+arrays `MaxMetadataEntries`, both with measured counts and inclusive limits. Overlapping index page covers
+use `StorageDirectoryPagesOverlap` with both indices. Interface-backed cardinalities are captured once,
+so a faulty producer cannot change the value reported by a refusal.
+Whole surface saves forward the first topology finding and the complete ordered `Findings` snapshot.
+Dependency-position overflow uses `GeometryNotRepresentable`, `Operation` `SaveSurfaces` and
+`FieldPath` `CornerDependencies`. Surface query conversion overflow uses `GeometryNotRepresentable`,
+`Operation` `FindPatches` and `FieldPath` `scope`. Raw saves still certify references and exact owner
+positions without certifying geometric seams or equal heights.
 `SaveTiled` writes one tile at a time and **does not rewrite a tile whose
 canonical hash is unchanged**. Its ordering is crash-consistent: changed tiles are written at names nothing
 points at yet, then a single `map.json` rename commits, then a best-effort sweep collects what the new

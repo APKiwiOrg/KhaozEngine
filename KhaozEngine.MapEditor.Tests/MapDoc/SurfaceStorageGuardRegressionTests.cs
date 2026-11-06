@@ -12,6 +12,37 @@ namespace KhaozEngine.Tests.MapDoc;
 
 public sealed class SurfaceStorageGuardRegressionTests
 {
+    [Fact]
+    public void UnrepresentableDependencyOwner_LeavesEverySavedFileByteIdentical() => TiledDocFixture.InDirectory(dir =>
+    {
+        MapDocumentFile.SaveTiled(SurfaceStorageFixtures.ThreeSurfaces(), dir);
+        MapDocument doc = MapDocumentFile.LoadTiled(dir);
+        var key = new MapPatchKey("ground", 0, 0);
+        MapSurfacePatch owner = doc.Surfaces.Patches[key];
+        var broken = owner.Clone();
+        broken.Key = new("ground", long.MaxValue, 0);
+        doc.Surfaces.Patches.Remove(key);
+        doc.Surfaces.Patches.Add(broken.Key, broken);
+        var dependencies = doc.Surfaces.Patches[new("ground", 1, 0)].CornerDependencies;
+        MapCornerDependency[] original = dependencies.ToArray();
+        for (int i = 0; i < dependencies.Count; i++)
+            dependencies[i] = dependencies[i] with { Owner = dependencies[i].Owner with { Patch = broken.Key } };
+        string[] files = Directory.GetFiles(dir, "*", SearchOption.AllDirectories).Order(StringComparer.Ordinal).ToArray();
+        Assert.NotEmpty(files);
+        byte[][] before = files.Select(File.ReadAllBytes).ToArray();
+        var error = Assert.Throws<MapDocumentException>(() => MapDocumentFile.SaveTiled(doc, dir));
+        Assert.Equal(MapDocumentRefusal.GeometryNotRepresentable, error.Reason);
+        Assert.Equal("SaveSurfaces", error.Operation);
+        Assert.Equal("CornerDependencies", error.FieldPath);
+        Assert.Equal(files, Directory.GetFiles(dir, "*", SearchOption.AllDirectories).Order(StringComparer.Ordinal));
+        for (int i = 0; i < files.Length; i++) Assert.Equal(before[i], File.ReadAllBytes(files[i]));
+        doc.Surfaces.Patches.Remove(broken.Key);
+        doc.Surfaces.Patches.Add(key, owner);
+        dependencies.Clear(); dependencies.AddRange(original);
+        MapDocumentFile.SaveTiled(doc, dir);
+        Assert.Empty(MapDocumentFile.VerifyTiled(dir));
+    });
+
     [Theory]
     [InlineData("missing")]
     [InlineData("type")]

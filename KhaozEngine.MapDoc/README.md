@@ -1493,6 +1493,23 @@ Surface page envelope refusals keep `MapDocumentException` and the released deve
 | `SchemaArrayLengthMismatch` | Index count differing from its declared count | `FieldPath`, `SurfaceId`, `ActualCount`, `ExpectedCount` |
 | `ValueOutsideRange` | Empty page bytes | `FieldPath`, `ActualByteCount`, minimum 1 |
 | `WorkCapacityExceeded` | Page bytes beyond their inclusive capacity | `FieldPath`, `Budget` `MaxPageBytes`, `ActualByteCount`, `Limit` |
+| `SchemaArrayRequired`, `SchemaValueRequired` | A non-array page field or missing required page, entry, identity or metadata collection | `FieldPath`, known `SurfaceId`, `Patch`, `Index` |
+| `ValueOutsideRange`, `WorkCapacityExceeded` | Empty or over-cap page and entry counts | `FieldPath`, submitted integer and minimum 1, or `Budget` `MaxEntries`, `ActualCount`, inclusive `Limit` |
+| `WorkCapacityExceeded` | Decoded dependency, record, incidence or space arrays beyond their metadata cap | `FieldPath`, `Budget` `MaxMetadataEntries`, `ActualCount`, inclusive `Limit` |
+| `StorageDirectoryPagesOverlap` | Index page covers overlapping within a directory | `FieldPath`, `Index`, `OtherIndex` |
+| `AuthoredOwnershipMismatch`, `BoundsInvalid`, `OrderInvalid` | An entry for another surface, outside its page or slot, with inverted heights, or outside canonical key order | `FieldPath`, `SurfaceId`, known `Patch`, `Index` |
+| `IdentityDuplicate` | Repeated dependency keys, record IDs, incident references or space IDs | `FieldPath`, `SurfaceId`, `Patch`, `Index`, actual and distinct counts |
+
+Page cardinality guards capture interface-backed counts once. Their reported counts describe the failed
+comparison even when a faulty producer returns a different count on a later read. A page holds at most
+256 entries and at most 1,048,576 encoded bytes. Decoded metadata arrays admit at most `MaxPageBytes / 24`
+items. Encoding and decoding exercise these inclusive boundaries through the same page operations.
+Whole surface saves forward the first `MapTopologyReferenceValidator.ValidateFindings` result as their
+reason and identifiers, retaining the complete ordered read-only `Findings` snapshot and the first finding's
+developer prose. Exact owner-position overflow uses `GeometryNotRepresentable`, `Operation` `SaveSurfaces`
+and `FieldPath` `CornerDependencies`. Surface scope conversion overflow uses the same reason with
+`Operation` `FindPatches` and `FieldPath` `scope`. Raw saves continue to certify references and exact owner
+positions without certifying geometric seams or equal heights.
 Any default is as arbitrary as any other for a document that had no tile concept, so the rule is
 "deterministic and documented" rather than "derived". A document newer than the engine, or an old one with
 no migration path, fails to load. Saving always writes the current version.
@@ -1611,7 +1628,8 @@ guarantee.
 Raw partial surface saves permit payload edits only after outgoing references, reverse page knowledge,
 reverse dependants, structure and record checks. A raw save certifies reference integrity, including exact
 XZ agreement between each corner owner's address and its dependent corner, and never geometry. It refuses a
-`dependency position` that disagrees or is not representable. A partial raw save also refuses an unloaded
+dependency position that disagrees. An unrepresentable owner position carries `GeometryNotRepresentable`,
+`Operation` `SaveSurfaces` and `FieldPath` `CornerDependencies`. A partial raw save also refuses an unloaded
 reverse dependant (`unloaded: reverse dependant`) and an unsupported partial edit of a surface declaration,
 patch structure or records. Geometry, seam heights and separation require complete native transactions.
 
@@ -1844,6 +1862,7 @@ their joined diagnostic text.
 | `WaterBodiesPreventLegacyMode` | Switching to legacy global water while bounded bodies remain | `FieldPath`, `ActualCount` |
 | `DocumentHashSchemeUnsupported` | Whole authored identity under an unsupported pinned tile hash scheme | `FieldPath`, `ActualVersion`, owned `SupportedVersions` |
 | `StorageEmbeddingChanged` | An embedded payload whose encoded length changed after measurement | `ExpectedByteCount`, `ActualByteCount` |
+| `StorageDirectoryPagesOverlap` | Overlapping surface storage page covers | `FieldPath`, `Index`, `OtherIndex` |
 | `PinnedContentUnavailable` | Required pinned tile, directory, index or payload content whose read failed without a more specific document cause | `PatchStatus`, `Tile`, `Patch`, `SubjectKind`, `ExpectedHash` |
 | `DocumentVersionUnsupported` | A root document format version other than the current writable version | `FieldPath`, `ActualVersion`, `SupportedVersions` |
 | `DocumentTerrainFeatureUnknown` | A terrain feature discriminator absent from the supplied registry | discriminator `ActualText`, `EntityId`, `SubjectKind`, `FieldPath`, `Index` |

@@ -11,12 +11,13 @@ internal static class MapSurfaceSaveGuard
 {
     internal static void Whole(MapSurfaceSet set)
     {
-        IReadOnlyList<string> errors = MapTopologyReferenceValidator.Validate(set.Refs, set.Patches.Values.ToArray());
-        if (errors.Count != 0) throw new MapDocumentException(errors[0]);
+        IReadOnlyList<MapDocumentFinding> findings = MapTopologyReferenceValidator.ValidateFindings(set.Refs, set.Patches.Values.ToArray());
+        if (findings.Count != 0) throw MapDocumentRefusalFactory.FromFinding(findings[0], findings[0].Message, findings: findings);
         try { foreach (MapSurfacePatch patch in set.Patches.Values) Positions(set, patch); }
         catch (Exception ex) when (ex is MapExactOverflowException or OverflowException)
         {
-            throw new MapDocumentException("dependency position not representable", ex);
+            throw new MapDocumentException(MapDocumentRefusal.GeometryNotRepresentable, "dependency position not representable", ex)
+                { Operation = "SaveSurfaces", FieldPath = "CornerDependencies" };
         }
     }
     internal static void Partial(MapDocument doc, MapSurfaceStorageIndex index)

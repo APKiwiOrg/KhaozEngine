@@ -1,5 +1,5 @@
-// Frozen copy of the v20.24.0 GridPathPlanner algorithm (KhaozEngine#1288). The equality corpus compares the
-// production planner against it, so this file must never change with the production planner.
+// Frozen allocating reference after the #1712 spatial-bound ruling for 23.3.0.
+// Keep independent of production scratch. Change only with an evidenced reference update.
 using System;
 using System.Collections.Generic;
 using System.Numerics;

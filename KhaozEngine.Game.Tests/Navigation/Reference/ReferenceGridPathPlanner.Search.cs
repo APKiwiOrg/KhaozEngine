@@ -1,5 +1,5 @@
-// Frozen copy of the v20.24.0 GridPathPlanner algorithm (KhaozEngine#1288). The equality corpus compares the
-// production planner against it, so this file must never change with the production planner.
+// Frozen allocating reference after the #1712 spatial-bound ruling for 23.3.0.
+// Keep independent of production scratch. Change only with an evidenced reference update.
 using System;
 using System.Collections.Generic;
 using System.Numerics;
@@ -20,13 +20,8 @@ internal sealed partial class ReferenceGridPathPlanner
     /// corner cuts. After the eight grid neighbors, each link out of the current node is expanded at its
     /// precomputed meters cost (a <see cref="NavLinkKind.Stair"/> the source layer's
     /// <see cref="NavGrid.CellSize"/>, a <see cref="NavLinkKind.Hop"/> the constructor's hop cost), skipped
-    /// when the link's far endpoint is not passable for the agent radius on its own layer. The heuristic is the
-    /// octile distance to the goal cell while the node is on the goal's layer, and zero otherwise
-    /// (an admissible lower bound across a link, degrading the off-layer search to Dijkstra). Off the
-    /// goal layer, the zero heuristic pins the start as the closest-approach minimum, so a cross-layer
-    /// query that reaches the goal's layer but cannot reach the goal returns Unreachable rather than
-    /// Partial (single-layer Partial behavior is unaffected). A popped node is final for the ascend-to-goal
-    /// case the links model. The search stops when the goal is popped (<see cref="NavPathStatus.Complete"/>),
+    /// when the link's far endpoint is not passable for the agent radius on its own layer. A cached scaled spatial bound spans every layer.
+    /// Physical 3D feet distance chooses partial progress independently. The search stops when the goal is popped (<see cref="NavPathStatus.Complete"/>),
     /// the open set empties, or <paramref name="budget"/>'s <see cref="PathQueryBudget.MaxExpandedNodes"/>
     /// expansions are spent. On a non-goal stop it reconstructs to the closest-approach node (least
     /// heuristic among popped nodes, earliest on ties) as a <see cref="NavPathStatus.Partial"/> path, or
@@ -39,8 +34,16 @@ internal sealed partial class ReferenceGridPathPlanner
         NavGrid goalGrid = _space.Layers[goalLayer];
         (int goalX, int goalZ) = goalGrid.CellOf(goalPoint.X, goalPoint.Y);
         float PointHeuristic(int layer, int x, int z)
-            => Heuristic(layer, x, z, goalLayer, goalX, goalZ, goalGrid.CellSize);
-        double PointProgress(int layer, int x, int z) => PointHeuristic(layer, x, z);
+            => _spatialBound.Point(layer, x, z, goalLayer, goalX, goalZ);
+        Vector3 target = CellFeet(goalLayer, goalX, goalZ);
+        double PointProgress(int layer, int x, int z)
+        {
+            Vector3 feet = CellFeet(layer, x, z);
+            double dx = (double)feet.X - target.X;
+            double dy = (double)feet.Y - target.Y;
+            double dz = (double)feet.Z - target.Z;
+            return dx * dx + dy * dy + dz * dz;
+        }
         return RunSearch(startLayer, startPoint,
             (layer, x, z) => layer == goalLayer && x == goalX && z == goalZ,
             PointHeuristic, PointProgress, goalPoint, agentRadius, budget);
@@ -328,29 +331,6 @@ internal sealed partial class ReferenceGridPathPlanner
         int local = id - _layerOffset[layer];
         int width = _space.Layers[layer].Width;
         return (layer, local % width, local / width);
-    }
-
-    /// <summary>Octile distance to the goal cell while the node is on the goal's layer, zero otherwise.
-    /// On the goal layer this heuristic is admissible only when all links move at most one cell in XZ
-    /// (as in DungeonNav stair links). A link that jumps far in XZ for its flat one-cell cost, or an
-    /// optimal path that leaves and re-enters the goal layer through such links, can cause the heuristic
-    /// to overestimate, making A* return a valid but suboptimal Complete path. Zero off the goal layer is
-    /// an admissible lower bound across a link (no octile estimate spans two coordinate frames), which
-    /// keeps the popped-node-is-final guarantee for a search that ascends into the goal's layer and never
-    /// leaves it, at the cost of a Dijkstra-like sweep before the crossing.</summary>
-    static float Heuristic(int layer, int cx, int cz, int goalLayer, int goalX, int goalZ, float goalCellSize)
-        => layer == goalLayer ? Octile(cx, cz, goalX, goalZ, goalCellSize) : 0f;
-
-    /// <summary>Octile distance in meters from cell (<paramref name="x"/>, <paramref name="z"/>) to the
-    /// goal cell (<paramref name="goalX"/>, <paramref name="goalZ"/>):
-    /// <paramref name="cellSize"/> * (sqrt(2) * min + (max - min)) over the axis deltas.</summary>
-    static float Octile(int x, int z, int goalX, int goalZ, float cellSize)
-    {
-        int adx = Math.Abs(x - goalX);
-        int adz = Math.Abs(z - goalZ);
-        int min = Math.Min(adx, adz);
-        int max = Math.Max(adx, adz);
-        return cellSize * (Sqrt2 * min + (max - min));
     }
 
 }

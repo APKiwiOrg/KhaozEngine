@@ -1,5 +1,5 @@
-// Frozen copy of the v20.24.0 GridPathPlanner algorithm (KhaozEngine#1288). The equality corpus compares the
-// production planner against it, so this file must never change with the production planner.
+// Frozen allocating reference after the #1712 spatial-bound ruling for 23.3.0.
+// Keep independent of production scratch. Change only with an evidenced reference update.
 using System;
 using System.Collections.Generic;
 using System.Numerics;
@@ -43,6 +43,7 @@ internal sealed partial class ReferenceGridPathPlanner : IRegionPathPlanner
     static readonly int[] NeighborDz = { 0, 0, 1, -1, 1, -1, 1, -1 };
 
     readonly NavSpace _space;
+    readonly ReferencePlannerSpatialBound _spatialBound;
 
     /// <summary>Running sum of each earlier layer's cell count, so node id
     /// <c>layerOffset[layer] + z * layer.Width + x</c> is unique across the whole space.</summary>
@@ -71,10 +72,7 @@ internal sealed partial class ReferenceGridPathPlanner : IRegionPathPlanner
     /// <summary>Builds a planner that searches <paramref name="space"/>. <paramref name="hopCostCells"/> is
     /// the cost of crossing a <see cref="NavLinkKind.Hop"/> link, in multiples of the source layer's
     /// <see cref="NavGrid.CellSize"/> (default 4). It must be positive. A <see cref="NavLinkKind.Stair"/>
-    /// link keeps its one-cell cost. Keep <paramref name="hopCostCells"/> at or above the longest hop's
-    /// octile displacement (about 2.83 at a two-cell hop) to keep the A* heuristic admissible and the search
-    /// optimal. Below it the search stays correct but may return a valid non-optimal route, the same caveat
-    /// the far-jumping-link heuristic already documents.</summary>
+    /// link keeps its one-cell cost. The cached ratio bounds links on every layer.</summary>
     public ReferenceGridPathPlanner(NavSpace space, float hopCostCells = 4f)
         : this(space, hopCostCells, null)
     {
@@ -120,6 +118,8 @@ internal sealed partial class ReferenceGridPathPlanner : IRegionPathPlanner
             if (link.Kind == NavLinkKind.Hop)
                 _hopEdges.Add((fromId, toId));
         }
+        _spatialBound = new ReferencePlannerSpatialBound(_space, _traversal,
+            link => layers[link.FromLayer].CellSize * (link.Kind == NavLinkKind.Hop ? _hopCostCells : 1f));
     }
 
     /// <summary>
@@ -161,7 +161,7 @@ internal sealed partial class ReferenceGridPathPlanner : IRegionPathPlanner
 
         // Same layer with a clear straight shot is the trivial one-waypoint case. Everything else runs
         // the A* search, which also carries cross-layer routing over the link edges.
-        if (_traversal is null && startLayer == goalLayer && HasLineOfSight(startGrid, startPoint.Value, goalPoint, agentRadius))
+        if (_traversal is null && _spatialBound.Scale == 1f && startLayer == goalLayer && HasLineOfSight(startGrid, startPoint.Value, goalPoint, agentRadius))
         {
             return new NavPath(NavPathStatus.Complete, new[] { new NavWaypoint(goalPoint, goalLayer) });
         }

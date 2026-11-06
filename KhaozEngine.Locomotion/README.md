@@ -826,7 +826,8 @@ clearance and centre mapping. A clearance push or refused seat that cannot satis
 blocks and holds the original pose for the tick. Land placement keeps its intentional paced leg lag.
 A swimming segment seeks footing whatever the sign of its buoyant vertical speed, because a waterline
 settle can approach rest from below forever. It resolves bank support and clearance before an unsupported
-handoff, including when exact drawn-bed membership rejects the proposed feet. Rising, it contacts only walkable
+handoff, including when exact drawn-bed membership rejects the proposed feet. A refused buoyant footprint holds
+the original tick, rising or descending, while proved absence retains unsupported motion. Rising, it contacts only walkable
 support above its highest feet, so a bed it rises off seats nothing. A bank deeper than the seated swim exit line keeps the body
 Swimming/Surface on the bed. Once that same depth test allows footing, the body lands Grounded/None.
 The existing legacy swimming path is unchanged. The generic fixtures do not establish native

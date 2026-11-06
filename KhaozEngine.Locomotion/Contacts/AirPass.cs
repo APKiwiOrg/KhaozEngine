@@ -162,6 +162,9 @@ internal static class AirPass
             SupportSample support = queries.FindSupport(
                 new FootSupportQuery(axis, high, footRadius, tuning.StepHeight, MathF.Max(0f, high - low),
                     cosMaxSlope));
+            // Refusal proves neither absence nor bank clearance. Hold the whole buoyant tick.
+            if (buoyant && support.Status == SupportStatus.Refused)
+                throw new ContactQueryFailure(MovementAvailability.Known, MovementStepOutcome.Blocked);
             // A buoyant body settles on its waterline, so the sign of its vertical speed says nothing about its legs.
             // Rising, it takes only walkable support that rose above its highest feet. That contact must clip the
             // legs even before the water allows footing. A bed it rose off seats nothing.

@@ -2233,6 +2233,8 @@ numeric findings. A supplied reservation distinguishes nonpositive IDs (`ValueOu
 `NumericId`, `ActualInteger` and minimum 1) from duplicates (`IdentityDuplicate` with `NumericId`).
 No reason is inferred from aggregate prose. Effective prefab expansion and foliage generation-context
 adapters still wait for the prefab numeric aggregate adapter.
+Consumer-built message-only refusals from supplied prefab collections keep their legacy foliage
+preflight status and have no typed finding.
 
 `MapTopologyReferenceValidator.ValidateFindings` returns the complete ordered reference-integrity
 findings as a read-only list. `Validate` retains their unchanged string projection. Admission carries

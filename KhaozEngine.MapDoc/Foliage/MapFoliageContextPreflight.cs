@@ -79,9 +79,11 @@ internal static class MapFoliageContextPreflight
         catch (MapDocumentException error)
         {
             bool capacity = error is { Reason: MapDocumentRefusal.WorkCapacityExceeded,
-                Operation: nameof(MapPrefabPreflight.Count) or nameof(MapPrefabPreflight.AddProduct) };
+                Operation: nameof(MapPrefabPreflight.Count) or nameof(MapPrefabPreflight.AddProduct) } ||
+                error.Reason is null && (error.Message.Contains("limit exceeded", StringComparison.Ordinal) ||
+                    error.Message.Contains("overflow", StringComparison.Ordinal));
             return Refusal(capacity ? MapFoliageStatus.CapacityExceeded : MapFoliageStatus.Invalid,
-                MapDocumentFinding.FromException(error)!);
+                MapDocumentFinding.FromException(error));
         }
         catch (KeyNotFoundException) { return Refusal(MapFoliageStatus.Invalid, new(MapDocumentRefusal.ReferenceMissing,
             "foliage context references an unavailable asset") { DocumentId = document.Id, SubjectKind = "foliage context asset" }); }
@@ -89,8 +91,8 @@ internal static class MapFoliageContextPreflight
         if (work.SurfacePatches > limits.MaxSurfacePatches) return Capacity("MaxSurfacePatches", work.SurfacePatches, limits.MaxSurfacePatches);
         return new(MapFoliageStatus.Complete, work);
 
-        MapFoliageContextMeasure Refusal(MapFoliageStatus status, MapDocumentFinding finding) =>
-            new(status, work) { Finding = finding with { FoliageStatus = status } };
+        MapFoliageContextMeasure Refusal(MapFoliageStatus status, MapDocumentFinding? finding) =>
+            new(status, work) { Finding = finding is null ? null : finding with { FoliageStatus = status } };
         MapFoliageContextMeasure Capacity(string budget, long actual, long limit) => Refusal(MapFoliageStatus.CapacityExceeded,
             new(MapDocumentRefusal.WorkCapacityExceeded, "foliage context budget exceeded")
             { Budget = budget, ActualCount = actual, ActualByteCount = budget == "MaxSourceUtf8Bytes" ? actual : null,

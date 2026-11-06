@@ -12844,6 +12844,8 @@ Resolver admission keeps the exact `MapDocumentException` catch contract. Its `R
 `OptionsResolverVersion`, `ExpectedResolverVersion`, `SupportRecipe`, `ExpectedSupportRecipe`,
 `FieldPath` and `SubjectKind`. Inspect those members rather than parsing prose. A consumer's
 message-only constructor leaves `Reason` null. `SourceName` carries available source context.
+Supplied prefab collections may throw such refusals. Foliage preflight retains their legacy status
+without inventing a typed finding.
 Missing legacy support callbacks use `SupportLegacyHeightRequired`, with `ResolverVersion` and
 `FieldPath` `legacySupportHeight`. A nonfinite resolved support height uses `ValueNonfinite` with
 `PlacementId`, leaving `ActualNumber` null. A requested placement absent from the resolution scope uses

@@ -9,6 +9,31 @@ namespace KhaozEngine.Tests.MapDoc.Foliage;
 public sealed class MapFoliageContextRefusalTests
 {
     [Theory]
+    [InlineData("unreadable count", MapFoliageStatus.Invalid)]
+    [InlineData("count overflow", MapFoliageStatus.CapacityExceeded)]
+    public void ConsumerCollectionRefusal_KeepsPreflightStatusWithoutATypedFinding(string message, MapFoliageStatus expected)
+    {
+        // W6-C1 review regression: public collections can throw a consumer-built message-only refusal.
+        var fixture = FoliageFixtures.Create();
+        fixture.Document.Prefabs = new(1, 1, new UnreadableInstances(message), []);
+        var result = MapFoliageGenerationContext.Capture(fixture.Document, fixture.Assets);
+        Assert.Equal(expected, result.Status);
+        Assert.Null(result.Context);
+        Assert.Null(result.Finding);
+        fixture.Document.Prefabs = null;
+        Assert.Equal(MapFoliageStatus.Complete, MapFoliageGenerationContext.Capture(fixture.Document, fixture.Assets).Status);
+    }
+
+    sealed class UnreadableInstances(string message) : System.Collections.Generic.IReadOnlyList<MapPrefabInstance>
+    {
+        public int Count => throw new MapDocumentException(message);
+        public MapPrefabInstance this[int index] => throw new System.ArgumentOutOfRangeException(nameof(index));
+        public System.Collections.Generic.IEnumerator<MapPrefabInstance> GetEnumerator() =>
+            System.Linq.Enumerable.Empty<MapPrefabInstance>().GetEnumerator();
+        System.Collections.IEnumerator System.Collections.IEnumerable.GetEnumerator() => GetEnumerator();
+    }
+
+    [Theory]
     [InlineData("MaxSourceUtf8Bytes")]
     [InlineData("MaxChunkDescriptors")]
     [InlineData("MaxPlacements")]

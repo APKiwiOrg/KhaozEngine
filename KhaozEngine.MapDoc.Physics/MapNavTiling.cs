@@ -643,14 +643,21 @@ public static class MapNavTiling
     }
 
     static MapSurfaceRef Surface(MapScopedSurfaces view, string id) =>
-        view.Surfaces.FirstOrDefault(s => s.Id == id) ?? throw new MapDocumentException($"missing geometry: surface '{id}'");
+        view.Surfaces.FirstOrDefault(s => s.Id == id) ?? throw new MapDocumentException(MapDocumentRefusal.ReferenceMissing,
+            $"missing geometry: surface '{id}'") { SurfaceId = id };
 
     static T Record<T>(MapScopedSurfaces view, MapRecordRef reference) where T : MapTopologyRecord
     {
         if (!view.TryRecord(reference, out MapTopologyRecord? record, out MapPatchStatus status) || record is not T typed)
-            throw new MapDocumentException($"missing geometry: record '{reference.Id}' {reference.Anchor} ({status})");
+            throw new MapDocumentException(record is null ? MapDocumentRefusal.PatchUnavailable : MapDocumentRefusal.ReferenceKindMismatch,
+                $"missing geometry: record '{reference.Id}' {reference.Anchor} ({status})")
+            { RecordId = reference.Id, Patch = reference.Anchor, PatchStatus = status, RecordType = record?.GetType(), ExpectedRecordType = typeof(T) };
         return typed;
     }
+
+    // Faulty captured lookups reach the same guards without weakening scoped acquisition.
+    internal static void MissingSurfaceForTests(MapScopedSurfaces view, string id) => _ = Surface(view, id);
+    internal static void MissingRecordForTests(MapScopedSurfaces view, MapRecordRef reference) => _ = Record<MapHorizontalOpening>(view, reference);
 
     // Compact canonical JSON, hashed as written.
     static string CanonicalHash(Action<Utf8JsonWriter> body)

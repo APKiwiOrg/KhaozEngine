@@ -396,6 +396,10 @@ public enum MapDocumentRefusal
     PhysicsNavIndexOutOfRange,
     /// <summary>Refuses neighbouring navigation tiles whose bounds do not meet at one edge.</summary>
     NavigationTilesNotAdjacent,
+    /// <summary>Refuses a placement with neither a selection volume nor a collider for interaction.</summary>
+    PhysicsInteractionSourceMissing,
+    /// <summary>Refuses bounds or stance geometry for an unsupported physics shape.</summary>
+    PhysicsShapeUnsupported,
 
     // Space portal and coverage admission.
     /// <summary>Refuses a portal column whose upper height does not exceed its lower height.</summary>
@@ -420,7 +424,7 @@ public enum MapDocumentRefusal
     SpaceCoverageSeparationInvalid,
     /// <summary>Refuses a portal band outside an endpoint space's occupied air interval.</summary>
     SpacePortalAirIntervalInvalid,
-    /// <summary>Refuses coincident physical support owned by different authored surfaces.</summary>
+    /// <summary>Refuses coincident physical support owned by independent authored owners.</summary>
     SpaceSupportCoincident,
 
     // Surface storage and embedding admission.

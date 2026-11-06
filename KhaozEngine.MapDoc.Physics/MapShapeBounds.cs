@@ -65,7 +65,8 @@ public static class MapShapeBounds
                 foreach (CompoundChild child in co.Children) Accumulate(child.Shape, pose.Compose(child.Local), ref box);
                 break;
             default:
-                throw new MapDocumentException($"Shape bounds do not support shape type {shape.GetType().Name}.");
+                throw new MapDocumentException(MapDocumentRefusal.PhysicsShapeUnsupported,
+                    $"Shape bounds do not support shape type {shape.GetType().Name}.") { ShapeType = shape.GetType() };
         }
     }
 
@@ -150,7 +151,16 @@ internal struct MapBoundsAccumulator
         if (!(_minX <= _maxX && _minY <= _maxY && _minZ <= _maxZ) ||
             !double.IsFinite(_minX) || !double.IsFinite(_minY) || !double.IsFinite(_minZ) ||
             !double.IsFinite(_maxX) || !double.IsFinite(_maxY) || !double.IsFinite(_maxZ))
-            throw new MapDocumentException("Shape bounds are empty or not finite.");
+        {
+            bool empty = _minX > _maxX || _minY > _maxY || _minZ > _maxZ;
+            string field = !double.IsFinite(_minX) ? "bounds.MinX" : !double.IsFinite(_minY) ? "bounds.MinY" :
+                !double.IsFinite(_minZ) ? "bounds.MinZ" : !double.IsFinite(_maxX) ? "bounds.MaxX" :
+                !double.IsFinite(_maxY) ? "bounds.MaxY" : "bounds.MaxZ";
+            double actual = !double.IsFinite(_minX) ? _minX : !double.IsFinite(_minY) ? _minY :
+                !double.IsFinite(_minZ) ? _minZ : !double.IsFinite(_maxX) ? _maxX : !double.IsFinite(_maxY) ? _maxY : _maxZ;
+            throw new MapDocumentException(empty ? MapDocumentRefusal.BoundsInvalid : MapDocumentRefusal.ValueNonfinite,
+                "Shape bounds are empty or not finite.") { FieldPath = empty ? "bounds" : field, ActualNumber = empty ? null : actual };
+        }
         return new MapBox3(_minX, _minY, _minZ, _maxX, _maxY, _maxZ);
     }
 }

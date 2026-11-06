@@ -2039,7 +2039,7 @@ their joined diagnostic text.
 | `SpacePrismOutsideParent` | A prism footprint outside its occupied parent footprint | `RecordId`, `SpaceId`, `RelatedRecordId` |
 | `SpacePrismParentSeparationInvalid` | A prism without positive vertical separation inside its refined parent bounds | `RecordId`, `SpaceId`, `RelatedRecordId` |
 | `SpaceOccupiedOverlap` | Positive occupied overlap between unrelated spaces | `SpaceId` and peer `RelatedRecordId` for prism pieces, or footprint `RecordId`, peer footprint `RelatedRecordId`, both `SlotCell` and `RelatedSlotCell`, and peer space `EntityId` for footprint cells |
-| `SpaceSupportCoincident` | Coincident physical support from different authored surfaces | footprint `RecordId`, peer footprint `RelatedRecordId`, `SpaceId`, `SlotCell`, `RelatedSlotCell` |
+| `SpaceSupportCoincident` | Coincident physical support from independent authored owners | footprint `RecordId`, peer footprint `RelatedRecordId`, `SpaceId`, `SlotCell`, `RelatedSlotCell`, or physics `SurfaceId` and `OtherSurfaceId`, or collider `PlacementId` and `SurfaceId` |
 | `SpaceStoreyTransferMissing` | An unpacked prism without matching live record and storey transfers | `RecordId`, `InstanceId`, storey `EntityId`, `FieldPath` |
 | `SpaceBoundaryGap` | An uncovered interval on an occupied column boundary | footprint `RecordId`, `SpaceId`, `SlotCell` |
 | `SpaceBoundaryOverlap` | Overlapping authored intervals on an occupied column boundary | footprint `RecordId`, `SpaceId`, `SlotCell` |
@@ -2158,6 +2158,8 @@ their joined diagnostic text.
 | `DocumentWindowTileSizeMismatch` | A partial window whose tile size changed | `Path`, `FieldPath`, `ActualNumber`, `ExpectedNumber` |
 | `DocumentSaveLockUnavailable` | A tiled save while another writer holds the directory lock | normalized directory `Path`, original cause |
 | `PhysicsSweepShapeUnsupported` | An interaction envelope cannot sweep its source shape | `PlacementId`, `ShapeType` |
+| `PhysicsInteractionSourceMissing` | A placement without a selection volume or collider | `PlacementId`, `AssetId` |
+| `PhysicsShapeUnsupported` | A shape unsupported by bounds calculation | `ShapeType` |
 | `PhysicsNavIndexOutOfRange` | A computed navigation tile index outside signed 32-bit range | `Axis`, `FirstIndex`, `LastIndex`, `AxisOrigin`, inclusive `MinimumInteger` and `MaximumInteger`, source interval `MinimumNumber` and `MaximumNumber` when known |
 | `NavigationTilesNotAdjacent` | Navigation tile bounds that do not meet at one edge | `Tile` and `OtherTile` on `MapNavigationArgumentException`, `FieldPath` |
 | `DocumentTileReadFailed` | A tile file that cannot be read | `Tile`, `SourceName`, `Path`, pinned `ExpectedHash`, original cause |

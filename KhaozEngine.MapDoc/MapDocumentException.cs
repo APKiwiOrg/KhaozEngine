@@ -287,7 +287,7 @@ public sealed class MapDocumentException : Exception
 
     /// <summary>The external URI refused by a self-contained mesh resource.</summary>
     public string? Uri { get; init; }
-    /// <summary>The collision shape type whose point set is empty.</summary>
+    /// <summary>The physics shape type whose data or supported representation was refused.</summary>
     public Type? ShapeType { get; init; }
     /// <summary>The resource root used by complete document validation, when known.</summary>
     public string? ResourceRoot { get; init; }

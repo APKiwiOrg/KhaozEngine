@@ -13562,6 +13562,22 @@ leaving `ActualCount` null when it cannot fit in a signed 64-bit value. Navigati
 in `MinimumInteger` and `MaximumInteger`, and known source interval endpoints in `MinimumNumber` and `MaximumNumber`.
 Short portal intervals retain `RecordId`, `ActualCount` and minimum two through `GeometryVertexSequenceInvalid`.
 Missing opening geometry uses `PatchUnavailable`, `RecordId`, `Patch` and `PatchStatus`.
+Navigation surface lookup uses `ReferenceMissing` with `SurfaceId`. A missing or wrong-kind record uses
+`PatchUnavailable` or `ReferenceKindMismatch` with `RecordId`, `Patch`, `PatchStatus`, `ExpectedRecordType`
+and a known `RecordType`. Placement geometry uses `PhysicsInteractionSourceMissing` with `PlacementId`
+and `AssetId`, or `PhysicsShapeUnsupported` with `ShapeType` for unsupported shape bounds. Invalid combined
+scale uses `ValueNonfinite` or `ValueOutsideRange`, with `PlacementId`, `FieldPath`, `ActualNumber` and exclusive
+zero `MinimumNumber`. Nonfinite authored position or yaw identifies the actual failing component.
+Empty shape bounds use `BoundsInvalid`, while a nonfinite endpoint uses `ValueNonfinite`, `FieldPath` and
+`ActualNumber`. Independent coincident floors reuse `SpaceSupportCoincident`, with `SurfaceId` and
+`OtherSurfaceId`, or collider `PlacementId` and support `SurfaceId`.
+Stance spacing, capsule and proposal-cap refusals use `MapStanceRangeException`, preserving the
+`ArgumentOutOfRangeException` catch contract, `ParamName` and `ActualValue`. It carries `Reason`, nested
+`FieldPath`, `ActualNumber` and the field's `MinimumNumber`. Zero is exclusive for spacing and radius,
+while half height accepts the radius. The proposal cap uses `WorkCapacityExceeded`, `Budget`, inclusive `Limit`
+and the known proposed `ActualCount` through the failing outline. A missing legacy stance callback or nonfinite
+height uses `MapStanceException`, catchable as `InvalidOperationException`, with `SupportLegacyHeightRequired`
+or `ValueNonfinite`, callback `FieldPath`, and the known `ResolverVersion`, `PlacementId` or `ActualNumber`.
 Backend pose or error-bound conversion uses `GeometryNotRepresentable`, `Operation`, failed `FieldPath` and
 binary64 `ActualNumber`. An unsupported envelope sweep uses `PhysicsSweepShapeUnsupported`, `PlacementId`
 and `ShapeType`.

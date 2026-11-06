@@ -321,6 +321,34 @@ proposes walk-up positions: at the envelope's base for a native world, at the le
 The `MapStanceValidator` the game binds to its controller's placement proof seats or refuses each proposal, and
 owns every step, ledge, slope and support rule. Seats outside reach or the playable bounds are dropped.
 
+### Placement, bounds and stance refusals
+
+Placement and bounds refusals use `MapDocumentException` and `MapDocumentRefusal`. Navigation lookups retain
+the original missing-geometry text while identifying the missing surface or the unavailable or wrong-kind record.
+
+| Reason | Refused input | Identifiers |
+| --- | --- | --- |
+| `PhysicsInteractionSourceMissing` | A placement without a selection volume or collider | `PlacementId`, `AssetId` |
+| `PhysicsShapeUnsupported` | A shape unsupported by `MapShapeBounds` | `ShapeType` |
+| `ValueNonfinite`, `ValueOutsideRange` | A nonfinite or nonpositive combined placement scale, or nonfinite authored position or yaw | `PlacementId`, `FieldPath`, `ActualNumber`, scale boundary `MinimumNumber` 0 (exclusive) |
+| `BoundsInvalid`, `ValueNonfinite` | Empty shape bounds or a nonfinite bound endpoint | `FieldPath`, nonfinite `ActualNumber` |
+| `GeometryNotRepresentable` | A registration-bounds magnitude outside binary32 | `Operation` `RegistrationBounds`, `FieldPath` `Magnitude`, `ActualNumber` |
+| `SpaceSupportCoincident` | Independent support surfaces or a collider and support surface with coincident floor faces | `SurfaceId`, `OtherSurfaceId` for two surfaces, or `PlacementId` and `SurfaceId` for a collider |
+| `ReferenceMissing` | A missing navigation surface | `SurfaceId` |
+| `PatchUnavailable`, `ReferenceKindMismatch` | An unavailable or wrong-kind navigation record | `RecordId`, `Patch`, `PatchStatus`, `ExpectedRecordType`, known `RecordType` |
+
+Stance spacing, capsule and proposal-budget refusals use `MapStanceRangeException`, catchable as
+`ArgumentOutOfRangeException`, with the original `ParamName` and `ActualValue`. `ValueNonfinite` or
+`ValueOutsideRange` identifies the failed nested `FieldPath`, `ActualNumber` and `MinimumNumber`. Spacing and
+radius have an exclusive zero boundary. Capsule half height has an inclusive boundary equal to the radius.
+`WorkCapacityExceeded` carries `Budget` `stance proposals`, the inclusive proposal `Limit`, submitted spacing
+in `ActualNumber` and the proposed `ActualCount` through the failing outline when representable as `long`.
+The cap covers all members of one call, and refusal happens before the validator sees any proposal.
+
+`MapStanceException` remains catchable as `InvalidOperationException`. `SupportLegacyHeightRequired` carries
+`ResolverVersion` 1 and `FieldPath` `LegacySupportHeight` for a missing resolver-1 callback. A nonfinite callback
+result uses `ValueNonfinite`, that `FieldPath`, `PlacementId` and `ActualNumber`. Scalar actor-feet checks remain BCL.
+
 ## Registration
 
 ```csharp

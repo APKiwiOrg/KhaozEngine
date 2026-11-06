@@ -183,6 +183,8 @@ public sealed class MapDocumentException : Exception
     public string? EntityId { get; init; }
     /// <summary>The owner of the refused operation or geometry, such as a placement, terrain chunk or water body.</summary>
     public string? OwnerId { get; init; }
+    /// <summary>The compiled water body whose world or residency admission failed.</summary>
+    public string? BodyId { get; init; }
     /// <summary>The checked X coordinate in metres, absolute world or local to the refused frame operation.</summary>
     public double? PositionX { get; init; }
     /// <summary>The checked Y coordinate in metres, absolute world or local to the refused frame operation.</summary>
@@ -429,6 +431,7 @@ public sealed class MapDocumentException : Exception
         MaximumInteger = inner.MaximumInteger;
         EntityId = inner.EntityId;
         OwnerId = inner.OwnerId;
+        BodyId = inner.BodyId;
         PositionX = inner.PositionX;
         PositionY = inner.PositionY;
         PositionZ = inner.PositionZ;

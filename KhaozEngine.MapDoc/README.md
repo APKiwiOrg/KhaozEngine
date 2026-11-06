@@ -1979,6 +1979,9 @@ their joined diagnostic text.
 | --- | --- | --- |
 | `PhysicsRegistrationOriginInvalid` | Physics registration at a nonintegral or out-of-world origin | `FieldPath` `Origin`, `PositionX`, `PositionY`, `PositionZ`, inclusive absolute coordinate `Limit` |
 | `PhysicsLegacyMoveContextUnsupported` | A legacy movement context for a native contact world | `ResolverVersion` |
+| `PhysicsWaterOwnerConflict` | A static owner colliding with a compiled water body owner | `OwnerId`, `BodyId` |
+| `PhysicsWaterBoundsMissing` | Compiled water regions without body bounds | `BodyId` |
+| `PhysicsWaterFragmentBoundsMissing` | Occupied water regions without fragment bounds | `BodyId` |
 | `WaterBodiesPreventLegacyMode` | Switching to legacy global water while bounded bodies remain | `FieldPath`, `ActualCount` |
 | `DocumentHashSchemeUnsupported` | Whole authored identity or window loading under an unsupported pinned tile hash scheme | `FieldPath`, `ActualVersion`, owned `SupportedVersions` for identity or `ExpectedVersion` for window loading, source context |
 | `StoragePatchKeyMismatch` | A surface dictionary entry whose key differs from its payload key | dictionary `ExpectedPatch`, payload `Patch` |

@@ -35,9 +35,11 @@ public class MapWaterWorldFixTests
         fixture.Document.Placements[0].Id = "water:river";
         fixture = NativeWorldFixtures.Reresolve(fixture);
         MapDocumentException error = Assert.Throws<MapDocumentException>(() => NativeWorldFixtures.Build(fixture));
-        Assert.StartsWith("water: ", error.Message, StringComparison.Ordinal);
-        Assert.Contains("static owner 'water:river'", error.Message, StringComparison.Ordinal);
-        Assert.Contains("body 'river'", error.Message, StringComparison.Ordinal);
+        Assert.Equal(MapDocumentRefusal.PhysicsWaterOwnerConflict, error.Reason);
+        Assert.Equal("water:river", error.OwnerId);
+        Assert.Equal("river", error.BodyId);
+        fixture.Document.Placements[0].Id = "river";
+        Assert.Single(NativeWorldFixtures.Build(NativeWorldFixtures.Reresolve(fixture)).Water);
     }
 
     [Theory]
@@ -182,9 +184,17 @@ public class MapWaterWorldFixTests
         WaterWorldFixture fixture = NativeWorldFixtures.BridgeOverRiver();
         fixture.Document.Surfaces.Patches[new MapPatchKey("floor", 0, 0)].SetPresent(0, 0, false);
         fixture = NativeWorldFixtures.Reresolve(fixture);
-        Assert.Equal(MapWaterCompileStatus.Incomplete, Assert.Single(MapWaterCompiler.Compile(fixture.View, fixture.Document.Water!)).Status);
+        var compiled = Assert.Single(MapWaterCompiler.Compile(fixture.View, fixture.Document.Water!));
+        Assert.Equal(MapWaterCompileStatus.Incomplete, compiled.Status);
+        var finding = Assert.IsType<MapDocumentFinding>(compiled.Finding);
         MapDocumentException error = Assert.Throws<MapDocumentException>(() => NativeWorldFixtures.Build(fixture));
-        Assert.StartsWith("water: ", error.Message, StringComparison.Ordinal);
+        Assert.Equal(finding.Reason, error.Reason);
+        Assert.Equal(finding.Patch, error.Patch);
+        Assert.Equal(finding.RecordId, error.RecordId);
+        Assert.Equal(finding.FieldPath, error.FieldPath);
+        fixture.Document.Surfaces.Patches[new MapPatchKey("floor", 0, 0)].SetPresent(0, 0, true);
+        fixture = NativeWorldFixtures.Reresolve(fixture);
+        Assert.Equal(MapWaterCompileStatus.Complete, Assert.Single(NativeWorldFixtures.Build(fixture).Water).Status);
     }
 
     [Fact]
@@ -198,7 +208,21 @@ public class MapWaterWorldFixTests
             world.LegacySculptTiles, world.LegacySculptCellSize, world.LegacyTerrainBlockDigest, world.LegacyTerrainIdentity,
             new[] { body }, world.WaterMedia, world.WaterDigest, world.LegacyWaterLevel);
         MapDocumentException error = Assert.Throws<MapDocumentException>(() => MapResidencyOwnership.BuildWater(malformed, Grids));
-        Assert.Equal("water: body 'river' has regions but no bounds", error.Message);
+        Assert.Equal(MapDocumentRefusal.PhysicsWaterBoundsMissing, error.Reason);
+        Assert.Equal("river", error.BodyId);
+        Assert.NotEmpty(MapResidencyOwnership.BuildWater(world, Grids));
+    }
+
+    [Fact]
+    public void ConsumerBodyWithoutFinding_ReportsIncompleteAcquisition()
+    {
+        var body = Assert.Single(NativeWorldFixtures.BuildBridgeOverRiver().Water);
+        var error = Assert.Throws<MapDocumentException>(() => MapWorldBuilder.RequireWaterBody(
+            body with { Status = MapWaterCompileStatus.Incomplete, Finding = null, Detail = null }));
+        Assert.Equal(MapDocumentRefusal.AcquisitionIncomplete, error.Reason);
+        Assert.Equal("river", error.BodyId);
+        Assert.Equal("Status", error.FieldPath);
+        MapWorldBuilder.RequireWaterBody(body);
     }
 
     static MapNativeEditEffects MediumEdit(string id) => new(null, null, Array.Empty<MapPatchKey>(), Array.Empty<string>(),

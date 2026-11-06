@@ -59,8 +59,13 @@ public sealed class MapPrefabVillageAcceptanceTests
         {
             var error = Assert.Throws<MapDocumentException>(() => MapWorldBuilder.Build(
                 MapDocumentFile.LoadText(text), PrefabFixtures.ReloadVillageAssets(f.Assets, "bath"), PrefabPhysicsFixtures.Options()));
-            Assert.Contains("bath", error.Message);
+            Assert.Equal(MapDocumentRefusal.AssetPayloadUnreadable, error.Reason);
+            Assert.Equal("bath", error.ResourceId);
+            Assert.Equal(f.Assets.GetResource("bath").Reference.Sha256, error.ExpectedHash);
+            Assert.IsType<System.Collections.Generic.KeyNotFoundException>(error.InnerException);
         }
+        Assert.NotEmpty(MapWorldBuilder.Build(MapDocumentFile.LoadText(text),
+            PrefabFixtures.ReloadVillageAssets(f.Assets), PrefabPhysicsFixtures.Options()).Statics);
     }
 
     [Fact]

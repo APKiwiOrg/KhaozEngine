@@ -150,6 +150,22 @@ Chunk-policy limits use `MapWorldBuildRangeException`, catchable as `ArgumentOut
 `ValueOutsideRange`, the original `ParamName` and `ActualValue`, `FieldPath` `MaxTrianglesPerChunk`,
 `ActualInteger`, and inclusive `MinimumInteger` 64 and `MaximumInteger` 1024.
 
+World-build option admission uses that same range family with `FieldPath` `BuilderVersion` or
+`Chunks.MaxTrianglesPerChunk`. Builder versions have an inclusive minimum of 1 and no upper bound.
+A blank `ConsumerPolicyIdentity` uses `MapWorldBuildArgumentException`, catchable as `ArgumentException`,
+with `SchemaValueRequired`, `FieldPath`, submitted `ActualText` and the original `ParamName` `options`.
+Repeated static owners use `IdentityDuplicate`, `OwnerId` and `SubjectKind` `static`.
+
+Water compilation adapters preserve the producer finding's reason and every identifier. A consumer-created
+incomplete body without a finding uses `AcquisitionIncomplete`, `BodyId`, `FieldPath` `Status` and status
+`ActualText`. Water-specific admission uses the following `MapDocumentException` reasons.
+
+| Reason | Refused water rule | Identifiers |
+| --- | --- | --- |
+| `PhysicsWaterOwnerConflict` | A static owner in a compiled water body's owner namespace | `OwnerId`, `BodyId` |
+| `PhysicsWaterBoundsMissing` | A body with regions but no bounds | `BodyId` |
+| `PhysicsWaterFragmentBoundsMissing` | Occupied regions without fragment bounds | `BodyId` |
+
 ## World build
 
 ```csharp

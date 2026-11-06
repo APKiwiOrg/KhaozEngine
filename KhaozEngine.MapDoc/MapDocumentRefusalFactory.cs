@@ -80,6 +80,7 @@ internal static class MapDocumentRefusalFactory
             MaximumInteger = finding.MaximumInteger,
             EntityId = finding.EntityId,
             OwnerId = finding.OwnerId,
+            BodyId = finding.BodyId,
             PositionX = finding.PositionX,
             PositionY = finding.PositionY,
             PositionZ = finding.PositionZ,

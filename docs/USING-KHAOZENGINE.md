@@ -13569,6 +13569,17 @@ Chunk-policy limits use `MapWorldBuildRangeException`, catchable as `ArgumentOut
 `ValueOutsideRange`, original `ParamName` and `ActualValue`, nested `FieldPath`, submitted `ActualInteger`,
 and inclusive integer limits 64 and 1024.
 
+World-build range admission also uses that family for `BuilderVersion`, with inclusive minimum 1 and no
+upper bound, and `Chunks.MaxTrianglesPerChunk`. A missing consumer policy identity uses
+`MapWorldBuildArgumentException`, catchable as `ArgumentException`, with `SchemaValueRequired`,
+`FieldPath` `ConsumerPolicyIdentity`, submitted `ActualText` and original `ParamName` `options`.
+Repeated static owners use `IdentityDuplicate`, `OwnerId` and `SubjectKind` `static`.
+Water compilation adapters forward the producer's typed finding. A consumer-built incomplete body without
+one uses `AcquisitionIncomplete`, `BodyId`, `FieldPath` `Status` and status `ActualText`. A static colliding
+with a water owner uses `PhysicsWaterOwnerConflict`, `OwnerId` and `BodyId`. Missing body bounds and
+occupied fragment bounds use `PhysicsWaterBoundsMissing` and `PhysicsWaterFragmentBoundsMissing`,
+both carrying `BodyId`.
+
 Registration origin refusals use `PhysicsRegistrationOriginInvalid`, `FieldPath` `Origin`, all three position
 components and the inclusive absolute coordinate `Limit`. A native world's legacy-context refusal uses
 `PhysicsLegacyMoveContextUnsupported` and `ResolverVersion`. Storage membership budgets use

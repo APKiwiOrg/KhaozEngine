@@ -394,6 +394,12 @@ public enum MapDocumentRefusal
     PhysicsRegistrationOriginInvalid,
     /// <summary>Refuses a legacy movement context for a native contact world.</summary>
     PhysicsLegacyMoveContextUnsupported,
+    /// <summary>Refuses a static owner colliding with a compiled water body owner.</summary>
+    PhysicsWaterOwnerConflict,
+    /// <summary>Refuses a compiled water body with regions but no body bounds.</summary>
+    PhysicsWaterBoundsMissing,
+    /// <summary>Refuses occupied water regions without their fragment bounds.</summary>
+    PhysicsWaterFragmentBoundsMissing,
 
     // Physics navigation and envelope admission.
     /// <summary>Refuses an interaction envelope sweep for an unsupported source shape.</summary>

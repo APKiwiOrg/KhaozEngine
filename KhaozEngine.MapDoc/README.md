@@ -2135,7 +2135,7 @@ Prefab expansion preflight reports the first failing `MaxInstances`, `MaxChildre
 `MaxPatches`, `MaxRecords`, `MaxGeometryElements`, `MaxBindings`, `MaxOverrides`, `MaxTransfers` or
 `MaxPayloadBytes` budget in the same order as its guard. Checked-count overflow names
 `PrefabExpansionCount` with `Limit = long.MaxValue` and leaves the unrepresentable `ActualCount` null.
-The generation-context throwing adapter still waits for numeric aggregate producer closure.
+The generation-context throwing adapter forwards its concrete finding and every ordered validator finding.
 Editor transaction admission keeps its existing contract
 until its own guards are converted.
 
@@ -2231,8 +2231,15 @@ Whole-document load/save, tiled manifest/load/save, native-bound validation and 
 forward its first finding and retain every finding. Numeric reservation and allocation do the same for
 numeric findings. A supplied reservation distinguishes nonpositive IDs (`ValueOutsideRange`, with
 `NumericId`, `ActualInteger` and minimum 1) from duplicates (`IdentityDuplicate` with `NumericId`).
-No reason is inferred from aggregate prose. Effective prefab expansion and foliage generation-context
-adapters still wait for the prefab numeric aggregate adapter.
+No reason is inferred from aggregate prose. Effective prefab expansion forwards the first numeric
+finding and the complete ordered snapshot. Foliage generation-context and finalization adapters retain
+the first concrete `Finding`, the ordered `Findings` snapshot and the original caught refusal when present.
+The result owns its read-only findings. Stale or mismatched effective resources use
+`AcquisitionSnapshotChanged` with `DocumentId`, `FieldPath` and known expected/actual snapshot values.
+Prefab codec limits retain `Operation` `MapPrefabCapacity`, so foliage classification preserves their
+capacity projection, including a missing collection rejected by those compound guards. Numeric count
+overflow keeps its prior projection. A typed missing-reference identifier containing `limit exceeded`
+or `overflow` stays `Invalid` instead of selecting a capacity category from its spelling.
 Consumer-built message-only refusals from supplied prefab collections keep their legacy foliage
 preflight status and have no typed finding.
 

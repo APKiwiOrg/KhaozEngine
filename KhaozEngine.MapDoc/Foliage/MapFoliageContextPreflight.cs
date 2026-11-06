@@ -23,6 +23,7 @@ public sealed record MapFoliageContextMeasure(MapFoliageStatus Status, MapFoliag
 {
     /// <summary>The concrete rule behind a refused preflight. Complete has no finding.</summary>
     public MapDocumentFinding? Finding { get; init; }
+    internal MapDocumentException? Cause { get; init; }
 }
 
 /// <summary>Counts a document's context demand from metadata alone, refusing before expansion, cloning or staging.
@@ -83,7 +84,7 @@ internal static class MapFoliageContextPreflight
                 error.Reason is null && (error.Message.Contains("limit exceeded", StringComparison.Ordinal) ||
                     error.Message.Contains("overflow", StringComparison.Ordinal));
             return Refusal(capacity ? MapFoliageStatus.CapacityExceeded : MapFoliageStatus.Invalid,
-                MapDocumentFinding.FromException(error));
+                MapDocumentFinding.FromException(error)) with { Cause = error };
         }
         catch (KeyNotFoundException) { return Refusal(MapFoliageStatus.Invalid, new(MapDocumentRefusal.ReferenceMissing,
             "foliage context references an unavailable asset") { DocumentId = document.Id, SubjectKind = "foliage context asset" }); }

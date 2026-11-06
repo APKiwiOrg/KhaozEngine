@@ -35,8 +35,10 @@ public static class MapPrefabResolver
         if (document.Tiles is { IsPartial: true }) throw new MapDocumentException(MapDocumentRefusal.CompleteDocumentRequired, "Effective expansion requires a complete document.")
             { DocumentId = document.Id, Operation = "Expand" };
         var numericErrors = new List<string>();
-        _ = MapNativeValidation.ValidateNumericIds(document, numericErrors);
-        if (numericErrors.Count != 0) throw new MapDocumentException(string.Join("\n", numericErrors));
+        var numericFindings = new List<MapDocumentFinding>();
+        _ = MapNativeValidation.ValidateNumericIds(document, numericErrors, findings: numericFindings);
+        if (numericErrors.Count != 0) throw MapDocumentRefusalFactory.FromFinding(numericFindings[0],
+            string.Join("\n", numericErrors), findings: numericFindings);
         // Expansion never reads foliage, so the authored copy shares it rather than encoding the density payload.
         var authored = MapDocumentFile.CopyWithSharedFoliage(document);
         var transforms = new Dictionary<string, MapEffectiveTransform>(StringComparer.Ordinal);

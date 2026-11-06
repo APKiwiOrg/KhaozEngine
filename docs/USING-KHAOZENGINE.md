@@ -12404,7 +12404,7 @@ Foliage context preflight carries its concrete `Finding` on `MapFoliageContextMe
 capture results. Its five context limits use `WorkCapacityExceeded`, `FoliageStatus`, `Budget`, `ActualCount`,
 inclusive `Limit` and `DocumentId`, with `ActualByteCount` for source bytes. Partial residency uses
 `CompleteDocumentRequired`. Edit preflight forwards the finding and retains its released text.
-The generation-context throwing adapter waits for numeric aggregate producer closure.
+The generation-context throwing adapter forwards its concrete finding and every ordered validator finding.
 Missing root or asset child collections use `SchemaValueRequired`. Their capacity refusals use `WorkCapacityExceeded`
 with the collection `Budget`, captured `ActualCount`, inclusive `Limit`, `FieldPath` and known document or asset ID.
 Complete expansion over a partial document uses `CompleteDocumentRequired`, `DocumentId` and `Operation = "Expand"`.
@@ -12846,6 +12846,13 @@ Resolver admission keeps the exact `MapDocumentException` catch contract. Its `R
 message-only constructor leaves `Reason` null. `SourceName` carries available source context.
 Supplied prefab collections may throw such refusals. Foliage preflight retains their legacy status
 without inventing a typed finding.
+Effective prefab expansion forwards every ordered numeric finding, using the first finding's reason.
+Foliage capture exposes the concrete `Finding` and an owned read-only `Findings` snapshot when a
+validator supplied several. Finalization forwards the same rule, identifiers and snapshot, keeping a
+caught refusal as its cause. Mismatched effective resources use `AcquisitionSnapshotChanged` with
+`DocumentId`, the failed `FieldPath` and known expected/actual snapshot values. Prefab codec admission
+retains `Operation` `MapPrefabCapacity` for the existing capacity projection. Typed missing-reference
+identifiers containing classifier keywords retain their rule's `Invalid` category.
 Missing legacy support callbacks use `SupportLegacyHeightRequired`, with `ResolverVersion` and
 `FieldPath` `legacySupportHeight`. A nonfinite resolved support height uses `ValueNonfinite` with
 `PlacementId`, leaving `ActualNumber` null. A requested placement absent from the resolution scope uses
@@ -13149,8 +13156,8 @@ existing string API. Whole-document and tiled load/save, native-bound validation
 adapters forward the first finding as `Reason` and retain the full `Findings` snapshot. Numeric
 reservation and allocation forward their numeric findings the same way. Supplied nonpositive numeric
 IDs use `ValueOutsideRange` with `NumericId`, actual value and minimum 1. Duplicate supplied IDs use
-`IdentityDuplicate`. Effective prefab expansion and foliage generation context still wait for the
-prefab numeric aggregate adapter.
+`IdentityDuplicate`. Effective prefab expansion and foliage generation context forward the first
+numeric finding and the complete ordered snapshot.
 
 Tile ownership failures use `DocumentTileOwnershipMismatch`, retaining source document `Tile`, item
 identity and path, checked positions or `SculptTile`, `SourceName` and `Path`. The separate `SculptTile`

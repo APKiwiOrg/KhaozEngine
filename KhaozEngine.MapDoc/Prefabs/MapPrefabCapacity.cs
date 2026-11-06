@@ -8,7 +8,7 @@ internal static class MapPrefabCapacity
         string? documentId = null, string? assetId = null) =>
         new(count is null ? MapDocumentRefusal.SchemaValueRequired : MapDocumentRefusal.WorkCapacityExceeded, message)
         {
-            FieldPath = assetId is null ? "$.prefabs." + field : "$." + field,
+            FieldPath = assetId is null ? "$.prefabs." + field : "$." + field, Operation = nameof(MapPrefabCapacity),
             Budget = field, ActualCount = count, Limit = count is null ? null : limit, DocumentId = documentId, AssetId = assetId,
         };
 
@@ -20,7 +20,7 @@ internal static class MapPrefabCapacity
             : records > limits.MaxRecords ? ("Records", records, limits.MaxRecords)
             : ("GeometryElements", geometry, limits.MaxGeometryElements);
         return new(MapDocumentRefusal.WorkCapacityExceeded, "Prefab aggregate collection limit exceeded.")
-        { Budget = "Aggregate." + budget, ActualCount = count, Limit = limit, FieldPath = path };
+        { Budget = "Aggregate." + budget, ActualCount = count, Limit = limit, FieldPath = path, Operation = nameof(MapPrefabCapacity) };
     }
 
     internal static void RequirePayloadBytes(long byteCount, string payloadKind, string? resourceId = null,
@@ -31,7 +31,7 @@ internal static class MapPrefabCapacity
             throw new MapDocumentException(MapDocumentRefusal.WorkCapacityExceeded, payloadKind + " payload byte limit exceeded.")
             {
                 Budget = "PayloadBytes", ActualByteCount = byteCount, Limit = limit,
-                FieldPath = "ByteLength", ResourceId = resourceId,
+                FieldPath = "ByteLength", ResourceId = resourceId, Operation = nameof(MapPrefabCapacity),
             };
     }
 
@@ -39,7 +39,7 @@ internal static class MapPrefabCapacity
     {
         if (count > limits.MaxGeometryElements)
             throw new MapDocumentException(MapDocumentRefusal.WorkCapacityExceeded, "Prefab geometry limit exceeded.")
-            { Budget = "GeometryElements", ActualCount = count, Limit = limits.MaxGeometryElements, FieldPath = path };
+            { Budget = "GeometryElements", ActualCount = count, Limit = limits.MaxGeometryElements, FieldPath = path, Operation = nameof(MapPrefabCapacity) };
     }
 
     internal static void RequireCollection(long count, string name, string path, bool aggregate, MapPrefabExpansionLimits limits)
@@ -58,6 +58,6 @@ internal static class MapPrefabCapacity
         if (count > limit)
             throw new MapDocumentException(MapDocumentRefusal.WorkCapacityExceeded,
                 "Prefab " + (aggregate ? "aggregate " : "") + name + " limit exceeded.")
-            { Budget = aggregate ? "Aggregate." + name : name, ActualCount = count, Limit = limit, FieldPath = path };
+            { Budget = aggregate ? "Aggregate." + name : name, ActualCount = count, Limit = limit, FieldPath = path, Operation = nameof(MapPrefabCapacity) };
     }
 }

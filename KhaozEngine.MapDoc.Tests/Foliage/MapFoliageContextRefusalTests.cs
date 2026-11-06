@@ -15,18 +15,24 @@ public sealed class MapFoliageContextRefusalTests
     {
         // W6-C1 review regression: public collections can throw a consumer-built message-only refusal.
         var fixture = FoliageFixtures.Create();
-        fixture.Document.Prefabs = new(1, 1, new UnreadableInstances(message), []);
+        var sourceError = new MapDocumentException(message);
+        fixture.Document.Prefabs = new(1, 1, new UnreadableInstances(sourceError), []);
         var result = MapFoliageGenerationContext.Capture(fixture.Document, fixture.Assets);
         Assert.Equal(expected, result.Status);
         Assert.Null(result.Context);
         Assert.Null(result.Finding);
+        var error = Assert.Throws<MapDocumentException>(() =>
+            KhaozEngine.MapDoc.Editing.MapDocumentEditFinalizer.Preflight(fixture.Document, fixture.Assets));
+        Assert.Null(error.Reason);
+        Assert.Same(sourceError, error.InnerException);
         fixture.Document.Prefabs = null;
+        KhaozEngine.MapDoc.Editing.MapDocumentEditFinalizer.Preflight(fixture.Document, fixture.Assets);
         Assert.Equal(MapFoliageStatus.Complete, MapFoliageGenerationContext.Capture(fixture.Document, fixture.Assets).Status);
     }
 
-    sealed class UnreadableInstances(string message) : System.Collections.Generic.IReadOnlyList<MapPrefabInstance>
+    sealed class UnreadableInstances(MapDocumentException error) : System.Collections.Generic.IReadOnlyList<MapPrefabInstance>
     {
-        public int Count => throw new MapDocumentException(message);
+        public int Count => throw error;
         public MapPrefabInstance this[int index] => throw new System.ArgumentOutOfRangeException(nameof(index));
         public System.Collections.Generic.IEnumerator<MapPrefabInstance> GetEnumerator() =>
             System.Linq.Enumerable.Empty<MapPrefabInstance>().GetEnumerator();

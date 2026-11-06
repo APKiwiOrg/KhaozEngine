@@ -17,6 +17,12 @@ Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 - Foliage JSON refusals throw `MapFoliageJsonException`, which derives from `JsonException`, so existing catches work.
 - `MapAssetClosure` reports an `IMapAssetSource` callback that throws `MalformedDataException` as
   `AssetPayloadUnreadable`, as it reports an I/O failure, and keeps the callback's exception as the inner exception.
+- A buoyant Contact body leaving water up a rising bank now resolves bank support and bed clearance before
+  handing off to air, so it is never published unsupported inside the drawn bed. A refused support query holds
+  the tick, as on land. Surface jumps, water hysteresis and the existing bank rules are unchanged (#1708).
+- Terrain descent capture accepts a ray that lands on a vertex shared by a fan of valid ground triangles. It
+  certifies one connected component at the actual hit point and takes the analytic source's canonical face.
+  Duplicate, overlapping, disconnected and unresolved faces still refuse (#1709).
 
 ## 23.1.0
 

@@ -29,6 +29,26 @@ public sealed class SurfaceStorageIndexRefusalTests
         Assert.Equal(overlap ? 2 : 1, control.Directory.Count);
     }
 
+    [Theory]
+    [InlineData(false, 1, 2)]
+    [InlineData(true, 2, 0)]
+    public void DirectoryOverlap_ReportsOriginalArrayPositionsAfterSorting(bool reordered, int index, int otherIndex)
+    {
+        MapSurfaceRef ground = SurfaceStorageFixtures.FlatPatches(1).Surfaces.Refs.Single();
+        var a = new MapDirectoryPageRef("a", new(0, 0, 1, 1), Digest);
+        var b0 = new MapDirectoryPageRef("b", new(0, 0, 2, 1), Digest);
+        var b1 = new MapDirectoryPageRef("b", new(1, 0, 3, 1), OtherDigest);
+        MapDirectoryPageRef[] pages = reordered ? [b1, a, b0] : [a, b0, b1];
+        MapSurfaceRef[] refs = [ground with { Id = "a" }, ground with { Id = "b" }];
+        var error = Assert.Throws<MapDocumentException>(() => new MapSurfaceStorageIndex(pages, refs));
+        Assert.Equal(MapDocumentRefusal.StorageDirectoryPagesOverlap, error.Reason);
+        Assert.Equal("b", error.SurfaceId);
+        Assert.Equal("surfaceStorage", error.FieldPath);
+        Assert.Equal((index, otherIndex), (error.Index, error.OtherIndex));
+        pages[otherIndex] = b1 with { Covers = new(2, 0, 3, 1) };
+        Assert.Equal(3, new MapSurfaceStorageIndex(pages, refs).Directory.Count);
+    }
+
     [Fact]
     public void IndexAdmission_IdentifiesADuplicatePatchAcrossPages()
     {

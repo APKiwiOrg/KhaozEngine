@@ -17,8 +17,10 @@ public sealed class MapSurfaceStorageIndex
 
     internal MapSurfaceStorageIndex(IEnumerable<MapDirectoryPageRef> directory, IEnumerable<MapSurfaceRef> refs)
     {
-        Directory = Array.AsReadOnly(directory.OrderBy(d => d.SurfaceId, StringComparer.Ordinal)
-            .ThenBy(d => d.Covers.MinZ).ThenBy(d => d.Covers.MinX).ToArray());
+        var indexed = directory.Select((page, index) => (Page: page, Index: index))
+            .OrderBy(d => d.Page.SurfaceId, StringComparer.Ordinal)
+            .ThenBy(d => d.Page.Covers.MinZ).ThenBy(d => d.Page.Covers.MinX).ToArray();
+        Directory = Array.AsReadOnly(indexed.Select(d => d.Page).ToArray());
         OriginalRefs = CopyRefs(refs);
         _lookup = new MapSurfacePageLookup(Directory);
         foreach (MapDirectoryPageRef page in Directory)
@@ -27,13 +29,13 @@ public sealed class MapSurfaceStorageIndex
             if (!OriginalRefs.Any(s => s.Id == page.SurfaceId)) throw new MapDocumentException(MapDocumentRefusal.ReferenceMissing, "unknown storage surface")
                 { SurfaceId = page.SurfaceId, SubjectKind = "surface", ExpectedHash = page.Sha256, FieldPath = "surfaceStorage" };
         }
-        foreach (var surface in Directory.GroupBy(d => d.SurfaceId))
+        foreach (var surface in indexed.GroupBy(d => d.Page.SurfaceId))
         {
             var pages = surface.ToArray();
             for (int i = 0; i < pages.Length; i++)
                 for (int j = i + 1; j < pages.Length; j++)
-                    if (pages[i].Covers.Overlaps(pages[j].Covers)) throw new MapDocumentException(MapDocumentRefusal.StorageDirectoryPagesOverlap, "overlapping directory pages")
-                        { SurfaceId = surface.Key, FieldPath = "surfaceStorage", Index = i, OtherIndex = j };
+                    if (pages[i].Page.Covers.Overlaps(pages[j].Page.Covers)) throw new MapDocumentException(MapDocumentRefusal.StorageDirectoryPagesOverlap, "overlapping directory pages")
+                        { SurfaceId = surface.Key, FieldPath = "surfaceStorage", Index = pages[i].Index, OtherIndex = pages[j].Index };
         }
     }
     public IReadOnlyList<MapDirectoryPageRef> Directory { get; }

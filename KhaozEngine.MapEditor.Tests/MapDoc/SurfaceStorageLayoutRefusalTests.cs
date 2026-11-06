@@ -43,10 +43,13 @@ public sealed class SurfaceStorageLayoutRefusalTests
             Assert.Equal(MapSurfaceStorageLayout.MaxPageBytes, error.Limit);
         }
         Assert.Equal(saved, AssertFixtures.Files(dir));
-        int acceptedLength = length == 0 ? 1 : MapSurfaceStorageLayout.MaxPageBytes;
-        byte[] control = Encoding.UTF8.GetBytes("0" + new string(' ', acceptedLength - 1));
-        MapSurfaceStorageLayout.Write(dir, 'i', control, new());
-        Assert.Equal(control, MapSurfaceStorageLayout.Read(dir, 'i', MapSurfaceStorageLayout.Digest(control)));
+        int[] acceptedLengths = length == 0 ? [1] : [MapSurfaceStorageLayout.MaxPageBytes, MapSurfaceStorageLayout.MaxPageBytes - 1];
+        foreach (int acceptedLength in acceptedLengths)
+        {
+            byte[] control = Encoding.UTF8.GetBytes("0" + new string(' ', acceptedLength - 1));
+            MapSurfaceStorageLayout.Write(dir, 'i', control, new());
+            Assert.Equal(control, MapSurfaceStorageLayout.Read(dir, 'i', MapSurfaceStorageLayout.Digest(control)));
+        }
     });
 
     [Theory]

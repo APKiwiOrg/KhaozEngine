@@ -1039,6 +1039,13 @@ and available identifiers on its outer `MapDocumentException`.
 | `FoliageChunkUnavailable` | Reading advertised nonresident density | `LayerId`, `FoliageChunk` |
 | `FoliageSectionIncomplete` | A section that is not fully buffered | `FieldPath`, with `ActualByteCount` unset because the complete size cannot be measured |
 | `FoliageSectionByteLimitExceeded` | A complete section beyond its UTF-8 byte ceiling | `FieldPath`, `ActualByteCount`, `Limit` |
+| `SchemaPayloadVersionUnsupported` | A layer payload other than version 1 | `LayerId`, `FieldPath`, `ActualVersion`, `SupportedVersions` |
+| `ValueNonfinite` | A nonfinite layer origin, cell size, spacing, scale endpoint or root offset | `LayerId`, `FieldPath`, `ActualNumber` |
+| `ValueOutsideRange` | A nonpositive cell size, spacing or minimum scale, or an extent outside its domain | `LayerId`, `FieldPath`, numeric value and limits |
+| `BoundsInvalid` | A finite maximum scale below the positive minimum | `LayerId`, `FieldPath`, `ActualNumber`, `MinimumNumber`, `MaximumNumber` |
+| `SchemaEnumUnsupported` | Density rows that do not advance positive world Z | `LayerId`, `FieldPath`, `EnumType`, `ActualInteger` |
+| `ReferenceMissing` | A missing bound material resource, clearance asset or support surface | `LayerId`, `FieldPath`, `Index` where present, resource, asset or surface identity |
+| `ReferenceKindMismatch` | A bound material resource or declared support surface of the wrong kind | `LayerId`, `FieldPath`, `Index` where present, identity and actual kind |
 
 The [schema refusal table](#loud-failures) describes the codec's shared reasons. Foliage `FieldPath` starts at
 `$` for the section and retains real member names and array positions. `LayerId` is available only after the ID has
@@ -1075,6 +1082,11 @@ Region-pack admission distinguishes invalid key coordinates (`ValueOutsideRange`
 A raw density digest mismatch retains `ExpectedHash` and `ActualHash`. A malformed digest name retains
 `ActualHash`. Set-level version, layer identity, layer-count and density-count findings also retain their typed
 fields alongside the string API. The public finding snapshot waits for the remaining layer rules.
+Layer scalar findings select the first failing branch and field without changing their prose projection.
+Bound material findings retain the material ID as `ActualInteger`, the `ResourceId`, `ExpectedResourceKind`
+and available `ActualResourceKind`. Clearance asset findings retain the rule `EntityId` and `AssetId`.
+Bound support findings retain `SurfaceId`, including owner supports, exception masks and compatibility
+ordinals. A wrong declared surface role also carries `EnumType` and `ActualInteger`.
 
 The closed codec checks counts, sizes and arithmetic before allocation. Monolithic storage embeds density.
 Tiled storage writes one verified content-addressed pack per (layer, storage region), with logical chunk digests

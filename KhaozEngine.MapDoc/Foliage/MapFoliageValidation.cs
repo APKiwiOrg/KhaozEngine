@@ -47,7 +47,7 @@ public static class MapFoliageValidation
             { LayerId = layer.Id, FieldPath = $"Layers[{index}].Id", Index = index });
             else if (!ids.Add(layer.Id)) Add(new(MapDocumentRefusal.IdentityDuplicate, $"foliage: duplicate layer id '{layer.Id}'.")
             { LayerId = layer.Id, FieldPath = $"Layers[{index}].Id", Index = index, SubjectKind = "foliage layer" });
-            ValidateLayer(layer, $"foliage layer '{layer.Id}'", errors);
+            ValidateLayer(layer, $"foliage layer '{layer.Id}'", errors, findings);
             index++;
         }
         return errors;
@@ -94,19 +94,46 @@ public static class MapFoliageValidation
                     findings?.Add(finding);
                 }
             }
-            foreach (MapFoliageMaterial material in layer.Materials)
+            for (int i = 0; i < layer.Materials.Count; i++)
+            {
+                MapFoliageMaterial material = layer.Materials[i];
                 if (!assets.TryGetResource(material.ResourceId, out MapResolvedResource? resource) || resource!.Kind != MapResourceKind.Material)
-                    errors.Add($"{label}: material {material.Id} resource '{material.ResourceId}' is not a Material resource.");
-            foreach (MapFoliageClearanceRule rule in layer.ClearanceRules)
-                if (!assetIds.Contains(rule.AssetId)) errors.Add($"{label} rule '{rule.Id}': asset '{rule.AssetId}' is not in the verified closure.");
+                    AddFinding(new(resource is null ? MapDocumentRefusal.ReferenceMissing : MapDocumentRefusal.ReferenceKindMismatch,
+                        $"{label}: material {material.Id} resource '{material.ResourceId}' is not a Material resource.")
+                    { LayerId = layer.Id, FieldPath = $"Materials[{i}].ResourceId", Index = i, ResourceId = material.ResourceId,
+                        ActualInteger = material.Id, ExpectedResourceKind = MapResourceKind.Material, ActualResourceKind = resource?.Kind }, errors, findings);
+            }
+            for (int i = 0; i < layer.ClearanceRules.Count; i++)
+            {
+                MapFoliageClearanceRule rule = layer.ClearanceRules[i];
+                if (!assetIds.Contains(rule.AssetId)) AddFinding(new(MapDocumentRefusal.ReferenceMissing,
+                    $"{label} rule '{rule.Id}': asset '{rule.AssetId}' is not in the verified closure.")
+                { LayerId = layer.Id, FieldPath = $"ClearanceRules[{i}].AssetId", Index = i, AssetId = rule.AssetId, EntityId = rule.Id }, errors, findings);
+            }
             if (layer.Support is { Kind: MapSupportBindingKind.Surface, SurfaceId: { Length: > 0 } support })
-                RequireSupportSurface(support, declared, bound, label + " support", errors);
-            foreach (MapSupportBinding binding in layer.OwnerSupports.Select(o => o.Support).Concat(layer.ExceptionMasks.Select(m => m.Support)))
+                RequireSupportSurface(support, declared, bound, label + " support", errors, findings, layer.Id, "Support.SurfaceId");
+            for (int i = 0; i < layer.OwnerSupports.Count; i++)
+            {
+                MapSupportBinding binding = layer.OwnerSupports[i].Support;
                 if (binding is { Kind: MapSupportBindingKind.Surface, SurfaceId: { Length: > 0 } target })
-                    RequireSupportSurface(target, declared, bound, label + " dependent support", errors);
+                    RequireSupportSurface(target, declared, bound, label + " dependent support", errors, findings,
+                        layer.Id, $"OwnerSupports[{i}].Support.SurfaceId", i);
+            }
+            for (int i = 0; i < layer.ExceptionMasks.Count; i++)
+            {
+                MapSupportBinding binding = layer.ExceptionMasks[i].Support;
+                if (binding is { Kind: MapSupportBindingKind.Surface, SurfaceId: { Length: > 0 } target })
+                    RequireSupportSurface(target, declared, bound, label + " dependent support", errors, findings,
+                        layer.Id, $"ExceptionMasks[{i}].Support.SurfaceId", i);
+            }
             // Empty IDs are already reported by the set rules.
-            foreach (MapFoliageCompatibilityOrdinal row in layer.CompatibilityOrdinals.Where(r => !string.IsNullOrEmpty(r.SurfaceId)))
-                RequireSupportSurface(row.SurfaceId, declared, bound, label + " compatibility ordinal", errors);
+            for (int i = 0; i < layer.CompatibilityOrdinals.Count; i++)
+            {
+                MapFoliageCompatibilityOrdinal row = layer.CompatibilityOrdinals[i];
+                if (!string.IsNullOrEmpty(row.SurfaceId))
+                    RequireSupportSurface(row.SurfaceId, declared, bound, label + " compatibility ordinal", errors, findings,
+                        layer.Id, $"CompatibilityOrdinals[{i}].SurfaceId", i);
+            }
         }
         return errors;
     }
@@ -130,28 +157,55 @@ public static class MapFoliageValidation
     }
 
     static void RequireSupportSurface(string id, Dictionary<string, MapSurfaceRole> declared, HashSet<string> bound, string label,
-        List<string> errors)
+        List<string> errors, List<MapDocumentFinding>? findings, string layerId, string field, int? index = null)
     {
         if (declared.TryGetValue(id, out MapSurfaceRole role))
         {
-            if (role != MapSurfaceRole.SupportFloor) errors.Add($"{label}: surface '{id}' is not a support floor.");
+            if (role != MapSurfaceRole.SupportFloor) AddFinding(new(MapDocumentRefusal.ReferenceKindMismatch,
+                $"{label}: surface '{id}' is not a support floor.")
+            { LayerId = layerId, FieldPath = field, Index = index, SurfaceId = id, EnumType = typeof(MapSurfaceRole), ActualInteger = (long)role }, errors, findings);
         }
-        else if (!bound.Contains(id)) errors.Add($"{label}: surface '{id}' is not a declared or bound surface.");
+        else if (!bound.Contains(id)) AddFinding(new(MapDocumentRefusal.ReferenceMissing, $"{label}: surface '{id}' is not a declared or bound surface.")
+        { LayerId = layerId, FieldPath = field, Index = index, SurfaceId = id }, errors, findings);
     }
 
-    static void ValidateLayer(MapFoliageLayer layer, string label, List<string> errors)
+    static void AddFinding(MapDocumentFinding finding, List<string> errors, List<MapDocumentFinding>? findings)
     {
-        if (layer.PayloadVersion != 1) errors.Add(label + ": unsupported payloadVersion, only payload 1 is supported.");
+        errors.Add(finding.Message);
+        findings?.Add(finding);
+    }
+
+    static void ValidateLayer(MapFoliageLayer layer, string label, List<string> errors, List<MapDocumentFinding>? findings)
+    {
+        if (layer.PayloadVersion != 1) Add(new(MapDocumentRefusal.SchemaPayloadVersionUnsupported,
+            label + ": unsupported payloadVersion, only payload 1 is supported.")
+        { FieldPath = "PayloadVersion", ActualVersion = layer.PayloadVersion, SupportedVersions = [1] });
         Binding(layer.Support, label + " support", errors);
-        if (!float.IsFinite(layer.OriginX) || !float.IsFinite(layer.OriginZ)) errors.Add(label + ": origin must be finite.");
-        if (!Positive(layer.CellSize)) errors.Add(label + ": cellSize must be finite and positive.");
+        if (!float.IsFinite(layer.OriginX) || !float.IsFinite(layer.OriginZ)) Add(new(MapDocumentRefusal.ValueNonfinite,
+            label + ": origin must be finite.")
+        { FieldPath = !float.IsFinite(layer.OriginX) ? "OriginX" : "OriginZ", ActualNumber = !float.IsFinite(layer.OriginX) ? layer.OriginX : layer.OriginZ });
+        if (!Positive(layer.CellSize)) Add(new(!float.IsFinite(layer.CellSize) ? MapDocumentRefusal.ValueNonfinite : MapDocumentRefusal.ValueOutsideRange,
+            label + ": cellSize must be finite and positive.")
+        { FieldPath = "CellSize", ActualNumber = layer.CellSize, MinimumNumber = 0 });
         if (layer.Width is < 1 or > MapFoliagePayloadLimits.MaxExtent || layer.Depth is < 1 or > MapFoliagePayloadLimits.MaxExtent)
-            errors.Add($"{label}: width and depth must be from 1 to {MapFoliagePayloadLimits.MaxExtent}.");
-        if (layer.RowDirection != MapRowDirection.PositiveZ) errors.Add(label + ": density rows must advance positive world Z.");
-        if (!Positive(layer.Spacing)) errors.Add(label + ": spacing must be finite and positive.");
+            Add(new(MapDocumentRefusal.ValueOutsideRange, $"{label}: width and depth must be from 1 to {MapFoliagePayloadLimits.MaxExtent}.")
+            { FieldPath = layer.Width is < 1 or > MapFoliagePayloadLimits.MaxExtent ? "Width" : "Depth",
+                ActualInteger = layer.Width is < 1 or > MapFoliagePayloadLimits.MaxExtent ? layer.Width : layer.Depth,
+                MinimumInteger = 1, MaximumInteger = MapFoliagePayloadLimits.MaxExtent });
+        if (layer.RowDirection != MapRowDirection.PositiveZ) Add(new(MapDocumentRefusal.SchemaEnumUnsupported,
+            label + ": density rows must advance positive world Z.")
+        { FieldPath = "RowDirection", EnumType = typeof(MapRowDirection), ActualInteger = (long)layer.RowDirection });
+        if (!Positive(layer.Spacing)) Add(new(!float.IsFinite(layer.Spacing) ? MapDocumentRefusal.ValueNonfinite : MapDocumentRefusal.ValueOutsideRange,
+            label + ": spacing must be finite and positive.")
+        { FieldPath = "Spacing", ActualNumber = layer.Spacing, MinimumNumber = 0 });
         if (!Positive(layer.ScaleMin) || !float.IsFinite(layer.ScaleMax) || layer.ScaleMax < layer.ScaleMin)
-            errors.Add(label + ": scale range must be finite, positive and ordered.");
-        if (!float.IsFinite(layer.RootOffset)) errors.Add(label + ": rootOffset must be finite.");
+            Add(new(!float.IsFinite(layer.ScaleMin) ? MapDocumentRefusal.ValueNonfinite : layer.ScaleMin <= 0 ? MapDocumentRefusal.ValueOutsideRange :
+                !float.IsFinite(layer.ScaleMax) ? MapDocumentRefusal.ValueNonfinite : MapDocumentRefusal.BoundsInvalid,
+                label + ": scale range must be finite, positive and ordered.")
+            { FieldPath = !Positive(layer.ScaleMin) ? "ScaleMin" : "ScaleMax", ActualNumber = !Positive(layer.ScaleMin) ? layer.ScaleMin : layer.ScaleMax,
+                MinimumNumber = !Positive(layer.ScaleMin) ? 0 : layer.ScaleMin, MaximumNumber = layer.ScaleMax });
+        if (!float.IsFinite(layer.RootOffset)) Add(new(MapDocumentRefusal.ValueNonfinite, label + ": rootOffset must be finite.")
+        { FieldPath = "RootOffset", ActualNumber = layer.RootOffset });
         if (!float.IsFinite(layer.DoorClearance) || layer.DoorClearance < 0) errors.Add(label + ": doorClearance must be finite and nonnegative.");
         if (!float.IsFinite(layer.EdgeFade) || layer.EdgeFade < 0) errors.Add(label + ": edgeFade must be finite and nonnegative.");
         if (layer.Policy.Id != LegacyTilePolicy || layer.Policy.Version != LegacyTilePolicyVersion)
@@ -162,6 +216,8 @@ public static class MapFoliageValidation
         Ordinals(layer, label, errors);
         Clearance(layer, label, errors);
         Chunks(layer, label, errors);
+
+        void Add(MapDocumentFinding finding) => AddFinding(finding with { LayerId = layer.Id }, errors, findings);
     }
 
     static void Models(MapFoliageLayer layer, string label, List<string> errors)

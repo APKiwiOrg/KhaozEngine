@@ -12244,6 +12244,12 @@ coordinates, ordering, duplicate identities, malformed headers, lengths, capacit
 `FoliageChunk`, record `Index`, measured byte counts, limits and expected/actual hashes where the guard knows them.
 Set admission retains typed version, layer identity, count and model-asset findings beside its string API while
 the remaining layer rules are converted.
+Layer scalar findings retain `LayerId`, the first failing `FieldPath` and the actual numeric value or
+version. Nonfinite values, finite domain failures and reversed scale bounds have distinct reasons.
+Bound resource checks distinguish `ReferenceMissing` from `ReferenceKindMismatch`. Material findings
+retain `ResourceId`, the material ID in `ActualInteger`, `ExpectedResourceKind` and available
+`ActualResourceKind`. Clearance findings identify the rule and asset. Support findings identify the
+surface and its path through the layer, owner support, exception mask or compatibility ordinal.
 
 Motion padding is explicit caller policy in metres. Transform all eight source-unit-adjusted mesh corners by each
 sample's exact CPU matrix, then expand XYZ. Preserve CPU selection, live blade/shrub profiles and shadow flags. Use the

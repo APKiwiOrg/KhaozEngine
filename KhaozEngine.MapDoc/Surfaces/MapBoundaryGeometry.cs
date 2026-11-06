@@ -86,6 +86,7 @@ public static class MapBoundaryGeometry
 /// <summary>Source vertices use the compiler's corner, legacy midpoint and subdivision operations.</summary>
 internal sealed class MapBoundarySurface
 {
+    readonly MapPatchKey _patch;
     internal MapSurfaceRef Surface { get; }
     internal Dictionary<MapLatticeAddress, MapExactPoint> Vertices { get; } = new();
 
@@ -97,6 +98,7 @@ internal sealed class MapBoundarySurface
         MapSurfaceRef surface = validated.Surface;
         MapSurfacePatch patch = validated.Patch;
         Surface = surface;
+        _patch = patch.Key;
         var builder = new MapSurfaceVertexBuilder(surface, patch, MapSurfaceCompiler.Anchor(surface, patch));
         var subdivisions = new int[patch.Cells.Length * 4];
         foreach (MapEdgeSubdivision edge in patch.EdgeSubdivisions)
@@ -125,8 +127,8 @@ internal sealed class MapBoundarySurface
 
     void Add(MapSurfaceVertex vertex)
     {
-        if (Vertices.TryGetValue(vertex.Address, out MapExactPoint point) && point != vertex.Exact)
-            throw new MapDocumentException("inconsistent exact height for shared surface vertex");
+        if (Vertices.TryGetValue(vertex.Address, out MapExactPoint point))
+            MapSurfaceGeometryAdmission.RequireSharedVertexHeight(point, vertex, _patch);
         Vertices[vertex.Address] = vertex.Exact;
     }
 }

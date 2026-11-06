@@ -151,6 +151,7 @@ public sealed class MapDocumentExceptionTests
         if (property.Name == nameof(MapDocumentException.Denominator)) return 200;
         if (property.Name == nameof(MapDocumentException.CellX)) return 64;
         if (property.Name == nameof(MapDocumentException.CellZ)) return -1;
+        if (property.Name == nameof(MapDocumentException.SlotCell)) return 65;
         if (property.Name == nameof(MapDocumentException.Edge)) return MapCellEdge.West;
         if (property.Name == nameof(MapDocumentException.PreviousInteger)) return 17L;
         if (property.Name == nameof(MapDocumentException.ActualText)) return "future";
@@ -173,6 +174,7 @@ public sealed class MapDocumentExceptionTests
             nameof(MapDocumentException.PositionZ) => 0.25d,
             _ => 4000.5 + index,
         };
+        if (type == typeof(MapLatticeAddress)) return MapLatticeAddress.Create(1, -2, 3);
         if (type == typeof(MapFoliageChunkKey)) return new MapFoliageChunkKey(-3, index);
         if (type == typeof(IReadOnlyList<int>)) return new[] { 1, 5 };
         if (type == typeof(IReadOnlyList<string>)) return new[] { "a", "b" };

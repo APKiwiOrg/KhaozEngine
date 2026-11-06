@@ -28,13 +28,13 @@ public static class MapFrameLocal
     public static MapFrameMesh ToFrame(MapCompiledPatch patch, WorldFrame frame)
     {
         ArgumentNullException.ThrowIfNull(patch);
-        return ToFrame(patch.Anchor, patch.Offsets, patch.Faces, frame);
+        return ToFrame(patch.Anchor, patch.Offsets, patch.Faces, frame, patch.Key);
     }
 
     public static MapFrameMesh ToFrame(MapCompiledStrip strip, WorldFrame frame)
     {
         ArgumentNullException.ThrowIfNull(strip);
-        return ToFrame(strip.Anchor, strip.Offsets, strip.Faces, frame);
+        return ToFrame(strip.Anchor, strip.Offsets, strip.Faces, frame, null);
     }
 
     /// <summary>Composes exact prefab vertices in double before the final frame-local float rounding.</summary>
@@ -49,7 +49,7 @@ public static class MapFrameLocal
     }
 
     static MapFrameMesh ToFrame(MapSubmissionAnchor anchor, IReadOnlyList<Vector3> offsets,
-        IReadOnlyList<MapCompiledFace> faces, WorldFrame frame)
+        IReadOnlyList<MapCompiledFace> faces, WorldFrame frame, MapPatchKey? patch)
     {
         long dx, dz;
         try
@@ -59,7 +59,8 @@ public static class MapFrameLocal
         }
         catch (OverflowException error)
         {
-            throw new MapDocumentException("compiled geometry exceeds frame radius", error);
+            throw new MapDocumentException(MapDocumentRefusal.FrameRadiusExceeded, "compiled geometry exceeds frame radius", error)
+            { Patch = patch, Limit = (long)WorldFrame.MaxLocalRadius, Operation = nameof(ToFrame) };
         }
 
         float x = dx, y = anchor.Y, z = dz;
@@ -68,20 +69,27 @@ public static class MapFrameLocal
         {
             Vector3 offset = offsets[i];
             Vector3 position = new(x + offset.X, y + offset.Y, z + offset.Z);
-            ValidatePosition(position);
+            ValidatePosition(position, patch);
             positions[i] = position;
         }
         return new(frame, positions, faces);
     }
 
-    static void ValidatePosition(Vector3 position)
+    static void ValidatePosition(Vector3 position, MapPatchKey? patch)
     {
         // Check the planar magnitude in double so the radius test adds no float rounding.
         double x = position.X, z = position.Z;
         if (!float.IsFinite(position.X) || !float.IsFinite(position.Z) ||
             x * x + z * z > (double)WorldFrame.MaxLocalRadius * WorldFrame.MaxLocalRadius)
-            throw new MapDocumentException("compiled geometry exceeds frame radius");
+            throw new MapDocumentException(!float.IsFinite(position.X) || !float.IsFinite(position.Z)
+                ? MapDocumentRefusal.ValueNonfinite : MapDocumentRefusal.FrameRadiusExceeded, "compiled geometry exceeds frame radius")
+            {
+                Patch = patch, Operation = nameof(ToFrame), PositionX = x, PositionZ = z, Limit = (long)WorldFrame.MaxLocalRadius,
+                FieldPath = !float.IsFinite(position.X) ? "$.position.x" : !float.IsFinite(position.Z) ? "$.position.z" : null,
+                ActualNumber = !float.IsFinite(position.X) ? x : !float.IsFinite(position.Z) ? z : null,
+            };
         if (!float.IsFinite(position.Y))
-            throw new MapDocumentException("frame-local height is not representable");
+            throw new MapDocumentException(MapDocumentRefusal.ValueNonfinite, "frame-local height is not representable")
+            { Patch = patch, Operation = nameof(ToFrame), FieldPath = "$.position.y", PositionY = position.Y, ActualNumber = position.Y };
     }
 }

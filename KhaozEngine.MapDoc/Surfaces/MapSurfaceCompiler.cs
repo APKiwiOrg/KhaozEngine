@@ -35,14 +35,17 @@ public static class MapSurfaceCompiler
         try
         {
             long count = CountFaces(validated, cells, logical);
-            if (count > maxFaces) throw new MapDocumentException($"compiled patch exceeds face budget {maxFaces}");
+            if (count > maxFaces) throw new MapDocumentException(MapDocumentRefusal.WorkCapacityExceeded, $"compiled patch exceeds face budget {maxFaces}")
+                { Patch = patch.Key, SurfaceId = surface.Id, Budget = "MaxFacesPerPatch", ActualCount = count, Limit = maxFaces };
             if (surface.Role == MapSurfaceRole.PaintOverride)
-                throw new MapDocumentException("paint override has no physical faces. Use ApplyPaintOverride.");
+                throw new MapDocumentException(MapDocumentRefusal.SurfacePaintPhysicalCompileUnsupported, "paint override has no physical faces. Use ApplyPaintOverride.")
+                { Patch = patch.Key, SurfaceId = surface.Id };
             return CompileCore(surface, patch, cells, (int)count, logical);
         }
         catch (Exception error) when (error is MapExactOverflowException or OverflowException)
         {
-            throw new MapDocumentException("surface geometry is not representable", error);
+            throw new MapDocumentException(MapDocumentRefusal.GeometryNotRepresentable, "surface geometry is not representable", error)
+            { Patch = patch.Key, SurfaceId = surface.Id, Operation = nameof(Compile) };
         }
     }
 
@@ -148,8 +151,7 @@ public static class MapSurfaceCompiler
             var id = new MapVertexId(surface.Id, vertex.Address);
             if (indices.TryGetValue(id, out int index))
             {
-                if (exact[index] != vertex.Exact)
-                    throw new MapDocumentException("inconsistent exact height for shared surface vertex");
+                MapSurfaceGeometryAdmission.RequireSharedVertexHeight(exact[index], vertex, patch.Key);
                 return index;
             }
             index = vertices.Count;
@@ -168,7 +170,8 @@ public static class MapSurfaceCompiler
             if (ceiling) (ib, ic) = (ic, ib);
             Vector3 normal = Vector3.Normalize(Vector3.Cross(offsets[ib] - offsets[ia], offsets[ic] - offsets[ia]));
             if (!float.IsFinite(normal.X) || !float.IsFinite(normal.Y) || !float.IsFinite(normal.Z))
-                throw new MapDocumentException("surface submission normal is not representable");
+                throw new MapDocumentException(MapDocumentRefusal.GeometryNotRepresentable, "surface submission normal is not representable")
+                { Patch = patch.Key, SurfaceId = surface.Id, SlotCell = primitive, Operation = nameof(Compile) };
             var key = new MapFaceKey(surface.Id, patch.Key, primitive, parent, child, MapSide.Front);
             faces.Add(new(key, ceiling ? MapFaceRole.Ceiling : MapFaceRole.SupportFloor, ia, ib, ic, normal));
             paint.Add(new(key, cell.Underlay, cell.Overlay, overlay && cell.Overlay != 0,

@@ -217,6 +217,10 @@ enumeration for complete in-memory surface sets.
 world-datum heights, and `MapFrameLocal.CompileInFrame` places an exact local patch by a `MapTransform`,
 composing in double before the one frame-local float rounding. Neither takes an absolute world-float round
 trip. They are new in 20.30.0, and R5 consumes them.
+`ToFrame` reports `FrameRadiusExceeded` with `Limit`, the patch when available and the checked local
+`PositionX`/`PositionZ` when anchor subtraction succeeded. Nonfinite positions instead report
+`ValueNonfinite` with the first failed `FieldPath` and `ActualNumber`. Anchor overflow does not invent a
+local position.
 
 ## Authored surfaces, caves and support
 
@@ -289,8 +293,10 @@ exact aperture columns whose provenance is in the acquisition witness.
 `NotEvaluated`. Membership, support and relation results are factory-only and immutable.
 
 **Exact representability.** A reduced value that does not fit a `MapExactValue` is not representable.
-Queries and acquisition return `NotRepresentable`. Document operations refuse with a message containing
-`not representable`. It is never `CapacityExceeded` and never rounded, snapped or toleranced.
+Queries and acquisition return `NotRepresentable`. Surface compilation reports `GeometryNotRepresentable`
+with its `Patch`, `SurfaceId` and `Operation` when known. It is never `CapacityExceeded` and never rounded,
+snapped or toleranced. The developer message retains its representability explanation without claiming a
+capacity or budget failure.
 
 **Resolver version 2.** `MapResolverV2.Resolve` resolves documents whose recipe is `AuthoredBindingsV2`. It
 keeps explicit Y, refuses any binding whose support is not `Supported`, and refuses a space binding without a
@@ -1503,7 +1509,7 @@ An array beyond its own count cap uses that field name as `Budget`, with its `Ac
 | `SchemaArrayLengthMismatch` | Decoded foliage density with the wrong byte length, embedded records in a prefab surface geometry patch, or a patch height, cell or presence array with the wrong length | `FieldPath`, `LayerId`, `Index`, `FoliageChunk`, `ActualByteCount`, `ExpectedByteCount`, `Child`, `SurfaceId`, `Patch`, `ActualCount`, `ExpectedCount` |
 | `SchemaInt64Malformed` | Surface codec text outside canonical signed 64-bit decimal representation | `FieldPath`, `ActualText`, `MinimumInteger`, `MaximumInteger` |
 | `SchemaPayloadVersionUnsupported` | An unsupported asset-reference, resolver-identity, support, foliage, prefab asset, local light or local marker or prism payload version | `FieldPath`, `MarkerId`, `ResourceId`, `Index`, `ActualVersion`, `SupportedVersions`, `MinimumInteger` |
-| `ValueNonfinite` | A nonfinite manifest source-unit scale, foliage scalar, playable-bound component, placement support-search value, resolved support height, adoption height or yaw, or marker position/yaw | `FieldPath`, `MarkerId`, `AssetId`, `LayerId`, `PlacementId`, `Index`, `ActualNumber` (null for nonfinite marker values, nonfinite for prefab scalar guards) |
+| `ValueNonfinite` | A nonfinite manifest source-unit scale, foliage scalar, playable-bound component, placement support-search value, resolved support height, adoption height or yaw, or marker position/yaw, or a nonfinite frame-local position | `FieldPath`, `MarkerId`, `AssetId`, `LayerId`, `PlacementId`, `Index`, `ActualNumber` (null for nonfinite marker values, nonfinite for prefab scalar guards) |
 | `ValueOutsideRange` | A finite nonpositive manifest source-unit scale, foliage integer outside its domain, negative acquired page count, support-search extent or high-water mark, nonpositive numeric identity, nonpositive lattice unit parts, an address denominator outside its domain, a rotation or subdivision segment count, chain or slot-list cardinality, or a slot cell outside 0 through 4095 | `FieldPath`, `AssetId`, `LayerId`, `PlacementId`, `EntityId`, `SubjectKind`, `Index`, `ActualNumber`, `ActualInteger`, `MinimumNumber`, `MinimumInteger`, `MaximumInteger`, `NumericId`, `HighWaterMark`, `RecordId`, `Patch`, `ActualCount` |
 | `IdentityDuplicate` | A repeated marker, adoption source or destination, asset or resource closure identity, support patch or record identity, surface, numeric, codec record, acquired patch or acquired record identity, corner or cell-edge metadata key, world binding, transfer or attachment producer, a standalone owner colliding with a prefab binding, or a repeated extraction reference or resulting local key, or a repeated topology reference, boundary side or adjacent slot cell | `MarkerId`, `MarkerIds`, `FieldPath`, `Index`, `EntityId`, `SubjectKind`, `SourceId`, `AssetId`, `ResourceId`, `SurfaceId`, `PlacementId`, `RecordId`, `Patch`, `NumericId`, `HighWaterMark`, `WorldId`, `ChildKind`, `Child`, `InstanceId`, `RelatedRecordId`, `EnumType`, `ActualInteger`, `PreviousInteger` |
 | `IdentityReserved` | A marker reusing a retained prefab reservation, a placement reusing a live or retained instance ID, a live standalone owner using a retired transfer's world identity, or a planned binding colliding with another owner's world or numeric identity | `MarkerId`, `EntityId`, `WorldId`, `ChildKind`, `Child`, `InstanceId`, `NumericId`, `SubjectKind` |
@@ -1517,7 +1523,7 @@ An array beyond its own count cap uses that field name as `Budget`, with its `Ac
 | `AcquisitionUnsupported` | A producer without bounded scoped acquisition support | `SourceType` |
 | `LegacyExteriorSpaceRequired` | Legacy exterior coverage on a non-Exterior space | `RecordId`, `SpaceId`, `SurfaceId`, `Patch`, `FieldPath` |
 | `LegacyExteriorOpenTopRequired` | Legacy exterior coverage without an open-top upper bound | `RecordId`, `SpaceId`, `SurfaceId`, `Patch`, `FieldPath` |
-| `SurfaceLegacyRecipeRequired` | Legacy coverage through an incompatible lower surface recipe | `RecordId`, `SpaceId`, `SurfaceId`, `Patch`, `FieldPath` |
+| `SurfaceLegacyRecipeRequired` | Legacy coverage or effective sampling through an incompatible lower surface recipe | `RecordId`, `SpaceId`, `SurfaceId`, `Patch`, `FieldPath` |
 | `SpacePrismParentMismatch` | A prism parent differing from its Room space's parent | `RecordId`, `SpaceId`, `RelatedRecordId`, `FieldPath` |
 | `SpaceRoomOccupancyInvalid` | A Room with zero or multiple prism domains, or occupied through a lattice footprint | `SpaceId`, `RecordId`, `FieldPath`, `ActualCount`, `ExpectedCount` |
 | `SpaceParentCycle` | A cycle in space ancestry | `SpaceId` |
@@ -1530,8 +1536,13 @@ An array beyond its own count cap uses that field name as `Budget`, with its `Ac
 | `SpaceOpenTopInvalid` | An open-top lower bound, an open top on a non-Exterior space, or an open top carrying a surface or opening | `RecordId`, `SpaceId`, `SurfaceId`, `RelatedRecordId`, first failed `FieldPath` |
 | `SpaceBoundRoleMismatch` | A bound kind or surface role incompatible with the lower or upper bound role | `RecordId`, `SpaceId`, `SurfaceId`, `FieldPath`, `EnumType`, `ActualInteger` |
 | `SpaceOpeningCellsInvalid` | A horizontal opening over a present cell | `RecordId`, `Patch`, `FieldPath`, `Index`, `ActualInteger`, `CellX`, `CellZ` |
-| `GeometryNotRepresentable` | A collapsed effective cell | `SurfaceId`, `Patch`, `CellX`, `CellZ` |
-| `WorkCapacityExceeded` | Reservation keys beyond the candidate cap, surface codec work beyond its encoded byte or array-count budget, or local corner-dependency or edge-subdivision metadata beyond its count budget | `Patch`, `FieldPath`, `Budget`, `ActualCount`, `ActualByteCount`, `Limit` |
+| `GeometryNotRepresentable` | A collapsed effective cell, exact triangle or unrepresentable surface emission | `SurfaceId`, `Patch`, `CellX`, `CellZ`, `SlotCell`, `Operation` when known |
+| `GeometryVertexHeightMismatch` | Different exact heights for a shared compiled or boundary vertex | `SurfaceId`, `Patch`, `Address` |
+| `FrameRadiusExceeded` | Local frame radius or checked anchor subtraction overflow | `Patch` when available, `Limit`, local `PositionX`/`PositionZ` only after successful subtraction |
+| `PatchUnavailable` | A requested effective patch has no acquired payload | `SurfaceId`, `Patch`, `PatchStatus` |
+| `SurfaceLegacySampleOutOfCell` | A legacy sample outside its selected cell or patch | `SurfaceId`, `Patch`, `SlotCell` |
+| `SurfacePaintPhysicalCompileUnsupported` | Physical-face compilation of a paint-only surface | `SurfaceId`, `Patch` |
+| `WorkCapacityExceeded` | Reservation keys beyond the candidate cap, surface codec work beyond its encoded byte or array-count budget, or local corner-dependency or edge-subdivision metadata beyond its count budget, or compiled faces beyond MaxFacesPerPatch | `Patch`, `FieldPath`, `Budget`, `ActualCount`, `ActualByteCount`, `Limit` |
 | `SurfacePresencePaddingNonzero` | Nonzero bits beyond the authored cell count in the last presence word | `Patch`, `FieldPath`, `Index` |
 | `SurfaceSubdivisionAbsentCell` | An edge subdivision on an absent cell | `Patch`, `FieldPath`, `Index`, `CellX`, `CellZ`, `Edge` |
 | `SurfaceSubdivisionInteriorEdge` | An edge subdivision adjoining another present cell inside the patch | `Patch`, `FieldPath`, `Index`, `CellX`, `CellZ`, `Edge` |

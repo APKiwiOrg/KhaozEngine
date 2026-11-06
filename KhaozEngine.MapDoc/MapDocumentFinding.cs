@@ -106,11 +106,11 @@ public sealed record MapDocumentFinding(MapDocumentRefusal Reason, string Messag
     public string? EntityId { get; init; }
     /// <summary>The static owner whose world position was checked, such as a placement or terrain chunk.</summary>
     public string? OwnerId { get; init; }
-    /// <summary>The checked absolute world X coordinate in metres, before any frame projection.</summary>
+    /// <summary>The checked X coordinate in metres, absolute world or local to the refused frame operation.</summary>
     public double? PositionX { get; init; }
-    /// <summary>The checked absolute world Y coordinate in metres, before any frame projection.</summary>
+    /// <summary>The checked Y coordinate in metres, absolute world or local to the refused frame operation.</summary>
     public double? PositionY { get; init; }
-    /// <summary>The checked absolute world Z coordinate in metres, before any frame projection.</summary>
+    /// <summary>The checked Z coordinate in metres, absolute world or local to the refused frame operation.</summary>
     public double? PositionZ { get; init; }
 
     /// <summary>The asset descriptor whose admission failed, when known.</summary>
@@ -168,6 +168,10 @@ public sealed record MapDocumentFinding(MapDocumentRefusal Reason, string Messag
     public string? SpaceId { get; init; }
     /// <summary>The submitted or referenced authored patch, when known.</summary>
     public MapPatchKey? Patch { get; init; }
+    /// <summary>The lattice address whose shared exact vertex height disagreed.</summary>
+    public MapLatticeAddress? Address { get; init; }
+    /// <summary>The selected zero-based cell within its 64 by 64 patch slot.</summary>
+    public int? SlotCell { get; init; }
     /// <summary>The patch key required by the payload request.</summary>
     public MapPatchKey? ExpectedPatch { get; init; }
     /// <summary>The submitted runtime topology record type, when unsupported.</summary>
@@ -315,6 +319,8 @@ public sealed record MapDocumentFinding(MapDocumentRefusal Reason, string Messag
             RelatedRecordId = error.RelatedRecordId,
             SpaceId = error.SpaceId,
             Patch = error.Patch,
+            Address = error.Address,
+            SlotCell = error.SlotCell,
             ExpectedPatch = error.ExpectedPatch,
             RecordType = error.RecordType,
             ActualAnchor = error.ActualAnchor,

@@ -86,7 +86,10 @@ public sealed class CompilerContractTests
 
         MapDocumentException error = Assert.Throws<MapDocumentException>(() => MapSurfaceCompiler.Compile(surface, patch));
 
-        Assert.Contains("not representable", error.Message);
+        Assert.Equal(MapDocumentRefusal.GeometryNotRepresentable, error.Reason);
+        Assert.Equal(patch.Key, error.Patch);
+        patch.Key = new(surface.Id, long.MaxValue / 64 - 1, 0);
+        Assert.NotEmpty(MapSurfaceCompiler.Compile(surface, patch).Faces);
         Assert.DoesNotContain("CapacityExceeded", error.Message);
         Assert.DoesNotContain("budget", error.Message);
     }

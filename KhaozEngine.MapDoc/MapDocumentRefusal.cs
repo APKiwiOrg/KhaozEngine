@@ -195,6 +195,18 @@ public enum MapDocumentRefusal
     /// <summary>Refuses a vertex sequence lacking the required ordered correspondence or cardinality.</summary>
     GeometryVertexSequenceInvalid,
 
+    // Surface compilation and frame emission.
+    /// <summary>Refuses different exact heights for a shared surface vertex.</summary>
+    GeometryVertexHeightMismatch,
+    /// <summary>Refuses geometry outside the local frame radius or its checked anchor domain.</summary>
+    FrameRadiusExceeded,
+    /// <summary>Refuses an effective patch unavailable from the acquired view.</summary>
+    PatchUnavailable,
+    /// <summary>Refuses legacy sampling outside the selected patch cell.</summary>
+    SurfaceLegacySampleOutOfCell,
+    /// <summary>Refuses physical-face compilation of a paint-only surface.</summary>
+    SurfacePaintPhysicalCompileUnsupported,
+
     // Scoped acquisition producer admission.
     /// <summary>Refuses acquisition facts differing from the session's captured snapshot.</summary>
     AcquisitionSnapshotChanged,

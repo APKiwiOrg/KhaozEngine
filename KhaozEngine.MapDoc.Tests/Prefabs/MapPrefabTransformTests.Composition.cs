@@ -196,6 +196,9 @@ public sealed partial class MapPrefabTransformTests
         var plan = preparation.Plan(footprint, footprint.Lower, new(new(3, 2), new(-1, 2)));
         var faces = MapBoundFaceContext.PrepareBounds(view, [], 256, 4096, null, out _, preparation.Preparation)!;
         var error = Assert.Throws<MapDocumentException>(() => MapSpacePointBounds.Height(faces, plan, point));
-        Assert.Contains("outside selected legacy cell", error.Message);
+        Assert.Equal(MapDocumentRefusal.SurfaceLegacySampleOutOfCell, error.Reason);
+        Assert.Equal(new MapPatchKey("plane-0", 0, 0), error.Patch);
+        Assert.Equal(1, error.SlotCell);
+        Assert.NotNull(MapSpacePointBounds.Height(faces, plan, new(new(3, 2), new(-1, 2))));
     }
 }

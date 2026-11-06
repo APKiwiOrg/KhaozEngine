@@ -12764,6 +12764,18 @@ share these reservation, reconciliation and page-observation reasons. Complete r
 distinguishes mismatched patch keys (`AuthoredValueMismatch` with both keys) from undeclared surfaces
 (`ReferenceMissing` with surface and patch). Shared surface-query guards retain their current behavior.
 
+Surface compilation carries `WorkCapacityExceeded` with `Budget = "MaxFacesPerPatch"`, the measured
+`ActualCount`, `Limit` and `Patch`. Physical compilation of paint-only surfaces instead carries
+`SurfacePaintPhysicalCompileUnsupported`. Exact emission failures use `GeometryNotRepresentable`, with
+surface, patch and operation when known. Shared compiled or boundary vertices with different exact
+heights use `GeometryVertexHeightMismatch` and retain `Address`. An unavailable effective patch uses
+`PatchUnavailable` with its key and observed `PatchStatus`. Effective legacy sampling uses
+`SurfaceLegacyRecipeRequired` for an incompatible surface recipe and `SurfaceLegacySampleOutOfCell`
+for an out-of-cell sample, retaining surface, patch and selected `SlotCell` when known.
+`MapFrameLocal.ToFrame` uses `FrameRadiusExceeded` with `Limit` and the checked local planar coordinates.
+A subtraction overflow retains the limit without inventing local coordinates. A nonfinite coordinate
+uses `ValueNonfinite` with the first failed field and value. These refusals retain the patch when available.
+
 `MapLegacyExteriorRecipe.CheckFinding` reports the first eligibility rule as
 `LegacyExteriorSpaceRequired`, `LegacyExteriorOpenTopRequired`, `SchemaValueRequired` for a missing
 lower surface, `SurfaceLegacyRecipeRequired` for an incompatible surface or `AuthoredOwnershipMismatch`

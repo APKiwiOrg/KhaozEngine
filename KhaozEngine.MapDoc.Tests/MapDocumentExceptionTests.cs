@@ -165,6 +165,10 @@ public sealed class MapDocumentExceptionTests
     static object Sample(PropertyInfo property, int index)
     {
         Type type = Nullable.GetUnderlyingType(property.PropertyType) ?? property.PropertyType;
+        if (property.Name == nameof(MapDocumentException.Axis)) return "Z";
+        if (property.Name == nameof(MapDocumentException.FirstIndex)) return -2147483649d;
+        if (property.Name == nameof(MapDocumentException.LastIndex)) return 2147483648d;
+        if (property.Name == nameof(MapDocumentException.AxisOrigin)) return 64d;
         if (property.Name == nameof(MapDocumentException.ExpectedVersion)) return 1;
         if (property.Name == nameof(MapDocumentException.ExpectedNumber)) return 512d;
         if (property.Name == nameof(MapDocumentException.ExpectedDocumentForm)) return MapDocumentForm.Tiled;

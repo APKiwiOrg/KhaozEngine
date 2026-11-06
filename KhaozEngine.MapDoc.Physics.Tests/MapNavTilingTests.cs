@@ -77,6 +77,12 @@ public class MapNavTilingTests
         var error = Assert.Throws<MapDocumentException>(() => MapNavTiling.Partition(world, Grids, Options));
         Assert.Contains("1,052,676", error.Message);
         Assert.Contains("1,048,576", error.Message);
+        Assert.Equal(MapDocumentRefusal.WorkCapacityExceeded, error.Reason);
+        Assert.Equal("navigation partition tiles", error.Budget);
+        Assert.Equal(1_052_676, error.ActualCount);
+        Assert.Equal(MapNavTiling.MaxPartitionTiles, error.Limit);
+        Assert.Equal(MapNavTiling.MaxPartitionTiles, EmptyPartitionCount(MapNavTiling.MaxPartitionTiles));
+        Assert.Equal(MapNavTiling.MaxPartitionTiles - 1, EmptyPartitionCount(MapNavTiling.MaxPartitionTiles - 1));
     }
 
     [Fact]
@@ -132,6 +138,19 @@ public class MapNavTilingTests
         // Validate refuses the grids before any capture is placed.
         Assert.Contains("grid alignment", error.Message);
         Assert.Contains("tile range", error.Message);
+    }
+
+    static int EmptyPartitionCount(int count)
+    {
+        var fixture = NativeWorldFixtures.Crate();
+        fixture.Document.Placements.Clear();
+        fixture.Document.Surfaces = new();
+        fixture.Document.TileSize = 1;
+        fixture.Document.TerrainOverrides = new(1f / 32);
+        fixture.Document.Bounds = new() { MinX = -524288, MinZ = 0, MaxX = -524288 + count, MaxZ = 1 };
+        fixture.Document.PlayableBounds = fixture.Document.Bounds;
+        var world = NativeWorldFixtures.Build(fixture);
+        return MapNavTiling.Partition(world, new(1, 1, 1, Vector2.Zero), Options with { SeamMarginMetres = 0 }).Count;
     }
 
     [Fact]

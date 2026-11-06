@@ -117,6 +117,12 @@ otherwise the collider of a solid asset. A source shorter than `MinimumVerticalR
 straight up in world space until it is that tall, and a doorway's opening survives because an unraised envelope is
 the scaled source unchanged. Envelopes shape interaction only. They are never installed and never block.
 
+Backend pose and error-bound refusals use `MapDocumentException`, `GeometryNotRepresentable`, `Operation`,
+`FieldPath` and the refused binary64 `ActualNumber`. An unsupported interaction sweep uses
+`PhysicsSweepShapeUnsupported`, `PlacementId` and `ShapeType`. The envelope index admits every envelope
+before indexing any, and reports `WorkCapacityExceeded` with `OwnerId`, `Budget`, `ActualNumber`, representable
+`ActualCount` and inclusive `Limit` of 1,048,576 cells.
+
 ## Terrain physics
 
 ```csharp
@@ -402,10 +408,33 @@ edit shrank the world, is never listed, so a consumer that keeps state per tile 
 find removed tiles.
 
 `Partition` refuses a world whose bounds reach more than `MapNavTiling.MaxPartitionTiles` (2^20) navigation tiles
-before it places any static, and the refusal names the count. `MapWorldGrids.Validate`, which every grid consumer runs
+before it places any static. `WorkCapacityExceeded` carries `Budget`, `ActualCount` and `Limit`.
+`MapWorldGrids.Validate`, which every grid consumer runs
 first, refuses a grid origin so far from the world that a navigation tile or server cell index of the world's bounds,
 widened by one block on each side, leaves the int range. The refusal names the grid alignment and the tile range. A
 seam margin or edit box reaching past the int range beyond the world refuses naming the tile range too.
+
+Navigation policy and tile refusals use `MapNavigationArgumentException`, derived from `ArgumentException`.
+It retains `ParamName`, including null at the bounds and edge guards that had no parameter name.
+Plain null and scalar parameter guards keep their BCL types.
+
+| Carrier and reason | Refused rule | Identifiers |
+| --- | --- | --- |
+| `MapNavigationArgumentException.ValueNonfinite` | Nonfinite seam margin or tile-axis endpoint | `FieldPath`, `ActualNumber`, known `MinimumNumber` and `MaximumNumber`, `ParamName` |
+| `MapNavigationArgumentException.ValueOutsideRange` | Negative seam margin | `FieldPath`, `ActualNumber`, inclusive `MinimumNumber` zero, `ParamName` |
+| `MapNavigationArgumentException.SchemaValueRequired` | Blank profile or controller identity | `FieldPath`, `ActualText`, `ParamName` |
+| `MapNavigationArgumentException.BoundsInvalid` | Reversed finite tile-axis interval | `FieldPath`, submitted `MinimumNumber` and `MaximumNumber` |
+| `MapNavigationArgumentException.AuthoredValueMismatch` | A tile's Y bounds differ from its world | `Tile`, `FieldPath`, `ActualNumber`, `ExpectedNumber`, `ParamName` |
+| `MapNavigationArgumentException.IdentityDuplicate` | Repeated tile coordinates | `Tile`, `FieldPath`, `ParamName` |
+| `MapNavigationArgumentException.NavigationTilesNotAdjacent` | Neighbouring tiles do not meet at one edge | submitted `Tile`, preceding `OtherTile`, `FieldPath` |
+| `MapDocumentException.WorkCapacityExceeded` | Partition count or envelope index cells exceed their independent limits | `Budget`, `ActualCount`, inclusive `Limit`, `OwnerId` for an envelope |
+| `MapDocumentException.PhysicsNavIndexOutOfRange` | A computed navigation index leaves the signed 32-bit domain | `Axis`, `FirstIndex`, `LastIndex`, `AxisOrigin`, inclusive `MinimumInteger` and `MaximumInteger`, submitted interval `MinimumNumber` and `MaximumNumber` when known |
+| `MapDocumentException.GeometryVertexSequenceInvalid` | A portal interval has fewer than two vertices | `RecordId`, `ActualCount`, inclusive `MinimumInteger` two |
+| `MapDocumentException.PatchUnavailable` | An opening's geometry patch is unavailable | `RecordId`, `Patch`, `PatchStatus` |
+
+These navigation and envelope guards populate their structured reasons. Grid alignment and remaining physics
+adapters complete their conversions separately. Collection and source wrappers retain the navigation index
+identifiers through the shared document finding and source-copy paths.
 
 Tile and capture bounds are residency extents, not probe windows. A resolver 1 world's bounds exclude its analytic
 terrain height, so a capture picks its own vertical window.

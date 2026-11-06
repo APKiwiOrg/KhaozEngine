@@ -2157,6 +2157,9 @@ their joined diagnostic text.
 | `DocumentWindowTargetMismatch` | A partial save outside its source directory | target `Path`, source `SourceName` |
 | `DocumentWindowTileSizeMismatch` | A partial window whose tile size changed | `Path`, `FieldPath`, `ActualNumber`, `ExpectedNumber` |
 | `DocumentSaveLockUnavailable` | A tiled save while another writer holds the directory lock | normalized directory `Path`, original cause |
+| `PhysicsSweepShapeUnsupported` | An interaction envelope cannot sweep its source shape | `PlacementId`, `ShapeType` |
+| `PhysicsNavIndexOutOfRange` | A computed navigation tile index outside signed 32-bit range | `Axis`, `FirstIndex`, `LastIndex`, `AxisOrigin`, inclusive `MinimumInteger` and `MaximumInteger`, source interval `MinimumNumber` and `MaximumNumber` when known |
+| `NavigationTilesNotAdjacent` | Navigation tile bounds that do not meet at one edge | `Tile` and `OtherTile` on `MapNavigationArgumentException`, `FieldPath` |
 | `DocumentTileReadFailed` | A tile file that cannot be read | `Tile`, `SourceName`, `Path`, pinned `ExpectedHash`, original cause |
 | `DocumentTileNotIndexed` | A requested tile absent from the occupied index | `Tile`, `SourceName` |
 | `DocumentReadFailed` | An unreadable document source | `SourceName`, `Path`, original cause |

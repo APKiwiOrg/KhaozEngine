@@ -13549,6 +13549,23 @@ What it produces:
   Navigation captures include a `MediumDigest` where exact water geometry meets the capture, and
   `MapNativeInvalidation.Medium` invalidates affected water residency and capture tiles.
 
+Navigation policy and seam admission uses `MapNavigationArgumentException`, catchable as `ArgumentException`,
+with concrete `Reason`, nested `FieldPath` and the original `ParamName`. Nonfinite and negative margins use
+`ValueNonfinite` and `ValueOutsideRange`, with zero as the inclusive minimum. Blank profile or controller IDs
+use `SchemaValueRequired` with `ActualText`. Tile Y disagreement uses `AuthoredValueMismatch`, `Tile`,
+`ActualNumber` and `ExpectedNumber`. Duplicate coordinates use `IdentityDuplicate`. Disjoint neighbouring
+tile edges use `NavigationTilesNotAdjacent`, submitted `Tile` and preceding `OtherTile`.
+Navigation partition and interaction envelope capacity use `MapDocumentException.WorkCapacityExceeded`,
+`Budget`, measured `ActualCount` and inclusive `Limit`. Envelopes also name `OwnerId` and binary64 `ActualNumber`,
+leaving `ActualCount` null when it cannot fit in a signed 64-bit value. Navigation index refusals use
+`PhysicsNavIndexOutOfRange`, `Axis`, `FirstIndex`, `LastIndex`, `AxisOrigin`, inclusive signed index limits
+in `MinimumInteger` and `MaximumInteger`, and known source interval endpoints in `MinimumNumber` and `MaximumNumber`.
+Short portal intervals retain `RecordId`, `ActualCount` and minimum two through `GeometryVertexSequenceInvalid`.
+Missing opening geometry uses `PatchUnavailable`, `RecordId`, `Patch` and `PatchStatus`.
+Backend pose or error-bound conversion uses `GeometryNotRepresentable`, `Operation`, failed `FieldPath` and
+binary64 `ActualNumber`. An unsupported envelope sweep uses `PhysicsSweepShapeUnsupported`, `PlacementId`
+and `ShapeType`.
+
 **Ownership boundary.** The package adds no step limit, ledge rule or support model. Ground support, seating, steps
 and navigation column sampling stay with the #438 contact controller, which will stand on the statics a native world
 installs. A resolver 1 world keeps analytic ground behind `LegacySupportHeight` and installs no terrain statics.

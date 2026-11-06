@@ -151,6 +151,14 @@ public sealed class MapDocumentException : Exception
     public int? ActualVersion { get; init; }
     /// <summary>The next format version required by a missing document migration.</summary>
     public int? TargetVersion { get; init; }
+    /// <summary>The world or grid axis checked by an index refusal.</summary>
+    public string? Axis { get; init; }
+    /// <summary>The first computed index of the refused range, or its single candidate index.</summary>
+    public double? FirstIndex { get; init; }
+    /// <summary>The last computed index of the refused range, or its single candidate index.</summary>
+    public double? LastIndex { get; init; }
+    /// <summary>The grid origin on the checked axis.</summary>
+    public double? AxisOrigin { get; init; }
     /// <summary>The refused numeric value, when representable as a double.</summary>
     public double? ActualNumber { get; init; }
     /// <summary>The refused numeric value, when representable as a signed 64-bit integer.</summary>
@@ -397,6 +405,10 @@ public sealed class MapDocumentException : Exception
         Limit = inner.Limit;
         ActualVersion = inner.ActualVersion;
         TargetVersion = inner.TargetVersion;
+        Axis = inner.Axis;
+        FirstIndex = inner.FirstIndex;
+        LastIndex = inner.LastIndex;
+        AxisOrigin = inner.AxisOrigin;
         ActualNumber = inner.ActualNumber;
         ActualInteger = inner.ActualInteger;
         PreviousInteger = inner.PreviousInteger;

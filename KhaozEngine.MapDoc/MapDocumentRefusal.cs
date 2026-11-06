@@ -388,6 +388,16 @@ public enum MapDocumentRefusal
     SpaceChainUnresolved,
     /// <summary>Refuses a wall chain unresolved by terrain physics without a more specific producer finding.</summary>
     PhysicsWallChainUnresolved,
+
+    // Physics navigation and envelope admission.
+    /// <summary>Refuses an interaction envelope sweep for an unsupported source shape.</summary>
+    PhysicsSweepShapeUnsupported,
+    /// <summary>Refuses a navigation tile index outside the signed 32-bit range.</summary>
+    PhysicsNavIndexOutOfRange,
+    /// <summary>Refuses neighbouring navigation tiles whose bounds do not meet at one edge.</summary>
+    NavigationTilesNotAdjacent,
+
+    // Space portal and coverage admission.
     /// <summary>Refuses a portal column whose upper height does not exceed its lower height.</summary>
     SpacePortalHeightInvalid,
     /// <summary>Refuses a prism with unordered or collapsed lower and upper heights.</summary>

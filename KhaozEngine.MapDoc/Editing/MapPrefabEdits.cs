@@ -61,7 +61,9 @@ public static class MapPrefabEdits
             MapRestorePrefabChild p => p.InstanceId,
             MapRemovePrefab p => p.InstanceId,
             MapUnpackPrefab p => p.InstanceId,
-            _ => throw new MapDocumentException("Asset updates require PrepareAssetUpdate and both captured closures."),
+            _ => throw new MapDocumentException(edit is MapUpdatePrefabAsset ? MapDocumentRefusal.PrefabCapturedUpdateRequired : MapDocumentRefusal.OperationKindUnsupported,
+                "Asset updates require PrepareAssetUpdate and both captured closures.")
+            { RecordType = edit.GetType(), Operation = edit is MapUpdatePrefabAsset ? nameof(PrepareAssetUpdate) : nameof(Prepare) },
         };
         ArgumentException.ThrowIfNullOrWhiteSpace(id);
         MapPrefabInstance? instance = set.Instances.SingleOrDefault(i => i.Id == id);
@@ -115,7 +117,8 @@ public static class MapPrefabEdits
                     Set(after, instance with { Removed = true, Bindings = new(instance.Bindings.Entries.Select(b => b with { Removed = true }).ToArray()) });
                     break;
                 case MapUnpackPrefab: MapPrefabEditPreparation.Unpack(after, assets, instance, before); break;
-                default: throw new MapDocumentException("Unknown prefab edit.");
+                // The selector above admits only these instance edit kinds.
+                default: throw new InvalidOperationException("Unknown prefab edit.");
             }
         }
         var bindings = oldBindings.Concat(after.Prefabs!.Instances.Single(i => i.Id == id).Bindings.Entries)

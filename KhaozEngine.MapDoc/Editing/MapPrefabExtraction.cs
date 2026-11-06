@@ -160,7 +160,7 @@ public static class MapPrefabExtraction
                     if (record.Value is MapSpaceDoc { Kind: MapSpaceKind.Room } room)
                     {
                         var domains = snapshot.Values.OfType<MapPrefabRecordChild>().Where(c => c.Value is MapPrismDomain p && p.Space.Id == room.Id).ToArray();
-                        if (domains.Length != 1) throw new MapDocumentException("A room selection requires its unique prism.");
+                        RequireUniqueRoomPrism(room.Id, domains.Length);
                         Required(MapPrefabChildKind.Record, domains[0].Key.Key);
                     }
                     break;
@@ -172,6 +172,15 @@ public static class MapPrefabExtraction
                 case MapPrefabRoofChild roof: Required(MapPrefabChildKind.Placement, roof.Value.Roof.Id); break;
             }
         }
+    }
+
+    // Expansion normally validates Room occupancy first. Inject only the count at this defensive selection guard.
+    internal static void RequireUniqueRoomPrismForTests(string roomId, int count) => RequireUniqueRoomPrism(roomId, count);
+
+    static void RequireUniqueRoomPrism(string roomId, int count)
+    {
+        if (count != 1) throw new MapDocumentException(MapDocumentRefusal.SpaceRoomOccupancyInvalid, "A room selection requires its unique prism.")
+            { SpaceId = roomId, ActualCount = count, ExpectedCount = 1 };
     }
 
     sealed class ExtractReferences(IReadOnlyDictionary<MapPrefabChildKey, string> names) : MapPrefabReferenceMap

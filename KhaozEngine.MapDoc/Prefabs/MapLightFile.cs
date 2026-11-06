@@ -14,7 +14,7 @@ public static class MapLightFile
     public static MapLocalLightDoc Read(ReadOnlyMemory<byte> bytes, string resourceId)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(resourceId);
-        if (bytes.Length > MapPrefabJson.Limits.MaxPayloadBytes) throw new MapDocumentException("Light payload byte limit exceeded.");
+        MapPrefabCapacity.RequirePayloadBytes(bytes.Length, "Light", resourceId);
         try
         {
             using JsonDocument json = JsonDocument.Parse(bytes, new JsonDocumentOptions { MaxDepth = 64 });
@@ -38,7 +38,7 @@ public static class MapLightFile
         ArgumentNullException.ThrowIfNull(light);
         Require(light, light.Id);
         byte[] bytes = MapTypedResourceSchema.Tag(MapPrefabJson.Bytes(light), MapTypedResourceSchema.Light);
-        if (bytes.Length > MapPrefabJson.Limits.MaxPayloadBytes) throw new MapDocumentException("Light payload byte limit exceeded.");
+        MapPrefabCapacity.RequirePayloadBytes(bytes.Length, "Light", light.Id);
         return bytes;
     }
 

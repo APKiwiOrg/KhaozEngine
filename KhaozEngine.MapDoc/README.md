@@ -1847,7 +1847,7 @@ their joined diagnostic text.
 | `SurfacePaintPriorityConflict` | Equal-priority overlapping paint with different materials | `SurfaceId`, `OtherSurfaceId`, priority in `ActualInteger` |
 | `SurfacePaintBoundaryInvalid` | An open or nonmanifold material boundary | `SurfaceId` |
 | `SurfacePaintCrossesPhysicalFace` | A whole-face paint material or presence boundary crossing a physical face | `SurfaceId`, `OtherSurfaceId`, `Patch`, face `Index`, `FieldPath` |
-| `WorkCapacityExceeded` | Foliage codec counts or density token sizes beyond their limits, reservation keys beyond the candidate cap, surface codec work beyond its encoded byte or array-count budget, or local corner-dependency or edge-subdivision metadata beyond its count budget, or compiled faces beyond MaxFacesPerPatch or support resource bytes beyond MaxPayloadBytes, or water-domain piece, vertex or pair-check work beyond its budget | `Patch`, `FieldPath`, `Budget`, `ActualCount`, `ActualByteCount`, `Limit`, `LayerId`, `Index`, `FoliageChunk` |
+| `WorkCapacityExceeded` | Prefab and light payload bytes, codec array counts or patch geometry, foliage codec counts or density token sizes beyond their limits, reservation keys beyond the candidate cap, surface codec work beyond its encoded byte or array-count budget, or local corner-dependency or edge-subdivision metadata beyond its count budget, or compiled faces beyond MaxFacesPerPatch or support resource bytes beyond MaxPayloadBytes, or water-domain piece, vertex or pair-check work beyond its budget | `Patch`, `FieldPath`, `Budget`, `ActualCount`, `ActualByteCount`, `Limit`, `LayerId`, `Index`, `FoliageChunk` |
 | `SurfacePresencePaddingNonzero` | Nonzero bits beyond the authored cell count in the last presence word | `Patch`, `FieldPath`, `Index` |
 | `SurfaceSubdivisionAbsentCell` | An edge subdivision on an absent cell | `Patch`, `FieldPath`, `Index`, `CellX`, `CellZ`, `Edge` |
 | `SurfaceSubdivisionInteriorEdge` | An edge subdivision adjoining another present cell inside the patch | `Patch`, `FieldPath`, `Index`, `CellX`, `CellZ`, `Edge` |
@@ -1883,6 +1883,7 @@ their joined diagnostic text.
 | `MarkerAdoptionChoiceSetMismatch` | Adoption choices not covering exactly the source spawns | `SourceIds`, `ActualCount`, `ExpectedCount` |
 | `MarkerAdoptionChoiceMissing` | A source spawn without a destination and height choice | `SourceId`, `SubjectKind` |
 | `MarkerNameDuplicate` | A repeated effective or adoption destination marker name | `MarkerName`, destination `MarkerId` or colliding `MarkerIds`, ordered `Findings` for metadata collisions |
+| `PrefabCapturedUpdateRequired` | An asset update submitted without the two captured closures | `Operation = "PrepareAssetUpdate"`, submitted `RecordType` |
 | `PrefabInstanceMissing` | An edit of an absent or removed instance | `InstanceId` |
 | `PrefabChildAlreadyRemoved` | A remove override submitted for an already removed child | `InstanceId`, `Child` |
 | `PrefabOverrideDuplicate` | Initial overrides repeating one typed child | `InstanceId`, `Child`, `Index`, `FieldPath` |
@@ -1943,6 +1944,15 @@ An implicit child collision uses `IdentityDuplicate`, with `Child`, `EntityId`, 
 `EntityId` and `ChildKind`. Leaf water
 material kind uses `ReferenceKindMismatch`, with `ResourceId`, both resource kinds and `Child`.
 An undeclared leaf dependency uses `ReferenceMissing`, `ResourceId` and `SubjectKind` `prefab dependency`.
+Prefab and marker entry points use `OperationKindUnsupported` for a consumer-defined edit subtype, retaining
+`RecordType` and `Operation = "Prepare"`. An asset update through `Prepare` instead uses
+`PrefabCapturedUpdateRequired`, naming the required `PrepareAssetUpdate` operation. Room extraction requires exactly
+one prism and retains the `SpaceId`, `ActualCount` and `ExpectedCount` 1 on `SpaceRoomOccupancyInvalid`.
+Prefab and light byte admission uses `WorkCapacityExceeded`, `Budget = "PayloadBytes"`, measured
+`ActualByteCount`, inclusive `Limit`, `FieldPath = "ByteLength"` and `ResourceId` when the caller knows it.
+Codec collection limits retain the actual count and JSON path. `Budget` is the collection name for an individual
+array and `Aggregate.<name>` for its accumulated count. Patch-cell and corner work uses
+`Budget = "GeometryElements"` with its accumulated count. These guards accept their exact named limits.
 Prefab validation adds immutable typed findings beside its unchanged string diagnostics in internal
 collectors. A typed exception contributes all its identifier context, or its existing ordered findings.
 Legacy failures keep their prose without an invented reason. `AttachmentKind` distinguishes the typed

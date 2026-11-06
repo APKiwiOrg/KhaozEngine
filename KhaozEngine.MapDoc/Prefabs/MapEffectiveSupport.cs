@@ -128,7 +128,8 @@ internal static class MapEffectiveSupport
         {
             MapPrefabSurfaceChild s => s with { Key = new(MapPrefabChildKind.Surface, key), Surface = s.Surface with { Id = key } },
             MapPrefabRecordChild r => r with { Key = new(MapPrefabChildKind.Record, key), Value = r.Value with { Id = key } },
-            _ => throw new MapDocumentException("Support resources produce only Surface and Record children."),
+            // MapSupportResource decoding produces only Surface and Record children.
+            _ => throw new InvalidOperationException("Support resources produce only Surface and Record children."),
         };
         return defined with { References = MapPrefabReferences.Slots(occurrences) };
     }

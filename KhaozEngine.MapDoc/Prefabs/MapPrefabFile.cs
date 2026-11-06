@@ -10,7 +10,7 @@ public static class MapPrefabFile
     public static MapPrefabAsset Read(ReadOnlyMemory<byte> bytes, string resourceId)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(resourceId);
-        if (bytes.Length > MapPrefabJson.Limits.MaxPayloadBytes) throw new MapDocumentException("Prefab payload byte limit exceeded.");
+        MapPrefabCapacity.RequirePayloadBytes(bytes.Length, "Prefab", resourceId);
         try
         {
             using JsonDocument json = JsonDocument.Parse(bytes, new JsonDocumentOptions { MaxDepth = 64 });

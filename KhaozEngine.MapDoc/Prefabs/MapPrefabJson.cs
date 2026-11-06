@@ -83,7 +83,7 @@ internal static class MapPrefabJson
     {
         try
         {
-            if (Encoding.UTF8.GetByteCount(value.GetRawText()) > Limits.MaxPayloadBytes) throw new MapDocumentException("Prefab payload byte limit exceeded.");
+            MapPrefabCapacity.RequirePayloadBytes(Encoding.UTF8.GetByteCount(value.GetRawText()), "Prefab");
             Preflight(value);
             T result = value.Deserialize<T>(Options) ?? throw new MapDocumentException(MapDocumentRefusal.SchemaValueRequired, "Prefab value must not be null.") { FieldPath = "$" };
             if (result is MapSurfaceRef surface) MapSurfaceJson.RequirePaintPriority(surface);
@@ -197,7 +197,7 @@ internal static class MapPrefabJson
     static T ReadText<T>(string json)
     {
         ArgumentNullException.ThrowIfNull(json);
-        if (Encoding.UTF8.GetByteCount(json) > Limits.MaxPayloadBytes) throw new MapDocumentException("Prefab payload byte limit exceeded.");
+        MapPrefabCapacity.RequirePayloadBytes(Encoding.UTF8.GetByteCount(json), "Prefab");
         try { using var parsed = JsonDocument.Parse(json); return Read<T>(parsed.RootElement); }
         catch (JsonException ex) { throw MapDocumentJsonErrors.Wrap(ex, null, "Invalid prefab JSON: " + ex.Message); }
     }
@@ -215,7 +215,7 @@ internal static class MapPrefabJson
     {
         using var stream = new MemoryStream();
         using (var w = new Utf8JsonWriter(stream)) Write(w, value);
-        if (stream.Length > Limits.MaxPayloadBytes) throw new MapDocumentException("Prefab payload byte limit exceeded.");
+        MapPrefabCapacity.RequirePayloadBytes(stream.Length, "Prefab");
         return stream.ToArray();
     }
 
@@ -298,7 +298,7 @@ internal static class MapPrefabJson
                     if (x is < 1 or > 64 || z is < 1 or > 64) throw new MapDocumentException(MapDocumentRefusal.BoundsInvalid, "Invalid prefab patch dimensions.")
                     { Width = (int)x, Depth = (int)z, FieldPath = path };
                     geometry += (x + 1) * (z + 1) + x * z;
-                    if (geometry > Limits.MaxGeometryElements) throw new MapDocumentException("Prefab geometry limit exceeded.");
+                    MapPrefabCapacity.RequireGeometry(geometry, path);
                 }
                 // A marker binding has no null members. The placement binding keeps its released null allowance below.
                 if (node.TryGetProperty("heightMode", out _) && node.TryGetProperty("supportBinding", out var markerBinding) &&
@@ -317,24 +317,13 @@ internal static class MapPrefabJson
             else if (node.ValueKind == JsonValueKind.Array)
             {
                 int count = node.GetArrayLength();
-                int max = name switch
-                {
-                    "instances" => Limits.MaxInstances,
-                    "children" => Limits.MaxChildren,
-                    "references" => Limits.MaxReferenceEdges,
-                    "patches" => Limits.MaxPatches,
-                    "entries" => Limits.MaxBindings,
-                    "overrides" => Limits.MaxOverrides,
-                    "transfers" or "attachments" or "materializedAttachments" => Limits.MaxTransfers,
-                    _ => Limits.MaxGeometryElements,
-                };
                 if (name is "instances" or "children" or "entries" or "overrides" or "transfers" or "attachments" or "materializedAttachments")
                 {
                     totals.TryGetValue(name, out long total);
                     totals[name] = total + count;
-                    if (totals[name] > max) throw new MapDocumentException("Prefab aggregate " + name + " limit exceeded.");
+                    MapPrefabCapacity.RequireCollection(totals[name], name, path, true);
                 }
-                if (count > max) throw new MapDocumentException("Prefab " + name + " limit exceeded.");
+                MapPrefabCapacity.RequireCollection(count, name, path, false);
                 if (name == "references") edges += count;
                 if (name == "patches") patches += count;
                 if (name == "records") records += count;

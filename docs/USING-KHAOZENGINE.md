@@ -12381,6 +12381,14 @@ and a missing dependency also identifies `DependencyId`. Uncaptured borrows use 
 
 A prefab resource keeps its logical asset ID and accepts either that ID or
 `prefab/<escaped-logical-id>/<sha256>`. The lowercase SHA-256 suffix must match its immutable bytes.
+Prefab and light payload byte admission carries `WorkCapacityExceeded`, `Budget = "PayloadBytes"`, the measured
+`ActualByteCount` and inclusive `Limit`, plus a known `ResourceId`. Codec array counts retain their JSON path and
+name their `Budget` as the collection or `Aggregate.<name>`. Patch geometry counts use `GeometryElements`.
+All three retain the actual count and accept the exact named ceiling. A consumer-defined prefab or marker edit
+uses `OperationKindUnsupported` with its `RecordType`. Submitting an asset update through `Prepare` uses
+`PrefabCapturedUpdateRequired` with `Operation = "PrepareAssetUpdate"`. Room selection retains `SpaceId` and
+actual/expected prism counts on `SpaceRoomOccupancyInvalid`.
+
 `MapPrefabEdits.Prepare` and `MapInteriorEdits.Prepare` return detached validated after states and named write
 sets. MapEditor publishes them through `PrefabEditCommand`, `InteriorEditCommand` and `PrefabAssetEditCommand`.
 Unpack transfers live children with their IDs and precise poses, retaining removed-source reservations and

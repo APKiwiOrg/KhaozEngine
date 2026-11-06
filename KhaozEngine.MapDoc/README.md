@@ -2304,6 +2304,8 @@ narrowing. Their status and prose remain unchanged. Adapters whose producers are
 retain their existing prose projection.
 Occupied partition classification retains `WaterDomainPairChecks` capacity provenance even when an
 intermediate refinement projected the failure to `Invalid`.
+Membership keeps a compiler-rejected legacy surface frame as `MissingGeometry`. Actual legacy recipe
+eligibility failures keep their `Invalid` projection.
 
 `MapChainResolution.Finding` is an additive init property. Its existing positional constructor,
 deconstruction, status and `Detail` remain unchanged. Caught document refusals retain their original

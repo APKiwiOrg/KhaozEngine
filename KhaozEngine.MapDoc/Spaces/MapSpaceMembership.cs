@@ -358,7 +358,8 @@ public sealed class MapSpaceMembership
         {
             return Failure(MapGeometryRefusals.Capacity(error) ? MapMembershipStatus.CapacityExceeded :
                 MapGeometryRefusals.Representability(error) ? MapMembershipStatus.NotRepresentable :
-                MapGeometryRefusals.Invalid(error) || error.Reason == MapDocumentRefusal.SurfaceLegacyRecipeRequired
+                MapGeometryRefusals.Invalid(error) || error is
+                    { Reason: MapDocumentRefusal.SurfaceLegacyRecipeRequired, FieldPath: not "Frame" }
                     ? MapMembershipStatus.Invalid : MapMembershipStatus.MissingGeometry, error.Message);
         }
 

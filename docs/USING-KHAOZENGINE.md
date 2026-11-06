@@ -12862,6 +12862,8 @@ arithmetic or narrowing overflow remains `NotRepresentable`. Capacity findings e
 source, pair, emitted face, vertex or context `Budget`, its measured `ActualCount` and inclusive `Limit`.
 Occupied partition classification retains `WaterDomainPairChecks` capacity provenance through an
 intermediate `Invalid` refinement status.
+Membership reports `MissingGeometry` for a legacy surface frame rejected by the compiler. Legacy recipe
+eligibility failures retain `Invalid`.
 Refusals expose no partial refinement. A count that overflowed its representation remains null.
 
 `MapPrismCoverage.ValidateFindings(view, limits)` and

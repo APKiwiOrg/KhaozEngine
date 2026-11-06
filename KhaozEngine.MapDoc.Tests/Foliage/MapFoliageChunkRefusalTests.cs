@@ -41,33 +41,40 @@ public sealed class MapFoliageChunkRefusalTests
     [Theory]
     [InlineData("duplicate", MapDocumentRefusal.IdentityDuplicate)]
     [InlineData("domain", MapDocumentRefusal.FoliageChunkOutOfDomain)]
+    [InlineData("domain-z", MapDocumentRefusal.FoliageChunkOutOfDomain)]
     [InlineData("padding", MapDocumentRefusal.FoliagePaddingNonzero)]
+    [InlineData("padding-z", MapDocumentRefusal.FoliagePaddingNonzero)]
     public void ResidentChunkRules_RetainTheKeyAndPaddingAddress(string fault, MapDocumentRefusal reason)
     {
-        var key = new MapFoliageChunkKey(fault == "domain" ? 2 : 1, 0);
+        var key = fault == "domain-z" ? new MapFoliageChunkKey(0, 1) : new MapFoliageChunkKey(fault == "domain" ? 2 : 1, 0);
         var bytes = new byte[MapFoliageChunk.ByteLength];
-        if (fault == "padding") bytes[3] = 1;
+        int paddingIndex = fault == "padding-z" ? 3 * MapFoliageChunk.Size : 3;
+        if (fault is "padding" or "padding-z") bytes[paddingIndex] = 1;
         var chunk = new MapFoliageChunk(key, bytes);
         var layer = FoliageFixtures.BasicLayer(fault == "duplicate" ? [chunk, chunk] : [chunk]);
         var findings = MapFoliageValidation.ValidateFindings(new(1, [layer]));
         // A resident out-of-domain key is also advertised, so both checks retain a finding.
-        Assert.Equal(fault == "domain" ? 2 : 1, findings.Count);
+        Assert.Equal(fault is "domain" or "domain-z" ? 2 : 1, findings.Count);
         var finding = findings[^1];
         Assert.Equal(reason, finding.Reason);
         Assert.Equal(layer.Id, finding.LayerId);
         Assert.Equal(key, finding.FoliageChunk);
         if (fault == "duplicate") Assert.Equal(1, finding.Index);
-        if (fault == "domain") { Assert.Equal(2L, finding.ActualInteger); Assert.Equal(1L, finding.MaximumInteger); }
-        if (fault == "padding")
+        if (fault is "domain" or "domain-z")
         {
-            Assert.Equal(3, finding.Index);
-            Assert.Equal(3, finding.CellX);
-            Assert.Equal(0, finding.CellZ);
+            Assert.Equal(fault == "domain" ? 2L : 1L, finding.ActualInteger);
+            Assert.Equal(fault == "domain" ? 1L : 0L, finding.MaximumInteger);
+        }
+        if (fault is "padding" or "padding-z")
+        {
+            Assert.Equal(paddingIndex, finding.Index);
+            Assert.Equal(fault == "padding" ? 3 : 0, finding.CellX);
+            Assert.Equal(fault == "padding" ? 0 : 3, finding.CellZ);
             Assert.Equal(1L, finding.ActualInteger);
         }
         Assert.Equal(findings.Select(f => f.Message), MapFoliageValidation.Validate(new(1, [layer])));
-        bytes[3] = 0;
-        var repaired = FoliageFixtures.BasicLayer([new(new(1, 0), bytes)]);
+        bytes[paddingIndex] = 0;
+        var repaired = FoliageFixtures.BasicLayer([new(new(fault == "domain-z" ? 0 : 1, 0), bytes)]);
         Assert.Empty(MapFoliageValidation.ValidateFindings(new(1, [repaired])));
     }
 

@@ -209,7 +209,9 @@ public sealed class MapFoliageEditTests
 
         // A supported policy definition change needs the digest issued for this before document and this proposal.
         var policy = new MapSetFoliageLayer(Change(layer, l => l["policy"]!["normalBoundaryHeight"] = 0.25f));
-        Refused(f, policy, "differential");
+        var missingToken = Refused(f, policy, "differential");
+        Assert.Equal(MapDocumentRefusal.SchemaValueRequired, missingToken.Reason);
+        Assert.Equal("ExpectedDifferentialDigest", missingToken.FieldPath);
         MapFoliageDifferentialResult preview = MapFoliageEdits.PreviewPolicyChange(f.Document, f.Assets, policy);
         Assert.Equal(MapFoliageStatus.Complete, preview.Status);
         Assert.Equal(64, preview.Digest.Length);
@@ -218,7 +220,10 @@ public sealed class MapFoliageEditTests
         string other = MapFoliageEdits.PreviewPolicyChange(f.Document, f.Assets, otherProposal).Digest;
         string otherBefore = MapFoliageEdits.PreviewPolicyChange(density.After, f.Assets, policy).Digest;
         Assert.Equal(3, new[] { preview.Digest, other, otherBefore }.Distinct().Count());
-        Refused(f, policy with { ExpectedDifferentialDigest = other }, "stale");
+        var staleToken = Refused(f, policy with { ExpectedDifferentialDigest = other }, "stale");
+        Assert.Equal(MapDocumentRefusal.FoliagePolicyDigestStale, staleToken.Reason);
+        Assert.Equal(other, staleToken.ActualHash);
+        Assert.Equal(preview.Digest, staleToken.ExpectedHash);
         Refused(f, policy with { ExpectedDifferentialDigest = otherBefore }, "stale");
         Refused(f, new MapFoliageEditSequence([policy], null), "differential");
         MapPrefabEditResult accepted = MapFoliageEdits.Prepare(f.Document, f.Assets, policy with { ExpectedDifferentialDigest = preview.Digest });
@@ -238,7 +243,10 @@ public sealed class MapFoliageEditTests
         MapFoliageDifferentialResult incomplete = MapFoliageEdits.PreviewPolicyChange(f.Document, f.Assets, unrepresentable);
         Assert.NotEqual(MapFoliageStatus.Complete, incomplete.Status);
         Assert.Equal("", incomplete.Digest);
-        Refused(f, unrepresentable with { ExpectedDifferentialDigest = preview.Digest }, "issues no digest");
+        var noPreview = Refused(f, unrepresentable with { ExpectedDifferentialDigest = preview.Digest }, "issues no digest");
+        Assert.Equal(MapDocumentRefusal.FoliagePolicyPreviewIncomplete, noPreview.Reason);
+        Assert.Equal(incomplete.Status, noPreview.FoliageStatus);
+        Assert.Equal(Id, noPreview.LayerId);
         Assert.Equal(original, MapDocumentFile.SaveText(f.Document));
 
         // A sequence applies its owner edit and every foliage step on one detached candidate, validated together.
@@ -350,13 +358,14 @@ public sealed class MapFoliageEditTests
         return result;
     }
 
-    static void Refused(FoliageFixture f, MapFoliageEdit edit, string? detail = null)
+    static MapDocumentException Refused(FoliageFixture f, MapFoliageEdit edit, string? detail = null)
     {
         string beforeState = MapDocumentFile.SaveText(f.Document);
         var error = Assert.Throws<MapDocumentException>(() => MapFoliageEdits.Prepare(f.Document, f.Assets, edit));
         if (detail is not null) Assert.Contains(detail, error.Message, StringComparison.Ordinal);
         string refusedState = MapDocumentFile.SaveText(f.Document);
         Assert.Equal(beforeState, refusedState);
+        return error;
     }
 
     static byte[] Samples(MapFoliageLayer layer)

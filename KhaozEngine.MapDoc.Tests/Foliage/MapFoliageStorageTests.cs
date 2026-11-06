@@ -259,10 +259,19 @@ public sealed class MapFoliageStorageTests
         using (var writer = new System.Text.Json.Utf8JsonWriter(bytes)) MapFoliageStorage.WriteManifest(writer, set, index);
         long exact = bytes.Length;
         MapFoliageManifestBudget.Check(set, index, exact);
-        Assert.Throws<MapDocumentException>(() => MapFoliageManifestBudget.Check(set, index, exact - 1));
+        var bytesError = Assert.Throws<MapDocumentException>(() => MapFoliageManifestBudget.Check(set, index, exact - 1));
+        Assert.Equal(MapDocumentRefusal.WorkCapacityExceeded, bytesError.Reason);
+        Assert.Equal("stored foliage UTF-8 bytes", bytesError.Budget);
+        Assert.Equal(exact - 1, bytesError.Limit);
+        Assert.Equal(exact, bytesError.ActualByteCount);
+        MapFoliageManifestBudget.Check(set, index, exact);
         // Every coordinate row needs at least 13 UTF-8 bytes, even before commas and field names.
         MapFoliageManifestBudget.CheckMemberships(10, 130);
-        Assert.Throws<MapDocumentException>(() => MapFoliageManifestBudget.CheckMemberships(11, 130));
+        var memberships = Assert.Throws<MapDocumentException>(() => MapFoliageManifestBudget.CheckMemberships(11, 130));
+        Assert.Equal(MapDocumentRefusal.WorkCapacityExceeded, memberships.Reason);
+        Assert.Equal(11L, memberships.ActualCount);
+        Assert.Equal(130L, memberships.Limit);
+        MapFoliageManifestBudget.CheckMemberships(10, 130);
     }
 
     [Theory]

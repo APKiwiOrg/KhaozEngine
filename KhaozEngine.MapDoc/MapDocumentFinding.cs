@@ -84,6 +84,8 @@ public sealed record MapDocumentFinding(MapDocumentRefusal Reason, string Messag
 
     /// <summary>The foliage chunk coordinates, after both coordinates have been read.</summary>
     public MapFoliageChunkKey? FoliageChunk { get; init; }
+    /// <summary>The foliage differential status that prevented a policy preview from issuing a digest.</summary>
+    public MapFoliageStatus? FoliageStatus { get; init; }
     /// <summary>The measured or decoded byte count, when the whole value can be measured.</summary>
     public long? ActualByteCount { get; init; }
     /// <summary>The required decoded byte count, when checked.</summary>
@@ -297,6 +299,7 @@ public sealed record MapDocumentFinding(MapDocumentRefusal Reason, string Messag
             ConversionClass = error.ConversionClass,
             PresencePolicy = error.PresencePolicy,
             FoliageChunk = error.FoliageChunk,
+            FoliageStatus = error.FoliageStatus,
             ActualByteCount = error.ActualByteCount,
             ExpectedByteCount = error.ExpectedByteCount,
             PatchStatus = error.PatchStatus,

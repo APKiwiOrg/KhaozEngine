@@ -42,7 +42,15 @@ internal static class MapFoliageContextPreflight
         ArgumentNullException.ThrowIfNull(assets);
         ArgumentNullException.ThrowIfNull(limits);
         if (limits.MaxSourceUtf8Bytes < 0 || limits.MaxChunkDescriptors < 0 || limits.MaxPlacements < 0 ||
-            limits.MaxSurfacePatches < 0 || limits.MaxPaintTargets < 0) throw new ArgumentOutOfRangeException(nameof(limits));
+            limits.MaxSurfacePatches < 0 || limits.MaxPaintTargets < 0)
+        {
+            string field = limits.MaxSourceUtf8Bytes < 0 ? "MaxSourceUtf8Bytes" : limits.MaxChunkDescriptors < 0 ? "MaxChunkDescriptors" :
+                limits.MaxPlacements < 0 ? "MaxPlacements" : limits.MaxSurfacePatches < 0 ? "MaxSurfacePatches" : "MaxPaintTargets";
+            long actual = field switch { "MaxSourceUtf8Bytes" => limits.MaxSourceUtf8Bytes, "MaxChunkDescriptors" => limits.MaxChunkDescriptors,
+                "MaxPlacements" => limits.MaxPlacements, "MaxSurfacePatches" => limits.MaxSurfacePatches, _ => limits.MaxPaintTargets };
+            throw new MapFoliageContextArgumentException(MapDocumentRefusal.ValueOutsideRange, nameof(limits))
+            { FieldPath = field, ActualInteger = actual, MinimumInteger = 0 };
+        }
         var work = new MapFoliageContextWork(0, 0, 0, 0, 0, 0, 0);
         if (IsPartial(document) || set?.Layers.Any(l => l.Chunks.Count != l.ChunkDigests.Count) == true)
             return new(MapFoliageStatus.PartialResidency, work);

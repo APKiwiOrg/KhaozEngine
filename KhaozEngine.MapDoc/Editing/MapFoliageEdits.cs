@@ -140,9 +140,11 @@ public static class MapFoliageEdits
             case MapRemoveFoliage remove:
                 return Remove(set, remove.LayerId);
             case MapFoliageEditSequence:
-                throw new MapDocumentException("A foliage edit sequence cannot contain another sequence.");
+                throw new MapDocumentException(MapDocumentRefusal.FoliageNestedSequenceUnsupported, "A foliage edit sequence cannot contain another sequence.")
+                { Operation = nameof(Prepare), RecordType = edit.GetType() };
             default:
-                throw new MapDocumentException("Unknown foliage edit.");
+                throw new MapDocumentException(MapDocumentRefusal.OperationKindUnsupported, "Unknown foliage edit.")
+                { Operation = nameof(Prepare), RecordType = edit?.GetType() };
         }
     }
 
@@ -159,7 +161,8 @@ public static class MapFoliageEdits
         {
             var bytes = available?.GetValueOrDefault(missing.Key);
             if (previous?.GetValueOrDefault(missing.Key) != missing.Sha256 || bytes is null)
-                throw new MapDocumentException($"Foliage layer '{value.Id}' advertises chunk {missing.Key} without its density bytes.");
+                throw new MapDocumentException(MapDocumentRefusal.FoliageChunkUnavailable, $"Foliage layer '{value.Id}' advertises chunk {missing.Key} without its density bytes.")
+                { LayerId = value.Id, FoliageChunk = missing.Key, ExpectedHash = missing.Sha256, ActualHash = previous?.GetValueOrDefault(missing.Key) };
             carried.Add(bytes);
         }
         MapFoliageLayer layer = MapFoliageLayer.FromStorage(value, value.ChunkDigests, value.Chunks.Concat(carried).ToArray());
@@ -188,7 +191,8 @@ public static class MapFoliageEdits
     static int Require(MapFoliageSet? set, string id)
     {
         int index = set is null ? -1 : set.Layers.ToList().FindIndex(l => string.Equals(l.Id, id, StringComparison.Ordinal));
-        return index >= 0 ? index : throw new MapDocumentException($"No foliage layer '{id}'.");
+        return index >= 0 ? index : throw new MapDocumentException(MapDocumentRefusal.ReferenceMissing, $"No foliage layer '{id}'.")
+        { LayerId = id, SubjectKind = "foliage layer" };
     }
 
     // Shape, domain and budget refuse before any value is read. The values are copied once, so the request list is never
@@ -196,16 +200,21 @@ public static class MapFoliageEdits
     static MapFoliageLayer SetDensity(MapFoliageLayer layer, MapSetFoliageDensity edit)
     {
         var (hiX, hiZ) = MapFoliageBrush.RequireRectangle(layer, edit.X, edit.Z, edit.Width, edit.Depth);
-        if (edit.Density is null) throw new MapDocumentException("A foliage density edit requires its values.");
+        if (edit.Density is null) throw new MapDocumentException(MapDocumentRefusal.SchemaValueRequired, "A foliage density edit requires its values.")
+        { LayerId = layer.Id, FieldPath = "Density" };
         int count = edit.Width * edit.Depth;
-        if (edit.Density.Count != count)
-            throw new MapDocumentException($"A {edit.Width} by {edit.Depth} foliage density rectangle needs {count} values, not {edit.Density.Count}.");
+        int actualCount = edit.Density.Count;
+        if (actualCount != count)
+            throw new MapDocumentException(MapDocumentRefusal.SchemaArrayLengthMismatch, $"A {edit.Width} by {edit.Depth} foliage density rectangle needs {count} values, not {actualCount}.")
+            { LayerId = layer.Id, FieldPath = "Density", Width = edit.Width, Depth = edit.Depth, ActualCount = actualCount, ExpectedCount = count };
         var values = new byte[count];
         for (int i = 0; i < count; i++)
         {
             int value = edit.Density[i];
             if ((uint)value > byte.MaxValue)
-                throw new MapDocumentException($"Foliage density value {value} at row {i / edit.Width}, column {i % edit.Width} must be from 0 to 255.");
+                throw new MapDocumentException(MapDocumentRefusal.ValueOutsideRange, $"Foliage density value {value} at row {i / edit.Width}, column {i % edit.Width} must be from 0 to 255.")
+                { LayerId = layer.Id, FieldPath = $"Density[{i}]", Index = i, CellX = i % edit.Width, CellZ = i / edit.Width,
+                    ActualInteger = value, MinimumInteger = 0, MaximumInteger = byte.MaxValue };
             values[i] = (byte)value;
         }
         return MapFoliageBrush.Rewrite(layer, edit.X, edit.Z, hiX, hiZ, (x, z, _) => values[(z - edit.Z) * edit.Width + (x - edit.X)]);
@@ -230,14 +239,17 @@ public static class MapFoliageEdits
         MapFoliageLayer? old = before.Foliage?.Layers.FirstOrDefault(l => string.Equals(l.Id, layer.Id, StringComparison.Ordinal));
         if (old is null || SamePolicy(old.Policy, layer.Policy)) return;
         if (string.IsNullOrEmpty(step.ExpectedDifferentialDigest))
-            throw new MapDocumentException($"Foliage layer '{layer.Id}': a policy definition change needs the differential digest " +
-                "PreviewPolicyChange issues for this document and proposal.");
+            throw new MapDocumentException(MapDocumentRefusal.SchemaValueRequired, $"Foliage layer '{layer.Id}': a policy definition change needs the differential digest " +
+                "PreviewPolicyChange issues for this document and proposal.")
+            { LayerId = layer.Id, FieldPath = "ExpectedDifferentialDigest", ActualHash = step.ExpectedDifferentialDigest };
         MapFoliageDifferentialResult result = MapFoliageDifferential.Compare(before, proposal, assets, layer.Id);
         if (result.Status != MapFoliageStatus.Complete)
-            throw new MapDocumentException($"Foliage layer '{layer.Id}': the policy differential is {result.Status}, so it issues no digest.");
+            throw new MapDocumentException(MapDocumentRefusal.FoliagePolicyPreviewIncomplete, $"Foliage layer '{layer.Id}': the policy differential is {result.Status}, so it issues no digest.")
+            { LayerId = layer.Id, FoliageStatus = result.Status };
         if (!string.Equals(result.Digest, step.ExpectedDifferentialDigest, StringComparison.Ordinal))
-            throw new MapDocumentException($"Foliage layer '{layer.Id}': the differential digest is stale for this document and proposal. " +
-                "Preview the policy change again.");
+            throw new MapDocumentException(MapDocumentRefusal.FoliagePolicyDigestStale, $"Foliage layer '{layer.Id}': the differential digest is stale for this document and proposal. " +
+                "Preview the policy change again.")
+            { LayerId = layer.Id, ExpectedHash = result.Digest, ActualHash = step.ExpectedDifferentialDigest };
     }
 
     static bool SamePolicy(MapFoliagePolicy a, MapFoliagePolicy b) => string.Equals(a.Id, b.Id, StringComparison.Ordinal) &&

@@ -368,6 +368,16 @@ public enum MapDocumentRefusal
     FoliagePaddingNonzero,
     /// <summary>Refuses a foliage edit rectangle outside its layer raster.</summary>
     FoliageRectangleOutOfBounds,
+    /// <summary>Refuses a foliage sequence containing another sequence.</summary>
+    FoliageNestedSequenceUnsupported,
+    /// <summary>Refuses foliage work without captured effective surface context.</summary>
+    FoliageEffectiveContextRequired,
+    /// <summary>Refuses a policy change whose differential cannot issue a complete preview.</summary>
+    FoliagePolicyPreviewIncomplete,
+    /// <summary>Refuses a policy change carrying a differential digest for another snapshot or proposal.</summary>
+    FoliagePolicyDigestStale,
+    /// <summary>Refuses a partial save that drops or replaces unavailable foliage data.</summary>
+    FoliagePartialSaveUnsafe,
     /// <summary>Refuses reading an advertised foliage chunk whose density is not resident.</summary>
     FoliageChunkUnavailable,
     /// <summary>Refuses a foliage section larger than its UTF-8 byte budget.</summary>

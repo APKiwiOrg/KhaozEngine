@@ -188,6 +188,7 @@ public sealed class MapDocumentExceptionTests
         if (type == typeof(KhaozEngine.MapDoc.Editing.MapCellConversionClass)) return KhaozEngine.MapDoc.Editing.MapCellConversionClass.UnsupportedEncoding;
         if (type == typeof(MapPresencePolicy)) return MapPresencePolicy.LegacyTileWorld;
         if (type == typeof(MapLatticeAddress)) return MapLatticeAddress.Create(1, -2, 3);
+        if (type == typeof(MapFoliageStatus)) return MapFoliageStatus.NotRepresentable;
         if (type == typeof(MapFoliageChunkKey)) return new MapFoliageChunkKey(-3, index);
         if (type == typeof(IReadOnlyList<int>)) return new[] { 1, 5 };
         if (type == typeof(IReadOnlyList<string>)) return new[] { "a", "b" };

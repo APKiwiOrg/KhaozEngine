@@ -41,6 +41,7 @@ internal static class MapDocumentRefusalFactory
             ConversionClass = finding.ConversionClass,
             PresencePolicy = finding.PresencePolicy,
             FoliageChunk = finding.FoliageChunk,
+            FoliageStatus = finding.FoliageStatus,
             ActualByteCount = finding.ActualByteCount,
             ExpectedByteCount = finding.ExpectedByteCount,
             PatchStatus = finding.PatchStatus,

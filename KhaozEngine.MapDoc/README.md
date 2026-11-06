@@ -1038,6 +1038,11 @@ and available identifiers on its outer `MapDocumentException`.
 | `FoliageSectionNull` | An explicit null section instead of omission | `FieldPath` |
 | `FoliageChunkUnavailable` | Reading advertised nonresident density | `LayerId`, `FoliageChunk` |
 | `FoliageChunkOutOfDomain` | An advertised or resident chunk outside its layer's sample domain | `LayerId`, `FoliageChunk`, `FieldPath`, `Index`, `Width`, `Depth`, checked axis value and integer limits |
+| `FoliageNestedSequenceUnsupported` | A sequence containing another sequence | `Operation`, `RecordType` |
+| `FoliageEffectiveContextRequired` | Foliage generation or finalization without captured effective surfaces | `Operation`, `SourceType` |
+| `FoliagePolicyPreviewIncomplete` | A policy change whose preview cannot issue a complete digest | `LayerId`, `FoliageStatus` |
+| `FoliagePolicyDigestStale` | A differential token for another document snapshot or proposal | `LayerId`, `ExpectedHash`, `ActualHash` |
+| `FoliagePartialSaveUnsafe` | Dropping or replacing unavailable advertised density during a partial save | `LayerId`, `FoliageChunk`, `ExpectedHash` |
 | `FoliageRectangleOutOfBounds` | A density edit rectangle outside the layer raster | `LayerId`, `FieldPath`, `CellX`, `CellZ`, raster `Width`, `Depth`, checked endpoint and integer limits |
 | `FoliagePaddingNonzero` | Nonzero resident density outside the layer domain | `LayerId`, `FoliageChunk`, `FieldPath`, byte `Index`, chunk-local `CellX`, `CellZ`, `ActualInteger`, `Width`, `Depth` |
 | `FoliageSectionIncomplete` | A section that is not fully buffered | `FieldPath`, with `ActualByteCount` unset because the complete size cannot be measured |
@@ -1122,8 +1127,23 @@ Empty raster or rectangle dimensions use `BoundsInvalid`. Hardness accepts 0 and
 failures use `FoliageRectangleOutOfBounds`, retaining the raster dimensions, submitted cell and first
 failing coordinate or endpoint. Raster work uses `WorkCapacityExceeded` with `Budget` equal to
 `addresses per raster edit` or `chunks per raster edit`, `ActualCount` and inclusive `Limit`.
-Required edit lists, steps and layer values use `SchemaValueRequired` with `FieldPath` and the document
-identity or step index when available. These refusals precede density writes.
+Required edit lists, steps, layers and density values use `SchemaValueRequired` with `FieldPath` and the
+document identity or step index when available. Missing layer lookup uses `ReferenceMissing` with
+`LayerId`. Wrong density lengths use `SchemaArrayLengthMismatch` with the single captured `ActualCount`
+and `ExpectedCount`. Values outside 0 through 255 use `ValueOutsideRange` with the row-major `Index`,
+rectangle-local `CellX` and `CellZ`, `ActualInteger` and inclusive limits. These refusals precede density writes.
+A missing differential token uses `SchemaValueRequired` with `FieldPath = "ExpectedDifferentialDigest"`.
+An incomplete preview retains its actual `FoliageStatus`, and a stale token retains the expected and
+submitted digests. Unsupported edit kinds use `OperationKindUnsupported` with `RecordType`, while a
+nested sequence uses `FoliageNestedSequenceUnsupported`.
+Negative context options throw `MapFoliageContextArgumentException`, still catchable as
+`ArgumentOutOfRangeException`, with `Reason = ValueOutsideRange`, `FieldPath`, `ActualInteger` and
+`MinimumInteger = 0`. Its released `ParamName = "limits"` and null BCL `ActualValue` are retained.
+Zero is admitted for each option, with excess document demand still reported through the existing status.
+Stored JSON work limits retain `Budget = "stored foliage UTF-8 bytes"`, `Limit`, measured attempted
+`ActualByteCount` or membership `ActualCount` when available. Negative membership count or byte limit
+uses `ValueOutsideRange` with the first failed field. A save that materializes nonresident chunks forwards
+the first chunk-validation finding and its full ordered snapshot, including domain or padding identifiers.
 
 The closed codec checks counts, sizes and arithmetic before allocation. Monolithic storage embeds density.
 Tiled storage writes one verified content-addressed pack per (layer, storage region), with logical chunk digests

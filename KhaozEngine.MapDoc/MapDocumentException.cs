@@ -100,6 +100,8 @@ public sealed class MapDocumentException : Exception
 
     /// <summary>The foliage chunk coordinates, after both coordinates have been read.</summary>
     public MapFoliageChunkKey? FoliageChunk { get; init; }
+    /// <summary>The foliage differential status that prevented a policy preview from issuing a digest.</summary>
+    public MapFoliageStatus? FoliageStatus { get; init; }
     /// <summary>The measured or decoded byte count, when the whole value can be measured.</summary>
     public long? ActualByteCount { get; init; }
     /// <summary>The required decoded byte count, when checked.</summary>
@@ -334,6 +336,7 @@ public sealed class MapDocumentException : Exception
         ConversionClass = inner.ConversionClass;
         PresencePolicy = inner.PresencePolicy;
         FoliageChunk = inner.FoliageChunk;
+        FoliageStatus = inner.FoliageStatus;
         ActualByteCount = inner.ActualByteCount;
         ExpectedByteCount = inner.ExpectedByteCount;
         PatchStatus = inner.PatchStatus;

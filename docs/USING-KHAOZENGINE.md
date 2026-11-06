@@ -12274,7 +12274,21 @@ first failed branch and retain `FieldPath` and the checked value or limits. Hard
 `FoliageRectangleOutOfBounds` retains the submitted cell, raster dimensions and failed endpoint.
 Raster work limits use `WorkCapacityExceeded` with the address or chunk `Budget`, `ActualCount` and
 inclusive `Limit`. Required sequence lists, steps and layers use `SchemaValueRequired` with their local
-path and available document identity or step index, before writing density.
+path and available document identity or step index, before writing density. Density lengths retain the
+single captured `ActualCount` and `ExpectedCount`. Invalid values retain the row-major index,
+rectangle-local cell and inclusive 0 through 255 limits.
+Nested sequences use `FoliageNestedSequenceUnsupported`. Unsupported edit kinds retain `RecordType`.
+A policy preview that cannot complete uses `FoliagePolicyPreviewIncomplete` with its `FoliageStatus`,
+and a stale token uses `FoliagePolicyDigestStale` with expected and submitted hashes. Missing tokens
+use `SchemaValueRequired` with `FieldPath = "ExpectedDifferentialDigest"`.
+Negative context options throw `MapFoliageContextArgumentException`, an `ArgumentOutOfRangeException`
+subtype carrying the first failed field, integer value and minimum 0. The BCL parameter stays `limits`
+and its `ActualValue` stays null. Zero options remain legal. Missing captured effective surfaces use
+`FoliageEffectiveContextRequired` with `Operation` and `SourceType`.
+Partial pack saves retain the unavailable layer, key and expected digest on `FoliagePartialSaveUnsafe`.
+Missing density uses `FoliageChunkUnavailable`. Materialized chunk validation forwards its first concrete
+finding and full snapshot. Stored JSON budget failures retain the byte limit and attempted byte count or
+membership count, and negative budget inputs retain their own field and numeric domain.
 
 Motion padding is explicit caller policy in metres. Transform all eight source-unit-adjusted mesh corners by each
 sample's exact CPU matrix, then expand XYZ. Preserve CPU selection, live blade/shrub profiles and shadow flags. Use the

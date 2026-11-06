@@ -25,8 +25,14 @@ public sealed class MapFoliageStorageIndex
     internal MapFoliageStorageIndex(IReadOnlyList<MapFoliagePackRef> packs, IReadOnlyList<MapFoliageChunkRef> chunks,
         string? directory = null, MapFoliageSet? resident = null)
     {
-        if (chunks.Count > MapFoliagePayloadLimits.MaxDocumentChunks || packs.Count > MapFoliagePayloadLimits.MaxDocumentChunks)
-            throw new MapDocumentException("foliage storage exceeds document chunk capacity.");
+        int chunkCount = chunks.Count;
+        if (chunkCount > MapFoliagePayloadLimits.MaxDocumentChunks)
+            throw new MapDocumentException(MapDocumentRefusal.WorkCapacityExceeded, "foliage storage exceeds document chunk capacity.")
+            { FieldPath = "Chunks", Budget = "foliage storage chunks", ActualCount = chunkCount, Limit = MapFoliagePayloadLimits.MaxDocumentChunks };
+        int packCount = packs.Count;
+        if (packCount > MapFoliagePayloadLimits.MaxDocumentChunks)
+            throw new MapDocumentException(MapDocumentRefusal.WorkCapacityExceeded, "foliage storage exceeds document chunk capacity.")
+            { FieldPath = "Packs", Budget = "foliage storage packs", ActualCount = packCount, Limit = MapFoliagePayloadLimits.MaxDocumentChunks };
         Packs = Array.AsReadOnly(packs.OrderBy(p => p.LayerId, StringComparer.Ordinal).ThenBy(p => p.Region.Z).ThenBy(p => p.Region.X).ToArray());
         Chunks = Array.AsReadOnly(chunks.Select(c => c with { Regions = Array.AsReadOnly(c.Regions.ToArray()) })
             .OrderBy(c => c.LayerId, StringComparer.Ordinal).ThenBy(c => c.Key.Z).ThenBy(c => c.Key.X).ToArray());
@@ -35,9 +41,16 @@ public sealed class MapFoliageStorageIndex
         foreach (MapFoliagePackRef pack in Packs)
         {
             MapFoliageRegionPack.RequireDigest(pack.PayloadSha256);
-            if (string.IsNullOrEmpty(pack.LayerId) || pack.ByteLength != MapFoliageRegionPack.ByteLength(pack.ChunkCount) ||
-                !_byRegion.TryAdd((pack.LayerId, pack.Region), pack))
-                throw new MapDocumentException("foliage: invalid or duplicate region pack reference.");
+            if (string.IsNullOrEmpty(pack.LayerId))
+                throw new MapDocumentException(MapDocumentRefusal.SchemaValueRequired, "foliage: invalid or duplicate region pack reference.")
+                { LayerId = pack.LayerId, Tile = pack.Region, FieldPath = "LayerId" };
+            int expectedBytes = MapFoliageRegionPack.ByteLength(pack.ChunkCount);
+            if (pack.ByteLength != expectedBytes)
+                throw new MapDocumentException(MapDocumentRefusal.SchemaArrayLengthMismatch, "foliage: invalid or duplicate region pack reference.")
+                { LayerId = pack.LayerId, Tile = pack.Region, FieldPath = "ByteLength", ActualByteCount = pack.ByteLength, ExpectedByteCount = expectedBytes };
+            if (!_byRegion.TryAdd((pack.LayerId, pack.Region), pack))
+                throw new MapDocumentException(MapDocumentRefusal.IdentityDuplicate, "foliage: invalid or duplicate region pack reference.")
+                { LayerId = pack.LayerId, Tile = pack.Region, FieldPath = "Packs", SubjectKind = "foliage region pack" };
         }
         foreach (MapFoliageChunkRef chunk in Chunks)
         {

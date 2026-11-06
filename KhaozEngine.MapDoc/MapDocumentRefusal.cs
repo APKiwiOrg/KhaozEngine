@@ -359,6 +359,14 @@ public enum MapDocumentRefusal
     /// <summary>Refuses coincident physical support owned by different authored surfaces.</summary>
     SpaceSupportCoincident,
 
+    // Foliage storage admission.
+    /// <summary>Refuses publication after foliage changed from the prepared save snapshot.</summary>
+    FoliageSaveSnapshotChanged,
+    /// <summary>Refuses stored foliage memberships differing from its density lattice.</summary>
+    FoliageRegionMembershipMismatch,
+    /// <summary>Refuses required pinned content whose read did not succeed.</summary>
+    PinnedContentUnavailable,
+
     // Foliage payload and JSON converter.
     /// <summary>Refuses a foliage sampling policy other than the supported policy identity.</summary>
     FoliagePolicyUnsupported,

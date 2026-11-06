@@ -12290,6 +12290,15 @@ Missing density uses `FoliageChunkUnavailable`. Materialized chunk validation fo
 finding and full snapshot. Stored JSON budget failures retain the byte limit and attempted byte count or
 membership count, and negative budget inputs retain their own field and numeric domain.
 
+Stored foliage guards retain typed layer references, pack byte counts and duplicate identities. Collection
+capacities distinguish the first failed `Chunks` or `Packs` field. Region calculations select
+`GeometryNotRepresentable`, `BoundsInvalid` or `WorkCapacityExceeded`, preserving the layer, chunk and available
+coordinate or budget metadata. The membership cap is inclusive at 4096. Stored lattice disagreement uses
+`FoliageRegionMembershipMismatch`. Complete-density checks retain missing counts, or the actual and expected chunk
+keys with their row index and compared hashes. `FoliageSaveSnapshotChanged` retains both save snapshot hashes.
+A required pinned pack read uses `PinnedContentUnavailable` with its `FoliageReadStatus`, `LayerId`, owner `Tile`
+and expected hash. `MapFoliageStorage` validation forwards the first concrete finding and complete ordered snapshot.
+
 Motion padding is explicit caller policy in metres. Transform all eight source-unit-adjusted mesh corners by each
 sample's exact CPU matrix, then expand XYZ. Preserve CPU selection, live blade/shrub profiles and shadow flags. Use the
 render dependency digest plus generation to reject stale work. Keep one owned batch across every intersected residency

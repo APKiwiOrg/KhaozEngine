@@ -1042,6 +1042,9 @@ and available identifiers on its outer `MapDocumentException`.
 | `FoliageEffectiveContextRequired` | Foliage generation or finalization without captured effective surfaces | `Operation`, `SourceType` |
 | `FoliagePolicyPreviewIncomplete` | A policy change whose preview cannot issue a complete digest | `LayerId`, `FoliageStatus` |
 | `FoliagePolicyDigestStale` | A differential token for another document snapshot or proposal | `LayerId`, `ExpectedHash`, `ActualHash` |
+| `FoliageSaveSnapshotChanged` | Publication after foliage changed from the prepared save | `ExpectedHash`, `ActualHash` |
+| `FoliageRegionMembershipMismatch` | Stored owner region or memberships differing from the density lattice | `LayerId`, `FoliageChunk`, submitted owner `Tile` |
+| `PinnedContentUnavailable` | A required pinned foliage pack whose read did not succeed | `FoliageReadStatus`, `LayerId`, `Tile`, `ExpectedHash` |
 | `FoliagePartialSaveUnsafe` | Dropping or replacing unavailable advertised density during a partial save | `LayerId`, `FoliageChunk`, `ExpectedHash` |
 | `FoliageRectangleOutOfBounds` | A density edit rectangle outside the layer raster | `LayerId`, `FieldPath`, `CellX`, `CellZ`, raster `Width`, `Depth`, checked endpoint and integer limits |
 | `FoliagePaddingNonzero` | Nonzero resident density outside the layer domain | `LayerId`, `FoliageChunk`, `FieldPath`, byte `Index`, chunk-local `CellX`, `CellZ`, `ActualInteger`, `Width`, `Depth` |
@@ -1077,6 +1080,21 @@ Capacity checks use `WorkCapacityExceeded` with `Budget`, `ActualCount` or `Actu
 The section byte guard shares `FoliageSectionByteLimitExceeded` with the converter admission guard.
 `SupportedVersions` is an owned read-only snapshot on the exception and finding types. Numeric identifiers describe
 only representable input values, while integer bounds describe the domain the guard actually checks.
+
+Stored layer references distinguish `AuthoredValueMismatch` for a chunk naming another layer from
+`ReferenceMissing` for a pack naming an undeclared layer. The former carries the containing `LayerId` and submitted
+`ActualText`, the latter the missing `LayerId` and pack `Tile`. Both identify `FieldPath = "layerId"`.
+Storage collection capacities carry the first failed `Chunks` or `Packs` field, its `Budget`, `ActualCount` and
+inclusive `Limit`. Pack references distinguish missing `LayerId`, inconsistent byte length and duplicate layer/region
+identity. Byte-length refusals retain `ActualByteCount` and `ExpectedByteCount`.
+Region-range guards distinguish unrepresentable coordinates, reversed bounds and the 4096 membership cap, retaining
+`LayerId` and `FoliageChunk`. Coordinate failures identify `RegionX` or `RegionZ`, the actual integer and signed
+32-bit bounds. Capacity failures retain `Budget = "RegionMemberships"`, `ActualCount` and `Limit`.
+Complete-density checks retain missing resident and advertised counts. A mismatched pair retains the resident
+`FoliageChunk`, `ExpectedFoliageChunk` and row `Index`, selecting `AuthoredValueMismatch` for different keys or
+`DigestMismatch` with expected/actual hashes for different density. Storage validation forwards the first concrete
+finding and its complete ordered snapshot. Save publication retains both foliage snapshot hashes, and required pack
+read failures retain their exact status and pin.
 
 An advertised nonresident density read uses `FoliageChunkUnavailable` with `LayerId` and `FoliageChunk`.
 Repeated advertised chunk keys use `IdentityDuplicate` with those identifiers and `SubjectKind`.

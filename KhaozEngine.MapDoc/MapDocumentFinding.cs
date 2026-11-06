@@ -86,6 +86,10 @@ public sealed record MapDocumentFinding(MapDocumentRefusal Reason, string Messag
     public MapFoliageChunkKey? FoliageChunk { get; init; }
     /// <summary>The foliage differential status that prevented a policy preview from issuing a digest.</summary>
     public MapFoliageStatus? FoliageStatus { get; init; }
+    /// <summary>The advertised foliage chunk key required by the compared resident row.</summary>
+    public MapFoliageChunkKey? ExpectedFoliageChunk { get; init; }
+    /// <summary>The pinned foliage pack read status that prevented the operation.</summary>
+    public MapFoliageReadStatus? FoliageReadStatus { get; init; }
     /// <summary>The measured or decoded byte count, when the whole value can be measured.</summary>
     public long? ActualByteCount { get; init; }
     /// <summary>The required decoded byte count, when checked.</summary>
@@ -300,6 +304,8 @@ public sealed record MapDocumentFinding(MapDocumentRefusal Reason, string Messag
             PresencePolicy = error.PresencePolicy,
             FoliageChunk = error.FoliageChunk,
             FoliageStatus = error.FoliageStatus,
+            ExpectedFoliageChunk = error.ExpectedFoliageChunk,
+            FoliageReadStatus = error.FoliageReadStatus,
             ActualByteCount = error.ActualByteCount,
             ExpectedByteCount = error.ExpectedByteCount,
             PatchStatus = error.PatchStatus,

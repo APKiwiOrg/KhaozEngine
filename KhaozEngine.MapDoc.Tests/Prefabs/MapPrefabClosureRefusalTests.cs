@@ -56,24 +56,40 @@ public sealed class MapPrefabClosureRefusalTests
     [InlineData("unclassified")]
     [InlineData("legacy")]
     [InlineData("typed-json")]
+    [InlineData("wrapped-aggregate")]
     public void StateReadFailure_RetainsTheCauseWithoutInventingAPropertyPath(string fault)
     {
+        MapDocumentFinding[] aggregate =
+        [
+            new(MapDocumentRefusal.ReferenceMissing, "Missing resource") { ResourceId = "resource" },
+            new(MapDocumentRefusal.ValueOutsideRange, "Invalid radius") { FieldPath = "$.radius", ActualNumber = -1 },
+        ];
         Exception cause = fault switch
         {
             "legacy" => new MapDocumentException("Unreadable count"),
             "typed-json" => new MapPrefabJsonException(MapDocumentRefusal.SchemaEnumUnsupported, "Unreadable kind")
                 { FieldPath = "$.kind", EnumType = typeof(MapPrefabChildKind), ActualText = "Future" },
+            "wrapped-aggregate" => new InvalidOperationException("Unreadable count",
+                new MapDocumentException(MapDocumentRefusal.ReferenceMissing, "Invalid resources")
+                    { ResourceId = "resource", Findings = aggregate }),
             _ => new InvalidOperationException("Unreadable count"),
         };
         var document = MapPrefabDocumentRefusalTests.Empty();
         document.Prefabs = new(1, 1, new UnreadableInstances(cause), []);
         var error = Assert.Throws<MapDocumentException>(() => MapPrefabValidation.RequireDocument(document, null!));
-        Assert.Equal(fault == "typed-json" ? MapDocumentRefusal.SchemaEnumUnsupported : MapDocumentRefusal.PrefabStateUnreadable, error.Reason);
+        Assert.Equal(fault == "typed-json" ? MapDocumentRefusal.SchemaEnumUnsupported
+            : fault == "wrapped-aggregate" ? MapDocumentRefusal.ReferenceMissing : MapDocumentRefusal.PrefabStateUnreadable, error.Reason);
         if (fault == "typed-json")
         {
             Assert.Equal("$.kind", error.FieldPath);
             Assert.Equal(typeof(MapPrefabChildKind), error.EnumType);
             Assert.Equal("Future", error.ActualText);
+        }
+        else if (fault == "wrapped-aggregate")
+        {
+            Assert.Equal("resource", error.ResourceId);
+            Assert.Equal(aggregate, MapPrefabValidation.ValidateFindings(document, null));
+            Assert.Equal(aggregate, error.Findings);
         }
         else
         {
@@ -81,8 +97,11 @@ public sealed class MapPrefabClosureRefusalTests
             Assert.Null(error.FieldPath);
         }
         Assert.Same(cause, error.InnerException);
-        Assert.Equal(error.Reason, Assert.Single(error.Findings!).Reason);
-        Assert.Equal(MapPrefabValidation.Validate(document, null), error.Findings!.Select(f => f.Message));
+        if (fault != "wrapped-aggregate")
+        {
+            Assert.Equal(error.Reason, Assert.Single(error.Findings!).Reason);
+            Assert.Equal(MapPrefabValidation.Validate(document, null), error.Findings!.Select(f => f.Message));
+        }
         document.Prefabs = new(1, 1, [], []);
         MapPrefabValidation.RequireDocument(document, null!);
     }

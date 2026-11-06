@@ -1998,6 +1998,7 @@ It keeps the released shape admission, separate from the stricter semantic suppo
 
 `MapPrefabValidation.ValidateFindings` returns the ordered immutable findings behind the unchanged string API.
 Its throwing adapter takes the first concrete finding and preserves the full ordered snapshot and original cause.
+The full snapshot also survives a state-read exception wrapping an aggregate document refusal.
 Known JSON and document refusals retain their reason and identifiers. An unclassified producer failure uses
 `PrefabStateUnreadable` with the document ID and original cause, without inventing a property path.
 Missing root or asset child collections use `SchemaValueRequired`. Over-cap collections use `WorkCapacityExceeded`

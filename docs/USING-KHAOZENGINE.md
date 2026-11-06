@@ -12395,6 +12395,7 @@ known `SurfaceId` and `SpaceId`, using `SchemaValueRequired` or `AuthoredOwnersh
 wrappers preserve this structured cause and add their source context without changing admission or diagnostic text.
 `MapPrefabValidation.ValidateFindings` is the immutable ordered typed projection of its existing string API.
 Throwing validation uses the first finding, attaches the complete `Findings` snapshot and retains its original cause.
+The complete snapshot survives state-read exceptions wrapping aggregate document refusals too.
 An unclassified state producer failure uses `PrefabStateUnreadable` with `DocumentId`, without a fabricated field path.
 Missing root or asset child collections use `SchemaValueRequired`. Their capacity refusals use `WorkCapacityExceeded`
 with the collection `Budget`, captured `ActualCount`, inclusive `Limit`, `FieldPath` and known document or asset ID.

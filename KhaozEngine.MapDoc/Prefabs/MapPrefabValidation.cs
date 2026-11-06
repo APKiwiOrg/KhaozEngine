@@ -49,7 +49,8 @@ public static class MapPrefabValidation
             string message = "Invalid prefab state: " + ex.Message;
             errors.Add(message);
             var known = MapDocumentJsonErrors.TryWrapKnown(ex, null, message, out _);
-            findings?.Add(known is not null ? MapDocumentFinding.FromException(known)!
+            if (known?.Findings is { Count: > 0 } nested) findings?.AddRange(nested);
+            else findings?.Add(known is not null ? MapDocumentFinding.FromException(known)!
                 : new(MapDocumentRefusal.PrefabStateUnreadable, message) { DocumentId = document.Id });
         }
         return errors;

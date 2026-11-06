@@ -1609,7 +1609,15 @@ another type (`ReferenceKindMismatch`), retaining `RecordId`, `Patch`, `PatchSta
 `MapWaterContainmentReport.Findings` is an owned read-only snapshot of known typed refusals in report
 order. It carries the original reason and identifiers through caught failures and adds the water body
 as `OwnerId`. Surface-level arithmetic refusals retain body `EntityId`, `FieldPath` and `ActualNumber`.
-Alias traversal retains `SpaceAliasCycle` with `SpaceId`, `RecordId` and `Patch`. Untyped upstream
+Alias traversal retains `SpaceAliasCycle` with `SpaceId`, `RecordId` and `Patch`.
+Water medium and body findings retain `EntityId` and `FieldPath`. Unsupported medium kinds also carry
+`EnumType` and `ActualInteger`. Wade speed and surface level distinguish `ValueNonfinite` from
+`ValueOutsideRange`, retaining `ActualNumber` and the checked numeric limits. An exactly
+unrepresentable finite surface level uses `GeometryNotRepresentable`.
+Occupied-water admission carries `AcquireStatus` on both `GeometryNotRepresentable` and
+`AcquisitionIncomplete`. Missing witness facts additionally retain their `Patch`, `PatchStatus` and
+`SubjectKind`. A scope that does not prove the window complete uses `FieldPath = "Scope"`.
+Untyped upstream
 failures still appear in `Errors`. Compiler, containment and query status classification keeps its
 existing prose predicates until every upstream producer supplies a typed finding.
 

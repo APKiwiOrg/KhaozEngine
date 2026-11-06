@@ -88,7 +88,11 @@ public class MapWaterContainmentTests
     {
         MapWaterContainmentReport report = Check(WaterFixtures.SeaConnectedCave(portalBottomY));
         Assert.True(report.Complete);
-        Assert.Contains(report.Errors, e => e.Contains("water body 'ocean': covered spaces are not connected below its surface", StringComparison.Ordinal));
+        var finding = Assert.Single(report.Findings);
+        Assert.Equal(MapDocumentRefusal.WaterSpacesDisconnected, finding.Reason);
+        Assert.Equal("ocean", finding.EntityId);
+        Assert.Equal(new[] { "sea", "grotto" }, finding.SourceIds);
+        Assert.Empty(Check(WaterFixtures.SeaConnectedCave(-5f)).Errors);
     }
 
     [Theory]
@@ -251,7 +255,9 @@ public class MapWaterContainmentTests
         anchor.Records[index] = alias with { AliasOf = new(alias.Id, anchor.Key) };
         var report = Check(doc);
         Assert.True(report.Complete);
-        var finding = Assert.Single(report.Findings);
+        Assert.Equal(new[] { MapDocumentRefusal.SpaceAliasCycle, MapDocumentRefusal.WaterSpacesDisconnected },
+            report.Findings.Select(f => f.Reason));
+        var finding = report.Findings[0];
         Assert.Equal(MapDocumentRefusal.SpaceAliasCycle, finding.Reason);
         Assert.Equal(alias.Id, finding.SpaceId);
         Assert.Equal("ocean", finding.OwnerId);

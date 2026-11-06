@@ -12441,7 +12441,9 @@ Water edits distinguish `WaterBodiesPreventLegacyMode`, `WaterBoundedModeRequire
 typed refusals in the owned read-only `MapWaterContainmentReport.Findings` snapshot, retaining cover
 record identities and the body context. `WaterCoversAlias`, `WaterNoSpaceFootprint` and
 `WaterSpacesDisconnected` name the authored rules. Caught typed causes keep their original
-identifiers and add body `OwnerId`. The released `Complete`, `Errors` and downstream status
+identifiers and add body `OwnerId`. Medium and body scalar findings name the field and identity,
+and separate nonfinite numbers from finite range refusals. Occupied-water admission retains
+`AcquireStatus` and the unavailable patch and status where known. The released `Complete`, `Errors` and downstream status
 classifications remain unchanged. Untyped upstream failures remain in `Errors` during producer closure.
 
 `MapWaterQuery(view, document.Water)` captures the water set and digest. `Sample(point)` returns a wet

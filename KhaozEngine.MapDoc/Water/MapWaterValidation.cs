@@ -31,52 +31,77 @@ internal static class MapWaterValidation
         }
 
         var media = new HashSet<string>(StringComparer.Ordinal);
-        foreach (MapWaterMediumDoc medium in water.Media) ValidateMedium(medium, media, errors);
+        foreach (MapWaterMediumDoc medium in water.Media) ValidateMedium(medium, media, errors, findings);
         var bodies = new HashSet<string>(StringComparer.Ordinal);
         var compiled = new List<(MapWaterBodyDoc Body, MapWaterDomain Domain)>();
         foreach (MapWaterBodyDoc body in water.Bodies)
-            if (ValidateBody(body, media, bodies, errors, budget) is { } domain) compiled.Add((body, domain));
+            if (ValidateBody(body, media, bodies, errors, budget, findings) is { } domain) compiled.Add((body, domain));
         ValidateSharedSpaces(compiled, errors, budget);
     }
 
-    static void ValidateMedium(MapWaterMediumDoc medium, HashSet<string> keys, List<string> errors)
+    static void ValidateMedium(MapWaterMediumDoc medium, HashSet<string> keys, List<string> errors, List<MapDocumentFinding>? findings)
     {
         if (medium is null || string.IsNullOrWhiteSpace(medium.Key))
         {
-            errors.Add("every water medium needs a non-empty key.");
+            Add(new(MapDocumentRefusal.SchemaValueRequired, "every water medium needs a non-empty key.")
+            { FieldPath = medium is null ? "Media" : "Key", EntityId = medium?.Key, SubjectKind = "water medium" }, errors, findings);
             return;
         }
         string label = $"water medium '{medium.Key}'";
-        if (!keys.Add(medium.Key)) errors.Add($"{label} is duplicated.");
-        if (!Enum.IsDefined(medium.Kind)) errors.Add($"{label}: kind is unsupported.");
+        if (!keys.Add(medium.Key)) Add(new(MapDocumentRefusal.IdentityDuplicate, $"{label} is duplicated.")
+        { EntityId = medium.Key, SubjectKind = "water medium", FieldPath = "Key" }, errors, findings);
+        if (!Enum.IsDefined(medium.Kind)) Add(new(MapDocumentRefusal.SchemaEnumUnsupported, $"{label}: kind is unsupported.")
+        { EntityId = medium.Key, FieldPath = "Kind", ActualInteger = (int)medium.Kind, EnumType = typeof(MapWaterMediumKind) }, errors, findings);
         if (!float.IsFinite(medium.WadeSpeedScale) || !(medium.WadeSpeedScale > 0f) || medium.WadeSpeedScale > 1f)
-            errors.Add($"{label}: wadeSpeedScale must be in (0, 1].");
+            Add(new(!float.IsFinite(medium.WadeSpeedScale) ? MapDocumentRefusal.ValueNonfinite : MapDocumentRefusal.ValueOutsideRange,
+                $"{label}: wadeSpeedScale must be in (0, 1].")
+            { EntityId = medium.Key, FieldPath = "WadeSpeedScale", ActualNumber = medium.WadeSpeedScale,
+                MinimumNumber = 0, MaximumNumber = 1 }, errors, findings);
     }
 
     /// <summary>Returns the compiled domain when the body's geometry is valid and its id is unique.</summary>
     static MapWaterDomain? ValidateBody(MapWaterBodyDoc body, HashSet<string> media, HashSet<string> ids, List<string> errors,
-        MapWaterWorkBudget budget)
+        MapWaterWorkBudget budget, List<MapDocumentFinding>? findings)
     {
         if (body is null || string.IsNullOrWhiteSpace(body.Id))
         {
-            errors.Add("every water body needs a non-empty id.");
+            Add(new(MapDocumentRefusal.SchemaValueRequired, "every water body needs a non-empty id.")
+            { FieldPath = body is null ? "Bodies" : "Id", EntityId = body?.Id, SubjectKind = "water body" }, errors, findings);
             return null;
         }
         string label = $"water body '{body.Id}'";
         bool unique = ids.Add(body.Id);
-        if (!unique) errors.Add($"{label} is duplicated.");
+        if (!unique) Add(new(MapDocumentRefusal.IdentityDuplicate, $"{label} is duplicated.")
+        { EntityId = body.Id, SubjectKind = "water body", FieldPath = "Id" }, errors, findings);
         if (!float.IsFinite(body.SurfaceY) || MathF.Abs(body.SurfaceY) > MaxMetres)
-            errors.Add($"{label}: surfaceY must be finite within {MaxMetres} m.");
+            Add(new(!float.IsFinite(body.SurfaceY) ? MapDocumentRefusal.ValueNonfinite : MapDocumentRefusal.ValueOutsideRange,
+                $"{label}: surfaceY must be finite within {MaxMetres} m.")
+            { EntityId = body.Id, FieldPath = "SurfaceY", ActualNumber = body.SurfaceY,
+                MinimumNumber = -MaxMetres, MaximumNumber = MaxMetres }, errors, findings);
         else
         {
             try { _ = MapExactValue.FromSingle(body.SurfaceY); }
-            catch (MapExactOverflowException) { errors.Add($"{label}: surfaceY is not representable."); }
+            catch (MapExactOverflowException)
+            {
+                Add(new(MapDocumentRefusal.GeometryNotRepresentable, $"{label}: surfaceY is not representable.")
+                { EntityId = body.Id, FieldPath = "SurfaceY", ActualNumber = body.SurfaceY }, errors, findings);
+            }
         }
-        if (body.Medium is null || !media.Contains(body.Medium)) errors.Add($"{label}: unknown medium '{body.Medium}'.");
-        if (string.IsNullOrWhiteSpace(body.RenderMaterial)) errors.Add($"{label}: renderMaterial must be non-empty.");
+        if (body.Medium is null || !media.Contains(body.Medium))
+            Add(new(MapDocumentRefusal.ReferenceMissing, $"{label}: unknown medium '{body.Medium}'.")
+            { EntityId = body.Id, FieldPath = "Medium", ActualText = body.Medium, SubjectKind = "water medium" }, errors, findings);
+        if (string.IsNullOrWhiteSpace(body.RenderMaterial))
+            Add(new(MapDocumentRefusal.SchemaValueRequired, $"{label}: renderMaterial must be non-empty.")
+            { EntityId = body.Id, FieldPath = "RenderMaterial" }, errors, findings);
         MapWaterDomain? domain = ValidateDomain(body.Domain, label, errors, budget);
         bool covers = ValidateCovers(body.Covers, label, errors);
         return unique && covers ? domain : null;
+    }
+
+    static void Add(MapDocumentFinding finding, List<string> errors, List<MapDocumentFinding>? findings)
+    {
+        errors.Add(finding.Message);
+        findings?.Add(finding);
     }
 
     static MapWaterDomain? ValidateDomain(MapWaterDomainDoc domain, string label, List<string> errors, MapWaterWorkBudget budget)

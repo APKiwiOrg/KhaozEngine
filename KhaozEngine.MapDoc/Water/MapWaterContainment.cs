@@ -208,7 +208,8 @@ public static class MapWaterContainment
         // Scoped acquisition never follows a space's relation lists, so only a view of the whole document proves that
         // no unacquired relation joins the covered spaces.
         if (!view.ListsEverySurface) return "covered spaces not proven connected in this view";
-        errors.Add($"{label}: covered spaces are not connected below its surface");
+        Add(new(MapDocumentRefusal.WaterSpacesDisconnected, $"{label}: covered spaces are not connected below its surface")
+        { EntityId = body.Id, SourceIds = covered }, errors, findings);
         return null;
     }
 

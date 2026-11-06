@@ -9,6 +9,12 @@ public enum MapDocumentRefusal
     /// <summary>Refuses legacy resolver work without an analytic support callback.</summary>
     SupportLegacyHeightRequired,
 
+    // Whole-document and migration admission.
+    /// <summary>Refuses an operation requiring a complete document when content is unloaded.</summary>
+    CompleteDocumentRequired,
+    /// <summary>Refuses a migration source outside that migration's supported format versions.</summary>
+    DocumentMigrationSourceVersionInvalid,
+
     // Schema and scalar admission.
     /// <summary>Refuses malformed JSON, typed payload encoding or tile sculpt data.</summary>
     SchemaMalformed,
@@ -124,6 +130,8 @@ public enum MapDocumentRefusal
     PrefabExtractionNotLossless,
 
     // Prefab structural admission.
+    /// <summary>Refuses prefab state whose producer cannot supply a classified value.</summary>
+    PrefabStateUnreadable,
     /// <summary>Refuses a remove override whose Previous is another remove override.</summary>
     PrefabPreviousOverrideNestedRemove,
     /// <summary>Refuses a prefab instance or asset update whose verified pins disagree.</summary>

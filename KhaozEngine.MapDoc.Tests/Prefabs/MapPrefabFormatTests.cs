@@ -41,6 +41,27 @@ public sealed class MapPrefabFormatTests
         Assert.True(JsonNode.DeepEquals(upgraded, MapPrefabMigration.Upgrade(upgraded)));
     }
 
+    [Theory]
+    [InlineData("{}", MapDocumentRefusal.SchemaMemberMissing)]
+    [InlineData("{\"formatVersion\":\"six\"}", MapDocumentRefusal.SchemaValueRequired)]
+    [InlineData("{\"formatVersion\":5}", MapDocumentRefusal.DocumentMigrationSourceVersionInvalid)]
+    public void PrefabMigration_RefusesTheActualVersionRuleWithoutChangingTheSource(string json, MapDocumentRefusal reason)
+    {
+        var source = JsonNode.Parse(json)!.AsObject();
+        string before = source.ToJsonString();
+        var error = Assert.Throws<MapDocumentException>(() => MapPrefabMigration.Upgrade(source));
+        Assert.Equal(reason, error.Reason);
+        Assert.Equal("$.formatVersion", error.FieldPath);
+        if (reason == MapDocumentRefusal.DocumentMigrationSourceVersionInvalid)
+        {
+            Assert.Equal(5, error.ActualVersion);
+            Assert.Equal(new[] { 6, 7 }, error.SupportedVersions);
+        }
+        Assert.Equal(before, source.ToJsonString());
+        source["formatVersion"] = 6;
+        Assert.Equal(7, MapPrefabMigration.Upgrade(source)["formatVersion"]!.GetValue<int>());
+    }
+
     [Fact]
     public void PayloadAndRoot_RoundTripMonolithicAndTiled()
     {

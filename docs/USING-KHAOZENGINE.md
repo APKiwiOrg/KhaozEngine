@@ -12393,6 +12393,17 @@ and failed local `FieldPath`. It distinguishes object, missing, unknown, duplica
 Unsupported kinds carry `EnumType` and submitted `ActualText` or writer `ActualInteger`. Writer shape failures retain
 known `SurfaceId` and `SpaceId`, using `SchemaValueRequired` or `AuthoredOwnershipMismatch`. Resource and document
 wrappers preserve this structured cause and add their source context without changing admission or diagnostic text.
+`MapPrefabValidation.ValidateFindings` is the immutable ordered typed projection of its existing string API.
+Throwing validation uses the first finding, attaches the complete `Findings` snapshot and retains its original cause.
+An unclassified state producer failure uses `PrefabStateUnreadable` with `DocumentId`, without a fabricated field path.
+Missing root or asset child collections use `SchemaValueRequired`. Their capacity refusals use `WorkCapacityExceeded`
+with the collection `Budget`, captured `ActualCount`, inclusive `Limit`, `FieldPath` and known document or asset ID.
+Complete expansion over a partial document uses `CompleteDocumentRequired`, `DocumentId` and `Operation = "Expand"`.
+Prefab migration distinguishes missing, incorrectly typed and unsupported source versions. Its unsupported-version
+reason is `DocumentMigrationSourceVersionInvalid`, with `ActualVersion`, `FieldPath` and owned `SupportedVersions`.
+Exact-enum codecs use `SchemaEnumUnsupported` with `EnumType` and submitted text or numeric value. A marker binding's
+wrong numeric JSON type uses `SchemaValueRequired`, while a nonfinite float representation uses `ValueNonfinite`
+with parsed `ActualNumber` when available. Undefined descriptor kinds retain the enum type, value and `EntityId`.
 All three retain the actual count and accept the exact named ceiling. A consumer-defined prefab or marker edit
 uses `OperationKindUnsupported` with its `RecordType`. Submitting an asset update through `Prepare` uses
 `PrefabCapturedUpdateRequired` with `Operation = "PrepareAssetUpdate"`. Room selection retains `SpaceId` and

@@ -577,9 +577,16 @@ internal static class MapPrefabJson
             ? value.GetString()! : throw new MapPrefabJsonException(MapDocumentRefusal.SchemaValueRequired,
                 "Marker support binding member '" + name + "' must be a string.") { FieldPath = MapDocumentJsonPath.AppendProperty("$", name) };
 
-        static float Finite(JsonElement root, string name) =>
-            root.GetProperty(name) is { ValueKind: JsonValueKind.Number } value && value.TryGetSingle(out float number) && float.IsFinite(number)
-                ? number : throw new JsonException("Marker support binding member '" + name + "' must be a finite number.");
+        static float Finite(JsonElement root, string name)
+        {
+            JsonElement value = root.GetProperty(name);
+            float number = 0;
+            bool parsed = value.ValueKind == JsonValueKind.Number && value.TryGetSingle(out number);
+            return parsed && float.IsFinite(number) ? number : throw new MapPrefabJsonException(
+                value.ValueKind == JsonValueKind.Number ? MapDocumentRefusal.ValueNonfinite : MapDocumentRefusal.SchemaValueRequired,
+                "Marker support binding member '" + name + "' must be a finite number.")
+            { FieldPath = MapDocumentJsonPath.AppendProperty("$", name), ActualNumber = parsed ? number : null };
+        }
     }
 
     sealed class InvalidationConverter : JsonConverter<Editing.MapNativeInvalidation>
@@ -601,11 +608,17 @@ internal static class MapPrefabJson
         {
             string? text = reader.TokenType == JsonTokenType.String ? reader.GetString() : null;
             foreach (T value in Enum.GetValues<T>()) if (value.ToString() == text) return value;
-            throw new JsonException("Unsupported exact enum name.");
+            throw new MapPrefabJsonException(MapDocumentRefusal.SchemaEnumUnsupported, "Unsupported exact enum name.")
+                { EnumType = typeof(T), ActualText = text };
         }
         public override void Write(Utf8JsonWriter w, T value, JsonSerializerOptions options)
         {
-            if (!Enum.IsDefined(value)) throw new JsonException("Unsupported enum value.");
+            if (!Enum.IsDefined(value)) throw new MapPrefabJsonException(MapDocumentRefusal.SchemaEnumUnsupported, "Unsupported enum value.")
+            {
+                EnumType = typeof(T), FieldPath = "$", ActualText = value.ToString(),
+                ActualInteger = Enum.GetUnderlyingType(typeof(T)) == typeof(ulong) && Convert.ToUInt64(value) > long.MaxValue
+                    ? null : Convert.ToInt64(value),
+            };
             w.WriteStringValue(value.ToString());
         }
     }

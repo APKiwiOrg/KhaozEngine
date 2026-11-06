@@ -32,7 +32,8 @@ public static class MapPrefabResolver
         _ = MapPrefabPreflight.Count(document, assets, limits);
         observer?.EnterStage("Copies");
         MapPrefabIdentity.RequireOwnership(document, assets);
-        if (document.Tiles is { IsPartial: true }) throw new MapDocumentException("Effective expansion requires a complete document.");
+        if (document.Tiles is { IsPartial: true }) throw new MapDocumentException(MapDocumentRefusal.CompleteDocumentRequired, "Effective expansion requires a complete document.")
+            { DocumentId = document.Id, Operation = "Expand" };
         var numericErrors = new List<string>();
         _ = MapNativeValidation.ValidateNumericIds(document, numericErrors);
         if (numericErrors.Count != 0) throw new MapDocumentException(string.Join("\n", numericErrors));

@@ -15,6 +15,32 @@ public sealed class MapPrefabCodecKindRefusalTests
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
+    public void ExactEnumCodec_RetainsTheEnumAndSubmittedValue(bool write)
+    {
+        if (write)
+        {
+            var error = Assert.Throws<MapPrefabJsonException>(() => MapPrefabJson.Bytes((MapPrefabChildKind)99));
+            Assert.IsAssignableFrom<JsonException>(error);
+            Assert.Equal(MapDocumentRefusal.SchemaEnumUnsupported, error.Reason);
+            Assert.Equal(typeof(MapPrefabChildKind), error.EnumType);
+            Assert.Equal(99L, error.ActualInteger);
+            Assert.Equal("\"RoofGroup\"", Encoding.UTF8.GetString(MapPrefabJson.Bytes(MapPrefabChildKind.RoofGroup)));
+        }
+        else
+        {
+            using var invalid = JsonDocument.Parse("\"Future\"");
+            var error = Assert.Throws<MapDocumentException>(() => MapPrefabJson.Read<MapPrefabChildKind>(invalid.RootElement));
+            Assert.Equal(MapDocumentRefusal.SchemaEnumUnsupported, error.Reason);
+            Assert.Equal(typeof(MapPrefabChildKind), error.EnumType);
+            Assert.Equal("Future", error.ActualText);
+            using var control = JsonDocument.Parse("\"RoofGroup\"");
+            Assert.Equal(MapPrefabChildKind.RoofGroup, MapPrefabJson.Read<MapPrefabChildKind>(control.RootElement));
+        }
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
     public void UnknownDiscriminators_RetainTheSubmittedKindAndChild(bool child)
     {
         MapPrefabChildKey key = new(MapPrefabChildKind.Placement, "child");

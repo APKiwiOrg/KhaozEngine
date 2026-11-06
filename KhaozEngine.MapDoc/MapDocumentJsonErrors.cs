@@ -12,7 +12,21 @@ internal static class MapDocumentJsonErrors
     internal static MapDocumentException Wrap(Exception error, string? sourceName, string message,
         MapTileCoord? tile = null, string? path = null, string? resourceId = null)
     {
-        MapDocumentException? context = null;
+        var known = TryWrapKnown(error, sourceName, message, out MapDocumentException? context, tile, path, resourceId);
+        if (known is not null) return known;
+        var json = error as JsonException;
+        return new MapDocumentException(MapDocumentRefusal.SchemaMalformed, message, error)
+        {
+            // A message-only inner refusal has no reason to keep, but the context it carries still applies.
+            SourceName = sourceName ?? context?.SourceName, Path = context?.Path ?? path, Tile = context?.Tile ?? tile, ResourceId = context?.ResourceId ?? resourceId,
+            FieldPath = context?.FieldPath ?? json?.Path, LineNumber = json?.LineNumber, BytePositionInLine = json?.BytePositionInLine,
+        };
+    }
+
+    internal static MapDocumentException? TryWrapKnown(Exception error, string? sourceName, string message,
+        out MapDocumentException? context, MapTileCoord? tile = null, string? path = null, string? resourceId = null)
+    {
+        context = null;
         for (Exception? cause = error.InnerException; cause is not null; cause = cause.InnerException)
             if (cause is MapDocumentException inner)
             {
@@ -28,13 +42,7 @@ internal static class MapDocumentJsonErrors
             if (cause is MapPrefabJsonException prefab)
                 return prefab.ToDocument(sourceName, message, tile, path, resourceId);
         }
-        var json = error as JsonException;
-        return new MapDocumentException(MapDocumentRefusal.SchemaMalformed, message, error)
-        {
-            // A message-only inner refusal has no reason to keep, but the context it carries still applies.
-            SourceName = sourceName ?? context?.SourceName, Path = context?.Path ?? path, Tile = context?.Tile ?? tile, ResourceId = context?.ResourceId ?? resourceId,
-            FieldPath = context?.FieldPath ?? json?.Path, LineNumber = json?.LineNumber, BytePositionInLine = json?.BytePositionInLine,
-        };
+        return null;
     }
 
     // A value-taking guard keeps null-result admission independent of DTO construction.

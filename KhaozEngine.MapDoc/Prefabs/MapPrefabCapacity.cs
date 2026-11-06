@@ -4,6 +4,14 @@ namespace KhaozEngine.MapDoc.Prefabs;
 /// payload or materializing a collection merely to check its count.</summary>
 internal static class MapPrefabCapacity
 {
+    internal static MapDocumentException CollectionRefusal(string field, long? count, long limit, string message,
+        string? documentId = null, string? assetId = null) =>
+        new(count is null ? MapDocumentRefusal.SchemaValueRequired : MapDocumentRefusal.WorkCapacityExceeded, message)
+        {
+            FieldPath = assetId is null ? "$.prefabs." + field : "$." + field,
+            Budget = field, ActualCount = count, Limit = count is null ? null : limit, DocumentId = documentId, AssetId = assetId,
+        };
+
     internal static MapDocumentException AggregateRefusal(long edges, long patches, long records, long geometry, string path)
     {
         var limits = MapPrefabJson.Limits;

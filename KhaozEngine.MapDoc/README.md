@@ -1913,6 +1913,9 @@ their joined diagnostic text.
 | `NumericIdHighWaterExceeded` | A placement, prefab binding or retired transfer above the reserved mark | `EntityId`, `SubjectKind`, `PlacementId`, `FieldPath`, `NumericId`, `HighWaterMark` |
 | `ResolverContractMismatch` | The document resolver, support recipe or caller's resolver options cannot serve the requested operation | `PayloadVersion`, `ResolverVersion`, `OptionsResolverVersion`, `ExpectedResolverVersion`, `SupportRecipe`, `ExpectedSupportRecipe`, `FieldPath`, `SubjectKind` |
 | `SupportLegacyHeightRequired` | Resolver-1 resolution without an analytic support callback | `ResolverVersion`, `FieldPath` `legacySupportHeight` |
+| `CompleteDocumentRequired` | Complete prefab expansion over a partial document | `DocumentId`, `Operation` |
+| `DocumentMigrationSourceVersionInvalid` | A prefab migration source outside format 6 or 7 | `FieldPath`, `ActualVersion`, owned `SupportedVersions` |
+| `PrefabStateUnreadable` | A producer failure while reading prefab state without a concrete lower refusal | `DocumentId`, original `InnerException` on the throwing adapter |
 
 
 Reference-slot admission carries the owning local `Child` or known support `ResourceId` separately from
@@ -1973,12 +1976,21 @@ It keeps the released shape admission, separate from the stricter semantic suppo
 | `SchemaMemberNull` | A member explicitly set to null | `FieldPath` |
 | `SchemaEnumUnsupported` | An unsupported binding kind | `FieldPath`, `EnumType`, submitted `ActualText` or writer `ActualInteger` |
 | `AuthoredOwnershipMismatch` | A writer member belonging to the other binding kind | `FieldPath`, `SurfaceId`, `SpaceId` |
+| `ValueNonfinite` | A binding member whose number is not representable as a finite float | `FieldPath`, parsed `ActualNumber` when available |
 
-Prefab validation adds immutable typed findings beside its unchanged string diagnostics in internal
-collectors. A typed exception contributes all its identifier context, or its existing ordered findings.
-Legacy failures keep their prose without an invented reason. `AttachmentKind` distinguishes the typed
-attachment namespace on a child-kind refusal. The shared source-context copy preserves it too.
-The aggregate document adapter retains its existing constructor until every producing rule has typed findings.
+`MapPrefabValidation.ValidateFindings` returns the ordered immutable findings behind the unchanged string API.
+Its throwing adapter takes the first concrete finding and preserves the full ordered snapshot and original cause.
+Known JSON and document refusals retain their reason and identifiers. An unclassified producer failure uses
+`PrefabStateUnreadable` with the document ID and original cause, without inventing a property path.
+Missing root or asset child collections use `SchemaValueRequired`. Over-cap collections use `WorkCapacityExceeded`
+with `Budget`, captured `ActualCount`, inclusive `Limit`, `FieldPath` and known `DocumentId` or `AssetId`.
+Unsupported runtime children and topology records use `OperationKindUnsupported` with their type and local identity.
+Undefined standalone descriptor kinds reuse `SchemaEnumUnsupported` with their type, value and subject identity.
+`AttachmentKind` distinguishes the typed attachment namespace on a child-kind refusal. The shared source-context
+copy preserves it too. Prefab migration distinguishes absent and incorrectly typed versions with
+`SchemaMemberMissing` and `SchemaValueRequired`, retaining its accepted-version snapshot.
+Exact-enum readers and writers use `MapPrefabJsonException` with `SchemaEnumUnsupported`, `EnumType` and the submitted
+text or numeric value. Binding numeric readers distinguish a wrong JSON type from `ValueNonfinite`.
 
 Asset-local materialization checks carry the owning `AssetId`, local `PlacementId` and known `FieldPath`.
 An unadvertised resource edge uses `AuthoredOwnershipMismatch` with `ResourceId` and `AttachmentKind`.
@@ -2039,9 +2051,8 @@ Its identifiers retain the actual key namespaces:
 | Standalone transform | `ChildKind`, `WorldId`, `EntityId` |
 
 Equal text in different namespaces remains admissible. No identifier is parsed from its prose.
-Duplicate null string identities retain the duplicate admission point, before later required-text
-validation. The aggregate document adapter, bounded collection guards and unsupported child arm
-still use message-only constructors, so their `Reason` is null.
+Duplicate null string identities retain the duplicate admission point, before later required-text validation.
+Prefab validation and its throwing adapter preserve each concrete finding instead of classifying their prose.
 
 Manifest source-unit scales must be finite and strictly positive. A nonfinite scale leaves `ActualNumber`
 and `MinimumNumber` null. A finite nonpositive scale carries `ActualNumber` and `MinimumNumber` 0,

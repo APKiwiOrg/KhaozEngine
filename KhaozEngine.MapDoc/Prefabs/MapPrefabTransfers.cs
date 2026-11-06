@@ -54,7 +54,8 @@ internal static class MapPrefabAttachmentDescriptors
             case MapPrefabChildKind.RoofGroup:
                 var group = document.BuildingIntent?.RoofGroups.SingleOrDefault(g => g.Id == id);
                 return group is null ? null : new MapPrefabRoofGroupChild(key, group);
-            default: throw new MapDocumentException("Unsupported standalone descriptor kind.");
+            default: throw new MapDocumentException(MapDocumentRefusal.SchemaEnumUnsupported, "Unsupported standalone descriptor kind.")
+                { EnumType = typeof(MapPrefabChildKind), ActualInteger = (long)kind, ChildKind = kind, EntityId = id };
         }
     }
 

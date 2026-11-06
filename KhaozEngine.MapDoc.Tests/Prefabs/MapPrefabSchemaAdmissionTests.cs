@@ -156,7 +156,7 @@ public sealed class MapPrefabSchemaAdmissionTests
     [InlineData("enum")]
     [InlineData("file")]
     [InlineData("file-enum")]
-    public void Json_wrappers_keep_the_readers_path_and_metadata_until_the_inner_rule_is_typed(string form)
+    public void Json_wrappers_keep_concrete_refusals_and_reader_metadata(string form)
     {
         // W5c review regression: a deserialization refusal must retain the prefab resource context.
         string payload = form == "file-enum"
@@ -170,7 +170,13 @@ public sealed class MapPrefabSchemaAdmissionTests
             "text" => Assert.Throws<MapDocumentException>(() => MapPrefabJson.ReadChild("{ invalid")),
             _ => Assert.Throws<MapDocumentException>(() => MapPrefabJson.ReadChild(Storey.Replace("\"kind\":\"Storey\"", "\"kind\":\"Future\"", StringComparison.Ordinal))),
         };
-        Assert.Equal(MapDocumentRefusal.SchemaMalformed, error.Reason);
+        bool enumValue = form is "enum" or "file-enum";
+        Assert.Equal(enumValue ? MapDocumentRefusal.SchemaEnumUnsupported : MapDocumentRefusal.SchemaMalformed, error.Reason);
+        if (enumValue)
+        {
+            Assert.Equal(typeof(MapPrefabChildKind), error.EnumType);
+            Assert.Equal("Future", error.ActualText);
+        }
         bool file = form is "file" or "file-enum";
         if (file) Assert.Equal("p", error.ResourceId);
         MapDocumentException? original = form == "file-enum" ? Assert.IsType<MapDocumentException>(error.InnerException) : null;

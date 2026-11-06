@@ -17,26 +17,49 @@ public static class MapPrefabValidation
 {
     public static IReadOnlyList<string> Validate(MapDocument document, MapAssetClosure? assets) => Validate(document, assets, null);
 
+    /// <summary>Returns the ordered immutable findings behind the existing prose validation API.</summary>
+    public static IReadOnlyList<MapDocumentFinding> ValidateFindings(MapDocument document, MapAssetClosure? assets)
+    {
+        var findings = new List<MapDocumentFinding>();
+        _ = Validate(document, assets, findings);
+        return findings.AsReadOnly();
+    }
+
     internal static IReadOnlyList<string> Validate(MapDocument document, MapAssetClosure? assets, List<MapDocumentFinding>? findings)
+        => Validate(document, assets, findings, out _);
+
+    static IReadOnlyList<string> Validate(MapDocument document, MapAssetClosure? assets, List<MapDocumentFinding>? findings,
+        out Exception? cause)
     {
         ArgumentNullException.ThrowIfNull(document);
+        cause = null;
         var errors = new List<string>();
         try { ValidateDocument(document, assets); }
         catch (MapDocumentException ex)
         {
+            cause = ex;
             errors.Add(ex.Message);
             if (ex.Findings is { Count: > 0 } nested) findings?.AddRange(nested);
             else if (MapDocumentFinding.FromException(ex) is { } finding) findings?.Add(finding);
+            else findings?.Add(new(MapDocumentRefusal.PrefabStateUnreadable, ex.Message) { DocumentId = document.Id });
         }
         catch (Exception ex) when (ex is ArgumentException or InvalidOperationException or NullReferenceException or JsonException)
-        { errors.Add("Invalid prefab state: " + ex.Message); }
+        {
+            cause = ex;
+            string message = "Invalid prefab state: " + ex.Message;
+            errors.Add(message);
+            var known = MapDocumentJsonErrors.TryWrapKnown(ex, null, message, out _);
+            findings?.Add(known is not null ? MapDocumentFinding.FromException(known)!
+                : new(MapDocumentRefusal.PrefabStateUnreadable, message) { DocumentId = document.Id });
+        }
         return errors;
     }
 
     internal static void RequireDocument(MapDocument document, MapAssetClosure assets)
     {
-        var errors = Validate(document, assets);
-        if (errors.Count != 0) throw new MapDocumentException(string.Join("\n", errors));
+        var findings = new List<MapDocumentFinding>();
+        var errors = Validate(document, assets, findings, out Exception? cause);
+        if (errors.Count != 0) throw MapDocumentRefusalFactory.FromFinding(findings[0], string.Join("\n", errors), cause, findings);
     }
 
     static void ValidateDocument(MapDocument doc, MapAssetClosure? assets)
@@ -66,10 +89,19 @@ public static class MapPrefabValidation
                     FieldPath = set.PayloadVersion != 1 ? "$.prefabs.payloadVersion" : "$.prefabs.expansionVersion",
                     ActualVersion = set.PayloadVersion != 1 ? set.PayloadVersion : set.ExpansionVersion, SupportedVersions = [1],
                 };
-            if (set.Instances is null || set.Instances.Count > MapPrefabJson.Limits.MaxInstances ||
-                set.Transfers is null || set.Transfers.Count > MapPrefabJson.Limits.MaxTransfers ||
-                set.Attachments is null || set.Attachments.Count > MapPrefabJson.Limits.MaxTransfers)
-                Fail("Prefab root collection limit exceeded or collection missing.");
+            int instances = 0, transfers = 0, attachments = 0;
+            if (set.Instances is null || (instances = set.Instances.Count) > MapPrefabJson.Limits.MaxInstances ||
+                set.Transfers is null || (transfers = set.Transfers.Count) > MapPrefabJson.Limits.MaxTransfers ||
+                set.Attachments is null || (attachments = set.Attachments.Count) > MapPrefabJson.Limits.MaxTransfers)
+            {
+                (string field, long? count, long limit) = set.Instances is null || instances > MapPrefabJson.Limits.MaxInstances
+                    ? ("instances", set.Instances is null ? (long?)null : instances, MapPrefabJson.Limits.MaxInstances)
+                    : set.Transfers is null || transfers > MapPrefabJson.Limits.MaxTransfers
+                        ? ("transfers", set.Transfers is null ? (long?)null : transfers, MapPrefabJson.Limits.MaxTransfers)
+                        : ("attachments", set.Attachments is null ? (long?)null : attachments, MapPrefabJson.Limits.MaxTransfers);
+                throw MapPrefabCapacity.CollectionRefusal(field, count, limit,
+                    "Prefab root collection limit exceeded or collection missing.", documentId: doc.Id);
+            }
             Unique(set.Instances, i => i.Id, "prefab instance");
             foreach (MapPrefabInstance instance in set.Instances)
             {
@@ -198,7 +230,10 @@ public static class MapPrefabValidation
         if (asset.PayloadVersion != 1) throw new MapDocumentException(MapDocumentRefusal.SchemaPayloadVersionUnsupported, "Unsupported prefab payload version.")
             { FieldPath = "$.payloadVersion", ActualVersion = asset.PayloadVersion, SupportedVersions = [1], AssetId = asset.Id };
         Text(asset.Id, "$.id");
-        if (asset.Children is null || asset.Children.Count > MapPrefabJson.Limits.MaxChildren) Fail("Prefab child limit exceeded or collection missing.");
+        int count = 0;
+        if (asset.Children is null || (count = asset.Children.Count) > MapPrefabJson.Limits.MaxChildren)
+            throw MapPrefabCapacity.CollectionRefusal("children", asset.Children is null ? null : count, MapPrefabJson.Limits.MaxChildren,
+                "Prefab child limit exceeded or collection missing.", assetId: asset.Id);
         Unique(asset.Children, c => c.Key, "prefab child");
         var children = asset.Children.ToDictionary(c => c.Key);
         var targets = new ChildTargets(children, assets, suppressed ?? asset.MaterializedAttachments);
@@ -274,7 +309,8 @@ public static class MapPrefabValidation
             MapPrefabMarkerChild m => (MapPrefabChildKind.Marker, m.Value.Id),
             MapPrefabRoofChild r => (MapPrefabChildKind.RoofLink, r.Value.Id),
             MapPrefabRoofGroupChild g => (MapPrefabChildKind.RoofGroup, g.Value.Id),
-            _ => throw new MapDocumentException("Unsupported prefab child."),
+            _ => throw new MapDocumentException(MapDocumentRefusal.OperationKindUnsupported, "Unsupported prefab child.")
+                { RecordType = child.GetType(), Child = child.Key },
         };
         if (identity.Kind != child.Key.Kind || identity.Id != child.Key.Key)
             throw new MapDocumentException(MapDocumentRefusal.PrefabPayloadIdMismatch, "Prefab child key does not match its payload ID/kind.")
@@ -620,7 +656,4 @@ public static class MapPrefabValidation
             NumericId = subject.NumericId, MinimumInteger = subject.MinimumInteger, FieldPath = subject.FieldPath, SubjectKind = subject.SubjectKind, Index = subject.Index,
         };
 
-    // Only the two bounded collection guards call this overload. Their shared capacity reason does not exist yet.
-    [DoesNotReturn]
-    static void Fail(string message) => throw new MapDocumentException(message);
 }

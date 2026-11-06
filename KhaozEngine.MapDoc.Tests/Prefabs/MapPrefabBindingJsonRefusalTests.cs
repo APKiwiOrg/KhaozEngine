@@ -58,6 +58,22 @@ public sealed class MapPrefabBindingJsonRefusalTests
     }
 
     [Theory]
+    [InlineData("\"bad\"", MapDocumentRefusal.SchemaValueRequired)]
+    [InlineData("1e100", MapDocumentRefusal.ValueNonfinite)]
+    public void BindingNumbers_DistinguishWrongTypesFromNonfiniteValues(string number, MapDocumentRefusal reason)
+    {
+        string Json(string value) => "{\"kind\":\"Space\",\"spaceId\":\"room\",\"referenceY\":" + value + ",\"searchBelow\":0,\"searchAbove\":0}";
+        var error = Assert.Throws<MapPrefabJsonException>(() => JsonSerializer.Deserialize<MapSupportBinding>(Json(number), Options()));
+        Assert.Equal(reason, error.Reason);
+        Assert.Equal("$.referenceY", error.FieldPath);
+        if (reason == MapDocumentRefusal.ValueNonfinite) Assert.Equal(double.PositiveInfinity, error.ActualNumber);
+        var wrapped = MapDocumentJsonErrors.Wrap(error, "source", "Invalid binding");
+        Assert.Equal(reason, wrapped.Reason);
+        Assert.Equal(error.ActualNumber, wrapped.ActualNumber);
+        Assert.Equal(float.MaxValue, JsonSerializer.Deserialize<MapSupportBinding>(Json("3.4028235e38"), Options())!.ReferenceY);
+    }
+
+    [Theory]
     [InlineData("surface-missing", MapDocumentRefusal.SchemaValueRequired, "$.surfaceId")]
     [InlineData("surface-foreign", MapDocumentRefusal.AuthoredOwnershipMismatch, "$.spaceId")]
     [InlineData("space-missing", MapDocumentRefusal.SchemaValueRequired, "$.spaceId")]

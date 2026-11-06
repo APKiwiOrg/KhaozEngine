@@ -21,6 +21,8 @@ public sealed class MapPrefabJsonException : JsonException
     public string? ActualText { get; init; }
     /// <summary>The unsupported enumeration's numeric value, when known.</summary>
     public long? ActualInteger { get; init; }
+    /// <summary>The number returned by the reader when its finite float representation was refused.</summary>
+    public double? ActualNumber { get; init; }
     /// <summary>The surface named by a refused support binding, when known.</summary>
     public string? SurfaceId { get; init; }
     /// <summary>The space named by a refused support binding, when known.</summary>
@@ -29,7 +31,7 @@ public sealed class MapPrefabJsonException : JsonException
     internal static MapPrefabJsonException FromFinding(MapDocumentFinding finding) => new(finding.Reason, finding.Message)
     {
         FieldPath = finding.FieldPath, EnumType = finding.EnumType, ActualText = finding.ActualText,
-        ActualInteger = finding.ActualInteger, SurfaceId = finding.SurfaceId, SpaceId = finding.SpaceId,
+        ActualInteger = finding.ActualInteger, ActualNumber = finding.ActualNumber, SurfaceId = finding.SurfaceId, SpaceId = finding.SpaceId,
     };
 
     internal MapDocumentException ToDocument(string? sourceName, string message, MapTileCoord? tile,
@@ -37,6 +39,7 @@ public sealed class MapPrefabJsonException : JsonException
     {
         SourceName = sourceName, Tile = tile, Path = path, ResourceId = resourceId,
         FieldPath = FieldPath ?? Path, LineNumber = LineNumber, BytePositionInLine = BytePositionInLine,
-        EnumType = EnumType, ActualText = ActualText, ActualInteger = ActualInteger, SurfaceId = SurfaceId, SpaceId = SpaceId,
+        EnumType = EnumType, ActualText = ActualText, ActualInteger = ActualInteger, ActualNumber = ActualNumber,
+        SurfaceId = SurfaceId, SpaceId = SpaceId,
     };
 }

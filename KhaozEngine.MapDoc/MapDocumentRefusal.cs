@@ -360,6 +360,8 @@ public enum MapDocumentRefusal
     SpaceSupportCoincident,
 
     // Foliage storage admission.
+    /// <summary>Refuses a foliage chunk offset differing from its canonical position in the pack.</summary>
+    FoliagePackOffsetMismatch,
     /// <summary>Refuses publication after foliage changed from the prepared save snapshot.</summary>
     FoliageSaveSnapshotChanged,
     /// <summary>Refuses stored foliage memberships differing from its density lattice.</summary>

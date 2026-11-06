@@ -1042,6 +1042,7 @@ and available identifiers on its outer `MapDocumentException`.
 | `FoliageEffectiveContextRequired` | Foliage generation or finalization without captured effective surfaces | `Operation`, `SourceType` |
 | `FoliagePolicyPreviewIncomplete` | A policy change whose preview cannot issue a complete digest | `LayerId`, `FoliageStatus` |
 | `FoliagePolicyDigestStale` | A differential token for another document snapshot or proposal | `LayerId`, `ExpectedHash`, `ActualHash` |
+| `FoliagePackOffsetMismatch` | A stored chunk offset differing from canonical pack order | `LayerId`, `FoliageChunk`, `Index`, `FieldPath`, `ActualInteger`, equal `MinimumInteger` and `MaximumInteger` for the required offset |
 | `FoliageSaveSnapshotChanged` | Publication after foliage changed from the prepared save | `ExpectedHash`, `ActualHash` |
 | `FoliageRegionMembershipMismatch` | Stored owner region or memberships differing from the density lattice | `LayerId`, `FoliageChunk`, submitted owner `Tile` |
 | `PinnedContentUnavailable` | A required pinned foliage pack whose read did not succeed | `FoliageReadStatus`, `LayerId`, `Tile`, `ExpectedHash` |
@@ -1087,6 +1088,12 @@ Stored layer references distinguish `AuthoredValueMismatch` for a chunk naming a
 Storage collection capacities carry the first failed `Chunks` or `Packs` field, its `Budget`, `ActualCount` and
 inclusive `Limit`. Pack references distinguish missing `LayerId`, inconsistent byte length and duplicate layer/region
 identity. Byte-length refusals retain `ActualByteCount` and `ExpectedByteCount`.
+Chunk references select the first invalid X or Z key, empty or oversized region list, duplicate chunk identity,
+missing owner pack or mismatched pack digest. Key limits are inclusive at 0 and 32767. Region-count limits are
+inclusive at 1 and 4096. Count failures retain `ActualCount` and the numeric domain, with `Budget` and `Limit`
+for excess work. Missing packs retain the owner `Tile`, and digest mismatches retain both hashes. Pack row-count
+checks retain `ActualCount` and `ExpectedCount`, including zero when no rows reference the pack. Resident admission
+selects `ReferenceMissing` for an unadvertised key and `DigestMismatch` for different resident bytes.
 Region-range guards distinguish unrepresentable coordinates, reversed bounds and the 4096 membership cap, retaining
 `LayerId` and `FoliageChunk`. Coordinate failures identify `RegionX` or `RegionZ`, the actual integer and signed
 32-bit bounds. Capacity failures retain `Budget = "RegionMemberships"`, `ActualCount` and `Limit`.

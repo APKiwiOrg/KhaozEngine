@@ -12291,7 +12291,11 @@ finding and full snapshot. Stored JSON budget failures retain the byte limit and
 membership count, and negative budget inputs retain their own field and numeric domain.
 
 Stored foliage guards retain typed layer references, pack byte counts and duplicate identities. Collection
-capacities distinguish the first failed `Chunks` or `Packs` field. Region calculations select
+capacities distinguish the first failed `Chunks` or `Packs` field. Chunk-reference guards select invalid key
+coordinates, empty or oversized memberships, duplicates, missing packs and digest disagreements in that order.
+Pack count checks retain present and advertised counts. `FoliagePackOffsetMismatch` retains the row index,
+submitted offset and required offset as equal integer bounds. Resident guards distinguish an unadvertised key
+from bytes disagreeing with the advertised digest. Region calculations select
 `GeometryNotRepresentable`, `BoundsInvalid` or `WorkCapacityExceeded`, preserving the layer, chunk and available
 coordinate or budget metadata. The membership cap is inclusive at 4096. Stored lattice disagreement uses
 `FoliageRegionMembershipMismatch`. Complete-density checks retain missing counts, or the actual and expected chunk

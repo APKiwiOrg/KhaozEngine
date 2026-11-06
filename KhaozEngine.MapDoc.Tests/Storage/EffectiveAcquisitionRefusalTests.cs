@@ -130,6 +130,33 @@ public sealed class EffectiveAcquisitionRefusalTests
         Assert.Equal(MapAcquireStatus.Complete, AcquisitionConformanceFixtures.Run(probe, effective).Status);
     }
 
+    [Fact]
+    public void Session_pin_refusal_reports_the_compared_value_when_a_faulty_producer_changes_it()
+    {
+        var composedProbe = AcquisitionConformanceFixtures.OneSeed();
+        var composed = new MapComposedSurfaceSource(Context(composedProbe), composedProbe);
+        composedProbe.SessionSnapshotReads.Enqueue("changed");
+        AssertComparedSnapshot(composedProbe, Assert.Throws<MapDocumentException>(() => composed.OpenAcquisition(AcquisitionConformanceFixtures.Scope())));
+        composed.OpenAcquisition(AcquisitionConformanceFixtures.Scope()).Dispose();
+
+        // The acquisition's own admission reads the snapshot once before the pin comparison.
+        var effectiveProbe = AcquisitionConformanceFixtures.OneSeed();
+        effectiveProbe.SessionSnapshotReads.Enqueue(effectiveProbe.SnapshotId);
+        effectiveProbe.SessionSnapshotReads.Enqueue("changed");
+        AssertComparedSnapshot(effectiveProbe, Assert.Throws<MapDocumentException>(() => AcquisitionConformanceFixtures.Run(effectiveProbe, true)));
+        Assert.Equal(MapAcquireStatus.Complete, AcquisitionConformanceFixtures.Run(effectiveProbe, true).Status);
+
+        static void AssertComparedSnapshot(R2AcquisitionProbeSource probe, MapDocumentException error)
+        {
+            Assert.Equal(MapDocumentRefusal.AcquisitionContractMismatch, error.Reason);
+            Assert.Equal("SnapshotId", error.FieldPath);
+            Assert.Equal(probe.SnapshotId, error.ExpectedSnapshot);
+            Assert.Equal("changed", error.ActualSnapshot);
+            Assert.Null(error.ExpectedHash);
+            Assert.Null(error.ActualHash);
+        }
+    }
+
     [Theory]
     [InlineData(false)]
     [InlineData(true)]

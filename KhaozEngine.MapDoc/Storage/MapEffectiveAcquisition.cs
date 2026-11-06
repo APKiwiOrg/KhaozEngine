@@ -41,14 +41,18 @@ internal sealed class MapEffectiveAcquisition
     {
         using IMapSurfaceAcquisitionSession session = source.OpenAcquisition(scope);
         var acquisition = new MapEffectiveAcquisition(session, scope, work, context);
-        if (source.SnapshotId != session.SnapshotId || source.RootSha256 != session.RootSha256)
+        // Each producer value is read once, so the refusal describes the comparison that failed.
+        string expectedSnapshot = source.SnapshotId, actualSnapshot = session.SnapshotId;
+        bool snapshotDiffers = expectedSnapshot != actualSnapshot;
+        string? expectedRoot = snapshotDiffers ? null : source.RootSha256, actualRoot = snapshotDiffers ? null : session.RootSha256;
+        if (snapshotDiffers || expectedRoot != actualRoot)
             throw new MapDocumentException(MapDocumentRefusal.AcquisitionContractMismatch, "acquisition session differs from its pinned source")
             {
-                FieldPath = source.SnapshotId != session.SnapshotId ? "SnapshotId" : "RootSha256",
-                ExpectedSnapshot = source.SnapshotId != session.SnapshotId ? source.SnapshotId : null,
-                ActualSnapshot = source.SnapshotId != session.SnapshotId ? session.SnapshotId : null,
-                ExpectedHash = source.SnapshotId == session.SnapshotId ? source.RootSha256 : null,
-                ActualHash = source.SnapshotId == session.SnapshotId ? session.RootSha256 : null,
+                FieldPath = snapshotDiffers ? "SnapshotId" : "RootSha256",
+                ExpectedSnapshot = snapshotDiffers ? expectedSnapshot : null,
+                ActualSnapshot = snapshotDiffers ? actualSnapshot : null,
+                ExpectedHash = expectedRoot,
+                ActualHash = actualRoot,
             };
         return acquisition.Run();
     }
@@ -311,28 +315,34 @@ internal sealed class MapEffectiveAcquisition
     }
     void ReconcileReservations()
     {
-        if (_session.SnapshotId != _snapshot || _session.RootSha256 != _root || !ReservationSnapshot().SequenceEqual(_reserved))
+        // Each producer value is read once, so the refusal describes the comparison that failed.
+        string snapshot = _session.SnapshotId;
+        bool snapshotDiffers = snapshot != _snapshot;
+        string? root = snapshotDiffers ? null : _session.RootSha256;
+        bool rootDiffers = !snapshotDiffers && root != _root;
+        if (snapshotDiffers || rootDiffers || !ReservationSnapshot().SequenceEqual(_reserved))
             throw new MapDocumentException(MapDocumentRefusal.AcquisitionSnapshotChanged, "acquisition changed its pinned facts or reservations")
             {
-                FieldPath = _session.SnapshotId != _snapshot ? "SnapshotId" : _session.RootSha256 != _root ? "RootSha256" : "ReservedPatchKeys",
-                ExpectedSnapshot = _session.SnapshotId != _snapshot ? _snapshot : null,
-                ActualSnapshot = _session.SnapshotId != _snapshot ? _session.SnapshotId : null,
-                ExpectedHash = _session.SnapshotId == _snapshot && _session.RootSha256 != _root ? _root : null,
-                ActualHash = _session.SnapshotId == _snapshot && _session.RootSha256 != _root ? _session.RootSha256 : null,
+                FieldPath = snapshotDiffers ? "SnapshotId" : rootDiffers ? "RootSha256" : "ReservedPatchKeys",
+                ExpectedSnapshot = snapshotDiffers ? _snapshot : null,
+                ActualSnapshot = snapshotDiffers ? snapshot : null,
+                ExpectedHash = rootDiffers ? _root : null,
+                ActualHash = rootDiffers ? root : null,
             };
     }
     void CheckPages(int before, int delta)
     {
-        if (delta < 0 || _session.PagesRead < before || _session.PagesRead - before != delta)
+        int pages = _session.PagesRead;
+        if (delta < 0 || pages < before || pages - before != delta)
             throw new MapDocumentException(delta < 0 ? MapDocumentRefusal.ValueOutsideRange : MapDocumentRefusal.AcquisitionContractMismatch,
                 "incoherent acquisition page observations")
             {
                 FieldPath = "PagesRead",
-                ActualInteger = delta < 0 ? delta : _session.PagesRead < before ? _session.PagesRead : null,
-                PreviousInteger = delta >= 0 && _session.PagesRead < before ? before : null,
-                MinimumInteger = delta < 0 ? 0 : _session.PagesRead < before ? before : null,
-                ActualCount = delta >= 0 && _session.PagesRead >= before ? delta : null,
-                ExpectedCount = delta >= 0 && _session.PagesRead >= before ? (long)_session.PagesRead - before : null,
+                ActualInteger = delta < 0 ? delta : pages < before ? pages : null,
+                PreviousInteger = delta >= 0 && pages < before ? before : null,
+                MinimumInteger = delta < 0 ? 0 : pages < before ? before : null,
+                ActualCount = delta >= 0 && pages >= before ? delta : null,
+                ExpectedCount = delta >= 0 && pages >= before ? (long)pages - before : null,
             };
     }
     readonly record struct Need(MapRecordRef Reference, int Depth) : IComparable<Need>

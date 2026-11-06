@@ -79,15 +79,19 @@ internal sealed partial class MapComposedSurfaceSource : IMapSurfaceAcquisitionS
                     var discovery = scope.DiscoverySurfaces is { } selected
                         ? ids.Where(selected.Contains).ToHashSet(StringComparer.Ordinal) : ids;
                     var session = ((IMapSurfaceAcquisitionSource)source._native).OpenAcquisition(request with { SharedBudget = budget, DiscoverySurfaces = discovery });
-                    if (session.SnapshotId != source._nativeSnapshot || session.RootSha256 != source._nativeRoot)
+                    // Each producer value is read once, so the refusal describes the comparison that failed.
+                    string snapshot = session.SnapshotId;
+                    bool snapshotDiffers = snapshot != source._nativeSnapshot;
+                    string? root = snapshotDiffers ? null : session.RootSha256;
+                    if (snapshotDiffers || root != source._nativeRoot)
                     {
                         var refusal = new MapDocumentException(MapDocumentRefusal.AcquisitionContractMismatch, "native producer differs from its pinned composition")
                         {
-                            FieldPath = session.SnapshotId != source._nativeSnapshot ? "SnapshotId" : "RootSha256",
-                            ExpectedSnapshot = session.SnapshotId != source._nativeSnapshot ? source._nativeSnapshot : null,
-                            ActualSnapshot = session.SnapshotId != source._nativeSnapshot ? session.SnapshotId : null,
-                            ExpectedHash = session.SnapshotId == source._nativeSnapshot ? source._nativeRoot : null,
-                            ActualHash = session.SnapshotId == source._nativeSnapshot ? session.RootSha256 : null,
+                            FieldPath = snapshotDiffers ? "SnapshotId" : "RootSha256",
+                            ExpectedSnapshot = snapshotDiffers ? source._nativeSnapshot : null,
+                            ActualSnapshot = snapshotDiffers ? snapshot : null,
+                            ExpectedHash = snapshotDiffers ? null : source._nativeRoot,
+                            ActualHash = root,
                         };
                         session.Dispose();
                         throw refusal;

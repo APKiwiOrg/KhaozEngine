@@ -184,6 +184,7 @@ internal sealed class R2AcquisitionProbeSource : IMapSurfaceAcquisitionSource
     internal List<MapPatchRead> Sentinels { get; } = new();
     internal string? SessionSnapshotId { get; set; }
     internal string? SessionRootSha256 { get; set; }
+    internal Queue<string> SessionSnapshotReads { get; } = new();
     internal Func<MapPatchKey, (bool Known, IReadOnlyList<MapRecordRef>? Records)>? IncidentFault { get; set; }
     internal Func<string, (bool Found, MapSurfaceRef? Surface)>? SurfaceFault { get; set; }
     internal Func<IReadOnlyList<MapPatchKey>, IReadOnlyList<MapPatchKey>>? ReservationsFault { get; set; }
@@ -224,7 +225,7 @@ internal sealed class R2AcquisitionProbeSession : IMapSurfaceAcquisitionSession
         Scope = scope with { Roles = Array.AsReadOnly(scope.Roles.ToArray()), SpaceIds = scope.SpaceIds is null ? null : Array.AsReadOnly(scope.SpaceIds.ToArray()) };
     }
     internal MapSurfaceScope Scope { get; }
-    public string SnapshotId => _source.SessionSnapshotId ?? _source.SnapshotId;
+    public string SnapshotId => _source.SessionSnapshotReads.TryDequeue(out string? read) ? read : _source.SessionSnapshotId ?? _source.SnapshotId;
     public string RootSha256 => _source.SessionRootSha256 ?? _source.RootSha256;
     public int PagesRead => _source.PageCount;
     internal int Finds { get; private set; }

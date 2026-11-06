@@ -35,8 +35,9 @@ public static class MapWallStripCompiler
         ArgumentNullException.ThrowIfNull(lower);
         ArgumentNullException.ThrowIfNull(upper);
         if (lower.Status != MapResolveStatus.Resolved || upper.Status != MapResolveStatus.Resolved)
-            throw new MapDocumentException(lower.Status != MapResolveStatus.Resolved
-                ? lower.Detail ?? "unresolved lower chain" : upper.Detail ?? "unresolved upper chain");
+            throw lower.Status != MapResolveStatus.Resolved
+                ? lower.Refuse(lower.Detail ?? "unresolved lower chain", strip.LowerChain)
+                : upper.Refuse(upper.Detail ?? "unresolved upper chain", strip.UpperChain);
         if (!Enum.IsDefined(strip.Facing)) throw new MapDocumentException(MapDocumentRefusal.SchemaEnumUnsupported, "invalid strip facing")
         { RecordId = strip.Id, FieldPath = "Facing", EnumType = typeof(MapStripFacing), ActualInteger = (byte)strip.Facing };
         int lowerCount = lower.Points.Count;

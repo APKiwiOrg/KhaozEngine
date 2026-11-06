@@ -294,6 +294,14 @@ public enum MapDocumentRefusal
     SpacePrismParentCycle,
     /// <summary>Refuses a prism whose required parent has no occupied footprint at the query point.</summary>
     SpacePrismParentFootprintMissing,
+    /// <summary>Refuses an unresolved chain without a more specific producer finding.</summary>
+    SpaceChainUnresolved,
+    /// <summary>Refuses a wall chain unresolved by terrain physics without a more specific producer finding.</summary>
+    PhysicsWallChainUnresolved,
+    /// <summary>Refuses a portal column whose upper height does not exceed its lower height.</summary>
+    SpacePortalHeightInvalid,
+    /// <summary>Refuses a prism with unordered or collapsed lower and upper heights.</summary>
+    SpacePrismSeparationInvalid,
 
     // Foliage JSON converter.
     /// <summary>Refuses a foliage section larger than its UTF-8 byte budget.</summary>

@@ -12374,6 +12374,12 @@ Prism ancestry distinguishes non-Room references, mismatched parents, parent cyc
 parent footprints, retaining the prism `RecordId`, `SpaceId` and `RelatedRecordId`.
 Depth, face and vertex work refusals identify their own budget and measured count. Existing query
 statuses and developer-facing messages keep their released behavior.
+`MapChainResolution.Finding` preserves a caught typed refusal without changing positional construction
+or deconstruction. Wall-strip, aperture, membership, boundary, terrain-edit and physics adapters forward
+the original reason and identifiers. They use `SpaceChainUnresolved` or `PhysicsWallChainUnresolved`
+only without a typed producer finding. Record lookups retain the requested `ExpectedRecordType`
+alongside an actual `RecordType` when present. Prism versions, nonfinite endpoints and separation have
+distinct reasons. Portal height refusals retain the owning `RecordId` and column `Index`.
 
 Doors remain AuthoredOpen. `MapRoofPolicy` returns separate colour, shadow, camera-boom and sky-picking flags.
 Auto concealment uses occupied rooms and explicit links/groups, and leaves unlinked shelters visible. Hidden

@@ -6,7 +6,18 @@ using KhaozEngine.MapDoc.Storage;
 namespace KhaozEngine.MapDoc.Surfaces;
 
 public enum MapResolveStatus { Resolved, MissingGeometry, Invalid }
-public sealed record MapChainResolution(MapResolveStatus Status, IReadOnlyList<MapExactPoint> Points, string? Detail);
+public sealed record MapChainResolution(MapResolveStatus Status, IReadOnlyList<MapExactPoint> Points, string? Detail)
+{
+    /// <summary>The original typed geometry refusal, when resolution caught one.</summary>
+    public MapDocumentFinding? Finding { get; init; }
+    internal Exception? Cause { get; init; }
+
+    internal MapDocumentException Refuse(string message, MapRecordRef? reference = null,
+        MapDocumentRefusal fallback = MapDocumentRefusal.SpaceChainUnresolved) =>
+        Cause is MapDocumentException { Reason: not null } refusal ? refusal.WithSourceName(null, message) :
+        Finding is { } finding ? MapDocumentRefusalFactory.FromFinding(finding, message, Cause) :
+        new(fallback, message) { RecordId = reference?.Id, Patch = reference?.Anchor };
+}
 
 /// <summary>Resolves authored and source-edge chains without substituting missing geometry.</summary>
 public static class MapBoundaryGeometry
@@ -55,11 +66,13 @@ public static class MapBoundaryGeometry
         }
         catch (Exception error) when (error is MapExactOverflowException or OverflowException)
         {
-            return Failure(MapResolveStatus.Invalid, "chain geometry is not representable");
+            return Failure(MapResolveStatus.Invalid, "chain geometry is not representable") with
+            { Finding = new(MapDocumentRefusal.GeometryNotRepresentable, "chain geometry is not representable")
+                { RecordId = chain.Id, Operation = nameof(ResolveChain) }, Cause = error };
         }
         catch (MapDocumentException error)
         {
-            return Failure(MapResolveStatus.Invalid, error.Message);
+            return Failure(MapResolveStatus.Invalid, error.Message) with { Finding = MapDocumentFinding.FromException(error), Cause = error };
         }
     }
 

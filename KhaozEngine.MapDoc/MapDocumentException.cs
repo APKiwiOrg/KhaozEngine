@@ -26,7 +26,7 @@ public sealed class MapDocumentException : Exception
     public MapDocumentException(MapDocumentRefusal reason, string message) : base(message) => Reason = reason;
 
     /// <summary>Creates a refusal retaining its original cause and stable reason.</summary>
-    public MapDocumentException(MapDocumentRefusal reason, string message, Exception inner) : base(message, inner) => Reason = reason;
+    public MapDocumentException(MapDocumentRefusal reason, string message, Exception? inner) : base(message, inner) => Reason = reason;
 
     /// <summary>The stable refusal reason. Null only for an instance built through a message-only constructor
     /// by consumer code outside the engine.</summary>
@@ -196,6 +196,8 @@ public sealed class MapDocumentException : Exception
     public MapPatchKey? ExpectedPatch { get; init; }
     /// <summary>The submitted runtime topology record type, when unsupported.</summary>
     public Type? RecordType { get; init; }
+    /// <summary>The topology record type required by the refused lookup.</summary>
+    public Type? ExpectedRecordType { get; init; }
     /// <summary>The actual standalone record anchor found by the guard, when known.</summary>
     public MapPatchKey? ActualAnchor { get; init; }
     /// <summary>The captured mathematical frame submitted by a materialized row.</summary>
@@ -366,6 +368,7 @@ public sealed class MapDocumentException : Exception
         SlotCell = inner.SlotCell;
         ExpectedPatch = inner.ExpectedPatch;
         RecordType = inner.RecordType;
+        ExpectedRecordType = inner.ExpectedRecordType;
         ActualAnchor = inner.ActualAnchor;
         ActualTransform = inner.ActualTransform;
         ExpectedTransform = inner.ExpectedTransform;

@@ -83,7 +83,8 @@ public static class MapCommonRefinement
         NotRepresentable(error) ? MapRefinementStatus.NotRepresentable : MapRefinementStatus.Invalid,
         NotRepresentable(error) ? "overflow: " + error.Message : error.Message);
     internal static bool NotRepresentable(Exception error) =>
-        error is MapExactOverflowException or OverflowException || error.InnerException is { } inner && NotRepresentable(inner);
+        error is MapExactOverflowException or OverflowException or MapDocumentException { Reason: MapDocumentRefusal.GeometryNotRepresentable }
+        || error.InnerException is { } inner && NotRepresentable(inner);
 
     public static MapCellRefinement RefineFootprintCell(MapScopedSurfaces view, MapSpaceFootprint footprint,
         int slotCell, MapRefinementLimits limits) => RefineCell(view, footprint, slotCell, limits, null);

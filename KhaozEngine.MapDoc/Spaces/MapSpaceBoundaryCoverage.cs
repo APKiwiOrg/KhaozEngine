@@ -121,7 +121,7 @@ internal static class MapSpaceBoundaryCoverage
         {
             MapBoundaryChain chain = MapSpaceGeometry.Record<MapBoundaryChain>(view, reference);
             MapChainResolution resolved = MapBoundaryGeometry.ResolveChain(chain, view);
-            if (resolved.Status != MapResolveStatus.Resolved) throw new MapDocumentException(resolved.Detail ?? "missing geometry: chain");
+            if (resolved.Status != MapResolveStatus.Resolved) throw resolved.Refuse(resolved.Detail ?? "missing geometry: chain", reference);
             if (chain.SourcePatch is { } key)
             {
                 MapBoundarySurface source = MapBoundaryGeometry.Read(key, view, out string? detail)

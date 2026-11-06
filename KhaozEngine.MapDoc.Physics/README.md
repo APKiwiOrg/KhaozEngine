@@ -129,6 +129,8 @@ triangle meshes of at most `MaxTrianglesPerChunk` triangles (64 to 1,024), each 
 `TriangleOwners` and `TriangleRoles`, and a `Digest`. `MapTerrainChunkSet` carries the chunks in ordinal id order,
 the view's read witness and the count of legacy fallback cells, which compile to no faces. An incomplete view, a slot
 cell over the cap ("physics chunk capacity") and an unresolved wall strip chain refuse with `MapDocumentException`.
+An unresolved wall chain keeps its producer's typed reason and identifiers when available. Otherwise
+`Reason` is `PhysicsWallChainUnresolved`, with the chain `RecordId` and anchor `Patch`.
 
 ## World build
 

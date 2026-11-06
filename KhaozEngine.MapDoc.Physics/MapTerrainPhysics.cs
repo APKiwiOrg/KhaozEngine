@@ -173,8 +173,9 @@ public static class MapTerrainPhysics
                 $"unresolved chain '{reference.Id}' for wall strip '{strip.Id}': no boundary chain in '{reference.Anchor}' ({status})");
         MapChainResolution resolved = MapBoundaryGeometry.ResolveChain(chain, view);
         if (resolved.Status != MapResolveStatus.Resolved)
-            throw new MapDocumentException(
-                $"unresolved chain '{chain.Id}' for wall strip '{strip.Id}' ({resolved.Status}): {resolved.Detail}");
+            throw resolved.Refuse(
+                $"unresolved chain '{chain.Id}' for wall strip '{strip.Id}' ({resolved.Status}): {resolved.Detail}", reference,
+                MapDocumentRefusal.PhysicsWallChainUnresolved);
         return resolved;
     }
 

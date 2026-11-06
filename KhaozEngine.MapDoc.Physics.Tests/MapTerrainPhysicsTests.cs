@@ -123,7 +123,11 @@ public class MapTerrainPhysicsTests
     {
         Assert.Contains("complete", Assert.Throws<MapDocumentException>(() =>
             MapTerrainPhysics.Compile(NativeWorldFixtures.IncompleteView(), new MapTerrainChunkPolicy())).Message);
-        Assert.Contains("unresolved chain", Assert.Throws<MapDocumentException>(() =>
-            MapTerrainPhysics.Compile(NativeWorldFixtures.UnresolvedStripView(), new MapTerrainChunkPolicy())).Message);
+        MapDocumentException error = Assert.Throws<MapDocumentException>(() =>
+            MapTerrainPhysics.Compile(NativeWorldFixtures.UnresolvedStripView(), new MapTerrainChunkPolicy()));
+        Assert.Equal(MapDocumentRefusal.PhysicsWallChainUnresolved, error.Reason);
+        Assert.Equal("unresolved-upper", error.RecordId);
+        Assert.Equal(new MapPatchKey("unresolved-yard", 0, 0), error.Patch);
+        Assert.NotEmpty(MapTerrainPhysics.Compile(NativeWorldFixtures.UnresolvedStripView(includeLid: true), new MapTerrainChunkPolicy()).Chunks);
     }
 }

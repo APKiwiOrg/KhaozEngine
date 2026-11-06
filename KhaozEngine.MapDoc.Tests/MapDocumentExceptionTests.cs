@@ -8,6 +8,7 @@ using KhaozEngine.MapDoc;
 using KhaozEngine.MapDoc.Foliage;
 using KhaozEngine.MapDoc.Assets;
 using KhaozEngine.MapDoc.Prefabs;
+using KhaozEngine.MapDoc.Spaces;
 using KhaozEngine.MapDoc.Surfaces;
 using KhaozEngine.MapDoc.Support;
 using Xunit;
@@ -135,6 +136,11 @@ public sealed class MapDocumentExceptionTests
             Assert.Equal(refusal.Reason, finding.Reason);
             Assert.Empty(identifiers.Where(p => !Matches(p.GetValue(refusal),
                 typeof(MapDocumentFinding).GetProperty(p.Name)!.GetValue(finding))).Select(p => p.Name));
+            var cause = new ArithmeticException("original cause");
+            MapDocumentException restored = MapDocumentRefusalFactory.FromFinding(finding, "forwarded finding", cause);
+            Assert.Equal(refusal.Reason, restored.Reason);
+            Assert.Same(cause, restored.InnerException);
+            Assert.Empty(identifiers.Where(p => !Matches(p.GetValue(refusal), p.GetValue(restored))).Select(p => p.Name));
         }
         Assert.NotNull(MapDocumentFinding.FromException(new(MapDocumentRefusal.IdentityDuplicate, "accepted typed projection")));
     }
@@ -161,6 +167,7 @@ public sealed class MapDocumentExceptionTests
         if (property.Name == nameof(MapDocumentException.RelatedRecordId)) return "parent-record";
         if (property.Name == nameof(MapDocumentException.SourceType)) return typeof(KhaozEngine.MapDoc.Storage.MapDocumentSurfaceSource);
         if (property.Name == nameof(MapDocumentException.RecordType)) return typeof(MapBoundaryChain);
+        if (property.Name == nameof(MapDocumentException.ExpectedRecordType)) return typeof(MapSpaceFootprint);
         if (property.Name == nameof(MapDocumentException.Budget)) return "CornerDependencies";
         if (type == typeof(KhaozEngine.MapDoc.Storage.MapPatchStatus)) return KhaozEngine.MapDoc.Storage.MapPatchStatus.Corrupt;
         if (type == typeof(KhaozEngine.MapDoc.Storage.MapAcquireStatus)) return KhaozEngine.MapDoc.Storage.MapAcquireStatus.CapacityExceeded;

@@ -47,7 +47,8 @@ public static class MapPrismGeometry
         var kernel = view.EffectiveContext?.Transform(MapPrefabChildKind.Record, domain.Id);
         var lo = MapExactValue.FromSingle(domain.LowerY); var hi = MapExactValue.FromSingle(domain.UpperY);
         lo = kernel?.Height(lo) ?? lo; hi = kernel?.Height(hi) ?? hi;
-        if (lo.CompareTo(hi) >= 0) throw new MapDocumentException("invalid prism separation");
+        if (lo.CompareTo(hi) >= 0) throw new MapDocumentException(MapDocumentRefusal.SpacePrismSeparationInvalid, "invalid prism separation")
+        { RecordId = domain.Id, SpaceId = domain.Space.Id, FieldPath = "UpperY", MinimumNumber = lo.ToDouble(), MaximumNumber = hi.ToDouble() };
         return (lo, hi);
     }
 
@@ -56,7 +57,16 @@ public static class MapPrismGeometry
     internal static void RequirePayload(MapPrismDomain domain)
     {
         if (domain.PayloadVersion != 1 || !float.IsFinite(domain.LowerY) || !float.IsFinite(domain.UpperY) ||
-            domain.LowerY >= domain.UpperY) throw new MapDocumentException("invalid prism payload or separation");
+            domain.LowerY >= domain.UpperY) throw new MapDocumentException(domain.PayloadVersion != 1 ? MapDocumentRefusal.SchemaPayloadVersionUnsupported :
+                !float.IsFinite(domain.LowerY) || !float.IsFinite(domain.UpperY) ? MapDocumentRefusal.ValueNonfinite : MapDocumentRefusal.SpacePrismSeparationInvalid,
+                "invalid prism payload or separation")
+            { RecordId = domain.Id, SpaceId = domain.Space.Id,
+                FieldPath = domain.PayloadVersion != 1 ? "PayloadVersion" : !float.IsFinite(domain.LowerY) ? "LowerY" : "UpperY",
+                ActualVersion = domain.PayloadVersion != 1 ? domain.PayloadVersion : null,
+                SupportedVersions = domain.PayloadVersion != 1 ? new[] { 1 } : null,
+                ActualNumber = domain.PayloadVersion != 1 ? null : !float.IsFinite(domain.LowerY) ? domain.LowerY : domain.UpperY,
+                MinimumNumber = domain.PayloadVersion == 1 && float.IsFinite(domain.LowerY) && float.IsFinite(domain.UpperY) ? domain.LowerY : null,
+                MaximumNumber = domain.PayloadVersion == 1 && float.IsFinite(domain.LowerY) && float.IsFinite(domain.UpperY) ? domain.UpperY : null };
     }
     static long Quantum(MapExactValue value) => checked(value.Numerator * (MapResourceTransform.Quantum / value.Denominator));
 }

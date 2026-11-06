@@ -1549,6 +1549,10 @@ An array beyond its own count cap uses that field name as `Budget`, with its `Ac
 | `SpacePrismParentMismatch` | A prism parent differing from its Room space's parent | `RecordId`, `SpaceId`, `RelatedRecordId`, `FieldPath` |
 | `SpacePrismParentCycle` | A cycle in point or wide prism parent traversal | `RecordId`, `SpaceId`, `RelatedRecordId` |
 | `SpacePrismParentFootprintMissing` | A prism's required parent without occupied geometry at the query point | `RecordId`, `SpaceId`, `RelatedRecordId` |
+| `SpacePrismSeparationInvalid` | A prism's unordered or collapsed authored or effective vertical extent | `RecordId`, `SpaceId`, `FieldPath`, submitted `MinimumNumber` and `MaximumNumber` when finite |
+| `SpacePortalHeightInvalid` | A portal column with a nonpositive clear height | `RecordId`, `Index`, `ActualNumber` |
+| `SpaceChainUnresolved` | An unresolved chain without a specific producer finding | `RecordId`, `Patch` when known |
+| `PhysicsWallChainUnresolved` | An unresolved terrain physics wall chain without a specific producer finding | chain `RecordId` and anchor `Patch` |
 | `SpaceRoomOccupancyInvalid` | A Room with zero or multiple prism domains, or occupied through a lattice footprint | `SpaceId`, `RecordId`, `FieldPath`, `ActualCount`, `ExpectedCount` |
 | `SpaceParentCycle` | A cycle in space ancestry | `SpaceId` |
 | `GeometryVertexSequenceInvalid` | A portal interval with fewer than two vertices, seam pairs not covering both complete edge vertex sets, or strip vertices without ordered XZ correspondence | `RecordId`, `Index`, `FieldPath`, `SurfaceId`, `ActualCount`, `ExpectedCount`, `MinimumInteger` when known |
@@ -1565,7 +1569,7 @@ An array beyond its own count cap uses that field name as `Budget`, with its `Ac
 | `GeometryNotRepresentable` | A collapsed effective cell, exact triangle or unrepresentable surface emission | `SurfaceId`, `Patch`, `CellX`, `CellZ`, `SlotCell`, `Operation` when known |
 | `GeometryVertexHeightMismatch` | Different exact heights for a shared compiled, opening, boundary or seam vertex | `SurfaceId`, `Patch`, `RecordId`, `Address`, `Index`, `FieldPath` when known |
 | `FrameRadiusExceeded` | Local frame radius or checked anchor subtraction overflow | `Patch` when available, `Limit`, local `PositionX`/`PositionZ` only after successful subtraction |
-| `PatchUnavailable` | A requested effective, seam or corner-owner patch is unavailable | `RecordId`, `SurfaceId`, `Patch`, `ExpectedPatch`, `Address`, `Index`, `PatchStatus` when known |
+| `PatchUnavailable` | A requested effective, seam or corner-owner patch, record or occupied bound is unavailable | `RecordId`, `SpaceId`, boundary `OwnerId`, `FieldPath`, `SurfaceId`, `Patch`, `ExpectedPatch`, `Address`, `Index`, `PatchStatus`, `ExpectedRecordType` when known |
 | `SurfaceLegacySampleOutOfCell` | A legacy sample outside its selected cell or patch | `SurfaceId`, `Patch`, `SlotCell` |
 | `SurfacePaintPhysicalCompileUnsupported` | Physical-face compilation of a paint-only surface | `SurfaceId`, `Patch` |
 | `SurfaceNativeNoDrawUnsupported` | A native cell carrying the legacy NoDraw flag | `SurfaceId`, `Patch`, `SlotCell`, `FieldPath` |
@@ -1641,7 +1645,7 @@ An array beyond its own count cap uses that field name as `Budget`, with its `Ac
 | `PrefabWorldCoordinateLimitExceeded` | A static world position outside the inclusive axis limit of 1,000,000 metres | `OwnerId`, binary64 `PositionX`, `PositionY`, `PositionZ`, `Limit` in metres |
 | `AssetStoragePathReserved` | A resource path owned by the selected map storage writer | `ResourceId`, normalized `Path`, `StoragePath`, `DocumentForm` |
 | `AssetTypedPayloadOpaque` | An opaque resource supplied to a typed light or support consumer | `ResourceId`, `ExpectedSchema`, `SubjectKind` |
-| `ReferenceKindMismatch` | A referenced resource or topology record of a different kind than required | `AssetId`, `ResourceId`, `ExpectedResourceKind`, `ActualResourceKind`, `RecordId`, `RelatedRecordId`, `Patch`, `SurfaceId`, `RecordType`, `SpaceId`, `FieldPath`, `EnumType`, `ActualInteger` |
+| `ReferenceKindMismatch` | A referenced resource or topology record of a different kind than required | `AssetId`, `ResourceId`, `ExpectedResourceKind`, `ActualResourceKind`, `RecordId`, `RelatedRecordId`, `Patch`, `PatchStatus`, `SurfaceId`, `RecordType`, `ExpectedRecordType`, `SpaceId`, `FieldPath`, `EnumType`, `ActualInteger` |
 | `NumericIdHighWaterExceeded` | A placement, prefab binding or retired transfer above the reserved mark | `EntityId`, `SubjectKind`, `PlacementId`, `FieldPath`, `NumericId`, `HighWaterMark` |
 | `ResolverContractMismatch` | The document resolver, support recipe or caller's resolver options cannot serve the requested operation | `PayloadVersion`, `ResolverVersion`, `OptionsResolverVersion`, `ExpectedResolverVersion`, `SupportRecipe`, `ExpectedSupportRecipe`, `FieldPath`, `SubjectKind` |
 | `SupportLegacyHeightRequired` | Resolver-1 resolution without an analytic support callback | `ResolverVersion`, `FieldPath` `legacySupportHeight` |
@@ -1910,6 +1914,20 @@ These budgets are `MaxRecordDepth`, `MaxRecordReads`, `MaxInspectedFaces`, `MaxR
 `AcquireStatus`. Wide partition status results retain an available original typed `Finding` through
 narrowing. Their status and prose remain unchanged. Adapters whose producers are not yet fully typed
 retain their existing prose projection.
+
+`MapChainResolution.Finding` is an additive init property. Its existing positional constructor,
+deconstruction, status and `Detail` remain unchanged. Caught document refusals retain their original
+reason and identifiers. Arithmetic overflow supplies `GeometryNotRepresentable`. Chain adapters in
+apertures, membership, boundary coverage, terrain edits, physics and wall-strip compilation forward
+that finding. They use the unresolved-chain reason only when no typed cause exists. Same-family
+wrappers retain the original exception and every identifier through the common copy operation.
+Lookup refusals distinguish unavailable records from wrong record kinds, retaining the requested
+`RecordId`, anchor `Patch`, `PatchStatus`, actual `RecordType` and `ExpectedRecordType`.
+Prism payload admission selects version, lower finiteness, upper finiteness and separation in that
+order. Aperture admission retains portal interval or repeated-vertex context and the column index
+for an invalid height. Empty aperture geometry retains its record and anchor. Provenance membership
+is an internal invariant: every recorded reference was already resolved from the same immutable
+acquired facts that own the witness.
 
 Map documents are dev-authored content, not runtime state: `MapDocumentFile.Load`/`Save` throw
 `MapDocumentException` on a read error, invalid JSON, a missing or out-of-range `formatVersion`, a

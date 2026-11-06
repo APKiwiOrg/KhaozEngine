@@ -180,6 +180,8 @@ public sealed record MapDocumentFinding(MapDocumentRefusal Reason, string Messag
     public MapPatchKey? ExpectedPatch { get; init; }
     /// <summary>The submitted runtime topology record type, when unsupported.</summary>
     public Type? RecordType { get; init; }
+    /// <summary>The topology record type required by the refused lookup.</summary>
+    public Type? ExpectedRecordType { get; init; }
     /// <summary>The actual standalone record anchor found by the guard, when known.</summary>
     public MapPatchKey? ActualAnchor { get; init; }
     /// <summary>The captured mathematical frame submitted by a materialized row.</summary>
@@ -329,6 +331,7 @@ public sealed record MapDocumentFinding(MapDocumentRefusal Reason, string Messag
             SlotCell = error.SlotCell,
             ExpectedPatch = error.ExpectedPatch,
             RecordType = error.RecordType,
+            ExpectedRecordType = error.ExpectedRecordType,
             ActualAnchor = error.ActualAnchor,
             ActualTransform = error.ActualTransform,
             ExpectedTransform = error.ExpectedTransform,

@@ -22,9 +22,14 @@ internal static class MapSpaceGeometry
                 yield return record;
     }
 
-    internal static T Record<T>(MapScopedSurfaces view, MapRecordRef reference) where T : MapTopologyRecord =>
-        view.TryRecord(reference, out MapTopologyRecord? record, out MapPatchStatus status, borrow: true) && record is T typed
-            ? typed : throw new MapDocumentException($"missing geometry: record '{reference.Id}' {reference.Anchor} ({status})");
+    internal static T Record<T>(MapScopedSurfaces view, MapRecordRef reference) where T : MapTopologyRecord
+    {
+        bool found = view.TryRecord(reference, out MapTopologyRecord? record, out MapPatchStatus status, borrow: true);
+        return found && record is T typed ? typed : throw new MapDocumentException(found && record is not null
+            ? MapDocumentRefusal.ReferenceKindMismatch : MapDocumentRefusal.PatchUnavailable,
+            $"missing geometry: record '{reference.Id}' {reference.Anchor} ({status})")
+        { RecordId = reference.Id, Patch = reference.Anchor, PatchStatus = status, RecordType = record?.GetType(), ExpectedRecordType = typeof(T) };
+    }
 
     internal static MapSurfaceRef Surface(MapScopedSurfaces view, string id) =>
         view.Surfaces.FirstOrDefault(s => s.Id == id) ?? throw new MapDocumentException($"missing geometry: surface '{id}'");

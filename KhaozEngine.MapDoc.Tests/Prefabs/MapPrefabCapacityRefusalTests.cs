@@ -86,8 +86,10 @@ public sealed class MapPrefabCapacityRefusalTests
         MapPrefabCapacity.RequireCollection(limit, name, "$.nested." + name, true);
     }
 
-    [Fact]
-    public void GeometryPreflight_ChargesPatchCellsCornersAndArrayMembershipAtTheExactCap()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void GeometryPreflight_ChargesPatchCellsCornersAndArrayMembershipAtTheExactCap(bool aggregate)
     {
         long limit = MapPrefabJson.Limits.MaxGeometryElements;
         // A 64 by 64 patch contributes 65*65 + 64*64 = 8321, plus its array membership.
@@ -95,14 +97,42 @@ public sealed class MapPrefabCapacityRefusalTests
         int large = (int)(limit / 8322), small = (int)(limit % 8322 / 6), scalars = (int)(limit % 8322 % 6);
         string body = string.Join(',', Enumerable.Repeat("{\"width\":64,\"depth\":64}", large)
             .Concat(Enumerable.Repeat("{\"width\":1,\"depth\":1}", small)).Concat(Enumerable.Repeat("0", scalars)));
-        using var refused = JsonDocument.Parse("[" + body + ",0]");
+        using var refused = JsonDocument.Parse(aggregate ? "{\"a\":[" + body + "],\"b\":[0]}" : "[" + body + ",0]");
         var error = Assert.Throws<MapDocumentException>(() => MapPrefabJson.Preflight(refused.RootElement));
         Assert.Equal(MapDocumentRefusal.WorkCapacityExceeded, error.Reason);
-        Assert.Equal("GeometryElements", error.Budget);
+        Assert.Equal(aggregate ? "Aggregate.GeometryElements" : "GeometryElements", error.Budget);
         Assert.Equal(limit + 1, error.ActualCount);
         Assert.Equal(limit, error.Limit);
         using var control = JsonDocument.Parse("[" + body + "]");
         MapPrefabJson.Preflight(control.RootElement);
+        using var below = JsonDocument.Parse("[" + body[..body.LastIndexOf(',')] + "]");
+        MapPrefabJson.Preflight(below.RootElement);
+    }
+
+    [Theory]
+    [InlineData("references", "ReferenceEdges")]
+    [InlineData("patches", "Patches")]
+    [InlineData("records", "Records")]
+    public void CrossArrayBudgets_KeepTheActualAggregateThatFailed(string name, string budget)
+    {
+        int limit = name switch
+        {
+            "references" => MapPrefabJson.Limits.MaxReferenceEdges,
+            "patches" => MapPrefabJson.Limits.MaxPatches,
+            _ => MapPrefabJson.Limits.MaxRecords,
+        };
+        string part = string.Join(',', Enumerable.Repeat("0", limit / 2));
+        using var refused = JsonDocument.Parse("{\"a\":{\"" + name + "\":[" + part + "]},\"b\":{\"" + name + "\":[" + part + ",0]}}");
+        var error = Assert.Throws<MapDocumentException>(() => MapPrefabJson.Preflight(refused.RootElement));
+        Assert.Equal(MapDocumentRefusal.WorkCapacityExceeded, error.Reason);
+        Assert.Equal("Aggregate." + budget, error.Budget);
+        Assert.Equal((long)limit + 1, error.ActualCount);
+        Assert.Equal(limit, error.Limit);
+        Assert.Equal("$.b." + name, error.FieldPath);
+        using var control = JsonDocument.Parse("{\"a\":{\"" + name + "\":[" + part + "]},\"b\":{\"" + name + "\":[" + part + "]}}");
+        MapPrefabJson.Preflight(control.RootElement);
+        using var below = JsonDocument.Parse("{\"a\":{\"" + name + "\":[" + part + "]},\"b\":{\"" + name + "\":[" + part[2..] + "]}}");
+        MapPrefabJson.Preflight(below.RootElement);
     }
 
     [Fact]

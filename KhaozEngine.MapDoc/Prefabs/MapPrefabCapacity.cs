@@ -4,6 +4,17 @@ namespace KhaozEngine.MapDoc.Prefabs;
 /// payload or materializing a collection merely to check its count.</summary>
 internal static class MapPrefabCapacity
 {
+    internal static MapDocumentException AggregateRefusal(long edges, long patches, long records, long geometry, string path)
+    {
+        var limits = MapPrefabJson.Limits;
+        (string budget, long count, long limit) = edges > limits.MaxReferenceEdges ? ("ReferenceEdges", edges, limits.MaxReferenceEdges)
+            : patches > limits.MaxPatches ? ("Patches", patches, limits.MaxPatches)
+            : records > limits.MaxRecords ? ("Records", records, limits.MaxRecords)
+            : ("GeometryElements", geometry, limits.MaxGeometryElements);
+        return new(MapDocumentRefusal.WorkCapacityExceeded, "Prefab aggregate collection limit exceeded.")
+        { Budget = "Aggregate." + budget, ActualCount = count, Limit = limit, FieldPath = path };
+    }
+
     internal static void RequirePayloadBytes(long byteCount, string payloadKind, string? resourceId = null)
     {
         if (byteCount > MapPrefabJson.Limits.MaxPayloadBytes)

@@ -12384,6 +12384,15 @@ A prefab resource keeps its logical asset ID and accepts either that ID or
 Prefab and light payload byte admission carries `WorkCapacityExceeded`, `Budget = "PayloadBytes"`, the measured
 `ActualByteCount` and inclusive `Limit`, plus a known `ResourceId`. Codec array counts retain their JSON path and
 name their `Budget` as the collection or `Aggregate.<name>`. Patch geometry counts use `GeometryElements`.
+Cross-array totals use `Aggregate.ReferenceEdges`, `Aggregate.Patches`, `Aggregate.Records` or
+`Aggregate.GeometryElements`, with the crossing array's `FieldPath`, measured `ActualCount` and inclusive `Limit`.
+Unsupported child or override discriminators carry `OperationKindUnsupported`, `Child`, `ActualText` and
+`FieldPath = "$.type"`. A runtime subtype carries its `RecordType` and `Child`.
+The closed marker binding codec uses `MapPrefabJsonException`, a `JsonException` subtype carrying the shared reason
+and failed local `FieldPath`. It distinguishes object, missing, unknown, duplicate, null and wrong-type members.
+Unsupported kinds carry `EnumType` and submitted `ActualText` or writer `ActualInteger`. Writer shape failures retain
+known `SurfaceId` and `SpaceId`, using `SchemaValueRequired` or `AuthoredOwnershipMismatch`. Resource and document
+wrappers preserve this structured cause and add their source context without changing admission or diagnostic text.
 All three retain the actual count and accept the exact named ceiling. A consumer-defined prefab or marker edit
 uses `OperationKindUnsupported` with its `RecordType`. Submitting an asset update through `Prepare` uses
 `PrefabCapturedUpdateRequired` with `Operation = "PrepareAssetUpdate"`. Room selection retains `SpaceId` and

@@ -1953,6 +1953,27 @@ Prefab and light byte admission uses `WorkCapacityExceeded`, `Budget = "PayloadB
 Codec collection limits retain the actual count and JSON path. `Budget` is the collection name for an individual
 array and `Aggregate.<name>` for its accumulated count. Patch-cell and corner work uses
 `Budget = "GeometryElements"` with its accumulated count. These guards accept their exact named limits.
+Cross-array reference, patch, record and geometry totals name `Aggregate.ReferenceEdges`, `Aggregate.Patches`,
+`Aggregate.Records` or `Aggregate.GeometryElements` in predicate order, retaining the crossing array's `FieldPath`.
+Unsupported child and override codec discriminators use `OperationKindUnsupported` with `Child`, `ActualText` and
+`FieldPath = "$.type"`. Unsupported runtime subtypes retain `Child` and `RecordType` instead.
+
+The closed marker support-binding codec throws `MapPrefabJsonException`, derived from `JsonException`, with the
+same `MapDocumentRefusal` members. Document and resource wrappers preserve its concrete reason, identifiers and
+reader coordinates. Its writer reports the actual binding-shape finding and retains known `SurfaceId` and `SpaceId`.
+It keeps the released shape admission, separate from the stricter semantic support-binding validator.
+
+| Reason | Refused binding JSON rule | Identifiers when known |
+| --- | --- | --- |
+| `SchemaObjectRequired` | A binding value that is not an object | `FieldPath` |
+| `SchemaMemberMissing` | Missing kind or a required member of that kind | `FieldPath` |
+| `SchemaValueRequired` | Wrong kind or identity value type, or a missing writer member | `FieldPath`, `SurfaceId`, `SpaceId` |
+| `SchemaMemberUnknown` | A member outside the selected kind | `FieldPath` |
+| `SchemaMemberDuplicate` | A repeated member | `FieldPath` |
+| `SchemaMemberNull` | A member explicitly set to null | `FieldPath` |
+| `SchemaEnumUnsupported` | An unsupported binding kind | `FieldPath`, `EnumType`, submitted `ActualText` or writer `ActualInteger` |
+| `AuthoredOwnershipMismatch` | A writer member belonging to the other binding kind | `FieldPath`, `SurfaceId`, `SpaceId` |
+
 Prefab validation adds immutable typed findings beside its unchanged string diagnostics in internal
 collectors. A typed exception contributes all its identifier context, or its existing ordered findings.
 Legacy failures keep their prose without an invented reason. `AttachmentKind` distinguishes the typed

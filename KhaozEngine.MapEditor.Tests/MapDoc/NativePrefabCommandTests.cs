@@ -75,7 +75,6 @@ public sealed class NativePrefabCommandTests
         Assert.Equal(typeof(PrefabEditCommand), error.CommandType);
         Assert.Equal("Stage", error.Operation);
         Assert.Equal("prefab", error.SubjectKind);
-        Assert.Equal("Prefab editing requires a verified asset closure.", error.Message);
         Assert.Equal(before, MapDocumentFile.SaveText(f.Document));
         Assert.NotNull(NativeDocumentTransaction.Stage(f.Document, Place(f), false, f.Assets, localOnly: true));
     }

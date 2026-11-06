@@ -15236,6 +15236,9 @@ when the verified closure has no manifest root. A retained reference to a remove
 `EditorRetainedReferenceRemoved` with `RecordId`, target `TargetId`, target `ChildKind` and reference `FieldPath`.
 The publication fallback `WaterContainmentUnverified` applies only when the containment report has no concrete
 finding. These refusals leave live document content and undo/redo history unchanged.
+Native placement lookups use `ReferenceMissing`. Their identity guard checks `SchemaValueRequired` before
+`IdentityDuplicate`, carrying `DocumentId`, `EntityId`, `SubjectKind` `placement` and `FieldPath` `Placements.Id`.
+Viewport companion construction uses the same missing-host identifiers as freeze-zone admission.
 
 **Wiring.** Fill `MapEditorOptions` and push the scene directly onto your `SceneManager`, the same way
 every other room/scene gets pushed:

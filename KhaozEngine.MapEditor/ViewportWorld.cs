@@ -491,8 +491,10 @@ public sealed partial class ViewportWorld : IDisposable
         foreach (MapCompanionLayer cl in doc.CompanionLayers)
         {
             if (!scatterIndex.TryGetValue(cl.HostLayer, out int hostIndex))
-                throw new MapDocumentException(
-                    $"companion layer '{cl.Name}' names unknown host scatter layer '{cl.HostLayer}' in map '{doc.Id}'.");
+                throw new MapDocumentException(MapDocumentRefusal.ReferenceMissing,
+                    $"companion layer '{cl.Name}' names unknown host scatter layer '{cl.HostLayer}' in map '{doc.Id}'.")
+                { DocumentId = doc.Id, LayerId = cl.Name, EntityId = cl.HostLayer, SubjectKind = "scatter layer",
+                    FieldPath = "CompanionLayers.HostLayer" };
             CompanionConfig companions = MapRuntime.BuildCompanionConfig(doc, cl.Name);
             layers.Add(PropLayer.CompanionLayer(hostIndex, companions, _propMeshes, _companionDrawRadius)
                 .WithIdentity(cl.HostLayer));

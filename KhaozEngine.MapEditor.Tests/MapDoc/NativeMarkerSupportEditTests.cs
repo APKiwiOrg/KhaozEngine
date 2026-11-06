@@ -154,8 +154,17 @@ public sealed class NativeMarkerSupportEditTests
             document.Surfaces.Patches[Floor2].SetPresent(0, 0, false);
             return 0;
         }, true));
-        Assert.Equal(genericError.Message, error.Message);
+        Assert.Equal(MapDocumentRefusal.SpaceCoverageMissingBound, error.Reason);
+        Assert.Equal(error.Reason, genericError.Reason);
+        Assert.Equal(error.RecordId, genericError.RecordId);
+        Assert.Equal(error.SpaceId, genericError.SpaceId);
+        Assert.Equal(error.SlotCell, genericError.SlotCell);
+        Assert.NotNull(error.Findings);
+        Assert.NotEmpty(error.Findings);
+        Assert.Equal(error.Findings.Select(f => (f.Reason, f.RecordId, f.SpaceId, f.SlotCell)),
+            genericError.Findings!.Select(f => (f.Reason, f.RecordId, f.SpaceId, f.SlotCell)));
         Assert.Equal(stateBefore, MarkerEditorFixtures.State(session));
+        Assert.Equal(stateBefore, MarkerEditorFixtures.State(generic));
         Assert.Equal(0, hooks);
         session.Mutate((document, registry) => { session.ApplyNative(Corner(2010), document, registry); return 0; }, true);
         Assert.Equal(20.1f, Bound(session).Position.Y.ToSingle());

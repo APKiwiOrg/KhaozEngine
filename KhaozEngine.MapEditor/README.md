@@ -1408,6 +1408,9 @@ Freeze-zone companion-host admission uses `MapDocumentException.ReferenceMissing
 companion `LayerId`, missing host `EntityId`, `SubjectKind` `scatter layer` and `FieldPath`
 `CompanionLayers.HostLayer`. A host `MarkerAssets` callback returning no closure uses
 `MapDocumentException.AssetClosureRequired`, `DocumentId` and `FieldPath` `MarkerAssets`.
+Viewport companion construction carries those same host identifiers. Native placement transaction lookups use
+`ReferenceMissing`, and placement identity admission selects `SchemaValueRequired` before `IdentityDuplicate`.
+They carry `DocumentId`, `EntityId`, `SubjectKind` `placement` and `FieldPath` `Placements.Id`.
 
 Native transaction guards and detached prefab sessions use `MapDocumentException` and the same public enum.
 Validator adapters retain the first concrete reason and identifiers and the full ordered `Findings` snapshot.

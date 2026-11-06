@@ -29,9 +29,15 @@ public sealed class TerrainTransactionTests
         string state = gui.State();
         for (int i = 0; i < 2; i++)
         {
-            Assert.Contains("separation", Assert.Throws<MapDocumentException>(() => gui.Editor.Execute(new TerrainEditCommand(CaveFixtures.CeilingCrossingEdit()))).Message);
+            var error = Assert.Throws<MapDocumentException>(() => gui.Editor.Execute(new TerrainEditCommand(CaveFixtures.CeilingCrossingEdit())));
+            Assert.Equal(MapDocumentRefusal.SpaceBoundaryGap, error.Reason);
+            Assert.NotNull(error.RecordId);
+            Assert.NotNull(error.SpaceId);
+            Assert.NotNull(error.SlotCell);
             Assert.Equal(state, gui.State());
         }
+        gui.Editor.Execute(new TerrainEditCommand(CaveFixtures.OpenMouthEdit()));
+        state = gui.State();
         var halo = Assert.Throws<MapDocumentException>(() => gui.Editor.Execute(new TerrainEditCommand(
             new MapSmoothCorners(new("outer", 0, 0), 0, 0, 1, 1, 1))));
         Assert.Equal(MapDocumentRefusal.TerrainSmoothingHaloUnavailable, halo.Reason);

@@ -68,8 +68,18 @@ public sealed class NativeFoliageCommandTests
             var bad = new MapSetFoliageDensity(Id, 1, 2, 2, 1, [7, 256]);
             var a = Assert.Throws<MapDocumentException>(() => session.ExecuteNativeCommand(new FoliageEditCommand(bad)));
             var b = Assert.Throws<MapDocumentException>(() => history.Execute(gui, new FoliageEditCommand(bad)));
-            Assert.Equal(a.Message, b.Message);
-            Assert.Contains("must be from 0 to 255", a.Message, StringComparison.Ordinal);
+            foreach (var error in new[] { a, b })
+            {
+                Assert.Equal(MapDocumentRefusal.ValueOutsideRange, error.Reason);
+                Assert.Equal(Id, error.LayerId);
+                Assert.Equal("Density[1]", error.FieldPath);
+                Assert.Equal(1, error.Index);
+                Assert.Equal(1, error.CellX);
+                Assert.Equal(0, error.CellZ);
+                Assert.Equal(256, error.ActualInteger);
+                Assert.Equal(0, error.MinimumInteger);
+                Assert.Equal(255, error.MaximumInteger);
+            }
             string refusedState = FoliageEditorFixtures.State(session);
             Assert.Equal(beforeState, refusedState);
             Assert.Equal(guiBefore, MapDocumentFile.SaveText(gui));
@@ -82,10 +92,16 @@ public sealed class NativeFoliageCommandTests
             // Local application has no verified closure, so foliage refuses before any copy.
             MapDocument local = MapDocumentFile.LoadText(published);
             long clones = NativeDocumentSnapshot.ThreadClones;
-            Assert.Contains("verified asset closure", Assert.Throws<MapDocumentException>(() =>
-                new FoliageEditCommand(new MapPaintFoliage(Id, 1, -1, 2, 9, 1)).Apply(local)).Message, StringComparison.Ordinal);
+            var closure = Assert.Throws<MapDocumentException>(() =>
+                new FoliageEditCommand(new MapPaintFoliage(Id, 1, -1, 2, 9, 1)).Apply(local));
+            Assert.Equal(MapDocumentRefusal.AssetClosureRequired, closure.Reason);
+            Assert.Equal(local.Id, closure.DocumentId);
             Assert.Equal(0, NativeDocumentSnapshot.ThreadClones - clones);
             Assert.Equal(published, MapDocumentFile.SaveText(local));
+            session.ExecuteNativeCommand(new FoliageEditCommand(bad with { Density = [7, 255] }));
+            history.Execute(gui, new FoliageEditCommand(bad with { Density = [7, 255] }));
+            Assert.Equal(FoliageEditorFixtures.Bytes(session), MapDocumentFile.SaveText(gui));
+            session.ExecuteNativeCommand(new FoliageEditCommand(new MapPaintFoliage(Id, 1, -1, 2, 9, 1)));
 
             // A settings change on a layer without stored chunks names the root but publishes no row and no flag.
             MapFoliageLayer empty = FoliageFixtures.BasicLayer([]);

@@ -1,9 +1,11 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using KhaozEngine.MapDoc;
 using KhaozEngine.MapDoc.Assets;
 using KhaozEngine.MapDoc.Editing;
 using KhaozEngine.MapDoc.Markers;
+using KhaozEngine.MapDoc.Support;
 using KhaozEngine.MapEdit;
 using KhaozEngine.MapEditor;
 using KhaozEngine.Tests.MapDoc.Markers;
@@ -77,7 +79,8 @@ public sealed class NativeLegacySpawnFenceTests
             }
             return 0;
         }, true));
-        Assert.Contains("spawns_adopt", lateRecord.Message, StringComparison.Ordinal);
+        // A replaced callback list reaches the check against the adopted staged candidate's empty lists.
+        Guidance(lateRecord, adoption && change == "replace-list");
         Assert.Equal(stateBefore, MarkerEditorFixtures.State(session));
         Assert.Equal(0, hooks);
     }
@@ -200,17 +203,30 @@ public sealed class NativeLegacySpawnFenceTests
             MapDocumentHash.OfWorld(c.Document, MapDocRegistry.CreateDefault()), c.Assets.Hash, session.NativeHistoryState,
             session.NativeHistoryLabels, session.LastNativeEffects?.Describe(), session.IsDirty));
         string before = State();
-        foreach (Action attempt in new Action[]
+        foreach (var (attempt, reason) in new (Action, MapDocumentRefusal)[]
         {
-            () => new MutationService(session).SpawnsAdopt(MarkerFixtures.Choices()),
-            () => new MutationService(session).SpawnAdd("kit.actor", 1, 1),
+            (() => new MutationService(session).SpawnsAdopt(MarkerFixtures.Choices()), MapDocumentRefusal.ResolverContractMismatch),
+            (() => new MutationService(session).SpawnAdd("kit.actor", 1, 1), MapDocumentRefusal.EditorLegacySpawnEditProtected),
         })
         {
             var error = Assert.Throws<MapDocumentException>(attempt);
-            Assert.Contains("resolver adoption", error.Message, StringComparison.Ordinal);
-            Assert.Contains("MapResolverAdoption.ConvertToAuthoredSupport", error.Message, StringComparison.Ordinal);
+            Assert.Equal(reason, error.Reason);
+            Assert.Equal(1, error.ResolverVersion);
+            if (reason == MapDocumentRefusal.ResolverContractMismatch)
+            {
+                Assert.Equal(2, error.ExpectedResolverVersion);
+                Assert.Equal("resolverIdentity", error.FieldPath);
+            }
+            else
+            {
+                Assert.Equal(fixture.Document.Id, error.DocumentId);
+                Assert.False(string.IsNullOrEmpty(error.Operation));
+            }
             Assert.Equal(before, State());
         }
+        var authored = MapResolverAdoption.ConvertToAuthoredSupport(fixture.Document,
+            fixture.Document.Placements.Where(p => p.Y is null).ToDictionary(p => p.Id, _ => new MapPlacementSupportChoice(0, null)));
+        MapMarkerEdits.RequireResolver(authored);
     }
 
     [Fact]
@@ -270,15 +286,12 @@ public sealed class NativeLegacySpawnFenceTests
         else document.Spawns.Add(new() { Id = "late", ArchetypeId = "kit.actor", X = 2, Z = -2 });
     }
 
-    static void Guidance(MapDocumentException error)
+    static void Guidance(MapDocumentException error, bool sourceListsAdopted = false)
     {
         Assert.Equal(MapDocumentRefusal.EditorLegacySpawnEditProtected, error.Reason);
         Assert.Equal(2, error.ResolverVersion);
-        Assert.Equal(new[] { "old", "old" }, error.SourceIds);
+        Assert.Equal(sourceListsAdopted ? Array.Empty<string>() : new[] { "old", "old" }, error.SourceIds);
         Assert.False(string.IsNullOrEmpty(error.Operation));
-        Assert.Contains("marker_set", error.Message, StringComparison.Ordinal);
-        Assert.Contains("marker_remove", error.Message, StringComparison.Ordinal);
-        Assert.Contains("spawns_adopt", error.Message, StringComparison.Ordinal);
         Assert.DoesNotContain("resolver adoption", error.Message, StringComparison.Ordinal);
     }
 

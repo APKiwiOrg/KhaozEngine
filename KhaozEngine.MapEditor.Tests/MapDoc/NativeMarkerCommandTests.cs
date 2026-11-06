@@ -221,7 +221,9 @@ public sealed class NativeMarkerCommandTests
         string before = MarkerEditorFixtures.State(session);
 
         var refused = Assert.Throws<MapDocumentException>(() => mutation.MarkerApply(new MapSetMarker(MarkerEditorFixtures.Other() with { Name = "arrival" })));
-        Assert.Contains("duplicate marker name 'arrival'", refused.Message, StringComparison.Ordinal);
+        Assert.Equal(MapDocumentRefusal.MarkerNameDuplicate, refused.Reason);
+        Assert.Equal("arrival", refused.MarkerName);
+        Assert.Equal(new[] { "m", "other" }, refused.MarkerIds);
         Assert.Equal(before, MarkerEditorFixtures.State(session));
 
         // The GUI history refuses the same command without publishing or recording it.

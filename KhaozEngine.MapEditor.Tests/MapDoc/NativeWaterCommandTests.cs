@@ -104,8 +104,10 @@ public sealed class NativeWaterCommandTests
             Domain = new MapWaterDomainDoc(MapLatticeFrame.ImportedMetreCentimetre, new[] { new MapWaterRect(30, 0, 34, 4) }, Array.Empty<MapWaterRing>()),
         };
         var error = Assert.Throws<MapDocumentException>(() => new WaterEditCommand(new MapUpsertWaterBody(stray)).Apply(doc));
-        Assert.Contains("water body 'ocean' covers no space footprint", error.Message, StringComparison.Ordinal);
+        Assert.Equal(MapDocumentRefusal.WaterNoSpaceFootprint, error.Reason);
+        Assert.Equal("ocean", error.EntityId);
         Assert.Equal(before, MapDocumentFile.SaveText(doc));
+        new WaterEditCommand(new MapUpsertWaterBody(stray with { Domain = doc.Water.Bodies.Single(b => b.Id == "ocean").Domain })).Apply(doc);
     }
 
     [Theory]
@@ -118,8 +120,11 @@ public sealed class NativeWaterCommandTests
         IEditorCommand command = edit == "placement" ? WaterFixtures.AddMarkerPlacementCommand()
             : new TerrainEditCommand(WaterFixtures.LowerSeabedAt(11, -2, metres: 0.5f));
         var error = Assert.Throws<MapDocumentException>(() => NativeDocumentTransaction.Run(doc, command, false, null, localOnly: true));
-        Assert.Contains("water body 'ocean' covers no space footprint", error.Message, StringComparison.Ordinal);
+        Assert.Equal(MapDocumentRefusal.WaterNoSpaceFootprint, error.Reason);
+        Assert.Equal("ocean", error.EntityId);
         Assert.Equal(before, MapDocumentFile.SaveText(doc));
+        doc.Water = WaterFixtures.OceanOverCaves().Water;
+        NativeDocumentTransaction.Run(doc, command, false, null, localOnly: true);
     }
 
     [Fact]
@@ -169,17 +174,28 @@ public sealed class WaterPublicationTests
     public void UnverifiedContainment_RefusesEveryPublicationAtomically(string edit)
     {
         MapDocument doc = WaterFixtures.SeaConnectedCave(-5f);
-        doc.Surfaces.Patches[new("grotto-floor", 0, 0)].Records.RemoveAll(r => r.Id == "grotto-mouth-top");
+        var patch = doc.Surfaces.Patches[new("grotto-floor", 0, 0)];
+        var missing = patch.Records.Single(r => r.Id == "grotto-mouth-top");
+        patch.Records.Remove(missing);
         MapWaterContainmentReport report = MapWaterContainment.Validate(MapScopedSurfaces.CompleteView(doc.Surfaces), doc.Water!);
         Assert.False(report.Complete);
-        string before = MapSurfaceSemantics.RootDigest(doc);
+        string State() => System.Text.Json.JsonSerializer.Serialize(doc) + "\n" + MapSurfaceSemantics.RootDigest(doc);
+        string before = State();
         IEditorCommand command = edit == "placement" ? WaterFixtures.AddMarkerPlacementCommand()
             : new WaterEditCommand(new MapUpsertWaterMedium(new("sea-water", MapWaterMediumKind.Water, 0.5f)));
         var error = Assert.Throws<MapDocumentException>(() => NativeDocumentTransaction.Run(doc, command, false, null, localOnly: true));
-        Assert.Contains("unverified", error.Message, StringComparison.Ordinal);
-        Assert.Equal(before, MapSurfaceSemantics.RootDigest(doc));
+        Assert.Equal(MapDocumentRefusal.ReferenceMissing, error.Reason);
+        var first = report.Findings[0];
+        Assert.Equal(first.Reason, error.Reason);
+        Assert.Equal(first.RecordId, error.RecordId);
+        Assert.Equal(first.Patch, error.Patch);
+        Assert.Equal(first.OwnerId, error.OwnerId);
+        Assert.Equal(report.Findings, error.Findings);
+        Assert.Equal(before, State());
         Assert.Empty(doc.Placements);
         Assert.Equal(0, doc.NumericIdHighWaterMark);
+        patch.Records.Add(missing);
+        NativeDocumentTransaction.Run(doc, command, false, null, localOnly: true);
     }
 
     [Fact]
@@ -228,9 +244,12 @@ public sealed class WaterPublicationTests
         Assert.Equal(water, doc.Water!.Digest());
         MapDocument broken = WaterFixtures.Broken("domain-off-footprint");
         string before = MapDocumentFile.SaveText(broken);
-        Assert.Contains("covers no space footprint", Assert.Throws<MapDocumentException>(() => NativeDocumentTransaction.Run(broken,
-            new TerrainEditCommand(WaterFixtures.LowerSeabedAt(11, -2, 0.5f)), false, WaterFixtures.Assets())).Message,
-            StringComparison.Ordinal);
+        var error = Assert.Throws<MapDocumentException>(() => NativeDocumentTransaction.Run(broken,
+            new TerrainEditCommand(WaterFixtures.LowerSeabedAt(11, -2, 0.5f)), false, WaterFixtures.Assets()));
+        Assert.Equal(MapDocumentRefusal.WaterNoSpaceFootprint, error.Reason);
+        Assert.Equal("ocean", error.EntityId);
         Assert.Equal(before, MapDocumentFile.SaveText(broken));
+        broken.Water = WaterFixtures.OceanOverCaves().Water;
+        NativeDocumentTransaction.Run(broken, new TerrainEditCommand(WaterFixtures.LowerSeabedAt(11, -2, 0.5f)), false, WaterFixtures.Assets());
     }
 }

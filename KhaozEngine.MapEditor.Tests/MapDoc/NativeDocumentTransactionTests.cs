@@ -44,9 +44,15 @@ public sealed class NativeDocumentTransactionTests
         for (int i = 0; i < 2; i++)
         {
             // corner index 4 is cell X 64, the owner corner ground(1,0) depends on
-            Assert.Contains("owner", Assert.Throws<MapDocumentException>(() => e.Execute(new TestPatchHeightCommand(new("ground", 0, 0), 4, 1234))).Message);
+            var error = Assert.Throws<MapDocumentException>(() => e.Execute(new TestPatchHeightCommand(new("ground", 0, 0), 4, 1234)));
+            Assert.Equal(MapDocumentRefusal.GeometryVertexHeightMismatch, error.Reason);
+            Assert.Equal(new MapPatchKey("ground", 1, 0), error.Patch);
+            Assert.Equal(new MapPatchKey("ground", 0, 0), error.ExpectedPatch);
+            Assert.Equal(MapLatticeAddress.Corner(64, 0), error.Address);
+            Assert.Equal(0, error.Index);
             Assert.Equal(before, TransactionFixtures.State(e));
         }
+        e.Execute(new TestPatchHeightCommand(new("ground", 0, 0), 4, 1000));
     }
     [Fact]
     public void StagedAllocation_DefersAcceptanceAndCanRetry()
@@ -74,7 +80,10 @@ public sealed class NativeDocumentTransactionTests
         f.Document.Placements.Remove(owner);
         string before = MapDocumentFile.SaveText(f.Document);
         var effects = f.Editor.LastNativeEffects;
-        Assert.Throws<MapDocumentException>(() => { if (redo) f.Editor.Redo(); else f.Editor.Undo(); });
+        var error = Assert.Throws<MapDocumentException>(() => { if (redo) f.Editor.Redo(); else f.Editor.Undo(); });
+        Assert.Equal(MapDocumentRefusal.ReferenceMissing, error.Reason);
+        Assert.Equal("existing", error.EntityId);
+        Assert.Equal(f.Document.Id, error.DocumentId);
         Assert.Equal(before, MapDocumentFile.SaveText(f.Document));
         Assert.Same(effects, f.Editor.LastNativeEffects);
         f.Document.Placements.Add(owner);
@@ -93,7 +102,6 @@ public sealed class NativeDocumentTransactionTests
         Assert.Equal(MapDocumentRefusal.CompleteDocumentRequired, error.Reason);
         Assert.Equal(window.Id, error.DocumentId);
         Assert.Equal("Stage", error.Operation);
-        Assert.Contains("window", error.Message);
         var snapshot = Assert.Throws<MapDocumentException>(() => NativeDocumentSnapshot.Clone(window, e.Registry));
         Assert.Equal(MapDocumentRefusal.CompleteDocumentRequired, snapshot.Reason);
         Assert.Equal(window.Id, snapshot.DocumentId);

@@ -93,8 +93,6 @@ public sealed class PrefabCapturedContextReviewTests
         Assert.Equal("external-edge", error.RecordId);
         Assert.Equal("a/floor", error.TargetId);
         Assert.Equal(MapPrefabChildKind.Surface, error.ChildKind);
-        Assert.Contains("external-edge", error.Message); Assert.Contains("a/floor", error.Message);
-        Assert.Contains("references removed", error.Message);
         Assert.Equal(before, PrefabEditorFixtures.State(session));
         Assert.NotNull(MapPrefabAuthoringContext.Create(unpacked, f.Assets, new HashSet<MapPrefabChildKey>()));
     }
@@ -124,9 +122,6 @@ public sealed class PrefabCapturedContextReviewTests
         Assert.Equal("a/floor", error.TargetId);
         Assert.Equal(MapPrefabChildKind.Surface, error.ChildKind);
         Assert.Equal("/value/aliasOf/anchor/surfaceId", error.FieldPath);
-        Assert.Contains("alias", error.Message); Assert.Contains("a/floor", error.Message);
-        Assert.Contains("/value/aliasOf/anchor/surfaceId", error.Message);
-        Assert.Contains("references removed", error.Message);
         Assert.Equal(before, PrefabEditorFixtures.State(session));
         Assert.NotNull(MapPrefabAuthoringContext.Create(placed, assets, new HashSet<MapPrefabChildKey>()));
     }

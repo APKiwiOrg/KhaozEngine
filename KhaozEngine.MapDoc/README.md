@@ -2364,6 +2364,10 @@ use `CompleteDocumentRequired` with `DocumentId` and `Operation`. Missing verifi
 `AssetClosureRequired` with the operation and known `CommandType` or `SubjectKind`. An unsupported native
 command uses `OperationKindUnsupported` with its `CommandType`. Refused staging leaves the live document and
 history unchanged.
+Native placement admission uses `SchemaValueRequired` for a blank identity before `IdentityDuplicate` for a
+collision. Its lookup uses `ReferenceMissing`. These carry `DocumentId`, `EntityId`, `SubjectKind` `placement`
+and `FieldPath` `Placements.Id`. Viewport companion lookup uses `ReferenceMissing` with the companion `LayerId`,
+missing host `EntityId`, `DocumentId` and `FieldPath` `CompanionLayers.HostLayer`.
 
 `ResolverVersion` is the document's declared version. `OptionsResolverVersion` is the version supplied
 by the caller, and `ExpectedResolverVersion` is the version the operation requires. A guard accepting

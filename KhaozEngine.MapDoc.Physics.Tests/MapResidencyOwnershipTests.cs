@@ -39,8 +39,16 @@ public class MapResidencyOwnershipTests
     public void Grids_RefuseMisalignment_AndMatchShardingCells()
     {
         var world = NativeWorldFixtures.BuildSeamAligned();
-        Assert.Contains("grid alignment", Assert.Throws<MapDocumentException>(() => new MapWorldGrids(64f, 2, 4, new Vector2(10, 0)).Validate(world)).Message);
-        Assert.Contains("grid alignment", Assert.Throws<MapDocumentException>(() => new MapWorldGrids(32f, 2, 4, Vector2.Zero).Validate(world)).Message);
+        var origin = Assert.Throws<MapDocumentException>(() => new MapWorldGrids(64f, 2, 4, new Vector2(10, 0)).Validate(world));
+        Assert.Equal(MapDocumentRefusal.PhysicsGridAlignmentInvalid, origin.Reason);
+        Assert.Equal("Origin.X", origin.FieldPath);
+        Assert.Equal(10, origin.AxisOrigin);
+        var size = Assert.Throws<MapDocumentException>(() => new MapWorldGrids(32f, 2, 4, Vector2.Zero).Validate(world));
+        Assert.Equal(MapDocumentRefusal.PhysicsGridAlignmentInvalid, size.Reason);
+        Assert.Equal("StorageTileSize", size.FieldPath);
+        Assert.Equal(32, size.ActualNumber);
+        Assert.Equal(64, size.ExpectedNumber);
+        Grids.Validate(world);
         var cellGrid = new KhaozEngine.Sharding.CellGrid(Grids.ServerCellSize, Grids.Origin);
         foreach (var t in new[] { new MapTileCoord(-5, 3), new MapTileCoord(7, -9) })
         {
@@ -57,13 +65,19 @@ public class MapResidencyOwnershipTests
         // With the origin 2^40 m west, the world lies about 2^34 storage tiles east of it.
         var farNav = new MapWorldGrids(64f, 1, 1 << 12, new Vector2(-1_099_511_627_776f, 0f));
         var navError = Assert.Throws<MapDocumentException>(() => MapResidencyOwnership.Build(world, farNav));
-        Assert.Contains("grid alignment", navError.Message);
-        Assert.Contains("navigation tiles", navError.Message);
+        Assert.Equal(MapDocumentRefusal.PhysicsGridAlignmentInvalid, navError.Reason);
+        Assert.Equal("navigation tiles", navError.GridKind);
+        Assert.Equal("X", navError.Axis);
+        Assert.Equal(-1_099_511_627_776d, navError.AxisOrigin);
+        Assert.True(navError.FirstIndex > int.MaxValue);
+        Assert.NotEmpty(MapResidencyOwnership.Build(world, farNav with { Origin = Vector2.Zero }));
         // Navigation tiles of 2^12 storage tiles still index, so only the server cells leave the range.
         var farCells = new MapWorldGrids(64f, 1 << 12, 1, new Vector2(-1_099_511_627_776f, 0f));
         var cellError = Assert.Throws<MapDocumentException>(() => MapResidencyOwnership.Build(world, farCells));
-        Assert.Contains("grid alignment", cellError.Message);
-        Assert.Contains("server cells", cellError.Message);
+        Assert.Equal(MapDocumentRefusal.PhysicsGridAlignmentInvalid, cellError.Reason);
+        Assert.Equal("server cells", cellError.GridKind);
+        Assert.True(cellError.LastIndex > int.MaxValue);
+        Assert.NotEmpty(MapResidencyOwnership.Build(world, farCells with { Origin = Vector2.Zero }));
     }
 
     [Fact]
@@ -71,10 +85,21 @@ public class MapResidencyOwnershipTests
     {
         // With the origin 2^40 m west, storage tile 0 lies 2^34 navigation tiles east of it.
         var far = new MapWorldGrids(64f, 1, 4, new Vector2(-1_099_511_627_776f, 0f));
-        Assert.Contains("tile range", Assert.Throws<MapDocumentException>(() => far.NavTileOf(new MapTileCoord(0, 0))).Message);
+        var index = Assert.Throws<MapDocumentException>(() => far.NavTileOf(new MapTileCoord(0, 0)));
+        Assert.Equal(MapDocumentRefusal.PhysicsGridIndexOutOfRange, index.Reason);
+        Assert.Equal(0, index.TileIndex);
+        Assert.Equal(1, index.StorageTiles);
+        Assert.Equal(-1_099_511_627_776d, index.AxisOrigin);
+        Assert.Equal(1L << 34, index.ActualInteger);
+        Assert.Equal(new MapNavTileCoord(0, 0), (far with { Origin = Vector2.Zero }).NavTileOf(new(0, 0)));
         // An origin past 2^62 storage tiles leaves no long tile offset.
         var beyondLong = new MapWorldGrids(64f, 1, 4, new Vector2(1e30f, 0f));
-        Assert.Contains("tile range", Assert.Throws<MapDocumentException>(() => beyondLong.NavTileOf(new MapTileCoord(0, 0))).Message);
+        var origin = Assert.Throws<MapDocumentException>(() => beyondLong.NavTileOf(new MapTileCoord(0, 0)));
+        Assert.Equal(MapDocumentRefusal.PhysicsGridIndexOutOfRange, origin.Reason);
+        Assert.Equal("OriginTile", origin.FieldPath);
+        Assert.Equal((double)1e30f, origin.AxisOrigin);
+        Assert.Null(origin.ActualInteger);
+        Assert.Equal(new MapNavTileCoord(0, 0), (beyondLong with { Origin = Vector2.Zero }).NavTileOf(new(0, 0)));
     }
 
     [Fact]

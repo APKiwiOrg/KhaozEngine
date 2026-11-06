@@ -76,5 +76,14 @@ public sealed class MapStanceRefusalTests
             new(0.25f, 0.5f), Accept));
     }
 
+    [Fact]
+    public void OversizedOutlineCount_PreservesTheAlreadyCompletedProposal()
+    {
+        // A segment's two edges total 2^54. The normal radius's arcs are far below one binary64 ulp.
+        // One previous outline contributed one proposal, making the exact aggregate count odd.
+        Assert.Equal((1L << 54) + 1,
+            MapStanceCandidates.OversizedOutlineCountForTests(1L << 53, Math.ScaleB(1d, -64), 1));
+    }
+
     static bool Accept(Vector3 candidate, out Vector3 seated) { seated = candidate; return true; }
 }

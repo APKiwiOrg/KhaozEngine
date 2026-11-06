@@ -160,9 +160,15 @@ public class MapStanceCandidatesTests
         MapStanceValidator accept = (Vector3 c, out Vector3 seated) => { seated = c; return true; };
         var world = NativeWorldFixtures.BuildCrate();
         ArgumentOutOfRangeException error = input is "range" or "tolerance" or "band"
-            ? Assert.Throws<ArgumentOutOfRangeException>(() => MapStanceCandidates.Find(world, "crate", Vector3.Zero, tuning, options, accept))
+            ? Assert.Throws<MapQueryRangeException>(() => MapStanceCandidates.Find(world, "crate", Vector3.Zero, tuning, options, accept))
             : Assert.Throws<MapStanceRangeException>(() => MapStanceCandidates.Find(world, "crate", Vector3.Zero, tuning, options, accept));
         Assert.Equal(parameter, error.ParamName);
+        if (error is MapQueryRangeException query)
+        {
+            Assert.Equal(input == "tolerance" ? MapDocumentRefusal.ValueNonfinite : input == "band"
+                ? MapDocumentRefusal.BoundsInvalid : MapDocumentRefusal.ValueOutsideRange, query.Reason);
+            Assert.Equal(input == "range" ? "Range" : input == "tolerance" ? "Tolerance" : "Band", query.FieldPath);
+        }
         Assert.NotEmpty(MapStanceCandidates.Find(world, "crate", Vector3.Zero, MoveTuning.Default, new(0.25f, 0.5f), accept));
     }
 

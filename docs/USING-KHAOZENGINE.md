@@ -13578,6 +13578,21 @@ while half height accepts the radius. The proposal cap uses `WorkCapacityExceede
 and the known proposed `ActualCount` through the failing outline. A missing legacy stance callback or nonfinite
 height uses `MapStanceException`, catchable as `InvalidOperationException`, with `SupportLegacyHeightRequired`
 or `ValueNonfinite`, callback `FieldPath`, and the known `ResolverVersion`, `PlacementId` or `ActualNumber`.
+Reach and band checks use `MapQueryRangeException`, also catchable as `ArgumentOutOfRangeException`, retaining
+the original `ParamName` and `ActualValue`. `ValueNonfinite` or `ValueOutsideRange` identifies `Range` or
+`Tolerance`, `ActualNumber` and inclusive zero `MinimumNumber`. Nonfinite band endpoints use `Band.MinY` or
+`Band.MaxY`. Finite inversion uses `BoundsInvalid` and `Band`, with submitted endpoints in `MinimumNumber`
+and `MaximumNumber`. Equal endpoints are accepted. Nonfinite seats use `MapStanceException.ValueNonfinite`
+with `PlacementId`, the `SeatedFeet` component and `ActualNumber`. Unsupported stance footprints use
+`MapStanceUnsupportedException.PhysicsShapeUnsupported`, catchable as `NotSupportedException`, with `ShapeType`.
+Grid refusals use `PhysicsGridAlignmentInvalid` with failed `FieldPath` and `StorageTileSize` for an alignment
+or world-size mismatch. World index coverage also carries `GridKind`, `Axis`, `AxisOrigin`, `StorageTiles`,
+`FirstIndex`, `LastIndex`, submitted source bounds and inclusive signed index limits. Storage-tile lookup uses
+`PhysicsGridIndexOutOfRange` with `TileIndex` and the same grid context. It retains a computed `ActualInteger`
+when available. An origin outside safe offset arithmetic instead identifies `OriginTile`, the origin in
+storage tiles through `ActualNumber` and its inclusive safe bounds, leaving `ActualInteger` null.
+Nonfinite grid fields use `ValueNonfinite`. Nonpositive grid sizes or block counts use `ValueOutsideRange`
+with the actual nested field, submitted value and inclusive minimum 1.
 Backend pose or error-bound conversion uses `GeometryNotRepresentable`, `Operation`, failed `FieldPath` and
 binary64 `ActualNumber`. An unsupported envelope sweep uses `PhysicsSweepShapeUnsupported`, `PlacementId`
 and `ShapeType`.

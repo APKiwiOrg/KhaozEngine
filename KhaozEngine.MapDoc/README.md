@@ -2160,6 +2160,8 @@ their joined diagnostic text.
 | `PhysicsSweepShapeUnsupported` | An interaction envelope cannot sweep its source shape | `PlacementId`, `ShapeType` |
 | `PhysicsInteractionSourceMissing` | A placement without a selection volume or collider | `PlacementId`, `AssetId` |
 | `PhysicsShapeUnsupported` | A shape unsupported by bounds calculation | `ShapeType` |
+| `PhysicsGridAlignmentInvalid` | A fractional storage size, world size mismatch, misaligned origin or world grid index coverage outside signed 32-bit range | `FieldPath`, `StorageTileSize`, checked `ActualNumber` and `ExpectedNumber`, or `GridKind`, `Axis`, `AxisOrigin`, `StorageTiles`, `FirstIndex`, `LastIndex`, source bounds and signed index limits |
+| `PhysicsGridIndexOutOfRange` | A storage tile whose navigation or server block index cannot be represented | `GridKind`, `Axis`, `TileIndex`, `StorageTiles`, `StorageTileSize`, `AxisOrigin`, known `ActualInteger`, signed limits, failed `FieldPath` and numeric bounds |
 | `PhysicsNavIndexOutOfRange` | A computed navigation tile index outside signed 32-bit range | `Axis`, `FirstIndex`, `LastIndex`, `AxisOrigin`, inclusive `MinimumInteger` and `MaximumInteger`, source interval `MinimumNumber` and `MaximumNumber` when known |
 | `NavigationTilesNotAdjacent` | Navigation tile bounds that do not meet at one edge | `Tile` and `OtherTile` on `MapNavigationArgumentException`, `FieldPath` |
 | `DocumentTileReadFailed` | A tile file that cannot be read | `Tile`, `SourceName`, `Path`, pinned `ExpectedHash`, original cause |

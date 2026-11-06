@@ -139,6 +139,14 @@ public sealed record MapDocumentFinding(MapDocumentRefusal Reason, string Messag
     public double? LastIndex { get; init; }
     /// <summary>The grid origin on the checked axis.</summary>
     public double? AxisOrigin { get; init; }
+    /// <summary>The navigation, server or storage grid whose rule failed.</summary>
+    public string? GridKind { get; init; }
+    /// <summary>The storage tile edge in metres at the refused grid boundary.</summary>
+    public float? StorageTileSize { get; init; }
+    /// <summary>The submitted storage tile component whose block index was refused.</summary>
+    public int? TileIndex { get; init; }
+    /// <summary>The number of storage tiles along one block edge.</summary>
+    public long? StorageTiles { get; init; }
     /// <summary>The refused numeric value, when representable as a double.</summary>
     public double? ActualNumber { get; init; }
     /// <summary>The refused numeric value, when representable as a signed 64-bit integer.</summary>
@@ -366,6 +374,10 @@ public sealed record MapDocumentFinding(MapDocumentRefusal Reason, string Messag
             FirstIndex = error.FirstIndex,
             LastIndex = error.LastIndex,
             AxisOrigin = error.AxisOrigin,
+            GridKind = error.GridKind,
+            StorageTileSize = error.StorageTileSize,
+            TileIndex = error.TileIndex,
+            StorageTiles = error.StorageTiles,
             ActualNumber = error.ActualNumber,
             ActualInteger = error.ActualInteger,
             PreviousInteger = error.PreviousInteger,

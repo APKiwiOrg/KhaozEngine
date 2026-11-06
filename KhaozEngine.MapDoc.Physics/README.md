@@ -383,7 +383,19 @@ MapAffectedSet affected = MapResidencyOwnership.Affected(world, grids, effects);
 
 `MapWorldGrids` aligns three grids. The storage tile is the document's own tile. A navigation tile and a server
 cell are whole blocks of storage tiles counted from an origin on a storage tile seam, and a server cell matches
-Sharding's `CellGrid` for the same size and origin. Grids that do not align refuse with "grid alignment".
+Sharding's `CellGrid` for the same size and origin. Grid refusals use `MapDocumentException` with the following
+`MapDocumentRefusal` reasons, retaining the developer-facing diagnostic text.
+
+| Reason | Refused grid rule | Identifiers |
+| --- | --- | --- |
+| `PhysicsGridAlignmentInvalid` | Fractional storage size, size differing from the world, misaligned origin or world index coverage outside signed 32-bit range | `FieldPath`, `StorageTileSize`, failed `ActualNumber` and `ExpectedNumber` when checked, or `GridKind`, `Axis`, `AxisOrigin`, `StorageTiles`, `FirstIndex`, `LastIndex`, source bounds and inclusive signed limits |
+| `ValueNonfinite` | Nonfinite storage size or origin | `FieldPath`, `ActualNumber`, `StorageTileSize`, known `Axis` and `AxisOrigin` |
+| `ValueOutsideRange` | Nonpositive storage size or block multiplier | `FieldPath`, submitted `ActualNumber` or `ActualInteger`, inclusive minimum 1 and `StorageTileSize` |
+| `PhysicsGridIndexOutOfRange` | A storage tile whose navigation or server block index cannot be represented | `GridKind`, `Axis`, `TileIndex`, `StorageTiles`, `StorageTileSize`, `AxisOrigin`, known `ActualInteger`, signed limits, failed `FieldPath` and its numeric bounds |
+
+For an origin outside safe signed-64-bit offset arithmetic, `FieldPath` is `OriginTile`, `ActualNumber` is
+the origin in storage tiles and `MinimumNumber` and `MaximumNumber` are the inclusive safe origin bounds.
+`ActualInteger` is null because no block index was computed. Otherwise `FieldPath` is `Index`.
 
 Each static belongs to every storage tile its world bounds reach, minimum inclusive and maximum exclusive. An axis
 with no extent belongs to the tile holding its minimum. A placement is keyed by its origin's tile, as
@@ -439,12 +451,24 @@ find removed tiles.
 before it places any static. `WorkCapacityExceeded` carries `Budget`, `ActualCount` and `Limit`.
 `MapWorldGrids.Validate`, which every grid consumer runs
 first, refuses a grid origin so far from the world that a navigation tile or server cell index of the world's bounds,
-widened by one block on each side, leaves the int range. The refusal names the grid alignment and the tile range. A
-seam margin or edit box reaching past the int range beyond the world refuses naming the tile range too.
+widened by one block on each side, leaves the int range. `PhysicsGridAlignmentInvalid` names the grid in
+`GridKind` and retains `Axis`, `FirstIndex`, `LastIndex`, `AxisOrigin` and the inclusive signed index limits.
+A seam margin or edit box reaching past the int range beyond the world uses `PhysicsNavIndexOutOfRange`
+with the same signed index context.
 
 Navigation policy and tile refusals use `MapNavigationArgumentException`, derived from `ArgumentException`.
 It retains `ParamName`, including null at the bounds and edge guards that had no parameter name.
 Plain null and scalar parameter guards keep their BCL types.
+
+Reach, tolerance and height-band admission uses `MapQueryRangeException`, catchable as
+`ArgumentOutOfRangeException`. It retains `ParamName` and `ActualValue`, including the delegated `options`
+parameter from stance queries. `ValueNonfinite` and `ValueOutsideRange` identify `Range` or `Tolerance`,
+the submitted `ActualNumber` and inclusive zero `MinimumNumber`. Band endpoints use `ValueNonfinite` and
+`Band.MinY` or `Band.MaxY`. A finite inverted band uses `BoundsInvalid` and `FieldPath` `Band`. Both band
+reasons retain submitted endpoints in `MinimumNumber` and `MaximumNumber`. A zero-width band is accepted.
+Nonfinite seated positions use `MapStanceException.ValueNonfinite`, `PlacementId`, the `SeatedFeet` component
+in `FieldPath` and `ActualNumber`. Unsupported stance footprint shapes use `MapStanceUnsupportedException`,
+catchable as `NotSupportedException`, with `PhysicsShapeUnsupported` and `ShapeType`.
 
 | Carrier and reason | Refused rule | Identifiers |
 | --- | --- | --- |

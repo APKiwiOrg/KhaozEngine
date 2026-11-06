@@ -400,6 +400,10 @@ public enum MapDocumentRefusal
     PhysicsInteractionSourceMissing,
     /// <summary>Refuses bounds or stance geometry for an unsupported physics shape.</summary>
     PhysicsShapeUnsupported,
+    /// <summary>Refuses incompatible grid dimensions, origin alignment or signed world-index coverage.</summary>
+    PhysicsGridAlignmentInvalid,
+    /// <summary>Refuses a storage tile whose navigation or server block index cannot be represented.</summary>
+    PhysicsGridIndexOutOfRange,
 
     // Space portal and coverage admission.
     /// <summary>Refuses a portal column whose upper height does not exceed its lower height.</summary>

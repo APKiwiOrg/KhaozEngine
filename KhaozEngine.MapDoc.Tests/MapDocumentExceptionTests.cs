@@ -207,6 +207,7 @@ public sealed class MapDocumentExceptionTests
         if (type == typeof(string)) return property.Name;
         if (type == typeof(int)) return 1000 + index;
         if (type == typeof(long)) return 3000L + index;
+        if (type == typeof(float)) return 64f;
         if (type == typeof(double)) return property.Name switch
         {
             nameof(MapDocumentException.PositionX) => 1_000_001d,

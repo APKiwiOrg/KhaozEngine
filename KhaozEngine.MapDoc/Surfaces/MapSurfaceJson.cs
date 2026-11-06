@@ -11,7 +11,8 @@ internal static class MapSurfaceJson
     internal static void RequirePaintPriority(MapSurfaceRef surface)
     {
         if (surface.Role != MapSurfaceRole.PaintOverride && surface.PaintPriority != 0)
-            throw new MapDocumentException("paintPriority is valid only for PaintOverride surfaces.");
+            throw new MapDocumentException(MapDocumentRefusal.SurfacePaintPriorityMisplaced, "paintPriority is valid only for PaintOverride surfaces.")
+            { SurfaceId = surface.Id, FieldPath = nameof(surface.PaintPriority), ActualInteger = surface.PaintPriority };
     }
 }
 
@@ -21,27 +22,33 @@ internal sealed class MapRationalJsonConverter : JsonConverter<MapRational>
     public override MapRational Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
     {
         using JsonDocument json = JsonDocument.ParseValue(ref reader);
-        if (json.RootElement.ValueKind != JsonValueKind.Object) throw new JsonException("A lattice unit must be an object.");
+        if (json.RootElement.ValueKind != JsonValueKind.Object) throw new MapSurfaceJsonException(MapDocumentRefusal.SchemaObjectRequired, "A lattice unit must be an object.")
+        { FieldPath = "$" };
         int? numerator = null, denominator = null;
         foreach (JsonProperty property in json.RootElement.EnumerateObject())
         {
             if (property.Value.ValueKind != JsonValueKind.Number || !property.Value.TryGetInt32(out int part))
-                throw new JsonException("Lattice unit parts must be int32 numbers.");
+                throw new MapSurfaceJsonException(MapDocumentRefusal.SchemaValueRequired, "Lattice unit parts must be int32 numbers.")
+                { FieldPath = MapDocumentJsonPath.AppendProperty("$", property.Name) };
             if (string.Equals(property.Name, "numerator", StringComparison.OrdinalIgnoreCase))
             {
-                if (numerator is not null) throw new JsonException("Duplicate lattice unit numerator.");
+                if (numerator is not null) throw new MapSurfaceJsonException(MapDocumentRefusal.SchemaMemberDuplicate, "Duplicate lattice unit numerator.")
+                { FieldPath = MapDocumentJsonPath.AppendProperty("$", property.Name) };
                 numerator = part;
             }
             else if (string.Equals(property.Name, "denominator", StringComparison.OrdinalIgnoreCase))
             {
-                if (denominator is not null) throw new JsonException("Duplicate lattice unit denominator.");
+                if (denominator is not null) throw new MapSurfaceJsonException(MapDocumentRefusal.SchemaMemberDuplicate, "Duplicate lattice unit denominator.")
+                { FieldPath = MapDocumentJsonPath.AppendProperty("$", property.Name) };
                 denominator = part;
             }
-            else throw new JsonException("Unknown lattice unit part.");
+            else throw new MapSurfaceJsonException(MapDocumentRefusal.SchemaMemberUnknown, "Unknown lattice unit part.")
+            { FieldPath = MapDocumentJsonPath.AppendProperty("$", property.Name) };
         }
-        if (numerator is null || denominator is null) throw new JsonException("Missing lattice unit part.");
+        if (numerator is null || denominator is null) throw new MapSurfaceJsonException(MapDocumentRefusal.SchemaMemberMissing, "Missing lattice unit part.")
+        { FieldPath = numerator is null ? "$.numerator" : "$.denominator" };
         try { return new MapRational(numerator.Value, denominator.Value); }
-        catch (MapDocumentException ex) { throw new JsonException(ex.Message, ex); }
+        catch (MapDocumentException ex) { throw MapSurfaceJsonException.FromDocument(ex); }
     }
 
     public override void Write(Utf8JsonWriter writer, MapRational value, JsonSerializerOptions options)

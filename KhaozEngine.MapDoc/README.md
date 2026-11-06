@@ -278,6 +278,12 @@ slot past it, before that slot is marked. A posed target keeps every cell and re
 and room convex part, or two peer pieces, whose exact bounds openly overlap, so a room is charged only for the
 pieces near it. The visiting order is unchanged, so findings and their sorted order are too.
 
+Partial paint refusals carry `MapDocumentRefusal` on `MapDocumentException`. `WorkCapacityExceeded`
+retains the actual `MapRefinementLimits` field in `Budget`, its `Limit` and `ActualCount` when measured.
+A bounded producer that stops before returning its candidate list leaves `ActualCount` null.
+Exact intersection overflow uses `GeometryNotRepresentable`, the target `SurfaceId` and
+`Operation = "paint intersection"`. Neither failure publishes partial regions.
+
 **Legacy lower coverage.** Only a lower bound of kind `MapBoundKind.LegacyExteriorV1`, in an `Exterior`
 space with an `OpenTop` upper bound, may cover a presence-1 `LegacyTileWorld` void or NoDraw cell.
 `MapLegacyExteriorRecipe.CheckFinding` returns the first failing rule. `LegacyExteriorSpaceRequired`
@@ -1564,6 +1570,11 @@ An array beyond its own count cap uses that field name as `Budget`, with its `Ac
 | `SurfaceSeamEdgeInvalid` | A collapsed or diagonal seam source edge | `RecordId`, `Patch`, `SurfaceId`, `FieldPath` |
 | `SurfaceSupportRoleInvalid` | A support resource surface outside the native support-floor policy | `ResourceId`, `SurfaceId`, `Index`, `FieldPath`, `EnumType`, `ActualInteger` |
 | `SurfaceWallHeightInverted` | A wall strip lower vertex above its matching upper vertex | `RecordId`, `Index` |
+| `AcquisitionIncomplete` | Partial paint without complete captured facts or the required paint role | `SurfaceId`, `AcquireStatus`, `FieldPath` |
+| `SurfacePaintTargetInvalid` | A paint target that is itself a PaintOverride | `SurfaceId`, `FieldPath` |
+| `SurfacePaintPriorityMisplaced` | Nonzero priority on a non-paint surface | `SurfaceId`, `FieldPath`, `ActualInteger` |
+| `SurfacePaintPriorityConflict` | Equal-priority overlapping paint with different materials | `SurfaceId`, `OtherSurfaceId`, priority in `ActualInteger` |
+| `SurfacePaintBoundaryInvalid` | An open or nonmanifold material boundary | `SurfaceId` |
 | `WorkCapacityExceeded` | Reservation keys beyond the candidate cap, surface codec work beyond its encoded byte or array-count budget, or local corner-dependency or edge-subdivision metadata beyond its count budget, or compiled faces beyond MaxFacesPerPatch or support resource bytes beyond MaxPayloadBytes | `Patch`, `FieldPath`, `Budget`, `ActualCount`, `ActualByteCount`, `Limit` |
 | `SurfacePresencePaddingNonzero` | Nonzero bits beyond the authored cell count in the last presence word | `Patch`, `FieldPath`, `Index` |
 | `SurfaceSubdivisionAbsentCell` | An edge subdivision on an absent cell | `Patch`, `FieldPath`, `Index`, `CellX`, `CellZ`, `Edge` |
@@ -1807,6 +1818,19 @@ use `SchemaArrayLengthMismatch` with actual and expected counts. Both name the f
 Height inversion uses `SurfaceWallHeightInverted` with the vertex `Index`. Exact arithmetic and normal
 failures use `GeometryNotRepresentable` with `Operation`, and normal failures also name the segment
 `Index`. Unresolved chain adapters retain their prose projection until their producer carries findings.
+
+`MapSeamValidator.ValidateFindings` and `ValidateCornerDependencyFindings` expose complete ordered
+read-only findings. The existing string validators retain their prose projection. Paint priority admission
+uses `SurfacePaintPriorityMisplaced` with the surface, field and submitted priority. Partial paint target
+checks distinguish a missing surface (`ReferenceMissing`) from a paint-only target
+(`SurfacePaintTargetInvalid`). Unavailable captured patches keep `PatchUnavailable`, `Patch` and
+`PatchStatus`. Equal-priority conflicts identify both paint surfaces and their common priority.
+
+Lattice-unit JSON checks throw `MapSurfaceJsonException`, a `JsonException` subtype sharing
+`MapDocumentRefusal`. Object, numeric type, duplicate, unknown and missing-member checks retain
+their relative `FieldPath`. Constructor failures preserve the scalar reason, numerator and denominator
+or actual integer and minimum, with the original scalar refusal as their cause. Document JSON wrappers
+preserve the known reason and identifiers while adding source context.
 
 Asset-manifest field paths start at the payload root, retaining asset, resource and dependency array
 positions. Direct reference and resource checks start at the supplied object's root. Required-value

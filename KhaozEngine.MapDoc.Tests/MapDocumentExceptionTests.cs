@@ -163,6 +163,7 @@ public sealed class MapDocumentExceptionTests
         if (property.Name == nameof(MapDocumentException.RecordType)) return typeof(MapBoundaryChain);
         if (property.Name == nameof(MapDocumentException.Budget)) return "CornerDependencies";
         if (type == typeof(KhaozEngine.MapDoc.Storage.MapPatchStatus)) return KhaozEngine.MapDoc.Storage.MapPatchStatus.Corrupt;
+        if (type == typeof(KhaozEngine.MapDoc.Storage.MapAcquireStatus)) return KhaozEngine.MapDoc.Storage.MapAcquireStatus.CapacityExceeded;
         if (type == typeof(Type)) return typeof(MapLocalLightDoc);
         if (type == typeof(string)) return property.Name;
         if (type == typeof(int)) return 1000 + index;

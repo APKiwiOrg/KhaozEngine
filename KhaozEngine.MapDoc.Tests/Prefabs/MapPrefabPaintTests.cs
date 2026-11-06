@@ -106,9 +106,14 @@ public sealed class MapPrefabPaintTests
     [Fact]
     public void PaintConflict_RequiresExplicitPriority()
     {
-        Assert.Throws<MapDocumentException>(() => PrefabFixtures.Effective(PrefabFixtures.Create("equal-priority-paint")));
+        var error = Assert.Throws<MapDocumentException>(() => PrefabFixtures.Effective(PrefabFixtures.Create("equal-priority-paint")));
+        Assert.Equal(MapDocumentRefusal.SurfacePaintPriorityConflict, error.Reason);
+        Assert.Equal(new[] { "priority-high", "priority-low" }, new[] { error.SurfaceId, error.OtherSurfaceId }.Order());
+        Assert.Equal(1L, error.ActualInteger);
         var conflict = PrefabFixtures.Create("equal-priority-paint");
-        Assert.Throws<MapDocumentException>(() => MapNativeResolution.Resolve(conflict.Document, conflict.Assets, PrefabFixtures.Options()));
+        error = Assert.Throws<MapDocumentException>(() => MapNativeResolution.Resolve(conflict.Document, conflict.Assets, PrefabFixtures.Options()));
+        Assert.Equal(MapDocumentRefusal.SurfacePaintPriorityConflict, error.Reason);
+        Assert.Equal(new[] { "priority-high", "priority-low" }, new[] { error.SurfaceId, error.OtherSurfaceId }.Order());
         var ordered = PrefabFixtures.Effective(PrefabFixtures.Create("prioritized-paint"));
         var regions = ordered.PaintRegions["ground"].Regions;
         Assert.NotEmpty(regions);
@@ -194,19 +199,46 @@ public sealed class MapPrefabPaintTests
         }
     }
 
-    [Fact]
-    public void PaintBudgetAndUnrepresentableIntersection_Refuse()
+    [Theory]
+    [InlineData("MaxPairChecks")]
+    [InlineData("MaxRefinementFaces")]
+    [InlineData("MaxRefinementVertices")]
+    [InlineData("MaxContextPatches")]
+    [InlineData("MaxContextFaces")]
+    [InlineData("MaxSourceFacesPerBound")]
+    public void PaintBudget_RefusesTheNamedLimit(string budget)
     {
         var resources = PrefabFixtures.Effective(PrefabFixtures.Create("uneven-painted"));
-        foreach (var limits in new[] { new MapRefinementLimits(MaxPairChecks: 0), new(MaxRefinementFaces: 0),
-            new(MaxRefinementVertices: 0), new(MaxContextPatches: 0), new(MaxContextFaces: 0), new(MaxSourceFacesPerBound: 0) })
-            Assert.Contains("CapacityExceeded", Assert.Throws<MapDocumentException>(() =>
-                MapPartialPaintCompiler.Compile(resources.CompleteView(), "ground", limits)).Message);
+        var limits = budget switch
+        {
+            "MaxPairChecks" => new MapRefinementLimits(MaxPairChecks: 0),
+            "MaxRefinementFaces" => new(MaxRefinementFaces: 0),
+            "MaxRefinementVertices" => new(MaxRefinementVertices: 0),
+            "MaxContextPatches" => new(MaxContextPatches: 0),
+            "MaxContextFaces" => new(MaxContextFaces: 0),
+            _ => new(MaxSourceFacesPerBound: 0),
+        };
+        var error = Assert.Throws<MapDocumentException>(() => MapPartialPaintCompiler.Compile(resources.CompleteView(), "ground", limits));
+        Assert.Equal(MapDocumentRefusal.WorkCapacityExceeded, error.Reason);
+        Assert.Equal(budget, error.Budget);
+        Assert.Equal(0L, error.Limit);
+        Assert.NotEmpty(MapPartialPaintCompiler.Compile(resources.CompleteView(), "ground").Regions);
+        MapPartialPaintCompiler.RequireWorkBudget(1, 1, "budget boundary", budget);
+    }
+
+    [Fact]
+    public void UnrepresentablePaintIntersection_RefusesWithoutPublishing()
+    {
         var unrepresentable = PrefabFixtures.Create("uneven-painted");
         int index = unrepresentable.Document.Surfaces.Refs.FindIndex(s => s.Id == "ground");
         var surface = unrepresentable.Document.Surfaces.Refs[index];
         unrepresentable.Document.Surfaces.Refs[index] = surface with { Frame = surface.Frame with { HeightUnitMetres = new(1, int.MaxValue) } };
-        Assert.Contains("NotRepresentable", Assert.Throws<MapDocumentException>(() => PrefabFixtures.Effective(unrepresentable)).Message);
+        var error = Assert.Throws<MapDocumentException>(() => PrefabFixtures.Effective(unrepresentable));
+        Assert.Equal(MapDocumentRefusal.GeometryNotRepresentable, error.Reason);
+        Assert.Equal("ground", error.SurfaceId);
+        Assert.Equal("paint intersection", error.Operation);
+        unrepresentable.Document.Surfaces.Refs[index] = surface;
+        Assert.NotEmpty(PrefabFixtures.Effective(unrepresentable).PaintRegions["ground"].Regions);
     }
 
     [Fact]

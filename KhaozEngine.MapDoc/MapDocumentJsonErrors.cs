@@ -1,6 +1,7 @@
 using System;
 using System.Text.Json;
 using KhaozEngine.MapDoc.Foliage;
+using KhaozEngine.MapDoc.Surfaces;
 
 namespace KhaozEngine.MapDoc;
 
@@ -18,8 +19,12 @@ internal static class MapDocumentJsonErrors
                 context ??= inner;
             }
         for (Exception? cause = error; cause is not null; cause = cause.InnerException)
+        {
             if (cause is MapFoliageJsonException foliage)
                 return foliage.ToDocument(sourceName, message, tile, path, resourceId);
+            if (cause is MapSurfaceJsonException surface)
+                return surface.ToDocument(sourceName, message, tile, path, resourceId);
+        }
         var json = error as JsonException;
         return new MapDocumentException(MapDocumentRefusal.SchemaMalformed, message, error)
         {

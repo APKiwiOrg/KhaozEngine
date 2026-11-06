@@ -218,6 +218,16 @@ public enum MapDocumentRefusal
     SurfaceSupportRoleInvalid,
     /// <summary>Refuses a wall strip whose lower chain is above its upper chain.</summary>
     SurfaceWallHeightInverted,
+    /// <summary>Refuses paint compilation without complete captured geometry or the required paint role.</summary>
+    AcquisitionIncomplete,
+    /// <summary>Refuses a paint target that is not a physical surface.</summary>
+    SurfacePaintTargetInvalid,
+    /// <summary>Refuses nonzero paint priority on a surface other than PaintOverride.</summary>
+    SurfacePaintPriorityMisplaced,
+    /// <summary>Refuses overlapping equal-priority paint with different materials.</summary>
+    SurfacePaintPriorityConflict,
+    /// <summary>Refuses an open or nonmanifold paint material boundary.</summary>
+    SurfacePaintBoundaryInvalid,
 
     // Scoped acquisition producer admission.
     /// <summary>Refuses acquisition facts differing from the session's captured snapshot.</summary>

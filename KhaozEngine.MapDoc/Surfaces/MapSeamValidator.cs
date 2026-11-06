@@ -10,7 +10,14 @@ public static class MapSeamValidator
 {
     public static IReadOnlyList<string> Validate(MapSurfaceSeam seam, MapScopedSurfaces view) => Validate(seam, view, null);
 
-    // Typed findings remain beside prose until paint-priority admission completes the lower producers.
+    /// <summary>Returns seam refusals in the same order as the string validator.</summary>
+    public static IReadOnlyList<MapDocumentFinding> ValidateFindings(MapSurfaceSeam seam, MapScopedSurfaces view)
+    {
+        var findings = new List<MapDocumentFinding>();
+        Validate(seam, view, findings);
+        return findings.AsReadOnly();
+    }
+
     internal static IReadOnlyList<string> Validate(MapSurfaceSeam seam, MapScopedSurfaces view, List<MapDocumentFinding>? typedFindings)
     {
         ArgumentNullException.ThrowIfNull(seam);
@@ -83,7 +90,7 @@ public static class MapSeamValidator
         catch (MapDocumentException error)
         {
             if (MapDocumentFinding.FromException(error) is { } finding) Add(finding);
-            else findings.Add(error.Message); // Paint-priority admission is converted with its producer.
+            else findings.Add(error.Message);
         }
         return findings.AsReadOnly();
 
@@ -96,6 +103,14 @@ public static class MapSeamValidator
 
     public static IReadOnlyList<string> ValidateCornerDependencies(MapSurfacePatch patch, MapScopedSurfaces view) =>
         ValidateCornerDependencies(patch, view, null);
+
+    /// <summary>Returns corner-owner refusals in the same order as the string validator.</summary>
+    public static IReadOnlyList<MapDocumentFinding> ValidateCornerDependencyFindings(MapSurfacePatch patch, MapScopedSurfaces view)
+    {
+        var findings = new List<MapDocumentFinding>();
+        ValidateCornerDependencies(patch, view, findings);
+        return findings.AsReadOnly();
+    }
 
     internal static IReadOnlyList<string> ValidateCornerDependencies(MapSurfacePatch patch, MapScopedSurfaces view,
         List<MapDocumentFinding>? typedFindings)
@@ -154,7 +169,7 @@ public static class MapSeamValidator
         catch (MapDocumentException error)
         {
             if (MapDocumentFinding.FromException(error) is { } finding) Add(finding);
-            else findings.Add(error.Message); // Paint-priority admission is converted with its producer.
+            else findings.Add(error.Message);
         }
         return findings.AsReadOnly();
 

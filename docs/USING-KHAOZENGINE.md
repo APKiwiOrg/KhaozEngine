@@ -12274,7 +12274,11 @@ These APIs are in `KhaozEngine.MapDoc.Prefabs`. Share this captured effective sn
 geometry, water, membership and annotations. Acquire bounded views from its `SurfaceSource` and pair water
 with the matching effective set and view. Floor resources install before nullable-Y support sampling. A
 prefab-local support request transforms from the pre-seat frame, while a standalone request stays world-space.
-Paint clips inside unchanged canonical physical triangles and never creates a second floor owner. Expansion
+Paint clips inside unchanged canonical physical triangles and never creates a second floor owner. Partial
+paint work uses `WorkCapacityExceeded` with the `MapRefinementLimits` field in `Budget`, its `Limit`
+and measured `ActualCount`. A producer that stops without returning its candidates leaves that count
+null. Exact intersection overflow uses `GeometryNotRepresentable`, the target `SurfaceId` and
+`Operation = "paint intersection"`. Both refuse without publishing partial regions. Expansion
 and composition refuse missing closure, unsupported work reporting and capacity overflow without partial facts.
 
 Typed Light and Support payloads begin with `resourceSchema`, valued `kemap/light-resource` or
@@ -12816,10 +12820,9 @@ Count controls accept exactly 1 and 4096 slots. `PreviousInteger` is set only fo
 The topology producer is complete. Broader adapters still wait for their other finding producers.
 Opening compilation carries the actual ownership, cardinality, slot range, patch address, duplicate or
 presence rule, retaining the opening identity and selected cell. Its exact geometry failures retain the
-opening and patch. Seam validation accumulates typed pair and patch findings internally beside its
-unchanged public string result. Edge and corner findings preserve the exact lower reason, both the
+opening and patch. Seam validation exposes ordered read-only findings through `ValidateFindings` and
+`ValidateCornerDependencyFindings`, beside the unchanged public string results. Edge and corner findings preserve the exact lower reason, both the
 dependent `Patch` and requested owner `ExpectedPatch` when relevant, and the offending address.
-The public typed projection still waits for the paint-priority guard's producer conversion.
 A mismatching pair surface reuses `AuthoredValueMismatch`, with the submitted surface and declared edge
 patch. Pair alignment uses `SurfaceSeamPositionMismatch`, undeclared vertices use
 `SurfaceSeamVertexUndeclared`, height disagreement uses `GeometryVertexHeightMismatch`, and incomplete
@@ -12837,6 +12840,15 @@ count where measured. Lower-chain cardinality accepts 2..4097, unequal chain len
 `SchemaArrayLengthMismatch`, ordered XZ disagreement uses `GeometryVertexSequenceInvalid`, and an
 inverted height uses `SurfaceWallHeightInverted`. Exact arithmetic or normal failures carry
 `GeometryNotRepresentable` and their `Operation`, with the segment `Index` for a normal failure.
+Partial paint admission uses `AcquisitionIncomplete` with `AcquireStatus` and the failed status or role
+field. Target checks use `ReferenceMissing` for an absent target and `SurfacePaintTargetInvalid` for
+a paint-only target. Misplaced nonzero priority uses `SurfacePaintPriorityMisplaced`, `SurfaceId`,
+`FieldPath` and `ActualInteger`. Equal-priority material conflicts carry `SurfacePaintPriorityConflict`,
+both `SurfaceId` and `OtherSurfaceId`, and their priority in `ActualInteger`. Open or nonmanifold
+material boundaries carry `SurfacePaintBoundaryInvalid` and the paint surface.
+Lattice-unit converters throw `MapSurfaceJsonException`, retaining the `JsonException` base contract.
+Schema refusals carry the relative `FieldPath`. Lower scalar refusals retain their original reason and
+unit or numeric identifiers, including when document readers add source context.
 
 Native metadata adds typed findings beside its unchanged string diagnostics. Compound findings select
 the first failing predicate branch. Missing asset-reference and indoor-span values use `SchemaValueRequired`, nonfinite

@@ -94,6 +94,8 @@ public sealed class MapDocumentException : Exception
     public long? ExpectedByteCount { get; init; }
     /// <summary>The producer's declared patch status, when acquisition admission checks it.</summary>
     public KhaozEngine.MapDoc.Storage.MapPatchStatus? PatchStatus { get; init; }
+    /// <summary>The captured acquisition status that did not satisfy the operation's requirements.</summary>
+    public KhaozEngine.MapDoc.Storage.MapAcquireStatus? AcquireStatus { get; init; }
     /// <summary>The pinned acquisition snapshot identity required by the producer.</summary>
     public string? ExpectedSnapshot { get; init; }
     /// <summary>The acquisition snapshot identity returned by the producer.</summary>
@@ -133,6 +135,8 @@ public sealed class MapDocumentException : Exception
     public string? AssetId { get; init; }
     /// <summary>The declared surface whose metadata failed validation, when known.</summary>
     public string? SurfaceId { get; init; }
+    /// <summary>The other paint surface participating in a material-priority conflict.</summary>
+    public string? OtherSurfaceId { get; init; }
     /// <summary>The legacy spawn source whose adoption choice was refused, when known.</summary>
     public string? SourceId { get; init; }
     /// <summary>The repeated effective or destination marker name, when checked.</summary>
@@ -312,6 +316,7 @@ public sealed class MapDocumentException : Exception
         ActualByteCount = inner.ActualByteCount;
         ExpectedByteCount = inner.ExpectedByteCount;
         PatchStatus = inner.PatchStatus;
+        AcquireStatus = inner.AcquireStatus;
         SourceType = inner.SourceType;
         ExpectedSnapshot = inner.ExpectedSnapshot;
         ActualSnapshot = inner.ActualSnapshot;
@@ -331,6 +336,7 @@ public sealed class MapDocumentException : Exception
         PositionZ = inner.PositionZ;
         AssetId = inner.AssetId ?? assetId;
         SurfaceId = inner.SurfaceId;
+        OtherSurfaceId = inner.OtherSurfaceId;
         MarkerId = inner.MarkerId;
         MarkerName = inner.MarkerName;
         SourceId = inner.SourceId;

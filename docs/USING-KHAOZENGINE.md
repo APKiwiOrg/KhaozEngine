@@ -12242,8 +12242,7 @@ shared reasons. The string API keeps the same order and text. Expansion forwards
 ordered snapshot. Other aggregate adapters wait for all their producers. Region-pack checks distinguish key
 coordinates, ordering, duplicate identities, malformed headers, lengths, capacities and digests. They retain
 `FoliageChunk`, record `Index`, measured byte counts, limits and expected/actual hashes where the guard knows them.
-Set admission retains typed version, layer identity, count and model-asset findings beside its string API while
-the remaining layer rules are converted.
+Set admission retains typed version, layer identity, count and model-asset findings beside its string API.
 Layer scalar findings retain `LayerId`, the first failing `FieldPath` and the actual numeric value or
 version. Nonfinite values, finite domain failures and reversed scale bounds have distinct reasons.
 Bound resource checks distinguish `ReferenceMissing` from `ReferenceKindMismatch`. Material findings
@@ -12261,8 +12260,14 @@ declarations use `ReferenceMissing`. Ordinal findings retain `SurfaceId`, rule a
 `EntityId`, and duplicate owner supports retain their typed child kind and reference scope.
 Advertised keys outside the density domain use `FoliageChunkOutOfDomain` with `FoliageChunk`, sample
 dimensions and the first failing axis's value and bounds. Descriptor-count guards validate sparse layers
-without materializing density. Resident chunk, binding, owner-kind and footprint findings remain in their
-remaining layer conversion, so the public finding snapshot is still deferred.
+without materializing density. Resident chunks retain the same domain metadata, while nonzero padding uses
+`FoliagePaddingNonzero` with the byte `Index`, chunk-local `CellX` and `CellZ`, and `ActualInteger`.
+Local binding, owner and clearance findings retain their layer, item identity and containing `FieldPath`.
+Owner checks distinguish missing values, non-World scopes and forbidden child kinds. Clearance footprints
+select the first nonfinite coordinate or collapsed finite dimension. `ValidateFindings` and
+`ValidateBoundFindings` expose complete owned read-only snapshots in string-validation order, and the
+document-level foliage collector forwards them. Broader document and storage adapters still wait for their
+other producer conversions.
 
 Motion padding is explicit caller policy in metres. Transform all eight source-unit-adjusted mesh corners by each
 sample's exact CPU matrix, then expand XYZ. Preserve CPU selection, live blade/shrub profiles and shadow flags. Use the

@@ -364,6 +364,8 @@ public enum MapDocumentRefusal
     FoliagePolicyUnsupported,
     /// <summary>Refuses a foliage chunk key outside its layer's density domain.</summary>
     FoliageChunkOutOfDomain,
+    /// <summary>Refuses nonzero foliage density padding outside the layer domain.</summary>
+    FoliagePaddingNonzero,
     /// <summary>Refuses reading an advertised foliage chunk whose density is not resident.</summary>
     FoliageChunkUnavailable,
     /// <summary>Refuses a foliage section larger than its UTF-8 byte budget.</summary>

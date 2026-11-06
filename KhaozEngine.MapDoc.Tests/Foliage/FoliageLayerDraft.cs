@@ -9,6 +9,7 @@ namespace KhaozEngine.Tests.MapDoc.Foliage;
 internal sealed class FoliageLayerDraft(MapFoliageLayer source)
 {
     internal int PayloadVersion = source.PayloadVersion;
+    internal MapSupportBinding Support = source.Support;
     internal float OriginX = source.OriginX, OriginZ = source.OriginZ, CellSize = source.CellSize;
     internal int Width = source.Width, Depth = source.Depth;
     internal MapRowDirection RowDirection = source.RowDirection;
@@ -23,7 +24,7 @@ internal sealed class FoliageLayerDraft(MapFoliageLayer source)
     internal IReadOnlyList<MapFoliageMask> ExceptionMasks = source.ExceptionMasks;
     internal IReadOnlyList<MapFoliageOwnerSupport> OwnerSupports = source.OwnerSupports;
 
-    internal MapFoliageLayer Build() => new(PayloadVersion, source.Id, source.Support, OriginX, OriginZ, CellSize,
+    internal MapFoliageLayer Build() => new(PayloadVersion, source.Id, Support, OriginX, OriginZ, CellSize,
         Width, Depth, RowDirection, source.Seed, Spacing, ScaleMin, ScaleMax, RootOffset, Models,
         AllowedVisibleMaterials, Materials, Policy, source.ExcludeIndoors, source.ExcludeSolidObjects,
         DoorClearance, EdgeFade, CompatibilityOrdinals, ClearanceRules, ExceptionMasks, OwnerSupports, source.Chunks);

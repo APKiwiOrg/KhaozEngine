@@ -21,7 +21,14 @@ public static class MapFoliageValidation
 
     public static IReadOnlyList<string> Validate(MapFoliageSet set) => Validate(set, null);
 
-    // Findings remain internal while the remaining layer rules are converted in their own chunks.
+    /// <summary>Returns every set and layer refusal as an owned read-only snapshot, in validation order.</summary>
+    public static IReadOnlyList<MapDocumentFinding> ValidateFindings(MapFoliageSet set)
+    {
+        var findings = new List<MapDocumentFinding>();
+        Validate(set, findings);
+        return Array.AsReadOnly(findings.ToArray());
+    }
+
     internal static IReadOnlyList<string> Validate(MapFoliageSet set, List<MapDocumentFinding>? findings)
     {
         ArgumentNullException.ThrowIfNull(set);
@@ -63,6 +70,14 @@ public static class MapFoliageValidation
     /// and clearance assets exist, material resources are Material resources, and Surface supports and compatibility
     /// rows name a declared support floor or a bound prefab surface. Never expands prefabs.</summary>
     public static IReadOnlyList<string> ValidateBound(MapDocument document, MapAssetClosure assets) => ValidateBound(document, assets, null);
+
+    /// <summary>Returns every set, layer and bound-resource refusal as an owned read-only snapshot.</summary>
+    public static IReadOnlyList<MapDocumentFinding> ValidateBoundFindings(MapDocument document, MapAssetClosure assets)
+    {
+        var findings = new List<MapDocumentFinding>();
+        ValidateBound(document, assets, findings);
+        return Array.AsReadOnly(findings.ToArray());
+    }
 
     internal static IReadOnlyList<string> ValidateBound(MapDocument document, MapAssetClosure assets, List<MapDocumentFinding>? findings)
     {
@@ -153,7 +168,7 @@ public static class MapFoliageValidation
             errors.Add(finding.Message);
             findings?.Add(finding);
         }
-        errors.AddRange(Validate(set));
+        errors.AddRange(Validate(set, findings));
     }
 
     static void RequireSupportSurface(string id, Dictionary<string, MapSurfaceRole> declared, HashSet<string> bound, string label,
@@ -180,7 +195,7 @@ public static class MapFoliageValidation
         if (layer.PayloadVersion != 1) Add(new(MapDocumentRefusal.SchemaPayloadVersionUnsupported,
             label + ": unsupported payloadVersion, only payload 1 is supported.")
         { FieldPath = "PayloadVersion", ActualVersion = layer.PayloadVersion, SupportedVersions = [1] });
-        Binding(layer.Support, label + " support", errors);
+        Binding(layer.Support, label + " support", errors, findings, layer.Id, "Support");
         if (!float.IsFinite(layer.OriginX) || !float.IsFinite(layer.OriginZ)) Add(new(MapDocumentRefusal.ValueNonfinite,
             label + ": origin must be finite.")
         { FieldPath = !float.IsFinite(layer.OriginX) ? "OriginX" : "OriginZ", ActualNumber = !float.IsFinite(layer.OriginX) ? layer.OriginX : layer.OriginZ });
@@ -341,8 +356,8 @@ public static class MapFoliageValidation
             { FieldPath = $"ClearanceRules[{i}].AssetId", Index = i, EntityId = rule.Id, AssetId = rule.AssetId });
             if (rule.PlacementTag is { Length: 0 }) Add(new(MapDocumentRefusal.SchemaValueRequired, at + ": placementTag must be omitted or non-empty.")
             { FieldPath = $"ClearanceRules[{i}].PlacementTag", Index = i, EntityId = rule.Id, ActualText = rule.PlacementTag });
-            Kind(rule.Kind, at, errors);
-            Rect(rule.Footprint, at, errors);
+            Kind(rule.Kind, at, errors, findings, layer.Id, $"ClearanceRules[{i}].Kind", i, rule.Id);
+            Rect(rule.Footprint, at, errors, findings, layer.Id, $"ClearanceRules[{i}].Footprint", i, rule.Id);
         }
         var masks = new HashSet<string>(StringComparer.Ordinal);
         for (int i = 0; i < layer.ExceptionMasks.Count; i++)
@@ -353,21 +368,21 @@ public static class MapFoliageValidation
             { FieldPath = $"ExceptionMasks[{i}].Id", Index = i, EntityId = mask.Id });
             else if (!masks.Add(mask.Id)) Add(new(MapDocumentRefusal.IdentityDuplicate, at + " is listed twice.")
             { FieldPath = $"ExceptionMasks[{i}].Id", Index = i, EntityId = mask.Id, SubjectKind = "exception mask" });
-            Owner(mask.Owner, at, errors);
-            Binding(mask.Support, at + " support", errors);
-            Kind(mask.Kind, at, errors);
-            Rect(mask.Footprint, at, errors);
+            Owner(mask.Owner, at, errors, findings, layer.Id, $"ExceptionMasks[{i}].Owner", i);
+            Binding(mask.Support, at + " support", errors, findings, layer.Id, $"ExceptionMasks[{i}].Support", i, mask.Id);
+            Kind(mask.Kind, at, errors, findings, layer.Id, $"ExceptionMasks[{i}].Kind", i, mask.Id);
+            Rect(mask.Footprint, at, errors, findings, layer.Id, $"ExceptionMasks[{i}].Footprint", i, mask.Id);
         }
         var owners = new HashSet<MapPrefabReference>();
         for (int i = 0; i < layer.OwnerSupports.Count; i++)
         {
             MapFoliageOwnerSupport owner = layer.OwnerSupports[i];
             string at = $"{label} owner support '{owner.Owner?.Id}'";
-            Owner(owner.Owner, at, errors);
+            Owner(owner.Owner, at, errors, findings, layer.Id, $"OwnerSupports[{i}].Owner", i);
             if (owner.Owner is not null && !owners.Add(owner.Owner)) Add(new(MapDocumentRefusal.IdentityDuplicate, at + " is listed twice.")
             { FieldPath = $"OwnerSupports[{i}].Owner", Index = i, EntityId = owner.Owner.Id,
                 ChildKind = owner.Owner.Kind, ReferenceScope = owner.Owner.Scope, SubjectKind = "owner support" });
-            Binding(owner.Support, at + " support", errors);
+            Binding(owner.Support, at + " support", errors, findings, layer.Id, $"OwnerSupports[{i}].Support", i);
         }
 
         void Add(MapDocumentFinding finding) => AddFinding(finding with { LayerId = layer.Id }, errors, findings);
@@ -396,16 +411,18 @@ public static class MapFoliageValidation
             }
         }
         var keys = new HashSet<MapFoliageChunkKey>();
-        foreach (MapFoliageChunk chunk in layer.Chunks)
+        for (int i = 0; i < layer.Chunks.Count; i++)
         {
+            MapFoliageChunk chunk = layer.Chunks[i];
             MapFoliageChunkKey key = chunk.Key;
             string at = $"{label} chunk ({key.X}, {key.Z})";
-            if (!keys.Add(key)) errors.Add(at + " is listed twice.");
-            ValidateChunk(layer, chunk, errors);
+            if (!keys.Add(key)) AddFinding(new(MapDocumentRefusal.IdentityDuplicate, at + " is listed twice.")
+            { LayerId = layer.Id, FieldPath = $"Chunks[{i}].Key", Index = i, FoliageChunk = key, SubjectKind = "resident foliage chunk" }, errors, findings);
+            ValidateChunk(layer, chunk, errors, findings);
         }
     }
 
-    internal static void ValidateChunk(MapFoliageLayer layer, MapFoliageChunk chunk, List<string> errors)
+    internal static void ValidateChunk(MapFoliageLayer layer, MapFoliageChunk chunk, List<string> errors, List<MapDocumentFinding>? findings = null)
     {
         MapFoliageChunkKey key = chunk.Key;
         string at = $"foliage layer '{layer.Id}' chunk ({key.X}, {key.Z})";
@@ -413,7 +430,11 @@ public static class MapFoliageValidation
         int rows = (layer.Depth + MapFoliageChunk.Size - 1) / MapFoliageChunk.Size;
         if (key.X < 0 || key.X >= columns || key.Z < 0 || key.Z >= rows)
         {
-            errors.Add(at + " lies outside the density domain.");
+            bool x = key.X < 0 || key.X >= columns;
+            AddFinding(new(MapDocumentRefusal.FoliageChunkOutOfDomain, at + " lies outside the density domain.")
+            { LayerId = layer.Id, FieldPath = "Chunk.Key." + (x ? "X" : "Z"), FoliageChunk = key,
+                Width = layer.Width, Depth = layer.Depth, ActualInteger = x ? key.X : key.Z,
+                MinimumInteger = 0, MaximumInteger = (x ? columns : rows) - 1 }, errors, findings);
             return;
         }
         int usedX = Math.Min(MapFoliageChunk.Size, layer.Width - key.X * MapFoliageChunk.Size);
@@ -423,34 +444,71 @@ public static class MapFoliageValidation
         for (int i = 0; i < density.Length; i++)
             if (density[i] != 0 && (i % MapFoliageChunk.Size >= usedX || i / MapFoliageChunk.Size >= usedZ))
             {
-                errors.Add(at + ": padding outside the density domain must be zero.");
+                AddFinding(new(MapDocumentRefusal.FoliagePaddingNonzero, at + ": padding outside the density domain must be zero.")
+                { LayerId = layer.Id, FieldPath = "Chunk.Density", FoliageChunk = key, Index = i,
+                    CellX = i % MapFoliageChunk.Size, CellZ = i / MapFoliageChunk.Size, ActualInteger = density[i],
+                    Width = layer.Width, Depth = layer.Depth }, errors, findings);
                 break;
             }
     }
 
     // The marker's closed binding rule, so blank IDs refuse here exactly as they do for markers.
-    static void Binding(MapSupportBinding? binding, string label, List<string> errors)
+    static void Binding(MapSupportBinding? binding, string label, List<string> errors, List<MapDocumentFinding>? findings,
+        string layerId, string field, int? index = null, string? entityId = null)
     {
-        if (binding is null) errors.Add(label + ": a support binding is required.");
-        else MapSupportBindingRules.Validate(binding, label + ": ", errors);
+        if (binding is null) AddFinding(new(MapDocumentRefusal.SchemaValueRequired, label + ": a support binding is required.")
+        { LayerId = layerId, FieldPath = field, Index = index, EntityId = entityId }, errors, findings);
+        else
+        {
+            var local = findings is null ? null : new List<MapDocumentFinding>();
+            MapSupportBindingRules.Validate(binding, label + ": ", errors, local);
+            if (local is not null)
+                foreach (MapDocumentFinding finding in local)
+                    findings!.Add(finding with
+                    {
+                        LayerId = layerId, FieldPath = field + "." + finding.FieldPath!["$.supportBinding.".Length..],
+                        Index = index, EntityId = entityId,
+                    });
+        }
     }
 
-    static void Owner(MapPrefabReference? owner, string label, List<string> errors)
+    static void Owner(MapPrefabReference? owner, string label, List<string> errors, List<MapDocumentFinding>? findings,
+        string layerId, string field, int index)
     {
         if (owner is null || owner.Scope != MapPrefabReferenceScope.World || !OwnerKinds.Contains(owner.Kind) || string.IsNullOrEmpty(owner.Id))
-            errors.Add(label + ": owner must be a World Placement, Surface, Record or Marker reference with an id.");
+            AddFinding(new(owner is null ? MapDocumentRefusal.SchemaValueRequired :
+                owner.Scope != MapPrefabReferenceScope.World ? MapDocumentRefusal.AuthoredOwnershipMismatch :
+                !OwnerKinds.Contains(owner.Kind) ? MapDocumentRefusal.AuthoredReferenceKindInvalid : MapDocumentRefusal.SchemaValueRequired,
+                label + ": owner must be a World Placement, Surface, Record or Marker reference with an id.")
+            { LayerId = layerId, FieldPath = field, Index = index, EntityId = owner?.Id, ChildKind = owner?.Kind,
+                ReferenceScope = owner?.Scope, ExpectedReferenceScope = MapPrefabReferenceScope.World, SubjectKind = "foliage owner" }, errors, findings);
     }
 
-    static void Kind(MapFoliageClearanceKind kind, string label, List<string> errors)
+    static void Kind(MapFoliageClearanceKind kind, string label, List<string> errors, List<MapDocumentFinding>? findings,
+        string layerId, string field, int index, string entityId)
     {
-        if (!Enum.IsDefined(kind)) errors.Add(label + ": unsupported clearance kind.");
+        if (!Enum.IsDefined(kind)) AddFinding(new(MapDocumentRefusal.SchemaEnumUnsupported, label + ": unsupported clearance kind.")
+        { LayerId = layerId, FieldPath = field, Index = index, EntityId = entityId,
+            EnumType = typeof(MapFoliageClearanceKind), ActualInteger = (long)kind }, errors, findings);
     }
 
-    static void Rect(MapFoliageRect rect, string label, List<string> errors)
+    static void Rect(MapFoliageRect rect, string label, List<string> errors, List<MapDocumentFinding>? findings,
+        string layerId, string field, int index, string entityId)
     {
         if (!float.IsFinite(rect.MinX) || !float.IsFinite(rect.MinZ) || !float.IsFinite(rect.MaxX) || !float.IsFinite(rect.MaxZ) ||
             !(rect.MaxX > rect.MinX) || !(rect.MaxZ > rect.MinZ))
-            errors.Add(label + ": footprint must be finite with MaxX > MinX and MaxZ > MinZ.");
+        {
+            string component = !float.IsFinite(rect.MinX) ? "MinX" : !float.IsFinite(rect.MinZ) ? "MinZ" :
+                !float.IsFinite(rect.MaxX) ? "MaxX" : !float.IsFinite(rect.MaxZ) ? "MaxZ" :
+                !(rect.MaxX > rect.MinX) ? "MaxX" : "MaxZ";
+            float actual = component switch { "MinX" => rect.MinX, "MinZ" => rect.MinZ, "MaxX" => rect.MaxX, _ => rect.MaxZ };
+            bool finite = float.IsFinite(actual);
+            AddFinding(new(finite ? MapDocumentRefusal.BoundsInvalid : MapDocumentRefusal.ValueNonfinite,
+                label + ": footprint must be finite with MaxX > MinX and MaxZ > MinZ.")
+            { LayerId = layerId, FieldPath = field + "." + component, Index = index, EntityId = entityId, ActualNumber = actual,
+                MinimumNumber = finite ? component == "MaxX" ? rect.MinX : rect.MinZ : null,
+                MaximumNumber = finite ? actual : null }, errors, findings);
+        }
     }
 
     static bool Positive(float value) => float.IsFinite(value) && value > 0;

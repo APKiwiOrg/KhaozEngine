@@ -1037,19 +1037,22 @@ and available identifiers on its outer `MapDocumentException`.
 | --- | --- | --- |
 | `FoliageSectionNull` | An explicit null section instead of omission | `FieldPath` |
 | `FoliageChunkUnavailable` | Reading advertised nonresident density | `LayerId`, `FoliageChunk` |
-| `FoliageChunkOutOfDomain` | An advertised chunk outside its layer's sample domain | `LayerId`, `FoliageChunk`, `FieldPath`, `Index`, `Width`, `Depth`, checked axis value and integer limits |
+| `FoliageChunkOutOfDomain` | An advertised or resident chunk outside its layer's sample domain | `LayerId`, `FoliageChunk`, `FieldPath`, `Index`, `Width`, `Depth`, checked axis value and integer limits |
+| `FoliagePaddingNonzero` | Nonzero resident density outside the layer domain | `LayerId`, `FoliageChunk`, `FieldPath`, byte `Index`, chunk-local `CellX`, `CellZ`, `ActualInteger`, `Width`, `Depth` |
 | `FoliageSectionIncomplete` | A section that is not fully buffered | `FieldPath`, with `ActualByteCount` unset because the complete size cannot be measured |
 | `FoliageSectionByteLimitExceeded` | A complete section beyond its UTF-8 byte ceiling | `FieldPath`, `ActualByteCount`, `Limit` |
 | `SchemaPayloadVersionUnsupported` | A layer payload or known policy version other than version 1 | `LayerId`, `FieldPath`, `ActualVersion`, `SupportedVersions` |
 | `ValueNonfinite` | A nonfinite layer scalar or model weight | `LayerId`, `FieldPath`, `ActualNumber`, model `Index` and `AssetId` when applicable |
 | `ValueOutsideRange` | A nonpositive positive-only scalar or weight, negative clearance or fade, invalid extent, empty model list or material ID 0 | `LayerId`, `FieldPath`, actual value or count and checked numeric limits |
-| `BoundsInvalid` | A finite maximum scale below the positive minimum | `LayerId`, `FieldPath`, `ActualNumber`, `MinimumNumber`, `MaximumNumber` |
-| `SchemaEnumUnsupported` | Density rows that do not advance positive world Z, or an undefined material kind | `LayerId`, `FieldPath`, `EnumType`, `ActualInteger`, material `NumericId` when applicable |
+| `BoundsInvalid` | A finite maximum scale below the positive minimum, or an empty or reversed clearance footprint | `LayerId`, `FieldPath`, `ActualNumber`, `MinimumNumber`, `MaximumNumber` |
+| `SchemaEnumUnsupported` | Density rows that do not advance positive world Z, or an undefined material, support binding or clearance kind | `LayerId`, `FieldPath`, `EnumType`, `ActualInteger`, material `NumericId` when applicable |
 | `ReferenceMissing` | A missing bound resource, asset or surface, or an undeclared allowed material | `LayerId`, `FieldPath`, `Index` where present and the checked identity |
 | `ReferenceKindMismatch` | A bound material resource or declared support surface of the wrong kind | `LayerId`, `FieldPath`, `Index` where present, identity and actual kind |
 | `FoliagePolicyUnsupported` | A sampling policy identity other than `legacy-tile` | `LayerId`, `FieldPath`, `PolicyId`, `ExpectedPolicyId` |
-| `SchemaValueRequired` | A missing policy, model, material, ordinal, rule or mask field | `LayerId`, `FieldPath`, known item identity and index |
-| `IdentityDuplicate` | A repeated model, material, ordinal surface, rule, mask or owner support | `LayerId`, `FieldPath`, `Index`, known identity and owner kind/scope where checked |
+| `SchemaValueRequired` | A missing policy, model, material, ordinal, rule, mask, binding or owner field | `LayerId`, `FieldPath`, known item identity and index |
+| `IdentityDuplicate` | A repeated model, material, ordinal surface, rule, mask, owner support or resident chunk | `LayerId`, `FieldPath`, `Index`, known identity and owner kind/scope where checked |
+| `AuthoredOwnershipMismatch` | A foliage owner outside World scope, or a support binding carrying fields of another kind | `LayerId`, `FieldPath`, `Index`, known owner or binding identity and reference scope |
+| `AuthoredReferenceKindInvalid` | A foliage owner outside Placement, Surface, Record or Marker | `LayerId`, `FieldPath`, `Index`, `EntityId`, `ChildKind`, `ReferenceScope`, `ExpectedReferenceScope` |
 | `OrderInvalid` | An allowed material ID no greater than the previous ID | `LayerId`, `FieldPath`, `Index`, `ActualInteger`, `PreviousInteger` |
 | `WorkCapacityExceeded` | Model, material, rule, mask, owner-support or chunk count capacity, or a nonfinite accumulated model weight | `LayerId`, `FieldPath`, `Budget`, actual count and limit, or accumulated `ActualNumber` and `MaximumNumber` |
 
@@ -1087,7 +1090,8 @@ Region-pack admission distinguishes invalid key coordinates (`ValueOutsideRange`
 (`SchemaMalformed`). Key refusals retain `FoliageChunk`, `Index` and the failed `Key.X` or `Key.Z` domain.
 A raw density digest mismatch retains `ExpectedHash` and `ActualHash`. A malformed digest name retains
 `ActualHash`. Set-level version, layer identity, layer-count and density-count findings also retain their typed
-fields alongside the string API. The public finding snapshot waits for the remaining layer rules.
+fields alongside the string API. `MapFoliageValidation.ValidateFindings` and `ValidateBoundFindings` return
+complete owned read-only snapshots in the same order as their unchanged string projections.
 Layer scalar findings select the first failing branch and field without changing their prose projection.
 Bound material findings retain the material ID as `ActualInteger`, the `ResourceId`, `ExpectedResourceKind`
 and available `ActualResourceKind`. Clearance asset findings retain the rule `EntityId` and `AssetId`.
@@ -1102,6 +1106,14 @@ Compatibility ordinals retain `SurfaceId` and a nonnegative ordinal domain. Rule
 their `EntityId`, while rule asset and placement-tag findings also carry `AssetId` or `ActualText`.
 Repeated owner supports retain the owner's `EntityId`, `ChildKind` and `ReferenceScope`. Advertised chunk
 domain findings retain the key and the first invalid axis with its inclusive domain, without loading density.
+Resident domain checks carry the same axis metadata. Nonzero resident padding uses `FoliagePaddingNonzero`
+with the byte index and chunk-local coordinates of the first nonzero padding byte. Local binding findings
+retain their containing layer and field path, including owner supports and masks. Owner admission checks
+missing value, World scope, permitted child kind and nonempty ID in that order. Scope failures reuse
+`AuthoredOwnershipMismatch`, and forbidden kinds reuse `AuthoredReferenceKindInvalid`. Clearance footprint
+findings select the first nonfinite coordinate or finite collapsed dimension and retain the item identity.
+The document-level foliage collector forwards every local finding. Broader document, storage and editing
+adapters still wait for their own final producer conversions.
 
 The closed codec checks counts, sizes and arithmetic before allocation. Monolithic storage embeds density.
 Tiled storage writes one verified content-addressed pack per (layer, storage region), with logical chunk digests

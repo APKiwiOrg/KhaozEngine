@@ -38,6 +38,39 @@ public sealed class MapFoliageChunkRefusalTests
         Assert.Empty(findings);
     }
 
+    [Theory]
+    [InlineData("duplicate", MapDocumentRefusal.IdentityDuplicate)]
+    [InlineData("domain", MapDocumentRefusal.FoliageChunkOutOfDomain)]
+    [InlineData("padding", MapDocumentRefusal.FoliagePaddingNonzero)]
+    public void ResidentChunkRules_RetainTheKeyAndPaddingAddress(string fault, MapDocumentRefusal reason)
+    {
+        var key = new MapFoliageChunkKey(fault == "domain" ? 2 : 1, 0);
+        var bytes = new byte[MapFoliageChunk.ByteLength];
+        if (fault == "padding") bytes[3] = 1;
+        var chunk = new MapFoliageChunk(key, bytes);
+        var layer = FoliageFixtures.BasicLayer(fault == "duplicate" ? [chunk, chunk] : [chunk]);
+        var findings = MapFoliageValidation.ValidateFindings(new(1, [layer]));
+        // A resident out-of-domain key is also advertised, so both checks retain a finding.
+        Assert.Equal(fault == "domain" ? 2 : 1, findings.Count);
+        var finding = findings[^1];
+        Assert.Equal(reason, finding.Reason);
+        Assert.Equal(layer.Id, finding.LayerId);
+        Assert.Equal(key, finding.FoliageChunk);
+        if (fault == "duplicate") Assert.Equal(1, finding.Index);
+        if (fault == "domain") { Assert.Equal(2L, finding.ActualInteger); Assert.Equal(1L, finding.MaximumInteger); }
+        if (fault == "padding")
+        {
+            Assert.Equal(3, finding.Index);
+            Assert.Equal(3, finding.CellX);
+            Assert.Equal(0, finding.CellZ);
+            Assert.Equal(1L, finding.ActualInteger);
+        }
+        Assert.Equal(findings.Select(f => f.Message), MapFoliageValidation.Validate(new(1, [layer])));
+        bytes[3] = 0;
+        var repaired = FoliageFixtures.BasicLayer([new(new(1, 0), bytes)]);
+        Assert.Empty(MapFoliageValidation.ValidateFindings(new(1, [repaired])));
+    }
+
     [Fact]
     public void LayerChunkCapacity_AcceptsExactlyTheCapWithoutMaterializingDensity()
     {

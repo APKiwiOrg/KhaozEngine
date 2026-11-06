@@ -206,13 +206,27 @@ public static class MapFoliageValidation
                 MinimumNumber = !Positive(layer.ScaleMin) ? 0 : layer.ScaleMin, MaximumNumber = layer.ScaleMax });
         if (!float.IsFinite(layer.RootOffset)) Add(new(MapDocumentRefusal.ValueNonfinite, label + ": rootOffset must be finite.")
         { FieldPath = "RootOffset", ActualNumber = layer.RootOffset });
-        if (!float.IsFinite(layer.DoorClearance) || layer.DoorClearance < 0) errors.Add(label + ": doorClearance must be finite and nonnegative.");
-        if (!float.IsFinite(layer.EdgeFade) || layer.EdgeFade < 0) errors.Add(label + ": edgeFade must be finite and nonnegative.");
+        if (!float.IsFinite(layer.DoorClearance) || layer.DoorClearance < 0)
+            Add(new(!float.IsFinite(layer.DoorClearance) ? MapDocumentRefusal.ValueNonfinite : MapDocumentRefusal.ValueOutsideRange,
+                label + ": doorClearance must be finite and nonnegative.")
+            { FieldPath = "DoorClearance", ActualNumber = layer.DoorClearance, MinimumNumber = 0 });
+        if (!float.IsFinite(layer.EdgeFade) || layer.EdgeFade < 0)
+            Add(new(!float.IsFinite(layer.EdgeFade) ? MapDocumentRefusal.ValueNonfinite : MapDocumentRefusal.ValueOutsideRange,
+                label + ": edgeFade must be finite and nonnegative.")
+            { FieldPath = "EdgeFade", ActualNumber = layer.EdgeFade, MinimumNumber = 0 });
         if (layer.Policy.Id != LegacyTilePolicy || layer.Policy.Version != LegacyTilePolicyVersion)
-            errors.Add($"{label}: only policy {LegacyTilePolicy} version {LegacyTilePolicyVersion} is supported.");
-        if (!float.IsFinite(layer.Policy.NormalBoundaryHeight)) errors.Add(label + ": normalBoundaryHeight must be finite.");
-        Models(layer, label, errors);
-        Materials(layer, label, errors);
+            Add(new(layer.Policy.Id != LegacyTilePolicy
+                    ? string.IsNullOrEmpty(layer.Policy.Id) ? MapDocumentRefusal.SchemaValueRequired : MapDocumentRefusal.FoliagePolicyUnsupported
+                    : MapDocumentRefusal.SchemaPayloadVersionUnsupported,
+                $"{label}: only policy {LegacyTilePolicy} version {LegacyTilePolicyVersion} is supported.")
+            { FieldPath = layer.Policy.Id != LegacyTilePolicy ? "Policy.Id" : "Policy.Version",
+                PolicyId = layer.Policy.Id, ExpectedPolicyId = LegacyTilePolicy,
+                ActualVersion = layer.Policy.Id == LegacyTilePolicy ? layer.Policy.Version : null,
+                SupportedVersions = layer.Policy.Id == LegacyTilePolicy ? [LegacyTilePolicyVersion] : null });
+        if (!float.IsFinite(layer.Policy.NormalBoundaryHeight)) Add(new(MapDocumentRefusal.ValueNonfinite, label + ": normalBoundaryHeight must be finite.")
+        { FieldPath = "Policy.NormalBoundaryHeight", ActualNumber = layer.Policy.NormalBoundaryHeight });
+        Models(layer, label, errors, findings);
+        Materials(layer, label, errors, findings);
         Ordinals(layer, label, errors);
         Clearance(layer, label, errors);
         Chunks(layer, label, errors);
@@ -220,32 +234,52 @@ public static class MapFoliageValidation
         void Add(MapDocumentFinding finding) => AddFinding(finding with { LayerId = layer.Id }, errors, findings);
     }
 
-    static void Models(MapFoliageLayer layer, string label, List<string> errors)
+    static void Models(MapFoliageLayer layer, string label, List<string> errors, List<MapDocumentFinding>? findings)
     {
         if (layer.Models.Count is 0 or > MapFoliagePayloadLimits.MaxModels)
-            errors.Add($"{label}: models must hold from 1 to {MapFoliagePayloadLimits.MaxModels} entries.");
+            Add(new(layer.Models.Count == 0 ? MapDocumentRefusal.ValueOutsideRange : MapDocumentRefusal.WorkCapacityExceeded,
+                $"{label}: models must hold from 1 to {MapFoliagePayloadLimits.MaxModels} entries.")
+            { FieldPath = "Models", ActualCount = layer.Models.Count, MinimumInteger = 1, MaximumInteger = MapFoliagePayloadLimits.MaxModels,
+                Budget = "models", Limit = MapFoliagePayloadLimits.MaxModels });
         var ids = new HashSet<string>(StringComparer.Ordinal);
         float total = 0;
-        foreach (MapFoliageModel model in layer.Models)
+        for (int i = 0; i < layer.Models.Count; i++)
         {
-            if (string.IsNullOrEmpty(model.AssetId)) errors.Add(label + ": every model needs a non-empty assetId.");
-            else if (!ids.Add(model.AssetId)) errors.Add($"{label}: model '{model.AssetId}' is listed twice.");
-            if (!Positive(model.Weight)) errors.Add($"{label}: model '{model.AssetId}' must have a finite positive weight.");
+            MapFoliageModel model = layer.Models[i];
+            if (string.IsNullOrEmpty(model.AssetId)) Add(new(MapDocumentRefusal.SchemaValueRequired, label + ": every model needs a non-empty assetId.")
+            { FieldPath = $"Models[{i}].AssetId", Index = i, AssetId = model.AssetId });
+            else if (!ids.Add(model.AssetId)) Add(new(MapDocumentRefusal.IdentityDuplicate, $"{label}: model '{model.AssetId}' is listed twice.")
+            { FieldPath = $"Models[{i}].AssetId", Index = i, AssetId = model.AssetId, SubjectKind = "foliage model" });
+            if (!Positive(model.Weight)) Add(new(!float.IsFinite(model.Weight) ? MapDocumentRefusal.ValueNonfinite : MapDocumentRefusal.ValueOutsideRange,
+                $"{label}: model '{model.AssetId}' must have a finite positive weight.")
+            { FieldPath = $"Models[{i}].Weight", Index = i, AssetId = model.AssetId, ActualNumber = model.Weight, MinimumNumber = 0 });
             total += model.Weight;
         }
-        if (!float.IsFinite(total)) errors.Add(label + ": model weights exceed the supported total.");
+        if (!float.IsFinite(total)) Add(new(MapDocumentRefusal.WorkCapacityExceeded, label + ": model weights exceed the supported total.")
+        { FieldPath = "Models.Weight", Budget = "model weights", ActualCount = layer.Models.Count, ActualNumber = total, MaximumNumber = float.MaxValue });
+
+        void Add(MapDocumentFinding finding) => AddFinding(finding with { LayerId = layer.Id }, errors, findings);
     }
 
-    static void Materials(MapFoliageLayer layer, string label, List<string> errors)
+    static void Materials(MapFoliageLayer layer, string label, List<string> errors, List<MapDocumentFinding>? findings)
     {
         if (layer.Materials.Count > MapFoliagePayloadLimits.MaxMaterials || layer.AllowedVisibleMaterials.Count > MapFoliagePayloadLimits.MaxMaterials)
-            errors.Add($"{label}: more than {MapFoliagePayloadLimits.MaxMaterials} materials.");
+            Add(new(MapDocumentRefusal.WorkCapacityExceeded, $"{label}: more than {MapFoliagePayloadLimits.MaxMaterials} materials.")
+            { FieldPath = layer.Materials.Count > MapFoliagePayloadLimits.MaxMaterials ? "Materials" : "AllowedVisibleMaterials",
+                Budget = layer.Materials.Count > MapFoliagePayloadLimits.MaxMaterials ? "materials" : "allowed visible materials",
+                ActualCount = layer.Materials.Count > MapFoliagePayloadLimits.MaxMaterials ? layer.Materials.Count : layer.AllowedVisibleMaterials.Count,
+                Limit = MapFoliagePayloadLimits.MaxMaterials });
         var declared = new HashSet<ushort>();
-        foreach (MapFoliageMaterial material in layer.Materials)
+        for (int i = 0; i < layer.Materials.Count; i++)
         {
-            if (material.Id == 0) errors.Add(label + ": material id 0 is void and cannot be declared.");
-            else if (!declared.Add(material.Id)) errors.Add($"{label}: material {material.Id} is declared twice.");
-            if (string.IsNullOrEmpty(material.ResourceId)) errors.Add($"{label}: material {material.Id} needs a resourceId.");
+            MapFoliageMaterial material = layer.Materials[i];
+            if (material.Id == 0) Add(new(MapDocumentRefusal.ValueOutsideRange, label + ": material id 0 is void and cannot be declared.")
+            { FieldPath = $"Materials[{i}].Id", Index = i, ActualInteger = material.Id, ResourceId = material.ResourceId,
+                MinimumInteger = 1, MaximumInteger = ushort.MaxValue });
+            else if (!declared.Add(material.Id)) Add(new(MapDocumentRefusal.IdentityDuplicate, $"{label}: material {material.Id} is declared twice.")
+            { FieldPath = $"Materials[{i}].Id", Index = i, ActualInteger = material.Id, ResourceId = material.ResourceId, SubjectKind = "foliage material" });
+            if (string.IsNullOrEmpty(material.ResourceId)) Add(new(MapDocumentRefusal.SchemaValueRequired, $"{label}: material {material.Id} needs a resourceId.")
+            { FieldPath = $"Materials[{i}].ResourceId", Index = i, ActualInteger = material.Id, ResourceId = material.ResourceId });
             if (!Enum.IsDefined(material.Kind)) errors.Add($"{label}: material {material.Id} has an unsupported kind.");
         }
         // A sorted distinct nonzero set, each a declared material.
@@ -256,6 +290,8 @@ public static class MapFoliageValidation
                 errors.Add(label + ": allowedVisibleMaterials must be sorted ascending without repeats.");
             if (!declared.Contains(id)) errors.Add($"{label}: allowed visible material {id} is not a declared material.");
         }
+
+        void Add(MapDocumentFinding finding) => AddFinding(finding with { LayerId = layer.Id }, errors, findings);
     }
 
     static void Ordinals(MapFoliageLayer layer, string label, List<string> errors)

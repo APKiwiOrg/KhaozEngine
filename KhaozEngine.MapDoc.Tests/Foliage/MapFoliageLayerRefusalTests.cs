@@ -28,6 +28,11 @@ public sealed class MapFoliageLayerRefusalTests
     [InlineData("scale-max-nonfinite", MapDocumentRefusal.ValueNonfinite, "ScaleMax")]
     [InlineData("scale-order", MapDocumentRefusal.BoundsInvalid, "ScaleMax")]
     [InlineData("root", MapDocumentRefusal.ValueNonfinite, "RootOffset")]
+    [InlineData("door-nonfinite", MapDocumentRefusal.ValueNonfinite, "DoorClearance")]
+    [InlineData("door-negative", MapDocumentRefusal.ValueOutsideRange, "DoorClearance")]
+    [InlineData("edge-nonfinite", MapDocumentRefusal.ValueNonfinite, "EdgeFade")]
+    [InlineData("edge-negative", MapDocumentRefusal.ValueOutsideRange, "EdgeFade")]
+    [InlineData("policy-height", MapDocumentRefusal.ValueNonfinite, "Policy.NormalBoundaryHeight")]
     public void LayerScalars_NameTheFailedBranchAndAcceptItsRepairedBoundary(string fault, MapDocumentRefusal reason, string field)
     {
         var draft = new FoliageLayerDraft(FoliageFixtures.BasicLayer([]));
@@ -50,6 +55,11 @@ public sealed class MapFoliageLayerRefusalTests
             case "scale-max-nonfinite": draft.ScaleMax = float.NaN; break;
             case "scale-order": draft.ScaleMax = 0.5f; break;
             case "root": draft.RootOffset = float.NegativeInfinity; break;
+            case "door-nonfinite": draft.DoorClearance = float.NaN; break;
+            case "door-negative": draft.DoorClearance = -1; break;
+            case "edge-nonfinite": draft.EdgeFade = float.PositiveInfinity; break;
+            case "edge-negative": draft.EdgeFade = -1; break;
+            case "policy-height": draft.Policy = draft.Policy with { NormalBoundaryHeight = float.NaN }; break;
         }
         var layer = draft.Build();
         var findings = new List<MapDocumentFinding>();
@@ -72,7 +82,9 @@ public sealed class MapFoliageLayerRefusalTests
             double actual = field switch
             {
                 "OriginX" => layer.OriginX, "OriginZ" => layer.OriginZ, "CellSize" => layer.CellSize,
-                "Spacing" => layer.Spacing, "ScaleMin" => layer.ScaleMin, "ScaleMax" => layer.ScaleMax, _ => layer.RootOffset,
+                "Spacing" => layer.Spacing, "ScaleMin" => layer.ScaleMin, "ScaleMax" => layer.ScaleMax,
+                "DoorClearance" => layer.DoorClearance, "EdgeFade" => layer.EdgeFade,
+                "Policy.NormalBoundaryHeight" => layer.Policy.NormalBoundaryHeight, _ => layer.RootOffset,
             };
             Assert.Equal(actual, finding.ActualNumber);
             if (reason == MapDocumentRefusal.ValueOutsideRange) Assert.Equal(0d, finding.MinimumNumber);
@@ -95,7 +107,36 @@ public sealed class MapFoliageLayerRefusalTests
             case "Width": draft.Width = fault == "width-high" ? MapFoliagePayloadLimits.MaxExtent : 1; break;
             case "Depth": draft.Depth = fault == "depth-high" ? MapFoliagePayloadLimits.MaxExtent : 1; break;
             case "RowDirection": draft.RowDirection = MapRowDirection.PositiveZ; break;
+            case "DoorClearance": draft.DoorClearance = 0; break;
+            case "EdgeFade": draft.EdgeFade = 0; break;
+            case "Policy.NormalBoundaryHeight": draft.Policy = draft.Policy with { NormalBoundaryHeight = 0 }; break;
         }
+        findings.Clear();
+        Assert.Empty(MapFoliageValidation.Validate(new(1, [draft.Build()]), findings));
+        Assert.Empty(findings);
+    }
+
+    [Theory]
+    [InlineData("id", MapDocumentRefusal.FoliagePolicyUnsupported)]
+    [InlineData("missing", MapDocumentRefusal.SchemaValueRequired)]
+    [InlineData("version", MapDocumentRefusal.SchemaPayloadVersionUnsupported)]
+    public void PolicyAdmission_DistinguishesTheIdentityFromItsPayloadVersion(string fault, MapDocumentRefusal reason)
+    {
+        var draft = new FoliageLayerDraft(FoliageFixtures.BasicLayer([]));
+        var valid = draft.Policy;
+        bool version = fault == "version";
+        draft.Policy = version ? valid with { Version = 2 } : valid with { Id = fault == "missing" ? null! : "other" };
+        var findings = new List<MapDocumentFinding>();
+        var errors = MapFoliageValidation.Validate(new(1, [draft.Build()]), findings);
+        var finding = Assert.Single(findings);
+        Assert.Equal(reason, finding.Reason);
+        Assert.Equal(FoliageFixtures.LayerId, finding.LayerId);
+        Assert.Equal(version ? "Policy.Version" : "Policy.Id", finding.FieldPath);
+        Assert.Equal(draft.Policy.Id, finding.PolicyId);
+        Assert.Equal("legacy-tile", finding.ExpectedPolicyId);
+        if (version) { Assert.Equal(2, finding.ActualVersion); Assert.Equal(new[] { 1 }, finding.SupportedVersions); }
+        Assert.Equal(new[] { finding.Message }, errors);
+        draft.Policy = valid;
         findings.Clear();
         Assert.Empty(MapFoliageValidation.Validate(new(1, [draft.Build()]), findings));
         Assert.Empty(findings);

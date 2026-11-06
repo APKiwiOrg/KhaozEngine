@@ -85,6 +85,10 @@ public sealed class MapDocumentException : Exception
 
     /// <summary>The foliage, scatter or companion layer identity, when known.</summary>
     public string? LayerId { get; init; }
+    /// <summary>The foliage sampling policy identity checked by the guard.</summary>
+    public string? PolicyId { get; init; }
+    /// <summary>The foliage sampling policy identity required by the guard.</summary>
+    public string? ExpectedPolicyId { get; init; }
     /// <summary>The zero-based position of the containing or refused JSON array item, when known.</summary>
     public int? Index { get; init; }
     /// <summary>The other zero-based region index participating in an overlap.</summary>
@@ -323,6 +327,8 @@ public sealed class MapDocumentException : Exception
         SubjectKind = inner.SubjectKind;
         Operation = inner.Operation;
         LayerId = inner.LayerId;
+        PolicyId = inner.PolicyId;
+        ExpectedPolicyId = inner.ExpectedPolicyId;
         Index = inner.Index;
         OtherIndex = inner.OtherIndex;
         ConversionClass = inner.ConversionClass;

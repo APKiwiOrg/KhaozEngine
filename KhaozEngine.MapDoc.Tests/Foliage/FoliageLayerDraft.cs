@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using KhaozEngine.MapDoc;
 using KhaozEngine.MapDoc.Foliage;
 using KhaozEngine.MapDoc.Surfaces;
@@ -12,10 +13,15 @@ internal sealed class FoliageLayerDraft(MapFoliageLayer source)
     internal int Width = source.Width, Depth = source.Depth;
     internal MapRowDirection RowDirection = source.RowDirection;
     internal float Spacing = source.Spacing, ScaleMin = source.ScaleMin, ScaleMax = source.ScaleMax, RootOffset = source.RootOffset;
+    internal float DoorClearance = source.DoorClearance, EdgeFade = source.EdgeFade;
+    internal MapFoliagePolicy Policy = source.Policy;
+    internal IReadOnlyList<MapFoliageModel> Models = source.Models;
+    internal IReadOnlyList<MapFoliageMaterial> Materials = source.Materials;
+    internal IReadOnlyList<ushort> AllowedVisibleMaterials = source.AllowedVisibleMaterials;
 
     internal MapFoliageLayer Build() => new(PayloadVersion, source.Id, source.Support, OriginX, OriginZ, CellSize,
-        Width, Depth, RowDirection, source.Seed, Spacing, ScaleMin, ScaleMax, RootOffset, source.Models,
-        source.AllowedVisibleMaterials, source.Materials, source.Policy, source.ExcludeIndoors, source.ExcludeSolidObjects,
-        source.DoorClearance, source.EdgeFade, source.CompatibilityOrdinals, source.ClearanceRules, source.ExceptionMasks,
+        Width, Depth, RowDirection, source.Seed, Spacing, ScaleMin, ScaleMax, RootOffset, Models,
+        AllowedVisibleMaterials, Materials, Policy, source.ExcludeIndoors, source.ExcludeSolidObjects,
+        DoorClearance, EdgeFade, source.CompatibilityOrdinals, source.ClearanceRules, source.ExceptionMasks,
         source.OwnerSupports, source.Chunks);
 }

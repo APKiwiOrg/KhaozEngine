@@ -162,6 +162,8 @@ public sealed class MapDocumentExceptionTests
         if (property.Name == nameof(MapDocumentException.Edge)) return MapCellEdge.West;
         if (property.Name == nameof(MapDocumentException.PreviousInteger)) return 17L;
         if (property.Name == nameof(MapDocumentException.ActualText)) return "future";
+        if (property.Name == nameof(MapDocumentException.PolicyId)) return "future-policy";
+        if (property.Name == nameof(MapDocumentException.ExpectedPolicyId)) return "legacy-tile";
         if (property.Name == nameof(MapDocumentException.ExpectedPatch)) return new MapPatchKey("expected", 2, -3);
         if (property.Name == nameof(MapDocumentException.ExpectedSnapshot)) return "expected-snapshot";
         if (property.Name == nameof(MapDocumentException.ActualSnapshot)) return "actual-snapshot";

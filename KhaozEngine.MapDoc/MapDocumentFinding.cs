@@ -69,6 +69,10 @@ public sealed record MapDocumentFinding(MapDocumentRefusal Reason, string Messag
 
     /// <summary>The foliage layer identity, after it has been read.</summary>
     public string? LayerId { get; init; }
+    /// <summary>The foliage sampling policy identity checked by the guard.</summary>
+    public string? PolicyId { get; init; }
+    /// <summary>The foliage sampling policy identity required by the guard.</summary>
+    public string? ExpectedPolicyId { get; init; }
     /// <summary>The zero-based position of the containing or refused JSON array item, when known.</summary>
     public int? Index { get; init; }
     /// <summary>The other zero-based region index participating in an overlap.</summary>
@@ -286,6 +290,8 @@ public sealed record MapDocumentFinding(MapDocumentRefusal Reason, string Messag
             SubjectKind = error.SubjectKind,
             Operation = error.Operation,
             LayerId = error.LayerId,
+            PolicyId = error.PolicyId,
+            ExpectedPolicyId = error.ExpectedPolicyId,
             Index = error.Index,
             OtherIndex = error.OtherIndex,
             ConversionClass = error.ConversionClass,

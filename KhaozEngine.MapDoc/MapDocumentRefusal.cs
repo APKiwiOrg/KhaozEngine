@@ -360,6 +360,8 @@ public enum MapDocumentRefusal
     SpaceSupportCoincident,
 
     // Foliage payload and JSON converter.
+    /// <summary>Refuses a foliage sampling policy other than the supported policy identity.</summary>
+    FoliagePolicyUnsupported,
     /// <summary>Refuses reading an advertised foliage chunk whose density is not resident.</summary>
     FoliageChunkUnavailable,
     /// <summary>Refuses a foliage section larger than its UTF-8 byte budget.</summary>

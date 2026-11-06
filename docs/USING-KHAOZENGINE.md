@@ -12250,6 +12250,12 @@ Bound resource checks distinguish `ReferenceMissing` from `ReferenceKindMismatch
 retain `ResourceId`, the material ID in `ActualInteger`, `ExpectedResourceKind` and available
 `ActualResourceKind`. Clearance findings identify the rule and asset. Support findings identify the
 surface and its path through the layer, owner support, exception mask or compatibility ordinal.
+Policy admission distinguishes a missing ID (`SchemaValueRequired`), another policy
+(`FoliagePolicyUnsupported`) and an unsupported version of the known policy
+(`SchemaPayloadVersionUnsupported`). Findings and source-wrapped exceptions retain `PolicyId` and
+`ExpectedPolicyId`. Model and material checks retain their array index and asset or material identity.
+Count capacities use `WorkCapacityExceeded` with `Budget`, `ActualCount` and `Limit`. Accumulated model
+weight uses that reason with `ActualNumber` and its supported `MaximumNumber`.
 
 Motion padding is explicit caller policy in metres. Transform all eight source-unit-adjusted mesh corners by each
 sample's exact CPU matrix, then expand XYZ. Preserve CPU selection, live blade/shrub profiles and shadow flags. Use the

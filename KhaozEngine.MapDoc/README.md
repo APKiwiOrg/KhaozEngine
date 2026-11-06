@@ -2263,6 +2263,8 @@ opening's ownership (`SpaceOpeningOwnershipInvalid`). Opening face counting dist
 slot indices (`ValueOutsideRange` with limits 0 through 4095), cells outside the patch
 (`SurfaceAddressOutOfPatch`) and present cells (`SpaceOpeningCellsInvalid`), retaining `Patch` and
 `SlotCell`. A missing footprint lattice retains `SurfaceId`, `Patch`, `RecordId` and `SpaceId`.
+Context preparation keeps the finding for its first selected capacity refusal while draining later
+footprints. Later per-cell budget failures retain their own findings without replacing that context.
 Missing occupied lower or upper geometry uses `PatchUnavailable` with `SpaceId`, boundary `OwnerId`
 and `FieldPath` `Lower` or `Upper`. Prism record-count refusal uses `WorkCapacityExceeded` with
 `Budget` `MaxRecordReads`, the measured `ActualCount` and inclusive `Limit`.

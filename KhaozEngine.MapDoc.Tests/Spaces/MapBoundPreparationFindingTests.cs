@@ -11,6 +11,42 @@ namespace KhaozEngine.Tests.MapDoc;
 
 public sealed class MapBoundPreparationFindingTests
 {
+    [Fact]
+    public void ContextRefusal_KeepsItsFindingWhenLaterFootprintsExceedAnotherBudget()
+    {
+        var set = new MapSurfaceSet();
+        var surface = MixedResolutionFixtures.Surface("floor", 1, MapSurfaceRole.SupportFloor);
+        set.Refs.Add(surface);
+        var first = MixedResolutionFixtures.Patch(new(surface.Id, 0, 0), 1, 1, (_, _) => 0);
+        var later = MixedResolutionFixtures.Patch(new(surface.Id, 1, 0), 1, 1, (_, _) => 0);
+        first.Records.Add(new MapSpaceDoc("space-a", MapSpaceKind.Exterior, null, null, [], [], [], []));
+        later.Records.Add(new MapSpaceDoc("space-b", MapSpaceKind.Exterior, null, null, [], [], [], []));
+        set.Patches.Add(first.Key, first);
+        set.Patches.Add(later.Key, later);
+        var footprints = new[] { Footprint("a", first.Key), Footprint("b", later.Key) };
+        var view = MapScopedSurfaces.CompleteView(set);
+
+        // W6-R1c regression: draining the second footprint must not replace the first refusal's context.
+        var refused = MapCommonRefinement.PrepareFootprints(view, footprints,
+            new(MaxContextFaces: 1, MaxContextPatches: 1), null);
+        Assert.Null(refused.Context);
+        var finding = Assert.IsType<MapDocumentFinding>(refused.Finding);
+        Assert.Equal(MapDocumentRefusal.WorkCapacityExceeded, finding.Reason);
+        Assert.Equal("MaxContextFaces", finding.Budget);
+        Assert.Equal(1L, finding.Limit);
+        Assert.Equal(2L, finding.ActualCount);
+        Assert.Equal(first.Key, finding.Patch);
+
+        var control = MapCommonRefinement.PrepareFootprints(view, footprints,
+            new(MaxContextFaces: 4, MaxContextPatches: 2), null);
+        Assert.NotNull(control.Context);
+        Assert.Null(control.Refusal);
+        Assert.Null(control.Finding);
+
+        static MapSpaceFootprint Footprint(string id, MapPatchKey patch) => new(id, new("space-" + id, patch), patch, [0],
+            new(MapBoundKind.SupportFloor, patch.SurfaceId, null), new(MapBoundKind.OpenTop, null, null));
+    }
+
     [Theory]
     [InlineData("x", MapDocumentRefusal.BoundsInvalid, "Bounds.X")]
     [InlineData("z", MapDocumentRefusal.BoundsInvalid, "Bounds.Z")]

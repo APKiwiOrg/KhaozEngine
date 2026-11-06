@@ -124,7 +124,7 @@ public static class MapCommonRefinement
         {
             context = MapBoundFaceContext.PrepareBounds(view, Demands(),
                 limits.MaxContextPatches, limits.MaxContextFaces, work, out refusal, preparation);
-            finding = preparation.Finding;
+            finding = preparation.ContextFinding ?? preparation.Finding;
         }
         catch (Exception error) when (error is MapExactOverflowException or MapDocumentException)
         {

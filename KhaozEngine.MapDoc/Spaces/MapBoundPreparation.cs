@@ -39,6 +39,7 @@ internal sealed class MapBoundPreparation
     internal IEnumerable<MapValidatedSurfacePatch> ValidatedPatches => _validated.Values;
     internal string? Refusal { get; private set; }
     internal MapDocumentFinding? Finding { get; private set; }
+    internal MapDocumentFinding? ContextFinding { get; private set; }
 
     internal void RequireView(MapScopedSurfaces view)
     {
@@ -209,6 +210,7 @@ internal sealed class MapBoundPreparation
             Finding = new(MapDocumentRefusal.WorkCapacityExceeded, Refusal)
             { SurfaceId = surface.Id, Patch = patch.Key, Budget = "MaxContextPatches", ActualCount = (long)_validated.Count + 1,
                 Limit = _limits.MaxContextPatches };
+            ContextFinding ??= Finding;
             return null;
         }
         validated = new(surface, patch, _validationWork);
@@ -217,9 +219,12 @@ internal sealed class MapBoundPreparation
         return validated;
     }
     MapSurfaceRef? Surface(string? id) => _view.Surfaces.FirstOrDefault(s => s.Id == id);
-    internal void RecordContextCapacity(string budget, long? count, long limit, MapPatchKey patch) =>
+    internal void RecordContextCapacity(string budget, long? count, long limit, MapPatchKey patch)
+    {
         Finding ??= new(MapDocumentRefusal.WorkCapacityExceeded, "context faces")
         { Budget = budget, ActualCount = count, Limit = limit, SurfaceId = patch.SurfaceId, Patch = patch };
+        ContextFinding ??= Finding;
+    }
     static Plan ClassificationFailure(MapLowerCellClassification classification) => Failure(
         classification.Class == MapLowerCellClass.InvalidRecipe ? MapRefinementStatus.Invalid : MapRefinementStatus.MissingGeometry,
         classification.Detail, classification.Finding);

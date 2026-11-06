@@ -8,6 +8,25 @@ namespace KhaozEngine.Tests.MapDoc;
 
 internal static class TerrainEditFixtures
 {
+    // Faulty producers can change Count between the guard and its diagnostic. The diagnostic must
+    // retain the value that caused refusal, rather than reading the producer a second time.
+    internal sealed class ChangingCountList<T>(IReadOnlyList<T> values) : IReadOnlyList<T>
+    {
+        bool _first = true;
+        public int Count
+        {
+            get
+            {
+                int count = _first ? 0 : values.Count;
+                _first = false;
+                return count;
+            }
+        }
+        public T this[int index] => values[index];
+        public IEnumerator<T> GetEnumerator() => values.GetEnumerator();
+        System.Collections.IEnumerator System.Collections.IEnumerable.GetEnumerator() => GetEnumerator();
+    }
+
     internal static readonly MapPatchKey BumpKey = new("bump", 0, 0);
 
     internal static MapSurfaceSet Bump()

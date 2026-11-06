@@ -130,8 +130,9 @@ public static class MapTerrainEdits
     {
         ArgumentNullException.ThrowIfNull(edit.Values);
         RequireRegion(patch, edit.CornerX, edit.CornerZ, edit.Width, edit.Depth, patch.Width + 1, patch.Depth + 1);
-        if (edit.Values.Count != edit.Width * edit.Depth) throw new MapDocumentException(MapDocumentRefusal.SchemaArrayLengthMismatch, "terrain height value count differs")
-            { Patch = patch.Key, FieldPath = "Values", ActualCount = edit.Values.Count, ExpectedCount = (long)edit.Width * edit.Depth };
+        int valueCount = edit.Values.Count;
+        if (valueCount != edit.Width * edit.Depth) throw new MapDocumentException(MapDocumentRefusal.SchemaArrayLengthMismatch, "terrain height value count differs")
+            { Patch = patch.Key, FieldPath = "Values", ActualCount = valueCount, ExpectedCount = (long)edit.Width * edit.Depth };
         for (int z = 0; z < edit.Depth; z++)
             for (int x = 0; x < edit.Width; x++)
                 patch.Heights[(edit.CornerZ + z) * (patch.Width + 1) + edit.CornerX + x] = edit.Values[z * edit.Width + x];
@@ -141,8 +142,9 @@ public static class MapTerrainEdits
     {
         ArgumentNullException.ThrowIfNull(edit.Cells);
         RequireRegion(patch, edit.CellX, edit.CellZ, edit.Width, edit.Depth, patch.Width, patch.Depth);
-        if (edit.Cells.Count != edit.Width * edit.Depth) throw new MapDocumentException(MapDocumentRefusal.SchemaArrayLengthMismatch, "terrain cell value count differs")
-            { Patch = patch.Key, FieldPath = "Cells", ActualCount = edit.Cells.Count, ExpectedCount = (long)edit.Width * edit.Depth };
+        int cellCount = edit.Cells.Count;
+        if (cellCount != edit.Width * edit.Depth) throw new MapDocumentException(MapDocumentRefusal.SchemaArrayLengthMismatch, "terrain cell value count differs")
+            { Patch = patch.Key, FieldPath = "Cells", ActualCount = cellCount, ExpectedCount = (long)edit.Width * edit.Depth };
         MapNativeInvalidation invalidates = MapNativeInvalidation.None;
         for (int z = 0; z < edit.Depth; z++)
             for (int x = 0; x < edit.Width; x++)

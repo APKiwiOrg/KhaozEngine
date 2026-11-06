@@ -118,6 +118,8 @@ public sealed class FinePatchConversionTests
         MapCellConversion c = MapConversionClassifier.Classify(ConversionFixtures.Coarse(input).Surface, ConversionFixtures.Coarse(input).Patch, 1, 1, 2);
         Assert.Equal(MapCellConversionClass.UnsupportedEncoding, c.Class);
         Assert.Equal(MapDocumentRefusal.TerrainCornerCutCreaseUnsupported, c.Finding?.Reason);
+        Assert.Equal(MapCellConversionClass.UnsupportedEncoding, c.Finding?.ConversionClass);
+        Assert.Equal(MapPresencePolicy.Native, c.Finding?.PresencePolicy);
         Assert.Equal("coarse", c.Finding?.SurfaceId);
         Assert.Equal(MapLatticeAddress.Corner(1, 1), c.Finding?.Address);
         Assert.Equal(2, c.Finding?.ActualInteger);
@@ -160,6 +162,8 @@ public sealed class FinePatchConversionTests
         MapCellConversion c = MapConversionClassifier.Classify(legacy.Surface, legacy.Patch, 1, 0, 2);
         Assert.Equal(MapCellConversionClass.NotRepresentable, c.Class);
         Assert.Equal(MapDocumentRefusal.TerrainAuthoredDifference, c.Finding?.Reason);
+        Assert.Equal(MapCellConversionClass.NotRepresentable, c.Finding?.ConversionClass);
+        Assert.Equal(MapPresencePolicy.LegacyTileWorld, c.Finding?.PresencePolicy);
         Assert.Equal(MapLatticeAddress.Corner(1, 0), c.Finding?.Address);
         MapConversionResult r = Convert(input, ConversionFixtures.LegacyRequest(2, true));
         Assert.Contains(r.Differences, d => d.Kind == MapDifferenceKind.FallbackRemoved && d.CellX == 1);

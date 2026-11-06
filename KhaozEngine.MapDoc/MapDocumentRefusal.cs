@@ -192,6 +192,10 @@ public enum MapDocumentRefusal
     ContextDemandUnprepared,
 
     // Fine conversion and terrain editing.
+    /// <summary>Refuses removing an anchor patch that still carries a topology record.</summary>
+    TerrainAnchorStillInUse,
+    /// <summary>Refuses selecting an existing shared corner with conflicting declared owners.</summary>
+    TerrainCornerOwnerAmbiguous,
     /// <summary>Refuses topology replacement that upserts and removes the same patch or surface.</summary>
     TerrainTopologyWritesConflict,
     /// <summary>Refuses a terrain edit region outside its patch rectangle.</summary>
@@ -204,8 +208,6 @@ public enum MapDocumentRefusal
     TerrainConversionRegionsMissing,
     /// <summary>Refuses overlapping fine-conversion regions.</summary>
     TerrainConversionRegionsOverlap,
-    /// <summary>Refuses fine conversion of a paint-only surface.</summary>
-    TerrainPhysicalSurfaceRequired,
     /// <summary>Refuses a fine-conversion region intersecting an authored boundary record.</summary>
     TerrainBoundaryRecordIntersects,
     /// <summary>Refuses standalone interior replacement of an alias Room.</summary>

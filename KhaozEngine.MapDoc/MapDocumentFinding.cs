@@ -1,4 +1,5 @@
 using System;
+using KhaozEngine.MapDoc.Editing;
 using System.Collections.Generic;
 using KhaozEngine.MapDoc.Foliage;
 using KhaozEngine.MapDoc.Assets;
@@ -70,6 +71,13 @@ public sealed record MapDocumentFinding(MapDocumentRefusal Reason, string Messag
     public string? LayerId { get; init; }
     /// <summary>The zero-based position of the containing or refused JSON array item, when known.</summary>
     public int? Index { get; init; }
+    /// <summary>The other zero-based region index participating in an overlap.</summary>
+    public int? OtherIndex { get; init; }
+    /// <summary>The authored cell classification requiring explicit conversion acceptance.</summary>
+    public MapCellConversionClass? ConversionClass { get; init; }
+    /// <summary>The source surface presence and arithmetic policy checked by conversion.</summary>
+    public MapPresencePolicy? PresencePolicy { get; init; }
+
     /// <summary>The foliage chunk coordinates, after both coordinates have been read.</summary>
     public MapFoliageChunkKey? FoliageChunk { get; init; }
     /// <summary>The measured or decoded byte count, when the whole value can be measured.</summary>
@@ -279,6 +287,9 @@ public sealed record MapDocumentFinding(MapDocumentRefusal Reason, string Messag
             Operation = error.Operation,
             LayerId = error.LayerId,
             Index = error.Index,
+            OtherIndex = error.OtherIndex,
+            ConversionClass = error.ConversionClass,
+            PresencePolicy = error.PresencePolicy,
             FoliageChunk = error.FoliageChunk,
             ActualByteCount = error.ActualByteCount,
             ExpectedByteCount = error.ExpectedByteCount,

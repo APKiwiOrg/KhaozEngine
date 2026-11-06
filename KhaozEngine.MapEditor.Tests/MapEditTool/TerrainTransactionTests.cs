@@ -1,5 +1,6 @@
 using KhaozEngine.MapDoc;
 using KhaozEngine.MapDoc.Editing;
+using KhaozEngine.MapDoc.Surfaces;
 using KhaozEngine.MapEdit;
 using KhaozEngine.MapEditor;
 using KhaozEngine.Tests.MapDoc;
@@ -31,8 +32,13 @@ public sealed class TerrainTransactionTests
             Assert.Contains("separation", Assert.Throws<MapDocumentException>(() => gui.Editor.Execute(new TerrainEditCommand(CaveFixtures.CeilingCrossingEdit()))).Message);
             Assert.Equal(state, gui.State());
         }
-        Assert.Contains("halo", Assert.Throws<MapDocumentException>(() => gui.Editor.Execute(new TerrainEditCommand(new MapSmoothCorners(new("outer", 0, 0), 0, 0, 1, 1, 1)))).Message);
+        var halo = Assert.Throws<MapDocumentException>(() => gui.Editor.Execute(new TerrainEditCommand(
+            new MapSmoothCorners(new("outer", 0, 0), 0, 0, 1, 1, 1))));
+        Assert.Equal(MapDocumentRefusal.TerrainSmoothingHaloUnavailable, halo.Reason);
+        Assert.Equal(new MapPatchKey("outer", 0, 0), halo.Patch);
+        Assert.Equal(MapLatticeAddress.Corner(-1, -1), halo.Address);
         Assert.Equal(state, gui.State());
+        gui.Editor.Execute(new TerrainEditCommand(new MapSmoothCorners(new("outer", 0, 0), 1, 1, 1, 1, 1)));
     }
     [Fact]
     public void FinePatchConversion_UndoRedoRestoresExactPatchesAndOwners()

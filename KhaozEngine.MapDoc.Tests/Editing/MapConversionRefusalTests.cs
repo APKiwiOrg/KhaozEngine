@@ -72,12 +72,14 @@ public sealed class MapConversionRefusalTests
         var (surface, patch) = ConversionFixtures.Coarse(set);
         // Refining by two multiplies each integer height by two.
         for (int i = 0; i < patch.Heights.Length; i++) patch.Heights[i] = int.MaxValue / 2 + 1;
+        var before = MapSurfaceSemantics.PatchDigest(patch);
         var geometry = new MapConversionCellGeometry(surface, patch, 1, 1);
         var error = Assert.Throws<MapDocumentException>(() => geometry.FineHeight(0, 0, 2));
         Assert.Equal(MapDocumentRefusal.GeometryNotRepresentable, error.Reason);
         Assert.Equal(surface.Id, error.SurfaceId);
         Assert.Equal(patch.Key, error.Patch);
         Assert.Equal(MapLatticeAddress.Corner(1, 1), error.Address);
+        Assert.Equal(before, MapSurfaceSemantics.PatchDigest(patch));
         for (int i = 0; i < patch.Heights.Length; i++) patch.Heights[i] = int.MaxValue / 2;
         Assert.Equal(int.MaxValue - 1, new MapConversionCellGeometry(surface, patch, 1, 1).FineHeight(0, 0, 2));
     }
@@ -88,7 +90,7 @@ public sealed class MapConversionRefusalTests
     [InlineData("surface", MapDocumentRefusal.ReferenceMissing)]
     [InlineData("duplicate", MapDocumentRefusal.IdentityDuplicate)]
     [InlineData("cell", MapDocumentRefusal.TerrainCellMissing)]
-    [InlineData("paint", MapDocumentRefusal.TerrainPhysicalSurfaceRequired)]
+    [InlineData("paint", MapDocumentRefusal.SurfacePaintPhysicalCompileUnsupported)]
     public void ConversionAdmission_RefusesOneDefectWithoutChangingTheSource(string defect, MapDocumentRefusal reason)
     {
         var set = ConversionFixtures.Slopes();
@@ -110,7 +112,11 @@ public sealed class MapConversionRefusalTests
         var error = Assert.Throws<MapDocumentException>(() => MapFinePatchConversion.Convert(set, request));
         Assert.Equal(reason, error.Reason);
         if (defect == "empty") Assert.Equal(0, error.Index);
-        if (defect == "overlap") Assert.Equal(1, error.Index);
+        if (defect == "overlap")
+        {
+            Assert.Equal(1, error.Index);
+            Assert.Equal(0, error.OtherIndex);
+        }
         if (defect == "cell") Assert.Equal(MapLatticeAddress.Corner(3, 1), error.Address);
         if (defect == "surface") Assert.Equal("missing", error.SurfaceId);
         if (defect == "duplicate") Assert.Equal(request.FineSurfaceId, error.SurfaceId);

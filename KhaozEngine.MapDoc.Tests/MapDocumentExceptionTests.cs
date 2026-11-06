@@ -183,6 +183,8 @@ public sealed class MapDocumentExceptionTests
             nameof(MapDocumentException.PositionZ) => 0.25d,
             _ => 4000.5 + index,
         };
+        if (type == typeof(KhaozEngine.MapDoc.Editing.MapCellConversionClass)) return KhaozEngine.MapDoc.Editing.MapCellConversionClass.UnsupportedEncoding;
+        if (type == typeof(MapPresencePolicy)) return MapPresencePolicy.LegacyTileWorld;
         if (type == typeof(MapLatticeAddress)) return MapLatticeAddress.Create(1, -2, 3);
         if (type == typeof(MapFoliageChunkKey)) return new MapFoliageChunkKey(-3, index);
         if (type == typeof(IReadOnlyList<int>)) return new[] { 1, 5 };

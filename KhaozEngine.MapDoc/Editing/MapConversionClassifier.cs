@@ -54,7 +54,8 @@ public static class MapConversionClassifier
             Finding = refusal is { } rule ? new(rule, reason ?? "LegacyTileWorld arithmetic policy")
             {
                 SurfaceId = geometry.Surface.Id, Patch = geometry.Patch.Key,
-                Address = MapLatticeAddress.Corner(geometry.CellX, geometry.CellZ), ActualInteger = subdivision
+                Address = MapLatticeAddress.Corner(geometry.CellX, geometry.CellZ), ActualInteger = subdivision,
+                ConversionClass = kind, PresencePolicy = geometry.Surface.PresencePolicy
             } : null
         };
     }

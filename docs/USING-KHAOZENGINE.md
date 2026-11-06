@@ -12709,7 +12709,8 @@ the unchanged classification and prose. `TerrainCornerCutCreaseUnsupported` and
 `TerrainCornerCutSubdivisionOdd` distinguish the two unsupported corner-cut rules.
 `TerrainAuthoredDifference` names legacy arithmetic or non-capture fallback requiring explicit acceptance,
 including an exact cell whose legacy arithmetic still changes. Findings carry `SurfaceId`, `Patch`,
-the signed 64-bit world-cell `Address` and `ActualInteger` subdivision. Absent cells use
+the signed 64-bit world-cell `Address`, `ActualInteger` subdivision, `ConversionClass` and source
+`PresencePolicy`. Absent cells use
 `TerrainCellMissing` with the known surface, patch and address. Footprint straddles use
 `TerrainFootprintStraddlesRegion`, `RecordId` and `SlotCell`. Failed owner retargets use
 `TerrainOwnerRetargetUnavailable` with the dependent `Patch`, patch-local `CellX` and `CellZ`, and
@@ -12719,8 +12720,8 @@ use `SchemaValueRequired`, while equal identities use `AuthoredValueMismatch`, w
 field and known surface identities. Conversion adapters forward the first concrete producer finding and
 the complete ordered `Findings`, including each refused authored-difference cell. Empty selections use
 `TerrainConversionRegionsMissing`, overlapping selections `TerrainConversionRegionsOverlap` with the
-later `Index`, empty rectangles `BoundsInvalid` with `Index`, paint-only sources
-`TerrainPhysicalSurfaceRequired`, and intersecting boundary records `TerrainBoundaryRecordIntersects`
+later `Index` and earlier `OtherIndex`, empty rectangles `BoundsInvalid` with `Index`, paint-only sources
+`SurfacePaintPhysicalCompileUnsupported`, and intersecting boundary records `TerrainBoundaryRecordIntersects`
 with `RecordId`. Standalone interior alias replacement uses `InteriorAliasUnsupported` with `RecordId`,
 `SpaceId` and the alias target's `RelatedRecordId`. Other interior guards reuse ownership, reference,
 value and operation reasons with the identities known at admission.
@@ -12729,11 +12730,14 @@ Terrain edits retain complete ordered producer findings and the unchanged source
 `TerrainEditRegionOutOfBounds` carries the patch and submitted rectangle, or the out-of-domain presence
 slot. `TerrainOwnerChangeStale` identifies the dependent patch and corner and known old-owner context.
 `TerrainSmoothingHaloUnavailable` identifies the required world corner through `Address`.
-`TerrainTopologyWritesConflict` distinguishes conflicting patch writes from `IdentityDuplicate`.
+`TerrainTopologyWritesConflict` distinguishes conflicting patch or surface writes from `IdentityDuplicate`.
+`TerrainAnchorStillInUse` names a removed anchor's `Patch` and retained `RecordId`.
+`TerrainCornerOwnerAmbiguous` names the world-corner `Address`, surface and conflicting owner patches.
 Owner self-address mismatches reuse `SurfaceSeamPositionMismatch`, while disagreeing incident halo
 heights reuse `GeometryVertexHeightMismatch`. These reuse the same rules as seam and shared-corner
 admission. Height and cell count mismatches use `SchemaArrayLengthMismatch` with the failed field and
-actual and expected counts. Plain smoothing iteration parameter checks remain BCL exceptions.
+actual and expected counts. Count diagnostics retain the value that failed the predicate when a
+faulty collection producer changes between reads. Plain smoothing iteration parameter checks remain BCL exceptions.
 
 Root, manifest, tile and prefab schema admission also preserves `MapDocumentException`. Its reasons distinguish
 `SchemaMemberUnknown`, `SchemaMemberDuplicate`, `SchemaMemberMissing`, `SchemaMemberNull`,

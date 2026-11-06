@@ -67,9 +67,12 @@ public sealed class TerrainEditsTests
         MapSurfaceSet set = TerrainEditFixtures.WithFarAnchors();
         var farWest = new MapPatchKey("far", -300, 0);
         var farEast = new MapPatchKey("far", 300, 0);
-        string m = Assert.Throws<MapDocumentException>(() => Prepare(set, Remove(farWest))).Message;
-        Assert.Contains("anchor", m);
-        Assert.Contains("far-chain", m);
+        var before = TerrainEditFixtures.Digest(set);
+        var error = Assert.Throws<MapDocumentException>(() => Prepare(set, Remove(farWest)));
+        Assert.Equal(MapDocumentRefusal.TerrainAnchorStillInUse, error.Reason);
+        Assert.Equal(farWest, error.Patch);
+        Assert.Equal("far-chain", error.RecordId);
+        Assert.Equal(before, TerrainEditFixtures.Digest(set));
         MapTerrainEditResult r = Prepare(set, new MapCompositeEdit(new MapTerrainEdit[] { new MapReanchorRecords(new[] { new MapRecordAnchorMove("far-chain", farWest, farEast) }), Remove(farWest) }));
         Assert.Equal(new MapRecordRef("far-chain", farEast), r.Candidate.AllRecords().OfType<MapWallStrip>().Single(w => w.Id == "far-wall").UpperChain);
         Assert.Empty(MapTopologyReferenceValidator.Validate(r.Candidate.Refs, r.Candidate.Patches.Values));

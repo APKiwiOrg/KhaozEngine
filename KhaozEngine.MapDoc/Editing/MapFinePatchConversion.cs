@@ -39,8 +39,9 @@ public static class MapFinePatchConversion
             };
         }
         ArgumentNullException.ThrowIfNull(request.Regions);
-        if (request.Regions.Count == 0) throw new MapDocumentException(MapDocumentRefusal.TerrainConversionRegionsMissing, "conversion regions are required")
-            { FieldPath = "Regions", ActualCount = request.Regions.Count };
+        int regionCount = request.Regions.Count;
+        if (regionCount == 0) throw new MapDocumentException(MapDocumentRefusal.TerrainConversionRegionsMissing, "conversion regions are required")
+            { FieldPath = "Regions", ActualCount = regionCount };
         for (int i = 0; i < request.Regions.Count; i++)
         {
             MapCellRect region = request.Regions[i];
@@ -49,7 +50,7 @@ public static class MapFinePatchConversion
                     { FieldPath = "Regions", Index = i };
             for (int j = 0; j < i; j++)
                 if (region.Overlaps(request.Regions[j])) throw new MapDocumentException(MapDocumentRefusal.TerrainConversionRegionsOverlap, "conversion regions must be disjoint")
-                    { FieldPath = "Regions", Index = i };
+                    { FieldPath = "Regions", Index = i, OtherIndex = j };
         }
         MapSurfaceSet candidate = surfaces.Clone();
         RequireReferences(candidate);
@@ -59,7 +60,7 @@ public static class MapFinePatchConversion
         MapSurfaceRef source = candidate.Refs.SingleOrDefault(s => s.Id == request.SourceSurfaceId)
             ?? throw new MapDocumentException(MapDocumentRefusal.ReferenceMissing, $"missing source surface '{request.SourceSurfaceId}'")
                 { SurfaceId = request.SourceSurfaceId, FieldPath = "SourceSurfaceId" };
-        if (source.Role == MapSurfaceRole.PaintOverride) throw new MapDocumentException(MapDocumentRefusal.TerrainPhysicalSurfaceRequired, "conversion requires a physical surface")
+        if (source.Role == MapSurfaceRole.PaintOverride) throw new MapDocumentException(MapDocumentRefusal.SurfacePaintPhysicalCompileUnsupported, "conversion requires a physical surface")
             { SurfaceId = source.Id, FieldPath = "Role" };
         if (candidate.Refs.Any(s => s.Id == request.FineSurfaceId))
             throw new MapDocumentException(MapDocumentRefusal.IdentityDuplicate, $"fine surface '{request.FineSurfaceId}' already exists")

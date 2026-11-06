@@ -338,7 +338,8 @@ becomes `SupportFloor`. A footprint cell that the region boundary crosses refuse
 atomically with `TerrainFootprintStraddlesRegion`, `RecordId` and `SlotCell`.
 Conversion never subdivides a footprint automatically.
 
-`MapCellConversion.Finding` retains the typed rule requiring authored-difference acceptance. Its
+`MapCellConversion.Finding` retains the typed rule requiring authored-difference acceptance, with
+`ConversionClass` and `PresencePolicy` preserved through exception and finding forwarding. Its
 existing `Class` and `Reason` prose are unchanged. A legacy arithmetic policy can require acceptance
 even when the cell's class is exact. World cell coordinates use the signed 64-bit `Address`, while
 `CellX` and `CellZ` remain patch-local coordinates. Conversion's authored-difference adapter uses its
@@ -354,8 +355,8 @@ corner-dependency admission likewise forwards the first concrete finding and its
 | `TerrainFootprintStraddlesRegion` | A region crosses part of a footprint cell | `RecordId`, `SlotCell` |
 | `TerrainOwnerRetargetUnavailable` | No fine vertex preserves the exact owner point and height | Dependent `Patch`, patch-local `CellX` and `CellZ`, owner's `ExpectedPatch` and `Address` |
 | `TerrainConversionRegionsMissing` | No conversion region was selected | `FieldPath`, `ActualCount` |
-| `TerrainConversionRegionsOverlap` | Conversion regions overlap | `FieldPath`, later region's `Index` |
-| `TerrainPhysicalSurfaceRequired` | Conversion source is paint-only | `SurfaceId`, `FieldPath` |
+| `TerrainConversionRegionsOverlap` | Conversion regions overlap | `FieldPath`, later region's `Index`, earlier `OtherIndex` |
+| `SurfacePaintPhysicalCompileUnsupported` | Conversion source is paint-only | `SurfaceId`, `FieldPath` |
 | `TerrainBoundaryRecordIntersects` | A conversion region intersects a boundary record | `SurfaceId`, `RecordId` |
 | `InteriorAliasUnsupported` | Standalone interior replacement targets an alias Room | `RecordId`, `SpaceId`, alias target's `RelatedRecordId` |
 
@@ -384,6 +385,8 @@ failed field and actual and expected counts.
 | `TerrainOwnerChangeStale` | The expected old corner owner no longer matches | Dependent `Patch`, `CellX`, `CellZ`, expected owner's `ExpectedPatch`, actual owner's `Address` |
 | `TerrainSmoothingHaloUnavailable` | A smoothing halo corner is outside the surface or unloaded | `Patch`, world-corner `Address` |
 | `TerrainTopologyWritesConflict` | The same topology identity is both upserted and removed | `FieldPath` |
+| `TerrainAnchorStillInUse` | A removed patch still anchors a topology record | `Patch`, `RecordId` |
+| `TerrainCornerOwnerAmbiguous` | Incident corners declare different existing owners | `SurfaceId`, world-corner `Address`, conflicting `Patch` and `ExpectedPatch` |
 
 Owner self-address disagreement reuses `SurfaceSeamPositionMismatch`, with the dependent patch,
 local corner and submitted owner `Address`. Disagreeing incident smoothing heights reuse
@@ -391,6 +394,11 @@ local corner and submitted owner `Address`. Disagreeing incident smoothing heigh
 Duplicate owner changes or topology writes use `IdentityDuplicate`, selecting the first failed
 predicate branch before a conflicting-write reason. Missing edit patches use `ReferenceMissing`
 with `Patch` and `SurfaceId`. Unknown edit types use `OperationKindUnsupported` with `Operation`.
+Surface upsert and removal conflicts follow the same branch-selection contract as patch writes.
+Collection-count guards retain the count that failed the predicate in their diagnostic identifiers,
+even if a faulty producer later reports a different value.
+Reanchoring duplicate moves or duplicate destination records uses `IdentityDuplicate`, while an absent
+source record uses `ReferenceMissing`, retaining the known `RecordId` and anchor `Patch`.
 
 **Generation pinning and acquisitions.** A `MapStoredSurfaceSource` pins one manifest generation until it is
 reopened. `MapScopedSurfaces` is a further step: it publishes a detached, immutable set of acquired facts,

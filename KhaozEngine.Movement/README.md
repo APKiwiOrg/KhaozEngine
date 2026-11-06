@@ -1412,6 +1412,12 @@ primitive identity without a fabricated plane or a slope-normal filter. Curved g
 still refuses certification conservatively, while an unrelated curved prop does not abort capture.
 Analytic faces retain both the installed mesh owner and the canonical field owner. Selected support must match
 the latter and the captured canonical feature geometry, while physical installation provenance remains intact.
+At a raw ray point shared by analytic triangles, capture collects every containing face at the exact selected
+height. The faces must form one incident component through source-certified positive shared edges, with no
+duplicate identities or positive-area overlaps between any pair. Point-only neighbours can join through other
+members of the fan, but a shared point alone never certifies an edge. Capture then binds the field's canonical
+`Describe` member within that component. Missing canonical identity, disconnected owners and gaps separating
+the incident component still refuse. These predicates use exact rational arithmetic over captured coordinates.
 `ContactTerrainProfileEvidence` associates admitted original layer/cell addresses with those raw sources, without
 looking up a layer by resting-height proximity. Missing capability, source identity, ambiguous raw support or
 capacity has a structured `PhysicsNavDescentEvidenceException` reason. No partial evidence is published.
@@ -1419,8 +1425,9 @@ capacity has a structured `PhysicsNavDescentEvidenceException` reason. No partia
 Capture uses inclusive projected bounds to narrow cell candidates and processes them in original face ordinal
 order. Boundary-only touches, vertical faces and zero-area projections remain candidates. The original exact
 clip, overlap and source adjacency predicates decide retention. A source may provide a complete adjacency-key
-candidate visitation, otherwise capture keeps the all-pairs path. The test-only all-face/all-pairs oracle checks
-the entire capture output. The independent oracle lives only in the test project. Index arrays and conservative bookkeeping share a checked aggregate byte budget bounded
+candidate visitation, otherwise capture keeps the all-pairs path. For inputs the original capture already accepted,
+the test-only all-face/all-pairs oracle checks every output field. The oracle remains frozen in the test project.
+Index arrays and conservative bookkeeping share a checked aggregate byte budget bounded
 by `Array.MaxLength`. `IndexStorageExceeded` reports requested and maximum bytes before unsupported storage is
 allocated. Existing feature, reference, sweep and proof budgets are unchanged.
 Frozen evidence builds exact raw-address and full-solid interval lookups once. Raw lookup preserves height bits

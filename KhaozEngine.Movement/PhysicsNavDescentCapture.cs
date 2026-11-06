@@ -71,10 +71,8 @@ internal static class PhysicsNavDescentCapture
         int width = bake.Columns.Width, height = bake.Columns.Height;
         var budget = new DescentCaptureIndexBudget();
         var index = new DescentFaceIndex(faces, budget);
-        var firstKeys = new Dictionary<MovementSurfaceFeatureKey, int>();
         var primitives = new Dictionary<(StaticHandle Static, int Leaf), int>();
         budget.Reserve(faces.Length, 160);
-        for (int f = 0; f < faces.Length; f++) firstKeys.TryAdd(faces[f].Key, f);
         for (int f = 0; f < faces.Length; f++)
             if (faces[f].Kind is PhysicsEvidenceKind.Sphere or PhysicsEvidenceKind.Capsule or PhysicsEvidenceKind.Cylinder)
                 if (!primitives.TryAdd((observed[f].Static, observed[f].Address.Leaf), f))
@@ -84,6 +82,7 @@ internal static class PhysicsNavDescentCapture
         var coverage = new DescentCoverage[width * height];
         var refs = new List<DescentColumnFace>();
         var raw = new List<DescentRawBinding>();
+        var incident = new List<int>();
         var observer = new PhysicsColumnEvidenceProbe(context.Physics, lease);
         var probe = new PhysicsColumnProbe(observer)
         {
@@ -163,36 +162,26 @@ internal static class PhysicsNavDescentCapture
                         continue;
                     }
                     DescentNumber highest = default;
+                    var axis = new Vector2(hits[0].Result.Point.X + lease.Origin.X, hits[0].Result.Point.Z + lease.Origin.Z);
                     foreach (int f in candidates)
                     {
                         var face = faces[f];
                         if (observed[f].Static != body || hits[0].Leaf >= 0 && observed[f].Address.Leaf != hits[0].Leaf ||
-                            face.Normal.Y <= 0 || !DescentGeometry.Contains(face.Points, ax, az)) continue;
-                        var y = DescentGeometry.Height(face.Points, new(ax, az));
+                            face.Normal.Y <= 0 || !DescentGeometry.Contains(face.Points, axis.X, axis.Y)) continue;
+                        var y = DescentGeometry.Height(face.Points, new(axis.X, axis.Y));
                         if (y > new DescentNumber(hits[0].Origin.Y + lease.Origin.Y)) continue;
-                        if (selected >= 0 && y.CompareTo(highest) == 0 && face.Key != faces[selected].Key &&
-                            !(face.Analytic && faces[selected].Analytic && source.AreAdjacent(face.Key, faces[selected].Key)))
-                            throw Refuse(PhysicsNavDescentEvidenceReason.RawAssociationAmbiguous);
                         if (selected < 0 || y > highest) { selected = f; highest = y; }
                     }
                     if (selected < 0) throw Refuse(PhysicsNavDescentEvidenceReason.RawAssociationAmbiguous);
+                    incident.Clear();
                     foreach (int f in candidates)
                     {
-                        if (f == selected || faces[f].Normal.Y <= 0 || !DescentGeometry.Contains(faces[f].Points, ax, az)) continue;
-                        var sameHeight = DescentGeometry.Height(faces[f].Points, new(ax, az));
+                        if (faces[f].Normal.Y <= 0 || !DescentGeometry.Contains(faces[f].Points, axis.X, axis.Y)) continue;
+                        var sameHeight = DescentGeometry.Height(faces[f].Points, new(axis.X, axis.Y));
                         if (sameHeight.CompareTo(highest) != 0) continue;
-                        var overlap = DescentGeometry.Overlap(DescentGeometry.Project(faces[f].Points), DescentGeometry.Project(faces[selected].Points));
-                        if (DescentGeometry.Area2(overlap).Sign > 0)
-                            throw Refuse(PhysicsNavDescentEvidenceReason.RawAssociationAmbiguous);
-                        if (!(faces[f].Analytic && faces[selected].Analytic && source.AreAdjacent(faces[f].Key, faces[selected].Key)) &&
-                            observed[f].Static != observed[selected].Static)
-                            throw Refuse(PhysicsNavDescentEvidenceReason.RawAssociationAmbiguous);
+                        incident.Add(f);
                     }
-                    // Shared triangle edges use the analytic field's own deterministic selection.
-                    if (faces[selected].Analytic && source.Describe(new(ax, az), out var named) == MovementAvailability.Known)
-                    {
-                        if (firstKeys.TryGetValue(named.Key, out int canonical)) selected = canonical;
-                    }
+                    selected = DescentIncidentFan.Select(faces, incident, source, axis);
                     raw.Add(new(x, z, ordinal, bits, selected));
                 }
             }

@@ -9099,8 +9099,7 @@ var planner = new GridPathPlanner(space);   // hopCostCells: 4 by default
 
 Opt-in throughout: `BakeOverworldSteps` never generates hop links, and with no hoppable feature in range
 the returned space is identical to `NavSpace.Single(BakeOverworldSteps(...))`. The planner charges a hop
-the constructor's `hopCostCells` (in cells of the source layer, default 4, kept at or above the longest
-hop's octile length so paths stay optimal) and marks each hop landing waypoint `NavWaypointKind.Hop`,
+the constructor's `hopCostCells` (in cells of the source layer, default 4) and marks each hop landing waypoint `NavWaypointKind.Hop`,
 which the follower surfaces as the `Hopping` state below.
 
 ### Bake a layered overworld (multi-level worlds)
@@ -9213,9 +9212,12 @@ discovery. There is no anchor substitution or target-Y guess, and heightless gri
 ends in `Contains`, while region routes retain every validated cell edge and link endpoint without
 shortcuts or string pulling.
 
-Region discovery scans the full admitted topology before expansion. Search priority is a safe spatial lower
-bound or zero when a cross-layer link or a cheap same-layer link makes that bound uncertain. Separate
-finite-safe progress compares actual admitted members. Work is `O(N + E*M)` and storage is `O(N + M)`.
+Region discovery scans the full admitted topology before expansion. Search priority scales world XZ distance
+to the extent square by a construction-time minimum edge-cost-to-span ratio on every layer. Separate
+finite-safe progress compares actual admitted members. Point progress compares physical 3D feet positions.
+Complete searches are optimal, unlimited searches are exact, and finite-budget results are best effort.
+Route choices change in 23.3.0. The Navigation README owns the complete cost contract.
+Work is `O(N + E*M)` and storage is `O(N + M)`.
 The AABB reduces exact predicate calls, not `M` for valid predicates. `MaxExpandedNodes` bounds expanded
 nodes only, so it does not bound topology discovery or all query work.
 
@@ -9359,8 +9361,8 @@ as arrived, so a goal on the floor above routes through the planner instead of a
 due), and `ReplanCooldownSeconds` (default 0.5, minimum time between ordinary replans, with immediate
 refresh for a previously useful Complete route reaching an obsolete point endpoint or a region endpoint
 outside membership). Fresh exhausted results retain the cooldown. See the
-`KhaozEngine.Navigation` package README for the clearance convention, the planner's documented heuristic
-limitations, and the full config surface.
+`KhaozEngine.Navigation` package README for the clearance convention, the planner's construction-time spatial cost bound,
+and the full config surface.
 
 ---
 

@@ -113,10 +113,10 @@ the public constructors.
 
 `GridPathPlanner` implements `IPathPlanner` over a `NavSpace`:
 
-- **Fast path first.** If `GridRay.IsClear` from start to goal at the agent's clearance, return the
+- **Fast path first.** When no link undercuts the spatial bound and `GridRay.IsClear` from start to goal at the agent's clearance, return the
   trivial two-point path with no A* at all. Open-terrain chase, the overwhelmingly common case, costs
   one DDA walk.
-- **A\***, 8-connected with corner-cut prevention, octile heuristic, uniform cost. A per-cell cost
+- **A\***, 8-connected with corner-cut prevention, a construction-time scaled spatial bound across layers, uniform cost. A per-cell cost
   field is a recorded follow-up seam (it would be a parallel array, the clearance byte leaves no
   room).
 - **String-pulling** on the raw cell path via `GridRay` line-of-sight, so the output is a short list

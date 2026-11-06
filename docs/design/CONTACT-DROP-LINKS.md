@@ -108,9 +108,11 @@ the edge actually chosen. A cheaper ordinary exit remains Walk. Drop source and 
 centers, including first, final and consecutive transitions. Smoothing and straightening cannot remove either.
 An unguarded exact point goal gets a separate final Walk waypoint when it differs from a Drop landing.
 
-Region priority falls back to zero when any link invalidates its spatial lower bound. Point queries on Drop
-topology also use a whole-query zero priority when cross-layer or cheap links invalidate their octile bound.
-Progress remains separate, so this does not turn a useful partial approach into an arbitrary endpoint.
+The planner computes the least edge-cost-to-spatial-span ratio once at construction, including cross-layer
+links and walking costs. Point and region priorities scale their spatial bounds by this ratio on every layer.
+Shared frames use octile spans and differing frames use world XZ distance. Purely vertical links impose no
+constraint. Non-finite costs or nonpositive ratios retain the zero-bound fallback. Progress remains separate,
+so a zero priority still permits a useful partial approach. The Navigation README owns the complete cost contract.
 
 `PathFollower` exposes `PathFollowState.Dropping`, zero `WorldDir` and a nullable `DropTraversal`. Its
 `NavDropTraversal(Link, StartFeet, LandingFeet)` retains cell, layer and physical anchor identity. A physical

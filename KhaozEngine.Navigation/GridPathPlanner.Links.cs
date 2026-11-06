@@ -26,21 +26,6 @@ public sealed partial class GridPathPlanner
         return (float)cost;
     }
 
-    bool PointLinksPreserveOctile()
-    {
-        foreach (var source in _linkEdges)
-        {
-            var (layer, x, z) = Decode(source.Key);
-            foreach (PlannerLink edge in source.Value)
-            {
-                var (targetLayer, tx, tz) = Decode(edge.ToId);
-                if (targetLayer != layer || !float.IsFinite(edge.CostMeters) ||
-                    edge.CostMeters < Octile(x, z, tx, tz, _space.Layers[layer].CellSize)) return false;
-            }
-        }
-        return true;
-    }
-
     static NavWaypointKind WaypointKind(NavLinkKind? kind) => kind switch
     {
         NavLinkKind.Hop => NavWaypointKind.Hop,

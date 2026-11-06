@@ -58,7 +58,7 @@ public sealed partial class GridPathPlanner : IRegionPathPlanner
 
     // Each adjacency retains the selected edge kind. Ordinary exits never borrow link metadata.
     readonly Dictionary<int, List<PlannerLink>> _linkEdges;
-    readonly bool _hasDrops;
+    readonly PlannerSpatialBound _spatialBound;
 
     /// <summary>Cost of crossing a <see cref="NavLinkKind.Hop"/> link, in multiples of the source layer's
     /// <see cref="NavGrid.CellSize"/>. Set from the constructor knob.</summary>
@@ -67,10 +67,8 @@ public sealed partial class GridPathPlanner : IRegionPathPlanner
     /// <summary>Builds a planner that searches <paramref name="space"/>. <paramref name="hopCostCells"/> is
     /// the cost of crossing a <see cref="NavLinkKind.Hop"/> link, in multiples of the source layer's
     /// <see cref="NavGrid.CellSize"/> (default 4). It must be positive. A <see cref="NavLinkKind.Stair"/>
-    /// link keeps its one-cell cost. Keep <paramref name="hopCostCells"/> at or above the longest hop's
-    /// octile displacement (about 2.83 at a two-cell hop) to keep the A* heuristic admissible and the search
-    /// optimal. Below it the search stays correct but may return a valid non-optimal route, the same caveat
-    /// the far-jumping-link heuristic already documents.</summary>
+    /// link keeps its one-cell cost. The planner scales its spatial lower bound once at construction
+    /// to account for links cheaper than their displacement, keeping search costs optimal.</summary>
     public GridPathPlanner(NavSpace space, float hopCostCells = 4f)
         : this(space, hopCostCells, null)
     {
@@ -106,8 +104,8 @@ public sealed partial class GridPathPlanner : IRegionPathPlanner
                 _linkEdges[fromId] = targets;
             }
             targets.Add(new(toId, costMeters, link.Kind));
-            _hasDrops |= link.Kind == NavLinkKind.Drop;
         }
+        _spatialBound = new PlannerSpatialBound(_space, _traversal, LinkCost);
     }
 
     /// <summary>
@@ -162,7 +160,7 @@ public sealed partial class GridPathPlanner : IRegionPathPlanner
 
         // Same layer with a clear straight shot is the trivial one-waypoint case. Everything else runs
         // the A* search, which also carries cross-layer routing over the link edges.
-        if (_traversal is null && startLayer == goalLayer &&
+        if (_traversal is null && _spatialBound.Scale == 1f && startLayer == goalLayer &&
             scratch.HasLineOfSight(startGrid, startPoint.Value, goalPoint, agentRadius))
         {
             return new NavPath(NavPathStatus.Complete, new[] { new NavWaypoint(goalPoint, goalLayer) });

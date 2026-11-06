@@ -16,16 +16,14 @@ public sealed partial class GridPathPlanner
     /// corner cuts. After the eight grid neighbors, each link out of the current node is expanded at its
     /// precomputed meters cost (a <see cref="NavLinkKind.Stair"/> the source layer's
     /// <see cref="NavGrid.CellSize"/>, a <see cref="NavLinkKind.Hop"/> the constructor's hop cost), skipped
-    /// when the link's far endpoint is not passable for the agent radius on its own layer. The heuristic is the
-    /// octile distance to the goal cell while the node is on the goal's layer, and zero otherwise
-    /// (an admissible lower bound across a link, degrading the off-layer search to Dijkstra). Off the
-    /// goal layer, the zero heuristic pins the start as the closest-approach minimum, so a cross-layer
-    /// query that reaches the goal's layer but cannot reach the goal returns Unreachable rather than
-    /// Partial (single-layer Partial behavior is unaffected). A popped node is final for the ascend-to-goal
-    /// case the links model. The search stops when the goal is popped (<see cref="NavPathStatus.Complete"/>),
+    /// when the link's far endpoint is not passable for the agent radius on its own layer. A construction-time
+    /// spatial cost ratio scales one metric across every layer: octile in a shared frame, world XZ distance
+    /// otherwise. Each edge costs at least its scaled span, so the bound is admissible and consistent and a
+    /// popped node is final. Progress uses physical 3D feet distance independently of priority. The search stops
+    /// when the goal is popped (<see cref="NavPathStatus.Complete"/>),
     /// the open set empties, or <paramref name="budget"/>'s <see cref="PathQueryBudget.MaxExpandedNodes"/>
     /// expansions are spent. On a non-goal stop it reconstructs to the closest-approach node (least
-    /// heuristic among popped nodes, earliest on ties) as a <see cref="NavPathStatus.Partial"/> path, or
+    /// physical distance among popped nodes, earliest on ties) as a <see cref="NavPathStatus.Partial"/> path, or
     /// <see cref="NavPath.Unreachable"/> when that closest node is still the start.
     /// </summary>
     NavPath RunAStar(SearchScratch scratch,
@@ -35,7 +33,8 @@ public sealed partial class GridPathPlanner
         NavGrid goalGrid = _space.Layers[goalLayer];
         (int goalX, int goalZ) = goalGrid.CellOf(goalPoint.X, goalPoint.Y);
         return RunSearch(scratch, startLayer, startPoint,
-            new PointGoal(goalLayer, goalX, goalZ, goalGrid.CellSize, !_hasDrops || PointLinksPreserveOctile()), goalPoint, agentRadius, budget);
+            new PointGoal(this, goalLayer, goalX, goalZ, CellFeet(goalLayer, goalX, goalZ)),
+            goalPoint, agentRadius, budget);
     }
 
     /// <summary>What one search is looking for. A struct implementation keeps the per-node calls free of
@@ -51,15 +50,23 @@ public sealed partial class GridPathPlanner
         double Progress(int layer, int x, int z);
     }
 
-    /// <summary>A point query's goal cell, ordered by <see cref="Heuristic"/>.</summary>
-    readonly struct PointGoal(int goalLayer, int goalX, int goalZ, float goalCellSize, bool spatialBound) : ISearchGoal
+    /// <summary>A point query's goal cell, ordered by the planner's cached spatial cost bound.</summary>
+    readonly struct PointGoal(GridPathPlanner planner, int goalLayer, int goalX, int goalZ,
+        Vector3 goalFeet) : ISearchGoal
     {
         public bool IsGoal(int layer, int x, int z) => layer == goalLayer && x == goalX && z == goalZ;
 
         public float Priority(int layer, int x, int z)
-            => spatialBound ? Heuristic(layer, x, z, goalLayer, goalX, goalZ, goalCellSize) : 0f;
+            => planner._spatialBound.Point(layer, x, z, goalLayer, goalX, goalZ);
 
-        public double Progress(int layer, int x, int z) => Heuristic(layer, x, z, goalLayer, goalX, goalZ, goalCellSize);
+        public double Progress(int layer, int x, int z)
+        {
+            Vector3 feet = planner.CellFeet(layer, x, z);
+            double dx = (double)feet.X - goalFeet.X;
+            double dy = (double)feet.Y - goalFeet.Y;
+            double dz = (double)feet.Z - goalFeet.Z;
+            return dx * dx + dy * dy + dz * dz;
+        }
     }
 
     // Priority must bound remaining route cost. Progress only chooses a partial endpoint, so region
@@ -305,29 +312,6 @@ public sealed partial class GridPathPlanner
         int local = id - _layerOffset[layer];
         int width = _space.Layers[layer].Width;
         return (layer, local % width, local / width);
-    }
-
-    /// <summary>Octile distance to the goal cell while the node is on the goal's layer, zero otherwise.
-    /// On the goal layer this heuristic is admissible only when all links move at most one cell in XZ
-    /// (as in DungeonNav stair links). A link that jumps far in XZ for its flat one-cell cost, or an
-    /// optimal path that leaves and re-enters the goal layer through such links, can cause the heuristic
-    /// to overestimate, making A* return a valid but suboptimal Complete path. Zero off the goal layer is
-    /// an admissible lower bound across a link (no octile estimate spans two coordinate frames), which
-    /// keeps the popped-node-is-final guarantee for a search that ascends into the goal's layer and never
-    /// leaves it, at the cost of a Dijkstra-like sweep before the crossing.</summary>
-    static float Heuristic(int layer, int cx, int cz, int goalLayer, int goalX, int goalZ, float goalCellSize)
-        => layer == goalLayer ? Octile(cx, cz, goalX, goalZ, goalCellSize) : 0f;
-
-    /// <summary>Octile distance in meters from cell (<paramref name="x"/>, <paramref name="z"/>) to the
-    /// goal cell (<paramref name="goalX"/>, <paramref name="goalZ"/>):
-    /// <paramref name="cellSize"/> * (sqrt(2) * min + (max - min)) over the axis deltas.</summary>
-    static float Octile(int x, int z, int goalX, int goalZ, float cellSize)
-    {
-        int adx = Math.Abs(x - goalX);
-        int adz = Math.Abs(z - goalZ);
-        int min = Math.Min(adx, adz);
-        int max = Math.Max(adx, adz);
-        return cellSize * (Sqrt2 * min + (max - min));
     }
 
 }

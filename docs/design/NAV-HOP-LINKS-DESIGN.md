@@ -87,12 +87,10 @@ tells the follower's consumer "traverse this by jumping" so it can play a lunge 
    (default 4), the only cost tuning this feature adds. Two properties follow from the default. First, where
    both a ramp and a hop reach the same place, the planner sums the ramp's per-cell walk costs against the
    hop's flat cost, so a ramp detour shorter than the hop penalty wins (a hop is not free). Second, the
-   default keeps A* optimal: the octile heuristic assumes pure walking, so it stays admissible as long as a
-   hop is never cheaper than walking its own XZ displacement. The longest hop at `maxHopCells = 2` spans a
-   2-cell diagonal (octile ~2.83 cells), so `hopCostCells >= 2.83` guarantees the heuristic never
-   overestimates a hop-using path. The default of 4 clears that with margin. Below it, A* stays correct but
-   may return a valid non-optimal route, the same caveat the existing planner already documents for
-   far-jumping links.
+   default preserves the unscaled spatial bound: the longest hop at `maxHopCells = 2` spans a
+   two-cell diagonal (octile about 2.83 cells), below the default cost of 4. Cheaper hops remain optimal
+   because the planner scales its bound by the least edge-cost-to-span ratio once at construction.
+   The Navigation README owns the shared-frame and world-space metric rules.
 
 7. **The follower surfaces a hop through a new `PathFollowState.Hopping` plus a `HopStart` on the output,
    and suspends ground steering for the duration.** The planner marks a hop link's landing waypoint
@@ -231,16 +229,15 @@ already.
 
 Cost: precompute each link's meters cost at construction (`Stair` -> `grid.CellSize`, `Hop` ->
 `hopCostCells * grid.CellSize`, using the source layer's cell size), store it in the adjacency, and charge
-it in A* link expansion. `Stair` links keep their exact prior cost, so every existing planner and
-`DungeonNav` test is unmoved. Admissibility of the octile heuristic holds for `hopCostCells` at or above
-the longest hop's octile displacement (~2.83 cells at `maxHopCells` 2), and the default 4 clears it, so A*
-stays optimal. This is the same admissibility framing the planner already documents for its links.
+it in A* link expansion. `Stair` links keep their exact prior cost. The planner's construction-time
+minimum edge-cost-to-span ratio preserves admissibility and consistency for cheap hops as well as
+stairs across layers. Links that preserve the spatial bound leave the ratio at one.
 
 Reconstruction retains the incoming edge actually selected by the search. A link boundary is never inferred from
 non-adjacency or an endpoint-pair Hop set. This preserves adjacent same-layer Drop transitions without annotating a
 cheaper ordinary exit as special. Hop landings retain `NavWaypointKind.Hop` and Stair landings Walk. Drop endpoints
 are mandatory physical anchors, including a Drop on the first edge. The unguarded Hop first-edge behavior remains
-unchanged. The [Drop contract](CONTACT-DROP-LINKS.md) describes its distance cost and whole-query heuristic fallback.
+unchanged. The [Drop contract](CONTACT-DROP-LINKS.md) describes its distance cost and scaled spatial bound.
 
 ## Follower seam
 

@@ -372,7 +372,8 @@ ordinary exits and accepted links. Movement uses a separate supported-walk query
 ### Goal regions
 
 `NavGoalRegion(Vector3 anchor, float horizontalExtent, Func<Vector3, bool> contains)` exposes `Anchor`,
-`HorizontalExtent`, and `Contains(Vector3 feetPosition)`. The anchor and extent bound candidate discovery.
+`HorizontalExtent`, and `Contains(Vector3 feetPosition)`. The extent is the half-width on each world XZ
+axis of the square around the anchor. It bounds candidate discovery, including the square's corners.
 The predicate is pure for a query and receives each candidate's actual cell-centre feet position. There is
 no anchor substitution or target-Y guess. `IRegionPathPlanner` adds
 `FindPath(Vector3 start, NavGoalRegion goal, float agentRadius, PathQueryBudget budget)` to
@@ -380,8 +381,9 @@ no anchor substitution or target-Y guess. `IRegionPathPlanner` adds
 passes `Contains`.
 
 The region search discovers the full admitted topology before expansion, then uses one shared search. Its
-priority is a safe spatial lower bound or zero when a cross-layer link or a cheap same-layer link could
-undercut that bound. Separate finite-safe progress compares each expanded node with the actual admitted
+priority scales world XZ distance to that square by the construction-time cost ratio on every layer.
+Distance to the square is zero at every admitted member. Distance to the inscribed circle would overestimate
+at corner members, which can select a costlier Complete route even without links. Separate finite-safe progress compares each expanded node with the actual admitted
 region members. Work is `O(N + E*M)` and storage is `O(N + M)`, where `N` is topology size, `E` is the
 expanded node count, and `M` is the member count. The conservative anchor and horizontal extent AABB
 reduces exact predicate calls, not `M` for a valid predicate. `MaxExpandedNodes` bounds search expansions,
@@ -392,21 +394,34 @@ so it cannot prove a shortcut. Straightening a region route lives in Movement, b
 shortcut.
 
 `GridPathPlanner(space, hopCostCells = 4f)` exposes the one hop-cost knob: the cost of crossing a `Hop`
-link, in multiples of the source layer's `NavGrid.CellSize`. It must be positive, and existing
-`new GridPathPlanner(space)` calls are unaffected. Admissibility note: keep `hopCostCells` at or above
-the longest hop's octile XZ length in cells, so a hop is never cheaper than walking its own displacement.
-The longest hop at `maxHopCells = 2` spans a 2-cell diagonal (octile about 2.83 cells), which the default
-of 4 covers with headroom, so the octile heuristic never overestimates and paths stay optimal.
+link, in multiples of the source layer's `NavGrid.CellSize`. It must be positive. The default 4 exceeds
+an ordinary two-cell diagonal hop's octile span of about 2.83 cells.
 
-Point queries on Drop topology first check every admitted link. Cross-layer or cheap links that invalidate
-the octile bound give the entire query zero priority, matching the conservative region rule. Drop-free point
-queries retain their historical heuristic. Its documented limitations follow. The octile heuristic is admissible on the goal layer only when every link
-moves at most one cell in XZ (true of `DungeonNav`'s stair links) - a link that jumps far in XZ for its
-flat one-cell cost can make the heuristic overestimate, so A* can return a valid but suboptimal `Complete`
-path. Off the goal layer the heuristic is zero (an admissible lower bound across a link, at the cost of a
-Dijkstra-like sweep before the crossing), which pins the start as the closest-approach minimum, so a
-cross-layer query that reaches the goal's layer but cannot reach the goal returns `Unreachable` rather
-than `Partial` (single-layer `Partial` behavior is unaffected).
+The planner computes a spatial cost ratio once at construction, never by rescanning links during a query.
+It takes the least cost divided by spatial span over walking edges and accepted links, capped at one.
+When every layer shares origin, cell size and yaw, the metric is octile in that common frame. Otherwise
+it is world XZ distance, including the actual walking spans of translated or rotated grids. A purely
+vertical link imposes no spatial constraint. A non-finite cost or a nonpositive ratio falls back to zero.
+Walking costs are uniform, with no area or terrain cost multiplier. Traversal profiles remove edges
+without changing their costs.
+
+Point priority uses that scaled metric to the goal cell on every layer. Region priority scales the XZ
+distance to the region's world-axis extent square on every layer. Feet and edge spans use the same XZ
+cell centres, with surface height supplying only Y. Each edge costs at least its scaled spatial
+span, so these bounds are admissible and consistent even for cheap diagonal stairs, long links and
+paths leaving and re-entering the goal layer. A popped node is final. Preserving links leave the ratio
+at one. Point progress uses squared physical 3D distance to the goal cell's feet across layers, while
+region progress uses squared 3D distance to actual members. Legacy height-less point grids use a zero-height
+plane. Progress still selects a useful partial endpoint when the safe
+priority is zero. The legacy point line-of-sight shortcut is used only when the ratio is one, since a
+cheap link can otherwise beat a visible direct walk.
+
+The bound and partial progress apply on every layer for every graph. Route choices change in 23.3.0.
+Complete searches retain optimal graph-edge cost. With `MaxExpandedNodes = int.MaxValue`, a query completes
+exactly when the admitted graph connects its start to a goal, otherwise it returns Partial or Unreachable.
+Finite-budget results are best effort. Changing the search order can improve or worsen a status or the
+distance of a Partial endpoint within the same budget. Physical 3D point progress avoids selecting a roof
+directly above the goal merely because its XZ coordinates coincide.
 
 `PathQueryBudget` is a value type, cheap to construct per query: `MaxExpandedNodes` (the A* expansion
 cap before it gives up and returns `Partial`) and `SnapRadius` (the max world-unit nudge onto a passable

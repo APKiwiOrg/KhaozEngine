@@ -70,6 +70,7 @@ public partial class ContactLeasedQueryTests
         // FailFootprintAt expires the interval at that call. RefuseFootprintFrom returns an atomic capacity
         // refusal from that call on, with both output spans untouched.
         public int FailFootprintAt, RefuseFootprintFrom;
+        public Vector2? RefuseFootprintAxis;
         public bool FailPushedSupport, RefusePushedSupport;
         public Vector3 PushMtv;
         public SupportFootprintRequest? PushedSupportRequest;
@@ -117,7 +118,7 @@ public partial class ContactLeasedQueryTests
                         SupportFootprintResult.MaximumElements + 1);
             }
             if (FootprintCalls == FailFootprintAt) throw new InvalidOperationException("The test interval expired.");
-            if (RefuseFootprintFrom > 0 && FootprintCalls >= RefuseFootprintFrom)
+            if (RefuseFootprintFrom > 0 && FootprintCalls >= RefuseFootprintFrom || request.Axis == RefuseFootprintAxis)
                 return SupportFootprintResult.Refused(CapsuleFeatureStatus.CapacityExceeded, SupportFootprintResult.MaximumElements + 1);
             SupportFootprintResult result = ((IPhysicsSupportFootprint)inner).QuerySupportFootprint(lease, request, members, joins, filter);
             if (result.Status == CapsuleFeatureStatus.Complete)

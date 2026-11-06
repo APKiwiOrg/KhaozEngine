@@ -119,7 +119,15 @@ internal static class MapNativeValidation
                         $"surface '{surface.Id}': paintPriority is valid only for PaintOverride.")
                     { SurfaceId = surface.Id, FieldPath = Field(path, "paintPriority"), Index = i, ActualInteger = surface.PaintPriority });
                 if (surface.Frame is null || !Enum.IsDefined(surface.Role) || !Enum.IsDefined(surface.PresencePolicy))
-                    errors.Add($"surface '{surface.Id}': invalid frame, role or presence policy.");
+                {
+                    bool missing = surface.Frame is null;
+                    bool role = !missing && !Enum.IsDefined(surface.Role);
+                    Add(errors, findings, new(missing ? MapDocumentRefusal.SchemaValueRequired : MapDocumentRefusal.SchemaEnumUnsupported,
+                        $"surface '{surface.Id}': invalid frame, role or presence policy.")
+                    { SurfaceId = surface.Id, Index = i, FieldPath = Field(path, missing ? "frame" : role ? "role" : "presencePolicy"),
+                        EnumType = missing ? null : role ? typeof(MapSurfaceRole) : typeof(MapPresencePolicy),
+                        ActualInteger = missing ? null : role ? (long)surface.Role : (long)surface.PresencePolicy });
+                }
                 else
                 {
                     try { _ = surface.Frame.WorldXz(MapLatticeAddress.Corner(0, 0)); }
@@ -167,7 +175,8 @@ internal static class MapNativeValidation
         string prefix = $"placement '{placement.Id}': ";
         string path = Field(fieldPath, "supportBinding");
         if (placement.Y is not null) Required("explicit Y cannot have a support binding.", Field(fieldPath, "y"));
-        if (!Enum.IsDefined(binding.Kind)) errors.Add(prefix + "unsupported support binding kind.");
+        if (!Enum.IsDefined(binding.Kind)) Add(errors, findings, new(MapDocumentRefusal.SchemaEnumUnsupported, prefix + "unsupported support binding kind.")
+        { PlacementId = placement.Id, FieldPath = Field(path, "kind"), EnumType = typeof(MapSupportBindingKind), ActualInteger = (long)binding.Kind });
         else if (binding.Kind == MapSupportBindingKind.Surface)
         {
             if (string.IsNullOrWhiteSpace(binding.SurfaceId) || !surfaces.ContainsKey(binding.SurfaceId) || binding.SpaceId is not null)

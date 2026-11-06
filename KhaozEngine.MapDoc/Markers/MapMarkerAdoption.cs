@@ -77,7 +77,7 @@ public static class MapMarkerAdoption
 
     static void RequireValid(MapDocument document)
     {
-        var errors = MapDocumentValidator.Validate(document, MapDocRegistry.CreateDefault());
-        if (errors.Count != 0) throw new MapDocumentException(string.Join("\n", errors));
+        var findings = MapDocumentValidator.ValidateFindings(document, MapDocRegistry.CreateDefault());
+        if (findings.Count != 0) throw MapDocumentRefusalFactory.FromFinding(findings[0], string.Join("\n", findings.Select(f => f.Message)), findings: findings);
     }
 }

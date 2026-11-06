@@ -17,6 +17,14 @@ public static class MapDocumentValidator
     public static IReadOnlyList<string> Validate(MapDocument doc, MapDocRegistry registry)
         => Validate(doc, registry, null);
 
+    /// <summary>Returns the complete ordered immutable findings behind <see cref="Validate(MapDocument, MapDocRegistry)"/>.</summary>
+    public static IReadOnlyList<MapDocumentFinding> ValidateFindings(MapDocument doc, MapDocRegistry registry)
+    {
+        var findings = new List<MapDocumentFinding>();
+        _ = Validate(doc, registry, findings);
+        return findings.AsReadOnly();
+    }
+
     internal static IReadOnlyList<string> Validate(MapDocument doc, MapDocRegistry registry, List<MapDocumentFinding>? findings)
     {
         ArgumentNullException.ThrowIfNull(doc);
@@ -264,10 +272,11 @@ public static class MapDocumentValidator
         {
             string field = minX < bounds.MinX ? "minX" : maxX > bounds.MaxX ? "maxX" : minZ < bounds.MinZ ? "minZ" : "maxZ";
             bool x = field is "minX" or "maxX";
-            Add(errors, findings, new(MapDocumentRefusal.BoundsInvalid,
+            float actual = field == "minX" ? minX : field == "maxX" ? maxX : field == "minZ" ? minZ : maxZ;
+            Add(errors, findings, new(float.IsFinite(actual) ? MapDocumentRefusal.BoundsInvalid : MapDocumentRefusal.ValueNonfinite,
                 $"terrainOverrides tile ({tile.TileX}, {tile.TileZ}) extent [{minX}..{maxX}] x [{minZ}..{maxZ}] leaves the document bounds.")
-            { Tile = new(tile.TileX, tile.TileZ), Index = index, FieldPath = $"$.terrainOverrides.tiles[{index}].{field}",
-                ActualNumber = field == "minX" ? minX : field == "maxX" ? maxX : field == "minZ" ? minZ : maxZ,
+            { SculptTile = new(tile.TileX, tile.TileZ), Index = index, FieldPath = $"$.terrainOverrides.tiles[{index}].{field}",
+                ActualNumber = float.IsFinite(actual) ? actual : null,
                 MinimumNumber = x ? bounds.MinX : bounds.MinZ, MaximumNumber = x ? bounds.MaxX : bounds.MaxZ });
         }
     }

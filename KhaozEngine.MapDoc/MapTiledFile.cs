@@ -98,9 +98,9 @@ internal static partial class MapTiledFile
             throw new MapDocumentException($"{path}: sculptCellSize {sculptCellSize} is not positive and finite.", ex);
         }
 
-        IReadOnlyList<string> errors = MapDocumentValidator.Validate(doc, options.Registry);
-        if (errors.Count > 0)
-            throw new MapDocumentException($"{path}: invalid map manifest:\n  " + string.Join("\n  ", errors));
+        IReadOnlyList<MapDocumentFinding> findings = MapDocumentValidator.ValidateFindings(doc, options.Registry);
+        if (findings.Count > 0)
+            throw MapDocumentRefusalFactory.FromFinding(findings[0] with { SourceName = path, Path = path }, $"{path}: invalid map manifest:\n  " + string.Join("\n  ", findings.Select(f => f.Message)), findings: findings);
 
         foliageIndex = foliageIndex?.WithResidency(directory, foliage);
         index = new MapTileIndex(doc.TileSize, schemeVersion, Normalize(directory), entries, HashManifest(manifestBytes),
@@ -159,9 +159,9 @@ internal static partial class MapTiledFile
         doc.Tiles = new MapTileIndex(index.TileSize, index.SchemeVersion, Normalize(directory), entries, index.ManifestSha256, index.Surfaces) { Foliage = index.Foliage };
         MapFoliageStorage.Load(doc, directory, window);
 
-        IReadOnlyList<string> errors = MapDocumentValidator.Validate(doc, options.Registry);
-        if (errors.Count > 0)
-            throw new MapDocumentException($"{directory}: invalid map document:\n  " + string.Join("\n  ", errors));
+        IReadOnlyList<MapDocumentFinding> findings = MapDocumentValidator.ValidateFindings(doc, options.Registry);
+        if (findings.Count > 0)
+            throw MapDocumentRefusalFactory.FromFinding(findings[0] with { SourceName = directory, Path = directory }, $"{directory}: invalid map document:\n  " + string.Join("\n  ", findings.Select(f => f.Message)), findings: findings);
         return doc;
     }
 

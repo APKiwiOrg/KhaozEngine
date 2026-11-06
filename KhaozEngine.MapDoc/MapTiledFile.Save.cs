@@ -32,9 +32,9 @@ internal static partial class MapTiledFile
         string root = Normalize(directory);
 
         // 1. Validate, then the four guards.
-        IReadOnlyList<string> errors = MapDocumentValidator.Validate(doc, registry);
-        if (errors.Count > 0)
-            throw new MapDocumentException("refusing to save an invalid map document:\n  " + string.Join("\n  ", errors));
+        IReadOnlyList<MapDocumentFinding> findings = MapDocumentValidator.ValidateFindings(doc, registry);
+        if (findings.Count > 0)
+            throw MapDocumentRefusalFactory.FromFinding(findings[0] with { SourceName = directory, Path = directory }, "refusing to save an invalid map document:\n  " + string.Join("\n  ", findings.Select(f => f.Message)), findings: findings);
 
         if (File.Exists(root))
             throw new MapDocumentException(

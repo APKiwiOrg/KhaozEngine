@@ -12266,8 +12266,8 @@ Local binding, owner and clearance findings retain their layer, item identity an
 Owner checks distinguish missing values, non-World scopes and forbidden child kinds. Clearance footprints
 select the first nonfinite coordinate or collapsed finite dimension. `ValidateFindings` and
 `ValidateBoundFindings` expose complete owned read-only snapshots in string-validation order, and the
-document-level foliage collector forwards them. Broader document and storage adapters still wait for their
-other producer conversions.
+document-level foliage collector forwards them. Whole-document and native-bound adapters retain the
+first typed finding and the full ordered snapshot.
 Brush layer mismatches use `AuthoredValueMismatch`, carrying the target `LayerId` and submitted
 `ActualText`. Scalar guards select `ValueNonfinite`, `ValueOutsideRange` or `BoundsInvalid` from the
 first failed branch and retain `FieldPath` and the checked value or limits. Hardness accepts both 0 and 1.
@@ -12511,17 +12511,17 @@ before ownership. Unpacked prisms require matching live record and storey transf
 Prism containment findings use `SpacePrismOutsideParent` or `SpacePrismParentSeparationInvalid`,
 with `RecordId`, `SpaceId` and parent `RelatedRecordId`. `SpaceOccupiedOverlap` names both occupied
 spaces through `SpaceId` and `RelatedRecordId`. The released validation strings retain their order
-and prose. Aggregate adapters wait for the remaining refinement and water producers.
+and prose. Aggregate adapters forward the first concrete finding and its ordered snapshot.
 Boundary coverage distinguishes `SpaceBoundaryGap`, `SpaceBoundaryOverlap`,
 `SpaceCoverageMissingBound` and `SpaceCoverageSeparationInvalid`, retaining footprint `RecordId`,
 `SpaceId` and `SlotCell`. Portal air-band failures use `SpacePortalAirIntervalInvalid` with the
 portal `RecordId`, endpoint `SpaceId` and segment `Index`. Sequence findings retain the chain or
-portal subject instead of replacing it with wrapper context. Coverage still exposes its released
-string API while the remaining refinement and water producers finish carrying every failure.
+portal subject instead of replacing it with wrapper context. Coverage exposes its released string API
+and complete ordered typed findings.
 Coincident supports use `SpaceSupportCoincident`. Footprint overlap findings retain both footprint
 identities and both cells with `RecordId`, `RelatedRecordId`, `SlotCell` and `RelatedSlotCell`.
 The coverage collector forwards known overlap and prism findings without reading identifiers from
-prose. Deeper refinement and water producers still gate complete public finding snapshots.
+prose. Refinement and water findings retain the concrete producer reason and identifiers.
 
 Doors remain AuthoredOpen. `MapRoofPolicy` returns separate colour, shadow, camera-boom and sky-picking flags.
 Auto concealment uses occupied rooms and explicit links/groups, and leaves unlinked shelters visible. Hidden
@@ -13072,7 +13072,7 @@ conflicting opening fields and invalid open tops. Their `FieldPath` names the fi
 upper field. Slot checks retain the patch, cell index and value. They distinguish cardinality, duplicate
 entries, backwards ordering, numerical range, patch coordinates and openings over present cells.
 Count controls accept exactly 1 and 4096 slots. `PreviousInteger` is set only for an actual predecessor.
-The topology producer is complete. Broader adapters still wait for their other finding producers.
+The topology producer is complete. Whole-document and native-bound adapters retain its typed findings.
 Opening compilation carries the actual ownership, cardinality, slot range, patch address, duplicate or
 presence rule, retaining the opening identity and selected cell. Its exact geometry failures retain the
 opening and patch. Seam validation exposes ordered read-only findings through `ValidateFindings` and
@@ -13116,10 +13116,10 @@ Structural document findings retain `FieldPath`, `EntityId`, `SubjectKind` and i
 and duplicate names, and the referenced `LayerId` for missing companion hosts. Numeric rules carry
 their finite actual values and limits through `ValueOutsideRange`, while nonfinite failures use
 `ValueNonfinite`. Root format admission uses `DocumentVersionUnsupported`, `ActualVersion` and
-`SupportedVersions`. Whole-document adapters still wait for the remaining finding producers.
+`SupportedVersions`.
 Per-content findings retain the entity identity and item path. Unknown terrain discriminators use
 `DocumentTerrainFeatureUnknown` with their captured `ActualText`. Layer filters retain the referenced
-`LayerId`. Sculpt extent findings carry the sculpt `Tile`, first escaping axis, actual extent and
+`LayerId`. Sculpt extent findings carry `SculptTile`, first escaping axis, actual extent and
 document limits. Tile-size findings retain their positive or sculpt-span minimum, and native misplaced
 paint priority uses `SurfacePaintPriorityMisplaced` with the surface and submitted priority.
 
@@ -13135,9 +13135,20 @@ where known. `IdentityDuplicate` distinguishes repeated identities from `Numeric
 An unsupported resolver payload uses `SchemaPayloadVersionUnsupported`, with `ActualVersion` and an
 owned read-only `SupportedVersions` snapshot containing 1. Unsupported resolver versions keep
 `ResolverContractMismatch`. Positive-only version checks carry `MinimumInteger` 1 without claiming a
-closed supported-version set. Native metadata still has prose-only frame, enumeration and support-binding
-kind rules. Its aggregate throwing adapters for document validation retain their existing
-constructors until the remaining producer conversion.
+closed supported-version set. A missing native frame uses `SchemaValueRequired`, while undefined role,
+presence-policy and support-binding kinds use `SchemaEnumUnsupported`, `EnumType` and `ActualInteger`.
+
+`MapDocumentValidator.ValidateFindings` returns the complete ordered read-only snapshot behind the
+existing string API. Whole-document and tiled load/save, native-bound validation and marker-adoption
+adapters forward the first finding as `Reason` and retain the full `Findings` snapshot. Numeric
+reservation and allocation forward their numeric findings the same way. Supplied nonpositive numeric
+IDs use `ValueOutsideRange` with `NumericId`, actual value and minimum 1. Duplicate supplied IDs use
+`IdentityDuplicate`. Effective prefab expansion and foliage generation context still wait for the
+prefab numeric aggregate adapter.
+
+Tile ownership failures use `DocumentTileOwnershipMismatch`, retaining source document `Tile`, item
+identity and path, checked positions or `SculptTile`, `SourceName` and `Path`. The separate `SculptTile`
+identifier preserves sculpt coordinates through document-tile wrappers without replacing the source tile.
 
 Identity registry checks preserve `MapDocumentException` and distinguish `IdentityDuplicate`,
 `IdentityReserved`, `AuthoredOwnershipMismatch`, `ReferenceMissing`, `SchemaValueRequired` and

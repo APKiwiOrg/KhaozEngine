@@ -1187,8 +1187,9 @@ retain their containing layer and field path, including owner supports and masks
 missing value, World scope, permitted child kind and nonempty ID in that order. Scope failures reuse
 `AuthoredOwnershipMismatch`, and forbidden kinds reuse `AuthoredReferenceKindInvalid`. Clearance footprint
 findings select the first nonfinite coordinate or finite collapsed dimension and retain the item identity.
-The document-level foliage collector forwards every local finding. Broader document, storage and editing
-adapters still wait for their own final producer conversions.
+The document-level foliage collector forwards every local finding. Whole-document and native-bound
+adapters now forward the first typed finding and its ordered snapshot. Editing adapters keep their
+own publication boundaries.
 Brush admission uses `AuthoredValueMismatch` for a submitted `LayerId` different from the target layer,
 with the target in `LayerId` and submitted ID in `ActualText`. Nonfinite brush and raster scalars use
 `ValueNonfinite`, finite nonpositive cell size or radius and out-of-range hardness use `ValueOutsideRange`.
@@ -1804,6 +1805,7 @@ their joined diagnostic text.
 | `WaterBodiesPreventLegacyMode` | Switching to legacy global water while bounded bodies remain | `FieldPath`, `ActualCount` |
 | `DocumentVersionUnsupported` | A root document format version other than the current writable version | `FieldPath`, `ActualVersion`, `SupportedVersions` |
 | `DocumentTerrainFeatureUnknown` | A terrain feature discriminator absent from the supplied registry | discriminator `ActualText`, `EntityId`, `SubjectKind`, `FieldPath`, `Index` |
+| `DocumentTileOwnershipMismatch` | An entity or sculpt tile whose owner differs from its containing document tile | document `Tile`, `EntityId`, `SubjectKind`, `FieldPath`, `Index`, positions or `SculptTile`, `SourceName`, `Path` |
 | `WaterBoundedModeRequired` | A water edit while bounded water is off | `FieldPath` |
 | `WaterMediumInUse` | Removing a medium still used by a body | using body `EntityId`, medium key `ActualText`, `FieldPath` |
 | `WaterCoversAlias` | Covering a space alias instead of its owner | body `EntityId`, alias `RecordId`, owner `SpaceId`, `Patch` |
@@ -2220,10 +2222,17 @@ values from finite negative extents. `MinimumNumber` and `MaximumNumber` carry t
 bounds are refused. Native metadata and manifest admission set `ActualNumber` only for finite values.
 Payload checks requiring version 1 carry `SupportedVersions` as an owned read-only snapshot. A check
 requiring only a positive version carries `MinimumInteger` 1 instead. Native metadata's string diagnostics
-and admission points are unchanged. Its remaining frame, enumeration and support-binding kind rules are
-still prose-only, so adapters for native metadata and document validation retain
-their message-only constructors until the remaining producer conversion. No typed finding is inferred
-from those aggregate messages.
+and admission points are unchanged. A missing surface frame uses `SchemaValueRequired`. Undefined
+surface role, presence policy and support-binding kind values use `SchemaEnumUnsupported`, retaining
+`EnumType`, `ActualInteger` and the first failed field.
+
+`MapDocumentValidator.ValidateFindings` exposes the complete ordered read-only snapshot behind `Validate`.
+Whole-document load/save, tiled manifest/load/save, native-bound validation and marker-adoption adapters
+forward its first finding and retain every finding. Numeric reservation and allocation do the same for
+numeric findings. A supplied reservation distinguishes nonpositive IDs (`ValueOutsideRange`, with
+`NumericId`, `ActualInteger` and minimum 1) from duplicates (`IdentityDuplicate` with `NumericId`).
+No reason is inferred from aggregate prose. Effective prefab expansion and foliage generation-context
+adapters still wait for the prefab numeric aggregate adapter.
 
 `MapTopologyReferenceValidator.ValidateFindings` returns the complete ordered reference-integrity
 findings as a read-only list. `Validate` retains their unchanged string projection. Admission carries
@@ -2254,20 +2263,21 @@ uses `SpaceOpenTopInvalid`. Slot lists distinguish count limits (`ValueOutsideRa
 (`SurfaceAddressOutOfPatch`) and openings over present cells (`SpaceOpeningCellsInvalid`). Cell
 findings retain `RecordId`, `Patch`, `Index` and `ActualInteger`, with the genuine `PreviousInteger`
 only when a preceding entry exists. Patch-address findings also retain local coordinates and dimensions.
-Topology findings are complete. Broader throwing adapters still wait for their other finding producers.
+Topology findings are complete. Whole-document and native-bound adapters retain their typed findings.
 
 Structural document findings identify required or duplicate names with `FieldPath`, `EntityId`,
 `SubjectKind` and the containing item `Index`. Missing companion hosts additionally retain the referenced
 `LayerId`. Scalar findings use `ValueOutsideRange` or `ValueNonfinite` with the failed field and finite
 actual values and limits. The existing validation predicates and diagnostic order remain unchanged.
 Root format admission uses `DocumentVersionUnsupported` with `ActualVersion` and `SupportedVersions`.
-Whole-document adapters still wait for the remaining native and per-content finding producers.
 Per-content findings retain placement, spawn and player-spawn identities and field paths. Unknown
 terrain types carry the captured discriminator in `ActualText`. Missing layer filters retain their
-referenced `LayerId`, item identity and array path. Sculpt bounds findings retain the sculpt `Tile`,
+referenced `LayerId`, item identity and array path. Sculpt bounds findings retain `SculptTile`,
 the first escaping axis, actual extent and document limits. Tile-size findings carry the positive
 minimum or the full sculpt-span minimum. Native paint priority reuses `SurfacePaintPriorityMisplaced`
 with `SurfaceId`, `Index`, `FieldPath` and `ActualInteger`.
+Per-tile adapters retain source document `Tile`, `SourceName` and `Path` on each finding. `SculptTile`
+keeps sculpt coordinates separate from that document tile, including through source-context wrappers.
 
 Prepared bound-context reads use `MapBoundContextException` with `ContextDemandUnprepared` as their
 `Reason`, with the requested operation and patch, face or opening-cell identifiers. Existing
@@ -2321,8 +2331,8 @@ before instance ownership, using `SchemaPayloadVersionUnsupported` or `AuthoredO
 It retains the failed `FieldPath`, owning `InstanceId` and submitted owner `ActualText` when checked.
 Prism containment findings identify the prism, its space and parent. Peer-overlap findings identify
 both spaces. Strip-context findings preserve the original chain reason and identifiers.
-These findings accompany the released string diagnostics. Aggregate adapters still wait for the
-remaining refinement and water finding producers before forwarding complete typed snapshots.
+These findings accompany the released string diagnostics. Whole-document and native-bound adapters
+forward complete typed snapshots with the same first finding and diagnostic order.
 Boundary findings distinguish uncovered intervals, overlapping authored bands, portal sequence
 mismatches and portal air intervals. Missing footprint bounds and nonpositive separation retain
 the footprint `RecordId`, `SpaceId` and `SlotCell`. Forwarded topology and seam findings retain

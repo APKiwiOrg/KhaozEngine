@@ -36,6 +36,10 @@ public sealed class MapBoundPreparationFindingTests
         Assert.Equal(1L, finding.Limit);
         Assert.Equal(2L, finding.ActualCount);
         Assert.Equal(first.Key, finding.Patch);
+        Assert.Equal(refused.Refusal, finding.Message);
+        var laterFinding = Assert.IsType<MapDocumentFinding>(refused.CellOutcomes[("b", 0)].Finding);
+        Assert.Equal("MaxContextPatches", laterFinding.Budget);
+        Assert.Equal(later.Key, laterFinding.Patch);
 
         var control = MapCommonRefinement.PrepareFootprints(view, footprints,
             new(MaxContextFaces: 4, MaxContextPatches: 2), null);

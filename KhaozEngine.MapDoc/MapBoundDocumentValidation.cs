@@ -21,7 +21,7 @@ public static class MapBoundDocumentValidation
         RequireRoots(document.NativeAssets, assets);
         MapPrefabIdentity.RequireOwnership(document, assets);
         RequireWaterMaterials(document.Water, assets);
-        Require(MapFoliageValidation.ValidateBound(document, assets));
+        Require(MapFoliageValidation.ValidateBoundFindings(document, assets));
         foreach (MapPlacement placement in document.Placements) RequireClosureAsset(placement, assets);
     }
 
@@ -40,7 +40,7 @@ public static class MapBoundDocumentValidation
                 FieldPath = "resolverIdentity",
             };
         if (document.PlayableBounds is null) throw new MapDocumentException("Native document requires playable bounds.");
-        Require(MapDocumentValidator.Validate(document, registry ?? MapDocRegistry.CreateDefault()));
+        Require(MapDocumentValidator.ValidateFindings(document, registry ?? MapDocRegistry.CreateDefault()));
         if (!float.IsFinite(document.Bounds.MinX) || !float.IsFinite(document.Bounds.MinZ) ||
             !float.IsFinite(document.Bounds.MaxX) || !float.IsFinite(document.Bounds.MaxZ))
             throw new MapDocumentException("Native storage bounds must be finite.");
@@ -72,7 +72,9 @@ public static class MapBoundDocumentValidation
     internal static void ValidateContent(MapDocument globals, IReadOnlyDictionary<string, MapSurfaceRef> surfaces,
         MapTileContent content, HashSet<long> numericIds, MapAssetClosure assets)
     {
-        Require(MapDocumentValidator.ValidateContent(globals, surfaces, content, numericIds));
+        var findings = new List<MapDocumentFinding>();
+        MapDocumentValidator.ValidateContent(globals, surfaces, content, numericIds, findings);
+        Require(findings);
         foreach (MapPlacement p in content.Placements) ValidatePlacement(p);
         foreach (MapPlacement p in content.Placements) RequireClosureAsset(p, assets);
     }
@@ -106,9 +108,9 @@ public static class MapBoundDocumentValidation
             string.Join("\n", findings.Select(f => f.Message)), findings: findings);
     }
 
-    static void Require(IReadOnlyList<string> errors)
+    static void Require(IReadOnlyList<MapDocumentFinding> findings)
     {
-        if (errors.Count != 0) throw new MapDocumentException(string.Join("\n", errors));
+        if (findings.Count != 0) throw MapDocumentRefusalFactory.FromFinding(findings[0], string.Join("\n", findings.Select(f => f.Message)), findings: findings);
     }
 
     static void ValidatePlacement(MapPlacement p)

@@ -143,12 +143,12 @@ namespace KhaozEngine.Tests.MapDoc
         }
 
         [Theory]
-        [InlineData("moved", "belongs to document tile")]
-        [InlineData("duplicate", "duplicate placement id")]
-        [InlineData("empty-id", "non-empty id")]
-        [InlineData("short-deltas", "deltas")]
-        [InlineData("foreign-sculpt", "is owned by document tile")]
-        public void PerTileValidation_FailsLoudly(string breakage, string expected)
+        [InlineData("moved", MapDocumentRefusal.DocumentTileOwnershipMismatch)]
+        [InlineData("duplicate", MapDocumentRefusal.IdentityDuplicate)]
+        [InlineData("empty-id", MapDocumentRefusal.SchemaValueRequired)]
+        [InlineData("short-deltas", MapDocumentRefusal.SchemaMalformed)]
+        [InlineData("foreign-sculpt", MapDocumentRefusal.DocumentTileOwnershipMismatch)]
+        public void PerTileValidation_FailsLoudly(string breakage, MapDocumentRefusal expected)
         {
             TiledDocFixture.InDirectory(directory =>
             {
@@ -156,7 +156,8 @@ namespace KhaozEngine.Tests.MapDoc
                 string relative = TiledDocFixture.TileFiles(directory)
                     .Single(f => f.Contains("t_0_0.", StringComparison.Ordinal));
                 string path = Path.Combine(directory, relative);
-                JsonNode tile = JsonNode.Parse(File.ReadAllText(path))!;
+                string original = File.ReadAllText(path);
+                JsonNode tile = JsonNode.Parse(original)!;
                 JsonArray placements = tile["placements"]!.AsArray();
 
                 switch (breakage)
@@ -180,9 +181,11 @@ namespace KhaozEngine.Tests.MapDoc
                 File.WriteAllText(path, tile.ToJsonString());
 
                 var ex = Assert.Throws<MapDocumentException>(() => MapDocumentFile.LoadTiled(directory));
-                Assert.Contains(expected, ex.Message, StringComparison.Ordinal);
-                Assert.Contains("(0, 0)", ex.Message, StringComparison.Ordinal);
-                Assert.Contains(Path.GetFileName(relative), ex.Message, StringComparison.Ordinal);
+                Assert.Equal(expected, ex.Reason);
+                Assert.Equal(new MapTileCoord(0, 0), ex.Tile);
+                Assert.Equal(Path.GetFileName(relative), Path.GetFileName(ex.Path));
+                File.WriteAllText(path, original);
+                Assert.NotEmpty(MapDocumentFile.LoadTiled(directory).Placements);
             });
         }
 

@@ -179,9 +179,9 @@ public static class MapDocumentFile
         }
         foreach (var patch in patches.Patches) doc.Surfaces.Patches.Add(patch.Key, patch.Value);
 
-        IReadOnlyList<string> errors = MapDocumentValidator.Validate(doc, options.Registry);
-        if (errors.Count > 0)
-            throw new MapDocumentException($"{where}: invalid map document:\n  " + string.Join("\n  ", errors));
+        IReadOnlyList<MapDocumentFinding> findings = MapDocumentValidator.ValidateFindings(doc, options.Registry);
+        if (findings.Count > 0)
+            throw MapDocumentRefusalFactory.FromFinding(findings[0] with { SourceName = where }, $"{where}: invalid map document:\n  " + string.Join("\n  ", findings.Select(f => f.Message)), findings: findings);
         return doc;
     }
 
@@ -331,9 +331,9 @@ public static class MapDocumentFile
                 "refusing to write a windowed document as a whole document: it would silently drop every tile the " +
                 "window did not load. Save it back to its own directory with SaveTiled, or load the whole world first.");
 
-        IReadOnlyList<string> errors = MapDocumentValidator.Validate(doc, registry);
-        if (errors.Count > 0)
-            throw new MapDocumentException("refusing to save an invalid map document:\n  " + string.Join("\n  ", errors));
+        IReadOnlyList<MapDocumentFinding> findings = MapDocumentValidator.ValidateFindings(doc, registry);
+        if (findings.Count > 0)
+            throw MapDocumentRefusalFactory.FromFinding(findings[0], "refusing to save an invalid map document:\n  " + string.Join("\n  ", findings.Select(f => f.Message)), findings: findings);
         MapSurfaceEmbedding.Check(doc.Surfaces, MapSurfaceEmbedding.MaxPatches, MapSurfaceEmbedding.MaxEncodedBytes);
         MapSurfaceSaveGuard.Whole(doc.Surfaces);
 

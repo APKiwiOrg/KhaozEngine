@@ -14,13 +14,17 @@ public static class MapNumericIds
         ArgumentNullException.ThrowIfNull(document);
         ArgumentNullException.ThrowIfNull(ids);
         var errors = new List<string>();
-        long maximum = MapNativeValidation.ValidateNumericIds(document, errors, requireHighWater: false);
-        ThrowIfInvalid(errors);
+        var findings = new List<MapDocumentFinding>();
+        long maximum = MapNativeValidation.ValidateNumericIds(document, errors, requireHighWater: false, findings: findings);
+        ThrowIfInvalid(errors, findings);
         var reserved = new HashSet<long>();
         foreach (long id in ids)
         {
             if (id <= 0 || !reserved.Add(id))
-                throw new MapDocumentException("Reserved numeric IDs must be distinct positive int64 values.");
+                throw new MapDocumentException(id <= 0 ? MapDocumentRefusal.ValueOutsideRange : MapDocumentRefusal.IdentityDuplicate,
+                    "Reserved numeric IDs must be distinct positive int64 values.")
+                { NumericId = id, FieldPath = "ids", SubjectKind = "numeric reservation", Operation = nameof(Reserve),
+                    ActualInteger = id <= 0 ? id : null, MinimumInteger = id <= 0 ? 1 : null };
             maximum = Math.Max(maximum, id);
         }
         document.NumericIdHighWaterMark = maximum;
@@ -32,16 +36,17 @@ public static class MapNumericIds
     {
         ArgumentNullException.ThrowIfNull(document);
         var errors = new List<string>();
-        MapNativeValidation.ValidateNumericIds(document, errors);
-        ThrowIfInvalid(errors);
+        var findings = new List<MapDocumentFinding>();
+        MapNativeValidation.ValidateNumericIds(document, errors, findings: findings);
+        ThrowIfInvalid(errors, findings);
         long next = checked(document.NumericIdHighWaterMark + 1);
         document.NumericIdHighWaterMark = next;
         return next;
     }
 
-    static void ThrowIfInvalid(List<string> errors)
+    static void ThrowIfInvalid(List<string> errors, List<MapDocumentFinding> findings)
     {
         if (errors.Count > 0)
-            throw new MapDocumentException("Invalid numeric identities:\n  " + string.Join("\n  ", errors));
+            throw MapDocumentRefusalFactory.FromFinding(findings[0], "Invalid numeric identities:\n  " + string.Join("\n  ", errors), findings: findings);
     }
 }

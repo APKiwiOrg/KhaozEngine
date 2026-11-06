@@ -21,6 +21,7 @@ internal static class MapDocumentRefusalFactory
             CellZ = finding.CellZ,
             Edge = finding.Edge,
             Tile = finding.Tile,
+            SculptTile = finding.SculptTile,
             LineNumber = finding.LineNumber,
             BytePositionInLine = finding.BytePositionInLine,
             PayloadVersion = finding.PayloadVersion,

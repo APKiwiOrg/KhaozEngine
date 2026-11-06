@@ -43,6 +43,8 @@ public sealed record MapDocumentFinding(MapDocumentRefusal Reason, string Messag
     public MapCellEdge? Edge { get; init; }
     /// <summary>The document tile being read, when known.</summary>
     public MapTileCoord? Tile { get; init; }
+    /// <summary>The authored sculpt tile whose identity or extent failed validation.</summary>
+    public MapTileCoord? SculptTile { get; init; }
     /// <summary>The zero-based JSON line number exposed by the reader, when available.</summary>
     public long? LineNumber { get; init; }
     /// <summary>The zero-based UTF-8 byte position within the JSON line, when exposed by the reader.</summary>
@@ -288,6 +290,7 @@ public sealed record MapDocumentFinding(MapDocumentRefusal Reason, string Messag
             CellZ = error.CellZ,
             Edge = error.Edge,
             Tile = error.Tile,
+            SculptTile = error.SculptTile,
             LineNumber = error.LineNumber,
             BytePositionInLine = error.BytePositionInLine,
             PayloadVersion = error.PayloadVersion,

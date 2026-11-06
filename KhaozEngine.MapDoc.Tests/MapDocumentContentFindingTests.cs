@@ -146,7 +146,7 @@ public sealed class MapDocumentContentFindingTests
         var finding = Assert.Single(findings);
         Assert.Equal(MapDocumentRefusal.BoundsInvalid, finding.Reason);
         Assert.Equal("$.terrainOverrides.tiles[0]." + axis, finding.FieldPath);
-        Assert.Equal(new MapTileCoord(tileX, tileZ), finding.Tile);
+        Assert.Equal(new MapTileCoord(tileX, tileZ), finding.SculptTile);
         Assert.Equal(actual, finding.ActualNumber);
         Assert.Equal(0d, finding.MinimumNumber);
         Assert.Equal(100d, finding.MaximumNumber);
@@ -155,6 +155,24 @@ public sealed class MapDocumentContentFindingTests
         else if (axis == "maxX") doc.Bounds.MaxX = (float)actual;
         else doc.Bounds.MaxZ = (float)actual;
         Assert.Empty(MapDocumentValidator.Validate(doc, MapDocRegistry.CreateDefault()));
+    }
+
+    [Fact]
+    public void SculptExtent_NonfiniteArithmeticRetainsTheFirstEscapingAxis()
+    {
+        var doc = MapDocumentFindingTests.ValidDocument();
+        doc.TerrainOverrides = new(float.MaxValue);
+        var content = new MapTileContent(new(0, 0), [], [], [], [new(1, 0)]);
+        var findings = new List<MapDocumentFinding>();
+        // Tile (1, 0) starts at 32 * float.MaxValue. Both X endpoints overflow exactly to infinity.
+        Assert.Single(MapDocumentValidator.ValidateContent(doc, new Dictionary<string, MapSurfaceRef>(), content, [], findings));
+        var finding = Assert.Single(findings);
+        Assert.Equal(MapDocumentRefusal.ValueNonfinite, finding.Reason);
+        Assert.Equal("$.terrainOverrides.tiles[0].maxX", finding.FieldPath);
+        Assert.Equal(new MapTileCoord(1, 0), finding.SculptTile);
+        Assert.Null(finding.ActualNumber);
+        doc.TerrainOverrides = new(0.5f);
+        Assert.Empty(MapDocumentValidator.ValidateContent(doc, new Dictionary<string, MapSurfaceRef>(), content, []));
     }
 
     static Action Break(MapDocument doc, string fault)

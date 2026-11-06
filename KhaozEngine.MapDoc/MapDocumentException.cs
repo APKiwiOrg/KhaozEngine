@@ -56,6 +56,8 @@ public sealed class MapDocumentException : Exception
     public MapCellEdge? Edge { get; init; }
     /// <summary>The document tile being read, when known.</summary>
     public MapTileCoord? Tile { get; init; }
+    /// <summary>The authored sculpt tile whose identity or extent failed validation.</summary>
+    public MapTileCoord? SculptTile { get; init; }
     /// <summary>The zero-based JSON line number exposed by the reader, when available.</summary>
     public long? LineNumber { get; init; }
     /// <summary>The zero-based UTF-8 byte position within the JSON line, when exposed by the reader.</summary>
@@ -329,6 +331,7 @@ public sealed class MapDocumentException : Exception
         CellZ = inner.CellZ;
         Edge = inner.Edge;
         Tile = inner.Tile ?? tile;
+        SculptTile = inner.SculptTile;
         LineNumber = inner.LineNumber;
         BytePositionInLine = inner.BytePositionInLine;
         PayloadVersion = inner.PayloadVersion;

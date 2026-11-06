@@ -14,6 +14,8 @@ public enum MapDocumentRefusal
     DocumentVersionUnsupported,
     /// <summary>Refuses a terrain feature discriminator absent from the supplied registry.</summary>
     DocumentTerrainFeatureUnknown,
+    /// <summary>Refuses content whose owner differs from its containing document tile.</summary>
+    DocumentTileOwnershipMismatch,
     /// <summary>Refuses an operation requiring a complete document when content is unloaded.</summary>
     CompleteDocumentRequired,
     /// <summary>Refuses a migration source outside that migration's supported format versions.</summary>

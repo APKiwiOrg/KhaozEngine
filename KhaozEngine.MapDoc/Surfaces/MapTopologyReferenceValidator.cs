@@ -216,40 +216,80 @@ public static class MapTopologyReferenceValidator
                 });
                 return null;
             }
-            if (!_records.TryGetValue(reference.Id, out var row)) { Errors.Add($"missing record '{reference.Id}' in '{source}'"); return null; }
-            if (row.Anchor != reference.Anchor) { Errors.Add($"wrong anchor for '{reference.Id}' in '{source}'"); return null; }
-            if (row.Record is not T typed) { Errors.Add($"wrong type for '{reference.Id}' in '{source}'"); return null; }
+            if (!_records.TryGetValue(reference.Id, out var row))
+            {
+                Add(new(MapDocumentRefusal.ReferenceMissing, $"missing record '{reference.Id}' in '{source}'")
+                { RecordId = surfaceId is null ? source : null, SurfaceId = surfaceId, RelatedRecordId = reference.Id, Patch = reference.Anchor });
+                return null;
+            }
+            if (row.Anchor != reference.Anchor)
+            {
+                Add(new(MapDocumentRefusal.AuthoredOwnershipMismatch, $"wrong anchor for '{reference.Id}' in '{source}'")
+                { RecordId = surfaceId is null ? source : null, SurfaceId = surfaceId, RelatedRecordId = reference.Id, Patch = reference.Anchor, ActualAnchor = row.Anchor });
+                return null;
+            }
+            if (row.Record is not T typed)
+            {
+                Add(new(MapDocumentRefusal.ReferenceKindMismatch, $"wrong type for '{reference.Id}' in '{source}'")
+                { RecordId = surfaceId is null ? source : null, SurfaceId = surfaceId, RelatedRecordId = reference.Id, Patch = reference.Anchor, RecordType = row.Record.GetType() });
+                return null;
+            }
             return typed;
         }
         void Vertex(MapLatticeVertex vertex, string source)
         {
             if (string.IsNullOrWhiteSpace(vertex.SurfaceId) || !_surfaces.ContainsKey(vertex.SurfaceId))
-                Errors.Add($"missing vertex surface in '{source}'");
+                Add(new(string.IsNullOrWhiteSpace(vertex.SurfaceId) ? MapDocumentRefusal.SchemaValueRequired : MapDocumentRefusal.ReferenceMissing,
+                    $"missing vertex surface in '{source}'")
+                { RecordId = source, SurfaceId = vertex.SurfaceId, FieldPath = "Vertex.SurfaceId" });
             try { vertex.Address.RequireValid(); }
-            catch (MapDocumentException) { Errors.Add($"invalid vertex denominator in '{source}'"); }
+            catch (MapDocumentException ex)
+            {
+                string message = $"invalid vertex denominator in '{source}'";
+                if (MapDocumentFinding.FromException(ex) is { } finding)
+                    Add(finding with { Message = message, RecordId = source, SurfaceId = vertex.SurfaceId });
+                else Errors.Add(message);
+            }
         }
         void Edge(MapSurfaceEdgeRef edge, string source)
         {
-            if (!_patches.ContainsKey(edge.Patch)) Errors.Add($"missing edge patch in '{source}'");
+            if (!_patches.ContainsKey(edge.Patch))
+                Add(new(MapDocumentRefusal.ReferenceMissing, $"missing edge patch in '{source}'") { RecordId = source, Patch = edge.Patch });
             Vertex(edge.From, source); Vertex(edge.To, source);
             if (edge.From.SurfaceId != edge.Patch.SurfaceId || edge.To.SurfaceId != edge.Patch.SurfaceId)
-                Errors.Add($"edge surface mismatch in '{source}'");
+                Add(new(MapDocumentRefusal.AuthoredOwnershipMismatch, $"edge surface mismatch in '{source}'")
+                { RecordId = source, Patch = edge.Patch, SurfaceId = edge.From.SurfaceId != edge.Patch.SurfaceId ? edge.From.SurfaceId : edge.To.SurfaceId });
         }
         void Chain(MapBoundaryChain chain)
         {
             if (!Enum.IsDefined(chain.Kind) || chain.Vertices.Count is < 2 or > 4097)
-                Errors.Add($"invalid chain kind/vertices '{chain.Id}'");
+                Add(new(!Enum.IsDefined(chain.Kind) ? MapDocumentRefusal.SchemaEnumUnsupported : MapDocumentRefusal.ValueOutsideRange,
+                    $"invalid chain kind/vertices '{chain.Id}'")
+                {
+                    RecordId = chain.Id, FieldPath = !Enum.IsDefined(chain.Kind) ? nameof(chain.Kind) : nameof(chain.Vertices),
+                    EnumType = !Enum.IsDefined(chain.Kind) ? typeof(MapChainKind) : null,
+                    ActualInteger = !Enum.IsDefined(chain.Kind) ? (long)chain.Kind : null,
+                    ActualCount = Enum.IsDefined(chain.Kind) ? chain.Vertices.Count : null,
+                    MinimumInteger = Enum.IsDefined(chain.Kind) ? 2 : null, MaximumInteger = Enum.IsDefined(chain.Kind) ? 4097 : null,
+                });
             if (chain.Kind == MapChainKind.SurfaceEdge && (chain.SourcePatch is null || !_patches.ContainsKey(chain.SourcePatch.Value)))
-                Errors.Add($"missing chain source patch '{chain.Id}'");
+                Add(new(chain.SourcePatch is null ? MapDocumentRefusal.SchemaValueRequired : MapDocumentRefusal.ReferenceMissing,
+                    $"missing chain source patch '{chain.Id}'")
+                { RecordId = chain.Id, Patch = chain.SourcePatch, FieldPath = nameof(chain.SourcePatch) });
             if (chain.Kind == MapChainKind.Authored && chain.SourcePatch is not null)
-                Errors.Add($"authored chain has source patch '{chain.Id}'");
+                Add(new(MapDocumentRefusal.AuthoredOwnershipMismatch, $"authored chain has source patch '{chain.Id}'")
+                { RecordId = chain.Id, Patch = chain.SourcePatch, FieldPath = nameof(chain.SourcePatch) });
+            int index = 0;
             foreach (MapChainVertex v in chain.Vertices)
             {
                 Vertex(v.Vertex, chain.Id);
                 if ((chain.Kind == MapChainKind.Authored) != v.HeightUnits.HasValue)
-                    Errors.Add($"chain height kind mismatch '{chain.Id}'");
+                    Add(new(MapDocumentRefusal.SpaceChainHeightKindMismatch, $"chain height kind mismatch '{chain.Id}'")
+                    { RecordId = chain.Id, Index = index, FieldPath = nameof(v.HeightUnits), ActualInteger = v.HeightUnits });
                 if (chain.Kind == MapChainKind.SurfaceEdge && chain.SourcePatch is { } patch && v.Vertex.SurfaceId != patch.SurfaceId)
-                    Errors.Add($"chain source surface mismatch '{chain.Id}'");
+                    Add(new(MapDocumentRefusal.AuthoredValueMismatch, $"chain source surface mismatch '{chain.Id}'")
+                    { RecordId = chain.Id, Patch = patch, SurfaceId = v.Vertex.SurfaceId, Index = index, FieldPath = "Vertex.SurfaceId" });
+                index++;
             }
         }
         void Portal(MapCavePortal portal, MapPatchKey anchor)
@@ -258,15 +298,24 @@ public static class MapTopologyReferenceValidator
             _ = Find<MapBoundaryChain>(portal.BandBottom, portal.Id);
             if (portal.BandTop is not null) _ = Find<MapBoundaryChain>(portal.BandTop, portal.Id);
             else if (from is not null && to is not null && (from.Kind != MapSpaceKind.Exterior || to.Kind != MapSpaceKind.Exterior))
-                Errors.Add($"open top portal requires Exterior spaces '{portal.Id}'");
-            if (portal.Interval.Count < 2) Errors.Add($"invalid portal interval '{portal.Id}'");
+                Add(new(MapDocumentRefusal.SpacePortalOpenTopInvalid, $"open top portal requires Exterior spaces '{portal.Id}'")
+                {
+                    RecordId = portal.Id, SpaceId = from.Kind != MapSpaceKind.Exterior ? from.Id : to.Id,
+                    EnumType = typeof(MapSpaceKind), ActualInteger = (long)(from.Kind != MapSpaceKind.Exterior ? from.Kind : to.Kind),
+                    FieldPath = nameof(portal.BandTop),
+                });
+            if (portal.Interval.Count < 2)
+                Add(new(MapDocumentRefusal.GeometryVertexSequenceInvalid, $"invalid portal interval '{portal.Id}'")
+                { RecordId = portal.Id, FieldPath = nameof(portal.Interval), ActualCount = portal.Interval.Count, MinimumInteger = 2 });
             foreach (MapLatticeVertex v in portal.Interval) Vertex(v, portal.Id);
             var reference = new MapRecordRef(portal.Id, anchor);
             bool semanticRoom = from?.Kind == MapSpaceKind.Room || to?.Kind == MapSpaceKind.Room;
             if (!semanticRoom && from is not null && _portalMembership.GetValueOrDefault((from.Id, reference, MapSide.Front)) != 1)
-                Errors.Add($"portal list mismatch '{portal.Id}'");
+                Add(new(MapDocumentRefusal.SpacePortalMembershipMismatch, $"portal list mismatch '{portal.Id}'")
+                { RecordId = portal.Id, SpaceId = from.Id, FieldPath = nameof(portal.FromSpace), ActualCount = _portalMembership.GetValueOrDefault((from.Id, reference, MapSide.Front)), ExpectedCount = 1 });
             if (!semanticRoom && to is not null && _portalMembership.GetValueOrDefault((to.Id, reference, MapSide.Back)) != 1)
-                Errors.Add($"portal list mismatch '{portal.Id}'");
+                Add(new(MapDocumentRefusal.SpacePortalMembershipMismatch, $"portal list mismatch '{portal.Id}'")
+                { RecordId = portal.Id, SpaceId = to.Id, FieldPath = nameof(portal.ToSpace), ActualCount = _portalMembership.GetValueOrDefault((to.Id, reference, MapSide.Back)), ExpectedCount = 1 });
         }
         void Link(MapVerticalLink link, MapPatchKey anchor)
         {
@@ -275,9 +324,12 @@ public static class MapTopologyReferenceValidator
             RefSet<MapTopologyRecord>(link.GeometryOwners, link.Id);
             foreach (MapRecordRef owner in link.GeometryOwners)
                 if (_records.TryGetValue(owner.Id, out var row) && row.Record is MapSpaceDoc or MapSpaceFootprint or MapVerticalLink)
-                    Errors.Add($"wrong geometry owner type '{owner.Id}' in '{link.Id}'");
+                    Add(new(MapDocumentRefusal.AuthoredReferenceKindInvalid, $"wrong geometry owner type '{owner.Id}' in '{link.Id}'")
+                    { RecordId = link.Id, RelatedRecordId = owner.Id, Patch = owner.Anchor, RecordType = row.Record.GetType(), FieldPath = nameof(link.GeometryOwners) });
             var reference = new MapRecordRef(link.Id, anchor);
-            if (upper is not null && _linkMembership.GetValueOrDefault((upper.Id, reference)) != 1) Errors.Add($"link list mismatch '{link.Id}'");
+            if (upper is not null && _linkMembership.GetValueOrDefault((upper.Id, reference)) != 1)
+                Add(new(MapDocumentRefusal.SpaceLinkMembershipMismatch, $"link list mismatch '{link.Id}'")
+                { RecordId = link.Id, SpaceId = upper.Id, FieldPath = nameof(link.UpperSpace), ActualCount = _linkMembership.GetValueOrDefault((upper.Id, reference)), ExpectedCount = 1 });
             if (lower is not null && _linkMembership.GetValueOrDefault((lower.Id, reference)) != 1) Errors.Add($"link list mismatch '{link.Id}'");
         }
         void RefSet<T>(IReadOnlyList<MapRecordRef> refs, string source) where T : MapTopologyRecord

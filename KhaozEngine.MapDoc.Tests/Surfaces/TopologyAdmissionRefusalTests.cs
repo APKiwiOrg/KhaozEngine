@@ -144,7 +144,8 @@ public sealed class TopologyAdmissionRefusalTests
         if (fault == "missing") patch.Records.RemoveAt(2);
         if (fault == "kind") patch.Records[2] = room with { Kind = MapSpaceKind.Cave };
         if (fault == "parent") patch.Records[2] = room with { Parent = new("other", patch.Key) };
-        var finding = Assert.Single(Findings(world), f => f.Reason == reason && f.RecordId == "prism");
+        string field = fault == "version" ? "PayloadVersion" : fault == "missing" ? "Space" : fault == "kind" ? "Space.Kind" : "Space.Parent";
+        var finding = Assert.Single(Findings(world), f => f.Reason == reason && f.RecordId == "prism" && f.FieldPath == field);
         Assert.Equal("prism", finding.RecordId);
         Assert.Equal("room", finding.SpaceId);
         if (fault == "version")
@@ -152,7 +153,7 @@ public sealed class TopologyAdmissionRefusalTests
             Assert.Equal(2, finding.ActualVersion);
             Assert.Equal(new[] { 1 }, finding.SupportedVersions);
         }
-        Assert.Equal(fault == "version" ? "PayloadVersion" : fault == "missing" ? "Space" : fault == "kind" ? "Space.Kind" : "Space.Parent", finding.FieldPath);
+        Assert.Equal(field, finding.FieldPath);
         Assert.Equal("parent", finding.RelatedRecordId);
         if (fault == "kind")
         {

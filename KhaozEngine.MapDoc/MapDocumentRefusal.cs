@@ -67,10 +67,10 @@ public enum MapDocumentRefusal
     OperationKindUnsupported,
     /// <summary>Refuses a numeric identity above its reserved high-water mark.</summary>
     NumericIdHighWaterExceeded,
-    /// <summary>Refuses a referenced resource or topology space of a different kind than required.</summary>
+    /// <summary>Refuses a referenced resource or topology record of a different kind than required.</summary>
     ReferenceKindMismatch,
 
-    /// <summary>Refuses an authored reference of a different child kind than its role requires.</summary>
+    /// <summary>Refuses an authored reference of a child kind or topology type forbidden by its role.</summary>
     AuthoredReferenceKindInvalid,
 
     /// <summary>Refuses an authored replacement or reference differing from its declared target.</summary>
@@ -192,6 +192,8 @@ public enum MapDocumentRefusal
     // Exact geometry admission.
     /// <summary>Refuses geometry whose effective representation collapses or exceeds its exact domain.</summary>
     GeometryNotRepresentable,
+    /// <summary>Refuses a vertex sequence lacking the required ordered correspondence or cardinality.</summary>
+    GeometryVertexSequenceInvalid,
 
     // Scoped acquisition producer admission.
     /// <summary>Refuses acquisition facts differing from the session's captured snapshot.</summary>
@@ -232,6 +234,14 @@ public enum MapDocumentRefusal
     SpaceRoomOccupancyInvalid,
     /// <summary>Refuses cyclic space ancestry.</summary>
     SpaceParentCycle,
+    /// <summary>Refuses chain heights inconsistent with the authored or surface-edge kind.</summary>
+    SpaceChainHeightKindMismatch,
+    /// <summary>Refuses an open-top portal whose endpoints are not both Exterior spaces.</summary>
+    SpacePortalOpenTopInvalid,
+    /// <summary>Refuses portal membership inconsistent with its endpoint and side.</summary>
+    SpacePortalMembershipMismatch,
+    /// <summary>Refuses vertical-link membership inconsistent with its endpoint spaces.</summary>
+    SpaceLinkMembershipMismatch,
 
     // Foliage JSON converter.
     /// <summary>Refuses a foliage section larger than its UTF-8 byte budget.</summary>

@@ -12769,12 +12769,20 @@ distinguishes mismatched patch keys (`AuthoredValueMismatch` with both keys) fro
 lower surface, `SurfaceLegacyRecipeRequired` for an incompatible surface or `AuthoredOwnershipMismatch`
 for a different footprint lattice. It retains the footprint, space, surface, patch and first failed field.
 `Check` remains its prose projection. Topology admission also carries metadata, local patch, identity,
-strip-facing, prism and ancestry findings internally alongside the unchanged string validator.
+strip-facing, prism and ancestry findings internally alongside the unchanged string validator. Record
+lookups distinguish missing targets, wrong anchors and wrong types through `ReferenceMissing`,
+`AuthoredOwnershipMismatch` and `ReferenceKindMismatch`. They retain the source `RecordId` or surface,
+target `RelatedRecordId`, requested `Patch`, actual anchor and actual record type when checked.
+Vertex denominator findings preserve their original scalar reason and limits. Chain findings distinguish
+kind, cardinality, source patch, height kind and vertex surface. Portal findings use
+`SpacePortalOpenTopInvalid`, `GeometryVertexSequenceInvalid` and `SpacePortalMembershipMismatch`,
+with the endpoint or measured count. Vertical-link findings retain forbidden geometry owner identity
+and type, or `SpaceLinkMembershipMismatch` with the upper endpoint and its actual and expected count.
 Prism versions use `SchemaPayloadVersionUnsupported`, a missing Room uses `ReferenceMissing`, a
 non-Room uses `ReferenceKindMismatch`, and parent disagreement uses `SpacePrismParentMismatch` with
 `RelatedRecordId`. Room prism counts use `SpaceRoomOccupancyInvalid` with actual and expected counts,
 and ancestry cycles use `SpaceParentCycle` with `SpaceId`. The source-copy and finding projection preserve
-`RelatedRecordId`. Topology adapters still wait for the remaining reference, geometry, membership and
+`RelatedRecordId`. Topology adapters still wait for the remaining space membership and
 footprint finding conversion, so they do not classify aggregate prose.
 
 Native metadata adds typed findings beside its unchanged string diagnostics. Compound findings select

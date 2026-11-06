@@ -1521,6 +1521,11 @@ An array beyond its own count cap uses that field name as `Budget`, with its `Ac
 | `SpacePrismParentMismatch` | A prism parent differing from its Room space's parent | `RecordId`, `SpaceId`, `RelatedRecordId`, `FieldPath` |
 | `SpaceRoomOccupancyInvalid` | A Room with zero or multiple prism domains | `SpaceId`, `ActualCount`, `ExpectedCount` |
 | `SpaceParentCycle` | A cycle in space ancestry | `SpaceId` |
+| `GeometryVertexSequenceInvalid` | A portal interval with fewer than two vertices | `RecordId`, `FieldPath`, `ActualCount`, `MinimumInteger` |
+| `SpaceChainHeightKindMismatch` | A surface-edge vertex with an authored height, or an authored vertex without one | `RecordId`, `Index`, `FieldPath`, `ActualInteger` when present |
+| `SpacePortalOpenTopInvalid` | An open-top portal with a non-Exterior endpoint | `RecordId`, `SpaceId`, `FieldPath`, `EnumType`, `ActualInteger` |
+| `SpacePortalMembershipMismatch` | An endpoint space not listing its portal exactly once on the required side | `RecordId`, `SpaceId`, `FieldPath`, `ActualCount`, `ExpectedCount` |
+| `SpaceLinkMembershipMismatch` | An upper endpoint space not listing its vertical link exactly once | `RecordId`, `SpaceId`, `FieldPath`, `ActualCount`, `ExpectedCount` |
 | `GeometryNotRepresentable` | A collapsed effective cell | `SurfaceId`, `Patch`, `CellX`, `CellZ` |
 | `WorkCapacityExceeded` | Reservation keys beyond the candidate cap, surface codec work beyond its encoded byte or array-count budget, or local corner-dependency or edge-subdivision metadata beyond its count budget | `Patch`, `FieldPath`, `Budget`, `ActualCount`, `ActualByteCount`, `Limit` |
 | `SurfacePresencePaddingNonzero` | Nonzero bits beyond the authored cell count in the last presence word | `Patch`, `FieldPath`, `Index` |
@@ -1583,7 +1588,7 @@ An array beyond its own count cap uses that field name as `Budget`, with its `Ac
 | `PrefabWorldCoordinateLimitExceeded` | A static world position outside the inclusive axis limit of 1,000,000 metres | `OwnerId`, binary64 `PositionX`, `PositionY`, `PositionZ`, `Limit` in metres |
 | `AssetStoragePathReserved` | A resource path owned by the selected map storage writer | `ResourceId`, normalized `Path`, `StoragePath`, `DocumentForm` |
 | `AssetTypedPayloadOpaque` | An opaque resource supplied to a typed light or support consumer | `ResourceId`, `ExpectedSchema`, `SubjectKind` |
-| `ReferenceKindMismatch` | A referenced resource or prism space of a different kind than required | `AssetId`, `ResourceId`, `ExpectedResourceKind`, `ActualResourceKind`, `RecordId`, `SpaceId`, `FieldPath`, `EnumType`, `ActualInteger` |
+| `ReferenceKindMismatch` | A referenced resource or topology record of a different kind than required | `AssetId`, `ResourceId`, `ExpectedResourceKind`, `ActualResourceKind`, `RecordId`, `RelatedRecordId`, `Patch`, `SurfaceId`, `RecordType`, `SpaceId`, `FieldPath`, `EnumType`, `ActualInteger` |
 | `NumericIdHighWaterExceeded` | A placement, prefab binding or retired transfer above the reserved mark | `EntityId`, `SubjectKind`, `PlacementId`, `FieldPath`, `NumericId`, `HighWaterMark` |
 | `ResolverContractMismatch` | The document resolver, support recipe or caller's resolver options cannot serve the requested operation | `PayloadVersion`, `ResolverVersion`, `OptionsResolverVersion`, `ExpectedResolverVersion`, `SupportRecipe`, `ExpectedSupportRecipe`, `FieldPath`, `SubjectKind` |
 | `SupportLegacyHeightRequired` | Resolver-1 resolution without an analytic support callback | `ResolverVersion`, `FieldPath` `legacySupportHeight` |
@@ -1772,11 +1777,19 @@ their message-only constructors until the remaining producer conversion. No type
 from those aggregate messages.
 
 Topology reference admission carries typed metadata, patch-local, identity, strip-facing, prism and
-ancestry findings beside the unchanged public string diagnostics. Prism payload versions use
+ancestry findings beside the unchanged public string diagnostics. Record lookups distinguish missing
+targets (`ReferenceMissing`), wrong anchors (`AuthoredOwnershipMismatch`, with requested `Patch` and
+`ActualAnchor`) and wrong record types (`ReferenceKindMismatch`, with `RecordType`). They retain the
+owning `RecordId` or separately supplied `SurfaceId`, and the target `RelatedRecordId`. Vertex checks
+retain missing surface identity or the original denominator refusal. Chain checks distinguish enum,
+cardinality, source ownership, height kind and source surface, with the vertex `Index` when applicable.
+Portals retain the non-Exterior endpoint, interval count or missing endpoint membership. Vertical links
+retain a forbidden geometry owner's `RelatedRecordId` and `RecordType`, or the upper endpoint's
+membership count. Prism payload versions use
 `SchemaPayloadVersionUnsupported`, missing Room references use `ReferenceMissing`, and a referenced
 non-Room space uses `ReferenceKindMismatch`. A differing parent uses `SpacePrismParentMismatch` with
 `RelatedRecordId`. Frame wrappers preserve the original scalar reason and identifiers. Remaining
-reference, geometry, membership and footprint findings are still prose, so topology throwing adapters
+space membership and footprint findings are still prose, so topology throwing adapters
 wait for those producers rather than inferring a rule from an aggregate diagnostic.
 
 Map documents are dev-authored content, not runtime state: `MapDocumentFile.Load`/`Save` throw

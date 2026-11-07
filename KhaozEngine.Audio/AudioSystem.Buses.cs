@@ -27,7 +27,7 @@ public sealed partial class AudioSystem
     /// settings: the game persists them like <see cref="MasterVolume"/> / <see cref="SfxVolume"/> (no built-in
     /// serialization).
     /// </summary>
-    /// <exception cref="InvalidOperationException">The caller is not on the thread that constructed this
+    /// <exception cref="AudioThreadAffinityException">The caller is not on the thread that constructed this
     /// <see cref="AudioSystem"/> (see the class remarks: main-thread-only).</exception>
     public void DefineBus(string id)
     {
@@ -58,7 +58,7 @@ public sealed partial class AudioSystem
     /// replaying, and a failed loop gain write is retried on the next explicit update.
     /// A <c>null</c> or empty id (the implicit default bus) is ignored: the default bus is always 1.0.
     /// </summary>
-    /// <exception cref="InvalidOperationException">The caller is not on the thread that constructed this
+    /// <exception cref="AudioThreadAffinityException">The caller is not on the thread that constructed this
     /// <see cref="AudioSystem"/> (see the class remarks: main-thread-only).</exception>
     public void SetBusVolume(string id, float volume)
     {

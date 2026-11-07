@@ -18,7 +18,7 @@ namespace KhaozEngine.Audio;
 /// <see cref="Dictionary{TKey,TValue}"/> / <see cref="HashSet{T}"/> / <see cref="List{T}"/> with no locking, so
 /// an off-thread call is a data race, not merely bad style.</para>
 /// <para>Every mutating entry point checks the calling thread and throws
-/// <see cref="InvalidOperationException"/> when it is the wrong one. The check is a thread-local int compare,
+/// <see cref="AudioThreadAffinityException"/> when it is the wrong one. The check is a thread-local int compare,
 /// present in Release exactly as in Debug, so a background job that fires an SFX fails loudly on the first call
 /// instead of corrupting a dictionary somewhere down the line. <see cref="Dispose"/> is the one exemption (see
 /// its remarks): a shutdown path on another thread is allowed to tear the system down.</para>

@@ -19580,8 +19580,10 @@ constructed it, normally the thread pumping the frame loop. Its registries are p
 with no locking, so every mutating entry point (`RegisterTrack` / `RegisterSfx` / `LoadContent`, every play and
 crossfade call, `Update`, `StopAllSfx`, `SetListener`, `SetRng`, `SetRotationPool`, and the `MasterVolume` /
 `MusicVolume` / `SfxVolume` / `MusicEnabled` / `MusicCrossfadeDuration` / `PlayMode` setters plus `DefineBus` /
-`SetBusVolume`) compares the calling thread first and throws `InvalidOperationException` naming both threads when
-it is the wrong one. The comparison is a thread-local `int` read, so it costs the same in Release as in Debug and
+`SetBusVolume`) compares the calling thread first and throws `AudioThreadAffinityException` when it is the wrong
+one. It derives from `InvalidOperationException`, its `Reason` is `AudioThreadAffinityRefusal.WrongThread`, and it
+carries the public member called in `MemberName` and both managed thread ids in `OwnerThreadId` and `CallerThreadId`.
+The comparison is a thread-local `int` read, so it costs the same in Release as in Debug and
 a background job cannot get a pass on a build where `Debug.Assert` has been compiled away. To play a sound in
 response to work on a worker thread (an ECS job under `ThreadPoolJobScheduler`, an async content load), record
 the request in your own structure and issue the call from the main thread on the next frame. Loop starts, controls,

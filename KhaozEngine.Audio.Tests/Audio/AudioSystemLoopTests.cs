@@ -53,17 +53,17 @@ public sealed class AudioSystemLoopTests : IDisposable
         Assert.Equal(calls, sfx.Device.Calls.Count);
         Assert.True(audio.IsLoopActive(current));
 
-        AssertOffThread(() => audio.TryPlayLoop(new("missing")));
-        AssertOffThread(() => audio.TryPlayLoop(default));
-        AssertOffThread(() => audio.StopLoop(default));
-        AssertOffThread(() => audio.SetLoopVolume(default, float.NaN));
-        AssertOffThread(() => audio.SetLoopPosition(default, new(float.NaN, 0, 0)));
-        AssertOffThread(() => audio.IsLoopActive(default));
-        AssertOffThread(() => _ = audio.LoopCapacity);
+        AssertOffThread(nameof(AudioSystem.TryPlayLoop), () => audio.TryPlayLoop(new("missing")));
+        AssertOffThread(nameof(AudioSystem.TryPlayLoop), () => audio.TryPlayLoop(default));
+        AssertOffThread(nameof(AudioSystem.StopLoop), () => audio.StopLoop(default));
+        AssertOffThread(nameof(AudioSystem.SetLoopVolume), () => audio.SetLoopVolume(default, float.NaN));
+        AssertOffThread(nameof(AudioSystem.SetLoopPosition), () => audio.SetLoopPosition(default, new(float.NaN, 0, 0)));
+        AssertOffThread(nameof(AudioSystem.IsLoopActive), () => audio.IsLoopActive(default));
+        AssertOffThread(nameof(AudioSystem.LoopCapacity), () => _ = audio.LoopCapacity);
         Assert.Equal(calls, sfx.Device.Calls.Count);
         audio.Dispose();
-        AssertOffThread(() => audio.TryPlayLoop(default));
-        AssertOffThread(() => audio.StopLoop(default));
+        AssertOffThread(nameof(AudioSystem.TryPlayLoop), () => audio.TryPlayLoop(default));
+        AssertOffThread(nameof(AudioSystem.StopLoop), () => audio.StopLoop(default));
     }
 
     [Theory]
@@ -543,12 +543,14 @@ public sealed class AudioSystemLoopTests : IDisposable
         Assert.Equal(default, result.Handle);
     }
 
-    static void AssertOffThread(Action action)
+    static void AssertOffThread(string member, Action action)
     {
         Exception? caught = null;
         var thread = new Thread(() => caught = Record.Exception(action));
         thread.Start();
         Assert.True(thread.Join(TimeSpan.FromSeconds(30)));
-        Assert.IsType<InvalidOperationException>(caught);
+        AudioThreadAffinityException refused = Assert.IsType<AudioThreadAffinityException>(caught);
+        Assert.Equal(AudioThreadAffinityRefusal.WrongThread, refused.Reason);
+        Assert.Equal(member, refused.MemberName);
     }
 }

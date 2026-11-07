@@ -35,10 +35,13 @@ internal static class RendererPerfRecipeSettings
             {
                 foreach (var property in info.Properties)
                     if (property.Name is nameof(WaterSettings.UnderwaterSunlight)
+                        or nameof(WaterSettings.UnderwaterCaustics)
                         or nameof(WaterSettings.WaterColumnLight))
                         property.ShouldSerialize = static (_, field) => field is true;
                     else if (property.Name == nameof(WaterSettings.UnderwaterPenumbraPerMetre))
                         property.ShouldSerialize = static (_, field) => field is float penumbra && penumbra != 0.03f;
+                    else if (property.Name == nameof(WaterSettings.CausticStrength))
+                        property.ShouldSerialize = static (_, field) => field is float strength && strength != 1f;
                     else if (property.Name == nameof(WaterSettings.WaterColor))
                         property.ShouldSerialize = static (_, field) => field is Color color && color != new Color(0.10f, 0.13f, 0.10f, 1f);
                     else if (property.Name == nameof(WaterSettings.Clarity))
@@ -50,6 +53,8 @@ internal static class RendererPerfRecipeSettings
                 foreach (var property in info.Properties)
                     if (property.Name is nameof(WaterLook.UnderwaterSunlight)
                         or nameof(WaterLook.UnderwaterPenumbraPerMetre)
+                        or nameof(WaterLook.UnderwaterCaustics)
+                        or nameof(WaterLook.CausticStrength)
                         or nameof(WaterLook.WaterColumnLight)
                         or nameof(WaterLook.WaterColor)
                         or nameof(WaterLook.Clarity))

@@ -33,6 +33,8 @@ namespace KhaozEngine.Render3D
             AbsorptionPerMetre = source.AbsorptionPerMetre;
             UnderwaterSunlight = source.UnderwaterSunlight;
             UnderwaterPenumbraPerMetre = source.UnderwaterPenumbraPerMetre;
+            UnderwaterCaustics = source.UnderwaterCaustics;
+            CausticStrength = source.CausticStrength;
             WaterColumnLight = source.WaterColumnLight;
             WaterColor = source.WaterColor;
             Clarity = source.Clarity;

@@ -81,6 +81,17 @@ namespace KhaozEngine.Render3D
         /// Default <c>null</c> inherits the scene's value, which defaults to <c>0.03</c>.</summary>
         public float? UnderwaterPenumbraPerMetre;
 
+        /// <summary>Overrides <see cref="WaterSettings.UnderwaterCaustics"/> for this plane, opting in to
+        /// underwater sunlight focusing by procedural surface waves. Default <c>null</c> inherits the scene's
+        /// opt-in, which defaults to <c>false</c>. An explicit <c>false</c> opts this body out.</summary>
+        public bool? UnderwaterCaustics;
+
+        /// <summary>Overrides <see cref="WaterSettings.CausticStrength"/>, the dimensionless scale of refracted
+        /// focus offsets from the still-water ray. Strength scales focus displacement, not final brightness
+        /// or contrast. Default <c>null</c> inherits the scene's physical <c>1</c> default. Must resolve finite
+        /// and non-negative when <see cref="UnderwaterCaustics"/> is enabled.</summary>
+        public float? CausticStrength;
+
         /// <summary>Overrides <see cref="WaterSettings.WaterColumnLight"/> for this plane. Default <c>null</c>
         /// inherits the scene's opt-in, which defaults to <c>false</c>. An explicit <c>false</c> disables the
         /// column even when the scene enables it. An enabled column bypasses <see cref="AbsorptionPerMetre"/>,
@@ -303,6 +314,8 @@ namespace KhaozEngine.Render3D
             if (AbsorptionPerMetre.HasValue) scratch.AbsorptionPerMetre = AbsorptionPerMetre.Value;
             if (UnderwaterSunlight.HasValue) scratch.UnderwaterSunlight = UnderwaterSunlight.Value;
             if (UnderwaterPenumbraPerMetre.HasValue) scratch.UnderwaterPenumbraPerMetre = UnderwaterPenumbraPerMetre.Value;
+            if (UnderwaterCaustics.HasValue) scratch.UnderwaterCaustics = UnderwaterCaustics.Value;
+            if (CausticStrength.HasValue) scratch.CausticStrength = CausticStrength.Value;
             if (WaterColumnLight.HasValue) scratch.WaterColumnLight = WaterColumnLight.Value;
             if (WaterColor.HasValue) scratch.WaterColor = WaterColor.Value;
             if (Clarity.HasValue) scratch.Clarity = Clarity.Value;

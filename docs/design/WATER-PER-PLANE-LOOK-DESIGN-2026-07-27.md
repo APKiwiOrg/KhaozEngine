@@ -55,7 +55,7 @@ A `WaterSettings` field is overridable per plane when the choice can be encoded 
 slot or water-volume record. Shared column resources aggregate demand across the frame. The field stays
 scene-wide when it controls one shared FFT bake or bathymetry source, or selects the pass's grid policy.
 
-**Per plane**, 42 fields in ten groups:
+**Per plane**, 44 fields in eleven groups:
 
 - Wave source: `WaveSource`
 - Swell: `SwellAmplitude`, `SwellWavelength`, `SwellDirectionDegrees`, `SwellSpreadDegrees`,
@@ -65,6 +65,7 @@ scene-wide when it controls one shared FFT bake or bathymetry source, or selects
   `VarianceToRoughness`
 - Body colour: `DeepColor`, `ShallowColor`, `AbsorptionPerMetre`, `ShallowDepth`, `Opacity`
 - Underwater sunlight: `UnderwaterSunlight`, `UnderwaterPenumbraPerMetre`
+- Underwater caustics: `UnderwaterCaustics`, `CausticStrength`
 - Water column: `WaterColumnLight`, `WaterColor`, `Clarity`
 - Glint: `GlintStrength`, `GlintRoughness`, `GlintDistantRoughness`, `GlintExponent`
 - Foam: `FoamColor`, `FoamStrength`, `FoamCrestCoverage`, `FoamShoreWidth`, `FoamPatternScale`

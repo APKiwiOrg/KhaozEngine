@@ -12,53 +12,103 @@ public sealed class UnderwaterSunlightSettingsTests
     static Scene3D Scene() => new(new FakeGpuDevice(), new GpuOutputDescription(null, GpuPixelFormat.R8G8B8A8UNorm));
 
     [Fact]
-    public void UnderwaterSunlightIsOffByDefault()
+    public void UnderwaterLightingIsOffByDefault()
     {
         var settings = new WaterSettings();
         Assert.False(settings.UnderwaterSunlight);
         Assert.Equal(0.03f, settings.UnderwaterPenumbraPerMetre);
+        Assert.False(settings.UnderwaterCaustics);
+        Assert.Equal(1f, settings.CausticStrength);
     }
 
     [Theory]
-    [InlineData(false, 0.01f, true, 0.09f)]
-    [InlineData(true, 0.07f, false, 0f)]
-    public void LookOverridesAndInheritsUnderwaterSunlight(bool sceneEnabled, float scenePenumbra,
-        bool overrideEnabled, float overridePenumbra)
+    [InlineData(false, 0.01f, true, 0.09f, 2f, 0f)]
+    [InlineData(true, 0.07f, false, 0f, 0f, 4f)]
+    public void LookOverridesAndInheritsUnderwaterLighting(bool sceneEnabled, float scenePenumbra,
+        bool overrideEnabled, float overridePenumbra, float sceneStrength, float overrideStrength)
     {
         var scene = new WaterSettings
         {
             UnderwaterSunlight = sceneEnabled,
             UnderwaterPenumbraPerMetre = scenePenumbra,
+            UnderwaterCaustics = sceneEnabled,
+            CausticStrength = sceneStrength,
         };
         var scratch = new WaterSettings();
         var look = new WaterLook();
         Assert.Null(look.UnderwaterSunlight);
         Assert.Null(look.UnderwaterPenumbraPerMetre);
+        Assert.Null(look.UnderwaterCaustics);
+        Assert.Null(look.CausticStrength);
 
         look.UnderwaterSunlight = overrideEnabled;
+        look.UnderwaterCaustics = overrideEnabled;
         WaterSettings resolved = look.ResolveInto(scratch, scene);
         Assert.Same(scratch, resolved);
         Assert.Equal(overrideEnabled, resolved.UnderwaterSunlight);
         Assert.Equal(scenePenumbra, resolved.UnderwaterPenumbraPerMetre);
+        Assert.Equal(overrideEnabled, resolved.UnderwaterCaustics);
+        Assert.Equal(sceneStrength, resolved.CausticStrength);
 
         look.UnderwaterSunlight = null;
         look.UnderwaterPenumbraPerMetre = overridePenumbra;
+        look.UnderwaterCaustics = null;
+        look.CausticStrength = overrideStrength;
         resolved = look.ResolveInto(scratch, scene);
         Assert.Equal(sceneEnabled, resolved.UnderwaterSunlight);
         Assert.Equal(overridePenumbra, resolved.UnderwaterPenumbraPerMetre);
+        Assert.Equal(sceneEnabled, resolved.UnderwaterCaustics);
+        Assert.Equal(overrideStrength, resolved.CausticStrength);
 
         look.UnderwaterSunlight = overrideEnabled;
+        look.UnderwaterCaustics = overrideEnabled;
         resolved = look.ResolveInto(scratch, scene);
         Assert.Equal(overrideEnabled, resolved.UnderwaterSunlight);
         Assert.Equal(overridePenumbra, resolved.UnderwaterPenumbraPerMetre);
+        Assert.Equal(overrideEnabled, resolved.UnderwaterCaustics);
+        Assert.Equal(overrideStrength, resolved.CausticStrength);
 
         look.UnderwaterSunlight = null;
         look.UnderwaterPenumbraPerMetre = null;
+        look.UnderwaterCaustics = null;
+        look.CausticStrength = null;
         resolved = look.ResolveInto(scratch, scene);
         Assert.Equal(sceneEnabled, resolved.UnderwaterSunlight);
         Assert.Equal(scenePenumbra, resolved.UnderwaterPenumbraPerMetre);
         Assert.Equal(sceneEnabled, scene.UnderwaterSunlight);
         Assert.Equal(scenePenumbra, scene.UnderwaterPenumbraPerMetre);
+        Assert.Equal(sceneEnabled, resolved.UnderwaterCaustics);
+        Assert.Equal(sceneStrength, resolved.CausticStrength);
+        Assert.Equal(sceneEnabled, scene.UnderwaterCaustics);
+        Assert.Equal(sceneStrength, scene.CausticStrength);
+    }
+
+    [Theory]
+    [InlineData(true, -0.01f)]
+    [InlineData(true, float.NaN)]
+    [InlineData(true, float.PositiveInfinity)]
+    [InlineData(true, float.NegativeInfinity)]
+    [InlineData(false, -0.01f)]
+    [InlineData(false, float.NaN)]
+    [InlineData(false, float.PositiveInfinity)]
+    [InlineData(false, float.NegativeInfinity)]
+    public void PrepareFrameValidatesOnlyEnabledCausticStrength(bool enabled, float strength)
+    {
+        using Scene3D scene = Scene();
+        scene.Post.Water.UnderwaterCaustics = !enabled;
+        var look = new WaterLook { UnderwaterCaustics = enabled, CausticStrength = 0f };
+        scene.DrawWater(new WaterPlane(0f, 2f, 0f, 4f, look: look));
+        look.CausticStrength = strength;
+
+        if (enabled)
+        {
+            ArgumentException error = Assert.Throws<ArgumentException>(() => scene.PrepareFrame());
+            Assert.Equal(nameof(WaterSettings.CausticStrength), error.ParamName);
+            look.CausticStrength = 0f;
+        }
+
+        scene.PrepareFrame();
+        Assert.Equal(1, scene.WaterPlaneCount);
     }
 
     [Fact]

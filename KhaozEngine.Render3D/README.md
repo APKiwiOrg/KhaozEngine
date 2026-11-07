@@ -930,6 +930,13 @@ in the `KhaozEngine.Render3D.Ecs` arm under the same namespace, so a render-only
   that body's light path. The surface entry can lie beyond the rectangle, where the bank can shadow it.
   How submerged receivers are lit is described under key shadows.
 
+  Caustic authoring uses `UnderwaterCaustics` (scene default `false`) and `CausticStrength` (default `1`).
+  Their nullable `WaterLook` fields inherit the scene, and an explicit `false` opts a body out.
+  Strength is a dimensionless multiplier of refracted focus offsets from the still-water ray, with `1`
+  representing physical focusing. Frame preparation checks that resolved strength is finite and non-negative
+  only when the body opts in, throwing `ArgumentException` with `ParamName` equal to `CausticStrength`.
+  Disabled bodies leave strength unvalidated. These authoring fields do not yet add a caustic render pass.
+
   Water-column authoring uses `WaterColumnLight` (scene default `false`), `WaterColor` (linear RGB, neutral
   default `(0.10, 0.13, 0.10, 1)`, alpha ignored) and `Clarity` (neutral default `2` metres of vertical depth
   for about 5% bed visibility when seen straight down). These are authoring defaults, not tuned river values.
@@ -1108,7 +1115,8 @@ in the `KhaozEngine.Render3D.Ecs` arm under the same namespace, so a render-only
   it for that plane alone, leaving every other queued plane on the scene's look, which is what lets a calm inland
   lake and a rough FFT sea share a frame. The overridable fields are `WaveSource`, the swell group, the ripple/
   detail group, body colour including `AbsorptionPerMetre`, `UnderwaterSunlight`, `UnderwaterPenumbraPerMetre`,
-  `WaterColumnLight`, `WaterColor` and `Clarity`, foam, the four `Glint*` scalars, `ShoreFadeDistance` and the two
+  `UnderwaterCaustics`, `CausticStrength`, `WaterColumnLight`, `WaterColor` and `Clarity`, foam,
+  the four `Glint*` scalars, `ShoreFadeDistance` and the two
   depth-response strengths `ShoalingStrength`/`SurfStrength`. Scene-wide and NOT on a look at all: `SeaState`
   (one FFT bake - two sea states a frame does not
   make two oceans, it makes the one producer rebake on every call for both and corrupts the persistent foam

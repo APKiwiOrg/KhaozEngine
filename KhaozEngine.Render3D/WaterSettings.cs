@@ -127,6 +127,16 @@ namespace KhaozEngine.Render3D
         /// <see cref="WaterColumnLight"/> is enabled.</summary>
         public float UnderwaterPenumbraPerMetre = 0.03f;
 
+        /// <summary>Opt in to underwater sunlight focusing by procedural surface waves. Default <c>false</c>.
+        /// Each plane may override this through <see cref="WaterLook.UnderwaterCaustics"/>.</summary>
+        public bool UnderwaterCaustics = false;
+
+        /// <summary>Dimensionless scale of refracted focus offsets from the still-water ray. Default <c>1</c>
+        /// is physical focusing. Strength scales focus displacement, not final brightness or contrast.
+        /// Must be finite and non-negative when <see cref="UnderwaterCaustics"/> is enabled. Each plane may
+        /// override this through <see cref="WaterLook.CausticStrength"/>.</summary>
+        public float CausticStrength = 1f;
+
         /// <summary>Opt in to water-column light and shadow using <see cref="WaterColor"/> and
         /// <see cref="Clarity"/>. Default <c>false</c>. Each plane may override this through
         /// <see cref="WaterLook.WaterColumnLight"/>. The enabled column bypasses <see cref="AbsorptionPerMetre"/>,

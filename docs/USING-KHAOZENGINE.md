@@ -6004,7 +6004,8 @@ is retained after a failed preparation and is zero before the first success. Unr
     ```
     **Overridable fields**: `WaveSource`, the whole swell group, the ripple/detail group, body colour
     (`DeepColor`/`ShallowColor`/`AbsorptionPerMetre`/`UnderwaterSunlight`/`UnderwaterPenumbraPerMetre`/
-    `WaterColumnLight`/`WaterColor`/`Clarity`/`ShallowDepth`/`Opacity`), foam, the four `Glint*` scalars,
+    `UnderwaterCaustics`/`CausticStrength`/`WaterColumnLight`/`WaterColor`/`Clarity`/`ShallowDepth`/`Opacity`),
+    foam, the four `Glint*` scalars,
     `ShoreFadeDistance`, and the two depth-response strengths `ShoalingStrength`/`SurfStrength`.
     **What stays scene-wide, and cannot be put on
     a look at all**: `SeaState` (one FFT bake - calling the producer twice a frame with two sea states does not
@@ -6024,6 +6025,12 @@ is retained after a failed preparation and is zero before the first success. Unr
     being written anyway. Per-body sea states, bathymetry and grid modes stay deferred to
     [#275](https://github.com/APKiwiOrg/KhaozEngine/issues/275). Rationale, including why a per-plane sea state
     is refused rather than deferred: `docs/design/WATER-PER-PLANE-LOOK-DESIGN-2026-07-27.md`.
+  - **Caustic authoring**: `UnderwaterCaustics` defaults to `false` and `CausticStrength` defaults to `1`.
+    Nullable `WaterLook` overrides inherit on `null`, and an explicit `false` opts a body out. Strength scales
+    refracted focus offsets from the still-water ray, with `1` representing physical focusing. Frame
+    preparation requires finite, non-negative strength only for an opted-in body, otherwise throwing
+    `ArgumentException` with `ParamName` equal to `CausticStrength`. Disabled bodies leave strength unvalidated.
+    These authoring fields do not yet add a caustic render pass.
   - **Water-column authoring**: `WaterColumnLight` defaults to `false`, `WaterColor` defaults to neutral linear
     RGB `(0.10, 0.13, 0.10, 1)` with alpha ignored, and `Clarity` defaults to `2` metres of vertical depth for
     about 5% bed visibility when seen straight down. These are neutral authoring defaults, not tuned river values.

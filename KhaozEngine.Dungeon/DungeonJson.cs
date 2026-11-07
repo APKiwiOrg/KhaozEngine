@@ -57,25 +57,25 @@ public sealed class DungeonJsonException : Exception
     /// <see cref="DungeonJsonRefusal.JsonMalformed"/>, null when the reader reports none.</summary>
     public long? BytePositionInLine { get; init; }
 
-    /// <summary>The refused value, for <see cref="DungeonJsonRefusal.PositiveValueRequired"/> (a config or layout size,
-    /// whose limit is zero, exclusive), for <see cref="DungeonJsonRefusal.NonnegativeValueRequired"/> from the layout
-    /// <c>ceilingHeightMeters</c>, and for <see cref="DungeonJsonRefusal.NumberNonfinite"/>.</summary>
+    /// <summary>The refused floating value, for <see cref="DungeonJsonRefusal.PositiveValueRequired"/> (a config or
+    /// layout length, whose limit is zero, exclusive), for <see cref="DungeonJsonRefusal.NonnegativeValueRequired"/>
+    /// from the layout <c>ceilingHeightMeters</c>, and for <see cref="DungeonJsonRefusal.NumberNonfinite"/>.</summary>
     public double? ActualNumber { get; init; }
 
     /// <summary>The inclusive minimum, for <see cref="DungeonJsonRefusal.NonnegativeValueRequired"/> from the layout
     /// <c>ceilingHeightMeters</c> (0).</summary>
     public double? MinimumNumber { get; init; }
 
-    /// <summary>The refused integer, for <see cref="DungeonJsonRefusal.IntegerBelowMinimum"/>, a config
-    /// <see cref="DungeonJsonRefusal.NonnegativeValueRequired"/>, <see cref="DungeonJsonRefusal.PercentageOutsideRange"/>,
-    /// <see cref="DungeonJsonRefusal.RoomMarginInsufficient"/> and
-    /// <see cref="DungeonJsonRefusal.HallMarginInsufficient"/>.</summary>
+    /// <summary>The refused integer, for <see cref="DungeonJsonRefusal.IntegerBelowMinimum"/>,
+    /// <see cref="DungeonJsonRefusal.PercentageOutsideRange"/>, <see cref="DungeonJsonRefusal.RoomMarginInsufficient"/>
+    /// and <see cref="DungeonJsonRefusal.HallMarginInsufficient"/>.</summary>
     public long? ActualInteger { get; init; }
 
-    /// <summary>The inclusive minimum, for <see cref="DungeonJsonRefusal.IntegerBelowMinimum"/> (1), a config
-    /// <see cref="DungeonJsonRefusal.NonnegativeValueRequired"/> (0), <see cref="DungeonJsonRefusal.PercentageOutsideRange"/>
-    /// (0), <see cref="DungeonJsonRefusal.RoomMarginInsufficient"/> (<c>roomMaxTiles</c> + 2) and
-    /// <see cref="DungeonJsonRefusal.HallMarginInsufficient"/> (<c>hallMaxLengthTiles</c> + 2).</summary>
+    /// <summary>The inclusive minimum, for <see cref="DungeonJsonRefusal.IntegerBelowMinimum"/> (0 for a config
+    /// <c>loopEdgeBudget</c>, <c>lockCount</c>, <c>spawnMarkersPerRoomMax</c> or <c>lootMarkersPerRoomMax</c>, else 1),
+    /// <see cref="DungeonJsonRefusal.PercentageOutsideRange"/> (0), <see cref="DungeonJsonRefusal.RoomMarginInsufficient"/>
+    /// (<c>roomMaxTiles</c> + 2) and <see cref="DungeonJsonRefusal.HallMarginInsufficient"/>
+    /// (<c>hallMaxLengthTiles</c> + 2).</summary>
     public long? MinimumInteger { get; init; }
 
     /// <summary>The inclusive maximum, for <see cref="DungeonJsonRefusal.PercentageOutsideRange"/> (100).</summary>
@@ -448,6 +448,14 @@ public static class DungeonJson
             ActualNumber = actual,
         };
 
+    private static DungeonJsonException IntegerBelowOne(string path, int actual) =>
+        new(DungeonJsonRefusal.IntegerBelowMinimum, $"{path}: must be greater than zero.")
+        {
+            JsonPath = "$." + path,
+            ActualInteger = actual,
+            MinimumInteger = 1,
+        };
+
     private static DungeonJsonException RoomMissing(string path, int index, int roomId) =>
         new(DungeonJsonRefusal.ReferencedRoomMissing, $"{path}: room id {roomId} does not exist.")
         {
@@ -464,17 +472,17 @@ public static class DungeonJson
     {
         if (dto.Width <= 0)
         {
-            throw NotPositive("width", dto.Width);
+            throw IntegerBelowOne("width", dto.Width);
         }
 
         if (dto.Depth <= 0)
         {
-            throw NotPositive("depth", dto.Depth);
+            throw IntegerBelowOne("depth", dto.Depth);
         }
 
         if (dto.Floors <= 0)
         {
-            throw NotPositive("floors", dto.Floors);
+            throw IntegerBelowOne("floors", dto.Floors);
         }
 
         if (dto.CellSizeMeters <= 0f)

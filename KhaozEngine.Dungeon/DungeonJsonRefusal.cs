@@ -6,7 +6,8 @@ public enum DungeonJsonRefusal
 {
     // Document decoding, for a config or a layout.
 
-    /// <summary>Refuses text that is not well-formed JSON (JSONC comments and trailing commas are accepted).</summary>
+    /// <summary>Refuses text that is not well-formed JSON, or that nests deeper than the reader's 64 levels (JSONC
+    /// comments and trailing commas are accepted).</summary>
     JsonMalformed,
 
     /// <summary>Refuses a document whose root is not a JSON object.</summary>
@@ -17,16 +18,16 @@ public enum DungeonJsonRefusal
 
     // Config values, in the order DungeonConfig.Validate checks them.
 
-    /// <summary>Refuses a size that is not greater than zero.</summary>
+    /// <summary>Refuses a length that is not greater than zero.</summary>
     PositiveValueRequired,
 
-    /// <summary>Refuses an integer below its fixed minimum.</summary>
+    /// <summary>Refuses an integer below its fixed minimum, which is 1 except 0 for a count or budget.</summary>
     IntegerBelowMinimum,
 
     /// <summary>Refuses a minimum that exceeds the maximum it pairs with.</summary>
     RangeUnordered,
 
-    /// <summary>Refuses a count or budget that is negative.</summary>
+    /// <summary>Refuses a length that is negative.</summary>
     NonnegativeValueRequired,
 
     /// <summary>Refuses a percentage outside 0 to 100 inclusive.</summary>
@@ -40,8 +41,9 @@ public enum DungeonJsonRefusal
     /// halls are enabled.</summary>
     HallMarginInsufficient,
 
-    // Layout content, in the order LoadLayout checks it. Layout sizes reuse PositiveValueRequired and a negative
-    // ceiling height reuses NonnegativeValueRequired.
+    // Layout content, in the order LoadLayout checks it. Layout lengths reuse PositiveValueRequired, layout
+    // width, depth and floors reuse IntegerBelowMinimum and a negative ceiling height reuses
+    // NonnegativeValueRequired.
 
     /// <summary>Refuses a layout ceiling height that is positive infinity. A negative value, negative infinity
     /// included, is <see cref="NonnegativeValueRequired"/>.</summary>

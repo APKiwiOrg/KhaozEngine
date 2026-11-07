@@ -177,27 +177,27 @@ public sealed class DungeonConfig
 
         if (LoopEdgeBudget < 0)
         {
-            return new(DungeonJsonRefusal.NonnegativeValueRequired, nameof(LoopEdgeBudget),
+            return new(DungeonJsonRefusal.IntegerBelowMinimum, nameof(LoopEdgeBudget),
                 "LoopEdgeBudget must not be negative.")
             { ActualInteger = LoopEdgeBudget, MinimumInteger = 0 };
         }
 
         if (LockCount < 0)
         {
-            return new(DungeonJsonRefusal.NonnegativeValueRequired, nameof(LockCount), "LockCount must not be negative.")
+            return new(DungeonJsonRefusal.IntegerBelowMinimum, nameof(LockCount), "LockCount must not be negative.")
             { ActualInteger = LockCount, MinimumInteger = 0 };
         }
 
         if (SpawnMarkersPerRoomMax < 0)
         {
-            return new(DungeonJsonRefusal.NonnegativeValueRequired, nameof(SpawnMarkersPerRoomMax),
+            return new(DungeonJsonRefusal.IntegerBelowMinimum, nameof(SpawnMarkersPerRoomMax),
                 "SpawnMarkersPerRoomMax must not be negative.")
             { ActualInteger = SpawnMarkersPerRoomMax, MinimumInteger = 0 };
         }
 
         if (LootMarkersPerRoomMax < 0)
         {
-            return new(DungeonJsonRefusal.NonnegativeValueRequired, nameof(LootMarkersPerRoomMax),
+            return new(DungeonJsonRefusal.IntegerBelowMinimum, nameof(LootMarkersPerRoomMax),
                 "LootMarkersPerRoomMax must not be negative.")
             { ActualInteger = LootMarkersPerRoomMax, MinimumInteger = 0 };
         }

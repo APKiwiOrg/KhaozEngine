@@ -51,13 +51,12 @@ or non-finite persisted ceiling height before constructing the layout.
 
 | `Reason` | What it refuses | Identifiers |
 | --- | --- | --- |
-| `JsonMalformed` | config or layout text that is not well-formed JSON, with the reader's exception as `InnerException` | `Section`, `JsonPath`, `LineNumber`, `BytePositionInLine` |
+| `JsonMalformed` | config or layout text that is not well-formed JSON, or that nests deeper than the reader's 64 levels, with the reader's exception as `InnerException` | `Section`, `JsonPath`, `LineNumber`, `BytePositionInLine` |
 | `RootObjectRequired` | a config or layout whose root is not a JSON object | `Section` |
 | `JsonMemberUnconvertible` | a member whose value cannot convert to its type, with the deserializer's exception as `InnerException` | `Section`, `JsonPath` (the reader's path, such as `$.roomCountTarget`) |
-| `PositiveValueRequired` | a config `cellSizeMeters`, `floorHeightMeters` or set `ceilingHeightMeters`, or a layout `width`, `depth`, `floors`, `cellSizeMeters` or `floorHeightMeters`, not above zero | `JsonPath`, `ActualNumber` |
-| `IntegerBelowMinimum` | a config `roomMinTiles`, `roomCountTarget`, `maxFloors`, `criticalPathTarget`, `corridorMinWidth` or `hallMinLengthTiles` below 1 | `JsonPath`, `ActualInteger`, `MinimumInteger` (1) |
+| `PositiveValueRequired` | a config `cellSizeMeters`, `floorHeightMeters` or set `ceilingHeightMeters`, or a layout `cellSizeMeters` or `floorHeightMeters`, not above zero | `JsonPath`, `ActualNumber` |
+| `IntegerBelowMinimum` | a config `roomMinTiles`, `roomCountTarget`, `maxFloors`, `criticalPathTarget`, `corridorMinWidth` or `hallMinLengthTiles` below 1, a config `loopEdgeBudget`, `lockCount`, `spawnMarkersPerRoomMax` or `lootMarkersPerRoomMax` below 0, or a layout `width`, `depth` or `floors` below 1 | `JsonPath`, `ActualInteger`, `MinimumInteger` (1, or 0 for the four config counts and budgets) |
 | `RangeUnordered` | a config `roomMinTiles`, `corridorMinWidth` or `hallMinLengthTiles` above its maximum, `JsonPath` naming the minimum | `JsonPath`, `ActualMinimum`, `ActualMaximum` |
-| `NonnegativeValueRequired` | a negative config `loopEdgeBudget`, `lockCount`, `spawnMarkersPerRoomMax` or `lootMarkersPerRoomMax` | `JsonPath`, `ActualInteger`, `MinimumInteger` (0) |
 | `NonnegativeValueRequired` | a negative layout `ceilingHeightMeters`, negative infinity included | `JsonPath`, `ActualNumber`, `MinimumNumber` (0) |
 | `PercentageOutsideRange` | a config `hallChancePercent` outside 0 to 100 | `JsonPath`, `ActualInteger`, `MinimumInteger` (0), `MaximumInteger` (100) |
 | `RoomMarginInsufficient` | a config `plotWidthTiles` or `plotDepthTiles` below `roomMaxTiles` + 2 | `JsonPath`, `ActualInteger`, `MinimumInteger` |

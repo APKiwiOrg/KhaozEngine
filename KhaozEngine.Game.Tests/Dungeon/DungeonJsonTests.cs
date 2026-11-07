@@ -208,9 +208,9 @@ namespace KhaozEngine.Tests.Dungeon
         // Integer config rules: each refused value sits one past the documented limit, and the control loads at it.
         // hallChancePercent turns halls on for the hall margin row only.
         [Theory]
-        [InlineData("roomCountTarget", "$.roomCountTarget", -1, 1, DungeonJsonRefusal.IntegerBelowMinimum, 1, null, 0)]
+        [InlineData("roomCountTarget", "$.roomCountTarget", 0, 1, DungeonJsonRefusal.IntegerBelowMinimum, 1, null, 0)]
         [InlineData("roomMinTiles", "$.roomMinTiles", 0, 1, DungeonJsonRefusal.IntegerBelowMinimum, 1, null, 0)]
-        [InlineData("lockCount", "$.lockCount", -1, 0, DungeonJsonRefusal.NonnegativeValueRequired, 0, null, 0)]
+        [InlineData("lockCount", "$.lockCount", -1, 0, DungeonJsonRefusal.IntegerBelowMinimum, 0, null, 0)]
         [InlineData("hallChancePercent", "$.hallChancePercent", 101, 100, DungeonJsonRefusal.PercentageOutsideRange, 0, 100, 0)]
         [InlineData("hallChancePercent", "$.hallChancePercent", -1, 0, DungeonJsonRefusal.PercentageOutsideRange, 0, 100, 0)]
         [InlineData("plotWidthTiles", "$.plotWidthTiles", 9, 10, DungeonJsonRefusal.RoomMarginInsufficient, 10, null, 0)]
@@ -244,9 +244,9 @@ namespace KhaozEngine.Tests.Dungeon
             Assert.Equal(jsonPath, ex.JsonPath);
             Assert.Equal(refused, ex.ActualNumber);
 
-            // The limit is zero, exclusive, so the smallest positive float loads.
-            DungeonConfig loaded = DungeonJson.LoadConfig(ConfigJson((member, float.Epsilon)));
-            Assert.Equal(float.Epsilon, JsonNode.Parse(DungeonJson.SaveConfig(loaded))![member]!.GetValue<float>());
+            // The limit is zero, exclusive, so the smallest normal float loads.
+            DungeonConfig loaded = DungeonJson.LoadConfig(ConfigJson((member, 1.17549435E-38f)));
+            Assert.Equal(1.17549435E-38f, JsonNode.Parse(DungeonJson.SaveConfig(loaded))![member]!.GetValue<float>());
         }
 
         [Fact]
@@ -366,9 +366,6 @@ namespace KhaozEngine.Tests.Dungeon
         }
 
         [Theory]
-        [InlineData("width", "$.width")]
-        [InlineData("depth", "$.depth")]
-        [InlineData("floors", "$.floors")]
         [InlineData("cellSizeMeters", "$.cellSizeMeters")]
         [InlineData("floorHeightMeters", "$.floorHeightMeters")]
         public void BadLayoutDims_Throws_NamingField(string member, string jsonPath)
@@ -379,6 +376,24 @@ namespace KhaozEngine.Tests.Dungeon
             Assert.Equal(DungeonJsonRefusal.PositiveValueRequired, ex.Reason);
             Assert.Equal(jsonPath, ex.JsonPath);
             Assert.Equal(0.0, ex.ActualNumber);
+
+            DungeonJson.LoadLayout(DungeonJson.SaveLayout(ContentLayout()));
+        }
+
+        [Theory]
+        [InlineData("width", "$.width")]
+        [InlineData("depth", "$.depth")]
+        [InlineData("floors", "$.floors")]
+        public void BadLayoutCounts_Throws_IntegerBelowMinimum(string member, string jsonPath)
+        {
+            DungeonJsonException ex = Assert.Throws<DungeonJsonException>(() =>
+                DungeonJson.LoadLayout(LayoutWith("/" + member, 0)));
+
+            Assert.Equal(DungeonJsonRefusal.IntegerBelowMinimum, ex.Reason);
+            Assert.Equal(jsonPath, ex.JsonPath);
+            Assert.Equal(0, ex.ActualInteger);
+            Assert.Equal(1, ex.MinimumInteger);
+            Assert.Null(ex.ActualNumber);
 
             DungeonJson.LoadLayout(DungeonJson.SaveLayout(ContentLayout()));
         }

@@ -81,13 +81,18 @@ internal sealed class CatalogRunnerLifetime(TimeProvider? clock = null, Action<E
         }
     }
 
-    public async Task ReadyAsync(Task signal, Task<ContentUpgradeReport> producer, string phase)
+    public async Task ReadyAsync(Task signal, Task<ContentUpgradeReport> producer, CatalogPhase phase)
     {
         Task winner = await AwaitAsync(Task.WhenAny(signal, producer));
         if (producer.IsFaulted || producer.IsCanceled || winner == producer && !signal.IsCompleted)
         {
             ContentUpgradeReport ended = await AwaitAsync(producer);
-            throw new InvalidOperationException("runner completed before " + phase + ": " + string.Join(" | ", ended.Lines));
+            throw new CatalogScriptException(CatalogScriptRefusal.RunnerCompletedBeforePhase,
+                "runner completed before " + new CatalogPhasePosition(phase) + ": " + string.Join(" | ", ended.Lines))
+            {
+                Phase = phase,
+                ReportLines = ended.Lines,
+            };
         }
 
         await signal;

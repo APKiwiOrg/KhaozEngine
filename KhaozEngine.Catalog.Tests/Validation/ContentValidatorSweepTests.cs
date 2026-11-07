@@ -267,13 +267,14 @@ public class ContentValidatorSweepTests
     [Fact]
     public void A_throw_from_an_instances_band_validator_PROPAGATES_rather_than_becoming_KEC0040()
     {
-        ContentTypeRegistry registry = InstancesRegistry(new ThrowingValidator("the band's validator fell over"));
+        var expected = new InvalidOperationException("the band's validator fell over");
+        ContentTypeRegistry registry = InstancesRegistry(new ThrowingValidator(expected));
         ContentSnapshot candidate = Snapshot(registry, InstancesRow(5));
 
         // A game's validator is untrusted and its throw is a finding. A band type is the engine's own code
         // in the engine's own band, so a throw there is a bug and the sweep does not dress it as content.
         var thrown = Assert.Throws<InvalidOperationException>(() => Validate(candidate, registry));
-        Assert.Equal("the band's validator fell over", thrown.Message);
+        Assert.Same(expected, thrown);
     }
 
     [Fact]

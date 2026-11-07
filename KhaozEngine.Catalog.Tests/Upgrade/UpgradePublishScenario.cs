@@ -39,9 +39,9 @@ internal sealed class UpgradePublishScenario
         => Owner.ExecuteAsync(async () =>
         {
             Task<ContentUpgradeReport> older = StartOlder();
-            await Owner.ReadyAsync(Sequence.FirstCommitted.Task, older, "first commit");
+            await Owner.ReadyAsync(Sequence.FirstCommitted.Task, older, CatalogPhase.FirstCommit);
             Task<ContentUpgradeReport> next = StartNext(nextExercise);
-            await Owner.ReadyAsync(Sequence.SecondFrozen.Task, next, "next complete freeze");
+            await Owner.ReadyAsync(Sequence.SecondFrozen.Task, next, CatalogPhase.NextCompleteFreeze);
             ContentUpgradeReport nextReport = await Owner.AwaitAsync(next);
             ContentUpgradeReport olderReport = await Owner.AwaitAsync(older);
             return (olderReport, nextReport);

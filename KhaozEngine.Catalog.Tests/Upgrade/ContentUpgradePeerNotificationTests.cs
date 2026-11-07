@@ -34,7 +34,7 @@ public sealed class ContentUpgradePeerNotificationTests
         Task? cleanup = null;
         try
         {
-            await scenario.Owner.ReadyAsync(scenario.Sequence.FirstCommitted.Task, older, "first commit");
+            await scenario.Owner.ReadyAsync(scenario.Sequence.FirstCommitted.Task, older, CatalogPhase.FirstCommit);
             Task<ContentUpgradeReport> next = scenario.StartNext();
             primary = await Assert.ThrowsAnyAsync<OperationCanceledException>(() => scenario.Owner.AwaitAsync(older));
             Assert.True(scenario.Sequence.FirstReleased.Task.IsCompletedSuccessfully,

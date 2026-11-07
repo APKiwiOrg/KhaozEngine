@@ -62,14 +62,16 @@ public sealed class ContentUpgradeSweepCancellationTests
             clock.ExpireActive();
             Assert.True(owner.Diagnostic.Task.IsCompletedSuccessfully,
                 "the cancellation characterization ran outside its independent phase diagnostic");
-            var failure = Assert.IsType<TimeoutException>(await owner.Diagnostic.Task);
-            Assert.Contains("read active version", failure.Message, StringComparison.Ordinal);
+            var failure = Assert.IsType<CatalogPhaseTimeoutException>(await owner.Diagnostic.Task);
+            Assert.Equal(CatalogPhaseRefusal.PhaseStalled, failure.Reason);
+            Assert.Equal(CatalogPhase.ReadActiveVersion, failure.Phase);
+            Assert.Equal(TimeSpan.FromSeconds(20), failure.Budget);
             Assert.False(exercise.IsCancellationRequested);
             Task<ContentUpgradeReport> owned = Assert.Single(owner.Runs);
             Assert.False(owned.IsCompleted);
             Assert.False(run.IsCompleted, "the characterization returned before its held runner joined");
             held.Release.TrySetResult();
-            Assert.Same(failure, await Assert.ThrowsAsync<TimeoutException>(() => run));
+            Assert.Same(failure, await Assert.ThrowsAsync<CatalogPhaseTimeoutException>(() => run));
             Assert.All(owner.Runs, owned => Assert.True(owned.IsCompleted));
         }
         finally

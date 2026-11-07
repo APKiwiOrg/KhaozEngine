@@ -30,7 +30,7 @@ internal sealed class InterleavedUpgradePublishStore : ScriptedUpgradeStore, ICo
         _older = older;
         _sweepFails = sweepFails;
         _commit = new ContentPublishCommit(this, inner.PackStore!, new ContentPublisher(this, (IContentIdPersistence)inner, registry,
-            onStep: step => CatalogPhaseWatch.Enter("publish " + step)));
+            onStep: step => CatalogPhaseWatch.Enter(CatalogPhase.Publish, step)));
     }
 
     IContentTextAuthoringStore Text => (IContentTextAuthoringStore)Inner;
@@ -46,7 +46,7 @@ internal sealed class InterleavedUpgradePublishStore : ScriptedUpgradeStore, ICo
 
     /// <inheritdoc />
     public override Task ClearDraftFreezeAsync(int expectedBaseVersion, CancellationToken cancellationToken = default)
-        => CatalogPhaseWatch.ObserveAsync("release scoped publish freeze",
+        => CatalogPhaseWatch.ObserveAsync(CatalogPhase.ReleaseScopedPublishFreeze,
             () => ((IContentDraftFreezeStore)Inner).ClearDraftFreezeAsync(expectedBaseVersion, cancellationToken));
 
     /// <inheritdoc />
@@ -101,7 +101,7 @@ internal sealed class InterleavedUpgradePublishStore : ScriptedUpgradeStore, ICo
     /// <inheritdoc />
     public async Task<ContentTextPublishSnapshot> FreezeChangesAsync(int expectedBaseVersion, CancellationToken cancellationToken = default)
     {
-        ContentTextPublishSnapshot snapshot = await CatalogPhaseWatch.ObserveAsync("complete publish freeze",
+        ContentTextPublishSnapshot snapshot = await CatalogPhaseWatch.ObserveAsync(CatalogPhase.CompletePublishFreeze,
             () => Text.FreezeChangesAsync(expectedBaseVersion, cancellationToken));
         if (!_older && expectedBaseVersion == 2)
         {
@@ -118,12 +118,12 @@ internal sealed class InterleavedUpgradePublishStore : ScriptedUpgradeStore, ICo
 
     /// <inheritdoc />
     public Task<ContentVersionTextSnapshot> ReadTextSnapshotAsync(int versionNumber, CancellationToken cancellationToken = default)
-        => CatalogPhaseWatch.ObserveAsync("read baseline text", () => Text.ReadTextSnapshotAsync(versionNumber, cancellationToken));
+        => CatalogPhaseWatch.ObserveAsync(CatalogPhase.ReadBaselineText, () => Text.ReadTextSnapshotAsync(versionNumber, cancellationToken));
 
     /// <inheritdoc />
     public Task<ContentVersionRecord> CommitTextPublishAsync(
         ContentTextPublishPlan plan, ContentPublishRequest request, IPackVersionPointerStore? pointers, CancellationToken cancellationToken = default)
-        => CatalogPhaseWatch.ObserveAsync("commit text publish", () => Text.CommitTextPublishAsync(plan, request, pointers, cancellationToken));
+        => CatalogPhaseWatch.ObserveAsync(CatalogPhase.CommitTextPublish, () => Text.CommitTextPublishAsync(plan, request, pointers, cancellationToken));
 
     /// <inheritdoc />
     public Task<bool> TryDiscardChangesAsync(ContentDraft expected, string actor, string operatorId, CancellationToken cancellationToken = default)

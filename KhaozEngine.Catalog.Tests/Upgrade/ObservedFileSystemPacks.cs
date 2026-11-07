@@ -20,10 +20,10 @@ internal sealed class ObservedFileSystemPacks(FileSystemPackStore inner)
     public int Deletions { get; private set; }
 
     public Task<bool> ExistsAsync(string hash, CancellationToken cancellationToken = default)
-        => CatalogPhaseWatch.ObserveAsync("filesystem pack exists", () => inner.ExistsAsync(hash, cancellationToken));
+        => CatalogPhaseWatch.ObserveAsync(CatalogPhase.FileSystemPackExists, () => inner.ExistsAsync(hash, cancellationToken));
 
     public Task<ReadOnlyMemory<byte>?> GetAsync(string hash, CancellationToken cancellationToken = default)
-        => CatalogPhaseWatch.ObserveAsync("filesystem pack read", () =>
+        => CatalogPhaseWatch.ObserveAsync(CatalogPhase.FileSystemPackRead, () =>
         {
             BeforeRead?.Invoke();
             return inner.GetAsync(hash, cancellationToken);
@@ -33,7 +33,7 @@ internal sealed class ObservedFileSystemPacks(FileSystemPackStore inner)
     {
         try
         {
-            await CatalogPhaseWatch.ObserveAsync("filesystem pack write", () => inner.PutAsync(hash, bytes, cancellationToken));
+            await CatalogPhaseWatch.ObserveAsync(CatalogPhase.FileSystemPackWrite, () => inner.PutAsync(hash, bytes, cancellationToken));
         }
         catch (Exception failure)
         {
@@ -46,7 +46,7 @@ internal sealed class ObservedFileSystemPacks(FileSystemPackStore inner)
         [EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
         await using IAsyncEnumerator<string> hashes = inner.ListAsync(versionNumber, cancellationToken).GetAsyncEnumerator();
-        while (await CatalogPhaseWatch.ObserveAsync("filesystem version listing", () => hashes.MoveNextAsync().AsTask()))
+        while (await CatalogPhaseWatch.ObserveAsync(CatalogPhase.FileSystemVersionListing, () => hashes.MoveNextAsync().AsTask()))
         {
             yield return hashes.Current;
         }
@@ -54,22 +54,22 @@ internal sealed class ObservedFileSystemPacks(FileSystemPackStore inner)
 
     public Task PutVersionPointerAsync(int versionNumber, string serverManifestHash, string clientManifestHash,
         CancellationToken cancellationToken = default)
-        => CatalogPhaseWatch.ObserveAsync("filesystem pointer write",
+        => CatalogPhaseWatch.ObserveAsync(CatalogPhase.FileSystemPointerWrite,
             () => inner.PutVersionPointerAsync(versionNumber, serverManifestHash, clientManifestHash, cancellationToken));
 
     public Task<PackVersionPointer?> GetVersionPointerAsync(int versionNumber, CancellationToken cancellationToken = default)
-        => CatalogPhaseWatch.ObserveAsync("filesystem pointer read", () => inner.GetVersionPointerAsync(versionNumber, cancellationToken));
+        => CatalogPhaseWatch.ObserveAsync(CatalogPhase.FileSystemPointerRead, () => inner.GetVersionPointerAsync(versionNumber, cancellationToken));
 
     public async Task<bool> DeleteAsync(string hash, CancellationToken cancellationToken = default)
     {
-        bool deleted = await CatalogPhaseWatch.ObserveAsync("filesystem prune delete", () => inner.DeleteAsync(hash, cancellationToken));
+        bool deleted = await CatalogPhaseWatch.ObserveAsync(CatalogPhase.FileSystemPruneDelete, () => inner.DeleteAsync(hash, cancellationToken));
         Deletions += deleted ? 1 : 0;
         return deleted;
     }
 
     public async IAsyncEnumerable<string> EnumerateAsync([EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
-        CatalogPhaseWatch.Enter("filesystem pruning enumeration entry");
+        CatalogPhaseWatch.Enter(CatalogPhase.FileSystemPruningEnumerationEntry);
         Enumerations++;
         if (BeforeEnumeration is not null)
         {
@@ -82,7 +82,7 @@ internal sealed class ObservedFileSystemPacks(FileSystemPackStore inner)
             bool moved;
             try
             {
-                moved = await CatalogPhaseWatch.ObserveAsync("filesystem pruning enumeration", () => files.MoveNextAsync().AsTask());
+                moved = await CatalogPhaseWatch.ObserveAsync(CatalogPhase.FileSystemPruningEnumeration, () => files.MoveNextAsync().AsTask());
             }
             catch (OperationCanceledException failure)
             {

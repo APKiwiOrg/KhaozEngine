@@ -411,10 +411,12 @@ internal sealed class SpeakingValidator(string code, string message) : IContentV
 }
 
 /// <summary>A per-type validator that throws, which is untrusted code behaving the way it must not.</summary>
-internal sealed class ThrowingValidator(string message) : IContentValidator
+internal sealed class ThrowingValidator(Exception failure) : IContentValidator
 {
+    public ThrowingValidator(string message) : this(new InvalidOperationException(message)) { }
+
     public void Validate(ContentTypeId type, IContentSnapshot candidate, ICollection<ContentFinding> findings)
-        => throw new InvalidOperationException(message);
+        => throw failure;
 }
 
 /// <summary>

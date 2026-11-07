@@ -113,10 +113,10 @@ the public constructors.
 
 `GridPathPlanner` implements `IPathPlanner` over a `NavSpace`:
 
-- **Fast path first.** If `GridRay.IsClear` from start to goal at the agent's clearance, return the
+- **Fast path first.** When no link undercuts the spatial bound and `GridRay.IsClear` from start to goal at the agent's clearance, return the
   trivial two-point path with no A* at all. Open-terrain chase, the overwhelmingly common case, costs
   one DDA walk.
-- **A\***, 8-connected with corner-cut prevention, octile heuristic, uniform cost. A per-cell cost
+- **A\***, 8-connected with corner-cut prevention, a construction-time scaled spatial bound across layers, uniform cost. A per-cell cost
   field is a recorded follow-up seam (it would be a parallel array, the clearance byte leaves no
   room).
 - **String-pulling** on the raw cell path via `GridRay` line-of-sight, so the output is a short list
@@ -176,7 +176,8 @@ All headless xUnit in `KhaozEngine.Tests`:
 - **Baker:** synthetic analytic terrain plus hand-placed colliders, assert expected clearance at known
   cells (flat clear, steep slope blocked, shrinking clearance near cylinder and box footprints,
   `extraBlocked` respected). Chamfer verified against brute-force distance on a small grid.
-- **Planner:** optimality on open grids (octile distance match), corner-cut never happens, partial
+- **Planner:** open-grid cost conformance (octile distance match within the
+  [numeric contract](../../KhaozEngine.Navigation/README.md#numeric-cost-contract)), corner-cut never happens, partial
   flag on walled-off goals, node budget respected, endpoint snapping, fast-path short-circuit when
   line-of-sight is clear, determinism (same inputs twice give identical waypoints).
 - **Dungeon:** bake a small generated `DungeonLayout`, assert a ground-floor to upper-floor path

@@ -1,5 +1,5 @@
-// Frozen copy of the v20.24.0 GridPathPlanner algorithm (KhaozEngine#1288). The equality corpus compares the
-// production planner against it, so this file must never change with the production planner.
+// Frozen allocating reference after the #1712 spatial-bound ruling for 23.3.0.
+// Keep independent of production scratch. Change only with an evidenced reference update.
 using System;
 using System.Collections.Generic;
 using System.Numerics;
@@ -14,7 +14,7 @@ namespace KhaozEngine.Tests.Navigation;
 /// visible on the start's layer, otherwise runs an 8-connected A* search. The search prevents diagonal
 /// corner-cutting (a diagonal step needs both orthogonal companions passable), crosses layers over
 /// <see cref="NavSpace.Links"/> (each link is a graph edge whose meters cost is precomputed per
-/// <see cref="NavLinkKind"/>: a <see cref="NavLinkKind.Stair"/> costs one cell of its source layer, a
+/// <see cref="NavLinkKind"/>: a <see cref="NavLinkKind.Stair"/> costs at least its spatial span and one source cell, a
 /// <see cref="NavLinkKind.Hop"/> costs the constructor's <c>hopCostCells</c> cells, its far endpoint
 /// re-checked for the agent radius), caps its work at <see cref="PathQueryBudget.MaxExpandedNodes"/>
 /// expansions, and on an unreachable goal returns a <see cref="NavPathStatus.Partial"/> route to the
@@ -43,6 +43,7 @@ internal sealed partial class ReferenceGridPathPlanner : IRegionPathPlanner
     static readonly int[] NeighborDz = { 0, 0, 1, -1, 1, -1, 1, -1 };
 
     readonly NavSpace _space;
+    readonly ReferencePlannerSpatialBound _spatialBound;
 
     /// <summary>Running sum of each earlier layer's cell count, so node id
     /// <c>layerOffset[layer] + z * layer.Width + x</c> is unique across the whole space.</summary>
@@ -53,8 +54,8 @@ internal sealed partial class ReferenceGridPathPlanner : IRegionPathPlanner
 
     /// <summary>Link edges as an adjacency list: source node id to its reachable node ids each paired with
     /// its precomputed traversal cost in meters. Built once from <see cref="NavSpace.Links"/> (directed, so
-    /// a two-way stair contributes two entries). A <see cref="NavLinkKind.Stair"/> link costs one cell of
-    /// its source layer (<see cref="NavGrid.CellSize"/>, the historical hardcoded value), a
+    /// a two-way stair contributes two entries). A <see cref="NavLinkKind.Stair"/> link costs at least its spatial span and
+    /// its source layer's <see cref="NavGrid.CellSize"/>, a
     /// <see cref="NavLinkKind.Hop"/> link costs <see cref="_hopCostCells"/> of them. The far endpoint's own
     /// passability is still checked at expansion time.</summary>
     readonly Dictionary<int, List<(int ToId, float CostMeters)>> _linkEdges;
@@ -71,10 +72,7 @@ internal sealed partial class ReferenceGridPathPlanner : IRegionPathPlanner
     /// <summary>Builds a planner that searches <paramref name="space"/>. <paramref name="hopCostCells"/> is
     /// the cost of crossing a <see cref="NavLinkKind.Hop"/> link, in multiples of the source layer's
     /// <see cref="NavGrid.CellSize"/> (default 4). It must be positive. A <see cref="NavLinkKind.Stair"/>
-    /// link keeps its one-cell cost. Keep <paramref name="hopCostCells"/> at or above the longest hop's
-    /// octile displacement (about 2.83 at a two-cell hop) to keep the A* heuristic admissible and the search
-    /// optimal. Below it the search stays correct but may return a valid non-optimal route, the same caveat
-    /// the far-jumping-link heuristic already documents.</summary>
+    /// link costs at least its spatial metric span and one source cell. The cached ratio bounds links on every layer.</summary>
     public ReferenceGridPathPlanner(NavSpace space, float hopCostCells = 4f)
         : this(space, hopCostCells, null)
     {
@@ -98,6 +96,7 @@ internal sealed partial class ReferenceGridPathPlanner : IRegionPathPlanner
         }
         _totalNodes = total;
 
+        _spatialBound = new ReferencePlannerSpatialBound(_space, _traversal, LinkCost);
         _linkEdges = new Dictionary<int, List<(int ToId, float CostMeters)>>();
         _hopEdges = new HashSet<(int FromId, int ToId)>();
         foreach (NavLink link in traversal?.Links ?? _space.Links)
@@ -105,10 +104,8 @@ internal sealed partial class ReferenceGridPathPlanner : IRegionPathPlanner
             int fromId = _layerOffset[link.FromLayer] + link.FromZ * layers[link.FromLayer].Width + link.FromX;
             int toId = _layerOffset[link.ToLayer] + link.ToZ * layers[link.ToLayer].Width + link.ToX;
 
-            // A Stair keeps exactly the source layer's cell size, the historical hardcoded link cost, so a
-            // hop-free space plans byte-identically. A Hop is charged the knob's multiple of it.
-            float costCells = link.Kind == NavLinkKind.Hop ? _hopCostCells : 1f;
-            float costMeters = costCells * layers[link.FromLayer].CellSize;
+            float costMeters = LinkCost(link, _spatialBound.Distance(
+                link.FromLayer, link.FromX, link.FromZ, link.ToLayer, link.ToX, link.ToZ));
 
             if (!_linkEdges.TryGetValue(fromId, out List<(int ToId, float CostMeters)>? targets))
             {
@@ -161,7 +158,7 @@ internal sealed partial class ReferenceGridPathPlanner : IRegionPathPlanner
 
         // Same layer with a clear straight shot is the trivial one-waypoint case. Everything else runs
         // the A* search, which also carries cross-layer routing over the link edges.
-        if (_traversal is null && startLayer == goalLayer && HasLineOfSight(startGrid, startPoint.Value, goalPoint, agentRadius))
+        if (_traversal is null && _spatialBound.Scale == 1f && startLayer == goalLayer && HasLineOfSight(startGrid, startPoint.Value, goalPoint, agentRadius))
         {
             return new NavPath(NavPathStatus.Complete, new[] { new NavWaypoint(goalPoint, goalLayer) });
         }

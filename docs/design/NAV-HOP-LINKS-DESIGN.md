@@ -82,17 +82,15 @@ tells the follower's consumer "traverse this by jumping" so it can play a lunge 
    a drop-down by comparing their resolved heights and plays the right motion.
 
 6. **A hop costs more than walking, via a single planner-level `hopCostCells` knob keyed on `Kind`.** The
-   planner charges a `Stair` link its existing one-cell cost (`grid.CellSize`, unchanged) and a `Hop` link
+   planner charges a `Stair` link at least its spatial metric span and one source cell and a `Hop` link
    `hopCostCells * grid.CellSize`. `hopCostCells` is one optional `GridPathPlanner` constructor argument
    (default 4), the only cost tuning this feature adds. Two properties follow from the default. First, where
    both a ramp and a hop reach the same place, the planner sums the ramp's per-cell walk costs against the
    hop's flat cost, so a ramp detour shorter than the hop penalty wins (a hop is not free). Second, the
-   default keeps A* optimal: the octile heuristic assumes pure walking, so it stays admissible as long as a
-   hop is never cheaper than walking its own XZ displacement. The longest hop at `maxHopCells = 2` spans a
-   2-cell diagonal (octile ~2.83 cells), so `hopCostCells >= 2.83` guarantees the heuristic never
-   overestimates a hop-using path. The default of 4 clears that with margin. Below it, A* stays correct but
-   may return a valid non-optimal route, the same caveat the existing planner already documents for
-   far-jumping links.
+   default preserves the unscaled spatial bound: the longest hop at `maxHopCells = 2` spans a
+   two-cell diagonal (octile about 2.83 cells), below the default cost of 4. Cheaper hops use the least edge-cost-to-span ratio calculated once at construction.
+   Complete routes follow the [numeric cost contract](../../KhaozEngine.Navigation/README.md#numeric-cost-contract),
+   which owns the error bound, scale range and shared-frame/world-space metric rules.
 
 7. **The follower surfaces a hop through a new `PathFollowState.Hopping` plus a `HopStart` on the output,
    and suspends ground steering for the duration.** The planner marks a hop link's landing waypoint
@@ -114,11 +112,10 @@ tells the follower's consumer "traverse this by jumping" so it can play a lunge 
    whole waypoints still hold (both sides `Walk`, or both `Hop`). The follower keys the hop seam off this
    field.
 
-9. **Full backward compatibility, opt-in throughout.** `BakeOverworldSteps` is untouched and still returns a
+9. **Hop traversal remains opt-in.** `BakeOverworldSteps` is untouched and still returns a
    bare `NavGrid` with no hops. `NavSpace.Single(grid)` with no links plans exactly as today. A consumer
-   gets hops only by calling `BakeOverworldHops` (or `NavHopLinks.Generate` plus `NavSpace`). Existing
-   planner and follower tests are unaffected: `Stair` and `Walk` are the defaults, `Stair` link cost is the
-   unchanged one-cell charge, and no path without hop links ever sees `Hopping`. The reference consumer opts in by
+   gets hops only by calling `BakeOverworldHops` (or `NavHopLinks.Generate` plus `NavSpace`). `Stair` and `Walk` remain the defaults,
+   Stair has a source-cell minimum, and no path without hop links ever sees `Hopping`. The reference consumer opts in by
    swapping its `BakeOverworldSteps` boot call for `BakeOverworldHops` and handling `Hopping` in its wolf
    brain.
 
@@ -167,7 +164,7 @@ provider `BakeOverworldSteps` does.
 ### Changed internals (`GridPathPlanner`)
 
 - The link adjacency (`_linkEdges`) carries, per link, the precomputed traversal cost in meters
-  (`grid.CellSize` for `Stair`, `hopCostCells * grid.CellSize` for `Hop`) and its kind. Search scratch retains
+  (the greater of spatial metric span and `grid.CellSize` for `Stair`, `hopCostCells * grid.CellSize` for `Hop`) and its kind. Search scratch retains
   the selected incoming kind rather than looking up an endpoint-pair set. Drop adds distance plus descent cost.
 - A* link expansion charges the per-link cost instead of the hardcoded `grid.CellSize`.
 - Reconstruction, at a run boundary that is a hop edge, stamps `NavWaypointKind.Hop` on the emitted landing
@@ -229,18 +226,18 @@ already.
 
 ## Planner cost and reconstruction
 
-Cost: precompute each link's meters cost at construction (`Stair` -> `grid.CellSize`, `Hop` ->
-`hopCostCells * grid.CellSize`, using the source layer's cell size), store it in the adjacency, and charge
-it in A* link expansion. `Stair` links keep their exact prior cost, so every existing planner and
-`DungeonNav` test is unmoved. Admissibility of the octile heuristic holds for `hopCostCells` at or above
-the longest hop's octile displacement (~2.83 cells at `maxHopCells` 2), and the default 4 clears it, so A*
-stays optimal. This is the same admissibility framing the planner already documents for its links.
+Cost: precompute each link's meters cost at construction (at least spatial metric span and `grid.CellSize` for `Stair`,
+`hopCostCells * grid.CellSize` for `Hop`, using the source layer's cell size), store it in the adjacency, and charge
+it in A* link expansion. A zero-span `Stair` keeps its one-cell minimum. The planner's construction-time
+minimum edge-cost-to-span ratio preserves the exact-arithmetic geometric bound for cheap hops across layers.
+Complete costs follow the [numeric contract](../../KhaozEngine.Navigation/README.md#numeric-cost-contract). Stair costs use that same
+metric and round upward when needed to cover their span. Links that preserve the spatial bound leave the ratio at one.
 
 Reconstruction retains the incoming edge actually selected by the search. A link boundary is never inferred from
 non-adjacency or an endpoint-pair Hop set. This preserves adjacent same-layer Drop transitions without annotating a
 cheaper ordinary exit as special. Hop landings retain `NavWaypointKind.Hop` and Stair landings Walk. Drop endpoints
 are mandatory physical anchors, including a Drop on the first edge. The unguarded Hop first-edge behavior remains
-unchanged. The [Drop contract](CONTACT-DROP-LINKS.md) describes its distance cost and whole-query heuristic fallback.
+unchanged. The [Drop contract](CONTACT-DROP-LINKS.md) describes its distance cost and scaled spatial bound.
 
 ## Follower seam
 

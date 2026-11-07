@@ -34,7 +34,7 @@ public sealed partial class DirectMoveToRange
     public DirectMoveToRange(DirectApproachOptions options)
     {
         _options = options ?? throw new ArgumentNullException(nameof(options));
-        _progress = new RangeProgressRing(Math.Max(options.StallWindowTicks, options.ApproachWindowTicks) + 1);
+        _progress = new RangeProgressRing(options.StallWindowTicks, options.ApproachWindowTicks);
         _admits = AllowsStep;
     }
 
@@ -75,7 +75,7 @@ public sealed partial class DirectMoveToRange
         }
 
         _progress.Record(feet, ReachGeometry.Distance(shape, target));
-        if (_progress.StallBreached(_options.StallTravelMetres, _options.StallWindowTicks) ||
+        if (_progress.StallBreached(_options.StallTravelMetres) ||
             (!targetMoves && _progress.ApproachBreached(_options.ApproachGainMetres, _options.ApproachWindowTicks)))
         {
             _blocked = true;

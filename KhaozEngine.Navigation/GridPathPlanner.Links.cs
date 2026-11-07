@@ -7,11 +7,26 @@ public sealed partial class GridPathPlanner
 {
     readonly record struct PlannerLink(int ToId, float CostMeters, NavLinkKind Kind);
 
-    float LinkCost(NavLink link)
+    // Narrow observations for the #1712 cost-policy contract. Neither changes planner state.
+    internal double SpatialBoundScaleForTests => _spatialBound.Scale;
+    internal float LinkCostMetersForTests(NavLink link) => LinkCost(link);
+
+    float LinkCost(NavLink link) => LinkCost(link,
+        _spatialBound.Distance(link.FromLayer, link.FromX, link.FromZ, link.ToLayer, link.ToX, link.ToZ));
+
+    float LinkCost(NavLink link, double spatialSpan)
     {
         NavGrid from = _space.Layers[link.FromLayer], to = _space.Layers[link.ToLayer];
+        if (link.Kind == NavLinkKind.Hop) return from.CellSize * _hopCostCells;
         if (link.Kind != NavLinkKind.Drop)
-            return from.CellSize * (link.Kind == NavLinkKind.Hop ? _hopCostCells : 1f);
+        {
+            double minimum = Math.Max(from.CellSize, spatialSpan);
+            if (!double.IsFinite(minimum) || minimum > float.MaxValue)
+                throw new ArgumentException("Stair cost must be representable.", nameof(link));
+            float rounded = (float)minimum;
+            // Rounding down would discount the metric and weaken the construction-time bound.
+            return rounded < minimum ? MathF.BitIncrement(rounded) : rounded;
+        }
         float sourceY = from.RestingHeightAt(link.FromX, link.FromZ) ??
             throw new ArgumentException("Drop endpoints require physical heights.", nameof(link));
         float targetY = to.RestingHeightAt(link.ToX, link.ToZ) ??
@@ -24,21 +39,6 @@ public sealed partial class GridPathPlanner
         if (!double.IsFinite(cost) || cost > float.MaxValue)
             throw new ArgumentException("Drop cost must be representable.", nameof(link));
         return (float)cost;
-    }
-
-    bool PointLinksPreserveOctile()
-    {
-        foreach (var source in _linkEdges)
-        {
-            var (layer, x, z) = Decode(source.Key);
-            foreach (PlannerLink edge in source.Value)
-            {
-                var (targetLayer, tx, tz) = Decode(edge.ToId);
-                if (targetLayer != layer || !float.IsFinite(edge.CostMeters) ||
-                    edge.CostMeters < Octile(x, z, tx, tz, _space.Layers[layer].CellSize)) return false;
-            }
-        }
-        return true;
     }
 
     static NavWaypointKind WaypointKind(NavLinkKind? kind) => kind switch

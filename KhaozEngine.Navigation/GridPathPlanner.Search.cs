@@ -14,18 +14,17 @@ public sealed partial class GridPathPlanner
     /// an orthogonal step is <see cref="NavGrid.CellSize"/>, a diagonal <see cref="NavGrid.CellSize"/> *
     /// sqrt(2). A diagonal step is taken only when both orthogonal companions are passable, blocking
     /// corner cuts. After the eight grid neighbors, each link out of the current node is expanded at its
-    /// precomputed meters cost (a <see cref="NavLinkKind.Stair"/> the source layer's
+    /// precomputed meters cost (a <see cref="NavLinkKind.Stair"/> at least its spatial span and the source layer's
     /// <see cref="NavGrid.CellSize"/>, a <see cref="NavLinkKind.Hop"/> the constructor's hop cost), skipped
-    /// when the link's far endpoint is not passable for the agent radius on its own layer. The heuristic is the
-    /// octile distance to the goal cell while the node is on the goal's layer, and zero otherwise
-    /// (an admissible lower bound across a link, degrading the off-layer search to Dijkstra). Off the
-    /// goal layer, the zero heuristic pins the start as the closest-approach minimum, so a cross-layer
-    /// query that reaches the goal's layer but cannot reach the goal returns Unreachable rather than
-    /// Partial (single-layer Partial behavior is unaffected). A popped node is final for the ascend-to-goal
-    /// case the links model. The search stops when the goal is popped (<see cref="NavPathStatus.Complete"/>),
+    /// when the link's far endpoint is not passable for the agent radius on its own layer. A construction-time
+    /// spatial cost ratio scales one metric across every layer: octile in a shared frame, world XZ distance
+    /// otherwise. The geometric bound is admissible and consistent in exact arithmetic. Double cost and
+    /// priority errors follow the numeric contract in the Navigation README. Closed nodes are not reopened.
+    /// Progress uses physical 3D feet distance independently of priority. The search stops
+    /// when the goal is popped (<see cref="NavPathStatus.Complete"/>),
     /// the open set empties, or <paramref name="budget"/>'s <see cref="PathQueryBudget.MaxExpandedNodes"/>
     /// expansions are spent. On a non-goal stop it reconstructs to the closest-approach node (least
-    /// heuristic among popped nodes, earliest on ties) as a <see cref="NavPathStatus.Partial"/> path, or
+    /// physical distance among popped nodes, earliest on ties) as a <see cref="NavPathStatus.Partial"/> path, or
     /// <see cref="NavPath.Unreachable"/> when that closest node is still the start.
     /// </summary>
     NavPath RunAStar(SearchScratch scratch,
@@ -35,7 +34,8 @@ public sealed partial class GridPathPlanner
         NavGrid goalGrid = _space.Layers[goalLayer];
         (int goalX, int goalZ) = goalGrid.CellOf(goalPoint.X, goalPoint.Y);
         return RunSearch(scratch, startLayer, startPoint,
-            new PointGoal(goalLayer, goalX, goalZ, goalGrid.CellSize, !_hasDrops || PointLinksPreserveOctile()), goalPoint, agentRadius, budget);
+            new PointGoal(this, goalLayer, goalX, goalZ, CellFeet(goalLayer, goalX, goalZ)),
+            goalPoint, agentRadius, budget);
     }
 
     /// <summary>What one search is looking for. A struct implementation keeps the per-node calls free of
@@ -45,21 +45,29 @@ public sealed partial class GridPathPlanner
         bool IsGoal(int layer, int x, int z);
 
         /// <summary>Added to the g-score for the open-set order. Must bound the remaining route cost.</summary>
-        float Priority(int layer, int x, int z);
+        double Priority(int layer, int x, int z);
 
         /// <summary>Lower is closer. Only chooses a partial endpoint.</summary>
         double Progress(int layer, int x, int z);
     }
 
-    /// <summary>A point query's goal cell, ordered by <see cref="Heuristic"/>.</summary>
-    readonly struct PointGoal(int goalLayer, int goalX, int goalZ, float goalCellSize, bool spatialBound) : ISearchGoal
+    /// <summary>A point query's goal cell, ordered by the planner's cached spatial cost bound.</summary>
+    readonly struct PointGoal(GridPathPlanner planner, int goalLayer, int goalX, int goalZ,
+        Vector3 goalFeet) : ISearchGoal
     {
         public bool IsGoal(int layer, int x, int z) => layer == goalLayer && x == goalX && z == goalZ;
 
-        public float Priority(int layer, int x, int z)
-            => spatialBound ? Heuristic(layer, x, z, goalLayer, goalX, goalZ, goalCellSize) : 0f;
+        public double Priority(int layer, int x, int z)
+            => planner._spatialBound.Point(layer, x, z, goalLayer, goalX, goalZ);
 
-        public double Progress(int layer, int x, int z) => Heuristic(layer, x, z, goalLayer, goalX, goalZ, goalCellSize);
+        public double Progress(int layer, int x, int z)
+        {
+            Vector3 feet = planner.CellFeet(layer, x, z);
+            double dx = (double)feet.X - goalFeet.X;
+            double dy = (double)feet.Y - goalFeet.Y;
+            double dz = (double)feet.Z - goalFeet.Z;
+            return dx * dx + dy * dy + dz * dz;
+        }
     }
 
     // Priority must bound remaining route cost. Progress only chooses a partial endpoint, so region
@@ -73,11 +81,11 @@ public sealed partial class GridPathPlanner
         int startId = _layerOffset[startLayer] + startZ * startGrid.Width + startX;
 
         scratch.BeginSearch();
-        PriorityQueue<int, (float F, int Seq)> open = scratch.Open;
+        PriorityQueue<int, (double F, int Seq)> open = scratch.Open;
         int seq = 0;
 
-        scratch.Relax(startId, 0f, -1);
-        float startHeuristic = goal.Priority(startLayer, startX, startZ);
+        scratch.Relax(startId, 0d, -1);
+        double startHeuristic = goal.Priority(startLayer, startX, startZ);
         open.Enqueue(startId, (startHeuristic, seq++));
 
         int closestNode = startId;
@@ -121,7 +129,7 @@ public sealed partial class GridPathPlanner
                 break;
             }
 
-            float gCurrent = scratch.GScore(current);
+            double gCurrent = scratch.GScore(current);
             for (int i = 0; i < NeighborDx.Length; i++)
             {
                 int nx = cx + NeighborDx[i];
@@ -145,17 +153,17 @@ public sealed partial class GridPathPlanner
                     continue;
                 }
 
-                float tentative = gCurrent + (diagonal ? grid.CellSize * Sqrt2 : grid.CellSize);
+                double tentative = gCurrent + PlannerWalkingPrices.Cost(grid.CellSize, diagonal);
                 if (tentative < scratch.GScore(neighborId))
                 {
                     scratch.Relax(neighborId, tentative, current);
-                    float f = tentative + goal.Priority(layer, nx, nz);
+                    double f = tentative + goal.Priority(layer, nx, nz);
                     open.Enqueue(neighborId, (f, seq++));
                 }
             }
 
             // Cross-layer (and same-grid hop) edges: each link out of this cell carries its own precomputed
-            // meters cost (a Stair one cell of the source layer, a Hop the knob's multiple). The source
+            // meters cost (a Stair at least its span and one source cell, a Hop the knob's multiple). The source
             // endpoint is passable by construction (it is a reached search node). The far endpoint must
             // still fit the agent on its own layer, else the link is not traversable.
             if (_linkEdges.TryGetValue(current, out List<PlannerLink>? links))
@@ -174,11 +182,11 @@ public sealed partial class GridPathPlanner
                         continue;
                     }
 
-                    float tentative = gCurrent + costMeters;
+                    double tentative = gCurrent + costMeters;
                     if (tentative < scratch.GScore(targetId))
                     {
                         scratch.Relax(targetId, tentative, current, kind);
-                        float f = tentative + goal.Priority(tLayer, tx, tz);
+                        double f = tentative + goal.Priority(tLayer, tx, tz);
                         open.Enqueue(targetId, (f, seq++));
                     }
                 }
@@ -305,29 +313,6 @@ public sealed partial class GridPathPlanner
         int local = id - _layerOffset[layer];
         int width = _space.Layers[layer].Width;
         return (layer, local % width, local / width);
-    }
-
-    /// <summary>Octile distance to the goal cell while the node is on the goal's layer, zero otherwise.
-    /// On the goal layer this heuristic is admissible only when all links move at most one cell in XZ
-    /// (as in DungeonNav stair links). A link that jumps far in XZ for its flat one-cell cost, or an
-    /// optimal path that leaves and re-enters the goal layer through such links, can cause the heuristic
-    /// to overestimate, making A* return a valid but suboptimal Complete path. Zero off the goal layer is
-    /// an admissible lower bound across a link (no octile estimate spans two coordinate frames), which
-    /// keeps the popped-node-is-final guarantee for a search that ascends into the goal's layer and never
-    /// leaves it, at the cost of a Dijkstra-like sweep before the crossing.</summary>
-    static float Heuristic(int layer, int cx, int cz, int goalLayer, int goalX, int goalZ, float goalCellSize)
-        => layer == goalLayer ? Octile(cx, cz, goalX, goalZ, goalCellSize) : 0f;
-
-    /// <summary>Octile distance in meters from cell (<paramref name="x"/>, <paramref name="z"/>) to the
-    /// goal cell (<paramref name="goalX"/>, <paramref name="goalZ"/>):
-    /// <paramref name="cellSize"/> * (sqrt(2) * min + (max - min)) over the axis deltas.</summary>
-    static float Octile(int x, int z, int goalX, int goalZ, float cellSize)
-    {
-        int adx = Math.Abs(x - goalX);
-        int adz = Math.Abs(z - goalZ);
-        int min = Math.Min(adx, adz);
-        int max = Math.Max(adx, adz);
-        return cellSize * (Sqrt2 * min + (max - min));
     }
 
 }

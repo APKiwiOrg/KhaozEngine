@@ -324,7 +324,8 @@ A* implementation over a `NavSpace`.
 
 A query snaps both endpoints onto a passable cell (within `PathQueryBudget.SnapRadius`, else
 `NavPath.Unreachable`), tries a same-layer line-of-sight shortcut, then searches eight-connected grid exits and
-accepted links. Diagonals require both companion cells. Stair costs one source cell, Hop costs `hopCostCells`
+accepted links. Diagonals require both companion cells. Stair costs the greater of its spatial metric span and
+one source cell, rounded upward when needed to cover that span. Hop costs `hopCostCells`
 source cells and Drop costs world XZ octile displacement plus positive physical descent in metres. Expansion is
 bounded by `MaxExpandedNodes`. An incomplete query returns its closest reached node as Partial or Unreachable
 when no progress was made. Legacy point routes string-pull ordinary runs. Incoming edge identity preserves Hop
@@ -372,17 +373,19 @@ ordinary exits and accepted links. Movement uses a separate supported-walk query
 ### Goal regions
 
 `NavGoalRegion(Vector3 anchor, float horizontalExtent, Func<Vector3, bool> contains)` exposes `Anchor`,
-`HorizontalExtent`, and `Contains(Vector3 feetPosition)`. The anchor and extent bound candidate discovery.
+`HorizontalExtent`, and `Contains(Vector3 feetPosition)`. The extent is the half-width on each world XZ
+axis of the square around the anchor. It bounds candidate discovery, including the square's corners.
 The predicate is pure for a query and receives each candidate's actual cell-centre feet position. There is
 no anchor substitution or target-Y guess. `IRegionPathPlanner` adds
 `FindPath(Vector3 start, NavGoalRegion goal, float agentRadius, PathQueryBudget budget)` to
 `IPathPlanner`. Region queries require surface-height grids and complete only when a candidate feet position
 passes `Contains`.
 
-The region search discovers the full admitted topology before expansion, then uses one shared search. Its
-priority is a safe spatial lower bound or zero when a cross-layer link or a cheap same-layer link could
-undercut that bound. Separate finite-safe progress compares each expanded node with the actual admitted
-region members. Work is `O(N + E*M)` and storage is `O(N + M)`, where `N` is topology size, `E` is the
+The region search records admitted members before expansion, then uses one shared search. Shared frames
+bound those members in local cell coordinates. Differing frames use their containing world XZ square.
+Both bounds are zero at every admitted member and use the same numeric model as edge costs. See
+[Search costs and spatial bounds](#search-costs-and-spatial-bounds) for the detailed contract. Separate
+finite-safe progress compares each expanded node with the actual admitted region members. Work is `O(N + E*M)` and storage is `O(N + M)`, where `N` is topology size, `E` is the
 expanded node count, and `M` is the member count. The conservative anchor and horizontal extent AABB
 reduces exact predicate calls, not `M` for a valid predicate. `MaxExpandedNodes` bounds search expansions,
 not topology discovery or all query work. Region paths retain every validated cell edge and link endpoint
@@ -391,22 +394,123 @@ so it cannot prove a shortcut. Straightening a region route lives in Movement, b
 `RouteApproachOptions.StraightenRoutes`, which drops waypoints only where the full segment guard accepts the
 shortcut.
 
-`GridPathPlanner(space, hopCostCells = 4f)` exposes the one hop-cost knob: the cost of crossing a `Hop`
-link, in multiples of the source layer's `NavGrid.CellSize`. It must be positive, and existing
-`new GridPathPlanner(space)` calls are unaffected. Admissibility note: keep `hopCostCells` at or above
-the longest hop's octile XZ length in cells, so a hop is never cheaper than walking its own displacement.
-The longest hop at `maxHopCells = 2` spans a 2-cell diagonal (octile about 2.83 cells), which the default
-of 4 covers with headroom, so the octile heuristic never overestimates and paths stay optimal.
+### Search costs and spatial bounds
 
-Point queries on Drop topology first check every admitted link. Cross-layer or cheap links that invalidate
-the octile bound give the entire query zero priority, matching the conservative region rule. Drop-free point
-queries retain their historical heuristic. Its documented limitations follow. The octile heuristic is admissible on the goal layer only when every link
-moves at most one cell in XZ (true of `DungeonNav`'s stair links) - a link that jumps far in XZ for its
-flat one-cell cost can make the heuristic overestimate, so A* can return a valid but suboptimal `Complete`
-path. Off the goal layer the heuristic is zero (an admissible lower bound across a link, at the cost of a
-Dijkstra-like sweep before the crossing), which pins the start as the closest-approach minimum, so a
-cross-layer query that reaches the goal's layer but cannot reach the goal returns `Unreachable` rather
-than `Partial` (single-layer `Partial` behavior is unaffected).
+`GridPathPlanner(space, hopCostCells = 4f)` exposes the one hop-cost knob: the cost of crossing a `Hop`
+link, in multiples of the source layer's `NavGrid.CellSize`. It must be positive. The default 4 exceeds
+an ordinary two-cell diagonal hop's octile span of about 2.83 cells.
+
+The planner computes a spatial cost ratio once at construction, never by rescanning links during a query.
+It takes the least cost divided by spatial span over walking edges and accepted links, capped at one.
+Walking and link prices are materialized as floats. Search widens each actual price exactly, then accumulates
+g-scores and queue priorities in double. The bound and its ratio also use double, not a rounded float octile
+expression or repeated float accumulation. In a shared frame, octile distance is the double sum of the
+actual float orthogonal and diagonal walking prices times their step counts. This is the cheapest
+unobstructed path at those prices. Differing frames use world XZ distance, including actual walking spans
+of translated or rotated grids. Undercutting link/walking ratios are rounded conservatively downward. A purely
+vertical link imposes no spatial constraint. A non-finite cost or a nonpositive ratio falls back to zero.
+Walking costs are uniform, with no area or terrain cost multiplier. Traversal profiles remove edges
+without changing their costs.
+
+Point priority uses that scaled metric to the goal cell on every layer. In a shared frame, region priority
+uses octile distance to the local cell-index box containing every admitted member. Membership records that
+box by value in reused scratch, alongside the existing feet list. Rounded world centres at large origins
+cannot distort this local bound. Distance to the containing box changes no faster than the same octile
+metric used for edge spans, and it is zero at every member. With differing frames, region priority retains
+world XZ distance to the extent square, using the same rounded centres as its construction-time scale.
+Physical feet still supply membership and 3D progress. In exact arithmetic these are admissible,
+consistent geometric bounds for cheap Hops, long links and paths leaving and re-entering the goal layer.
+Binary64 accumulation and priority evaluation have the finite error stated in the
+[numeric cost contract](#numeric-cost-contract), rather than an unrestricted exact-optimum promise. Preserving links leave the ratio
+at one. Point progress uses squared physical 3D distance to the goal cell's feet across layers, while
+region progress uses squared 3D distance to actual members. Legacy height-less point grids use a zero-height
+plane. Progress still selects a useful partial endpoint when the safe
+priority is zero. The legacy point line-of-sight shortcut is used only when the ratio is one, since a
+cheap link can otherwise beat a visible direct walk.
+
+The bound and partial progress apply on every layer for every graph. Route choices change in 23.3.0,
+including the correction of discounted diagonal Stairs, the shared-frame region metric and double cost arithmetic.
+The local member box and numeric model can change point and region order even on exact binary coordinates.
+Actual float prices remain the objective. Stair floors use the same double span and round their float price upward. Finite-budget status, goal member and waypoint choices may change. A zero-span Stair retains its source-cell minimum.
+Stair weights are computed at load, so this policy changes no bake bytes, topology, format or identity fields
+at a fixed engine version. A released engine version still requires the normal consumer rebake.
+Complete searches obey the [numeric cost contract](#numeric-cost-contract). With
+`MaxExpandedNodes = int.MaxValue`, finite admitted reachability is exact: a query completes when the graph
+connects its resolved start to a goal, otherwise it returns Partial or Unreachable.
+Finite-budget results are best effort. Changing the search order can improve or worsen a status or the
+distance of a Partial endpoint within the same budget. Physical 3D point progress avoids selecting a roof
+directly above the goal merely because its XZ coordinates coincide.
+
+#### Numeric cost contract
+
+A searched `Complete` route is optimal up to the bound below. There is no unconditional absolute
+`0.00001 m` guarantee at every magnitude. Prices are the actual materialized float edge prices, widened
+exactly and added sequentially in binary64. The comparison optimum is exhaustive Dijkstra over the same
+admitted edges using those same sequential double additions. Legacy direct line-of-sight point shortcuts
+do not enter this graph search and are outside graph g-score comparison.
+
+For a query, choose:
+
+- `N`, an upper bound on both the returned raw route's edge count and an exhaustive-double-optimum route's
+  edge count. For multiple equal optima, a simple optimum suffices. `N = 0` has zero cost error.
+- `M > 0`, a finite arithmetic envelope in metres. It bounds the magnitudes of relevant accumulated g-scores,
+  g-plus-priority keys, represented coordinate/anchor/extent values and differences, spans, and length-valued
+  products used by the construction-time scale and query priorities. It covers corresponding exact
+  intermediates too, with room for rounding. Norm squares have the corresponding `M * M` scale. It is not
+  merely the returned final g. A remote anchor paired with a large extent needs that larger envelope even
+  if the traversed route is short.
+- `q = ULP(M) = BitIncrement(M) - M`, the binary64 spacing at that envelope.
+
+For finite nonnegative prices, valid finite geometry, round-to-nearest binary64 operations and no arithmetic
+underflow/overflow, the contract is:
+
+```text
+returned sequential-double cost - exhaustive sequential-double optimum <= B(N, M)
+B(N, M) = 132 * N * ULP(M) metres
+```
+
+This is a conservative upper bound, not a distance tolerance used by the planner. The planner does not
+round comparisons into a band, widen region membership, change budgets or force a different route.
+
+Derivation for this implementation:
+
+1. Widening float prices and integer indices to double is exact. An individual g or queue-key addition
+   incurs at most `q` absolute error inside the envelope, conservatively allowing a full ULP.
+2. Integer box selection, abs, min and max introduce no rounded arithmetic. Shared octile evaluation has
+   two products and one sum. World span evaluation has two differences, two squares, a sum and a square
+   root. A ratio adds division and one downward representable step. Taking a minimum over ratios does
+   not accumulate their errors. With binary64 unit roundoff `u = 2^-53` and the elementary-operation bound
+   `gamma(k) = k*u/(1-k*u)`, the scale contribution is below `12*q` over the envelope.
+3. For a world-square query, membership's rounded difference is covered by expanding its exact containing
+   square by `q` per axis. Each query axis has at most two rounded subtractions. With that expansion,
+   coordinate-gap error contributes less than `5*q` to the norm, norm arithmetic less than `5*q`, and the
+   final scale multiplication at most `q`. The shared-frame case is smaller. Thus the evaluated priority
+   differs from a nonnegative consistent exact-arithmetic geometric potential, zero at every admitted
+   goal, by less than `12*q + 10*q + q`. Use the conservative common budget `E = 64*q`.
+4. Along an oracle-optimal path, let `j` be its first unclosed vertex when another vertex `i` is closed.
+   The already-closed prefix bounds the excess label at `j`. Comparing their queue keys costs at most
+   `2*E + 2*q`, and comparing the two rounded relaxations costs at most another `2*q`. Exact geometric
+   consistency bounds the intervening path segment, whose double additions contribute at most one `q`
+   per edge. Induction charges at most `2*E + 4*q = 132*q` per oracle-path edge. The same frontier
+   comparison at the first popped goal covers different admitted goal members, giving `132*N*q`.
+
+The standard operation/summation model is described by
+[Higham, The Accuracy of Floating Point Summation](https://nhigham.com/wp-content/uploads/2023/10/high93s.pdf).
+The geometric-potential and closed-search error budget above is specific to this implementation. The
+arithmetic-envelope condition is essential. The formula is not a claim about NaNs, overflow, arbitrary
+precision, or geometric cancellation outside the selected `M`.
+
+A useful absolute-tolerance range is `N <= 10,000` and `M < 65,536 m`. Then `q <= 2^-37 m` and
+`B <= 9.604264050722122e-6 m`, strictly below the existing `0.00001 m` realistic-scale test tolerance.
+For Grimhollow, world coordinates are within a few hundred metres of the origin, cells are `0.25 m`, and
+published routes cost well under `1,000 m` with a few thousand edges. A conservative `M = 2,048 m` and
+`N = 4,096` gives `B = 2.4586915969848633e-7 m`, far inside that absolute range. Inputs outside that
+range require their actual envelope and edge-count bound, not the same fixed absolute promise.
+
+For example, a `2e12 m` prefix followed by thirteen 1 mm steps has binary64 spacing
+`0.000244140625 m`. The current F4 reproduction exceeds `0.00001 m` by one such ULP while remaining
+within `B(14, 2e12) = 0.451171875 m`. Its large allowance reflects its scale. Ordinary-scale tests keep
+their existing absolute assertions, and a future more accurate route remains valid under this contract.
 
 `PathQueryBudget` is a value type, cheap to construct per query: `MaxExpandedNodes` (the A* expansion
 cap before it gives up and returns `Partial`) and `SnapRadius` (the max world-unit nudge onto a passable

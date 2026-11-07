@@ -10,7 +10,7 @@ namespace KhaozEngine.Navigation;
 /// visible on the start's layer, otherwise runs an 8-connected A* search. The search prevents diagonal
 /// corner-cutting (a diagonal step needs both orthogonal companions passable), crosses layers over
 /// <see cref="NavSpace.Links"/>. Each link is a graph edge whose meters cost is precomputed per
-/// <see cref="NavLinkKind"/>: a <see cref="NavLinkKind.Stair"/> costs one cell of its source layer, a
+/// <see cref="NavLinkKind"/>: a <see cref="NavLinkKind.Stair"/> costs at least its spatial span and one source cell, a
 /// <see cref="NavLinkKind.Hop"/> costs the constructor's <c>hopCostCells</c> cells, and Drop costs its XZ octile
 /// displacement plus physical descent. Each far endpoint is
 /// re-checked for the agent radius. The search caps its work at <see cref="PathQueryBudget.MaxExpandedNodes"/>
@@ -58,7 +58,7 @@ public sealed partial class GridPathPlanner : IRegionPathPlanner
 
     // Each adjacency retains the selected edge kind. Ordinary exits never borrow link metadata.
     readonly Dictionary<int, List<PlannerLink>> _linkEdges;
-    readonly bool _hasDrops;
+    readonly PlannerSpatialBound _spatialBound;
 
     /// <summary>Cost of crossing a <see cref="NavLinkKind.Hop"/> link, in multiples of the source layer's
     /// <see cref="NavGrid.CellSize"/>. Set from the constructor knob.</summary>
@@ -67,10 +67,10 @@ public sealed partial class GridPathPlanner : IRegionPathPlanner
     /// <summary>Builds a planner that searches <paramref name="space"/>. <paramref name="hopCostCells"/> is
     /// the cost of crossing a <see cref="NavLinkKind.Hop"/> link, in multiples of the source layer's
     /// <see cref="NavGrid.CellSize"/> (default 4). It must be positive. A <see cref="NavLinkKind.Stair"/>
-    /// link keeps its one-cell cost. Keep <paramref name="hopCostCells"/> at or above the longest hop's
-    /// octile displacement (about 2.83 at a two-cell hop) to keep the A* heuristic admissible and the search
-    /// optimal. Below it the search stays correct but may return a valid non-optimal route, the same caveat
-    /// the far-jumping-link heuristic already documents.</summary>
+    /// link costs the greater of its spatial metric span and one source cell. The planner scales its spatial
+    /// lower bound once at construction
+    /// to account for links cheaper than their displacement. Floating-point cost error follows the numeric
+    /// contract in the Navigation README.</summary>
     public GridPathPlanner(NavSpace space, float hopCostCells = 4f)
         : this(space, hopCostCells, null)
     {
@@ -94,6 +94,7 @@ public sealed partial class GridPathPlanner : IRegionPathPlanner
         }
         _totalNodes = total;
 
+        _spatialBound = new PlannerSpatialBound(_space, _traversal, LinkCost);
         _linkEdges = new Dictionary<int, List<PlannerLink>>();
         foreach (NavLink link in traversal?.Links ?? _space.Links)
         {
@@ -106,7 +107,6 @@ public sealed partial class GridPathPlanner : IRegionPathPlanner
                 _linkEdges[fromId] = targets;
             }
             targets.Add(new(toId, costMeters, link.Kind));
-            _hasDrops |= link.Kind == NavLinkKind.Drop;
         }
     }
 
@@ -162,7 +162,7 @@ public sealed partial class GridPathPlanner : IRegionPathPlanner
 
         // Same layer with a clear straight shot is the trivial one-waypoint case. Everything else runs
         // the A* search, which also carries cross-layer routing over the link edges.
-        if (_traversal is null && startLayer == goalLayer &&
+        if (_traversal is null && _spatialBound.Scale == 1f && startLayer == goalLayer &&
             scratch.HasLineOfSight(startGrid, startPoint.Value, goalPoint, agentRadius))
         {
             return new NavPath(NavPathStatus.Complete, new[] { new NavWaypoint(goalPoint, goalLayer) });

@@ -9099,8 +9099,7 @@ var planner = new GridPathPlanner(space);   // hopCostCells: 4 by default
 
 Opt-in throughout: `BakeOverworldSteps` never generates hop links, and with no hoppable feature in range
 the returned space is identical to `NavSpace.Single(BakeOverworldSteps(...))`. The planner charges a hop
-the constructor's `hopCostCells` (in cells of the source layer, default 4, kept at or above the longest
-hop's octile length so paths stay optimal) and marks each hop landing waypoint `NavWaypointKind.Hop`,
+the constructor's `hopCostCells` (in cells of the source layer, default 4) and marks each hop landing waypoint `NavWaypointKind.Hop`,
 which the follower surfaces as the `Hopping` state below.
 
 ### Bake a layered overworld (multi-level worlds)
@@ -9213,9 +9212,18 @@ discovery. There is no anchor substitution or target-Y guess, and heightless gri
 ends in `Contains`, while region routes retain every validated cell edge and link endpoint without
 shortcuts or string pulling.
 
-Region discovery scans the full admitted topology before expansion. Search priority is a safe spatial lower
-bound or zero when a cross-layer link or a cheap same-layer link makes that bound uncertain. Separate
-finite-safe progress compares actual admitted members. Work is `O(N + E*M)` and storage is `O(N + M)`.
+Region discovery records admitted members before expansion. In shared frames, priority scales local octile
+distance to the admitted members' containing cell-index box. This uses the same metric as the cached cost
+ratio despite rounded world centres at large origins. Differing frames retain scaled world XZ distance to
+the extent square. Both apply on every layer. The member box is a value in reused scratch and introduces
+no query allocation. Separate finite-safe progress compares actual admitted members. Point progress compares
+physical 3D feet positions.
+Complete searches follow the [numeric cost contract](../KhaozEngine.Navigation/README.md#numeric-cost-contract),
+including its edge-count/arithmetic-envelope error bound and absolute-tolerance scale range. Unlimited
+finite reachability is exact, and finite-budget results are best effort.
+Route choices change in 23.3.0. Stair links cost at least their spatial metric span and one source cell,
+so diagonal Stairs no longer receive a discount. The Navigation README owns the complete cost contract.
+Work is `O(N + E*M)` and storage is `O(N + M)`.
 The AABB reduces exact predicate calls, not `M` for valid predicates. `MaxExpandedNodes` bounds expanded
 nodes only, so it does not bound topology discovery or all query work.
 
@@ -9359,8 +9367,8 @@ as arrived, so a goal on the floor above routes through the planner instead of a
 due), and `ReplanCooldownSeconds` (default 0.5, minimum time between ordinary replans, with immediate
 refresh for a previously useful Complete route reaching an obsolete point endpoint or a region endpoint
 outside membership). Fresh exhausted results retain the cooldown. See the
-`KhaozEngine.Navigation` package README for the clearance convention, the planner's documented heuristic
-limitations, and the full config surface.
+`KhaozEngine.Navigation` package README for the clearance convention, the planner's construction-time spatial cost bound,
+and the full config surface.
 
 ---
 
@@ -9372,7 +9380,7 @@ outside every umbrella and carries no physics backend, input or
 rendering dependency:
 
 ```xml
-<PackageReference Include="KhaozEngine.Movement" Version="23.3.0" />
+<PackageReference Include="KhaozEngine.Movement" Version="23.4.0" />
 ```
 
 The package composes `KhaozEngine.Locomotion`, `KhaozEngine.Navigation` and `KhaozEngine.Physics`. It does not
@@ -9943,7 +9951,7 @@ option does not enter bake identity or change canonical bytes. See the
 Round 2 D adds the driver layer in the same opt-in package. Keep the package reference explicit:
 
 ```xml
-<PackageReference Include="KhaozEngine.Movement" Version="23.3.0" />
+<PackageReference Include="KhaozEngine.Movement" Version="23.4.0" />
 ```
 
 `MoveToRange` consumes a `GroundNavigation` profile or an equivalent guarded `IRegionPathPlanner` composition.
@@ -10047,7 +10055,7 @@ Player routed walk-up gets it through the same driver.
 1 to 65,535 ticks and a finite positive travel, validated as `DirectApproachOptions` is, with no engine default. Every
 tick that returns `Following` or `WaitingForPath` is counted except the hold for a zero travel bound, so refused steps,
 zero offset waypoints and a partial route waiting on its cooldown count, while `Suspended`, `InRange`, `Unreachable` and
-`UnsupportedTransition` do not. When net horizontal feet displacement across the last `WindowTicks` counted intervals
+`UnsupportedTransition` do not. When accumulated horizontal feet travel across the last `WindowTicks` counted intervals
 is under `TravelMetres`, that tick returns `Blocked` with zero input (the 16th counted tick for 15). The latch holds
 until `InRange`, `Reset` or a change of target shape, range or capsule. `InRange` also clears the window, and a replan,
 a straightening fallback or a target translation does not. A body rooted for good never latches, and a body whose
@@ -10244,7 +10252,7 @@ public sealed class DirectMoveToRange
 ```
 
 The options have no defaults. Windows are 1 to 65,535 ticks and distances are finite and positive. A window of N
-ticks spans N intervals and is first eligible on the (N + 1)th counted tick. When net horizontal travel across the
+ticks spans N intervals and is first eligible on the (N + 1)th counted tick. When accumulated horizontal feet travel across the
 stall window falls below `stallTravelMetres`, or reach distance across the approach window gains less than
 `approachGainMetres` for a static target, the driver latches `RangeMoveStatus.Blocked` until `InRange`, `Reset`, or a
 change of target shape, range or capsule geometry. A step that would leave the ground or start swimming is refused
@@ -10790,7 +10798,7 @@ same opt-in-backend pattern the `WorldStore.*` durable backends use.
 **Backend (`KhaozEngine.Physics.Bepu`)** - add this package to your game head / server:
 
 ```xml
-<PackageReference Include="KhaozEngine.Physics.Bepu" Version="23.3.0" />
+<PackageReference Include="KhaozEngine.Physics.Bepu" Version="23.4.0" />
 ```
 
 ```csharp
@@ -20637,7 +20645,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="23.3.0" />
+<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="23.4.0" />
 ```
 
 ```csharp
@@ -20673,7 +20681,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="23.3.0" />
+<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="23.4.0" />
 ```
 
 ```csharp
@@ -20918,7 +20926,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Metal" Version="23.3.0" />
+<PackageReference Include="KhaozEngine.Gpu.Metal" Version="23.4.0" />
 ```
 
 ```csharp
@@ -25634,7 +25642,7 @@ socket a shipping build does not contain. It is in NO umbrella, and a game head 
 
 ```xml
 <ItemGroup Condition="'$(Configuration)' == 'Debug'">
-  <PackageReference Include="KhaozEngine.Automation" Version="23.3.0" />
+  <PackageReference Include="KhaozEngine.Automation" Version="23.4.0" />
 </ItemGroup>
 ```
 

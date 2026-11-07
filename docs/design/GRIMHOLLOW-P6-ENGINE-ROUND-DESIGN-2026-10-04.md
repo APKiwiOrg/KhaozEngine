@@ -253,7 +253,7 @@ positive metres). `RouteApproachOptions.Stall` is `RouteStallOptions?`, default 
   waiting on cooldown.
 - `Suspended` and `InRange` count toward nothing. `Unreachable` and `UnsupportedTransition` count toward nothing and
   are returned as today.
-- A window of `N` ticks spans `N` intervals between `N + 1` counted samples. Net horizontal feet displacement under
+- A window of `N` ticks spans `N` intervals between `N + 1` counted samples. Accumulated horizontal feet travel under
   `TravelMetres` across the last window latches `Blocked` on that tick (the 16th counted tick for 15).
   This sample/interval distinction is ruling P6E-6, not an extra delay after the window is full.
 - Latched `Blocked` holds zero input until `InRange`, `Reset` or a change of target shape, range or capsule. The check

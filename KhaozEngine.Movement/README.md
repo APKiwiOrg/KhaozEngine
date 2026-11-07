@@ -1059,7 +1059,7 @@ a window of 1 to 65,535 ticks and a finite positive travel, validated with the s
   refused step, a refused straightened step, a zero offset waypoint and an exhausted partial route waiting on its
   cooldown all count. `Suspended`, `InRange`, `Unreachable` and `UnsupportedTransition` count toward nothing, and the
   last two return as without the option.
-- A window of `N` ticks spans `N` intervals between `N + 1` counted samples. When net horizontal feet displacement
+- A window of `N` ticks spans `N` intervals between `N + 1` counted samples. When accumulated horizontal feet travel
   across the last window is under `TravelMetres`, that tick returns `Blocked` with zero input, so a window of 15
   latches on the 16th counted tick.
 - A latched `Blocked` holds until `InRange`, `Reset` or a change of target shape, range or capsule, which unlatches on
@@ -1072,14 +1072,15 @@ a window of 1 to 65,535 ticks and a finite positive travel, validated with the s
 - With `StraightenRoutes`, a refused straightened step is one counted tick of zero travel and the raw replan moves, so
   the fallback alone never latches. A raw step the guard keeps refusing latches within the window instead of holding
   `Following`.
-- The ring holds `WindowTicks + 1` samples, allocated once by the constructor, and a warmed tick allocates nothing.
+- The ring holds `WindowTicks + 1` samples and keeps a rolling sum of interval lengths in constant time.
+  A route reversal cannot cancel its own motion. Storage is allocated once and a warmed tick allocates nothing.
 
 Both adapters treat `Blocked` as idle, so a caller maps it to its own give-up rule.
 
 `OrdinaryMovementRegistration.ApplyRuntimeStatics` changes live collision and support without changing the
 authored graph, planner, routes, profile compatibility, `NavBakeSources`, `NavBakeIdentity` or KENB bytes. A route
 can still lead through a runtime wall while the body travels toward it and collision stops it. `Stall` measures
-that actual displacement and latches `Blocked`. After sanctioned removal, call `MoveToRange.Reset` to resume a
+that actual travel and latches `Blocked`. After sanctioned removal, call `MoveToRange.Reset` to resume a
 latched follower. Dropping a route, replanning or returning home remains the caller's policy. No runtime navigation
 overlay or automatic detour is supplied.
 
@@ -1314,7 +1315,8 @@ Differences from a typical game-side walk-up rule:
 - A zero travel bound, such as a rooted body, counts toward neither window, so a rooted body holds without ending its
   walk. Airborne and committed ticks return `Suspended` and also count toward neither window.
 - `InRange` clears both windows, so a followed body that moves away starts fresh windows.
-- Stall travel is net displacement across the window, not accumulated path length, so pacing in place is blocked.
+- Stall travel sums horizontal feet travel across counted intervals, so a reversal cannot cancel its own motion.
+  Direct approach still separately checks reach-distance gain for a static target.
 - `Blocked` stays latched until `InRange`, `Reset`, or a change of target shape, range or capsule geometry. End the
   walk on the first `Blocked`.
 - A change of target kind, shape, yaw, range or capsule geometry resets the windows. A change of `targetMoves` clears

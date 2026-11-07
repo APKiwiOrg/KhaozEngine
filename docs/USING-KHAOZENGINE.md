@@ -23341,8 +23341,8 @@ row-only format 1, and `ContentBundle.TextFormatVersion`, format 2 with its `tex
 `BundleVersionUnsupported` with `ActualFormatVersion` and `SupportedFormatVersions`. The
 [bundle document refusal table](../KhaozEngine.Catalog.Authoring/README.md#bundle-document-refusals) lists every
 shape rule and its identifiers. `Read` also names the rule a lower constructor refuses in a family, schema,
-remap rule or row field value, such as `FamilyBlockSizeOutsideRange` or `BundleFieldNameDuplicate`, and the
-same section lists those.
+remap rule, row field value or text constructor, such as `FamilyBlockSizeOutsideRange`, `BundleFieldNameDuplicate`
+or `BundleTextTargetDuplicate`. The same section lists those.
 
 ### Authoring catalog text
 

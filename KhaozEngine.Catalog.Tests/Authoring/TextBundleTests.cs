@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Text.Json;
 using System.Threading.Tasks;
 using KhaozEngine.Catalog;
 using KhaozEngine.Catalog.Authoring;
@@ -142,30 +143,52 @@ public sealed partial class TextBundleTests
     }
 
     /// <summary>
-    /// A null refusal marks a defect a text constructor refuses, which reaches the document only as prose and
-    /// so carries the bundle-format token alone.
+    /// Each row breaks one text rule and repairs it beside the refusal. Missing-section and lone-surrogate
+    /// reach the JSON shape and StrictText guards, while the other text rows reach constructor findings.
     /// </summary>
     [Theory]
-    [InlineData("alias-declarations", null, null)]
-    [InlineData("alias-values", null, null)]
-    [InlineData("missing-section", null, null)]
-    [InlineData("lone-surrogate", null, null)]
-    [InlineData("oversized-value", null, null)]
-    [InlineData("bad-language", null, null)]
-    [InlineData("empty-key", null, null)]
+    [InlineData("alias-declarations", ContentAuthoringRefusal.BundleLanguageIdentityDuplicate, "$.text.languages[1].language")]
+    [InlineData("alias-values", ContentAuthoringRefusal.BundleTextTargetDuplicate, "$.text.values[1]")]
+    [InlineData("missing-section", ContentAuthoringRefusal.BundleMemberRequired, "$.text")]
+    [InlineData("section-kind", ContentAuthoringRefusal.BundleMemberKindInvalid, "$.text")]
+    [InlineData("missing-language", ContentAuthoringRefusal.BundleMemberRequired, "$.text.values[0].language")]
+    [InlineData("wire-tag-kind", ContentAuthoringRefusal.BundleMemberKindInvalid, "$.text.languages[0].wireTag")]
+    [InlineData("lone-surrogate", ContentAuthoringRefusal.TextMalformedUnicode, "$.text.values[0].value")]
+    [InlineData("oversized-value", ContentAuthoringRefusal.TextValueBytesExceeded, "$.text.values[0].value")]
+    [InlineData("bad-language", ContentAuthoringRefusal.BundleLanguageTagInvalid, "$.text.values[0].language")]
+    [InlineData("long-tag", ContentAuthoringRefusal.BundleLanguageTagInvalid, "$.text.values[0].language")]
+    [InlineData("bad-declaration", ContentAuthoringRefusal.BundleLanguageTagInvalid, "$.text.languages[0].language")]
+    [InlineData("bad-wire-tag", ContentAuthoringRefusal.BundleLanguageTagInvalid, "$.text.languages[0].wireTag")]
+    [InlineData("wire-tag-mismatch", ContentAuthoringRefusal.BundleLanguageWireTagMismatch, "$.text.languages[0].wireTag")]
+    [InlineData("undeclared-language", ContentAuthoringRefusal.BundleTextLanguageUndeclared, "$.text.values[0].language")]
+    [InlineData("empty-key", ContentAuthoringRefusal.BundleTextTargetKeyEmpty, "$.text.values[0].key")]
+    [InlineData("blank-field", ContentAuthoringRefusal.BundleTextTargetFieldBlank, "$.text.values[0].field")]
     [InlineData("zero-type-id", ContentAuthoringRefusal.BundleTypeIdOutsideRange, "$.text.values[0].typeId")]
     [InlineData("text-in-format-one", ContentAuthoringRefusal.BundleUnexpectedTextSection, "$.text")]
     [InlineData("future-version", ContentAuthoringRefusal.BundleVersionUnsupported, null)]
-    public void A_malformed_text_document_is_refused_whole(string defect, ContentAuthoringRefusal? refusal, string? path)
+    public void A_malformed_text_document_is_refused_whole(string defect, ContentAuthoringRefusal refusal, string? path)
     {
-        string json = Document(defect);
-
-        ContentAuthoringException refused = Assert.Throws<ContentAuthoringException>(() => ContentBundleJson.Read(json));
+        ContentAuthoringException refused = Assert.Throws<ContentAuthoringException>(() => ContentBundleJson.Read(Document(defect)));
 
         Assert.Equal(ContentAuthoringException.BundleFormatReason, refused.Reason);
         Assert.Equal(refusal, refused.Refusal);
         Assert.Equal(path, refused.JsonPath);
-        Assert.Single(ContentBundleJson.Read(Document("none")).TextState!.Values);
+        Assert.Equal(defect is "alias-declarations" or "wire-tag-mismatch" ? "en-us" : defect == "undeclared-language" ? "fr" : null, refused.Language);
+        Assert.Equal(defect == "wire-tag-mismatch" ? "fr" : null, refused.WireTag);
+        Assert.Equal(defect is "bad-language" or "bad-declaration" or "bad-wire-tag" ? "en_us" : defect == "long-tag" ? new string('a', 36) : null, refused.LanguageTag);
+        Assert.Equal(defect == "alias-values" ? Target(NameField, "en-us") : null, refused.TextTarget);
+        Assert.Equal(defect == "oversized-value" ? 8193L : null, refused.ActualBytes);
+        Assert.Equal(defect == "oversized-value" ? 8192L : null, refused.MaximumBytes);
+        Assert.Equal(defect is "section-kind" or "wire-tag-kind" ? JsonValueKind.Null : (JsonValueKind?)null, refused.ActualJsonKind);
+        if (refusal is ContentAuthoringRefusal.BundleLanguageIdentityDuplicate or ContentAuthoringRefusal.BundleLanguageTagInvalid
+            or ContentAuthoringRefusal.BundleLanguageWireTagMismatch or ContentAuthoringRefusal.BundleTextLanguageUndeclared
+            or ContentAuthoringRefusal.BundleTextTargetDuplicate or ContentAuthoringRefusal.BundleTextTargetFieldBlank
+            or ContentAuthoringRefusal.BundleTextTargetKeyEmpty or ContentAuthoringRefusal.TextValueBytesExceeded)
+        {
+            Assert.IsAssignableFrom<ArgumentException>(refused.InnerException);
+        }
+
+        Assert.Equal(defect == "alias-values" ? 2 : 1, ContentBundleJson.Read(Document(defect, repaired: true)).TextState!.Values.Count);
     }
 
     [Fact]
@@ -284,54 +307,90 @@ public sealed partial class TextBundleTests
     static string WithoutEpoch(string json, ContentBundle bundle)
         => json.Replace(bundle.StoreEpoch, "epoch", StringComparison.Ordinal);
 
-    static string Document(string defect)
+    static string Document(string defect, bool repaired = false)
     {
         string languages = """[ { "language": "en-us", "wireTag": "en-US" } ]""";
         string value = "Sword";
         string language = "en-us";
         string key = "sword";
+        string field = "name";
         int typeId = 1024;
         int format = 2;
         string extra = string.Empty;
         switch (defect)
         {
             case "alias-declarations":
-                languages = """[ { "language": "en-us", "wireTag": "en-US" }, { "language": "en-us", "wireTag": "en-us" } ]""";
+                languages = repaired
+                    ? """[ { "language": "en-us", "wireTag": "en-US" }, { "language": "fr", "wireTag": "fr" } ]"""
+                    : """[ { "language": "en-us", "wireTag": "en-US" }, { "language": "en-us", "wireTag": "en-us" } ]""";
                 break;
             case "alias-values":
-                extra = """, { "typeId": 1024, "key": "sword", "field": "name", "language": "EN-us", "value": "Again" }""";
+                extra = repaired
+                    ? """, { "typeId": 1024, "key": "sword", "field": "description", "language": "EN-us", "value": "Again" }"""
+                    : """, { "typeId": 1024, "key": "sword", "field": "name", "language": "EN-us", "value": "Again" }""";
                 break;
             case "lone-surrogate":
-                value = "\\ud800";
+                value = repaired ? "Sword" : "\\ud800";
                 break;
             case "oversized-value":
-                value = new string('a', ContentTextEdit.MaxValueBytes + 1);
+                value = new string('a', repaired ? 8192 : 8193);
                 break;
             case "bad-language":
-                language = "en_us";
+                language = repaired ? "en-us" : "en_us";
                 break;
             case "empty-key":
-                key = string.Empty;
+                key = repaired ? "sword" : string.Empty;
+                break;
+            case "blank-field":
+                field = repaired ? "name" : " ";
+                break;
+            case "undeclared-language":
+                language = repaired ? "en-us" : "fr";
+                break;
+            case "bad-declaration":
+                languages = repaired ? languages : """[ { "language": "en_us", "wireTag": "en-US" } ]""";
+                break;
+            case "bad-wire-tag":
+                languages = repaired ? languages : """[ { "language": "en-us", "wireTag": "en_us" } ]""";
+                break;
+            case "wire-tag-mismatch":
+                languages = repaired ? languages : """[ { "language": "en-us", "wireTag": "fr" } ]""";
+                break;
+            case "long-tag":
+                string tag = new('a', 35);
+                languages = $$"""[ { "language": "{{tag}}", "wireTag": "{{tag}}" } ]""";
+                language = repaired ? tag : new string('a', 36);
                 break;
             case "zero-type-id":
-                typeId = 0;
+                typeId = repaired ? 1024 : 0;
                 break;
             case "text-in-format-one":
-                format = 1;
+                format = repaired ? 2 : 1;
                 break;
             case "future-version":
-                format = 3;
+                format = repaired ? 2 : 3;
                 break;
         }
 
-        string section = defect == "missing-section"
+        string section = defect == "missing-section" && !repaired
             ? string.Empty
             : FormattableString.Invariant($$"""
                 , "text": {
                   "languages": {{languages}},
-                  "values": [ { "typeId": {{typeId}}, "key": "{{key}}", "field": "name", "language": "{{language}}", "value": "{{value}}" }{{extra}} ]
+                  "values": [ { "typeId": {{typeId}}, "key": "{{key}}", "field": "{{field}}", "language": "{{language}}", "value": "{{value}}" }{{extra}} ]
                 }
                 """);
+        if (!repaired)
+        {
+            section = defect switch
+            {
+                "section-kind" => ", \"text\": null",
+                "missing-language" => section.Replace("\"field\": \"name\", \"language\": \"en-us\", ", "\"field\": \"name\", ", StringComparison.Ordinal),
+                "wire-tag-kind" => section.Replace("\"wireTag\": \"en-US\"", "\"wireTag\": null", StringComparison.Ordinal),
+                _ => section,
+            };
+        }
+
         return FormattableString.Invariant($$"""
             {
               "formatVersion": {{format}}, "storeEpoch": "seed", "sourceVersion": 0,

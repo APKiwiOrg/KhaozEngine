@@ -71,17 +71,21 @@ public sealed record ContentTextEdit
     /// <exception cref="ArgumentException">The value is invalid UTF-8 or too long.</exception>
     internal static string RequireValue(string value, string parameterName)
     {
-        ArgumentNullException.ThrowIfNull(value, parameterName);
-        int bytes = MeasureUtf8(value, parameterName);
-        if (bytes > MaxValueBytes)
-        {
-            throw new ArgumentException(
-                FormattableString.Invariant(
-                    $"A text value is at most {MaxValueBytes} UTF-8 bytes and this one is {bytes}."),
-                parameterName);
-        }
-
+        if (FindValueDefect(value, parameterName) is { } finding) throw finding.ToException();
         return value;
+    }
+
+    /// <summary>The first Unicode or byte-bound rule a value breaks.</summary>
+    internal static ContentTextFinding? FindValueDefect(string value, string parameterName)
+    {
+        ArgumentNullException.ThrowIfNull(value, parameterName);
+        int bytes = MeasureUtf8(value, parameterName, out ContentTextFinding? malformed);
+        return malformed ?? (bytes > MaxValueBytes
+            ? new ContentTextFinding(ContentAuthoringRefusal.TextValueBytesExceeded,
+                FormattableString.Invariant(
+                    $"A text value is at most {MaxValueBytes} UTF-8 bytes and this one is {bytes}."), parameterName)
+                { MemberName = "value", ActualBytes = bytes, MaximumBytes = MaxValueBytes }
+            : null);
     }
 
     /// <summary>
@@ -93,6 +97,14 @@ public sealed record ContentTextEdit
     /// <exception cref="ArgumentException">The string carries an unpaired surrogate.</exception>
     internal static int MeasureUtf8(string value, string parameterName)
     {
+        int bytes = MeasureUtf8(value, parameterName, out ContentTextFinding? finding);
+        if (finding is not null) throw finding.ToException();
+        return bytes;
+    }
+
+    static int MeasureUtf8(string value, string parameterName, out ContentTextFinding? finding)
+    {
+        finding = null;
         int bytes = 0;
         for (int i = 0; i < value.Length; i++)
         {
@@ -101,7 +113,8 @@ public sealed record ContentTextEdit
             {
                 if (i + 1 >= value.Length || !char.IsLowSurrogate(value[i + 1]))
                 {
-                    throw Unpaired(i, parameterName);
+                    finding = Unpaired(i, parameterName);
+                    return bytes;
                 }
 
                 bytes = checked(bytes + 4);
@@ -109,7 +122,8 @@ public sealed record ContentTextEdit
             }
             else if (char.IsLowSurrogate(current))
             {
-                throw Unpaired(i, parameterName);
+                finding = Unpaired(i, parameterName);
+                return bytes;
             }
             else
             {
@@ -120,9 +134,9 @@ public sealed record ContentTextEdit
         return bytes;
     }
 
-    static ArgumentException Unpaired(int index, string parameterName)
-        => new(
+    static ContentTextFinding Unpaired(int index, string parameterName)
+        => new(ContentAuthoringRefusal.TextMalformedUnicode,
             FormattableString.Invariant(
                 $"Text carries an unpaired surrogate at index {index}, which is not valid UTF-8 and is refused rather than replaced."),
-            parameterName);
+            parameterName) { MemberName = "value" };
 }

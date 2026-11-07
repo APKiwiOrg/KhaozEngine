@@ -121,4 +121,36 @@ public enum ContentAuthoringRefusal
     /// <summary>Refuses a remap rule payload that is not the shape its kind declares. Carries <c>JsonPath</c>,
     /// <c>RuleKind</c> and the payload length as <c>ActualBytes</c>.</summary>
     BundleRulePayloadMalformed,
+
+    // Bundle text section and the text constructors it wraps.
+
+    /// <summary>Refuses a repeated canonical language identity. Carries <c>JsonPath</c> and <c>Language</c>.</summary>
+    BundleLanguageIdentityDuplicate,
+
+    /// <summary>Refuses a tag outside the ASCII language grammar of 1 to 35 bytes. Carries <c>JsonPath</c>
+    /// and the submitted <c>LanguageTag</c>.</summary>
+    BundleLanguageTagInvalid,
+
+    /// <summary>Refuses a wire tag that normalizes to another identity. Carries <c>JsonPath</c>, the canonical
+    /// <c>Language</c> and the submitted <c>WireTag</c>.</summary>
+    BundleLanguageWireTagMismatch,
+
+    /// <summary>Refuses a text value in an undeclared language. Carries <c>JsonPath</c> and <c>Language</c>.</summary>
+    BundleTextLanguageUndeclared,
+
+    /// <summary>Refuses a repeated canonical text target. Carries <c>JsonPath</c> and <c>TextTarget</c>.</summary>
+    BundleTextTargetDuplicate,
+
+    /// <summary>Refuses a text target with a blank marker field. Carries <c>JsonPath</c>.</summary>
+    BundleTextTargetFieldBlank,
+
+    /// <summary>Refuses a text target with an empty content key. Carries <c>JsonPath</c>.</summary>
+    BundleTextTargetKeyEmpty,
+
+    /// <summary>Refuses text with an unpaired surrogate. A bundle carries <c>JsonPath</c>.</summary>
+    TextMalformedUnicode,
+
+    /// <summary>Refuses a text value above 8,192 strict UTF-8 bytes. A bundle carries <c>JsonPath</c>,
+    /// <c>ActualBytes</c> and <c>MaximumBytes</c> (8,192).</summary>
+    TextValueBytesExceeded,
 }

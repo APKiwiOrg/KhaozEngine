@@ -712,7 +712,7 @@ public static class ContentBundleJson
     // A member-shape guard admits one present JSON kind. Its refusal names the branch that failed, in the
     // predicate's own order: an absent member first, then a present member of another kind. The caller
     // passes what its TryGetProperty already read, so the reason and kind describe the value it compared.
-    static ContentAuthoringException Shape(bool present, JsonElement element, string path, string message)
+    internal static ContentAuthoringException Shape(bool present, JsonElement element, string path, string message)
         => present
             ? new ContentAuthoringException(
                 ContentAuthoringRefusal.BundleMemberKindInvalid,
@@ -737,8 +737,4 @@ public static class ContentBundleJson
     internal static ContentAuthoringException Refuse(ContentAuthoringRefusal refusal, string jsonPath, string message)
         => new(refusal, message, default, 0, ContentAuthoringException.BundleFormatReason) { JsonPath = jsonPath };
 
-    // The message-only wrapper the text section still uses. Its member checks and text constructors are not yet
-    // typed, so they carry the bundle-format token without a refusal.
-    internal static ContentAuthoringException Refuse(string message)
-        => new(message, default, 0, ContentAuthoringException.BundleFormatReason);
 }

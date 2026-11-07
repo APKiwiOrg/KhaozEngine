@@ -1084,8 +1084,26 @@ prefix, and the constructor's argument exception is the inner exception.
 | `BundleRulePayloadMalformed` | A rule payload that is not its kind's shape, or longer than the payload cap | `JsonPath` (`$.rules[n].payload`), `RuleKind`, the payload length as `ActualBytes` |
 | `BundleMarkerValueAuthored` | A row field of the byte-free `LocalizedTextKey` kind that carries bytes instead of being absent | `JsonPath` (`$.rows[n].fields[n].bytes`) |
 
-The text section's own member checks and an entry a text constructor refuses still carry `bundle-format`
-with no `Refusal`, and their messages keep the same words.
+The text section uses the same member-shape refusals, including a missing `text` object, and maps its
+constructors' typed findings with the original argument exception as the inner. Direct text constructors
+keep their plain `ArgumentException` contracts. `StrictText` refuses an unpaired surrogate escape before a
+constructor sees it and keeps that reader fault as the inner exception.
+
+| Refusal | Refused rule | Identifiers |
+| --- | --- | --- |
+| `BundleLanguageIdentityDuplicate` | A repeated canonical language identity | `JsonPath` of the later declaration's `language`, `Language` |
+| `BundleLanguageTagInvalid` | A language or wire tag outside the ASCII grammar of 1 to 35 bytes | `JsonPath` of the tag, `LanguageTag` as submitted |
+| `BundleLanguageWireTagMismatch` | A wire tag normalizing to another identity | `JsonPath` of `wireTag`, canonical `Language`, submitted `WireTag` |
+| `BundleTextLanguageUndeclared` | A value naming an undeclared canonical language | `JsonPath` of the value's `language`, `Language` |
+| `BundleTextTargetDuplicate` | A repeated canonical target | `JsonPath` of the later value, `TextTarget` with its type, key, field and language |
+| `BundleTextTargetFieldBlank` | A target with an empty or white space marker field | `JsonPath` of `field` |
+| `BundleTextTargetKeyEmpty` | A target with an empty content key | `JsonPath` of `key` |
+| `TextMalformedUnicode` | An unpaired surrogate escape in a text-section string | `JsonPath` of the string |
+| `TextValueBytesExceeded` | A value above 8,192 strict UTF-8 bytes | `JsonPath` of `value`, `ActualBytes`, `MaximumBytes` (8,192) |
+
+A repeated wire spelling always repeats its normalized language identity, so it is refused as
+`BundleLanguageIdentityDuplicate`. A repeated target is checked before an undeclared language, matching the
+section constructor's guard order.
 
 An import runs through the ORDINARY publish and there is no second mechanism. It restores the families and
 their blocks verbatim, including each family's `IsRetired` flag through family reads and later exports in

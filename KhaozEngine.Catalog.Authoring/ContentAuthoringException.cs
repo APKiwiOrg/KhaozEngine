@@ -386,6 +386,21 @@ public sealed class ContentAuthoringException : Exception
     /// <summary>The byte length of the refused value, or null.</summary>
     public long? ActualBytes { get; init; }
 
+    /// <summary>The inclusive byte limit of a refused value, or null.</summary>
+    public long? MaximumBytes { get; init; }
+
+    /// <summary>The refused language tag as submitted, before normalization, or null.</summary>
+    public string? LanguageTag { get; init; }
+
+    /// <summary>The canonical language identity a refusal is about, or null.</summary>
+    public string? Language { get; init; }
+
+    /// <summary>The wire spelling a language declaration submitted, or null.</summary>
+    public string? WireTag { get; init; }
+
+    /// <summary>The repeated canonical text target, or null.</summary>
+    public ContentTextTarget? TextTarget { get; init; }
+
     /// <summary>The content type the refusal is about. The default type id 0 means none.</summary>
     public ContentTypeId Type { get; }
 

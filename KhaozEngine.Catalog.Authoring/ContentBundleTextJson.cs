@@ -63,20 +63,26 @@ internal static class ContentBundleTextJson
     /// <exception cref="ContentAuthoringException">The section is missing or malformed, with <see cref="ContentAuthoringException.BundleFormatReason"/>.</exception>
     public static ContentBundleTextState Read(JsonElement root)
     {
-        if (!root.TryGetProperty(SectionName, out JsonElement section) || section.ValueKind != JsonValueKind.Object)
+        bool present = root.TryGetProperty(SectionName, out JsonElement section);
+        if (!present || section.ValueKind != JsonValueKind.Object)
         {
-            throw ContentBundleJson.Refuse(FormattableString.Invariant(
+            throw ContentBundleJson.Shape(present, section, ContentBundleJson.Member("$", SectionName), FormattableString.Invariant(
                 $"A format {ContentBundle.TextFormatVersion} bundle carries a '{SectionName}' object, and this one does not. A bundle that lost its text section is never read as text free."));
         }
 
         string sectionPath = ContentBundleJson.Member("$", SectionName);
+        string languagesPath = ContentBundleJson.Member(sectionPath, "languages");
+        int languageIndex = 0;
         var languages = new List<ContentTextLanguageDeclaration>();
         foreach (JsonElement element in ContentBundleJson.Array(section, sectionPath, "languages"))
         {
-            string language = StrictText(element, "language");
-            string wireTag = StrictText(element, "wireTag");
+            string languagePath = ContentBundleJson.Element(languagesPath, languageIndex++);
+            string language = StrictText(element, languagePath, "language");
+            string wireTag = StrictText(element, languagePath, "wireTag");
             languages.Add(Shaped(
-                () => new ContentTextLanguageDeclaration(language, wireTag), "A bundle text language is malformed: "));
+                () => new ContentTextLanguageDeclaration(language, wireTag),
+                () => ContentTextLanguageDeclaration.FindDefect(language, wireTag),
+                languagePath, "A bundle text language is malformed: "));
         }
 
         string valuesPath = ContentBundleJson.Member(sectionPath, "values");
@@ -84,27 +90,31 @@ internal static class ContentBundleTextJson
         var values = new List<ContentBundleTextValue>();
         foreach (JsonElement element in ContentBundleJson.Array(section, sectionPath, "values"))
         {
-            ContentTypeId type = ContentBundleJson.TypeId(element, ContentBundleJson.Element(valuesPath, valueIndex++), "typeId");
-            string key = StrictText(element, "key");
-            string field = StrictText(element, "field");
-            string language = StrictText(element, "language");
-            string value = StrictText(element, "value");
+            string valuePath = ContentBundleJson.Element(valuesPath, valueIndex++);
+            ContentTypeId type = ContentBundleJson.TypeId(element, valuePath, "typeId");
+            string key = StrictText(element, valuePath, "key");
+            string field = StrictText(element, valuePath, "field");
+            string language = StrictText(element, valuePath, "language");
+            string value = StrictText(element, valuePath, "value");
             values.Add(Shaped(
                 () => new ContentBundleTextValue(new ContentTextTarget(type, new ContentKey(key), field, language), value),
-                "A bundle text value is malformed: "));
+                () => ContentTextTarget.FindDefect(new ContentKey(key), field, language) ?? ContentTextEdit.FindValueDefect(value, nameof(value)),
+                valuePath, "A bundle text value is malformed: "));
         }
 
         // Two declarations or two values whose languages share a canonical identity are refused here, even
         // when their values agree, because one identity has one spelling and one value per string.
-        return Shaped(() => new ContentBundleTextState(languages, values), "A bundle text section is malformed: ");
+        return Shaped(() => new ContentBundleTextState(languages, values),
+            () => ContentBundleTextState.FindDefect(languages, values), sectionPath, "A bundle text section is malformed: ");
     }
 
     /// <summary>A string member read without replacing an unpaired surrogate escape.</summary>
-    static string StrictText(JsonElement parent, string name)
+    static string StrictText(JsonElement parent, string parentPath, string name)
     {
-        if (!parent.TryGetProperty(name, out JsonElement element) || element.ValueKind != JsonValueKind.String)
+        bool present = parent.TryGetProperty(name, out JsonElement element);
+        if (!present || element.ValueKind != JsonValueKind.String)
         {
-            throw ContentBundleJson.Refuse(FormattableString.Invariant(
+            throw ContentBundleJson.Shape(present, element, ContentBundleJson.Member(parentPath, name), FormattableString.Invariant(
                 $"A bundle member '{name}' is a string, and this one is not."));
         }
 
@@ -114,13 +124,15 @@ internal static class ContentBundleTextJson
         }
         catch (InvalidOperationException invalid)
         {
-            throw ContentBundleJson.Refuse(FormattableString.Invariant(
-                $"A bundle member '{name}' is valid text, and this one is not: {invalid.Message}"));
+            throw new ContentAuthoringException(ContentAuthoringRefusal.TextMalformedUnicode, FormattableString.Invariant(
+                $"A bundle member '{name}' is valid text, and this one is not: {invalid.Message}"),
+                default, 0, ContentAuthoringException.BundleFormatReason, invalid)
+            { JsonPath = ContentBundleJson.Member(parentPath, name) };
         }
     }
 
     /// <summary>One construction whose argument refusal becomes the document's own refusal.</summary>
-    static T Shaped<T>(Func<T> build, string prefix)
+    static T Shaped<T>(Func<T> build, Func<ContentTextFinding?> findDefect, string path, string prefix)
     {
         try
         {
@@ -128,7 +140,11 @@ internal static class ContentBundleTextJson
         }
         catch (ArgumentException malformed)
         {
-            throw ContentBundleJson.Refuse(prefix + malformed.Message);
+            // All strings and entries were read above, so null arguments cannot reach these constructors.
+            // StrictText already refuses unpaired surrogate escapes before a value constructor can see them.
+            ContentTextFinding finding = findDefect()
+                ?? throw new InvalidOperationException("A bundle text constructor failed a rule its reader cannot produce.", malformed);
+            throw finding.ToBundleException(path, prefix, malformed);
         }
     }
 }

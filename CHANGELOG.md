@@ -53,7 +53,9 @@ Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 - Existing carriers keep every constructor and member and gain a reason. `GitHubApiException` gains `Reason`,
   `ResponsePart` and a bounded, credential-free `UpstreamDetail`, and a moved update whose destination is unusable is
   `RedirectDestinationUnusable`. `SignInException` gains `Reason`, `ProviderId`, `Timeout`, `StatusCode`, `EndpointRole`,
-  `MemberName`, `ActualScheme` and `Detail`, and none of them carries a token, code, state, secret or response body.
+  `MemberName`, `ActualScheme` and `Detail`. Its refusal identifiers carry no token, code, state, secret or response
+  body. `Detail` keeps the text a consumer passed to a message-only constructor, is null on every engine refusal, and
+  is untrusted caller text.
   `LocalizationCoverageException` gains `Reason` and ordered `Findings`, each finding with its own reason, and
   `DungeonJsonException` gains `Reason` with a rooted `JsonPath` such as `$.edges[0].roomA`.
 

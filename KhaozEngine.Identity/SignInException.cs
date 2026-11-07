@@ -12,8 +12,8 @@ namespace KhaozEngine.Identity;
 /// providers' own so that a file importing this namespace alongside a provider namespace, as every consumer's
 /// sign-in code does, keeps resolving the unqualified provider name.
 /// <para><see cref="Reason"/> names the rule an engine provider refused, and the identifiers name its subject.
-/// None of them carries a token, an authorization code, a <c>state</c> value, a client secret, a raw authority
-/// URL or a response body. The message is developer prose, never a classification token.</para></summary>
+/// The identifiers an engine refusal sets carry no token, authorization code, <c>state</c> value, client secret,
+/// raw authority URL or response body. The message is developer prose, never a classification token.</para></summary>
 public class SignInException : Exception
 {
     /// <summary>Creates a failure with no reason, for a backend outside the engine. <paramref name="message"/> is
@@ -52,8 +52,7 @@ public class SignInException : Exception
     /// constructor by code outside the engine, such as another <see cref="IIdentityProvider"/>.</summary>
     public SignInRefusal? Reason { get; }
 
-    /// <summary>The text a message-only constructor was given, the payload a backend outside the engine supplies.
-    /// Null for a refusal built with a <see cref="Reason"/>.</summary>
+    /// <summary>Untrusted caller text from the message-only constructors. Null on engine refusals.</summary>
     public string? Detail { get; }
 
     /// <summary>The <see cref="IIdentityProvider.ProviderId"/> of the engine provider that refused, on every

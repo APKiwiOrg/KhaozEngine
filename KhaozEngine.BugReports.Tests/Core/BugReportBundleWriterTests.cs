@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.IO;
 using System.IO.Compression;
 using System.Linq;
@@ -42,11 +43,13 @@ public sealed class BugReportBundleWriterTests
     static ReportClip ThreeFrames() => new([Frame(0, 16.5), Frame(83.25, 41), Frame(166.5, 12.25, 6, 3)]);
 
     static BugReportDraft Draft(IReadOnlyList<CapturedSection>? sections = null, ReportImage? screenshot = null,
-        ReportClip? clip = null, string description = "Fell through\nthe floor") =>
-        new(ReportId, "grimhollow", BugReportKind.Bug, CapturedAt, sections ?? TwoSections, screenshot, clip)
+        ReportClip? clip = null, string description = "Fell through\nthe floor", string reportId = ReportId,
+        string gameId = "grimhollow", BugReportKind kind = BugReportKind.Bug, DateTimeOffset? capturedAt = null,
+        string category = "Gameplay") =>
+        new(reportId, gameId, kind, capturedAt ?? CapturedAt, sections ?? TwoSections, screenshot, clip)
         {
             Description = description,
-            Category = "Gameplay",
+            Category = category,
         };
 
     static BundleValidationResult Validate(byte[] bundle)
@@ -72,6 +75,17 @@ public sealed class BugReportBundleWriterTests
         var buffer = new MemoryStream();
         stream.CopyTo(buffer);
         return buffer.ToArray();
+    }
+
+    /// <summary>The draft is refused by exactly this rule, on the exact type, keeping the parameter name.</summary>
+    static BugReportBundleArgumentException Refused(BugReportDraft draft, BugReportBundleRefusal reason)
+    {
+        BugReportBundleArgumentException refusal =
+            Assert.Throws<BugReportBundleArgumentException>(() => BugReportBundleWriter.Write(draft));
+        Assert.IsAssignableFrom<ArgumentException>(refusal);
+        Assert.Equal(reason, refusal.Reason);
+        Assert.Equal("draft", refusal.ParamName);
+        return refusal;
     }
 
     static BugReportManifest Manifest(byte[] bundle) =>
@@ -233,14 +247,24 @@ public sealed class BugReportBundleWriterTests
     [InlineData(null)]
     public void Blank_description_throws(string? description)
     {
-        Assert.Throws<ArgumentException>(() => BugReportBundleWriter.Write(Draft(description: description!)));
+        BugReportBundleArgumentException refusal = Refused(Draft(description: description!), BugReportBundleRefusal.DescriptionBlank);
+        Assert.Equal("Description", refusal.FieldName);
+
+        AssertValid(BugReportBundleWriter.Write(Draft(description: "a")));
     }
 
-    [Fact]
-    public void Overlong_description_throws()
+    // The limit applies after trailing whitespace is dropped, so the same whitespace leaves the control at the limit.
+    [Theory]
+    [InlineData("")]
+    [InlineData(" \n")]
+    public void Overlong_description_throws(string trailing)
     {
-        Assert.Throws<ArgumentException>(
-            () => BugReportBundleWriter.Write(Draft(description: new string('x', BugReportLimits.MaxDescriptionChars + 1))));
+        BugReportBundleArgumentException refusal =
+            Refused(Draft(description: new string('x', 4001) + trailing), BugReportBundleRefusal.DescriptionTooLong);
+        Assert.Equal(4001, refusal.ActualCharacters);
+        Assert.Equal(4000, refusal.MaximumCharacters);
+
+        AssertValid(BugReportBundleWriter.Write(Draft(description: new string('x', 4000) + trailing)));
     }
 
     [Fact]
@@ -269,10 +293,18 @@ public sealed class BugReportBundleWriterTests
         Assert.Equal("one\r\ntwo", Manifest(bundle).Description);
     }
 
-    [Fact]
-    public void Description_with_a_lone_surrogate_throws()
+    [Theory]
+    [InlineData("Description")]
+    [InlineData("Category")]
+    public void Text_with_a_lone_surrogate_throws(string field)
     {
-        Assert.Throws<ArgumentException>(() => BugReportBundleWriter.Write(Draft(description: "bad \uD800 text")));
+        BugReportDraft Carrying(string text) =>
+            field == "Description" ? Draft(description: text) : Draft(category: text);
+
+        BugReportBundleArgumentException refusal = Refused(Carrying("bad \uD800 text"), BugReportBundleRefusal.TextMalformed);
+        Assert.Equal(field, refusal.FieldName);
+
+        AssertValid(BugReportBundleWriter.Write(Carrying("good \uD83D\uDE00 text")));
     }
 
     [Fact]
@@ -389,19 +421,50 @@ public sealed class BugReportBundleWriterTests
     [InlineData("../x")]
     [InlineData("")]
     [InlineData("Bad Key")]
-    public void Invalid_section_keys_throw(string key)
+    [InlineData(null)]
+    [InlineData("kkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkk")]
+    public void Invalid_section_keys_throw(string? key)
     {
-        ArgumentException invalid = Assert.Throws<ArgumentException>(
-            () => BugReportBundleWriter.Write(Draft(sections: [Section(key, "{}")])));
-        Assert.Equal("draft", invalid.ParamName);
+        BugReportBundleArgumentException refusal =
+            Refused(Draft(sections: [Section("build", "{}"), Section(key!, "{}")]), BugReportBundleRefusal.SectionKeyInvalid);
+        Assert.Equal(1, refusal.Index);
+        Assert.Equal(key, refusal.SectionKey);
+
+        AssertValid(BugReportBundleWriter.Write(Draft(sections: [Section("build", "{}"), Section(new string('k', 48), "{}")])));
     }
 
     [Fact]
     public void Duplicate_section_keys_throw()
     {
-        ArgumentException duplicate = Assert.Throws<ArgumentException>(
-            () => BugReportBundleWriter.Write(Draft(sections: [Section("build", "{}"), Section("build", "{\"a\":1}")])));
-        Assert.Equal("draft", duplicate.ParamName);
+        BugReportBundleArgumentException refusal = Refused(
+            Draft(sections: [Section("build", "{}"), Section("log", "{}"), Section("build", "{\"a\":1}")]),
+            BugReportBundleRefusal.SectionKeyDuplicate);
+        Assert.Equal(2, refusal.Index);
+        Assert.Equal("build", refusal.SectionKey);
+
+        AssertValid(BugReportBundleWriter.Write(
+            Draft(sections: [Section("build", "{}"), Section("log", "{}"), Section("other", "{\"a\":1}")])));
+    }
+
+    [Fact]
+    public void Null_section_list_throws()
+    {
+        var missing = new BugReportDraft(ReportId, "grimhollow", BugReportKind.Bug, CapturedAt, null!, null, null) { Description = "A report" };
+
+        BugReportBundleArgumentException refusal = Refused(missing, BugReportBundleRefusal.SectionListMissing);
+        Assert.Equal("Sections", refusal.FieldName);
+
+        AssertValid(BugReportBundleWriter.Write(Draft(sections: TwoSections)));
+    }
+
+    [Fact]
+    public void Null_section_throws()
+    {
+        BugReportBundleArgumentException refusal =
+            Refused(Draft(sections: [Section("build", "{}"), null!]), BugReportBundleRefusal.SectionMissing);
+        Assert.Equal(1, refusal.Index);
+
+        AssertValid(BugReportBundleWriter.Write(Draft(sections: [Section("build", "{}"), Section("log", "{}")])));
     }
 
     [Theory]
@@ -414,69 +477,136 @@ public sealed class BugReportBundleWriterTests
     [InlineData("{} {}")]
     public void Section_that_is_not_one_json_object_throws(string json)
     {
-        Assert.Throws<ArgumentException>(() => BugReportBundleWriter.Write(Draft(sections: [Section("build", json)])));
+        BugReportBundleArgumentException refusal = Refused(Draft(sections: [Section("build", json)]), BugReportBundleRefusal.SectionJsonInvalid);
+        Assert.Equal("build", refusal.SectionKey);
+        Assert.Equal(64, refusal.MaximumDepth);
+
+        AssertValid(BugReportBundleWriter.Write(Draft(sections: [Section("build", "{}")])));
     }
 
     [Fact]
+    public void Section_nested_past_depth_64_throws()
+    {
+        static string Nested(int depth) =>
+            string.Concat(Enumerable.Repeat("{\"a\":", depth - 1)) + "{}" + new string('}', depth - 1);
+
+        BugReportBundleArgumentException refusal =
+            Refused(Draft(sections: [Section("build", Nested(65))]), BugReportBundleRefusal.SectionJsonInvalid);
+        Assert.Equal("build", refusal.SectionKey);
+        Assert.Equal(64, refusal.MaximumDepth);
+
+        AssertValid(BugReportBundleWriter.Write(Draft(sections: [Section("build", Nested(64))])));
+    }
+
+    // ActualBytes is the running total through the section that crossed the limit, so a later section is not counted.
+    [Fact]
     public void Sections_over_one_mebibyte_throw()
     {
-        string half = "{\"a\":\"" + new string('x', BugReportLimits.MaxSectionBytesTotal / 2) + "\"}";
+        static CapturedSection Sized(string key, int bytes) => Section(key, "{\"a\":\"" + new string('x', bytes - 8) + "\"}");
 
-        Assert.Throws<ArgumentException>(
-            () => BugReportBundleWriter.Write(Draft(sections: [Section("one", half), Section("two", half)])));
+        BugReportBundleArgumentException refusal = Refused(
+            Draft(sections: [Sized("one", 524288), Sized("two", 524289), Sized("three", 64)]),
+            BugReportBundleRefusal.SectionBytesExceeded);
+        Assert.Equal(1048577L, refusal.ActualBytes);
+        Assert.Equal(1048576L, refusal.MaximumBytes);
+
+        AssertValid(BugReportBundleWriter.Write(Draft(sections: [Sized("one", 524288), Sized("two", 524288)])));
     }
 
     [Theory]
-    [InlineData("empty-category")]
-    [InlineData("long-category")]
-    [InlineData("null-category")]
-    [InlineData("report-id")]
-    [InlineData("game-id")]
-    [InlineData("kind")]
-    [InlineData("captured-at")]
-    [InlineData("captured-after-2107")]
-    [InlineData("null-sections")]
-    [InlineData("null-section")]
+    [InlineData("not-an-id")]
+    [InlineData(null)]
+    public void Report_id_that_is_not_canonical_throws(string? reportId)
+    {
+        BugReportBundleArgumentException refusal = Refused(Draft(reportId: reportId!), BugReportBundleRefusal.ReportIdInvalid);
+        Assert.Equal("ReportId", refusal.FieldName);
+
+        AssertValid(BugReportBundleWriter.Write(Draft(reportId: ReportId)));
+    }
+
+    [Theory]
+    [InlineData("uppercase")]
+    [InlineData("leading-hyphen")]
+    [InlineData("too-long")]
+    [InlineData("null")]
+    public void Game_id_outside_its_pattern_throws(string fault)
+    {
+        string gameId = fault switch
+        {
+            "uppercase" => "Grimhollow",
+            "leading-hyphen" => "-grimhollow",
+            "too-long" => new string('g', 33),
+            _ => null!,
+        };
+
+        BugReportBundleArgumentException refusal = Refused(Draft(gameId: gameId), BugReportBundleRefusal.GameIdInvalid);
+        Assert.Equal("GameId", refusal.FieldName);
+        Assert.Equal(32, refusal.MaximumCharacters);
+
+        AssertValid(BugReportBundleWriter.Write(Draft(gameId: new string('g', 32))));
+    }
+
+    [Fact]
+    public void Undefined_report_kind_throws()
+    {
+        BugReportBundleArgumentException refusal = Refused(Draft(kind: (BugReportKind)2), BugReportBundleRefusal.ReportKindUndefined);
+        Assert.Equal((BugReportKind)2, refusal.ActualKind);
+
+        AssertValid(BugReportBundleWriter.Write(Draft(kind: BugReportKind.Crash)));
+    }
+
+    // The zip range is judged in UTC, so the second row is 2107 on the local clock and 2108 in UTC.
+    [Theory]
+    [InlineData("1979-12-31T23:59:59+00:00", 1979, "1980-01-01T00:00:00+00:00")]
+    [InlineData("2107-12-31T23:00:00-05:00", 2108, "2107-12-31T18:59:59-05:00")]
+    public void Capture_time_outside_the_zip_range_throws(string refused, int actualYear, string limit)
+    {
+        BugReportBundleArgumentException refusal = Refused(
+            Draft(capturedAt: DateTimeOffset.Parse(refused, CultureInfo.InvariantCulture)),
+            BugReportBundleRefusal.CaptureYearOutsideZipRange);
+        Assert.Equal(actualYear, refusal.ActualYear);
+        Assert.Equal(1980, refusal.MinimumYear);
+        Assert.Equal(2107, refusal.MaximumYear);
+
+        AssertValid(BugReportBundleWriter.Write(Draft(capturedAt: DateTimeOffset.Parse(limit, CultureInfo.InvariantCulture))));
+    }
+
+    [Fact]
+    public void Null_category_throws()
+    {
+        BugReportBundleArgumentException refusal = Refused(Draft(category: null!), BugReportBundleRefusal.CategoryMissing);
+        Assert.Equal("Category", refusal.FieldName);
+
+        AssertValid(BugReportBundleWriter.Write(Draft(category: "Other")));
+    }
+
+    [Theory]
+    [InlineData(0, 1)]
+    [InlineData(65, 64)]
+    public void Category_outside_its_length_range_throws(int refused, int limit)
+    {
+        BugReportBundleArgumentException refusal =
+            Refused(Draft(category: new string('c', refused)), BugReportBundleRefusal.CategoryLengthOutsideRange);
+        Assert.Equal("Category", refusal.FieldName);
+        Assert.Equal(refused, refusal.ActualCharacters);
+        Assert.Equal(1, refusal.MinimumCharacters);
+        Assert.Equal(64, refusal.MaximumCharacters);
+
+        AssertValid(BugReportBundleWriter.Write(Draft(category: new string('c', limit))));
+    }
+
+    [Theory]
     [InlineData("null-frames")]
     [InlineData("null-media-type")]
-    public void Null_or_invalid_draft_fields_throw_argument_exceptions(string field)
+    public void Null_media_fields_throw_argument_exceptions(string field)
     {
-        BugReportDraft draft = field switch
-        {
-            "report-id" => new BugReportDraft("not-an-id", "grimhollow", BugReportKind.Bug, CapturedAt, TwoSections, null, null),
-            "game-id" => new BugReportDraft(ReportId, "Grimhollow", BugReportKind.Bug, CapturedAt, TwoSections, null, null),
-            "kind" => new BugReportDraft(ReportId, "grimhollow", (BugReportKind)7, CapturedAt, TwoSections, null, null),
-            "captured-at" => new BugReportDraft(ReportId, "grimhollow", BugReportKind.Bug,
-                new DateTimeOffset(1979, 12, 31, 0, 0, 0, TimeSpan.Zero), TwoSections, null, null),
-            "captured-after-2107" => new BugReportDraft(ReportId, "grimhollow", BugReportKind.Bug,
-                new DateTimeOffset(2107, 12, 31, 23, 0, 0, TimeSpan.FromHours(-5)), TwoSections, null, null),
-            "null-sections" => new BugReportDraft(ReportId, "grimhollow", BugReportKind.Bug, CapturedAt, null!, null, null),
-            "null-section" => new BugReportDraft(ReportId, "grimhollow", BugReportKind.Bug, CapturedAt, [null!], null, null),
-            "null-frames" => Draft(clip: new ReportClip(null!)),
-            "null-media-type" => Draft(screenshot: new ReportImage(null!, 8, 6, TestBundles.Png(8, 6))),
-            _ => Draft(),
-        };
-        draft.Description = "A report";
-        draft.Category = field switch
-        {
-            "empty-category" => "",
-            "long-category" => new string('c', 65),
-            "null-category" => null!,
-            _ => "Other",
-        };
+        BugReportDraft draft = field == "null-frames"
+            ? Draft(clip: new ReportClip(null!))
+            : Draft(screenshot: new ReportImage(null!, 8, 6, TestBundles.Png(8, 6)));
 
         Exception thrown = Record.Exception(() => BugReportBundleWriter.Write(draft));
 
         Assert.IsAssignableFrom<ArgumentException>(thrown);
-    }
-
-    [Fact]
-    public void Category_of_64_characters_is_written()
-    {
-        BugReportDraft draft = Draft();
-        draft.Category = new string('c', 64);
-
-        AssertValid(BugReportBundleWriter.Write(draft));
     }
 
     [Fact]

@@ -28,8 +28,12 @@ public static class BugReportBundleWriter
     const int CentralRecordBytes = 46;
     const int EndRecordBytes = 22;
 
+    const string DraftParameter = "draft";
+
     /// <summary>Writes the bundle and returns its bytes.</summary>
-    /// <exception cref="ArgumentException">A draft field is null or outside its limit.</exception>
+    /// <exception cref="ArgumentNullException"><paramref name="draft"/> is null.</exception>
+    /// <exception cref="BugReportBundleArgumentException">A draft field or section is refused. Its reason names the rule.</exception>
+    /// <exception cref="ArgumentException">A screenshot or clip field is null or outside its limit.</exception>
     /// <exception cref="InvalidOperationException">The bundle would exceed 128 entries or 16 MiB.</exception>
     public static byte[] Write(BugReportDraft draft)
     {
@@ -76,51 +80,98 @@ public static class BugReportBundleWriter
     static string CheckFields(BugReportDraft draft)
     {
         if (!ReportIds.IsValid(draft.ReportId))
-            throw Invalid("The report id must be a canonical version 7 id from ReportIds.NewId.");
+            throw new BugReportBundleArgumentException(BugReportBundleRefusal.ReportIdInvalid,
+                "The report id must be a canonical version 7 id from ReportIds.NewId.", DraftParameter)
+            { FieldName = nameof(BugReportDraft.ReportId) };
         if (!BundleEntryNames.IsValidGameId(draft.GameId))
-            throw Invalid(string.Create(CultureInfo.InvariantCulture,
-                $"The game id must match [a-z0-9][a-z0-9-]{{0,{BugReportLimits.MaxGameIdChars - 1}}}."));
+            throw new BugReportBundleArgumentException(BugReportBundleRefusal.GameIdInvalid, string.Create(CultureInfo.InvariantCulture,
+                $"The game id must match [a-z0-9][a-z0-9-]{{0,{BugReportLimits.MaxGameIdChars - 1}}}."), DraftParameter)
+            { FieldName = nameof(BugReportDraft.GameId), MaximumCharacters = BugReportLimits.MaxGameIdChars };
         if (!Enum.IsDefined(draft.Kind))
-            throw Invalid("The report kind is not a defined BugReportKind.");
+            throw new BugReportBundleArgumentException(BugReportBundleRefusal.ReportKindUndefined,
+                "The report kind is not a defined BugReportKind.", DraftParameter)
+            { ActualKind = draft.Kind };
         int year = draft.CapturedAt.UtcDateTime.Year;
         if (year is < MinZipYear or > MaxZipYear)
-            throw Invalid(string.Create(CultureInfo.InvariantCulture,
-                $"The capture time must fall in the zip date range, {MinZipYear} to {MaxZipYear} UTC."));
+            throw new BugReportBundleArgumentException(BugReportBundleRefusal.CaptureYearOutsideZipRange, string.Create(CultureInfo.InvariantCulture,
+                $"The capture time must fall in the zip date range, {MinZipYear} to {MaxZipYear} UTC."), DraftParameter)
+            { ActualYear = year, MinimumYear = MinZipYear, MaximumYear = MaxZipYear };
         if (draft.Category is null || draft.Category.Length is < 1 or > BugReportLimits.MaxCategoryChars || !BugReportJson.IsWellFormedText(draft.Category))
-            throw Invalid(string.Create(CultureInfo.InvariantCulture,
-                $"The category must be 1 to {BugReportLimits.MaxCategoryChars} characters of well-formed text."));
+            throw CategoryRefused(draft.Category);
 
         string description = draft.Description?.TrimEnd() ?? "";
         if (description.Length == 0)
-            throw Invalid("The description must not be blank.");
+            throw new BugReportBundleArgumentException(BugReportBundleRefusal.DescriptionBlank,
+                "The description must not be blank.", DraftParameter)
+            { FieldName = nameof(BugReportDraft.Description) };
         if (description.Length > BugReportLimits.MaxDescriptionChars)
-            throw Invalid(string.Create(CultureInfo.InvariantCulture,
-                $"The description holds {description.Length} characters and the limit is {BugReportLimits.MaxDescriptionChars}."));
+            throw new BugReportBundleArgumentException(BugReportBundleRefusal.DescriptionTooLong, string.Create(CultureInfo.InvariantCulture,
+                $"The description holds {description.Length} characters and the limit is {BugReportLimits.MaxDescriptionChars}."), DraftParameter)
+            { ActualCharacters = description.Length, MaximumCharacters = BugReportLimits.MaxDescriptionChars };
         if (!BugReportJson.IsWellFormedText(description))
-            throw Invalid("The description contains an unpaired surrogate.");
+            throw new BugReportBundleArgumentException(BugReportBundleRefusal.TextMalformed,
+                "The description contains an unpaired surrogate.", DraftParameter)
+            { FieldName = nameof(BugReportDraft.Description) };
 
         CheckSections(draft.Sections);
         return description;
     }
 
+    // One message for three rules, so each branch of the guard carries its own reason, in the guard's order.
+    static BugReportBundleArgumentException CategoryRefused(string? category)
+    {
+        string message = string.Create(CultureInfo.InvariantCulture,
+            $"The category must be 1 to {BugReportLimits.MaxCategoryChars} characters of well-formed text.");
+        if (category is null)
+            return new BugReportBundleArgumentException(BugReportBundleRefusal.CategoryMissing, message, DraftParameter)
+            { FieldName = nameof(BugReportDraft.Category) };
+        if (category.Length is < 1 or > BugReportLimits.MaxCategoryChars)
+            return new BugReportBundleArgumentException(BugReportBundleRefusal.CategoryLengthOutsideRange, message, DraftParameter)
+            {
+                FieldName = nameof(BugReportDraft.Category),
+                ActualCharacters = category.Length,
+                MinimumCharacters = 1,
+                MaximumCharacters = BugReportLimits.MaxCategoryChars,
+            };
+        return new BugReportBundleArgumentException(BugReportBundleRefusal.TextMalformed, message, DraftParameter)
+        { FieldName = nameof(BugReportDraft.Category) };
+    }
+
     static void CheckSections(IReadOnlyList<CapturedSection> sections)
     {
-        if (sections is null) throw Invalid("The section list must not be null.");
+        if (sections is null)
+            throw new BugReportBundleArgumentException(BugReportBundleRefusal.SectionListMissing,
+                "The section list must not be null.", DraftParameter)
+            { FieldName = nameof(BugReportDraft.Sections) };
         var keys = new HashSet<string>(StringComparer.Ordinal);
         long total = 0;
+        int index = -1;
         foreach (CapturedSection? section in sections)
         {
-            if (section is null) throw Invalid("The section list must not hold a null section.");
+            index++;
+            if (section is null)
+                throw new BugReportBundleArgumentException(BugReportBundleRefusal.SectionMissing,
+                    "The section list must not hold a null section.", DraftParameter)
+                { Index = index };
             string key = section.Key;
             if (!BundleEntryNames.IsValidSectionKey(key))
-                throw Invalid("Section key \"" + key + "\" must match [a-z0-9][a-z0-9._-]{0,47}.");
-            if (!keys.Add(key)) throw Invalid("Section key \"" + key + "\" appears twice.");
+                throw new BugReportBundleArgumentException(BugReportBundleRefusal.SectionKeyInvalid,
+                    "Section key \"" + key + "\" must match [a-z0-9][a-z0-9._-]{0,47}.", DraftParameter)
+                { Index = index, SectionKey = key };
+            if (!keys.Add(key))
+                throw new BugReportBundleArgumentException(BugReportBundleRefusal.SectionKeyDuplicate,
+                    "Section key \"" + key + "\" appears twice.", DraftParameter)
+                { Index = index, SectionKey = key };
             total += section.Json.Length;
             if (total > BugReportLimits.MaxSectionBytesTotal)
-                throw Invalid("The sections total more than " + BugReportLimits.MaxSectionBytesTotal + " bytes.");
+                throw new BugReportBundleArgumentException(BugReportBundleRefusal.SectionBytesExceeded,
+                    "The sections total more than " + BugReportLimits.MaxSectionBytesTotal + " bytes.", DraftParameter)
+                { ActualBytes = total, MaximumBytes = BugReportLimits.MaxSectionBytesTotal };
             if (!BugReportJson.IsValidSection(section.Json))
-                throw Invalid("Section \"" + key + "\" is not one JSON object within depth " + BugReportLimits.MaxSectionDepth
-                    + " with unique property names and decodable strings.");
+                throw new BugReportBundleArgumentException(BugReportBundleRefusal.SectionJsonInvalid,
+                    "Section \"" + key + "\" is not one JSON object within depth " + BugReportLimits.MaxSectionDepth
+                    + " with unique property names and decodable strings.", DraftParameter)
+                { SectionKey = key, MaximumDepth = BugReportLimits.MaxSectionDepth };
         }
     }
 
@@ -203,7 +254,7 @@ public static class BugReportBundleWriter
 
     static bool IsValidEdge(int edge) => edge is >= 1 and <= BugReportLimits.MaxScreenshotLongEdge;
 
-    static ArgumentException Invalid(string message) => new(message, "draft");
+    static ArgumentException Invalid(string message) => new(message, DraftParameter);
 
     static InvalidOperationException TooLarge(string what, long bytes) => new(string.Create(CultureInfo.InvariantCulture,
         $"{what} {bytes} bytes and a bundle holds at most {BugReportLimits.MaxBundleBytes}."));

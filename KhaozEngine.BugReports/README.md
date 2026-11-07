@@ -42,11 +42,38 @@ any input or intermediate string above 4,194,304 UTF-16 code units. Matching has
 `BugReportDraft` holds what the trigger captured (id, game id, kind, capture time, finished sections, screenshot
 and clip) and what the player edits (`Description`, `Category`, `IncludeScreenshot`, `IncludeClip`). Its setters
 do not validate. `BugReportBundleWriter.Write(draft)` checks every field, writes a stored zip with the manifest and
-its SHA-256 hashes, and throws when a field or a limit is broken. Every bundle it writes passes
-`BundleValidator.Validate`.
+its SHA-256 hashes, and throws when a field or a limit is broken (see [Refusals](#refusals)). Every bundle it writes
+passes `BundleValidator.Validate`.
 
 The viewer and relay share `BugReportLogTail.FromLogSection(json)` with a default limit of 50 lines. It reads the newest string
 lines in their original order. Missing or malformed log data gives an empty tail.
+
+## Refusals
+
+A refused draft field or section throws `BugReportBundleArgumentException`, which derives from `ArgumentException`
+and keeps `ParamName` as `draft`. `Reason` is the rule. A screenshot or clip field still throws a plain
+`ArgumentException`, a broken entry or archive limit a plain `InvalidOperationException`, and a null draft
+`ArgumentNullException`.
+
+| `Reason` | What it refuses | Identifiers |
+| --- | --- | --- |
+| `ReportIdInvalid` | a report id that is not a canonical version 7 id, null included | `FieldName` |
+| `GameIdInvalid` | a game id outside `[a-z0-9][a-z0-9-]{0,31}`, null included | `FieldName`, `MaximumCharacters` (32) |
+| `ReportKindUndefined` | a kind `BugReportKind` does not define | `ActualKind` |
+| `CaptureYearOutsideZipRange` | a capture time whose UTC year is outside the zip range | `ActualYear`, `MinimumYear` (1980), `MaximumYear` (2107) |
+| `CategoryMissing` | a null category | `FieldName` |
+| `CategoryLengthOutsideRange` | an empty or overlong category | `FieldName`, `ActualCharacters`, `MinimumCharacters` (1), `MaximumCharacters` (64) |
+| `DescriptionBlank` | a null, empty or whitespace-only description | `FieldName` |
+| `DescriptionTooLong` | a description over the limit once trailing whitespace is dropped | `ActualCharacters`, `MaximumCharacters` (4000) |
+| `TextMalformed` | a category or description holding an unpaired surrogate | `FieldName` |
+| `SectionListMissing` | a null section list | `FieldName` |
+| `SectionMissing` | a null entry in the section list | `Index` |
+| `SectionKeyInvalid` | a section key outside `[a-z0-9][a-z0-9._-]{0,47}`, null included | `Index`, `SectionKey` |
+| `SectionKeyDuplicate` | a section key an earlier section uses, `Index` being the later one | `Index`, `SectionKey` |
+| `SectionBytesExceeded` | sections whose running total passes the limit, `ActualBytes` being the total through the section that crossed it | `ActualBytes`, `MaximumBytes` (1048576) |
+| `SectionJsonInvalid` | a section that is not one JSON object within the depth limit, with unique property names and decodable strings | `SectionKey`, `MaximumDepth` (64) |
+
+`FieldName` is the `BugReportDraft` property: `ReportId`, `GameId`, `Category`, `Description` or `Sections`.
 
 ## Sinks
 

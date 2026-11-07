@@ -1015,8 +1015,8 @@ tooling and outside this engine.
 explicitly in a FIXED ORDER through a writer rather than a reflected serializer, because a bundle lands in a
 repository beside the code it seeds and two exports of one version have to be the same bytes. Numbers are
 written as numbers and bytes as lower hex, because a bundle is read and edited by hand as often as it is
-generated. Reading is total for shape: a document this build cannot read is a refusal naming what was wrong,
-never a half-built bundle. Shape includes MAGNITUDE, because JSON has one number type and a member the reader
+generated. Explicit shape guards refuse malformed members rather than returning a half-built bundle, with
+the non-text string-decoding caveat below. Shape includes MAGNITUDE, because JSON has one number type and a member the reader
 wants as an integer can be handed `1.5`, an id past `int.MaxValue` or `1e308`. Type ids must also fit their
 1 to 65,535 domain, and field kinds, visibility values and remap kinds must be known enum values. Each bad
 value is refused naming the member, the same as a missing one. The refusal's `JsonPath` is that member's
@@ -1025,7 +1025,7 @@ rooted path, as the table below lists.
 `ContentBundleJson.ReadFormatVersion` is the precheck for a consumer that must inspect the declared format
 before reading or combining a bundle. It uses the same JSONC policy and format member rules as `Read`, so both
 accept comments and trailing commas and both refuse malformed JSON, a nonobject root, a missing version or a
-version that is not a 32-bit integer. The precheck returns an unsupported integer so the caller can compare or
+version not written as a 32-bit integer literal. The precheck returns an unsupported integer so the caller can compare or
 report it. `Read` remains the operation that refuses a format version this build does not support.
 
 This build reads and writes two formats. `ContentBundle.CurrentFormatVersion`, 1, is ROW-ONLY and text free by
@@ -1037,8 +1037,10 @@ format 2 document without it is refused. Any other format is refused whole with 
 
 ### Bundle document refusals
 
-Every refusal `ContentBundleJson` raises for the document's own shape carries the `bundle-format` token in
-`Reason` and a `ContentAuthoringRefusal` in `Refusal`. Messages remain developer prose, so branch on these.
+The explicit shape guards in `ContentBundleJson` and its text-section reader carry the `bundle-format`
+token in `Reason` and a `ContentAuthoringRefusal` in `Refusal`. Messages remain developer prose, so branch on
+these. Non-text strings still use `JsonElement.GetString` directly, so its unpaired-surrogate decoding faults
+can escape as `InvalidOperationException`. The `TextMalformedUnicode` guarantee covers the text section.
 `JsonPath` is rooted at `$` with zero-based indices, such as `$.types[0].fields[1].kind` or
 `$.text.values[0].typeId`. A member-shape guard reports its branches in its own order: an absent member is
 `BundleMemberRequired`, and a present member of another JSON kind is `BundleMemberKindInvalid`. The JSON kind
@@ -1056,8 +1058,8 @@ constructor, with its original argument exception retained as inner.
 | `BundleTextSectionMissing` | Writing a format 2 bundle that lost its text section | `ActualFormatVersion` (2) |
 | `BundleMemberRequired` | A required member is absent | `JsonPath` |
 | `BundleMemberKindInvalid` | A member has another JSON kind, or an array element is not an object | `JsonPath`, `ActualJsonKind` |
-| `BundleInt32Unrepresentable` | A number that is not a 32-bit integer, `formatVersion` included | `JsonPath` |
-| `BundleInt64Unrepresentable` | A number that is not a 64-bit integer (`familyId`, a row's `number`) | `JsonPath` |
+| `BundleInt32Unrepresentable` | A number not written as a 32-bit integer literal, `formatVersion` included. `1.0` and `1e2` are refused | `JsonPath` |
+| `BundleInt64Unrepresentable` | A number not written as a 64-bit integer literal (`familyId`, a row's `number`). `1.0` and `1e2` are refused | `JsonPath` |
 | `BundleSourceVersionNegative` | A source version below 0 | `JsonPath` (`$.sourceVersion`), `ActualInteger`, `MinimumInteger` (0) |
 | `BundleTypeIdOutsideRange` | A type id outside 1 to 65,535 | `JsonPath`, `ActualInteger`, `MinimumInteger` (1), `MaximumInteger` (65,535) |
 | `BundleFieldKindUnknown` | An undefined `ContentFieldKind` | `JsonPath`, `ActualInteger` |

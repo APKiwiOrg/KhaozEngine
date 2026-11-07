@@ -501,7 +501,7 @@ public class ContentFindingCodeTests
 
         ContentRegistrationException error = Assert.Throws<ContentRegistrationException>(() =>
         {
-            _ = GameRegistry(schema, chunkSlots: 100);
+            _ = GameRegistry(schema, chunkSlots: 128);
         });
         Assert.Equal(ContentRegistrationRefusal.ChunkSlotsOutsideRange, error.Reason);
 

@@ -23332,8 +23332,8 @@ ContentBundle bundle = ContentBundleJson.Read(json);
 
 `ReadFormatVersion` and `Read` share the same JSONC parsing and format member rules. Both accept comments and
 trailing commas. Both refuse malformed JSON (`BundleJsonMalformed`), a nonobject root
-(`BundleRootObjectRequired`), a missing version (`BundleMemberRequired`) or a version that is not a 32-bit
-integer (`BundleMemberKindInvalid` or `BundleInt32Unrepresentable`) with `ContentAuthoringException`. Each
+(`BundleRootObjectRequired`), a missing version (`BundleMemberRequired`) or a version not written as a 32-bit
+integer literal (`BundleMemberKindInvalid` or `BundleInt32Unrepresentable`) with `ContentAuthoringException`. Each
 carries the `bundle-format` token in `Reason`, the `ContentAuthoringRefusal` in `Refusal` and the rooted
 `JsonPath` `$.formatVersion` where a member is at fault. The precheck returns an unsupported integer for the
 caller to inspect, while `Read` refuses any version other than `ContentBundle.CurrentFormatVersion`, the

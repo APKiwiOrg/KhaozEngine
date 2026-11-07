@@ -20,8 +20,9 @@ namespace KhaozEngine.Catalog.Authoring;
 /// often as it is generated, and base64 in a field an author is retuning is a wall.
 /// </para>
 /// <para>
-/// Reading is TOTAL for shape: a document this build cannot read is a
-/// <see cref="ContentAuthoringException"/> naming what was wrong, never a half-built bundle. A shape rule this
+/// Explicit shape guards refuse malformed members with <see cref="ContentAuthoringException"/>, never a
+/// half-built bundle. Non-text strings use <c>JsonElement.GetString</c> directly, whose malformed Unicode
+/// faults are not wrapped. A shape rule this
 /// reader checks itself carries its <see cref="ContentAuthoringException.Refusal"/> and the rooted
 /// <see cref="ContentAuthoringException.JsonPath"/> of the member at fault, and so does a value a lower
 /// constructor refuses, mapped from that constructor's typed finding.
@@ -45,7 +46,7 @@ public static class ContentBundleJson
     };
 
     /// <summary>The rooted path of the document itself, which every refusal's <c>JsonPath</c> starts from.</summary>
-    const string RootPath = "$";
+    internal const string RootPath = "$";
 
     /// <summary>
     /// The bundle as one JSON document. Two exports of one version produce identical bytes.

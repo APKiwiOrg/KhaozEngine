@@ -235,9 +235,9 @@ public class EngineContentTypeTests
     }
 
     [Fact]
-    public void RegisteringTwiceIntoOneRegistryIsRefused()
+    public void RegisteringAnOccupiedTypeIdIsRefused()
     {
-        ContentTypeRegistry registry = Registered();
+        ContentTypeRegistry registry = ContentRegistryRefusalFixtures.WithOccupiedTypeId(Registered().ByTypeId[0]);
 
         ContentRegistrationException error = Assert.Throws<ContentRegistrationException>(() => EngineContentTypes.Register(registry));
         Assert.Equal(ContentRegistrationRefusal.TypeIdDuplicate, error.Reason);

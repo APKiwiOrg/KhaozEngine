@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using KhaozEngine.Catalog;
 using KhaozEngine.ItemInstances;
+using KhaozEngine.Tests.Catalog;
 using Xunit;
 using static KhaozEngine.Tests.ItemInstances.Content.InstanceContentTypeFixtures;
 
@@ -352,13 +353,12 @@ public class CurrencyFamilyTests
     }
 
     [Fact]
-    public void A_second_InstanceContentTypes_Register_on_one_registry_throws()
+    public void InstanceContentTypes_Register_refuses_an_occupied_type_id_with_another_key()
     {
-        var registry = new ContentTypeRegistry();
-        InstanceContentTypes.Register(registry);
+        var declared = new ContentTypeRegistry();
+        InstanceContentTypes.Register(declared);
+        ContentTypeRegistry registry = ContentRegistryRefusalFixtures.WithOccupiedTypeId(declared.ByTypeId[0]);
 
-        // Registration runs once, at process start. A second call is the ids already being taken, which is
-        // the same refusal EngineContentTypes.Register makes.
         ContentRegistrationException error = Assert.Throws<ContentRegistrationException>(() => InstanceContentTypes.Register(registry));
         Assert.Equal(ContentRegistrationRefusal.TypeIdDuplicate, error.Reason);
     }

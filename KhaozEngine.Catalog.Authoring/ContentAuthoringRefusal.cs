@@ -37,11 +37,11 @@ public enum ContentAuthoringRefusal
     /// <c>JsonPath</c> and <c>ActualJsonKind</c>.</summary>
     BundleMemberKindInvalid,
 
-    /// <summary>Refuses a number member that is not an integer a 32-bit signed integer can hold, such as
-    /// <c>1.5</c> or <c>2147483648</c>. Carries <c>JsonPath</c>.</summary>
+    /// <summary>Refuses a number member not written as a 32-bit integer literal, such as
+    /// <c>1.0</c>, <c>1e2</c> or <c>2147483648</c>. Carries <c>JsonPath</c>.</summary>
     BundleInt32Unrepresentable,
 
-    /// <summary>Refuses a number member that is not an integer a 64-bit signed integer can hold. Carries
+    /// <summary>Refuses a number member not written as a 64-bit integer literal. Carries
     /// <c>JsonPath</c>.</summary>
     BundleInt64Unrepresentable,
 

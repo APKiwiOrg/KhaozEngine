@@ -63,14 +63,14 @@ internal static class ContentBundleTextJson
     /// <exception cref="ContentAuthoringException">The section is missing or malformed, with <see cref="ContentAuthoringException.BundleFormatReason"/>.</exception>
     public static ContentBundleTextState Read(JsonElement root)
     {
+        string sectionPath = ContentBundleJson.Member(ContentBundleJson.RootPath, SectionName);
         bool present = root.TryGetProperty(SectionName, out JsonElement section);
         if (!present || section.ValueKind != JsonValueKind.Object)
         {
-            throw ContentBundleJson.Shape(present, section, ContentBundleJson.Member("$", SectionName), FormattableString.Invariant(
+            throw ContentBundleJson.Shape(present, section, sectionPath, FormattableString.Invariant(
                 $"A format {ContentBundle.TextFormatVersion} bundle carries a '{SectionName}' object, and this one does not. A bundle that lost its text section is never read as text free."));
         }
 
-        string sectionPath = ContentBundleJson.Member("$", SectionName);
         string languagesPath = ContentBundleJson.Member(sectionPath, "languages");
         int languageIndex = 0;
         var languages = new List<ContentTextLanguageDeclaration>();

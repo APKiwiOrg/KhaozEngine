@@ -562,6 +562,28 @@ public class BundleTests
         Assert.Equal(2, Assert.Single(repaired.Rows).Fields.Count);
     }
 
+    [Fact]
+    public void A_family_block_size_above_the_ceiling_is_refused_beside_the_ceiling_control()
+    {
+        JsonNode document = JsonNode.Parse(ValidDocument())!;
+        JsonNode family = document["families"]![0]!;
+        family["blockSize"] = 131072;
+        family["blocks"]![0]!["baseId"] = 131072;
+        family["blocks"]![0]!["nextFreeId"] = 131073;
+
+        ContentAuthoringException refused = Assert.Throws<ContentAuthoringException>(() => ContentBundleJson.Read(document.ToJsonString()));
+
+        Assert.Equal(ContentAuthoringException.BundleFormatReason, refused.Reason);
+        Assert.Equal(ContentAuthoringRefusal.FamilyBlockSizeOutsideRange, refused.Refusal);
+        Assert.Equal("$.families[0].blockSize", refused.JsonPath);
+        Assert.Equal("swords", refused.FamilyKey);
+        Assert.Equal(131072, refused.ActualBlockSize);
+        Assert.Equal(16, refused.MinimumBlockSize);
+        Assert.Equal(65536, refused.MaximumBlockSize);
+        family["blockSize"] = 65536;
+        Assert.Equal(65536, Assert.Single(ContentBundleJson.Read(document.ToJsonString()).Families).BlockSize);
+    }
+
     static int Occurrences(string text, string value)
     {
         int count = 0;

@@ -338,7 +338,7 @@ public sealed class GroundNavigation
 The two-argument `BuildProfile` builds a ground profile and equals the overload with `GroundProfileOptions.Default`.
 Both overloads, `GroundNavigationBake.Create` and every `GroundNavigationBake.Load` expectation normalize the
 controller and water selection before other profile work or stream reads. Malformed Contact selections throw
-`ArgumentException`. Contact aquatic profiles throw `NotSupportedException` naming #1389. Contact ground profiles
+`ArgumentException`. Contact aquatic profiles throw `NavigationProfileCapabilityException` with `ContactAquaticUnsupported` and `IssueUrl` naming #1389. Contact ground profiles
 require an ordinary-constructed context and an unchanged leased capture basis. Phase 5b ground navigation is
 released in 20.39.0. Contact aquatic navigation, footprint-only seeds and public explicit bake profiles
 are deferred to [#1389](https://github.com/APKiwiOrg/KhaozEngine/issues/1389). Legacy v1 bytes remain unchanged.
@@ -351,7 +351,7 @@ With `SampleWater`, a contact water field requires a supplied medium delegate an
 `AllowsSegment`, call `Validate(binding)` with the runtime `EffectiveMovementBinding`. `MoveToRange` calls it
 against the context's resolved binding before planning and prediction. `Validate(tuning)` is a convenience door
 that resolves Legacy or OrdinaryContact from tuning, but cannot detect a public explicit binding. PublicExplicit
-throws `NotSupportedException` naming #1389. A different binding kind or retained input throws `ArgumentException`.
+throws `NavigationProfileCapabilityException` with `PublicExplicitProfileUnsupported` and `IssueUrl` naming #1389. A different binding kind or retained input throws `NavigationProfileException`.
 Legacy graphs compare radius, half-height, slope and step, plus swim fractions for aquatic graphs. Contact graphs
 compare every retained tuning field, controller, foot fraction, placement offset and effective water policy.
 `WalkSpeed`, `RunSpeed` and `AirMomentum` may differ only for zero-allowance profiles, whose supported proofs normalize them. Positive `MaxDropMetres` validates their actual values. Numeric runtime comparisons
@@ -541,6 +541,32 @@ refusals propagate. No second lease is acquired to validate the basis within the
 var execution = new NavBakeExecution(1) { UseStableLegacyReadScope = true };
 GroundNavigationBake bake = GroundNavigationBake.Create(capture, sources, profiles, execution);
 ```
+
+### Navigation profile refusals
+
+`NavigationProfileException` derives from `ArgumentException`, retaining `ParamName`.
+`NavigationProfileCapabilityException` derives from `NotSupportedException`. Both carry
+`NavigationProfileRefusal` as non-nullable `Reason`. Identifiers are nullable when the selected reason does
+not use them. `ProfileName` is null for an unnamed `BuildProfile` and names a supplied profile where known.
+
+| `NavigationProfileRefusal` | Refused rule | Identifiers |
+| --- | --- | --- |
+| `ContactAquaticUnsupported` | Contact aquatic navigation is deferred | `IssueUrl` (the #1389 URL), `ProfileName` |
+| `DropProfileUnsupported` | Drop requires non-aquatic OrdinaryContact | `ProfileName`, `ActualKind`, `Aquatic` |
+| `PublicExplicitProfileUnsupported` | Public explicit navigation is deferred | `IssueUrl` (the #1389 URL), `ActualKind` |
+| `BindingKindMismatch` | Runtime binding kind differs from the baked kind | `ExpectedKind`, `ActualKind` |
+| `CaptureSlopeMismatch` | Profile slope differs from the capture | `ProfileName`, `ExpectedSlope`, `ActualSlope` |
+| `CaptureWaterNotSampled` | Aquatic profile lacks captured water | `ProfileName` |
+| `GeometryMismatch` | Legacy capsule or step geometry differs | `FieldName`, `ExpectedNumber`, `ActualNumber` |
+| `SwimFractionsMismatch` | Legacy aquatic fractions differ | `FieldName`, `ExpectedNumber`, `ActualNumber` |
+| `SwimFractionsUnordered` | Aquatic fractions are not ordered exit, submersion, enter | `ExitFraction`, `SubmersionFraction`, `EnterFraction` |
+| `TerrainDropPermissionRequired` | Terrain descents have no positive Drop permission | `AllowTerrainDescents`, `MaxDropMetres` |
+| `TuningFieldMismatch` | A retained Contact field differs | `FieldName`, `ExpectedBits`, `ActualBits` |
+
+Geometry and swim mismatch identifiers select the first differing field in the documented comparison order.
+Contact tuning identifiers come directly from the identity producer. `ExpectedBits` denotes the baked value
+and `ActualBits` the runtime value, represented as float bits or the enum or Boolean integer value.
+The existing identity difference text remains its prose projection, and runtime signed zeros remain compatible.
 
 ### Navigation capture and read refusals
 

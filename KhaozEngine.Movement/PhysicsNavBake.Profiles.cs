@@ -211,16 +211,22 @@ public sealed partial class PhysicsNavBake
         {
             if (kind == EffectiveMovementBindingKind.Legacy) context.ValidateTuning(tuning);
             if (tuning.MaxSlopeRadians != Options.MaxSlopeRadians)
-                throw new ArgumentException("Profile slope must equal the capture slope.", nameof(tuning));
+                throw new NavigationProfileException(NavigationProfileRefusal.CaptureSlopeMismatch,
+                    "Profile slope must equal the capture slope.", nameof(tuning))
+                    { ExpectedSlope = Options.MaxSlopeRadians, ActualSlope = tuning.MaxSlopeRadians };
             float height = 2f * tuning.CapsuleHalfHeight;
             if (!float.IsFinite(height))
                 throw new ArgumentOutOfRangeException(nameof(tuning), "Profile height must be finite.");
             bool aquatic = options.Aquatic;
             if (aquatic && !Options.SampleWater)
-                throw new ArgumentException("An aquatic profile needs a capture that sampled water.", nameof(options));
+                throw new NavigationProfileException(NavigationProfileRefusal.CaptureWaterNotSampled,
+                    "An aquatic profile needs a capture that sampled water.", nameof(options));
             if (aquatic && !(tuning.SwimExitDepthFraction <= tuning.SwimSurfaceSubmersionFraction &&
                 tuning.SwimSurfaceSubmersionFraction <= tuning.SwimEnterDepthFraction))
-                throw new ArgumentException("An aquatic profile needs swim fractions ordered exit, submersion, enter.", nameof(tuning));
+                throw new NavigationProfileException(NavigationProfileRefusal.SwimFractionsUnordered,
+                    "An aquatic profile needs swim fractions ordered exit, submersion, enter.", nameof(tuning))
+                    { ExitFraction = tuning.SwimExitDepthFraction, SubmersionFraction = tuning.SwimSurfaceSubmersionFraction,
+                        EnterFraction = tuning.SwimEnterDepthFraction };
             PhysicsNavColumns columns = aquatic ? AquaticColumns.Derive(Columns, tuning) : Columns;
             var footprint = new NavAreaFootprint(columns, Options, tuning, areas);
             return new(kind, context, source, height, aquatic, columns, footprint);

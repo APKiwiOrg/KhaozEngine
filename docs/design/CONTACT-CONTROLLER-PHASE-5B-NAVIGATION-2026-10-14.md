@@ -375,8 +375,8 @@ Compatibility:
   admission equal the fresh ones.
 - A mixed legacy aquatic and contact bake with `SampleWater` round-trips. A water-field-only context with `SampleWater`
   refuses at `Capture`.
-- Contact Aquatic throws `NotSupportedException` naming #1389 at `BuildProfile`, `Create` and `Load`, and `Load` leaves
-  the stream unread.
+- Contact Aquatic throws `NavigationProfileCapabilityException` with `ContactAquaticUnsupported` and `IssueUrl`
+  naming #1389 at `BuildProfile`, `Create` and `Load`, and `Load` leaves the stream unread.
 - A geometry change between `Capture` and `BuildProfile`, and a classifier that mutates geometry, each refuse.
 
 Admission:

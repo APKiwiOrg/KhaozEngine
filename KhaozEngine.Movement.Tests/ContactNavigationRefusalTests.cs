@@ -69,19 +69,26 @@ public class ContactNavigationRefusalTests
         MoveTuning tuning = ValidContact with { Water = new(WaterTraversalMode.SurfaceSwimmer) };
         NavBakeProfile contact = new("contact", tuning, default) { Aquatic = true };
         NavBakeProfile[] profiles = contactFirst ? [contact, legacy] : [legacy, contact];
-        const string deferredIssue = "https://github.com/APKiwiOrg/KhaozEngine/issues/1389";
-        Assert.Contains(deferredIssue,
-            Assert.Throws<NotSupportedException>(() => capture.BuildProfile(tuning, default,
-                new GroundProfileOptions { Aquatic = true })).Message, StringComparison.Ordinal);
+        var build = Assert.Throws<NavigationProfileCapabilityException>(() => capture.BuildProfile(tuning, default,
+            new GroundProfileOptions { Aquatic = true }));
+        Assert.Equal(NavigationProfileRefusal.ContactAquaticUnsupported, build.Reason);
+        Assert.Equal(new Uri("https://github.com/APKiwiOrg/KhaozEngine/issues/1389"), build.IssueUrl);
+        Assert.Null(build.ProfileName);
         // Empty sources would fail identity encoding if the selector refusal ran too late.
-        Assert.Contains(deferredIssue,
-            Assert.Throws<NotSupportedException>(() => GroundNavigationBake.Create(capture,
-                new NavBakeSources(), profiles)).Message, StringComparison.Ordinal);
+        var create = Assert.Throws<NavigationProfileCapabilityException>(() => GroundNavigationBake.Create(capture,
+            new NavBakeSources(), profiles));
+        Assert.Equal(NavigationProfileRefusal.ContactAquaticUnsupported, create.Reason);
+        Assert.Equal(new Uri("https://github.com/APKiwiOrg/KhaozEngine/issues/1389"), create.IssueUrl);
+        Assert.Equal("contact", create.ProfileName);
         using var stream = new MemoryStream(new byte[64]);
-        Assert.Contains(deferredIssue,
-            Assert.Throws<NotSupportedException>(() => GroundNavigationBake.Load(stream,
-                new(capture.Options, new NavBakeSources(), profiles))).Message, StringComparison.Ordinal);
+        var load = Assert.Throws<NavigationProfileCapabilityException>(() => GroundNavigationBake.Load(stream,
+            new(capture.Options, new NavBakeSources(), profiles)));
+        Assert.Equal(NavigationProfileRefusal.ContactAquaticUnsupported, load.Reason);
+        Assert.Equal(new Uri("https://github.com/APKiwiOrg/KhaozEngine/issues/1389"), load.IssueUrl);
+        Assert.Equal("contact", load.ProfileName);
+        Assert.IsAssignableFrom<NotSupportedException>(load);
         Assert.Equal(0, stream.Position);
+        Assert.Equal(EffectiveMovementBindingKind.OrdinaryContact, (contact with { Aquatic = false }).ResolveKind());
     }
 
     [Theory]

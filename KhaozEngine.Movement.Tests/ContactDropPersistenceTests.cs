@@ -137,7 +137,18 @@ public class ContactDropPersistenceTests(ITestOutputHelper output)
             ContactDropFixture.Tuning with { AirMomentum = !ContactDropFixture.Tuning.AirMomentum },
         })
         {
-            Assert.Throws<ArgumentException>(() => enabled.Validate(changed));
+            var failure = Assert.Throws<NavigationProfileException>(() => enabled.Validate(changed));
+            Assert.Equal(NavigationProfileRefusal.TuningFieldMismatch, failure.Reason);
+            string field = changed.WalkSpeed != ContactDropFixture.Tuning.WalkSpeed ? "WalkSpeed"
+                : changed.RunSpeed != ContactDropFixture.Tuning.RunSpeed ? "RunSpeed" : "AirMomentum";
+            Assert.Equal(field, failure.FieldName);
+            uint expected = field == "AirMomentum" ? ContactDropFixture.Tuning.AirMomentum ? 1u : 0u
+                : BitConverter.SingleToUInt32Bits(field == "WalkSpeed" ? ContactDropFixture.Tuning.WalkSpeed : ContactDropFixture.Tuning.RunSpeed);
+            uint actual = field == "AirMomentum" ? changed.AirMomentum ? 1u : 0u
+                : BitConverter.SingleToUInt32Bits(field == "WalkSpeed" ? 4f : 6f);
+            Assert.Equal(expected, failure.ExpectedBits);
+            Assert.Equal(actual, failure.ActualBits);
+            enabled.Validate(ContactDropFixture.Tuning);
             disabled.Validate(changed);
         }
     }

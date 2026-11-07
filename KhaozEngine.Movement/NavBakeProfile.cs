@@ -19,6 +19,8 @@ public sealed record NavBakeProfile(string Name, MoveTuning Tuning, NavAreaFilte
     /// <summary>Allows authenticated continuous terrain descents. Default false, independent for each profile.</summary>
     public bool AllowTerrainDescents { get; init; }
 
+    internal static readonly Uri DeferredIssue = new("https://github.com/APKiwiOrg/KhaozEngine/issues/1389");
+
     internal const string DeferredAquaticMessage =
         "Contact aquatic navigation is not supported yet. See https://github.com/APKiwiOrg/KhaozEngine/issues/1389.";
 
@@ -39,11 +41,16 @@ public sealed record NavBakeProfile(string Name, MoveTuning Tuning, NavAreaFilte
         if (!float.IsFinite(MaxDropMetres) || MaxDropMetres < 0)
             throw new ArgumentOutOfRangeException(nameof(MaxDropMetres), "Drop allowance must be finite and nonnegative.");
         if (AllowTerrainDescents && MaxDropMetres == 0)
-            throw new ArgumentException("Terrain descents require positive Drop permission.", nameof(AllowTerrainDescents));
+            throw new NavigationProfileException(NavigationProfileRefusal.TerrainDropPermissionRequired,
+                "Terrain descents require positive Drop permission.", nameof(AllowTerrainDescents))
+                { AllowTerrainDescents = AllowTerrainDescents, MaxDropMetres = MaxDropMetres };
         if (MaxDropMetres > 0 && (kind != EffectiveMovementBindingKind.OrdinaryContact || Aquatic))
-            throw new NotSupportedException("Drop navigation requires non-aquatic OrdinaryContact movement.");
+            throw new NavigationProfileCapabilityException(NavigationProfileRefusal.DropProfileUnsupported,
+                "Drop navigation requires non-aquatic OrdinaryContact movement.")
+                { ProfileName = string.IsNullOrEmpty(Name) ? null : Name, ActualKind = kind, Aquatic = Aquatic };
         if (kind == EffectiveMovementBindingKind.OrdinaryContact && Aquatic)
-            throw new NotSupportedException(DeferredAquaticMessage);
+            throw new NavigationProfileCapabilityException(NavigationProfileRefusal.ContactAquaticUnsupported, DeferredAquaticMessage)
+                { IssueUrl = DeferredIssue, ProfileName = string.IsNullOrEmpty(Name) ? null : Name };
         return kind;
     }
 }

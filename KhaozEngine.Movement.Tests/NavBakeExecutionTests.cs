@@ -93,15 +93,18 @@ public class NavBakeExecutionTests
         Assert.IsNotAssignableFrom<IPhysicsConcurrentReadSource>(scene.View);
         using PhysicsNavBake capture = scene.Capture();
         // Existing argument checks keep their place ahead of the capability.
-        Assert.Throws<ArgumentException>(() => capture.BuildProfile(StairTuning with { MaxSlopeRadians = 0.1f }, default,
-            GroundProfileOptions.Default, new NavBakeExecution(2)));
+        Assert.Equal(NavigationProfileRefusal.CaptureSlopeMismatch,
+            Assert.Throws<NavigationProfileException>(() => capture.BuildProfile(StairTuning with { MaxSlopeRadians = 0.1f }, default,
+                GroundProfileOptions.Default, new NavBakeExecution(2))).Reason);
         var failure = Assert.Throws<NavigationReadCapabilityException>(() =>
             capture.BuildProfile(StairTuning, default, GroundProfileOptions.Default, new NavBakeExecution(2)));
         Assert.Equal(NavigationReadRefusal.ConcurrentReadsRequired, failure.Reason);
         Assert.Equal(typeof(IPhysicsConcurrentReadSource), failure.RequiredCapability);
         Assert.Equal(NavigationSourceRole.MovementQueryView, failure.SourceRole);
-        Assert.Throws<NavigationReadCapabilityException>(() => GroundNavigationBake.Create(capture, ContactBakeFile.Sources(),
+        var create = Assert.Throws<NavigationReadCapabilityException>(() => GroundNavigationBake.Create(capture, ContactBakeFile.Sources(),
             [new NavBakeProfile("player", StairTuning, default)], new NavBakeExecution(2)));
+        Assert.Equal(NavigationReadRefusal.ConcurrentReadsRequired, create.Reason);
+        Assert.Equal(NavigationSourceRole.MovementQueryView, create.SourceRole);
         // The refusal leaves the capture, world and view usable, and degree 1 still builds serially.
         GroundNavigation serial = capture.BuildProfile(StairTuning, default, GroundProfileOptions.Default,
             new NavBakeExecution(1));
@@ -148,12 +151,14 @@ public class NavBakeExecutionTests
         NavBakeProfile[] profiles = [new("a-legacy", legacy, default), new("player", StairTuning, default)];
         NavBakeProfile[] badSlope = [profiles[0], new("player", StairTuning with { MaxSlopeRadians = 0.1f }, default)];
         int reads = scene.HeightReads;
-        Assert.Throws<NavigationReadCapabilityException>(() =>
+        var refusal = Assert.Throws<NavigationReadCapabilityException>(() =>
             GroundNavigationBake.Create(capture, ContactBakeFile.Sources(), profiles, new NavBakeExecution(2)));
+        Assert.Equal(NavigationReadRefusal.ConcurrentReadsRequired, refusal.Reason);
+        Assert.Equal(NavigationSourceRole.MovementQueryView, refusal.SourceRole);
         Assert.Equal(reads, scene.HeightReads);
         // A later profile's argument check still wins over the capability.
-        Assert.Throws<ArgumentException>(() =>
-            GroundNavigationBake.Create(capture, ContactBakeFile.Sources(), badSlope, new NavBakeExecution(2)));
+        Assert.Equal(NavigationProfileRefusal.CaptureSlopeMismatch, Assert.Throws<NavigationProfileException>(() =>
+            GroundNavigationBake.Create(capture, ContactBakeFile.Sources(), badSlope, new NavBakeExecution(2))).Reason);
         Assert.Equal(reads, scene.HeightReads);
         // The count does observe a legacy build.
         capture.BuildProfile(legacy, default);

@@ -82,8 +82,14 @@ public class ContactDropIdentityTests
         var profile = Profile() with { Aquatic = aquatic };
         if (!aquatic) profile = profile with { Tuning = profile.Tuning with { Controller = MovementControllerKind.Legacy, Water = default } };
         using var source = new NeverReadStream();
-        Assert.Throws<NotSupportedException>(() => GroundNavigationBake.Load(source,
+        var failure = Assert.Throws<NavigationProfileCapabilityException>(() => GroundNavigationBake.Load(source,
             new(ContactDropFixture.Options, Sources(), [profile])));
+        Assert.Equal(NavigationProfileRefusal.DropProfileUnsupported, failure.Reason);
+        Assert.Equal(profile.Name, failure.ProfileName);
+        Assert.Equal(aquatic ? EffectiveMovementBindingKind.OrdinaryContact : EffectiveMovementBindingKind.Legacy, failure.ActualKind);
+        Assert.Equal(aquatic, failure.Aquatic);
+        Assert.Equal(EffectiveMovementBindingKind.OrdinaryContact,
+            (profile with { Aquatic = false, Tuning = ContactDropFixture.Tuning }).ResolveKind());
     }
 
     [Fact]

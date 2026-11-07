@@ -171,6 +171,15 @@ public class PhysicsNavCaptureTests
         using var bake = PhysicsNavBake.Capture(context, Options with { MaxSurfacesPerColumn = 2 }, _ => 0x01u);
 
         Assert.Equal(2, bake.Columns.GetColumn(0, 0).Length);
+        using var oneSurface = new BepuPhysicsWorld();
+        oneSurface.AddStatic(new BoxShape(new Vector3(4f, 0.1f, 4f)), Pose.At(new Vector3(103f, 0.9f, -76f)));
+        using var atReportedLimit = PhysicsNavBake.Capture(PhysicsOnly(oneSurface),
+            Options with { MaxSurfacesPerColumn = 1 }, _ => 0);
+        Assert.Single(atReportedLimit.Columns.GetColumn(0, 0).ToArray());
+        using var empty = new BepuPhysicsWorld();
+        using var belowReportedLimit = PhysicsNavBake.Capture(PhysicsOnly(empty),
+            Options with { MaxSurfacesPerColumn = 1 }, _ => 0);
+        Assert.Empty(belowReportedLimit.Columns.GetColumn(0, 0).ToArray());
     }
 
     [Fact]

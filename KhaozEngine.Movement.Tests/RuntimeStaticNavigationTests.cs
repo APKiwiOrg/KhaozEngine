@@ -19,8 +19,10 @@ public class RuntimeStaticNavigationTests
         using var context = Context(scene);
         Set(scene);
         int samples = 0;
-        Assert.Throws<NavigationBuildException>(() =>
+        var refusal = Assert.Throws<NavigationBuildException>(() =>
             PhysicsNavBake.Capture(context, Options, _ => { samples++; return 0; }));
+        Assert.Equal(NavigationBuildRefusal.RuntimeStaticsPresent, refusal.Reason);
+        Assert.Equal(NavigationSourceRole.MovementRegistration, refusal.SourceRole);
         Assert.Equal(0, samples);
         using var known = scene.Acquire();
     }
@@ -70,7 +72,8 @@ public class RuntimeStaticNavigationTests
         using var capture = PhysicsNavBake.Capture(context, Options, _ => 0);
         Set(scene);
         Remove(scene);
-        Assert.Throws<NavigationBuildException>(() => capture.BuildProfile(Tuning, default));
+        Assert.Equal(NavigationBuildRefusal.CaptureGeometryChanged,
+            Assert.Throws<NavigationBuildException>(() => capture.BuildProfile(Tuning, default)).Reason);
         using var fresh = PhysicsNavBake.Capture(context, Options, _ => 0);
         Assert.NotEmpty(fresh.BuildProfile(Tuning, default).Space.Layers);
         using var known = scene.Acquire();
@@ -82,11 +85,12 @@ public class RuntimeStaticNavigationTests
         using var scene = Scene();
         using var context = Context(scene);
         int samples = 0;
-        Assert.Throws<NavigationBuildException>(() => PhysicsNavBake.Capture(context, Options, _ =>
+        var refusal = Assert.Throws<NavigationBuildException>(() => PhysicsNavBake.Capture(context, Options, _ =>
         {
             if (++samples == 1) { Set(scene); Remove(scene); }
             return 0;
         }));
+        Assert.Equal(NavigationBuildRefusal.CaptureGeometryChanged, refusal.Reason);
         Assert.Equal(1, samples);
         using var known = scene.Acquire();
     }
@@ -139,8 +143,8 @@ public class RuntimeStaticNavigationTests
                 if (removeAgain) Remove(scene);
             },
         });
-        Assert.Throws<NavigationBuildException>(() =>
-            capture.BuildProfile(Tuning, default, GroundProfileOptions.Default, new(2)));
+        Assert.Equal(NavigationBuildRefusal.CaptureGeometryChanged, Assert.Throws<NavigationBuildException>(() =>
+            capture.BuildProfile(Tuning, default, GroundProfileOptions.Default, new(2))).Reason);
         Assert.Equal(bands, completed);
         using var known = scene.Acquire();
     }

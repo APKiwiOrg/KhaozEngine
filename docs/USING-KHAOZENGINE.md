@@ -9571,7 +9571,12 @@ rules.
 
 Both `BuildProfile` overloads, `GroundNavigationBake.Create` and every `GroundNavigationBake.Load` expectation
 validate Contact selection before other profile work or stream reads. Malformed configurations throw
-`ArgumentException`, and Contact aquatic profiles throw `NotSupportedException` naming #1389. Ground construction
+`ArgumentException`, and Contact aquatic profiles throw `NavigationProfileCapabilityException` with
+`ContactAquaticUnsupported` and `IssueUrl` naming #1389. Profile compatibility failures use
+`NavigationProfileException` with `NavigationProfileRefusal`, the retained `ParamName` and typed field,
+kind, slope or fraction identifiers. Its base is `ArgumentException`. Deferred public explicit navigation
+uses `NavigationProfileCapabilityException` with `PublicExplicitProfileUnsupported` and the same issue URL.
+See the [profile refusal table](../KhaozEngine.Movement/README.md#navigation-profile-refusals). Ground construction
 requires an ordinary-constructed context and a leased capture whose geometry and origin remain unchanged.
 Phase 5b ground navigation is released in 20.39.0. Contact aquatic navigation, footprint-only seeds and
 public explicit bake profiles are deferred to [#1389](https://github.com/APKiwiOrg/KhaozEngine/issues/1389).

@@ -44,9 +44,15 @@ public class ContactTerrainOptInTests
         using var capture = PhysicsNavBake.Capture(scene.Context, Options, _ => 0);
         Assert.Throws<PhysicsNavDescentEvidenceException>(() => capture.BuildProfile(ContactTerrainScene.Tuning, default,
             new GroundProfileOptions { MaxDropMetres = 6, AllowTerrainDescents = true }));
-        var refusal = Assert.Throws<ArgumentException>(() => capture.BuildProfile(ContactTerrainScene.Tuning, default,
+        using var withEvidence = PhysicsNavBake.Capture(scene.Context, Options with { CaptureTerrainDescentEvidence = true }, _ => 0);
+        var refusal = Assert.Throws<NavigationProfileException>(() => withEvidence.BuildProfile(ContactTerrainScene.Tuning, default,
             new GroundProfileOptions { AllowTerrainDescents = true }));
         Assert.Equal(nameof(GroundProfileOptions.AllowTerrainDescents), refusal.ParamName);
+        Assert.Equal(NavigationProfileRefusal.TerrainDropPermissionRequired, refusal.Reason);
+        Assert.Equal(true, refusal.AllowTerrainDescents);
+        Assert.Equal(0f, refusal.MaxDropMetres);
+        Assert.True(withEvidence.BuildProfile(ContactTerrainScene.Tuning, default,
+            new GroundProfileOptions { MaxDropMetres = 1, AllowTerrainDescents = true }).AllowTerrainDescents);
     }
     internal static PhysicsNavBakeOptions Options => new(0, -3, 5, 0, 0.25f, 10, 14,
         ContactTerrainScene.Tuning.MaxSlopeRadians, 256, 1024);

@@ -120,8 +120,11 @@ public sealed class StableLegacyReadScopeTests
         Assert.Equal(typeof(IPhysicsQueryLeaseSource), failure.RequiredCapability);
         Assert.Equal(viewOnly ? NavigationSourceRole.MovementQueryView : NavigationSourceRole.PhysicsSource, failure.SourceRole);
         Assert.Equal(0, reads);
-        Assert.Throws<NavigationReadCapabilityException>(() => GroundNavigationBake.Create(capture, ContactBakeFile.Sources(),
+        var create = Assert.Throws<NavigationReadCapabilityException>(() => GroundNavigationBake.Create(capture, ContactBakeFile.Sources(),
             [new("legacy", Tuning, default)], Stable()));
+        Assert.Equal(NavigationReadRefusal.LegacyQueryLeaseRequired, create.Reason);
+        Assert.Equal(failure.RequiredCapability, create.RequiredCapability);
+        Assert.Equal(failure.SourceRole, create.SourceRole);
         Assert.Equal(0, reads);
         Assert.True(capture.BuildProfile(Tuning, default).Graph.IsNodePassable(0, 1, 0));
     }
@@ -255,8 +258,9 @@ public sealed class StableLegacyReadScopeTests
             capture.BuildProfile(Tuning, default, null, Stable(0))).ParamName);
         Assert.Equal("options", Assert.Throws<ArgumentNullException>(() =>
             capture.BuildProfile(Tuning, default, null, Stable())).ParamName);
-        Assert.Throws<ArgumentException>(() => capture.BuildProfile(Tuning with { MaxSlopeRadians = 0.1f }, default,
-            GroundProfileOptions.Default, Stable()));
+        Assert.Equal(NavigationProfileRefusal.CaptureSlopeMismatch,
+            Assert.Throws<NavigationProfileException>(() => capture.BuildProfile(Tuning with { MaxSlopeRadians = 0.1f }, default,
+                GroundProfileOptions.Default, Stable())).Reason);
         outer.AssertCurrent();
     }
 

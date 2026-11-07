@@ -48,10 +48,17 @@ internal static partial class NavBakeIdentity
     }
 
     internal static string? FirstDropRuntimeDifference(in MoveTuning bake, in MoveTuning want)
+        => FirstDropRuntimeFinding(bake, want)?.Detail;
+
+    internal static NavigationTuningDifference? FirstDropRuntimeFinding(in MoveTuning bake, in MoveTuning want)
     {
-        if (bake.WalkSpeed != want.WalkSpeed) return "WalkSpeed must equal the baked Drop profile's";
-        if (bake.RunSpeed != want.RunSpeed) return "RunSpeed must equal the baked Drop profile's";
-        if (bake.AirMomentum != want.AirMomentum) return "AirMomentum must equal the baked Drop profile's";
+        if (bake.WalkSpeed != want.WalkSpeed)
+            return new("WalkSpeed", Bits(bake.WalkSpeed), Bits(want.WalkSpeed), "WalkSpeed must equal the baked Drop profile's");
+        if (bake.RunSpeed != want.RunSpeed)
+            return new("RunSpeed", Bits(bake.RunSpeed), Bits(want.RunSpeed), "RunSpeed must equal the baked Drop profile's");
+        if (bake.AirMomentum != want.AirMomentum)
+            return new("AirMomentum", bake.AirMomentum ? 1u : 0u, want.AirMomentum ? 1u : 0u,
+                "AirMomentum must equal the baked Drop profile's");
         return null;
     }
 }

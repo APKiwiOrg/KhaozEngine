@@ -29,7 +29,7 @@ public enum SignInRefusal
 
     /// <summary>Refuses an OIDC authority that is not https, other than a plain-http loopback authority under
     /// the local development opt-out. <see cref="SignInException.ActualScheme"/> carries its scheme.</summary>
-    AuthorityInsecure,
+    AuthorityNotHttps,
 
     /// <summary>Refuses a discovery document request answered with a non-success status.</summary>
     DiscoveryHttpFailure,

@@ -243,7 +243,7 @@ public sealed class OidcClientProvider(
             return;
 
         throw new IdentitySignInException(
-            SignInRefusal.AuthorityInsecure,
+            SignInRefusal.AuthorityNotHttps,
             $"OIDC authority must be https (got {authority.Scheme}). Set AllowInsecureLoopbackAuthority " +
             "to allow a plain-http authority on a loopback host for local development.")
         {

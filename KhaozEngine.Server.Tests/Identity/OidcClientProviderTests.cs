@@ -457,14 +457,13 @@ public class OidcClientProviderTests
 
     /// <summary>#170: a plain-http authority put the PKCE verifier and the returned tokens on the wire in
     /// cleartext. Nothing checked the scheme, so the refusal has to come before any request goes out (which is
-    /// also before the browser launches).</summary>
-    /// <summary>Only the scheme may reach the refusal. Nothing after it does, credentials in the authority
-    /// included.</summary>
+    /// also before the browser launches). Only the scheme may reach the refusal. Nothing after it does,
+    /// credentials in the authority included.</summary>
     [Theory]
-    [InlineData("http://issuer.test", SignInRefusal.AuthorityInsecure, "http")]
-    [InlineData("http://localhost:8080", SignInRefusal.AuthorityInsecure, "http")]
-    [InlineData("ftp://issuer.test", SignInRefusal.AuthorityInsecure, "ftp")]
-    [InlineData("http://user:hunter2@issuer.test", SignInRefusal.AuthorityInsecure, "http")]
+    [InlineData("http://issuer.test", SignInRefusal.AuthorityNotHttps, "http")]
+    [InlineData("http://localhost:8080", SignInRefusal.AuthorityNotHttps, "http")]
+    [InlineData("ftp://issuer.test", SignInRefusal.AuthorityNotHttps, "ftp")]
+    [InlineData("http://user:hunter2@issuer.test", SignInRefusal.AuthorityNotHttps, "http")]
     [InlineData("not-a-url", SignInRefusal.AuthorityNotAbsolute, null)]
     public async Task SignIn_refuses_a_non_https_authority(string authority, SignInRefusal expected, string? scheme)
     {
@@ -483,7 +482,8 @@ public class OidcClientProviderTests
         Assert.Equal(scheme, ex.ActualScheme);
         Assert.Equal("oidc", ex.ProviderId);
         int schemeEnd = authority.IndexOf("://", StringComparison.Ordinal);
-        SignInRefusalSecrets.AssertCarriesNone(ex, authority, schemeEnd < 0 ? authority : authority[(schemeEnd + 3)..]);
+        SignInRefusalSecrets.AssertCarriesNone(
+            ex, authority, schemeEnd < 0 ? authority : authority[(schemeEnd + 3)..], "hunter2");
 
         ProviderCredential control = await SignInProviderWith(new FakeTokenHandler()).SignInAsync(CancellationToken.None);
         Assert.Equal("the-id-token", control.CredentialToken);
@@ -501,7 +501,7 @@ public class OidcClientProviderTests
         IdentitySignInException ex = await Assert.ThrowsAsync<IdentitySignInException>(
             () => provider.RefreshAsync(expired, CancellationToken.None));
 
-        Assert.Equal(SignInRefusal.AuthorityInsecure, ex.Reason);
+        Assert.Equal(SignInRefusal.AuthorityNotHttps, ex.Reason);
         Assert.Equal("http", ex.ActualScheme);
     }
 
@@ -544,7 +544,7 @@ public class OidcClientProviderTests
         IdentitySignInException ex = await Assert.ThrowsAsync<IdentitySignInException>(
             () => provider.SignInAsync(CancellationToken.None));
         Assert.Null(browser.Launched);
-        Assert.Equal(SignInRefusal.AuthorityInsecure, ex.Reason);
+        Assert.Equal(SignInRefusal.AuthorityNotHttps, ex.Reason);
         Assert.Equal("http", ex.ActualScheme);
     }
 

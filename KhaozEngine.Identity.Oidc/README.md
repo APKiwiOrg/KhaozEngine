@@ -35,7 +35,7 @@ authorization-code + PKCE flow, using the system browser and a local loopback re
   document it fetches, so a plain-http authority would put the PKCE `code_verifier` on the wire on the way
   out and the `id_token`/`refresh_token` on the way back. `OidcClientProvider` refuses a non-https authority
   with `IdentitySignInException` before any request leaves the process (so before the browser launches), on
-  both the sign-in and the refresh path: `AuthorityInsecure` with the `ActualScheme`, or `AuthorityNotAbsolute`
+  both the sign-in and the refresh path: `AuthorityNotHttps` with the `ActualScheme`, or `AuthorityNotAbsolute`
   when it is not an absolute URL. Neither carries the authority itself. `AllowInsecureLoopbackAuthority` is the
   local-dev opt-out: with it set, a plain-`http` authority is accepted only when its host is a loopback address
   (`localhost`, `127.0.0.0/8`, `::1`), never for a remote host. `SignInTimeout` (default 5 minutes) bounds the **whole**

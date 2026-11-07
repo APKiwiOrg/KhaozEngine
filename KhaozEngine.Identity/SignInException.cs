@@ -75,7 +75,7 @@ public class SignInException : Exception
     /// <c>expires_in</c> refusals. It is the member's name, never its value.</summary>
     public string? MemberName { get; init; }
 
-    /// <summary>The authority's scheme, for <see cref="SignInRefusal.AuthorityInsecure"/>. The rest of the
+    /// <summary>The authority's scheme, for <see cref="SignInRefusal.AuthorityNotHttps"/>. The rest of the
     /// authority is not carried.</summary>
     public string? ActualScheme { get; init; }
 }

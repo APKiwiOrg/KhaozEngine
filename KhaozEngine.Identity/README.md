@@ -182,7 +182,7 @@ then `Detail` holds the text it was given. An engine refusal leaves `Detail` nul
 | `RedirectStateMismatch` | a loopback redirect whose `state` is absent or differs from the one sent | none, never either state |
 | `AuthorizationCodeMissing` | a loopback redirect whose `code` is absent or empty | none |
 | `AuthorityNotAbsolute` | an OIDC authority that is not an absolute URL | none, never the authority |
-| `AuthorityInsecure` | an OIDC authority that is not https, other than a plain-http loopback authority under `AllowInsecureLoopbackAuthority` | `ActualScheme` |
+| `AuthorityNotHttps` | an OIDC authority that is not https, other than a plain-http loopback authority under `AllowInsecureLoopbackAuthority` | `ActualScheme` |
 | `DiscoveryHttpFailure` | a discovery document request answered with a non-success status | `StatusCode`, `EndpointRole` |
 | `DiscoveryEndpointMissing` | a discovery document without `authorization_endpoint` or `token_endpoint` | `MemberName`, the first one missing |
 | `DiscoveryEndpointEmpty` | a discovery document whose `authorization_endpoint` or `token_endpoint` is null or empty | `MemberName`, the first one empty |

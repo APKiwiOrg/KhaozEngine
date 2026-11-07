@@ -162,7 +162,8 @@ public class ModCandidateTablesRefusalTests
         ContentRow[] Rows(int firstWeight) =>
         [
             Tag(registry, 5, "metal"),
-            Item(registry, 40, "greatsword", [5]),
+            Tag(registry, 6, "wood"),
+            Item(registry, 40, "greatsword", [6]),
             Mod(registry, 1, "sharp"),
             Mod(registry, 2, "keen"),
             ModTier(registry, 1, "sharp_t", modId: 1, ordinal: 1),

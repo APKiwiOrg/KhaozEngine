@@ -241,17 +241,21 @@ public sealed partial class ShardHost : IDisposable
             // discovered only by playing it, not by any exception. WorldServer and WorldClient throw on the
             // analogous single-island mistake (an IPhysicsWorld that cannot rebase). This is the sharded head's
             // equivalent guard for a per-cell world that is never rebased at all.
-            if (frameAnchoring && physics is not null && physics.Origin != frame.Anchor)
+            if (frameAnchoring && physics is not null)
             {
-                Vector3 badOrigin = physics.Origin;   // captured before Dispose, defensive against a backend that
-                                                      // stops answering queries once disposed
-                physics.Dispose();   // no CellSim will ever own it now: this world would otherwise leak silently
-                throw new ArgumentException(
-                    $"ShardedWorldServerConfig.PhysicsWorldFactory returned a world at Origin {badOrigin} for " +
-                    $"cell {coord}, but FrameAnchoring is on and that cell's frame anchor is {frame.Anchor}. The " +
-                    "factory contract requires the returned world's Origin to equal ShardHost.FrameFor(coord).Anchor " +
-                    "(or CellSim.Frame.Anchor, the same value) - read it from there rather than re-deriving it.",
-                    nameof(physicsFactory));
+                // The backend is caller code. Compare, describe and reject the same captured value.
+                Vector3 badOrigin = physics.Origin;
+                if (badOrigin != frame.Anchor)
+                {
+                    physics.Dispose();   // no CellSim will ever own it now: this world would otherwise leak silently
+                    throw new ShardFrameException(ShardFrameRefusal.PhysicsFactoryOriginMismatch,
+                        $"ShardedWorldServerConfig.PhysicsWorldFactory returned a world at Origin {badOrigin} for " +
+                        $"cell {coord}, but FrameAnchoring is on and that cell's frame anchor is {frame.Anchor}. The " +
+                        "factory contract requires the returned world's Origin to equal ShardHost.FrameFor(coord).Anchor " +
+                        "(or CellSim.Frame.Anchor, the same value) - read it from there rather than re-deriving it.",
+                        nameof(physicsFactory))
+                    { Cell = coord, FactoryMember = "PhysicsWorldFactory", ActualOrigin = badOrigin, ExpectedOrigin = frame.Anchor };
+                }
             }
             cell = new CellSim(coord, tickSeconds, registry, interestCellSize, frame, physics);
             // Project this cell's owned index into the host netId -> cell map. The register hook always wins (a cell

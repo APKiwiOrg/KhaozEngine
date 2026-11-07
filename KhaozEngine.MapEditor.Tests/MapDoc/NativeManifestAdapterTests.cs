@@ -81,7 +81,8 @@ public sealed class NativeManifestAdapterTests
         var error = Assert.Throws<MapDocumentException>(() => MapAssetManifestAdapter.ToAssetEntry(f.Closure, "prop", other));
         Assert.Equal(missing ? MapDocumentRefusal.AssetPayloadUnreadable : MapDocumentRefusal.DigestMismatch, error.Reason);
         Assert.Equal(resourceId, error.ResourceId);
-        Assert.Equal(path, error.Path);
+        // The adapter publishes the fully qualified path, which uses platform separators on Windows.
+        Assert.Equal(Path.GetFullPath(path), error.Path);
         Assert.Equal(f.Closure.GetResource(resourceId).Reference.Sha256, error.ExpectedHash);
         if (!missing)
         {

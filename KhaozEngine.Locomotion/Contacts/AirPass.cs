@@ -141,14 +141,15 @@ internal static class AirPass
             moved = onPlan ? next : moved + flight.Achieved;
             float remainingTime = stepTime * (substeps - i - 1);
             bool rising = current.Y > 0f;
-            if (rising)
+            if (rising && !buoyant)
             {
                 if (medium?.ChangesOwner(start + moved, current.Y, NoSupport, false) == true)
                 {
                     acceptedRoute.Accept(from, start + moved);
                     return Handoff(start + moved, NoSupport, AirOutcome.Airborne, remainingTime);
                 }
-                if (!buoyant) { acceptedRoute.Accept(from, start + moved); continue; }
+                acceptedRoute.Accept(from, start + moved);
+                continue;
             }
 
             Vector3 at = start + moved;
@@ -161,6 +162,9 @@ internal static class AirPass
             SupportSample support = queries.FindSupport(
                 new FootSupportQuery(axis, high, footRadius, tuning.StepHeight, MathF.Max(0f, high - low),
                     cosMaxSlope));
+            // Refusal proves neither absence nor bank clearance. Hold the whole buoyant tick.
+            if (buoyant && support.Status == SupportStatus.Refused)
+                throw new ContactQueryFailure(MovementAvailability.Known, MovementStepOutcome.Blocked);
             // A buoyant body settles on its waterline, so the sign of its vertical speed says nothing about its legs.
             // Rising, it takes only walkable support that rose above its highest feet. That contact must clip the
             // legs even before the water allows footing. A bed it rose off seats nothing.
@@ -168,6 +172,8 @@ internal static class AirPass
                     (double)support.Height - support.HeightError > high))
             {
                 acceptedRoute.Accept(from, at);
+                if (medium?.ChangesOwner(at, current.Y, NoSupport, false) == true)
+                    return Handoff(at, NoSupport, AirOutcome.Airborne, remainingTime);
                 continue;
             }
             var remaining = new Vector2(displacement.X - next.X, displacement.Z - next.Z);

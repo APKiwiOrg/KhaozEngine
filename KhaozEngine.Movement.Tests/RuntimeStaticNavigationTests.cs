@@ -116,10 +116,15 @@ public class RuntimeStaticNavigationTests
                 }
             },
         });
-        Assert.Throws<InvalidOperationException>(() =>
+        var failure = Assert.Throws<NavigationBuildException>(() =>
             capture.BuildProfile(Tuning, default, GroundProfileOptions.Default, new(2)));
+        Assert.Equal(NavigationBuildRefusal.MovementLeaseGenerationMismatch, failure.Reason);
+        Assert.Equal(capture.Basis!.Value.GeometryGeneration, failure.ExpectedGeneration);
+        Assert.Equal(0, failure.CellX);
+        Assert.Equal(0, failure.CellZ);
         Assert.Equal([0], pinned);
         using var known = scene.Acquire();
+        Assert.Equal(known.Id.GeometryGeneration, failure.ActualGeneration);
     }
 
     [Theory]

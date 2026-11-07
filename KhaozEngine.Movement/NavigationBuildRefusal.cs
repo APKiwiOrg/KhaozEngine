@@ -35,4 +35,46 @@ public enum NavigationBuildRefusal
     SurfaceHeightNonfinite,
     /// <summary>A captured absolute surface height does not exceed the previous height.</summary>
     SurfaceHeightNotAscending,
+    /// <summary>The contact navigation envelope extends outside the ordinary served scope.</summary>
+    EnvelopeOutsideServedScope,
+    /// <summary>The movement lease frame differs from the proof frame.</summary>
+    MovementLeaseFrameMismatch,
+    /// <summary>The movement lease geometry generation differs from the captured generation.</summary>
+    MovementLeaseGenerationMismatch,
+    /// <summary>The movement lease identity differs from the first proof lease.</summary>
+    MovementLeaseIdentityChanged,
+    /// <summary>The movement lease origin differs from the captured origin.</summary>
+    MovementLeaseOriginMismatch,
+    /// <summary>The movement lease belongs to a different physics source than the capture.</summary>
+    MovementLeaseSourceMismatch,
+    /// <summary>The proof could not acquire a known movement lease.</summary>
+    MovementLeaseUnavailable,
+    /// <summary>The context navigation frame differs from the proof frame.</summary>
+    ProofFrameChanged,
+    /// <summary>The movement registration generation differs from the snapshot.</summary>
+    RegistrationGenerationChanged,
+    /// <summary>The resting anchor query could not return known evidence.</summary>
+    RestingAnchorUnavailable,
+    /// <summary>The snapshot frame origin differs bitwise from the captured physics origin.</summary>
+    SnapshotBasisOriginChanged,
+    /// <summary>The current context frame differs bitwise from the snapshot frame.</summary>
+    SnapshotContextFrameChanged,
+    /// <summary>The worker lease frame differs bitwise from the snapshot frame.</summary>
+    SnapshotLeaseFrameChanged,
+    /// <summary>The worker lease geometry generation differs from the snapshot basis.</summary>
+    SnapshotLeaseGenerationChanged,
+    /// <summary>The worker lease belongs to a different physics source than the snapshot.</summary>
+    SnapshotLeaseSourceChanged,
+    /// <summary>The selected query view origin differs bitwise from the snapshot frame origin.</summary>
+    SnapshotViewOriginChanged,
+    /// <summary>The selected query view belongs to a different physics source than the snapshot.</summary>
+    SnapshotViewSourceChanged,
+    /// <summary>The contact support footprint cannot produce finite outward bounds.</summary>
+    SupportEnvelopeUnbounded,
+    /// <summary>The water extent differs bitwise from the snapshot extent.</summary>
+    WaterExtentChanged,
+    /// <summary>The water generation differs from the snapshot generation.</summary>
+    WaterGenerationChanged,
+    /// <summary>The water semantic identity differs ordinally from the snapshot identity.</summary>
+    WaterIdentityChanged,
 }

@@ -41,9 +41,13 @@ public class OrdinaryMovementEnvironmentTests
             Assert.NotNull(recorder.Pin);
             recorder.Pin.AssertCurrent();
             field.Generation++;
-            Assert.Throws<InvalidOperationException>(recorder.Pin.AssertCurrent);
+            var failure = Assert.Throws<MovementReadException>(recorder.Pin.AssertCurrent);
+            Assert.Equal(MovementReadRefusal.EnvironmentPinStale, failure.Reason);
+            Assert.Equal(frame, failure.Frame);
         }
         Assert.Throws<ObjectDisposedException>(recorder.Pin!.AssertCurrent);
+        Assert.Equal(MovementAvailability.Known, context.TryAcquire(scope, out var refreshed));
+        using (refreshed) refreshed!.AssertCurrent();
     }
 
     [Fact]

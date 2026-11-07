@@ -19,9 +19,14 @@ public class ContactNavigationBasisTests
         using var context = Context(scene);
         using var capture = PhysicsNavBake.Capture(context, Options, _ => 0);
         unresolved = true;
-        var failure = Assert.Throws<InvalidOperationException>(() => capture.BuildProfile(Tuning, default));
-        Assert.Contains("cell (0, 0)", failure.Message);
-        Assert.Contains("Unresolved", failure.Message);
+        var failure = Assert.Throws<NavigationBuildException>(() => capture.BuildProfile(Tuning, default));
+        Assert.Equal(NavigationBuildRefusal.RestingAnchorUnavailable, failure.Reason);
+        Assert.Equal(0, failure.CellX);
+        Assert.Equal(0, failure.CellZ);
+        Assert.Equal(MovementAvailability.Unresolved, failure.Availability);
+        Assert.IsAssignableFrom<InvalidOperationException>(failure);
+        unresolved = false;
+        Assert.NotEmpty(capture.BuildProfile(Tuning, default).Space.Layers);
     }
 
     [Fact]

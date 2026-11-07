@@ -19,9 +19,14 @@ public class ContactDropFaultTests
         var water = new FaultField();
         using var fixture = new ContactDropFixture(water: water);
         using var hooks = ContactNavigationBuildHooks.Install(new() { DropStep = _ => water.Advance() });
-        Assert.Throws<InvalidOperationException>(() => fixture.Capture.BuildProfile(ContactDropFixture.Tuning, default,
+        var failure = Assert.Throws<NavigationBuildException>(() => fixture.Capture.BuildProfile(ContactDropFixture.Tuning, default,
             new GroundProfileOptions { MaxDropMetres = 6 }, new NavBakeExecution(degree)));
+        Assert.Equal(NavigationBuildRefusal.MovementLeaseIdentityChanged, failure.Reason);
+        Assert.True(failure.ActualLease!.Value.EnvironmentGeneration > failure.ExpectedLease!.Value.EnvironmentGeneration);
         Assert.True(water.Generation > 0);
+        hooks.Dispose();
+        Assert.NotEmpty(fixture.Capture.BuildProfile(ContactDropFixture.Tuning, default,
+            new GroundProfileOptions { MaxDropMetres = 6 }, new NavBakeExecution(degree)).Space.Layers);
     }
 
     [Theory]

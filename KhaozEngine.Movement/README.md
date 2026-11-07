@@ -580,6 +580,27 @@ The capture and read identifiers are nullable when the selected reason does not 
 | `CaptureLeaseRequired` | Contact capture lacks query leases | `RequiredCapability` |
 | `CaptureOriginChanged` | Origin changed since capture | `ExpectedOrigin`, `ActualOrigin` |
 | `ColumnSurfaceCapExceeded` | Column exceeds its configured inclusive cap | `AbsoluteX`, `AbsoluteZ`, `MaximumCount`, `ActualCount` |
+| `EnvelopeOutsideServedScope` | Required contact envelope exceeds the ordinary scope | `Minimum`, `Maximum` in the physics frame |
+| `MovementLeaseFrameMismatch` | Lease frame differs from the proof | `CellX`, `CellZ`, `ExpectedFrame`, `ActualFrame` |
+| `MovementLeaseGenerationMismatch` | Lease geometry differs from the capture | `CellX`, `CellZ`, `ExpectedGeneration`, `ActualGeneration` |
+| `MovementLeaseIdentityChanged` | Lease identity differs from the first proof lease | `CellX`, `CellZ`, `ExpectedLease`, `ActualLease` |
+| `MovementLeaseOriginMismatch` | Lease origin differs from the capture | `CellX`, `CellZ`, `ExpectedOrigin`, `ActualOrigin` |
+| `MovementLeaseSourceMismatch` | Lease belongs to another capture source | `CellX`, `CellZ` |
+| `MovementLeaseUnavailable` | Acquisition cannot supply known evidence | `CellX`, `CellZ`, `Availability` |
+| `ProofFrameChanged` | Context frame differs from the proof | `CellX`, `CellZ`, `ExpectedFrame`, `ActualFrame` |
+| `RegistrationGenerationChanged` | Registration changed since snapshot | `ExpectedGeneration`, `ActualGeneration` |
+| `RestingAnchorUnavailable` | Anchor query cannot supply known evidence | `CellX`, `CellZ`, `Availability` |
+| `SnapshotBasisOriginChanged` | Snapshot frame origin differs bitwise from the capture | `ExpectedOrigin`, `ActualOrigin` |
+| `SnapshotContextFrameChanged` | Context frame differs bitwise from the snapshot | `ExpectedFrame`, `ActualFrame` |
+| `SnapshotLeaseFrameChanged` | Worker lease frame differs bitwise from the snapshot | `ExpectedFrame`, `ActualFrame` |
+| `SnapshotLeaseGenerationChanged` | Worker lease geometry differs from the snapshot | `ExpectedGeneration`, `ActualGeneration` |
+| `SnapshotLeaseSourceChanged` | Worker lease belongs to another snapshot source | `SourceRole` (`ReadLease`) |
+| `SnapshotViewOriginChanged` | Query view origin differs bitwise from the snapshot | `ExpectedOrigin`, `ActualOrigin` |
+| `SnapshotViewSourceChanged` | Query view belongs to another snapshot source | `SourceRole` (`MovementQueryView`) |
+| `SupportEnvelopeUnbounded` | Support footprint has no finite outward bounds | `FootRadius` and `SupportReach` in metres, `SupportSlope` in radians |
+| `WaterExtentChanged` | Water extent differs bitwise from the snapshot | `ExpectedExtent`, `ActualExtent` |
+| `WaterGenerationChanged` | Water generation changed since snapshot | `ExpectedGeneration`, `ActualGeneration` |
+| `WaterIdentityChanged` | Water semantic identity changed since snapshot | `ExpectedIdentity`, `ActualIdentity` |
 | `LegacyLeaseGenerationChanged` | Stable lease generation changed | `ExpectedGeneration`, `ActualGeneration` |
 | `LegacyLeaseOriginChanged` | Stable lease origin changed | `ExpectedOrigin`, `ActualOrigin` |
 | `LegacyLeaseSourceChanged` | Stable lease belongs to another owner | `SourceRole` (`ReadLease`) |
@@ -603,6 +624,13 @@ Surface validation selects height nonfiniteness, nonascending height, NaN headro
 in the same order as the capture guard. Positive infinity headroom remains valid. Column indices and surface
 indices are zero-based. A stable read compares each producer value once, so identifiers retain the value
 that actually failed even if a faulty provider would return something different on its next read.
+Proof cell indices are zero-based. Lease checks select source, geometry generation, origin, frame, then first-lease
+identity in that order. Snapshot checks select lease source, geometry generation and bitwise frame during worker
+authentication. Publication checks select view source, view origin, basis origin and context frame, followed by
+registration generation, runtime statics, water generation, ordinal semantic identity and bitwise extent. Only the
+first failing input is reported. A lower live read can refuse before those checks with `MovementReadException`
+and its `MovementReadRefusal`, preserved without a navigation wrapper.
+
 
 ### Parallel contact provider contract
 

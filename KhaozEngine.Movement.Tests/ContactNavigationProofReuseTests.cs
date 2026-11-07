@@ -435,15 +435,15 @@ public class ContactNavigationProofReuseTests(ITestOutputHelper output)
     [Fact]
     public void StaleSourceBasisKeepsTheOriginalAuthenticationFailure()
     {
-        string reference = Probe(false);
-        string reused = Probe(true);
+        NavigationBuildRefusal reference = Probe(false);
+        NavigationBuildRefusal reused = Probe(true);
         Assert.Equal(reference, reused);
 
-        static string Probe(bool reuse)
+        static NavigationBuildRefusal Probe(bool reuse)
         {
             using var fixture = new ContactNavigationReuseFixture();
             using var proof = fixture.Proof(reuse);
-            var failure = Assert.Throws<InvalidOperationException>(() =>
+            var failure = Assert.Throws<NavigationBuildException>(() =>
             {
                 using var group = proof.BeginSource(ContactNavigationReuseFixture.Source());
                 Assert.True(proof.TryEdge(fixture.From, fixture.From));
@@ -453,7 +453,11 @@ public class ContactNavigationProofReuseTests(ITestOutputHelper output)
             });
             ContactNavigationReuseFixture.Released();
             if (reuse) Assert.IsType<InvalidOperationException>(failure.Data["SupportFootprintReuseCleanupFailure"]);
-            return failure.Message;
+            Assert.Equal(NavigationBuildRefusal.MovementLeaseUnavailable, failure.Reason);
+            Assert.Equal(MovementAvailability.Unresolved, failure.Availability);
+            Assert.Equal(6, failure.CellX);
+            Assert.Equal(4, failure.CellZ);
+            return failure.Reason;
         }
     }
 }

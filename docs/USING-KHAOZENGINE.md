@@ -9583,6 +9583,13 @@ public explicit bake profiles are deferred to [#1389](https://github.com/APKiwiO
 Raw surfaces retain layer and area identity. Certified resting anchors supply physical node poses through
 `NavGrid.RestingHeightAt`. Placement and Hold require grounded `Advanced` outcomes within 1 mm, and directed
 edges use the ordinary environment's water policy. Legacy v1 bake bytes remain unchanged.
+Contact proof refusals carry `NavigationBuildRefusal` with zero-based `CellX` and `CellZ` and the refused
+availability, frame or lease identity where applicable. Snapshot refusals identify the first changed producer input,
+including its expected and actual generation, ordinal water identity or bitwise extent. Envelope refusals carry
+physics-frame `Minimum` and `Maximum`, or the support footprint inputs when its bounds are unbounded. See the
+[navigation capture and read refusal table](../KhaozEngine.Movement/README.md#navigation-capture-and-read-refusals).
+A lower live read retains `MovementReadException` and `MovementReadRefusal`, with the retained frame and lease
+identity or the acquiring and calling thread IDs. Existing `InvalidOperationException` catches accept both families.
 Capture checks its leased basis after classification and sampling. With `SampleWater`, a contact water field
 requires a supplied medium delegate, which capture samples without requiring contact tuning validation.
 

@@ -229,6 +229,16 @@ Use the returned local interval and the carried local feet for approach settling
 motion or placement. A refused point returns its availability with `swimming` false. Movement still requires the
 certified whole-path water trace.
 
+Live reads throw `MovementReadException`, derived from `InvalidOperationException`, with a non-nullable
+`MovementReadRefusal Reason`. Existing invalid-operation catches keep working. Messages remain developer prose.
+Identifiers are nullable when the selected reason does not use them.
+
+| `MovementReadRefusal` | Refused rule | Identifiers |
+| --- | --- | --- |
+| `EnvironmentPinStale` | Ordinary producer state no longer matches the retained pin | `Frame` |
+| `LeaseThreadMismatch` | A lease is used outside its acquiring thread | `OwnerThreadId`, `CallerThreadId` |
+| `QueryBindingStale` | A query binding no longer matches its retained identity and frame | `LeaseId`, `Frame` |
+
 An ordinary binding owns a view created from the source when none is supplied. A supplied view is
 borrowed after source validation and must represent the registration's selected exclusions.
 Dispose the binding after its reads. Owned-view disposal refuses an active read and remains retryable.

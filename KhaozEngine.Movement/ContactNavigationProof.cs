@@ -80,7 +80,8 @@ internal sealed partial class ContactNavigationProof : IDisposable
         {
             MovementAvailability availability = _proof.TryFindRestingAnchor(State(rawFeet), queries, out anchor);
             if (availability != MovementAvailability.Known)
-                throw Failure(rawFeet, $"Resting anchor query returned {availability}.");
+                throw Failure(NavigationBuildRefusal.RestingAnchorUnavailable, rawFeet,
+                    $"Resting anchor query returned {availability}.", availability);
             queries.AssertCurrent();
         }
         MoveTuning tuning = _proof.Tuning;
@@ -193,31 +194,72 @@ internal sealed partial class ContactNavigationProof : IDisposable
         if (_context is not null)
         {
             _ = _bake.Context;
-            if (_context.NavigationFrame != _frame) throw Failure(cell, "The navigation frame changed.");
+            AssertFrame(cell, _context.NavigationFrame);
         }
         MovementAvailability availability = _proof.TryAcquire(_scope, out var queries);
-        if (availability != MovementAvailability.Known || queries is null)
-            throw Failure(cell, $"Movement lease acquisition returned {availability}.");
+        AssertAvailability(cell, availability);
+        // EffectiveMovementBinding delegates to MovementEnvironmentContext, which returns Known only after
+        // constructing its non-null lease. No producer can supply Known with a null lease here.
+        if (queries is null) throw new InvalidOperationException(
+            $"Contact navigation cell ({CellX(cell)}, {CellZ(cell)}): Movement lease acquisition returned {availability}.");
         try
         {
             queries.AssertCurrent();
-            if (!ReferenceEquals(queries.Id.SourceWorld, _basis.Source) ||
-                queries.Id.GeometryGeneration != _basis.GeometryGeneration ||
-                queries.Frame.PhysicsOrigin != _basis.Origin || queries.Frame != _frame ||
-                _leaseBasis is { } prior && queries.Id != prior)
-                throw Failure(cell, "The movement lease differs from the capture or proof basis.");
+            AssertLeaseBasis(cell, queries.Id, queries.Frame);
             _leaseBasis ??= queries.Id;
             return queries;
         }
         catch { queries.Dispose(); throw; }
     }
 
-    InvalidOperationException Failure(Vector3 feet, string message)
+    void AssertFrame(Vector3 cell, MovementFrameDescriptor actual)
     {
-        int x = (int)MathF.Floor((feet.X - _bake.Options.MinX) / _bake.Options.CellSize);
-        int z = (int)MathF.Floor((feet.Z - _bake.Options.MinZ) / _bake.Options.CellSize);
-        return new($"Contact navigation cell ({x}, {z}): {message}");
+        if (actual != _frame) throw Failure(NavigationBuildRefusal.ProofFrameChanged, cell,
+            "The navigation frame changed.", actualFrame: actual);
     }
+
+    void AssertAvailability(Vector3 cell, MovementAvailability availability)
+    {
+        if (availability != MovementAvailability.Known)
+            throw Failure(NavigationBuildRefusal.MovementLeaseUnavailable, cell,
+                $"Movement lease acquisition returned {availability}.", availability);
+    }
+
+    void AssertLeaseBasis(Vector3 cell, MovementQueryLeaseId id, MovementFrameDescriptor frame)
+    {
+        NavigationBuildRefusal? reason = !ReferenceEquals(id.SourceWorld, _basis.Source)
+            ? NavigationBuildRefusal.MovementLeaseSourceMismatch
+            : id.GeometryGeneration != _basis.GeometryGeneration ? NavigationBuildRefusal.MovementLeaseGenerationMismatch
+            : frame.PhysicsOrigin != _basis.Origin ? NavigationBuildRefusal.MovementLeaseOriginMismatch
+            : frame != _frame ? NavigationBuildRefusal.MovementLeaseFrameMismatch
+            : _leaseBasis is { } prior && id != prior ? NavigationBuildRefusal.MovementLeaseIdentityChanged : null;
+        if (reason is { } refused) throw Failure(refused, cell,
+            "The movement lease differs from the capture or proof basis.", actualFrame: frame, actualLease: id);
+    }
+
+    // Value-only fault seams exercise the same guards without modifying the proof's retained basis.
+    internal void InjectChangedProofFrameForTests(Vector3 cell, MovementFrameDescriptor frame) => AssertFrame(cell, frame);
+    internal void InjectUnavailableLeaseForTests(Vector3 cell, MovementAvailability availability) => AssertAvailability(cell, availability);
+    internal void InjectMismatchedLeaseForTests(Vector3 cell, MovementQueryLeaseId id, MovementFrameDescriptor frame) =>
+        AssertLeaseBasis(cell, id, frame);
+
+    int CellX(Vector3 feet) => (int)MathF.Floor((feet.X - _bake.Options.MinX) / _bake.Options.CellSize);
+    int CellZ(Vector3 feet) => (int)MathF.Floor((feet.Z - _bake.Options.MinZ) / _bake.Options.CellSize);
+
+    NavigationBuildException Failure(NavigationBuildRefusal reason, Vector3 feet, string message,
+        MovementAvailability? availability = null, MovementFrameDescriptor? actualFrame = null, MovementQueryLeaseId? actualLease = null) =>
+        new(reason, $"Contact navigation cell ({CellX(feet)}, {CellZ(feet)}): {message}")
+        {
+            CellX = CellX(feet), CellZ = CellZ(feet), Availability = availability,
+            ExpectedFrame = reason is NavigationBuildRefusal.ProofFrameChanged or NavigationBuildRefusal.MovementLeaseFrameMismatch ? _frame : null,
+            ActualFrame = reason is NavigationBuildRefusal.ProofFrameChanged or NavigationBuildRefusal.MovementLeaseFrameMismatch ? actualFrame : null,
+            ExpectedGeneration = reason == NavigationBuildRefusal.MovementLeaseGenerationMismatch ? _basis.GeometryGeneration : null,
+            ActualGeneration = reason == NavigationBuildRefusal.MovementLeaseGenerationMismatch ? actualLease?.GeometryGeneration : null,
+            ExpectedOrigin = reason == NavigationBuildRefusal.MovementLeaseOriginMismatch ? _basis.Origin : null,
+            ActualOrigin = reason == NavigationBuildRefusal.MovementLeaseOriginMismatch ? actualFrame?.PhysicsOrigin : null,
+            ExpectedLease = reason == NavigationBuildRefusal.MovementLeaseIdentityChanged ? _leaseBasis : null,
+            ActualLease = reason == NavigationBuildRefusal.MovementLeaseIdentityChanged ? actualLease : null,
+        };
 
     static bool Near(Vector3 a, Vector3 b) => GroundTraversalProbe.Near(a, b);
 

@@ -10,6 +10,9 @@ Source linking shares the measurement contract without adding engine project ref
 
 Allocation tests join an assembly-local xUnit collection with `DisableParallelization = true`.
 The no-GC region is process-wide, so a measurement beside a parallel test is not valid.
+A bare `GC.GetAllocatedBytesForCurrentThread` delta is not valid either, because a background collection
+started by any thread can raise it by up to one allocation context (just under 8 KB) in a window that
+allocates nothing, see https://github.com/dotnet/runtime/issues/134724.
 `AllocationRegion.Start` refuses before touching the runtime unless the current collection runs alone
 under `SerializedReportingTestFramework`. A collection runs alone when its definition disables
 parallelization or the whole assembly runs serially. The flag is published through `AppContext`, so a

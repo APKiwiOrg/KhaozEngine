@@ -152,11 +152,18 @@ public sealed class GitHubAppIssueClientTests : IDisposable
         var error = await Assert.ThrowsAsync<GitHubApiException>(() =>
             client.UpdateIssueAsync(12, new GitHubIssueUpdate("Title", "Body"), CancellationToken.None));
 
+        Assert.Equal(GitHubApiRefusal.HttpFailure, error.Reason);
         Assert.Equal(500, error.StatusCode);
         Assert.False(error.IsRateLimited);
         Assert.Null(error.RetryAfter);
-        Assert.Contains("Upstream failed", error.Message);
+        Assert.Equal("Upstream failed", error.UpstreamDetail);
+        Assert.Null(error.ResponsePart);
         Assert.Equal(2, handler.Requests.Length);
+
+        // Control: the same update answered with a success status is admitted.
+        handler.Enqueue(HttpStatusCode.OK, "{\"html_url\":\"https://github.com/o/r/issues/12\"}");
+        var result = await client.UpdateIssueAsync(12, new GitHubIssueUpdate("Title", "Body"), CancellationToken.None);
+        Assert.Equal(GitHubIssueUpdateOutcome.Updated, result.Outcome);
     }
 
     [Theory]
@@ -175,10 +182,17 @@ public sealed class GitHubAppIssueClientTests : IDisposable
         var error = await Assert.ThrowsAsync<GitHubApiException>(() =>
             client.UpdateIssueAsync(12, new GitHubIssueUpdate("Title", "Body"), CancellationToken.None));
 
+        Assert.Equal(GitHubApiRefusal.InvalidSuccessResponse, error.Reason);
+        Assert.Equal(GitHubResponsePart.IssueUrl, error.ResponsePart);
         Assert.Equal(200, error.StatusCode);
-        Assert.Contains("invalid response", error.Message);
+        Assert.Null(error.UpstreamDetail);
         AssertNoSecrets(error);
         Assert.Null(error.InnerException);
+
+        // Control: the same update whose body holds a readable issue URL is admitted.
+        handler.Enqueue(HttpStatusCode.OK, "{\"html_url\":\"https://github.com/o/r/issues/12\"}");
+        var result = await client.UpdateIssueAsync(12, new GitHubIssueUpdate("Title", "Body"), CancellationToken.None);
+        Assert.Equal(new Uri("https://github.com/o/r/issues/12"), result.IssueUrl);
     }
 
     [Theory]
@@ -196,9 +210,41 @@ public sealed class GitHubAppIssueClientTests : IDisposable
         var error = await Assert.ThrowsAsync<GitHubApiException>(() =>
             client.UpdateIssueAsync(12, new GitHubIssueUpdate("Title", "Body"), CancellationToken.None));
 
+        Assert.Equal(GitHubApiRefusal.InvalidSuccessResponse, error.Reason);
+        Assert.Equal(GitHubResponsePart.RedirectDestination, error.ResponsePart);
         Assert.Equal(301, error.StatusCode);
-        Assert.Contains("invalid response", error.Message);
+        Assert.Null(error.UpstreamDetail);
         AssertNoSecrets(error);
+
+        // Control: the same redirect with a readable Location is admitted.
+        handler.Enqueue(HttpStatusCode.MovedPermanently, "not json", ("Location", "https://api.github.com/repos/o/other/issues/3"));
+        var result = await client.UpdateIssueAsync(12, new GitHubIssueUpdate("Title", "Body"), CancellationToken.None);
+        Assert.Equal(GitHubIssueUpdateOutcome.Moved, result.Outcome);
+    }
+
+    [Theory]
+    [InlineData(200)]
+    [InlineData(500)]
+    public async Task UpdateIssue_RedirectedToAnUnreadableFinalRequest_ThrowsSafeApiException(int status)
+    {
+        // A followed redirect is judged by where it landed, so a readable body or a failure status changes nothing.
+        // UpdateIssue_RedirectedFinalRequest_AnswersMoved is the control with a readable destination.
+        TokenResponse();
+        using var finalRequest = new HttpRequestMessage(HttpMethod.Patch, "https://api.github.com/not-an-issue");
+        handler.Enqueue((_, _) => Task.FromResult(new HttpResponseMessage((HttpStatusCode)status)
+        {
+            RequestMessage = finalRequest,
+            Content = new StringContent("{\"html_url\":\"https://github.com/o/r/issues/12\",\"message\":\"Upstream failed\"}"),
+        }));
+        using var client = Client();
+
+        var error = await Assert.ThrowsAsync<GitHubApiException>(() =>
+            client.UpdateIssueAsync(12, new GitHubIssueUpdate("Title", "Body"), CancellationToken.None));
+
+        Assert.Equal(GitHubApiRefusal.InvalidSuccessResponse, error.Reason);
+        Assert.Equal(GitHubResponsePart.RedirectDestination, error.ResponsePart);
+        Assert.Equal(status, error.StatusCode);
+        Assert.Null(error.UpstreamDetail);
     }
 
     [Fact]
@@ -322,6 +368,7 @@ public sealed class GitHubAppIssueClientTests : IDisposable
         handler.Enqueue((HttpStatusCode)status, "{}", ("Retry-After", "30"));
         using var client = Client();
         var error = await Assert.ThrowsAsync<GitHubApiException>(() => client.CreateIssueAsync(Draft, CancellationToken.None));
+        Assert.Equal(GitHubApiRefusal.HttpFailure, error.Reason);
         Assert.True(error.IsRateLimited);
         Assert.Equal(status, error.StatusCode);
         Assert.Equal(TimeSpan.FromSeconds(30), error.RetryAfter);
@@ -383,19 +430,23 @@ public sealed class GitHubAppIssueClientTests : IDisposable
         var error = await Assert.ThrowsAsync<GitHubApiException>(() => client.CreateIssueAsync(Draft, CancellationToken.None));
         Assert.False(error.IsRateLimited);
         Assert.Null(error.RetryAfter);
+        Assert.Equal(GitHubApiRefusal.HttpFailure, error.Reason);
         Assert.Equal(422, error.StatusCode);
-        Assert.Contains("Validation failed", error.Message);
+        Assert.Equal("Validation failed", error.UpstreamDetail);
         Assert.DoesNotContain("invalid", error.Message);
     }
 
-    [Fact]
-    public async Task CreateIssue_LongGitHubMessage_IsBounded()
+    [Theory]
+    [InlineData(200)]
+    [InlineData(201)]
+    public async Task CreateIssue_LongGitHubMessage_IsBounded(int length)
     {
         TokenResponse();
-        handler.Enqueue(HttpStatusCode.BadRequest, JsonSerializer.Serialize(new { message = new string('x', 250) }));
+        handler.Enqueue(HttpStatusCode.BadRequest, JsonSerializer.Serialize(new { message = new string('x', length) }));
         using var client = Client();
         var error = await Assert.ThrowsAsync<GitHubApiException>(() => client.CreateIssueAsync(Draft, CancellationToken.None));
-        Assert.Equal(200, error.Message.Count(c => c == 'x'));
+        Assert.Equal(new string('x', 200), error.UpstreamDetail);
+        Assert.DoesNotContain(new string('x', 201), error.Message);
     }
 
     [Fact]
@@ -516,6 +567,8 @@ public sealed class GitHubAppIssueClientTests : IDisposable
         var error = await Assert.ThrowsAsync<GitHubApiException>(() => update
             ? client.UpdateIssueAsync(12, new GitHubIssueUpdate("Title", "Body"), CancellationToken.None)
             : client.CreateIssueAsync(Draft, CancellationToken.None));
+        Assert.Equal(GitHubApiRefusal.HttpFailure, error.Reason);
+        Assert.Null(error.UpstreamDetail);
         AssertNoSecrets(error);
     }
 
@@ -527,7 +580,10 @@ public sealed class GitHubAppIssueClientTests : IDisposable
             Content = new StringContent(JsonSerializer.Serialize(new { message = request.Authorization + " " + Credentials.PrivateKeyPem })),
         }));
         using var client = Client();
-        AssertNoSecrets(await Assert.ThrowsAsync<GitHubApiException>(() => client.CreateIssueAsync(Draft, CancellationToken.None)));
+        var error = await Assert.ThrowsAsync<GitHubApiException>(() => client.CreateIssueAsync(Draft, CancellationToken.None));
+        Assert.Equal(GitHubApiRefusal.HttpFailure, error.Reason);
+        Assert.Null(error.UpstreamDetail);
+        AssertNoSecrets(error);
     }
 
     [Theory]
@@ -552,7 +608,8 @@ public sealed class GitHubAppIssueClientTests : IDisposable
 
     void AssertNoSecrets(Exception error)
     {
-        string text = error.ToString();
+        // Exception.ToString leaves out a custom property, so the upstream detail is checked with it.
+        string text = error.ToString() + (error as GitHubApiException)?.UpstreamDetail;
         Assert.DoesNotContain("ghs_", text);
         Assert.DoesNotContain("Bearer", text);
         Assert.DoesNotContain("PRIVATE KEY", text);
@@ -574,10 +631,18 @@ public sealed class GitHubAppIssueClientTests : IDisposable
         handler.Enqueue(HttpStatusCode.Created, json);
         using var client = Client();
         var error = await Assert.ThrowsAsync<GitHubApiException>(() => client.CreateIssueAsync(Draft, CancellationToken.None));
+        Assert.Equal(GitHubApiRefusal.InvalidSuccessResponse, error.Reason);
+        Assert.Equal(GitHubResponsePart.InstallationToken, error.ResponsePart);
         Assert.False(error.IsRateLimited);
         Assert.Equal(201, error.StatusCode);
+        Assert.Null(error.UpstreamDetail);
         AssertNoSecrets(error);
         Assert.Single(handler.Requests);
+
+        // Control: the next exchange with a readable token and expiry is admitted.
+        TokenResponse();
+        IssueResponse();
+        Assert.Equal(42, await client.CreateIssueAsync(Draft, CancellationToken.None));
     }
 
     [Theory]
@@ -594,24 +659,39 @@ public sealed class GitHubAppIssueClientTests : IDisposable
         handler.Enqueue(HttpStatusCode.Created, json);
         using var client = Client();
         var error = await Assert.ThrowsAsync<GitHubApiException>(() => client.CreateIssueAsync(Draft, CancellationToken.None));
+        Assert.Equal(GitHubApiRefusal.InvalidSuccessResponse, error.Reason);
+        Assert.Equal(GitHubResponsePart.IssueNumber, error.ResponsePart);
         Assert.False(error.IsRateLimited);
         Assert.Equal(201, error.StatusCode);
+        Assert.Null(error.UpstreamDetail);
+
+        // Control: the same create answered with a readable number is admitted.
+        IssueResponse();
+        Assert.Equal(42, await client.CreateIssueAsync(Draft, CancellationToken.None));
     }
 
     [Theory]
     [InlineData("{}")]
     [InlineData("{\"message\":42}")]
     [InlineData("[]")]
-    [InlineData("not json")]
+    [InlineData("not json ghs_installation_secret PRIVATE KEY")]
     public async Task CreateIssue_MalformedErrorBody_ThrowsSafeApiException(string json)
     {
         TokenResponse();
         handler.Enqueue(HttpStatusCode.Forbidden, json);
         using var client = Client();
         var error = await Assert.ThrowsAsync<GitHubApiException>(() => client.CreateIssueAsync(Draft, CancellationToken.None));
+        Assert.Equal(GitHubApiRefusal.HttpFailure, error.Reason);
         Assert.False(error.IsRateLimited);
         Assert.Null(error.RetryAfter);
         Assert.Equal(403, error.StatusCode);
+        Assert.Null(error.UpstreamDetail);
+        AssertNoSecrets(error);
+
+        // Control: a readable message on the same status reaches the detail, so the null above is the body's doing.
+        handler.Enqueue(HttpStatusCode.Forbidden, "{\"message\":\"Denied\"}");
+        var readable = await Assert.ThrowsAsync<GitHubApiException>(() => client.CreateIssueAsync(Draft, CancellationToken.None));
+        Assert.Equal("Denied", readable.UpstreamDetail);
     }
 
     [Fact]
@@ -663,7 +743,9 @@ public sealed class GitHubAppIssueClientTests : IDisposable
         using var client = Client();
 
         var error = await Assert.ThrowsAsync<GitHubApiException>(() => client.CreateIssueAsync(Draft, CancellationToken.None));
+        Assert.Equal(GitHubApiRefusal.HttpFailure, error.Reason);
         Assert.Equal(403, error.StatusCode);
+        Assert.Equal("exchange denied", error.UpstreamDetail);
         Assert.Single(handler.Requests);
         Assert.Equal(42, await client.CreateIssueAsync(Draft, CancellationToken.None));
         Assert.Equal(42, await client.CreateIssueAsync(Draft, CancellationToken.None));

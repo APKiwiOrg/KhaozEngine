@@ -54,12 +54,19 @@ internal static class GitHubResponseClassifier
             message = message[..200];
 
         string status = $"GitHub API returned HTTP {(int)response.StatusCode}";
-        return new GitHubApiException((int)response.StatusCode, delay.HasValue, delay,
-            message.Length == 0 ? status : status + ": " + message);
+        return new GitHubApiException(GitHubApiRefusal.HttpFailure, (int)response.StatusCode, delay.HasValue, delay,
+            message.Length == 0 ? status : status + ": " + message)
+        {
+            UpstreamDetail = message.Length == 0 ? null : message,
+        };
     }
 
-    internal static GitHubApiException InvalidResponse(HttpResponseMessage response) =>
-        new((int)response.StatusCode, false, null, $"GitHub API returned HTTP {(int)response.StatusCode} with an invalid response.");
+    internal static GitHubApiException InvalidResponse(HttpResponseMessage response, GitHubResponsePart part) =>
+        new(GitHubApiRefusal.InvalidSuccessResponse, (int)response.StatusCode, false, null,
+            $"GitHub API returned HTTP {(int)response.StatusCode} with an invalid response.")
+        {
+            ResponsePart = part,
+        };
 
     static string? Header(HttpResponseMessage response, string name) =>
         response.Headers.TryGetValues(name, out var values) ? values.FirstOrDefault() : null;

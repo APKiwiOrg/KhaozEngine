@@ -65,14 +65,14 @@ internal sealed class InstallationTokenCache : IDisposable
                     || !root.TryGetProperty("token", out var tokenValue) || tokenValue.ValueKind != JsonValueKind.String
                     || !root.TryGetProperty("expires_at", out var expiryValue) || expiryValue.ValueKind != JsonValueKind.String
                     || !expiryValue.TryGetDateTimeOffset(out receivedExpiry))
-                    throw GitHubResponseClassifier.InvalidResponse(response);
+                    throw GitHubResponseClassifier.InvalidResponse(response, GitHubResponsePart.InstallationToken);
                 receivedToken = tokenValue.GetString()!;
                 if (!IsBearerToken(receivedToken))
-                    throw GitHubResponseClassifier.InvalidResponse(response);
+                    throw GitHubResponseClassifier.InvalidResponse(response, GitHubResponsePart.InstallationToken);
             }
             catch (JsonException)
             {
-                throw GitHubResponseClassifier.InvalidResponse(response);
+                throw GitHubResponseClassifier.InvalidResponse(response, GitHubResponsePart.InstallationToken);
             }
 
             lock (gate)

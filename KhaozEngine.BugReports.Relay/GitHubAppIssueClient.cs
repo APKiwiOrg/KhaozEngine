@@ -88,7 +88,7 @@ public sealed class GitHubAppIssueClient : IGitHubIssueClient, IDisposable
         {
             // The response body can echo credentials, so never retain a parser exception.
         }
-        throw GitHubResponseClassifier.InvalidResponse(response);
+        throw GitHubResponseClassifier.InvalidResponse(response, GitHubResponsePart.IssueNumber);
     }
 
     /// <summary>Adds one comment to an issue. The POST is sent once.</summary>
@@ -138,7 +138,7 @@ public sealed class GitHubAppIssueClient : IGitHubIssueClient, IDisposable
                 && int.TryParse(number, NumberStyles.None, CultureInfo.InvariantCulture, out int movedNumber) && movedNumber > 0)
                 return new GitHubIssueUpdateResult(GitHubIssueUpdateOutcome.Moved,
                     new Uri("https://github.com/" + destination.AbsolutePath["/repos/".Length..]));
-            throw GitHubResponseClassifier.InvalidResponse(response);
+            throw GitHubResponseClassifier.InvalidResponse(response, GitHubResponsePart.RedirectDestination);
         }
         if (response.StatusCode is HttpStatusCode.NotFound or HttpStatusCode.Gone)
             return new GitHubIssueUpdateResult(GitHubIssueUpdateOutcome.Gone, null);
@@ -155,7 +155,7 @@ public sealed class GitHubAppIssueClient : IGitHubIssueClient, IDisposable
         {
             // The response body can echo credentials, so never retain a parser exception.
         }
-        throw GitHubResponseClassifier.InvalidResponse(response);
+        throw GitHubResponseClassifier.InvalidResponse(response, GitHubResponsePart.IssueUrl);
     }
 
     static bool HasMoved(HttpResponseMessage response, Uri sentUri) =>

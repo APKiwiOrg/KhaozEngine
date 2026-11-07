@@ -32,10 +32,12 @@ internal static class MapEffectiveWater
         var domain = MapWaterDomain.TryCompileEffective(source.Domain, transform, errors, budget, out var cause, findings: findings);
         if (domain is null)
         {
+            string message = transform is null ? "water domain: " + errors[0] + "." : errors[0];
+            if (cause is { Reason: null }) throw cause.WithSourceName(null, message);
             var contextual = findings.Select(f => f with { EntityId = f.EntityId ?? body.Id }).ToArray();
             throw MapDocumentRefusalFactory.FromFinding(contextual[0] with
                 { InvalidPrefixSuppressed = transform is null || contextual[0].InvalidPrefixSuppressed },
-                transform is null ? "water domain: " + errors[0] + "." : errors[0], inner: cause, findings: contextual);
+                message, inner: cause, findings: contextual);
         }
         string digest = transform is null ? "" : MapPrefabJson.Digest("kemap/effective-water/1", new
         { Definition = MapWaterSet.BodyDigest(source), Pose = transform.Transform, QueryPolicy = 2 });

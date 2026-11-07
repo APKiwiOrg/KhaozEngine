@@ -12588,6 +12588,8 @@ domain findings on `MapDocumentException.Findings`. Piece failures carry the sto
 scale. Capacity refusals carry the exact `Budget`, `ActualCount` and `Limit`. Effective water adapters
 also retain the body `EntityId`. The [MapDoc refusal table](../KhaozEngine.MapDoc/README.md#loud-failures)
 lists the water domain reasons.
+Consumer-built message-only vertex failures remain untyped, keep the domain wrapper's text and retain the
+original exception as its inner cause. Validation keeps their string errors without inventing a finding.
 Water JSON conversion throws `MapWaterJsonException`, which derives from `JsonException` and retains
 the concrete reason, water-relative `FieldPath` and known scalar identifiers. Document readers carry
 the same reason and identifiers into `MapDocumentException`. Canonical decimal failures retain

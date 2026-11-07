@@ -1963,6 +1963,8 @@ Occupied-water admission carries `AcquireStatus` on both `GeometryNotRepresentab
 `SubjectKind`. A scope that does not prove the window complete uses `FieldPath = "Scope"`.
 Compiler, containment and query statuses use typed findings and producer context. `Errors` retains the
 ordered developer prose projection, including failures from consumer-built message-only exceptions.
+Domain validation keeps those consumer failures in its string errors without inventing a finding, and domain
+compilation preserves the original message-only exception as its inner cause.
 
 The water edit adapter forwards its first document-level water finding and retains every finding in
 `MapDocumentException.Findings`. Domain and cover fields use their actual failing path and stored

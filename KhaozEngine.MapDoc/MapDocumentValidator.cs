@@ -17,7 +17,7 @@ public static class MapDocumentValidator
     public static IReadOnlyList<string> Validate(MapDocument doc, MapDocRegistry registry)
         => Validate(doc, registry, null);
 
-    /// <summary>Returns the complete ordered immutable findings behind <see cref="Validate(MapDocument, MapDocRegistry)"/>.</summary>
+    /// <summary>Returns the ordered immutable known typed findings behind <see cref="Validate(MapDocument, MapDocRegistry)"/>.</summary>
     public static IReadOnlyList<MapDocumentFinding> ValidateFindings(MapDocument doc, MapDocRegistry registry)
     {
         var findings = new List<MapDocumentFinding>();

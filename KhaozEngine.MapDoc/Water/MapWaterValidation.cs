@@ -165,10 +165,12 @@ internal static class MapWaterValidation
                 }
                 catch (MapDocumentException error)
                 {
-                    var finding = MapDocumentFinding.FromException(error)!;
-                    Add(finding with { Message = $"{label}: ring {i} vertex {v} is not a valid lattice address.",
-                        EntityId = bodyId, FieldPath = $"Domain.Rings[{i}].Vertices[{v}].{finding.FieldPath}", Index = i,
-                        OtherIndex = v, Address = vertex ?? finding.Address }, errors, findings);
+                    string message = $"{label}: ring {i} vertex {v} is not a valid lattice address.";
+                    errors.Add(message);
+                    if (MapDocumentFinding.FromException(error) is { } finding)
+                        findings?.Add(finding with { Message = message,
+                            EntityId = bodyId, FieldPath = $"Domain.Rings[{i}].Vertices[{v}].{finding.FieldPath}", Index = i,
+                            OtherIndex = v, Address = vertex ?? finding.Address });
                 }
             }
         }
@@ -178,8 +180,9 @@ internal static class MapWaterValidation
         var geometry = new List<string>();
         var geometryFindings = new List<MapDocumentFinding>();
         MapWaterDomain? compiled = MapWaterDomain.TryCompile(domain, null, geometry, budget, geometryFindings);
+        foreach (string error in geometry) errors.Add($"{label}: {error}.");
         foreach (var finding in geometryFindings)
-            Add(finding with { Message = $"{label}: {finding.Message}.", EntityId = bodyId }, errors, findings);
+            findings?.Add(finding with { Message = $"{label}: {finding.Message}.", EntityId = bodyId });
         if (compiled is null) return null;
         var overlaps = new List<(int A, int B)>();
         try

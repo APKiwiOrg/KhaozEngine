@@ -10,6 +10,23 @@ namespace KhaozEngine.Tests.MapDoc.Water;
 
 internal static partial class WaterFixtures
 {
+    internal sealed class RefusingVertices(MapDocumentException failure, bool enumerationOnly = false) : IReadOnlyList<MapLatticeAddress>
+    {
+        readonly MapLatticeAddress[] valid = [MapLatticeAddress.Corner(14, 0), MapLatticeAddress.Corner(15, 0), MapLatticeAddress.Corner(14, 1)];
+        internal bool Refuse { get; set; } = true;
+        public int Count => valid.Length;
+        public MapLatticeAddress this[int index] => Refuse && !enumerationOnly && index == 0 ? throw failure : valid[index];
+        public IEnumerator<MapLatticeAddress> GetEnumerator()
+        {
+            for (int i = 0; i < Count; i++)
+            {
+                if (Refuse && enumerationOnly && i == 0) throw failure;
+                yield return this[i];
+            }
+        }
+        IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
+    }
+
     internal sealed class RepairingVertices(bool failRead = false) : IReadOnlyList<MapLatticeAddress>
     {
         readonly MapLatticeAddress[] valid = [MapLatticeAddress.Corner(14, 0), MapLatticeAddress.Corner(15, 0), MapLatticeAddress.Corner(14, 1)];

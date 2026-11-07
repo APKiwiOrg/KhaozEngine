@@ -66,9 +66,12 @@ public sealed class MapWaterDomain
         ArgumentNullException.ThrowIfNull(doc);
         var errors = new List<string>();
         var findings = new List<MapDocumentFinding>();
-        return TryCompile(doc, placement, errors, new MapWaterWorkBudget(), findings, out var cause)
-            ?? throw MapDocumentRefusalFactory.FromFinding(findings[0] with { InvalidPrefixSuppressed = true },
-                "water domain: " + errors[0] + ".", inner: cause, findings: findings);
+        var domain = TryCompile(doc, placement, errors, new MapWaterWorkBudget(), findings, out var cause);
+        if (domain is not null) return domain;
+        string message = "water domain: " + errors[0] + ".";
+        if (cause is { Reason: null }) throw cause.WithSourceName(null, message);
+        throw MapDocumentRefusalFactory.FromFinding(findings[0] with { InvalidPrefixSuppressed = true },
+            message, inner: cause, findings: findings);
     }
 
     /// <summary>Compiles the domain or records why it cannot, without a label. Counts are checked before any

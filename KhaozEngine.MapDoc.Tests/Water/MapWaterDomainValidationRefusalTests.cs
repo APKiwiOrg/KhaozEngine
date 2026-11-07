@@ -11,6 +11,41 @@ namespace KhaozEngine.Tests.MapDoc.Water;
 
 public sealed class MapWaterDomainValidationRefusalTests
 {
+    [Theory]
+    [InlineData("validation")]
+    [InlineData("validation-enumerator")]
+    [InlineData("domain")]
+    [InlineData("effective")]
+    public void MessageOnlyVertexReaderRefusal_RemainsUntypedAndAcceptsTheRepairedReader(string operation)
+    {
+        // X26: consumer-built message-only failures must not become a null finding dereference.
+        var cause = new MapDocumentException("consumer vertex read refused");
+        var vertices = new WaterFixtures.RefusingVertices(cause, enumerationOnly: operation == "validation-enumerator");
+        bool validation = operation.StartsWith("validation", StringComparison.Ordinal);
+        var doc = WaterFixtures.OceanOverCaves();
+        int index = doc.Water!.Bodies.FindIndex(b => b.Id == "ocean");
+        var body = doc.Water.Bodies[index];
+        body = body with { Domain = body.Domain with { Rings = [new(vertices)] } };
+        doc.Water.Bodies[index] = body;
+        if (validation)
+        {
+            Assert.Single(MapDocumentValidator.Validate(doc, MapDocRegistry.CreateDefault()));
+            Assert.Empty(MapDocumentValidator.ValidateFindings(doc, MapDocRegistry.CreateDefault()));
+        }
+        else
+        {
+            var error = Assert.Throws<MapDocumentException>(() => Compile());
+            Assert.Null(error.Reason);
+            Assert.Same(cause, error.InnerException);
+        }
+        vertices.Refuse = false;
+        if (validation) Assert.Empty(MapDocumentValidator.Validate(doc, MapDocRegistry.CreateDefault()));
+        else Assert.NotEmpty(Compile().Pieces);
+
+        MapWaterDomain Compile() => operation == "domain" ? MapWaterDomain.Compile(body.Domain)
+            : MapEffectiveWater.Resolve(KhaozEngine.MapDoc.Storage.MapScopedSurfaces.CompleteView(doc.Surfaces), body).Domain;
+    }
+
     [Fact]
     public void VertexReaderRefusal_StaysInsideTheDomainFindingBoundary()
     {

@@ -45,6 +45,8 @@ the limits, `bit` for the flags and `datetimeoffset` for the expiry and the two 
 A refused bootstrap throws `AccountSchemaException`, which derives from `InvalidOperationException`. `Reason` is the
 rule, and the identifiers name schemas, tables, columns and types, never rows.
 
+The reasons are `AccountSchemaRefusal` members.
+
 | `Reason` | What it refuses | Identifiers |
 |---|---|---|
 | `SchemaMissing` | a configured schema that does not exist, in either mode | `SchemaName` |

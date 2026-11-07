@@ -78,6 +78,8 @@ Every refusal throws `LocalizationCoverageException`, which derives from `Except
 the message stays developer prose, never a contract. A null keys type, `ResourceManager` or key sequence throws
 `ArgumentNullException`.
 
+The reasons are `LocalizationCoverageRefusal` members.
+
 A coverage failure checks every key in every culture before it throws. `Findings` holds one
 `LocalizationCoverageFinding` per gap, in the order the message lists them: the neutral resx first, then each
 satellite in the order passed, with its missing translations before its placeholder mismatches. `Reason` is the

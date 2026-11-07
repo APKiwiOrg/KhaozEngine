@@ -292,6 +292,8 @@ remain host duties.
 `IsRateLimited` and `RetryAfter` describe the response. `Reason` is null only for an instance another
 `IGitHubIssueClient` built through the message-only constructor.
 
+The reasons are `GitHubApiRefusal` members, and `ResponsePart` is a `GitHubResponsePart`.
+
 | `Reason` | What it refuses | Identifiers |
 |---|---|---|
 | `HttpFailure` | a status the client treats as a failure, rate limits included | `UpstreamDetail` |

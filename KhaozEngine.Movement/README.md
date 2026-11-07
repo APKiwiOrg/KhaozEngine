@@ -635,7 +635,7 @@ The capture and read identifiers are nullable when the selected reason does not 
 | `ConcurrentReadsRequired` | Parallel contact build lacks `IPhysicsConcurrentReadSource` | `RequiredCapability`, `SourceRole` |
 | `LegacyQueryLeaseRequired` | Stable legacy build lacks `IPhysicsQueryLeaseSource` | `RequiredCapability`, `SourceRole` |
 
-For read capability refusals, `SourceRole` names `PhysicsSource` or `MovementQueryView`, in that order.
+For read capability refusals, `SourceRole` is a `NavigationSourceRole` and names `PhysicsSource` or `MovementQueryView`, in that order.
 Surface validation selects height nonfiniteness, nonascending height, NaN headroom, then negative headroom,
 in the same order as the capture guard. Positive infinity headroom remains valid. Column indices and surface
 indices are zero-based. A stable read compares each producer value once, so identifiers retain the value

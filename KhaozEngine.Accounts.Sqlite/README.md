@@ -57,6 +57,8 @@ with another collation is adopted, because the key is what the upsert matches on
 A refused table or stored value throws `AccountDataException`, which derives from `InvalidOperationException`. `Reason`
 is the rule, and the identifiers name tables, columns and collations, never a subject, a stored value or a row.
 
+The reasons are `AccountDataRefusal` members.
+
 | `Reason` | What it refuses | Identifiers |
 |---|---|---|
 | `CoreColumnMissing` | an existing table without one of the first four columns, at construction | `TableName`, `ColumnName` |

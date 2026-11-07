@@ -518,6 +518,8 @@ byte[] devSecret = SigningSecret.CreateEphemeral();
 - `CreateEphemeral()` is 32 bytes from `RandomNumberGenerator`, for local development only. Never ship a key as a
   source constant.
 
+The reasons are `SigningSecretRefusal` members.
+
 | `Reason` | What it refuses | Identifiers |
 |---|---|---|
 | `NotStandardBase64` | a set value that is not standard base64 once trimmed, the url-safe alphabet included | `SourceName` |

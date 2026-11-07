@@ -172,8 +172,10 @@ reference in those files ambiguous.
 ### Sign-in refusals
 
 Every refusal the engine providers throw carries a `SignInRefusal` in `Reason` and `ProviderId` (`oidc` or
-`discord`). `Reason` is null only for an instance another backend built through a message-only constructor, and
-`Detail` is the untrusted caller text passed to a message-only constructor, and it is null on every engine refusal.
+`discord`). `Reason` is null only for an instance another backend built through a message-only constructor.
+`Detail` is untrusted caller text passed to a message-only constructor and is null on every engine refusal.
+
+The reasons are `SignInRefusal` members, and `EndpointRole` is a `SignInEndpointRole`.
 
 | `Reason` | What it refuses | Identifiers |
 |---|---|---|

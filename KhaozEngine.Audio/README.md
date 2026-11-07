@@ -75,6 +75,8 @@ Game-agnostic audio: streaming music, one-shot SFX, protected loops and 3D posit
 A call from the wrong thread throws `AudioThreadAffinityException`, which derives from `InvalidOperationException`.
 `Reason` is the rule.
 
+The reasons are `AudioThreadAffinityRefusal` members.
+
 | `Reason` | What it refuses | Identifiers |
 |---|---|---|
 | `ThreadMismatch` | a call to a guarded member from a thread other than the one that constructed the `AudioSystem` | `MemberName`, the guarded public member that refused (`RegisterSfxes`, `UnregisterSfxes` and `RegisterTracks` have no guard of their own and report their per-item member), and `OwnerThreadId` and `CallerThreadId`, the two managed thread ids |

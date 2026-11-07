@@ -4,7 +4,7 @@ using System.Numerics;
 // The namespace is NetWorld on purpose, for the reason IBanStore.cs gives. The admin seam physically lives in
 // KhaozEngine.Netcode so a head that never references NetWorld (KhaozEngine.TileWorld.Netcode's TileWorldServer) can
 // implement it, but its full type names are the ones it shipped under. KhaozEngine.NetWorld type-forwards this
-// interface and the three types it names (PlayerRef, OnlinePlayer, MovementCommitmentRequest), so a consumer that
+// interface and its three originally shipped companions (PlayerRef, OnlinePlayer, MovementCommitmentRequest), so a consumer that
 // names KhaozEngine.NetWorld.IAdminControllable keeps compiling and binding unchanged.
 namespace KhaozEngine.NetWorld;
 
@@ -45,12 +45,22 @@ public interface IAdminControllable
     /// </summary>
     void SetPosition(PlayerRef target, Vector3 position) => Teleport(target, position);
 
-    /// <summary>Queues a server-authored committed ballistic move and returns its correlation sequence.</summary>
+    /// <summary>Queues a server-authored committed move and returns its correlation sequence.</summary>
     uint BeginMovementCommitment(PlayerRef target, in MovementCommitmentRequest request) =>
         throw new System.NotSupportedException("This server does not support movement commitments.");
 
     /// <summary>Queues cancellation only when the active commitment matches <paramref name="expectedSequence"/>.</summary>
     void AbortMovementCommitment(PlayerRef target, uint expectedSequence) =>
+        throw new System.NotSupportedException("This server does not support movement commitments.");
+
+    /// <summary>Queues sequence-checked ground steering. Direction must be finite and nonzero, distance finite
+    /// and nonnegative, and sequence nonzero. Recovery and stale or inapplicable state remain unchanged.</summary>
+    void SteerMovementCommitment(PlayerRef target, uint expectedSequence, Vector2 direction, float distanceRemaining) =>
+        throw new System.NotSupportedException("This server does not support movement commitments.");
+
+    /// <summary>Queues a ground end for a nonzero matching sequence. None and unknown reasons are invalid.
+    /// Arrived optionally recovers. Recovery remains controlled by AbortMovementCommitment.</summary>
+    void EndMovementCommitment(PlayerRef target, uint expectedSequence, MovementCommitmentStopReason reason) =>
         throw new System.NotSupportedException("This server does not support movement commitments.");
 
     /// <summary>Queues a kick of <paramref name="target"/>. The reason is delivered to that client as a notice. Float

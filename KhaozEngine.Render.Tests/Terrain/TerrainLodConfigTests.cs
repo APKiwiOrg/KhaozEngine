@@ -245,11 +245,7 @@ namespace KhaozEngine.Tests.Terrain
             // inside a single chunk. The chunk the viewer stands in would re-tier on sub-chunk movement.
             var cfg = new StreamerConfig(LoadRadius: 4, UnloadRadius: 6, MaxLoadsPerFrame: 3, ChunkSize: 300f);
             ArgumentException ex = Assert.Throws<ArgumentException>(() => new TerrainStreamer(cfg, new FakeChunkSink()));
-            // The message names the offending tier and both distances, so the fix does not need a debugger.
-            Assert.Contains("LOD tier 0", ex.Message);
-            Assert.Contains("80", ex.Message);
-            Assert.Contains("300", ex.Message);
-            Assert.Contains("212", ex.Message);   // the half-diagonal it was measured against
+            Assert.Equal("config", ex.ParamName);
 
             // A custom table sized for those chunks is accepted: the check is a floor, not a ban on big chunks.
             var ok = cfg with { LodConfig = new TerrainLodConfig(T(64, 400f), T(16, float.PositiveInfinity)) };
@@ -263,7 +259,7 @@ namespace KhaozEngine.Tests.Terrain
             // Every metre distance (LOD tiers included) is derived from ChunkSize, so 0 makes the tier check vacuous
             // and every chunk centre coincident.
             var zero = new StreamerConfig(LoadRadius: 4, UnloadRadius: 6, MaxLoadsPerFrame: 3, ChunkSize: 0f);
-            Assert.Contains("ChunkSize", Assert.Throws<ArgumentException>(() => new TerrainStreamer(zero, new FakeChunkSink())).Message);
+            Assert.Equal("config", Assert.Throws<ArgumentException>(() => new TerrainStreamer(zero, new FakeChunkSink())).ParamName);
             var negative = zero with { ChunkSize = -60f };
             Assert.Throws<ArgumentException>(() => new TerrainStreamer(negative, new FakeChunkSink()));
         }

@@ -35,19 +35,30 @@ public class MapAssetShapesTests
     }
 
     [Theory]
-    [InlineData("garbage-collider", "collision payload")]
-    [InlineData("trailing-byte-collider", "collision payload")]
-    [InlineData("nan-box-collider", "collision payload")]
-    [InlineData("empty-hull-collider", "collision payload")]
-    [InlineData("empty-mesh-collider", "collision payload")]
-    [InlineData("degenerate-orientation-collider", "collision payload")]
-    [InlineData("mesh-in-compound", "triangle mesh inside a compound")]
-    [InlineData("mesh-in-nested-compound", "triangle mesh inside a compound")]
-    [InlineData("deck-with-support", "not captured")]
-    public void UnsupportedShapeData_Refuses(string assetId, string message)
+    [InlineData("garbage-collider", MapDocumentRefusal.AssetPayloadUnreadable)]
+    [InlineData("trailing-byte-collider", MapDocumentRefusal.AssetCollisionTrailingBytes)]
+    [InlineData("nan-box-collider", MapDocumentRefusal.AssetPayloadUnreadable)]
+    [InlineData("empty-hull-collider", MapDocumentRefusal.AssetCollisionEmptyPoints)]
+    [InlineData("empty-mesh-collider", MapDocumentRefusal.AssetCollisionEmptyPoints)]
+    [InlineData("degenerate-orientation-collider", MapDocumentRefusal.AssetPayloadUnreadable)]
+    [InlineData("mesh-in-compound", MapDocumentRefusal.AssetCollisionNestedMesh)]
+    [InlineData("mesh-in-nested-compound", MapDocumentRefusal.AssetCollisionNestedMesh)]
+    [InlineData("deck-with-support", MapDocumentRefusal.AssetTypedPayloadOpaque)]
+    public void UnsupportedShapeData_Refuses(string assetId, MapDocumentRefusal reason)
     {
         var f = NativeWorldFixtures.Assets();
         var e = Assert.Throws<MapDocumentException>(() => MapAssetShapes.Read(f.Closure, assetId));
-        Assert.Contains(message, e.Message);
+        Assert.Equal(reason, e.Reason);
+        string resourceId = assetId + (assetId == "deck-with-support" ? ".surface" : ".collider");
+        Assert.Equal(resourceId, e.ResourceId);
+        if (reason != MapDocumentRefusal.AssetTypedPayloadOpaque) Assert.Equal(assetId, e.AssetId);
+        if (reason == MapDocumentRefusal.AssetCollisionTrailingBytes) Assert.Equal(1L, e.ActualByteCount);
+        if (reason == MapDocumentRefusal.AssetCollisionEmptyPoints)
+            Assert.Equal(assetId == "empty-hull-collider" ? typeof(ConvexHullShape) : typeof(TriangleMeshShape), e.ShapeType);
+        if (reason == MapDocumentRefusal.AssetPayloadUnreadable)
+            Assert.Equal(f.Closure.GetResource(resourceId).Reference.Sha256, e.ExpectedHash);
+        if (reason == MapDocumentRefusal.AssetTypedPayloadOpaque)
+            Assert.Equal("kemap/support-resource", e.ExpectedSchema);
+        Assert.True(MapAssetShapes.Read(NativeWorldFixtures.RepairedShapeAsset(assetId), assetId).IsSolid);
     }
 }

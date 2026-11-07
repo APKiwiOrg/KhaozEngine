@@ -98,12 +98,16 @@ namespace KhaozEngine.Tests.Gpu
         [InlineData(GpuResourceKind.Sampler)]
         public void ADynamicOffsetOutsideTheBufferSpace_IsRefusedAtCreation(GpuResourceKind kind)
         {
-            ArgumentException failed = Assert.Throws<ArgumentException>(() => new MetalResourceLayout(
+            GpuResourceLayoutException failed = Assert.Throws<GpuResourceLayoutException>(() => new MetalResourceLayout(
                 new FakeMetalDeviceLiveness(),
                 new GpuResourceLayoutDescription(Element("Bad", kind, dynamic: true))));
 
-            Assert.Contains("'Bad' at binding 0", failed.Message, StringComparison.Ordinal);
-            Assert.Contains("setVertexBufferOffset", failed.Message, StringComparison.Ordinal);
+            Assert.Equal(GpuResourceLayoutRefusal.DynamicOffsetUnsupportedForKind, failed.Reason);
+            Assert.Equal("Bad", failed.ElementName);
+            Assert.Equal(0, failed.Binding);
+            Assert.Equal(kind, failed.ResourceKind);
+            Assert.Equal(GpuBackendKind.MetalNative, failed.Backend);
+            Assert.Equal("element", failed.ParamName);
         }
 
         /// <summary>
@@ -144,13 +148,15 @@ namespace KhaozEngine.Tests.Gpu
 
             Assert.Equal(1, layout.ElementCount);
 
-            ArgumentException failed = Assert.Throws<ArgumentException>(() => new MetalResourceLayout(
+            GpuResourceLayoutException failed = Assert.Throws<GpuResourceLayoutException>(() => new MetalResourceLayout(
                 new FakeMetalDeviceLiveness(),
                 new GpuResourceLayoutDescription(
                     new GpuResourceLayoutElement("", GpuResourceKind.Sampler, GpuShaderStages.Vertex,
                         dynamic: true))));
 
-            Assert.Contains("<unnamed>", failed.Message, StringComparison.Ordinal);
+            Assert.Equal(GpuResourceLayoutRefusal.DynamicOffsetUnsupportedForKind, failed.Reason);
+            Assert.Equal("", failed.ElementName);
+            Assert.Equal(0, failed.Binding);
         }
 
         /// <summary>
@@ -167,20 +173,26 @@ namespace KhaozEngine.Tests.Gpu
             using var foreignDevice = new MetalResourceLayout(theirs, new GpuResourceLayoutDescription());
             using var foreignBackend = new NotAMetalLayout();
 
-            Assert.Contains("no resource layout",
-                Assert.Throws<ArgumentException>(
-                    () => MetalResourceLayout.Require(null, mine, "a set")).Message,
-                StringComparison.Ordinal);
+            var missingRefusal = Assert.Throws<GpuResourceOwnershipArgumentException>(
+                () => MetalResourceLayout.Require(null, mine, "a set"));
+            Assert.Equal(GpuResourceOwnershipRefusal.MissingResource, missingRefusal.Reason);
+            Assert.Equal(nameof(MetalResourceLayout), missingRefusal.ResourceKind);
+            Assert.Equal("a set", missingRefusal.Context);
 
-            Assert.Contains("not created by the native Metal backend",
-                Assert.Throws<ArgumentException>(
-                    () => MetalResourceLayout.Require(foreignBackend, mine, "a set")).Message,
-                StringComparison.Ordinal);
+            var foreignBackendRefusal = Assert.Throws<GpuResourceOwnershipArgumentException>(
+                () => MetalResourceLayout.Require(foreignBackend, mine, "a set"));
+            Assert.Equal(GpuResourceOwnershipRefusal.ForeignBackend, foreignBackendRefusal.Reason);
+            Assert.Equal(GpuBackendKind.MetalNative, foreignBackendRefusal.ExpectedBackend);
+            Assert.Equal(typeof(NotAMetalLayout), foreignBackendRefusal.ActualType);
+            Assert.Equal(typeof(MetalResourceLayout), foreignBackendRefusal.ExpectedType);
+            Assert.Equal("layout", foreignBackendRefusal.Context);
 
-            Assert.Contains("DIFFERENT native Metal device",
-                Assert.Throws<ArgumentException>(
-                    () => MetalResourceLayout.Require(foreignDevice, mine, "a set")).Message,
-                StringComparison.Ordinal);
+            var foreignDeviceRefusal = Assert.Throws<GpuResourceOwnershipArgumentException>(
+                () => MetalResourceLayout.Require(foreignDevice, mine, "a set"));
+            Assert.Equal(GpuResourceOwnershipRefusal.DifferentDevice, foreignDeviceRefusal.Reason);
+            Assert.Equal(GpuBackendKind.MetalNative, foreignDeviceRefusal.ExpectedBackend);
+            Assert.Equal(nameof(MetalResourceLayout), foreignDeviceRefusal.ResourceKind);
+            Assert.Equal("layout", foreignDeviceRefusal.Context);
 
             // The positive control, so the three refusals above are not passing because Require refuses
             // everything.
@@ -212,12 +224,11 @@ namespace KhaozEngine.Tests.Gpu
             // why the two refusals below have to be explicit.
             Assert.Equal(1, layout.ElementCount);
 
-            Assert.Contains("already disposed",
-                Assert.Throws<ObjectDisposedException>(
-                    () => MetalResourceLayout.Require(layout, liveness, "a set")).Message,
-                StringComparison.Ordinal);
+            GpuResourceOwnershipDisposedException refused = Assert.Throws<GpuResourceOwnershipDisposedException>(
+                () => MetalResourceLayout.Require(layout, liveness, "a set"));
+            Assert.Equal(nameof(MetalResourceLayout), refused.ObjectName);
 
-            Assert.Throws<ObjectDisposedException>(() => new MetalResourceSet(
+            Assert.Throws<GpuResourceOwnershipDisposedException>(() => new MetalResourceSet(
                 liveness, new GpuResourceSetDescription(layout)));
         }
 
@@ -238,10 +249,9 @@ namespace KhaozEngine.Tests.Gpu
 
             set.Dispose();
 
-            Assert.Contains("already disposed",
-                Assert.Throws<ObjectDisposedException>(
-                    () => MetalResourceSet.Require(set, liveness, "a bind")).Message,
-                StringComparison.Ordinal);
+            GpuResourceOwnershipDisposedException refused = Assert.Throws<GpuResourceOwnershipDisposedException>(
+                () => MetalResourceSet.Require(set, liveness, "a bind"));
+            Assert.Equal(nameof(MetalResourceSet), refused.ObjectName);
         }
 
         /// <summary>
@@ -265,9 +275,14 @@ namespace KhaozEngine.Tests.Gpu
                 return;
             }
 
-            ArgumentException failed = Assert.Throws<ArgumentException>(
+            GpuResourceSetException failed = Assert.Throws<GpuResourceSetException>(
                 () => MetalResourceSet.RequireWindowInBuffer(offset, range, size, "a row"));
-            Assert.Contains("a row binds", failed.Message, StringComparison.Ordinal);
+            Assert.IsAssignableFrom<ArgumentException>(failed);
+            Assert.Equal(GpuResourceSetRefusal.BufferWindowOutsideResource, failed.Reason);
+            Assert.Equal(offset, failed.RangeOffset);
+            Assert.Equal(range, failed.RangeBytes);
+            Assert.Equal(size, failed.BufferBytes);
+            Assert.Equal("range", failed.ParamName);
         }
 
         /// <summary>
@@ -298,19 +313,21 @@ namespace KhaozEngine.Tests.Gpu
         {
             if (allowed)
             {
-                MetalResourceSet.RequireTextureUsage(kind, usage, "a row");
+                MetalResourceSet.RequireTextureUsage(kind, usage, "a row", elementName: "a row", binding: 0);
                 return;
             }
 
-            ArgumentException failed = Assert.Throws<ArgumentException>(
-                () => MetalResourceSet.RequireTextureUsage(kind, usage, "a row"));
+            GpuResourceSetException failed = Assert.Throws<GpuResourceSetException>(
+                () => MetalResourceSet.RequireTextureUsage(kind, usage, "a row", elementName: "a row", binding: 0));
 
-            Assert.Contains("a row declares a " + kind, failed.Message, StringComparison.Ordinal);
-            Assert.Contains(
-                kind == GpuResourceKind.TextureReadWrite
-                    ? "Add GpuTextureUsage.Storage"
-                    : "Add GpuTextureUsage.Sampled",
-                failed.Message, StringComparison.Ordinal);
+            Assert.Equal(GpuResourceSetRefusal.TextureUsageMissing, failed.Reason);
+            Assert.Equal(kind, failed.ResourceKind);
+            Assert.Equal("a row", failed.ElementName);
+            Assert.Equal(0, failed.Binding);
+            Assert.Equal(usage, failed.ActualUsage);
+            Assert.Equal(kind == GpuResourceKind.TextureReadWrite
+                ? GpuTextureUsage.Storage
+                : GpuTextureUsage.Sampled | GpuTextureUsage.GenerateMipmaps, failed.RequiredUsage);
         }
 
         static GpuResourceLayoutElement Element(string name, GpuResourceKind kind, bool dynamic = false)

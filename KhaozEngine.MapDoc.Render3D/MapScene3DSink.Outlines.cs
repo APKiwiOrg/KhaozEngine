@@ -18,7 +18,7 @@ public sealed partial class MapScene3DSink
         public void Write(in MapDrawRecord draw)
         {
             if (!Owner._references.TryGetValue(draw.Resource, out var handle)) throw new InvalidOperationException("Unpublished native outline.");
-            var rigid = draw.Rigid ?? throw new MapDocumentException("Roof outlines require rigid geometry.");
+            var rigid = draw.Rigid ?? throw new MapDocumentException(MapDocumentRefusal.ReferenceKindMismatch, "Roof outlines require rigid geometry.") { Operation = "RoofOutline.Write", FieldPath = "Rigid" };
             Owner._scene.DrawMeshOutlineAnchored(Group, Owner._access.MeshOf(new(handle.Value)), draw.LocalTransform,
                 new(draw.Anchor.X, draw.Anchor.Y, draw.Anchor.Z), rigid.Dissolve, rigid.DissolveComplement > .5f);
         }

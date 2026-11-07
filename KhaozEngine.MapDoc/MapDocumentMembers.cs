@@ -13,26 +13,33 @@ internal static class MapDocumentMembers
     static readonly JsonObject Manifest = JsonNode.Parse(MapDocumentSchema.GetManifestJson())!.AsObject();
     static readonly JsonObject Tile = JsonNode.Parse(MapDocumentSchema.GetTileJson())!.AsObject();
 
-    internal static void ValidateManifest(JsonObject root, string where) => Check(root, Manifest, where, native: false);
-    internal static void ValidateTile(JsonObject root, string where) => Check(root, Tile, where, native: false);
+    internal static void ValidateManifest(JsonObject root, string where) => Check(root, Manifest, "$", "$", native: false, where);
+    internal static void ValidateTile(JsonObject root, string where) => Check(root, Tile, "$", "$", native: false, where);
 
-    internal static void Validate(JsonObject root, string where) => Check(root, Schema, where, native: false);
+    internal static void Validate(JsonObject root, string where) => Check(root, Schema, "$", "$", native: false, where);
 
     /// <summary>A parsed <see cref="JsonObject"/> builds its case-insensitive member dictionary lazily and throws
     /// <see cref="ArgumentException"/> on a repeated name. Building every dictionary right after parsing makes a
     /// duplicate member refuse as a document error before any reader touches it.</summary>
     internal static void RequireUniqueMembers(JsonNode? node, string where)
-    {
-        try { BuildMembers(node); }
-        catch (ArgumentException ex) { throw new MapDocumentException($"{where}: duplicate property. {ex.Message}", ex); }
-    }
+        => BuildMembers(node, where, "$", "$");
 
-    static void BuildMembers(JsonNode? node)
+    static void BuildMembers(JsonNode? node, string where, string path, string fieldPath)
     {
-        if (node is JsonObject obj)
-            foreach (KeyValuePair<string, JsonNode?> member in obj) BuildMembers(member.Value);
-        else if (node is JsonArray array)
-            foreach (JsonNode? item in array) BuildMembers(item);
+        try
+        {
+            if (node is JsonObject obj)
+                foreach (KeyValuePair<string, JsonNode?> member in obj)
+                    BuildMembers(member.Value, where, path + "." + member.Key, MapDocumentJsonPath.AppendProperty(fieldPath, member.Key));
+            else if (node is JsonArray array)
+                for (int i = 0; i < array.Count; i++) BuildMembers(array[i], where, $"{path}[{i}]", $"{fieldPath}[{i}]");
+        }
+        catch (ArgumentException ex)
+        {
+            // The lazy dictionary exposes the containing object, not a typed duplicate member name.
+            throw new MapDocumentException(MapDocumentRefusal.SchemaMemberDuplicate, $"{where}: duplicate property. {ex.Message}", ex)
+            { SourceName = where, FieldPath = fieldPath };
+        }
     }
 
     // Match the serializer's case-insensitive lookup without rewriting input. Parsed documents have unique names.
@@ -49,7 +56,8 @@ internal static class MapDocumentMembers
         return found;
     }
 
-    static void Check(JsonNode? node, JsonObject schema, string path, bool native)
+    // Preserve the released display path in prose while FieldPath follows the JSON reader's segment format.
+    static void Check(JsonNode? node, JsonObject schema, string path, string fieldPath, bool native, string where)
     {
         // Foliage has a closed codec for each storage form. It charges all counts before visiting nested records,
         // so let that codec validate this native block once rather than walking its untrusted arrays first.
@@ -58,14 +66,15 @@ internal static class MapDocumentMembers
         if (node is null)
         {
             if (native && !AllowsNull(schema))
-                throw new MapDocumentException($"{path}: native member must not be null.");
+                throw new MapDocumentException(MapDocumentRefusal.SchemaMemberNull, $"{where}{path[1..]}: native member must not be null.")
+                { SourceName = where, FieldPath = fieldPath };
             return;
         }
-        CheckUnion(node, schema["oneOf"] as JsonArray, path, native);
-        CheckUnion(node, schema["anyOf"] as JsonArray, path, native);
+        CheckUnion(node, schema["oneOf"] as JsonArray, path, fieldPath, native, where);
+        CheckUnion(node, schema["anyOf"] as JsonArray, path, fieldPath, native, where);
         if (node is JsonArray array && schema["items"] is JsonObject itemSchema)
         {
-            for (int i = 0; i < array.Count; i++) Check(array[i], itemSchema, $"{path}[{i}]", native);
+            for (int i = 0; i < array.Count; i++) Check(array[i], itemSchema, $"{path}[{i}]", $"{fieldPath}[{i}]", native, where);
         }
         if (node is not JsonObject obj || schema["properties"] is not JsonObject properties) return;
         if (native && schema["required"] is JsonArray required)
@@ -74,7 +83,8 @@ internal static class MapDocumentMembers
             {
                 string name = member!.GetValue<string>();
                 if (!TryGetProperty(obj, name, out _))
-                    throw new MapDocumentException($"{path}: required native member '{name}' is missing.");
+                    throw new MapDocumentException(MapDocumentRefusal.SchemaMemberMissing, $"{where}{path[1..]}: required native member '{name}' is missing.")
+                    { SourceName = where, FieldPath = MapDocumentJsonPath.AppendProperty(fieldPath, name) };
             }
         }
         bool closed = schema["additionalProperties"] is JsonValue closedValue &&
@@ -85,17 +95,18 @@ internal static class MapDocumentMembers
             {
                 bool nativeMember = native || ((ReferenceEquals(schema, Schema) || ReferenceEquals(schema, Manifest)) && IsNativeBlock(member.Key)) ||
                     string.Equals(member.Key, "supportBinding", StringComparison.OrdinalIgnoreCase);
-                Check(member.Value, memberSchema, path + "." + member.Key, nativeMember);
+                Check(member.Value, memberSchema, path + "." + member.Key, MapDocumentJsonPath.AppendProperty(fieldPath, member.Key), nativeMember, where);
             }
             else if (closed)
-                throw new MapDocumentException($"{path}: unknown property '{member.Key}'.");
+                throw new MapDocumentException(MapDocumentRefusal.SchemaMemberUnknown, $"{where}{path[1..]}: unknown property '{member.Key}'.")
+                { SourceName = where, FieldPath = MapDocumentJsonPath.AppendProperty(fieldPath, member.Key) };
         }
     }
 
     // The first admitted alternative is checked, as released. When that alternative is an object shape, a later
     // admitted shape whose every const member matches is preferred, so payload and kind discriminants select their
     // own closed shape. A node no shape fully matches keeps the released first choice.
-    static void CheckUnion(JsonNode node, JsonArray? alternatives, string path, bool native)
+    static void CheckUnion(JsonNode node, JsonArray? alternatives, string path, string fieldPath, bool native, string where)
     {
         if (alternatives is null) return;
         JsonObject? first = null;
@@ -126,7 +137,7 @@ internal static class MapDocumentMembers
             }
         }
         if (first is null) return;
-        Check(node, first["properties"] is JsonObject ? matched ?? first : first, path, native);
+        Check(node, first["properties"] is JsonObject ? matched ?? first : first, path, fieldPath, native, where);
     }
 
     static bool ConstantsMatch(JsonObject obj, JsonObject fields)

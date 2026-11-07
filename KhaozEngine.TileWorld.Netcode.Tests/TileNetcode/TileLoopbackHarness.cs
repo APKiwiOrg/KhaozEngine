@@ -1,5 +1,4 @@
 using System;
-using System.Reflection;
 using KhaozEngine.Netcode;
 using KhaozEngine.Replication;
 using KhaozEngine.TileWorld;
@@ -35,17 +34,11 @@ internal sealed class TileLoopbackHarness : IDisposable
         Action<ReplicationRegistry>? gameComponents = null, ushort allocatorNode = 0, Func<int, bool>? canRun = null)
     {
         hub = new InMemoryTransportHub();
-        Server = new TileWorldServer(hub.Server,
+        Server = TileWorldServer.CreateWithAllocatorNodeForTests(hub.Server,
             TileWorldServerTickTests.Config(spawn) with { MaxGoalRadius = goalRadius, CanRun = canRun },
             TileMoveSimulatorTests.Bake(serverDoc),
             new TileDocumentTargets(serverDoc, TileMoveSimulatorTests.Catalogs), new AllowAllAuthenticator(),
-            TileProtocol.CreateRegistry(gameComponents));
-        if (allocatorNode != 0)
-        {
-            FieldInfo allocator = typeof(TileWorldServer).GetField("allocator",
-                BindingFlags.Instance | BindingFlags.NonPublic)!;
-            allocator.SetValue(Server, new NetIdAllocator(allocatorNode));
-        }
+            TileProtocol.CreateRegistry(gameComponents), allocatorNode);
         clientTransport = hub.CreateClient();
         Client = new TileWorldClient(clientTransport, new TileWorldClientConfig
         {

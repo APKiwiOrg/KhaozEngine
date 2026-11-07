@@ -83,13 +83,21 @@ internal static class NativeDocumentTransaction
     {
         ArgumentNullException.ThrowIfNull(document);
         if (document.Tiles is { IsPartial: true })
-            throw new MapDocumentException("Native editing requires a complete document, not a windowed document.");
+            throw new MapDocumentException(MapDocumentRefusal.CompleteDocumentRequired, "Native editing requires a complete document, not a windowed document.")
+            { DocumentId = document.Id, Operation = nameof(Stage) };
         NativeLegacySpawnAdmission.RequireMarkerCommand(document, command);
         MapAssetClosure? selected = command is INativeAssetClosureCommand closures ? closures.Closure(undo) : assets;
         if (command is INativeBoundDocumentCommand && selected is null)
-            throw new MapDocumentException("Prefab editing requires a verified asset closure.");
+            throw new MapDocumentException(MapDocumentRefusal.AssetClosureRequired, "Prefab editing requires a verified asset closure.")
+            {
+                DocumentId = document.Id,
+                Operation = nameof(Stage),
+                CommandType = command.GetType(),
+                SubjectKind = command is PrefabEditCommand or PrefabAssetEditCommand ? "prefab" : null
+            };
         if (!localOnly && selected is null)
-            throw new MapDocumentException("Native editing requires an explicit asset closure binding.");
+            throw new MapDocumentException(MapDocumentRefusal.AssetClosureRequired, "Native editing requires an explicit asset closure binding.")
+            { DocumentId = document.Id, Operation = nameof(Stage), CommandType = command.GetType() };
         var beforeAssets = command is INativeAssetClosureCommand pair ? pair.Closure(!undo) : assets;
         // The source snapshot and its closure pass the foliage context preflight before the first copy. Foliage without
         // a verified closure refuses here, before anything is cloned.
@@ -105,7 +113,8 @@ internal static class NativeDocumentTransaction
             TerrainEditCommand terrain => terrain.Prepare(candidate, undo, selected, registry),
             INativeDocumentCommand native => native.Prepare(candidate, undo),
             INativePlacementCommand placement => PreparePlacement(document, candidate, placement, undo, selected),
-            _ => throw new MapDocumentException("This command does not support atomic native document editing."),
+            _ => throw new MapDocumentException(MapDocumentRefusal.OperationKindUnsupported, "This command does not support atomic native document editing.")
+            { DocumentId = document.Id, CommandType = command.GetType(), Operation = nameof(Stage) },
         };
         MapDocumentEditFinalizer.Preflight(candidate, selected);
         MapDocument publication;
@@ -122,7 +131,8 @@ internal static class NativeDocumentTransaction
         }
         NativeLegacySpawnAdmission.RequireAdmitted(document, publication, permit, liveLists);
         if (selected is null && publication.Foliage is not null)
-            throw new MapDocumentException("Native foliage editing requires a verified asset closure.");
+            throw new MapDocumentException(MapDocumentRefusal.AssetClosureRequired, "Native foliage editing requires a verified asset closure.")
+            { DocumentId = document.Id, Operation = nameof(Stage), SubjectKind = "foliage" };
         if (localOnly) MapBoundDocumentValidation.ValidateLocal(publication, registry);
         else MapBoundDocumentValidation.Validate(publication, selected!, registry);
         // A side the command's finalization or the last accepted publication already captured is reused, with its
@@ -138,7 +148,7 @@ internal static class NativeDocumentTransaction
         if (expanded is not null && (publication.Prefabs is not null || publication.NativeResourceTransforms is not null || publication.BuildingIntent is not null))
         {
             var effective = expanded.Value;
-            RequireValid(MapPrismCoverage.Validate(effective.CompleteView(), new()));
+            RequireValid(MapPrismCoverage.ValidateFindings(effective.CompleteView(), new()));
             MapBoundDocumentValidation.ValidateEffectiveWater(effective, selected!);
         }
         var effects = NativePlacementEffects.Describe(document, publication, selected, registry, placementBounds, beforeAssets, expandedBefore, expanded);
@@ -212,31 +222,45 @@ internal static class NativeDocumentTransaction
     {
         MapSurfaceSet surfaces = publication.Surfaces;
         foreach (MapPatchKey key in mode == MapNativePublicationMode.CompleteSnapshot ? (IEnumerable<MapPatchKey>)surfaces.Patches.Keys : writeSet.Patches)
-            if (surfaces.Patches.TryGetValue(key, out MapSurfacePatch? patch)) RequireValid(patch.ValidateLocal());
+            if (surfaces.Patches.TryGetValue(key, out MapSurfacePatch? patch)) RequireValid(patch.ValidateLocalFindings());
         MapScopedSurfaces view = expanded is not null && (publication.Prefabs is not null || publication.NativeResourceTransforms is not null)
             ? expanded.Value.CompleteView() : MapScopedSurfaces.CompleteView(surfaces);
         foreach (MapSurfaceSeam seam in surfaces.AllRecords().OfType<MapSurfaceSeam>())
-            RequireValid(MapSeamValidator.Validate(seam, view));
+            RequireValid(MapSeamValidator.ValidateFindings(seam, view));
         // An edited owner can invalidate a dependency in an otherwise untouched patch.
         foreach (MapSurfacePatch patch in surfaces.Patches.Values.Where(p => p.CornerDependencies.Count != 0))
-            RequireValid(MapSeamValidator.ValidateCornerDependencies(patch, view));
+            RequireValid(MapSeamValidator.ValidateCornerDependencyFindings(patch, view));
         // Payloads contain records, and surface geometry can also change a space's bound coverage.
         if (mode == MapNativePublicationMode.CompleteSnapshot || writeSet.Prefabs || writeSet.BuildingIntent || writeSet.NativeResourceTransforms ||
             writeSet.Patches.Count != 0 || writeSet.SurfaceIds.Count != 0 ||
             writeSet.RecordIds.Count != 0 || writeSet.SpaceIds.Count != 0)
-            RequireValid(MapSpaceCoverageValidator.Validate(view));
+            RequireValid(MapSpaceCoverageValidator.ValidateFindings(view));
         // A loaded document carries no containment certificate, so even placement-only publications recheck water.
         if (publication.Water is { } water && (assets is null || publication.Prefabs is null && publication.NativeResourceTransforms is null))
         {
             MapWaterContainmentReport containment = MapWaterContainment.Validate(view, water);
-            if (containment.Errors.Count != 0) throw new MapDocumentException(containment.Errors[0]);
-            if (!containment.Complete) throw new MapDocumentException("water containment is unverified");
+            RequireWaterContainment(containment);
         }
     }
 
-    static void RequireValid(IReadOnlyList<string> findings)
+    static void RequireValid(IReadOnlyList<MapDocumentFinding> findings)
     {
-        if (findings.Count != 0) throw new MapDocumentException(string.Join("\n", findings));
+        if (findings.Count != 0) throw MapDocumentRefusalFactory.FromFinding(findings[0],
+            string.Join("\n", findings.Select(f => f.Message)), findings: findings);
     }
+
+    static void RequireWaterContainment(MapWaterContainmentReport containment)
+    {
+        if (containment.Errors.Count != 0)
+        {
+            if (containment.Findings.Count != 0) throw MapDocumentRefusalFactory.FromFinding(containment.Findings[0],
+                containment.Errors[0], findings: containment.Findings);
+            throw new MapDocumentException(MapDocumentRefusal.WaterContainmentUnverified, containment.Errors[0]);
+        }
+        if (!containment.Complete) throw new MapDocumentException(MapDocumentRefusal.WaterContainmentUnverified, "water containment is unverified");
+    }
+
+    /// <summary>Injects a containment report without weakening the document or publication state machine.</summary>
+    internal static void RequireWaterContainmentForTests(MapWaterContainmentReport containment) => RequireWaterContainment(containment);
 
 }

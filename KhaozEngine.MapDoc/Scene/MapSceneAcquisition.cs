@@ -56,7 +56,7 @@ internal static class MapSceneAcquisition
             MapDemandOrigins.Inherit(scope.Surfaces.Limits, requestedLimits);
             digest = scope.Digest;
             MapSceneSource.CheckManifest(data.Directory, data.ManifestDigest);
-            if (!MapSceneAdmission.Supports(data.Surfaces)) throw new MapSceneSourceException(MapSceneStatus.Invalid, "Surface source cannot participate in scene admission.");
+            MapSceneAdmission.RequireSupported(data.Surfaces);
             using var admitted = admission.Enter();
             var owners = new SortedSet<string>(StringComparer.Ordinal);
             var pending = new Queue<string>();
@@ -373,6 +373,7 @@ internal sealed class MapSceneSurfaceSource : IMapSurfaceAcquisitionSource
 {
     internal IMapSurfaceSource Inner { get; }
     readonly IReadOnlySet<string> _ids;
+    internal int IdentifierCapacityForTests => ((HashSet<string>)_ids).EnsureCapacity(0);
     internal MapPreparationReservation? PreparationOwnership { get; }
     internal long IndexBytes => checked(128L + 32L * ((HashSet<string>)_ids).EnsureCapacity(0) + 8L * Surfaces.Count);
     internal MapSceneSurfaceSource(IMapSurfaceSource inner, IReadOnlySet<string> ids, IReadOnlyList<MapSurfaceRef> descriptors)

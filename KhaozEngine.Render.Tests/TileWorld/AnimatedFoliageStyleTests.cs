@@ -27,11 +27,13 @@ public sealed class AnimatedFoliageStyleTests
         var selection = new HashSet<string>(StringComparer.Ordinal) { "bush" };
         var styles = new Dictionary<string, AnimatedFoliageStyle>(StringComparer.Ordinal) { ["tree"] = Shrub };
 
-        ArgumentException outside = Assert.Throws<ArgumentException>(() =>
+        AnimatedFoliageStyleArgumentException outside = Assert.Throws<AnimatedFoliageStyleArgumentException>(() =>
             CreateSnapshot(selection, styles, TileRenderTestData.Catalogs, new Dictionary<string, IReadOnlyList<MeshHandle>>()));
 
         Assert.Equal("AnimatedFoliageStyles", outside.ParamName);
-        Assert.Contains("tree", outside.Message);
+        Assert.IsAssignableFrom<ArgumentException>(outside);
+        Assert.Equal(AnimatedFoliageStyleRefusal.StyleOutsideSelection, outside.Reason);
+        Assert.Equal("tree", outside.ArchetypeId);
     }
 
     [Fact]
@@ -42,14 +44,13 @@ public sealed class AnimatedFoliageStyleTests
         TileWorldCatalogs catalogs = SharedCatalogs();
         var meshes = new Dictionary<string, IReadOnlyList<MeshHandle>>();
 
-        ArgumentException conflict = Assert.Throws<ArgumentException>(() =>
+        AnimatedFoliageStyleArgumentException conflict = Assert.Throws<AnimatedFoliageStyleArgumentException>(() =>
             CreateSnapshot(sharedSelection, shrubOnly, catalogs, meshes));
 
         Assert.Equal("AnimatedFoliageStyles", conflict.ParamName);
-        Assert.Contains("bush_alias", conflict.Message);
-        Assert.Contains("bush", conflict.Message);
-        Assert.True(conflict.Message.IndexOf("'bush'", StringComparison.Ordinal) <
-                    conflict.Message.IndexOf("'bush_alias'", StringComparison.Ordinal));
+        Assert.Equal(AnimatedFoliageStyleRefusal.SharedMeshStyleConflict, conflict.Reason);
+        Assert.Equal("bush", conflict.FirstArchetypeId);
+        Assert.Equal("bush_alias", conflict.SecondArchetypeId);
         shrubOnly["bush"] = new AnimatedFoliageStyle(FoliageMotionProfile.Blade, false);
         AnimatedFoliageStyleSnapshot compatible = CreateSnapshot(sharedSelection, shrubOnly, catalogs, meshes);
         Assert.Equal(FoliageMotionProfile.Blade, compatible.MotionProfiles["bush"]);
@@ -69,12 +70,11 @@ public sealed class AnimatedFoliageStyleTests
             ["bush_alias"] = [new MeshHandle(2), new MeshHandle(3)],
         };
 
-        ArgumentException conflict = Assert.Throws<ArgumentException>(() => CreateSnapshot(selection, styles, catalogs, meshes));
+        AnimatedFoliageStyleArgumentException conflict = Assert.Throws<AnimatedFoliageStyleArgumentException>(() => CreateSnapshot(selection, styles, catalogs, meshes));
 
-        Assert.Contains("bush_alias", conflict.Message);
-        Assert.Contains("bush", conflict.Message);
-        Assert.True(conflict.Message.IndexOf("'bush'", StringComparison.Ordinal) <
-                    conflict.Message.IndexOf("'bush_alias'", StringComparison.Ordinal));
+        Assert.Equal(AnimatedFoliageStyleRefusal.SharedMeshStyleConflict, conflict.Reason);
+        Assert.Equal("bush", conflict.FirstArchetypeId);
+        Assert.Equal("bush_alias", conflict.SecondArchetypeId);
         styles["bush_alias"] = Shrub;
         AnimatedFoliageStyleSnapshot compatible = CreateSnapshot(selection, styles, catalogs, meshes);
         Assert.Equal(Shrub.Motion, compatible.MotionProfiles["bush_alias"]);
@@ -100,11 +100,12 @@ public sealed class AnimatedFoliageStyleTests
             ["bush"] = new(FoliageMotionProfile.Blade, true),
         };
 
-        ArgumentException conflict = Assert.Throws<ArgumentException>(() => CreateSnapshot(selection, styles, catalogs, meshes));
+        AnimatedFoliageStyleArgumentException conflict = Assert.Throws<AnimatedFoliageStyleArgumentException>(() => CreateSnapshot(selection, styles, catalogs, meshes));
 
         Assert.Equal("AnimatedFoliageStyles", conflict.ParamName);
-        Assert.Contains("bush", conflict.Message);
-        Assert.Contains("bush_alias", conflict.Message);
+        Assert.Equal(AnimatedFoliageStyleRefusal.SharedMeshStyleConflict, conflict.Reason);
+        Assert.Equal("bush", conflict.FirstArchetypeId);
+        Assert.Equal("bush_alias", conflict.SecondArchetypeId);
     }
 
     [Fact]
@@ -175,11 +176,12 @@ public sealed class AnimatedFoliageStyleTests
         var selection = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "BUSH" };
         var styles = new Dictionary<string, AnimatedFoliageStyle>(StringComparer.OrdinalIgnoreCase) { ["BUSH"] = Shrub };
 
-        ArgumentException ambiguous = Assert.Throws<ArgumentException>(() => CreateSnapshot(selection, styles,
+        AnimatedFoliageStyleArgumentException ambiguous = Assert.Throws<AnimatedFoliageStyleArgumentException>(() => CreateSnapshot(selection, styles,
             TileRenderTestData.Catalogs, new Dictionary<string, IReadOnlyList<MeshHandle>>()));
 
         Assert.Equal("AnimatedFoliageStyles", ambiguous.ParamName);
-        Assert.Contains("BUSH", ambiguous.Message);
+        Assert.Equal(AnimatedFoliageStyleRefusal.StyleOutsideSelection, ambiguous.Reason);
+        Assert.Equal("BUSH", ambiguous.ArchetypeId);
     }
 
     [Theory]
@@ -198,11 +200,12 @@ public sealed class AnimatedFoliageStyleTests
         var selection = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "BUSH", "BUSH_ALIAS" };
         var styles = new Dictionary<string, AnimatedFoliageStyle>(StringComparer.Ordinal) { ["bush"] = Shrub };
 
-        ArgumentException conflict = Assert.Throws<ArgumentException>(() => CreateSnapshot(selection, styles, catalogs, meshes));
+        AnimatedFoliageStyleArgumentException conflict = Assert.Throws<AnimatedFoliageStyleArgumentException>(() => CreateSnapshot(selection, styles, catalogs, meshes));
 
         Assert.Equal("AnimatedFoliageStyles", conflict.ParamName);
-        Assert.Contains("bush_alias", conflict.Message);
-        Assert.Contains("bush", conflict.Message);
+        Assert.Equal(AnimatedFoliageStyleRefusal.SharedMeshStyleConflict, conflict.Reason);
+        Assert.Equal("bush", conflict.FirstArchetypeId);
+        Assert.Equal("bush_alias", conflict.SecondArchetypeId);
         styles["bush_alias"] = Shrub;
         Assert.True(CreateSnapshot(selection, styles, catalogs, meshes).ModelCastsShadows["bush_alias"]);
     }
@@ -210,13 +213,14 @@ public sealed class AnimatedFoliageStyleTests
     [Fact]
     public void EmptySelectionStillRejectsEveryStyle()
     {
-        ArgumentException outside = Assert.Throws<ArgumentException>(() => CreateSnapshot(
+        AnimatedFoliageStyleArgumentException outside = Assert.Throws<AnimatedFoliageStyleArgumentException>(() => CreateSnapshot(
             new HashSet<string>(StringComparer.Ordinal),
             new Dictionary<string, AnimatedFoliageStyle>(StringComparer.Ordinal) { ["tree"] = Shrub },
             TileRenderTestData.Catalogs, new Dictionary<string, IReadOnlyList<MeshHandle>>()));
 
         Assert.Equal("AnimatedFoliageStyles", outside.ParamName);
-        Assert.Contains("tree", outside.Message);
+        Assert.Equal(AnimatedFoliageStyleRefusal.StyleOutsideSelection, outside.Reason);
+        Assert.Equal("tree", outside.ArchetypeId);
     }
 
     [Fact]

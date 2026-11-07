@@ -22,7 +22,9 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         /// </para>
         /// <para>
         /// AN <c>End</c> WITHOUT A <c>Begin</c> IS REFUSED, including a second <c>End</c> on an already sealed
-        /// list, and the message says which of the two happened.
+        /// list. <see cref="GpuRecordingStateException.Reason"/> distinguishes
+        /// <see cref="GpuRecordingStateRefusal.EndWithoutRecording"/> from
+        /// <see cref="GpuRecordingStateRefusal.RecordingAlreadySealed"/>.
         /// </para>
         /// <para>
         /// A FAILED END ABANDONS THE RECORDING, including failures during rendering closure, layout restore,
@@ -37,11 +39,12 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
 
             if (!_recording)
             {
-                throw new InvalidOperationException(_sealedSlot == NoSeal
+                throw new GpuRecordingStateException(_sealedSlot == NoSeal ? GpuRecordingStateRefusal.EndWithoutRecording : GpuRecordingStateRefusal.RecordingAlreadySealed, _sealedSlot == NoSeal
                     ? "End was called on a native Vulkan command list that is not recording. Call Begin first."
                     : "End was called twice on a native Vulkan command list. The recording is already sealed and "
                         + "ready to submit, and a second vkEndCommandBuffer on a buffer in the executable state "
-                        + "is a call the driver refuses.");
+                        + "is a call the driver refuses.")
+                { Backend = GpuBackendKind.VulkanNative, Command = nameof(End) };
             }
 
             try

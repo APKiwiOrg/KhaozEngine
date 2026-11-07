@@ -80,7 +80,7 @@ went stale inside one release and `GpuBackendKindAppendAuditTests` records it.
 | M-A1 | Passes | `MTLRenderPassDescriptor` per pass with NATIVE `loadAction` and `storeAction`, and the begin DEFERRED to the first draw so a clear recorded after `SetFramebuffer` folds into `loadAction = Clear`. On Vulkan that was an adaptation of a general API. Here it is the API's own model | Both, converged |
 | M-A2 | Passes | **PER-ATTACHMENT clears. The incumbent's `colorAttachments[0]` collapse is a DEFECT, it is REACHED by shipped engine code, and it is not reproduced.** `KhaozEngine.Render3D/Rendering/ModelRenderer.BeginModelPass` clears three attachments of `ModelFB` and carries a comment describing the collapse. Kill switch `KE_METAL_CLEAR=attachment0` for the A/B, removed at gate 1 | B, A's premise refuted |
 | M-A3 | Passes | The clear-only case is reproduced DELIBERATELY: framebuffer plus clear plus `End` with no draw must still clear. The incumbent forces it at two sites (`SetFramebufferCore` and `End`) and a golden depends on it | Both, converged |
-| M-A4 | Passes | `storeAction = Store` set EXPLICITLY for colour and depth rather than left to the descriptor default. NOT `DontCare`: undefined contents are not stable across runs and the goldens require stability. **The tiler upside is larger here than the Vulkan equivalent and is RECORDED with named consumers rather than taken** (2.5) | Both, A's magnitude |
+| M-A4 | Passes | `storeAction` is explicit per attachment. Store is the default. A pass owner may declare dead colour, depth or stencil contents through `GpuAttachmentStoreActions`, mapped to `DontCare`. Only unread contents may be discarded (2.5) | Both, A's magnitude |
 | M-A5 | Passes | Any command illegal inside a render encoder (dispatch, blit, copy, mip generation, resolve) ENDS the encoder first. One invariant, one helper, one device-free test. On Vulkan that was a chosen discipline and here it is the API's rule | Both, converged |
 | M-A6 | Viewport | `SetFramebuffer` emits the full viewport and the full scissor ON A FRAMEBUFFER CHANGE ONLY, reproducing W6's identity guard exactly, and the scissor flush stays gated on the bound pipeline's `ScissorTestEnabled` the way the incumbent gates it, because that is the seam's own rasterizer state and D3D11 honours it too. `ClipSpaceYInverted` is false with no viewport trick at all | Both, converged |
 | M-A7 | Viewport | The plural `setViewports:count:` and `setScissorRects:count:` forms are used unconditionally rather than behind the incumbent's `macOS_GPUFamily1_v3` feature-set test, at a count of 1, because the seam has no multi-viewport concept. One code path and no deprecated-enum read on the hot path | B |
@@ -834,11 +834,16 @@ the Vulkan equivalent. The Metal-idiomatic draft defers depth `DontCare` on V-A6
 and does not raise the folded resolve as a candidate at all, reproducing the incumbent's standalone resolve
 encoder without arguing it.
 
-**The ruling keeps both conservative, and takes BOTH reasons rather than one.** Determinism is the reason
-depth `DontCare` cannot land: it leaves contents undefined, undefined is not stable across runs, and the
-goldens require stability on the same device. Attribution is the reason the folded resolve cannot land:
-`MTLStoreActionStoreAndMultisampleResolve` changes what the producing pass writes out, and `scene3d_hdr_msaa`
-is a committed golden in the family this phase is being measured against.
+**Depth discard is now a per-attachment owner declaration (#595).** The directional cascade's sampled result
+is its R32F colour atlas. Its separate depth and stencil planes are working storage only. No later cascade
+loads them through another encoder in unobserved rendering, captures and readbacks read the colour atlas, and every rebuilt frame clears
+the whole depth/stencil attachment before drawing. An unchanged frame reuses colour and never reads working
+depth. Undefined bytes with no reader cannot influence any output, so discarding these planes preserves
+determinism. The default remains Store for every attachment without this proof. A pass observer may
+record encoder-ending timestamp markers, so observed rendering retains working depth and stencil.
+
+The folded resolve remains separate work. `MTLStoreActionStoreAndMultisampleResolve` changes what the
+producing pass writes, and `scene3d_hdr_msaa` is a committed golden in this family.
 
 **And the magnitude is recorded rather than left implicit**, because it is what sizes the follow-ups. On a
 tile-based deferred GPU a depth `DontCare` means the depth tile is never written to device memory at all,
@@ -1610,6 +1615,13 @@ phase 3 confirmed it, and Metal gives no new reason to revisit it.
 - `Submit` encodes the timeline signal (M-F1), adds the completion handler that reads `status` and `error`
   (M-F2), and commits, all under `_submitLock`.
 
+**A drawable frame can commit before its explicit Submit (#1682).** The first drawable resolution commits
+the offscreen prefix without a timeline signal, then continues on a second buffer on the same queue. The
+frame keeps one ring segment and staging slot. The final buffer alone signals and releases them. Committed
+prefix CPU ranges are immutable through final completion. An abandoned prefix quarantines its slot rather
+than assigning a signal nothing will produce. [Frame submission](../METAL-FRAME-SUBMISSION.md) owns the
+write-path inventory, mapped-pointer rule and encoder-boundary details.
+
 **There is no command-buffer pool to reset (M-R2).** Vulkan needed `FramesInFlight` `VkCommandPool`s per list
 because a command buffer's memory is the pool's and a pool cannot be reset while its buffers are in flight.
 Metal's queue owns that allocation and hands out a fresh buffer each time, and there is no reset, no pool
@@ -1854,7 +1866,7 @@ stencil, and whether a render encoder is open.
   call in `ClearColorTargetCore` and is the behaviour a golden may depend on.
 - First draw. Build the `MTLRenderPassDescriptor` from the framebuffer: per colour attachment,
   `loadAction = Clear` with the pending value if there is one and `loadAction = Load` otherwise, and
-  `storeAction = Store` set EXPLICITLY rather than left to the descriptor default (M-A4). Depth and stencil the
+  `storeAction` set explicitly from the pass owner's per-attachment intent, defaulting to Store (M-A4). Depth and stencil the
   same, with the stencil attachment populated only when the depth format carries stencil, which is the
   incumbent's `FormatHelpers.IsStencilFormat` guard. Open the encoder, emit the viewport and scissor if marked,
   then the draw.

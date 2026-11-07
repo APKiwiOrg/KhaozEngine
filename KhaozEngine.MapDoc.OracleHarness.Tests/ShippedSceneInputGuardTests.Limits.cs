@@ -42,11 +42,11 @@ public sealed partial class ShippedSceneInputGuardTests
         var scheduler = new SceneOracleScheduler();
         using var residency = new MapRenderResidency(new(source, closure, proof, inputs.NativePolicy.Native(closure, inputs.Manifest), [window, window]),
             new SceneOracleDevice(), new(MaxActiveWindows: 1), scheduler);
-        var error = Assert.Throws<InvalidDataException>(() => ShippedSceneComparison.Complete(residency, scheduler));
+        var error = Assert.Throws<PrivateOracleDataException>(() => ShippedSceneComparison.Complete(residency, scheduler));
         Assert.Equal(new MapSceneCapacity("MaxActiveWindows", 2, 1), residency.InspectReadiness().Transition.Capacity);
-        Assert.Contains("MaxActiveWindows", error.Message);
-        Assert.Contains("requested 2", error.Message);
-        Assert.Contains("allowance 1", error.Message);
+        Assert.Equal(PrivateOracleDataRefusal.SceneReplacementRefused, error.Reason);
+        Assert.Equal(MapSceneStatus.CapacityExceeded, error.SceneStatus);
+        Assert.Equal(new MapSceneCapacity("MaxActiveWindows", 2, 1), error.Capacity);
     }
     [Fact]
     public void SceneLimits_AttestedProfileAcceptsExplicitAllowances()
@@ -118,10 +118,16 @@ public sealed partial class ShippedSceneInputGuardTests
         using var fixture = ShippedSceneGuardFixtures.Create("valid");
         var provenance = JsonNode.Parse(File.ReadAllText(fixture.Environment["KHAOZ_R2_ORACLE_PROVENANCE"]!))!;
         var manifest = provenance["comparison"]!.AsObject();
-        foreach (string invalid in new[] { "null", "{}", "{\"scene\":{}}", "{\"scene\":{},\"residency\":{},\"unknown\":1}" })
+        foreach (var (invalid, reason) in new[]
+        {
+            ("null", PrivateOracleDataRefusal.SchemaShapeInvalid),
+            ("{}", PrivateOracleDataRefusal.ValueRequired),
+            ("{\"scene\":{}}", PrivateOracleDataRefusal.ValueRequired),
+            ("{\"scene\":{},\"residency\":{},\"unknown\":1}", PrivateOracleDataRefusal.SchemaShapeInvalid),
+        })
         {
             manifest["limits"] = JsonNode.Parse(invalid);
-            Assert.Throws<InvalidDataException>(() => ShippedSceneManifest.Read(JsonSerializer.SerializeToElement(manifest)));
+            Refuses(reason, () => ShippedSceneManifest.Read(JsonSerializer.SerializeToElement(manifest)));
         }
         foreach (var invalid in InvalidSceneLimits())
         {
@@ -130,7 +136,9 @@ public sealed partial class ShippedSceneInputGuardTests
             if (value == "missing") profile[section]!.AsObject().Remove(field);
             else profile[section]![field] = JsonNode.Parse(value);
             manifest["limits"] = profile;
-            Assert.Throws<InvalidDataException>(() => ShippedSceneManifest.Read(JsonSerializer.SerializeToElement(manifest)));
+            // A missing or unknown member breaks the closed group shape. Every present invalid value is outside the domain.
+            Refuses(value == "missing" || field == "unknown" ? PrivateOracleDataRefusal.SchemaShapeInvalid : PrivateOracleDataRefusal.ValueOutsideDomain,
+                () => ShippedSceneManifest.Read(JsonSerializer.SerializeToElement(manifest)));
         }
     }
 

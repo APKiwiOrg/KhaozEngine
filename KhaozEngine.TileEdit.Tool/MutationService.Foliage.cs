@@ -98,18 +98,22 @@ public sealed partial class MutationService
     static TileFoliageLayer RequireLayer(TileWorldDocument doc, string id)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(id);
-        return doc.GetFoliageLayer(id) ?? throw new TileWorldException($"foliage layer '{id}' does not exist");
+        return doc.GetFoliageLayer(id) ?? throw new TileWorldException(TileWorldRefusal.FoliageLayerMissing,
+            $"foliage layer '{id}' does not exist")
+        { LayerId = id };
     }
 
     static void ValidateCatalogs(TileWorldCatalogs catalogs, TileFoliageLayer layer)
     {
         foreach (TileFoliageArchetype archetype in layer.Archetypes)
             if (catalogs.Archetype(archetype.Id) is null)
-                throw new TileWorldException(
-                    $"foliage layer '{layer.Id}' references archetype '{archetype.Id}', which is not in the catalog");
+                throw new TileWorldException(TileWorldRefusal.FoliageCatalogArchetypeMissing,
+                    $"foliage layer '{layer.Id}' references archetype '{archetype.Id}', which is not in the catalog")
+                { LayerId = layer.Id, ArchetypeId = archetype.Id };
         foreach (ushort underlay in layer.AllowedUnderlays)
             if (catalogs.Material(underlay) is null)
-                throw new TileWorldException(
-                    $"foliage layer '{layer.Id}' allows underlay {underlay}, which is not in the catalog");
+                throw new TileWorldException(TileWorldRefusal.FoliageCatalogUnderlayMissing,
+                    $"foliage layer '{layer.Id}' allows underlay {underlay}, which is not in the catalog")
+                { LayerId = layer.Id, MaterialId = underlay };
     }
 }

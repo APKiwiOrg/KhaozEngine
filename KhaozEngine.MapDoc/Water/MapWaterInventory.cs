@@ -13,6 +13,8 @@ internal sealed class MapWaterInventory
     readonly HashSet<object> _seen = new(ReferenceEqualityComparer.Instance);
     /// <summary>Publishes without a copy while keeping spare backing slots visible to inventory.</summary>
     internal static IReadOnlyList<T> ReadOnly<T>(List<T> rows) => new RetainedRows<T>(rows);
+    internal static int BackingCapacityForTests<T>(IReadOnlyList<T> rows) => rows is RetainedRows<T> retained
+        ? retained.Capacity : throw new System.ArgumentException("Expected retained publication rows.", nameof(rows));
     internal long Pieces(IReadOnlyList<MapOccupiedPiece> pieces) => checked(Rows(pieces, 8) + pieces.Sum(Piece));
     long Rows<T>(IReadOnlyList<T> rows, int element) => _seen.Add(rows)
         ? checked((long)element * (rows is RetainedRows<T> retained ? retained.Capacity : rows.Count)) : 0;

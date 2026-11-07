@@ -94,8 +94,9 @@ public sealed class MapAssetShapes : IDisposable
         using var preparation = current?.BeginPreparation();
         MapResolvedResource resource = closure.GetResource(resourceId);
         if (resource.Kind != kind)
-            throw new MapDocumentException(
-                $"Asset '{assetId}' requires {kind} resource '{resourceId}', which is {resource.Kind}.");
+            throw new MapDocumentException(MapDocumentRefusal.ReferenceKindMismatch,
+                $"Asset '{assetId}' requires {kind} resource '{resourceId}', which is {resource.Kind}.")
+            { AssetId = assetId, ResourceId = resourceId, ExpectedResourceKind = kind, ActualResourceKind = resource.Kind };
 
         if (MapSceneAdmission.Current is { } admission)
         {
@@ -116,12 +117,14 @@ public sealed class MapAssetShapes : IDisposable
             }
             catch (Exception ex) when (ex is InvalidOperationException or IOException or ArgumentException or OverflowException)
             {
-                throw new MapDocumentException(
-                    $"Asset '{assetId}' collision payload '{resourceId}' cannot be read: {ex.Message}", ex);
+                throw new MapDocumentException(MapDocumentRefusal.AssetPayloadUnreadable,
+                    $"Asset '{assetId}' collision payload '{resourceId}' cannot be read: {ex.Message}", ex)
+                { AssetId = assetId, ResourceId = resourceId, ExpectedHash = resource.Reference.Sha256 };
             }
             if (stream.Position != stream.Length)
-                throw new MapDocumentException(
-                    $"Asset '{assetId}' collision payload '{resourceId}' has {stream.Length - stream.Position} bytes after its shape.");
+                throw new MapDocumentException(MapDocumentRefusal.AssetCollisionTrailingBytes,
+                    $"Asset '{assetId}' collision payload '{resourceId}' has {stream.Length - stream.Position} bytes after its shape.")
+                { AssetId = assetId, ResourceId = resourceId, ActualByteCount = stream.Length - stream.Position };
         }
 
         RefuseUninstallable(shape, assetId, resourceId);
@@ -133,14 +136,16 @@ public sealed class MapAssetShapes : IDisposable
     {
         // An empty point set has no extent, so it must never reach bounds or envelope construction.
         if (shape is ConvexHullShape { Points.Length: 0 } or TriangleMeshShape { Vertices.Length: 0 })
-            throw new MapDocumentException(
-                $"Asset '{assetId}' collision payload '{resourceId}' has a {shape.GetType().Name} with no points.");
+            throw new MapDocumentException(MapDocumentRefusal.AssetCollisionEmptyPoints,
+                $"Asset '{assetId}' collision payload '{resourceId}' has a {shape.GetType().Name} with no points.")
+            { AssetId = assetId, ResourceId = resourceId, ShapeType = shape.GetType() };
         if (shape is not CompoundShape compound) return;
         foreach (CompoundChild child in compound.Children)
         {
             if (child.Shape is TriangleMeshShape)
-                throw new MapDocumentException(
-                    $"Asset '{assetId}' resource '{resourceId}' places a triangle mesh inside a compound, which the physics backend cannot install.");
+                throw new MapDocumentException(MapDocumentRefusal.AssetCollisionNestedMesh,
+                    $"Asset '{assetId}' resource '{resourceId}' places a triangle mesh inside a compound, which the physics backend cannot install.")
+                { AssetId = assetId, ResourceId = resourceId };
             RefuseUninstallable(child.Shape, assetId, resourceId);
         }
     }

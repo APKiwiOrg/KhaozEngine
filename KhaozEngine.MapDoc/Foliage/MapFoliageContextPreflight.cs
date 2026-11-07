@@ -30,6 +30,9 @@ public sealed record MapFoliageContextWork(long SourceUtf8Bytes, long ChunkDescr
 public sealed record MapFoliageContextMeasure(MapFoliageStatus Status, MapFoliageContextWork Work)
 {
     public Scene.MapSceneCapacity? Capacity { get; init; }
+    /// <summary>The concrete rule behind a refused preflight. Complete has no finding.</summary>
+    public MapDocumentFinding? Finding { get; init; }
+    internal MapDocumentException? Cause { get; init; }
 }
 
 /// <summary>Counts a document's context demand from metadata alone, refusing before expansion, cloning or staging.
@@ -56,43 +59,79 @@ internal static class MapFoliageContextPreflight
         ArgumentNullException.ThrowIfNull(assets);
         ArgumentNullException.ThrowIfNull(limits);
         if (limits.MaxSourceUtf8Bytes < 0 || limits.MaxChunkDescriptors < 0 || limits.MaxPlacements < 0 ||
-            limits.MaxSurfacePatches < 0 || limits.MaxPaintTargets < 0) throw new ArgumentOutOfRangeException(nameof(limits));
+            limits.MaxSurfacePatches < 0 || limits.MaxPaintTargets < 0)
+        {
+            string field = limits.MaxSourceUtf8Bytes < 0 ? "MaxSourceUtf8Bytes" : limits.MaxChunkDescriptors < 0 ? "MaxChunkDescriptors" :
+                limits.MaxPlacements < 0 ? "MaxPlacements" : limits.MaxSurfacePatches < 0 ? "MaxSurfacePatches" : "MaxPaintTargets";
+            long actual = field switch
+            {
+                "MaxSourceUtf8Bytes" => limits.MaxSourceUtf8Bytes,
+                "MaxChunkDescriptors" => limits.MaxChunkDescriptors,
+                "MaxPlacements" => limits.MaxPlacements,
+                "MaxSurfacePatches" => limits.MaxSurfacePatches,
+                _ => limits.MaxPaintTargets
+            };
+            throw new MapFoliageContextArgumentException(MapDocumentRefusal.ValueOutsideRange, nameof(limits))
+            { FieldPath = field, ActualInteger = actual, MinimumInteger = 0 };
+        }
         using var demandScope = DemandDiagnostics.Enter(document, "MapFoliageContextPreflight");
         var work = new MapFoliageContextWork(0, 0, 0, 0, 0, 0, 0);
         if (IsPartial(document) || set?.Layers.Any(l => l.Chunks.Count != l.ChunkDigests.Count) == true)
-            return new(MapFoliageStatus.PartialResidency, work);
+            return Refusal(MapFoliageStatus.PartialResidency, new(MapDocumentRefusal.CompleteDocumentRequired,
+                "foliage context requires complete residency")
+            { DocumentId = document.Id, Operation = "FoliageContext" });
 
         work = work with { ChunkDescriptors = set?.Layers.Sum(l => (long)l.ChunkDigests.Count) ?? 0 };
-        if (DemandDiagnostics.Check(document, "MapFoliageContextPreflight.MaxChunkDescriptors.1", "MaxChunkDescriptors", 0, work.ChunkDescriptors, limits.MaxChunkDescriptors, work.ChunkDescriptors > limits.MaxChunkDescriptors, CapacityDemandLifetime.Inventory, allowanceSource: limits)) return new(MapFoliageStatus.CapacityExceeded, work)
-        { Capacity = new(nameof(MapFoliageContextLimits.MaxChunkDescriptors), work.ChunkDescriptors, limits.MaxChunkDescriptors) };
+        if (DemandDiagnostics.Check(document, "MapFoliageContextPreflight.MaxChunkDescriptors.1", "MaxChunkDescriptors", 0, work.ChunkDescriptors, limits.MaxChunkDescriptors, work.ChunkDescriptors > limits.MaxChunkDescriptors, CapacityDemandLifetime.Inventory, allowanceSource: limits)) return Capacity(nameof(MapFoliageContextLimits.MaxChunkDescriptors), work.ChunkDescriptors, limits.MaxChunkDescriptors);
 
         var source = new SourceCharge(limits.MaxSourceUtf8Bytes);
         if (set is not null) Charge(source, set);
         work = work with { SourceUtf8Bytes = source.Bytes };
-        if (DemandDiagnostics.Check(source, "MapFoliageContextPreflight.SourceBytes", nameof(MapFoliageContextLimits.MaxSourceUtf8Bytes), 0, source.Bytes, limits.MaxSourceUtf8Bytes, source.Exceeded, allowanceSource: limits)) return new(MapFoliageStatus.CapacityExceeded, work)
-        { Capacity = new(nameof(MapFoliageContextLimits.MaxSourceUtf8Bytes), work.SourceUtf8Bytes, limits.MaxSourceUtf8Bytes) };
+        if (DemandDiagnostics.Check(source, "MapFoliageContextPreflight.SourceBytes", nameof(MapFoliageContextLimits.MaxSourceUtf8Bytes), 0, source.Bytes, limits.MaxSourceUtf8Bytes, source.Exceeded, allowanceSource: limits)) return Capacity(nameof(MapFoliageContextLimits.MaxSourceUtf8Bytes), work.SourceUtf8Bytes, limits.MaxSourceUtf8Bytes);
 
         work = work with { Placements = PlacementDemand(document, assets) };
-        if (DemandDiagnostics.Check(document, "MapFoliageContextPreflight.MaxPlacements.1", "MaxPlacements", 0, work.Placements, limits.MaxPlacements, work.Placements > limits.MaxPlacements, CapacityDemandLifetime.Inventory, allowanceSource: limits)) return new(MapFoliageStatus.CapacityExceeded, work)
-        { Capacity = new(nameof(MapFoliageContextLimits.MaxPlacements), work.Placements, limits.MaxPlacements) };
+        if (DemandDiagnostics.Check(document, "MapFoliageContextPreflight.MaxPlacements.1", "MaxPlacements", 0, work.Placements, limits.MaxPlacements, work.Placements > limits.MaxPlacements, CapacityDemandLifetime.Inventory, allowanceSource: limits)) return Capacity(nameof(MapFoliageContextLimits.MaxPlacements), work.Placements, limits.MaxPlacements);
 
         work = work with { PaintTargets = PaintTargetDemand(document, assets) };
-        if (DemandDiagnostics.Check(document, "MapFoliageContextPreflight.MaxPaintTargets.1", "MaxPaintTargets", 0, work.PaintTargets, limits.MaxPaintTargets, work.PaintTargets > limits.MaxPaintTargets, CapacityDemandLifetime.Inventory, allowanceSource: limits)) return new(MapFoliageStatus.CapacityExceeded, work)
-        { Capacity = new(nameof(MapFoliageContextLimits.MaxPaintTargets), work.PaintTargets, limits.MaxPaintTargets) };
+        if (DemandDiagnostics.Check(document, "MapFoliageContextPreflight.MaxPaintTargets.1", "MaxPaintTargets", 0, work.PaintTargets, limits.MaxPaintTargets, work.PaintTargets > limits.MaxPaintTargets, CapacityDemandLifetime.Inventory, allowanceSource: limits)) return Capacity(nameof(MapFoliageContextLimits.MaxPaintTargets), work.PaintTargets, limits.MaxPaintTargets);
 
         MapPrefabExpansionWork expansion;
         try { expansion = MapPrefabPreflight.Count(document, assets, expansionLimits ?? new()); }
         catch (MapDocumentException error)
         {
-            bool capacity = error.Message.Contains("limit exceeded", StringComparison.Ordinal) ||
-                error.Message.Contains("overflow", StringComparison.Ordinal);
-            return new(capacity ? MapFoliageStatus.CapacityExceeded : MapFoliageStatus.Invalid, work);
+            bool capacity = error is
+            {
+                Reason: MapDocumentRefusal.WorkCapacityExceeded,
+                Operation: nameof(MapPrefabPreflight.Count) or nameof(MapPrefabPreflight.AddProduct)
+            } ||
+                error.Reason is null && (error.Message.Contains("limit exceeded", StringComparison.Ordinal) ||
+                    error.Message.Contains("overflow", StringComparison.Ordinal));
+            return Refusal(capacity ? MapFoliageStatus.CapacityExceeded : MapFoliageStatus.Invalid,
+                MapDocumentFinding.FromException(error)) with
+            { Cause = error };
         }
-        catch (KeyNotFoundException) { return new(MapFoliageStatus.Invalid, work); }
+        catch (KeyNotFoundException)
+        {
+            return Refusal(MapFoliageStatus.Invalid, new(MapDocumentRefusal.ReferenceMissing,
+            "foliage context references an unavailable asset")
+            { DocumentId = document.Id, SubjectKind = "foliage context asset" });
+        }
         work = work with { SurfacePatches = expansion.Patches };
-        if (DemandDiagnostics.Check(document, "MapFoliageContextPreflight.MaxSurfacePatches.1", "MaxSurfacePatches", 0, work.SurfacePatches, limits.MaxSurfacePatches, work.SurfacePatches > limits.MaxSurfacePatches, CapacityDemandLifetime.Inventory, allowanceSource: limits)) return new(MapFoliageStatus.CapacityExceeded, work)
-        { Capacity = new(nameof(MapFoliageContextLimits.MaxSurfacePatches), work.SurfacePatches, limits.MaxSurfacePatches) };
+        if (DemandDiagnostics.Check(document, "MapFoliageContextPreflight.MaxSurfacePatches.1", "MaxSurfacePatches", 0, work.SurfacePatches, limits.MaxSurfacePatches, work.SurfacePatches > limits.MaxSurfacePatches, CapacityDemandLifetime.Inventory, allowanceSource: limits)) return Capacity(nameof(MapFoliageContextLimits.MaxSurfacePatches), work.SurfacePatches, limits.MaxSurfacePatches);
         return new(MapFoliageStatus.Complete, work);
+
+        MapFoliageContextMeasure Refusal(MapFoliageStatus status, MapDocumentFinding? finding) =>
+            new(status, work) { Finding = finding is null ? null : finding with { FoliageStatus = status } };
+        MapFoliageContextMeasure Capacity(string budget, long actual, long limit) => Refusal(MapFoliageStatus.CapacityExceeded,
+            new(MapDocumentRefusal.WorkCapacityExceeded, "foliage context budget exceeded")
+            {
+                Budget = budget,
+                ActualCount = actual,
+                ActualByteCount = budget == "MaxSourceUtf8Bytes" ? actual : null,
+                Limit = limit,
+                DocumentId = document.Id
+            }) with
+        { Capacity = new(budget, actual, limit) };
     }
 
     /// <summary>True when any tile, surface page or foliage chunk the document advertises is not resident.</summary>

@@ -11,6 +11,7 @@ internal sealed class MapFoliageSharedMetadata
     readonly object _gate = new();
     readonly MapFoliageRetainedInventory _inventory = new();
     Dictionary<object, int>? _references;
+    internal int IndexCapacityForTests { get { lock (_gate) return _references?.EnsureCapacity(0) ?? 0; } }
     long _directBytes;
     bool _disposed;
     internal bool Disposed { get { lock (_gate) return _disposed; } }

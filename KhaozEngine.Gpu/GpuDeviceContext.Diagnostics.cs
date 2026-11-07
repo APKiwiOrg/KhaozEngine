@@ -8,6 +8,9 @@ public sealed record GpuDeviceCreationAttempt(GpuDeviceContext? Context, Immutab
 
 public sealed partial class GpuDeviceContext
 {
+    /// <summary>RendererPerfColdLifecycleTests verifies creation, adoption and disposal hold the process-wide gate.</summary>
+    internal static bool LifecycleGateHeldForTests => System.Threading.Monitor.IsEntered(_lifecycleGate);
+
     /// <summary>Resolve a backend's immutable settings without creating a native device.</summary>
     public static IGpuHeadlessDiagnosticSettings ResolveHeadlessDiagnosticSettings(GpuBackendKind backend,
         GpuPipelineDiagnosticRequest request)

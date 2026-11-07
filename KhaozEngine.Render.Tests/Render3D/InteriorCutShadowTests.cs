@@ -1,7 +1,6 @@
 using System;
 using System.Linq;
 using System.Numerics;
-using System.Reflection;
 using System.Security.Cryptography;
 using System.Text;
 using KhaozEngine.Gpu;
@@ -81,15 +80,18 @@ public sealed class InteriorCutShadowTests
             "09b5e48e5a63e3af140422a6bc3cfccb2bd7c4e8b94706dc9f234ee57d153b31",
             "0f31914686c170254fc8841b55be8a2a2219f437b19e60bdc0044210c9d0d550"];
         int index = 0;
-        foreach (var (vertex, name, layouts) in new[]
+        foreach (var (vertex, fragment, name, layouts) in new[]
         {
-            (ShaderSources.SkinnedShadowDepthDissolveVert, "SkinnedShadowDepthDissolveFrag", 2),
-            (ShaderSources.SkinnedShadowDepthDissolveVert, "SkinnedShadowDepthDissolveInvertedFrag", 2),
-            (ShaderSources.PointShadowSkinnedDissolveVert, "PointShadowSkinnedDissolveFrag", 3),
-            (ShaderSources.PointShadowSkinnedDissolveVert, "PointShadowSkinnedDissolveInvertedFrag", 3),
+            (ShaderSources.SkinnedShadowDepthDissolveVert, ShaderSources.SkinnedShadowDepthDissolveFrag,
+                nameof(ShaderSources.SkinnedShadowDepthDissolveFrag), 2),
+            (ShaderSources.SkinnedShadowDepthDissolveVert, ShaderSources.SkinnedShadowDepthDissolveInvertedFrag,
+                nameof(ShaderSources.SkinnedShadowDepthDissolveInvertedFrag), 2),
+            (ShaderSources.PointShadowSkinnedDissolveVert, ShaderSources.PointShadowSkinnedDissolveFrag,
+                nameof(ShaderSources.PointShadowSkinnedDissolveFrag), 3),
+            (ShaderSources.PointShadowSkinnedDissolveVert, ShaderSources.PointShadowSkinnedDissolveInvertedFrag,
+                nameof(ShaderSources.PointShadowSkinnedDissolveInvertedFrag), 3),
         })
         {
-            string fragment = Constant(name);
             Assert.DoesNotContain("interiorCut", fragment);
             Assert.Equal(hashes[index++], Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(fragment.ReplaceLineEndings("\n")))));
             var pair = SpirvCrossCompile.GlslPairToHlsl(vertex, fragment);
@@ -101,9 +103,10 @@ public sealed class InteriorCutShadowTests
         stage.Frame();
         stage.Frame();
         var pipelines = ((FakeGpuResourceFactory)stage.Device.Factory).GraphicsPipelines;
-        foreach (string name in new[] { "SkinnedShadowDepthDissolveFrag", "SkinnedShadowDepthDissolveInvertedFrag",
-            "PointShadowSkinnedDissolveFrag", "PointShadowSkinnedDissolveInvertedFrag" })
-            Assert.Contains(pipelines, pipeline => pipeline.FragmentGlsl == Constant(name));
+        foreach (string fragment in new[] { ShaderSources.SkinnedShadowDepthDissolveFrag,
+            ShaderSources.SkinnedShadowDepthDissolveInvertedFrag, ShaderSources.PointShadowSkinnedDissolveFrag,
+            ShaderSources.PointShadowSkinnedDissolveInvertedFrag })
+            Assert.Contains(pipelines, pipeline => pipeline.FragmentGlsl == fragment);
     }
 
     [Fact]
@@ -210,9 +213,6 @@ public sealed class InteriorCutShadowTests
         (ShaderSources.PointShadowRigidDissolveVert, ShaderSources.PointShadowRigidDissolveFrag, 1),
         (ShaderSources.PointShadowRigidDissolveVert, ShaderSources.PointShadowRigidDissolveInvertedFrag, 1),
     ];
-
-    internal static string Constant(string name) => (string)Assert.IsAssignableFrom<FieldInfo>(
-        typeof(ShaderSources).GetField(name, BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic)).GetRawConstantValue()!;
 
     internal static InteriorHeightField Field(float minimum = -2, int cells = 32) => InteriorHeightFieldBuilder.Build([new InteriorVolume
     {

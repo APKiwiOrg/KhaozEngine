@@ -20,10 +20,10 @@ namespace KhaozEngine.Tests.NetWorld;
 /// what the codec wrote at each generation, taken from the generation notes on
 /// <see cref="MoveProtocol.WireProtocolVersion"/> (3 added <c>Swimming</c>, 4 <c>TeleportEpoch</c>, 5
 /// <c>ClimbRateQ</c>, 6 <c>SpeedScaleQ</c>, 7 the two horizontal-velocity shorts, 10 <c>FacingYawQ</c>, 11 the
-/// commitment, and 12 moved the two feel timers out to <see cref="MovementOwnerState"/>). Three properties tie that
-/// ladder to reality: its newest rung is compared BYTE FOR BYTE against the live codec, each rung below the owner
-/// split is a prefix of the next, which is what licenses the zero-padding widening in <c>CellBlobRewriter</c>, and
-/// the split rung is exactly the rung below it with the timer bytes cut out, which is what licenses the split.
+/// commitment, 12 moved the timers to <see cref="MovementOwnerState"/>, and 15 widens speed and appends ground state).
+/// The newest rung is compared byte-for-byte against the live codec. Append-only rungs are prefixes of the next,
+/// and the split rung removes exactly the timer bytes. The fine-speed rewrite has independent historical fixtures
+/// in MovementPayloadRewriteTests.
 /// </para>
 /// </summary>
 public class BuiltinBlobLayoutTests
@@ -41,7 +41,12 @@ public class BuiltinBlobLayoutTests
         HorizontalVelocityXQ = 1000,
         HorizontalVelocityZQ = -2000,
         FacingYawQ = 12345,
-        Commitment = new MovementCommitment(7u, new Vector2(3f, 4f), 11f, 9f, 17f, 0.2f, 0.1f, 4f),
+        Commitment = new MovementCommitment(7u, new Vector2(3f, 4f), 11f, 9f, 17f, 0.2f, 0.1f, 4f) with
+        {
+            Kind = MovementCommitmentKind.Ground,
+            DistanceRemaining = 13.5f,
+            ConsecutiveBlockedTicks = 2,
+        },
     };
 
     private static readonly MovementOwnerState SampleOwner = new() { TimeSinceGrounded = 0.75f, JumpBufferRemaining = 0.125f };
@@ -71,6 +76,9 @@ public class BuiltinBlobLayoutTests
     [InlineData(10)]
     [InlineData(11)]
     [InlineData(12)]
+    [InlineData(13)]
+    [InlineData(14)]
+    [InlineData(15)]
     public void MovementPayloadLength_MatchesTheCodecAtThatGeneration(int generation)
     {
         Assert.Equal(CellBlobFixtures.Movement(generation, Sample(), SampleOwner).Length,
@@ -87,6 +95,8 @@ public class BuiltinBlobLayoutTests
     [Fact]
     public void MovementTable_NewestRow_IsTheLiveCodecsOwnPayload()
     {
+        Assert.Equal(15, MoveProtocol.WireProtocolVersion);
+        Assert.Equal(64, BuiltinBlobLayout.MovementPayloadLength(15));
         MovementState m = Sample();
         byte[] live = LivePayload(m);
 
@@ -130,7 +140,8 @@ public class BuiltinBlobLayoutTests
     /// Every generation's encoding is a PREFIX of the next one's on each side of the owner split: the codec only
     /// appended there. That is what makes bringing an old payload forward a matter of trailing bytes rather than a
     /// per-generation rewrite, so if it ever stops holding, the widening in <c>CellBlobRewriter</c> stops being
-    /// correct and needs a real case for the generation that broke it. The split generation itself is pinned by
+    /// correct and needs an explicit rewrite. Generation 15 widens speed in place and is covered by
+    /// MovementPayloadRewriteTests. The split generation itself is pinned by
     /// <see cref="TheOwnerSplit_CutsExactlyTheTimerBytes"/>.
     /// </summary>
     [Fact]
@@ -139,7 +150,7 @@ public class BuiltinBlobLayoutTests
         MovementState m = Sample();
         for (int g = BuiltinBlobLayout.OldestKnownWireGeneration; g < MoveProtocol.WireProtocolVersion; g++)
         {
-            if (g + 1 == BuiltinBlobLayout.MovementOwnerWireGeneration) continue;
+            if (g + 1 == BuiltinBlobLayout.MovementOwnerWireGeneration || g + 1 == 15) continue;
             byte[] older = CellBlobFixtures.Movement(g, m, SampleOwner);
             byte[] newer = CellBlobFixtures.Movement(g + 1, m, SampleOwner);
             Assert.True(older.Length <= newer.Length, $"generation {g + 1} shrank the movement payload");

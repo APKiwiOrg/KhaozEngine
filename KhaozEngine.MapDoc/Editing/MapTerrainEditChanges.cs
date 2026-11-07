@@ -141,14 +141,20 @@ internal static class MapTerrainEditChanges
                 MapSurfaceRef surface = set.Refs.Single(s => s.Id == key.SurfaceId);
                 foreach (MapExactPoint point in new MapBoundarySurface(surface, patch).Vertices.Values) Add(point);
                 IEnumerable<MapRecordRef> chains = patch.Records.OfType<MapWallStrip>().SelectMany(s => new[] { s.LowerChain, s.UpperChain });
-                IEnumerable<MapBoundaryChain> boundaries = patch.Records.OfType<MapBoundaryChain>()
-                    .Concat(chains.Select(r => set.TryGetRecord(r, out MapTopologyRecord? record) ? record as MapBoundaryChain : null)
-                        .OfType<MapBoundaryChain>());
-                foreach (MapBoundaryChain chain in boundaries)
+                foreach (var (chain, reference) in Boundaries())
                 {
                     MapChainResolution resolution = MapBoundaryGeometry.ResolveChain(chain, view);
-                    if (resolution.Status != MapResolveStatus.Resolved) throw new MapDocumentException(resolution.Detail!);
+                    if (resolution.Status != MapResolveStatus.Resolved) throw resolution.Refuse(resolution.Detail!, reference);
                     foreach (MapExactPoint point in resolution.Points) Add(point);
+                }
+
+                IEnumerable<(MapBoundaryChain Chain, MapRecordRef Reference)> Boundaries()
+                {
+                    foreach (MapBoundaryChain chain in patch.Records.OfType<MapBoundaryChain>())
+                        yield return (chain, new(chain.Id, key));
+                    foreach (MapRecordRef reference in chains)
+                        if (set.TryGetRecord(reference, out MapTopologyRecord? record) && record is MapBoundaryChain chain)
+                            yield return (chain, reference);
                 }
             }
         return bounds;

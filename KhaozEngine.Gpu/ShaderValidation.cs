@@ -67,12 +67,10 @@ namespace KhaozEngine.Gpu
         /// </summary>
         /// <param name="vertexGlsl">The vertex shader source, GLSL <c>#version 450</c>.</param>
         /// <param name="fragmentGlsl">The fragment shader source, GLSL <c>#version 450</c>.</param>
-        /// <param name="label">Optional name for the pair, included in any error message so a failure points at the
-        /// offending shader.</param>
+        /// <param name="label">Optional name for the pair, carried in ShaderValidationException.Label.</param>
         /// <exception cref="ShaderValidationException">A source failed to compile to SPIR-V, the pair failed to
         /// cross-compile to one of the backend targets, or the Metal emission's binding order disagrees with the
-        /// resource layout's (see <see cref="Internal.MslBindingOrder"/>). The message names the label and the
-        /// failing stage/target.</exception>
+        /// resource layout's (see <see cref="Internal.MslBindingOrder"/>). Reason, Label, Stage and Target identify the refusal.</exception>
         public static void ValidatePair(string vertexGlsl, string fragmentGlsl, string? label = null)
         {
             if (vertexGlsl is null) throw new ArgumentNullException(nameof(vertexGlsl));
@@ -106,9 +104,9 @@ namespace KhaozEngine.Gpu
         /// </summary>
         /// <param name="computeGlsl">The compute shader source, GLSL <c>#version 450</c>, with a
         /// <c>layout(local_size_x = ...) in;</c> workgroup declaration.</param>
-        /// <param name="label">Optional name for the shader, included in any error message.</param>
+        /// <param name="label">Optional name for the shader, carried in ShaderValidationException.Label.</param>
         /// <exception cref="ShaderValidationException">The source failed to compile to SPIR-V, or failed to
-        /// cross-compile to one of the backend targets. The message names the label and the failing stage/target.</exception>
+        /// cross-compile to one of the backend targets. Reason, Label, Stage and Target identify the refusal.</exception>
         public static void ValidateCompute(string computeGlsl, string? label = null)
         {
             if (computeGlsl is null) throw new ArgumentNullException(nameof(computeGlsl));
@@ -162,7 +160,7 @@ namespace KhaozEngine.Gpu
         /// first.
         /// </para>
         /// </summary>
-        static void CheckMslBufferSlots(CrossCompiledCompute result, string tag)
+        internal static void CheckMslBufferSlots(CrossCompiledCompute result, string tag)
         {
             string[] declared = BufferKindsFromReflection(result);
             string[] emitted = BufferKindsFromEntryPoint(result.ComputeSource);
@@ -171,13 +169,19 @@ namespace KhaozEngine.Gpu
             for (int i = 0; i < declared.Length; i++)
             {
                 if (declared[i] == emitted[i]) continue;
-                throw new ShaderValidationException(
+                throw new ShaderValidationException(ShaderValidationRefusal.MetalBufferKindOrderMismatch,
                     $"{tag}: the Metal entry point binds a {emitted[i]} buffer at slot {i}, but the resource " +
                     $"layout puts a {declared[i]} buffer there. Metal buffer indices are assigned in " +
                     "first-reference order while the resource layout is counted in binding order, so this binds " +
                     "the wrong resource to each slot on Metal ONLY, and silently. Make the first reference to " +
                     "each resource happen in binding order - hoist a first touch into main when a helper function " +
-                    "reaches a later binding first.");
+                    "reaches a later binding first.")
+                {
+                    Label = tag,
+                    Slot = i,
+                    DeclaredBufferKind = declared[i],
+                    EmittedKind = emitted[i],
+                };
             }
         }
 
@@ -246,18 +250,4 @@ namespace KhaozEngine.Gpu
             => Internal.SpirvFrontEnd.ToSpirv(glsl, stage, tag);
     }
 
-    /// <summary>
-    /// Thrown by <see cref="ShaderValidation.ValidatePair(string, string, string?)"/> or
-    /// <see cref="ShaderValidation.ValidateCompute(string, string?)"/> when a shader source fails to compile to
-    /// SPIR-V or fails to cross-compile to a backend target. The message names the shader label and the failing
-    /// stage or target.
-    /// </summary>
-    public sealed class ShaderValidationException : Exception
-    {
-        /// <summary>Creates the exception with the given message.</summary>
-        public ShaderValidationException(string message) : base(message) { }
-
-        /// <summary>Creates the exception with the given message and the underlying compile failure.</summary>
-        public ShaderValidationException(string message, Exception inner) : base(message, inner) { }
-    }
 }

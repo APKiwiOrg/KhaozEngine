@@ -61,7 +61,10 @@ public static class GroundMaterialSteepRules
 {
     /// <summary>What is wrong with <paramref name="material"/>'s steep companion, or null when it has none or it
     /// is sound. <paramref name="catalogs"/> is the catalog the companion must resolve in.</summary>
-    public static string? Problem(GroundMaterial material, TileWorldCatalogs catalogs)
+    public static string? Problem(GroundMaterial material, TileWorldCatalogs catalogs) =>
+        FindProblem(material, catalogs)?.Message;
+
+    static GroundMaterialSteepProblem? FindProblem(GroundMaterial material, TileWorldCatalogs catalogs)
     {
         ArgumentNullException.ThrowIfNull(material);
         ArgumentNullException.ThrowIfNull(catalogs);
@@ -69,41 +72,79 @@ public static class GroundMaterialSteepRules
 
         string at = $"material {material.Id} ('{material.Name}') steep";
         if (steep.Material == material.Id)
-            return $"{at} names the material itself. A companion has to be another material.";
+            return new(TileWorldRefusal.SteepSelfReference,
+                $"{at} names the material itself. A companion has to be another material.")
+            { CompanionMaterialId = steep.Material };
         GroundMaterial? companion = catalogs.Material(steep.Material);
         if (companion is null)
-            return $"{at} names material {steep.Material}, which is not in the same catalog.";
+            return new(TileWorldRefusal.SteepCompanionMissing,
+                $"{at} names material {steep.Material}, which is not in the same catalog.")
+            { CompanionMaterialId = steep.Material };
         if (companion.Kind == GroundMaterialKind.Water)
-            return $"{at} names material {steep.Material} ('{companion.Name}'), which is Water. A steep companion must be ground.";
+            return new(TileWorldRefusal.SteepCompanionWater,
+                $"{at} names material {steep.Material} ('{companion.Name}'), which is Water. A steep companion must be ground.")
+            { CompanionMaterialId = steep.Material, CompanionMaterialName = companion.Name };
 
         float from = steep.ResolvedFromDegrees;
         float to = steep.ResolvedToDegrees;
         if (!InsideRightAngle(from))
-            return $"{at} fromDegrees {GroundMaterialSteep.Degrees(from)} is outside (0, 90).";
+            return new(TileWorldRefusal.SteepFromOutsideRightAngle,
+                $"{at} fromDegrees {GroundMaterialSteep.Degrees(from)} is outside (0, 90).")
+            { FromDegrees = from, ToDegrees = to, Field = "fromDegrees" };
         if (!InsideRightAngle(to))
-            return $"{at} toDegrees {GroundMaterialSteep.Degrees(to)} is outside (0, 90).";
+            return new(TileWorldRefusal.SteepToOutsideRightAngle,
+                $"{at} toDegrees {GroundMaterialSteep.Degrees(to)} is outside (0, 90).")
+            { FromDegrees = from, ToDegrees = to, Field = "toDegrees" };
         if (!(from < to))
-            return $"{at} fromDegrees {GroundMaterialSteep.Degrees(from)}{DefaultNote(steep.FromDegrees)} is not below " +
-                $"toDegrees {GroundMaterialSteep.Degrees(to)}{DefaultNote(steep.ToDegrees)}.";
+            return new(TileWorldRefusal.SteepBandUnordered,
+                $"{at} fromDegrees {GroundMaterialSteep.Degrees(from)}{DefaultNote(steep.FromDegrees)} is not below " +
+                $"toDegrees {GroundMaterialSteep.Degrees(to)}{DefaultNote(steep.ToDegrees)}.")
+            {
+                FromDegrees = from,
+                ToDegrees = to,
+                FromIsDefault = steep.FromDegrees is null,
+                ToIsDefault = steep.ToDegrees is null,
+            };
         // The renderer blends on the cosines of the two ends, so a band they cannot tell apart has no blend at all.
         // The expression is the renderer's own (TileGroundSteepShading in Render3D), in plain float maths so this
         // package takes no render dependency.
         if (!(CosOf(to) < CosOf(from)))
-            return $"{at} band {GroundMaterialSteep.Degrees(from)} to {GroundMaterialSteep.Degrees(to)} degrees is too " +
-                "narrow to render: both ends have the same cosine in single precision. Widen the band.";
+            return new(TileWorldRefusal.SteepCosinesCollapsed,
+                $"{at} band {GroundMaterialSteep.Degrees(from)} to {GroundMaterialSteep.Degrees(to)} degrees is too " +
+                "narrow to render: both ends have the same cosine in single precision. Widen the band.")
+            { FromDegrees = from, ToDegrees = to };
         return null;
     }
 
-    /// <summary>Throws on the first material in <paramref name="catalogs"/> whose companion is unsound, naming
-    /// <paramref name="source"/>. Materials are checked in ascending id order, so the error is stable.</summary>
+    /// <summary>Throws <see cref="TileWorldException"/> on the first material in <paramref name="catalogs"/>
+    /// whose companion is unsound. Its <see cref="TileWorldException.Reason"/> selects the steep refusal,
+    /// <see cref="TileWorldException.SourceName"/> carries <paramref name="source"/>, and
+    /// <see cref="TileWorldException.MaterialId"/> and <see cref="TileWorldException.MaterialName"/> identify
+    /// the material. Companion refusals carry the companion id, and band refusals carry resolved endpoints.
+    /// Materials are checked in ascending id order, so the error is stable.</summary>
     public static void ThrowIfInvalid(TileWorldCatalogs catalogs, string source)
     {
         ArgumentNullException.ThrowIfNull(catalogs);
         var ids = new List<ushort>(catalogs.Materials.Keys);
         ids.Sort();
         foreach (ushort id in ids)
-            if (Problem(catalogs.Materials[id], catalogs) is { } problem)
-                throw new TileWorldException($"{source}: {problem}");
+        {
+            GroundMaterial material = catalogs.Materials[id];
+            if (FindProblem(material, catalogs) is { } problem)
+                throw new TileWorldException(problem.Reason, $"{source}: {problem.Message}")
+                {
+                    SourceName = source,
+                    MaterialId = material.Id,
+                    MaterialName = material.Name,
+                    CompanionMaterialId = problem.CompanionMaterialId,
+                    CompanionMaterialName = problem.CompanionMaterialName,
+                    Field = problem.Field,
+                    FromDegrees = problem.FromDegrees,
+                    ToDegrees = problem.ToDegrees,
+                    FromIsDefault = problem.FromIsDefault,
+                    ToIsDefault = problem.ToIsDefault,
+                };
+        }
     }
 
     // Strictly inside, and false for NaN, which no comparison passes.

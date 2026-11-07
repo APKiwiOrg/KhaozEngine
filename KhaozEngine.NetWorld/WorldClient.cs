@@ -532,7 +532,7 @@ public sealed partial class WorldClient : IDisposable
                 verticalVelocity = rs.VerticalVelocity;
                 swimming = rs.Swimming;
                 waterExcursion = rs.Move.WaterExcursion;
-                // Local: the exact predicted values, un-quantized.
+                // Local: the predicted publication, before optional render interpolation.
                 climbRate = rs.Move.ClimbRate;
                 landingImpact = rs.Move.LandingImpactSpeed;
                 facingYaw = rs.Move.FacingYaw;

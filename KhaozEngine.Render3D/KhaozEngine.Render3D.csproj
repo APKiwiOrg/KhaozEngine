@@ -31,6 +31,7 @@
   <ItemGroup>
     <InternalsVisibleTo Include="KhaozEngine.Render.Tests" />
     <InternalsVisibleTo Include="KhaozEngine.MapDoc.Render3D" />
+    <InternalsVisibleTo Include="Renderer.Perf.Tooling.Tests" />
     <InternalsVisibleTo Include="KhaozEngine.MapEditor.Tests" />
   </ItemGroup>
 </Project>

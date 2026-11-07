@@ -145,6 +145,46 @@ git add -A
 git commit --quiet -m "governance: ignore the worktree root"
 check "a gitignore edit rides a release" allowed "$(try_push main)"
 
+# --- 2c2. .gitattributes edits ride a release only when no changed pattern can reach shipped files ---
+# Checkout attributes change the bytes of the files they match. The 21.19.0 LF pin on shader sources
+# changed package content that way, so a pattern that can reach a packable project still needs a bump.
+# This case exists because the guard refused an LF pin on a non-packable test fixture folder.
+gitattributes_case() { # name, expected, baseline attributes line or '', changed attributes text
+  w=$(new_repo 1.0.0 "${5:-false}"); cd "$w"
+  if [ -n "$3" ]; then
+    printf '%s\n' "$3" > .gitattributes
+    git add .gitattributes
+    git commit --quiet -m "governance: baseline attributes"
+    git push --quiet origin main 2>/dev/null
+  fi
+  git tag -a v1.0.0 -m "release(1.0.0): first" >/dev/null 2>&1
+  git push --quiet origin v1.0.0 2>/dev/null
+  printf '%s' "$4" > .gitattributes
+  git add .gitattributes
+  git commit --quiet -m "governance: change attributes"
+  check "$1" "$2" "$(try_push main)"
+}
+gitattributes_case "an LF pin on a non-packable test folder rides a release" allowed '' \
+  '# Fixture goldens keep exact bytes.
+KhaozEngine.TileWorld.Netcode.Tests/Fixtures/*.txt text eol=lf
+'
+gitattributes_case "an anchored pin on a carved-out folder rides a release" allowed '' '/docs/** text eol=lf
+'
+gitattributes_case "a comment-only attributes edit rides a release" allowed '# keep' '# keep, now explained
+'
+gitattributes_case "an LF pin on a packable project is refused" refused '' 'src/*.cs text eol=lf
+'
+gitattributes_case "a pattern without a folder is refused" refused '' '*.cs text eol=lf
+'
+gitattributes_case "a glob in the first folder is refused" refused '' '**/Fixtures/*.txt text eol=lf
+'
+gitattributes_case "a quoted pattern is refused" refused '' '"src/a b.cs" text eol=lf
+'
+gitattributes_case "removing a pin on a packable project is refused" refused 'src/*.cs text eol=lf' ''
+gitattributes_case "a pin on a packable test-looking project is refused" refused '' \
+  'KhaozEngine.TileWorld.Netcode.Tests/Fixtures/*.txt text eol=lf
+' true
+
 # --- 2d. non-packable area and rump tests ride a release --------------------------------------------
 for test_source in KhaozEngine.TileWorld.Netcode.Tests/TileNetcode/Example.cs KhaozEngine.Tests/Example.cs; do
   w=$(new_repo 1.0.0); cd "$w"

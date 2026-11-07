@@ -17,10 +17,12 @@ internal static class MapWaterOccupiedPieces
     internal static IReadOnlyList<MapOccupiedPiece> Of(MapScopedSurfaces view, MapExactXz min, MapExactXz max,
         MapRefinementLimits limits, MapWaterWorkMeter meter)
     {
-        if (view.Status == MapAcquireStatus.CapacityExceeded)
+        MapAcquireStatus status = view.Status;
+        if (status == MapAcquireStatus.CapacityExceeded)
             throw new MapWaterCapacityException("occupied water acquisition capacity exceeded: " + view.Detail);
-        if (view.Status == MapAcquireStatus.NotRepresentable)
-            throw new MapDocumentException("not representable: occupied water acquisition " + view.Detail);
+        if (status == MapAcquireStatus.NotRepresentable)
+            throw new MapDocumentException(MapDocumentRefusal.GeometryNotRepresentable, "not representable: occupied water acquisition " + view.Detail)
+            { AcquireStatus = status, Operation = "OccupiedWaterAcquisition" };
         // The captured declarations bound candidate work even when an anchor is unavailable. They may preflight
         // work, but never supply geometry to a refused acquisition or make its missing facts complete.
         var declared = view.EffectiveContext?.Surfaces.Patches.Values.SelectMany(p => p.Records).OfType<MapSpaceFootprint>()
@@ -34,14 +36,23 @@ internal static class MapWaterOccupiedPieces
         if (!view.Witness.Complete)
         {
             var missing = view.Witness.Unavailable.FirstOrDefault();
-            throw new MapDocumentException(missing is null ? "missing geometry: occupied water acquisition " + view.Detail
-                : $"missing geometry: {missing.What} {missing.Key} ({missing.Status})");
+            throw new MapDocumentException(MapDocumentRefusal.AcquisitionIncomplete,
+                missing is null ? "missing geometry: occupied water acquisition " + view.Detail
+                : $"missing geometry: {missing.What} {missing.Key} ({missing.Status})")
+            {
+                AcquireStatus = status,
+                Patch = missing?.Key,
+                PatchStatus = missing?.Status,
+                SubjectKind = missing?.What,
+                FieldPath = "Witness"
+            };
         }
         if (!MapWaterFootprints.HoldsEverything(view) || view.Scope.SpaceIds is not null || !MapWaterFootprints.ScopeHolds(view, min, max))
-            throw new MapDocumentException("missing geometry: occupied water window is not proven complete in this view");
+            throw new MapDocumentException(MapDocumentRefusal.AcquisitionIncomplete, "missing geometry: occupied water window is not proven complete in this view")
+            { AcquireStatus = status, FieldPath = "Scope" };
         using var preparation = Scene.MapSceneAdmission.Current?.BeginPreparation();
         var result = MapOccupiedPartitions.BuildWide(view, min, max, limits, carve: true, meter);
-        if (result.Status != MapRefinementStatus.Complete) throw MapOccupiedPartitions.Refusal(result.Status, result.Detail);
+        if (result.Status != MapRefinementStatus.Complete) throw MapOccupiedPartitions.Refusal(result.Status, result.Detail, result.Finding!);
         preparation?.Complete(new MapWaterInventory().Pieces(result.Pieces));
         return result.Pieces;
     }

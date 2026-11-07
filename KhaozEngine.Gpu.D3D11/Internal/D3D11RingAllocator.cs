@@ -311,7 +311,8 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         /// this frame pay", and a frame pays for the segment it starts on.
         /// </para>
         /// <para>
-        /// CALL IT WITHOUT THE SUBMIT LOCK, AND A CALLER HOLDING IT IS REFUSED BY NAME (decision W4). This is the
+        /// CALL IT WITHOUT THE SUBMIT LOCK, AND A CALLER HOLDING IT IS REFUSED with
+        /// <see cref="D3D11WaitPolicyRefusal.SubmitLockHeld"/> (decision W4). This is the
         /// one member here that can BLOCK: <see cref="AcquireSegment"/> spins until the GPU has finished with the
         /// segment being opened, which is up to a frame. Under the lock that would be a frame-long hold of the
         /// exact lock decision W4 caps at microseconds, and on the event-query fence mechanism it is worse than
@@ -331,11 +332,11 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         {
             if (Monitor.IsEntered(_submitLock))
             {
-                throw new InvalidOperationException(
-                    "BeginFrame was called on the native Direct3D 11 ring allocator while the caller held the "
+                throw new D3D11WaitPolicyException(D3D11WaitPolicyRefusal.SubmitLockHeld, "BeginFrame was called on the native Direct3D 11 ring allocator while the caller held the "
                     + "submit lock. Opening a frame waits for the GPU to finish with the segment it opens, which "
                     + "is up to a frame, and the submit lock is held for microseconds, never across a GPU wait. "
-                    + "Call it after the present has released the lock, not inside it.");
+                    + "Call it after the present has released the lock, not inside it.")
+                { Operation = nameof(BeginFrame) };
             }
 
             _lastFrame = new D3D11BackpressureStats(_stallCount, _stallTicks * 1000d / Stopwatch.Frequency);

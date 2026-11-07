@@ -127,6 +127,8 @@ internal static class SlideCore
         Vector2 move = (velocity + applied) * dt;
         var axis = new Vector2(feet.X, feet.Z);
         bool clamped = PlayArea.Clamp(axis, ref move, clampXz);
+        ContactDescentEvidence? evidence = queries.DescentEvidence;
+        ContactDescentEvidence.Mark mark = evidence?.Checkpoint() ?? default;
         GroundStepResult step = GroundCore.Slide(feet, move, dt, tuning, settings, queries, tractionSlopeRadians, climbBudget, clampXz, medium);
         queries.RequireRecoveryAccepted();
         if (step.Blocked && steerAlong != 0f)
@@ -137,9 +139,12 @@ internal static class SlideCore
             // costs the slide its speed.
             Vector2 alone = velocity * dt;
             bool aloneClamped = PlayArea.Clamp(axis, ref alone, clampXz);
+            ContactDescentEvidence.Mark first = evidence?.BeginAlternative(mark) ?? default;
             GroundStepResult carried = GroundCore.Slide(feet, alone, dt, tuning, settings, queries, tractionSlopeRadians, climbBudget, clampXz, medium);
             queries.RequireRecoveryAccepted();
-            if (Progress(carried) > Progress(step))
+            bool alternative = Progress(carried) > Progress(step);
+            evidence?.SelectAlternative(mark, first, alternative);
+            if (alternative)
                 (step, steerAlong, applied, clamped) = (carried, 0f, Vector2.Zero, aloneClamped);
         }
         queries.AcceptRoute(step.Blocked || clamped);

@@ -11,7 +11,15 @@ public static class MapSurfaceMigration
         ArgumentNullException.ThrowIfNull(source);
         if (source["formatVersion"] is not JsonValue value ||
             !value.TryGetValue(out int version) || (version != 4 && version != 5))
-            throw new MapDocumentException("Surface migration requires formatVersion 4 or 5.");
+            throw new MapDocumentException(!source.ContainsKey("formatVersion") ? MapDocumentRefusal.SchemaMemberMissing
+                : source["formatVersion"] is not JsonValue submitted || !submitted.TryGetValue<int>(out _)
+                    ? MapDocumentRefusal.SchemaValueRequired : MapDocumentRefusal.DocumentMigrationSourceVersionInvalid,
+                "Surface migration requires formatVersion 4 or 5.")
+            {
+                FieldPath = "$.formatVersion",
+                ActualVersion = source["formatVersion"] is JsonValue v && v.TryGetValue<int>(out int actual) ? actual : null,
+                SupportedVersions = [4, 5],
+            };
 
         var result = (JsonObject)source.DeepClone();
         if (version == 5) return result;

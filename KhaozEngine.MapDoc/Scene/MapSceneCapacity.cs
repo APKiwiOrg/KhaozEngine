@@ -9,6 +9,18 @@ public sealed record MapSceneCapacity(string LimitName, decimal Requested, long 
     public string Message => string.Create(CultureInfo.InvariantCulture,
         $"Scene capacity exceeded for {LimitName}: requested {Requested}, allowance {Allowance}.");
 
+    internal MapDocumentFinding Finding => new(MapDocumentRefusal.WorkCapacityExceeded, Message)
+    {
+        Budget = LimitName,
+        ActualCount = Requested >= long.MinValue && Requested <= long.MaxValue && decimal.Truncate(Requested) == Requested
+            ? (long)Requested : null,
+        Limit = Allowance,
+    };
+
+    // An unmeasured refusal keeps this exact demand on its cause but publishes a null ActualCount.
+    internal MapDocumentException Refuse(string? message = null, bool measured = true) => MapDocumentRefusalFactory.FromFinding(
+        measured ? Finding : Finding with { ActualCount = null }, message ?? Message, new MapSceneCapacityException(this));
+
     internal static MapSceneCapacity? From(Exception error) => error switch
     {
         MapSceneCapacityException capacity => capacity.Capacity,

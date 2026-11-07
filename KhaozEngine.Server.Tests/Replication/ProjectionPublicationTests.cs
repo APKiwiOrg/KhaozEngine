@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using System.Linq;
 using KhaozEngine.Ecs;
 using KhaozEngine.Replication;
+using KhaozEngine.TileWorld.Netcode;
 using Xunit;
 
 namespace KhaozEngine.Tests.Replication;
@@ -260,6 +261,35 @@ public class ProjectionPublicationTests
         Assert.Equal(DeltaRebuildFailure.MalformedPacket, Assert.Throws<DeltaRebuildException>(
             () => rig.Staging.StageAll(Proj((7, new[] { V(1), (SavedId, I(5)) })))).Failure);
         Assert.Null(rig.Staging.StagedFor);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void StagingPreservesMalformedCodecFaultAsItsInnerException(bool unframed)
+    {
+        var fault = new TileComponentCodecDataException(TileComponentCodecRefusal.RoutePayloadTruncated,
+            "The component payload is truncated.")
+        { DeclaredCount = 3, AvailableByteCount = 1 };
+        var registry = new ReplicationRegistry();
+        registry.Register<Value>(ValueId, (v, writer) => writer.Write(v.Number), reader =>
+        {
+            int number = reader.ReadInt32();
+            return number < 0 ? throw fault : new Value { Number = number };
+        });
+        var staging = new ProjectionStaging(registry);
+
+        void Decode(int number)
+        {
+            byte[] bytes = I(number);
+            if (unframed) staging.DecodeUnframed(7, ValueId, bytes, 0, bytes.Length);
+            else staging.Decode(7, new ProjectedComponent(ValueId, bytes, 0, bytes.Length));
+        }
+
+        Decode(1);
+        var refusal = Assert.Throws<DeltaRebuildException>(() => Decode(-1));
+        Assert.Equal(DeltaRebuildFailure.MalformedPacket, refusal.Failure);
+        Assert.Same(fault, refusal.InnerException);
     }
 
     [Fact]

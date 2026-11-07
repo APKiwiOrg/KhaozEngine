@@ -28,6 +28,8 @@
     <InternalsVisibleTo Include="KhaozEngine.Render3D" />
     <InternalsVisibleTo Include="KhaozEngine.MapDoc.Render3D" />
     <InternalsVisibleTo Include="KhaozEngine.Render.Tests" />
+    <InternalsVisibleTo Include="KhaozEngine.WorldMap.Gui.Tests" />
+    <InternalsVisibleTo Include="Renderer.Perf.Tooling.Tests" />
     <InternalsVisibleTo Include="KhaozEngine.Gui.Tests" />
   </ItemGroup>
 </Project>

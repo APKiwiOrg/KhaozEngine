@@ -89,29 +89,30 @@ public sealed partial class ShippedSceneInputGuardTests
                     var profile = LimitsProfile(); var group = Family(family);
                     if (value == "missing") group.Remove(field); else group[field] = JsonNode.Parse(value);
                     profile[family] = group;
-                    Assert.Throws<InvalidDataException>(() => SceneLimitsProfile.Read(JsonSerializer.SerializeToElement(profile)));
+                    Refuses(value == "missing" ? PrivateOracleDataRefusal.SchemaShapeInvalid : PrivateOracleDataRefusal.ValueOutsideDomain,
+                        () => SceneLimitsProfile.Read(JsonSerializer.SerializeToElement(profile)));
                 }
             }
             foreach (string shape in new[] { "null", "[]", "{}", "{\"unknown\":1}" })
             {
                 var profile = LimitsProfile(); profile[family] = JsonNode.Parse(shape);
-                Assert.Throws<InvalidDataException>(() => SceneLimitsProfile.Read(JsonSerializer.SerializeToElement(profile)));
+                Refuses(PrivateOracleDataRefusal.SchemaShapeInvalid, () => SceneLimitsProfile.Read(JsonSerializer.SerializeToElement(profile)));
             }
             var extra = LimitsProfile(); var fields = Family(family); fields["unapproved"] = 1; extra[family] = fields;
-            Assert.Throws<InvalidDataException>(() => SceneLimitsProfile.Read(JsonSerializer.SerializeToElement(extra)));
+            Refuses(PrivateOracleDataRefusal.SchemaShapeInvalid, () => SceneLimitsProfile.Read(JsonSerializer.SerializeToElement(extra)));
             var complete = LimitsProfile(); complete[family] = Family(family);
             string text = complete.ToJsonString();
             string first = System.Linq.Enumerable.First(Family(family)).Key;
             using var duplicate = JsonDocument.Parse(text.Replace("\"" + first + "\":", "\"" + first + "\":1,\"" + first + "\":", StringComparison.Ordinal));
-            Assert.Throws<InvalidDataException>(() => SceneLimitsProfile.Read(duplicate.RootElement));
+            Refuses(PrivateOracleDataRefusal.SchemaShapeInvalid, () => SceneLimitsProfile.Read(duplicate.RootElement));
             fields = Family(family); var original = fields[first]!.DeepClone(); fields.Remove(first); fields["X" + first] = original;
             complete[family] = fields;
-            Assert.Throws<InvalidDataException>(() => SceneLimitsProfile.Read(JsonSerializer.SerializeToElement(complete)));
+            Refuses(PrivateOracleDataRefusal.SchemaShapeInvalid, () => SceneLimitsProfile.Read(JsonSerializer.SerializeToElement(complete)));
         }
         foreach (string value in new[] { "0", "-1", "null", "1.5", "1e100", "9223372036854775808" })
         {
             var profile = LimitsProfile(); profile["maxProofBytes"] = JsonNode.Parse(value);
-            Assert.Throws<InvalidDataException>(() => SceneLimitsProfile.Read(JsonSerializer.SerializeToElement(profile)));
+            Refuses(PrivateOracleDataRefusal.ValueOutsideDomain, () => SceneLimitsProfile.Read(JsonSerializer.SerializeToElement(profile)));
         }
     }
 

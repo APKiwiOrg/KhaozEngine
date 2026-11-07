@@ -23,6 +23,7 @@ internal static partial class ContactController
     {
         using var entry = ContactAllocationDiagnostics.Begin(ContactAllocationPhase.ControllerEntry);
         ArgumentNullException.ThrowIfNull(queries);
+        queries.DescentEvidence?.Begin();
         if (!state.IsValid || !ExplicitCharacterMovement.Valid(tuning) ||
             !ExplicitCharacterMovement.ValidCarriedState(state.State) || !water.IsValid ||
             water.Mode == WaterTraversalMode.Legacy || !float.IsFinite(dt) || dt <= 0 ||
@@ -74,6 +75,7 @@ internal static partial class ContactController
             if (point.Space != selection.Space)
                 return HoldLeased(state, MovementStepOutcome.EnvironmentInvalid);
             MoveState start = ClassifyStartWater(state.State, point, feet, tuning, water, leased, foot);
+            queries.DescentEvidence?.Medium(point, start.Swimming, start.WaterExcursion);
             if (start.Commitment.IsActive) start.JumpBufferRemaining = 0;
             var modes = queries.Workspace.Modes;
             modes.Initialize(leased, start, tuning, water, jump);
@@ -104,14 +106,26 @@ internal static partial class ContactController
             if (!MovementFrameRebinding.TryRebind(framed, framed.Frame, out _))
                 return HoldLeased(state, MovementStepOutcome.EnvironmentUnresolved);
             queries.AssertCurrent();
-            return new(framed, leased.Outcome);
+            if (leased.Outcome == MovementStepOutcome.Advanced) queries.DescentEvidence?.Complete(queries);
+            return new(framed, leased.Outcome)
+            {
+                ContactEnteredSwimming = modes.EnteredWater,
+                ContactAirLanded = continuation.AirLanded,
+                ContactWalkableSupport = next.Grounded && continuation.Support.Status == SupportStatus.Walkable,
+                ContactUnwalkableSupport = continuation.UnwalkableSupport,
+                ContactFirstAirLandingFeet = continuation.FirstAirLandingFeet,
+            };
         }
         catch (ContactQueryFailure failure) { return HoldLeased(state, failure.Outcome); }
         catch (InvalidOperationException) { return HoldLeased(state, MovementStepOutcome.EnvironmentUnresolved); }
         catch (ArgumentException) { return HoldLeased(state, MovementStepOutcome.EnvironmentInvalid); }
         finally
         {
-            if (beganTick) queries.EndContactTick();
+            if (beganTick)
+            {
+                queries.DescentEvidence?.End();
+                queries.EndContactTick();
+            }
         }
     }
 

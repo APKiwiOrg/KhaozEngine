@@ -72,13 +72,18 @@ public sealed partial class QueryService
         MapPlayerSpawn[] players = c.Document.PlayerSpawns.Where(s => Inside(s.X, s.Z)).ToArray();
         string? surfaceId = session.MarkerOptions.LegacySpawnSurfaceId;
         if (surfaceId is null && (spawns.Length != 0 || players.Length != 0))
-            throw new MapDocumentException(
+            throw new MapDocumentException(MapDocumentRefusal.ToolLegacySpawnSurfaceRequired,
                 "placements_in_rect: this native document holds unadopted legacy spawns in the rectangle, and their height comes " +
                 "only from a caller-supplied Surface owner. Reopen with markerOptionsJson legacySpawnSurfaceId, or adopt them as " +
-                "markers with spawns_adopt and author heights with marker_set.");
+                "markers with spawns_adopt and author heights with marker_set.")
+            {
+                DocumentId = c.Document.Id,
+                FieldPath = "LegacySpawnSurfaceId",
+                Operation = "placements_in_rect",
+                SourceIds = spawns.Select(s => s.Id).Concat(players.Select(s => s.Id)).ToArray()
+            };
         MapResolvedDocument resolved = MapNativeResolution.Resolve(c.Document, c.Assets, NativeDocumentService.SessionOptionsV2);
-        MapEffectiveResources resources = resolved.EffectiveResources
-            ?? throw new MapDocumentException("placements_in_rect: native resolution published no effective resources.");
+        MapEffectiveResources resources = RequireEffectiveResources(resolved.EffectiveResources);
         var seated = resources.PlacementSupports.Select(s => s.PlacementId).ToHashSet(StringComparer.Ordinal);
         PlacementEntry[] placements = resolved.Placements
             .Where(p => Inside(p.Transform.Position.X, p.Transform.Position.Z))
@@ -90,15 +95,23 @@ public sealed partial class QueryService
                 NativeDocumentService.SessionOptionsV2.QueryLimits);
         var npcSupports = spawns.Select(s => Sample(s.X, s.Z)).ToArray();
         var startSupports = players.Select(s => Sample(s.X, s.Z)).ToArray();
-        string[] refused = spawns.Select((s, i) => (Kind: "Spawn", s.Id, Support: npcSupports[i]))
+        var refusedSources = spawns.Select((s, i) => (Kind: "Spawn", s.Id, Support: npcSupports[i]))
             .Concat(players.Select((s, i) => (Kind: "PlayerSpawn", s.Id, Support: startSupports[i])))
-            .Where(r => r.Support.Status != MapSupportStatus.Supported)
-            .Select(r => $"legacy {r.Kind} '{r.Id}' support status {r.Support.Status} on Surface '{surfaceId}': {r.Support.Detail}")
-            .ToArray();
+            .Where(r => r.Support.Status != MapSupportStatus.Supported).ToArray();
+        string[] refused = refusedSources.Select(r =>
+            $"legacy {r.Kind} '{r.Id}' support status {r.Support.Status} on Surface '{surfaceId}': {r.Support.Detail}").ToArray();
         if (refused.Length != 0)
-            throw new MapDocumentException(
+            throw new MapDocumentException(MapDocumentRefusal.ToolLegacySpawnSupportUnresolved,
                 $"placements_in_rect: legacySpawnSurfaceId '{surfaceId}' does not support every legacy spawn in the rectangle. " +
-                string.Join(" ", refused.Select(r => r + ".")) + " " + Guidance + ", or reopen with a Surface owner that supports them.");
+                string.Join(" ", refused.Select(r => r + ".")) + " " + Guidance + ", or reopen with a Surface owner that supports them.")
+            {
+                DocumentId = c.Document.Id,
+                SurfaceId = surfaceId,
+                Operation = "placements_in_rect",
+                SourceIds = refusedSources.Select(r => r.Id).ToArray(),
+                Findings = refusedSources.Select((r, i) => new MapDocumentFinding(MapDocumentRefusal.ToolLegacySpawnSupportUnresolved, refused[i])
+                { SourceId = r.Id, SubjectKind = r.Kind, SurfaceId = surfaceId, SupportStatus = r.Support.Status }).ToArray()
+            };
         SpawnEntry[] npcs = spawns.Select((s, i) => new SpawnEntry(s.Id, s.ArchetypeId, s.X, npcSupports[i].WorldY, s.Z, s.Enabled,
             s.Tags.ToArray())
         { Support = npcSupports[i] }).ToArray();
@@ -107,6 +120,15 @@ public sealed partial class QueryService
         { Support = startSupports[i] }).ToArray();
         return new PlacementsInRectResult(placements, npcs, starts);
     });
+
+    static MapEffectiveResources RequireEffectiveResources(MapEffectiveResources? resources) => resources
+        ?? throw new MapDocumentException(MapDocumentRefusal.ToolEffectiveResourcesMissing,
+            "placements_in_rect: native resolution published no effective resources.")
+        { Operation = "placements_in_rect" };
+
+    // Fault seam for the resolver output, without substituting a resolver or mutating its state machine.
+    internal static void RequireMissingEffectiveResourcesForTests(MapEffectiveResources? resources) =>
+        _ = RequireEffectiveResources(resources);
 
     static bool HoldsMarkers(MapDocument document) => document.BuildingIntent is not null || document.Prefabs is not null;
 

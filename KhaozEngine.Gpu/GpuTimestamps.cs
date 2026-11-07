@@ -62,8 +62,8 @@ namespace KhaozEngine.Gpu
         /// Present or a caller drain hands work to the driver. This member adds no headless flush policy.
         /// </para>
         /// </summary>
-        /// <exception cref="ArgumentException">The destination cannot hold the batch.</exception>
-        /// <exception cref="InvalidOperationException">No batch has ended yet.</exception>
+        /// <exception cref="GpuTimestampArgumentException">The destination cannot hold the batch.</exception>
+        /// <exception cref="GpuTimestampStateException">No batch has ended yet.</exception>
         GpuTimestampStatus TryResolve(IGpuFence completion, Span<ulong> ticks, out double tickPeriodNanoseconds);
     }
 }

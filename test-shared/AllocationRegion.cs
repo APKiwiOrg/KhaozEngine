@@ -28,7 +28,8 @@ internal sealed class AllocationRegion : IDisposable
         var region = new AllocationRegion(description, totalSize);
         if (!enabled) return region;
         if (!CollectionIsolation.RunsAlone)
-            throw new XunitException($"{description}: allocation measurement must run in a collection defined with " +
+            throw new AllocationMeasurementException(AllocationMeasurementRefusal.CollectionNotIsolated, description,
+                $"{description}: allocation measurement must run in a collection defined with " +
                 "DisableParallelization = true, in an assembly that imports test-shared/AllocationMeasurement.props. " +
                 "The no-GC budget is process-wide, so a concurrent test invalidates the window.");
         lock (StartGate)
@@ -73,12 +74,26 @@ internal sealed class AllocationRegion : IDisposable
         catch (InvalidOperationException error) { runtimeReason = error.Message; }
         if (runtimeReason is null && intact && collections0 == 0 && collections1 == 0 && collections2 == 0 &&
             processBytes <= budget) return;
-        string cause = processBytes >= budget ? "the process-wide allocation budget was exhausted" :
-            collections0 != 0 || collections1 != 0 || collections2 != 0 ? "a garbage collection interrupted the window" :
-            "the no-GC region ended before the window completed";
-        throw new XunitException($"{description}: invalid allocation measurement because {cause}. " +
+        AllocationMeasurementRefusal reason = processBytes >= budget ? AllocationMeasurementRefusal.BudgetExhausted :
+            collections0 != 0 || collections1 != 0 || collections2 != 0 ? AllocationMeasurementRefusal.CollectionInterrupted :
+            AllocationMeasurementRefusal.RegionEnded;
+        string cause = reason switch
+        {
+            AllocationMeasurementRefusal.BudgetExhausted => "the process-wide allocation budget was exhausted",
+            AllocationMeasurementRefusal.CollectionInterrupted => "a garbage collection interrupted the window",
+            _ => "the no-GC region ended before the window completed",
+        };
+        throw new AllocationMeasurementException(reason, description, $"{description}: invalid allocation measurement because {cause}. " +
             $"Budget={budget} bytes, process={processBytes} bytes, thread={threadBytes} bytes, " +
             $"other threads={processBytes - threadBytes} bytes, test messages reported in the window={reported}, " +
-            $"collections(gen0/gen1/gen2)={collections0}/{collections1}/{collections2}. Runtime reason: {runtimeReason ?? "none"}");
+            $"collections(gen0/gen1/gen2)={collections0}/{collections1}/{collections2}. Runtime reason: {runtimeReason ?? "none"}")
+        {
+            Budget = budget,
+            ProcessBytes = processBytes,
+            ThreadBytes = threadBytes,
+            ReportedMessages = reported,
+            Collections = (collections0, collections1, collections2),
+            RuntimeReason = runtimeReason,
+        };
     }
 }

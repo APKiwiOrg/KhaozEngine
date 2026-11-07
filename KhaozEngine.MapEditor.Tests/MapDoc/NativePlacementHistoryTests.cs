@@ -68,7 +68,18 @@ public sealed class NativePlacementHistoryTests
         using var f = new NativePlacementHistoryFixture();
         f.Editor.Execute(new SetPlacementLabelCommand("existing", "label"));
         f.Editor.Undo();
-        AssertRejected(f, () => f.Editor.Execute(new AddPlacementCommand(f.NewProp("existing"))));
+        var collision = Assert.IsType<MapDocumentException>(
+            AssertRejected(f, () => f.Editor.Execute(new AddPlacementCommand(f.NewProp("existing")))));
+        Assert.Equal(MapDocumentRefusal.IdentityDuplicate, collision.Reason);
+        Assert.Equal(f.Document.Id, collision.DocumentId);
+        Assert.Equal("placement", collision.SubjectKind);
+        Assert.Equal("Placements.Id", collision.FieldPath);
+        Assert.Equal("existing", collision.EntityId);
+        Assert.True(f.Editor.Redo());
+        Assert.True(f.Editor.Undo());
+        f.Editor.Execute(new AddPlacementCommand(f.NewProp("fresh")));
+        Assert.Contains(f.Document.Placements, p => p.Id == "fresh");
+        Assert.True(f.Editor.Undo());
         f.Document.NumericIdHighWaterMark = long.MaxValue;
         AssertRejected(f, () => f.Editor.Execute(new AllocateNativePlacementCommand(f.NewProp("overflow"), true)), typeof(OverflowException));
     }
@@ -365,7 +376,7 @@ public sealed class NativePlacementHistoryTests
         Assert.Equal(new[] { "z-first", "existing", "a-last" }, f.Document.Placements.Select(p => p.Id));
     }
 
-    static void AssertRejected(NativePlacementHistoryFixture f, Action action, Type? exception = null)
+    static Exception AssertRejected(NativePlacementHistoryFixture f, Action action, Type? exception = null)
     {
         string before = MapDocumentFile.SaveText(f.Document);
         string? undo = f.Editor.History.UndoLabel, redo = f.Editor.History.RedoLabel;
@@ -383,5 +394,6 @@ public sealed class NativePlacementHistoryTests
         Assert.Equal(dirty, f.Editor.IsDirty);
         Assert.Equal(rebuild, f.Editor.WorldRebuildPending);
         Assert.Equal(0, events);
+        return error;
     }
 }

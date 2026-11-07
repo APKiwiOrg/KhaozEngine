@@ -40,17 +40,25 @@ public static class MapResolverV2
             _ = new MapResourceTransform(pose).Point(new(default, default, default));
             float presentationScale = (float)pose.Scale, presentationYaw = (float)pose.YawRadians;
             if (!float.IsFinite(presentationScale) || presentationScale <= 0 || !float.IsFinite(presentationYaw))
-                throw new MapDocumentException($"Placement '{placement.Id}' backend pose is NotRepresentable.");
+                throw new MapDocumentException(MapDocumentRefusal.GeometryNotRepresentable,
+                    $"Placement '{placement.Id}' backend pose is NotRepresentable.")
+                {
+                    PlacementId = placement.Id,
+                    Operation = nameof(ResolveEffectivePlacements),
+                    FieldPath = !float.IsFinite(presentationScale) || presentationScale <= 0 ? "$.scale" : "$.yawRadians",
+                    ActualNumber = !float.IsFinite(presentationScale) || presentationScale <= 0 ? pose.Scale : pose.YawRadians,
+                };
             float y = (float)pose.Y;
             if (placement.Y is null)
             {
                 var binding = RequireBinding(placement);
                 var support = SeatSupport(new MapResourceTransform(pose).Point(new(default, default, default)), binding, surfaces,
                     assets.Roots.Select(a => a.Sha256).ToArray(), limits);
-                if (support.Status != MapSupportStatus.Supported) throw support.ResolutionRefusal($"Placement '{placement.Id}'");
+                if (support.Status != MapSupportStatus.Supported) throw support.ResolutionRefusal($"Placement '{placement.Id}'", placementId: placement.Id);
                 if (support.Face is { } face && owners is not null &&
                     owners.TryGetValue(MapEffectiveContext.Key(MapPrefabChildKind.Surface, face.OwnerId), out var provider) && missingY.Contains(provider))
-                    throw new MapDocumentException($"Placement '{placement.Id}' with missing Y cannot bind support supplied by placement '{provider}' with missing Y.");
+                    throw new MapDocumentException(MapDocumentRefusal.SupportProviderHeightMissing, $"Placement '{placement.Id}' with missing Y cannot bind support supplied by placement '{provider}' with missing Y.")
+                    { PlacementId = placement.Id, ProviderPlacementId = provider };
                 y = support.WorldY;
                 selected.Add(new(placement.Id, support));
             }
@@ -111,10 +119,12 @@ public static class MapResolverV2
     static MapSupportBinding RequireBinding(MapPlacement placement)
     {
         MapSupportBinding binding = placement.SupportBinding ??
-            throw new MapDocumentException($"Placement '{placement.Id}' support status Invalid: missing authored binding.");
+            throw new MapDocumentException(MapDocumentRefusal.SupportBindingMissing, $"Placement '{placement.Id}' support status Invalid: missing authored binding.")
+            { PlacementId = placement.Id };
         if (binding.Kind == MapSupportBindingKind.Space &&
             (binding.ReferenceY is null || binding.SearchBelow is null || binding.SearchAbove is null))
-            throw new MapDocumentException($"Placement '{placement.Id}' support status Invalid: space binding requires reference Y and bounded search.");
+            throw new MapDocumentException(MapDocumentRefusal.SupportSpaceSearchMissing, $"Placement '{placement.Id}' support status Invalid: space binding requires reference Y and bounded search.")
+            { PlacementId = placement.Id, SpaceId = binding.SpaceId };
         return binding with { };
     }
 
@@ -123,7 +133,10 @@ public static class MapResolverV2
     {
         try { return SelectHeight(id, binding, x, z, surfaces, assets, limits, supports); }
         catch (Exception error) when (error is MapExactOverflowException or OverflowException)
-        { throw new MapDocumentException($"Placement '{id}' support status NotRepresentable: overflow."); }
+        {
+            throw new MapDocumentException(MapDocumentRefusal.GeometryNotRepresentable, $"Placement '{id}' support status NotRepresentable: overflow.")
+            { PlacementId = id, SupportStatus = MapSupportStatus.NotRepresentable, Operation = nameof(SupportHeight) };
+        }
     }
 
     static float SelectHeight(string id, MapSupportBinding binding, float x, float z, IMapSurfaceSource surfaces,
@@ -142,7 +155,7 @@ public static class MapResolverV2
             ? query.SampleSurface(point, binding.SurfaceId!)
             : query.Select(new(point, null, binding.SpaceId, null, binding.SearchAbove!.Value, binding.SearchBelow!.Value, null));
         if (support.Status != MapSupportStatus.Supported)
-            throw support.ResolutionRefusal($"Placement '{id}'");
+            throw support.ResolutionRefusal($"Placement '{id}'", placementId: id);
         supports?.Add(new(id, support));
         return support.WorldY;
     }

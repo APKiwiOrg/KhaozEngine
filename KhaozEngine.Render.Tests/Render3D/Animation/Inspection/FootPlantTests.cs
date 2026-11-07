@@ -55,20 +55,16 @@ namespace KhaozEngine.Tests.Render3D.Animation.Inspection
             AssertNear(0.5f, report.MinSolePhase);
         }
 
-        [Fact]
-        public void Measure_AllStanceRunAnchorsSlideAtSampleZero()
+        [Theory]
+        [InlineData(new float[] { 0f, 1f, 2f, 4f, 0f }, new float[] { -0.5f, -0.5f, -0.5f, -0.5f, -0.5f }, 4f)] // All stance.
+        [InlineData(new float[] { 1f, 1f, 0f, 0f, 1f }, new float[] { -0.5f, -0.2f, -0.2f, -0.5f, -0.5f }, 1f)] // Loop seam.
+        public void Measure_anchors_stance_slide_across_looping_runs(float[] xs, float[] ys, float expectedSlide)
         {
             var fixture = new InspectionFixture();
-            AnimationClip clip = FootClip(
-                new[] { 0f, 0.25f, 0.5f, 0.75f, 1f },
-                new[]
-                {
-                    new Vector3(0f, -0.5f, 0.15f),
-                    new Vector3(1f, -0.5f, 0.15f),
-                    new Vector3(2f, -0.5f, 0.15f),
-                    new Vector3(4f, -0.5f, 0.15f),
-                    new Vector3(0f, -0.5f, 0.15f),
-                });
+            var values = new Vector3[xs.Length];
+            for (int i = 0; i < values.Length; i++)
+                values[i] = new Vector3(xs[i], ys[i], 0.15f);
+            AnimationClip clip = FootClip(new[] { 0f, 0.25f, 0.5f, 0.75f, 1f }, values);
 
             FootPlantReport report = FootPlant.Measure(
                 clip,
@@ -79,34 +75,7 @@ namespace KhaozEngine.Tests.Render3D.Animation.Inspection
                 strideMetres: 0f,
                 samples: 4);
 
-            AssertNear(4f, report.MaxStanceSlide);
-        }
-
-        [Fact]
-        public void Measure_JoinsStanceRunAcrossLoopBoundary()
-        {
-            var fixture = new InspectionFixture();
-            AnimationClip clip = FootClip(
-                new[] { 0f, 0.25f, 0.5f, 0.75f, 1f },
-                new[]
-                {
-                    new Vector3(1f, -0.5f, 0.15f),
-                    new Vector3(1f, -0.2f, 0.15f),
-                    new Vector3(0f, -0.2f, 0.15f),
-                    new Vector3(0f, -0.5f, 0.15f),
-                    new Vector3(1f, -0.5f, 0.15f),
-                });
-
-            FootPlantReport report = FootPlant.Measure(
-                clip,
-                fixture.Skeleton,
-                new[] { "Foot.L" },
-                Vector3.Zero,
-                groundHeight: 0f,
-                strideMetres: 0f,
-                samples: 4);
-
-            AssertNear(1f, report.MaxStanceSlide);
+            AssertNear(expectedSlide, report.MaxStanceSlide);
         }
 
         [Theory]

@@ -112,7 +112,7 @@ movement core to the authoritative netcode stack ([Netcode](../KhaozEngine.Netco
   source. The climb EWMA stays server-local and absent from observer and migration payloads. A destination shard seeds
   it from the migrated `ClimbRateQ` before its next stair step, so the signal does not dip at a mid-climb cell crossing.
   Since 17.26.0 the same list carries **`FacingYaw`** (the authoritative heading, decoded from
-  `MovementState.FacingYawQ` for a remote and predicted un-quantized for the local player), which the position
+  `MovementState.FacingYawQ` for a remote and predicted with canonical publication for the local player), which the position
   delta could not supply at all for a stationary entity. With `InterpolateYaw` set on
   `WorldClientConfig.Prediction` (default false) the local `FacingYaw` eases between ticks like the
   position instead of stepping once per tick. **`LandingImpactSpeed`** rides alongside it but is
@@ -516,7 +516,7 @@ on a snapshot it cannot decode. Both are additive: the wire and existing ctors a
   `TryParseClientTooOld` over that detail.
   - **Adopting it is a wire change: bump the game's own `ProtocolVersion` in the same release**, so an old peer on
     either side is turned away at the version gate before it can read the identity layer as an auth token.
-  - **Wire-format generation (enforced automatically since 10.2.0).** `MoveProtocol.WireProtocolVersion` (= 13)
+  - **Wire-format generation (enforced automatically since 10.2.0).** `MoveProtocol.WireProtocolVersion` (= 15)
     labels
     the incompatible on-the-wire generations. 1 was the pre-10.0.0 32-bit line, and 2 was 10.0.0 widening `NetId` to
     64-bit (the snapshot/delta id field and the frame header, `[localNetId:long][ackSeq:int]`, grown 8 -> 12 bytes).
@@ -539,7 +539,10 @@ on a snapshot it cannot decode. Both are additive: the wire and existing ctors a
     the automatic generation gate before player admission because they would ignore precise speed intent and apply full
     speed. Generation 14 appends `MovementState.WaterExcursion` as one byte, growing the movement payload
     from 56 to 57 bytes. The owner timer frame remains 8 bytes. Restoring an older body appends None (0),
-    preserving commitments, legacy Swimming and opaque extension frames. There is no
+    preserving commitments, legacy Swimming and opaque extension frames. Generation 15 widens `SpeedScaleQ`
+    in place to Int16 at 1/1024 and appends ground commitment kind, remaining distance and blocked ticks,
+    producing a 64-byte movement payload. Historical normalization explicitly sign-extends the old speed byte
+    and multiplies it by 64 after splitting owner timers, rather than padding over the widened field. There is no
     dual-format wire, so peers on
     different generations MUST reject each other at connect rather than misparse a frame. As of 10.2.0 the engine
     enforces this for you: `WorldClient` always folds the
@@ -773,7 +776,12 @@ momentarily unreadable) is not a teleport, and neither is the recovery back off 
 
 ## Server-authored committed movement
 
-Both authoritative heads can commit a player to one collision-safe ballistic move. The direction and arc are
+Both authoritative heads accept `MovementCommitmentRequest.ForGroundTravel(direction, speed, distance)` and
+carry ground progress over wire generation 15. Begin admits only grounded actors that are neither swimming nor
+airborne from water. A refused begin leaves any current commitment untouched and emits exactly one
+`MovementCommitmentEnded` for the refused sequence with `UnsupportedState`.
+
+Both authoritative heads can also commit a player to one collision-safe ballistic move. The direction and arc are
 latched when the queued request reaches the host tick. Player move, jump, facing, and self-rescue input cannot alter
 the move while it is active. Admin teleport and `AbortMovementCommitment(target, expectedSequence)` remain deliberate
 server controls. The expected sequence prevents a delayed abort from cancelling a replacement move.
@@ -803,12 +811,55 @@ handoff, and ghost sync, before that tick's snapshots are encoded. `MovementComm
 Both fire in the landing tick when recovery is zero. The result exposes the absolute capsule-centre position and the
 latched XZ direction.
 
+Ground travel uses `SteerMovementCommitment(target, expectedSequence, direction, distanceRemaining)` to replace
+the direction and remaining budget during preparation or travel. The sequence must be nonzero, direction finite
+and nonzero, and distance finite and nonnegative. A zero budget holds without inferring arrival. Use
+`EndMovementCommitment(target, expectedSequence, MovementCommitmentStopReason.Arrived)` to confirm arrival.
+`MovementCommitmentArrived` publishes exactly once immediately after the admin drain, before movement advances
+optional rooted recovery. The callback observes the full recovery duration, even when it is shorter than one tick.
+Arrival also publishes in a sharded frame with no physical step. Commands queued by an arrival handler apply on
+the next frame, because that frame's admin drain has already finished. Direct host-thread state edits still
+reach that frame's snapshot. Arrival results carry the absolute position and current steered direction.
+
+The travel timeout stops applying at accepted ground arrival. `RecoveryRemaining` bounds recovery independently.
+`MovementCommitmentEnded` publishes exactly once at control release and always reports `Arrived` for that sequence
+after arrival was accepted. Recovery expiry, water, lost support, teleport, supersession, disconnect and
+`AbortMovementCommitment` all preserve that outcome, while interruptions release control immediately. Arrival
+precedes end if both occur in one frame. Landed and Ended keep their existing publication points, before snapshots.
+Ballistic timeout and recovery behavior is unchanged.
+
+Other stop reasons are `TargetLost`, `NoPath`, `TooLong`, `UnsupportedState` and `Cancelled`. They abort immediately,
+with `Cancelled` mapping to the existing Locomotion `Aborted` reason. `None` and unknown values are invalid.
+Arguments validate before queueing even for absent actors or stale sequences. Both controls ignore missing actors,
+stale sequences, ballistic or terminal state, and recovery. Use `AbortMovementCommitment` to cancel recovery.
+Repeated ends emit nothing and never restart recovery. The common `IAdminControllable` seam and `ServerAdmin`
+expose both calls, with unsupported defaults retained on other heads.
+
+Begin, steer and end queue through the host-thread admin drain. Calls from `OnBeforeTick` affect the same frame's
+eligible movement. A short sharded frame can apply controls and publish accepted outcomes without stepping
+movement or spending preparation, recovery or timeout timers. Ground control remains sequence-checked through
+same-host cell handoff. Ground begin, steer, end and abort edit carried state without placement admission. They
+remain effective while an unresolved explicit environment holds physical movement, without spending timers or
+repeating arrival or end events. Ballistic begin keeps its existing placement path. Fast ground travel retains
+the active-commitment anomaly exemption and ordinary bounds. Opt-in
+[`GroundPursuit`](../KhaozEngine.Movement/README.md#ground-pursuit-for-committed-travel) supplies walking route
+admission and per-tick direction and remaining length. Games forward its results through these controls from
+`OnBeforeTick`, and use commitment arrival and ended events for effects and cleanup.
+
 The full state rides as `MoveState.Commitment` locally and `MovementState.Commitment` remotely. A client begins from
 the first authoritative snapshot carrying the sequence, then prediction replays pending commands through the same
-simulator. `Preparing`, `Airborne`, and `Recovering` report `IsActive == true`. `Completed` and `Aborted` remain for
-one served state before the next simulation step clears them. Timeout, deep-water swim entry, and a launch blocked
-at its first stride abort the sequence without a landing event. A second server begin supersedes the first.
+simulator. `Preparing`, `Airborne`, `Travelling` and `Recovering` report `IsActive == true`. `Completed` and
+`Aborted` clear on the next simulation step. An immediate admin end can therefore clear before that frame is
+served. Timeout, deep-water swim entry, and a launch blocked at its first stride abort the sequence without a
+landing event. A second server begin supersedes the first.
 Disconnect emits an ended result and strips the state before persistence.
+
+Ground pursuit adoption requires a 22.0.0 major repin, matched generation-15 peers, and a server-side navigation
+profile matching the actor capsule and movement context. Persisted movement payloads migrate automatically.
+The [consumer contract](../docs/USING-KHAOZENGINE.md) provides the complete `OnBeforeTick`, immediate arrival
+strike and cleanup on end. The [rationale](../docs/design/FORCED-MOVEMENT.md) explains why only direction
+and horizontal distance replicate. At corners, stale steering can produce bounded correction rather than a
+client-side route query. Budget exhaustion alone never authorizes arrival.
 
 ## Authoritative movement invocation measurement
 
@@ -866,23 +917,23 @@ client predicting it and the server staying authoritative.
 server.SetSpeedScale(PlayerRef.Slot(slot), 5f);   // haste
 server.SetSpeedScale(PlayerRef.Slot(slot), 0.5f); // slow
 server.SetSpeedScale(PlayerRef.Slot(slot), 0f);   // root
-server.SetSpeedScale(PlayerRef.Slot(slot), 1f);   // back to normal - this is how a buff expires
+server.SetSpeedScale(PlayerRef.Slot(slot), 1f);   // back to normal when no speed modifiers remain
 ```
 
-**The engine owns the multiplier and its plumbing, not the buff.** There is no duration, no stacking, no expiry and
-no concept of what granted it: the game drives all of that and ends a boost by calling the setter again with `1f`,
-exactly as `Teleport` moves a player without owning any concept of why. Two effects at once are the caller's
-product to compute.
+`SetSpeedScale` owns the movement multiplier and its plumbing. Use
+[KhaozEngine.StatusEffects](../KhaozEngine.StatusEffects/README.md) for timed stacking and expiry.
+The game defines what grants each effect, folds modifier totals into its own scale formula and calls the
+setter with the result. Return to `1f` when no speed modifiers remain. Content, costs and balance stay game-owned.
 
 - **Where it lives.** `MoveState.SpeedScale` is what the step reads, and it replicates as `MovementState.SpeedScaleQ`.
   Both are needed: `PlayerMoveState.From` rebuilds the client's reconcile basis from the replicated components
   ALONE, so a scale living only on `MoveState` would reset on every correction and the pending command window
   would replay at base speed for the whole duration of the buff.
-- **Wire cost is one byte,** quantized as the OFFSET FROM 1 at `MovementState.SpeedScaleQuantum` (1/16), so
+- **Wire cost is two bytes (Int16),** quantized as the OFFSET FROM 1 at `MovementState.SpeedScaleQuantum` (1/1024), so
   `SpeedScaleQ == 0` decodes to exactly 1.0 - which is what every unboosted player carries on every tick. The
   quantum is a power of two, so 0, 0.5, 1, 1.5, 2, 5 and 8 all land exactly and both heads agree bit-exactly. The
   setter clamps to `[0, MovementState.MaxSpeedScale]` (8) and quantizes BEFORE the sim sees the value, so the
-  server never runs a speed it cannot describe to its clients (a requested 1.1x becomes 1.125x on both ends).
+  server never runs a speed it cannot describe to its clients (a requested 1.1x becomes 1.099609375x on both ends).
 - **Server-authored only.** It is deliberately NOT on `MoveCommand`, which is what the client sends: a hostile
   client would set its own multiplier. `SetSpeedScale` is the only author. The sharded head retains the quantized
   desired value by stable player net id and retries it after handoffs, so an ownership gap cannot drop the setter.
@@ -903,6 +954,25 @@ product to compute.
 - **NPCs get it free.** The value lives on `MoveState`, so anything stepping through `CharacterMovement` - a
   server-only creature driven by `StepTowards`, a single-player controller - can set it directly and rides no wire.
   Only what replicates is bound by `MaxSpeedScale`.
+
+## Canonical player carry
+
+`PlayerMoveSimulator` includes Locomotion's `PlayerMovementPublication` in every player step. Forward prediction,
+pending-command replay, single-world authority and sharded authority carry the same published values into the
+next tick. Admitted state overrides use it too. The single-world head no longer retains a different full-float
+horizontal carrier from the sharded head. Handoff and owner reconciliation restore the same state through the
+existing components and codec. Wire generation 15, component sizes, clamp ranges and encoded bytes are unchanged.
+
+`MovementState` delegates its quantizers to Locomotion's `MovementStateQuantization`. Horizontal velocity uses
+1/256 m/s per axis, and speed scale uses the offset-from-one 1/1024 grid. Heading and climb signals keep their
+existing grids. Canonical player steps seed the next ascent average from the positive decoded climb signal,
+matching owner reconstruction and handoff. Step-only events remain local and are consumed only for their real
+step. `CommandedVelocity` remains the unconstrained drive used by anomaly checks.
+
+Contact proofs and previews execute this publication policy too. An exact follower match therefore survives a
+snapshot that has zero position error, without hiding a changed velocity behind a tolerance. Every consumer
+must rebake Contact navigation because its identity now binds the publication policy. Raw unreplicated NPC
+locomotion keeps its full-precision contract unless it opts into a certified Contact Drop.
 
 ## Airborne momentum (since 16.0.0, opt-in)
 
@@ -1000,7 +1070,7 @@ render-state exports.
   footing this tick" - the safe direction, since a missed grant costs one sample and a fabricated one accuses a
   legitimate player.
 - **`EntityRenderState.FacingYaw` and `EntityRenderState.LandingImpactSpeed`** are the client-side exports. The
-  heading is predicted un-quantized for the local player and the decoded replicated value for a remote,
+  heading is predicted with canonical publication for the local player and the decoded replicated value for a remote,
   discrete-sampled to the same delayed render time as the interpolated position, so a remote's flags, heading and
   feet never skew apart. It is exactly the feed `CharacterSample.FacingYaw` / `ReplicatedCharacterAnimators` want,
   though the two bases sit half a turn apart (the bridge reads 0 as +Z, the sim reads 0 as -Z) and nothing wires
@@ -1023,7 +1093,7 @@ the owning client's reconciliation replay exact. Nothing a remote observer rende
   entity that has it, so a restored or handed-off player keeps its windows. A border ghost does not carry it, which
   is safe because a ghost is never simulated.
 - **What an observer saves.** The owner-state split removed 8 movement bytes per observer. The current movement payload is
-  57 bytes including the excursion byte, so every moving player costs each
+  64 bytes including the excursion byte and ground commitment suffix, so every moving player costs each
   observer 8 bytes less per snapshot, and on the delta path a change confined to the timers (a decaying jump buffer
   while nothing else moves) reaches the owner alone and costs an observer nothing. The owner pays 2 bytes more, the
   owner frame's type id.
@@ -1060,6 +1130,28 @@ demultiplexer remains aligned. The automatic generation-13 handshake rejects an 
 because that peer would ignore the flag and run precise input at full speed. No persisted schema or game
 `ProtocolVersion` change is made by this engine wire-generation bump.
 
+## Fine speed and ground commitment transport (wire generation 15)
+
+`MovementState.SpeedScaleQ` and `QuantizeSpeedScale` use `short`, and `DecodeSpeedScale` accepts `short`.
+The offset-from-one quantum is 1/1024. Zero decodes exactly to 1, -1024 to 0 and 7168 to the unchanged 8x cap.
+Quantization rounds ties to even, treats NaN as 1 and clamps infinities to the endpoints. Decode floors negative
+results at zero without adding a ceiling.
+
+The live movement payload is 64 bytes. Speed widens in its original slot, and the suffix after `WaterExcursion`
+is `Commitment.Kind` (byte), `DistanceRemaining` (float32) and `ConsecutiveBlockedTicks` (byte). Preparation,
+travel, a zero-budget hold and recovery retain all three through reconciliation, frame conversion and cell handoff.
+Ground commitment speed remains independent of the ordinary speed multiplier.
+
+Persisted generations 1 through 14 use `MovementPayloadRewrite`, composed with the generation-12 owner-timer
+split. The split runs before speed widening, and the owner frame still follows all other built-ins and precedes
+extensions and the entity terminator. A historical speed byte is sign-extended and multiplied by 64, preserving
+its exact old 1/16 decoded value, including corrupt negative values that floor to zero. Generations before 6
+default speed to zero/unmodified. The ground suffix defaults to Ballistic and zero. Position frames, all other
+carried fields and opaque extensions survive unchanged. Truncated bodies remain refused and quarantined.
+
+The automatic generation handshake rejects mixed live codecs. Adopt matching client and server with an engine
+major repin and normal persisted blob normalization. Owner timers remain 8 bytes and input frames remain 18.
+
 ## Explicit water excursion transport (wire generation 14)
 
 `MoveState.WaterExcursion` and `MovementState.WaterExcursion` carry `WaterExcursionState.None` (0),
@@ -1072,7 +1164,8 @@ No support selection, region handle, query lease or environment cache is seriali
 
 Older persisted payloads append None through the existing ordered layout rewrite. Their legacy
 Swimming flag is preserved. The automatic generation handshake rejects peers on the earlier codec.
-The movement payload is now 57 bytes, while owner timers remain 8 and input frames remain 18.
+The current movement payload is 64 bytes with fine speed and ground commitment state, while owner timers
+remain 8 and input frames remain 18.
 
 Explicit simulation consumes the excursion through surface motion, descent/footing transitions and
 cold environment reconstruction. Refused steps consume their input and clear tick effects. Legacy
@@ -1133,7 +1226,7 @@ The registration's analytic height range stays absolute. The playable boundary i
 in local double coordinates, independently of the resident served domain. Water fields receive the local body
 and physics origin, classify their exact double sum against absolute geometry, and return absolute intervals
 and contact columns for local conversion. Missing analytic data refuses only queries needing that data.
-Wire generation 14, codecs and persistence payloads remain unchanged. Public explicit reads remain borrowed,
+Environment read ownership adds no wire or persisted fields. Public explicit reads remain borrowed,
 use their supplied scope and water policy, and retain the 0.001 m resting offset.
 
 Hosts synchronize `registration.ApplyRuntimeStatics` batches before their effective movement tick on both heads,

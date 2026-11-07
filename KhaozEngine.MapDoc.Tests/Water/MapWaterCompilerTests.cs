@@ -149,7 +149,16 @@ public class MapWaterCompilerTests
     public void SingleCellAboveTheReadLimit_RefusesWithCapacityExceeded()
     {
         var limits = new MapWaterCompileLimits(Reads: new MapRefinementLimits(MaxSourceFacesPerBound: 1));
-        Assert.Equal(MapWaterCompileStatus.CapacityExceeded, Body(WaterFixtures.OceanOverCaves(), "cave-lake", limits).Status);
+        var doc = WaterFixtures.OceanOverCaves();
+        var refused = Body(doc, "cave-lake", limits);
+        Assert.Equal(MapWaterCompileStatus.CapacityExceeded, refused.Status);
+        Assert.Equal(MapDocumentRefusal.WorkCapacityExceeded, refused.Finding!.Reason);
+        Assert.Equal("MaxSourceFacesPerBound", refused.Finding.Budget);
+        Assert.Equal(1, refused.Finding.Limit);
+        Assert.True(refused.Finding.ActualCount > refused.Finding.Limit);
+        Assert.Empty(refused.Regions);
+        Assert.Equal(MapWaterCompileStatus.Complete, Body(doc, "cave-lake", limits with
+        { Reads = new MapRefinementLimits(MaxSourceFacesPerBound: (int)refused.Finding.ActualCount!.Value) }).Status);
     }
 
     [Fact]
@@ -188,6 +197,7 @@ public class MapWaterCompilerTests
         MapCompiledWaterBody lake = MapWaterCompiler.Compile(view, doc.Water!).Single(b => b.BodyId == "cave-lake");
         Assert.Equal(MapWaterCompileStatus.Incomplete, lake.Status);
         Assert.Equal(new MapExactValue(24, 1), WaterFixtures.Area(Of(lake, MapWaterRegionKind.Unresolved)));
+        Assert.Equal(MapDocumentRefusal.SpaceCoverageMissingBound, lake.Finding!.Reason);
     }
 
     [Theory]
@@ -220,15 +230,27 @@ public class MapWaterCompilerTests
     }
 
     [Theory]
-    [InlineData(10, 65_536, 16_777_216, "water footprint cells")]
-    [InlineData(4_194_304, 0, 16_777_216, "water pieces")]
-    [InlineData(4_194_304, 65_536, 1, "water pair checks")]
-    public void CompileLimits_RefuseOversizedWork(int cells, int pieces, int pairs, string detail)
+    [InlineData("MaxFootprintCells", "water footprint cells")]
+    [InlineData("MaxPieces", "water pieces")]
+    [InlineData("MaxPairChecks", "water pair checks")]
+    public void CompileLimits_RefuseOversizedWork(string budget, string detail)
     {
-        var limits = new MapWaterCompileLimits(MaxPieces: pieces, MaxFootprintCells: cells, MaxPairChecks: pairs);
-        MapCompiledWaterBody ocean = Body(WaterFixtures.OceanOverCaves(), "ocean", limits);
+        var doc = WaterFixtures.OceanOverCaves();
+        var complete = Body(doc, "ocean");
+        int exact = budget == "MaxFootprintCells" ? complete.Work.FootprintCells
+            : budget == "MaxPieces" ? complete.Work.Pieces : complete.Work.PairChecks;
+        var limits = Limit(exact - 1);
+        MapCompiledWaterBody ocean = Body(doc, "ocean", limits);
         Assert.Equal((MapWaterCompileStatus.CapacityExceeded, detail), (ocean.Status, ocean.Detail));
+        Assert.Equal(MapDocumentRefusal.WorkCapacityExceeded, ocean.Finding!.Reason);
+        Assert.Equal(budget, ocean.Finding.Budget);
+        Assert.Equal(exact - 1, ocean.Finding.Limit);
+        Assert.True(ocean.Finding.ActualCount > ocean.Finding.Limit);
         Assert.Empty(ocean.Regions);
+        Assert.Equal(MapWaterCompileStatus.Complete, Body(doc, "ocean", Limit(exact)).Status);
+
+        MapWaterCompileLimits Limit(int value) => budget == "MaxFootprintCells" ? new(MaxFootprintCells: value)
+            : budget == "MaxPieces" ? new(MaxPieces: value) : new(MaxPairChecks: value);
     }
 
     [Fact]

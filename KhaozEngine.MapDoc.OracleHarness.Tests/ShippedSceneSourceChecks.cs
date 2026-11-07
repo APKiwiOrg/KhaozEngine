@@ -23,14 +23,12 @@ internal static class ShippedSceneSourceChecks
 {
     internal static void Storage(MapDocument tiled, MapDocument? monolithic, MapAssetClosure assets)
     {
-        ShippedFoliageManifest.Require(tiled.FormatVersion == 9 && tiled.Tiles is { IsPartial: false },
-            "scene comparison requires a complete format nine tiled document");
+        ShippedFoliageManifest.Require(tiled.FormatVersion == 9 && tiled.Tiles is { IsPartial: false }, PrivateOracleDataRefusal.VersionUnsupported, "scene comparison requires a complete format nine tiled document");
         if (monolithic is null) return;
-        ShippedFoliageManifest.Require(monolithic.FormatVersion == 9 && monolithic.Tiles is null,
-            "scene comparison requires a complete format nine document");
+        ShippedFoliageManifest.Require(monolithic.FormatVersion == 9 && monolithic.Tiles is null, PrivateOracleDataRefusal.VersionUnsupported, "scene comparison requires a complete format nine document");
         var options = new MapResolveOptions("shipped-scene-storage", 1, "authored", 2);
         ShippedFoliageManifest.Require(MapAuthoredIdentityV2.Compute(tiled, assets, options) ==
-            MapAuthoredIdentityV2.Compute(monolithic, assets, options), "scene storage forms disagree");
+            MapAuthoredIdentityV2.Compute(monolithic, assets, options), PrivateOracleDataRefusal.AttestedDigestMismatch, "scene storage forms disagree");
     }
 
     internal static void Policy(ShippedSceneInputs inputs, PrivateOracleReport report)

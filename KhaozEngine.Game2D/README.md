@@ -23,9 +23,9 @@ Pulls in:
   buildTransitive game-head build defaults.
 - `KhaozEngine.Localization.Analyzers` - the KELOC raw-text diagnostics and the opt-in neutral-resx to
   `StringId` source generator. Both run in the consuming project's build and add no runtime dependency.
-- `KhaozEngine.CodeHealth.Analyzers` - the KESIZE file-size ratchet. The direct dependency uses
-  `PrivateAssets="none"` so its analyzer assembly and `buildTransitive` baseline discovery props both flow
-  through the packed umbrella and run in the consuming project's build.
+- `KhaozEngine.CodeHealth.Analyzers` - the KESIZE file-size and KETEST test-health ratchets. The direct
+  dependency uses `PrivateAssets="none"` so its analyzer assembly and `buildTransitive` baseline
+  discovery props both flow through the packed umbrella and run in the consuming project's build.
 
 ```xml
 <PackageReference Include="KhaozEngine.Game2D" Version="x.y.z" />

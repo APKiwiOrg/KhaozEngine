@@ -47,20 +47,13 @@ public class WorldClockAnchorTests
         Assert.Null(WorldClockAnchor.Decode(encoded[..^1]));
     }
 
-    [Fact]
-    public void Decode_BadMagicReturnsNull()
+    [Theory]
+    [InlineData(0, 0)] // invalid magic
+    [InlineData(4, 2)] // unknown version
+    public void Decode_UnknownHeaderReturnsNull(int offset, int value)
     {
         byte[] encoded = new WorldClockAnchor(1_000d, 0.75f).Encode();
-        BinaryPrimitives.WriteInt32LittleEndian(encoded.AsSpan(0, 4), 0);
-
-        Assert.Null(WorldClockAnchor.Decode(encoded));
-    }
-
-    [Fact]
-    public void Decode_UnknownVersionReturnsNull()
-    {
-        byte[] encoded = new WorldClockAnchor(1_000d, 0.75f).Encode();
-        BinaryPrimitives.WriteInt32LittleEndian(encoded.AsSpan(4, 4), 2);
+        BinaryPrimitives.WriteInt32LittleEndian(encoded.AsSpan(offset, 4), value);
 
         Assert.Null(WorldClockAnchor.Decode(encoded));
     }
@@ -90,34 +83,17 @@ public class WorldClockAnchorTests
         Assert.Null(WorldClockAnchor.Decode(encoded));
     }
 
-    [Fact]
-    public void RecomputeTimeOfDay_AdvancesDowntimeAtScaleOne()
+    [Theory]
+    [InlineData(1_000d, 0.75f, 1_150d, 0f)]
+    [InlineData(0d, 0.125f, 6_000_000_075d, 0.25f)] // wrap before narrowing to float
+    [InlineData(1_000d, 0.75f, 900d, 0.75f)] // a backward wall clock cannot rewind
+    public void RecomputeTimeOfDay_HandlesElapsedWallTime(double anchorTime, float timeOfDay, double now, float expected)
     {
-        WorldClockAnchor anchor = new(1_000d, 0.75f);
+        WorldClockAnchor anchor = new(anchorTime, timeOfDay);
 
-        float result = anchor.RecomputeTimeOfDay(1_150d, 600f);
+        float result = anchor.RecomputeTimeOfDay(now, 600f);
 
-        Assert.Equal(0f, result, 4);
-    }
-
-    [Fact]
-    public void RecomputeTimeOfDay_LongDowntimeWrapsBeforeNarrowingToFloat()
-    {
-        WorldClockAnchor anchor = new(0d, 0.125f);
-
-        float result = anchor.RecomputeTimeOfDay(6_000_000_075d, 600f);
-
-        Assert.Equal(0.25f, result, 4);
-    }
-
-    [Fact]
-    public void RecomputeTimeOfDay_BackwardWallClockDoesNotRewind()
-    {
-        WorldClockAnchor anchor = new(1_000d, 0.75f);
-
-        float result = anchor.RecomputeTimeOfDay(900d, 600f);
-
-        Assert.Equal(0.75f, result, 4);
+        Assert.Equal(expected, result, 4);
     }
 
     [Theory]

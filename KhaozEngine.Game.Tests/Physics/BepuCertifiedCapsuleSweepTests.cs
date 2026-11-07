@@ -1,6 +1,5 @@
 using System;
 using System.Numerics;
-using System.Reflection;
 using KhaozEngine.Physics;
 using KhaozEngine.Physics.Bepu;
 using Xunit;
@@ -190,10 +189,5 @@ public partial class BepuCertifiedCapsuleSweepTests
 
     static void Refused(CapsuleSweepResult result) => Assert.Equal(default, result);
 
-    static BepuSim Simulation(BepuPhysicsWorld world)
-    {
-        FieldInfo? field = typeof(BepuPhysicsWorld).GetField("_sim", BindingFlags.Instance | BindingFlags.NonPublic);
-        Assert.NotNull(field);
-        return Assert.IsType<BepuSim>(field.GetValue(world));
-    }
+    static BepuSim Simulation(BepuPhysicsWorld world) => world.SimulationForTests;
 }

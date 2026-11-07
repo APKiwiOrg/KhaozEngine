@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <IsPackable>false</IsPackable>
+    <IsTestProject>true</IsTestProject>
+    <OutputType>Library</OutputType>
+    <RootNamespace>KhaozEngine.Tests</RootNamespace>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" />
+    <PackageReference Include="xunit" />
+    <PackageReference Include="xunit.runner.visualstudio" />
+    <ProjectReference Include="../../KhaozEngine.Benchmarks/KhaozEngine.Benchmarks.csproj" />
+    <Compile Include="../../test-shared/ItemsBenchmarkFields.cs" Link="Shared/ItemsBenchmarkFields.cs" />
+    <Compile Include="../../test-shared/ItemsBenchmarkFixtureDirectory.cs" Link="Shared/ItemsBenchmarkFixtureDirectory.cs" />
+    <Compile Include="../../KhaozEngine.Server.Tests/AllocSensitiveCollection.cs" Link="Shared/AllocSensitiveCollection.cs" />
+  </ItemGroup>
+</Project>

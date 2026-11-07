@@ -1,6 +1,5 @@
 using System.Collections.Generic;
 using System.Linq;
-using System.Reflection;
 using KhaozEngine.MapDoc.Render3D;
 using KhaozEngine.MapDoc.Scene;
 using KhaozEngine.Render3D;
@@ -76,14 +75,12 @@ public sealed class NativeUploadReadinessTests
 
     static void AssertCharges(MapRenderResidency residency, ObservedDevice device, long cpu, long gpu, long inFlightCpu, long inFlightStaging)
     {
-        long Charged(string name) => device.Reservations.Where(r => !(bool)typeof(MapUploadReservation)
-            .GetField("_released", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(r)!).Sum(r => (long)typeof(MapUploadReservation)
-            .GetField(name, BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(r)!);
-        Assert.Equal(cpu, Charged("_cpu"));
-        Assert.Equal(gpu, Charged("_gpu"));
+        var charges = device.Reservations.Cast<MapUploadReservation>().Select(r => r.ChargesForTests).Where(c => !c.Released).ToArray();
+        Assert.Equal(cpu, charges.Sum(c => c.Cpu));
+        Assert.Equal(gpu, charges.Sum(c => c.Gpu));
         Assert.Equal(gpu, residency.Lifetime.GpuBytes);
-        Assert.Equal(inFlightCpu, Charged("_inFlightCpu"));
-        Assert.Equal(inFlightStaging, Charged("_inFlightStaging"));
+        Assert.Equal(inFlightCpu, charges.Sum(c => c.InFlightCpu));
+        Assert.Equal(inFlightStaging, charges.Sum(c => c.InFlightStaging));
     }
 
     sealed class ObservedDevice : IMapRenderDevice

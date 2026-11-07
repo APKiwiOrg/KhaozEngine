@@ -20,6 +20,7 @@ internal sealed partial class WaterRenderer
     byte[] _boundedTransformImage = Array.Empty<byte>();
     int _boundedCapacity, _boundedGeneration;
     readonly Dictionary<MeshHandle, DomainGpu> _boundedDomains = new();
+    internal object DomainBufferIdentityForTests(MeshHandle mesh) => TestObservationIdentity.For(_boundedDomains[mesh].Buffer);
     sealed class DomainGpu(IGpuBuffer buffer, bool ownsBuffer = true)
     {
         internal readonly IGpuBuffer Buffer = buffer;

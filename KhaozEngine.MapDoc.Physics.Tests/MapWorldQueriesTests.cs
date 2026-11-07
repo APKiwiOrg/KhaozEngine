@@ -144,8 +144,12 @@ public class MapWorldQueriesTests
         var f = NativeWorldFixtures.Placed("large-building", scale: 36f);
         var world = MapWorldBuilder.Build(f.Document, f.Assets, NativeWorldFixtures.Options());
         var error = Assert.Throws<MapDocumentException>(() => new MapWorldQueries(world));
-        Assert.Contains("'large-building'", error.Message);
-        Assert.Contains("1,225,824", error.Message);
-        Assert.Contains("1,048,576", error.Message);
+        Assert.Equal(MapDocumentRefusal.WorkCapacityExceeded, error.Reason);
+        Assert.Equal("interaction envelope index cells", error.Budget);
+        Assert.Equal("large-building", error.OwnerId);
+        Assert.Equal(1_225_824, error.ActualCount);
+        Assert.Equal(MapEnvelopeIndex.MaxCellsPerEnvelope, error.Limit);
+        var repaired = NativeWorldFixtures.Placed("large-building", scale: 32f);
+        Assert.NotNull(new MapWorldQueries(MapWorldBuilder.Build(repaired.Document, repaired.Assets, NativeWorldFixtures.Options())));
     }
 }

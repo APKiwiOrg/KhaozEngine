@@ -30,11 +30,14 @@ public static class MapMarkerEdits
         RequireResolver(document);
         string id = edit switch
         {
-            MapSetMarker set => (set.Marker ?? throw new MapDocumentException("Marker set requires a marker.")).Id,
+            MapSetMarker set => (set.Marker ?? throw new MapDocumentException(MapDocumentRefusal.SchemaValueRequired, "Marker set requires a marker.")
+            { FieldPath = "marker", SubjectKind = "marker" }).Id,
             MapRemoveMarker remove => remove.Id,
-            _ => throw new MapDocumentException("Unknown marker edit."),
+            _ => throw new MapDocumentException(MapDocumentRefusal.OperationKindUnsupported, "Unknown marker edit.")
+            { RecordType = edit.GetType(), Operation = nameof(Prepare) },
         };
-        if (string.IsNullOrWhiteSpace(id)) throw new MapDocumentException("Marker edits require a nonempty marker ID.");
+        if (string.IsNullOrWhiteSpace(id)) throw new MapDocumentException(MapDocumentRefusal.SchemaValueRequired, "Marker edits require a nonempty marker ID.")
+        { MarkerId = id, FieldPath = "marker.id", SubjectKind = "marker" };
         if (edit is MapSetMarker { Marker: var input }) MapMarkerValidation.Require(input);
 
         var before = MapPrefabEditPreparation.Begin(document, assets);
@@ -56,7 +59,8 @@ public static class MapMarkerEdits
                 else markers.Add(value);
                 break;
             case MapRemoveMarker:
-                if (index < 0) throw new MapDocumentException($"No standalone marker '{id}'.");
+                if (index < 0) throw new MapDocumentException(MapDocumentRefusal.ReferenceMissing, $"No standalone marker '{id}'.")
+                { MarkerId = id, SubjectKind = "standalone marker" };
                 markers.RemoveAt(index);
                 // Only the marker's own frame leaves. Its transfer is retired, never deleted, so the reservation stays.
                 if (after.NativeResourceTransforms?.Any(t => Own(t.Kind, t.OwnerId, id)) == true)
@@ -91,13 +95,23 @@ public static class MapMarkerEdits
 
     /// <summary>Resolver (1, 1) documents carry the legacy analytic support contract. Marker heights need authored
     /// support, so resolver adoption is the prerequisite.</summary>
-    internal static void RequireResolver(MapDocument document)
+    internal static void RequireResolver(MapDocument document, string operation = nameof(Prepare))
     {
-        if (document.ResolverIdentity is null) throw new MapDocumentException("Marker editing requires a native document.");
+        if (document.ResolverIdentity is null) throw new MapDocumentException(MapDocumentRefusal.MarkerNativeDocumentRequired, "Marker editing requires a native document.")
+        { Operation = operation };
         if (document.ResolverIdentity.ResolverVersion != 2)
-            throw new MapDocumentException($"Marker editing requires resolver identity (1, 2), but this document has resolver ({document.ResolverIdentity.PayloadVersion}, " +
+            throw new MapDocumentException(MapDocumentRefusal.ResolverContractMismatch,
+                $"Marker editing requires resolver identity (1, 2), but this document has resolver ({document.ResolverIdentity.PayloadVersion}, " +
                 $"{document.ResolverIdentity.ResolverVersion}). Complete resolver adoption first with MapResolverAdoption.ConvertToAuthoredSupport, " +
-                "the prerequisite for marker edits.");
+                "the prerequisite for marker edits.")
+            {
+                PayloadVersion = document.ResolverIdentity.PayloadVersion,
+                ResolverVersion = document.ResolverIdentity.ResolverVersion,
+                ExpectedResolverVersion = 2,
+                SupportRecipe = document.SupportRecipe,
+                FieldPath = "resolverIdentity",
+                SubjectKind = "marker",
+            };
     }
 
     // A live prefab child belongs to its instance. Any marker reservation, live or dormant, belongs to its prefab unless
@@ -105,15 +119,18 @@ public static class MapMarkerEdits
     static void RequireOwnership(MapDocument document, MapEffectiveResources before, string id, bool standalone)
     {
         if (!standalone && MapEffectiveAnnotations.Markers(before).FirstOrDefault(m => m.Id == id) is { InstanceId: { } instance })
-            throw new MapDocumentException($"Marker '{id}' belongs to live prefab instance '{instance}'. Change it with prefab_override, " +
-                "using a marker replace or remove override on that instance.");
+            throw new MapDocumentException(MapDocumentRefusal.MarkerPrefabOwnershipProtected,
+                $"Marker '{id}' belongs to live prefab instance '{instance}'. Change it with prefab_override, " +
+                "using a marker replace or remove override on that instance.")
+            { MarkerId = id, InstanceId = instance };
         var set = document.Prefabs;
         if (set is null) return;
         bool active = set.Transfers.Any(t => !t.Retired && Own(t.Binding.Child.Kind, t.Binding.WorldId, id));
         bool reserved = set.Transfers.Any(t => Own(t.Binding.Child.Kind, t.Binding.WorldId, id)) ||
             set.Instances.Any(i => i.Bindings.Entries.Any(b => Own(b.Child.Kind, b.WorldId, id)));
         if (reserved && !(standalone && active))
-            throw new MapDocumentException($"Marker ID '{id}' is a retained prefab reservation and cannot be reused. Choose another marker ID.");
+            throw new MapDocumentException(MapDocumentRefusal.IdentityReserved, $"Marker ID '{id}' is a retained prefab reservation and cannot be reused. Choose another marker ID.")
+            { MarkerId = id, WorldId = id, ChildKind = MapPrefabChildKind.Marker };
     }
 
     static bool Own(MapPrefabChildKind kind, string ownerId, string id) =>

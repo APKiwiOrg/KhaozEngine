@@ -5,6 +5,8 @@ using KhaozEngine.MapDoc.Identity;
 using KhaozEngine.MapDoc.Physics;
 using KhaozEngine.MapDoc.Prefabs;
 using KhaozEngine.MapDoc.Storage;
+using KhaozEngine.MapDoc.Scene;
+using KhaozEngine.MapDoc.Support;
 using KhaozEngine.Primitives;
 using KhaozEngine.Tests.MapDoc.Markers;
 using Xunit;
@@ -29,7 +31,10 @@ public sealed class MapResolveLimitsWorldTests
         using (var probe = new CapacityDemandProbe())
         {
             var error = Assert.Throws<MapDocumentException>(() => Build(fixture, MarkerFixtures.Options()));
-            Assert.Contains("support status CapacityExceeded", error.Message, StringComparison.Ordinal);
+            Assert.Equal(MapDocumentRefusal.MarkerSupportUnresolved, error.Reason);
+            Assert.Equal("stacked-disabled", error.MarkerId);
+            Assert.Equal(MapSupportStatus.CapacityExceeded, error.SupportStatus);
+            Assert.Equal(new MapSceneCapacity("MaxPageMetadataChecks", 32770, 32769), MapSceneCapacity.From(error));
             Assert.Contains(probe.Events, e => Read<string>(e, "Site") == "MapPageBudget.MaxPageMetadataChecks.1" && Read<bool>(e, "Refused") &&
                 Read<string>(e, "LimitName") == "MaxPageMetadataChecks" && Read<decimal>(e, "Allowance") == 32769m);
             Assert.Contains(probe.Events, e => Read<string>(e, "Site") == "MapPageBudget.MaxPageMetadataChecks.2" && Read<bool>(e, "Refused") &&
@@ -75,7 +80,11 @@ public sealed class MapResolveLimitsWorldTests
         MarkerFixture fixture = MarkerFixtures.ContextGrid();
         var patches = MarkerFixtures.Options() with { QueryLimits = new(MaxCandidatePatches: 512) };
         var error = Assert.Throws<MapDocumentException>(() => Build(fixture, patches));
-        Assert.Contains("refinement capacity: footprint 'grid-0-0' (context patches)", error.Message, StringComparison.Ordinal);
+        Assert.Equal(MapDocumentRefusal.WorkCapacityExceeded, error.Reason);
+        Assert.Equal("grid-0-0", error.RecordId);
+        Assert.Equal("MaxContextPatches", error.Budget);
+        Assert.Equal(257, error.ActualCount);
+        Assert.Equal(256, error.Limit);
         var declared = patches with { QueryLimits = patches.QueryLimits with { Refinement = new(MaxContextPatches: 512) } };
         MapBuiltWorld world = Build(fixture, declared);
         Assert.Equal(Build(fixture, declared).BuildHash, world.BuildHash);
@@ -89,7 +98,11 @@ public sealed class MapResolveLimitsWorldTests
         // capacity failure, never by handing a partial view to coverage or terrain.
         MarkerFixture fixture = MarkerFixtures.ContextGrid();
         var error = Assert.Throws<MapDocumentException>(() => Build(fixture, MarkerFixtures.Options()));
-        Assert.Contains("Native world surfaces CapacityExceeded", error.Message, StringComparison.Ordinal);
+        Assert.Equal(MapDocumentRefusal.WorkCapacityExceeded, error.Reason);
+        Assert.Equal(MapAcquireStatus.CapacityExceeded, error.AcquireStatus);
+        Assert.Equal("MaxCandidatePatches", error.Budget);
+        Assert.True(error.ActualCount > 256);
+        Assert.Equal(256, error.Limit);
     }
 
     static (string SnapshotId, WorldFrame Frame, int QueryPolicyVersion, bool Complete) Witness(MapReadWitness witness) =>

@@ -567,12 +567,15 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         {
             if (image.Image != 0) return;
 
-            throw new ArgumentException(
+            throw new VulkanLayoutArgumentException(VulkanLayoutRefusal.ImageHandleMissing,
                 "A native Vulkan layout transition was asked for on an image handle of 0, which is what a STAGING "
                 + "texture carries: a staging texture is a VkBuffer with a software subresource layout and has no "
                 + "image, no view and no layout at all (V-C7). Nothing can transition one, and a caller that "
                 + "tried lost track of which kind of resource it is holding.",
-                nameof(image));
+                nameof(image))
+            {
+                Image = image.Image,
+            };
         }
 
         // TWO RANGES OF ONE IMAGE THAT PARTIALLY OVERLAP CANNOT BOTH BE TRACKED. Transitioning the request would
@@ -581,8 +584,8 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         // reports and which corrupts contents without it. Disjoint ranges are fine and are how a mip chain is
         // generated a level at a time, and a range that CONTAINS the tracked ones is fine too and is how the chain
         // is then sampled whole.
-        static InvalidOperationException Overlapping(in VulkanTrackedImage image, in Entry entry)
-            => new(
+        static VulkanLayoutStateException Overlapping(in VulkanTrackedImage image, in Entry entry)
+            => new VulkanLayoutStateException(VulkanLayoutRefusal.PartialOverlap,
                 "A native Vulkan command list transitioned one image through two PARTIALLY OVERLAPPING subresource "
                 + "ranges: they share a subresource, and neither contains the other. Tracking is per subresource "
                 + "range (V-F6), so transitioning this one would move part of the tracked range and leave its "
@@ -591,14 +594,25 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
                 + "answered (one barrier per piece, from each piece's own layout, collapsing to one entry) and so "
                 + "are disjoint ranges. Ask for one of those shapes. The image is 0x"
                 + entry.Image.ToString("X", CultureInfo.InvariantCulture) + ", tracked over mips "
-                + Describe(entry.Subrange) + " and asked for over mips " + Describe(image.Range) + ".");
+                + Describe(entry.Subrange) + " and asked for over mips " + Describe(image.Range) + ".")
+            {
+                Image = image.Image,
+                RequestedBaseMip = image.Range.BaseMipLevel,
+                RequestedMipCount = image.Range.LevelCount,
+                RequestedBaseLayer = image.Range.BaseArrayLayer,
+                RequestedLayerCount = image.Range.LayerCount,
+                TrackedBaseMip = entry.Subrange.BaseMipLevel,
+                TrackedMipCount = entry.Subrange.LevelCount,
+                TrackedBaseLayer = entry.Subrange.BaseArrayLayer,
+                TrackedLayerCount = entry.Subrange.LayerCount,
+            };
 
         // A WIDER RANGE WHOSE UNTRACKED LEFTOVER WOULD NEED A BARRIER OF ITS OWN. Everything the tracker has not
         // touched is at REST, so the leftover needs nothing whenever the target IS the resting layout, which is
         // every whole-chain sampled bind. Naming the leftover as a range means subtracting rectangles and then
         // tracking the pieces of the result, which buys a shape nothing in this backend asks for.
-        static InvalidOperationException UntrackedRemainder(in VulkanTrackedImage image, ImageLayout target)
-            => new(
+        static VulkanLayoutStateException UntrackedRemainder(in VulkanTrackedImage image, ImageLayout target)
+            => new VulkanLayoutStateException(VulkanLayoutRefusal.UntrackedRemainder,
                 "A native Vulkan command list transitioned a subresource range WIDER than the ranges it has "
                 + "tracked, to a layout that is not the image's resting one, and the parts of that range it never "
                 + "touched are still at rest. Answering it would mean emitting a barrier over the request MINUS "
@@ -607,19 +621,36 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
                 + "a whole-chain sampled bind does: Sampled wins the resting ladder, so such a texture rests in "
                 + "SHADER_READ_ONLY_OPTIMAL. The image is 0x"
                 + image.Image.ToString("X", CultureInfo.InvariantCulture) + ", asked for over mips "
-                + Describe(image.Range) + " to " + target + ".");
+                + Describe(image.Range) + " to " + target + ".")
+            {
+                Image = image.Image,
+                BaseMip = image.Range.BaseMipLevel,
+                MipCount = image.Range.LevelCount,
+                BaseLayer = image.Range.BaseArrayLayer,
+                LayerCount = image.Range.LayerCount,
+                TargetLayout = (int)target,
+                RestingLayout = (int)image.RestingLayout,
+            };
 
         // A QUERY WITH NO ANSWER, unlike the transition of the same range. See LayoutOf's remarks: a wider range
         // over pieces that may disagree has no single layout, and inventing one is how a caller skips a barrier.
-        static InvalidOperationException NoSingleLayout(in VulkanTrackedImage image, int covered)
-            => new(
+        static VulkanLayoutStateException NoSingleLayout(in VulkanTrackedImage image, int covered)
+            => new VulkanLayoutStateException(VulkanLayoutRefusal.NoSingleLayout,
                 "A native Vulkan command list asked for the layout of a subresource range that CONTAINS "
                 + covered.ToString(CultureInfo.InvariantCulture) + " narrower tracked range(s), which have no one "
                 + "layout between them: a mip chain mid-generation has level N-1 in TRANSFER_SRC_OPTIMAL and level "
                 + "N in TRANSFER_DST_OPTIMAL. Transitioning that range IS defined, because it makes the range "
                 + "uniform, so ask for the transition rather than the layout, or query the pieces. The image is 0x"
                 + image.Image.ToString("X", CultureInfo.InvariantCulture) + ", asked for over mips "
-                + Describe(image.Range) + ".");
+                + Describe(image.Range) + ".")
+            {
+                Image = image.Image,
+                CoveredRangeCount = covered,
+                BaseMip = image.Range.BaseMipLevel,
+                MipCount = image.Range.LevelCount,
+                BaseLayer = image.Range.BaseArrayLayer,
+                LayerCount = image.Range.LayerCount,
+            };
 
         static string Describe(in VulkanImageSubrange range)
             => range.BaseMipLevel.ToString(CultureInfo.InvariantCulture) + "+"

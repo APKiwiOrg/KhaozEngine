@@ -116,17 +116,17 @@ public sealed class InteriorCutCounterTests(ITestOutputHelper output)
         internal InteriorCutCommandCounters Frame()
         {
             var counters = new InteriorCutCommandCounters();
-            var cache = HighlightTestAccess.Field<InteriorCutRelevanceCache>(Scene, "_interiorRelevance");
+
             Scene.Begin();
             Scene.Post.LightDirection = Vector3.Normalize(new Vector3(1, -1, ++_frame * .01f));
             void Measure(string pass, Action submit)
             {
-                int evaluations = cache.Evaluations + Scene.InteriorMarginEvaluations, lookups = Lookups();
+                int evaluations = Scene.InteriorRelevanceForTests.Evaluations + Scene.InteriorMarginEvaluations, lookups = Lookups();
                 submit();
-                counters.For(pass).Evaluations += cache.Evaluations + Scene.InteriorMarginEvaluations - evaluations;
+                counters.For(pass).Evaluations += Scene.InteriorRelevanceForTests.Evaluations + Scene.InteriorMarginEvaluations - evaluations;
                 counters.For(pass).Lookups += Lookups() - lookups;
             }
-            int Lookups() => cache.Lookups + Scene.InteriorMarginLookups;
+            int Lookups() => Scene.InteriorRelevanceForTests.Lookups + Scene.InteriorMarginLookups;
             Measure(_temporal ? "temporal" : "colour", SubmitVillage);
             Measure("outline", () => Scene.DrawMeshOutlineDissolved(Scene.BeginMeshOutline(Color.White, 1),
                 _box, Matrix4x4.Identity, 0, false, _inputs.CutsFor(_mode)));
@@ -139,7 +139,7 @@ public sealed class InteriorCutCounterTests(ITestOutputHelper output)
             Scene.UploadPointShadowFaces(commands);
             Scene.RenderPointShadowSlots(commands);
             counters.Read(commands.CommandTrace);
-            var data = HighlightTestAccess.Field<List<ModelRenderer.InstanceData>>(Scene, "_instanceData");
+            var data = Scene.InstanceDataForTests;
             void RecordRuns(string pass, IEnumerable<Scene3D.ShadowCasterSpan> spans)
             {
                 foreach (var group in spans.GroupBy(span => span.Index))
@@ -148,7 +148,7 @@ public sealed class InteriorCutCounterTests(ITestOutputHelper output)
                     for (uint slot = span.Start; slot < span.Start + span.Count; slot++)
                         Assert.Equal(data[(int)slot].SpecParams.W > .5f, span.Kind == ShadowCastKind.Dissolving);
             }
-            var cascades = HighlightTestAccess.Field<List<Scene3D.ShadowCasterSpan>[]>(Scene, "_cascadeCasterSpans");
+            var cascades = Scene.CascadeCasterSpansForTests;
             if (_mode != InteriorCutCostPerfGpuTests.Mode.ShadowsOff)
                 for (int cascade = 0; cascade < 4; cascade++) RecordRuns($"cascade{cascade}", cascades[cascade]);
             RecordRuns("point", Scene.DebugPointCasterSpans(new Vector3(0, 20, 0), 1000));

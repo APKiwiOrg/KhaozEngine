@@ -20,16 +20,12 @@ namespace KhaozEngine.Tests.Render3D
     {
         // ---- Fresnel tint ---------------------------------------------------------------------------------------
 
-        [Fact]
-        public void Fresnel_zero_at_normal_incidence()
+        [Theory]
+        [InlineData(1f, 0f)]
+        [InlineData(0f, 1f)]
+        public void Fresnel_reaches_its_endpoint_weights(float ndotv, float expected)
         {
-            Assert.Equal(0f, WaterMath.Fresnel(1f), 5);
-        }
-
-        [Fact]
-        public void Fresnel_one_at_grazing_angle()
-        {
-            Assert.Equal(1f, WaterMath.Fresnel(0f), 5);
+            Assert.Equal(expected, WaterMath.Fresnel(ndotv), 5);
         }
 
         [Fact]
@@ -44,22 +40,15 @@ namespace KhaozEngine.Tests.Render3D
             }
         }
 
-        [Fact]
-        public void FresnelTint_straight_down_is_deep_color()
+        [Theory]
+        [InlineData(1f, 0.05f, 0.18f, 0.28f)]
+        [InlineData(0f, 0.62f, 0.70f, 0.80f)]
+        public void FresnelTint_reaches_its_endpoint_colours(float ndotv, float r, float g, float b)
         {
             var deep = new Vector3(0.05f, 0.18f, 0.28f);
             var horizon = new Vector3(0.62f, 0.70f, 0.80f);
-            var tint = WaterMath.FresnelTint(deep, horizon, ndotv: 1f);
-            Assert.Equal(deep, tint);
-        }
-
-        [Fact]
-        public void FresnelTint_grazing_is_horizon_color()
-        {
-            var deep = new Vector3(0.05f, 0.18f, 0.28f);
-            var horizon = new Vector3(0.62f, 0.70f, 0.80f);
-            var tint = WaterMath.FresnelTint(deep, horizon, ndotv: 0f);
-            Assert.Equal(horizon, tint);
+            var tint = WaterMath.FresnelTint(deep, horizon, ndotv);
+            Assert.Equal(new Vector3(r, g, b), tint);
         }
 
         // ---- Sun glint -------------------------------------------------------------------------------------------
@@ -110,24 +99,13 @@ namespace KhaozEngine.Tests.Render3D
 
         // ---- Shore fade ------------------------------------------------------------------------------------------
 
-        [Fact]
-        public void ShoreFade_deep_water_is_fully_opaque()
+        [Theory]
+        [InlineData(10f, 1f)]
+        [InlineData(0f, 0f)]
+        [InlineData(-5f, 0f)]
+        public void ShoreFade_clamps_at_and_beyond_the_waterline(float depthBelowSurface, float expected)
         {
-            Assert.Equal(1f, WaterMath.ShoreFade(depthBelowSurface: 10f, fadeDistance: 0.6f), 4);
-        }
-
-        [Fact]
-        public void ShoreFade_at_the_waterline_is_zero()
-        {
-            Assert.Equal(0f, WaterMath.ShoreFade(depthBelowSurface: 0f, fadeDistance: 0.6f), 4);
-        }
-
-        [Fact]
-        public void ShoreFade_negative_depth_clamps_to_zero()
-        {
-            // Ground ABOVE the surface: shouldn't happen (the water pass's own depth test would reject the pixel
-            // first), but the pure function must not go negative/NaN if called directly with an out-of-range input.
-            Assert.Equal(0f, WaterMath.ShoreFade(depthBelowSurface: -5f, fadeDistance: 0.6f), 4);
+            Assert.Equal(expected, WaterMath.ShoreFade(depthBelowSurface, fadeDistance: 0.6f), 4);
         }
 
         [Fact]
@@ -142,17 +120,13 @@ namespace KhaozEngine.Tests.Render3D
             }
         }
 
-        [Fact]
-        public void ShoreFade_zero_distance_disables_fade()
+        [Theory]
+        [InlineData(0f, 0f)]
+        [InlineData(-1f, 0f)]
+        [InlineData(0f, -1f)]
+        public void ShoreFade_nonpositive_distance_disables_fade(float depthBelowSurface, float fadeDistance)
         {
-            Assert.Equal(1f, WaterMath.ShoreFade(depthBelowSurface: 0f, fadeDistance: 0f));
-            Assert.Equal(1f, WaterMath.ShoreFade(depthBelowSurface: -1f, fadeDistance: 0f));
-        }
-
-        [Fact]
-        public void ShoreFade_negative_distance_disables_fade()
-        {
-            Assert.Equal(1f, WaterMath.ShoreFade(depthBelowSurface: 0f, fadeDistance: -1f));
+            Assert.Equal(1f, WaterMath.ShoreFade(depthBelowSurface, fadeDistance));
         }
 
         // ---- Domain warp ----------------------------------------------------------------------------------------
@@ -293,6 +267,12 @@ namespace KhaozEngine.Tests.Render3D
             Assert.Equal(WaterMath.GridIndexCount, n);
             const uint maxVertex = WaterMath.GridResolution * WaterMath.GridResolution - 1;
             foreach (var idx in indices) Assert.True(idx <= maxVertex, $"index {idx} out of the {maxVertex + 1}-vertex grid");
+            for (int i = 0; i < n; i += 3)
+            {
+                Assert.NotEqual(indices[i], indices[i + 1]);
+                Assert.NotEqual(indices[i], indices[i + 2]);
+                Assert.NotEqual(indices[i + 1], indices[i + 2]);
+            }
             // (n-1)^2 quads * 2 triangles * 3 indices.
             Assert.Equal((WaterMath.GridResolution - 1) * (WaterMath.GridResolution - 1) * 6, n);
         }
@@ -397,13 +377,11 @@ namespace KhaozEngine.Tests.Render3D
             var horizon = new Vector3(0.6f, 0.7f, 0.8f);
             Assert.Equal(horizon, WaterMath.ReflectionColor(horizon, new Vector3(1f, 0f, 0f), s.SkyReflectionStrength));
 
-            // Glint: a non-positive roughness is the documented selector for the legacy lobe. The shader branches on
-            // the same comparison, so this pins the selector itself, not just the value.
-            Assert.False(s.GlintRoughness > 0f);
-
-            // Absorption off: an all-zero coefficient is the documented fallback to the two-stop blend.
-            var absorb = new Vector3(s.AbsorptionPerMetre.R, s.AbsorptionPerMetre.G, s.AbsorptionPerMetre.B);
-            Assert.Equal(0f, absorb.X + absorb.Y + absorb.Z);
+            // The zero selectors must reach the shader unchanged through the real packing path.
+            var packed = WaterRenderer.PackUbo(Matrix4x4.Identity, Matrix4x4.Identity,
+                -Vector3.UnitY, Color.White, Vector3.Zero, s, new SkySettings(), 0f);
+            Assert.Equal(0f, packed.ReflectGlint.Z);
+            Assert.Equal(Vector4.Zero, packed.Absorption);
 
             // Foam off: zero strength zeroes the combined amount whatever the two sources say.
             Assert.Equal(0f, WaterMath.FoamAmount(whitecap: 1f, shoreFoam: 1f, pattern: 1f, strength: s.FoamStrength));
@@ -460,7 +438,7 @@ namespace KhaozEngine.Tests.Render3D
                 HaloFalloff = 0.2f,
             };
             var clipVp = Matrix4x4.CreateLookAt(new Vector3(0, 5, 5), Vector3.Zero, Vector3.UnitY);
-            var rawVp = clipVp;   // identical here; the test only checks each field lands, not the clip-correction path
+            var rawVp = Matrix4x4.CreateTranslation(2f, -3f, 4f);
             var light = new Vector3(-0.5f, -0.85f, -0.35f);
             var lightColor = new Color(1f, 0.95f, 0.86f, 1f);
             var camPos = new Vector3(1f, 2f, 3f);
@@ -468,8 +446,7 @@ namespace KhaozEngine.Tests.Render3D
             var u = WaterRenderer.PackUbo(clipVp, rawVp, light, lightColor, camPos, settings, sky, timeSeconds: 2.5f);
 
             Assert.Equal(clipVp, u.ViewProj);
-            Matrix4x4.Invert(rawVp, out var expectedInv);
-            Assert.Equal(expectedInv, u.InvViewProj);
+            Assert.Equal(Matrix4x4.CreateTranslation(-2f, 3f, -4f), u.InvViewProj);
             Assert.Equal(light, new Vector3(u.LightDir.X, u.LightDir.Y, u.LightDir.Z));
             Assert.Equal(lightColor.R, u.LightColor.X, 4);
             Assert.Equal(camPos, new Vector3(u.CameraPos.X, u.CameraPos.Y, u.CameraPos.Z));

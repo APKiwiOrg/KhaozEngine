@@ -42,7 +42,7 @@ public sealed class CertifiedMeshSweepLifetimeTests
         using var world = new BepuPhysicsWorld(Vector3.Zero);
         StaticHandle handle = world.AddStatic(CertifiedMeshSweepTests.Quad(), Pose.Identity);
         var previousNative = Static(world, handle);
-        var captures = (System.Collections.Generic.Dictionary<int, InstalledSweepGeometry?>)Field(world, "_installedSweepStatics");
+        var captures = world.InstalledSweepStaticsForTests;
         InstalledSweepGeometry previousGeometry = captures[handle.Value]!;
         Vector3 start = new(-0.5f, 2, -0.25f), delta = new(0, -4, 0);
         HitContains(Read(world, start, delta), 1.25, 1.25);
@@ -61,9 +61,9 @@ public sealed class CertifiedMeshSweepLifetimeTests
         Assert.NotEqual(previousGeometry.Mesh!.Triangle(0).Vertex(0), captures[replacement.Value]!.Mesh!.Triangle(0).Vertex(0));
         HitContains(Read(world, start - world.Origin, delta), 1.25, 1.25);
         InstalledSweepGeometry currentGeometry = captures[replacement.Value]!;
-        captures[replacement.Value] = previousGeometry;
+        world.ReplaceStaticSweepCaptureForTests(replacement, previousGeometry);
         Refused(Read(world, start - world.Origin, delta));
-        captures[replacement.Value] = currentGeometry;
+        world.ReplaceStaticSweepCaptureForTests(replacement, currentGeometry);
         HitContains(Read(world, start - world.Origin, delta), 1.25, 1.25);
         using var excluded = world.CreateQueryViewExcludingStatics([replacement]);
         using var included = world.CreateQueryViewExcludingStatics([]);
@@ -104,7 +104,7 @@ public sealed class CertifiedMeshSweepLifetimeTests
         }
         var native = Static(world, replacement);
         Sim(world).Statics.GetDescription(native.Handle, out var description);
-        var geometry = ((System.Collections.Generic.Dictionary<int, InstalledSweepGeometry?>)Field(world, "_installedSweepStatics"))[replacement.Value]!;
+        var geometry = world.InstalledSweepStaticsForTests[replacement.Value]!;
         var shapes = Sim(world).Shapes;
         var boundedScratch = new CapsuleSweepScratch();
         var boundedDimensions = new CapsuleQueryDimensions(0.25f, 1);

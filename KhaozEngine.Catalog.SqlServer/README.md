@@ -30,6 +30,15 @@ The constructor opens nothing and touches no schema: that is `InitializeAsync`, 
 carrying no catalog table may be created into is the caller's decision. There is nothing to dispose, because
 the store holds no connection between calls.
 
+Guarded operator pins use `IContentVersionSelectionStore.TrySetPinnedVersionAsync` to confirm the
+checked catalog epoch, active version and pin in the same transaction as the pin and audit write.
+Trusted `SetPinnedVersionAsync` recovery calls keep their existing semantics.
+
+Operator imports support `IContentPolicyImportStore.ImportWithPolicyAsync` with a required-policy
+`ContentPolicyImportRequest`. The host's admin registration binds the policy and the existing frozen
+publisher enforces it. Trusted `ImportBundleAsync` and `ImportTextBundleAsync` calls keep their existing
+behavior. See the [consumer policy contract](../KhaozEngine.Catalog.Authoring/README.md#consumer-operator-publication-policy).
+
 ## The schema, and its two modes
 
 Nineteen tables: `catalog_metadata`, `catalog_type`, `catalog_version`, `catalog_row`, `catalog_row_field`,

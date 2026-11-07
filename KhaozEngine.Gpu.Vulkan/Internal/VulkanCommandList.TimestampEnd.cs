@@ -12,16 +12,16 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         {
             VulkanTimestampPool native = RequireTimestampPool(pool);
             if (_timestampEndRecording is not null)
-                throw new InvalidOperationException("A final timestamp tail is already armed for this recording.");
+                throw new GpuTimestampStateException(GpuTimestampRefusal.TailAlreadyArmed, "A final timestamp tail is already armed for this recording.") { Backend = GpuBackendKind.VulkanNative };
             native.ValidateTimestampEnd(this, _timestampRecordingId, CurrentBuffer, finalIndex);
             _timestampEndRecording = native.Recording;
             _timestampEndIndex = finalIndex;
         }
 
-        void RefuseArmedTimestampPool(VulkanTimestampPool pool)
+        void RefuseArmedTimestampPool(VulkanTimestampPool pool, [System.Runtime.CompilerServices.CallerMemberName] string member = "")
         {
             if (ReferenceEquals(pool.Recording, _timestampEndRecording))
-                throw new InvalidOperationException("The timestamp pool's final marker and batch end are armed for End.");
+                throw new GpuTimestampStateException(GpuTimestampRefusal.ManualFinalizationWhileArmed, "The timestamp pool's final marker and batch end are armed for End.") { Backend = GpuBackendKind.VulkanNative, Command = member };
         }
 
         void BeginTimestampRecording()

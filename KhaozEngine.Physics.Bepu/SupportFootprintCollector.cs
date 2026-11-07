@@ -51,6 +51,45 @@ internal sealed partial class SupportFootprintCollector
     double _columnBottom, _columnTop;
     int _count;
 
+    /// <summary>Lets JoinedEdgeContinuityTests and LiveJoins publish the same admitted polygon members directly.</summary>
+    internal void SeedMembersForTests(ReadOnlySpan<(SupportPolygon Polygon, SupportFootprintMember Value)> admitted)
+    {
+        for (int i = 0; i < admitted.Length; i++)
+            _members[i] = new(admitted[i].Polygon, default, 0, admitted[i].Value);
+        _count = admitted.Length;
+    }
+
+    /// <summary>Injects unresolved vertex or normal values before extrema evaluation, preserving admitted identity.
+    /// Returns copied observations, never the collector's polygons or their storage.</summary>
+    internal SupportPolygonUncertaintyObservation[] InjectPolygonUncertaintyForTests(StaticHandle owner, int elementId,
+        ReadOnlySpan<FeaturePoint> vertices, FeaturePoint normal)
+    {
+        List<SupportPolygonUncertaintyObservation> observations = [];
+        foreach (SupportPolygon polygon in _polygons)
+            if (polygon.Static == owner && polygon.ElementId == elementId)
+            {
+                polygon.Begin(polygon.Static, polygon.ElementId, vertices.Length);
+                for (int i = 0; i < vertices.Length; i++)
+                    polygon.Set(i, vertices[i], FeaturePoint.Subtract(vertices[(i + 1) % vertices.Length], vertices[i]));
+                polygon.Finish(normal);
+                observations.Add(new(polygon.Static, polygon.ElementId, polygon.Vertices.ToArray(),
+                    polygon.Normal, polygon.HasSource));
+            }
+        return observations.ToArray();
+    }
+
+    /// <summary>Copies tilted proof counters and refusal flags without lending the retained proof storage.</summary>
+    internal SupportTiltedCurvedObservation TiltedObservationForTests => _curvedKernel.TiltedObservationForTests;
+
+    /// <summary>Lets CurvedWork inject an exhausted work account before publication.</summary>
+    internal SupportCurvedWork CurvedWorkForTests => _curvedWork;
+
+    /// <summary>Lets CurvedWork verify that admission retained a member before injecting a refusal.</summary>
+    internal int MemberCountForTests => _count;
+
+    /// <summary>Lets CurvedWork verify the below-band pass used by its late-refusal regression.</summary>
+    internal bool BelowBandPassForTests => _belowBandPass;
+
     internal bool Begin(in SupportFootprintRequest request)
     {
         _curvedWork.Begin();

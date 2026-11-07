@@ -1,5 +1,4 @@
 using System;
-using System.IO;
 
 namespace KhaozEngine.Imaging;
 
@@ -27,7 +26,8 @@ internal static class PngFilters
                     2 => above,
                     3 => (left + above) / 2,
                     4 => Paeth(left, above, upperLeft),
-                    _ => throw new InvalidDataException($"unsupported PNG filter type {filter}"),
+                    _ => throw new PngDecodeDataException(PngDecodeRefusal.RowFilterUnsupported, $"unsupported PNG filter type {filter}")
+                    { FilterType = filter, RowIndex = y },
                 };
                 decoded[row + x] = unchecked((byte)(filtered[source++] + predictor));
             }

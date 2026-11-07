@@ -14,18 +14,21 @@ namespace KhaozEngine.Render3D
         /// auto-read <see cref="GltfMaterialMaps"/> (baseColor/normal/metallicRoughness, decoded to raw RGBA8, no
         /// GPU). This is the multi-texture-per-primitive path: a tree whose bark and leaves are separate
         /// primitives/materials returns two parts, each drawable with its own texture, instead of the single
-        /// flattened mesh <see cref="Load"/> / <see cref="LoadWithMaterial"/> produce. Parts are in stable
+        /// flattened mesh <see cref="Load"/> / <see cref="LoadWithMaterial(string)"/> produce. Parts are in stable
         /// first-use material order (the order materials are first referenced walking meshes then primitives), so a
         /// re-load is reproducible. A single-material asset yields exactly one part whose mesh is byte-identical to
-        /// <see cref="Load"/>'s and whose maps equal <see cref="LoadWithMaterial"/>'s. Primitives with no material
-        /// form their own (untextured) part. Throws <see cref="InvalidOperationException"/> if the glTF has no
+        /// <see cref="Load"/>'s and whose maps equal <see cref="LoadWithMaterial(string)"/>'s. Primitives with no material
+        /// form their own (untextured) part. Throws <see cref="GltfImportStateException"/> with NoTriangles if the glTF has no
         /// triangles. Upload with <see cref="Scene3D.LoadProp"/> (or one
         /// <see cref="Scene3D.LoadMesh(GltfMesh,GltfMaterialMaps)"/> per part); normalize a prop kit asset to its
         /// real-world height first with <see cref="PropLoader.LoadPropParts"/>.</summary>
         public static IReadOnlyList<GltfMeshPart> LoadPartsWithMaterials(string path)
-            => BuildParts(LoadModel(path), path);
+            => LoadPartsWithMaterials(path, null);
 
-        static IReadOnlyList<GltfMeshPart> BuildParts(ModelRoot root, string path,
+        internal static IReadOnlyList<GltfMeshPart> LoadPartsWithMaterials(string path, string? entryId)
+            => BuildParts(LoadModel(path, entryId), path, entryId);
+
+        static IReadOnlyList<GltfMeshPart> BuildParts(ModelRoot root, string path, string? entryId = null,
             Func<GltfMaterial?, GltfMaterialMaps>? readMaps = null, bool admitted = false)
         {
             // Distinct materials in first-use order (a null material - primitives with none - is a valid key). Walk
@@ -55,9 +58,9 @@ namespace KhaozEngine.Render3D
                     {
                         if (node.Mesh != mesh) continue;
                         placed = true;
-                        AppendMaterialCorners(corners, mesh, node.WorldMatrix, path, material);
+                        AppendMaterialCorners(corners, mesh, node.WorldMatrix, path, material, entryId);
                     }
-                    if (!placed) AppendMaterialCorners(corners, mesh, Matrix4x4.Identity, path, material);
+                    if (!placed) AppendMaterialCorners(corners, mesh, Matrix4x4.Identity, path, material, entryId);
                 }
                 if (corners.Count > 0)
                 {
@@ -66,7 +69,7 @@ namespace KhaozEngine.Render3D
                 }
             }
 
-            if (parts.Count == 0) throw new InvalidOperationException("glTF has no triangles: " + path);
+            if (parts.Count == 0) throw new GltfImportStateException(GltfImportRefusal.NoTriangles, "glTF has no triangles: " + path) { Identity = path };
             return parts;
         }
 
@@ -74,9 +77,12 @@ namespace KhaozEngine.Render3D
         /// material ordering, node-transform bake and decoded maps as the path overload. The caller's
         /// <paramref name="identity"/> names the asset in validation diagnostics.</summary>
         /// <remarks>Attachment consumers must apply their embedded rigid asset policy before import.</remarks>
-        /// <exception cref="InvalidDataException">The glTF is malformed. The message names
-        /// <paramref name="identity"/> and the importer's diagnostic is the inner exception.</exception>
-        /// <exception cref="InvalidOperationException">The glTF has no triangles or fails index validation.</exception>
+        /// <exception cref="GltfImportDataException">The glTF is malformed. Reason is
+        /// <see cref="GltfImportRefusal.MalformedModel"/>, Identity is <paramref name="identity"/> and the
+        /// importer's diagnostic is the inner exception. This type derives from Exception because
+        /// InvalidDataException is sealed.</exception>
+        /// <exception cref="GltfImportStateException">The glTF has no triangles or fails strict validation.</exception>
+        /// <exception cref="MeshIndexStateException">A triangle index is outside its vertex domain.</exception>
         public static IReadOnlyList<GltfMeshPart> LoadPartsWithMaterials(ReadOnlyMemory<byte> glb, string identity) =>
             TranslateModelErrors(identity, () => BuildParts(LoadModel(glb, identity), identity));
 
@@ -86,12 +92,12 @@ namespace KhaozEngine.Render3D
         // reusing the identical transform + corner-emit math, so a single-material part is byte-identical to the
         // flattened Load path.
         static void AppendMaterialCorners(List<MeshCorner> corners, Mesh mesh, Matrix4x4 world, string path,
-                                          GltfMaterial? material)
+                                          GltfMaterial? material, string? entryId)
         {
             (bool identity, Matrix4x4 normalMatrix) = TransformFor(world);
             foreach (var prim in mesh.Primitives)
                 if (ReferenceEquals(prim.Material, material))
-                    AppendPrimitiveCorners(corners, prim, world, normalMatrix, identity, path);
+                    AppendPrimitiveCorners(corners, prim, world, normalMatrix, identity, path, entryId: entryId);
         }
 
     }

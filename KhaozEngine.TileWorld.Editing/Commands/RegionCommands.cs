@@ -84,7 +84,9 @@ public sealed class DeleteRegionCommand : TileCommandBase
     {
         ArgumentNullException.ThrowIfNull(doc);
         TileRegion region = doc.GetRegion(_coord)
-            ?? throw new TileWorldException($"region {_coord} does not exist, there is nothing to delete");
+            ?? throw new TileWorldException(TileWorldRefusal.RegionMissing,
+                $"region {_coord} does not exist, there is nothing to delete")
+            { Region = _coord };
         if (_region is null)
         {
             _region = region;

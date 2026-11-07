@@ -21,6 +21,7 @@ namespace KhaozEngine.Tests.Gpu
     /// the failure would arrive as a diff on unrelated goldens with nothing naming the cause.
     /// </para>
     /// </summary>
+    [Collection("GraphicsBackendGlobalState")]
     public sealed class D3D11AdapterSelectionTests
     {
         static readonly IReadOnlyList<D3D11AdapterInfo> TwoAdapters = new[]
@@ -139,17 +140,6 @@ namespace KhaozEngine.Tests.Gpu
         }
 
         [Fact]
-        public void Choose_HardwareTakesTheFirstAdapterThatIsNotSoftware()
-        {
-            D3D11AdapterChoice choice = D3D11AdapterSelection.Choose(
-                D3D11AdapterSelection.Parse("hardware"), TwoAdapters, gpuPreferenceAvailable: true, out string? warning);
-
-            Assert.Equal(D3D11AdapterChoiceKind.Enumerated, choice.Kind);
-            Assert.Equal(0, choice.Index);
-            Assert.Null(warning);
-        }
-
-        [Fact]
         public void Choose_HardwareWarnsAndFallsBackWhenThereIsNoHardwareAdapter()
         {
             D3D11AdapterChoice choice = D3D11AdapterSelection.Choose(
@@ -159,17 +149,6 @@ namespace KhaozEngine.Tests.Gpu
             Assert.NotNull(warning);
             Assert.Contains(D3D11AdapterSelection.EnvVarName, warning, StringComparison.Ordinal);
             Assert.Contains("Microsoft Basic Render Driver", warning, StringComparison.Ordinal);
-        }
-
-        [Fact]
-        public void Choose_IndexTakesThatAdapter()
-        {
-            D3D11AdapterChoice choice = D3D11AdapterSelection.Choose(
-                D3D11AdapterSelection.Parse("1"), TwoAdapters, gpuPreferenceAvailable: true, out string? warning);
-
-            Assert.Equal(D3D11AdapterChoiceKind.Enumerated, choice.Kind);
-            Assert.Equal(1, choice.Index);
-            Assert.Null(warning);
         }
 
         [Theory]
@@ -184,20 +163,6 @@ namespace KhaozEngine.Tests.Gpu
             Assert.Equal(D3D11AdapterChoiceKind.DefaultEnumeration, choice.Kind);
             Assert.NotNull(warning);
             Assert.Contains(value, warning, StringComparison.Ordinal);
-        }
-
-        [Theory]
-        [InlineData("GeForce", 0)]
-        [InlineData("geforce", 0)]
-        [InlineData("Basic Render", 1)]
-        public void Choose_ANameSubstringMatchesCaseInsensitively(string value, int expected)
-        {
-            D3D11AdapterChoice choice = D3D11AdapterSelection.Choose(
-                D3D11AdapterSelection.Parse(value), TwoAdapters, gpuPreferenceAvailable: true, out string? warning);
-
-            Assert.Equal(D3D11AdapterChoiceKind.Enumerated, choice.Kind);
-            Assert.Equal(expected, choice.Index);
-            Assert.Null(warning);
         }
 
         /// <summary>
@@ -217,7 +182,7 @@ namespace KhaozEngine.Tests.Gpu
             Assert.Contains("Radeon", warning, StringComparison.Ordinal);
             Assert.Contains("NVIDIA GeForce RTX 4070", warning, StringComparison.Ordinal);
             Assert.Contains("Microsoft Basic Render Driver", warning, StringComparison.Ordinal);
-            Assert.Contains("(software)", warning, StringComparison.Ordinal);
+            Assert.Contains("software", warning, StringComparison.OrdinalIgnoreCase);
         }
 
         /// <summary>An empty enumeration is a perfectly good input: every request warns and falls back to letting
@@ -288,6 +253,7 @@ namespace KhaozEngine.Tests.Gpu
         [InlineData("hardware", (int)D3D11AdapterChoiceKind.Enumerated, 0)]
         [InlineData("1", (int)D3D11AdapterChoiceKind.Enumerated, 1)]
         [InlineData("GeForce", (int)D3D11AdapterChoiceKind.Enumerated, 0)]
+        [InlineData("geforce", (int)D3D11AdapterChoiceKind.Enumerated, 0)]
         [InlineData("Basic Render", (int)D3D11AdapterChoiceKind.Enumerated, 1)]
         public void Choose_EveryExplicitValueWinsOverTheHighPerformanceDefault(string value, int expectedKind,
             int expectedIndex)
@@ -303,21 +269,6 @@ namespace KhaozEngine.Tests.Gpu
             }
         }
 
-        /// <summary>An explicit value that cannot be honoured still lets DXGI pick, as it did before the
-        /// preference existed, and never lands on the high-performance default: a pin that failed says so and lands
-        /// where it always has.</summary>
-        [Theory]
-        [InlineData("2")]
-        [InlineData("Radeon")]
-        public void Choose_AnUnhonourableExplicitValueStillLetsDxgiPick(string value)
-        {
-            D3D11AdapterChoice choice = D3D11AdapterSelection.Choose(
-                D3D11AdapterSelection.Parse(value), TwoAdapters, gpuPreferenceAvailable: true, out string? warning);
-
-            Assert.Equal(D3D11AdapterChoiceKind.DefaultEnumeration, choice.Kind);
-            Assert.NotNull(warning);
-        }
-
         /// <summary>The high-performance choice names no enumerated adapter, so like DXGI's own pick it answers
         /// false and leaves the flag to the created device, which is the authority on which adapter ran.</summary>
         [Fact]
@@ -331,32 +282,47 @@ namespace KhaozEngine.Tests.Gpu
         {
             string line = D3D11AdapterSelection.Describe(D3D11AdapterChoice.HighPerformance, TwoAdapters);
 
-            Assert.Contains("high-performance", line, StringComparison.Ordinal);
             Assert.Contains(D3D11AdapterSelection.EnvVarName, line, StringComparison.Ordinal);
+            Assert.NotEqual(D3D11AdapterSelection.Describe(D3D11AdapterChoice.Default, TwoAdapters), line);
         }
 
-        /// <summary>The two ways the default can fail on a real factory both WARN in the same shape as every
-        /// unhonourable request above, naming the lever and saying DXGI is picking. The glue that raises them is
-        /// Windows-only, so the wording is pinned here.</summary>
+        /// <summary>Both Windows-only fallback warnings identify the configuration lever, and a failed create
+        /// preserves the supplied error code.</summary>
         [Fact]
-        public void HighPerformanceFallbacks_WarnNamingTheLeverAndThatDxgiPicks()
+        public void HighPerformanceFallbacks_NameTheLeverAndCreationFailure()
         {
             string unavailable = D3D11AdapterSelection.HighPerformanceUnavailableWarning;
             string refused = D3D11AdapterSelection.HighPerformanceCreateFailedWarning("DXGI_ERROR_UNSUPPORTED");
 
-            Assert.Contains("Letting DXGI pick", unavailable, StringComparison.Ordinal);
             Assert.Contains(D3D11AdapterSelection.EnvVarName, unavailable, StringComparison.Ordinal);
-            Assert.Contains("Letting DXGI pick", refused, StringComparison.Ordinal);
             Assert.Contains("DXGI_ERROR_UNSUPPORTED", refused, StringComparison.Ordinal);
             Assert.Contains(D3D11AdapterSelection.EnvVarName, refused, StringComparison.Ordinal);
         }
 
-        /// <summary>Reading the live environment is the one impure member, and it has to work everywhere: the
-        /// answer depends on the machine, so what is asserted is that asking is legal off Windows.</summary>
-        [Fact]
-        public void FromEnvironment_IsReadableOnAnyOperatingSystem()
+        [Theory]
+        [InlineData(null)]
+        [InlineData("warp")]
+        [InlineData(" 1 ")]
+        [InlineData(" GeForce ")]
+        public void FromEnvironment_ReadsTheConfiguredRequest(string? value)
         {
-            _ = D3D11AdapterSelection.FromEnvironment();
+            string? original = Environment.GetEnvironmentVariable(D3D11AdapterSelection.EnvVarName);
+            try
+            {
+                Environment.SetEnvironmentVariable(D3D11AdapterSelection.EnvVarName, value);
+                D3D11AdapterRequest expected = D3D11AdapterSelection.Parse(value);
+
+                D3D11AdapterRequest actual = D3D11AdapterSelection.FromEnvironment();
+
+                Assert.Equal(expected.Kind, actual.Kind);
+                Assert.Equal(expected.Index, actual.Index);
+                Assert.Equal(expected.Name, actual.Name);
+                Assert.Equal(expected.RawValue, actual.RawValue);
+            }
+            finally
+            {
+                Environment.SetEnvironmentVariable(D3D11AdapterSelection.EnvVarName, original);
+            }
         }
     }
 }

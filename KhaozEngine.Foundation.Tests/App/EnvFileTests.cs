@@ -23,12 +23,16 @@ public sealed class EnvFileTests
         }, entries);
     }
 
-    [Fact]
-    public void ParseIgnoresBlankCommentAndMalformedLines()
+    [Theory]
+    [InlineData(" \t\r\n # ignored=entry\nmissing separator\n=empty key\n \t =empty key\nGOOD=one\rSECOND=two",
+        "GOOD", "one", "SECOND", "two")]
+    [InlineData("KEY=\"first\nsecond\"\nNEXT=third", "KEY", "\"first", "NEXT", "third")]
+    public void ParseIgnoresMalformedLinesWithoutConsumingTheNextAssignment(
+        string text, string firstKey, string firstValue, string secondKey, string secondValue)
     {
-        using var reader = new StringReader(" \t\r\n # ignored=entry\nmissing separator\n=empty key\n \t =empty key\nGOOD=one\rSECOND=two");
+        using var reader = new StringReader(text);
 
-        Assert.Equal(new[] { Pair("GOOD", "one"), Pair("SECOND", "two") }, EnvFile.Parse(reader));
+        Assert.Equal(new[] { Pair(firstKey, firstValue), Pair(secondKey, secondValue) }, EnvFile.Parse(reader));
     }
 
     [Theory]
@@ -65,14 +69,6 @@ public sealed class EnvFileTests
 
         Assert.Equal(Pair("KEEP", "second"), Assert.Single(EnvFile.Parse(reader)));
         Assert.Null(reader.ReadLine());
-    }
-
-    [Fact]
-    public void ParseDoesNotTreatAnUnfinishedQuotedValueAsMultilineSyntax()
-    {
-        using var reader = new StringReader("KEY=\"first\nsecond\"\nNEXT=third");
-
-        Assert.Equal(new[] { Pair("KEY", "\"first"), Pair("NEXT", "third") }, EnvFile.Parse(reader));
     }
 
     [Fact]

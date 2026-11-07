@@ -50,7 +50,7 @@ public sealed class WaterVolumeLayoutTests
             .Where(p => p.WaterVolumeBinding.HasValue).ToArray();
         string[] litPrograms =
         [
-            "Model", "Foliage", "PreparedFoliage", "PreparedFoliageMotion", "ModelDissolve", "SkinnedModel",
+            "Model", "Foliage", "FoliageOpaque", "FoliageOpaqueMotion", "PreparedFoliageOpaque", "PreparedFoliageOpaqueMotion", "PreparedFoliage", "PreparedFoliageMotion", "ModelDissolve", "SkinnedModel",
             "SkinnedModelDissolve", "Splat", "TileGround", "ModelMotion", "SkinnedModelMotion",
             "SkinnedModelDissolveMotion", "ModelCpuSkinnedMotion", "ModelCpuSkinnedDissolveMotion",
             "FoliageMotion", "SplatMotion", "TileGroundMotion"
@@ -65,7 +65,7 @@ public sealed class WaterVolumeLayoutTests
             int binding = program.WaterVolumeBinding!.Value;
             Assert.Equal(binding + 1, elements.Length);
             Assert.Equal(GpuResourceKind.StructuredBufferReadOnly, elements[binding].Kind);
-            Assert.Contains(binding == 15 ? "register(t10)" : "register(t3)",
+            Assert.Contains(binding switch { 15 => "register(t10)", 10 => "register(t6)", _ => "register(t3)" },
                 compiled.FragmentSource, StringComparison.Ordinal);
         }
     }
@@ -104,8 +104,12 @@ public sealed class WaterVolumeLayoutTests
     {
         using var device = new FakeGpuDevice(capabilityOverride: new GpuCapabilities(false, true)
         { MaxFragmentStorageBuffers = reported });
-        NotSupportedException error = Assert.Throws<NotSupportedException>(() => NewRenderer(device));
-        Assert.Contains("maxPerStageDescriptorStorageBuffers", error.Message, StringComparison.Ordinal);
+        LitReceiverNotSupportedException error = Assert.Throws<LitReceiverNotSupportedException>(() => NewRenderer(device));
+        Assert.IsAssignableFrom<NotSupportedException>(error);
+        Assert.Equal(LitReceiverRefusal.FragmentStorageBufferLimitInsufficient, error.Reason);
+        Assert.Equal(3, error.RequiredCount);
+        Assert.Equal(reported, error.AvailableCount);
+        Assert.Equal("maxPerStageDescriptorStorageBuffers", error.CapabilityName);
         Assert.Empty(((FakeGpuResourceFactory)device.Factory).ShaderRequests);
         Assert.Empty(((FakeGpuResourceFactory)device.Factory).Buffers);
     }
@@ -126,9 +130,13 @@ public sealed class WaterVolumeLayoutTests
     {
         using var device = new FakeGpuDevice(capabilityOverride: new GpuCapabilities(false, true)
         { MaxFragmentStorageBuffers = reported });
-        NotSupportedException error = Assert.Throws<NotSupportedException>(() =>
+        LitReceiverNotSupportedException error = Assert.Throws<LitReceiverNotSupportedException>(() =>
             new Scene3D(device, new(null, GpuPixelFormat.R8G8B8A8UNorm)));
-        Assert.Contains("maxPerStageDescriptorStorageBuffers", error.Message, StringComparison.Ordinal);
+        Assert.IsAssignableFrom<NotSupportedException>(error);
+        Assert.Equal(LitReceiverRefusal.FragmentStorageBufferLimitInsufficient, error.Reason);
+        Assert.Equal(3, error.RequiredCount);
+        Assert.Equal(reported, error.AvailableCount);
+        Assert.Equal("maxPerStageDescriptorStorageBuffers", error.CapabilityName);
         var factory = (FakeGpuResourceFactory)device.Factory;
         Assert.Empty(factory.Buffers);
         Assert.Empty(factory.Textures);

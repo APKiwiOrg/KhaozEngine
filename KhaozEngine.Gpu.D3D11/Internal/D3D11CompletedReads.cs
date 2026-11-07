@@ -64,10 +64,15 @@ namespace KhaozEngine.Gpu.D3D11.Internal
 
             if (completion is not D3D11GpuFence fence)
             {
-                throw new ArgumentException(
+                throw new GpuResourceOwnershipArgumentException(GpuResourceOwnershipRefusal.ForeignBackend,
                     $"A {completion.GetType().Name} was handed to the native Direct3D 11 backend as the completion "
                     + "fence of a staging copy. Only a fence this backend created names a value on its timeline.",
-                    nameof(completion));
+                    nameof(completion))
+                {
+                    ExpectedBackend = GpuBackendKind.Direct3D11Native,
+                    ActualType = completion?.GetType(),
+                    ResourceKind = "fence",
+                };
             }
 
             fence.RequireOwner(_fences, nameof(completion));
@@ -76,10 +81,15 @@ namespace KhaozEngine.Gpu.D3D11.Internal
                 destination.Length);
             if (!ReferenceEquals(buffer.Owner, _liveness))
             {
-                throw new ArgumentException(
+                throw new GpuResourceOwnershipArgumentException(GpuResourceOwnershipRefusal.DifferentDevice,
                     "That staging buffer was created by a DIFFERENT native Direct3D 11 device, so this device's "
                     + "immediate context cannot map it. Read it through the device that created it.",
-                    nameof(staging));
+                    nameof(staging))
+                {
+                    ExpectedBackend = GpuBackendKind.Direct3D11Native,
+                    ResourceKind = "buffer",
+                    Context = nameof(staging),
+                };
             }
 
             if (!Monitor.TryEnter(_submitLock)) return false;

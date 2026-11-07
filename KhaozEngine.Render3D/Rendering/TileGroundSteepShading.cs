@@ -66,7 +66,9 @@ namespace KhaozEngine.Render3D
             ? Vector4.Zero
             : new Vector4(steep.CompanionSlot + 1, Cos(steep.ToDegrees), Cos(steep.FromDegrees), 0f);
 
-        /// <summary>Throws <see cref="ArgumentException"/> naming the first layer whose companion is unsound: one
+        /// <summary>Throws <see cref="TileGroundSteepArgumentException"/> with its
+        /// <see cref="TileGroundSteepArgumentException.Reason"/> and
+        /// <see cref="TileGroundSteepArgumentException.LayerIndex"/> for the first unsound companion: one
         /// that names itself, names a slot outside <paramref name="layers"/>, carries a band that does not rise
         /// strictly inside (0, 90) degrees, or carries one whose two ends pack to the same cosine. Run by <see cref="TileGroundMaterialConfig.BuildParams"/>.</summary>
         public static void Validate(IReadOnlyList<TileGroundLayerImage> layers)
@@ -89,22 +91,27 @@ namespace KhaozEngine.Render3D
         static void Check(int slot, TileGroundSteepLayer steep, int layerCount)
         {
             if (steep.CompanionSlot == slot)
-                throw new ArgumentException($"tile-ground layer {slot} names itself as its steep companion.", "layers");
+                throw new TileGroundSteepArgumentException(TileGroundSteepRefusal.CompanionIsSelf,
+                    $"tile-ground layer {slot} names itself as its steep companion.", "layers")
+                { LayerIndex = slot, CompanionSlot = steep.CompanionSlot };
             if (steep.CompanionSlot < 0 || steep.CompanionSlot >= layerCount)
-                throw new ArgumentException(
+                throw new TileGroundSteepArgumentException(TileGroundSteepRefusal.CompanionOutsideSet,
                     $"tile-ground layer {slot} names slot {steep.CompanionSlot} as its steep companion, outside the " +
-                    $"set's {layerCount} layers.", "layers");
+                    $"set's {layerCount} layers.", "layers")
+                { LayerIndex = slot, CompanionSlot = steep.CompanionSlot, LayerCount = layerCount };
             if (!(steep.FromDegrees > 0f && steep.ToDegrees < 90f && steep.FromDegrees < steep.ToDegrees))
-                throw new ArgumentException(
+                throw new TileGroundSteepArgumentException(TileGroundSteepRefusal.BandOutsideRightAngle,
                     $"tile-ground layer {slot} has the steep band {Text(steep.FromDegrees)} to {Text(steep.ToDegrees)} " +
-                    "degrees, which must rise strictly inside (0, 90).", "layers");
+                    "degrees, which must rise strictly inside (0, 90).", "layers")
+                { LayerIndex = slot, FromDegrees = steep.FromDegrees, ToDegrees = steep.ToDegrees };
             // The shader smoothsteps between the two packed cosines, and smoothstep is undefined unless its low
             // edge sits strictly below its high one. A band narrow enough, or close enough to 0 degrees, packs both
             // ends to the same float. GroundMaterialSteepRules makes the same check with the same expression.
             if (!(Cos(steep.ToDegrees) < Cos(steep.FromDegrees)))
-                throw new ArgumentException(
+                throw new TileGroundSteepArgumentException(TileGroundSteepRefusal.BandCosinesNotDistinct,
                     $"tile-ground layer {slot} has the steep band {Text(steep.FromDegrees)} to {Text(steep.ToDegrees)} " +
-                    "degrees, whose ends pack to the same cosine. Widen the band.", "layers");
+                    "degrees, whose ends pack to the same cosine. Widen the band.", "layers")
+                { LayerIndex = slot, FromDegrees = steep.FromDegrees, ToDegrees = steep.ToDegrees };
         }
 
         static float Cos(float degrees) => MathF.Cos(degrees * (MathF.PI / 180f));

@@ -60,12 +60,12 @@ internal sealed class ShippedSceneInputs
         {
             Shape(region, "rx", "rz", "hash");
             string path = snapshot.RelativeTo(worldDirectory, "regions/" + TileWorldFile.RegionFileName(new(region.GetProperty("rx").GetInt32(), region.GetProperty("rz").GetInt32())));
-            Require(Convert.ToHexStringLower(System.Security.Cryptography.SHA256.HashData(snapshot.Bytes(path))) == Text(region, "hash"), "scene region differs from world manifest");
+            Require(Convert.ToHexStringLower(System.Security.Cryptography.SHA256.HashData(snapshot.Bytes(path))) == Text(region, "hash"), PrivateOracleDataRefusal.AttestedDigestMismatch, "scene region differs from world manifest");
         }
         var (world, catalogs) = ShippedSourceInventory.ReadWorld(inputs);
-        Require(world.TileSize == 1, "scene comparison requires metre source tiles");
+        Require(world.TileSize == 1, PrivateOracleDataRefusal.SourceCoordinateContractMismatch, "scene comparison requires metre source tiles");
         string directory = System.IO.Path.GetDirectoryName(manifest.NativeTiledManifestPath)!.Replace('\\', '/');
-        Require(System.IO.Path.GetFileName(manifest.NativeTiledManifestPath) == "map.json" && directory.Length != 0, "invalid scene tiled manifest");
+        Require(System.IO.Path.GetFileName(manifest.NativeTiledManifestPath) == "map.json" && directory.Length != 0, PrivateOracleDataRefusal.PathUnsafe, "invalid scene tiled manifest");
         snapshot.Json(manifest.NativeTiledManifestPath);
         string scratch = System.IO.Path.GetDirectoryName(inputs.ReportPath)!;
         var native = ReloadTiled(snapshot, directory, scratch);
@@ -77,21 +77,21 @@ internal sealed class ShippedSceneInputs
         var sourcePolicy = ShippedScenePolicy.Read(snapshot.Json(manifest.Policy.SourcePolicyPath));
         var nativePolicy = ShippedScenePolicy.Read(snapshot.Json(manifest.Policy.NativePolicyPath));
         var objects = world.AllObjects().ToDictionary(o => o.Id);
-        Require(objects.Keys.Order().SequenceEqual(manifest.Placements.Select(p => p.SourceObjectId).Order()), "incomplete scene source placement correspondence");
-        Require(effective.Placements.Select(p => p.PlacementId).Order(StringComparer.Ordinal).SequenceEqual(manifest.Placements.Select(p => p.NativePlacementId).Order(StringComparer.Ordinal)), "incomplete scene native placement correspondence");
+        Require(objects.Keys.Order().SequenceEqual(manifest.Placements.Select(p => p.SourceObjectId).Order()), PrivateOracleDataRefusal.CorrespondenceMismatch, "incomplete scene source placement correspondence");
+        Require(effective.Placements.Select(p => p.PlacementId).Order(StringComparer.Ordinal).SequenceEqual(manifest.Placements.Select(p => p.NativePlacementId).Order(StringComparer.Ordinal)), PrivateOracleDataRefusal.CorrespondenceMismatch, "incomplete scene native placement correspondence");
         var meshes = new Dictionary<string, byte[]>(StringComparer.Ordinal);
         foreach (var row in manifest.Placements)
         {
             var archetype = catalogs.Archetype(objects[row.SourceObjectId].ArchetypeId) ?? throw new InvalidDataException("missing scene source archetype");
             string[] paths = new[] { archetype.MeshRef }.Concat(archetype.LodMeshRef is { Length: > 0 } lod ? [lod] : []).ToArray();
-            Require(paths.Length == row.Lods.Count, "scene source LOD correspondence differs");
+            Require(paths.Length == row.Lods.Count, PrivateOracleDataRefusal.CorrespondenceMismatch, "scene source LOD correspondence differs");
             var placement = effective.Placements.Single(p => p.PlacementId == row.NativePlacementId);
             var asset = closure.GetAsset(placement.AssetId);
-            Require(new[] { asset.MeshResourceId }.Concat(asset.LodResourceIds).SequenceEqual(row.Lods.Select(l => l.NativeResourceId)), "scene native LOD correspondence differs");
+            Require(new[] { asset.MeshResourceId }.Concat(asset.LodResourceIds).SequenceEqual(row.Lods.Select(l => l.NativeResourceId)), PrivateOracleDataRefusal.CorrespondenceMismatch, "scene native LOD correspondence differs");
             for (int i = 0; i < paths.Length; i++)
             {
                 string sourcePath = SafePath(paths[i]);
-                Require(row.Lods[i].SourcePath == sourcePath, "scene source LOD order differs");
+                Require(row.Lods[i].SourcePath == sourcePath, PrivateOracleDataRefusal.CorrespondenceMismatch, "scene source LOD order differs");
                 ValidateOriginalMesh(snapshot.Bytes(sourcePath));
                 meshes.TryAdd(sourcePath, snapshot.Bytes(sourcePath).ToArray());
             }
@@ -115,13 +115,13 @@ internal sealed class ShippedSceneInputs
                     }
         materialIds.Remove(0);
         var requiredMaterials = materialIds.Order().ToArray();
-        Require(requiredMaterials.SequenceEqual(manifest.Materials.Select(m => m.SourceMaterialId).Order()), "incomplete scene material correspondence");
+        Require(requiredMaterials.SequenceEqual(manifest.Materials.Select(m => m.SourceMaterialId).Order()), PrivateOracleDataRefusal.CorrespondenceMismatch, "incomplete scene material correspondence");
         foreach (var row in manifest.Materials) closure.GetResource(row.NativeResourceId);
         Require(objects.Values.Where(o => catalogs.Archetype(o.ArchetypeId)?.IsRoof == true).Select(o => o.Id).Order()
-            .SequenceEqual(manifest.Roofs.Select(r => r.SourceObjectId).Order()), "incomplete scene source roof correspondence");
-        Require(effective.BuildingIntent.Roofs.Select(r => r.Id).Order(StringComparer.Ordinal).SequenceEqual(manifest.Roofs.Select(r => r.NativePlacementId).Order(StringComparer.Ordinal)), "incomplete scene native roof correspondence");
-        Require(MapEffectiveAnnotations.Lights(effective).Select(l => l.Id).Order(StringComparer.Ordinal).SequenceEqual(manifest.Lights.Select(l => l.NativeLightId).Order(StringComparer.Ordinal)), "incomplete scene light correspondence");
-        Require(sourcePolicy.Lights.Select(l => (l.SourceObjectId, l.SourceProfileId)).Order().SequenceEqual(manifest.Lights.Select(l => (l.SourceObjectId, l.SourceProfileId)).Order()), "incomplete source light policy");
+            .SequenceEqual(manifest.Roofs.Select(r => r.SourceObjectId).Order()), PrivateOracleDataRefusal.CorrespondenceMismatch, "incomplete scene source roof correspondence");
+        Require(effective.BuildingIntent.Roofs.Select(r => r.Id).Order(StringComparer.Ordinal).SequenceEqual(manifest.Roofs.Select(r => r.NativePlacementId).Order(StringComparer.Ordinal)), PrivateOracleDataRefusal.CorrespondenceMismatch, "incomplete scene native roof correspondence");
+        Require(MapEffectiveAnnotations.Lights(effective).Select(l => l.Id).Order(StringComparer.Ordinal).SequenceEqual(manifest.Lights.Select(l => l.NativeLightId).Order(StringComparer.Ordinal)), PrivateOracleDataRefusal.CorrespondenceMismatch, "incomplete scene light correspondence");
+        Require(sourcePolicy.Lights.Select(l => (l.SourceObjectId, l.SourceProfileId)).Order().SequenceEqual(manifest.Lights.Select(l => (l.SourceObjectId, l.SourceProfileId)).Order()), PrivateOracleDataRefusal.CorrespondenceMismatch, "incomplete source light policy");
         var sourceWaterIds = new List<string>();
         foreach (var region in world.Regions.Keys)
             for (int plane = 0; plane < world.PlaneCount; plane++)
@@ -129,14 +129,14 @@ internal sealed class ShippedSceneInputs
                 var bodies = TileWaterBodies.Collect(world, catalogs, region, plane);
                 for (int i = 0; i < bodies.Count; i++) sourceWaterIds.Add(KhaozEngine.Tests.MapDocCompatibility.LegacyWaterConverter.BodyId(region, plane, i));
             }
-        Require(sourceWaterIds.Order(StringComparer.Ordinal).SequenceEqual(manifest.Water.Select(w => w.SourceBodyKey).Order(StringComparer.Ordinal)), "incomplete scene source water correspondence");
-        Require((effective.Water?.Bodies ?? []).Select(b => b.Id).Order(StringComparer.Ordinal).SequenceEqual(manifest.Water.Select(w => w.NativeBodyId).Order(StringComparer.Ordinal)), "incomplete scene native water correspondence");
+        Require(sourceWaterIds.Order(StringComparer.Ordinal).SequenceEqual(manifest.Water.Select(w => w.SourceBodyKey).Order(StringComparer.Ordinal)), PrivateOracleDataRefusal.CorrespondenceMismatch, "incomplete scene source water correspondence");
+        Require((effective.Water?.Bodies ?? []).Select(b => b.Id).Order(StringComparer.Ordinal).SequenceEqual(manifest.Water.Select(w => w.NativeBodyId).Order(StringComparer.Ordinal)), PrivateOracleDataRefusal.CorrespondenceMismatch, "incomplete scene native water correspondence");
         foreach (var row in manifest.Water)
-            Require(effective.Water!.Bodies.Single(b => b.Id == row.NativeBodyId).Covers.Select(c => c.Id).Order(StringComparer.Ordinal).SequenceEqual(row.NativeSpaceIds.Order(StringComparer.Ordinal)), "scene water space correspondence differs");
-        Require(world.FoliageLayers.Select(l => l.Id).Order(StringComparer.Ordinal).SequenceEqual(manifest.Foliage.Select(f => f.SourceLayerId).Order(StringComparer.Ordinal)), "incomplete scene foliage correspondence");
-        Require((manifest.BuildingManifestPath is not null) == (manifest.Roofs.Count > 0 || native.Prefabs?.Instances.Count > 0), "scene building manifest participation differs");
-        Require((manifest.MarkerManifestPath is not null) == (world.AllMarkers().Any()), "scene marker manifest participation differs");
-        Require((manifest.FoliageManifestPath is not null) == (manifest.Foliage.Count > 0), "scene foliage manifest participation differs");
+            Require(effective.Water!.Bodies.Single(b => b.Id == row.NativeBodyId).Covers.Select(c => c.Id).Order(StringComparer.Ordinal).SequenceEqual(row.NativeSpaceIds.Order(StringComparer.Ordinal)), PrivateOracleDataRefusal.CorrespondenceMismatch, "scene water space correspondence differs");
+        Require(world.FoliageLayers.Select(l => l.Id).Order(StringComparer.Ordinal).SequenceEqual(manifest.Foliage.Select(f => f.SourceLayerId).Order(StringComparer.Ordinal)), PrivateOracleDataRefusal.CorrespondenceMismatch, "incomplete scene foliage correspondence");
+        Require((manifest.BuildingManifestPath is not null) == (manifest.Roofs.Count > 0 || native.Prefabs?.Instances.Count > 0), PrivateOracleDataRefusal.CorrespondenceMismatch, "scene building manifest participation differs");
+        Require((manifest.MarkerManifestPath is not null) == (world.AllMarkers().Any()), PrivateOracleDataRefusal.CorrespondenceMismatch, "scene marker manifest participation differs");
+        Require((manifest.FoliageManifestPath is not null) == (manifest.Foliage.Count > 0), PrivateOracleDataRefusal.CorrespondenceMismatch, "scene foliage manifest participation differs");
         var result = new ShippedSceneInputs(manifest, world, catalogs, sourcePolicy, nativePolicy, meshes, snapshot, bytes, directory, scratch);
         result.NativeTileSize = native.TileSize;
         foreach (var pair in textures) result._textures.Add(pair.Key, pair.Value);
@@ -144,11 +144,11 @@ internal sealed class ShippedSceneInputs
         {
             result.Buildings = ShippedBuildingInputs.Read(inputs, snapshot.Json(building));
             var groups = result.Buildings.Comparison.GetProperty("groups").EnumerateArray().ToArray();
-            Require(groups.Select(g => Text(g, "id")).Order(StringComparer.Ordinal).SequenceEqual(effective.BuildingIntent.RoofGroups.Select(g => g.Id).Order(StringComparer.Ordinal)), "scene roof group inventory differs");
+            Require(groups.Select(g => Text(g, "id")).Order(StringComparer.Ordinal).SequenceEqual(effective.BuildingIntent.RoofGroups.Select(g => g.Id).Order(StringComparer.Ordinal)), PrivateOracleDataRefusal.CorrespondenceMismatch, "scene roof group inventory differs");
             foreach (var group in groups)
             {
                 var actual = effective.BuildingIntent.RoofGroups.Single(g => g.Id == Text(group, "id"));
-                Require(ShippedSceneManifest.Strings(group.GetProperty("rooms")).Order(StringComparer.Ordinal).SequenceEqual(actual.Rooms.Select(r => r.Id).Order(StringComparer.Ordinal)), "scene roof group rooms differ");
+                Require(ShippedSceneManifest.Strings(group.GetProperty("rooms")).Order(StringComparer.Ordinal).SequenceEqual(actual.Rooms.Select(r => r.Id).Order(StringComparer.Ordinal)), PrivateOracleDataRefusal.CorrespondenceMismatch, "scene roof group rooms differ");
             }
             foreach (var roof in result.Buildings.Comparison.GetProperty("roofs").EnumerateArray())
             {
@@ -156,11 +156,11 @@ internal sealed class ShippedSceneInputs
                 string id = manifest.Roofs.Single(r => r.SourceObjectId == sourceId).NativePlacementId;
                 var links = effective.BuildingIntent.RoofLinks.Where(l => l.Roof.Id == id).ToArray();
                 bool linked = roof.GetProperty("linkId").ValueKind != JsonValueKind.Null;
-                Require(links.Length == (linked ? 1 : 0), "scene roof link inventory differs");
+                Require(links.Length == (linked ? 1 : 0), PrivateOracleDataRefusal.CorrespondenceMismatch, "scene roof link inventory differs");
                 if (!linked) continue;
                 Require(links[0].Id == Text(roof, "linkId") && links[0].AboveY == roof.GetProperty("aboveY").GetSingle() &&
                     links[0].Rooms.Select(r => r.Id).Order(StringComparer.Ordinal).SequenceEqual(ShippedSceneManifest.Strings(roof.GetProperty("rooms")).Order(StringComparer.Ordinal)) &&
-                    links[0].Groups.Select(r => r.Id).Order(StringComparer.Ordinal).SequenceEqual(ShippedSceneManifest.Strings(roof.GetProperty("groups")).Order(StringComparer.Ordinal)), "scene roof correspondence differs");
+                    links[0].Groups.Select(r => r.Id).Order(StringComparer.Ordinal).SequenceEqual(ShippedSceneManifest.Strings(roof.GetProperty("groups")).Order(StringComparer.Ordinal)), PrivateOracleDataRefusal.CorrespondenceMismatch, "scene roof correspondence differs");
             }
         }
         if (manifest.MarkerManifestPath is { } marker) result.Markers = ShippedMarkerInputs.Read(inputs, snapshot.Json(marker), scene: true);
@@ -173,9 +173,9 @@ internal sealed class ShippedSceneInputs
             result.FoliageBindings = correspondence.Layers();
             var capture = MapFoliageGenerationContext.Capture(native, closure, manifest.Limits?.Scene.Preparation?.FoliageContext, manifest.Limits is { HasQueryProfile: true } queryProfile ? queryProfile.Queries : null);
             if (capture.Capacity is { } capacity) throw new KhaozEngine.MapDoc.Scene.MapSceneCapacityException(capacity.LimitName, capacity.Requested, capacity.Allowance);
-            Require(capture.Context is not null, "scene foliage capture refused");
+            Require(capture.Context is not null, PrivateOracleDataRefusal.SceneFoliageCaptureRefused, "scene foliage capture refused");
             correspondence.Owners(capture.Context!);
-            Require(manifest.Foliage.All(f => result.FoliageBindings.Any(b => b.Row.SourceLayerId == f.SourceLayerId && b.Row.NativeLayerId == f.NativeLayerId)), "scene foliage mappings differ");
+            Require(manifest.Foliage.All(f => result.FoliageBindings.Any(b => b.Row.SourceLayerId == f.SourceLayerId && b.Row.NativeLayerId == f.NativeLayerId)), PrivateOracleDataRefusal.CorrespondenceMismatch, "scene foliage mappings differ");
         }
         result.AssetMappings = ShippedSceneSelections.Bind(result, closure, effective);
         var modelPaths = new Dictionary<string, string>(StringComparer.Ordinal);
@@ -192,7 +192,7 @@ internal sealed class ShippedSceneInputs
             }
         }
         result.SourceModelPaths = modelPaths;
-        Require(inputs.Provenance.Verify(inputs.SourceRoot) == 0, "scene extraction changed during load");
+        Require(inputs.Provenance.Verify(inputs.SourceRoot) == 0, PrivateOracleDataRefusal.ExtractionChanged, "scene extraction changed during load");
         return result;
     }
     internal MapDocument Reload(bool tiled) => tiled ? ReloadTiled(_snapshot, _tiledDirectory, _scratch)
@@ -210,22 +210,22 @@ internal sealed class ShippedSceneInputs
                 string target = System.IO.Path.Combine(root, path[(directory.Length + 1)..]);
                 Directory.CreateDirectory(System.IO.Path.GetDirectoryName(target)!); File.WriteAllBytes(target, snapshot.Bytes(path));
             }
-            Require(MapDocumentFile.VerifyTiled(root).Count == 0, "scene tiled store does not verify");
+            Require(MapDocumentFile.VerifyTiled(root).Count == 0, PrivateOracleDataRefusal.AttestedDigestMismatch, "scene tiled store does not verify");
             return MapDocumentFile.LoadTiled(root, new() { VerifyTileHashes = true });
         }
         finally { Directory.Delete(root, true); }
     }
     static void ValidateOriginalMesh(byte[] bytes)
     {
-        Require(bytes.Length >= 20 && System.Buffers.Binary.BinaryPrimitives.ReadUInt32LittleEndian(bytes) == 0x46546c67, "scene source mesh must be a self-contained binary glTF");
+        Require(bytes.Length >= 20 && System.Buffers.Binary.BinaryPrimitives.ReadUInt32LittleEndian(bytes) == 0x46546c67, PrivateOracleDataRefusal.SchemaShapeInvalid, "scene source mesh must be a self-contained binary glTF");
         int length = System.Buffers.Binary.BinaryPrimitives.ReadInt32LittleEndian(bytes.AsSpan(12));
-        Require(length > 0 && length <= bytes.Length - 20, "invalid scene source mesh JSON");
+        Require(length > 0 && length <= bytes.Length - 20, PrivateOracleDataRefusal.SchemaShapeInvalid, "invalid scene source mesh JSON");
         using var json = JsonDocument.Parse(bytes.AsMemory(20, length));
         UniqueMembers(json.RootElement);
         foreach (string name in new[] { "buffers", "images" })
             if (json.RootElement.TryGetProperty(name, out var rows))
                 foreach (var row in rows.EnumerateArray())
-                    Require(!row.TryGetProperty("uri", out var uri) || uri.ValueKind == JsonValueKind.String && uri.GetString()!.StartsWith("data:", StringComparison.Ordinal), "unattested external scene mesh dependency");
+                    Require(!row.TryGetProperty("uri", out var uri) || uri.ValueKind == JsonValueKind.String && uri.GetString()!.StartsWith("data:", StringComparison.Ordinal), PrivateOracleDataRefusal.DependencyUnattested, "unattested external scene mesh dependency");
     }
     internal KhaozEngine.Render2D.ImageRgba SourceTexture(string path) =>
         _textures.TryGetValue(System.IO.Path.GetFullPath(path), out var bytes) ? KhaozEngine.Render2D.ImageRgba.Decode(bytes)
@@ -241,9 +241,9 @@ internal sealed class ShippedSceneInputs
     }
     internal static MapFramePoint Point(double x, double y, double z)
     {
-        Require(double.IsFinite(x) && double.IsFinite(y) && double.IsFinite(z), "invalid scene framed point");
+        Require(double.IsFinite(x) && double.IsFinite(y) && double.IsFinite(z), PrivateOracleDataRefusal.ValueNonfinite, "invalid scene framed point");
         double fx = Math.Round(x / WorldFrame.Grid), fz = Math.Round(z / WorldFrame.Grid);
-        Require(fx >= short.MinValue && fx <= short.MaxValue && fz >= short.MinValue && fz <= short.MaxValue && float.IsFinite((float)y), "scene framed point outside range");
+        Require(fx >= short.MinValue && fx <= short.MaxValue && fz >= short.MinValue && fz <= short.MaxValue && float.IsFinite((float)y), PrivateOracleDataRefusal.ValueOutsideDomain, "scene framed point outside range");
         return new(new(checked((short)fx), checked((short)fz)), new((float)(x - fx * 128), (float)y, (float)(z - fz * 128)));
     }
 }

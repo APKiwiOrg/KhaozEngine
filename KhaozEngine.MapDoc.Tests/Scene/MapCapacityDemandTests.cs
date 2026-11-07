@@ -132,7 +132,6 @@ public sealed class MapCapacityDemandTests
         try
         {
             var assembly = context.LoadFromAssemblyPath(typeof(CapacityDemandDiagnostics).Assembly.Location);
-            var type = assembly.GetType(typeof(CapacityDemandDiagnostics).FullName!)!;
             var testAssembly = context.LoadFromAssemblyPath(typeof(CapacityDemandColdPath).Assembly.Location);
             var observed = testAssembly.GetType(typeof(CapacityDemandColdPath).FullName!)!
                 .GetMethod(nameof(CapacityDemandColdPath.Exercise))!.CreateDelegate<Func<bool>>();
@@ -145,7 +144,8 @@ public sealed class MapCapacityDemandTests
             long allocated = AllocationMeasurement.Measure("first unobserved diagnostic use", () => result = observed());
             Assert.False(result);
             Assert.Equal(0, allocated);
-            Assert.Null(type.GetField("s_state", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static)!.GetValue(null));
+            Assert.Equal(false, testAssembly.GetType(typeof(CapacityDemandColdPath).FullName!)!
+                .GetMethod(nameof(CapacityDemandColdPath.HasState))!.Invoke(null, null));
         }
         finally { context.Unload(); }
     }
@@ -166,6 +166,7 @@ public sealed class MapCapacityDemandTests
 public static class CapacityDemandColdPath
 {
     public static System.Reflection.Assembly DiagnosticAssembly() => typeof(CapacityDemandDiagnostics).Assembly;
+    public static bool HasState() => CapacityDemandDiagnostics.HasStateForTests;
     public static string[] Arguments() => ["cold", "MaxFaces"];
     public static bool Exercise()
     {

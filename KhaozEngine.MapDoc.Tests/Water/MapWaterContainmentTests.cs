@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using KhaozEngine.MapDoc;
+using KhaozEngine.MapDoc.Assets;
 using KhaozEngine.MapDoc.Identity;
 using KhaozEngine.MapDoc.Spaces;
 using KhaozEngine.MapDoc.Storage;
@@ -25,6 +26,19 @@ public class MapWaterContainmentTests
         var report = Check(doc);
         Assert.True(report.Complete);
         Assert.Equal("water body 'ocean': water domain: domain is empty.", Assert.Single(report.Errors));
+    }
+
+    [Fact]
+    public void ContainmentFindings_AreOwnedReadOnlySnapshots()
+    {
+        var original = Assert.Single(Check(WaterFixtures.Broken("alias-cover")).Findings);
+        var source = new[] { original };
+        var report = new MapWaterContainmentReport(true, [original.Message]) { Findings = source };
+        source[0] = original with { EntityId = "changed" };
+        Assert.Equal(original, Assert.Single(report.Findings));
+        if (report.Findings is IList<MapDocumentFinding> list)
+            Assert.Throws<NotSupportedException>(() => list[0] = source[0]);
+        Assert.Equal(original, Assert.Single(report.Findings));
     }
 
     [Fact]
@@ -88,7 +102,42 @@ public class MapWaterContainmentTests
     {
         MapWaterContainmentReport report = Check(WaterFixtures.SeaConnectedCave(portalBottomY));
         Assert.True(report.Complete);
-        Assert.Contains(report.Errors, e => e.Contains("water body 'ocean': covered spaces are not connected below its surface", StringComparison.Ordinal));
+        var finding = Assert.Single(report.Findings);
+        Assert.Equal(MapDocumentRefusal.WaterSpacesDisconnected, finding.Reason);
+        Assert.Equal("ocean", finding.EntityId);
+        Assert.Equal(new[] { "sea", "grotto" }, finding.SourceIds);
+        Assert.Empty(Check(WaterFixtures.SeaConnectedCave(-5f)).Errors);
+    }
+
+    [Theory]
+    [InlineData(1f)]
+    [InlineData(null)]
+    public void PreparedOccupiedBody_RetainsDisconnectedSpacesAndAcceptsAWetPortal(float? portalBottomY)
+    {
+        var doc = WaterFixtures.SeaConnectedCave(portalBottomY);
+        string before = doc.Water!.Digest();
+        var report = PreparedReport(doc);
+        Assert.True(report.Complete);
+        var finding = Assert.Single(report.Findings);
+        Assert.Equal(MapDocumentRefusal.WaterSpacesDisconnected, finding.Reason);
+        Assert.Equal("ocean", finding.EntityId);
+        Assert.Equal(new[] { "sea", "grotto" }, finding.SourceIds);
+        Assert.Equal(before, doc.Water.Digest());
+        Assert.Empty(PreparedReport(WaterFixtures.SeaConnectedCave(-5f)).Errors);
+
+        static MapWaterContainmentReport PreparedReport(MapDocument doc)
+        {
+            var view = CaveFixtures.View(doc);
+            var body = Assert.Single(doc.Water!.Bodies);
+            var domain = MapWaterDomain.Compile(body.Domain);
+            var prepared = new MapWaterContainment.Prepared(MapExactValue.FromSingle(body.SurfaceY), domain, Empty,
+                new MapWaterWorkBudget(), new HashSet<MapPatchKey>(),
+                id => MapWaterOccupiedPieces.Of(view, id, domain.Min, domain.Max, new()));
+            MapWaterConnectivity? graph = null;
+            return MapWaterContainment.ValidateBody(view, body, prepared, ref graph);
+        }
+        static IReadOnlyList<MapWaterFootprintRect> Empty(string _, out bool complete)
+        { complete = true; return []; }
     }
 
     // Scoped acquisition never follows a space's relation lists, so a view without the portal cannot prove the covered
@@ -161,11 +210,81 @@ public class MapWaterContainmentTests
     }
 
     [Theory]
-    [InlineData("domain-off-footprint", "water body 'ocean' covers no space footprint")]
-    [InlineData("missing-cover", "water body 'ocean': cover 'nowhere' is not a space")]
-    [InlineData("alias-cover", "water body 'ocean': cover 'sea-alias' is an alias")]
-    public void BadCovers_Refuse(string variant, string message) =>
-        Assert.Contains(Check(WaterFixtures.Broken(variant)).Errors, e => e.Contains(message, StringComparison.Ordinal));
+    [InlineData("domain-off-footprint", MapDocumentRefusal.WaterNoSpaceFootprint)]
+    [InlineData("missing-cover", MapDocumentRefusal.ReferenceMissing)]
+    [InlineData("alias-cover", MapDocumentRefusal.WaterCoversAlias)]
+    public void BadCovers_Refuse(string variant, MapDocumentRefusal reason)
+    {
+        var doc = WaterFixtures.Broken(variant);
+        string before = doc.Water!.Digest();
+        var finding = Assert.Single(Check(doc).Findings);
+        Assert.Equal(reason, finding.Reason);
+        Assert.Equal("ocean", finding.EntityId);
+        if (variant == "missing-cover") Assert.Equal("nowhere", finding.RecordId);
+        if (variant == "alias-cover") Assert.Equal("sea-alias", finding.RecordId);
+        Assert.Equal(before, doc.Water.Digest());
+        var valid = WaterFixtures.OceanOverCaves().Water!;
+        int ocean = doc.Water.Bodies.FindIndex(b => b.Id == "ocean");
+        doc.Water.Bodies[ocean] = valid.Bodies.Single(b => b.Id == "ocean");
+        Assert.Empty(Check(doc).Errors);
+    }
+
+    [Fact]
+    public void CoverOfWrongKind_ReportsItsRecordTypeAndAcceptsTheSpace()
+    {
+        var doc = WaterFixtures.OceanOverCaves();
+        int ocean = doc.Water!.Bodies.FindIndex(b => b.Id == "ocean");
+        var body = doc.Water.Bodies[ocean];
+        var cover = body.Covers[0];
+        var footprint = doc.Surfaces.Patches[cover.Anchor].Records.OfType<MapSpaceFootprint>().First();
+        doc.Water.Bodies[ocean] = body with { Covers = [new(footprint.Id, cover.Anchor)] };
+        string before = doc.Water.Digest();
+        var finding = Assert.Single(Check(doc).Findings);
+        Assert.Equal(MapDocumentRefusal.ReferenceKindMismatch, finding.Reason);
+        Assert.Equal(footprint.Id, finding.RecordId);
+        Assert.Equal(typeof(MapSpaceFootprint), finding.RecordType);
+        Assert.Equal(typeof(MapSpaceDoc), finding.ExpectedRecordType);
+        Assert.Equal(before, doc.Water.Digest());
+        doc.Water.Bodies[ocean] = body;
+        Assert.Empty(Check(doc).Errors);
+    }
+
+    [Fact]
+    public void UnrepresentableLevel_RetainsItsBodyAndAcceptsAnExactLevel()
+    {
+        var doc = WaterFixtures.Broken("tiny-level");
+        string before = doc.Water!.Digest();
+        var finding = Assert.Single(Check(doc).Findings);
+        Assert.Equal(MapDocumentRefusal.GeometryNotRepresentable, finding.Reason);
+        Assert.Equal("ocean", finding.EntityId);
+        Assert.Equal("SurfaceY", finding.FieldPath);
+        Assert.Equal((double)1e-20f, finding.ActualNumber);
+        Assert.Equal(before, doc.Water.Digest());
+        int ocean = doc.Water.Bodies.FindIndex(b => b.Id == "ocean");
+        doc.Water.Bodies[ocean] = doc.Water.Bodies[ocean] with { SurfaceY = 0 };
+        Assert.Empty(Check(doc).Errors);
+    }
+
+    [Fact]
+    public void CyclicPortalAlias_RetainsTheSpaceRefusalAndAcceptsTheOwner()
+    {
+        var doc = WaterFixtures.SeaConnectedCaveThroughAliases("sea");
+        var anchor = doc.Surfaces.Patches.Values.Single(p => p.Records.Any(r => r.Id == "sea-alias"));
+        int index = anchor.Records.FindIndex(r => r.Id == "sea-alias");
+        var alias = (MapSpaceDoc)anchor.Records[index];
+        anchor.Records[index] = alias with { AliasOf = new(alias.Id, anchor.Key) };
+        var report = Check(doc);
+        Assert.True(report.Complete);
+        Assert.Equal(new[] { MapDocumentRefusal.SpaceAliasCycle, MapDocumentRefusal.WaterSpacesDisconnected },
+            report.Findings.Select(f => f.Reason));
+        var finding = report.Findings[0];
+        Assert.Equal(MapDocumentRefusal.SpaceAliasCycle, finding.Reason);
+        Assert.Equal(alias.Id, finding.SpaceId);
+        Assert.Equal("ocean", finding.OwnerId);
+        Assert.Equal(new MapRecordRef(alias.Id, anchor.Key), ((MapSpaceDoc)anchor.Records[index]).AliasOf);
+        anchor.Records[index] = alias;
+        Assert.Empty(Check(doc).Errors);
+    }
 
     // A view built from the whole document lists every declared surface, so an anchor on an undeclared surface is absent.
     [Fact]
@@ -264,16 +383,33 @@ public class MapWaterContainmentTests
         Assert.Contains(report.Errors, e => e.Contains("water body 'cave-lake': unverified", StringComparison.Ordinal));
     }
 
-    [Fact]
-    public void MaterialClosure_IsCheckedOnBothIdentityPaths()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void MaterialClosure_IsCheckedOnBothIdentityPaths(bool wrongKind)
     {
         MapDocument doc = WaterFixtures.OceanOverCaves();
         Assert.Equal(MapAuthoredIdentityV2.Compute(doc, WaterFixtures.Assets(), WaterFixtures.ResolveOptions()),
             MapAuthoredIdentityV2.Compute(WaterFixtures.StoredSource(doc), WaterFixtures.Assets(), WaterFixtures.ResolveOptions()));
         MapDocument bad = WaterFixtures.Broken("unknown-material");
-        const string message = "water body 'ocean': render material 'no-such-material' is not a Material resource";
-        Assert.Contains(message, Assert.Throws<MapDocumentException>(() => MapAuthoredIdentityV2.Compute(bad, WaterFixtures.Assets(), WaterFixtures.ResolveOptions())).Message, StringComparison.Ordinal);
-        Assert.Contains(message, Assert.Throws<MapDocumentException>(() => MapAuthoredIdentityV2.Compute(WaterFixtures.StoredSource(bad), WaterFixtures.Assets(), WaterFixtures.ResolveOptions())).Message, StringComparison.Ordinal);
+        if (wrongKind)
+        {
+            int index = bad.Water!.Bodies.FindIndex(b => b.Id == "ocean");
+            bad.Water.Bodies[index] = bad.Water.Bodies[index] with { RenderMaterial = "mesh" };
+        }
+        string badBefore = bad.Water!.Digest();
+        var memory = Assert.Throws<MapDocumentException>(() => MapAuthoredIdentityV2.Compute(bad, WaterFixtures.Assets(), WaterFixtures.ResolveOptions()));
+        var stored = Assert.Throws<MapDocumentException>(() => MapAuthoredIdentityV2.Compute(WaterFixtures.StoredSource(bad), WaterFixtures.Assets(), WaterFixtures.ResolveOptions()));
+        foreach (var refusal in new[] { memory, stored })
+        {
+            Assert.Equal(wrongKind ? MapDocumentRefusal.ReferenceKindMismatch : MapDocumentRefusal.ReferenceMissing, refusal.Reason);
+            Assert.Equal("ocean", refusal.EntityId);
+            Assert.Equal(wrongKind ? "mesh" : "no-such-material", refusal.ResourceId);
+            Assert.Equal(MapResourceKind.Material, refusal.ExpectedResourceKind);
+            Assert.Equal(wrongKind ? MapResourceKind.Mesh : (MapResourceKind?)null, refusal.ActualResourceKind);
+        }
+
+        Assert.Equal(badBefore, bad.Water.Digest());
 
         // Water enters the resolver-2 authored identity on both paths, so a level edit moves both tokens alike.
         MapDocument raised = WaterFixtures.OceanOverCaves();

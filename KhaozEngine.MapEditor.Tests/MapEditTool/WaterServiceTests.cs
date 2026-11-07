@@ -35,14 +35,24 @@ public sealed class WaterServiceTests : IDisposable
         MapEditSession refused = Open(WaterFixtures.OceanOverCaves());
         MapWaterBodyDoc ocean = WaterToolFixtures.Document(refused).Water!.Bodies.Single(b => b.Id == "ocean");
         string before = WaterToolFixtures.Document(refused).Water!.Digest();
+        string contentBefore = MapDocumentFile.SaveText(WaterToolFixtures.Document(refused));
+        var historyBefore = refused.NativeHistoryState;
         var stray = ocean with
         {
             Domain = ocean.Domain with { Rects = new[] { new MapWaterRect(30, 0, 34, 4) } },
         };
         var error = Assert.Throws<MapDocumentException>(() => new MutationService(refused).WaterApply(new MapUpsertWaterBody(stray)));
-        Assert.Contains("water body 'ocean' covers no space footprint", error.Message, StringComparison.Ordinal);
+        Assert.Equal(MapDocumentRefusal.WaterNoSpaceFootprint, error.Reason);
+        Assert.Equal("ocean", error.EntityId);
+        Assert.Equal(ocean.Covers.Select(c => c.Id), error.SourceIds);
+        Assert.Contains(error.Findings!, f => f.Reason == MapDocumentRefusal.WaterNoSpaceFootprint && f.EntityId == "ocean");
         Assert.Equal(before, WaterToolFixtures.Document(refused).Water!.Digest());
+        Assert.Equal(contentBefore, MapDocumentFile.SaveText(WaterToolFixtures.Document(refused)));
+        Assert.Equal(historyBefore, refused.NativeHistoryState);
         Assert.False(refused.IsDirty);
+        var repaired = stray with { Domain = ocean.Domain };
+        new MutationService(refused).WaterApply(new MapUpsertWaterBody(repaired));
+        Assert.Equal(before, WaterToolFixtures.Document(refused).Water!.Digest());
     }
 
     [Fact]
@@ -76,9 +86,18 @@ public sealed class WaterServiceTests : IDisposable
         var water = new WaterService(session);
         Assert.Equal(new[] { "cave-lake", "flooded", "ocean" }, water.List().Select(b => b.Id));
         Assert.Equal(-20f, water.Get("flooded").SurfaceY);
-        Assert.Throws<MapDocumentException>(() => { water.Get("Flooded"); });
-        Assert.Throws<MapDocumentException>(() => { water.Get("missing"); });
-        Assert.False(session.IsDirty);
+        string before = MapDocumentFile.SaveText(WaterToolFixtures.Document(session));
+        foreach (string id in new[] { "Flooded", "missing" })
+        {
+            var error = Assert.Throws<MapDocumentException>(() => water.Get(id));
+            Assert.Equal(MapDocumentRefusal.ReferenceMissing, error.Reason);
+            Assert.Equal(id, error.EntityId);
+            Assert.Equal("water body", error.SubjectKind);
+            Assert.Equal(WaterToolFixtures.Document(session).Id, error.DocumentId);
+            Assert.Equal(before, MapDocumentFile.SaveText(WaterToolFixtures.Document(session)));
+            Assert.False(session.IsDirty);
+        }
+        Assert.Equal("flooded", water.Get("flooded").Id);
 
         using ServiceProvider services = new ServiceCollection().AddMapEditServices().BuildServiceProvider();
         Assert.Same(services.GetRequiredService<WaterService>(), services.GetRequiredService<WaterService>());
@@ -87,7 +106,10 @@ public sealed class WaterServiceTests : IDisposable
     [Fact]
     public void LegacyDocument_RefusesWaterEdits()
     {
-        MapEditSession analytic = Open(WaterToolFixtures.LegacyAnalytic());
+        MapDocument analyticDocument = WaterFixtures.Document(new MapSurfaceSet(), null);
+        analyticDocument.ResolverIdentity = null;
+        analyticDocument.SupportRecipe = MapSupportRecipe.LegacyXzCallbackV1;
+        MapEditSession analytic = Open(analyticDocument);
         Refuses(analytic);
 
         MapDocument legacy = WaterFixtures.Document(new MapSurfaceSet(), null);
@@ -95,12 +117,30 @@ public sealed class WaterServiceTests : IDisposable
         legacy.SupportRecipe = MapSupportRecipe.LegacyXzCallbackV1;
         Refuses(Open(legacy));
 
-        static void Refuses(MapEditSession session)
+        void Refuses(MapEditSession session)
         {
             var mutation = new MutationService(session);
             var error = Assert.Throws<MapDocumentException>(() => mutation.WaterApply(new MapSetBoundedWater(true)));
-            Assert.Equal("Water edits require a resolver-2 native document.", error.Message);
+            Assert.Equal(MapDocumentRefusal.ResolverContractMismatch, error.Reason);
+            Assert.Equal(2, error.ExpectedResolverVersion);
+            Assert.Equal(MapSupportRecipe.AuthoredBindingsV2, error.ExpectedSupportRecipe);
+            session.WithDocument((doc, _) =>
+            {
+                Assert.Equal(doc.ResolverIdentity?.PayloadVersion, error.PayloadVersion);
+                Assert.Equal(doc.ResolverIdentity?.ResolverVersion, error.ResolverVersion);
+                Assert.Equal(doc.SupportRecipe, error.SupportRecipe);
+                return 0;
+            });
             Assert.False(session.IsDirty);
+
+            MapDocument corrected = MapDocumentFile.LoadText(MapDocumentFile.SaveText(WaterToolFixtures.Document(session)));
+            corrected.ResolverIdentity = new(1, 2);
+            corrected.SupportRecipe = MapSupportRecipe.AuthoredBindingsV2;
+            MapEditSession accepted = Open(corrected);
+            MapWaterMutationResult applied = new MutationService(accepted).WaterApply(new MapSetBoundedWater(true));
+            Assert.True(applied.Mutation.WorldChanged);
+            Assert.NotNull(WaterToolFixtures.Document(accepted).Water);
+            Assert.True(accepted.IsDirty);
         }
     }
 

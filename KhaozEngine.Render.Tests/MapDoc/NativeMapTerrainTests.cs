@@ -2,7 +2,6 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Numerics;
-using System.Reflection;
 using KhaozEngine.MapDoc;
 using KhaozEngine.MapDoc.Assets;
 using KhaozEngine.MapDoc.Editing;
@@ -447,8 +446,7 @@ public sealed class NativeMapTerrainTests
         scene.Begin();
         scene.DrawAnchored(new(mesh, local), anchor);
         harness.Render();
-        var uploaded = Assert.IsType<List<ModelRenderer.InstanceData>>(typeof(Scene3D)
-            .GetField("_instanceDataRelative", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(scene));
+        var uploaded = scene.RelativeInstancesForTests;
         Assert.Equal(local, Assert.Single(uploaded).Model);
     }
 

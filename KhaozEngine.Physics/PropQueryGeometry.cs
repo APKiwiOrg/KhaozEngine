@@ -14,11 +14,14 @@ public static class PropQueryGeometry
         => Bounds(shape, ShapeDoublePose.From(pose));
 
     internal static (double MinX, double MinY, double MinZ, double MaxX, double MaxY, double MaxZ) Bounds(PhysicsShape shape, ShapeDoublePose pose)
+        => MeasureBounds(shape, pose).ToBounds();
+
+    internal static ShapeBoundsAccumulator MeasureBounds(PhysicsShape shape, ShapeDoublePose pose)
     {
         ArgumentNullException.ThrowIfNull(shape);
         var box = ShapeBoundsAccumulator.Empty;
         Accumulate(shape, pose, ref box);
-        return box.ToBounds();
+        return box;
     }
 
     static void Accumulate(PhysicsShape shape, ShapeDoublePose pose, ref ShapeBoundsAccumulator box)

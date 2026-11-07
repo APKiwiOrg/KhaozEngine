@@ -7,19 +7,31 @@ namespace KhaozEngine.MapDoc.Prefabs;
 /// <summary>The closed payload-1 prefab file. Prefabs contain leaf resources and never nested instances.</summary>
 public static class MapPrefabFile
 {
-    public static MapPrefabAsset Read(ReadOnlyMemory<byte> bytes, string resourceId)
+    public static MapPrefabAsset Read(ReadOnlyMemory<byte> bytes, string resourceId) =>
+        Read(bytes, resourceId, MapPrefabJson.Limits.MaxPayloadBytes);
+
+    // Measure actual payload bytes on the normal reader path with a small test ceiling.
+    internal static MapPrefabAsset ReadWithPayloadByteLimitForTests(ReadOnlyMemory<byte> bytes, string resourceId, long maximumPayloadBytes) =>
+        Read(bytes, resourceId, maximumPayloadBytes);
+
+    static MapPrefabAsset Read(ReadOnlyMemory<byte> bytes, string resourceId, long maximumPayloadBytes)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(resourceId);
-        if (bytes.Length > MapPrefabJson.Limits.MaxPayloadBytes) throw new MapDocumentException("Prefab payload byte limit exceeded.");
+        MapPrefabCapacity.RequirePayloadBytes(bytes.Length, "Prefab", resourceId, maximumPayloadBytes);
         try
         {
             using JsonDocument json = JsonDocument.Parse(bytes, new JsonDocumentOptions { MaxDepth = 64 });
             var asset = MapPrefabJson.Read<MapPrefabAsset>(json.RootElement);
-            if (!MapAssetVersionIdentity.Matches("prefab", asset.Id, resourceId, bytes.Span)) throw new MapDocumentException("Prefab payload ID does not match its resource ID.");
+            if (!MapAssetVersionIdentity.Matches("prefab", asset.Id, resourceId, bytes.Span)) throw new MapDocumentException(MapDocumentRefusal.PrefabPayloadIdMismatch, "Prefab payload ID does not match its resource ID.")
+            { ResourceId = resourceId, EntityId = asset.Id, FieldPath = "$.id" };
             MapPrefabValidation.RequireAsset(asset);
             return asset;
         }
-        catch (JsonException ex) { throw new MapDocumentException("Invalid prefab payload '" + resourceId + "'.", ex); }
+        catch (MapDocumentException ex) when (ex.ResourceId is null)
+        {
+            throw ex.WithSourceName(null, ex.Message, resourceId: resourceId);
+        }
+        catch (JsonException ex) { throw MapDocumentJsonErrors.Wrap(ex, null, "Invalid prefab payload '" + resourceId + "'.", resourceId: resourceId); }
     }
 
     internal static MapPrefabAsset Read(ReadOnlyMemory<byte> bytes, string resourceId, MapAssetClosure assets)

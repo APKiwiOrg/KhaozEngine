@@ -405,13 +405,14 @@ public sealed partial class ShardHost : IDisposable
     }
 
     /// <summary>
-    /// Transfers authority for entities that crossed a cell boundary since the last call, with exactly-once
-    /// semantics (never two owners, never zero). For each owned entity whose position now falls in another cell,
+    /// Transfers authority for entities that crossed a cell boundary since the last call, without double
+    /// ownership or simulation. For each owned entity whose position now falls in another cell,
     /// the owner captures its <see cref="ReplicationChannels.Migrate"/> component set (Replication codecs), sends a
     /// <see cref="CellMessageKind.Migrate"/> over the link and freezes it (<see cref="Migrating"/>); the
     /// destination adopts it as owned (despawning any prior ghost of it) and acks; the owner then releases
-    /// (despawns) it. The in-process link completes the whole Migrate -&gt; ack -&gt; release handshake within this
-    /// call, so at every call boundary each entity is owned by exactly one cell. The entity keeps its
+    /// (despawns) it. The in-process link completes Migrate -&gt; ack -&gt; release within this call when admission
+    /// succeeds. Deferred admission can leave zero owners while the frozen source survives. Use
+    /// <see cref="IsInHandoff"/> to distinguish that gap from disappearance. The entity keeps its
     /// <see cref="NetId"/>. Creates the destination cell if it does not exist. Requires a position accessor.
     /// </summary>
     /// <remarks>
@@ -471,13 +472,14 @@ public sealed partial class ShardHost : IDisposable
 
     /// <summary>
     /// How many cells currently own (authoritatively hold) the entity with <paramref name="netId"/>. For a live
-    /// entity this is exactly 1 at every <see cref="ProcessHandoffs"/> call boundary (0 = lost, 2 = duplicated).
+    /// entity this is normally 1. Deferred admission or a delayed link can leave 0 while the source survives
+    /// frozen, as reported by <see cref="IsInHandoff"/>. A count of 2 indicates duplicated ownership.
     /// </summary>
     public int OwnerCount(long netId)
     {
         // Deliberately an independent from-scratch scan (CellSim.ScanOwned), NOT an index read: it is the oracle that
-        // cross-checks the exactly-once handoff invariant, so it must be able to observe a duplicate (2) or loss (0)
-        // that a structurally-single-valued index never could.
+        // cross-checks the handoff invariant, observing duplicate ownership (2) or absence (0). IsInHandoff
+        // distinguishes a live frozen source from disappearance when the count is zero.
         int n = 0;
         for (int i = 0; i < ordered.Count; i++)
             if (ordered[i].ScanOwned(netId, out _)) n++;

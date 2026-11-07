@@ -101,14 +101,15 @@ public class ExplicitContactReplayTests
         }
         AssertMoveBits(expected.Move, prediction.PredictedState.Move);
         Assert.Equal(expected.FrameAnchor, prediction.PredictedState.FrameAnchor);
-        Assert.Equal(14, MoveProtocol.WireProtocolVersion);
+        Assert.Equal(15, MoveProtocol.WireProtocolVersion);
         Assert.Equal("contact-shell-footprint-swim-v1", ExplicitMovementProfile.ControllerModel);
     }
 
     static void AssertMoveBits(MoveState expected, MoveState actual)
     {
+        Assert.Equal(expected.SpeedScaleStorageBits, actual.SpeedScaleStorageBits);
         foreach (var field in typeof(MoveState).GetFields(System.Reflection.BindingFlags.Instance |
-            System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.NonPublic))
+            System.Reflection.BindingFlags.Public))
             Assert.Equal(Bits(field.GetValue(expected)), Bits(field.GetValue(actual)));
 
         static object? Bits(object? value) => value switch

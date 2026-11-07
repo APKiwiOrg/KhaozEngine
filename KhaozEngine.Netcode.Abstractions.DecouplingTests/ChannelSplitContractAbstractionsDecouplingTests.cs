@@ -1,5 +1,6 @@
 using System;
 using System.Linq;
+using System.Reflection;
 using KhaozEngine.Netcode;
 using Xunit;
 
@@ -29,29 +30,27 @@ public class ChannelSplitContractAbstractionsDecouplingTests
     }
 
     [Fact]
-    public void Dto_ImplementsContract_WithAbstractionsOnly()
+    public void Dto_ImplementsContract_ResolvedFromAbstractions()
     {
-        IChannelSplittable<DummyBatchDto> batch = new DummyBatchDto(HasPositions: true, HasEvents: true);
+        // Compiling the DTO is the compile fence. Name-based lookup also verifies runtime binding.
+        Type contract = Assembly.Load("KhaozEngine.Netcode.Abstractions")
+            .GetType("KhaozEngine.Netcode.IChannelSplittable`1", throwOnError: true)!;
 
-        Assert.True(batch.HasUnreliableContent);
-        Assert.True(batch.HasReliableContent);
-
-        var unreliable = batch.ExtractUnreliable();
-        Assert.True(unreliable.HasUnreliableContent);
-        Assert.False(unreliable.HasReliableContent);
-
-        var reliable = batch.ExtractReliable();
-        Assert.False(reliable.HasUnreliableContent);
-        Assert.True(reliable.HasReliableContent);
+        Assert.Equal(typeof(IChannelSplittable<DummyBatchDto>), contract.MakeGenericType(typeof(DummyBatchDto)));
+        Assert.True(contract.MakeGenericType(typeof(DummyBatchDto)).IsAssignableFrom(typeof(DummyBatchDto)));
     }
 
     [Theory]
-    [InlineData(NetChannelReliability.UnreliableSequenced)]
-    [InlineData(NetChannelReliability.ReliableOrdered)]
-    public void Reliability_EnumIsVisible_FromAbstractionsPackage(NetChannelReliability reliability)
+    [InlineData("UnreliableSequenced")]
+    [InlineData("ReliableOrdered")]
+    public void Reliability_MembersResolveFromAbstractions(string member)
     {
-        Assert.True(reliability is NetChannelReliability.UnreliableSequenced
-            or NetChannelReliability.ReliableOrdered);
+        Type reliability = Assembly.Load("KhaozEngine.Netcode.Abstractions")
+            .GetType("KhaozEngine.Netcode.NetChannelReliability", throwOnError: true)!;
+
+        Assert.Equal(typeof(NetChannelReliability), reliability);
+        Assert.True(reliability.IsEnum);
+        Assert.True(Enum.IsDefined(reliability, member));
     }
 
     [Fact]

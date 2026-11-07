@@ -14,12 +14,13 @@
     <NoWarn>$(NoWarn);RS2008</NoWarn>
     <!-- This project cannot run the file-size analyzer on itself (self-reference). -->
     <KhaozSkipFileSizeAnalyzer>true</KhaozSkipFileSizeAnalyzer>
-    <Description>Roslyn analyzer enforcing the fleet file-size ratchet at compile time: KESIZE001 flags a source file that grew past its .filesize-baseline entry, KESIZE002 flags an unlisted file over the size cap (default 800 lines, KhaozFileSizeCap overrides). Semantics mirror scripts/check-file-size.sh: frozen debt may shrink, never grow. Errors by default. Ships buildTransitive props that auto-discover the repo's .filesize-baseline. Flows to consumers via all four umbrellas.</Description>
+    <Description>Roslyn analyzers enforcing file-size and test-health ratchets at compile time. KESIZE001 freezes baselined file sizes and KESIZE002 caps unlisted files (default 800 lines, KhaozFileSizeCap overrides). KETEST001 counts exception-message wording assertions and KETEST002 counts non-public reflection access in xunit compilations. KETEST003 is a report-only review aid for possibly empty assertion loops. Enforced debt may shrink, never grow without owner approval. Ships buildTransitive props that discover .filesize-baseline and .testhealth-baseline independently. Each ratchet stays silent without its baseline. Flows to consumers via all four umbrellas.</Description>
     <PackageReadmeFile>README.md</PackageReadmeFile>
     <TargetsForTfmSpecificContentInPackage>$(TargetsForTfmSpecificContentInPackage);_AddAnalyzerToPackage</TargetsForTfmSpecificContentInPackage>
   </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="Microsoft.CodeAnalysis.CSharp" PrivateAssets="all" />
+    <InternalsVisibleTo Include="KhaozEngine.CodeHealth.Analyzers.Tests" />
   </ItemGroup>
   <ItemGroup>
     <None Include="README.md" Pack="true" PackagePath="\" />

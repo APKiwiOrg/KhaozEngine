@@ -29,13 +29,21 @@ public sealed record MapRefinementLimits(int MaxSourceFacesPerBound = 16_384, in
 
 public readonly record struct MapBoundFace(MapFaceKey Key, MapExactTriangle Triangle);
 public sealed record MapBoundFaceSet(MapRefinementStatus Status, IReadOnlyList<MapBoundFace> Faces,
-    IReadOnlyList<MapLegacyCellTag> Compatibility, string? Detail);
+    IReadOnlyList<MapLegacyCellTag> Compatibility, string? Detail)
+{
+    /// <summary>The concrete failed rule, independently of the unchanged status and detail projection.</summary>
+    public MapDocumentFinding? Finding { get; init; }
+}
 public sealed record MapRefinementFace(MapFaceKey Lower, MapFaceKey? Upper,
     IReadOnlyList<MapExactXz> Polygon, MapExactValue? MinSeparation);
 public sealed record MapCellRefinement(MapRefinementStatus Status, IReadOnlyList<MapExactXz> Vertices,
     IReadOnlyList<MapRefinementFace> Faces, MapExactValue CellArea, MapExactValue LowerArea,
     MapExactValue CompatibilityArea, IReadOnlyList<MapLegacyCellTag> CompatibilityCells,
-    MapExactValue? UpperArea, MapExactValue? MinSeparation, int PairChecks, string? Detail);
+    MapExactValue? UpperArea, MapExactValue? MinSeparation, int PairChecks, string? Detail)
+{
+    /// <summary>The concrete failed rule, independently of the unchanged status and detail projection.</summary>
+    public MapDocumentFinding? Finding { get; init; }
+}
 
 internal sealed class MapRefinementWork
 {
@@ -48,7 +56,10 @@ internal sealed class MapRefinementWork
 internal readonly record struct MapCellDemand(MapPatchKey Patch, int SlotCell);
 internal readonly record struct MapBoundFaceDemand(MapCellDemand Cell, MapRecordRef? Opening);
 internal sealed record MapFootprintPreparation(MapBoundFaceContext? Context, string? Refusal,
-    IReadOnlyDictionary<(string FootprintId, int SlotCell), MapCellRefinement> CellOutcomes);
+    IReadOnlyDictionary<(string FootprintId, int SlotCell), MapCellRefinement> CellOutcomes)
+{
+    internal MapDocumentFinding? Finding { get; init; }
+}
 
 internal sealed class MapBoundFaceWork
 {
@@ -63,4 +74,8 @@ internal sealed class MapBoundFaceWork
 public enum MapLowerCellClass : byte { Physical, LegacyNonCapture, KnownHole, UntaggedLegacy, Unavailable, InvalidRecipe }
 public readonly record struct MapLegacyCellTag(MapPatchKey Patch, int SlotCell, string Policy);
 public sealed record MapLowerCellClassification(MapLowerCellClass Class, MapPatchKey Patch,
-    int SlotCell, MapLegacyCellTag? Legacy, string? Detail);
+    int SlotCell, MapLegacyCellTag? Legacy, string? Detail)
+{
+    /// <summary>The concrete failed rule, independently of the unchanged class and detail projection.</summary>
+    public MapDocumentFinding? Finding { get; init; }
+}

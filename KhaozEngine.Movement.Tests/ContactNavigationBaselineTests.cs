@@ -17,13 +17,13 @@ public class ContactNavigationBaselineTests(ITestOutputHelper output)
 {
     public static TheoryData<string, string> Baselines => new()
     {
-        { "low-lip-bank", "494ab0951ab46de04665351bf1e39ad9156f30aefa73cb43b34f4ecaba72e922" },
-        { "deck-over-ground", "77addcbc9c054f85e1a14f916bd95af75d02f105c54ad8e56a3a25716b0d44cc" },
-        { "wade-only-pool", "a735ea5a41a1adb58666219b053197ed457b3c7edd830e18f29c7c5c8a1a1635" },
-        { "rebased-origin", "e5c86385e4141a289d41d8efbb66766e5ac7c942f825521fff91dede8e9b4eee" },
-        { "mixed-legacy-contact", "94fc16f1dee6cfa4c99db7ce490443271a0eb2fe3d9f0906312a836c5cd9a856" },
-        { "stair-accepted-refused", "62a061314987a1b8243f9eb8da639cd0239ec200f8f62f11e69e62f5db20959a" },
-        { "multi-layer-row-bands", "ae89cde4394002043b200b5e25e4eb0ef778ced4438cd7e985bde8dd96de811a" },
+        { "low-lip-bank", "85705e68a74cebb3f79657d31a006f23e24082df5a44da0119e20fadbd955bf8" },
+        { "deck-over-ground", "93c3745173a787cc41e07a2da6fe657142d04d9ec372691de2f0a219867c3847" },
+        { "wade-only-pool", "e593c98262743500e706b12c269a0d3022449dfab97788e18f6324e42fa660bc" },
+        { "rebased-origin", "fe27b7c5c742ec389fe72aa63a80fd15ea9a0d5581c6662fc5523e5912403628" },
+        { "mixed-legacy-contact", "84257d0112144d603ba5c68585572f8e5c40fc659b7d82be081d155af8aadd54" },
+        { "stair-accepted-refused", "d99a44b73e4aa48e2ac9e0d3cdb7a5a0902f3ccd493d947e29bfed24424df821" },
+        { "multi-layer-row-bands", "d85b4cfe97c054cc7861df903986a3132d17293087bd91da0577b6d22e42a7d8" },
     };
 
     [Theory]

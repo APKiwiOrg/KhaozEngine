@@ -49,7 +49,8 @@ internal static class MapConversionRim
                     else
                     {
                         // A legacy corner-cut midpoint survives odd refinement as a half-edge vertex.
-                        if (step.Denominator != 2) throw new MapDocumentException("rim subdivision is not representable");
+                        if (step.Denominator != 2) throw new MapDocumentException(MapDocumentRefusal.GeometryNotRepresentable, "rim subdivision is not representable")
+                        { SurfaceId = source.Id, Patch = coarse.Key, Address = from, Edge = edge };
                         long absoluteX = checked(cell.CellX * k + (horizontal ? step.Floor() : edge == MapCellEdge.East ? k - 1 : 0));
                         long absoluteZ = checked(cell.CellZ * k + (!horizontal ? step.Floor() : edge == MapCellEdge.North ? k - 1 : 0));
                         int fx = checked((int)(absoluteX - fine.Key.SlotX * 64 - fine.CellMinX));
@@ -59,8 +60,10 @@ internal static class MapConversionRim
                 }
                 string id = $"{request.FineSurfaceId}-rim-{cell.CellX}-{cell.CellZ}-{(int)edge}";
                 if (start != 0 || end != k) id += $"-segment-{start}";
-                if (!ids.Add(id)) throw new MapDocumentException($"duplicate seam id '{id}'");
-                if (pairs.Count < 2) throw new MapDocumentException("rim seam is not representable");
+                if (!ids.Add(id)) throw new MapDocumentException(MapDocumentRefusal.IdentityDuplicate, $"duplicate seam id '{id}'")
+                { RecordId = id, SubjectKind = "seam" };
+                if (pairs.Count < 2) throw new MapDocumentException(MapDocumentRefusal.GeometryNotRepresentable, "rim seam is not representable")
+                { SurfaceId = source.Id, Patch = coarse.Key, Address = from, Edge = edge };
                 var seam = new MapSurfaceSeam(id,
                     new(coarse.Key, pairs[0].First, pairs[^1].First),
                     new(fine.Key, pairs[0].Second, pairs[^1].Second), pairs.AsReadOnly());

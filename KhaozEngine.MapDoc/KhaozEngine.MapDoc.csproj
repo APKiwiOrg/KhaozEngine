@@ -14,6 +14,7 @@
   </ItemGroup>
   <ItemGroup>
     <InternalsVisibleTo Include="KhaozEngine.MapDoc.Render3D" />
+    <InternalsVisibleTo Include="KhaozEngine.Terrain.Render3D" />
     <InternalsVisibleTo Include="KhaozEngine.MapEdit.Tool" />
     <InternalsVisibleTo Include="KhaozEngine.MapEditor" />
     <InternalsVisibleTo Include="KhaozEngine.MapDoc.Physics" />

@@ -58,15 +58,15 @@ internal sealed record ShippedScenePolicy(MapPlacementPolicy Placements, IReadOn
             string[] fields = ["sourceObjectId", "sourceProfileId", "offset", "colour", "intensity", "radius", "castShadows"];
             if (row.TryGetProperty("shadowExclusion", out _)) fields = [.. fields, "shadowExclusion"];
             Shape(row, fields);
-            Require(row.GetProperty("sourceObjectId").TryGetInt64(out long id) && id > 0, "invalid scene source light");
+            Require(row.GetProperty("sourceObjectId").TryGetInt64(out long id) && id > 0, PrivateOracleDataRefusal.ValueOutsideDomain, "invalid scene source light");
             Vector3 Vector(string name)
             { var v = row.GetProperty(name); Shape(v, "x", "y", "z"); return new((float)ShippedSceneManifest.Number(v, "x"), (float)ShippedSceneManifest.Number(v, "y"), (float)ShippedSceneManifest.Number(v, "z")); }
             float intensity = row.GetProperty("intensity").GetSingle(), radius = row.GetProperty("radius").GetSingle();
-            Require(float.IsFinite(intensity) && intensity >= 0 && float.IsFinite(radius) && radius > 0, "invalid scene source light");
+            Require(float.IsFinite(intensity) && intensity >= 0 && float.IsFinite(radius) && radius > 0, PrivateOracleDataRefusal.ValueOutsideDomain, "invalid scene source light");
             return new SceneSourceLight(id, Text(row, "sourceProfileId"), Vector("offset"), Vector("colour"), intensity, radius, row.GetProperty("castShadows").GetBoolean())
             { ShadowExclusion = ShippedSceneLightShadows.Read(row) };
         }).ToArray();
-        Require(lights.Select(l => (l.SourceObjectId, l.SourceProfileId)).Distinct().Count() == lights.Length, "duplicate scene source light");
+        Require(lights.Select(l => (l.SourceObjectId, l.SourceProfileId)).Distinct().Count() == lights.Length, PrivateOracleDataRefusal.IdentityNotUniqueOrCanonical, "duplicate scene source light");
         var extents = root.GetProperty("modelExtents").EnumerateArray().Select(row =>
         {
             Shape(row, "assetId", "boundsInSourceUnits", "sourceUnitsToMetres", "motionPaddingMetres");
@@ -99,7 +99,7 @@ internal sealed record ShippedScenePolicy(MapPlacementPolicy Placements, IReadOn
         foreach (var extent in ModelExtents.Values)
         {
             var asset = closure.GetAsset(extent.AssetId);
-            Require(extent.SourceUnitsToMetres == asset.SourceUnitsToMetres, "scene model extent units differ");
+            Require(extent.SourceUnitsToMetres == asset.SourceUnitsToMetres, PrivateOracleDataRefusal.SourceCoordinateContractMismatch, "scene model extent units differ");
         }
         return new(Placements, AnimatedAssets, new(MapFrozenFoliageOptions.Capture(Foliage), ModelExtents), MapFrozenWaterLook.Capture(Water),
             manifest.Materials.Select(m => m.NativeResourceId).ToArray(), manifest.Materials.ToDictionary(m => m.SourceMaterialId, m => m.NativeResourceId));
@@ -110,7 +110,7 @@ internal sealed record ShippedScenePolicy(MapPlacementPolicy Placements, IReadOn
         {
             using var json = JsonDocument.ParseValue(ref reader); var row = json.RootElement;
             Shape(row, "r", "g", "b", "a");
-            float N(string name) { float value = row.GetProperty(name).GetSingle(); Require(float.IsFinite(value), "invalid scene colour"); return value; }
+            float N(string name) { float value = row.GetProperty(name).GetSingle(); Require(float.IsFinite(value), PrivateOracleDataRefusal.ValueNonfinite, "invalid scene colour"); return value; }
             return new(N("r"), N("g"), N("b"), N("a"));
         }
         public override void Write(Utf8JsonWriter writer, KhaozEngine.Primitives.Color value, JsonSerializerOptions options)

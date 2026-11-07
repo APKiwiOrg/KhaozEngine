@@ -1,7 +1,6 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Reflection;
 using KhaozEngine.MapDoc;
 using KhaozEngine.MapDoc.Foliage;
 using KhaozEngine.MapDoc.Render3D;
@@ -61,8 +60,7 @@ public sealed class NativeCapacityDemandRemainderSiteTests
         using var probe = new CapacityDemandProbe();
         // The native chunk copy and its provenance, exactly as preparation derives them for the window's first chunk.
         var limits = profile with { MaxQueryRetainedBytes = Math.Min(declared, admission.RemainingPreparedBytes) };
-        typeof(NativeMapFoliage).GetMethod("DeriveChunk", BindingFlags.NonPublic | BindingFlags.Static)!
-            .Invoke(null, new object?[] { limits, profile, profile, admission, 0L });
+        NativeMapFoliage.DeriveChunkForTests(limits, profile, profile, admission, 0);
         var layer = MapFoliageDistribution.Layer(window.Context, "cover");
         Action begin = () => MapFoliageGenerationAdmission.Begin(window.Context, layer, default, limits, 0, declared, admission);
         if (refused) Assert.Throws<MapSceneCapacityException>(begin); else begin();

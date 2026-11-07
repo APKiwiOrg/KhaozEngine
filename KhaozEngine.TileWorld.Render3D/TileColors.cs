@@ -17,13 +17,21 @@ public static class TileColors
     /// <summary>Parses <c>#rrggbb</c> or <c>#rrggbbaa</c> into 0..1 RGBA, alpha 1 when the string omits it.</summary>
     /// <exception cref="TileWorldException">The string is null, or is not one of those two forms. A null is bad
     /// content like any other malformed colour (a catalog material whose colour was written as JSON null), so it
-    /// fails the same way rather than as an argument error.</exception>
+    /// fails the same way rather than as an argument error. Inspect <see cref="TileWorldException.Reason"/>
+    /// for <see cref="TileWorldRefusal.ColourNull"/>, <see cref="TileWorldRefusal.ColourShapeInvalid"/> or
+    /// <see cref="TileWorldRefusal.ColourDigitInvalid"/>. Malformed strings carry
+    /// <see cref="TileWorldException.ColourText"/>, and a bad digit also carries
+    /// <see cref="TileWorldException.CharacterIndex"/> and <see cref="TileWorldException.Character"/>.
+    /// Null colours carry no identifiers.</exception>
     public static Vector4 Parse(string? hex)
     {
         if (hex is null)
-            throw new TileWorldException("a null colour is not a colour: expected #rrggbb or #rrggbbaa");
+            throw new TileWorldException(TileWorldRefusal.ColourNull,
+                "a null colour is not a colour: expected #rrggbb or #rrggbbaa");
         if ((hex.Length != 7 && hex.Length != 9) || hex[0] != '#')
-            throw new TileWorldException($"'{hex}' is not a colour: expected #rrggbb or #rrggbbaa");
+            throw new TileWorldException(TileWorldRefusal.ColourShapeInvalid,
+                $"'{hex}' is not a colour: expected #rrggbb or #rrggbbaa")
+            { ColourText = hex };
 
         int channels = (hex.Length - 1) / 2;
         Span<float> rgba = stackalloc float[4] { 0f, 0f, 0f, 1f };
@@ -72,6 +80,8 @@ public static class TileColors
         if (c >= '0' && c <= '9') return c - '0';
         if (c >= 'a' && c <= 'f') return c - 'a' + 10;
         if (c >= 'A' && c <= 'F') return c - 'A' + 10;
-        throw new TileWorldException($"'{hex}' is not a colour: '{c}' is not a hex digit");
+        throw new TileWorldException(TileWorldRefusal.ColourDigitInvalid,
+            $"'{hex}' is not a colour: '{c}' is not a hex digit")
+        { ColourText = hex, CharacterIndex = index, Character = c };
     }
 }

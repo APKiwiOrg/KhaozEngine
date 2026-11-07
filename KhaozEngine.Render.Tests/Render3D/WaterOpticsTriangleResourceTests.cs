@@ -231,18 +231,18 @@ public sealed class WaterOpticsTriangleResourceTests
         using var h = new Harness();
         h.Factory.ThrowOnResourceSetCreate = h.Factory.ResourceSets.Count + 3;
         Assert.Throws<InvalidOperationException>(h.Prepare);
-        Assert.Throws<InvalidOperationException>(h.Draw);
+        Assert.Equal(WaterFrameRefusal.OpticsInputsChangedOrUnprepared, Assert.Throws<WaterFrameStateException>(h.Draw).Reason);
         h.Factory.ThrowOnResourceSetCreate = 0;
         h.Prepare();
         h.Draw();
         h.Planes[0] = h.Planes[0].WithOptics(default);
-        Assert.Throws<InvalidOperationException>(h.Draw);
+        Assert.Equal(WaterFrameRefusal.OpticsInputsChangedOrUnprepared, Assert.Throws<WaterFrameStateException>(h.Draw).Reason);
         h.Prepare();
         h.Draw();
         h.Renderer.UnloadOpticsField(h.Triangle);
         h.Planes[0] = h.TrianglePlane;
         Assert.Throws<ArgumentException>(h.Prepare);
-        Assert.Throws<InvalidOperationException>(h.Draw);
+        Assert.Equal(WaterFrameRefusal.OpticsInputsChangedOrUnprepared, Assert.Throws<WaterFrameStateException>(h.Draw).Reason);
         Assert.Equal(2, h.Renderer.Optics.Stats.UploadCount);
     }
 

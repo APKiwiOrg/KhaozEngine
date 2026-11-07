@@ -1,5 +1,6 @@
 using System;
 using System.IO;
+using System.Text.Json.Nodes;
 using KhaozEngine.TileWorld;
 using Xunit;
 
@@ -85,7 +86,16 @@ public class TileFoliageLayerPersistenceTests
     public void Invalid_layers_are_rejected_before_mutation_or_save()
     {
         TileWorldDocument doc = new();
-        Assert.Throws<ArgumentException>(() => Layer([1, 2]));
+        TileFoliageLayer control = Layer();
+        doc.SetFoliageLayer(control);
+        doc.RemoveFoliageLayer(control.Id);
+        var density = Assert.Throws<TileFoliageArgumentException>(() => Layer([1, 2]));
+        Assert.Equal(TileWorldRefusal.FoliageDensityLengthMismatch, density.Reason);
+        Assert.Equal("meadow", density.LayerId);
+        Assert.Equal(2, density.ActualCount);
+        Assert.Equal(6L, density.ExpectedCount);
+        Assert.Equal(3, density.Width);
+        Assert.Equal(2, density.Height);
         Assert.Empty(doc.FoliageLayers);
 
         using var tmp = new TempDir();
@@ -93,33 +103,58 @@ public class TileFoliageLayerPersistenceTests
         TileWorldFile.Save(TileWorldTestData.FlatWorld(4, new RegionCoord(0, 0)), dir);
         string manifest = TileWorldFile.ManifestPath(dir);
         string before = File.ReadAllText(manifest);
-        string malformed = before.Replace("\"regions\":", "\"foliageLayers\":[{\"id\":\"bad\",\"width\":2,\"height\":2,\"density\":\"AQI=\"}],\"regions\":", StringComparison.Ordinal);
+        string malformed = before.Replace("\"regions\":", "\"foliageLayers\":[{\"id\":\"bad\",\"width\":2,\"height\":2,\"density\":\"AQIDBA==\",\"spacing\":1,\"scaleMin\":1,\"scaleMax\":1,\"archetypes\":[{\"id\":\"bush\",\"weight\":1}]}],\"regions\":", StringComparison.Ordinal);
         File.WriteAllText(manifest, malformed);
 
         TileWorldException ex = Assert.Throws<TileWorldException>(() => TileWorldSource.Open(dir));
-        Assert.Contains("foliage", ex.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.Equal(TileWorldRefusal.FoliageCellSizeInvalid, ex.Reason);
+        Assert.Equal(manifest, ex.SourceName);
+        Assert.Equal("bad", ex.LayerId);
+        Assert.Equal(0f, ex.CellSize);
+        JsonNode corrected = JsonNode.Parse(malformed)!;
+        corrected["foliageLayers"]![0]!["cellSize"] = 0.5f;
+        File.WriteAllText(manifest, corrected.ToJsonString());
+        Assert.Equal("bad", Assert.Single(TileWorldSource.Open(dir).Document.FoliageLayers).Id);
     }
 
     [Theory]
-    [InlineData(0f, 3, 2)]
-    [InlineData(0.5f, 0, 2)]
-    [InlineData(0.5f, 3, -1)]
-    public void Invalid_dimensions_fail_clearly(float cellSize, int width, int height)
+    [InlineData(0f, 3, 2, TileWorldRefusal.FoliageCellSizeInvalid)]
+    [InlineData(0.5f, 0, 2, TileWorldRefusal.FoliageDimensionsNonPositive)]
+    [InlineData(0.5f, 3, -1, TileWorldRefusal.FoliageDimensionsNonPositive)]
+    public void Invalid_dimensions_fail_clearly(float cellSize, int width, int height, TileWorldRefusal reason)
     {
-        ArgumentException ex = Assert.Throws<ArgumentException>(() => new TileFoliageLayer(
-            "bad", 0, 0f, 0f, cellSize, width, height, Array.Empty<byte>(), 1, 1f, 1f, 1f, 0f,
-            [new TileFoliageArchetype("bush", 1f)], [1], true, true, 0f, 0f));
-        Assert.Contains("foliage", ex.Message, StringComparison.OrdinalIgnoreCase);
+        static TileFoliageLayer Build(float cell, int w, int h) => new(
+            "bad", 0, 0f, 0f, cell, w, h, new byte[Math.Max(0, w) * Math.Max(0, h)], 1, 1f, 1f, 1f, 0f,
+            [new TileFoliageArchetype("bush", 1f)], [1], true, true, 0f, 0f);
+        Assert.Equal(6, Build(0.5f, 3, 2).CopyDensity().Length);
+        // The density raster matches width times height, empty for a zero width, so each row breaks only its own
+        // rule. A negative height has no matching raster, and the dimension guard refuses it first.
+        var ex = Assert.Throws<TileFoliageArgumentException>(() => Build(cellSize, width, height));
+        Assert.Equal(reason, ex.Reason);
+        Assert.Equal("bad", ex.LayerId);
+        if (reason == TileWorldRefusal.FoliageCellSizeInvalid) Assert.Equal(cellSize, ex.CellSize);
+        else
+        {
+            Assert.Equal(width, ex.Width);
+            Assert.Equal(height, ex.Height);
+        }
     }
 
     [Fact]
     public void Bad_archetype_ids_and_weights_fail_clearly()
     {
-        Assert.Throws<ArgumentException>(() => new TileFoliageLayer(
-            "bad", 0, 0f, 0f, 1f, 1, 1, [255], 1, 1f, 1f, 1f, 0f,
-            [new TileFoliageArchetype("", 1f)], [1], true, true, 0f, 0f));
-        Assert.Throws<ArgumentException>(() => new TileFoliageLayer(
-            "bad", 0, 0f, 0f, 1f, 1, 1, [255], 1, 1f, 1f, 1f, 0f,
-            [new TileFoliageArchetype("bush", 0f)], [1], true, true, 0f, 0f));
+        static TileFoliageLayer Build(TileFoliageArchetype row) => new(
+            "bad", 0, 0f, 0f, 1f, 1, 1, [255], 1, 1f, 1f, 1f, 0f, [row], [1], true, true, 0f, 0f);
+        Assert.Single(Build(new TileFoliageArchetype("bush", 1f)).Archetypes);
+        var blank = Assert.Throws<TileFoliageArgumentException>(() => Build(new TileFoliageArchetype("", 1f)));
+        Assert.Equal(TileWorldRefusal.FoliageArchetypeIdBlank, blank.Reason);
+        Assert.Equal("bad", blank.LayerId);
+        Assert.Equal("", blank.ArchetypeId);
+        Assert.Equal(0, blank.ArchetypeIndex);
+        var weight = Assert.Throws<TileFoliageArgumentException>(() => Build(new TileFoliageArchetype("bush", 0f)));
+        Assert.Equal(TileWorldRefusal.FoliageWeightInvalid, weight.Reason);
+        Assert.Equal("bad", weight.LayerId);
+        Assert.Equal("bush", weight.ArchetypeId);
+        Assert.Equal(0f, weight.Weight);
     }
 }

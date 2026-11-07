@@ -32,8 +32,14 @@ public class TileRuntimeStaticTests
             Vector3.Max(colliders.MovementExtent.Maximum, new(20, 4, 20)), 0, 0);
         using (var read = physics.AcquireQueryReadLease())
             movement = installed.CreateMovementRegistrationBuilder("tiles", extent).Build(read);
-        var tuning = MoveTuning.Default with { Controller = MovementControllerKind.Contact,
-            CapsuleRadius = 0.25f, CapsuleHalfHeight = 0.75f, WalkSpeed = 4, Water = new(WaterTraversalMode.DryOnly) };
+        var tuning = MoveTuning.Default with
+        {
+            Controller = MovementControllerKind.Contact,
+            CapsuleRadius = 0.25f,
+            CapsuleHalfHeight = 0.75f,
+            WalkSpeed = 4,
+            Water = new(WaterTraversalMode.DryOnly)
+        };
         var boundary = MovementBoundary.Rectangle(0, 0, 64, 64);
         using var binding = EffectiveMovementBinding.Ordinary(tuning, physics, movement,
             colliders.MovementGroundHeight, colliders.MovementGroundNormal, boundary);

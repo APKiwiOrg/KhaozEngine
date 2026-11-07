@@ -105,12 +105,16 @@ internal sealed class MapFoliageInputKernel : IMapFoliageInputs
             bounds => _floorIndex.Query(bounds, out _).Select(i => _floorEntries[i]));
     }
 
+    internal static IMapEffectiveSurfaceContext RequireEffectiveContext(IMapSurfaceSource source) =>
+        source as IMapEffectiveSurfaceContext ?? throw new MapDocumentException(MapDocumentRefusal.FoliageEffectiveContextRequired,
+            "foliage context requires captured effective surface bounds")
+        { SourceType = source.GetType(), Operation = "foliage context" };
+
     static (MapSurfaceRef[], SpatialIndex) SupportInfluences(MapEffectiveResolutionProduct resources)
     {
         var entries = new List<MapSurfaceRef>();
         var bounds = new List<Bounds>();
-        if (resources.SurfaceSource is not IMapEffectiveSurfaceContext source)
-            throw new MapDocumentException("foliage context requires captured effective surface bounds");
+        IMapEffectiveSurfaceContext source = RequireEffectiveContext(resources.SurfaceSource);
         MapEffectiveContext effective = source.EffectiveContext;
         var floors = effective.Surfaces.Refs.Where(s => s.Role == MapSurfaceRole.SupportFloor).ToDictionary(s => s.Id, StringComparer.Ordinal);
         foreach (MapSurfacePatch patch in effective.Surfaces.Patches.Values)

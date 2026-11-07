@@ -46,7 +46,7 @@ internal sealed record ShippedSourceProvenance
                 if (!names.Add(property.Name)) throw new InvalidDataException("duplicate provenance member");
         }
         var value = JsonSerializer.Deserialize<ShippedSourceProvenance>(bytes, JsonOptions)
-            ?? throw new InvalidDataException("invalid provenance");
+            ?? throw new PrivateOracleDataException(PrivateOracleDataRefusal.SchemaShapeInvalid, "invalid provenance");
         if (string.IsNullOrWhiteSpace(value.SourceRepository) || value.Tag is null ||
             !IsHex(value.Commit, 40) || string.IsNullOrWhiteSpace(value.SourceEnginePin) ||
             value.ExtractionPathspec is null || value.ExtractionPathspec.Count == 0 ||
@@ -58,12 +58,36 @@ internal sealed record ShippedSourceProvenance
             string.IsNullOrWhiteSpace(value.RowOrientation) || Missing(value.Units) ||
             Missing(value.Comparison) || Missing(value.OracleEquivalence) ||
             value.ComputeAggregate() != value.AggregateSha256)
-            throw new InvalidDataException("invalid provenance");
+            throw new PrivateOracleDataException(InvalidReason(value), "invalid provenance");
         return value with
         {
             Paths = Array.AsReadOnly(value.Paths.ToArray()),
             ExtractionPathspec = Array.AsReadOnly(value.ExtractionPathspec.ToArray()),
         };
+    }
+
+    // Follow the compound admission predicate in order. No private field values leave this reader.
+    static PrivateOracleDataRefusal InvalidReason(ShippedSourceProvenance value)
+    {
+        if (string.IsNullOrWhiteSpace(value.SourceRepository) || value.Tag is null) return PrivateOracleDataRefusal.ValueRequired;
+        if (!IsHex(value.Commit, 40)) return PrivateOracleDataRefusal.ValueOutsideDomain;
+        if (string.IsNullOrWhiteSpace(value.SourceEnginePin) || value.ExtractionPathspec is null || value.ExtractionPathspec.Count == 0)
+            return PrivateOracleDataRefusal.ValueRequired;
+        if (value.ExtractionPathspec.Any(p => !SafeRelativePath(p))) return PrivateOracleDataRefusal.PathUnsafe;
+        if (value.Paths is null || value.Paths.Count == 0) return PrivateOracleDataRefusal.ValueRequired;
+        foreach (ShippedSourcePath path in value.Paths)
+        {
+            if (path is null) return PrivateOracleDataRefusal.ValueRequired;
+            if (!SafeRelativePath(path.Path)) return PrivateOracleDataRefusal.PathUnsafe;
+            if (!IsHex(path.Sha256, 64)) return PrivateOracleDataRefusal.ValueOutsideDomain;
+        }
+        if (value.Paths.Select(p => p.Path).Distinct(StringComparer.Ordinal).Count() != value.Paths.Count)
+            return PrivateOracleDataRefusal.IdentityNotUniqueOrCanonical;
+        if (!IsHex(value.AggregateSha256, 64)) return PrivateOracleDataRefusal.ValueOutsideDomain;
+        if (value.AggregateRule != AggregateDefinition) return PrivateOracleDataRefusal.KindUnsupported;
+        if (string.IsNullOrWhiteSpace(value.RowOrientation) || Missing(value.Units) || Missing(value.Comparison) || Missing(value.OracleEquivalence))
+            return PrivateOracleDataRefusal.ValueRequired;
+        return PrivateOracleDataRefusal.AttestedDigestMismatch;
     }
 
     internal string ComputeAggregate()

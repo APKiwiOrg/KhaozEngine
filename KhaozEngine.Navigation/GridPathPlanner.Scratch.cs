@@ -39,8 +39,9 @@ public sealed partial class GridPathPlanner
     /// </summary>
     sealed class SearchScratch
     {
-        readonly float[] _gScore;
+        readonly double[] _gScore;
         readonly int[] _cameFrom;
+        readonly NavLinkKind?[] _incoming;
         readonly int[] _stamp;
         int _generation;
 
@@ -54,8 +55,9 @@ public sealed partial class GridPathPlanner
 
         public SearchScratch(int totalNodes, int layerCount)
         {
-            _gScore = new float[totalNodes];
+            _gScore = new double[totalNodes];
             _cameFrom = new int[totalNodes];
+            _incoming = new NavLinkKind?[totalNodes];
             _stamp = new int[totalNodes];
             _memberBoxes = new MemberBox[layerCount];
             MemberLayers = new bool[layerCount];
@@ -63,7 +65,7 @@ public sealed partial class GridPathPlanner
         }
 
         /// <summary>The search's open set, cleared by <see cref="BeginSearch"/>.</summary>
-        public PriorityQueue<int, (float F, int Seq)> Open { get; } = new();
+        public PriorityQueue<int, (double F, int Seq)> Open { get; } = new();
 
         /// <summary>Reconstruction's node chain, start first.</summary>
         public List<int> Chain { get; } = new();
@@ -73,6 +75,14 @@ public sealed partial class GridPathPlanner
 
         /// <summary>A region query's member feet positions, in grid scan order.</summary>
         public List<Vector3> Members { get; } = new();
+
+        public PlannerRegionBounds MemberBounds { get; private set; }
+
+        public void AddMember(Vector3 feet, int x, int z)
+        {
+            Members.Add(feet);
+            MemberBounds = MemberBounds.Include(x, z);
+        }
 
         /// <summary>Per layer, whether a region query found any member on it.</summary>
         public bool[] MemberLayers { get; }
@@ -90,17 +100,20 @@ public sealed partial class GridPathPlanner
 
         public void SeedGeneration(int generation) => _generation = generation & ~1;
 
-        public float GScore(int id) => _stamp[id] >= _generation ? _gScore[id] : float.PositiveInfinity;
+        public double GScore(int id) => _stamp[id] >= _generation ? _gScore[id] : double.PositiveInfinity;
 
         public bool IsClosed(int id) => _stamp[id] == _generation + 1;
 
         public int CameFrom(int id) => _cameFrom[id];
 
+        public NavLinkKind? Incoming(int id) => _incoming[id];
+
         /// <summary>Records an improved route into an open node.</summary>
-        public void Relax(int id, float gScore, int cameFrom)
+        public void Relax(int id, double gScore, int cameFrom, NavLinkKind? kind = null)
         {
             _gScore[id] = gScore;
             _cameFrom[id] = cameFrom;
+            _incoming[id] = kind;
             _stamp[id] = _generation;
         }
 
@@ -118,6 +131,7 @@ public sealed partial class GridPathPlanner
         public void ResetMembers()
         {
             Members.Clear();
+            MemberBounds = PlannerRegionBounds.Empty;
             Array.Clear(MemberLayers);
             Array.Clear(_memberBoxes);
         }

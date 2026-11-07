@@ -177,10 +177,13 @@ public sealed class NativeMarkerCommandTests
 
         // A later set cannot seize the dormant reservation, and undo restores the active transfer exactly.
         var seize = Assert.Throws<MapDocumentException>(() => history.Execute(doc, new MarkerEditCommand(new MapSetMarker(target))));
-        Assert.Contains("reservation", seize.Message, StringComparison.Ordinal);
+        Assert.Equal(MapDocumentRefusal.IdentityReserved, seize.Reason);
+        Assert.Equal(id, seize.MarkerId);
         Assert.Equal(removed, MapDocumentFile.SaveText(doc));
         Assert.True(history.Undo(doc));
         Assert.Equal(afterRebind, MapDocumentFile.SaveText(doc));
+        history.Execute(doc, new MarkerEditCommand(new MapSetMarker(target)));
+        Assert.Equal(id, Authored(doc, id).Id);
     }
 
     /// <summary>A world-terms yaw change on a framed marker stores the world yaw less the frame yaw, keeps the stored
@@ -218,7 +221,9 @@ public sealed class NativeMarkerCommandTests
         string before = MarkerEditorFixtures.State(session);
 
         var refused = Assert.Throws<MapDocumentException>(() => mutation.MarkerApply(new MapSetMarker(MarkerEditorFixtures.Other() with { Name = "arrival" })));
-        Assert.Contains("duplicate marker name 'arrival'", refused.Message, StringComparison.Ordinal);
+        Assert.Equal(MapDocumentRefusal.MarkerNameDuplicate, refused.Reason);
+        Assert.Equal("arrival", refused.MarkerName);
+        Assert.Equal(new[] { "m", "other" }, refused.MarkerIds);
         Assert.Equal(before, MarkerEditorFixtures.State(session));
 
         // The GUI history refuses the same command without publishing or recording it.

@@ -41,7 +41,7 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         public object CreateTimestamp() => Create(2);
         public object CreateDisjoint() => Create(3);
 
-        object Create(int type)
+        object Create(int type, [System.Runtime.CompilerServices.CallerMemberName] string member = "")
         {
             RequireLive();
             try { return _queries.CreateQuery(type); }
@@ -52,7 +52,7 @@ namespace KhaozEngine.Gpu.D3D11.Internal
                 // Only explicit unsupported-query results degrade the capability. Other device faults propagate.
                 if (fault.HResult is unchecked((int)0x887A0004) or unchecked((int)0x80070057)
                     or unchecked((int)0x80004001))
-                    throw new NotSupportedException("This Direct3D 11 device does not support timestamp queries.", fault);
+                    throw new GpuTimestampUnsupportedException(GpuTimestampRefusal.TimestampUnsupported, "This Direct3D 11 device does not support timestamp queries.", fault) { Backend = GpuBackendKind.Direct3D11Native, Command = member };
                 throw;
             }
         }
@@ -85,7 +85,7 @@ namespace KhaozEngine.Gpu.D3D11.Internal
             int result = _queries.GetData(query, Span<byte>.Empty, flush ? 0u : 1u);
             _loss?.Check(result, "timestamp GetData");
             RequireLive();
-            if (result < 0) throw new InvalidOperationException($"Direct3D 11 timestamp GetData failed (0x{result:X8}).");
+            if (result < 0) throw new D3D11TimestampAdapterException(D3D11TimestampAdapterRefusal.QueryReadFailed, $"Direct3D 11 timestamp GetData failed (0x{result:X8}).", result) { Operation = "GetData" };
             return result;
         }
 
@@ -95,7 +95,7 @@ namespace KhaozEngine.Gpu.D3D11.Internal
             int result = _queries.GetData(query, data, 1u); // D3D11_ASYNC_GETDATA_DONOTFLUSH
             _loss?.Check(result, "timestamp GetData");
             RequireLive();
-            if (result < 0) throw new InvalidOperationException($"Direct3D 11 timestamp GetData failed (0x{result:X8}).");
+            if (result < 0) throw new D3D11TimestampAdapterException(D3D11TimestampAdapterRefusal.QueryReadFailed, $"Direct3D 11 timestamp GetData failed (0x{result:X8}).", result) { Operation = "GetData" };
             return result == 0;
         }
 
@@ -106,7 +106,7 @@ namespace KhaozEngine.Gpu.D3D11.Internal
 
         void RequireLive()
         {
-            if (_liveness.IsDead) throw new ObjectDisposedException(nameof(IGpuDevice), "The Direct3D 11 timestamp device is disposed or lost.");
+            if (_liveness.IsDead) throw new GpuTimestampDisposedException(GpuTimestampRefusal.TimestampDeviceUnavailable, nameof(IGpuDevice), "The Direct3D 11 timestamp device is disposed or lost.") { Backend = GpuBackendKind.Direct3D11Native };
         }
     }
 }

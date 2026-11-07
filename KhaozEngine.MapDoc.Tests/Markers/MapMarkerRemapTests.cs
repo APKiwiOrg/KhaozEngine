@@ -222,17 +222,29 @@ public sealed class MapMarkerRemapTests
         var pad = new MapPrefabChildKey(MapPrefabChildKind.Surface, "pad");
         var marker = new MapPrefabChildKey(MapPrefabChildKind.Marker, "pad-marker");
 
-        const string LostOwner = "Prefab Marker 'pad-marker': undeclared local Surface 'pad' at '/value/supportBinding/surfaceId'.";
+        string sourceBefore = MapDocumentFile.SaveText(fixture.Document);
         var refused = Assert.Throws<MapDocumentException>(() => MapPrefabEdits.Prepare(fixture.Document, fixture.Assets,
             new MapSetPrefabOverride("a", new MapPrefabRemoveOverride(pad))));
-        Assert.Contains(LostOwner, refused.Message, StringComparison.Ordinal);
+        Assert.Equal(MapDocumentRefusal.ReferenceMissing, refused.Reason);
+        Assert.Equal(marker, refused.Child);
+        Assert.Equal(MapPrefabChildKind.Surface, refused.ChildKind);
+        Assert.Equal("pad", refused.EntityId);
+        Assert.Equal("/value/supportBinding/surfaceId", refused.ReferencePath);
+
+        Assert.Equal(sourceBefore, MapDocumentFile.SaveText(fixture.Document));
 
         // Without the bound marker the same owner removal succeeds, and restoring both resolves the marker again.
         MapDocument unbound = MapPrefabEdits.Prepare(fixture.Document, fixture.Assets, new MapSetPrefabOverride("a", new MapPrefabRemoveOverride(marker))).After;
         MapDocument removed = MapPrefabEdits.Prepare(unbound, fixture.Assets, new MapSetPrefabOverride("a", new MapPrefabRemoveOverride(pad))).After;
         Assert.DoesNotContain(MapEffectiveAnnotations.Markers(MarkerFixtures.Effective(fixture with { Document = removed })), m => m.Id == "a/pad-marker");
+        string removedBefore = MapDocumentFile.SaveText(removed);
         refused = Assert.Throws<MapDocumentException>(() => MapPrefabEdits.Prepare(removed, fixture.Assets, new MapRestorePrefabChild("a", marker)));
-        Assert.Contains(LostOwner, refused.Message, StringComparison.Ordinal);
+        Assert.Equal(MapDocumentRefusal.ReferenceMissing, refused.Reason);
+        Assert.Equal(marker, refused.Child);
+        Assert.Equal(MapPrefabChildKind.Surface, refused.ChildKind);
+        Assert.Equal("pad", refused.EntityId);
+        Assert.Equal("/value/supportBinding/surfaceId", refused.ReferencePath);
+        Assert.Equal(removedBefore, MapDocumentFile.SaveText(removed));
         MapDocument restoredOwner = MapPrefabEdits.Prepare(removed, fixture.Assets, new MapRestorePrefabChild("a", pad)).After;
         MapDocument restored = MapPrefabEdits.Prepare(restoredOwner, fixture.Assets, new MapRestorePrefabChild("a", marker)).After;
         MapEffectiveMarker after = Marker(MarkerFixtures.Effective(fixture with { Document = restored }), "a/pad-marker");

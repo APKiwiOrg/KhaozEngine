@@ -31,15 +31,13 @@ public sealed class NativeViewportAdapterTests
             NativeStyleId = "windy"
         };
         world.Build(CaptureDependencyFixtures.Create().Document, MapDocRegistry.CreateDefault());
-        var view = (NativeMapView)typeof(ViewportWorld).GetField("_nativeView", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!.GetValue(world)!;
-        Assert.Equal(0, view.SettleForCapture(1024).Pending);
-        var residency = (MapRenderResidency)typeof(NativeMapView).GetField("_residency", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!.GetValue(view)!;
+        Assert.Equal(0, world.SettleNativeForTests(1024).Pending);
         var recorder = new MapDrawRecorder();
-        residency.Record(new(KhaozEngine.Primitives.WorldFrame.Origin, request.Observer, request.RoofMode, request.TimeSeconds, request.WindSeed, request.Focus!.Value), recorder);
+        world.RecordNativeForTests(new(KhaozEngine.Primitives.WorldFrame.Origin, request.Observer, request.RoofMode, request.TimeSeconds, request.WindSeed, request.Focus!.Value), recorder);
         var keys = recorder.Snapshot().Resources.Select(r => r.Reference.Key.OwnerId).Distinct().ToArray();
         Assert.Contains("capture-floor", keys); Assert.Contains("sun-caster", keys); Assert.Contains("point-caster", keys); Assert.Contains("point-a", keys);
         Assert.DoesNotContain("unrelated-far", keys);
-        Assert.Equal(request.Policy.Render.Digest, residency.DesiredState.Policy.Digest);
+        Assert.Equal(request.Policy.Render.Digest, world.NativePolicyDigestForTests);
         device.Scene.Begin(); world.Update(System.Numerics.Vector3.Zero, 0); world.Draw(System.Numerics.Vector3.Zero, null, default, new());
         Assert.True(device.Scene.LightCount > 0); Assert.NotEmpty(device.Scene.QueuedInstancesForTests);
         Assert.Equal(request.Observer, options.NativeObserver());
@@ -49,7 +47,8 @@ public sealed class NativeViewportAdapterTests
     {
         using var world = new ViewportWorld(null!, []);
         var error = Assert.Throws<MapDocumentException>(() => world.Build(CaptureDependencyFixtures.Create().Document, MapDocRegistry.CreateDefault()));
-        Assert.Equal("NativeRenderHostRequired", error.Message); Assert.False(world.IsBuilt);
+        Assert.Equal(MapDocumentRefusal.SchemaValueRequired, error.Reason);
+        Assert.Equal("NativeRenderHost", error.FieldPath); Assert.False(world.IsBuilt);
     }
     sealed class Host(MapNativeRenderContext context) : IMapNativeRenderHost
     { public MapNativeRenderContext Resolve(MapDocument document, string path, string style) => context; }

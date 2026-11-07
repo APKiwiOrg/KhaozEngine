@@ -103,8 +103,6 @@ public sealed class FoliageSettingsTests
             new FoliageRenderSettings { WindFadeBladePixels = -.01f }.Validate);
 
         Assert.Equal(nameof(FoliageRenderSettings.WindFadeBladePixels), error.ParamName);
-        Assert.StartsWith("Foliage wind fade blade height must be finite and non-negative.", error.Message,
-            StringComparison.Ordinal);
     }
 
     [Fact]

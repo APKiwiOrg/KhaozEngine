@@ -55,13 +55,13 @@ public sealed class MapPrefabLocalSession
     }
     public MapNativeEditEffects Apply(IEditorCommand command)
     {
-        RequireOpen();
+        RequireOpen(nameof(Apply));
         var staged = _history.StageExecute(_document, command);
         return Publish(staged);
     }
     public bool Undo()
     {
-        RequireOpen();
+        RequireOpen(nameof(Undo));
         var staged = _history.StageUndo(_document);
         if (staged is null) return false;
         Publish(staged);
@@ -69,7 +69,7 @@ public sealed class MapPrefabLocalSession
     }
     public bool Redo()
     {
-        RequireOpen();
+        RequireOpen(nameof(Redo));
         var staged = _history.StageRedo(_document);
         if (staged is null) return false;
         Publish(staged);
@@ -85,7 +85,7 @@ public sealed class MapPrefabLocalSession
     }
     internal void Edit(MapPrefabChild child, bool remove)
     {
-        RequireOpen();
+        RequireOpen(nameof(Edit));
         MapPrefabAsset edited = MapPrefabAssetEdits.Replace(Export(), child, remove);
         var (after, assets) = Detach(edited);
         var command = new NativeSessionSnapshotCommand("Edit prefab asset child", _document, after, _assets, assets,
@@ -95,7 +95,7 @@ public sealed class MapPrefabLocalSession
     /// <summary>Exports current captured definitions and frames, retaining empty suppression rows and local keys.</summary>
     public MapPrefabAsset Export()
     {
-        RequireOpen();
+        RequireOpen(nameof(Export));
         if (_exported is { } bytes) return MapPrefabFile.Read(bytes, _assetId);
         var instance = _document.Prefabs!.Instances.Single(i => i.Id == _localInstance);
         var schema = _assets.GetPrefab(instance.ResourceId);
@@ -124,9 +124,10 @@ public sealed class MapPrefabLocalSession
         return MapPrefabFile.Read(_exported, _assetId);
     }
     public void Cancel() => _cancelled = true;
-    void RequireOpen()
+    void RequireOpen(string operation)
     {
-        if (_cancelled) throw new MapDocumentException("The prefab asset session is cancelled.");
+        if (_cancelled) throw new MapDocumentException(MapDocumentRefusal.EditorPrefabSessionCancelled, "The prefab asset session is cancelled.")
+        { AssetId = _assetId, Operation = operation };
     }
     (MapDocument Document, MapAssetClosure Assets) Detach(MapPrefabAsset asset)
     {
@@ -134,7 +135,8 @@ public sealed class MapPrefabLocalSession
         string sha = Convert.ToHexStringLower(SHA256.HashData(prefabBytes));
         var reference = new MapAssetRef(MapAssetVersionIdentity.Address("prefab", asset.Id, prefabBytes), "prefab-local/" + sha, sha, 1);
         var roots = _sourceAssets.Roots.ToArray();
-        if (roots.Length == 0) throw new MapDocumentException("Prefab editing requires an asset manifest root.");
+        if (roots.Length == 0) throw new MapDocumentException(MapDocumentRefusal.ToolAssetRootRequired, "Prefab editing requires an asset manifest root.")
+        { AssetId = asset.Id, Operation = nameof(Detach) };
         var root = roots[0];
         var manifest = MapAssetManifestReader.Read(_sourceAssets.GetResource(root.Id).Bytes.ToArray(), root.Id);
         var dependencies = _sourceAssets.CapturedResources.Where(r => r.Kind is not (MapResourceKind.Prefab or MapResourceKind.Manifest)).Select(r => r.Reference.Id).ToList();

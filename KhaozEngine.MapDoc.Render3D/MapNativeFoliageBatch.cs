@@ -27,6 +27,8 @@ public sealed class MapNativeFoliageBatch : IDisposable
     MapNativeFoliageGroup[] _groups;
     MapNativeFoliagePart[] _parts;
     MapFoliageColumnOwner.Reader[] _sources;
+    // Snapshot of immutable group values whose cover sources are borrowed. Never mutate or dispose the sources.
+    internal MapNativeFoliageGroup[] GroupsForTests => (MapNativeFoliageGroup[])_groups.Clone();
     readonly int _identityCount;
     MapPreparedInputLease? _input;
     MapResourceStamp? _stamp;
@@ -102,7 +104,7 @@ public sealed class MapNativeFoliageBatch : IDisposable
         ObjectDisposedException.ThrowIf(_disposed, this);
         ArgumentNullException.ThrowIfNull(stamp); ArgumentNullException.ThrowIfNull(sink);
         if (stamp.ClosureHash != _witness.ClosureHash || stamp.SourceGeneration != _witness.SourceGeneration || stamp.ScopeDigest != _witness.ScopeDigest)
-            throw new MapDocumentException("Foliage registration stamp belongs to another source, closure or scope.");
+            throw new MapDocumentException(MapDocumentRefusal.AcquisitionSnapshotChanged, "Foliage registration stamp belongs to another source, closure or scope.") { ExpectedSnapshot = _witness.SourceGeneration, ActualSnapshot = stamp.SourceGeneration, Operation = "Foliage.Register" };
         if (_stamp is not null && _stamp != stamp) throw new InvalidOperationException("A foliage batch cannot change its registered generation.");
         if (_registrations is null)
         {

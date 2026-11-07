@@ -21,6 +21,9 @@ public sealed partial class MapStoredSurfaceSource : IMapSurfaceAcquisitionSourc
     internal MapSurfaceStorageIndex Index { get; }
     internal MapResolverIdentityDoc? ResolverIdentity { get; }
     internal MapSupportRecipe SupportRecipe { get; }
+    /// <summary>MapFoliageReviewTests observes retained density before and after identity computation.
+    /// Counting the pinned globals never loads foliage or exposes its mutable document.</summary>
+    internal int ResidentFoliageChunkCountForTests(int layerIndex) => _globals.Foliage!.Layers[layerIndex].Chunks.Count;
     MapStoredSurfaceSource(string directory, MapDocument manifest, MapTileIndex tiles)
     {
         _directory = Path.GetFullPath(directory);
@@ -95,19 +98,33 @@ public sealed partial class MapStoredSurfaceSource : IMapSurfaceAcquisitionSourc
         {
             byte[] bytes = MapSurfaceStorageLayout.Read(_directory, 'p', entry.PayloadSha256);
             MapSurfacePatch patch = MapSurfacePatchCodec.Decode(bytes, entry.Key);
-            if (MapSurfaceSemantics.PatchDigest(patch) != entry.SemanticSha256 ||
-                MapSurfaceRanges.Rectangle(patch) != entry.Cells || patch.Heights.Min() != entry.MinHeightUnits ||
-                patch.Heights.Max() != entry.MaxHeightUnits ||
-                !patch.CornerDependencies.Select(d => d.Owner.Patch).Distinct().OrderBy(k => k).SequenceEqual(entry.Dependencies) ||
-                !patch.Records.Select(r => r.Id).OrderBy(s => s, StringComparer.Ordinal).SequenceEqual(entry.RecordIds))
-                throw new MapDocumentException("surface semantic or index digest mismatch");
+            string actualHash = MapSurfaceSemantics.PatchDigest(patch);
+            string? field = actualHash != entry.SemanticSha256 ? "SemanticSha256"
+                : MapSurfaceRanges.Rectangle(patch) != entry.Cells ? "Cells"
+                : patch.Heights.Min() != entry.MinHeightUnits ? "MinHeightUnits"
+                : patch.Heights.Max() != entry.MaxHeightUnits ? "MaxHeightUnits"
+                : !patch.CornerDependencies.Select(d => d.Owner.Patch).Distinct().OrderBy(k => k).SequenceEqual(entry.Dependencies) ? "Dependencies"
+                : !patch.Records.Select(r => r.Id).OrderBy(s => s, StringComparer.Ordinal).SequenceEqual(entry.RecordIds) ? "RecordIds" : null;
+            if (field is not null)
+                throw new MapDocumentException(field == "SemanticSha256" ? MapDocumentRefusal.DigestMismatch
+                    : MapDocumentRefusal.AuthoredValueMismatch, "surface semantic or index digest mismatch")
+                {
+                    Patch = entry.Key,
+                    SurfaceId = entry.Key.SurfaceId,
+                    FieldPath = field,
+                    ExpectedHash = entry.SemanticSha256,
+                    ActualHash = actualHash
+                };
             patch.PreparationOwnership = preparation?.Complete(Scene.MapSceneAdmission.PatchBytes(patch));
             return new(entry.Key, MapPatchStatus.Present, patch, entry.SemanticSha256, null, 0);
         }
         catch (Exception ex) when (IsStorageFailure(ex))
         {
             MapPatchStatus status = ex is FileNotFoundException or DirectoryNotFoundException ? MapPatchStatus.Missing : MapPatchStatus.Corrupt;
-            return new(entry.Key, status, null, entry.SemanticSha256, ex.Message, 0);
+            MapDocumentException? refusal = ex is MapDocumentException known
+                ? known.WithSourceName(null, known.Message, patch: entry.Key) : null;
+            return new(entry.Key, status, null, entry.SemanticSha256, ex.Message, 0)
+            { Finding = refusal is null ? null : MapDocumentFinding.FromException(refusal), Cause = refusal ?? ex };
         }
     }
     internal static bool IsStorageFailure(Exception ex) => ex is IOException or UnauthorizedAccessException or

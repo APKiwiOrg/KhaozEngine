@@ -22,9 +22,13 @@ internal static partial class ContactController
         internal bool DescendingAtContact { get; init; }
         internal bool LastWasWalking { get; init; }
         internal bool Completed { get; init; }
+        internal bool AirLanded { get; init; }
+        internal bool UnwalkableSupport { get; init; }
+        internal Vector3? FirstAirLandingFeet { get; init; }
         internal double UnroundedX { get; init; }
         internal double UnroundedZ { get; init; }
-        internal Vector3 PublishedCentre => Queries.BodyCentre(Feet);
+        internal Vector3 PublishedCentre => Supported && Support.Status is SupportStatus.Walkable or SupportStatus.Steep
+            ? Queries.SupportedBodyCentre(Feet, Support) : Queries.BodyCentre(Feet);
     }
 
     // Each receiving mode uses the exact remainder, carry and climb budget of the accepted segment. The dry
@@ -93,6 +97,7 @@ internal static partial class ContactController
                     Mode = grounded ? Mode.Ground : step.Footing == GroundFooting.Steep ? Mode.Slide : Mode.Air,
                     DescendingAtContact = false,
                     LastWasWalking = step.Footing == GroundFooting.Walkable,
+                    UnwalkableSupport = tick.UnwalkableSupport || step.Footing == GroundFooting.Steep,
                 };
                 lagRecorded = true;
                 remaining = step.RemainingTime;
@@ -120,6 +125,7 @@ internal static partial class ContactController
                     Supported = slide.Outcome != SlideOutcome.Airborne,
                     FallSpeed = slide.Outcome == SlideOutcome.Landed ? -slide.ImpactSpeed :
                         slide.Outcome == SlideOutcome.Wedged ? slide.IntegratedVerticalVelocity : tick.FallSpeed,
+                    UnwalkableSupport = true,
                     Mode = grounded ? Mode.Ground : slide.Outcome == SlideOutcome.Airborne ? Mode.Air : Mode.Slide,
                     DescendingAtContact = false,
                     LastWasWalking = false,
@@ -140,6 +146,9 @@ internal static partial class ContactController
                     : AirPass.StepWithMedium(tick.Feet, drive, tick.VerticalVelocity, time, t.Gravity, t, c.Settings,
                         tick.TractionGate, tick.Queries, tick.Budget, c.ClampXz, c.Fluid);
                 tick.Queries.AcceptRoute(air.Blocked);
+                tick.Queries.DescentEvidence?.Record(tick.Queries, air.Feet, air.Support,
+                    waterSegment ? ContactDescentMode.Water : ContactDescentMode.Air,
+                    c.Settings.FootRadiusFraction * t.CapsuleRadius, tick.TractionGate);
                 Vector2 asked = segment == 0 ? commanded : drive;
                 bool grounded = air.Outcome == AirOutcome.Landed;
                 tick = tick with
@@ -154,6 +163,9 @@ internal static partial class ContactController
                     Grounded = grounded,
                     Supported = air.Outcome != AirOutcome.Airborne,
                     FallSpeed = grounded ? -air.FallSpeedAtContact : tick.FallSpeed,
+                    AirLanded = tick.AirLanded || !waterSegment && grounded,
+                    FirstAirLandingFeet = tick.FirstAirLandingFeet ?? (!waterSegment && grounded ? air.Feet : null),
+                    UnwalkableSupport = tick.UnwalkableSupport || air.Outcome == AirOutcome.Sliding,
                     Mode = grounded ? Mode.Ground : air.Outcome == AirOutcome.Sliding ? Mode.Slide : Mode.Air,
                     DescendingAtContact = air.DescendingAtContact,
                     LastWasWalking = false,
@@ -190,6 +202,9 @@ internal static partial class ContactController
                     if (rounded.Status is not (SupportStatus.Walkable or SupportStatus.Steep))
                         throw new ContactQueryFailure(MovementAvailability.Unresolved);
                     tick = tick with { Support = rounded, Binding = binding };
+                    tick.Queries.DescentEvidence?.Record(tick.Queries, tick.Feet, rounded,
+                        tick.Mode == Mode.Slide ? ContactDescentMode.Slide : ContactDescentMode.Ground,
+                        c.Settings.FootRadiusFraction * t.CapsuleRadius, tick.TractionGate);
                 }
                 else
                     tick = tick with

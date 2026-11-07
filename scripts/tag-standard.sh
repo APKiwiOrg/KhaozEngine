@@ -244,6 +244,9 @@ tag_nonpackable_test() (
 # That asymmetry is why the list EXCLUDES rather than includes. A missing exclusion costs a refusal
 # someone reads and fixes, as happened three times here. A missing inclusion would silently let
 # through the exact push this guard exists to stop, and nobody would ever learn it was wrong.
+#
+# The root .gitattributes is judged by the lines it changes, not by its name, because checkout
+# attributes change the bytes of the files they match. See tag_gitattributes_version_bearing.
 tag_version_bearing() {
   _vb_from=$1; _vb_to=$2
   git diff --name-only "$_vb_from" "$_vb_to" -- \
@@ -251,12 +254,49 @@ tag_version_bearing() {
     ':(exclude).github/**' ':(exclude).githooks/**' ':(exclude).claude/**' ':(exclude).codex/**' \
     ':(exclude).filesize-baseline' ':(exclude).gitignore' 2>/dev/null | (
       while IFS= read -r _vb_path; do
-        tag_nonpackable_test "$_vb_to" "$_vb_path" || exit 0
-        _vb_dir=${_vb_path%%/*}
-        if git cat-file -e "$_vb_from:$_vb_dir/$_vb_dir.csproj" 2>/dev/null; then
-          tag_nonpackable_test "$_vb_from" "$_vb_path" || exit 0
+        if [ "$_vb_path" = .gitattributes ]; then
+          tag_gitattributes_version_bearing "$_vb_from" "$_vb_to" && exit 0
+          continue
         fi
+        tag_path_nonpackable "$_vb_from" "$_vb_to" "$_vb_path" || exit 0
       done
       exit 1
     )
 }
+
+# tag_path_nonpackable <from> <to> <path> -> 0 when <path> sits in a test project that is non-packable
+# at <to>, and also at <from> when the project already existed there.
+tag_path_nonpackable() (
+  tag_nonpackable_test "$2" "$3" || exit 1
+  _pn_dir=${3%%/*}
+  if git cat-file -e "$1:$_pn_dir/$_pn_dir.csproj" 2>/dev/null; then
+    tag_nonpackable_test "$1" "$3" || exit 1
+  fi
+  exit 0
+)
+
+# tag_gitattributes_version_bearing <from> <to> -> 0 when an added or removed line of the root
+# .gitattributes can match a file that ships.
+#
+# Checkout attributes change the bytes of the files they match. The 21.19.0 LF pin on shader sources
+# changed embedded package content exactly that way, so such a line needs a bump like the files it
+# pins. A line confined to a carved-out folder or a non-packable test project rides, as those files
+# do. A pattern this cannot place counts as shipped: one without a folder matches at any depth, and a
+# glob, quote, escape or macro in its first folder could reach anything.
+tag_gitattributes_version_bearing() (
+  git diff -U0 "$1" "$2" -- .gitattributes 2>/dev/null \
+    | awk 'hunk && /^[-+]/ { print substr($0, 2) } /^@@/ { hunk = 1 }' | (
+      while IFS= read -r _ga_line; do
+        _ga_line=$(printf '%s' "$_ga_line" | sed 's/^[[:space:]]*//')
+        case "$_ga_line" in ''|'#'*) continue ;; esac
+        _ga_pattern=${_ga_line%%[ 	]*}
+        _ga_pattern=${_ga_pattern#/}
+        case "$_ga_pattern" in */*) ;; *) exit 0 ;; esac
+        _ga_dir=${_ga_pattern%%/*}
+        case "$_ga_dir" in ''|*[\*\?\[\]\\\"\!]*) exit 0 ;; esac
+        case "$_ga_dir" in docs|scripts|tools|.github|.githooks|.claude|.codex) continue ;; esac
+        tag_path_nonpackable "$1" "$2" "$_ga_pattern" || exit 0
+      done
+      exit 1
+    )
+)

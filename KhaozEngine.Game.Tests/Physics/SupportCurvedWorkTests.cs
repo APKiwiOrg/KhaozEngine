@@ -71,9 +71,7 @@ public class SupportCurvedWorkTests
             arithmetic.Restore(outer);
             Assert.False(arithmetic.Bounds(arithmetic.One).IsResolved);
             Assert.Equal(GeometrySign.Unresolved, arithmetic.Sign(arithmetic.Subtract(value, value)));
-            Assert.Equal(GeometrySign.Unresolved, (GeometrySign)typeof(SupportCurvedSourceArithmetic)
-                .GetMethod("PolynomialSign", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!
-                .Invoke(arithmetic, [value])!);
+            Assert.Equal(GeometrySign.Unresolved, arithmetic.PolynomialSignForTests(value));
             arithmetic.Reset(new(1, 0.5f, 0));
             Assert.Equal(GeometrySign.Unresolved, arithmetic.Sign(arithmetic.One));
             var regions = new SupportCurvedRootRegions(work);

@@ -12,8 +12,10 @@ internal static class LitReceiverRequirements
         const int required = 3;
         int available = device.Capabilities.MaxFragmentStorageBuffers;
         if (available < required)
-            throw new NotSupportedException($"Lit receivers require maxPerStageDescriptorStorageBuffers >= {required}, "
-                + $"but the device reports {available}.");
+            throw new LitReceiverNotSupportedException(LitReceiverRefusal.FragmentStorageBufferLimitInsufficient,
+                $"Lit receivers require maxPerStageDescriptorStorageBuffers >= {required}, "
+                + $"but the device reports {available}.")
+            { RequiredCount = required, AvailableCount = available, CapabilityName = "maxPerStageDescriptorStorageBuffers" };
         return device;
     }
 }

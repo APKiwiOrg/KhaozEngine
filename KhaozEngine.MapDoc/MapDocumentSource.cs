@@ -122,8 +122,9 @@ public sealed class MapDocumentSource : IDisposable
     public MapTileContent ReadTile(MapTileCoord coord)
     {
         if (!Tiles.TryGet(coord, out MapTileEntry entry))
-            throw new MapDocumentException(
-                $"{_directory ?? "(in memory)"}: tile ({coord.X}, {coord.Z}) is not in the occupied-tile index.");
+            throw new MapDocumentException(MapDocumentRefusal.DocumentTileNotIndexed,
+                $"{_directory ?? "(in memory)"}: tile ({coord.X}, {coord.Z}) is not in the occupied-tile index.")
+            { Tile = coord, SourceName = _directory ?? "(in memory)" };
 
         if (_spatial is not null)
         {

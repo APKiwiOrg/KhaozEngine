@@ -106,9 +106,10 @@ public sealed class GameStorageSaveEncodingTests : IDisposable
     public void Plaintext_PerCallEncodeTrue_Throws()
     {
         using GameStorage storage = Build(SaveEncoding.Plaintext);
-        InvalidOperationException ex = Assert.Throws<InvalidOperationException>(
+        Assert.Throws<InvalidOperationException>(
             () => storage.Save("save.json", new Progress(), new SaveWriteOptions { Encode = true }));
-        Assert.Contains(nameof(SaveEncoding.Plaintext), ex.Message);
+        storage.Flush();
+        Assert.False(File.Exists(Path.Combine(root, "save.json")));
     }
 
     [Fact]

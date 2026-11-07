@@ -15,26 +15,18 @@ public class WorldClockTests
         Assert.Equal(expected, clock.TimeOfDay, 4);
     }
 
-    [Fact]
-    public void Advance_AppliesTimeScaleAndWraps()
+    [Theory]
+    [InlineData(2f, 75f, 0.5f)]
+    [InlineData(0f, 300f, 0.25f)]
+    [InlineData(2f, 300f, 0.25f)] // a complete day wraps back to the start
+    public void Advance_AppliesTimeScaleAndWraps(float scale, float elapsed, float expected)
     {
         WorldClock clock = new(dayLengthSeconds: 600f, startTimeOfDay: 0.25f);
-        clock.TimeScale = 2f;
+        clock.TimeScale = scale;
 
-        clock.Advance(75f);
+        clock.Advance(elapsed);
 
-        Assert.Equal(0.5f, clock.TimeOfDay, 4);
-    }
-
-    [Fact]
-    public void Advance_WithZeroScaleLeavesTimeUnchanged()
-    {
-        WorldClock clock = new(dayLengthSeconds: 600f, startTimeOfDay: 0.25f);
-        clock.TimeScale = 0f;
-
-        clock.Advance(300f);
-
-        Assert.Equal(0.25f, clock.TimeOfDay, 4);
+        Assert.Equal(expected, clock.TimeOfDay, 4);
     }
 
     [Fact]

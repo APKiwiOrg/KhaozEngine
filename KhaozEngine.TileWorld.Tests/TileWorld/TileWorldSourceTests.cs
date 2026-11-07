@@ -1,4 +1,7 @@
+using System;
 using System.IO;
+using System.Security.Cryptography;
+using System.Text.Json.Nodes;
 using KhaozEngine.TileWorld;
 using Xunit;
 
@@ -30,6 +33,26 @@ public class TileWorldSourceTests
         Assert.Single(r.Objects);
         Assert.NotNull(s.Document.FindObject(1));
         Assert.Same(r, s.EnsureLoaded(new RegionCoord(1, 0)));
+    }
+
+    [Fact]
+    public void Open_refuses_a_duplicate_manifest_region()
+    {
+        using var tmp = new TempDir();
+        string dir = tmp.Sub("duplicate");
+        TileWorldFile.Save(TileWorldTestData.FlatWorld(), dir);
+        Assert.True(TileWorldSource.Open(dir).IsKnown(new RegionCoord(0, 0)));
+        string path = TileWorldFile.ManifestPath(dir);
+        JsonObject manifest = JsonNode.Parse(File.ReadAllText(path))!.AsObject();
+        JsonArray regions = manifest["regions"]!.AsArray();
+        regions.Add(regions[0]!.DeepClone());
+        File.WriteAllText(path, manifest.ToJsonString());
+
+        var ex = Assert.Throws<TileWorldException>(() => TileWorldSource.Open(dir));
+
+        Assert.Equal(TileWorldRefusal.ManifestRegionDuplicate, ex.Reason);
+        Assert.Equal(new RegionCoord(0, 0), ex.Region);
+        Assert.Equal(path, ex.SourceName);
     }
 
     [Fact]
@@ -75,10 +98,16 @@ public class TileWorldSourceTests
     public void Unload_refuses_a_dirty_region()
     {
         using var tmp = new TempDir();
-        TileWorldSource s = TileWorldSource.Open(SavedWorld(tmp));
+        string dir = SavedWorld(tmp);
+        TileWorldSource s = TileWorldSource.Open(dir);
         s.EnsureLoaded(new RegionCoord(0, 0));
         s.Document.SetUnderlay(1, 1, 0, 2);
-        Assert.Throws<TileWorldException>(() => s.Unload(new RegionCoord(0, 0)));
+        var ex = Assert.Throws<TileWorldException>(() => s.Unload(new RegionCoord(0, 0)));
+        Assert.Equal(TileWorldRefusal.RegionDirty, ex.Reason);
+        Assert.Equal(new RegionCoord(0, 0), ex.Region);
+        Assert.True(s.IsLoaded(new RegionCoord(0, 0)));
+        TileWorldFile.Save(s.Document, dir);
+        Assert.True(s.Unload(new RegionCoord(0, 0)));
     }
 
     [Fact]
@@ -281,8 +310,21 @@ public class TileWorldSourceTests
     {
         using var tmp = new TempDir();
         string dir = SavedWorld(tmp);
-        File.WriteAllBytes(Path.Combine(dir, "regions", "r_0_1.json"), new byte[] { (byte)'{', (byte)'}' });
+        string path = Path.Combine(dir, "regions", "r_0_1.json");
+        byte[] original = File.ReadAllBytes(path);
+        string expected = Convert.ToHexStringLower(SHA256.HashData(original));
+        // Whitespace leaves a valid region and changes only its byte identity.
+        File.AppendAllText(path, "\n");
+        string actual = Convert.ToHexStringLower(SHA256.HashData(File.ReadAllBytes(path)));
         TileWorldSource s = TileWorldSource.Open(dir);
-        Assert.Throws<TileWorldException>(() => s.EnsureLoaded(new RegionCoord(0, 1)));
+        var ex = Assert.Throws<TileWorldException>(() => s.EnsureLoaded(new RegionCoord(0, 1)));
+        Assert.Equal(TileWorldRefusal.RegionHashMismatch, ex.Reason);
+        Assert.Equal(new RegionCoord(0, 1), ex.Region);
+        Assert.Equal(path, ex.SourceName);
+        Assert.Equal(expected, ex.ExpectedHash);
+        Assert.Equal(actual, ex.ActualHash);
+        Assert.False(s.IsLoaded(new RegionCoord(0, 1)));
+        File.WriteAllBytes(path, original);
+        Assert.NotNull(s.EnsureLoaded(new RegionCoord(0, 1)));
     }
 }

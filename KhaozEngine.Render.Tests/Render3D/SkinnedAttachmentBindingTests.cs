@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.IO;
 using System.Linq;
 using System.Numerics;
 using KhaozEngine.Attachments;
@@ -22,10 +21,10 @@ public sealed class SkinnedAttachmentBindingTests
     {
         var definition = new AttachmentSetDefinition([Part(1, "missing"), new SkinnedAttachmentPartDefinition(2, GarmentRef)]);
 
-        InvalidDataException error = Assert.Throws<InvalidDataException>(() => new AttachmentSetBinding(definition, Map(Create())));
+        AttachmentBindingDataException error = Assert.Throws<AttachmentBindingDataException>(() => new AttachmentSetBinding(definition, Map(Create())));
 
-        Assert.Contains("host", error.Message, StringComparison.OrdinalIgnoreCase);
-        Assert.Contains("2", error.Message);
+        Assert.Equal(AttachmentBindingRefusal.HostMeshRequired, error.Reason);
+        Assert.Equal(2u, error.PartId);
     }
 
     [Fact]
@@ -66,11 +65,13 @@ public sealed class SkinnedAttachmentBindingTests
     {
         SkinnedGltfMesh garment = Mesh(Skin(joint));
 
-        InvalidDataException error = Assert.Throws<InvalidDataException>(() => Bind(Mesh(Create()), garment));
+        AttachmentBindingDataException error = Assert.Throws<AttachmentBindingDataException>(() => Bind(Mesh(Create()), garment));
 
-        Assert.Contains("2", error.Message);
-        Assert.Contains(GarmentRef.Key, error.Message);
-        Assert.Contains(joint, error.Message);
+        Assert.Equal(AttachmentBindingRefusal.GarmentJointUnresolved, error.Reason);
+        Assert.Equal(2u, error.PartId);
+        Assert.Equal(GarmentRef.Key, error.MeshKey);
+        Assert.Equal(joint, error.JointName);
+        Assert.NotNull(error.InnerException);
     }
 
     [Fact]
@@ -80,18 +81,20 @@ public sealed class SkinnedAttachmentBindingTests
         foreach (float boundary in new[] { 1e-4f, -1e-4f })
         {
             Assert.Null(Record.Exception(() => BindElement(host, 1, boundary)));
-            Assert.Throws<InvalidDataException>(() => BindElement(host, 1, MathF.CopySign(MathF.BitIncrement(1e-4f), boundary)));
+            AssertGarmentRefusal(AttachmentBindingRefusal.GarmentBindMismatch, () => BindElement(host, 1, MathF.CopySign(MathF.BitIncrement(1e-4f), boundary)));
         }
         for (int element = 0; element < 16; element++)
         {
             float source = Matrix4x4.Identity[element / 4, element % 4];
-            Assert.Throws<InvalidDataException>(() => BindElement(host, element, source + 2e-4f));
+            AssertGarmentRefusal(AttachmentBindingRefusal.GarmentBindMismatch, () => BindElement(host, element, source + 2e-4f));
             foreach (float invalid in new[] { float.NaN, float.PositiveInfinity, float.NegativeInfinity })
             {
-                Assert.Throws<InvalidDataException>(() => BindElement(host, element, invalid));
+                AssertGarmentRefusal(AttachmentBindingRefusal.GarmentBindMismatch, () => BindElement(host, element, invalid));
                 SkinnedGltfMesh invalidHost = Mesh(Create());
                 invalidHost.InverseBind[1][element / 4, element % 4] = invalid;
-                Assert.Throws<InvalidDataException>(() => Bind(invalidHost, Mesh(Skin("hip"))));
+                var error = Assert.Throws<AttachmentBindingDataException>(() => Bind(invalidHost, Mesh(Skin("hip"))));
+                Assert.Equal(AttachmentBindingRefusal.HostInverseBindNonFinite, error.Reason);
+                Assert.Equal(1, error.BoneIndex);
             }
         }
     }
@@ -102,7 +105,9 @@ public sealed class SkinnedAttachmentBindingTests
         Skeleton skeleton = Create();
         var definition = new AttachmentSetDefinition([new SkinnedAttachmentPartDefinition(2, GarmentRef)]);
         var meshes = new Dictionary<AttachmentMeshRef, SkinnedGltfMesh> { [GarmentRef] = Garment() };
-        Assert.Throws<ArgumentException>(() => new AttachmentSetBinding(definition, Map(skeleton), Mesh(Create()), meshes));
+        var identity = Assert.Throws<AttachmentBindingArgumentException>(() => new AttachmentSetBinding(definition, Map(skeleton), Mesh(Create()), meshes));
+        Assert.Equal(AttachmentBindingRefusal.HostSkeletonMismatch, identity.Reason);
+        Assert.Equal("hostMesh", identity.ParamName);
 
         Skeleton large = Skin(Enumerable.Range(0, 128).Select(i => "bone-" + i).ToArray());
         var contract = new SkeletonContract(Enumerable.Range(0, 128)
@@ -113,8 +118,13 @@ public sealed class SkinnedAttachmentBindingTests
         var accepted = new AttachmentSetBinding(definition, map, host, meshes);
         Assert.Equal(128, accepted.SkinnedJointCount(2));
         meshes[GarmentRef] = Mesh(Skin(Enumerable.Range(0, 129).Select(i => "bone-" + i).ToArray()));
-        InvalidDataException error = Assert.Throws<InvalidDataException>(() => new AttachmentSetBinding(definition, map, host, meshes));
-        Assert.Contains("128", error.Message);
+        AttachmentBindingDataException error = Assert.Throws<AttachmentBindingDataException>(() => new AttachmentSetBinding(definition, map, host, meshes));
+        Assert.Equal(AttachmentBindingRefusal.GarmentJointCountOutsideRange, error.Reason);
+        Assert.Equal(2u, error.PartId);
+        Assert.Equal(GarmentRef.Key, error.MeshKey);
+        Assert.Equal(129, error.JointCount);
+        Assert.Equal(1, error.MinimumJointCount);
+        Assert.Equal(128, error.MaximumJointCount);
     }
 
     [Fact]
@@ -157,13 +167,22 @@ public sealed class SkinnedAttachmentBindingTests
     {
         SkinnedGltfMesh host = Mesh(Create());
         var definition = new AttachmentSetDefinition([new SkinnedAttachmentPartDefinition(2, GarmentRef)]);
-        InvalidDataException missing = Assert.Throws<InvalidDataException>(() => new AttachmentSetBinding(definition,
+        AttachmentBindingDataException missing = Assert.Throws<AttachmentBindingDataException>(() => new AttachmentSetBinding(definition,
             Map(host.Skeleton!), host, new Dictionary<AttachmentMeshRef, SkinnedGltfMesh>()));
-        Assert.Contains("2", missing.Message);
-        Assert.Contains(GarmentRef.Key, missing.Message);
-        Assert.Throws<InvalidDataException>(() => Bind(host, Mesh(null)));
-        Assert.Throws<InvalidDataException>(() => Bind(host, Mesh(Skin("hip", "knee"), [Matrix4x4.Identity])));
-        Assert.Throws<InvalidDataException>(() => Bind(Mesh(Create(), [Matrix4x4.Identity]), Garment()));
+        Assert.Equal(AttachmentBindingRefusal.GarmentMetadataMissing, missing.Reason);
+        Assert.Equal(2u, missing.PartId);
+        Assert.Equal(GarmentRef.Key, missing.MeshKey);
+        AssertGarmentRefusal(AttachmentBindingRefusal.GarmentSkeletonMissing, () => Bind(host, Mesh(null)));
+        var garment = AssertGarmentRefusal(AttachmentBindingRefusal.GarmentBindCountsMismatch,
+            () => Bind(host, Mesh(Skin("hip", "knee"), [Matrix4x4.Identity])));
+        Assert.Equal(2, garment.JointCount);
+        Assert.Equal(1, garment.InverseBindCount);
+        Assert.Equal(1, garment.RestCount);
+        var invalidHost = Assert.Throws<AttachmentBindingDataException>(() => Bind(Mesh(Create(), [Matrix4x4.Identity]), Garment()));
+        Assert.Equal(AttachmentBindingRefusal.HostBindCountsMismatch, invalidHost.Reason);
+        Assert.Equal(2, invalidHost.JointCount);
+        Assert.Equal(1, invalidHost.InverseBindCount);
+        Assert.Equal(1, invalidHost.RestCount);
     }
 
     [Fact]
@@ -173,21 +192,18 @@ public sealed class SkinnedAttachmentBindingTests
         Array.Copy(host.RestPose, garment.RestPose, 2);
         host.InverseBind[1] = Matrix4x4.CreateTranslation(1, 0, 0);
 
-        Assert.Throws<InvalidDataException>(() => Bind(host, garment));
+        AssertGarmentRefusal(AttachmentBindingRefusal.GarmentBindMismatch, () => Bind(host, garment));
     }
 
     [Fact]
-    public void Imported_garment_bind_mismatch_names_the_part_mesh_and_joint()
+    public void Imported_garment_bind_mismatch_names_the_part_and_mesh()
     {
         SkinnedAttachmentGlbFixture fixture = Fixture();
         fixture.SetInverseBind(1, Matrix4x4.CreateTranslation(2, 0, 0));
         SkinnedGltfMesh garment = GltfLoader.LoadSkinnedPartsWithMaterials(fixture.Build(), "mismatched garment")[0].Mesh;
 
-        InvalidDataException error = Assert.Throws<InvalidDataException>(() => Bind(Mesh(Create()), garment));
-
-        Assert.Contains("2", error.Message);
-        Assert.Contains(GarmentRef.Key, error.Message);
-        Assert.Contains("knee", error.Message);
+        var error = AssertGarmentRefusal(AttachmentBindingRefusal.GarmentBindMismatch, () => Bind(Mesh(Create()), garment));
+        Assert.Equal("knee", error.JointName);
     }
 
     [Fact]
@@ -198,13 +214,35 @@ public sealed class SkinnedAttachmentBindingTests
         Matrix4x4[] palette = host.Skeleton!.ComposeRestPose();
         Matrix4x4 sentinel = Matrix4x4.CreateTranslation(99, 0, 0);
         Matrix4x4[] output = [sentinel, sentinel];
-        Assert.Throws<ArgumentException>(() => binding.CopySkinnedPalette(Create(), palette, 2, output));
-        Assert.Throws<ArgumentException>(() => binding.CopySkinnedPalette(host.Skeleton, palette[..1], 2, output));
-        Assert.Throws<ArgumentException>(() => binding.CopySkinnedPalette(host.Skeleton, new Matrix4x4[3], 2, output));
-        Assert.Throws<ArgumentException>(() => binding.CopySkinnedPalette(host.Skeleton, palette, 2, output.AsSpan(0, 1)));
-        Assert.Throws<ArgumentException>(() => binding.CopySkinnedPalette(host.Skeleton, palette, 1, output));
-        Assert.Throws<ArgumentException>(() => binding.CopySkinnedPalette(host.Skeleton, palette, 99, output));
-        Assert.Throws<ArgumentException>(() => binding.SkinnedJointCount(99));
+        var skeleton = Assert.Throws<AttachmentBindingArgumentException>(() => binding.CopySkinnedPalette(Create(), palette, 2, output));
+        Assert.Equal(AttachmentBindingRefusal.SkeletonMismatch, skeleton.Reason);
+        Assert.Equal("skeleton", skeleton.ParamName);
+        var shortPalette = Assert.Throws<AttachmentBindingArgumentException>(() => binding.CopySkinnedPalette(host.Skeleton, palette[..1], 2, output));
+        Assert.Equal(AttachmentBindingRefusal.HostPaletteLengthMismatch, shortPalette.Reason);
+        Assert.Equal(1, shortPalette.ActualCount);
+        Assert.Equal(2, shortPalette.RequiredCount);
+        var longPalette = Assert.Throws<AttachmentBindingArgumentException>(() => binding.CopySkinnedPalette(host.Skeleton, new Matrix4x4[3], 2, output));
+        Assert.Equal(AttachmentBindingRefusal.HostPaletteLengthMismatch, longPalette.Reason);
+        Assert.Equal(3, longPalette.ActualCount);
+        Assert.Equal(2, longPalette.RequiredCount);
+        var capacity = Assert.Throws<AttachmentBindingArgumentException>(() => binding.CopySkinnedPalette(host.Skeleton, palette, 2, output.AsSpan(0, 1)));
+        Assert.Equal(AttachmentBindingRefusal.GarmentPaletteOutputTooSmall, capacity.Reason);
+        Assert.Equal(2u, capacity.PartId);
+        Assert.Equal(1, capacity.ActualCapacity);
+        Assert.Equal(2, capacity.RequiredCapacity);
+        Assert.Equal("destination", capacity.ParamName);
+        var rigid = Assert.Throws<AttachmentBindingArgumentException>(() => binding.CopySkinnedPalette(host.Skeleton, palette, 1, output));
+        Assert.Equal(AttachmentBindingRefusal.PartHasNoGarmentPalette, rigid.Reason);
+        Assert.Equal(1u, rigid.PartId);
+        Assert.Equal("partId", rigid.ParamName);
+        var missing = Assert.Throws<AttachmentBindingArgumentException>(() => binding.CopySkinnedPalette(host.Skeleton, palette, 99, output));
+        Assert.Equal(AttachmentBindingRefusal.PartMissing, missing.Reason);
+        Assert.Equal(99u, missing.PartId);
+        Assert.Equal("partId", missing.ParamName);
+        var missingCount = Assert.Throws<AttachmentBindingArgumentException>(() => binding.SkinnedJointCount(99));
+        Assert.Equal(AttachmentBindingRefusal.PartMissing, missingCount.Reason);
+        Assert.Equal(99u, missingCount.PartId);
+        Assert.Equal("partId", missingCount.ParamName);
         Assert.All(output, matrix => Assert.Equal(sentinel, matrix));
     }
 
@@ -218,8 +256,15 @@ public sealed class SkinnedAttachmentBindingTests
         Matrix4x4 sentinel = Matrix4x4.CreateTranslation(99, 0, 0);
         Matrix4x4[] output = [sentinel, sentinel];
 
-        Assert.Throws<ArgumentException>(() => binding.CopySkinnedPalette(host.Skeleton, palette, 2, output));
-        Assert.Throws<ArgumentException>(() => binding.ComposeWorlds(host.Skeleton, palette, Matrix4x4.Identity, output));
+        var copy = Assert.Throws<AttachmentBindingArgumentException>(() => binding.CopySkinnedPalette(host.Skeleton, palette, 2, output));
+        Assert.Equal(AttachmentBindingRefusal.HostJointPoseInvalid, copy.Reason);
+        Assert.Equal(2u, copy.PartId);
+        Assert.Equal(0, copy.BoneIndex);
+        Assert.Equal("hostPalette", copy.ParamName);
+        var world = Assert.Throws<AttachmentBindingArgumentException>(() => binding.ComposeWorlds(host.Skeleton, palette, Matrix4x4.Identity, output));
+        Assert.Equal(AttachmentBindingRefusal.HostJointPoseInvalid, world.Reason);
+        Assert.Equal(2u, world.PartId);
+        Assert.Equal(0, world.BoneIndex);
 
         Assert.All(output, matrix => Assert.Equal(sentinel, matrix));
     }
@@ -237,9 +282,12 @@ public sealed class SkinnedAttachmentBindingTests
         LoadedAttachmentSet loaded = cache.Get("set.json", hash);
         Skeleton skeleton = Create();
         ContractJointMap map = Map(skeleton);
-        Assert.Throws<ArgumentException>(() => loaded.Bind(map, Mesh(Create())));
-        InvalidDataException mapOnly = Assert.Throws<InvalidDataException>(() => loaded.Bind(map));
-        Assert.Contains("host", mapOnly.Message, StringComparison.OrdinalIgnoreCase);
+        var identity = Assert.Throws<AttachmentBindingArgumentException>(() => loaded.Bind(map, Mesh(Create())));
+        Assert.Equal(AttachmentBindingRefusal.HostSkeletonMismatch, identity.Reason);
+        Assert.Equal("hostMesh", identity.ParamName);
+        AttachmentBindingDataException mapOnly = Assert.Throws<AttachmentBindingDataException>(() => loaded.Bind(map));
+        Assert.Equal(AttachmentBindingRefusal.HostMeshRequired, mapOnly.Reason);
+        Assert.Equal(2u, mapOnly.PartId);
         SkinnedGltfMesh uploaded = scene.SkinnedParts[0][0].Mesh;
         uploaded.Skeleton!.JointToNode[0] = 1;
         uploaded.InverseBind[0] = Matrix4x4.CreateScale(9);
@@ -249,8 +297,11 @@ public sealed class SkinnedAttachmentBindingTests
 
         Assert.Same(skeleton, bound.Skeleton);
         Assert.Equal(2, bound.DrawCount);
-        Assert.Throws<InvalidOperationException>(() => bound.WriteDraws(skeleton, skeleton.ComposeRestPose(),
+        var submission = Assert.Throws<AttachmentSubmissionStateException>(() => bound.WriteDraws(skeleton, skeleton.ComposeRestPose(),
             Matrix4x4.Identity, MotionKey.None, new RigidInstanceDraw(default, Matrix4x4.Identity), new RigidInstanceDraw[2]));
+        Assert.Equal(AttachmentSubmissionRefusal.MixedDrawRequired, submission.Reason);
+        Assert.Equal(2, submission.SkinnedPartCount);
+        Assert.IsAssignableFrom<InvalidOperationException>(submission);
         cache.Dispose();
         Assert.Throws<ObjectDisposedException>(() => loaded.Bind(map, Mesh(skeleton)));
     }
@@ -265,6 +316,33 @@ public sealed class SkinnedAttachmentBindingTests
 
         AllocAssert.NoPerCallAllocation("a skinned attachment palette copy",
             () => binding.CopySkinnedPalette(host.Skeleton, palette, 2, output));
+    }
+
+    [Theory]
+    [InlineData(-1)]
+    [InlineData(2)]
+    public void Garment_joint_must_refer_to_an_existing_node(int node)
+    {
+        SkinnedGltfMesh host = Mesh(Create()), garment = Mesh(Skin("hip", "knee"));
+        Assert.Equal(2, Bind(host, garment).SkinnedJointCount(2));
+        garment.Skeleton!.JointToNode[0] = node;
+
+        var error = AssertGarmentRefusal(AttachmentBindingRefusal.GarmentNodeMissing, () => Bind(host, garment));
+
+        Assert.Equal(0, error.BoneIndex);
+        Assert.Equal(node, error.NodeIndex);
+        Assert.Equal(2, error.NodeCount);
+    }
+
+    static AttachmentBindingDataException AssertGarmentRefusal(AttachmentBindingRefusal reason, Action action)
+    {
+        var error = Assert.Throws<AttachmentBindingDataException>(action);
+        Assert.Equal(reason, error.Reason);
+        Assert.Equal(2u, error.PartId);
+        Assert.Equal(GarmentRef.Key, error.MeshKey);
+        if (reason == AttachmentBindingRefusal.GarmentBindMismatch)
+            Assert.Equal(1e-4f, error.BindTolerance);
+        return error;
     }
 
     static AttachmentSetBinding Bind(SkinnedGltfMesh host, SkinnedGltfMesh garment, bool mixed = false) =>

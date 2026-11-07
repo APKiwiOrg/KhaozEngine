@@ -147,7 +147,7 @@ public sealed class NativeMapDecodeCapacityTests
         using var fixture = ResidencyFixture.Placement();
         var budget = new GltfDecodeBudget(new(MaxPeakBytes: 1));
         var error = Assert.Throws<MapRenderAssetRefusal>(() => MapRenderMaterials.Load(fixture.Closure, [], budget));
-        Assert.Contains("MaxPeakBytes", error.Message);
+        Assert.Equal(MapRenderAssetStatus.CapacityExceeded, error.Status);
         Assert.Equal(new MapSceneCapacity("MaxPeakBytes", 256, 1), error.Capacity);
         Assert.Equal(0, budget.OwnedBytes);
     }

@@ -1,5 +1,4 @@
 using System;
-using System.IO;
 using System.Text.Json.Nodes;
 using KhaozEngine.Attachments;
 using Xunit;
@@ -121,100 +120,105 @@ public class SkinnedGlbPolicyTests
     }
 
     [Theory]
-    [InlineData("zero-skins", "skins")]
-    [InlineData("two-skins", "skins")]
-    [InlineData("missing-skin", "node 4")]
-    [InlineData("different-skin", "node 4")]
-    [InlineData("later-node", "node 5")]
-    [InlineData("later-joints", "primitive 1")]
-    [InlineData("later-weights", "primitive 1")]
-    [InlineData("joints-1", "JOINTS_1")]
-    [InlineData("weights-1", "WEIGHTS_1")]
-    [InlineData("joints-2", "JOINTS_2")]
-    [InlineData("weights-2", "WEIGHTS_2")]
-    [InlineData("zero-weights", "vertex 1")]
-    [InlineData("negative-weight", "vertex 1")]
-    [InlineData("nan-weight", "vertex 1")]
-    [InlineData("infinite-weight", "vertex 1")]
-    [InlineData("joint-at-count", "vertex 1")]
-    [InlineData("joint-at-count-zero-lane", "vertex 1")]
-    [InlineData("129-joints", "skin 0")]
-    [InlineData("repeated-index", "skin 0")]
-    [InlineData("repeated-name", "skin 0")]
-    [InlineData("whitespace-name", "joint 1")]
-    [InlineData("empty-name", "joint 1")]
-    [InlineData("missing-name", "joint 1")]
-    [InlineData("joint-node-range", "skin 0")]
-    [InlineData("empty-joints", "skin 0")]
-    [InlineData("no-common-root", "skin 0: joints must share a common root")]
-    [InlineData("separate-joint-root", "skin 0: joints must share a common root")]
-    [InlineData("hierarchy-cycle", "skin 0 node 0: node hierarchy contains a cycle")]
-    [InlineData("self-cycle", "skin 0 node 4: node hierarchy contains a cycle")]
-    [InlineData("detached-cycle", "skin 0 node 5: node hierarchy contains a cycle")]
-    [InlineData("two-parents", "skin 0 node 1: multiple parents")]
-    [InlineData("repeated-child", "skin 0 node 1: multiple parents")]
-    [InlineData("children-object", "skin 0 node 0: children must be an array")]
-    [InlineData("child-range", "skin 0 node 0 children: invalid node reference")]
-    [InlineData("child-negative", "skin 0 node 0 children: expected a non-negative integer")]
-    [InlineData("child-fractional", "skin 0 node 0 children: expected a non-negative integer")]
-    [InlineData("child-string", "skin 0 node 0 children: expected a non-negative integer")]
-    [InlineData("child-null", "skin 0 node 0 children: expected a non-negative integer")]
-    [InlineData("child-overflow", "skin 0 node 0 children: expected a non-negative integer")]
-    [InlineData("non-object-node", "skin 0 node 4: node must be an object")]
-    [InlineData("animation", "animations")]
-    [InlineData("targets", "primitive 0")]
-    [InlineData("node-weights", "node 4")]
-    [InlineData("mesh-weights", "mesh 0")]
-    [InlineData("negative-joint", "JOINTS_0")]
-    [InlineData("fractional-joint", "JOINTS_0")]
-    [InlineData("joint-type", "JOINTS_0")]
-    [InlineData("joint-normalized", "JOINTS_0")]
-    [InlineData("weight-type", "WEIGHTS_0")]
-    [InlineData("weight-unnormalized", "WEIGHTS_0")]
-    [InlineData("float-normalized", "WEIGHTS_0")]
-    [InlineData("weight-shape", "WEIGHTS_0")]
-    [InlineData("joint-shape", "JOINTS_0")]
-    [InlineData("joint-count", "primitive 0")]
-    [InlineData("weight-count", "primitive 0")]
-    [InlineData("missing-position", "POSITION")]
-    [InlineData("accessor-reference", "JOINTS_0")]
-    [InlineData("fractional-reference", "JOINTS_0")]
-    [InlineData("negative-reference", "WEIGHTS_0")]
-    [InlineData("missing-accessors", "accessor")]
-    [InlineData("short-view", "accessor 2")]
-    [InlineData("overflow-view", "bufferView")]
-    [InlineData("overflow-view-length", "bufferView")]
-    [InlineData("view-buffer", "bufferView")]
-    [InlineData("view-reference", "accessor 2")]
-    [InlineData("accessor-offset", "accessor 2")]
-    [InlineData("overflow-count", "accessor 2")]
-    [InlineData("stride-short", "accessor 2")]
-    [InlineData("stride-overflow", "accessor 2")]
-    [InlineData("bind-count", "inverseBindMatrices")]
-    [InlineData("bind-reference", "inverseBindMatrices")]
-    [InlineData("bind-short", "accessor 3")]
-    [InlineData("sparse-zero", "vertex 1")]
-    [InlineData("sparse-joint-range", "vertex 1")]
-    [InlineData("sparse-short-values", "sparse values")]
-    [InlineData("sparse-short-indices", "sparse indices")]
-    [InlineData("sparse-offset", "sparse values")]
-    [InlineData("sparse-overflow", "sparse indices")]
-    [InlineData("sparse-index-range", "sparse indices")]
-    [InlineData("sparse-index-order", "sparse indices")]
-    [InlineData("sparse-index-type", "sparse indices")]
-    [InlineData("sparse-count", "sparse")]
-    [InlineData("sparse-reference", "sparse values")]
-    [InlineData("multiple-buffers", "buffer")]
-    [InlineData("missing-buffer", "buffer")]
-    [InlineData("external-buffer", "buffer URI")]
-    [InlineData("data-buffer", "buffer URI")]
-    [InlineData("external-image", "image URI")]
-    [InlineData("data-image", "image URI")]
-    [InlineData("nested-duplicate", "duplicate")]
-    public void Skinned_policy_refuses_lossy_or_unsafe_data(string name, string expectedContext)
+    [InlineData("zero-skins")]
+    [InlineData("two-skins")]
+    [InlineData("missing-skin")]
+    [InlineData("different-skin")]
+    [InlineData("later-node")]
+    [InlineData("later-joints")]
+    [InlineData("later-weights")]
+    [InlineData("joints-1")]
+    [InlineData("weights-1")]
+    [InlineData("joints-2")]
+    [InlineData("weights-2")]
+    [InlineData("zero-weights")]
+    [InlineData("negative-weight")]
+    [InlineData("nan-weight")]
+    [InlineData("infinite-weight")]
+    [InlineData("joint-at-count")]
+    [InlineData("joint-at-count-zero-lane")]
+    [InlineData("129-joints")]
+    [InlineData("repeated-index")]
+    [InlineData("repeated-name")]
+    [InlineData("whitespace-name")]
+    [InlineData("empty-name")]
+    [InlineData("missing-name")]
+    [InlineData("joint-node-range")]
+    [InlineData("empty-joints")]
+    [InlineData("no-common-root")]
+    [InlineData("separate-joint-root")]
+    [InlineData("hierarchy-cycle")]
+    [InlineData("self-cycle")]
+    [InlineData("detached-cycle")]
+    [InlineData("two-parents")]
+    [InlineData("repeated-child")]
+    [InlineData("children-object")]
+    [InlineData("child-range")]
+    [InlineData("child-negative")]
+    [InlineData("child-fractional")]
+    [InlineData("child-string")]
+    [InlineData("child-null")]
+    [InlineData("child-overflow")]
+    [InlineData("non-object-node")]
+    [InlineData("animation")]
+    [InlineData("targets")]
+    [InlineData("node-weights")]
+    [InlineData("mesh-weights")]
+    [InlineData("negative-joint")]
+    [InlineData("fractional-joint")]
+    [InlineData("joint-type")]
+    [InlineData("joint-normalized")]
+    [InlineData("weight-type")]
+    [InlineData("weight-unnormalized")]
+    [InlineData("float-normalized")]
+    [InlineData("weight-shape")]
+    [InlineData("joint-shape")]
+    [InlineData("joint-count")]
+    [InlineData("weight-count")]
+    [InlineData("missing-position")]
+    [InlineData("accessor-reference")]
+    [InlineData("fractional-reference")]
+    [InlineData("negative-reference")]
+    [InlineData("missing-accessors")]
+    [InlineData("short-view")]
+    [InlineData("overflow-view")]
+    [InlineData("overflow-view-length")]
+    [InlineData("view-buffer")]
+    [InlineData("view-reference")]
+    [InlineData("accessor-offset")]
+    [InlineData("overflow-count")]
+    [InlineData("stride-short")]
+    [InlineData("stride-overflow")]
+    [InlineData("bind-count")]
+    [InlineData("bind-nonfinite")]
+    [InlineData("bind-reference")]
+    [InlineData("bind-short")]
+    [InlineData("sparse-zero")]
+    [InlineData("sparse-joint-range")]
+    [InlineData("sparse-short-values")]
+    [InlineData("sparse-short-indices")]
+    [InlineData("sparse-offset")]
+    [InlineData("sparse-overflow")]
+    [InlineData("sparse-index-range")]
+    [InlineData("sparse-index-order")]
+    [InlineData("sparse-index-type")]
+    [InlineData("sparse-count")]
+    [InlineData("sparse-reference")]
+    [InlineData("multiple-buffers")]
+    [InlineData("missing-buffer")]
+    [InlineData("external-buffer")]
+    [InlineData("data-buffer")]
+    [InlineData("external-image")]
+    [InlineData("data-image")]
+    [InlineData("nested-duplicate")]
+    [InlineData("nested-duplicate-key")]
+    public void Skinned_policy_refuses_lossy_or_unsafe_data(string name)
     {
         var fixture = new SkinnedAttachmentGlbFixture(name == "129-joints" ? 129 : 4,
             jointComponentType: name is "negative-joint" or "fractional-joint" ? 5126 : 5121);
+        var control = name is "129-joints" or "negative-joint" or "fractional-joint"
+            ? new SkinnedAttachmentGlbFixture(name == "129-joints" ? 128 : 4) : fixture;
+        AttachmentGlb.ValidateSkinnedEmbedded(control.Build(), "control.glb");
         JsonObject attributes = fixture.Primitives[0]!["attributes"]!.AsObject();
         switch (name)
         {
@@ -302,6 +306,7 @@ public class SkinnedGlbPolicyTests
             case "overflow-count": fixture.Accessors[2]!["count"] = int.MaxValue; break;
             case "stride-short": fixture.Views[2]!["byteStride"] = 4; break;
             case "stride-overflow": fixture.Views[2]!["byteStride"] = uint.MaxValue; break;
+            case "bind-nonfinite": fixture.SetElement(3, 1, 1, 0, float.PositiveInfinity, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1); break;
             case "bind-count": fixture.Accessors[3]!["count"] = 3; break;
             case "bind-reference": fixture.Skin["inverseBindMatrices"] = 99; break;
             case "bind-short": fixture.Views[3]!["byteLength"] = 255; break;
@@ -312,15 +317,16 @@ public class SkinnedGlbPolicyTests
             case "external-image": fixture.Root["images"] = new JsonArray(new JsonObject { ["uri"] = "image.png" }); break;
             case "data-image": fixture.Root["images"] = new JsonArray(new JsonObject { ["uri"] = "data:image/png;base64,AA==" }); break;
             case "nested-duplicate": fixture.Root["extensions"] = JsonNode.Parse("""{"VENDOR_test":{"nested":[{"x":1}]}}"""); break;
+            case "nested-duplicate-key": fixture.Root["extensions"] = JsonNode.Parse("""{"VENDOR_test":{"a.b":[{"x":1}]}}"""); break;
             default:
                 if (name.StartsWith("sparse-", StringComparison.Ordinal)) ConfigureSparse(fixture, name);
                 break;
         }
-        byte[] bad = fixture.Build(name == "nested-duplicate"
+        byte[] bad = fixture.Build(name is "nested-duplicate" or "nested-duplicate-key"
             ? json => json.Replace("\"x\":1", "\"x\":1,\"x\":2", StringComparison.Ordinal) : null);
-        var error = Assert.Throws<InvalidDataException>(() => AttachmentGlb.ValidateSkinnedEmbedded(bad, "bad.glb"));
-        Assert.Contains("bad.glb", error.Message);
-        Assert.Contains(expectedContext, error.Message);
+        Action validate = () => AttachmentGlb.ValidateSkinnedEmbedded(bad, "bad.glb");
+        if (AttachmentRefusalAssertions.Skinned(name, validate)) return;
+        AttachmentGeometryRefusalAssertions.Skinned(name, validate);
     }
 
     static void ConfigureSparse(SkinnedAttachmentGlbFixture fixture, string name)

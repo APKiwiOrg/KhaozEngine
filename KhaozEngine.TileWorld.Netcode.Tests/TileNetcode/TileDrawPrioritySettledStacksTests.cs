@@ -266,7 +266,7 @@ public class TileDrawPrioritySettledStacksTests
     }
 
     [Fact]
-    public void Equal_local_interpolation_endpoints_do_not_drop_the_settled_tile_claim_on_a_rounding_frame()
+    public void Equal_local_interpolation_endpoints_keep_the_settled_tile_claim_across_fractional_frames()
     {
         using var loop = new TileRemoteReadTests.Loop();
         loop.Join();
@@ -289,35 +289,34 @@ public class TileDrawPrioritySettledStacksTests
         Assert.Equal(destination, settled.Tile);
         Assert.False(settled.IsStepping);
 
-        var roundingFramePriority = Priority();
-        bool sawRoundingNoise = false;
+        var priority = Priority();
+        var centre = new Vector2(destination.X, destination.Z);
         for (int i = 0; i < 32; i++)
         {
             // Continue on a standing tick resets the interpolation between two identical tile-centre endpoints.
-            // 0.30786 makes Vector2.Lerp(13, 13, fraction) miss 13 by one ULP on .NET 10, while 0.3 is exact.
-            // Alternating them reproduces the ownership flicker without any body moving.
+            // Alternate a historically rounding-sensitive phase with an exact one. Both must now keep the
+            // presentation stationary and preserve the settled claim.
             float fraction = i % 2 == 0 ? 0.30786f : 0.3f;
             loop.Client.Tick(1f / 6f);
             loop.Client.AdvancePresentation((1f / 6f) * fraction);
-            TileMoveState roundingFrame = loop.Client.Prediction.RenderedState;
-            sawRoundingNoise |= roundingFrame.RenderPosition != new Vector2(destination.X, destination.Z);
+            TileMoveState rendered = loop.Client.Prediction.RenderedState;
+            Assert.Equal(centre, rendered.RenderPosition);
 
-            roundingFramePriority.Rebuild(loop.Client, Frame);
+            priority.Rebuild(loop.Client, Frame);
 
-            Assert.Equal(1f, roundingFramePriority.Weight(loop.Client.LocalNetId));
-            Assert.Equal(0f, roundingFramePriority.Weight(remote));
-            Assert.True(roundingFramePriority.TryGetDrawn(destination, out long owner));
+            Assert.Equal(1f, priority.Weight(loop.Client.LocalNetId));
+            Assert.Equal(0f, priority.Weight(remote));
+            Assert.True(priority.TryGetDrawn(destination, out long owner));
             Assert.Equal(loop.Client.LocalNetId, owner);
         }
-        Assert.True(sawRoundingNoise, "the known .NET 10 equal-endpoint rounding frame was never exercised");
     }
 
     [Fact]
-    public void Hollowmere_spawn_equal_endpoint_lerp_noise_is_settled()
+    public void One_ulp_of_local_presentation_noise_is_still_settled()
     {
         TileMoveState local = TileMoveState.At(new TileCoord(96, 93, 0), TileDirection.S);
         var centre = new Vector2(96f, 93f);
-        Vector2 position = Vector2.Lerp(centre, centre, 0.34413f);
+        var position = new Vector2(float.BitIncrement(centre.X), centre.Y);
 
         Assert.NotEqual(centre, position);
         Assert.False(TileDrawPriority.IsLocalPresentationMoving(local, position));

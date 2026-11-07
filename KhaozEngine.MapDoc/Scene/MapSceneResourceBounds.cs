@@ -102,7 +102,7 @@ internal static class MapSceneResourceBounds
             var point = domain.Frame.WorldXz(address); var bounds = Point(point.X.ToDouble(), point.Z.ToDouble(), pose);
             result = result?.Union(bounds) ?? bounds;
         }
-        return result ?? throw new MapDocumentException("Empty scene resource domain.");
+        return result ?? throw new MapDocumentException(MapDocumentRefusal.BoundsInvalid, "Empty scene resource domain.") { Operation = "SceneResource.Bounds" };
     }
     internal static MapBox3 Foliage(MapFoliageLayer layer, MapFoliageChunkKey chunk, MapAssetClosure assets)
     {

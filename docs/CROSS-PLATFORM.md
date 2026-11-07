@@ -143,8 +143,10 @@ is file IO and `KhaozEngine.Gpu` does none. `GpuBackendSource.DefaultProviderMis
 17.40.0 appended for a DEFAULT that fell back to the incumbent, is RETIRED at 18.0.0 with NO PRODUCER: there is
 no incumbent to create instead, so that case throws. The member keeps its number because the enum is
 append-only and a 17.40.0 capture that recorded a 5 still has to read back as what it meant. And when the
-fallback fails too there is no device at all, which `GpuNoUsableBackendException` reports naming both backends
-and both reasons.
+fallback fails too there is no device at all. `GpuNoUsableBackendException.Reason` distinguishes
+`GpuNoUsableBackendRefusal.RequestedCreationFailed`, `RequestedMachineUnsupported` and
+`RequestedProviderNotRegistered`. `RequestedBackend`, `FallbackBackend`, `RequestedFailure`, `InnerException`
+and `FallbackFailure` preserve both attempts.
 
 A RETIRED member never reaches any of this. It is answered before the provider registry: as an env token by
 the redirect, as a stored preference by the self-heal, and in code by `GpuBackendRetiredException`.
@@ -280,6 +282,36 @@ authorization and final evidence checks, applies the per-leg paid caps and clean
 model in the [renderer reference](RENDERER-PERFORMANCE.md#evidence-and-authorization), and retains
 the existing pinned PowerShell bootstrap, GRID setup, NVIDIA adapter selection and NVIDIA-only Linux Vulkan ICD safeguards.
 
+The paid presets are `pilot`, `full` and `water-optics-v2`. The v2 campaign uses the full T4 runner
+caps: `gpu-t4-linux` for `linux-vulkan` with 35 job minutes, or `gpu-t4-windows` for
+`windows-d3d11` with 50. Both require the 1,095 MHz clock and emit the `performance` execution class.
+Windows Vulkan refuses v2 admission. Before any paid runner is allocated, the trusted `legs` job
+reads manifests with exact property names, no duplicate fields or null array entries, and exact integer
+or decimal numbers. A field table verified against the managed record constructors checks every
+object's complete field set, value kinds and nullability, including record arrays and the string-valued
+runtime environment map. Unknown names, case variants beside exact names, missing fields and wrong
+types refuse before routing. The free job keeps these PowerShell checks as its outer guard, builds
+`tools/Renderer.Perf.Verify` in `renderer-perf-trusted` at `github.workflow_sha`, then runs its `admit`
+command on the requested checkout and the selector's authorization directory. It reads the exact
+manifest bytes and repeats managed parsing, schedule and recipe identity format checks, runtime policy,
+batch and enum checks, paid or rehearsal deadlines and budgets, byte-hash and independent authorization
+checks. Empty schedules, malformed hashes, Debug runtime policy, invalid pacing, enum values, paid unit
+or steady frame limits and a UTF-8 byte order mark all refuse before the separate matrix step.
+That step requires successful admission, so no paid runner is allocated on a refusal. The subsequent
+free `renderer-tooling-validation` job runs the complete outside-solution tooling suite at both immutable
+requested and trusted SHAs, deduplicating equal refs, on `ubuntu-26.04`, `windows-latest` and `macos-26`.
+It also requires the one FFT bound correctness fact to pass without a skip on lavapipe, WARP and Metal.
+`renderer-bench` needs both free jobs to succeed before its matrix can allocate. A failed, skipped or
+cancelled tooling gate blocks it, and the first-attempt condition still refuses reruns. The generic
+`bench` job keeps only its existing `legs` prerequisite. This free validation is separate from the
+[authorized entrypoint](../tools/Renderer.Perf.Tests/authorized/README.md) and never executes that fact.
+Observed runtime and native identity, source-root ownership and live recipe construction still run on
+the selected runner, as described in the [renderer reference](RENDERER-PERFORMANCE.md#evidence-and-authorization).
+Every paid manifest's
+`approval.campaignMaximumUsd` must cover `budget.maximumCostUsd` without exceeding its campaign
+envelope. The [renderer reference](RENDERER-PERFORMANCE.md#water-optics-campaign)
+owns the v2 USD 7.382 maximum and exact schedules. The v1 `pilot` and `full` maximum stays USD 22.
+
 After the GPU and driver steps, paid renderer jobs invoke the trusted graphics-clock setup before
 building or measuring. Linux enables persistence and uses `sudo nvidia-smi`. Windows uses the elevated
 runner shell after GRID installation. Setup retains the full command output, the driver-returned
@@ -383,24 +415,32 @@ profilers, consumer fit, optimization and release remain separate decisions.
 
 ### Free software renderer rehearsal
 
-The `rehearsal`, `rehearsal-full` and `rehearsal-controls` renderer presets use the same `gpu-hosted-bench.yml` and one
-fixed `Measure_authorized_unit` fact. The [renderer reference](RENDERER-PERFORMANCE.md#software-correctness-rehearsal)
-owns their exact pilot, full and all-controls schedules, separate limits, non-promotion reason, diagnostic drift and
-evidence boundary. The trusted selector admits only these standard hosted software mappings for
-every schedule:
+The v1 `rehearsal`, `rehearsal-full` and `rehearsal-controls` presets and both water optics rehearsals
+use the same `gpu-hosted-bench.yml` and one fixed `Measure_authorized_unit` fact. The
+[renderer reference](RENDERER-PERFORMANCE.md#software-correctness-rehearsal) owns their exact schedules,
+separate limits, non-promotion reason, diagnostic drift and evidence boundary. The trusted selector
+admits only these standard hosted software mappings for each admitted schedule and leg:
 
 | Leg | Pinned runner image family | Backend selector | Adapter policy | Device selection |
 | --- | --- | --- | --- | --- |
 | `linux-vulkan` | `ubuntu-24.04` | `vulkan-native` | `mesa-lavapipe-software` | `KE_VULKAN_DEVICE=llvmpipe` |
 | `windows-d3d11` | `windows-2025-vs2026` | `direct3d11-native` | `microsoft-warp-software` | `KE_D3D11_ADAPTER=warp` |
 
-`windows-vulkan` has no software rehearsal class. `pilot` and `full` remain paid hardware performance
-presets with their existing T4 runner labels, NVIDIA ICD mapping and strict promotion verdict. An
+The v1 rehearsals admit both mappings. `rehearsal-water-optics-v2` admits only Linux lavapipe, and
+`rehearsal-water-optics-v2-single` admits only Windows D3D11 WARP for one iteration. Both v2
+rehearsals emit `rehearsal`, require a null graphics clock, and retain the full rehearsal limits of
+19,800 unit seconds and 350 job minutes. Their budgets and campaign maximums remain exactly zero. The
+[water optics contract](RENDERER-PERFORMANCE.md#water-optics-campaign) owns their separate frame counts.
+
+`windows-vulkan` has no software rehearsal class. Paid presets retain their T4 runner labels,
+NVIDIA ICD mapping and strict promotion verdict. An
 image-family pin still permits image revisions, so runtime inheritance must be established separately.
 
 The owner must approve the exact rehearsal workload, leg, schedule, limits and zero-USD budget before
 a new authorization commit exists. A proposal or implementation is not permission to run.
 Authorization B has sole parent A and adds only `tools/Renderer.Perf.Tests/authorized/<unit>.json`.
+Every authorization diff passes `--ignore-submodules=none`, because a workload `.gitmodules` entry with
+`ignore = all` would otherwise hide an added gitlink from that check.
 Select the approved leg with the default filter, B's immutable SHA and the three renderer inputs.
 Reuse of an approval or a workflow rerun refuses. The trusted CPU selector derives the execution
 class from the validated preset and binds its schedule, leg, runner, software policy and caps. It
@@ -504,16 +544,19 @@ below). Each sharded leg runs as jobs named `<os> / <backend> / <shard>`:
   Server.Tests, so those two move out and leave about 9 minutes on `rest`.
 - `render-1` to `render-N` each run one slice of `KhaozEngine.Render.Tests`. Each backend has its own slice
   table in `scripts/gpu-test-shards.py`, because the three rasterizers disagree about what is expensive:
-  `metal-native` has 2 slices, `direct3d11-native` 4 and `vulkan-native` 12. Every table is an ordered first-match
+  `metal-native` has 2 slices, `direct3d11-native` 3 and `vulkan-native` 11. Every table is an ordered first-match
   partition over `FullyQualifiedName`: a test belongs to the first slice whose rules match it, and the last slice
   takes everything the earlier slices do not name. A new class or method therefore always lands in exactly one
   slice. The heaviest methods are named one by one and set each backend's floor. `TemporalFollowPhaseGpuTests`'
   orthographic sweep took 17 to 22 minutes on serialised lavapipe as one method, so it is split by preset like the
   perspective sweep beside it. Native and Quality now have separate methods and Vulkan slices (#1458), with
-  Performance and UltraPerformance together in a third method. The twelve Vulkan slices cost 10.2 to 10.5
-  normalized test minutes each, leaving more room for runner variation than the former nine.
-  `ShadowCascadeCullPerfGpuTests` takes 13 to 15 minutes on WARP and has a Windows slice to itself. Each shard
-  uploads its TRX files as `shard-trx-<backend>-<shard>`, which carry the per-test durations to re-balance from.
+  Performance and UltraPerformance together in a third method. Before the renderer probe reductions, the
+  twelve Vulkan slices were balanced at 10.2 to 10.5 normalized test minutes in the source runs above.
+  `ShadowCascadeCullPerfGpuTests.A_small_caster_fixture_draws_fewer_instances_with_culling` now uses a
+  small near/far fixture and fixed draw-count observations. It runs in Windows' catch-all `render-4` and
+  Vulkan's S-prefix `render-9`. Its dedicated Windows `render-1` and Vulkan `render-2` slices are removed,
+  with every remaining shard name preserved. Each shard uploads its TRX files as
+  `shard-trx-<backend>-<shard>`, which carry the per-test durations to re-balance from.
 
 Each shard restores and builds a solution containing only its assigned test projects and their project
 references ([#1472](https://github.com/APKiwiOrg/KhaozEngine/issues/1472)). A render shard builds
@@ -524,15 +567,17 @@ coverage guards unchanged. Reduced solutions explicitly preserve Release on thei
 `ShouldUnsetParentConfigurationAndPlatform=false`. Otherwise MSBuild resets unlisted references to their
 default configuration, which is Debug. A build guard rejects any Debug output on the fresh CI checkout.
 Native matrix and sync builds use `scripts/build-release-tests.sh`, including reduced shard solutions.
-When the selected roots include this checkout's `Render.Tests`, setup also builds its outside-solution
-renderer verifier before process tests run with `--no-build`. Shards without `Render.Tests` keep their build slice.
+Engine shards do not build the outside-solution renderer tooling or its offline verifier. The explicit
+`Renderer.Perf.Tooling.Tests` target owns that process-test prerequisite.
 The Windows-only NuGet cache still excludes every KhaozEngine extraction. The
 [measurement record](verification/2026-10-18-gpu-shard-build-cost-1472.md) compares scoped builds with per-OS
 output sharing.
 
-So a default-input dispatch is 3 Metal, 7 Windows and 14 Linux jobs plus the `sync` job. The org's Team plan
+So a default-input dispatch expands to 3 Metal, 6 Windows and 13 Linux jobs plus the `sync` job.
+The source table therefore expands to 22 matrix jobs rather than 24. This is a job-count change,
+not a measured runtime saving. The org's Team plan
 allows 60 concurrent hosted jobs and 5 concurrent macOS jobs
-([GitHub Actions limits](https://docs.github.com/en/actions/reference/limits)), so the 25 jobs of the dispatch
+([GitHub Actions limits](https://docs.github.com/en/actions/reference/limits)), so the 23 jobs of the dispatch
 and the 4 of the `ci` dispatch the pre-tag gate runs beside it all start at once. The macOS cap is the one that
 binds: every `push` and `pull_request` runs the Metal full suite too, so overlapping runs share 5 macOS slots.
 Metal stops at 3 jobs because its slowest shard is already well under the Vulkan floor, and a fourth would only
@@ -579,11 +624,18 @@ matrix has produced. The delete also shortened the matrix's own wall clock (slow
 dropped about 63 minutes of runner time from a full dispatch.
 
 - **GitHub-hosted Metal NATIVE leg (`macos-26`)**: the engine's own `KhaozEngine.Gpu.Metal` backend
-  (`KE_GRAPHICS_BACKEND=metal-native`) on the WHOLE test suite (`--filter "Category!=LiveSocket"`) on every
-  trigger - every `[GpuFact]` test (golden and behavioral) plus the headless suite, matching `ci.yml`'s own
-  `Category!=LiveSocket` exclusion (LiveSocket tests need a live network peer, not available here). Since
-  [#1438](https://github.com/APKiwiOrg/KhaozEngine/issues/1438) that suite runs across three jobs on every trigger
-  except a bake or a `renderTestFilter` dispatch, as described above. Metal ran
+  (`KE_GRAPHICS_BACKEND=metal-native`) on the WHOLE test suite
+  (`--filter "Category!=LiveSocket&Category!=Diagnostic"`) on every trigger - every gating `[GpuFact]`
+  test (golden and behavioral) plus the headless suite, matching `ci.yml`'s exclusions. LiveSocket tests
+  need a live network peer. Tests marked `[Trait("Category", "Diagnostic")]` report instead of gating
+  and run on demand by setting the dispatch input `renderTestFilter` to `Category=Diagnostic`, optionally
+  narrowed with `&FullyQualifiedName~<probe-class>`. This includes the 19 renderer timing/cost probes.
+  The four retained atlas, hold cadence, bounded cascade and FFT checks stay in the default filter,
+  as described in [the renderer performance reference](RENDERER-PERFORMANCE.md#default-correctness-and-on-demand-probes).
+  Capability gates and software-adapter refusals still apply, so software runs establish no hardware
+  performance evidence. Since
+  [#1438](https://github.com/APKiwiOrg/KhaozEngine/issues/1438) that suite runs across three jobs on schedules
+  and default-input dispatches. Pushes and pull requests use one job, as described above. Metal ran
   on the dev Mac until [#552](https://github.com/APKiwiOrg/KhaozEngine/issues/552) moved it to a hosted runner,
   and the runner is pinned to `macos-26` by number rather than to `macos-latest` so an image promotion cannot
   move the GPU under a golden gate. It OWNS the `metal-native` golden family since `17.41.0`, exactly as the
@@ -1121,6 +1173,14 @@ in the `ShaderSources.cs` source comments; this is the consolidated checklist.)
   above it, so it reads it with a `1e-30` weight rather than leave a hole in the pixel-input signature.
   `D3D11FxcValidationTests` asserts on the emitted HLSL that every shadow depth vertex's input signature, and the
   cutout and skinned dissolve fragments' interpolants, are contiguous.
+- **Opaque foliage FXC fixtures stay tied to current source.** The four `FoliageOpaque` fragment variants
+  retain hosted Windows disassembly and GLSL pins under `Fixtures/foliage-opaque-dxbc`. Dispatch
+  `cross-platform-gpu` on the source branch with `legs=direct3d11-native`, `tier=push`, `bake=false` and
+  `renderTestFilter=FullyQualifiedName~DumpFoliageOpaqueDisassembly` to arm its Windows-only dump.
+  The deliberate dump failure prints numbered `FOLIAGEDXBC` lines and `FOLIAGEDXBCSOURCE` hashes.
+  Import contiguous lines with carriage returns removed and the terminal newline retained, then validate
+  on the final commit with the dump disarmed. Windows compares every frozen listing with current FXC
+  output exactly. Existing temporal DXBC fixtures keep their empty stale-source allowance.
 - **Sampling textures in binding order is retired.** Native Metal authors resource indices through
   `MslIndexRemap`. The higher-binding-first conditional pixel-readback case in
   `MetalConditionalTextureOrderGpuTests` verifies both runtime branches. Samples can be conditional

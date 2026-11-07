@@ -1,0 +1,10 @@
+# Renderer profile index
+
+Format khaozengine.renderer-profiles/1. Separate series, no cross-backend deltas.
+
+| Leg | Unit | Summary | Actual billed minutes |
+| --- | --- | --- | --- |
+| linux-vulkan | profiles-linux | [summary](linux-vulkan-profiles-linux.md) | 38 |
+| windows-d3d11 | profiles-windows | [summary](windows-d3d11-profiles-windows.md) | 53 |
+
+[Profile deltas](profiles-profiles-linux-profiles-windows.md).

@@ -26,7 +26,12 @@ public sealed class NativeStorageOwnershipTests
         Directory.Delete(target, true);
 
         var ex = Assert.Throws<MapDocumentException>(() => f.Session.ConvertToTiled(target));
-        Assert.Contains("reserved", ex.Message, StringComparison.Ordinal);
+        var reservation = Assert.IsType<MapDocumentException>(ex.GetBaseException());
+        Assert.Equal(MapDocumentRefusal.AssetStoragePathReserved, reservation.Reason);
+        Assert.Equal("prop.mesh", reservation.ResourceId);
+        Assert.Equal(mesh, reservation.Path);
+        Assert.Equal(target, reservation.StoragePath);
+        Assert.Equal(MapDocumentForm.Tiled, reservation.DocumentForm);
         Assert.False(Directory.Exists(target));
         Assert.Equal(f.ValidPath, f.Session.DocumentPath);
 
@@ -34,6 +39,10 @@ public sealed class NativeStorageOwnershipTests
         File.Move(Path.Combine(f.ResourceRoot, "rock.glb"), mesh);
         Assert.Equal(bytes, File.ReadAllBytes(mesh));
         Assert.Equal(hash, f.Session.Summary().Native!.AuthoredHash);
+        using var control = new NativeLifecycleFixture(absoluteReferences: true, meshRelativePath: "tiled-world/tilesets/rock.glb");
+        string allowed = Path.Combine(control.ResourceRoot, "tiled-world");
+        control.Session.ConvertToTiled(allowed);
+        Assert.Equal(allowed, control.Session.DocumentPath);
     }
 
     [Fact]
@@ -47,13 +56,23 @@ public sealed class NativeStorageOwnershipTests
 
         // A prepared native target directory is allowed, so the refusal must come from the namespace check.
         var ex = Assert.Throws<MapDocumentException>(() => f.Session.ConvertToTiled(target));
-        Assert.Contains("reserved", ex.Message, StringComparison.Ordinal);
+        var reservation = Assert.IsType<MapDocumentException>(ex.GetBaseException());
+        Assert.Equal(MapDocumentRefusal.AssetStoragePathReserved, reservation.Reason);
+        Assert.Equal("prop.mesh", reservation.ResourceId);
+        Assert.Equal(targetMesh, reservation.Path);
+        Assert.Equal(target, reservation.StoragePath);
+        Assert.Equal(MapDocumentForm.Tiled, reservation.DocumentForm);
         Assert.DoesNotContain("already exists", ex.Message, StringComparison.Ordinal);
         Assert.Equal(before, File.ReadAllBytes(targetMesh));
         Assert.False(File.Exists(Path.Combine(target, "map.json")));
         Assert.Equal(f.ValidPath, f.Session.DocumentPath);
         f.Session.Save();
         Assert.True(File.Exists(f.MeshPath));
+        using var control = new NativeLifecycleFixture(meshRelativePath: "tilesets/props/rock.glb");
+        string allowed = Path.Combine(control.ResourceRoot, "tiled-world");
+        control.CopyResourcesTo(allowed);
+        control.Session.ConvertToTiled(allowed);
+        Assert.Equal(allowed, control.Session.DocumentPath);
     }
 
     [Fact]
@@ -65,10 +84,13 @@ public sealed class NativeStorageOwnershipTests
         string target = Path.Combine(f.ResourceRoot, "analytic-tiled");
         Directory.CreateDirectory(target);
 
-        var ex = Assert.Throws<MapDocumentException>(() => session.ConvertToTiled(target));
-        Assert.Contains("already exists", ex.Message, StringComparison.Ordinal);
+        Assert.Throws<MapDocumentException>(() => session.ConvertToTiled(target));
         Assert.Empty(Directory.GetFileSystemEntries(target));
         Assert.Equal(Path.Combine(f.ResourceRoot, "analytic.map.json"), session.DocumentPath);
+
+        Directory.Delete(target);
+        session.ConvertToTiled(target);
+        Assert.Equal("analytic", MapDocumentFile.LoadTiled(target).Id);
     }
 
     [Theory]
@@ -102,10 +124,21 @@ public sealed class NativeStorageOwnershipTests
         Assert.Equal(bytes, File.ReadAllBytes(reserved));
 
         var ex = Assert.Throws<MapDocumentException>(() => f.Session.Open(tiled));
-        Assert.Contains("reserved", ex.Message, StringComparison.Ordinal);
+        var reservation = Assert.IsType<MapDocumentException>(ex.GetBaseException());
+        Assert.Equal(MapDocumentRefusal.AssetStoragePathReserved, reservation.Reason);
+        Assert.Equal("prop.mesh", reservation.ResourceId);
+        Assert.Equal(reserved, reservation.Path);
+        Assert.Equal(tiled, reservation.StoragePath);
+        Assert.Equal(MapDocumentForm.Tiled, reservation.DocumentForm);
         Assert.Same(document, f.SessionDocument);
         Assert.Equal(f.ValidPath, f.Session.DocumentPath);
         Assert.Equal(bytes, File.ReadAllBytes(reserved));
+        using var control = new NativeLifecycleFixture(absolute, mesh.Replace("tiles/", "tilesets/", StringComparison.Ordinal));
+        string allowed = Path.Combine(control.ResourceRoot, "tiled-world");
+        MapDocumentFile.SaveTiled(control.Document, allowed);
+        if (!absolute) control.CopyResourcesTo(allowed);
+        control.Session.Open(allowed);
+        Assert.Equal(allowed, control.Session.DocumentPath);
     }
 
     [Fact]

@@ -37,6 +37,7 @@
     <ProjectReference Include="../KhaozEngine.Serialization/KhaozEngine.Serialization.csproj" />
     <ProjectReference Include="../KhaozEngine.Skills/KhaozEngine.Skills.csproj" />
     <ProjectReference Include="../KhaozEngine.Stats/KhaozEngine.Stats.csproj" />
+    <ProjectReference Include="../KhaozEngine.StatusEffects/KhaozEngine.StatusEffects.csproj" />
     <ProjectReference Include="../KhaozEngine.Updates/KhaozEngine.Updates.csproj" />
     <ProjectReference Include="../KhaozEngine.TestSupport/KhaozEngine.TestSupport.csproj" />
     <ProjectReference Include="../KhaozEngine.TestSupport.Services/KhaozEngine.TestSupport.Services.csproj" />

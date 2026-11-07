@@ -30,8 +30,9 @@ namespace KhaozEngine.Gpu.Metal.Internal
     /// </para>
     /// <para>
     /// AND EVERY FAILURE HERE IS LOUD (2.2b, pin 1). An entry point that cannot be found, an argument list that
-    /// does not open or does not close, and a name that cannot be read: each throws naming the program and the
-    /// stage. A function looked up by a guessed name is exactly the gap M-S5 exists to close.
+    /// does not open or does not close, and a name that cannot be read: each throws with Label and Stage. Reason
+    /// distinguishes MetalEntryPointMissing, MetalEntryArgumentsMissing, MetalEntryArgumentsUnclosed and
+    /// MetalEntryNameUnreadable. A function looked up by a guessed name is exactly the gap M-S5 exists to close.
     /// </para>
     /// </summary>
     internal static class MetalMslEntryPoint
@@ -56,9 +57,11 @@ namespace KhaozEngine.Gpu.Metal.Internal
         /// </summary>
         /// <param name="msl">The emitted MSL for one stage.</param>
         /// <param name="stage">Which stage's entry point to find.</param>
-        /// <param name="label">A name for the program, included in any error message.</param>
+        /// <param name="label">A name for the program, carried in <see cref="ShaderValidationException.Label"/>.</param>
         /// <exception cref="ShaderValidationException">The stage's entry point is not present, its argument list
-        /// does not open or does not close, or its name cannot be read.</exception>
+        /// does not open or does not close, or its name cannot be read. Label and Stage identify the emission, and
+        /// Reason is MetalEntryPointMissing, MetalEntryArgumentsMissing, MetalEntryArgumentsUnclosed or
+        /// MetalEntryNameUnreadable.</exception>
         internal static string NameOf(string msl, MetalShaderStage stage, string label)
         {
             ArgumentNullException.ThrowIfNull(msl);
@@ -69,19 +72,28 @@ namespace KhaozEngine.Gpu.Metal.Internal
             int start = msl.IndexOf(keyword, StringComparison.Ordinal);
             if (start < 0)
             {
-                throw new ShaderValidationException(
+                throw new ShaderValidationException(ShaderValidationRefusal.MetalEntryPointMissing,
                     $"{where}: the emitted MSL declares no '{keyword.Trim()}' entry point. The native Metal "
                     + "backend reads the function name and the resource indices out of the emission, so there is "
-                    + "nothing to create a library function from and nothing to bind against.");
+                    + "nothing to create a library function from and nothing to bind against.")
+                {
+                    Label = label,
+                    Stage = stage.ToGpu(),
+                    EntryPointKeyword = keyword.Trim(),
+                };
             }
 
             int open = msl.IndexOf('(', start);
             if (open < 0)
             {
-                throw new ShaderValidationException(
+                throw new ShaderValidationException(ShaderValidationRefusal.MetalEntryArgumentsMissing,
                     $"{where}: the '{keyword.Trim()}' entry point has no argument list at all, which no "
                     + "SPIRV-Cross emission produces, so the match is not an entry point at all and the name "
-                    + "read out of it would be some other declaration's.");
+                    + "read out of it would be some other declaration's.")
+                {
+                    Label = label,
+                    Stage = stage.ToGpu(),
+                };
             }
 
             int close = -1, depth = 0;
@@ -92,18 +104,22 @@ namespace KhaozEngine.Gpu.Metal.Internal
             }
             if (close < 0)
             {
-                throw new ShaderValidationException(
+                throw new ShaderValidationException(ShaderValidationRefusal.MetalEntryArgumentsUnclosed,
                     $"{where}: the '{keyword.Trim()}' entry point's argument list never closes. The emitted MSL "
-                    + "is truncated or is not MSL.");
+                    + "is truncated or is not MSL.")
+                {
+                    Label = label,
+                    Stage = stage.ToGpu(),
+                };
             }
 
-            return ReadName(msl, start + keyword.Length, open, where);
+            return ReadName(msl, start + keyword.Length, open, where, label, stage);
         }
 
         // The declared name is the last identifier before the '(': "vertex main0_out main0(" names main0, and the
         // return type in between is why this scans backwards from the parenthesis rather than forwards from the
         // keyword.
-        static string ReadName(string msl, int afterKeyword, int open, string where)
+        static string ReadName(string msl, int afterKeyword, int open, string where, string label, MetalShaderStage stage)
         {
             int end = open;
             while (end > afterKeyword && char.IsWhiteSpace(msl[end - 1])) end--;
@@ -113,10 +129,14 @@ namespace KhaozEngine.Gpu.Metal.Internal
             string name = msl[begin..end];
             if (name.Length == 0)
             {
-                throw new ShaderValidationException(
+                throw new ShaderValidationException(ShaderValidationRefusal.MetalEntryNameUnreadable,
                     $"{where}: the entry point's name could not be read out of the emitted MSL. It is what the "
                     + "backend passes to -newFunctionWithName:, and M-S5 says it is READ rather than assumed to "
-                    + "be main0, so an unreadable one is a stop rather than a default.");
+                    + "be main0, so an unreadable one is a stop rather than a default.")
+                {
+                    Label = label,
+                    Stage = stage.ToGpu(),
+                };
             }
             return name;
         }

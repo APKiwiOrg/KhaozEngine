@@ -9,10 +9,11 @@ namespace KhaozEngine.Navigation;
 /// both endpoints onto a passable cell, then takes a line-of-sight fast path when the goal is directly
 /// visible on the start's layer, otherwise runs an 8-connected A* search. The search prevents diagonal
 /// corner-cutting (a diagonal step needs both orthogonal companions passable), crosses layers over
-/// <see cref="NavSpace.Links"/> (each link is a graph edge whose meters cost is precomputed per
-/// <see cref="NavLinkKind"/>: a <see cref="NavLinkKind.Stair"/> costs one cell of its source layer, a
-/// <see cref="NavLinkKind.Hop"/> costs the constructor's <c>hopCostCells</c> cells, its far endpoint
-/// re-checked for the agent radius), caps its work at <see cref="PathQueryBudget.MaxExpandedNodes"/>
+/// <see cref="NavSpace.Links"/>. Each link is a graph edge whose meters cost is precomputed per
+/// <see cref="NavLinkKind"/>: a <see cref="NavLinkKind.Stair"/> costs at least its spatial span and one source cell, a
+/// <see cref="NavLinkKind.Hop"/> costs the constructor's <c>hopCostCells</c> cells, and Drop costs its XZ octile
+/// displacement plus physical descent. Each far endpoint is
+/// re-checked for the agent radius. The search caps its work at <see cref="PathQueryBudget.MaxExpandedNodes"/>
 /// expansions, and on an unreachable goal returns a <see cref="NavPathStatus.Partial"/> route to the
 /// closest node it reached (or <see cref="NavPath.Unreachable"/> when it never got past the start).
 /// The raw cell chain is then string-pulled: within each same-layer run it greedily keeps only the
@@ -26,8 +27,8 @@ namespace KhaozEngine.Navigation;
 /// every tie the same way.
 /// <para>
 /// The planner keeps one set of search scratch, allocated on its first query and reused by every later
-/// one: generation-stamped per-node g-scores, parents and closed marks (twelve bytes a node across all
-/// layers) plus region flags, the open set and reconstruction lists, each kept at the largest query seen.
+/// one: generation-stamped per-node g-scores, parents, incoming edge kinds and closed marks across all
+/// layers, plus region flags, the open set and reconstruction lists, each kept at the largest query seen.
 /// A query touches only the nodes it visits and clears nothing, and a warmed query allocates only the path
 /// it returns. Queries may run concurrently from several threads: a query that finds the scratch already
 /// taken uses a fresh one of its own.
@@ -55,18 +56,9 @@ public sealed partial class GridPathPlanner : IRegionPathPlanner
     /// <summary>Total node count across every layer, the length of the search's per-node arrays.</summary>
     readonly int _totalNodes;
 
-    /// <summary>Link edges as an adjacency list: source node id to its reachable node ids each paired with
-    /// its precomputed traversal cost in meters. Built once from <see cref="NavSpace.Links"/> (directed, so
-    /// a two-way stair contributes two entries). A <see cref="NavLinkKind.Stair"/> link costs one cell of
-    /// its source layer (<see cref="NavGrid.CellSize"/>, the historical hardcoded value), a
-    /// <see cref="NavLinkKind.Hop"/> link costs <see cref="_hopCostCells"/> of them. The far endpoint's own
-    /// passability is still checked at expansion time.</summary>
-    readonly Dictionary<int, List<(int ToId, float CostMeters)>> _linkEdges;
-
-    /// <summary>The directed node-id pairs of every <see cref="NavLinkKind.Hop"/> link, keyed by the same
-    /// flat node ids the adjacency uses. Reconstruction consults this to stamp
-    /// <see cref="NavWaypointKind.Hop"/> on a hop crossing's landing waypoint.</summary>
-    readonly HashSet<(int FromId, int ToId)> _hopEdges;
+    // Each adjacency retains the selected edge kind. Ordinary exits never borrow link metadata.
+    readonly Dictionary<int, List<PlannerLink>> _linkEdges;
+    readonly PlannerSpatialBound _spatialBound;
 
     /// <summary>Cost of crossing a <see cref="NavLinkKind.Hop"/> link, in multiples of the source layer's
     /// <see cref="NavGrid.CellSize"/>. Set from the constructor knob.</summary>
@@ -75,10 +67,10 @@ public sealed partial class GridPathPlanner : IRegionPathPlanner
     /// <summary>Builds a planner that searches <paramref name="space"/>. <paramref name="hopCostCells"/> is
     /// the cost of crossing a <see cref="NavLinkKind.Hop"/> link, in multiples of the source layer's
     /// <see cref="NavGrid.CellSize"/> (default 4). It must be positive. A <see cref="NavLinkKind.Stair"/>
-    /// link keeps its one-cell cost. Keep <paramref name="hopCostCells"/> at or above the longest hop's
-    /// octile displacement (about 2.83 at a two-cell hop) to keep the A* heuristic admissible and the search
-    /// optimal. Below it the search stays correct but may return a valid non-optimal route, the same caveat
-    /// the far-jumping-link heuristic already documents.</summary>
+    /// link costs the greater of its spatial metric span and one source cell. The planner scales its spatial
+    /// lower bound once at construction
+    /// to account for links cheaper than their displacement. Floating-point cost error follows the numeric
+    /// contract in the Navigation README.</summary>
     public GridPathPlanner(NavSpace space, float hopCostCells = 4f)
         : this(space, hopCostCells, null)
     {
@@ -102,27 +94,19 @@ public sealed partial class GridPathPlanner : IRegionPathPlanner
         }
         _totalNodes = total;
 
-        _linkEdges = new Dictionary<int, List<(int ToId, float CostMeters)>>();
-        _hopEdges = new HashSet<(int FromId, int ToId)>();
+        _spatialBound = new PlannerSpatialBound(_space, _traversal, LinkCost);
+        _linkEdges = new Dictionary<int, List<PlannerLink>>();
         foreach (NavLink link in traversal?.Links ?? _space.Links)
         {
             int fromId = _layerOffset[link.FromLayer] + link.FromZ * layers[link.FromLayer].Width + link.FromX;
             int toId = _layerOffset[link.ToLayer] + link.ToZ * layers[link.ToLayer].Width + link.ToX;
-
-            // A Stair keeps exactly the source layer's cell size, the historical hardcoded link cost, so a
-            // hop-free space plans byte-identically. A Hop is charged the knob's multiple of it.
-            float costCells = link.Kind == NavLinkKind.Hop ? _hopCostCells : 1f;
-            float costMeters = costCells * layers[link.FromLayer].CellSize;
-
-            if (!_linkEdges.TryGetValue(fromId, out List<(int ToId, float CostMeters)>? targets))
+            float costMeters = LinkCost(link);
+            if (!_linkEdges.TryGetValue(fromId, out List<PlannerLink>? targets))
             {
-                targets = new List<(int ToId, float CostMeters)>();
+                targets = new List<PlannerLink>();
                 _linkEdges[fromId] = targets;
             }
-            targets.Add((toId, costMeters));
-
-            if (link.Kind == NavLinkKind.Hop)
-                _hopEdges.Add((fromId, toId));
+            targets.Add(new(toId, costMeters, link.Kind));
         }
     }
 
@@ -178,7 +162,7 @@ public sealed partial class GridPathPlanner : IRegionPathPlanner
 
         // Same layer with a clear straight shot is the trivial one-waypoint case. Everything else runs
         // the A* search, which also carries cross-layer routing over the link edges.
-        if (_traversal is null && startLayer == goalLayer &&
+        if (_traversal is null && _spatialBound.Scale == 1f && startLayer == goalLayer &&
             scratch.HasLineOfSight(startGrid, startPoint.Value, goalPoint, agentRadius))
         {
             return new NavPath(NavPathStatus.Complete, new[] { new NavWaypoint(goalPoint, goalLayer) });

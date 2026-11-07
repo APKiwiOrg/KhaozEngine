@@ -1,7 +1,6 @@
 using System;
 using System.Collections.Generic;
 using System.Reflection;
-using System.Runtime.CompilerServices;
 using KhaozEngine.Gpu;
 using KhaozEngine.Tests.Gpu;
 using KhaozEngine.Windowing;
@@ -43,23 +42,17 @@ public sealed class AppWindowDisposalTests
         Assert.True(frame.Submission.TryRetain(Consumer(), out _));
         frame.Submission.Submit(commands);
 
-        // Bypass the native constructor, then drive the real window teardown with owned headless resources.
-        var window = (AppWindow)RuntimeHelpers.GetUninitializedObject(typeof(AppWindow));
-        Set("_frame", frame);
-        Set("_device", device);
-        Set("_gpu", context);
-        Set("_cl", commands);
-        Set("_rumble", DisposalProxy.Create<IRumble>(() => Step("rumble"), nameof(IRumble.StopAll)));
-        Set("_input", DisposalProxy.Create<IInputContext>(() => Step("input")));
-        Set("_window", DisposalProxy.Create<IWindow>(() => Step("window", true)));
+        // Drive the real teardown with owned headless resources, without a native window constructor.
+        var window = AppWindow.CreateForTests(frame, context, commands,
+            DisposalProxy.Create<IRumble>(() => Step("rumble"), nameof(IRumble.StopAll)),
+            DisposalProxy.Create<IInputContext>(() => Step("input")),
+            DisposalProxy.Create<IWindow>(() => Step("window", true)));
         window.AddCaptureTap(new Tap(() => Step("tap", true)));
-        var taps = (FrameCaptureTaps)typeof(AppWindow).GetField("_captureTaps", BindingFlags.Instance | BindingFlags.NonPublic)!
-            .GetValue(window)!;
 
         Exception? failure = Record.Exception(window.Dispose);
 
         Assert.Equal(new[] { "rumble", "input", "release", "query", "tap", "commands", "device", "window" }, order);
-        Assert.Equal(0, taps.Count);
+        Assert.Equal(0, window.CaptureTapCountForTests);
         Assert.Throws<ObjectDisposedException>(() => window.AddCaptureTap(new Tap(() => { })));
         if (firstFailure is "release" or "query")
         {
@@ -72,9 +65,6 @@ public sealed class AppWindowDisposalTests
                 : nameof(Query), retained.Error.StackTrace);
         }
         else Assert.Null(failure);
-
-        void Set(string field, object value) =>
-            typeof(AppWindow).GetField(field, BindingFlags.Instance | BindingFlags.NonPublic)!.SetValue(window, value);
 
         void Step(string name, bool failLater = false)
         {

@@ -50,7 +50,8 @@ public static class MapMarkerEffects
     {
         var result = new Dictionary<string, MapEffectiveMarker>(StringComparer.Ordinal);
         foreach (MapEffectiveMarker marker in markers)
-            if (!result.TryAdd(marker.Id, marker)) throw new MapDocumentException($"Effective marker ID '{marker.Id}' is not unique.");
+            if (!result.TryAdd(marker.Id, marker)) throw new MapDocumentException(MapDocumentRefusal.IdentityDuplicate, $"Effective marker ID '{marker.Id}' is not unique.")
+            { MarkerId = marker.Id, EntityId = marker.Id, SubjectKind = "effective marker" };
         return result;
     }
 

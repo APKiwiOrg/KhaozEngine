@@ -63,22 +63,34 @@ namespace KhaozEngine.Gpu.Metal.Internal
 
             if (resource is not T typed)
             {
-                throw new ArgumentException(
+                throw new GpuResourceOwnershipArgumentException(GpuResourceOwnershipRefusal.ForeignBackend,
                     "That resource was not created by the native Metal backend: it is a "
                     + resource.GetType().Name + " where a " + typeof(T).Name + " was needed. A resource created "
                     + "on one backend cannot be used on another's device, and the backend a device uses is fixed "
-                    + "at creation.", parameterName);
+                    + "at creation.", parameterName)
+                {
+                    ExpectedBackend = GpuBackendKind.MetalNative,
+                    ActualType = resource?.GetType(),
+                    ExpectedType = typeof(T),
+                    Context = parameterName,
+                    ResourceKind = typeof(T).Name,
+                };
             }
 
             if (!ReferenceEquals(typed.Owner, owner))
             {
-                throw new ArgumentException(
+                throw new GpuResourceOwnershipArgumentException(GpuResourceOwnershipRefusal.DifferentDevice,
                     "That " + typeof(T).Name + " was created by a DIFFERENT native Metal device. Every resource "
                     + "records the device that made it, because a type-only cast cannot tell two of them apart: "
                     + "on a machine with more than one Metal device the copy would be illegal, and on Apple "
                     + "silicon, where the whole process shares one MTLDevice, it would succeed and leave the two "
                     + "devices' teardowns disagreeing about who releases it. Create the resource on the device "
-                    + "that uses it.", parameterName);
+                    + "that uses it.", parameterName)
+                {
+                    ExpectedBackend = GpuBackendKind.MetalNative,
+                    ResourceKind = typeof(T).Name,
+                    Context = parameterName,
+                };
             }
 
             return typed;

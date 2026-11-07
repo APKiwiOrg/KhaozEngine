@@ -21,31 +21,44 @@ namespace KhaozEngine.Render3D
         /// <summary>Validates and copies a joint table.</summary>
         /// <param name="joints">The joints, the root first and each parent before its children. The list is copied,
         /// so the caller may reuse it.</param>
-        /// <exception cref="ArgumentException">The table is empty, or a joint is unnamed, declared twice, a second
-        /// root, or parented to a joint not declared before it. The message names the joint.</exception>
+        /// <exception cref="SkeletonContractArgumentException">The table breaks a
+        /// <see cref="SkeletonContractRefusal"/> rule. The reason and applicable JointCount, JointIndex,
+        /// JointName, ParentName and RootName properties identify the refusal.</exception>
         public SkeletonContract(IReadOnlyList<ContractJoint> joints)
         {
             ArgumentNullException.ThrowIfNull(joints);
             if (joints.Count == 0)
-                throw new ArgumentException("A skeleton contract needs at least its root joint.", nameof(joints));
+                throw new SkeletonContractArgumentException(SkeletonContractRefusal.EmptyJointTable,
+                    "A skeleton contract needs at least its root joint.", nameof(joints))
+                { JointCount = joints.Count };
 
             var copy = new ContractJoint[joints.Count];
             for (int index = 0; index < copy.Length; index++)
             {
                 ContractJoint joint = joints[index];
                 if (string.IsNullOrEmpty(joint.Name))
-                    throw new ArgumentException($"Contract joint {index} has no name.", nameof(joints));
+                    throw new SkeletonContractArgumentException(SkeletonContractRefusal.JointUnnamed,
+                        $"Contract joint {index} has no name.", nameof(joints))
+                    { JointIndex = index, JointName = joint.Name };
                 if (index == 0 && joint.Parent is not null)
-                    throw new ArgumentException($"The first contract joint '{joint.Name}' has parent '{joint.Parent}'."
-                        + " The first joint must be the root, with no parent.", nameof(joints));
+                    throw new SkeletonContractArgumentException(SkeletonContractRefusal.FirstJointHasParent,
+                        $"The first contract joint '{joint.Name}' has parent '{joint.Parent}'."
+                        + " The first joint must be the root, with no parent.", nameof(joints))
+                    { JointName = joint.Name, ParentName = joint.Parent };
                 if (index > 0 && joint.Parent is null)
-                    throw new ArgumentException($"Contract joint '{joint.Name}' is a second root. Only the first joint"
-                        + $" '{copy[0].Name}' has no parent.", nameof(joints));
+                    throw new SkeletonContractArgumentException(SkeletonContractRefusal.AdditionalRoot,
+                        $"Contract joint '{joint.Name}' is a second root. Only the first joint"
+                        + $" '{copy[0].Name}' has no parent.", nameof(joints))
+                    { JointName = joint.Name, RootName = copy[0].Name };
                 if (joint.Parent is not null && !_names.Contains(joint.Parent))
-                    throw new ArgumentException($"Contract joint '{joint.Name}' has parent '{joint.Parent}', which is"
-                        + " not declared before it.", nameof(joints));
+                    throw new SkeletonContractArgumentException(SkeletonContractRefusal.ParentNotDeclaredBeforeChild,
+                        $"Contract joint '{joint.Name}' has parent '{joint.Parent}', which is"
+                        + " not declared before it.", nameof(joints))
+                    { JointName = joint.Name, ParentName = joint.Parent };
                 if (!_names.Add(joint.Name))
-                    throw new ArgumentException($"Contract joint '{joint.Name}' is declared twice.", nameof(joints));
+                    throw new SkeletonContractArgumentException(SkeletonContractRefusal.DuplicateJointName,
+                        $"Contract joint '{joint.Name}' is declared twice.", nameof(joints))
+                    { JointName = joint.Name };
                 copy[index] = joint;
             }
 

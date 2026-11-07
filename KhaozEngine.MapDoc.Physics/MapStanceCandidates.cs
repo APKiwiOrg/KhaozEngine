@@ -34,8 +34,9 @@ public static class MapStanceCandidates
     /// <paramref name="placementId"/>'s envelope, ordered by distance to <paramref name="actorFeet"/>, then X, Z and
     /// Y. Proposals outside the document's inclusive playable bounds are dropped before the validator sees them, and
     /// seats outside them are dropped after it. The capsule is <paramref name="tuning"/>'s radius and half height,
-    /// standing on the seated feet. Invalid options, including a spacing that would propose more than 2^20 points,
-    /// throw <see cref="ArgumentOutOfRangeException"/> naming <paramref name="options"/>.</summary>
+    /// standing on the seated feet. Invalid spacing, capsule dimensions or more than 2^20 proposals throw
+    /// <see cref="MapStanceRangeException"/> with the failed field or work budget. Invalid reach or band options throw
+    /// <see cref="MapQueryRangeException"/>. Both retain the original parameter name.</summary>
     public static IReadOnlyList<Vector3> Find(MapBuiltWorld world, string placementId, Vector3 actorFeet,
         in MoveTuning tuning, MapStanceOptions options, MapStanceValidator validate)
     {
@@ -46,15 +47,25 @@ public static class MapStanceCandidates
         if (!IsFinite(actorFeet))
             throw new ArgumentOutOfRangeException(nameof(actorFeet), "Actor feet must be finite.");
         if (!float.IsFinite(options.Spacing) || options.Spacing <= 0f)
-            throw new ArgumentOutOfRangeException(nameof(options), "Spacing must be finite and positive.");
+            throw new MapStanceRangeException(float.IsFinite(options.Spacing) ? MapDocumentRefusal.ValueOutsideRange : MapDocumentRefusal.ValueNonfinite,
+                "Spacing must be finite and positive.", nameof(options))
+            { FieldPath = nameof(options.Spacing), ActualNumber = options.Spacing, MinimumNumber = 0 };
         MapWorldQueries.CheckReach(options.Range, options.Tolerance, nameof(options));
         _ = MapWorldQueries.Slab(options.Band, nameof(options));
         float radius = tuning.CapsuleRadius, halfHeight = tuning.CapsuleHalfHeight;
         if (!float.IsFinite(radius) || radius <= 0f || !float.IsFinite(halfHeight) || halfHeight < radius)
-            throw new ArgumentOutOfRangeException(nameof(tuning),
-                "The capsule needs a finite positive radius and a finite half height of at least the radius.");
-        Func<float, float, float>? legacyHeight = world.IsNative ? null : world.LegacySupportHeight ??
-            throw new InvalidOperationException("A resolver-1 world needs a legacy support height.");
+        {
+            bool radiusFailed = !float.IsFinite(radius) || radius <= 0f;
+            float value = radiusFailed ? radius : halfHeight;
+            throw new MapStanceRangeException(float.IsFinite(value) ? MapDocumentRefusal.ValueOutsideRange : MapDocumentRefusal.ValueNonfinite,
+                "The capsule needs a finite positive radius and a finite half height of at least the radius.", nameof(tuning))
+            {
+                FieldPath = radiusFailed ? nameof(tuning.CapsuleRadius) : nameof(tuning.CapsuleHalfHeight),
+                ActualNumber = value,
+                MinimumNumber = radiusFailed ? 0 : radius
+            };
+        }
+        Func<float, float, float>? legacyHeight = LegacyHeight(world.IsNative, world.LegacySupportHeight);
 
         MapInteractionEnvelope envelope = world.Placement(placementId).Envelope;
         float baseY = (float)envelope.Bounds.MinY;
@@ -65,9 +76,16 @@ public static class MapStanceCandidates
         // Every outline is walked before the validator runs, so a refused walk never calls it.
         var proposals = new List<(double X, double Z)>();
         foreach (List<(double X, double Z)> footprint in footprints)
-            if (!Outline(Hull(footprint), radius, options.Spacing, proposals))
-                throw new ArgumentOutOfRangeException(nameof(options),
-                    $"Spacing proposes more than {MaximumProposals} points around the envelope.");
+            if (!Outline(Hull(footprint), radius, options.Spacing, proposals, out long? count))
+                throw new MapStanceRangeException(MapDocumentRefusal.WorkCapacityExceeded,
+                    $"Spacing proposes more than {MaximumProposals} points around the envelope.", nameof(options))
+                {
+                    FieldPath = nameof(options.Spacing),
+                    ActualNumber = options.Spacing,
+                    Budget = "stance proposals",
+                    Limit = MaximumProposals,
+                    ActualCount = count
+                };
 
         var seated = new List<Vector3>();
         foreach ((double px, double pz) in proposals)
@@ -76,10 +94,16 @@ public static class MapStanceCandidates
             if (!Playable(playable, x, z)) continue;
             float y = legacyHeight is null ? baseY : legacyHeight(x, z);
             if (!float.IsFinite(y))
-                throw new InvalidOperationException("The legacy support height is not finite at a proposal.");
+                throw new MapStanceException(MapDocumentRefusal.ValueNonfinite, "The legacy support height is not finite at a proposal.")
+                { FieldPath = nameof(world.LegacySupportHeight), PlacementId = placementId, ActualNumber = y };
             if (!validate(new Vector3(x, y, z), out Vector3 feet)) continue;
             if (!IsFinite(feet))
-                throw new InvalidOperationException("The stance validator seated a proposal at a nonfinite position.");
+                throw new MapStanceException(MapDocumentRefusal.ValueNonfinite, "The stance validator seated a proposal at a nonfinite position.")
+                {
+                    PlacementId = placementId,
+                    FieldPath = !float.IsFinite(feet.X) ? "SeatedFeet.X" : !float.IsFinite(feet.Y) ? "SeatedFeet.Y" : "SeatedFeet.Z",
+                    ActualNumber = !float.IsFinite(feet.X) ? feet.X : !float.IsFinite(feet.Y) ? feet.Y : feet.Z
+                };
             if (!Playable(playable, feet.X, feet.Z)) continue;
             var body = new MovementBody(feet + Vector3.UnitY * halfHeight, radius, halfHeight);
             if (MapWorldQueries.Reaches(envelope, body, options.Range, options.Tolerance, options.Band))
@@ -92,6 +116,13 @@ public static class MapStanceCandidates
             if (distinct.Count == 0 || distinct[^1] != feet) distinct.Add(feet);
         return distinct.AsReadOnly();
     }
+
+    static Func<float, float, float>? LegacyHeight(bool native, Func<float, float, float>? height) => native ? null : height ??
+        throw new MapStanceException(MapDocumentRefusal.SupportLegacyHeightRequired, "A resolver-1 world needs a legacy support height.")
+        { ResolverVersion = 1, FieldPath = "LegacySupportHeight" };
+
+    // Inject a missing captured callback directly. The world builder still enforces its resolver contract.
+    internal static void MissingLegacyHeightForTests(bool native, Func<float, float, float>? height) => _ = LegacyHeight(native, height);
 
     static bool Playable(MapResolvedBounds playable, float x, float z) =>
         x >= playable.MinX && x <= playable.MaxX && z >= playable.MinZ && z <= playable.MaxZ;
@@ -155,9 +186,20 @@ public static class MapStanceCandidates
                     return;
                 }
             default:
-                throw new NotSupportedException(
-                    $"Stance candidates walk boxes, cylinders, hulls, meshes and compounds, not {shape.GetType().Name}.");
+                throw new MapStanceUnsupportedException(MapDocumentRefusal.PhysicsShapeUnsupported,
+                    $"Stance candidates walk boxes, cylinders, hulls, meshes and compounds, not {shape.GetType().Name}.")
+                { ShapeType = shape.GetType() };
         }
+    }
+
+    // Inject a source shape that an earlier envelope compiler would normally reject.
+    internal static void UnsupportedFootprintForTests(PhysicsShape shape) => Footprints(shape, MapDoublePose.From(Pose.Identity), new());
+
+    // Refuse a very large outline after one accepted proposal, without materializing its points.
+    internal static long? OversizedOutlineCountForTests(double length, double radius, double spacing)
+    {
+        _ = Outline([(0, 0), (length, 0)], radius, spacing, [(0, 0)], out long? count);
+        return count;
     }
 
     static List<(double X, double Z)> Points(MapDoublePose pose, Vector3[] local)
@@ -199,9 +241,10 @@ public static class MapStanceCandidates
     // Appends points along the hull's outline outset by radius, evenly spaced by at most spacing. The outline is an arc
     // about each hull vertex followed by the outset edge to the next vertex, starting on the first vertex's arc. False,
     // appending nothing, when the points would take the result past MaximumProposals.
-    static bool Outline(List<(double X, double Z)> hull, double radius, double spacing, List<(double X, double Z)> result)
+    static bool Outline(List<(double X, double Z)> hull, double radius, double spacing, List<(double X, double Z)> result, out long? proposedCount)
     {
         int n = hull.Count;
+        proposedCount = result.Count;
         if (n == 0) return true;
 
         // The outward unit normal of each edge from vertex i to vertex i + 1, and each vertex's arc from the normal of
@@ -236,6 +279,9 @@ public static class MapStanceCandidates
         double total = 0d;
         for (int i = 0; i < n; i++) total += sweeps[i] * radius + lengths[i];
         double count = Math.Ceiling(total / spacing);
+        // Add completed proposals as integers. A binary64 addition can drop an odd completed count above 2^53.
+        proposedCount = count >= 0 && count < long.MaxValue && (long)count <= long.MaxValue - result.Count
+            ? (long)count + result.Count : null;
         if (!(count <= MaximumProposals - result.Count)) return false;
         int steps = Math.Max(1, (int)count);
         double step = total / steps, offset = 0d;

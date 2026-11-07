@@ -1,6 +1,8 @@
+using KhaozEngine.Gpu;
 using System;
 using System.Threading;
 using KhaozEngine.Gpu.Internal;
+using KhaozEngine.Gpu.Metal;
 using KhaozEngine.Gpu.Metal.Internal;
 using Xunit;
 
@@ -69,7 +71,8 @@ namespace KhaozEngine.Tests.Gpu
             ArgumentOutOfRangeException thrown = Assert.Throws<ArgumentOutOfRangeException>(
                 () => new MetalUniformRing(_harness.Rings, IntPtr.Zero, 256));
 
-            Assert.Contains("MTLStorageModeShared", thrown.Message, StringComparison.Ordinal);
+            Assert.Equal("contents", thrown.ParamName);
+            Assert.Equal(IntPtr.Zero, thrown.ActualValue);
         }
 
         /// <summary>
@@ -83,10 +86,11 @@ namespace KhaozEngine.Tests.Gpu
         {
             MetalUniformRing ring = _harness.NewRing(200, out _);
 
-            ArgumentOutOfRangeException thrown =
-                Assert.Throws<ArgumentOutOfRangeException>(() => ring.Write(0, 192, new byte[16]));
+            GpuBufferTransferRangeException thrown =
+                Assert.Throws<GpuBufferTransferRangeException>(() => ring.Write(0, 192, new byte[16]));
 
-            Assert.Contains("next frame's segment", thrown.Message, StringComparison.Ordinal);
+            Assert.Equal("offsetBytes", thrown.ParamName);
+            Assert.Equal(192u, thrown.ActualValue);
 
             // The last byte the caller owns is still writable, so the refusal is exact rather than conservative.
             ring.Write(0, 192, new byte[8]);
@@ -103,7 +107,7 @@ namespace KhaozEngine.Tests.Gpu
         {
             MetalUniformRing ring = _harness.NewRing(200, out _);
 
-            Assert.Throws<ArgumentOutOfRangeException>(() => ring.Write(0, 200, new byte[1]));
+            Assert.Throws<GpuBufferTransferRangeException>(() => ring.Write(0, 200, new byte[1]));
         }
 
         /// <summary>
@@ -205,12 +209,14 @@ namespace KhaozEngine.Tests.Gpu
         [Fact]
         public void BeginRecordingFromInsideTheSubmitLockIsRefusedByName()
         {
-            InvalidOperationException thrown = Assert.Throws<InvalidOperationException>(() =>
+            var thrown = Assert.Throws<MetalRingWaitException>(() =>
             {
                 lock (_harness.SubmitLock) _harness.Rings.BeginRecording();
             });
 
-            Assert.Contains("held the submit lock", thrown.Message, StringComparison.Ordinal);
+            Assert.Equal(MetalRingWaitRefusal.SubmitLockHeld, thrown.Reason);
+            Assert.Equal("BeginRecording", thrown.Operation);
+            Assert.IsAssignableFrom<InvalidOperationException>(thrown);
         }
 
         /// <summary>
@@ -275,11 +281,15 @@ namespace KhaozEngine.Tests.Gpu
         [InlineData(MetalFramesInFlight.Maximum + 1)]
         public void ADepthOutsideTheKnobsRangeIsRefusedByName(int framesInFlight)
         {
-            ArgumentOutOfRangeException thrown = Assert.Throws<ArgumentOutOfRangeException>(
+            var thrown = Assert.Throws<MetalRingLayoutException>(
                 () => new MetalRingAllocator(framesInFlight, _harness.Timeline, _harness.Backpressure,
                     new object()));
 
-            Assert.Contains(MetalFramesInFlight.EnvVarName, thrown.Message, StringComparison.Ordinal);
+            Assert.Equal(MetalRingLayoutRefusal.FrameDepthOutsideRange, thrown.Reason);
+            Assert.Equal(MetalFramesInFlight.EnvVarName, thrown.EnvironmentVariable);
+            Assert.Equal(MetalFramesInFlight.Minimum, thrown.MinimumDepth);
+            Assert.Equal(MetalFramesInFlight.Maximum, thrown.MaximumDepth);
+            Assert.Equal(framesInFlight, thrown.ActualValue);
         }
 
         // The submit path's whole observable effect, in the order MetalGpuDevice.SubmitOnMacOs takes it inside its

@@ -111,7 +111,11 @@ public sealed class MapPrefabAnnotationTests
     {
         var r = PrefabFixtures.Effective(PrefabFixtures.TwoLeafLamps(true));
         Assert.Equal(new[] { "light-a", "light-b", "light-extra" }, MapEffectiveAnnotations.Lights(r).Select(x => x.Id));
-        Assert.Throws<MapDocumentException>(() => PrefabFixtures.TwoLeafLamps(conflict: true));
+        var error = Assert.Throws<MapDocumentException>(() => PrefabFixtures.TwoLeafLamps(conflict: true));
+        Assert.Equal(MapDocumentRefusal.IdentityDuplicate, error.Reason);
+        Assert.Equal(new MapPrefabChildKey(MapPrefabChildKind.Light, "lamp-a/lamp-light/emission"), error.Child);
+        Assert.Equal("implicit child", error.SubjectKind);
+        Assert.Equal(3, MapEffectiveAnnotations.Lights(PrefabFixtures.Effective(PrefabFixtures.TwoLeafLamps(true))).Count);
     }
 
     [Fact]
@@ -151,21 +155,67 @@ public sealed class MapPrefabAnnotationTests
     }
 
     [Theory]
-    [InlineData("negative-colour")]
-    [InlineData("owner-kind")]
-    [InlineData("radius")]
-    [InlineData("intensity")]
-    public void LightPayload_StrictFieldsRefuseInvalidValues(string invalid)
+    [InlineData("version", MapDocumentRefusal.SchemaPayloadVersionUnsupported, "$.payloadVersion")]
+    [InlineData("id", MapDocumentRefusal.SchemaValueRequired, "$.id")]
+    [InlineData("negative-colour", MapDocumentRefusal.ValueOutsideRange, "$.colour.x")]
+    [InlineData("negative-green", MapDocumentRefusal.ValueOutsideRange, "$.colour.y")]
+    [InlineData("negative-blue", MapDocumentRefusal.ValueOutsideRange, "$.colour.z")]
+    [InlineData("nonfinite-position", MapDocumentRefusal.ValueNonfinite, "$.position.z")]
+    [InlineData("nonfinite-colour", MapDocumentRefusal.ValueNonfinite, "$.colour.y")]
+    [InlineData("owner-kind", MapDocumentRefusal.AuthoredReferenceKindInvalid, "$.owner.kind")]
+    [InlineData("owner-enum", MapDocumentRefusal.SchemaEnumUnsupported, "$.owner.kind")]
+    [InlineData("owner-scope", MapDocumentRefusal.SchemaEnumUnsupported, "$.owner.scope")]
+    [InlineData("owner-id", MapDocumentRefusal.SchemaValueRequired, "$.owner.id")]
+    [InlineData("radius", MapDocumentRefusal.ValueOutsideRange, "$.radius")]
+    [InlineData("intensity", MapDocumentRefusal.ValueNonfinite, "$.intensity")]
+    [InlineData("negative-intensity", MapDocumentRefusal.ValueOutsideRange, "$.intensity")]
+    [InlineData("nonfinite-radius", MapDocumentRefusal.ValueNonfinite, "$.radius")]
+    public void LightPayload_StrictFieldsRefuseInvalidValues(string invalid, MapDocumentRefusal reason, string path)
     {
-        var light = new MapLocalLightDoc(1, "emission", null, Vector3.Zero, Vector3.One, 1, 2, false);
-        light = invalid switch
+        var valid = new MapLocalLightDoc(1, "emission", null, Vector3.Zero, Vector3.One, 0,
+            BitConverter.Int32BitsToSingle(0x00800000), false);
+        var light = invalid switch
         {
-            "negative-colour" => light with { Colour = new(-1, 1, 1) },
-            "owner-kind" => light with { Owner = new(MapPrefabReferenceScope.Local, MapPrefabChildKind.Record, "$owner") },
-            "radius" => light with { Radius = 0 },
-            _ => light with { Intensity = float.PositiveInfinity },
+            "version" => valid with { PayloadVersion = 2 },
+            "id" => valid with { Id = "" },
+            "negative-colour" => valid with { Colour = new(-1, 1, 1) },
+            "negative-green" => valid with { Colour = new(1, -1, 1) },
+            "negative-blue" => valid with { Colour = new(1, 1, -1) },
+            "nonfinite-position" => valid with { Position = new(0, 0, float.NaN) },
+            "nonfinite-colour" => valid with { Colour = new(1, float.NaN, 1) },
+            "owner-kind" => valid with { Owner = new(MapPrefabReferenceScope.Local, MapPrefabChildKind.Record, "$owner") },
+            "owner-enum" => valid with { Owner = new(MapPrefabReferenceScope.Local, (MapPrefabChildKind)999, "$owner") },
+            "owner-scope" => valid with { Owner = new((MapPrefabReferenceScope)999, MapPrefabChildKind.Placement, "$owner") },
+            "owner-id" => valid with { Owner = new(MapPrefabReferenceScope.Local, MapPrefabChildKind.Placement, "") },
+            "radius" => valid with { Radius = 0 },
+            "negative-intensity" => valid with { Intensity = -1 },
+            "nonfinite-radius" => valid with { Radius = float.NaN },
+            _ => valid with { Intensity = float.PositiveInfinity },
         };
-        Assert.Throws<MapDocumentException>(() => MapLightFile.Write(light));
+        var error = Assert.Throws<MapDocumentException>(() => MapLightFile.Write(light));
+        Assert.Equal(reason, error.Reason);
+        Assert.Equal(path, error.FieldPath);
+        if (reason == MapDocumentRefusal.SchemaPayloadVersionUnsupported)
+        {
+            Assert.Equal(2, error.ActualVersion);
+            Assert.Equal(new[] { 1 }, error.SupportedVersions);
+        }
+        if (reason == MapDocumentRefusal.ValueNonfinite) Assert.False(double.IsFinite(error.ActualNumber!.Value));
+        if (reason == MapDocumentRefusal.ValueOutsideRange) Assert.Equal(0, error.MinimumNumber);
+        if (invalid.StartsWith("owner-", StringComparison.Ordinal))
+        {
+            Assert.Equal(light.Owner!.Kind, error.ChildKind);
+            Assert.Equal(light.Owner.Id, error.EntityId);
+            valid = valid with { Owner = new(MapPrefabReferenceScope.Local, MapPrefabChildKind.Placement, "$owner") };
+        }
+        valid = invalid switch
+        {
+            "negative-colour" => valid with { Colour = new(0, 1, 1) },
+            "negative-green" => valid with { Colour = new(1, 0, 1) },
+            "negative-blue" => valid with { Colour = new(1, 1, 0) },
+            _ => valid,
+        };
+        Assert.NotEmpty(MapLightFile.Write(valid));
     }
 
     [Fact]

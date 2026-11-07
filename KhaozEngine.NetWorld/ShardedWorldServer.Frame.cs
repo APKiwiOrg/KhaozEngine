@@ -92,6 +92,19 @@ public sealed partial class ShardedWorldServer
     // a genuinely fresh CellSim with an empty world, so its runtime has to be fresh too).
     private readonly Dictionary<CellCoord, CellRuntime> cellRuntime = new();
 
+    /// <summary>OrdinaryContactLifecycleTests checks all consumers share the cell binding and that recreation
+    /// owns a fresh binding. The identity predicate captures the binding privately without exposing its owner.</summary>
+    internal (bool MovementSharesBinding, bool ClampSharesBinding, bool AdmissionSharesBinding, Func<bool> IsCurrent)
+        CellBindingSnapshotForTests(CellSim cell)
+    {
+        CellRuntime runtime = cellRuntime[cell.Coord];
+        EffectiveMovementBinding binding = runtime.Binding;
+        CellCoord coord = cell.Coord;
+        return (ReferenceEquals(binding, runtime.Movement.Binding), ReferenceEquals(binding, runtime.Clamp.Binding),
+            cell.ImportAdmission is ExplicitCellAdmission admission && admission.UsesBindingForTests(binding),
+            () => ReferenceEquals(binding, cellRuntime[coord].Binding));
+    }
+
     /// <summary>
     /// One cell's simulation runtime: the <see cref="PlayerMovementSystem"/> added to that cell's world, plus the
     /// spawn ground-clamp that runs in the same space. Both are constructed against the cell's OWN physics world and

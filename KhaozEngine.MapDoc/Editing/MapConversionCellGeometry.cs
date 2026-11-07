@@ -26,7 +26,8 @@ internal sealed class MapConversionCellGeometry
         MapLatticeAddress origin = patch.CornerAddress(0, 0);
         long x = checked(cellX - origin.X), z = checked(cellZ - origin.Z);
         if (x < 0 || x >= patch.Width || z < 0 || z >= patch.Depth || !patch.IsPresent((int)x, (int)z))
-            throw new MapDocumentException($"conversion requires present cell ({cellX}, {cellZ})");
+            throw new MapDocumentException(MapDocumentRefusal.TerrainCellMissing, $"conversion requires present cell ({cellX}, {cellZ})")
+            { SurfaceId = surface.Id, Patch = patch.Key, Address = MapLatticeAddress.Corner(cellX, cellZ) };
         X = (int)x;
         Z = (int)z;
         MapSurfacePatch physical = patch;
@@ -54,7 +55,8 @@ internal sealed class MapConversionCellGeometry
         foreach (MapCompiledFace face in Physical.Faces)
             if (MapSubdividedTriangle.Height(Physical.ExactTriangle(face), world.X, world.Z) is { } height)
                 return height;
-        throw new MapDocumentException("canonical conversion plane is not representable");
+        throw new MapDocumentException(MapDocumentRefusal.GeometryNotRepresentable, "canonical conversion plane is not representable")
+        { SurfaceId = Surface.Id, Patch = Patch.Key, Address = MapLatticeAddress.Corner(CellX, CellZ) };
     }
 
     internal bool Overlay(MapExactValue x, MapExactValue z)
@@ -63,16 +65,19 @@ internal sealed class MapConversionCellGeometry
         for (int i = 0; i < Physical.Faces.Count; i++)
             if (MapSubdividedTriangle.Height(Physical.ExactTriangle(Physical.Faces[i]), world.X, world.Z) is not null)
                 return Physical.Paint[i].OverlayCovers;
-        throw new MapDocumentException("canonical conversion paint is not representable");
+        throw new MapDocumentException(MapDocumentRefusal.GeometryNotRepresentable, "canonical conversion paint is not representable")
+        { SurfaceId = Surface.Id, Patch = Patch.Key, Address = MapLatticeAddress.Corner(CellX, CellZ) };
     }
 
     internal int FineHeight(int x, int z, int k)
     {
         MapExactValue value = Height(new(x, k), new(z, k)).Divide(Surface.Frame.HeightUnitMetres.Exact())
             .Multiply(new(k, 1));
-        if (value.Denominator != 1) throw new MapDocumentException("fine corner height is not representable");
+        if (value.Denominator != 1) throw new MapDocumentException(MapDocumentRefusal.GeometryNotRepresentable, "fine corner height is not representable")
+        { SurfaceId = Surface.Id, Patch = Patch.Key, Address = MapLatticeAddress.Corner(CellX, CellZ) };
         if (value.Numerator < int.MinValue || value.Numerator > int.MaxValue)
-            throw new MapDocumentException("fine corner height overflow");
+            throw new MapDocumentException(MapDocumentRefusal.GeometryNotRepresentable, "fine corner height overflow")
+            { SurfaceId = Surface.Id, Patch = Patch.Key, Address = MapLatticeAddress.Corner(CellX, CellZ) };
         return (int)value.Numerator;
     }
 

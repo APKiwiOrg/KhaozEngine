@@ -9,7 +9,8 @@ public static class MapConversionClassifier
     public static MapCellConversion Classify(MapSurfaceRef surface, MapSurfacePatch patch,
         long cellX, long cellZ, int subdivision)
     {
-        if (subdivision is < 2 or > 64) throw new MapDocumentException("subdivision must be 2 to 64");
+        if (subdivision is < 2 or > 64) throw new MapDocumentException(MapDocumentRefusal.ValueOutsideRange, "subdivision must be 2 to 64")
+        { SurfaceId = surface.Id, FieldPath = "Subdivision", ActualInteger = subdivision, MinimumInteger = 2, MaximumInteger = 64 };
         try
         {
             var geometry = new MapConversionCellGeometry(surface, patch, cellX, cellZ);
@@ -17,7 +18,8 @@ public static class MapConversionClassifier
         }
         catch (Exception error) when (error is MapExactOverflowException or OverflowException)
         {
-            throw new MapDocumentException("conversion geometry is not representable", error);
+            throw new MapDocumentException(MapDocumentRefusal.GeometryNotRepresentable, "conversion geometry is not representable", error)
+            { SurfaceId = surface.Id, Patch = patch.Key, Address = MapLatticeAddress.Corner(cellX, cellZ), Operation = nameof(Classify) };
         }
     }
 
@@ -26,11 +28,13 @@ public static class MapConversionClassifier
         MapSurfaceCell cell = geometry.Cell;
         MapCellConversionClass kind;
         string? reason = null;
+        MapDocumentRefusal? refusal = null;
         if (geometry.Surface.PresencePolicy == MapPresencePolicy.LegacyTileWorld &&
             (cell.Underlay == 0 || (cell.Flags & MapCellFlags.NoDraw) != 0))
         {
             kind = MapCellConversionClass.NotRepresentable;
             reason = "legacy fallback has no native non-capture equivalent";
+            refusal = MapDocumentRefusal.TerrainAuthoredDifference;
         }
         else if (cell.Overlay != 0 && cell.Cut is MapOverlayCut.CornerQuarter or MapOverlayCut.CornerThreeQuarter)
         {
@@ -39,8 +43,23 @@ public static class MapConversionClassifier
                 : MapCellConversionClass.UnsupportedEncoding;
             reason = !coplanar ? "corner-cut crease crosses the regular fine lattice"
                 : subdivision % 2 != 0 ? "corner-cut paint needs an even subdivision" : null;
+            refusal = !coplanar ? MapDocumentRefusal.TerrainCornerCutCreaseUnsupported
+                : subdivision % 2 != 0 ? MapDocumentRefusal.TerrainCornerCutSubdivisionOdd : null;
         }
         else kind = geometry.Coplanar() ? MapCellConversionClass.ExactCoplanar : MapCellConversionClass.ExactDiagonal;
-        return new(geometry.CellX, geometry.CellZ, kind, reason);
+        refusal ??= geometry.Surface.PresencePolicy == MapPresencePolicy.LegacyTileWorld
+            ? MapDocumentRefusal.TerrainAuthoredDifference : null;
+        return new(geometry.CellX, geometry.CellZ, kind, reason)
+        {
+            Finding = refusal is { } rule ? new(rule, reason ?? "LegacyTileWorld arithmetic policy")
+            {
+                SurfaceId = geometry.Surface.Id,
+                Patch = geometry.Patch.Key,
+                Address = MapLatticeAddress.Corner(geometry.CellX, geometry.CellZ),
+                ActualInteger = subdivision,
+                ConversionClass = kind,
+                PresencePolicy = geometry.Surface.PresencePolicy
+            } : null
+        };
     }
 }

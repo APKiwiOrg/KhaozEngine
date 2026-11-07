@@ -42,11 +42,61 @@ public sealed class TileGroundSteepLoadOrderTests
             int textures = factory.Textures.Count;
             int buffers = factory.Buffers.Count;
 
-            var ex = Assert.Throws<ArgumentException>(() => scene.LoadTileGroundMaterial(1, 1, layers));
+            var ex = Assert.Throws<TileGroundSteepArgumentException>(() => scene.LoadTileGroundMaterial(1, 1, layers));
 
-            Assert.Contains("names itself", ex.Message);
+            Assert.Equal("layers", ex.ParamName);
+            Assert.Equal(TileGroundSteepRefusal.CompanionIsSelf, ex.Reason);
+            Assert.Equal(0, ex.LayerIndex);
+            Assert.Equal(0, ex.CompanionSlot);
             Assert.Equal(textures, factory.Textures.Count);
             Assert.Equal(buffers, factory.Buffers.Count);
+        }
+    }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(TileGroundMaterialConfig.MaxMaterials + 1)]
+    public void Upload_refuses_the_same_layer_counts_as_params_construction(int count)
+    {
+        var layers = new TileGroundLayerImage[count];
+        for (int i = 0; i < count; i++) layers[i] = new() { AlbedoRgba = new byte[4] };
+        var (factory, scene) = NewScene();
+        using (scene)
+        {
+            var error = Assert.Throws<TileGroundUploadArgumentException>(() =>
+                scene.LoadTileGroundMaterial(1, 1, layers));
+
+            Assert.Equal("layers", error.ParamName);
+            Assert.Equal(TileGroundUploadRefusal.LayerCountOutsideRange, error.Reason);
+            Assert.Equal(count, error.LayerCount);
+            Assert.Equal(1, error.MinimumLayerCount);
+            Assert.Equal(TileGroundMaterialConfig.MaxMaterials, error.MaximumLayerCount);
+        }
+    }
+
+    [Fact]
+    public void Upload_refuses_a_slice_with_the_wrong_byte_length()
+    {
+        var layers = new[]
+        {
+            new TileGroundLayerImage { AlbedoRgba = new byte[16] },
+            new TileGroundLayerImage { AlbedoRgba = new byte[4] },
+        };
+        var (factory, scene) = NewScene();
+        using (scene)
+        {
+            var error = Assert.Throws<TileGroundUploadArgumentException>(() =>
+                scene.LoadTileGroundMaterial(2, 2, layers));
+
+            Assert.Equal("layers", error.ParamName);
+            Assert.Equal(TileGroundUploadRefusal.LayerByteLengthMismatch, error.Reason);
+            Assert.Equal(1, error.LayerIndex);
+            Assert.Equal(4, error.ActualByteLength);
+            Assert.Equal(16, error.ExpectedByteLength);
+            Assert.Equal(2, error.Width);
+            Assert.Equal(2, error.Height);
+            layers[1].AlbedoRgba = new byte[16];
+            Assert.True(scene.LoadTileGroundMaterial(2, 2, layers).IsValid);
         }
     }
 

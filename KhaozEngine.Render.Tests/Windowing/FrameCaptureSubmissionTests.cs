@@ -62,6 +62,7 @@ public sealed class FrameCaptureSubmissionTests
         using var taps = new FrameCaptureTaps(device, null);
         var frame = new Frame { Commands = commands };
         var consumer = new Consumer();
+        var planned = new InvalidOperationException("planned " + phase);
         int after = 0;
         taps.Add(new Tap(_ => Fail("tap"), _ => after++));
         if (phase == "begin") device.BeforeBegin = () => Fail("begin");
@@ -73,7 +74,7 @@ public sealed class FrameCaptureSubmissionTests
                     Assert.True(f.Submission.TryRegister(consumer));
                     Fail("prepare");
                 }, _ => Fail("frame"), taps, rendererOwned));
-            Assert.Equal("planned " + phase, failure.Message);
+            Assert.Same(planned, failure);
             Assert.Equal(1, consumer.Abandons);
             Assert.Equal(0, consumer.Submissions);
             Assert.Equal(0, device.Submits);
@@ -83,7 +84,7 @@ public sealed class FrameCaptureSubmissionTests
         }
         finally { frame.DisposeSubmission(); }
 
-        void Fail(string at) { if (phase == at) throw new InvalidOperationException("planned " + at); }
+        void Fail(string at) { if (phase == at) throw planned; }
     }
 
     [Fact]
@@ -114,12 +115,13 @@ public sealed class FrameCaptureSubmissionTests
         using var taps = new FrameCaptureTaps(device, null);
         var frame = new Frame { Commands = commands };
         var consumer = new Consumer();
-        taps.Add(new Tap(_ => { }, _ => throw new InvalidOperationException("after submit")));
+        var afterSubmit = new InvalidOperationException("after submit");
+        taps.Add(new Tap(_ => { }, _ => throw afterSubmit));
         try
         {
             var failure = Assert.Throws<InvalidOperationException>(() => FramePhases.Run(frame, true, device,
                 commands, Color.Black, f => Assert.True(f.Submission.TryRegister(consumer)), _ => { }, taps, 16));
-            Assert.Equal("after submit", failure.Message);
+            Assert.Same(afterSubmit, failure);
             Assert.Equal(1, device.Submits);
             Assert.Equal(1, consumer.Submissions);
             Assert.Equal(0, consumer.Abandons);

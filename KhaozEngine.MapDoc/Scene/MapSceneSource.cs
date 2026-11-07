@@ -118,7 +118,7 @@ public sealed class MapSceneSource
 
             void AddOwner(string id, MapTileCoord storage, MapEffectiveResolutionInput input, bool prepaidWater = false)
             {
-                if (owners.ContainsKey(id)) throw new MapDocumentException("Duplicate scene owner.");
+                if (owners.ContainsKey(id)) throw new MapDocumentException(MapDocumentRefusal.IdentityDuplicate, "Duplicate scene owner.") { OwnerId = id, Tile = storage };
                 // Metadata row admission precedes effective remap/copy work.
                 long prospective = input.Placements.Count + (input.Prefabs?.Instances.Sum(i => i.Bindings.Entries.Count) ?? 0) +
                     (input.BuildingIntent?.Lights.Count ?? 0) + (input.BuildingIntent?.Markers.Count ?? 0) +
@@ -132,9 +132,9 @@ public sealed class MapSceneSource
                     if (child is MapPrefabPlacementChild placement)
                     {
                         requiredAssets.Add(placement.Value.AssetId!);
-                        if (!allNames.Add(placement.Value.Id)) throw new MapDocumentException("Duplicate scene placement identity.");
+                        if (!allNames.Add(placement.Value.Id)) throw new MapDocumentException(MapDocumentRefusal.IdentityDuplicate, "Duplicate scene placement identity.") { PlacementId = placement.Value.Id, Tile = storage };
                         if (placement.Value.NumericId is { } number && (number <= 0 || number > root.NumericIdHighWaterMark || !numeric.Add(number)))
-                            throw new MapDocumentException("Invalid or duplicate scene numeric identity.");
+                            throw new MapDocumentException(number <= 0 ? MapDocumentRefusal.ValueOutsideRange : number > root.NumericIdHighWaterMark ? MapDocumentRefusal.NumericIdHighWaterExceeded : MapDocumentRefusal.IdentityDuplicate, "Invalid or duplicate scene numeric identity.") { PlacementId = placement.Value.Id, NumericId = number, HighWaterMark = root.NumericIdHighWaterMark };
                     }
                     var key = Key(child.Key);
                     var pose = expanded.Transforms.GetValueOrDefault(MapEffectiveContext.Key(child.Key.Kind, child.Key.Key), new(0, 0, 0, 0, 1));
@@ -178,7 +178,7 @@ public sealed class MapSceneSource
                         long bytes = MapSceneResourceBounds.MetadataBytes(child);
                         scan.Retain(checked(bytes + Encoding.UTF8.GetByteCount(id)), checked(dependencies.Count + 1));
                     }
-                    if (!producing.TryAdd(key, id)) throw new MapDocumentException("Duplicate effective scene resource identity.");
+                    if (!producing.TryAdd(key, id)) throw new MapDocumentException(MapDocumentRefusal.IdentityDuplicate, "Duplicate effective scene resource identity.") { OwnerId = id, EntityId = child.Key.Key, ChildKind = child.Key.Kind };
                     ownerRows.Add(key);
                     dependencyEdges.Add(key, dependencies);
                     rows.Add(key, new(key, storage, bounds ?? new(double.NaN, 0, 0, 0, 0, 0), MapPrefabIdentity.ChildDigest(child)));
@@ -208,7 +208,7 @@ public sealed class MapSceneSource
                 scan.RetainBytes(MapSceneResourceBounds.InstanceBytes(instance));
                 var resource = assets.GetResource(instance.ResourceId);
                 if (resource.Kind != MapResourceKind.Prefab || resource.Reference.Sha256 != instance.ResourceSha256)
-                    throw new MapDocumentException("Scene instance differs from its verified prefab pin.");
+                    throw new MapDocumentException(MapDocumentRefusal.PrefabAssetPinMismatch, "Scene instance differs from its verified prefab pin.") { InstanceId = instance.Id, ResourceId = instance.ResourceId, ExpectedHash = instance.ResourceSha256, ActualHash = resource.Reference.Sha256 };
                 AddOwner("Prefab:" + instance.Id, MapTileGrid.CoordOf(instance.Transform.Position.X, instance.Transform.Position.Z, source.Tiles.TileSize),
                     Empty() with { Prefabs = new(1, 1, new[] { MapPrefabJson.Copy(instance) }, []) });
             }
@@ -229,7 +229,7 @@ public sealed class MapSceneSource
             }
             foreach (var reach in externalLights)
             {
-                if (!poses.TryGetValue("Placement:" + reach.Owner, out var ownerPose)) throw new MapDocumentException("Missing scene light owner.");
+                if (!poses.TryGetValue("Placement:" + reach.Owner, out var ownerPose)) throw new MapDocumentException(MapDocumentRefusal.ReferenceMissing, "Missing scene light owner.") { PlacementId = reach.Owner, EntityId = reach.Key.Id, SubjectKind = "light owner" };
                 bool explicitFrame = transformsByKey.Contains((MapPrefabChildKind.Light, reach.Key.Id));
                 var pose = explicitFrame ? poses.GetValueOrDefault("Light:" + reach.Key.Id, reach.Local)
                     : rootLightIds.Contains(reach.Key.Id) ? ownerPose : MapEffectiveTransform.Compose(ownerPose, reach.Local);

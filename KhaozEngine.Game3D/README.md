@@ -16,7 +16,8 @@ Pulls in:
   (`KhaozEngine.Gpu.Metal`, `KhaozEngine.Gpu.D3D11`, `KhaozEngine.Gpu.Vulkan`), and the GPU-free
   `Foundation` (which also ships the buildTransitive game-head build defaults). It also carries
   `KhaozEngine.Localization.Analyzers`, including the `StringId` generator, and the
-  `KhaozEngine.CodeHealth.Analyzers` file-size ratchet. Both apply in the consumer's build.
+  `KhaozEngine.CodeHealth.Analyzers` file-size and test-health ratchets. Both analyzer packages apply
+  in the consumer's build.
 - `KhaozEngine.Render3D` - the stylized 3D renderer: `Scene3D`, glTF + procedural meshes,
   materials/lighting, skinning, billboards, ground decals.
 - `KhaozEngine.Attachments.Render3D` - rigid part definitions bound to the body's posed skeleton,
@@ -35,9 +36,9 @@ Pulls in:
 - `KhaozEngine.Particles.Render3D` - the 3D draw layer for the deterministic particle sim.
 - `KhaozEngine.Physics` - the dependency-free physics seam (already in Foundation, referenced
   here so the seam is explicit for 3D character/world collision wiring).
-- `KhaozEngine.CodeHealth.Analyzers` - the KESIZE file-size ratchet. The direct dependency uses
-  `PrivateAssets="none"` so its analyzer assembly and `buildTransitive` baseline discovery props both flow
-  through the packed umbrella and run in the consuming project's build.
+- `KhaozEngine.CodeHealth.Analyzers` - the KESIZE file-size and KETEST test-health ratchets. The direct
+  dependency uses `PrivateAssets="none"` so its analyzer assembly and `buildTransitive` baseline
+  discovery props both flow through the packed umbrella and run in the consuming project's build.
 
 The three graphics backends arrive through `Game2D`. `AppWindow` and both snapshot hosts call
 `GpuBackends.RegisterResolvedIfUnregistered`, which registers the resolved backend and this platform's fallback.

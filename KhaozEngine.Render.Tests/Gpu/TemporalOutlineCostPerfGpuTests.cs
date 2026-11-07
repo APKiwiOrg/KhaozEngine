@@ -24,9 +24,11 @@ namespace KhaozEngine.Tests.Gpu
     {
         const int Rounds = 15, Warm = 3, Block = 12, Settle = 8;
 
+        [Trait("Category", "Diagnostic")]
         [GpuFact(RequiresRealGpu = true)]
         public void TheOutlineAtQualityIsMeasuredAt1440p() => Run(2560, 1440, TemporalUpscale.Quality);
 
+        [Trait("Category", "Diagnostic")]
         [GpuFact(RequiresRealGpu = true)]
         public void TheOutlineAtNativeIsMeasuredAt1440p() => Run(2560, 1440, TemporalUpscale.Native);
 

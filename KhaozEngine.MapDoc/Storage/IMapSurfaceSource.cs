@@ -6,7 +6,12 @@ namespace KhaozEngine.MapDoc.Storage;
 public enum MapPatchStatus { Present, KnownEmpty, Unloaded, Missing, Corrupt }
 /// <summary>A detached patch result. PagesRead counts newly decoded directory and index pages.</summary>
 public sealed record MapPatchRead(MapPatchKey Key, MapPatchStatus Status, MapSurfacePatch? Patch,
-    string? SemanticSha256, string? Detail, int PagesRead);
+    string? SemanticSha256, string? Detail, int PagesRead)
+{
+    /// <summary>The original structured stored-payload failure, when available, independent of the read status.</summary>
+    public MapDocumentFinding? Finding { get; init; }
+    internal System.Exception? Cause { get; init; }
+}
 /// <summary>Per-call acquisition limits, independent of page cache residency.</summary>
 /// <remarks>
 /// MaxPageReads bounds directory and index page visits, including cached and unread pages.

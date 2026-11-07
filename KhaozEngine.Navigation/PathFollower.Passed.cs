@@ -11,24 +11,24 @@ public sealed partial class PathFollower
     const double PassedLateralFloatSteps = 4d;
 
     /// <summary>
-    /// Whether the feet have passed the active waypoint on a straight run. The active waypoint must be a
+    /// Whether the feet have passed the waypoint at <paramref name="index"/> on a straight run. It must be a
     /// <see cref="NavPath.IsCollinearPassThrough"/> waypoint on the agent's layer (when the follower has a
     /// space), the feet must sit at or beyond it along the line to its successor, and their lateral distance
     /// from that line must be at most <see cref="PathFollowConfig.AcceptRadius"/> plus four float steps at the
     /// largest absolute coordinate involved. All geometry runs in double precision.
     /// </summary>
-    bool PassedActive(Vector2 feetXz, int? agentLayer)
+    bool PassedWaypoint(int index, Vector2 feetXz, int? agentLayer)
     {
-        if (!_path!.IsCollinearPassThrough(_index))
+        if (!_path!.IsCollinearPassThrough(index))
             return false;
 
         IReadOnlyList<NavWaypoint> waypoints = _path.Waypoints;
-        NavWaypoint active = waypoints[_index];
-        if (agentLayer is not null && active.Layer != agentLayer.Value)
+        NavWaypoint waypoint = waypoints[index];
+        if (agentLayer is not null && waypoint.Layer != agentLayer.Value)
             return false;
 
-        Vector2 w = active.Position;
-        Vector2 n = waypoints[_index + 1].Position;
+        Vector2 w = waypoint.Position;
+        Vector2 n = waypoints[index + 1].Position;
         double dx = (double)n.X - w.X;
         double dz = (double)n.Y - w.Y;
         double px = (double)feetXz.X - w.X;

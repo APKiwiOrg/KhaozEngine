@@ -44,16 +44,15 @@ public class FacingRenderStateTests
 
         client.SendInput(Face(2.35f));
 
-        // Predicted, so it is there on the very frame the input was sent - no round trip, and un-quantized, because
-        // the local owner reads its own prediction rather than the wire's 16-bit turn fraction. (Read BEFORE the poll
-        // below: once a correction lands with an empty pending window the predicted state IS the decoded basis, which
-        // is equally correct but no longer a statement about prediction.)
-        Assert.Equal(2.35f, Local(client).FacingYaw);
+        // Prediction includes publication before a snapshot arrives, so rendering sees the canonical heading.
+        float target = MovementState.DecodeFacingYaw(MovementState.QuantizeFacingYaw(2.35f));
+        Assert.Equal(target, Local(client).FacingYaw);
 
         server.Poll(); server.Tick(cfg.TickSeconds); client.Poll();
         Assert.True(server.TryGetPlayerState(0, out PlayerMoveState auth));
-        Assert.Equal(2.35f, auth.Move.FacingYaw, 5);   // and the authority agrees
-        Assert.Equal(2.35f, Local(client).FacingYaw, 3);   // still within a wire quantum after the correction
+        Assert.Equal(target, auth.Move.FacingYaw);
+        Assert.Equal(target, Local(client).FacingYaw);
+
     }
 
     [Fact]

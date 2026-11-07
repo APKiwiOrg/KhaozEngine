@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using KhaozEngine.Gpu;
+using KhaozEngine.Gpu.Vulkan;
 using KhaozEngine.Gpu.Vulkan.Internal;
 using KhaozEngine.Render3D.Rendering;
 using Xunit;
@@ -97,6 +98,9 @@ namespace KhaozEngine.Tests.Gpu
                 ["Model"] = L([.. AtmosphereBindings.AppendLayout(U("U", VF), Ro("PointLights", F), Ro("PointLightClusters", F), T("Albedo"),
                     T("NormalMap"), T("RoughnessMap"), S("Sampler"), T("ShadowMap"), S("ShadowSamp"),
                     T("PointShadowMap"), T("PointShadowTransientMap")), T("InteriorCut"), Ro("WaterVolumes", F)]),
+                ["Model.foliageOpaque"] = L([.. AtmosphereBindings.AppendLayout(U("U", VF), Ro("PointLights", F),
+                    Ro("PointLightClusters", F), T("ShadowMap"), S("ShadowSamp"), T("PointShadowMap"),
+                    T("PointShadowTransientMap")), Ro("WaterVolumes", F)]),
                 ["Foliage"] = L(U("Foliage", V, dynamic: true)),
                 // ModelRenderer.PreparedFoliage.cs. Shared by colour, temporal, cascade and point passes.
                 ["SceneAnchor"] = L(U("SceneAnchor", V)),
@@ -285,8 +289,12 @@ namespace KhaozEngine.Tests.Gpu
             ("GroundDecalRenderer", ["GroundDecal"]),
             ("ModelRenderer", ["Model"]),
             ("ModelRenderer foliage", ["Model", "Foliage"]),
+            ("ModelRenderer foliage opaque", ["Model.foliageOpaque", "Foliage"]),
+            ("ModelRenderer foliage opaque motion", ["Model.foliageOpaque", "Foliage", "Motion.frame"]),
             ("ModelRenderer foliage motion", ["Model", "Foliage", "Motion.frame"]),
             ("ModelRenderer prepared foliage", ["Model", "Foliage", "SceneAnchor"]),
+            ("ModelRenderer prepared foliage opaque", ["Model.foliageOpaque", "Foliage", "SceneAnchor"]),
+            ("ModelRenderer prepared foliage opaque motion", ["Model.foliageOpaque", "Foliage", "Motion.frame", "SceneAnchor"]),
             ("ModelRenderer prepared foliage motion", ["Model", "Foliage", "Motion.frame", "SceneAnchor"]),
             ("ModelRenderer dissolve", ["Model"]),
             ("ModelRenderer splat", ["Model.splatFrame", "Model.splatMaterial"]),
@@ -371,8 +379,8 @@ namespace KhaozEngine.Tests.Gpu
             // R8a adds bounded water and prepared foliage colour, motion, opaque cascade, cutout cascade
             // and point shadow, with BoundedWater, SceneAnchor and the empty opaque material gap.
             // T8-R1 keeps completeness independent of the catalogs themselves.
-            Assert.Equal(71, ShippedLayouts.Count);
-            Assert.Equal(81, ShippedPipelines.Count);
+            Assert.Equal(72, ShippedLayouts.Count);
+            Assert.Equal(85, ShippedPipelines.Count);
             Assert.Equal(ShippedPipelines.Count,
                 ShippedPipelines.Select(p => p.Pipeline).Distinct(StringComparer.Ordinal).Count());
             Assert.Equal(ShippedLayouts.Keys.Order(StringComparer.Ordinal),
@@ -474,16 +482,20 @@ namespace KhaozEngine.Tests.Gpu
             var api = new FakeVulkanDescriptorApi();
             var cache = new VulkanPipelineLayoutCache(api, maxDynamicUniformBuffers: 2);
 
-            NotSupportedException ex = Assert.Throws<NotSupportedException>(
+            VulkanDescriptorLimitException ex = Assert.Throws<VulkanDescriptorLimitException>(
                 () => cache.GetOrCreate([1, 2, 3], dynamicUniformCount: 3));
 
-            Assert.Contains("maxDescriptorSetUniformBuffersDynamic", ex.Message, StringComparison.Ordinal);
-            Assert.Contains("V-D4", ex.Message, StringComparison.Ordinal);
+            Assert.IsAssignableFrom<NotSupportedException>(ex);
+            Assert.Equal(VulkanDescriptorLimitRefusal.DynamicUniformLimitExceeded, ex.Reason);
+            Assert.Equal("maxDescriptorSetUniformBuffersDynamic", ex.LimitName);
+            Assert.Equal(3, ex.RequestedCount);
+            Assert.Equal(2u, ex.Limit);
+            Assert.Equal(3, ex.SetLayoutCount);
             Assert.Equal(0, api.PipelineLayoutCreateCount);
 
             // AND ON EVERY REQUEST, not only the first: the check runs before the dedup lookup, so a layout over
             // the limit cannot be created once and then handed back forever.
-            Assert.Throws<NotSupportedException>(() => cache.GetOrCreate([1, 2, 3], 3));
+            Assert.Throws<VulkanDescriptorLimitException>(() => cache.GetOrCreate([1, 2, 3], 3));
 
             Assert.Equal(2u, cache.MaxDynamicUniformBuffers);
             Assert.NotEqual(0UL, cache.GetOrCreate([1, 2], dynamicUniformCount: 2));
@@ -501,7 +513,7 @@ namespace KhaozEngine.Tests.Gpu
             Assert.Equal(64u, VulkanDescriptorLimits.EffectiveLimit(64));
 
             VulkanDescriptorLimits.RequirePipelineWithinLimit(8, reportedLimit: 0, setLayoutCount: 1);
-            Assert.Throws<NotSupportedException>(
+            Assert.Throws<VulkanDescriptorLimitException>(
                 () => VulkanDescriptorLimits.RequirePipelineWithinLimit(9, 0, 1));
         }
 
@@ -567,7 +579,7 @@ namespace KhaozEngine.Tests.Gpu
                 api.PipelineLayouts[skinned]);
 
             // A fourth set carrying sky and atmosphere uniform buffers takes it over the same limit.
-            Assert.Throws<NotSupportedException>(
+            Assert.Throws<VulkanDescriptorLimitException>(
                 () => cache.GetOrCreate(new[] { main, fragment, palette, extra }));
         }
     }

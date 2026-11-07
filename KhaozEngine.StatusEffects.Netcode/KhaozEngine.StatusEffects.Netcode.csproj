@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <PackageId>KhaozEngine.StatusEffects.Netcode</PackageId>
+    <Version>$(KhaozEngineVersion)</Version>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <Description>Transient status effect replication and changed-actor projection for the Server umbrella. Publishes shown effect windows through an ECS component and a ShardHost target. Effects replicate and migrate without persistence.</Description>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../KhaozEngine.StatusEffects/KhaozEngine.StatusEffects.csproj" />
+    <ProjectReference Include="../KhaozEngine.Ecs/KhaozEngine.Ecs.csproj" />
+    <ProjectReference Include="../KhaozEngine.Replication/KhaozEngine.Replication.csproj" />
+    <ProjectReference Include="../KhaozEngine.Sharding/KhaozEngine.Sharding.csproj" />
+    <None Include="README.md" Pack="true" PackagePath="\" />
+  </ItemGroup>
+</Project>

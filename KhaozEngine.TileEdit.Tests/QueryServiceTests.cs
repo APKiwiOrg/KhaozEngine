@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using KhaozEngine.TileEdit;
 using KhaozEngine.TileWorld;
@@ -108,7 +109,7 @@ public class QueryServiceTests
         using var f = new Fixture();
 
         ArgumentException layer = Assert.Throws<ArgumentException>(() => f.Query.TilesGetRect(Corner, 0, "heights"));
-        Assert.Contains("underlay", layer.Message, StringComparison.Ordinal);
+        Assert.Equal("layer", layer.ParamName);
         Assert.Throws<ArgumentException>(() => f.Query.TilesGetRect(new TileRect(0, 0, 0, 4), 0, "underlay"));
     }
 
@@ -196,7 +197,9 @@ public class QueryServiceTests
         Assert.Equal(new[] { f.TreeId }, f.Query.ObjectFind(archetypeId: "tree").Select(o => o.Id).ToArray());
         Assert.Equal(new[] { f.TreeId }, f.Query.ObjectFind(tag: "forest").Select(o => o.Id).ToArray());
         Assert.Equal(3, f.Query.ObjectFind().Count);
-        Assert.Throws<TileWorldException>(() => f.Query.ObjectGet(9999));
+        TileWorldException missing = Assert.Throws<TileWorldException>(() => f.Query.ObjectGet(9999));
+        Assert.Equal(TileWorldRefusal.ObjectMissing, missing.Reason);
+        Assert.Equal(9999, missing.ObjectId);
     }
 
     [Fact]
@@ -246,7 +249,9 @@ public class QueryServiceTests
         PrefabFileInfo hut = Assert.Single(prefabs);
         Assert.Equal("hut", hut.Name);
         Assert.True(hut.SizeBytes > 0);
-        Assert.Throws<TileWorldException>(() => f.Query.PrefabList("nowhere"));
+        TileWorldException missing = Assert.Throws<TileWorldException>(() => f.Query.PrefabList("nowhere"));
+        Assert.Equal(TileWorldRefusal.PrefabDirectoryMissing, missing.Reason);
+        Assert.Equal(Path.GetFullPath(Path.Combine(f.Session.DocumentPath!, "nowhere")), missing.SourceName);
     }
 
     /// <summary>A relative path has nothing to be relative TO without an open world, and falling back to the
@@ -258,7 +263,8 @@ public class QueryServiceTests
         var closed = new TileEditSession();
 
         TileWorldException ex = Assert.Throws<TileWorldException>(() => new QueryService(closed).PrefabList("."));
-        Assert.Contains("world_open", ex.Message, StringComparison.Ordinal);
+        Assert.Equal(TileWorldRefusal.SessionNotOpen, ex.Reason);
+        Assert.Equal(new[] { "world_open", "world_create" }, ex.RequiredTools);
 
         var mutate = new MutationService(closed);
         Assert.Throws<TileWorldException>(() => mutate.PrefabPlace("hut.json", 0, 0, 0));
@@ -286,7 +292,16 @@ public class QueryServiceTests
         Assert.Equal("tree", unchanged.Archetypes[0].Id);
         Assert.Equal(1, unchanged.AllowedUnderlays[0]);
         Assert.Equal(new[] { "meadow" }, f.Query.FoliageGet().Select(x => x.Id).ToArray());
-        Assert.Throws<TileWorldException>(() => f.Query.FoliageGet("missing"));
+        int depth = f.Session.Summary().UndoDepth;
+        string hash = f.Session.Summary().WorldHash;
+        TileFoliageLayer original = f.Session.Read(e => e.Document.GetFoliageLayer("meadow")!);
+
+        TileWorldException ex = Assert.Throws<TileWorldException>(() => f.Query.FoliageGet("missing"));
+        Assert.Equal(TileWorldRefusal.FoliageLayerMissing, ex.Reason);
+        Assert.Equal("missing", ex.LayerId);
+        Assert.Equal(depth, f.Session.Summary().UndoDepth);
+        Assert.Equal(hash, f.Session.Summary().WorldHash);
+        Assert.Same(original, Assert.Single(f.Session.Read(e => e.Document.FoliageLayers)));
     }
 
     /// <summary>The collision map answers Blocked for a plane it does not have, so a query handed a bad plane
@@ -298,7 +313,9 @@ public class QueryServiceTests
 
         ArgumentOutOfRangeException ex = Assert.Throws<ArgumentOutOfRangeException>(() =>
             f.Query.IsWalkable(0, 0, 9));
-        Assert.Contains("0..3", ex.Message, StringComparison.Ordinal);
+        Assert.Equal("plane", ex.ParamName);
+        Assert.Equal(9, ex.ActualValue);
+        Assert.Null(Record.Exception(() => f.Query.IsWalkable(0, 0, 3)));
 
         Assert.Throws<ArgumentOutOfRangeException>(() => f.Query.CollisionAt(0, 0, 9));
         Assert.Throws<ArgumentOutOfRangeException>(() => f.Query.Path(0, 0, 1, 1, 9));

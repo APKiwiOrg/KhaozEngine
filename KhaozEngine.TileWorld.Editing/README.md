@@ -172,6 +172,8 @@ undo stack.
 layer before applying and report its world-metre raster extent as tile dirty rects, including both planes when
 a replacement moves between them. Collision rebaking receives those rects through the ordinary command path,
 but foliage itself contributes no flags, so collision remains byte identical across apply, undo and redo.
+Removing an absent layer throws `TileWorldException` with `TileWorldRefusal.FoliageLayerMissing` and `LayerId`
+before changing the document or undo history.
 
 **`SetClearanceCommand`** replaces the whole `TileClearanceSettings` declaration, or removes it when the
 settings are null, and puts the previous one back on revert. The settings are immutable, so every clearance edit
@@ -231,6 +233,31 @@ carries on.
   `SnapshotRectCommand` does track and restore that null-ness for the rect it owns, over a corner span one
   region wider and taller than its tiles, which is why a prefab stamp undoes to the same bytes.
 
+## Refusals
+
+Required object, marker and foliage lookups and PGM heightmap reads keep the exact `TileWorldException` type.
+Inspect its `Reason` and the identifiers below, rather than parsing the message.
+
+| `TileWorldRefusal` reason | Refuses | Identifiers |
+| --- | --- | --- |
+| `CatalogArchetypeMissing` | Constructing a placement for an archetype absent from the catalogs | `ArchetypeId` |
+| `ObjectMissing` | Moving, rotating, removing or setting tags on an absent object id | `ObjectId` |
+| `MarkerMissing` | Removing an absent marker name | `MarkerName` |
+| `FoliageLayerMissing` | Constructing a foliage removal for an absent layer | `LayerId` |
+| `PgmReadFailed` | A PGM file that cannot be read | `SourceName`, original `InnerException` |
+| `PgmMagicUnsupported` | An image without the binary PGM P5 signature | `SourceName`, `ExpectedMagic` = `P5`, owned read-only `ActualMagic` snapshot of up to two bytes |
+| `PgmDimensionsNonPositive` | A PGM with a non-positive width or height | `SourceName`, `Width`, `Height` |
+| `PgmMaxValueOutsideRange` | A maxval outside 1 through 65535 | `SourceName`, `Field` = `maxval`, `MaxValue`, `Minimum` = 1, `Maximum` = 65535 |
+| `PgmRasterDelimiterMissing` | A maxval without the required raster whitespace delimiter | `SourceName`, `Field` = `maxval`, `ByteOffset` |
+| `PgmRasterTruncated` | A raster shorter than its header requires | `SourceName`, `Width`, `Height`, `BitsPerSample`, `RequiredByteCount`, `AvailableByteCount` |
+| `PgmHeaderSeparatorMissing` | A header integer without a preceding separator | `SourceName`, `Field`, `ByteOffset` |
+| `PgmHeaderIntegerMalformed` | A missing or non-decimal header integer | `SourceName`, `Field`, `ByteOffset` |
+| `PgmHeaderIntegerOverflow` | A header integer above the supported integer range | `SourceName`, `Field`, `ByteOffset`, `ParsedValue` |
+
+Document admission reasons also propagate unchanged through commands, including `ObjectIdDuplicate` when
+re-adding an occupied id and `MarkerNameInUnloadedRegion` when a marker name belongs to an unloaded region.
+The [TileWorld refusal table](../KhaozEngine.TileWorld/README.md#refusals) lists their identifiers.
+
 ## `TileEditOps`
 
 Static factories that READ the document and return the command expressing the edit. Nothing here mutates: the
@@ -284,17 +311,31 @@ much of the edit landed inside the authored world.
 ## `PgmReader` and `PgmImage`
 
 `PgmReader.Read(path)` and `Read(bytes, name?)` decode binary PGM (netpbm P5) greyscale images, 8 or 16 bit,
-which remains the smallest heightmap format for generated tooling. The path overload also accepts `.png` through
-`KhaozEngine.Imaging.PngReader`. Its PNG overload ignores alpha and reads the first color channel, preserving
-ordinary greyscale RGB heightmaps while retaining all 16 bits of sample precision.
+which remains the smallest heightmap format for generated tooling. `TileEditOps.ImportHeights(string, ...)`
+also accepts `.png` through `KhaozEngine.Imaging.PngReader`. Its `PngImage` overload ignores alpha and reads
+the first color channel, preserving ordinary greyscale RGB heightmaps and all 16 bits of sample precision.
+The PNG path propagates `PngDecodeDataException : MalformedDataException` or
+`PngDecodeNotSupportedException : NotSupportedException`, with `PngDecodeRefusal Reason` and the
+[Imaging identifiers](../KhaozEngine.Imaging/README.md#refusals). PNG callers catch `MalformedDataException`
+in place of the former `InvalidDataException` boundary.
 
 `PgmImage(Width, Height, MaxValue, Samples)` carries the decoded samples row-major with the TOP row first, the
 order the file itself is written in, and `Sample(x, y)` reads one with per-axis bounds checks (a raw flat index
 would quietly hand back the wrong sample for an out-of-range y on a wide image rather than throwing).
 
-Rules the reader enforces, each refused with a `TileWorldException` naming the file and the problem rather than
-decoded on a guess, because a heightmap that reads a byte out of step is a terrain nobody can tell is wrong
-until it has been authored on top of:
+Every PGM refusal carries a `TileWorldRefusal` reason and `SourceName` on `TileWorldException`, as listed in
+the [refusal table](#refusals). File reads use the supplied path, or `<empty path>` for an empty path.
+In-memory reads use the supplied name, or `<bytes>` when it is null or empty. `PgmReadFailed` keeps the
+original file-read cause as `InnerException`. `ActualMagic` is a copied read-only snapshot, so changing the
+input bytes or casting the exposed collection cannot change the recorded signature. `ByteOffset` is zero-based,
+naming the byte where the guard refused, or the input length at end of input. An overflow names the digit
+that first exceeded the integer range, and `ParsedValue` is the value accumulated through that digit.
+`RequiredByteCount` and `AvailableByteCount` are `long` values, retaining even a 100000 by 100000 eight-bit
+raster's 10000000000-byte requirement before allocation. The existing `Minimum` and `Maximum` members are
+`float?` values and represent the integer maxval bounds exactly.
+
+The reader enforces these rules before decoding, because a heightmap that reads a byte out of step is a
+terrain nobody can tell is wrong until it has been authored on top of:
 
 - The first two bytes must be the magic `P5`, so a P2 ascii greymap or a P6 colour pixmap is refused rather
   than read as one.

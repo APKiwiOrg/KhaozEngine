@@ -95,6 +95,7 @@ public class PathFollowerRegionTests
     {
         var planner = new ScriptedPlanner();
         planner.Enqueue(Complete(Walk(10f, 0f)));
+        planner.Enqueue(Complete(Walk(10f, 0f)));
         var follower = new PathFollower(planner);
         NavGoalRegion region = SmallRegion(new Vector3(10f, 0f, 0f));
         follower.Tick(Vector3.Zero, region, AgentRadius, 0.016f);
@@ -108,6 +109,13 @@ public class PathFollowerRegionTests
         Assert.Equal(new Vector2(10f, 0f), outsideFinalRegion.ActiveWaypoint);
         Assert.NotNull(follower.ActivePath);
         Assert.Equal(0, follower.ActiveWaypointIndex);
+        Assert.Equal(2, planner.Calls);
+
+        PathFollowOutput freshTerminal = follower.Tick(outsideFeet, region, AgentRadius, 0.1f);
+        Assert.Equal(2, planner.Calls);
+        Assert.Equal(PathFollowState.Following, freshTerminal.State);
+        Assert.Equal(Vector2.UnitX, freshTerminal.WorldDir);
+        Assert.Equal(new Vector2(10f, 0f), freshTerminal.ActiveWaypoint);
 
         var memberFeet = new Vector3(10f, 0f, 0f);
         PathFollowOutput actualMember = follower.Tick(memberFeet, region, AgentRadius, 0.016f);
@@ -117,7 +125,7 @@ public class PathFollowerRegionTests
         Assert.Equal(Vector2.Zero, actualMember.WorldDir);
         Assert.Null(follower.ActivePath);
         Assert.Equal(0, follower.ActiveWaypointIndex);
-        Assert.Equal(1, planner.Calls);
+        Assert.Equal(2, planner.Calls);
     }
 
     [Fact]
@@ -362,7 +370,7 @@ public class PathFollowerRegionTests
     [Theory]
     [InlineData(1f, 0f)]
     [InlineData(0f, 0.5f)]
-    public void TerminalCompleteOutsideMovedRegionReplansAfterSubToleranceDrift(float xDrift, float yDrift)
+    public void TerminalCompleteOutsideMovedRegionReplansImmediatelyAfterSubToleranceDrift(float xDrift, float yDrift)
     {
         var planner = new ScriptedPlanner();
         planner.Enqueue(Complete(Walk(10.5f, 0.5f)));
@@ -374,14 +382,14 @@ public class PathFollowerRegionTests
         var movedEndpoint = new Vector3(10.5f + xDrift, yDrift, 0.5f);
         NavGoalRegion moved = SmallRegion(movedEndpoint);
 
-        PathFollowOutput cooling = follower.Tick(oldEndpoint, moved, AgentRadius, 0.1f);
+        PathFollowOutput cooling = follower.Tick(oldEndpoint - Vector3.UnitX * 0.75f, moved, AgentRadius, 0.1f);
 
         Assert.False(moved.Contains(oldEndpoint));
         Assert.Equal(1, planner.Calls);
         Assert.Equal(PathFollowState.Following, cooling.State);
-        Assert.Equal(Vector2.Zero, cooling.WorldDir);
+        Assert.Equal(Vector2.UnitX, cooling.WorldDir);
 
-        PathFollowOutput replanned = follower.Tick(oldEndpoint, moved, AgentRadius, 0.4f);
+        PathFollowOutput replanned = follower.Tick(oldEndpoint, moved, AgentRadius, 0.016f);
 
         Assert.Equal(2, planner.Calls);
         Assert.Equal(PathFollowState.Following, replanned.State);

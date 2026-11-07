@@ -38,10 +38,14 @@ namespace KhaozEngine.Tests.Gpu
             uint layers = ActualLayers(description);
             Assert.Equal(1u, layers);
 
-            var thrown = Assert.Throws<ArgumentOutOfRangeException>(
+            var thrown = Assert.Throws<GpuTextureTransferRangeException>(
                 () => VulkanUploadBounds.RequireArrayLayer(1, layers));
 
             Assert.Equal("arrayLayer", thrown.ParamName);
+            Assert.Equal(GpuTextureTransferRefusal.SubresourceOutOfRange, thrown.Reason);
+            Assert.Equal(1u, thrown.ArrayLayer);
+            Assert.Equal(1u, thrown.ArrayLayers);
+            Assert.IsAssignableFrom<ArgumentOutOfRangeException>(thrown);
         }
 
         /// <summary>
@@ -72,7 +76,7 @@ namespace KhaozEngine.Tests.Gpu
 
             for (uint layer = 0; layer < 4; layer++) VulkanUploadBounds.RequireArrayLayer(layer, layers);
 
-            Assert.Throws<ArgumentOutOfRangeException>(() => VulkanUploadBounds.RequireArrayLayer(4, layers));
+            Assert.Throws<GpuTextureTransferRangeException>(() => VulkanUploadBounds.RequireArrayLayer(4, layers));
         }
 
         /// <summary>
@@ -92,7 +96,7 @@ namespace KhaozEngine.Tests.Gpu
             Assert.Equal(6u, layers);
 
             VulkanUploadBounds.RequireArrayLayer(5, layers);
-            Assert.Throws<ArgumentOutOfRangeException>(() => VulkanUploadBounds.RequireArrayLayer(6, layers));
+            Assert.Throws<GpuTextureTransferRangeException>(() => VulkanUploadBounds.RequireArrayLayer(6, layers));
         }
 
         // VulkanTexture.ActualArrayLayers, spelled out: the view plan comes from the usage bits and the plan is
@@ -110,10 +114,15 @@ namespace KhaozEngine.Tests.Gpu
         [Fact]
         public void AOneMipTextureRefusesLevelOneByName()
         {
-            var thrown = Assert.Throws<ArgumentOutOfRangeException>(
+            var thrown = Assert.Throws<GpuTextureTransferRangeException>(
                 () => VulkanUploadBounds.RequireMipLevel(1, 1));
 
             Assert.Equal("mipLevel", thrown.ParamName);
+            Assert.Equal(GpuTextureTransferRefusal.SubresourceOutOfRange, thrown.Reason);
+            Assert.Equal(1u, thrown.MipLevel);
+            Assert.Equal(1u, thrown.MipLevels);
+            Assert.Equal(1u, thrown.ActualValue);
+            VulkanUploadBounds.RequireMipLevel(0, 1);
         }
 
         /// <summary>
@@ -125,7 +134,7 @@ namespace KhaozEngine.Tests.Gpu
         {
             for (uint level = 0; level < 4; level++) VulkanUploadBounds.RequireMipLevel(level, 4);
 
-            Assert.Throws<ArgumentOutOfRangeException>(() => VulkanUploadBounds.RequireMipLevel(4, 4));
+            Assert.Throws<GpuTextureTransferRangeException>(() => VulkanUploadBounds.RequireMipLevel(4, 4));
         }
 
         /// <summary>

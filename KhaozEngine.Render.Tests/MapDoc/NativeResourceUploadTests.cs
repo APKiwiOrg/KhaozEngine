@@ -1,6 +1,5 @@
 using System;
 using System.Collections;
-using System.Reflection;
 using System.Linq;
 using System.Numerics;
 using System.Runtime.InteropServices;
@@ -369,11 +368,10 @@ public sealed class NativeResourceUploadTests
             host.Render();
         }
         Frame(); Frame();
-        IEnumerable Cache(string name) => (IEnumerable)typeof(Scene3D).GetField(name, BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(scene)!;
-        Assert.NotEmpty(Cache("_foliagePointSources").Cast<object>());
+        Assert.True(scene.FoliageCacheCountsForTests[0] > 0);
         scene.ReleaseResource(handle);
-        foreach (string name in new[] { "_foliagePointSources", "_foliagePointPending", "_foliagePointSourceOrder", "_foliagePointFaceRuns", "_foliageDraws", "_foliageShadowDraws" })
-            Assert.Empty(Cache(name).Cast<object>());
+        Assert.Equal(new[] { 0, 0, 0, 0, 0, 0 }, scene.FoliageCacheCountsForTests);
+
     }
 
     internal static GltfMesh Triangle() => new(new ModelVertex[]
@@ -381,9 +379,9 @@ public sealed class NativeResourceUploadTests
         new(new(0, 0, 0), Vector3.UnitY, Vector4.One), new(new(1, 0, 0), Vector3.UnitY, Vector4.One),
         new(new(0, 0, 1), Vector3.UnitY, Vector4.One)
     }, new uint[] { 0, 2, 1 });
-    internal static void LoadParts(Scene3D scene)
+    internal static void LoadParts(Scene3D scene, bool opaque = false)
     {
-        foreach (var part in NativeRenderAssetFixtures.FoliageParts()) scene.LoadMesh(part.Mesh, part.Maps);
+        foreach (var part in NativeRenderAssetFixtures.FoliageParts(opaque)) scene.LoadMesh(part.Mesh, part.Maps);
     }
     internal static SceneResourceHandle Publish(Scene3D scene, SceneUploadData data)
     {

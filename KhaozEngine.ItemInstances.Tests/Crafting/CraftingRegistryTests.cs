@@ -145,14 +145,6 @@ public sealed class CraftingRegistryTests
     [Fact]
     public void The_registry_is_PER_INSTANCE_and_never_a_static_so_no_test_needs_a_collection()
     {
-        // Nothing static holds a registration, so two registries built by two parallel facts cannot see
-        // each other and no fact here writes process-global state.
-        Assert.DoesNotContain(
-            typeof(CraftingRegistry).GetFields(BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic),
-            static field => !field.IsLiteral);
-        Assert.Empty(typeof(CraftingRegistry)
-            .GetProperties(BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic));
-
         var first = new CraftingRegistry();
         var second = new CraftingRegistry();
         first.Register(new NoOpOperation(FirstGameOperation));

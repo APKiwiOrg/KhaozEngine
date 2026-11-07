@@ -34,7 +34,8 @@ public sealed class MarkerTools(MutationService mutation, QueryService query)
         double? minX = null, double? minZ = null, double? maxX = null, double? maxZ = null) => ToolGuard.Guard(() =>
         {
             int given = (minX is null ? 0 : 1) + (minZ is null ? 0 : 1) + (maxX is null ? 0 : 1) + (maxZ is null ? 0 : 1);
-            if (given is not (0 or 4)) throw new MapDocumentException("marker_list takes minX, minZ, maxX and maxZ together or not at all.");
+            if (given is not (0 or 4)) throw new MapDocumentException(MapDocumentRefusal.ToolRectangleIncomplete, "marker_list takes minX, minZ, maxX and maxZ together or not at all.")
+            { FieldPath = "minX,minZ,maxX,maxZ", Operation = "marker_list" };
             return query.MarkerList(name, role, tag, enabledOnly, given == 4 ? new MapMarkerRect(minX!.Value, minZ!.Value, maxX!.Value, maxZ!.Value) : null);
         });
 }

@@ -17,18 +17,40 @@ public class SurfaceHeightCallSiteTests
         string[] expected =
         {
             "KhaozEngine.Movement/GroundNavigation.cs:Resolve:RestingHeightAt",
+            // Drop candidate heights, cost and endpoints all use certified physical feet anchors.
+            "KhaozEngine.Movement/ContactDropCandidates.cs:Enumerate:RestingHeightAt",
+            "KhaozEngine.Movement/ContactDropCandidates.cs:Enumerate:RestingHeightAt",
+            "KhaozEngine.Movement/ContactDropCandidates.cs:Measure:RestingHeightAt",
+            "KhaozEngine.Movement/ContactDropCandidates.cs:Measure:RestingHeightAt",
+            "KhaozEngine.Movement/ContactDropProof.cs:Feet:RestingHeightAt",
+            // Terrain candidates and landing bands use certified physical feet anchors too.
+            "KhaozEngine.Movement/ContactTerrainDropCandidates.cs:Enumerate:RestingHeightAt",
+            "KhaozEngine.Movement/ContactTerrainDropCertificate.cs:TargetInBand:RestingHeightAt",
+            "KhaozEngine.Movement/TerrainCandidateContract.cs:Validate:RestingHeightAt",
+            "KhaozEngine.Movement/TerrainCandidateContract.cs:Validate:RestingHeightAt",
+            "KhaozEngine.Navigation/GridPathPlanner.Links.cs:LinkCost:RestingHeightAt",
+            "KhaozEngine.Navigation/GridPathPlanner.Links.cs:LinkCost:RestingHeightAt",
+            "KhaozEngine.Navigation/PathFollower.Drop.cs:TryDrop:RestingHeightAt",
+            "KhaozEngine.Navigation/PathFollower.Drop.cs:TryDrop:RestingHeightAt",
             "KhaozEngine.Movement/RouteStraightener.cs:TryFeet:RestingHeightAt",
+            // Pursuit route membership seats the actual capsule on certified physical feet, not raw surfaces.
+            "KhaozEngine.Movement/GroundPursuitRoute.cs:Validate:RestingHeightAt",
             "KhaozEngine.Movement/PhysicsNavBake.Profiles.cs:Feet:RestingHeightAt",
             "KhaozEngine.Navigation/GridPathPlanner.Region.cs:CellFeet:RestingHeightAt",
             "KhaozEngine.Navigation/NavSpace.cs:LayerAt:RestingHeightAt",
             "KhaozEngine.Movement/PhysicsNavBake.Profiles.cs:IsFloatNode:SurfaceHeightAt",
             // Match original raw source slots before either contact path substitutes resting heights.
             "KhaozEngine.Movement/ContactNavigationSources.cs:BindLayers:SurfaceHeightAt",
+            // #1697. Terrain bindings retain raw source identity, including constructor reads.
+            "KhaozEngine.Movement/ContactTerrainProfileEvidence.cs:.ctor:SurfaceHeightAt",
+            // Stored Stair shape validation preserves the raw-height recipe.
+            "KhaozEngine.Movement/TerrainCandidateContract.cs:Validate:SurfaceHeightAt",
+            "KhaozEngine.Movement/TerrainCandidateContract.cs:Validate:SurfaceHeightAt",
             "KhaozEngine.Movement/GroundNavigationBake.Writer.cs:WriteProfile:SurfaceHeightAt",
             // Format 2 appends physical feet separately, preserving the raw topology section.
             "KhaozEngine.Movement/GroundNavigationBake.Writer.cs:WriteRestingHeights:RestingHeightAt",
-            "KhaozEngine.Navigation/NavLayerLinks.cs:GenerateCore:SurfaceHeightAt",
-            "KhaozEngine.Navigation/NavLayerLinks.cs:GenerateCore:SurfaceHeightAt",
+            "KhaozEngine.Navigation/NavLayerLinks.cs:EnumerateCore:SurfaceHeightAt",
+            "KhaozEngine.Navigation/NavLayerLinks.cs:EnumerateCore:SurfaceHeightAt",
             "KhaozEngine.Navigation/NavHopLinks.cs:Generate:SurfaceHeightAt",
             "KhaozEngine.Navigation/NavHopLinks.cs:Generate:SurfaceHeightAt",
         };
@@ -112,10 +134,16 @@ public class SurfaceHeightCallSiteTests
             if (reader is not ("SurfaceHeightAt" or "RestingHeightAt")) continue;
 
             BaseTypeDeclarationSyntax? type = call.Ancestors().OfType<BaseTypeDeclarationSyntax>().FirstOrDefault();
-            MethodDeclarationSyntax? method = call.Ancestors().OfType<MethodDeclarationSyntax>().FirstOrDefault();
+            BaseMethodDeclarationSyntax? declaration = call.Ancestors().OfType<BaseMethodDeclarationSyntax>().FirstOrDefault();
             Assert.NotNull(type);
-            Assert.NotNull(method);
-            yield return (type.Identifier.ValueText, $"{relative}:{method.Identifier.ValueText}:{reader}");
+            Assert.NotNull(declaration);
+            string owner = declaration switch
+            {
+                MethodDeclarationSyntax method => method.Identifier.ValueText,
+                ConstructorDeclarationSyntax => ".ctor",
+                _ => throw new InvalidOperationException("The height call-site sweep needs a method or constructor."),
+            };
+            yield return (type.Identifier.ValueText, $"{relative}:{owner}:{reader}");
         }
     }
 

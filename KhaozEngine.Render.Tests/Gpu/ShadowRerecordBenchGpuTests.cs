@@ -191,6 +191,7 @@ namespace KhaozEngine.Tests.Gpu
             return t / xs.Count;
         }
 
+        [Trait("Category", "Diagnostic")]
         [GpuFact]
         public void Trace_shaped_scene_re_records_the_whole_atlas_for_a_skinned_caster_and_for_any_sun_movement()
         {

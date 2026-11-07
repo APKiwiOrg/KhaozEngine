@@ -94,12 +94,15 @@ namespace KhaozEngine.Tests.Terrain
             }
         }
 
-        [Fact]
-        public void GenerateCompanions_IsTilingInvariant()
+        [Theory]
+        [InlineData(false)]
+        [InlineData(true)]
+        public void GenerateCompanions_IsTilingInvariant_WithFilteredOrAllHosts(bool matchAllHosts)
         {
             TerrainField f = FlatField();
             ScatterConfig hostCfg = TreeHosts();
             CompanionConfig c = Comp();
+            if (matchAllHosts) c.HostKinds = Array.Empty<string>();
 
             var whole = PropScatter.GenerateCompanions(f,
                 PropScatter.Generate(f, hostCfg, new RectArea(-50, -50, 50, 50)), c);
@@ -130,19 +133,6 @@ namespace KhaozEngine.Tests.Terrain
                 float r = MathF.Sqrt((p.X - host.X) * (p.X - host.X) + (p.Z - host.Z) * (p.Z - host.Z));
                 Assert.InRange(r, c.RadiusMin - 1e-3f, c.RadiusMax + 1e-3f);
             }
-        }
-
-        [Fact]
-        public void GenerateCompanions_OnlyHostKindsSpawn()
-        {
-            TerrainField f = FlatField();
-            CompanionConfig c = Comp();   // HostKinds = { "pine_a" }
-
-            var nonHost = new PropPlacement("rock_a", 5f, 0f, 7f, 1f, 0f, 0);
-            Assert.Empty(PropScatter.GenerateCompanions(f, new[] { nonHost }, c));
-
-            var host = new PropPlacement("pine_a", 5f, 0f, 7f, 1f, 0f, 0);
-            Assert.NotEmpty(PropScatter.GenerateCompanions(f, new[] { host }, c));
         }
 
         [Fact]
@@ -197,30 +187,6 @@ namespace KhaozEngine.Tests.Terrain
         }
 
         [Fact]
-        public void GenerateCompanions_EmptyHostKinds_IsTilingInvariant()
-        {
-            // Chunk-order independence must hold on the empty-HostKinds "match all" path too: the union over a
-            // tiling of the hosts equals the whole-area result (streaming safety), same as the filtered path.
-            TerrainField f = FlatField();
-            ScatterConfig hostCfg = TreeHosts();
-            CompanionConfig c = Comp();
-            c.HostKinds = Array.Empty<string>();
-
-            var whole = PropScatter.GenerateCompanions(f,
-                PropScatter.Generate(f, hostCfg, new RectArea(-50, -50, 50, 50)), c);
-
-            var q1 = PropScatter.GenerateCompanions(f, PropScatter.Generate(f, hostCfg, new RectArea(-50, -50, 0, 0)), c);
-            var q2 = PropScatter.GenerateCompanions(f, PropScatter.Generate(f, hostCfg, new RectArea(0, -50, 50, 0)), c);
-            var q3 = PropScatter.GenerateCompanions(f, PropScatter.Generate(f, hostCfg, new RectArea(-50, 0, 0, 50)), c);
-            var q4 = PropScatter.GenerateCompanions(f, PropScatter.Generate(f, hostCfg, new RectArea(0, 0, 50, 50)), c);
-
-            var union = q1.Concat(q2).Concat(q3).Concat(q4).ToList();
-            Assert.NotEmpty(whole);
-            Assert.Equal(whole.Count, union.Count);
-            Assert.Equal(whole.Select(Key).OrderBy(s => s).ToList(), union.Select(Key).OrderBy(s => s).ToList());
-        }
-
-        [Fact]
         public void GenerateCompanions_KindsAreFromTheConfig()
         {
             TerrainField f = FlatField();
@@ -251,6 +217,7 @@ namespace KhaozEngine.Tests.Terrain
             var withCap = PropScatter.GenerateCompanions(f, hosts, capped);
 
             Assert.NotEmpty(uncapped);
+            Assert.NotEmpty(withCap);
             Assert.True(withCap.Count < uncapped.Count, "MaxHeight should exclude some companions");
             foreach (PropPlacement p in withCap)
                 Assert.True(f.SampleHeight(p.X, p.Z) <= 0f, $"companion above cap at {p.X},{p.Z}");

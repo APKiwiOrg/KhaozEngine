@@ -44,7 +44,7 @@ public static class NativeMapFoliage
         if (!witness.CompleteForScope || context.ClosureHash != scene.Witness.ClosureHash ||
             witness.SourceGeneration != scene.Witness.SourceGeneration || witness.ScopeDigest != scene.Witness.ScopeDigest ||
             witness.RenderExtentsDigest != scene.Witness.RenderExtentsDigest)
-            throw new MapDocumentException("Foliage context belongs to another source, closure, extent proof or scope.");
+            throw new MapDocumentException(MapDocumentRefusal.AcquisitionSnapshotChanged, "Foliage context belongs to another source, closure, extent proof or scope.") { ExpectedSnapshot = scene.Witness.SourceGeneration, ActualSnapshot = witness.SourceGeneration, Operation = "Foliage.Prepare" };
         IReadOnlyList<MapFoliageLayer> layers = (scene.Scope.Channels & MapSceneChannels.Foliage) != 0
             ? ((IMapFoliageInputs)context).Foliage?.Layers ?? [] : [];
         // Only admitted density dependencies can require decoded generation models. Off-raster metadata stays cheap.
@@ -90,6 +90,9 @@ public static class NativeMapFoliage
         readers.Transfer();
         return result;
     }
+
+    internal static void DeriveChunkForTests(MapFoliageLimits limits, MapFoliageLimits? declared, MapFoliageLimits requested,
+        MapSceneAdmission admission, long count) => DeriveChunk(limits, declared, requested, admission, count);
 
     // Each chunk copy is bounded by the declared foliage profile and by the scene's remaining scopes, faces and bytes.
     [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.NoInlining)]
@@ -155,13 +158,13 @@ public static class NativeMapFoliage
             {
                 using var handoffPreparation = admission.BeginPreparation();
                 if (source.Status != MapFoliageStatus.Complete || !keys.Add(new(source.LayerId, source.Chunk)))
-                    throw new MapDocumentException("Native foliage needs unique complete generated batches.");
+                    throw new MapDocumentException(MapDocumentRefusal.AcquisitionContractMismatch, "Native foliage needs unique complete generated batches.") { LayerId = source.LayerId, FoliageChunk = source.Chunk, FoliageStatus = source.Status, Operation = "Foliage.Prepare" };
                 admission.ReserveBytes(512);
                 generations.Add(new(source.LayerId, source.Chunk, source.DependencyDigest));
                 string owner = FormattableString.Invariant($"{source.LayerId}/{source.Chunk.X}/{source.Chunk.Z}");
-                if (!owners.Add(owner)) throw new MapDocumentException("Generated foliage owner conflicts with a placement or generated batch.");
+                if (!owners.Add(owner)) throw new MapDocumentException(MapDocumentRefusal.IdentityDuplicate, "Generated foliage owner conflicts with a placement or generated batch.") { OwnerId = owner, LayerId = source.LayerId, FoliageChunk = source.Chunk };
                 var handoff = source.Handoff(policy.Extents.Values.ToArray());
-                if (handoff.Status != MapFoliageStatus.Complete) throw new MapDocumentException("Native foliage has no complete model extent handoff.");
+                if (handoff.Status != MapFoliageStatus.Complete) throw new MapDocumentException(MapDocumentRefusal.AcquisitionIncomplete, "Native foliage has no complete model extent handoff.") { LayerId = source.LayerId, FoliageChunk = source.Chunk, FoliageStatus = handoff.Status };
                 if (handoff.Bounds is not { } bounds)
                 {
                     if (source.Reader is { } empty) columnSources.Add(empty);
@@ -243,7 +246,7 @@ public static class NativeMapFoliage
             }
             models = selected.ToArray();
         }
-        if (explicitlyPlaced != anchorOverride.HasValue) throw new MapDocumentException("Explicit foliage requires its precise submission anchor.");
+        if (explicitlyPlaced != anchorOverride.HasValue) throw new MapDocumentException(MapDocumentRefusal.AuthoredValueRequired, "Explicit foliage requires its precise submission anchor.") { FieldPath = "Anchor", Operation = "Foliage.Prepare" };
         var anchor = anchorOverride ?? new MapSubmissionAnchor(checked((long)Math.Floor(cover.Min(i => (double)i.Transform.M41))),
             checked((long)Math.Floor(cover.Min(i => (double)i.Transform.M42))), checked((long)Math.Floor(cover.Min(i => (double)i.Transform.M43))));
         string digest = MapPlacementDigest.Hash(w =>
@@ -292,7 +295,7 @@ public static class NativeMapFoliage
         ArgumentNullException.ThrowIfNull(scene); ArgumentNullException.ThrowIfNull(assets);
         ArgumentNullException.ThrowIfNull(policy); ArgumentNullException.ThrowIfNull(routing);
         routing.Validate(scene);
-        if (scene.Witness.ClosureHash != assets.Closure.Hash) throw new MapDocumentException("Foliage assets belong to another closure.");
+        if (scene.Witness.ClosureHash != assets.Closure.Hash) throw new MapDocumentException(MapDocumentRefusal.DocumentAssetRootsMismatch, "Foliage assets belong to another closure.") { ExpectedHash = scene.Witness.ClosureHash, ActualHash = assets.Closure.Hash, Operation = "Foliage.Prepare" };
         var required = generatedModels
             .Concat(scene.Placements.Where(p => routing.Entries[p.PlacementId] == MapPlacementRoute.Animated).Select(p => p.AssetId)).Distinct(StringComparer.Ordinal);
         foreach (string id in required)
@@ -300,7 +303,7 @@ public static class NativeMapFoliage
             if (!assets.ById.TryGetValue(id, out var asset) || !policy.Extents.TryGetValue(id, out var extent) ||
                 extent.SourceUnitsToMetres != asset.Descriptor.SourceUnitsToMetres || !Contains(extent.BoundsInSourceUnits, asset.Descriptor.RenderBounds) ||
                 asset.Descriptor.LodBounds is { } lod && !Contains(extent.BoundsInSourceUnits, lod) || extent.MotionPaddingMetres > scene.Scope.MotionPaddingMetres)
-                throw new MapDocumentException("Foliage model requires its selected asset, verified bounds, units and scoped motion allowance: " + id);
+                throw new MapDocumentException(MapDocumentRefusal.AssetDescriptorMismatch, "Foliage model requires its selected asset, verified bounds, units and scoped motion allowance: " + id) { AssetId = id, Operation = "Foliage.Prepare" };
         }
     }
     static bool Contains(MapLocalBounds outer, MapLocalBounds inner) => outer.Min.X <= inner.Min.X && outer.Min.Y <= inner.Min.Y && outer.Min.Z <= inner.Min.Z &&

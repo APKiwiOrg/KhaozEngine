@@ -24,6 +24,7 @@ public sealed class MapRoofEvaluationBuffer
     readonly MapScopedScene _scene;
     readonly MapSpaceMembership _membership;
     readonly MapSpaceMembershipScratch _scratch;
+    internal object BoundRowsIdentityForTests => _scratch.BoundRowsIdentityForTests;
     readonly MapRoofIntentRows _intent;
     MapMembershipObservation _observation;
 

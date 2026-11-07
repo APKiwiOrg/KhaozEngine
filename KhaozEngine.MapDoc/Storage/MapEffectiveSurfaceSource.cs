@@ -17,6 +17,8 @@ internal sealed class MapEffectiveSurfaceSource : IMapSurfaceAcquisitionSource, 
 {
     readonly IReadOnlyDictionary<MapPatchKey, MapExactRect> _bounds;
     readonly IReadOnlyList<(MapRecordRef Record, MapExactRect Bounds)> _records;
+    internal int BoundCapacityForTests => ((Dictionary<MapPatchKey, MapExactRect>)_bounds).EnsureCapacity(0);
+    internal IReadOnlyList<(MapRecordRef Record, MapExactRect Bounds)> RecordsForTests => _records;
     readonly int _recordCapacity;
     internal Scene.MapPreparationReservation? PreparationOwnership { get; }
     internal long IndexBytes => checked(128L + Surfaces.Sum(s => 136L + 8L * (s.IndoorSpan?.DomainTags.Count ?? 0)) +
@@ -79,7 +81,9 @@ internal sealed class MapEffectiveSurfaceSource : IMapSurfaceAcquisitionSource, 
             if (!patch.IsPresent(localX, localZ)) continue;
             var polygon = MapEffectiveGeometry.CellPolygon(EffectiveContext, patch.Key, (localZ + patch.CellMinZ) * 64 + localX + patch.CellMinX);
             if (MapEffectiveGeometry.Area(polygon).Sign == 0)
-                throw new MapDocumentException("Collapsed effective cell is not representable.", new MapExactOverflowException());
+                throw new MapDocumentException(MapDocumentRefusal.GeometryNotRepresentable,
+                    "Collapsed effective cell is not representable.", new MapExactOverflowException())
+                { SurfaceId = patch.Key.SurfaceId, Patch = patch.Key, CellX = localX, CellZ = localZ };
         }
         return MapEffectiveGeometry.Bounds(new[] { MapLatticeAddress.Corner(x, z), MapLatticeAddress.Corner(x + patch.Width, z),
             MapLatticeAddress.Corner(x + patch.Width, z + patch.Depth), MapLatticeAddress.Corner(x, z + patch.Depth) }

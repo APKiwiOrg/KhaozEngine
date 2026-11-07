@@ -46,16 +46,21 @@ namespace KhaozEngine.Render3D.Rendering
         /// <summary>Build the per-target resource sets. Call on construction and whenever the targets resize (incl.
         /// a bloom enable/disable toggle, which (re)allocates or frees the bloom pair), and whenever the chain switches
         /// between the internal targets and the temporal display targets.</summary>
-        /// <exception cref="ArgumentException"><paramref name="res"/> reports fewer than one or more than
+        /// <exception cref="PostChainArgumentException"><paramref name="res"/> reports fewer than one or more than
         /// <see cref="MaxSourceSlots"/> source slots. The chain stays bound to its previous targets.</exception>
         public void BindTargets(IPostChainTargets res, GpuRetireQueue? retired = null)
         {
             // Refused before anything is disposed or rebuilt, so the bound targets and their sets stay usable.
             int slots = res.SourceSlotCount;
             if (slots < 1 || slots > MaxSourceSlots)
-                throw new ArgumentException(
+                throw new PostChainArgumentException(PostChainRefusal.SourceSlotCountUnsupported,
                     $"The post chain targets report {slots} source slots. The chain builds sets for 1 to {MaxSourceSlots}.",
-                    nameof(res));
+                    nameof(res))
+                {
+                    SourceSlotCount = slots,
+                    MinimumSourceSlotCount = 1,
+                    MaximumSourceSlotCount = MaxSourceSlots,
+                };
             // Rebuild the ping-output pipelines first if the ping colour format flipped (HDR float16 <-> legacy UNorm),
             // independent of the resource-set guard below (a pure format toggle keeps the same size/bloom state).
             RebuildPingPipelinesIfFormatChanged(res, retired);

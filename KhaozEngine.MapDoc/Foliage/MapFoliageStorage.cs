@@ -43,7 +43,8 @@ internal static class MapFoliageStorage
             {
                 MapFoliageJson.Closed(chunk, "foliage stored chunk", ["layerId", "x", "z", "ownerRegion", "regions", "sha256", "packSha256", "dataOffset"]);
                 string id = Text(chunk, "layerId");
-                if (id != m.Id) throw new MapDocumentException("foliage chunk names a different layer.");
+                if (id != m.Id) throw new MapDocumentException(MapDocumentRefusal.AuthoredValueMismatch, "foliage chunk names a different layer.")
+                { LayerId = m.Id, ActualText = id, FieldPath = "layerId" };
                 var key = new MapFoliageChunkKey(Int(chunk, "x"), Int(chunk, "z"));
                 var regions = MapFoliageJson.RequireArray(chunk, "regions", "foliage stored chunk", 4096).EnumerateArray().Select(Coord).ToArray();
                 string digest = Text(chunk, "sha256");
@@ -55,7 +56,9 @@ internal static class MapFoliageStorage
         var set = new MapFoliageSet(metadata.PayloadVersion, layers);
         RequireValid(set);
         var ids = set.Layers.Select(l => l.Id).ToHashSet(StringComparer.Ordinal);
-        if (packs.Any(p => !ids.Contains(p.LayerId))) throw new MapDocumentException("foliage pack names an unknown layer.");
+        if (packs.FirstOrDefault(p => !ids.Contains(p.LayerId)) is { } missing)
+            throw new MapDocumentException(MapDocumentRefusal.ReferenceMissing, "foliage pack names an unknown layer.")
+            { LayerId = missing.LayerId, Tile = missing.Region, FieldPath = "layerId", SubjectKind = "foliage layer" };
         return (set, new(packs, chunks));
     }
 
@@ -64,8 +67,10 @@ internal static class MapFoliageStorage
 
     internal static void RequireUnchanged(MapDocument document, MapFoliagePreparedStorage prepared)
     {
-        if (MapFoliageProjection.Digest(document.Foliage) != prepared.FoliageSha256)
-            throw new MapDocumentException("foliage changed during tiled save, refusing manifest publication.");
+        string actualHash = MapFoliageProjection.Digest(document.Foliage);
+        if (actualHash != prepared.FoliageSha256)
+            throw new MapDocumentException(MapDocumentRefusal.FoliageSaveSnapshotChanged, "foliage changed during tiled save, refusing manifest publication.")
+            { ExpectedHash = prepared.FoliageSha256, ActualHash = actualHash };
     }
 
     internal static void Load(MapDocument document, string directory, MapTileRect? window)
@@ -187,7 +192,8 @@ internal static class MapFoliageStorage
         {
             IReadOnlyList<MapTileCoord> regions = Regions(layers[row.LayerId], row.Key, doc.TileSize);
             if (regions[0] != row.OwnerRegion || !regions.SequenceEqual(row.Regions))
-                throw new MapDocumentException("foliage chunk owner region or memberships disagree with its density lattice.");
+                throw new MapDocumentException(MapDocumentRefusal.FoliageRegionMembershipMismatch, "foliage chunk owner region or memberships disagree with its density lattice.")
+                { LayerId = row.LayerId, FoliageChunk = row.Key, Tile = row.OwnerRegion };
         }
     }
 
@@ -212,11 +218,35 @@ internal static class MapFoliageStorage
             long count = checked((maxX - minX + 1) * (maxZ - minZ + 1));
             if (minX < int.MinValue || minZ < int.MinValue || maxX > int.MaxValue || maxZ > int.MaxValue ||
                 maxX < minX || maxZ < minZ || count > 4096)
-                throw new MapDocumentException("foliage region memberships exceed capacity or are not representable.");
+            {
+                bool coordinate = minX < int.MinValue || minZ < int.MinValue || maxX > int.MaxValue || maxZ > int.MaxValue;
+                bool bounds = maxX < minX || maxZ < minZ;
+                string? axis = minX < int.MinValue ? "RegionX" : minZ < int.MinValue ? "RegionZ" :
+                    maxX > int.MaxValue ? "RegionX" : maxZ > int.MaxValue ? "RegionZ" : null;
+                long? actual = minX < int.MinValue ? minX : minZ < int.MinValue ? minZ :
+                    maxX > int.MaxValue ? maxX : maxZ > int.MaxValue ? maxZ : null;
+                throw new MapDocumentException(coordinate ? MapDocumentRefusal.GeometryNotRepresentable :
+                    bounds ? MapDocumentRefusal.BoundsInvalid : MapDocumentRefusal.WorkCapacityExceeded,
+                    "foliage region memberships exceed capacity or are not representable.")
+                {
+                    LayerId = layer.Id,
+                    FoliageChunk = key,
+                    FieldPath = axis,
+                    ActualInteger = actual,
+                    MinimumInteger = coordinate ? int.MinValue : null,
+                    MaximumInteger = coordinate ? int.MaxValue : null,
+                    Budget = !coordinate && !bounds ? "RegionMemberships" : null,
+                    ActualCount = !coordinate && !bounds ? count : null,
+                    Limit = !coordinate && !bounds ? 4096 : null,
+                };
+            }
             return (minX, minZ, maxX, maxZ, count);
         }
         catch (Exception ex) when (ex is ArithmeticException or ArgumentException)
-        { throw new MapDocumentException("foliage region memberships are not representable.", ex); }
+        {
+            throw new MapDocumentException(MapDocumentRefusal.GeometryNotRepresentable, "foliage region memberships are not representable.", ex)
+            { LayerId = layer.Id, FoliageChunk = key, Operation = nameof(RegionRange) };
+        }
     }
 
     internal static void RequireComplete(MapFoliageSet? set)
@@ -225,20 +255,42 @@ internal static class MapFoliageStorage
         foreach (MapFoliageLayer layer in set.Layers)
         {
             if (layer.Chunks.Count != layer.ChunkDigests.Count)
-                throw new MapDocumentException("foliage advertised density is incomplete.");
+                throw new MapDocumentException(MapDocumentRefusal.FoliageChunkUnavailable, "foliage advertised density is incomplete.")
+                { LayerId = layer.Id, ActualCount = layer.Chunks.Count, ExpectedCount = layer.ChunkDigests.Count };
             for (int i = 0; i < layer.Chunks.Count; i++)
-                if (layer.Chunks[i].Key != layer.ChunkDigests[i].Key || MapFoliageLayer.Digest(layer.Chunks[i]) != layer.ChunkDigests[i].Sha256)
-                    throw new MapDocumentException("foliage advertised density digest mismatch.");
+                RequireMatchingDensity(layer.Id, i, layer.Chunks[i], layer.ChunkDigests[i]);
         }
     }
+    // Layer construction refreshes advertised rows from resident bytes. This value-taking seam checks a faulty pair
+    // through the same defensive guard, without exposing or mutating a layer's collections.
+    internal static void RequireMatchingDensityForTests(string layerId, int index, MapFoliageChunk chunk, MapFoliageChunkDigest expected) =>
+        RequireMatchingDensity(layerId, index, chunk, expected);
+
+    static void RequireMatchingDensity(string layerId, int index, MapFoliageChunk chunk, MapFoliageChunkDigest expected)
+    {
+        if (chunk.Key != expected.Key || MapFoliageLayer.Digest(chunk) != expected.Sha256)
+            throw new MapDocumentException(chunk.Key != expected.Key ? MapDocumentRefusal.AuthoredValueMismatch : MapDocumentRefusal.DigestMismatch,
+                "foliage advertised density digest mismatch.")
+            {
+                LayerId = layerId,
+                Index = index,
+                FoliageChunk = chunk.Key,
+                ExpectedFoliageChunk = expected.Key,
+                ExpectedHash = expected.Sha256,
+                ActualHash = chunk.Key == expected.Key ? MapFoliageLayer.Digest(chunk) : null,
+            };
+    }
+
     internal static void RequireValid(MapFoliageSet set)
     {
-        var errors = MapFoliageValidation.Validate(set);
-        if (errors.Count > 0) throw new MapDocumentException(string.Join("\n", errors));
+        var findings = MapFoliageValidation.ValidateFindings(set);
+        if (findings.Count > 0) throw MapDocumentRefusalFactory.FromFinding(findings[0],
+            string.Join("\n", findings.Select(f => f.Message)), findings: findings);
     }
     internal static void Require(MapFoliageReadStatus status, MapFoliagePackRef pack)
     {
-        if (status != MapFoliageReadStatus.Found) throw new MapDocumentException($"foliage pack {status}: {pack.PayloadSha256}");
+        if (status != MapFoliageReadStatus.Found) throw new MapDocumentException(MapDocumentRefusal.PinnedContentUnavailable, $"foliage pack {status}: {pack.PayloadSha256}")
+        { FoliageReadStatus = status, LayerId = pack.LayerId, Tile = pack.Region, ExpectedHash = pack.PayloadSha256 };
     }
     static string Text(JsonElement e, string name) => MapFoliageJson.Text(e, name, "foliage storage");
     static int Int(JsonElement e, string name) => MapFoliageJson.Int(e, name, "foliage storage");

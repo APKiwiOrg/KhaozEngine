@@ -42,6 +42,13 @@ public sealed record ContentPublishRequest(
     /// </para>
     /// </summary>
     public ContentUpgradeStamp? Upgrade { get; init; }
+
+    /// <summary>
+    /// The policy bound by the host's admin registration, never read from request JSON. It runs on the
+    /// frozen rows before publication. Trusted seed and upgrade callers leave this property unset.
+    /// </summary>
+    [System.Text.Json.Serialization.JsonIgnore]
+    public IContentPublishPolicy? PublishPolicy { get; init; }
 }
 
 /// <summary>

@@ -98,7 +98,7 @@ internal static class MovementEnvironmentValidation
     public static bool Unit(Vector3 value) => Finite(value) && MathF.Abs(value.LengthSquared() - 1f) <= 0.0001f;
     public static bool Availability(MovementAvailability value) =>
         value is MovementAvailability.Unresolved or MovementAvailability.Known or MovementAvailability.Stale or
-            MovementAvailability.Invalid or MovementAvailability.CapacityExceeded;
+            MovementAvailability.Invalid or MovementAvailability.CapacityExceeded or MovementAvailability.PrecisionExceeded;
     public static void Require(bool condition, string parameter)
     {
         if (!condition) throw new ArgumentException("Invalid explicit movement environment value.", parameter);

@@ -20,9 +20,7 @@ public sealed class JournalAsyncWaitTests
     [Fact]
     public async Task A_condition_that_never_finishes_still_fails_within_its_budget()
     {
-        var failure = await Assert.ThrowsAsync<Xunit.Sdk.FailException>(
+        await Assert.ThrowsAsync<Xunit.Sdk.FailException>(
             () => WaitUntilAsync(() => false, TimeSpan.FromMilliseconds(20)));
-
-        Assert.Contains("within", failure.Message, StringComparison.Ordinal);
     }
 }

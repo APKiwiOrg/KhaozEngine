@@ -181,14 +181,24 @@ namespace KhaozEngine.Gpu.Metal.Internal
 
                 if (j >= 0 && entries[j].Index == moving.Index)
                 {
-                    throw new InvalidOperationException(
+                    throw new MetalArgumentBatchException(MetalArgumentBatchRefusal.DuplicateArgumentIndex,
                         "Two native Metal bindings in one flush both landed at [["
                         + space.Word() + "(" + moving.Index.ToString(CultureInfo.InvariantCulture)
                         + ")]] on the " + stage.ToString().ToLowerInvariant() + " stage. The binding table gives "
                         + "each emitted argument its own index within a space and a stage, so this is the bound "
                         + "sets and the table disagreeing about what is where rather than a run this flush could "
                         + "resolve: one of the two resources would be written and then overwritten, silently, "
-                        + "and the draw would read the wrong one.");
+                        + "and the draw would read the wrong one.")
+                    {
+                        Index = moving.Index,
+                        Space = space.Word(),
+                        Stage = stage switch
+                        {
+                            MetalShaderStage.Vertex => GpuShaderStages.Vertex,
+                            MetalShaderStage.Fragment => GpuShaderStages.Fragment,
+                            _ => GpuShaderStages.Compute,
+                        },
+                    };
                 }
 
                 entries[j + 1] = moving;

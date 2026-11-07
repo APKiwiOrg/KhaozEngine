@@ -45,12 +45,15 @@ namespace KhaozEngine.Gpu.Metal.Internal
 
             MetalPresentBoundary present = _present is { CurrentDrawableCopyable: true } boundary
                 ? boundary
-                : throw new InvalidOperationException(
+                : throw new GpuSwapchainCopyStateException(GpuSwapchainCopyRefusal.SwapchainNotCopyable,
                     "CopySwapchainColor was called while the swapchain is not copyable: the device has no "
                     + "swapchain, the held drawable's texture reports framebufferOnly because it was made before the "
                     + "copy-source request applied, or the layer had no drawable and the frame is on the orphan "
                     + "target. Check "
-                    + "SwapchainCopyable first.");
+                    + "SwapchainCopyable first.")
+                {
+                    Command = "CopySwapchainColor",
+                };
 
             SwapchainCopyCheck.RequireDestination(present.Framebuffer, destination);
             RequireList(commands, this).CopyFromDrawable(present.Framebuffer.Attachment.Texture, destination);

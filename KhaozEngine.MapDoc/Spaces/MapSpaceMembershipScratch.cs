@@ -24,6 +24,7 @@ internal sealed class MapSpaceMembershipScratch : IMapMembershipPointInput
         MapMembershipPointScratch.Bytes(_scratch.Raw.Length, _scratch.Prisms.Length));
     internal long SharedBytes => _prepared.SharedBytes;
     readonly MapMembershipPreparedView _prepared;
+    internal object BoundRowsIdentityForTests => MapTestObservationIdentity.For(_prepared.Geometry.Bounds);
     MapScopedSurfaces _view => _prepared.View;
     MapMembershipPreparedGeometry _geometry => _prepared.Geometry;
     MapMembershipPreparedFootprint[] _footprints => _prepared.Footprints;
@@ -173,10 +174,11 @@ internal sealed class MapSpaceMembershipScratch : IMapMembershipPointInput
         { return Result(MapMembershipStatus.NotRepresentable); }
         catch (MapDocumentException error)
         {
-            return Result(error.Message.Contains("capacity exceeded", StringComparison.Ordinal) || error.Message.Contains("domain work exceeds", StringComparison.Ordinal)
-                ? MapMembershipStatus.CapacityExceeded : MapCommonRefinement.NotRepresentable(error) || error.Message.Contains("not representable", StringComparison.OrdinalIgnoreCase)
-                    ? MapMembershipStatus.NotRepresentable : error.Message.Contains("invalid", StringComparison.Ordinal) || error.Message.Contains("legacy recipe", StringComparison.Ordinal)
-                        ? MapMembershipStatus.Invalid : MapMembershipStatus.MissingGeometry);
+            return Result(MapGeometryRefusals.Capacity(error) ? MapMembershipStatus.CapacityExceeded :
+                MapGeometryRefusals.Representability(error) ? MapMembershipStatus.NotRepresentable :
+                MapGeometryRefusals.Invalid(error) || error is
+                { Reason: MapDocumentRefusal.SurfaceLegacyRecipeRequired, FieldPath: not "Frame" }
+                    ? MapMembershipStatus.Invalid : MapMembershipStatus.MissingGeometry);
         }
     }
     MapMembershipObservation Result(MapMembershipStatus status)

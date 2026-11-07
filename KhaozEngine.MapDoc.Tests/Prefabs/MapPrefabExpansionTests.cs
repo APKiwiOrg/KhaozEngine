@@ -16,6 +16,30 @@ namespace KhaozEngine.Tests.MapDoc.Prefabs;
 public sealed class MapPrefabExpansionTests
 {
     [Fact]
+    public void Effective_light_requires_its_world_placement_owner()
+    {
+        var f = PrefabFixtures.Create("roomless");
+        var asset = f.Assets.GetPrefab("hut");
+        var light = new MapPrefabLightChild(new(MapPrefabChildKind.Light, "light"), PrefabFixtures.GlowLight() with
+        { Id = "light", Owner = PrefabFixtures.World(MapPrefabChildKind.Placement, "owner") });
+        asset = asset with { Children = [.. asset.Children, light] };
+        var assets = PrefabFixtures.PublishPrefab(f.Assets, asset);
+        f.Document.NativeAssets = assets.Roots.ToList();
+        var instance = Assert.Single(f.Document.Prefabs!.Instances) with { ResourceSha256 = assets.GetResource("hut").Reference.Sha256 };
+        var plan = MapPrefabBindingPlanner.Plan(f.Document, asset, assets, instance.Id, instance.Bindings);
+        f.Document.Prefabs = new(1, 1, [instance with { Bindings = plan.Bindings }], []);
+        string before = MapDocumentFile.SaveText(f.Document);
+        var error = Assert.Throws<MapDocumentException>(() => MapPrefabResolver.Expand(f.Document, assets));
+        Assert.Equal(MapDocumentRefusal.PrefabEffectiveLightOwnerMissing, error.Reason);
+        Assert.Equal("owner", error.PlacementId);
+        Assert.Equal("prefab/a/Light/light", error.WorldId);
+        Assert.Equal(MapPrefabChildKind.Light, error.ChildKind);
+        Assert.Equal(before, MapDocumentFile.SaveText(f.Document));
+        f.Document.Placements.Add(new MapPlacement { Id = "owner", Kind = "item", AssetId = "item", Y = 0, Scale = 1 });
+        Assert.Contains(MapPrefabResolver.Expand(f.Document, assets).Placements, p => p.PlacementId == "owner");
+    }
+
+    [Fact]
     public void ResolveAndReload_NeverAllocateOrMutate()
     {
         var f = PrefabFixtures.Create();
@@ -70,8 +94,14 @@ public sealed class MapPrefabExpansionTests
         Assert.True(count > 0);
         var stages = new List<string>();
         var limits = Limit(counter, count - 1);
-        Assert.Throws<MapDocumentException>(() => MapPrefabResolver.Expand(f.Document, f.Assets, limits, new(stages.Add)));
+        string before = MapDocumentFile.SaveText(f.Document);
+        var error = Assert.Throws<MapDocumentException>(() => MapPrefabResolver.Expand(f.Document, f.Assets, limits, new(stages.Add)));
+        Assert.Equal(MapDocumentRefusal.WorkCapacityExceeded, error.Reason);
+        Assert.Equal("Max" + counter, error.Budget);
+        Assert.Equal(count, error.ActualCount);
+        Assert.Equal(count - 1, error.Limit);
         Assert.Empty(stages);
+        Assert.Equal(before, MapDocumentFile.SaveText(f.Document));
         MapPrefabResolver.Expand(f.Document, f.Assets, Limit(counter, count), new(stages.Add));
         foreach (string name in new[] { "Copies", "Remaps", "Sorts", "ExpandedGeometry" }) Assert.Contains(name, stages);
     }
@@ -92,7 +122,14 @@ public sealed class MapPrefabExpansionTests
         var asset = PrefabFixtures.ImplicitReferenceAsset(target);
         byte[] bytes = MapPrefabFile.Write(asset);
         Assert.Equal(target, ((MapPrefabPlacementChild)MapPrefabFile.Read(bytes, "hut").Children.Single(c => c.Key.Key == "low-item")).Value.SupportBinding!.SurfaceId);
-        Assert.Contains(target, Assert.Throws<MapDocumentException>(() => PrefabFixtures.LoadAssets(bytes, true)).Message);
+        var error = Assert.Throws<MapDocumentException>(() => PrefabFixtures.LoadAssets(bytes, true));
+        Assert.Equal(MapDocumentRefusal.ReferenceMissing, error.Reason);
+        Assert.Equal(target, error.EntityId);
+        Assert.Equal(MapPrefabChildKind.Surface, error.ChildKind);
+        Assert.Equal(new MapPrefabChildKey(MapPrefabChildKind.Placement, "low-item"), error.Child);
+        Assert.Equal("/value/supportBinding/surfaceId", error.ReferencePath);
+        Assert.Equal(bytes, MapPrefabFile.Write(asset));
+        Assert.NotEmpty(PrefabFixtures.LoadAssets(MapPrefabFile.Write(PrefabFixtures.ImplicitReferenceAsset("deck/deck-support/top")), true).GetPrefab("hut").Children);
     }
 
     [Theory]
@@ -115,9 +152,25 @@ public sealed class MapPrefabExpansionTests
         var removed = new MapPrefabRemoveOverride(child.Key, new MapPrefabReplaceOverride(child.Key, replacement));
         instance = instance with { Overrides = new MapPrefabOverride[] { removed }, Bindings = new(instance.Bindings.Entries.Select(b => b.Child == child.Key ? b with { Removed = true } : b).ToArray()) };
         f.Document.Prefabs = new(1, 1, new[] { instance }, []);
-        Assert.Contains("deck/deck-support/missing", Assert.Throws<MapDocumentException>(() => MapAuthoredIdentityV2.Compute(f.Document, f.Assets, PrefabFixtures.Options())).Message);
         var stored = PrefabFixtures.Stored(f.Document);
-        Assert.Contains("deck/deck-support/missing", Assert.Throws<MapDocumentException>(() => MapAuthoredIdentityV2.Compute(stored, f.Assets, PrefabFixtures.Options())).Message);
+        foreach (var error in new[]
+        {
+            Assert.Throws<MapDocumentException>(() => MapAuthoredIdentityV2.Compute(f.Document, f.Assets, PrefabFixtures.Options())),
+            Assert.Throws<MapDocumentException>(() => MapAuthoredIdentityV2.Compute(stored, f.Assets, PrefabFixtures.Options())),
+        })
+        {
+            Assert.Equal(MapDocumentRefusal.ReferenceMissing, error.Reason);
+            Assert.Equal("deck/deck-support/missing", error.EntityId);
+            Assert.Equal(MapPrefabChildKind.Surface, error.ChildKind);
+            Assert.Equal(child.Key, error.Child);
+            Assert.Equal("$.references", error.FieldPath);
+            Assert.False(string.IsNullOrEmpty(error.ReferencePath));
+        }
+        var valid = PrefabFixtures.ImplicitReferenceAsset(child.Value.SupportBinding!.SurfaceId!).Children.OfType<MapPrefabPlacementChild>().Single(p => p.Key == child.Key);
+        f.Document.Prefabs = new(1, 1, new[] { instance with { Overrides = new MapPrefabOverride[]
+            { removed with { Previous = new MapPrefabReplaceOverride(child.Key, valid) } } } }, []);
+        Assert.Equal(MapAuthoredIdentityV2.Compute(f.Document, f.Assets, PrefabFixtures.Options()),
+            MapAuthoredIdentityV2.Compute(PrefabFixtures.Stored(f.Document), f.Assets, PrefabFixtures.Options()));
     }
 
     [Theory]
@@ -144,8 +197,9 @@ public sealed class MapPrefabExpansionTests
         string expected = PrefabFixtures.Create().Assets.GetResource("hut").Reference.Sha256;
         source.MissingPrefab = true;
         var refusal = Assert.Throws<MapDocumentException>(() => MapAssetClosure.Load(roots, source));
-        Assert.Contains("hut", refusal.Message);
-        Assert.Contains(expected, refusal.Message);
+        Assert.Equal(MapDocumentRefusal.AssetPayloadUnreadable, refusal.Reason);
+        Assert.Equal("hut", refusal.ResourceId);
+        Assert.Equal(expected, refusal.ExpectedHash);
         source.MissingPrefab = false;
         var captured = MapAssetClosure.Load(roots, source);
         var f = PrefabFixtures.Create();
@@ -174,8 +228,14 @@ public sealed class MapPrefabExpansionTests
         Assert.True(work.GeometryElements >= 4 * (4225 + 4096 + 8192));
         long count = (long)typeof(MapPrefabExpansionWork).GetProperty(counter)!.GetValue(work)!;
         var stages = new List<string>();
-        Assert.Throws<MapDocumentException>(() => MapPrefabResolver.Expand(f.Document, f.Assets, Limit(counter, count - 1), new(stages.Add)));
+        string before = MapDocumentFile.SaveText(f.Document);
+        var error = Assert.Throws<MapDocumentException>(() => MapPrefabResolver.Expand(f.Document, f.Assets, Limit(counter, count - 1), new(stages.Add)));
+        Assert.Equal(MapDocumentRefusal.WorkCapacityExceeded, error.Reason);
+        Assert.Equal("Max" + counter, error.Budget);
+        Assert.Equal(count, error.ActualCount);
+        Assert.Equal(count - 1, error.Limit);
         Assert.Empty(stages);
+        Assert.Equal(before, MapDocumentFile.SaveText(f.Document));
         MapPrefabResolver.Expand(f.Document, f.Assets, Limit(counter, count), new(stages.Add));
         Assert.Contains("ExpandedGeometry", stages);
     }
@@ -200,9 +260,19 @@ public sealed class MapPrefabExpansionTests
     [Fact]
     public void ExpansionPreflight_CheckedProductsAndSumsRefuseOverflow()
     {
+        foreach (var error in new[]
+        {
+            Assert.Throws<MapDocumentException>(() => MapPrefabPreflight.AddProduct(0, long.MaxValue, 2)),
+            Assert.Throws<MapDocumentException>(() => MapPrefabPreflight.AddProduct(long.MaxValue, 1, 1)),
+        })
+        {
+            Assert.Equal(MapDocumentRefusal.WorkCapacityExceeded, error.Reason);
+            Assert.Equal("PrefabExpansionCount", error.Budget);
+            Assert.Equal(long.MaxValue, error.Limit);
+            Assert.Null(error.ActualCount);
+        }
+        Assert.Equal(long.MaxValue, MapPrefabPreflight.AddProduct(0, long.MaxValue, 1));
         Assert.Equal(long.MaxValue, MapPrefabPreflight.AddProduct(long.MaxValue - 4, 2, 2));
-        Assert.Throws<MapDocumentException>(() => MapPrefabPreflight.AddProduct(0, long.MaxValue, 2));
-        Assert.Throws<MapDocumentException>(() => MapPrefabPreflight.AddProduct(long.MaxValue, 1, 1));
     }
 
     [Fact]
@@ -252,7 +322,8 @@ public sealed class MapPrefabExpansionTests
     public void OwnerAssetOverride_ImplicitReferencesValidateOnLoadedAndStoredPaths()
     {
         var f = PrefabFixtures.SupportBoundChild(5);
-        var instance = f.Document.Prefabs!.Instances.Single() with
+        var original = f.Document.Prefabs!.Instances.Single();
+        var instance = original with
         {
             Overrides = new MapPrefabOverride[]
             { new MapPrefabPlacementOverride(new(MapPrefabChildKind.Placement, "deck"), null, "item", null) }
@@ -260,8 +331,21 @@ public sealed class MapPrefabExpansionTests
         f.Document.Prefabs = new(1, 1, new[] { instance }, []);
         var plan = MapPrefabBindingPlanner.Plan(f.Document, f.Assets.GetPrefab("hut"), f.Assets, "a", instance.Bindings);
         f.Document.Prefabs = new(1, 1, new[] { instance with { Bindings = plan.Bindings } }, []);
-        Assert.Contains("deck/deck-support/floor", Assert.Throws<MapDocumentException>(() => MapAuthoredIdentityV2.Compute(f.Document, f.Assets, PrefabFixtures.Options())).Message);
-        Assert.Contains("deck/deck-support/floor", Assert.Throws<MapDocumentException>(() => MapAuthoredIdentityV2.Compute(PrefabFixtures.Stored(f.Document), f.Assets, PrefabFixtures.Options())).Message);
+        foreach (var error in new[]
+        {
+            Assert.Throws<MapDocumentException>(() => MapAuthoredIdentityV2.Compute(f.Document, f.Assets, PrefabFixtures.Options())),
+            Assert.Throws<MapDocumentException>(() => MapAuthoredIdentityV2.Compute(PrefabFixtures.Stored(f.Document), f.Assets, PrefabFixtures.Options())),
+        })
+        {
+            Assert.Equal(MapDocumentRefusal.ReferenceMissing, error.Reason);
+            Assert.Equal("deck/deck-support/floor", error.EntityId);
+            Assert.Equal(MapPrefabChildKind.Surface, error.ChildKind);
+            Assert.Equal("$.references", error.FieldPath);
+            Assert.False(string.IsNullOrEmpty(error.ReferencePath));
+        }
+        f.Document.Prefabs = new(1, 1, new[] { original }, []);
+        Assert.Equal(MapAuthoredIdentityV2.Compute(f.Document, f.Assets, PrefabFixtures.Options()),
+            MapAuthoredIdentityV2.Compute(PrefabFixtures.Stored(f.Document), f.Assets, PrefabFixtures.Options()));
     }
 
     [Fact]

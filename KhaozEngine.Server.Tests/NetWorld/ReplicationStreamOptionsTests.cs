@@ -83,7 +83,6 @@ public class ReplicationStreamOptionsTests
         var error = Assert.Throws<ArgumentException>(
             () => valid.ValidateConfig(deltaReplication: false, optIn: true, Tick));
         Assert.Equal("optIn", error.ParamName);
-        Assert.Contains("DeltaReplication", error.Message, StringComparison.Ordinal);
         Assert.Equal("optIn", Assert.Throws<ArgumentException>(
             () => broken.ValidateConfig(deltaReplication: false, optIn: true, float.NaN)).ParamName);
     }
@@ -182,12 +181,11 @@ public class ReplicationStreamOptionsTests
     }
 
     [Fact]
-    public void DefaultCapGivesWidth489And135ChunksIn34Ticks()
+    public void DefaultCapGivesWidth489And135Chunks()
     {
         Assert.Equal(23, ReplicationStreamOptions.KeyframeChunkOverheadBytes);
         Assert.Equal(489, ReplicationStreamOptions.ChunkWidth(512));
         Assert.Equal(135, ReplicationStreamOptions.KeyframeChunkCount(65536, 512));
-        Assert.Equal(34, (135 + 4 - 1) / 4);
         Assert.True(ReplicationStreamOptions.IsFeasiblePacketCap(512, 65536));
     }
 

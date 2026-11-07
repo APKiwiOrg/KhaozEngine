@@ -49,7 +49,8 @@ public sealed partial class Scene3D
     {
         int index = _slots.Alloc(out int generation, meshOrder);
         var mesh = new Mesh(vertices, normals, indices, source.IndexCount, source.IndexFormat, source.Bounds,
-            material, outline, splatMaterial, alphaCutoff, tileGroundMaterial, shadowCutout);
+            material, outline, splatMaterial, alphaCutoff, tileGroundMaterial, shadowCutout,
+            source.OpaqueFoliage && material is null && alphaCutoff == 0f);
         if (index < _meshes.Count) _meshes[index] = mesh;
         else _meshes.Add(mesh);
         return new(index, generation);

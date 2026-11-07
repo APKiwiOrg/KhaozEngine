@@ -12,13 +12,16 @@ public static partial class MapSurfacePatchCodec
     static void WriteRecords(Utf8JsonWriter writer, IReadOnlyList<MapTopologyRecord> records)
     {
         // Every supported record needs more than 24 encoded bytes, even with minimal empty collections.
-        if (records.Count > MaxEncodedBytes / 24) throw Limit();
+        if (records.Count > MaxEncodedBytes / 24) throw Limit(fieldPath: "records", actualCount: records.Count);
         var ids = new HashSet<string>(StringComparer.Ordinal);
-        foreach (MapTopologyRecord record in records)
+        for (int i = 0; i < records.Count; i++)
         {
-            if (record is null) throw new MapDocumentException("invalid record");
-            RequireText(record.Id);
-            if (!ids.Add(record.Id)) throw new MapDocumentException("duplicate record id");
+            MapTopologyRecord record = records[i];
+            if (record is null)
+                throw new MapDocumentException(MapDocumentRefusal.SchemaValueRequired, "invalid record") { FieldPath = $"records[{i}]", Index = i };
+            RequireText(record.Id, "id");
+            if (!ids.Add(record.Id))
+                throw new MapDocumentException(MapDocumentRefusal.IdentityDuplicate, "duplicate record id") { RecordId = record.Id, FieldPath = "id", Index = i };
         }
         writer.WriteStartArray("records");
         foreach (MapTopologyRecord record in records.OrderBy(r => r.Id, StringComparer.Ordinal))
@@ -42,7 +45,8 @@ public static partial class MapSurfacePatchCodec
             MapSpaceDoc => "space",
             MapSpaceFootprint => "footprint",
             MapPrismDomain => "prism",
-            _ => throw new MapDocumentException("unknown topology record type"),
+            _ => throw new MapDocumentException(MapDocumentRefusal.OperationKindUnsupported, "unknown topology record type")
+            { RecordId = record.Id, RecordType = record.GetType(), FieldPath = "type" },
         };
         w.WriteStartObject(); w.WriteString("type", type); Text(w, "id", record.Id);
         switch (record)
@@ -60,8 +64,10 @@ public static partial class MapSurfacePatchCodec
                     });
                 break;
             case MapBoundaryChain chain:
-                if (chain.Vertices.Count is < 2 or > 4097) throw new MapDocumentException("chain requires 2 to 4097 vertices");
-                EnumValue(chain.Kind); w.WriteNumber("kind", (byte)chain.Kind);
+                if (chain.Vertices.Count is < 2 or > 4097)
+                    throw new MapDocumentException(MapDocumentRefusal.ValueOutsideRange, "chain requires 2 to 4097 vertices")
+                    { RecordId = chain.Id, FieldPath = "vertices", ActualCount = chain.Vertices.Count, MinimumInteger = 2, MaximumInteger = 4097 };
+                EnumValue(chain.Kind, "kind"); w.WriteNumber("kind", (byte)chain.Kind);
                 w.WritePropertyName("sourcePatch");
                 if (chain.SourcePatch is { } source) WriteKey(w, source); else w.WriteNullValue();
                 WriteArray(w, "vertices", chain.Vertices, static (writer, vertex) =>
@@ -73,7 +79,7 @@ public static partial class MapSurfacePatchCodec
                 break;
             case MapWallStrip strip:
                 RefProperty(w, "lowerChain", strip.LowerChain); RefProperty(w, "upperChain", strip.UpperChain);
-                EnumValue(strip.Facing); w.WriteNumber("facing", (byte)strip.Facing); w.WriteNumber("materialId", strip.MaterialId);
+                EnumValue(strip.Facing, "facing"); w.WriteNumber("facing", (byte)strip.Facing); w.WriteNumber("materialId", strip.MaterialId);
                 break;
             case MapCavePortal portal:
                 WireCount(portal.Interval.Count, 40);
@@ -90,16 +96,18 @@ public static partial class MapSurfacePatchCodec
                 break;
             case MapSpaceDoc space:
                 WireCount(space.DomainTags.Count, 3);
-                EnumValue(space.Kind); w.WriteNumber("kind", (byte)space.Kind);
+                EnumValue(space.Kind, "kind"); w.WriteNumber("kind", (byte)space.Kind);
                 RefProperty(w, "parent", space.Parent); RefProperty(w, "aliasOf", space.AliasOf);
                 WriteArray(w, "domainTags", space.DomainTags.OrderBy(t => t, StringComparer.Ordinal), static (writer, tag) =>
                 {
-                    RequireText(tag); writer.WriteStringValue(tag);
+                    RequireText(tag, "domainTags"); writer.WriteStringValue(tag);
                 });
                 Boundaries(w, "walls", space.Walls); Boundaries(w, "portals", space.Portals); Refs(w, "links", space.Links);
                 break;
             case MapPrismDomain prism:
-                if (prism.PayloadVersion != 1) throw new MapDocumentException("unsupported prism payload version");
+                if (prism.PayloadVersion != 1)
+                    throw new MapDocumentException(MapDocumentRefusal.SchemaPayloadVersionUnsupported, "unsupported prism payload version")
+                    { RecordId = prism.Id, FieldPath = "payloadVersion", ActualVersion = prism.PayloadVersion, SupportedVersions = new[] { 1 } };
                 w.WriteNumber("payloadVersion", prism.PayloadVersion);
                 RefProperty(w, "space", prism.Space); RefProperty(w, "parent", prism.Parent);
                 w.WriteString("instanceId", prism.InstanceId); Text(w, "storeyId", prism.StoreyId);
@@ -118,8 +126,9 @@ public static partial class MapSurfacePatchCodec
 
     static MapTopologyRecord ReadRecord(JsonElement r)
     {
-        string type = r.GetProperty("type").GetString() ?? throw new MapDocumentException("record type is required");
-        string id = r.GetProperty("id").GetString()!; RequireText(id);
+        string type = r.GetProperty("type").GetString()
+            ?? throw new MapDocumentException(MapDocumentRefusal.SchemaValueRequired, "record type is required") { FieldPath = "type" };
+        string id = r.GetProperty("id").GetString()!; RequireText(id, "id");
         switch (type)
         {
             case "seam":
@@ -133,9 +142,11 @@ public static partial class MapSurfacePatchCodec
             case "chain":
                 Members(r, "type", "id", "kind", "sourcePatch", "vertices");
                 JsonElement vertices = Array(r.GetProperty("vertices"), 4097, "vertices");
-                if (vertices.GetArrayLength() < 2) throw new MapDocumentException("chain requires 2 to 4097 vertices");
+                if (vertices.GetArrayLength() < 2)
+                    throw new MapDocumentException(MapDocumentRefusal.ValueOutsideRange, "chain requires 2 to 4097 vertices")
+                    { RecordId = id, FieldPath = "vertices", ActualCount = vertices.GetArrayLength(), MinimumInteger = 2, MaximumInteger = 4097 };
                 JsonElement source = r.GetProperty("sourcePatch");
-                return new MapBoundaryChain(id, ReadEnum<MapChainKind>(r.GetProperty("kind")),
+                return new MapBoundaryChain(id, ReadEnum<MapChainKind>(r.GetProperty("kind"), "kind"),
                     source.ValueKind == JsonValueKind.Null ? null : ReadKey(source), ReadList(vertices, static v =>
                     {
                         Members(v, "vertex", "heightUnits"); JsonElement height = v.GetProperty("heightUnits");
@@ -144,7 +155,7 @@ public static partial class MapSurfacePatchCodec
             case "strip":
                 Members(r, "type", "id", "lowerChain", "upperChain", "facing", "materialId");
                 return new MapWallStrip(id, ReadRef(r.GetProperty("lowerChain")), ReadRef(r.GetProperty("upperChain")),
-                    ReadEnum<MapStripFacing>(r.GetProperty("facing")), r.GetProperty("materialId").GetUInt16());
+                    ReadEnum<MapStripFacing>(r.GetProperty("facing"), "facing"), r.GetProperty("materialId").GetUInt16());
             case "portal":
                 Members(r, "type", "id", "fromSpace", "toSpace", "interval", "bandBottom", "bandTop");
                 return new MapCavePortal(id, ReadRef(r.GetProperty("fromSpace")), ReadRef(r.GetProperty("toSpace")),
@@ -159,15 +170,17 @@ public static partial class MapSurfacePatchCodec
                     ReadList(r.GetProperty("geometryOwners"), ReadRef));
             case "space":
                 Members(r, "type", "id", "kind", "parent", "aliasOf", "domainTags", "walls", "portals", "links");
-                return new MapSpaceDoc(id, ReadEnum<MapSpaceKind>(r.GetProperty("kind")), OptionalRef(r.GetProperty("parent")),
+                return new MapSpaceDoc(id, ReadEnum<MapSpaceKind>(r.GetProperty("kind"), "kind"), OptionalRef(r.GetProperty("parent")),
                     OptionalRef(r.GetProperty("aliasOf")), ReadList(r.GetProperty("domainTags"), static tag =>
                     {
-                        string text = tag.GetString()!; RequireText(text); return text;
+                        string text = tag.GetString()!; RequireText(text, "domainTags"); return text;
                     }), ReadList(r.GetProperty("walls"), ReadBoundary), ReadList(r.GetProperty("portals"), ReadBoundary),
                     ReadList(r.GetProperty("links"), ReadRef));
             case "prism":
                 Members(r, "type", "id", "payloadVersion", "space", "parent", "instanceId", "storeyId", "footprint", "lowerY", "upperY");
-                if (r.GetProperty("payloadVersion").GetInt32() != 1) throw new MapDocumentException("unsupported prism payload version");
+                if (r.GetProperty("payloadVersion").GetInt32() != 1)
+                    throw new MapDocumentException(MapDocumentRefusal.SchemaPayloadVersionUnsupported, "unsupported prism payload version")
+                    { RecordId = id, FieldPath = "payloadVersion", ActualVersion = r.GetProperty("payloadVersion").GetInt32(), SupportedVersions = new[] { 1 } };
                 return new MapPrismDomain(id, 1, ReadRef(r.GetProperty("space")), ReadRef(r.GetProperty("parent")),
                     r.GetProperty("instanceId").GetString()!, r.GetProperty("storeyId").GetString()!,
                     MapWaterJson.ReadDomain(r.GetProperty("footprint")), r.GetProperty("lowerY").GetSingle(), r.GetProperty("upperY").GetSingle());
@@ -175,7 +188,9 @@ public static partial class MapSurfacePatchCodec
                 Members(r, "type", "id", "space", "lattice", "slotCells", "lower", "upper");
                 return new MapSpaceFootprint(id, ReadRef(r.GetProperty("space")), ReadKey(r.GetProperty("lattice")),
                     ReadSlots(r.GetProperty("slotCells")), ReadBound(r.GetProperty("lower")), ReadBound(r.GetProperty("upper")));
-            default: throw new MapDocumentException("unknown topology record type");
+            default:
+                throw new MapDocumentException(MapDocumentRefusal.OperationKindUnsupported, "unknown topology record type")
+                { RecordId = id, FieldPath = "type", ActualText = type };
         }
     }
 
@@ -187,9 +202,9 @@ public static partial class MapSurfacePatchCodec
     }
     static MapLatticeVertex ReadVertex(JsonElement v)
     {
-        Members(v, "surfaceId", "address"); string id = v.GetProperty("surfaceId").GetString()!; RequireText(id);
+        Members(v, "surfaceId", "address"); string id = v.GetProperty("surfaceId").GetString()!; RequireText(id, "surfaceId");
         JsonElement a = v.GetProperty("address"); Members(a, "x", "z", "d");
-        return new(id, MapLatticeAddress.Create(Long(a.GetProperty("x")), Long(a.GetProperty("z")), a.GetProperty("d").GetInt32()));
+        return new(id, MapLatticeAddress.Create(Long(a.GetProperty("x"), "x"), Long(a.GetProperty("z"), "z"), a.GetProperty("d").GetInt32()));
     }
     static void WriteEdge(Utf8JsonWriter w, MapSurfaceEdgeRef edge)
     {
@@ -211,7 +226,7 @@ public static partial class MapSurfacePatchCodec
     }
     static MapRecordRef ReadRef(JsonElement r)
     {
-        Members(r, "id", "anchor"); string id = r.GetProperty("id").GetString()!; RequireText(id);
+        Members(r, "id", "anchor"); string id = r.GetProperty("id").GetString()!; RequireText(id, "id");
         return new(id, ReadKey(r.GetProperty("anchor")));
     }
     static MapRecordRef? OptionalRef(JsonElement r) => r.ValueKind == JsonValueKind.Null ? null : ReadRef(r);
@@ -227,13 +242,13 @@ public static partial class MapSurfacePatchCodec
         WriteArray(w, name, boundaries.OrderBy(b => b.Record.Id, StringComparer.Ordinal).ThenBy(b => b.Record.Anchor).ThenBy(b => b.Side),
             static (writer, b) =>
             {
-                EnumValue(b.Side); writer.WriteStartObject(); RefProperty(writer, "record", b.Record);
+                EnumValue(b.Side, "side"); writer.WriteStartObject(); RefProperty(writer, "record", b.Record);
                 writer.WriteNumber("side", (byte)b.Side); writer.WriteEndObject();
             });
     }
     static MapBoundaryRef ReadBoundary(JsonElement b)
     {
-        Members(b, "record", "side"); return new(ReadRef(b.GetProperty("record")), ReadEnum<MapSide>(b.GetProperty("side")));
+        Members(b, "record", "side"); return new(ReadRef(b.GetProperty("record")), ReadEnum<MapSide>(b.GetProperty("side"), "side"));
     }
     static void Slots(Utf8JsonWriter w, IReadOnlyList<int> slots)
     {
@@ -245,38 +260,55 @@ public static partial class MapSurfacePatchCodec
     }
     static void ValidateSlots(IReadOnlyList<int> slots)
     {
-        if (slots.Count is < 1 or > 4096) throw new MapDocumentException("invalid slotCells length");
+        if (slots.Count is < 1 or > 4096)
+            throw new MapDocumentException(MapDocumentRefusal.ValueOutsideRange, "invalid slotCells length")
+            { FieldPath = "slotCells", ActualCount = slots.Count, MinimumInteger = 1, MaximumInteger = 4096 };
         int previous = -1;
+        int index = 0;
         foreach (int cell in slots)
         {
-            if (cell is < 0 or >= 4096 || cell <= previous) throw new MapDocumentException("invalid or duplicate slotCells order");
+            if (cell is < 0 or >= 4096 || cell <= previous)
+                throw new MapDocumentException(cell is < 0 or >= 4096 ? MapDocumentRefusal.ValueOutsideRange : MapDocumentRefusal.OrderInvalid,
+                    "invalid or duplicate slotCells order")
+                {
+                    FieldPath = "slotCells",
+                    Index = index,
+                    ActualInteger = cell,
+                    PreviousInteger = index > 0 ? previous : null,
+                    MinimumInteger = cell is < 0 or >= 4096 ? 0 : null,
+                    MaximumInteger = cell is < 0 or >= 4096 ? 4095 : null,
+                };
             previous = cell;
+            index++;
         }
     }
     static void WriteBound(Utf8JsonWriter w, MapBoundRef bound)
     {
-        EnumValue(bound.Kind); w.WriteStartObject(); w.WriteNumber("kind", (byte)bound.Kind);
+        EnumValue(bound.Kind, "kind"); w.WriteStartObject(); w.WriteNumber("kind", (byte)bound.Kind);
         if (bound.SurfaceId is null) w.WriteNull("surfaceId"); else Text(w, "surfaceId", bound.SurfaceId);
         RefProperty(w, "opening", bound.Opening); w.WriteEndObject();
     }
     static MapBoundRef ReadBound(JsonElement b)
     {
         Members(b, "kind", "surfaceId", "opening");
-        return new(ReadEnum<MapBoundKind>(b.GetProperty("kind")), b.GetProperty("surfaceId").GetString(), OptionalRef(b.GetProperty("opening")));
+        return new(ReadEnum<MapBoundKind>(b.GetProperty("kind"), "kind"), b.GetProperty("surfaceId").GetString(), OptionalRef(b.GetProperty("opening")));
     }
-    static T ReadEnum<T>(JsonElement value) where T : struct, Enum
+    static T ReadEnum<T>(JsonElement value, string fieldPath) where T : struct, Enum
     {
-        T result = (T)Enum.ToObject(typeof(T), value.GetByte()); EnumValue(result); return result;
+        T result = (T)Enum.ToObject(typeof(T), value.GetByte()); EnumValue(result, fieldPath); return result;
     }
-    static void EnumValue<T>(T value) where T : struct, Enum
+    static void EnumValue<T>(T value, string fieldPath) where T : struct, Enum
     {
-        if (!Enum.IsDefined(value)) throw new MapDocumentException("invalid topology enum value");
+        if (!Enum.IsDefined(value))
+            throw new MapDocumentException(MapDocumentRefusal.SchemaEnumUnsupported, "invalid topology enum value")
+            { EnumType = typeof(T), ActualInteger = Convert.ToInt64(value), FieldPath = fieldPath };
     }
-    static void Text(Utf8JsonWriter w, string name, string value) { RequireText(value); w.WriteString(name, value); }
-    static void RequireText(string value)
+    static void Text(Utf8JsonWriter w, string name, string value) { RequireText(value, name); w.WriteString(name, value); }
+    static void RequireText(string value, string fieldPath)
     {
-        if (string.IsNullOrWhiteSpace(value)) throw new MapDocumentException("record text is required");
-        if (value.Length > MaxEncodedBytes) throw Limit();
+        if (string.IsNullOrWhiteSpace(value))
+            throw new MapDocumentException(MapDocumentRefusal.SchemaValueRequired, "record text is required") { FieldPath = fieldPath, ActualText = value };
+        if (value.Length > MaxEncodedBytes) throw Limit(fieldPath: fieldPath, actualCount: value.Length);
     }
     static T[] ReadList<T>(JsonElement array, Func<JsonElement, T> read)
     {
@@ -299,11 +331,11 @@ public static partial class MapSurfacePatchCodec
     // These checks precede LINQ buffering and do not restrict geometry that fits the payload budget.
     static void WireCount(int count, int minimumItemBytes)
     {
-        if (count < 0 || checked((long)count * minimumItemBytes) > MaxEncodedBytes) throw Limit();
+        if (count < 0 || checked((long)count * minimumItemBytes) > MaxEncodedBytes) throw Limit(actualCount: count);
     }
     static void FlushBudget(Utf8JsonWriter w)
     {
-        if (w.BytesCommitted + w.BytesPending > MaxEncodedBytes) throw Limit();
+        if (w.BytesCommitted + w.BytesPending > MaxEncodedBytes) throw Limit(actualByteCount: w.BytesCommitted + w.BytesPending);
         w.Flush();
     }
 }

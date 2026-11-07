@@ -41,8 +41,8 @@ internal sealed record SceneLimitsProfile(MapSceneLimits Scene, MapRenderBudgets
 
     internal static SceneLimitsProfile Read(JsonElement json)
     {
-        Require(json.ValueKind == JsonValueKind.Object, "invalid scene limits profile");
-        Require(json.TryGetProperty("scene", out _) && json.TryGetProperty("residency", out _), "incomplete scene limits profile");
+        Require(json.ValueKind == JsonValueKind.Object, PrivateOracleDataRefusal.SchemaShapeInvalid, "invalid scene limits profile");
+        Require(json.TryGetProperty("scene", out _) && json.TryGetProperty("residency", out _), PrivateOracleDataRefusal.ValueRequired, "incomplete scene limits profile");
         Shape(json, Families.Keys.Append("maxProofBytes").Where(name => json.TryGetProperty(name, out _)).ToArray());
         var scene = ReadGroup<MapSceneLimits>(json.GetProperty("scene"));
         var residency = ReadGroup<MapRenderBudgets>(json.GetProperty("residency"));
@@ -78,8 +78,7 @@ internal sealed record SceneLimitsProfile(MapSceneLimits Scene, MapRenderBudgets
     static long Number(JsonElement json, string name, long max)
     {
         var value = json.GetProperty(name);
-        Require(value.ValueKind == JsonValueKind.Number && value.TryGetInt64(out long number) && number > 0 && number <= max,
-            "invalid scene limits value " + name);
+        Require(value.ValueKind == JsonValueKind.Number && value.TryGetInt64(out long number) && number > 0 && number <= max, PrivateOracleDataRefusal.ValueOutsideDomain, "invalid scene limits value " + name);
         return value.GetInt64();
     }
 }

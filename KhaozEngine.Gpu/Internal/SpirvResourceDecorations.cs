@@ -56,19 +56,33 @@ namespace KhaozEngine.Gpu.Internal
         /// <summary>Every id in the module carrying both a <c>DescriptorSet</c> and a <c>Binding</c>
         /// decoration, keyed by id.</summary>
         /// <param name="spirv">The module bytes, little-endian words as every glslang emission is.</param>
-        /// <param name="label">A name for the module, included in any error message.</param>
+        /// <param name="label">A name for the module, carried in <see cref="ShaderValidationException.Label"/>.</param>
         /// <exception cref="ShaderValidationException">The bytes are not a SPIR-V module, or the instruction
-        /// stream is truncated.</exception>
+        /// stream is truncated. Reason distinguishes SpirvLengthInvalid, SpirvMagicInvalid and
+        /// SpirvInstructionMalformed, with Label. Length refusals carry ByteLength, MinimumHeaderBytes and
+        /// WordBytes, magic refusals carry ActualMagic and ExpectedMagic, and malformed instructions carry
+        /// WordOffset, WordCount and ModuleWordCount.</exception>
         internal static IReadOnlyDictionary<uint, SpirvResourceDecoration> Read(byte[] spirv, string label)
         {
             ArgumentNullException.ThrowIfNull(spirv);
             if (spirv.Length < HeaderWords * 4 || spirv.Length % 4 != 0)
-                throw new ShaderValidationException($"{label}: not a SPIR-V module (length {spirv.Length}).");
+                throw new ShaderValidationException(ShaderValidationRefusal.SpirvLengthInvalid, $"{label}: not a SPIR-V module (length {spirv.Length}).")
+                {
+                    Label = label,
+                    ByteLength = spirv.Length,
+                    MinimumHeaderBytes = HeaderWords * 4,
+                    WordBytes = 4,
+                };
 
             uint[] words = ToWords(spirv);
             if (words[0] != Magic)
-                throw new ShaderValidationException(
-                    $"{label}: not a SPIR-V module (magic 0x{words[0]:X8}, expected 0x{Magic:X8}).");
+                throw new ShaderValidationException(ShaderValidationRefusal.SpirvMagicInvalid,
+                    $"{label}: not a SPIR-V module (magic 0x{words[0]:X8}, expected 0x{Magic:X8}).")
+                {
+                    Label = label,
+                    ActualMagic = words[0],
+                    ExpectedMagic = Magic,
+                };
 
             var sets = new Dictionary<uint, uint>();
             var bindings = new Dictionary<uint, uint>();
@@ -80,7 +94,13 @@ namespace KhaozEngine.Gpu.Internal
                 int wordCount = (int)(words[i] >> 16);
                 // A zero word count would not advance, so a malformed module cannot spin here.
                 if (wordCount <= 0 || i + wordCount > words.Length)
-                    throw new ShaderValidationException($"{label}: truncated or malformed SPIR-V instruction stream.");
+                    throw new ShaderValidationException(ShaderValidationRefusal.SpirvInstructionMalformed, $"{label}: truncated or malformed SPIR-V instruction stream.")
+                    {
+                        Label = label,
+                        WordOffset = i,
+                        WordCount = wordCount,
+                        ModuleWordCount = words.Length,
+                    };
 
                 // OpDecorate: <target id> <decoration> <literals...>. Both decorations this cares about carry
                 // exactly one literal, so a four-word instruction is the shape and anything else is not one.

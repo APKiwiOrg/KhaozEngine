@@ -70,7 +70,7 @@ public class IdentificationMaskTests
             new InstanceFieldShape(OneVarint, InstanceCountWidth.None, default),
             ReadOnlySpan<InstanceReferenceTarget>.Empty));
 
-        Assert.Contains("mask bit 1", thrown.Message, StringComparison.Ordinal);
+        Assert.Equal("identificationMaskBit", thrown.ParamName);
     }
 
     [Fact]

@@ -6,6 +6,7 @@ using KhaozEngine.MapDoc.Foliage;
 using KhaozEngine.MapDoc.Identity;
 using KhaozEngine.MapDoc.Markers;
 using KhaozEngine.MapDoc.Prefabs;
+using KhaozEngine.MapDoc.Scene;
 using KhaozEngine.MapDoc.Storage;
 using KhaozEngine.MapDoc.Support;
 using KhaozEngine.MapDoc.Surfaces;
@@ -28,8 +29,8 @@ public sealed class MapResolveLimitsTests
         MarkerFixture fixture = MarkerFixtures.WideBounds();
         using var probe = new CapacityDemandProbe();
         var error = Assert.Throws<MapDocumentException>(() => MapNativeResolution.Resolve(fixture.Document, fixture.Assets, MarkerFixtures.Options()));
-        Assert.Contains("Marker 'stacked-disabled' support status CapacityExceeded", error.Message, StringComparison.Ordinal);
-        Assert.Contains("MaxPageMetadataChecks: requested 32770, allowance 32769", error.Message, StringComparison.Ordinal);
+        SupportCapacity(error, "stacked-disabled", marker: true);
+        Assert.Equal(new MapSceneCapacity("MaxPageMetadataChecks", 32770, 32769), MapSceneCapacity.From(error));
 
         // The scaled ceiling refuses its 32,770th check, and the same check reports the caller's MaxPageReads in whole
         // page reads, ceil(32769 / 1024) = 33 against 32, so the origin refuses exactly where the gate does.
@@ -65,8 +66,8 @@ public sealed class MapResolveLimitsTests
         })
         {
             var error = Assert.Throws<MapDocumentException>(run);
-            Assert.Contains("support status CapacityExceeded", error.Message, StringComparison.Ordinal);
-            Assert.Contains("MaxPageMetadataChecks: requested 32770", error.Message, StringComparison.Ordinal);
+            SupportCapacity(error, "stacked-disabled", marker: true);
+            Assert.Equal(32770, MapSceneCapacity.From(error)!.Requested);
         }
     }
 
@@ -83,7 +84,13 @@ public sealed class MapResolveLimitsTests
             () => MapNativeResolution.ResolvePlacements(fixture.Document, fixture.Assets, tight, []),
             () => MapDocumentEditFinalizer.Expand(fixture.Document, fixture.Assets, tight.QueryLimits, tight.ExpansionLimits),
         })
-            Assert.Equal("Prefab expansion preflight limit exceeded.", Assert.Throws<MapDocumentException>(run).Message);
+        {
+            var error = Assert.Throws<MapDocumentException>(run);
+            Assert.Equal(MapDocumentRefusal.WorkCapacityExceeded, error.Reason);
+            Assert.Equal("MaxPatches", error.Budget);
+            Assert.True(error.ActualCount > 1);
+            Assert.Equal(1, error.Limit);
+        }
     }
 
     [Fact]
@@ -97,7 +104,7 @@ public sealed class MapResolveLimitsTests
         // The captured document source visits two index pages for each of the sixteen surfaces in the seat's scope.
         var tight = MarkerFixtures.Options() with { QueryLimits = new(MaxPageReads: 31) };
         var error = Assert.Throws<MapDocumentException>(() => MapNativeResolution.ResolvePlacements(fixture.Document, fixture.Assets, tight, ["seat"]));
-        Assert.Contains("Placement 'seat' support status CapacityExceeded", error.Message, StringComparison.Ordinal);
+        SupportCapacity(error, "seat", marker: false);
     }
 
     [Fact]
@@ -172,11 +179,22 @@ public sealed class MapResolveLimitsTests
         // The foliage preflight counts prefab expansion under the declared profile, before any copy or expansion.
         var tight = Assert.Throws<MapDocumentException>(() => MapDocumentEditFinalizer.Finalize(f.Document, Prepared(), f.Assets, f.Assets,
             new MapQueryLimits(), new MapPrefabExpansionLimits(MaxPatches: 1)));
-        Assert.Equal("Foliage CapacityExceeded: the document exceeds the foliage context budget before any copy.", tight.Message);
-        // A tight query profile reaches each side's expansion.
+        Assert.Equal(MapDocumentRefusal.WorkCapacityExceeded, tight.Reason);
+        Assert.Equal("MaxPatches", tight.Budget);
+        Assert.True(tight.ActualCount > 1);
+        Assert.Equal(1, tight.Limit);
+        // A tight query profile reaches each side's expansion. Support resolution refuses as unresolved support whose
+        // status is the capacity stop, and keeps the declared query budget and its exact demand.
         var query = Assert.Throws<MapDocumentException>(() => MapDocumentEditFinalizer.Finalize(f.Document, Prepared(), f.Assets, f.Assets,
             new MapQueryLimits(MaxCandidatePatches: 1), new MapPrefabExpansionLimits()));
-        Assert.Contains("CapacityExceeded", query.Message, StringComparison.Ordinal);
+        Assert.Equal(MapDocumentRefusal.SupportUnresolved, query.Reason);
+        Assert.Equal(MapSupportStatus.CapacityExceeded, query.SupportStatus);
+        Assert.Equal("MaxCandidatePatches", query.Budget);
+        Assert.Equal(1, query.Limit);
+        var demand = MapSceneCapacity.From(query);
+        Assert.NotNull(demand);
+        Assert.Equal(("MaxCandidatePatches", 1L), (demand.LimitName, demand.Allowance));
+        Assert.True(demand.Requested > 1);
     }
 
     [Fact]
@@ -210,4 +228,12 @@ public sealed class MapResolveLimitsTests
 
     static (string Id, MapExactPoint Position, MapMarkerHeightProvenance? Provenance)[] Markers(MapEffectiveResources resources) =>
         MapEffectiveAnnotations.Markers(resources).Select(m => (m.Id, m.Position, m.HeightProvenance)).ToArray();
+    static void SupportCapacity(MapDocumentException error, string id, bool marker)
+    {
+        Assert.Equal(marker ? MapDocumentRefusal.MarkerSupportUnresolved : MapDocumentRefusal.SupportUnresolved, error.Reason);
+        Assert.Equal(id, marker ? error.MarkerId : error.PlacementId);
+        Assert.Equal(MapSupportStatus.CapacityExceeded, error.SupportStatus);
+        Assert.NotNull(MapSceneCapacity.From(error));
+    }
+
 }

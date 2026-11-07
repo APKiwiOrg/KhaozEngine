@@ -1,7 +1,6 @@
 using System;
 using System.Linq;
 using System.Numerics;
-using System.Reflection;
 using System.Runtime.CompilerServices;
 using KhaozEngine.MapDoc.Render3D;
 using KhaozEngine.Render3D;
@@ -75,11 +74,9 @@ public sealed class NativeUploadSettlementTests
         Assert.Equal(RetainedCpu(kind), admission.CpuBytes);
         var handle = upload.Publish();
         Assert.Equal(RetainedCpu(kind), admission.CpuBytes);
-        Assert.Null(typeof(SceneResourceUpload).GetField("_data", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(upload));
-        var transfers = typeof(SceneResourceUpload).GetField("_transfers", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(upload)!;
-        Assert.Equal(0, transfers.GetType().GetProperty("Capacity")!.GetValue(transfers));
-        Assert.Null(typeof(SceneResourceUpload).GetField("_barrier", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(upload));
-        Assert.Null(typeof(SceneResourceUpload).GetField("_completion", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(upload));
+        Assert.False(upload.HoldsInputsForTests);
+        Assert.Equal(0, upload.TransferCapacityForTests);
+        Assert.False(upload.HoldsCompletionResourcesForTests);
         Assert.Equal(demand.OwnedGpuBytes, admission.GpuBytes);
         host.Scene.ReleaseResource(handle);
         host.Scene.Dispose();
@@ -140,8 +137,7 @@ public sealed class NativeUploadSettlementTests
         Assert.Equal(0, admission.GpuBytes);
         Assert.Equal(0, admission.Lifetime.LiveHandles);
         Assert.Equal(1, admission.Lifetime.Disposed);
-        var owned = typeof(SceneResourceUpload).GetField("_owned", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(upload)!;
-        Assert.Equal(0, owned.GetType().GetProperty("Capacity")!.GetValue(owned));
+        Assert.Equal(0, upload.OwnedCapacityForTests);
     }
 
     [Theory]

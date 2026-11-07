@@ -32,30 +32,19 @@ public class AppInstallStampTests
         Assert.Equal(T0, result.Stamp.UpdatedAtUtc);
     }
 
-    [Fact]
-    public void Resolve_Upgrade_PreservesFirstInstalledBumpsUpdatedAndVersion()
+    [Theory]
+    [InlineData("1.0.0", "1.1.0")]
+    [InlineData("2.0.0", "1.9.0")]
+    public void Resolve_ChangedVersion_PreservesFirstInstalledBumpsUpdatedAndVersion(
+        string previousVersion, string currentVersion)
     {
-        var previous = new AppInstallStamp("1.0.0", T0, T0);
+        // Any ordinal version difference counts, including a downgrade.
+        var previous = new AppInstallStamp(previousVersion, T0, T0);
 
-        AppInstallStampResult result = AppInstallStamp.Resolve(previous, currentVersion: "1.1.0", utcNow: T1);
+        AppInstallStampResult result = AppInstallStamp.Resolve(previous, currentVersion, utcNow: T1);
 
         Assert.True(result.Changed);
-        Assert.Equal("1.1.0", result.Stamp.Version);
-        Assert.Equal(T0, result.Stamp.FirstInstalledAtUtc);
-        Assert.Equal(T1, result.Stamp.UpdatedAtUtc);
-    }
-
-    [Fact]
-    public void Resolve_Downgrade_TreatedAsChangeSameAsUpgrade()
-    {
-        // Any version-string difference counts as a change; no semver ordering is compared,
-        // so a downgrade preserves FirstInstalledAtUtc and bumps UpdatedAtUtc just like an upgrade.
-        var previous = new AppInstallStamp("2.0.0", T0, T0);
-
-        AppInstallStampResult result = AppInstallStamp.Resolve(previous, currentVersion: "1.9.0", utcNow: T1);
-
-        Assert.True(result.Changed);
-        Assert.Equal("1.9.0", result.Stamp.Version);
+        Assert.Equal(currentVersion, result.Stamp.Version);
         Assert.Equal(T0, result.Stamp.FirstInstalledAtUtc);
         Assert.Equal(T1, result.Stamp.UpdatedAtUtc);
     }

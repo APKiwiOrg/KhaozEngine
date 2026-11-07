@@ -89,6 +89,9 @@ namespace KhaozEngine.Gpu.Metal.Internal
             if (encoder == IntPtr.Zero) return;
             if (source.Handle.Handle == IntPtr.Zero || destination.Handle.Handle == IntPtr.Zero) return;
 
+            RecordBufferAccess(source, srcOffsetBytes, MetalCopyAlignment.PaddedSize(sizeInBytes));
+            RecordBufferAccess(destination, dstOffsetBytes, MetalCopyAlignment.PaddedSize(sizeInBytes));
+
             _blit.CopyBufferToBuffer(encoder, source.Handle.Handle, srcOffsetBytes, destination.Handle.Handle,
                 dstOffsetBytes, MetalCopyAlignment.PaddedSize(sizeInBytes));
         }
@@ -296,6 +299,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
         /// <returns>The blit encoder, or <see cref="IntPtr.Zero"/> when the buffer would not make one.</returns>
         internal IntPtr EnsureCopyEncoder()
         {
+            if (_passes.HasPendingClears) ResolveDeferredDrawable();
             _passes.EndPass();
             return _encoders.EnsureBlitEncoder();
         }
@@ -307,6 +311,8 @@ namespace KhaozEngine.Gpu.Metal.Internal
         void Region(IntPtr encoder, MetalTexture source, uint sourceLevel, uint sourceLayer,
             MetalTexture destination, uint destinationLevel, uint destinationLayer, uint width, uint height)
         {
+            RecordStagingAccess(source, sourceLevel, sourceLayer, width, height);
+            RecordStagingAccess(destination, destinationLevel, destinationLayer, width, height);
             switch (MetalTransferPlan.CaseFor(source.IsStaging, destination.IsStaging))
             {
                 case MetalTransferCase.TextureToTexture:
@@ -353,6 +359,13 @@ namespace KhaozEngine.Gpu.Metal.Internal
 
             if (size == 0) return;
 
+            // This path copies the entire software subresource, including its padding.
+            if (_prefixFrame == 0)
+            {
+                _recordedReads.Add(source.CpuResource, from, size);
+                _recordedReads.Add(destination.CpuResource, to, size);
+            }
+
             MetalCopyAlignment.RequireAlignedOffset(from, nameof(source),
                 "A native Metal staging-to-staging texture copy", "source subresource");
             MetalCopyAlignment.RequireAlignedOffset(to, nameof(destination),
@@ -387,12 +400,24 @@ namespace KhaozEngine.Gpu.Metal.Internal
                 return;
             }
 
-            throw new ArgumentException(
+            throw new GpuTextureTransferArgumentException(GpuTextureTransferRefusal.TextureShapeMismatch,
                 "A native Metal whole-texture copy was asked for between two textures that do not agree on "
                 + "width, height, mip count, array layer count and format. A whole copy names every subresource "
                 + "on both sides, so a mismatch is a copy that would clip or run off the end rather than one this "
                 + "backend can decide how to narrow. Use CopyTextureSubresource for a region.",
-                nameof(destination));
+                nameof(destination))
+            {
+                SourceWidth = source.Width,
+                SourceHeight = source.Height,
+                SourceFormat = source.Format,
+                SourceMipLevels = source.MipLevels,
+                SourceArrayLayers = source.ArrayLayers,
+                DestinationWidth = destination.Width,
+                DestinationHeight = destination.Height,
+                DestinationFormat = destination.Format,
+                DestinationMipLevels = destination.MipLevels,
+                DestinationArrayLayers = destination.ArrayLayers,
+            };
         }
 
         static void RequireSubresource(MetalTexture texture, uint mipLevel, uint arrayLayer, string side)
@@ -407,8 +432,8 @@ namespace KhaozEngine.Gpu.Metal.Internal
                 throw SubresourceOutOfRange(nameof(arrayLayer), arrayLayer);
             }
 
-            ArgumentOutOfRangeException SubresourceOutOfRange(string paramName, uint actualValue)
-                => new(paramName, actualValue,
+            GpuTextureTransferRangeException SubresourceOutOfRange(string paramName, uint actualValue)
+                => new GpuTextureTransferRangeException(GpuTextureTransferRefusal.SubresourceOutOfRange, paramName, actualValue,
                     "A native Metal subresource copy named mip level "
                     + mipLevel.ToString(CultureInfo.InvariantCulture) + " and array layer "
                     + arrayLayer.ToString(CultureInfo.InvariantCulture) + " of its " + side + ", which has "
@@ -416,14 +441,21 @@ namespace KhaozEngine.Gpu.Metal.Internal
                     + texture.ArrayLayers.ToString(CultureInfo.InvariantCulture)
                     + " array layer(s). A subresource index past the end is a copy that names memory the texture "
                     + "does not have, and the software staging layout would compute an offset outside its own "
-                    + "buffer for it rather than clipping.");
+                    + "buffer for it rather than clipping.")
+                {
+                    Side = side,
+                    MipLevel = mipLevel,
+                    ArrayLayer = arrayLayer,
+                    MipLevels = texture.MipLevels,
+                    ArrayLayers = texture.ArrayLayers,
+                };
         }
 
         static void RequireMipChain(MetalTexture texture)
         {
             if (texture.MipLevels > 1 && !texture.IsStaging) return;
 
-            throw new ArgumentException(
+            throw new GpuTextureTransferArgumentException(GpuTextureTransferRefusal.MipChainRequired,
                 "A native Metal mip generation was asked for on a texture with "
                 + texture.MipLevels.ToString(CultureInfo.InvariantCulture) + " mip level(s)"
                 + (texture.IsStaging ? " that is a STAGING texture" : "")
@@ -431,7 +463,12 @@ namespace KhaozEngine.Gpu.Metal.Internal
                 + "than one level and needs a real MTLTexture: a staging texture is an MTLBuffer with a software "
                 + "subresource layout (M-C5) and has no texture to generate from. Create it with "
                 + "GpuTextureUsage." + nameof(GpuTextureUsage.GenerateMipmaps) + " and a mip count above 1.",
-                nameof(texture));
+                nameof(texture))
+            {
+                MipLevels = texture.MipLevels,
+                IsStaging = texture.IsStaging,
+                NativeHandleMissing = texture.Handle.Handle == IntPtr.Zero,
+            };
         }
 
         static void RequireResolvable(MetalTexture source, MetalTexture destination)
@@ -443,7 +480,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
                 return;
             }
 
-            throw new ArgumentException(
+            throw new GpuTextureTransferArgumentException(GpuTextureTransferRefusal.ResolveShapeMismatch,
                 "A native Metal multisample resolve was asked for from a texture at "
                 + source.SampleCount.ToString(CultureInfo.InvariantCulture) + " sample(s) into one at "
                 + destination.SampleCount.ToString(CultureInfo.InvariantCulture)
@@ -454,7 +491,19 @@ namespace KhaozEngine.Gpu.Metal.Internal
                 + "clamps upstream against GpuCapabilities.MaxMsaaSampleCount, so nothing legitimate reaches "
                 + "either throw, and a silent MSAA downgrade presents as a golden mismatch that reads like a "
                 + "rendering bug.",
-                nameof(destination));
+                nameof(destination))
+            {
+                SourceSampleCount = source.SampleCount,
+                DestinationSampleCount = destination.SampleCount,
+                SourceWidth = source.Width,
+                SourceHeight = source.Height,
+                DestinationWidth = destination.Width,
+                DestinationHeight = destination.Height,
+                SourceFormat = source.Format,
+                DestinationFormat = destination.Format,
+                SourceIsStaging = source.IsStaging,
+                DestinationIsStaging = destination.IsStaging,
+            };
         }
     }
 }

@@ -75,7 +75,7 @@ public sealed partial class MapPlacementRenderBatch : IDisposable
             if (Clusters[i].Request.Key.Cohort == 1)
             {
                 var cohort = new MapRoofCohort(Clusters[i], cells.Get(Clusters[i].Request.Key).RoofEvaluation
-                    ?? throw new MapDocumentException("Roof cohort requires admitted policy metadata."));
+                    ?? throw new MapDocumentException(MapDocumentRefusal.ContextDemandUnprepared, "Roof cohort requires admitted policy metadata.") { Operation = "RoofCohort.Prepare", LayerId = Clusters[i].Request.Key.LayerId });
                 _roofCohorts[i] = cohort;
                 foreach (string id in Clusters[i].RepresentedIds) _roofPolicies.Add(id, (cohort, cohort.Indices[id]));
             }
@@ -98,7 +98,7 @@ public sealed partial class MapPlacementRenderBatch : IDisposable
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
         if (!Clusters.Any(c => ReferenceEquals(c, build)) || build.Request.Key != key || build.BorrowMesh.TriangleCount == 0)
-            throw new MapDocumentException("Cluster publication belongs to another prepared inventory.");
+            throw new MapDocumentException(MapDocumentRefusal.AcquisitionContractMismatch, "Cluster publication belongs to another prepared inventory.") { Operation = "Cluster.Publish", LayerId = key.LayerId };
         _clusters.ApplyNative(key, build, acceptedMesh);
     }
     internal void AcceptPublishedClusters()

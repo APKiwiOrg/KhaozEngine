@@ -1,7 +1,6 @@
 using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
-using System.Reflection;
 using KhaozEngine.Gpu;
 using KhaozEngine.Primitives;
 using KhaozEngine.Render3D;
@@ -67,14 +66,13 @@ public sealed class NativeResourceRebindingTests
         var scene = host.Scene;
         var layers = new[] { new TileGroundLayerImage { AlbedoRgba = new byte[] { 255, 255, 255, 255 } } };
         var legacy = scene.LoadTileGroundMaterial(1, 1, layers);
-        var table = (IList)typeof(Scene3D).GetField("_tileGroundMaterials", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(scene)!;
-        object? legacyEntry = table[legacy.ListIndex];
+        object? legacyEntry = scene.TileGroundMaterialIdentityForTests(legacy.ListIndex);
         var held = NativeResourceUploadTests.Publish(scene, Ground());
         for (int i = 0; i < 8; i++)
         {
             var temporary = NativeResourceUploadTests.Publish(scene, Ground());
-            Assert.InRange(table.Count, 0, 3);
-            Assert.Same(legacyEntry, table[legacy.ListIndex]);
+            Assert.InRange(scene.TileGroundMaterialSlotsForTests, 0, 3);
+            Assert.Same(legacyEntry, scene.TileGroundMaterialIdentityForTests(legacy.ListIndex));
             Assert.Equal(3, scene.LiveTileGroundMaterialCount);
             scene.ReleaseResource(temporary);
             scene.Begin(); scene.Begin(); scene.Begin(); scene.Begin();
@@ -82,8 +80,8 @@ public sealed class NativeResourceRebindingTests
         scene.ReleaseResource(held);
         scene.UnloadTileGroundMaterial(legacy);
         var next = NativeResourceUploadTests.Publish(scene, Ground());
-        Assert.Null(table[legacy.ListIndex]);
-        Assert.InRange(table.Count, 0, 3);
+        Assert.Null(scene.TileGroundMaterialIdentityForTests(legacy.ListIndex));
+        Assert.InRange(scene.TileGroundMaterialSlotsForTests, 0, 3);
         scene.ReleaseResource(next);
     }
 

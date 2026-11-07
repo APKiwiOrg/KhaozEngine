@@ -150,9 +150,10 @@ void main() {
             using IGpuFence completion = f.CreateFence();
 
             byte[] four = Filled(4);
-            ArgumentException nonStaging = Assert.Throws<ArgumentException>(
+            GpuStagingMapArgumentException nonStaging = Assert.Throws<GpuStagingMapArgumentException>(
                 () => device.TryReadBuffer(words, completion, 0, four));
             Assert.Equal("staging", nonStaging.ParamName);
+            Assert.Equal(GpuStagingMapRefusal.StagingUsageRequired, nonStaging.Reason);
             Assert.Equal(Filled(4), four);
 
             Assert.Throws<ObjectDisposedException>(() => device.TryReadBuffer(disposed, completion, 0, four));

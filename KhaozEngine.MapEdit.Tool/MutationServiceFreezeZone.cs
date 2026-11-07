@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using KhaozEngine.MapDoc;
 using KhaozEngine.MapEditor;
 
@@ -35,11 +36,11 @@ public sealed partial class MutationService
             var command = new FreezeZoneCommand(registry);
             command.Apply(doc);
 
-            IReadOnlyList<string> errors = MapDocumentValidator.Validate(doc, registry);
+            IReadOnlyList<MapDocumentFinding> errors = MapDocumentValidator.ValidateFindings(doc, registry);
             if (errors.Count > 0)
             {
                 command.Revert(doc);
-                throw new InvalidOperationException("mutation rejected: " + string.Join("; ", errors));
+                throw MapMutationException.FromFindings(errors, "mutation rejected: " + string.Join("; ", errors.Select(e => e.Message)));
             }
 
             return new FreezeZoneResult(doc.Placements.Count - placementsBefore, scatter, companion, exclusions,

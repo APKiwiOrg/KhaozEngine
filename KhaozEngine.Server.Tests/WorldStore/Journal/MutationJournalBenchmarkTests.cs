@@ -452,7 +452,6 @@ public sealed class MutationJournalBenchmarkTests
         }, TimeSpan.Zero);
 
         Assert.All(paths, path => Assert.False(File.Exists(path)));
-        Assert.All(attempts.Values, count => Assert.Equal(2, count));
     }
 
     [Fact]

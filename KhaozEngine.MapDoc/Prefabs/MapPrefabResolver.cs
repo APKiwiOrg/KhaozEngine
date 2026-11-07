@@ -43,10 +43,13 @@ public static class MapPrefabResolver
         _ = MapPrefabPreflight.Count(document, assets, limits);
         observer?.EnterStage("Copies");
         MapPrefabIdentity.RequireOwnership(document, assets);
-        if (document.Tiles is { IsPartial: true }) throw new MapDocumentException("Effective expansion requires a complete document.");
+        if (document.Tiles is { IsPartial: true }) throw new MapDocumentException(MapDocumentRefusal.CompleteDocumentRequired, "Effective expansion requires a complete document.")
+        { DocumentId = document.Id, Operation = "Expand" };
         var numericErrors = new List<string>();
-        _ = MapNativeValidation.ValidateNumericIds(document, numericErrors);
-        if (numericErrors.Count != 0) throw new MapDocumentException(string.Join("\n", numericErrors));
+        var numericFindings = new List<MapDocumentFinding>();
+        _ = MapNativeValidation.ValidateNumericIds(document, numericErrors, findings: numericFindings);
+        if (numericErrors.Count != 0) throw MapDocumentRefusalFactory.FromFinding(numericFindings[0],
+            string.Join("\n", numericErrors), findings: numericFindings);
         // Expansion never reads foliage, so the authored copy shares it rather than encoding the density payload.
         var authored = MapDocumentSnapshot.Copy(document, MapDocRegistry.CreateDefault());
         var product = MapEffectiveResolutionKernel.Resolve(MapEffectiveResolutionInput.FromDocument(authored, MapSurfaceSemantics.RootDigest(authored)), assets, nativeSource, observer, queryLimits);
@@ -55,8 +58,9 @@ public static class MapPrefabResolver
             ClosureHash = assets.Hash,
             SourceFingerprint = document.Foliage is null ? null : Editing.MapDocumentEditFinalizer.BaseFingerprint(document),
         };
-        var foliageErrors = Foliage.MapFoliageReferences.ValidateOwners(authored, resources);
-        if (foliageErrors.Count != 0) throw new MapDocumentException(string.Join("\n", foliageErrors));
+        var foliageFindings = Foliage.MapFoliageReferences.ValidateOwnerFindings(authored, resources);
+        if (foliageFindings.Count != 0) throw MapDocumentRefusalFactory.FromFinding(foliageFindings[0],
+            string.Join("\n", foliageFindings.Select(f => f.Message)), findings: foliageFindings);
         return resources;
     }
 

@@ -12,6 +12,8 @@ public sealed class MapUploadReservation : ISceneUploadReservation
     Action? _release;
     internal void OnRelease(Action release) { lock (_gate) { if (_released) throw new ObjectDisposedException(nameof(MapUploadReservation)); _release += release; } }
     bool _claimed, _published, _retiring, _released, _transferCompleted, _inputsReleased;
+    internal (bool Released, long Cpu, long Gpu, long InFlightCpu, long InFlightStaging) ChargesForTests
+    { get { lock (_gate) return (_released, _cpu, _gpu, _inFlightCpu, _inFlightStaging); } }
     public SceneUploadDemand Demand { get; }
     internal MapUploadReservation(MapRenderAdmission owner, SceneUploadDemand demand, long gpu)
     {

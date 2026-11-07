@@ -255,7 +255,6 @@ namespace KhaozEngine.Tests.Dungeon
 
             DungeonJsonException ex = Assert.Throws<DungeonJsonException>(() => DungeonJson.LoadLayout(json2));
             Assert.Contains("grid[0][0][0]", ex.Message);
-            Assert.Contains("'X'", ex.Message);
         }
 
         // Finds the first quoted row string under the "grid" property (the opening bracket of the grid array

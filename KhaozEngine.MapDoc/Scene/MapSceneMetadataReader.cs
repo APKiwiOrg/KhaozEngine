@@ -35,24 +35,24 @@ internal static class MapSceneMetadataReader
         tokens.Require(JsonTokenType.StartObject);
         while (tokens.Read() && tokens.Type != JsonTokenType.EndObject)
         {
-            if (tokens.Type != JsonTokenType.PropertyName) throw new MapDocumentException("Invalid tile metadata member.");
+            if (tokens.Type != JsonTokenType.PropertyName) throw new MapDocumentException(MapDocumentRefusal.SchemaMalformed, "Invalid tile metadata member.") { Tile = entry.Coord, FieldPath = "$" };
             string name = tokens.String().ToLowerInvariant();
-            if (!members.Add(name)) throw new MapDocumentException("Duplicate tile metadata member.");
+            if (!members.Add(name)) throw new MapDocumentException(MapDocumentRefusal.SchemaMemberDuplicate, "Duplicate tile metadata member.") { Tile = entry.Coord, FieldPath = name };
             tokens.ReadRequired();
             if (name == "$schema")
             {
-                if (tokens.Type is not (JsonTokenType.String or JsonTokenType.Null)) throw new MapDocumentException("Invalid tile schema annotation.");
+                if (tokens.Type is not (JsonTokenType.String or JsonTokenType.Null)) throw new MapDocumentException(MapDocumentRefusal.SchemaValueRequired, "Invalid tile schema annotation.") { Tile = entry.Coord, FieldPath = "$schema" };
                 continue;
             }
             if (name is not ("placements" or "spawns" or "playerspawns" or "sculpt") || tokens.Type != JsonTokenType.StartArray)
-                throw new MapDocumentException("Unknown tile metadata member or invalid array.");
+                throw new MapDocumentException(MapDocumentRefusal.SchemaMalformed, "Unknown tile metadata member or invalid array.") { Tile = entry.Coord, FieldPath = name };
             while (tokens.Read() && tokens.Type != JsonTokenType.EndArray)
             {
-                if (tokens.Type != JsonTokenType.StartObject) throw new MapDocumentException("Invalid tile metadata row.");
+                if (tokens.Type != JsonTokenType.StartObject) throw new MapDocumentException(MapDocumentRefusal.SchemaObjectRequired, "Invalid tile metadata row.") { Tile = entry.Coord, FieldPath = name };
                 if (name == "sculpt")
                 {
                     var value = ReadSculpt(tokens, source, entry);
-                    if (!sculptKeys.Add((value.X, value.Z))) throw new MapDocumentException("Duplicate sculpt metadata coordinates.");
+                    if (!sculptKeys.Add((value.X, value.Z))) throw new MapDocumentException(MapDocumentRefusal.IdentityDuplicate, "Duplicate sculpt metadata coordinates.") { Tile = entry.Coord, SculptTile = new(value.X, value.Z), FieldPath = "sculpt" };
                     sculpt.Add(value);
                 }
                 else
@@ -67,7 +67,7 @@ internal static class MapSceneMetadataReader
                 }
             }
         }
-        if (tokens.Type != JsonTokenType.EndObject || tokens.Read()) throw new MapDocumentException("Invalid tile metadata ending.");
+        if (tokens.Type != JsonTokenType.EndObject || tokens.Read()) throw new MapDocumentException(MapDocumentRefusal.SchemaMalformed, "Invalid tile metadata ending.") { Tile = entry.Coord, FieldPath = "$" };
         MapTileValidator.Validate(new(entry.Coord, placements, spawns, players, Array.Empty<MapSculptTile>()), path, path,
             source.Tiles.TileSize, MapCanonical.SculptCellSizeOf(source.Manifest));
         var compact = MapDocumentFile.CreateCompactOptions(source.SceneRegistry);
@@ -90,7 +90,7 @@ internal static class MapSceneMetadataReader
             }
             w.WriteEndArray(); w.WriteEndObject();
         });
-        if (digest != entry.Hash) throw new MapDocumentException("Tile metadata canonical hash differs from its pinned manifest.");
+        if (digest != entry.Hash) throw new MapDocumentException(MapDocumentRefusal.DigestMismatch, "Tile metadata canonical hash differs from its pinned manifest.") { Tile = entry.Coord, ExpectedHash = entry.Hash, ActualHash = digest };
         return Array.AsReadOnly(placements.ToArray());
     }
 
@@ -148,6 +148,14 @@ internal static class MapSceneMetadataReader
         writer.WriteEndArray();
     }
 
+    internal static bool ReadTokenForTests(Stream stream, long maxToken)
+    {
+        using var tokens = new Tokens(stream, maxToken);
+        return tokens.Read();
+    }
+
+    internal static Stream RowBufferForTests(int limit) => new LimitedRow(limit, new object());
+
     sealed record Sculpt(int X, int Z, long Offset, long Bytes);
     static Sculpt ReadSculpt(Tokens tokens, MapDocumentSource source, MapTileEntry entry)
     {
@@ -156,30 +164,30 @@ internal static class MapSceneMetadataReader
         var members = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         while (tokens.Read() && tokens.Type != JsonTokenType.EndObject)
         {
-            if (tokens.Type != JsonTokenType.PropertyName) throw new MapDocumentException("Invalid sculpt metadata.");
+            if (tokens.Type != JsonTokenType.PropertyName) throw new MapDocumentException(MapDocumentRefusal.SchemaMalformed, "Invalid sculpt metadata.") { Tile = entry.Coord, FieldPath = "sculpt" };
             string name = tokens.String().ToLowerInvariant();
-            if (!members.Add(name)) throw new MapDocumentException("Duplicate sculpt metadata.");
+            if (!members.Add(name)) throw new MapDocumentException(MapDocumentRefusal.SchemaMemberDuplicate, "Duplicate sculpt metadata.") { Tile = entry.Coord, FieldPath = name };
             tokens.ReadRequired();
             if (name == "tilex") x = tokens.Int32();
             else if (name == "tilez") z = tokens.Int32();
             else if (name == "deltas")
             {
-                if (tokens.Type != JsonTokenType.StartArray) throw new MapDocumentException("Invalid sculpt deltas.");
+                if (tokens.Type != JsonTokenType.StartArray) throw new MapDocumentException(MapDocumentRefusal.SchemaArrayRequired, "Invalid sculpt deltas.") { Tile = entry.Coord, SculptTile = new(x, z), FieldPath = "deltas" };
                 offset = tokens.TokenOffset;
                 int count = 0;
                 while (tokens.Read() && tokens.Type != JsonTokenType.EndArray)
                 {
                     if (!float.IsFinite(tokens.Single()) || ++count > TerrainSculpt.TileSize * TerrainSculpt.TileSize)
-                        throw new MapDocumentException("Invalid sculpt delta.");
+                        throw new MapDocumentException(MapDocumentRefusal.SchemaMalformed, "Invalid sculpt delta.") { Operation = "TileMetadata.ReadDelta" };
                 }
-                if (count != TerrainSculpt.TileSize * TerrainSculpt.TileSize) throw new MapDocumentException("Invalid sculpt delta count.");
+                if (count != TerrainSculpt.TileSize * TerrainSculpt.TileSize) throw new MapDocumentException(MapDocumentRefusal.SchemaArrayLengthMismatch, "Invalid sculpt delta count.") { Tile = entry.Coord, SculptTile = new(x, z), FieldPath = "deltas", ActualCount = count, ExpectedCount = TerrainSculpt.TileSize * TerrainSculpt.TileSize };
                 bytes = tokens.Position - offset;
             }
-            else throw new MapDocumentException("Unknown sculpt metadata.");
+            else throw new MapDocumentException(MapDocumentRefusal.SchemaMemberUnknown, "Unknown sculpt metadata.") { Tile = entry.Coord, FieldPath = name };
         }
         if (offset < 0 || MapTileGrid.OwnerOfSculptTile(x, z,
             MapCanonical.SculptCellSizeOf(source.Manifest), source.Tiles.TileSize) != entry.Coord)
-            throw new MapDocumentException("Invalid sculpt owner metadata.");
+            throw new MapDocumentException(MapDocumentRefusal.AuthoredOwnershipMismatch, "Invalid sculpt owner metadata.") { Tile = entry.Coord, SculptTile = new(x, z), FieldPath = "sculpt" };
         return new(x, z, offset, bytes);
     }
 
@@ -242,16 +250,16 @@ internal static class MapSceneMetadataReader
         {
             var reader = Scalar();
             return reader.TokenType == JsonTokenType.Number && reader.TryGetInt32(out int value)
-                ? value : throw new MapDocumentException("Invalid sculpt integer.");
+                ? value : throw new MapDocumentException(MapDocumentRefusal.SchemaInt64Malformed, "Invalid sculpt integer.") { Operation = "TileMetadata.ReadInteger" };
         }
         internal float Single()
         {
             var reader = Scalar();
             return reader.TokenType == JsonTokenType.Number && reader.TryGetSingle(out float value) && float.IsFinite(value)
-                ? value : throw new MapDocumentException("Invalid sculpt delta.");
+                ? value : throw new MapDocumentException(MapDocumentRefusal.SchemaMalformed, "Invalid sculpt delta.") { Operation = "TileMetadata.ReadDelta" };
         }
-        internal void ReadRequired() { if (!Read()) throw new MapDocumentException("Truncated tile metadata."); }
-        internal void Require(JsonTokenType type) { ReadRequired(); if (Type != type) throw new MapDocumentException("Unexpected tile metadata token."); }
+        internal void ReadRequired() { if (!Read()) throw new MapDocumentException(MapDocumentRefusal.SchemaMalformed, "Truncated tile metadata.") { Operation = "TileMetadata.Read" }; }
+        internal void Require(JsonTokenType type) { ReadRequired(); if (Type != type) throw new MapDocumentException(MapDocumentRefusal.SchemaMalformed, "Unexpected tile metadata token.") { Operation = "TileMetadata.Read" }; }
         internal void SkipValue()
         {
             if (Type is not (JsonTokenType.StartObject or JsonTokenType.StartArray)) return;
@@ -275,7 +283,7 @@ internal static class MapSceneMetadataReader
                         case JsonTokenType.EndArray: writer.WriteEndArray(); depth--; break;
                         case JsonTokenType.PropertyName:
                             string name = String();
-                            if (!members.Peek().Add(name)) throw new MapDocumentException("Duplicate tile row member.");
+                            if (!members.Peek().Add(name)) throw new MapDocumentException(MapDocumentRefusal.SchemaMemberDuplicate, "Duplicate tile row member.") { FieldPath = name, Operation = "TileMetadata.ReadRow" };
                             writer.WritePropertyName(name); break;
                         case JsonTokenType.String: writer.WriteStringValue(String()); break;
                         default: writer.WriteRawValue(_buffer.AsSpan(_start, _length)); break;
@@ -283,7 +291,7 @@ internal static class MapSceneMetadataReader
                     if (depth != 0) ReadRequired();
                 } while (depth != 0);
             }
-            return JsonSerializer.Deserialize<T>(stream.GetBuffer().AsSpan(0, (int)stream.Length), options) ?? throw new MapDocumentException("Null tile metadata row.");
+            return JsonSerializer.Deserialize<T>(stream.GetBuffer().AsSpan(0, (int)stream.Length), options) ?? throw new MapDocumentException(MapDocumentRefusal.SchemaValueRequired, "Null tile metadata row.") { SourceType = typeof(T), Operation = "TileMetadata.ReadRow" };
         }
         public void Dispose() { }
     }

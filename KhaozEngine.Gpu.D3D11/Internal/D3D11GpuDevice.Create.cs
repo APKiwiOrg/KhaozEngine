@@ -29,13 +29,7 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         internal static GpuProviderDevice CreateForWindowWindows(IntPtr hwnd, uint width, uint height,
             bool syncToVerticalBlank)
         {
-            if (hwnd == IntPtr.Zero)
-            {
-                throw new ArgumentException(
-                    "The native Direct3D 11 backend was asked for a windowed device with a null window handle. A "
-                    + "swapchain needs an HWND to present into, and the windowing layer supplies one through "
-                    + "GpuWindowHandle.", nameof(hwnd));
-            }
+            D3D11BackendCreationChecks.RequireWindowHandleForTests(hwnd);
 
             return CreateWindows(hwnd, width, height, syncToVerticalBlank);
         }
@@ -94,13 +88,8 @@ namespace KhaozEngine.Gpu.D3D11.Internal
                 // *SetConstantBuffers1 and those six methods live on ID3D11DeviceContext1. Asking once here is
                 // what turns a runtime too old to answer into a refusal with a message, rather than a cast that
                 // fails on the first draw of the first frame.
-                context = immediate.QueryInterfaceOrNull<ID3D11DeviceContext1>()
-                    ?? throw new NotSupportedException(
-                        "The native Direct3D 11 backend needs ID3D11DeviceContext1 and this runtime does not "
-                        + "offer it. Every constant-buffer bind goes through *SetConstantBuffers1 with an "
-                        + "explicit first constant and constant count, which exists only on the versioned "
-                        + "context. There is no second Direct3D 11 path to fall back to on this machine: "
-                        + "GpuBackendKind.Direct3D11 named the Veldrid backend and was retired in 18.0.0.");
+                context = immediate.QueryInterfaceOrNull<ID3D11DeviceContext1>();
+                if (context is null) D3D11BackendCreationChecks.RefuseRuntimeContextForTests("ID3D11DeviceContext1");
 
                 bool debugLayerActive = settings is null ? (creationFlags & D3D11DebugLayer.CreateDeviceDebug) != 0
                     : (device.CreationFlags & DeviceCreationFlags.Debug) != 0;
@@ -467,10 +456,7 @@ namespace KhaozEngine.Gpu.D3D11.Internal
                 context?.Dispose();
                 device?.Dispose();
                 result.CheckError();
-                throw new InvalidOperationException(
-                    "D3D11CreateDevice reported success and handed back no device. The native Direct3D 11 "
-                    + "backend cannot run on this machine, and GpuBackendKind.Direct3D11 is not a fallback: "
-                    + "it named the Veldrid backend and was retired in 18.0.0.");
+                D3D11BackendCreationChecks.RefuseNativeObjectsForTests(device is not null, context is not null);
             }
 
             immediateContext = context;

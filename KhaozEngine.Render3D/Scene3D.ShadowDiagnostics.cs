@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using System;
 using System.Numerics;
 
@@ -35,6 +36,17 @@ namespace KhaozEngine.Render3D
         /// <summary>This frame's fitted cascade matrices in the render frame, the ones the depth pass draws with and
         /// the dirty-skip compares. Test seam beside <see cref="CascadeFitAbsoluteForTests"/>.</summary>
         internal ReadOnlySpan<Matrix4x4> CascadeFitRelativeForTests => _cascadeCpuVps.AsSpan(0, _cascadeCount);
+
+        /// <summary>ShadowCascadeOriginTests classifies the review sphere against this frame's actual cascade frustums.</summary>
+        internal ReadOnlySpan<FrustumPlanes> ShadowFrustumsForTests => _shadowFrustums.AsSpan(0, _cascadeCount);
+
+        /// <summary>ShadowCascadeOriginTests verifies the held light direction is independent of render origin.</summary>
+        internal Vector3 HeldLightDirectionForTests => _heldLightDir;
+
+        /// <summary>InteriorCutRelevanceTests and InteriorCutCounterTests compare caster kinds without mutable span lists.</summary>
+        internal IReadOnlyList<IReadOnlyList<ShadowCasterSpan>>
+            CascadeCasterSpansForTests => Array.ConvertAll(_cascadeCasterSpans,
+                spans => (IReadOnlyList<ShadowCasterSpan>)spans.AsReadOnly());
 
         /// <summary>Zero this frame's recorded counters. Called at the top of <c>RenderShadowDepthPass</c>, so the
         /// numbers a snapshot carries are always the ones THIS pass recorded rather than an older pass's.</summary>

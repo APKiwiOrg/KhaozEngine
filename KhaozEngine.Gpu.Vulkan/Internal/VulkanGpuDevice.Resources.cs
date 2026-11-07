@@ -207,16 +207,23 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         {
             if (!_liveness.IsDead) return;
 
-            string reason = _loss.HeaderValue is { Length: > 0 } latched
-                ? "The loss was first seen as " + latched + "."
+            string? lossReason = _loss.HeaderValue;
+            bool hasLoss = lossReason is { Length: > 0 };
+            string reason = hasLoss
+                ? "The loss was first seen as " + lossReason + "."
                 : "No loss reason was latched, so the token was marked dead by something other than the loss "
                     + "latch.";
 
-            throw new InvalidOperationException(
+            throw new VulkanDeviceMapException(hasLoss ? VulkanDeviceMapRefusal.LossLatched : VulkanDeviceMapRefusal.DeadWithoutLossRecord,
                 "The native Vulkan device is LOST, so nothing on it can be mapped: its host-visible memory went "
                 + "with the device, and the pointer a map returns would address memory the driver has already "
                 + "released. " + reason + " There is no recovery path on this backend, so a caller that wants to "
-                + "read back again creates a new device.");
+                + "read back again creates a new device.")
+            {
+                LossReason = hasLoss ? lossReason : null,
+                LossSite = hasLoss ? _loss.Site : null,
+                ResultCode = hasLoss ? (int)_loss.ObservedResult : null,
+            };
         }
 
         /// <summary>
@@ -278,10 +285,17 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
             ArgumentNullException.ThrowIfNull(texture);
 
             return texture as VulkanTexture
-                ?? throw new ArgumentException(
+                ?? throw new GpuResourceOwnershipArgumentException(GpuResourceOwnershipRefusal.ForeignBackend,
                     $"A texture created by another GPU backend was {what} on the native Vulkan backend. A "
                     + $"{texture.GetType().Name} holds no VkImage and no staging VkBuffer, so there is nothing to "
-                    + "write into. Create textures through the device you use them on.", nameof(texture));
+                    + "write into. Create textures through the device you use them on.", nameof(texture))
+                {
+                    ExpectedBackend = GpuBackendKind.VulkanNative,
+                    ExpectedType = typeof(VulkanTexture),
+                    Context = "texture access",
+                    ActualType = texture.GetType(),
+                    ResourceKind = "texture",
+                };
         }
 
         static VulkanTexture RequireMappable(IGpuTexture staging)
@@ -290,10 +304,15 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
 
             if (target.IsStaging) return target;
 
-            throw new ArgumentException(
+            throw new GpuStagingMapArgumentException(GpuStagingMapRefusal.StagingUsageRequired,
                 "That texture was not created with GpuTextureUsage.Staging, so it has no host-visible memory to "
                 + "map: it is a device-local VkImage, and an image cannot be mapped at all on this backend. Copy "
-                + "into a staging texture and map that, which is what GpuReadback.ToRgba does.", nameof(staging));
+                + "into a staging texture and map that, which is what GpuReadback.ToRgba does.", nameof(staging))
+            {
+                Backend = GpuBackendKind.VulkanNative,
+                ResourceKind = "texture",
+                RequiredTextureUsage = GpuTextureUsage.Staging,
+            };
         }
 
         static VulkanBuffer RequireMappable(IGpuBuffer staging)
@@ -302,27 +321,46 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
 
             if (staging is not VulkanBuffer target)
             {
-                throw new ArgumentException(
+                throw new GpuResourceOwnershipArgumentException(GpuResourceOwnershipRefusal.ForeignBackend,
                     "A buffer created by another GPU backend was mapped on the native Vulkan backend. A "
                     + $"{staging.GetType().Name} holds no VkBuffer, so there is nothing to map. Create buffers "
-                    + "through the device you use them on.", nameof(staging));
+                    + "through the device you use them on.", nameof(staging))
+                {
+                    ExpectedBackend = GpuBackendKind.VulkanNative,
+                    ExpectedType = typeof(VulkanBuffer),
+                    Context = "staging map",
+                    ActualType = staging.GetType(),
+                    ResourceKind = "buffer",
+                };
             }
 
             if (target.IsStaging) return target;
 
-            throw new ArgumentException(
+            throw new GpuStagingMapArgumentException(GpuStagingMapRefusal.StagingUsageRequired,
                 "That buffer was not created with GpuBufferUsage.Staging, so it has no host-visible memory to "
                 + "map: it lives in device-local memory. GpuBufferUsage.Dynamic does not make a buffer mappable "
                 + "here either, unlike on the Veldrid leg, because the only dynamic buffers this engine creates "
                 + "are uniform buffers and those are ring-backed and written without a map at all. Copy into a "
-                + "staging buffer and map that, which is what GpuReadback.ReadBuffer does.", nameof(staging));
+                + "staging buffer and map that, which is what GpuReadback.ReadBuffer does.", nameof(staging))
+            {
+                Backend = GpuBackendKind.VulkanNative,
+                ResourceKind = "buffer",
+                RequiredBufferUsage = GpuBufferUsage.Staging,
+            };
         }
 
         static IVulkanUploadDestination RequireUploadable(IGpuBuffer buffer)
             => buffer as IVulkanUploadDestination
-                ?? throw new ArgumentException(
+                ?? throw new GpuResourceOwnershipArgumentException(GpuResourceOwnershipRefusal.ForeignBackend,
                     "A buffer created by another GPU backend was written through the native Vulkan backend's "
                     + $"UpdateBuffer. A {buffer.GetType().Name} holds no VkBuffer, so there is nothing to copy "
-                    + "into. Create buffers through the device you write them on.", nameof(buffer));
+                    + "into. Create buffers through the device you write them on.", nameof(buffer))
+                {
+                    ExpectedBackend = GpuBackendKind.VulkanNative,
+                    ExpectedType = typeof(IVulkanUploadDestination),
+                    Context = "UpdateBuffer",
+                    ActualType = buffer?.GetType(),
+                    ResourceKind = "buffer",
+                };
     }
 }

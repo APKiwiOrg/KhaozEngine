@@ -92,6 +92,9 @@ namespace KhaozEngine.Gpu.Metal.Internal
         /// <summary>The current colour attachment, for the tests that assert the publish ordering this type exists
         /// for.</summary>
         internal MetalAttachment Attachment => _colour[0];
+        internal MetalBoundFramebuffer DeferredBound => new(
+            unchecked((ulong)Interlocked.Increment(ref _nextId)), Width, Height,
+            [new(default, Outputs.Colour[0])], default, false);
 
         /// <inheritdoc/>
         MetalBoundFramebuffer IMetalBoundFramebufferSource.AsBound
@@ -120,13 +123,20 @@ namespace KhaozEngine.Gpu.Metal.Internal
         {
             if (attachment.Texture == IntPtr.Zero)
             {
-                throw new ArgumentException(
+                throw new GpuFramebufferException(GpuFramebufferRefusal.AttachmentNotRenderable,
                     "The native Metal swapchain framebuffer was handed an attachment with no MTLTexture. A "
                     + "swapchain framebuffer always has a colour target: a nil drawable binds the device-owned "
                     + "orphan target (M-W5) rather than nothing, so a zero handle here means the orphan was "
                     + "published before it had been created, and binding it would rasterise into a pass Metal "
                     + "reports as having no attachments.",
-                    nameof(attachment));
+                    nameof(attachment))
+                {
+                    Attachment = "colour attachment 0",
+                    ActualUsage = GpuTextureUsage.RenderTarget,
+                    RequiredUsage = GpuTextureUsage.RenderTarget,
+                    IsStaging = false,
+                    NativeHandleKind = "MTLTexture",
+                };
             }
 
             _colour[0] = attachment;

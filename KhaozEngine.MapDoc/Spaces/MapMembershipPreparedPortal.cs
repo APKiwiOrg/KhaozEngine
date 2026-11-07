@@ -64,7 +64,7 @@ internal sealed class MapMembershipPreparedPortal
             using var resolutionWorkspace = MapMembershipBuild.Kernel(checked(32768L + 256L * chain.Vertices.Count));
             var resolution = MapBoundaryGeometry.ResolveChain(chain, view, key =>
                 new MapBoundarySurface(geometry.Validated[key], MapSlotCellMask.All));
-            if (resolution.Status != MapResolveStatus.Resolved) throw new MapDocumentException(resolution.Detail ?? "missing geometry: portal band");
+            if (resolution.Status != MapResolveStatus.Resolved) throw resolution.Refuse(resolution.Detail ?? "missing geometry: portal band", reference);
             var result = new Segment[chain.Vertices.Count - 1];
             var bounds = new MapSpacePointBounds(view, new(MaxContextPatches: geometry.PatchCount + 1), null);
             for (int i = 0; i < result.Length; i++)

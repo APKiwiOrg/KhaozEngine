@@ -35,13 +35,14 @@ namespace KhaozEngine.Render3D
         /// motion slots (TEMPORAL-FOUNDATIONS-DESIGN section 3). Omit it and no keys are produced.
         /// <paramref name="interiorCuts"/> optionally partitions reaching instances first within each mesh,
         /// preserving the order inside both partitions. All aligned policies and motion keys follow that scatter.
+        /// <paramref name="shadowMobilities"/> optionally receives point-shadow mobility through the same scatter.
         /// </summary>
         internal static void GroupInstances(IReadOnlyList<SceneInstances.Instance> items,
             List<ModelRenderer.InstanceData> instanceData, List<MeshRun> runs,
             Dictionary<(int Index, int Generation), int>? meshRunIndex = null,
             List<ShadowCastKind>? castKinds = null, ReadOnlySpan<bool> retained = default,
             List<uint>? writeCursorScratch = null, List<bool>? shadowOnly = null, List<MotionKey>? motionKeys = null,
-            InteriorCutInstancePartition? interiorCuts = null, List<AnchoredRigidTransform?>? anchored = null)
+            InteriorCutInstancePartition? interiorCuts = null, List<ShadowCasterMobility>? shadowMobilities = null, List<AnchoredRigidTransform?>? anchored = null)
         {
             if (!retained.IsEmpty && retained.Length != items.Count)
                 throw new ArgumentException("Retention must cover every queued instance.", nameof(retained));
@@ -50,6 +51,7 @@ namespace KhaozEngine.Render3D
             castKinds?.Clear();
             shadowOnly?.Clear();
             motionKeys?.Clear();
+            shadowMobilities?.Clear();
             interiorCuts?.Clear();
             anchored?.Clear();
             if (items.Count == 0) return;
@@ -106,6 +108,7 @@ namespace KhaozEngine.Render3D
                 if (shadowOnly != null) for (int i = 0; i < total; i++) shadowOnly.Add(false);
                 if (motionKeys != null) for (int i = 0; i < total; i++) motionKeys.Add(MotionKey.None);
                 if (anchored != null) for (int i = 0; i < total; i++) anchored.Add(null);
+                if (shadowMobilities != null) for (int i = 0; i < total; i++) shadowMobilities.Add(ShadowCasterMobility.Static);
                 for (int i = 0; i < items.Count; i++)
                 {
                     if (!retained.IsEmpty && !retained[i]) continue;
@@ -117,6 +120,7 @@ namespace KhaozEngine.Render3D
                     if (shadowOnly != null) shadowOnly[(int)dst] = inst.ShadowOnly;
                     if (motionKeys != null) motionKeys[(int)dst] = inst.Motion;
                     if (anchored != null) anchored[(int)dst] = inst.Anchored;
+                    if (shadowMobilities != null) shadowMobilities[(int)dst] = inst.ShadowMobility;
                     instanceData[(int)dst] = new ModelRenderer.InstanceData
                     {
                         Model = inst.World,

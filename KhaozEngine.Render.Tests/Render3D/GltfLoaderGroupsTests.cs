@@ -43,7 +43,17 @@ public class GltfLoaderGroupsTests
         var scene = new SceneBuilder();   // empty: no meshes, no triangles
         string path = Path.Combine(Path.GetTempPath(), $"ke_groups_empty_{System.Guid.NewGuid():N}.glb");
         scene.ToGltf2().SaveGLB(path);
-        try { Assert.Throws<InvalidOperationException>(() => GltfLoader.LoadGroups(path)); }
+        try
+        {
+            Action[] loads = { () => GltfLoader.LoadGroups(path), () => GltfLoader.Load(path),
+                () => GltfLoader.LoadPartsWithMaterials(path) };
+            foreach (Action load in loads)
+            {
+                var error = Assert.Throws<GltfImportStateException>(load);
+                Assert.Equal(GltfImportRefusal.NoTriangles, error.Reason);
+                Assert.Equal(path, error.Identity);
+            }
+        }
         finally { File.Delete(path); }
     }
 

@@ -4,7 +4,6 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Numerics;
-using System.Reflection;
 using System.Text;
 using System.Text.Json.Nodes;
 using KhaozEngine.Gpu;
@@ -85,8 +84,7 @@ public sealed class NativeMapGoldenScene : IDisposable
             residency.Record(frame, filter);
             if (omitFoliagePatch)
             {
-                var patches = (System.Collections.IList)typeof(Scene3D).GetField("_foliageDraws", BindingFlags.NonPublic | BindingFlags.Instance)!.GetValue(Scene)!;
-                Assert.True(patches.Count > 1); patches.RemoveAt(0);
+                Assert.True(Scene.FoliageDrawCountForTests > 1); Scene.OmitFirstFoliageDrawForTests();
             }
             Scene.PrepareFrame();
             using (GpuRecording.Open(_gpu!.GpuDevice, _commands!, "NativeMapGoldenScene.Capture"))
@@ -135,7 +133,7 @@ public sealed class NativeMapGoldenScene : IDisposable
         Scene.Post.LightDirection = -Vector3.Normalize(new(-1, 1, -.5f));
         Scene.Post.LightColor = Color.White;
         // Keep the same Halton phases as a fresh scene. CameraCut clears history, not the frame counter.
-        typeof(Scene3D).GetField("_frameIndex", BindingFlags.NonPublic | BindingFlags.Instance)!.SetValue(Scene, 0L);
+        Scene.ResetCaptureFrameIndexForTests();
         Scene.CameraCut();
     }
     internal static (int Instances, int Patches) ValidatePreparedFoliage(Scene3D scene, MapRenderResidency residency, MapFrameState frame)

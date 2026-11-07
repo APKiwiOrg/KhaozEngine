@@ -325,27 +325,17 @@ public class ContentChunkCodecTests
             Refuses(Patch(encoded.StoredFile.Span, 25, 0x02)));
     }
 
-    [Fact]
-    public void ASlotBaseThatIsNotTheIndexTimesTheSlotCountIsRefused()
+    [Theory]
+    [InlineData(12, 4096u)] // Slot base disagrees with index times slot count.
+    [InlineData(16, 1024u)] // Legal slot count disagrees with the registry.
+    public void AChunkRangeThatDisagreesWithItsIndexOrRegistryIsRefused(int offset, uint value)
     {
         ContentTypeRegistry registry = Registry();
         EncodedContentChunk encoded = SpecSevenNineChunk(Tag(registry));
 
         Assert.Equal(
             ContentChunkCodec.ReasonRangeMismatch,
-            Refuses(PatchUInt32(encoded.StoredFile.Span, 12, 4096)));
-    }
-
-    [Fact]
-    public void ASlotCountTheRegistryDisagreesWithIsRefused()
-    {
-        ContentTypeRegistry registry = Registry();
-        EncodedContentChunk encoded = SpecSevenNineChunk(Tag(registry));
-
-        // 1,024 is a legal slot count on its own terms, so only the registry can call this one wrong.
-        Assert.Equal(
-            ContentChunkCodec.ReasonRangeMismatch,
-            Refuses(PatchUInt32(encoded.StoredFile.Span, 16, 1024)));
+            Refuses(PatchUInt32(encoded.StoredFile.Span, offset, value)));
     }
 
     [Fact]
@@ -602,6 +592,7 @@ public class ContentChunkCodecTests
         Assert.True(ContentChunkCodec.TryDecode(encoded.StoredFile.Span, registry, out ContentChunk? chunk, out _));
         Assert.NotNull(chunk);
 
+        Assert.Equal(2, chunk.RowCount);
         byte[]? shared = null;
         for (int i = 0; i < chunk.RowCount; i++)
         {

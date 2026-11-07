@@ -15,6 +15,14 @@ namespace KhaozEngine.Tests.MapDocOracle;
 [UnsupportedOSPlatform("windows")]
 public sealed partial class ShippedSceneInputGuardTests
 {
+    // Scene readers refuse through the harness data family, a MalformedDataException that names its rule.
+    static void Refuses(PrivateOracleDataRefusal reason, Action read)
+    {
+        var error = Assert.Throws<PrivateOracleDataException>(read);
+        Assert.Equal(reason, error.Reason);
+        Assert.IsAssignableFrom<MalformedDataException>(error);
+    }
+
     [Fact]
     public void SceneInputs_RequireEveryDependencyAndCorrespondence()
     {
@@ -136,7 +144,9 @@ public sealed partial class ShippedSceneInputGuardTests
             if (mutation == "case") { obj[char.ToUpperInvariant(first[0]) + first[1..]] = obj[first]!.DeepClone(); obj.Remove(first); }
             if (mutation == "duplicate") obj[char.ToUpperInvariant(first[0]) + first[1..]] = obj[first]!.DeepClone();
             using var changed = JsonDocument.Parse(root.ToJsonString(ShippedScenePolicy.Json));
-            Assert.Throws<InvalidDataException>(() => ShippedSceneManifest.Read(changed.RootElement));
+            // A case-variant duplicate is a member identity fault. Every other mutation breaks the closed member shape.
+            Refuses(mutation == "duplicate" ? PrivateOracleDataRefusal.IdentityNotUniqueOrCanonical : PrivateOracleDataRefusal.SchemaShapeInvalid,
+                () => ShippedSceneManifest.Read(changed.RootElement));
         }
     }
 

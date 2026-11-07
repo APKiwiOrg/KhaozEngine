@@ -18,7 +18,16 @@ public sealed partial class MutationService
         {
             if (doc.ResolverIdentity is not { PayloadVersion: 1, ResolverVersion: 2 } ||
                 doc.SupportRecipe != MapSupportRecipe.AuthoredBindingsV2)
-                throw new MapDocumentException("Water edits require a resolver-2 native document.");
+                throw new MapDocumentException(MapDocumentRefusal.ResolverContractMismatch, "Water edits require a resolver-2 native document.")
+                {
+                    PayloadVersion = doc.ResolverIdentity?.PayloadVersion,
+                    ResolverVersion = doc.ResolverIdentity?.ResolverVersion,
+                    SupportRecipe = doc.SupportRecipe,
+                    ExpectedResolverVersion = 2,
+                    ExpectedSupportRecipe = MapSupportRecipe.AuthoredBindingsV2,
+                    FieldPath = doc.ResolverIdentity is not { PayloadVersion: 1, ResolverVersion: 2 } ? "resolverIdentity" : "supportRecipe",
+                    SubjectKind = "water",
+                };
             MapNativeEditEffects effects = session.ApplyNative(command, doc, registry);
             return new MapWaterMutationResult(new("water_apply", command.Label, command.AffectsWorld), effects);
         }, command.AffectsWorld);

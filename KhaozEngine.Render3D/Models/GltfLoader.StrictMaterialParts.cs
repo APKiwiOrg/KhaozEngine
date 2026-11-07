@@ -20,7 +20,7 @@ public static partial class GltfLoader
         try
         {
             var result = TranslateModelErrors(identity,
-                () => BuildParts(LoadModel(glb, identity), identity, material => StrictMaps(material, budget), true));
+                () => BuildParts(LoadModel(glb, identity), identity, readMaps: material => StrictMaps(material, budget), admitted: true));
             success = true;
             return result;
         }

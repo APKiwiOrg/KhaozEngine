@@ -1,7 +1,6 @@
 using System;
 using System.Collections.Generic;
 using System.Numerics;
-using System.Reflection;
 using BepuPhysics;
 using BepuPhysics.Collidables;
 using KhaozEngine.Physics;
@@ -38,9 +37,8 @@ public partial class SupportFootprintTests
 
     static List<SupportPolygon> CapturedPolygons(SupportFootprintScene scene, SupportFootprintRequest request)
     {
-        var simulation = (BepuPhysics.Simulation)typeof(BepuPhysicsWorld).GetField("_sim", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(scene.World)!;
-        var handles = (Dictionary<int, (BepuPhysics.StaticHandle Handle, TypedIndex Shape)>)typeof(BepuPhysicsWorld)
-            .GetField("_handles", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(scene.World)!;
+        var simulation = scene.World.SimulationForTests;
+        var handles = scene.World.StaticHandlesForTests;
         var polygons = new List<SupportPolygon>();
         var pool = new SupportPolygonPool();
         var scratch = new CapsuleFeatureCaptureScratch();

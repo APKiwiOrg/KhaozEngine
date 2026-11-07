@@ -62,8 +62,11 @@ public sealed class MapDocRegistry
     public ITerrainFeature BuildFeature(MapFeature feature)
     {
         ArgumentNullException.ThrowIfNull(feature);
-        if (!_features.TryGetValue(feature.Type, out var entry))
-            throw new MapDocumentException($"Unknown terrain feature type '{feature.Type}'. Register it on the MapDocRegistry.");
+        string type = feature.Type;
+        if (!_features.TryGetValue(type, out var entry))
+            throw new MapDocumentException(MapDocumentRefusal.DocumentTerrainFeatureUnknown,
+                $"Unknown terrain feature type '{type}'. Register it on the MapDocRegistry.")
+            { FieldPath = nameof(feature.Type), ActualText = type };
         return entry.Build(feature);
     }
 }

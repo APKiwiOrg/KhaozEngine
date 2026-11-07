@@ -96,7 +96,7 @@ internal static class MapTerrainMesh
                 void Emit(ModelVertex first, ModelVertex second, ModelVertex third)
                 {
                     var cross = Vector3.Cross(second.Position - first.Position, third.Position - first.Position);
-                    if (cross.LengthSquared() == 0) throw new MapDocumentException("Terrain render subdivision collapsed.");
+                    if (cross.LengthSquared() == 0) throw new MapDocumentException(MapDocumentRefusal.GeometryNotRepresentable, "Terrain render subdivision collapsed.") { Operation = "Terrain.Subdivide", FieldPath = "Triangle", ActualNumber = cross.LengthSquared() };
                     if (Vector3.Dot(cross, face.Face.Normal) < 0) (second, third) = (third, second);
                     vertices.Add(first); vertices.Add(second); vertices.Add(third); keys.Add(face.Face.Key);
                 }

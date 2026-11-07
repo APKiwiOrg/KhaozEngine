@@ -52,14 +52,20 @@ public class GapFillerTests
         var ex = Assert.Throws<AssemblyException>(() => GapFiller.Resolve(
             "north-west", "walking", new HashSet<int> { 0, 1, 3 }, frameCount: 4,
             strict: true, warnings));
-        Assert.Contains("frame_002", ex.Message);
+        Assert.Equal(AssemblyRefusal.FrameMissing, ex.Reason);
+        Assert.Equal(2, ex.FrameIndex);
+        Assert.Equal("north-west", ex.Direction);
+        Assert.Equal("walking", ex.Animation);
     }
 
     [Fact]
     public void Empty_direction_throws()
     {
         var warnings = new List<string>();
-        Assert.Throws<AssemblyException>(() => GapFiller.Resolve(
+        var ex = Assert.Throws<AssemblyException>(() => GapFiller.Resolve(
             "east", "walking", new HashSet<int>(), frameCount: 3, strict: false, warnings));
+        Assert.Equal(AssemblyRefusal.DirectionEmpty, ex.Reason);
+        Assert.Equal("east", ex.Direction);
+        Assert.Equal("walking", ex.Animation);
     }
 }

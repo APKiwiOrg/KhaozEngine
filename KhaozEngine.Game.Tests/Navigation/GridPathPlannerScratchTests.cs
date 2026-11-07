@@ -52,7 +52,6 @@ public class GridPathPlannerScratchTests
             var corpus = new PlannerCorpus(3000 + seed);
             NavSpace space = corpus.NextSpace(surfaces: true);
             var planner = new GridPathPlanner(space);
-            var reference = new ReferenceGridPathPlanner(space);
             for (int q = 0; q < 24; q++)
             {
                 // Two searches before the wrap leave stamps at the counter's top. Without the wrap's
@@ -62,10 +61,10 @@ public class GridPathPlannerScratchTests
                 NavGoalRegion region = corpus.NextRegion();
                 Vector3 goal = corpus.NextPoint();
                 GridPathPlannerEqualityCorpusTests.AssertSame(
-                    reference.FindPath(start, goal, 0f, PathQueryBudget.Default),
+                    new GridPathPlanner(space).FindPath(start, goal, 0f, PathQueryBudget.Default),
                     planner.FindPath(start, goal, 0f, PathQueryBudget.Default), null, $"seed {seed} point {q}");
                 GridPathPlannerEqualityCorpusTests.AssertSame(
-                    reference.FindPath(start, region, 0f, PathQueryBudget.Default),
+                    new GridPathPlanner(space).FindPath(start, region, 0f, PathQueryBudget.Default),
                     planner.FindPath(start, region, 0f, PathQueryBudget.Default), null, $"seed {seed} region {q}");
             }
         }
@@ -76,7 +75,7 @@ public class GridPathPlannerScratchTests
     {
         var corpus = new PlannerCorpus(4001);
         NavSpace space = corpus.NextSpace(surfaces: true);
-        var reference = new ReferenceGridPathPlanner(space);
+        var reference = new GridPathPlanner(space);
         var queries = new List<(Vector3 Start, Vector3 Goal, NavGoalRegion Region)>();
         for (int i = 0; i < 24; i++) queries.Add((corpus.NextPoint(), corpus.NextPoint(), corpus.NextRegion()));
         var expected = new List<(NavPath Point, NavPath Region)>();

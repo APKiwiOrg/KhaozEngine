@@ -56,7 +56,7 @@ public partial class CharacterController3DContactTests
             using (queries)
             {
                 var local = expected with { Position = expected.Position - origin };
-                var result = binding.Step(new(local, frame, null), new(direction, false, 0, false), Dt, queries!);
+                var result = binding.StepPlayer(new(local, frame, null), new(direction, false, 0, false), Dt, queries!);
                 Assert.Equal(MovementStepOutcome.Advanced, result.Outcome);
                 expected = result.State.State with { Position = result.State.State.Position + origin };
             }
@@ -109,11 +109,11 @@ public partial class CharacterController3DContactTests
         for (int tick = 0; tick < 8; tick++)
         {
             var command = new MoveCommand(Vector2.UnitX, false, 0, false);
-            var dry = CharacterMovement.Step(expected, command, Dt, ground, tuning, world: physics);
+            var dry = PlayerMovementPublication.Canonicalize(CharacterMovement.Step(PlayerMovementPublication.PrepareStep(expected), command, Dt, ground, tuning, world: physics));
             Assert.Equal(MovementAvailability.Known, binding.TryAcquire(binding.CreateOrdinaryScope(frame), out var queries));
             using (queries)
             {
-                var result = binding.Step(new(expected, frame, null), command, Dt, queries!);
+                var result = binding.StepPlayer(new(expected, frame, null), command, Dt, queries!);
                 Assert.Equal(MovementStepOutcome.Advanced, result.Outcome);
                 expected = result.State.State;
             }

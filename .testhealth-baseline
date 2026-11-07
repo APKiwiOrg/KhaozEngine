@@ -1,0 +1,154 @@
+# KhaozEngine test-health baseline for KETEST001 and KETEST002. KETEST003 is report-only and never listed.
+# Entries are '<count> <rule> <path>', relative to this directory.
+# This baseline may only shrink. New debt is not allowed.
+# With owner approval, exempt a rule and path with a reason comment:
+# exempt KETEST001 path/to/File.cs
+# Ratchet down locally:
+# build-slot --heavy --label testhealth-update -- sh scripts/check-test-health.sh --update
+
+6 KETEST001 KhaozEngine.Accounts.Tests/SqlServer/SqlServerAccountStoreLayoutTests.cs
+2 KETEST001 KhaozEngine.Accounts.Tests/Sqlite/SqliteAccountStoreLayoutTests.cs
+4 KETEST001 KhaozEngine.Audio.Tests/Audio/AudioSystemThreadAffinityTests.cs
+5 KETEST001 KhaozEngine.BugReports.Relay.Tests/GitHubAppIssueClientTests.cs
+3 KETEST001 KhaozEngine.BugReports.Tests/Core/BugReportBundleWriterTests.cs
+1 KETEST001 KhaozEngine.Catalog.Tests/Authoring/BundleJsonFormatVersionTests.cs
+2 KETEST001 KhaozEngine.Catalog.Tests/Authoring/BundleTests.cs
+4 KETEST001 KhaozEngine.Catalog.Tests/Authoring/ContentIdAllocatorTests.cs
+1 KETEST001 KhaozEngine.Catalog.Tests/Authoring/InMemoryContentAuthoringStoreTests.cs
+1 KETEST001 KhaozEngine.Catalog.Tests/Publish/PublishPipelineTests.cs
+4 KETEST001 KhaozEngine.Catalog.Tests/Registry/ContentFieldLookupTests.cs
+19 KETEST001 KhaozEngine.Catalog.Tests/Registry/ContentTypeRegistryTests.cs
+3 KETEST001 KhaozEngine.Catalog.Tests/Sqlite/SqliteCatalogNonmutatingOpenTests.cs
+3 KETEST001 KhaozEngine.Catalog.Tests/Sqlite/SqliteCatalogResetHostForeignKeyTests.cs
+3 KETEST001 KhaozEngine.Catalog.Tests/Sqlite/SqliteCatalogResetRepairTests.cs
+3 KETEST001 KhaozEngine.Catalog.Tests/Sqlite/SqliteCatalogResetSchemaVersionTests.cs
+2 KETEST001 KhaozEngine.Catalog.Tests/Sqlite/SqliteCatalogRowTimestampTests.Migration.cs
+2 KETEST001 KhaozEngine.Catalog.Tests/Sqlite/SqliteCatalogSchemaMigrationTests.cs
+9 KETEST001 KhaozEngine.Catalog.Tests/Sqlite/SqliteCatalogSchemaTests.cs
+3 KETEST001 KhaozEngine.Catalog.Tests/Sqlite/SqliteTextSchemaMigrationTests.cs
+3 KETEST001 KhaozEngine.Catalog.Tests/Upgrade/CatalogRunGuardTests.cs
+1 KETEST001 KhaozEngine.Catalog.Tests/Upgrade/ContentUpgradeSweepCancellationTests.cs
+1 KETEST001 KhaozEngine.Catalog.Tests/Validation/ContentValidatorSweepTests.cs
+18 KETEST001 KhaozEngine.Foundation.Tests/Localization/LocalizationCoverageTests.cs
+9 KETEST001 KhaozEngine.Game.Tests/Dungeon/DungeonJsonTests.cs
+1 KETEST001 KhaozEngine.Game.Tests/Dungeon/DungeonKitMapTests.cs
+1 KETEST001 KhaozEngine.Game.Tests/Dungeon/DungeonMapDocEmitterTests.cs
+5 KETEST001 KhaozEngine.Game.Tests/Locomotion/MovementSelectorTests.cs
+2 KETEST001 KhaozEngine.Identity.Exchange.Tests/AspNetCore/ExchangeHostingPrimitiveTests.cs
+1 KETEST001 KhaozEngine.Identity.Exchange.Tests/AuthExchangeOutcomeTests.cs
+1 KETEST001 KhaozEngine.ItemInstances.Tests/Generation/GenerationTablesTests.cs
+2 KETEST001 KhaozEngine.ItemInstances.Tests/Generation/ModCandidateTablesTests.cs
+2 KETEST001 KhaozEngine.MapDoc.Physics.Tests/MapPhysicsRegistrationTests.cs
+2 KETEST001 KhaozEngine.Movement.Tests/ContactNavigationBasisTests.cs
+2 KETEST001 KhaozEngine.Movement.Tests/ContactNavigationInitialHoldReuseTests.cs
+3 KETEST001 KhaozEngine.Movement.Tests/ContactNavigationRefusalTests.cs
+1 KETEST001 KhaozEngine.Movement.Tests/GroundNavigationValidateTests.cs
+2 KETEST001 KhaozEngine.Movement.Tests/NavBakeExecutionTests.cs
+3 KETEST001 KhaozEngine.Movement.Tests/ParallelContactBakeTests.cs
+2 KETEST001 KhaozEngine.Movement.Tests/RuntimeStaticNavigationTests.cs
+1 KETEST001 KhaozEngine.Server.Tests/Catalog/ContentAuthoringStoreConformance.Schema.cs
+3 KETEST001 KhaozEngine.Server.Tests/Catalog/SqlServer/SqlServerCatalogNonmutatingOpenTests.cs
+3 KETEST001 KhaozEngine.Server.Tests/Catalog/SqlServer/SqlServerCatalogResetRepairTests.cs
+3 KETEST001 KhaozEngine.Server.Tests/Catalog/SqlServer/SqlServerCatalogResetSchemaVersionTests.cs
+5 KETEST001 KhaozEngine.Server.Tests/Catalog/SqlServer/SqlServerCatalogRowTimestampTests.Migration.cs
+2 KETEST001 KhaozEngine.Server.Tests/Catalog/SqlServer/SqlServerCatalogSchemaMigrationTests.cs
+1 KETEST001 KhaozEngine.Server.Tests/Catalog/SqlServer/SqlServerCatalogSchemaProviderErrorTests.cs
+6 KETEST001 KhaozEngine.Server.Tests/Catalog/SqlServer/SqlServerCatalogSchemaTests.cs
+3 KETEST001 KhaozEngine.Server.Tests/Catalog/SqlServer/SqlServerTextSchemaMigrationTests.cs
+2 KETEST001 KhaozEngine.Server.Tests/Identity/SignInExceptionBaseTests.cs
+3 KETEST001 KhaozEngine.Server.Tests/NetWorld/CellBlobRecoveryTests.cs
+1 KETEST001 KhaozEngine.Server.Tests/NetWorld/ShardedCellOriginTests.cs
+4 KETEST001 KhaozEngine.Server.Tests/NetWorld/ShardedFrameAnchoringTests.cs
+2 KETEST001 KhaozEngine.Server.Tests/NetWorld/WorldClientServerTickTests.cs
+7 KETEST001 KhaozEngine.Server.Tests/Netcode/SigningSecretTests.cs
+1 KETEST001 KhaozEngine.Server.Tests/WorldStore/Journal/MutationJournalBenchmarkTests.cs
+2 KETEST001 KhaozEngine.Server.Tests/WorldStore/Journal/SqlServerJournalMetadataTests.cs
+1 KETEST001 KhaozEngine.Server.Tests/WorldStore/Journal/SqlServerJournalResetAtomicityTests.cs
+4 KETEST001 KhaozEngine.Server.Tests/WorldStore/Journal/SqlServerJournalResetHostObjectTests.cs
+2 KETEST001 KhaozEngine.Server.Tests/WorldStore/Journal/SqlServerJournalRowTimestampTests.cs
+1 KETEST001 KhaozEngine.Server.Tests/WorldStore/Journal/SqlServerMutationJournalFailureTests.cs
+3 KETEST001 KhaozEngine.Server.Tests/WorldStore/Journal/SqlServerMutationJournalReadOnlyTests.cs
+1 KETEST001 KhaozEngine.Server.Tests/WorldStore/Journal/SqlServerMutationJournalStoreTests.cs
+1 KETEST001 KhaozEngine.Server.Tests/WorldStore/Journal/SqliteJournalResetHostObjectTests.cs
+2 KETEST001 KhaozEngine.Server.Tests/WorldStore/Journal/SqliteJournalRowTimestampTests.cs
+3 KETEST001 KhaozEngine.Server.Tests/WorldStore/Journal/SqliteMutationJournalReadOnlyTests.cs
+6 KETEST001 KhaozEngine.Server.Tests/WorldStore/Journal/SqliteMutationJournalStoreTests.cs
+
+# Bitwise state comparer for locomotion determinism parity (rule 8), merged from five per-file copies (owner decision D17)
+exempt KETEST002 KhaozEngine.Game.Tests/Locomotion/Contacts/LocomotionStateBits.cs
+# Shared IL reader for architecture fences: it must enumerate non-public methods and constructors to inspect compiled calls (owner decision D17)
+exempt KETEST002 test-shared/IlCallGraph.cs
+# ContentKey field discovery enforces byte-slice storage with no retained string (owner decision D17)
+exempt KETEST002 KhaozEngine.Catalog.Tests/Format/ContentKeyTests.cs
+# Field discovery enforces immutable flat lookup arrays without retained dictionaries or replaceable fields (owner decision D17)
+exempt KETEST002 KhaozEngine.Catalog.Tests/Runtime/ContentReferenceIndexTests.cs
+# Field and property walks enforce no dictionary, lock or duplicate key storage, one holder field and immutable reachable indexes (owner decision D17)
+exempt KETEST002 KhaozEngine.Catalog.Tests/Runtime/ContentRuntimeTests.cs
+# Storage walks enforce a shared text body with one offset array, no decoded entries and a cache bounded to 512 entries by construction (owner decision D17)
+exempt KETEST002 KhaozEngine.Catalog.Tests/Text/ContentStringCatalogTests.cs
+# Failure injection into fresh Regex objects avoids wall-clock timeouts when no accessible matcher setter exists (owner decision D17)
+exempt KETEST002 KhaozEngine.Foundation.Tests/Diagnostics/ReportRedactorMatchingFailureTests.cs
+# The measurement utility walks private storage to account for retained support-query memory (owner decision D17)
+exempt KETEST002 KhaozEngine.Game.Tests/Locomotion/Contacts/SupportCostScratch.cs
+# Outer and composed field discovery enforces the crafting working copy's no allocator authority rule (owner decision D17)
+exempt KETEST002 KhaozEngine.ItemInstances.Tests/Crafting/CraftWorkingCopyTests.cs
+# Working-copy field discovery enforces no allocator authority alongside refusing-store execution proof (owner decision D17)
+exempt KETEST002 KhaozEngine.ItemInstances.Tests/Crafting/CraftingRegistryTests.cs
+# Method and field metadata enforce integer-only tolerances under the generation determinism contract (owner decision D17)
+exempt KETEST002 KhaozEngine.ItemInstances.Tests/Generation/GeneratorDistributionTests.cs
+# Compact instance storage discovers every non-public array so newly added columns cannot escape the independent layout assertion. (owner decision R8A-D6)
+exempt KETEST002 KhaozEngine.MapDoc.Tests/Foliage/MapFoliageInstanceBatchTests.cs
+# Independent acquisition inventory discovers every backing store inside read-only wrappers. Named owner probes use ForTests seams. (owner decision R8A-D6)
+exempt KETEST002 KhaozEngine.MapDoc.Tests/Scene/MapAcquisitionInventoryOracle.cs
+# Bit-exact state discovery and cloning retain every numeric state bit, including private storage canonicalized by public getters (owner decision D17)
+exempt KETEST002 KhaozEngine.Movement.Tests/ContactNavigationInitialHoldReuseTests.cs
+# Recursive bitwise comparison preserves exact context and core output equivalence, including hidden speed-scale storage (owner decision D17)
+exempt KETEST002 KhaozEngine.Movement.Tests/Fixtures/RuntimeStaticScene.cs
+# Serialized-field discovery catches retained tuning and option fields omitted from the KENB identity encoding (owner decision D17)
+exempt KETEST002 KhaozEngine.Movement.Tests/NavBakeIdentityTests.cs
+# Constructor and field walks enforce caller-provided device state and prohibit Vortice or SharpGen types on off-Windows surfaces (owner decision D17)
+exempt KETEST002 KhaozEngine.Render.Tests/Gpu/D3D11EmitterResolutionTests.cs
+# Constructor and field walks enforce caller-provided device state without missing newly added violating members (owner decision D17)
+exempt KETEST002 KhaozEngine.Render.Tests/Gpu/D3D11ReplayContractTests.cs
+# Complete instance-field discovery enforces strict leaf ownership of the D3D11 creation gate (owner decision D17)
+exempt KETEST002 KhaozEngine.Render.Tests/Gpu/D3D11ThreadingContractTests.cs
+# Metadata and IL walks enforce autorelease pool ownership at encoder seams and frame-capture roots, with native, interface and generic positive controls (owner decision D17)
+exempt KETEST002 KhaozEngine.Render.Tests/Gpu/MetalAutoreleaseArchitectureTests.cs
+# Field-graph traversal enforces no factory, device, layout or liveness reachability from bind records, with plain-data positive controls (owner decision D17)
+exempt KETEST002 KhaozEngine.Render.Tests/Gpu/MetalBindRecordsTests.cs
+# Package-method discovery enforces the M-M10 no-view-factory architecture rule, including future entry points (owner decision D17)
+exempt KETEST002 KhaozEngine.Render.Tests/Gpu/MetalEagerViewArchitectureTests.cs
+# Selector field and nested-type discovery enforce the once-per-process hot-selector rule and retain future-field coverage (owner decision D17)
+exempt KETEST002 KhaozEngine.Render.Tests/Gpu/MetalHotSelectorTests.cs
+# Method and nested-type metadata drive the ContentKey name and stage blindness IL fence, including iterator and positive-control paths (owner decision D17)
+exempt KETEST002 KhaozEngine.Render.Tests/Gpu/MetalIndexTableNameBlindnessTests.cs
+# Reflection confirms forbidden HLSL members exist so the no-HLSL MemberRef fence cannot pass vacuously (owner decision D17)
+exempt KETEST002 KhaozEngine.Render.Tests/Gpu/MetalShaderArchitectureTests.cs
+# Owner-retained P2 metadata walk guards against reintroducing Veldrid types (owner decision D17)
+exempt KETEST002 KhaozEngine.Render.Tests/Gpu/SpirvCrossCompileTests.cs
+# Signature and field-graph walks enforce V-M11 and V-D2 view-factory unreachability and its sole allowed edge (owner decision D17)
+exempt KETEST002 KhaozEngine.Render.Tests/Gpu/VulkanRecordingUnreachabilityTests.cs
+# Public and protected surface discovery enforces dependency seams, including the retained Veldrid reintroduction guard (owner decision D17)
+exempt KETEST002 KhaozEngine.Render.Tests/GpuPublicApiTests.cs
+# Column ownership contracts discover every backing field to reject hidden copies and prove all arrays die after the last reader. Named group access uses a ForTests snapshot. (owner decision R8A-D6)
+exempt KETEST002 KhaozEngine.Render.Tests/MapDoc/NativeFoliageColumnSharingTests.cs
+# Independent foliage inventory discovers every retained field and backing array so added storage cannot escape the census. Named probes use ForTests seams. (owner decision R8A-D6)
+exempt KETEST002 KhaozEngine.Render.Tests/MapDoc/NativeFoliageInventoryTightnessTests.cs
+# Renderer field-type walks enforce the shared GpuRetireQueue rule and absence of private retirement lists (owner decision D17)
+exempt KETEST002 KhaozEngine.Render.Tests/Render3D/GrownBufferRetirementTests.cs
+# Recursive state discovery preserves determinism bits, signed zero and non-replicated storage that public getters or wire bytes can erase (owner decision D17)
+exempt KETEST002 KhaozEngine.Server.Tests/NetWorld/OrdinaryContactReplayTests.RuntimeStatics.cs
+# Provider-field injection deterministically holds SQLite's mid-activation gap open when no engine seam can force that state (owner decision D17)
+exempt KETEST002 KhaozEngine.Server.Tests/Sqlite/SqliteStoreConnectionPoolIsolationTests.cs
+# Snapshot restoration requires the private PhysicsNavBake constructor because no production restore API or supported snapshot format exists (owner decision D17)
+exempt KETEST002 tools/NavCapture.Research.Tests/Research/NavCaptureSnapshot.cs
+# Cold ocean preparation reads existing Scene3D and WaterRenderer owners without adding seams that change the paid harness hash (owner decision D18)
+exempt KETEST002 tools/Renderer.Perf.Tooling.Tests/Gpu/RendererPerf/RendererPerfColdOcean.cs
+# Shader digest enumeration discovers every source constant, including private SpriteBatch shaders and future additions (owner decision D17)
+exempt KETEST002 tools/Renderer.Perf.Tooling.Tests/Gpu/RendererPerf/RendererPerfExecutable.cs
+# A private-method IL fence verifies the orphan route without constructing a native Metal device headlessly (owner decision D17)
+exempt KETEST002 tools/Renderer.Perf.Tooling.Tests/Gpu/RendererPerf/RendererPerfMetalDiagnosticsTests.Orphan.cs
+# Cold native D3D11 adapter identity inspection deliberately avoids backend API changes (owner decision D18)
+exempt KETEST002 tools/Renderer.Perf.Tooling.Tests/Gpu/RendererPerf/RendererPerfNativeIdentity.cs
+# Leak check reads third-party BepuUtilities 2.4.0 BufferPool slot counters, which have no public outstanding-loan count (owner decision D22)
+exempt KETEST002 KhaozEngine.Physics.Tests/StaticMutationLeaseTests.Geometry.cs

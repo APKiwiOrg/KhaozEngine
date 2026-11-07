@@ -89,9 +89,16 @@ namespace KhaozEngine.Tests.Render3D.Animation
         }
 
         [Fact]
-        public void Subtree_UnknownBoneName_Throws() =>
-            Assert.Throws<ArgumentException>(() =>
-                BoneMask.Subtree(Chain3(), "nope", new[] { "root", "spine", "arm" }, 1f));
+        public void Subtree_UnknownBoneName_Throws()
+        {
+            Skeleton skeleton = Chain3();
+            var names = new[] { "root", "spine", "arm" };
+            var error = Assert.Throws<BoneMaskArgumentException>(() => BoneMask.Subtree(skeleton, "nope", names, 1f));
+            Assert.Equal(BoneMaskRefusal.SubtreeRootMissing, error.Reason);
+            Assert.Equal("nope", error.JointName);
+            Assert.Equal("rootBoneName", error.ParamName);
+            Assert.Equal(1f, BoneMask.Subtree(skeleton, "spine", names, 1f).Weight(1));
+        }
 
         [Fact]
         public void Full_And_Empty_Constants()

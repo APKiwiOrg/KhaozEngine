@@ -42,13 +42,13 @@ public class ContactNavigationRefusalTests
         var failure = Assert.Throws<ArgumentException>(() => optionsOverload
             ? capture.BuildProfile(tuning, default, GroundProfileOptions.Default)
             : capture.BuildProfile(tuning, default));
-        Assert.Contains("shell span", failure.Message);
+        Assert.Equal("tuning", failure.ParamName);
         NavBakeProfile profile = new("contact", tuning, default) { Aquatic = true };
-        Assert.Contains("shell span", Assert.Throws<ArgumentException>(() =>
-            GroundNavigationBake.Create(capture, Sources(), [profile])).Message);
+        Assert.Equal("tuning", Assert.Throws<ArgumentException>(() =>
+            GroundNavigationBake.Create(capture, Sources(), [profile])).ParamName);
         using var stream = new MemoryStream(new byte[64]);
-        Assert.Contains("shell span", Assert.Throws<ArgumentException>(() =>
-            GroundNavigationBake.Load(stream, new(capture.Options, Sources(), [profile]))).Message);
+        Assert.Equal("tuning", Assert.Throws<ArgumentException>(() =>
+            GroundNavigationBake.Load(stream, new(capture.Options, Sources(), [profile]))).ParamName);
         Assert.Equal(0, stream.Position);
     }
 
@@ -63,19 +63,18 @@ public class ContactNavigationRefusalTests
         MoveTuning tuning = ValidContact with { Water = new(WaterTraversalMode.SurfaceSwimmer) };
         NavBakeProfile contact = new("contact", tuning, default) { Aquatic = true };
         NavBakeProfile[] profiles = contactFirst ? [contact, legacy] : [legacy, contact];
-        Assert.Equal("Contact aquatic navigation is not supported yet. See https://github.com/APKiwiOrg/KhaozEngine/issues/1389.",
-            NavBakeProfile.DeferredAquaticMessage);
-        Assert.Equal(NavBakeProfile.DeferredAquaticMessage,
+        const string deferredIssue = "https://github.com/APKiwiOrg/KhaozEngine/issues/1389";
+        Assert.Contains(deferredIssue,
             Assert.Throws<NotSupportedException>(() => capture.BuildProfile(tuning, default,
-                new GroundProfileOptions { Aquatic = true })).Message);
+                new GroundProfileOptions { Aquatic = true })).Message, StringComparison.Ordinal);
         // Empty sources would fail identity encoding if the selector refusal ran too late.
-        Assert.Equal(NavBakeProfile.DeferredAquaticMessage,
+        Assert.Contains(deferredIssue,
             Assert.Throws<NotSupportedException>(() => GroundNavigationBake.Create(capture,
-                new NavBakeSources(), profiles)).Message);
+                new NavBakeSources(), profiles)).Message, StringComparison.Ordinal);
         using var stream = new MemoryStream(new byte[64]);
-        Assert.Equal(NavBakeProfile.DeferredAquaticMessage,
+        Assert.Contains(deferredIssue,
             Assert.Throws<NotSupportedException>(() => GroundNavigationBake.Load(stream,
-                new(capture.Options, new NavBakeSources(), profiles))).Message);
+                new(capture.Options, new NavBakeSources(), profiles))).Message, StringComparison.Ordinal);
         Assert.Equal(0, stream.Position);
     }
 
@@ -102,8 +101,7 @@ public class ContactNavigationRefusalTests
     {
         using var world = new BepuPhysicsWorld();
         using PhysicsNavBake capture = Capture(world);
-        var failure = Assert.Throws<NotSupportedException>(() => capture.BuildProfile(ValidContact, default));
-        Assert.Contains("GroundMoveContext constructed with its ordinary environment", failure.Message);
+        Assert.Throws<NotSupportedException>(() => capture.BuildProfile(ValidContact, default));
     }
 
     [Fact]

@@ -1335,7 +1335,7 @@ namespace KhaozEngine.Render3D
             using (ProfileCpu("cpu.geometry.grouping"))
             {
                 GroupInstances(_instances.Items, _instanceData, _runs, _meshRunIndex, _instanceCastKinds, CullOptedOutInstances(camFrustum),
-                    _groupWriteCursors, _instanceShadowOnly, _res.MotionAllocated ? _instanceMotionKeys : null, _interiorCutPartition, _instanceAnchors);
+                    _groupWriteCursors, _instanceShadowOnly, _res.MotionAllocated ? _instanceMotionKeys : null, _interiorCutPartition, _instanceShadowMobilities, _instanceAnchors);
                 // Fold each mesh's alpha-cutout threshold into its instances' SpecParams.z (the model fragment discards
                 // texels below it, so MASK foliage renders as its silhouette). A mesh with cutoff 0 (OPAQUE, the default)
                 // is untouched, so the instance data - and the render - stays byte-identical to the pre-cutout path.

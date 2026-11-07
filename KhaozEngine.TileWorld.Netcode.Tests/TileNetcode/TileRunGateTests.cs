@@ -188,13 +188,14 @@ public class TileRunGateTests
     [Fact]
     public void A_throwing_gate_takes_the_tick_down_rather_than_being_swallowed()
     {
+        var failure = new InvalidOperationException("energy");
         var hub = new InMemoryTransportHub();
         using TileWorldServer s = Server(hub, new TileCoord(10, 10, 0),
-            canRun: _ => throw new InvalidOperationException("energy"));
+            canRun: _ => throw failure);
         s.SpawnPlayer(0, "a", "Ari");
         s.Enqueue(0, 0, TileCommand.WalkTo(new TileCoord(10, 20, 0), TileMoveMode.Run));
 
         InvalidOperationException raised = Assert.Throws<InvalidOperationException>(() => s.Tick(Dt));
-        Assert.Equal("energy", raised.Message);
+        Assert.Same(failure, raised);
     }
 }

@@ -69,7 +69,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         readonly ILogger _log;
 
         int _errorCount;
-        string? _latched;
+        VulkanLatchedValidation? _latched;
 
         /// <param name="mode">The rung this session is on. Only <see cref="VulkanValidationMode.Strict"/> latches,
         /// and the others log and carry on.</param>
@@ -150,15 +150,21 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         /// session is on the <c>strict</c> rung.</exception>
         internal void ThrowIfLatched(string site)
         {
-            string? latched = Volatile.Read(ref _latched);
+            VulkanLatchedValidation? latched = Volatile.Read(ref _latched);
             if (latched is null) return;
 
-            throw new InvalidOperationException(
+            throw new VulkanValidationException(VulkanValidationRefusal.StrictErrorLatched,
                 $"Vulkan validation reported an error and {VulkanValidation.EnvVarName}=strict, so this run stops "
-                + $"at {site}, which is the first controlled point after it. The message was: {latched}. This "
+                + $"at {site}, which is the first controlled point after it. The message was: {latched.Diagnostic}. This "
                 + "throw is deliberately here and not in the driver callback that saw it, because unwinding a "
                 + "managed exception through native driver frames destroys the stack the diagnostic was about. "
-                + $"Set {VulkanValidation.EnvVarName}=1 to log validation errors and carry on.");
+                + $"Set {VulkanValidation.EnvVarName}=1 to log validation errors and carry on.")
+            {
+                Site = site,
+                Diagnostic = latched.Diagnostic,
+                MessageId = latched.MessageId,
+                MessageIdName = latched.MessageIdName,
+            };
         }
 
         void ReportCore(in VulkanValidationMessage message)
@@ -171,7 +177,8 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
                     // CompareExchange, so the FIRST error is the one reported. A later one is a consequence of
                     // the first as often as it is a second defect, and a latch that kept overwriting would name
                     // whichever error happened to be last rather than the one worth looking at.
-                    Interlocked.CompareExchange(ref _latched, Format(message), null);
+                    Interlocked.CompareExchange(ref _latched,
+                        new VulkanLatchedValidation(Format(message), message.Id, message.IdName), null);
                 }
             }
 

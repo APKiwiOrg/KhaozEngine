@@ -116,7 +116,7 @@ internal sealed class MapWaterRegionBuilder
     }
 
     /// <summary>Adds one footprint rectangle's regions, or returns the typed failure of a bound read.</summary>
-    internal (MapWaterCompileStatus Status, string? Detail)? Add(MapWaterFootprintRect rect)
+    internal (MapWaterCompileStatus Status, string? Detail, MapDocumentFinding? Finding)? Add(MapWaterFootprintRect rect)
     {
         using var preparation = Scene.MapSceneAdmission.Current?.BeginPreparation();
         MapWideXz min = new(MapWideRational.Max(Wide(rect.Min.X), Wide(_domain.Min.X)), MapWideRational.Max(Wide(rect.Min.Z), Wide(_domain.Min.Z)));
@@ -183,18 +183,21 @@ internal sealed class MapWaterRegionBuilder
         MapWaterBoundRead read = MapWaterBoundReads.Read(_view, rect.Footprint, bound, min, max, _reads, _meter, upper);
         if (read.SurfaceId is { } surface) SurfacesRead.Add(surface);
         PatchesRead.UnionWith(read.PatchesRead);
+        if (read.Status == MapRefinementStatus.MissingGeometry) UnresolvedFinding ??= read.Finding;
         return read;
     }
+
+    internal MapDocumentFinding? UnresolvedFinding { get; private set; }
 
     /// <summary>A complete read, or one whose missing geometry only leaves its area unresolved.</summary>
     static bool Usable(MapWaterBoundRead read) => read.Status is MapRefinementStatus.Complete or MapRefinementStatus.MissingGeometry;
 
-    static (MapWaterCompileStatus, string?) Failure(MapWaterBoundRead read) => (read.Status switch
+    static (MapWaterCompileStatus, string?, MapDocumentFinding?) Failure(MapWaterBoundRead read) => (read.Status switch
     {
         MapRefinementStatus.CapacityExceeded => MapWaterCompileStatus.CapacityExceeded,
         MapRefinementStatus.NotRepresentable => MapWaterCompileStatus.NotRepresentable,
         _ => MapWaterCompileStatus.Invalid,
-    }, read.Detail);
+    }, read.Detail, read.Finding);
 
     /// <summary>Adds one convex part of the domain within one footprint rectangle.</summary>
     void Compose(string spaceId, IReadOnlyList<MapWideXz> part, Cells lower, Cells upper, string? gap)
@@ -234,7 +237,12 @@ internal sealed class MapWaterRegionBuilder
         _storage.Polygons(regions[MapWaterRegionKind.Closed], Without(closed, lowerOnly));
         _storage.Polygons(regions[MapWaterRegionKind.Unresolved], upperGaps);
         _storage.Polygons(regions[MapWaterRegionKind.Unresolved], lowerOnly);
-        if (upperGaps.Count + lowerOnly.Count != 0) Unresolved ??= gap ?? $"unresolved bound area in space '{spaceId}'";
+        if (upperGaps.Count + lowerOnly.Count != 0)
+        {
+            Unresolved ??= gap ?? $"unresolved bound area in space '{spaceId}'";
+            UnresolvedFinding ??= new(MapDocumentRefusal.SpaceCoverageMissingBound, Unresolved)
+            { SpaceId = spaceId, FieldPath = upperGaps.Count != 0 ? "Upper" : "Lower" };
+        }
     }
 
     /// <summary>Sweeps the convex <paramref name="part"/> over the bound's lattice one row at a time. Each face of a

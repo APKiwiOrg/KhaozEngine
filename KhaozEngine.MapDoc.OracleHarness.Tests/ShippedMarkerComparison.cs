@@ -14,6 +14,8 @@ using KhaozEngine.MapDoc.Support;
 using KhaozEngine.TileWorld;
 using KhaozEngine.TileWorld.Physics;
 
+using Refusal = KhaozEngine.Tests.MapDocOracle.PrivateOracleDataRefusal;
+
 namespace KhaozEngine.Tests.MapDocOracle;
 
 internal sealed record ShippedMarkerReport(IReadOnlyList<string> Failures, string DetailJson, IReadOnlyList<OracleComparisonFailure> ClassifiedFailures);
@@ -88,13 +90,18 @@ internal static partial class ShippedMarkerComparison
     {
         var role = inputs.Roles[marker.Name];
         float tileX = (float)(marker.X + role.OffsetX), tileZ = (float)(marker.Z + role.OffsetZ);
-        ShippedMarkerInputs.Require(float.IsFinite(tileX) && float.IsFinite(tileZ), "marker offset exceeds source coordinate range");
+        RequireSourceCoordinatesForTests(tileX, tileZ);
         float worldX = TileWorldSpace.WorldX(tileX, inputs.World.TileSize), worldZ = TileWorldSpace.WorldZ(tileZ, inputs.World.TileSize);
         float height = ground.HeightAt(worldX, worldZ);
         if (role.HeightRule == "standing" && TileWalkSurfaces.TryHeightAt(inputs.World, inputs.Catalogs, worldX, worldZ, marker.Plane, out float surface) &&
             surface > height) height = surface;
         return new(marker, role, new(worldX, height, worldZ));
     }
+
+    // Value-taking seam proves the float-domain boundary without building geometry at that coordinate.
+    internal static void RequireSourceCoordinatesForTests(float tileX, float tileZ) =>
+        ShippedMarkerInputs.Require(float.IsFinite(tileX) && float.IsFinite(tileZ), Refusal.ValueOutsideDomain,
+            "marker offset exceeds source coordinate range");
 
     static void CompareHead(ShippedMarkerInputs inputs, MapBuiltWorld world, ExpectedPoint[] expected, Evidence evidence, int head)
     {

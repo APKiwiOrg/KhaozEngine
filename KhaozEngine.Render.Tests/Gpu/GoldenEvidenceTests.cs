@@ -52,7 +52,7 @@ namespace KhaozEngine.Tests.Gpu
         }
 
         [Fact]
-        public void CompareFailure_WritesGotWantDiff_AllDecodable_AndPathsInMessage()
+        public void CompareFailure_WritesGotWantDiff_AllDecodable_AndReportsPaths()
         {
             const int w = 64, h = 36;
             const string name = "cmpfail";
@@ -61,8 +61,8 @@ namespace KhaozEngine.Tests.Gpu
             // Bake also wrote evidence; clear it so we only see the compare-failure output.
             foreach (var f in Directory.GetFiles(_evidenceDir)) File.Delete(f);
 
-            var ex = Assert.Throws<Xunit.Sdk.FailException>(() =>
-                GoldenCompare.AssertOrUpdate(name, Solid(w, h, 0, 220, 0), w, h,
+            var failure = Assert.IsType<GoldenComparisonFailure>(
+                GoldenCompare.CompareOrUpdate(name, Solid(w, h, 0, 220, 0), w, h,
                     _goldenDir, _evidenceDir, Backend, updateGoldens: false));
 
             string got = Path.Combine(_evidenceDir, $"{name}.{Backend}.got.png");
@@ -82,18 +82,22 @@ namespace KhaozEngine.Tests.Gpu
                 Assert.Equal(h, img.Height);
             }
 
-            Assert.Contains(got, ex.Message);
-            Assert.Contains(want, ex.Message);
-            Assert.Contains(diff, ex.Message);
+            Assert.Equal(GoldenComparisonRefusal.ImageRegressed, failure.Reason);
+            Assert.Equal(got, failure.GotPath);
+            Assert.Equal(want, failure.WantPath);
+            Assert.Equal(diff, failure.DiffPath);
+            Assert.Throws<Xunit.Sdk.FailException>(() =>
+                GoldenCompare.AssertOrUpdate(name, Solid(w, h, 0, 220, 0), w, h,
+                    _goldenDir, _evidenceDir, Backend, updateGoldens: false));
         }
 
         [Fact]
-        public void MissingGolden_WritesGotPng_AndMentionsIt()
+        public void MissingGolden_WritesGotPng_AndReportsItsPath()
         {
             const int w = 64, h = 36;
             const string name = "missing";
-            var ex = Assert.Throws<Xunit.Sdk.FailException>(() =>
-                GoldenCompare.AssertOrUpdate(name, Solid(w, h, 10, 20, 30), w, h,
+            var failure = Assert.IsType<GoldenComparisonFailure>(
+                GoldenCompare.CompareOrUpdate(name, Solid(w, h, 10, 20, 30), w, h,
                     _goldenDir, _evidenceDir, Backend, updateGoldens: false));
 
             string got = Path.Combine(_evidenceDir, $"{name}.{Backend}.got.png");
@@ -101,7 +105,11 @@ namespace KhaozEngine.Tests.Gpu
             var img = ImageRgba.Load(got);
             Assert.Equal(w, img.Width);
             Assert.Equal(h, img.Height);
-            Assert.Contains(got, ex.Message);
+            Assert.Equal(GoldenComparisonRefusal.MissingGolden, failure.Reason);
+            Assert.Equal(got, failure.GotPath);
+            Assert.Throws<Xunit.Sdk.FailException>(() =>
+                GoldenCompare.AssertOrUpdate(name, Solid(w, h, 10, 20, 30), w, h,
+                    _goldenDir, _evidenceDir, Backend, updateGoldens: false));
         }
 
         [Fact]
@@ -135,11 +143,15 @@ namespace KhaozEngine.Tests.Gpu
             const string name = "refused";
             const string refusal = "KE_UPDATE_GOLDENS refused on TestNative: set KE_GOLDEN_FAMILY_OVERRIDE=1";
 
-            var ex = Assert.Throws<Xunit.Sdk.FailException>(() =>
-                GoldenCompare.AssertOrUpdate(name, Solid(w, h, 10, 20, 30), w, h,
+            var failure = Assert.IsType<GoldenComparisonFailure>(
+                GoldenCompare.CompareOrUpdate(name, Solid(w, h, 10, 20, 30), w, h,
                     _goldenDir, _evidenceDir, Backend, updateGoldens: true, bakeRefusal: refusal));
 
-            Assert.Contains(refusal, ex.Message);
+            Assert.Equal(GoldenComparisonRefusal.BakeRefused, failure.Reason);
+            Assert.Equal(refusal, failure.BakeRefusal);
+            Assert.Throws<Xunit.Sdk.FailException>(() =>
+                GoldenCompare.AssertOrUpdate(name, Solid(w, h, 10, 20, 30), w, h,
+                    _goldenDir, _evidenceDir, Backend, updateGoldens: true, bakeRefusal: refusal));
             Assert.False(File.Exists(Path.Combine(_goldenDir, $"{name}.{Backend}.txt")),
                 "a refused bake must not write the golden text");
             Assert.Empty(Directory.GetFiles(_evidenceDir));

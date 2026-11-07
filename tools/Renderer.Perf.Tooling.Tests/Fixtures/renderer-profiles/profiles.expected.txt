@@ -1,0 +1,117 @@
+# Renderer profile deltas
+
+Format khaozengine.renderer-profiles/1. Deltas are candidate minus baseline within one unit. Separate series, no cross-backend deltas.
+
+Times are ns. Percent is the relative mean delta. PerPass totals are diagnostic. Three iterations are within-job repeats, not independent fleet samples or statistical significance. Combined rows are descriptive. No regression budget is assigned.
+
+The M5 colour copy runs outside any named pass, so its cost appears only in `gpu.frame`. Ownership is tracked in [#1636](https://github.com/APKiwiOrg/KhaozEngine/issues/1636).
+
+## linux-vulkan
+
+Unit profiles-linux. [Run](https://github.com/APKiwiOrg/KhaozEngine/actions/runs/123/attempts/1). [Summary](linux-vulkan-profiles-linux.md).
+
+| Profile pair | Baseline scene | Candidate scene | Layout | Iteration | Metric | Mean delta | Median delta | p95 delta | p99 delta | Mean percent |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| village OFF to M2 ON | S0 | S1 | TotalOnly | 0 | gpu.frame | 108.5 ns | 108.5 ns | 116 ns | 116 ns | 100 percent |
+| village OFF to M2 ON | S0 | S1 | TotalOnly | 1 | gpu.frame | 108.5 ns | 108.5 ns | 116 ns | 116 ns | 98.19004524886877 percent |
+| village OFF to M2 ON | S0 | S1 | TotalOnly | 2 | gpu.frame | 108.5 ns | 108.5 ns | 116 ns | 116 ns | 96.44444444444444 percent |
+| village OFF to M2 ON | S0 | S1 | TotalOnly | combined descriptive | gpu.frame | 108.5 ns | 108.5 ns | 116 ns | 116 ns | 98.19004524886877 percent |
+| village OFF to M2 ON | S0 | S1 | PerPass | 0 | gpu.frame | 108.5 ns | 108.5 ns | 116 ns | 116 ns | 95.59471365638767 percent |
+| village OFF to M2 ON | S0 | S1 | PerPass | 0 | gpu.pass.opaque.0 | 10 ns | 10 ns | 10 ns | 10 ns | 57.14285714285714 percent |
+| village OFF to M2 ON | S0 | S1 | PerPass | 1 | gpu.frame | 108.5 ns | 108.5 ns | 116 ns | 116 ns | 93.93939393939394 percent |
+| village OFF to M2 ON | S0 | S1 | PerPass | 1 | gpu.pass.opaque.0 | 10 ns | 10 ns | 10 ns | 10 ns | 51.28205128205128 percent |
+| village OFF to M2 ON | S0 | S1 | PerPass | 2 | gpu.frame | 108.5 ns | 108.5 ns | 116 ns | 116 ns | 92.34042553191489 percent |
+| village OFF to M2 ON | S0 | S1 | PerPass | 2 | gpu.pass.opaque.0 | 10 ns | 10 ns | 10 ns | 10 ns | 46.51162790697674 percent |
+| village OFF to M2 ON | S0 | S1 | PerPass | combined descriptive | gpu.frame | 108.5 ns | 108.5 ns | 116 ns | 116 ns | 93.93939393939394 percent |
+| village OFF to M2 ON | S0 | S1 | PerPass | combined descriptive | gpu.pass.opaque.0 | 10 ns | 10 ns | 10 ns | 10 ns | 51.28205128205128 percent |
+| village M2 ON to M5 ON | S1 | S2 | TotalOnly | 0 | gpu.frame | 108.5 ns | 108.5 ns | 116 ns | 116 ns | 50 percent |
+| village M2 ON to M5 ON | S1 | S2 | TotalOnly | 1 | gpu.frame | 108.5 ns | 108.5 ns | 116 ns | 116 ns | 49.54337899543379 percent |
+| village M2 ON to M5 ON | S1 | S2 | TotalOnly | 2 | gpu.frame | 108.5 ns | 108.5 ns | 116 ns | 116 ns | 49.095022624434385 percent |
+| village M2 ON to M5 ON | S1 | S2 | TotalOnly | combined descriptive | gpu.frame | 108.5 ns | 108.5 ns | 115 ns | 116 ns | 49.54337899543379 percent |
+| village M2 ON to M5 ON | S1 | S2 | PerPass | 0 | gpu.frame | 108.5 ns | 108.5 ns | 116 ns | 116 ns | 48.873873873873876 percent |
+| village M2 ON to M5 ON | S1 | S2 | PerPass | 0 | gpu.pass.opaque.0 | 10 ns | 10 ns | 10 ns | 10 ns | 36.36363636363637 percent |
+| village M2 ON to M5 ON | S1 | S2 | PerPass | 1 | gpu.frame | 108.5 ns | 108.5 ns | 116 ns | 116 ns | 48.4375 percent |
+| village M2 ON to M5 ON | S1 | S2 | PerPass | 1 | gpu.pass.opaque.0 | 10 ns | 10 ns | 10 ns | 10 ns | 33.89830508474576 percent |
+| village M2 ON to M5 ON | S1 | S2 | PerPass | 2 | gpu.frame | 108.5 ns | 108.5 ns | 116 ns | 116 ns | 48.008849557522126 percent |
+| village M2 ON to M5 ON | S1 | S2 | PerPass | 2 | gpu.pass.opaque.0 | 10 ns | 10 ns | 10 ns | 10 ns | 31.746031746031743 percent |
+| village M2 ON to M5 ON | S1 | S2 | PerPass | combined descriptive | gpu.frame | 108.5 ns | 108.5 ns | 115 ns | 116 ns | 48.4375 percent |
+| village M2 ON to M5 ON | S1 | S2 | PerPass | combined descriptive | gpu.pass.opaque.0 | 10 ns | 10 ns | 10 ns | 10 ns | 33.89830508474576 percent |
+| outdoors OFF to M2 ON | S3 | S4 | TotalOnly | 0 | gpu.frame | 108.5 ns | 108.5 ns | 116 ns | 116 ns | 25 percent |
+| outdoors OFF to M2 ON | S3 | S4 | TotalOnly | 1 | gpu.frame | 108.5 ns | 108.5 ns | 116 ns | 116 ns | 24.88532110091743 percent |
+| outdoors OFF to M2 ON | S3 | S4 | TotalOnly | 2 | gpu.frame | 108.5 ns | 108.5 ns | 116 ns | 116 ns | 24.771689497716896 percent |
+| outdoors OFF to M2 ON | S3 | S4 | TotalOnly | combined descriptive | gpu.frame | 108.5 ns | 108.5 ns | 116 ns | 116 ns | 24.88532110091743 percent |
+| outdoors OFF to M2 ON | S3 | S4 | PerPass | 0 | gpu.frame | 108.5 ns | 108.5 ns | 116 ns | 116 ns | 24.715261958997722 percent |
+| outdoors OFF to M2 ON | S3 | S4 | PerPass | 0 | gpu.pass.opaque.0 | 10 ns | 10 ns | 10 ns | 10 ns | 21.052631578947366 percent |
+| outdoors OFF to M2 ON | S3 | S4 | PerPass | 1 | gpu.frame | 108.5 ns | 108.5 ns | 116 ns | 116 ns | 24.6031746031746 percent |
+| outdoors OFF to M2 ON | S3 | S4 | PerPass | 1 | gpu.pass.opaque.0 | 10 ns | 10 ns | 10 ns | 10 ns | 20.2020202020202 percent |
+| outdoors OFF to M2 ON | S3 | S4 | PerPass | 2 | gpu.frame | 108.5 ns | 108.5 ns | 116 ns | 116 ns | 24.492099322799096 percent |
+| outdoors OFF to M2 ON | S3 | S4 | PerPass | 2 | gpu.pass.opaque.0 | 10 ns | 10 ns | 10 ns | 10 ns | 19.41747572815534 percent |
+| outdoors OFF to M2 ON | S3 | S4 | PerPass | combined descriptive | gpu.frame | 108.5 ns | 108.5 ns | 116 ns | 116 ns | 24.6031746031746 percent |
+| outdoors OFF to M2 ON | S3 | S4 | PerPass | combined descriptive | gpu.pass.opaque.0 | 10 ns | 10 ns | 10 ns | 10 ns | 20.2020202020202 percent |
+| outdoors M2 ON to M5 ON | S4 | S5 | TotalOnly | 0 | gpu.frame | 108.5 ns | 108.5 ns | 116 ns | 116 ns | 20 percent |
+| outdoors M2 ON to M5 ON | S4 | S5 | TotalOnly | 1 | gpu.frame | 108.5 ns | 108.5 ns | 116 ns | 116 ns | 19.92653810835629 percent |
+| outdoors M2 ON to M5 ON | S4 | S5 | TotalOnly | 2 | gpu.frame | 108.5 ns | 108.5 ns | 116 ns | 116 ns | 19.853613906678866 percent |
+| outdoors M2 ON to M5 ON | S4 | S5 | TotalOnly | combined descriptive | gpu.frame | 108.5 ns | 108.5 ns | 116 ns | 116 ns | 19.92653810835629 percent |
+| outdoors M2 ON to M5 ON | S4 | S5 | PerPass | 0 | gpu.frame | 108.5 ns | 108.5 ns | 116 ns | 116 ns | 19.817351598173516 percent |
+| outdoors M2 ON to M5 ON | S4 | S5 | PerPass | 0 | gpu.pass.opaque.0 | 10 ns | 10 ns | 10 ns | 10 ns | 17.391304347826086 percent |
+| outdoors M2 ON to M5 ON | S4 | S5 | PerPass | 1 | gpu.frame | 108.5 ns | 108.5 ns | 116 ns | 116 ns | 19.745222929936308 percent |
+| outdoors M2 ON to M5 ON | S4 | S5 | PerPass | 1 | gpu.pass.opaque.0 | 10 ns | 10 ns | 10 ns | 10 ns | 16.80672268907563 percent |
+| outdoors M2 ON to M5 ON | S4 | S5 | PerPass | 2 | gpu.frame | 108.5 ns | 108.5 ns | 116 ns | 116 ns | 19.67361740707162 percent |
+| outdoors M2 ON to M5 ON | S4 | S5 | PerPass | 2 | gpu.pass.opaque.0 | 10 ns | 10 ns | 10 ns | 10 ns | 16.260162601626014 percent |
+| outdoors M2 ON to M5 ON | S4 | S5 | PerPass | combined descriptive | gpu.frame | 108.5 ns | 108.5 ns | 116 ns | 116 ns | 19.745222929936308 percent |
+| outdoors M2 ON to M5 ON | S4 | S5 | PerPass | combined descriptive | gpu.pass.opaque.0 | 10 ns | 10 ns | 10 ns | 10 ns | 16.80672268907563 percent |
+
+## windows-d3d11
+
+Unit profiles-windows. [Run](https://github.com/APKiwiOrg/KhaozEngine/actions/runs/123/attempts/1). [Summary](windows-d3d11-profiles-windows.md).
+
+| Profile pair | Baseline scene | Candidate scene | Layout | Iteration | Metric | Mean delta | Median delta | p95 delta | p99 delta | Mean percent |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| village OFF to M2 ON | S0 | S1 | TotalOnly | 0 | gpu.frame | 108.5 ns | 108.5 ns | 116 ns | 116 ns | 100 percent |
+| village OFF to M2 ON | S0 | S1 | TotalOnly | 1 | gpu.frame | 108.5 ns | 108.5 ns | 116 ns | 116 ns | 98.19004524886877 percent |
+| village OFF to M2 ON | S0 | S1 | TotalOnly | 2 | gpu.frame | 108.5 ns | 108.5 ns | 116 ns | 116 ns | 96.44444444444444 percent |
+| village OFF to M2 ON | S0 | S1 | TotalOnly | combined descriptive | gpu.frame | 108.5 ns | 108.5 ns | 116 ns | 116 ns | 98.19004524886877 percent |
+| village OFF to M2 ON | S0 | S1 | PerPass | 0 | gpu.frame | 108.5 ns | 108.5 ns | 116 ns | 116 ns | 95.59471365638767 percent |
+| village OFF to M2 ON | S0 | S1 | PerPass | 0 | gpu.pass.opaque.0 | 10 ns | 10 ns | 10 ns | 10 ns | 57.14285714285714 percent |
+| village OFF to M2 ON | S0 | S1 | PerPass | 1 | gpu.frame | 108.5 ns | 108.5 ns | 116 ns | 116 ns | 93.93939393939394 percent |
+| village OFF to M2 ON | S0 | S1 | PerPass | 1 | gpu.pass.opaque.0 | 10 ns | 10 ns | 10 ns | 10 ns | 51.28205128205128 percent |
+| village OFF to M2 ON | S0 | S1 | PerPass | 2 | gpu.frame | 108.5 ns | 108.5 ns | 116 ns | 116 ns | 92.34042553191489 percent |
+| village OFF to M2 ON | S0 | S1 | PerPass | 2 | gpu.pass.opaque.0 | 10 ns | 10 ns | 10 ns | 10 ns | 46.51162790697674 percent |
+| village OFF to M2 ON | S0 | S1 | PerPass | combined descriptive | gpu.frame | 108.5 ns | 108.5 ns | 116 ns | 116 ns | 93.93939393939394 percent |
+| village OFF to M2 ON | S0 | S1 | PerPass | combined descriptive | gpu.pass.opaque.0 | 10 ns | 10 ns | 10 ns | 10 ns | 51.28205128205128 percent |
+| village M2 ON to M5 ON | S1 | S2 | TotalOnly | 0 | gpu.frame | 108.5 ns | 108.5 ns | 116 ns | 116 ns | 50 percent |
+| village M2 ON to M5 ON | S1 | S2 | TotalOnly | 1 | gpu.frame | 108.5 ns | 108.5 ns | 116 ns | 116 ns | 49.54337899543379 percent |
+| village M2 ON to M5 ON | S1 | S2 | TotalOnly | 2 | gpu.frame | 108.5 ns | 108.5 ns | 116 ns | 116 ns | 49.095022624434385 percent |
+| village M2 ON to M5 ON | S1 | S2 | TotalOnly | combined descriptive | gpu.frame | 108.5 ns | 108.5 ns | 115 ns | 116 ns | 49.54337899543379 percent |
+| village M2 ON to M5 ON | S1 | S2 | PerPass | 0 | gpu.frame | 108.5 ns | 108.5 ns | 116 ns | 116 ns | 48.873873873873876 percent |
+| village M2 ON to M5 ON | S1 | S2 | PerPass | 0 | gpu.pass.opaque.0 | 10 ns | 10 ns | 10 ns | 10 ns | 36.36363636363637 percent |
+| village M2 ON to M5 ON | S1 | S2 | PerPass | 1 | gpu.frame | 108.5 ns | 108.5 ns | 116 ns | 116 ns | 48.4375 percent |
+| village M2 ON to M5 ON | S1 | S2 | PerPass | 1 | gpu.pass.opaque.0 | 10 ns | 10 ns | 10 ns | 10 ns | 33.89830508474576 percent |
+| village M2 ON to M5 ON | S1 | S2 | PerPass | 2 | gpu.frame | 108.5 ns | 108.5 ns | 116 ns | 116 ns | 48.008849557522126 percent |
+| village M2 ON to M5 ON | S1 | S2 | PerPass | 2 | gpu.pass.opaque.0 | 10 ns | 10 ns | 10 ns | 10 ns | 31.746031746031743 percent |
+| village M2 ON to M5 ON | S1 | S2 | PerPass | combined descriptive | gpu.frame | 108.5 ns | 108.5 ns | 115 ns | 116 ns | 48.4375 percent |
+| village M2 ON to M5 ON | S1 | S2 | PerPass | combined descriptive | gpu.pass.opaque.0 | 10 ns | 10 ns | 10 ns | 10 ns | 33.89830508474576 percent |
+| outdoors OFF to M2 ON | S3 | S4 | TotalOnly | 0 | gpu.frame | 108.5 ns | 108.5 ns | 116 ns | 116 ns | 25 percent |
+| outdoors OFF to M2 ON | S3 | S4 | TotalOnly | 1 | gpu.frame | 108.5 ns | 108.5 ns | 116 ns | 116 ns | 24.88532110091743 percent |
+| outdoors OFF to M2 ON | S3 | S4 | TotalOnly | 2 | gpu.frame | 108.5 ns | 108.5 ns | 116 ns | 116 ns | 24.771689497716896 percent |
+| outdoors OFF to M2 ON | S3 | S4 | TotalOnly | combined descriptive | gpu.frame | 108.5 ns | 108.5 ns | 116 ns | 116 ns | 24.88532110091743 percent |
+| outdoors OFF to M2 ON | S3 | S4 | PerPass | 0 | gpu.frame | 108.5 ns | 108.5 ns | 116 ns | 116 ns | 24.715261958997722 percent |
+| outdoors OFF to M2 ON | S3 | S4 | PerPass | 0 | gpu.pass.opaque.0 | 10 ns | 10 ns | 10 ns | 10 ns | 21.052631578947366 percent |
+| outdoors OFF to M2 ON | S3 | S4 | PerPass | 1 | gpu.frame | 108.5 ns | 108.5 ns | 116 ns | 116 ns | 24.6031746031746 percent |
+| outdoors OFF to M2 ON | S3 | S4 | PerPass | 1 | gpu.pass.opaque.0 | 10 ns | 10 ns | 10 ns | 10 ns | 20.2020202020202 percent |
+| outdoors OFF to M2 ON | S3 | S4 | PerPass | 2 | gpu.frame | 108.5 ns | 108.5 ns | 116 ns | 116 ns | 24.492099322799096 percent |
+| outdoors OFF to M2 ON | S3 | S4 | PerPass | 2 | gpu.pass.opaque.0 | 10 ns | 10 ns | 10 ns | 10 ns | 19.41747572815534 percent |
+| outdoors OFF to M2 ON | S3 | S4 | PerPass | combined descriptive | gpu.frame | 108.5 ns | 108.5 ns | 116 ns | 116 ns | 24.6031746031746 percent |
+| outdoors OFF to M2 ON | S3 | S4 | PerPass | combined descriptive | gpu.pass.opaque.0 | 10 ns | 10 ns | 10 ns | 10 ns | 20.2020202020202 percent |
+| outdoors M2 ON to M5 ON | S4 | S5 | TotalOnly | 0 | gpu.frame | 108.5 ns | 108.5 ns | 116 ns | 116 ns | 20 percent |
+| outdoors M2 ON to M5 ON | S4 | S5 | TotalOnly | 1 | gpu.frame | 108.5 ns | 108.5 ns | 116 ns | 116 ns | 19.92653810835629 percent |
+| outdoors M2 ON to M5 ON | S4 | S5 | TotalOnly | 2 | gpu.frame | 108.5 ns | 108.5 ns | 116 ns | 116 ns | 19.853613906678866 percent |
+| outdoors M2 ON to M5 ON | S4 | S5 | TotalOnly | combined descriptive | gpu.frame | 108.5 ns | 108.5 ns | 116 ns | 116 ns | 19.92653810835629 percent |
+| outdoors M2 ON to M5 ON | S4 | S5 | PerPass | 0 | gpu.frame | 108.5 ns | 108.5 ns | 116 ns | 116 ns | 19.817351598173516 percent |
+| outdoors M2 ON to M5 ON | S4 | S5 | PerPass | 0 | gpu.pass.opaque.0 | 10 ns | 10 ns | 10 ns | 10 ns | 17.391304347826086 percent |
+| outdoors M2 ON to M5 ON | S4 | S5 | PerPass | 1 | gpu.frame | 108.5 ns | 108.5 ns | 116 ns | 116 ns | 19.745222929936308 percent |
+| outdoors M2 ON to M5 ON | S4 | S5 | PerPass | 1 | gpu.pass.opaque.0 | 10 ns | 10 ns | 10 ns | 10 ns | 16.80672268907563 percent |
+| outdoors M2 ON to M5 ON | S4 | S5 | PerPass | 2 | gpu.frame | 108.5 ns | 108.5 ns | 116 ns | 116 ns | 19.67361740707162 percent |
+| outdoors M2 ON to M5 ON | S4 | S5 | PerPass | 2 | gpu.pass.opaque.0 | 10 ns | 10 ns | 10 ns | 10 ns | 16.260162601626014 percent |
+| outdoors M2 ON to M5 ON | S4 | S5 | PerPass | combined descriptive | gpu.frame | 108.5 ns | 108.5 ns | 116 ns | 116 ns | 19.745222929936308 percent |
+| outdoors M2 ON to M5 ON | S4 | S5 | PerPass | combined descriptive | gpu.pass.opaque.0 | 10 ns | 10 ns | 10 ns | 10 ns | 16.80672268907563 percent |

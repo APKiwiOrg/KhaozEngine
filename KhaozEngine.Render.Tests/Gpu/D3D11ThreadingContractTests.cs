@@ -1,3 +1,4 @@
+using KhaozEngine.Gpu.D3D11;
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
@@ -627,8 +628,10 @@ namespace KhaozEngine.Tests.Gpu
 
             lock (submitLock)
             {
-                InvalidOperationException ex = Assert.Throws<InvalidOperationException>(fences.WaitForIdle);
-                Assert.Contains("submit lock", ex.Message, StringComparison.Ordinal);
+                D3D11WaitPolicyException ex = Assert.Throws<D3D11WaitPolicyException>(fences.WaitForIdle);
+                Assert.Equal("WaitForIdle", ex.Operation);
+                Assert.Equal(D3D11WaitPolicyRefusal.SubmitLockHeld, ex.Reason);
+                Assert.IsAssignableFrom<InvalidOperationException>(ex);
             }
 
             // And it still drains normally from outside, so the guard costs the ordinary path nothing.
@@ -683,9 +686,11 @@ namespace KhaozEngine.Tests.Gpu
 
             lock (harness.SubmitLock)
             {
-                InvalidOperationException ex = Assert.Throws<InvalidOperationException>(
+                D3D11WaitPolicyException ex = Assert.Throws<D3D11WaitPolicyException>(
                     harness.Allocator.BeginFrame);
-                Assert.Contains("submit lock", ex.Message, StringComparison.Ordinal);
+                Assert.Equal("BeginFrame", ex.Operation);
+                Assert.Equal(D3D11WaitPolicyRefusal.SubmitLockHeld, ex.Reason);
+                Assert.IsAssignableFrom<InvalidOperationException>(ex);
             }
 
             harness.Allocator.BeginFrame();

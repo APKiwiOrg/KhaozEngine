@@ -38,8 +38,10 @@ internal static partial class NativeRenderAssetFixtures
         [new("A", [new(0), new(1)], new(.3f, .15f, .4f, .035f), true),
          new("B", [new(2)], new(.6f, .2f, .1f, .07f), false)]);
 
-    internal static GltfMeshPart[] FoliageParts() =>
-        [FoliagePart(0, 1, .5f), FoliagePart(0, 1, .5f), FoliagePart(-1, 1, .25f)];
+    // The opaque set has no maps, no cutoff and no tangents, so its prepared draws take the opaque foliage programs.
+    internal static GltfMeshPart[] FoliageParts(bool opaque = false) => opaque
+        ? [FoliagePart(0, 1, 0), FoliagePart(0, 1, 0), FoliagePart(-1, 1, 0)]
+        : [FoliagePart(0, 1, .5f), FoliagePart(0, 1, .5f), FoliagePart(-1, 1, .25f)];
     static GltfMeshPart FoliagePart(float root, float top, float cutoff) => new(new GltfMesh(
         [new(new(0, root, 0), Vector3.UnitZ, Vector4.One), new(new(1, root, 0), Vector3.UnitZ, Vector4.One),
          new(new(0, top, 0), Vector3.UnitZ, Vector4.One)], new uint[] { 0, 1, 2 }), new(null, null, null, cutoff));

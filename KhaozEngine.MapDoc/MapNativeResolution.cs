@@ -30,8 +30,9 @@ public static class MapNativeResolution
         if (resolver == 2)
             return MapResolverV2.Resolve(document, assets, MapDocumentSurfaceSource.Capture(document), options).Document;
         if (legacySupportHeight is null)
-            throw new MapDocumentException(
-                "Native resolver identity (1, 1) places unbound placements on the analytic terrain and requires a legacy support height.");
+            throw new MapDocumentException(MapDocumentRefusal.SupportLegacyHeightRequired,
+                "Native resolver identity (1, 1) places unbound placements on the analytic terrain and requires a legacy support height.")
+            { ResolverVersion = resolver, FieldPath = "legacySupportHeight" };
         return MapResolver.Resolve(document, assets, legacySupportHeight, options);
     }
 
@@ -53,7 +54,8 @@ public static class MapNativeResolution
         {
             var effective = MapPrefabResolver.Expand(document, assets, options.ExpansionLimits, null, null, options.QueryLimits);
             return ids.Select(id => effective.Placements.FirstOrDefault(p => p.PlacementId == id)
-                ?? throw new MapDocumentException($"No placement with id '{id}'.")).ToArray();
+                ?? throw new MapDocumentException(MapDocumentRefusal.ReferenceMissing, $"No placement with id '{id}'.")
+                { PlacementId = id, EntityId = id, SubjectKind = "placement" }).ToArray();
         }
         var byId = new Dictionary<string, MapPlacement>(StringComparer.Ordinal);
         foreach (MapPlacement placement in document.Placements)
@@ -61,11 +63,13 @@ public static class MapNativeResolution
         var selected = new List<MapPlacement>(ids.Count);
         foreach (string id in ids)
             selected.Add(byId.TryGetValue(id, out MapPlacement? placement)
-                ? placement : throw new MapDocumentException($"No placement with id '{id}'."));
+                ? placement : throw new MapDocumentException(MapDocumentRefusal.ReferenceMissing, $"No placement with id '{id}'.")
+                { PlacementId = id, EntityId = id, SubjectKind = "placement" });
         if (resolver == 2) return MapResolverV2.ResolvePlacements(document, assets, selected, options.QueryLimits);
         if (legacySupportHeight is null)
-            throw new MapDocumentException(
-                "Native resolver identity (1, 1) places unbound placements on the analytic terrain and requires a legacy support height.");
+            throw new MapDocumentException(MapDocumentRefusal.SupportLegacyHeightRequired,
+                "Native resolver identity (1, 1) places unbound placements on the analytic terrain and requires a legacy support height.")
+            { ResolverVersion = resolver, FieldPath = "legacySupportHeight" };
         return Array.AsReadOnly(selected.Select(p => MapResolver.ResolveOne(p, (_, x, z) => legacySupportHeight(x, z))).ToArray());
     }
 
@@ -75,7 +79,12 @@ public static class MapNativeResolution
     {
         { PayloadVersion: 1, ResolverVersion: 1 } => 1,
         { PayloadVersion: 1, ResolverVersion: 2 } => 2,
-        _ => throw new MapDocumentException($"Unsupported native resolver identity {Describe(identity)}."),
+        _ => throw new MapDocumentException(MapDocumentRefusal.ResolverContractMismatch, $"Unsupported native resolver identity {Describe(identity)}.")
+        {
+            PayloadVersion = identity?.PayloadVersion,
+            ResolverVersion = identity?.ResolverVersion,
+            FieldPath = "resolverIdentity",
+        },
     };
 
     /// <summary>The resolver version <paramref name="identity"/> selects, after refusing an unsupported identity and
@@ -84,8 +93,15 @@ public static class MapNativeResolution
     {
         int resolver = ResolverVersionOf(identity);
         if (options.ResolverVersion != resolver)
-            throw new MapDocumentException($"Native resolver identity {Describe(identity)} " +
-                $"does not match options resolver version {options.ResolverVersion}.");
+            throw new MapDocumentException(MapDocumentRefusal.ResolverContractMismatch, $"Native resolver identity {Describe(identity)} " +
+                $"does not match options resolver version {options.ResolverVersion}.")
+            {
+                PayloadVersion = identity!.PayloadVersion,
+                ResolverVersion = identity.ResolverVersion,
+                OptionsResolverVersion = options.ResolverVersion,
+                ExpectedResolverVersion = resolver,
+                FieldPath = "options.resolverVersion",
+            };
         return resolver;
     }
 

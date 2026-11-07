@@ -69,8 +69,7 @@ namespace KhaozEngine.Tests.Gpu
                 () => new GpuDeviceContext(device, threadingCaps: null, threadingProbeFailure: null,
                     Selection(selectionBackend), ownsDevice: true));
 
-            Assert.Contains(deviceBackend.ToString(), ex.Message);
-            Assert.Contains(selectionBackend.ToString(), ex.Message);
+            Assert.Equal("selection", ex.ParamName);
         }
 
         /// <summary>

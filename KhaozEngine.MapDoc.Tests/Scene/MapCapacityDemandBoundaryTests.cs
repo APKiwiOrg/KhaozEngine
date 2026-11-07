@@ -1,7 +1,6 @@
 using System;
 using System.Linq;
 using System.Numerics;
-using System.Reflection;
 using KhaozEngine.MapDoc.Storage;
 using KhaozEngine.MapDoc.Foliage;
 using KhaozEngine.MapDoc.Scene;
@@ -48,12 +47,11 @@ public sealed class MapCapacityDemandBoundaryTests
         var builder = new MapFoliageSupportBuilder(view, new System.Collections.Generic.Dictionary<string, MapPaintRegionSet>(),
             view.Surfaces, layer, default, new(), null);
         using var probe = observed ? new CapacityDemandProbe() : null;
-        var error = Assert.Throws<TargetInvocationException>(() => typeof(MapFoliageSupportBuilder)
-            .GetMethod("Grid", BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(builder,
-                new object[] { view.Surfaces.First(s => s.Role == MapSurfaceRole.SupportFloor),
-                    new MapExactXz(MapExactValue.FromSingle(0), MapExactValue.FromSingle(0)),
-                    new MapExactXz(MapExactValue.FromSingle(MathF.Pow(2, 49)), MapExactValue.FromSingle(MathF.Pow(2, 49))) }));
-        Assert.Equal(MapFoliageStatus.CapacityExceeded, Assert.IsType<MapFoliageRefusal>(error.InnerException).Status);
+        var error = Assert.Throws<MapFoliageRefusal>(() => builder.GridForTests(
+            view.Surfaces.First(s => s.Role == MapSurfaceRole.SupportFloor),
+            new MapExactXz(MapExactValue.FromSingle(0), MapExactValue.FromSingle(0)),
+            new MapExactXz(MapExactValue.FromSingle(MathF.Pow(2, 49)), MapExactValue.FromSingle(MathF.Pow(2, 49)))));
+        Assert.Equal(MapFoliageStatus.CapacityExceeded, error.Status);
         if (!observed) return;
         var row = Assert.Single(probe!.For("MaxFaces"));
         Assert.Equal(decimal.MaxValue, Read<decimal>(row, "Requested"));

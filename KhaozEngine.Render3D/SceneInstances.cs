@@ -117,6 +117,8 @@ namespace KhaozEngine.Render3D
             /// descriptor's. Only <see cref="Scene3D.Draw(in RigidInstanceDraw)"/> records it into motion history.
             /// </summary>
             public MotionKey Motion { get; }
+            /// <summary>Point-shadow cache participation, carried independently of cast policy.</summary>
+            public ShadowCasterMobility ShadowMobility { get; }
             /// <summary>Whether the rigid draw cuts pixels inside the scene's interior spans.</summary>
             public bool CutInsideInteriors { get; internal init; }
             internal bool InteriorCutRequested { get; }
@@ -126,7 +128,7 @@ namespace KhaozEngine.Render3D
                 bool castsShadows = true, bool invertShadowDissolve = false, float dissolveComplement = 0f,
                 bool shadowOnly = false)
                 : this(mesh, world, tint, material, dissolveThreshold, dissolveEdgeWidth, dissolveEdge, castsShadows,
-                    invertShadowDissolve, dissolveComplement, shadowOnly, MotionKey.None, false)
+                    invertShadowDissolve, dissolveComplement, shadowOnly, MotionKey.None, false, ShadowCasterMobility.Static)
             { }
 
             /// <summary>One queued draw from its descriptor: every knob of <paramref name="draw"/>, its motion key
@@ -134,7 +136,7 @@ namespace KhaozEngine.Render3D
             internal Instance(in RigidInstanceDraw draw)
                 : this(draw.Mesh, draw.World, draw.Tint, draw.Material, draw.Dissolve, draw.DissolveEdgeWidth,
                     draw.DissolveEdgeColor, draw.CastsShadows, draw.InvertShadowDissolve, draw.DissolveComplement,
-                    draw.ShadowOnly, draw.Motion, draw.CutInsideInteriors)
+                    draw.ShadowOnly, draw.Motion, draw.CutInsideInteriors, draw.ShadowMobility)
             { }
 
             internal Instance(in RigidInstanceDraw draw, bool relevantCut) : this(in draw)
@@ -144,22 +146,26 @@ namespace KhaozEngine.Render3D
 
             Instance(MeshHandle mesh, Matrix4x4 world, Color tint, Material material, float dissolveThreshold,
                 float dissolveEdgeWidth, Vector4 dissolveEdge, bool castsShadows, bool invertShadowDissolve,
-                float dissolveComplement, bool shadowOnly, MotionKey motion, bool cutInsideInteriors)
+                float dissolveComplement, bool shadowOnly, MotionKey motion, bool cutInsideInteriors, ShadowCasterMobility shadowMobility)
             {
+                if (shadowMobility is not (ShadowCasterMobility.Static or ShadowCasterMobility.Dynamic))
+                    throw new ArgumentOutOfRangeException(nameof(shadowMobility));
                 // Shadow-only says "colour pass no, depth pass yes" and the opt-out says "depth pass no", so the
                 // pair asks for an instance that is drawn in neither: a queue entry that costs a slot and produces
                 // nothing. Refused at the queue rather than dropped silently later, where it would read as a
                 // missing shadow nobody could account for.
                 if (shadowOnly && !castsShadows)
-                    throw new ArgumentException(
+                    throw new DrawAdmissionArgumentException(DrawAdmissionRefusal.ShadowOnlyWithoutCasting,
                         "A shadow-only instance must cast shadows: shadowOnly with castsShadows false draws in neither pass.",
-                        nameof(shadowOnly));
+                        nameof(shadowOnly))
+                    { ShadowOnly = shadowOnly, CastsShadows = castsShadows };
                 Mesh = mesh; World = world; Tint = tint; Material = material;
                 DissolveThreshold = dissolveThreshold; DissolveEdgeWidth = dissolveEdgeWidth; DissolveEdge = dissolveEdge;
                 CastsShadows = castsShadows; InvertShadowDissolve = invertShadowDissolve;
                 DissolveComplement = dissolveComplement; ShadowOnly = shadowOnly; Motion = motion;
                 CutInsideInteriors = cutInsideInteriors;
                 InteriorCutRequested = cutInsideInteriors;
+                ShadowMobility = shadowMobility;
             }
 
             /// <summary>True when this draw carries a dissolve (routes through the gated ModelFrag term).</summary>

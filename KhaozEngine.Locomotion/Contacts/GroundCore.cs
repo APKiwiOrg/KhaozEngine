@@ -114,6 +114,8 @@ internal static partial class GroundCore
         var startAxis = new Vector2(start.X, start.Z);
         SupportSample support = queries.FindSupport(
             new FootSupportQuery(startAxis, start.Y, footRadius, tuning.StepHeight, tuning.StepHeight, cosMaxSlope));
+        queries.DescentEvidence?.Record(queries, start, support,
+            slide ? ContactDescentMode.Slide : ContactDescentMode.Ground, footRadius, gate);
         bool moving = displacement != Vector2.Zero;
         if (support.Status == SupportStatus.Refused)
             return Result(feet, start, start.Y, GroundFooting.Held, support, Vector2.Zero, moving) with
@@ -137,7 +139,7 @@ internal static partial class GroundCore
         if (steepStart) substeps = Math.Max(substeps, SlideSubsteps(displacement, support.Normal, tuning));
 
         var tick = new Tick(queries, tuning, footRadius, cosMaxSlope, start,
-            ShellMotion.LiftWithQueries(queries, start, tuning), support, slide, clampXz, stepInProgress ? carriedLag : 0);
+            ShellMotion.LiftWithQueries(queries, start, tuning), support, slide, gate, clampXz, stepInProgress ? carriedLag : 0);
         if (!moving)
         {
             // A body at rest still climbs onto the tread a paced climb left it below.
@@ -252,6 +254,7 @@ internal static partial class GroundCore
         readonly float _startY;
         readonly float _lift;
         readonly bool _slide;
+        readonly float _tractionSlopeRadians;
         readonly Func<float, float, Vector2>? _clampXz;
         Vector2 _achieved;
         double _owedDiscrete;
@@ -259,7 +262,7 @@ internal static partial class GroundCore
         double _moveRise;
 
         internal Tick(ContactQueryContext queries, in MoveTuning tuning, float footRadius,
-            float cosMaxSlope, Vector3 start, float lift, in SupportSample support, bool slide,
+            float cosMaxSlope, Vector3 start, float lift, in SupportSample support, bool slide, float tractionSlopeRadians,
             Func<float, float, Vector2>? clampXz, double owedDiscrete)
         {
             _queries = queries;
@@ -270,6 +273,7 @@ internal static partial class GroundCore
             _startY = start.Y;
             _lift = lift;
             _slide = slide;
+            _tractionSlopeRadians = tractionSlopeRadians;
             _clampXz = clampXz;
             FeetY = start.Y;
             Support = support;
@@ -369,6 +373,10 @@ internal static partial class GroundCore
                     _moveRise += (double)placement.Feet.Y - FeetY;
                     FeetY = placement.Feet.Y;
                     Support = placement.Support;
+                    _queries.DescentEvidence?.Record(_queries, placement.Feet, Support,
+                        _slide ? ContactDescentMode.Slide : ContactDescentMode.Ground, _footRadius, _tractionSlopeRadians);
+                    if (Support.Status == SupportStatus.Walkable)
+                        _queries.RecordAcceptedSupport(new(Axis.X, Support.Height, Axis.Y));
                     if (!_slide && seat.Outcome == SeatOutcome.Seated)
                     {
                         AccountDiscrete(seat.DiscreteStep);

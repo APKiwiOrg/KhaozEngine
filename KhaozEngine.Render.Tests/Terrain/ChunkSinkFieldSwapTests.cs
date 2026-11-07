@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using KhaozEngine.Render3D;
+using KhaozEngine.Physics.Bepu;
 using KhaozEngine.Terrain;
 using Xunit;
 
@@ -40,12 +41,17 @@ namespace KhaozEngine.Tests.Terrain
             public TerrainField? Swap;
             public Exception? Caught;
             public int Queries;
+            public Action<Scene3DChunkSink>? Change;
 
             public void PlacementsIn(RectArea area, List<PropPlacement> into)
             {
                 Queries++;
                 if (Sink is null) return;
-                try { Sink.UpdateField(Swap!); }
+                try
+                {
+                    if (Change is null) Sink.UpdateField(Swap!);
+                    else Change(Sink);
+                }
                 catch (Exception ex) { Caught = ex; }
             }
         }
@@ -76,14 +82,60 @@ namespace KhaozEngine.Tests.Terrain
             var cpu = (Scene3DChunkSink.CpuBuild)sink.BuildCpu(new ChunkCoord(0, 0), lod: 0);
 
             Assert.Equal(1, source.Queries);   // not vacuous: the source really was queried from inside the build
-            var ex = Assert.IsType<InvalidOperationException>(source.Caught);
-            Assert.Contains("1 chunk build(s)", ex.Message);          // names the mismatch it caught
-            Assert.Contains("FlushPendingBuilds", ex.Message);        // and the call that fixes it
+            var ex = Assert.IsType<ChunkSinkConfigurationStateException>(source.Caught);
+            Assert.IsAssignableFrom<InvalidOperationException>(ex);
+            Assert.Equal(ChunkSinkConfigurationRefusal.FieldChangeDuringBuild, ex.Reason);
+            Assert.Equal(1, ex.BuildCount);
 
             // The refused swap did not land, so this build's mesh is the old field's all the way through. The two
             // fields are 45 m apart in base height, so a couple of metres of band is plenty to tell them apart (a
             // flat band still carries the field's own micro relief, so this is not an equality check).
             AssertBuiltFrom(5f, cpu);
+        }
+
+        [Theory]
+        [InlineData(false, ChunkSinkConfigurationRefusal.LayersChangeDuringBuild)]
+        [InlineData(true, ChunkSinkConfigurationRefusal.LodChangeDuringBuild)]
+        public void ConfigurationChangesDuringABuildAreRefused(bool changeLod, ChunkSinkConfigurationRefusal reason)
+        {
+            var source = new SwappingSource();
+            PropLayer[] layers = [PropLayer.PlacementLayer(source, new Dictionary<string, MeshHandle>(), 90f)];
+            using var sink = new Scene3DChunkSink(null!, Flat(5f), layers, 60f);
+            source.Sink = sink;
+            source.Change = current =>
+            {
+                if (changeLod) current.ReconfigureLod(TerrainLodConfig.Default);
+                else current.UpdateLayers(layers);
+            };
+            var cpu = (Scene3DChunkSink.CpuBuild)sink.BuildCpu(new ChunkCoord(0, 0), 0);
+            var error = Assert.IsType<ChunkSinkConfigurationStateException>(source.Caught);
+            Assert.Equal(reason, error.Reason);
+            Assert.Equal(1, error.BuildCount);
+            AssertBuiltFrom(5f, cpu);
+            source.Change(sink);
+        }
+
+        sealed class NoDynamics : IChunkDynamicsSource
+        {
+            public IReadOnlyList<DynamicSpawn> SpawnsFor(ChunkCoord coord) => Array.Empty<DynamicSpawn>();
+        }
+
+        [Theory]
+        [InlineData(false, ChunkSinkConfigurationRefusal.DynamicsRequiresPhysics, "dynamicsSource")]
+        [InlineData(true, ChunkSinkConfigurationRefusal.CollisionRequiresPhysics, "collideTerrain")]
+        public void PhysicsFeaturesRequireAPhysicsWorld(bool collision, ChunkSinkConfigurationRefusal reason, string paramName)
+        {
+            TerrainField field = Flat(5f);
+            PropLayer[] layers = [PropLayer.PlacementLayer(Array.Empty<PropPlacement>(), new Dictionary<string, MeshHandle>(), 90f)];
+            IChunkDynamicsSource? dynamics = collision ? null : new NoDynamics();
+            var error = Assert.Throws<ChunkSinkConfigurationArgumentException>(() =>
+                new Scene3DChunkSink(null!, field, layers, 60f, dynamicsSource: dynamics, collideTerrain: collision));
+            Assert.IsAssignableFrom<ArgumentException>(error);
+            Assert.Equal(reason, error.Reason);
+            Assert.Equal(paramName, error.ParamName);
+            using var physics = new BepuPhysicsWorld();
+            using var sink = new Scene3DChunkSink(null!, field, layers, 60f,
+                physics: physics, dynamicsSource: dynamics, collideTerrain: collision);
         }
 
         [Fact]

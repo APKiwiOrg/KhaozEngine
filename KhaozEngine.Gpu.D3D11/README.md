@@ -436,15 +436,19 @@ cache is already right.
 opposite lifetimes and only `IGpuFramebuffer` in common, so an emitter casting to one of them would work for
 every offscreen pass and throw on the first frame that presents. Both answer `ID3D11RenderTargetSurface`
 instead, object-typed like the rest of this package's internal seams, and a framebuffer from another backend is
-refused by name.
+refused with `GpuResourceOwnershipRefusal.ForeignBackend`, `ActualType` and `ExpectedType`.
+The resource-view and native-buffer adapters use the same shared family. A missing required buffer uses
+`MissingResource`, while a null entry in a resource-view span remains an accepted hole.
 
 **What a resource offers a register file is the resource's own answer.** `ID3D11BindableViews` is the seam for
 that, and `D3D11BindResolve` is the device-free half of the bind: it unwraps a `GpuBufferRange` to its buffer,
-refuses a resource whose declared usage never earned it the view its layout asks for (naming the HLSL register
-letter), passes a null through as the HOLE an array bind legitimately has, and transposes a span of binds into
+refuses a resource whose declared usage never earned it the view its layout asks for with
+`GpuResourceOwnershipRefusal.MissingResource` and `RegisterLetter`, `ActualType` and `ExpectedType`, passes a null through as the HOLE an array bind legitimately has, and transposes a span of binds into
 the parallel arrays `*SetConstantBuffers1` takes. It is also where a REFUSAL both emitters owe lives: a buffer
 from another backend, and the framebuffer a clear names an attachment of (none bound, no
-colour attachment at that index, no depth attachment at all). A refusal kept in the real emitter alone means the
+colour attachment at that index, no depth attachment at all). The missing-framebuffer and missing-depth
+rules throw `GpuBoundFramebufferException` with `GpuBoundFramebufferRefusal` and the refused `Command`.
+A refusal kept in the real emitter alone means the
 trace accepts a stream the device throws on, and neither side of that is reachable by a test here. All of it
 runs under a plain `dotnet test` on macOS, which is the point: the emitter is left with a cast and a call. The
 staging map asks the resource the same way, through `ID3D11MappableResource` (the native handle a `Map` names,
@@ -769,7 +773,13 @@ the report. Missing metadata, empty statistics and reflection failures retain su
 `ConstantBuffers`, `BoundResources`, signature counts and every other scalar instruction/resource
 count under their original API names/descriptions. The budgeted read route uses the fixed
 (2,30,60,4096,16384,4) executable/statistics/total/text/flags/attempt profile. It refuses smaller
-substitute requests. Creator text is bounded before conversion, and raw flags remain intact.
+substitute requests with `D3D11CompilerEvidenceRefusal.ReadProfileMismatch`, retaining `RequestedProfile`
+and `RequiredProfile`. Combined flags beyond 16384 UTF-8 bytes carry `CombinedFlagsTooLarge`, `Field`,
+`MaximumUtf8Bytes` and `ActualUtf8Bytes` on `D3D11CompilerEvidenceStateException`. Other compiler-evidence
+reasons distinguish missing reflection (with `MissingStages`), invalid construction identity and missing
+failure origin. A dead pipeline carries `PipelineUnavailable` on `D3D11CompilerEvidenceDisposedException`,
+retaining `ObjectName`. These exceptions remain in the diagnostic failure events.
+Creator text is bounded before conversion, and raw flags remain intact.
 Reports retain typed availability, original read requests and counts, completion/refusal and actual
 failure occurrences. The renderer's fixed byte reservation is 1,048,576. Native `UINT` values are preserved losslessly in UInt64 metrics with the original
 native type in Source. These are intermediate-code facts. Temporary slots never fill physical register,
@@ -1080,9 +1090,14 @@ too), and `KhaozEngineD3D11.ValidateShaderPair` / `ValidateComputeShader` run th
 all, which is what the Windows CI leg calls over every shipped program on every push.
 
 Those two validation entry points are the half `KhaozEngine.Gpu`'s own `ShaderValidation` cannot cover: it
-cross-compiles to all four shading languages and stops, so it has never compiled the HLSL it produced, which is
+cross-compiles to both shipped shading languages and stops, so it has never compiled the HLSL it produced, which is
 precisely how both incidents got past it. They are Windows-only (FXC is `d3dcompiler`), so gate the call on
-`KhaozEngineD3D11.IsPlatformSupported` and run both.
+`KhaozEngineD3D11.IsPlatformSupported` and run both. Calling off Windows throws
+`D3D11ShaderPlatformException` with `FxcUnavailableOnPlatform`, `Compiler`, `RequiredOperatingSystem`,
+`SupportProbe` and `PortableValidator`. Compiler and signature failures remain `ShaderValidationException`.
+`D3D11FxcRejected` carries `Label`, `Profile`, the native `HResult` and `Diagnostic`.
+`D3D11UserSemanticHole` carries `Label`, `Semantic`, `FirstMissingIndex` when there is a hole, and the
+read-only `RepairSourcePaths` snapshot pointing to `ShaderSources.Shadow.cs` and `ShaderSources.Terrain.cs`.
 
 **`KE_D3D11_DEBUG` compiles shaders with debug information and no optimization**, so a RenderDoc or PIX capture's
 disassembly maps back to the emitted HLSL. The flags are part of the cache key, so a debug session and an
@@ -1162,8 +1177,8 @@ inside a resize and after disposal).
 names the current render target view and holds no native reference. At replay the native emitter takes the back
 buffer from that view with `GetResource`, issues `CopyResource` and releases the reference at once, so no reference
 survives to make the next `ResizeBuffers` fail. A list that never bound the swapchain framebuffer in its current
-recording is refused with `InvalidOperationException` at the call, in the same words the other backends use, and
-records nothing. The engine half is device-free tested. The native half runs only
+recording is refused with `GpuSwapchainCopyStateException` and `GpuSwapchainCopyRefusal.SwapchainNotBound`
+at the call, as on the other backends, and records nothing. The engine half is device-free tested. The native half runs only
 on a Windows device.
 
 ## Capabilities, adapter selection, the debug layer and device loss
@@ -1404,3 +1419,77 @@ U4, U5, X1, X2, X3, S1, S2, S3, S4, S5, C1, C2, C3, C4, C5, C6, G1, G2, G3, G4 a
 M5 in section
 13 is the swapchain's, and its wording is reproduced above rather than referenced, because a reader of a soak
 capture will not have the design doc open.
+
+## Refusals
+
+Copy offsets use the portable `GpuCopyAlignmentException` with
+`GpuCopyAlignmentRefusal.UnalignedOffset`, carrying `ParamName`, `ActualValue`, `Context`, `Side`
+and `AlignmentBytes`. Staging contract refusals use the shared types in `KhaozEngine.Gpu`.
+
+| Exception and reason | What it refuses | Identifiers |
+|---|---|---|
+| `GpuBufferUsageArgumentException`, `GpuBufferUsageRefusal.UniformBindingCombination` | Refuses a uniform buffer combined with another binding of the same bytes. | `ParamName`, `Usage`, `ConflictingUsage` |
+| `GpuBufferTransferRangeException`, `GpuBufferTransferRefusal.WindowOutsideBuffer` | Refuses a buffer write or copy window outside the logical buffer. | `ParamName`, `ActualValue`, `OffsetBytes`, `SizeBytes`, `BufferBytes`, optional `Side` |
+| `GpuTextureTransferRangeException`, `GpuTextureTransferRefusal.SubresourceOutOfRange` | Refuses a copy, staging or upload subresource outside the texture. | `ParamName`, `ActualValue`, `MipLevel`, `ArrayLayer`, `MipLevels`, `ArrayLayers`, optional `Side` |
+| `GpuTimestampDisposedException`, `GpuTimestampRefusal.TimestampDeviceUnavailable` | Refuses timestamp work after the Direct3D 11 device is lost or disposed. | `ObjectName`, `Backend` |
+| `GpuBackendCreationArgumentException`, `GpuBackendCreationRefusal.ForeignDiagnosticSettings` | Refuses headless creation with diagnostic settings not owned by the requested backend. | `ParamName`, `ExpectedBackend`, `ActualType` |
+| `D3D11BackendCreationArgumentException`, `D3D11BackendCreationRefusal.WindowHandleMissing` | Refuses a null HWND for native D3D11 windowed creation. | `ParamName`, `ActualWindowKind` |
+| `D3D11BackendCreationUnsupportedException`, `D3D11BackendCreationRefusal.RuntimeContextUnavailable` | Refuses a runtime without the required versioned D3D11 context. | `RequiredInterface` |
+| `D3D11BackendCreationStateException`, `D3D11BackendCreationRefusal.NativeObjectsMissing` | Refuses native creation success without its device and context outputs. | `DeviceReturned`, `ContextReturned` |
+| `D3D11BackendCreationPlatformException`, `D3D11BackendCreationRefusal.OperatingSystemUnsupported` | Refuses native D3D11 device creation off Windows. | `Backend`, `CreationPath`, `RequiredOperatingSystem`, `SupportProbe` |
+| `D3D11BackendCreationArgumentException`, `D3D11BackendCreationRefusal.WindowKindUnsupported` | Refuses a D3D11 swapchain window that is not Win32. | `ParamName`, `ActualWindowKind`, `RequiredWindowKind` |
+| `GpuResourceOwnershipArgumentException`, `GpuResourceOwnershipRefusal.ForeignBackend` | Refuses a resource without this backend's native adapter at bind, map, readback or upload admission. | `ParamName`, `ExpectedBackend`, `ActualType`, `ExpectedType`, `ResourceKind`, `Context` |
+| `GpuResourceOwnershipArgumentException`, `GpuResourceOwnershipRefusal.MissingResource` | Refuses a missing required native buffer. | `ParamName`, `ExpectedBackend`, `ExpectedType`, `ResourceKind`, `Context` |
+| `D3D11BindResolutionArgumentException`, `D3D11BindResolutionRefusal.NullBufferWindowNonzero` | Refuses a null constant buffer carrying a nonzero window. | `ParamName`, `RegisterIndex`, `FirstConstant`, `ConstantCount` |
+| `D3D11BindResolutionArgumentException`, `D3D11BindResolutionRefusal.TransposeScratchTooSmall` | Refuses transposing a constant-buffer span into undersized scratch. | `ParamName`, `SuppliedCount`, `RequiredCount` |
+| `D3D11MapResultException`, `D3D11MapResultRefusal.MapFailed` | Refuses a native mapping operation that returns a failed HRESULT. | `Site`, `HResult`, `ResultToken`, `DeviceLost` |
+| `D3D11ObjectPlatformException`, `D3D11ObjectPlatformRefusal.WindowsObjectUsedOffWindows` | Refuses use of a Windows-only native D3D11 object on another operating system. | `ObjectKind`, `RequiredOperatingSystem`, `SupportProbe` |
+| `D3D11CompilerEvidenceStateException`, `D3D11CompilerEvidenceRefusal.CombinedFlagsTooLarge` | Refuses retaining combined compiler flags beyond the bounded pipeline evidence profile. | `Field`, `MaximumUtf8Bytes`, `ActualUtf8Bytes` |
+| `D3D11CompilerEvidenceStateException`, `D3D11CompilerEvidenceRefusal.ConstructionIdentityInvalid` | Refuses compiler evidence without valid construction correspondence identity. | No additional identifiers |
+| `D3D11CompilerEvidenceStateException`, `D3D11CompilerEvidenceRefusal.FailureOriginMissing` | Refuses invalid compiler evidence that has no originating failure event. | No additional identifiers |
+| `D3D11CompilerEvidenceDisposedException`, `D3D11CompilerEvidenceRefusal.PipelineUnavailable` | Refuses reading diagnostics from a disposed or lost pipeline, shader or device. | `ObjectName` |
+| `D3D11CompilerEvidenceStateException`, `D3D11CompilerEvidenceRefusal.ReadProfileMismatch` | Refuses a compiler read using a different fixed evidence profile. | `RequestedProfile`, `RequiredProfile` |
+| `D3D11CompilerEvidenceStateException`, `D3D11CompilerEvidenceRefusal.ReflectionNotCaptured` | Refuses a compiler read without captured reflection for every stage. | `MissingStages` |
+| `D3D11ShaderPlatformException`, `D3D11ShaderPlatformRefusal.FxcUnavailableOnPlatform` | Refuses native FXC validation on a platform without d3dcompiler. | `Compiler`, `RequiredOperatingSystem`, `SupportProbe`, `PortableValidator` |
+| `GpuStagingMapStateException`, `GpuStagingMapRefusal.AlreadyMapped` | A second map of an open resource | `Backend`, `ExistingMode`, `RequestedMode` |
+| `GpuStagingMapStateException`, `GpuStagingMapRefusal.NotMapped` | An unmap of a resource without an open mapping | `Backend` |
+| `GpuStagingMapStateException`, `GpuStagingMapRefusal.CompletionNotSignaled` | A fenced read map before completion | `Command` |
+| `GpuStagingMapArgumentException`, `GpuStagingMapRefusal.StagingUsageRequired` | A resource without mappable staging usage | `ParamName` where previously supplied, `Backend`, `ResourceKind`, `RequiredBufferUsage` or `RequiredTextureUsage` |
+| `D3D11TimestampAdapterException`, `D3D11TimestampAdapterRefusal.QueryReadFailed` | a timestamp query read that returns a failed HRESULT | `HResult`, `Operation` |
+| `D3D11WaitPolicyException`, `D3D11WaitPolicyRefusal.SubmitLockHeld` | a D3D11 drain or ring rotation while the caller holds the submit lock | `Operation` |
+
+State exceptions derive from `InvalidOperationException`, staging argument exceptions from
+`ArgumentException`, and copy alignment from `ArgumentOutOfRangeException`. Existing parameter
+names and actual values stay intact. Native map-result failures remain a separate backend family.
+
+Recording lifecycle and timestamp contract refusals use `GpuRecordingStateException` and the
+`GpuTimestampStateException`, `GpuTimestampArgumentException`, `GpuTimestampRangeException`, `GpuTimestampDisposedException` and
+`GpuTimestampUnsupportedException` types from `KhaozEngine.Gpu`. Their required reasons and identifiers
+are listed in the [portable refusal catalog](../KhaozEngine.Gpu/README.md#refusals).
+
+Resource ownership, layout declarations, resource sets and framebuffer checks use the corresponding
+`GpuResourceOwnership*Exception`, `GpuResourceLayoutException`, `GpuResourceSetException` and
+`GpuFramebufferException` types from `KhaozEngine.Gpu`. Existing BCL catches still match. The
+[portable refusal catalog](../KhaozEngine.Gpu/README.md#refusals) lists each required reason and its
+diagnostic members. Swapchain copies use `GpuSwapchainCopyArgumentException` and
+`GpuSwapchainCopyStateException` from that same catalog.
+
+Framebuffer creation reports `ForeignBackend` for foreign colour or depth textures and
+`MissingResource` for a null colour entry. The ownership refusal retains `ParamName = "texture"`
+and identifies the attachment through `Context`. Graphics and compute pipeline adapters, resource-set
+binds, texture transfers and device-level texture uploads also report ownership refusals. Native
+view and register validation remains the separate bind-resolution contract.
+
+D3D11 currently accepts dynamic offset alignment and segment-window inputs that Metal and Vulkan refuse
+through `GpuDynamicBindingRangeException` with `OffsetMisaligned` or `WindowOutsideSegment`.
+The admission gap is tracked in [#1689](https://github.com/APKiwiOrg/KhaozEngine/issues/1689).
+
+A resource of the declared logical kind from another backend uses `GpuResourceOwnershipRefusal.ForeignBackend`
+in resource-set admission. A genuinely different logical kind keeps `GpuResourceSetRefusal.ResourceKindMismatch`.
+The ownership carrier records `ElementName`, `ResourceIndex`, `ResourceKind`, `ExpectedBackend`, `ActualType`
+and `ExpectedType` where the guard has them. An absent D3D11 register view uses `MissingResource` and
+`RegisterLetter`, with the original parameter and resource types.
+
+Timestamp pools and completion fences use `GpuResourceOwnershipArgumentException` with `ForeignBackend`
+for another backend or `DifferentDevice` for another device/timeline. Their ownership identifiers retain
+the original parameter and runtime type.

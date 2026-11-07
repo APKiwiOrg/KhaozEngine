@@ -119,10 +119,11 @@ public static class MapDocumentEditFinalizer
         MapPrefabExpansionLimits? expansionLimits = null)
     {
         if (foliage is null) return;
-        if (assets is null) throw new MapDocumentException("Native foliage editing requires a verified asset closure.");
+        if (assets is null) throw new MapDocumentException(MapDocumentRefusal.AssetClosureRequired, "Native foliage editing requires a verified asset closure.")
+        { DocumentId = document?.Id };
         MapFoliageContextMeasure measure = MapFoliageContextPreflight.Measure(document, assets, new(), foliage, expansionLimits);
         if (measure.Status != MapFoliageStatus.Complete)
-            throw MapFoliageEditRefusal.Create(measure.Status, "the document exceeds the foliage context budget before any copy");
+            throw MapFoliageEditRefusal.Create(measure, "the document exceeds the foliage context budget before any copy");
     }
 
     /// <summary>One expansion of a document whose context demand the preflight first admits, with its provenance

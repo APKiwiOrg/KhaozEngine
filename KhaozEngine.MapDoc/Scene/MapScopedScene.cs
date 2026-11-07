@@ -30,6 +30,8 @@ public sealed class MapScopedScene
     readonly MapEffectiveResolutionProduct _effective;
     internal MapEffectiveResolutionProduct Product => _effective;
     readonly MapSurfaceSet _surfaces;
+    // Borrowed for independent graph inspection. Never mutate this captured payload.
+    internal MapSurfaceSet SurfacesForTests => _surfaces;
     readonly MapFoliageSet? _foliage;
     internal MapScopedScene(MapSceneSource source, MapSceneScope scope, MapSceneWitness witness,
         MapEffectiveResolutionProduct effective, MapScopedSurfaces view, MapFoliageSet? foliage)

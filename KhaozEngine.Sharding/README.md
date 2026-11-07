@@ -80,7 +80,15 @@ and `UnregisterOwned(netId)` register/drop an owned entity managed through the r
 self-healing: a lookup miss falls back to a scan behind the index (so the raw `SpawnAt` + `World.Set(new NetId(..))`
 idiom without a register still resolves) and a stale entry (out-of-band despawn, or the entity became a ghost /
 started migrating) is reaped on lookup. `OwnerCount(netId)` is deliberately an independent from-scratch scan, the
-exactly-once handoff oracle that can observe a duplicate (2) or loss (0) the single-valued index never could.
+handoff oracle that can observe duplicated ownership (2) or no current owner (0). Deferred admission or
+a delayed link can legitimately leave zero owners while the frozen source survives. Check `IsInHandoff`
+before interpreting a zero count or failed lookup as disappearance.
+
+`ShardHost.IsInHandoff(netId)` distinguishes temporary missing ownership from a despawn. It returns
+true while any cell holds a live entity with that NetId carrying `Migrating`. The source stays frozen
+until destination acknowledgement, including deferred admission and delayed link delivery. It can
+remain true after adoption while the acknowledgement is in flight, so use `TryGetOwner` first when
+publishing authoritative state. Ghosts and frozen migrating copies are never authoritative targets.
 
 Per-cell persistence primitives on `CellSim`, storage-agnostic (no new dependency): `SnapshotOwned(excludedNetIds)`
 returns a durable Replication snapshot of the cell's owned (not `Ghost`, not `Migrating`, not `Transient`) entities

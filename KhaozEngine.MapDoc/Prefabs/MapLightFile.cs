@@ -11,10 +11,17 @@ public static class MapLightFile
 {
     internal const string Owner = "$owner";
 
-    public static MapLocalLightDoc Read(ReadOnlyMemory<byte> bytes, string resourceId)
+    public static MapLocalLightDoc Read(ReadOnlyMemory<byte> bytes, string resourceId) =>
+        Read(bytes, resourceId, MapPrefabJson.Limits.MaxPayloadBytes);
+
+    // Measure actual payload bytes on the normal reader path with a small test ceiling.
+    internal static MapLocalLightDoc ReadWithPayloadByteLimitForTests(ReadOnlyMemory<byte> bytes, string resourceId, long maximumPayloadBytes) =>
+        Read(bytes, resourceId, maximumPayloadBytes);
+
+    static MapLocalLightDoc Read(ReadOnlyMemory<byte> bytes, string resourceId, long maximumPayloadBytes)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(resourceId);
-        if (bytes.Length > MapPrefabJson.Limits.MaxPayloadBytes) throw new MapDocumentException("Light payload byte limit exceeded.");
+        MapPrefabCapacity.RequirePayloadBytes(bytes.Length, "Light", resourceId, maximumPayloadBytes);
         try
         {
             using JsonDocument json = JsonDocument.Parse(bytes, new JsonDocumentOptions { MaxDepth = 64 });
@@ -24,9 +31,13 @@ public static class MapLightFile
             Require(light, resourceId);
             return light;
         }
-        catch (JsonException ex) { throw new MapDocumentException("Invalid light payload '" + resourceId + "'.", ex); }
-        catch (MapDocumentException ex) when (!ex.Message.Contains("'" + resourceId + "'", StringComparison.Ordinal))
-        { throw new MapDocumentException("Invalid light payload '" + resourceId + "': " + ex.Message, ex); }
+        catch (JsonException ex) { throw MapDocumentJsonErrors.Wrap(ex, null, "Invalid light payload '" + resourceId + "'.", resourceId: resourceId); }
+        // The released text gains its prefix only when it does not already name the resource. No reason depends on it.
+        catch (MapDocumentException ex) when (ex.ResourceId is null || !ex.Message.Contains("'" + resourceId + "'", StringComparison.Ordinal))
+        {
+            throw ex.WithSourceName(null, ex.Message.Contains("'" + resourceId + "'", StringComparison.Ordinal) ? ex.Message
+                : "Invalid light payload '" + resourceId + "': " + ex.Message, resourceId: resourceId);
+        }
     }
 
     public static byte[] Write(MapLocalLightDoc light)
@@ -34,7 +45,7 @@ public static class MapLightFile
         ArgumentNullException.ThrowIfNull(light);
         Require(light, light.Id);
         byte[] bytes = MapTypedResourceSchema.Tag(MapPrefabJson.Bytes(light), MapTypedResourceSchema.Light);
-        if (bytes.Length > MapPrefabJson.Limits.MaxPayloadBytes) throw new MapDocumentException("Light payload byte limit exceeded.");
+        MapPrefabCapacity.RequirePayloadBytes(bytes.Length, "Light", light.Id);
         return bytes;
     }
 
@@ -42,6 +53,7 @@ public static class MapLightFile
     {
         MapPrefabValidation.RequireLight(light);
         if (light.Owner is { } owner && owner != new MapPrefabReference(MapPrefabReferenceScope.Local, MapPrefabChildKind.Placement, Owner))
-            throw new MapDocumentException($"Light payload '{resourceId}' owner must be null or the Local placement token {Owner}.");
+            throw new MapDocumentException(MapDocumentRefusal.PrefabLightOwnerInvalid, $"Light payload '{resourceId}' owner must be null or the Local placement token {Owner}.")
+            { ResourceId = resourceId, FieldPath = "$.owner" };
     }
 }

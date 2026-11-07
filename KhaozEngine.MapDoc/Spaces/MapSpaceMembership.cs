@@ -3,6 +3,7 @@ using DemandDiagnostics = KhaozEngine.Diagnostics.CapacityDemandDiagnostics;
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using KhaozEngine.MapDoc.Prefabs;
 using KhaozEngine.MapDoc.Identity;
 using KhaozEngine.MapDoc.Storage;
 using KhaozEngine.MapDoc.Surfaces;
@@ -354,9 +355,13 @@ public sealed class MapSpaceMembership
                 foreach (MapCellDemand cell in cells) _ = context.Faces(cell);
                 MapChainResolution chain = MapBoundaryGeometry.ResolveChain(source, _view,
                     key => new MapBoundarySurface(context.ValidatedPatch(key), MapSlotCellMask.Of(cells.Select(cell => cell.SlotCell))));
-                if (chain.Detail?.Contains("not representable", StringComparison.Ordinal) == true) throw new MapExactOverflowException();
-                if (chain.Status != MapResolveStatus.Resolved) throw new MapDocumentException(chain.Detail ?? "missing geometry: portal band");
-                return MapSpaceGeometry.ChainHeight(chain.Points, xz) ?? throw new MapDocumentException("invalid portal vertex sequence");
+                if (chain.Finding is { Reason: MapDocumentRefusal.GeometryNotRepresentable } or
+                    { Reason: MapDocumentRefusal.ValueNonfinite or MapDocumentRefusal.ValueOutsideRange, Operation: nameof(MapResourceTransform.Freeze) })
+                    throw new MapExactOverflowException();
+                if (chain.Status != MapResolveStatus.Resolved) throw chain.Refuse(chain.Detail ?? "missing geometry: portal band", reference);
+                return MapSpaceGeometry.ChainHeight(chain.Points, xz) ?? throw new MapDocumentException(MapDocumentRefusal.GeometryVertexSequenceInvalid,
+                    "invalid portal vertex sequence")
+                { RecordId = reference.Id, Patch = reference.Anchor, FieldPath = "Vertices" };
             }
             MapMembershipResult Resolve(MapSpaceDoc space, MapLegacyCellTag? compatibility, MapBoundFaceContext prepared,
                 MapSpaceBoundsPart? selected)
@@ -391,9 +396,10 @@ public sealed class MapSpaceMembership
         { return Failure(MapMembershipStatus.NotRepresentable, "overflow"); }
         catch (MapDocumentException error)
         {
-            return Failure(error.Message.Contains("capacity exceeded", StringComparison.Ordinal) || error.Message.Contains("domain work exceeds", StringComparison.Ordinal) ? MapMembershipStatus.CapacityExceeded :
-                MapCommonRefinement.NotRepresentable(error) || error.Message.Contains("not representable", StringComparison.OrdinalIgnoreCase) ? MapMembershipStatus.NotRepresentable :
-                error.Message.Contains("invalid", StringComparison.Ordinal) || error.Message.Contains("legacy recipe", StringComparison.Ordinal)
+            return Failure(MapGeometryRefusals.Capacity(error) ? MapMembershipStatus.CapacityExceeded :
+                MapGeometryRefusals.Representability(error) ? MapMembershipStatus.NotRepresentable :
+                MapGeometryRefusals.Invalid(error) || error is
+                { Reason: MapDocumentRefusal.SurfaceLegacyRecipeRequired, FieldPath: not "Frame" }
                     ? MapMembershipStatus.Invalid : MapMembershipStatus.MissingGeometry, error.Message);
         }
 
@@ -432,8 +438,9 @@ public sealed class MapSpaceMembership
             bool freshOpening = demand.Opening is { } opening && openings.Add((opening, cell.SlotCell));
             if (!freshCell && !freshOpening) continue;
             MapSurfaceRef surface = MapSpaceGeometry.Surface(_view, cell.Patch.SurfaceId);
-            if (!_view.TryAcquiredPatch(cell.Patch, out MapSurfacePatch? patch, out _) || patch is null)
-                throw new MapDocumentException($"context demand patch {cell.Patch}: unavailable");
+            if (!_view.TryAcquiredPatch(cell.Patch, out MapSurfacePatch? patch, out MapPatchStatus status) || patch is null)
+                throw new MapDocumentException(MapDocumentRefusal.PatchUnavailable, $"context demand patch {cell.Patch}: unavailable")
+                { Patch = cell.Patch, SlotCell = cell.SlotCell, PatchStatus = status };
             if (freshCell) count = checked(count + MapSurfaceCompiler.CountFaces(surface, patch, cell.SlotCell));
             if (freshOpening) count = checked(count + MapBoundFaceContext.OpeningFaceCount(patch, cell.SlotCell));
             if (DemandDiagnostics.Check(this, "MapSpaceMembership.MaxInspectedFaces.2", "MaxInspectedFaces", consumed, count, allowance, count > maxFaces, CapacityDemandLifetime.Cumulative, allowanceSource: budgets)) return false;
@@ -464,6 +471,7 @@ public sealed class MapSpaceMembership
             if (!MapSpaceGeometry.OnSegment(point, a, b) || (point == b && i + 2 < chain.Vertices.Count)) continue;
             return chain with { Vertices = Array.AsReadOnly(new[] { chain.Vertices[i], chain.Vertices[i + 1] }) };
         }
-        throw new MapDocumentException("invalid portal vertex sequence");
+        throw new MapDocumentException(MapDocumentRefusal.GeometryVertexSequenceInvalid, "invalid portal vertex sequence")
+        { RecordId = chain.Id, Patch = chain.SourcePatch, FieldPath = "Vertices" };
     }
 }

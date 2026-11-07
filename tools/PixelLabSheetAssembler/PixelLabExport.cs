@@ -41,7 +41,8 @@ public static class PixelLabExport
         }
         else
         {
-            throw new AssemblyException($"input not found or not a .zip / directory: {input}");
+            throw new AssemblyException(AssemblyRefusal.InputNotFound, $"input not found or not a .zip / directory: {input}")
+            { Path = input };
         }
 
         try
@@ -68,7 +69,8 @@ public static class PixelLabExport
         {
             string[] found = Directory.GetFiles(root, "metadata.json", SearchOption.AllDirectories);
             if (found.Length == 0)
-                throw new AssemblyException($"metadata.json not found under: {input}");
+                throw new AssemblyException(AssemblyRefusal.MetadataNotFound, $"metadata.json not found under: {input}")
+                { Path = input };
             metaPath = found[0];
             root = Path.GetDirectoryName(metaPath)!;
         }
@@ -80,8 +82,10 @@ public static class PixelLabExport
         JsonElement anims = state.GetProperty("frames").GetProperty("animations");
         if (!anims.TryGetProperty(animName, out JsonElement animEl))
         {
-            IEnumerable<string> names = anims.EnumerateObject().Select(p => p.Name);
-            throw new AssemblyException($"animation '{animName}' not found. Available: {string.Join(", ", names)}");
+            string[] names = anims.EnumerateObject().Select(p => p.Name).ToArray();
+            throw new AssemblyException(AssemblyRefusal.AnimationNotFound,
+                $"animation '{animName}' not found. Available: {string.Join(", ", names)}")
+            { Animation = animName, AvailableAnimations = names };
         }
 
         var byDir = new Dictionary<string, IReadOnlyList<FrameEntry>>();
@@ -107,7 +111,8 @@ public static class PixelLabExport
     {
         Match m = Regex.Match(Path.GetFileNameWithoutExtension(path), @"(\d+)$");
         if (!m.Success)
-            throw new AssemblyException($"cannot parse frame index from '{path}'.");
+            throw new AssemblyException(AssemblyRefusal.FrameIndexUnparsable, $"cannot parse frame index from '{path}'.")
+            { Path = path };
         return int.Parse(m.Value);
     }
 }

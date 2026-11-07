@@ -26,7 +26,7 @@ public sealed record RouteApproachOptions
     /// grid's 45 and 90 degree staircase. From the body's feet, the farthest walk waypoint on the same layer whose
     /// centre line and both side lines, offset just under half a cell, pass the segment guard is kept, the waypoints
     /// before it are dropped, and the scan repeats from the kept waypoint. Waypoints are only dropped, never moved, so
-    /// every kept bend is a cell centre the body still lands on exactly. The final waypoint, both ends of a hop and
+    /// every kept bend is a cell centre the body still lands on exactly. The final waypoint, both ends of a special transition and
     /// both ends of a layer change are always kept, and the route's status is unchanged. The side lines cost
     /// shortcuts beside walls and fences, where the staircase remains. Straightening reads feet heights from the
     /// space, so it needs a space with surface heights, and a route over heightless cells (a
@@ -40,7 +40,7 @@ public sealed record RouteApproachOptions
     /// returns <see cref="RangeMoveStatus.Following"/> or <see cref="RangeMoveStatus.WaitingForPath"/> is counted,
     /// except the hold for a zero travel bound, so a refused step, a refused straightened step, a zero offset waypoint
     /// and an exhausted partial route waiting on its cooldown all count. Suspended, InRange, Unreachable and
-    /// UnsupportedTransition ticks count toward nothing. When net horizontal feet displacement across the last
+    /// UnsupportedTransition ticks count toward nothing. When accumulated horizontal feet travel across the last
     /// <see cref="RouteStallOptions.WindowTicks"/> counted intervals is under <see cref="RouteStallOptions.TravelMetres"/>,
     /// that tick returns Blocked with zero input, and so does every tick after it until InRange,
     /// <see cref="MoveToRange.Reset"/> or a change of target shape, range or capsule. InRange clears the window. A

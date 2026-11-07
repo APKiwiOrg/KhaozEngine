@@ -22,12 +22,19 @@ internal static class MapSpaceGeometry
                 yield return record;
     }
 
-    internal static T Record<T>(MapScopedSurfaces view, MapRecordRef reference) where T : MapTopologyRecord =>
-        view.TryRecord(reference, out MapTopologyRecord? record, out MapPatchStatus status, borrow: true) && record is T typed
-            ? typed : throw new MapDocumentException($"missing geometry: record '{reference.Id}' {reference.Anchor} ({status})");
+    internal static T Record<T>(MapScopedSurfaces view, MapRecordRef reference) where T : MapTopologyRecord
+    {
+        bool found = view.TryRecord(reference, out MapTopologyRecord? record, out MapPatchStatus status, borrow: true);
+        return found && record is T typed ? typed : throw new MapDocumentException(found && record is not null
+            ? MapDocumentRefusal.ReferenceKindMismatch : MapDocumentRefusal.PatchUnavailable,
+            $"missing geometry: record '{reference.Id}' {reference.Anchor} ({status})")
+        { RecordId = reference.Id, Patch = reference.Anchor, PatchStatus = status, RecordType = record?.GetType(), ExpectedRecordType = typeof(T) };
+    }
 
     internal static MapSurfaceRef Surface(MapScopedSurfaces view, string id) =>
-        view.Surfaces.FirstOrDefault(s => s.Id == id) ?? throw new MapDocumentException($"missing geometry: surface '{id}'");
+        view.Surfaces.FirstOrDefault(s => s.Id == id) ?? throw new MapDocumentException(MapDocumentRefusal.ReferenceMissing,
+            $"missing geometry: surface '{id}'")
+        { SurfaceId = id };
 
     internal static (long X, long Z) Cell(MapLatticeFrame frame, MapExactXz point)
     {
@@ -134,7 +141,8 @@ internal static class MapSpaceGeometry
         var seen = new HashSet<string>(StringComparer.Ordinal);
         while (space.AliasOf is { } alias)
         {
-            if (!seen.Add(space.Id)) throw new MapDocumentException("invalid space alias cycle");
+            if (!seen.Add(space.Id)) throw new MapDocumentException(MapDocumentRefusal.SpaceAliasCycle, "invalid space alias cycle")
+            { SpaceId = space.Id };
             space = Record<MapSpaceDoc>(view, alias);
         }
         return space.Id;
@@ -146,7 +154,8 @@ internal static class MapSpaceGeometry
         var seen = new HashSet<string>(StringComparer.Ordinal);
         while (true)
         {
-            if (!seen.Add(space.Id)) throw new MapDocumentException("invalid space parent cycle");
+            if (!seen.Add(space.Id)) throw new MapDocumentException(MapDocumentRefusal.SpaceParentCycle, "invalid space parent cycle")
+            { SpaceId = space.Id };
             result.Add(space);
             if (space.Parent is not { } parent) return result.AsReadOnly();
             space = Record<MapSpaceDoc>(view, parent);
@@ -162,7 +171,8 @@ internal static class MapSpaceGeometry
             foreach (var entry in view.Witness.Present)
             {
                 if (!view.TryAcquiredPatch(entry.Key, out MapSurfacePatch? patch, out MapPatchStatus status) || patch is null)
-                    throw new MapDocumentException($"missing geometry: patch {entry.Key} ({status})");
+                    throw new MapDocumentException(MapDocumentRefusal.PatchUnavailable, $"missing geometry: patch {entry.Key} ({status})")
+                    { Patch = entry.Key, PatchStatus = status };
                 yield return patch;
             }
         }

@@ -1,5 +1,4 @@
 using System.Linq;
-using System.Reflection;
 using KhaozEngine.MapDoc.Render3D;
 using KhaozEngine.MapDoc.Scene;
 using KhaozEngine.Tests.Gpu;
@@ -60,8 +59,8 @@ public sealed class NativeRecordingCapacityTests
         var after = Containers(residency);
         for (int i = 0; i < before.Length; i++)
         {
-            Assert.NotSame(before[i], after[i]);
-            Assert.Equal(0, Capacity(after[i]));
+            Assert.NotSame(before[i].Identity, after[i].Identity);
+            Assert.Equal(0, after[i].Capacity);
         }
         Assert.Empty(ResidencyFixture.Draw(residency).Resources);
         residency.Dispose();
@@ -83,18 +82,17 @@ public sealed class NativeRecordingCapacityTests
         residency.SetWindows([one, ResidencyFixture.Window(-3, 3)]);
         ResidencyFixture.Complete(residency, scheduler);
         var atHalf = Containers(residency);
-        for (int i = 0; i < before.Length; i++) Assert.Same(before[i], atHalf[i]);
+        for (int i = 0; i < before.Length; i++) Assert.Same(before[i].Identity, atHalf[i].Identity);
         residency.SetWindows([one]);
         ResidencyFixture.Complete(residency, scheduler);
         Assert.Equal(7, Assert.Single(residency.AcceptedPlans).Resources.Count);
         var after = Containers(residency);
         for (int i = 0; i < before.Length; i++)
         {
-            Assert.NotSame(before[i], after[i]);
-            Assert.Equal(7, Capacity(after[i]));
+            Assert.NotSame(before[i].Identity, after[i].Identity);
+            Assert.Equal(7, after[i].Capacity);
         }
-        var charge = (MapRenderAdmission.CpuLease)Field(residency, "_recordingCharge");
-        Assert.Equal(4096, charge.Bytes);
+        Assert.Equal(4096, residency.RecordingChargeBytesForTests);
         Assert.NotEmpty(ResidencyFixture.Draw(residency).Resources);
     }
 
@@ -107,16 +105,10 @@ public sealed class NativeRecordingCapacityTests
         ResidencyFixture.Complete(residency, scheduler);
         ResidencyFixture.Draw(residency);
         residency.Dispose();
-        foreach (var container in Containers(residency)) Assert.Equal(0, Capacity(container));
+        foreach (var container in Containers(residency)) Assert.Equal(0, container.Capacity);
         Assert.Equal(0, residency.Lifetime.CpuBytes);
         Assert.Equal(0, residency.Lifetime.LiveHandles);
     }
 
-    static object[] Containers(MapRenderResidency residency)
-    {
-        var recording = Field(residency, "_recording");
-        return [Field(recording, "_canonical"), Field(recording, "_drawn"), Field(recording, "_aliases")];
-    }
-    static object Field(object owner, string name) => owner.GetType().GetField(name, BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(owner)!;
-    static int Capacity(object container) => (int)container.GetType().GetMethod("EnsureCapacity")!.Invoke(container, [0])!;
+    static (object Identity, int Capacity)[] Containers(MapRenderResidency residency) => residency.RecordingStorageForTests;
 }

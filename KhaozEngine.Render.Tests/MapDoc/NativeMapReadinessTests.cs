@@ -42,7 +42,7 @@ public sealed partial class NativeMapReadinessTests
         Assert.NotEmpty(captureDescriptors);
         Assert.All(captureDescriptors, d => Assert.Equal(descriptors[0].Light, d.Light));
         host.Scene.Begin(); view.Draw(frame);
-        var lights = (System.Collections.IEnumerable)typeof(Scene3D).GetField("_lights", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!.GetValue(host.Scene)!;
+        var lights = host.Scene.LightsForTests;
         var light = Assert.Single(lights.Cast<KhaozEngine.Render3D.Rendering.ModelRenderer.PointLightData>());
         Assert.Equal(pointAKey, light.LocalShadow.Key);
         Assert.Equal(captureDescriptors[0].Light!.Value.Shadow, light.LocalShadow);
@@ -61,7 +61,7 @@ public sealed partial class NativeMapReadinessTests
         var shadow = LightShadow.Static(17).WithExclusionBox(new(-.5f), new(.5f));
         sink.Write(new(resource.Reference, MapDrawChannels.Colour | MapDrawChannels.Shadow, anchor, Matrix4x4.CreateTranslation(local), default,
             null, new MapLightFrame(Color.White, 10, 2, shadow, null), null, null));
-        var lights = (System.Collections.IEnumerable)typeof(Scene3D).GetField("_lights", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!.GetValue(host.Scene)!;
+        var lights = host.Scene.LightsForTests;
         var light = Assert.Single(lights.Cast<KhaozEngine.Render3D.Rendering.ModelRenderer.PointLightData>());
         Assert.Equal(new RenderAnchor(32000, -500, -32000), light.Anchor); Assert.Equal(local, light.LocalPosition);
         Assert.Equal(17, light.LocalShadow.Key); Assert.Equal(shadow.ExclusionMin, light.LocalShadow.ExclusionMin);

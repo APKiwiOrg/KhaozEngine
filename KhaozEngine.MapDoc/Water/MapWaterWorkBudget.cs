@@ -33,14 +33,16 @@ internal sealed class MapWaterWorkBudget
     public bool Exhausted => Charged > Limit;
 
     /// <summary>Charges <paramref name="checks"/> pair checks and throws <see cref="MapDocumentException"/>, or
-    /// <see cref="MapWaterCapacityException"/> for a compile budget, once the total passes the limit.</summary>
+    /// <see cref="MapWaterCapacityException"/> for a compile budget, once the total passes the limit.
+    /// Document refusals carry WorkCapacityExceeded with Budget, ActualCount and Limit.</summary>
     public void Charge(long checks)
     {
         Charged += checks;
         _parent?.Charge(checks);
         if (!DemandDiagnostics.Check(this, "MapWaterWorkBudget.MaxPairChecks.1", "MaxPairChecks", Charged - checks, checks, Limit, !(Charged <= Limit), CapacityDemandLifetime.Cumulative, allowanceSource: _source)) return;
         if (_compile) throw new MapWaterCapacityException(MapWaterWorkMeter.PairChecks, new(nameof(MapWaterCompileLimits.MaxPairChecks), Charged, Limit));
-        throw new MapDocumentException($"domain work exceeds {Limit} pair checks");
+        throw new MapDocumentException(MapDocumentRefusal.WorkCapacityExceeded, $"domain work exceeds {Limit} pair checks")
+        { Budget = "WaterDomainPairChecks", ActualCount = Charged, Limit = Limit };
     }
 }
 
@@ -48,8 +50,20 @@ internal sealed class MapWaterWorkBudget
 /// is the limit's detail, such as <c>water pair checks</c>.</summary>
 internal sealed class MapWaterCapacityException : Exception
 {
-    internal MapWaterCapacityException(string limit, MapSceneCapacity? capacity = null) : base(limit) => Capacity = capacity;
+    internal MapWaterCapacityException(string detail, MapSceneCapacity? capacity = null, MapDocumentFinding? finding = null) : base(detail)
+    {
+        Capacity = capacity;
+        Finding = finding ?? (capacity is null ? new(MapDocumentRefusal.WorkCapacityExceeded, detail) : capacity.Finding with { Message = detail });
+    }
+
+    internal MapWaterCapacityException(string detail, string? budget, long? actual, long? limit) : base(detail)
+    {
+        Finding = new(MapDocumentRefusal.WorkCapacityExceeded, detail) { Budget = budget, ActualCount = actual, Limit = limit };
+        if (budget is not null && actual is { } count && limit is { } allowance) Capacity = new(budget, count, allowance);
+    }
+
     internal MapSceneCapacity? Capacity { get; }
+    internal MapDocumentFinding Finding { get; }
 }
 
 /// <summary>The work one body's compile spends, each count checked against its limit before the work it guards. Pair
@@ -157,7 +171,13 @@ internal sealed class MapWaterWorkMeter
             // Released water-limit diagnostics retain attempted demand. Scene refusals publish no new counts.
             _boundSlots = nextSlots; _boundCells = nextCells;
             throw new MapWaterCapacityException(BoundCells, nextSlots + nextCells <= new BigInteger(decimal.MaxValue)
-                ? new(nameof(MapWaterCompileLimits.MaxBoundCells), (decimal)(nextSlots + nextCells), _limits.MaxBoundCells) : null);
+                ? new(nameof(MapWaterCompileLimits.MaxBoundCells), (decimal)(nextSlots + nextCells), _limits.MaxBoundCells) : null,
+                new(MapDocumentRefusal.WorkCapacityExceeded, BoundCells)
+                {
+                    Budget = nameof(MapWaterCompileLimits.MaxBoundCells),
+                    ActualCount = nextSlots + nextCells <= long.MaxValue ? (long)(nextSlots + nextCells) : null,
+                    Limit = _limits.MaxBoundCells
+                });
         }
         MapSceneAdmission.Current?.ReserveBytes(checked((long)(slots + cells) * BoundCandidateBytes));
         _boundSlots = nextSlots; _boundCells = nextCells;

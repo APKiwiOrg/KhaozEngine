@@ -10,7 +10,7 @@ using Microsoft.CodeAnalysis.Diagnostics;
 using Microsoft.CodeAnalysis.Text;
 using KhaozEngine.CodeHealth.Analyzers;
 
-namespace KhaozEngine.CodeHealth.Analyzers.Tests;
+namespace KhaozEngine.Tests.CodeHealth;
 
 internal static class AnalyzerHarness
 {

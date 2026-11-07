@@ -4,6 +4,7 @@ using KhaozEngine.MapDoc.Prefabs;
 using KhaozEngine.MapDoc.Scene;
 using KhaozEngine.MapDoc.Storage;
 using KhaozEngine.MapDoc.Surfaces;
+using KhaozEngine.MapDoc.Support;
 using KhaozEngine.Primitives;
 using Xunit;
 
@@ -54,7 +55,9 @@ public sealed class MapSceneSeatQueryTests
         var error = Assert.Throws<MapDocumentException>(() => MapEffectiveResolutionKernel.Resolve(input, fixture.Assets, disk.SceneSurfaces, queryLimits: queries));
         Assert.Equal(new MapSceneCapacity("MaxRecordDepth", depth + 1, depth), MapSceneCapacity.From(error));
         Assert.Equal(MapSceneSourceStatus.CapacityExceeded, MapSceneSource.Classify(error));
-        Assert.Contains(marker ? "Marker 'seat'" : "Placement 'seat'", error.Message);
+        Assert.Equal(marker ? MapDocumentRefusal.MarkerSupportUnresolved : MapDocumentRefusal.SupportUnresolved, error.Reason);
+        Assert.Equal("seat", marker ? error.MarkerId : error.PlacementId);
+        Assert.Equal(MapSupportStatus.CapacityExceeded, error.SupportStatus);
     }
 
     static NativeSceneFixture Create(bool marker)

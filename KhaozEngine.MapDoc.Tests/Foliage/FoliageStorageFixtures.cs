@@ -4,6 +4,7 @@ using System.Linq;
 using System.Security.Cryptography;
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using System.Text.Json.Serialization.Metadata;
 using KhaozEngine.MapDoc;
 using KhaozEngine.MapDoc.Foliage;
 
@@ -13,6 +14,28 @@ internal static class FoliageStorageFixtures
 {
     internal static string Hash(ReadOnlySpan<byte> bytes) => Convert.ToHexStringLower(SHA256.HashData(bytes));
     internal static string Json(MapFoliageSet set) => JsonSerializer.Serialize(set);
+
+    // Snapshot partial and invalid proposals without asking a persistence writer to admit them. The document's
+    // persisted metadata, logical foliage metadata and resident raster bytes all participate in the comparison.
+    internal static string Snapshot(MapDocument document)
+    {
+        var options = MapDocumentFile.CreateCompactOptions(MapDocRegistry.CreateDefault());
+        options.TypeInfoResolver = new DefaultJsonTypeInfoResolver
+        {
+            Modifiers = { type =>
+            {
+                if (type.Type == typeof(MapDocument))
+                    foreach (var property in type.Properties)
+                        if (property.Name == "foliage") property.ShouldSerialize = (_, _) => false;
+            } },
+        };
+        return JsonSerializer.Serialize(new
+        {
+            Document = document,
+            Foliage = MapFoliageProjection.Digest(document.Foliage),
+            Density = document.Foliage?.Layers.Select(l => l.Chunks.Select(c => c.CopyDensity()).ToArray()).ToArray(),
+        }, options);
+    }
     internal static MapFoliageLayer Change(MapFoliageLayer layer, Action<JsonObject> change)
     {
         var root = JsonNode.Parse(Json(new(1, [layer])))!.AsObject();

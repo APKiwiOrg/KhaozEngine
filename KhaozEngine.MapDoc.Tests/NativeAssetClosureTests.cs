@@ -4,6 +4,7 @@ using System.IO;
 using System.Linq;
 using System.Numerics;
 using System.Runtime.InteropServices;
+using System.Security.Cryptography;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using KhaozEngine.MapDoc;
@@ -55,8 +56,14 @@ public sealed class NativeAssetClosureTests
         Assert.Equal(new[] { "material", "lod" }, closure.GetResource("mesh").Dependencies);
         Assert.Equal(MapResourceKind.Mesh, closure.GetResource("lod-mesh").Kind);
         Assert.Equal(MapResourceKind.Manifest, closure.GetResource("root-b").Kind);
-        Assert.Throws<MapDocumentException>(() => closure.GetAsset("absent"));
-        Assert.Throws<MapDocumentException>(() => closure.GetResource("absent"));
+        var missingAsset = Assert.Throws<MapDocumentException>(() => closure.GetAsset("absent"));
+        Assert.Equal(MapDocumentRefusal.ReferenceMissing, missingAsset.Reason);
+        Assert.Equal("absent", missingAsset.AssetId);
+        Assert.Same(asset, closure.GetAsset("tree"));
+        var missingResource = Assert.Throws<MapDocumentException>(() => closure.GetResource("absent"));
+        Assert.Equal(MapDocumentRefusal.ReferenceMissing, missingResource.Reason);
+        Assert.Equal("absent", missingResource.ResourceId);
+        Assert.Equal("mesh", closure.GetResource("mesh").Reference.Id);
         Assert.DoesNotContain(typeof(MapAssetClosure).Assembly.GetReferencedAssemblies(),
             a => a.Name!.Contains("Render3D") || a.Name.Contains("Gpu") || a.Name.Contains("TileWorld"));
     }
@@ -70,7 +77,13 @@ public sealed class NativeAssetClosureTests
         byte[] before = resource.Bytes.ToArray();
         source.Corrupt("mesh");
         Assert.Equal(before, resource.Bytes.ToArray());
-        Assert.Throws<MapDocumentException>(() => MapAssetClosure.Load(roots, source));
+        var refusal = Assert.Throws<MapDocumentException>(() => MapAssetClosure.Load(roots, source));
+        Assert.Equal(MapDocumentRefusal.DigestMismatch, refusal.Reason);
+        Assert.Equal("resource bytes", refusal.DigestKind);
+        Assert.Equal("mesh", refusal.ResourceId);
+        Assert.Equal(resource.Reference.Path, refusal.Path);
+        Assert.Equal(resource.Reference.Sha256, refusal.ExpectedHash);
+        Assert.Equal(Convert.ToHexString(SHA256.HashData(source.Read(resource.Reference).Span)).ToLowerInvariant(), refusal.ActualHash);
         if (MemoryMarshal.TryGetArray(resource.Bytes, out ArraySegment<byte> exposed))
             exposed.Array![exposed.Offset] ^= 0xff;
         Assert.Equal(before, resource.Bytes.ToArray());
@@ -78,6 +91,8 @@ public sealed class NativeAssetClosureTests
         Assert.Throws<NotSupportedException>(() => ((IList<MapResolvedAsset>)closure.Assets).Clear());
         Assert.Throws<NotSupportedException>(() => ((IList<string>)resource.Dependencies)[0] = "changed");
         Assert.Throws<NotSupportedException>(() => ((IList<string>)closure.GetAsset("tree").MaterialResourceIds).Clear());
+        source.Corrupt("mesh");
+        Assert.Equal(before, MapAssetClosure.Load(roots, source).GetResource("mesh").Bytes.ToArray());
     }
 
     [Fact]
@@ -261,7 +276,12 @@ public sealed class NativeAssetClosureTests
         rootA["resources"] = new JsonArray();
         var a = source.Add("root-a", rootA.ToJsonString());
         var b = source.Add("root-b", rootB.ToJsonString());
-        Assert.Throws<MapDocumentException>(() => MapAssetClosure.Load(new[] { a, b }, source));
+        var refusal = Assert.Throws<MapDocumentException>(() => MapAssetClosure.Load(new[] { a, b }, source));
+        Assert.Equal(MapDocumentRefusal.AssetDependencyCycle, refusal.Reason);
+        Assert.Equal(new[] { "collider", "light", "lod", "lod-mesh", "material", "mesh", "root-a", "selection", "surface" }, refusal.ResourceIds);
+        rootB["resources"]!.AsArray().Single(r => r!["reference"]!["id"]!.GetValue<string>() == "mesh")!["dependencies"]!.AsArray().RemoveAt(2);
+        b = source.Add("root-b", rootB.ToJsonString());
+        Assert.Equal("tree", Assert.Single(MapAssetClosure.Load(new[] { a, b }, source).Assets).Id);
     }
 
     [Fact]
@@ -273,21 +293,62 @@ public sealed class NativeAssetClosureTests
         var parent = source.Add("root-a", root.ToJsonString());
         var closure = MapAssetClosure.Load(new[] { parent }, source);
         Assert.Equal(MapResourceKind.Material, closure.GetResource("material").Kind);
-        Assert.Throws<MapDocumentException>(() => MapAssetClosure.Load(new[] { parent, parent }, source));
+        var refusal = Assert.Throws<MapDocumentException>(() => MapAssetClosure.Load(new[] { parent, parent }, source));
+        Assert.Equal(MapDocumentRefusal.IdentityDuplicate, refusal.Reason);
+        Assert.Equal("resource", refusal.SubjectKind);
+        Assert.Equal("root-a", refusal.ResourceId);
+        Assert.Equal(closure.Hash, MapAssetClosure.Load(new[] { parent }, source).Hash);
+    }
+
+    [Fact]
+    public void NativeClosure_DuplicateAssetAcrossManifestsIdentifiesItsNamespace()
+    {
+        var (roots, source) = NativeAssetFixtures.Valid();
+        var rootB = JsonNode.Parse(source.Read(roots[1]).Span)!;
+        rootB["assets"]!.AsArray().Add(NativeAssetFixtures.Asset());
+        var duplicate = source.Add("root-b", rootB.ToJsonString());
+        var refusal = Assert.Throws<MapDocumentException>(() => MapAssetClosure.Load(new[] { roots[0], duplicate }, source));
+        Assert.Equal(MapDocumentRefusal.IdentityDuplicate, refusal.Reason);
+        Assert.Equal("asset", refusal.SubjectKind);
+        Assert.Equal("tree", refusal.AssetId);
+        rootB["assets"]!.AsArray().Clear();
+        var control = source.Add("root-b", rootB.ToJsonString());
+        Assert.Equal("tree", Assert.Single(MapAssetClosure.Load(new[] { roots[0], control }, source).Assets).Id);
+    }
+
+    [Fact]
+    public void NativeClosure_MissingDependencyIdentifiesBothEndsOfTheEdge()
+    {
+        var (roots, source) = NativeAssetFixtures.Change(root =>
+            root["resources"]![0]!["dependencies"]!.AsArray().Add("absent"));
+        var refusal = Assert.Throws<MapDocumentException>(() => MapAssetClosure.Load(roots, source));
+        Assert.Equal(MapDocumentRefusal.ReferenceMissing, refusal.Reason);
+        Assert.Equal("mesh", refusal.ResourceId);
+        Assert.Equal("absent", refusal.DependencyId);
+        var rootA = JsonNode.Parse(source.Read(roots[0]).Span)!;
+        rootA["resources"]![0]!["dependencies"]!.AsArray().RemoveAt(2);
+        var control = source.Add("root-a", rootA.ToJsonString());
+        Assert.Equal("tree", Assert.Single(MapAssetClosure.Load(new[] { control, roots[1] }, source).Assets).Id);
     }
 
     [Theory]
-    [InlineData("{}")]
-    [InlineData("{\"x\":1,\"y\":2}")]
-    [InlineData("{\"x\":1,\"y\":2,\"z\":3,\"w\":4}")]
-    [InlineData("{\"x\":1,\"x\":2,\"y\":2,\"z\":3}")]
-    [InlineData("{\"X\":1,\"y\":2,\"z\":3}")]
-    [InlineData("{\"x\":1e100,\"y\":2,\"z\":3}")]
-    [InlineData("{\"x\":\"1\",\"y\":2,\"z\":3}")]
-    public void NativeVectorPayload_RefusesInvalidComponents(string json)
+    [InlineData("{}", MapDocumentRefusal.SchemaMemberMissing, "$.x")]
+    [InlineData("null", MapDocumentRefusal.SchemaObjectRequired, "$")]
+    [InlineData("{\"x\":1,\"y\":2}", MapDocumentRefusal.SchemaMemberMissing, "$.z")]
+    [InlineData("{\"x\":1,\"y\":2,\"z\":3,\"w\":4}", MapDocumentRefusal.SchemaMemberUnknown, "$.w")]
+    [InlineData("{\"x\":1,\"x\":2,\"y\":2,\"z\":3}", MapDocumentRefusal.SchemaMemberDuplicate, "$.x")]
+    [InlineData("{\"X\":1,\"y\":2,\"z\":3}", MapDocumentRefusal.SchemaMemberUnknown, "$.X")]
+    [InlineData("{\"x\":1e100,\"y\":2,\"z\":3}", MapDocumentRefusal.ValueNonfinite, "$.x")]
+    [InlineData("{\"x\":\"1\",\"y\":2,\"z\":3}", MapDocumentRefusal.SchemaValueRequired, "$.x")]
+    public void NativeVectorPayload_RefusesInvalidComponents(string json, MapDocumentRefusal reason, string path)
     {
         var options = Options();
-        Assert.Throws<JsonException>(() => JsonSerializer.Deserialize<Vector3>(json, options));
+        var error = Assert.Throws<MapNativeVectorJsonException>(() => JsonSerializer.Deserialize<Vector3>(json, options));
+        Assert.IsAssignableFrom<JsonException>(error);
+        Assert.Equal(reason, error.Reason);
+        Assert.Equal(path, error.FieldPath);
+        if (reason == MapDocumentRefusal.ValueNonfinite) Assert.Equal(double.PositiveInfinity, error.ActualNumber);
+        Assert.Equal(new Vector3(1, 2, 3), JsonSerializer.Deserialize<Vector3>("{\"x\":1,\"y\":2,\"z\":3}", options));
     }
 
     [Fact]
@@ -301,10 +362,18 @@ public sealed class NativeAssetClosureTests
         Assert.Equal("{\"x\":0.23,\"y\":-0.17}", JsonSerializer.Serialize(v2, options));
         Assert.Equal("9007199254740993", JsonSerializer.Serialize(9007199254740993L, options));
         Assert.False(options.IncludeFields);
-        Assert.Throws<JsonException>(() => JsonSerializer.Serialize(new Vector3(float.NaN, 0, 0), options));
-        Assert.Throws<JsonException>(() => JsonSerializer.Serialize(new Vector2(0, float.PositiveInfinity), options));
-        Assert.Throws<JsonException>(() => JsonSerializer.Deserialize<Vector2>("{\"x\":1}", options));
-        Assert.Throws<JsonException>(() => JsonSerializer.Deserialize<Vector2>("{\"x\":1,\"y\":2,\"z\":3}", options));
+        var write3 = Assert.Throws<MapNativeVectorJsonException>(() => JsonSerializer.Serialize(new Vector3(float.NaN, 0, 0), options));
+        Assert.Equal(MapDocumentRefusal.ValueNonfinite, write3.Reason);
+        Assert.Equal("$.x", write3.FieldPath);
+        Assert.True(double.IsNaN(write3.ActualNumber!.Value));
+        var write2 = Assert.Throws<MapNativeVectorJsonException>(() => JsonSerializer.Serialize(new Vector2(0, float.PositiveInfinity), options));
+        Assert.Equal(MapDocumentRefusal.ValueNonfinite, write2.Reason);
+        Assert.Equal("$.y", write2.FieldPath);
+        Assert.Equal(double.PositiveInfinity, write2.ActualNumber);
+        Assert.Equal(MapDocumentRefusal.SchemaMemberMissing, Assert.Throws<MapNativeVectorJsonException>(() => JsonSerializer.Deserialize<Vector2>("{\"x\":1}", options)).Reason);
+        Assert.Equal(MapDocumentRefusal.SchemaMemberUnknown, Assert.Throws<MapNativeVectorJsonException>(() => JsonSerializer.Deserialize<Vector2>("{\"x\":1,\"y\":2,\"z\":3}", options)).Reason);
+        Assert.Equal(v3, JsonSerializer.Deserialize<Vector3>(JsonSerializer.Serialize(v3, options), options));
+        Assert.Equal(v2, JsonSerializer.Deserialize<Vector2>(JsonSerializer.Serialize(v2, options), options));
     }
 
     [Fact]
@@ -318,7 +387,14 @@ public sealed class NativeAssetClosureTests
             var source = new MapDirectoryAssetSource(root);
             Assert.Equal(new byte[] { 1, 2, 3 }, source.Read(new MapAssetRef("mesh", "assets/mesh", "", 1)).ToArray());
             Assert.Throws<ArgumentException>(() => new MapDirectoryAssetSource("relative"));
-            Assert.Throws<MapDocumentException>(() => source.Read(new MapAssetRef("mesh", "missing", "", 1)));
+            var missing = new MapAssetRef("mesh", "missing", new string('1', 64), 1);
+            var refusal = Assert.Throws<MapDocumentException>(() => source.Read(missing));
+            Assert.Equal(MapDocumentRefusal.AssetPayloadUnreadable, refusal.Reason);
+            Assert.Equal(missing.Id, refusal.ResourceId);
+            Assert.Equal(missing.Path, refusal.Path);
+            Assert.Equal(missing.Sha256, refusal.ExpectedHash);
+            File.WriteAllBytes(Path.Combine(root, missing.Path), new byte[] { 1, 2, 3 });
+            Assert.Equal(new byte[] { 1, 2, 3 }, source.Read(missing).ToArray());
         }
         finally { Directory.Delete(root, true); }
     }

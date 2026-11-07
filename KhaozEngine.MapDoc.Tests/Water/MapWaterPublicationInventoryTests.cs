@@ -1,6 +1,5 @@
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
-using System.Reflection;
 using KhaozEngine.MapDoc.Scene;
 using KhaozEngine.MapDoc.Spaces;
 using KhaozEngine.MapDoc.Storage;
@@ -42,11 +41,11 @@ public sealed class MapWaterPublicationInventoryTests
             : Assert.Single(MapWaterCompiler.Compile(view, water));
         Assert.Equal(MapWaterCompileStatus.Complete, body.Status);
         Assert.Single(body.ClosedContours);
-        Assert.Equal(4, Backing(body.ClosedContours).Capacity);
+        Assert.Equal(4, MapWaterInventory.BackingCapacityForTests(body.ClosedContours));
         var region = Assert.Single(body.Regions);
-        Assert.Equal(4, Backing(body.Regions).Capacity);
+        Assert.Equal(4, MapWaterInventory.BackingCapacityForTests(body.Regions));
         Assert.Equal(2, region.Triangles.Count);
-        Assert.Equal(4, Backing(region.Triangles).Capacity);
+        Assert.Equal(4, MapWaterInventory.BackingCapacityForTests(region.Triangles));
         Assert.Empty(region.WidePolygons);
         Assert.Single(body.Footprints["cave"]);
         Assert.Empty(body.OccupiedPieces);
@@ -82,10 +81,10 @@ public sealed class MapWaterPublicationInventoryTests
         var region = Assert.Single(regions);
         var polygon = Assert.Single(region.WidePolygons);
         Assert.Equal(4, polygon.Count);
-        Assert.Equal(5, Backing(polygon).Capacity);
+        Assert.Equal(5, MapWaterInventory.BackingCapacityForTests(polygon));
         Assert.Equal(2, region.Triangles.Count);
-        Assert.Equal(4, Backing(region.Triangles).Capacity);
-        Assert.Equal(4, Backing(regions).Capacity);
+        Assert.Equal(4, MapWaterInventory.BackingCapacityForTests(region.Triangles));
+        Assert.Equal(4, MapWaterInventory.BackingCapacityForTests(regions));
         var body = new MapCompiledWaterBody("pond", 0, new("water", MapWaterMediumKind.Water, 1), "material",
             regions, null, null, MapWaterCompileStatus.Complete, null, new(0, 0, 0, 0, 0, 0, 0, 0, 0), "")
         { FragmentBounds = builder.FragmentBounds };
@@ -101,6 +100,4 @@ public sealed class MapWaterPublicationInventoryTests
 
     static MapWideXz Point(long x, long z) => new(MapWideRational.From(x), MapWideRational.From(z));
 
-    static List<T> Backing<T>(IReadOnlyList<T> rows) => Assert.IsType<List<T>>(
-        typeof(ReadOnlyCollection<T>).GetProperty("Items", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(rows));
 }

@@ -58,7 +58,7 @@ internal sealed class MapDocumentFinalizationSide
         MapFoliageContextResult result = MapFoliageGenerationContext.CaptureEffective(document, Assets, ResourcesFor(document), baseline: _baseline,
             queryLimits: _queryLimits, expansionLimits: _expansionLimits);
         if (result.Status != MapFoliageStatus.Complete || result.Context is null)
-            throw MapFoliageEditRefusal.Create(result.Status, "the foliage generation context refused this document");
+            throw MapFoliageEditRefusal.Create(result, "the foliage generation context refused this document");
         return Context = result.Context;
     }
 }

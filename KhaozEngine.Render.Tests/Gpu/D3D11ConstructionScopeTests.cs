@@ -46,13 +46,12 @@ namespace KhaozEngine.Tests.Gpu
                 throw new InvalidOperationException("the swapchain step");
             };
 
-            var thrown = Assert.Throws<InvalidOperationException>(construct);
+            Assert.Throws<InvalidOperationException>(construct);
 
             Assert.Empty(released);       // nothing is released until the unwind actually runs
             scope.Unwind();
 
             Assert.Equal(new[] { "linear sampler", "point sampler", "fences" }, released);
-            Assert.Equal("the swapchain step", thrown.Message);
         }
 
         /// <summary>

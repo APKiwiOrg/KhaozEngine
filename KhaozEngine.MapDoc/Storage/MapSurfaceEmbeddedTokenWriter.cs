@@ -15,7 +15,9 @@ internal ref struct MapSurfaceEmbeddedTokenWriter
 
     internal MapSurfaceEmbeddedTokenWriter(int limit)
     {
-        if (limit < 0) throw Limit();
+        if (limit < 0) throw new MapDocumentException(MapDocumentRefusal.ValueOutsideRange,
+            "surface embedding exceeds its limit, use tiled storage")
+        { FieldPath = "maxBytes", ActualInteger = limit, MinimumInteger = 0 };
         _destination = default;
         _limit = limit;
         _emit = false;
@@ -49,7 +51,8 @@ internal ref struct MapSurfaceEmbeddedTokenWriter
         Reserve(value.Length);
         for (int i = 0; i < value.Length; i++)
         {
-            if (value[i] > 0x7F) throw new MapDocumentException("non-ASCII encoded JSON token");
+            // Only default-encoder ASCII output, raw JSON numbers or validated base64 reaches this operation.
+            if (value[i] > 0x7F) throw new InvalidOperationException("non-ASCII encoded JSON token");
             if (_emit) _destination[Length + i] = (byte)value[i];
         }
         Length += value.Length;
@@ -59,7 +62,7 @@ internal ref struct MapSurfaceEmbeddedTokenWriter
     {
         // Every input char costs at least one output byte. Pay for both quotes before scanning.
         Reserve(2);
-        if (value.Length > _limit - Length - 2) throw Limit();
+        if (value.Length > _limit - Length - 2) throw Limit((long)Length + 2 + value.Length);
         Byte((byte)'"');
         if (packed && IsBase64(value)) Ascii(value);
         else
@@ -71,7 +74,8 @@ internal ref struct MapSurfaceEmbeddedTokenWriter
                 OperationStatus status = JavaScriptEncoder.Default.Encode(value, scratch,
                     out int consumed, out int written, isFinalBlock: true);
                 if (status is not (OperationStatus.Done or OperationStatus.DestinationTooSmall) || consumed == 0)
-                    throw new MapDocumentException("unable to encode embedded JSON string");
+                    // The default encoder needs at most 12 characters per scalar, so the scratch span admits progress.
+                    throw new InvalidOperationException("unable to encode embedded JSON string");
                 Ascii(scratch[..written]);
                 value = value[consumed..];
             }
@@ -90,13 +94,19 @@ internal ref struct MapSurfaceEmbeddedTokenWriter
             case float single when !float.IsFinite(single):
             case double floating when !double.IsFinite(floating):
             case Half half when !Half.IsFinite(half):
-                throw new MapDocumentException("non-finite JSON number in embedded surface patch");
+                throw new MapDocumentException(MapDocumentRefusal.ValueNonfinite, "non-finite JSON number in embedded surface patch")
+                {
+                    RecordType = value.GetType(),
+                    SubjectKind = "embedded scalar",
+                    ActualNumber = value switch { float f => f, double d => d, Half h => (double)h, _ => null },
+                };
             case IUtf8SpanFormattable number when value is sbyte or byte or short or ushort or int or uint or long or ulong or
                 Int128 or UInt128 or Half or float or double or decimal:
                 Number(number);
                 break;
             default:
-                throw new MapDocumentException("unsupported JSON scalar in embedded surface patch");
+                throw new MapDocumentException(MapDocumentRefusal.SchemaMalformed, "unsupported JSON scalar in embedded surface patch")
+                { RecordType = value.GetType(), SubjectKind = "embedded scalar" };
         }
     }
 
@@ -104,7 +114,8 @@ internal ref struct MapSurfaceEmbeddedTokenWriter
     {
         Span<byte> scratch = stackalloc byte[128];
         if (!value.TryFormat(scratch, out int written, default, CultureInfo.InvariantCulture))
-            throw new MapDocumentException("unable to format embedded JSON number");
+            // Only built-in numeric types reach this method, and each invariant token fits the scratch span.
+            throw new InvalidOperationException("unable to format embedded JSON number");
         Bytes(scratch[..written]);
     }
 
@@ -120,8 +131,10 @@ internal ref struct MapSurfaceEmbeddedTokenWriter
 
     void Reserve(int length)
     {
-        if (length > _limit - Length) throw Limit();
+        if (length > _limit - Length) throw Limit((long)Length + length);
     }
 
-    static MapDocumentException Limit() => new("surface embedding exceeds its limit, use tiled storage");
+    MapDocumentException Limit(long required) => new(MapDocumentRefusal.WorkCapacityExceeded,
+        "surface embedding exceeds its limit, use tiled storage")
+    { Budget = "MaxEmbeddingBytes", ActualByteCount = required, Limit = _limit };
 }

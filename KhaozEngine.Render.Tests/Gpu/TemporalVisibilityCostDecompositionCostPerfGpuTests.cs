@@ -36,15 +36,19 @@ public sealed class TemporalVisibilityCostDecompositionCostPerfGpuTests(ITestOut
             TemporalVisibilityCostPrograms.WithoutBarriers(TemporalVisibilityCostPrograms.WithoutCheck(source))),
     ];
 
+    [Trait("Category", "Diagnostic")]
     [GpuFact(RequiresRealGpu = true)]
     public void TheBoxesAtNativeAreDecomposedAt1440p() => Run(field: false, TemporalUpscale.Native);
 
+    [Trait("Category", "Diagnostic")]
     [GpuFact(RequiresRealGpu = true)]
     public void TheBoxesAtQualityAreDecomposedAt1440p() => Run(field: false, TemporalUpscale.Quality);
 
+    [Trait("Category", "Diagnostic")]
     [GpuFact(RequiresRealGpu = true)]
     public void TheMovingFieldAtNativeIsDecomposedAt1440p() => Run(field: true, TemporalUpscale.Native);
 
+    [Trait("Category", "Diagnostic")]
     [GpuFact(RequiresRealGpu = true)]
     public void TheMovingFieldAtQualityIsDecomposedAt1440p() => Run(field: true, TemporalUpscale.Quality);
 

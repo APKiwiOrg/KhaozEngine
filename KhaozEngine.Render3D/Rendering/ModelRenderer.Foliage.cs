@@ -120,6 +120,8 @@ internal sealed partial class ModelRenderer
     void SetFoliageOutputs(GpuOutputDescription outputs)
     {
         _foliageOutputs = outputs;
+        if (_foliageOpaquePipeline is not null) _retired.Retire(_foliageOpaquePipeline);
+        _foliageOpaquePipeline = null;
         if (_foliagePipeline is null) return;
         _retired.Retire(_foliagePipeline);
         _foliagePipeline = null;
@@ -177,10 +179,10 @@ internal sealed partial class ModelRenderer
 
     public void DrawFoliageMesh(IGpuCommandList cl, IGpuBuffer vb, IGpuBuffer ib, int indexCount,
         GpuIndexFormat indexFormat, IGpuBuffer instances, uint start, uint count, uint uniformSlot,
-        IGpuResourceSet? materialSet)
+        IGpuResourceSet? materialSet, bool opaqueMaterial)
     {
-        cl.SetPipeline(_foliagePipeline!);
-        cl.SetGraphicsResourceSet(0, materialSet ?? _defaultSet);
+        cl.SetPipeline(opaqueMaterial ? OpaqueFoliagePipeline() : _foliagePipeline!);
+        cl.SetGraphicsResourceSet(0, opaqueMaterial ? OpaqueFoliageSet() : materialSet ?? _defaultSet);
         cl.SetGraphicsResourceSet(1, _foliageSet!, uniformSlot * FoliageUniforms.SlotBytes);
         if (_motion is { } motion) cl.SetGraphicsResourceSet(2, motion.FrameSet);   // the foliage variant's motion block
         cl.SetVertexBuffer(0, vb);
@@ -192,6 +194,11 @@ internal sealed partial class ModelRenderer
     void DisposeFoliageResources()
     {
         DisposePreparedFoliage();
+        _foliageOpaquePipeline?.Dispose();
+        _foliageOpaqueSet?.Dispose();
+        _foliageOpaqueLayout?.Dispose();
+        _foliageOpaqueShaders?.Dispose();
+        _foliageOpaqueMotionShaders?.Dispose();
         _foliagePipeline?.Dispose();
         _foliageShaders?.Dispose();
         _foliageSet?.Dispose();

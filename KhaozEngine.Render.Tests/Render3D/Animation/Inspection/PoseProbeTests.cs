@@ -1,4 +1,5 @@
 using System;
+using System.Linq;
 using System.Collections.Generic;
 using System.Numerics;
 using KhaozEngine.Render3D;
@@ -77,15 +78,19 @@ namespace KhaozEngine.Tests.Render3D.Animation.Inspection
             var fixture = new InspectionFixture();
             var probe = new PoseProbe(fixture.Skeleton);
 
-            ArgumentException error = Assert.Throws<ArgumentException>(() => probe.JointModel("Head"));
+            SkeletonArgumentException error = Assert.Throws<SkeletonArgumentException>(() => probe.JointModel("Head"));
 
             Assert.Equal("nodeName", error.ParamName);
-            Assert.StartsWith("Skeleton joint 'Head' was not found.", error.Message, StringComparison.Ordinal);
-            Assert.Contains("weapon_socket", error.Message, StringComparison.Ordinal);
+            Assert.Equal(SkeletonRefusal.JointNameMissing, error.Reason);
+            Assert.Equal("Head", error.RequestedName);
+            Assert.NotNull(error.KnownNames);
+            Assert.Equal(new[] { "Foot.L", "Foot.R", "Hand.R", "Hips", "Root", "Thigh.L", "Thigh.R", "weapon_socket" },
+                error.KnownNames.OrderBy(name => name, StringComparer.Ordinal));
+            Assert.Equal(probe.JointModel(InspectionFixture.WeaponSocketNode), probe.JointModel("weapon_socket"));
         }
 
         [Fact]
-        public void SampleClip_RejectsNegativeDurationWithPreciseDiagnostic()
+        public void SampleClip_RejectsNegativeDurationAsTheClipArgument()
         {
             var fixture = new InspectionFixture();
             var probe = new PoseProbe(fixture.Skeleton);
@@ -94,7 +99,6 @@ namespace KhaozEngine.Tests.Render3D.Animation.Inspection
             ArgumentException error = Assert.Throws<ArgumentException>(() => probe.SampleClip(broken, 0.5f));
 
             Assert.Equal("clip", error.ParamName);
-            Assert.StartsWith("Clip duration must be finite and non-negative.", error.Message, StringComparison.Ordinal);
         }
 
         static JointPose Pose(Vector3 translation) =>

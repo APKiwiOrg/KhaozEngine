@@ -388,7 +388,9 @@ XZ directions `a` and `b` are nonzero with `dot(a, b) > 0` and `|cross(a, b)| <=
 
 Index 0 is never a pass-through, because the route builder drops the body's own cell and waypoint 0 has no
 predecessor in the path. Each plan therefore lands exactly on waypoint 0, costing at most one partial tick per plan.
-A static target plans once. A moving target replans on drift, at most once per replan cooldown.
+A static target plans once. A moving target normally replans on drift under the replan cooldown.
+A due goal refresh runs before committing an unlocked Contact Drop, including supported preparation, because
+a walk can be reconsidered before the physical fall. See [Contact Drop links](CONTACT-DROP-LINKS.md).
 
 ### Follower consumption
 

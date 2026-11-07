@@ -140,14 +140,19 @@ namespace KhaozEngine.Gpu.Metal.Internal
 
             if (blends.Length < colour.Length)
             {
-                throw new ArgumentException(
+                throw new GpuPipelineOutputsException(GpuPipelineOutputsRefusal.BlendCountMismatch,
                     $"{label}: a native Metal graphics pipeline declares "
                     + $"{colour.Length.ToString(CultureInfo.InvariantCulture)} colour attachments and "
                     + $"{blends.Length.ToString(CultureInfo.InvariantCulture)} blend states. Metal carries the "
                     + "blend state ON the colour attachment descriptor, so every attachment needs one and there "
                     + "is no shared state to fall back to. The multiple-render-target passes rely on that: the "
                     + "model pass blends one attachment while preserving the destination of another.",
-                    nameof(description));
+                    nameof(description))
+                {
+                    DeclaredBlendCount = blends.Length,
+                    ColourOutputCount = colour.Length,
+                    PipelineKind = "graphics",
+                };
             }
 
             // A LONGER BLEND ARRAY IS IGNORED RATHER THAN REFUSED, which is what both siblings do with one. An

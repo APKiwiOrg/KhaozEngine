@@ -94,7 +94,8 @@ public sealed class ShippedBuildingInputGuardTests
         Assert.Equal(PrivateOracleFixtures.SecureDirectoryMode, File.GetUnixFileMode(Path.GetDirectoryName(reportPath)!));
         Assert.Equal(UnixFileMode.UserRead | UnixFileMode.UserWrite, File.GetUnixFileMode(reportPath));
         Assert.Contains("independent-heads", File.ReadAllText(reportPath));
-        Assert.Throws<PrivateOracleInputException>(() => PrivateOracleInputs.Require(fixture.Environment));
+        var existing = Assert.Throws<PrivateOracleInputException>(() => PrivateOracleInputs.Require(fixture.Environment));
+        Assert.Equal(PrivateOracleInputRefusal.ReportAlreadyExists, existing.Reason);
     }
 
     [Fact]
@@ -165,18 +166,43 @@ public sealed class ShippedBuildingInputGuardTests
         Assert.Contains(category, compared.Failures);
         Assert.Null(failure.InnerException);
         Assert.DoesNotContain(ShippedBuildingGuardFixtures.PublicSecretMarker, failure.ToString());
-        Assert.Contains("building-parity", failure.Message);
+        Assert.Equal(PrivateOracleFailureRefusal.ComparisonMismatches, failure.Reason);
+        Assert.Equal("building-parity", failure.Category);
+        // Every classified failure is its own report check, so the count is the comparison's failure count.
+        Assert.NotEmpty(compared.ClassifiedFailures);
+        Assert.Equal((long?)compared.ClassifiedFailures.Count, failure.MismatchCount);
+        Assert.Equal(AssertFixtures.Sha256(fixture.Environment["KHAOZ_R2_ORACLE_REPORT"]!), failure.ReportSha256);
         Assert.Contains("failures", File.ReadAllText(fixture.Environment["KHAOZ_R2_ORACLE_REPORT"]!));
     }
     [Theory]
-    [InlineData("standalone-roof-linked", "standalone roof has concealment")]
-    [InlineData("standalone-wall", "unassigned building leaf")]
-    public void StandaloneLeaf_RefusesForItsSpecificReason(string variant, string reason)
+    [InlineData("standalone-roof-linked", PrivateOracleDataRefusal.OwnershipMismatch)]
+    [InlineData("standalone-wall", PrivateOracleDataRefusal.OwnershipMismatch)]
+    public void StandaloneLeaf_RefusesForItsSpecificReason(string variant, PrivateOracleDataRefusal reason)
     {
         // F-R6. Only an inventoried unlinked roof may stand outside every nominated building.
         using var fixture = ShippedBuildingGuardFixtures.Create(variant);
-        var error = Assert.Throws<InvalidDataException>(() => ShippedBuildingInputs.Read(PrivateOracleInputs.Require(fixture.Environment)));
-        Assert.Equal(reason, error.Message);
+        var error = Assert.Throws<PrivateOracleDataException>(() => ShippedBuildingInputs.Read(PrivateOracleInputs.Require(fixture.Environment)));
+        Assert.Equal(reason, error.Reason);
+        Assert.IsAssignableFrom<MalformedDataException>(error);
+        using var valid = ShippedBuildingGuardFixtures.Create("standalone-roof");
+        ShippedBuildingInputs.Read(PrivateOracleInputs.Require(valid.Environment));
+    }
+
+    [Fact]
+    public void RoomCellClosure_RefusesAboveTheBudgetAndAcceptsItsExactLimit()
+    {
+        var error = Assert.Throws<PrivateOracleDataException>(() => ShippedBuildingInputs.RequireRoomCellBudgetForTests(0, 1025, 0, 1024));
+        Assert.Equal(PrivateOracleDataRefusal.InputBudgetExceeded, error.Reason);
+        ShippedBuildingInputs.RequireRoomCellBudgetForTests(0, 1024, 0, 1024);
+    }
+
+    [Fact]
+    public void GeometryCapture_RefusesUnsupportedPrimitives()
+    {
+        var error = Assert.Throws<PrivateOracleDataException>(() =>
+            ShippedBuildingGeometry.Capture(new SphereShape(1), p => p, n => n).ToArray());
+        Assert.Equal(PrivateOracleDataRefusal.KindUnsupported, error.Reason);
+        Assert.Single(ShippedBuildingGeometry.Capture(new BoxShape(Vector3.One), p => p, n => n));
     }
 
     [Fact]
@@ -226,13 +252,18 @@ public sealed class ShippedBuildingInputGuardTests
             native.Vertices[native.Indices[i * 3 + 2]] - native.Vertices[native.Indices[i * 3]]))).ToArray();
         Assert.Equal(new[] { -Vector3.UnitX, Vector3.UnitX, -Vector3.UnitY, Vector3.UnitY, -Vector3.UnitZ, Vector3.UnitZ }, normals);
         ShippedBuildingReport? compared = null;
-        Assert.Throws<PrivateOracleFailure>(() => PrivateOracleEntry.Run(fixture.Environment, (i, report) =>
+        var failure = Assert.Throws<PrivateOracleFailure>(() => PrivateOracleEntry.Run(fixture.Environment, (i, report) =>
         {
             compared = ShippedBuildingComparison.Compare(ShippedBuildingInputs.Read(i));
             report.Record("buildings", compared.DetailJson);
             report.CheckFailures("building-parity", compared.ClassifiedFailures);
         }));
+        Assert.Equal(PrivateOracleFailureRefusal.ComparisonMismatches, failure.Reason);
+        Assert.Equal("building-parity", failure.Category);
         Assert.True(compared is not null, File.ReadAllText(fixture.Environment["KHAOZ_R2_ORACLE_REPORT"]!));
+        // Every classified failure is its own report check, so the count is the comparison's failure count.
+        Assert.NotEmpty(compared.ClassifiedFailures);
+        Assert.Equal((long?)compared.ClassifiedFailures.Count, failure.MismatchCount);
         Assert.Contains(compared.Failures, category => category.StartsWith("physical-collider", StringComparison.Ordinal));
     }
 

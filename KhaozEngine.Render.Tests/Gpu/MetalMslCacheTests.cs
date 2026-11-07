@@ -368,12 +368,21 @@ void main() { Values[gl_GlobalInvocationID.x] = gl_GlobalInvocationID.x; }
                     new GpuResourceLayoutElement("Frame", GpuResourceKind.UniformBuffer, GpuShaderStages.Vertex)),
             };
 
-            Assert.Throws<ShaderValidationException>(() => MetalShaderIndexTable.FromCache(
+            var bad_set = Assert.Throws<ShaderValidationException>(() => MetalShaderIndexTable.FromCache(
                 Entry(1, 0), layouts, Graphics, "bad-set"));
-            Assert.Throws<ShaderValidationException>(() => MetalShaderIndexTable.FromCache(
+            Assert.Equal(ShaderValidationRefusal.MetalSetIndexInvalid, bad_set.Reason);
+            Assert.Equal(1, bad_set.Set);
+            Assert.Equal(0, bad_set.Binding);
+            var bad_binding = Assert.Throws<ShaderValidationException>(() => MetalShaderIndexTable.FromCache(
                 Entry(0, 3), layouts, Graphics, "bad-binding"));
-            Assert.Throws<ShaderValidationException>(() => MetalShaderIndexTable.FromCache(
+            Assert.Equal(ShaderValidationRefusal.MetalBindingIndexInvalid, bad_binding.Reason);
+            Assert.Equal(0, bad_binding.Set);
+            Assert.Equal(3, bad_binding.Binding);
+            var negative_set = Assert.Throws<ShaderValidationException>(() => MetalShaderIndexTable.FromCache(
                 Entry(-1, 0), layouts, Graphics, "negative-set"));
+            Assert.Equal(ShaderValidationRefusal.MetalSetIndexInvalid, negative_set.Reason);
+            Assert.Equal(-1, negative_set.Set);
+            Assert.Equal(0, negative_set.Binding);
 
             // And the shape it accepts, so the three above are refusals rather than a rebuild that never works.
             // The index is the AUTHORED one, recomputed from the layouts, which is the whole of format 2's point.
@@ -400,9 +409,17 @@ void main() { Values[gl_GlobalInvocationID.x] = gl_GlobalInvocationID.x; }
                          new[] { MetalShaderStage.Vertex, MetalShaderStage.Fragment, MetalShaderStage.Compute },
                      })
             {
-                Assert.Throws<ShaderValidationException>(() => MetalShaderIndexTable.FromCache(
+                var error = Assert.Throws<ShaderValidationException>(() => MetalShaderIndexTable.FromCache(
                     Array.Empty<MetalIndexTableKey>(),
                     Array.Empty<GpuResourceLayoutDescription>(), new HashSet<MetalShaderStage>(shape), "shape"));
+                Assert.Equal(ShaderValidationRefusal.MetalProgramStageShapeInvalid, error.Reason);
+                Assert.Equal("shape", error.Label);
+                Assert.Equal(shape.Length, error.StageCount);
+                GpuShaderStages expected = GpuShaderStages.None;
+                if (shape.Contains(MetalShaderStage.Vertex)) expected |= GpuShaderStages.Vertex;
+                if (shape.Contains(MetalShaderStage.Fragment)) expected |= GpuShaderStages.Fragment;
+                if (shape.Contains(MetalShaderStage.Compute)) expected |= GpuShaderStages.Compute;
+                Assert.Equal(expected, error.Stages);
             }
 
             // The two that ARE shapes, so the five above are refusals rather than a rebuild that never works.
@@ -428,10 +445,20 @@ void main() { Values[gl_GlobalInvocationID.x] = gl_GlobalInvocationID.x; }
                     new GpuResourceLayoutElement("Frame", GpuResourceKind.UniformBuffer, GpuShaderStages.Vertex)),
             };
 
-            Assert.Throws<ShaderValidationException>(() => MetalShaderIndexTable.FromCache(
+            var compute = Assert.Throws<ShaderValidationException>(() => MetalShaderIndexTable.FromCache(
                 Entry(0, 0, MetalShaderStage.Compute), layouts, Graphics, "not-mine"));
-            Assert.Throws<ShaderValidationException>(() => MetalShaderIndexTable.FromCache(
+            Assert.Equal(ShaderValidationRefusal.MetalCachedStageMissing, compute.Reason);
+            Assert.Equal("not-mine", compute.Label);
+            Assert.Equal(GpuShaderStages.Compute, compute.Stage);
+            Assert.Equal(0, compute.Set);
+            Assert.Equal(0, compute.Binding);
+            var fragment = Assert.Throws<ShaderValidationException>(() => MetalShaderIndexTable.FromCache(
                 Entry(0, 0, MetalShaderStage.Fragment), layouts, Compute, "not-mine"));
+            Assert.Equal(ShaderValidationRefusal.MetalCachedStageMissing, fragment.Reason);
+            Assert.Equal("not-mine", fragment.Label);
+            Assert.Equal(GpuShaderStages.Fragment, fragment.Stage);
+            Assert.Equal(0, fragment.Set);
+            Assert.Equal(0, fragment.Binding);
         }
 
         /// <summary>

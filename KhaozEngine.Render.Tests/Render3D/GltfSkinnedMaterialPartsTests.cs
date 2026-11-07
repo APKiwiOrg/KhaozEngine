@@ -152,18 +152,26 @@ public sealed class GltfSkinnedMaterialPartsTests
         byte[] atCap = new SkinnedAttachmentGlbFixture(SkinningMath.MaxBonesPerDraw).Build();
         AttachmentGlb.ValidateSkinnedEmbedded(atCap, "at-cap");
         Assert.Equal(128, GltfLoader.LoadSkinned(atCap, "at-cap").BoneCount);
+        Assert.NotEmpty(GltfLoader.LoadSkinnedPartsWithMaterials(atCap, "at-cap"));
         byte[] overCap = new SkinnedAttachmentGlbFixture(SkinningMath.MaxBonesPerDraw + 1).Build();
-        Assert.Contains("1 to 128", Assert.Throws<InvalidDataException>(
-            () => AttachmentGlb.ValidateSkinnedEmbedded(overCap, "over-cap")).Message);
-        Assert.Contains("128-bone", Assert.Throws<InvalidOperationException>(
-            () => GltfLoader.LoadSkinnedPartsWithMaterials(overCap, "over-cap")).Message);
+        var policy = Assert.Throws<AttachmentSkinnedGeometryDataException>(() => AttachmentGlb.ValidateSkinnedEmbedded(overCap, "over-cap"));
+        Assert.Equal(AttachmentSkinnedGeometryRefusal.JointCountOutsideRange, policy.Reason);
+        Assert.Equal("over-cap", policy.SourceName);
+        Assert.Equal("$.skins[0].joints", policy.JsonPath);
+        Assert.Equal(SkinningMath.MaxBonesPerDraw + 1, policy.JointCount);
+        Assert.Equal(SkinningMath.MaxBonesPerDraw, policy.MaximumJointCount);
+        var error = Assert.Throws<GltfImportStateException>(() => GltfLoader.LoadSkinnedPartsWithMaterials(overCap, "over-cap"));
+        Assert.Equal(GltfImportRefusal.SkinJointLimitExceeded, error.Reason);
+        Assert.Equal("over-cap", error.Identity);
+        Assert.Equal(SkinningMath.MaxBonesPerDraw + 1, error.JointCount);
+        Assert.Equal(SkinningMath.MaxBonesPerDraw, error.MaximumJointCount);
     }
 
     [Theory]
     [InlineData("rigid-parts")]
     [InlineData("skinned-parts")]
     [InlineData("skinned")]
-    public void Malformed_accessor_through_a_byte_overload_throws_invalid_data_naming_the_identity(string overload)
+    public void Malformed_accessor_through_a_byte_overload_carries_its_reason_and_identity(string overload)
     {
         var fixture = new SkinnedAttachmentGlbFixture();
         int normals = fixture.Accessors.Count;
@@ -186,10 +194,42 @@ public sealed class GltfSkinnedMaterialPartsTests
             _ => throw new ArgumentOutOfRangeException(nameof(overload), overload, null),
         };
 
-        InvalidDataException error = Assert.Throws<InvalidDataException>(load);
+        GltfImportDataException error = Assert.Throws<GltfImportDataException>(load);
 
-        Assert.Contains(identity, error.Message);
-        Assert.Equal("SharpGLTF.Validation", error.InnerException?.GetType().Namespace);
+        Assert.IsAssignableFrom<MalformedDataException>(error);
+        Assert.Equal(GltfImportRefusal.MalformedModel, error.Reason);
+        Assert.Equal(identity, error.Identity);
+        Assert.NotNull(error.InnerException);
+    }
+
+    [Fact]
+    public void Strict_validation_failure_keeps_the_asset_identity_and_importer_error()
+    {
+        var fixture = new SkinnedAttachmentGlbFixture();
+        Assert.NotEmpty(GltfLoader.LoadSkinnedPartsWithMaterials(fixture.Build(), "valid-bounds"));
+        fixture.Accessors[0]!["max"] = new JsonArray(0, 0, 0);
+        var error = Assert.Throws<GltfImportStateException>(
+            () => GltfLoader.LoadSkinnedPartsWithMaterials(fixture.Build(), "invalid-bounds"));
+        Assert.Equal(GltfImportRefusal.ValidationFailed, error.Reason);
+        Assert.Equal("invalid-bounds", error.Identity);
+        Assert.NotNull(error.InnerException);
+        Assert.IsAssignableFrom<InvalidOperationException>(error);
+    }
+
+    [Fact]
+    public void Skin_joint_indices_must_fit_the_imported_skin()
+    {
+        // SharpGLTF reaches ValidationFailed first for a malformed GLB, so inject the values at the
+        // decoder's defensive guard, leaving public import validation intact.
+        GltfLoader.ValidateSkinJointIndicesForTests(new Vector4(0, 1, 2, 3), 4, "joint-control", 1, 2);
+        var error = Assert.Throws<GltfImportStateException>(() =>
+            GltfLoader.ValidateSkinJointIndicesForTests(new Vector4(0, 1, 2, 4), 4, "bad-joint", 1, 2));
+        Assert.Equal(GltfImportRefusal.SkinJointIndexOutsideRange, error.Reason);
+        Assert.Equal("bad-joint", error.Identity);
+        Assert.Equal(4, error.JointCount);
+        Assert.Equal(new Vector4(0, 1, 2, 4), error.BoneIndices);
+        Assert.Equal(1, error.VertexIndex);
+        Assert.Equal(2, error.PartIndex);
     }
 
     static SkinnedAttachmentGlbFixture Fixture(string? colorType = "VEC4", int colorComponentType = 5126)

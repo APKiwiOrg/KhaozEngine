@@ -17,10 +17,10 @@ public static partial class NativeMapAssetLoader
         RequireDescriptor(asset, closure); ArgumentNullException.ThrowIfNull(budget);
         string id = lodResourceId ?? asset.MeshResourceId;
         if (lodResourceId is not null && !asset.LodResourceIds.Contains(lodResourceId, StringComparer.Ordinal))
-            throw new MapDocumentException("LOD is not declared by asset '" + asset.Id + "'.");
+            throw new MapDocumentException(MapDocumentRefusal.ReferenceMissing, "LOD is not declared by asset '" + asset.Id + "'.") { AssetId = asset.Id, ResourceId = lodResourceId, SubjectKind = "LOD" };
         MapResolvedResource resource = closure.GetResource(id);
         if (resource.Kind != (lodResourceId is null ? MapResourceKind.Mesh : MapResourceKind.Lod))
-            throw new MapDocumentException("Native mesh resource kind differs from its declaration.");
+            throw new MapDocumentException(MapDocumentRefusal.ReferenceKindMismatch, "Native mesh resource kind differs from its declaration.") { AssetId = asset.Id, ResourceId = id, ActualResourceKind = resource.Kind, ExpectedResourceKind = lodResourceId is null ? MapResourceKind.Mesh : MapResourceKind.Lod };
         if (!budget.TryReserve(0, resource.ByteLength))
             throw new GltfDecodeRefusal(GltfDecodeStatus.CapacityExceeded, "Encoded native mesh copy exceeds the remaining allowance.");
         long owned = 0;
@@ -45,8 +45,8 @@ public static partial class NativeMapAssetLoader
             owned = 0;
             return Array.AsReadOnly(scaled);
         }
-        catch (Exception ex) when (ex is InvalidDataException or InvalidOperationException)
-        { throw new MapDocumentException("Native asset '" + asset.Id + "' resource '" + id + "' cannot be loaded: " + ex.Message, ex); }
+        catch (Exception ex) when (ex is MalformedDataException or InvalidDataException or InvalidOperationException)
+        { throw MeshLoadFailure(ex, asset, resource, "Native asset '" + asset.Id + "' resource '" + id + "' cannot be loaded: " + ex.Message); }
         finally
         {
             budget.ReleaseTemporary(resource.ByteLength + scaling);
@@ -58,6 +58,7 @@ public static partial class NativeMapAssetLoader
     {
         ArgumentNullException.ThrowIfNull(asset); ArgumentNullException.ThrowIfNull(closure);
         if (!ReferenceEquals(closure.GetAsset(asset.Id), asset))
-            throw new MapDocumentException($"Native asset '{asset.Id}' is not the descriptor of the supplied closure.");
+            throw new MapDocumentException(MapDocumentRefusal.AssetDescriptorMismatch, $"Native asset '{asset.Id}' is not the descriptor of the supplied closure.")
+            { AssetId = asset.Id };
     }
 }

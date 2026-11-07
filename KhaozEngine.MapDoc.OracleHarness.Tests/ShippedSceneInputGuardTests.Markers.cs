@@ -18,7 +18,7 @@ public sealed partial class ShippedSceneInputGuardTests
     public void SceneMarkers_RequireBothMembershipPairs(string field)
     {
         using var fixture = ShippedSceneGuardFixtures.Create("marker-missing-" + field);
-        Assert.Throws<System.IO.InvalidDataException>(() => ShippedSceneInputs.Read(PrivateOracleInputs.Require(fixture.Environment)));
+        Refuses(PrivateOracleDataRefusal.SchemaShapeInvalid, () => ShippedSceneInputs.Read(PrivateOracleInputs.Require(fixture.Environment)));
     }
 
     [Theory]

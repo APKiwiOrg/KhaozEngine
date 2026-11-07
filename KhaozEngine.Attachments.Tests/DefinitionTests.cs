@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.IO;
 using System.Numerics;
 using KhaozEngine.Attachments;
 using Xunit;
@@ -45,24 +44,24 @@ public class DefinitionTests
     }
 
     [Theory]
-    [InlineData("empty")]
-    [InlineData("null-part")]
-    [InlineData("duplicate")]
-    [InlineData("zero")]
-    [InlineData("joint")]
-    [InlineData("key")]
-    [InlineData("hash")]
-    [InlineData("conflicting-hash")]
-    [InlineData("singular")]
-    [InlineData("non-affine")]
-    [InlineData("non-finite")]
-    [InlineData("unknown-kind")]
-    [InlineData("duplicate-across-kinds")]
-    [InlineData("conflicting-hash-across-kinds")]
-    [InlineData("skinned-key")]
-    [InlineData("skinned-hash")]
-    [InlineData("skinned-utf16")]
-    public void Constructor_RejectsInvalidProgrammaticDefinitions(string name)
+    [InlineData("empty", AttachmentSetRefusal.PartsEmpty)]
+    [InlineData("null-part", AttachmentSetRefusal.PartNull)]
+    [InlineData("duplicate", AttachmentSetRefusal.PartIdInvalidOrDuplicate)]
+    [InlineData("zero", AttachmentSetRefusal.PartIdInvalidOrDuplicate)]
+    [InlineData("joint", AttachmentSetRefusal.JointNameEmpty)]
+    [InlineData("key", AttachmentSetRefusal.MeshKeyInvalid)]
+    [InlineData("hash", AttachmentSetRefusal.MeshHashInvalid)]
+    [InlineData("conflicting-hash", AttachmentSetRefusal.MeshHashConflict)]
+    [InlineData("singular", AttachmentSetRefusal.LocalTransformInvalid)]
+    [InlineData("non-affine", AttachmentSetRefusal.LocalTransformInvalid)]
+    [InlineData("non-finite", AttachmentSetRefusal.LocalTransformInvalid)]
+    [InlineData("unknown-kind", AttachmentSetRefusal.PartKindUnsupported)]
+    [InlineData("duplicate-across-kinds", AttachmentSetRefusal.PartIdInvalidOrDuplicate)]
+    [InlineData("conflicting-hash-across-kinds", AttachmentSetRefusal.MeshHashConflict)]
+    [InlineData("skinned-key", AttachmentSetRefusal.MeshKeyInvalid)]
+    [InlineData("skinned-hash", AttachmentSetRefusal.MeshHashInvalid)]
+    [InlineData("skinned-utf16", AttachmentSetRefusal.MeshKeyInvalid)]
+    public void Constructor_RejectsInvalidProgrammaticDefinitions(string name, AttachmentSetRefusal reason)
     {
         RigidAttachmentPartDefinition part = AttachmentFixtures.Part(1);
         AttachmentPartDefinition[] parts = name switch
@@ -75,7 +74,7 @@ public class DefinitionTests
             "key" => new[] { part with { Mesh = new("../part.glb", AttachmentFixtures.Hash) } },
             "hash" => new[] { part with { Mesh = new("part.glb", "bad") } },
             "conflicting-hash" => new[] { part, AttachmentFixtures.Part(2) with { Mesh = new("parts/plate.glb", new string('b', 64)) } },
-            "singular" => new[] { part with { Local = default } },
+            "singular" => new[] { part with { Local = Matrix4x4.CreateScale(0, 1, 1) } },
             "non-affine" => new[] { part with { Local = Matrix4x4.CreatePerspectiveFieldOfView(1, 1, 1, 10) } },
             "non-finite" => new[] { part with { Local = Matrix4x4.CreateTranslation(float.NaN, 0, 0) } },
             "unknown-kind" => [new UnknownAttachmentPart(1, part.Mesh)],
@@ -86,7 +85,25 @@ public class DefinitionTests
             "skinned-utf16" => [new SkinnedAttachmentPartDefinition(1, new("part\uD800.glb", AttachmentFixtures.Hash))],
             _ => throw new ArgumentException(name),
         };
-        Assert.ThrowsAny<ArgumentException>(() => new AttachmentSetDefinition(parts));
+        Assert.Single(new AttachmentSetDefinition([part]).Parts);
+        var error = Assert.Throws<AttachmentSetArgumentException>(() => new AttachmentSetDefinition(parts));
+        Assert.IsAssignableFrom<ArgumentException>(error);
+        Assert.Equal(reason, error.Reason);
+        Assert.Equal("parts", error.ParamName);
+        if (reason == AttachmentSetRefusal.PartsEmpty) Assert.Equal(0, error.PartCount);
+        else if (reason == AttachmentSetRefusal.PartNull) Assert.Equal(0, error.PartIndex);
+        else
+        {
+            Assert.Equal(name is "conflicting-hash" or "conflicting-hash-across-kinds" ? 2u : name == "zero" ? 0u : 1u, error.PartId);
+            if (reason == AttachmentSetRefusal.PartIdInvalidOrDuplicate)
+                Assert.Equal(name == "zero" ? 0 : 1, error.PartIndex);
+            if (reason == AttachmentSetRefusal.PartKindUnsupported) Assert.Equal(typeof(UnknownAttachmentPart), error.ActualType);
+            if (reason is AttachmentSetRefusal.MeshKeyInvalid or AttachmentSetRefusal.MeshHashInvalid or AttachmentSetRefusal.MeshHashConflict)
+                Assert.Equal(parts[^1].Mesh.Key, error.MeshKey);
+            if (reason is AttachmentSetRefusal.MeshHashInvalid or AttachmentSetRefusal.MeshHashConflict)
+                Assert.Equal(parts[^1].Mesh.Sha256, error.DeclaredHash);
+            if (reason == AttachmentSetRefusal.MeshHashConflict) Assert.Equal(AttachmentFixtures.Hash, error.ExistingHash);
+        }
     }
 
     [Fact]
@@ -98,14 +115,12 @@ public class DefinitionTests
         set.ValidateReferences(joints, meshes);
 
         joints.Clear();
-        InvalidDataException jointError = Assert.Throws<InvalidDataException>(() => set.ValidateReferences(joints, meshes));
-        Assert.Contains("1", jointError.Message);
-        Assert.Contains("hip", jointError.Message);
+        AttachmentSetReferenceAssertions.Joint(() => set.ValidateReferences(joints, meshes), 1, "hip");
         joints.Add("hip");
         meshes.Clear();
-        Assert.Contains("parts/plate.glb", Assert.Throws<InvalidDataException>(() => set.ValidateReferences(joints, meshes)).Message);
+        AttachmentSetReferenceAssertions.Mesh(() => set.ValidateReferences(joints, meshes), 1, "parts/plate.glb", null);
         meshes["parts/plate.glb"] = new string('b', 64);
-        Assert.Throws<InvalidDataException>(() => set.ValidateReferences(joints, meshes));
+        AttachmentSetReferenceAssertions.Mesh(() => set.ValidateReferences(joints, meshes), 1, "parts/plate.glb", new string('b', 64));
     }
 
     [Fact]
@@ -123,12 +138,12 @@ public class DefinitionTests
         new AttachmentSetDefinition([skinned]).ValidateReferences(new HashSet<string>(), meshes);
 
         meshes.Remove(skinned.Mesh.Key);
-        Assert.Contains(skinned.Mesh.Key, Assert.Throws<InvalidDataException>(() => set.ValidateReferences(joints, meshes)).Message);
+        AttachmentSetReferenceAssertions.Mesh(() => set.ValidateReferences(joints, meshes), 2, "parts/garment.glb", null);
         meshes[skinned.Mesh.Key] = new string('b', 64);
-        Assert.Throws<InvalidDataException>(() => set.ValidateReferences(joints, meshes));
+        AttachmentSetReferenceAssertions.Mesh(() => set.ValidateReferences(joints, meshes), 2, "parts/garment.glb", new string('b', 64));
         meshes[skinned.Mesh.Key] = AttachmentFixtures.Hash;
         joints.Clear();
-        Assert.Contains("hip", Assert.Throws<InvalidDataException>(() => set.ValidateReferences(joints, meshes)).Message);
+        AttachmentSetReferenceAssertions.Joint(() => set.ValidateReferences(joints, meshes), 1, "hip");
     }
 
     [Fact]
@@ -137,12 +152,12 @@ public class DefinitionTests
         var set = new AttachmentSetDefinition([AttachmentFixtures.Part(1)]);
         var joints = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "HIP" };
         var meshes = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase) { ["parts/plate.glb"] = AttachmentFixtures.Hash };
-        Assert.Throws<InvalidDataException>(() => set.ValidateReferences(joints, meshes));
+        AttachmentSetReferenceAssertions.Joint(() => set.ValidateReferences(joints, meshes), 1, "hip");
         joints.Clear();
         joints.Add("hip");
         meshes.Clear();
         meshes["PARTS/PLATE.GLB"] = AttachmentFixtures.Hash;
-        Assert.Throws<InvalidDataException>(() => set.ValidateReferences(joints, meshes));
+        AttachmentSetReferenceAssertions.Mesh(() => set.ValidateReferences(joints, meshes), 1, "parts/plate.glb", null);
     }
 
     [Fact]

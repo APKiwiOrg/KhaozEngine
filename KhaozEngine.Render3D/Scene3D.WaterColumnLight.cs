@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using System.Numerics;
 using KhaozEngine.Gpu;
 using KhaozEngine.Render3D.Internal;
@@ -13,6 +14,34 @@ public sealed partial class Scene3D
 
     /// <summary>Diagnostics for the pre-water colour source of the latest rendered frame. Begin preserves it.</summary>
     public WaterColumnDiagnostics WaterColumnLightDiagnostics { get; private set; }
+
+    /// <summary>Water copy tests observe target dimensions and exact colour attachment identities.
+    /// Handles are borrowed for observation and readback. Never dispose or mutate them.</summary>
+    internal (int Width, int Height, int SampleCount, IGpuTexture ColorTex, IGpuTexture? MsColor) ColorTargetsForTests =>
+        (_res.Width, _res.Height, _res.SampleCount, _res.ColorTex, _res.MsColor);
+
+    /// <summary>Water binding tests observe the model's shared shadow resources by identity.
+    /// Handles are borrowed for observation. Never dispose or mutate them.</summary>
+    internal (IGpuTexture Atlas, IGpuSampler Sampler, IGpuBuffer FrameUniforms) ModelShadowBindingsForTests =>
+        (_model.ShadowMap.ShadowTexture, _model.ShadowMap.ShadowSampler, _model.SharedFrameUniforms);
+
+    /// <summary>Water lifecycle tests compare borrowed shadow bindings with the model's resources.
+    /// Handles are borrowed for observation. Never dispose or mutate them.</summary>
+    internal (IGpuTexture Atlas, IGpuSampler Sampler, IGpuBuffer FrameUniforms) WaterShadowBindingsForTests =>
+        (_water.ColumnShadows.ShadowAtlas, _water.ColumnShadows.ShadowSampler, _water.ColumnShadows.FrameUniforms);
+
+    /// <summary>RendererPerfColdLifecycleTests identifies the model's default resources and observes release.
+    /// Handles are borrowed for observation. Never dispose or mutate them.</summary>
+    internal (IGpuTexture White, IGpuResourceSet Set) ModelDefaultResourcesForTests =>
+        (_model.WhiteTextureForTests, _model.DefaultSetForTests);
+
+    /// <summary>Water column tests observe the copied texture, lazy absence and GPU readback.
+    /// Borrowed for observation. Never dispose or mutate it.</summary>
+    internal IGpuTexture? WaterColumnColorTextureForTests => _waterColumnColor?.Texture;
+
+    /// <summary>RendererPerfColdLifecycleTests identifies the factory-owned fake for a loaded texture without borrowing it.</summary>
+    internal bool IsTextureForTests(TextureHandle handle, IGpuTexture candidate) =>
+        ReferenceEquals(_textures[handle.ListIndex], candidate);
 
     // Authoring checks and the opted-in count, with no device work. Runs at preparation and again at render.
     void ValidateWaterColumnInputs()

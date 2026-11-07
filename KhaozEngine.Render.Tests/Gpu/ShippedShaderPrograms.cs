@@ -27,7 +27,7 @@ namespace KhaozEngine.Tests.Gpu
     /// a program from this list.
     ///
     /// <para>
-    /// DEDUPLICATED BY SOURCE PAIR, not by call site. The catalog contains 132 graphics pairs and eight compute
+    /// DEDUPLICATED BY SOURCE PAIR, not by call site. The catalog contains 140 graphics pairs and eight compute
     /// kernels. The <c>Line</c> pair is created three times (<c>DepthLineRenderer</c>, and <c>LineRenderer</c> plus
     /// <c>FillRenderer</c> through <c>OverlayRenderer</c>), and identical sources cross-compile to identical
     /// HLSL, so three rows would be three copies of one fact. Where a pair has several call sites the name is its
@@ -51,7 +51,7 @@ namespace KhaozEngine.Tests.Gpu
         /// <summary>The cascade resolutions <c>OceanFftProducer</c> can compile a kernel for.</summary>
         public static readonly int[] OceanResolutions = { 32, 64, 128, 256 };
 
-        /// <summary>Every distinct base vertex and fragment pair, 95 of them.</summary>
+        /// <summary>Every distinct shipped vertex and fragment pair, 99 of them.</summary>
         static IEnumerable<ShippedGraphicsProgram> BaseGraphicsPrograms()
         {
             // Render2D.
@@ -65,11 +65,14 @@ namespace KhaozEngine.Tests.Gpu
             yield return new("Model", ShaderSources.ModelVert, ShaderSources.ModelFrag, 15);
             yield return new("Foliage", ShaderSources.FoliageVert, ShaderSources.ModelFrag, 15);
             yield return new("PreparedFoliage", ShaderSources.PreparedFoliage(ShaderSources.FoliageVert, 2), ShaderSources.ModelFrag, 15);
+            yield return new("PreparedFoliageOpaque", ShaderSources.PreparedFoliage(ShaderSources.FoliageVert, 2), ShaderSources.FoliageOpaqueFrag, 10);
+            yield return new("PreparedFoliageOpaqueMotion", ShaderSources.PreparedFoliage(ShaderSources.FoliageMotionVert, 3), ShaderSources.FoliageOpaqueMotionFrag, 10);
             yield return new("PreparedFoliageMotion", ShaderSources.PreparedFoliage(ShaderSources.FoliageMotionVert, 3), ShaderSources.ModelMotionFrag, 15);
             // R-GPU-1 / T8-R1. Both depth programs keep anchor set 3. Opaque has an empty set 2 in the resource catalog.
             yield return new("PreparedFoliageDepth", ShaderSources.PreparedFoliage(ShaderSources.FoliageDepthVert, 3), ShaderSources.ShadowDepthFrag);
             yield return new("PreparedFoliageDepthCutout", ShaderSources.PreparedFoliage(ShaderSources.FoliageDepthVert, 3), ShaderSources.FoliageDepthCutoutFrag);
             yield return new("PreparedFoliagePoint", ShaderSources.PreparedPointFoliageVert, ShaderSources.PointShadowRigidFrag);
+            yield return new("FoliageOpaque", ShaderSources.FoliageVert, ShaderSources.FoliageOpaqueFrag, 10);
             yield return new("ModelDissolve", ShaderSources.ModelVert, ShaderSources.ModelDissolveFrag, 15);
             yield return new("SkinnedModel", ShaderSources.SkinnedModelVert, ShaderSources.SkinnedModelFrag, 7);
             yield return new("SkinnedModelDissolve",
@@ -91,6 +94,7 @@ namespace KhaozEngine.Tests.Gpu
             yield return new("ModelCpuSkinnedDissolveMotion",
                 ShaderSources.ModelCpuSkinnedMotionVert, ShaderSources.ModelDissolveMotionFrag, 15);
             yield return new("FoliageMotion", ShaderSources.FoliageMotionVert, ShaderSources.ModelMotionFrag, 15);
+            yield return new("FoliageOpaqueMotion", ShaderSources.FoliageMotionVert, ShaderSources.FoliageOpaqueMotionFrag, 10);
             yield return new("SplatMotion", ShaderSources.SplatMotionVert, ShaderSources.SplatMotionFrag, 6);
             yield return new("TileGroundMotion", ShaderSources.TileGroundMotionVert, ShaderSources.TileGroundMotionFrag, 6);
             yield return new("TexturedBillboardMotion", ShaderSources.BillboardVert, ShaderSources.TexturedBillboardMotionFrag);

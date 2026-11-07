@@ -126,7 +126,7 @@ public sealed class MapPlacementRouting
     internal void Validate(MapScopedScene scene, MapPlacementPolicy? policy = null)
     {
         if (!ReferenceEquals(scene, _scene) || Witness(scene) != SceneWitnessDigest || policy is not null && policy.Digest != _policy.Digest)
-            throw new MapDocumentException("Placement routing belongs to another scene or caller policy.");
+            throw new MapDocumentException(MapDocumentRefusal.AcquisitionSnapshotChanged, "Placement routing belongs to another scene or caller policy.") { Operation = "PlacementRouting.Validate", ExpectedSnapshot = SceneWitnessDigest, ActualSnapshot = Witness(scene) };
     }
     internal MapPlacementLayer? ClusterLayer(string id) => _policy.Layers.FirstOrDefault(l => l.Id == id && l.HlodDistance > 0);
     internal IReadOnlyList<MapPlacementLayer> ClusterLayers => _policy.Layers.Where(l => l.HlodDistance > 0).ToArray();

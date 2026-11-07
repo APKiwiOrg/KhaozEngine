@@ -44,10 +44,19 @@ public sealed class MapSupportResult
         Witness = witness;
     }
 
-    internal MapDocumentException ResolutionRefusal(string owner)
+    internal MapDocumentException ResolutionRefusal(string owner, string? placementId = null, string? markerId = null)
     {
         string message = $"{owner} support status {Status}: {Detail}";
-        return Capacity is { } capacity ? new(message, new MapSceneCapacityException(capacity)) : new(message);
+        return new(markerId is null ? MapDocumentRefusal.SupportUnresolved : MapDocumentRefusal.MarkerSupportUnresolved,
+            message, Capacity is { } capacity ? new MapSceneCapacityException(capacity) : null)
+        {
+            PlacementId = placementId,
+            MarkerId = markerId,
+            SupportStatus = Status,
+            Budget = Capacity?.LimitName,
+            ActualCount = Capacity?.Finding.ActualCount,
+            Limit = Capacity?.Allowance
+        };
     }
 }
 

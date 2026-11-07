@@ -32,7 +32,9 @@ namespace KhaozEngine.Server.Admin.Catalog;
 /// </summary>
 /// <param name="store">The authoring store the bundle is imported into and exported from.</param>
 /// <param name="registry">The registry both sides' types are declared in.</param>
-internal sealed class CatalogBundleActions(IContentAuthoringStore store, ContentTypeRegistry registry)
+/// <param name="publishPolicy">The host-owned operator policy, or null.</param>
+internal sealed class CatalogBundleActions(
+    IContentAuthoringStore store, ContentTypeRegistry registry, IContentPublishPolicy? publishPolicy)
 {
     /// <summary>The property an import reads the bundle document out of.</summary>
     public const string BundleProperty = "bundle";
@@ -87,7 +89,8 @@ internal sealed class CatalogBundleActions(IContentAuthoringStore store, Content
         }
 
         IContentTextAuthoringStore? text = store as IContentTextAuthoringStore;
-        if (text is null && (bundle.TextState is not null || bundle.FormatVersion != ContentBundle.CurrentFormatVersion))
+        if (publishPolicy is null && text is null
+            && (bundle.TextState is not null || bundle.FormatVersion != ContentBundle.CurrentFormatVersion))
         {
             return CatalogRefusal.TextUnsupported(FormattableString.Invariant(
                 $"{CatalogAdminActions.ImportAction} of a format {bundle.FormatVersion} bundle"));
@@ -95,15 +98,10 @@ internal sealed class CatalogBundleActions(IContentAuthoringStore store, Content
 
         try
         {
-            // The companion import lands rows and text together, a format 1 bundle as empty text. A store
-            // without it takes only the format 1 bundle refused above otherwise.
-            ContentPublishResult result = text is not null
-                ? await text
-                    .ImportTextBundleAsync(bundle, CatalogAdminActions.Actor, operatorId, note, cancellationToken)
-                    .ConfigureAwait(false)
-                : await store
-                    .ImportBundleAsync(bundle, CatalogAdminActions.Actor, operatorId, note, cancellationToken)
-                    .ConfigureAwait(false);
+            // Operator imports bind the host policy to the same frozen seed publication. With no policy,
+            // the companion still imports rows and text together and the row-only route keeps its limits.
+            ContentPublishResult result = await CatalogOperatorImport.ImportAsync(
+                store, bundle, operatorId, note, publishPolicy, cancellationToken).ConfigureAwait(false);
 
             return AdminActionResult.Ok(new CatalogImportPayload(
                 result.VersionNumber,

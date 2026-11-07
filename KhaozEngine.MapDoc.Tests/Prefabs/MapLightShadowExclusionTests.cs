@@ -63,7 +63,9 @@ public sealed class MapLightShadowExclusionTests
     public void FixtureBox_RequiresAnOwner()
     {
         var error = Assert.Throws<MapDocumentException>(() => Read("""{"kind":"FixtureBox","min":{"x":0,"y":0,"z":0},"max":{"x":1,"y":1,"z":1},"margin":0}""", false));
-        Assert.Contains("owner", error.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.Equal(MapDocumentRefusal.ReferenceMissing, error.Reason);
+        Assert.Equal("ShadowExclusion", error.FieldPath);
+        Assert.Equal((int)MapLightShadowExclusionKind.FixtureBox, error.ActualInteger);
     }
 
     [Fact]

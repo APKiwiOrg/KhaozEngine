@@ -1,5 +1,6 @@
 using System;
 using System.IO;
+using System.Linq;
 using System.Text.Json;
 using KhaozEngine.MapDoc;
 using KhaozEngine.MapDoc.Storage;
@@ -13,7 +14,7 @@ internal static class NativeSnapshotValidation
     {
         ArgumentNullException.ThrowIfNull(document);
         if (document.Tiles is { IsPartial: true })
-            throw new MapDocumentException("Native snapshots require a complete document, not a windowed document.");
+            throw new MapDocumentException(MapDocumentRefusal.CompleteDocumentRequired, "Native snapshots require a complete document, not a windowed document.") { DocumentId = document.Id, Operation = nameof(NativeDocumentSnapshot.Clone) };
         var root = new MapDocument
         {
             Schema = document.Schema,
@@ -44,9 +45,9 @@ internal static class NativeSnapshotValidation
         // A root view has no resident payloads. Their relationships are checked when publishing the candidate.
         foreach (var surface in document.Surfaces.Refs)
             root.Surfaces.Refs.Add(surface with { IndoorSpan = null });
-        var errors = MapDocumentValidator.Validate(root, registry);
+        var errors = MapDocumentValidator.ValidateFindings(root, registry);
         if (errors.Count != 0)
-            throw new MapDocumentException("refusing to snapshot an invalid map document:\n  " + string.Join("\n  ", errors));
+            throw MapDocumentRefusalFactory.FromFinding(errors[0], "refusing to snapshot an invalid map document:\n  " + string.Join("\n  ", errors.Select(f => f.Message)), findings: errors);
         MapSurfaceSaveGuard.Whole(root.Surfaces);
         // Retain the root DTO codecs' finite-value and resource checks without a whole-write preparation or reload.
         JsonSerializer.Serialize(Stream.Null, root, MapDocumentFile.CreateOptions(registry, write: true));

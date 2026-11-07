@@ -48,8 +48,12 @@ namespace KhaozEngine.Tests.Gpu
             ShaderValidationException error = Assert.Throws<ShaderValidationException>(
                 () => MetalGraphicsPipelinePlan.Build(_liveness, description));
 
-            Assert.Contains("A native Metal graphics pipeline", error.Message, StringComparison.Ordinal);
-            Assert.Contains("Sampler", error.Message, StringComparison.Ordinal);
+            Assert.Equal(ShaderValidationRefusal.MetalLayoutKindMismatch, error.Reason);
+            Assert.Equal("A native Metal graphics pipeline", error.Label);
+            Assert.Equal(0, error.Set);
+            Assert.Equal(0, error.Binding);
+            Assert.Equal(GpuResourceKind.Sampler, error.DeclaredKind);
+            Assert.Equal(GpuResourceKind.UniformBuffer, error.ReflectedKind);
 
             // And the matching declaration passes, so the row above is about the SHAPE rather than about the
             // check being unsatisfiable.
@@ -71,7 +75,10 @@ namespace KhaozEngine.Tests.Gpu
             ShaderValidationException error = Assert.Throws<ShaderValidationException>(
                 () => MetalGraphicsPipelinePlan.Build(_liveness, Description(shaders)));
 
-            Assert.Contains("0 resource layouts", error.Message, StringComparison.Ordinal);
+            Assert.Equal(ShaderValidationRefusal.MetalLayoutCountMismatch, error.Reason);
+            Assert.Equal("A native Metal graphics pipeline", error.Label);
+            Assert.Equal(0, error.DeclaredLayoutCount);
+            Assert.Equal(1, error.ReflectedLayoutCount);
         }
 
         /// <summary>A shader set from another device is refused by name, and so is a layout, both through the one
@@ -82,17 +89,20 @@ namespace KhaozEngine.Tests.Gpu
             var otherDevice = new FakeMetalDeviceLiveness();
             MetalShaderIndexTable table = TableFor(GpuResourceKind.UniformBuffer);
 
-            ArgumentException byShaders = Assert.Throws<ArgumentException>(
+            GpuResourceOwnershipArgumentException byShaders = Assert.Throws<GpuResourceOwnershipArgumentException>(
                 () => MetalGraphicsPipelinePlan.Build(
                     _liveness,
                     Description(ShaderSet(table, otherDevice), Layout(GpuResourceKind.UniformBuffer))));
-            Assert.Contains("DIFFERENT native Metal device", byShaders.Message, StringComparison.Ordinal);
+            Assert.Equal("description", byShaders.ParamName);
 
-            ArgumentException byLayout = Assert.Throws<ArgumentException>(
+            GpuResourceOwnershipArgumentException byLayout = Assert.Throws<GpuResourceOwnershipArgumentException>(
                 () => MetalGraphicsPipelinePlan.Build(
                     _liveness,
                     Description(ShaderSet(table), LayoutOn(otherDevice, GpuResourceKind.UniformBuffer))));
-            Assert.Contains("DIFFERENT native Metal device", byLayout.Message, StringComparison.Ordinal);
+            Assert.Equal("layout", byLayout.ParamName);
+
+            Assert.Single(MetalGraphicsPipelinePlan.Build(
+                _liveness, Description(ShaderSet(table), Layout(GpuResourceKind.UniformBuffer))).Layouts);
         }
 
         /// <summary>A disposed layout is refused, which is the flag row 10 kept precisely because a Metal layout
@@ -104,7 +114,7 @@ namespace KhaozEngine.Tests.Gpu
             IGpuResourceLayout[] layouts = Layout(GpuResourceKind.UniformBuffer);
             layouts[0].Dispose();
 
-            Assert.Throws<ObjectDisposedException>(
+            Assert.Throws<GpuResourceOwnershipDisposedException>(
                 () => MetalGraphicsPipelinePlan.Build(_liveness, Description(shaders, layouts)));
         }
 
@@ -122,20 +132,20 @@ namespace KhaozEngine.Tests.Gpu
             MetalShaderSet shaders = ShaderSet(TableFor(GpuResourceKind.UniformBuffer));
             shaders.Dispose();
 
-            ObjectDisposedException refused = Assert.Throws<ObjectDisposedException>(
+            GpuResourceOwnershipDisposedException refused = Assert.Throws<GpuResourceOwnershipDisposedException>(
                 () => MetalGraphicsPipelinePlan.Build(
                     _liveness, Description(shaders, Layout(GpuResourceKind.UniformBuffer))));
-            Assert.Contains("already disposed", refused.Message, StringComparison.Ordinal);
+            Assert.Equal(nameof(MetalShaderSet), refused.ObjectName);
 
             MetalComputeShader kernel = new(
                 _liveness, default, TableFor(GpuResourceKind.UniformBuffer), 64, 1, 1);
             kernel.Dispose();
 
-            ObjectDisposedException refusedKernel = Assert.Throws<ObjectDisposedException>(
+            GpuResourceOwnershipDisposedException refusedKernel = Assert.Throws<GpuResourceOwnershipDisposedException>(
                 () => MetalComputePipeline.Check(
                     _liveness,
                     new GpuComputePipelineDescription(kernel, Layout(GpuResourceKind.UniformBuffer))));
-            Assert.Contains("already disposed", refusedKernel.Message, StringComparison.Ordinal);
+            Assert.Equal(nameof(MetalComputeShader), refusedKernel.ObjectName);
         }
 
         /// <summary>No shader set at all is a named refusal rather than a null reference from inside the
@@ -143,10 +153,16 @@ namespace KhaozEngine.Tests.Gpu
         [Fact]
         public void NoShaderSet_IsRefusedByName()
         {
-            ArgumentException error = Assert.Throws<ArgumentException>(
-                () => MetalGraphicsPipelinePlan.Build(_liveness, default));
+            MetalShaderSet shaders = ShaderSet(TableFor(GpuResourceKind.UniformBuffer));
+            GpuPipelineDescription description = Description(shaders, Layout(GpuResourceKind.UniformBuffer));
+            description.ShaderSet = null!;
+            GpuResourceOwnershipArgumentException error = Assert.Throws<GpuResourceOwnershipArgumentException>(
+                () => MetalGraphicsPipelinePlan.Build(_liveness, description));
+            Assert.Equal(GpuResourceOwnershipRefusal.MissingResource, error.Reason);
+            Assert.Equal("description", error.ParamName);
 
-            Assert.Contains("was given no shader set", error.Message, StringComparison.Ordinal);
+            description.ShaderSet = shaders;
+            Assert.Same(shaders, MetalGraphicsPipelinePlan.Build(_liveness, description).Shaders);
         }
 
         /// <summary>
@@ -171,7 +187,14 @@ namespace KhaozEngine.Tests.Gpu
 
             ShaderValidationException error = Assert.Throws<ShaderValidationException>(
                 () => MetalGraphicsPipelinePlan.Build(_liveness, description));
-            Assert.Contains("[[buffer(30)]]", error.Message, StringComparison.Ordinal);
+            Assert.Equal(ShaderValidationRefusal.MetalVertexBufferCollision, error.Reason);
+            Assert.Equal(30, error.ArgumentIndex);
+            Assert.Equal(0, error.Set);
+            Assert.Equal(30, error.Binding);
+            Assert.Equal(1, error.StreamCount);
+            Assert.Equal(30, error.LowestStreamIndex);
+            Assert.Equal(31, error.BufferTableSize);
+            Assert.Equal("M-B2", error.Policy);
 
             // The same program with NO vertex streams is fine, because nothing occupies the top of the space.
             description.VertexLayouts = new List<GpuVertexLayoutDescription>();
@@ -190,10 +213,15 @@ namespace KhaozEngine.Tests.Gpu
                 null, GpuPixelFormat.R8G8B8A8UNorm, GpuPixelFormat.R16G16B16A16Float);
             description.BlendAttachments = [GpuBlendAttachment.OverrideBlend];
 
-            ArgumentException error = Assert.Throws<ArgumentException>(
+            GpuPipelineOutputsException error = Assert.Throws<GpuPipelineOutputsException>(
                 () => MetalGraphicsPipelinePlan.Build(_liveness, description));
 
-            Assert.Contains("2 colour attachments and 1 blend states", error.Message, StringComparison.Ordinal);
+            Assert.IsAssignableFrom<ArgumentException>(error);
+            Assert.Equal(GpuPipelineOutputsRefusal.BlendCountMismatch, error.Reason);
+            Assert.Equal("description", error.ParamName);
+            Assert.Equal(2, error.ColourOutputCount);
+            Assert.Equal(1, error.DeclaredBlendCount);
+            Assert.NotNull(error.PipelineKind);
         }
 
         /// <summary>
@@ -379,9 +407,14 @@ namespace KhaozEngine.Tests.Gpu
             MetalComputeShader kernel = new(
                 _liveness, default, TableFor(GpuResourceKind.StructuredBufferReadWrite), 64, 1, 1);
 
-            Assert.Throws<ShaderValidationException>(() => MetalComputePipeline.Check(
+            var error = Assert.Throws<ShaderValidationException>(() => MetalComputePipeline.Check(
                 _liveness,
                 new GpuComputePipelineDescription(kernel, Layout(GpuResourceKind.UniformBuffer))));
+            Assert.Equal(ShaderValidationRefusal.MetalLayoutKindMismatch, error.Reason);
+            Assert.Equal(0, error.Set);
+            Assert.Equal(0, error.Binding);
+            Assert.Equal(GpuResourceKind.UniformBuffer, error.DeclaredKind);
+            Assert.Equal(GpuResourceKind.StructuredBufferReadWrite, error.ReflectedKind);
 
             (MetalComputeShader shader, MetalResourceLayout[] layouts) = MetalComputePipeline.Check(
                 _liveness,
@@ -395,10 +428,15 @@ namespace KhaozEngine.Tests.Gpu
         [Fact]
         public void NoComputeShader_IsRefusedByName()
         {
-            ArgumentException error = Assert.Throws<ArgumentException>(
-                () => MetalComputePipeline.Check(_liveness, default));
+            IGpuResourceLayout[] layouts = Layout(GpuResourceKind.UniformBuffer);
+            GpuResourceOwnershipArgumentException error = Assert.Throws<GpuResourceOwnershipArgumentException>(
+                () => MetalComputePipeline.Check(_liveness, new GpuComputePipelineDescription(null!, layouts)));
+            Assert.Equal(GpuResourceOwnershipRefusal.MissingResource, error.Reason);
+            Assert.Equal("description", error.ParamName);
 
-            Assert.Contains("was given no compute shader", error.Message, StringComparison.Ordinal);
+            MetalComputeShader shader = new(_liveness, default, TableFor(GpuResourceKind.UniformBuffer), 64, 1, 1);
+            Assert.Same(shader, MetalComputePipeline.Check(
+                _liveness, new GpuComputePipelineDescription(shader, layouts)).Shader);
         }
 
         // ---- fixtures ------------------------------------------------------------------------------------

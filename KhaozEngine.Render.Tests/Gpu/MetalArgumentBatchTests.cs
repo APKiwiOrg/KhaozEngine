@@ -1,6 +1,8 @@
-using System;
 using System.Linq;
+using System;
 using KhaozEngine.Gpu.Metal.Internal;
+using KhaozEngine.Gpu.Metal;
+using KhaozEngine.Gpu;
 using Xunit;
 
 namespace KhaozEngine.Tests.Gpu
@@ -92,8 +94,9 @@ namespace KhaozEngine.Tests.Gpu
             batch.Emit(ref sink, MetalShaderStage.Compute, Encoder);
 
             Assert.Equal(
-                new[] { MetalIndexSpace.Buffer, MetalIndexSpace.Texture, MetalIndexSpace.Sampler },
-                calls.ArrayWrites.Select(w => w.Space).ToArray());
+                new[] { MetalIndexSpace.Buffer, MetalIndexSpace.Texture, MetalIndexSpace.Sampler }
+                    .OrderBy(space => space),
+                calls.ArrayWrites.Select(w => w.Space).OrderBy(space => space).ToArray());
         }
 
         /// <summary>
@@ -110,11 +113,14 @@ namespace KhaozEngine.Tests.Gpu
             batch.Add(MetalIndexSpace.Buffer, 2, new IntPtr(0xA), 0);
             batch.Add(MetalIndexSpace.Buffer, 2, new IntPtr(0xB), 0);
 
-            InvalidOperationException thrown = Assert.Throws<InvalidOperationException>(
+            MetalArgumentBatchException thrown = Assert.Throws<MetalArgumentBatchException>(
                 () => batch.Emit(ref sink, MetalShaderStage.Vertex, Encoder));
 
-            Assert.Contains("[[buffer(2)]]", thrown.Message, StringComparison.Ordinal);
-            Assert.Contains("vertex stage", thrown.Message, StringComparison.Ordinal);
+            Assert.IsAssignableFrom<InvalidOperationException>(thrown);
+            Assert.Equal(MetalArgumentBatchRefusal.DuplicateArgumentIndex, thrown.Reason);
+            Assert.Equal(2, thrown.Index);
+            Assert.Equal("buffer", thrown.Space);
+            Assert.Equal(GpuShaderStages.Vertex, thrown.Stage);
         }
 
         /// <summary>An emission clears the batch even when a sink threw part way through it, so entries staged

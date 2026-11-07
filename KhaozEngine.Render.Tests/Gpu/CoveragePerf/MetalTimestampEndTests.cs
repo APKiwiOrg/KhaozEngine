@@ -49,20 +49,28 @@ public sealed partial class MetalTimestampEndTests
         using var rig = new MetalTimestampEndFixture();
         using var foreign = new MetalTimestampEndFixture();
         var tail = Assert.IsAssignableFrom<IGpuCommandListTimestampEnd>(rig.List);
-        Assert.Throws<InvalidOperationException>(() => rig.Arm());
+        Assert.Equal(GpuRecordingStateRefusal.CommandOutsideRecording, Assert.Throws<GpuRecordingStateException>(() => rig.Arm()).Reason);
         rig.List.Begin();
-        Assert.Throws<InvalidOperationException>(() => rig.Arm());
+        Assert.Equal(GpuTimestampRefusal.WrongRecording, Assert.Throws<GpuTimestampStateException>(() => rig.Arm()).Reason);
         Assert.Throws<ArgumentNullException>(() => tail.FinishTimestampsOnEnd(null!, 1));
-        Assert.Throws<ArgumentException>(() => tail.FinishTimestampsOnEnd(foreign.Pool, 1));
+        Assert.Equal(GpuResourceOwnershipRefusal.DifferentDevice, Assert.Throws<GpuResourceOwnershipArgumentException>(() => tail.FinishTimestampsOnEnd(foreign.Pool, 1)).Reason);
         rig.List.BeginTimestamps(rig.Pool, 2);
-        Assert.Contains("last index", Assert.Throws<ArgumentOutOfRangeException>(() => rig.Arm(0)).Message);
-        Assert.Contains("earlier timestamp", Assert.Throws<InvalidOperationException>(() => rig.Arm()).Message);
+        var indexError = Assert.Throws<GpuTimestampRangeException>(() => rig.Arm(0));
+        Assert.Equal(GpuTimestampRefusal.FinalIndexRequired, indexError.Reason);
+        Assert.Equal("finalIndex", indexError.ParamName);
+        Assert.Null(indexError.ActualValue);
+        Assert.Equal(1u, indexError.FinalIndex);
+        Assert.Equal(2u, indexError.Count);
+        Assert.Equal(GpuTimestampRefusal.TailPrefixIncomplete, Assert.Throws<GpuTimestampStateException>(() => rig.Arm()).Reason);
         rig.List.WriteTimestamp(rig.Pool, 0);
         rig.Arm();
-        Assert.Contains("already armed", Assert.Throws<InvalidOperationException>(() => rig.Arm()).Message);
+        Assert.Equal(GpuTimestampRefusal.TailAlreadyArmed, Assert.Throws<GpuTimestampStateException>(() => rig.Arm()).Reason);
         ulong epoch = rig.List.Encoders.Epoch;
-        Assert.Contains("armed", Assert.Throws<InvalidOperationException>(() => rig.List.WriteTimestamp(rig.Pool, 1)).Message);
-        Assert.Contains("armed", Assert.Throws<InvalidOperationException>(() => rig.List.EndTimestamps(rig.Pool)).Message);
+        Assert.Equal(GpuTimestampRefusal.ManualFinalizationWhileArmed, Assert.Throws<GpuTimestampStateException>(() => rig.List.WriteTimestamp(rig.Pool, 1)).Reason);
+        var manual = Assert.Throws<GpuTimestampStateException>(() => rig.List.EndTimestamps(rig.Pool));
+        Assert.Equal(GpuTimestampRefusal.ManualFinalizationWhileArmed, manual.Reason);
+        Assert.Equal(GpuBackendKind.MetalNative, manual.Backend);
+        Assert.Equal("EndTimestamps", manual.Command);
         Assert.Equal(epoch, rig.List.Encoders.Epoch);
         rig.List.End();
     }
@@ -73,16 +81,16 @@ public sealed partial class MetalTimestampEndTests
         using var rig = new MetalTimestampEndFixture();
         rig.Start();
         rig.List.WriteTimestamp(rig.Pool, 1);
-        Assert.Throws<InvalidOperationException>(() => rig.Arm());
+        Assert.Equal(GpuTimestampRefusal.TailPrefixIncomplete, Assert.Throws<GpuTimestampStateException>(() => rig.Arm()).Reason);
         rig.List.End();
         rig.List.Begin();
-        Assert.Contains("current recording", Assert.Throws<InvalidOperationException>(() => rig.Arm()).Message);
+        Assert.Equal(GpuTimestampRefusal.WrongRecording, Assert.Throws<GpuTimestampStateException>(() => rig.Arm()).Reason);
         using var pool = rig.NewPool();
         using var other = rig.Harness.NewList(new object(), timestampTimeline: rig.Harness.Timeline);
         other.Begin();
         other.BeginTimestamps(pool, 2);
         other.WriteTimestamp(pool, 0);
-        Assert.Throws<InvalidOperationException>(() => Assert.IsAssignableFrom<IGpuCommandListTimestampEnd>(rig.List).FinishTimestampsOnEnd(pool, 1));
+        Assert.Equal(GpuTimestampRefusal.WrongRecording, Assert.Throws<GpuTimestampStateException>(() => Assert.IsAssignableFrom<IGpuCommandListTimestampEnd>(rig.List).FinishTimestampsOnEnd(pool, 1)).Reason);
         other.End();
         rig.List.End();
     }
@@ -92,7 +100,7 @@ public sealed partial class MetalTimestampEndTests
     {
         using var rig = new MetalTimestampEndFixture(capability: false);
         rig.List.Begin();
-        Assert.Throws<NotSupportedException>(() => rig.Arm());
+        Assert.Equal(GpuTimestampRefusal.TimestampUnsupported, Assert.Throws<GpuTimestampUnsupportedException>(() => rig.Arm()).Reason);
         rig.List.End();
     }
 
@@ -133,15 +141,16 @@ public sealed partial class MetalTimestampEndTests
         Assert.Same(expected, Assert.Throws<InvalidOperationException>(rig.List.End));
         Assert.False(rig.List.IsRecording);
         Assert.False(rig.List.IsSealed);
-        Assert.Contains("without a sealed recording", Assert.Throws<InvalidOperationException>(rig.Submit).Message);
-        Assert.Contains("not recording", Assert.Throws<InvalidOperationException>(rig.List.End).Message);
+        Assert.Equal(GpuRecordingStateRefusal.SubmissionWithoutSeal, Assert.Throws<GpuRecordingStateException>(rig.Submit).Reason);
+        Assert.Equal(GpuRecordingStateRefusal.EndWithoutRecording, Assert.Throws<GpuRecordingStateException>(rig.List.End).Reason);
         Assert.Equal(new[] { abandoned }, rig.Buffers.Released);
         Assert.Equal(0, rig.Uncommitted.Outstanding);
         Assert.Equal(0, rig.Native.OpenBlits);
         Assert.Equal(0, rig.Calls.OutstandingEncoders);
         Assert.Equal(0, rig.Render.OutstandingDescriptors);
         Assert.Equal(0ul, rig.Harness.Timeline.LastAllocated);
-        Assert.Throws<InvalidOperationException>(() => rig.List.Encoders.EnsureBlitEncoder());
+        Assert.Equal(KhaozEngine.Gpu.Metal.MetalEncoderRefusal.RecordingMissing,
+            Assert.Throws<KhaozEngine.Gpu.Metal.MetalEncoderStateException>(() => rig.List.Encoders.EnsureBlitEncoder()).Reason);
         rig.Render.BeforeCreate = null;
         rig.Calls.BeforeBegin = null;
         rig.Calls.AfterEnd = null;
@@ -149,7 +158,7 @@ public sealed partial class MetalTimestampEndTests
         int markerCount = rig.Native.Signals.Count;
         rig.List.Begin();
         Assert.False(rig.List.Passes.HasPendingClears);
-        Assert.Contains("unresolved", Assert.Throws<InvalidOperationException>(() => rig.List.BeginTimestamps(rig.Pool, 2)).Message);
+        Assert.Equal(GpuTimestampRefusal.UnresolvedBatch, Assert.Throws<GpuTimestampStateException>(() => rig.List.BeginTimestamps(rig.Pool, 2)).Reason);
         rig.List.End();
         Assert.Equal(markerCount, rig.Native.Signals.Count);
         Assert.NotEqual(abandoned, rig.List.SealedCommandBuffer);

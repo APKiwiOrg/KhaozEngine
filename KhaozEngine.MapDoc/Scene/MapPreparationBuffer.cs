@@ -4,8 +4,24 @@ using System.Buffers;
 namespace KhaozEngine.MapDoc.Scene;
 
 /// <summary>A growable JSON output whose admission includes simultaneous old and new backing arrays.</summary>
-internal sealed class MapPreparationBuffer(int maximum = int.MaxValue) : IBufferWriter<byte>, IDisposable
+/// <remarks>
+/// A bounded buffer refuses through its caller's own refusal, so the budget identity on the refusal is the caller's
+/// published budget rather than this shared writer's parameter. The unbounded form has no budget: its length cannot
+/// exceed the largest array, so its overflow branch is unreachable.
+/// </remarks>
+internal sealed class MapPreparationBuffer : IBufferWriter<byte>, IDisposable
 {
+    readonly int _maximum;
+    readonly Func<long, MapDocumentException>? _overflow;
+    internal MapPreparationBuffer() => _maximum = int.MaxValue;
+    /// <param name="maximum">Largest admitted written length in bytes.</param>
+    /// <param name="overflow">The caller's budget refusal, given the byte count the rejected write would reach.</param>
+    internal MapPreparationBuffer(int maximum, Func<long, MapDocumentException> overflow)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegative(maximum);
+        _maximum = maximum;
+        _overflow = overflow ?? throw new ArgumentNullException(nameof(overflow));
+    }
     readonly MapPreparationReservation? _workspace = MapSceneAdmission.Current?.Workspace();
     byte[] _buffer = [];
     int _length;
@@ -13,7 +29,7 @@ internal sealed class MapPreparationBuffer(int maximum = int.MaxValue) : IBuffer
     public void Advance(int count)
     {
         if (count < 0 || count > _buffer.Length - _length) throw new ArgumentOutOfRangeException(nameof(count));
-        if (count > maximum - _length) throw new MapDocumentException($"JSON payload exceeds {maximum} bytes");
+        if (count > _maximum - _length) throw _overflow!((long)_length + count);
         _length += count;
     }
     public Memory<byte> GetMemory(int sizeHint = 0) { Grow(sizeHint); return _buffer.AsMemory(_length); }

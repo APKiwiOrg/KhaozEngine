@@ -42,30 +42,30 @@ public sealed class WaterColumnCompositeTests(ITestOutputHelper output)
         // Suppress only the H estimate so the assertion measures the single-scattering integral alone.
         WaterColumnCoefficients c = Coefficients with { Albedo = Vector3.Zero };
         foreach (float mu in new[] { 1f, 1f / 1.267583f })
-        foreach (float mu0 in new[] { 1f, 1f / 1.267583f })
-        foreach (float[] visibility in new[] { Lit, Dark, Alternating })
-        {
-            Vector3 expected = Vector3.Zero;
-            double meanSigma = (c.Extinction.X + c.Extinction.Y + c.Extinction.Z) / 3d;
-            double kbar = meanSigma * (1d + mu / mu0);
-            double cdf = 1d - Math.Exp(-kbar * distance);
-            for (int channel = 0; channel < 3; channel++)
-            {
-                double k = c.Extinction[channel] * (1d + mu / mu0);
-                double sum = 0d;
-                for (int i = 0; i < 4; i++)
+            foreach (float mu0 in new[] { 1f, 1f / 1.267583f })
+                foreach (float[] visibility in new[] { Lit, Dark, Alternating })
                 {
-                    double start = -Math.Log(1d - i / 4d * cdf) / kbar;
-                    double end = i == 3 ? distance : -Math.Log(1d - (i + 1) / 4d * cdf) / kbar;
-                    sum += visibility[i] * (Math.Exp(-k * start) - Math.Exp(-k * end)) / k;
+                    Vector3 expected = Vector3.Zero;
+                    double meanSigma = (c.Extinction.X + c.Extinction.Y + c.Extinction.Z) / 3d;
+                    double kbar = meanSigma * (1d + mu / mu0);
+                    double cdf = 1d - Math.Exp(-kbar * distance);
+                    for (int channel = 0; channel < 3; channel++)
+                    {
+                        double k = c.Extinction[channel] * (1d + mu / mu0);
+                        double sum = 0d;
+                        for (int i = 0; i < 4; i++)
+                        {
+                            double start = -Math.Log(1d - i / 4d * cdf) / kbar;
+                            double end = i == 3 ? distance : -Math.Log(1d - (i + 1) / 4d * cdf) / kbar;
+                            sum += visibility[i] * (Math.Exp(-k * start) - Math.Exp(-k * end)) / k;
+                        }
+                        expected[channel] = (float)(c.Scattering[channel] * sum / 4d);
+                    }
+                    Vector3 unshadowedMarch = WaterColumnComposite.Transmitted(c, Vector3.Zero, Vector3.One,
+                        Vector3.Zero, mu, mu0, distance, visibility, 0.25f);
+                    Vector3 analyticSingleScatter = expected;
+                    Assert.InRange(Vector3.Distance(unshadowedMarch, analyticSingleScatter), 0f, 0.000001f);
                 }
-                expected[channel] = (float)(c.Scattering[channel] * sum / 4d);
-            }
-            Vector3 unshadowedMarch = WaterColumnComposite.Transmitted(c, Vector3.Zero, Vector3.One,
-                Vector3.Zero, mu, mu0, distance, visibility, 0.25f);
-            Vector3 analyticSingleScatter = expected;
-            Assert.InRange(Vector3.Distance(unshadowedMarch, analyticSingleScatter), 0f, 0.000001f);
-        }
     }
 
     [Fact]
@@ -227,12 +227,12 @@ public sealed class WaterColumnCompositeTests(ITestOutputHelper output)
         float sine = MathF.Sin(elevation * MathF.PI / 180f);
         float mu0 = sine <= 0f ? sine : MathF.Sqrt(1f - (1f - sine * sine) / (1.333f * 1.333f));
         foreach (float distance in new[] { 0f, 0.05f, 0.30f, 2f, 16f })
-        foreach (float offset in new[] { -0.05f, 0f, 0.05f })
-        {
-            Vector3 output = WaterColumnComposite.Transmitted(c, Bed, Vector3.One, Vector3.One,
-                1f, mu0, distance, Lit, 0.25f, offset);
-            Assert.True(float.IsFinite(output.X) && float.IsFinite(output.Y) && float.IsFinite(output.Z));
-            if (distance == 0f) Assert.Equal(Bed, output);
-        }
+            foreach (float offset in new[] { -0.05f, 0f, 0.05f })
+            {
+                Vector3 output = WaterColumnComposite.Transmitted(c, Bed, Vector3.One, Vector3.One,
+                    1f, mu0, distance, Lit, 0.25f, offset);
+                Assert.True(float.IsFinite(output.X) && float.IsFinite(output.Y) && float.IsFinite(output.Z));
+                if (distance == 0f) Assert.Equal(Bed, output);
+            }
     }
 }

@@ -35,6 +35,17 @@ public sealed class SurfaceEmbeddingEncodingRegressionTests
         Assert.Equal(exactBytes, Encoding.UTF8.GetByteCount(expected));
         JsonObject node = JsonNode.Parse(input)!.AsObject();
         using JsonDocument json = JsonDocument.Parse(input);
+        var refused = new PayloadArrays(exactBytes - 1);
+        var error = Assert.Throws<MapDocumentException>(() =>
+        {
+            if (useNode) MapSurfaceEmbeddedPayload.Encode(node, exactBytes - 1, refused.Allocate);
+            else MapSurfaceEmbeddedPayload.Encode(json.RootElement, exactBytes - 1, refused.Allocate);
+        });
+        Assert.Equal(MapDocumentRefusal.WorkCapacityExceeded, error.Reason);
+        Assert.Equal("MaxEmbeddingBytes", error.Budget);
+        Assert.Equal(exactBytes - 1, error.Limit);
+        Assert.True(error.ActualByteCount > error.Limit);
+        Assert.Empty(refused.Buffers);
         var accepted = new PayloadArrays(exactBytes);
         byte[] payload = useNode
             ? MapSurfaceEmbeddedPayload.Encode(node, exactBytes, accepted.Allocate)
@@ -42,14 +53,5 @@ public sealed class SurfaceEmbeddingEncodingRegressionTests
         Assert.Single(accepted.Buffers);
         Assert.Same(accepted.Buffers[0], payload);
         accepted.AssertPayload(0, expected);
-
-        var refused = new PayloadArrays(exactBytes - 1);
-        var error = Assert.Throws<MapDocumentException>(() =>
-        {
-            if (useNode) MapSurfaceEmbeddedPayload.Encode(node, exactBytes - 1, refused.Allocate);
-            else MapSurfaceEmbeddedPayload.Encode(json.RootElement, exactBytes - 1, refused.Allocate);
-        });
-        Assert.Contains("tiled", error.Message);
-        Assert.Empty(refused.Buffers);
     }
 }

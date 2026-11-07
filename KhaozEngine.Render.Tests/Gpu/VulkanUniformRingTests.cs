@@ -1,5 +1,6 @@
 using System;
 using KhaozEngine.Gpu;
+using KhaozEngine.Gpu.Vulkan;
 using KhaozEngine.Gpu.Vulkan.Internal;
 using KhaozEngine.Render3D.Rendering;
 using Xunit;
@@ -49,9 +50,8 @@ namespace KhaozEngine.Tests.Gpu
         /// uniform descriptor carries the ring's per-frame base, so the other bind would read segment zero while
         /// the uniform read read segment N.
         /// <para>
-        /// This combination was ACCEPTED by <see cref="GpuBackendKind.Vulkan"/>, the Veldrid leg, which is what
-        /// makes it a DIVERGENCE rather than a bug fix, and the message has to name that: a consumer meeting this
-        /// has working code on the other Vulkan backend and no other way to find out why this one refuses it.
+        /// This combination was accepted by the retired Veldrid Vulkan backend and is legal on the seam, which is
+        /// what makes it a documented DIVERGENCE rather than a bug fix, and the message says so.
         /// </para>
         /// </summary>
         [Theory]
@@ -62,11 +62,15 @@ namespace KhaozEngine.Tests.Gpu
         [InlineData(GpuBufferUsage.UniformBuffer | GpuBufferUsage.IndirectBuffer)]
         public void AUniformBufferCombinedWithAnotherBinding_IsRefusedAtCreation(GpuBufferUsage usage)
         {
-            ArgumentException ex = Assert.Throws<ArgumentException>(
+            GpuBufferUsageArgumentException ex = Assert.Throws<GpuBufferUsageArgumentException>(
                 () => VulkanBufferRingPolicy.ForBuffer(usage));
 
-            Assert.Contains("GpuBackendKind.Vulkan", ex.Message, StringComparison.Ordinal);
-            Assert.Contains("divergence", ex.Message, StringComparison.Ordinal);
+            Assert.IsAssignableFrom<ArgumentException>(ex);
+            Assert.Equal(GpuBufferUsageRefusal.UniformBindingCombination, ex.Reason);
+            Assert.Equal("usage", ex.ParamName);
+            VulkanBufferRingPolicy.ForBuffer(GpuBufferUsage.UniformBuffer);
+            Assert.Equal(usage, ex.Usage);
+            Assert.Equal(usage & ~GpuBufferUsage.UniformBuffer, ex.ConflictingUsage);
 
             Assert.True(VulkanBufferRingPolicy.IsRefusedCombination(usage));
             Assert.False(VulkanBufferRingPolicy.IsRingBacked(usage));
@@ -161,8 +165,10 @@ namespace KhaozEngine.Tests.Gpu
         /// also the difference between a legal bind and one that runs past the end of the buffer, which is
         /// <c>VUID-vkCmdBindDescriptorSets-pDescriptorSets-01979</c>.
         /// </summary>
-        [Fact]
-        public void TheBindWindow_MustFitInsideOneSegment()
+        [Theory]
+        [InlineData(768ul, 257ul, 1024ul)]
+        [InlineData(256ul, 256ul, 256ul)]
+        public void TheBindWindow_MustFitInsideOneSegment(ulong dynamicOffset, ulong range, ulong stride)
         {
             // A window that exactly fills the segment is the tight legal case, and the shipped slot-array shapes
             // below all land on it.
@@ -172,10 +178,17 @@ namespace KhaozEngine.Tests.Gpu
             Assert.False(VulkanRingStride.BindWindowFits(0, 768, 257, 1024));
             Assert.False(VulkanRingStride.BindWindowFits(1, 768, 256, 1024));
 
-            ArgumentOutOfRangeException ex = Assert.Throws<ArgumentOutOfRangeException>(
-                () => VulkanRingStride.RequireBindWindowFits(0, 768, 257, 1024));
-            Assert.Contains("VUID-vkCmdBindDescriptorSets-pDescriptorSets-01979", ex.Message,
-                StringComparison.Ordinal);
+            GpuDynamicBindingRangeException ex = Assert.Throws<GpuDynamicBindingRangeException>(
+                () => VulkanRingStride.RequireBindWindowFits(0, dynamicOffset, range, stride));
+            Assert.Equal(GpuDynamicBindingRefusal.WindowOutsideSegment, ex.Reason);
+            Assert.Equal(range, ex.ActualValue);
+            Assert.Equal(0ul, ex.RangeOffset);
+            Assert.Equal(dynamicOffset, ex.DynamicOffset);
+            Assert.Equal(range, ex.RangeBytes);
+            Assert.Equal(stride, ex.SegmentStride);
+            Assert.IsAssignableFrom<ArgumentOutOfRangeException>(ex);
+            VulkanRingStride.RequireBindWindowFits(0, 0, range, stride);
+            Assert.Equal("range", ex.ParamName);
         }
 
         /// <summary>
@@ -344,8 +357,15 @@ namespace KhaozEngine.Tests.Gpu
         {
             using var harness = new VulkanRingHarness(sizeInBytes: 256, framesInFlight: 3);
 
-            Assert.Throws<ArgumentOutOfRangeException>(() => harness.Ring.Write(250, new byte[8]));
-            Assert.Throws<ArgumentOutOfRangeException>(() => harness.Ring.Write(257, new byte[1]));
+            var refusal = Assert.Throws<GpuBufferTransferRangeException>(() => harness.Ring.Write(250, new byte[8]));
+            Assert.Equal(GpuBufferTransferRefusal.WindowOutsideBuffer, refusal.Reason);
+            Assert.Equal("offsetBytes", refusal.ParamName);
+            Assert.Equal(250ul, refusal.ActualValue);
+            Assert.Equal(250ul, refusal.OffsetBytes);
+            Assert.Equal(8L, refusal.SizeBytes);
+            Assert.Equal(256ul, refusal.BufferBytes);
+            Assert.IsAssignableFrom<ArgumentOutOfRangeException>(refusal);
+            Assert.Throws<GpuBufferTransferRangeException>(() => harness.Ring.Write(257, new byte[1]));
 
             // The boundary itself is legal.
             harness.Ring.Write(248, new byte[8]);

@@ -190,18 +190,20 @@ internal static partial class NativeWorldFixtures
         return Build(f);
     }
 
-    /// <summary>The crate moved to <paramref name="x"/>, with storage bounds widened to contain it.</summary>
+    /// <summary>The legacy crate moved to <paramref name="x"/>, with storage bounds widened to contain it.
+    /// Legacy resolution isolates the static-position limit from effective render-corner limits.</summary>
     internal static MapBuiltWorld BuildWithPlacementAt(float x)
     {
-        NativeFixture f = Crate();
+        NativeFixture f = LegacyCrate();
         f.Document.Bounds = new() { MinX = -64, MinZ = -64, MaxX = x + 64f, MaxZ = 64 };
         f.Document.Placements[0].X = x;
-        return Build(f);
+        return MapWorldBuilder.Build(f.Document, f.Assets,
+            Options() with { Resolve = LegacyResolveOptions, LegacySupportHeight = (_, _) => 0f });
     }
 
     /// <summary>The crate plus a second crate one 32 m tile east, saved tiled and loaded through a window over tile
-    /// (0, 0) only.</summary>
-    internal static MapBuiltWorld BuildPartialWindow()
+    /// (0, 0) only, or loaded whole for the matching passing control.</summary>
+    internal static MapBuiltWorld BuildPartialWindow(bool loadWholeWorld = false)
     {
         NativeFixture f = Crate();
         f.Document.TileSize = 32f;
@@ -210,7 +212,8 @@ internal static partial class NativeWorldFixtures
         try
         {
             MapDocumentFile.SaveTiled(f.Document, directory);
-            MapDocument window = MapDocumentFile.LoadTiled(directory, new MapTileRect(new(0, 0), new(0, 0)));
+            MapDocument window = loadWholeWorld ? MapDocumentFile.LoadTiled(directory)
+                : MapDocumentFile.LoadTiled(directory, new MapTileRect(new(0, 0), new(0, 0)));
             return MapWorldBuilder.Build(window, f.Assets, Options());
         }
         finally

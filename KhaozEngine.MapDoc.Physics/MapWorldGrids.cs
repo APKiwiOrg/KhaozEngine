@@ -31,11 +31,11 @@ public sealed record MapWorldGrids(float StorageTileSize, int NavTileStorageTile
     public float ServerCellSize => StorageTileSize * ServerCellStorageTiles;
 
     /// <summary>Refuses grids that do not align with <paramref name="world"/>. Throws
-    /// <see cref="MapDocumentException"/> naming the grid alignment when the storage tile size differs from the
+    /// <see cref="MapDocumentException"/> with the failed FieldPath and Reason when the storage tile size differs from the
     /// document's tile size or is not a positive whole number of metres, a multiplier is not positive, an origin
     /// component is not a whole multiple of the storage tile size, or the origin lies so far from the world that a
     /// navigation tile or server cell index of the world's bounds, widened by one block on each side, leaves the int
-    /// range.</summary>
+    /// range. Index coverage also carries GridKind, Axis, AxisOrigin, FirstIndex and LastIndex.</summary>
     public void Validate(MapBuiltWorld world)
     {
         ArgumentNullException.ThrowIfNull(world);
@@ -46,15 +46,16 @@ public sealed record MapWorldGrids(float StorageTileSize, int NavTileStorageTile
     {
         RequireAligned();
         if (StorageTileSize != tileSize)
-            throw Misaligned(FormattableString.Invariant(
-                $"storage tile size {StorageTileSize} m differs from the document's tile size {tileSize} m"));
+            throw new MapDocumentException(MapDocumentRefusal.PhysicsGridAlignmentInvalid, Misaligned(FormattableString.Invariant(
+                $"storage tile size {StorageTileSize} m differs from the document's tile size {tileSize} m")))
+            { FieldPath = nameof(StorageTileSize), StorageTileSize = StorageTileSize, ActualNumber = StorageTileSize, ExpectedNumber = tileSize };
         RequireIndexable(bounds.MinX, bounds.MaxX, Origin.X, "X");
         RequireIndexable(bounds.MinZ, bounds.MaxZ, Origin.Y, "Z");
     }
 
     /// <summary>The navigation tile holding storage tile <paramref name="tile"/>. Throws
-    /// <see cref="MapDocumentException"/> when the grids are not aligned on their own terms, or naming the tile range
-    /// when the index leaves the int range.</summary>
+    /// <see cref="MapDocumentException"/> when the grids are not aligned on their own terms, or with
+    /// PhysicsGridIndexOutOfRange and the submitted TileIndex when the index leaves the int range.</summary>
     public MapNavTileCoord NavTileOf(MapTileCoord tile)
     {
         RequireAligned();
@@ -62,8 +63,8 @@ public sealed record MapWorldGrids(float StorageTileSize, int NavTileStorageTile
     }
 
     /// <summary>The server cell holding storage tile <paramref name="tile"/>. Throws
-    /// <see cref="MapDocumentException"/> when the grids are not aligned on their own terms, or naming the tile range
-    /// when the index leaves the int range.</summary>
+    /// <see cref="MapDocumentException"/> when the grids are not aligned on their own terms, or with
+    /// PhysicsGridIndexOutOfRange and the submitted TileIndex when the index leaves the int range.</summary>
     public MapServerCellCoord ServerCellOf(MapTileCoord tile)
     {
         RequireAligned();
@@ -73,28 +74,45 @@ public sealed record MapWorldGrids(float StorageTileSize, int NavTileStorageTile
     /// <summary><see cref="NavTileOf"/> without the alignment checks, for callers that have already run
     /// <see cref="Validate(MapBuiltWorld)"/>.</summary>
     internal MapNavTileCoord AlignedNavTileOf(MapTileCoord tile) =>
-        new(Block(tile.X, Origin.X, NavTileStorageTiles), Block(tile.Z, Origin.Y, NavTileStorageTiles));
+        new(Block(tile.X, Origin.X, NavTileStorageTiles, "X", "navigation tiles"), Block(tile.Z, Origin.Y, NavTileStorageTiles, "Z", "navigation tiles"));
 
     /// <summary><see cref="ServerCellOf"/> without the alignment checks, for callers that have already run
     /// <see cref="Validate(MapBuiltWorld)"/>.</summary>
     internal MapServerCellCoord AlignedServerCellOf(MapTileCoord tile) =>
-        new(Block(tile.X, Origin.X, ServerCellStorageTiles), Block(tile.Z, Origin.Y, ServerCellStorageTiles));
+        new(Block(tile.X, Origin.X, ServerCellStorageTiles, "X", "server cells"), Block(tile.Z, Origin.Y, ServerCellStorageTiles, "Z", "server cells"));
 
     // Floor division of the tile offset from the origin's tile, so tiles below the origin floor downward. Validate keeps
     // the world's own tiles in range. A tile farther out, or an origin no long can hold, refuses naming the tile range.
-    int Block(int tile, float origin, int storageTiles)
+    int Block(int tile, float origin, int storageTiles, string axis, string gridKind)
     {
         double originTile = Math.Round(origin / (double)StorageTileSize);
+        long? index = null;
         if (Math.Abs(originTile) <= MaxOriginTiles)
         {
             long offset = tile - (long)originTile;
             long quotient = offset / storageTiles;
             if (offset % storageTiles < 0) quotient--;
             if (quotient is >= int.MinValue and <= int.MaxValue) return (int)quotient;
+            index = quotient;
         }
-        throw new MapDocumentException(string.Format(CultureInfo.InvariantCulture,
+        throw new MapDocumentException(MapDocumentRefusal.PhysicsGridIndexOutOfRange, string.Format(CultureInfo.InvariantCulture,
             "Storage tile {0} counted in blocks of {1} from origin {2} m lies outside the {3:N0} to {4:N0} tile range.",
-            tile, storageTiles, origin, int.MinValue, int.MaxValue));
+            tile, storageTiles, origin, int.MinValue, int.MaxValue))
+        {
+            GridKind = gridKind,
+            Axis = axis,
+            TileIndex = tile,
+            StorageTiles = storageTiles,
+            StorageTileSize = StorageTileSize,
+            AxisOrigin = origin,
+            ActualInteger = index,
+            MinimumInteger = int.MinValue,
+            MaximumInteger = int.MaxValue,
+            FieldPath = index is null ? "OriginTile" : "Index",
+            ActualNumber = index is null ? originTile : index.Value,
+            MinimumNumber = index is null ? -MaxOriginTiles : int.MinValue,
+            MaximumNumber = index is null ? MaxOriginTiles : int.MaxValue
+        };
     }
 
     // An origin tile within 2^62 keeps the tile offset inside long.
@@ -113,25 +131,55 @@ public sealed record MapWorldGrids(float StorageTileSize, int NavTileStorageTile
         double size = (double)StorageTileSize * storageTiles;
         double first = Math.Floor((min - origin) / size) - 1, last = Math.Floor((max - origin) / size) + 1;
         if (!(first >= int.MinValue && last <= int.MaxValue))
-            throw Misaligned(string.Format(CultureInfo.InvariantCulture,
+            throw new MapDocumentException(MapDocumentRefusal.PhysicsGridAlignmentInvalid, Misaligned(string.Format(CultureInfo.InvariantCulture,
                 "origin {0} m on {1} puts the world's bounds [{2}, {3}] at {4} {5:F0} to {6:F0} with one block either " +
                 "side, outside the {7:N0} to {8:N0} tile range", origin, axis, min, max, blocks, first, last,
-                int.MinValue, int.MaxValue));
+                int.MinValue, int.MaxValue)))
+            {
+                FieldPath = "Origin",
+                GridKind = blocks,
+                Axis = axis,
+                AxisOrigin = origin,
+                StorageTileSize = StorageTileSize,
+                StorageTiles = storageTiles,
+                FirstIndex = first,
+                LastIndex = last,
+                MinimumNumber = min,
+                MaximumNumber = max,
+                MinimumInteger = int.MinValue,
+                MaximumInteger = int.MaxValue
+            };
     }
 
     void RequireAligned()
     {
         if (!float.IsFinite(StorageTileSize) || !(StorageTileSize > 0f) || StorageTileSize != MathF.Floor(StorageTileSize))
-            throw Misaligned(FormattableString.Invariant(
-                $"storage tile size {StorageTileSize} m is not a positive whole number of metres"));
+            throw new MapDocumentException(!float.IsFinite(StorageTileSize) ? MapDocumentRefusal.ValueNonfinite : StorageTileSize <= 0
+                    ? MapDocumentRefusal.ValueOutsideRange : MapDocumentRefusal.PhysicsGridAlignmentInvalid,
+                Misaligned(FormattableString.Invariant(
+                $"storage tile size {StorageTileSize} m is not a positive whole number of metres")))
+            { FieldPath = nameof(StorageTileSize), StorageTileSize = StorageTileSize, ActualNumber = StorageTileSize, MinimumNumber = 1 };
         if (NavTileStorageTiles <= 0 || ServerCellStorageTiles <= 0)
-            throw Misaligned(FormattableString.Invariant(
-                $"navigation tile ({NavTileStorageTiles}) and server cell ({ServerCellStorageTiles}) storage tile counts must be positive"));
+            throw new MapDocumentException(MapDocumentRefusal.ValueOutsideRange, Misaligned(FormattableString.Invariant(
+                $"navigation tile ({NavTileStorageTiles}) and server cell ({ServerCellStorageTiles}) storage tile counts must be positive")))
+            {
+                FieldPath = NavTileStorageTiles <= 0 ? nameof(NavTileStorageTiles) : nameof(ServerCellStorageTiles),
+                StorageTileSize = StorageTileSize,
+                ActualInteger = NavTileStorageTiles <= 0 ? NavTileStorageTiles : ServerCellStorageTiles,
+                MinimumInteger = 1
+            };
         if (!float.IsFinite(Origin.X) || !float.IsFinite(Origin.Y) ||
             Origin.X % StorageTileSize != 0f || Origin.Y % StorageTileSize != 0f)
-            throw Misaligned(string.Format(CultureInfo.InvariantCulture,
-                "origin ({0}, {1}) is not a whole multiple of the {2} m storage tile", Origin.X, Origin.Y, StorageTileSize));
+        {
+            // The nonfinite checks precede both alignment checks in the original predicate.
+            bool x = !float.IsFinite(Origin.X) || float.IsFinite(Origin.Y) && Origin.X % StorageTileSize != 0f;
+            float value = x ? Origin.X : Origin.Y;
+            throw new MapDocumentException(float.IsFinite(value) ? MapDocumentRefusal.PhysicsGridAlignmentInvalid : MapDocumentRefusal.ValueNonfinite,
+                Misaligned(string.Format(CultureInfo.InvariantCulture,
+                "origin ({0}, {1}) is not a whole multiple of the {2} m storage tile", Origin.X, Origin.Y, StorageTileSize)))
+            { FieldPath = x ? "Origin.X" : "Origin.Y", StorageTileSize = StorageTileSize, Axis = x ? "X" : "Z", AxisOrigin = value, ActualNumber = value };
+        }
     }
 
-    static MapDocumentException Misaligned(string detail) => new("grid alignment: " + detail + ".");
+    static string Misaligned(string detail) => "grid alignment: " + detail + ".";
 }

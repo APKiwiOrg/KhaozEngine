@@ -31,7 +31,7 @@ internal sealed class MapMembershipColdInput(MapScopedSurfaces view, MapExactXz 
         var space = Space(prism.Space);
         _ = Owner(Space(prism.Parent));
         if (space.Kind != MapSpaceKind.Room || space.Parent != prism.Parent)
-            throw new MapDocumentException("missing geometry: prism parent mismatch");
+            throw new MapDocumentException(MapDocumentRefusal.SpacePrismParentMismatch, "missing geometry: prism parent mismatch") { RecordId = prism.Id, SpaceId = prism.Space.Id, RelatedRecordId = prism.Parent.Id };
     }
     public bool PrismContains(int index) => MapPrismGeometry.Compile(view, prisms[index]).Contains(point);
     public (MapExactValue Lower, MapExactValue Upper) PrismHeights(int index) => MapPrismGeometry.Heights(view, prisms[index]);

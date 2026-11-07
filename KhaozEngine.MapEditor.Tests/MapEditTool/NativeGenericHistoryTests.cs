@@ -54,10 +54,19 @@ public sealed class NativeGenericHistoryTests
     {
         var session = PrefabEditorFixtures.Session(PrefabEditorFixtures.Create("native-generic"));
         var before = PrefabEditorFixtures.State(session);
-        Assert.Throws<InvalidOperationException>(() => new MutationService(session).ScatterOverrideEdit(0, densityMultiplier: -1));
+        var error = Assert.Throws<MapMutationException>(() => new MutationService(session).ScatterOverrideEdit(0, densityMultiplier: -1));
+        Assert.Equal(MapDocumentRefusal.ValueOutsideRange, error.Reason);
+        var finding = Assert.Single(error.Findings!);
+        Assert.Equal(-1, finding.ActualNumber);
+        Assert.Equal(0, finding.MinimumNumber);
         Assert.Equal(before, PrefabEditorFixtures.State(session));
+        new MutationService(session).ScatterOverrideEdit(0, densityMultiplier: 0);
+        Assert.Equal(0, session.WithDocument((doc, _) => doc.ScatterOverrides[0].DensityMultiplier));
+        Assert.NotNull(session.UndoNative());
+        Assert.Equal(before.DocumentBytes, PrefabEditorFixtures.State(session).DocumentBytes);
+        var noOp = PrefabEditorFixtures.State(session);
         new MutationService(session).ScatterOverrideEdit(0, densityMultiplier: 1);
-        Assert.Equal(before, PrefabEditorFixtures.State(session));
+        Assert.Equal(noOp, PrefabEditorFixtures.State(session));
     }
     [Theory]
     [InlineData("terrain")]

@@ -11,24 +11,16 @@ namespace KhaozEngine.Tests.Gui
     /// </summary>
     public class GuiDrawPrimitivesTests
     {
-        [Fact]
-        public void Caret_points_down_when_not_pointing_up()
+        [Theory]
+        [InlineData(false, 1f)]
+        [InlineData(true, -1f)]
+        public void Caret_orientation_preserves_level_arms(bool pointingUp, float direction)
         {
-            var (left, mid, right) = GuiDraw.CaretGeometry(new Vector2(100, 50), halfWidth: 4, halfHeight: 2, pointingUp: false);
-            // A downward "v": the middle vertex sits BELOW (larger Y) the two arms.
+            var (left, mid, right) = GuiDraw.CaretGeometry(new Vector2(100, 50), halfWidth: 4, halfHeight: 2, pointingUp);
             Assert.Equal(96f, left.X, 3);
             Assert.Equal(104f, right.X, 3);
-            Assert.True(mid.Y > left.Y);
+            Assert.True((mid.Y - left.Y) * direction > 0f);
             Assert.Equal(left.Y, right.Y, 3);   // arms level with each other
-        }
-
-        [Fact]
-        public void Caret_points_up_when_pointing_up()
-        {
-            var (left, mid, right) = GuiDraw.CaretGeometry(new Vector2(100, 50), halfWidth: 4, halfHeight: 2, pointingUp: true);
-            // An upward "^": the middle vertex sits ABOVE (smaller Y) the two arms.
-            Assert.True(mid.Y < left.Y);
-            Assert.Equal(left.Y, right.Y, 3);
         }
 
         [Fact]
@@ -49,28 +41,29 @@ namespace KhaozEngine.Tests.Gui
             Assert.Equal(c, GuiDraw.WithOpacity(c, 1f));
         }
 
-        [Fact]
-        public void Single_coverage_border_shortens_vertical_strips_around_the_corners()
+        [Theory]
+        [InlineData(0f, 0f, 2f, new float[]
         {
-            Rect[] strips = GuiDraw.BorderSingleCoverageGeometry(new Rect(0, 0, 20, 20), 2f);
-
-            Assert.Equal(4, strips.Length);
-            Assert.Equal(new Rect(0, 0, 20, 2), strips[0]);
-            Assert.Equal(new Rect(0, 18, 20, 2), strips[1]);
-            Assert.Equal(new Rect(0, 2, 2, 16), strips[2]);
-            Assert.Equal(new Rect(18, 2, 2, 16), strips[3]);
-            Assert.Equal(144f, TotalArea(strips), 3);
-        }
-
-        [Fact]
-        public void Single_coverage_border_consumes_the_rect_once_when_thickness_reaches_half_height()
+            0, 0, 20, 2,
+            0, 18, 20, 2,
+            0, 2, 2, 16,
+            18, 2, 2, 16,
+        }, 144f)]
+        [InlineData(4f, 8f, 12f, new float[]
         {
-            Rect[] strips = GuiDraw.BorderSingleCoverageGeometry(new Rect(4, 8, 20, 20), 12f);
+            4, 8, 20, 12,
+            4, 20, 20, 8,
+        }, 400f)]
+        public void Single_coverage_border_clips_non_overlapping_strips(
+            float x, float y, float thickness, float[] expectedCoordinates, float expectedArea)
+        {
+            Rect[] strips = GuiDraw.BorderSingleCoverageGeometry(new Rect(x, y, 20, 20), thickness);
 
-            Assert.Equal(2, strips.Length);
-            Assert.Equal(new Rect(4, 8, 20, 12), strips[0]);
-            Assert.Equal(new Rect(4, 20, 20, 8), strips[1]);
-            Assert.Equal(400f, TotalArea(strips), 3);
+            Assert.Equal(expectedCoordinates.Length / 4, strips.Length);
+            for (int i = 0; i < strips.Length; i++)
+                Assert.Equal(new Rect(expectedCoordinates[i * 4], expectedCoordinates[i * 4 + 1],
+                    expectedCoordinates[i * 4 + 2], expectedCoordinates[i * 4 + 3]), strips[i]);
+            Assert.Equal(expectedArea, TotalArea(strips), 3);
         }
 
         [Theory]
@@ -98,6 +91,7 @@ namespace KhaozEngine.Tests.Gui
             float snappedThickness = ViewportMath.SnapLengthToDevice(1.25f, scale, 1f);
             Rect[] strips = GuiDraw.BorderSingleCoverageGeometry(snapped, snappedThickness);
 
+            Assert.NotEmpty(strips);
             foreach (Rect strip in strips)
             {
                 Assert.Equal(System.MathF.Round(strip.X * scale), strip.X * scale, 4);

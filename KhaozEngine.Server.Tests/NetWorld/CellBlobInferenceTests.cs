@@ -174,6 +174,7 @@ public class CellBlobInferenceTests
         Assert.True(view.TryGetEntity(1, out Entity e));
 
         MovementState expected = seeded;
+        expected.SpeedScaleQ *= 64;
         expected.FacingYawQ = 0;   // generation 8 predates the field, so it restores at its default
         AssertMovement(expected, world.Get<MovementState>(e));
         Assert.Equal(V2Owner, world.Get<MovementOwnerState>(e));
@@ -224,6 +225,7 @@ public class CellBlobInferenceTests
         Assert.True(host.Shard.TryGetCell(C00, out CellSim cell));
         Assert.True(cell.TryGetOwned(1, out Entity restored));
         MovementState expected = seeded;
+        expected.SpeedScaleQ *= 64;
         expected.FacingYawQ = 0;   // generation 8 predates the field
         AssertMovement(expected, cell.World.Get<MovementState>(restored));
         Assert.Equal(V2Owner, cell.World.Get<MovementOwnerState>(restored));
@@ -253,6 +255,7 @@ public class CellBlobInferenceTests
         byte[] normalized = WireGenerationBlobMigration.NormalizeV3ToV4(body,
             new CellBlobMigrationOptions { Registry = registry });
 
+        seeded.SpeedScaleQ *= 64;
         byte[] expected = new CellBlobFixtures.BodyBuilder()
             .Entity(11,
                 (MoveProtocol.MovementTypeId,

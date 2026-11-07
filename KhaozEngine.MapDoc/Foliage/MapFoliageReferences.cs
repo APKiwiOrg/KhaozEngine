@@ -34,28 +34,42 @@ internal static class MapFoliageReferences
         return new(set.PayloadVersion, set.Layers.Select(Layer).ToArray());
     }
 
-    internal static IReadOnlyList<string> ValidateOwners(MapDocument document, MapEffectiveResources resources)
+    internal static IReadOnlyList<string> ValidateOwners(MapDocument document, MapEffectiveResources resources) =>
+        Array.AsReadOnly(ValidateOwnerFindings(document, resources).Select(f => f.Message).ToArray());
+
+    internal static IReadOnlyList<MapDocumentFinding> ValidateOwnerFindings(MapDocument document, MapEffectiveResources resources)
     {
-        if (document.Foliage is not { } set) return Array.Empty<string>();
-        var errors = new List<string>();
+        if (document.Foliage is not { } set) return Array.Empty<MapDocumentFinding>();
+        var findings = new List<MapDocumentFinding>();
         var surfaces = resources.SurfaceSource.Surfaces.ToDictionary(s => s.Id, StringComparer.Ordinal);
         var topology = resources.Surfaces.AllRecords().ToArray();
         var records = topology.ToDictionary(r => r.Id, StringComparer.Ordinal);
         var placements = resources.Placements.Select(p => p.PlacementId).ToHashSet(StringComparer.Ordinal);
         var markers = resources.EffectiveMarkers.Select(m => m.Id).ToHashSet(StringComparer.Ordinal);
         var spaces = topology.OfType<MapSpaceDoc>().Select(s => s.Id).ToHashSet(StringComparer.Ordinal);
-        void Surface(string id)
+        void Surface(string id, string layerId, string path)
         {
             if (!surfaces.TryGetValue(id, out var surface) || surface.Role != MapSurfaceRole.SupportFloor)
-                errors.Add($"foliage: missing effective support surface '{id}'.");
+                findings.Add(new(surface is null ? MapDocumentRefusal.ReferenceMissing : MapDocumentRefusal.ReferenceKindMismatch,
+                    $"foliage: missing effective support surface '{id}'.")
+                {
+                    LayerId = layerId,
+                    FieldPath = path,
+                    SurfaceId = id,
+                    SubjectKind = "support surface",
+                    EnumType = surface is null ? null : typeof(MapSurfaceRole),
+                    ActualInteger = surface is null ? null : (long)surface.Role,
+                });
         }
-        void Binding(MapSupportBinding b)
+        void Binding(MapSupportBinding b, string layerId, string path)
         {
-            if (b.Kind == MapSupportBindingKind.Surface && b.SurfaceId is { } s) Surface(s);
+            if (b.Kind == MapSupportBindingKind.Surface && b.SurfaceId is { } s) Surface(s, layerId, path);
             if (b.Kind == MapSupportBindingKind.Space && (b.SpaceId is null || !spaces.Contains(b.SpaceId)))
-                errors.Add($"foliage: missing effective support space '{b.SpaceId}'.");
+                findings.Add(new(b.SpaceId is null ? MapDocumentRefusal.SchemaValueRequired : MapDocumentRefusal.ReferenceMissing,
+                    $"foliage: missing effective support space '{b.SpaceId}'.")
+                { LayerId = layerId, FieldPath = path, SpaceId = b.SpaceId, SubjectKind = "support space" });
         }
-        void Owner(MapPrefabReference o)
+        void Owner(MapPrefabReference o, string layerId, string path)
         {
             bool exists = o.Scope == MapPrefabReferenceScope.World && o.Kind switch
             {
@@ -65,15 +79,38 @@ internal static class MapFoliageReferences
                 MapPrefabChildKind.Marker => markers.Contains(o.Id),
                 _ => false,
             };
-            if (!exists) errors.Add($"foliage: missing effective World {o.Kind} owner '{o.Id}'.");
+            if (!exists) findings.Add(new(o.Scope != MapPrefabReferenceScope.World ? MapDocumentRefusal.AuthoredOwnershipMismatch :
+                o.Kind is not (MapPrefabChildKind.Placement or MapPrefabChildKind.Surface or MapPrefabChildKind.Record or MapPrefabChildKind.Marker)
+                    ? MapDocumentRefusal.AuthoredReferenceKindInvalid : MapDocumentRefusal.ReferenceMissing,
+                $"foliage: missing effective World {o.Kind} owner '{o.Id}'.")
+            {
+                LayerId = layerId,
+                FieldPath = path,
+                EntityId = o.Id,
+                ChildKind = o.Kind,
+                ReferenceScope = o.Scope,
+                ExpectedReferenceScope = MapPrefabReferenceScope.World,
+                SubjectKind = "foliage owner",
+            });
         }
         foreach (MapFoliageLayer layer in set.Layers)
         {
-            Binding(layer.Support);
-            foreach (var row in layer.CompatibilityOrdinals) Surface(row.SurfaceId);
-            foreach (var mask in layer.ExceptionMasks) { Owner(mask.Owner); Binding(mask.Support); }
-            foreach (var owner in layer.OwnerSupports) { Owner(owner.Owner); Binding(owner.Support); }
+            Binding(layer.Support, layer.Id, "Support");
+            for (int i = 0; i < layer.CompatibilityOrdinals.Count; i++)
+                Surface(layer.CompatibilityOrdinals[i].SurfaceId, layer.Id, $"CompatibilityOrdinals[{i}].SurfaceId");
+            for (int i = 0; i < layer.ExceptionMasks.Count; i++)
+            {
+                var mask = layer.ExceptionMasks[i];
+                Owner(mask.Owner, layer.Id, $"ExceptionMasks[{i}].Owner");
+                Binding(mask.Support, layer.Id, $"ExceptionMasks[{i}].Support");
+            }
+            for (int i = 0; i < layer.OwnerSupports.Count; i++)
+            {
+                var owner = layer.OwnerSupports[i];
+                Owner(owner.Owner, layer.Id, $"OwnerSupports[{i}].Owner");
+                Binding(owner.Support, layer.Id, $"OwnerSupports[{i}].Support");
+            }
         }
-        return errors;
+        return Array.AsReadOnly(findings.ToArray());
     }
 }

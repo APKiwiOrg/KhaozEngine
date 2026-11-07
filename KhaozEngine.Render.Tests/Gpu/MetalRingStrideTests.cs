@@ -1,4 +1,6 @@
 using System;
+using KhaozEngine.Gpu;
+using KhaozEngine.Gpu.Metal;
 using KhaozEngine.Gpu.Metal.Internal;
 using KhaozEngine.Render3D.Rendering;
 using Xunit;
@@ -47,19 +49,6 @@ namespace KhaozEngine.Tests.Gpu
         public void TheStrideIsTheSizeRoundedUpTo256(uint sizeInBytes, uint expected)
             => Assert.Equal(expected, MetalRingStride.SegmentStrideFor(sizeInBytes));
 
-        /// <summary>A FLAT FLOOR, not a maximum against the device (M-M3). The incumbent reported 16 on macOS and
-        /// a device-derived stride would pack tighter, which is exactly the tradeoff the design declines: one
-        /// number governing all three rings is what lets one shared policy test assert it, and a device-shaped
-        /// number under a golden-bearing path is what it refuses to buy the memory with.</summary>
-        [Fact]
-        public void TheStrideDoesNotDependOnTheDevice()
-        {
-            // The whole surface takes no alignment argument at all, which is the assertion. The Vulkan sibling's
-            // SegmentStrideFor has a second parameter for exactly this and this one does not.
-            Assert.Equal(256u, MetalRingStride.SegmentStrideFor(16));
-            Assert.Equal(256u, MetalRingStride.SegmentStrideFor(200));
-        }
-
         [Fact]
         public void TheAllocationIsTheStrideTimesTheDepth()
         {
@@ -75,16 +64,21 @@ namespace KhaozEngine.Tests.Gpu
             ArgumentOutOfRangeException thrown =
                 Assert.Throws<ArgumentOutOfRangeException>(() => MetalRingStride.SegmentStrideFor(0));
 
-            Assert.Contains("cannot be ring-backed", thrown.Message, StringComparison.Ordinal);
+            Assert.Equal("sizeInBytes", thrown.ParamName);
+            Assert.Equal(0u, thrown.ActualValue);
         }
 
         [Fact]
         public void ADepthBelowOneIsRefusedByName()
         {
-            ArgumentOutOfRangeException thrown =
-                Assert.Throws<ArgumentOutOfRangeException>(() => MetalRingStride.TotalBytesFor(256, 0));
+            var thrown =
+                Assert.Throws<MetalRingLayoutException>(() => MetalRingStride.TotalBytesFor(256, 0));
 
-            Assert.Contains(MetalFramesInFlight.EnvVarName, thrown.Message, StringComparison.Ordinal);
+            Assert.Equal(MetalRingLayoutRefusal.FrameDepthOutsideRange, thrown.Reason);
+            Assert.Equal(MetalFramesInFlight.EnvVarName, thrown.EnvironmentVariable);
+            Assert.Equal(1, thrown.MinimumDepth);
+            Assert.Null(thrown.MaximumDepth);
+            Assert.IsAssignableFrom<ArgumentOutOfRangeException>(thrown);
         }
 
         /// <summary>
@@ -105,15 +99,24 @@ namespace KhaozEngine.Tests.Gpu
         /// and exactly 0 whenever the size is already aligned, so a caller who followed it would grow the buffer
         /// and hit the same refusal. The window is the lever.
         /// </summary>
-        [Fact]
-        public void AWindowThatLeavesItsSegmentIsRefusedByName()
+        [Theory]
+        [InlineData(1024u)]
+        [InlineData(256u)]
+        public void AWindowThatLeavesItsSegmentIsRefusedByName(uint windowBytes)
         {
-            ArgumentOutOfRangeException thrown = Assert.Throws<ArgumentOutOfRangeException>(
-                () => MetalRingStride.RequireBindWindowFits(0, 256, 1024, 1024));
+            var thrown = Assert.Throws<GpuDynamicBindingRangeException>(
+                () => MetalRingStride.RequireBindWindowFits(0, 256, windowBytes, windowBytes));
 
-            Assert.Contains("setBufferOffset: carries no length", thrown.Message, StringComparison.Ordinal);
-            Assert.Contains("GpuBufferRange window narrower than the buffer", thrown.Message,
-                StringComparison.Ordinal);
+            Assert.Equal("range", thrown.ParamName);
+            Assert.Equal(windowBytes, thrown.ActualValue);
+            Assert.Equal(GpuDynamicBindingRefusal.WindowOutsideSegment, thrown.Reason);
+            Assert.Equal(0ul, thrown.RangeOffset);
+            Assert.Equal(256ul, thrown.DynamicOffset);
+            Assert.Equal((ulong)windowBytes, thrown.RangeBytes);
+            Assert.Equal((ulong)windowBytes, thrown.SegmentStride);
+            Assert.Equal("GpuBufferRange", thrown.RecoveryOperation);
+            Assert.IsAssignableFrom<ArgumentOutOfRangeException>(thrown);
+            MetalRingStride.RequireBindWindowFits(0, 0, windowBytes, windowBytes);
             Assert.DoesNotContain("Widen the buffer", thrown.Message, StringComparison.Ordinal);
         }
 

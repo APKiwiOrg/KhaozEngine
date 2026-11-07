@@ -47,7 +47,7 @@ public class TopDownOverlayPainterTests
         Assert.Equal(new[] { "grid", "objects" }, TopDownOverlayPainter.Parse(" Grid , objects , grid "));
 
         ArgumentException ex = Assert.Throws<ArgumentException>(() => TopDownOverlayPainter.Parse("grid,heat"));
-        Assert.Contains("collision", ex.Message, StringComparison.Ordinal);
+        Assert.Equal("overlays", ex.ParamName);
     }
 
     [Fact]

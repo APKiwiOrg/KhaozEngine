@@ -53,14 +53,14 @@ internal static partial class ShippedSceneComparison
                 ShippedSceneMarkers.Head(inputs, document, closure, report);
                 using var documentSource = MapDocumentSource.FromDocument(document);
                 var capture = CaptureSource(documentSource, closure, manifest);
-                Require(capture.Source is not null, "scene source capture refused " + string.Join("\n", capture.Findings));
+                Require(capture.Source is not null, PrivateOracleDataRefusal.SceneSourceCaptureRefused, "scene source capture refused " + string.Join("\n", capture.Findings));
                 var scratch = new GltfDecodeBudget(manifest.Limits?.Decode ?? new());
                 var proof = manifest.Limits?.MaxProofBytes is { } proofBytes
                     ? MapRenderExtentValidator.Validate(closure, capture.Source!.RequiredAssetIds, scratch, proofBytes)
                     : MapRenderExtentValidator.Validate(closure, capture.Source!.RequiredAssetIds, scratch);
-                Require(proof.Proofs is not null, "scene extent proof refused " + proof.Detail);
+                Require(proof.Proofs is not null, PrivateOracleDataRefusal.SceneExtentProofRefused, "scene extent proof refused " + proof.Detail);
                 var bound = capture.Source.WithRenderExtents(proof.Proofs!);
-                Require(bound.Source is not null, "scene extent binding refused " + string.Join("\n", bound.Findings));
+                Require(bound.Source is not null, PrivateOracleDataRefusal.SceneExtentBindingRefused, "scene extent binding refused " + string.Join("\n", bound.Findings));
                 var source = bound.Source!;
                 var policy = inputs.NativePolicy.Native(closure, manifest);
                 var windows = manifest.Windows.ToDictionary(w => w.Id, w => ShippedSceneInputs.Scope(w, manifest.Limits?.Queries), StringComparer.Ordinal);
@@ -365,7 +365,8 @@ internal static partial class ShippedSceneComparison
             {
                 if (ready.Transition.Status != MapSceneStatus.CompleteForScope && scheduler.LastFailure is { } error)
                     System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(error).Throw();
-                Require(ready.Transition.Status == MapSceneStatus.CompleteForScope, "scene replacement refused " + ready.Transition.Status + " " + string.Join("\n", ready.Transition.Findings)); return;
+                if (!(ready.Transition.Status == MapSceneStatus.CompleteForScope)) throw new PrivateOracleDataException(PrivateOracleDataRefusal.SceneReplacementRefused, "scene replacement refused " + ready.Transition.Status + " " + string.Join("\n", ready.Transition.Findings))
+                { SceneStatus = ready.Transition.Status, Capacity = ready.Transition.Capacity }; return;
             }
         }
         var findings = transition.Findings.Concat(transition.Capacity is { } capacity ? new[] { capacity.Message } : Array.Empty<string>());

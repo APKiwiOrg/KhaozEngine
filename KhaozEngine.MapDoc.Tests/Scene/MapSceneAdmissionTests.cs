@@ -48,7 +48,8 @@ public sealed class MapSceneAdmissionTests
             var error = Assert.Throws<MapSceneSourceException>(() => MapScopedSurfaces.Acquire(external,
                 MapSceneScopeTests.Window().Surfaces, Array.Empty<string>()));
             Assert.Equal(MapSceneStatus.Invalid, error.Status);
-            Assert.Contains("admission", error.Message, StringComparison.OrdinalIgnoreCase);
+            Assert.Equal(MapDocumentRefusal.AcquisitionUnsupported, error.Reason);
+            Assert.Equal(typeof(ExternalSource), error.SourceType);
         }
         Assert.Equal(0, external.Reads);
     }

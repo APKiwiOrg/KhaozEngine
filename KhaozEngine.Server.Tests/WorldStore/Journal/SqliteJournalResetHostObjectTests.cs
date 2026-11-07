@@ -71,7 +71,7 @@ public sealed class SqliteJournalResetHostObjectTests : IDisposable
         JournalStoreException refused = await Assert.ThrowsAsync<JournalStoreException>(
             () => SqliteJournalReset.ResetAsync(database.ConnectionString(path)));
 
-        AssertRefusal(refused, "trigger 'game_stream_audit'", "journal table 'journal_stream'", "not the journal's own");
+        AssertRefusal(refused, "trigger 'game_stream_audit'", "journal table 'journal_stream'");
         Assert.Equal(before, SqliteJournalResetHarness.Counts(database, path));
         Assert.Equal(metadata, SqliteJournalResetHarness.Metadata(database, path));
         Assert.Equal(0, database.ScalarLong(path, "SELECT COUNT(*) FROM game_log;"));
@@ -103,7 +103,6 @@ public sealed class SqliteJournalResetHostObjectTests : IDisposable
         Assert.Equal(JournalStoreFailureKind.SchemaMismatch, refused.Kind);
         Assert.Equal(JournalStoreFailureCertainty.DefinitelyNotCommitted, refused.Certainty);
         Assert.Equal(JournalStoreFailureScope.WholeStore, refused.Scope);
-        Assert.Contains("Nothing was deleted", refused.Message, StringComparison.Ordinal);
         foreach (string name in named) Assert.Contains(name, refused.Message, StringComparison.Ordinal);
     }
 

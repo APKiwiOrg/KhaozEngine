@@ -60,7 +60,8 @@ public sealed partial class TileWorldDocument
     public TileRegion GetOrCreateRegion(RegionCoord c)
     {
         if (_regions.TryGetValue(c, out TileRegion? r)) return r;
-        if (UnloadedRegionHashes.ContainsKey(c)) throw new TileWorldException(UnloadedMessage(c));
+        if (UnloadedRegionHashes.ContainsKey(c))
+            throw new TileWorldException(TileWorldRefusal.RegionNotLoaded, UnloadedMessage(c)) { Region = c };
         r = new TileRegion(c, PlaneCount) { Dirty = true };
         _regions.Add(c, r);
         return r;
@@ -73,19 +74,22 @@ public sealed partial class TileWorldDocument
     internal void AttachRegion(TileRegion region)
     {
         if (region.Planes.Length != PlaneCount)
-            throw new TileWorldException($"region {region.Coord}: has {region.Planes.Length} planes, the document has {PlaneCount}");
+            throw new TileWorldException(TileWorldRefusal.RegionPlaneCountMismatch, $"region {region.Coord}: has {region.Planes.Length} planes, the document has {PlaneCount}")
+            { Region = region.Coord, ActualPlaneCount = region.Planes.Length, ExpectedPlaneCount = PlaneCount };
         Attach(region);
     }
 
     /// <summary>Puts a region this document previously held back where it was, the undo of a region delete.
-    /// Same semantics as <see cref="AttachRegion"/> (the coordinate must be free) with a message that says
-    /// restore, because a plane-count mismatch here means the document's plane count moved under a command
-    /// rather than that a file on disk disagrees with the manifest.</summary>
+    /// Same semantics as <see cref="AttachRegion"/> (the coordinate must be free). A plane-count mismatch
+    /// carries <see cref="TileWorldRefusal.RegionPlaneCountMismatch"/>, <see cref="TileWorldException.Region"/>,
+    /// <see cref="TileWorldException.ActualPlaneCount"/> and <see cref="TileWorldException.ExpectedPlaneCount"/>.
+    /// Here the document's plane count moved under a command rather than a file disagreeing with its manifest.</summary>
     internal void RestoreRegion(TileRegion region)
     {
         ArgumentNullException.ThrowIfNull(region);
         if (region.Planes.Length != PlaneCount)
-            throw new TileWorldException($"region {region.Coord}: cannot restore a region with {region.Planes.Length} planes into a document with {PlaneCount}");
+            throw new TileWorldException(TileWorldRefusal.RegionPlaneCountMismatch, $"region {region.Coord}: cannot restore a region with {region.Planes.Length} planes into a document with {PlaneCount}")
+            { Region = region.Coord, ActualPlaneCount = region.Planes.Length, ExpectedPlaneCount = PlaneCount };
         Attach(region);
     }
 
@@ -126,15 +130,20 @@ public sealed partial class TileWorldDocument
     /// <summary>The region holding world tile (x, z), or null when it is not in memory.</summary>
     public TileRegion? RegionAt(int x, int z) => GetRegion(RegionCoord.Of(x, z));
 
-    /// <summary>The region holding world tile (x, z), or a <see cref="TileWorldException"/> naming it. The
-    /// message distinguishes a region that was never created from one still waiting to be loaded.</summary>
+    /// <summary>The region holding world tile (x, z), or a <see cref="TileWorldException"/> carrying
+    /// <see cref="TileWorldException.Region"/>, <see cref="TileWorldException.TileX"/> and
+    /// <see cref="TileWorldException.TileZ"/>. Its reason distinguishes <see cref="TileWorldRefusal.RegionMissing"/>
+    /// from <see cref="TileWorldRefusal.RegionNotLoaded"/> without implying a tile plane.</summary>
     public TileRegion RequireRegion(int x, int z)
     {
         RegionCoord c = RegionCoord.Of(x, z);
         TileRegion? r = GetRegion(c);
         if (r is not null) return r;
-        string why = UnloadedRegionHashes.ContainsKey(c) ? UnloadedMessage(c) : $"region {c} does not exist. Create it first.";
-        throw new TileWorldException($"tile ({x}, {z}): {why}");
+        bool unloaded = UnloadedRegionHashes.ContainsKey(c);
+        string why = unloaded ? UnloadedMessage(c) : $"region {c} does not exist. Create it first.";
+        throw new TileWorldException(unloaded ? TileWorldRefusal.RegionNotLoaded : TileWorldRefusal.RegionMissing,
+            $"tile ({x}, {z}): {why}")
+        { Region = c, TileX = x, TileZ = z };
     }
 
     void RequirePlane(int plane)
@@ -160,11 +169,14 @@ public sealed partial class TileWorldDocument
     /// region file) points at nothing after one undo. Throws when the id is already in use, and pulls
     /// <see cref="NextObjectId"/> past the id so a later fresh allocation cannot collide with it. The allocator
     /// is never pulled BACK, which is why a redo can re-add the same id safely.</summary>
+    /// <exception cref="TileWorldException"><see cref="TileWorldRefusal.ObjectIdDuplicate"/> with
+    /// <see cref="TileWorldException.ObjectId"/> when the id is already in use.</exception>
     internal TileObject AddObjectWithId(long id, string archetypeId, int x, int z, int plane, int rotation, IEnumerable<string>? tags)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(archetypeId);
         RequirePlane(plane);
-        if (_objectIndex.ContainsKey(id)) throw new TileWorldException($"object {id} already exists");
+        if (_objectIndex.ContainsKey(id))
+            throw new TileWorldException(TileWorldRefusal.ObjectIdDuplicate, $"object {id} already exists") { ObjectId = id };
         TileRegion region = RequireRegion(x, z);
         var o = new TileObject
         {
@@ -206,14 +218,20 @@ public sealed partial class TileWorldDocument
     }
 
     /// <summary>Moves an object, re-homing it when the anchor crosses into another region (which must exist).</summary>
+    /// <exception cref="TileWorldException"><see cref="TileWorldRefusal.ObjectMissing"/> carries
+    /// <see cref="TileWorldException.ObjectId"/> for an absent id. After checking the destination region,
+    /// <see cref="TileWorldRefusal.ObjectIndexStale"/> carries that id and the indexed
+    /// <see cref="TileWorldException.Region"/> when the region no longer holds the object.</exception>
     public void MoveObject(long id, int x, int z, int plane)
     {
         RequirePlane(plane);
         if (!_objectIndex.TryGetValue(id, out TileRegion? from))
-            throw new TileWorldException($"object {id} does not exist");
+            throw new TileWorldException(TileWorldRefusal.ObjectMissing, $"object {id} does not exist") { ObjectId = id };
         TileRegion to = RequireRegion(x, z);
         TileObject o = from.Objects.Find(candidate => candidate.Id == id)
-            ?? throw new TileWorldException($"object {id} is indexed to region {from.Coord} but is not in it, the object index is stale. Call RebuildObjectIndex.");
+            ?? throw new TileWorldException(TileWorldRefusal.ObjectIndexStale,
+                $"object {id} is indexed to region {from.Coord} but is not in it, the object index is stale. Call RebuildObjectIndex.")
+            { ObjectId = id, Region = from.Coord };
         o.X = x; o.Z = z; o.Plane = plane;
         from.Dirty = true;
         if (!ReferenceEquals(from, to))
@@ -253,8 +271,10 @@ public sealed partial class TileWorldDocument
     /// document came from a <see cref="TileWorldSource"/>, a name an unloaded region already carries is refused
     /// rather than authored into a second region that would collide the moment both were loaded (#788). A
     /// document with no source has no view of anything it does not hold, so it checks the loaded set alone.</para></summary>
-    /// <exception cref="TileWorldException">The name belongs to a marker in a region this document does not
-    /// hold, or the destination region does not exist.</exception>
+    /// <exception cref="TileWorldException"><see cref="TileWorldRefusal.MarkerNameInUnloadedRegion"/>
+    /// carries <see cref="TileWorldException.MarkerName"/>, <see cref="TileWorldException.Region"/> and the
+    /// existing marker's full <see cref="TileWorldException.Tile"/> when its region is not loaded.
+    /// The destination region must also exist and be loaded.</exception>
     public TileMarker SetMarker(string name, int x, int z, int plane, IEnumerable<string>? tags = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(name);
@@ -278,9 +298,10 @@ public sealed partial class TileWorldDocument
         if (source.FindMarker(name) is not TileMarker carried) return;
         RegionCoord home = RegionCoord.Of(carried.X, carried.Z);
         if (GetRegion(home) is not null) return;
-        throw new TileWorldException(
+        throw new TileWorldException(TileWorldRefusal.MarkerNameInUnloadedRegion,
             $"marker '{name}' already exists at ({carried.X}, {carried.Z}) in region {home}, which is not loaded. " +
-            "Marker names are unique across the whole world. Load that region to move it, or pick another name.");
+            "Marker names are unique across the whole world. Load that region to move it, or pick another name.")
+        { MarkerName = name, Region = home, Tile = new TileCoord(carried.X, carried.Z, carried.Plane) };
     }
 
     /// <summary>The marker with this name, or null when there is none. Walks the LOADED regions only, so a

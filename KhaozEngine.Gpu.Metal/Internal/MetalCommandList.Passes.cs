@@ -38,6 +38,9 @@ namespace KhaozEngine.Gpu.Metal.Internal
         /// ordinary framebuffer answers the same record every time and pays nothing for the indirection.
         /// </remarks>
         public void SetFramebuffer(IGpuFramebuffer fb)
+            => SetFramebufferWithStoreActions(fb, default);
+
+        public void SetFramebufferWithStoreActions(IGpuFramebuffer fb, in GpuAttachmentStoreActions stores)
         {
             // M-N5's one pool for this member. See the type remarks.
             using ObjCAutoreleasePool pool = ObjCAutoreleasePool.Enter();
@@ -47,10 +50,28 @@ namespace KhaozEngine.Gpu.Metal.Internal
 
             IMetalBoundFramebufferSource source = MetalFramebuffer.Require(fb, nameof(SetFramebuffer));
             RequireRecording("Binding a framebuffer");
+            if (_deferredDrawable is not null)
+            {
+                if (ReferenceEquals(fb, _deferredDrawable) && _deferredStores == stores) return;
+                if (_passes.HasPendingClears) ResolveDeferredDrawable();
+                else _deferredDrawable = null;
+            }
+            if (!_drawableResolved && source is MetalSwapchainFramebuffer swapchain
+                && _encoders.Open is MetalEncoderKind.Blit or MetalEncoderKind.Compute)
+            {
+                // A framebuffer bind alone does not end these encoder kinds. Defer acquisition to the
+                // rendering boundary the caller already owes, so early submission adds no encoder.
+                _deferredDrawable = swapchain;
+                _deferredStores = stores;
+                _boundSwapchain = true;
+                _passes.SetFramebuffer(swapchain.DeferredBound, stores);
+                return;
+            }
+            if (source.IsSwapchain) SplitBeforeDrawable();
             _boundSwapchain |= source.IsSwapchain;
 
             MetalBoundFramebuffer bound = source.AsBound;
-            _passes.SetFramebuffer(in bound);
+            _passes.SetFramebuffer(in bound, stores);
         }
 
         /// <inheritdoc/>
@@ -109,10 +130,10 @@ namespace KhaozEngine.Gpu.Metal.Internal
         {
             if (_recording) return;
 
-            throw new InvalidOperationException(
-                what + " needs a native Metal command list that is recording, and this one is not. Call Begin "
+            throw new GpuRecordingStateException(GpuRecordingStateRefusal.CommandOutsideRecording, what + " needs a native Metal command list that is recording, and this one is not. Call Begin "
                 + "first. Every pass command is encoder state or a decision about the encoder this recording "
-                + "will open, and a list with no command buffer has nothing to open one on.");
+                + "will open, and a list with no command buffer has nothing to open one on.")
+            { Backend = GpuBackendKind.MetalNative, Command = what };
         }
     }
 }

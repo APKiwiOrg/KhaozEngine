@@ -30,34 +30,42 @@ internal sealed class MapAuthoredContentDigest
     {
         ArgumentNullException.ThrowIfNull(document);
         var digest = new MapAuthoredContentDigest();
-        string? duplicate = digest.Add(document.Placements, document.Spawns, document.PlayerSpawns,
+        MapDocumentFinding? duplicate = digest.AddFinding(document.Placements, document.Spawns, document.PlayerSpawns,
             document.TerrainOverrides?.Tiles ?? Array.Empty<MapSculptTile>());
         if (duplicate is not null)
-            throw new MapDocumentException($"Whole authored identity found duplicate authored content {duplicate}.");
+            throw MapDocumentRefusalFactory.FromFinding(duplicate, $"Whole authored identity found duplicate authored content {duplicate.Message}.");
         return digest.Finish();
     }
 
     /// <summary>Adds entries and returns null, or names the first entry already present.</summary>
     internal string? Add(IEnumerable<MapPlacement> placements, IEnumerable<MapSpawn> spawns,
+        IEnumerable<MapPlayerSpawn> playerSpawns, IEnumerable<MapSculptTile> sculpt) => AddFinding(placements, spawns, playerSpawns, sculpt)?.Message;
+
+    /// <summary>Adds entries and returns the first duplicate with its original typed subject.</summary>
+    internal MapDocumentFinding? AddFinding(IEnumerable<MapPlacement> placements, IEnumerable<MapSpawn> spawns,
         IEnumerable<MapPlayerSpawn> playerSpawns, IEnumerable<MapSculptTile> sculpt)
     {
         foreach (MapPlacement placement in placements)
         {
             JsonObject node = JsonSerializer.SerializeToNode(placement, _options)!.AsObject();
             node.Remove("displayName");
-            if (!_placements.TryAdd(placement.Id, EntryDigest(PlacementKind, node))) return $"placement '{placement.Id}'";
+            if (!_placements.TryAdd(placement.Id, EntryDigest(PlacementKind, node))) return Duplicate("placement", placement.Id, $"placement '{placement.Id}'");
         }
         foreach (MapSpawn spawn in spawns)
             if (!_spawns.TryAdd(spawn.Id, EntryDigest(SpawnKind, JsonSerializer.SerializeToNode(spawn, _options))))
-                return $"spawn '{spawn.Id}'";
+                return Duplicate("spawn", spawn.Id, $"spawn '{spawn.Id}'");
         foreach (MapPlayerSpawn spawn in playerSpawns)
             if (!_playerSpawns.TryAdd(spawn.Id, EntryDigest(PlayerSpawnKind, JsonSerializer.SerializeToNode(spawn, _options))))
-                return $"player spawn '{spawn.Id}'";
+                return Duplicate("player spawn", spawn.Id, $"player spawn '{spawn.Id}'");
         foreach (MapSculptTile tile in sculpt)
             if (!_sculpt.TryAdd((tile.TileZ, tile.TileX), SculptDigest(tile)))
-                return $"sculpt tile ({tile.TileX}, {tile.TileZ})";
+                return new(MapDocumentRefusal.IdentityDuplicate, $"sculpt tile ({tile.TileX}, {tile.TileZ})")
+                { SubjectKind = "sculpt tile", SculptTile = new(tile.TileX, tile.TileZ) };
         return null;
     }
+
+    static MapDocumentFinding Duplicate(string kind, string id, string message) =>
+        new(MapDocumentRefusal.IdentityDuplicate, message) { SubjectKind = kind, EntityId = id };
 
     internal string Finish() => MapCanonical.HashHex(w =>
     {

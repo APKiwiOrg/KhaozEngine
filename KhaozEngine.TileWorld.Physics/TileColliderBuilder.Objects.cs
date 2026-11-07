@@ -158,8 +158,14 @@ static partial class TileColliderBuilder
                                          float lowestCorner)
     {
         if (archetype.CollisionHeight is not { } height)
-            throw new TileWorldException(string.Create(CultureInfo.InvariantCulture,
-                $"archetype '{archetype.Id}' is placed as a {archetype.CollisionKind} collider at ({o.X}, {o.Z}) but has no collisionHeight. Set one in its catalog."));
+            throw new TileWorldException(TileWorldRefusal.ColliderCollisionHeightMissing, string.Create(CultureInfo.InvariantCulture,
+                $"archetype '{archetype.Id}' is placed as a {archetype.CollisionKind} collider at ({o.X}, {o.Z}) but has no collisionHeight. Set one in its catalog."))
+            {
+                ArchetypeId = archetype.Id,
+                CollisionKind = archetype.CollisionKind,
+                ObjectId = o.Id,
+                Tile = new TileCoord(o.X, o.Z, o.Plane),
+            };
         float standing = TileObjectPlacement.AnchorPosition(document, archetype, o).Y;
         return (MathF.Min(lowestCorner, standing), standing + height);
     }

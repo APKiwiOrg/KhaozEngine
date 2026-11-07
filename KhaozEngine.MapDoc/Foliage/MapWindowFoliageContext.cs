@@ -24,6 +24,8 @@ public sealed class MapWindowFoliageContext : IMapFoliageInputs
     internal long InventoryBytes => checked(_inputs.InventoryBytes + 256L + 64L * _chunks.Count +
         64L * (Witness.Required.Count + Witness.Present.Count + Witness.KnownEmpty.Count + Witness.Unavailable.Count));
     readonly MapFoliageInputKernel _inputs;
+    // Borrowed for independent graph inspection. Never mutate or dispose this product.
+    internal MapEffectiveResolutionProduct ProductForTests => _inputs.Resources;
     readonly HashSet<(string Layer, MapFoliageChunkKey Chunk)> _chunks;
     internal MapWindowFoliageContext(MapFoliageInputKernel inputs, MapSceneSource source, MapSceneScope scope, MapSceneWitness witness,
         IReadOnlyList<(MapFoliageLayer Layer, MapFoliageChunkKey Chunk)> chunks, MapFoliageContextWork work)

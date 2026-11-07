@@ -47,7 +47,7 @@ public sealed record MapNavLink(string RecordId, MapNavTileCoord From, MapNavTil
 /// <summary>Deterministic navigation tiles over a built world, with their capture identities, seams, cross-tile links
 /// and the tiles an edit invalidates, so a consumer rebakes only those tiles. Navigation tiles are columns in X and Z.
 /// Vertical layers on native worlds wait for #438 phase 5.</summary>
-public static class MapNavTiling
+public static partial class MapNavTiling
 {
     /// <summary>The most navigation tiles <see cref="Partition(MapBuiltWorld, MapWorldGrids, MapNavTileOptions)"/> lists, 2^20. At 64 m tiles that is, for example, a
     /// square world about 65 km on a side.</summary>
@@ -71,7 +71,7 @@ public static class MapNavTiling
     /// <para>Throws <see cref="MapDocumentException"/> naming the grid alignment when the grids do not align with the
     /// world, including an origin so far from the world that a navigation tile or server cell index of its bounds
     /// leaves the int range, naming the tile range when a seam margin carries a capture outside the int range, naming
-    /// the tile count when the world's bounds reach more than <see cref="MaxPartitionTiles"/> tiles or one static
+    /// Budget, ActualCount and Limit when the world's bounds reach more than <see cref="MaxPartitionTiles"/> tiles or one static
     /// reaches more than <see cref="MapResidencyOwnership.MaxStorageTiles"/> storage tiles, and
     /// <see cref="ArgumentException"/> for invalid options.</para></summary>
     public static IReadOnlyList<MapNavTile> Partition(MapBuiltWorld world, MapWorldGrids grids, MapNavTileOptions options)
@@ -163,9 +163,18 @@ public static class MapNavTiling
         {
             ArgumentNullException.ThrowIfNull(tile, nameof(tiles));
             if (tile.Bounds.MinY != bounds.MinY || tile.Bounds.MaxY != bounds.MaxY)
-                throw new ArgumentException($"Tile {tile.Coord} was not partitioned from this world.", nameof(tiles));
+                throw new MapNavigationArgumentException(MapDocumentRefusal.AuthoredValueMismatch,
+                    $"Tile {tile.Coord} was not partitioned from this world.", nameof(tiles))
+                {
+                    Tile = tile.Coord,
+                    FieldPath = tile.Bounds.MinY != bounds.MinY ? "Bounds.MinY" : "Bounds.MaxY",
+                    ActualNumber = tile.Bounds.MinY != bounds.MinY ? tile.Bounds.MinY : tile.Bounds.MaxY,
+                    ExpectedNumber = tile.Bounds.MinY != bounds.MinY ? bounds.MinY : bounds.MaxY
+                };
             if (!byCoord.TryAdd(tile.Coord, tile))
-                throw new ArgumentException($"Two tiles share the coordinate {tile.Coord}.", nameof(tiles));
+                throw new MapNavigationArgumentException(MapDocumentRefusal.IdentityDuplicate,
+                    $"Two tiles share the coordinate {tile.Coord}.", nameof(tiles))
+                { Tile = tile.Coord, FieldPath = "Coord" };
         }
         var seams = new List<MapNavSeam>();
         foreach (MapNavTile a in byCoord.Values.OrderBy(t => t.Coord, TileOrder))
@@ -338,17 +347,18 @@ public static class MapNavTiling
     {
         long count = ((long)maxX - minX + 1) * ((long)maxZ - minZ + 1);
         if (count > MaxPartitionTiles)
-            throw new MapDocumentException(string.Format(CultureInfo.InvariantCulture,
+            throw new MapDocumentException(MapDocumentRefusal.WorkCapacityExceeded, string.Format(CultureInfo.InvariantCulture,
                 "The world's bounds reach {0:N0} navigation tiles, more than the {1:N0} a partition allows.", count,
-                MaxPartitionTiles));
+                MaxPartitionTiles))
+            { Budget = "navigation partition tiles", ActualCount = count, Limit = MaxPartitionTiles };
         return count;
     }
 
     /// <summary>The tile range <see cref="Partition(MapBuiltWorld, MapWorldGrids, MapNavTileOptions)"/> lists for <paramref name="world"/>.</summary>
     static (int MinX, int MaxX, int MinZ, int MaxZ) PartitionRange(MapBuiltWorld world, MapWorldGrids grids)
     {
-        (int minX, int maxX) = TileAxis(world.Bounds.MinX, world.Bounds.MaxX, grids.Origin.X, grids.NavTileSize);
-        (int minZ, int maxZ) = TileAxis(world.Bounds.MinZ, world.Bounds.MaxZ, grids.Origin.Y, grids.NavTileSize);
+        (int minX, int maxX) = TileAxis(world.Bounds.MinX, world.Bounds.MaxX, grids.Origin.X, grids.NavTileSize, "X");
+        (int minZ, int maxZ) = TileAxis(world.Bounds.MinZ, world.Bounds.MaxZ, grids.Origin.Y, grids.NavTileSize, "Z");
         return (minX, maxX, minZ, maxZ);
     }
 
@@ -366,84 +376,22 @@ public static class MapNavTiling
         return (MapWorldBuilder.SculptFootprintAxis(first, cell).Min, MapWorldBuilder.SculptFootprintAxis(last, cell).Max);
     }
 
-    /// <summary>Partitions the scoped simulation domain only after every padded capture is acquired.</summary>
-    public static IReadOnlyList<MapNavTile> Partition(MapScopedWorld world, MapWorldGrids grids, MapNavTileOptions options)
-    {
-        ArgumentNullException.ThrowIfNull(world);
-        world.RequireAlive();
-        ArgumentNullException.ThrowIfNull(grids);
-        ValidateOptions(options);
-        grids.ValidateDomain(world.TileSize, world.Bounds);
-        (int minX, int maxX) = TileAxis(world.Bounds.MinX, world.Bounds.MaxX, grids.Origin.X, grids.NavTileSize);
-        (int minZ, int maxZ) = TileAxis(world.Bounds.MinZ, world.Bounds.MaxZ, grids.Origin.Y, grids.NavTileSize);
-        long count = RequirePartitionCount(minX, maxX, minZ, maxZ);
-        var acquired = world.Scope.Surfaces.WorldRectangle();
-        var first = Grow(TileBounds(new(minX, minZ), grids, world.Bounds.MinY, world.Bounds.MaxY), options.SeamMarginMetres);
-        var last = Grow(TileBounds(new(maxX, maxZ), grids, world.Bounds.MinY, world.Bounds.MaxY), options.SeamMarginMetres);
-        if (first.MinX < acquired.MinX.ToDouble() || first.MinZ < acquired.MinZ.ToDouble() ||
-            last.MaxX > acquired.MaxX.ToDouble() || last.MaxZ > acquired.MaxZ.ToDouble() ||
-            world.Bounds.MinY < world.Scope.Surfaces.MinY || world.Bounds.MaxY > world.Scope.Surfaces.MaxY)
-            throw new MapDocumentException("Navigation capture seam margins are outside acquired simulation coverage.");
-        try
-        {
-            using var admitted = world.Admission.Enter();
-            using var preparation = world.Admission.BeginPreparation();
-            preparation.Reserve(128);
-            var result = PartitionDescriptors(world.Bounds, world.Statics, Array.Empty<MapLegacySculptTile>(), world.Water, true, "",
-                grids, options, minX, maxX, minZ, maxZ, count);
-            world.Retain(preparation.Complete(checked(128L + 512L * result.Count)));
-            return result;
-        }
-        catch (MapSceneCapacityException error) { throw new MapDocumentException("navigation capacity: " + error.Message, error); }
-    }
-
-    /// <summary>Seam descriptors use the same geometry identity kernel as complete worlds.</summary>
-    public static IReadOnlyList<MapNavSeam> Seams(IReadOnlyList<MapNavTile> tiles, MapScopedWorld world, MapNavTileOptions options)
-    {
-        ArgumentNullException.ThrowIfNull(tiles);
-        ArgumentNullException.ThrowIfNull(world);
-        world.RequireAlive();
-        ValidateOptions(options);
-        try
-        {
-            using var admitted = world.Admission.Enter();
-            using var preparation = world.Admission.BeginPreparation();
-            preparation.Reserve(checked(128L + 512L * tiles.Count));
-            var result = SeamDescriptors(tiles, world.Bounds, options);
-            world.Retain(preparation.Complete(checked(128L + 256L * result.Count)));
-            return result;
-        }
-        catch (MapSceneCapacityException error) { throw new MapDocumentException("navigation capacity: " + error.Message, error); }
-    }
-
-    /// <summary>Cross-tile topology from the retained scoped surface and record witness.</summary>
-    public static IReadOnlyList<MapNavLink> Links(MapScopedWorld world, MapWorldGrids grids)
-    {
-        ArgumentNullException.ThrowIfNull(world);
-        world.RequireAlive();
-        ArgumentNullException.ThrowIfNull(grids);
-        grids.ValidateDomain(world.TileSize, world.Bounds);
-        try
-        {
-            using var admitted = world.Admission.Enter();
-            using var preparation = world.Admission.BeginPreparation();
-            preparation.Reserve(128);
-            var result = LinkDescriptors(world.Surfaces, grids);
-            world.Retain(preparation.Complete(checked(128L + 256L * result.Count)));
-            return result;
-        }
-        catch (MapSceneCapacityException error) { throw new MapDocumentException("navigation capacity: " + error.Message, error); }
-    }
-
     static void ValidateOptions(MapNavTileOptions options)
     {
         ArgumentNullException.ThrowIfNull(options);
         if (!float.IsFinite(options.SeamMarginMetres) || options.SeamMarginMetres < 0f)
-            throw new ArgumentException("SeamMarginMetres must be finite and not negative.", nameof(options));
+            throw new MapNavigationArgumentException(!float.IsFinite(options.SeamMarginMetres)
+                ? MapDocumentRefusal.ValueNonfinite : MapDocumentRefusal.ValueOutsideRange,
+                "SeamMarginMetres must be finite and not negative.", nameof(options))
+            { FieldPath = nameof(options.SeamMarginMetres), ActualNumber = options.SeamMarginMetres, MinimumNumber = 0 };
         if (string.IsNullOrWhiteSpace(options.ProfileIdentity))
-            throw new ArgumentException("ProfileIdentity must name the navigation profile.", nameof(options));
+            throw new MapNavigationArgumentException(MapDocumentRefusal.SchemaValueRequired,
+                "ProfileIdentity must name the navigation profile.", nameof(options))
+            { FieldPath = nameof(options.ProfileIdentity), ActualText = options.ProfileIdentity };
         if (string.IsNullOrWhiteSpace(options.ControllerIdentity))
-            throw new ArgumentException("ControllerIdentity must name the movement controller.", nameof(options));
+            throw new MapNavigationArgumentException(MapDocumentRefusal.SchemaValueRequired,
+                "ControllerIdentity must name the movement controller.", nameof(options))
+            { FieldPath = nameof(options.ControllerIdentity), ActualText = options.ControllerIdentity };
     }
 
     static List<T> Bucket<T>(Dictionary<MapNavTileCoord, List<T>> buckets, MapNavTileCoord tile)
@@ -454,17 +402,35 @@ public static class MapNavTiling
 
     /// <summary>The tiles a range reaches: minimum inclusive, maximum exclusive, and an axis with no extent in the tile
     /// holding its minimum, counted from <paramref name="origin"/>. Throws <see cref="MapDocumentException"/> naming the
-    /// tile range when an index falls outside the int range.</summary>
-    static (int Min, int Max) TileAxis(double min, double max, double origin, double size)
+    /// Axis, FirstIndex, LastIndex, AxisOrigin and the signed index limits when an index falls outside the int range.</summary>
+    static (int Min, int Max) TileAxis(double min, double max, double origin, double size, string axis)
     {
         if (!double.IsFinite(min) || !double.IsFinite(max) || max < min)
-            throw new ArgumentException(FormattableString.Invariant($"bounds [{min}, {max}] are not a finite range"));
+            throw new MapNavigationArgumentException(!double.IsFinite(min) || !double.IsFinite(max)
+                ? MapDocumentRefusal.ValueNonfinite : MapDocumentRefusal.BoundsInvalid,
+                FormattableString.Invariant($"bounds [{min}, {max}] are not a finite range"))
+            {
+                FieldPath = "Bounds." + axis,
+                MinimumNumber = min,
+                MaximumNumber = max,
+                ActualNumber = !double.IsFinite(min) ? min : max
+            };
         double first = Math.Floor((min - origin) / size);
         double last = max > min ? Math.Max(first, Math.Ceiling((max - origin) / size) - 1) : first;
         if (first < int.MinValue || last > int.MaxValue)
-            throw new MapDocumentException(FormattableString.Invariant(
+            throw new MapDocumentException(MapDocumentRefusal.PhysicsNavIndexOutOfRange, FormattableString.Invariant(
                 $"Bounds [{min}, {max}] reach navigation tiles {first:F0} to {last:F0} from origin {origin}, ") +
-                FormattableString.Invariant($"outside the {int.MinValue:N0} to {int.MaxValue:N0} tile range."));
+                FormattableString.Invariant($"outside the {int.MinValue:N0} to {int.MaxValue:N0} tile range."))
+            {
+                Axis = axis,
+                FirstIndex = first,
+                LastIndex = last,
+                AxisOrigin = origin,
+                MinimumNumber = min,
+                MaximumNumber = max,
+                MinimumInteger = int.MinValue,
+                MaximumInteger = int.MaxValue
+            };
         return ((int)first, (int)last);
     }
 
@@ -485,10 +451,10 @@ public static class MapNavTiling
         MapWorldGrids grids, double margin, MapNavTileCoord? minimum = null, MapNavTileCoord? maximum = null)
     {
         double size = grids.NavTileSize;
-        int x0 = TileIndex(Math.Floor((minX - margin - grids.Origin.X) / size) - 1);
-        int x1 = TileIndex(Math.Floor((maxX + margin - grids.Origin.X) / size) + 1);
-        int z0 = TileIndex(Math.Floor((minZ - margin - grids.Origin.Y) / size) - 1);
-        int z1 = TileIndex(Math.Floor((maxZ + margin - grids.Origin.Y) / size) + 1);
+        int x0 = TileIndex(Math.Floor((minX - margin - grids.Origin.X) / size) - 1, "X", grids.Origin.X);
+        int x1 = TileIndex(Math.Floor((maxX + margin - grids.Origin.X) / size) + 1, "X", grids.Origin.X);
+        int z0 = TileIndex(Math.Floor((minZ - margin - grids.Origin.Y) / size) - 1, "Z", grids.Origin.Y);
+        int z1 = TileIndex(Math.Floor((maxZ + margin - grids.Origin.Y) / size) + 1, "Z", grids.Origin.Y);
         // A partition visits only its admitted domain even when a capture has a much wider margin.
         if (minimum is { } low) { x0 = Math.Max(x0, low.X); z0 = Math.Max(z0, low.Z); }
         if (maximum is { } high) { x1 = Math.Min(x1, high.X); z1 = Math.Min(z1, high.Z); }
@@ -503,10 +469,18 @@ public static class MapNavTiling
 
     // A candidate index. Validate keeps the world's own range, one tile wider, inside int, so only geometry or a seam
     // margin reaching far past the world refuses here.
-    static int TileIndex(double index) => index is >= int.MinValue and <= int.MaxValue
+    static int TileIndex(double index, string axis, double origin) => index is >= int.MinValue and <= int.MaxValue
         ? (int)index
-        : throw new MapDocumentException(FormattableString.Invariant(
-            $"Navigation tile {index:F0} lies outside the {int.MinValue:N0} to {int.MaxValue:N0} tile range."));
+        : throw new MapDocumentException(MapDocumentRefusal.PhysicsNavIndexOutOfRange, FormattableString.Invariant(
+            $"Navigation tile {index:F0} lies outside the {int.MinValue:N0} to {int.MaxValue:N0} tile range."))
+        {
+            Axis = axis,
+            FirstIndex = index,
+            LastIndex = index,
+            AxisOrigin = origin,
+            MinimumInteger = int.MinValue,
+            MaximumInteger = int.MaxValue
+        };
 
     static bool MeetsXz(double aMinX, double aMinZ, double aMaxX, double aMaxZ, double bMinX, double bMinZ, double bMaxX,
         double bMaxZ) => aMinX <= bMaxX && bMinX <= aMaxX && aMinZ <= bMaxZ && bMinZ <= aMaxZ;
@@ -613,6 +587,10 @@ public static class MapNavTiling
             w.WriteEndObject();
         });
 
+    static MapNavigationArgumentException NonAdjacent(MapNavTile a, MapNavTile b) =>
+        new(MapDocumentRefusal.NavigationTilesNotAdjacent, $"Tiles {a.Coord} and {b.Coord} do not meet at one edge.")
+        { Tile = b.Coord, OtherTile = a.Coord, FieldPath = "Bounds" };
+
     static MapNavSeam Seam(MapNavTile a, MapNavTile b, bool edgeAlongX, float margin)
     {
         // An edge along X joins a tile to its north neighbour at z = a.MaxZ. Otherwise the edge runs along Z and joins a
@@ -620,15 +598,15 @@ public static class MapNavTiling
         double x0, z0, x1, z1;
         if (edgeAlongX)
         {
-            if (a.Bounds.MaxZ != b.Bounds.MinZ) throw new ArgumentException($"Tiles {a.Coord} and {b.Coord} do not meet at one edge.");
+            if (a.Bounds.MaxZ != b.Bounds.MinZ) throw NonAdjacent(a, b);
             (x0, x1, z0, z1) = (Math.Max(a.Bounds.MinX, b.Bounds.MinX), Math.Min(a.Bounds.MaxX, b.Bounds.MaxX), a.Bounds.MaxZ, a.Bounds.MaxZ);
         }
         else
         {
-            if (a.Bounds.MaxX != b.Bounds.MinX) throw new ArgumentException($"Tiles {a.Coord} and {b.Coord} do not meet at one edge.");
+            if (a.Bounds.MaxX != b.Bounds.MinX) throw NonAdjacent(a, b);
             (x0, x1, z0, z1) = (a.Bounds.MaxX, a.Bounds.MaxX, Math.Max(a.Bounds.MinZ, b.Bounds.MinZ), Math.Min(a.Bounds.MaxZ, b.Bounds.MaxZ));
         }
-        if (x1 < x0 || z1 < z0) throw new ArgumentException($"Tiles {a.Coord} and {b.Coord} do not meet at one edge.");
+        if (x1 < x0 || z1 < z0) throw NonAdjacent(a, b);
         return new MapNavSeam(a.Coord, b.Coord, CanonicalHash(w =>
         {
             w.WriteStartObject();
@@ -679,8 +657,10 @@ public static class MapNavTiling
 
     static void AddPortal(MapScopedSurfaces view, MapCavePortal portal, MapWorldGrids grids, SortedSet<MapNavTileCoord> tiles)
     {
-        if (portal.Interval.Count < 2)
-            throw new MapDocumentException($"invalid vertex sequence: portal '{portal.Id}'");
+        int count = portal.Interval.Count;
+        if (count < 2)
+            throw new MapDocumentException(MapDocumentRefusal.GeometryVertexSequenceInvalid, $"invalid vertex sequence: portal '{portal.Id}'")
+            { RecordId = portal.Id, ActualCount = count, MinimumInteger = 2 };
         using var preparation = MapSceneAdmission.Current?.Workspace();
         preparation?.Reserve(checked(portal.Interval.Count * 64L));
         MapExactXz[] points = portal.Interval.Select(v => MapEffectiveGeometry.Vertex(view, v)).ToArray();
@@ -695,8 +675,10 @@ public static class MapNavTiling
         var admission = MapSceneAdmission.Current;
         var output = admission?.PreparationScope;
         using var preparation = output is null ? null : admission?.BeginPreparation();
-        MapSurfacePatch patch = view.Patch(opening.Patch).Patch
-            ?? throw new MapDocumentException($"missing geometry: opening '{opening.Id}' patch {opening.Patch}");
+        MapPatchRead read = view.Patch(opening.Patch);
+        MapSurfacePatch patch = read.Patch
+            ?? throw new MapDocumentException(MapDocumentRefusal.PatchUnavailable, $"missing geometry: opening '{opening.Id}' patch {opening.Patch}")
+            { RecordId = opening.Id, Patch = opening.Patch, PatchStatus = read.Status };
         MapOpeningPlane plane = MapOpeningBoundary.Compile(Surface(view, opening.Patch.SurfaceId), patch, opening);
         foreach (MapExactTriangle local in plane.ExactTriangles)
         {
@@ -711,8 +693,8 @@ public static class MapNavTiling
     static void AddReach(SortedSet<MapNavTileCoord> tiles, MapWorldGrids grids, double ax, double az, double bx, double bz,
         MapPreparationScope? output = null)
     {
-        (int minX, int maxX) = TileAxis(Math.Min(ax, bx), Math.Max(ax, bx), grids.Origin.X, grids.NavTileSize);
-        (int minZ, int maxZ) = TileAxis(Math.Min(az, bz), Math.Max(az, bz), grids.Origin.Y, grids.NavTileSize);
+        (int minX, int maxX) = TileAxis(Math.Min(ax, bx), Math.Max(ax, bx), grids.Origin.X, grids.NavTileSize, "X");
+        (int minZ, int maxZ) = TileAxis(Math.Min(az, bz), Math.Max(az, bz), grids.Origin.Y, grids.NavTileSize, "Z");
         for (long z = minZ; z <= maxZ; z++)
             for (long x = minX; x <= maxX; x++)
             {
@@ -726,15 +708,40 @@ public static class MapNavTiling
             }
     }
 
+    internal static (int Min, int Max) TileAxisForTests(double min, double max, double origin, double size, string axis) =>
+        TileAxis(min, max, origin, size, axis);
+
+    internal static MapNavTileCoord[] InvalidPortalSequenceForTests(MapScopedSurfaces view, MapCavePortal portal, MapWorldGrids grids)
+    {
+        var tiles = new SortedSet<MapNavTileCoord>(TileOrder);
+        AddPortal(view, portal, grids, tiles);
+        return tiles.ToArray();
+    }
+
+    internal static MapNavTileCoord[] MissingOpeningPatchForTests(MapScopedSurfaces view, MapHorizontalOpening opening, MapWorldGrids grids)
+    {
+        var tiles = new SortedSet<MapNavTileCoord>(TileOrder);
+        AddOpening(view, opening, grids, tiles);
+        return tiles.ToArray();
+    }
+
     static MapSurfaceRef Surface(MapScopedSurfaces view, string id) =>
-        view.Surfaces.FirstOrDefault(s => s.Id == id) ?? throw new MapDocumentException($"missing geometry: surface '{id}'");
+        view.Surfaces.FirstOrDefault(s => s.Id == id) ?? throw new MapDocumentException(MapDocumentRefusal.ReferenceMissing,
+            $"missing geometry: surface '{id}'")
+        { SurfaceId = id };
 
     static T Record<T>(MapScopedSurfaces view, MapRecordRef reference) where T : MapTopologyRecord
     {
         if (!view.TryRecord(reference, out MapTopologyRecord? record, out MapPatchStatus status) || record is not T typed)
-            throw new MapDocumentException($"missing geometry: record '{reference.Id}' {reference.Anchor} ({status})");
+            throw new MapDocumentException(record is null ? MapDocumentRefusal.PatchUnavailable : MapDocumentRefusal.ReferenceKindMismatch,
+                $"missing geometry: record '{reference.Id}' {reference.Anchor} ({status})")
+            { RecordId = reference.Id, Patch = reference.Anchor, PatchStatus = status, RecordType = record?.GetType(), ExpectedRecordType = typeof(T) };
         return typed;
     }
+
+    // Faulty captured lookups reach the same guards without weakening scoped acquisition.
+    internal static void MissingSurfaceForTests(MapScopedSurfaces view, string id) => _ = Surface(view, id);
+    internal static void MissingRecordForTests(MapScopedSurfaces view, MapRecordRef reference) => _ = Record<MapHorizontalOpening>(view, reference);
 
     // Compact canonical JSON, hashed as written.
     static string CanonicalHash(Action<Utf8JsonWriter> body)

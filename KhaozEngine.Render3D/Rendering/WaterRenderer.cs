@@ -505,7 +505,7 @@ namespace KhaozEngine.Render3D.Rendering
             if (_preparedBound || AnyBound(planes))
             {
                 VerifyOpticsFrame(res, planes, settings, timeSeconds);
-                if (slotCount > _capacity) throw ChangedOpticsInputs();
+                if (slotCount > _capacity) throw ChangedOpticsInputs(slotCount);
             }
             else if (prepared && (slotCount > _capacity || !OpticsFrameMatches(res, planes, settings, timeSeconds)))
                 _opticsPrepared = prepared = false;
@@ -535,10 +535,12 @@ namespace KhaozEngine.Render3D.Rendering
             // its OWN for already ran in PrepareFrame, before this list was opened.
             // The demand is re-derived here and compared: a host that queued a plane AFTER preparing would
             // otherwise render an ocean plane procedurally with nothing to show for it.
-            if ((AnyPlaneWantsOcean(planes, settings) || BoundedWantsOcean(bounded, settings)) != _preparedWantOcean)
-                throw new InvalidOperationException(
+            bool wantOcean = AnyPlaneWantsOcean(planes, settings) || BoundedWantsOcean(bounded, settings);
+            if (wantOcean != _preparedWantOcean)
+                throw new WaterFrameStateException(WaterFrameRefusal.OceanDemandChanged,
                     "The water planes changed between PrepareFrame and Draw. Queue every plane before calling "
-                    + "Scene3D.PrepareFrame() (see IFramePreparer).");
+                    + "Scene3D.PrepareFrame() (see IFramePreparer).")
+                { PreparedOceanDemand = _preparedWantOcean, ActualOceanDemand = wantOcean };
             _ocean.Record(cl);
             var oceanMaps = OceanMaps.From(_ocean);
             // The depth field, likewise once per frame and ahead of BindTargets. Uploads only when the field

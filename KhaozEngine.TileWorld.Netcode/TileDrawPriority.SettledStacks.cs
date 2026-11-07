@@ -55,7 +55,7 @@ public sealed partial class TileDrawPriority
     }
 
     // Two equal Vector2.Lerp endpoints can still miss their common value by one float ULP because the operation
-    // rounds its multiply and add terms separately. The prediction clock rebuilds that lerp on every command tick,
+    // rounds its multiply and add terms separately. Prediction previously exposed that noise on every command tick,
     // including Continue while standing, so exact equality made a stationary player alternate between settled and
     // moving at frame fractions whose arithmetic rounded the other way. Two neighbouring floats on either side are
     // presentation noise at the tile's own magnitude. A real glide or correction moves beyond that band, while an

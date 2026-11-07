@@ -17,7 +17,7 @@ namespace KhaozEngine.Tests.Gpu
     }
 
     /// <summary>
-    /// WHICH BYTES OF WHICH UNIFORM BUFFER EACH RESOURCE SET READS. <see cref="UniformRewriteAudit"/> needs this
+    /// WHICH BYTES OF WHICH UNIFORM BUFFER EACH RESOURCE SET READS. <c>UniformRewriteAudit</c> needs this
     /// to tell the engine's sanctioned whole-mirror-per-slot pattern from a real ring collapse: a pass packs its
     /// own slot and uploads the WHOLE buffer, so a second pass's upload legitimately differs from the first in the
     /// slot no earlier draw ever bound. Comparing the whole overlapping range flags that pattern, which is a false
@@ -26,7 +26,7 @@ namespace KhaozEngine.Tests.Gpu
     /// <para><b>THREE FACTS, NONE OF THEM ON THE HANDLES.</b> <see cref="IGpuResourceSet"/> exposes nothing at all,
     /// and neither the bound resources nor the layout's <see cref="GpuResourceLayoutElement.Dynamic"/> flags can be
     /// read back from one. So they are remembered at the one place that sees them, the factory, and this type is
-    /// where <see cref="UniformBufferTrackingGpuDevice"/> puts them.</para>
+    /// where <c>UniformBufferTrackingGpuDevice</c> puts them.</para>
     ///
     /// <para><b>AN UNKNOWN LAYOUT IS TREATED CONSERVATIVELY, AND COUNTED.</b> A set built against a layout this
     /// index never saw (created through an undecorated factory) has no per-slot kinds and no dynamic flags, so

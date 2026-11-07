@@ -14,6 +14,10 @@ namespace KhaozEngine.NetWorld;
 internal sealed class ExplicitCellAdmission(EffectiveMovementBinding binding, ExplicitPlayerMovement? publicExplicit, MoveTuning tuning,
     WorldFrame frame, IPhysicsWorld? physics, WorldBounds? bounds) : ICellImportAdmission
 {
+    /// <summary>OrdinaryContactLifecycleTests verifies admission shares its cell's movement binding,
+    /// including a different binding that would not create an additional physics view.</summary>
+    internal bool UsesBindingForTests(EffectiveMovementBinding expected) => ReferenceEquals(binding, expected);
+
     public CellAdmissionRead Acquire(World staged, IReadOnlyDictionary<long, Entity> entities, CellImportPurpose purpose)
     {
         MovementQueryLease? queries = null;

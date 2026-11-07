@@ -24,8 +24,7 @@ public sealed partial class ShippedSceneInputGuardTests
         if (allowance == 1)
         {
             var error = Assert.Throws<MapSceneCapacityException>(() => LegacySceneRecorder.RecordFoliage(inputs, scope));
-            Assert.Contains("MaxChunkDescriptors", error.Message);
-            Assert.Contains("requested 2", error.Message); Assert.Contains("allowance 1", error.Message);
+            Assert.Equal(new MapSceneCapacity("MaxChunkDescriptors", 2, 1), error.Capacity);
         }
         else
         {

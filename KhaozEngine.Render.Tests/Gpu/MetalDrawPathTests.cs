@@ -473,9 +473,10 @@ namespace KhaozEngine.Tests.Gpu
             live.SetFramebuffer(new RecordedFramebuffer());
             live.SetPipeline(Pipeline());
 
-            InvalidOperationException refused = Assert.Throws<InvalidOperationException>(
+            Assert.Throws<InvalidOperationException>(
                 () => live.DrawIndexed(3, 1, 0, 0, 0));
-            Assert.Contains("with no index buffer bound", refused.Message, StringComparison.Ordinal);
+            live.SetIndexBuffer(_harness.NewBuffer(64, GpuBufferUsage.IndexBuffer), GpuIndexFormat.UInt16);
+            live.DrawIndexed(3, 1, 0, 0, 0);
             live.End();
 
             // THE SAME REFUSAL ON A FRAME WHOSE ENCODER NEVER ARRIVED, which is the half the ordering exists for.
@@ -486,13 +487,15 @@ namespace KhaozEngine.Tests.Gpu
             orphan.SetFramebuffer(new RecordedFramebuffer());
             orphan.SetPipeline(Pipeline());
 
-            InvalidOperationException stillRefused = Assert.Throws<InvalidOperationException>(
+            Assert.Throws<InvalidOperationException>(
                 () => orphan.DrawIndexed(3, 1, 0, 0, 0));
-            Assert.Contains("with no index buffer bound", stillRefused.Message, StringComparison.Ordinal);
 
             // AND THE PLAIN DRAW ON THAT SAME FRAME IS SILENT, so the refusal above is about the missing index
             // buffer rather than about the nil encoder.
             orphan.Draw(3);
+            orphan.SetIndexBuffer(_harness.NewBuffer(64, GpuBufferUsage.IndexBuffer), GpuIndexFormat.UInt16);
+            orphan.DrawIndexed(3, 1, 0, 0, 0);
+            Assert.Empty(calls.IndexedDraws);
             Assert.Empty(calls.Draws);
             orphan.End();
         }
@@ -551,13 +554,15 @@ namespace KhaozEngine.Tests.Gpu
             list.Begin();
             list.SetFramebuffer(new RecordedFramebuffer());
 
-            InvalidOperationException thrown = Assert.Throws<InvalidOperationException>(() => list.Draw(3));
-            Assert.Contains("no graphics pipeline bound", thrown.Message, StringComparison.Ordinal);
+            Assert.Throws<InvalidOperationException>(() => list.Draw(3));
 
             Assert.Empty(render.Passes);
             Assert.Equal(0, calls.EncoderBoundaries);
             Assert.Equal(MetalEncoderKind.None, list.Encoders.Open);
 
+            list.SetPipeline(Pipeline());
+            list.Draw(3);
+            Assert.Single(render.Passes);
             list.End();
         }
 
@@ -572,17 +577,22 @@ namespace KhaozEngine.Tests.Gpu
         {
             (MetalCommandList list, FakeMetalEncoderCalls calls, FakeMetalRenderCalls render, _) = NewList();
 
-            Assert.StartsWith("Drawing needs",
-                Assert.Throws<InvalidOperationException>(() => list.Draw(3)).Message, StringComparison.Ordinal);
-            Assert.StartsWith("Drawing needs",
-                Assert.Throws<InvalidOperationException>(() => list.Draw(3, 1, 0, 0)).Message,
-                StringComparison.Ordinal);
-            Assert.StartsWith("Drawing indexed needs",
-                Assert.Throws<InvalidOperationException>(() => list.DrawIndexed(3, 1, 0, 0, 0)).Message,
-                StringComparison.Ordinal);
-            Assert.StartsWith("Dispatching compute work needs",
-                Assert.Throws<InvalidOperationException>(() => list.Dispatch(1, 1, 1)).Message,
-                StringComparison.Ordinal);
+            var draw = Assert.Throws<GpuRecordingStateException>(() => list.Draw(3));
+            Assert.Equal(GpuRecordingStateRefusal.CommandOutsideRecording, draw.Reason);
+            Assert.Equal(GpuBackendKind.MetalNative, draw.Backend);
+            Assert.Equal("Drawing", draw.Command);
+            var instanced = Assert.Throws<GpuRecordingStateException>(() => list.Draw(3, 1, 0, 0));
+            Assert.Equal(GpuRecordingStateRefusal.CommandOutsideRecording, instanced.Reason);
+            Assert.Equal(GpuBackendKind.MetalNative, instanced.Backend);
+            Assert.Equal("Drawing", instanced.Command);
+            var indexed = Assert.Throws<GpuRecordingStateException>(() => list.DrawIndexed(3, 1, 0, 0, 0));
+            Assert.Equal(GpuRecordingStateRefusal.CommandOutsideRecording, indexed.Reason);
+            Assert.Equal(GpuBackendKind.MetalNative, indexed.Backend);
+            Assert.Equal("Drawing indexed", indexed.Command);
+            var compute = Assert.Throws<GpuRecordingStateException>(() => list.Dispatch(1, 1, 1));
+            Assert.Equal(GpuRecordingStateRefusal.CommandOutsideRecording, compute.Reason);
+            Assert.Equal(GpuBackendKind.MetalNative, compute.Backend);
+            Assert.Equal("Dispatching compute work", compute.Command);
 
             Assert.Empty(calls.Log);
             Assert.Empty(render.Log);

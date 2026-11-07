@@ -126,7 +126,15 @@ public sealed class WaterOpticsFramePrepareTests
         ChangeAfterPreparation(h.Scene, change);
         using var commands = new NullGpuCommandList();
         using IGpuFramebuffer target = h.Factory.CreateFramebuffer(null, h.Scene.ResolvedDepthTarget);
-        Assert.Throws<InvalidOperationException>(() => h.Scene.RenderInternal(commands, 128, 96, target));
+        if (change == "grid")
+        {
+            var error = Assert.Throws<WaterFrameStateException>(() => h.Scene.RenderInternal(commands, 128, 96, target));
+            Assert.Equal(WaterFrameRefusal.OpticsInputsChangedOrUnprepared, error.Reason);
+            Assert.True(error.Prepared);
+            Assert.Equal(1, error.PreparedPlaneCount);
+            Assert.Equal(1, error.ActualPlaneCount);
+        }
+        else Assert.Throws<InvalidOperationException>(() => h.Scene.RenderInternal(commands, 128, 96, target));
     }
 
     // DrawWater admits the absolute plane. Preparation must revalidate the same double-precision rectangle, not

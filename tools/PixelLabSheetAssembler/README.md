@@ -12,6 +12,11 @@ tool carries no third-party image library. Frames may use any PNG colour type an
 with optional `tRNS` transparency, noninterlaced or Adam7-interlaced, all widened to straight-alpha RGBA8 on load.
 PixelLab exports are 8-bit RGBA. The output sheet is an 8-bit RGBA PNG.
 
+`RgbaImage.Load` and `PixelLabExport.Load` propagate `PngDecodeDataException : MalformedDataException`
+for malformed PNGs and `PngDecodeNotSupportedException : NotSupportedException` for unsupported features.
+Both carry `PngDecodeRefusal Reason` and the [Imaging identifiers](../../KhaozEngine.Imaging/README.md#refusals).
+The CLI's general error handler still reports these failures and returns exit code 1.
+
 ## Run
 
     dotnet run --project tools/PixelLabSheetAssembler -- \

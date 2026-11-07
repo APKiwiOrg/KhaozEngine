@@ -15,26 +15,15 @@ namespace KhaozEngine.Tests.Game
             Assert.Equal(1f, default(LocomotionSpeedSync).RateFor(LocomotionState.Run, 10f));
         }
 
-        [Fact]
-        public void Walk_AdvancesProportionalToSpeed()
+        [Theory]
+        [InlineData(LocomotionState.Walk, 4f, 2f)] // Twice the authored walk speed.
+        [InlineData(LocomotionState.Walk, 2f, 1f)] // Authored walk speed.
+        [InlineData(LocomotionState.Run, 10f, 2f)] // Twice the authored run speed.
+        [InlineData(LocomotionState.Run, 1000f, 3f)] // Default maximum multiplier.
+        public void MoveStatesScaleAndClampPlaybackRate(LocomotionState state, float speed, float expected)
         {
             var s = LocomotionSpeedSync.Enable(walkClipSpeed: 2f, runClipSpeed: 5f);
-            Assert.Equal(2f, s.RateFor(LocomotionState.Walk, 4f), 4);   // 4 / 2
-            Assert.Equal(1f, s.RateFor(LocomotionState.Walk, 2f), 4);   // authored speed -> 1x
-        }
-
-        [Fact]
-        public void Run_AdvancesProportionalToSpeed()
-        {
-            var s = LocomotionSpeedSync.Enable(walkClipSpeed: 2f, runClipSpeed: 5f);
-            Assert.Equal(2f, s.RateFor(LocomotionState.Run, 10f), 4);   // 10 / 5
-        }
-
-        [Fact]
-        public void ClampsAtMaxMultiplier()
-        {
-            var s = LocomotionSpeedSync.Enable(walkClipSpeed: 2f, runClipSpeed: 5f);   // default max 3.0
-            Assert.Equal(3f, s.RateFor(LocomotionState.Run, 1000f), 4);   // 200 raw -> clamp 3
+            Assert.Equal(expected, s.RateFor(state, speed), 4);
         }
 
         [Fact]

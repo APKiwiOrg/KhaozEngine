@@ -55,11 +55,12 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         /// (https://github.com/APKiwiOrg/KhaozEngine/issues/521). Vacuous in the engine today: all six shipped
         /// dynamic elements are uniform buffers.
         /// </remarks>
-        internal static VulkanDescriptorType TypeFor(in GpuResourceLayoutElement element)
+        /// <param name="binding">The declaration index, when known by the layout builder.</param>
+        internal static VulkanDescriptorType TypeFor(in GpuResourceLayoutElement element, int? binding = null)
         {
             if (element.Dynamic && element.Kind != GpuResourceKind.UniformBuffer)
             {
-                throw new ArgumentException(
+                throw new GpuResourceLayoutException(GpuResourceLayoutRefusal.DynamicOffsetUnsupportedForKind,
                     $"'{element.Name}' is declared as {element.Kind} AND dynamic, which the native Vulkan backend "
                     + "cannot honour. The engine's dynamic offset is a per-draw byte rebase, and the only Vulkan "
                     + "descriptor this backend gives a bind-time offset to is the dynamic UNIFORM buffer "
@@ -70,7 +71,13 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
                     + "Direct3D 11 backend refuses the structured half of this for its own reason, so an element "
                     + "like this is already unshippable on two of the three backends. Declare it as a uniform "
                     + "buffer, or build one resource set per window.",
-                    nameof(element));
+                    nameof(element))
+                {
+                    Backend = GpuBackendKind.VulkanNative,
+                    ElementName = element.Name,
+                    Binding = binding,
+                    ResourceKind = element.Kind,
+                };
             }
 
             return element.Kind switch
@@ -103,7 +110,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
             for (int i = 0; i < elements.Length; i++)
             {
                 bindings[i] = new VulkanDescriptorBinding(
-                    (uint)i, TypeFor(elements[i]), DescriptorCount: 1, elements[i].Stages);
+                    (uint)i, TypeFor(elements[i], i), DescriptorCount: 1, elements[i].Stages);
             }
 
             return bindings;

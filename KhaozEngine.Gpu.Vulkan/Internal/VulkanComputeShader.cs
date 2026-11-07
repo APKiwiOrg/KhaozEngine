@@ -23,11 +23,13 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
     {
         /// <param name="modules">The device's ONE module cache, asked here and never held.</param>
         /// <param name="computeGlsl">The compute source, GLSL <c>#version 450</c>.</param>
-        /// <param name="label">Optional name, included in a compile failure's message.</param>
+        /// <param name="label">Optional name, carried in <see cref="ShaderValidationException.Label"/>.</param>
         /// <param name="compileCache">An explicit device memo, or null for ordinary defaults.</param>
         /// <param name="bytesCache">Optional disk cache checked before the front end.</param>
         /// <exception cref="ShaderValidationException">The source failed to compile to SPIR-V, or the module
-        /// declares no resolvable workgroup size.</exception>
+        /// declares no resolvable workgroup size. Reason is FrontEndCompileFailed with Label, Stage, Target and
+        /// Diagnostic, or ComputeLocalSizeMissing / ComputeLocalSizeSpecialized with Label and, for
+        /// specialization, ExecutionMode.</exception>
         internal VulkanComputeShader(VulkanShaderModuleCache modules, string computeGlsl, string? label = null,
             SpirvBytesCache? bytesCache = null, SpirvCompileCache? compileCache = null)
         {
@@ -77,10 +79,17 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         /// <see cref="VulkanShaderSet.Require"/>, and row 13's compute pipeline is the caller.</summary>
         internal static VulkanComputeShader Require(IGpuComputeShader? shader, string what)
             => shader as VulkanComputeShader
-                ?? throw new ArgumentException(
+                ?? throw new GpuResourceOwnershipArgumentException(shader is null ? GpuResourceOwnershipRefusal.MissingResource : GpuResourceOwnershipRefusal.ForeignBackend,
                     $"The compute shader handed to {what} was not compiled by the native Vulkan backend, so it "
                     + "holds no VkShaderModule. Compile shaders through the same IGpuDevice.Factory the pipeline "
                     + "is being created from.",
-                    nameof(shader));
+                    nameof(shader))
+                {
+                    ExpectedBackend = GpuBackendKind.VulkanNative,
+                    ActualType = shader?.GetType(),
+                    ExpectedType = typeof(VulkanComputeShader),
+                    Context = what,
+                    ResourceKind = "compute shader",
+                };
     }
 }

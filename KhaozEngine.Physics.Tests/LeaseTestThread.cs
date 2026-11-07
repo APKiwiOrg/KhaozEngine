@@ -18,7 +18,8 @@ internal sealed class LeaseTestThread
         {
             try { action(); }
             catch (Exception error) { _error = error; }
-        }) { IsBackground = true };
+        })
+        { IsBackground = true };
         _thread.Start();
     }
 

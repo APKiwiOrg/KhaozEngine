@@ -31,14 +31,15 @@ internal sealed class MapSurfaceEmbeddingConverter : JsonConverter<List<MapSurfa
         using JsonDocument json = JsonDocument.ParseValue(ref reader);
         if (json.RootElement.ValueKind != JsonValueKind.Array || json.RootElement.GetArrayLength() > MapSurfaceEmbedding.MaxPatches ||
             _maxPatchBytes < 0 || _maxEncodedBytes < 2)
-            throw new JsonException("surface embedding limit, use tiled storage");
+            throw HeaderRefusal(json.RootElement);
         var result = new List<MapSurfacePatch>();
         long remaining = _maxEncodedBytes - 2;
         foreach (JsonElement element in json.RootElement.EnumerateArray())
         {
             if (result.Count != 0)
             {
-                if (remaining < 1) throw new JsonException("surface embedding limit, use tiled storage");
+                if (remaining < 1) throw new MapSurfaceEmbeddingJsonException(MapDocumentRefusal.WorkCapacityExceeded, "surface embedding limit, use tiled storage")
+                { FieldPath = "$.surfacePatches", Budget = "MaxEmbeddingBytes", ActualByteCount = _maxEncodedBytes - remaining + 1, Limit = _maxEncodedBytes };
                 remaining--;
             }
             byte[] payload;
@@ -48,6 +49,8 @@ internal sealed class MapSurfaceEmbeddingConverter : JsonConverter<List<MapSurfa
             }
             catch (MapDocumentException error)
             {
+                if (error.Reason is not null) throw MapSurfaceEmbeddingJsonException.FromDocument(error);
+                // Caller-provided allocators can still throw a consumer-built message-only refusal.
                 throw new JsonException(error.Message, error);
             }
             remaining -= payload.Length;
@@ -56,6 +59,19 @@ internal sealed class MapSurfaceEmbeddingConverter : JsonConverter<List<MapSurfa
         }
         return result;
     }
+
+    MapSurfaceEmbeddingJsonException HeaderRefusal(JsonElement root)
+    {
+        const string message = "surface embedding limit, use tiled storage";
+        if (root.ValueKind != JsonValueKind.Array) return new(MapDocumentRefusal.SchemaArrayRequired, message) { FieldPath = "$.surfacePatches" };
+        if (root.GetArrayLength() > MapSurfaceEmbedding.MaxPatches)
+            return new(MapDocumentRefusal.WorkCapacityExceeded, message)
+            { FieldPath = "$.surfacePatches", Budget = "MaxEmbeddedPatches", ActualCount = root.GetArrayLength(), Limit = MapSurfaceEmbedding.MaxPatches };
+        bool patch = _maxPatchBytes < 0;
+        return new(MapDocumentRefusal.ValueOutsideRange, message)
+        { FieldPath = patch ? "maxPatchBytes" : "maxEncodedBytes", ActualInteger = patch ? _maxPatchBytes : _maxEncodedBytes, MinimumInteger = patch ? 0 : 2 };
+    }
+
     public override void Write(Utf8JsonWriter writer, List<MapSurfacePatch> value, JsonSerializerOptions options)
     {
         writer.WriteStartArray();

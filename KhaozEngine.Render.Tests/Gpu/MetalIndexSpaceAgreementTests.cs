@@ -78,8 +78,16 @@ void main() { v[gl_GlobalInvocationID.x] = float(v.length()); }
             ShaderValidationException error = Assert.Throws<ShaderValidationException>(
                 () => MetalShaderBuild.Compute(kernel, null, "runtime-array"));
 
-            Assert.Contains("buffer-size buffer", error.Message, StringComparison.Ordinal);
-            Assert.Contains("M-B2", error.Message, StringComparison.Ordinal);
+            Assert.Equal(ShaderValidationRefusal.CrossCompileFailed, error.Reason);
+            Assert.Equal("runtime-array", error.Label);
+            Assert.Equal(GpuShaderStages.Compute, error.Stage);
+            Assert.Equal("MSL", error.Target);
+            var helper = Assert.IsType<ShaderValidationException>(error.InnerException);
+            Assert.Equal(ShaderValidationRefusal.MetalHelperBufferUnnumbered, helper.Reason);
+            Assert.Equal("a buffer-size buffer", helper.HelperKind);
+            Assert.Equal("M-B2", helper.Policy);
+            Assert.Equal("runtime-array", helper.Label);
+            Assert.Equal(GpuShaderStages.Compute, helper.Stage);
         }
 
         /// <summary>The control: the same kernel with a SIZED array needs no helper buffer and builds.</summary>

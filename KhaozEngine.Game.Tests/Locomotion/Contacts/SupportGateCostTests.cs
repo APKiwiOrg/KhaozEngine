@@ -467,9 +467,11 @@ public class SupportGateCostTests(ITestOutputHelper output) : IDisposable
         var query = new FootSupportQuery(Vector2.Zero, 0, 0.2f, 0.4f, 0.4f, MathF.Cos(MathF.PI / 4));
         using IPhysicsQueryLease lease = scene.World.AcquireQueryReadLease();
         Assert.Equal(SupportStatus.Refused, FootSupport.Find(null, null, scene.World, lease, query).Status);
-        var error = Assert.Throws<NotSupportedException>(() =>
+        Assert.Throws<NotSupportedException>(() =>
             SupportGateCostScenes.Expected(scene, new SupportCostRow("steep plate"), query, guarded: true));
-        Assert.Contains("third guard refusal", error.Message, StringComparison.Ordinal);
+        // The unguarded reference reads the same scene and query, so only the guard model refuses them. This mesh has no
+        // curved member for the oracle's other refusals.
+        SupportGateCostScenes.Expected(scene, new SupportCostRow("steep plate"), query, guarded: false);
     }
 
     static string GitSha() => GitOutput("rev-parse HEAD");
@@ -631,6 +633,7 @@ public class SupportGateCostTests(ITestOutputHelper output) : IDisposable
     [InlineData("foot radius", false)]
     [InlineData("water mode", false)]
     [InlineData("water launch", false)]
+    [InlineData("commitment kind", false)]
     public void HostedNormalizationMatchesCommittedPhysicalInputs(string tuning, bool expected)
     {
         string path = Path.Combine(GitOutput("rev-parse --show-toplevel"), "docs", "verification", "2026-10-11-support-gates-cost.json");
@@ -650,6 +653,9 @@ public class SupportGateCostTests(ITestOutputHelper output) : IDisposable
             case "foot radius": hosted["Tuning"]!["FootRadiusFraction"] = 0.75f; break;
             case "water mode": hosted["Tuning"]!["Water"]!["Mode"] = (int)WaterTraversalMode.WadeOnly; break;
             case "water launch": hosted["Tuning"]!["Water"]!["SurfaceJumpSpeed"] = 1f; break;
+            case "commitment kind":
+                hosted["Scenes"]!["flat box"]!["InputState"]!["Commitment"]!["Kind"] = (int)MovementCommitmentKind.Ground;
+                break;
         }
         Assert.Equal(expected, SupportCostVerdict.TryHostedScale(reference, hosted, out HostedScale scale));
         Assert.Equal(expected ? 0.5 : 0, scale.K);

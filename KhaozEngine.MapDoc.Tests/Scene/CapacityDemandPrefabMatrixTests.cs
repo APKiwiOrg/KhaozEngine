@@ -1,6 +1,5 @@
 using System;
 using System.Linq;
-using System.Reflection;
 using KhaozEngine.MapDoc;
 using KhaozEngine.MapDoc.Prefabs;
 using Xunit;
@@ -26,17 +25,13 @@ public sealed class CapacityDemandPrefabMatrixTests
     {
         var limits = new MapPrefabExpansionLimits(MaxInstances: 3, MaxChildren: 3, MaxReferenceEdges: 3,
             MaxPatches: 3, MaxRecords: 3, MaxGeometryElements: 3, MaxBindings: 3, MaxOverrides: 3, MaxTransfers: 3, MaxPayloadBytes: 3);
-        var counter = typeof(MapPrefabPreflight).GetNestedType("Counter", BindingFlags.NonPublic)!;
-        var value = Activator.CreateInstance(counter, BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic,
-            binder: null, args: new object?[] { limits, null }, culture: null)!;
-        var slot = counter.GetField(field, BindingFlags.Instance | BindingFlags.NonPublic)!;
-        var check = counter.GetMethod("Check", BindingFlags.Instance | BindingFlags.NonPublic)!;
         using var probe = new CapacityDemandProbe();
-        slot.SetValue(value, 3L);
-        check.Invoke(value, null);
-        slot.SetValue(value, 4L);
-        var error = Assert.Throws<TargetInvocationException>(() => check.Invoke(value, null));
-        Assert.IsType<MapDocumentException>(error.InnerException);
+        MapPrefabPreflight.CheckCounterForTests(limits, field, 3);
+        var error = Assert.Throws<MapDocumentException>(() => MapPrefabPreflight.CheckCounterForTests(limits, field, 4));
+        Assert.Equal(MapDocumentRefusal.WorkCapacityExceeded, error.Reason);
+        Assert.Equal("Max" + field, error.Budget);
+        Assert.Equal(4, error.ActualCount);
+        Assert.Equal(3, error.Limit);
         var rows = probe.For("Max" + field).ToArray();
         Assert.Equal(2, rows.Length);
         Assert.All(rows, r => Assert.Equal("MapPrefabPreflight.Max" + field + ".1", Read<string>(r, "Site")));

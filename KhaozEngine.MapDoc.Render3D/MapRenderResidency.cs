@@ -27,6 +27,8 @@ public sealed partial class MapRenderResidency : IDisposable
     readonly Queue<Owner> _retired = new();
     readonly Dictionary<Identity, Owner> _owners = new();
     readonly Dictionary<MapResourceReference, Owner> _acceptedReferences = new();
+    internal (object Identity, int Capacity)[] RecordingStorageForTests => _recording.StorageForTests;
+    internal long RecordingChargeBytesForTests => _recordingCharge?.Bytes ?? 0;
     readonly CompositeSink _recording = new();
     MapRenderAdmission.CpuLease? _recordingCharge;
     int _recordingCapacity;
@@ -493,6 +495,10 @@ public sealed partial class MapRenderResidency : IDisposable
     }
     sealed class CompositeSink : IMapDrawSink
     {
+        internal (object Identity, int Capacity)[] StorageForTests =>
+            [(KhaozEngine.Render3D.TestObservationIdentity.For(_canonical), _canonical.EnsureCapacity(0)),
+                (KhaozEngine.Render3D.TestObservationIdentity.For(_drawn), _drawn.EnsureCapacity(0)),
+                (KhaozEngine.Render3D.TestObservationIdentity.For(_aliases), _aliases.EnsureCapacity(0))];
         IMapDrawSink _sink = null!;
         Dictionary<MapResourceReference, Owner> _owners = null!;
         internal void Prepare(int count)

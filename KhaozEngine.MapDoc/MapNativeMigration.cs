@@ -12,7 +12,15 @@ public static class MapNativeMigration
         ArgumentNullException.ThrowIfNull(source);
         if (source["formatVersion"] is not JsonValue value ||
             !value.TryGetValue(out int version) || (version != 3 && version != 4))
-            throw new MapDocumentException("Native migration requires formatVersion 3 or 4.");
+            throw new MapDocumentException(!source.ContainsKey("formatVersion") ? MapDocumentRefusal.SchemaMemberMissing
+                : source["formatVersion"] is not JsonValue submitted || !submitted.TryGetValue<int>(out _)
+                    ? MapDocumentRefusal.SchemaValueRequired : MapDocumentRefusal.DocumentMigrationSourceVersionInvalid,
+                "Native migration requires formatVersion 3 or 4.")
+            {
+                FieldPath = "$.formatVersion",
+                ActualVersion = source["formatVersion"] is JsonValue v && v.TryGetValue<int>(out int actual) ? actual : null,
+                SupportedVersions = [3, 4],
+            };
 
         var result = (JsonObject)source.DeepClone();
         if (version == 4) return result;

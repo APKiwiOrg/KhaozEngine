@@ -35,7 +35,7 @@ public sealed class PrefabAssetPublisher(MapEditSession session, IMapPrefabPubli
             var reference = new MapAssetRef(address, relativeDirectory.TrimEnd('/') + "/" + address, sha, 1);
             string prefabPath = session.RequireNativeResourcePath(reference.Path);
             MapAssetRef[] roots = c.Document.NativeAssets.ToArray();
-            if (roots.Length == 0) throw new MapDocumentException("Prefab publication requires an asset manifest root.");
+            RequireAssetRoot(roots.Length, asset.Id);
             int index = Array.FindIndex(roots, r => MapAssetManifestReader.Read(c.Assets.GetResource(r.Id).Bytes.ToArray(), r.Id)
                 .Resources.Any(resource => resource.Reference.Id == resourceId));
             if (index < 0) index = 0;
@@ -55,9 +55,9 @@ public sealed class PrefabAssetPublisher(MapEditSession session, IMapPrefabPubli
             roots[index] = root;
             // Every resource pin and existing declaration is retained. Old maps and unpacked rows keep their bytes.
             _files.Checkpoint("before-bytes");
-            PublishVerified(prefabPath, prefabBytes);
+            PublishVerified(prefabPath, prefabBytes, reference.Id);
             _files.Checkpoint("after-prefab");
-            PublishVerified(manifestPath, manifestBytes);
+            PublishVerified(manifestPath, manifestBytes, root.Id);
             _files.Checkpoint("after-manifest");
             MapAssetClosure after = MapAssetClosure.Load(roots, c.Source);
             MapPrefabMutationResult? mutation = null;
@@ -82,11 +82,38 @@ public sealed class PrefabAssetPublisher(MapEditSession session, IMapPrefabPubli
             return new(reference, mutation);
         });
     }
-    void PublishVerified(string path, byte[] bytes)
+    static void RequireAssetRoot(int count, string assetId)
     {
-        if (!File.Exists(path)) _files.PublishNew(path, bytes);
-        if (!File.Exists(path) || !File.ReadAllBytes(path).AsSpan().SequenceEqual(bytes))
-            throw new MapDocumentException("An immutable prefab address holds different bytes or was not published.");
+        if (count == 0)
+            throw new MapDocumentException(MapDocumentRefusal.ToolAssetRootRequired, "Prefab publication requires an asset manifest root.")
+            { AssetId = assetId, Operation = nameof(Publish) };
+    }
+
+    // Value-taking admission seam, without replacing or mutating a live session's roots.
+    internal static void RequireAssetRootForTests(int count, string assetId) => RequireAssetRoot(count, assetId);
+
+    void PublishVerified(string path, byte[] bytes, string resourceId)
+    {
+        try
+        {
+            if (!File.Exists(path)) _files.PublishNew(path, bytes);
+        }
+        catch (MapDocumentException ex)
+        {
+            throw ex.WithSourceName(path, ex.Message, path: path, resourceId: resourceId);
+        }
+        bool exists = File.Exists(path);
+        byte[]? existing = exists ? File.ReadAllBytes(path) : null;
+        if (!exists || !existing!.AsSpan().SequenceEqual(bytes))
+            throw new MapDocumentException(MapDocumentRefusal.ToolImmutableResourceConflict,
+                "An immutable prefab address holds different bytes or was not published.")
+            {
+                Path = path,
+                ResourceId = resourceId,
+                ExpectedHash = Convert.ToHexStringLower(SHA256.HashData(bytes)),
+                ActualHash = existing is null ? null : Convert.ToHexStringLower(SHA256.HashData(existing)),
+                Operation = nameof(Publish)
+            };
     }
     sealed class ImmutableFiles : IMapPrefabPublicationFiles
     {
@@ -103,7 +130,10 @@ public sealed class PrefabAssetPublisher(MapEditSession session, IMapPrefabPubli
                 catch (IOException) when (File.Exists(path)) { }
             }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
-            { throw new MapDocumentException("Cannot publish immutable prefab bytes: " + ex.Message, ex); }
+            {
+                throw new MapDocumentException(MapDocumentRefusal.ToolResourceWriteFailed, "Cannot publish immutable prefab bytes: " + ex.Message, ex)
+                { Path = path, Operation = nameof(Publish) };
+            }
             finally { if (File.Exists(staging)) File.Delete(staging); }
         }
     }

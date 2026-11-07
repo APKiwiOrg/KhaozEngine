@@ -7,6 +7,8 @@ namespace KhaozEngine.MapDoc.Render3D;
 /// <summary>The viewport and capture share one residency, publication and typed submission path.</summary>
 public sealed class NativeMapView : IDisposable
 {
+    internal void RecordForTests(MapFrameState frame, IMapDrawSink sink) => _residency.Record(frame, sink);
+    internal string DesiredPolicyDigestForTests => _residency.DesiredState.Policy.Digest;
     readonly Scene3D _scene;
     readonly MapRenderResidency _residency;
     MapRenderReadiness _readiness;

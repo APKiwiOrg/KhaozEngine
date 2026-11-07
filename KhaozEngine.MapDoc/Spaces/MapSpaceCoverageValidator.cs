@@ -13,24 +13,44 @@ public static class MapSpaceCoverageValidator
     public static IReadOnlyList<string> Validate(MapScopedSurfaces completeView) => Validate(completeView, new());
     public static IReadOnlyList<string> Validate(MapScopedSurfaces completeView, MapRefinementLimits limits) =>
         ValidateCore(completeView, limits, null);
+
+    /// <summary>Returns the full ordered immutable snapshot behind coverage diagnostics.</summary>
+    public static IReadOnlyList<MapDocumentFinding> ValidateFindings(MapScopedSurfaces completeView, MapRefinementLimits? limits = null)
+    {
+        var findings = new List<MapDocumentFinding>();
+        _ = ValidateCore(completeView, limits ?? new(), null, findings);
+        return findings.AsReadOnly();
+    }
+
+    /// <summary>Refuses with the first concrete rule and the full ordered finding snapshot.</summary>
+    public static void Require(MapScopedSurfaces completeView, MapRefinementLimits? limits = null)
+    {
+        var findings = ValidateFindings(completeView, limits);
+        if (findings.Count != 0) throw MapDocumentRefusalFactory.FromFinding(findings[0], string.Join("\n", findings.Select(f => f.Message)), findings: findings);
+    }
     internal static IReadOnlyList<string> Validate(MapScopedSurfaces completeView, MapRefinementLimits limits, MapBoundFaceWork work) =>
         ValidateCore(completeView, limits, work);
+    internal static IReadOnlyList<string> Validate(MapScopedSurfaces completeView, MapRefinementLimits limits,
+        List<MapDocumentFinding> findings) => ValidateCore(completeView, limits, null, findings);
 
-    static IReadOnlyList<string> ValidateCore(MapScopedSurfaces view, MapRefinementLimits limits, MapBoundFaceWork? work)
+    static IReadOnlyList<string> ValidateCore(MapScopedSurfaces view, MapRefinementLimits limits, MapBoundFaceWork? work,
+        List<MapDocumentFinding>? typedFindings = null)
     {
         ArgumentNullException.ThrowIfNull(view);
         ArgumentNullException.ThrowIfNull(limits);
         if (!view.Witness.Complete) throw new ArgumentException("coverage validation requires a complete view", nameof(view));
         MapTopologyRecord[] records = MapSpaceGeometry.Records(view).OrderBy(r => r.Id, StringComparer.Ordinal).ToArray();
         var findings = new List<(string Id, int Cell, string Text)>();
+        var typed = new Dictionary<(string Id, int Cell, string Text), MapDocumentFinding>();
         var patches = new MapSpaceGeometry.Patches(view);
-        foreach (string finding in MapTopologyReferenceValidator.Validate(view.Surfaces, patches))
-            Add(OwnerOf(finding), -1, finding);
+        foreach (MapSpaceDiagnostic diagnostic in MapTopologyReferenceValidator.ValidateDiagnostics(view.Surfaces, patches))
+            if (diagnostic.Finding is { } finding) AddFinding(diagnostic.SortOwnerId, -1, finding);
+            else Add(diagnostic.SortOwnerId, -1, diagnostic.Message);
         foreach (MapSurfacePatch patch in patches)
-            foreach (string finding in MapSeamValidator.ValidateCornerDependencies(patch, view))
-                Add(patch.Key.ToString(), -1, finding);
+            foreach (MapDocumentFinding finding in MapSeamValidator.ValidateCornerDependencyFindings(patch, view))
+                AddFinding(patch.Key.ToString(), -1, finding);
         foreach (MapSurfaceSeam seam in records.OfType<MapSurfaceSeam>())
-            foreach (string finding in MapSeamValidator.Validate(seam, view)) Add(seam.Id, -1, finding);
+            foreach (MapDocumentFinding finding in MapSeamValidator.ValidateFindings(seam, view)) AddFinding(seam.Id, -1, finding);
         MapSpaceFootprint[] footprints = records.OfType<MapSpaceFootprint>().ToArray();
         MapFootprintPreparation prepared = MapCommonRefinement.PrepareFootprints(view, footprints, limits, work);
         var columns = new List<MapSpaceColumn>();
@@ -45,7 +65,9 @@ public static class MapSpaceCoverageValidator
                 {
                     if (!contextFinding)
                     {
-                        Add(footprint.Id, -1, $"refinement capacity: footprint '{footprint.Id}' ({prepared.Refusal})");
+                        // The shared context refusal names no record. This copy names the footprint its message names.
+                        AddFinding(footprint.Id, -1, prepared.Finding! with
+                        { Message = $"refinement capacity: footprint '{footprint.Id}' ({prepared.Refusal})", RecordId = footprint.Id, SpaceId = footprint.Space.Id });
                         contextFinding = true;
                     }
                     continue;
@@ -63,13 +85,14 @@ public static class MapSpaceCoverageValidator
                     };
                     string detail = refinement.Status == MapRefinementStatus.Invalid && refinement.Detail is not null
                         ? $" ({refinement.Detail})" : "";
-                    Add(footprint.Id, cell, $"{kind}: {label}{detail}");
+                    AddFinding(footprint.Id, cell, refinement.Finding! with { Message = $"{kind}: {label}{detail}" });
                     continue;
                 }
                 if (!refinement.LowerArea.Add(refinement.CompatibilityArea).Equals(refinement.CellArea) ||
                     (refinement.UpperArea is { } upperArea && !upperArea.Equals(refinement.CellArea)))
                 {
-                    Add(footprint.Id, cell, $"missing bound: {label}");
+                    AddFinding(footprint.Id, cell, new(MapDocumentRefusal.SpaceCoverageMissingBound, $"missing bound: {label}")
+                    { RecordId = footprint.Id, SpaceId = footprint.Space.Id, SlotCell = cell });
                     continue;
                 }
                 try
@@ -82,7 +105,9 @@ public static class MapSpaceCoverageValidator
                     if (refinement.MinSeparation is { Sign: <= 0 })
                     {
                         MapWideXz vertex = FirstSeparation(refinement, lower.Faces, upper!.Faces);
-                        Add(footprint.Id, cell, $"separation: {label} at ({vertex.X}, {vertex.Z})");
+                        AddFinding(footprint.Id, cell, new(MapDocumentRefusal.SpaceCoverageSeparationInvalid,
+                            $"separation: {label} at ({vertex.X}, {vertex.Z})")
+                        { RecordId = footprint.Id, SpaceId = footprint.Space.Id, SlotCell = cell });
                     }
                     MapSpaceDoc space = MapSpaceGeometry.Record<MapSpaceDoc>(view, footprint.Space);
                     var lowerKeys = refinement.Faces.Select(f => f.Lower).ToHashSet();
@@ -90,18 +115,36 @@ public static class MapSpaceCoverageValidator
                     columns.Add(new(footprint, cell, space, rect[0], rect[1], lower.Faces.Where(f => lowerKeys.Contains(f.Key)).ToArray(),
                         upper?.Faces.Where(f => upperKeys.Contains(f.Key)).ToArray(), refinement, MapEffectiveGeometry.CellPolygon(view, footprint.Lattice, cell).Select(MapWideXz.From).ToArray()));
                 }
-                catch (MapExactOverflowException) { Add(footprint.Id, cell, $"not representable: {label}"); }
-                catch (MapDocumentException error) { Add(footprint.Id, cell, $"missing geometry: {label} ({error.Message})"); }
+                catch (MapExactOverflowException)
+                {
+                    AddFinding(footprint.Id, cell, new(MapDocumentRefusal.GeometryNotRepresentable,
+                    $"not representable: {label}")
+                    { RecordId = footprint.Id, SpaceId = footprint.Space.Id, SlotCell = cell });
+                }
+                catch (MapDocumentException error)
+                {
+                    string message = $"missing geometry: {label} ({error.Message})";
+                    if (MapDocumentFinding.FromException(error) is { } finding)
+                        AddFinding(footprint.Id, cell, finding with { Message = message, RecordId = finding.RecordId ?? footprint.Id });
+                    else Add(footprint.Id, cell, message);
+                }
             }
         }
-        MapSpaceBoundaryCoverage.Validate(view, records, columns, Add);
-        MapSpaceOverlapValidator.Validate(view, columns, Add);
-        foreach (string finding in MapPrismCoverage.Validate(view, limits)) Add(OwnerOf(finding), -1, finding);
-        return Array.AsReadOnly(findings.OrderBy(f => f.Id, StringComparer.Ordinal).ThenBy(f => f.Cell)
-            .ThenBy(f => f.Text, StringComparer.Ordinal).Select(f => f.Text).Distinct(StringComparer.Ordinal).ToArray());
+        MapSpaceBoundaryCoverage.Validate(view, records, columns, Add, RecordFinding);
+        MapSpaceOverlapValidator.Validate(view, columns, Add, RecordFinding);
+        var prismDiagnostics = new List<MapSpaceDiagnostic>();
+        MapPrismCoverage.Validate(view, limits, null, prismDiagnostics);
+        foreach (MapSpaceDiagnostic diagnostic in prismDiagnostics)
+            if (diagnostic.Finding is { } finding) AddFinding(diagnostic.SortOwnerId, -1, finding);
+            else Add(diagnostic.SortOwnerId, -1, diagnostic.Message);
+        var ordered = findings.OrderBy(f => f.Id, StringComparer.Ordinal).ThenBy(f => f.Cell)
+            .ThenBy(f => f.Text, StringComparer.Ordinal).DistinctBy(f => f.Text).ToArray();
+        typedFindings?.AddRange(ordered.Where(f => typed.ContainsKey(f)).Select(f => typed[f]));
+        return Array.AsReadOnly(ordered.Select(f => f.Text).ToArray());
 
         void Add(string id, int cell, string finding) => findings.Add((id, cell, finding));
-        string OwnerOf(string finding) => records.FirstOrDefault(r => finding.Contains($"'{r.Id}'", StringComparison.Ordinal))?.Id ?? "";
+        void AddFinding(string id, int cell, MapDocumentFinding finding) { Add(id, cell, finding.Message); RecordFinding(id, cell, finding); }
+        void RecordFinding(string id, int cell, MapDocumentFinding finding) => typed.TryAdd((id, cell, finding.Message), finding);
     }
 
     static MapWideXz FirstSeparation(MapWideCellRefinement refinement, IReadOnlyList<MapBoundFace> lower, IReadOnlyList<MapBoundFace> upper)

@@ -2,7 +2,8 @@ using KhaozEngine.Gpu;
 
 namespace KhaozEngine.Render3D.Diagnostics;
 
-/// <summary>Opt-in logical render boundaries. CPU callbacks must not record GPU commands.</summary>
+/// <summary>Opt-in logical render boundaries. Pass callbacks may record markers. CPU-phase callbacks must not
+/// record GPU commands.</summary>
 public interface IRenderPassObserver
 {
     void BeginPass(IGpuCommandList commands, RenderPassKey key);

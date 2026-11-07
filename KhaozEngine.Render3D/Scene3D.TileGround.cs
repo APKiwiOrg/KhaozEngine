@@ -64,18 +64,26 @@ namespace KhaozEngine.Render3D
             if (height <= 0)
                 throw new ArgumentOutOfRangeException(nameof(height), height, "tile-ground layer height must be positive.");
             if (layers.Count < 1 || layers.Count > TileGroundMaterialConfig.MaxMaterials)
-                throw new ArgumentException(
+                throw new TileGroundUploadArgumentException(TileGroundUploadRefusal.LayerCountOutsideRange,
                     $"a tile-ground material needs 1 to {TileGroundMaterialConfig.MaxMaterials} layers, got {layers.Count}.",
-                    nameof(layers));
+                    nameof(layers))
+                { LayerCount = layers.Count, MinimumLayerCount = 1, MaximumLayerCount = TileGroundMaterialConfig.MaxMaterials };
             // Every layer is one slice of ONE array texture, so a layer that is not exactly width*height*4 bytes
             // would either overrun the slice or leave it partly uninitialised. Name the layer and both sizes rather
             // than letting the upload fail somewhere in the GPU seam.
             int expected = width * height * 4;
             for (int i = 0; i < layers.Count; i++)
                 if (layers[i].AlbedoRgba.Length != expected)
-                    throw new ArgumentException(
+                    throw new TileGroundUploadArgumentException(TileGroundUploadRefusal.LayerByteLengthMismatch,
                         $"tile-ground layer {i} is {layers[i].AlbedoRgba.Length} bytes, expected {expected} for {width}x{height} RGBA8.",
-                        nameof(layers));
+                        nameof(layers))
+                    {
+                        LayerIndex = i,
+                        ActualByteLength = layers[i].AlbedoRgba.Length,
+                        ExpectedByteLength = expected,
+                        Width = width,
+                        Height = height,
+                    };
 
             // Packed, and so validated, BEFORE any GPU resource exists: a layer whose steep companion is refused
             // throws here, and a throw after the upload below would leak the texture array it created.

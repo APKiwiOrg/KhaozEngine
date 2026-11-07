@@ -49,6 +49,7 @@ internal sealed class MapEffectiveContext
     internal long InventoryBytes { get; }
     internal long IndexBytes { get; }
     readonly IReadOnlyDictionary<string, MapSurfaceRef> _surfaces;
+    internal IReadOnlyDictionary<string, MapSurfaceRef> SurfaceIndexForTests => _surfaces;
     readonly Dictionary<string, MapEffectiveTransform> _transformValues;
     internal MapSurfaceSet Surfaces { get; }
     internal IReadOnlyDictionary<string, MapEffectiveTransform> Transforms { get; }
@@ -85,7 +86,8 @@ internal sealed class MapEffectiveContext
         if (preparation is not null && Scene.MapSceneAdmission.Current is { } admission)
             preparation.WorkspaceOwner.DependOn(admission, this, InventoryBytes);
     }
-    internal MapSurfaceRef Surface(string id) => _surfaces.TryGetValue(id, out var surface) ? surface : throw new MapDocumentException($"Missing effective surface '{id}'.");
+    internal MapSurfaceRef Surface(string id) => _surfaces.TryGetValue(id, out var surface) ? surface
+        : throw new MapDocumentException(MapDocumentRefusal.ReferenceMissing, $"Missing effective surface '{id}'.") { SurfaceId = id };
     internal MapExactXz Xz(string id, MapExactXz local) => Transform(MapPrefabChildKind.Surface, id)?.Xz(local) ?? local;
     // Installed prefab/resource surfaces and precise native poses are additive R5 geometry. World paint
     // without such a pose keeps the released path, including when an unrelated prefab is present.

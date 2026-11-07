@@ -203,10 +203,10 @@ public sealed partial class Scene3D
             if (!_slots.IsValid(handle.Index, handle.Generation) || _meshes[handle.Index] is not { } mesh) continue;
             if (draw.Batch.AnchorSet is { } anchorSet)
                 _model.DrawPreparedFoliageMesh(cl, mesh.Vb, mesh.Ib, mesh.IndexCount, mesh.IndexFormat,
-                    draw.Batch.Buffer, (uint)draw.Patch.Start, (uint)draw.Count, (uint)draw.UniformSlot, mesh.MaterialSet, anchorSet);
+                    draw.Batch.Buffer, (uint)draw.Patch.Start, (uint)draw.Count, (uint)draw.UniformSlot, mesh.MaterialSet, anchorSet, mesh.OpaqueFoliage);
             else
                 _model.DrawFoliageMesh(cl, mesh.Vb, mesh.Ib, mesh.IndexCount, mesh.IndexFormat,
-                    draw.Batch.Buffer, (uint)draw.Patch.Start, (uint)draw.Count, (uint)draw.UniformSlot, mesh.MaterialSet);
+                    draw.Batch.Buffer, (uint)draw.Patch.Start, (uint)draw.Count, (uint)draw.UniformSlot, mesh.MaterialSet, mesh.OpaqueFoliage);
             CountMeshDraw(mesh.IndexCount, (uint)draw.Count);
             candidates += draw.Count;
             patches++;

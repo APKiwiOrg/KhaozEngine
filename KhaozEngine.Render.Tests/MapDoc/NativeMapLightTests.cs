@@ -46,8 +46,7 @@ public sealed class NativeMapLightTests
         using var harness = new MotionTestScene(); var scene = harness.Scene;
         var local = new Vector3(.0001f, .234567f, -.345678f); var anchor = new RenderAnchor(32000, -500, -32000);
         scene.Begin(); scene.AddLightAnchored(local, anchor, Color.White, 4, 2, LightShadow.Static(9));
-        var lights = (List<ModelRenderer.PointLightData>)typeof(Scene3D).GetField("_lights",
-            System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!.GetValue(scene)!;
+        var lights = scene.LightsForTests;
         var output = new ModelRenderer.PointLightGpuData[1];
         ModelRenderer.BuildPointLightRecords(lights.ToArray(), output, [], [], 0, 0, new(32000, -500, -32000));
         Assert.Equal(new Vector4(local, 4), output[0].PosRadius);

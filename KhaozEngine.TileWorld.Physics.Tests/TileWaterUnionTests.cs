@@ -38,7 +38,8 @@ public class TileWaterUnionTests
         for (int z = -3; z < 0; z++)
             for (int x = 0; x < 3; x++) doc.SetCornerHeightCm(x, z, 0, -200);
         foreach (var tile in new[] { (0, -1), (1, -1), (0, -2) }) doc.SetUnderlay(tile.Item1, tile.Item2, 0, TileWorldPhysicsTestData.Water);
-        doc.SetCornerHeightCm(1, -1, 0, 2);
+        // The rim stays away from the measured concavity and its deep floor.
+        doc.SetCornerHeightCm(0, -2, 0, 2);
         var field = MovementWaterFieldTests.Field(doc);
         var query = new MovementMediumSweepQuery(new(new(axis, -1, axis), 0.4f, 0.5f, MovementWaterFieldTests.Space, null), Vector3.Zero);
         var spans = new MovementCoverageSpan[64];
@@ -51,13 +52,18 @@ public class TileWaterUnionTests
     [Fact]
     public void AdjacentRegionBodiesRetainDifferentSurfacesAndLocalBedChanges()
     {
-        // The northern resident region authors zero-valued far corners rather than edge-extending the rim.
-        var doc = TileWorldPhysicsTestData.FlatWorld(new(0, -1), new(1, -1), new(1, 0));
-        doc.SetUnderlay(63, -1, 0, TileWorldPhysicsTestData.Water);
-        doc.SetUnderlay(64, -1, 0, TileWorldPhysicsTestData.Water);
-        doc.SetCornerHeightCm(63, -1, 0, -200);
-        doc.SetCornerHeightCm(64, -1, 0, 2);
-        doc.SetCornerHeightCm(65, -1, 0, 102);
+        // Keep the original world probes and capsule. A finer lattice authors two actual level
+        // strata within its footprint, joined by a short continuous ramp at the region boundary.
+        var doc = TileWorldPhysicsTestData.FlatWorld(new(7, -1), new(8, -1), new(7, 0), new(8, 0));
+        doc.TileSize = 0.125f;
+        for (int z = -7; z <= 0; z++)
+            for (int x = 508; x <= 516; x++)
+            {
+                doc.SetCornerHeightCm(x, z, 0, (short)(x < 512 ? -200 : x == 512 ? -100 : 0));
+                if (x < 516 && z < 0) doc.SetUnderlay(x, z, 0, TileWorldPhysicsTestData.Water);
+            }
+        doc.SetCornerHeightCm(508, -7, 0, 2);
+        doc.SetCornerHeightCm(516, -7, 0, 102);
         var field = MovementWaterFieldTests.Field(doc);
         MovementWaterPoint Point(float x) => field.SampleCentreWater(new(new(x, 0.1f, 0.5f), 0.25f, 0.75f, MovementWaterFieldTests.Space, null), Vector3.Zero);
         var left = Point(63.75f);

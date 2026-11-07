@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Globalization;
+using KhaozEngine.Gpu.Internal;
 using Silk.NET.Vulkan;
 
 namespace KhaozEngine.Gpu.Vulkan.Internal
@@ -104,14 +105,18 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
 
             if (resources.Length != layout.ElementCount)
             {
-                throw new ArgumentException(
+                throw new GpuResourceSetException(GpuResourceSetRefusal.ResourceCountMismatch,
                     "A native Vulkan resource set was built with "
                     + resources.Length.ToString(CultureInfo.InvariantCulture)
                     + " resources against a layout declaring "
                     + layout.ElementCount.ToString(CultureInfo.InvariantCulture)
                     + " elements. Resources are matched to elements POSITIONALLY, so a count mismatch is not a "
                     + "shortfall the backend can work around.",
-                    nameof(description));
+                    nameof(description))
+                {
+                    DeclaredCount = layout.ElementCount,
+                    SuppliedCount = resources.Length,
+                };
             }
 
             _pools = pools;
@@ -229,10 +234,17 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         /// this.</summary>
         internal static VulkanResourceSet Require(IGpuResourceSet? set, string what)
             => set as VulkanResourceSet
-                ?? throw new ArgumentException(
+                ?? throw new GpuResourceOwnershipArgumentException(set is null ? GpuResourceOwnershipRefusal.MissingResource : GpuResourceOwnershipRefusal.ForeignBackend,
                     $"The resource set handed to {what} was not created by the native Vulkan backend, so it "
                     + "carries no VkDescriptorSet. Create it through the same IGpuDevice.Factory.",
-                    nameof(set));
+                    nameof(set))
+                {
+                    ExpectedBackend = GpuBackendKind.VulkanNative,
+                    ActualType = set?.GetType(),
+                    ExpectedType = typeof(VulkanResourceSet),
+                    Context = what,
+                    ResourceKind = "resource set",
+                };
 
         // ONE BINDING'S WRITE, fully resolved. Every refusal here names the element by its declared name, because
         // a message about "element 4" is unactionable in a seven-element material layout.
@@ -245,11 +257,15 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
 
             if (resource is null)
             {
-                throw new ArgumentException(
+                throw new GpuResourceSetException(GpuResourceSetRefusal.ResourceMissing,
                     $"'{element.Name}' at binding {index.ToString(CultureInfo.InvariantCulture)} of a native "
                     + "Vulkan resource set is null. A descriptor set is written once at creation and never again, "
                     + "so there is no later point at which a missing resource could arrive.",
-                    nameof(resource));
+                    nameof(resource))
+                {
+                    ElementName = element.Name,
+                    Binding = index,
+                };
             }
 
             if (VulkanDescriptorPolicy.IsBuffer(binding.Type))
@@ -297,7 +313,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
             if (dynamic)
             {
                 VulkanUniformRing ring = buffer.Ring
-                    ?? throw new ArgumentException(
+                    ?? throw new VulkanResourceSetRingException(VulkanResourceSetRingRefusal.UniformBufferNotRingBacked,
                         $"'{element.Name}' at binding {index.ToString(CultureInfo.InvariantCulture)} of a native "
                         + "Vulkan resource set is a uniform buffer element bound to a "
                         + buffer.Describe()
@@ -305,7 +321,12 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
                         + "on this backend (decision V-D4) and its bind-time offset is the ring's per-frame base, "
                         + "so a buffer with no ring would be bound with an offset nothing supplies. Create it "
                         + "with GpuBufferUsage.UniformBuffer.",
-                        nameof(resource));
+                        nameof(resource))
+                    {
+                        ElementName = element.Name,
+                        Binding = index,
+                        ActualUsage = buffer.Usage,
+                    };
 
                 // V-M6, at CREATION, through row 8's own helper, with the caller's per-draw offset taken as 0
                 // because it is not knowable here. With a zero caller offset this is IMPLIED by the logical-size
@@ -328,14 +349,19 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
 
             if (buffer.Ring is not null)
             {
-                throw new ArgumentException(
+                throw new VulkanResourceSetRingException(VulkanResourceSetRingRefusal.RingBufferUsedAsStorage,
                     $"'{element.Name}' at binding {index.ToString(CultureInfo.InvariantCulture)} of a native "
                     + "Vulkan resource set is a " + element.Kind
                     + " element bound to a ring-backed uniform buffer. A ring-backed buffer is "
                     + "FramesInFlight segments wide and its bind base is applied through the dynamic offset a "
                     + "storage descriptor does not have, so it would address segment zero on every frame while "
                     + "the writes went to the current one. Bind a buffer created with the structured usage.",
-                    nameof(resource));
+                    nameof(resource))
+                {
+                    ElementName = element.Name,
+                    Binding = index,
+                    ResourceKind = element.Kind,
+                };
             }
 
             // THE HAZARD SET'S BUFFER HALF (V-C2), BY DIRECTION. Every storage binding is a READ, and only a
@@ -362,7 +388,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
 
             if (view == 0)
             {
-                throw new ArgumentException(
+                throw new GpuResourceSetException(texture.IsStaging ? GpuResourceSetRefusal.StagingTextureCannotBind : GpuResourceSetRefusal.TextureUsageMissing,
                     $"'{element.Name}' at binding {index.ToString(CultureInfo.InvariantCulture)} of a native "
                     + "Vulkan resource set is a " + element.Kind + " element bound to a " + texture.Describe()
                     + ", which has no " + (sampled ? "sampled" : "storage") + " image view. Every view is created "
@@ -370,7 +396,14 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
                     + "a missing view is a usage the texture was not created with rather than something this call "
                     + "could make. Add GpuTextureUsage."
                     + (sampled ? "Sampled" : "Storage") + " to its description.",
-                    nameof(resource));
+                    nameof(resource))
+                {
+                    ElementName = element.Name,
+                    Binding = index,
+                    ResourceKind = element.Kind,
+                    ActualUsage = texture.Usage,
+                    RequiredUsage = sampled ? GpuTextureUsage.Sampled | GpuTextureUsage.GenerateMipmaps : GpuTextureUsage.Storage,
+                };
             }
 
             // ROW 15's RECORD, WITH THE RANGE THE BINDING'S OWN VIEW COVERS. Full chain and every layer for a
@@ -400,20 +433,27 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
             if (range != 0 && rangeOffset <= buffer.SizeInBytes && range <= buffer.SizeInBytes - rangeOffset)
                 return;
 
-            throw new ArgumentException(
+            throw new GpuResourceSetException(GpuResourceSetRefusal.BufferWindowOutsideResource,
                 $"'{element.Name}' at binding {index.ToString(CultureInfo.InvariantCulture)} of a native Vulkan "
                 + "resource set binds " + range.ToString(CultureInfo.InvariantCulture) + " bytes at offset "
                 + rangeOffset.ToString(CultureInfo.InvariantCulture) + " of a " + buffer.Describe()
                 + ". The descriptor's range is the BIND WINDOW and is written once at creation: it is never "
                 + "VK_WHOLE_SIZE and never zero, and it has to be a window that exists inside the buffer's "
                 + "logical size.",
-                nameof(buffer));
+                nameof(buffer))
+            {
+                ElementName = element.Name,
+                Binding = index,
+                RangeOffset = (uint)rangeOffset,
+                RangeBytes = (uint)range,
+                BufferBytes = buffer.SizeInBytes,
+            };
         }
 
         static T Require<T>(object? resource, in GpuResourceLayoutElement element, int index, string what)
             where T : class
             => resource as T
-                ?? throw new ArgumentException(
+                ?? throw GpuResourceSetMismatch.Refusal(resource, element, index, GpuBackendKind.VulkanNative, typeof(T),
                     $"'{element.Name}' at binding {index.ToString(CultureInfo.InvariantCulture)} of a native "
                     + "Vulkan resource set declares " + element.Kind + ", which needs " + what
                     + " created by this backend. It was given a "

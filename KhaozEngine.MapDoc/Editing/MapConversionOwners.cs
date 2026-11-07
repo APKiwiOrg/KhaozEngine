@@ -62,10 +62,17 @@ internal static class MapConversionOwners
                         break;
                     }
                 if (replacement is null)
-                    throw new MapDocumentException($"owner retarget: dependent patch '{dependent.Key}' corner " +
+                    throw new MapDocumentException(MapDocumentRefusal.TerrainOwnerRetargetUnavailable, $"owner retarget: dependent patch '{dependent.Key}' corner " +
                         $"({dependency.CornerX}, {dependency.CornerZ}) owner '{owner.Patch}' address " +
                         $"({owner.Address.X}/{owner.Address.Denominator}, {owner.Address.Z}/{owner.Address.Denominator}) " +
-                        "has no fine vertex at the same exact point and height");
+                        "has no fine vertex at the same exact point and height")
+                    {
+                        Patch = dependent.Key,
+                        CellX = dependency.CornerX,
+                        CellZ = dependency.CornerZ,
+                        ExpectedPatch = owner.Patch,
+                        Address = owner.Address
+                    };
                 changes.Add(new(dependent.Key, dependency.CornerX, dependency.CornerZ, owner, replacement));
             }
         return changes.AsReadOnly();

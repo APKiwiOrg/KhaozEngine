@@ -9,8 +9,8 @@ internal static partial class NavBakeIdentity
     private const int TuningFloatCount = 26;
     private const int TuningBytes = TuningFloatCount * 4 + 1;
 
-    // The 27 retained MoveTuning fields in declaration order. The probe runs every proof with
-    // WalkSpeed 1, RunSpeed 1 and AirMomentum false, so those three never change a decision and are omitted.
+    // The 27 retained MoveTuning fields in declaration order. Supported proofs use WalkSpeed 1, RunSpeed 1
+    // and AirMomentum false. Format 3 appends actual flight inputs separately for Drop-enabled profiles.
     // Floats are stored as IEEE 754 bits. BackpedalAllowsRun, the only retained bool, is last and one byte.
     private static readonly TuningField[] TuningFields =
     [

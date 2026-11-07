@@ -30,7 +30,7 @@ internal sealed class MapSceneShapeReach(MapAssetClosure assets, MapSceneScan sc
         return radius;
     }
 
-    static MapDocumentException Corrupt() => new("Invalid KECL discovery metadata.");
+    static MapDocumentException Corrupt() => new(MapDocumentRefusal.SchemaMalformed, "Invalid KECL discovery metadata.") { Operation = "SceneShape.Discovery" };
 
     ref struct Reader(ReadOnlySpan<byte> bytes)
     {

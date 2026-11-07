@@ -134,7 +134,10 @@ namespace KhaozEngine.Tests.Gpu
             using var h = new Harness();
             using var ring = new MetalRingHarness();
             using MetalCommandList commands = ring.NewList(new object());
-            Assert.Throws<InvalidOperationException>(() => commands.SetFramebuffer(h.Boundary.Framebuffer));
+            var ex = Assert.Throws<GpuRecordingStateException>(() => commands.SetFramebuffer(h.Boundary.Framebuffer));
+            Assert.Equal(GpuRecordingStateRefusal.CommandOutsideRecording, ex.Reason);
+            Assert.Equal(GpuBackendKind.MetalNative, ex.Backend);
+            Assert.Equal("Binding a framebuffer", ex.Command);
             Assert.Equal(0, h.Api.AcquireCount);
         }
 

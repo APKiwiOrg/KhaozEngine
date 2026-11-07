@@ -35,6 +35,18 @@ internal sealed class SupportRequestMemo
     /// <summary>Remembered reads.</summary>
     internal int Count => _count;
 
+    /// <summary>Lets JoinedEdgeContinuityTests verify Close clears continuity from every storage slot, including inactive ones.</summary>
+    internal int RetainedContinuityCountForTests
+    {
+        get
+        {
+            int retained = 0;
+            foreach (Entry entry in _entries)
+                if (!entry.Sample.Continuity.IsEmpty) retained++;
+            return retained;
+        }
+    }
+
     /// <summary>Test only. Makes every memo on this thread miss and remember nothing, so a test can run the uncached
     /// evaluator through the same doors. Disposing the scope restores the setting it found, so scopes nest.</summary>
     internal static BypassScope Bypass()

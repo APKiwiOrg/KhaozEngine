@@ -196,28 +196,36 @@ public class GridPathPlannerRegionTests
     }
 
     [Theory]
-    [InlineData(false)]
-    [InlineData(true)]
-    public void CheapLinksCannotBeHiddenByASpatialPriority(bool crossLayer)
+    [InlineData(false, false)]
+    [InlineData(false, true)]
+    [InlineData(true, false)]
+    [InlineData(true, true)]
+    public void CheapLinksCannotBeHiddenByASpatialPriority(bool crossLayer, bool cheapHop)
     {
+        // #1712: a priced Stair is the walking control for a deliberately discounted Hop.
         NavGrid lower = SurfaceGrid(10, 1, (_, _) => true);
         int farLayer = crossLayer ? 1 : 0;
         NavGrid[] grids = crossLayer ? new[] { lower, SurfaceGrid(10, 1, (_, _) => true, 4f) } : new[] { lower };
         var space = new NavSpace(grids, new[]
         {
-            new NavLink(0, 0, 0, farLayer, 9, 0),
-            new NavLink(farLayer, 9, 0, 0, 3, 0),
+            new NavLink(0, 0, 0, farLayer, 9, 0) { Kind = cheapHop ? NavLinkKind.Hop : NavLinkKind.Stair },
+            new NavLink(farLayer, 9, 0, 0, 3, 0) { Kind = cheapHop ? NavLinkKind.Hop : NavLinkKind.Stair },
         });
         var region = new NavGoalRegion(new Vector3(3.5f, 0f, 0.5f), 0f,
             feet => feet == new Vector3(3.5f, 0f, 0.5f));
 
-        NavPath path = new GridPathPlanner(space).FindPath(new Vector3(0.5f, 0f, 0.5f), region, 0f, Budget);
+        NavPath path = new GridPathPlanner(space, hopCostCells: 1f).FindPath(new Vector3(0.5f, 0f, 0.5f), region, 0f, Budget);
 
         Assert.Equal(NavPathStatus.Complete, path.Status);
-        Assert.Equal(new[]
+        Assert.Equal(cheapHop ? new[]
         {
             new NavWaypoint(new Vector2(0.5f, 0.5f), 0),
-            new NavWaypoint(new Vector2(9.5f, 0.5f), farLayer),
+            new NavWaypoint(new Vector2(9.5f, 0.5f), farLayer) { Kind = NavWaypointKind.Hop },
+            new NavWaypoint(new Vector2(3.5f, 0.5f), 0) { Kind = NavWaypointKind.Hop },
+        } : new[]
+        {
+            new NavWaypoint(new Vector2(1.5f, 0.5f), 0),
+            new NavWaypoint(new Vector2(2.5f, 0.5f), 0),
             new NavWaypoint(new Vector2(3.5f, 0.5f), 0),
         }, path.Waypoints);
         Assert.True(region.Contains(EndpointFeet(space, path)));

@@ -21,8 +21,8 @@ public sealed partial class InteriorCutHighlightGpuTests : IClassFixture<Interio
         foreach (MeshOutlineOcclusion occlusion in new[] { MeshOutlineOcclusion.SceneDepth, MeshOutlineOcclusion.None })
         {
             byte[] pixels = _stage.Frame(Stage.Field, true, occlusion: occlusion);
-            float[] full = _stage.Coverage("_fullCoverage");
-            float[]? visible = occlusion == MeshOutlineOcclusion.SceneDepth ? _stage.Coverage("_visibleCoverage") : null;
+            float[] full = _stage.Coverage(visible: false);
+            float[]? visible = occlusion == MeshOutlineOcclusion.SceneDepth ? _stage.Coverage(visible: true) : null;
             int inside = 0, outside = 0, boundaryRim = 0;
             for (int y = 0; y < Stage.H; y++)
                 for (int x = 0; x < Stage.W; x++)
@@ -162,10 +162,9 @@ public sealed partial class InteriorCutHighlightGpuTests : IClassFixture<Interio
             return pixels;
         }
 
-        internal float[] Coverage(string name)
+        internal float[] Coverage(bool visible)
         {
-            object renderer = HighlightTestAccess.Field<object>(Scene, "_targetOutlines");
-            IGpuTexture source = HighlightTestAccess.Field<IGpuTexture>(renderer, name);
+            IGpuTexture source = Scene.OutlineCoverageForTests(visible)!;
             using var staging = Fixture.Device.Factory.CreateTexture(GpuTextureDescription.Texture2D(
                 source.Width, source.Height, source.Format, GpuTextureUsage.Staging));
             using (var commands = Fixture.Device.Factory.CreateCommandList())

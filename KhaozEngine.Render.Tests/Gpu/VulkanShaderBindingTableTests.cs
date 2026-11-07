@@ -56,10 +56,13 @@ namespace KhaozEngine.Tests.Gpu
                 ["Model"] = "ModelRenderer",
                 ["Foliage"] = "ModelRenderer foliage",
                 ["PreparedFoliage"] = "ModelRenderer prepared foliage",
+                ["PreparedFoliageOpaque"] = "ModelRenderer prepared foliage opaque",
+                ["PreparedFoliageOpaqueMotion"] = "ModelRenderer prepared foliage opaque motion",
                 ["PreparedFoliageMotion"] = "ModelRenderer prepared foliage motion",
                 ["PreparedFoliageDepth"] = "FoliageShadowRenderer prepared depth",
                 ["PreparedFoliageDepthCutout"] = "FoliageShadowRenderer prepared cutout depth",
                 ["PreparedFoliagePoint"] = "PointShadowRenderer prepared foliage",
+                ["FoliageOpaque"] = "ModelRenderer foliage opaque",
                 ["ModelDissolve"] = "ModelRenderer dissolve",
                 ["SkinnedModel"] = "ModelRenderer skinned",
                 ["SkinnedModelDissolve"] = "ModelRenderer skinned dissolve",
@@ -71,6 +74,7 @@ namespace KhaozEngine.Tests.Gpu
                 ["ModelCpuSkinnedMotion"] = "ModelRenderer cpu skinned motion",
                 ["ModelCpuSkinnedDissolveMotion"] = "ModelRenderer cpu skinned motion",
                 ["FoliageMotion"] = "ModelRenderer foliage motion",
+                ["FoliageOpaqueMotion"] = "ModelRenderer foliage opaque motion",
                 ["SplatMotion"] = "ModelRenderer splat motion",
                 ["TileGroundMotion"] = "ModelRenderer tile ground motion",
                 ["TexturedBillboardMotion"] = "TexturedBillboardRenderer",
@@ -83,7 +87,10 @@ namespace KhaozEngine.Tests.Gpu
                 ["ModelVisibility"] = "ModelRenderer",
                 ["FoliageVisibility"] = "ModelRenderer foliage",
                 ["PreparedFoliageVisibility"] = "ModelRenderer prepared foliage",
+                ["PreparedFoliageOpaqueVisibility"] = "ModelRenderer prepared foliage opaque",
+                ["PreparedFoliageOpaqueMotionVisibility"] = "ModelRenderer prepared foliage opaque motion",
                 ["PreparedFoliageMotionVisibility"] = "ModelRenderer prepared foliage motion",
+                ["FoliageOpaqueVisibility"] = "ModelRenderer foliage opaque",
                 ["ModelDissolveVisibility"] = "ModelRenderer dissolve",
                 ["SkinnedModelVisibility"] = "ModelRenderer skinned",
                 ["SkinnedModelDissolveVisibility"] = "ModelRenderer skinned dissolve",
@@ -95,6 +102,7 @@ namespace KhaozEngine.Tests.Gpu
                 ["ModelCpuSkinnedMotionVisibility"] = "ModelRenderer cpu skinned motion",
                 ["ModelCpuSkinnedDissolveMotionVisibility"] = "ModelRenderer cpu skinned motion",
                 ["FoliageMotionVisibility"] = "ModelRenderer foliage motion",
+                ["FoliageOpaqueMotionVisibility"] = "ModelRenderer foliage opaque motion",
                 ["SplatMotionVisibility"] = "ModelRenderer splat motion",
                 ["TileGroundMotionVisibility"] = "ModelRenderer tile ground motion",
                 ["TexturedBillboardVisibility"] = "TexturedBillboardRenderer",
@@ -237,6 +245,7 @@ namespace KhaozEngine.Tests.Gpu
                     "Model" or "ModelDissolve" or "Foliage" or "ModelMotion" or "ModelCpuSkinnedMotion"
                         or "ModelCpuSkinnedDissolveMotion" or "FoliageMotion"
                         or "PreparedFoliage" or "PreparedFoliageMotion" => 11,
+                    "FoliageOpaque" or "FoliageOpaqueMotion" or "PreparedFoliageOpaque" or "PreparedFoliageOpaqueMotion" => 7,
                     "SkinnedModel" or "SkinnedModelDissolve" or "SkinnedModelMotion"
                         or "SkinnedModelDissolveMotion" => 4,
                     "Splat" or "TileGround" or "SplatMotion" or "TileGroundMotion" => 3,
@@ -349,9 +358,8 @@ namespace KhaozEngine.Tests.Gpu
                 .Select(p => p.Pipeline)
                 .ToHashSet(StringComparer.Ordinal);
 
-            // Masked Sprite2D, main's visibility, fully lit and triangle optics variants plus R8a bounded water and five prepared
-            // foliage programs, including the two prepared colour and motion visibility variants.
-            Assert.Equal(132, catalog.Length);
+            // Ten certified FullyLit variants cover resolve, debug/count and both split sizes at both precisions.
+            Assert.Equal(140, catalog.Length);
             Assert.Equal(catalog.Length, ProgramPipelines.Count);
 
             foreach (string program in catalog)

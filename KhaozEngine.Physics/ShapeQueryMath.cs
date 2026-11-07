@@ -405,6 +405,9 @@ internal struct ShapeBoundsAccumulator
         _maxZ = Math.Max(_maxZ, p.Z + ez);
     }
 
+    internal readonly (double MinX, double MinY, double MinZ, double MaxX, double MaxY, double MaxZ) Values =>
+        (_minX, _minY, _minZ, _maxX, _maxY, _maxZ);
+
     internal readonly (double MinX, double MinY, double MinZ, double MaxX, double MaxY, double MaxZ) ToBounds()
     {
         if (!(_minX <= _maxX && _minY <= _maxY && _minZ <= _maxZ) ||

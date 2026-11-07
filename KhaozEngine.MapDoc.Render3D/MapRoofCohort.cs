@@ -27,7 +27,7 @@ internal sealed class MapRoofCohort : IPropClusterVisibility
         _indices = new int[build.RepresentedIds.Count];
         for (int i = 0; i < _indices.Length; i++)
             _indices[i] = Indices.TryGetValue(build.RepresentedIds[i], out int index) ? index
-                : throw new MapDocumentException("Canonical roof policy omitted a cohort member.");
+                : throw new MapDocumentException(MapDocumentRefusal.ReferenceMissing, "Canonical roof policy omitted a cohort member.") { PlacementId = build.RepresentedIds[i], Operation = "RoofCohort.Prepare" };
     }
     internal void Evaluate(MapFrameState frame)
     {
@@ -39,7 +39,7 @@ internal sealed class MapRoofCohort : IPropClusterVisibility
     public int PlacementCount(PropClusterKey key, long generation)
     {
         if (!Controls(key) || generation != _build.Request.Generation)
-            throw new MapDocumentException("Roof policy belongs to another presentation generation.");
+            throw new MapDocumentException(MapDocumentRefusal.AcquisitionSnapshotChanged, "Roof policy belongs to another presentation generation.") { LayerId = key.LayerId, Operation = "RoofCohort.PlacementCount" };
         return _indices.Length;
     }
     public bool IsHidden(PropClusterKey key, long generation, int placementIndex)

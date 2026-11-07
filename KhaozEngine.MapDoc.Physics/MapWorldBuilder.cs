@@ -11,6 +11,7 @@ using KhaozEngine.MapDoc.Identity;
 using KhaozEngine.MapDoc.Prefabs;
 using KhaozEngine.MapDoc.Spaces;
 using KhaozEngine.MapDoc.Storage;
+using KhaozEngine.MapDoc.Scene;
 using KhaozEngine.MapDoc.Surfaces;
 using KhaozEngine.MapDoc.Water;
 using KhaozEngine.Physics;
@@ -45,8 +46,9 @@ public static class MapWorldBuilder
         ArgumentNullException.ThrowIfNull(assets);
         ArgumentNullException.ThrowIfNull(options);
         if (document.Tiles is { IsPartial: true })
-            throw new MapDocumentException(
-                "A world builds from a complete document, not a partial window. Load every tile before building.");
+            throw new MapDocumentException(MapDocumentRefusal.CompleteDocumentRequired,
+                "A world builds from a complete document, not a partial window. Load every tile before building.")
+            { DocumentId = document.Id, Operation = "BuildWorld" };
         ValidateOptions(options);
 
         MapResolvedDocument resolved =
@@ -58,12 +60,17 @@ public static class MapWorldBuilder
         MapScopedSurfaces surfaces = effective?.CompleteView() ?? MapScopedSurfaces.CompleteView(new MapSurfaceSet());
         // Coverage and terrain need every surface. A view the declared profile could not complete refuses here.
         if (surfaces.Status != MapAcquireStatus.Complete)
-            throw new MapDocumentException($"Native world surfaces {surfaces.Status}: {surfaces.Detail}");
+        {
+            string message = $"Native world surfaces {surfaces.Status}: {surfaces.Detail}";
+            throw surfaces.Capacity is { } capacity ? MapDocumentRefusalFactory.FromFinding(
+                capacity.Finding with { AcquireStatus = surfaces.Status, Operation = "World.Build" }, message,
+                new MapSceneCapacityException(capacity)) : new MapDocumentException(MapDocumentRefusal.AcquisitionIncomplete, message)
+                { AcquireStatus = surfaces.Status, Operation = "World.Build" };
+        }
         if (completeEffective)
         {
             // Coverage refines under the same declared profile the resolution used.
-            var findings = MapSpaceCoverageValidator.Validate(surfaces, options.Resolve.QueryLimits.Refinement ?? new());
-            if (findings.Count != 0) throw new MapDocumentException(string.Join("\n", findings));
+            MapSpaceCoverageValidator.Require(surfaces, options.Resolve.QueryLimits.Refinement ?? new());
         }
         MapTerrainChunkSet terrain = MapTerrainPhysics.Compile(surfaces, options.Chunks);
         IReadOnlyList<MapPlacementGeometry> placements = MapPlacementShapes.Resolve(resolved);
@@ -91,7 +98,9 @@ public static class MapWorldBuilder
         {
             string owner = MapResidencyOwnership.WaterOwnerId(body.BodyId);
             if (staticOwners.Contains(owner))
-                throw new MapDocumentException($"water: static owner '{owner}' conflicts with body '{body.BodyId}'");
+                throw new MapDocumentException(MapDocumentRefusal.PhysicsWaterOwnerConflict,
+                    $"water: static owner '{owner}' conflicts with body '{body.BodyId}'")
+                { OwnerId = owner, BodyId = body.BodyId };
         }
         var diagnostics = new List<MapStaticDiagnostic>();
         foreach (MapStaticDescriptor descriptor in statics)
@@ -126,11 +135,18 @@ public static class MapWorldBuilder
     internal static void RequireWaterBody(MapCompiledWaterBody body)
     {
         if (body.Status != MapWaterCompileStatus.Complete)
-            throw new MapDocumentException($"water: {body.Detail ?? $"water body '{body.BodyId}': {body.Status}"}");
+        {
+            string message = $"water: {body.Detail ?? $"water body '{body.BodyId}': {body.Status}"}";
+            throw body.Finding is { } finding ? MapDocumentRefusalFactory.FromFinding(finding, message)
+                : new MapDocumentException(MapDocumentRefusal.AcquisitionIncomplete, message)
+                { BodyId = body.BodyId, FieldPath = nameof(body.Status), ActualText = body.Status.ToString() };
+        }
         if (body.Regions.Count > 0 && body.Bounds is null)
-            throw new MapDocumentException($"water: body '{body.BodyId}' has regions but no bounds");
+            throw new MapDocumentException(MapDocumentRefusal.PhysicsWaterBoundsMissing, $"water: body '{body.BodyId}' has regions but no bounds")
+            { BodyId = body.BodyId };
         if (body.Regions.Any(r => r.Fragment is not null) && body.FragmentBounds.Count == 0)
-            throw new MapDocumentException($"water: body '{body.BodyId}' has occupied regions but no fragment bounds");
+            throw new MapDocumentException(MapDocumentRefusal.PhysicsWaterFragmentBoundsMissing, $"water: body '{body.BodyId}' has occupied regions but no fragment bounds")
+            { BodyId = body.BodyId };
     }
 
     internal static void ValidateOptions(MapWorldBuildOptions options)
@@ -138,14 +154,23 @@ public static class MapWorldBuilder
         ArgumentNullException.ThrowIfNull(options.Resolve, nameof(options));
         ArgumentNullException.ThrowIfNull(options.Chunks, nameof(options));
         if (string.IsNullOrWhiteSpace(options.ConsumerPolicyIdentity))
-            throw new ArgumentException("ConsumerPolicyIdentity must name the consumer policy.", nameof(options));
+            throw new MapWorldBuildArgumentException(MapDocumentRefusal.SchemaValueRequired,
+                "ConsumerPolicyIdentity must name the consumer policy.", nameof(options))
+            { FieldPath = nameof(options.ConsumerPolicyIdentity), ActualText = options.ConsumerPolicyIdentity };
         if (options.BuilderVersion <= 0)
-            throw new ArgumentOutOfRangeException(nameof(options), "BuilderVersion must be positive.");
+            throw new MapWorldBuildRangeException(MapDocumentRefusal.ValueOutsideRange, "BuilderVersion must be positive.", nameof(options))
+            { FieldPath = nameof(options.BuilderVersion), ActualInteger = options.BuilderVersion, MinimumInteger = 1 };
         // MapTerrainPhysics.Compile repeats this check, but only after resolution has run. Refusing here keeps an
         // invalid option from paying for a whole resolution first.
         if (options.Chunks.MaxTrianglesPerChunk is < MapTerrainPhysics.MinTrianglesPerChunk or > MapTerrainPhysics.MaxTrianglesPerChunk)
-            throw new ArgumentOutOfRangeException(nameof(options),
-                $"MaxTrianglesPerChunk must be {MapTerrainPhysics.MinTrianglesPerChunk} to {MapTerrainPhysics.MaxTrianglesPerChunk}.");
+            throw new MapWorldBuildRangeException(MapDocumentRefusal.ValueOutsideRange,
+                $"MaxTrianglesPerChunk must be {MapTerrainPhysics.MinTrianglesPerChunk} to {MapTerrainPhysics.MaxTrianglesPerChunk}.", nameof(options))
+            {
+                FieldPath = "Chunks." + nameof(options.Chunks.MaxTrianglesPerChunk),
+                ActualInteger = options.Chunks.MaxTrianglesPerChunk,
+                MinimumInteger = MapTerrainPhysics.MinTrianglesPerChunk,
+                MaximumInteger = MapTerrainPhysics.MaxTrianglesPerChunk
+            };
     }
 
     internal static IReadOnlyList<MapStaticDescriptor> Statics(IReadOnlyList<MapPlacementGeometry> placements, MapTerrainChunkSet terrain)
@@ -174,7 +199,8 @@ public static class MapWorldBuilder
         void Add(MapStaticDescriptor descriptor)
         {
             if (!owners.Add(descriptor.OwnerId))
-                throw new MapDocumentException($"Two statics share the owner id '{descriptor.OwnerId}'.");
+                throw new MapDocumentException(MapDocumentRefusal.IdentityDuplicate, $"Two statics share the owner id '{descriptor.OwnerId}'.")
+                { OwnerId = descriptor.OwnerId, SubjectKind = "static" };
             statics.Add(descriptor);
         }
     }

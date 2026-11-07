@@ -24,15 +24,17 @@ public sealed class SurfaceStorageAcceptanceEdgeTests
     {
         // Moving the cardinality check after traversal must trip the count-only sentinel.
         var entries = new CountOnlyEntries(257);
-        Assert.Throws<MapDocumentException>(() => MapSurfacePages.EncodeIndex("ground", new(0, 0, 16, 16), entries));
-        Assert.Equal(0, entries.EnumerationRequests);
-        Assert.Equal(0, entries.IndexerRequests);
-
-        // The legal upper count reaches traversal, without allocating 256 entry objects.
-        var atLimit = new CountOnlyEntries(256);
-        Assert.Throws<InvalidOperationException>(() => MapSurfacePages.EncodeIndex("ground", new(0, 0, 16, 16), atLimit));
-        Assert.Equal(1, atLimit.EnumerationRequests);
-        Assert.Equal(0, atLimit.IndexerRequests);
+        var error = Assert.Throws<MapDocumentException>(() => MapSurfacePages.EncodeIndex("ground", new(0, 0, 16, 16), entries));
+        Assert.Equal(MapDocumentRefusal.WorkCapacityExceeded, error.Reason);
+        Assert.Equal("MaxEntries", error.Budget);
+        Assert.Equal(257, error.ActualCount);
+        Assert.Equal(256, error.Limit);
+        string digest = new('a', 64);
+        var atLimit = Enumerable.Range(0, 256).Select(i => new MapSurfaceIndexEntry(new("ground", i % 16, i / 16),
+            new(i % 16 * 64, i / 16 * 64, i % 16 * 64 + 1, i / 16 * 64 + 1), 0, 0, digest, digest, [], [], [], [], false))
+            .OrderBy(e => e.Key).ToArray();
+        byte[] bytes = MapSurfacePages.EncodeIndex("ground", new(0, 0, 16, 16), atLimit);
+        Assert.Equal(256, MapSurfacePages.DecodeIndex(bytes, "ground", new(new(0, 0, 16, 16), digest, 256)).Count);
     }
 
     [Fact]
@@ -47,12 +49,6 @@ public sealed class SurfaceStorageAcceptanceEdgeTests
             using (var stream = new FileStream(path, FileMode.CreateNew, FileAccess.Write, FileShare.None))
                 stream.SetLength(1_048_577L);
 
-            // A tiny valid file keeps an unconditional read refusal from satisfying this case.
-            byte[] tiny = { (byte)'{', (byte)'}' };
-            string tinyDigest = Convert.ToHexStringLower(SHA256.HashData(tiny));
-            File.WriteAllBytes(MapSurfaceStorageLayout.PathOf(dir, 'i', tinyDigest), tiny);
-            Assert.Equal(tiny, MapSurfaceStorageLayout.Read(dir, 'i', tinyDigest));
-
             MapDocumentException? refusal = null;
             long allocated = AllocationMeasurement.Measure("An oversized surface file read", () =>
             {
@@ -60,10 +56,17 @@ public sealed class SurfaceStorageAcceptanceEdgeTests
                 catch (MapDocumentException ex) { refusal = ex; }
             });
             Assert.NotNull(refusal);
-            Assert.Contains("byte limit", refusal!.Message);
+            Assert.Equal(MapDocumentRefusal.WorkCapacityExceeded, refusal!.Reason);
+            Assert.Equal("MaxPageBytes", refusal.Budget);
+            Assert.Equal(1_048_577L, refusal.ActualByteCount);
+            Assert.Equal(MapSurfaceStorageLayout.MaxPageBytes, refusal.Limit);
             // The entire measured call must allocate less than the oversized file's byte count.
             Assert.InRange(allocated, 0L, 1_048_576L);
             Assert.Equal(1_048_577L, new FileInfo(path).Length);
+            byte[] capped = Encoding.UTF8.GetBytes("0" + new string(' ', MapSurfaceStorageLayout.MaxPageBytes - 1));
+            string cappedDigest = Convert.ToHexStringLower(SHA256.HashData(capped));
+            File.WriteAllBytes(MapSurfaceStorageLayout.PathOf(dir, 'i', cappedDigest), capped);
+            Assert.Equal(capped, MapSurfaceStorageLayout.Read(dir, 'i', cappedDigest));
         });
     }
 
@@ -170,20 +173,18 @@ public sealed class SurfaceStorageAcceptanceEdgeTests
 
     sealed class CountOnlyEntries(int count) : IReadOnlyList<MapSurfaceIndexEntry>
     {
-        public int Count => count;
-        internal int EnumerationRequests { get; private set; }
-        internal int IndexerRequests { get; private set; }
+        bool _read;
+        // A faulty producer must not change the count reported by the comparison that refused it.
+        public int Count { get { int value = _read ? 0 : count; _read = true; return value; } }
         public MapSurfaceIndexEntry this[int index]
         {
             get
             {
-                IndexerRequests++;
                 throw new InvalidOperationException("count-only entries must not be indexed");
             }
         }
         public IEnumerator<MapSurfaceIndexEntry> GetEnumerator()
         {
-            EnumerationRequests++;
             throw new InvalidOperationException("count-only entries must not be enumerated");
         }
         IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();

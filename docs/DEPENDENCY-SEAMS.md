@@ -166,9 +166,10 @@ KhaozEngine.Server.Admin -> Microsoft.AspNetCore.App [shared framework, Framewor
 A server that does not want an admin HTTP endpoint never references `Server.Admin`, so the web stack stays
 out of its dependency closure.
 
-`IAdminControllable` and the three types it names (`PlayerRef`, `OnlinePlayer`, `MovementCommitmentRequest`) live
-in the `KhaozEngine.Netcode` ASSEMBLY under their shipped `KhaozEngine.NetWorld` names, and `NetWorld` type-forwards
-all four (`TypeForwards.cs`), which is the same move the ban seam made. That is what lets
+`IAdminControllable` and the types it names (`PlayerRef`, `OnlinePlayer`, `MovementCommitmentRequest`,
+`MovementCommitmentStopReason`) live in the `KhaozEngine.Netcode` ASSEMBLY under `KhaozEngine.NetWorld` names.
+`NetWorld` type-forwards the interface and the three types that first shipped there (`TypeForwards.cs`), which is the
+same move the ban seam made. The stop reason never shipped in `NetWorld`, so it needs no forward. That is what lets
 `KhaozEngine.TileWorld.Netcode`'s `TileWorldServer` implement the interface with no `NetWorld` reference, so a tile
 head hands itself to `ServerAdmin` exactly as a `WorldServer` or `ShardedWorldServer` does. `ServerAdmin` itself
 stays in `NetWorld`, so a tile game that wants the facade or the endpoint takes `NetWorld` in its own head, which is
@@ -380,7 +381,7 @@ so a capture from an explicitly selected or fallback device cannot be filed unde
 support project retains direct backend edges for its uniform-ring adapters and its filtered registration-test
 module initializer belt.
 
-The file-size ratchet adds one more analyzer edge, from every umbrella:
+The file-size and test-health ratchets share one analyzer edge, from every umbrella:
 
 ```
 KhaozEngine.Game2D/Game3D/Server/Foundation -> KhaozEngine.CodeHealth.Analyzers   (packed dependency,
@@ -388,10 +389,11 @@ KhaozEngine.Game2D/Game3D/Server/Foundation -> KhaozEngine.CodeHealth.Analyzers 
 ```
 
 `KhaozEngine.CodeHealth.Analyzers` is a `netstandard2.0` Roslyn analyzer with no runtime dependency. It ships its
-assembly under `analyzers/dotnet/cs` and its `buildTransitive` props auto-discover the consumer's `.filesize-baseline`
-and hand it to the analyzer as an `AdditionalFile`, so the edge is analyzer-only and drags nothing into shipped game
-code. All four umbrellas carry it (a file-size ratchet is not renderer- or server-specific), so any project that
-references an umbrella gets the ratchet.
+assembly under `analyzers/dotnet/cs` and its `buildTransitive` props independently discover the consumer's
+`.filesize-baseline` and `.testhealth-baseline` and supply them as AdditionalFiles. Each ratchet stays silent
+without its baseline. KETEST rules also require an xunit reference. The edge is analyzer-only and adds no
+runtime dependency. All four umbrellas carry it because these ratchets apply across engine areas. The
+[analyzer README](../KhaozEngine.CodeHealth.Analyzers/README.md) owns rule and adoption details.
 
 ## Self-relaunch seam: process control
 
@@ -514,15 +516,26 @@ exposes the property. `World.DefaultScheduler` itself is the per-world seam in `
 `SingleThreadedJobScheduler`, so a world stays byte-identical until a game opts in, and an explicit per-call
 scheduler still wins over it.
 
-## Attachment definitions: a GPU-free leaf
+## PNG I/O: shared malformed-data base
 
-`KhaozEngine.Attachments` has no project or third-party dependency. It owns immutable definitions,
+`KhaozEngine.Imaging` references only `KhaozEngine.Primitives` for `MalformedDataException`, the shared
+base of `PngDecodeDataException`. PNG and JPEG codecs use BCL APIs, including zlib, and take no
+third-party image dependency. Unsupported PNG features use `PngDecodeNotSupportedException` on the
+BCL `NotSupportedException` base. Both carry `PngDecodeRefusal`.
+
+## Attachment definitions: GPU-free with shared primitives
+
+`KhaozEngine.Attachments` references only the dependency-free `KhaozEngine.Primitives` for the shared
+`MalformedDataException` base. It has no third-party dependency. It owns immutable definitions,
 canonical JSON, reference checks, the `IAttachmentAssetSource` byte seam, directory source policy and
-embedded rigid and skinned GLB preflight. JSON uses `System.Text.Json` from the BCL. No renderer or particular
+embedded rigid and skinned GLB preflight. `AttachmentGlb.ComputeRigIdentity` provides versioned body
+fit evidence from raw accessor bytes and canonical rest frames, excluding animation and appearance.
+JSON uses `System.Text.Json` and hashing uses SHA-256 from the BCL. No renderer or particular
 skeleton type appears in its API. Publishers reference it directly. Foundation and Server do not
 gain an attachment dependency.
 
-`ArchitectureTests.ZeroDependencyLeaves_CarryNoProjectReferences` pins the leaf alongside Primitives.
+`ArchitectureTests.Attachment_definitions_reference_only_the_shared_primitives` pins this single edge.
+`ZeroDependencyLeaves_CarryNoProjectReferences` continues to pin Primitives as a leaf.
 The renderer's existing dependency allowlist and ECS-free closure remain unchanged.
 
 `KhaozEngine.Attachments.Render3D` references only Attachments and Render3D. It resolves contract
@@ -724,10 +737,13 @@ stay blocked, with no analytic ground fallback.
 `NavLayerBaker.BakeGroundedLayered` and physical hold and directed-edge proofs. The overload with
 `GroundProfileOptions { Aquatic = true }` composes a derived float view over the water `SampleWater` captured, and
 proves float edges with swim steps through the same context and its existing physics penetration query, so it adds
-no reference. `GroundNavigation` exposes `Space`, `Planner`, `AgentRadius`, `AgentHeight`, `Aquatic` and
-`AllowsSegment`. The profile matches capsule radius,
+no reference. `GroundNavigation` exposes `Space`, `Planner`, `AgentRadius`, `AgentHeight`, `Aquatic`,
+`MaxDropMetres` and `AllowsSegment`. The profile matches capsule radius,
 half-height, slope and step exactly, uses raw radius-zero grid checks after physical footprint admission,
-retains only accepted Stair links for guarded queries, and does not generate Hop links. The returned profile
+retains accepted Stair links and independently opted-in Contact Drop links for guarded queries, and does not
+generate Hop links. Navigation retains data-only edge identity and Drop acknowledgement, with no Locomotion
+reference. Movement owns actual fall proofs, live launch preview and supported completion. Its internal walk-only
+query keeps ordinary segment admission separate from the public graph-edge union. The returned profile
 owns pure data and outlives the builder and its caller-owned physics world. This edge keeps Navigation and
 Physics free of a reverse Movement reference.
 
@@ -887,8 +903,10 @@ the older draws above. The rigid default keeps the mesh, the transform and the d
 material, `CastsShadows` and `InvertShadowDissolve`, and does not forward `DissolveComplement`. It draws nothing for a
 shadow-only descriptor, which an older scene never cast. It also draws nothing for a complement phase above one half
 with no dissolve. `Scene3D` shows no body for that draw, at most a shadow, so the fallback treats it like a
-shadow-only draw. A shadow-only descriptor with `CastsShadows = false` throws the same `ArgumentException` the scene's
-instance queue throws. The skinned default keeps the tint as well, drops the key, the material
+shadow-only draw. A shadow-only descriptor with `CastsShadows = false` throws the shared Render3D
+`DrawAdmissionArgumentException` with `DrawAdmissionRefusal.ShadowOnlyWithoutCasting`, `ShadowOnly`,
+`CastsShadows` and `ParamName` set to `draw`. The scene's instance queue uses the same reason.
+The skinned default keeps the tint as well, drops the key, the material
 and `CastsShadows`, and still throws `NotSupportedException` where the older skinned draws do.
 `CreatePropClusterOwner()` returns the view-owned `ITileWorldPropClusterOwner` used for detached CPU builds,
 scene-thread apply and draw, invalidation, unload and disposal. Its default also throws `NotSupportedException`.
@@ -1130,6 +1148,26 @@ synthetic provenance through MapDoc's internal helpers. `KhaozEngine.Render3D` a
 record as the public `allowanceSource` argument and need no grant. Provenance is keyed by object identity and
 changes every subscribed collector's stream, so a public recorder would let any caller re-attribute an
 engine-held record process-wide, and `Origins` would hand out the internal identity objects.
+
+## Status effect package edges
+
+The timed effect core has no engine runtime dependencies. The explicit adapter keeps ECS and server
+hosting out of the book:
+
+```
+KhaozEngine.Foundation -> KhaozEngine.StatusEffects          (umbrella membership, inherited by every umbrella)
+KhaozEngine.StatusEffects.Netcode -> KhaozEngine.StatusEffects (book, definitions and presentation entries)
+KhaozEngine.StatusEffects.Netcode -> KhaozEngine.Ecs          (ActiveStatusEffects implements IComponent)
+KhaozEngine.StatusEffects.Netcode -> KhaozEngine.Replication  (bounded component codec and channel flags)
+KhaozEngine.StatusEffects.Netcode -> KhaozEngine.Sharding     (current-owner publication and IsInHandoff)
+KhaozEngine.Server -> KhaozEngine.StatusEffects.Netcode       (server adapter umbrella membership)
+```
+
+`IStatusEffectProjectionTarget` is the adapter's publication seam. `ShardHostStatusEffectTarget` is its
+turn-key Sharding binding. It reports `Deferred` during a temporary ownership gap and `Gone` only when
+neither a live owner nor a frozen handoff source exists. The projection retries deferred actors' latest
+shown entries. The component replicates and migrates without persistence. Neither package references
+Stats, NetWorld, a renderer or a third-party backend. Games map modifier totals and choose the tick domain.
 
 ## Content catalog package edges
 
@@ -2310,9 +2348,10 @@ backend's requirement as its own contract, and every backend refuses identically
 
 **Where the rule lives.** `KhaozEngine.Gpu/Internal/GpuCopyAlignment.cs`, internal, reached by the three native
 backend packages across the `InternalsVisibleTo` seam they already sit on. The Veldrid wrapper inside
-`KhaozEngine.Gpu` reached it too until `18.0.0` deleted it. One helper means one wording: the exception is an `ArgumentOutOfRangeException` whose
-`ParamName` is the seam's own `srcOffsetBytes` or `dstOffsetBytes` and whose message names the side the bad
-offset came from, whichever backend answered. `MetalCopyAlignment` keeps its name and its SIZE half, which is
+`KhaozEngine.Gpu` reached it too until `18.0.0` deleted it. One helper means one refusal: `GpuCopyAlignmentException` derives from
+`ArgumentOutOfRangeException` and carries `GpuCopyAlignmentRefusal.UnalignedOffset`. Its `ParamName` is the
+seam's own `srcOffsetBytes` or `dstOffsetBytes`, `ActualValue` is the offset, and `Side`, `Context` and
+`AlignmentBytes` identify the refused copy, whichever backend answered. `MetalCopyAlignment` keeps its name and its SIZE half, which is
 Metal's alone (only Metal needs the size aligned, and it pads the size up rather than refusing it), and forwards
 its offset half here.
 

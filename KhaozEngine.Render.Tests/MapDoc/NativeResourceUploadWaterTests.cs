@@ -2,7 +2,6 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Numerics;
-using System.Reflection;
 using System.Runtime.InteropServices;
 using KhaozEngine.Gpu;
 using KhaozEngine.Primitives;
@@ -105,21 +104,17 @@ internal static class NativeWaterUploadProof
     internal static void AssertSubmitted(NativeUploadTestScene host, SceneResourceHandle handle)
     {
         var scene = host.Scene;
-        const BindingFlags flags = BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public;
-        var queue = (IReadOnlyList<WaterSurfaceMesh>)typeof(Scene3D).GetField("_boundedWater", flags)!.GetValue(scene)!;
-        var actual = Assert.Single(queue);
+        var actual = Assert.Single(scene.BoundedWaterForTests);
         Assert.Equal(new SceneResourceAccess(scene).MeshOf(handle), actual.Mesh);
         Assert.Equal(default, actual.Anchor);
         Assert.Equal(Matrix4x4.CreateTranslation(0, .1f, 0), actual.LocalTransform);
-        Assert.Equal(.63f, actual.Look.Opacity);
-        Assert.Equal(.12f, actual.Look.SwellAmplitude);
-        Assert.Equal(4, actual.Look.SwellWavelength);
-        Assert.Equal(WaterWaveSource.Procedural, actual.Look.WaveSource);
-        Assert.Equal(new Color(.08f, .25f, .45f, 1), actual.Look.DeepColor);
-        var water = typeof(Scene3D).GetField("_water", flags)!.GetValue(scene)!;
-        var domains = (IDictionary)water.GetType().GetField("_boundedDomains", flags)!.GetValue(water)!;
-        var domain = domains[actual.Mesh]!;
-        var buffer = (IGpuBuffer)domain.GetType().GetField("Buffer", flags)!.GetValue(domain)!;
+        Assert.Equal(.63f, actual.Opacity);
+        Assert.Equal(.12f, actual.SwellAmplitude);
+        Assert.Equal(4, actual.SwellWavelength);
+        Assert.Equal(WaterWaveSource.Procedural, actual.WaveSource);
+        Assert.Equal(new Color(.08f, .25f, .45f, 1), actual.DeepColor);
+        object identity = scene.BoundedWaterBufferIdentityForTests(actual.Mesh);
+        var buffer = Assert.Single(host.Device.BufferCopies.Keys, candidate => Scene3D.BufferMatchesIdentityForTests(candidate, identity));
         var floats = MemoryMarshal.Cast<byte, float>(host.Device.BufferCopies[buffer]);
         Assert.Equal(new float[] { 1, 1, 0, 0, -2, -2, 0, 0, 2, -2, 0, 0, -2, 2, 0, 0 }, floats.ToArray());
     }

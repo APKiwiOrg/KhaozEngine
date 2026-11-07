@@ -24,7 +24,13 @@ public sealed class BoundaryGeometryTests
 
     [Fact]
     public void WallStrip_LowerAboveUpperRefuses()
-        => Assert.Contains("lower", Assert.Throws<MapDocumentException>(() => BoundaryFixtures.CompileStrip(new[] { 0, 400 }, new[] { 300, 300 }, MapStripFacing.Front)).Message);
+    {
+        var error = Assert.Throws<MapDocumentException>(() => BoundaryFixtures.CompileStrip(new[] { 0, 400 }, new[] { 300, 300 }, MapStripFacing.Front));
+        Assert.Equal(MapDocumentRefusal.SurfaceWallHeightInverted, error.Reason);
+        Assert.Equal("w", error.RecordId);
+        Assert.Equal(1, error.Index);
+        Assert.NotEmpty(BoundaryFixtures.CompileStrip(new[] { 0, 300 }, new[] { 300, 300 }, MapStripFacing.Front).Faces);
+    }
 
     [Fact]
     public void TwoSidedLintelEmitsOppositeFacesUnderOneOwner()
@@ -40,8 +46,31 @@ public sealed class BoundaryGeometryTests
     public void Seam_ExactSharedVerticesAgreeAcrossLattices(int k, bool subdivided, int middleOffset, string? finding)
     {
         var (view, seam) = BoundaryFixtures.CoarseFineSeam(k, subdivided, middleOffset);
-        IReadOnlyList<string> findings = MapSeamValidator.Validate(seam, view);
-        if (finding is null) Assert.Empty(findings); else Assert.Contains(findings, f => f.Contains(finding));
+        var typed = new List<MapDocumentFinding>();
+        IReadOnlyList<string> findings = MapSeamValidator.Validate(seam, view, typed);
+        if (finding is null)
+        {
+            Assert.Empty(findings);
+            Assert.Empty(typed);
+        }
+        else
+        {
+            Assert.Contains(findings, f => f.Contains(finding));
+            var reason = subdivided ? MapDocumentRefusal.GeometryVertexHeightMismatch : MapDocumentRefusal.SurfaceSeamVertexUndeclared;
+            var error = Assert.Single(typed, f => f.Reason == reason);
+            Assert.Equal(seam.Id, error.RecordId);
+            Assert.Equal(seam.Pairs[1].First.Address, error.Address);
+            if (!subdivided)
+            {
+                var coverage = Assert.Single(typed, f => f.Reason == MapDocumentRefusal.GeometryVertexSequenceInvalid);
+                Assert.Equal(3L, coverage.ActualCount);
+                Assert.Equal(2L, coverage.ExpectedCount);
+            }
+            var (repairedView, repairedSeam) = BoundaryFixtures.CoarseFineSeam(k, true, 0);
+            typed.Clear();
+            Assert.Empty(MapSeamValidator.Validate(repairedSeam, repairedView, typed));
+            Assert.Empty(typed);
+        }
     }
 
     [Fact]

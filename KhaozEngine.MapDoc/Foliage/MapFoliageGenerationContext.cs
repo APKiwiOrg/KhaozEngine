@@ -15,6 +15,16 @@ namespace KhaozEngine.MapDoc.Foliage;
 public sealed record MapFoliageContextResult(MapFoliageStatus Status, MapFoliageGenerationContext? Context, MapFoliageContextWork Work)
 {
     public Scene.MapSceneCapacity? Capacity { get; init; }
+    IReadOnlyList<MapDocumentFinding>? _findings;
+    /// <summary>The concrete producer finding when context capture refuses. Consumer-built message-only refusals have none.</summary>
+    public MapDocumentFinding? Finding { get; init; }
+    /// <summary>The complete ordered validator findings, copied into an owned read-only snapshot when present.</summary>
+    public IReadOnlyList<MapDocumentFinding>? Findings
+    {
+        get => _findings;
+        init => _findings = value is null ? null : Array.AsReadOnly<MapDocumentFinding>([.. value]);
+    }
+    internal Exception? Cause { get; init; }
 }
 
 /// <summary>One immutable foliage generation input per accepted document snapshot. Capture admits its budget from
@@ -81,11 +91,14 @@ public sealed class MapFoliageGenerationContext : IMapFoliageInputs
         ArgumentNullException.ThrowIfNull(assets);
         long expansions = MapPrefabResolver.ThreadExpansions, writes = MapFoliageJson.ThreadPayloadWrites;
         MapFoliageContextMeasure measure = MapFoliageContextPreflight.Measure(document, assets, limits ?? new(), expansionLimits);
-        if (measure.Status != MapFoliageStatus.Complete) return new(measure.Status, null, measure.Work) { Capacity = measure.Capacity };
-        if (MapFoliageValidation.ValidateBound(document, assets).Count != 0) return new(MapFoliageStatus.Invalid, null, measure.Work);
+        if (measure.Status != MapFoliageStatus.Complete) return new(measure.Status, null, measure.Work)
+        { Finding = measure.Finding, Cause = measure.Cause, Capacity = measure.Capacity };
+        var findings = MapFoliageValidation.ValidateBoundFindings(document, assets);
+        if (findings.Count != 0) return MapFoliageContextRefusals.FromFindings(findings, measure.Work);
         MapEffectiveResources resources;
         try { resources = MapPrefabResolver.Expand(document, assets, expansionLimits ?? new(), null, null, queryLimits); }
-        catch (Exception error) when (Refusal(error) is { } status) { return new(status, null, Observed(measure.Work, expansions, writes)); }
+        catch (Exception error) when (MapFoliageContextRefusals.Classify(error) is { } status)
+        { return MapFoliageContextRefusals.FromException(error, status, Observed(measure.Work, expansions, writes)); }
         string baseline = resources.SourceFingerprint ?? Editing.MapDocumentEditFinalizer.BaseFingerprint(document);
         return Build(document, assets, resources, measure.Work, expansions, writes, baseline, queryLimits);
     }
@@ -108,15 +121,19 @@ public sealed class MapFoliageGenerationContext : IMapFoliageInputs
         ArgumentNullException.ThrowIfNull(resources);
         long expansions = MapPrefabResolver.ThreadExpansions, writes = MapFoliageJson.ThreadPayloadWrites;
         MapFoliageContextMeasure measure = MapFoliageContextPreflight.Measure(document, assets, limits ?? new(), expansionLimits);
-        if (measure.Status != MapFoliageStatus.Complete) return new(measure.Status, null, measure.Work) { Capacity = measure.Capacity };
-        if (MapFoliageValidation.ValidateBound(document, assets).Count != 0 || !Corresponds(document, assets, resources))
-            return new(MapFoliageStatus.Invalid, null, measure.Work);
+        if (measure.Status != MapFoliageStatus.Complete) return new(measure.Status, null, measure.Work)
+        { Finding = measure.Finding, Cause = measure.Cause, Capacity = measure.Capacity };
+        var findings = MapFoliageValidation.ValidateBoundFindings(document, assets);
+        if (findings.Count != 0) return MapFoliageContextRefusals.FromFindings(findings, measure.Work);
+        if (!Corresponds(document, assets, resources))
+            return MapFoliageContextRefusals.SnapshotChanged(document, measure.Work, "Resources");
         // A snapshot expanded from another document or closure never stands in for this one. An expansion of a document
         // without foliage records no fingerprint and serves only that document's own empty capture.
         baseline ??= Editing.MapDocumentEditFinalizer.BaseFingerprint(document);
-        if (!string.Equals(resources.ClosureHash, assets.Hash, StringComparison.Ordinal) ||
-            (resources.SourceFingerprint is { } recorded ? !string.Equals(recorded, baseline, StringComparison.Ordinal) : document.Foliage is not null))
-            return new(MapFoliageStatus.Invalid, null, measure.Work);
+        if (!string.Equals(resources.ClosureHash, assets.Hash, StringComparison.Ordinal))
+            return MapFoliageContextRefusals.SnapshotChanged(document, measure.Work, "ClosureHash", assets.Hash, resources.ClosureHash);
+        if (resources.SourceFingerprint is { } recorded ? !string.Equals(recorded, baseline, StringComparison.Ordinal) : document.Foliage is not null)
+            return MapFoliageContextRefusals.SnapshotChanged(document, measure.Work, "SourceFingerprint", baseline, resources.SourceFingerprint);
         return Build(document, assets, resources, measure.Work, expansions, writes, baseline, queryLimits);
     }
 
@@ -143,6 +160,8 @@ public sealed class MapFoliageGenerationContext : IMapFoliageInputs
     MapEffectiveTransform IMapFoliageInputs.Pose(MapPrefabReference owner) => _inputs.Pose(owner);
     void IMapFoliageInputs.RequireChunk(MapFoliageLayer layer, MapFoliageChunkKey chunk) { }
 
+    internal static void RequireEffectiveContextForTests(IMapSurfaceSource source) => MapFoliageInputKernel.RequireEffectiveContext(source);
+
     /// <summary>Captures foliage for the requested generation window against its pinned scene source.</summary>
     public static MapWindowFoliageContextResult CaptureWindow(Scene.MapSceneSource source, Scene.MapSceneScope scope,
         MapFoliageContextLimits? limits = null) => MapFoliageWindowCapture.Capture(source, scope, limits ?? new());
@@ -154,23 +173,14 @@ public sealed class MapFoliageGenerationContext : IMapFoliageInputs
         MapFoliageContextWork work = Observed(measured, expansions, writes);
         string fingerprint = Editing.MapDocumentEditFinalizer.Fingerprint(baseline, document.Foliage);
         try { return new(MapFoliageStatus.Complete, new(document.Foliage?.Clone(), assets, resources, work, fingerprint, queryLimits), work); }
-        catch (Exception error) when (Refusal(error) is { } status) { return new(status, null, work); }
+        catch (Exception error) when (MapFoliageContextRefusals.Classify(error) is { } status)
+        { return MapFoliageContextRefusals.FromException(error, status, work); }
     }
 
     static MapFoliageContextWork Observed(MapFoliageContextWork measured, long expansions, long writes) => measured with
     {
         Expansions = MapPrefabResolver.ThreadExpansions - expansions,
         SnapshotSerializations = MapFoliageJson.ThreadPayloadWrites - writes,
-    };
-
-    static MapFoliageStatus? Refusal(Exception error) => error switch
-    {
-        MapSurfaceCapacityException => MapFoliageStatus.CapacityExceeded,
-        MapExactOverflowException or OverflowException => MapFoliageStatus.NotRepresentable,
-        MapDocumentException when MapCommonRefinement.NotRepresentable(error) => MapFoliageStatus.NotRepresentable,
-        MapDocumentException { Message: var message } when message.Contains("limit exceeded", StringComparison.Ordinal) => MapFoliageStatus.CapacityExceeded,
-        MapDocumentException => MapFoliageStatus.Invalid,
-        _ => null,
     };
 
     // The resources must hold every authored placement under its own identity, only placements the document can

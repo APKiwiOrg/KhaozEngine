@@ -110,7 +110,12 @@ namespace KhaozEngine.Tests.MapDoc
             TiledDocFixture.InDirectory(root =>
             {
                 var ex = Assert.Throws<MapDocumentException>(() => MapDocumentFile.LoadTiled(root));
-                Assert.Contains("map.json", ex.Message, StringComparison.Ordinal);
+                Assert.Equal(MapDocumentRefusal.DocumentManifestMissing, ex.Reason);
+                Assert.Equal("map.json", ex.FileName);
+                Assert.Equal(root, ex.SourceName);
+                Assert.Equal(Path.Combine(root, "map.json"), ex.Path);
+                MapDocumentFile.SaveTiled(TiledDocFixture.SampleDoc(), root);
+                Assert.Equal(TiledDocFixture.SampleDoc().Id, MapDocumentFile.LoadTiled(root).Id);
             });
         }
 
@@ -262,14 +267,20 @@ namespace KhaozEngine.Tests.MapDoc
                 // p-c and s-b live in tile (-2, 0), which this window never loaded. Writing that tile would
                 // replace its real content with just the moved item.
                 window.Placements.Single(p => p.Id == "p-a").X = -600f;
+                var saved = AssertFixtures.Files(directory);
 
                 var ex = Assert.Throws<MapDocumentException>(() => MapDocumentFile.SaveTiled(window, directory));
-                Assert.Contains("p-a", ex.Message, StringComparison.Ordinal);
-                Assert.Contains("(-2, 0)", ex.Message, StringComparison.Ordinal);
-                Assert.Contains("set_window", ex.Message, StringComparison.Ordinal);
+                Assert.Equal(MapDocumentRefusal.DocumentUnloadedDestinationTile, ex.Reason);
+                Assert.Equal("p-a", ex.EntityId);
+                Assert.Equal("placement", ex.SubjectKind);
+                Assert.Equal(new MapTileCoord(-2, 0), ex.Tile);
+                Assert.Equal(saved, AssertFixtures.Files(directory));
 
                 // And nothing was written: the guard runs before any file is touched.
                 Assert.Equal("hut", MapDocumentFile.LoadTiled(directory).Placements.Single(p => p.Id == "p-c").Kind);
+                window.Placements.Single(p => p.Id == "p-a").X = 10f;
+                MapDocumentFile.SaveTiled(window, directory);
+                Assert.Empty(MapDocumentFile.VerifyTiled(directory));
             });
         }
 
@@ -283,7 +294,13 @@ namespace KhaozEngine.Tests.MapDoc
                 MapDocument window = MapDocumentFile.LoadTiled(directory, OriginWindow);
 
                 string elsewhere = Path.Combine(root, "copy.map");
-                Assert.Throws<MapDocumentException>(() => MapDocumentFile.SaveTiled(window, elsewhere));
+                MapDocumentFile.SaveTiled(TiledDocFixture.SampleDoc(), elsewhere);
+                var saved = AssertFixtures.Files(root);
+                var error = Assert.Throws<MapDocumentException>(() => MapDocumentFile.SaveTiled(window, elsewhere));
+                Assert.Equal(MapDocumentRefusal.DocumentWindowTargetMismatch, error.Reason);
+                Assert.Equal(Path.GetFullPath(elsewhere), error.Path);
+                Assert.Equal(Path.GetFullPath(directory), error.SourceName);
+                Assert.Equal(saved, AssertFixtures.Files(root));
 
                 // The same window back to its own directory is fine.
                 MapDocumentFile.SaveTiled(window, directory);
@@ -306,15 +323,23 @@ namespace KhaozEngine.Tests.MapDoc
                 Assert.True(window.Tiles!.IsPartial);
 
                 window.TileSize = 256f;   // the window's index still says the old tileSize
+                var saved = AssertFixtures.Files(directory);
 
                 MapDocumentException ex = Assert.Throws<MapDocumentException>(
                     () => MapDocumentFile.SaveTiled(window, directory));
-                Assert.Contains("tileSize", ex.Message, StringComparison.Ordinal);
+                Assert.Equal(MapDocumentRefusal.DocumentWindowTileSizeMismatch, ex.Reason);
+                Assert.Equal("TileSize", ex.FieldPath);
+                Assert.Equal(256d, ex.ActualNumber);
+                Assert.Equal(MapDocumentFile.DefaultTileSize, ex.ExpectedNumber);
+                Assert.Equal(saved, AssertFixtures.Files(directory));
 
                 // Nothing was written: the whole world still loads, at its original tileSize.
                 MapDocument reloaded = MapDocumentFile.LoadTiled(directory);
                 Assert.Equal(MapDocumentFile.DefaultTileSize, reloaded.TileSize);
                 Assert.Equal(MapDocumentHash.OfWorld(TiledDocFixture.SampleDoc()), MapDocumentHash.OfWorld(reloaded));
+                window.TileSize = (float)ex.ExpectedNumber!.Value;
+                MapDocumentFile.SaveTiled(window, directory);
+                Assert.Empty(MapDocumentFile.VerifyTiled(directory));
             });
         }
 
@@ -334,7 +359,11 @@ namespace KhaozEngine.Tests.MapDoc
                 Assert.Equal(new[] { "p-a", "p-b" }, origin.Placements.Select(p => p.Id).OrderBy(i => i, StringComparer.Ordinal));
                 Assert.Single(origin.SculptTiles);
 
-                Assert.Throws<MapDocumentException>(() => source.ReadTile(new MapTileCoord(42, 42)));
+                var error = Assert.Throws<MapDocumentException>(() => source.ReadTile(new MapTileCoord(42, 42)));
+                Assert.Equal(MapDocumentRefusal.DocumentTileNotIndexed, error.Reason);
+                Assert.Equal(new MapTileCoord(42, 42), error.Tile);
+                Assert.Equal(directory, error.SourceName);
+                Assert.Equal(2, source.ReadTile(new MapTileCoord(0, 0)).Placements.Count);
             });
         }
 

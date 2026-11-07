@@ -73,10 +73,16 @@ public class MapPrefabSupportTests
     [Fact]
     public void CoincidentSupportOwners_Refuse()
     {
-        Assert.Contains("coincident", Assert.Throws<MapDocumentException>(() => PrefabPhysicsFixtures.Build(PrefabFixtures.CoincidentSupport())).Message,
-            StringComparison.OrdinalIgnoreCase);
-        Assert.Contains("coincident", Assert.Throws<MapDocumentException>(() => PrefabPhysicsFixtures.Build(PrefabPhysicsFixtures.CentimetreSupport(true))).Message,
-            StringComparison.OrdinalIgnoreCase);
+        var surfaces = Assert.Throws<MapDocumentException>(() => PrefabPhysicsFixtures.Build(PrefabFixtures.CoincidentSupport()));
+        Assert.Equal(MapDocumentRefusal.SpaceSupportCoincident, surfaces.Reason);
+        Assert.Equal(new[] { PrefabFixtures.SupportFloorId, "prefab/a/Surface/independent-floor" }.Order(StringComparer.Ordinal),
+            new[] { surfaces.SurfaceId, surfaces.OtherSurfaceId }.Order(StringComparer.Ordinal));
+        Assert.NotEmpty(PrefabPhysicsFixtures.Build(PrefabFixtures.Create("support-resource")).Terrain.Chunks);
+        var collider = Assert.Throws<MapDocumentException>(() => PrefabPhysicsFixtures.Build(PrefabPhysicsFixtures.CentimetreSupport(true)));
+        Assert.Equal(MapDocumentRefusal.SpaceSupportCoincident, collider.Reason);
+        Assert.Equal("prefab/a/Placement/deck", collider.PlacementId);
+        Assert.Equal(PrefabFixtures.SupportFloorId, collider.SurfaceId);
+        Assert.NotEmpty(PrefabPhysicsFixtures.Build(PrefabPhysicsFixtures.CentimetreSupport()).Terrain.Chunks);
     }
 
     [Fact]
@@ -161,10 +167,12 @@ public class MapPrefabSupportTests
         var f = PrefabFixtures.MissingYProvider(materialized, space);
         long highWater = f.Document.NumericIdHighWaterMark;
         var error = Assert.Throws<MapDocumentException>(() => PrefabPhysicsFixtures.Build(f));
-        Assert.Contains("consumer", error.Message);
-        Assert.Contains("provider", error.Message);
-        Assert.Contains("missing Y", error.Message);
+        Assert.Equal(MapDocumentRefusal.SupportProviderHeightMissing, error.Reason);
+        Assert.Equal("consumer", error.PlacementId);
+        Assert.Equal("provider", error.ProviderPlacementId);
         Assert.Equal(highWater, f.Document.NumericIdHighWaterMark);
+        var control = PrefabFixtures.MissingYProvider(materialized, space, explicitProvider: true);
+        Assert.Contains(PrefabPhysicsFixtures.Build(control).Document.Placements, p => p.PlacementId == "consumer");
     }
 
     [Fact]
@@ -226,8 +234,15 @@ public class MapPrefabSupportTests
             far ? new(30000.25f, -450, -29999.75f) : new(10.25f, 5, -3.125f), 0.371f, 1.2f)
         };
         f.Document.Prefabs = new(1, 1, new[] { instance }, []);
-        Assert.Contains("coincident", Assert.Throws<MapDocumentException>(() => PrefabPhysicsFixtures.Build(f)).Message,
-            StringComparison.OrdinalIgnoreCase);
+        var error = Assert.Throws<MapDocumentException>(() => PrefabPhysicsFixtures.Build(f));
+        Assert.Equal(MapDocumentRefusal.SpaceSupportCoincident, error.Reason);
+        Assert.Equal("prefab/a/Placement/deck", error.PlacementId);
+        Assert.Equal(PrefabFixtures.SupportFloorId, error.SurfaceId);
+        // Lower only the collider vertices. Moving the placement also moves its implicit support floor.
+        var repaired = PrefabPhysicsFixtures.CentimetreSupport(true,
+            new ConvexHullShape(hull.Points.Select(p => p - Vector3.UnitY).ToArray()));
+        repaired.Document.Prefabs = new(1, 1, new[] { instance }, []);
+        Assert.NotEmpty(PrefabPhysicsFixtures.Build(repaired).Terrain.Chunks);
     }
 
     [Fact]

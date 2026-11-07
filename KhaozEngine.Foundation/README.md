@@ -49,6 +49,7 @@ Pulls in:
 - `KhaozEngine.Social` - the provider-neutral rich presence, identity and join or invite seam.
 - `KhaozEngine.Skills` - the game-agnostic experience, level, award and skill-book kernel.
 - `KhaozEngine.Stats` - deterministic stat channels and source-keyed modifier folding.
+- `KhaozEngine.StatusEffects` - transient timed effects, scoped stacks, periodic events and integer totals.
 - `KhaozEngine.Terrain` - render-free analytic terrain field (height/normal/biome from `(x, z, seed)`).
 - `KhaozEngine.MapDoc` - the zone/map document format: load/save/validate/migrate a versioned JSON model
   (terrain with parametric features, scatter and companion layers, exclusion/override shapes, authored
@@ -65,8 +66,9 @@ Pulls in:
 - `KhaozEngine.Determinism` - `DeterministicFpScope` FP-environment pinning for lockstep sims.
 - `KhaozEngine.Platform` - cross-platform `Clipboard` facade.
 - `KhaozEngine.Updates` - delta auto-update pipeline.
-- `KhaozEngine.CodeHealth.Analyzers` - compile-time file-size ratchet diagnostics and `buildTransitive` baseline
-  discovery. The umbrella packs it with `PrivateAssets="none"` so both assets flow to consumers.
+- `KhaozEngine.CodeHealth.Analyzers` - compile-time file-size and test-health ratchets, with
+  `buildTransitive` baseline discovery. The umbrella packs it with `PrivateAssets="none"` so both assets
+  flow to consumers.
 
 Also ships buildTransitive build defaults that flow to every consumer, whether Foundation is
 referenced directly or via `Game2D`/`Game3D`/`Server`:

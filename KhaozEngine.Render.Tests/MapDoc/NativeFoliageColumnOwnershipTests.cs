@@ -2,7 +2,6 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Runtime.CompilerServices;
-using System.Reflection;
 using KhaozEngine.MapDoc.Editing;
 using KhaozEngine.MapDoc.Foliage;
 using KhaozEngine.MapDoc.Render3D;
@@ -32,7 +31,7 @@ public sealed partial class NativeMapFoliageTests
         cache.Clear();
     }
     static int CacheColumnCapacity(MapFoliageRenderCache cache) =>
-        ((Dictionary<MapFoliageCacheKey, MapFoliageColumnOwner>)typeof(MapFoliageRenderCache).GetField("_owners", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(cache)!).EnsureCapacity(0);
+        cache.OwnerIndexCapacityForTests;
     [Fact]
     public void Columns_CacheReusesTheSameBackingThroughPolicyReplacementAndInvalidation()
     {

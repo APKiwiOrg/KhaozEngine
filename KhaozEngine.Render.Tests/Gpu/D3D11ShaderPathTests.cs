@@ -274,10 +274,11 @@ namespace KhaozEngine.Tests.Gpu
 
             ShaderValidationException ex = Assert.Throws<ShaderValidationException>(
                 () => D3D11ShaderSignature.RequireContiguousUserSemantics(holed, "ShadowDepth"));
-            Assert.Contains("ShadowDepth", ex.Message, StringComparison.Ordinal);
-            // The message has to say what to DO, since the fix is in the GLSL and is not obvious from a hole.
-            Assert.Contains("ShaderSources.Shadow.cs", ex.Message, StringComparison.Ordinal);
-            Assert.Contains("ShaderSources.Terrain.cs", ex.Message, StringComparison.Ordinal);
+            Assert.Equal(ShaderValidationRefusal.D3D11UserSemanticHole, ex.Reason);
+            Assert.Equal("ShadowDepth", ex.Label);
+            Assert.Equal("TEXCOORD", ex.Semantic);
+            Assert.Equal(1, ex.FirstMissingIndex);
+            Assert.Equal(new[] { "ShaderSources.Shadow.cs", "ShaderSources.Terrain.cs" }, ex.RepairSourcePaths);
         }
 
         /// <summary>A hole anywhere fails, including one that only misses the last index of a run.</summary>
@@ -351,15 +352,19 @@ namespace KhaozEngine.Tests.Gpu
         {
             if (KhaozEngineD3D11.IsPlatformSupported) return;
 
-            PlatformNotSupportedException pair = Assert.Throws<PlatformNotSupportedException>(
+            D3D11ShaderPlatformException pair = Assert.Throws<D3D11ShaderPlatformException>(
                 () => KhaozEngineD3D11.ValidateShaderPair(VertGlsl, FragGlsl, "anything"));
-            PlatformNotSupportedException compute = Assert.Throws<PlatformNotSupportedException>(
+            D3D11ShaderPlatformException compute = Assert.Throws<D3D11ShaderPlatformException>(
                 () => KhaozEngineD3D11.ValidateComputeShader("#version 450\nvoid main(){}", "anything"));
 
-            foreach (PlatformNotSupportedException ex in new[] { pair, compute })
+            foreach (D3D11ShaderPlatformException ex in new[] { pair, compute })
             {
-                Assert.Contains(nameof(KhaozEngineD3D11.IsPlatformSupported), ex.Message, StringComparison.Ordinal);
-                Assert.Contains("ShaderValidation", ex.Message, StringComparison.Ordinal);
+                Assert.IsAssignableFrom<PlatformNotSupportedException>(ex);
+                Assert.Equal(D3D11ShaderPlatformRefusal.FxcUnavailableOnPlatform, ex.Reason);
+                Assert.Equal("d3dcompiler", ex.Compiler);
+                Assert.Equal("Windows", ex.RequiredOperatingSystem);
+                Assert.Equal("KhaozEngineD3D11.IsPlatformSupported", ex.SupportProbe);
+                Assert.Equal("ShaderValidation", ex.PortableValidator);
             }
 
             D3D11InteropLoad.AssertNotLoaded();

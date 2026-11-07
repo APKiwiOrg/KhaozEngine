@@ -48,7 +48,7 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         {
             if (arrayLayer < arraySlices) return;
 
-            throw new ArgumentOutOfRangeException(nameof(arrayLayer), arrayLayer,
+            throw new GpuTextureTransferRangeException(GpuTextureTransferRefusal.SubresourceOutOfRange, nameof(arrayLayer), arrayLayer,
                 "Array layer "
                 + arrayLayer.ToString(CultureInfo.InvariantCulture)
                 + " is outside a native Direct3D 11 texture with "
@@ -56,7 +56,11 @@ namespace KhaozEngine.Gpu.D3D11.Internal
                 + " array "
                 + (arraySlices == 1 ? "slice." : "slices.")
                 + " UpdateSubresource would drop the write without an error, so the bytes would land nowhere and "
-                + "the caller would never hear about it.");
+                + "the caller would never hear about it.")
+            {
+                ArrayLayer = arrayLayer,
+                ArrayLayers = arraySlices,
+            };
         }
 
         /// <summary>
@@ -71,7 +75,7 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         {
             if (mipLevel < mipLevels) return;
 
-            throw new ArgumentOutOfRangeException(nameof(mipLevel), mipLevel,
+            throw new GpuTextureTransferRangeException(GpuTextureTransferRefusal.SubresourceOutOfRange, nameof(mipLevel), mipLevel,
                 "Mip level "
                 + mipLevel.ToString(CultureInfo.InvariantCulture)
                 + " is outside a native Direct3D 11 texture with "
@@ -79,7 +83,11 @@ namespace KhaozEngine.Gpu.D3D11.Internal
                 + " mip "
                 + (mipLevels == 1 ? "level." : "levels.")
                 + " UpdateSubresource would drop the write without an error, so the bytes would land nowhere and "
-                + "the caller would never hear about it.");
+                + "the caller would never hear about it.")
+            {
+                MipLevel = mipLevel,
+                MipLevels = mipLevels,
+            };
         }
 
         /// <summary>

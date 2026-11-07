@@ -150,7 +150,7 @@ internal static partial class PrefabFixtures
         f.Document.Prefabs = new(1, 1, new[] { f.Document.Prefabs!.Instances.Single() with { Bindings = new([]) } }, []);
         return Reasset(f, new(1, "hut", children), overlap ? null : new Dictionary<string, string> { ["deck/floor"] = "a/deck/floor" });
     }
-    internal static PrefabFixture MissingYProvider(bool materialized, bool space)
+    internal static PrefabFixture MissingYProvider(bool materialized, bool space, bool explicitProvider = false)
     {
         var f = materialized ? MaterializedOverrideFixture() : SupportBoundChild(0);
         string ownerId = materialized ? "deck-owner" : "deck";
@@ -158,7 +158,7 @@ internal static partial class PrefabFixtures
         var original = f.Assets.GetPrefab("hut");
         var owner = (MapPrefabPlacementChild)original.Children.Single(c => c.Key.Key == ownerId);
         var value = MapPrefabReferenceWalker.Copy(owner.Value, ownerId, new(MapSupportBindingKind.Surface, "exterior", null, null, null, null));
-        value.Y = null;
+        value.Y = explicitProvider ? 0f : null;
         owner = owner with { Value = value, References = new[] { new MapPrefabReferenceSlot("/value/supportBinding/surfaceId", new(MapPrefabReferenceScope.World, MapPrefabChildKind.Surface, "exterior")) } };
         var child = new MapPrefabPlacementChild(new(MapPrefabChildKind.Placement, "consumer"), new()
         {

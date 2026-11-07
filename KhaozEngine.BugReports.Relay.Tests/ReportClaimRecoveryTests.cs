@@ -253,8 +253,6 @@ public sealed class ReportClaimRecoveryTests
             var exhausted = await Assert.ThrowsAsync<ReportClaimExhaustedException>(() => WorkerFixtures.ProcessAsync(harness, kind));
             Assert.Equal(Id, exhausted.ReportId);
             Assert.Equal(kind, exhausted.Kind);
-            Assert.Contains(Id, exhausted.Message, StringComparison.Ordinal);
-            Assert.Contains(kind.ToString(), exhausted.Message, StringComparison.Ordinal);
         }
         Assert.Empty(harness.GitHub.Issues);
         Assert.Empty(harness.GitHub.Comments);
@@ -278,8 +276,6 @@ public sealed class ReportClaimRecoveryTests
             var error = await Assert.ThrowsAsync<ReportClaimExhaustedException>(() => WorkerFixtures.ProcessAsync(harness, kind));
             Assert.Equal(Id, error.ReportId);
             Assert.Equal(kind, error.Kind);
-            Assert.Contains(Id, error.Message, StringComparison.Ordinal);
-            Assert.Contains(kind.ToString(), error.Message, StringComparison.Ordinal);
             Assert.Empty(harness.GitHub.Issues);
             Assert.Empty(harness.GitHub.Comments);
         }

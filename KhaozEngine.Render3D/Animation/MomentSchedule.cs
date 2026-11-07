@@ -145,26 +145,38 @@ namespace KhaozEngine.Render3D
         /// <param name="options">The slots, their quiet ends, the empty share, the empty-run cap and the salt.</param>
         /// <param name="families">The moment families, indexed by <see cref="Moment.Family"/>. Copied.</param>
         /// <exception cref="ArgumentNullException">Either argument is null.</exception>
-        /// <exception cref="ArgumentException">An option or a family is out of range, or the table is empty. The
-        /// message names the option or the family.</exception>
+        /// <exception cref="MomentScheduleArgumentException">An option or family is out of range, or the table is
+        /// empty. Reason identifies the rule, OptionName and OptionValue identify a refused option, and FamilyName
+        /// and FamilyIndex identify a refused family. Other members carry the count, duration or total involved.
+        /// </exception>
         public MomentSchedule(MomentScheduleOptions options, IReadOnlyList<MomentFamily> families)
         {
             ArgumentNullException.ThrowIfNull(options);
             ArgumentNullException.ThrowIfNull(families);
             if (!double.IsFinite(options.SlotSeconds) || options.SlotSeconds <= 0.0)
-                throw new ArgumentException($"SlotSeconds is {Text(options.SlotSeconds)}, and a slot must last a"
-                    + " finite number of seconds above zero.", nameof(options));
+                throw new MomentScheduleArgumentException(MomentScheduleRefusal.SlotSecondsInvalid,
+                    $"SlotSeconds is {Text(options.SlotSeconds)}, and a slot must last a"
+                    + " finite number of seconds above zero.", nameof(options))
+                { OptionName = nameof(options.SlotSeconds), OptionValue = options.SlotSeconds };
             if (!double.IsFinite(options.QuietSeconds) || options.QuietSeconds < 0.0)
-                throw new ArgumentException($"QuietSeconds is {Text(options.QuietSeconds)}, and a quiet end must last"
-                    + " a finite number of seconds, zero or more.", nameof(options));
+                throw new MomentScheduleArgumentException(MomentScheduleRefusal.QuietSecondsInvalid,
+                    $"QuietSeconds is {Text(options.QuietSeconds)}, and a quiet end must last"
+                    + " a finite number of seconds, zero or more.", nameof(options))
+                { OptionName = nameof(options.QuietSeconds), OptionValue = options.QuietSeconds };
             if (!double.IsFinite(options.EmptyShare) || options.EmptyShare < 0.0 || options.EmptyShare >= 1.0)
-                throw new ArgumentException($"EmptyShare is {Text(options.EmptyShare)}, and it must be a share from 0"
-                    + " up to but not including 1.", nameof(options));
+                throw new MomentScheduleArgumentException(MomentScheduleRefusal.EmptyShareInvalid,
+                    $"EmptyShare is {Text(options.EmptyShare)}, and it must be a share from 0"
+                    + " up to but not including 1.", nameof(options))
+                { OptionName = nameof(options.EmptyShare), OptionValue = options.EmptyShare };
             if (options.MaxEmptySlots < 0)
-                throw new ArgumentException($"MaxEmptySlots is {Text(options.MaxEmptySlots)}, and it cannot be"
-                    + " negative.", nameof(options));
+                throw new MomentScheduleArgumentException(MomentScheduleRefusal.MaxEmptySlotsInvalid,
+                    $"MaxEmptySlots is {Text(options.MaxEmptySlots)}, and it cannot be"
+                    + " negative.", nameof(options))
+                { OptionName = nameof(options.MaxEmptySlots), OptionValue = options.MaxEmptySlots };
             if (families.Count == 0)
-                throw new ArgumentException("The schedule has no moment families.", nameof(families));
+                throw new MomentScheduleArgumentException(MomentScheduleRefusal.FamiliesEmpty,
+                    "The schedule has no moment families.", nameof(families))
+                { FamilyCount = families.Count };
 
             _slotSeconds = options.SlotSeconds;
             _quietSeconds = options.QuietSeconds;
@@ -184,17 +196,30 @@ namespace KhaozEngine.Render3D
             {
                 MomentFamily family = families[index];
                 if (!double.IsFinite(family.Weight) || family.Weight <= 0.0)
-                    throw new ArgumentException($"The moment family '{family.Name}' (index {Text(index)}) weighs"
-                        + $" {Text(family.Weight)}, and a weight must be a finite number above zero.", nameof(families));
+                    throw new MomentScheduleArgumentException(MomentScheduleRefusal.FamilyWeightInvalid,
+                        $"The moment family '{family.Name}' (index {Text(index)}) weighs"
+                        + $" {Text(family.Weight)}, and a weight must be a finite number above zero.", nameof(families))
+                    { FamilyName = family.Name, FamilyIndex = index, Weight = family.Weight };
                 if (!double.IsFinite(family.LengthSeconds) || family.LengthSeconds <= 0.0)
-                    throw new ArgumentException($"The moment family '{family.Name}' (index {Text(index)}) lasts"
+                    throw new MomentScheduleArgumentException(MomentScheduleRefusal.FamilyLengthInvalid,
+                        $"The moment family '{family.Name}' (index {Text(index)}) lasts"
                         + $" {Text(family.LengthSeconds)} s, and a moment must last a finite number of seconds above"
-                        + " zero.", nameof(families));
+                        + " zero.", nameof(families))
+                    { FamilyName = family.Name, FamilyIndex = index, LengthSeconds = family.LengthSeconds };
                 if (family.LengthSeconds > room)
-                    throw new ArgumentException($"The moment family '{family.Name}' (index {Text(index)}) lasts"
+                    throw new MomentScheduleArgumentException(MomentScheduleRefusal.FamilyDoesNotFitSlot,
+                        $"The moment family '{family.Name}' (index {Text(index)}) lasts"
                         + $" {Text(family.LengthSeconds)} s, longer than the {Text(room)} s a slot of"
                         + $" {Text(_slotSeconds)} s leaves between quiet ends of {Text(_quietSeconds)} s.",
-                        nameof(families));
+                        nameof(families))
+                    {
+                        FamilyName = family.Name,
+                        FamilyIndex = index,
+                        LengthSeconds = family.LengthSeconds,
+                        AvailableSeconds = room,
+                        SlotSeconds = _slotSeconds,
+                        QuietSeconds = _quietSeconds,
+                    };
                 total += family.Weight;
                 _thresholds[index] = total;
                 _lengths[index] = family.LengthSeconds;
@@ -202,8 +227,10 @@ namespace KhaozEngine.Render3D
                 _mirrored[index] = family.Mirrored;
             }
             if (!double.IsFinite(total))
-                throw new ArgumentException($"The moment families' weights total {Text(total)}, which is not a finite"
-                    + " number.", nameof(families));
+                throw new MomentScheduleArgumentException(MomentScheduleRefusal.WeightTotalNotFinite,
+                    $"The moment families' weights total {Text(total)}, which is not a finite"
+                    + " number.", nameof(families))
+                { TotalWeight = total };
             // The running weight over the total, not a running sum of shares. Where every running sum and the total
             // are exact in binary, as the humanoid's 0.75 and 1 (or 3 and 4) are, each cut is the exact share and
             // splits the 65536 draws exactly where the table says. Otherwise the rounded sums can move a cut by one

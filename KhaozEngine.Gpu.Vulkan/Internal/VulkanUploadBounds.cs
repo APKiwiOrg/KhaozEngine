@@ -39,7 +39,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         {
             if (arrayLayer < arrayLayers) return;
 
-            throw new ArgumentOutOfRangeException(nameof(arrayLayer), arrayLayer,
+            throw new GpuTextureTransferRangeException(GpuTextureTransferRefusal.SubresourceOutOfRange, nameof(arrayLayer), arrayLayer,
                 "Array layer "
                 + arrayLayer.ToString(CultureInfo.InvariantCulture)
                 + " is outside a native Vulkan texture with "
@@ -47,7 +47,11 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
                 + " array "
                 + (arrayLayers == 1 ? "layer." : "layers.")
                 + " The copy it would record is undefined rather than refused, so the bytes would land wherever "
-                + "the driver put them and the caller would never hear about it.");
+                + "the driver put them and the caller would never hear about it.")
+            {
+                ArrayLayer = arrayLayer,
+                ArrayLayers = arrayLayers,
+            };
         }
 
         /// <summary>
@@ -62,7 +66,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         {
             if (mipLevel < mipLevels) return;
 
-            throw new ArgumentOutOfRangeException(nameof(mipLevel), mipLevel,
+            throw new GpuTextureTransferRangeException(GpuTextureTransferRefusal.SubresourceOutOfRange, nameof(mipLevel), mipLevel,
                 "Mip level "
                 + mipLevel.ToString(CultureInfo.InvariantCulture)
                 + " is outside a native Vulkan texture with "
@@ -70,7 +74,11 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
                 + " mip "
                 + (mipLevels == 1 ? "level." : "levels.")
                 + " The copy it would record is undefined rather than refused, so the bytes would land wherever "
-                + "the driver put them and the caller would never hear about it.");
+                + "the driver put them and the caller would never hear about it.")
+            {
+                MipLevel = mipLevel,
+                MipLevels = mipLevels,
+            };
         }
 
         /// <summary>

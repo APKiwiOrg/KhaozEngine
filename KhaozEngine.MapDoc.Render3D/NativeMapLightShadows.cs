@@ -21,7 +21,7 @@ internal static class NativeMapLightShadows
         if (exclusion?.Kind == MapLightShadowExclusionKind.NearSphere) return LightShadow.Static(key, exclusion.Radius!.Value);
         if (light.OwnerPlacementId is not { } owner) return shadow;
         var placement = scene.Placements.SingleOrDefault(p => p.PlacementId == owner)
-            ?? throw new MapDocumentException("Light fixture owner is absent from its scoped closure.");
+            ?? throw new MapDocumentException(MapDocumentRefusal.ReferenceMissing, "Light fixture owner is absent from its scoped closure.") { PlacementId = owner, Operation = "LightShadow.Prepare" };
         Vector3 low, high;
         float units = 1, margin = 0;
         if (exclusion is { Kind: MapLightShadowExclusionKind.FixtureBox })
@@ -47,7 +47,7 @@ internal static class NativeMapLightShadows
         {
             min -= new Vector3(margin); max += new Vector3(margin);
             if (!Finite(min) || !Finite(max) || min.X >= max.X || min.Y >= max.Y || min.Z >= max.Z)
-                throw new MapDocumentException("Light fixture shadow exclusion is not a finite world-space box.");
+                throw new MapDocumentException(MapDocumentRefusal.BoundsInvalid, "Light fixture shadow exclusion is not a finite world-space box.") { PlacementId = owner, FieldPath = "ShadowExclusion", Operation = "LightShadow.Prepare" };
         }
         return shadow.WithExclusionBox(min, max);
     }

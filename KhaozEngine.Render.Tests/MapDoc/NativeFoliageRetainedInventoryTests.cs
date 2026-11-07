@@ -1,6 +1,5 @@
 using System;
 using System.Linq;
-using System.Reflection;
 using KhaozEngine.MapDoc.Render3D;
 using KhaozEngine.MapDoc.Scene;
 using Xunit;
@@ -73,8 +72,5 @@ public sealed class NativeFoliageRetainedInventoryTests
         Assert.Equal(0, Binding(window).Live);
     }
 
-    internal static MapPreparationLedger.Window Binding(MapSceneAdmission.PreparationWindow window) =>
-        (MapPreparationLedger.Window)typeof(MapSceneAdmission.PreparationWindow)
-            .GetFields(BindingFlags.Instance | BindingFlags.NonPublic)
-            .Single(f => f.FieldType == typeof(MapPreparationLedger.Window)).GetValue(window)!;
+    internal static MapSceneAdmission.PreparationWindowObservationForTests Binding(MapSceneAdmission.PreparationWindow window) => window.BindingForTests;
 }

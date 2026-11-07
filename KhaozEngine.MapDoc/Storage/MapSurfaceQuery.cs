@@ -22,7 +22,8 @@ internal static class MapSurfaceQuery
         catch (MapSurfaceCapacityException error) { return Capacity(source, scope, budget) with { Capacity = error.Capacity, Diagnostic = error.Diagnostic }; }
         catch (Exception ex) when (ex is MapExactOverflowException or OverflowException)
         {
-            throw new MapDocumentException("surface scope not representable", ex);
+            throw new MapDocumentException(MapDocumentRefusal.GeometryNotRepresentable, "surface scope not representable", ex)
+            { Operation = "FindPatches", FieldPath = nameof(scope) };
         }
     }
 

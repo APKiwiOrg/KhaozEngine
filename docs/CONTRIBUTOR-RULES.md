@@ -24,6 +24,50 @@ can absorb another contributor's staged files. Never use the shared stash for wo
 - `AppWindow` in `KhaozEngine.Windowing` is the only class that touches Silk.NET or GLFW input
   statics. All other code reads the immutable `InputState` snapshot through `InputManager` and
   `Pointer`. Hit testing uses their bounds helpers.
+- A refusal a caller may need to tell apart carries structured members on its exception: a public reason
+  enum and the identifiers its docs promise (an entry id, the offending index, a path), filled at every throw
+  site. The type belongs to the refusal family that owns the check, a validator or policy, and derives from
+  the type thrown before, as `WaterOpticsSurfaceException` derives from `ArgumentException`, so existing
+  catches keep working. A refusal for malformed input data whose BCL type would be the sealed
+  `InvalidDataException` derives from `MalformedDataException`, and code that handles malformed data catches
+  the base. A new refusal in a family adds a reason member. The message stays developer prose
+  and is never a contract. A plain parameter check whose `ParamName` and `ActualValue` already name the
+  problem stays a BCL exception. An adapter's status projection remains distinct from the lower refusal
+  reason. Classifiers use typed reasons and producer context, never keywords inside user identifiers or
+  exception prose. A rule that every implementation of a shared contract enforces, such as an
+  `IGpu*` command or resource rule, is one family in the contract's package, and every backend throws the
+  same reason for the same input. A collection identifier is a read-only snapshot the exception copies when
+  it is set, so neither the caller's source nor a cast of the exposed list can change it. A change to a throw
+  site's type converts every test that asserts the old exact type in the same change, GPU facts included,
+  because they skip in a local run and fail only on the GPU legs. So do test projects outside the solution, such
+  as those under `tools/`, because only their own workflow runs them. A wrapper that adds context, such as a
+  source name, rethrows the inner refusal in its own family with its reason and identifiers and keeps the
+  original as the inner exception. It never flattens a known reason into a generic one. When the wrapper and
+  the refusal it wraps share one type, one copy method on that type carries the reason and every identifier,
+  as `TileWorldException.WithSourceName` does, and a test that sets every public identifier fails by name
+  when a new one is not copied. A compound guard selects its reason from the branch that failed, in the
+  predicate's own order, and leaves the predicate and message alone. A throw on behalf of a string validator
+  takes its reason from the validator's first typed finding, so it converts only once every finding the
+  validator can return is typed, and it never stamps a generic reason. A reason names the rule the guard enforces,
+  even when an inventory or plan labels it differently. A reason only test code can throw stays off the public
+  enum, in a test-only family beside that code. A guard over a producer's or interface's property reads each value
+  once, and its predicate, reason and identifiers use that value, because a faulty producer is the case the refusal
+  has to describe. A limit identifier is the inclusive limit of the field it names, so a retry at that limit succeeds.
+  A catch or status that reads a message is replaced by a reason check only once every thrower behind it is typed,
+  keeping every status value and detail text. Code using `MapDocumentFinding.FromException` handles null, because
+  consumer code can still throw a refusal with no reason.
+- A test that reaches a numerical guard, such as a singular matrix, a collapsed cosine or a zero length, never
+  depends on floating-point cancellation landing on a threshold or on subnormal inputs. CI runs on x64 and
+  arm64, whose fused multiply-add, SIMD and denormal modes differ, so the same input can pass one check on one
+  leg and an earlier one on another. Use exact normal float32 values with the arithmetic written out in a
+  comment, or a narrow value-taking fault seam beside the guard.
+- A test that needs private state uses an internal `<Thing>ForTests` seam beside the type, never reflection.
+  A seam returns the narrowest thing the test reads: a value, a count, an identity predicate or token, a
+  snapshot copy or a genuine read-only view. It never returns a live mutable collection behind an
+  `IReadOnly*` type, because a cast would let a test change engine state, and it returns a whole owner only
+  when the test needs that exact object, documented as borrowed (never dispose, never mutate). A test that
+  injects a fault calls a narrow internal method named for that fault and taking values. Seams never change
+  behaviour.
 - New behavior gets a headless test in the matching `KhaozEngine.<Area>.Tests` project. Use the rump
   `KhaozEngine.Tests` project only for genuinely cross-cutting contracts. Declared namespaces remain
   `KhaozEngine.Tests.*` and new test projects set `<IsPackable>false</IsPackable>`.
@@ -53,6 +97,30 @@ can absorb another contributor's staged files. Never use the shared stash for wo
 - A GPU test class that captures more than a few images shares one lazily created `Scene3D` through a
   class fixture. It also carries a parity test that ages the shared scene through several
   configurations and compares it with a fresh snapshot scene. `OceanFocusScene` is the reference.
+- The test-health ratchet enforces per-file KETEST001 exception-message assertions and KETEST002
+  non-public reflection counts in `.testhealth-baseline`. Growth requires owner approval. A legitimate
+  wording or structural-reflection contract uses an owner-approved `exempt <rule> <path>` entry with a
+  `#` reason above it, never a suppression. Ratchet down with
+  `build-slot --heavy --label testhealth-update -- sh scripts/check-test-health.sh --update`.
+  KETEST003 is a report-only review aid, outside the baseline. Only 6 of 20 sampled findings in this
+  repository were real because loops over local tables and test-owned case helpers look possibly
+  empty to a syntactic check. See the [analyzer README](../KhaozEngine.CodeHealth.Analyzers/README.md#test-health-ratchet)
+  for rule boundaries, baseline grammar, script modes and consumer adoption. Analyzer tests use
+  `KhaozEngine.Tests.CodeHealth`.
+- `[Trait("Category", "Diagnostic")]` marks on-demand probes. Default CI excludes their timing and
+  cost workloads, including 19 renderer methods with method-level traits. Run them through the
+  `cross-platform-gpu` dispatch input `renderTestFilter` set to `Category=Diagnostic`, or narrow it
+  with `Category=Diagnostic&FullyQualifiedName~TemporalResolveCostPerfGpuTests`. Existing GPU
+  capability gates and software-adapter refusals still apply. Software runs prove correctness, not
+  hardware performance. Paid runs retain their separate authorization contract.
+- Four renderer checks remain in default CI without Diagnostic traits:
+  `ShadowRerecordBenchGpuTests.Compacted_refit_preserves_the_atlas_from_drawing_every_caster`,
+  `ShadowRerecordBenchGpuTests.The_hold_releases_on_a_cadence_the_threshold_predicts`,
+  `ShadowCascadeCullPerfGpuTests.A_small_caster_fixture_draws_fewer_instances_with_culling` and
+  `OceanFftPingPongPerfGpuTests.The_fft_ocean_costs_no_steady_state_gpu_drain`. Atlas equality stays
+  byte-exact and the hold cadence retains its 400-frame observation horizon. Cascade draw counts
+  and FFT stall counters use small fixed frame bounds, described in
+  [`RENDERER-PERFORMANCE.md`](RENDERER-PERFORMANCE.md#default-correctness-and-on-demand-probes).
 - CI runs Release. Local `dotnet test` defaults to Debug. Tests around `Debug.Assert`,
   `[Conditional("DEBUG")]` or `#if DEBUG` need a Release run and a configuration-independent
   observable.
@@ -76,6 +144,96 @@ An `exempt <path>` entry is for a file whose size grows only when fixed-form dat
 a screen, frame loop or test fixture that gains lines with each feature. Inspect history when the
 classification is unclear. The detailed rationale lives in
 [`design/FILESIZE-ANALYZER-DESIGN-2026-07-20.md`](design/FILESIZE-ANALYZER-DESIGN-2026-07-20.md).
+
+## Writing tests
+
+Every test guards something distinct: a contract, a rule, an owner ruling or a past regression. A correct
+change should break few tests, and each failure should point at a real defect. These fifteen rules are the
+fleet standard. Every game repo carries the same text as game-template's managed `docs/WRITING-TESTS.md`, so
+keep the two in step and change the shared wording in both.
+
+1. **Decide the test is needed, then find the existing one.** Before writing a test, name what it guards (a
+   contract, a rule, an owner ruling or a past regression) and search for a test that already fails when that
+   breaks. If one does, add nothing, or strengthen that test. If a similar test covers part of the behaviour,
+   favour it: extend it, usually with a theory row, or combine the two into one theory. Add a new test only
+   for behaviour no test covers. Each theory row covers a distinct branch or boundary, so ten rows that take
+   the same path are one row. Sibling facts that differ only in their inputs are one theory. A test that
+   guards nothing new costs CI time on every run and breaks on correct refactors without catching anything.
+2. **Test the rule, not the value.** Do not copy a tunable constant, palette entry, default or published
+   catalog number into an assertion. Such a test fails only when someone retunes on purpose. Assert the
+   property the value must keep: a bound, an ordering, a monotonic step, a conservation.
+3. **One guard per owner ruling.** An approved look or tuned value gets one test named for its ruling, not one
+   assertion per value. A ruling with several behavioural obligations keeps one test per obligation.
+4. **Assert the contract, not incidental detail.** Exception message wording, call or allocation counts on
+   fakes, log text, internal ordering, private members reached by reflection, exact frame indices and exact
+   intermediate values are not contracts unless a document or ruling makes them one. They break on correct
+   refactors and catch nothing a behavioural assertion would miss. Assert the exception type and a structured
+   member (`ParamName`, an error code, a status) instead, and reach behaviour through the public API or an
+   `InternalsVisibleTo` seam. Removing one incidental check never adds another, so do not require an inner
+   exception type, wrapper or library namespace unless a document promises it.
+5. **Validate every shipped item through one validator.** An invariant over assets, clips, meshes, shaders,
+   goldens or catalog rows is written once as a theory with one case per discovered item, plus a fact that the
+   discovered set equals the shipped set from an independent source, with an explicit policy for any item it
+   exempts. It never loops over items inside one fact, because the first failure hides the rest, and it never
+   checks a representative sample, because a defect in one item is invisible in another.
+6. **Use the shared fixtures.** Fakes, host boot, waits, content reads and comparison helpers live in shared
+   fixtures. Extend one instead of writing a local copy, because copies drift and each needs its own fixes.
+7. **Name the regression.** A test written for a defect names its issue number in a comment.
+8. **Exact values where they are the contract.** Wire and persisted formats, determinism hashes, public
+   constants, documented tuning values and golden images are compared exactly. There the exact value is the
+   behaviour, and a looser check lets a format break ship.
+9. **Absence checks and documented diagnostic values stay.** `Assert.DoesNotContain` or `DoesNotMatch` on a
+   message pins what it must never say (a token, a secret, a retired claim), which is a disclosure contract. A
+   diagnostic value the README, consumer docs or a member's XML docs promise (an entry id, the offending index,
+   a count, a path) is the contract, and only the prose around it is a wording pin. Check those docs before
+   removing any message assertion.
+10. **A test must be able to fail.** Assert the expected count or non-emptiness before asserting inside a loop
+    or `Assert.All`, because an empty result passes silently. Never assert a fake's configured answer, a
+    constant the test itself defined, or a golden generated in the same run it is compared against. When an
+    assertion goes, keep the call it made if it is the only exercise of a production path, and assert a
+    property of its result.
+11. **Never delete or weaken a test without evidence.** A deletion names, in its commit message, the surviving
+    test that fails for the same defect, or shows why the deleted test could not fail. Removing an
+    over-specific line keeps or strengthens the behavioural assertion beside it. A failing test is fixed or its
+    defect is filed, never loosened until it passes.
+12. **Timing never gates default CI.** A test that measures and reports instead of asserting carries
+    `[Trait("Category", "Diagnostic")]`, and default CI excludes that category. Wall-clock bounds flake on
+    shared runners and say nothing about correctness.
+13. **No sleeps, retries or bigger budgets for flakes.** A test that fails intermittently gets an issue when it
+    is first seen and a deterministic fix: a completion signal, a held clock or a serial collection. A sleep or
+    retry hides the race and slows every run.
+14. **Tooling tests live with their tooling.** Tests of measurement harnesses, evidence pipelines and research
+    tools sit in their own project outside the main test project, with their own CI trigger, so product changes
+    do not pay for them.
+15. **A refusal test breaks one rule.** A test that expects a refusal feeds an input that breaks only the rule
+    under test, beside a passing control that fixes that one defect. An input that breaks two rules still
+    passes when the wrong check refuses it, because the exception type cannot tell the refusals apart. When no
+    input can break one rule alone, assert the structured member that names the rule. A rule with a limit gets
+    its control at the limit, such as a route of exactly the cap or the last plane the world has, so a check
+    tightened by one fails. The control follows the refusal's no-write assertions, so they still prove the
+    refusal wrote nothing.
+    On a write path, compare content, such as saved bytes or a digest, rather than an object reference or a count.
+    A budget control runs the real operation at the exact limit and one below it, not an isolated guard helper. A
+    tiled save commits at its manifest rename, so a refused save leaves the manifest and loaded content unchanged,
+    and a content-addressed file it wrote first is unreferenced until the next save sweeps it.
+
+In this repository:
+
+- KETEST001 and KETEST002 enforce rules 4 and 9 as build errors against `.testhealth-baseline`, and
+  KETEST003 lists rule 10's possibly empty loops in report mode only (see the "Test-health ratchet" bullet
+  above and `KhaozEngine.CodeHealth.Analyzers/README.md`). KETEST001 cannot tell a documented diagnostic
+  value from prose, so a rule 9 value moves onto a structured member of the thrown exception (the refusal
+  bullet under "Engine code and test contracts") and the test asserts that member. It is never a deleted
+  assertion and never an exemption.
+- Rule 12's category is excluded by every default filter (`scripts/ci-selective-test.sh`, `ci.yml`,
+  `cross-platform-gpu.yml`). Run it on demand with the cross-platform-gpu `renderTestFilter` input set to
+  `Category=Diagnostic`. Issue #491 is the precedent: a wall-clock bound that flaked on a loaded shared runner.
+- Rule 14's reference is `tools/Renderer.Perf.Tooling.Tests`, outside `KhaozEngine.slnx`. It runs on the free
+  `tooling-validation.yml` workflow when its own inputs change, never in the engine full suite. `tools/Items.Benchmark.Tests` and
+  `tools/NavCapture.Research.Tests` follow the same pattern.
+- Rule 6's shared helpers include `test-shared` (allocation measurement, serialized reporting) and each area
+  test project's fixtures. Process-global state still needs a `DisableParallelization` collection (see
+  above).
 
 ## Dependencies and package structure
 
@@ -101,17 +259,42 @@ Run from the repository root:
 ```sh
 mkdir -p local-feed
 sh scripts/build-release-tests.sh KhaozEngine.slnx
-dotnet test KhaozEngine.slnx -c Release --no-build --filter "Category!=LiveSocket"
+dotnet test KhaozEngine.slnx -c Release --no-build --filter "Category!=LiveSocket&Category!=Diagnostic"
 ```
 
-The shared Release setup builds the selected target, then the outside-solution renderer verifier
-when the solution or Render.Tests owns the selection, including reduced native GPU shard solutions.
-Its process tests require that freshly built executable. Ordinary full and selective CI and the native
-GPU matrix use the same setup. A raw solution build alone does not
-produce this test prerequisite. Other selected test assemblies keep their original build and test slice.
-Canonical solution and project selection uses this checkout's actual file identity. Every other
-solution inspects its resolved project roots, including a foreign solution with the canonical basename.
-Unrelated roots never acquire the renderer verifier prerequisite.
+The shared Release setup builds the selected engine target without renderer tooling prerequisites.
+Renderer measurement implementation and tests live in the outside-solution
+[`Renderer.Perf.Tooling.Tests`](../tools/Renderer.Perf.Tooling.Tests/README.md) project. No engine project
+references it. Build it explicitly with
+`sh scripts/build-release-tests.sh tools/Renderer.Perf.Tooling.Tests/Renderer.Perf.Tooling.Tests.csproj`
+before its `dotnet test -c Release --no-build` run. This target, and foreign or reduced solutions whose
+resolved roots include this exact project, also build the offline verifier required by process tests.
+Canonical project selection uses actual file identity, never a basename match. Ordinary engine CI and
+native engine shards do not build or discover the tooling suite. A csproj-only edit still selects the
+architecture rump when dotnet-affected reports no affected roots. `tooling-validation.yml` owns its free
+three-OS validation and the prerequisite gate for separately authorized renderer campaigns.
+
+The outside-solution [`Items.Benchmark.Tests`](../tools/Items.Benchmark.Tests/README.md) project owns
+the process-memory-sensitive Items quick acceptance fact. Its only direct reference is Benchmarks.
+Five Items structural methods and four resident-memory instrument methods remain in Server.Tests.
+The free tooling workflow selects suite `items` on hosted Ubuntu and requires the named Release fact
+to pass with zero skips in its own process. Require a passing run at the exact benchmark code commit
+before publishing new Items evidence, recording its run URL and code SHA beside that evidence.
+This validation does not launch or authorize a full benchmark campaign.
+
+The outside-solution [`NavCapture.Research.Tests`](../tools/NavCapture.Research.Tests/README.md)
+project owns three synthetic navigation capture and snapshot restoration fixtures. The free tooling
+workflow selects suite `nav` on hosted Ubuntu and requires all three named Release facts to pass
+with zero skips before a separately approved research campaign. The seven SupportQueryCapture methods
+remain in Movement.Tests and default engine CI. Fixture validation authorizes no capture campaign.
+
+The ratchet report build is a separate maintenance inventory. `check-test-health.sh` sequentially
+builds the engine solution, then every tracked project with an xunit package reference that the solution
+does not list, before lowering any allowance. It finds those projects itself because the analyzer reaches
+every project under `Directory.Build.props`. A hand-kept list once missed
+`KhaozEngine.MapDoc.OracleHarness.Tests`, which then failed its own build with no allowance. Linked files
+retain their canonical physical repository path and findings use the maximum per-source count across
+assemblies. This build inventory adds no tooling test execution to engine CI.
 
 Renderer workflow contract tests parse checkout text through `RendererPerfWorkflowText`, which accepts
 LF and CRLF before extracting jobs or embedded commands. Exact-byte inputs keep their LF rules in
@@ -129,6 +312,10 @@ Warnings are errors in every configuration. Fix warnings at the source. Do not a
 suppression or disable `TreatWarningsAsErrors`. The standing XML documentation suppression is the
 narrow exception.
 
+The default CI filter is `Category!=LiveSocket&Category!=Diagnostic`. LiveSocket tests need a live
+network peer, and Diagnostic tests report on demand rather than gate. A `.testhealth-baseline` change
+forces a FULL selective CI run.
+
 Ordinary pushes and pull requests run `scripts/ci-selective-test.sh`. Manual runs use the full
 restore, Release build, test, determinism and pack path plus the three SQL Server jobs, and never
 publish. A tag push reuses the hosted pre-tag gate when `scripts/ci-prior-gate.sh` finds a successful
@@ -136,7 +323,7 @@ manual run of `ci` at the tag's exact commit. It then restores, builds, packs an
 full test, the determinism pass and the SQL Server jobs, and cites the reused run's URL. Without such a
 run, or on any lookup doubt, the tag runs the whole manual path and publishes. Only tag pushes publish.
 Convention, instruction budget and doc-version checks run before both paths. See
-[`design/CI-SELECTIVE-TESTS-DESIGN-2026-07-18.md`](design/CI-SELECTIVE-TESTS-DESIGN-2026-07-18.md).
+[`design/CI-SELECTIVE-TESTS.md`](design/CI-SELECTIVE-TESTS.md).
 
 The whole-tree convention checks are `scripts/check-dashes.sh`, `scripts/check-prose.sh`,
 `scripts/check-file-size.sh`, `scripts/check-agent-instructions.sh`, `scripts/check-scratch.sh` and
@@ -162,6 +349,11 @@ The engine's GPU matrix uses hosted `metal-native`, `direct3d11-native` and `vul
 Goldens are backend-family artifacts. A new or changed golden must be baked by the relevant CI leg.
 Plain `dotnet test` skips GPU facts. A local GPU proof sets `KE_GPU_TESTS=1` and confirms zero skipped
 render tests. [`CROSS-PLATFORM.md`](CROSS-PLATFORM.md) owns the full matrix contract.
+
+`terrain-format.yml` is a separate headless portability gate on hosted `ubuntu-26.04`, `macos-26` and
+`windows-2025`. It loads the committed Mac-baked KENB 4 fixture, reconstructs every accepted terrain
+certificate and requires a byte-identical rewrite. Every main push and pull request runs the gate.
+Manual dispatch supports a task branch. It never uses a self-hosted runner or requires a GPU.
 
 ## Version, package and release rules
 
@@ -265,8 +457,8 @@ accuracy.
 A completed design document keeps the rationale still in force. Rewrite superseded reasoning in
 place and keep shipped API and use instructions in the living references. Any deferral left when a
 program completes becomes an issue. Root `docs/` contains living references only. Long-running work
-uses the tracker lifecycle in [Programs](programs/README.md). Specs, plans and execution ledgers stay
-in ignored local scratch.
+lives in the owner's program store, see [Programs](programs/README.md). Specs, plans and execution
+ledgers stay in ignored local scratch.
 
 ## Issues and handoffs
 

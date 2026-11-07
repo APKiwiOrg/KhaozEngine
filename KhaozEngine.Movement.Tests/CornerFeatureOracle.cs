@@ -1,7 +1,6 @@
 using System;
 using System.Collections.Generic;
 using System.Numerics;
-using System.Reflection;
 using BepuMesh = BepuPhysics.Collidables.Mesh;
 using BepuSim = BepuPhysics.Simulation;
 using KhaozEngine.Physics;
@@ -166,9 +165,7 @@ internal static class CornerFeatureOracle
 
     internal static void AssertInstalledMesh(BepuPhysicsWorld world, Pose pose, Triangle[] expected)
     {
-        FieldInfo? field = typeof(BepuPhysicsWorld).GetField("_sim", BindingFlags.Instance | BindingFlags.NonPublic);
-        Assert.NotNull(field);
-        BepuSim simulation = Assert.IsType<BepuSim>(field.GetValue(world));
+        BepuSim simulation = world.SimulationForTests;
         int found = -1;
         for (int i = 0; i < simulation.Statics.Count; i++)
             if (simulation.Statics[i].Shape.Type == default(BepuMesh).TypeId)

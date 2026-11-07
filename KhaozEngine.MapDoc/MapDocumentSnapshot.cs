@@ -14,10 +14,10 @@ internal static class MapDocumentSnapshot
     {
         ArgumentNullException.ThrowIfNull(source);
         if (source.Tiles is { IsPartial: true })
-            throw new MapDocumentException("Snapshots require a complete document, not a windowed document.");
-        var errors = MapDocumentValidator.Validate(source, registry);
+            throw new MapDocumentException(MapDocumentRefusal.CompleteDocumentRequired, "Snapshots require a complete document, not a windowed document.") { DocumentId = source.Id, Operation = "Snapshot" };
+        var errors = MapDocumentValidator.ValidateFindings(source, registry);
         if (errors.Count != 0)
-            throw new MapDocumentException("refusing to copy an invalid map document:\n  " + string.Join("\n  ", errors));
+            throw MapDocumentRefusalFactory.FromFinding(errors[0], "refusing to copy an invalid map document:\n  " + string.Join("\n  ", errors.Select(f => f.Message)), findings: errors);
         MapSurfaceSaveGuard.Whole(source.Surfaces);
         var patchDigests = source.Surfaces.Patches.ToDictionary(p => p.Key, p => MapSurfaceSemantics.PatchDigest(p.Value));
         var copy = DetachStructure(source, registry);
@@ -35,7 +35,7 @@ internal static class MapDocumentSnapshot
     {
         ArgumentNullException.ThrowIfNull(source);
         if (source.Tiles is { IsPartial: true })
-            throw new MapDocumentException("Snapshots require a complete document, not a windowed document.");
+            throw new MapDocumentException(MapDocumentRefusal.CompleteDocumentRequired, "Snapshots require a complete document, not a windowed document.") { DocumentId = source.Id, Operation = "Snapshot" };
         var copy = new MapDocument
         {
             Schema = source.Schema,
@@ -105,7 +105,7 @@ internal static class MapDocumentSnapshot
     }
 
     static float Finite(float value) => float.IsFinite(value) ? value
-        : throw new MapDocumentException("Snapshot numeric values must be finite.");
+        : throw new MapDocumentException(MapDocumentRefusal.ValueNonfinite, "Snapshot numeric values must be finite.") { ActualNumber = value, Operation = "Snapshot" };
     static float? Finite(float? value) => value is { } number ? Finite(number) : null;
     static MapPlacement Placement(MapPlacement p)
     {
@@ -123,7 +123,7 @@ internal static class MapDocumentSnapshot
         DiscShapeDoc d => new DiscShapeDoc { CenterX = Finite(d.CenterX), CenterZ = Finite(d.CenterZ), Radius = Finite(d.Radius) },
         RectShapeDoc r => new RectShapeDoc { MinX = Finite(r.MinX), MinZ = Finite(r.MinZ), MaxX = Finite(r.MaxX), MaxZ = Finite(r.MaxZ) },
         PolygonShapeDoc p => new PolygonShapeDoc { Points = p.Points.Select(p => p.Select(v => Finite(v)).ToArray()).ToList() },
-        _ => throw new MapDocumentException("Unknown map shape in snapshot."),
+        _ => throw new MapDocumentException(MapDocumentRefusal.OperationKindUnsupported, "Unknown map shape in snapshot.") { SourceType = shape.GetType(), Operation = "Snapshot.Shape" },
     };
     static MapTerrain Terrain(MapTerrain t, MapDocRegistry registry)
     {

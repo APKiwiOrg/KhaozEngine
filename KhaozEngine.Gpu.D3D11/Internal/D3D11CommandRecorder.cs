@@ -87,10 +87,10 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         {
             ObjectDisposedException.ThrowIf(_disposed, this);
             if (_recording)
-                throw new InvalidOperationException(
-                    "Begin was called on a Direct3D 11 command list that is already recording. Begin truncates "
+                throw new GpuRecordingStateException(GpuRecordingStateRefusal.BeginWhileRecording, "Begin was called on a Direct3D 11 command list that is already recording. Begin truncates "
                     + "the recording to zero, so a second call would silently discard everything recorded since "
-                    + "the first. Call End first.");
+                    + "the first. Call End first.")
+                { Backend = GpuBackendKind.Direct3D11Native, Command = nameof(Begin) };
 
             BeginTimestampRecording();
             _recording = true;
@@ -119,11 +119,11 @@ namespace KhaozEngine.Gpu.D3D11.Internal
             ObjectDisposedException.ThrowIf(_disposed, this);
             if (_recording) return;
 
-            throw new InvalidOperationException(
-                member + " was called on a Direct3D 11 command list that is not recording. Every command belongs "
+            throw new GpuRecordingStateException(GpuRecordingStateRefusal.CommandOutsideRecording, member + " was called on a Direct3D 11 command list that is not recording. Every command belongs "
                 + "to a recording that Begin opened and End closed. Recording after End would extend a sealed "
                 + "recording on the deferred driver and emit outside the list on the immediate one, so the same "
-                + "program would render two different frames depending on KE_D3D11_RECORD.");
+                + "program would render two different frames depending on KE_D3D11_RECORD.")
+            { Backend = GpuBackendKind.Direct3D11Native, Command = member };
         }
 
         public void SetFramebuffer(IGpuFramebuffer fb)
@@ -131,6 +131,13 @@ namespace KhaozEngine.Gpu.D3D11.Internal
             RequireRecording();
             _emitter.SetFramebuffer(fb);
             _boundSwapchain |= fb is D3D11SwapchainFramebuffer;
+        }
+
+        public void SetFramebufferWithStoreActions(IGpuFramebuffer fb, in GpuAttachmentStoreActions stores)
+        {
+            // No per-plane end-of-pass store control on D3D11. Keep the ordinary bind and its own caller id.
+            RequireRecording();
+            SetFramebuffer(fb);
         }
 
         /// <inheritdoc/>

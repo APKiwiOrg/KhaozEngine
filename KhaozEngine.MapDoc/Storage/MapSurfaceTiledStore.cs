@@ -17,27 +17,53 @@ internal static class MapSurfaceTiledStore
     internal static IReadOnlyList<MapDirectoryPageRef> ReadDirectory(JsonObject root)
     {
         if (!MapDocumentMembers.TryGetProperty(root, "surfaceStorage", out JsonNode? node)) return Array.Empty<MapDirectoryPageRef>();
-        if (node is not JsonArray array) throw new MapDocumentException("invalid surfaceStorage");
+        if (node is not JsonArray array) throw new MapDocumentException(MapDocumentRefusal.SchemaArrayRequired, "invalid surfaceStorage")
+        { FieldPath = "surfaceStorage" };
         var pages = new List<MapDirectoryPageRef>(array.Count);
         JsonSerializerOptions options = MapDocumentFile.CreateCompactOptions(MapDocRegistry.CreateDefault());
+        int index = 0;
         foreach (JsonNode? item in array)
         {
             if (item is not JsonObject value || value.Count != 3 || value["surfaceId"] is null || value["sha256"] is null ||
                 value["covers"] is not JsonObject covers || covers.Count != 4 ||
                 new[] { "minX", "minZ", "maxXExclusive", "maxZExclusive" }.Any(n => covers[n] is null))
-                throw new MapDocumentException("invalid surface directory reference members");
-            MapDirectoryPageRef page = item?.Deserialize<MapDirectoryPageRef>(options) ?? throw new MapDocumentException("invalid surface directory reference");
+                throw DirectoryReferenceRefusal(item, index);
+            MapDirectoryPageRef page = item?.Deserialize<MapDirectoryPageRef>(options) ?? throw new MapDocumentException(
+                MapDocumentRefusal.SchemaValueRequired, "invalid surface directory reference")
+            { FieldPath = $"surfaceStorage[{index}]", Index = index };
             MapSurfacePages.Validate(page);
             pages.Add(page);
+            index++;
         }
         return pages;
     }
+    static MapDocumentException DirectoryReferenceRefusal(JsonNode? item, int index)
+    {
+        const string message = "invalid surface directory reference members";
+        string path = $"surfaceStorage[{index}]";
+        if (item is not JsonObject value) return new(MapDocumentRefusal.SchemaObjectRequired, message)
+        { FieldPath = path, Index = index };
+        if (value.Count != 3) return new(MapDocumentRefusal.SchemaArrayLengthMismatch, message)
+        { FieldPath = path, Index = index, ActualCount = value.Count, ExpectedCount = 3 };
+        foreach (string field in new[] { "surfaceId", "sha256" })
+            if (value[field] is null) return new(MapDocumentRefusal.SchemaValueRequired, message)
+            { FieldPath = path + "." + field, Index = index };
+        path += ".covers";
+        if (value["covers"] is not JsonObject covers) return new(MapDocumentRefusal.SchemaObjectRequired, message)
+        { FieldPath = path, Index = index };
+        if (covers.Count != 4) return new(MapDocumentRefusal.SchemaArrayLengthMismatch, message)
+        { FieldPath = path, Index = index, ActualCount = covers.Count, ExpectedCount = 4 };
+        string missing = new[] { "minX", "minZ", "maxXExclusive", "maxZExclusive" }.First(n => covers[n] is null);
+        return new(MapDocumentRefusal.SchemaValueRequired, message) { FieldPath = path + "." + missing, Index = index };
+    }
+
     internal static Prepared Prepare(MapDocument doc, string root, MapSurfacePacking? packing)
     {
         try { return PrepareCore(doc, root, packing); }
         catch (Exception ex) when (ex is MapExactOverflowException or OverflowException)
         {
-            throw new MapDocumentException("surface storage not representable", ex);
+            throw new MapDocumentException(MapDocumentRefusal.GeometryNotRepresentable, "surface storage not representable", ex)
+            { Operation = "SaveSurfaces", FieldPath = "Surfaces" };
         }
     }
     static Prepared PrepareCore(MapDocument doc, string root, MapSurfacePacking? packing)
@@ -57,7 +83,8 @@ internal static class MapSurfaceTiledStore
         foreach (var pair in doc.Surfaces.Patches)
         {
             MapSurfacePatch patch = pair.Value;
-            if (pair.Key != patch.Key) throw new MapDocumentException("surface dictionary key does not match patch key");
+            if (pair.Key != patch.Key) throw new MapDocumentException(MapDocumentRefusal.StoragePatchKeyMismatch, "surface dictionary key does not match patch key")
+            { ExpectedPatch = pair.Key, Patch = patch.Key };
             IReadOnlyList<MapRecordRef> incidents = partial && prior is not null && prior.ByKey.TryGetValue(patch.Key, out var old)
                 ? old.IncidentRecords : incidence!.For(patch.Key);
             IReadOnlyList<string> spaces = partial && prior is not null && prior.ByKey.TryGetValue(patch.Key, out var oldSpace)
@@ -108,7 +135,13 @@ internal static class MapSurfaceTiledStore
         MapSurfacePacking packing, List<(char Kind, byte[] Bytes)> files)
     {
         if (packing.IndexBlockSlots is < 1 or > 16 || packing.DirectoryBlockPages is < 1 or > 16)
-            throw new MapDocumentException("invalid surface packing");
+            throw new MapDocumentException(MapDocumentRefusal.ValueOutsideRange, "invalid surface packing")
+            {
+                FieldPath = packing.IndexBlockSlots is < 1 or > 16 ? nameof(packing.IndexBlockSlots) : nameof(packing.DirectoryBlockPages),
+                ActualInteger = packing.IndexBlockSlots is < 1 or > 16 ? packing.IndexBlockSlots : packing.DirectoryBlockPages,
+                MinimumInteger = 1,
+                MaximumInteger = 16
+            };
         var directories = new List<MapDirectoryPageRef>();
         var directoryPages = new Dictionary<string, IReadOnlyList<MapIndexPageRef>>();
         var indexPages = new Dictionary<string, IReadOnlyList<MapSurfaceIndexEntry>>();
@@ -145,8 +178,14 @@ internal static class MapSurfaceTiledStore
     static MapSlotRect Block(long x, long z, int size)
     {
         try { return new(checked(x * size), checked(z * size), checked((x + 1) * size), checked((z + 1) * size)); }
-        catch (OverflowException) { throw new MapDocumentException("surface page bounds not representable"); }
+        catch (OverflowException)
+        {
+            throw new MapDocumentException(MapDocumentRefusal.GeometryNotRepresentable, "surface page bounds not representable")
+            { Operation = "PackSurfaces", FieldPath = "Covers" };
+        }
     }
+    /// <summary>Exercises the production checked block arithmetic with the supplied block coordinates.</summary>
+    internal static MapSlotRect PageBlockForTests(long x, long z, int size) => Block(x, z, size);
     static MapSurfaceStorageIndex CarryPages(MapSurfaceStorageIndex closure, SortedDictionary<MapPatchKey, MapSurfaceIndexEntry> entries,
         IEnumerable<MapSurfaceRef> refs, List<(char Kind, byte[] Bytes)> files)
     {
@@ -217,8 +256,10 @@ internal static class MapSurfaceTiledStore
         {
             byte[] bytes = MapSurfacePatchCodec.Encode(payload.Patch, out var ownership);
             using var consumed = ownership;
-            if (MapSurfaceStorageLayout.Digest(bytes) != payload.Digest)
-                throw new MapDocumentException("document changed during surface save");
+            string actualHash = MapSurfaceStorageLayout.Digest(bytes);
+            if (actualHash != payload.Digest)
+                throw new MapDocumentException(MapDocumentRefusal.StorageSaveSnapshotChanged, "document changed during surface save")
+                { Patch = payload.Patch.Key, ExpectedHash = payload.Digest, ActualHash = actualHash };
             WriteFile(root, 'p', bytes, save, touched);
         }
         foreach (var file in prepared.Files.OrderBy(f => f.Kind == 'i' ? 0 : 1))
@@ -238,7 +279,8 @@ internal static class MapSurfaceTiledStore
         try { LoadCore(root, doc, tiles, window); }
         catch (Exception ex) when (ex is MapExactOverflowException or OverflowException)
         {
-            throw new MapDocumentException("surface window not representable", ex);
+            throw new MapDocumentException(MapDocumentRefusal.GeometryNotRepresentable, "surface window not representable", ex)
+            { Operation = "LoadSurfaces", FieldPath = "Window" };
         }
     }
     static void LoadCore(string root, MapDocument doc, MapTileIndex tiles, MapTileRect? window)
@@ -258,15 +300,15 @@ internal static class MapSurfaceTiledStore
             IEnumerable<MapDirectoryPageRef> dirs = slots is { } range ? source.Index.Covering(surface.Id, range) : source.Index.Directory.Where(d => d.SurfaceId == surface.Id);
             foreach (MapDirectoryPageRef dir in dirs)
             {
-                Require(source.Directory(dir, budget));
+                Require(source.Directory(dir, budget), dir.SurfaceId, dir.Sha256);
                 foreach (MapIndexPageRef page in source.Index.DirectoryPages[dir.Sha256])
                 {
                     if (slots is { } slotRange && !page.Covers.Overlaps(slotRange)) continue;
-                    Require(source.Page(dir, page, budget));
+                    Require(source.Page(dir, page, budget), dir.SurfaceId, page.Sha256);
                     foreach (MapSurfaceIndexEntry entry in source.Index.IndexPages[page.Sha256])
                     {
                         if (cells is { } cellRange && !entry.Cells.Overlaps(cellRange)) continue;
-                        MapPatchRead read = source.Payload(entry); Require(read.Status);
+                        MapPatchRead read = source.Payload(entry); Require(read.Status, dir.SurfaceId, entry.PayloadSha256, entry.Key, read.Cause);
                         doc.Surfaces.Patches.Add(entry.Key, read.Patch!); source.Index.Loaded(read.Patch!);
                     }
                 }
@@ -274,13 +316,23 @@ internal static class MapSurfaceTiledStore
         }
         if (window is null)
             foreach (MapSurfaceRef surface in source.Surfaces)
-                if (MapSurfaceSemantics.SurfaceDigest(surface, source.Index.Entries.Where(e => e.Key.SurfaceId == surface.Id)
-                    .Select(e => new KeyValuePair<MapPatchKey, string>(e.Key, e.SemanticSha256))) != surface.SemanticSha256)
-                    throw new MapDocumentException("surface semantic digest mismatch");
+            {
+                string actualHash = MapSurfaceSemantics.SurfaceDigest(surface, source.Index.Entries.Where(e => e.Key.SurfaceId == surface.Id)
+                    .Select(e => new KeyValuePair<MapPatchKey, string>(e.Key, e.SemanticSha256)));
+                if (actualHash != surface.SemanticSha256)
+                    throw new MapDocumentException(MapDocumentRefusal.DigestMismatch, "surface semantic digest mismatch")
+                    { SurfaceId = surface.Id, ExpectedHash = surface.SemanticSha256, ActualHash = actualHash, DigestKind = "surface semantics" };
+            }
     }
-    static void Require(MapPatchStatus status)
+    static void Require(MapPatchStatus status, string surfaceId, string digest, MapPatchKey? patch = null, Exception? cause = null)
     {
-        if (status != MapPatchStatus.Present) throw new MapDocumentException($"surface storage {status}");
+        if (status != MapPatchStatus.Present)
+        {
+            string message = $"surface storage {status}";
+            throw cause is MapDocumentException refusal ? refusal.WithSourceName(null, message, patchStatus: status, expectedHash: digest, patch: patch)
+                : new(MapDocumentRefusal.PatchUnavailable, message)
+                { PatchStatus = status, SurfaceId = surfaceId, ExpectedHash = digest, Patch = patch };
+        }
     }
 
     internal static void Verify(string root, MapDocument doc, MapTileIndex tiles, HashSet<string> named, List<string> report)

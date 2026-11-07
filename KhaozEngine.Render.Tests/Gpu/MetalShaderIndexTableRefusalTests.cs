@@ -39,30 +39,31 @@ namespace KhaozEngine.Tests.Gpu
     /// </summary>
     public sealed class MetalShaderIndexTableRefusalTests
     {
-        [Fact]
-        public void ASetPastTheDeclaredLayoutArray_IsRefused()
+        [Theory]
+        [InlineData(1, 0, ShaderValidationRefusal.MetalSetIndexInvalid)]
+        [InlineData(0, 1, ShaderValidationRefusal.MetalBindingIndexInvalid)]
+        public void AnUndeclaredSetOrBinding_IsRefused(int set, int binding, ShaderValidationRefusal reason)
         {
-            Assert.Contains("past the 1 layouts", Refusal(() => Build(
-                Layout(GpuResourceKind.UniformBuffer), Used((Set: 1, Binding: 0)))),
-                StringComparison.Ordinal);
+            var error = Assert.Throws<ShaderValidationException>(() => Build(Layout(GpuResourceKind.UniformBuffer), Used((set, binding))));
+            Assert.Equal(reason, error.Reason);
+            Assert.Equal("hand-built", error.Label);
+            Assert.Equal(GpuShaderStages.Fragment, error.Stage);
+            Assert.Equal(set, error.Set);
+            Assert.Equal(binding, error.Binding);
+            if (reason == ShaderValidationRefusal.MetalSetIndexInvalid) Assert.Equal(1, error.LayoutCount);
+            else Assert.Equal(1, error.ElementCount);
         }
 
-        [Fact]
-        public void ABindingPastThatSetsElementArray_IsRefused()
-        {
-            Assert.Contains("declares 1 elements", Refusal(() => Build(
-                Layout(GpuResourceKind.UniformBuffer), Used((Set: 0, Binding: 1)))),
-                StringComparison.Ordinal);
-        }
-
-        /// <summary>One element is one argument in one stage. A use list naming it twice did not come from an
-        /// emission, and the second would silently replace the first.</summary>
         [Fact]
         public void OneElementNamedTwiceInOneStage_IsRefused()
         {
-            Assert.Contains("names it twice", Refusal(() => Build(
-                Layout(GpuResourceKind.UniformBuffer), Used((Set: 0, Binding: 0), (Set: 0, Binding: 0)))),
-                StringComparison.Ordinal);
+            var error = Assert.Throws<ShaderValidationException>(() => Build(Layout(GpuResourceKind.UniformBuffer),
+                Used((Set: 0, Binding: 0), (Set: 0, Binding: 0))));
+            Assert.Equal(ShaderValidationRefusal.MetalResourceUseDuplicate, error.Reason);
+            Assert.Equal("hand-built", error.Label);
+            Assert.Equal(GpuShaderStages.Fragment, error.Stage);
+            Assert.Equal(0, error.Set);
+            Assert.Equal(0, error.Binding);
         }
 
         /// <summary>
@@ -151,19 +152,18 @@ namespace KhaozEngine.Tests.Gpu
             Assert.False(table.TryGetIndex(0, 0, MetalShaderStage.Fragment, out _));
         }
 
-        /// <summary>THE FOUR THE ENTRY-POINT PARSE STILL OWNS. The name is the one thing still read out of the
-        /// emission (M-S5), so an emission it cannot read is a stop rather than a guessed <c>main0</c>.</summary>
-        [Fact]
-        public void AnEntryPointTheParseCannotRead_IsRefusedRatherThanGuessed()
+        [Theory]
+        [InlineData("kernel main0()\n{\n}\n", ShaderValidationRefusal.MetalEntryPointMissing)]
+        [InlineData("fragment main0_out main0\n", ShaderValidationRefusal.MetalEntryArgumentsMissing)]
+        [InlineData("fragment main0_out main0(constant A& _7 [[buffer(0)]]\n", ShaderValidationRefusal.MetalEntryArgumentsUnclosed)]
+        [InlineData("fragment ()\n{\n}\n", ShaderValidationRefusal.MetalEntryNameUnreadable)]
+        public void AnEntryPointTheParseCannotRead_IsRefusedRatherThanGuessed(string msl, ShaderValidationRefusal reason)
         {
-            Assert.Contains("declares no 'fragment' entry point",
-                NameRefusal("kernel main0()\n{\n}\n"), StringComparison.Ordinal);
-            Assert.Contains("no argument list at all",
-                NameRefusal("fragment main0_out main0\n"), StringComparison.Ordinal);
-            Assert.Contains("never closes",
-                NameRefusal("fragment main0_out main0(constant A& _7 [[buffer(0)]]\n"), StringComparison.Ordinal);
-            Assert.Contains("name could not be read",
-                NameRefusal("fragment ()\n{\n}\n"), StringComparison.Ordinal);
+            var error = Assert.Throws<ShaderValidationException>(() => MetalMslEntryPoint.NameOf(msl, MetalShaderStage.Fragment, "hand-built"));
+            Assert.Equal(reason, error.Reason);
+            Assert.Equal("hand-built", error.Label);
+            Assert.Equal(GpuShaderStages.Fragment, error.Stage);
+            if (reason == ShaderValidationRefusal.MetalEntryPointMissing) Assert.Equal("fragment", error.EntryPointKeyword);
         }
 
         /// <summary>The other half of those four: a well-formed entry point of the same shape reads its name, so
@@ -176,34 +176,38 @@ namespace KhaozEngine.Tests.Gpu
                 MetalShaderStage.Fragment, "hand-built"));
         }
 
-        /// <summary>
-        /// PIN 4, DRIVEN: the declared layout array is shape-checked against the reflection the table was built
-        /// from, at pipeline creation. Row 11 is the only caller, and this is what says the check is real.
-        /// </summary>
         [Fact]
         public void ADeclaredLayoutArrayOfADifferentShape_IsRefusedByTheShapeCheck()
         {
             MetalShaderIndexTable table = MetalShaderIndexTable.Build(
                 Layout(GpuResourceKind.UniformBuffer, GpuResourceKind.TextureReadOnly),
-                Used((Set: 0, Binding: 0)),
-                "hand-built");
+                Used((Set: 0, Binding: 0)), "hand-built");
 
-            // The same shape passes, so the rows below are not passing because the check refuses everything.
             table.RequireLayoutShape(Layout(GpuResourceKind.UniformBuffer, GpuResourceKind.TextureReadOnly), "ok");
 
-            Assert.Contains("resource layouts", Refusal(() => table.RequireLayoutShape(
-                new[]
-                {
-                    new GpuResourceLayoutDescription(Elements(GpuResourceKind.UniformBuffer)),
-                    new GpuResourceLayoutDescription(Elements(GpuResourceKind.Sampler)),
-                }, "two sets")), StringComparison.Ordinal);
-
-            Assert.Contains("elements", Refusal(() => table.RequireLayoutShape(
-                Layout(GpuResourceKind.UniformBuffer), "one element")), StringComparison.Ordinal);
-
-            Assert.Contains("Sampler", Refusal(() => table.RequireLayoutShape(
-                Layout(GpuResourceKind.UniformBuffer, GpuResourceKind.Sampler), "wrong kind")),
-                StringComparison.Ordinal);
+            var count = Assert.Throws<ShaderValidationException>(() => table.RequireLayoutShape(new[]
+            {
+                new GpuResourceLayoutDescription(Elements(GpuResourceKind.UniformBuffer)),
+                new GpuResourceLayoutDescription(Elements(GpuResourceKind.Sampler)),
+            }, "two sets"));
+            Assert.Equal(ShaderValidationRefusal.MetalLayoutCountMismatch, count.Reason);
+            Assert.Equal("two sets", count.Label);
+            Assert.Equal(2, count.DeclaredLayoutCount);
+            Assert.Equal(1, count.ReflectedLayoutCount);
+            var elements = Assert.Throws<ShaderValidationException>(() => table.RequireLayoutShape(Layout(GpuResourceKind.UniformBuffer), "one element"));
+            Assert.Equal(ShaderValidationRefusal.MetalLayoutElementCountMismatch, elements.Reason);
+            Assert.Equal("one element", elements.Label);
+            Assert.Equal(0, elements.Set);
+            Assert.Equal(1, elements.DeclaredElementCount);
+            Assert.Equal(2, elements.ReflectedElementCount);
+            var kind = Assert.Throws<ShaderValidationException>(() => table.RequireLayoutShape(
+                Layout(GpuResourceKind.UniformBuffer, GpuResourceKind.Sampler), "wrong kind"));
+            Assert.Equal(ShaderValidationRefusal.MetalLayoutKindMismatch, kind.Reason);
+            Assert.Equal("wrong kind", kind.Label);
+            Assert.Equal(0, kind.Set);
+            Assert.Equal(1, kind.Binding);
+            Assert.Equal(GpuResourceKind.Sampler, kind.DeclaredKind);
+            Assert.Equal(GpuResourceKind.TextureReadOnly, kind.ReflectedKind);
         }
 
         /// <summary>
@@ -256,12 +260,6 @@ namespace KhaozEngine.Tests.Gpu
                 refs[i] = new MslResourceRef(elements[i].Set, elements[i].Binding);
             return new[] { new MetalStageResourceUse(MetalShaderStage.Fragment, refs) };
         }
-
-        static string Refusal(Action call) => Assert.Throws<ShaderValidationException>(call).Message;
-
-        static string NameRefusal(string msl)
-            => Assert.Throws<ShaderValidationException>(
-                () => MetalMslEntryPoint.NameOf(msl, MetalShaderStage.Fragment, "hand-built")).Message;
 
         /// <summary>A fragment entry point of the shape SPIRV-Cross emits, carrying the given argument text
         /// verbatim. The return type between the keyword and the name is not decoration: it is why the name is

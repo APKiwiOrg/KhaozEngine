@@ -124,7 +124,7 @@ public sealed partial class NativeMapFoliageTests
     }
 
     static MapNativeFoliageGroup[] ColumnGroups(MapNativeFoliageBatch batch) =>
-        (MapNativeFoliageGroup[])typeof(MapNativeFoliageBatch).GetField("_groups", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(batch)!;
+        batch.GroupsForTests;
     static IEnumerable<object?> ColumnFields(object value) => value.GetType().GetFields(BindingFlags.Instance | BindingFlags.NonPublic).Select(f => f.GetValue(value));
     static IGroundCoverInstanceSource? ColumnSource(object value) => ColumnFields(value).OfType<IGroundCoverInstanceSource>().SingleOrDefault();
     static void AssertNoColumnCopies(object view) => Assert.DoesNotContain(ColumnFields(view).OfType<Array>(), array => array.Length != 0 &&

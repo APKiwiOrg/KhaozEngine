@@ -4,6 +4,7 @@ using System.Linq;
 using KhaozEngine.MapDoc;
 using KhaozEngine.MapEdit;
 using KhaozEngine.Terrain;
+using KhaozEngine.Tests.MapEditor;
 using Xunit;
 using SampleDocs = KhaozEngine.Tests.MapDoc.MapDocumentFileTests;
 
@@ -45,7 +46,7 @@ namespace KhaozEngine.Tests.MapEditTool
                 Assert.False(result.WorldChanged);
                 Assert.Equal("p-pine_a-1", result.Id);
                 Assert.Equal(field.SampleHeight(12f, -3.5f), result.GroundY);
-                Assert.Contains("pine_a", result.Detail);
+                Assert.False(string.IsNullOrWhiteSpace(result.Detail));
 
                 MapPlacement added = session.WithDocument((doc, _) => doc.Placements.Single(p => p.Id == "p-pine_a-1"));
                 Assert.Equal("pine_a", added.Kind);
@@ -68,16 +69,17 @@ namespace KhaozEngine.Tests.MapEditTool
                 string before = session.WithDocument((doc, r) => MapDocumentFile.SaveText(doc, r));
                 bool dirtyBefore = session.IsDirty;
 
-                InvalidOperationException ex = Assert.Throws<InvalidOperationException>(() =>
-                    mutation.PlacementAdd("building_inn", 0f, 0f, id: "inn"));
+                var ex = EditorCommandRefusalAssertions.Throws(() =>
+                    mutation.PlacementAdd("building_inn", 0f, 0f, id: "inn"), MapDocumentRefusal.IdentityDuplicate, "placement", "inn");
 
                 // The Add command's own guard rejects this before the append (#766), so it never reaches the
                 // choke point's validate-and-revert net and carries no "mutation rejected:" prefix.
-                Assert.Contains("placement with id 'inn' already exists", ex.Message);
+                Assert.Equal("Placements", ex.FieldPath);
 
                 string after = session.WithDocument((doc, r) => MapDocumentFile.SaveText(doc, r));
                 Assert.Equal(before, after);
                 Assert.Equal(dirtyBefore, session.IsDirty);
+                Assert.Equal("new-inn", mutation.PlacementAdd("building_inn", 0f, 0f, id: "new-inn").Id);
             }
             finally { Directory.Delete(dir, recursive: true); }
         }
@@ -232,7 +234,7 @@ namespace KhaozEngine.Tests.MapEditTool
                 Assert.Equal("player_spawn_add", result.Verb);
                 Assert.False(result.WorldChanged);
                 Assert.Equal("player-1", result.Id);
-                Assert.Contains("player spawn", result.Detail);
+                Assert.False(string.IsNullOrWhiteSpace(result.Detail));
 
                 MapPlayerSpawn added = session.WithDocument((doc, _) => doc.PlayerSpawns.Single(s => s.Id == "player-1"));
                 Assert.Equal(12f, added.X);
@@ -285,15 +287,16 @@ namespace KhaozEngine.Tests.MapEditTool
                 string before = session.WithDocument((doc, r) => MapDocumentFile.SaveText(doc, r));
                 bool dirtyBefore = session.IsDirty;
 
-                InvalidOperationException ex = Assert.Throws<InvalidOperationException>(() =>
-                    mutation.PlayerSpawnAdd(1f, 1f, id: "start"));
+                var ex = EditorCommandRefusalAssertions.Throws(() =>
+                    mutation.PlayerSpawnAdd(1f, 1f, id: "start"), MapDocumentRefusal.IdentityDuplicate, "player spawn", "start");
 
                 // Rejected by the Add command's guard before the append (#766), so no "mutation rejected:" prefix.
-                Assert.Contains("player spawn with id 'start' already exists", ex.Message);
+                Assert.Equal("PlayerSpawns", ex.FieldPath);
 
                 string after = session.WithDocument((doc, r) => MapDocumentFile.SaveText(doc, r));
                 Assert.Equal(before, after);
                 Assert.Equal(dirtyBefore, session.IsDirty);
+                Assert.Equal("new-start", mutation.PlayerSpawnAdd(1f, 1f, id: "new-start").Id);
             }
             finally { Directory.Delete(dir, recursive: true); }
         }
@@ -351,13 +354,15 @@ namespace KhaozEngine.Tests.MapEditTool
                 string before = session.WithDocument((doc, r) => MapDocumentFile.SaveText(doc, r));
                 bool dirtyBefore = session.IsDirty;
 
-                InvalidOperationException ex = Assert.Throws<InvalidOperationException>(() =>
-                    mutation.PlayerSpawnRename("player-a", "player-b"));
-                Assert.Contains("already exists", ex.Message);
+                var ex = EditorCommandRefusalAssertions.Throws(() =>
+                    mutation.PlayerSpawnRename("player-a", "player-b"), MapDocumentRefusal.IdentityDuplicate, "player spawn", "player-b");
+                Assert.Equal("PlayerSpawns", ex.FieldPath);
 
                 string after = session.WithDocument((doc, r) => MapDocumentFile.SaveText(doc, r));
                 Assert.Equal(before, after);
                 Assert.Equal(dirtyBefore, session.IsDirty);
+                mutation.PlayerSpawnRename("player-a", "player-c");
+                Assert.Contains(session.WithDocument((doc, _) => doc.PlayerSpawns), p => p.Id == "player-c");
             }
             finally { Directory.Delete(dir, recursive: true); }
         }
@@ -427,11 +432,13 @@ namespace KhaozEngine.Tests.MapEditTool
                 bool dirtyBefore = session.IsDirty;
 
                 var rect = new RectShapeDoc { MinX = -5f, MinZ = -5f, MaxX = 5f, MaxZ = 5f };
-                InvalidOperationException ex = Assert.Throws<InvalidOperationException>(() =>
-                    mutation.RegionEditShape("camp", rect));
-
-                Assert.StartsWith("mutation rejected:", ex.Message);
-                Assert.Contains("duplicate placement id", ex.Message);
+                string before = session.WithDocument((doc, registry) => System.Text.Json.JsonSerializer.Serialize(doc,
+                    MapDocumentFile.CreateOptions(registry, write: false)));
+                var ex = Assert.Throws<MapMutationException>(() => mutation.RegionEditShape("camp", rect));
+                Assert.Equal(MapDocumentRefusal.IdentityDuplicate, ex.Reason);
+                Assert.Equal("dup", ex.EntityId);
+                Assert.Equal(before, session.WithDocument((doc, registry) => System.Text.Json.JsonSerializer.Serialize(doc,
+                    MapDocumentFile.CreateOptions(registry, write: false))));
 
                 DiscShapeDoc reverted = Assert.IsType<DiscShapeDoc>(
                     session.WithDocument((doc, _) => doc.Regions.Single(r => r.Name == "camp").Shape));
@@ -439,6 +446,8 @@ namespace KhaozEngine.Tests.MapEditTool
                 Assert.Equal(disc.CenterZ, reverted.CenterZ);
                 Assert.Equal(disc.Radius, reverted.Radius);
                 Assert.Equal(dirtyBefore, session.IsDirty);
+                session.WithDocument((doc, _) => { doc.Placements.RemoveAt(doc.Placements.Count - 1); return 0; });
+                Assert.NotNull(mutation.RegionEditShape("camp", rect));
             }
             finally { Directory.Delete(dir, recursive: true); }
         }
@@ -467,14 +476,17 @@ namespace KhaozEngine.Tests.MapEditTool
             {
                 (MapEditSession session, MutationService mutation) = OpenSample(dir);
                 bool dirtyBefore = session.IsDirty;
+                string before = session.WithDocument((doc, r) => MapDocumentFile.SaveText(doc, r));
 
-                Assert.Throws<InvalidOperationException>(() =>
-                    mutation.PlacementAdd("building_inn", 0f, 0f, id: "inn"));
+                EditorCommandRefusalAssertions.Throws(() =>
+                    mutation.PlacementAdd("building_inn", 0f, 0f, id: "inn"), MapDocumentRefusal.IdentityDuplicate, "placement", "inn");
 
                 Assert.Equal(dirtyBefore, session.IsDirty);
+                Assert.Equal(before, session.WithDocument((doc, r) => MapDocumentFile.SaveText(doc, r)));
                 ValidateResult validation = session.Validate();
                 Assert.True(validation.StructuralValid);
                 Assert.Empty(validation.StructuralErrors);
+                Assert.Equal("new-inn", mutation.PlacementAdd("building_inn", 0f, 0f, id: "new-inn").Id);
             }
             finally { Directory.Delete(dir, recursive: true); }
         }

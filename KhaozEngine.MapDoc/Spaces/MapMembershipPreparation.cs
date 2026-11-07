@@ -133,6 +133,6 @@ internal readonly record struct MapMembershipPreparation(long Bytes, long Faces,
     internal static MapSurfaceRef Surface(MapScopedSurfaces view, string id)
     {
         for (int i = 0; i < view.Surfaces.Count; i++) if (view.Surfaces[i].Id == id) return view.Surfaces[i];
-        throw new MapDocumentException("missing geometry: prepared surface");
+        throw new MapDocumentException(MapDocumentRefusal.ReferenceMissing, "missing geometry: prepared surface") { Operation = "Membership.PrepareSurface" };
     }
 }

@@ -1,7 +1,6 @@
 using System;
 using System.IO;
 using System.Numerics;
-using System.Reflection;
 using KhaozEngine.Gpu;
 using KhaozEngine.Primitives;
 using KhaozEngine.Render3D;
@@ -55,20 +54,17 @@ public sealed class WaterColumnRiverScene : IDisposable
             device.Present();
         }
         _previous = settings;
-        RenderResources resources = Borrow<RenderResources>("_res");
+        var resources = scene.ColorTargetsForTests;
         Assert.Equal(settings.Aa.Mode == AntiAliasingMode.Msaa ? 4 : 1, resources.SampleCount);
         Assert.Equal(settings.Size, resources.Width);
         float[] linear = ReadRgb(resources.ColorTex);
-        WaterColumnColorSource source = Borrow<WaterColumnColorSource>("_waterColumnColor");
-        float[] copied = scene.WaterColumnLightDiagnostics.CopyRan ? ReadRgb(source.Texture!) : [];
+        IGpuTexture source = scene.WaterColumnColorTextureForTests!;
+        float[] copied = scene.WaterColumnLightDiagnostics.CopyRan ? ReadRgb(source) : [];
         float[] resolved = settings.Aa.Mode == AntiAliasingMode.Temporal
             ? ReadRgb(scene.TemporalHistory.Color(scene.TemporalHistory.WriteIndex)) : linear;
         return new WaterColumnImage(GpuReadback.ToRgba(device, _color!, _size, _size), linear,
             camera.ViewProjection, scene.WaterColumnLightDiagnostics, settings, copied, resolved);
     }
-
-    T Borrow<T>(string field) => (T)typeof(Scene3D).GetField(field,
-        BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(_scene)!;
 
     float[] ReadRgb(IGpuTexture texture)
     {
@@ -157,13 +153,22 @@ public sealed class WaterColumnRiverScene : IDisposable
         shadows.ShadowConstantBias = shadows.ShadowSlopeBias = 0.00005f;
         scene.Post.Water = new WaterSettings
         {
-            UnderwaterSunlight = !s.DryReference, WaterColumnLight = false,
-            WaveSource = s.WaveSource, WaveScale = 0.8f, NormalStrength = s.Ripples && !s.ReferenceLight ? 0.05f : 0f,
-            SwellAmplitude = 0f, SwellSteepness = 0f, ShoalingStrength = 0f, SurfStrength = 0f,
+            UnderwaterSunlight = !s.DryReference,
+            WaterColumnLight = false,
+            WaveSource = s.WaveSource,
+            WaveScale = 0.8f,
+            NormalStrength = s.Ripples && !s.ReferenceLight ? 0.05f : 0f,
+            SwellAmplitude = 0f,
+            SwellSteepness = 0f,
+            ShoalingStrength = 0f,
+            SurfStrength = 0f,
             GlintStrength = s.ReferenceLight ? 0f : s.GlintStrength,
-            FoamStrength = s.ReferenceLight ? 0f : s.FoamStrength, FoamShoreWidth = 2f,
-            SkyReflectionStrength = 0f, HorizonColor = Color.Black,
-            ShoreFadeDistance = s.BedOnly ? float.MaxValue : 0f, Opacity = 0.5f,
+            FoamStrength = s.ReferenceLight ? 0f : s.FoamStrength,
+            FoamShoreWidth = 2f,
+            SkyReflectionStrength = 0f,
+            HorizonColor = Color.Black,
+            ShoreFadeDistance = s.BedOnly ? float.MaxValue : 0f,
+            Opacity = 0.5f,
             GridMode = WaterGridMode.Clipmap
         };
         if (s.WaveSource == WaterWaveSource.FftOcean)

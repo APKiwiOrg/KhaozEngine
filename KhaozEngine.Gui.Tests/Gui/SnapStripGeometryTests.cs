@@ -8,29 +8,36 @@ namespace KhaozEngine.Tests.Gui
 {
     public class SnapStripGeometryTests
     {
-        [Fact]
-        public void Placed_rectangles_and_point_hits_are_inverses()
+        public static TheoryData<float, float, Rect, int, float, Rect, (Vector2 Point, int Index)[]> PlacementCases => new()
         {
-            var m = new SnapStripMetrics(40f, 10f);
-            var b = new Rect(100f, 200f, 200f, 80f);
-            Assert.Equal(new Rect(180f, 200f, 40f, 80f), SnapStripGeometry.ItemBounds(b, 50, 2420f, 100, m));
-            Assert.Equal(50, SnapStripGeometry.IndexAt(b, new(200f, 240f), 2420f, 100, m));
-            Assert.Equal(-1, SnapStripGeometry.IndexAt(b, new(225f, 240f), 2420f, 100, m));
-            Assert.Equal(-1, SnapStripGeometry.IndexAt(b, new(300f, 240f), 2420f, 100, m));
-            Assert.Equal(-1, SnapStripGeometry.IndexAt(b, new(200f, 280f), 2420f, 100, m));
-            Assert.Equal(50, SnapStripGeometry.IndexAt(b, new(180f, 200f), 2420f, 100, m));
-            Assert.Equal(-1, SnapStripGeometry.IndexAt(b, new(220f, 240f), 2420f, 100, m));
-            Assert.Equal(-1, SnapStripGeometry.IndexAt(b, new(99f, 240f), 2420f, 100, m));
-        }
+            {
+                40f, 10f, new(100f, 200f, 200f, 80f), 50, 2420f, new(180f, 200f, 40f, 80f),
+                [
+                    (new(200f, 240f), 50),
+                    (new(225f, 240f), -1),
+                    (new(300f, 240f), -1),
+                    (new(200f, 280f), -1),
+                    (new(180f, 200f), 50),
+                    (new(220f, 240f), -1),
+                    (new(99f, 240f), -1),
+                ]
+            },
+            {
+                0.1f, 0.2f, new(100f, 200f, 10f, 80f), 2, 0f, new(100.6f, 200f, 0.1f, 80f),
+                [(new(100.6f, 240f), 2), (new(100.7f, 240f), -1)]
+            },
+        };
 
-        [Fact]
-        public void Fractional_placement_keeps_half_open_hits_at_rounded_item_edges()
+        [Theory]
+        [MemberData(nameof(PlacementCases))]
+        public void Placed_rectangles_preserve_half_open_point_hits(float width, float spacing, Rect bounds,
+            int index, float offset, Rect expectedBounds, (Vector2 Point, int Index)[] hits)
         {
-            var m = new SnapStripMetrics(0.1f, 0.2f);
-            var b = new Rect(100f, 200f, 10f, 80f);
-            Assert.Equal(new Rect(100.6f, 200f, 0.1f, 80f), SnapStripGeometry.ItemBounds(b, 2, 0f, 100, m));
-            Assert.Equal(2, SnapStripGeometry.IndexAt(b, new(100.6f, 240f), 0f, 100, m));
-            Assert.Equal(-1, SnapStripGeometry.IndexAt(b, new(100.7f, 240f), 0f, 100, m));
+            var metrics = new SnapStripMetrics(width, spacing);
+            Assert.Equal(expectedBounds, SnapStripGeometry.ItemBounds(bounds, index, offset, 100, metrics));
+            Assert.NotEmpty(hits);
+            foreach (var hit in hits)
+                Assert.Equal(hit.Index, SnapStripGeometry.IndexAt(bounds, hit.Point, offset, 100, metrics));
         }
 
         [Fact]

@@ -39,6 +39,12 @@ internal static class MapSupportSelection
         };
     }
 
+    // Shared lookup keeps the swallowed query refusal directly testable without changing query status handling.
+    internal static MapSpaceDoc RequireSpace(IReadOnlyList<MapTopologyRecord> records, string spaceId) =>
+        records.OfType<MapSpaceDoc>().FirstOrDefault(s => s.Id == spaceId)
+            ?? throw new MapDocumentException(MapDocumentRefusal.SupportSpaceMissing, $"missing geometry: space '{spaceId}'")
+            { SpaceId = spaceId };
+
     internal static MapSupportResult Refusal(MapScopedSurfaces view, MapSupportStatus status, string detail) =>
         new(status, null, 0, null, null, null, null, detail, view.ReadWitness)
         { Capacity = status == MapSupportStatus.CapacityExceeded ? view.Capacity : null };
@@ -146,8 +152,7 @@ internal static class MapSupportSelection
             }
             string? spaceId = request.SpaceId ?? membership.SpaceId;
             if (spaceId is null) return Failure(MapSupportStatus.NoSupport, "outside every space");
-            MapSpaceDoc space = records.OfType<MapSpaceDoc>().FirstOrDefault(s => s.Id == spaceId)
-                ?? throw new MapDocumentException($"missing geometry: space '{spaceId}'");
+            MapSpaceDoc space = RequireSpace(records, spaceId);
             string ownerId = MapSpaceGeometry.Owner(view, space);
             Dictionary<string, MapRecordRef?> reachable = Reachable(view, spaces, ownerId, footprints, records, xz);
             var eligible = new List<Candidate>();
@@ -212,7 +217,7 @@ internal static class MapSupportSelection
         catch (MapDocumentException error)
         {
             return Failure(MapCommonRefinement.NotRepresentable(error) ? MapSupportStatus.NotRepresentable :
-                error.Message.Contains("invalid", StringComparison.Ordinal) || error.Message.Contains("legacy recipe", StringComparison.Ordinal)
+                MapGeometryRefusals.Invalid(error) || error.Reason == MapDocumentRefusal.SurfaceLegacyRecipeRequired
                     ? MapSupportStatus.Invalid : MapSupportStatus.MissingGeometry, error.Message);
         }
 

@@ -16,10 +16,16 @@ public class MovementWaterFieldTests
 
     internal static TileWorldDocument WaterWorld()
     {
-        var doc = TileWorldPhysicsTestData.FlatWorld(new RegionCoord(0, -1));
+        var doc = TileWorldPhysicsTestData.FlatWorld(new RegionCoord(0, -1), new RegionCoord(0, 0));
         doc.SetUnderlay(0, -1, 0, TileWorldPhysicsTestData.Water);
-        doc.SetCornerHeightCm(0, -1, 0, -200);
-        doc.SetCornerHeightCm(1, -1, 0, 2);
+        // Keep the measured world SW/NE corners and minimum-Z tangent edge deep. The opposite rim
+        // supplies the level while the box-oracle paths remain clear of the actual drawn bed.
+        doc.SetCornerHeightCm(0, -1, 0, 2);
+        doc.SetCornerHeightCm(1, -1, 0, -200);
+        doc.SetCornerHeightCm(0, 0, 0, -200);
+        doc.SetCornerHeightCm(1, 0, 0, -200);
+        doc.SetCornerHeightCm(0, 1, 0, -200);
+        doc.SetCornerHeightCm(1, 1, 0, -200);
         return doc;
     }
 
@@ -31,6 +37,11 @@ public class MovementWaterFieldTests
         var region = RegionCoord.Of(tileX, tileZ);
         var doc = TileWorldPhysicsTestData.FlatWorld(region);
         doc.TileSize = tileSize;
+        // Rounded world axes can select a neighboring lattice cell. Its captured bed must agree
+        // with the -4 m analytic ground used by the ordinary-frame fixture too.
+        for (int z = region.OriginZ; z < region.OriginZ + TileRegion.Size; z++)
+            for (int x = region.OriginX; x < region.OriginX + TileRegion.Size; x++)
+                doc.SetCornerHeightCm(x, z, 0, -400);
         doc.SetUnderlay(tileX, tileZ, 0, TileWorldPhysicsTestData.Water);
         doc.SetCornerHeightCm(tileX, tileZ, 0, -400);
         doc.SetCornerHeightCm(tileX + 1, tileZ, 0, 2);
@@ -213,9 +224,9 @@ public class MovementWaterFieldTests
         {
             doc.SetUnderlay(x, -1, 0, TileWorldPhysicsTestData.Water);
             doc.SetCornerHeightCm(x, -1, 0, -200);
-            doc.SetCornerHeightCm(x, -2, 0, 2);
         }
-        doc.SetCornerHeightCm(63, -1, 0, 2);
+        // The shared edge stays on the drawn bed. Each body's outer corner supplies its rim.
+        doc.SetCornerHeightCm(62, -1, 0, 2);
         doc.SetCornerHeightCm(65, -1, 0, 2);
         var field = Field(doc);
         MovementDomainKey? Domain(float x) => field.SampleCentreWater(new(new(x, -0.5f, 0.5f), 0.1f, 0.25f, Space, null), Vector3.Zero).Domain;

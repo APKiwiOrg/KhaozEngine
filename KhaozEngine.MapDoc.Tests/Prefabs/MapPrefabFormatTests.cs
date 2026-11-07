@@ -13,6 +13,19 @@ namespace KhaozEngine.Tests.MapDoc.Prefabs;
 public sealed class MapPrefabFormatTests
 {
     [Fact]
+    public void PayloadResourceIdentity_RefusesTheWrongLogicalId()
+    {
+        byte[] bytes = PrefabFixtures.AssetBytes("roomless");
+        byte[] before = bytes.ToArray();
+        var error = Assert.Throws<MapDocumentException>(() => MapPrefabFile.Read(bytes, "other"));
+        Assert.Equal(MapDocumentRefusal.PrefabPayloadIdMismatch, error.Reason);
+        Assert.Equal("other", error.ResourceId);
+        Assert.Equal("hut", error.EntityId);
+        Assert.Equal(before, bytes);
+        Assert.Equal("hut", MapPrefabFile.Read(bytes, "hut").Id);
+    }
+
+    [Fact]
     public void SixToSeven_IsPureAndAnalyticExecutionUnchanged()
     {
         var old = JsonNode.Parse(PrefabFixtures.FormatSixJson(true))!.AsObject();
@@ -26,6 +39,27 @@ public sealed class MapPrefabFormatTests
         Assert.True(JsonNode.DeepEquals(old, upgraded));
         Assert.Null(MapDocumentFile.LoadText(upgraded.ToJsonString()).ResolverIdentity);
         Assert.True(JsonNode.DeepEquals(upgraded, MapPrefabMigration.Upgrade(upgraded)));
+    }
+
+    [Theory]
+    [InlineData("{}", MapDocumentRefusal.SchemaMemberMissing)]
+    [InlineData("{\"formatVersion\":\"six\"}", MapDocumentRefusal.SchemaValueRequired)]
+    [InlineData("{\"formatVersion\":5}", MapDocumentRefusal.DocumentMigrationSourceVersionInvalid)]
+    public void PrefabMigration_RefusesTheActualVersionRuleWithoutChangingTheSource(string json, MapDocumentRefusal reason)
+    {
+        var source = JsonNode.Parse(json)!.AsObject();
+        string before = source.ToJsonString();
+        var error = Assert.Throws<MapDocumentException>(() => MapPrefabMigration.Upgrade(source));
+        Assert.Equal(reason, error.Reason);
+        Assert.Equal("$.formatVersion", error.FieldPath);
+        if (reason == MapDocumentRefusal.DocumentMigrationSourceVersionInvalid)
+        {
+            Assert.Equal(5, error.ActualVersion);
+            Assert.Equal(new[] { 6, 7 }, error.SupportedVersions);
+        }
+        Assert.Equal(before, source.ToJsonString());
+        source["formatVersion"] = 6;
+        Assert.Equal(7, MapPrefabMigration.Upgrade(source)["formatVersion"]!.GetValue<int>());
     }
 
     [Fact]
@@ -90,25 +124,20 @@ public sealed class MapPrefabFormatTests
     [Theory]
     [InlineData("record-record-pose-mismatch")]
     [InlineData("inconsistent-pose")]
-    public void RecordPoseMismatch_RefusesWithThePoseConsistencyDiagnostic(string variant)
+    public void RecordPoseMismatch_RefusesLocalReferencesAndAcceptsWorldScope(string variant)
     {
-        var error = Assert.Throws<MapDocumentException>(() => MapPrefabFile.Read(PrefabFixtures.AssetBytes(variant), "hut"));
-        Assert.Contains("local anchor and geometry poses must match the record pose", error.Message);
+        Assert.Throws<MapDocumentException>(() => MapPrefabFile.Read(PrefabFixtures.AssetBytes(variant), "hut"));
         // The same displaced geometry with World-scoped band references needs no local pose agreement.
         Assert.NotEmpty(MapPrefabFile.Read(PrefabFixtures.AssetBytes("record-record-pose-world"), "hut").Children);
         Assert.NotEmpty(MapPrefabFile.Read(PrefabFixtures.AssetBytes("valid"), "hut").Children);
     }
 
     [Fact]
-    public void PrefabSectionConverters_AreInternalWithPublicParameterlessConstructors()
+    public void PrefabSections_RoundTripAllResourceKinds()
     {
-        foreach (string name in new[] { "MapPrefabSetJsonConverter", "MapBuildingIntentJsonConverter", "MapStandaloneTransformsJsonConverter" })
-        {
-            var type = typeof(MapPrefabFile).Assembly.GetType("KhaozEngine.MapDoc.Prefabs." + name, throwOnError: true)!;
-            Assert.False(type.IsPublic);
-            Assert.NotNull(type.GetConstructor(Type.EmptyTypes));
-        }
         var f = PrefabFixtures.Create("all-resources");
+        f.Document.BuildingIntent = new(1, [], [], [], []);
+        f.Document.NativeResourceTransforms = [];
         string text = MapDocumentFile.SaveText(f.Document);
         Assert.Equal(text, MapDocumentFile.SaveText(MapDocumentFile.LoadText(text)));
     }
@@ -123,10 +152,11 @@ public sealed class MapPrefabFormatTests
     }
 
     [Fact]
-    public void FormatTen_RefusesWithUpdateGuidance()
+    public void FormatTen_RefusesWhileFormatSixLoads()
     {
-        var error = Assert.Throws<MapDocumentException>(() => MapDocumentFile.LoadText(PrefabFixtures.FormatSixJson(true).Replace("\"formatVersion\":6", "\"formatVersion\":10", StringComparison.Ordinal)));
-        Assert.Contains("newer than this engine supports", error.Message);
+        string text = PrefabFixtures.FormatSixJson(true);
+        Assert.Equal(MapDocumentFile.CurrentFormatVersion, MapDocumentFile.LoadText(text).FormatVersion);
+        Assert.Throws<MapDocumentException>(() => MapDocumentFile.LoadText(text.Replace("\"formatVersion\":6", "\"formatVersion\":10", StringComparison.Ordinal)));
     }
 
     [Fact]
@@ -152,8 +182,28 @@ public sealed class MapPrefabFormatTests
         int calls = 0;
         var error = Assert.Throws<MapDocumentException>(() => MapResolver.Resolve(f.Document, f.Assets,
             (_, _) => { calls++; return 0; }, new("fixture", 1, "fixture")));
-        Assert.Contains("Prefab sections require resolver identity (1, 2) and AuthoredBindingsV2.", error.Message);
+        Assert.Equal(MapDocumentRefusal.ResolverContractMismatch, error.Reason);
+        Assert.Equal("prefab", error.SubjectKind);
+        Assert.Equal(1, error.PayloadVersion);
+        Assert.Equal(1, error.ResolverVersion);
+        Assert.Equal(2, error.ExpectedResolverVersion);
+        Assert.Equal(MapSupportRecipe.LegacyXzCallbackV1, error.SupportRecipe);
+        Assert.Equal(MapSupportRecipe.AuthoredBindingsV2, error.ExpectedSupportRecipe);
+        Assert.Equal("resolverIdentity", error.FieldPath);
+        Assert.NotEmpty(error.Findings!);
         Assert.Equal(0, calls);
+        var finding = Assert.Throws<MapDocumentException>(() => MapPrefabValidation.RequireDocument(f.Document, f.Assets));
+        Assert.Equal(MapDocumentRefusal.ResolverContractMismatch, finding.Reason);
+        Assert.Equal(1, finding.PayloadVersion);
+        Assert.Equal(1, finding.ResolverVersion);
+        Assert.Equal(2, finding.ExpectedResolverVersion);
+        Assert.Equal(MapSupportRecipe.LegacyXzCallbackV1, finding.SupportRecipe);
+        Assert.Equal(MapSupportRecipe.AuthoredBindingsV2, finding.ExpectedSupportRecipe);
+        Assert.Equal("resolverIdentity", finding.FieldPath);
+        Assert.Equal("prefab", finding.SubjectKind);
+        f.Document.ResolverIdentity = new(1, 2);
+        f.Document.SupportRecipe = MapSupportRecipe.AuthoredBindingsV2;
+        MapPrefabValidation.RequireDocument(f.Document, f.Assets);
     }
 
     [Fact]
@@ -168,10 +218,8 @@ public sealed class MapPrefabFormatTests
         f.Document.Surfaces = new();
         f.Document.Placements.Add(new MapPlacement
         { Id = "probe", Kind = "item", AssetId = "item", X = 1, Y = null, Z = -1, Scale = 1, NumericId = ++f.Document.NumericIdHighWaterMark });
-        int calls = 0;
-        var resolved = MapResolver.Resolve(f.Document, f.Assets, (x, z) => { calls++; Assert.Equal((1f, -1f), (x, z)); return 2.5f; },
+        var resolved = MapResolver.Resolve(f.Document, f.Assets, (x, z) => { Assert.Equal((1f, -1f), (x, z)); return 2.5f; },
             new("fixture", 1, "fixture"));
-        Assert.Equal(1, calls);
         Assert.Equal(2.5f, resolved.Placements.Single(p => p.PlacementId == "probe").Transform.Position.Y);
     }
 

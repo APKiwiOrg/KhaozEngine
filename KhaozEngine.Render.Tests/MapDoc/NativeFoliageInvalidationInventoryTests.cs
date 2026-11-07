@@ -1,7 +1,6 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Reflection;
 using KhaozEngine.MapDoc.Editing;
 using KhaozEngine.MapDoc.Foliage;
 using KhaozEngine.MapDoc.Render3D;
@@ -21,7 +20,7 @@ public sealed partial class NativeMapFoliageTests
         var first = new MapSceneAdmission(new(MaxPreparedBytes: 100_000_000));
         foreach (var key in keys) _ = cache.Get("cover", key, new(), first, null);
         var old = CacheOwners(cache).Values.ToArray();
-        var readers = old.Select(o => o.Retain()).ToArray();
+        var readers = keys.Select(key => cache.Acquire("cover", key, new(), null, null, null)).ToArray();
         try
         {
             InvalidateColumns(cache, keys.Skip(1));
@@ -53,7 +52,7 @@ public sealed partial class NativeMapFoliageTests
         var first = new MapSceneAdmission(new(MaxPreparedBytes: 100_000_000));
         foreach (var key in keys) _ = cache.Get("cover", key, new(), first, null);
         var old = CacheOwners(cache).Values.ToArray();
-        var readers = old.Select(o => o.Retain()).ToArray();
+        var readers = keys.Select(key => cache.Acquire("cover", key, new(), null, null, null)).ToArray();
         var current = new MapSceneAdmission(new(MaxPreparedBytes: 100_000_000));
         try
         {
@@ -96,14 +95,8 @@ public sealed partial class NativeMapFoliageTests
     static void InvalidateColumns(MapFoliageRenderCache cache, IEnumerable<MapFoliageChunkKey> keys) =>
         cache.Invalidate(new(null, null, [], [], [], [], MapNativeInvalidation.Foliage)
         { FoliageChunks = keys.Select(key => new MapFoliageChunkChange("cover", key, null, null, "same", "same")).ToArray() });
-    static Dictionary<MapFoliageCacheKey, MapFoliageColumnOwner> CacheOwners(MapFoliageRenderCache cache) =>
-        (Dictionary<MapFoliageCacheKey, MapFoliageColumnOwner>)typeof(MapFoliageRenderCache)
-            .GetField("_owners", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(cache)!;
-    static int MetadataCapacity(MapFoliageRenderCache cache)
-    {
-        var registry = typeof(MapFoliageRenderCache).GetField("_metadata", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(cache)!;
-        return Assert.Single(NativeFoliageInventoryTightnessTests.Fields(registry).OfType<Dictionary<object, int>>()).EnsureCapacity(0);
-    }
+    static IReadOnlyDictionary<MapFoliageCacheKey, MapFoliageColumnOwner> CacheOwners(MapFoliageRenderCache cache) => cache.OwnersForTests;
+    static int MetadataCapacity(MapFoliageRenderCache cache) => cache.MetadataIndexCapacityForTests;
     static long ColumnBuilderScratch(MapFoliageColumnOwner owner)
     {
         var batch = Assert.Single(NativeFoliageInventoryTightnessTests.Fields(owner).OfType<MapFoliageInstanceBatch>());

@@ -47,6 +47,8 @@ namespace KhaozEngine.Tests.Gpu
                 sprite, new Vector4(0, 0, 1, 1), Color.White);
             sprites.End();
             model.UploadFoliageUniforms(commands, [default]);
+            using (IGpuBuffer dummy = factory.CreateBuffer(new GpuBufferDescription(256, GpuBufferUsage.VertexBuffer | GpuBufferUsage.IndexBuffer)))
+                model.DrawFoliageMesh(commands, dummy, dummy, 0, GpuIndexFormat.UInt16, dummy, 0, 0, 0, null, true);
             CaptureClipmapPipeline(device, framebuffer.Outputs, commands);
             CaptureBoundedWaterPipeline(scene);
             CaptureTriangleOpticsPipelines(device, framebuffer.Outputs);
@@ -54,6 +56,7 @@ namespace KhaozEngine.Tests.Gpu
             // four pipelines and the three caster programs would read here as uncaptured.
             Assert.True(scene.EnsurePointShadowAtlas(PointShadowAtlas.MinFaceResolution, 1));
             CaptureTargetOutlinePipelines(scene, framebuffer, commands);
+            CaptureTemporalPipelines(device, commands, framebuffer.Outputs);
             CaptureTemporalPipelines(device, commands);
             CaptureTemporalPipelines(device, commands, KhaozEngine.Tests.Render3D.TemporalVisibilityLayoutTests.Layout(false, true));
             CaptureTemporalPipelines(device, commands, KhaozEngine.Tests.Render3D.TemporalVisibilityLayoutTests.Layout(true, true));
@@ -113,13 +116,15 @@ namespace KhaozEngine.Tests.Gpu
             using var scene = new Scene3D(device, framebuffer.Outputs);
             CaptureBoundedWaterPipeline(scene);
             using IGpuCommandList commands = factory.CreateCommandList();
+            CaptureTemporalPipelines(device, commands, framebuffer.Outputs);
             CaptureTemporalPipelines(device, commands);
             CaptureTemporalPipelines(device, commands, KhaozEngine.Tests.Render3D.TemporalVisibilityLayoutTests.Layout(false, true));
             CapturePreparedFoliagePipelines(device);
 
             string[] programs = ["BoundedWater", "PreparedFoliage", "PreparedFoliageMotion",
                 "PreparedFoliageDepth", "PreparedFoliageDepthCutout", "PreparedFoliagePoint",
-                "PreparedFoliageVisibility", "PreparedFoliageMotionVisibility"];
+                "PreparedFoliageVisibility", "PreparedFoliageMotionVisibility",
+                "PreparedFoliageOpaque", "PreparedFoliageOpaqueMotion", "PreparedFoliageOpaqueVisibility", "PreparedFoliageOpaqueMotionVisibility"];
             var catalog = ShippedShaderPrograms.GraphicsPrograms().ToDictionary(program => program.Name);
             foreach (string name in programs)
             {
@@ -263,7 +268,12 @@ namespace KhaozEngine.Tests.Gpu
             using var instances = device.Factory.CreateBuffer(new(ModelRenderer.FoliageInstanceData.SizeInBytes, GpuBufferUsage.VertexBuffer));
             using var indices = device.Factory.CreateBuffer(new(6, GpuBufferUsage.IndexBuffer));
             model.DrawPreparedFoliageMesh(commands, vertices, indices, 3, GpuIndexFormat.UInt16,
-                instances, 0, 1, 0, null, anchor);
+                instances, 0, 1, 0, null, anchor, false);
+            model.DrawPreparedFoliageMesh(commands, vertices, indices, 3, GpuIndexFormat.UInt16,
+                instances, 0, 1, 0, null, anchor, true);
+            using (IGpuBuffer dummy = device.Factory.CreateBuffer(new GpuBufferDescription(256,
+                GpuBufferUsage.VertexBuffer | GpuBufferUsage.IndexBuffer)))
+                model.DrawFoliageMesh(commands, dummy, dummy, 0, GpuIndexFormat.UInt16, dummy, 0, 0, 0, null, true);
             using var billboards = new TexturedBillboardRenderer(device, target);
             using var beams = new BeamRenderer(device, target);
             using var trails = new TrailRenderer(device, target);
@@ -291,11 +301,18 @@ namespace KhaozEngine.Tests.Gpu
             Assert.True(scene.FoliageShadowDrawCalls > 0);
         }
 
+        // Mapped and opaque foliage materials create different prepared programs, so both material sets are drawn.
         static void CapturePreparedFoliagePipelines(FakeGpuDevice device)
+        {
+            CapturePreparedFoliagePipelines(device, opaque: false);
+            CapturePreparedFoliagePipelines(device, opaque: true);
+        }
+
+        static void CapturePreparedFoliagePipelines(FakeGpuDevice device, bool opaque)
         {
             using var host = new KhaozEngine.Tests.MapDoc.NativeUploadTestScene(device);
             var scene = host.Scene;
-            KhaozEngine.Tests.MapDoc.NativeResourceUploadTests.LoadParts(scene);
+            KhaozEngine.Tests.MapDoc.NativeResourceUploadTests.LoadParts(scene, opaque);
             var data = new SceneUploadData(null, null,
                 KhaozEngine.Tests.MapDoc.NativeRenderAssetFixtures.FoliageSource(), default);
             var handle = KhaozEngine.Tests.MapDoc.NativeResourceUploadTests.Publish(scene, data);

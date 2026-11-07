@@ -70,17 +70,18 @@ public sealed partial class ShippedSceneInputGuardTests
                 if (value == "missing") queries.Remove(field);
                 else queries[field] = JsonNode.Parse(value);
                 profile["queries"] = queries; manifest["limits"] = profile;
-                Assert.Throws<InvalidDataException>(() => ShippedSceneManifest.Read(System.Text.Json.JsonSerializer.SerializeToElement(manifest)));
+                Refuses(value == "missing" ? PrivateOracleDataRefusal.SchemaShapeInvalid : PrivateOracleDataRefusal.ValueOutsideDomain,
+                    () => ShippedSceneManifest.Read(System.Text.Json.JsonSerializer.SerializeToElement(manifest)));
             }
         var unknown = new JsonObject();
         foreach (string field in fields) unknown[field] = 256;
         unknown["unknown"] = 1;
         var extra = LimitsProfile(); extra["queries"] = unknown; manifest["limits"] = extra;
-        Assert.Throws<InvalidDataException>(() => ShippedSceneManifest.Read(System.Text.Json.JsonSerializer.SerializeToElement(manifest)));
+        Refuses(PrivateOracleDataRefusal.SchemaShapeInvalid, () => ShippedSceneManifest.Read(System.Text.Json.JsonSerializer.SerializeToElement(manifest)));
         foreach (string shape in new[] { "null", "[]", "{}", "{\"unknown\":1}" })
         {
             var profile = LimitsProfile(); profile["queries"] = JsonNode.Parse(shape); manifest["limits"] = profile;
-            Assert.Throws<InvalidDataException>(() => ShippedSceneManifest.Read(System.Text.Json.JsonSerializer.SerializeToElement(manifest)));
+            Refuses(PrivateOracleDataRefusal.SchemaShapeInvalid, () => ShippedSceneManifest.Read(System.Text.Json.JsonSerializer.SerializeToElement(manifest)));
         }
     }
 

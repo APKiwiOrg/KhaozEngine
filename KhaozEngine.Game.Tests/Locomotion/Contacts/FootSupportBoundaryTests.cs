@@ -125,22 +125,15 @@ public class FootSupportBoundaryTests
         AssertWalkable(0.4f, scene["crate"], Find(scene, Query(-0.1f)));
     }
 
-    // The crate top is 0.0005 above the band top. It hides the floor at the feet, so nothing may be trusted.
+    // Both an above-band contact and geometry inside the probe start hide the floor at the feet.
     [Theory]
-    [InlineData(SceneVariant.Box)]
-    [InlineData(SceneVariant.Mesh)]
-    public void StepJustAboveTheBandRefuses(SceneVariant variant)
+    [InlineData(SceneVariant.Box, 0.4005f)] // Just above the band.
+    [InlineData(SceneVariant.Mesh, 0.4005f)]
+    [InlineData(SceneVariant.Box, 0.5f)] // Geometry inside the leg start.
+    [InlineData(SceneVariant.Mesh, 0.5f)]
+    public void CrateAboveTheBandOrInsideTheLegStartRefuses(SceneVariant variant, float topY)
     {
-        using FootSupportScene scene = Floor(variant, 0).Flat("crate", 0, 1, -1, 1, 0.4005f);
-        AssertStatus(SupportStatus.Refused, Find(scene, Query(-0.1f)));
-    }
-
-    [Theory]
-    [InlineData(SceneVariant.Box)]
-    [InlineData(SceneVariant.Mesh)]
-    public void GeometryInsideTheLegStartRefuses(SceneVariant variant)
-    {
-        using FootSupportScene scene = Floor(variant, 0).Flat("crate", 0, 1, -1, 1, 0.5f);
+        using FootSupportScene scene = Floor(variant, 0).Flat("crate", 0, 1, -1, 1, topY);
         AssertStatus(SupportStatus.Refused, Find(scene, Query(-0.1f)));
     }
 

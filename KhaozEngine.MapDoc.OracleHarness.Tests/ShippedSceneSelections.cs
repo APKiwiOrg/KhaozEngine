@@ -26,15 +26,15 @@ internal static class ShippedSceneSelections
         var nativeIds = assets.Assets.Select(a => a.Id).ToHashSet(StringComparer.Ordinal);
         foreach (var row in inputs.Manifest.AssetSelections)
         {
-            Require(inputs.Catalogs.Archetype(row.SourceArchetypeId) is not null, "unknown scene selection source archetype");
-            Require(row.NativeAssetIds.All(nativeIds.Contains), "unknown scene selection native asset");
+            Require(inputs.Catalogs.Archetype(row.SourceArchetypeId) is not null, PrivateOracleDataRefusal.ReferenceMissing, "unknown scene selection source archetype");
+            Require(row.NativeAssetIds.All(nativeIds.Contains), PrivateOracleDataRefusal.ReferenceMissing, "unknown scene selection native asset");
             Require(!mappings.TryGetValue(row.SourceArchetypeId, out var observed) ||
-                observed.All(id => row.NativeAssetIds.Contains(id, StringComparer.Ordinal)), "scene selection correspondence differs from observed assets");
+                observed.All(id => row.NativeAssetIds.Contains(id, StringComparer.Ordinal)), PrivateOracleDataRefusal.CorrespondenceMismatch, "scene selection correspondence differs from observed assets");
             mappings[row.SourceArchetypeId] = row.NativeAssetIds.ToArray();
         }
         var declared = inputs.Manifest.AssetSelections.Select(r => r.SourceArchetypeId).ToHashSet(StringComparer.Ordinal);
         foreach (string id in DeclaredSourceIds(inputs.SourcePolicy))
-            Require(declared.Contains(id), "missing scene selection correspondence");
+            Require(declared.Contains(id), PrivateOracleDataRefusal.CorrespondenceMismatch, "missing scene selection correspondence");
         return mappings;
     }
 

@@ -487,6 +487,15 @@ CPU runs with GPU skips do not certify a backend. Required native facts must exe
 on Metal, Direct3D 11 and Vulkan at the exact integration candidate. These tests do not claim R8b
 appearance or R11 import acceptance.
 
+## Structured document refusals
+
+Native render guards use `MapDocumentException.Reason` and typed identifiers. Snapshot and registration
+mismatches carry `AcquisitionSnapshotChanged`. Cluster and routing mismatches carry `AcquisitionContractMismatch`
+or `AuthoredValueMismatch`, with the known placement, layer and field. Missing closure inputs use
+`AssetDescriptorMismatch`, `DocumentAssetRootsMismatch` or `ReferenceMissing`. Geometry narrowing uses
+`GeometryNotRepresentable`. Inspect these members rather than developer prose. The constructor fence covers
+this package alongside the document, physics, editor and tool packages.
+
 ## Evaluated capacity demand
 
 `KhaozEngine.Diagnostics.CapacityDemandDiagnostics.Observe` subscribes to count-only `CapacityDemand`

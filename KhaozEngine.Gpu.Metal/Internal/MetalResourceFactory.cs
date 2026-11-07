@@ -12,7 +12,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
     /// <para><b>THE not-yet LEDGER IS GONE FROM THIS TYPE, which is the discipline rather than a cleanup.</b> This
     /// file carried a <c>NotBuiltYet</c> helper and one row constant per refusing member, and the rule was that a
     /// row filling a member deletes its entry. Row 12 filled the last one, so the helper and both constants went
-    /// with it: a refusal message nothing can reach is a claim that this factory is unfinished, and a reader who
+    /// with it: a refusal nothing can reach is a claim that this factory is unfinished, and a reader who
     /// found it would be misled by it. <c>MetalCommandList.Unbuilt.cs</c> carried the same kind of ledger until
     /// row 14 filled its last member and deleted the file, so no ledger of that sort is left in the package.</para>
     ///
@@ -71,7 +71,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
             // The guard is INLINE at every one of these three sites rather than factored into a helper, because
             // CA1416 reads the guard property at the call site and a helper hides it. Warnings are errors here,
             // so the compiler is what keeps the macOS boundary rather than a convention (M-P1).
-            if (!KhaozEngineMetal.IsPlatformSupported) throw OffMacOs("A GPU buffer");
+            if (!KhaozEngineMetal.IsPlatformSupported) throw PlatformRefusalForTests("A GPU buffer");
             return CreateBufferOnMacOs(d);
         }
 
@@ -80,7 +80,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
         /// No command buffer is issued and no view is created (M-M9, M-M10).</remarks>
         public IGpuTexture CreateTexture(in GpuTextureDescription d)
         {
-            if (!KhaozEngineMetal.IsPlatformSupported) throw OffMacOs("A GPU texture");
+            if (!KhaozEngineMetal.IsPlatformSupported) throw PlatformRefusalForTests("A GPU texture");
             return CreateTextureOnMacOs(d);
         }
 
@@ -92,7 +92,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
         /// <see cref="MetalSamplerPolicy"/>.</remarks>
         public IGpuSampler CreateSampler(in GpuSamplerDescription d)
         {
-            if (!KhaozEngineMetal.IsPlatformSupported) throw OffMacOs("A GPU sampler");
+            if (!KhaozEngineMetal.IsPlatformSupported) throw PlatformRefusalForTests("A GPU sampler");
             return CreateSamplerOnMacOs(d);
         }
 
@@ -105,7 +105,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
         /// <inheritdoc/>
         public IGpuTimestampPool CreateTimestampPool(uint capacity)
             => new MetalTimestampPool(_device.TimestampApi
-                ?? throw new NotSupportedException("This Metal device has no timestamp counter API."),
+                ?? throw new GpuTimestampUnsupportedException(GpuTimestampRefusal.TimestampUnsupported, "This Metal device has no timestamp counter API.") { Backend = GpuBackendKind.MetalNative, Command = nameof(CreateTimestampPool) },
                 _device.Timeline, _device.Liveness, capacity);
 
         /// <inheritdoc/>
@@ -167,7 +167,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
         /// </remarks>
         public IGpuShaderSet CreateShadersFromSpirv(string vertGlsl, string fragGlsl)
         {
-            if (!KhaozEngineMetal.IsPlatformSupported) throw OffMacOs("A GPU shader set");
+            if (!KhaozEngineMetal.IsPlatformSupported) throw PlatformRefusalForTests("A GPU shader set");
             return CreateShaderSetOnMacOs(vertGlsl, fragGlsl);
         }
 
@@ -176,7 +176,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
         /// from a description nothing validates.</remarks>
         public IGpuComputeShader CreateComputeShaderFromSpirv(string computeGlsl)
         {
-            if (!KhaozEngineMetal.IsPlatformSupported) throw OffMacOs("A GPU compute shader");
+            if (!KhaozEngineMetal.IsPlatformSupported) throw PlatformRefusalForTests("A GPU compute shader");
             return CreateComputeShaderOnMacOs(computeGlsl);
         }
 
@@ -190,7 +190,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
         /// </remarks>
         public IGpuPipeline CreateGraphicsPipeline(in GpuPipelineDescription d)
         {
-            if (!KhaozEngineMetal.IsPlatformSupported) throw OffMacOs("A graphics pipeline");
+            if (!KhaozEngineMetal.IsPlatformSupported) throw PlatformRefusalForTests("A graphics pipeline");
             return CreateGraphicsPipelineOnMacOs(d);
         }
 
@@ -200,7 +200,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
         /// <see cref="MetalComputePipeline"/>.</remarks>
         public IGpuComputePipeline CreateComputePipeline(in GpuComputePipelineDescription d)
         {
-            if (!KhaozEngineMetal.IsPlatformSupported) throw OffMacOs("A compute pipeline");
+            if (!KhaozEngineMetal.IsPlatformSupported) throw PlatformRefusalForTests("A compute pipeline");
             return CreateComputePipelineOnMacOs(d);
         }
 
@@ -219,7 +219,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
         /// </remarks>
         public IGpuCommandList CreateCommandList()
         {
-            if (!KhaozEngineMetal.IsPlatformSupported) throw OffMacOs("A GPU command list");
+            if (!KhaozEngineMetal.IsPlatformSupported) throw PlatformRefusalForTests("A GPU command list");
             return _device.CreateCommandList();
         }
 
@@ -289,6 +289,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
         [SupportedOSPlatform("macos")]
         internal void Configure(MetalHeadlessDiagnosticSettings settings, GpuEffectiveDiagnosticConfiguration effective, MetalMslCache? cache)
         {
+            // Internal construction invariant. Device creation freezes shader settings once, before use.
             if (_shaders is not null) throw new InvalidOperationException("Shader settings were already frozen for this Metal device.");
             _shaders = new MetalShaderCompiler(_device.Handle, _device.Liveness, _device.IndexTables,
                 cache, new SpirvCompileCache(settings.CompileCache, SpirvCompileCache.DefaultCapacity), effective);
@@ -300,10 +301,14 @@ namespace KhaozEngine.Gpu.Metal.Internal
         // The off-macOS refusal, as one sentence rather than as a silent null. A factory reached off macOS means
         // a consumer got hold of a device that cannot exist there, so the message says which of the two
         // impossible things happened rather than throwing with no context.
-        static PlatformNotSupportedException OffMacOs(string what)
-            => new(what + " cannot be created on the native Metal backend off macOS. Reaching this means a "
+        internal static MetalBackendCreationPlatformException PlatformRefusalForTests(string what)
+            => new(MetalBackendCreationRefusal.NativeResourceUnavailableOnPlatform, what + " cannot be created on the native Metal backend off macOS. Reaching this means a "
                 + "MetalGpuDevice exists on a machine that has no Metal at all, which the provider's functional "
-                + "probe refuses before creation.");
+                + "probe refuses before creation.")
+            {
+                ResourceKind = what,
+                RequiredOperatingSystem = "macOS",
+            };
 
     }
 }

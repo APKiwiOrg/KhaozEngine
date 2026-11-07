@@ -25,7 +25,7 @@ public sealed class NativeMapSnapshotGpuTests
         var positive = NativeMapSnapshot.Capture(request, scene =>
         {
             Assert.Equal(TemporalUpscale.Quality, scene.Post.Temporal.Upscale);
-            var lights = (System.Collections.IEnumerable)typeof(Scene3D).GetField("_lights", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!.GetValue(scene)!;
+            var lights = scene.LightsForTests;
             var point = Assert.Single(lights.Cast<KhaozEngine.Render3D.Rendering.ModelRenderer.PointLightData>());
             Assert.Equal(3068690713473075190, point.LocalShadow.Key);
         });

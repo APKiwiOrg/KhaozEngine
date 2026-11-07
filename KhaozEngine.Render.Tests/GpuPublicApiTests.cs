@@ -103,8 +103,8 @@ public class GpuPublicApiTests
     /// There is no second row because there is no binding assembly to contain: this package references no
     /// third-party package at all, so the Metal vocabulary it does own is its own internal types rather than a
     /// vendor's, and no assembly-prefix scan can see those. What holds THAT line is
-    /// <see cref="GpuMetalPublicSurface_IsExactlyTheApprovedMembers"/>, which asserts the assembly exports one
-    /// type, so an interop handle struct cannot become public without moving a list somebody had to read.
+    /// <see cref="GpuMetalPublicSurface_IsExactlyTheApprovedMembers"/>, which lists the registration entry point
+    /// and structured refusal families, so an interop handle cannot become public without an explicit API change.
     /// </para>
     /// </summary>
     [Theory]
@@ -208,10 +208,30 @@ public class GpuPublicApiTests
 
         Assert.Equal(new[]
         {
+            "KhaozEngine.Gpu.D3D11.D3D11BackendCreationArgumentException",
+            "KhaozEngine.Gpu.D3D11.D3D11BackendCreationPlatformException",
+            "KhaozEngine.Gpu.D3D11.D3D11BackendCreationRefusal",
+            "KhaozEngine.Gpu.D3D11.D3D11BackendCreationStateException",
+            "KhaozEngine.Gpu.D3D11.D3D11BackendCreationUnsupportedException",
+            "KhaozEngine.Gpu.D3D11.D3D11BindResolutionArgumentException",
+            "KhaozEngine.Gpu.D3D11.D3D11BindResolutionRefusal",
+            "KhaozEngine.Gpu.D3D11.D3D11CompilerEvidenceDisposedException",
+            "KhaozEngine.Gpu.D3D11.D3D11CompilerEvidenceRefusal",
+            "KhaozEngine.Gpu.D3D11.D3D11CompilerEvidenceStateException",
             "KhaozEngine.Gpu.D3D11.D3D11InvocationBlock",
             "KhaozEngine.Gpu.D3D11.D3D11InvocationReport",
+            "KhaozEngine.Gpu.D3D11.D3D11MapResultException",
+            "KhaozEngine.Gpu.D3D11.D3D11MapResultRefusal",
+            "KhaozEngine.Gpu.D3D11.D3D11ObjectPlatformException",
+            "KhaozEngine.Gpu.D3D11.D3D11ObjectPlatformRefusal",
+            "KhaozEngine.Gpu.D3D11.D3D11ShaderPlatformException",
+            "KhaozEngine.Gpu.D3D11.D3D11ShaderPlatformRefusal",
+            "KhaozEngine.Gpu.D3D11.D3D11TimestampAdapterException",
+            "KhaozEngine.Gpu.D3D11.D3D11TimestampAdapterRefusal",
+            "KhaozEngine.Gpu.D3D11.D3D11WaitPolicyException",
+            "KhaozEngine.Gpu.D3D11.D3D11WaitPolicyRefusal",
             "KhaozEngine.Gpu.D3D11.ID3D11InvocationDiagnostics",
-            "KhaozEngine.Gpu.D3D11.KhaozEngineD3D11"
+            "KhaozEngine.Gpu.D3D11.KhaozEngineD3D11",
         }, exported);
 
         Type capability = typeof(KhaozEngine.Gpu.D3D11.ID3D11InvocationDiagnostics);
@@ -233,8 +253,8 @@ public class GpuPublicApiTests
     /// ask what the surface EXPOSES and say nothing about how much of it there is, so a new public method that
     /// happens to name no Silk type is invisible to every one of them.
     /// <para>
-    /// The list is one entry, and one entry is the claim. Everything a consumer needs from this package is
-    /// <c>Register()</c>: the backend arrives through <c>IGpuBackendProvider</c>, the seam speaks engine types in
+    /// Registration remains one entry point, <c>Register()</c>. Structured refusal types expose engine-only
+    /// reasons and identifiers. The backend arrives through <c>IGpuBackendProvider</c>, the seam speaks engine types in
     /// both directions, and the Vulkan binding stays inside the package (decision V-P3). There is deliberately no
     /// <c>IsPlatformSupported</c> here, which is the one member the Direct3D 11 sibling has that this must not
     /// grow by analogy: V-P1 says Vulkan is not a Windows API, the loader is resolved at runtime, and a machine
@@ -263,7 +283,7 @@ public class GpuPublicApiTests
 
         Assert.Equal(approvedMembers, members);
 
-        // And one exported type, which is the other half of the same claim. The provider, the probe, the
+        // And the approved exported types, which are the other half of the same claim. The provider, the probe, the
         // requirement check and the binding spike are all internal, which is what keeps the package's whole
         // vocabulary out of a consumer's compile.
         string[] exported = entryPoint.Assembly.GetExportedTypes()
@@ -271,13 +291,50 @@ public class GpuPublicApiTests
             .OrderBy(n => n, StringComparer.Ordinal)
             .ToArray();
 
-        Assert.Equal(new[] { "KhaozEngine.Gpu.Vulkan.KhaozEngineVulkan" }, exported);
+        Assert.Equal(new[]
+        {
+            "KhaozEngine.Gpu.Vulkan.KhaozEngineVulkan",
+            "KhaozEngine.Gpu.Vulkan.VulkanBackendCreationRefusal",
+            "KhaozEngine.Gpu.Vulkan.VulkanBackendCreationStateException",
+            "KhaozEngine.Gpu.Vulkan.VulkanBackendCreationUnsupportedException",
+            "KhaozEngine.Gpu.Vulkan.VulkanBufferBindingException",
+            "KhaozEngine.Gpu.Vulkan.VulkanBufferBindingRefusal",
+            "KhaozEngine.Gpu.Vulkan.VulkanBufferCopyException",
+            "KhaozEngine.Gpu.Vulkan.VulkanBufferCopyRefusal",
+            "KhaozEngine.Gpu.Vulkan.VulkanDescriptorLimitException",
+            "KhaozEngine.Gpu.Vulkan.VulkanDescriptorLimitRefusal",
+            "KhaozEngine.Gpu.Vulkan.VulkanDeviceMapException",
+            "KhaozEngine.Gpu.Vulkan.VulkanDeviceMapRefusal",
+            "KhaozEngine.Gpu.Vulkan.VulkanDeviceWiringException",
+            "KhaozEngine.Gpu.Vulkan.VulkanDeviceWiringRefusal",
+            "KhaozEngine.Gpu.Vulkan.VulkanFeatureException",
+            "KhaozEngine.Gpu.Vulkan.VulkanFeatureRefusal",
+            "KhaozEngine.Gpu.Vulkan.VulkanInstanceRefusal",
+            "KhaozEngine.Gpu.Vulkan.VulkanInstanceStateException",
+            "KhaozEngine.Gpu.Vulkan.VulkanInstanceUnsupportedException",
+            "KhaozEngine.Gpu.Vulkan.VulkanLayoutArgumentException",
+            "KhaozEngine.Gpu.Vulkan.VulkanLayoutRefusal",
+            "KhaozEngine.Gpu.Vulkan.VulkanLayoutStateException",
+            "KhaozEngine.Gpu.Vulkan.VulkanResourceSetRingException",
+            "KhaozEngine.Gpu.Vulkan.VulkanResourceSetRingRefusal",
+            "KhaozEngine.Gpu.Vulkan.VulkanResultException",
+            "KhaozEngine.Gpu.Vulkan.VulkanResultRefusal",
+            "KhaozEngine.Gpu.Vulkan.VulkanRingWaitException",
+            "KhaozEngine.Gpu.Vulkan.VulkanRingWaitRefusal",
+            "KhaozEngine.Gpu.Vulkan.VulkanStagingLayoutException",
+            "KhaozEngine.Gpu.Vulkan.VulkanStagingLayoutRefusal",
+            "KhaozEngine.Gpu.Vulkan.VulkanTimestampAdapterException",
+            "KhaozEngine.Gpu.Vulkan.VulkanTimestampAdapterRefusal",
+            "KhaozEngine.Gpu.Vulkan.VulkanValidationException",
+            "KhaozEngine.Gpu.Vulkan.VulkanValidationRefusal",
+            "KhaozEngine.Gpu.Vulkan.VulkanVertexInputException",
+            "KhaozEngine.Gpu.Vulkan.VulkanVertexInputRefusal",
+        }, exported);
     }
 
     /// <summary>
     /// The same member-by-member pin for the native Metal backend, and here it carries more weight than in
-    /// either sibling, because this package has no third-party assembly for a prefix scan to catch. The one
-    /// exported type IS the containment: every Objective-C handle struct, every <c>objc_msgSend</c> overload and
+    /// either sibling, because this package has no third-party assembly for a prefix scan to catch. The registration type and structured refusal families define the containment: every Objective-C handle struct, every <c>objc_msgSend</c> overload and
     /// the interop spike are internal, so a consumer's compile never sees a Metal vocabulary at all.
     /// <para>
     /// The list is TWO entries, which is one more than either sibling has, and that is decision M-P1 rather
@@ -314,7 +371,36 @@ public class GpuPublicApiTests
             .OrderBy(n => n, StringComparer.Ordinal)
             .ToArray();
 
-        Assert.Equal(new[] { "KhaozEngine.Gpu.Metal.KhaozEngineMetal" }, exported);
+        Assert.Equal(new[]
+        {
+            "KhaozEngine.Gpu.Metal.KhaozEngineMetal",
+            "KhaozEngine.Gpu.Metal.MetalArgumentBatchException",
+            "KhaozEngine.Gpu.Metal.MetalArgumentBatchRefusal",
+            "KhaozEngine.Gpu.Metal.MetalBackendCreationArgumentException",
+            "KhaozEngine.Gpu.Metal.MetalBackendCreationPlatformException",
+            "KhaozEngine.Gpu.Metal.MetalBackendCreationRefusal",
+            "KhaozEngine.Gpu.Metal.MetalBackendCreationStateException",
+            "KhaozEngine.Gpu.Metal.MetalBackendCreationUnsupportedException",
+            "KhaozEngine.Gpu.Metal.MetalBindRecordsRefusal",
+            "KhaozEngine.Gpu.Metal.MetalBindRecordsStateException",
+            "KhaozEngine.Gpu.Metal.MetalEncoderArgumentException",
+            "KhaozEngine.Gpu.Metal.MetalEncoderRefusal",
+            "KhaozEngine.Gpu.Metal.MetalEncoderStateException",
+            "KhaozEngine.Gpu.Metal.MetalFrameAccessException",
+            "KhaozEngine.Gpu.Metal.MetalFrameAccessFailure",
+            "KhaozEngine.Gpu.Metal.MetalRingLayoutException",
+            "KhaozEngine.Gpu.Metal.MetalRingLayoutRefusal",
+            "KhaozEngine.Gpu.Metal.MetalRingWaitException",
+            "KhaozEngine.Gpu.Metal.MetalRingWaitRefusal",
+            "KhaozEngine.Gpu.Metal.MetalShaderFunctionException",
+            "KhaozEngine.Gpu.Metal.MetalShaderFunctionRefusal",
+            "KhaozEngine.Gpu.Metal.MetalStagingArenaRangeException",
+            "KhaozEngine.Gpu.Metal.MetalStagingArenaRefusal",
+            "KhaozEngine.Gpu.Metal.MetalStagingArenaStateException",
+            "KhaozEngine.Gpu.Metal.MetalTimestampAdapterRefusal",
+            "KhaozEngine.Gpu.Metal.MetalTimestampAdapterStateException",
+            "KhaozEngine.Gpu.Metal.MetalTimestampAdapterUnsupportedException",
+        }, exported);
     }
 
     // Walks the externally visible (public + protected) surface of every exported type in <paramref name="assembly"/>

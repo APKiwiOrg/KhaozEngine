@@ -2,7 +2,6 @@ using System;
 using System.IO;
 using System.Net;
 using System.Net.Sockets;
-using System.Reflection;
 using System.Text;
 using System.Text.Json;
 using System.Threading;
@@ -213,7 +212,7 @@ public class AutomationLoopbackTests
         // running, which is exactly the shape of the failure being reported.
         using var session = new HostSession();
 
-        StopTheAcceptSocketBehindTheListenersBack(session.Host);
+        session.Host.StopAcceptSocketForTests();
 
         Assert.True(session.Log.Wait("the accept loop stopped", ReportTimeout), Reported(session));
     }
@@ -244,15 +243,6 @@ public class AutomationLoopbackTests
     /// <summary>Everything the host reported, for a failure message worth reading.</summary>
     static string Reported(HostSession session) =>
         "reported: [" + string.Join(" | ", session.Log.Messages) + "]";
-
-    /// <summary>Close the accept socket without telling the listener it is shutting down.</summary>
-    static void StopTheAcceptSocketBehindTheListenersBack(AutomationHost host)
-    {
-        const BindingFlags Private = BindingFlags.Instance | BindingFlags.NonPublic;
-        object listener = typeof(AutomationHost).GetField("_listener", Private)!.GetValue(host)!;
-        var socket = (TcpListener)listener.GetType().GetField("_listener", Private)!.GetValue(listener)!;
-        socket.Stop();
-    }
 
     /// <summary>A started host plus the environment and temp directory it needs, all torn down together.</summary>
     sealed class HostSession : IDisposable

@@ -22,6 +22,19 @@ public sealed class MapFoliageRenderCache
     readonly MapFoliageRetainedInventory _storage = new();
     Dictionary<MapFoliageCacheKey, MapFoliageColumnOwner>? _owners;
     MapFoliageSharedMetadata? _metadata;
+    internal int OwnerIndexCapacityForTests { get { lock (_gate) return _owners?.EnsureCapacity(0) ?? 0; } }
+    internal int MetadataIndexCapacityForTests { get { lock (_gate) return _metadata?.IndexCapacityForTests ?? 0; } }
+    // Snapshot of membership with borrowed owners for independent graph inspection. Never mutate or release them.
+    internal System.Collections.Generic.IReadOnlyDictionary<MapFoliageCacheKey, MapFoliageColumnOwner> OwnersForTests
+    {
+        get
+        {
+            lock (_gate) return new System.Collections.ObjectModel.ReadOnlyDictionary<MapFoliageCacheKey, MapFoliageColumnOwner>(
+        _owners is null ? new Dictionary<MapFoliageCacheKey, MapFoliageColumnOwner>() : new Dictionary<MapFoliageCacheKey, MapFoliageColumnOwner>(_owners));
+        }
+    }
+    // Borrowed for independent graph inspection. Never mutate or dispose the registry.
+    internal MapFoliageSharedMetadata MetadataForTests => _metadata ?? throw new InvalidOperationException("No metadata registry.");
     long _generationCalls;
     MapFoliageRenderCache(MapWindowFoliageContext context) => _context = context;
     public static MapFoliageRenderCache For(MapWindowFoliageContext context)

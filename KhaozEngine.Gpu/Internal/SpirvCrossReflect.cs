@@ -198,10 +198,15 @@ namespace KhaozEngine.Gpu.Internal
         static unsafe void Refuse(Cross cross, Resources* resources, ResourceType type, string tag, string what)
         {
             if (List(cross, resources, type).Length == 0) return;
-            throw new ShaderValidationException(
+            throw new ShaderValidationException(ShaderValidationRefusal.ReflectionResourceKindUnsupported,
                 $"{tag}: the module declares a resource of kind {type}, which the engine's GpuResourceKind mirror "
                 + "does not model. Add the kind to the mirror and to both directions of the map, or the register "
-                + $"assignment will be counted against a shape the binder cannot express. The source declares {what}.");
+                + $"assignment will be counted against a shape the binder cannot express. The source declares {what}.")
+            {
+                Label = tag,
+                NativeResourceKind = (int)type,
+                SourceDeclaration = what,
+            };
         }
 
         static unsafe GpuResourceKind Kind(Cross cross, Compiler* compiler, ResourceType type, uint id) => type switch
@@ -261,10 +266,15 @@ namespace KhaozEngine.Gpu.Internal
                 }
             }
 
-            throw new ShaderValidationException(
+            throw new ShaderValidationException(ShaderValidationRefusal.ReflectionVertexFormatUnsupported,
                 $"{tag}: the module declares a vertex input of format {basetype} x{components}, which the engine's "
                 + "GpuVertexElementFormat mirror does not model (it covers Float1 to Float4, the set the "
-                + "renderers declare). Add the format to the mirror and to both directions of the map.");
+                + "renderers declare). Add the format to the mirror and to both directions of the map.")
+            {
+                Label = tag,
+                NativeBaseType = (int)basetype,
+                ComponentCount = components,
+            };
         }
     }
 }

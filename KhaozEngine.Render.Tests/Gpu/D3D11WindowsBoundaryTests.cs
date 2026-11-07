@@ -83,9 +83,12 @@ namespace KhaozEngine.Tests.Gpu
         {
             if (KhaozEngineD3D11.IsPlatformSupported) return;
 
-            PlatformNotSupportedException ex = D3D11PlatformGuard.NotOnThisPlatform("fence timeline");
-            Assert.Contains("Direct3D 11", ex.Message, StringComparison.Ordinal);
-            Assert.Contains(nameof(KhaozEngineD3D11.IsPlatformSupported), ex.Message, StringComparison.Ordinal);
+            D3D11ObjectPlatformException ex = D3D11PlatformGuard.NotOnThisPlatform("fence timeline");
+            Assert.Equal(D3D11ObjectPlatformRefusal.WindowsObjectUsedOffWindows, ex.Reason);
+            Assert.Equal("fence timeline", ex.ObjectKind);
+            Assert.Equal("Windows", ex.RequiredOperatingSystem);
+            Assert.IsAssignableFrom<PlatformNotSupportedException>(ex);
+            Assert.Equal("KhaozEngineD3D11.IsPlatformSupported", ex.SupportProbe);
 
             // Reading the live environment is the one impure member on the kill switch, and it has to work
             // everywhere: the value it returns depends on the machine, so what is asserted is that asking is

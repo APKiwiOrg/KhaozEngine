@@ -6,6 +6,7 @@ using System.Runtime.Versioning;
 using System.Text.Json;
 using KhaozEngine.MapDoc.Foliage;
 using KhaozEngine.Terrain;
+using KhaozEngine.Tests.MapDoc;
 using KhaozEngine.TileWorld;
 using Xunit;
 using static KhaozEngine.Tests.MapDocOracle.ShippedFoliageGuardFixtures;
@@ -70,21 +71,21 @@ public sealed class ShippedFoliageInputGuardTests
         }
         foreach (var (variant, reason) in new[]
         {
-            ("seat-lower", "seated support differs from the source plane"),
-            ("manifest-seat-lower", "seated support differs from the source plane"),
-            ("explicit-lower", "seated support differs from the source plane"),
-            ("table-wrong-ordinal", "compatibility table differs from source planes"),
-            ("table-missing-row", "compatibility table differs from source planes"),
-            ("table-extra-row", "compatibility table differs from source planes"),
-            ("manifest-missing-row", "compatibility table differs from source planes"),
-            ("target-peer-roof", "foliage clearing targets differ from source"),
-            ("target-missing", "foliage clearing targets differ from source"),
+            ("seat-lower", PrivateOracleDataRefusal.OwnershipMismatch),
+            ("manifest-seat-lower", PrivateOracleDataRefusal.OwnershipMismatch),
+            ("explicit-lower", PrivateOracleDataRefusal.OwnershipMismatch),
+            ("table-wrong-ordinal", PrivateOracleDataRefusal.CorrespondenceMismatch),
+            ("table-missing-row", PrivateOracleDataRefusal.CorrespondenceMismatch),
+            ("table-extra-row", PrivateOracleDataRefusal.CorrespondenceMismatch),
+            ("manifest-missing-row", PrivateOracleDataRefusal.CorrespondenceMismatch),
+            ("target-peer-roof", PrivateOracleDataRefusal.CorrespondenceMismatch),
+            ("target-missing", PrivateOracleDataRefusal.CorrespondenceMismatch),
         })
         {
             using var fixture = Create(variant);
             var entry = PrivateOracleInputs.Require(fixture.Environment);
-            var error = Assert.Throws<InvalidDataException>(() => ShippedFoliageInputs.Read(entry));
-            Assert.True(reason == error.Message, variant + ": " + error.Message);
+            var error = Assert.Throws<PrivateOracleDataException>(() => ShippedFoliageInputs.Read(entry));
+            Assert.Equal(reason, error.Reason);
         }
     }
 
@@ -108,7 +109,11 @@ public sealed class ShippedFoliageInputGuardTests
         Assert.Contains(category, Categories(fixture));
         Assert.Null(failure.InnerException);
         Assert.DoesNotContain(fixture.PublicSecretMarker, publicFailureMessage);
-        Assert.Matches("^private oracle: [0-9]+ [a-z0-9-]+ mismatches, report sha256 [0-9a-f]{64}$", failure.Message);
+        Assert.Equal(PrivateOracleFailureRefusal.ComparisonMismatches, failure.Reason);
+        Assert.NotNull(failure.Category);
+        Assert.Contains(failure.Category, Categories(fixture));
+        Assert.Equal(1, failure.MismatchCount);
+        Assert.Equal(AssertFixtures.Sha256(Report(fixture)), failure.ReportSha256);
         Assert.Equal(UnixFileMode.UserRead | UnixFileMode.UserWrite, File.GetUnixFileMode(Report(fixture)));
     }
 
@@ -117,15 +122,17 @@ public sealed class ShippedFoliageInputGuardTests
     {
         using (var fixture = Create("changed-byte"))
         {
-            Assert.Throws<PrivateOracleFailure>(() => PrivateOracleEntry.Run(fixture.Environment, (inputs, report) =>
+            var failure = Assert.Throws<PrivateOracleFailure>(() => PrivateOracleEntry.Run(fixture.Environment, (inputs, report) =>
                 ShippedFoliageComparison.Compare(ShippedFoliageInputs.Read(inputs), report)));
+            Assert.Equal(PrivateOracleFailureRefusal.ComparisonMismatches, failure.Reason);
             IReadOnlyList<string> changedByteCategories = Categories(fixture);
             Assert.Contains("foliage-byte", changedByteCategories);
         }
         using (var fixture = Create("changed-decision"))
         {
-            Assert.Throws<PrivateOracleFailure>(() => PrivateOracleEntry.Run(fixture.Environment, (inputs, report) =>
+            var failure = Assert.Throws<PrivateOracleFailure>(() => PrivateOracleEntry.Run(fixture.Environment, (inputs, report) =>
                 ShippedFoliageComparison.Compare(ShippedFoliageInputs.Read(inputs), report)));
+            Assert.Equal(PrivateOracleFailureRefusal.ComparisonMismatches, failure.Reason);
             IReadOnlyList<string> changedDecisionCategories = Categories(fixture);
             Assert.Contains("foliage-decision", changedDecisionCategories);
             Assert.DoesNotContain("foliage-byte", changedDecisionCategories);
@@ -204,9 +211,13 @@ public sealed class ShippedFoliageInputGuardTests
         using var fixture = Create("valid");
         var entry = PrivateOracleInputs.Require(fixture.Environment);
         string region = Path.Combine(Source(fixture), "world/regions/r_0_0.json");
-        var error = Assert.Throws<InvalidDataException>(() => ShippedFoliageInputs.Read(entry,
+        byte[] original = File.ReadAllBytes(region);
+        var error = Assert.Throws<PrivateOracleDataException>(() => ShippedFoliageInputs.Read(entry,
             afterLoaders: () => File.AppendAllText(region, fixture.PublicSecretMarker)));
-        Assert.Equal("foliage extraction changed during load", error.Message);
+        Assert.Equal(PrivateOracleDataRefusal.ExtractionChanged, error.Reason);
+        Assert.IsAssignableFrom<MalformedDataException>(error);
+        File.WriteAllBytes(region, original);
+        ShippedFoliageInputs.Read(entry);
     }
 
     [Theory]
@@ -242,43 +253,65 @@ public sealed class ShippedFoliageInputGuardTests
         Assert.DoesNotContain(fixture.PublicSecretMarker, failure.ToString());
     }
 
-    // Each variant passes the entry boundary and only the foliage reader refuses it, so the message names the rule.
+    // Each invented defect reaches a specific reader or correspondence guard.
     [Theory]
-    [InlineData("duplicate-comparison", "duplicate or case-variant JSON member")]
-    [InlineData("duplicate-manifest-field", "duplicate or case-variant JSON member")]
-    [InlineData("case-duplicate-manifest-field", "duplicate or case-variant JSON member")]
-    [InlineData("dangling-layer-owner", "dangling foliage layer owner")]
-    [InlineData("building-manifest", "private foliage bindings are Surface only and take no building manifest")]
-    [InlineData("patch-cells", "native support surface does not derive from its source plane")]
-    [InlineData("case-manifest-field", "incomplete comparison object")]
-    [InlineData("obsolete-rule-order", "incomplete comparison object")]
-    [InlineData("unsupported-schema", "unsupported foliage comparison schema")]
-    [InlineData("negative-expectation", "invalid foliage expectation")]
-    [InlineData("escape-path", "unsafe attested foliage path")]
-    [InlineData("unattested-generator", "unattested foliage dependency")]
-    [InlineData("unattested-region", "unattested foliage dependency")]
-    [InlineData("unattested-pack", "native tiled store does not verify")]
-    [InlineData("wrong-generator", "missing retained generator")]
-    [InlineData("duplicate-helper", "invalid comparison references")]
-    [InlineData("wrong-convention", "unknown foliage candidate convention")]
-    [InlineData("space-binding", "private foliage imports must bind a Surface")]
-    [InlineData("tile-size", "foliage source terrain conversion requires metre tiles")]
-    [InlineData("missing-owner", "incomplete foliage owner correspondence")]
-    [InlineData("extra-owner", "incomplete foliage owner correspondence")]
-    [InlineData("duplicate-owner", "duplicate foliage owner correspondence")]
-    [InlineData("owner-rules", "foliage owner rule references differ")]
-    [InlineData("unknown-rule", "unknown or missing foliage clearance rule")]
-    [InlineData("model-row", "foliage model correspondence differs")]
-    [InlineData("material-kind", "foliage material kind differs from the source catalog")]
-    [InlineData("missing-material", "incomplete foliage material correspondence")]
-    [InlineData("rule-footprint", "clearance rule disagrees with the source footprint")]
-    [InlineData("rule-kind", "clearance rule disagrees with the source collision, roof or door")]
-    public void ReaderOnlyRefusal_NamesItsSpecificReason(string variant, string reason)
+    [InlineData("duplicate-comparison", PrivateOracleDataRefusal.IdentityNotUniqueOrCanonical)]
+    [InlineData("duplicate-manifest-field", PrivateOracleDataRefusal.IdentityNotUniqueOrCanonical)]
+    [InlineData("case-duplicate-manifest-field", PrivateOracleDataRefusal.IdentityNotUniqueOrCanonical)]
+    [InlineData("dangling-layer-owner", PrivateOracleDataRefusal.ReferenceMissing)]
+    [InlineData("building-manifest", PrivateOracleDataRefusal.KindUnsupported)]
+    [InlineData("case-manifest-field", PrivateOracleDataRefusal.SchemaShapeInvalid)]
+    [InlineData("obsolete-rule-order", PrivateOracleDataRefusal.SchemaShapeInvalid)]
+    [InlineData("unsupported-schema", PrivateOracleDataRefusal.VersionUnsupported)]
+    [InlineData("negative-expectation", PrivateOracleDataRefusal.ValueOutsideDomain)]
+    [InlineData("escape-path", PrivateOracleDataRefusal.PathUnsafe)]
+    [InlineData("unattested-generator", PrivateOracleDataRefusal.DependencyUnattested)]
+    [InlineData("unattested-region", PrivateOracleDataRefusal.DependencyUnattested)]
+    [InlineData("unattested-pack", PrivateOracleDataRefusal.CorrespondenceMismatch)]
+    [InlineData("wrong-generator", PrivateOracleDataRefusal.DependencyUnattested)]
+    [InlineData("duplicate-helper", PrivateOracleDataRefusal.IdentityNotUniqueOrCanonical)]
+    [InlineData("wrong-convention", PrivateOracleDataRefusal.KindUnsupported)]
+    [InlineData("space-binding", PrivateOracleDataRefusal.KindUnsupported)]
+    [InlineData("tile-size", PrivateOracleDataRefusal.SourceCoordinateContractMismatch)]
+    [InlineData("region-hash", PrivateOracleDataRefusal.AttestedDigestMismatch)]
+    [InlineData("missing-text", PrivateOracleDataRefusal.ValueRequired)]
+    [InlineData("duplicate-owner", PrivateOracleDataRefusal.IdentityNotUniqueOrCanonical)]
+    [InlineData("patch-cells", PrivateOracleDataRefusal.AttestedDigestMismatch)]
+    [InlineData("missing-owner", PrivateOracleDataRefusal.CorrespondenceMismatch)]
+    [InlineData("extra-owner", PrivateOracleDataRefusal.CorrespondenceMismatch)]
+    [InlineData("owner-rules", PrivateOracleDataRefusal.CorrespondenceMismatch)]
+    [InlineData("unknown-rule", PrivateOracleDataRefusal.CorrespondenceMismatch)]
+    [InlineData("model-row", PrivateOracleDataRefusal.CorrespondenceMismatch)]
+    [InlineData("material-kind", PrivateOracleDataRefusal.CorrespondenceMismatch)]
+    [InlineData("missing-material", PrivateOracleDataRefusal.CorrespondenceMismatch)]
+    [InlineData("rule-footprint", PrivateOracleDataRefusal.CorrespondenceMismatch)]
+    [InlineData("rule-kind", PrivateOracleDataRefusal.CorrespondenceMismatch)]
+    public void ReaderOnlyRefusal_NamesItsSpecificReason(string variant, PrivateOracleDataRefusal reason)
     {
         using var fixture = Create(variant);
         var entry = PrivateOracleInputs.Require(fixture.Environment);
-        var error = Assert.Throws<InvalidDataException>(() => ShippedFoliageInputs.Read(entry));
-        Assert.Equal(reason, error.Message);
+        var error = Assert.Throws<PrivateOracleDataException>(() => ShippedFoliageInputs.Read(entry));
+        Assert.Equal(reason, error.Reason);
+        Assert.IsAssignableFrom<MalformedDataException>(error);
+        using var valid = Create(variant == "negative-expectation" ? "zero-expectation" : "valid");
+        ShippedFoliageInputs.Read(PrivateOracleInputs.Require(valid.Environment));
+    }
+
+    [Fact]
+    public void Snapshot_RefusesALinkIntroducedAfterVerification()
+    {
+        using var fixture = Create("valid");
+        var entry = PrivateOracleInputs.Require(fixture.Environment);
+        _ = new ShippedFoliageInputs.Snapshot(entry);
+        string path = Path.Combine(Source(fixture), "generator/helper.py");
+        string target = Path.Combine(Source(fixture), "generator/build-scaffold.py");
+        File.Delete(path);
+        File.CreateSymbolicLink(path, target);
+        var error = Assert.Throws<PrivateOracleDataException>(() => ShippedFoliageInputs.Snapshot.RequireUnlinkedDependencyForTests(path));
+        Assert.Equal(PrivateOracleDataRefusal.SymlinkUnsupported, error.Reason);
+        File.Delete(path);
+        File.WriteAllText(path, "regular public synthetic file");
+        ShippedFoliageInputs.Snapshot.RequireUnlinkedDependencyForTests(path);
     }
 
     [Theory]
@@ -293,8 +326,13 @@ public sealed class ShippedFoliageInputGuardTests
     {
         using var fixture = Create("valid");
         var entry = PrivateOracleInputs.Require(fixture.Environment);
-        File.AppendAllText(Path.Combine(Source(fixture), path), fixture.PublicSecretMarker);
-        Assert.Throws<InvalidDataException>(() => ShippedFoliageInputs.Read(entry));
+        string file = Path.Combine(Source(fixture), path);
+        byte[] original = File.ReadAllBytes(file);
+        File.AppendAllText(file, fixture.PublicSecretMarker);
+        var error = Assert.Throws<PrivateOracleDataException>(() => ShippedFoliageInputs.Read(entry));
+        Assert.Equal(PrivateOracleDataRefusal.ExtractionChanged, error.Reason);
+        File.WriteAllBytes(file, original);
+        ShippedFoliageInputs.Read(entry);
     }
 
     [Fact]

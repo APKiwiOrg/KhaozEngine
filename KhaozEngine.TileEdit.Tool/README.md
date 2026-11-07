@@ -90,6 +90,59 @@ edit, with no explicit rebake verb and no full-world rebake.
 the client with the lower layer's own precise text rather than a generic failure, through one guard every verb
 goes through.
 
+## Refusals
+
+Direct in-process session operations, object, prefab and foliage queries and foliage mutations keep the exact
+`TileWorldException` type for the refusals below. Inspect its `Reason` and identifiers rather than parsing the
+message. MCP error responses retain the human-readable text described above. Every tool guard retains the original exception
+in `McpException.InnerException`, so
+in-process tool callers inspect the inner family's reason and identifiers. An existing `McpException`
+passes through unchanged.
+
+| `TileWorldRefusal` reason | Refuses | Identifiers |
+| --- | --- | --- |
+| `CatalogArchetypeMissing` | Placing or scattering an archetype absent from the catalogs | `ArchetypeId` |
+| `ObjectMissing` | Querying an absent object id through `QueryService.ObjectGet` | `ObjectId` |
+| `SessionOpenFailed` | Opening a world when loading fails without a known tile-world refusal | Supplied path as `SourceName`, original `InnerException` |
+| `SessionWorldExists` | Creating a world in a directory already holding a manifest | Supplied `WorldDirectory`, manifest path as `SourceName` |
+| `SessionNotOpen` | Any operation requiring an open world before opening or creating one | Owned read-only `RequiredTools` containing `world_open` and `world_create` |
+| `SessionClearanceFailed` | Saving a world with clearance issues | `WorldId`, total `IssueCount`, complete owned read-only `Issues` and `Overlaps`, `MeshRoot`, `ResolvedMeshRoot` |
+| `PrefabDirectoryMissing` | Listing prefabs in a directory that does not exist | Normalized absolute directory as `SourceName` |
+| `ClearanceBlockMissing` | Setting or removing a rule before declaring a clearance block | `WorldId`, owned read-only `RequiredTools` containing `clearance_set` |
+| `FoliageLayerMissing` | Querying, replacing density, painting or removing an absent foliage layer | `LayerId` |
+| `FoliageCatalogArchetypeMissing` | Setting a foliage layer with an archetype absent from the catalogs | `LayerId`, `ArchetypeId` |
+| `FoliageCatalogUnderlayMissing` | Setting a foliage layer with an allowed material absent from the catalogs | `LayerId`, `MaterialId` |
+
+`TileEditSession.Open` passes known `TileWorldException` instances through unchanged. Its fallback
+`SessionOpenFailed` preserves an otherwise unstructured load failure as the original inner exception.
+A refused create or open leaves the current world open. Plain parameter checks remain BCL exceptions.
+
+Direct mutation service calls propagate the command and document reasons. See the
+[editing refusal table](../KhaozEngine.TileWorld.Editing/README.md#refusals) and the
+[TileWorld refusal table](../KhaozEngine.TileWorld/README.md#refusals) for object and marker identifiers.
+
+### Catalog edit refusals
+
+`CatalogWriter.SetCollisionHeights` uses the same `TileWorldRefusal` enum. Invalid heights throw
+`CatalogEditRangeException`, derived from `ArgumentOutOfRangeException`, with the original `ParamName`
+(`heights`) and `ActualValue` plus the offending `ArchetypeId`. The other edit refusals retain the exact
+`TileWorldException` type. Null arguments and blank paths remain ordinary parameter exceptions.
+
+| `TileWorldRefusal` reason | Refuses | Identifiers |
+| --- | --- | --- |
+| `CatalogEditHeightInvalid` | A requested height that is not finite and positive | `CatalogEditRangeException.ArchetypeId`, `ParamName`, `ActualValue` |
+| `CatalogEditJsonMalformed` | Catalog bytes that cannot be read as JSON | Original `JsonException` in `InnerException` |
+| `CatalogEditReadFailed` | A source catalog that cannot be read | `SourceName`, original `InnerException` |
+| `CatalogEditNotObject` | A JSON root that is not an object | `SourceName` when prepared from a file |
+| `CatalogEditArchetypesMissing` | Requested archetypes absent from the catalog | Complete ordinal-sorted, owned read-only `ArchetypeIds` snapshot |
+| `CatalogEditArchetypeDuplicate` | A requested archetype defined more than once | `ArchetypeId` |
+| `CatalogEditHeightDuplicate` | A requested archetype with repeated height properties | `ArchetypeId`, `Field` equal to `collisionHeight` |
+
+`Prepare` and `WriteCollisionHeights` add `SourceName` to a byte-splice `TileWorldException` without changing
+its specific `Reason` or identifiers. The new wrapper retains the exact original exception in
+`InnerException`, including a malformed-JSON refusal's own parser cause. These refusals write nothing.
+Post-edit loader validation propagates the loader's catalog reason and source unchanged.
+
 ## Coordinate conventions
 
 - **Tile space throughout the query and mutation surface**: x runs east, z runs north, and a plane is a storey
@@ -158,6 +211,9 @@ height rows above. Tile north maps to negative world Z. `allowedUnderlays` appli
 the sample, including the painted part of a shaped overlay. A door clearance uses objects tagged `door` on the
 layer plane.
 
+Required foliage lookups and catalog reference checks use the reasons in the [refusal table](#refusals).
+These refusals leave the document and undo history unchanged, including when replacing an existing layer.
+
 `tiles_get_rect` legends, one character per tile:
 
 | Layer | Legend |
@@ -180,6 +236,13 @@ author reading a map needs to tell "there is a wall here" from "there is no worl
 | `clearance_rule_remove(name)` | Removes one rule by name. Refuses an unknown name. |
 | `clearance_check()` | Runs the check against the meshes on disk and reports a clear flag and every issue as `[code] message`, writing nothing. |
 
+Direct clearance validation uses `TileClearanceArgumentException`, an `ArgumentException` subtype sharing
+`TileWorldRefusal` with `TileWorldException`. Unknown rule removal exposes `ClearanceRuleMissing` with
+`RuleName`, a rooted mesh root exposes `ClearanceMeshRootRooted` with `MeshRoot`, and an empty tag list exposes
+`ClearanceTagsEmpty` with `RuleName`, `Field` and `TagCount`. Tool callers reach these values through
+`McpException.InnerException`. The complete clearance reasons and identifiers are in the
+[TileWorld refusal table](../KhaozEngine.TileWorld/README.md#refusals).
+
 Each mutation is one undo step through `SetClearanceCommand` and changes no tile, object or collision. A rule
 makes every object whose archetype carries any subject tag keep its mesh clear of every object whose archetype
 carries any obstacle tag, allowing `tolerance` metres of depth. The waiver tag is an OBJECT tag, set with
@@ -189,9 +252,15 @@ read, or a mesh root that is not a directory) and `clearance.rule` (a rule whose
 block, the solid model and its limit are in the [`KhaozEngine.TileWorld` README](../KhaozEngine.TileWorld/README.md#clearance).
 
 **`world_save` refuses a world with any clearance issue** whenever the world declares rules, after the validator
-passes, and lists every issue one per line. Nothing is written. Fix the placement, or tag a deliberate overlap
-with the waiver tag, which is a decision for the world's owner. `world_validate` reports the same issues without
-failing.
+passes. In-process callers inspect `SessionClearanceFailed` through `McpException.InnerException`.
+It carries `WorldId`, the full `IssueCount`, all `Issues`, the authored `MeshRoot` and the normalized absolute
+`ResolvedMeshRoot`. `Overlaps` holds every penetrating pair as an immutable `TileClearanceOverlap` with
+`RuleName`, `SubjectObjectId`, `ObstacleObjectId` and sampled `Depth` in metres. Each corresponding issue also
+carries that value in `TileWorldIssue.Overlap`, and its `Code` remains `clearance.overlap`. Non-overlap issues
+leave `Overlap` null. Both exception collections are owned read-only snapshots. Nothing is written and the
+dirty state is retained. Fix the placement, or tag a deliberate overlap with the waiver tag, which is a decision
+for the world's owner. `world_validate` reports the same issues without failing. MCP text responses still list every
+issue one per line.
 
 Meshes are read through one `GltfTileMeshGeometry` per open world, resolved as `meshRef` under the mesh root and
 reused across saves and checks, so an unchanged glb is parsed once. It is replaced lazily at the next check after

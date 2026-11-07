@@ -15,12 +15,21 @@ internal readonly struct ContactQueryContext
     public static implicit operator ContactQueryContext(DryContactQueryContext dry) => new(dry);
     public static implicit operator ContactQueryContext(LeasedContactQueryContext leased) => new(leased);
 
+    internal ContactDescentEvidence? DescentEvidence => _leased?.DescentEvidence;
+    internal MovementAvailability DescribeSelectedAnalytic(Vector3 feet, in SupportSample sample,
+        out MovementSurfaceFeature feature)
+    {
+        feature = default;
+        return _leased?.DescribeSelectedAnalytic(feet, sample, out feature) ?? MovementAvailability.Unresolved;
+    }
     internal ContactCapsuleShapes Shapes => _leased?.Shapes ?? ContactCapsuleShapes.ForThread;
     internal bool HasShell => _leased is not null || _dry.HasShell;
     internal bool HasMediumProof => _leased is not null;
     internal Vector3 KernelFeet(Vector3 centre, in MoveTuning tuning) => _leased is { } leased
         ? leased.KernelFeet(centre, tuning) : _dry.KernelFeet(centre, tuning);
     internal Vector3 BodyCentre(Vector3 feet) => _leased is { } leased ? leased.BodyCentre(feet) : _dry.BodyCentre(feet);
+    internal Vector3 SupportedBodyCentre(Vector3 feet, in SupportSample support) => _leased is { } leased
+        ? leased.SupportedBodyCentre(feet, support) : _dry.SupportedBodyCentre(feet);
     internal void CheckDryMedium(Vector3 feet)
     {
         if (_leased is null) _dry.CheckMedium(feet);
@@ -47,6 +56,15 @@ internal readonly struct ContactQueryContext
     internal CapsuleContactResult QueryShellContacts(CapsuleShape shape, Vector3 centre, Span<CapsuleContact> contacts) =>
         _leased is { } leased ? leased.QueryShellContacts(shape, centre, contacts) : _dry.QueryShellContacts(shape, centre, contacts);
     internal bool AcceptSegment(Vector3 from, Vector3 to) => _leased?.AcceptSegment(from, to) ?? true;
+    internal bool AcceptRouteSegment(Vector3 from, Vector3 to) => _leased?.AcceptRouteSegment(from, to) ?? true;
+    internal void RecordAcceptedSupport(Vector3 feet) => _leased?.RecordAcceptedSupport(feet);
+    internal bool BeginAirRoute(out int prior)
+    {
+        prior = 0;
+        return _leased?.BeginAirRoute(out prior) ?? false;
+    }
+    internal void EndAirRoute(int prior) => _leased?.EndAirRoute(prior);
+    internal bool AcceptResolvedRouteSegment(Vector3 from, Vector3 to) => _leased?.AcceptResolvedRouteSegment(from, to) ?? true;
     internal bool ConstrainGroundDescent(Vector3 from, Vector3 to, Vector3 supportNormal,
         float footRadius, float cosMaxSlope, out Vector2 move)
     {
@@ -87,6 +105,8 @@ internal readonly struct DryContactQueryContext(Func<float, float, float>? heigh
     internal Vector3 KernelFeet(Vector3 centre, in MoveTuning knobs) =>
         new(centre.X, centre.Y - knobs.CapsuleHalfHeight, centre.Z);
     internal Vector3 BodyCentre(Vector3 feet) => new(feet.X, feet.Y + _halfHeight, feet.Z);
+    internal Vector3 SupportedBodyCentre(Vector3 feet) =>
+        new(feet.X, SupportedCapsulePose.Centre(feet.Y, _halfHeight), feet.Z);
     internal void CheckMedium(Vector3 feet)
     {
         if (medium is not null && medium(feet.X, feet.Z, feet.Y).InWater)
@@ -132,6 +152,5 @@ internal sealed class ContactQueryFailure(MovementAvailability availability,
     MovementStepOutcome? outcome = null) : Exception("Contact query evidence is unavailable.")
 {
     internal MovementAvailability Availability { get; } = availability;
-    internal MovementStepOutcome Outcome { get; } = outcome ?? (availability == MovementAvailability.Invalid
-        ? MovementStepOutcome.EnvironmentInvalid : MovementStepOutcome.EnvironmentUnresolved);
+    internal MovementStepOutcome Outcome { get; } = outcome ?? ExplicitCharacterMovement.Outcome(availability);
 }

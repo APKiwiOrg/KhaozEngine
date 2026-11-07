@@ -57,7 +57,10 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         internal static IReadOnlyList<string> WindowedInstanceExtensions(GpuWindowKind window,
             VulkanValidationMode mode)
         {
-            var extensions = new List<string>(3) { KhrSurface.ExtensionName, SurfaceExtensionFor(window) };
+            var extensions = new List<string>(3)
+            {
+                KhrSurface.ExtensionName, SurfaceExtensionFor(window),
+            };
             if (VulkanValidation.WantsMessenger(mode)) extensions.Add(ExtDebugUtils.ExtensionName);
             return extensions;
         }
@@ -76,15 +79,17 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
             GpuWindowKind.Wayland => KhrWaylandSurface.ExtensionName,
             // Every member is spelled out rather than leaning on a discard, so a window kind appended later shows
             // up here as a compile-time gap to fill instead of reading as macOS.
-            GpuWindowKind.Cocoa => throw new NotSupportedException(
+            GpuWindowKind.Cocoa => throw new VulkanBackendCreationUnsupportedException(VulkanBackendCreationRefusal.CocoaSurfaceUnsupported,
                 "The native Vulkan backend cannot present to a Cocoa window. Vulkan on macOS is MoltenVK over "
                 + "Metal, which needs VK_EXT_metal_surface and a translation layer this backend deliberately does "
                 + "not carry: phase 4 of the native GPU program "
                 + "(https://github.com/APKiwiOrg/KhaozEngine/issues/420) brings a real Metal backend instead. This "
-                + "package loads harmlessly on macOS and is never selected there."),
-            _ => throw new NotSupportedException(
+                + "package loads harmlessly on macOS and is never selected there.")
+            { WindowKind = window, RequiredTranslationLayer = "MoltenVK", RequiredExtension = "VK_EXT_metal_surface" },
+            _ => throw new VulkanBackendCreationUnsupportedException(VulkanBackendCreationRefusal.WindowKindUnsupported,
                 $"The native Vulkan backend has no surface extension for GpuWindowKind '{window}'. The windowed "
-                + "path supports Win32, X11 and Wayland."),
+                + "path supports Win32, X11 and Wayland.")
+            { WindowKind = window },
         };
 
         /// <summary>The instance layers: <c>VK_LAYER_KHRONOS_validation</c> under the knob, and nothing

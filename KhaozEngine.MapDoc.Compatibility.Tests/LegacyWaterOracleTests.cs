@@ -135,7 +135,26 @@ public sealed class LegacyWaterOracleTests
     public void WaterOffPlaneZero_Refuses()
     {
         LegacyWaterOracleWorld world = LegacyWaterOracleWorld.WithPlaneOneWater();
-        var error = Assert.Throws<MapDocumentException>(() => LegacyWaterConverter.ToNative(world.Document, world.Catalogs));
-        Assert.Contains("water on plane 1 is outside the R4 comparison", error.Message, StringComparison.Ordinal);
+        var error = Assert.Throws<LegacyWaterComparisonException>(() => LegacyWaterConverter.ToNative(world.Document, world.Catalogs));
+        Assert.Equal(LegacyWaterComparisonRefusal.PlaneUnsupported, error.Reason);
+        Assert.Equal(1, error.Plane);
+
+        world.Document.SetUnderlay(4, 4, 1, 2);
+        var accepted = LegacyWaterConverter.ToNative(world.Document, world.Catalogs);
+        Assert.DoesNotContain(accepted.Sources, source => source.Plane != 0);
+    }
+
+    [Fact]
+    public void MissingPlaneZeroRegion_Refuses()
+    {
+        var document = new TileWorldDocument { Id = "public-legacy-water-oracle" };
+        document.GetOrCreateRegion(new(0, 0));
+        var error = Assert.Throws<LegacyWaterComparisonException>(() => LegacyWaterConverter.ToNative(document, World.Catalogs));
+        Assert.Equal(LegacyWaterComparisonRefusal.RegionMissing, error.Reason);
+        Assert.Null(error.Plane);
+
+        document.SetUnderlay(0, 0, 0, 2);
+        var accepted = LegacyWaterConverter.ToNative(document, World.Catalogs);
+        Assert.Contains(accepted.Document.Surfaces.Refs, surface => surface.Id == "plane-0");
     }
 }

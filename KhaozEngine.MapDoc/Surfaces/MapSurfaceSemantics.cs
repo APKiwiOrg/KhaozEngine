@@ -72,7 +72,17 @@ public static class MapSurfaceSemantics
         ArgumentNullException.ThrowIfNull(surface);
         ArgumentNullException.ThrowIfNull(patches);
         if (string.IsNullOrWhiteSpace(surface.Id) || surface.Frame is null || !Enum.IsDefined(surface.Role) || !Enum.IsDefined(surface.PresencePolicy))
-            throw new MapDocumentException("invalid surface semantic metadata");
+            throw new MapDocumentException(string.IsNullOrWhiteSpace(surface.Id) || surface.Frame is null
+                ? MapDocumentRefusal.SchemaValueRequired : MapDocumentRefusal.SchemaEnumUnsupported, "invalid surface semantic metadata")
+            {
+                SurfaceId = surface.Id,
+                FieldPath = string.IsNullOrWhiteSpace(surface.Id) ? "Id" : surface.Frame is null ? "Frame"
+                    : !Enum.IsDefined(surface.Role) ? "Role" : "PresencePolicy",
+                EnumType = string.IsNullOrWhiteSpace(surface.Id) || surface.Frame is null ? null
+                    : !Enum.IsDefined(surface.Role) ? typeof(MapSurfaceRole) : typeof(MapPresencePolicy),
+                ActualInteger = string.IsNullOrWhiteSpace(surface.Id) || surface.Frame is null ? null
+                    : !Enum.IsDefined(surface.Role) ? (byte)surface.Role : (byte)surface.PresencePolicy,
+            };
         MapSurfaceJson.RequirePaintPriority(surface);
         _ = surface.Frame.WorldXz(MapLatticeAddress.Corner(0, 0));
         using var sink = new MapCanonical.HashingBufferWriter();
@@ -102,7 +112,10 @@ public static class MapSurfaceSemantics
             foreach (KeyValuePair<MapPatchKey, string> patch in patches.OrderBy(p => p.Key))
             {
                 if (patch.Key.SurfaceId != surface.Id || patch.Key == previous || !IsDigest(patch.Value))
-                    throw new MapDocumentException("invalid or duplicate surface patch digest");
+                    throw new MapDocumentException(patch.Key.SurfaceId != surface.Id ? MapDocumentRefusal.AuthoredOwnershipMismatch
+                        : patch.Key == previous ? MapDocumentRefusal.IdentityDuplicate : MapDocumentRefusal.DigestMalformed,
+                        "invalid or duplicate surface patch digest")
+                    { SurfaceId = surface.Id, Patch = patch.Key, ActualHash = patch.Value, FieldPath = "patches" };
                 previous = patch.Key;
                 w.WriteStartObject(); w.WritePropertyName("key"); Key(w, patch.Key);
                 w.WriteString("semanticSha256", patch.Value); w.WriteEndObject();

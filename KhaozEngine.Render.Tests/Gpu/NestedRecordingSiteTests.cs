@@ -65,6 +65,7 @@ namespace KhaozEngine.Tests.Gpu
         static void AssertRefused(Action call, string attemptedContains)
         {
             var ex = Assert.Throws<GpuNestedRecordingException>(call);
+            Assert.Equal(GpuNestedRecordingRefusal.RecordingAlreadyOpen, ex.Reason);
             Assert.Equal("the window's frame list", ex.Owner);
             Assert.Contains(attemptedContains, ex.Attempted);
         }
@@ -178,15 +179,25 @@ namespace KhaozEngine.Tests.Gpu
 
         // ---- Site 6: the live 3D preview ----
 
-        [Fact]
-        public void Render3DPreview_Capture_refuses_inside_a_recording()
+        [Theory]
+        [InlineData(false)]
+        [InlineData(true)]
+        public void Scene_preparation_and_preview_capture_refuse_inside_a_recording(bool capture)
         {
             using var device = new OpenListTrackingGpuDevice();
             using var preview = new Render3DPreview(device, W, H);
             using IGpuCommandList frameList = device.Factory.CreateCommandList();
+            preview.Scene.Begin();
+            Action attempt = capture
+                ? () => preview.Capture(_ => { })
+                : () => preview.Scene.PrepareFrame(W, H);
 
             using (OpenFrame(device, frameList))
-                AssertRefused(() => preview.Capture(_ => { }), "Render3DPreview.Capture");
+                AssertRefused(attempt, capture ? "Render3DPreview.Capture" : "scene viewport preparation");
+
+            // Rule 15: ending the open frame alone makes either operation legal.
+            attempt();
+            Assert.Null(GpuRecording.OpenOwner(device));
         }
 
         // ---- Site 7: the retire barrier, which submits from inside Scene3D.Begin ----

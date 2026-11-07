@@ -260,9 +260,11 @@ public static class TilePrefabs
     static void RequireShape(TilePrefab p)
     {
         if (p.Width < 1 || p.Height < 1)
-            throw new TileWorldException($"prefab '{p.Name}': size {p.Width}x{p.Height} is not positive");
+            throw new TileWorldException(TileWorldRefusal.PrefabSizeNonPositive, $"prefab '{p.Name}': size {p.Width}x{p.Height} is not positive")
+            { PrefabName = p.Name, Width = p.Width, Height = p.Height };
         if (p.Planes.Count != p.PlaneCount)
-            throw new TileWorldException($"prefab '{p.Name}': declares {p.PlaneCount} planes but carries {p.Planes.Count}");
+            throw new TileWorldException(TileWorldRefusal.PrefabPlaneCountMismatch, $"prefab '{p.Name}': declares {p.PlaneCount} planes but carries {p.Planes.Count}")
+            { PrefabName = p.Name, ActualPlaneCount = p.Planes.Count, ExpectedPlaneCount = p.PlaneCount };
         int tiles = p.Width * p.Height, corners = (p.Width + 1) * (p.Height + 1);
         for (int i = 0; i < p.Planes.Count; i++)
         {
@@ -280,16 +282,19 @@ public static class TilePrefabs
         // landed, which is the tear the whole pre-flight exists to prevent.
         foreach (TilePrefabObject o in p.Objects)
             if ((uint)o.Plane >= (uint)p.PlaneCount)
-                throw new TileWorldException($"prefab '{p.Name}': object '{o.ArchetypeId}' at ({o.X}, {o.Z}) is on plane {o.Plane}, the prefab has {p.PlaneCount}");
+                throw new TileWorldException(TileWorldRefusal.PrefabObjectPlaneOutsideRange, $"prefab '{p.Name}': object '{o.ArchetypeId}' at ({o.X}, {o.Z}) is on plane {o.Plane}, the prefab has {p.PlaneCount}")
+                { PrefabName = p.Name, ArchetypeId = o.ArchetypeId, Plane = o.Plane, PlaneCount = p.PlaneCount, Tile = new TileCoord(o.X, o.Z, o.Plane) };
         foreach (TilePrefabMarker m in p.Markers)
             if ((uint)m.Plane >= (uint)p.PlaneCount)
-                throw new TileWorldException($"prefab '{p.Name}': marker '{m.Name}' at ({m.X}, {m.Z}) is on plane {m.Plane}, the prefab has {p.PlaneCount}");
+                throw new TileWorldException(TileWorldRefusal.PrefabMarkerPlaneOutsideRange, $"prefab '{p.Name}': marker '{m.Name}' at ({m.X}, {m.Z}) is on plane {m.Plane}, the prefab has {p.PlaneCount}")
+                { PrefabName = p.Name, MarkerName = m.Name, Plane = m.Plane, PlaneCount = p.PlaneCount, Tile = new TileCoord(m.X, m.Z, m.Plane) };
     }
 
     static void RequireLength(TilePrefab p, int plane, string layer, int? actual, int expected)
     {
         if (actual is not null && actual.Value != expected)
-            throw new TileWorldException($"prefab '{p.Name}': plane {plane} {layer} has {actual.Value} entries, expected {expected} for {p.Width}x{p.Height}");
+            throw new TileWorldException(TileWorldRefusal.PrefabLayerCountMismatch, $"prefab '{p.Name}': plane {plane} {layer} has {actual.Value} entries, expected {expected} for {p.Width}x{p.Height}")
+            { PrefabName = p.Name, Plane = plane, LayerName = layer, ActualCount = actual.Value, ExpectedCount = expected, Width = p.Width, Height = p.Height };
     }
 
     // A turn moves the SW corner to a different physical corner, so the heights come out relative to a corner

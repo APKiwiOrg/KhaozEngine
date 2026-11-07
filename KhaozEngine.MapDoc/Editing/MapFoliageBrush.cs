@@ -23,13 +23,23 @@ public static class MapFoliageBrush
         ArgumentNullException.ThrowIfNull(layer);
         ArgumentNullException.ThrowIfNull(brush);
         if (!string.Equals(layer.Id, brush.LayerId, StringComparison.Ordinal))
-            throw new MapDocumentException($"Foliage paint names layer '{brush.LayerId}', not '{layer.Id}'.");
+            throw new MapDocumentException(MapDocumentRefusal.AuthoredValueMismatch, $"Foliage paint names layer '{brush.LayerId}', not '{layer.Id}'.")
+            { LayerId = layer.Id, FieldPath = "LayerId", ActualText = brush.LayerId };
         if (!float.IsFinite(brush.WorldX) || !float.IsFinite(brush.WorldZ))
-            throw new MapDocumentException("Foliage paint needs a finite world position.");
+            throw new MapDocumentException(MapDocumentRefusal.ValueNonfinite, "Foliage paint needs a finite world position.")
+            {
+                LayerId = layer.Id,
+                FieldPath = !float.IsFinite(brush.WorldX) ? "WorldX" : "WorldZ",
+                ActualNumber = !float.IsFinite(brush.WorldX) ? brush.WorldX : brush.WorldZ
+            };
         if (!float.IsFinite(brush.RadiusMetres) || brush.RadiusMetres <= 0f)
-            throw new MapDocumentException("Foliage paint radius must be finite and positive metres.");
+            throw new MapDocumentException(!float.IsFinite(brush.RadiusMetres) ? MapDocumentRefusal.ValueNonfinite : MapDocumentRefusal.ValueOutsideRange,
+                "Foliage paint radius must be finite and positive metres.")
+            { LayerId = layer.Id, FieldPath = "RadiusMetres", ActualNumber = brush.RadiusMetres, MinimumNumber = 0 };
         if (!float.IsFinite(brush.Hardness) || brush.Hardness < 0f || brush.Hardness > 1f)
-            throw new MapDocumentException("Foliage paint hardness must be from 0 to 1.");
+            throw new MapDocumentException(!float.IsFinite(brush.Hardness) ? MapDocumentRefusal.ValueNonfinite : MapDocumentRefusal.ValueOutsideRange,
+                "Foliage paint hardness must be from 0 to 1.")
+            { LayerId = layer.Id, FieldPath = "Hardness", ActualNumber = brush.Hardness, MinimumNumber = 0, MaximumNumber = 1 };
         RequireRaster(layer);
         float radius = brush.RadiusMetres, hardness = brush.Hardness, hardRadius = radius * hardness;
         float centreX = brush.WorldX, centreZ = brush.WorldZ;
@@ -77,7 +87,23 @@ public static class MapFoliageBrush
     {
         if (!float.IsFinite(layer.OriginX) || !float.IsFinite(layer.OriginZ) || !float.IsFinite(layer.CellSize) ||
             layer.CellSize <= 0f || layer.Width < 1 || layer.Depth < 1)
-            throw new MapDocumentException($"Foliage layer '{layer.Id}' has no valid density raster to edit.");
+        {
+            string field = !float.IsFinite(layer.OriginX) ? "OriginX" : !float.IsFinite(layer.OriginZ) ? "OriginZ" :
+                !float.IsFinite(layer.CellSize) || layer.CellSize <= 0f ? "CellSize" : layer.Width < 1 ? "Width" : "Depth";
+            double actual = field switch { "OriginX" => layer.OriginX, "OriginZ" => layer.OriginZ, "CellSize" => layer.CellSize, "Width" => layer.Width, _ => layer.Depth };
+            bool dimension = field is "Width" or "Depth";
+            throw new MapDocumentException(!double.IsFinite(actual) ? MapDocumentRefusal.ValueNonfinite :
+                dimension ? MapDocumentRefusal.BoundsInvalid : MapDocumentRefusal.ValueOutsideRange,
+                $"Foliage layer '{layer.Id}' has no valid density raster to edit.")
+            {
+                LayerId = layer.Id,
+                FieldPath = field,
+                ActualNumber = dimension ? null : actual,
+                ActualInteger = dimension ? (long)actual : null,
+                MinimumInteger = dimension ? 1 : null,
+                MinimumNumber = field == "CellSize" ? 0 : null
+            };
+        }
     }
 
     /// <summary>Refuses a sample rectangle [x, x + width) by [z, z + depth) that is empty, lies outside the layer's
@@ -86,9 +112,31 @@ public static class MapFoliageBrush
     internal static (int HiX, int HiZ) RequireRectangle(MapFoliageLayer layer, int x, int z, int width, int depth)
     {
         RequireRaster(layer);
-        if (width < 1 || depth < 1) throw new MapDocumentException("A foliage density rectangle needs a positive width and depth.");
+        if (width < 1 || depth < 1) throw new MapDocumentException(MapDocumentRefusal.BoundsInvalid, "A foliage density rectangle needs a positive width and depth.")
+        {
+            LayerId = layer.Id,
+            FieldPath = width < 1 ? "Width" : "Depth",
+            Width = width,
+            Depth = depth,
+            ActualInteger = width < 1 ? width : depth,
+            MinimumInteger = 1
+        };
         if (x < 0 || z < 0 || (long)x + width > layer.Width || (long)z + depth > layer.Depth)
-            throw new MapDocumentException($"The foliage density rectangle lies outside layer '{layer.Id}' samples {layer.Width} by {layer.Depth}.");
+            throw new MapDocumentException(MapDocumentRefusal.FoliageRectangleOutOfBounds,
+                $"The foliage density rectangle lies outside layer '{layer.Id}' samples {layer.Width} by {layer.Depth}.")
+            {
+                LayerId = layer.Id,
+                CellX = x,
+                CellZ = z,
+                Width = layer.Width,
+                Depth = layer.Depth,
+                FieldPath = x < 0 ? "X" : z < 0 ? "Z" : (long)x + width > layer.Width ? "X+Width" : "Z+Depth",
+                ActualInteger = x < 0 ? x : z < 0 ? z : (long)x + width > layer.Width ? (long)x + width : (long)z + depth,
+                MinimumInteger = 0,
+                MaximumInteger = x < 0 ? (width <= layer.Width ? layer.Width - (long)width : null)
+                    : z < 0 ? (depth <= layer.Depth ? layer.Depth - (long)depth : null)
+                    : (long)x + width > layer.Width ? layer.Width : layer.Depth
+            };
         int hiX = x + width - 1, hiZ = z + depth - 1;
         RequireBudget(layer, x, z, hiX, hiZ);
         return (hiX, hiZ);
@@ -99,11 +147,13 @@ public static class MapFoliageBrush
     {
         long addresses = ((long)hiX - loX + 1) * ((long)hiZ - loZ + 1);
         if (addresses > MaxAddresses)
-            throw new MapDocumentException($"Foliage layer '{layer.Id}': one raster edit visits {addresses} addresses, more than {MaxAddresses}.");
+            throw new MapDocumentException(MapDocumentRefusal.WorkCapacityExceeded, $"Foliage layer '{layer.Id}': one raster edit visits {addresses} addresses, more than {MaxAddresses}.")
+            { LayerId = layer.Id, Budget = "addresses per raster edit", ActualCount = addresses, Limit = MaxAddresses };
         long chunks = ((long)hiX / MapFoliageChunk.Size - loX / MapFoliageChunk.Size + 1) *
             ((long)hiZ / MapFoliageChunk.Size - loZ / MapFoliageChunk.Size + 1);
         if (chunks > MaxChunks)
-            throw new MapDocumentException($"Foliage layer '{layer.Id}': one raster edit reaches {chunks} chunks, more than {MaxChunks}.");
+            throw new MapDocumentException(MapDocumentRefusal.WorkCapacityExceeded, $"Foliage layer '{layer.Id}': one raster edit reaches {chunks} chunks, more than {MaxChunks}.")
+            { LayerId = layer.Id, Budget = "chunks per raster edit", ActualCount = chunks, Limit = MaxChunks };
     }
 
     /// <summary>Rewrites the inclusive sample box chunk by chunk. A chunk whose part of the box <paramref name="reaches"/>
@@ -128,7 +178,8 @@ public static class MapFoliageBrush
                 if (reaches is not null && !reaches(x0, z0, x1, z1)) continue;
                 byte[] bytes;
                 if (resident.TryGetValue(key, out MapFoliageChunk? stored)) bytes = stored.CopyDensity();
-                else if (advertised.Contains(key)) throw new MapDocumentException($"Foliage layer '{layer.Id}' chunk {key} is unavailable.");
+                else if (advertised.Contains(key)) throw new MapDocumentException(MapDocumentRefusal.FoliageChunkUnavailable, $"Foliage layer '{layer.Id}' chunk {key} is unavailable.")
+                { LayerId = layer.Id, FoliageChunk = key };
                 else bytes = new byte[MapFoliageChunk.ByteLength];
                 bool changed = false;
                 for (int z = z0; z <= z1; z++)

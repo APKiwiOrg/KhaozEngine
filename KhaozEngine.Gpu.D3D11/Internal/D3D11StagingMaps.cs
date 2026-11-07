@@ -52,11 +52,16 @@ namespace KhaozEngine.Gpu.D3D11.Internal
 
             if (_open.TryGetValue(resource, out GpuMapMode existing))
             {
-                throw new InvalidOperationException(
+                throw new GpuStagingMapStateException(GpuStagingMapRefusal.AlreadyMapped,
                     $"This staging resource is already mapped for {existing} on the native Direct3D 11 backend, so "
                     + $"a second map for {mode} would fail in the runtime and return a null pointer. Unmap the "
                     + "first mapping before taking another. A readback is Map, read, Unmap, and holding one open "
-                    + "across a frame also blocks every copy into it.");
+                    + "across a frame also blocks every copy into it.")
+                {
+                    Backend = GpuBackendKind.Direct3D11Native,
+                    ExistingMode = existing,
+                    RequestedMode = mode,
+                };
             }
 
             _open.Add(resource, mode);
@@ -72,10 +77,13 @@ namespace KhaozEngine.Gpu.D3D11.Internal
 
             if (_open.Remove(resource)) return;
 
-            throw new InvalidOperationException(
+            throw new GpuStagingMapStateException(GpuStagingMapRefusal.NotMapped,
                 "This staging resource is not mapped on the native Direct3D 11 backend, so there is nothing to "
                 + "unmap. Direct3D 11 ignores the call silently, which is how an unbalanced pair turns into a "
-                + "readback that returns the previous contents rather than into a failure anyone sees.");
+                + "readback that returns the previous contents rather than into a failure anyone sees.")
+            {
+                Backend = GpuBackendKind.Direct3D11Native,
+            };
         }
 
         /// <summary>
@@ -161,14 +169,19 @@ namespace KhaozEngine.Gpu.D3D11.Internal
 
             bool lost = loss?.Check(hresult, site) ?? false;
 
-            throw new InvalidOperationException(
+            throw new D3D11MapResultException(D3D11MapResultRefusal.MapFailed,
                 $"Mapping a resource on the native Direct3D 11 backend failed at {site} with "
                 + $"{D3D11DeviceLossCodes.Token(hresult)}. "
                 + (lost
                     ? "The device has been LOST, and the reason is in this session's telemetry header. Nothing "
                     + "further on this device will succeed."
                     : "The mapped pointer a failed map hands back is null, so this throws rather than letting a "
-                    + "reader walk it and report an empty readback."));
+                    + "reader walk it and report an empty readback."), hresult)
+            {
+                Site = site,
+                ResultToken = D3D11DeviceLossCodes.Token(hresult),
+                DeviceLost = lost,
+            };
         }
     }
 }

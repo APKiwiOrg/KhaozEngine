@@ -1,6 +1,7 @@
 using System;
 using System.Linq;
 using KhaozEngine.MapDoc;
+using KhaozEngine.MapDoc.Assets;
 using KhaozEngine.MapDoc.Prefabs;
 using Xunit;
 
@@ -28,12 +29,21 @@ public sealed class MapPrefabClosureTests
         Assert.Throws<MapDocumentException>(() => PrefabFixtures.Create("wrong-" + variant));
 
     [Theory]
-    [InlineData("pool-material-mesh", "Prefab leaf requires Material resource 'mesh'")]
-    [InlineData("pool-material-undeclared", "Prefab payload resource edge 'pool-material' is not a declared dependency")]
-    public void PoolMaterial_RefusesInThePrefabClosurePath(string variant, string message)
+    [InlineData("pool-material-mesh", MapDocumentRefusal.ReferenceKindMismatch, "mesh")]
+    [InlineData("pool-material-undeclared", MapDocumentRefusal.ReferenceMissing, "pool-material")]
+    public void PoolMaterial_RefusesInThePrefabClosurePath(string variant, MapDocumentRefusal reason, string resourceId)
     {
         var error = Assert.Throws<MapDocumentException>(() => PrefabFixtures.Create(variant));
-        Assert.Contains(message, error.Message);
+        Assert.Equal(reason, error.Reason);
+        Assert.Equal(resourceId, error.ResourceId);
+        if (reason == MapDocumentRefusal.ReferenceKindMismatch)
+        {
+            Assert.Equal(MapResourceKind.Material, error.ExpectedResourceKind);
+            Assert.Equal(MapResourceKind.Mesh, error.ActualResourceKind);
+            Assert.Equal(new MapPrefabChildKey(MapPrefabChildKind.WaterBody, "pool-water"), error.Child);
+        }
+        else Assert.Equal("prefab dependency", error.SubjectKind);
+        Assert.NotEmpty(PrefabFixtures.Create("pool").Assets.GetPrefab("hut").Children);
     }
 
     [Fact]

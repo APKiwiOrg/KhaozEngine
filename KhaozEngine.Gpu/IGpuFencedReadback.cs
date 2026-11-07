@@ -21,10 +21,12 @@ namespace KhaozEngine.Gpu
         /// <param name="fence">A fence from this device, handed to the submission that wrote
         /// <paramref name="staging"/>, or to a later one on the same device.</param>
         /// <returns>The mapped view, exactly as a read map returns it.</returns>
-        /// <exception cref="System.InvalidOperationException"><paramref name="fence"/> has not signaled. Nothing is
-        /// mapped.</exception>
+        /// <exception cref="GpuStagingMapStateException"><paramref name="fence"/> has not signaled.
+        /// <see cref="GpuStagingMapRefusal.CompletionNotSignaled"/> identifies the refusal and nothing is mapped.</exception>
         /// <exception cref="System.ArgumentException"><paramref name="staging"/> is not a staging texture of this
         /// device, or <paramref name="fence"/> belongs to another device.</exception>
+        /// <exception cref="GpuStagingMapArgumentException"><paramref name="staging"/> lacks staging usage.
+        /// <see cref="GpuStagingMapRefusal.StagingUsageRequired"/> identifies the refusal.</exception>
         MappedData MapForRead(IGpuTexture staging, IGpuFence fence);
     }
 }

@@ -121,8 +121,8 @@ public class NavBakeIdentityTests
         List<ParameterInfo> fields = [.. constructor.GetParameters()];
         int stored = typeof(PhysicsNavBakeOptions).GetFields(InstanceFields).Length;
         Assert.True(fields.Count == 13, $"PhysicsNavBakeOptions has {fields.Count} constructor fields. {OptionsGrow}");
-        Assert.True(stored == 14, $"PhysicsNavBakeOptions stores {stored} instance fields. {OptionsGrow}");
-        Assert.True(fields.Select(p => p.Name!).Append(nameof(PhysicsNavBakeOptions.SampleWater))
+        Assert.True(stored == 15, $"PhysicsNavBakeOptions stores {stored} instance fields. {OptionsGrow}");
+        Assert.True(fields.Select(p => p.Name!).Append(nameof(PhysicsNavBakeOptions.SampleWater)).Append(nameof(PhysicsNavBakeOptions.CaptureTerrainDescentEvidence))
             .SequenceEqual(NavBakeIdentity.OptionFieldNames),
             $"PhysicsNavBakeOptions field order differs from the encoder table. {OptionsGrow}");
 
@@ -139,6 +139,9 @@ public class NavBakeIdentityTests
         }
         byte[] wet = Encode(Golden() with { Options = options with { SampleWater = true } });
         Assert.False(reference.AsSpan().SequenceEqual(wet), $"Option SampleWater does not change the identity. {OptionsGrow}");
+        byte[] terrain = Encode(Golden() with { Options = options with { CaptureTerrainDescentEvidence = true } });
+        Assert.False(reference.AsSpan().SequenceEqual(terrain));
+        Assert.True(NavBakeIdentity.TryDecode(terrain, out _, out _, NavBakeIdentity.TerrainFormatVersion));
     }
 
     [Theory]

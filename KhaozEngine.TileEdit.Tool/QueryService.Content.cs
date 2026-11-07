@@ -30,9 +30,12 @@ public sealed partial class QueryService
     }
 
     /// <summary>One object by id.</summary>
-    /// <exception cref="TileWorldException">No object carries that id.</exception>
+    /// <exception cref="TileWorldException"><see cref="TileWorldRefusal.ObjectMissing"/> carries
+    /// <see cref="TileWorldException.ObjectId"/> when no object has that id.</exception>
     public ObjectInfo ObjectGet(long id) => session.Read(e =>
-        Describe(e, e.Document.FindObject(id) ?? throw new TileWorldException($"object {id} does not exist")));
+        Describe(e, e.Document.FindObject(id) ?? throw new TileWorldException(TileWorldRefusal.ObjectMissing,
+            $"object {id} does not exist")
+        { ObjectId = id }));
 
     /// <summary>Every object matching an archetype id, a tag, or both. Both null lists the whole world, which is
     /// what an author wants after a scatter.</summary>
@@ -86,12 +89,17 @@ public sealed partial class QueryService
 
     /// <summary>The prefab files in a directory, by name. A relative directory resolves against the open world's
     /// directory, the same rule every other path argument follows.</summary>
-    /// <exception cref="TileWorldException">The directory does not exist.</exception>
+    /// <exception cref="TileWorldException">The directory does not exist, carrying
+    /// <see cref="TileWorldRefusal.PrefabDirectoryMissing"/> and its resolved path in
+    /// <see cref="TileWorldException.SourceName"/>. A closed session carries
+    /// <see cref="TileWorldRefusal.SessionNotOpen"/> instead.</exception>
     public IReadOnlyList<PrefabFileInfo> PrefabList(string directory)
     {
         string resolved = session.ResolvePath(directory);
         if (!Directory.Exists(resolved))
-            throw new TileWorldException($"{resolved}: no such directory, there are no prefabs to list");
+            throw new TileWorldException(TileWorldRefusal.PrefabDirectoryMissing,
+                $"{resolved}: no such directory, there are no prefabs to list")
+            { SourceName = resolved };
         return Directory.EnumerateFiles(resolved, "*" + PrefabExtension)
             .OrderBy(p => p, StringComparer.Ordinal)
             .Select(p => new PrefabFileInfo(System.IO.Path.GetFileNameWithoutExtension(p), p, new FileInfo(p).Length))

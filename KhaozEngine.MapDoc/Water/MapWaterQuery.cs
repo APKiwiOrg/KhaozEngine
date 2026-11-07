@@ -176,8 +176,8 @@ public sealed class MapWaterQuery
         }
         catch (MapDocumentException error)
         {
-            MapWaterStatus status = error.Message.Contains("not representable", StringComparison.Ordinal) ? MapWaterStatus.NotRepresentable
-                : error.Message.Contains("domain work exceeds", StringComparison.Ordinal) ? MapWaterStatus.CapacityExceeded
+            MapWaterStatus status = MapGeometryRefusals.Representability(error, arithmetic: false) ? MapWaterStatus.NotRepresentable
+                : error is { Reason: MapDocumentRefusal.WorkCapacityExceeded, Budget: "WaterDomainPairChecks" } ? MapWaterStatus.CapacityExceeded
                 : MapWaterStatus.Invalid;
             return new(body, null, default, status, error.Message);
         }

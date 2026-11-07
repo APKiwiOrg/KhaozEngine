@@ -46,10 +46,11 @@ public sealed partial class GridPathPlanner
     bool Blocks(int layer, float agentRadius, int x, int z)
         => _traversal is null
             ? Blocks(_space.Layers[layer], agentRadius, x, z)
-            : Blocks(_space.Layers[layer], 0f, x, z) || !_traversal.IsNodePassable(layer, x, z);
+            : Blocks(_space.Layers[layer], 0f, x, z) || !_traversal.IsNodePassable(layer, x, z) || !AllowsNode(layer, x, z);
 
     bool CanTraverse(int fromLayer, int fromX, int fromZ, int toLayer, int toX, int toZ)
-        => _traversal is null || _traversal.CanTraverse(fromLayer, fromX, fromZ, toLayer, toX, toZ);
+        => (_traversal is null || _traversal.CanTraverse(fromLayer, fromX, fromZ, toLayer, toX, toZ)) &&
+            AllowsEdge(fromLayer, fromX, fromZ, toLayer, toX, toZ);
 
     Vector2? SnapTraversal(int layer, int x, int z, out bool snappedToOwnCell)
     {
@@ -62,15 +63,14 @@ public sealed partial class GridPathPlanner
         List<int> chain = scratch.Chain;
         List<NavWaypoint> waypoints = scratch.Waypoints;
         waypoints.Clear();
-        int first = chain.Count > 1 && IsGridStep(Decode(chain[0]), Decode(chain[1])) &&
-            !_hopEdges.Contains((chain[0], chain[1])) ? 1 : 0;
+        int first = chain.Count > 1 && scratch.Incoming(chain[1]) is null ? 1 : 0;
         for (int i = first; i < chain.Count; i++)
         {
             (int layer, int x, int z) = Decode(chain[i]);
-            bool hop = i > 0 && _hopEdges.Contains((chain[i - 1], chain[i]));
+            NavWaypointKind kind = i > 0 ? WaypointKind(scratch.Incoming(chain[i])) : NavWaypointKind.Walk;
             waypoints.Add(new NavWaypoint(_space.Layers[layer].CellCenter(x, z), layer)
             {
-                Kind = hop ? NavWaypointKind.Hop : NavWaypointKind.Walk,
+                Kind = kind,
             });
         }
         return new NavPath(reachedGoal ? NavPathStatus.Complete : NavPathStatus.Partial, waypoints.ToArray());

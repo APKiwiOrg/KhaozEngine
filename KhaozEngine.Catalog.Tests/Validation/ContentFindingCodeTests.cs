@@ -6,7 +6,7 @@ using static KhaozEngine.Tests.Catalog.Validation.ContentValidationFixtures;
 namespace KhaozEngine.Tests.Catalog.Validation;
 
 /// <summary>
-/// One test per ISSUED finding code, spec 5.2's table read top to bottom. Each builds the smallest
+/// One case per ISSUED finding code, spec 5.2's table read top to bottom. Each builds the smallest
 /// candidate that triggers exactly that code, in memory, with no store and no file, and asserts the code,
 /// the type and the id.
 /// <para>
@@ -38,29 +38,33 @@ public class ContentFindingCodeTests
         Assert.True(report.IsValid, Describe(report));
     }
 
-    [Fact]
-    public void KEC0001_fires_on_a_key_outside_the_character_set()
+    [Theory]
+    [InlineData("KEC0001", 7, "Sword")]
+    [InlineData("KEC0009", 0, "sword")]
+    public void InvalidItemIdentityReportsItsFindingCodeAndId(string code, int id, string key)
     {
         ContentTypeRegistry registry = EngineRegistry();
 
-        ContentValidationReport report = Validate(Snapshot(registry, Item(7, "Sword")), registry);
+        ContentValidationReport report = Validate(Snapshot(registry, Item(id, key)), registry);
 
-        ContentFinding finding = Single(report, "KEC0001");
+        ContentFinding finding = Single(report, code);
         Assert.Equal(ItemType, finding.Type);
-        Assert.Equal(7, finding.Id);
+        Assert.Equal(id, finding.Id);
     }
 
-    [Fact]
-    public void KEC0002_fires_on_a_key_that_is_not_unique_within_its_type()
+    [Theory]
+    [InlineData("KEC0002", 8, "sword")]
+    [InlineData("KEC0036", 7, "sabre")]
+    public void ConflictingItemIdentitiesReportTheirFindingCodeAndId(string code, int secondId, string secondKey)
     {
         ContentTypeRegistry registry = EngineRegistry();
-        ContentSnapshot candidate = Snapshot(registry, Item(7, "sword"), Item(8, "sword"));
+        ContentSnapshot candidate = Snapshot(registry, Item(7, "sword"), Item(secondId, secondKey));
 
         ContentValidationReport report = Validate(candidate, registry);
 
-        ContentFinding finding = Single(report, "KEC0002");
+        ContentFinding finding = Single(report, code);
         Assert.Equal(ItemType, finding.Type);
-        Assert.Equal(8, finding.Id);
+        Assert.Equal(secondId, finding.Id);
     }
 
     [Fact]
@@ -196,40 +200,21 @@ public class ContentFindingCodeTests
         Assert.Equal(7, finding.Id);
     }
 
-    [Fact]
-    public void KEC0009_fires_on_a_definition_id_of_zero()
+    [Theory]
+    [InlineData("KEC0010")] // A snapshot carries no family claim.
+    [InlineData("KEC0011")] // A snapshot carries no family blocks.
+    [InlineData("KEC0012")]
+    [InlineData("KEC0032")] // Every parent id in the clean candidate is zero.
+    [InlineData("KEC0033")]
+    [InlineData("KEC0034")]
+    [InlineData("KEC0035")]
+    [InlineData("KEC0037")] // A snapshot carries no family blocks.
+    [InlineData("KEC0041")] // The fork edit emits this, not the snapshot sweep.
+    public void CodesWithNoProducerForACleanSnapshotStayQuiet(string code)
     {
         ContentTypeRegistry registry = EngineRegistry();
 
-        ContentValidationReport report = Validate(Snapshot(registry, Item(0, "sword")), registry);
-
-        ContentFinding finding = Single(report, "KEC0009");
-        Assert.Equal(ItemType, finding.Type);
-        Assert.Equal(0, finding.Id);
-    }
-
-    [Fact]
-    public void KEC0010_is_quiet_because_a_snapshot_carries_no_family_claim()
-    {
-        ContentTypeRegistry registry = EngineRegistry();
-
-        AssertNone(Validate(CleanCandidate(registry), registry), "KEC0010");
-    }
-
-    [Fact]
-    public void KEC0011_is_quiet_because_a_snapshot_carries_no_family_blocks()
-    {
-        ContentTypeRegistry registry = EngineRegistry();
-
-        AssertNone(Validate(CleanCandidate(registry), registry), "KEC0011");
-    }
-
-    [Fact]
-    public void KEC0012_is_quiet_because_a_snapshot_carries_no_family_blocks()
-    {
-        ContentTypeRegistry registry = EngineRegistry();
-
-        AssertNone(Validate(CleanCandidate(registry), registry), "KEC0012");
+        AssertNone(Validate(CleanCandidate(registry), registry), code);
     }
 
     [Fact]
@@ -247,25 +232,13 @@ public class ContentFindingCodeTests
         AssertNone(report, "KEC0013");
     }
 
-    [Fact]
-    public void KEC0014_accepts_the_per_field_server_only_override_on_a_client_type()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void KEC0014_accepts_a_server_only_field_carrying_a_value(bool required)
     {
         ContentFieldSchema schema = Schema(
-            new ContentFieldEntry("secret", ContentFieldKind.Int, null, ContentVisibility.ServerOnly, false));
-        ContentTypeRegistry registry = GameRegistry(schema);
-        ContentRow row = GameRow(5, "thing", ContentFieldValue.OfNumber(ContentFieldKind.Int, 3));
-
-        ContentValidationReport report = Validate(Snapshot(registry, row), registry);
-
-        AssertNone(report, "KEC0014");
-        Assert.True(report.IsValid, Describe(report));
-    }
-
-    [Fact]
-    public void KEC0014_accepts_a_required_server_only_field_carrying_a_value()
-    {
-        ContentFieldSchema schema = Schema(
-            new ContentFieldEntry("secret", ContentFieldKind.Int, null, ContentVisibility.ServerOnly, true));
+            new ContentFieldEntry("secret", ContentFieldKind.Int, null, ContentVisibility.ServerOnly, required));
         ContentTypeRegistry registry = GameRegistry(schema);
         ContentRow row = GameRow(5, "thing", ContentFieldValue.OfNumber(ContentFieldKind.Int, 3));
 
@@ -297,32 +270,20 @@ public class ContentFindingCodeTests
         Assert.Equal(12, finding.Id);
     }
 
-    [Fact]
-    public void KEC0016_fires_on_a_rule_whose_source_never_existed()
+    [Theory]
+    [InlineData("KEC0016", 999, 7)]
+    [InlineData("KEC0017", 7, 999)]
+    public void MissingRemapEndpointsReportTheirFindingCodeAndSourceId(string code, int source, int destination)
     {
         ContentTypeRegistry registry = EngineRegistry();
         ContentSnapshot candidate = Snapshot(registry, Item(7, "sword"));
-        RemapRule[] rules = [new RemapRule(1, 1, ItemType, RemapRuleKind.ReplacedBy, 999, 7, default)];
+        RemapRule[] rules = [new RemapRule(1, 1, ItemType, RemapRuleKind.ReplacedBy, source, destination, default)];
 
         ContentValidationReport report = Validate(candidate, registry, rules: rules);
 
-        ContentFinding finding = Single(report, "KEC0016");
+        ContentFinding finding = Single(report, code);
         Assert.Equal(ItemType, finding.Type);
-        Assert.Equal(999, finding.Id);
-    }
-
-    [Fact]
-    public void KEC0017_fires_on_a_rule_whose_destination_is_not_live()
-    {
-        ContentTypeRegistry registry = EngineRegistry();
-        ContentSnapshot candidate = Snapshot(registry, Item(7, "sword"));
-        RemapRule[] rules = [new RemapRule(1, 1, ItemType, RemapRuleKind.ReplacedBy, 7, 999, default)];
-
-        ContentValidationReport report = Validate(candidate, registry, rules: rules);
-
-        ContentFinding finding = Single(report, "KEC0017");
-        Assert.Equal(ItemType, finding.Type);
-        Assert.Equal(7, finding.Id);
+        Assert.Equal(source, finding.Id);
     }
 
     [Fact]
@@ -596,59 +557,6 @@ public class ContentFindingCodeTests
     }
 
     [Fact]
-    public void KEC0032_is_quiet_while_every_parent_id_is_zero()
-    {
-        ContentTypeRegistry registry = EngineRegistry();
-
-        AssertNone(Validate(CleanCandidate(registry), registry), "KEC0032");
-    }
-
-    [Fact]
-    public void KEC0033_is_quiet_while_every_parent_id_is_zero()
-    {
-        ContentTypeRegistry registry = EngineRegistry();
-
-        AssertNone(Validate(CleanCandidate(registry), registry), "KEC0033");
-    }
-
-    [Fact]
-    public void KEC0034_is_quiet_while_every_parent_id_is_zero()
-    {
-        ContentTypeRegistry registry = EngineRegistry();
-
-        AssertNone(Validate(CleanCandidate(registry), registry), "KEC0034");
-    }
-
-    [Fact]
-    public void KEC0035_is_quiet_while_every_parent_id_is_zero()
-    {
-        ContentTypeRegistry registry = EngineRegistry();
-
-        AssertNone(Validate(CleanCandidate(registry), registry), "KEC0035");
-    }
-
-    [Fact]
-    public void KEC0036_fires_on_two_live_rows_sharing_a_definition_id()
-    {
-        ContentTypeRegistry registry = EngineRegistry();
-        ContentSnapshot candidate = Snapshot(registry, Item(7, "sword"), Item(7, "sabre"));
-
-        ContentValidationReport report = Validate(candidate, registry);
-
-        ContentFinding finding = Single(report, "KEC0036");
-        Assert.Equal(ItemType, finding.Type);
-        Assert.Equal(7, finding.Id);
-    }
-
-    [Fact]
-    public void KEC0037_is_quiet_because_a_snapshot_carries_no_family_blocks()
-    {
-        ContentTypeRegistry registry = EngineRegistry();
-
-        AssertNone(Validate(CleanCandidate(registry), registry), "KEC0037");
-    }
-
-    [Fact]
     public void KEC0038_fires_on_a_chunk_over_the_uncompressed_ceiling()
     {
         const int RowBytes = 4_200_000;
@@ -699,14 +607,6 @@ public class ContentFindingCodeTests
         Assert.Equal(5, finding.Id);
         Assert.StartsWith(GameTypeKey, finding.Message, StringComparison.Ordinal);
         Assert.Contains("a rule of the game's own", finding.Message, StringComparison.Ordinal);
-    }
-
-    [Fact]
-    public void KEC0041_is_quiet_because_the_fork_path_emits_it_rather_than_the_sweep()
-    {
-        ContentTypeRegistry registry = EngineRegistry();
-
-        AssertNone(Validate(CleanCandidate(registry), registry), "KEC0041");
     }
 
     [Fact]

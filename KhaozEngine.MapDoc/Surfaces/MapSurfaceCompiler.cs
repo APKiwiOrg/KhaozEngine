@@ -39,16 +39,19 @@ public static class MapSurfaceCompiler
         try
         {
             long count = CountFaces(validated, cells, logical);
-            if (DemandDiagnostics.Check(validated, "MapSurfaceCompiler.MaxFacesPerPatch.1", "MaxFacesPerPatch", 0, count, maxFaces, count > maxFaces, CapacityDemandLifetime.Cumulative)) throw new MapDocumentException($"compiled patch exceeds face budget {maxFaces}");
+            if (DemandDiagnostics.Check(validated, "MapSurfaceCompiler.MaxFacesPerPatch.1", "MaxFacesPerPatch", 0, count, maxFaces, count > maxFaces, CapacityDemandLifetime.Cumulative)) throw new MapDocumentException(MapDocumentRefusal.WorkCapacityExceeded, $"compiled patch exceeds face budget {maxFaces}")
+            { Patch = patch.Key, SurfaceId = surface.Id, Budget = "MaxFacesPerPatch", ActualCount = count, Limit = maxFaces };
             if (surface.Role == MapSurfaceRole.PaintOverride)
-                throw new MapDocumentException("paint override has no physical faces. Use ApplyPaintOverride.");
+                throw new MapDocumentException(MapDocumentRefusal.SurfacePaintPhysicalCompileUnsupported, "paint override has no physical faces. Use ApplyPaintOverride.")
+                { Patch = patch.Key, SurfaceId = surface.Id };
             var result = CompileCore(surface, patch, cells, (int)count, logical);
             result.PreparationOwnership = preparation?.Complete(result.InventoryBytes);
             return result;
         }
         catch (Exception error) when (error is MapExactOverflowException or OverflowException)
         {
-            throw new MapDocumentException("surface geometry is not representable", error);
+            throw new MapDocumentException(MapDocumentRefusal.GeometryNotRepresentable, "surface geometry is not representable", error)
+            { Patch = patch.Key, SurfaceId = surface.Id, Operation = nameof(Compile) };
         }
     }
 
@@ -158,8 +161,7 @@ public static class MapSurfaceCompiler
             var id = new MapVertexId(surface.Id, vertex.Address);
             if (indices.TryGetValue(id, out int index))
             {
-                if (exact[index] != vertex.Exact)
-                    throw new MapDocumentException("inconsistent exact height for shared surface vertex");
+                MapSurfaceGeometryAdmission.RequireSharedVertexHeight(exact[index], vertex, patch.Key);
                 return index;
             }
             index = vertices.Count;
@@ -178,7 +180,8 @@ public static class MapSurfaceCompiler
             if (ceiling) (ib, ic) = (ic, ib);
             Vector3 normal = Vector3.Normalize(Vector3.Cross(offsets[ib] - offsets[ia], offsets[ic] - offsets[ia]));
             if (!float.IsFinite(normal.X) || !float.IsFinite(normal.Y) || !float.IsFinite(normal.Z))
-                throw new MapDocumentException("surface submission normal is not representable");
+                throw new MapDocumentException(MapDocumentRefusal.GeometryNotRepresentable, "surface submission normal is not representable")
+                { Patch = patch.Key, SurfaceId = surface.Id, SlotCell = primitive, Operation = nameof(Compile) };
             var key = new MapFaceKey(surface.Id, patch.Key, primitive, parent, child, MapSide.Front);
             faces.Add(new(key, ceiling ? MapFaceRole.Ceiling : MapFaceRole.SupportFloor, ia, ib, ic, normal));
             paint.Add(new(key, cell.Underlay, cell.Overlay, overlay && cell.Overlay != 0,
@@ -232,22 +235,37 @@ public static class MapSurfaceCompiler
     {
         ArgumentNullException.ThrowIfNull(patch);
         if (work is not null) work.PatchValidations++;
-        IReadOnlyList<string> findings = patch.ValidateLocal();
-        if (findings.Count != 0) throw new MapDocumentException(findings[0]);
+        IReadOnlyList<MapDocumentFinding> findings = patch.ValidateLocalFindings();
+        if (findings.Count != 0) throw MapSurfacePatchCodec.LocalRefusal(findings);
         ArgumentNullException.ThrowIfNull(surface);
         MapSurfaceJson.RequirePaintPriority(surface);
         if (surface.Id != patch.Key.SurfaceId || surface.Frame is null ||
             !Enum.IsDefined(surface.Role) || !Enum.IsDefined(surface.PresencePolicy))
-            throw new MapDocumentException("invalid surface metadata or patch surface id");
+            throw new MapDocumentException(surface.Id != patch.Key.SurfaceId ? MapDocumentRefusal.AuthoredValueMismatch
+                : surface.Frame is null ? MapDocumentRefusal.SchemaValueRequired : MapDocumentRefusal.SchemaEnumUnsupported,
+                "invalid surface metadata or patch surface id")
+            {
+                SurfaceId = surface.Id,
+                Patch = patch.Key,
+                ResolutionStatus = MapResolveStatus.Invalid,
+                FieldPath = surface.Id != patch.Key.SurfaceId ? "Key.SurfaceId" : surface.Frame is null ? "Frame"
+                    : !Enum.IsDefined(surface.Role) ? "Role" : "PresencePolicy",
+                EnumType = surface.Id != patch.Key.SurfaceId || surface.Frame is null ? null
+                    : !Enum.IsDefined(surface.Role) ? typeof(MapSurfaceRole) : typeof(MapPresencePolicy),
+                ActualInteger = surface.Id != patch.Key.SurfaceId || surface.Frame is null ? null
+                    : !Enum.IsDefined(surface.Role) ? (byte)surface.Role : (byte)surface.PresencePolicy,
+            };
         if (surface.PresencePolicy == MapPresencePolicy.LegacyTileWorld &&
             surface.Frame != MapLatticeFrame.ImportedMetreCentimetre)
-            throw new MapDocumentException("LegacyTileWorld requires ImportedMetreCentimetre");
+            throw new MapDocumentException(MapDocumentRefusal.SurfaceLegacyRecipeRequired, "LegacyTileWorld requires ImportedMetreCentimetre")
+            { SurfaceId = surface.Id, Patch = patch.Key, FieldPath = "Frame" };
         for (int z = 0; z < patch.Depth; z++)
             for (int x = 0; x < patch.Width; x++)
             {
                 MapSurfaceCell cell = patch.Cells[z * patch.Width + x];
                 if (surface.PresencePolicy == MapPresencePolicy.Native && (cell.Flags & MapCellFlags.NoDraw) != 0)
-                    throw new MapDocumentException("Native surfaces refuse NoDraw");
+                    throw new MapDocumentException(MapDocumentRefusal.SurfaceNativeNoDrawUnsupported, "Native surfaces refuse NoDraw")
+                    { SurfaceId = surface.Id, Patch = patch.Key, SlotCell = SlotCell(patch, x, z), FieldPath = $"Cells[{z * patch.Width + x}].Flags" };
                 _ = MapSurfaceTopology.SplitSwNe(patch.Height(x, z), patch.Height(x + 1, z),
                     patch.Height(x, z + 1), patch.Height(x + 1, z + 1), cell.Cut, cell.Rotation, cell.Topology);
             }
@@ -279,7 +297,8 @@ public static class MapSurfaceCompiler
         }
         catch (MapExactOverflowException error)
         {
-            throw new MapDocumentException("surface height is not representable", error);
+            throw new MapDocumentException(MapDocumentRefusal.GeometryNotRepresentable, "surface height is not representable", error)
+            { SurfaceId = surface.Id, Patch = patch.Key, Operation = nameof(ExactHeight) };
         }
     }
 

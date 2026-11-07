@@ -47,8 +47,17 @@ public class MapPrefabExtractionTests
     public void MaterializedExtraction_RefusesMissingLiveChild()
     {
         var f = PrefabFixtures.MaterializedExtraction();
-        Assert.Throws<MapDocumentException>(() => MapPrefabExtraction.Extract(f.Document, f.Assets,
+        string before = MapDocumentFile.SaveText(f.Document);
+        var row = Assert.Single(f.Document.Prefabs!.Attachments, r => r.Kind == MapPrefabAttachmentKind.Light);
+        var child = Assert.Single(row.Children);
+        var error = Assert.Throws<MapDocumentException>(() => MapPrefabExtraction.Extract(f.Document, f.Assets,
             f.Selection.Where(r => r.Kind != MapPrefabChildKind.Light).ToArray(), f.Origin, "partial"));
+        Assert.Equal(MapDocumentRefusal.PrefabExtractionAttachmentIncomplete, error.Reason);
+        Assert.Equal(row.PlacementId, error.PlacementId);
+        Assert.Equal(child.LocalChild, error.Child);
+        Assert.Equal(child.WorldId, error.WorldId);
+        Assert.Equal(before, MapDocumentFile.SaveText(f.Document));
+        Assert.NotEmpty(MapPrefabExtraction.Extract(f.Document, f.Assets, f.Selection, f.Origin, "partial").Children);
     }
 
     [Fact]
@@ -102,8 +111,16 @@ public class MapPrefabExtractionTests
         var unpack = MapPrefabEdits.Prepare(f.Document, f.Assets, new MapUnpackPrefab("a")).After;
         var selected = unpack.Prefabs!.Transfers.Select(t => PrefabFixtures.World(t.Binding.Child.Kind, t.Binding.WorldId)).ToArray();
         foreach (string missing in new[] { "a/floor", "a/room", "a/roof" })
-            Assert.Throws<MapDocumentException>(() => MapPrefabExtraction.Extract(unpack, f.Assets,
+        {
+            string before = MapDocumentFile.SaveText(unpack);
+            var error = Assert.Throws<MapDocumentException>(() => MapPrefabExtraction.Extract(unpack, f.Assets,
                 selected.Where(r => r.Id != missing).ToArray(), new(Vector3.Zero, 0, 1), "partial"));
+            Assert.Equal(MapDocumentRefusal.PrefabExtractionNotLossless, error.Reason);
+            Assert.Equal(missing, error.EntityId);
+            Assert.Equal(selected.Single(r => r.Id == missing).Kind, error.ChildKind);
+            Assert.Equal(before, MapDocumentFile.SaveText(unpack));
+            Assert.NotEmpty(MapPrefabExtraction.Extract(unpack, f.Assets, selected, new(Vector3.Zero, 0, 1), "partial").Children);
+        }
     }
 
     [Fact]

@@ -30,6 +30,8 @@
     <Compile Include="../KhaozEngine.MapDoc.Tests/AssertFixtures.cs" Link="AssertFixtures.cs" />
     <Compile Include="../KhaozEngine.MapDoc.Compatibility.Tests/LegacyOracleConverter.cs" Link="LegacyOracleConverter.cs" />
     <Compile Include="../KhaozEngine.MapDoc.Compatibility.Tests/LegacyWaterConverter.cs" Link="LegacyWaterConverter.cs" />
+    <Compile Include="../KhaozEngine.MapDoc.Compatibility.Tests/LegacyWaterComparisonException.cs" Link="LegacyWaterComparisonException.cs" />
+    <Compile Include="../KhaozEngine.MapDoc.Compatibility.Tests/LegacyWaterComparisonRefusal.cs" Link="LegacyWaterComparisonRefusal.cs" />
     <Compile Include="../KhaozEngine.MapDoc.Compatibility.Tests/LegacyWaterComparison.cs" Link="LegacyWaterComparison.cs" />
   </ItemGroup>
 </Project>

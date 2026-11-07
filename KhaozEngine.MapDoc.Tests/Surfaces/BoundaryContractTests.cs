@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using System;
 using System.Linq;
 using KhaozEngine.MapDoc;
@@ -131,9 +132,16 @@ public sealed class BoundaryContractTests
     {
         var (view, _, dependent) = UnavailableSource(status);
 
-        string finding = Assert.Single(MapSeamValidator.ValidateCornerDependencies(dependent, view));
+        var typed = new List<MapDocumentFinding>();
+        string finding = Assert.Single(MapSeamValidator.ValidateCornerDependencies(dependent, view, typed));
 
         Assert.Contains("unresolved corner owner patch", finding);
+        var refusal = Assert.Single(typed);
+        Assert.Equal(MapDocumentRefusal.PatchUnavailable, refusal.Reason);
+        Assert.Equal(dependent.Key, refusal.Patch);
+        Assert.Equal(dependent.CornerDependencies[0].Owner.Patch, refusal.ExpectedPatch);
+        var (repaired, _, repairedDependent) = UnavailableSource(status, ownerAvailable: true);
+        Assert.Empty(MapSeamValidator.ValidateCornerDependencies(repairedDependent, repaired));
     }
 
     [Theory]
@@ -172,9 +180,12 @@ public sealed class BoundaryContractTests
         Assert.Equal(new MapExactValue(1, cellUnitDenominator), mismatch);
         if (cellUnitDenominator > 1) Assert.True(mismatch.CompareTo(new(1, 10000)) < 0);
 
-        MapDocumentException error = Assert.Throws<MapDocumentException>(() => MapWallStripCompiler.Compile(strip, l, u));
-
-        Assert.Contains("vertex sequence", error.Message);
+        var matching = u with { Points = u.Points.Select((point, i) => point with { X = l.Points[i].X, Z = l.Points[i].Z }).ToArray() };
+        var error = Assert.Throws<MapDocumentException>(() => MapWallStripCompiler.Compile(strip, l, u));
+        Assert.Equal(MapDocumentRefusal.GeometryVertexSequenceInvalid, error.Reason);
+        Assert.Equal("wall", error.RecordId);
+        Assert.Equal(0, error.Index);
+        Assert.NotEmpty(MapWallStripCompiler.Compile(strip, l, matching).Faces);
     }
 
     [Theory]
@@ -211,10 +222,17 @@ public sealed class BoundaryContractTests
         Assert.Equal(new MapExactValue(1, cellUnitDenominator), mismatch);
         if (cellUnitDenominator > 1) Assert.True(mismatch.CompareTo(new(1, 10000)) < 0);
 
-        var findings = MapSeamValidator.Validate(seam, view);
+        var typed = new List<MapDocumentFinding>();
+        var findings = MapSeamValidator.Validate(seam, view, typed);
 
         Assert.Equal(2, findings.Count(f => f.Contains("position", StringComparison.Ordinal)));
         Assert.DoesNotContain(findings, f => f.Contains("subdivide", StringComparison.Ordinal));
+        Assert.Equal(2, typed.Count(f => f.Reason == MapDocumentRefusal.SurfaceSeamPositionMismatch));
+        Assert.All(typed.Where(f => f.Reason == MapDocumentRefusal.SurfaceSeamPositionMismatch), f => Assert.Equal(seam.Id, f.RecordId));
+        var repaired = seam with { Pairs = originalSeam.Pairs };
+        typed.Clear();
+        Assert.Empty(MapSeamValidator.Validate(repaired, view, typed));
+        Assert.Empty(typed);
     }
 
     [Theory]
@@ -257,7 +275,7 @@ public sealed class BoundaryContractTests
                 }
     }
 
-    static (MapScopedSurfaces View, MapBoundaryChain Chain, MapSurfacePatch Dependent) UnavailableSource(MapPatchStatus status)
+    static (MapScopedSurfaces View, MapBoundaryChain Chain, MapSurfacePatch Dependent) UnavailableSource(MapPatchStatus status, bool ownerAvailable = false)
     {
         var (surface, source) = CompilerFixtures.OneCell(101, 239, 367, 503, CompilerFixtures.Full);
         var chain = new MapBoundaryChain("rim", MapChainKind.SurfaceEdge, source.Key, new[]
@@ -271,6 +289,7 @@ public sealed class BoundaryContractTests
         dependent.CellMinX = 63;
         dependent.CornerDependencies.Add(new(1, 0, new(source.Key, MapLatticeAddress.Corner(0, 0))));
         AssertValid(new[] { surface }, source, dependent);
+        if (ownerAvailable) return (CompleteView(new[] { surface }, source, dependent), chain, dependent);
         MapDocument doc = AcquisitionBoundFixtures.Document();
         doc.Surfaces.Refs.Add(surface);
         doc.Surfaces.Patches.Add(source.Key, source);

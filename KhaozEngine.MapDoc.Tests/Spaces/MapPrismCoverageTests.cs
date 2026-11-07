@@ -23,22 +23,14 @@ public sealed partial class MapPrismCoverageTests
         Assert.Empty(MapSpaceCoverageValidator.Validate(r.CompleteView()));
     }
 
-    [Fact]
-    public void PrismWithNoAuthoredParent_Refuses() => Assert.Contains(
-        MapSpaceCoverageValidator.Validate(PrefabFixtures.Effective(PrefabFixtures.Cave("missing-parent")).CompleteView()),
-        e => e.Contains("parent", StringComparison.Ordinal));
-
-    [Fact]
-    public void OutsideParentFootprint_Refuses() => Assert.Contains(
-        MapSpaceCoverageValidator.Validate(PrefabFixtures.Effective(PrefabFixtures.Cave("outside-parent")).CompleteView()),
-        e => e.Contains("parent footprint", StringComparison.Ordinal));
-
     [Theory]
-    [InlineData("zero-height")]
-    [InlineData("self-intersection")]
-    public void ZeroHeightOrSelfIntersectingPrism_Refuses(string variant) => Assert.Contains(
+    [InlineData("missing-parent", "parent")]
+    [InlineData("outside-parent", "parent footprint")]
+    [InlineData("zero-height", "prism")]
+    [InlineData("self-intersection", "prism")]
+    public void InvalidPrisms_Refuse(string variant, string diagnostic) => Assert.Contains(
         MapSpaceCoverageValidator.Validate(PrefabFixtures.Effective(PrefabFixtures.Cave(variant)).CompleteView()),
-        e => e.Contains("prism", StringComparison.Ordinal));
+        e => e.Contains(diagnostic, StringComparison.Ordinal));
 
     [Fact]
     public void StandaloneStorey_RoundTripsNameAndRoomOwnership()
@@ -62,5 +54,4 @@ public sealed partial class MapPrismCoverageTests
         Assert.Throws<MapDocumentException>(() => MapPrefabFile.Write(asset with
         { Children = asset.Children.Where(c => c.Key.Kind != MapPrefabChildKind.Storey).ToArray() }));
     }
-
 }

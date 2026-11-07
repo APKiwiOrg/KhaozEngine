@@ -28,10 +28,12 @@ internal static class MapRelationApertures
             MapExactXz[] interval = portal.Interval.Select(v => MapEffectiveGeometry.Vertex(view, v)).ToArray();
             if (interval.Length < 2 || !interval.SequenceEqual(bottom.Select(MapSpaceGeometry.Xz)) ||
                 (top is not null && !interval.SequenceEqual(top.Select(MapSpaceGeometry.Xz))))
-                throw new MapDocumentException($"invalid vertex sequence: portal '{portal.Id}'");
+                throw new MapDocumentException(MapDocumentRefusal.GeometryVertexSequenceInvalid, $"invalid vertex sequence: portal '{portal.Id}'")
+                { RecordId = portal.Id, ActualCount = interval.Length, MinimumInteger = interval.Length < 2 ? 2 : null, FieldPath = "Interval" };
             if (top is null && (MapSpaceGeometry.Record<MapSpaceDoc>(view, from).Kind != MapSpaceKind.Exterior ||
                 MapSpaceGeometry.Record<MapSpaceDoc>(view, to).Kind != MapSpaceKind.Exterior))
-                throw new MapDocumentException($"invalid open top: portal '{portal.Id}'");
+                throw new MapDocumentException(MapDocumentRefusal.SpacePortalOpenTopInvalid, $"invalid open top: portal '{portal.Id}'")
+                { RecordId = portal.Id, FieldPath = "BandTop" };
             var columns = new MapApertureColumn[interval.Length];
             double width = 0;
             MapExactValue bottomY = bottom[0].Y;
@@ -43,7 +45,8 @@ internal static class MapRelationApertures
                 if (top is not null)
                 {
                     MapExactValue height = top[i].Y.Subtract(bottom[i].Y);
-                    if (height.Sign <= 0) throw new MapDocumentException($"invalid aperture height: portal '{portal.Id}'");
+                    if (height.Sign <= 0) throw new MapDocumentException(MapDocumentRefusal.SpacePortalHeightInvalid, $"invalid aperture height: portal '{portal.Id}'")
+                    { RecordId = portal.Id, Index = i, ActualNumber = height.ToDouble() };
                     topY = MapSpaceGeometry.Max(topY!.Value, top[i].Y);
                     clear = MapSpaceGeometry.Min(clear!.Value, height);
                 }
@@ -51,7 +54,8 @@ internal static class MapRelationApertures
                 {
                     double dx = bottom[i].X.Subtract(bottom[i - 1].X).ToDouble();
                     double dz = bottom[i].Z.Subtract(bottom[i - 1].Z).ToDouble();
-                    if (dx == 0 && dz == 0) throw new MapDocumentException($"invalid repeated aperture vertex: portal '{portal.Id}'");
+                    if (dx == 0 && dz == 0) throw new MapDocumentException(MapDocumentRefusal.GeometryVertexSequenceInvalid, $"invalid repeated aperture vertex: portal '{portal.Id}'")
+                    { RecordId = portal.Id, Index = i, FieldPath = "Interval" };
                     width += Math.Sqrt(dx * dx + dz * dz);
                 }
             }
@@ -62,12 +66,18 @@ internal static class MapRelationApertures
         else if (record is MapHorizontalOpening opening)
         {
             if (link is null)
-                throw new MapDocumentException($"missing geometry: vertical link for opening '{opening.Id}' {reference.Anchor}");
+                throw new MapDocumentException(MapDocumentRefusal.ReferenceMissing, $"missing geometry: vertical link for opening '{opening.Id}' {reference.Anchor}")
+                { RecordId = opening.Id, Patch = reference.Anchor, SubjectKind = "vertical link" };
             if (!view.TryAcquiredPatch(opening.Patch, out MapSurfacePatch? patch, out MapPatchStatus status) || patch is null)
-                throw new MapDocumentException($"missing geometry: opening '{opening.Id}' patch {opening.Patch} ({status})");
+                throw new MapDocumentException(MapDocumentRefusal.PatchUnavailable, $"missing geometry: opening '{opening.Id}' patch {opening.Patch} ({status})")
+                { RecordId = opening.Id, Patch = opening.Patch, PatchStatus = status };
             MapOpeningPlane plane;
             try { plane = MapOpeningBoundary.Compile(MapSpaceGeometry.Surface(view, opening.Patch.SurfaceId), patch, opening); }
-            catch (MapDocumentException error) { throw new MapDocumentException($"invalid aperture: opening '{opening.Id}' ({error.Message})", error); }
+            catch (MapDocumentException error)
+            {
+                throw error.WithSourceName(null, $"invalid aperture: opening '{opening.Id}' ({error.Message})",
+                resolutionStatus: MapResolveStatus.Invalid);
+            }
             MapExactPoint[] points = plane.ExactTriangles.SelectMany(t => new[] { t.A, t.B, t.C }).ToArray();
             MapExactValue minX = points.Min(p => p.X), maxX = points.Max(p => p.X);
             MapExactValue minZ = points.Min(p => p.Z), maxZ = points.Max(p => p.Z);
@@ -76,9 +86,11 @@ internal static class MapRelationApertures
             summary = new(points.Min(p => p.Y).ToSingle(), points.Max(p => p.Y).ToSingle(), null,
                 MapSpaceGeometry.Max(maxX.Subtract(minX), maxZ.Subtract(minZ)).ToSingle());
         }
-        else throw new MapDocumentException($"invalid aperture record '{reference.Id}'");
+        else throw new MapDocumentException(MapDocumentRefusal.ReferenceKindMismatch, $"invalid aperture record '{reference.Id}'")
+        { RecordId = reference.Id, Patch = reference.Anchor, RecordType = record.GetType(), SubjectKind = "aperture" };
         foreach (MapRecordRef source in provenance)
-            if (!view.Witness.Records.Contains(source)) throw new MapDocumentException($"missing geometry: provenance record '{source.Id}' {source.Anchor}");
+            // Every provenance reference above was resolved from the same immutable acquired facts that own this witness.
+            if (!view.Witness.Records.Contains(source)) throw new InvalidOperationException($"missing geometry: provenance record '{source.Id}' {source.Anchor}");
         return new(reference, geometry.Kind, from, to, link, geometry, summary, MapPortalStateSource.AuthoredOpen);
 
         IReadOnlyList<MapExactPoint> Chain(MapRecordRef source)
@@ -86,7 +98,8 @@ internal static class MapRelationApertures
             MapBoundaryChain chain = MapSpaceGeometry.Record<MapBoundaryChain>(view, source);
             MapChainResolution resolved = MapBoundaryGeometry.ResolveChain(chain, view);
             if (resolved.Status != MapResolveStatus.Resolved)
-                throw new MapDocumentException($"{(resolved.Status == MapResolveStatus.Invalid ? "invalid" : "missing geometry")}: chain '{source.Id}' {source.Anchor} ({resolved.Detail})");
+                throw resolved.Refuse($"{(resolved.Status == MapResolveStatus.Invalid ? "invalid" : "missing geometry")}: chain '{source.Id}' {source.Anchor} ({resolved.Detail})",
+                    source, diagnosticStatus: resolved.Status);
             provenance.Add(source);
             return resolved.Points;
         }
@@ -106,6 +119,7 @@ internal static class MapRelationApertures
         };
         MapExactValue? bottom = null;
         foreach (MapExactValue height in heights) bottom = bottom is { } least ? MapSpaceGeometry.Min(least, height) : height;
-        return bottom ?? throw new MapDocumentException($"missing geometry: aperture '{fact.Record.Id}'");
+        return bottom ?? throw new MapDocumentException(MapDocumentRefusal.PatchUnavailable, $"missing geometry: aperture '{fact.Record.Id}'")
+        { RecordId = fact.Record.Id, Patch = fact.Record.Anchor };
     }
 }

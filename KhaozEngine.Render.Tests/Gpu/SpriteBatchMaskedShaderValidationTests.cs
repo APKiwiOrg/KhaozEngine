@@ -21,9 +21,8 @@ namespace KhaozEngine.Tests.Gpu
         {
             Assert.Equal(new[] { "Tex", "Samp", "Mask", "MaskSamp" },
                 VulkanDescriptorLimitTests.ShippedLayouts["SpriteBatch.maskedTexture"].Elements.Select(e => e.Name));
-            // The complete census includes native bounded water and prepared foliage.
-            Assert.Equal(71, VulkanDescriptorLimitTests.ShippedLayouts.Count);
-            Assert.Equal(81, VulkanDescriptorLimitTests.ShippedPipelines.Count);
+            Assert.Equal(72, VulkanDescriptorLimitTests.ShippedLayouts.Count);
+            Assert.Equal(85, VulkanDescriptorLimitTests.ShippedPipelines.Count);
             Assert.Equal(new[] { "SpriteBatch.maskedTexture", "SpriteBatch.vp" },
                 Assert.Single(VulkanDescriptorLimitTests.ShippedPipelines,
                     p => p.Pipeline == "SpriteBatch masked").Slots);

@@ -13,9 +13,9 @@ public sealed record RouteStallOptions
         TravelMetres = DirectApproachOptions.Metres(travelMetres, nameof(travelMetres));
     }
 
-    /// <summary>Counted intervals across which net horizontal feet displacement must reach the travel.</summary>
+    /// <summary>Counted intervals across which accumulated horizontal feet travel must reach the travel.</summary>
     public int WindowTicks { get; }
 
-    /// <summary>Net horizontal displacement below which a full window latches Blocked.</summary>
+    /// <summary>Accumulated horizontal travel below which a full window latches Blocked.</summary>
     public float TravelMetres { get; }
 }

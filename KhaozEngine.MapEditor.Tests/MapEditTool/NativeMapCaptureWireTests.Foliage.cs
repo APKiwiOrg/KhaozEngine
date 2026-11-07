@@ -72,8 +72,7 @@ public sealed partial class NativeMapCaptureWireTests
         Assert.Equal(.35f, options.DistantDensity); Assert.Equal(.5f, options.InstanceFadeBandWidth);
         Assert.Equal(2, options.MotionProfiles.Count); Assert.True(options.ModelCastsShadows["A"]); Assert.False(options.ModelCastsShadows["B"]);
         // FocusRadius.xyz is the LocalFocus actually submitted, reduced against the published batch's anchor.
-        var batches = (System.Collections.IEnumerable)typeof(Scene3D).GetField("_foliageBatches", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!.GetValue(scene)!;
-        var anchor = Assert.Single(batches.Cast<FoliageBatch>()).PreparedAnchor!.Value;
+        var anchor = Assert.Single(scene.FoliageAnchorsForTests)!.Value;
         Assert.Equal(new RenderAnchor(-4, -1, -4), anchor);
         Assert.True(request.Focus!.Value.Local.X is 5 or 0);
         var localFocus = request.Focus.Value.Local.X == 5 ? new Vector3(9, 1, 4) : new Vector3(4, 1, 4);

@@ -72,7 +72,7 @@ and the samples draw through those two and declare no layout and no uniform buff
 | `OverlayRenderer<T>._ubo` (64 B) as `LineRenderer` | whole, offset 0 | 1 | no | safe |
 | `OverlayRenderer<T>._ubo` (64 B) as `FillRenderer` | whole, offset 0 | 1 | no | safe |
 | `OverlayRenderer<T>._ubo` (64 B) as `BillboardRenderer` | whole, offset 0 | 2 (additive then alpha) | YES | safe by condition 4: both writes are `GpuClip.Correct(vp, caps)` from the same frame's `vp`, so the second write is byte-identical to the first |
-| `SpriteBatch._vpUbo` (8 x 256 B) | whole, offset 0 | 1 per `Begin` | YES | safe by condition 4: a slot's mirror value never changes once its `Begin` claimed it, so every re-upload restates the bytes already recorded against (this is the pattern #408 proved) |
+| `SpriteBatch._vpUbo` (8 x 256 B) | one 64 B matrix at its disjoint slot | 1 per `Begin` | YES | safe by non-overlap, including after a Metal prefix commit (#1682) |
 | `GroundDecalRenderer._frameUbo` (80 B, pre-17.39.0) | whole, offset 0 | 2 (blob-shadow pass, main pass) | YES | **HAZARD**, see section 3 |
 
 Device-level `IGpuDevice.UpdateBuffer` sites are out of scope here and stay so: that call reaches every ring
@@ -112,8 +112,8 @@ WHOLE, and binds its slot with a dynamic offset. The pass is an explicit `FrameP
 
 **Why the whole-mirror upload does not reintroduce the problem.** Each pass's upload restates the other pass's
 slot with the bytes it already holds, and its own slot is read by no draw recorded before it, which is
-conditions 3 and 4 and is the same argument `SpriteBatch` has carried
-since #408. Keeping it whole is what keeps the write off Veldrid's blocking partial-uniform-write staging route
+conditions 3 and 4. Both ground-decal passes run before the drawable resolves, so this mirror is never
+rewritten after a Metal prefix commit. SpriteBatch now writes only the newly claimed matrix slot (#1682). Keeping it whole is what keeps the write off Veldrid's blocking partial-uniform-write staging route
 on Direct3D 11.
 
 **Golden classification.** Zero movement expected or observed on the incumbent families: the same 80 bytes are
@@ -142,7 +142,8 @@ A written table nobody re-derives is worth less than a check that fails. Four pi
 The first cut of this guard compared the WHOLE overlapping range of the two writes. That is a false positive
 on shipped, correct code. The sanctioned engine pattern is to pack your own slot of a CPU mirror and upload
 the mirror WHOLE, so two passes' uploads DO differ, in the slot the other pass owns. `GroundDecalRenderer`
-after section 3's fix has exactly that shape, and so does `SpriteBatch.ViewProj.cs:86`. The old rule only
+after section 3's fix has exactly that shape. SpriteBatch instead uploads a disjoint slot, because its
+later Begins can run after a Metal prefix has already started executing. The old rule only
 stayed green because the guard's frame was bit-identical from frame to frame: advance
 `Scene3D.EffectTimeSeconds` the way any host does and it goes red on the fix, reporting
 
@@ -196,8 +197,9 @@ so it catches the hazard it was written for rather than only watching for a hypo
 the 30 uniform buffers a `Scene3D` creates (the test prints both numbers). The two it never writes are
 `TransitionRenderer._solidBuf` and `._crossBuf`, 16 bytes each, because no `Scene3D.ScreenTransition` is
 assigned and each is one arm of an if. Outside that count entirely is everything a Render3D scene never
-creates: all of `KhaozEngine.Render2D`, `SpriteBatch._vpUbo` included, which carries the same whole-mirror
-per-slot shape and is covered by section 2's table and by the device-free audit tests rather than by a frame.
+creates: all of `KhaozEngine.Render2D`, `SpriteBatch._vpUbo` included, which now writes only disjoint matrix slots. Its headless upload-shape
+regression and the split-frame GPU workload cover the prefix boundary. The immutable CPU-range contract is
+documented in [frame submission](../METAL-FRAME-SUBMISSION.md#cpu-write-after-record-rule).
 A NEW pass added later is outside the guard until its queue is added to `QueueEverything`. That is the
 standing maintenance cost, and it is the reason section 2's table is kept as well as the guard.
 

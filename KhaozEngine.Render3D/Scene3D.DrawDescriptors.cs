@@ -18,8 +18,9 @@ namespace KhaozEngine.Render3D
         /// material, dissolve and edge, shadow casting, the shadow-only and complement phases, and the motion key.
         /// Every <c>Draw(MeshHandle, ...)</c> overload, both <c>Draw(PropHandle, ...)</c> overloads and
         /// <see cref="DrawShadowOnly"/> forward here with <see cref="MotionKey.None"/>, so what they queue is
-        /// unchanged. A shadow-only draw that does not cast draws nowhere and throws <see cref="ArgumentException"/>,
-        /// exactly as the instance queue always has. While temporal rendering is active, a keyed draw's world
+        /// unchanged. A shadow-only draw that does not cast draws nowhere and throws
+        /// <see cref="DrawAdmissionArgumentException"/> with <see cref="DrawAdmissionRefusal.ShadowOnlyWithoutCasting"/>,
+        /// the shared instance queue rule. While temporal rendering is active, a keyed draw's world
         /// transform is remembered for the next frame.
         /// </summary>
         public void Draw(in RigidInstanceDraw draw)
@@ -67,15 +68,17 @@ namespace KhaozEngine.Render3D
         /// <see cref="MotionKey.None"/>. A stale or default handle queues nothing, and a bone count that differs from
         /// the mesh's throws <see cref="ArgumentException"/>. While temporal rendering is active, a keyed draw's model
         /// transform and composed palette are remembered for the next frame. Presentation only - never feed
-        /// sim/RNG/netcode from bone state. Shadow-only without casting throws <see cref="ArgumentException"/>
+        /// sim/RNG/netcode from bone state. Shadow-only without casting throws
+        /// <see cref="DrawAdmissionArgumentException"/> with <see cref="DrawAdmissionRefusal.ShadowOnlyWithoutCasting"/>
         /// before changing either the palette or the queue.
         /// </summary>
         public void DrawSkinned(in SkinnedInstanceDraw draw, ReadOnlySpan<Matrix4x4> boneMatrices)
         {
             if (draw.ShadowOnly && !draw.CastsShadows)
-                throw new ArgumentException(
+                throw new DrawAdmissionArgumentException(DrawAdmissionRefusal.ShadowOnlyWithoutCasting,
                     "A shadow-only instance must cast shadows: shadowOnly with castsShadows false draws in neither pass.",
-                    nameof(draw));
+                    nameof(draw))
+                { ShadowOnly = draw.ShadowOnly, CastsShadows = draw.CastsShadows };
             SkinnedMeshHandle h = draw.Mesh;
             if (!_skinnedSlots.IsValid(h.Index, h.Generation)) return;
             var entry = _skinnedMeshes[h.Index];

@@ -52,7 +52,7 @@ internal sealed class MapMembershipPreparedView
             using var domainWorkspace = MapMembershipBuild.Kernel(checked(32768L + 1024L * MapPrismGeometry.Cost(p)));
             MapPrismCoverage.RequireStorey(view, p);
             var s = Spaces[p.Space.Id];
-            if (s.Kind != MapSpaceKind.Room || s.Parent != p.Parent) throw new MapDocumentException("missing geometry: prism parent mismatch");
+            if (s.Kind != MapSpaceKind.Room || s.Parent != p.Parent) throw new MapDocumentException(MapDocumentRefusal.SpacePrismParentMismatch, "missing geometry: prism parent mismatch") { RecordId = p.Id, SpaceId = p.Space.Id, RelatedRecordId = p.Parent.Id };
             var domain = MapPrismGeometry.Prepare(view, p);
             var heights = MapPrismGeometry.Heights(view, p);
             int first = building.Arena.Polygons.Count;

@@ -61,36 +61,74 @@ public sealed class TileFoliageLayer
     {
         ArgumentNullException.ThrowIfNull(density);
         ArgumentNullException.ThrowIfNull(archetypes);
-        if (string.IsNullOrWhiteSpace(id)) throw Invalid("id cannot be blank");
-        if (plane < 0) throw Invalid("plane cannot be negative");
-        if (!Finite(originX) || !Finite(originZ)) throw Invalid("origin must be finite");
-        if (!Finite(cellSize) || cellSize <= 0f) throw Invalid("cell size must be finite and positive");
-        if (width < 1 || height < 1) throw Invalid("width and height must be positive");
+        if (string.IsNullOrWhiteSpace(id))
+            throw new TileFoliageArgumentException(TileWorldRefusal.FoliageIdBlank, InvalidMessage("id cannot be blank"), null)
+            { LayerId = id };
+        if (plane < 0)
+            throw new TileFoliageArgumentException(TileWorldRefusal.FoliagePlaneNegative, InvalidMessage("plane cannot be negative"), null)
+            { LayerId = id, Plane = plane };
+        if (!Finite(originX) || !Finite(originZ))
+            throw new TileFoliageArgumentException(TileWorldRefusal.FoliageOriginNonFinite, InvalidMessage("origin must be finite"), null)
+            { LayerId = id, OriginX = originX, OriginZ = originZ };
+        if (!Finite(cellSize) || cellSize <= 0f)
+            throw new TileFoliageArgumentException(TileWorldRefusal.FoliageCellSizeInvalid, InvalidMessage("cell size must be finite and positive"), null)
+            { LayerId = id, CellSize = cellSize };
+        if (width < 1 || height < 1)
+            throw new TileFoliageArgumentException(TileWorldRefusal.FoliageDimensionsNonPositive, InvalidMessage("width and height must be positive"), null)
+            { LayerId = id, Width = width, Height = height };
         long samples = (long)width * height;
-        if (samples > MaxDensitySamples) throw Invalid($"density has {samples} samples, the limit is {MaxDensitySamples}");
-        if (density.Length != samples) throw Invalid($"density length {density.Length} does not match width times height {samples}");
-        if (!Finite(spacing) || spacing <= 0f) throw Invalid("spacing must be finite and positive");
+        if (samples > MaxDensitySamples)
+            throw new TileFoliageArgumentException(TileWorldRefusal.FoliageSampleLimitExceeded,
+                InvalidMessage($"density has {samples} samples, the limit is {MaxDensitySamples}"), null)
+            { LayerId = id, SampleCount = samples, MaximumSampleCount = MaxDensitySamples };
+        if (density.Length != samples)
+            throw new TileFoliageArgumentException(TileWorldRefusal.FoliageDensityLengthMismatch,
+                InvalidMessage($"density length {density.Length} does not match width times height {samples}"), null)
+            { LayerId = id, ActualCount = density.Length, ExpectedCount = samples, Width = width, Height = height };
+        if (!Finite(spacing) || spacing <= 0f)
+            throw new TileFoliageArgumentException(TileWorldRefusal.FoliageSpacingInvalid, InvalidMessage("spacing must be finite and positive"), null)
+            { LayerId = id, Spacing = spacing };
         if (!Finite(scaleMin) || !Finite(scaleMax) || scaleMin <= 0f || scaleMax < scaleMin)
-            throw Invalid("scale range must be finite, positive and ordered");
-        if (!Finite(rootOffset)) throw Invalid("root offset must be finite");
-        if (!Finite(doorClearance) || doorClearance < 0f) throw Invalid("door clearance must be finite and non-negative");
-        if (!Finite(edgeFade) || edgeFade < 0f) throw Invalid("edge fade must be finite and non-negative");
+            throw new TileFoliageArgumentException(TileWorldRefusal.FoliageScaleRangeInvalid, InvalidMessage("scale range must be finite, positive and ordered"), null)
+            { LayerId = id, ScaleMin = scaleMin, ScaleMax = scaleMax };
+        if (!Finite(rootOffset))
+            throw new TileFoliageArgumentException(TileWorldRefusal.FoliageRootOffsetNonFinite, InvalidMessage("root offset must be finite"), null)
+            { LayerId = id, RootOffset = rootOffset };
+        if (!Finite(doorClearance) || doorClearance < 0f)
+            throw new TileFoliageArgumentException(TileWorldRefusal.FoliageDoorClearanceInvalid, InvalidMessage("door clearance must be finite and non-negative"), null)
+            { LayerId = id, DoorClearance = doorClearance };
+        if (!Finite(edgeFade) || edgeFade < 0f)
+            throw new TileFoliageArgumentException(TileWorldRefusal.FoliageEdgeFadeInvalid, InvalidMessage("edge fade must be finite and non-negative"), null)
+            { LayerId = id, EdgeFade = edgeFade };
 
         TileFoliageArchetype[] modelRows = archetypes.ToArray();
-        if (modelRows.Length == 0) throw Invalid("at least one archetype is required");
+        if (modelRows.Length == 0)
+            throw new TileFoliageArgumentException(TileWorldRefusal.FoliageArchetypesEmpty, InvalidMessage("at least one archetype is required"), null)
+            { LayerId = id, ArchetypeCount = modelRows.Length };
         float totalWeight = 0f;
         var ids = new HashSet<string>(StringComparer.Ordinal);
-        foreach (TileFoliageArchetype row in modelRows)
+        for (int index = 0; index < modelRows.Length; index++)
         {
-            if (string.IsNullOrWhiteSpace(row.Id)) throw Invalid("archetype ids cannot be blank");
-            if (!ids.Add(row.Id)) throw Invalid($"archetype '{row.Id}' is listed twice");
-            if (!Finite(row.Weight) || row.Weight <= 0f) throw Invalid($"archetype '{row.Id}' must have a finite positive weight");
+            TileFoliageArchetype row = modelRows[index];
+            if (string.IsNullOrWhiteSpace(row.Id))
+                throw new TileFoliageArgumentException(TileWorldRefusal.FoliageArchetypeIdBlank, InvalidMessage("archetype ids cannot be blank"), null)
+                { LayerId = id, ArchetypeId = row.Id, ArchetypeIndex = index };
+            if (!ids.Add(row.Id))
+                throw new TileFoliageArgumentException(TileWorldRefusal.FoliageArchetypeDuplicate, InvalidMessage($"archetype '{row.Id}' is listed twice"), null)
+                { LayerId = id, ArchetypeId = row.Id };
+            if (!Finite(row.Weight) || row.Weight <= 0f)
+                throw new TileFoliageArgumentException(TileWorldRefusal.FoliageWeightInvalid, InvalidMessage($"archetype '{row.Id}' must have a finite positive weight"), null)
+                { LayerId = id, ArchetypeId = row.Id, Weight = row.Weight };
             totalWeight += row.Weight;
         }
-        if (!Finite(totalWeight)) throw Invalid("archetype weights exceed the supported total");
+        if (!Finite(totalWeight))
+            throw new TileFoliageArgumentException(TileWorldRefusal.FoliageTotalWeightNonFinite, InvalidMessage("archetype weights exceed the supported total"), null)
+            { LayerId = id, TotalWeight = totalWeight };
 
         ushort[] materialRows = allowedUnderlays?.Distinct().OrderBy(x => x).ToArray() ?? Array.Empty<ushort>();
-        if (materialRows.Contains((ushort)0)) throw Invalid("underlay id 0 is void and cannot accept foliage");
+        if (materialRows.Contains((ushort)0))
+            throw new TileFoliageArgumentException(TileWorldRefusal.FoliageUnderlayVoid, InvalidMessage("underlay id 0 is void and cannot accept foliage"), null)
+            { LayerId = id, MaterialId = 0 };
 
         Id = id;
         Plane = plane;
@@ -129,6 +167,6 @@ public sealed class TileFoliageLayer
         Id, Plane, OriginX, OriginZ, CellSize, Width, Height, density, Seed, Spacing, ScaleMin, ScaleMax,
         RootOffset, _archetypes, _allowedUnderlays, ExcludeIndoors, ExcludeSolidObjects, DoorClearance, EdgeFade);
 
-    internal static ArgumentException Invalid(string detail) => new($"Invalid foliage layer: {detail}.");
+    internal static string InvalidMessage(string detail) => $"Invalid foliage layer: {detail}.";
     internal static bool Finite(float value) => !float.IsNaN(value) && !float.IsInfinity(value);
 }

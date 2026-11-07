@@ -1,5 +1,4 @@
 using System;
-using System.IO;
 
 namespace KhaozEngine.Imaging;
 
@@ -11,23 +10,35 @@ internal readonly record struct PngTransparency(
     public static PngTransparency Parse(
         int colorType, int bitDepth, int width, int height, ReadOnlySpan<byte> data)
     {
+        // Invariant: ParseHeader admits only these four color types here. PngPalette handles indexed color.
         int sourceChannels = colorType switch
         {
             0 => 1,
             2 => 3,
-            4 or 6 => throw new InvalidDataException("PNG tRNS is invalid for a color type with alpha"),
+            4 or 6 => throw new PngDecodeDataException(PngDecodeRefusal.TransparencyWithAlphaColorType, "PNG tRNS is invalid for a color type with alpha")
+            { ColorType = colorType },
             _ => throw new NotSupportedException("PNG tRNS is not supported for this color type"),
         };
         int expectedLength = sourceChannels == 1 ? 2 : 6;
         if (data.Length != expectedLength)
-            throw new InvalidDataException($"PNG tRNS must contain {expectedLength} bytes for this color type");
-        if (bitDepth < 16 && ExceedsDepth(data, bitDepth))
-            throw new InvalidDataException("PNG tRNS sample exceeds the image bit depth");
+            throw new PngDecodeDataException(PngDecodeRefusal.TransparencyLengthMismatch, $"PNG tRNS must contain {expectedLength} bytes for this color type")
+            { ActualLength = data.Length, ExpectedLength = expectedLength, ColorType = colorType };
+        int invalidSample = bitDepth < 16 ? FirstSampleOutsideDepth(data, bitDepth) : -1;
+        if (invalidSample >= 0)
+            throw new PngDecodeDataException(PngDecodeRefusal.TransparencySampleOutsideDepth, "PNG tRNS sample exceeds the image bit depth")
+            { BitDepth = bitDepth, SampleIndex = invalidSample, SampleValue = Read16(data, invalidSample * 2) };
 
         long expandedLength = (long)width * height * (sourceChannels + 1) * Math.Max(1, bitDepth / 8);
         if (expandedLength > PngReader.MaxDecodedBytes)
-            throw new InvalidDataException(
-                $"PNG transparency-expanded payload exceeds the {PngReader.MaxDecodedBytes}-byte allocation cap");
+            throw new PngDecodeDataException(PngDecodeRefusal.TransparencyAllocationCapExceeded,
+                $"PNG transparency-expanded payload exceeds the {PngReader.MaxDecodedBytes}-byte allocation cap")
+            {
+                RequiredBytes = expandedLength,
+                MaximumBytes = PngReader.MaxDecodedBytes,
+                Width = (uint)width,
+                Height = (uint)height,
+                OutputChannels = sourceChannels + 1,
+            };
 
         return sourceChannels == 1
             ? new PngTransparency(1, Read16(data, 0), 0, 0, 0)
@@ -68,10 +79,10 @@ internal readonly record struct PngTransparency(
     private static ushort Read16(ReadOnlySpan<byte> bytes, int offset) =>
         (ushort)((bytes[offset] << 8) | bytes[offset + 1]);
 
-    private static bool ExceedsDepth(ReadOnlySpan<byte> data, int bitDepth)
+    private static int FirstSampleOutsideDepth(ReadOnlySpan<byte> data, int bitDepth)
     {
         for (int offset = 0; offset < data.Length; offset += 2)
-            if (Read16(data, offset) >= 1 << bitDepth) return true;
-        return false;
+            if (Read16(data, offset) >= 1 << bitDepth) return offset / 2;
+        return -1;
     }
 }

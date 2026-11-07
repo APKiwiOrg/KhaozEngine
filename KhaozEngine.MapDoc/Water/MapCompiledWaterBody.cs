@@ -92,6 +92,8 @@ public sealed record MapCompiledWaterBody(string BodyId, float SurfaceY, MapWate
     MapWaterWork Work, string Digest)
 {
     public Scene.MapSceneCapacity? Capacity { get; init; }
+    /// <summary>The original typed rule behind a failed or unresolved compile, when supplied by its producer.</summary>
+    public MapDocumentFinding? Finding { get; init; }
 
     /// <summary>The compiled domain, or null when it did not compile.</summary>
     internal MapWaterDomain? Domain { get; init; }

@@ -101,13 +101,13 @@ public sealed class SparseSurfaceIndexTests
             Assert.Equal(MapFindStatus.Complete, roleFiltered.Status);
             Assert.Empty(roleFiltered.Patches);
             Assert.NotEqual(scope.Digest, (scope with { Limits = new MapQueryLimits(MaxPageReads: 3) }).Digest);
-            Assert.Throws<ArgumentException>(() => new MapSurfaceScope(WorldFrame.Origin,
+            Assert.Throws<MapSurfaceScopeArgumentException>(() => new MapSurfaceScope(WorldFrame.Origin,
                 new Vector2(float.NaN, 1), new Vector2(62, 2), null, null,
                 new[] { MapSurfaceRole.SupportFloor }, null, limits));
-            Assert.Throws<ArgumentException>(() => new MapSurfaceScope(WorldFrame.Origin,
+            Assert.Throws<MapSurfaceScopeArgumentException>(() => new MapSurfaceScope(WorldFrame.Origin,
                 new Vector2(63, 1), new Vector2(62, 2), null, null,
                 new[] { MapSurfaceRole.SupportFloor }, null, limits));
-            Assert.Throws<ArgumentException>(() => new MapSurfaceScope(WorldFrame.Origin,
+            Assert.Throws<MapSurfaceScopeArgumentException>(() => new MapSurfaceScope(WorldFrame.Origin,
                 new Vector2(61, 1), new Vector2(62, 2), float.PositiveInfinity, null,
                 new[] { MapSurfaceRole.SupportFloor }, null, limits));
 
@@ -124,6 +124,10 @@ public sealed class SparseSurfaceIndexTests
             var files = SurfaceStorageFixtures.SurfaceFiles(dir);
             MapPatchRead semanticMismatch = MapStoredSurfaceSource.Open(dir).ReadPatch(new("ground", 0, 0));
             Assert.Equal(MapPatchStatus.Corrupt, semanticMismatch.Status);
+            Assert.Equal(MapDocumentRefusal.DigestMismatch, semanticMismatch.Finding!.Reason);
+            Assert.Equal(new MapPatchKey("ground", 0, 0), semanticMismatch.Finding.Patch);
+            Assert.Equal(new string('0', 64), semanticMismatch.Finding.ExpectedHash);
+            Assert.NotEqual(semanticMismatch.Finding.ExpectedHash, semanticMismatch.Finding.ActualHash);
             Assert.Null(semanticMismatch.Patch);
             Assert.Equal(files, SurfaceStorageFixtures.SurfaceFiles(dir));
             Assert.Equal(manifest, File.ReadAllBytes(Path.Combine(dir, "map.json")));

@@ -21,7 +21,7 @@ public static class MapRenderTransform
     {
         pose = MapEffectiveTransform.Valid(pose);
         float scale = Single(pose.Scale);
-        if (scale == 0) throw new MapDocumentException("Render scale is not representable.");
+        if (scale == 0) throw new MapDocumentException(MapDocumentRefusal.GeometryNotRepresentable, "Render scale is not representable.") { FieldPath = "Scale", ActualNumber = pose.Scale, Operation = "RenderTransform.ToLocal" };
         var (s, c) = Math.SinCos(pose.YawRadians);
         return new(Single(c * pose.Scale), 0, Single(-s * pose.Scale), 0,
             0, scale, 0, 0, Single(s * pose.Scale), 0, Single(c * pose.Scale), 0,
@@ -31,7 +31,7 @@ public static class MapRenderTransform
     static float Single(double value)
     {
         float result = (float)value;
-        return float.IsFinite(result) ? result : throw new MapDocumentException("Render transform is not representable.");
+        return float.IsFinite(result) ? result : throw new MapDocumentException(MapDocumentRefusal.GeometryNotRepresentable, "Render transform is not representable.") { ActualNumber = value, Operation = "RenderTransform.Single" };
     }
 
     public static Vector3 FocusLocal(MapFramePoint focus, MapSubmissionAnchor anchor)

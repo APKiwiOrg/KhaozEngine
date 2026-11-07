@@ -97,11 +97,13 @@ namespace KhaozEngine.Tests.Gpu
 
             using IGpuDevice device = CreateHeadless();
 
-            ArgumentException thrown = Assert.Throws<ArgumentException>(() => device.Factory.CreateBuffer(
+            GpuBufferUsageArgumentException thrown = Assert.Throws<GpuBufferUsageArgumentException>(() => device.Factory.CreateBuffer(
                 new GpuBufferDescription(256,
                     GpuBufferUsage.UniformBuffer | GpuBufferUsage.StructuredBufferReadOnly)));
 
-            Assert.Contains("frame ring", thrown.Message, StringComparison.Ordinal);
+            Assert.Equal(GpuBufferUsageRefusal.UniformBindingCombination, thrown.Reason);
+            Assert.Equal("usage", thrown.ParamName);
+            Assert.Equal(GpuBufferUsage.UniformBuffer | GpuBufferUsage.StructuredBufferReadOnly, thrown.Usage);
         }
 
         /// <summary>
@@ -149,7 +151,15 @@ namespace KhaozEngine.Tests.Gpu
             using IGpuBuffer buffer = device.Factory.CreateBuffer(
                 new GpuBufferDescription(16, GpuBufferUsage.VertexBuffer));
 
-            Assert.Throws<ArgumentOutOfRangeException>(() => device.UpdateBuffer(buffer, 8, new byte[16]));
+            GpuBufferTransferRangeException thrown = Assert.Throws<GpuBufferTransferRangeException>(
+                () => device.UpdateBuffer(buffer, 8, new byte[16]));
+
+            Assert.Equal(GpuBufferTransferRefusal.WindowOutsideBuffer, thrown.Reason);
+            Assert.Equal("writeBytes", thrown.ParamName);
+            Assert.Equal(16u, thrown.ActualValue);
+            Assert.Equal(8u, thrown.OffsetBytes);
+            Assert.Equal(16u, thrown.SizeBytes);
+            Assert.Equal(16u, thrown.BufferBytes);
         }
 
         /// <summary>
@@ -311,7 +321,14 @@ namespace KhaozEngine.Tests.Gpu
             using IGpuTexture texture = device.Factory.CreateTexture(
                 GpuTextureDescription.Texture2D(8, 8, GpuPixelFormat.R8G8B8A8UNorm, GpuTextureUsage.Sampled));
 
-            Assert.Throws<ArgumentException>(() => device.Map(texture, GpuMapMode.Read));
+            GpuStagingMapArgumentException thrown = Assert.Throws<GpuStagingMapArgumentException>(
+                () => device.Map(texture, GpuMapMode.Read));
+
+            Assert.Equal(GpuStagingMapRefusal.StagingUsageRequired, thrown.Reason);
+            Assert.Equal("staging", thrown.ParamName);
+            Assert.Equal(GpuBackendKind.MetalNative, thrown.Backend);
+            Assert.Equal("texture", thrown.ResourceKind);
+            Assert.Equal(GpuTextureUsage.Staging, thrown.RequiredTextureUsage);
         }
 
         /// <summary>
@@ -590,10 +607,10 @@ namespace KhaozEngine.Tests.Gpu
 
             var payload = new byte[8 * 8 * 4];
 
-            Assert.Throws<ArgumentException>(() => second.UpdateTexture(texture, payload, 0, 0, 8, 8));
-            Assert.Throws<ArgumentException>(() => second.UpdateBuffer(buffer, 0, new byte[16]));
-            Assert.Throws<ArgumentException>(() => second.Map(staging, GpuMapMode.Read));
-            Assert.Throws<ArgumentException>(() => second.Map(buffer, GpuMapMode.Read));
+            Assert.Throws<GpuResourceOwnershipArgumentException>(() => second.UpdateTexture(texture, payload, 0, 0, 8, 8));
+            Assert.Throws<GpuResourceOwnershipArgumentException>(() => second.UpdateBuffer(buffer, 0, new byte[16]));
+            Assert.Throws<GpuResourceOwnershipArgumentException>(() => second.Map(staging, GpuMapMode.Read));
+            Assert.Throws<GpuResourceOwnershipArgumentException>(() => second.Map(buffer, GpuMapMode.Read));
 
             // And the same calls on the device that created them still work, so the rule is about identity rather
             // than about having broken the entry points.
@@ -658,22 +675,28 @@ namespace KhaozEngine.Tests.Gpu
             // The four members whose refusals are worth NAMING, because each one reads nothing like an unbuilt
             // path: an empty GLSL source fails in the front end, a pipeline with no program says so, and a
             // framebuffer with no attachment at all has no render area to derive.
+            var missingGraphics = Assert.Throws<GpuResourceOwnershipArgumentException>(
+                () => factory.CreateGraphicsPipeline(default));
+            var missingCompute = Assert.Throws<GpuResourceOwnershipArgumentException>(
+                () => factory.CreateComputePipeline(default));
+            var noAttachments = Assert.Throws<GpuFramebufferException>(() => factory.CreateFramebuffer(null));
+            Assert.Equal(GpuResourceOwnershipRefusal.MissingResource, missingGraphics.Reason);
+            Assert.Equal(GpuResourceOwnershipRefusal.MissingResource, missingCompute.Reason);
+            Assert.Equal(GpuFramebufferRefusal.NoAttachments, noAttachments.Reason);
             string[] refusals =
             [
                 Refusal(() => factory.CreateShadersFromSpirv("", "")),
                 Refusal(() => factory.CreateComputeShaderFromSpirv("")),
-                Refusal(() => factory.CreateGraphicsPipeline(default)),
-                Refusal(() => factory.CreateComputePipeline(default)),
-                Refusal(() => factory.CreateFramebuffer(null)),
+                missingGraphics.Message,
+                missingCompute.Message,
+                noAttachments.Message,
             ];
 
             foreach (string refusal in refusals) _output.WriteLine(refusal);
 
             Assert.Contains("GLSL to SPIR-V failed", refusals[0], StringComparison.Ordinal);
             Assert.Contains("GLSL to SPIR-V failed", refusals[1], StringComparison.Ordinal);
-            Assert.Contains("was given no shader set", refusals[2], StringComparison.Ordinal);
-            Assert.Contains("was given no compute shader", refusals[3], StringComparison.Ordinal);
-            Assert.Contains("at least one attachment", refusals[4], StringComparison.Ordinal);
+
 
             // AND THE DISCRIMINATING HALF. Every one of those is a LIVE refusal, so none of them may carry the
             // not-yet wording, and neither may a member that regressed into one.

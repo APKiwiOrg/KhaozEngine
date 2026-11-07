@@ -61,7 +61,8 @@ public sealed class MapInteractionEnvelope
         }
         catch (NotSupportedException)
         {
-            throw new MapDocumentException($"Placement '{placementId}' interaction envelope cannot sweep a {source.GetType().Name}.");
+            throw new MapDocumentException(MapDocumentRefusal.PhysicsSweepShapeUnsupported, $"Placement '{placementId}' interaction envelope cannot sweep a {source.GetType().Name}.")
+            { PlacementId = placementId, ShapeType = source.GetType() };
         }
     }
 }

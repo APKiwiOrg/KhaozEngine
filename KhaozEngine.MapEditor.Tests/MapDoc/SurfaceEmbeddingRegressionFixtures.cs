@@ -48,10 +48,10 @@ internal static class SurfaceEmbeddingRegressionFixtures
         return JsonSerializer.Deserialize<List<MapSurfacePatch>>(array, options)!;
     }
 
-    internal static void Refuses(bool useNode, Action action)
+    internal static void Refuses(bool useNode, Action action, MapDocumentRefusal reason = MapDocumentRefusal.WorkCapacityExceeded)
     {
-        Exception error = useNode ? Assert.Throws<MapDocumentException>(action) : Assert.Throws<JsonException>(action);
-        Assert.Contains("tiled", error.Message);
+        if (useNode) Assert.Equal(reason, Assert.Throws<MapDocumentException>(action).Reason);
+        else Assert.Equal(reason, Assert.Throws<MapSurfaceEmbeddingJsonException>(action).Reason);
     }
 
     internal sealed class PayloadArrays(int maximumRequest)

@@ -168,52 +168,50 @@ public sealed class MapFoliageEditTests
         Assert.Equal(new MapFoliageLayerChange(Id, seeded.BeforeDigest, null), Assert.Single(removed.Effects.FoliageLayers));
         Assert.True(removed.WriteSet.Foliage);
 
-        // Every invalid request refuses for its own reason before any write and leaves the document byte for byte as it was.
-        const string range = "must be from 0 to 255", count = "needs 2 values", outside = "lies outside layer", absent = "No foliage layer 'absent'";
-        const string radius = "radius must be finite and positive", hardness = "hardness must be from 0 to 1";
+        // Every invalid request refuses before any write and leaves the document byte for byte as it was.
         // A layer that advertises a chunk it does not hold cannot become this document's state.
         MapFoliageLayer advertisedOnly = MapFoliageLayer.FromStorage(layer,
             layer.ChunkDigests.Select(d => d.Key.X == 1 ? d with { Sha256 = new string('0', 64) } : d).ToArray(), layer.Chunks.Take(1).ToArray());
-        foreach ((MapFoliageEdit bad, string reason) in new (MapFoliageEdit, string)[]
+        foreach (MapFoliageEdit bad in new MapFoliageEdit[]
         {
-            (new MapSetFoliageDensity(Id, 1, 2, 2, 1, [7, 256]), range), (new MapSetFoliageDensity(Id, 1, 2, 2, 1, [-1, 9]), range),
-            (new MapSetFoliageDensity(Id, 1, 2, 2, 1, [7]), count), (new MapSetFoliageDensity(Id, 1, 2, 2, 1, [7, 9, 11]), count),
-            (new MapSetFoliageDensity(Id, 34, 0, 2, 1, [1, 1]), outside), (new MapSetFoliageDensity(Id, -1, 0, 1, 1, [1]), outside),
-            (new MapSetFoliageDensity(Id, 0, 3, 1, 1, [1]), outside), (new MapSetFoliageDensity(Id, 0, 0, 0, 1, []), "positive width and depth"),
-            (new MapSetFoliageDensity(Id, 0, 0, 1, 1, null!), "requires its values"), (new MapSetFoliageDensity("absent", 0, 0, 1, 1, [1]), absent),
-            (Paint(1, -1, 0, 9, 1), radius), (Paint(1, -1, -2, 9, 1), radius), (Paint(1, -1, float.NaN, 9, 1), radius),
-            (Paint(1, -1, float.PositiveInfinity, 9, 1), radius), (Paint(1, -1, 2, 9, -0.1f), hardness), (Paint(1, -1, 2, 9, 1.1f), hardness),
-            (Paint(1, -1, 2, 9, float.NaN), hardness), (Paint(float.NaN, -1, 2, 9, 1), "finite world position"),
-            (new MapPaintFoliage("absent", 1, -1, 2, 9, 1), absent), (new MapRemoveFoliage("absent"), absent),
-            (new MapSetFoliageLayer(null!), "requires a layer"),
-            (new MapSetFoliageLayer(Change(layer, l => l["policy"]!["version"] = 2)), "only policy legacy-tile version 1 is supported"),
-            (new MapSetFoliageLayer(Change(layer, l => l["models"] = new JsonArray(new JsonObject { ["assetId"] = "missing", ["weight"] = 1 }))),
-                "model asset 'missing' is not in the verified closure"),
-            (new MapSetFoliageLayer(advertisedOnly), "advertises chunk MapFoliageChunkKey { X = 1, Z = 0 } without its density bytes"),
-            (new MapFoliageEditSequence([new MapSetFoliageDensity(Id, 1, 2, 2, 1, [7, 9]), new MapSetFoliageDensity(Id, 1, 2, 2, 1, [7])], null), count),
-            (new MapFoliageEditSequence([new MapFoliageEditSequence([], null)], null), "cannot contain another sequence"),
-            (new MapFoliageEditSequence(null!, null), "requires its edit list"),
-            (new MapFoliageEditSequence([new MapSetFoliageDensity(Id, 1, 2, 2, 1, [7, 9])], new MapMovePrefab("missing", new(Vector3.Zero, 0, 1))),
-                "No live prefab instance 'missing'"),
+            new MapSetFoliageDensity(Id, 1, 2, 2, 1, [7, 256]), new MapSetFoliageDensity(Id, 1, 2, 2, 1, [-1, 9]),
+            new MapSetFoliageDensity(Id, 1, 2, 2, 1, [7]), new MapSetFoliageDensity(Id, 1, 2, 2, 1, [7, 9, 11]),
+            new MapSetFoliageDensity(Id, 34, 0, 2, 1, [1, 1]), new MapSetFoliageDensity(Id, -1, 0, 1, 1, [1]),
+            new MapSetFoliageDensity(Id, 0, 3, 1, 1, [1]), new MapSetFoliageDensity(Id, 0, 0, 0, 1, []),
+            new MapSetFoliageDensity(Id, 0, 0, 1, 1, null!), new MapSetFoliageDensity("absent", 0, 0, 1, 1, [1]),
+            Paint(1, -1, 0, 9, 1), Paint(1, -1, -2, 9, 1), Paint(1, -1, float.NaN, 9, 1),
+            Paint(1, -1, float.PositiveInfinity, 9, 1), Paint(1, -1, 2, 9, -0.1f), Paint(1, -1, 2, 9, 1.1f),
+            Paint(1, -1, 2, 9, float.NaN), Paint(float.NaN, -1, 2, 9, 1),
+            new MapPaintFoliage("absent", 1, -1, 2, 9, 1), new MapRemoveFoliage("absent"),
+            new MapSetFoliageLayer(null!),
+            new MapSetFoliageLayer(Change(layer, l => l["policy"]!["version"] = 2)),
+            new MapSetFoliageLayer(Change(layer, l => l["models"] = new JsonArray(new JsonObject { ["assetId"] = "missing", ["weight"] = 1 }))),
+            new MapSetFoliageLayer(advertisedOnly),
+            new MapFoliageEditSequence([new MapSetFoliageDensity(Id, 1, 2, 2, 1, [7, 9]), new MapSetFoliageDensity(Id, 1, 2, 2, 1, [7])], null),
+            new MapFoliageEditSequence([new MapFoliageEditSequence([], null)], null),
+            new MapFoliageEditSequence(null!, null),
+            new MapFoliageEditSequence([new MapSetFoliageDensity(Id, 1, 2, 2, 1, [7, 9])], new MapMovePrefab("missing", new(Vector3.Zero, 0, 1))),
         })
-            Refused(f, bad, reason);
+            Refused(f, bad);
         // 255 is a legal stored density.
         Assert.Equal((byte)255, Pure(f, new MapSetFoliageDensity(Id, 4, 1, 1, 1, [255])).After.Foliage!.Layers[0].DensityAt(4, 1));
 
         // An edit reaches at most 64 chunks and visits at most 65,536 addresses, refused before any byte is read.
         FoliageFixture wide = FoliageComparisonFixtures.Set(FoliageFixtures.Create(), Zero(-3, -5, 1, 1_048_576, 1024));
-        Refused(wide, new MapSetFoliageDensity(Id, 31, 0, 2018, 1, Enumerable.Repeat(1, 2018).ToArray()), "65 chunks");
+        BudgetRefused(wide, new MapSetFoliageDensity(Id, 31, 0, 2018, 1, Enumerable.Repeat(1, 2018).ToArray()), "chunks per raster edit", 65, 64);
         // Chunks 1 to 64 are read by batches 0 to 64, since a batch's bilinear reads reach one sample into the next chunk.
         Assert.Equal(65, Pure(wide, new MapSetFoliageDensity(Id, 32, 0, 2048, 1, Enumerable.Repeat(1, 2048).ToArray())).Effects.FoliageChunks.Count);
-        Refused(wide, new MapSetFoliageDensity(Id, 0, 0, 65_537, 1, new int[65_537]), "65537 addresses");
+        BudgetRefused(wide, new MapSetFoliageDensity(Id, 0, 0, 65_537, 1, new int[65_537]), "addresses per raster edit", 65_537, 65_536);
         Assert.Equal(64, Pure(wide, new MapSetFoliageDensity(Id, 0, 0, 256, 256, Enumerable.Repeat(3, 65_536).ToArray())).Effects.FoliageChunks.Count);
-        Refused(wide, new MapPaintFoliage(Id, 200, 200, 128, 9, 1), "66049 addresses");
+        BudgetRefused(wide, new MapPaintFoliage(Id, 200, 200, 128, 9, 1), "addresses per raster edit", 66_049, 65_536);
         // A 241 sample square box from sample 31 to 271 stays under the address limit but spans 9 by 9 chunks.
-        Refused(wide, new MapPaintFoliage(Id, 148, 146, 120, 9, 1), "81 chunks");
+        BudgetRefused(wide, new MapPaintFoliage(Id, 148, 146, 120, 9, 1), "chunks per raster edit", 81, 64);
 
         // A supported policy definition change needs the digest issued for this before document and this proposal.
         var policy = new MapSetFoliageLayer(Change(layer, l => l["policy"]!["normalBoundaryHeight"] = 0.25f));
-        Refused(f, policy, "differential");
+        var missingToken = Refused(f, policy);
+        Assert.Equal(MapDocumentRefusal.SchemaValueRequired, missingToken.Reason);
+        Assert.Equal("ExpectedDifferentialDigest", missingToken.FieldPath);
         MapFoliageDifferentialResult preview = MapFoliageEdits.PreviewPolicyChange(f.Document, f.Assets, policy);
         Assert.Equal(MapFoliageStatus.Complete, preview.Status);
         Assert.Equal(64, preview.Digest.Length);
@@ -222,9 +220,15 @@ public sealed class MapFoliageEditTests
         string other = MapFoliageEdits.PreviewPolicyChange(f.Document, f.Assets, otherProposal).Digest;
         string otherBefore = MapFoliageEdits.PreviewPolicyChange(density.After, f.Assets, policy).Digest;
         Assert.Equal(3, new[] { preview.Digest, other, otherBefore }.Distinct().Count());
-        Refused(f, policy with { ExpectedDifferentialDigest = other }, "stale");
-        Refused(f, policy with { ExpectedDifferentialDigest = otherBefore }, "stale");
-        Refused(f, new MapFoliageEditSequence([policy], null), "differential");
+        var staleToken = Refused(f, policy with { ExpectedDifferentialDigest = other });
+        Assert.Equal(MapDocumentRefusal.FoliagePolicyDigestStale, staleToken.Reason);
+        Assert.Equal(other, staleToken.ActualHash);
+        Assert.Equal(preview.Digest, staleToken.ExpectedHash);
+        var staleBefore = Refused(f, policy with { ExpectedDifferentialDigest = otherBefore }, MapDocumentRefusal.FoliagePolicyDigestStale);
+        Assert.Equal(otherBefore, staleBefore.ActualHash);
+        Assert.Equal(preview.Digest, staleBefore.ExpectedHash);
+        var sequenceToken = Refused(f, new MapFoliageEditSequence([policy], null), MapDocumentRefusal.SchemaValueRequired);
+        Assert.Equal("ExpectedDifferentialDigest", sequenceToken.FieldPath);
         MapPrefabEditResult accepted = MapFoliageEdits.Prepare(f.Document, f.Assets, policy with { ExpectedDifferentialDigest = preview.Digest });
         Assert.Equal(0.25f, accepted.After.Foliage!.Layers[0].Policy.NormalBoundaryHeight);
         Assert.Equal(preview.ProposalDigest, FoliageFixtures.Context(new(accepted.After, f.Assets)).SnapshotId);
@@ -236,13 +240,19 @@ public sealed class MapFoliageEditTests
         var tokened = policy with { ExpectedDifferentialDigest = preview.Digest };
         var sequenced = MapFoliageEdits.Prepare(f.Document, f.Assets, new MapFoliageEditSequence([tokened], null));
         Assert.Equal(preview.ProposalDigest, FoliageFixtures.Context(new(sequenced.After, f.Assets)).SnapshotId);
-        Refused(f, new MapFoliageEditSequence([tokened, new MapSetFoliageDensity(Id, 1, 2, 2, 1, [7, 9])], null), "stale");
+        var staleSequence = Refused(f, new MapFoliageEditSequence([tokened, new MapSetFoliageDensity(Id, 1, 2, 2, 1, [7, 9])], null),
+            MapDocumentRefusal.FoliagePolicyDigestStale);
+        Assert.Equal(preview.Digest, staleSequence.ActualHash);
+        Assert.NotEqual(staleSequence.ActualHash, staleSequence.ExpectedHash);
         // A proposal whose lattice cannot be represented has no Complete differential and issues no digest.
         var unrepresentable = new MapSetFoliageLayer(Change(layer, l => { l["policy"]!["normalBoundaryHeight"] = 0.25f; l["originX"] = 1e12f; }));
         MapFoliageDifferentialResult incomplete = MapFoliageEdits.PreviewPolicyChange(f.Document, f.Assets, unrepresentable);
         Assert.NotEqual(MapFoliageStatus.Complete, incomplete.Status);
         Assert.Equal("", incomplete.Digest);
-        Refused(f, unrepresentable with { ExpectedDifferentialDigest = preview.Digest }, "issues no digest");
+        var noPreview = Refused(f, unrepresentable with { ExpectedDifferentialDigest = preview.Digest });
+        Assert.Equal(MapDocumentRefusal.FoliagePolicyPreviewIncomplete, noPreview.Reason);
+        Assert.Equal(incomplete.Status, noPreview.FoliageStatus);
+        Assert.Equal(Id, noPreview.LayerId);
         Assert.Equal(original, MapDocumentFile.SaveText(f.Document));
 
         // A sequence applies its owner edit and every foliage step on one detached candidate, validated together.
@@ -273,14 +283,17 @@ public sealed class MapFoliageEditTests
         MapFoliageDifferentialResult ownerPreview = MapFoliageEdits.PreviewPolicyChange(moved.Document, p.Assets, ownerPolicy);
         Assert.Equal(MapFoliageStatus.Complete, ownerPreview.Status);
         ownerPolicy = ownerPolicy with { ExpectedDifferentialDigest = ownerPreview.Digest };
-        Refused(moved, new MapFoliageEditSequence([ownerPolicy], new MapMovePrefab("a", new(new Vector3(2, 0, 0), 0, 1))), "stale");
+        var staleOwner = Refused(moved, new MapFoliageEditSequence([ownerPolicy], new MapMovePrefab("a", new(new Vector3(2, 0, 0), 0, 1))),
+            MapDocumentRefusal.FoliagePolicyDigestStale);
+        Assert.Equal(ownerPreview.Digest, staleOwner.ActualHash);
+        Assert.NotEqual(staleOwner.ActualHash, staleOwner.ExpectedHash);
         Assert.Equal(0.25f, MapFoliageEdits.Prepare(moved.Document, p.Assets, ownerPolicy).After.Foliage!.Layers[0].Policy.NormalBoundaryHeight);
     }
 
     [Fact]
     public void PureFoliageEdits_ExpandOnceOnlyForNewEffectiveReferences()
     {
-        FoliageFixture f = FoliageFixtures.Create();
+        FoliageFixture f = FoliageFixtures.Create("decorated");
         MapFoliageLayer layer = f.Document.Foliage!.Layers[0];
         JsonObject Mask(string owner, JsonObject support) => new()
         {
@@ -294,10 +307,20 @@ public sealed class MapFoliageEditTests
         JsonObject Space(string id) => new() { ["kind"] = "Space", ["spaceId"] = id, ["referenceY"] = 1.25f, ["searchBelow"] = 0.5f, ["searchAbove"] = 0.75f };
 
         // A missing owner and a missing space pass the bound gate and refuse through the effective owner check.
-        Refused(f, new MapSetFoliageLayer(Change(layer, l => l["exceptionMasks"] = new JsonArray(Mask("ghost", Floor())))),
-            "missing effective World Placement owner 'ghost'");
-        Refused(f, new MapSetFoliageLayer(Change(layer, l => l["exceptionMasks"] = new JsonArray(Mask(FoliageFixtures.FloorId, Space("nowhere"))))),
-            "missing effective support space 'nowhere'");
+        var missingOwner = Refused(f, new MapSetFoliageLayer(Change(layer, l => l["exceptionMasks"] = new JsonArray(Mask("ghost", Floor())))),
+            MapDocumentRefusal.ReferenceMissing);
+        Assert.Equal("ghost", missingOwner.EntityId);
+        Assert.Equal(MapPrefabChildKind.Placement, missingOwner.ChildKind);
+        Assert.Equal(MapPrefabReferenceScope.World, missingOwner.ReferenceScope);
+        var missingSpace = Refused(f, new MapSetFoliageLayer(Change(layer, l => l["exceptionMasks"] = new JsonArray(Mask(FoliageFixtures.FloorId, Space("nowhere"))))),
+            MapDocumentRefusal.ReferenceMissing);
+        Assert.Equal("nowhere", missingSpace.SpaceId);
+        var repairedOwner = MapFoliageEdits.Prepare(f.Document, f.Assets,
+            new MapSetFoliageLayer(Change(layer, l => l["exceptionMasks"] = new JsonArray(Mask("house-1", Floor())))));
+        Assert.Equal("house-1", Assert.Single(repairedOwner.After.Foliage!.Layers[0].ExceptionMasks).Owner.Id);
+        var repairedSpace = MapFoliageEdits.Prepare(f.Document, f.Assets,
+            new MapSetFoliageLayer(Change(layer, l => l["exceptionMasks"] = new JsonArray(Mask(FoliageFixtures.FloorId, Space("hall"))))));
+        Assert.Equal("hall", Assert.Single(repairedSpace.After.Foliage!.Layers[0].ExceptionMasks).Support.SpaceId);
 
         // A valid new effective reference costs exactly one expansion and no payload write.
         var valid = new MapSetFoliageLayer(Change(layer, l => l["exceptionMasks"] = new JsonArray(Mask(FoliageFixtures.FloorId, Floor()))));
@@ -326,8 +349,7 @@ public sealed class MapFoliageEditTests
         Assert.Contains(painted.Chunks, c => c.Key == new MapFoliageChunkKey(0, 1));
         Assert.Equal((byte)90, painted.DensityAt(31, 48));
         // A disc that reaches the advertised chunk still refuses rather than reading it as zero.
-        var error = Assert.Throws<MapDocumentException>(() => MapFoliageBrush.Apply(partial, Paint(48, 48, 25, 90, 1)));
-        Assert.Contains("chunk MapFoliageChunkKey { X = 0, Z = 0 } is unavailable", error.Message, StringComparison.Ordinal);
+        Assert.Throws<MapDocumentException>(() => MapFoliageBrush.Apply(partial, Paint(48, 48, 25, 90, 1)));
     }
 
     static MapPaintFoliage Paint(float x, float z, float radius, byte target, float hardness) => new(Id, x, z, radius, target, hardness);
@@ -355,13 +377,23 @@ public sealed class MapFoliageEditTests
         return result;
     }
 
-    static void Refused(FoliageFixture f, MapFoliageEdit edit, string? detail = null)
+    static MapDocumentException Refused(FoliageFixture f, MapFoliageEdit edit, MapDocumentRefusal? reason = null)
     {
         string beforeState = MapDocumentFile.SaveText(f.Document);
         var error = Assert.Throws<MapDocumentException>(() => MapFoliageEdits.Prepare(f.Document, f.Assets, edit));
-        if (detail is not null) Assert.Contains(detail, error.Message, StringComparison.Ordinal);
+        if (reason is { } expected) Assert.Equal(expected, error.Reason);
         string refusedState = MapDocumentFile.SaveText(f.Document);
         Assert.Equal(beforeState, refusedState);
+        return error;
+    }
+
+    static void BudgetRefused(FoliageFixture f, MapFoliageEdit edit, string budget, long count, long limit)
+    {
+        var error = Refused(f, edit, MapDocumentRefusal.WorkCapacityExceeded);
+        Assert.Equal(Id, error.LayerId);
+        Assert.Equal(budget, error.Budget);
+        Assert.Equal(count, error.ActualCount);
+        Assert.Equal(limit, error.Limit);
     }
 
     static byte[] Samples(MapFoliageLayer layer)

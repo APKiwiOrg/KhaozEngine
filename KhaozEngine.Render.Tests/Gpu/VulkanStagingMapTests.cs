@@ -65,10 +65,12 @@ namespace KhaozEngine.Tests.Gpu
 
             maps.Open(resource, GpuMapMode.Read);
 
-            InvalidOperationException ex =
-                Assert.Throws<InvalidOperationException>(() => maps.Open(resource, GpuMapMode.Write));
-
-            Assert.Contains("already mapped", ex.Message, StringComparison.Ordinal);
+            GpuStagingMapStateException ex = Assert.Throws<GpuStagingMapStateException>(
+                () => maps.Open(resource, GpuMapMode.Write));
+            Assert.Equal(GpuStagingMapRefusal.AlreadyMapped, ex.Reason);
+            Assert.Equal(GpuBackendKind.VulkanNative, ex.Backend);
+            Assert.Equal(GpuMapMode.Read, ex.ExistingMode);
+            Assert.Equal(GpuMapMode.Write, ex.RequestedMode);
             Assert.Equal(1, maps.OpenCount);
         }
 
@@ -81,7 +83,9 @@ namespace KhaozEngine.Tests.Gpu
         {
             var maps = new VulkanStagingMaps();
 
-            Assert.Throws<InvalidOperationException>(() => maps.Close(new object()));
+            GpuStagingMapStateException ex = Assert.Throws<GpuStagingMapStateException>(() => maps.Close(new object()));
+            Assert.Equal(GpuStagingMapRefusal.NotMapped, ex.Reason);
+            Assert.Equal(GpuBackendKind.VulkanNative, ex.Backend);
         }
 
         /// <summary>
@@ -257,8 +261,10 @@ namespace KhaozEngine.Tests.Gpu
             var shape = new VulkanStagingShape(4, 4, 1, 1, GpuPixelFormat.R8UNorm);
             VulkanSubresourceLayout layout = VulkanStagingLayout.For(shape, 0, 0);
 
-            Assert.Throws<InvalidOperationException>(() =>
+            GpuStagingMapStateException ex = Assert.Throws<GpuStagingMapStateException>(() =>
                 VulkanStagingMaps.WriteRegion(0, layout, 1, 0, 0, 1, 1, new byte[1]));
+            Assert.Equal(GpuStagingMapRefusal.MappingMissing, ex.Reason);
+            Assert.Equal(GpuBackendKind.VulkanNative, ex.Backend);
         }
 
         // Two of these compare equal and are not the same object, which is what the reference-identity registry

@@ -52,19 +52,24 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         /// <summary>
         /// Record a mapping, refusing a second one of the same resource.
         /// </summary>
-        /// <exception cref="InvalidOperationException">It is already mapped.</exception>
+        /// <exception cref="GpuStagingMapStateException">It is already mapped.</exception>
         internal void Open(object resource, GpuMapMode mode)
         {
             ArgumentNullException.ThrowIfNull(resource);
 
             if (_open.TryGetValue(resource, out GpuMapMode existing))
             {
-                throw new InvalidOperationException(
+                throw new GpuStagingMapStateException(GpuStagingMapRefusal.AlreadyMapped,
                     $"That native Vulkan staging resource is already mapped for {existing}, so a second map for "
                     + $"{mode} is a caller that lost track of one. Vulkan would hand back the same pointer and "
                     + "report nothing at all, so the second reader would see whatever the first left behind. "
                     + "Unmap the first mapping before taking another: a readback is Map, read, Unmap, and holding "
-                    + "one open across a frame is what this refusal is really about.");
+                    + "one open across a frame is what this refusal is really about.")
+                {
+                    Backend = GpuBackendKind.VulkanNative,
+                    ExistingMode = existing,
+                    RequestedMode = mode,
+                };
             }
 
             _open.Add(resource, mode);
@@ -74,18 +79,21 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         /// Close a mapping and answer which mode it was taken in, so the caller knows whether host writes have to
         /// be made visible to the device.
         /// </summary>
-        /// <exception cref="InvalidOperationException">It was never mapped.</exception>
+        /// <exception cref="GpuStagingMapStateException">It was never mapped.</exception>
         internal GpuMapMode Close(object resource)
         {
             ArgumentNullException.ThrowIfNull(resource);
 
             if (!_open.Remove(resource, out GpuMapMode mode))
             {
-                throw new InvalidOperationException(
+                throw new GpuStagingMapStateException(GpuStagingMapRefusal.NotMapped,
                     "Unmap was called on a native Vulkan staging resource that is not mapped. Vulkan has nothing "
                     + "to say about that (there is no vkUnmapMemory on this path at all: host-visible memory is "
                     + "mapped once at chunk creation and never unmapped, V-M3), so the mistake would be silent. "
-                    + "Either the Map was never made or an earlier Unmap already closed it.");
+                    + "Either the Map was never made or an earlier Unmap already closed it.")
+                {
+                    Backend = GpuBackendKind.VulkanNative,
+                };
             }
 
             return mode;
@@ -144,10 +152,13 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         {
             if (mappedBase == 0)
             {
-                throw new InvalidOperationException(
+                throw new GpuStagingMapStateException(GpuStagingMapRefusal.MappingMissing,
                     "A native Vulkan staging texture has no mapping, which cannot happen through the readback "
                     + "ladder: every one of its rungs is host-visible and a host-visible chunk is mapped once at "
-                    + "creation and never unmapped (V-M3).");
+                    + "creation and never unmapped (V-M3).")
+                {
+                    Backend = GpuBackendKind.VulkanNative,
+                };
             }
 
             ulong rowBytes = (ulong)width * bytesPerTexel;

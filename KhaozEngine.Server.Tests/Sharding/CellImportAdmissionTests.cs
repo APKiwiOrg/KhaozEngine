@@ -24,6 +24,36 @@ public class CellImportAdmissionTests
     }
 
     [Fact]
+    public void IsInHandoffTracksDeferredAdmissionUntilAcknowledged()
+    {
+        using var host = new ShardHost(10, 0.1f, Registry(), 10, 0, Locate);
+        Entity entity = host.SpawnOwned(5, 5, 42, out CellSim source);
+        source.World.Set(entity, new Position { X = 11 });
+        CellSim destination = host.CellFor(11, 5);
+        var gate = new Gate { Ready = false };
+        destination.ImportAdmission = gate;
+        Assert.False(host.IsInHandoff(42));
+        Assert.False(host.IsInHandoff(99));
+
+        host.ProcessHandoffs();
+
+        Assert.True(source.World.IsAlive(entity));
+        Assert.False(host.TryGetOwner(42, out _, out _));
+        Assert.True(host.IsInHandoff(42));
+        Assert.False(host.IsInHandoff(99));
+        host.ProcessHandoffs();
+        Assert.True(host.IsInHandoff(42));
+
+        gate.Ready = true;
+        host.ProcessHandoffs();
+
+        Assert.True(destination.TryGetOwned(42, out _));
+        Assert.False(source.World.IsAlive(entity));
+        Assert.False(host.IsInHandoff(42));
+        Assert.False(host.IsInHandoff(99));
+    }
+
+    [Fact]
     public void HandoffRetainsTheFrozenSourceUntilDestinationAdmissionCanRetry()
     {
         using var host = new ShardHost(10, 0.1f, Registry(), 10, 0, Locate);

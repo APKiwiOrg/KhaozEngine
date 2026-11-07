@@ -3546,6 +3546,14 @@ description, because MSBuild prints the message and nothing else. If you hit one
 genuinely legitimate, the answer is to ask the repo owner to bless or exempt it, never to split the
 file to make the error go away.
 
+The same package supplies the opt-in KETEST test-health ratchet for xunit compilations. Add a
+`.testhealth-baseline` to adopt it. `KhaozTestHealthBaselineDir` overrides the discovered directory.
+Without that file the KETEST rules stay silent. KETEST001 and KETEST002 enforce exception-message assertion and
+non-public reflection allowances. KETEST003 is report-only because only 6 of 20 sampled findings were
+real, as local tables and test-owned case helpers look possibly empty to a syntactic check. The
+[analyzer README](../KhaozEngine.CodeHealth.Analyzers/README.md#test-health-ratchet) owns rule details,
+report mode, baseline grammar and the owner-approved exemption path.
+
 ## In-game patch notes (`PatchNotesLoader` / `PatchNotesView` / `PatchNotesScreen`, 10.45.0)
 
 Renders a game's player-facing `docs/PLAY_CHANGELOG.md` (the shared changelog style, `docs/CHANGELOG-STYLE.md`)
@@ -4295,7 +4303,9 @@ scene.UnloadSharedTexture("art/hull.png");     // false when nothing was cached 
   also fixes the frame's render targets and prepares bound optical water (see **Independent optical bed** under
   Water). The no-argument `PrepareFrame()` is the legacy form and throws when bound water is queued. Only a
   frame that queues bound water freezes its inputs at preparation: a changed viewport, HDR, MSAA, grid mode or
-  water input then throws at recording. A frame with no bound water keeps the legacy late binding on either form.
+  water input then throws at recording. The water renderer reports `WaterFrameStateException` with
+  `WaterFrameRefusal.OpticsInputsChangedOrUnprepared`, `Prepared`, `PreparedPlaneCount` and `ActualPlaneCount`.
+  A frame with no bound water keeps the legacy late binding on either form.
   Every host the engine ships prepares for you, so a game needs no change. `GameApp3D` prepares with its frame size.
   `Render3DPreview.Capture` and the `Render3DSnapshot` captures call `Begin` themselves and prepare with their own
   target size, so a draw callback needs no preparation, and one that also calls `PrepareFrame` with that size is a
@@ -4485,7 +4495,7 @@ scene.Draw(gun, sockets["socket_nose"] * shipWorld, Color.White);
   a fixed number by camera distance: orbiting the camera would change illumination on stationary surfaces.
   `Scene3D.MaxPointLights` remains a legacy compatibility constant, not the active upload ceiling. Zero lights renders
   byte-identical to the key+fill path. Presentation only: never feed a light back into simulation/collision.
-  Non-finite positions and non-positive or non-finite radii are ignored at submission, consistently across
+  Non-finite positions or intensities and non-positive or non-finite radii are ignored at submission, consistently across
   clustered and full-list fallback shading.
 
   `scene.PointLightClusters` reports submitted lights, cluster references, overflowing clusters, the projection
@@ -4670,7 +4680,8 @@ Every older `Draw(MeshHandle, ...)`, `Draw(PropHandle, ...)`, `DrawShadowOnly` a
 descriptor with no key and forwards to these two, so existing code queues exactly what it did and needs no change. A
 new draw knob becomes a descriptor property rather than another overload. Both descriptors also carry
 `ShadowOnly`, `InvertShadowDissolve` and `DissolveComplement`. `ShadowOnly = true` with `CastsShadows = false` draws
-nowhere and throws the same `ArgumentException` the instance queue has always thrown for that pair. A `default`
+nowhere and throws `DrawAdmissionArgumentException` with `DrawAdmissionRefusal.ShadowOnlyWithoutCasting`,
+`ShadowOnly`, `CastsShadows` and the entry point's `ParamName`. A `default`
 descriptor is not the plain draw (its tint is transparent, its material is not `Material.None` and it casts no
 shadow), so build one with the constructor.
 
@@ -5394,12 +5405,11 @@ trails are not depth-sorted against each other - keep alpha trails for cases whe
         and starts to band once the taps are far apart, and the ceiling grows with distance by construction (it
         is an angle off the light), so a far receiver is still allowed a wider penumbra than a near one. Clamped
         into `PenumbraTexelsFloor`..`PenumbraTexelsCeiling` (`1`..`16`) by `ResolvedMaxPenumbraTexels`.
-      - **Two per-frame budgets.** `MaxStaticRebuildsPerFrame` (default `2`) caps how many CACHED maps one frame
-        may re-render, which bounds the frame in which several of them changed at once. A still scene rebuilds
-        none, which is the whole point of the cache. `MaxDynamicLightsPerFrame` (default `4`) caps the
-        every-frame maps, and each one of those is six faces every frame, so it is the hard ceiling on the
-        pass's steady cost. Current-pose transient rows have no separate budget: deferring one would reuse an old
-        skinned pose. Their capacity is capped by the live base atlas instead.
+      - **Two ordinary per-frame budgets.** `MaxStaticRebuildsPerFrame` (default `2`) caps ordinary cached base
+        refreshes. Mandatory moving-rigid fallback and pure-base transitions have separate counters and run
+        outside this budget, with at most one base render per owned light per frame. A still scene rebuilds
+        none. `MaxDynamicLightsPerFrame` (default `4`) caps dynamic-light maps, each costing six faces per frame. Current-pose transient rows have no separate budget: deferring one would reuse an old
+        rigid or skinned pose. Their capacity is capped by the live base atlas instead.
       - **A `Dynamic` light has NO IDENTITY ACROSS FRAMES, so its budget is harder than the static one.** It
         carries no key, so the engine keys its row by the light's PLACE IN THE QUEUE, and that place belongs to a
         different light as soon as one of them expires and the rest shift down. So a dynamic row carries nothing
@@ -5421,8 +5431,8 @@ trails are not depth-sorted against each other - keep alpha trails for cases whe
         plus 5 of `D32FloatS8UInt` depth per texel: `28,311,552` bytes (27 MiB) at the defaults and `95,551,488`
         bytes (about 91 MiB) at `384` by `12`. Read it into a settings screen the way `ShadowMapResolution`'s
         cascade cost is read. Static expansion may require more rows, while extent or allocation limits may
-        reduce face resolution. A compact transient atlas for current skinned poses adds live memory only when a
-        static light intersects a skinned caster. Its exact high-water row count is capped by the live base atlas.
+        reduce face resolution. A compact transient atlas for current skinned poses and opted-in moving rigid casters adds live memory
+        only when a static light intersects one. Its exact high-water row count is capped by the live base atlas.
         `PointShadowSettings.AtlasBytes` remains the configured base floor. Use `scene.ResolvedPointShadows` for
         actual live dimensions, base and transient bytes, and refusal state.
       - **The three detail profiles carry it.** `ShadowSettings.ForDetail(ShadowMapDetail.Low)` sets
@@ -5452,14 +5462,27 @@ trails are not depth-sorted against each other - keep alpha trails for cases whe
       - **The counters.** `scene.PointShadowedLights` is how many lights carried a map last frame, and
         `LastShadowPassDiagnostics` carries `PointShadowedLights`, `PointStaticRebuilds`, `PointDynamicRenders`,
         `PointTransientDemand`, `PointTransientRowsRendered`, `PointDynamicSkinnedDrawCalls`,
-        `PointStaticTransientSkinnedDrawCalls`, `PointFaceDrawCalls`, and `PointSlotsInUse` beside the cascade
-        pass's own counters. `PointStaticRebuilds` still counts rigid static base rebuilds only. A changing
-        skinned pose can redraw a transient row every frame while this rigid counter stays at zero.
+        `PointStaticTransientSkinnedDrawCalls`, `PointStaticTransientRigidDrawCalls`, `PointFaceDrawCalls`, and
+        `PointSlotsInUse` beside the cascade pass's own counters. `PointStaticRebuilds` counts ordinary budgeted
+        base rebuilds only. `PointRigidFallbackRowsRendered` counts complete-base compatibility redraws and
+        `PointRigidTransitionRowsRendered` counts mandatory pure-base cleanup. `PointStaticFallbackSkinnedDrawCalls`
+        reports skinned face draws in fallback bases. All caster draws enter `PointFaceDrawCalls`.
       - **Skinned bodies cast point shadows by default.** `Scene3D.DrawSkinned` and its dissolved variants use
         CPU or GPU skinning and cast unless `castsShadows: false` is passed. Models, tile ground, splat terrain,
-        and `DrawShadowOnly` instances remain rigid casters. Static lights keep those rigid casters in cached
-        base rows and put current skinned poses in a compact transient atlas. Dynamic lights clear and draw rigid
-        and skinned casters together in their selected base row. A static transient row is independent of the
+        and `DrawShadowOnly` instances remain rigid casters. Static lights cache Static rigid casters and put current
+        skinned poses in a compact transient atlas.
+        Set `RigidInstanceDraw.ShadowMobility = ShadowCasterMobility.Dynamic` for moving rigid casters to share
+        that transient layer without invalidating the warmed base. Static is the constructor and zero default.
+        Unsupported enum values are rejected before queue mutation. Motion keys, cast opt-out and shadow-only
+        remain independent, and key-light rendering is unchanged. If transient capacity is unavailable, affected
+        admitted rows redraw a complete current base, including skinned geometry. Recovery clears the base to
+        Static geometry before publishing split sampling. Removal and mobility changes clear stale actor depth,
+        including at zero ordinary budget. A changed static signature under current or previous opted-in demand
+        can conservatively force a scenery rebuild. This correctness work is bounded to one base render per owned
+        light per frame, outside the ordinary static budget, leaving its allowance available for independent dirty
+        rows and new admissions. First admission still consumes an ordinary selection when it uses fallback.
+        See [caster layers](design/POINT-SHADOW-CASTERS.md).
+        Dynamic lights clear and draw rigid and skinned casters together in their selected base row. A static transient row is independent of the
         light's base row number. The receiver selects one face and local UV for each hard or soft tap, reads both
         atlases there, and compares against the nearer stored depth. When no transient row is assigned it takes
         the original base-only path before any transient fetch. Skinned colour and target-outline alpha cutouts
@@ -5953,6 +5976,22 @@ trails are not depth-sorted against each other - keep alpha trails for cases whe
     and `MsaaResolveTargetGoldenTests` reads the resolved depth and normal targets back. The tonemap runs
     on the engine's existing display-referred shading values (no separate scene-linear conversion pass), so the
     current art direction is preserved, just with headroom added.
+The internal post chain reports `PostChainRefusal` on `PostChainArgumentException` (an `ArgumentException`)
+and `PostChainStateException` (an `InvalidOperationException`). `SourceSlotCountUnsupported` carries
+`SourceSlotCount`, `MinimumSourceSlotCount`, `MaximumSourceSlotCount` and `ParamName` without replacing the
+previous binding. `TargetsNotBoundAtCurrentGeneration` carries `BoundGeneration`, `ActualGeneration` and
+`TargetsMatch`, so a caller can distinguish an unbound chain, another target object and stale generation.
+`SourceSlotNotBuilt` carries `SourceSlot` and `BoundGeneration`. `TemporalPingPairMissing` carries
+`PingsAllocated`. State identifiers unrelated to a reason are null. See the
+[Render3D refusal tables](../KhaozEngine.Render3D/README.md#post-chain-and-water-frame-refusals).
+
+Water preparation and recording report `WaterFrameRefusal`. `AbsoluteQueueCountMismatch` is on
+`WaterFrameArgumentException` (an `ArgumentException`), with `AbsoluteCount`, `PlaneCount` and `ParamName`.
+`WaterFrameStateException` (an `InvalidOperationException`) carries `OceanDemandChanged` with
+`PreparedOceanDemand` and `ActualOceanDemand`, or `OpticsInputsChangedOrUnprepared` with `Prepared`,
+`PreparedPlaneCount` and `ActualPlaneCount`, including the pipeline fallback. The last successful plane count
+is retained after a failed preparation and is zero before the first success. Unrelated state identifiers are null.
+
 - **Water** (`Scene3D.DrawWater(in WaterPlane)` + `Post.Water`, a `WaterSettings`, **default off/no-op**): an opt-in
   stylized ocean surface - a Gerstner swell displacing the surface grid, a domain-warped three-layer procedural
   ripple normal on top, a camera-distance detail fade, per-channel Beer-Lambert depth grading of the body colour, a
@@ -5984,8 +6023,10 @@ trails are not depth-sorted against each other - keep alpha trails for cases whe
     splat and tile ground. A layout gains a binding with its first shader reader because optimization removes
     unread declarations and shifts Direct3D11 registers. Shaderc preserve-bindings stays unchanged.
     Scene and standalone lit renderer construction require `GpuCapabilities.MaxFragmentStorageBuffers >= 3`
-    before GPU allocation, including when water is disabled. Lower reports throw `NotSupportedException`
-    naming `maxPerStageDescriptorStorageBuffers`. See the
+    before GPU allocation, including when water is disabled. Lower reports throw
+    `LitReceiverNotSupportedException` (a `NotSupportedException`) with
+    `LitReceiverRefusal.FragmentStorageBufferLimitInsufficient`, `RequiredCount`, `AvailableCount` and
+    `CapabilityName` (`maxPerStageDescriptorStorageBuffers`). See the
     [Render3D water reference](../KhaozEngine.Render3D/README.md) for packing, caps and diagnostics.
   - **Per-plane look** (`WaterPlane.Look`, a `WaterLook`, since 17.7.0, **default `null` = the scene's look, byte-
     identical**): the optional `look` constructor parameter, so every ordinary call written before this existed still
@@ -6059,7 +6100,7 @@ trails are not depth-sorted against each other - keep alpha trails for cases whe
     `TileWaterLooks.River` carries the owner-selected linear RGB `(0.28, 0.30, 0.18)` and `Clarity = 1.5f`,
     with `WaterColumnLight` left null. Set that nullable field on a consumer-owned look to opt in, preserving
     the shared preset. Landing 1 is built and awaits the owner's measured-cost ruling before release.
-    [Landing 2's bent view](programs/water-optics-design.md) remains unbuilt.
+    Landing 2's bent view, designed in the `water-optics` program, remains unbuilt.
   - **Independent optical bed** (`WaterPlane.Optics`, a `WaterOpticsBinding`, **default unbound = legacy scene
     depth**). An unbound plane grades its colour, shore foam and shore fade from the first opaque surface behind it,
     which can be a swimming creature, a bridge or a prop. A bound plane reads its own signed bed depth for those
@@ -7185,12 +7226,21 @@ with X right and Y forward. `Advance` refuses a sample span shorter than `ClipCo
 a nonfinite velocity. `n` is 0 only until a movement has eased a weight in after construction or `Reset`.
 
 `GltfLoader.LoadSkinned` retains the glTF name of every skeleton node in `Skeleton.NodeNames`, using an empty
-string for an unnamed node. `Skeleton.IndexOf(name)` resolves a required name and lists the known names if it is
-missing. `TryIndexOf(name, out node)` is the non-throwing missing-name form. Duplicate non-empty names throw when
-name lookup is used because the target would be ambiguous. `BoneIndexOfNode(node)` maps a skeleton node back to
-its skin bone, or returns `-1` for a non-joint ancestor. A loaded skeleton contains every `skin.joints` node and
+string for an unnamed node. `Skeleton.IndexOf(name)` resolves a required name or throws
+`SkeletonArgumentException` with `SkeletonRefusal.JointNameMissing`, `RequestedName` and `KnownNames`.
+`KnownNames` is an owned read-only snapshot of the non-empty names, copied when set so source
+mutation and collection casts cannot change it. `TryIndexOf(name, out node)` is the non-throwing missing-name
+form. Duplicate non-empty names throw `SkeletonStateException` with `SkeletonRefusal.DuplicateNodeName`,
+`NodeName`, `FirstNodeIndex` and `DuplicateNodeIndex` when name lookup is used because the target is ambiguous.
+`BoneIndexOfNode(node)` maps a skeleton node back to its skin bone, or returns `-1` for a non-joint ancestor. A loaded skeleton contains every `skin.joints` node and
 the ancestors needed to compose those joints. It does not include a child outside `skin.joints`, so an authored
 socket that needs name lookup remains a zero-weight skin joint.
+
+`SkeletonArgumentException` derives from `ArgumentException`. Its other reasons are
+`NodeArrayLengthsMismatch` with `ParentCount`, `RestCount` and `LogicalIndexCount`, `NameCountMismatch` with
+`NameCount` and `NodeCount`, and `LocalPoseCountMismatch` or `BonePaletteCountMismatch` with `ActualCount` and
+`ExpectedCount` for `ComposeInto` buffers. `SkeletonStateException` derives from `InvalidOperationException`.
+Argument refusals preserve `ParamName`, including null on the node-array and compose-buffer guards.
 
 `BoneSocket` composes a rigid piece onto one of those posed joints without a scene or GPU. System.Numerics uses
 row vectors, so the piece-local transform stays innermost:
@@ -7209,7 +7259,7 @@ because no rigid orientation can be recovered.
 
 ### Attachment sets
 
-`KhaozEngine.Attachments` is a GPU-free, BCL-only package with immutable `AttachmentSetDefinition`
+`KhaozEngine.Attachments` is a GPU-free package referencing only the dependency-free Primitives, with immutable `AttachmentSetDefinition`
 values whose `AttachmentPartDefinition` parts are either `RigidAttachmentPartDefinition` or
 `SkinnedAttachmentPartDefinition`. `AttachmentSetJson` reads format 1 as rigid and format 2 with a
 required exact `rigid` or `skinned` kind on every part. Rigid parts keep `joint` and `local`. Skinned
@@ -7217,12 +7267,54 @@ parts contain only `id`, `kind` and `mesh`. Unknown or duplicate members are ref
 write the original canonical format-1 bytes and keep their semantic hashes. Mixed or skinned sets
 write format 2. Reference this package explicitly from headless publishers.
 
+Set constructor admission throws `AttachmentSetArgumentException`, which remains catchable as
+`ArgumentException` and retains `ParamName`. `ValidateReferences` and `AttachmentSetJson.Parse`
+throw `AttachmentSetDataException`, derived from `MalformedDataException`. Both family types carry
+non-nullable `AttachmentSetRefusal Reason` and the part, mesh, hash, joint or schema identifiers
+listed in the [set refusal table](../KhaozEngine.Attachments/README.md#set-refusals).
+Catch `MalformedDataException` where a set-data caller previously caught `InvalidDataException`.
+Plain null-argument and source-name checks stay BCL.
+
+The JSON wrapper preserves a known set reason and every identifier, including a constructor's
+`ParamName`, adds `SourceName` and keeps the original as `InnerException`. Native syntax and
+framework accessor failures use `JsonMalformed` and `JsonValueShapeInvalid`. For schema checks,
+`JsonPath` names the canonical value location, or the containing object alongside `PropertyName` for missing, duplicate
+and unknown properties. `PartIndex` and `ComponentIndex` are zero-based. `ActualCount` is null for
+a non-array transform and `ActualHash` is null for a missing reference. `AttachmentSetCache.Get`
+propagates these JSON refusals before mesh reads or uploads. Messages remain developer prose.
+
 `AttachmentGlb.ValidateRigidEmbedded` and `ValidateSkinnedEmbedded` check self-contained glTF 2.0
 GLBs before import. The garment policy requires one embedded buffer, exactly one skin referenced by
 every mesh node, unique non-blank joint names and at most 128 joints. Every primitive needs
 `JOINTS_0` and `WEIGHTS_0` with at most four influences. External URIs, duplicate keys, further
 influence sets, all-zero weights, out-of-range joints, animations, morph targets and mesh weights
 are refused. Rigid and skinned imports retain the same material factors, vertex colours and maps.
+
+The GLB checks throw `AttachmentGlbContainerDataException`, `AttachmentAccessorDataException`,
+`AttachmentHierarchyDataException`, `AttachmentRigidGeometryDataException`,
+`AttachmentSkinnedGeometryDataException` or `RigIdentityDataException`. Each derives from
+`MalformedDataException` and carries its family's non-nullable `Reason`, `SourceName` and typed
+identifiers. Catch `MalformedDataException` for these families. Existing `InvalidDataException`
+catches need this additional base because `InvalidDataException` is sealed. `JsonPath` identifies
+the canonical schema location. Accessor `Index` preserves signed table references and unsigned
+sparse indexes as `long?`. The [GLB refusal tables](../KhaozEngine.Attachments/README.md#glb-refusals)
+list every reason and identifier. Messages remain developer prose.
+
+All three public GLB APIs preserve a known refusal's family, reason and identifiers when adding
+`SourceName`, and keep the original error as `InnerException`. JSON syntax failures use the
+container's `JsonMalformed` reason. Framework JSON shape and numeric conversion failures use
+`ValueShapeInvalid`. Shared skin checks retain `AttachmentSkinnedGeometryRefusal` through rig identity,
+including joint names and inverse binds. Rig-specific fit and rest-transform checks use `RigIdentityRefusal`.
+`AttachmentSetCache.Get` propagates the rigid and skinned policy families before decoding and uploading.
+
+For body fit revisions, call `AttachmentGlb.ComputeRigIdentity(bodyGlbBytes, sourceName)` from a
+headless publisher or the client. Persist the complete `rig-v1:<sha256>` result. It covers ordered
+joints, hierarchy, rest frames, inverse binds and skinned vertex/index data, while animation and
+appearance edits leave it unchanged. It accepts animated bodies separately from garment validation.
+Changing from a whole-file hash requires regenerating fit evidence and updating fields that accept
+only bare hashes. Exact-file integrity hashes remain separate. The
+[Attachments README](../KhaozEngine.Attachments/README.md#body-rig-identity) defines the v1 encoding,
+supported inputs and refusals.
 
 The renderer arm `KhaozEngine.Attachments.Render3D` ships in Game3D. Load and bind once:
 
@@ -7239,7 +7331,17 @@ Garment joints match host skin bones by ordinal name, including reordered subset
 outside the skin is insufficient. Every garment inverse bind must be finite and match the host
 within an inclusive absolute `1e-4` per element over all 16 elements. Binding precomputes the index
 table. Rigid parts retain part-local correction, body alignment and scale-free joint composition.
-Rigid-only `loaded.Bind(map)` remains valid and refuses garments with `InvalidDataException`.
+Rigid-only `loaded.Bind(map)` remains valid and refuses garments with `AttachmentBindingDataException`,
+`AttachmentBindingRefusal.HostMeshRequired` and `PartId`. Binding data refusals derive from
+`MalformedDataException`. Callers handling malformed data from either `AttachmentSetBinding`
+constructor or either `LoadedAttachmentSet.Bind` overload catch that base. `RigidJointUnresolved`
+carries `PartId`, `JointName` and the original `InnerException`. Garment refusals preserve `PartId`,
+`MeshKey`, joint names and counts where applicable. `GarmentBindMismatch` carries `BindTolerance`.
+Frame and palette access refusals use `AttachmentBindingArgumentException`, an `ArgumentException`
+with `Reason`, `ParamName` and the applicable identifiers. `PoseCompositionFailed` keeps the original
+error as `InnerException`, including a joint or world validation reason when one was thrown by the
+binding. The [binding refusal table](../KhaozEngine.Attachments.Render3D/README.md#binding-refusals)
+lists every member and its identifiers.
 
 One cache owns uploads for one scene, shares verified mesh revisions by key, hash and kind, and
 refuses a mesh reference requested under both kinds even when its upload is warm. Dispose it before
@@ -7272,8 +7374,18 @@ for (int i = 0; i < count; i++)
 synchronously before the next preparation or submission on that view, or cache disposal. Scene3D
 records the current and previous palettes for motion. Rigid-only `WriteDraws` with
 `Span<RigidInstanceDraw>` remains valid. A set containing garments refuses that overload with
-`InvalidOperationException` before writing anything. Insufficient capacity, an invalid later pose
-or an invalid template changes no descriptor and queues no prefix. The unused output suffix stays intact.
+`AttachmentSubmissionStateException`, an `InvalidOperationException`, with
+`AttachmentSubmissionRefusal.MixedDrawRequired` and `SkinnedPartCount` before writing anything.
+Insufficient capacity throws `AttachmentSubmissionArgumentException`, an `ArgumentException`, with
+`AttachmentSubmissionRefusal.OutputTooSmall`, `ActualCapacity`, `RequiredCapacity` and `ParamName`.
+A shadow-only template without casting throws the Render3D `DrawAdmissionArgumentException` with
+`DrawAdmissionRefusal.ShadowOnlyWithoutCasting`, `ShadowOnly`, `CastsShadows` and `ParamName`.
+Rigid and skinned instance construction, Scene3D descriptor admission and the tile-world rigid fallback
+use that same shared family and reason, retaining each entry point's parameter name.
+Insufficient capacity, an invalid later pose or an invalid template changes no descriptor and queues
+no prefix. The unused output suffix stays intact. See the
+[submission refusal table](../KhaozEngine.Attachments.Render3D/README.md#submission-refusals) and
+[draw admission table](../KhaozEngine.Render3D/README.md#draw-admission-refusals).
 
 Create one outline group through the scene, then add the complete mixed set:
 
@@ -7307,16 +7419,22 @@ Besides the set type renames in the design record table:
   `AttachmentSetJson.RigidOnlyFormatVersion`.
 - `GltfLoader.LoadPartsWithMaterials(ReadOnlyMemory<byte>, string)`,
   `GltfLoader.LoadSkinnedPartsWithMaterials(ReadOnlyMemory<byte>, string)` and
-  `GltfLoader.LoadSkinned(ReadOnlyMemory<byte>, string)` throw `InvalidDataException` for a malformed glTF.
-  The message names the identity and the importer's diagnostic is the inner exception. Catch that instead of a
-  SharpGLTF type.
+  `GltfLoader.LoadSkinned(ReadOnlyMemory<byte>, string)` throw `GltfImportDataException` for a malformed glTF.
+  `Reason` is `GltfImportRefusal.MalformedModel`, `Identity` is the supplied raw identity and the importer's
+  diagnostic is `InnerException`. This type derives from `MalformedDataException` in Primitives because
+  `InvalidDataException` is sealed. Update existing malformed-data catches to include `MalformedDataException`.
+  Callers never need a SharpGLTF exception type.
 
 ### Skinned body contracts (any body shape)
 
 A game with more than one skinned body states each body's joints once as a `SkeletonContract` and checks every
 loaded skin against it. Each `ContractJoint` carries a glTF node name, its parent's name (`null` for the root) and
 whether it deforms the skin. The root comes first and each parent before its children. Construction refuses an
-empty table, an unnamed or repeated joint, a second root and a parent declared after its child, naming the joint.
+empty table, an unnamed or repeated joint, a first joint with a parent, a second root and a parent declared after
+its child. `SkeletonContractArgumentException` derives from `ArgumentException`, retains `ParamName` as `joints`
+and carries `SkeletonContractRefusal`: `EmptyJointTable` with `JointCount`, `JointUnnamed` with `JointIndex` and
+`JointName`, `FirstJointHasParent` or `ParentNotDeclaredBeforeChild` with `JointName` and `ParentName`,
+`AdditionalRoot` with `JointName` and `RootName`, and `DuplicateJointName` with `JointName`.
 The table is copied, so a caller may reuse its list.
 
 ```csharp
@@ -7339,19 +7457,30 @@ Matrix4x4 bellWorld = bellLocal * joints.BodyAlignment(joints.Node("head"))
 ```
 
 `ContractJointMap` refuses a skeleton with more nodes than `SkinningMath.MaxBonesPerDraw`, two nodes of one name,
-and a contract joint that is missing, misparented or, other than the root, outside the skin. A misparent message
-names both parents. Unnamed nodes are left alone, as `Skeleton` leaves them. The base is the body's zero: an
+and a contract joint that is missing, misparented or, other than the root, outside the skin.
+`ContractJointMapArgumentException.Reason` identifies the rule through `ContractJointMapRefusal`. A
+`ParentNameMismatch` refusal carries `JointName`, `ActualParentName` and `ExpectedParentName`. Missing and
+unskinned joints carry `JointName`, and duplicate names carry `NodeName` and `NodeIndex`. Numerical inversion
+refusals carry `JointName` with `ParentNodeIndex` for `ParentBaseFrameSingular` or `NodeIndex` for
+`BaseFrameSingular`. Unnamed nodes are left alone, as `Skeleton` leaves them. The base is the body's zero: an
 optional one-key stance clip sampled once, or the bind rest without one. A stance must carry the
 `stanceClipName` argument (`stance` by default), key each track exactly once, animate contract joints only and
 carry no scale track, or it is refused before it is sampled. `BaseLocal` is the base local pose per node.
 `BaseWorld`, `ParentBaseInverse` and `BodyAlignment` return a contract joint's base model frame, the inverse of its
 parent's, and the rotation that takes its base orientation back out. They refuse a node outside the contract
-rather than return a zero matrix. `Node` resolves any named node and `Bone` its skin bone.
+rather than return a zero matrix, with `NodeOutsideContract`, `NodeIndex` and `NodeName`.
+`Node` resolves any named node and `Bone` its skin bone. A missing name throws
+`ContractJointMapKeyNotFoundException` with `NodeNameMissing` and `JointName`. A named node outside the skin
+throws `ContractJointMapStateException` with `NamedNodeOutsideSkin` and `JointName`. These types retain
+`KeyNotFoundException` and `InvalidOperationException` as their respective bases. Argument refusals retain
+`ArgumentException` and `ParamName`. The [Render3D refusal tables](../KhaozEngine.Render3D/README.md#animation-refusals)
+list every reason and identifier.
 The alignment's homogeneous component is exactly one, including when general inversion rounds it for oblique
 base axes. External attachment matrices still require an exact affine column.
 
 `ClipRefusals` words a skin loader's clip refusals one way, naming the clip, the rule and the joint. `Only` throws
-on a second clip of one name. The other checks return null for a clean clip and a message otherwise, so a loader
+`ClipAdmissionArgumentException` on a second clip of one name, with `ClipAdmissionRefusal.DuplicateClipName`
+and `ClipName`. The other checks return null for a clean clip and a diagnostic message otherwise, so a loader
 chains them and throws the first:
 
 ```csharp
@@ -7365,8 +7494,11 @@ if (refusal is not null) throw new InvalidDataException(refusal);
 ```
 
 `Unkeyed` checks each `turned` joint's rotation, then its translation when `moved` names it too, then the joints
-only `moved` names, and throws for a joint name the skeleton lacks. `Uncovered` refuses a channel the stance keys
-and the clip leaves unkeyed on a node the filter takes, and returns null without a stance. `Breach` reports the
+only `moved` names. A joint name the skeleton lacks throws `ClipAdmissionArgumentException` with
+`ClipAdmissionRefusal.RequiredJointMissing` and `JointName`. The exception derives from `ArgumentException`,
+retaining the caller's `paramName` for `Only` and `turned` or `moved` for `Unkeyed`. These admission failures are
+separate from the returned diagnostics. `Uncovered` refuses a channel the stance keys and the clip leaves
+unkeyed on a node the filter takes, and returns null without a stance. `Breach` reports the
 first `ClipHygiene` finding of a policy. Each check allocates, so run them at load.
 
 `SkinnedGrounding.MinimumY` returns the lowest world y of the DEFORMED skin, not its rest box, so a body lowered
@@ -7405,7 +7537,12 @@ weight, and a mirrored one plays `MomentSide.Left` or `Right` with even odds. Th
 Salt 0 over a glance and turn table reproduces Grimhollow's standing-player schedule to the bit. The overload with
 `stoppedAt` skips a moment that began before the body last stopped. `At` allocates nothing. `Moment.None`, family
 -1, is the default value. The constructor refuses an empty table, a weight or length out of range, and options
-that are not finite or out of range, naming the option or family.
+that are not finite or out of range with `MomentScheduleArgumentException`, derived from `ArgumentException`.
+Its `MomentScheduleRefusal` reason identifies the rule. `OptionName` and `OptionValue` identify a refused option,
+with `OptionValue` stored as a double even for `MaxEmptySlots`. `FamilyName` and `FamilyIndex` identify a
+refused family, with `Weight` or `LengthSeconds` for the refused value. `FamilyDoesNotFitSlot` also carries
+`AvailableSeconds`, `SlotSeconds` and `QuietSeconds`. `FamiliesEmpty` carries `FamilyCount`, and
+`WeightTotalNotFinite` carries `TotalWeight`. `ParamName` remains `options` or `families`.
 
 ### Layered / masked animation (attack while running)
 
@@ -7420,8 +7557,12 @@ its descendants (the torso + arms + head) at `weight`, everything else 0 - the u
 `BoneMask.Subtree(skeleton, "spine", weight)` resolves the root through `Skeleton.NodeNames`. The older overload
 that accepts an explicit name list remains available for code-driven rigs. When a body's groups are lists of joints
 rather than one subtree, `BoneMask.ForJoints(skeleton, new[] { "neck", "head" }, weight)` weighs exactly the named
-joints, never their descendants. A name listed twice is taken once, and a name the skeleton lacks throws
-`ArgumentException` naming it.
+joints, never their descendants. A name listed twice is taken once. A missing name throws
+`BoneMaskArgumentException` with `BoneMaskRefusal.JointNameMissing` and `JointName`, which can be null for a
+null list entry. The explicit-name subtree overload throws `NameCountMismatch` with `NameCount` and `NodeCount`,
+or `SubtreeRootMissing` with `JointName`. The retained-name overload forwards the `Skeleton` name-lookup
+refusal. `BoneMaskArgumentException` derives from `ArgumentException` and preserves `ParamName` as `jointNames`,
+`boneNames` or `rootBoneName` for those guards. Null arguments and numeric root ranges keep their BCL checks.
 
     var anim = new LayeredAnimator(skeleton);
     // Base: full-body locomotion (drive its clip/playhead however you like - e.g. from your own state machine).
@@ -9000,8 +9141,7 @@ var planner = new GridPathPlanner(space);   // hopCostCells: 4 by default
 
 Opt-in throughout: `BakeOverworldSteps` never generates hop links, and with no hoppable feature in range
 the returned space is identical to `NavSpace.Single(BakeOverworldSteps(...))`. The planner charges a hop
-the constructor's `hopCostCells` (in cells of the source layer, default 4, kept at or above the longest
-hop's octile length so paths stay optimal) and marks each hop landing waypoint `NavWaypointKind.Hop`,
+the constructor's `hopCostCells` (in cells of the source layer, default 4) and marks each hop landing waypoint `NavWaypointKind.Hop`,
 which the follower surfaces as the `Hopping` state below.
 
 ### Bake a layered overworld (multi-level worlds)
@@ -9114,9 +9254,18 @@ discovery. There is no anchor substitution or target-Y guess, and heightless gri
 ends in `Contains`, while region routes retain every validated cell edge and link endpoint without
 shortcuts or string pulling.
 
-Region discovery scans the full admitted topology before expansion. Search priority is a safe spatial lower
-bound or zero when a cross-layer link or a cheap same-layer link makes that bound uncertain. Separate
-finite-safe progress compares actual admitted members. Work is `O(N + E*M)` and storage is `O(N + M)`.
+Region discovery records admitted members before expansion. In shared frames, priority scales local octile
+distance to the admitted members' containing cell-index box. This uses the same metric as the cached cost
+ratio despite rounded world centres at large origins. Differing frames retain scaled world XZ distance to
+the extent square. Both apply on every layer. The member box is a value in reused scratch and introduces
+no query allocation. Separate finite-safe progress compares actual admitted members. Point progress compares
+physical 3D feet positions.
+Complete searches follow the [numeric cost contract](../KhaozEngine.Navigation/README.md#numeric-cost-contract),
+including its edge-count/arithmetic-envelope error bound and absolute-tolerance scale range. Unlimited
+finite reachability is exact, and finite-budget results are best effort.
+Route choices change in 23.3.0. Stair links cost at least their spatial metric span and one source cell,
+so diagonal Stairs no longer receive a discount. The Navigation README owns the complete cost contract.
+Work is `O(N + E*M)` and storage is `O(N + M)`.
 The AABB reduces exact predicate calls, not `M` for valid predicates. `MaxExpandedNodes` bounds expanded
 nodes only, so it does not bound topology discovery or all query work.
 
@@ -9127,6 +9276,15 @@ exhausted, the goal drifted in XZ past `GoalRetargetTolerance` or in Y past
 `GoalRetargetVerticalTolerance`, or the agent strayed off the planned corridor, each gated by a cooldown)
 and hands back a per-tick world-space direction:
 
+Point arrival uses current goal proximity in XZ and Y, or a reached Complete endpoint for the same queried
+point intent in X, Y and Z. A planner-selected snapped endpoint can therefore still complete an unchanged
+intent. Reaching a previously useful Complete route's obsolete endpoint makes the current query due
+immediately, even for goal drift below the retarget tolerances. It uses the configured radius and layer
+checks, without requiring coordinate bit equality. A fresh exhausted result keeps the ordinary cooldown,
+including after an immediate replacement. A deferred point query after route consumption or changing a
+failed intent returns `WaitingForPath` at zero motion, rather than inventing a current planner failure.
+Point Partial exhaustion keeps its one-tick raw-goal steer.
+
 Hand it the `NavSpace` too on a multi-layer world. That third argument is what lets the waypoint advance
 compare the layer a waypoint carries against the agent's own (`NavSpace.LayerAt`). Without it the advance is
 XZ-only, and a stair link's upper waypoint sits about one cell from its lower partner in XZ, inside
@@ -9134,11 +9292,18 @@ XZ-only, and a stair link's upper waypoint sits about one cell from its lower pa
 
 The additive region overload is `Tick(Vector3 feetPosition, NavGoalRegion goal, float agentRadius, float dt)`.
 It requires an `IRegionPathPlanner` and throws `NotSupportedException` for a point-only planner. Region
-arrival uses `goal.Contains(feetPosition)` on the body's actual feet position. The final Complete waypoint
+arrival uses `goal.Contains(feetPosition)` on the body's actual feet position. The final Complete walk waypoint
 stays active until membership, regardless of `AcceptRadius`. Intermediate waypoints keep the configured
 radius and layer checks. Call `Reset` when the predicate, region shape, traversal profile, or target
 identity changes, or after a teleport or caller cancellation. Switching between point and region overloads
 clears the old route and cooldown.
+
+A previously nonterminal Complete region corridor refreshes immediately when its old terminal is reached
+outside current membership under the configured waypoint radius and layer checks, even while cooldown is
+positive. Exact coordinate equality is not required. An exhausted Partial route keeps the cooldown.
+Each tick queries at most once.
+A fresh Complete result already terminal at query time keeps the ordinary cooldown, including after
+replacing a stale route. Leaving terminal state makes a later stale-terminal refresh eligible again.
 
 ```csharp
 var follower = new PathFollower(planner, config: null, space: space);   // one per agent, PathFollowConfig.Default
@@ -9165,9 +9330,20 @@ else if (output.State == PathFollowState.Hopping)
     agent = PlayLunge(agent, from, fromY, to, toY, dt);   // game-owned jump motion + animation
 }
 // Point Arrived: agent.Position is within AcceptRadius of the goal in XZ and within VerticalAcceptTolerance
-// of it in Y, output.WorldDir is zero.
+// of it in Y, or reached a Complete endpoint queried for that same point intent. WorldDir is zero.
 // Region Arrived: goal.Contains(agent.Position) is true. Unreachable: the planner found no usable route.
+// WaitingForPath: the next query is deferred. WorldDir is zero.
 ```
+
+This example drives geometric Hop links. For baked Contact Drop routes, use the built-in `MoveToRange` host path
+below. A direct follower host handles Dropping through `DropTraversal`, aligns at its physical source and calls
+`CompleteDrop()` only after actual supported non-swimming arrival. The marker remains locked while falling,
+through moving goals and proximity. Before the lock, region membership still arrives and a replan due before
+the unlocked Drop runs at once, so its lock starts from the current route. `MoveToRange` additionally reconsiders
+supported preparation before physical departure. The direct follower's lock precedes stale-terminal refresh and
+point-intent checks while cooldown advances. Acknowledging a final Complete Drop preserves its reached-terminal witness, so the latest
+intent can refresh an obsolete route immediately on the next tick even before cooldown expires. A fresh
+terminal replacement keeps the ordinary cooldown. It requires the supplied physical NavSpace.
 
 The follower owns no hop timer: it re-emits `Hopping` every tick until the agent actually reaches the
 landing (within `AcceptRadius`), then resumes `Following` (or `Arrived` when the landing is the goal).
@@ -9181,9 +9357,13 @@ Partial corridor that is exhausted while the cooldown is positive returns `PathF
 with zero direction. A fresh exhausted Partial with zero cooldown returns `Unreachable` with zero direction
 and retries on the next tick. Existing region corridors advance before query eligibility, so an eligible
 partial refresh can happen on the same tick that the cooldown reaches zero. A reached Complete endpoint
-outside membership makes replanning due even when anchor drift is within tolerance. Each tick issues at
-most one query. `WaitingForPath` is appended after existing enum members, and point following never returns
-it. Shared configuration, cooldown, drift, layer, and Hop behavior remain in force.
+outside membership makes replanning due even when anchor drift is within tolerance. A previously
+nonterminal Complete corridor refreshes at the reached terminal under its radius and layer checks,
+without requiring exact coordinate equality. Each tick issues at most one query.
+A fresh query already terminal at its start keeps the ordinary cooldown.
+`WaitingForPath` is appended after existing enum members. Point following also returns it for a deferred
+query after route consumption or changing a failed intent. Shared configuration, cooldown, drift, layer,
+and Hop behavior remain in force.
 
 ### Read the committed corridor (debug overlays, logging)
 
@@ -9210,7 +9390,8 @@ follower is currently steering toward. Both are allocation-free getters over exi
 untouched and there is zero cost when unused. `ActivePath` is `null` when the follower is following no
 corridor: before the first `Tick`, after `Reset`, once `Arrived`, while `Unreachable`, and while an
 exhausted region `NavPathStatus.Partial` is waiting for its cooldown or has just returned zero
-`Unreachable`. Its `ActiveWaypointIndex` is zero in those states. The point overload keeps its one-tick
+`Unreachable`. It is also null while a point query is deferred after route consumption or changing a
+failed intent. Its `ActiveWaypointIndex` is zero in those states. The point overload keeps its one-tick
 raw-goal steer after partial exhaustion. While a replan is due but still gated by `ReplanCooldownSeconds`,
 an existing path stays committed, so you always read the route the agent is steering on. When non-null it
 carries at least one waypoint and `ActiveWaypointIndex` is a valid index into its `Waypoints`.
@@ -9225,9 +9406,11 @@ cell. `PathFollowConfig` tunes the follower itself: `AcceptRadius` (default 0.6,
 as arrived, so a goal on the floor above routes through the planner instead of arriving on XZ proximity),
 `GoalRetargetTolerance` (default 1.5, how far the goal may drift before a replan is due),
 `CorridorTolerance` (default 2.5, how far the agent may stray off the planned corridor before a replan is
-due), and `ReplanCooldownSeconds` (default 0.5, minimum time between replans). See the
-`KhaozEngine.Navigation` package README for the clearance convention, the planner's documented heuristic
-limitations, and the full config surface.
+due), and `ReplanCooldownSeconds` (default 0.5, minimum time between ordinary replans, with immediate
+refresh for a previously useful Complete route reaching an obsolete point endpoint or a region endpoint
+outside membership). Fresh exhausted results retain the cooldown. See the
+`KhaozEngine.Navigation` package README for the clearance convention, the planner's construction-time spatial cost bound,
+and the full config surface.
 
 ---
 
@@ -9239,7 +9422,7 @@ outside every umbrella and carries no physics backend, input or
 rendering dependency:
 
 ```xml
-<PackageReference Include="KhaozEngine.Movement" Version="21.20.0" />
+<PackageReference Include="KhaozEngine.Movement" Version="23.4.0" />
 ```
 
 The package composes `KhaozEngine.Locomotion`, `KhaozEngine.Navigation` and `KhaozEngine.Physics`. It does not
@@ -9395,9 +9578,13 @@ public sealed class GroundNavigation
     public float AgentRadius { get; }
     public float AgentHeight { get; }
     public bool Aquatic { get; }
+    public float MaxDropMetres { get; }
+    public bool AllowTerrainDescents { get; }
+    public GroundNavigation ExcludingAreas(uint excludedAreas);
     public bool AllowsSegment(Vector3 fromFeet, Vector3 toFeet);
     public void Validate(EffectiveMovementBinding binding);
     public void Validate(in MoveTuning tuning);
+    public void PrepareTerrainDescents();
 }
 ```
 
@@ -9433,7 +9620,7 @@ and effect scale may differ for Legacy graphs. Before using `Planner` or `Allows
 `GroundNavigation.Validate(binding)`. `MoveToRange` validates its resolved context binding automatically.
 Contact graphs compare every retained tuning field, controller, foot fraction, placement offset and effective water
 policy. Runtime numeric comparison uses value equality, including +0 and -0. File identity comparisons stay bitwise.
-`WalkSpeed`, `RunSpeed` and `AirMomentum` may differ because proofs normalize them. `Validate(tuning)` cannot detect
+`WalkSpeed`, `RunSpeed` and `AirMomentum` may differ only with zero Drop allowance. Enabled profiles retain their actual values. `Validate(tuning)` cannot detect
 a public explicit binding. The binding door refuses PublicExplicit with #1389 and mismatches with `ArgumentException`.
 Physical holds and independently directed edges use unit pace, no momentum, no commitment and no jump.
 Legacy proofs use dry medium. Contact proofs retain their ordinary water policy. The initial hold counts as slice
@@ -9444,8 +9631,8 @@ checks after the physical capsule proof, so the radius is not eroded twice. Cont
 and area restrictions but leave clearance to placement and swept-shell proofs. A neighbouring captured floor beneath
 a climbable slab does not reject the resting pose for that floor's low headroom. The candidate's own headroom and
 raw surface ownership band still apply. Legacy footprints retain captured headroom checks. Grounded extraction respects
-`MaxLayerCells` before dense arrays, emits only `NavLinkKind.Stair` links and never creates `Hop` links.
-`Space.Links` contains candidate Stair topology. Accepted links are a separate guarded graph used by
+`MaxLayerCells` before dense arrays, emits Stair seams and never creates Hop links. An opted-in Contact profile additionally proves one-way Drop links after ordinary traversal.
+`Space.Links` contains candidate topology, including Drop for enabled Contact profiles. Accepted links are a separate guarded graph used by
 `Planner` and `AllowsSegment`. The planner requires the exact profile radius and returns unsmoothed cell-centre
 waypoints. `MoveToRange` straightens them under `RouteApproachOptions.StraightenRoutes`.
 
@@ -9488,6 +9675,84 @@ Legacy profile building allocates no garbage per proof. A warmed penetration que
 zero bytes, and a 4,096-column flat `BuildProfile` allocates 80 bytes per column, down from 58,774. Engine tests
 gate at most 1 KiB per column. Elapsed time is not gated, because the physics query count is unchanged.
 
+### Opt into Contact Drop routes
+
+Drop is a baked one-way unpowered fall, independently enabled per OrdinaryContact ground profile. It never grants
+creature permission by copying a player graph. Zero is the default and preserves supported-only topology.
+
+```csharp
+// Construct context with the same ordinary Contact environment used by actual movement.
+var playerProfile = new NavBakeProfile("player", playerTuning, playerAreas)
+{
+    MaxDropMetres = gameNavigation.PlayerDropAllowanceMetres,
+};
+GroundNavigationBake playerBake = GroundNavigationBake.Create(capture, sources, [playerProfile]);
+GroundNavigation navigation = playerBake.GetProfile("player");
+var rangeMove = new MoveToRange(navigation);
+var input = new PlayerPathInput(cameraYaw);
+RangeSteering steering = rangeMove.Tick(playerState, playerTuning, target, range, run, dt, context, input);
+MoveCommand command = input.Command(steering, run);
+// Submit the ordinary precise command through the authoritative/predicted player controller.
+// NPC hosts use NpcGroundMovement.Step for Following and Dropping, and Hold otherwise.
+```
+
+Player proofs, preview, forward simulation, replay and both authorities include
+`PlayerMovementPublication` from Locomotion in every step. A custom leased player host uses
+`EffectiveMovementBinding.StepPlayer`, or `StepPlayerTowards` for a world-space Drop command. These APIs
+canonicalize the actual carried state, including the existing 1/256 m/s horizontal grid, before the next slice.
+The follower's body comparison remains exact. NetWorld's `PlayerMoveSimulator` and the local Contact controller
+already include the policy. Raw unreplicated NPC motion keeps its original precision, while
+`NpcGroundMovement.Step` applies the certified policy during Contact `Dropping`.
+
+Every consumer must rebake Contact navigation, including profiles with Drops disabled. The engine adds the
+reserved `engine/player-publication` source digest to the identity. Supply only consumer source digests.
+An earlier policy returns `SourcesChanged` even with the same engine version. Wire representation and frozen
+KENB layouts are unchanged. Legacy-only bakes retain their normal identity behavior.
+
+Standalone construction uses `BuildProfile(tuning, areas, new GroundProfileOptions { MaxDropMetres = allowance })`.
+Explicit terrain capture retains complete physical geometry and original raw associations, with a pure
+geometry-derived candidate envelope and corridor coverage checks. Terrain Drop publication requires its real
+motion certificate, KENB 4 workload identity and explicit per-profile permission.
+See the [internal descent evidence contract](../KhaozEngine.Movement/README.md#internal-terrain-descent-evidence).
+
+Certified tile installations expose optional analytic feature provenance through
+`OrdinaryMovementRegistration.AnalyticSupport`. It supports internal selected-route identity checks while ordinary
+height delegates and movement results keep their existing behavior. Continuous terrain Drop transitions still
+require their separate capture and physical certificate. See
+[analytic support provenance](../KhaozEngine.Locomotion/README.md#analytic-support-provenance).
+
+The allowance must be finite and nonnegative. Legacy, aquatic and public explicit selections refuse positive values.
+Full-tuning walk/run proofs certify the local walk-off, airborne corridor, first supported landing and final Hold.
+Neither transient swimming nor an unwalkable contact can disappear inside a tick. Supported wading remains eligible.
+The local horizon is `1 + ceil(2 * capsuleRadius / cellSize)` and the original edge duration bounds every attempt.
+Unavailable pacing or step evidence refuses the bake through `ContactDropProofException`, derived from
+`InvalidOperationException`. Inspect its `Reason` and `Availability` or `Outcome`, rather than its message.
+
+`MoveToRange` aligns at the physical source, then previews the actual body, run mode, SpeedScale, momentum,
+timestep and live environment before launch. It supplies bounded ordinary input as Dropping while the host advances
+the real controller. A changed actual body, control or read basis cannot reuse the preview. Flight suspends on a
+mismatch and replans once supported. Airborne fall ticks do not enter ground-stall accounting. Actual supported non-swimming arrival
+at the named cell/layer and shared 3D arrival sphere, followed by a supported Hold, acknowledges completion. Reset
+cancels ownership, leaving ordinary gravity and collision active. No direct fallback, jump or interaction policy is
+introduced. Ordinary `AllowsSegment` still refuses a fall.
+
+Supported alignment, roots and the supported launch prefix remain cancelable. Current range membership arrives
+there, and due goal drift refreshes through the follower's single query site before departure, even during cooldown.
+A replacement without that Drop releases preparation without a landing acknowledgement. A refreshed Drop keeps its
+ordinary cooldown. The first command that leaves support commits the flight. Its endpoints remain fixed through
+airborne ticks until actual supported completion, with no airborne query.
+
+Use the same `PlayerPathInput` for the tick and command submission. It preserves the actual camera-relative
+rounding and fractional axis in both prediction and execution, so exact body authentication does not mistake
+ordinary command conversion for an external mutation. Camera yaw may change between ticks. The overload without
+player input predicts world-space NPC input. Run, timestep, actual body and environment authentication stay exact.
+
+Direct `PathFollower` hosts read `DropTraversal`, which retains `NavLink` identity and both physical feet anchors.
+They must supply a physical NavSpace and call `CompleteDrop()` only after supported completion. The marker remains
+locked through proximity, goal membership and moving goals. An acknowledgement advances one transition and throws
+without an active Drop. Hop keeps its separate geometric lunge contract. See the
+[Drop design](design/CONTACT-DROP-LINKS.md) and [Movement contract](../KhaozEngine.Movement/README.md#unpowered-contact-drop-routes).
+
 ### Baked profile sets (`GroundNavigationBake`)
 
 A large world's profiles are too slow to build at client startup. Bake them once in the game's content pipeline,
@@ -9510,6 +9775,7 @@ public sealed class GroundNavigationBake
 public sealed record NavBakeProfile(string Name, MoveTuning Tuning, NavAreaFilter Areas)
 {
     public bool Aquatic { get; init; } // default false
+    public float MaxDropMetres { get; init; } // default 0
 }
 public sealed record NavBakeExpectation(PhysicsNavBakeOptions Options, NavBakeSources Sources,
     IReadOnlyList<NavBakeProfile> Profiles);
@@ -9554,11 +9820,57 @@ GroundNavigation? playerProfile = result.Status == NavBakeLoadStatus.Loaded
 ```
 
 `Create` builds each profile through the live capture, so it is exactly the fresh build, and `WriteTo` is
-byte-deterministic. All-Legacy sets retain KENB format 1 bytes. A set containing contact profiles uses format 2,
-which stores effective profile identity and resting feet heights, including mixed contact and legacy aquatic sets.
+byte-deterministic. All-Legacy sets with zero allowance retain KENB format 1. A zero-allowance set containing
+Contact profiles uses format 2, storing effective identity and resting feet heights. Without evidence capture, any positive allowance selects
+format 3, retaining the format-2 layout plus per-profile allowance, actual walk/run speeds and momentum, and the
+ordered Stair-plus-Drop acceptance bits. Formats 1 and 2 keep their original candidate recipe and bytes.
+To bake continuous terrain transitions, explicitly set `PhysicsNavBakeOptions.CaptureTerrainDescentEvidence = true`
+and the player's `NavBakeProfile.AllowTerrainDescents = true` with its positive `MaxDropMetres`. Both flags default
+false. The profile must select non-aquatic OrdinaryContact. Capture permission never grants profile permission,
+and a terrain profile with zero allowance is invalid. Adopt the released engine and rebake, rather than relabeling
+an older file. Creature profiles remain disabled unless explicitly granted their own positive allowance and flag.
+
+Evidence capture selects KENB 4. Terrain opt-in first tries the unchanged sharp proof on every sharp-topology
+candidate, then tries terrain only after refusal when terrain applies. New terrain topology uses terrain only.
+The height prerequisite tests ground inside the exact doubled-radius capsule projection, including its circular
+caps. Height limits stay fixed. Coverage, source identity, overlap, exact ground area and obstruction checks
+keep their whole-cell scope. Physical proof and the terrain policy still decide every Drop.
+
+Each accepted link retains its proving route. The file stores its ordered integer endpoints, acceptance bits,
+route bits and bake-time slope/footprint threshold bits. A workload digest binds those facts, identity, canonical
+pooled evidence and frozen profile bytes. Endpoints are checked for canonical encoding, bounds and admission.
+Disabled profiles must match their frozen recipe and order without terrain regeneration or trigonometry.
+Enabled profiles validate link shapes and Drop permission without regenerating their candidates. Loading never
+replays refusals. Refusals are decided at bake time and authenticated.
+
+Only accepted terrain proof dependencies and certificate inputs survive, with original raw associations and
+required whole solid groups. Sharp dependencies, refused attempts, recipe closure and the global steep inventory
+are omitted. Excluded evidence throws `DependencyMissing`. Runtime policy selection must use the persisted route,
+never infer it from retained geometry. Certificates reconstruct lazily with persisted thresholds, avoiding platform
+trigonometric classification on load. Disabled profiles keep their original policy. Formats 1, 2 and 3 stay frozen.
+Finite water-coverage uncertainty above the existing 1 mm budget refuses a Drop as `PrecisionExceeded`.
+The Contact step reports `PrecisionRefused`, so sharp and terrain following return `Blocked`, including during
+alignment. Actual unresolved, invalid or mismatched environment evidence retains its prior error/suspension path.
+No precision threshold or physical gate is widened.
+
+Call `GroundNavigation.PrepareTerrainDescents()` during loading, outside a frame or simulation tick. It builds the
+synchronized certificate cache without physics and is safe for concurrent callers. First use can exceed a frame
+or tick budget. Preparation caches immutable topology only and never replaces the live preview or actual Hold.
+
+Terrain Drops execute through `MoveToRange` using the same policy as the bake. Stored routes select sharp or
+terrain behavior before evidence access. Preview and submission share the current `PlayerPathInput` when using
+player commands. Supported preparation remains reversible. Certified descent, including steep sliding, owns the
+route through the lower fringe until the actual body reaches the named raw landing within 1 mm and survives its
+ordinary supported Hold. No fringe node becomes ordinary walkable ground. `Blocked` with
+`RangeSteering.DropRefusal == ContactDropRuntimeRefusal.DependencyMissing` ends an attempt whose retained evidence
+is incomplete, without sharp fallback or an exception to the host. Certificates reconstruct under a shared lock,
+while each preview and follower owns its mutable corridor and policy state.
+
 Load needs no new movement proof. The identity covers the engine version, every capture option including
 `SampleWater`, the labelled digests, and each profile's name, area filter, `Aquatic` flag and every `MoveTuning` field except
-`WalkSpeed`, `RunSpeed` and `AirMomentum`. It holds no architecture-dependent data. The payload stores the captured
+`WalkSpeed`, `RunSpeed` and `AirMomentum` for disabled Drop profiles. Enabled profiles retain those three actual
+inputs as well. Format 3 appends exactly 13 bytes per profile, with canonical `0, 1, 1, false` for disabled profiles.
+It holds no architecture-dependent data. The payload stores the captured
 water entries, and an aquatic profile rebuilds its float view on load, so it never loads as a ground profile. `Load` throws `ArgumentException` for an expectation `Create` would refuse, refuses a
 stale bake after the header and identity block without reading the payload, and returns `Corrupt` for truncated,
 trailing, non-canonical or damaged bytes. Stream errors propagate. `Detail` names the first difference and is
@@ -9681,27 +9993,28 @@ option does not enter bake identity or change canonical bytes. See the
 Round 2 D adds the driver layer in the same opt-in package. Keep the package reference explicit:
 
 ```xml
-<PackageReference Include="KhaozEngine.Movement" Version="21.20.0" />
+<PackageReference Include="KhaozEngine.Movement" Version="23.4.0" />
 ```
 
 `MoveToRange` consumes a `GroundNavigation` profile or an equivalent guarded `IRegionPathPlanner` composition.
 It observes the mover's current capsule against the target's exact capsule, box or point shape with zero client
 tolerance. `MoveState.Position` is the mover's capsule centre. Navigation receives feet, using the mover's own
 half-height, and a capsule target uses its own half-height. The tick validates and evaluates current reach, then
-`Suspended` takes precedence over `InRange` for an airborne or committed body. A swimming body is not grounded, so
-it is suspended too unless the driver opts into swim steering. `Following` is the only status that can carry a
-nonzero `WorldDirection`.
+`Suspended` takes precedence over `InRange` for an unrelated airborne body or a committed body. A swimming body is
+not grounded, so it is suspended too unless the driver opts into swim steering. Following and Dropping can carry nonzero
+`WorldDirection`. An active proved Contact Drop owns its airborne traversal.
 `WaitingForPath`, `Unreachable` and `UnsupportedTransition` hold with zero input. A `Hop` waypoint is an
-unsupported transition for this ground driver. `MoveToRange` returns `Blocked` only under the opt-in
-`RouteApproachOptions.Stall` below, and the route-free `DirectMoveToRange` below always runs its own stall window.
-Both adapters treat every status other than `Following` as idle.
+unsupported transition for this ground driver. `MoveToRange` returns `Blocked` under the opt-in
+`RouteApproachOptions.Stall` or a known live Drop launch obstruction. Unavailable evidence suspends or follows the
+existing environment error contract. The route-free `DirectMoveToRange` always runs its own stall window.
+Both adapters transmit Following and Dropping input. Other statuses request idle movement.
 
 The exact driver surface is:
 
 ```csharp
 public enum RangeMoveStatus
 {
-    Following, InRange, WaitingForPath, Unreachable, UnsupportedTransition, Suspended, Blocked,
+    Following, InRange, WaitingForPath, Unreachable, UnsupportedTransition, Suspended, Blocked, Dropping,
 }
 
 public readonly record struct RangeSteering(Vector2 WorldDirection, RangeMoveStatus Status);
@@ -9716,6 +10029,8 @@ public sealed class MoveToRange
         Func<Vector3, Vector3, bool> allowsSegment, PathFollowConfig? follow, RouteApproachOptions options);
     public RangeSteering Tick(in MoveState body, in MoveTuning tuning, in ReachTarget target,
         float range, bool run, float dt, GroundMoveContext context);
+    public RangeSteering Tick(in MoveState body, in MoveTuning tuning, in ReachTarget target,
+        float range, bool run, float dt, GroundMoveContext context, PlayerPathInput input);
     public void Reset();
 }
 
@@ -9747,6 +10062,13 @@ public static class PlayerPathMovement
 {
     public static MoveCommand Command(in RangeSteering steering, bool run, float cameraYaw);
 }
+
+public readonly record struct PlayerPathInput
+{
+    public PlayerPathInput(float cameraYaw); // finite yaw, default is zero
+    public float CameraYaw { get; }
+    public MoveCommand Command(in RangeSteering steering, bool run);
+}
 ```
 
 Every option is opt-in, and the constructors without options keep today's behaviour. `CarryThroughStraightRuns`
@@ -9754,9 +10076,10 @@ keeps full pace along a straight route run. It aims past a collinear pass-throug
 travel and has the follower consume the waypoints it passed (`PathFollowConfig.ConsumePassedCollinearWaypoints`), while
 every corner, reversal, layer change, hop, waypoint 0 and final waypoint is still landed on. `SteerWhileSwimming`
 steers a swimming body on an aquatic profile, and the `GroundNavigation` constructor refuses it with
-`ArgumentException` naming `options` for a profile that is not aquatic. Airborne and committed bodies stay
-`Suspended`. A swimmer is also `Suspended` while it settles, until the medium at its feet is water and its feet lie
-within `max(StepHeight, 1 mm)` of its float line. A settled swimmer travels at `SwimSpeed x max(0, zone scale) x
+`ArgumentException` naming `options` for a profile that is not aquatic. Unrelated airborne bodies and committed
+bodies stay `Suspended`. An active proved Contact Drop owns its flight. A swimmer is also `Suspended` while it
+settles, until the medium at its feet is water and its feet lie within `max(StepHeight, 1 mm)` of its float line.
+A settled swimmer travels at `SwimSpeed x max(0, zone scale) x
 SpeedScale x dt` on a swim tick, so it lands on waypoints, and a step whose prediction is airborne and not swimming
 is refused.
 
@@ -9774,7 +10097,7 @@ Player routed walk-up gets it through the same driver.
 1 to 65,535 ticks and a finite positive travel, validated as `DirectApproachOptions` is, with no engine default. Every
 tick that returns `Following` or `WaitingForPath` is counted except the hold for a zero travel bound, so refused steps,
 zero offset waypoints and a partial route waiting on its cooldown count, while `Suspended`, `InRange`, `Unreachable` and
-`UnsupportedTransition` do not. When net horizontal feet displacement across the last `WindowTicks` counted intervals
+`UnsupportedTransition` do not. When accumulated horizontal feet travel across the last `WindowTicks` counted intervals
 is under `TravelMetres`, that tick returns `Blocked` with zero input (the 16th counted tick for 15). The latch holds
 until `InRange`, `Reset` or a change of target shape, range or capsule. `InRange` also clears the window, and a replan,
 a straightening fallback or a target translation does not. A body rooted for good never latches, and a body whose
@@ -9803,9 +10126,15 @@ near-field shortcut keeps the detour. Area or graph guards apply to direct appro
 exhausted partial route waiting on cooldown, an unreachable or refused route, or an unsupported Hop route holds
 with zero input. A valid partial corridor still requests bounded travel until it is exhausted.
 Target translation follows the follower's configured drift and replan cooldown while the route remains valid.
+A previously nonterminal Complete corridor refreshes at its reached terminal outside current range under
+the configured arrival radius and layer checks. Physics rebasing need not reproduce the waypoint's exact coordinates.
+A fresh Complete result already terminal when queried keeps the ordinary cooldown, so a no-progress
+start-cell result cannot repeat the query every tick.
 
-The profile must match the tuning's radius, half-height, slope and step. Walk and run pace, climb pace and
-effect scale may differ. The game owns nominal ranges, target validity, target identity, cancellation and the
+The profile must match the tuning's radius, half-height, slope and step. A Legacy graph lets walk and run pace and
+climb pace differ. A Contact graph compares every retained tuning field, including climb pace, and its walk pace, run
+pace and air momentum may differ only with zero `MaxDropMetres`. Effect scale is a per-tick input and may differ on
+either. The game owns nominal ranges, target validity, target identity, cancellation and the
 authoritative server tolerance, which it applies once after the engine's exact observed reach. The engine owns
 no NPC brain, action queue or combat rule. Shape kind, dimensions, box yaw and range changes reset internally.
 A changed immutable profile requires a new `MoveToRange` instance. Call `Reset` before the next tick for a target
@@ -9855,7 +10184,7 @@ MovementBody targetBody = gameTarget.BodySnapshot;
 ReachTarget target = ReachTarget.Capsule(in targetBody);
 RangeSteering steering = follower.Tick(
     in npcState, in npcTuning, in target, gameNpc.NominalRange, gameNpc.Run, dt, context);
-MoveState next = steering.Status == RangeMoveStatus.Following
+MoveState next = steering.Status is RangeMoveStatus.Following or RangeMoveStatus.Dropping
     ? NpcGroundMovement.Step(in npcState, in steering, gameNpc.Run, dt, in npcTuning, context)
     : NpcGroundMovement.Hold(in npcState, dt, in npcTuning, context);
 npcState = next;
@@ -9919,11 +10248,11 @@ else
     ReachTarget target = gameTarget.CurrentShapeSnapshot;
     bool observedReach = ReachGeometry.Within(
         in bodyShape, in target, gameTarget.NominalRange);
+    var input = new PlayerPathInput(gameCamera.Yaw);
     RangeSteering steering = follower.Tick(
         in body, in playerTuning, in target, gameTarget.NominalRange,
-        gameTarget.Run, dt, playerContext);
-    command = PlayerPathMovement.Command(
-        in steering, gameTarget.Run, gameCamera.Yaw);
+        gameTarget.Run, dt, playerContext, input);
+    command = input.Command(in steering, gameTarget.Run);
 }
 
 client.SendInput(in command); // exactly one normal submission per simulation tick
@@ -9965,7 +10294,7 @@ public sealed class DirectMoveToRange
 ```
 
 The options have no defaults. Windows are 1 to 65,535 ticks and distances are finite and positive. A window of N
-ticks spans N intervals and is first eligible on the (N + 1)th counted tick. When net horizontal travel across the
+ticks spans N intervals and is first eligible on the (N + 1)th counted tick. When accumulated horizontal feet travel across the
 stall window falls below `stallTravelMetres`, or reach distance across the approach window gains less than
 `approachGainMetres` for a static target, the driver latches `RangeMoveStatus.Blocked` until `InRange`, `Reset`, or a
 change of target shape, range or capsule geometry. A step that would leave the ground or start swimming is refused
@@ -10511,7 +10840,7 @@ same opt-in-backend pattern the `WorldStore.*` durable backends use.
 **Backend (`KhaozEngine.Physics.Bepu`)** - add this package to your game head / server:
 
 ```xml
-<PackageReference Include="KhaozEngine.Physics.Bepu" Version="21.20.0" />
+<PackageReference Include="KhaozEngine.Physics.Bepu" Version="23.4.0" />
 ```
 
 ```csharp
@@ -11356,7 +11685,23 @@ multiplying the fields yourself: a blind per-field multiply lands on a set `Vali
 `Scene3DChunkSink.MergeStats` forwards its cumulative `HlodMergeStats`. `MalformedCornersDropped` counts each
 out-of-range source corner contained during HLOD building, including repeated placements. A nonzero count
 identifies malformed source content even when containment keeps the live client running. At authoring ingress,
-`GltfLoader` and every `PropLoader` path reject invalid indices with asset identity, bad index and vertex count.
+`GltfLoader` rejects invalid indices with `MeshIndexStateException`,
+`MeshIndexRefusal.SourceIndexOutsideVertexCount` and raw `Identity`, `Index` and `VertexCount` members.
+`PropLoader` asset loads wrap the original refusal in `PropLoadStateException` with
+`PropLoadRefusal.AssetLoadFailed`, `EntryId` and `Path`. The inner mesh refusal also preserves `EntryId`.
+Direct `Normalize` and `NormalizeParts` throw the mesh refusal directly with `Identity = "prop"` and null
+`EntryId`, and `NormalizeParts` includes the zero-based `PartIndex`. Rebase failures use
+`MeshIndexRefusal.RebasedIndexOverflow` with the same index values and `BaseIndex`.
+
+Other model refusals use `GltfImportStateException` and `GltfImportRefusal` for strict validation, no triangles,
+no usable skin, too many skin joints or an influence outside the skin joint count. Each carries raw `Identity`,
+and joint refusals also carry the counts or the vertex's `BoneIndices`, `VertexIndex` and `PartIndex`.
+`PropLoader` normalization uses `PropLoadRefusal.DeclaredHeightOutsideRange`, `NoMeasurableHeight` or
+`ScaleOutsideRange` with the declared or measured values and validation bounds. Empty material parts use
+`PropLoadArgumentException`, `PropLoadRefusal.MaterialPartsEmpty`, `PartCount` and `ParamName`.
+The state exceptions remain `InvalidOperationException` subtypes and the argument exception remains an
+`ArgumentException` subtype. See the [mesh import and prop refusal tables](../KhaozEngine.Render3D/README.md#mesh-import-and-prop-refusals)
+for the identifiers of each reason. Messages are developer prose.
 
 
 The decor ring makes far *terrain* visible for free, but its props still pop in only at the gameplay radius. HLOD
@@ -11864,8 +12209,15 @@ version or the load fails. The engine's own steps are pre-registered: v1 to v2 d
 `terrainOverrides` placeholder, v2 to v3 stamps `tileSize` with `MapDocumentFile.DefaultTileSize`
 (512 m), v3 to v4 adds `playableBounds` from `bounds` when it is absent, and v4 to v5 stamps the
 `LegacyXzCallbackV1` support recipe. The v5 to v6 step (`MapWaterMigration.Upgrade`) adds no member.
+Its version refusal distinguishes a missing or non-integer `formatVersion` (`SchemaValueRequired`)
+from an unsupported integer (`SchemaPayloadVersionUnsupported` with `ActualVersion` and
+`SupportedVersions` 5 and 6). The source object remains unchanged.
 The v6 to v7 step (`MapPrefabMigration.Upgrade`) clones input and changes only `formatVersion`.
 The v7 to v8 step (`MapMarkerMigration.Upgrade`) clones input and changes only `formatVersion`.
+Its refused source distinguishes `SchemaValueRequired` for missing or non-integer `formatVersion` from
+`DocumentMigrationSourceVersionInvalid` for an unsupported integer, with `FieldPath`, known `ActualVersion`
+and owned `SupportedVersions` containing 7 and 8. `MapMarkerAdoption.ConvertSpawns` refuses partial
+documents through `CompleteDocumentRequired`, retaining `DocumentId` and `Operation` before copying records.
 The v8 to v9 step (`MapFoliageMigration.Upgrade`) clones input and changes only `formatVersion`.
 `MapDocumentFile.CurrentFormatVersion` is 9, and saving always writes it. Version and layout are independent
 axes, so a monolithic file at the current version is legal. Format 5 and the v4 to v5 step arrived in
@@ -11914,6 +12266,100 @@ if (captured.Status == MapFoliageStatus.Complete)
 }
 ```
 
+Foliage JSON converter admission throws `MapFoliageJsonException`, derived from `JsonException`, with a required
+`MapDocumentRefusal Reason`. `FoliageSectionNull` identifies explicit null, `FoliageSectionIncomplete` identifies an
+unbuffered section, and `FoliageSectionByteLimitExceeded` carries measured `ActualByteCount` and inclusive `Limit`.
+An incomplete section has no measured complete byte count. Document loading preserves those reasons on the outer
+`MapDocumentException`, so existing document and JSON catches keep working.
+
+The codec uses `SchemaObjectRequired`, `SchemaArrayRequired`, `SchemaBooleanRequired`, `SchemaMemberUnknown`,
+`SchemaValueRequired`, `SchemaPayloadVersionUnsupported`, `SchemaBase64Malformed`, `SchemaArrayLengthMismatch`,
+`ValueNonfinite` and `ValueOutsideRange` for their corresponding shape, encoding and scalar rules. Repeated exact
+foliage member names use `SchemaMemberDuplicate` with the member path.
+`FieldPath` uses `JsonException.Path` syntax relative to the foliage section, with real array positions and escaped
+property names. Available context includes `LayerId`, `Index` and `FoliageChunk`. They remain unset until the guard
+knows them, and storage helpers without a typed path leave it unset. Payload version refusals carry `ActualVersion`
+and an owned read-only `SupportedVersions` snapshot. Unsupported codec kinds use `SchemaEnumUnsupported`,
+`EnumType` and the submitted string in `ActualText`. A binding writer distinguishes a missing own member,
+a foreign member and an undefined kind, carrying its known `LayerId`, local `support` field path and
+surface or space identity. Codec capacity refusals carry `WorkCapacityExceeded`, `Budget`, the measured
+`ActualCount` or `ActualByteCount`, and inclusive `Limit`. Density length refusals carry `ActualByteCount` and
+`ExpectedByteCount`. Numeric refusals retain representable `ActualNumber` or `ActualInteger` and the checked
+`MinimumInteger` and `MaximumInteger` bounds. Known inner refusals survive wrappers with every identifier and the
+original cause. A converter failure without a typed inner reason uses `SchemaMalformed` with the reader's JSON path.
+See the [package refusal table](../KhaozEngine.MapDoc/README.md#loud-failures) for the complete field contract.
+
+Reading advertised nonresident foliage density throws `MapDocumentException` with `FoliageChunkUnavailable`,
+`LayerId` and `FoliageChunk`. Duplicate advertised keys use `IdentityDuplicate` with the same coordinates.
+The foliage migration distinguishes missing or noninteger `formatVersion` (`SchemaValueRequired`) from an
+unsupported integer (`SchemaPayloadVersionUnsupported`, `ActualVersion` and `SupportedVersions`). Effective
+owner findings retain the layer, local field path and known surface, space or owner identity. Missing targets,
+wrong surface roles, absent space IDs, non-World owner scopes and forbidden child kinds have their concrete
+shared reasons. The string API keeps the same order and text. Expansion forwards its first owner finding and attaches the full
+ordered snapshot. Other aggregate adapters wait for all their producers. Region-pack checks distinguish key
+coordinates, ordering, duplicate identities, malformed headers, lengths, capacities and digests. They retain
+`FoliageChunk`, record `Index`, measured byte counts, limits and expected/actual hashes where the guard knows them.
+Set admission retains typed version, layer identity, count and model-asset findings beside its string API.
+Layer scalar findings retain `LayerId`, the first failing `FieldPath` and the actual numeric value or
+version. Nonfinite values, finite domain failures and reversed scale bounds have distinct reasons.
+Bound resource checks distinguish `ReferenceMissing` from `ReferenceKindMismatch`. Material findings
+retain `ResourceId`, the material ID in `ActualInteger`, `ExpectedResourceKind` and available
+`ActualResourceKind`. Clearance findings identify the rule and asset. Support findings identify the
+surface and its path through the layer, owner support, exception mask or compatibility ordinal.
+Policy admission distinguishes a missing ID (`SchemaValueRequired`), another policy
+(`FoliagePolicyUnsupported`) and an unsupported version of the known policy
+(`SchemaPayloadVersionUnsupported`). Findings and source-wrapped exceptions retain `PolicyId` and
+`ExpectedPolicyId`. Model and material checks retain their array index and asset or material identity.
+Count capacities use `WorkCapacityExceeded` with `Budget`, `ActualCount` and `Limit`. Accumulated model
+weight uses that reason with `ActualNumber` and its supported `MaximumNumber`.
+Allowed-material ordering uses `OrderInvalid` with both `ActualInteger` and `PreviousInteger`. Missing
+declarations use `ReferenceMissing`. Ordinal findings retain `SurfaceId`, rule and mask findings retain
+`EntityId`, and duplicate owner supports retain their typed child kind and reference scope.
+Advertised keys outside the density domain use `FoliageChunkOutOfDomain` with `FoliageChunk`, sample
+dimensions and the first failing axis's value and bounds. Descriptor-count guards validate sparse layers
+without materializing density. Resident chunks retain the same domain metadata, while nonzero padding uses
+`FoliagePaddingNonzero` with the byte `Index`, chunk-local `CellX` and `CellZ`, and `ActualInteger`.
+Local binding, owner and clearance findings retain their layer, item identity and containing `FieldPath`.
+Owner checks distinguish missing values, non-World scopes and forbidden child kinds. Clearance footprints
+select the first nonfinite coordinate or collapsed finite dimension. `ValidateFindings` and
+`ValidateBoundFindings` expose complete owned read-only snapshots in string-validation order, and the
+document-level foliage collector forwards them. Whole-document and native-bound adapters retain the
+first typed finding and the full ordered snapshot.
+Brush layer mismatches use `AuthoredValueMismatch`, carrying the target `LayerId` and submitted
+`ActualText`. Scalar guards select `ValueNonfinite`, `ValueOutsideRange` or `BoundsInvalid` from the
+first failed branch and retain `FieldPath` and the checked value or limits. Hardness accepts both 0 and 1.
+`FoliageRectangleOutOfBounds` retains the submitted cell, raster dimensions and failed endpoint.
+Raster work limits use `WorkCapacityExceeded` with the address or chunk `Budget`, `ActualCount` and
+inclusive `Limit`. Required sequence lists, steps and layers use `SchemaValueRequired` with their local
+path and available document identity or step index, before writing density. Density lengths retain the
+single captured `ActualCount` and `ExpectedCount`. Invalid values retain the row-major index,
+rectangle-local cell and inclusive 0 through 255 limits.
+Nested sequences use `FoliageNestedSequenceUnsupported`. Unsupported edit kinds retain `RecordType`.
+A policy preview that cannot complete uses `FoliagePolicyPreviewIncomplete` with its `FoliageStatus`,
+and a stale token uses `FoliagePolicyDigestStale` with expected and submitted hashes. Missing tokens
+use `SchemaValueRequired` with `FieldPath = "ExpectedDifferentialDigest"`.
+Negative context options throw `MapFoliageContextArgumentException`, an `ArgumentOutOfRangeException`
+subtype carrying the first failed field, integer value and minimum 0. The BCL parameter stays `limits`
+and its `ActualValue` stays null. Zero options remain legal. Missing captured effective surfaces use
+`FoliageEffectiveContextRequired` with `Operation` and `SourceType`.
+Partial pack saves retain the unavailable layer, key and expected digest on `FoliagePartialSaveUnsafe`.
+Missing density uses `FoliageChunkUnavailable`. Materialized chunk validation forwards its first concrete
+finding and full snapshot. Stored JSON budget failures retain the byte limit and attempted byte count or
+membership count, and negative budget inputs retain their own field and numeric domain.
+
+Stored foliage guards retain typed layer references, pack byte counts and duplicate identities. Collection
+capacities distinguish the first failed `Chunks` or `Packs` field. Chunk-reference guards select invalid key
+coordinates, empty or oversized memberships, duplicates, missing packs and digest disagreements in that order.
+Pack count checks retain present and advertised counts. `FoliagePackOffsetMismatch` retains the row index,
+submitted offset and required offset as equal integer bounds. Resident guards distinguish an unadvertised key
+from bytes disagreeing with the advertised digest. Region calculations select
+`GeometryNotRepresentable`, `BoundsInvalid` or `WorkCapacityExceeded`, preserving the layer, chunk and available
+coordinate or budget metadata. The membership cap is inclusive at 4096. Stored lattice disagreement uses
+`FoliageRegionMembershipMismatch`. Complete-density checks retain missing counts, or the actual and expected chunk
+keys with their row index and compared hashes. `FoliageSaveSnapshotChanged` retains both save snapshot hashes.
+A required pinned pack read uses `PinnedContentUnavailable` with its `FoliageReadStatus`, `LayerId`, owner `Tile`
+and expected hash. `MapFoliageStorage` validation forwards the first concrete finding and complete ordered snapshot.
+
 Motion padding is explicit caller policy in metres. Transform all eight source-unit-adjusted mesh corners by each
 sample's exact CPU matrix, then expand XYZ. Preserve CPU selection, live blade/shrub profiles and shadow flags. Use the
 render dependency digest plus generation to reject stale work. Keep one owned batch across every intersected residency
@@ -11934,6 +12380,16 @@ for payload/storage ceilings, compatibility owner fallback, paint tie-break, typ
 cosmetic and never join statics, navigation captures or world bounds. Interactive painting stays R9, complete verb
 parity stays R10, actual import/source acceptance stays R11/G2 and appearance stays R8/G3. The
 [private harness](../KhaozEngine.MapDoc.OracleHarness.Tests/README.md) owns its test-only dependency boundary.
+Its internal input and execution exceptions require `PrivateOracleInputRefusal` and
+`PrivateOracleFailureRefusal` reasons. Guard callers inspect `Reason` and only the documented safe
+input name, mismatch count, fixed comparison category and secure report digest. Private paths, input
+values, coordinates and original exceptions remain behind the entry boundary. These types are not
+engine consumer APIs. Attested provenance, building, foliage and marker readers and correspondence checks use the internal
+`PrivateOracleDataException`, derived from `MalformedDataException`, with a required
+`PrivateOracleDataRefusal`. It exposes no private identifiers and retains no private original exception.
+Room-cell closure above its work budget uses `InputBudgetExceeded`, and unsupported building primitives
+use `KindUnsupported`. Shared guards require reasons, including the `DependencyUnattested` translation
+of a foliage closure miss. The entry boundary continues to sanitize those failures. See the [sanitized refusal contract](../KhaozEngine.MapDoc.OracleHarness.Tests/README.md#sanitized-refusals).
 
 ### Free buildings and effective resources
 
@@ -11962,20 +12418,137 @@ These APIs are in `KhaozEngine.MapDoc.Prefabs`. Share this captured effective sn
 geometry, water, membership and annotations. Acquire bounded views from its `SurfaceSource` and pair water
 with the matching effective set and view. Floor resources install before nullable-Y support sampling. A
 prefab-local support request transforms from the pre-seat frame, while a standalone request stays world-space.
-Paint clips inside unchanged canonical physical triangles and never creates a second floor owner. Expansion
+Paint clips inside unchanged canonical physical triangles and never creates a second floor owner. Partial
+paint work uses `WorkCapacityExceeded` with the `MapRefinementLimits` field in `Budget`, its `Limit`
+and measured `ActualCount`. A producer that stops without returning its candidates leaves that count
+null. Exact intersection overflow uses `GeometryNotRepresentable`, the target `SurfaceId` and
+`Operation = "paint intersection"`. Both refuse without publishing partial regions. Expansion
 and composition refuse missing closure, unsupported work reporting and capacity overflow without partial facts.
 
 Typed Light and Support payloads begin with `resourceSchema`, valued `kemap/light-resource` or
 `kemap/support-resource`. Writers emit it first and closed decoders require it. Closure reads decode only
 marked bytes. Released opaque resources, including JSON, stay opaque. A prefab light or typed support consumer
-refuses opaque bytes clearly. Shared leaf resource pins remain distinct from prefab version addresses.
+refuses opaque bytes with `MapDocumentRefusal.AssetTypedPayloadOpaque`, its `ResourceId`, `ExpectedSchema`
+and the `light` or `support` role in `SubjectKind`. A missing or misplaced typed discriminant carries
+`SchemaValueRequired`, `FieldPath` `$.resourceSchema`, `ResourceId` and `ExpectedSchema`.
+Shared leaf resource pins remain distinct from prefab version addresses.
+
+`MapAssetClosure.Load` keeps its `MapDocumentException` catch contract. A byte digest mismatch carries
+`DigestMismatch`, `DigestKind` `resource bytes`, `ResourceId`, the reference `Path`, `ExpectedHash` and `ActualHash`.
+A source read failure carries `AssetPayloadUnreadable`, `ResourceId`, `ExpectedHash`, the reference `Path` and
+the original `InnerException`, including a concrete `MalformedDataException` raised by an `IMapAssetSource` callback.
+A cycle carries `AssetDependencyCycle` and an ordinal read-only `ResourceIds` snapshot of resources left unresolved,
+including resources blocked behind the cycle. Missing lookups use `ReferenceMissing` with `AssetId` or `ResourceId`,
+and a missing dependency also identifies `DependencyId`. Uncaptured borrows use `AssetPayloadNotCaptured` with
+`ResourceId` and the required `ExpectedResourceKind`, when the API requires one. Duplicate closure identities carry
+`IdentityDuplicate` and their `asset` or `resource` namespace in `SubjectKind`.
+`MapStorageGuardedAssetSource` refuses writer-owned paths before reading them with `AssetStoragePathReserved`,
+`ResourceId`, normalized `Path`, `StoragePath` and `DocumentForm`.
 
 A prefab resource keeps its logical asset ID and accepts either that ID or
 `prefab/<escaped-logical-id>/<sha256>`. The lowercase SHA-256 suffix must match its immutable bytes.
+Prefab and light payload byte admission carries `WorkCapacityExceeded`, `Budget = "PayloadBytes"`, the measured
+`ActualByteCount` and inclusive `Limit`, plus a known `ResourceId`. Codec array counts retain their JSON path and
+name their `Budget` as the collection or `Aggregate.<name>`. Patch geometry counts use `GeometryElements`.
+Cross-array totals use `Aggregate.ReferenceEdges`, `Aggregate.Patches`, `Aggregate.Records` or
+`Aggregate.GeometryElements`, with the crossing array's `FieldPath`, measured `ActualCount` and inclusive `Limit`.
+Unsupported child or override discriminators carry `OperationKindUnsupported`, `Child`, `ActualText` and
+`FieldPath = "$.type"`. A runtime subtype carries its `RecordType` and `Child`.
+The closed marker binding codec uses `MapPrefabJsonException`, a `JsonException` subtype carrying the shared reason
+and failed local `FieldPath`. It distinguishes object, missing, unknown, duplicate, null and wrong-type members.
+Unsupported kinds carry `EnumType` and submitted `ActualText` or writer `ActualInteger`. Writer shape failures retain
+known `SurfaceId` and `SpaceId`, using `SchemaValueRequired` or `AuthoredOwnershipMismatch`. Resource and document
+wrappers preserve this structured cause and add their source context without changing admission or diagnostic text.
+`MapPrefabValidation.ValidateFindings` is the immutable ordered typed projection of its existing string API.
+Throwing validation uses the first finding, attaches the complete `Findings` snapshot and retains its original cause.
+The complete snapshot survives state-read exceptions wrapping aggregate document refusals too.
+An unclassified state producer failure uses `PrefabStateUnreadable` with `DocumentId`, without a fabricated field path.
+Prefab expansion preflight uses `WorkCapacityExceeded`, selecting the first failing expansion-limit name in
+`Budget` with the measured `ActualCount` and inclusive `Limit`. Payload-byte budgets also carry `ActualByteCount`.
+Checked count overflow names `PrefabExpansionCount`, carries `Limit = long.MaxValue` and leaves `ActualCount` null.
+Foliage context preflight carries its concrete `Finding` on `MapFoliageContextMeasure` and preflight-refused
+capture results. Its five context limits use `WorkCapacityExceeded`, `FoliageStatus`, `Budget`, `ActualCount`,
+inclusive `Limit` and `DocumentId`, with `ActualByteCount` for source bytes. Partial residency uses
+`CompleteDocumentRequired`. Edit preflight forwards the finding and retains its released text.
+The generation-context throwing adapter forwards its concrete finding and every ordered validator finding.
+Missing root or asset child collections use `SchemaValueRequired`. Their capacity refusals use `WorkCapacityExceeded`
+with the collection `Budget`, captured `ActualCount`, inclusive `Limit`, `FieldPath` and known document or asset ID.
+Complete expansion over a partial document uses `CompleteDocumentRequired`, `DocumentId` and `Operation = "Expand"`.
+Authored-support adoption over a partial document uses the same reason with
+`Operation = "ConvertToAuthoredSupport"`. Unrepresentable binary32 placement presentation uses
+`GeometryNotRepresentable`, `PlacementId`, the failed component's `FieldPath`, binary64 `ActualNumber` and
+`Operation = "ResolveEffectivePlacements"`.
+Tiled persistence distinguishes `DocumentManifestMissing` (`Path`, `FileName`) from
+`DocumentManifestReadFailed` (`SourceName`, `Path`, original cause). A window under a different hash scheme
+uses `DocumentHashSchemeUnsupported`, stored `ActualVersion` and `ExpectedVersion`. Save refusals distinguish
+`DocumentStorageFormConflict` (target `Path`, actual `DocumentForm`, `ExpectedDocumentForm`),
+`DocumentLoadedIndexRequired` (target `Path`), `DocumentWindowTargetMismatch` (target `Path`, source `SourceName`)
+and `DocumentWindowTileSizeMismatch` (`FieldPath`, `ActualNumber`, `ExpectedNumber`). Content moved into an
+unloaded tile uses `DocumentUnloadedDestinationTile`, destination `Tile`, `SubjectKind` and known `EntityId`
+or `SculptTile`. These refusals leave existing bytes unchanged. Asynchronous residency reads preserve a typed
+cause's reason and identifiers. A nonpositive apply budget uses `MapResidencyArgumentException`,
+`ValueOutsideRange`, `ParamName = "config"`, `FieldPath = "MaxLoadsPerUpdate"`, `ActualInteger` and inclusive
+`MinimumInteger` one.
+An overlapping tiled save uses `DocumentSaveLockUnavailable` with the normalized directory `Path` and
+original cause. Missing or non-integer tile coordinates and missing or empty tile hashes use
+`SchemaValueRequired` with the first failed member's `FieldPath`, entry `Index`, manifest `SourceName` and `Path`.
+Sculpt shape guards use `MapTerrainOverridesJsonException`, derived from `JsonException`, with concrete
+`Reason`, relative `FieldPath`, tile array `Index` and `SculptTile` only once both coordinates were read.
+Delta length failures retain observed `ActualCount` and exact `ExpectedCount`. Document wrappers preserve them.
+Surface migration accepts source formats 4 and 5. Its refusal distinguishes `SchemaMemberMissing`,
+`SchemaValueRequired` and `DocumentMigrationSourceVersionInvalid`, retaining known `ActualVersion`,
+`FieldPath` and owned `SupportedVersions`.
+Residency radius admission uses `MapResidencyArgumentException`, derived from `ArgumentException`, with
+`ValueOutsideRange`, `ParamName = "config"`, specific `FieldPath`, `ActualInteger` and inclusive `MinimumInteger`.
+An unload band accepts `OuterRadius + 1`. Duplicate tile index entries use `IdentityDuplicate`, `Tile`,
+`SubjectKind = "tile index entry"` and known `SourceName`. Unreadable tile files use `DocumentTileReadFailed`
+with `Tile`, `SourceName`, full `Path` and pinned `ExpectedHash`.
+Native-vector, terrain-feature and numeric identity converter refusals remain catchable as `JsonException`
+through `MapNativeVectorJsonException`, `MapFeatureJsonException` and `MapNumericIdJsonException`. Their
+required `Reason` and typed identifiers survive document and prefab wrappers. Vectors name the refused
+component in relative `FieldPath`, retaining parsed `ActualNumber` for `ValueNonfinite`. Features name
+`$.type` and discriminator `ActualText`, distinguishing `SchemaValueRequired` from
+`DocumentTerrainFeatureUnknown`. Non-string and noncanonical identity text uses `SchemaInt64Malformed`
+with submitted `ActualText` when known and the inclusive integer limits. Invalid digits keep that reason.
+Out-of-range identities use `ValueOutsideRange`, those limits and `ActualInteger` only when representable.
+An unindexed `ReadTile` request
+uses `DocumentTileNotIndexed`, the requested `Tile` and `SourceName`. Native migration accepts source
+formats 3 and 4, reporting `SchemaMemberMissing`, `SchemaValueRequired` or
+`DocumentMigrationSourceVersionInvalid` with `FieldPath`, known `ActualVersion` and owned `SupportedVersions`.
+Prefab migration distinguishes missing, incorrectly typed and unsupported source versions. Its unsupported-version
+reason is `DocumentMigrationSourceVersionInvalid`, with `ActualVersion`, `FieldPath` and owned `SupportedVersions`.
+Exact-enum codecs use `SchemaEnumUnsupported` with `EnumType` and submitted text or numeric value. A marker binding's
+wrong numeric JSON type uses `SchemaValueRequired`, while a nonfinite float representation uses `ValueNonfinite`
+with parsed `ActualNumber` when available. Undefined descriptor kinds retain the enum type, value and `EntityId`.
+All three retain the actual count and accept the exact named ceiling. A consumer-defined prefab or marker edit
+uses `OperationKindUnsupported` with its `RecordType`. Submitting an asset update through `Prepare` uses
+`PrefabCapturedUpdateRequired` with `Operation = "PrepareAssetUpdate"`. Room selection retains `SpaceId` and
+actual/expected prism counts on `SpaceRoomOccupancyInvalid`.
+
 `MapPrefabEdits.Prepare` and `MapInteriorEdits.Prepare` return detached validated after states and named write
 sets. MapEditor publishes them through `PrefabEditCommand`, `InteriorEditCommand` and `PrefabAssetEditCommand`.
 Unpack transfers live children with their IDs and precise poses, retaining removed-source reservations and
 materialized support/light pins. Extraction preserves explicit parent context and the requested origin.
+Asset-local materialization refusals retain `AssetId`, local `PlacementId` and known `FieldPath` on
+`MapDocumentException`. Inspect `PrefabMaterializedFrameMismatch` with `ActualTransform` and
+`ExpectedTransform`, or `PrefabMaterializedAnchorMismatch` with the record's `Child` and anchor `Patch`.
+`DigestMismatch` distinguishes `resource bytes` from `captured definition` through `DigestKind`, with
+`ExpectedHash` from the pin and `ActualHash` from the verified content. Unadvertised attachment edges
+use `AuthoredOwnershipMismatch` with `ResourceId` and `AttachmentKind`. Local scope, kind and required
+text use their distinct authored or schema reasons. Frame scalar guards select the first failed field,
+keep nonfinite `ActualNumber` unset, and identify finite nonpositive scale with `ValueOutsideRange`.
+These checks carry no world instance identity. Reconciliation keeps a submitted replacement `Child`
+distinct from its target `ExpectedChild` and identifies missing or already declared children.
+Reused attachments identify missing descriptors with `ReferenceMissing`, or changed content with
+`DigestMismatch` and `DigestKind` `captured descriptor`. Their local child keys, world IDs and known
+anchor patches stay separate. Effective paint without a target uses `PrefabPaintTargetRequired`
+with the paint `SurfaceId`. Missing effective surfaces and support slots keep their typed subjects.
+Effective pose composition identifies its first nonfinite scalar with `ValueNonfinite` and a
+pose-relative `FieldPath`. Finite nonpositive scale uses `ValueOutsideRange`, `ActualNumber` and
+exclusive `MinimumNumber` 0. Nonfinite `ActualNumber` stays unset.
+World positions outside the installed axis limit use `PrefabWorldCoordinateLimitExceeded` with
+the static `OwnerId`, binary64 `PositionX`, `PositionY`, `PositionZ` and whole-metre `Limit`.
+Each axis accepts coordinates exactly at the positive or negative limit.
 `PrefabService` edits detached assets, then publishes immutable bytes and a verified replacement closure before
 one accepted switch of every referring instance in the open complete map. Other maps retain their pins.
 
@@ -11997,6 +12570,61 @@ membership.
 `MapMarkerAnchors` reads metadata-only start anchors without resolving support or terrain. A caller supplies role
 vocabulary through `MapMarkerConsumerOptions`. Native editor and tool consumers use the same named support readout,
 so they do not invent a role or fall back to the analytic terrain field.
+
+Standalone marker admission keeps `MapDocumentException` and exposes `MarkerPrefabOwnershipProtected` with
+`MarkerId` and `InstanceId`, `IdentityReserved` or `ReferenceMissing` with `MarkerId`, and
+`MarkerNativeDocumentRequired` with `Operation`. Spawn adoption distinguishes `MarkerAdoptionChoiceSetMismatch`
+with counts and an owned read-only `SourceIds` snapshot from `MarkerAdoptionChoiceMissing` with `SourceId` and
+source kind. Destination collisions carry `IdentityDuplicate` and `MarkerId`, or `MarkerNameDuplicate`,
+`MarkerName` and `MarkerId`. The metadata uniqueness guard retains every collision in ordered typed `Findings`
+and read-only `MarkerIds`. Marker payload and support-binding validation carry their first typed finding's
+reason and identifiers and the full ordered read-only `Findings` snapshot. Invalid height authority choices use
+`MarkerHeightChoiceInvalid` with `MarkerId`. Failed seating uses `MarkerSupportUnresolved` with `MarkerId`
+and typed `SupportStatus`. Placement seating uses `SupportUnresolved`, `PlacementId` and the same status type.
+Missing-Y support providers use `SupportProviderHeightMissing` with `PlacementId` and `ProviderPlacementId`.
+Missing bindings, bounded searches, spaces and adoption choices have distinct support reasons listed in the
+MapDoc refusal table. Broad document validation keeps its prose adapter until its complete producer is typed.
+
+Bound geometry reads outside their prepared demand set throw `MapBoundContextException`, an
+`InvalidOperationException` subtype whose `Reason` is `MapDocumentRefusal.ContextDemandUnprepared`.
+`Operation`, `Patch`, `Face`, `RecordId` and `SlotCell` identify the requested demand when applicable.
+Preparation keeps `MapDocumentException` and distinguishes missing references, unavailable patches,
+opening patch ownership and opening cell ownership. Occupied-bound refusals retain `SpaceId`, boundary
+`OwnerId` and `FieldPath` `Lower` or `Upper`. The prism record budget reports `WorkCapacityExceeded`
+with `Budget` `MaxRecordReads`, `ActualCount` and inclusive `Limit`.
+Prism ancestry distinguishes non-Room references, mismatched parents, parent cycles and missing
+parent footprints, retaining the prism `RecordId`, `SpaceId` and `RelatedRecordId`.
+Depth, face and vertex work refusals identify their own budget and measured count. Existing query
+statuses and developer-facing messages keep their released behavior.
+`MapChainResolution.Finding` preserves a caught typed refusal without changing positional construction
+or deconstruction. Wall-strip, aperture, membership, boundary, terrain-edit and physics adapters forward
+the original reason and identifiers. They use `SpaceChainUnresolved` or `PhysicsWallChainUnresolved`
+only without a typed producer finding. Record lookups retain the requested `ExpectedRecordType`
+alongside an actual `RecordType` when present. Prism versions, nonfinite endpoints and separation have
+distinct reasons. Portal height refusals retain the owning `RecordId` and column `Index`.
+Space alias cycles use `SpaceAliasCycle`, while ancestry cycles use `SpaceParentCycle`, both with
+the repeated `SpaceId`. Missing point-bound references retain their footprint `RecordId`, `SpaceId`
+and `FieldPath` on `SchemaValueRequired`. Unavailable source-cell and membership-demand patches
+retain `Patch` and `PatchStatus`. Portal point-sequence refusals use `GeometryVertexSequenceInvalid`
+with the chain `RecordId` and `FieldPath` `Vertices`.
+Prism admission distinguishes Room kind, parent agreement and single-prism occupancy. Storey
+refusals identify the prism `RecordId`, storey `EntityId` and failed `FieldPath`, checking version
+before ownership. Unpacked prisms require matching live record and storey transfers and report
+`SpaceStoreyTransferMissing` with `InstanceId` when that pair is absent or retired.
+Prism containment findings use `SpacePrismOutsideParent` or `SpacePrismParentSeparationInvalid`,
+with `RecordId`, `SpaceId` and parent `RelatedRecordId`. `SpaceOccupiedOverlap` names both occupied
+spaces through `SpaceId` and `RelatedRecordId`. The released validation strings retain their order
+and prose. Aggregate adapters forward the first concrete finding and its ordered snapshot.
+Boundary coverage distinguishes `SpaceBoundaryGap`, `SpaceBoundaryOverlap`,
+`SpaceCoverageMissingBound` and `SpaceCoverageSeparationInvalid`, retaining footprint `RecordId`,
+`SpaceId` and `SlotCell`. Portal air-band failures use `SpacePortalAirIntervalInvalid` with the
+portal `RecordId`, endpoint `SpaceId` and segment `Index`. Sequence findings retain the chain or
+portal subject instead of replacing it with wrapper context. Coverage exposes its released string API
+and complete ordered typed findings.
+Coincident supports use `SpaceSupportCoincident`. Footprint overlap findings retain both footprint
+identities and both cells with `RecordId`, `RelatedRecordId`, `SlotCell` and `RelatedSlotCell`.
+The coverage collector forwards known overlap and prism findings without reading identifiers from
+prose. Refinement and water findings retain the concrete producer reason and identifiers.
 
 Doors remain AuthoredOpen. `MapRoofPolicy.Evaluate(scene, observer, mode)` returns detached roof intent.
 `MapRoofEvaluationBuffer.Prepare(scene)` admits reusable exact membership and returns a typed result.
@@ -12041,6 +12669,37 @@ A resolver-2 native document with `AuthoredBindingsV2` can carry an optional `Ma
 Each body has one level, exact half-open lattice rectangle or polygon domains, explicit covered authored
 spaces, a medium from the document's table and a render material from its verified asset closure.
 A present empty section selects bounded mode and is dry everywhere. Resolver-1 documents keep global water.
+
+`MapWaterDomain.Compile` reports its first concrete `MapDocumentRefusal` and preserves all ordered
+domain findings on `MapDocumentException.Findings`. Piece failures carry the stored `Index`,
+`SubjectKind` and `FieldPath`. Placement failures distinguish nonfinite components from nonpositive
+scale. Capacity refusals carry the exact `Budget`, `ActualCount` and `Limit`. Effective water adapters
+also retain the body `EntityId`. The [MapDoc refusal table](../KhaozEngine.MapDoc/README.md#loud-failures)
+lists the water domain reasons.
+Consumer-built message-only vertex failures remain untyped, keep the domain wrapper's text and retain the
+original exception as its inner cause. Validation keeps their string errors without inventing a finding.
+Water JSON conversion throws `MapWaterJsonException`, which derives from `JsonException` and retains
+the concrete reason, water-relative `FieldPath` and known scalar identifiers. Document readers carry
+the same reason and identifiers into `MapDocumentException`. Canonical decimal failures retain
+`ActualText` and signed integer limits, and unsupported enum text retains `EnumType` and `ActualText`.
+
+Water edits distinguish `WaterBodiesPreventLegacyMode`, `WaterBoundedModeRequired` and
+`WaterMediumInUse`. Missing body or medium identities use `ReferenceMissing`. Containment adds known
+typed refusals in the owned read-only `MapWaterContainmentReport.Findings` snapshot, retaining cover
+record identities and the body context. `WaterCoversAlias`, `WaterNoSpaceFootprint` and
+`WaterSpacesDisconnected` name the authored rules. Caught typed causes keep their original
+identifiers and add body `OwnerId` when unset. Medium and body scalar findings name the field and
+identity, and separate nonfinite numbers from finite range refusals. Invalid ring findings retain
+the captured invalid ring `Address` with its denominator identifiers. A null body medium uses
+`SchemaValueRequired`. A reader refusal remains a domain finding without inventing an address.
+An unresolved medium key uses `ReferenceMissing`. Occupied-water admission retains
+`AcquireStatus` and the unavailable patch and status where known. The released `Complete`, `Errors`
+and downstream status classifications remain unchanged. Untyped upstream failures remain in `Errors` during producer closure.
+The water edit adapter now retains its first concrete validator reason and ordered `Findings`.
+Domain-piece and shared-space body overlap use `WaterDomainPiecesOverlap` and `WaterBodiesOverlap`,
+with both piece indices or body identities. Missing render resources reuse `ReferenceMissing`, and
+wrong kinds use `ReferenceKindMismatch`. Both carry body `EntityId`, `ResourceId` and the required
+resource kind on in-memory and stored identity paths, plus the actual kind when a resource exists.
 
 `MapWaterQuery(view, document.Water)` captures the water set and digest. `Sample(point)` returns a wet
 interval only when the point's occupied space is covered, its XZ is in the body domain and
@@ -12129,12 +12788,107 @@ unloaded surface patches. `HasUnloadedTiles` retains the tile-only meaning. `Sav
 directory carries cold content through unchanged, subject to its reference and partial-edit guards.
 Whole-document writers refuse partial views, including surface-only windows, rather than silently dropping
 cold content. A window remembers the manifest it loaded. A windowed `SaveTiled`, including a surfaces-only
-window, refuses with `stale window` when another writer has changed the manifest since the window was loaded,
-or when the current manifest cannot be read. Reload the window and reapply the edit.
+window, refuses with `DocumentStaleWindow` when another writer changed the manifest after the window loaded
+or the current manifest cannot be read. It carries manifest `Path`, pinned `ExpectedHash` and `ActualHash`
+when readable. Reload the window and reapply the edit.
+
+Document read failures use `DocumentReadFailed` with source name, path and original cause. A future format
+version uses `DocumentVersionUnsupported` with the actual and supported versions. A missing migration uses
+`DocumentMigrationMissing`, source `ActualVersion` and next `TargetVersion`. A null migration result uses
+`DocumentMigrationReturnedNull`. Both retain `SourceName` and the format-version field path. Save-back to a
+missing source uses `DocumentSaveSourceMissing`. An unwritable requested form uses `DocumentSaveFormInvalid`.
+These save refusals retain `Path` and `DocumentForm`, and whole-save admission runs before opening its target.
+Document adapters forward the producer's first reason and complete ordered `Findings` snapshot.
+
+Null surface collections throw `MapSurfaceJsonException` with `SchemaMemberNull` and their `FieldPath`.
+Duplicate surface patches use `IdentityDuplicate`, `Patch` and zero-based `Index`. Document JSON wrappers
+preserve those identifiers. Native placement transform refusals distinguish nonfinite components,
+nonpositive scale, missing tags and null tag entries through the applicable scalar or required-value
+reason, `PlacementId`, field path, numeric value and tag index. Registry builds refuse unknown terrain
+features with `DocumentTerrainFeatureUnknown` and captured discriminator. World-hash ordering failures use
+`OrderInvalid`, `PreviousTile` and the offending `Tile`.
+
+Native validation and whole authored identity require a complete document. Their refusals expose
+`CompleteDocumentRequired`, `DocumentId` and `Operation` `ValidateNativeDocument` or
+`ComputeWholeAuthoredIdentity`. Scoped identity `RequireComplete()` uses `AcquisitionIncomplete` with
+`Operation` `RequireCompleteIdentity`. A native root mismatch reports `DocumentAssetRootsMismatch` and
+owned snapshots of the submitted `ResourceIds` and closure `ExpectedResourceIds`.
+
+Both authored identity schemes select the first invalid build option. Resolver mismatch uses
+`ResolverContractMismatch` with submitted and expected resolver versions. Blank builder ID or options hash
+uses `SchemaValueRequired` with `FieldPath` and `ActualText`. Nonpositive builder version uses
+`ValueOutsideRange` with `ActualInteger` and inclusive `MinimumInteger` 1. Missing playable bounds or a
+native placement asset also uses `SchemaValueRequired` with its field and known document or placement ID.
+Nonfinite storage bounds identify the first failed component through `ValueNonfinite`, `FieldPath` and
+`ActualNumber`. Authored duplicate content uses `IdentityDuplicate`, its typed `SubjectKind` and `EntityId`,
+or `SculptTile` for a sculpt duplicate.
+
+Tiled surface saves report dictionary key disagreement as `StoragePatchKeyMismatch` with the dictionary
+`ExpectedPatch` and payload `Patch`. A payload changed after preparation uses `StorageSaveSnapshotChanged`
+with `Patch` and the expected and actual hashes. The manifest rename commits a tiled save. A refusal before
+that commit preserves the previous live content, and the next successful save sweeps unreferenced payloads.
+Packing limits use `ValueOutsideRange`, the failed
+`FieldPath` (`IndexBlockSlots` or `DirectoryBlockPages`), actual integer and inclusive limits 1 and 16.
+Unrepresentable page blocks and load windows use `GeometryNotRepresentable` with `Operation`
+`PackSurfaces` or `LoadSurfaces` and `FieldPath` `Covers` or `Window`. Stored semantic digest mismatches
+retain the surface and both hashes. Missing or corrupt pages report `PatchUnavailable`, `PatchStatus`,
+`SurfaceId` and pinned `ExpectedHash`. Payload failures also name `Patch` and retain a known producer
+reason and its identifiers.
 
 **Streamed content and bounded surface embedding.** `SaveTo(doc, stream)` serializes through a
 `Utf8JsonWriter`, and `Save` uses it without building one whole-document text buffer. Native surface
 embedding has separate limits of 256 patches and 8 MiB. Larger native surfaces require tiled storage.
+The embedded payload writer reports byte and container-depth limits as `WorkCapacityExceeded`, with
+`Budget` `MaxEmbeddingBytes` or `MaxEmbeddingDepth`, required bytes or container count, and inclusive `Limit`.
+The depth budget admits 16 containers. A negative byte budget uses `ValueOutsideRange` and minimum 0.
+Wrong allocator lengths use `SchemaArrayLengthMismatch` with expected and available actual byte counts.
+A payload shrinking after measurement uses `StorageEmbeddingChanged` with measured and written byte counts.
+Malformed scalar values use `SchemaMalformed`. Nonfinite numbers use `ValueNonfinite` with `RecordType`
+and `ActualNumber`. Internal numeric formatting and default encoder progress checks remain invariants.
+Embedding array guards expose `SchemaArrayRequired` and `FieldPath` `$.surfacePatches`. Patch-count
+capacity exposes `WorkCapacityExceeded` with `Budget` `MaxEmbeddedPatches`, `ActualCount` and inclusive
+`Limit`. Invalid reader budgets expose `ValueOutsideRange` with the option's path, submitted integer
+and inclusive minimum. Repeated DOM patch keys use `IdentityDuplicate`, `Patch` and `Index`.
+The streaming converter's `MapSurfaceEmbeddingJsonException` remains catchable as `JsonException`.
+Document wrappers retain its concrete reason and the complete typed inner cause.
+Surface page envelopes report object shape, member count, missing, duplicate and null fields through
+their schema reasons and `FieldPath`. Declared count mismatches carry both counts. Surface identity
+mismatches use `AuthoredValueMismatch`, cover mismatches `BoundsInvalid`, and page byte capacity
+`WorkCapacityExceeded` with `Budget` `MaxPageBytes`, measured `ActualByteCount` and inclusive `Limit`.
+Page contents retain missing-field, bounds, ownership, ordering and duplicate-identity reasons with their
+`FieldPath` and known `SurfaceId`, `Patch` and `Index`. Page counts use `MaxEntries`, decoded metadata
+arrays `MaxMetadataEntries`, both with measured counts and inclusive limits. Overlapping index page covers
+use `StorageDirectoryPagesOverlap` with both indices. Interface-backed cardinalities are captured once,
+so a faulty producer cannot change the value reported by a refusal.
+Whole surface saves forward the first topology finding and the complete ordered `Findings` snapshot.
+Dependency-position overflow uses `GeometryNotRepresentable`, `Operation` `SaveSurfaces` and
+`FieldPath` `CornerDependencies`. Surface query conversion overflow uses `GeometryNotRepresentable`,
+`Operation` `FindPatches` and `FieldPath` `scope`. Raw saves still certify references and exact owner
+positions without certifying geometric seams or equal heights.
+A mismatched dependency owner address uses `SurfaceSeamPositionMismatch` with the dependent `Patch`,
+owner `ExpectedPatch` and `Address`, and dependent corner coordinates. An address outside the owner
+geometry uses `SurfaceSeamVertexUndeclared` with that context. Partial saves distinguish
+`StorageReferencedPatchUnloaded`, `StorageReverseKnowledgeUnknown`, `StorageReverseDependantUnloaded`
+and `StoragePartialEditUnsupported`. These identify the missing patch, affected surface, directory digest,
+incident record or unsupported field when known. Missing references retain `ReferenceMissing`, while an
+indoor-span parent of the wrong topology type retains `ReferenceKindMismatch` and both types. Refused saves
+leave every existing file byte-identical.
+Scope admission throws `MapSurfaceScopeArgumentException`, catchable as `ArgumentException`. Its shared
+`MapDocumentRefusal` distinguishes nonfinite coordinates, unordered bounds, missing required values,
+undefined roles and negative allowances in predicate order. `FieldPath` names the failed option, numeric
+identifiers retain its value and inclusive minimum, and enum failures retain their type and integer.
+Equal bounds and zero allowances remain valid, including when a record copy is readmitted by a query.
+
+Storage directory references preserve schema reasons, the failed `FieldPath`, row `Index` and both counts
+when a member-count guard fails. Unknown surface declarations use `ReferenceMissing`, overlapping directory
+covers `StorageDirectoryPagesOverlap`, and repeated index patch keys `IdentityDuplicate`.
+A malformed storage digest uses `DigestMalformed` before file access. Empty bytes use `ValueOutsideRange`
+with minimum one. Oversized bytes use `WorkCapacityExceeded`, `Budget` `MaxPageBytes`, the measured count
+and inclusive limit, accepted exactly by both read and write. Changed bytes use `DigestMismatch` with the
+pinned and actual hashes. A file with more bytes after the captured read length uses `StorageReadChanged`,
+the captured `ExpectedByteCount` and minimum observed `ActualByteCount` (that length plus one).
+Preparation overflow uses `GeometryNotRepresentable`, `Operation` `SaveSurfaces` and `FieldPath` `Surfaces`.
+
 `SaveTiled` writes one tile at a time and **does not rewrite a tile whose
 canonical hash is unchanged**. Its ordering is crash-consistent: changed tiles are written at names nothing
 points at yet, then a single `map.json` rename commits, then a best-effort sweep collects what the new
@@ -12150,7 +12904,8 @@ release. On a tiled document it reads the stored hashes and never opens a tile f
 `$schema` are excluded (renaming a zone must not desync a live server), and `tileSize` is included, so
 re-tiling changes world identity and a converter must PRESERVE `tileSize` rather than re-derive it.
 `MapDocumentFile.VerifyTiled(directory)` re-derives every tile hash and reports mismatches, orphans and
-stray temp files, and `MapDocumentLoadOptions.VerifyTileHashes` is the per-load opt-in.
+stray temp files, and `MapDocumentLoadOptions.VerifyTileHashes` is the per-load opt-in. A mismatch on
+that load refuses with `DigestMismatch`, `DigestKind` `tile lists`, `Tile`, `ExpectedHash` and `ActualHash`.
 
 **On-demand tile reads.** `MapDocumentSource.OpenTiled(directory)` reads the manifest and nothing else.
 `ReadTile(coord)` parses and validates one tile and is free of shared mutable state, so a caller may run it
@@ -12247,6 +13002,15 @@ the chunk's props instead of rebuilding it. `streamer.RefreshPlacements(coord)` 
 layers of that loaded chunk through `Scene3DChunkSink`'s `IChunkPlacementRefreshSink` and leaves its terrain mesh
 and collider alone. `Invalidate` is still the call for a field change.
 
+`Scene3DChunkSink` configuration guards carry `ChunkSinkConfigurationRefusal` in `KhaozEngine.Terrain`.
+`DynamicsRequiresPhysics` and `CollisionRequiresPhysics` use `ChunkSinkConfigurationArgumentException`
+(an `ArgumentException`) and retain the offending `ParamName`. `UpdateField`, `UpdateLayers` and
+`ReconfigureLod` refuse executing CPU builds through `ChunkSinkConfigurationStateException`
+(an `InvalidOperationException`), with `FieldChangeDuringBuild`, `LayersChangeDuringBuild` or
+`LodChangeDuringBuild` and the active `BuildCount`. Flush or drain the streamer before changing configuration.
+A negative `collisionLod` stays a BCL parameter check, and layer topology remains a separate policy. See the
+[terrain configuration refusal table](../KhaozEngine.Terrain.Render3D/README.md#configuration-refusals).
+
 The same holds for a change to scatter or companion configs that leaves the field alone, such as a moved
 exclusion. Hand the sink the new layers, then refresh the props of the chunks the change can reach:
 
@@ -12301,6 +13065,451 @@ unknown scatter layer reference, a `terrainOverrides` tile that leaves the docum
 quarantines a corrupt runtime cell blob and carries on. See the `KhaozEngine.MapDoc` package README for
 the full section list and a complete example document.
 
+Resolver admission keeps the exact `MapDocumentException` catch contract. Its `Reason` is
+`MapDocumentRefusal.ResolverContractMismatch`, with the known `PayloadVersion`, `ResolverVersion`,
+`OptionsResolverVersion`, `ExpectedResolverVersion`, `SupportRecipe`, `ExpectedSupportRecipe`,
+`FieldPath` and `SubjectKind`. Inspect those members rather than parsing prose. A consumer's
+message-only constructor leaves `Reason` null. `SourceName` carries available source context.
+Supplied prefab collections may throw such refusals. Foliage preflight retains their legacy status
+without inventing a typed finding.
+Effective prefab expansion forwards every ordered numeric finding, using the first finding's reason.
+Foliage capture exposes the concrete `Finding` and an owned read-only `Findings` snapshot when a
+validator supplied several. Finalization forwards the same rule, identifiers and snapshot, keeping a
+caught refusal as its cause. Mismatched effective resources use `AcquisitionSnapshotChanged` with
+`DocumentId`, the failed `FieldPath` and known expected/actual snapshot values. Prefab codec admission
+retains `Operation` `MapPrefabCapacity` for the existing capacity projection. Typed missing-reference
+identifiers containing classifier keywords retain their rule's `Invalid` category.
+Missing legacy support callbacks use `SupportLegacyHeightRequired`, with `ResolverVersion` and
+`FieldPath` `legacySupportHeight`. A nonfinite resolved support height uses `ValueNonfinite` with
+`PlacementId`, leaving `ActualNumber` null. A requested placement absent from the resolution scope uses
+`ReferenceMissing`, with `PlacementId`, `EntityId` and `SubjectKind` `placement`.
+`MapDocumentFinding` carries an immutable reason, prose and typed context. The exception's optional
+`Findings` list is an ordered read-only snapshot. Existing string validation APIs retain their prose,
+and aggregate adapters retain their existing behavior until all their producing rules are typed.
+`MapLowerCellClassification.Finding` exposes the original failed rule without changing its class or
+`Detail`. Missing and wrong-kind reads stay `Unavailable`, and legacy recipe refusals stay `InvalidRecipe`.
+An out-of-range legacy height identifies its first failed corner, `ActualInteger` and the inclusive
+`MinimumInteger` and `MaximumInteger`. Caught patch failures retain their concrete reason and identifiers.
+`MapBoundFaceSet.Finding` and `MapCellRefinement.Finding` carry the same rule through bound, wide and
+bounded refinement. Their existing status values and `Detail` text remain independent of the reason.
+For example a caught degenerate triangle remains `Invalid` with `GeometryNotRepresentable`, while an
+arithmetic or narrowing overflow remains `NotRepresentable`. Capacity findings expose the actual
+source, pair, emitted face, vertex or context `Budget`, its measured `ActualCount` and inclusive `Limit`.
+Occupied partition classification retains `WaterDomainPairChecks` capacity provenance through an
+intermediate `Invalid` refinement status.
+Membership reports `MissingGeometry` for a legacy surface frame rejected by the compiler. Legacy recipe
+eligibility failures retain `Invalid`.
+Refusals expose no partial refinement. A count that overflowed its representation remains null.
+
+`MapPrismCoverage.ValidateFindings(view, limits)` and
+`MapSpaceCoverageValidator.ValidateFindings(view, limits?)` expose complete ordered read-only snapshots.
+Their string APIs keep their existing projection. Their `Require` adapters throw the first concrete
+reason and retain all findings, including the owning record and cell where known. Prefab preparation
+and the effective physics-world gate use these adapters. Partition refusals preserve their original
+status projection separately from the lower reason, including invalid refinement projected as missing geometry.
+Classification does not interpret keywords inside user-supplied identifiers.
+`MapCompiledWaterBody.Finding` carries a refused compile's original rule and body owner. Complete bodies
+have no finding. Capacity identifies the actual compile budget, measured `ActualCount` and inclusive
+`Limit`. Unverified cover and footprint discovery use `PatchUnavailable` or `AcquisitionIncomplete`.
+An uncovered bound area uses `SpaceCoverageMissingBound`, without changing the existing status or Detail.
+The effective-water publication gate forwards the first refused body's finding and typed context,
+retaining its existing detail and first-body admission order.
+
+Effective coordinate freezing carries `Operation = "Freeze"` and `ActualNumber`, using `ValueNonfinite`
+for nonfinite input or `ValueOutsideRange` with the inclusive `MinimumNumber` and `MaximumNumber`.
+Effective frame conversion uses `FrameRadiusExceeded` with its checked local position and inclusive `Limit`,
+or `ValueNonfinite` for nonfinite local height. Marker and placement support-seat arithmetic overflow uses
+`GeometryNotRepresentable`, the caller's `MarkerId` or `PlacementId` and `SupportStatus = NotRepresentable`.
+Relations preserve the chain or aperture's original invalid or missing projection independently of its reason.
+
+Fine-patch conversion retains `MapDocumentException` and exposes `MapCellConversion.Finding` alongside
+the unchanged classification and prose. `TerrainCornerCutCreaseUnsupported` and
+`TerrainCornerCutSubdivisionOdd` distinguish the two unsupported corner-cut rules.
+`TerrainAuthoredDifference` names legacy arithmetic or non-capture fallback requiring explicit acceptance,
+including an exact cell whose legacy arithmetic still changes. Findings carry `SurfaceId`, `Patch`,
+the signed 64-bit world-cell `Address`, `ActualInteger` subdivision, `ConversionClass` and source
+`PresencePolicy`. Absent cells use
+`TerrainCellMissing` with the known surface, patch and address. Footprint straddles use
+`TerrainFootprintStraddlesRegion`, `RecordId` and `SlotCell`. Failed owner retargets use
+`TerrainOwnerRetargetUnavailable` with the dependent `Patch`, patch-local `CellX` and `CellZ`, and
+the owner's `ExpectedPatch` and `Address`. Subdivision limits use `ValueOutsideRange` with
+`FieldPath = "Subdivision"`, `ActualInteger` and inclusive limits 2 and 64. Blank surface identities
+use `SchemaValueRequired`, while equal identities use `AuthoredValueMismatch`, with the first failed
+field and known surface identities. Conversion adapters forward the first concrete producer finding and
+the complete ordered `Findings`, including each refused authored-difference cell. Empty selections use
+`TerrainConversionRegionsMissing`, overlapping selections `TerrainConversionRegionsOverlap` with the
+later `Index` and earlier `OtherIndex`, empty rectangles `BoundsInvalid` with `Index`, paint-only sources
+`SurfacePaintPhysicalCompileUnsupported`, and intersecting boundary records `TerrainBoundaryRecordIntersects`
+with `RecordId`. Standalone interior alias replacement uses `InteriorAliasUnsupported` with `RecordId`,
+`SpaceId` and the alias target's `RelatedRecordId`. Other interior guards reuse ownership, reference,
+value and operation reasons with the identities known at admission.
+
+Terrain edits retain complete ordered producer findings and the unchanged source on refusal.
+`TerrainEditRegionOutOfBounds` carries the patch and submitted rectangle, or the out-of-domain presence
+slot. `TerrainOwnerChangeStale` identifies the dependent patch and corner and known old-owner context.
+`TerrainSmoothingHaloUnavailable` identifies the required world corner through `Address`.
+`TerrainTopologyWritesConflict` distinguishes conflicting patch or surface writes from `IdentityDuplicate`.
+`TerrainAnchorStillInUse` names a removed anchor's `Patch` and retained `RecordId`.
+`TerrainCornerOwnerAmbiguous` names the world-corner `Address`, surface and conflicting owner patches.
+Owner self-address mismatches reuse `SurfaceSeamPositionMismatch`, while disagreeing incident halo
+heights reuse `GeometryVertexHeightMismatch`. These reuse the same rules as seam and shared-corner
+admission. Height and cell count mismatches use `SchemaArrayLengthMismatch` with the failed field and
+actual and expected counts. Count diagnostics retain the value that failed the predicate when a
+faulty collection producer changes between reads. Plain smoothing iteration parameter checks remain BCL exceptions.
+
+Root, manifest, tile and prefab schema admission also preserves `MapDocumentException`. Its reasons distinguish
+`SchemaMemberUnknown`, `SchemaMemberDuplicate`, `SchemaMemberMissing`, `SchemaMemberNull`,
+`SchemaObjectRequired`, `SchemaValueRequired` and `SchemaMalformed`. Closed-member failures carry a JSON
+`FieldPath` in `System.Text.Json.JsonException.Path` format, such as `$.nativeAssets[0].id` or
+`$['notes.extra']` for a literal name containing `.`, while native and prefab duplicates identify the containing object. `SourceName`
+retains the known source context, with `Tile` and file `Path` on tile reads. JSON failures carry the
+reader's path, zero-based `LineNumber` and UTF-8 `BytePositionInLine` where available. A JSON wrapper
+containing a known structured document refusal retains its reason, every identifier and that original
+refusal as its cause. A prefab file JSON failure supplies its known `ResourceId`, including when deserialization
+has already wrapped the JSON failure as a document refusal. An existing resource
+identity survives the context copy. Prefab preflight paths retain array positions from the supplied root.
+Child and override converter member paths are relative to that converter's object, with placement payload
+fields below `$.value`. Null prefab members and blank marker-adoption identity fields use
+`SchemaValueRequired`. Marker option and adoption schema guards identify their refused field through
+`FieldPath`. Prefab patch dimensions outside 1 through 64 inclusive use `BoundsInvalid`, with `Width`,
+`Depth` and the patch object's `FieldPath`. Binding and enum converters without a structured cause use
+`SchemaMalformed` and the reader's path. Inspect these members rather than parsing error prose.
+Payload-version validators, marker authoring rules and other aggregate admission retain their existing
+contracts until all their producing rules are typed.
+
+Asset-manifest admission exposes `AssetKindUnsupported`, `DigestMalformed`, `ValueNonfinite`,
+`ValueOutsideRange`, `BoundsInvalid`, `SchemaValueRequired`, `SchemaPayloadVersionUnsupported`, `ReferenceMissing` and
+`ReferenceKindMismatch`.
+Inspect `AssetId`, `ResourceId`, `ExpectedResourceKind`, `ActualResourceKind` and `FieldPath` where known.
+Nonfinite source-unit scales use `ValueNonfinite` with null `ActualNumber` and `MinimumNumber`.
+Finite nonpositive scales use `ValueOutsideRange` with `ActualNumber` and an exclusive `MinimumNumber` 0.
+Manifest paths retain array positions, while a direct reference or resource check starts at that object's
+root. JSON failures preserve known structured inner refusals, otherwise they use `SchemaMalformed` and
+the reader's path and location metadata.
+
+Surface scalar and cell admission also keep the exact `MapDocumentException` type. Lattice units use
+`SurfaceUnitUnreduced` with `Numerator` and `Denominator`, or `ValueOutsideRange` for nonpositive parts.
+Address denominators use `ValueOutsideRange` with inclusive limits and `ActualInteger` when the common
+denominator fits in `long`. Unsupported frame enumerations use `SchemaEnumUnsupported` with `EnumType`,
+`ActualInteger` and `FieldPath`. Missing surface identities and null patch height, cell or presence arrays use `SchemaValueRequired`,
+while mismatched array lengths use `SchemaArrayLengthMismatch` with the known counts. Invalid patch
+rectangles and reversed exact rectangles use `BoundsInvalid`. A cell or corner outside a valid patch uses
+`SurfaceAddressOutOfPatch` with `Patch`, `CellX`, `CellZ` and its inclusive coordinate limits. Corners
+include `Width`, `Depth`, while cells end one earlier on each axis. Local validation additionally
+collects typed cell-field, padding (`SurfacePresencePaddingNonzero`) and metadata-capacity
+(`WorkCapacityExceeded`) findings. Capacity findings retain `Budget`, `ActualCount` and `Limit`.
+`ValidateLocalFindings` returns every local finding as an owned read-only snapshot in diagnostic order.
+Its public string results stay unchanged. Metadata findings carry `Index`, `FieldPath`, `Patch`,
+`CellX`, `CellZ` and, for subdivisions, `Edge`. Missing dependencies or owners use `SchemaValueRequired`,
+coordinates use `SurfaceAddressOutOfPatch`, unsupported edges use `SchemaEnumUnsupported`, and repeated
+corner or cell-edge keys use `IdentityDuplicate`. Denominators and segment counts use `ValueOutsideRange`
+with their inclusive limits, including segments 2 through 64. An absent cell uses
+`SurfaceSubdivisionAbsentCell`, while an edge adjoining another present cell uses
+`SurfaceSubdivisionInteriorEdge`. The encoder consumes these typed findings. Other forwarding adapters still expose prose.
+`SplitSwNe` uses `ValueOutsideRange` for rotation outside 0 through 3 and `SchemaEnumUnsupported` for cut
+or topology, retaining the first failing field, actual integer and applicable enum type.
+An incompatible forced diagonal uses `SurfaceForcedTopologyConflict` and the submitted topology.
+The scalar topology API has no patch or slot-cell identifier to attach.
+
+Surface codec record guards distinguish missing values, duplicate identities, unsupported kinds,
+invalid enums, cardinality and prism payload versions through the corresponding schema, identity and
+`OperationKindUnsupported` reasons. Helper `FieldPath` values identify their local object fields.
+Unsupported decoded kinds retain `ActualText`, and unsupported runtime records retain `RecordType`.
+Chains admit 2 through 4097 vertices, slot lists 1 through 4096 entries, and slot values 0 through 4095.
+Slot ordering uses `OrderInvalid` with `Index`, `ActualInteger` and `PreviousInteger`. Prism versions
+carry `ActualVersion` and `SupportedVersions`. The encoder and decoder preserve the first local finding's reason
+and identifiers and attaches every ordered local finding as `Findings`. Decoded key mismatches use
+`SurfacePatchKeyMismatch` with `Patch` and `ExpectedPatch`, rectangle checks use `BoundsInvalid` with
+the patch and dimensions, and the trailing-value guard uses `SurfacePatchTrailingBytes` with the requested
+patch. Codec schema guards use the shared object, member, array and required-value reasons. Canonical
+decimal slots and addresses use `SchemaInt64Malformed` with `FieldPath`, `ActualText` and signed 64-bit
+limits. Base64 failures distinguish invalid encoding (`SchemaBase64Malformed`) from token or decoded
+length mismatches (`SchemaArrayLengthMismatch`). Token lengths are character counts in `ActualCount`
+and `ExpectedCount`, and byte lengths use `ExpectedByteCount` and `ActualByteCount` only when known.
+Other malformed JSON or scalar conversions use `SchemaMalformed` with the requested `Patch` and
+available reader location. The 1,048,576-byte codec cap uses `WorkCapacityExceeded`,
+`Budget = "SurfacePatchEncodedBytes"` and `Limit`. Exact attempted byte counts use `ActualByteCount`,
+while preflight collection and text checks retain `ActualCount` and a local `FieldPath` when known.
+Per-array count caps use the field name as `Budget`, with `ActualCount` and `Limit`.
+
+Acquired fact admission distinguishes missing values (`SchemaValueRequired`), undefined enums
+(`SchemaEnumUnsupported`), negative `PagesRead` (`ValueOutsideRange` with a zero minimum), repeated
+patch or record identities (`IdentityDuplicate`), mismatched present-payload keys (`AuthoredValueMismatch`
+with `Patch` and `ExpectedPatch`) and semantic pins (`DigestMismatch` with both hashes). The carrier
+retains the first failed `FieldPath` and known `SurfaceId`, `RecordId`, `Patch` and `PatchStatus`.
+A non-present acquired result carrying a payload uses `AcquisitionContractMismatch`. A missing bound
+surface names the footprint's record and lower or upper field. A composed source without bounded native
+acquisition uses `AcquisitionUnsupported` with `SourceType`. Source-context wrapping and finding
+projection preserve these identifiers. Ordinary and effective discovery snapshot changes use
+`AcquisitionSnapshotChanged` with `ExpectedSnapshot`, `ActualSnapshot` and `FieldPath`. Effective or
+composed session pin mismatches, scope or reservation discrepancies and inconsistent incidence use
+`AcquisitionContractMismatch`, retaining both snapshot identities or both root/scope hashes when known.
+Null scopes and known incidence without a list use `SchemaValueRequired`, and unsupported discovery or
+unavailable statuses use `SchemaEnumUnsupported`. A composed read without a surface owner uses
+`ReferenceMissing` with `SurfaceId` and `Patch`. Scope-coordinate admission remains in the shared
+surface query. Arithmetic overflow in the resident merge after patch-key admission is an internal
+invariant failure. Ordinary and effective read-key mismatches use `AcquisitionContractMismatch` with `Patch` and
+`ExpectedPatch`. Their surface lookups distinguish undeclared, null and wrong-identity results
+with `ReferenceMissing`, `SchemaValueRequired` and `AuthoredValueMismatch`, retaining `SurfaceId`,
+`FieldPath` and the actual identity when known. Reservation snapshots distinguish
+`WorkCapacityExceeded` (`Budget = "MaxCandidatePatches"`, count and limit) from `OrderInvalid`.
+Later snapshot, root or reservation changes use `AcquisitionSnapshotChanged`, naming the
+changed field and both pins when available. Negative page deltas use `ValueOutsideRange` with a zero
+minimum. Backward observations use `AcquisitionContractMismatch` with current, previous and minimum
+integer page counts. Inconsistent deltas use that reason with reported and observed counts. Ordinary session admission uses the same pin identifiers. A collapsed effective cell uses
+`GeometryNotRepresentable` with its surface, patch and local cell. Ordinary and effective coordinators
+share these reservation, reconciliation and page-observation reasons. Complete resident publication
+distinguishes mismatched patch keys (`AuthoredValueMismatch` with both keys) from undeclared surfaces
+(`ReferenceMissing` with surface and patch). Shared surface-query guards retain their current behavior.
+
+Surface compilation carries `WorkCapacityExceeded` with `Budget = "MaxFacesPerPatch"`, the measured
+`ActualCount`, `Limit` and `Patch`. Physical compilation of paint-only surfaces instead carries
+`SurfacePaintPhysicalCompileUnsupported`. Exact emission failures use `GeometryNotRepresentable`, with
+surface, patch and operation when known. Shared compiled or boundary vertices with different exact
+heights use `GeometryVertexHeightMismatch` and retain `Address`. An unavailable effective patch uses
+`PatchUnavailable` with its key and observed `PatchStatus`. Effective legacy sampling uses
+`SurfaceLegacyRecipeRequired` for an incompatible surface recipe and `SurfaceLegacySampleOutOfCell`
+for an out-of-cell sample, retaining surface, patch and selected `SlotCell` when known.
+`MapFrameLocal.ToFrame` uses `FrameRadiusExceeded` with `Limit` and the checked local planar coordinates.
+A subtraction overflow retains the limit without inventing local coordinates. A nonfinite coordinate
+uses `ValueNonfinite` with the first failed field and value. These refusals retain the patch when available.
+The compiler's local-validation adapter forwards the first concrete finding and the complete ordered
+`Findings` snapshot. Compiler metadata uses `AuthoredValueMismatch` for a different surface identity,
+`SchemaValueRequired` for a missing frame and `SchemaEnumUnsupported` with the refused enum type/value.
+Legacy frame-policy mismatch reuses `SurfaceLegacyRecipeRequired`. A native NoDraw cell uses
+`SurfaceNativeNoDrawUnsupported`, `SurfaceId`, `Patch` and its slot-relative `SlotCell`.
+`MapSurfaceSemantics.SurfaceDigest` distinguishes required metadata, unsupported enum values, wrong
+patch ownership, duplicate patch keys and malformed hashes. The last three preserve the submitted patch
+and the supplied digest. `MapSurfacePatch.Clone` carries `OperationKindUnsupported` with its patch,
+record identity and runtime type for an unsupported record, and `SchemaValueRequired` for a null record.
+
+`MapLegacyExteriorRecipe.CheckFinding` reports the first eligibility rule as
+`LegacyExteriorSpaceRequired`, `LegacyExteriorOpenTopRequired`, `SchemaValueRequired` for a missing
+lower surface, `SurfaceLegacyRecipeRequired` for an incompatible surface or `AuthoredOwnershipMismatch`
+for a different footprint lattice. It retains the footprint, space, surface, patch and first failed field.
+`Check` remains its prose projection. Topology admission also carries metadata, local patch, identity,
+strip-facing, prism and ancestry findings. `MapTopologyReferenceValidator.ValidateFindings` returns the
+complete ordered read-only finding list, and `Validate` remains its unchanged string projection. Record
+lookups distinguish missing targets, wrong anchors and wrong types through `ReferenceMissing`,
+`AuthoredOwnershipMismatch` and `ReferenceKindMismatch`. They retain the source `RecordId` or surface,
+target `RelatedRecordId`, requested `Patch`, actual anchor and actual record type when checked.
+Vertex denominator findings preserve their original scalar reason and limits. Chain findings distinguish
+kind, cardinality, source patch, height kind and vertex surface. Portal findings use
+`SpacePortalOpenTopInvalid`, `GeometryVertexSequenceInvalid` and `SpacePortalMembershipMismatch`,
+with the endpoint or measured count. Vertical-link findings retain forbidden geometry owner identity
+and type, or `SpaceLinkMembershipMismatch` with either endpoint and its actual and expected count.
+Prism versions use `SchemaPayloadVersionUnsupported`, a missing Room uses `ReferenceMissing`, a
+non-Room uses `ReferenceKindMismatch`, and parent disagreement uses `SpacePrismParentMismatch` with
+`RelatedRecordId`. Room prism counts use `SpaceRoomOccupancyInvalid` with actual and expected counts,
+and ancestry cycles use `SpaceParentCycle` with `SpaceId`. The source-copy and finding projection preserve
+`RelatedRecordId`. Space listings retain their owner, referenced portal or link, and the actual portal
+endpoint when resolved. Alias peer failures use `SpaceAliasPeerInvalid` and the first incompatible
+field. Room footprints use `SpaceRoomOccupancyInvalid` with their footprint identity, and legacy recipe
+findings keep their original reason, identifiers and display suffix when forwarded through a footprint.
+Bound checks distinguish required or missing surfaces, unsupported kinds, incompatible bound roles,
+conflicting opening fields and invalid open tops. Their `FieldPath` names the first failing lower or
+upper field. Slot checks retain the patch, cell index and value. They distinguish cardinality, duplicate
+entries, backwards ordering, numerical range, patch coordinates and openings over present cells.
+Count controls accept exactly 1 and 4096 slots. `PreviousInteger` is set only for an actual predecessor.
+The topology producer is complete. Whole-document and native-bound adapters retain its typed findings.
+Opening compilation carries the actual ownership, cardinality, slot range, patch address, duplicate or
+presence rule, retaining the opening identity and selected cell. Its exact geometry failures retain the
+opening and patch. Seam validation exposes ordered read-only findings through `ValidateFindings` and
+`ValidateCornerDependencyFindings`, beside the unchanged public string results. Edge and corner findings preserve the exact lower reason, both the
+dependent `Patch` and requested owner `ExpectedPatch` when relevant, and the offending address.
+A mismatching pair surface reuses `AuthoredValueMismatch`, with the submitted surface and declared edge
+patch. Pair alignment uses `SurfaceSeamPositionMismatch`, undeclared vertices use
+`SurfaceSeamVertexUndeclared`, height disagreement uses `GeometryVertexHeightMismatch`, and incomplete
+edge coverage uses `GeometryVertexSequenceInvalid` with actual and expected vertex counts. These findings
+retain the seam record and the relevant pair index or address. Collapsed or diagonal source edges use
+`SurfaceSeamEdgeInvalid`, and edge surface mismatches reuse `AuthoredValueMismatch`.
+Support resource read and write size checks carry `WorkCapacityExceeded`, `Budget = "MaxPayloadBytes"`,
+`ActualByteCount` and `Limit`. Surface identities distinguish required values and duplicates. Defined role
+or presence values outside native support floors use `SurfaceSupportRoleInvalid`, while undefined values
+use `SchemaEnumUnsupported` with their enum type and value. Both retain the surface index and failed field.
+Support patch checks preserve the submitted `Patch` and required `ExpectedPatch`, distinguishing null
+payloads, mismatching keys and undeclared surfaces through their concrete schema, authored-value and
+reference reasons. Wall-strip guards retain `RecordId`, the failed field or vertex index and the actual
+count where measured. Lower-chain cardinality accepts 2..4097, unequal chain lengths use
+`SchemaArrayLengthMismatch`, ordered XZ disagreement uses `GeometryVertexSequenceInvalid`, and an
+inverted height uses `SurfaceWallHeightInverted`. Exact arithmetic or normal failures carry
+`GeometryNotRepresentable` and their `Operation`, with the segment `Index` for a normal failure.
+Partial paint admission uses `AcquisitionIncomplete` with `AcquireStatus` and the failed status or role
+field. Target checks use `ReferenceMissing` for an absent target and `SurfacePaintTargetInvalid` for
+a paint-only target. Misplaced nonzero priority uses `SurfacePaintPriorityMisplaced`, `SurfaceId`,
+`FieldPath` and `ActualInteger`. Equal-priority material conflicts carry `SurfacePaintPriorityConflict`,
+both `SurfaceId` and `OtherSurfaceId`, and their priority in `ActualInteger`. Open or nonmanifold
+material boundaries carry `SurfacePaintBoundaryInvalid` and the paint surface.
+Lattice-unit converters throw `MapSurfaceJsonException`, retaining the `JsonException` base contract.
+Schema refusals carry the relative `FieldPath`. Lower scalar refusals retain their original reason and
+unit or numeric identifiers, including when document readers add source context.
+Patch-key JSON uses the same carrier, preserving the first failed field, the surface identity when
+already read and the exact `ActualText` for `SchemaInt64Malformed` slot strings. Both signed int64
+endpoints remain valid canonical strings. Whole-face paint admission retains its paint `SurfaceId`
+and physical `OtherSurfaceId`, with the failed role or target field. Undefined roles use
+`SchemaEnumUnsupported`. Material or presence crossings use `SurfacePaintCrossesPhysicalFace`,
+the target `Patch`, face `Index` and `FieldPath` `Material` or `Presence`, without changing either
+input. Exact override overflow uses `GeometryNotRepresentable` and `Operation = "paint override"`.
+
+Structural document findings retain `FieldPath`, `EntityId`, `SubjectKind` and item `Index` for required
+and duplicate names, and the referenced `LayerId` for missing companion hosts. Numeric rules carry
+their finite actual values and limits through `ValueOutsideRange`, while nonfinite failures use
+`ValueNonfinite`. Root format admission uses `DocumentVersionUnsupported`, `ActualVersion` and
+`SupportedVersions`.
+Per-content findings retain the entity identity and item path. Unknown terrain discriminators use
+`DocumentTerrainFeatureUnknown` with their captured `ActualText`. Layer filters retain the referenced
+`LayerId`. Sculpt extent findings carry `SculptTile`, first escaping axis, actual extent and
+document limits. Tile-size findings retain their positive or sculpt-span minimum, and native misplaced
+paint priority uses `SurfacePaintPriorityMisplaced` with the surface and submitted priority.
+
+Native metadata adds typed findings beside its unchanged string diagnostics. Compound findings select
+the first failing predicate branch. Missing asset-reference and indoor-span values use `SchemaValueRequired`, nonfinite
+bounds or support-search values use `ValueNonfinite`, finite unordered bounds use `BoundsInvalid`, and
+finite negative search extents use `ValueOutsideRange` with minimum 0. `MinimumNumber` and
+`MaximumNumber` carry a refused bound pair. These producers set `ActualNumber` only for finite values.
+Indoor-span findings retain `SurfaceId` and the surface `Index`, with `FieldPath` naming the first missing
+required subfield, including parent-space identity, anchor surface identity or an individual domain-tag entry.
+Numeric findings carry `NumericId`, `HighWaterMark`, `EntityId` and `SubjectKind`, plus `PlacementId`
+where known. `IdentityDuplicate` distinguishes repeated identities from `NumericIdHighWaterExceeded`.
+An unsupported resolver payload uses `SchemaPayloadVersionUnsupported`, with `ActualVersion` and an
+owned read-only `SupportedVersions` snapshot containing 1. Unsupported resolver versions keep
+`ResolverContractMismatch`. Positive-only version checks carry `MinimumInteger` 1 without claiming a
+closed supported-version set. A missing native frame uses `SchemaValueRequired`, while undefined role,
+presence-policy and support-binding kinds use `SchemaEnumUnsupported`, `EnumType` and `ActualInteger`.
+
+`MapDocumentValidator.ValidateFindings` returns the complete ordered read-only snapshot behind the
+existing string API. Whole-document and tiled load/save, native-bound validation and marker-adoption
+adapters forward the first finding as `Reason` and retain the full `Findings` snapshot. Numeric
+reservation and allocation forward their numeric findings the same way. Supplied nonpositive numeric
+IDs use `ValueOutsideRange` with `NumericId`, actual value and minimum 1. Duplicate supplied IDs use
+`IdentityDuplicate`. Effective prefab expansion and foliage generation context forward the first
+numeric finding and the complete ordered snapshot.
+
+Tile ownership failures use `DocumentTileOwnershipMismatch`, retaining source document `Tile`, item
+identity and path, checked positions or `SculptTile`, `SourceName` and `Path`. The separate `SculptTile`
+identifier preserves sculpt coordinates through document-tile wrappers without replacing the source tile.
+Sculpt ownership positions widen the checked float coordinates into `PositionX` and `PositionZ`, so
+fractional sculpt cell sizes retain the ownership check's tile-boundary rounding.
+
+Identity registry checks preserve `MapDocumentException` and distinguish `IdentityDuplicate`,
+`IdentityReserved`, `AuthoredOwnershipMismatch`, `ReferenceMissing`, `SchemaValueRequired` and
+`DigestMismatch`. `EntityId` and `WorldId` identify the world subject, `ChildKind` gives its typed
+namespace, `Child` is the prefab-local key and `InstanceId` is the known source instance. Equal world ID
+text in different child kinds is allowed. Loaded and stored registry refusals retain the same reason
+and relevant identifiers. Aggregate validators expose the ordered typed findings beside their unchanged
+prose projection, and throwing adapters preserve the first finding's reason and identifiers.
+
+For attachments, `PlacementId` names the standalone owner. A missing transfer uses `ReferenceMissing`,
+a missing anchor or descriptor pin uses `SchemaValueRequired`, and a mismatched existing transfer,
+owner or anchor uses `AuthoredOwnershipMismatch`. `Patch` carries the submitted record anchor and
+`ActualAnchor` carries its actual standalone anchor when known. `$.anchor` is relative to the attached
+child, while `$.nativeResourceTransforms` identifies the document pin collection. Numeric ownership
+compares the placement's `NumericId` against its transfer's `ExpectedNumericId`. An active transfer
+requires exactly `ExpectedCount` 1 standalone owner and reports `ActualCount`. Descriptor digest
+mismatch reports the pin in `ExpectedHash` and the attachment in `ActualHash`. Inspect these values
+instead of parsing the message. The package README lists the role carried by `SubjectKind`.
+
+Standalone interior admission carries `RecordId`, `SpaceId` and `Patch`, with the submitted `InstanceId`
+on `AuthoredOwnershipMismatch`. A missing authored anchor uses `ReferenceMissing`. Runtime scatter and
+companion lookup also use `ReferenceMissing`, with `DocumentId`, `LayerId`, `EntityId` and `SubjectKind`
+of `scatter layer` or `companion layer`. Foliage edit preflight without a verified closure uses
+`AssetClosureRequired` and `DocumentId`. Editor transaction adapters preserve the first producer finding's
+reason and identifiers and its complete ordered `Findings` snapshot. Native staging and snapshots use
+`CompleteDocumentRequired` with `DocumentId` and `Operation` for a partial document.
+
+
+Direct prefab asset and local light checks retain `MapDocumentException`. Inspect `SchemaEnumUnsupported`
+with `EnumType` and `ActualInteger` for an undefined enumeration. `PrefabPayloadIdMismatch` distinguishes
+the submitted local `Child` key from the payload's `EntityId` and `ChildKind`.
+`PrefabPlacementTransformDuplicated` names the local `Child`, while `PrefabLocalAnchorInvalid` names
+`Child` and `RecordId`. `AuthoredReferenceKindInvalid` carries the wrong reference's `EntityId` and
+`ChildKind`. An implicit child collision uses `IdentityDuplicate`, with its local `Child` and
+`SubjectKind` `implicit child`. Paths are relative to the asset, child, light or patch being checked, when known.
+
+Local light intensity and colour accept zero. Radius and uniform pose scale require positive values.
+Finite domain refusals use `ValueOutsideRange`, `ActualNumber` and `MinimumNumber` 0, exclusive for
+radius and scale. Nonfinite prefab scalars use `ValueNonfinite` and retain the first refused
+`ActualNumber`, including NaN and infinity. Unsupported prefab asset and light payload versions carry
+`SchemaPayloadVersionUnsupported`, `ActualVersion` and a read-only `SupportedVersions` snapshot.
+Surface ownership differs from an embedded record count. The former uses `AuthoredOwnershipMismatch`
+with `Child`, `SurfaceId` and `Patch`, the latter `SchemaArrayLengthMismatch` with `ActualCount` and
+`ExpectedCount` 0. Leaf material kind and undeclared dependency refusals carry `ResourceId` through
+`ReferenceKindMismatch` and `ReferenceMissing`.
+
+Live prefab instance pin refusals distinguish a wrong kind (`ReferenceKindMismatch`) from a digest pin
+mismatch (`PrefabAssetPinMismatch`). Both retain `InstanceId`, `ResourceId`, expected and actual kinds,
+and `ExpectedHash` from the instance versus `ActualHash` from the verified closure. An add override
+repeating a declared child uses `PrefabAddedChildExists` and its `Child`. Source binding ownership
+refusals carry `InstanceId`, `Child` and known `WorldId`, plus `ActualCount` and `ExpectedCount` where
+a transfer count is checked. An incompatible attachment child also carries its typed `AttachmentKind`.
+
+Internal prefab validation collectors preserve typed findings alongside the unchanged string results.
+Each finding copies the full identifier context, including owned collection snapshots. An unclassified
+consumer failure uses `PrefabStateUnreadable` and retains its prose. Missing resolver identity, unsupported
+payload and incompatible resolver/recipe branches retain their own reasons. Precise poses retain their first failed component and value, and
+malformed digests retain `ActualHash`. Aggregate document adapters forward the first typed finding
+and retain the full ordered `Findings` snapshot.
+
+In prefab edit preparation, `PrefabInstanceMissing` identifies an absent or removed `InstanceId`,
+while `IdentityReserved` identifies a placement reusing a live or retained instance ID.
+`PrefabChildAlreadyRemoved` and a restore's `AuthoredValueRequired` retain `InstanceId` and local `Child`.
+Initial override nulls use `AuthoredValueRequired` with `InstanceId`, `FieldPath` and the available `Index`.
+Duplicate initial overrides use `PrefabOverrideDuplicate` and also retain the local `Child`.
+A parent reference that does not name an authored space at its anchor uses `AuthoredValueMismatch`,
+with `InstanceId`, `SpaceId`, `Patch` and `FieldPath`.
+
+Asset update requests report the first failed check in order: old resource kind, new resource kind,
+old digest, then new digest. Kinds use `ReferenceKindMismatch`, digests `PrefabAssetPinMismatch`.
+`ResourceId` names the refused side, `ExpectedHash` is its requested pin and `ActualHash` its verified
+closure digest, with expected and actual kinds and the request's `FieldPath`. A referring-instance
+pin check keeps the requested old pin in `ExpectedHash` and that instance's pin in `ActualHash`,
+with its own `InstanceId` and `ResourceId`.
+
+Extraction uses `PrefabExtractionReferenceInvalid` for a non-World reference, `SchemaValueRequired` for
+a null entry, `IdentityDuplicate` for a repeated typed World reference and `ReferenceMissing` for an
+absent effective target. These carry `FieldPath`, `Index` and the submitted `EntityId`, `ChildKind` and
+`ReferenceScope` when known. `PrefabExtractionEmpty` retains `Operation`. A collision remaining after
+local-name fallback uses `IdentityDuplicate` with the resulting local `Child`.
+`PrefabExtractionAttachmentIncomplete` keeps the materialized `PlacementId`, local `Child` and its
+`WorldId` separate. `PrefabExtractionNotLossless` identifies the missing World `EntityId` and `ChildKind`.
+Asset child removal uses `ReferenceMissing` with `AssetId` and the undeclared local `Child`.
+
+Prefab binding planning uses `AuthoredValueRequired` with `InstanceId` and `FieldPath` for a missing
+parent space. `IdentityReserved` identifies the planned `InstanceId`, typed local `Child`, `ChildKind`
+and `WorldId`, plus `NumericId` for a numeric collision. Duplicate child keys or planned world IDs use
+`IdentityDuplicate`, while missing binding entries or blank world IDs use `SchemaValueRequired`. Numeric exhaustion uses
+`PrefabNumericIdSpaceExhausted` with `HighWaterMark`, without publishing a reservation. The final
+signed 64-bit identity remains allocatable.
+
+Reference admission keeps the owning local `Child` or support `ResourceId` separate from the target's
+`EntityId`, `ChildKind`, `RecordId` and `Patch`. `ReferencePath` is a canonical JSON pointer, distinct
+from the `FieldPath` of the references collection. Missing slots and targets use `ReferenceMissing`,
+wrong kinds `AuthoredReferenceKindInvalid`, inconsistent IDs `AuthoredValueMismatch`, and missing scope
+`PrefabReferenceScopeMissing`. Slot-count disagreements use `SchemaArrayLengthMismatch` with the actual
+and expected counts. Local ownership, anchor and pose disagreements use `AuthoredOwnershipMismatch`,
+retaining the known `ActualAnchor`. Parent remapping without a supplied space uses `AuthoredValueRequired`.
+An absent effective light owner uses `PrefabEffectiveLightOwnerMissing`, with `PlacementId` for the
+owner and typed `WorldId` for the light. A prefab file's resource mismatch uses `PrefabPayloadIdMismatch`,
+with `ResourceId` and the payload's `EntityId`. Inspect these members instead of parsing message text.
+
+
+Override admission uses `PrefabPreviousOverrideNestedRemove` for nested remove history and
+`AuthoredValueMismatch` for a mismatched previous, replacement or add key. `Child` is the submitted key,
+with its target in `ExpectedChild`. Effective references distinguish wrong World scope, wrong child
+kind and a missing target, in that order, using `AuthoredValueMismatch`, `AuthoredReferenceKindInvalid`
+and `ReferenceMissing`. Inspect `ReferenceScope`/`ExpectedReferenceScope` and
+`ChildKind`/`ExpectedChildKind` alongside `EntityId` and the checked role in `SubjectKind`.
+
+Duplicate prefab collections use `IdentityDuplicate`, with the duplicate `Index`, collection role and
+typed key. Tuple keys retain their source instance, attachment kind, reference scope or world child
+kind as separate identifiers. Equal text across distinct namespaces is allowed. A null collection or
+item uses `SchemaValueRequired`, with the known role and index. Numeric bindings require at least 1
+when present, reporting `ValueOutsideRange`, `NumericId` and `MinimumInteger`. A positive numeric
+identity on another child kind uses `AuthoredReferenceKindInvalid`. The package README lists the
+identifiers for each key shape. Every engine construction supplies a reason. Aggregate document adapters
+forward the first typed finding and retain the full ordered `Findings` snapshot. Consumer-built instances
+can still use the public message-only constructors and leave `Reason` null.
+
 **Whole authored surface identity.** Scheme 2, new in 20.30.0, is the resolver-2 whole-document identity. Resolver-2
 documents use `MapAuthoredIdentityV2` from `KhaozEngine.MapDoc.Identity`, with an explicitly verified
 `MapAssetClosure` and resolver-2 options:
@@ -12317,11 +13526,21 @@ A partial editing window refuses with `window` before other validation. Both ove
 `(1, 2)`, `AuthoredBindingsV2`, valid builder options and exact native root membership in the supplied
 closure. The stored overload retains the original manifest metadata, traverses every pinned directory
 and index, verifies and hashes one payload at a time, and checks per-surface aggregates. It rereads payload
-bytes even with warm metadata caches. A swept payload refuses with `Missing`, while byte or semantic
-mismatches refuse with `Corrupt`. A changed manifest requires a new `Open`, never an implicit replacement.
+bytes even with warm metadata caches. A swept payload refuses with `Missing`, while payload byte or patch semantic
+mismatches refuse with `Corrupt`. A stored surface aggregate mismatch uses `DigestMismatch` with
+`DigestKind` `surface semantics`, `SubjectKind` `surface`, `SurfaceId`, `EntityId`, the pinned `ExpectedHash`
+and computed `ActualHash`. A changed manifest requires a new `Open`, never an implicit replacement.
 It also reads the tile files the pinned generation names, one at a time by their pinned names, and checks
 each tile's parsed content against its pinned tile hash. A removed tile file refuses with `Missing` and
-altered content with `Corrupt`.
+altered content with `Corrupt`. These are the typed `PatchStatus` values. Missing pinned content carries
+`PinnedContentUnavailable`, known `Tile` or `Patch`, storage `SubjectKind` and `ExpectedHash`. A known
+inner document refusal keeps its concrete reason and identifiers through the common copy operation.
+Tile and payload semantic mismatches use `DigestMismatch` with both hashes. Mismatched index metadata
+uses `AuthoredValueMismatch` with its failed `FieldPath`. `MapPatchRead.Finding` exposes a known payload
+failure beside the unchanged read status and detail. Payload reads and stored identity attach the known
+patch when a schema refusal lacks one, preserving existing identifiers. Unsupported pinned tile schemes use
+`DocumentHashSchemeUnsupported` with `ActualVersion`, `SupportedVersions` and `FieldPath` `schemeVersion`.
+Stored identity's foliage validator forwards the first concrete finding and the complete ordered snapshot.
 
 The `kemap/native-authored/2` token covers exactly the root digest, the authored content digest, ordered
 patch keys and semantic digests, the effective resource policy and query policy 2, the closure hash,
@@ -12341,7 +13560,7 @@ coverage, read and identity witnesses. Stored sources and `MapDocumentSurfaceSou
 support it. Custom producers must implement
 `IMapSurfaceAcquisitionSource` and open one pinned session across discovery, record expansion and bound
 reads. A source implementing only `IMapSurfaceSource` refuses with
-`surface source does not support bounded scoped acquisition` before legacy callbacks run.
+`AcquisitionUnsupported` with `SourceType` before legacy callbacks run.
 
 Sessions report ordered `ReservedPatchKeys` before work for every discovery or explicitly read key,
 including known-empty and unavailable keys, against one unique-key budget. Returned keys, reservations,
@@ -12370,6 +13589,19 @@ and does not provide native source-scale loading. `NativeMapAssetLoader.Load(ass
 does: it parses the verified mesh resource from the closure's bytes, refusing any buffer or image that names an
 external URI, and multiplies every vertex position by `SourceUnitsToMetres` once. It never fits the mesh to a height, drops its base or recentres it, so a native mesh keeps
 its authored origin and agrees with its collider.
+
+Native mesh refusals distinguish `AssetDescriptorMismatch`, `ReferenceKindMismatch`, `SchemaMalformed`,
+`AssetGlbExternalUri` and `AssetPayloadUnreadable` through `MapDocumentException.Reason`. They carry
+`AssetId` and `ResourceId` where known. External URI refusals also carry `Uri` and indexed `FieldPath`.
+The file adapter uses `AssetPayloadUnreadable` for read failures and `DigestMismatch` for changed bytes,
+with `ResourceId`, `Path`, `ExpectedHash` and, for a mismatch, `ActualHash`, `DigestKind` `resource bytes`,
+`SubjectKind` `resource` and `EntityId`. Known structured causes retain their reason and identifiers.
+Complete native storage verification adds `SourceName` and `ResourceRoot` through the same context-copy
+method, retaining the original refusal as `InnerException`.
+Leaf light ownership uses `PrefabLightOwnerInvalid` with `ResourceId` and `FieldPath`. Support payload
+schema checks distinguish object, required, unknown and duplicate fields through the shared schema reasons.
+They carry the resource identity and field path. Support payload versions carry `ActualVersion` and
+`SupportedVersions`, and duplicate patches or records carry `IdentityDuplicate` with `Patch` or `RecordId`.
 
 ---
 
@@ -12411,6 +13643,85 @@ What it produces:
   Navigation captures include a `MediumDigest` where exact water geometry meets the capture, and
   `MapNativeInvalidation.Medium` invalidates affected water residency and capture tiles.
 
+Navigation policy and seam admission uses `MapNavigationArgumentException`, catchable as `ArgumentException`,
+with concrete `Reason`, nested `FieldPath` and the original `ParamName`. Nonfinite and negative margins use
+`ValueNonfinite` and `ValueOutsideRange`, with zero as the inclusive minimum. Blank profile or controller IDs
+use `SchemaValueRequired` with `ActualText`. Tile Y disagreement uses `AuthoredValueMismatch`, `Tile`,
+`ActualNumber` and `ExpectedNumber`. Duplicate coordinates use `IdentityDuplicate`. Disjoint neighbouring
+tile edges use `NavigationTilesNotAdjacent`, submitted `Tile` and preceding `OtherTile`.
+
+World builds over partial documents use `CompleteDocumentRequired`, `DocumentId` and `Operation` `BuildWorld`.
+Terrain compilation uses `AcquisitionIncomplete` with `AcquireStatus` and `Operation` `CompileTerrainPhysics`,
+or `WorkCapacityExceeded` with `Budget` `MaxTrianglesPerChunk`, `Patch`, `SlotCell`, cell coordinates,
+`ActualCount` and inclusive `Limit`. Missing terrain declarations and payloads use `ReferenceMissing` or
+`PatchUnavailable`, with `SurfaceId` and `Patch`. Geometry overflow retains the known patch or wall record
+under `GeometryNotRepresentable`. Repeated chunk IDs use `IdentityDuplicate`, `EntityId` and `SubjectKind`
+`physics chunk`. Wall-chain refusals preserve a known producer finding. Without one they use
+`PhysicsWallChainUnresolved`, chain `RecordId`, anchor `Patch`, and known strip `RelatedRecordId` and `PatchStatus`.
+Chunk-policy limits use `MapWorldBuildRangeException`, catchable as `ArgumentOutOfRangeException`, with
+`ValueOutsideRange`, original `ParamName` and `ActualValue`, nested `FieldPath`, submitted `ActualInteger`,
+and inclusive integer limits 64 and 1024.
+
+World-build range admission also uses that family for `BuilderVersion`, with inclusive minimum 1 and no
+upper bound, and `Chunks.MaxTrianglesPerChunk`. A missing consumer policy identity uses
+`MapWorldBuildArgumentException`, catchable as `ArgumentException`, with `SchemaValueRequired`,
+`FieldPath` `ConsumerPolicyIdentity`, submitted `ActualText` and original `ParamName` `options`.
+Repeated static owners use `IdentityDuplicate`, `OwnerId` and `SubjectKind` `static`.
+Water compilation adapters forward the producer's typed finding. A consumer-built incomplete body without
+one uses `AcquisitionIncomplete`, `BodyId`, `FieldPath` `Status` and status `ActualText`. A static colliding
+with a water owner uses `PhysicsWaterOwnerConflict`, `OwnerId` and `BodyId`. Missing body bounds and
+occupied fragment bounds use `PhysicsWaterBoundsMissing` and `PhysicsWaterFragmentBoundsMissing`,
+both carrying `BodyId`.
+
+Registration origin refusals use `PhysicsRegistrationOriginInvalid`, `FieldPath` `Origin`, all three position
+components and the inclusive absolute coordinate `Limit`. A native world's legacy-context refusal uses
+`PhysicsLegacyMoveContextUnsupported` and `ResolverVersion`. Storage membership budgets use
+`WorkCapacityExceeded`, `Budget` `MaxStorageTiles`, `ActualCount`, inclusive `Limit` and the known `OwnerId`.
+Edit-bound refusals use `ValueNonfinite` or `ValueOutsideRange`, failed endpoint `FieldPath`, `ActualNumber`
+and inclusive world-coordinate limits. Storage interval refusals use `MapNavigationArgumentException`,
+`ValueNonfinite` or `BoundsInvalid`, axis `FieldPath` and both submitted numeric endpoints.
+Navigation partition and interaction envelope capacity use `MapDocumentException.WorkCapacityExceeded`,
+`Budget`, measured `ActualCount` and inclusive `Limit`. Envelopes also name `OwnerId` and binary64 `ActualNumber`,
+leaving `ActualCount` null when it cannot fit in a signed 64-bit value. Navigation index refusals use
+`PhysicsNavIndexOutOfRange`, `Axis`, `FirstIndex`, `LastIndex`, `AxisOrigin`, inclusive signed index limits
+in `MinimumInteger` and `MaximumInteger`, and known source interval endpoints in `MinimumNumber` and `MaximumNumber`.
+Short portal intervals retain `RecordId`, `ActualCount` and minimum two through `GeometryVertexSequenceInvalid`.
+Missing opening geometry uses `PatchUnavailable`, `RecordId`, `Patch` and `PatchStatus`.
+Navigation surface lookup uses `ReferenceMissing` with `SurfaceId`. A missing or wrong-kind record uses
+`PatchUnavailable` or `ReferenceKindMismatch` with `RecordId`, `Patch`, `PatchStatus`, `ExpectedRecordType`
+and a known `RecordType`. Placement geometry uses `PhysicsInteractionSourceMissing` with `PlacementId`
+and `AssetId`, or `PhysicsShapeUnsupported` with `ShapeType` for unsupported shape bounds. Invalid combined
+scale uses `ValueNonfinite` or `ValueOutsideRange`, with `PlacementId`, `FieldPath`, `ActualNumber` and exclusive
+zero `MinimumNumber`. Nonfinite authored position or yaw identifies the actual failing component.
+Empty shape bounds use `BoundsInvalid`, while a nonfinite endpoint uses `ValueNonfinite`, `FieldPath` and
+`ActualNumber`. Independent coincident floors reuse `SpaceSupportCoincident`, with `SurfaceId` and
+`OtherSurfaceId`, or collider `PlacementId` and support `SurfaceId`.
+Stance spacing, capsule and proposal-cap refusals use `MapStanceRangeException`, preserving the
+`ArgumentOutOfRangeException` catch contract, `ParamName` and `ActualValue`. It carries `Reason`, nested
+`FieldPath`, `ActualNumber` and the field's `MinimumNumber`. Zero is exclusive for spacing and radius,
+while half height accepts the radius. The proposal cap uses `WorkCapacityExceeded`, `Budget`, inclusive `Limit`
+and the known proposed `ActualCount` through the failing outline. A missing legacy stance callback or nonfinite
+height uses `MapStanceException`, catchable as `InvalidOperationException`, with `SupportLegacyHeightRequired`
+or `ValueNonfinite`, callback `FieldPath`, and the known `ResolverVersion`, `PlacementId` or `ActualNumber`.
+Reach and band checks use `MapQueryRangeException`, also catchable as `ArgumentOutOfRangeException`, retaining
+the original `ParamName` and `ActualValue`. `ValueNonfinite` or `ValueOutsideRange` identifies `Range` or
+`Tolerance`, `ActualNumber` and inclusive zero `MinimumNumber`. Nonfinite band endpoints use `Band.MinY` or
+`Band.MaxY`. Finite inversion uses `BoundsInvalid` and `Band`, with submitted endpoints in `MinimumNumber`
+and `MaximumNumber`. Equal endpoints are accepted. Nonfinite seats use `MapStanceException.ValueNonfinite`
+with `PlacementId`, the `SeatedFeet` component and `ActualNumber`. Unsupported stance footprints use
+`MapStanceUnsupportedException.PhysicsShapeUnsupported`, catchable as `NotSupportedException`, with `ShapeType`.
+Grid refusals use `PhysicsGridAlignmentInvalid` with failed `FieldPath` and `StorageTileSize` for an alignment
+or world-size mismatch. World index coverage also carries `GridKind`, `Axis`, `AxisOrigin`, `StorageTiles`,
+`FirstIndex`, `LastIndex`, submitted source bounds and inclusive signed index limits. Storage-tile lookup uses
+`PhysicsGridIndexOutOfRange` with `TileIndex` and the same grid context. It retains a computed `ActualInteger`
+when available. An origin outside safe offset arithmetic instead identifies `OriginTile`, the origin in
+storage tiles through `ActualNumber` and its inclusive safe bounds, leaving `ActualInteger` null.
+Nonfinite grid fields use `ValueNonfinite`. Nonpositive grid sizes or block counts use `ValueOutsideRange`
+with the actual nested field, submitted value and inclusive minimum 1.
+Backend pose or error-bound conversion uses `GeometryNotRepresentable`, `Operation`, failed `FieldPath` and
+binary64 `ActualNumber`. An unsupported envelope sweep uses `PhysicsSweepShapeUnsupported`, `PlacementId`
+and `ShapeType`.
+
 **Ownership boundary.** The package adds no step limit, ledge rule or support model. Ground support, seating, steps
 and navigation column sampling stay with the #438 contact controller, which will stand on the statics a native world
 installs. A resolver 1 world keeps analytic ground behind `LegacySupportHeight` and installs no terrain statics.
@@ -12440,6 +13751,11 @@ metres. Physics consumes the captured transformed surfaces with canonical owners
 builds refuse room coverage findings and independently authored coincident floors, even without water.
 `MapBackendPoseAdapter` makes the frame-local binary32 approximation explicit and reports its error in metres.
 The pre/post `Affected` and `AffectedTiles` overloads retain removed owners and old tile captures.
+`MapAssetShapes.Read` reports decoder failures as `AssetPayloadUnreadable`, trailing bytes as
+`AssetCollisionTrailingBytes`, empty point sets as `AssetCollisionEmptyPoints`, and nested meshes as
+`AssetCollisionNestedMesh`. These retain `AssetId` and `ResourceId`. Decoder failures also retain
+`ExpectedHash` and their original cause. Trailing bytes carry `ActualByteCount`, and an empty point set
+carries `ShapeType`. Opaque support uses `AssetTypedPayloadOpaque` with `ExpectedSchema` and `ResourceId`.
 `Read` also refuses a compound holding a triangle mesh,
 a hull or mesh with no points and a payload with bytes after its shape. The `PropCollisionFormat` reader beneath it
 refuses non-finite or non-positive box and cylinder sizes, non-finite points and poses, a mesh index count that is
@@ -12448,7 +13764,12 @@ a compound child orientation that is not a unit quaternion. `PropCollisionFormat
 too, so a writer never produces such a payload.
 
 **Editing colliders.** ke-mapedit's `NativeCollisionService` measures a placement's mesh top against its collider
-and resizes box colliders through content-addressed resources written by `MapAssetFileWriter`. See the
+and resizes box colliders through content-addressed resources written by `MapAssetFileWriter`.
+The `MapDocumentException.Reason` distinguishes missing colliders, shared collider resources, unsupported shapes,
+tilted boxes and published-plan mismatches. Identifiers retain `AssetId`, `ResourceId`, `OtherAssetId`, `ShapeType`,
+child `Index` or expected and actual hashes where the guard knows them. Requested and computed heights distinguish
+`ValueNonfinite`, `BoundsInvalid` and `ValueOutsideRange`, with the first failed field and actual value.
+Refused edits preserve document content and history. See the
 [ke-mapedit README](../KhaozEngine.MapEdit.Tool/README.md#native-colliders).
 
 ---
@@ -12511,6 +13832,24 @@ tagged `door` within `DoorClearance`. Its height and normal use the selected `Ti
 the same interpolated lattice values as the rendered ground. Non-solid decorative objects remain eligible.
 Validation resolves the foliage archetype and material ids against the same catalogs as the rest of the world.
 
+Foliage construction and DTO or document admission use `TileFoliageArgumentException`, preserving
+`ArgumentException` catches and the original null `ParamName`. Its non-nullable `TileWorldRefusal Reason`
+distinguishes invalid raster geometry, density length, placement settings, archetype ids and weights,
+underlays, duplicate layers and world-plane admission. Inspect `LayerId` and the reason-specific values in
+the [TileWorld refusal table](../KhaozEngine.TileWorld/README.md#refusals), including the offending entry
+index or the actual and expected density counts. Manifest loading throws `TileWorldException` with exactly
+the same reason and identifiers, adds the manifest path in `SourceName` and keeps the original refusal in
+`InnerException`. Direct null `density` and `archetypes` constructor parameters remain plain
+`ArgumentNullException`s with `ParamName`. A null manifest density is `FoliageDensityNull` with `LayerId`,
+`Field` = `density` and the original `ArgumentNullException` retained. A null manifest layer instead uses
+`FoliageLayerNull` with its zero-based `LayerIndex`. Messages remain developer prose.
+
+Required foliage queries, density edits, painting and removal throw the existing `TileWorldException` with
+`TileWorldRefusal.FoliageLayerMissing` and the requested `LayerId`. The document's optional `GetFoliageLayer`
+still returns null for an absent id. TileEdit validates catalog references before replacing a layer, using
+`FoliageCatalogArchetypeMissing` with `LayerId` and `ArchetypeId`, or `FoliageCatalogUnderlayMissing` with
+`LayerId` and `MaterialId`. A refused lookup or reference change leaves the document and undo history unchanged.
+
 **Clearance is an authoring check, never a runtime rule.** An optional `clearance` manifest block
 (`TileWorldDocument.Clearance`, a `TileClearanceSettings`) declares rules such as "objects whose archetype is
 tagged `tree` keep their meshes clear of objects tagged `structure`", with a mesh root (relative to the world
@@ -12518,11 +13857,23 @@ directory, forward slashes only, refused when rooted or holding a backslash on e
 an object waiver tag. `TileWorldClearance.Check(doc, catalogs, meshes)` places every loaded object's mesh as the
 prop renderer draws it and returns `clearance.overlap`, `clearance.mesh` and `clearance.rule` issues, reading
 meshes through `ITileMeshGeometry` (the glb implementation is `GltfTileMeshGeometry` in
-`KhaozEngine.TileWorld.Render3D`). `TileWorldValidator.Validate` never runs it, the block is outside
+`KhaozEngine.TileWorld.Render3D`). Overlap issues expose `TileWorldIssue.Overlap`, an immutable
+`TileClearanceOverlap` containing the rule name, both object ids and the full sampled depth in metres.
+`TileWorldValidator.Validate` never runs it, the block is outside
 `TileWorldHash.OfWorld`, and the geometry core is `ClearanceMesh`, `ClearanceSolid`, `ClearanceSamples` and
 `ClearanceProbe` in `KhaozEngine.Primitives`. An obstacle is solid from its lowest point to its top surface, so a
 hollow piece such as a bridge deck must not carry an obstacle tag. Field contracts, rule matching and the issue
 order are in the `KhaozEngine.TileWorld` package README under Clearance.
+
+Clearance declaration validation throws `TileClearanceArgumentException`, an `ArgumentException` subtype
+with non-nullable `TileWorldRefusal Reason`. Rooted and backslash paths expose `ClearanceMeshRootRooted` or
+`ClearanceMeshRootBackslash` with `MeshRoot`. Other reasons expose the rule name, tag field and index,
+tolerance, cell-size bounds or required rule count where applicable. See the package's refusal table for
+the complete identifiers. Direct null `meshRoot` and `WithRule` arguments remain plain
+`ArgumentNullException`s with `ParamName`. File loading wraps a clearance refusal in `TileWorldException`
+with the same reason and identifiers, the manifest path in `SourceName` and the original exception in
+`InnerException`. A null file mesh root instead exposes `ClearanceMeshRootNull`, `Field` = `meshRoot` and
+the original `ArgumentNullException`.
 
 ```csharp
 var meshes = new GltfTileMeshGeometry(TileWorldClearance.ResolveMeshRoot(worldDir, doc.Clearance!));
@@ -12552,6 +13903,82 @@ Editor region deletion and create-undo use that explicit deletion path. `TileWor
 is that plus load-everything. A region the manifest knows about but that is not in memory cannot be created
 blind: `GetOrCreateRegion` and `RequireRegion` both throw for it, so a save can never blank authored terrain.
 
+These refusals keep the exact `TileWorldException` type. Inspect `Reason` as a `TileWorldRefusal`, with
+`RegionMissing` for a required region that does not exist, `RegionNotLoaded` for a known but unloaded region,
+and `RegionDirty` for an attempted unload with unsaved changes. `Region` is the refused planar coordinate.
+`RequireRegion(x, z)` also fills nullable `TileX` and `TileZ` with the requested tile coordinates, with no
+implied plane. Guards that received only a region leave those two values null.
+
+`TileWorldSource.Open` and `TileWorldHash.OfManifestRegions` share `ManifestRegionDuplicate` and `Region`
+for duplicate rows. `Open` also carries the manifest path in `SourceName`. The hash composer uses
+`ManifestRegionHashMissing` and `Region` for a null region hash. Eager and lazy loads use
+`RegionHashMismatch`, carrying `Region`, the region file path in `SourceName`, and `ExpectedHash` and
+`ActualHash`. Messages are developer prose. Both message-only constructors remain available to consumers,
+and `Reason` is null only for such an externally constructed instance.
+
+World-file I/O and manifest admission also retain `TileWorldException`. `ManifestReadFailed` and
+`RegionReadFailed` carry the refused file path in `SourceName` and the original cause in `InnerException`.
+`RegionReadFailed` also carries `Region`. A save that cannot delete a stale region uses
+`WorldStaleRegionDeleteFailed` with `SourceName`, `Region` and the original cause. It still leaves dirty
+regions dirty until the new manifest lands.
+
+Manifest parsing uses `ManifestNotObject` for a non-object JSON root and `ManifestJsonMalformed` for parse
+or deserialization errors, with `SourceName`, the parser's nullable JSON path in `Field` and the original
+`JsonException` in `InnerException`. A null deserialization result uses `ManifestEmpty` and `SourceName`.
+`ManifestFormatVersionMissing` and `ManifestFormatVersionNotInteger` carry `SourceName` and
+`Field = "formatVersion"`. `ManifestFormatVersionUnsupported` carries `SourceName`, the requested
+`FormatVersion` and `SupportedFormatVersion`. `ManifestMigrationMissing` carries `SourceName`, the
+original `FormatVersion`, `MigrationFrom` and `MigrationTo`. `ManifestMigrationReturnedNull` carries
+`SourceName`, `MigrationFrom` and `MigrationTo`. `ManifestPlaneCountInvalid`, `ManifestTileSizeInvalid`
+and `ManifestIdMissing` carry `SourceName` and `Field` naming `planeCount`, `tileSize` or `id`, respectively.
+The first two also carry the refused `PlaneCount` or `TileSize`. These reasons pass through eager
+`TileWorldFile.Load` and streaming `TileWorldSource.Open` without changing their identity.
+
+Region parsing, saving, attachment and undo restoration share `RegionPlaneCountMismatch` with `Region`,
+`ActualPlaneCount` and `ExpectedPlaneCount`. Parse and save share `RegionObjectOutsideBounds`,
+`RegionObjectPlaneOutsideRange`, `RegionMarkerOutsideBounds` and `RegionMarkerPlaneOutsideRange`.
+These carry the containing `Region`, the object's `ObjectId` and `ArchetypeId` or the marker's `MarkerName`,
+and either the full authored `Tile` for a bounds refusal or `Plane` and `PlaneCount` for a plane refusal.
+These save checks run before the first write. Parsing also sets `SourceName` to the region file path.
+Attachment, restoration and these save checks leave `SourceName` null.
+
+Object and marker identity refusals use the same exact `TileWorldException` type. `ObjectMissing` carries
+`ObjectId` for `MoveObject`, required object commands and `QueryService.ObjectGet`. `ObjectIdDuplicate`
+carries the occupied `ObjectId` on insertion. `ObjectIndexStale` carries `ObjectId` and the indexed `Region`
+when direct edits to a region's public object list leave the index pointing at an absent object. `MoveObject`
+still checks the destination region first. Use `RebuildObjectIndex` after bulk list edits.
+`MarkerMissing` carries `MarkerName` for a required marker removal.
+
+`RegionCoordinateMismatch` carries the manifest's expected `Region`, the file's `ActualRegion` and
+`SourceName`. `RegionFileEmpty` carries `SourceName` for JSON that deserializes to no region.
+`RegionJsonMalformed` carries `SourceName`, the parser's JSON path in nullable `Field`, and the original
+`JsonException` in `InnerException`. Use these members rather than message wording. The
+[TileWorld refusal table](../KhaozEngine.TileWorld/README.md#refusals) lists the identifiers for each reason.
+
+Region and prefab dense layers share `LayerBase64Malformed` and `LayerByteCountMismatch`. Both carry
+`LayerName`, the file or content name in `SourceName`, and the decoded plane index in `Plane`.
+Layer names are `heights` (including prefab relative heights), `underlay`, `overlay`, `overlayShape`,
+`overlayRotation` and `settings`. Malformed base64 retains its original `FormatException` in `InnerException`.
+A length refusal adds `ActualByteCount` and `ExpectedByteCount`. Context comes directly from the loader,
+so callers never need to parse the message. `TileWorldSchema.GetCatalogJson()` uses `SchemaResourceMissing`
+with `ResourceName` if its embedded catalog schema is absent.
+
+Catalog admission keeps `TileWorldException` and uses the `Catalog*` reasons in the
+[TileWorld refusal table](../KhaozEngine.TileWorld/README.md#refusals). `CatalogJsonMalformed` and
+`CatalogReadFailed` carry `SourceName` and the original cause, with the parser path in nullable `Field` for
+malformed JSON. Duplicate reasons add `FirstSourceName` and the material or archetype id. Semantic walk-surface
+and collision-height refusals carry `SourceName`, `ArchetypeId` and their typed field, index and value members.
+`CatalogSchemaMismatch` carries owned read-only `SchemaFields` (distinct JSON Pointer instance locations) and
+`SchemaFindings` snapshots. The latter contains immutable `KhaozEngine.Content.JsonSchemaFinding` values,
+including an unknown property's full path such as `/materials/0/steep/chain`. Placement commands and scatter
+use `CatalogArchetypeMissing` with `ArchetypeId`, while null-returning catalog queries remain unchanged.
+
+`TileWorldValidator.ValidateOrThrow` uses `WorldValidationFailed` with `WorldId`, total `IssueCount` and
+the complete `Issues` collection. The exception copies `Issues` when set into an owned read-only snapshot,
+which cannot be changed through its source collection or a cast. Inspect each `TileWorldIssue.Code` to
+distinguish individual findings. The developer message summarizes only the first five findings, while the
+snapshot retains every finding. `Validate` still returns findings without throwing on bad content.
+
 `source.FindMarker("spawn")` answers off the manifest's marker index with NO region read, which is what a client
 needs before it has streamed anything: `TileWorldDocument.FindMarker` walks LOADED regions only, so asking it
 first means materialising regions one at a time until one carries the marker and unloading the ones that did not.
@@ -12572,11 +13999,12 @@ through the region that carries it.
 
 **A marker name is unique across the WHOLE world, not just the loaded part.** `SetMarker` consults the same
 index through `document.Source` (the `TileWorldSource` it was opened through, null for a document built in
-memory) and refuses a name an unloaded region already carries, naming that region, rather than authoring a
-second marker that only collides once both regions are in. A loaded region outranks its index row, so re-homing
-a marker inside the part of the world you hold is unaffected. `Unload` refreshes the rows of the region it is
-dropping from that region, the same way it refreshes the known hash, so a marker deleted and saved before the
-unload really does free its name.
+memory) and refuses a name an unloaded region already carries with `MarkerNameInUnloadedRegion`.
+`MarkerName`, `Region` and the existing marker's full `Tile`, including its known plane, identify what holds
+the name. Load that region before moving the marker, or choose a different name. A loaded region outranks its
+index row, so re-homing a marker inside the part of the world you hold is unaffected. `Unload` refreshes the
+rows of the region it is dropping from that region, the same way it refreshes the known hash, so a marker
+deleted and saved before the unload really does free its name.
 
 **Collision is derived, never authored.** `TileCollisionBaker.Bake` builds the whole `TileCollisionMap` from
 settings plus object archetypes, `Rebake(map, doc, catalogs, dirtyRect, plane)` re-derives one rect after an
@@ -12629,6 +14057,23 @@ relative heights, objects, markers) and stamp it elsewhere at any rotation, with
 form. Pass `includeDerivedHeights: false` to `TilePrefabs.Extract` when an unauthored upper plane should keep
 deriving its height from the destination ground. Explicit height layers remain authored, even when their
 values happen to match the derived surface. The default includes derived heights for compatibility.
+
+Prefab admission retains `TileWorldException` and uses `PrefabSizeNonPositive`, `PrefabPlaneCountMismatch`,
+`PrefabObjectPlaneOutsideRange` and `PrefabMarkerPlaneOutsideRange` for the same shape rules in a file or a
+hand-built stamp. `PrefabName` is the authored name, which can be empty. File admission also supplies
+`SourceName`, while hand-built admission leaves it null. Size refusals carry `Width` and `Height`, plane-list
+refusals carry `ActualPlaneCount` and `ExpectedPlaneCount`, and object/marker plane refusals carry
+`ArchetypeId` or `MarkerName`, `Plane`, `PlaneCount` and the full prefab-relative `Tile`.
+
+`Load` additionally uses `PrefabPlaneCountNonPositive` with `PlaneCount`, and `PrefabObjectOutsideBounds`
+or `PrefabMarkerOutsideBounds` with the object or marker identity, full relative `Tile`, `Width` and `Height`.
+Hand-built layer lengths use `PrefabLayerCountMismatch`, with `Plane`, `LayerName`, `ActualCount`,
+`ExpectedCount`, `Width` and `Height`. Serialized layer errors keep the codec reasons described above.
+`PrefabEmpty`, `PrefabJsonMalformed` and `PrefabReadFailed` identify file admission failures with `SourceName`
+and no known `PrefabName`. Malformed JSON also carries the parser's nullable path in `Field` and the original
+`JsonException` in `InnerException`. A read failure retains its original cause in `InnerException`.
+Use these members and the [refusal table](../KhaozEngine.TileWorld/README.md#refusals) instead of message text.
+
 A stamp is additive per layer, so clear the rect first if you want a replace. Full API summary: the
 `KhaozEngine.TileWorld` package README. Design rationale: `docs/design/TILE-WORLD-DESIGN-2026-08-15.md`.
 
@@ -12818,8 +14263,14 @@ details rollback, default/all-true compatibility and the matching-load/policy-on
 The contract a consumer has to keep:
 
 - **Every `Solid`, `Diagonal`, `Wall` and `WallCorner` archetype needs a `collisionHeight`**, whose field rules are
-  in the `KhaozEngine.TileWorld` README. `Build` throws a `TileWorldException` naming an archetype placed without
-  one. `ke-tileedit`'s `archetype_measure_heights` and `archetype_set_collision_heights` fill them from the kit.
+  in the `KhaozEngine.TileWorld` README. `Build` throws a `TileWorldException` with
+  `TileWorldRefusal.ColliderCollisionHeightMissing`, `ArchetypeId`, `CollisionKind`, `ObjectId` and `Tile` including
+  its known plane when a placed archetype has none. `ke-tileedit`'s `archetype_measure_heights` and
+  `archetype_set_collision_heights` fill them from the kit.
+- **Collider thicknesses and a set blocked height must be finite and positive.** `Build` throws
+  `TileColliderOptionsRangeException` with `TileColliderOptionsRefusal.OptionNotFinitePositive`, `OptionName`,
+  `ParamName = options` and the numeric `ActualValue`. It derives from `ArgumentOutOfRangeException`, so existing
+  range catches still match.
 - **Rebuild after an edit.** Remove the old registration, `Build` again and `AddTo` again. The samplers answer for
   the world as it was built.
 - **The samplers speak absolute document coordinates.** `AddTo` subtracts `world.Origin` once, so in a rebased world
@@ -12922,8 +14373,10 @@ options.GroundCover.ModelCastsShadows = new Dictionary<string, bool> { ["reeds"]
 starts empty and maps exact authored selected archetype IDs to `AnimatedFoliageStyle(Motion, CastsShadows)`.
 Use IDs from your catalogs. An omitted style is Blade with casting off, independent of short-cover
 casting. Entries outside the selection or not exactly naming an authored selected archetype throw
-`ArgumentException` naming the ID. Selected archetypes sharing a catalog mesh reference or any resolved
-mesh part must agree on their effective style, including omitted defaults. Conflicts name both IDs.
+`AnimatedFoliageStyleArgumentException` with `AnimatedFoliageStyleRefusal.StyleOutsideSelection` and
+`ArchetypeId`. Selected archetypes sharing a catalog mesh reference or any resolved mesh part must agree
+on their effective style, including omitted defaults. Conflicts carry
+`AnimatedFoliageStyleRefusal.SharedMeshStyleConflict`, `FirstArchetypeId` and `SecondArchetypeId`.
 Styles are detached snapshots validated before submission and compared by value each draw. A changed
 selection or style, including an in-place map edit, invalidates only the splits that draw a changed
 archetype, and other splits keep their retained batches. Removing a style restores
@@ -13107,13 +14560,22 @@ var regions = new TileRegionResidency(
 
 Each definition owns a disjoint, non-empty archetype set. The view validates finite distances, unique layer IDs,
 known archetypes, and that LOD and HLOD do not exceed the draw radius. Each layer selects either only catalog
-roofs or no roofs. A mixed layer fails before upload and names both kinds. Roof layers cannot enable
+roofs or no roofs. A mixed layer fails before upload with `TilePropLayerArgumentException`,
+`TilePropLayerRefusal.RoofAndOrdinaryMixed`, `LayerId`, `RoofArchetypeId` and `OrdinaryArchetypeId`. Roof layers cannot enable
 `CutInsideInteriors`. When HLOD is enabled, its positive distance must
 also exceed `LodDistance`. A selected object is removed from ordinary prop submission and
 appears in exactly one `TilePropLayerSnapshot`, so it cannot double-draw. `TileRegionProps` is an immutable,
 generation-tagged region-plane snapshot. It carries object IDs and detached placements in stable order. Worker
 builds read that snapshot and resolved CPU mesh data only. They never read the live document, overrides, resolver
 caches or scene.
+
+Prop-layer definition failures carry `TilePropLayerArgumentException.Reason` from `TilePropLayerRefusal`:
+`DefinitionNull` and `LayerIdMissing` identify `LayerIndex`, `LayerIdDuplicate` adds `LayerId`,
+`SelectionEmpty` identifies `LayerId`, `ArchetypeMissing` adds `ArchetypeId`, and `ArchetypeSelectedTwice`
+carries `ArchetypeId`, `FirstLayerId` and `SecondLayerId`. `RoofInteriorCutEnabled` carries `LayerId`.
+Aggregate distance ordering throws `TilePropLayerRangeException` with `DistanceOrderingInvalid`, `LayerId`,
+`LodDistance`, `HlodDistance` and `DrawRadius`. Scalar finite and range checks stay BCL exceptions.
+Both subtypes preserve their original BCL catch contracts and `ParamName`, with unchanged `ActualValue`.
 
 A roof layer preserves `RoofVisibility` through the same observer, plane and footprint predicate as ordinary
 roofs. Its snapshots retain authored object IDs, planes and roof footprints for each presentation generation.
@@ -13191,6 +14653,21 @@ one from the catalogs on its own unless `TileWorldViewOptions.GroundMaterials` h
 points the mesher at it (the slots in a vertex only mean anything against the set the mesh is drawn with), and
 frees it on `Dispose`. So a colour-only world and a textured one take exactly the same path.
 
+Catalog-to-set refusals keep `TileWorldException` and carry a `TileWorldRefusal` reason. A catalog above the
+single-set capacity selects `GroundMaterialLayerLimitExceeded` with `MaterialCount` and
+`MaximumMaterialCount` (the reserved layer is excluded from that maximum). A texture size disagreement selects
+`GroundMaterialTextureSizeMismatch` with `MaterialId`, `MaterialName`, `Width`, `Height`, `ReferenceMaterialId`,
+`ReferenceMaterialName`, `ExpectedWidth` and `ExpectedHeight`, all dimensions in texels. A relative texture on a
+catalog without a source file selects `GroundMaterialTextureSourceMissing` with `MaterialId`, `MaterialName`
+and `TexturePath`.
+
+`TileColors.Parse` accepts `#rrggbb` and `#rrggbbaa`, including through its `GroundMaterial` overload. Bad
+authored colours keep `TileWorldException`: `TileWorldRefusal.ColourNull` carries no identifiers,
+`ColourShapeInvalid` carries `ColourText`, and `ColourDigitInvalid` carries `ColourText`, the zero-based
+`CharacterIndex` in that string (including its leading `#`) and the refused `Character`. Messages remain
+developer prose. The [render refusal table](../KhaozEngine.TileWorld.Render3D/README.md#tileworld-render-refusals)
+lists the reasons and identifiers.
+
 **Feather selected overlay edges.** Author `TileSettings.FeatherOverlay` on the intended road tiles with
 `ke-tileedit` (`tile_set` or `tiles_fill`, `settings: "FeatherOverlay"`). Preserve other required flags in the
 comma list. Give those tiles the surrounding grass as their underlay and the road as their overlay.
@@ -13229,6 +14706,27 @@ colour layer is a full-size fill), so a 1024 texture makes each untextured mater
 layer. 256 is plenty at this grain. Leave `GroundMaterials` null and the view builds the all-flat set itself,
 which is what a colour-only world wants.
 
+Hand-built `TileGroundMaterialSet` failures carry `TileGroundMaterialSetArgumentException.Reason` from
+`TileGroundMaterialSetRefusal`. `LayerCountMismatch` carries `MaterialCount`, `ActualLayerCount` and
+`RequiredLayerCount`. `LayerLimitExceeded` carries `LayerCount` and `MaximumLayerCount`.
+`LayerByteLengthMismatch` carries `LayerIndex`, `ActualByteLength`, `ExpectedByteLength`, `Width` and `Height`.
+`DuplicateMaterialId` carries `MaterialId`, `FirstSlot` and `DuplicateSlot`. `MissingLayerHasCompanion`
+carries `LayerIndex`, and `CompanionIsMissingLayer` adds `CompanionSlot` and `MaterialSlotCount`.
+These exceptions derive from `ArgumentException` and preserve `ParamName`.
+
+`Scene3D.LoadTileGroundMaterial` and `TileGroundMaterialConfig.BuildParams` refuse unsupported layer counts
+with `TileGroundUploadArgumentException`, `TileGroundUploadRefusal.LayerCountOutsideRange`, `LayerCount`,
+`MinimumLayerCount` and `MaximumLayerCount`. Scene upload uses `LayerByteLengthMismatch` for a wrong RGBA slice,
+carrying `LayerIndex`, `ActualByteLength`, `ExpectedByteLength`, `Width` and `Height`. Width and height numeric
+checks stay `ArgumentOutOfRangeException` with `ParamName` and `ActualValue`.
+
+Shared render-slot companion checks in `TileGroundSteepShading.Validate` throw `TileGroundSteepArgumentException`
+with `TileGroundSteepRefusal`. `CompanionIsSelf` carries `LayerIndex` and `CompanionSlot`,
+`CompanionOutsideSet` also carries `LayerCount`, and `BandOutsideRightAngle` and `BandCosinesNotDistinct`
+carry `LayerIndex`, `FromDegrees` and `ToDegrees`. Params construction, scene upload and TileWorld material
+sets forward the same reason for the same input. Both Render3D exception types derive from `ArgumentException`
+and preserve `ParamName`. Messages are developer prose, and unused optional identifiers are null.
+
 **Cliffs take a steep companion and are drawn from the side.** A ground material can name the material it
 becomes on steep ground. The corner vote is unchanged, so a one-tile cliff of rock beside flat grass still votes
 grass at its foot corners, but every grass tap on the face renders rock:
@@ -13250,6 +14748,18 @@ to the top-down tap, fully weighted by 60, so a cliff carries its texture up its
 The two rules are independent. Below 45 degrees the projection is unchanged for every material, but a material
 with a companion already blends from its `fromDegrees`, 40 by default. A material with no companion renders
 exactly as before below 45 degrees. The triplanar constants are `TileGroundSteepShading`'s in Render3D.
+
+Catalog companion validation uses `GroundMaterialSteepRules.ThrowIfInvalid` and the existing
+`TileWorldException`. Its `TileWorldRefusal` reason is `SteepSelfReference`, `SteepCompanionMissing`,
+`SteepCompanionWater`, `SteepFromOutsideRightAngle`, `SteepToOutsideRightAngle`, `SteepBandUnordered` or
+`SteepCosinesCollapsed`. Every one carries `SourceName`, `MaterialId` and `MaterialName`, selecting the
+first invalid material in ascending id order. Companion reasons carry `CompanionMaterialId`, with
+`CompanionMaterialName` also set for water. Endpoint and band reasons carry resolved `FromDegrees` and
+`ToDegrees`. An outside-angle reason also carries `Field`, and `SteepBandUnordered` carries
+`FromIsDefault` and `ToIsDefault`. `Problem` uses the same finding for developer prose.
+`TileGroundMaterials.Build` delegates catalog checks to these rules with `SourceName` equal to
+`ground material set`, preserving the core reason. Hand-built render-slot validation continues to use
+`TileGroundSteepRefusal` as described above. Unused optional identifiers remain null.
 
 **Water is carved, not placed.** A tile is water when its underlay material's `kind` is `Water`, and you sink the
 bed by lowering the corner heights, so the material's texture is the river BED and the surface height is computed.
@@ -13320,7 +14830,8 @@ Only `PrimeAround` and explicit offline `SettleForCapture` calls do. Active same
 the ground-cover reach beyond the fixed mesh margin. Streaming a region rebuilds every loaded ground mesh or cover cache affected by its border
 data, solid footprints, upper roofs or tagged doors. A dirty region is never streamed out (unloading unsaved edits
 would throw, so it stays resident and logs once), and a torn region file throws `TileWorldException` straight out of
-`Update` rather than drawing a hole.
+`Update` rather than drawing a hole. The refusal carries `TileWorldRefusal.RegionHashMismatch`, `Region`,
+`SourceName`, `ExpectedHash` and `ActualHash`.
 
 **Translucent overlays.** `ITileWorldScene.DrawOverlayMesh(mesh, world)` forwards the scene's unlit,
 depth-tested, alpha-blended overlay pass, which does not write depth. Use it for route highlights or range
@@ -13423,14 +14934,43 @@ back whole when a child throws) and `SnapshotRectCommand` (an arbitrary mutation
 rect's pre-image first). An object placed and then undone comes back with the id it HAD on redo, so anything
 referring to it by id keeps resolving.
 
+Required object commands use `TileWorldException` with `TileWorldRefusal.ObjectMissing` and `ObjectId`.
+`RemoveMarkerCommand` uses `MarkerMissing` and `MarkerName`. `RemoveFoliageLayerCommand` uses
+`FoliageLayerMissing` and `LayerId` before changing the document or undo history. Other document admission
+reasons propagate unchanged. The
+[editing refusal table](../KhaozEngine.TileWorld.Editing/README.md#refusals) documents these
+required lookups.
+
 **`TileEditOps` builds the commands, it does not mutate.** `Raise` (with an edge falloff), `Flatten`, `Smooth`
 (an iterated box blur reading its outside neighbours from the document, so a patch blends into the terrain
 around it), `SetHeights`, `Line` (Bresenham, one object per tile, one undo step), `Scatter` (a jittered grid
 whose offsets come from a hash of the point and the seed, so the same arguments always produce the same world),
-`PlacePrefab` and `ImportHeights`. Height imports detect binary PGM (netpbm P5) or PNG by signature.
+`PlacePrefab` and `ImportHeights`. The path overload selects PNG for a `.png` extension and binary PGM
+(netpbm P5) otherwise.
 `PngReader` in Imaging supports every PNG colour type and bit depth, noninterlaced or Adam7, using grayscale
 or the red channel as height and ignoring alpha. A palette PNG supplies the red channel of each entry. Both formats preserve 16-bit sample precision. Write PGM files with LF line endings: a CRLF header spends its CR as the single delimiter byte and leaves the LF as sample 0, which shifts
 the whole raster.
+
+`PgmReader.Read` and the PGM path through `TileEditOps.ImportHeights(string, ...)` retain the exact
+`TileWorldException` type. Inspect its `TileWorldRefusal Reason` and the
+[editing refusal identifiers](../KhaozEngine.TileWorld.Editing/README.md#refusals).
+`PgmReadFailed` preserves the file-read cause as `InnerException`. All nine PGM reasons carry `SourceName`,
+using the supplied path or name, `<empty path>` for an empty path, and `<bytes>` for unnamed in-memory input.
+`PgmMagicUnsupported` carries `ExpectedMagic` = `P5` and an owned read-only `ActualMagic` byte snapshot.
+Header refusals identify their `Field`, `ByteOffset`, dimensions or maxval and bounds as applicable.
+`PgmHeaderIntegerOverflow` also carries `ParsedValue` through the digit that first exceeded the integer range.
+`PgmRasterTruncated` records `Width`, `Height`, `BitsPerSample` and `long` byte counts in `RequiredByteCount`
+and `AvailableByteCount`, before allocating samples. Messages remain developer prose.
+
+`PngReader.Decode` and the PNG path through `TileEditOps.ImportHeights(string, ...)` throw
+`PngDecodeDataException : MalformedDataException` for malformed PNG input. Catch `MalformedDataException`
+for the shared malformed-data boundary, replacing a PNG-specific `InvalidDataException` catch.
+Unsupported PNG features throw `PngDecodeNotSupportedException : NotSupportedException`.
+Both carry `PngDecodeRefusal Reason` and the identifiers listed in the
+[Imaging refusal table](../KhaozEngine.Imaging/README.md#refusals), including chunk offsets, lengths,
+CRCs, palette indices and allocation sizes. `CompressedStreamCorrupt` preserves the native zlib error
+in `InnerException`. `DecodedLengthMismatch` separately records the bytes read and trailing-data probe.
+Messages are developer prose, so callers branch on `Reason`.
 
 Two limits are worth knowing before leaning on the general case. A `SnapshotRectCommand` owns what was inside
 its rect when it looked and nothing else, so an object anchored outside but overhanging in is not restored, and
@@ -13447,6 +14987,13 @@ The `ke-tileedit` dotnet tool is an MCP (Model Context Protocol) server over std
 validates, renders and saves tile worlds, so an AI client can author one before any GUI editor exists. Every
 mutation runs through `KhaozEngine.TileWorld.Editing`, the same command layer the later GUI editor drives, so
 an MCP edit and a GUI edit are the same undoable operation.
+
+Direct in-process calls to `QueryService.ObjectGet` refuse an absent id with the exact `TileWorldException`
+type, `TileWorldRefusal.ObjectMissing` and `ObjectId`. Required foliage calls use `FoliageLayerMissing` and
+`LayerId`. Foliage configuration uses `FoliageCatalogArchetypeMissing` with `LayerId` and `ArchetypeId`, or
+`FoliageCatalogUnderlayMissing` with `LayerId` and `MaterialId`, before changing the document or undo history.
+Mutation service calls propagate the command and document reasons. MCP error responses retain human-readable
+text. See the [tool refusal table](../KhaozEngine.TileEdit.Tool/README.md#refusals).
 
 **Wiring into Claude Code.** Register the tool as an MCP server, repo-local for development:
 
@@ -13501,6 +15048,29 @@ relative to yet: pass them an absolute path.
 with every argument and the ASCII map legends, is the
 [`KhaozEngine.TileEdit.Tool` README](../KhaozEngine.TileEdit.Tool/README.md).
 
+**Session and prefab refusals carry data.** `TileEditSession` keeps the exact `TileWorldException` type.
+`SessionWorldExists` exposes the supplied `WorldDirectory` and manifest path as `SourceName`.
+`SessionNotOpen` exposes an owned read-only `RequiredTools` list containing `world_open` and `world_create`.
+`Open` passes known tile-world refusals through unchanged. Other world-load failures carry
+`SessionOpenFailed`, the supplied path as `SourceName` and the original `InnerException`. A failed open or
+create leaves the current world open. `QueryService.PrefabList` refuses a missing resolved directory with
+`PrefabDirectoryMissing` and its normalized absolute path as `SourceName`. Plain parameter checks stay BCL.
+MCP tool callers inspect these members through `McpException.InnerException`, which retains the original
+exception. See the [tool refusal table](../KhaozEngine.TileEdit.Tool/README.md#refusals).
+
+**Catalog edits preserve refusal details.** Direct `CatalogWriter` callers inspect the shared
+`TileWorldRefusal` reason instead of parsing messages. `CatalogEditRangeException` remains catchable as
+`ArgumentOutOfRangeException` and carries `CatalogEditHeightInvalid`, the offending `ArchetypeId`,
+`ParamName = heights` and the original `ActualValue`. The exact `TileWorldException` type carries
+`CatalogEditJsonMalformed`, `CatalogEditReadFailed`, `CatalogEditNotObject`, `CatalogEditArchetypesMissing`,
+`CatalogEditArchetypeDuplicate` or `CatalogEditHeightDuplicate`. Missing archetypes are the complete
+ordinal-sorted, owned read-only `ArchetypeIds` snapshot. Duplicate refusals carry `ArchetypeId`, and duplicate
+heights also carry `Field = collisionHeight`. `Prepare` and `WriteCollisionHeights` add `SourceName` to a
+byte-splice refusal while retaining its reason, identifiers and exact original exception in `InnerException`.
+Read failures retain their original cause, and malformed JSON retains its parser cause. These refusals leave
+the file untouched. The [catalog edit refusal table](../KhaozEngine.TileEdit.Tool/README.md#catalog-edit-refusals)
+lists each rule. The height service continues to report per-entry errors through its existing response payload.
+
 **Coordinates and row order.** Tile space throughout (x east, z north, plane a storey index from 0), a rect is
 `x, z, width, height` with the far edges EXCLUSIVE, heights live on CORNERS so their rects are one wider and
 one deeper than the tiles they carry, and rotation is quarter turns clockwise (0 west, 1 north, 2 east, 3
@@ -13513,12 +15083,26 @@ centre and radius. Every configure, density, paint and remove call is one undo s
 `render_view` is the one verb in WORLD metres, where y is up and world z is MINUS tile z: to look at tile
 (10, 20) from the south-east, target world (10.5, 0, -20.5) with the eye at (18, 8, -12).
 
+**Clearance tool refusals retain their cause.** In-process tool callers inspect
+`McpException.InnerException` for the original family's reason and identifiers. Existing `McpException`s
+pass through unchanged, and MCP clients still receive the same human-readable error text. Setting or
+removing a rule without a block exposes `TileWorldException` with `ClearanceBlockMissing`, `WorldId` and an
+owned read-only `RequiredTools` list containing `clearance_set`. Declare the block before editing rules.
+Invalid settings and unknown rule removal expose the shared clearance reasons on
+`TileClearanceArgumentException`, with `MeshRoot`, `RuleName` or the applicable tag identifiers.
+
 **Clearance refuses the save.** When the world declares clearance rules, `world_save` runs
 `TileWorldClearance.Check` after the validator against the glb meshes under the block's mesh root, and any
-`clearance.overlap`, `clearance.mesh` or `clearance.rule` issue refuses the save with every issue listed and
-nothing written. `world_validate` appends the same issues and `clearance_check` reports them alone, neither
-writing. `clearance_set` replaces the mesh root, cell size and waiver tag on every call, so an omitted value
-resets to its default. The session reads meshes through one `GltfTileMeshGeometry` per open world, which
+`clearance.overlap`, `clearance.mesh` or `clearance.rule` issue refuses the save with
+`TileWorldRefusal.SessionClearanceFailed`, nothing written and the dirty state retained. Through
+`McpException.InnerException`, the `TileWorldException` carries `WorldId`, total `IssueCount`, complete
+`Issues`, authored `MeshRoot` and normalized absolute `ResolvedMeshRoot`. Its owned read-only `Overlaps`
+snapshot carries every pair's `RuleName`, `SubjectObjectId`, `ObstacleObjectId` and sampled `Depth` in metres.
+Each overlap issue also exposes that immutable `TileClearanceOverlap` through `TileWorldIssue.Overlap`,
+which is null for non-overlap issues. `Issues` is also an owned read-only snapshot, and the original issue
+constructor and stable codes stay available. MCP text still lists every issue one per line.
+`world_validate` appends the same issues and `clearance_check` reports them alone, neither writing.
+`clearance_set` replaces the mesh root, cell size and waiver tag on every call, so an omitted value resets to its default. The session reads meshes through one `GltfTileMeshGeometry` per open world, which
 re-reads a glb whose last write time or length changed, so a glb written or re-exported while the world is open
 is seen at the next save or check with no `world_open`. The block and the check are under
 [Tile world](#tile-world-khaozenginetileworld).
@@ -13728,6 +15312,31 @@ select/place/draw/bake tools from the editor building blocks above, and undo/red
 (toolbar tab bar, tree outline, property-grid inspector, kit palette, status strip). Not bundled in any
 umbrella (the `Server.Admin` precedent), so add it explicitly to a game head that wants to edit its zone
 documents.
+
+Command identity admission uses `MapEditorCommandException`, catchable as `InvalidOperationException`, with
+`MapDocumentRefusal.ReferenceMissing`, `IdentityDuplicate` or `EditorScatterLayerReferenced`. It carries
+`DocumentId`, `SubjectKind`, `EntityId`, collection `FieldPath`, known colliding `Index` and `LayerId`.
+Referenced scatter removal also carries owned read-only `SourceIds`: companion names, exclusion index paths
+and scatter-override index paths in their original document order. A refused edit leaves document content
+and undo/redo history unchanged, and the status strip keeps its existing text.
+Freeze-zone host lookup uses `MapDocumentException.ReferenceMissing`, companion `LayerId`, missing host
+`EntityId`, `DocumentId` and `FieldPath` `CompanionLayers.HostLayer`. A `MarkerAssets` callback returning no
+closure uses `AssetClosureRequired`, `DocumentId` and callback `FieldPath` `MarkerAssets`.
+Callback failures use `EditorMarkerAssetsFailed` with the same callback and document identifiers and retain the
+original `InnerException`. Native snapshot and transaction admission use `CompleteDocumentRequired` with
+`DocumentId` and `Operation`, or `AssetClosureRequired` with the known `CommandType` and `SubjectKind`.
+Unsupported native commands use `OperationKindUnsupported` and `CommandType`. Validator adapters preserve the
+first concrete reason and identifiers and the complete ordered `Findings`, while retaining their diagnostic text.
+Native legacy spawn writes outside their admitted adoption transition use `EditorLegacySpawnEditProtected`,
+`DocumentId`, `ResolverVersion`, `Operation` and owned `SourceIds` in spawn then player-spawn order.
+Detached prefab work uses `EditorPrefabSessionCancelled` with `AssetId` and `Operation`, or `ToolAssetRootRequired`
+when the verified closure has no manifest root. A retained reference to a removed child uses
+`EditorRetainedReferenceRemoved` with `RecordId`, target `TargetId`, target `ChildKind` and reference `FieldPath`.
+The publication fallback `WaterContainmentUnverified` applies only when the containment report has no concrete
+finding. These refusals leave live document content and undo/redo history unchanged.
+Native placement lookups use `ReferenceMissing`. Their identity guard checks `SchemaValueRequired` before
+`IdentityDuplicate`, carrying `DocumentId`, `EntityId`, `SubjectKind` `placement` and `FieldPath` `Placements.Id`.
+Viewport companion construction uses the same missing-host identifiers as freeze-zone admission.
 
 **Wiring.** Fill `MapEditorOptions` and push the scene directly onto your `SceneManager`, the same way
 every other room/scene gets pushed:
@@ -14248,13 +15857,67 @@ the manifest paths it was opened with, a dirty flag, and a cached `TerrainField`
 world-affecting mutation (terrain features, terrain globals, exclusions, scatter overrides, bake). `map_open` (or
 `map_create`) replaces whatever was open, with no dirty guard, since the git diff is the safety net and
 `map_summary` reports the dirty flag. Every mutation validates before it lands
-(`MapDocumentValidator`, then a schema check on save) and reverts with the validation errors folded
-into the thrown message on failure, so the in-session document is never left invalid.
+(`MapDocumentValidator`, then a schema check on save) and reverts on failure, so the in-session document is never left invalid. The shared mutation adapters and
+`TerrainEdit`, scatter override edits, bake, freeze and sculpt operations throw `MapMutationException`, preserving the
+original `InvalidOperationException` catch contract.
+`Reason` is the first producer reason and `Findings` retains the complete ordered immutable snapshot and typed
+context. Direct region, scatter-layer, companion-layer and duplicate-source lookups use `ReferenceMissing`
+with the subject identity. Missing edited region, exclusion and scatter override shapes use
+`SchemaValueRequired` with `FieldPath` and the known identity or index. A feature without a duplicate
+translation uses `ToolFeatureTranslationUnsupported`, retaining `Index`, `FeatureType` and `Operation`.
+
+An empty `terrain_edit` or `scatter_rule_edit` uses `MapMutationArgumentException` and `ToolMutationEmpty`,
+retaining `Operation`, the known layer and rule index, and the original null `ParamName`. Unknown duplicate
+kinds and biome names use `SchemaEnumUnsupported`, with `SubmittedText`, owned read-only `AcceptedValues`,
+`EnumType` for biomes and the original `ParamName`. Empty scatter kind IDs use `SchemaValueRequired`, while
+unparseable weights use `SchemaMalformed`, both carrying the input `Index`, `FieldPath` and `SubmittedText`.
+Unknown sculpt brushes retain the same schema reason, the submitted text, `SculptBrush` enum type and every
+accepted brush name. Partial foliage, marker and sculpt rectangles share `ToolRectangleIncomplete` with their actual
+field path and refused `Operation`. Opening a parent-dependent prefab without a parent reuses `AuthoredValueRequired`, carrying its
+resource and asset identity. Local prefab work without an opened asset uses `ToolPrefabSessionRequired` and
+`Operation`. Ambiguous extraction parents use `ToolExtractionParentAmbiguous` with owned read-only `SpaceIds`.
+Document deserialization also adds the source name to an already-classified nested codec refusal without changing
+its text or typed context, retaining the original exception as the cause.
+Adding a standalone interior to a space that already owns a prism reuses `SpaceRoomOccupancyInvalid`, with
+the requested `RecordId`, `SpaceId` and `DocumentId`. Reading or removing a missing water body uses
+`ReferenceMissing`, the requested `EntityId` and `SubjectKind` `water body`. Reading also retains `DocumentId`,
+including when the document has no water section.
+A null decoded feature or shape uses `MapToolJsonException`,
+`SchemaValueRequired`, root `FieldPath` and `SubjectKind`, still catchable through `JsonException`.
+Foliage dry runs distinguish unsupported edit kinds (`FoliagePreviewEditUnsupported`, `EditType`) from new
+layers (`FoliagePreviewLayerNew`, `LayerId`). Missing or non-object foliage JSON parameters use
+`SchemaValueRequired` or `SchemaObjectRequired` with the parameter's `FieldPath`. The foliage binding converter
+keeps the existing `MapFoliageJsonException` producer family. MCP inner exceptions keep these typed reasons
+reachable without changing transport text.
+
+Session work without a document uses `MapSessionException`, `ToolDocumentRequired` and the refused `Operation`.
+Conversion onto a tiled target uses `DocumentStorageFormConflict`, `Path`, actual and expected document forms.
+Retiling partial content uses `CompleteDocumentRequired`, `DocumentId`, `Path` and `Operation` `Retile`.
+
+Window admission uses `MapSessionException`, still catchable as `InvalidOperationException`, with
+`ToolTiledSessionRequired` or `ToolUnsavedChanges`. It carries the known `DocumentId`, source `Path`,
+`Operation`, failing `FieldPath`, current `DocumentForm` and required `ExpectedDocumentForm` for tiled admission.
+Native publication uses `MapDocumentException` with `ToolNativeDocumentRequired`, `ToolStagedMutationRequired`,
+`ToolNestedMutationUnsupported` or `ToolPublishedClosureMismatch`. The mismatch retains supplied `ExpectedHash`
+and staged `ActualHash`. Binding guards distinguish the missing native document, verified closure and storage
+path in predicate order. Publication paths distinguish `ToolPublicationPathInvalid` from `AssetStoragePathReserved`
+and retain the submitted `Path`, `StoragePath` and form. Resource writers use `ToolImmutableResourceConflict`,
+`ToolResourceWriteFailed` or `ToolManifestSerializationFailed` with the known path, resource identity, digests
+and original cause. Refusals preserve live content and session history. MCP adapters keep their text and expose
+the original exception through `McpException.InnerException`, with an existing `McpException` passed through unchanged.
+Manifest serialization preserves a known typed JSON refusal's own reason and identifiers before using the
+ordinary `ToolManifestSerializationFailed` fallback.
 
 **Native lifecycle.** A document with `ResolverIdentity` is verified completely by
 `NativeDocumentService.ValidateComplete(document, source, options)` at open, window moves, save, validate,
 summary, conversion and retile. Its resource root is the monolithic file's directory or the tiled directory,
-anchored as an absolute path at open. Resolver identity `(1, 1)` uses the unchanged analytic `SessionOptions`
+anchored as an absolute path at open.
+Partial native verification reuses `CompleteDocumentRequired` with the document, path, resource root and
+`Operation` `Verify`. Changed or missing opened storage uses `ToolStorageFormChanged` and actual and expected
+forms. A parentless staging target uses `ToolParentDirectoryMissing` and `Path`. Prefab publication requires a
+manifest root (`ToolAssetRootRequired`) and verified immutable bytes (`ToolImmutableResourceConflict`).
+Resource write failures retain `ToolResourceWriteFailed`, their path, resource identity and original cause.
+A known lower refusal keeps its own reason and identifiers when publication adds context. Resolver identity `(1, 1)` uses the unchanged analytic `SessionOptions`
 (`khaozengine.mapedit.analytic-support`, builder version 1, options hash
 `mapruntime-buildfield-default-registry-v1`). The resolver identity `(1, 2)`, new in 20.30.0, uses `SessionOptionsV2`
 (`khaozengine.mapedit.authored-support`, builder version 1, options hash
@@ -14316,6 +15979,8 @@ enabled count, configured roles and selected start IDs on a complete resolver-2 
 resolved markers in ordinal ID order and accepts an optional half-open rectangle. `placements_in_rect` reads actual
 native placement resolution and reports seated support heights. It refuses an unadopted legacy spawn unless its
 configured Surface owner returns Supported, naming `spawns_adopt` and `marker_set` as the remedies.
+`ToolLegacySpawnSurfaceRequired` identifies an absent caller choice. `ToolLegacySpawnSupportUnresolved` carries
+`SurfaceId`, ordered `SourceIds` and ordered `Findings` retaining each source kind and `SupportStatus`.
 
 On native documents, legacy `spawn_*` and `player_spawn_*` mutations refuse and name the marker verbs. The
 `prefab_place` verb accepts `overridesJson` so repeated marker names can be replaced atomically. Query vectors use
@@ -14355,6 +16020,15 @@ token and publishes alone. A new-layer dry run refuses because no differential i
 sample rectangle and `previewChunkJson`. Omitted layer lists detached metadata in authored order. A named layer returns
 copied bytes and optional CPU preview, including every matrix/quaternion component. See the
 [wire contract](../KhaozEngine.MapEdit.Tool/README.md#foliage) for results and refusal semantics.
+Density or preview queries without a layer use `FoliageQueryLayerRequired`. Unknown layers reuse
+`ReferenceMissing`, and missing advertised density uses `FoliageChunkUnavailable` with `LayerId` and
+`FoliageChunk`. Paint targets outside the byte domain reuse `ValueOutsideRange`, retaining `ActualInteger`
+and inclusive limits 0 and 255.
+
+Render capture failures use `MapRenderException`, preserving `InvalidOperationException` catches, `Backend`
+and the original `InnerException`. A known document reason and its typed `Finding` survive the wrapper.
+Other capture failures use `RenderFailed`. A zero view direction uses `MapRenderArgumentException` with
+`RenderLookDirectionZero`, `Eye` and `Target`, before GPU work. MCP retains these exceptions as its inner cause.
 
 `sculpt_apply(brush, x, z, radius, strength, dt, targetHeight?)` applies one terrain-sculpt brush dab
 (`raise`/`lower`/`smooth`/`flatten`/`set_height`) at a world point as a single `TerrainSculptStrokeCommand`
@@ -14521,7 +16195,7 @@ owned binding on disposal. See [ordinary contact configuration](../KhaozEngine.N
 for configuration, resident scopes, replay and view lifetime.
 `SamplerSpace.Frame` ordinary ground samplers receive the original local axes and return local heights directly,
 including a nonzero physics Y origin. World samplers keep the direct dry path's rounded absolute translation.
-The registration's analytic range is absolute in both spaces. Wire generation 14 stays unchanged.
+The registration's analytic range is absolute in both spaces. Sampler space does not change the wire layout.
 The [allocation and local cost proof](verification/2026-10-13-contact-controller-phase5a-cost.md)
 records named lifetime tokens and three one-pair samples without a timing threshold or hosted cost-gate claim.
 
@@ -14545,7 +16219,204 @@ var server = new WorldServer(transport, new WorldServerConfig { TickSeconds = 1f
 // loop: server.Poll(); clock.Advance(elapsed, _ => server.Tick(1f/30f));
 ```
 
-For a server-authored leap, charge, knockback, or similar move that player input must not steer, queue a movement
+For local ground travel, create `MovementCommitment.ForGroundTravel(sequence, direction, speed, distance)` and
+carry it on `MoveState.Commitment`. The caller admits a supported, non-swimming actor. Both movement controllers
+retain ordinary gravity and collision, face the commitment and ignore player input and `SpeedScale`. The positive
+distance budget subtracts achieved XZ displacement and holds active at zero. Use sequence-checked
+`GroundTravelCommitment.Steer` to re-aim or supply another budget, including zero. Use
+`GroundTravelCommitment.End` to confirm `Arrived`, optionally recovering with that reason preserved, or to abort
+with another terminal reason. Steering and ending do not restart recovery. Three consecutive steps below 10 percent
+progress abort as `Blocked`, with the counter carried in state. Lost grounded support and water entry terminate
+with `UnsupportedState` and `EnteredWater` during preparation or travel, preserving `Arrived` if recovery has begun.
+Both float server heads accept `MovementCommitmentRequest.ForGroundTravel` through
+`BeginMovementCommitment`, and ground progress rides wire generation 15. A begin requires grounded support and
+refuses swimming or airborne-from-water actors. Refusal preserves any active commitment and publishes exactly
+one `MovementCommitmentEnded` for the refused sequence with `UnsupportedState`.
+
+Use `SteerMovementCommitment(target, expectedSequence, direction, distanceRemaining)` to re-aim preparing or
+travelling ground state. The sequence must be nonzero, direction finite and nonzero, and distance finite and
+nonnegative, including zero to hold. Use `EndMovementCommitment(target, expectedSequence, reason)` with the
+Netcode-defined `MovementCommitmentStopReason`. `Arrived` emits `MovementCommitmentArrived` once immediately after
+the admin drain and before movement advances recovery. Its handler observes the full `RecoveryRemaining`, even
+when that duration is shorter than a tick. A sharded frame without a physical step also delivers arrival.
+Commands queued by the handler apply on the next frame. `MovementCommitmentEnded` runs once at release and
+reports `Arrived` for that sequence after accepted arrival, including release by recovery expiry, water, lost
+support, teleport, supersession, disconnect or `AbortMovementCommitment`. Interruptions release immediately.
+The travel timeout stops applying at accepted ground arrival, and `RecoveryRemaining` bounds recovery. Ballistic
+timeout and recovery behavior stays unchanged. With no recovery, arrival precedes end in the same frame.
+Apply authoritative effects from the arrival result's absolute `Position` and
+steered `Direction`, with the game's normal target, reach and combat validation. Ended releases ability bookkeeping.
+
+`TargetLost`, `NoPath`, `TooLong` and `UnsupportedState` abort with their corresponding Locomotion reason.
+`Cancelled` maps to `Aborted`. `None`, unknown reasons and invalid values throw before queueing even for stale
+sequences or missing actors. Both controls ignore stale sequences, absent actors, ballistic or terminal state,
+and recovery. Repeated ends publish nothing and never restart recovery. `AbortMovementCommitment` can still
+cancel recovery. These calls also live on `IAdminControllable` and `ServerAdmin`. Other heads retain unsupported
+defaults that throw `NotSupportedException`.
+
+The admin drain follows `OnBeforeTick` on both heads, so calls from that hook affect the same eligible movement
+step. A short sharded frame may apply control and publish accepted outcomes without advancing physical timers.
+Ground controls edit carried state without placement admission, so an unresolved explicit movement environment
+can hold physical movement without refusing begin, steer, end or abort, advancing timers, or duplicating events.
+Arrival and end publish before snapshots, so effects applied from event handlers are served that frame.
+Sequence checks persist across same-host handoff, and active ground travel retains the movement anomaly
+exemption at speeds above ordinary walking while respecting bounds.
+
+`KhaozEngine.Movement.GroundPursuit` supplies guarded walk-only planning for those controls. Keep one object per
+active pursuit. Construct it with a `GroundNavigation` profile and optional `PathFollowConfig`. Admission checks
+current exact 3D shape reach, then the independent `TriggerRange`. It requires a Complete walking route ending
+inside current reach and fitting `MaximumPathLength`. Both limits are finite and positive. `StopDistance` is finite
+and nonnegative. Trigger range is checked only at admission, while the path cap is checked on every replan.
+Path length and `RemainingPathLength` are horizontal XZ metres, so slope rise does not consume budget. Arrival
+and endpoint membership use exact 3D reach including capsule extent and target height.
+
+Pursuit always sets `PathQueryBudget.WalkOnly`, which makes the grid planner skip Hop and Drop links while keeping
+Stair and ordinary accepted walking exits. The default is false for existing queries. The profile planner and
+route straightener preserve the option. Pursuit also refuses every non-Walk waypoint, even from another planner.
+Actual-to-route entry and shortcuts use the profile's supported-walk segment guard. Partial, unreachable, empty,
+non-walk and invalid endpoint or entry routes return NoPath with `GroundPursuitDetail`. Profile mismatch,
+airborne, swimming and incompatible commitment state return UnsupportedState. Malformed parameters throw BCL
+exceptions. The lower-level constructor accepts equivalent guarded planning, space and segment admission, with
+runtime profile compatibility owned by its caller.
+
+An ability can refuse an area that ordinary movement permits by supplying
+`navigation.ExcludingAreas(wetSurfaceBit)`. Area bits come from the game's `NavAreaClassifier`.
+The immutable view shares the baked graph and captured columns, including loaded bake data. It can be shared
+across pursuits. No extra capture, whole-world profile or bake format change is needed. Zero keeps the same
+instance and chained calls accumulate exclusions. Baked required and excluded masks still apply. Excluding
+a required bit makes affected surfaces ineligible and never widens the original profile.
+
+The exclusion checks the complete capsule footprint on search nodes and directed edges, including Stair links,
+and guards straightening, actual-to-route entry, every kept segment and waypoint shortcuts. It applies at Admit
+and on every Tick replan. A failed filtered route runs one additional diagnostic walking query against the
+original profile with the same budget. When that original route is complete and passes supported-walk admission,
+the result is NoPath with `GroundPursuitDetail.ExcludedArea` and zero direction. Otherwise the existing filtered
+route detail remains. The diagnostic route never authorizes travel. Each failed filtered plan can therefore
+consume two query budgets. Omitting the view preserves existing pursuit behavior.
+Use the profile constructor for this diagnostic. The lower-level constructor has no original profile to compare.
+
+Load a server-side `GroundNavigation` profile for the actor's actual capsule and movement binding before
+constructing the pursuit. `GroundMoveContext` is caller-owned and used sequentially. The authoritative actor state
+must be grounded, neither swimming nor airborne from water, have no buffered jump, and have no incompatible active
+commitment. `Admit` refuses any active commitment. The game also checks root, stun and ability policy before begin.
+
+This example shows one stable actor and target identity. The game supplies the request queue, current target
+lookup, policy checks, configured durations and effect callbacks. The same wiring applies to either float head.
+Keep the pursuit and sequence keyed by stable actor identity across same-host handoff, rather than by cell entity.
+
+```csharp
+using KhaozEngine.Locomotion;
+using KhaozEngine.Movement;
+using KhaozEngine.NetWorld;
+
+// Share this immutable view across pursuits with the same area policy.
+var pursuitNavigation = navigation.ExcludingAreas(wetSurfaceBit);
+var actor = PlayerRef.Account(actorId);
+string targetId = ""; // The game supplies stable target identifiers.
+var pursuit = new GroundPursuit(pursuitNavigation);
+var limits = new GroundPursuitSettings(triggerRange, maximumPathLength, stopDistance);
+uint sequence = 0;
+bool awaitingRelease = false;
+
+server.OnBeforeTick += dt =>
+{
+    if (!server.TryGetPlayerState(slot, out PlayerMoveState state)) return;
+    if (sequence == 0)
+    {
+        // A request records this actor's chosen target identity. It never writes movement state.
+        if (!TryConsumePursuitRequest(actorId, out targetId)) return;
+        if (IsRootedOrStunned(actorId) || !CanBeginAbility(actorId)) return;
+        if (!TryGetTargetShape(targetId, out ReachTarget target)) return;
+        GroundPursuitResult admitted = pursuit.Admit(state.Move, tuning, target, limits, context);
+        if (admitted.Status != GroundPursuitStatus.Ready)
+        {
+            ReportAdmission(actorId, admitted.Status, admitted.Detail);
+            return; // Includes AlreadyInRange. The game chooses its ordinary in-range action.
+        }
+        sequence = server.BeginMovementCommitment(actor,
+            MovementCommitmentRequest.ForGroundTravel(admitted.Direction, speed, admitted.RemainingPathLength,
+                preparationSeconds, recoverySeconds, timeoutSeconds));
+        return;
+    }
+    if (ShouldCancelAbility(actorId))
+    {
+        pursuit.Reset();
+        awaitingRelease = true;
+        server.AbortMovementCommitment(actor, sequence); // Also releases recovery, preserving accepted Arrived.
+        return;
+    }
+    if (awaitingRelease) return; // Recovery needs no further pursuit steering.
+
+    ReachTarget? current = TryGetTargetShape(targetId, out ReachTarget shape) ? shape : null;
+    GroundPursuitResult update = pursuit.Tick(state.Move, tuning, current, dt, context);
+    if (update.Status == GroundPursuitStatus.Travelling)
+    {
+        server.SteerMovementCommitment(actor, sequence, update.Direction, update.RemainingPathLength);
+        return;
+    }
+    MovementCommitmentStopReason reason = update.Status switch
+    {
+        GroundPursuitStatus.Arrived => MovementCommitmentStopReason.Arrived,
+        GroundPursuitStatus.TargetLost => MovementCommitmentStopReason.TargetLost,
+        GroundPursuitStatus.NoPath => MovementCommitmentStopReason.NoPath,
+        GroundPursuitStatus.TooLong => MovementCommitmentStopReason.TooLong,
+        GroundPursuitStatus.UnsupportedState => MovementCommitmentStopReason.UnsupportedState,
+        _ => throw new InvalidOperationException("Unexpected active pursuit result.")
+    };
+    awaitingRelease = true;
+    server.EndMovementCommitment(actor, sequence, reason);
+};
+
+server.MovementCommitmentArrived += result =>
+{
+    if (result.Slot != slot || result.Sequence != sequence) return;
+    awaitingRelease = true;
+    // This is the strike point, before optional recovery advances. Revalidate current game policy and reach.
+    if (TryGetTargetShape(targetId, out ReachTarget target)
+        && ReachGeometry.Within(new MovementBody(result.Position, tuning.CapsuleRadius, tuning.CapsuleHalfHeight),
+            target, limits.StopDistance)
+        && CanStrike(actorId, targetId))
+        ApplyStrike(actorId, targetId, result.Position, result.Direction);
+};
+server.MovementCommitmentEnded += result =>
+{
+    if (result.Slot != slot || result.Sequence != sequence) return;
+    ReleaseAbility(actorId, result.Sequence, result.Reason);
+    pursuit.Reset();
+    sequence = 0;
+    awaitingRelease = false;
+};
+```
+
+Adoption requires the 22.0.0 major engine repin, matched generation-15 client and server, and the server-side
+navigation profile for the actor's capsule. Persisted movement payloads migrate automatically through normal
+blob normalization. Clients need the matching movement environment for replay, not a navigation query or route
+cache. See [forced movement rationale](design/FORCED-MOVEMENT.md) for package boundaries and the prediction tradeoff.
+
+Ready always carries finite nonzero direction and positive remaining length. AlreadyInRange and OutOfRange
+are separate admission results and must not begin a commitment. Travelling always carries finite nonzero
+direction and nonnegative remaining length. A due replan cooling down holds with the last valid direction and
+zero distance. It does not arrive or terminate. Target drift, corridor exit, route consumption and invalid cached
+endpoint membership trigger replanning. Invalid membership includes sub-threshold target motion. A formerly
+nonterminal corridor reaching a stale terminal refreshes once immediately under radius and layer checks. A fresh
+query already terminal keeps the cooldown. The defaults for budget, drift, corridor and cooldown come from
+`PathFollowConfig`. Consumed routes, spent commitment distance and cached endpoints never witness arrival.
+A valid final approach keeps steering with positive remaining length inside `AcceptRadius` while outside exact
+reach. Terminal proximity only changes the timing of an otherwise due replan. A missing usable horizontal
+direction outside exact reach also makes a refresh due, with the same cooldown policy. Crossing an intermediate
+waypoint counts as progress along the actor's active steering leg, including at corners. That leg starts at the
+query start and resets to the current feet whenever advancement selects another waypoint. A proximity skip cannot
+witness crossing the next waypoint without actor movement. Advancement still requires supported segment admission
+from the current feet to the next waypoint. Refused crossed entries make replanning due rather than steering back
+across the old waypoint. Corridor distance continues to use the route's original segments.
+
+Pass null when the target disappears. Call `Reset` before replacing target identity, teleporting or manually
+cancelling, then admit afresh. Do not tick during recovery or after a terminal result. Use commitment timeout
+for the total pursuit duration, the authoritative arrival event for game-validated effects, and the ended event
+for lifecycle cleanup. Pursuit performs no physics stepping, position writes, actor lookup or ability logic.
+Clients replay the server-carried direction and distance rather than planning their own route.
+
+For a server-authored ballistic leap, knockback, or similar move that player input must not steer, queue a movement
 commitment. This example authors an 8 metre same-height arc with a 2 metre apex, then holds a rooted recovery pose
 for 0.15 seconds after physical contact:
 
@@ -14627,6 +16498,9 @@ held, or a predicting client is corrected back to the held position on each snap
   prediction, the clock accumulates and caps as before. Either overload consumes the pending prediction on a
   valid positive frame. Invalid frame times preserve it, ordinary reconciliation preserves it, and reset,
   transition reset, reseed and hard snap clear it. Remote timing and correction decay are unchanged.
+  At finite presentation phases, each unchanged finite planar coordinate stays exact before correction
+  offsets are applied, including when the other coordinate moves. Reconciliation and quiet reseeding use
+  the same interpolation. Genuine correction offsets still apply and decay normally.
   A frame time that is not a finite positive number of seconds (negative, zero, infinite, or not a number) is
   treated as zero and advances nothing, on both `WorldClient.AdvancePresentation` and the underlying
   `ClientPrediction.AdvancePresentation`. Both clocks accumulate, so a broken frame clock redraws the previous
@@ -15702,6 +17576,22 @@ The SIBLING of the section above, for a world made of tiles rather than of metre
 `TileDirection` facing and a `TileMoveMode`, and a step COMMITS every N ticks along a deterministic `TileRoute`.
 Click, walk at once, the server is right when the two disagree.
 
+`TileWorldServer.SetPlayerState` refuses malformed authoritative state before writing either component.
+`TileServerStateArgumentException` remains catchable as `ArgumentException`, preserves `ParamName = "state"`
+and carries a non-nullable `TileServerStateRefusal Reason`. `PlaneOutsideWorld` carries `Tile`, `Plane` and
+`PlaneCount`, `RegionNotLoaded` carries `Tile` and `Region`, `StepOriginInvalid` carries `Tile` and `StepFrom`,
+`StepProgressNotBelowTotal` carries `StepTicks` and `StepTotal`, and `RouteLimitExceeded` carries
+`RemainingSteps` and `MaximumSteps`. Actor, ground-item, object-state and static-entity placement use the same
+validator and reasons. The player-only `PlayerFootprintNotOne` carries `FootprintSize` and is checked even
+before teleport normalization. A teleport normalizes the origin and progress before validating them.
+Route adjacency is still forwarded from `TileRoute.RemainingSteps` before any state write as
+`TileRouteArgumentException`, an `ArgumentException` with `TileRouteRefusal.TilesNotAdjacent`, `From`, `To` and
+`ParamName = "b"`. Adjacency stays planar. `Next` on an idle route throws `TileRouteStateException`, an
+`InvalidOperationException` with `IdleHasNoNext`, `Index` and `TileCount`. `End` on an empty route throws the
+same type with `EmptyHasNoEnd` and `TileCount`. A finished nonempty route still answers its destination. See the
+[route refusal table](../KhaozEngine.TileWorld.Netcode/README.md#route-refusals) and
+[server state refusal table](../KhaozEngine.TileWorld.Netcode/README.md#server-state-refusals).
+
 **A step commits its tile when it STARTS.** `TileMoveState.Tile` is the tile the simulation OWNS: it flips on the
 tick the step begins, and the remaining ticks glide the DRAWN body into it from `TileMoveState.StepFrom`, the tile
 being left. So the rules run a little ahead of the picture, by strictly less than one step, and every question
@@ -15936,8 +17826,8 @@ top of the next tick, ahead of `OnBeforeTick`. The host-thread `Kick(int slot, s
   join, and once per tick over every live session, ahead of `OnBeforeTick`. A ban that lands after the door closes
   the session with `TileServerReason.Banned`, the same string as the door's `ke:banned` refusal, whoever recorded
   it, and a tokenless guest seat is never checked. This is the tile counterpart of the `WorldServer` join check.
-- `SetPosition` keeps the interface default and cuts like `Teleport`. The movement commitment pair is not
-  supported and throws `NotSupportedException`.
+- `SetPosition` keeps the interface default and cuts like `Teleport`. The movement commitment controls are not
+  supported and throw `NotSupportedException`.
 
 ```csharp
 var server = new TileWorldServer(transport, config with { Presenter = new TilePresenter(document) }, map);
@@ -16007,6 +17897,29 @@ it has no document count. Extension ids are length-prefixed, so a client whose r
 SKIPS it rather than failing, which is the forward compatibility the wire wants and also the trap. The components
 never arrive, movement and the owner route and the display name all keep working, and nothing anywhere says a
 thing.
+
+Tile component refusals carry `TileComponentCodecRefusal Reason` and typed identifiers. Encoder size refusals
+throw `TileComponentCodecArgumentException`, an `ArgumentException` subtype keeping `ParamName = "v"`.
+`RouteWriteLimitExceeded` carries `ActualCount` and `MaximumCount`. `InstanceWriteLimitExceeded` carries
+`ActualByteCount` and `MaximumByteCount`.
+
+Malformed component data throws `TileComponentCodecDataException`, derived from `MalformedDataException`.
+This replaces the sealed `InvalidDataException` catch contract. `RouteReadLimitExceeded` and
+`NameReadLimitExceeded` carry the declared count and its limit. `RoutePayloadTruncated` and
+`NamePayloadTruncated` carry the declared count and `AvailableByteCount`. `RouteStreamShortRead` and
+`NameStreamShortRead` carry the declared count and `ActualReadCount`. Route counts use `DeclaredCount` and
+`MaximumCount`, while UTF-8 name counts use `DeclaredByteCount` and `MaximumByteCount`. `PlaneOutsideWorld`
+carries `ComponentName`, `Plane` and `PlaneCount`. The [codec refusal table](../KhaozEngine.TileWorld.Netcode/README.md#component-codec-refusals)
+lists all reasons and their identifiers.
+
+Catch `MalformedDataException` around direct `ClientReplicationView.Apply` or `ApplyDelta` calls that use either
+`TileProtocol.CreateRegistry` overload. Keep an `InvalidDataException` catch too when another source still raises
+it. `TryApply`, `TryApplyRetainingUnknown` and `TryApplyDelta` retain their false/error contract. Format 2 staging
+wraps codec faults in `DeltaRebuildException` with `Failure = MalformedPacket` and preserves the original as
+`InnerException`. `ClientDeltaRebuild.TryApply` still maps that failure to `Invalid`. A `SnapshotBlobReader`
+built-in resolver that invokes a codec preserves the fault inside its `InvalidOperationException`.
+`SnapshotWriter` encoding methods can propagate the argument subtype. Frame `TryDecode` methods and the
+item-instance component's total reader retain their existing behavior.
 
 `Presenter` starts as a placeholder and is REPLACED once the document is loaded
 (`client.Presenter = new TilePresenter(document)`), so it carries the world's real tile size and plane height and
@@ -16682,7 +18595,8 @@ crosses a region handoff and reaches both heads with no second lookup.
   plane)` is off the delayed sample the body is drawn from, for click bounds and a target highlight.
   `client.TryGetLatestRemoteFootprint` is off the newest snapshot, for a rule, and it is what `TileRemoteTargets`
   resolves a remote to, so a predicted approach to a cow stops on the same tile the server stops on.
-- **Players are one tile.** `TileWorldServer.SetPlayerState` refuses a state with a `FootprintSize` above 1.
+- **Players are one tile.** `TileWorldServer.SetPlayerState` refuses a state with a `FootprintSize` above 1 as
+  `TileServerStateArgumentException` with `TileServerStateRefusal.PlayerFootprintNotOne` and `FootprintSize`.
 - **There is no simulator-wide size.** `TileMoveOptions.AgentSize` and `TileMoveSimulator.AgentSize` were removed in
   19.0.0 ([#900](https://github.com/APKiwiOrg/KhaozEngine/issues/900)). Every body is stepped, pathed and reached at
   its own state's `FootprintSize`, and `TileMoveSimulator.FootprintOf(state)` stays as the name the combat roll asks
@@ -16698,8 +18612,16 @@ crosses a region handoff and reaches both heads with no second lookup.
   own diagonal behind the near tile that put it in range and the home cell has to hold that anchor as a ghost. At
   the default 15 tile radius that is 16.42 for a 2x2 and 24.9 for an 8x8. The default `OverlapMargin` of 25 covers
   every legal body at the default radius, so only a game that narrows the band or widens the radius has to do this
-  sum, and one that does MUST keep the margin above it. `TileActorHost.Add` and `TileWorldServer.SpawnActor` refuse a
-  body the margin cannot cover, naming both numbers, rather than throwing out of the first serve. A world of
+  sum, and one that does MUST keep the margin at least the required query radius. Server construction refuses
+  `InterestRadius > OverlapMargin`
+  with `TileInterestArgumentException`, an `ArgumentException` carrying
+  `TileInterestRefusal.ConfiguredRadiusExceedsMargin`, `InterestRadius`, `OverlapMargin` and `ParamName = "config"`.
+  `TileActorHost.Add`, `TileWorldServer.SpawnActor` and `SpawnStaticEntity` refuse a body the margin cannot cover
+  with `TileInterestRangeException`, an `ArgumentOutOfRangeException` carrying `FootprintRadiusExceedsMargin`.
+  `RequiredQueryRadius` and `OverlapMargin` carry both numbers, alongside `InterestRadius`, `FootprintSize` and the
+  original `ParamName` (`"definition"` or `"spec"`) and `ActualValue` (the footprint size). See the
+  [interest refusal table](../KhaozEngine.TileWorld.Netcode/README.md#interest-refusals). Refusal happens before
+  admission, keeping it out of the first serve. A world of
   one-tile bodies is served exactly the set it was served before footprints existed and pays nothing for any of
   this.
 
@@ -17898,7 +19820,8 @@ game's sound effects from a `sfx.manifest.jsonc` (prompt -> ElevenLabs sound-eff
 your asset tree). It defaults to the formats this `AudioSystem` wants: mono OGG Vorbis (mono because OpenAL only
 spatializes mono sources - a stereo buffer plays flat and skips `PlaySfx3D` positioning), and forces `wav`
 output to the 16-bit PCM 44.1 kHz that `WavDecoder` accepts. It is idempotent (a `.sfxmeta` hash sidecar per
-output, skip-unchanged + `--force`) and has a `--dry-run` plan-with-credit-estimate. See the README "Dev tools"
+output, skip-unchanged + `--force`, and a model change re-bakes nothing already approved) and has a
+`--dry-run` plan-with-credit-estimate. See the README "Dev tools"
 section. The tool only produces the audio files; loading and playing them is the normal `AudioSystem` flow
 above. Each game owns its manifest and its play-key wiring.
 
@@ -18497,7 +20420,9 @@ have persisted them as a player's saved choice.
   default, because the engine never had an OpenGL implementation and is not gaining one.
 - A STORED preference naming one takes the same redirect, and reports
   `GpuBackendSource.FallbackAfterFailure`, which is the signal a game already clears a stored choice on.
-- NAMING one in code throws `GpuBackendRetiredException`. Repointing the member at its native sibling was ruled
+- NAMING one in code throws `GpuBackendRetiredException` with
+  `Reason = GpuBackendRetiredRefusal.BackendRetired`, `Backend`, `Replacement` and
+  `RetirementVersion = new Version(18, 0, 0)`. Repointing the member at its native sibling was ruled
   out by name in the removal design: it would move every tester's stored choice onto a different implementation
   with no rebuild signal and no player notice.
 
@@ -18512,11 +20437,15 @@ implementations of those three APIs, and they are the only implementations left 
 `d3d11`, `vulkan`, `metal` and `gl` named the Veldrid backend, which the same release deleted, so a token
 naming one of them RESOLVES to that API's native backend and logs the retirement WARN rather than failing the
 run. NAMING a native backend without referencing its package and calling its `Register()` throws
-`GpuBackendProviderMissingException` and never falls back, because a run that quietly used a different
+`GpuBackendProviderMissingException` with `Reason = GpuBackendProviderMissingRefusal.ProviderNotRegistered`
+and never falls back, because a run that quietly used a different
 implementation would report its measurements under the wrong name. DEFAULTING to one without the package
 throws the same exception since 18.0.0, where it used to fall back to the incumbent and report
 `GpuBackendSource.DefaultProviderMissing`: there is no second implementation to reach for, and the umbrellas
 carry the packages so an ordinary game never meets it.
+Read `Backend` for the missing registration, `RegistrationConvention` for
+`KhaozEngine<Backend>.Register()` and `RegistrationMethod` for a known backend's entry point, or null for an
+unrecognized backend. The convention continues to apply when a backend is appended.
 
 Because each API had two members, code that cares about the API rather than the implementation asks
 `kind.IsDirect3D11()`, `kind.IsVulkan()` or `kind.IsMetal()` (the `GpuBackendKinds` extensions, 17.30.0, 17.32.0
@@ -18689,8 +20618,11 @@ packages, and `AppWindow` plus both snapshot hosts register at boot.
 
 **When the fallback fails too, `GpuNoUsableBackendException` (17.40.0) names BOTH attempts.** There is no device
 at that point and the app cannot render, and the exception carries `RequestedBackend`, `FallbackBackend`, the
-first failure as its `InnerException` and the fallback's own on `FallbackFailure`, with both reasons in the
-message in the order they were tried. The first failure is the inner one deliberately: on a native backend and
+first failure as its `InnerException`, the fallback's own on `FallbackFailure` and the requested diagnostic on
+`RequestedFailure`. Its `Reason` is `GpuNoUsableBackendRefusal.RequestedCreationFailed` when creation threw,
+`RequestedMachineUnsupported` when the support probe refused, or `RequestedProviderNotRegistered` when the
+stored preference had no provider. When the request never threw, `InnerException` is the fallback's exception.
+The first failure is the inner one deliberately: on a native backend and
 its deleted Veldrid twin the two usually shared one underlying cause, and the one worth reading is the first. A backend
 named outright never reaches it, because naming one turns fallback off.
 
@@ -18793,7 +20725,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="21.20.0" />
+<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="23.4.0" />
 ```
 
 ```csharp
@@ -18829,7 +20761,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="21.20.0" />
+<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="23.4.0" />
 ```
 
 ```csharp
@@ -18885,7 +20817,8 @@ validated by a human at a window or not at all. A green Vulkan leg is not eviden
 Call it unconditionally anyway, and on every OS. Unlike `KhaozEngine.Gpu.D3D11` there is no platform guard to
 read first and none to add: Vulkan is not a Windows API, the same managed code runs everywhere, the loader is
 resolved at runtime, and a machine without one is answered by the probe rather than by a platform predicate. The
-package's whole public surface is that one method.
+package's registration surface is that one method. Its structured refusal enums and exceptions also expose
+engine-only reasons and diagnostic values.
 
 Whether the machine can run it is the separate question `IsBackendSupported` answers, through this package's own
 functional probe: a Vulkan loader, a throwaway instance at the 1.3 floor, then every physical device checked for
@@ -19073,7 +21006,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Metal" Version="21.20.0" />
+<PackageReference Include="KhaozEngine.Gpu.Metal" Version="23.4.0" />
 ```
 
 ```csharp
@@ -19159,9 +21092,18 @@ sample every texture up front in binding order belonged to the removed Veldrid b
 may retain that shape, but new shaders do not need it. `ShaderValidation.ValidatePair` and `ValidateCompute`
 still check that the authored indices reached the emitted MSL.
 
-A shader whose emission cannot be read fails at `CreateShadersFromSpirv` with a message naming the program, the
-stage and the offending argument, and it fails with no device involved, so it surfaces in a headless test run
-rather than as a wrong pixel.
+A shader whose emission cannot be read fails at `CreateShadersFromSpirv` with `ShaderValidationException`.
+Its `Reason` distinguishes a missing entry point, missing or unclosed arguments and an unreadable function
+name. `Label` and `Stage` identify the emission. Binding-table refusals also carry `Set` and `Binding` where
+applicable. These checks involve no device and surface in a headless test run.
+
+Native Metal failures carry `MetalLibraryRejected`, `MetalLibraryFunctionMissing`,
+`MetalGraphicsPipelineRejected` or `MetalComputePipelineRejected` on the same exception. `Stage` and
+`EntryPoint` identify library failures. `PipelineKind` identifies pipeline failures. `Diagnostic` retains
+native error data, and `NativeDiagnosticMissing` distinguishes a nil native error. Missing functions carry
+`Policy` M-S5. `MetalShaderFunctionException` separately distinguishes `FunctionReleased` from `StageMissing`,
+retaining `Stage` and `ResourceKind`. Native descriptor or state creation failures use
+`ShaderValidationStateException`, preserving `InvalidOperationException` catches and carrying `NativeClass`.
 
 **`KE_METAL_MSL_CACHE` controls the emission cache, and what it caches is not what you might expect.** There is
 no compiled-library cache on this backend, because macOS already caches the MSL-to-library compile across
@@ -19217,12 +21159,16 @@ owns anything native and the call would otherwise quietly work.
 surprise you. The binding table is keyed on `(set, binding, stage)` against the shader's own reflection, so
 `GpuPipelineDescription.ResourceLayouts` has to be the same SHAPE as what the shader reflects: the same number
 of sets, the same number of elements in each, and the same `GpuResourceKind` at each position. A disagreement
-throws at `CreateGraphicsPipeline` naming the counts, which is the same declaration every other backend already
-expects and the first place anything checks it. Two consequences worth knowing. `ResourceLayouts` cannot be
-left empty for a shader that references nothing, because such a shader still reflects one empty set
-([#599](https://github.com/APKiwiOrg/KhaozEngine/issues/599)), and no shipped engine program is in that shape.
-And your vertex layouts have to cover every attribute the vertex function declares, because Metal validates the
-pipeline against the compiled function and says which attribute is missing.
+throws `ShaderValidationException` at `CreateGraphicsPipeline`. `Reason` is `MetalLayoutCountMismatch`,
+`MetalLayoutElementCountMismatch` or `MetalLayoutKindMismatch`, with `Label`. Layout-count refusals carry
+`DeclaredLayoutCount` and `ReflectedLayoutCount`, element-count refusals carry `Set`, `DeclaredElementCount`
+and `ReflectedElementCount`, and kind refusals carry `Set`, `Binding`, `DeclaredKind` and `ReflectedKind`.
+This is the same declaration every other backend already expects and the first place anything checks it.
+An empty `ResourceLayouts` array is valid for a shader that references no resources. Trailing empty declared
+layouts are ignored, including a single empty set
+([#599](https://github.com/APKiwiOrg/KhaozEngine/issues/599)). Your vertex layouts must cover every attribute
+the vertex function declares. Metal validates the pipeline against the compiled function, and a native rejection
+is carried as `MetalGraphicsPipelineRejected` with `PipelineKind`, `Diagnostic` and `NativeDiagnosticMissing`.
 
 **Disposing a shader set or a pipeline and then using it is refused by name on this backend, where the deleted Veldrid
 legs were quieter about it.** Creating a pipeline from a disposed `IGpuShaderSet`, or binding a disposed
@@ -19475,8 +21421,11 @@ refuse it rather than replay it.
 **The rule is now enforced for every recording the engine opens (`GpuRecording`, 17.36.0).** It used to be a
 paragraph you had to have read. `GpuRecording.Open(device, list, owner)` begins a list and claims the device,
 the returned `GpuRecordingScope` ends it and releases, and a second `Open` on the same device throws
-`GpuNestedRecordingException`. The message names both sides and the fix, which is the part a stack trace cannot
-give you, because the damage this replaces surfaced several draws away from the call that caused it:
+`GpuNestedRecordingException` with `Reason = GpuNestedRecordingRefusal.RecordingAlreadyOpen`.
+`Owner` identifies the open recording and `Attempted` the refused one. Move per-frame work to the pre-record
+phase through `AppWindow.Run(onPrepare)` or `Scene3D.PrepareFrame`. Loads, readbacks and offscreen captures
+belong outside the frame when they are not per-frame work. These identifiers supply the context a stack trace
+cannot, because the damage this replaces surfaced several draws away from the call that caused it:
 
 ```csharp
 using (GpuRecording.Open(gd, cl, "my streaming upload"))
@@ -19528,11 +21477,10 @@ own object model would allow it.
 the whole of what happens (18.0.0, issue #690).** `Render3DSurface.Render` calls `Scene3D.PrepareFrame` as a
 safety net, but by then the frame's list is open, so a scene with a producer that owns a command list (today: the
 FFT ocean, and `Scene3D.Begin`'s retire barrier once a retirement is pending) gets `GpuNestedRecordingException`
-naming the fix. There used to be a second layer under that, the vendored Veldrid fork's own guardrail throwing
-`VeldridException` on its leg, and it went with the fork in 18.0.0. Nothing replaced it and nothing needs to: the
-register refuses before any list is begun, so the message and the behaviour are identical on all three backends.
-The fix is unchanged, and it is the one the message names: queue and prepare the scene in `onPrepare`, call
-`Render` from `onFrame`, or subclass `GameApp3D`, which does exactly that for you. Note the data-dependence above
+with `Reason = GpuNestedRecordingRefusal.RecordingAlreadyOpen`. `Owner` identifies the open recording and
+`Attempted` the refused producer. The register refuses before any list begins, with the same reason and
+identifiers on all three backends. Queue and prepare the scene in `onPrepare`, then call `Render` from
+`onFrame`, or subclass `GameApp3D`, which supplies those phases. The data-dependence above
 applies here too, so a raw-`AppWindow` host with no ocean can run for a long time before the first unload turns
 its missing phase into an exception.
 
@@ -19616,7 +21564,9 @@ number, and again only the first can make it refuse something the other backends
 **A uniform buffer may not also be something else there either.** Creating a buffer as
 `GpuBufferUsage.UniformBuffer | GpuBufferUsage.StructuredBufferReadOnly` (or with either read-write structured
 bit, or with the vertex, index or indirect bits) is legal on the seam and was accepted by the deleted Veldrid
-Vulkan backend. `GpuBackendKind.VulkanNative` REFUSES it at creation, with a message saying so. A uniform buffer there is ring-backed: it holds one copy of itself per frame in flight, and
+Vulkan backend. `GpuBackendKind.VulkanNative` refuses it at creation with
+`GpuBufferUsageArgumentException` and `GpuBufferUsageRefusal.UniformBindingCombination`.
+Read `Usage` and `ConflictingUsage` for the rejected binding combination. A uniform buffer there is ring-backed: it holds one copy of itself per frame in flight, and
 the frame's base offset is supplied at the bind as the dynamic uniform descriptor's offset. No other binding
 carries that base, so the vertex, index, indirect or storage read would address the first copy while the uniform
 read addressed the current one, and one frame's data would be read as another's with nothing thrown. Create two
@@ -19667,7 +21617,8 @@ to be explicit, so the native backend waits on the device timeline before return
 wait into `GpuDeviceCounters.DrainCount` and `DrainMs`. A `GpuMapMode.Write` map does not wait, matching the
 deleted Veldrid leg. `MappedData.RowPitch` and `MappedData.SizeInBytes` mean exactly what they meant there,
 because the subresource arithmetic behind them was reproduced from it byte for byte. **A map on a device that has
-been LOST throws instead**, naming the loss reason the backend latched at the site that noticed. Disposing a
+been LOST throws instead**. `VulkanDeviceMapException` carries `LossLatched`, the published `LossReason`,
+`LossSite` and `ResultCode`, or `DeadWithoutLossRecord` with null loss fields. Disposing a
 device was always refused, and losing one now is too: the host-visible memory a staging resource is mapped into
 went with the device, so the pointer would dangle. There is no recovery path, so a run that wants to read back
 again creates a new device.
@@ -19694,7 +21645,7 @@ backend uses, then calls FXC itself to `vs_5_0` / `ps_5_0` / `cs_5_0`. Nothing a
 a shader changes. Three things reach you.
 
 **Validate your own shaders through FXC too, not only through `ShaderValidation`.**
-`ShaderValidation.ValidatePair` cross-compiles to HLSL, MSL, GLSL and ESSL and stops there: it has never
+`ShaderValidation.ValidatePair` cross-compiles to HLSL and MSL and stops there: it has never
 COMPILED the HLSL it produced. That gap is real rather than theoretical, and this engine fell through it twice on
 Direct3D 11 and WARP specifically, once badly enough that a whole scene rendered with no colour in it. If you
 reference `KhaozEngine.Gpu.D3D11`, add the second half in your own test suite:
@@ -19710,9 +21661,18 @@ public void WaterCompilesEverywhere()
 ```
 
 `KhaozEngineD3D11.ValidateComputeShader(computeGlsl, label?)` is the compute sibling. Both need no device and no
-GPU, both throw `ShaderValidationException` naming the label and what specifically was wrong, and both throw
-`PlatformNotSupportedException` off Windows, because FXC is `d3dcompiler` and exists nowhere else. Hence the
-`IsPlatformSupported` gate.
+GPU. Both throw `ShaderValidationException` with `Reason` and `Label`. `D3D11FxcRejected` also carries
+`Profile`, native `HResult` and `Diagnostic`. `D3D11UserSemanticHole` carries `Semantic`, `FirstMissingIndex`
+when applicable and a read-only `RepairSourcePaths` snapshot. Off Windows they throw
+`D3D11ShaderPlatformException`, derived from `PlatformNotSupportedException`, with
+`D3D11ShaderPlatformRefusal.FxcUnavailableOnPlatform`, `Compiler`, `RequiredOperatingSystem`, `SupportProbe`
+and `PortableValidator`. FXC is `d3dcompiler` and exists nowhere else. Hence the `IsPlatformSupported` gate.
+
+D3D11 compiler-report failure events retain `D3D11CompilerEvidenceStateException` for `ReadProfileMismatch`,
+`ReflectionNotCaptured`, `ConstructionIdentityInvalid`, `FailureOriginMissing` and `CombinedFlagsTooLarge`.
+They carry the requested and required profiles, missing stage flags, or field and UTF-8 bounds where relevant.
+`D3D11CompilerEvidenceDisposedException` carries `PipelineUnavailable` and `ObjectName`. The original exception
+base types and the actual native failure occurrences remain available.
 
 What they add over the seam's validator is the FXC compile itself plus one assertion FXC makes possible: the
 compiled vertex input signature must have contiguous `TEXCOORD` indices from 0. SPIRV-Cross DROPS a vertex input
@@ -19866,6 +21826,74 @@ segment's next reopen. That blocks nobody, it usually happens at load time befor
 non-zero reading beside a zero stall count is a specific diagnosis: the segment count is fine and something is
 writing off-timeline against work still in flight. `OffTimelineOutstanding` climbing rather than settling means
 writes are being queued for a segment nothing ever acquires, which on a running device means frames stopped.
+
+---
+
+## GPU resource refusals
+
+Resource ownership checks use `GpuResourceOwnershipArgumentException` for `DifferentDevice`,
+`ForeignBackend` and `MissingResource`, and
+`GpuResourceOwnershipDisposedException` for `NativeHandleReleased`. Read the resource type, backend,
+operation context and native handle properties rather than message text. Plain BCL parameter and
+lifetime checks keep their existing types.
+
+Foreign-resource admission at GPU bind, map, readback and upload entry points uses
+`GpuResourceOwnershipArgumentException` with `GpuResourceOwnershipRefusal.ForeignBackend` on all three
+backends. Its `ExpectedBackend`, `ActualType`, `ExpectedType`, `ResourceKind` and `Context` carry the
+resource identifiers available at that guard. `ParamName` keeps the entry point's parameter name.
+Staging usage and mapping state remain in `GpuStagingMapRefusal`.
+
+A resource-set adapter cast distinguishes logical-kind mistakes from foreign-backend resources.
+The former uses `GpuResourceSetRefusal.ResourceKindMismatch`. The latter uses
+`GpuResourceOwnershipRefusal.ForeignBackend`, with `ElementName`, `ResourceIndex`, `ResourceKind`,
+`ExpectedBackend`, `ActualType` and `ExpectedType` where those values are available.
+
+The same ownership reasons apply to attachment factories, pipeline and resource-set binds, uploads,
+completed staging-buffer reads and swapchain-copy command lists. D3D11 framebuffer adapters identify
+colour or depth attachments through `Context` and retain `ParamName = "texture"`. Vulkan completed
+buffer reads retain `ParamName = "staging"`, and foreign swapchain-copy lists retain
+`ParamName = "commands"`. A missing pipeline-layout slot carries `MissingResource` and `ResourceIndex`.
+Retirement queues reject a frame submission from another device with `DifferentDevice`, or
+`ForeignBackend` when its backend differs.
+
+`GpuResourceLayoutException` carries `DynamicOffsetUnsupportedForKind`, the backend, element name,
+binding when known and declared kind. `GpuResourceSetException` distinguishes resource count, kind,
+null entries, buffer windows, texture usage, staging textures and missing native handles. Its members
+retain the declaration index and the offending window or usage. Vulkan's ring constraints use
+`VulkanResourceSetRingException` with `UniformBufferNotRingBacked` or `RingBufferUsedAsStorage`.
+
+`GpuFramebufferException` distinguishes `NoAttachments`, `AttachmentShapeMismatch`,
+`AttachmentViewMissing` and `AttachmentNotRenderable`. It identifies the attachment and the actual
+and expected shapes, usage or native handle kind as appropriate. Graphics blend-count checks use
+`GpuPipelineOutputsException` with `BlendCountMismatch`, `DeclaredBlendCount`, `ColourOutputCount`
+and `PipelineKind`. Backend admission differences remain as documented by each backend.
+
+Texture copy, mip generation and resolve checks use the portable `GpuTextureTransferArgumentException`
+and `GpuTextureTransferRangeException`. Their required `GpuTextureTransferRefusal` reason distinguishes
+`TextureShapeMismatch`, `MipChainRequired`, `ResolveShapeMismatch` and `SubresourceOutOfRange`.
+The last reason also covers existing staging-layout and upload mip/layer guards on all three backends.
+Their `GpuTextureTransferRangeException` carries the mip, layer and texture counts available at the guard,
+plus the original `ParamName` and `ActualValue`. A copy guard also carries `Side`.
+Shape properties retain both resources' dimensions and format. Subresource refusals retain `ParamName`,
+`ActualValue`, `Side`, mip and layer indices and their limits.
+
+Swapchain copy checks use `GpuSwapchainCopyArgumentException` for `ColourAttachmentCount` and
+`DestinationShapeMismatch`, and `GpuSwapchainCopyStateException` for `SwapchainNotBound` and
+`SwapchainNotCopyable`. The shape refusal carries both shapes. The state refusal names `Command`.
+
+Buffer writes and copies that leave the logical buffer use `GpuBufferTransferRangeException` with
+`GpuBufferTransferRefusal.WindowOutsideBuffer`, `OffsetBytes`, `SizeBytes`, `BufferBytes` and `Side`
+where the guard has the copy side. This includes the uniform-ring write checks on all three backends.
+Vulkan refuses empty buffer copies with `VulkanBufferCopyException` and `VulkanBufferCopyRefusal.EmptyCopy`. Binding usage checks use `VulkanBufferBindingException` with
+`RequiredUsageMissing`, `Usage`, `RequiredUsage` and `Context`. Descriptor budgets use
+`VulkanDescriptorLimitException` with `DynamicUniformLimitExceeded`, `LimitName`, `RequestedCount`,
+`Limit` and `SetLayoutCount`. Layout tracking uses `VulkanLayoutArgumentException` for
+`ImageHandleMissing` and `VulkanLayoutStateException` for `NoSingleLayout`, `PartialOverlap` and
+`UntrackedRemainder`. Its properties identify the image and requested or tracked subresource ranges.
+Staging framebuffer attachments carry `AttachmentNotRenderable` across the native backends. A non-staging attachment without its required native render view carries `AttachmentViewMissing`. Missing swapchain attachment handles carry `AttachmentNotRenderable`.
+
+See the [portable refusal catalog](../KhaozEngine.Gpu/README.md#refusals) and
+[Vulkan refusal catalog](../KhaozEngine.Gpu.Vulkan/README.md#refusals) for the full diagnostic members.
 
 ---
 
@@ -20229,7 +22257,8 @@ custom scene keeps compiling. The rigid default keeps the mesh, the transform an
 a descriptor whose `Dissolve` is above 0 through `DrawMeshDissolved`. It draws nothing for a shadow-only descriptor.
 It also draws nothing for a complement phase above one half with no dissolve. `Scene3D` shows no body for that draw, at
 most a shadow, so the fallback treats it like a shadow-only draw. A shadow-only descriptor with `CastsShadows = false`
-throws the same `ArgumentException` the scene's instance queue throws. The rigid default drops the key, the tint, the
+throws the shared Render3D `DrawAdmissionArgumentException` with
+`DrawAdmissionRefusal.ShadowOnlyWithoutCasting`, both shadow flags and `ParamName` set to `draw`. The rigid default drops the key, the tint, the
 material, `CastsShadows` and `InvertShadowDissolve`, and does not forward `DissolveComplement`. The skinned default
 keeps the tint as well and drops the key, the material and `CastsShadows`. On a scene that does not implement the older
 skinned draws it still throws `NotSupportedException`.
@@ -20490,6 +22519,10 @@ The renderer-free foundation, one line each (all pure .NET / `System.Numerics`, 
 
 - **`KhaozEngine.Primitives`**: the zero-dependency leaf: `Color` (`FromHex`/`ToHex`, `* float`, `Lerp`),
   `DeterministicRng`, `XorRng`, `MathUtil`, `ViewportMath`, `Easing`. The bottom of the dependency graph.
+  Its abstract `KhaozEngine.MalformedDataException` is the base for every engine refusal for malformed input
+  data whose BCL type would have been the sealed `InvalidDataException`. Catch the base when handling any
+  such refusal, or catch a concrete family type and inspect its `Reason` to distinguish that family's
+  refusals. The base has no reason member and is available on both `net8.0` and `net10.0`.
 - **`KhaozEngine.App`**: app identity / data paths: `AppDataPaths` (publisher-rooted: `<base>/APKiwiOrg/<game>/`),
   `BuildMetadata`, `ServiceLocator`, and `AppInstallStamp` (local first-ran/updated stamp; see "Install / update
   stamp" below), plus `EnvFile` for ordered optional-file assignments with caller-owned precedence.
@@ -20503,6 +22536,14 @@ The renderer-free foundation, one line each (all pure .NET / `System.Numerics`, 
   server-side append-only log - see "Batched async writes" below).
 - **`KhaozEngine.Content`**: config loading + JSON-schema validation: `ConfigLoader` (disk-then-embedded),
   `JsonSchemaValidator`, build-time schema enforcement via the bundled `Content.Validator` tool.
+  `ValidationReport` keeps its positional `(bool IsValid, IReadOnlyList<string> Errors)` constructor and
+  developer-facing error strings. Its additive `Findings` collection is an owned read-only snapshot, empty by
+  default, on success and for an unparseable schema. Each immutable `JsonSchemaFinding` carries an
+  `InstanceLocation` JSON Pointer, a nullable schema `Keyword`, and the decoded `PropertyName` when the
+  location addresses an object property. A required-property failure addresses the containing object,
+  without inferring the missing name from prose. Root and array-element locations have no property name.
+  An unknown property rejected by `additionalProperties` has its full instance path and property name.
+  Malformed instance JSON still throws `JsonException`.
 - **`KhaozEngine.Serialization`**: shared `System.Text.Json` baselines. **JSONC (JSON with `//` / `/* */`
   comments and trailing commas) is the engine standard for hand-authored config, manifests, settings, and
   saves**: the `Jsonc` class is the single read policy every engine JSON load routes through (`Jsonc.Deserialize`
@@ -20866,10 +22907,145 @@ attack = stats.Value((int)Channel.Attack);   // back to exactly 10, bit for bit
 `GetBase`/`SetBase` read and write the per-channel base directly. `ClearSources` drops every source and
 leaves only the base. `CopyValuesTo(Span<float>)` reads every channel in one allocation-free call, for a
 stat-sheet screen or a per-frame HUD. **What stays game-side (the seam):** stat identity (the enum), balance
-numbers (which modifiers a sword grants), items and equipment slots, and the whole "buff" half (stacking
-rules, durations, expiry, diminishing returns), the same split `KhaozEngine.Locomotion` already draws for its
-per-entity speed scale: the engine owns the multiplier and its plumbing, the game owns duration, stacking,
-and what granted it.
+numbers (which modifiers a sword grants), items and equipment slots, and how timed modifier totals enter
+the formula. `KhaozEngine.StatusEffects` owns timed stacking, periodic events and expiry, independently
+of this float fold. The game maps its integer channels into stat sources or other formulas and owns
+diminishing returns and what grants an effect.
+
+---
+
+## Status effects
+
+`KhaozEngine.StatusEffects` supplies a pure `StatusEffectBook`, immutable definitions and a presentation
+helper through every umbrella. `KhaozEngine.StatusEffects.Netcode`, carried by `Server`, projects shown
+effects into `ActiveStatusEffects`. A client using only `Game2D` or `Game3D` references the adapter
+explicitly. The game owns channel meanings, units, content, modifier application, damage and death.
+The engine never applies a modifier to a game formula.
+
+### Catalog and registration
+
+Build the same catalog on server and clients. Use the same unused extension id in their registries,
+and pass those registries when constructing the NetWorld heads:
+
+```csharp
+using System.Collections.Generic;
+using KhaozEngine.NetWorld;
+using KhaozEngine.Replication;
+using KhaozEngine.StatusEffects;
+using KhaozEngine.StatusEffects.Netcode;
+
+const int MoveSpeedPercent = 1; // Game-defined channel and units.
+var haste = new StatusEffectDefinition(new(1), durationTicks: 90,
+    iconKey: "haste", modifiers: new[] { new StatusEffectModifier(MoveSpeedPercent, 25) });
+var bleed = new StatusEffectDefinition(new(2), durationTicks: 120,
+    scope: StatusEffectScope.PerSource, maxStacks: 3, periodTicks: 30,
+    polarity: StatusEffectPolarity.Harmful, iconKey: "bleed");
+var catalog = new StatusEffectCatalog(new[] { haste, bleed });
+
+ReplicationRegistry CreateRegistry() => MoveProtocol.CreateRegistry(registry =>
+    StatusEffectsReplication.Register(registry, ReplicationRegistry.FirstExtensionTypeId));
+```
+
+The example assumes that extension id is free. Registration uses `Replicate | Migrate` without
+`Persist`. Only shown instances are sent, with effect id, source, stacks, start tick and end tick.
+Hidden effects still contribute to server totals. Neither modifier lines nor periodic magnitude or
+anchor go on the wire. Counts and stacks are bounded to 255, and a book defaults to 32 instances per actor.
+
+### Server step and gameplay responses
+
+Given a `ShardedWorldServer server` built with `CreateRegistry()`, keep one book and projection for the
+host. `HandleEffectEvent` below is a game-supplied handler. A `Periodic` event's magnitude can drive
+bleed damage there. If damage kills the actor, that handler calls `book.Clear(effectEvent.Actor)`.
+The handler may also `Apply` another effect safely because events drain after the step.
+
+```csharp
+var book = new StatusEffectBook(catalog);
+var projection = new StatusEffectProjection(book, new ShardHostStatusEffectTarget(server.Host));
+var effectEvents = new List<StatusEffectEvent>();
+
+// Call on a validated ability use, in the same server tick domain as Advance.
+StatusEffectApplyResult ApplyHaste(long actor, long source) =>
+    book.Apply(actor, haste.Id, server.ServerTick, source);
+
+void ActorDiedOrDespawned(long actor) => book.Clear(actor);
+
+server.OnBeforeTick += _ =>
+{
+    book.Advance(server.ServerTick);
+    // Process validated ability uses here, for example ApplyHaste(actor, source).
+    effectEvents.Clear();
+    book.DrainEvents(effectEvents);
+    foreach (var effectEvent in effectEvents)
+        HandleEffectEvent(effectEvent);
+
+    // Fold totals into game formulas here, then publish the resulting shown windows.
+    projection.Publish();
+};
+```
+
+Handle `UnknownDefinition` and `ActorFull` results when validating an application. `PerActor` instances
+share one window per effect id. `PerSource` instances coexist by source. Reapplication of a live
+instance grows stacks to the cap, restarts `StartTick`, and sets
+`EndTick = max(previous EndTick, now + duration)`. Refresh never shortens a window or moves the periodic
+anchor. `Advance` catches up every due period, including a tick at the end before expiry. Events
+generated by handlers remain queued for a later drain.
+
+`Apply` settles its target actor's due periodic events and expiry before matching or checking capacity.
+Those events precede the application and use the old instance state. Reapplying at or after expiry
+starts a fresh window and periodic anchor. A later `Advance` at the same tick does not repeat events.
+
+Durations and periods use the tick the caller passes. For NetWorld that is `ServerTick`, normally
+30 Hz, even when game logic runs at a lower cadence. Do not substitute a render-frame count or a
+separate gameplay counter. `Apply` and `Advance` refuse a time before the last advanced tick.
+
+For a game-defined movement speed channel, fold a total into the game's formula and pass the result
+through `SetSpeedScale` for the relevant `PlayerRef`:
+
+```csharp
+int bonusPercent = book.ModifierTotal(actor, MoveSpeedPercent);
+float scale = 1f + bonusPercent / 100f;
+server.SetSpeedScale(player, scale); // actor and player identify the same game-owned actor.
+```
+
+`ModifierTotal` sums per-stack integer contributions exactly, including cancelling contributions.
+It throws `OverflowException` if the final sum cannot fit in an `int`. Use the `ulong` value from
+`ModifierVersion(actor)` to refold lazily, including the return to zero when no instances remain.
+Movement scales replicate in 1/1024 steps at wire generation 15. A requested 10 percent haste becomes
+1.099609375x after quantization.
+
+Call `Publish` every tick after stepping and gameplay mutations. It drains changed actor ids and
+retries pending publications. The Sharding target first checks `TryGetOwner`, then `IsInHandoff`:
+`Published` completes the update, `Deferred` keeps it pending, and `Gone` silently forgets the actor.
+Deferred destination admission may leave zero owners while the frozen source survives. After adoption,
+the projection publishes current entries, including expiries during that gap, to the new owner.
+
+Effects are transient and never persisted. Clear on death and despawn, or `Forget` when the entity is
+already gone and no end events are needed. The projection's `Gone` backstop runs only for changed or
+pending actors, so it does not replace explicit teardown. Do not separately drain changed actor ids
+when a projection owns that drain.
+
+### Client countdown
+
+Enable `WorldClientConfig.ReceiveServerTick` when constructing the client. After polling, use the
+replicated end tick and the client's server tick estimate to calculate remaining time. The latest
+received sample is `LatestServerTick`. `RemoteRenderTick` follows the remote presentation timeline.
+Both are -1 until known. Between samples, the game may advance its estimate in that same tick domain.
+
+```csharp
+var barItems = new List<StatusEffectBarItem>();
+// Each presentation update, after client.Poll and any AdvancePresentation call:
+barItems.Clear();
+double nowTick = client.LatestServerTick; // Or RemoteRenderTick for remote actor presentation.
+if (nowTick >= 0 && client.TryGetComponent<ActiveStatusEffects>(actor, out var state))
+    StatusEffectBar.Build(state.Entries.AsSpan(), catalog, nowTick, barItems);
+```
+
+`Build` appends known, unexpired entries in input order. Each row has icon key, polarity, source,
+stacks, remaining ticks and a clamped fraction of the current duration window. The game supplies icons,
+localized labels and layout. No changing countdown is sent every tick. See the
+[core README](../KhaozEngine.StatusEffects/README.md),
+[adapter README](../KhaozEngine.StatusEffects.Netcode/README.md) and
+[design rationale](design/STATUS-EFFECTS.md) for the full contracts.
 
 ---
 
@@ -21544,6 +23720,43 @@ Integer prefix sums over the loot index, chances in basis points, nesting capped
 destination too small is filled and `TryRoll` says so rather than silently losing drops. What the CALLER still
 owns is the journal event a draw feeds: the roller answers `LootDraw`s and writes nothing anywhere.
 
+### Arbitrary-weight choice
+
+`KhaozEngine.Primitives.WeightedSelector.TrySelectIndex(ReadOnlySpan<int> weights, IRandomSource rng, out int index)`
+selects an index from caller-prepared nonnegative integer weights. Keep one canonical candidate list and use
+zero weights to exclude entries without changing their indexes. Positive entries retain their relative weights.
+
+```csharp
+static string? ChooseLabel(IRandomSource rng)
+{
+    string[] candidates = ["alpha", "beta", "gamma"];
+    int[] eligibleWeights = [2, 0, 3];
+    return WeightedSelector.TrySelectIndex(eligibleWeights, rng, out int index)
+        ? candidates[index]
+        : null;
+}
+```
+
+Empty/default spans and all-zero pools return false with index -1 and no RNG call. A null RNG throws
+`ArgumentNullException` for `rng` first, even for an empty or invalid pool. Negative weights or a total above
+`int.MaxValue` throw `ArgumentOutOfRangeException` for `weights` before drawing. A total of `int.MaxValue` is
+accepted. Indexes are relative to the supplied span, including a slice or a compact filtered list.
+
+Each nonempty call copies the weights into one owned array before validation and RNG invocation, using O(n)
+time and storage. The helper never writes caller memory or retains inputs. The caller synchronizes capture
+and keeps its candidates aligned and alive until resolving the returned index. Concurrent mutation during
+capture is unsupported. RNG callbacks may mutate the original weights without changing the captured pool
+for the current call. Later calls capture the current weights anew.
+
+Every successful call reserves one logical RNG slot through `RandomDraw.Below`. A total of 1 calls `Skip`,
+and larger totals call `NextInt(0, total)` once, even when only one entry has positive weight. This does not
+guarantee one underlying generator step or replay stability across changed weights. Source exceptions
+propagate without retry. A returned draw outside `[0, total)` throws `InvalidOperationException` without a
+second draw. Source failures cannot roll back random state, and no result is promised on an exception.
+
+The caller owns eligibility policy, candidate lifetime and persistence. Retain the resolved outcome when
+retries must reuse the same choice. `LootRoller` keeps its existing catalog behavior and draw schedule.
+
 ### The admin console API
 
 `CatalogAdminActions.Register` puts SIXTEEN actions on the existing `ServerAdmin` dispatch, so a console
@@ -21556,6 +23769,43 @@ CatalogAdminActions.Register(
     admin, store, registry,
     new CatalogAdminActionOptions { ConfiguredVersion = config.ContentVersion, ServerBuild = buildOrdinal });
 ```
+
+A host can constrain operator publication when a value a game's baked artifacts depend on must stay
+unchanged until matching artifacts ship. Set `CatalogAdminActionOptions.PublishPolicy` to an
+`IContentPublishPolicy` during registration. `catalog-validate` evaluates it against the preview baseline
+and candidate. The store's existing `ContentPublisher` evaluates it again after freezing the real draft,
+after the existing validators and before encoding or committing. A passing preview never authorizes a
+later edit.
+
+The policy receives `ContentPublishPolicySnapshot` views. `Rows(type)` and `TryGetRow(type, key, out row)`
+expose old and new rows, and `row.GetValue(fieldName)` returns typed `ContentFieldValue` values. The views
+are detached, their row collections are read-only, and byte values are copied on access. They expose no
+store or mutable registry. Implementations must remain deterministic and side-effect free.
+Use `row.Finding(code, reason)` to append a `ContentFinding` with structured `Type`, `Id`, `Key` and `Code`.
+The admin response preserves that key and code, so a consumer never needs to parse the reason prose.
+A policy throw refuses publication under `IContentPublishPolicy.FailureCode` (`KEC0044`).
+
+The HTTP caller cannot supply, clear or override the registered policy. The handler binds it to the
+in-process `ContentPublishRequest.PublishPolicy`, which is excluded from JSON. HTTP `catalog-import` also
+binds it, through `IContentPolicyImportStore.ImportWithPolicyAsync` and a required-policy
+`ContentPolicyImportRequest`. The bundled in-memory, SQLite and SQL Server stores carry that policy through
+their existing seed pipeline to the frozen publication. A custom store without this capability refuses
+operator imports when a policy is configured, rather than dropping the policy. Trusted server calls to
+`ImportBundleAsync` or `ImportTextBundleAsync`, release tooling and `ContentUpgradeRunner` keep their
+existing publication paths and do not acquire an operator policy. A custom operator surface must bind its own host policy both at preview and on its
+publish request. There is no HTTP bypass mode. With no policy configured, the existing validation sequence,
+published bytes and version numbering are unchanged. A policy refusal preserves the active version and
+all pending draft work, and releases its publication freeze.
+
+The registered policy also guards `catalog-pin` and clearing a hold when the effective version changes.
+The baseline is the current pin, falling back to the active version. The target is the requested pin, or
+the active version for an unpin. Already effective selections succeed without a policy call. Changed
+selections load complete published snapshots, evaluate the policy and use the store's conditional pin
+setter to confirm the catalog epoch, active version and pin before writing. Incompatible selections and
+policy exceptions leave the hold unchanged. Unreadable snapshots, missing conditional pin support and
+selection metadata that changed under the check refuse under `KEC0045`. Direct trusted server
+`SetPinnedVersionAsync` recovery calls stay separate. Consumer policies protecting existence compare
+membership in both snapshots and retirement as well as field values.
 
 The sixteen are `catalog-schema`, `catalog-list`, `catalog-get`, `catalog-edit`, `catalog-draft`,
 `catalog-discard`, `catalog-validate`, `catalog-diff`, `catalog-publish`, `catalog-versions`, `catalog-pin`,
@@ -21962,6 +24212,13 @@ IS. `KhaozEngine.ItemInstances` is the other half of that split: the canonical p
 owned item carries beyond its definition id, the registry that says what every property kind means to a
 walker that knows nothing about any kind, container codec version 2, the instance id allocator and the
 validator that sweeps a stored container against the active content version.
+
+Items benchmark options, limits, declared fields, JSON, atomic output and resident-memory instrument
+regressions remain covered by nine Server.Tests methods in default engine CI. The end-to-end quick
+acceptance fact runs explicitly in the outside-solution
+[`Items.Benchmark.Tests`](../tools/Items.Benchmark.Tests/README.md) suite. A passing free tooling run
+at the exact benchmark code commit is required before publishing new evidence. It validates the
+instrument and workload structure, while separately authorized benchmark runs produce performance evidence.
 
 Four rules run through all of it. The ENCODER is what makes a payload canonical (fields strictly ascending by
 kind, no kind twice, every varint minimal), so **byte equality is the stacking rule** and nothing anywhere
@@ -23465,7 +25722,7 @@ socket a shipping build does not contain. It is in NO umbrella, and a game head 
 
 ```xml
 <ItemGroup Condition="'$(Configuration)' == 'Debug'">
-  <PackageReference Include="KhaozEngine.Automation" Version="21.20.0" />
+  <PackageReference Include="KhaozEngine.Automation" Version="23.4.0" />
 </ItemGroup>
 ```
 
@@ -23695,8 +25952,21 @@ overload `AssertComplete(IEnumerable<string> keys, rm, cultures...)` takes an ex
 A custom GLSL shader that has a syntax error or miscompiles on one backend normally only blows up at first run on
 a real device of that backend. `ShaderValidation.ValidatePair` catches it on the CPU, with no `GraphicsDevice`, so
 it runs in the fast GPU-free test lane on every push: it compiles a GLSL 450 vertex/fragment pair to SPIR-V and
-cross-compiles the pair to every backend target (HLSL, MSL, GLSL, ESSL). A compile failure throws
-`ShaderValidationException` naming the label and the failing stage/target.
+cross-compiles the pair to every backend target (HLSL and MSL). A compile failure throws
+`ShaderValidationException` with a nullable `Reason`, `Label`, `Stage` and `Target`. Engine callers always
+supply a reason. Message-only constructors remain available to consumers and leave `Reason` null.
+`FrontEndCompileFailed` keeps the native cause in `InnerException` and its text in `Diagnostic`.
+`CrossCompileFailed` keeps the inner validation refusal, whose own reason and identifiers describe the failing
+rule. SPIR-V module refusals carry byte lengths, magic values or instruction offsets and word counts.
+The [GPU refusal table](../KhaozEngine.Gpu/README.md#refusals) lists every shader reason and its identifiers.
+`ShaderValidationArgumentException`, `ShaderValidationRangeException` and `ShaderValidationStateException`
+share `ShaderValidationRefusal` while
+preserving their original BCL bases. Metal vertex-stream range refusals retain `ParamName` and `ActualValue`,
+plus `Label`, `StreamCount` and `BufferTableSize`. Vulkan module-cache admission carries `SpirvLengthInvalid`
+on `ShaderValidationArgumentException`, with `ParamName`, `ByteLength` and `WordBytes`. Vulkan vertex-input
+refusals use `VulkanVertexInputException` with `InstanceDivisorUnsupported`, `ParamName`, `InstanceStepRate`,
+`Slot` and `MaximumStepRate`. Vertex-buffer collisions retain the resource `Set` and
+`Binding`, `ArgumentIndex`, stream bounds and policy M-B2.
 
 ```csharp
 [Fact]
@@ -23763,8 +26033,9 @@ a wrong picture on one backend and there is nothing in the GLSL that looks wrong
 three times before the guard existed, and found it by image golden or bisect every time.
 
 `ValidatePair` and `ValidateCompute` both run one check per stage over the emitted Metal, and it throws
-`ShaderValidationException` naming the offending `layout(set=, binding=)` pairs so the message is greppable in
-your GLSL:
+`ShaderValidationException` with `ShaderValidationRefusal.MetalBindingOrderMismatch`. Its identifiers are
+`Label`, `Stage`, `Space`, `ArgumentIndex`, `DeclaredSet`, `DeclaredBinding`, `EmittedSet`, `EmittedBinding`
+and `ExpectedIndex`. These point back to the GLSL declarations:
 
 - **Index order, per stage, over buffers AND textures AND samplers.** Each emitted argument is joined back to
   the `(set, binding)` you wrote through that stage's own SPIR-V decorations, so a swap between two resources of
@@ -23850,7 +26121,9 @@ samples needs `Sampled` as well. A storage buffer is `GpuBufferUsage.StructuredB
 
 **A copy offset is a multiple of four, on every backend (since 17.40.0).** `ReadBuffer<T>`'s optional
 `srcOffsetBytes` and both offsets of `IGpuCommandList.CopyBuffer` are refused with an
-`ArgumentOutOfRangeException` when they are not, naming the side the bad one came from. macOS requires it of
+`GpuCopyAlignmentException` when they are not, with `GpuCopyAlignmentRefusal.UnalignedOffset`.
+It derives from `ArgumentOutOfRangeException` and carries `ParamName`, `ActualValue`, `Context`, `Side`,
+`AlignmentBytes`, optional upload `PayloadBytes` and `RecoveryOperation`. macOS requires it of
 `copyFromBuffer:sourceOffset:toBuffer:destinationOffset:size:`, so before 17.40.0 the same call was taken on
 Vulkan and Direct3D 11 and threw on Metal, which is a difference a game would only meet on a player's
 Mac ([#602](https://github.com/APKiwiOrg/KhaozEngine/issues/602)). The seam takes the strictest backend's rule
@@ -23865,18 +26138,46 @@ uint[] bad  = GpuReadback.ReadBuffer<uint>(gd, buffer, 4, srcOffsetBytes: 3);   
 **`GpuReadback.ToRgba`'s source must already be single-mip, single-sample `R8G8B8A8UNorm` at the size you ask
 for.** It allocates a staging texture of exactly that shape and takes a WHOLE-texture copy into it, and a
 whole copy names every subresource on both sides, so anything else is not a copy a backend can narrow. A source that
-disagrees is refused with an `ArgumentException` naming the readback and what the texture actually is, before
+disagrees is refused with `GpuRgbaReadbackException` and `GpuRgbaReadbackRefusal.SourceShapeMismatch`, before
 anything is allocated or submitted. Native Metal and Vulkan already refused the copy themselves, but Direct3D 11's
 `CopyResource` is silent about a mismatch, so the same call used to throw on two backends and hand back
 channel-swapped or garbage bytes on the third ([#83](https://github.com/APKiwiOrg/KhaozEngine/issues/83)). Resolve a
 multisampled target with `IGpuCommandList.ResolveTexture` first, read one level of a mip chain with
-`GpuReadback.ToRgbaMip`, and pass the source's own dimensions.
+`GpuReadback.ToRgbaMip`, and pass the source's own dimensions. The exception derives from
+`ArgumentException`, keeps `ParamName`, and carries `RequestedWidth`, `RequestedHeight`, `SourceWidth`,
+`SourceHeight`, `SourceFormat`, `SourceMipLevels` and `SourceSampleCount`. Requested dimensions retain
+negative values. `MipReadbackOperation` and `ResolveOperation` identify the per-level and resolve remedies.
 
 ```csharp
 byte[] px  = GpuReadback.ToRgba(gd, colourTarget, w, h);        // R8G8B8A8UNorm, 1 mip, 1 sample, w x h
-byte[] bad = GpuReadback.ToRgba(gd, swapchainBgra, w, h);       // throws: B8G8R8A8UNorm named in the message
+byte[] bad = GpuReadback.ToRgba(gd, swapchainBgra, w, h);       // SourceShapeMismatch, SourceFormat is B8G8R8A8UNorm
 byte[] mip = GpuReadback.ToRgbaMip(gd, mipped, 2, 0, w / 4, h / 4);   // one level of a mip chain
 ```
+
+Staging admission uses `GpuStagingMapArgumentException` (an `ArgumentException`) with
+`StagingUsageRequired`. It carries `Backend`, `ResourceKind`, the original `ParamName` and
+`RequiredBufferUsage` / `RequiredTextureUsage` for missing usage. A foreign staging resource uses
+`GpuResourceOwnershipArgumentException` with `ForeignBackend` and the ownership identifiers. `GpuStagingMapStateException` (an `InvalidOperationException`) carries `AlreadyMapped`
+with `Backend`, `ExistingMode` and `RequestedMode`, `NotMapped` or `MappingMissing` with `Backend`, and
+`CompletionNotSignaled` with `Command`. The last reason identifies an unsignaled `MapForRead` fence.
+The backends retain their existing admission checks and state tracking.
+
+Uniform and structured usage on one buffer is refused by all three backends through
+`GpuBufferUsageArgumentException` with `GpuBufferUsageRefusal.UniformBindingCombination`, `Usage` and
+`ConflictingUsage`. Vulkan and Direct3D 11 also refuse uniform plus vertex, index or indirect usage,
+while Metal accepts those combinations. Buffer bounds use `GpuBufferTransferRangeException` with
+`WindowOutsideBuffer`, `OffsetBytes`, `SizeBytes` and `BufferBytes`. These shared range exceptions retain
+each guard's original `ParamName` and `ActualValue`. Metal arena refusals use `MetalStagingArenaRangeException` with
+`LeaseSizeUnaligned`, `AlignmentBytes` and `RecoveryOperation`, or `MetalStagingArenaStateException`
+with `BlockAllocationFailed` and 64-bit `BlockBytes`. Duplicate argument entries use
+`MetalArgumentBatchException` with `DuplicateArgumentIndex`, `Index`, `Space` and `Stage`.
+Each backend exception uses its matching `Metal*Refusal` enum and retains its former BCL base.
+
+Vulkan staging layout overflow uses `VulkanStagingLayoutException` (an `ArgumentOutOfRangeException`)
+with `VulkanStagingLayoutRefusal.MappingSizeExceeded`. It keeps `ParamName` and `ActualValue` and
+carries `Width`, `Height`, `MipLevels`, `ArrayLayers`, `Format`, `Quantity`, `ComputedBytes` and
+`MaximumBytes`. Byte counts remain 64-bit while the mapping ceiling remains `uint.MaxValue`.
+Messages for these families are developer prose. Branch on the reason and identifiers.
 
 ### Reading a completed staging copy without waiting
 
@@ -23899,7 +26200,8 @@ result can arrive a few frames late.
   backend, a disposed fence or buffer, a buffer without `GpuBufferUsage.Staging`, an `offsetBytes` that is not a
   multiple of four, and a `destination` that runs past the end of the buffer.
 - Do not hold a synchronous `Map` of the same staging buffer while polling. Direct3D 11 refuses the read with the
-  double-map `InvalidOperationException`, and Metal and Vulkan do not detect it.
+  double-map `GpuStagingMapStateException` with `GpuStagingMapRefusal.AlreadyMapped`, and Metal and Vulkan
+  do not detect it on this polling path.
 - On Direct3D 11 a `Submit` does not flush the immediate context. The next `Present` or drain hands the work to the
   driver, which in a presenting frame loop is the frame boundary. A headless loop that neither presents nor drains
   can read `false` indefinitely.
@@ -24015,7 +26317,8 @@ Gate timestamp collection on `GpuCapabilities.SupportsTimestamps`. It defaults t
 reports the selected graphics queue's counter support. Direct3D 11 probes both native query kinds on
 the actual device without timing a workload. Metal probes the timestamp counter set, supported sampling
 boundaries and sample-buffer creation. An unsupported
-`IGpuResourceFactory.CreateTimestampPool(capacity)` throws `NotSupportedException`. The optional timestamp
+`IGpuResourceFactory.CreateTimestampPool(capacity)` throws `GpuTimestampUnsupportedException` with
+`GpuTimestampRefusal.TimestampUnsupported`. It remains a `NotSupportedException`. The optional timestamp
 command defaults also throw, so existing factories and command lists stay source compatible.
 
 Allocate a fixed caller-owned ring once, with one `IGpuTimestampPool` per retained frame and preallocated
@@ -24029,7 +26332,10 @@ Place writes at pass boundaries, including between a compute dispatch and a draw
 requires every index to have been written. These three calls only encode work. They never submit it. A pool
 retains one unresolved batch, and a new begin clears the previous batch only after its result was consumed.
 Invalid count or index bounds throw `ArgumentOutOfRangeException`. Missing, duplicate or out-of-order writes
-and invalid lifecycle operations throw `InvalidOperationException`.
+and invalid timestamp lifecycle operations throw `GpuTimestampStateException`. Its required
+`GpuTimestampRefusal` reason distinguishes `BatchNotRecording`, `UnresolvedBatch`, `IndexOutOfSequence`,
+`IncompleteBatch` and `BatchNotEnded`. Cursor refusals carry `Count`, `Index`, `ExpectedIndex` or
+`WrittenCount` as appropriate. The exception still derives from `InvalidOperationException`.
 
 For completed-frame GPU timing, also require `commandList is IGpuCommandListTimestampEnd`. Vulkan, Direct3D 11
 and Metal implement this optional interface. A list without it cannot prove completed-frame time, because End can
@@ -24037,11 +26343,26 @@ emit later clears or barriers. Begin the batch and write every index before the 
 `FinishTimestampsOnEnd(pool, count - 1)` while the list is still recording. Arming validates the current
 list and recording, the same-device pool, the last batch index and every earlier write before storing
 anything. Only one tail can be armed. Manual `WriteTimestamp` or `EndTimestamps` for its pool is refused.
+`GpuTimestampRefusal.WrongRecording`, `TailPrefixIncomplete`, `TailAlreadyArmed` and
+`ManualFinalizationWhileArmed` distinguish the state refusals. A wrong final index uses
+`GpuTimestampRangeException` with `FinalIndexRequired`, retaining `ParamName` and `ActualValue` and
+carrying `FinalIndex` and `Count`. Foreign pools use `GpuResourceOwnershipArgumentException` with
+`ForeignBackend` for another backend or `DifferentDevice` for another device/timeline. They carry
+`ExpectedBackend`, `ActualType`, `ExpectedType`, `ResourceKind`, `Context` and the original `ParamName`.
 The ordinary End writes the last marker and ends that same batch after all GPU finalization and before
 the native seal, with no extra submission, flush, wait or per-frame allocation. Unarmed End is unchanged.
 Failure or abandonment clears only the list's tail. The caller quarantines the Recording or Pending pool
 through teardown, rather than resetting or reusing it. There is no cancellation API. Device loss follows
 the backend's sealing policy and cannot produce valid completed-frame evidence.
+
+Recording lifecycle checks on all three native backends use `GpuRecordingStateException`, derived
+from `InvalidOperationException`, with `Backend` and `Command`. `GpuRecordingStateRefusal` distinguishes
+`BeginWhileRecording`, `CommandOutsideRecording`, `EndWithoutRecording`, `RecordingAlreadySealed`
+and `SubmissionWithoutSeal`. End on a fresh or abandoned list uses `EndWithoutRecording`.
+End on a sealed list uses `RecordingAlreadySealed`.
+A lost Metal or Vulkan timestamp device uses `GpuTimestampStateException` with
+`TimestampDeviceUnavailable` and `Backend`. Direct3D 11 uses `GpuTimestampDisposedException` with the
+same reason and `Backend`, retaining `ObjectName = "IGpuDevice"` and its `ObjectDisposedException` base.
 
 Submit the list containing `EndTimestamps` once with a same-device completion fence, then call
 `pool.TryResolve(completion, ticks, out double tickPeriodNanoseconds)` on later frames. Keep the pool and
@@ -24049,6 +26370,11 @@ fence alive, and never reset, resubmit or dispose that fence until resolution co
 readback ring has consumed its entries. A fence from another submission is a caller error. A never-submitted
 fence stays pending. On Direct3D 11, presenting or a caller drain hands submitted work to the driver. This
 API introduces no flush policy for a headless loop that never presents.
+
+A short output uses `GpuTimestampArgumentException` with `OutputTooSmall`, `SuppliedCount` and
+`RequiredCount`. A completion fence of another backend uses `GpuResourceOwnershipArgumentException`
+with `GpuResourceOwnershipRefusal.ForeignBackend` and its ownership identifiers. Both preserve
+`ParamName`. A native fence from another device of the same backend uses `DifferentDevice`.
 
 `Pending` leaves caller ticks unchanged and sets the period to zero. `Invalid` does the same but consumes
 the batch, for example when counters are disjoint, calibration is unusable or elapsed ticks overflow.
@@ -24202,7 +26528,7 @@ including skips. Detailed markers can serialize Vulkan work or split Metal encod
 separately from the outer-pair-only frame totals and report that instrumentation cost.
 
 The internal renderer adapter is
-[`RendererPerfRecorder`](../KhaozEngine.Render.Tests/Gpu/RendererPerf/RendererPerfRecorder.cs), with
+[`RendererPerfRecorder`](../tools/Renderer.Perf.Tooling.Tests/Gpu/RendererPerf/RendererPerfRecorder.cs), with
 `RendererPerfDevice` and `RendererPerfCommandList` forwarding the native seam. Construct the recorder,
 fixed pass definitions, sample storage, CPU-span capacity and resource metadata capacity before warming.
 Pass definitions freeze IDs, occurrences, parents and increasing reserved marker pairs for GPU intervals.
@@ -24331,6 +26657,17 @@ Marker cost counts as part of instrumented GPU time and is never subtracted. Hos
 may report unsupported. Its negative branch must execute and that GPU gate is unmeasurable there.
 Native correctness is required on supported Apple hardware. Budget timing remains a separate,
 owner-approved measurement on a chosen device.
+
+Backend adapter refusals stay in their packages. `D3D11TimestampAdapterException` carries
+`D3D11TimestampAdapterRefusal.QueryReadFailed`, the native `HResult` and `Operation`.
+`MetalTimestampAdapterStateException` carries `NativeTimestampResourceUnavailable` and `ResourceKind`.
+`MetalTimestampAdapterUnsupportedException` carries `SamplingBoundaryUnsupported` and `StageBoundary`.
+Both use `MetalTimestampAdapterRefusal`. `VulkanTimestampAdapterException` carries
+`VulkanTimestampAdapterRefusal.NativeDeviceLost` with `Site`, or `PoolAlreadyCreated`.
+Wait admission uses `D3D11WaitPolicyException` with `D3D11WaitPolicyRefusal.SubmitLockHeld` or
+`VulkanRingWaitException` with `VulkanRingWaitRefusal.SubmitLockHeld`, both carrying `Operation`.
+These adapter and wait state exceptions retain their `InvalidOperationException` base. The Metal
+sampling-boundary exception retains `NotSupportedException`. Messages remain developer prose.
 
 ### Ordering: two rules, because there is no barrier call
 
@@ -26679,7 +29016,7 @@ var server = new WorldServer(transport, config, terrain.SampleHeight, MoveTuning
 
 3. *Graceful decode (last resort).* Even if both above are bypassed, an undecodable snapshot (an unregistered BUILT-IN component type id from a newer core protocol) becomes a clean `DisconnectReason.IncompatibleVersion` disconnect plus a `SnapshotDecodeFailed` event - never an unhandled exception in your frame loop. (An unregistered consumer *extension* id, at/above `ReplicationRegistry.FirstExtensionTypeId`, is skipped instead, so a newer server's added component never disconnects an older client - see the server-owned NPCs section above.)
 
-**Engine wire generation (enforced automatically since 10.2.0).** 10.0.0 widened `NetId` to 64-bit on the wire (the snapshot/delta id field and the frame header, `[localNetId:long][ackSeq:int]`, grown 8 -> 12 bytes) with NO dual-format wire, so a 10.0.0 peer and a pre-10.0.0 peer MUST reject each other at connect rather than misparse a 64-bit frame as 32-bit. As of 10.2.0 the engine does this for you, independent of your `ProtocolVersion`: `WorldClient` always folds `MoveProtocol.WireProtocolVersion` (= 14 with explicit water excursion transport, up from 1 for the pre-10.0.0 32-bit line, with generations 3 to 7 each adding a field to the movement built-in codec, 8 adding the whole new `PickupState` built-in, 9 the floating-origin frame-relative position, 10 the move frame's flags byte plus `MovementState.FacingYawQ` together, 11 `MovementState.Commitment`, 12 moving the two feel timers into the owner-only `MovementOwnerState` built-in, 13 adding `MoveCommand.ScaleSpeedByAxis` as bit 2 of the existing flags byte, and 14 appending the one-byte `MovementState.WaterExcursion`) into its Hello even with no `ProtocolVersion`, and `WorldServer` / `ShardedWorldServer` always install a `WireGenerationAuthenticator` that rejects a wire-generation mismatch, or a peer that presents none (a pre-10.2.0 / 9.x client), cleanly as `DisconnectReason.IncompatibleVersion`. Generation 13 keeps the move frame at 18 bytes, with run bit 0, `FaceCamera` bit 1, precise speed bit 2, yaw at byte 13 and jump at byte 17. Generation 14 appends the explicit water excursion to the movement payload (57 bytes). The owner timer frame remains 8 bytes. Earlier persisted generations default the new byte to None while preserving legacy Swimming and the existing carried state. This transport addition does not enable explicit swimming on its own. You no longer fold `;wire{N}` into your `ProtocolVersion` (the pre-10.2.0 advice is obsolete): the `ProtocolVersion` gate above is now purely your GAME version, checked on top of the automatic wire gate. Both skew directions produce the clean disconnect. Consequences are unchanged from 10.0.0: adopt client and server together across a wire bump (the break is not one-sided), and a server that has written 64-bit cell blobs cannot be downgraded (an old build treats a v2 blob as `SkippedTooNew` and quarantines it). A bare `NetClient` driven straight into a `WorldServer` / `ShardedWorldServer`, bypassing `WorldClient`, must present the wire layer itself via `ProtocolHandshake.BuildClientToken(MoveProtocol.WireProtocolVersion, consumerVersion, innerToken)`.
+**Engine wire generation (enforced automatically since 10.2.0).** 10.0.0 widened `NetId` to 64-bit on the wire (the snapshot/delta id field and the frame header, `[localNetId:long][ackSeq:int]`, grown 8 -> 12 bytes) with NO dual-format wire, so a 10.0.0 peer and a pre-10.0.0 peer MUST reject each other at connect rather than misparse a 64-bit frame as 32-bit. As of 10.2.0 the engine does this for you, independent of your `ProtocolVersion`: `WorldClient` always folds `MoveProtocol.WireProtocolVersion` (= 15 with fine speed and ground commitment transport, up from 1 for the pre-10.0.0 32-bit line, with generations 3 to 7 each adding a field to the movement built-in codec, 8 adding the whole new `PickupState` built-in, 9 the floating-origin frame-relative position, 10 the move frame's flags byte plus `MovementState.FacingYawQ` together, 11 `MovementState.Commitment`, 12 moving the two feel timers into the owner-only `MovementOwnerState` built-in, 13 adding `MoveCommand.ScaleSpeedByAxis` as bit 2 of the existing flags byte, 14 appending the one-byte `MovementState.WaterExcursion`, and 15 widening speed in place to Int16 and appending ground commitment state) into its Hello even with no `ProtocolVersion`, and `WorldServer` / `ShardedWorldServer` always install a `WireGenerationAuthenticator` that rejects a wire-generation mismatch, or a peer that presents none (a pre-10.2.0 / 9.x client), cleanly as `DisconnectReason.IncompatibleVersion`. Generation 13 keeps the move frame at 18 bytes, with run bit 0, `FaceCamera` bit 1, precise speed bit 2, yaw at byte 13 and jump at byte 17. Generation 14 appended the explicit water excursion. Generation 15 widens speed in place and appends ground commitment state, producing a 64-byte movement payload. The owner timer frame remains 8 bytes. Historical generations 1 through 14 normalize explicitly. The owner timers split first, then an old signed speed byte multiplies by 64 to preserve its old decoded value. Pre-speed layouts default to zero/unmodified, and the ground suffix defaults to Ballistic and zero. Position frames, legacy Swimming, existing carried state and opaque extensions survive. Malformed or truncated payloads remain refused and quarantined. This transport addition does not enable explicit swimming on its own. You no longer fold `;wire{N}` into your `ProtocolVersion` (the pre-10.2.0 advice is obsolete): the `ProtocolVersion` gate above is now purely your GAME version, checked on top of the automatic wire gate. Both skew directions produce the clean disconnect. Consequences are unchanged from 10.0.0: adopt client and server together across a wire bump (the break is not one-sided), and a server that has written 64-bit cell blobs cannot be downgraded (an old build treats a v2 blob as `SkippedTooNew` and quarantines it). A bare `NetClient` driven straight into a `WorldServer` / `ShardedWorldServer`, bypassing `WorldClient`, must present the wire layer itself via `ProtocolHandshake.BuildClientToken(MoveProtocol.WireProtocolVersion, consumerVersion, innerToken)`.
 
 ```csharp
 client.SnapshotDecodeFailed += err => ShowOutOfDateUI(err);   // "client out of date, please update"
@@ -26998,16 +29335,16 @@ from every other player on the same server, for a bounded window, with the clien
 staying authoritative. That is what `SetSpeedScale` is, on both server heads:
 
 ```csharp
-// Server, on cast. The engine has no notion of duration - the game keeps the timer and calls again to end it.
+// Server, on cast. The game folds timed modifier totals before calling.
 server.SetSpeedScale(PlayerRef.Slot(slot), 5f);
 // ...later, on expiry:
 server.SetSpeedScale(PlayerRef.Slot(slot), 1f);
 ```
 
-**The engine owns the multiplier and its plumbing, nothing else.** Duration, stacking rules, what granted the
-boost, what it costs, what shows in the HUD and how it is balanced are all game content, exactly as
-`Teleport(PlayerRef, Vector3)` moves a player without owning any concept of why. If two effects are active at
-once, the product is yours to compute before you call.
+`SetSpeedScale` owns the movement multiplier and its plumbing. Use [StatusEffects](#status-effects)
+for timed stacking and expiry. The game defines what grants the boost, folds modifier totals into its
+own scale formula and calls the setter with the result. Content, costs, balance and HUD presentation
+remain game-owned. Return to `1f` when no speed modifiers remain.
 
 The call is queued to the host thread at the top of the next tick, so it is safe from any thread (an
 ability system, a game-message handler, an expiry timer). The sharded server retains the quantized desired
@@ -27031,14 +29368,14 @@ What the engine guarantees once you set it:
   It rides the server-authored `MovementState` instead, which is also what makes it survive a reconcile: the
   client rebuilds its basis from the replicated components alone.
 
-Range and precision: the value is clamped to `[0, MovementState.MaxSpeedScale]` (8) and quantized to 1/16 BEFORE
+Range and precision: the value is clamped to `[0, MovementState.MaxSpeedScale]` (8) and quantized to 1/1024 BEFORE
 it reaches the sim, so the server never runs a speed it cannot describe to its clients. `0`, `0.5`, `1`, `1.5`,
-`2`, `5` and `8` are all exact, and a requested `1.1` resolves to `1.125` on both ends. Wire cost is one byte per
+`2`, `5` and `8` are all exact, and a requested `1.1` resolves to `1.099609375` on both ends. Wire cost is two bytes (Int16) per
 entity per snapshot, and an unmodified player encodes as `0` decoding to exactly `1.0`.
 
-**Compatibility:** this added `MovementState.SpeedScaleQ` to the movement built-in codec, bumping
-`MoveProtocol.WireProtocolVersion` to 6. The movement built-in is not length-prefixed, so an old client cannot
-skip the byte and is rejected at connect by the always-on `WireGenerationAuthenticator`. **Client and server must
+**Compatibility:** generation 6 introduced `MovementState.SpeedScaleQ` as a signed byte. Generation 15 widens
+it in place to `short`, with `QuantizeSpeedScale` returning and `DecodeSpeedScale` accepting `short`.
+The movement built-in is not length-prefixed, so an old client is rejected at connect by the always-on `WireGenerationAuthenticator`. **Client and server must
 ship together.**
 
 NPCs and single-player get this for free and without any wire involvement: the value lives on
@@ -27314,7 +29651,7 @@ PlayerMoveState full = PlayerMoveState.From(position, movement, owner);
   Cell persistence and cell handoff write it for every entity that has it, so a restored or handed-off player keeps
   its coyote and jump-buffer windows. A border ghost does not carry it, and is never simulated.
 - **What it saves.** The owner-state split saves 8 bytes per moving player per observer per snapshot. The current movement
-  payload is 57 bytes including the excursion byte, and on the delta path a change confined to the timers no longer resends the movement frame to observers
+  payload is 64 bytes including the excursion byte and ground commitment suffix, and on the delta path a change confined to the timers no longer resends the movement frame to observers
   at all. The owner pays 2 bytes more, the owner frame's type id.
 - **Remotes are unaffected.** `VerticalVelocity`, `Grounded`, `Swimming`, `TeleportEpoch`, `ClimbRateQ`,
   `SpeedScaleQ`, the carried arc, `FacingYawQ` and `Commitment` keep their meaning and their order.
@@ -27619,23 +29956,26 @@ already exist (it never creates a neighbor), re-mirrors each sync (a moved owner
 leaves the border is despawned), and assumes globally-unique `NetId`s across cells.
 
 **Authority handoff (Phase 3C).** When an owned entity's position crosses into another cell, `ProcessHandoffs()`
-transfers authority with **exactly-once** semantics (never two owners, never zero):
+transfers authority with **exactly-once** semantics (never two owners, never double-simulated, never lost):
 
 ```csharp
 host.ProcessHandoffs();   // after Tick(); typically Tick -> ProcessHandoffs -> SyncGhosts each host step
 
 // who owns it now (and the owned entity):
 if (host.TryGetOwner(netId, out CellSim owner, out Entity owned)) { /* ... */ }
-int owners = host.OwnerCount(netId);   // == 1 for a live entity at every call boundary
+int owners = host.OwnerCount(netId);   // 1 once settled, 0 while a deferred handoff holds it frozen
+bool moving = host.IsInHandoff(netId); // true during that gap
 ```
 
 The owner captures the entity's full registered component set, sends a `Migrate` over `ICellLink`, and freezes it
 (`Migrating`, not simulated, not counted as an owner); the destination adopts it as a new owned entity (despawning
 any prior ghost of it) and acks; the owner releases it. The entity keeps its `NetId` across the move, and the
-destination cell is created if needed. The in-process link completes the whole handshake within the call (so the
-exactly-once invariant holds at every call boundary); a networked link would keep the entity `Migrating` on the
-source until the ack arrives - never double-simulated, never permanently lost. Game systems must treat
-`Migrating` entities as frozen, like `Ghost`s.
+destination cell is created if needed. The in-process link usually completes the whole handshake within the call.
+A destination that defers admission, or a networked link, keeps the entity `Migrating` on the source until the
+ack arrives. Until the destination adopts it, `OwnerCount` is 0 and `TryGetOwner` finds nothing.
+`IsInHandoff(netId)` stays true until the source releases its frozen copy on the ack, so code that writes state by
+owner retries while no owner exists rather than treating the entity as gone. It is never double-simulated and never
+permanently lost. Game systems must treat `Migrating` entities as frozen, like `Ghost`s.
 
 **Client home-cell serving (Phase 3D).** Each client is served its entire area-of-interest from a single **home
 cell** - the cell that owns its player. Because of the invariant **overlap margin >= interest radius**, that cell
@@ -27798,3 +30138,67 @@ the game reject a target before an Attack command creates a lock, chase or roll,
 Stair climb smoothing survives a shard handoff by seeding the destination's empty smoothing accumulator from the
 migrated `ClimbRateQ` signal. Ordinary ticks retain their full-precision accumulator. The float remains absent
 from observer snapshots, so the wire payload does not grow.
+
+### Bound framebuffer refusals
+
+D3D11, Metal and Vulkan throw `GpuBoundFramebufferException`, derived from `InvalidOperationException`,
+with `GpuBoundFramebufferRefusal.FramebufferNotBound` when an existing framebuffer-dependent command has
+no target. `ClearColorTarget`, `ClearDepthStencil` and `SetFullScissorRects` report those exact member names
+in `Command`. Metal and Vulkan also refuse draws without a target and report `Draw` or `DrawIndexed`.
+D3D11 retains its existing draw acceptance. A depth clear against a colour-only target uses
+`DepthAttachmentMissing` and `Command = "ClearDepthStencil"` on all three backends. Bind a target with the
+required attachment before retrying. Messages and refusal points are unchanged.
+
+### Backend diagnostic settings refusals
+
+The native D3D11, Metal and Vulkan providers require their own frozen diagnostic settings for
+`IGpuHeadlessDiagnosticProvider.CreateHeadless(settings)`. Foreign settings throw
+`GpuBackendCreationArgumentException`, derived from `ArgumentException`, with
+`GpuBackendCreationRefusal.ForeignDiagnosticSettings`, `ParamName`, `ExpectedBackend` and `ActualType`.
+Resolve settings through the same provider before creating its device.
+
+### Native D3D11 creation and binding refusals
+
+`D3D11BackendCreationRefusal` distinguishes native platform and window-kind refusals.
+`D3D11ObjectPlatformRefusal.WindowsObjectUsedOffWindows` carries the native object kind and support probe.
+`D3D11BindResolutionRefusal` identifies constant-buffer transposition inputs. Missing native register views
+use `GpuResourceOwnershipRefusal.MissingResource`, with `RegisterLetter`, `ActualType` and `ExpectedType`.
+Foreign bindable resources, framebuffers and buffers use `GpuResourceOwnershipArgumentException` with
+`GpuResourceOwnershipRefusal.ForeignBackend`, `ActualType` and `ExpectedType`. A missing required native
+buffer uses `MissingResource`. `D3D11MapResultRefusal.MapFailed` carries the map site, HRESULT,
+result token and device-loss status. Each exception derives from the BCL type previously thrown.
+See the [D3D11 refusal table](../KhaozEngine.Gpu.D3D11/README.md#refusals) for the identifiers.
+
+### Native Metal creation and binding refusals
+
+`MetalBackendCreationRefusal` identifies platform, machine, Cocoa handle and native-layer failures.
+`MetalEncoderRefusal` identifies a missing render descriptor, a missing recording or an encoder still open.
+`MetalBindRecordsRefusal` identifies a missing pipeline table, nil encoder or argument-space mismatch.
+`MetalRingLayoutRefusal` carries frame-depth bounds. `GpuDynamicBindingRangeException` identifies
+`OffsetMisaligned` or `WindowOutsideSegment` through `GpuDynamicBindingRefusal` on Metal and Vulkan.
+It carries `ComposedOffset`, `AlignmentBytes`, `RingBase`, `RangeOffset`, `DynamicOffset`, `RangeBytes`
+and `SegmentStride` where the guard has those values. Vulkan alignment refusals also carry `Set` and
+`Binding`. It preserves `ParamName` and `ActualValue` as
+`ArgumentOutOfRangeException` data. Metal window refusals retain `RecoveryOperation = "GpuBufferRange"`.
+D3D11 accepts these inputs today, tracked in [#1689](https://github.com/APKiwiOrg/KhaozEngine/issues/1689). `MetalRingWaitRefusal.SubmitLockHeld` carries the refused operation.
+See the [Metal refusal table](../KhaozEngine.Gpu.Metal/README.md#refusals) for each exception and identifier.
+
+### Native Vulkan creation and device refusals
+
+`VulkanBackendCreationRefusal` separates machine support, surface kind and native-loader failures. `LoaderUnavailable` retains the native cause. `VulkanInstanceRefusal` separates a null factory
+result from incompatible live and requested configurations. `VulkanFeatureRefusal.RequiredFeatureMissing`
+carries the feature and device. `VulkanResultRefusal.NativeCallFailed` carries the call, result code and token.
+`VulkanDeviceWiringRefusal.InstanceMissing` identifies the missing native object on a seam-built device.
+`VulkanValidationRefusal.StrictErrorLatched` carries the controlled site and first diagnostic with its message
+identifiers. See the [Vulkan refusal table](../KhaozEngine.Gpu.Vulkan/README.md#refusals).
+
+On Metal and Vulkan, a nonzero offset on a set with no authored dynamic element throws the portable
+`GpuDynamicBindingException` with `GpuDynamicBindingRefusal.DynamicElementMissing` and the backend,
+set number and offset. These families preserve the original BCL exception bases and parameter data.
+
+Post-probe native creation checks also carry structured reasons. D3D11 identifies a missing HWND,
+versioned context or native creation output. Metal identifies a missing eligible device or command queue.
+Vulkan identifies an unavailable pinned adapter, an empty enumeration or all-ineligible candidates,
+with independent candidate counts and copied name/rejection lists. The backend refusal tables list these
+members and their data. A nil encoder uses `MetalBindRecordsRefusal.EncoderMissing` for both resource-set
+and vertex-stream flushes.

@@ -1,7 +1,6 @@
 using System;
 using System.IO;
 using System.Numerics;
-using System.Reflection;
 using KhaozEngine.Game;
 using KhaozEngine.MapDoc;
 using KhaozEngine.MapDoc.Render3D;
@@ -74,8 +73,7 @@ public sealed class NativeViewportLifecycleTests
             NativeStyleId = "windy"
         };
         world.Build(CaptureDependencyFixtures.Create().Document, MapDocRegistry.CreateDefault());
-        var view = (NativeMapView)typeof(ViewportWorld).GetField("_nativeView", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(world)!;
-        Assert.Equal(0, view.SettleForCapture(1024).Pending);
+        Assert.Equal(0, world.SettleNativeForTests(1024).Pending);
         void Update() => world.Update(new Vector3(offset, 0, offset), 1f / 60);
         Update(); Update();
         AllocationMeasurement.NoPerCallAllocation("settled native ViewportWorld.Update", Update);

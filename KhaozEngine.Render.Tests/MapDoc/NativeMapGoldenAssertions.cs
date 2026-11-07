@@ -73,8 +73,7 @@ internal static class NativeMapGoldenAssertions
     }
     internal static void FarLightSubmitted(Scene3D scene, Vector3 origin)
     {
-        var lights = (System.Collections.IEnumerable)typeof(Scene3D).GetField("_lights",
-            System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!.GetValue(scene)!;
+        var lights = scene.LightsForTests;
         var light = Assert.Single(lights.Cast<KhaozEngine.Render3D.Rendering.ModelRenderer.PointLightData>());
         Assert.Equal(1, scene.LightCount); Assert.Equal(1, scene.PointLightClusters.SubmittedLightCount);
         Assert.Equal(FarLightReference(origin), Scene3D.AnchoredLightPosition(light, origin));

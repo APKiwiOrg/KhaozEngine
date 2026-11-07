@@ -53,13 +53,22 @@ public sealed class MarkerConsumerWireTests
             // A windowed native root keeps the released refusal on both paths, and the live session keeps its document.
             string stateBefore = MarkerEditorFixtures.State(live);
             // Radius zero keeps the window from reaching every occupied tile, so the load stays partial.
+            var originalWindow = (direct.WholeWorldTileLimit, direct.EditorWindowRadius);
             (direct.WholeWorldTileLimit, direct.EditorWindowRadius) = (1, 0);
             (live.WholeWorldTileLimit, live.EditorWindowRadius) = (1, 0);
             var refused = Assert.Throws<MapDocumentException>(() => direct.Open(root, null, MapPrefabJson.ReadMarkerOptions(OptionsJson)));
             CallToolResult windowed = await harness.Client.CallAsync("map_open", new Dictionary<string, object?> { ["path"] = root, ["markerOptionsJson"] = OptionsJson });
             Assert.True(windowed.IsError == true);
-            Assert.Contains("Windowed native editing is not supported yet", refused.Message, StringComparison.Ordinal);
-            Assert.Contains(refused.Message, Text(windowed), StringComparison.Ordinal);
+            Assert.Equal(MapDocumentRefusal.CompleteDocumentRequired, refused.Reason);
+            Assert.Equal(root, refused.Path);
+            Assert.Equal("Verify", refused.Operation);
+            Assert.Equal(live.WithDocument((doc, _) => doc.Id), refused.DocumentId);
+            Assert.Equal(stateBefore, MarkerEditorFixtures.State(live));
+
+            (direct.WholeWorldTileLimit, direct.EditorWindowRadius) = originalWindow;
+            (live.WholeWorldTileLimit, live.EditorWindowRadius) = originalWindow;
+            direct.Open(root, null, MapPrefabJson.ReadMarkerOptions(OptionsJson));
+            await Call(harness, "map_open", new() { ["path"] = root, ["markerOptionsJson"] = OptionsJson });
             Assert.Equal(stateBefore, MarkerEditorFixtures.State(live));
 
             // Closed options refuse unknown and null members before anything opens.

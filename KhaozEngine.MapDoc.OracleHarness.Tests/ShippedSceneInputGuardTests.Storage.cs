@@ -28,15 +28,15 @@ public sealed partial class ShippedSceneInputGuardTests
     }
 
     [Theory]
-    [InlineData("unplaced-selection-missing-mapping")]
-    [InlineData("unplaced-selection-unknown-source")]
-    [InlineData("unplaced-selection-unknown-native")]
-    [InlineData("unplaced-selection-duplicate-source")]
-    [InlineData("unplaced-selection-observed-mismatch")]
-    public void SceneSelection_RejectsIncompleteOrInvalidAttestedCorrespondence(string variant)
+    [InlineData("unplaced-selection-missing-mapping", PrivateOracleDataRefusal.CorrespondenceMismatch)]
+    [InlineData("unplaced-selection-unknown-source", PrivateOracleDataRefusal.ReferenceMissing)]
+    [InlineData("unplaced-selection-unknown-native", PrivateOracleDataRefusal.ReferenceMissing)]
+    [InlineData("unplaced-selection-duplicate-source", PrivateOracleDataRefusal.IdentityNotUniqueOrCanonical)]
+    [InlineData("unplaced-selection-observed-mismatch", PrivateOracleDataRefusal.CorrespondenceMismatch)]
+    public void SceneSelection_RejectsIncompleteOrInvalidAttestedCorrespondence(string variant, PrivateOracleDataRefusal reason)
     {
         using var fixture = ShippedSceneGuardFixtures.Create(variant);
-        Assert.Throws<InvalidDataException>(() => ShippedSceneInputs.Read(PrivateOracleInputs.Require(fixture.Environment)));
+        Refuses(reason, () => ShippedSceneInputs.Read(PrivateOracleInputs.Require(fixture.Environment)));
     }
 
     [Fact]
@@ -51,16 +51,16 @@ public sealed partial class ShippedSceneInputGuardTests
     }
 
     [Theory]
-    [InlineData("monolithic-mismatch")]
-    [InlineData("monolithic-native-metadata-mismatch")]
-    [InlineData("monolithic-surface-mismatch")]
-    [InlineData("missing-tiled")]
-    [InlineData("null-tiled")]
-    [InlineData("corrupt-tiled")]
-    public void SceneStorage_RejectsDisagreeingOrUnverifiedForms(string variant)
+    [InlineData("monolithic-mismatch", PrivateOracleDataRefusal.AttestedDigestMismatch)]
+    [InlineData("monolithic-native-metadata-mismatch", PrivateOracleDataRefusal.AttestedDigestMismatch)]
+    [InlineData("monolithic-surface-mismatch", PrivateOracleDataRefusal.AttestedDigestMismatch)]
+    [InlineData("missing-tiled", PrivateOracleDataRefusal.SchemaShapeInvalid)]
+    [InlineData("null-tiled", PrivateOracleDataRefusal.ValueRequired)]
+    [InlineData("corrupt-tiled", PrivateOracleDataRefusal.AttestedDigestMismatch)]
+    public void SceneStorage_RejectsDisagreeingOrUnverifiedForms(string variant, PrivateOracleDataRefusal reason)
     {
         using var fixture = ShippedSceneGuardFixtures.Create(variant);
-        Assert.Throws<InvalidDataException>(() => ShippedSceneInputs.Read(PrivateOracleInputs.Require(fixture.Environment)));
+        Refuses(reason, () => ShippedSceneInputs.Read(PrivateOracleInputs.Require(fixture.Environment)));
     }
 
     [Fact]

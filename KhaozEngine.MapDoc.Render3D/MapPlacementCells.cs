@@ -31,7 +31,7 @@ internal static class MapPlacementCells
 
     internal static (RenderAnchor Anchor, RectArea Area) Domain(PropClusterKey key, float tileSize, long anchorY)
     {
-        if (key.Plane != 0 || key.Cohort is not (0 or 1)) throw new MapDocumentException("Invalid native placement cell.");
+        if (key.Plane != 0 || key.Cohort is not (0 or 1)) throw new MapDocumentException(MapDocumentRefusal.ValueOutsideRange, "Invalid native placement cell.") { FieldPath = key.Plane != 0 ? "Plane" : "Cohort", ActualInteger = key.Plane != 0 ? key.Plane : key.Cohort, LayerId = key.LayerId };
         var grid = Grid(tileSize);
         double x = grid.Boundary(key.X), z = grid.Boundary(key.Z);
         try
@@ -54,7 +54,7 @@ internal static class MapPlacementCells
 
     static CellGrid Grid(float tileSize)
     {
-        if (!float.IsFinite(tileSize) || tileSize <= 0) throw new MapDocumentException("Invalid native placement tile size.");
+        if (!float.IsFinite(tileSize) || tileSize <= 0) throw new MapDocumentException(MapDocumentRefusal.ValueOutsideRange, "Invalid native placement tile size.") { FieldPath = "TileSize", ActualNumber = tileSize, MinimumNumber = 0 };
         double regionEdge = RegionSizeInTiles * (double)tileSize;
         return new(regionEdge, Math.Ceiling(regionEdge / MaxCellEdge));
     }

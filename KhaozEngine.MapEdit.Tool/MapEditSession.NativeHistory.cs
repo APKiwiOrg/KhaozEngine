@@ -58,7 +58,8 @@ public sealed partial class MapEditSession
     internal MapNativeEditEffects ApplyNative(EditorCommand command, MapDocument document, MapDocRegistry registry)
     {
         if (!_nativeMutation || _pendingNative is not null)
-            throw new MapDocumentException("Native commands require one staged session mutation.");
+            throw new MapDocumentException(MapDocumentRefusal.ToolStagedMutationRequired, "Native commands require one staged session mutation.")
+            { DocumentId = _doc?.Id, CommandType = command?.GetType(), Operation = nameof(ApplyNative) };
         _nativeHistory.Registry = registry;
         var staged = _nativeHistory.StageExecute(_doc!, command, _nativeLiveLists);
         NativeDocumentTransaction.Publish(document, staged);
@@ -68,7 +69,8 @@ public sealed partial class MapEditSession
     }
     internal MapNativeEditEffects ExecuteNativeCommand(EditorCommand command) => Mutate((doc, registry) =>
     {
-        if (doc.ResolverIdentity is null) throw new MapDocumentException("Native commands require a native document.");
+        if (doc.ResolverIdentity is null) throw new MapDocumentException(MapDocumentRefusal.ToolNativeDocumentRequired, "Native commands require a native document.")
+        { DocumentId = doc.Id, CommandType = command.GetType(), Operation = nameof(ExecuteNativeCommand), FieldPath = "ResolverIdentity" };
         return ApplyNative(command, doc, registry);
     }, command.AffectsWorld);
 
@@ -82,15 +84,18 @@ public sealed partial class MapEditSession
             RequireDocumentLocked();
             string liveLists = NativeLegacySpawnAdmission.LiveLists(_doc!);
             var staged = _nativeHistory.StageExecute(_doc!, command, liveLists);
-            if (staged.Assets?.Hash != assets.Hash) throw new MapDocumentException("Asset command closure differs from its publication.");
+            string? actualHash = staged.Assets?.Hash;
+            string expectedHash = assets.Hash;
+            if (actualHash != expectedHash) throw new MapDocumentException(MapDocumentRefusal.ToolPublishedClosureMismatch,
+                "Asset command closure differs from its publication.")
+            { DocumentId = _doc!.Id, ExpectedHash = expectedHash, ActualHash = actualHash, Operation = nameof(ApplyNativeAssets) };
             if (SemanticHash(_doc!) == SemanticHash(staged.Candidate)) return new(null, null, [], [], [], [], MapNativeInvalidation.None);
             return PublishNative(staged, checkpoint, liveLists: liveLists);
         }
     }
     T MutateNative<T>(Func<MapDocument, MapDocRegistry, T> fn, bool worldChanged)
     {
-        if (_nativeAssets is null) throw new MapDocumentException("Native editing requires an explicit asset closure binding.");
-        if (_nativeMutation) throw new MapDocumentException("Nested native mutations are not supported.");
+        MapSessionAdmission.RequireNativeMutation(_nativeAssets, _nativeMutation, _doc?.Id);
         // The live source and its verified closure pass the foliage context preflight before either clone.
         MapDocumentEditFinalizer.Preflight(_doc!, _nativeAssets);
         MapDocument before = NativeDocumentSnapshot.Clone(_doc!, _registry);
@@ -129,8 +134,8 @@ public sealed partial class MapEditSession
                 var effects = new MapNativeEditEffects(null, null, [], [], [], [],
                     worldChanged ? MapNativeInvalidation.Terrain | MapNativeInvalidation.Nav | MapNativeInvalidation.Residency | MapNativeInvalidation.Unbounded : MapNativeInvalidation.None);
                 string label = staged is not null && _pendingNativeStamp is { } late ? late.Label : "Native document edit";
-                var command = new NativeSessionSnapshotCommand(label, before, staged?.Candidate ?? candidate, _nativeAssets,
-                    staged?.Assets ?? _nativeAssets, effects, staged?.Stamp);
+                var command = new NativeSessionSnapshotCommand(label, before, staged?.Candidate ?? candidate, _nativeAssets!,
+                    staged?.Assets ?? _nativeAssets!, effects, staged?.Stamp);
                 staged = _nativeHistory.StageExecute(before, command, liveLists);
             }
             PublishNative(staged, worldChanged: worldChanged, liveLists: liveLists);
@@ -188,12 +193,17 @@ public sealed partial class MapEditSession
     }
     internal string RequireNativeResourcePath(string relativePath)
     {
-        if (Path.IsPathRooted(relativePath)) throw new MapDocumentException("Prefab publication paths must be relative to the resource root.");
+        if (Path.IsPathRooted(relativePath)) throw new MapDocumentException(MapDocumentRefusal.ToolPublicationPathInvalid,
+            "Prefab publication paths must be relative to the resource root.")
+        { Path = relativePath, StoragePath = _storagePath, DocumentForm = _storageForm };
         string root = MapDocumentStorage.ResourceRoot(_storagePath!, _storageForm);
         string target = Path.GetFullPath(relativePath, root);
-        if (!ResourcePathContainment.IsInsideRoot(Path.GetRelativePath(root, target)) ||
+        bool inside = ResourcePathContainment.IsInsideRoot(Path.GetRelativePath(root, target));
+        if (!inside ||
             MapDocumentStorage.IsReserved(_storagePath!, _storageForm, target))
-            throw new MapDocumentException("Prefab publication path escapes the resource root or enters writer-owned map storage.");
+            throw new MapDocumentException(inside ? MapDocumentRefusal.AssetStoragePathReserved : MapDocumentRefusal.ToolPublicationPathInvalid,
+                "Prefab publication path escapes the resource root or enters writer-owned map storage.")
+            { Path = relativePath, StoragePath = _storagePath, DocumentForm = _storageForm, ResourceRoot = root };
         return target;
     }
     /// <summary>Undoes one accepted native edit against its captured closure. An empty history returns null.</summary>

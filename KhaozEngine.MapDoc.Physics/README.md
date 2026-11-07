@@ -52,7 +52,8 @@ declared resource and keeps the shapes in asset source units. `SourceUnitsToMetr
 MapDoc payload-1 descriptors. Their lattice frames already declare metres, so asset source units are not applied
 to support again. MapDoc installs and remaps those surfaces before resolving missing-Y placements. Physics then
 compiles that captured effective view into statics with canonical face owners. A support resource never installs a
-duplicate collider floor.
+duplicate collider floor. A missing-Y consumer bound to a missing-Y provider refuses before physics installation
+with `MapDocumentRefusal.SupportProviderHeightMissing`, `PlacementId` and `ProviderPlacementId`.
 
 An asset is solid exactly when it declares a collider. A selection volume alone makes it examinable without
 blocking.
@@ -63,6 +64,17 @@ blocking.
 - a compound holds a triangle mesh, which the physics backend cannot install,
 - a hull or mesh has no points,
 - a support resource has no validated MapDoc support payload.
+
+The exception's `MapDocumentRefusal Reason` distinguishes these causes without reading prose.
+
+| Reason | Refused rule | Identifiers when known |
+| --- | --- | --- |
+| `AssetPayloadUnreadable` | Collision bytes the decoder cannot read | `AssetId`, `ResourceId`, `ExpectedHash`, original `InnerException` |
+| `AssetCollisionTrailingBytes` | Bytes after one decoded shape | `AssetId`, `ResourceId`, `ActualByteCount` of trailing bytes |
+| `AssetCollisionEmptyPoints` | A hull or mesh with no points | `AssetId`, `ResourceId`, `ShapeType` |
+| `AssetCollisionNestedMesh` | A triangle mesh nested inside a compound | `AssetId`, `ResourceId` |
+| `AssetTypedPayloadOpaque` | A support resource without the required typed payload | `ResourceId`, `ExpectedSchema`, `SubjectKind` |
+| `ReferenceKindMismatch` | A collider or selection reference of the wrong kind | `AssetId`, `ResourceId`, `ExpectedResourceKind`, `ActualResourceKind` |
 
 `PropCollisionFormat.Read` refuses a non-finite or non-positive box half extent or cylinder size, a non-finite hull
 point, mesh vertex or compound child pose, a mesh index count that is not a multiple of 3 or an index outside the
@@ -105,6 +117,12 @@ otherwise the collider of a solid asset. A source shorter than `MinimumVerticalR
 straight up in world space until it is that tall, and a doorway's opening survives because an unraised envelope is
 the scaled source unchanged. Envelopes shape interaction only. They are never installed and never block.
 
+Backend pose and error-bound refusals use `MapDocumentException`, `GeometryNotRepresentable`, `Operation`,
+`FieldPath` and the refused binary64 `ActualNumber`. An unsupported interaction sweep uses
+`PhysicsSweepShapeUnsupported`, `PlacementId` and `ShapeType`. The envelope index admits every envelope
+before indexing any, and reports `WorkCapacityExceeded` with `OwnerId`, `Budget`, `ActualNumber`, representable
+`ActualCount` and inclusive `Limit` of 1,048,576 cells.
+
 ## Terrain physics
 
 ```csharp
@@ -116,7 +134,37 @@ triangle meshes of at most `MaxTrianglesPerChunk` triangles (64 to 1,024), each 
 `Anchor` on every axis. Faces are R2's, never retriangulated. Each `MapTerrainChunk` has a stable `ChunkId`, its
 `TriangleOwners` and `TriangleRoles`, and a `Digest`. `MapTerrainChunkSet` carries the chunks in ordinal id order,
 the view's read witness and the count of legacy fallback cells, which compile to no faces. An incomplete view, a slot
-cell over the cap ("physics chunk capacity") and an unresolved wall strip chain refuse with `MapDocumentException`.
+cell over the cap and an unresolved wall strip chain refuse with `MapDocumentException`.
+An unresolved wall chain keeps its producer's typed reason and identifiers when available. Otherwise
+`Reason` is `PhysicsWallChainUnresolved`, with the chain `RecordId` and anchor `Patch`.
+
+| Reason | Refused terrain rule | Identifiers |
+| --- | --- | --- |
+| `AcquisitionIncomplete` | A terrain compile without a complete view | `AcquireStatus`, `Operation` `CompileTerrainPhysics` |
+| `ReferenceMissing`, `PatchUnavailable` | A present witness patch without its surface declaration or payload | `SurfaceId`, `Patch` |
+| `WorkCapacityExceeded` | A slot cell with more faces than the chunk cap | `Budget` `MaxTrianglesPerChunk`, `Patch`, `SlotCell`, `CellX`, `CellZ`, `ActualCount`, inclusive `Limit` |
+| `GeometryNotRepresentable` | Unrepresentable terrain chunk geometry | `Operation` `CompileTerrainPhysics`, known `Patch` and wall `RecordId` |
+| `IdentityDuplicate` | Repeated compiled chunk identity | `EntityId`, `SubjectKind` `physics chunk` |
+
+Chunk-policy limits use `MapWorldBuildRangeException`, catchable as `ArgumentOutOfRangeException`, with
+`ValueOutsideRange`, the original `ParamName` and `ActualValue`, `FieldPath` `MaxTrianglesPerChunk`,
+`ActualInteger`, and inclusive `MinimumInteger` 64 and `MaximumInteger` 1024.
+
+World-build option admission uses that same range family with `FieldPath` `BuilderVersion` or
+`Chunks.MaxTrianglesPerChunk`. Builder versions have an inclusive minimum of 1 and no upper bound.
+A blank `ConsumerPolicyIdentity` uses `MapWorldBuildArgumentException`, catchable as `ArgumentException`,
+with `SchemaValueRequired`, `FieldPath`, submitted `ActualText` and the original `ParamName` `options`.
+Repeated static owners use `IdentityDuplicate`, `OwnerId` and `SubjectKind` `static`.
+
+Water compilation adapters preserve the producer finding's reason and every identifier. A consumer-created
+incomplete body without a finding uses `AcquisitionIncomplete`, `BodyId`, `FieldPath` `Status` and status
+`ActualText`. Water-specific admission uses the following `MapDocumentException` reasons.
+
+| Reason | Refused water rule | Identifiers |
+| --- | --- | --- |
+| `PhysicsWaterOwnerConflict` | A static owner in a compiled water body's owner namespace | `OwnerId`, `BodyId` |
+| `PhysicsWaterBoundsMissing` | A body with regions but no bounds | `BodyId` |
+| `PhysicsWaterFragmentBoundsMissing` | Occupied regions without fragment bounds | `BodyId` |
 
 ## World build
 
@@ -148,7 +196,15 @@ and collider floors duplicated by support surfaces are refused.
 `Build` refuses a partial window, options that do not match the resolver identity, a missing legacy support height
 for resolver 1, every resolution, placement and terrain refusal, a static beyond `MapWorldBuilder.MaxCoordinateMetres`
 (1,000,000 m) on an axis and two statics with one owner id.
+The missing legacy callback carries `MapDocumentRefusal.SupportLegacyHeightRequired`, `ResolverVersion` and
+`FieldPath` `legacySupportHeight` on the same `MapDocumentException`.
 The released world-limit refusal precedes effective placement-coordinate representability checks.
+It carries `MapDocumentRefusal.PrefabWorldCoordinateLimitExceeded`, the static `OwnerId`, its
+binary64 `PositionX`, `PositionY`, `PositionZ` and inclusive whole-metre `Limit` on `MapDocumentException`.
+Positions exactly at the limit on an axis are accepted.
+Options that disagree with the document resolver retain `MapDocumentException` with
+`MapDocumentRefusal.ResolverContractMismatch`, `PayloadVersion`, `ResolverVersion`, `OptionsResolverVersion`
+and `ExpectedResolverVersion`. The identifiers follow the shared [MapDoc refusal contract](../KhaozEngine.MapDoc/README.md#loud-failures).
 
 ### Scoped simulation ownership
 
@@ -320,6 +376,34 @@ proposes walk-up positions: at the envelope's base for a native world, at the le
 The `MapStanceValidator` the game binds to its controller's placement proof seats or refuses each proposal, and
 owns every step, ledge, slope and support rule. Seats outside reach or the playable bounds are dropped.
 
+### Placement, bounds and stance refusals
+
+Placement and bounds refusals use `MapDocumentException` and `MapDocumentRefusal`. Navigation lookups retain
+the original missing-geometry text while identifying the missing surface or the unavailable or wrong-kind record.
+
+| Reason | Refused input | Identifiers |
+| --- | --- | --- |
+| `PhysicsInteractionSourceMissing` | A placement without a selection volume or collider | `PlacementId`, `AssetId` |
+| `PhysicsShapeUnsupported` | A shape unsupported by `MapShapeBounds` | `ShapeType` |
+| `ValueNonfinite`, `ValueOutsideRange` | A nonfinite or nonpositive combined placement scale, or nonfinite authored position or yaw | `PlacementId`, `FieldPath`, `ActualNumber`, scale boundary `MinimumNumber` 0 (exclusive) |
+| `BoundsInvalid`, `ValueNonfinite` | Empty shape bounds or a nonfinite bound endpoint | `FieldPath`, nonfinite `ActualNumber` |
+| `GeometryNotRepresentable` | A registration-bounds magnitude outside binary32 | `Operation` `RegistrationBounds`, `FieldPath` `Magnitude`, `ActualNumber` |
+| `SpaceSupportCoincident` | Independent support surfaces or a collider and support surface with coincident floor faces | `SurfaceId`, `OtherSurfaceId` for two surfaces, or `PlacementId` and `SurfaceId` for a collider |
+| `ReferenceMissing` | A missing navigation surface | `SurfaceId` |
+| `PatchUnavailable`, `ReferenceKindMismatch` | An unavailable or wrong-kind navigation record | `RecordId`, `Patch`, `PatchStatus`, `ExpectedRecordType`, known `RecordType` |
+
+Stance spacing, capsule and proposal-budget refusals use `MapStanceRangeException`, catchable as
+`ArgumentOutOfRangeException`, with the original `ParamName` and `ActualValue`. `ValueNonfinite` or
+`ValueOutsideRange` identifies the failed nested `FieldPath`, `ActualNumber` and `MinimumNumber`. Spacing and
+radius have an exclusive zero boundary. Capsule half height has an inclusive boundary equal to the radius.
+`WorkCapacityExceeded` carries `Budget` `stance proposals`, the inclusive proposal `Limit`, submitted spacing
+in `ActualNumber` and the proposed `ActualCount` through the failing outline when representable as `long`.
+The cap covers all members of one call, and refusal happens before the validator sees any proposal.
+
+`MapStanceException` remains catchable as `InvalidOperationException`. `SupportLegacyHeightRequired` carries
+`ResolverVersion` 1 and `FieldPath` `LegacySupportHeight` for a missing resolver-1 callback. A nonfinite callback
+result uses `ValueNonfinite`, that `FieldPath`, `PlacementId` and `ActualNumber`. Scalar actor-feet checks remain BCL.
+
 ## Registration
 
 ```csharp
@@ -330,11 +414,13 @@ registration.TryFaceOwner(feature.Target, incident.FaceId, out MapFaceKey canoni
 
 `Register` installs every static of a built world into a caller-owned `IPhysicsWorld`, in static order, at
 `Position - physics.Origin`. The origin must be whole metres within `MaxCoordinateMetres`, or it refuses with
-"whole-metre origin". `TryOwner` maps a handle back to its placement id or terrain chunk id. `TryFaceOwner` maps a
+`PhysicsRegistrationOriginInvalid`, carrying `FieldPath` `Origin`, `PositionX`, `PositionY`, `PositionZ` and the
+inclusive absolute coordinate `Limit`. `TryOwner` maps a handle back to its placement id or terrain chunk id. `TryFaceOwner` maps a
 feature query's incident face id on a terrain chunk to its canonical `MapFaceKey`. A feature id is not a triangle
 index, since edges and vertices number after faces. `CreateLegacyMoveContext` gives a resolver 1 world a ground move
-context over its analytic support height and playable bounds. A native world refuses it, since it moves on the
-contact controller. The parameterless overload supplies no medium. Opt into resolver-1 global water with
+context over its analytic support height and playable bounds. A native world refuses it with
+`PhysicsLegacyMoveContextUnsupported` and `ResolverVersion`, since it moves on the contact controller.
+The parameterless overload supplies no medium. Opt into resolver-1 global water with
 `CreateLegacyMoveContext(legacyGlobalWater: true)`: feet strictly below `MapBuiltWorld.LegacyWaterLevel` are wet.
 
 Any failure during `Register` removes what it added, in reverse order. `Dispose` removes every static in reverse
@@ -354,7 +440,19 @@ MapAffectedSet affected = MapResidencyOwnership.Affected(world, grids, effects);
 
 `MapWorldGrids` aligns three grids. The storage tile is the document's own tile. A navigation tile and a server
 cell are whole blocks of storage tiles counted from an origin on a storage tile seam, and a server cell matches
-Sharding's `CellGrid` for the same size and origin. Grids that do not align refuse with "grid alignment".
+Sharding's `CellGrid` for the same size and origin. Grid refusals use `MapDocumentException` with the following
+`MapDocumentRefusal` reasons, retaining the developer-facing diagnostic text.
+
+| Reason | Refused grid rule | Identifiers |
+| --- | --- | --- |
+| `PhysicsGridAlignmentInvalid` | Fractional storage size, size differing from the world, misaligned origin or world index coverage outside signed 32-bit range | `FieldPath`, `StorageTileSize`, failed `ActualNumber` and `ExpectedNumber` when checked, or `GridKind`, `Axis`, `AxisOrigin`, `StorageTiles`, `FirstIndex`, `LastIndex`, source bounds and inclusive signed limits |
+| `ValueNonfinite` | Nonfinite storage size or origin | `FieldPath`, `ActualNumber`, `StorageTileSize`, known `Axis` and `AxisOrigin` |
+| `ValueOutsideRange` | Nonpositive storage size or block multiplier | `FieldPath`, submitted `ActualNumber` or `ActualInteger`, inclusive minimum 1 and `StorageTileSize` |
+| `PhysicsGridIndexOutOfRange` | A storage tile whose navigation or server block index cannot be represented | `GridKind`, `Axis`, `TileIndex`, `StorageTiles`, `StorageTileSize`, `AxisOrigin`, known `ActualInteger`, signed limits, failed `FieldPath` and its numeric bounds |
+
+For an origin outside safe signed-64-bit offset arithmetic, `FieldPath` is `OriginTile`, `ActualNumber` is
+the origin in storage tiles and `MinimumNumber` and `MaximumNumber` are the inclusive safe origin bounds.
+`ActualInteger` is null because no block index was computed. Otherwise `FieldPath` is `Index`.
 
 Each static belongs to every storage tile its world bounds reach, minimum inclusive and maximum exclusive. An axis
 with no extent belongs to the tile holding its minimum. A placement is keyed by its origin's tile, as
@@ -363,6 +461,13 @@ built after the edit and names the owners and tiles the edit invalidates from it
 every listed patch, including the chunks of the wall strips recorded in it.
 
 `Affected(before, after, grids, effects)` also retains removed owner IDs and their old memberships.
+
+Storage membership capacity uses `WorkCapacityExceeded`, `Budget` `MaxStorageTiles`, the measured `ActualCount`,
+inclusive `Limit` and the known static, chunk, annotation or `water:{bodyId}` `OwnerId`. Edit bounds outside the
+world use `ValueOutsideRange`, or `ValueNonfinite` for a nonfinite endpoint, with the first failed `FieldPath`,
+`ActualNumber` and inclusive numeric limits. Invalid storage intervals use `MapNavigationArgumentException`,
+catchable as `ArgumentException`, with `ValueNonfinite` or `BoundsInvalid`, axis `FieldPath` and the submitted
+`MinimumNumber` and `MaximumNumber` endpoints.
 The matching `AffectedTiles(before, after, grids, options, effects)` retains old capture tiles, including tiles
 that leave the post-edit partition. Preparation must widen effects with the old and new extents of leaves reseated
 by a support edit. The 150 m leaf counterexample at a 64 m seam proves why patch-only bounds miss neighbor tiles.
@@ -373,8 +478,9 @@ bounds reach. Pre-edit extents outside the post-edit world cannot be listed, whi
 than patch.
 
 `MapResidencyOwnership.MaxStorageTiles` (2^20) caps every storage tile list: one static's membership, and each extent
-`Affected` lists. A static or extent that reaches more refuses with `MapDocumentException` naming the count before
-any tile is listed.
+`Affected` lists. A static or extent that reaches more refuses with `MapDocumentException` and
+`WorkCapacityExceeded` before any tile is listed. Inspect `Budget` `MaxStorageTiles`, `ActualCount`,
+inclusive `Limit` and the known `OwnerId`.
 
 `MapTileResidency` remains the streaming loader keyed by storage tile. The GPU-free `MapSimulationResidency` consumes this ownership independently of visual windows.
 
@@ -407,10 +513,45 @@ edit shrank the world, is never listed, so a consumer that keeps state per tile 
 find removed tiles.
 
 `Partition` refuses a world whose bounds reach more than `MapNavTiling.MaxPartitionTiles` (2^20) navigation tiles
-before it places any static, and the refusal names the count. `MapWorldGrids.Validate`, which every grid consumer runs
+before it places any static. `WorkCapacityExceeded` carries `Budget`, `ActualCount` and `Limit`.
+`MapWorldGrids.Validate`, which every grid consumer runs
 first, refuses a grid origin so far from the world that a navigation tile or server cell index of the world's bounds,
-widened by one block on each side, leaves the int range. The refusal names the grid alignment and the tile range. A
-seam margin or edit box reaching past the int range beyond the world refuses naming the tile range too.
+widened by one block on each side, leaves the int range. `PhysicsGridAlignmentInvalid` names the grid in
+`GridKind` and retains `Axis`, `FirstIndex`, `LastIndex`, `AxisOrigin` and the inclusive signed index limits.
+A seam margin or edit box reaching past the int range beyond the world uses `PhysicsNavIndexOutOfRange`
+with the same signed index context.
+
+Navigation policy and tile refusals use `MapNavigationArgumentException`, derived from `ArgumentException`.
+It retains `ParamName`, including null at the bounds and edge guards that had no parameter name.
+Plain null and scalar parameter guards keep their BCL types.
+
+Reach, tolerance and height-band admission uses `MapQueryRangeException`, catchable as
+`ArgumentOutOfRangeException`. It retains `ParamName` and `ActualValue`, including the delegated `options`
+parameter from stance queries. `ValueNonfinite` and `ValueOutsideRange` identify `Range` or `Tolerance`,
+the submitted `ActualNumber` and inclusive zero `MinimumNumber`. Band endpoints use `ValueNonfinite` and
+`Band.MinY` or `Band.MaxY`. A finite inverted band uses `BoundsInvalid` and `FieldPath` `Band`. Both band
+reasons retain submitted endpoints in `MinimumNumber` and `MaximumNumber`. A zero-width band is accepted.
+Nonfinite seated positions use `MapStanceException.ValueNonfinite`, `PlacementId`, the `SeatedFeet` component
+in `FieldPath` and `ActualNumber`. Unsupported stance footprint shapes use `MapStanceUnsupportedException`,
+catchable as `NotSupportedException`, with `PhysicsShapeUnsupported` and `ShapeType`.
+
+| Carrier and reason | Refused rule | Identifiers |
+| --- | --- | --- |
+| `MapNavigationArgumentException.ValueNonfinite` | Nonfinite seam margin or tile-axis endpoint | `FieldPath`, `ActualNumber`, known `MinimumNumber` and `MaximumNumber`, `ParamName` |
+| `MapNavigationArgumentException.ValueOutsideRange` | Negative seam margin | `FieldPath`, `ActualNumber`, inclusive `MinimumNumber` zero, `ParamName` |
+| `MapNavigationArgumentException.SchemaValueRequired` | Blank profile or controller identity | `FieldPath`, `ActualText`, `ParamName` |
+| `MapNavigationArgumentException.BoundsInvalid` | Reversed finite tile-axis interval | `FieldPath`, submitted `MinimumNumber` and `MaximumNumber` |
+| `MapNavigationArgumentException.AuthoredValueMismatch` | A tile's Y bounds differ from its world | `Tile`, `FieldPath`, `ActualNumber`, `ExpectedNumber`, `ParamName` |
+| `MapNavigationArgumentException.IdentityDuplicate` | Repeated tile coordinates | `Tile`, `FieldPath`, `ParamName` |
+| `MapNavigationArgumentException.NavigationTilesNotAdjacent` | Neighbouring tiles do not meet at one edge | submitted `Tile`, preceding `OtherTile`, `FieldPath` |
+| `MapDocumentException.WorkCapacityExceeded` | Partition count or envelope index cells exceed their independent limits | `Budget`, `ActualCount`, inclusive `Limit`, `OwnerId` for an envelope |
+| `MapDocumentException.PhysicsNavIndexOutOfRange` | A computed navigation index leaves the signed 32-bit domain | `Axis`, `FirstIndex`, `LastIndex`, `AxisOrigin`, inclusive `MinimumInteger` and `MaximumInteger`, submitted interval `MinimumNumber` and `MaximumNumber` when known |
+| `MapDocumentException.GeometryVertexSequenceInvalid` | A portal interval has fewer than two vertices | `RecordId`, `ActualCount`, inclusive `MinimumInteger` two |
+| `MapDocumentException.PatchUnavailable` | An opening's geometry patch is unavailable | `RecordId`, `Patch`, `PatchStatus` |
+
+Navigation, envelope, grid alignment and physics adapter guards populate their structured reasons.
+Collection and source wrappers retain the navigation index
+identifiers through the shared document finding and source-copy paths.
 
 Tile and capture bounds are residency extents, not probe windows. A resolver 1 world's bounds exclude its analytic
 terrain height, so a capture picks its own vertical window.

@@ -313,7 +313,7 @@ public class SqliteCatalogResetTests
 
         // Named, so this test cannot quietly start passing on a failure that happens BEFORE the drop.
         Assert.Equal(19, failed.SqliteErrorCode);
-        Assert.Contains("FOREIGN KEY", failed.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.Equal(SQLitePCL.raw.SQLITE_CONSTRAINT_FOREIGNKEY, failed.SqliteExtendedErrorCode);
 
         Assert.Equal(epochBefore, Text(database, "SELECT store_epoch FROM catalog_metadata;"));
         Assert.Equal(1L, database.Scalar("SELECT active_version FROM catalog_metadata;"));

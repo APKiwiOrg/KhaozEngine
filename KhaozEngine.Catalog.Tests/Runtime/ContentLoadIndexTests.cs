@@ -127,14 +127,11 @@ public class ContentLoadIndexTests
 
         var failure = Assert.Throws<ContentLoadIndexException>(runtime.BuildLoadIndexes);
 
-        // The message is what spec 9.6's exit line is built from, so it names the key and the id, and the
+        // Spec 9.6's exit line names the key and the id, which the exception carries as members, and the
         // index's own exception is kept rather than flattened.
-        Assert.Contains("store", failure.Message, StringComparison.Ordinal);
-        Assert.Contains("1024", failure.Message, StringComparison.Ordinal);
-        Assert.Contains("the store rows disagree", failure.Message, StringComparison.Ordinal);
         Assert.Equal(1024, failure.Type.Value);
         Assert.Equal("store", failure.TypeKey);
-        Assert.IsType<InvalidOperationException>(failure.InnerException);
+        Assert.Same(failing.Failure, failure.InnerException);
 
         // Fail CLOSED: no partial set is published and the accessor still refuses, so nothing downstream can
         // read a half-built index and get plausible wrong numbers.
@@ -286,10 +283,12 @@ public class ContentLoadIndexTests
     {
         public ContentTypeId Type { get; } = type;
 
+        public Exception Failure { get; } = new InvalidOperationException("the store rows disagree with the item rows");
+
         public void Build(IContentSnapshot snapshot)
         {
             _ = snapshot;
-            throw new InvalidOperationException("the store rows disagree with the item rows");
+            throw Failure;
         }
     }
 }

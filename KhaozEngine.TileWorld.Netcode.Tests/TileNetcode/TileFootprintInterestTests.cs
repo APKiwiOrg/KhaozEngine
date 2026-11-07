@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.Reflection;
 using KhaozEngine.Netcode;
 using KhaozEngine.TileWorld;
 using KhaozEngine.TileWorld.Netcode;
@@ -26,20 +25,8 @@ public class TileFootprintInterestTests
     [InlineData(-1, 1)]
     public void A_degenerate_footprint_is_measured_from_its_anchor(int width, int height)
     {
-        using var h = new Harness(radius: 5f);
-        const long NetId = 99;
-        Type serverType = typeof(TileWorldServer);
-        var footprints = Assert.IsType<Dictionary<long, TileRect>>(
-            serverType.GetField("footprintByNetId", BindingFlags.Instance | BindingFlags.NonPublic)!
-                .GetValue(h.Server));
-        footprints[NetId] = new TileRect(10, 0, width, height);
-        serverType.GetField("viewerTileX", BindingFlags.Instance | BindingFlags.NonPublic)!.SetValue(h.Server, 0f);
-        serverType.GetField("viewerTileZ", BindingFlags.Instance | BindingFlags.NonPublic)!.SetValue(h.Server, 0f);
-        MethodInfo predicate = serverType.GetMethod(
-            "IsOutsideFootprintInterest",
-            BindingFlags.Instance | BindingFlags.NonPublic)!;
-
-        bool outside = (bool)predicate.Invoke(h.Server, [NetId])!;
+        bool outside = TileWorldServer.IsOutsideFootprintInterestForTests(
+            viewerTileX: 0f, viewerTileZ: 0f, radius: 5f, new TileRect(10, 0, width, height));
 
         Assert.True(outside);
     }
@@ -139,24 +126,40 @@ public class TileFootprintInterestTests
             served);
     }
 
-    [Fact]
-    public void A_footprint_the_overlap_margin_cannot_ghost_is_refused_at_the_spawn()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void A_footprint_the_overlap_margin_cannot_ghost_is_refused_at_the_spawn(bool isStatic)
     {
         // 15 tiles of interest inside a 16 tile border band, the margin the engine shipped before 19.0.0. A 2x2
         // needs 16.41.
         using var h = new Harness(radius: 15f, margin: 16f);
-        var spawn = new TileActorSpawn(30, 0, TileDirection.S) { FootprintSize = 2 };
+        long Spawn(TileWorldServer server, int size) => isStatic
+            ? server.SpawnStaticEntity(new TileCoord(20, 20, 0), new TileStaticEntitySpawn
+            {
+                FootprintSize = size,
+                Facing = TileDirection.S,
+            })
+            : server.SpawnActor(new TileCoord(20, 20, 0), new TileActorSpawn(30, 0, TileDirection.S)
+            {
+                FootprintSize = size,
+            });
 
-        ArgumentOutOfRangeException error =
-            Assert.Throws<ArgumentOutOfRangeException>(() => h.Server.SpawnActor(new TileCoord(20, 20, 0), spawn));
+        var error = Assert.Throws<TileInterestRangeException>(() => Spawn(h.Server, 2));
 
-        Assert.Contains("InterestRadius", error.Message, StringComparison.Ordinal);
-        Assert.Contains("OverlapMargin", error.Message, StringComparison.Ordinal);
-        Assert.Contains("16.41", error.Message, StringComparison.Ordinal);
+        Assert.IsAssignableFrom<ArgumentOutOfRangeException>(error);
+        Assert.Equal(TileInterestRefusal.FootprintRadiusExceedsMargin, error.Reason);
+        Assert.Equal("spec", error.ParamName);
+        Assert.Equal(2, error.ActualValue);
+        Assert.Equal(2, error.FootprintSize);
+        Assert.Equal(15f + MathF.Sqrt(2f), error.RequiredQueryRadius!.Value, 0.00001f);
+        Assert.Equal(15f, error.InterestRadius);
+        Assert.Equal(16f, error.OverlapMargin);
+        Assert.Equal(1, h.Server.LargestFootprintSize);
         // The refusal is the PAIR rather than the body, so one tile is still fine and a wider band admits the 2x2.
-        Assert.NotEqual(0L, h.Body(new TileCoord(20, 20, 0), size: 1));
+        Assert.NotEqual(0L, Spawn(h.Server, 1));
         using var wider = new Harness(radius: 15f, margin: 17f);
-        Assert.NotEqual(0L, wider.Body(new TileCoord(20, 20, 0), size: 2));
+        Assert.NotEqual(0L, Spawn(wider.Server, 2));
     }
 
     [Fact]
@@ -186,14 +189,24 @@ public class TileFootprintInterestTests
             FootprintSize = 2,
         };
 
-        ArgumentOutOfRangeException error = Assert.Throws<ArgumentOutOfRangeException>(
+        var error = Assert.Throws<TileInterestRangeException>(
             () => h.Server.Actors.Add(definition, new TileCoord(20, 20, 0)));
 
-        Assert.Contains("OverlapMargin", error.Message, StringComparison.Ordinal);
+        Assert.IsAssignableFrom<ArgumentOutOfRangeException>(error);
+        Assert.Equal(TileInterestRefusal.FootprintRadiusExceedsMargin, error.Reason);
+        Assert.Equal("definition", error.ParamName);
+        Assert.Equal(definition.FootprintSize, error.ActualValue);
+        Assert.Equal(2, error.FootprintSize);
+        Assert.Equal(15f + MathF.Sqrt(2f), error.RequiredQueryRadius!.Value, 0.00001f);
+        Assert.Equal(15f, error.InterestRadius);
+        Assert.Equal(16f, error.OverlapMargin);
         Assert.Empty(h.Server.Actors.Spawners);
         // Nothing to spawn, so the tick the definition would have fired on is uneventful.
         h.Server.Tick(Dt);
         Assert.Equal(0, h.Server.ActorCount);
+        using var wider = new Harness(radius: 15f, margin: 17f);
+        wider.Server.Actors.Add(definition, new TileCoord(20, 20, 0));
+        Assert.Single(wider.Server.Actors.Spawners);
     }
 
     [Fact]
@@ -203,11 +216,17 @@ public class TileFootprintInterestTests
         Assert.Equal(1, h.Server.LargestFootprintSize);
         // A refused spawn is not a body, so it must not widen the query. This one is refused for its plane, which
         // is checked after the footprint pair and before the size is recorded.
-        Assert.Throws<ArgumentException>(() =>
+        var plane = Assert.Throws<TileServerStateArgumentException>(() =>
             h.Server.SpawnActor(new TileCoord(20, 20, 99), new TileActorSpawn(30, 0, TileDirection.S)
             {
                 FootprintSize = 4,
             }));
+        Assert.IsAssignableFrom<ArgumentException>(plane);
+        Assert.Equal(TileServerStateRefusal.PlaneOutsideWorld, plane.Reason);
+        Assert.Equal("state", plane.ParamName);
+        Assert.Equal(new TileCoord(20, 20, 99), plane.Tile);
+        Assert.Equal(99, plane.Plane);
+        Assert.Equal(4, plane.PlaneCount);
         Assert.Equal(1, h.Server.LargestFootprintSize);
 
         long big = h.Body(new TileCoord(20, 20, 0), size: 5);

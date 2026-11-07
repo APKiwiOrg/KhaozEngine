@@ -1,7 +1,6 @@
 using System;
 using System.IO;
 using System.Linq;
-using System.Reflection;
 using System.Text;
 using KhaozEngine.MapDoc.Foliage;
 using KhaozEngine.MapDoc.Prefabs;
@@ -110,11 +109,9 @@ public sealed class MapCapacityDemandDerivedOriginTests
     [Fact]
     public void ClampedTokenWindow_PublishesTheProfileAndArrayCeilings()
     {
-        var tokens = typeof(MapSceneMetadataReader).GetNestedType("Tokens", BindingFlags.NonPublic)!;
         using var stream = new MemoryStream(Encoding.UTF8.GetBytes("\"" + new string('a', 20000) + "\""));
         using var probe = new CapacityDemandProbe();
-        object reader = Activator.CreateInstance(tokens, BindingFlags.Instance | BindingFlags.NonPublic, null, new object[] { stream, long.MaxValue }, null)!;
-        Assert.True((bool)tokens.GetMethod("Read", BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(reader, null)!);
+        Assert.True(MapSceneMetadataReader.ReadTokenForTests(stream, long.MaxValue));
         var rows = probe.Events.Where(r => Read<string>(r, "Site") == "MapSceneMetadataReader.MaxMetadataBytes.1").ToArray();
         // The initial 16384-byte window grows once for the 20002-byte token.
         var profile = Assert.Single(rows, r => Read<string>(r, "LimitName") == "MaxMetadataBytes");

@@ -62,16 +62,24 @@ public sealed class VulkanTimestampEndTests
         using var rig = new CoveragePerfTimestampEndFixture();
         using var foreign = new CoveragePerfTimestampEndFixture();
         foreign.Start();
-        rig.Start();
-        var foreignError = Assert.Throws<ArgumentException>(() => rig.Arm(foreign.Pool, 2));
-        Assert.Contains("another Vulkan device", foreignError.Message);
-        var indexError = Assert.Throws<ArgumentOutOfRangeException>(() => rig.Arm(rig.Pool, 1));
-        Assert.Contains("last index", indexError.Message);
+        rig.List.Begin();
+        rig.List.BeginTimestamps(rig.Pool, 3);
+        var foreignError = Assert.Throws<GpuResourceOwnershipArgumentException>(() => rig.Arm(foreign.Pool, 2));
+        Assert.Equal(GpuResourceOwnershipRefusal.DifferentDevice, foreignError.Reason);
+        Assert.Equal(GpuBackendKind.VulkanNative, foreignError.ExpectedBackend);
+        Assert.Equal(foreign.Pool.GetType(), foreignError.ActualType);
+        Assert.Equal("pool", foreignError.ParamName);
+        var indexError = Assert.Throws<GpuTimestampRangeException>(() => rig.Arm(rig.Pool, 0));
+        Assert.Equal(GpuTimestampRefusal.FinalIndexRequired, indexError.Reason);
+        Assert.IsAssignableFrom<ArgumentOutOfRangeException>(indexError);
+        Assert.Null(indexError.ActualValue);
+        Assert.Equal(2u, indexError.FinalIndex);
+        Assert.Equal(3u, indexError.Count);
+        Assert.Equal("finalIndex", indexError.ParamName);
+        rig.List.WriteTimestamp(rig.Pool, 0);
+        rig.List.WriteTimestamp(rig.Pool, 1);
         rig.Arm(rig.Pool, 2);
-        var doubleError = Assert.Throws<InvalidOperationException>(() => rig.Arm(rig.Pool, 2));
-        Assert.Contains("already armed", doubleError.Message);
-        Assert.NotEqual(foreignError.Message, indexError.Message);
-        Assert.NotEqual(indexError.Message, doubleError.Message);
+        Assert.Equal(GpuTimestampRefusal.TailAlreadyArmed, Assert.Throws<GpuTimestampStateException>(() => rig.Arm(rig.Pool, 2)).Reason);
         Assert.Equal(2, rig.Queries.Writes);
         rig.List.End();
         Assert.Equal(3, rig.Queries.Writes);
@@ -84,8 +92,7 @@ public sealed class VulkanTimestampEndTests
         rig.List.Begin();
         rig.List.BeginTimestamps(rig.Pool, 3);
         rig.List.WriteTimestamp(rig.Pool, 0);
-        var error = Assert.Throws<InvalidOperationException>(() => rig.Arm(rig.Pool, 2));
-        Assert.Contains("earlier timestamp", error.Message);
+        Assert.Equal(GpuTimestampRefusal.TailPrefixIncomplete, Assert.Throws<GpuTimestampStateException>(() => rig.Arm(rig.Pool, 2)).Reason);
         rig.List.WriteTimestamp(rig.Pool, 1);
         rig.Arm(rig.Pool, 2);
         rig.List.End();
@@ -98,10 +105,9 @@ public sealed class VulkanTimestampEndTests
         using var rig = new CoveragePerfTimestampEndFixture();
         rig.Start();
         rig.Arm(rig.Pool, 2);
-        Assert.Contains("armed", Assert.Throws<InvalidOperationException>(
-            () => rig.List.WriteTimestamp(rig.Pool, 2)).Message);
-        Assert.Contains("armed", Assert.Throws<InvalidOperationException>(
-            () => rig.List.EndTimestamps(rig.Pool)).Message);
+        Assert.Equal(GpuTimestampRefusal.ManualFinalizationWhileArmed, Assert.Throws<GpuTimestampStateException>(() => rig.List.WriteTimestamp(rig.Pool, 2)).Reason);
+        Assert.Equal(GpuTimestampRefusal.ManualFinalizationWhileArmed, Assert.Throws<GpuTimestampStateException>(
+            () => rig.List.EndTimestamps(rig.Pool)).Reason);
         Assert.Equal(2, rig.Queries.Writes);
         using var other = rig.NewPool();
         rig.List.BeginTimestamps(other, 1);
@@ -115,15 +121,15 @@ public sealed class VulkanTimestampEndTests
     public void ArmingRequiresAnOpenBatchOnThisListAndRecording()
     {
         using var rig = new CoveragePerfTimestampEndFixture();
-        Assert.Contains("open command list", Assert.Throws<InvalidOperationException>(() => rig.Arm(rig.Pool, 2)).Message);
+        Assert.Equal(GpuRecordingStateRefusal.CommandOutsideRecording, Assert.Throws<GpuRecordingStateException>(() => rig.Arm(rig.Pool, 2)).Reason);
         rig.List.Begin();
-        Assert.Throws<InvalidOperationException>(() => rig.Arm(rig.Pool, 2));
+        Assert.Equal(GpuTimestampRefusal.WrongRecording, Assert.Throws<GpuTimestampStateException>(() => rig.Arm(rig.Pool, 2)).Reason);
         using var other = rig.NewList();
         other.Begin();
         other.BeginTimestamps(rig.Pool, 3);
         other.WriteTimestamp(rig.Pool, 0);
         other.WriteTimestamp(rig.Pool, 1);
-        Assert.Contains("current recording", Assert.Throws<InvalidOperationException>(() => rig.Arm(rig.Pool, 2)).Message);
+        Assert.Equal(GpuTimestampRefusal.WrongRecording, Assert.Throws<GpuTimestampStateException>(() => rig.Arm(rig.Pool, 2)).Reason);
         other.End();
         // Ring slots can repeat native handles. A batch from an earlier recording is still foreign.
         rig.List.End();
@@ -134,7 +140,7 @@ public sealed class VulkanTimestampEndTests
         rig.List.End();
         for (int i = 0; i < 2; i++) { rig.List.Begin(); rig.List.End(); }
         rig.List.Begin();
-        Assert.Contains("current recording", Assert.Throws<InvalidOperationException>(() => rig.Arm(stale, 1)).Message);
+        Assert.Equal(GpuTimestampRefusal.WrongRecording, Assert.Throws<GpuTimestampStateException>(() => rig.Arm(stale, 1)).Reason);
         rig.List.End();
     }
 
@@ -190,14 +196,14 @@ public sealed class VulkanTimestampEndTests
             Assert.Same(rig.Commands.Failure, Assert.Throws<InvalidOperationException>(() => rig.List.End()));
         Assert.False(rig.List.IsRecording);
         Assert.False(rig.List.IsSealed);
-        Assert.Contains("without a sealed recording", Assert.Throws<InvalidOperationException>(
-            () => rig.Resources.Submits.Submit(rig.List, null)).Message);
+        Assert.Equal(GpuRecordingStateRefusal.SubmissionWithoutSeal, Assert.Throws<GpuRecordingStateException>(
+            () => rig.Resources.Submits.Submit(rig.List, null)).Reason);
         Assert.Empty(rig.Resources.CommandApi.Submissions);
         Assert.Equal(0UL, rig.List.Ring.SubmittedAt(abandonedSlot));
         int writes = rig.Queries.Writes;
         int releases = rig.Commands.Releases;
         int ends = rig.Commands.Ends;
-        Assert.Contains("not recording", Assert.Throws<InvalidOperationException>(() => rig.List.End()).Message);
+        Assert.Equal(GpuRecordingStateRefusal.EndWithoutRecording, Assert.Throws<GpuRecordingStateException>(() => rig.List.End()).Reason);
         Assert.Equal(writes, rig.Queries.Writes);
         Assert.Equal(releases, rig.Commands.Releases);
         Assert.Equal(ends, rig.Commands.Ends);
@@ -214,14 +220,14 @@ public sealed class VulkanTimestampEndTests
         else if (failure == "pool-end")
             Assert.Throws<ObjectDisposedException>(() => rig.Pool.TryResolve(fence, new ulong[3], out _));
         else
-            Assert.Throws<InvalidOperationException>(() => rig.Pool.TryResolve(fence, new ulong[3], out _));
+            Assert.Equal(GpuTimestampRefusal.BatchNotEnded, Assert.Throws<GpuTimestampStateException>(() => rig.Pool.TryResolve(fence, new ulong[3], out _)).Reason);
         rig.List.Begin();
         Assert.Equal((abandonedSlot + 1) % rig.List.Ring.Depth, rig.List.Ring.Slot);
         Assert.NotEqual(abandonedBuffer, rig.List.Ring.BufferAt(rig.List.Ring.Slot));
         if (failure == "pool-end")
             Assert.Throws<ObjectDisposedException>(() => rig.List.BeginTimestamps(rig.Pool, 3));
         else
-            Assert.Throws<InvalidOperationException>(() => rig.List.BeginTimestamps(rig.Pool, 3));
+            Assert.Equal(GpuTimestampRefusal.UnresolvedBatch, Assert.Throws<GpuTimestampStateException>(() => rig.List.BeginTimestamps(rig.Pool, 3)).Reason);
         Assert.Equal(1, rig.Queries.Resets);
         // A plain replacement recording cannot inherit either the old tail or the old rendering/layout state.
         rig.Resources.Trace.Clear();
@@ -307,7 +313,7 @@ public sealed class VulkanTimestampEndTests
         list.UpdateBuffer(destination, 0, 42);
         rig.Commands.FailEnd = true;
         Assert.Same(rig.Commands.Failure, Assert.Throws<InvalidOperationException>(() => list.End()));
-        Assert.Throws<InvalidOperationException>(() => list.UpdateBuffer(destination, 0, 43));
+        Assert.Equal(GpuRecordingStateRefusal.CommandOutsideRecording, Assert.Throws<GpuRecordingStateException>(() => list.UpdateBuffer(destination, 0, 43)).Reason);
         Assert.Equal(1, uploads.Uploads);
         rig.Commands.FailEnd = false;
         list.Begin();
@@ -327,7 +333,7 @@ public sealed class VulkanTimestampEndTests
         Assert.Equal(0, rig.Commands.Ends);
         using var replacement = rig.NewList();
         replacement.Begin();
-        Assert.Throws<InvalidOperationException>(() => replacement.BeginTimestamps(rig.Pool, 3));
+        Assert.Equal(GpuTimestampRefusal.UnresolvedBatch, Assert.Throws<GpuTimestampStateException>(() => replacement.BeginTimestamps(rig.Pool, 3)).Reason);
         replacement.End();
         Assert.Equal(2, rig.Queries.Writes);
         Assert.Equal(1, rig.Queries.Resets);

@@ -1,6 +1,5 @@
 using System;
 using System.Numerics;
-using System.Reflection;
 using KhaozEngine.Physics;
 using KhaozEngine.Physics.Bepu;
 using Xunit;
@@ -80,9 +79,7 @@ public class CapsuleSweepLeafProjectionTests
         using IPhysicsQueryLease lease = ((IPhysicsQueryLeaseSource)view).AcquireQueryReadLease();
         lease.AssertCurrent();
         Assert.Same(world, view.SourceWorld);
-        FieldInfo? field = typeof(BepuPhysicsWorld).GetField("_sim", BindingFlags.Instance | BindingFlags.NonPublic);
-        Assert.NotNull(field);
-        BepuSim simulation = Assert.IsType<BepuSim>(field.GetValue(world));
+        BepuSim simulation = world.SimulationForTests;
         Assert.Equal(1, simulation.Statics.Count);
         ref var target = ref simulation.Statics[0];
         Assert.Equal(pose.Position, target.Pose.Position);

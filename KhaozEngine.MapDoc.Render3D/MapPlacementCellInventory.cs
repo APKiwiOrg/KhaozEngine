@@ -53,7 +53,7 @@ internal sealed class MapPlacementCellInventory : IDisposable
     internal static Cell Acquire(MapScopedScene scene, MapPlacementRouting routing, PropClusterKey key)
     {
         var layer = routing.ClusterLayer(key.LayerId)
-            ?? throw new MapDocumentException("Native cluster has no matching caller layer.");
+            ?? throw new MapDocumentException(MapDocumentRefusal.ReferenceMissing, "Native cluster has no matching caller layer.") { LayerId = key.LayerId, Operation = "PlacementCell.Acquire" };
         var admission = MapSceneAdmission.Current ?? new MapSceneAdmission(scene.Source.Data.Limits);
         using var demandScope = KhaozEngine.Diagnostics.CapacityDemandDiagnostics.Enter(admission, "MapPlacementCellInventory");
         using var activation = admission.Enter();
@@ -94,7 +94,7 @@ internal sealed class MapPlacementCellInventory : IDisposable
     internal static void RequireMembers(Cell cell, NativePropClusterRequest request)
     {
         if (!cell.Members.Select(p => p.PlacementId).SequenceEqual(request.Instances.Select(i => i.Id)))
-            throw new MapDocumentException("Native cluster request omits canonical cell members.");
+            throw new MapDocumentException(MapDocumentRefusal.AcquisitionContractMismatch, "Native cluster request omits canonical cell members.") { LayerId = request.Key.LayerId, FieldPath = "Instances", ActualCount = request.Instances.Count, ExpectedCount = cell.Members.Count };
     }
     public void Dispose() => PreparationOwnership?.Dispose();
 }

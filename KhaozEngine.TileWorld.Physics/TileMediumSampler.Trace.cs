@@ -12,7 +12,11 @@ public sealed partial class TileMediumSampler
         if (!query.IsValid || !identity.IsValid || !float.IsFinite(physicsOrigin.X) || !float.IsFinite(physicsOrigin.Y) ||
             !float.IsFinite(physicsOrigin.Z) || query.Body.CurrentSpace.WorldId != _field.WorldId)
             return new(MovementAvailability.Invalid, 0, 0, 0, 0, 0, identity);
-        return TileWaterColumnCoverage.Trace(_field.TraceColumns, _field.Boundaries, _field.Exterior, query, physicsOrigin,
+        if (_field.CanTraceFlat(query, physicsOrigin))
+            return TileWaterColumnCoverage.Trace(_field.FlatColumns, _field.FlatBoundaries, _field.FlatExterior, query,
+                physicsOrigin, identity, spans, contacts);
+        return TileWaterPrismCoverage.Trace(_field.Prisms, _field.Faces, _field.Ground, _field.PointIndex,
+            _field.PrismStarts, _field.FaceStarts, query, physicsOrigin,
             identity, spans, contacts);
     }
 }

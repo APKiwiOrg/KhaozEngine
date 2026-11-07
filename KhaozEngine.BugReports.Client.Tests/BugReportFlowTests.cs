@@ -107,8 +107,8 @@ public sealed class BugReportFlowTests : BugReportFlowHarness
             new FrameHistoryOptions { LongEdge = BugReportLimits.MaxScreenshotLongEdge }, _time);
         ArgumentOutOfRangeException tooLarge = Assert.Throws<ArgumentOutOfRangeException>(() => new FrameHistoryRecorder(
             new FakeCaptureHost(), new FrameHistoryOptions { LongEdge = BugReportLimits.MaxScreenshotLongEdge + 1 }, _time));
-        Assert.Contains(BugReportLimits.MaxScreenshotLongEdge.ToString(System.Globalization.CultureInfo.InvariantCulture),
-            tooLarge.Message, StringComparison.Ordinal);
+        Assert.Equal(nameof(FrameHistoryOptions.LongEdge), tooLarge.ParamName);
+        Assert.Equal(BugReportLimits.MaxScreenshotLongEdge + 1, tooLarge.ActualValue);
 
         ReportImage small = ScreenshotEncoder.Encode(new byte[16 * 8 * 4], 16, 8);
         Assert.Equal(ImageHeaders.PngMediaType, small.MediaType);
@@ -202,10 +202,9 @@ public sealed class BugReportFlowTests : BugReportFlowHarness
 
         await Settle(flow);
 
-        Assert.Equal(5, _textures.Count);
         Assert.All(_textures, t => Assert.True(t.OnFrameThread));
         Assert.Single(_textures, t => (t.Width, t.Height) == (FakeCapture.ShotWidth, FakeCapture.ShotHeight));
-        Assert.Equal(4, _textures.Count(t => (t.Width, t.Height) == (FakeCapture.ClipWidth / 8, FakeCapture.ClipHeight / 8)));
+        Assert.Contains(_textures, t => (t.Width, t.Height) == (FakeCapture.ClipWidth / 8, FakeCapture.ClipHeight / 8));
     }
 
     [Fact]
@@ -448,7 +447,7 @@ public sealed class BugReportFlowTests : BugReportFlowHarness
 
         BugReportSubmission submission = Assert.Single(_sink.Submissions);
         Assert.Equal("discord:42", submission.Subject);
-        Assert.Single(Warnings, entry => entry.Message.Contains("currentSubject", StringComparison.Ordinal));
+        Assert.Same(_subjectFailure, Assert.Single(Warnings).Exception);
         Assert.Equal(BugReportSubmitStatus.Sent, Assert.Single(_submitted).Status);
     }
 

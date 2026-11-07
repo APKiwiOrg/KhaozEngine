@@ -120,10 +120,10 @@ public sealed class FileNativeRenderHost : IMapNativeRenderHost
         using var documentSource = form == MapDocumentForm.Tiled && document.Tiles?.IsPartial == true
             ? MapDocumentSource.OpenTiled(documentPath) : MapDocumentSource.FromDocument(document);
         var captured = MapSceneSource.Capture(documentSource, closure);
-        var source = captured.Source ?? throw new MapDocumentException("NativeClosureUnavailable");
+        var source = captured.Source ?? throw new MapDocumentException(MapDocumentRefusal.AssetClosureRequired, "NativeClosureUnavailable") { DocumentId = document.Id, Operation = "NativeRenderHost.Resolve" };
         var extents = MapRenderExtentValidator.Validate(closure, source.RequiredAssetIds, new(new()));
-        if (extents.Proofs is not { } proofs) throw new MapDocumentException("NativeClosureUnavailable");
-        source = source.WithRenderExtents(proofs).Source ?? throw new MapDocumentException("NativeClosureUnavailable");
+        if (extents.Proofs is not { } proofs) throw new MapDocumentException(MapDocumentRefusal.AssetClosureRequired, "NativeClosureUnavailable") { DocumentId = document.Id, Operation = "NativeRenderHost.Resolve" };
+        source = source.WithRenderExtents(proofs).Source ?? throw new MapDocumentException(MapDocumentRefusal.AssetClosureRequired, "NativeClosureUnavailable") { DocumentId = document.Id, Operation = "NativeRenderHost.Resolve" };
         return new(closure, source, proofs, render, _lighting, styleId) { PreviewWindowLimit = _file.PreviewWindowLimit };
     }
 }

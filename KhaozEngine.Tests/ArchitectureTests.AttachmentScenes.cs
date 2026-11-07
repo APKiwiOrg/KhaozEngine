@@ -7,6 +7,14 @@ namespace KhaozEngine.Tests;
 public partial class ArchitectureTests
 {
     [Fact]
+    public void Attachment_definitions_reference_only_the_shared_primitives()
+    {
+        string[] actual = LoadGraph()["KhaozEngine.Attachments"].ProjectRefs
+            .Select(Short).OrderBy(name => name, StringComparer.Ordinal).ToArray();
+        Assert.Equal(new[] { "Primitives" }, actual);
+    }
+
+    [Fact]
     public void Attachment_rendering_keeps_its_existing_dependency_edges()
     {
         string[] actual = LoadGraph()["KhaozEngine.Attachments.Render3D"].ProjectRefs

@@ -17,6 +17,9 @@ internal sealed class TemporalVisibilityHistory
     int _generation = -1, _seededIndex = -1;
     long _storedFrame = -1;
 
+    /// <summary>TemporalBilinearShadowControl suppresses visibility readiness while retaining colour history.</summary>
+    internal void ForgetSeedForTests() => _seededIndex = -1;
+
     internal bool Allocated => _textures[0] is not null && _textures[1] is not null;
     internal bool Ready => _owner is { IsValid: true } owner && _generation == owner.TargetGeneration
         && _seededIndex == owner.ReadIndex;

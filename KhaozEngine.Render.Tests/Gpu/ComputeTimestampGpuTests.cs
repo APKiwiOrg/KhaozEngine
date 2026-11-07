@@ -69,7 +69,7 @@ void main() {
             if (!device.Capabilities.SupportsTimestamps)
             {
                 output.WriteLine("timestamp tail branch: unsupported (pool creation must throw)");
-                Assert.Throws<NotSupportedException>(() => factory.CreateTimestampPool(3));
+                Assert.Equal(GpuTimestampRefusal.TimestampUnsupported, Assert.Throws<GpuTimestampUnsupportedException>(() => factory.CreateTimestampPool(3)).Reason);
                 return;
             }
 
@@ -116,7 +116,7 @@ void main() {
             {
                 output.WriteLine("timestamp branch: unsupported (pool creation must throw)");
                 Assert.False(device.Capabilities.SupportsTimestamps);
-                Assert.Throws<NotSupportedException>(() => factory.CreateTimestampPool(4));
+                Assert.Equal(GpuTimestampRefusal.TimestampUnsupported, Assert.Throws<GpuTimestampUnsupportedException>(() => factory.CreateTimestampPool(4)).Reason);
                 return;
             }
 

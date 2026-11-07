@@ -12,6 +12,7 @@ namespace KhaozEngine.Tests.TileWorld;
 
 /// <summary>The view's camera fade: which placed objects contain the eye, by their drawn triangles rather than
 /// their boxes, and how each one's fade moves over time.</summary>
+[Collection("AllocSensitive")]
 public class TileCameraFadeTests
 {
     const float Half = 0.075f;
@@ -280,11 +281,7 @@ public class TileCameraFadeTests
         Vector3 eye = rig.Anchor(rig.Object(0)) + new Vector3(0f, 2f, 0f);
         rig.Step(eye, Half, 3);
 
-        long before = GC.GetAllocatedBytesForCurrentThread();
-        rig.Step(eye, Half, 100);
-        long after = GC.GetAllocatedBytesForCurrentThread();
-
-        Assert.Equal(before, after);
+        AllocAssert.NoPerCallAllocation("100 warm camera fade frames", () => rig.Step(eye, Half, 100));
     }
 
     [Fact]

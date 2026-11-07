@@ -1,7 +1,5 @@
 using System;
-using System.Collections;
 using System.Linq;
-using System.Reflection;
 using KhaozEngine.MapDoc.Water;
 using Xunit;
 using static KhaozEngine.Tests.CapacityDemandProbe;
@@ -31,14 +29,12 @@ public sealed class CapacityDemandWaterMatrixTests
         int current, int increment, bool refused)
     {
         using var probe = new CapacityDemandProbe();
-        var chunks = (IEnumerable)typeof(MapWaterBoundReads).GetMethod("Chunks", BindingFlags.NonPublic | BindingFlags.Static)!
-            .Invoke(null, new object[] { 0L, 0L, width, height, 3, (Func<long, long, long>)((_, _) => faces) })!;
-        var result = chunks.Cast<object>().ToArray();
+        var result = MapWaterBoundReads.ChunkFacesForTests(0, 0, width, height, 3, (_, _) => faces);
         Assert.NotEmpty(result);
         var rows = probe.For("MaxSourceFacesPerBound").Where(r => Read<string>(r, "Site") == "MapWaterBoundReads." + site).ToArray();
         Assert.Contains(rows, r => Read<decimal>(r, "CurrentDemand") == current && Read<decimal>(r, "ProposedIncrement") == increment &&
             Read<decimal>(r, "Allowance") == 3 && Read<bool>(r, "Refused") == refused);
         if (site == "CellFaces")
-            Assert.Equal(refused, result.Any(chunk => (long)chunk.GetType().GetProperty("Faces")!.GetValue(chunk)! < 0));
+            Assert.Equal(refused, result.Any(chunk => chunk < 0));
     }
 }

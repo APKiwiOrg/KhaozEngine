@@ -44,6 +44,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
     /// </summary>
     internal sealed class MetalUniformRing
     {
+        internal MetalCpuResource CpuResource { get; } = new();
         readonly MetalRingAllocator _allocator;
 
         // The persistently mapped base of the WHOLE ring, which is the MTLBuffer's own contents() pointer taken
@@ -147,9 +148,8 @@ namespace KhaozEngine.Gpu.Metal.Internal
         /// different versions and the binds composed for that recording would name a third.
         /// </para>
         /// <para>
-        /// LOCK-FREE ON THE HOT PATH, unqualified. There is no mapping to acquire and no encoder to open, so this
-        /// path takes no lock and makes no native call at all, ever. Two writes into one segment are two writes
-        /// into plain memory.
+        /// There is no mapping to acquire or encoder to open. The prefix-protection gate covers the range
+        /// check and memcpy together, so an early commit cannot race a CPU writer on another thread.
         /// </para>
         /// <para>
         /// THE OFFSET IS AGAINST THE LOGICAL BUFFER and a write that runs past its end is refused. Without the
@@ -180,7 +180,11 @@ namespace KhaozEngine.Gpu.Metal.Internal
 
             if (data.Length == 0) return;
 
-            CopyInto(_contents, segmentBase + offsetBytes, data);
+            lock (_allocator.CpuReads.Gate)
+            {
+                _allocator.CpuReads.RequireWritable(CpuResource, segmentBase + offsetBytes, (ulong)data.Length);
+                CopyInto(_contents, segmentBase + offsetBytes, data);
+            }
         }
 
         /// <summary>
@@ -193,11 +197,16 @@ namespace KhaozEngine.Gpu.Metal.Internal
         {
             if (length >= 0 && offsetBytes <= SizeInBytes && (ulong)length <= SizeInBytes - offsetBytes) return;
 
-            throw new ArgumentOutOfRangeException(nameof(offsetBytes), offsetBytes,
+            throw new GpuBufferTransferRangeException(GpuBufferTransferRefusal.WindowOutsideBuffer, nameof(offsetBytes), offsetBytes,
                 "A " + length + "-byte write at offset " + offsetBytes + " runs past the end of a " + SizeInBytes
                 + "-byte native Metal uniform buffer. On a ring-backed buffer that would spill into the next "
                 + "frame's segment, which the GPU may be reading, so it is refused here rather than corrupting a "
-                + "frame.");
+                + "frame.")
+            {
+                OffsetBytes = offsetBytes,
+                SizeBytes = length,
+                BufferBytes = SizeInBytes,
+            };
         }
 
         /// <summary>The copy into ANY segment, which is what the off-timeline write walks. CALLED ONLY BY

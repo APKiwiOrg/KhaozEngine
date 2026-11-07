@@ -29,7 +29,16 @@ public class MapPhysicsRegistrationTests
         Assert.Throws<InvalidOperationException>(() => MapPhysicsRegistration.Register(world, fault));
         Assert.Equal(0, fault.LiveStaticCount);
         var offOrigin = new NativeRegistrationFaultWorld(origin: new Vector3(0.5f, 0, 0));
-        Assert.Contains("whole-metre origin", Assert.Throws<MapDocumentException>(() => MapPhysicsRegistration.Register(world, offOrigin)).Message);
+        var origin = Assert.Throws<MapDocumentException>(() => MapPhysicsRegistration.Register(world, offOrigin));
+        Assert.Equal(MapDocumentRefusal.PhysicsRegistrationOriginInvalid, origin.Reason);
+        Assert.Equal("Origin", origin.FieldPath);
+        Assert.Equal(0.5, origin.PositionX);
+        Assert.Equal(0, origin.PositionY);
+        Assert.Equal(0, origin.PositionZ);
+        Assert.Equal(1_000_000, origin.Limit);
+        Assert.Equal(0, offOrigin.LiveStaticCount);
+        using var whole = MapPhysicsRegistration.Register(world, new NativeRegistrationFaultWorld(origin: new Vector3(1, 0, 0)));
+        Assert.NotEmpty(whole.Handles);
     }
 
     [Fact]
@@ -115,9 +124,16 @@ public class MapPhysicsRegistrationTests
     public void OriginBeyondTheWorldLimit_IsRefused()
     {
         var far = new NativeRegistrationFaultWorld(origin: new Vector3(0f, 0f, 2_000_000f));
-        Assert.Contains("1,000,000 m", Assert.Throws<MapDocumentException>(
-            () => MapPhysicsRegistration.Register(NativeWorldFixtures.BuildStackedCave(), far)).Message);
+        var world = NativeWorldFixtures.BuildStackedCave();
+        var error = Assert.Throws<MapDocumentException>(() => MapPhysicsRegistration.Register(world, far));
+        Assert.Equal(MapDocumentRefusal.PhysicsRegistrationOriginInvalid, error.Reason);
+        Assert.Equal(0, error.PositionX);
+        Assert.Equal(0, error.PositionY);
+        Assert.Equal(2_000_000, error.PositionZ);
+        Assert.Equal(1_000_000, error.Limit);
         Assert.Equal(0, far.LiveStaticCount);
+        using var boundary = MapPhysicsRegistration.Register(world, new NativeRegistrationFaultWorld(origin: new Vector3(0, 0, 1_000_000)));
+        Assert.NotEmpty(boundary.Handles);
     }
 
     [Fact]
@@ -179,7 +195,9 @@ public class MapPhysicsRegistrationTests
     {
         using var physics = new BepuPhysicsWorld();
         using var native = MapPhysicsRegistration.Register(NativeWorldFixtures.BuildStackedCave(), physics);
-        Assert.Contains("contact controller", Assert.Throws<MapDocumentException>(() => native.CreateLegacyMoveContext()).Message);
+        var error = Assert.Throws<MapDocumentException>(() => native.CreateLegacyMoveContext());
+        Assert.Equal(MapDocumentRefusal.PhysicsLegacyMoveContextUnsupported, error.Reason);
+        Assert.Equal(2, error.ResolverVersion);
         using var legacyPhysics = new BepuPhysicsWorld();
         using var legacy = MapPhysicsRegistration.Register(NativeWorldFixtures.BuildLegacySlope(), legacyPhysics);
         Assert.Same(legacyPhysics, legacy.CreateLegacyMoveContext().Physics);

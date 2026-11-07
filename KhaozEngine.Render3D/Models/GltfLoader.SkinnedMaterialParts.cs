@@ -18,10 +18,13 @@ namespace KhaozEngine.Render3D
         /// mutation. Uses the same geometry, material ordering and decoded maps as the path overload.
         /// The caller's <paramref name="identity"/> names the asset in validation diagnostics.</summary>
         /// <remarks>Attachment consumers must apply their embedded skinned asset policy before import.</remarks>
-        /// <exception cref="InvalidDataException">The glTF is malformed. The message names
-        /// <paramref name="identity"/> and the importer's diagnostic is the inner exception.</exception>
-        /// <exception cref="InvalidOperationException">The glTF has no skin, exceeds the bone cap or fails index
-        /// validation.</exception>
+        /// <exception cref="GltfImportDataException">The glTF is malformed. Reason is
+        /// <see cref="GltfImportRefusal.MalformedModel"/>, Identity is <paramref name="identity"/> and the
+        /// importer's diagnostic is the inner exception. This type derives from Exception because
+        /// InvalidDataException is sealed.</exception>
+        /// <exception cref="GltfImportStateException">The glTF fails strict validation, has no skin, exceeds
+        /// the joint cap or has an influence outside the skin joint count. Reason identifies the rule.</exception>
+        /// <exception cref="MeshIndexStateException">A source index or rebased index is outside its range.</exception>
         public static IReadOnlyList<GltfSkinnedMeshPart> LoadSkinnedPartsWithMaterials(ReadOnlyMemory<byte> glb, string identity) =>
             TranslateModelErrors(identity, () => BuildSkinnedParts(LoadModel(glb, identity), identity));
 

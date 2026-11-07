@@ -59,9 +59,7 @@ public sealed class MapSceneCapacityDiagnosticsTests
         Assert.Equal("MaxPreparedBytes", error.LimitName);
         Assert.Equal(4, error.Requested);
         Assert.Equal(3, error.Allowance);
-        Assert.Contains("MaxPreparedBytes", error.Message);
-        Assert.Contains("requested 4", error.Message);
-        Assert.Contains("allowance 3", error.Message);
+        Assert.Equal(new MapSceneCapacity("MaxPreparedBytes", 4, 3), error.Capacity);
     }
 
     [Fact]

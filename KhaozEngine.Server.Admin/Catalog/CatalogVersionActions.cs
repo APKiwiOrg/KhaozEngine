@@ -96,9 +96,22 @@ internal sealed class CatalogVersionActions(
 
         try
         {
-            await store
-                .SetPinnedVersionAsync(version, CatalogAdminActions.Actor, operatorId, cancellationToken)
-                .ConfigureAwait(false);
+            if (options.PublishPolicy is IContentPublishPolicy policy)
+            {
+                ContentValidationReport report = await CatalogPinPolicy.ApplyAsync(
+                    store, registry, policy, version, operatorId, cancellationToken).ConfigureAwait(false);
+                if (!report.IsValid)
+                {
+                    return CatalogRefusal.Findings("content selection refused", ContentAuthoringException.CandidateInvalidReason,
+                        CatalogRefusal.Render(report.Findings, registry));
+                }
+            }
+            else
+            {
+                await store
+                    .SetPinnedVersionAsync(version, CatalogAdminActions.Actor, operatorId, cancellationToken)
+                    .ConfigureAwait(false);
+            }
         }
         catch (ContentAuthoringException failure)
         {

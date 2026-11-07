@@ -145,7 +145,7 @@ internal static class MapTerrainPaint
                     if (!before && after) start = change.Point;
                     if (before && !after) edges.Add(new(start, change.Point));
                 }
-                if (overlay != 0 || coverage != 0) throw new MapDocumentException("Terrain feather boundary is open.");
+                if (overlay != 0 || coverage != 0) throw new MapDocumentException(MapDocumentRefusal.SurfacePaintBoundaryInvalid, "Terrain feather boundary is open.") { Operation = "Terrain.Feather", FieldPath = overlay != 0 ? "Overlay" : "Coverage", ActualInteger = overlay != 0 ? overlay : coverage };
             }
             var rows = edges.AsReadOnly();
             long retained = checked(16L + 128L * edges.Capacity);

@@ -27,6 +27,14 @@ public sealed class AttachmentSetCache : IDisposable
         _source = source;
     }
 
+    /// <summary>SkinnedAttachmentAssetTests verifies the retained mesh bytes against independent source hashes.</summary>
+    internal IReadOnlyList<string> MeshSnapshotHashesForTests =>
+        _meshes.Values.Select(snapshot => Convert.ToHexStringLower(SHA256.HashData(snapshot.Bytes))).ToArray();
+
+    /// <summary>SkinnedAttachmentAssetTests verifies the retained definition bytes against independent source hashes.</summary>
+    internal IReadOnlyList<string> DefinitionSnapshotHashesForTests =>
+        _definitions.Values.Select(snapshot => Convert.ToHexStringLower(SHA256.HashData(snapshot.Bytes))).ToArray();
+
     internal IAttachmentScene Scene { get; }
 
     public LoadedAttachmentSet Get(string key, string expectedSha256)
@@ -139,7 +147,7 @@ public sealed class AttachmentSetCache : IDisposable
                 ? new PendingMesh(identity, bytes, null, GltfLoader.LoadSkinnedPartsWithMaterials(bytes, context))
                 : new PendingMesh(identity, bytes, GltfLoader.LoadPartsWithMaterials(bytes, context), null);
         }
-        catch (Exception error) when (error is InvalidDataException or IOException or InvalidOperationException
+        catch (Exception error) when (error is MalformedDataException or InvalidDataException or IOException or InvalidOperationException
             or ArgumentException or FormatException or NotSupportedException)
         {
             string kind = identity.Skinned ? "skinned" : "rigid";

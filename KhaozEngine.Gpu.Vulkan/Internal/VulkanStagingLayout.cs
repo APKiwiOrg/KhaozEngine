@@ -341,22 +341,34 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
             // mipLevel even when the layer was the bad value, which sends a caller reading the wrong argument.
             if (mipLevel >= shape.MipLevels)
             {
-                throw new ArgumentOutOfRangeException(nameof(mipLevel), mipLevel,
+                throw new GpuTextureTransferRangeException(GpuTextureTransferRefusal.SubresourceOutOfRange, nameof(mipLevel), mipLevel,
                     "Mip level "
                     + mipLevel.ToString(CultureInfo.InvariantCulture)
                     + " is outside a native Vulkan staging texture with "
                     + shape.MipLevels.ToString(CultureInfo.InvariantCulture)
-                    + " mip levels. The offset it would produce lands in whatever follows the buffer.");
+                    + " mip levels. The offset it would produce lands in whatever follows the buffer.")
+                {
+                    MipLevel = mipLevel,
+                    ArrayLayer = arrayLayer,
+                    MipLevels = shape.MipLevels,
+                    ArrayLayers = shape.ArrayLayers,
+                };
             }
 
             if (arrayLayer >= shape.ArrayLayers)
             {
-                throw new ArgumentOutOfRangeException(nameof(arrayLayer), arrayLayer,
+                throw new GpuTextureTransferRangeException(GpuTextureTransferRefusal.SubresourceOutOfRange, nameof(arrayLayer), arrayLayer,
                     "Array layer "
                     + arrayLayer.ToString(CultureInfo.InvariantCulture)
                     + " is outside a native Vulkan staging texture with "
                     + shape.ArrayLayers.ToString(CultureInfo.InvariantCulture)
-                    + " array layers. The offset it would produce lands in whatever follows the buffer.");
+                    + " array layers. The offset it would produce lands in whatever follows the buffer.")
+                {
+                    MipLevel = mipLevel,
+                    ArrayLayer = arrayLayer,
+                    MipLevels = shape.MipLevels,
+                    ArrayLayers = shape.ArrayLayers,
+                };
             }
         }
 
@@ -366,7 +378,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         {
             if (value <= uint.MaxValue) return value;
 
-            throw new ArgumentOutOfRangeException(nameof(shape), shape,
+            throw new VulkanStagingLayoutException(VulkanStagingLayoutRefusal.MappingSizeExceeded, nameof(shape), shape,
                 "The "
                 + what
                 + " of that native Vulkan staging texture is "
@@ -374,7 +386,17 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
                 + " bytes, which does not fit the 32-bit size the GPU seam describes a mapping with "
                 + "(MappedData.SizeInBytes is a uint). The same arithmetic in 32 bits wraps here silently, "
                 + "which sizes the staging buffer far too small and corrupts whatever follows it, so it is "
-                + "refused by name instead. Read back in tiles.");
+                + "refused by name instead. Read back in tiles.")
+            {
+                Width = shape.Width,
+                Height = shape.Height,
+                MipLevels = shape.MipLevels,
+                ArrayLayers = shape.ArrayLayers,
+                Format = shape.Format,
+                Quantity = what,
+                ComputedBytes = value,
+                MaximumBytes = uint.MaxValue,
+            };
         }
     }
 }

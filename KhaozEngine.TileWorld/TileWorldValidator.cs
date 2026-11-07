@@ -5,7 +5,12 @@ using System.Linq;
 namespace KhaozEngine.TileWorld;
 
 /// <summary>One validation finding. <see cref="Code"/> is stable and greppable, <see cref="Message"/> is for humans.</summary>
-public sealed record TileWorldIssue(string Code, string Message, RegionCoord? Region, TileCoord? Tile);
+public sealed record TileWorldIssue(string Code, string Message, RegionCoord? Region, TileCoord? Tile)
+{
+    /// <summary>The immutable penetrating-pair finding for <see cref="TileWorldClearance.OverlapCode"/>,
+    /// or null for an issue that does not report an overlap.</summary>
+    public TileClearanceOverlap? Overlap { get; init; }
+}
 
 /// <summary>Semantic validation of a document against its catalogs: every id resolves, every plane is in
 /// range, every footprint lands on existing regions, ids and marker names are unique. Runs at save in the
@@ -72,14 +77,17 @@ public static class TileWorldValidator
         return issues;
     }
 
-    /// <summary>Validates the whole document and, when anything is wrong, throws once quoting the first five
-    /// issues and the total count.</summary>
+    /// <summary>Validates the whole document and, when anything is wrong, throws
+    /// <see cref="TileWorldRefusal.WorldValidationFailed"/> with the document's <see cref="TileWorldException.WorldId"/>,
+    /// the total <see cref="TileWorldException.IssueCount"/> and an owned read-only
+    /// <see cref="TileWorldException.Issues"/> snapshot. The developer message summarizes only the first five issues.</summary>
     public static void ValidateOrThrow(TileWorldDocument doc, TileWorldCatalogs catalogs)
     {
         IReadOnlyList<TileWorldIssue> issues = Validate(doc, catalogs);
         if (issues.Count == 0) return;
         string head = string.Join(" | ", issues.Take(5).Select(i => $"[{i.Code}] {i.Message}"));
-        throw new TileWorldException($"world '{doc.Id}' has {issues.Count} validation issues: {head}");
+        throw new TileWorldException(TileWorldRefusal.WorldValidationFailed, $"world '{doc.Id}' has {issues.Count} validation issues: {head}")
+        { WorldId = doc.Id, IssueCount = issues.Count, Issues = issues };
     }
 
     static void ValidateLayers(TileWorldCatalogs catalogs, TileRegion region, List<TileWorldIssue> issues)

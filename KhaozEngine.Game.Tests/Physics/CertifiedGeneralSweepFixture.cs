@@ -1,7 +1,6 @@
 using System;
 using System.Collections.Generic;
 using System.Numerics;
-using System.Reflection;
 using BepuPhysics.Collidables;
 using BepuSim = BepuPhysics.Simulation;
 using KhaozEngine.Physics;
@@ -53,39 +52,16 @@ internal static class CertifiedGeneralSweepFixture
         return result;
     }
 
-    internal static object Field(BepuPhysicsWorld world, string name) => typeof(BepuPhysicsWorld)
-        .GetField(name, BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(world)!;
-    internal static BepuSim Sim(BepuPhysicsWorld world) => (BepuSim)Field(world, "_sim");
+    internal static BepuSim Sim(BepuPhysicsWorld world) => world.SimulationForTests;
     internal static (BepuPhysics.StaticHandle Handle, TypedIndex Shape) Static(BepuPhysicsWorld world, StaticHandle handle) =>
-        ((Dictionary<int, (BepuPhysics.StaticHandle, TypedIndex)>)Field(world, "_handles"))[handle.Value];
-    internal static object? Call(BepuPhysicsWorld world, string name, params object?[] arguments) =>
-        typeof(BepuPhysicsWorld).GetMethod(name, BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(world, arguments);
+        world.StaticHandlesForTests[handle.Value];
 
-    internal static void Mutate(BepuPhysicsWorld world, Action<BepuSim> mutation, int? changedStatic = null)
-    {
-        using var operation = (IDisposable)Call(world, "EnterMutation", false, true)!;
-        object token = Call(world, "BeginSweepMutation")!;
-        mutation(Sim(world));
-        Call(world, "CompleteSweepMutation", token, changedStatic, false);
-    }
+    internal static void Mutate(BepuPhysicsWorld world, Action<BepuSim> mutation, int? changedStatic = null) =>
+        world.MutateForTests(mutation, changedStatic);
 
     internal static StaticHandle Install(BepuPhysicsWorld world, BoxShape shape, Pose pose,
-        Action<BepuSim, BepuPhysics.StaticHandle> beforePublication)
-    {
-        using var operation = (IDisposable)Call(world, "EnterStaticMutation")!;
-        object token = Call(world, "BeginSweepMutation")!;
-        BepuSim simulation = Sim(world);
-        var pool = (BepuUtilities.Memory.BufferPool)Field(world, "_pool");
-        TypedIndex index = ShapeFactory.Add(simulation, pool, shape);
-        BepuPhysics.StaticHandle native = simulation.Statics.Add(new BepuPhysics.StaticDescription(pose.Position, pose.Orientation, index));
-        FieldInfo next = typeof(BepuPhysicsWorld).GetField("_nextId", BindingFlags.Instance | BindingFlags.NonPublic)!;
-        int id = (int)next.GetValue(world)!;
-        next.SetValue(world, id + 1);
-        Call(world, "AddStaticEntry", id, native, index);
-        beforePublication(simulation, native);
-        Call(world, "CompleteSweepMutation", token, id, false);
-        return new(id);
-    }
+        Action<BepuSim, BepuPhysics.StaticHandle> beforePublication) =>
+        world.InstallForTests(shape, pose, beforePublication);
 
     internal static void Clear(CapsuleSweepResult result, float representedLength)
     {

@@ -132,18 +132,27 @@ public static class MapPlacementShapes
         MapEffectiveTransform effective = precise ?? MapEffectiveTransform.From(transform);
         float scale = (float)(shapes.SourceUnitsToMetres * effective.Scale);
         if (!float.IsFinite(scale) || scale <= 0f)
-            throw new MapDocumentException(
-                $"Placement '{placement.PlacementId}' combined scale {scale.ToString(CultureInfo.InvariantCulture)} is not finite and positive.");
+            throw new MapDocumentException(float.IsFinite(scale) ? MapDocumentRefusal.ValueOutsideRange : MapDocumentRefusal.ValueNonfinite,
+                $"Placement '{placement.PlacementId}' combined scale {scale.ToString(CultureInfo.InvariantCulture)} is not finite and positive.")
+            { PlacementId = placement.PlacementId, FieldPath = "Scale", ActualNumber = scale, MinimumNumber = 0 };
         if (!float.IsFinite(transform.Position.X) || !float.IsFinite(transform.Position.Y) ||
             !float.IsFinite(transform.Position.Z) || !float.IsFinite(transform.YawRadians))
-            throw new MapDocumentException($"Placement '{placement.PlacementId}' has a nonfinite position or yaw.");
+            throw new MapDocumentException(MapDocumentRefusal.ValueNonfinite, $"Placement '{placement.PlacementId}' has a nonfinite position or yaw.")
+            {
+                PlacementId = placement.PlacementId,
+                FieldPath = !float.IsFinite(transform.Position.X) ? "Position.X" : !float.IsFinite(transform.Position.Y) ? "Position.Y" :
+                    !float.IsFinite(transform.Position.Z) ? "Position.Z" : "YawRadians",
+                ActualNumber = !float.IsFinite(transform.Position.X) ? transform.Position.X : !float.IsFinite(transform.Position.Y) ? transform.Position.Y :
+                    !float.IsFinite(transform.Position.Z) ? transform.Position.Z : transform.YawRadians,
+            };
 
         MapSceneAdmission.Current?.BeforeGeometry(MapPlacementPreparation.InstanceBytes(placement, shapes, scale));
         var worldPose = MapBackendPoseAdapter.Pose(effective, WorldFrame.Origin);
         PhysicsShape? collider = shapes.Collider is null ? null : PhysicsShapeScale.Uniform(shapes.Collider, scale);
         PhysicsShape? selection = shapes.Selection is null ? null : PhysicsShapeScale.Uniform(shapes.Selection, scale);
-        PhysicsShape source = selection ?? collider ?? throw new MapDocumentException(
-            $"Placement '{placement.PlacementId}' asset '{shapes.AssetId}' has no interaction source: it declares neither a selection volume nor a collider.");
+        PhysicsShape source = selection ?? collider ?? throw new MapDocumentException(MapDocumentRefusal.PhysicsInteractionSourceMissing,
+            $"Placement '{placement.PlacementId}' asset '{shapes.AssetId}' has no interaction source: it declares neither a selection volume nor a collider.")
+        { PlacementId = placement.PlacementId, AssetId = shapes.AssetId };
 
         MapBox3? colliderBounds = null;
         if (collider is not null) colliderBounds = MapRegistrationBounds.Of(collider, effective);
@@ -162,6 +171,10 @@ public static class MapPlacementShapes
         }
         return result;
     }
+
+    // A captured precise pose can coexist with faulty authored fields. Exercise that boundary without changing resolution.
+    internal static void InvalidPlacementGeometryForTests(MapResolvedPlacement placement, MapAssetShapes shapes,
+        MapEffectiveTransform precise) => _ = Build(placement, shapes, precise);
 
     /// <summary>The rotation by <paramref name="yaw"/> radians about world Y, (0, sin, 0, cos) of half the yaw. The
     /// half-angle sine and cosine are taken in double and rounded to float once, so the pose does not depend on the

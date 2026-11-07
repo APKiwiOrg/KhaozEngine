@@ -87,7 +87,8 @@ namespace KhaozEngine.Render3D
         /// <param name="skel">The skeleton the mask covers.</param>
         /// <param name="jointNames">The joints the mask takes, each a node name the skeleton carries.</param>
         /// <param name="weight">The weight of a named joint, clamped to [0,1].</param>
-        /// <exception cref="ArgumentException">A name is not in the skeleton. The message names it.</exception>
+        /// <exception cref="BoneMaskArgumentException">A name is not in the skeleton. The reason is
+        /// <see cref="BoneMaskRefusal.JointNameMissing"/> and JointName carries the requested name.</exception>
         public static BoneMask ForJoints(Skeleton skel, IReadOnlyList<string> jointNames, float weight = 1f)
         {
             if (skel is null) throw new ArgumentNullException(nameof(skel));
@@ -97,7 +98,9 @@ namespace KhaozEngine.Render3D
             foreach (string name in jointNames)
             {
                 if (name is null || !skel.TryIndexOf(name, out int node))
-                    throw new ArgumentException($"The skeleton has no joint named '{name}'.", nameof(jointNames));
+                    throw new BoneMaskArgumentException(BoneMaskRefusal.JointNameMissing,
+                        $"The skeleton has no joint named '{name}'.", nameof(jointNames))
+                    { JointName = name };
                 weights[node] = w;
             }
             return new BoneMask(weights);
@@ -113,11 +116,16 @@ namespace KhaozEngine.Render3D
             if (rootBoneName is null) throw new ArgumentNullException(nameof(rootBoneName));
             if (boneNames is null) throw new ArgumentNullException(nameof(boneNames));
             if (boneNames.Count != skel.NodeCount)
-                throw new ArgumentException($"boneNames length {boneNames.Count} must equal node count {skel.NodeCount}.", nameof(boneNames));
+                throw new BoneMaskArgumentException(BoneMaskRefusal.NameCountMismatch,
+                    $"boneNames length {boneNames.Count} must equal node count {skel.NodeCount}.", nameof(boneNames))
+                { NameCount = boneNames.Count, NodeCount = skel.NodeCount };
             int node = -1;
             for (int i = 0; i < boneNames.Count; i++)
                 if (string.Equals(boneNames[i], rootBoneName, StringComparison.Ordinal)) { node = i; break; }
-            if (node < 0) throw new ArgumentException($"bone '{rootBoneName}' was not found in the skeleton.", nameof(rootBoneName));
+            if (node < 0)
+                throw new BoneMaskArgumentException(BoneMaskRefusal.SubtreeRootMissing,
+                    $"bone '{rootBoneName}' was not found in the skeleton.", nameof(rootBoneName))
+                { JointName = rootBoneName };
             return Subtree(skel, node, weight);
         }
     }

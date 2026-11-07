@@ -177,7 +177,8 @@ internal static class MapEffectiveResolutionKernel
             if (!transforms.TryGetValue(MapEffectiveContext.Key(MapPrefabChildKind.Placement, owners[key]), out var owner))
             {
                 if (metadataOnly) continue;
-                throw new MapDocumentException($"Unknown effective light owner '{owners[key]}'.");
+                throw new MapDocumentException(MapDocumentRefusal.PrefabEffectiveLightOwnerMissing, $"Unknown effective light owner '{owners[key]}'.")
+                { PlacementId = owners[key], WorldId = id, ChildKind = MapPrefabChildKind.Light };
             }
             transforms[key] = MapEffectiveTransform.Compose(owner, local);
         }
@@ -418,7 +419,7 @@ internal sealed class MapEffectiveResolutionProduct
         Attachments = Array.AsReadOnly(attachments.ToArray());
         Scene.MapSceneAdmission.Current?.ReserveBytes(checked(128L + 32L * context.Surfaces.Refs.Count));
         var paintTargets = context.Surfaces.Refs.Where(context.IsPartialPaint)
-            .Select(s => s.PaintTargetSurfaceId ?? throw new MapDocumentException("PaintOverride requires a target surface."))
+            .Select(s => s.PaintTargetSurfaceId ?? throw new MapDocumentException(MapDocumentRefusal.PrefabPaintTargetRequired, "PaintOverride requires a target surface.") { SurfaceId = s.Id })
             .Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal).ToArray();
         MapSurfaceSourcePreparation.BeforeDictionary<string, MapPaintRegionSet>(paintTargets.Length);
         var paintRegions = new Dictionary<string, MapPaintRegionSet>(paintTargets.Length, StringComparer.Ordinal);

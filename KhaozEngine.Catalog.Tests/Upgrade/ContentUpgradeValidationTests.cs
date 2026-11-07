@@ -59,7 +59,7 @@ public sealed class ContentUpgradeValidationTests
             new ContentUpgradeDefinition("same", 1, "a", Nothing),
             new ContentUpgradeDefinition("same", 2, "b", Nothing)));
 
-        Assert.Contains("same", refused.Message, StringComparison.Ordinal);
+        Assert.Equal("definitions", refused.ParamName);
     }
 
     /// <summary>Two definitions under one order would run in whatever order the caller's list happened to be.</summary>

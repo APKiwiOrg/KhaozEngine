@@ -151,20 +151,24 @@ namespace KhaozEngine.Tests.Gpu
         }
 
         [Theory]
-        [InlineData(0u, 17u, "sizeInBytes")]
-        [InlineData(0u, 0u, "sizeInBytes")]
-        [InlineData(3u, 4u, "sourceOffsetBytes")]
-        [InlineData(20u, 4u, "sourceOffsetBytes")]
-        [InlineData(12u, 8u, "sizeInBytes")]
-        [InlineData(4294967292u, 8u, "sourceOffsetBytes")]
-        public void InvalidCopyDoesNotRecordOrReserveASlot(uint offset, uint bytes, string parameter)
+        [InlineData(0u, 17u, "sizeInBytes", typeof(ArgumentOutOfRangeException))]
+        [InlineData(0u, 0u, "sizeInBytes", typeof(ArgumentOutOfRangeException))]
+        [InlineData(3u, 4u, "sourceOffsetBytes", typeof(GpuCopyAlignmentException))]
+        [InlineData(20u, 4u, "sourceOffsetBytes", typeof(ArgumentOutOfRangeException))]
+        [InlineData(12u, 8u, "sizeInBytes", typeof(ArgumentOutOfRangeException))]
+        [InlineData(4294967292u, 8u, "sourceOffsetBytes", typeof(ArgumentOutOfRangeException))]
+        public void InvalidCopyDoesNotRecordOrReserveASlot(uint offset, uint bytes, string parameter,
+            Type exceptionType)
         {
             var gpu = new RingGpu(1);
             using var source = new RingBuffer(16);
             var fence = new RingFence();
             using var ring = new GpuBufferReadbackRing(gpu, 1, 16);
-            Assert.Equal(parameter, Assert.Throws<ArgumentOutOfRangeException>(
-                () => ring.TryRecord(gpu, source, offset, bytes, 1, fence)).ParamName);
+            Exception refusal = Assert.Throws(exceptionType,
+                () => ring.TryRecord(gpu, source, offset, bytes, 1, fence));
+            Assert.Equal(parameter, Assert.IsAssignableFrom<ArgumentOutOfRangeException>(refusal).ParamName);
+            if (refusal is GpuCopyAlignmentException alignment)
+                Assert.Equal(GpuCopyAlignmentRefusal.UnalignedOffset, alignment.Reason);
             Assert.Equal(0, gpu.CopyCalls);
             Assert.Equal(0, ring.PendingCount);
             Assert.True(ring.TryRecord(gpu, source, 0, 16, 2, fence));

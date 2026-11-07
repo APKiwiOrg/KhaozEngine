@@ -171,7 +171,7 @@ public static class MapScopedWorldBuilder
             var owners = statics.Select(s => s.OwnerId).ToHashSet(StringComparer.Ordinal);
             foreach (var body in water)
                 if (owners.Contains(MapResidencyOwnership.WaterOwnerId(body.BodyId)))
-                    throw new MapDocumentException("Water and statics share an owner.");
+                    throw new MapDocumentException(MapDocumentRefusal.PhysicsWaterOwnerConflict, "Water and statics share an owner.") { Operation = "ScopedWorld.Build" };
             var world = new MapScopedWorld(scene, domain, physical, terrain, statics, water, witness);
             long retained = new MapPhysicsInventory().World(world);
             if (ownsWitness) retained = checked(retained + MapPhysicsInventory.Witness(witness));

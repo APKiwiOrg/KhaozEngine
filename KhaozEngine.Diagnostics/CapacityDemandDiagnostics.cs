@@ -39,6 +39,7 @@ internal readonly record struct CapacityDemandOrigin(string LimitName, decimal C
 public static class CapacityDemandDiagnostics
 {
     static State? s_state;
+    internal static bool HasStateForTests => Volatile.Read(ref s_state) is not null;
     static long s_next;
     sealed class Identity { internal readonly long Id = Interlocked.Increment(ref s_next); }
     sealed class State

@@ -47,17 +47,22 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         /// is the whole point of this type.
         /// </summary>
         /// <param name="result">What the call returned.</param>
-        /// <param name="call">The Vulkan call's own name, e.g. <c>vkCreateDevice</c>. It goes in the message
-        /// verbatim, because the reader of that message is looking the call up in the spec.</param>
+        /// <param name="call">The Vulkan call's own name, e.g. <c>vkCreateDevice</c>. Carried verbatim by
+        /// <see cref="VulkanResultException.Call"/> for looking the call up in the spec.</param>
         /// <exception cref="InvalidOperationException"><paramref name="result"/> is a failure.</exception>
         internal static void Require(Result result, string call)
         {
             if (!IsFailure(result)) return;
 
-            throw new InvalidOperationException(
+            throw new VulkanResultException(VulkanResultRefusal.NativeCallFailed,
                 $"The native Vulkan backend's {call} failed: {Describe(result)}. This is a creation-time failure "
                 + "on a machine whose support probe answered yes, so it is either a driver that reports more than "
-                + "it can do or a resource the process could not get.");
+                + "it can do or a resource the process could not get.")
+            {
+                Call = call,
+                ResultCode = (int)result,
+                ResultToken = Token(result),
+            };
         }
 
         /// <summary>The stable token for a result, for a telemetry header field that has to group cleanly across

@@ -19,10 +19,20 @@ public sealed class NativeLifecycleTests
         using var f = new NativeLifecycleFixture();
         byte[] before = f.ReadSavedBytes();
         Assert.True(f.Session.Validate().Valid);
+        byte[] meshBytes = File.ReadAllBytes(f.MeshPath);
         f.CorruptResource();
-        Assert.Throws<MapDocumentException>(() => f.Session.Save());
+        var error = Assert.Throws<MapDocumentException>(() => f.Session.Save());
+        Assert.Equal(MapDocumentRefusal.DigestMismatch, error.Reason);
+        Assert.Equal("prop.mesh", error.ResourceId);
+        Assert.Equal(f.ValidPath, error.SourceName);
+        Assert.Equal(f.ResourceRoot, error.ResourceRoot);
+        Assert.Equal(f.Closure.GetResource("prop.mesh").Reference.Sha256, error.ExpectedHash);
+        Assert.Equal(NativeLifecycleFixture.Digest(File.ReadAllBytes(f.MeshPath)), error.ActualHash);
+        Assert.NotNull(error.InnerException);
         Assert.Equal(before, f.ReadSavedBytes());
         Assert.False(f.Session.Validate(verifyWholeWorld: true).Valid);
+        File.WriteAllBytes(f.MeshPath, meshBytes);
+        Assert.True(f.Session.Save().Saved);
     }
 
     [Fact]
@@ -229,14 +239,20 @@ public sealed class NativeLifecycleTests
         string[] before = Directory.GetFileSystemEntries(tiled, "*", SearchOption.AllDirectories).OrderBy(e => e, StringComparer.Ordinal).ToArray();
         var document = f.SessionDocument;
 
+        string content = MapDocumentFile.SaveText(f.SessionDocument);
         var ex = Assert.Throws<MapDocumentException>(() => f.Session.ConvertToTiled(tiled));
-        Assert.Contains("already exists", ex.Message, StringComparison.Ordinal);
+        Assert.Equal(MapDocumentRefusal.DocumentStorageFormConflict, ex.Reason);
+        Assert.Equal(tiled, ex.Path);
         Assert.Equal(manifestBytes, File.ReadAllBytes(manifest));
         Assert.Equal(meshBytes, File.ReadAllBytes(mesh));
         Assert.Equal(before, Directory.GetFileSystemEntries(tiled, "*", SearchOption.AllDirectories).OrderBy(e => e, StringComparer.Ordinal));
         Assert.Same(document, f.SessionDocument);
         Assert.Equal(f.ValidPath, f.Session.DocumentPath);
         Assert.Equal("native-lifecycle", f.Session.Summary().Id);
+        Assert.Equal(content, MapDocumentFile.SaveText(f.SessionDocument));
+        string fresh = Path.Combine(f.ResourceRoot, "fresh-tiled");
+        f.CopyResourcesTo(fresh);
+        Assert.NotNull(f.Session.ConvertToTiled(fresh));
     }
 
     [Fact]
@@ -281,12 +297,20 @@ public sealed class NativeLifecycleTests
         f.Session.EditorWindowRadius = 0;
         string id = f.Session.Summary().Id;
         var document = f.SessionDocument;
+        string before = MapDocumentFile.SaveText(document);
+        var history = f.Session.NativeHistoryState;
         var ex = Assert.Throws<MapDocumentException>(() => f.Session.Open(tiled));
-        Assert.Contains("tile", ex.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.Equal(MapDocumentRefusal.CompleteDocumentRequired, ex.Reason);
+        Assert.Equal(tiled, ex.Path);
+        Assert.Equal("Verify", ex.Operation);
+        Assert.Equal(before, MapDocumentFile.SaveText(f.SessionDocument));
+        Assert.Equal(history, f.Session.NativeHistoryState);
         Assert.Same(document, f.SessionDocument);
         Assert.Equal(id, f.Session.Summary().Id);
         Assert.Equal(f.ValidPath, f.Session.DocumentPath);
         new MutationService(f.Session).PlacementLabel("gate", "still bound");
+        f.Session.WholeWorldTileLimit = int.MaxValue;
+        Assert.NotNull(f.Session.Open(tiled));
     }
 }
 

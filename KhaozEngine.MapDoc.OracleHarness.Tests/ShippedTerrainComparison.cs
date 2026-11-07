@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.IO;
 using System.Linq;
 using System.Numerics;
 using System.Runtime.Versioning;
@@ -23,7 +22,7 @@ internal sealed record ShippedRegion(RegionCoord Coord, TileWorldDocument Docume
     internal static IReadOnlyList<ShippedRegion> All(TileWorldDocument document, JsonElement comparison)
     {
         TileRegion[] regions = document.Regions.Values.OrderBy(r => r.Coord.Rz).ThenBy(r => r.Coord.Rx).ToArray();
-        if (regions.Length == 0) throw new InvalidDataException("source world has no regions");
+        if (regions.Length == 0) throw new PrivateOracleDataException(PrivateOracleDataRefusal.ValueRequired, "source world has no regions");
         ShippedSpikePoint? point = ShippedSpikePoint.From(comparison);
         RegionCoord? named = point?.Owner(document.TileSize);
         int owner = Array.FindIndex(regions, r => r.Coord == named);
@@ -55,13 +54,20 @@ internal sealed record ShippedSpikePoint(float WorldX, float WorldZ)
     {
         if (comparison.ValueKind != JsonValueKind.Object || !comparison.TryGetProperty(Property, out JsonElement point))
             return null;
-        if (point.ValueKind != JsonValueKind.Object ||
-            !point.TryGetProperty("worldX", out JsonElement x) || !x.TryGetSingle(out float worldX) ||
-            !point.TryGetProperty("worldZ", out JsonElement z) || !z.TryGetSingle(out float worldZ) ||
-            !float.IsFinite(worldX) || !float.IsFinite(worldZ))
-            throw new InvalidDataException("invalid spike point");
+        if (point.ValueKind != JsonValueKind.Object) throw Invalid(PrivateOracleDataRefusal.SchemaShapeInvalid);
+        float worldX = Coordinate(point, "worldX"), worldZ = Coordinate(point, "worldZ");
+        if (!float.IsFinite(worldX) || !float.IsFinite(worldZ)) throw Invalid(PrivateOracleDataRefusal.ValueNonfinite);
         return new(worldX, worldZ);
     }
+
+    static float Coordinate(JsonElement point, string name)
+    {
+        if (!point.TryGetProperty(name, out JsonElement value)) throw Invalid(PrivateOracleDataRefusal.ValueRequired);
+        if (value.ValueKind != JsonValueKind.Number || !value.TryGetSingle(out float coordinate)) throw Invalid(PrivateOracleDataRefusal.SchemaShapeInvalid);
+        return coordinate;
+    }
+
+    static PrivateOracleDataException Invalid(PrivateOracleDataRefusal reason) => new(reason, "invalid spike point");
 
     internal float TileX(float tileSize) => TileWorldSpace.TileX(WorldX, tileSize);
     internal float TileZ(float tileSize) => TileWorldSpace.TileZ(WorldZ, tileSize);
@@ -201,11 +207,12 @@ internal static class ShippedTerrainComparison
     }
 
     // The released plane-0 movement triangle: among the tile's drawn triangles, the one whose smallest barycentric
-    // weight is largest, its height interpolated from lattice positions placed relative to the tile corner. This and
-    // Weights copy TileGroundSampler.TryTriangle and TileGroundSampler.Weights in KhaozEngine.TileWorld.Physics and
-    // must change with them. They cannot be called directly because both are private to the sampler, which also
-    // clamps into the rectangle it was built over, and the harness does not reference the physics package.
-    static bool TryMovementHeight(TileWorldDocument document, float tileX, float tileZ, out float height)
+    // weight is largest, its height anchored at the first lattice vertex, interpolated from height differences
+    // and bounded by that triangle's exact vertex range.
+    // This and Weights copy the runtime sampler's private triangle selection and evaluation. The sampler also clamps
+    // into its loaded rectangle, while this comparison addresses the named tile directly. Exact arithmetic parity
+    // is pinned by ShippedTerrainSamplingParityTests, separately from the geometric SupportTolerance comparison.
+    internal static bool TryMovementHeight(TileWorldDocument document, float tileX, float tileZ, out float height)
     {
         int x = (int)MathF.Floor(tileX), z = (int)MathF.Floor(tileZ);
         Span<TileLatticeTriangle> triangles = stackalloc TileLatticeTriangle[TileTriangulation.MaxTriangles];
@@ -232,7 +239,8 @@ internal static class ShippedTerrainComparison
         Vector3 a = TileGroundTriangles.LatticePosition(document, x, z, 0, t.A, x, z);
         Vector3 b = TileGroundTriangles.LatticePosition(document, x, z, 0, t.B, x, z);
         Vector3 c = TileGroundTriangles.LatticePosition(document, x, z, 0, t.C, x, z);
-        height = weights.X * a.Y + weights.Y * b.Y + weights.Z * c.Y;
+        height = a.Y + weights.Y * (b.Y - a.Y) + weights.Z * (c.Y - a.Y);
+        height = Math.Clamp(height, MathF.Min(a.Y, MathF.Min(b.Y, c.Y)), MathF.Max(a.Y, MathF.Max(b.Y, c.Y)));
         return true;
     }
 

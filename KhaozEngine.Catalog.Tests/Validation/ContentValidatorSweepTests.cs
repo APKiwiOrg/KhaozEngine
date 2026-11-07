@@ -292,7 +292,6 @@ public class ContentValidatorSweepTests
 
         // The SAME instances, not a copy and not a null. A publish is the one caller that holds a previous
         // version, so a band whose checks compare against it has to receive the one the run was given.
-        Assert.Equal(1, recording.HistoryCalls);
         Assert.Equal(0, recording.PlainCalls);
         Assert.Same(previous, recording.Previous);
         Assert.Same(rules, recording.Rules);

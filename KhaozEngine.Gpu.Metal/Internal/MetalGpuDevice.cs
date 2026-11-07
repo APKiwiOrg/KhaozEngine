@@ -105,6 +105,8 @@ namespace KhaozEngine.Gpu.Metal.Internal
         // what survives here is a power of two that divides the stride, and it is what every bind's composed
         // offset is checked against. 256 would refuse offsets the device accepts (macOS reports 16 or 32).
         readonly uint _bufferOffsetAlignment;
+        readonly MetalEarlyFrameSubmission _earlySubmission;
+        readonly MetalCpuAccess _cpuAccess;
 
         // THE DEVICE'S BORDER-COLOUR ANSWER, read off the probe's snapshot at creation because a sampler cannot
         // ask it safely: the way to ask a device directly is to build a border sampler, which is the abort.
@@ -144,6 +146,9 @@ namespace KhaozEngine.Gpu.Metal.Internal
             // the segment owner it records would name a submission that had not happened yet.
             _backpressure = new WaitAccumulator();
             _rings = new MetalRingAllocator(framesInFlight, timeline, _backpressure, _submitLock);
+            _earlySubmission = new MetalEarlyFrameSubmission(new EarlyFrameApi(this), _submitLock);
+            _cpuAccess = new MetalCpuAccess(_rings.CpuReads, _setup.Flush, _timeline.WaitForIdle,
+                DrainCommittedUnsignalledWork, _liveness);
 
             _factory = new MetalResourceFactory(this);
         }
@@ -235,7 +240,8 @@ namespace KhaozEngine.Gpu.Metal.Internal
                 // M-A2's POSITION, CAPTURED PER LIST so a recording cannot straddle two policies. It is the
                 // per-attachment fix for every caller the engine has: the switch that could ask for the other
                 // position is gone, and what remains is a test seam. See MetalClearPolicy.
-                clearMode, _timeline);
+                clearMode, _timeline)
+            { EarlySubmission = _earlySubmission };
 
         /// <inheritdoc/>
         /// <remarks>M-G2's <c>softwareAdapter</c> is ALWAYS false with confidence rather than null, because Apple
@@ -455,7 +461,8 @@ namespace KhaozEngine.Gpu.Metal.Internal
 
                 // BEFORE THE COMMIT. Metal refuses a handler added to a buffer that has already been committed,
                 // and a buffer that completed before its handler was attached would report nothing at all.
-                MetalCompletionHandler.AttachTo(buffer);
+                if (!MetalCompletionHandler.AttachTo(buffer))
+                    throw new InvalidOperationException("Metal could not attach the final completion error handler.");
 
                 new MTLCommandBuffer(buffer).Commit();
 
@@ -499,14 +506,20 @@ namespace KhaozEngine.Gpu.Metal.Internal
         {
             if (cl is MetalCommandList list && ReferenceEquals(list.Owner, device)) return list;
 
-            throw new ArgumentException(
+            throw new GpuResourceOwnershipArgumentException(cl is MetalCommandList ? GpuResourceOwnershipRefusal.DifferentDevice : GpuResourceOwnershipRefusal.ForeignBackend,
                 "That command list was not created by this native Metal device, so it holds no MTLCommandBuffer "
                 + "this device's queue can commit. Create command lists through the device you submit them to. A "
                 + "list from a DIFFERENT native Metal device is refused here too, by reference rather than by "
                 + "type: committing it would encode this device's shared event into a buffer belonging to another "
                 + "queue, outside the lock that orders that queue's commits, and submit order is the observable "
                 + "order only while every commit to a queue goes through one lock.",
-                nameof(cl));
+                nameof(cl))
+            {
+                ExpectedBackend = GpuBackendKind.MetalNative,
+                ActualType = cl?.GetType(),
+                Context = nameof(cl),
+                ResourceKind = "command list",
+            };
         }
 
         /// <summary>
@@ -524,13 +537,19 @@ namespace KhaozEngine.Gpu.Metal.Internal
         {
             if (fence is MetalGpuFence mine && ReferenceEquals(mine.Timeline, timeline)) return mine;
 
-            throw new ArgumentException(
+            throw new GpuResourceOwnershipArgumentException(fence is MetalGpuFence ? GpuResourceOwnershipRefusal.DifferentDevice : GpuResourceOwnershipRefusal.ForeignBackend,
                 "That fence was not created by this native Metal device, so it names no value on this device's "
                 + "timeline. Create fences through the device you submit against. A fence from a DIFFERENT native "
                 + "Metal device is refused here too, by reference rather than by type: arming it would point it at "
                 + "a value on the other device's counter, and it would then read signalled for work this device "
                 + "never ran.",
-                nameof(fence));
+                nameof(fence))
+            {
+                ExpectedBackend = GpuBackendKind.MetalNative,
+                ActualType = fence?.GetType(),
+                Context = nameof(fence),
+                ResourceKind = "fence",
+            };
         }
 
         /// <summary>
@@ -555,8 +574,9 @@ namespace KhaozEngine.Gpu.Metal.Internal
         /// AND IT IS TWO DRAINS RATHER THAN ONE, WHICH IS THE ROW 6 AND ROW 7 SEAM. The setup batch (M-M9) is
         /// flushed first, and a flushed batch is a committed command buffer that signals NO timeline value, so
         /// M-F5's counted drain cannot see it. The second drain is the queue's, taken only when the flush
-        /// actually committed something, and it covers the batch by the same enqueue-order argument the teardown
-        /// drain rests on. A frame loop that uploads nothing pays for exactly one drain, which is M-F5's.
+        /// committed something or a committed prefix remains uncovered by final-frame completion. It covers
+        /// unsignalled work by the same enqueue-order argument the teardown drain rests on. Once the final
+        /// frame completes, an upload-free frame loop needs no additional queue drain.
         /// </para>
         /// </summary>
         public void WaitForIdle()
@@ -564,23 +584,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
             if (_liveness.IsDead) return;
             if (!KhaozEngineMetal.IsPlatformSupported) return;
 
-            // THE SETUP BATCH FIRST (M-M9). A drain that ran before the flush would wait for everything except
-            // the uploads the caller has just made, which is exactly the case an explicit drain is asked for.
-            // The flush COMMITS and does not wait, and it says whether it committed anything, because that is
-            // what decides the second drain below.
-            bool committed = _setup.Flush();
-
-            // M-F5's DRAIN, counted, over everything a Submit ever took to the queue.
-            _timeline.WaitForIdle();
-
-            // AND THE QUEUE DRAIN FOR THE BATCH THE FLUSH JUST COMMITTED, which the timeline cannot cover. A
-            // setup batch encodes NO timeline signal (see DrainForRead in MetalGpuDevice.Resources.cs for the
-            // whole argument and why it is not given one), so it is invisible to a counted drain, and the flush
-            // above just put it BEHIND everything the timeline knows about. An empty command buffer committed
-            // after it and waited on is what covers it, by the same enqueue-order argument teardown already
-            // rests on. Skipped when the flush committed nothing, so the frame loop's own WaitForIdle is exactly
-            // M-F5's drain and nothing more.
-            if (committed) DrainCommittedSetupBatch();
+            _cpuAccess.WaitForIdle();
         }
 
         /// <summary>
@@ -685,11 +689,11 @@ namespace KhaozEngine.Gpu.Metal.Internal
             _device.Release();
         }
 
-        // The queue drain that covers a just-committed setup batch, split out only because Drain is macOS-gated
+        // The queue drain that covers setup batches and unsignalled prefixes, split out because Drain is macOS-gated
         // and WaitForIdle's own body is not. See WaitForIdle for why the timeline's drain cannot do this one.
         [SupportedOSPlatform("macos")]
         [MethodImpl(MethodImplOptions.NoInlining)]
-        void DrainCommittedSetupBatch() => Drain("waitUntilCompleted (setup batch drain)");
+        void DrainCommittedUnsignalledWork() => Drain("waitUntilCompleted (unsignalled work drain)");
 
         // The SYNCHRONOUS way a command-buffer reading reaches the latch. The other is the completion handler on
         // every submitted buffer, through MetalCompletionErrorRoute, and the two are kept apart because they read

@@ -1,7 +1,6 @@
 using System;
 using System.Collections.Generic;
 using System.Numerics;
-using System.Reflection;
 using BepuMesh = BepuPhysics.Collidables.Mesh;
 using BepuSim = BepuPhysics.Simulation;
 using KhaozEngine.Physics;
@@ -491,9 +490,7 @@ public class CapsuleFeatureMeshTests
             // Setup only. Inspect owned public Bepu buffers under the lease, never its correspondence implementation.
             Lease.AssertCurrent();
             Assert.Equal(Quaternion.Identity, _pose.Orientation);
-            FieldInfo? field = typeof(BepuPhysicsWorld).GetField("_sim", BindingFlags.Instance | BindingFlags.NonPublic);
-            Assert.NotNull(field);
-            BepuSim simulation = Assert.IsType<BepuSim>(field.GetValue(World));
+            BepuSim simulation = World.SimulationForTests;
             Assert.Equal(2, simulation.Statics.Count);
             int meshStatic = -1;
             for (int i = 0; i < simulation.Statics.Count; i++)

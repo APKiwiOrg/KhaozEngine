@@ -10,4 +10,7 @@ public enum RangeMoveStatus
     UnsupportedTransition,
     Suspended,
     Blocked,
+
+    /// <summary>An active, certified unpowered Drop requests movement input through supported landing.</summary>
+    Dropping,
 }

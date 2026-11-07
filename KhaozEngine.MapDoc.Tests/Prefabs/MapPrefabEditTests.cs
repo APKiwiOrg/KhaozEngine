@@ -48,10 +48,19 @@ public class MapPrefabEditTests
             new MapPlacePrefab("canopy", "roomless-canopy", new MapTransform(Vector3.Zero, 0, 1)));
         Assert.Null(result.After.Prefabs!.Instances.Single().ParentSpace);
         Assert.NotEmpty(MapPrefabResolver.Expand(result.After, assets).Placements);
-        long mark = f.Document.NumericIdHighWaterMark;
-        Assert.Contains("ParentSpace", Assert.Throws<MapDocumentException>(() => MapPrefabEdits.Prepare(f.Document, assets,
-            new MapPlacePrefab("room", "room-bearing", new MapTransform(Vector3.Zero, 0, 1)))).Message);
-        Assert.Equal(mark, f.Document.NumericIdHighWaterMark);
+        var authored = PrefabFixtures.Create();
+        authored.Document.Prefabs = new(1, 1, [], []);
+        authored.Document.NativeAssets = assets.Roots.ToList();
+        var request = new MapPlacePrefab("room", "room-bearing", new(Vector3.Zero, 0, 1))
+        { InitialOverrides = PrefabFixtures.MarkerNames(room, "room") };
+        string before = MapDocumentFile.SaveText(authored.Document);
+        var error = Assert.Throws<MapDocumentException>(() => MapPrefabEdits.Prepare(authored.Document, assets, request));
+        Assert.Equal(MapDocumentRefusal.AuthoredValueRequired, error.Reason);
+        Assert.Equal("room", error.InstanceId);
+        Assert.Equal("$.parentSpace", error.FieldPath);
+        Assert.Equal(before, MapDocumentFile.SaveText(authored.Document));
+        var accepted = MapPrefabEdits.Prepare(authored.Document, assets, request with { ParentSpace = new("exterior", new("exterior", 0, 0)) });
+        Assert.Contains(accepted.After.Prefabs!.Instances, i => i.Id == "room");
     }
 
     [Theory]

@@ -48,7 +48,7 @@ public sealed partial class Scene3D
             bool drawRigid = rigidSet && instances is not null;
             if (drawRigid)
                 using (ProfileCpu("cpu.shadow.point-culling")) BuildPointCasterSpans(packed.LightPosAbsolute, packed.Radius, packed.NearRadius,
-                    packed.ExclusionMin, packed.ExclusionMax);
+                    packed.ExclusionMin, packed.ExclusionMax, packed.Casters);
             for (int face = 0; face < PointShadowMath.FaceCount; face++)
             {
                 using var facePass = ProfilePointPass(cl, packed, PointProfilePass.Face, face);
@@ -70,10 +70,12 @@ public sealed partial class Scene3D
                             renderer.DrawCasterRun(cl, mesh.Vb, mesh.Ib, mesh.IndexCount, mesh.IndexFormat,
                                 instances!, span.Start, span.Count);
                             draws++;
+                            if (ReferenceEquals(packed.Atlas, _pointShadowTransientAtlas))
+                                _pointStaticTransientRigidDrawCallsThisFrame++;
                         }
                     }
                 // Casting foliage at rest rides the rigid set only, from its own proxy stream.
-                if (rigidSet)
+                if ((packed.Casters & PointShadowCasterSet.StaticRigid) != 0)
                     draws += DrawFoliagePointShadowFace(cl, renderer, packed.Atlas, packed.PackedIndex, face,
                         packed.Row, packed.LightPosAbsolute, packed.Radius, packed.NearRadius,
                         packed.ExclusionMin, packed.ExclusionMax, packed);

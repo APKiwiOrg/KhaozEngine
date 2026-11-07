@@ -33,7 +33,8 @@ public sealed class FixedTickHost
 
     /// <summary>
     /// Seconds of accumulated elapsed time still needed before the next call to <see cref="Advance"/> would
-    /// produce another tick, assuming no more time lands before then. Zero right after a tick just fired. A host
+    /// produce another tick, assuming no more time lands before then. The wait is a full tick when the accumulator
+    /// is empty right after a tick fires, and shorter when leftover time remains. A host
     /// loop reads this after calling <see cref="Advance"/> to decide how long it can idle before it must poll
     /// again. Feed it to <see cref="ComputeIdleWaitSeconds"/> to get an actual sleep duration.
     /// </summary>

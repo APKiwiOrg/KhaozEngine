@@ -50,7 +50,9 @@ Calls approved with the design:
 
 `TileClearanceSettings` is the immutable, self-validating model and `TileWorldDocument.Clearance` holds it.
 `meshRoot` is relative to the directory holding `world.json` and uses forward slashes only. A rooted path is
-refused with `ArgumentException` by the settings and as a `TileWorldException` at load, because world files are
+refused with `TileClearanceArgumentException` (an `ArgumentException` subtype) by the settings and as a
+`TileWorldException` at load, both carrying `TileWorldRefusal.ClearanceMeshRootRooted` and `MeshRoot`.
+The load wrapper adds `SourceName` and keeps the original exception in `InnerException`. World files are
 committed and shared across machines. The rule is decided by the characters alone, the same on every OS: a leading
 `/` or `\`, a drive prefix (an ASCII letter then `:`) and any backslash are refused. `Path.IsPathRooted` was not
 used because it reads drive letters and backslashes only on Windows, so `C:\kit` or `..\models` would save on
@@ -135,7 +137,9 @@ in a world with steep roofs.
   - `clearance.mesh`: a matched archetype has no `meshRef`, or its mesh cannot be read or built. Reported once
     per archetype, and its objects are never silently passed.
   - `clearance.overlap`: one per penetrating pair at its deepest point, naming the rule, both objects with their
-    archetypes, tiles and planes, and the depth in metres.
+    archetypes, tiles and planes, and the depth in metres. `TileWorldIssue.Overlap` carries the rule name,
+    subject and obstacle object ids and full sampled depth as an immutable `TileClearanceOverlap` value.
+    Other issue codes leave that member null.
 - Issues come back rule issues first, then mesh issues by archetype id, then overlaps by rule order, subject id
   and obstacle id.
 - `TileWorldClearance.ResolveMeshRoot` resolves `meshRoot` against the world directory for a tool.
@@ -156,7 +160,11 @@ check asks by, and each entry records the path it resolved to.
 ## ke-tileedit
 
 - `world_save` runs the clearance check after `ValidateOrThrow` whenever the world declares rules. Any issue
-  refuses the save, nothing is written, and the refusal lists every issue as `[code] message`, one per line.
+  refuses the save as `TileWorldRefusal.SessionClearanceFailed`, nothing is written and dirty state is retained.
+  The `TileWorldException` carries `WorldId`, total `IssueCount`, authored `MeshRoot`, normalized absolute
+  `ResolvedMeshRoot` and owned read-only snapshots of all `Issues` and penetrating `Overlaps`. MCP callers
+  inspect the original exception through `McpException.InnerException`. Text responses still list every issue
+  as `[code] message`, one per line.
 - `world_validate` appends the clearance issues to the validator's.
 - A resolved mesh root that is not a directory is one `clearance.mesh` issue, so a typo in the root never reads
   as a world with nothing to check. The save refusal for the root covers "not a directory" only, which is

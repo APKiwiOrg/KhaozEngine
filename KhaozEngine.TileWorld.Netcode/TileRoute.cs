@@ -62,17 +62,23 @@ public readonly struct TileRoute : IEquatable<TileRoute>
     /// walk ahead therefore starts at <c>state.Tile</c> and continues through <see cref="Tiles"/> from
     /// <see cref="Index"/>, which is a connected path. Starting it here instead leaves a hole exactly where the
     /// body is walking.</para></summary>
-    /// <exception cref="InvalidOperationException">The route is idle.</exception>
+    /// <exception cref="TileRouteStateException">The route is idle. Carries
+    /// <see cref="TileRouteRefusal.IdleHasNoNext"/>, the index and tile count.</exception>
     public TileCoord Next => IsIdle
-        ? throw new InvalidOperationException("An idle TileRoute has no next tile. Check IsIdle first.")
+        ? throw new TileRouteStateException(TileRouteRefusal.IdleHasNoNext,
+            "An idle TileRoute has no next tile. Check IsIdle first.")
+        { Index = Index, TileCount = Tiles.Count }
         : Tiles[Index];
 
     /// <summary>The last tile of the walk, whatever progress has been made down it. This is the DESTINATION, so it
     /// keeps answering after the walk is finished and is what an arrival check compares against.</summary>
-    /// <exception cref="InvalidOperationException">The route has no tiles at all.</exception>
+    /// <exception cref="TileRouteStateException">The route has no tiles at all. Carries
+    /// <see cref="TileRouteRefusal.EmptyHasNoEnd"/> and the tile count.</exception>
     public TileCoord End => Tiles.Count > 0
         ? Tiles[Tiles.Count - 1]
-        : throw new InvalidOperationException("An empty TileRoute has no end tile.");
+        : throw new TileRouteStateException(TileRouteRefusal.EmptyHasNoEnd,
+            "An empty TileRoute has no end tile.")
+        { TileCount = Tiles.Count };
 
     /// <summary>This route with the index moved on by one step, which is how a committed step is recorded. Idle
     /// stays idle, so a simulator that advances one tick too many is a no-op rather than a fault.</summary>
@@ -108,8 +114,8 @@ public readonly struct TileRoute : IEquatable<TileRoute>
     /// <summary>The REMAINING walk as one step direction per tile, starting from <paramref name="from"/> (the tile
     /// the owner currently stands on). Empty when idle. Only the remaining walk is emitted because the tiles already
     /// behind the index are history no receiver can act on.</summary>
-    /// <exception cref="ArgumentException">Two consecutive route tiles are not adjacent, which means the route did
-    /// not come from the pathfinder.</exception>
+    /// <exception cref="TileRouteArgumentException">Two consecutive route tiles are not adjacent, which means the route did
+    /// not come from the pathfinder. Carries <see cref="TileRouteRefusal.TilesNotAdjacent"/> and the two tiles.</exception>
     public TileDirection[] RemainingSteps(TileCoord from)
     {
         if (IsIdle) return Array.Empty<TileDirection>();
@@ -126,7 +132,8 @@ public readonly struct TileRoute : IEquatable<TileRoute>
 
     /// <summary>The single step direction from <paramref name="a"/> to an adjacent <paramref name="b"/>. Scans
     /// <see cref="TileDirections.All"/> in its fixed order, so the answer is the same on both heads.</summary>
-    /// <exception cref="ArgumentException">The two tiles are not adjacent, so no single step joins them.</exception>
+    /// <exception cref="TileRouteArgumentException">The two tiles are not adjacent, so no single step joins them.
+    /// Carries <see cref="TileRouteRefusal.TilesNotAdjacent"/> and the two supplied tiles. Adjacency is planar.</exception>
     public static TileDirection Direction(TileCoord a, TileCoord b)
     {
         int dx = b.X - a.X, dz = b.Z - a.Z;
@@ -135,7 +142,9 @@ public readonly struct TileRoute : IEquatable<TileRoute>
             (int ddx, int ddz) = TileDirections.Delta(d);
             if (ddx == dx && ddz == dz) return d;
         }
-        throw new ArgumentException($"{a} and {b} are not adjacent, so there is no single step between them.", nameof(b));
+        throw new TileRouteArgumentException(TileRouteRefusal.TilesNotAdjacent,
+            $"{a} and {b} are not adjacent, so there is no single step between them.", nameof(b))
+        { From = a, To = b };
     }
 
     /// <summary>Compares the remaining tiles, not the backing array. See the type doc for why.

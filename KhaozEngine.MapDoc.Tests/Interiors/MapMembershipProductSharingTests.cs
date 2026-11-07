@@ -1,5 +1,4 @@
 using System;
-using System.Reflection;
 using System.Runtime.InteropServices;
 using KhaozEngine.MapDoc;
 using KhaozEngine.MapDoc.Prefabs;
@@ -18,9 +17,7 @@ public sealed class MapMembershipProductSharingTests
     [Fact]
     public void FrozenBoundRows_HaveAThirtyTwoByteLayout()
     {
-        var type = typeof(MapRoofEvaluationBuffer).Assembly.GetType("KhaozEngine.MapDoc.Spaces.MapMembershipFrozenBoundStore+Row");
-        Assert.NotNull(type);
-        Assert.Equal(32, Marshal.SizeOf(type));
+        Assert.Equal(32, System.Runtime.CompilerServices.Unsafe.SizeOf<MapMembershipFrozenBoundStore.Row>());
     }
 
     [Theory]
@@ -39,13 +36,13 @@ public sealed class MapMembershipProductSharingTests
     [InlineData(12)]
     public void FootprintIdentity_RequiresEveryGeometryInputRatherThanEqualCounts(int changed)
     {
-        var type = typeof(MapRoofEvaluationBuffer).Assembly.GetType("KhaozEngine.MapDoc.Spaces.MapMembershipFootprintIdentity");
-        Assert.NotNull(type);
         object source = new();
         object?[] Values() => [source, "closure", "generation", "record", "record-version", "lattice-version",
             new MapPatchKey("floor", 0, 0), MapLatticeFrame.ImportedMetreCentimetre, "instance/floor", null, new[] { 0 }, 1, 1925];
-        object Create(object?[] values) => Activator.CreateInstance(type, BindingFlags.Instance | BindingFlags.NonPublic,
-            null, values, null)!;
+        object Create(object?[] values) => new MapMembershipFootprintIdentity(values[0]!, (string)values[1]!,
+            (string)values[2]!, (string)values[3]!, (string?)values[4], (string?)values[5], (MapPatchKey)values[6]!,
+            (MapLatticeFrame)values[7]!, (string)values[8]!, (MapEffectiveTransform?)values[9], (int[])values[10]!,
+            (int)values[11]!, (int)values[12]!);
         var a = Values(); var b = Values();
         Assert.Equal(Create(a), Create(b));
         b[changed] = changed switch
@@ -164,15 +161,11 @@ public sealed class MapMembershipProductSharingTests
             Assert.Equal(MapMembershipStatus.Resolved, first.Status);
             Assert.Equal(MapMembershipStatus.MissingGeometry, second.Status);
             Assert.Equal(1, second.Counts.FootprintCacheHits);
-            Assert.NotSame(View(first).Geometry.Bounds, View(second).Geometry.Bounds);
+            Assert.NotSame(first.BoundRowsIdentityForTests, second.BoundRowsIdentityForTests);
         }
         finally { first.PreparationOwnership!.Dispose(); second.PreparationOwnership!.Dispose(); }
         Assert.Equal(0, admission.RetainedBytes);
-        static MapMembershipPreparedView View(MapRoofEvaluationBuffer buffer)
-        {
-            var scratch = typeof(MapRoofEvaluationBuffer).GetField("_scratch", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(buffer)!;
-            return (MapMembershipPreparedView)typeof(MapSpaceMembershipScratch).GetField("_prepared", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(scratch)!;
-        }
+
     }
 
     [Fact]

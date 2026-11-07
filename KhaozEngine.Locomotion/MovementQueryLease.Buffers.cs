@@ -92,7 +92,7 @@ public sealed partial class MovementQueryLease
                 return NoCoverage(result.Availability, result.RequiredSpanCapacity, result.RequiredContactCapacity);
             if (result.SpansWritten > spanCapacity || result.ContactsWritten > contactCapacity)
                 return NoCoverage(MovementAvailability.Invalid);
-            if (result.CertifiedErrorMetres > CoverageSkinMetres) return NoCoverage(MovementAvailability.Unresolved);
+            if (result.CertifiedErrorMetres > CoverageSkinMetres) return NoCoverage(MovementAvailability.PrecisionExceeded);
             float next = 0f;
             Span<bool> owned = stackalloc bool[MaxDomainContacts];
             owned.Clear();

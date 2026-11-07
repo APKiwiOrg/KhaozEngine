@@ -3,7 +3,6 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Numerics;
-using System.Reflection;
 using KhaozEngine.MapDoc.Foliage;
 using KhaozEngine.MapDoc.Prefabs;
 using KhaozEngine.MapDoc.Scene;
@@ -124,10 +123,8 @@ public sealed class CapacityDemandDerivedSiteMatrixTests
             MapDemandOrigins.Of(budget, "MaxPreparedBytes", bytes, consumed, scale));
         var builder = new MapFoliageSupportBuilder(view, new Dictionary<string, MapPaintRegionSet>(), view.Surfaces,
             fixture.Document.Foliage!.Layers[0], default, limits, null);
-        var grid = typeof(MapFoliageSupportBuilder).GetMethod("Grid", BindingFlags.Instance | BindingFlags.NonPublic)!;
-        Action run = () => grid.Invoke(builder, new object[] { surface, min, max });
-        if (refused)
-            Assert.Equal(MapFoliageStatus.CapacityExceeded, Assert.IsType<MapFoliageRefusal>(Assert.Throws<TargetInvocationException>(run).InnerException).Status);
+        Action run = () => builder.GridForTests(surface, min, max);
+        if (refused) Assert.Equal(MapFoliageStatus.CapacityExceeded, Assert.Throws<MapFoliageRefusal>(run).Status);
         else run();
         var rows = probe.Events.Where(r => Read<string>(r, "Site") == "MapFoliageSupportBuilder.MaxFaces.1").ToArray();
         // Each origin reports faces in its own field's units: faces for MaxFaces, bytes for MaxPreparedBytes.
@@ -199,9 +196,8 @@ public sealed class CapacityDemandDerivedSiteMatrixTests
     [Fact]
     public void MetadataRowWindow_AcceptsAndRefusesItsRemainder()
     {
-        var row = typeof(MapSceneMetadataReader).GetNestedType("LimitedRow", BindingFlags.NonPublic)!;
         using var probe = new CapacityDemandProbe();
-        using var stream = (Stream)Activator.CreateInstance(row, BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic, null, new object[] { 5, new object() }, null)!;
+        using var stream = MapSceneMetadataReader.RowBufferForTests(5);
         stream.Write(new byte[3], 0, 3);
         Assert.Throws<MapSceneCapacityException>(() => stream.Write(new byte[3], 0, 3));
         var rows = At(probe, "MapSceneMetadataReader.MaxMetadataBytes.3", "MaxMetadataBytes");

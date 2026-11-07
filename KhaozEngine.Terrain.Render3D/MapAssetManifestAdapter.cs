@@ -46,11 +46,21 @@ public static class MapAssetManifestAdapter
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
-            throw new MapDocumentException($"Native resource '{resourceId}' is missing or unreadable at '{path}'.", ex);
+            throw new MapDocumentException(MapDocumentRefusal.AssetPayloadUnreadable, $"Native resource '{resourceId}' is missing or unreadable at '{path}'.", ex)
+            { ResourceId = resourceId, Path = path, ExpectedHash = reference.Sha256 };
         }
         string digest = Convert.ToHexString(SHA256.HashData(bytes)).ToLowerInvariant();
         if (!StringComparer.Ordinal.Equals(digest, reference.Sha256))
-            throw new MapDocumentException($"Native resource '{resourceId}' at '{path}' no longer matches its verified digest.");
+            throw new MapDocumentException(MapDocumentRefusal.DigestMismatch, $"Native resource '{resourceId}' at '{path}' no longer matches its verified digest.")
+            {
+                DigestKind = "resource bytes",
+                SubjectKind = "resource",
+                EntityId = resourceId,
+                ResourceId = resourceId,
+                Path = path,
+                ExpectedHash = reference.Sha256,
+                ActualHash = digest
+            };
         return path;
     }
 }

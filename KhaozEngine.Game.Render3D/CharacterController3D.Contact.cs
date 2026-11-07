@@ -70,13 +70,13 @@ public sealed partial class CharacterController3D
         var scope = binding.CreateOrdinaryScope(_contactFrame);
         if (binding.TryAcquire(scope, out var queries) != MovementAvailability.Known)
         {
-            _state = MovementStepResult.HoldState(_state);
+            _state = PlayerMovementPublication.Canonicalize(MovementStepResult.HoldState(_state));
             return;
         }
         using (queries)
         {
             var local = _state with { Position = _state.Position - origin };
-            var result = binding.Step(new(local, _contactFrame, null), command, dt, queries!,
+            var result = binding.StepPlayer(new(local, _contactFrame, null), command, dt, queries!,
                 binding.CaptureOrdinaryBoundary(_contactFrame));
             queries!.AssertCurrent();
             _state = result.State.State with { Position = result.State.State.Position + origin };

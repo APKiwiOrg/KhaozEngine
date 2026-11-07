@@ -53,8 +53,14 @@ internal sealed class MapSceneAdmission(MapSceneLimits limits, Action<string>? e
     internal PreparationWindow LimitPreparation(long bytes, string limitName = nameof(MapSceneLimits.MaxPreparedBytes), long reused = 0)
         => new(_bytes.OpenWindow(bytes, limitName, reused));
     internal MapSceneCapacity PreparedByteCapacity(decimal bytes) => _bytes.Refusal(bytes);
+    internal readonly struct PreparationWindowObservationForTests(MapPreparationLedger.Window window)
+    {
+        internal long Live => window.Live;
+        internal long Total => window.Total;
+    }
     internal sealed class PreparationWindow(MapPreparationLedger.Window window) : IDisposable
     {
+        internal PreparationWindowObservationForTests BindingForTests => new(window);
         internal void ChargeExternal(long bytes) => window.ChargeExternal(bytes);
         public void Dispose() => window.Dispose();
     }
@@ -109,12 +115,19 @@ internal sealed class MapSceneAdmission(MapSceneLimits limits, Action<string>? e
         public void Dispose() { if (_disposed) return; _disposed = true; t_current = _previous; }
     }
 
+    // Every scene-admission entry refuses an unsupported surface source through this one guard, so each refusal carries
+    // AcquisitionUnsupported and the source type. Inline copies of the check once refused without either.
+    internal static void RequireSupported(IMapSurfaceSource source)
+    {
+        if (!Supports(source)) throw MapSceneSourceException.Unsupported(source);
+    }
+
     internal static bool Supports(IMapSurfaceSource source) => source is MapDocumentSurfaceSource or MapStoredSurfaceSource or MapEffectiveSurfaceSource ||
         source is MapComposedSurfaceSource composed && composed.SupportsSceneAdmission || source is MapSceneSurfaceSource scoped && Supports(scoped.Inner);
 
     internal void BeforeScope(IMapSurfaceSource source)
     {
-        if (!Supports(source)) throw new MapSceneSourceException(MapSceneStatus.Invalid, "Surface source cannot participate in scene admission.");
+        RequireSupported(source);
         if (DemandDiagnostics.Check(this, "MapSceneAdmission.MaxPatchScopes.1", "MaxPatchScopes", PatchScopes, 1, limits.MaxPatchScopes, PatchScopes >= limits.MaxPatchScopes, CapacityDemandLifetime.Cumulative, allowanceSource: limits)) throw new MapSceneCapacityException(nameof(MapSceneLimits.MaxPatchScopes), (long)PatchScopes + 1, limits.MaxPatchScopes);
         PatchScopes++;
         AcquisitionDiagnostics?.Scope(source.SnapshotId);
@@ -252,6 +265,12 @@ internal sealed class MapSceneAdmission(MapSceneLimits limits, Action<string>? e
 
 internal sealed class MapSceneSourceException(MapSceneStatus status, string message, MapSceneCapacity? capacity = null) : Exception(message)
 {
+    // Reason and SourceType are set only by Unsupported, so an unsupported-source refusal cannot omit them.
+    internal static MapSceneSourceException Unsupported(IMapSurfaceSource source) =>
+        new(MapSceneStatus.Invalid, "Surface source cannot participate in scene admission.")
+        { Reason = MapDocumentRefusal.AcquisitionUnsupported, SourceType = source.GetType() };
+    internal MapDocumentRefusal? Reason { get; private init; }
+    internal Type? SourceType { get; private init; }
     internal MapSceneStatus Status { get; } = status;
     internal MapSceneCapacity? Capacity { get; } = capacity;
 }

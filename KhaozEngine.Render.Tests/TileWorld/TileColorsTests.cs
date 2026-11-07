@@ -26,19 +26,28 @@ public class TileColorsTests
     {
         Vector4 c = TileColors.Parse("#4D8A3A80");
         Assert.Equal(0.302f, c.X, Tolerance);
+        Assert.Equal(0.541f, c.Y, Tolerance);
+        Assert.Equal(0.227f, c.Z, Tolerance);
         Assert.Equal(128f / 255f, c.W, Tolerance);
     }
 
     [Theory]
-    [InlineData("4d8a3a")]
-    [InlineData("#4d8a3")]
-    [InlineData("#4d8a3ag0")]
-    [InlineData("#zzzzzz")]
-    [InlineData("")]
-    public void Parse_throws_naming_the_bad_string(string hex)
+    [InlineData("04d8a3a", "#4d8a3a", TileWorldRefusal.ColourShapeInvalid, null, null)]
+    [InlineData("#4d8a3", "#4d8a3a", TileWorldRefusal.ColourShapeInvalid, null, null)]
+    [InlineData("#4d8a3ag0", "#4d8a3af0", TileWorldRefusal.ColourDigitInvalid, 7, 'g')]
+    [InlineData("#zd8a3a", "#4d8a3a", TileWorldRefusal.ColourDigitInvalid, 1, 'z')]
+    [InlineData("#4z8a3a", "#4d8a3a", TileWorldRefusal.ColourDigitInvalid, 2, 'z')]
+    [InlineData("", "#4d8a3a", TileWorldRefusal.ColourShapeInvalid, null, null)]
+    public void Parse_rejects_malformed_hex(string hex, string control, TileWorldRefusal reason,
+                                           int? characterIndex, char? character)
     {
         var ex = Assert.Throws<TileWorldException>(() => TileColors.Parse(hex));
-        Assert.Contains(hex, ex.Message, StringComparison.Ordinal);
+        Assert.Equal(reason, ex.Reason);
+        Assert.Equal(hex, ex.ColourText);
+        Assert.Equal(characterIndex, ex.CharacterIndex);
+        Assert.Equal(character, ex.Character);
+
+        TileColors.Parse(control);
     }
 
     [Fact]
@@ -47,10 +56,15 @@ public class TileColorsTests
         // A catalog material whose colour was written as JSON null is bad content, not a caller bug, so it fails
         // with the tile-world error every other malformed colour raises rather than as an argument error.
         var ex = Assert.Throws<TileWorldException>(() => TileColors.Parse((string?)null));
-        Assert.Contains("null", ex.Message, StringComparison.Ordinal);
+        Assert.Equal(TileWorldRefusal.ColourNull, ex.Reason);
+        Assert.Null(ex.ColourText);
 
         var blank = new GroundMaterial { Id = 9, Name = "blank", Color = null! };
-        Assert.Throws<TileWorldException>(() => TileColors.Parse(blank));
+        var materialEx = Assert.Throws<TileWorldException>(() => TileColors.Parse(blank));
+        Assert.Equal(TileWorldRefusal.ColourNull, materialEx.Reason);
+        Assert.Null(materialEx.ColourText);
+
+        Assert.Equal(Vector4.One, TileColors.Parse(new GroundMaterial { Id = 9, Name = "blank", Color = "#ffffff" }));
     }
 
     [Fact]
@@ -75,20 +89,20 @@ public class TileColorsTests
     [Fact]
     public void Jitter_honours_a_custom_amplitude()
     {
-        Assert.InRange(TileColors.Jitter(7, 9, 1, 0.5f), 0.5f, 1.5f);
+        float baseline = TileColors.Jitter(7, 9, 1);
+        float custom = TileColors.Jitter(7, 9, 1, 0.5f);
+        Assert.InRange(custom, 0.5f, 1.5f);
+        Assert.Equal(1f + (baseline - 1f) * (0.5f / TileColors.DefaultJitterAmplitude), custom, 1e-5f);
         Assert.Equal(1f, TileColors.Jitter(7, 9, 1, 0f));
     }
 
-    [Fact]
-    public void Jitter_differs_between_swapped_coordinates()
+    [Theory]
+    [InlineData(1, 2, 0, 2, 1, 0)] // swapped world coordinates
+    [InlineData(3, 4, 0, 3, 4, 1)] // different planes
+    public void Jitter_distinguishes_world_coordinates_and_planes(
+        int firstX, int firstZ, int firstPlane, int secondX, int secondZ, int secondPlane)
     {
-        Assert.NotEqual(TileColors.Jitter(1, 2, 0), TileColors.Jitter(2, 1, 0));
-    }
-
-    [Fact]
-    public void Jitter_differs_between_planes()
-    {
-        Assert.NotEqual(TileColors.Jitter(3, 4, 0), TileColors.Jitter(3, 4, 1));
+        Assert.NotEqual(TileColors.Jitter(firstX, firstZ, firstPlane), TileColors.Jitter(secondX, secondZ, secondPlane));
     }
 
     [Fact]

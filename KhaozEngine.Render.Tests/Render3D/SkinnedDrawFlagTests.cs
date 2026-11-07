@@ -65,17 +65,27 @@ public sealed class SkinnedDrawFlagTests
             Motion = MotionKey.From(17),
         };
 
-        Assert.Throws<ArgumentException>(() => scene.DrawSkinned(shadowOnlyWithoutCasting, tube.RestPose));
+        var first = Assert.Throws<DrawAdmissionArgumentException>(() => scene.DrawSkinned(shadowOnlyWithoutCasting, tube.RestPose));
+        Assert.Equal(DrawAdmissionRefusal.ShadowOnlyWithoutCasting, first.Reason);
+        Assert.Equal("draw", first.ParamName);
+        Assert.True(first.ShadowOnly);
+        Assert.False(first.CastsShadows);
         Assert.Equal(beforePalette, scene.BonePaletteSlotForTests(0));
         Assert.Single(scene.QueuedSkinnedInstancesForTests);
         Assert.Equal(0, scene.MotionKeyCounts.KeyedSkinned);
         Assert.Throws<ArgumentException>(() => scene.BonePaletteSlotForTests(1));
         scene.Begin();
-        Assert.Throws<ArgumentException>(() => scene.DrawSkinned(shadowOnlyWithoutCasting, tube.RestPose));
+        var empty = Assert.Throws<DrawAdmissionArgumentException>(() => scene.DrawSkinned(shadowOnlyWithoutCasting, tube.RestPose));
+        Assert.Equal(DrawAdmissionRefusal.ShadowOnlyWithoutCasting, empty.Reason);
+        Assert.Equal("draw", empty.ParamName);
         Assert.Empty(scene.QueuedSkinnedInstancesForTests);
         Assert.Throws<ArgumentException>(() => scene.BonePaletteSlotForTests(0));
         var queue = new SkinnedSceneInstances();
-        Assert.Throws<ArgumentException>(() => queue.Add(shadowOnlyWithoutCasting));
+        var queued = Assert.Throws<DrawAdmissionArgumentException>(() => queue.Add(shadowOnlyWithoutCasting));
+        Assert.Equal(DrawAdmissionRefusal.ShadowOnlyWithoutCasting, queued.Reason);
+        Assert.Equal("shadowOnly", queued.ParamName);
+        Assert.True(queued.ShadowOnly);
+        Assert.False(queued.CastsShadows);
         Assert.Empty(queue.Items);
     }
 

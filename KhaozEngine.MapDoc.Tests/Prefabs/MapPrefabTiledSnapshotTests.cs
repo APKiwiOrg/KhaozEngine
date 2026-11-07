@@ -36,16 +36,13 @@ public sealed class MapPrefabTiledSnapshotTests
             MapDocumentFile.SaveTiled(large.Document, root);
             Assert.Empty(MapDocumentFile.VerifyTiled(root));
             var loaded = MapDocumentFile.LoadTiled(root);
-            Assert.Equal("surface embedding exceeds its limit, use tiled storage",
-                Assert.Throws<MapDocumentException>(() => MapDocumentFile.SaveText(loaded)).Message);
+            EmbeddedRefusal(() => MapDocumentFile.SaveText(loaded));
             using var stream = new MemoryStream();
-            Assert.Equal("surface embedding exceeds its limit, use tiled storage",
-                Assert.Throws<MapDocumentException>(() => MapDocumentFile.SaveTo(loaded, stream)).Message);
+            EmbeddedRefusal(() => MapDocumentFile.SaveTo(loaded, stream));
             Assert.Equal(0, stream.Length);
             string monolithicPath = Path.Combine(root, "oversized.json");
             File.WriteAllText(monolithicPath, "existing target");
-            Assert.Equal("surface embedding exceeds its limit, use tiled storage",
-                Assert.Throws<MapDocumentException>(() => MapDocumentFile.Save(loaded, monolithicPath)).Message);
+            EmbeddedRefusal(() => MapDocumentFile.Save(loaded, monolithicPath));
             Assert.Equal("existing target", File.ReadAllText(monolithicPath));
             var actual = MapPrefabResolver.Expand(loaded, large.Assets);
             Assert.Equal(expected.Placements.Select(p => (p.PlacementId, p.AssetId, p.Transform)),
@@ -60,4 +57,13 @@ public sealed class MapPrefabTiledSnapshotTests
         }
         finally { if (Directory.Exists(root)) Directory.Delete(root, true); }
     }
+    static void EmbeddedRefusal(Action save)
+    {
+        var error = Assert.Throws<MapDocumentException>(save);
+        Assert.Equal(MapDocumentRefusal.WorkCapacityExceeded, error.Reason);
+        Assert.Equal("MaxEmbeddedPatches", error.Budget);
+        Assert.Equal(257, error.ActualCount);
+        Assert.Equal(256, error.Limit);
+    }
+
 }

@@ -2,7 +2,6 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Numerics;
-using System.Reflection;
 using KhaozEngine.Physics;
 using KhaozEngine.Physics.Bepu;
 using KhaozEngine.Tests.Locomotion.Contacts;
@@ -100,12 +99,11 @@ public partial class SupportFootprintTests
         GeometrySign cold = polygon.SourcePredicates.Interior(polygon, 1, axis, radius, -1, spatial: true);
         long coldBytes = GC.GetAllocatedBytesForCurrentThread() - coldBefore;
         Assert.Equal(GeometrySign.Positive, cold);
-        var constants = (SupportSourcePolynomial[])typeof(SupportFootprintSourcePredicates)
-            .GetField("_map", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(polygon.SourcePredicates)!;
-        Assert.Equal(9, constants.Length);
-        Assert.All(constants, coefficient => Assert.Equal(0, coefficient.Degree));
+        var constants = polygon.SourcePredicates.MapDegreesForTests;
+        Assert.Equal(9, constants.Count);
+        Assert.All(constants, degree => Assert.Equal(0, degree));
         long payload = SourceScratchPayload(polygon.SourcePredicates);
-        _output.WriteLine($"Represented source constants={constants.Length} coldBytes={coldBytes} scratchPayloadBytes={payload}");
+        _output.WriteLine($"Represented source constants={constants.Count} coldBytes={coldBytes} scratchPayloadBytes={payload}");
         Assert.True(payload < 4 * 1024 * 1024, $"Retained source scratch is {payload} bytes");
         SupportQueryDiagnostics.Reset();
         var recorder = new SupportCostAttributionTests.PhaseRecorder(false);
@@ -129,12 +127,11 @@ public partial class SupportFootprintTests
         Assert.Equal(0, warmBytes);
         AssertSourceFallbacks();
         Assert.Equal(payload, SourceScratchPayload(polygon.SourcePredicates));
-        _output.WriteLine($"Represented source constants={constants.Length} warmBytes={warmBytes}");
+        _output.WriteLine($"Represented source constants={constants.Count} warmBytes={warmBytes}");
     }
 
-    static long SourceScratchPayload(object scratch) => (long)typeof(KhaozEngine.Tests.Locomotion.Contacts.SupportCostScratch)
-        .GetMethod("Visit", BindingFlags.Static | BindingFlags.NonPublic)!
-        .Invoke(null, [scratch, new HashSet<object>(ReferenceEqualityComparer.Instance)])!;
+    static long SourceScratchPayload(object scratch) =>
+        SupportCostScratch.Visit(scratch, new HashSet<object>(ReferenceEqualityComparer.Instance));
 
     static void AssertSourceFallbacks() => Assert.True(SupportQueryDiagnostics.Snapshot().ExactFallbacks > 0);
 

@@ -7,6 +7,8 @@ using System.Text.Json;
 using KhaozEngine.MapDoc.Foliage;
 using KhaozEngine.MapDoc.Prefabs;
 
+using Refusal = KhaozEngine.Tests.MapDocOracle.PrivateOracleDataRefusal;
+
 namespace KhaozEngine.Tests.MapDocOracle;
 
 /// <summary>Counts the generator states independently of native results. Accepted and rejected come from the actual
@@ -40,7 +42,7 @@ internal sealed record FoliageManifest(string GeneratorPath, IReadOnlyList<strin
     IReadOnlyList<FoliageOwnerRow> Owners);
 
 /// <summary>Strict readers for the closed private foliage shapes. Every object is closed, every member is required and
-/// duplicate or case-variant members refuse before any value is read. Refusal reasons are fixed public text.</summary>
+/// duplicate or case-variant members refuse before any value is read. Refusals carry typed rules without private identifiers.</summary>
 internal static class ShippedFoliageManifest
 {
     internal const string GeneratorPath = "generator/build-scaffold.py";
@@ -57,14 +59,15 @@ internal static class ShippedFoliageManifest
         long Count(string name)
         {
             JsonElement value = expectations.GetProperty(name);
-            Require(value.ValueKind == JsonValueKind.Number && value.TryGetInt64(out long count) && count >= 0, "invalid foliage expectation");
+            Require(value.ValueKind == JsonValueKind.Number && value.TryGetInt64(out long count) && count >= 0,
+            value.ValueKind != JsonValueKind.Number || !value.TryGetInt64(out _) ? Refusal.SchemaShapeInvalid : Refusal.ValueOutsideDomain, "invalid foliage expectation");
             return value.GetInt64();
         }
         var counts = new FoliageExpectations(Count("layers"), Count("rasterBytes"), Count("storedChunks"), Count("sourceOwners"),
             Count("models"), Count("ownedCandidates"), Count("accepted"), Count("rejected"));
         string native = Path(comparison, "nativeDocumentPath"), tiled = Path(comparison, "nativeTiledManifestPath");
         string manifest = Path(comparison, "foliageManifestPath");
-        Require(comparison.GetProperty("buildingManifestPath").ValueKind == JsonValueKind.Null,
+        Require(comparison.GetProperty("buildingManifestPath").ValueKind == JsonValueKind.Null, Refusal.KindUnsupported,
             "private foliage bindings are Surface only and take no building manifest");
         return new(native, tiled, manifest, counts);
     }
@@ -77,17 +80,17 @@ internal static class ShippedFoliageManifest
         JsonElement generator = manifest.GetProperty("generator");
         Shape(generator, "path", "helpers");
         string path = Path(generator, "path");
-        Require(path == GeneratorPath, "missing retained generator");
+        Require(path == GeneratorPath, Refusal.DependencyUnattested, "missing retained generator");
         string[] helpers = Strings(generator, "helpers").Select(SafePath).ToArray();
-        Require(!helpers.Contains(path, StringComparer.Ordinal), "duplicate generator input");
+        Require(!helpers.Contains(path, StringComparer.Ordinal), Refusal.IdentityNotUniqueOrCanonical, "duplicate generator input");
         FoliageLayerRow[] layers = Array(manifest, "layers").Select(Layer).ToArray();
-        Require(layers.Length != 0, "missing foliage layer correspondence");
-        Require(Unique(layers.Select(l => l.SourceLayerId)) && Unique(layers.Select(l => l.NativeLayerId)), "duplicate foliage layer correspondence");
+        Require(layers.Length != 0, Refusal.ValueRequired, "missing foliage layer correspondence");
+        Require(Unique(layers.Select(l => l.SourceLayerId)) && Unique(layers.Select(l => l.NativeLayerId)), Refusal.IdentityNotUniqueOrCanonical, "duplicate foliage layer correspondence");
         FoliageOwnerRow[] owners = Array(manifest, "owners").Select(Owner).ToArray();
-        Require(owners.Select(o => o.SourceObjectId).Distinct().Count() == owners.Length && owners.Select(o => o.NativeOwner).Distinct().Count() == owners.Length,
+        Require(owners.Select(o => o.SourceObjectId).Distinct().Count() == owners.Length && owners.Select(o => o.NativeOwner).Distinct().Count() == owners.Length, Refusal.IdentityNotUniqueOrCanonical,
             "duplicate foliage owner correspondence");
         var ids = owners.Select(o => o.SourceObjectId).ToHashSet();
-        Require(layers.All(l => l.OwnerIds.All(ids.Contains)), "dangling foliage layer owner");
+        Require(layers.All(l => l.OwnerIds.All(ids.Contains)), Refusal.ReferenceMissing, "dangling foliage layer owner");
         return new(path, System.Array.AsReadOnly(helpers), System.Array.AsReadOnly(layers), System.Array.AsReadOnly(owners));
     }
 
@@ -95,29 +98,32 @@ internal static class ShippedFoliageManifest
     {
         Shape(row, "sourceLayerId", "nativeLayerId", "support", "compatibilitySupports", "models", "materials", "ruleIds", "maskIds",
             "ownerIds", "candidateConvention");
-        Require(Text(row, "candidateConvention") == CandidateConvention, "unknown foliage candidate convention");
+        Require(Text(row, "candidateConvention") == CandidateConvention, Refusal.KindUnsupported, "unknown foliage candidate convention");
         FoliageSupportRow[] supports = Array(row, "compatibilitySupports").Select(s =>
         {
             Shape(s, "sourcePlane", "nativeSurfaceId");
             return new FoliageSupportRow(Int(s, "sourcePlane", 0, 255), Text(s, "nativeSurfaceId"));
         }).ToArray();
-        Require(supports.Length != 0 && Unique(supports.Select(s => s.NativeSurfaceId)), "duplicate or missing compatibility support row");
+        Require(supports.Length != 0 && Unique(supports.Select(s => s.NativeSurfaceId)),
+            supports.Length == 0 ? Refusal.ValueRequired : Refusal.IdentityNotUniqueOrCanonical, "duplicate or missing compatibility support row");
         FoliageModelRow[] models = Array(row, "models").Select(m =>
         {
             Shape(m, "sourceArchetypeId", "nativeAssetId");
             return new FoliageModelRow(Text(m, "sourceArchetypeId"), Text(m, "nativeAssetId"));
         }).ToArray();
         Require(models.Length != 0 && Unique(models.Select(m => m.SourceArchetypeId)) && Unique(models.Select(m => m.NativeAssetId)),
+            models.Length == 0 ? Refusal.ValueRequired : Refusal.IdentityNotUniqueOrCanonical,
             "duplicate or missing foliage model row");
         FoliageMaterialRow[] materials = Array(row, "materials").Select(m =>
         {
             Shape(m, "sourceMaterialId", "nativeResourceId", "kind");
             string kind = Text(m, "kind");
-            Require(kind is "Ordinary" or "Water", "unknown foliage material kind");
+            Require(kind is "Ordinary" or "Water", Refusal.KindUnsupported, "unknown foliage material kind");
             return new FoliageMaterialRow((ushort)Int(m, "sourceMaterialId", 1, ushort.MaxValue), Text(m, "nativeResourceId"),
                 kind == "Water" ? MapFoliageMaterialKind.Water : MapFoliageMaterialKind.Ordinary);
         }).ToArray();
         Require(materials.Length != 0 && materials.Zip(materials.Skip(1)).All(p => p.First.SourceMaterialId < p.Second.SourceMaterialId),
+            materials.Length == 0 ? Refusal.ValueRequired : Refusal.IdentityNotUniqueOrCanonical,
             "foliage material rows must be unique and ascending");
         long[] owners = Strings(row, "ownerIds").Select(ObjectId).ToArray();
         return new(Text(row, "sourceLayerId"), Text(row, "nativeLayerId"), SurfaceBinding(row.GetProperty("support")),
@@ -129,19 +135,19 @@ internal static class ShippedFoliageManifest
     {
         Shape(row, "sourceObjectId", "sourcePlane", "sourceArchetypeId", "nativeOwner", "seatedSupport", "targets", "ruleIds", "maskIds");
         JsonElement id = row.GetProperty("sourceObjectId");
-        Require(id.ValueKind == JsonValueKind.String, "invalid foliage owner identity");
+        Require(id.ValueKind == JsonValueKind.String, Refusal.SchemaShapeInvalid, "invalid foliage owner identity");
         JsonElement native = row.GetProperty("nativeOwner");
         Shape(native, "scope", "kind", "id");
-        Require(Text(native, "scope") == "World", "foliage owners must be world references");
+        Require(Text(native, "scope") == "World", Refusal.KindUnsupported, "foliage owners must be world references");
         string kindText = Text(native, "kind");
-        Require(kindText is "Placement" or "Surface" or "Record" or "Marker", "unknown foliage owner kind");
+        Require(kindText is "Placement" or "Surface" or "Record" or "Marker", Refusal.KindUnsupported, "unknown foliage owner kind");
         MapPrefabChildKind kind = Enum.Parse<MapPrefabChildKind>(kindText);
         FoliageTargetRow[] targets = Array(row, "targets").Select(t =>
         {
             Shape(t, "nativeLayerId", "support");
             return new FoliageTargetRow(Text(t, "nativeLayerId"), SurfaceBinding(t.GetProperty("support")));
         }).ToArray();
-        Require(Unique(targets.Select(t => t.NativeLayerId)), "duplicate foliage clearing target");
+        Require(Unique(targets.Select(t => t.NativeLayerId)), Refusal.IdentityNotUniqueOrCanonical, "duplicate foliage clearing target");
         return new(ObjectId(id.GetString()!), Int(row, "sourcePlane", 0, 255), Text(row, "sourceArchetypeId"),
             new(MapPrefabReferenceScope.World, kind, Text(native, "id")), SurfaceBinding(row.GetProperty("seatedSupport")),
             System.Array.AsReadOnly(targets), System.Array.AsReadOnly(Strings(row, "ruleIds")), System.Array.AsReadOnly(Strings(row, "maskIds")));
@@ -151,7 +157,10 @@ internal static class ShippedFoliageManifest
     static string SurfaceBinding(JsonElement value)
     {
         Require(value.ValueKind == JsonValueKind.Object && value.TryGetProperty("kind", out JsonElement kind) &&
-            kind.ValueKind == JsonValueKind.String && kind.GetString() == "Surface", "private foliage imports must bind a Surface");
+            kind.ValueKind == JsonValueKind.String && kind.GetString() == "Surface",
+            value.ValueKind == JsonValueKind.Null ? Refusal.ValueRequired : value.ValueKind != JsonValueKind.Object ? Refusal.SchemaShapeInvalid :
+            !value.TryGetProperty("kind", out var actualKind) || actualKind.ValueKind == JsonValueKind.Null ? Refusal.ValueRequired :
+            actualKind.ValueKind != JsonValueKind.String ? Refusal.SchemaShapeInvalid : Refusal.KindUnsupported, "private foliage imports must bind a Surface");
         Shape(value, "kind", "surfaceId");
         return Text(value, "surfaceId");
     }
@@ -159,16 +168,17 @@ internal static class ShippedFoliageManifest
     static long ObjectId(string? text)
     {
         Require(text is { Length: > 0 and <= 19 } && text[0] is >= '1' and <= '9' && text.All(c => c is >= '0' and <= '9') &&
-            long.TryParse(text, NumberStyles.None, CultureInfo.InvariantCulture, out long id) && id > 0, "invalid foliage owner identity");
+            long.TryParse(text, NumberStyles.None, CultureInfo.InvariantCulture, out long id) && id > 0, Refusal.IdentityNotUniqueOrCanonical, "invalid foliage owner identity");
         return long.Parse(text!, NumberStyles.None, CultureInfo.InvariantCulture);
     }
 
-    internal static void Require(bool ok, string reason) { if (!ok) throw new InvalidDataException(reason); }
+    internal static void Require(bool ok, Refusal reason, string message) { if (!ok) throw new PrivateOracleDataException(reason, message); }
 
     static void Schema(JsonElement value, string reason)
     {
         JsonElement version = value.GetProperty("schemaVersion");
-        Require(version.ValueKind == JsonValueKind.Number && version.TryGetInt32(out int number) && number == 1, reason);
+        Require(version.ValueKind == JsonValueKind.Number && version.TryGetInt32(out int number) && number == 1,
+            version.ValueKind != JsonValueKind.Number || !version.TryGetInt32(out _) ? Refusal.SchemaShapeInvalid : Refusal.VersionUnsupported, reason);
     }
 
     static bool Unique(IEnumerable<string> values)
@@ -180,14 +190,15 @@ internal static class ShippedFoliageManifest
     static JsonElement[] Array(JsonElement value, string name)
     {
         JsonElement array = value.GetProperty(name);
-        Require(array.ValueKind == JsonValueKind.Array, "incomplete comparison object");
+        Require(array.ValueKind == JsonValueKind.Array, Refusal.SchemaShapeInvalid, "incomplete comparison object");
         return array.EnumerateArray().ToArray();
     }
 
     internal static string Text(JsonElement value, string name)
     {
         JsonElement text = value.GetProperty(name);
-        Require(text.ValueKind == JsonValueKind.String && !string.IsNullOrWhiteSpace(text.GetString()), "missing comparison text");
+        Require(text.ValueKind == JsonValueKind.String && !string.IsNullOrWhiteSpace(text.GetString()),
+            text.ValueKind is JsonValueKind.Null or JsonValueKind.String ? Refusal.ValueRequired : Refusal.SchemaShapeInvalid, "missing comparison text");
         return text.GetString()!;
     }
 
@@ -195,6 +206,7 @@ internal static class ShippedFoliageManifest
     {
         JsonElement number = value.GetProperty(name);
         Require(number.ValueKind == JsonValueKind.Number && number.TryGetInt32(out int result) && result >= min && result <= max,
+            number.ValueKind != JsonValueKind.Number || !number.TryGetInt32(out _) ? Refusal.SchemaShapeInvalid : Refusal.ValueOutsideDomain,
             "invalid comparison number");
         return number.GetInt32();
     }
@@ -203,10 +215,11 @@ internal static class ShippedFoliageManifest
     {
         string[] strings = Array(value, name).Select(v =>
         {
-            Require(v.ValueKind == JsonValueKind.String && !string.IsNullOrWhiteSpace(v.GetString()), "invalid comparison references");
+            Require(v.ValueKind == JsonValueKind.String && !string.IsNullOrWhiteSpace(v.GetString()),
+                v.ValueKind is JsonValueKind.Null or JsonValueKind.String ? Refusal.ValueRequired : Refusal.SchemaShapeInvalid, "invalid comparison references");
             return v.GetString()!;
         }).ToArray();
-        Require(Unique(strings), "invalid comparison references");
+        Require(Unique(strings), Refusal.IdentityNotUniqueOrCanonical, "invalid comparison references");
         return strings;
     }
 
@@ -216,12 +229,13 @@ internal static class ShippedFoliageManifest
     internal static string SafePath(string path)
     {
         Require(!string.IsNullOrWhiteSpace(path) && !System.IO.Path.IsPathRooted(path) && !path.Contains('\\') && !path.Contains(':') &&
-            !path.Any(char.IsControl) && path.Split('/').All(p => p.Length != 0 && p is not "." and not ".."), "unsafe attested foliage path");
+            !path.Any(char.IsControl) && path.Split('/').All(p => p.Length != 0 && p is not "." and not ".."),
+            string.IsNullOrWhiteSpace(path) ? Refusal.ValueRequired : Refusal.PathUnsafe, "unsafe attested foliage path");
         return path;
     }
 
     internal static void Shape(JsonElement value, params string[] fields) => Require(value.ValueKind == JsonValueKind.Object &&
-        value.EnumerateObject().Select(p => p.Name).Order(StringComparer.Ordinal).SequenceEqual(fields.Order(StringComparer.Ordinal)),
+        value.EnumerateObject().Select(p => p.Name).Order(StringComparer.Ordinal).SequenceEqual(fields.Order(StringComparer.Ordinal)), Refusal.SchemaShapeInvalid,
         "incomplete comparison object");
 
     internal static void UniqueMembers(JsonElement value)
@@ -231,7 +245,7 @@ internal static class ShippedFoliageManifest
             var names = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             foreach (JsonProperty property in value.EnumerateObject())
             {
-                Require(names.Add(property.Name), "duplicate or case-variant JSON member");
+                Require(names.Add(property.Name), Refusal.IdentityNotUniqueOrCanonical, "duplicate or case-variant JSON member");
                 UniqueMembers(property.Value);
             }
         }

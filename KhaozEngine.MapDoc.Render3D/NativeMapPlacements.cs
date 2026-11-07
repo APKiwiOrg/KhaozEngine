@@ -42,7 +42,7 @@ public static class NativeMapPlacements
         var admission = MapSceneAdmission.Current ?? new MapSceneAdmission(scene.Source.Data.Limits);
         using var activation = admission.Enter();
         using var preparation = admission.BeginPreparation();
-        if (scene.Witness.ClosureHash != assets.Closure.Hash) throw new MapDocumentException("Placement assets belong to another closure.");
+        if (scene.Witness.ClosureHash != assets.Closure.Hash) throw new MapDocumentException(MapDocumentRefusal.DocumentAssetRootsMismatch, "Placement assets belong to another closure.") { ExpectedHash = scene.Witness.ClosureHash, ActualHash = assets.Closure.Hash, Operation = "Placements.Prepare" };
         cells ??= MapPlacementCellInventory.Capture(scene, routing);
         using var cellDependency = cells.PreparationOwnership is { } cellOwner ? preparation.WorkspaceOwner.Borrow(cellOwner) : null;
         foreach (var placement in scene.Placements)
@@ -262,9 +262,9 @@ public static class NativeMapPlacements
         routing.Validate(scene);
         var roofs = scene.CapturedBuildingIntent.Roofs.Select(r => r.Id).ToHashSet(StringComparer.Ordinal);
         var placements = scene.Placements.ToDictionary(p => p.PlacementId, StringComparer.Ordinal);
-        if (request.Instances.Count == 0) throw new MapDocumentException("Native cluster requires its effective members.");
+        if (request.Instances.Count == 0) throw new MapDocumentException(MapDocumentRefusal.ValueOutsideRange, "Native cluster requires its effective members.") { ActualCount = request.Instances.Count, MinimumInteger = 1, FieldPath = "Instances", LayerId = request.Key.LayerId };
         if (request.BorrowLayer.HlodWeldCell > 0 && request.WeldPlacements is null)
-            throw new MapDocumentException("Native welded cluster requires every original binary32 placement.");
+            throw new MapDocumentException(MapDocumentRefusal.SchemaValueRequired, "Native welded cluster requires every original binary32 placement.") { FieldPath = "WeldPlacements", LayerId = request.Key.LayerId };
         for (int member = 0; member < request.Instances.Count; member++)
         {
             var instance = request.Instances[member];
@@ -273,16 +273,16 @@ public static class NativeMapPlacements
                 instance.LocalTransform != MapRenderTransform.ToLocal(Pose(scene, placement), new(instance.Anchor.X, instance.Anchor.Y, instance.Anchor.Z)) ||
                 (request.WeldPlacements is { } weldPlacements && !weldPlacements[member].Equals(MapRenderTransform.ToWeldPlacement(placement.AssetId, Pose(scene, placement)))) ||
                 MapPlacementCells.Key(request.Key.LayerId, Pose(scene, placement), scene.Source.Data.TileSize, roofs.Contains(instance.Id)) != request.Key)
-                throw new MapDocumentException("Native cluster request disagrees with the effective scene routing.");
+                throw new MapDocumentException(MapDocumentRefusal.AcquisitionContractMismatch, "Native cluster request disagrees with the effective scene routing.") { PlacementId = instance.Id, LayerId = request.Key.LayerId, Operation = "Cluster.Validate" };
             var anchor = Anchor(Pose(scene, placement));
             if (instance.Anchor != new RenderAnchor(anchor.X, anchor.Y, anchor.Z))
-                throw new MapDocumentException("Native cluster member disagrees with its effective anchor.");
+                throw new MapDocumentException(MapDocumentRefusal.AuthoredValueMismatch, "Native cluster member disagrees with its effective anchor.") { PlacementId = instance.Id, FieldPath = "Anchor", LayerId = request.Key.LayerId };
         }
         var domain = MapPlacementCells.Domain(request.Key, scene.Source.Data.TileSize, request.Instances.Min(i => i.Anchor.Y));
         if (request.Anchor != domain.Anchor || !request.Area.Equals(domain.Area) || request.BorrowLayer.Identity != request.Key.LayerId)
-            throw new MapDocumentException("Native cluster request disagrees with its region cell.");
+            throw new MapDocumentException(MapDocumentRefusal.AuthoredValueMismatch, "Native cluster request disagrees with its region cell.") { FieldPath = "Cell", LayerId = request.Key.LayerId };
         if (request.BorrowLayer.NativePlacements is not { } native || !native.SequenceEqual(request.Instances))
-            throw new MapDocumentException("Native cluster request disagrees with its frozen layer inventory.");
+            throw new MapDocumentException(MapDocumentRefusal.AcquisitionContractMismatch, "Native cluster request disagrees with its frozen layer inventory.") { FieldPath = "Instances", LayerId = request.Key.LayerId };
         MapPlacementCellInventory.RequireMembers(cell, request);
         CertifyCluster(request);
     }

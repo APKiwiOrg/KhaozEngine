@@ -97,7 +97,10 @@ public partial class ExplicitCharacterMovementTests
         // Required shell span is 2 * 0.4 - 0.4 = 0.4, below its diameter 2 * 0.25 = 0.5.
         var failure = Assert.Throws<ArgumentException>(() => ContactController.Step(input.State,
             Vector2.UnitX, 1, false, false, 1, (_, _) => -1000, tuning, null, dry.World, null, null));
-        Assert.Contains("must be at least 2 * CapsuleRadius", failure.Message);
+        Assert.Equal("tuning", failure.ParamName);
+        // Only the shell span reads the half height, so the same call at the valid one must be admitted.
+        ContactController.Step(input.State, Vector2.UnitX, 1, false, false, 1, (_, _) => -1000, Tuning, null, dry.World,
+            null, null);
         var result = ExplicitCharacterMovement.StepTowards(input, Vector2.UnitX, false, 1, tuning,
             new(WaterTraversalMode.WadeOnly), scene.Lease);
         Assert.Equal(MovementStepOutcome.EnvironmentInvalid, result.Outcome);

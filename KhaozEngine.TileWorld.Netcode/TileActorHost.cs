@@ -131,12 +131,15 @@ public sealed class TileActorHost
     /// default profile keeps the legacy rule that a blocked home is admitted. <see cref="CanPlace"/> asks the same
     /// question without throwing.</exception>
     /// <exception cref="ArgumentOutOfRangeException"><paramref name="definition"/> is refused by
-    /// <see cref="TileActorSpawner"/>'s own door, its <see cref="TileActorDefinition.LeashRadius"/> is above
-    /// this server's <see cref="TileMoveOptions.MaxPathRadius"/> for actors, or its
+    /// <see cref="TileActorSpawner"/>'s own door, or its <see cref="TileActorDefinition.LeashRadius"/> is above
+    /// this server's <see cref="TileMoveOptions.MaxPathRadius"/> for actors.</exception>
+    /// <exception cref="TileInterestRangeException">The definition's
     /// <see cref="TileActorDefinition.FootprintSize"/> is wider than
     /// <see cref="TileWorldServerConfig.OverlapMargin"/> leaves room for once interest is measured from the
     /// footprint (see <see cref="TileWorldServer.LargestFootprintSize"/>). That last one is a CONFIG mismatch rather
-    /// than a placement failure, so <see cref="CanPlace"/> does not ask it: no home in the world would fit.</exception>
+    /// than a placement failure, so <see cref="CanPlace"/> does not ask it: no home in the world would fit.
+    /// Carries <see cref="TileInterestRefusal.FootprintRadiusExceedsMargin"/>, the required query radius,
+    /// configured interest radius, overlap margin and footprint size, with the original parameter and value.</exception>
     public TileActorSpawner Add(TileActorDefinition definition, TileCoord home)
     {
         ArgumentNullException.ThrowIfNull(definition);

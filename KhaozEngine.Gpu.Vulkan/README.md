@@ -117,7 +117,8 @@ using KhaozEngine.Gpu.Vulkan;
 KhaozEngineVulkan.Register();   // once, at startup, on every OS
 ```
 
-That is the package's entire public surface, and the pin test in `KhaozEngine.Render.Tests` holds it to one
+That is the package's registration surface. Structured refusal enums and exceptions also expose engine-only
+reasons and diagnostic values. The pin test in `KhaozEngine.Render.Tests` holds registration to one
 member. Everything else (the provider, the probe, the requirement check, the binding spike) is internal, because
 the seam speaks engine types in both directions and a `Silk.NET.Vulkan` type on a public signature would make a
 consumer that merely reads it compile against the Vulkan binding.
@@ -244,7 +245,8 @@ windowed path, and a device whose graphics family cannot present is refused with
 through the reported fallback.
 
 **Features are enabled by name.** `dynamicRendering`, `synchronization2` and `timelineSemaphore` are REQUIRED,
-and a device missing one is refused with that feature's name and what depends on it in the message.
+and a device missing one throws `VulkanFeatureException` with
+`VulkanFeatureRefusal.RequiredFeatureMissing`, `FeatureName` and `DeviceName`.
 `samplerAnisotropy`, `fillModeNonSolid`, `depthClamp` and `independentBlend` are enabled when the device offers
 them and degrade quietly when it does not. `geometryShader`, `tessellationShader`, `multiViewport`,
 `drawIndirectFirstInstance` and `shaderFloat64` are READ for capability reporting and never enabled, because
@@ -781,7 +783,9 @@ and keeps the invalidate, and every copy into a staging texture ends with a tran
 writes are available to the host when its fence signals.
 
 **And both `Map` overloads refuse a LOST device** ([#551](https://github.com/APKiwiOrg/KhaozEngine/issues/551)),
-with the reason the loss latch recorded. They used to guard the disposed flag alone, which says the consumer let
+with `VulkanDeviceMapRefusal.LossLatched` and the published `LossReason`, `LossSite` and `ResultCode`.
+A dead token with no published loss uses `DeadWithoutLossRecord` and null loss fields.
+They used to guard the disposed flag alone, which says the consumer let
 the device go and answers false for a device the driver took: the host-visible chunk a staging resource is
 mapped into went with the device, so the pointer would dangle and the read path's invalidate would be a native
 call against released memory. Every destroy is already a no-op by then, which is what leaves a map as the last
@@ -940,7 +944,8 @@ ring-backed uniform's base moves every frame, so the array is recomposed on any 
 would change no call and skip no work. The "was there an offset overload" flag the other backend keeps is gone
 for the same reason: with no second activation path to choose, a bind with an offset of zero and a bind without
 one are the same call. The one thing that distinction still buys is a refusal, so a NON-ZERO offset passed to a
-set whose layout declares no dynamic element is rejected by name rather than silently dropped.
+set whose layout declares no dynamic element throws the shared `GpuDynamicBindingException` with
+`GpuDynamicBindingRefusal.DynamicElementMissing`, `Backend`, `Set` and `DynamicOffset`.
 
 **One `vkCmdBindDescriptorSets` per CONTIGUOUS RUN of dirty slots**, with `firstSet` at the run's start. A full
 activation of the engine's shapes is ONE call carrying every set and an offsets-only rebind of one set is ONE
@@ -1179,7 +1184,9 @@ state, so there is one source of truth. Two rules are worth knowing:
   element sits immediately after the one before it in the same slot. A non-zero `Stride` is kept, which is how an
   interleaved buffer with padding survives, and a zero one is the sum of the slot's element sizes.
 
-**An instance step rate above 1 is refused by name.** Vulkan's core vertex input rate is two-valued with no
+**An instance step rate above 1 throws `VulkanVertexInputException`.** Its reason is
+`VulkanVertexInputRefusal.InstanceDivisorUnsupported`, with `ParamName`, `InstanceStepRate`, `Slot` and
+`MaximumStepRate`. Vulkan's core vertex input rate is two-valued with no
 divisor, and `VK_EXT_vertex_attribute_divisor` is not enabled here, so a rate of 2 cannot be honoured. Flattening
 it to 1 would draw every instance from the same element, silently. Every shipped instance stream declares 1.
 
@@ -1303,10 +1310,11 @@ moves is already inside an entry that recording put there: nothing at rest is to
 the entry in one barrier. Splitting the entry down to the request instead would mean naming the entry MINUS the
 request, which is a rectangle subtraction this tracker does not do, and it would trade one entry for up to four.
 
-Two shapes are refused by name. A range that PARTIALLY overlaps a tracked one, meaning they share a subresource
+Two transition shapes carry distinct `VulkanLayoutRefusal` reasons on `VulkanLayoutStateException`.
+`PartialOverlap` identifies a range that PARTIALLY overlaps a tracked one, meaning they share a subresource
 and neither holds the other, because transitioning it would move part of that range and leave its entry claiming a
 layout the rest no longer has. And
-a wider range whose untouched levels would themselves need a barrier, which only happens when the target is not
+`UntrackedRemainder` identifies a wider range whose untouched levels would themselves need a barrier, which only happens when the target is not
 the resting layout, since untouched means at rest. That second one is unreachable through a sampled bind, because
 `Sampled` wins the resting ladder, so a full-chain texture rests exactly where a sampled bind wants it.
 
@@ -1615,8 +1623,9 @@ windowed device that cannot describe its own surface has nothing to hand back.
 windowed list is the headless one plus `VK_KHR_surface` and one platform surface extension. So a headless
 device asked for while a windowed one is live is served by that instance, which is what makes a client that
 opens a window and then takes a `Render3DSnapshot.Capture` work on Linux. The other order is a real shortfall
-and is refused by name, as is a windowed device on a DIFFERENT platform surface, and so is any change of
-validation rung, since the layer is a `vkCreateInstance` argument. Run the refused shapes in separate
+and throws `VulkanInstanceUnsupportedException` with `ConfigurationIncompatible`, carrying the live
+and requested window and validation fields. A windowed device on a DIFFERENT platform surface and any change of
+validation rung use the same refusal, since the layer is a `vkCreateInstance` argument. Run the refused shapes in separate
 processes. Serving them would mean either a second instance, which abandons the single-instance decision
 quietly, or creating every instance with the surface extensions, which takes the golden leg down on a machine
 with no display server. Widened from a strict key match in 17.40.0
@@ -1907,3 +1916,107 @@ KhaozEngine.Gpu.Vulkan -> Veldrid*                            (never, asserted t
 
 See [docs/DEPENDENCY-SEAMS.md](../docs/DEPENDENCY-SEAMS.md), "Out-of-package graphics backends", for the
 inverted-edge pattern this package is the second instance of.
+
+## Attachment store intent
+
+`SetFramebufferWithStoreActions` maps each declared dead colour, depth and stencil attachment to Vulkan's
+`AttachmentStoreOp.DontCare`. All other attachments use `Store`. The intent applies to each rendering
+instance for the binding. A pass interrupted by transfers or dispatches must not load discarded data when
+it reopens. The unobserved directional cascade pass is uninterrupted and clears its separate working depth and stencil
+on every rebuild. Its sampled R32F atlas remains stored. See
+[the owner proof](../docs/METAL-FRAME-SUBMISSION.md#attachment-store-intent).
+
+Foreign resources at map, readback and upload entry points use
+`GpuResourceOwnershipArgumentException` with `GpuResourceOwnershipRefusal.ForeignBackend`.
+`ExpectedBackend`, `ActualType`, `ExpectedType`, `ResourceKind` and `Context` identify the refused resource
+where the guard has those values. Mapping-state and staging-usage refusals stay in `GpuStagingMapRefusal`.
+
+## Refusals
+
+`CandidateNames` and `CandidateRejections` copy supplied lists into exception-owned read-only snapshots,
+including when consumer code initializes them. Neither source mutation nor a cast of the exposed list can
+change the captured diagnostics.
+
+| Exception and reason | What it refuses | Identifiers |
+|---|---|---|
+| `GpuBufferUsageArgumentException`, `GpuBufferUsageRefusal.UniformBindingCombination` | Refuses a uniform buffer combined with another binding of the same bytes. | `ParamName`, `Usage`, `ConflictingUsage` |
+| `GpuBufferTransferRangeException`, `GpuBufferTransferRefusal.WindowOutsideBuffer` | Refuses a buffer write or copy window outside the logical buffer. | `ParamName`, `ActualValue`, `OffsetBytes`, `SizeBytes`, `BufferBytes`, optional `Side` |
+| `GpuTextureTransferRangeException`, `GpuTextureTransferRefusal.SubresourceOutOfRange` | Refuses a copy, staging or upload subresource outside the texture. | `ParamName`, `ActualValue`, `MipLevel`, `ArrayLayer`, `MipLevels`, `ArrayLayers`, optional `Side` |
+| `GpuDynamicBindingRangeException`, `GpuDynamicBindingRefusal.OffsetMisaligned` | Refuses a composed buffer offset that violates binding alignment. | `ParamName`, `ActualValue`, `ComposedOffset`, `AlignmentBytes`, `RingBase`, `RangeOffset`, `DynamicOffset`, `RangeBytes`, `SegmentStride`, optional `Set` and `Binding` |
+| `GpuDynamicBindingRangeException`, `GpuDynamicBindingRefusal.WindowOutsideSegment` | Refuses a uniform window outside its own frame-ring segment. | `ParamName`, `ActualValue`, `RangeOffset`, `DynamicOffset`, `RangeBytes`, `SegmentStride`, optional `RecoveryOperation` |
+| `GpuBackendCreationArgumentException`, `GpuBackendCreationRefusal.ForeignDiagnosticSettings` | Refuses headless creation with diagnostic settings not owned by the requested backend. | `ParamName`, `ExpectedBackend`, `ActualType` |
+| `GpuBoundFramebufferException`, `GpuBoundFramebufferRefusal.FramebufferNotBound` | Refuses a framebuffer-dependent command when no framebuffer is bound. | `Command` |
+| `GpuBoundFramebufferException`, `GpuBoundFramebufferRefusal.DepthAttachmentMissing` | Refuses a depth clear when the bound framebuffer declares no depth attachment. | `Command` |
+| `VulkanBackendCreationStateException`, `VulkanBackendCreationRefusal.PinnedAdapterUnavailable` | Refuses a pinned Vulkan adapter that is absent or ineligible. | `AdapterKey` |
+| `VulkanBackendCreationStateException`, `VulkanBackendCreationRefusal.PhysicalDevicesMissing` | Refuses a native Vulkan loader with no physical devices after the support probe. | `PhysicalDeviceCount` |
+| `VulkanBackendCreationStateException`, `VulkanBackendCreationRefusal.EligibleDeviceMissing` | Refuses native Vulkan creation when every candidate is ineligible. | `CandidateCount`, `CandidateNames`, `CandidateRejections` |
+| `VulkanBackendCreationUnsupportedException`, `VulkanBackendCreationRefusal.CocoaSurfaceUnsupported` | Refuses Cocoa presentation because the native Vulkan package does not carry the Metal translation layer. | `WindowKind`, `RequiredTranslationLayer`, `RequiredExtension` |
+| `VulkanBackendCreationUnsupportedException`, `VulkanBackendCreationRefusal.MachineUnsupported` | Refuses Vulkan creation when the machine support probe reports a missing requirement. | `MissingRequirement`, `Probe`, `DriverPackage` |
+| `VulkanBackendCreationUnsupportedException`, `VulkanBackendCreationRefusal.WindowKindUnsupported` | Refuses a window kind with no supported Vulkan surface extension. | `WindowKind` |
+| `VulkanDeviceMapException`, `VulkanDeviceMapRefusal.DeadWithoutLossRecord` | Refuses mapping a dead device whose token has no latched driver loss. | `LossReason` |
+| `VulkanDeviceMapException`, `VulkanDeviceMapRefusal.LossLatched` | Refuses mapping after a native device loss was latched. | `LossReason`, `LossSite`, `ResultCode` |
+| `VulkanDeviceWiringException`, `VulkanDeviceWiringRefusal.InstanceMissing` | Refuses a native factory operation on a seam-built device with no VkInstance. | `NativeObjectKind` |
+| `VulkanFeatureException`, `VulkanFeatureRefusal.RequiredFeatureMissing` | Refuses a Vulkan device missing a mandatory Vulkan 1.3 feature. | `FeatureName`, `DeviceName` |
+| `VulkanInstanceUnsupportedException`, `VulkanInstanceRefusal.ConfigurationIncompatible` | Refuses acquiring an instance configuration not satisfied by the live process-wide instance. | `LiveWindowed`, `LiveWindowKind`, `LiveValidationMode`, `RequestedWindowed`, `RequestedWindowKind`, `RequestedValidationMode` |
+| `VulkanInstanceStateException`, `VulkanInstanceRefusal.FactoryReturnedNull` | Refuses an instance factory that returns no instance. | No additional identifiers |
+| `VulkanResultException`, `VulkanResultRefusal.NativeCallFailed` | Refuses a native Vulkan call returning a negative result code. | `Call`, `ResultCode`, `ResultToken` |
+| `VulkanValidationException`, `VulkanValidationRefusal.StrictErrorLatched` | Refuses continuing a strict Vulkan run after its first validation error. | `Site`, `Diagnostic`, `MessageId`, `MessageIdName` |
+| `VulkanBackendCreationUnsupportedException`, `VulkanBackendCreationRefusal.LoaderUnavailable` | Refuses native instance creation when the Vulkan loader cannot be resolved. | `LoaderExceptionType`, `Probe` |
+| `ShaderValidationArgumentException`, `ShaderValidationRefusal.SpirvLengthInvalid` | Refuses an empty or unaligned SPIR-V module at shader-cache admission. | `ParamName`, `ByteLength`, `WordBytes` |
+| `VulkanVertexInputException`, `VulkanVertexInputRefusal.InstanceDivisorUnsupported` | Refuses an instance divisor that the enabled Vulkan core vertex input cannot express. | `ParamName`, `InstanceStepRate`, `Slot`, `MaximumStepRate` |
+| `VulkanResourceSetRingException`, `VulkanResourceSetRingRefusal.RingBufferUsedAsStorage` | Refuses a ring-backed uniform buffer through a storage binding that cannot apply its frame base. | `ParamName`, `ElementName`, `Binding`, `ResourceKind` |
+| `VulkanResourceSetRingException`, `VulkanResourceSetRingRefusal.UniformBufferNotRingBacked` | Refuses a Vulkan uniform binding without its required ring. | `ParamName`, `ElementName`, `Binding`, `ActualUsage` |
+| `VulkanBufferBindingException`, `VulkanBufferBindingRefusal.RequiredUsageMissing` | Refuses binding a Vulkan buffer without the required native usage declaration. | `ParamName`, `Usage`, `RequiredUsage`, `Context` |
+| `VulkanBufferCopyException`, `VulkanBufferCopyRefusal.EmptyCopy` | Refuses an empty VkBufferCopy region. | `ParamName`, `ActualValue`, `Side`, `SizeBytes` |
+| `VulkanDescriptorLimitException`, `VulkanDescriptorLimitRefusal.DynamicUniformLimitExceeded` | Refuses a pipeline layout exceeding the device dynamic uniform descriptor limit. | `LimitName`, `RequestedCount`, `Limit`, `SetLayoutCount` |
+| `VulkanLayoutArgumentException`, `VulkanLayoutRefusal.ImageHandleMissing` | Refuses a layout transition for a staging or null image handle. | `ParamName`, `Image` |
+| `VulkanLayoutStateException`, `VulkanLayoutRefusal.NoSingleLayout` | Refuses querying one layout for a range spanning narrower tracked pieces. | `Image`, `CoveredRangeCount`, `BaseMip`, `MipCount`, `BaseLayer`, `LayerCount` |
+| `VulkanLayoutStateException`, `VulkanLayoutRefusal.PartialOverlap` | Refuses partially overlapping tracked subresource rectangles that neither contain one another. | `Image`, `RequestedBaseMip`, `RequestedMipCount`, `RequestedBaseLayer`, `RequestedLayerCount`, `TrackedBaseMip`, `TrackedMipCount`, `TrackedBaseLayer`, `TrackedLayerCount` |
+| `VulkanLayoutStateException`, `VulkanLayoutRefusal.UntrackedRemainder` | Refuses a wider transition whose uncovered remainder would need an unrepresentable barrier. | `Image`, `BaseMip`, `MipCount`, `BaseLayer`, `LayerCount`, `TargetLayout`, `RestingLayout` |
+| `VulkanStagingLayoutException`, `VulkanStagingLayoutRefusal.MappingSizeExceeded` | Staging layout arithmetic exceeding the mapping's 32-bit size ceiling | `ParamName`, `ActualValue`, `Width`, `Height`, `MipLevels`, `ArrayLayers`, `Format`, `Quantity`, `ComputedBytes`, `MaximumBytes` |
+| `VulkanRingWaitException`, `VulkanRingWaitRefusal.SubmitLockHeld` | a Vulkan ring rotation while the caller holds the submit lock | `Operation` |
+| `VulkanTimestampAdapterException`, `VulkanTimestampAdapterRefusal.NativeDeviceLost` | a timestamp native operation that reports device loss | `Site` |
+| `VulkanTimestampAdapterException`, `VulkanTimestampAdapterRefusal.PoolAlreadyCreated` | creating a second native query pool in one fixed adapter | No additional identifiers |
+
+`VulkanStagingLayoutException` derives from `ArgumentOutOfRangeException` and keeps its original
+parameter and actual shape. `Reason` is required and the computed byte counts remain 64-bit.
+Zero shape components, unsupported formats and subresource indices keep their existing BCL checks.
+
+Portable copy offsets use `GpuCopyAlignmentException`. Map admission, double maps, unbalanced unmaps,
+missing mappings and unsignaled fenced reads use the shared `GpuStagingMapArgumentException` and
+`GpuStagingMapStateException` types documented in `KhaozEngine.Gpu`. Their reasons preserve the
+existing refusal points and map state tracking.
+
+Recording lifecycle and timestamp contract refusals use `GpuRecordingStateException` and the
+`GpuTimestampStateException`, `GpuTimestampArgumentException`, `GpuTimestampRangeException`, `GpuTimestampDisposedException` and
+`GpuTimestampUnsupportedException` types from `KhaozEngine.Gpu`. Their required reasons and identifiers
+are listed in the [portable refusal catalog](../KhaozEngine.Gpu/README.md#refusals).
+
+Resource ownership, layout declarations, resource sets and framebuffer checks use the corresponding
+`GpuResourceOwnership*Exception`, `GpuResourceLayoutException`, `GpuResourceSetException` and
+`GpuFramebufferException` types from `KhaozEngine.Gpu`. Existing BCL catches still match. The
+[portable refusal catalog](../KhaozEngine.Gpu/README.md#refusals) lists each required reason and its
+diagnostic members. Swapchain copies use `GpuSwapchainCopyArgumentException` and
+`GpuSwapchainCopyStateException` from that same catalog.
+
+Completed buffer reads report `DifferentDevice` with `ParamName = "staging"` for a buffer owned by
+another device. A copyable swapchain request with a valid destination reports
+`ForeignBackend` with `ParamName = "commands"` for a foreign command list. Pipeline-layout
+null entries report `MissingResource` with the slot's `ResourceIndex`. Command-list uploads report
+`ForeignBackend` for foreign buffers. A seam-built list missing its staging uploader keeps its plain
+argument refusal when the buffer already implements the native upload interface.
+
+Graphics blend counts use `GpuPipelineOutputsException`. Texture copy, mip generation and resolve
+checks use `GpuTextureTransferArgumentException` and `GpuTextureTransferRangeException` where the
+backend checks the rule. Their reasons identify the rejected shape or subresource. Backend-specific
+admission differences remain as described above.
+
+A resource of the declared logical kind from another backend uses `GpuResourceOwnershipRefusal.ForeignBackend`
+in resource-set admission. A genuinely different logical kind keeps `GpuResourceSetRefusal.ResourceKindMismatch`.
+The ownership carrier records `ElementName`, `ResourceIndex`, `ResourceKind`, `ExpectedBackend`, `ActualType`
+and `ExpectedType` where the guard has them. An absent D3D11 register view uses `MissingResource` and
+`RegisterLetter`, with the original parameter and resource types.
+
+Timestamp pools and completion fences use `GpuResourceOwnershipArgumentException` with `ForeignBackend`
+for another backend or `DifferentDevice` for another device/timeline. Their ownership identifiers retain
+the original parameter and runtime type.

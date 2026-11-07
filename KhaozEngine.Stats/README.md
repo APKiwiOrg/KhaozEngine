@@ -85,10 +85,9 @@ attack = stats.Value((int)Channel.Attack);   // back to exactly 10, bit for bit
   does not source them.
 - **Items and equipment.** No item type, no equipment slot, no inventory. `StatSourceId` is just a
   caller-supplied identity for "the group of modifiers I want to add or remove together."
-- **The "buff" half.** Stacking rules, durations, expiry, and diminishing returns are not modeled here. A
-  timed buff is your system calling `AddSource`/`RemoveSource` when it starts and ends. This is the same
-  split `KhaozEngine.Locomotion` already draws for its per-entity speed scale: the engine owns the multiplier
-  and its plumbing, the game owns duration, stacking, and what granted it.
+- **Timed modifiers.** [KhaozEngine.StatusEffects](../KhaozEngine.StatusEffects/README.md) owns timed
+  stacking and expiry. The game maps its totals into stat sources or other formulas. Diminishing returns
+  and the meaning of each contribution remain game-owned.
 
 ## Testing
 

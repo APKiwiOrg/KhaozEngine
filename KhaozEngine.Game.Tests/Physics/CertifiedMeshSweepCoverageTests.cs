@@ -64,7 +64,7 @@ public sealed class CertifiedMeshSweepCoverageTests
         var link = mesh.Tree.Leaves[0];
         var child = link.ChildIndex == 0 ? mesh.Tree.Nodes[link.NodeIndex].A : mesh.Tree.Nodes[link.NodeIndex].B;
         Assert.Equal(2f, child.Max.X);
-        var geometry = ((System.Collections.Generic.Dictionary<int, InstalledSweepGeometry?>)Field(world, "_installedSweepStatics"))[handle.Value]!;
+        var geometry = world.InstalledSweepStaticsForTests[handle.Value]!;
         InstalledSweepGeometry native = geometry.Mesh!.Triangle(0).SweepCompanion!;
         double continuation = (double)native.LeafPose.Position.X + native.Vertex(1).X;
         Assert.True(continuation > 2);
@@ -110,7 +110,7 @@ public sealed class CertifiedMeshSweepCoverageTests
         {
             var native = Static(bounded, boundedHandle);
             Sim(bounded).Statics.GetDescription(native.Handle, out var description);
-            var geometry = ((System.Collections.Generic.Dictionary<int, InstalledSweepGeometry?>)Field(bounded, "_installedSweepStatics"))[boundedHandle.Value]!;
+            var geometry = bounded.InstalledSweepStaticsForTests[boundedHandle.Value]!;
             var scratch = new CapsuleSweepScratch();
             var dimensions = new CapsuleQueryDimensions(0.25f, 1);
             Vector3 start = new(-0.5f, 0.75f, -0.25f);
@@ -239,7 +239,7 @@ public sealed class CertifiedMeshSweepCoverageTests
         var pose = new Pose(new(768, 256, -256), new(0, 0, 0.5f, 0.8660254f));
         StaticHandle handle = world.AddStatic(shape, pose);
         using IPhysicsQueryLease lease = world.AcquireQueryReadLease();
-        var geometry = ((System.Collections.Generic.Dictionary<int, InstalledSweepGeometry?>)Field(world, "_installedSweepStatics"))[handle.Value]!;
+        var geometry = world.InstalledSweepStaticsForTests[handle.Value]!;
         InstalledSweepGeometry native = geometry.Mesh!.Triangle(0).SweepCompanion!;
         var root = new BepuPhysics.RigidPose(pose.Position, pose.Orientation);
         Assert.True(native.TryPose(root, out var map));
@@ -270,7 +270,7 @@ public sealed class CertifiedMeshSweepCoverageTests
         {
             sim.Shapes.GetShape<Mesh>(native.Shape.Index).Scale = scale;
             CapsuleSweepGeometry.TryCapture(sim.Shapes, native.Shape, out var captured);
-            ((System.Collections.Generic.Dictionary<int, InstalledSweepGeometry?>)Field(world, "_installedSweepStatics"))[handle.Value] = captured;
+            world.ReplaceStaticSweepCaptureForTests(handle, captured);
         }, handle.Value);
     }
 }

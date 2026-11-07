@@ -17,8 +17,8 @@ namespace KhaozEngine.Gpu.Metal.Internal
     /// constructor that also calls <c>-newRenderPipelineStateWithDescriptor:error:</c> would make them macOS-only,
     /// which on this program means they are asserted on one leg out of five.</para>
     ///
-    /// <para><b>THE ORDER OF THE CHECKS IS THE ORDER THEY BECOME ANSWERABLE, and it matters for the message a
-    /// caller sees.</b> Ownership first, because a layout from another device makes every later question
+    /// <para><b>THE ORDER OF THE CHECKS IS THE ORDER THEY BECOME ANSWERABLE, and it determines the refusal a
+    /// caller receives.</b> Ownership first, because a layout from another device makes every later question
     /// meaningless. Then the layout SHAPE against the reflection (2.2b, pin 4), because the binding table is keyed
     /// on <c>(set, binding, stage)</c> read out of the shader's own decorations and a differently shaped array
     /// resolves every element through a key that means something else. Then M-B2's collision check, which needs
@@ -42,6 +42,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
             Layouts = layouts;
             Streams = streams;
             Attributes = attributes;
+            ReadLayout = new(streams, attributes);
             State = state;
             ColourAttachments = colourAttachments;
             DepthFormat = depthFormat;
@@ -49,8 +50,8 @@ namespace KhaozEngine.Gpu.Metal.Internal
             SampleCount = sampleCount;
         }
 
-        /// <summary>The name every refusal from this row quotes. The seam gives a pipeline no name of its own, so
-        /// there is nothing more specific to say, and the message carries the numbers instead.</summary>
+        /// <summary>The Label carried by shader validation refusals from this row. The seam gives a pipeline no name of its own, so
+        /// there is nothing more specific to say. Structured refusal properties carry the diagnostic counts.</summary>
         internal const string Label = "A native Metal graphics pipeline";
 
         /// <summary>The compiled shader set, which is where the functions and the binding table come from.</summary>
@@ -66,6 +67,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
 
         /// <summary>The vertex attributes, in attribute-index order.</summary>
         internal MetalVertexAttribute[] Attributes { get; }
+        internal MetalVertexReadLayout ReadLayout { get; }
 
         /// <summary>The rasterizer, depth and topology values a pipeline change emits.</summary>
         internal MetalPipelineState State { get; }
@@ -107,11 +109,15 @@ namespace KhaozEngine.Gpu.Metal.Internal
 
             if (description.ShaderSet is null)
             {
-                throw new ArgumentException(
+                throw new GpuResourceOwnershipArgumentException(GpuResourceOwnershipRefusal.MissingResource,
                     Label + " was given no shader set. A pipeline is created FROM a vertex and a fragment "
                     + "function, and the binding table it resolves every resource through travels with the set "
                     + "that was compiled, so there is nothing to build one from.",
-                    nameof(description));
+                    nameof(description))
+                {
+                    ResourceKind = nameof(MetalShaderSet),
+                    Context = Label,
+                };
             }
 
             MetalShaderSet shaders = MetalResourceOwnership.Require<MetalShaderSet>(
@@ -124,11 +130,16 @@ namespace KhaozEngine.Gpu.Metal.Internal
             // refusals run device-free. This is MetalResourceLayout.Require's arm applied to the other input.
             if (shaders.IsDisposed)
             {
-                throw new ObjectDisposedException(
+                throw new GpuResourceOwnershipDisposedException(GpuResourceOwnershipRefusal.NativeHandleReleased,
                     nameof(MetalShaderSet),
                     Label + " was given a native Metal shader set that is already disposed. Its MTLFunctions and "
                     + "MTLLibrary have been released, so the pipeline would be created from functions the device "
-                    + "has already let go of.");
+                    + "has already let go of.")
+                {
+                    NativeHandleKind = "MTLFunction, MTLLibrary",
+                    ResourceKind = nameof(MetalShaderSet),
+                    Context = Label,
+                };
             }
 
             MetalResourceLayout[] layouts = RequireLayouts(description.ResourceLayouts, liveness);

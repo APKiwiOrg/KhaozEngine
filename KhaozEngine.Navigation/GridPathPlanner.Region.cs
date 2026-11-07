@@ -40,7 +40,7 @@ public sealed partial class GridPathPlanner
 
         if (!FindMembers(scratch, goal, agentRadius)) return NavPath.Unreachable;
 
-        var regionGoal = new RegionGoal(this, scratch, RegionLinksPreserveDistance(),
+        var regionGoal = new RegionGoal(this, scratch,
             new Vector2(goal.Anchor.X, goal.Anchor.Z), goal.HorizontalExtent);
         return RunSearch(scratch, startLayer, startPoint.Value, regionGoal, null, agentRadius, budget);
     }
@@ -73,7 +73,7 @@ public sealed partial class GridPathPlanner
                     scratch.SetMember(layer, x, z, member);
                     if (!member) continue;
                     scratch.MemberLayers[layer] = true;
-                    scratch.Members.Add(feet);
+                    scratch.AddMember(feet, x, z);
                 }
         }
         return scratch.Members.Count > 0;
@@ -118,20 +118,17 @@ public sealed partial class GridPathPlanner
     }
 
     /// <summary>
-    /// A region query's goal: any member cell. Priority is the XZ distance to the extent's edge on a layer
-    /// holding members when every link preserves that bound, else zero. Progress is the squared 3D distance
-    /// to the nearest member's feet.
+    /// A region query's goal: any member cell. Priority uses the cached metric and scale on every layer.
+    /// Shared frames bound the actual members' cell box, so rounded world centres cannot change the metric.
+    /// Progress is the squared 3D distance to the nearest member's feet.
     /// </summary>
-    readonly struct RegionGoal(GridPathPlanner planner, SearchScratch scratch, bool spatialBound,
+    readonly struct RegionGoal(GridPathPlanner planner, SearchScratch scratch,
         Vector2 anchorXz, float horizontalExtent) : ISearchGoal
     {
         public bool IsGoal(int layer, int x, int z) => scratch.IsMember(layer, x, z);
 
-        public float Priority(int layer, int x, int z)
-            => spatialBound && scratch.MemberLayers[layer]
-                ? (float)Math.Min(float.MaxValue, Math.Max(0d,
-                    RegionDistanceXz(planner._space.Layers[layer].CellCenter(x, z), anchorXz) - horizontalExtent))
-                : 0f;
+        public double Priority(int layer, int x, int z)
+            => planner._spatialBound.Region(layer, x, z, scratch.MemberBounds, anchorXz, horizontalExtent);
 
         public double Progress(int layer, int x, int z)
         {
@@ -152,31 +149,8 @@ public sealed partial class GridPathPlanner
     {
         NavGrid grid = _space.Layers[layer];
         Vector2 centre = grid.CellCenter(x, z);
-        return new Vector3(centre.X, grid.RestingHeightAt(x, z)!.Value, centre.Y);
+        // Height-less legacy point grids represent a plane. Region queries require physical heights.
+        return new Vector3(centre.X, grid.RestingHeightAt(x, z) ?? 0f, centre.Y);
     }
 
-    static double RegionDistanceXz(Vector2 from, Vector2 to)
-    {
-        double dx = (double)from.X - to.X;
-        double dz = (double)from.Y - to.Y;
-        return Math.Sqrt(dx * dx + dz * dz);
-    }
-
-    // A cheap same-layer link can undercut XZ distance just like a cross-layer link. Use zero
-    // priority for the whole query when any admitted link makes the spatial lower bound uncertain.
-    bool RegionLinksPreserveDistance()
-    {
-        foreach (KeyValuePair<int, List<(int ToId, float CostMeters)>> source in _linkEdges)
-        {
-            (int layer, int x, int z) = Decode(source.Key);
-            Vector2 from = _space.Layers[layer].CellCenter(x, z);
-            foreach ((int targetId, float cost) in source.Value)
-            {
-                (int targetLayer, int tx, int tz) = Decode(targetId);
-                if (targetLayer != layer || !float.IsFinite(cost) ||
-                    cost < RegionDistanceXz(from, _space.Layers[targetLayer].CellCenter(tx, tz))) return false;
-            }
-        }
-        return true;
-    }
 }

@@ -12,7 +12,16 @@ public sealed partial class GpuRetireQueue : IGpuFrameCompletionConsumer
     {
         ArgumentNullException.ThrowIfNull(submission);
         if (!ReferenceEquals(_device, submission.Device))
-            throw new ArgumentException("The retirement queue and frame host must use the same device.", nameof(submission));
+            throw new GpuResourceOwnershipArgumentException(_device is not null && _device.Backend != submission.Device.Backend
+                ? GpuResourceOwnershipRefusal.ForeignBackend : GpuResourceOwnershipRefusal.DifferentDevice,
+                "The retirement queue and frame host must use the same device.", nameof(submission))
+            {
+                ExpectedBackend = _device?.Backend,
+                ActualType = submission.Device.GetType(),
+                ExpectedType = _device?.GetType(),
+                ResourceKind = "frame submission",
+                Context = nameof(BeginFrame),
+            };
         if (!_device!.Capabilities.SupportsCompletionFences) { BeginFrame(); return; }
         if (GpuRecording.OpenOwner(_device) is { } owner)
             throw new InvalidOperationException($"Advance frame retirement before recording {owner}.");

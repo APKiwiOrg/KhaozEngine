@@ -62,7 +62,18 @@ namespace KhaozEngine.Render2D
             _groupOrder.Remove(key);
         }
 
+        /// <summary>SpriteBatchMaskedTestRig observes eviction through opaque identities that cannot expose retained keys.</summary>
+        internal IReadOnlyList<object> GroupOrderForTests => _groupOrder.ConvertAll(TestObservationIdentity.For).AsReadOnly();
+
         internal bool HasGroup(object key) => _groupScratch.ContainsKey(key);
+
+        /// <summary>SpriteBatchMaskedTestRig checks membership by opaque identity without retrieving a key.</summary>
+        internal bool HasGroupForTests(object identity)
+        {
+            foreach (object key in _groupScratch.Keys)
+                if (ReferenceEquals(TestObservationIdentity.For(key), identity)) return true;
+            return false;
+        }
 
         /// <summary>
         /// Buckets this build's runs by key, regardless of submission order, for a caller that opts into

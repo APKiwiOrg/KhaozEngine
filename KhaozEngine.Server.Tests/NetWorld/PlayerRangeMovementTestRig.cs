@@ -11,7 +11,7 @@ using Xunit;
 
 namespace KhaozEngine.Tests.NetWorld;
 
-internal sealed class PlayerRangeMovementTestRig : IDisposable
+internal sealed partial class PlayerRangeMovementTestRig : IDisposable
 {
     public const float TickSeconds = 1f / 30f;
     public static readonly MoveTuning Tuning = MoveTuning.Default with
@@ -30,7 +30,13 @@ internal sealed class PlayerRangeMovementTestRig : IDisposable
     readonly IPhysicsWorld clientPhysics;
     readonly ObservedTransport wire;
 
-    public WorldServer Server { get; }
+    readonly WorldServer? single;
+    public WorldServer Server => single ?? throw new InvalidOperationException("This rig uses the sharded head.");
+    public ShardedWorldServer? Sharded { get; }
+    public IWorldPickupHost Host => (IWorldPickupHost?)Sharded ?? Server;
+    public IAdminControllable Admin => (IAdminControllable?)Sharded ?? Server;
+    readonly List<IPhysicsWorld> cellPhysics = new();
+    readonly DelayedLoopbackTransport? downstream;
     public WorldClient Client { get; }
     public GroundMoveContext Context { get; }
     public GroundNavigation Navigation { get; }
@@ -42,43 +48,69 @@ internal sealed class PlayerRangeMovementTestRig : IDisposable
     {
         get
         {
-            Assert.True(Server.TryGetPlayerState(0, out PlayerMoveState state));
+            Assert.True(Host.TryGetPlayerState(0, out PlayerMoveState state));
             return state;
         }
     }
 
-    public PlayerRangeMovementTestRig(bool wallAndBox = false)
+    public PlayerRangeMovementTestRig(bool wallAndBox = false, bool sharded = false, int snapshotDelayFrames = 0,
+        PredictionSettings? prediction = null)
     {
         serverPhysics = CreateWorld(wallAndBox);
         clientPhysics = CreateWorld(wallAndBox);
-        Context = new GroundMoveContext(Flat, Normal, clientPhysics);
+        Context = new GroundMoveContext(Flat, Normal, serverPhysics);
         using (var bake = PhysicsNavBake.Capture(Context,
             new(-2.125f, -2.125f, 2.125f, 1.875f, 0.25f, 4f, 5f, 0.8f, 512, 2048), _ => 0u))
             Navigation = bake.BuildProfile(Tuning, default);
         Mover = new MoveToRange(Navigation);
 
-        Server = new WorldServer(hub.Server, new WorldServerConfig
+        INetTransport transport = hub.Server;
+        if (snapshotDelayFrames > 0) transport = downstream = new(hub.Server, snapshotDelayFrames);
+        Vector3 spawn = new(wallAndBox ? -1.5f : 0f, Tuning.CapsuleHalfHeight, 0f);
+        if (sharded)
+            Sharded = new(transport, new ShardedWorldServerConfig
+            {
+                TickSeconds = TickSeconds,
+                CellSize = 2,
+                OverlapMargin = 2,
+                InterestRadius = 2,
+                MaxPlayers = 1,
+                FrameAnchoring = false,
+                SpawnPosition = _ => spawn,
+                PhysicsWorldFactory = _ =>
+                {
+                    var physics = CreateWorld(wallAndBox);
+                    cellPhysics.Add(physics);
+                    return physics;
+                }
+            }, Flat, Tuning, groundNormal: Normal);
+        else single = new WorldServer(transport, new WorldServerConfig
         {
             TickSeconds = TickSeconds,
             InterestRadius = 500f,
             MaxPlayers = 1,
-            SpawnPosition = _ => new Vector3(wallAndBox ? -1.5f : 0f, Tuning.CapsuleHalfHeight, 0f),
+            SpawnPosition = _ => spawn,
+            FrameAnchoring = false,
         }, Flat, Tuning, groundNormal: Normal, physics: serverPhysics);
         wire = new ObservedTransport(hub.CreateClient());
         Client = new WorldClient(wire, Flat, Tuning, new WorldClientConfig
         {
             TickSeconds = TickSeconds,
-            Prediction = PredictionSettings.Default with { TickSeconds = TickSeconds, CorrectionDeadZone = 0f },
+            FrameAnchoring = false,
+            Prediction = prediction ?? PredictionSettings.Default with { TickSeconds = TickSeconds, CorrectionDeadZone = 0f },
         }, groundNormal: Normal, physics: clientPhysics);
-        for (int tick = 0; tick < 6; tick++)
-        {
-            Server.Poll();
-            Server.Tick(TickSeconds);
-            Client.Poll();
-        }
+        if (sharded || snapshotDelayFrames > 0)
+            for (int frame = 0; frame < 120; frame++) LoopbackFrame(MoveCommand.Idle);
+        else
+            for (int tick = 0; tick < 6; tick++)
+            {
+                Server.Poll();
+                Server.Tick(TickSeconds);
+                Client.Poll();
+            }
         Assert.True(Client.Joined);
         Assert.Equal(Client.LocalNetId, wire.LocalNetId);
-        Assert.Equal(-1, LastAcknowledgedSequence);
+        if (!sharded && snapshotDelayFrames == 0) Assert.Equal(-1, LastAcknowledgedSequence);
         Client.AdvancePresentation(TickSeconds);
     }
 
@@ -103,8 +135,7 @@ internal sealed class PlayerRangeMovementTestRig : IDisposable
 
     public PlayerMoveState Serve()
     {
-        Server.Poll();
-        Server.Tick(TickSeconds);
+        PollAndTick();
         Client.AdvancePresentation(TickSeconds / 2f);
         return Authority;
     }
@@ -170,8 +201,12 @@ internal sealed class PlayerRangeMovementTestRig : IDisposable
     public void Dispose()
     {
         Client.Dispose();
+        single?.Dispose();
+        Sharded?.Dispose();
         wire.Dispose();
         hub.Dispose();
+        Context.Dispose();
+        foreach (var physics in cellPhysics) physics.Dispose();
         clientPhysics.Dispose();
         serverPhysics.Dispose();
     }

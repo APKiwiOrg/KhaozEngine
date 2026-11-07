@@ -19,6 +19,7 @@ internal sealed class ContactTickWorkspace
     MovementQueryLease? _lease;
     int _analyticCount, _ownerCount;
     bool _tick;
+    internal ContactDescentEvidence? DescentEvidence { get; set; }
     internal ContactCapsuleShapes Shapes { get; } = new();
     internal LeasedContactQueryContext Queries { get; } = new();
     internal ExplicitContactModes Modes { get; } = new();
@@ -58,6 +59,7 @@ internal sealed class ContactTickWorkspace
         _ownerCount = 0;
         Array.Clear(_water, 0, _waterCount);
         _waterCount = 0;
+        DescentEvidence = null;
         _lease = null;
     }
 
@@ -126,6 +128,6 @@ internal sealed class ContactTickWorkspace
     static bool SameField(MovementAnalyticGround? first, MovementAnalyticGround? second) =>
         first is { } a && second is { } b
             ? a.Axis == b.Axis && a.Height == b.Height && a.Normal == b.Normal && a.Owner == b.Owner &&
-                a.Space == b.Space && a.Identity == b.Identity
+                a.Space == b.Space && a.Identity == b.Identity && a.HeightTranslation == b.HeightTranslation
             : first.HasValue == second.HasValue;
 }

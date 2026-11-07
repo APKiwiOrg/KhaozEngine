@@ -26,25 +26,26 @@ public sealed record MapLightShadowExclusion(MapLightShadowExclusionKind Kind)
         {
             case MapLightShadowExclusionKind.None:
                 if (Radius is not null || Min is not null || Max is not null || Margin is not null)
-                    Refuse("None carries no clearance fields");
+                    Refuse(MapDocumentRefusal.AuthoredValueMismatch, "None carries no clearance fields");
                 break;
             case MapLightShadowExclusionKind.NearSphere:
                 if (Radius is not { } radius || !float.IsFinite(radius) || radius < 0 || Min is not null || Max is not null || Margin is not null)
-                    Refuse("NearSphere requires only a finite nonnegative radius");
+                    Refuse(Radius is null ? MapDocumentRefusal.SchemaValueRequired : !float.IsFinite(Radius.Value) ? MapDocumentRefusal.ValueNonfinite : MapDocumentRefusal.ValueOutsideRange, "NearSphere requires only a finite nonnegative radius");
                 break;
             case MapLightShadowExclusionKind.FixtureBox:
-                if (!hasOwner) Refuse("FixtureBox requires an owner placement");
+                if (!hasOwner) Refuse(MapDocumentRefusal.ReferenceMissing, "FixtureBox requires an owner placement");
                 if (Radius is not null || Min is not { } min || Max is not { } max || Margin is not { } margin ||
                     !Finite(min) || !Finite(max) || min.X >= max.X || min.Y >= max.Y || min.Z >= max.Z || !float.IsFinite(margin) || margin < 0)
-                    Refuse("FixtureBox requires finite ordered corners and a finite nonnegative margin");
+                    Refuse(MapDocumentRefusal.BoundsInvalid, "FixtureBox requires finite ordered corners and a finite nonnegative margin");
                 break;
             default:
-                Refuse("unsupported kind");
+                Refuse(MapDocumentRefusal.SchemaEnumUnsupported, "unsupported kind");
                 break;
         }
     }
 
     internal string Digest() => MapPrefabJson.Digest("kemap/light-shadow-exclusion/1", this);
     static bool Finite(Vector3 v) => float.IsFinite(v.X) && float.IsFinite(v.Y) && float.IsFinite(v.Z);
-    static void Refuse(string reason) => throw new MapDocumentException("Invalid light shadow exclusion: " + reason + ".");
+    void Refuse(MapDocumentRefusal reason, string detail) => throw new MapDocumentException(reason, "Invalid light shadow exclusion: " + detail + ".")
+    { FieldPath = "ShadowExclusion", EnumType = typeof(MapLightShadowExclusionKind), ActualInteger = (int)Kind };
 }

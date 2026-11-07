@@ -50,14 +50,16 @@ The shapes differ by backend:
     Render.Tests. TemporalFollowPhaseGpuTests' orthographic Native and Quality
     sweep took 12.5 minutes in 39039926687, so Native and Quality now run separately. Their initial estimates
     use the 8 Native and 36 Quality rendered phases, whose individual walks cost about the same. Twelve
-    slices replace nine to leave room for hosted speed variation, at 10.2 to 10.5 normalized minutes each,
-    with the cascade-cull method alone. The non-Render assemblies totalled 15.25 and 14.99 minutes and the
-    rest jobs reached 20m03s and 20m00s. Its three named projects move 8.55 and 8.03 minutes to projects-1,
+    slices replaced nine to leave room for hosted speed variation, at 10.2 to 10.5 normalized minutes each.
+    The cascade-cull method is now bounded, so its dedicated render-2 slice is removed and it joins
+    the S-prefix slice. The remaining eleven slice names stay unchanged. The non-Render assemblies
+    totalled 15.25 and 14.99 minutes and the rest jobs reached 20m03s and 20m00s. Its three named projects move 8.55 and 8.03 minutes to projects-1,
     leaving 6.70 and 6.96 on rest plus its once-per-leg steps.
   * direct3d11-native runs classes in parallel on WARP but the methods of one class in series, so a slice
-    costs its slowest class or about a third of its summed time, whichever is more. The one method of
-    ShadowCascadeCullPerfGpuTests took about 15 minutes there against 1 on Metal, has a slice to itself
-    and sets that backend's floor. The rest jobs took 14m24s and 18m55s, then 22m54s in 39074411898.
+    costs its slowest class or about a third of its summed time, whichever is more. The original
+    ShadowCascadeCullPerfGpuTests timing sweep took about 15 minutes there against 1 on Metal.
+    Its bounded correctness replacement joins the catch-all slice and removes the dedicated render-1.
+    The remaining slice names stay unchanged. The rest jobs took 14m24s and 18m55s, then 22m54s in 39074411898.
     Catalog.Tests took 16.30 minutes there against 13.01 for MapEditor.Tests, so Catalog.Tests moves to
     projects-1 on its own host. Windows then runs its non-Render projects one assembly at a time (#1471),
     because four test hosts at once on the 4 vCPU runner starved a loopback Kestrel host past its 20 s
@@ -113,7 +115,6 @@ RENDER_SLICES = {
         ("render-2", []),
     ],
     "direct3d11-native": [
-        ("render-1", gpu("ShadowCascadeCullPerfGpuTests.")),
         ("render-2", [("=", ORTHO_N), ("=", ORTHO_Q), ("=", PERSPECTIVE_NQ), ("=", STOP)]
          + gpu("TemporalFollowCameraGpuTests.", "TemporalFollowStopGpuTests.", "TemporalG", "TemporalR",
                "TemporalS")),
@@ -122,7 +123,6 @@ RENDER_SLICES = {
     ],
     "vulkan-native": [
         ("render-1", [("=", ORTHO_Q)] + gpu("I")),
-        ("render-2", gpu("ShadowCascadeCullPerfGpuTests.")),
         ("render-3", [("=", PERSPECTIVE_PU)] + gpu("B")),
         ("render-4", [("=", ORTHO_PU)] + gpu("G", "D")),
         ("render-5", gpu("TemporalLongHoldFollowGpuTests.", "R", "TemporalC", "C")),

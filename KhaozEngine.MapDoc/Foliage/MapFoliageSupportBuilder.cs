@@ -149,6 +149,8 @@ internal sealed class MapFoliageSupportBuilder(MapScopedSurfaces view, IReadOnly
         throw new MapFoliageRefusal(mapped, Work(), view.Detail ?? "incomplete chunk acquisition");
     }
 
+    internal MapFoliageSupportGrid GridForTests(MapSurfaceRef surface, MapExactXz min, MapExactXz max) => Grid(surface, min, max);
+
     MapFoliageSupportGrid Grid(MapSurfaceRef surface, MapExactXz min, MapExactXz max)
     {
         var grid = new MapFoliageSupportGrid(surface, Kernel(surface));

@@ -169,20 +169,31 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         {
             if (description.Layout is not D3D11ResourceLayout layout)
             {
-                throw new ArgumentException(
+                throw new GpuResourceOwnershipArgumentException(description.Layout is null ? GpuResourceOwnershipRefusal.MissingResource : GpuResourceOwnershipRefusal.ForeignBackend,
                     "A resource set for the native Direct3D 11 backend needs a layout this backend created. A "
                     + "layout from another backend carries another backend's register numbering.",
-                    nameof(description));
+                    nameof(description))
+                {
+                    ExpectedBackend = GpuBackendKind.Direct3D11Native,
+                    ActualType = description.Layout?.GetType(),
+                    ExpectedType = typeof(D3D11ResourceLayout),
+                    Context = "resource set",
+                    ResourceKind = "resource layout",
+                };
             }
 
             IGpuBindableResource[] resources = description.Resources ?? Array.Empty<IGpuBindableResource>();
             if (resources.Length != layout.ElementCount)
             {
-                throw new ArgumentException(
+                throw new GpuResourceSetException(GpuResourceSetRefusal.ResourceCountMismatch,
                     "A resource set binds exactly one resource per layout element, in declaration order. The "
                     + $"layout declares {layout.ElementCount} and {resources.Length} were bound, so the register "
                     + "assignment would silently shift and the shader would read the wrong resource.",
-                    nameof(description));
+                    nameof(description))
+                {
+                    DeclaredCount = layout.ElementCount,
+                    SuppliedCount = resources.Length,
+                };
             }
 
             Layout = layout;
@@ -212,19 +223,19 @@ namespace KhaozEngine.Gpu.D3D11.Internal
                 case GpuResourceKind.StructuredBufferReadOnly:
                 case GpuResourceKind.StructuredBufferReadWrite:
                     {
-                        (IGpuBuffer buffer, uint offset, uint size) = ResolveBuffer(element, resource);
+                        (IGpuBuffer buffer, uint offset, uint size) = ResolveBuffer(element, resource, index);
                         return new D3D11BoundResource(element.Kind, slot, element.Stages, element.Dynamic,
                             resource, buffer, offset, size);
                     }
 
                 case GpuResourceKind.TextureReadOnly:
                 case GpuResourceKind.TextureReadWrite:
-                    Require<IGpuTexture>(element, resource);
+                    Require<IGpuTexture>(element, resource, index);
                     return new D3D11BoundResource(element.Kind, slot, element.Stages, element.Dynamic,
                         resource, null, 0, 0);
 
                 case GpuResourceKind.Sampler:
-                    Require<IGpuSampler>(element, resource);
+                    Require<IGpuSampler>(element, resource, index);
                     return new D3D11BoundResource(element.Kind, slot, element.Stages, element.Dynamic,
                         resource, null, 0, 0);
 
@@ -236,7 +247,7 @@ namespace KhaozEngine.Gpu.D3D11.Internal
 
         // A bare buffer means the whole buffer. A range means exactly what it says, resolved now.
         static (IGpuBuffer Buffer, uint Offset, uint Size) ResolveBuffer(
-            in GpuResourceLayoutElement element, IGpuBindableResource resource)
+            in GpuResourceLayoutElement element, IGpuBindableResource resource, int index)
         {
             switch (resource)
             {
@@ -245,11 +256,18 @@ namespace KhaozEngine.Gpu.D3D11.Internal
                         uint size = range.Size == 0 ? range.Buffer.SizeInBytes - range.Offset : range.Size;
                         if (range.Offset + size > range.Buffer.SizeInBytes)
                         {
-                            throw new ArgumentException(
+                            throw new GpuResourceSetException(GpuResourceSetRefusal.BufferWindowOutsideResource,
                                 $"The buffer range bound at '{element.Name}' runs past the end of its buffer "
                                 + $"({range.Offset} + {size} bytes into {range.Buffer.SizeInBytes}). Resolving the "
                                 + "window here rather than at draw time is what makes that sayable at all.",
-                                nameof(resource));
+                                nameof(resource))
+                            {
+                                ElementName = element.Name,
+                                Binding = index,
+                                RangeOffset = range.Offset,
+                                RangeBytes = size,
+                                BufferBytes = range.Buffer.SizeInBytes,
+                            };
                         }
                         return (range.Buffer, range.Offset, size);
                     }
@@ -258,21 +276,35 @@ namespace KhaozEngine.Gpu.D3D11.Internal
                     return (buffer, 0, buffer.SizeInBytes);
 
                 default:
-                    throw new ArgumentException(
+                    throw new GpuResourceSetException(resource is null ? GpuResourceSetRefusal.ResourceMissing : GpuResourceSetRefusal.ResourceKindMismatch,
                         $"'{element.Name}' is declared as {element.Kind}, so it needs an IGpuBuffer or a "
                         + $"GpuBufferRange. A {Describe(resource)} was bound.",
-                        nameof(resource));
+                        nameof(resource))
+                    {
+                        ElementName = element.Name,
+                        Binding = index,
+                        ResourceKind = element.Kind,
+                        ActualType = resource?.GetType(),
+                        ExpectedType = typeof(IGpuBuffer),
+                    };
             }
         }
 
-        static void Require<T>(in GpuResourceLayoutElement element, IGpuBindableResource resource) where T : class
+        static void Require<T>(in GpuResourceLayoutElement element, IGpuBindableResource resource, int index) where T : class
         {
             if (resource is T) return;
-            throw new ArgumentException(
+            throw new GpuResourceSetException(resource is null ? GpuResourceSetRefusal.ResourceMissing : GpuResourceSetRefusal.ResourceKindMismatch,
                 $"'{element.Name}' is declared as {element.Kind}, so it needs an {typeof(T).Name}. A "
                 + $"{Describe(resource)} was bound, which would take the wrong register file and bind nothing "
                 + "the shader reads.",
-                nameof(resource));
+                nameof(resource))
+            {
+                ElementName = element.Name,
+                Binding = index,
+                ResourceKind = element.Kind,
+                ActualType = resource?.GetType(),
+                ExpectedType = typeof(T),
+            };
         }
 
         static string Describe(IGpuBindableResource? resource) => resource is null ? "null" : resource.GetType().Name;

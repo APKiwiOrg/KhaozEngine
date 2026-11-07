@@ -13,6 +13,9 @@ namespace KhaozEngine.MapEditor;
 
 public sealed partial class ViewportWorld
 {
+    internal MapRenderReadiness SettleNativeForTests(int maxOperations) => _nativeView!.SettleForCapture(maxOperations);
+    internal void RecordNativeForTests(MapFrameState frame, IMapDrawSink sink) => _nativeView!.RecordForTests(frame, sink);
+    internal string NativePolicyDigestForTests => _nativeView!.DesiredPolicyDigestForTests;
     NativeMapView? _nativeView;
     MapNativeRenderContext? _nativeContext;
     MapRenderSourceState? _nativeState, _nativePendingState;
@@ -29,9 +32,9 @@ public sealed partial class ViewportWorld
     bool TryBuildNative(MapDocument document, Vector3 focus)
     {
         if (document.ResolverIdentity is null) return false;
-        var context = (NativeRenderHost ?? throw new MapDocumentException("NativeRenderHostRequired"))
+        var context = (NativeRenderHost ?? throw new MapDocumentException(MapDocumentRefusal.SchemaValueRequired, "NativeRenderHostRequired") { DocumentId = document.Id, FieldPath = nameof(NativeRenderHost) })
             .Resolve(document, NativeDocumentPath, NativeStyleId);
-        if (NativeObserver is null) throw new MapDocumentException("NativeObserverRequired");
+        if (NativeObserver is null) throw new MapDocumentException(MapDocumentRefusal.SchemaValueRequired, "NativeObserverRequired") { DocumentId = document.Id, FieldPath = nameof(NativeObserver) };
         _nativeState = NativeState(context, focus);
         _nativeContext = context; _doc = document;
         _nativeView = new(_scene, new(_nativeState, new MapScene3DSink(_scene)));
@@ -70,7 +73,7 @@ public sealed partial class ViewportWorld
         _nativePendingState = state; _nativePendingContext = context;
         var transition = effects is null ? _nativeView.Replace(state) : _nativeView.Invalidate(state, effects);
         if (transition.Status != MapSceneStatus.Incomplete && transition.Status != MapSceneStatus.CompleteForScope)
-        { _nativePendingState = null; _nativePendingContext = null; throw new MapDocumentException("NativeRenderReplacementRefused"); }
+        { _nativePendingState = null; _nativePendingContext = null; throw new MapDocumentException(MapDocumentRefusal.AcquisitionContractMismatch, "NativeRenderReplacementRefused") { DocumentId = document.Id, Operation = nameof(RefreshNative) }; }
         _doc = document; return true;
     }
     void AcceptNative(MapRenderReadiness readiness)

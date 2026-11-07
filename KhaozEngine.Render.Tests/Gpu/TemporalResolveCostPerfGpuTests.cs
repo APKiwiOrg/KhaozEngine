@@ -47,27 +47,35 @@ namespace KhaozEngine.Tests.Gpu
         // The spec's budget for the resolve and the sharpen together, in ms at a 2560x1440 display.
         const double ResolveBudgetMs = 1.0;
 
+        [Trait("Category", "Diagnostic")]
         [GpuFact(RequiresRealGpu = true)]
         public void TheBoxesAtQualityAreMeasuredAt1440p() => Run(2560, 1440, Boxes, TemporalUpscale.Quality);
 
+        [Trait("Category", "Diagnostic")]
         [GpuFact(RequiresRealGpu = true)]
         public void TheBoxesAtNativeAreMeasuredAt1440p() => Run(2560, 1440, Boxes, TemporalUpscale.Native);
 
+        [Trait("Category", "Diagnostic")]
         [GpuFact(RequiresRealGpu = true)]
         public void TheMovingFieldAtQualityIsMeasuredAt1440p() => Run(2560, 1440, Field, TemporalUpscale.Quality);
 
+        [Trait("Category", "Diagnostic")]
         [GpuFact(RequiresRealGpu = true)]
         public void TheMovingFieldAtNativeIsMeasuredAt1440p() => Run(2560, 1440, Field, TemporalUpscale.Native);
 
+        [Trait("Category", "Diagnostic")]
         [GpuFact(RequiresRealGpu = true)]
         public void TheBoxesAtQualityAreMeasuredAt3456x2234() => Run(3456, 2234, Boxes, TemporalUpscale.Quality);
 
+        [Trait("Category", "Diagnostic")]
         [GpuFact(RequiresRealGpu = true)]
         public void TheBoxesAtNativeAreMeasuredAt3456x2234() => Run(3456, 2234, Boxes, TemporalUpscale.Native);
 
+        [Trait("Category", "Diagnostic")]
         [GpuFact(RequiresRealGpu = true)]
         public void TheMovingFieldAtQualityIsMeasuredAt3456x2234() => Run(3456, 2234, Field, TemporalUpscale.Quality);
 
+        [Trait("Category", "Diagnostic")]
         [GpuFact(RequiresRealGpu = true)]
         public void TheMovingFieldAtNativeIsMeasuredAt3456x2234() => Run(3456, 2234, Field, TemporalUpscale.Native);
 

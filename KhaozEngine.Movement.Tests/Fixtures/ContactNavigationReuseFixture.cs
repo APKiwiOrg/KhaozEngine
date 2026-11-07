@@ -4,7 +4,6 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
 using System.Numerics;
-using System.Reflection;
 using KhaozEngine.Locomotion;
 using KhaozEngine.Movement;
 using KhaozEngine.Navigation;
@@ -108,11 +107,7 @@ internal sealed class ContactNavigationReuseFixture : IDisposable
             var replacement = new GroundNavigation(new NavTraversalGraph(original.Space, original.AgentRadius,
                 original.AgentHeight, layers, links), tuning, original.Footprint, original.Aquatic);
             SameGraphBits(original, replacement);
-            const BindingFlags fields = BindingFlags.Instance | BindingFlags.NonPublic;
-            var profiles = (GroundNavigation[])typeof(GroundNavigationBake).GetField("_profiles", fields)!.GetValue(baked)!;
-            profiles[Array.IndexOf(baked.ProfileNames.ToArray(), name)] = replacement;
-            var byName = (Dictionary<string, GroundNavigation>)typeof(GroundNavigationBake).GetField("_byName", fields)!.GetValue(baked)!;
-            byName[name] = replacement;
+            baked.ReplaceProfileForTests(name, replacement);
             proof.AssertCurrent();
         }
 
@@ -168,10 +163,7 @@ internal sealed class ContactNavigationReuseFixture : IDisposable
     internal ContactNavigationProof Proof(bool reuse = true, bool holds = false)
     {
         using var source = Context.CreateNavigationBinding(Tuning);
-        const BindingFlags fields = BindingFlags.Instance | BindingFlags.NonPublic;
-        var context = (MovementEnvironmentContext)typeof(EffectiveMovementBinding).GetField("_context", fields)!.GetValue(source)!;
-        FieldInfo provider = typeof(MovementEnvironmentContext).GetField("_provider", fields)!;
-        provider.SetValue(context, new TracedProvider((IMovementEnvironmentProvider)provider.GetValue(context)!, this));
+        source.DecorateProviderForTests(provider => new TracedProvider(provider, this));
         return new(Bake, Context, source, new NavAreaFootprint(Bake.Columns, Bake.Options, Tuning, default),
             new ContactNavigationReusePolicy(reuse, holds, false));
     }
@@ -185,27 +177,12 @@ internal sealed class ContactNavigationReuseFixture : IDisposable
         Assert.Equal(0, SupportQueryDiagnostics.Retention.Bytes);
     }
 
-    // Lower the backend's existing internal limit before its first publication. No production test control is added.
-    internal static void LimitSession(object session, int capacity)
-    {
-        const BindingFlags fields = BindingFlags.Instance | BindingFlags.NonPublic;
-        FieldInfo field = session.GetType().GetField("Memo", fields)!;
-        ((IDisposable)field.GetValue(session)!).Dispose();
-        object memo = Activator.CreateInstance(field.FieldType, fields, null, [capacity, 2 * 1024 * 1024], null)!;
-        field.SetValue(session, memo);
-    }
+    // Lower the existing backend memo limit before its first publication.
+    internal static void LimitSession(object session, int capacity) =>
+        ((KhaozEngine.Physics.Bepu.BepuPhysicsWorld.FootprintReuseSession)session).LimitMemoForTests(capacity);
 
-    internal IEnumerable<(object Session, SupportFootprintReuseDomain Domain)> ActiveSessions()
-    {
-        const BindingFlags fields = BindingFlags.Instance | BindingFlags.NonPublic;
-        var sessions = (IEnumerable)Scene.Physics.GetType().GetField("_footprintReuseSessions", fields)!.GetValue(Scene.Physics)!;
-        foreach (object pair in sessions)
-        {
-            object session = pair.GetType().GetProperty("Value")!.GetValue(pair)!;
-            if ((int)session.GetType().GetField("_thread", fields)!.GetValue(session)! == Environment.CurrentManagedThreadId)
-                yield return (session, (SupportFootprintReuseDomain)session.GetType().GetField("_domain", fields)!.GetValue(session)!);
-        }
-    }
+    internal IEnumerable<(object Session, SupportFootprintReuseDomain Domain)> ActiveSessions() =>
+        Scene.Physics.CurrentThreadReuseSessionsForTests.Select(session => ((object)session, session.DomainForTests));
 
     internal byte[] Build(NavBakeExecution? execution = null) => ContactBakeFile.Write(GroundNavigationBake.Create(
         Bake, ContactBakeFile.Sources(), [new("player", Tuning, default)], execution));

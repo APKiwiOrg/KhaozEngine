@@ -2,6 +2,8 @@
   <!-- Every test assembly that measures allocation imports this file instead of linking the sources one by one,
        so the region, its isolation contract and the contract tests always arrive together. See README.md. -->
   <ItemGroup>
+    <Compile Include="$(MSBuildThisFileDirectory)AllocationMeasurementRefusal.cs" Link="Shared/AllocationMeasurementRefusal.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)AllocationMeasurementException.cs" Link="Shared/AllocationMeasurementException.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)AllocationRegion.cs" Link="Shared/AllocationRegion.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)AllocationMeasurement.cs" Link="Shared/AllocationMeasurement.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)SerializedReportingTestFramework.cs" Link="Shared/SerializedReportingTestFramework.cs" />

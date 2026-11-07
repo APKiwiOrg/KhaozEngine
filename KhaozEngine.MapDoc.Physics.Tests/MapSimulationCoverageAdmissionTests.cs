@@ -124,8 +124,20 @@ public sealed class MapSimulationCoverageAdmissionTests
             if (links) _ = MapNavTiling.Links(world, grids);
             else _ = MapNavTiling.Partition(world, grids, Nav);
         });
-        Assert.Contains("grid alignment", error.Message, StringComparison.Ordinal);
-        Assert.Contains(range ? "one block" : "document's tile size 64", error.Message, StringComparison.Ordinal);
+        Assert.Equal(MapDocumentRefusal.PhysicsGridAlignmentInvalid, error.Reason);
+        Assert.Equal(range ? "Origin" : "StorageTileSize", error.FieldPath);
+        if (range)
+        {
+            Assert.Equal("X", error.Axis);
+            Assert.Equal(137438953472d, error.AxisOrigin);
+            Assert.Equal(int.MinValue, error.MinimumInteger);
+            Assert.Equal(int.MaxValue, error.MaximumInteger);
+        }
+        else
+        {
+            Assert.Equal(32, error.ActualNumber);
+            Assert.Equal(64, error.ExpectedNumber);
+        }
         Assert.Equal(before, world.Admission.RetainedBytes);
         Assert.Null(MapSceneAdmission.Current);
     }

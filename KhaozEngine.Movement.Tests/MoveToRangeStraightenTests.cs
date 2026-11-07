@@ -119,7 +119,10 @@ public class MoveToRangeStraightenTests
     [Fact]
     public void StraighteningResumesOnThePlanAfterTheFallback()
     {
-        Driver drive = FallBackDrive(out _);
+        Driver drive = FallBackDrive(out SeenCells seen);
+        // #1712 changes raw route choices. After proving the fallback, allow the new route's shortcuts
+        // rather than requiring its side lines to stay inside the union of old raw polylines.
+        seen.Armed = false;
         var moved = new Vector2(148.125f, 152.625f);
 
         Assert.True(drive.RunTo(moved, 300));

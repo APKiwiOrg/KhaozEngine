@@ -23,15 +23,22 @@ public static partial class MapPartialPaintCompiler
         using var preparation = Scene.MapSceneAdmission.Current?.BeginPreparation();
         ArgumentException.ThrowIfNullOrWhiteSpace(targetSurfaceId);
         var budget = limits ?? new();
-        if (view.Capacity is { } capacity)
-            throw new MapDocumentException(capacity.Message, new Scene.MapSceneCapacityException(capacity));
+        // The acquisition's state refuses before any demand of its own. A capacity-stopped view keeps its exact demand
+        // as the cause, so callers still read the MapSceneCapacity that stopped it.
         if (view.Status != MapAcquireStatus.Complete)
-            throw new MapDocumentException((view.Status == MapAcquireStatus.Incomplete ? "MissingGeometry" : view.Status.ToString()) + ": " + view.Detail);
+            throw new MapDocumentException(MapDocumentRefusal.AcquisitionIncomplete, (view.Status == MapAcquireStatus.Incomplete ? "MissingGeometry" : view.Status.ToString()) + ": " + view.Detail,
+                view.Capacity is { } stopped ? new Scene.MapSceneCapacityException(stopped) : null)
+            { SurfaceId = targetSurfaceId, AcquireStatus = view.Status, FieldPath = "Status" };
+        if (view.Capacity is { } capacity)
+            throw capacity.Refuse();
         if (!view.Scope.Roles.Contains(MapSurfaceRole.PaintOverride))
-            throw new MapDocumentException("MissingGeometry: paint compilation requires complete acquired paint and target geometry.");
+            throw new MapDocumentException(MapDocumentRefusal.AcquisitionIncomplete, "MissingGeometry: paint compilation requires complete acquired paint and target geometry.")
+            { SurfaceId = targetSurfaceId, AcquireStatus = view.Status, FieldPath = "Scope.Roles" };
         var target = view.Surfaces.SingleOrDefault(s => s.Id == targetSurfaceId);
         if (target is null || target.Role == MapSurfaceRole.PaintOverride)
-            throw new MapDocumentException("Invalid: paint target must be a declared physical surface.");
+            throw new MapDocumentException(target is null ? MapDocumentRefusal.ReferenceMissing : MapDocumentRefusal.SurfacePaintTargetInvalid,
+                "Invalid: paint target must be a declared physical surface.")
+            { SurfaceId = targetSurfaceId, FieldPath = "targetSurfaceId" };
         var paints = view.Surfaces.Where(s => s.Role == MapSurfaceRole.PaintOverride && s.PaintTargetSurfaceId == targetSurfaceId &&
             (view.EffectiveContext is null || view.EffectiveContext.IsPartialPaint(s)))
             .OrderByDescending(s => s.PaintPriority).ThenBy(s => s.Id, StringComparer.Ordinal).ToArray();
@@ -44,7 +51,10 @@ public static partial class MapPartialPaintCompiler
             return result;
         }
         catch (Exception error) when (error is MapExactOverflowException or OverflowException)
-        { throw new MapDocumentException("NotRepresentable: paint intersection cannot be emitted exactly. No regions were published.", error); }
+        {
+            throw new MapDocumentException(MapDocumentRefusal.GeometryNotRepresentable, "NotRepresentable: paint intersection cannot be emitted exactly. No regions were published.", error)
+            { SurfaceId = targetSurfaceId, Operation = "paint intersection" };
+        }
     }
 
     // Work follows painted area. Paint sources compile first. Only target cells whose exact lattice rectangle openly
@@ -77,7 +87,7 @@ public static partial class MapPartialPaintCompiler
         var cells = TargetCells(view, target, sourceBounds, present.Where(k => k.SurfaceId == target.Id).ToArray(),
             limits.MaxContextPatches - paintKeys.Length,
             new("MaxContextPatches", paintKeys.Length, limits.MaxContextPatches, limits));
-        work.Require(cells is null ? (long)limits.MaxContextPatches + 1 : (long)paintKeys.Length + cells.Count, limits.MaxContextPatches, nameof(MapRefinementLimits.MaxContextPatches), "context patches");
+        work.Require(cells is null ? (long)limits.MaxContextPatches + 1 : (long)paintKeys.Length + cells.Count, limits.MaxContextPatches, nameof(MapRefinementLimits.MaxContextPatches), "context patches", measured: cells is not null);
         var targets = cells!.Select(entry => (Patch: Acquired(view, entry.Key), Cells: entry.Value)).ToArray();
         long targetCount = targets.Sum(p => MapSurfaceCompiler.CountFaces(target, p.Patch, p.Cells));
         work.Require(targetCount, limits.MaxSourceFacesPerBound, nameof(MapRefinementLimits.MaxSourceFacesPerBound), "source faces");
@@ -89,7 +99,7 @@ public static partial class MapPartialPaintCompiler
         Scene.MapSceneAdmission.Current?.ReserveBytes(checked((long)System.Runtime.CompilerServices.Unsafe.SizeOf<MapWaterPolygons.Bounds>() * faces.Length));
         // Every candidate is charged below, so more candidates than the remaining allowance refuse before listing them.
         var pairs = MapWaterBoundsSweep.Cross(faces.Select(f => MapWaterPolygons.Bounds.Of(f.Parent)).ToArray(), sourceBounds, work.RemainingPairs, Scene.MapSceneAdmission.Current);
-        work.Require(pairs is null ? (long)limits.MaxPairChecks + 1 : 0, limits.MaxPairChecks, nameof(MapRefinementLimits.MaxPairChecks), "pair checks");
+        work.Require(pairs is null ? (long)limits.MaxPairChecks + 1 : 0, limits.MaxPairChecks, nameof(MapRefinementLimits.MaxPairChecks), "pair checks", measured: pairs is not null);
         var regions = new List<MapPaintRegion>();
         for (int next = 0; next < pairs!.Count;)
         {
@@ -118,7 +128,7 @@ public static partial class MapPartialPaintCompiler
                         if (a.Material == b.Material) continue;
                         work.Pair();
                         if (BoundsOverlap(a.Polygon, b.Polygon) && MapEffectiveGeometry.AreaWide(MapEffectiveGeometry.Intersect(a.Polygon, b.Polygon)).Sign > 0)
-                            throw new MapDocumentException($"Invalid: equal-priority paint '{a.Id}' and '{b.Id}' overlap with conflicting materials. Author an explicit priority.");
+                            throw new MapDocumentException(MapDocumentRefusal.SurfacePaintPriorityConflict, $"Invalid: equal-priority paint '{a.Id}' and '{b.Id}' overlap with conflicting materials. Author an explicit priority.") { SurfaceId = a.Id, OtherSurfaceId = b.Id, ActualInteger = a.Priority };
                     }
                 var accepted = new List<Source>();
                 foreach (var candidate in candidates)
@@ -178,8 +188,7 @@ public static partial class MapPartialPaintCompiler
                     for (int i = 0; i < face.Polygon.Count; i++)
                     {
                         var edge = new Edge(face.Polygon[i], face.Polygon[(i + 1) % face.Polygon.Count]);
-                        if (!edges.Remove(new(edge.B, edge.A)) && !edges.Add(edge))
-                            throw new MapDocumentException("Invalid: non-manifold paint material boundary.");
+                        RequireUniqueMaterialEdge(!edges.Remove(new(edge.B, edge.A)) && !edges.Add(edge), surface.Id);
                     }
                 return (group.Key, Edges: edges);
             }).ToArray();
@@ -229,7 +238,7 @@ public static partial class MapPartialPaintCompiler
                             crossings.Add((AtZ(edge, middle), edge));
                     }
                     crossings.Sort((a, b) => a.X.CompareTo(b.X));
-                    if (crossings.Count % 2 != 0) throw new MapDocumentException("Invalid: open paint material boundary.");
+                    RequireClosedMaterialBoundary(crossings.Count, surface.Id);
                     for (int j = 0; j < crossings.Count; j += 2)
                     {
                         var left = crossings[j].Edge; var right = crossings[j + 1].Edge;
@@ -251,9 +260,32 @@ public static partial class MapPartialPaintCompiler
         finally { work.Preparation.EndSource(); }
     }
 
-    static MapSurfacePatch Acquired(MapScopedSurfaces view, MapPatchKey key) =>
-        view.TryAcquiredPatch(key, out var patch, out _) && patch is not null ? patch
-            : throw new MapDocumentException("MissingGeometry: paint or target patch unavailable.");
+    static MapSurfacePatch Acquired(MapScopedSurfaces view, MapPatchKey key)
+    {
+        if (view.TryAcquiredPatch(key, out var patch, out var status) && patch is not null) return patch;
+        throw new MapDocumentException(MapDocumentRefusal.PatchUnavailable, "MissingGeometry: paint or target patch unavailable.")
+        { SurfaceId = key.SurfaceId, Patch = key, PatchStatus = status };
+    }
+
+    // Value-taking guards admit the actual edge/crossing observations and deterministic computed-fault tests.
+    internal static void RequireUniqueMaterialEdge(bool duplicate, string surfaceId)
+    {
+        if (duplicate) throw new MapDocumentException(MapDocumentRefusal.SurfacePaintBoundaryInvalid, "Invalid: non-manifold paint material boundary.")
+        { SurfaceId = surfaceId };
+    }
+
+    internal static void RequireClosedMaterialBoundary(int crossingCount, string surfaceId)
+    {
+        if (crossingCount % 2 != 0) throw new MapDocumentException(MapDocumentRefusal.SurfacePaintBoundaryInvalid, "Invalid: open paint material boundary.")
+        { SurfaceId = surfaceId };
+    }
+
+    // A null count means a bounded producer refused before it could publish a measured result.
+    internal static void RequireWorkBudget(long? count, long limit, string detail, string budget)
+    {
+        if (!(count <= limit)) throw new MapDocumentException(MapDocumentRefusal.WorkCapacityExceeded, "CapacityExceeded: paint " + detail + " budget exceeded.")
+        { Budget = budget, ActualCount = count, Limit = limit };
+    }
 
     // Present target patches in key order, each with its cells whose exact lattice rectangle openly overlaps some
     // source's bounds. Patches without such a cell are never read or counted. A posed target keeps every cell, because
@@ -384,20 +416,27 @@ public static partial class MapPartialPaintCompiler
     sealed record Source(string Id, int Priority, MapPaintCoverage Material, IReadOnlyList<MapWideXz> Polygon);
     readonly record struct Edge(MapWideXz A, MapWideXz B);
 
+    internal static void ChargeSourcesForTests(MapRefinementLimits limits, params int[] vertexCounts)
+    {
+        using var work = new Work(limits);
+        foreach (int count in vertexCounts) work.Source(count);
+    }
+
     sealed class Work(MapRefinementLimits limits) : IDisposable
     {
         long _pairs, _regions, _vertices, _sources, _sourceVertices;
         internal MapPaintPreparation Preparation { get; } = new();
         public void Dispose() => Preparation.Dispose();
-        internal void Require(long requested, long allowance, string name, string detail, [CallerMemberName] string caller = "")
+        // A bounded producer that stops before publishing its count still names its first-exceeding demand in the
+        // MapSceneCapacity, but the refusal's ActualCount stays null because nothing was measured.
+        internal void Require(long requested, long allowance, string name, string detail, bool measured = true, [CallerMemberName] string caller = "")
         {
             bool accepted = requested <= allowance;
             if (DemandDiagnostics.IsObserved)
                 DemandDiagnostics.Check(this, "MapPartialPaintCompiler." + caller, name, 0, requested, allowance, !accepted, allowanceSource: limits);
             if (accepted) return;
             var capacity = new Scene.MapSceneCapacity(name, requested, allowance);
-            throw new MapDocumentException("CapacityExceeded: paint " + detail + " budget exceeded. " + capacity.Message,
-                new Scene.MapSceneCapacityException(capacity));
+            throw capacity.Refuse("CapacityExceeded: paint " + detail + " budget exceeded. " + capacity.Message, measured);
         }
         internal void Pair() => Require(++_pairs, limits.MaxPairChecks, nameof(MapRefinementLimits.MaxPairChecks), "pair checks");
         internal long RemainingPairs => Math.Max(0, limits.MaxPairChecks - _pairs);

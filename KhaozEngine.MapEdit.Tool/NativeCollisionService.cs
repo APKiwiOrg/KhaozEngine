@@ -56,10 +56,12 @@ public sealed class NativeCollisionService(MapEditSession session)
         return session.WithNativeAssets(context =>
         {
             MapPlacement placement = context.Document.Placements.Find(p => string.Equals(p.Id, placementId, StringComparison.Ordinal))
-                ?? throw new MapDocumentException($"No placement '{placementId}' in the open native document.");
+                ?? throw new MapDocumentException(MapDocumentRefusal.ReferenceMissing, $"No placement '{placementId}' in the open native document.")
+                { PlacementId = placementId, DocumentId = context.Document.Id };
             string assetId = placement.AssetId!;
             MapAssetShapes shapes = MapAssetShapes.Read(context.Assets, assetId);
-            if (shapes.Collider is null) throw new MapDocumentException($"Asset '{assetId}' declares no collider.");
+            if (shapes.Collider is null) throw new MapDocumentException(MapDocumentRefusal.ToolColliderMissing, $"Asset '{assetId}' declares no collider.")
+            { AssetId = assetId };
             MapBox3 extent = MapShapeBounds.Of(shapes.Collider, Pose.Identity);
             GltfMesh mesh = NativeMapAssetLoader.Load(context.Assets.GetAsset(assetId), context.Assets);
             float meshTop = float.NegativeInfinity;
@@ -72,7 +74,7 @@ public sealed class NativeCollisionService(MapEditSession session)
 
     /// <summary>Resizes the collider of <paramref name="assetId"/> so it spans <paramref name="bottom"/> to
     /// <paramref name="top"/> in asset-local metres. The collider must be a box or a compound of boxes whose orientations
-    /// keep each box's local Y vertical, and anything else refuses with "compound boxes". Each box keeps its X and Z, and
+    /// keep each box's local Y vertical, and anything else refuses with <see cref="MapDocumentRefusal.ToolColliderShapeUnsupported"/>. Each box keeps its X and Z, and
     /// its centre and half height map linearly from the collider's current vertical extent onto the requested one. A
     /// lone box becomes a one-child compound, since a centred box cannot sit off its origin.
     /// <para>A dry run computes the new collider bytes, digest and effects and touches no file and no session state.
@@ -85,7 +87,16 @@ public sealed class NativeCollisionService(MapEditSession session)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(assetId);
         if (!float.IsFinite(bottom) || !float.IsFinite(top) || top <= bottom)
-            throw new MapDocumentException($"Collider heights for '{assetId}' need a finite bottom below a finite top.");
+            throw new MapDocumentException(!float.IsFinite(bottom) || !float.IsFinite(top)
+                ? MapDocumentRefusal.ValueNonfinite : MapDocumentRefusal.BoundsInvalid,
+                $"Collider heights for '{assetId}' need a finite bottom below a finite top.")
+            {
+                AssetId = assetId,
+                FieldPath = !float.IsFinite(bottom) ? nameof(bottom) : nameof(top),
+                ActualNumber = !float.IsFinite(bottom) ? bottom : top,
+                MinimumNumber = bottom,
+                MaximumNumber = top
+            };
         return session.WithNativeAssets(context =>
         {
             HeightPlan plan = PlanHeights(context, assetId, bottom, top);
@@ -95,8 +106,7 @@ public sealed class NativeCollisionService(MapEditSession session)
             var writer = new MapAssetFileWriter(context.ResourceRoot);
             MapAssetRef collider = writer.WriteResource(plan.ColliderBytes, ColliderExtension) with { Id = plan.ColliderResourceId };
             MapAssetRef root = writer.WriteManifest(plan.Manifest, plan.NewRoot.Id);
-            if (collider != plan.ColliderReference || root != plan.NewRoot)
-                throw new MapDocumentException($"Collider edit for '{assetId}' wrote resources that differ from its plan.");
+            NativeColliderAdmission.RequirePublishedPlan(assetId, plan.ColliderReference, plan.NewRoot, collider, root);
             MapAssetClosure assets = MapAssetClosure.Load(plan.NewRoots, context.Source);
             var command = new NativeAssetRootsCommand($"Set collider heights for {assetId}", plan.NewRoots, plan.Effects, context.Assets, assets);
             MapNativeEditEffects effects = session.ApplyNativeAssets(command, assets);
@@ -116,14 +126,16 @@ public sealed class NativeCollisionService(MapEditSession session)
         MapAssetClosure closure = context.Assets;
         MapResolvedAsset asset = closure.GetAsset(assetId);
         string colliderId = asset.CollisionResourceId
-            ?? throw new MapDocumentException($"Asset '{assetId}' declares no collider.");
+            ?? throw new MapDocumentException(MapDocumentRefusal.ToolColliderMissing, $"Asset '{assetId}' declares no collider.")
+            { AssetId = assetId };
         MapResolvedAsset? sharer = closure.Assets.FirstOrDefault(a => a.Id != assetId && a.CollisionResourceId == colliderId);
         if (sharer is not null)
-            throw new MapDocumentException(
-                $"Asset '{assetId}' shares collider resource '{colliderId}' with asset '{sharer.Id}', so a height edit would change both.");
+            throw new MapDocumentException(MapDocumentRefusal.ToolColliderResourceShared,
+                $"Asset '{assetId}' shares collider resource '{colliderId}' with asset '{sharer.Id}', so a height edit would change both.")
+            { AssetId = assetId, OtherAssetId = sharer.Id, ResourceId = colliderId };
         MapAssetShapes shapes = MapAssetShapes.Read(closure, assetId);
         float units = shapes.SourceUnitsToMetres;
-        PhysicsShape resized = ResizeVertically(shapes.Collider!, bottom / units, top / units, assetId);
+        PhysicsShape resized = ResizeVertically(shapes.Collider!, bottom / units, top / units, assetId, colliderId);
         byte[] bytes = Serialize(resized);
         string before = shapes.ColliderSha256!;
         string after = Convert.ToHexString(SHA256.HashData(bytes)).ToLowerInvariant();
@@ -180,29 +192,34 @@ public sealed class NativeCollisionService(MapEditSession session)
             MapAssetManifestDoc manifest = MapAssetManifestReader.Read(closure.GetResource(roots[i].Id).Bytes.ToArray(), roots[i].Id);
             if (!manifest.Assets.Any(a => string.Equals(a.Id, assetId, StringComparison.Ordinal))) continue;
             MapResourceDoc resource = manifest.Resources.Find(r => string.Equals(r.Reference.Id, colliderId, StringComparison.Ordinal))
-                ?? throw new MapDocumentException(
-                    $"Asset '{assetId}' collider resource '{colliderId}' is not declared in root manifest '{roots[i].Id}', so it cannot be rewritten there.");
+                ?? throw new MapDocumentException(MapDocumentRefusal.ReferenceMissing,
+                    $"Asset '{assetId}' collider resource '{colliderId}' is not declared in root manifest '{roots[i].Id}', so it cannot be rewritten there.")
+                { AssetId = assetId, ResourceId = colliderId, SourceName = roots[i].Id };
             return (i, manifest, resource);
         }
-        throw new MapDocumentException(
-            $"Asset '{assetId}' is not declared directly in a root manifest. Collider edits rewrite root manifests only.");
+        throw new MapDocumentException(MapDocumentRefusal.ReferenceMissing,
+            $"Asset '{assetId}' is not declared directly in a root manifest. Collider edits rewrite root manifests only.")
+        { AssetId = assetId, ResourceId = colliderId };
     }
 
-    static PhysicsShape ResizeVertically(PhysicsShape collider, float bottom, float top, string assetId)
+    static PhysicsShape ResizeVertically(PhysicsShape collider, float bottom, float top, string assetId, string colliderId)
     {
         CompoundChild[] children = collider switch
         {
             BoxShape box => new[] { new CompoundChild(box, Pose.Identity) },
             CompoundShape compound when compound.Children.All(c => c.Shape is BoxShape) => compound.Children,
-            _ => throw new MapDocumentException(
-                $"Asset '{assetId}' collider is a {Describe(collider)}. Height edits apply only to boxes and compound boxes."),
+            _ => throw new MapDocumentException(MapDocumentRefusal.ToolColliderShapeUnsupported,
+                $"Asset '{assetId}' collider is a {Describe(collider)}. Height edits apply only to boxes and compound boxes.")
+            { AssetId = assetId, ResourceId = colliderId, ShapeType = collider.GetType() },
         };
-        foreach (CompoundChild child in children)
+        for (int i = 0; i < children.Length; i++)
         {
+            CompoundChild child = children[i];
             Vector3 up = Vector3.Transform(Vector3.UnitY, Quaternion.Normalize(child.Local.Orientation));
             if (MathF.Abs(up.X) > VerticalAxisTolerance || MathF.Abs(up.Z) > VerticalAxisTolerance)
-                throw new MapDocumentException(
-                    $"Asset '{assetId}' has a tilted box. Height edits apply only to boxes and compound boxes whose boxes stand upright.");
+                throw new MapDocumentException(MapDocumentRefusal.ToolColliderBoxTilted,
+                    $"Asset '{assetId}' has a tilted box. Height edits apply only to boxes and compound boxes whose boxes stand upright.")
+                { AssetId = assetId, ResourceId = colliderId, Index = i };
         }
 
         float low = float.PositiveInfinity, high = float.NegativeInfinity;
@@ -223,9 +240,9 @@ public sealed class NativeCollisionService(MapEditSession session)
             var centre = new Vector3(position.X, bottom + (position.Y - low) * scale, position.Z);
             resized[i] = new CompoundChild(box, new Pose(centre, child.Local.Orientation));
         }
-        foreach (CompoundChild child in resized)
-            if (!float.IsFinite(child.Local.Position.Y) || ((BoxShape)child.Shape).HalfExtents.Y is not (> 0f and < float.PositiveInfinity))
-                throw new MapDocumentException($"Collider heights for '{assetId}' leave a box without a finite positive height.");
+        for (int i = 0; i < resized.Length; i++)
+            NativeColliderAdmission.RequireFiniteResizedBox(assetId, i, resized[i].Local.Position.Y,
+                ((BoxShape)resized[i].Shape).HalfExtents.Y);
         return new CompoundShape(resized);
     }
 

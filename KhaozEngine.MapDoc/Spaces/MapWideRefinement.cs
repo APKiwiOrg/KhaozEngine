@@ -15,20 +15,23 @@ internal sealed record MapWideCellRefinement(MapRefinementStatus Status, IReadOn
     MapWideRational CompatibilityArea, IReadOnlyList<MapLegacyCellTag> CompatibilityCells,
     MapWideRational? UpperArea, MapWideRational? MinSeparation, int PairChecks, string? Detail)
 {
-    internal static MapWideCellRefinement Failure(MapRefinementStatus status, string? detail) =>
-        new(status, [], [], default, default, default, [], null, null, 0, detail);
+    internal MapDocumentFinding? Finding { get; init; }
+
+    internal static MapWideCellRefinement Failure(MapRefinementStatus status, string? detail, MapDocumentFinding? finding = null) =>
+        new(status, [], [], default, default, default, [], null, null, 0, detail) { Finding = finding };
 
     internal static MapWideCellRefinement FromBounded(MapCellRefinement result) => new(result.Status,
         result.Vertices.Select(MapWideXz.From).ToArray(), result.Faces.Select(f => new MapWideRefinementFace(f.Lower, f.Upper,
             f.Polygon.Select(MapWideXz.From).ToArray(), f.MinSeparation is { } gap ? MapWideRational.From(gap) : null)).ToArray(),
         MapWideRational.From(result.CellArea), MapWideRational.From(result.LowerArea), MapWideRational.From(result.CompatibilityArea),
         result.CompatibilityCells, result.UpperArea is { } upper ? MapWideRational.From(upper) : null,
-        result.MinSeparation is { } separation ? MapWideRational.From(separation) : null, result.PairChecks, result.Detail);
+        result.MinSeparation is { } separation ? MapWideRational.From(separation) : null, result.PairChecks, result.Detail)
+    { Finding = result.Finding };
 
     /// <summary>Preserves released bounded output semantics. A refusal never exposes a partial refinement.</summary>
     internal MapCellRefinement Narrow()
     {
-        if (Status != MapRefinementStatus.Complete) return MapCommonRefinement.Failure(Status, Detail);
+        if (Status != MapRefinementStatus.Complete) return MapCommonRefinement.Failure(Status, Detail, Finding);
         try
         {
             var vertices = Vertices.Select(MapWideRefinementGeometry.Narrow).ToArray();
@@ -36,9 +39,14 @@ internal sealed record MapWideCellRefinement(MapRefinementStatus Status, IReadOn
                 f.Polygon.Select(MapWideRefinementGeometry.Narrow).ToArray(), f.MinSeparation is { } gap ? NarrowValue(gap) : null)).ToArray();
             return new(Status, Array.AsReadOnly(vertices), Array.AsReadOnly(faces), NarrowValue(CellArea), NarrowValue(LowerArea),
                 NarrowValue(CompatibilityArea), CompatibilityCells, UpperArea is { } upper ? NarrowValue(upper) : null,
-                MinSeparation is { } separation ? NarrowValue(separation) : null, PairChecks, null);
+                MinSeparation is { } separation ? NarrowValue(separation) : null, PairChecks, null)
+            { Finding = Finding };
         }
-        catch (MapExactOverflowException) { return MapCommonRefinement.Failure(MapRefinementStatus.NotRepresentable, "overflow"); }
+        catch (MapExactOverflowException)
+        {
+            return MapCommonRefinement.Failure(MapRefinementStatus.NotRepresentable, "overflow",
+            new(MapDocumentRefusal.GeometryNotRepresentable, "overflow") { Operation = nameof(Narrow) });
+        }
     }
     static MapExactValue NarrowValue(MapWideRational value) => value.TryNarrow(out var exact) ? exact : throw new MapExactOverflowException();
 }

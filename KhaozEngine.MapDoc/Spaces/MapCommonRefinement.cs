@@ -23,7 +23,8 @@ public static class MapCommonRefinement
     {
         ArgumentNullException.ThrowIfNull(lower);
         ArgumentNullException.ThrowIfNull(limits);
-        if (min.X.CompareTo(max.X) >= 0 || min.Z.CompareTo(max.Z) >= 0) return Failure(MapRefinementStatus.Invalid, "cell");
+        if (min.X.CompareTo(max.X) >= 0 || min.Z.CompareTo(max.Z) >= 0) return Failure(MapRefinementStatus.Invalid, "cell",
+            new(MapDocumentRefusal.BoundsInvalid, "cell") { FieldPath = min.X.CompareTo(max.X) >= 0 ? "Bounds.X" : "Bounds.Z" });
         return MapEffectiveGeometry.RefinePolygon(lower, upper, new[] { min, new(min.X, max.Z), max, new(max.X, min.Z) }, limits, work);
     }
 
@@ -33,9 +34,10 @@ public static class MapCommonRefinement
 
     public static MapExactValue Area(MapRefinementFace face) => MapEffectiveGeometry.Area(face.Polygon);
 
-    internal static MapCellRefinement Failure(MapRefinementStatus status, string? detail) =>
+    internal static MapCellRefinement Failure(MapRefinementStatus status, string? detail, MapDocumentFinding? finding = null) =>
         new(status, Array.Empty<MapExactXz>(), Array.Empty<MapRefinementFace>(), default, default, default,
-            Array.Empty<MapLegacyCellTag>(), null, null, 0, detail);
+            Array.Empty<MapLegacyCellTag>(), null, null, 0, detail)
+        { Finding = finding };
 
     public static MapBoundFaceSet BoundFaces(MapScopedSurfaces view, MapSpaceFootprint footprint, MapBoundRef bound,
         MapExactXz min, MapExactXz max, MapRefinementLimits limits)
@@ -44,13 +46,14 @@ public static class MapCommonRefinement
         {
             var preparation = new MapBoundPreparation(view, limits, null);
             MapBoundPreparation.Plan plan = preparation.Bound(footprint, bound, min, max);
-            if (plan.Status != MapRefinementStatus.Complete) return EmptyBound(plan.Status, plan.Detail);
+            if (plan.Status != MapRefinementStatus.Complete) return EmptyBound(plan.Status, plan.Detail, plan.Finding);
             MapBoundFaceContext? context = MapBoundFaceContext.PrepareBounds(view,
                 plan.Demands.Select(d => new MapBoundFaceDemand(d, plan.Opening)),
                 limits.MaxContextPatches, limits.MaxContextFaces, null, out string? refusal, preparation);
-            return context is null ? EmptyBound(MapRefinementStatus.CapacityExceeded, refusal) : ReadBound(context, plan);
+            return context is null ? EmptyBound(MapRefinementStatus.CapacityExceeded, refusal, preparation.Finding) : ReadBound(context, plan);
         }
-        catch (MapExactOverflowException) { return EmptyBound(MapRefinementStatus.NotRepresentable, "overflow"); }
+        catch (MapExactOverflowException error)
+        { return EmptyBound(MapRefinementStatus.NotRepresentable, "overflow", Finding(error, "overflow", nameof(BoundFaces))); }
         catch (MapDocumentException error) { return BoundError(error); }
     }
 
@@ -60,9 +63,10 @@ public static class MapCommonRefinement
         try
         {
             MapBoundPreparation.Plan plan = new MapBoundPreparation(context, limits).Bound(footprint, bound, min, max);
-            return plan.Status == MapRefinementStatus.Complete ? ReadBound(context, plan) : EmptyBound(plan.Status, plan.Detail);
+            return plan.Status == MapRefinementStatus.Complete ? ReadBound(context, plan) : EmptyBound(plan.Status, plan.Detail, plan.Finding);
         }
-        catch (MapExactOverflowException) { return EmptyBound(MapRefinementStatus.NotRepresentable, "overflow"); }
+        catch (MapExactOverflowException error)
+        { return EmptyBound(MapRefinementStatus.NotRepresentable, "overflow", Finding(error, "overflow", nameof(BoundFaces))); }
         catch (MapDocumentException error) { return BoundError(error); }
     }
 
@@ -77,13 +81,20 @@ public static class MapCommonRefinement
             Array.AsReadOnly(plan.Compatibility.OrderBy(c => c.Patch).ThenBy(c => c.SlotCell).ToArray()), null);
     }
 
-    static MapBoundFaceSet EmptyBound(MapRefinementStatus status, string? detail) =>
-        new(status, Array.Empty<MapBoundFace>(), Array.Empty<MapLegacyCellTag>(), detail);
+    static MapBoundFaceSet EmptyBound(MapRefinementStatus status, string? detail, MapDocumentFinding? finding) =>
+        new(status, Array.Empty<MapBoundFace>(), Array.Empty<MapLegacyCellTag>(), detail) { Finding = finding };
     static MapBoundFaceSet BoundError(MapDocumentException error) => EmptyBound(
         NotRepresentable(error) ? MapRefinementStatus.NotRepresentable : MapRefinementStatus.Invalid,
-        NotRepresentable(error) ? "overflow: " + error.Message : error.Message);
+        NotRepresentable(error) ? "overflow: " + error.Message : error.Message, Finding(error, error.Message, nameof(BoundFaces)));
     internal static bool NotRepresentable(Exception error) =>
-        error is MapExactOverflowException or OverflowException || error.InnerException is { } inner && NotRepresentable(inner);
+        error is not MapDocumentException { RefinementStatus: not null } &&
+        !(error is MapDocumentException document && MapGeometryRefusals.PreserveNonArithmeticProjection(document)) &&
+        (error is MapExactOverflowException or OverflowException or MapDocumentException { Reason: MapDocumentRefusal.GeometryNotRepresentable }
+        || error.InnerException is { } inner && NotRepresentable(inner));
+
+    static MapDocumentFinding? Finding(Exception error, string detail, string operation) =>
+        error is MapDocumentException document && MapDocumentFinding.FromException(document) is { } finding ? finding
+            : NotRepresentable(error) ? new(MapDocumentRefusal.GeometryNotRepresentable, detail) { Operation = operation } : null;
 
     public static MapCellRefinement RefineFootprintCell(MapScopedSurfaces view, MapSpaceFootprint footprint,
         int slotCell, MapRefinementLimits limits) => RefineCell(view, footprint, slotCell, limits, null);
@@ -95,7 +106,7 @@ public static class MapCommonRefinement
     {
         MapFootprintPreparation prepared = Prepare(view, new[] { footprint }, _ => new[] { slotCell }, limits, work);
         if (prepared.CellOutcomes.TryGetValue((footprint.Id, slotCell), out MapCellRefinement? outcome)) return outcome;
-        if (prepared.Context is null) return Failure(MapRefinementStatus.CapacityExceeded, prepared.Refusal);
+        if (prepared.Context is null) return Failure(MapRefinementStatus.CapacityExceeded, prepared.Refusal, prepared.Finding);
         return RefineFootprintCell(prepared.Context, footprint, slotCell, limits);
     }
 
@@ -110,21 +121,24 @@ public static class MapCommonRefinement
         var preparation = new MapBoundPreparation(view, limits, work, meter);
         MapBoundFaceContext? context;
         string? refusal;
+        MapDocumentFinding? finding;
         try
         {
             context = MapBoundFaceContext.PrepareBounds(view, Demands(),
                 limits.MaxContextPatches, limits.MaxContextFaces, work, out refusal, preparation);
+            finding = preparation.ContextFinding ?? preparation.Finding;
         }
         catch (Exception error) when (error is MapExactOverflowException or MapDocumentException)
         {
             MapRefinementStatus status = NotRepresentable(error) ? MapRefinementStatus.NotRepresentable : MapRefinementStatus.Invalid;
+            finding = Finding(error, error.Message, nameof(PrepareFootprints));
             foreach (MapSpaceFootprint footprint in footprints)
                 foreach (int cell in cells(footprint))
-                    outcomes.TryAdd((footprint.Id, cell), Failure(status, status == MapRefinementStatus.NotRepresentable ? "overflow" : error.Message));
+                    outcomes.TryAdd((footprint.Id, cell), Failure(status, status == MapRefinementStatus.NotRepresentable ? "overflow" : error.Message, finding));
             context = null;
             refusal = null;
         }
-        return new(context, refusal, new ReadOnlyDictionary<(string, int), MapCellRefinement>(outcomes));
+        return new(context, refusal, new ReadOnlyDictionary<(string, int), MapCellRefinement>(outcomes)) { Finding = finding };
 
         IEnumerable<MapBoundFaceDemand> Demands()
         {
@@ -138,18 +152,19 @@ public static class MapCommonRefinement
                     {
                         MapExactXz[] rect = preparation.Rectangle(footprint, cell);
                         lower = preparation.Bound(footprint, footprint.Lower, rect[0], rect[1]);
-                        if (lower.Status != MapRefinementStatus.Complete) failure = Failure(lower.Status, lower.Detail);
+                        if (lower.Status != MapRefinementStatus.Complete) failure = Failure(lower.Status, lower.Detail, lower.Finding);
                         else if (footprint.Upper.Kind != MapBoundKind.OpenTop)
                         {
                             upper = preparation.Bound(footprint, footprint.Upper, rect[0], rect[1]);
-                            if (upper.Status != MapRefinementStatus.Complete) failure = Failure(upper.Status, upper.Detail);
+                            if (upper.Status != MapRefinementStatus.Complete) failure = Failure(upper.Status, upper.Detail, upper.Finding);
                         }
                     }
-                    catch (MapExactOverflowException) { failure = Failure(MapRefinementStatus.NotRepresentable, "overflow"); }
+                    catch (MapExactOverflowException error)
+                    { failure = Failure(MapRefinementStatus.NotRepresentable, "overflow", Finding(error, "overflow", nameof(PrepareFootprints))); }
                     catch (MapDocumentException error)
                     {
                         failure = Failure(NotRepresentable(error) ? MapRefinementStatus.NotRepresentable : MapRefinementStatus.Invalid,
-                            NotRepresentable(error) ? "overflow: " + error.Message : error.Message);
+                            NotRepresentable(error) ? "overflow: " + error.Message : error.Message, Finding(error, error.Message, nameof(PrepareFootprints)));
                     }
                     if (failure is not null) { outcomes[(footprint.Id, cell)] = failure; continue; }
                     if (include is not null && !include(footprint, cell)) continue;
@@ -170,10 +185,10 @@ public static class MapCommonRefinement
         {
             MapExactXz[] rect = new MapBoundPreparation(context, limits).Rectangle(footprint, slotCell);
             MapBoundFaceSet lower = BoundFaces(context, footprint, footprint.Lower, rect[0], rect[1], limits);
-            if (lower.Status != MapRefinementStatus.Complete) return MapWideCellRefinement.Failure(lower.Status, lower.Detail);
+            if (lower.Status != MapRefinementStatus.Complete) return MapWideCellRefinement.Failure(lower.Status, lower.Detail, lower.Finding);
             MapBoundFaceSet? upper = footprint.Upper.Kind == MapBoundKind.OpenTop ? null
                 : BoundFaces(context, footprint, footprint.Upper, rect[0], rect[1], limits);
-            if (upper is not null && upper.Status != MapRefinementStatus.Complete) return MapWideCellRefinement.Failure(upper.Status, upper.Detail);
+            if (upper is not null && upper.Status != MapRefinementStatus.Complete) return MapWideCellRefinement.Failure(upper.Status, upper.Detail, upper.Finding);
             IReadOnlyList<MapWideXz> polygon = context.View.EffectiveContext is null
                 ? new[] { MapWideXz.From(rect[0]), MapWideXz.From(new(rect[0].X, rect[1].Z)), MapWideXz.From(rect[1]), MapWideXz.From(new(rect[1].X, rect[0].Z)) }
                 : MapEffectiveGeometry.CellPolygon(context.View, footprint.Lattice, slotCell).Select(MapWideXz.From).ToArray();
@@ -191,11 +206,12 @@ public static class MapCommonRefinement
             }
             return result with { CompatibilityArea = compatibilityArea, CompatibilityCells = lower.Compatibility };
         }
-        catch (MapExactOverflowException) { return MapWideCellRefinement.Failure(MapRefinementStatus.NotRepresentable, "overflow"); }
+        catch (MapExactOverflowException error)
+        { return MapWideCellRefinement.Failure(MapRefinementStatus.NotRepresentable, "overflow", Finding(error, "overflow", nameof(RefineFootprintCellWide))); }
         catch (MapDocumentException error)
         {
             return MapWideCellRefinement.Failure(NotRepresentable(error) ? MapRefinementStatus.NotRepresentable : MapRefinementStatus.Invalid,
-                NotRepresentable(error) ? "overflow: " + error.Message : error.Message);
+                NotRepresentable(error) ? "overflow: " + error.Message : error.Message, Finding(error, error.Message, nameof(RefineFootprintCellWide)));
         }
     }
 

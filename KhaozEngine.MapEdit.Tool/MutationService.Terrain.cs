@@ -16,7 +16,8 @@ public sealed partial class MutationService
         var command = new TerrainEditCommand(edit);
         return session.Mutate((doc, registry) =>
         {
-            if (doc.ResolverIdentity is null) throw new MapDocumentException("Terrain edits require a native document.");
+            if (doc.ResolverIdentity is null) throw new MapDocumentException(MapDocumentRefusal.ToolNativeDocumentRequired, "Terrain edits require a native document.")
+            { DocumentId = doc.Id, Operation = nameof(TerrainApply), CommandType = command.GetType() };
             MapNativeEditEffects effects = session.ApplyNative(command, doc, registry);
             return new MapTerrainMutationResult(new("terrain_apply", command.Label, command.AffectsWorld), effects);
         }, command.AffectsWorld);

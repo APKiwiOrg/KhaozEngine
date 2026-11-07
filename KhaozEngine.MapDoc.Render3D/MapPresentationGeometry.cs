@@ -104,7 +104,7 @@ public sealed class MapPresentationGeometry
                 using var copyPreparation = admission.BeginPreparation();
                 var transform = NativeMapPlacements.Pose(scene, placement);
                 float scale = (float)(asset.SourceUnitsToMetres * transform.Scale);
-                if (!float.IsFinite(scale) || scale <= 0) throw new MapDocumentException("Presentation scale must be finite and positive.");
+                if (!float.IsFinite(scale) || scale <= 0) throw new MapDocumentException(MapDocumentRefusal.ValueOutsideRange, "Presentation scale must be finite and positive.") { AssetId = asset.Id, PlacementId = placement.PlacementId, FieldPath = "Scale", ActualNumber = scale, MinimumNumber = 0 };
                 // Covers copies, scaled compound children, and the largest circumscribed cylinder envelope.
                 admission.ReserveBytes(checked(2048 + CopyBytes(pair.Collider) + CopyBytes(pair.Selection)));
                 var collider = pair.Collider is null ? null : PhysicsShapeScale.Uniform(pair.Collider, scale);
@@ -141,12 +141,12 @@ public sealed class MapPresentationGeometry
             {
                 if (id is null) return null;
                 var resource = assets.GetResource(id);
-                if (resource.Kind != kind) throw new MapDocumentException("Presentation shape has the wrong resource kind.");
+                if (resource.Kind != kind) throw new MapDocumentException(MapDocumentRefusal.ReferenceKindMismatch, "Presentation shape has the wrong resource kind.") { ResourceId = id, ExpectedResourceKind = kind, ActualResourceKind = resource.Kind };
                 using var readPreparation = admission.BeginPreparation();
                 admission.ReserveBytes(checked(512 + 16L * resource.ByteLength)); admission.BeforePayload(resource.ByteLength);
                 using var stream = new MemoryStream(resource.Bytes.ToArray(), false);
                 var shape = PropCollisionFormat.Read(stream);
-                if (stream.Position != stream.Length) throw new MapDocumentException("Presentation shape has trailing bytes.");
+                if (stream.Position != stream.Length) throw new MapDocumentException(MapDocumentRefusal.AssetCollisionTrailingBytes, "Presentation shape has trailing bytes.") { ResourceId = id, ActualByteCount = stream.Length - stream.Position };
                 _ = PropQueryGeometry.Bounds(shape, Pose.Identity);
                 readPreparation.Complete(ShapeBytes(shape));
                 return shape;

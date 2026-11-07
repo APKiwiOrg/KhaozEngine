@@ -141,8 +141,7 @@ internal sealed class UploadBatchDevice : IMapRenderDevice
     readonly Dictionary<MapRenderHandle, ISceneUploadReservation> _live = new();
     readonly List<ISceneUploadReservation> _reservations = [];
     // Observe actual charged leases only. The expected peak is pinned to the fixture's 56 resources.
-    internal long UploadCpuBytes => _reservations.Sum(r => (long)typeof(MapUploadReservation)
-        .GetField("_cpu", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!.GetValue(r)!);
+    internal long UploadCpuBytes => _reservations.Cast<MapUploadReservation>().Sum(r => r.ChargesForTests.Cpu);
     long _next;
     internal int Begins, Cancellations;
     internal long PeakCpu = 100, RetainedCpu = 20;

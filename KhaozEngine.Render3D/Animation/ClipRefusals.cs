@@ -18,13 +18,16 @@ namespace KhaozEngine.Render3D
         /// <param name="taken">The clip of that name taken so far, or null.</param>
         /// <param name="clip">The clip of that name just found.</param>
         /// <param name="paramName">The loader's parameter the clips came in by.</param>
-        /// <exception cref="ArgumentException">When <paramref name="taken"/> is set.</exception>
+        /// <exception cref="ClipAdmissionArgumentException">When <paramref name="taken"/> is set. The reason is
+        /// <see cref="ClipAdmissionRefusal.DuplicateClipName"/> and ClipName carries the second clip's name.</exception>
         public static AnimationClip Only(AnimationClip? taken, AnimationClip clip, string paramName)
         {
             ArgumentNullException.ThrowIfNull(clip);
             return taken is null
                 ? clip
-                : throw new ArgumentException($"The skin carries more than one clip named '{clip.Name}'.", paramName);
+                : throw new ClipAdmissionArgumentException(ClipAdmissionRefusal.DuplicateClipName,
+                    $"The skin carries more than one clip named '{clip.Name}'.", paramName)
+                { ClipName = clip.Name };
         }
 
         /// <summary>Why a clip lasts no time, or null for a clip that lasts longer than zero. A NaN length is
@@ -51,8 +54,9 @@ namespace KhaozEngine.Render3D
         /// <param name="turned">The joints whose rotation the clip must key.</param>
         /// <param name="moved">The joints whose translation the clip must key.</param>
         /// <param name="kind">The clip family, as the refusal names it.</param>
-        /// <exception cref="ArgumentException">A joint of <paramref name="turned"/> or <paramref name="moved"/> is
-        /// not in the skeleton. The message names it.</exception>
+        /// <exception cref="ClipAdmissionArgumentException">A joint of <paramref name="turned"/> or
+        /// <paramref name="moved"/> is not in the skeleton. The reason is
+        /// <see cref="ClipAdmissionRefusal.RequiredJointMissing"/> and JointName carries the missing name.</exception>
         public static string? Unkeyed(AnimationClip clip, Skeleton skeleton, IReadOnlyList<string> turned,
             IReadOnlyList<string> moved, string kind)
         {
@@ -145,7 +149,9 @@ namespace KhaozEngine.Render3D
         {
             ArgumentNullException.ThrowIfNull(joint, paramName);
             if (!skeleton.TryIndexOf(joint, out _))
-                throw new ArgumentException($"The skeleton has no joint named '{joint}'.", paramName);
+                throw new ClipAdmissionArgumentException(ClipAdmissionRefusal.RequiredJointMissing,
+                    $"The skeleton has no joint named '{joint}'.", paramName)
+                { JointName = joint };
         }
 
         static bool Names(IReadOnlyList<string> joints, string joint)

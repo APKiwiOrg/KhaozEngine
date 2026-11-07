@@ -25,8 +25,8 @@ internal sealed class MapEnvelopeIndex
     readonly double _minX, _minY, _minZ, _maxX, _maxY, _maxZ;
 
     /// <summary>Indexes <paramref name="bounds"/>, whose envelopes belong to <paramref name="owners"/> in the same order.
-    /// Throws <see cref="MapDocumentException"/> naming the owner and the cell count, before indexing it, when one
-    /// envelope reaches more than <see cref="MaxCellsPerEnvelope"/> cells.</summary>
+    /// Throws <see cref="MapDocumentException"/> with its OwnerId, measured cell count and inclusive Limit before
+    /// indexing when one envelope reaches more than <see cref="MaxCellsPerEnvelope"/> cells.</summary>
     internal MapEnvelopeIndex(IReadOnlyList<MapBox3> bounds, IReadOnlyList<string> owners)
     {
         ArgumentNullException.ThrowIfNull(bounds);
@@ -34,13 +34,25 @@ internal sealed class MapEnvelopeIndex
         for (int i = 0; i < bounds.Count; i++)
         {
             MapBox3 b = bounds[i];
-            double reached = (double)Span(b.MinX - Padding, b.MaxX + Padding) * Span(b.MinY - Padding, b.MaxY + Padding) *
-                Span(b.MinZ - Padding, b.MaxZ + Padding);
+            long xCells = Span(b.MinX - Padding, b.MaxX + Padding), yCells = Span(b.MinY - Padding, b.MaxY + Padding),
+                zCells = Span(b.MinZ - Padding, b.MaxZ + Padding);
+            double reached = (double)xCells * yCells * zCells;
             if (reached > MaxCellsPerEnvelope)
-                throw new MapDocumentException(string.Format(CultureInfo.InvariantCulture,
+            {
+                string owner = owners[i];
+                throw new MapDocumentException(MapDocumentRefusal.WorkCapacityExceeded, string.Format(CultureInfo.InvariantCulture,
                     "The envelope of placement '{0}' reaches {1:N0} index cells of {2} m, more than the {3:N0} one " +
                     "envelope may reach.",
-                    owners[i], reached, CellMetres, MaxCellsPerEnvelope));
+                    owner, reached, CellMetres, MaxCellsPerEnvelope))
+                {
+                    OwnerId = owner,
+                    Budget = "interaction envelope index cells",
+                    FieldPath = "Bounds",
+                    ActualCount = RepresentableCellCount(xCells, yCells, zCells),
+                    ActualNumber = reached,
+                    Limit = MaxCellsPerEnvelope
+                };
+            }
         }
         var cells = new Dictionary<(int X, int Y, int Z), List<int>>();
         _minX = _minY = _minZ = double.PositiveInfinity;
@@ -111,6 +123,12 @@ internal sealed class MapEnvelopeIndex
             }
             if (!(entry <= tEnd)) yield break;
         }
+    }
+
+    static long? RepresentableCellCount(long x, long y, long z)
+    {
+        try { return checked(x * y * z); }
+        catch (OverflowException) { return null; }
     }
 
     static int Cell(double value) => (int)Math.Floor(value / CellMetres);

@@ -9,6 +9,14 @@ Dispatch the trusted `gpu-hosted-bench.yml` workflow with B's immutable SHA as `
 leg, the default diagnostic filter and the three `renderer-perf-*` inputs. Only attempt one is
 admissible. A failure requires scoped correction and fresh approval, never an automatic rerun.
 
+The measurement implementation now comes from
+[Renderer.Perf.Tooling.Tests](../../Renderer.Perf.Tooling.Tests/README.md), which also owns its
+headless contract tests. The free tooling prerequisite must pass at the requested authorization SHA
+and trusted workflow SHA before `renderer-bench` can allocate. It validates the tooling on lavapipe,
+WARP and Metal and grants no measurement authorization. Historical receipts and authorized manifest
+hashes retain their original artifact identity. Every later campaign records its own new assembly
+identity and needs its normal exact approval.
+
 The isolated project stays outside the solution. Its only fact is
 `Renderer.Perf.Tests.RendererPerfTests.Measure_authorized_unit`, category `RendererPerformance`.
 `KE_RENDERER_PERF_UNIT` and `KE_RENDERER_PERF_REPORTS` are explicit. Discovery never opens a GPU.
@@ -25,6 +33,16 @@ approvals, limits and correctness verdict. The same reference's
 [paid authorization contract](../../../docs/RENDERER-PERFORMANCE.md#evidence-and-authorization) owns
 per-leg job caps, cleanup billing allowance and the campaign envelope. Every execution class requires
 usable timestamps, complete compiler evidence and certified publication. Partial artifacts survive failures.
+
+The trusted free `legs` job admits paid `water-optics-v2` only on `linux-vulkan` or `windows-d3d11`,
+with the full T4 job caps of 35 and 50 minutes. It checks every paid campaign maximum before a paid
+runner is allocated. The cap must cover `budget.maximumCostUsd` and stay at or below USD 7.382 for
+v2, or USD 22 for v1 `pilot` and `full`. The
+[water optics contract](../../../docs/RENDERER-PERFORMANCE.md#water-optics-campaign) owns the schedules.
+`rehearsal-water-optics-v2` selects only Linux lavapipe on `ubuntu-24.04`, while
+`rehearsal-water-optics-v2-single` selects only Windows D3D11 WARP on `windows-2025-vs2026`. Both retain
+19,800 unit seconds and 350 job minutes, with zero unit cost and zero campaign maximum. Opposite
+legs and Windows Vulkan refuse these v2 rehearsals.
 
 Every manifest must explicitly include `execution.lockedGraphicsClockMHz`. Paid T4 presets require
 an integer matching the fixed [graphics-clock policy](../../../docs/RENDERER-PERFORMANCE.md#drift-perturbation-and-validity).

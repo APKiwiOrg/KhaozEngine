@@ -104,11 +104,8 @@ public sealed class SpriteBatchMaskedLifetimeTests
             Draw(b, source, maskA);
             Draw(b, source, maskB);
         }, group: true);
-        var owner = rig.MaskedOwner!;
-        var sampler = rig.Device.LinearSampler;
-        var alphaA = owner.KeyFor(source.Handle, sampler, maskA.Handle, sampler, BlendMode.Alpha, 1);
-        var additiveA = owner.KeyFor(source.Handle, sampler, maskA.Handle, sampler, BlendMode.Additive, 1);
-        var additiveB = owner.KeyFor(source.Handle, sampler, maskB.Handle, sampler, BlendMode.Additive, 1);
+        Assert.Equal(3, rig.GroupOrder.Count);
+        object alphaA = rig.GroupOrder[0], additiveA = rig.GroupOrder[1], additiveB = rig.GroupOrder[2];
         Assert.True(rig.HasGroup(alphaA));
         Assert.True(rig.HasGroup(additiveA));
 
@@ -199,9 +196,8 @@ public sealed class SpriteBatchMaskedLifetimeTests
         using var maskB = Sprite();
         rig.Batch.SetEvictAfterFrames = 2;
         rig.Frame(b => { Draw(b, source, maskA); Draw(b, source, maskB); }, group: true);
-        var owner = rig.MaskedOwner!;
-        var sampler = rig.Device.LinearSampler;
-        var alphaB = owner.KeyFor(source.Handle, sampler, maskB.Handle, sampler, BlendMode.Alpha, 1);
+        Assert.Equal(2, rig.GroupOrder.Count);
+        object alphaB = rig.GroupOrder[1];
         var retired = MaskedSet(rig, source, maskA);
         var live = MaskedSet(rig, source, maskB);
         rig.Frame(b => Draw(b, source, maskB));
@@ -239,7 +235,6 @@ public sealed class SpriteBatchMaskedLifetimeTests
         Assert.Null(rig.MaskedOwner);
         Assert.Empty(rig.GroupOrder);
         Assert.False(rig.HasGroup(alphaB));
-        Assert.Equal(0, owner.CachedSetCount);
         Assert.Equal(0, rig.Batch.CachedMaskedSetCount);
         rig.Batch.Dispose();
         Assert.Equal(1, rig.InnerDevice.WaitForIdleCalls);
@@ -282,7 +277,7 @@ public sealed class SpriteBatchMaskedLifetimeTests
         using var source = Sprite();
         using var maskA = Sprite();
         using var maskB = Sprite();
-        var owner = rig.EnsureMaskedResources();
+        using var owner = rig.CreateMaskedResources();
         var sampler = rig.Device.LinearSampler;
         var a = owner.KeyFor(source.Handle, sampler, maskA.Handle, sampler, BlendMode.Alpha, 1);
         var b = owner.KeyFor(source.Handle, sampler, maskB.Handle, sampler, BlendMode.Alpha, 1);

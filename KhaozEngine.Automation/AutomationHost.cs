@@ -164,6 +164,16 @@ namespace KhaozEngine.Automation
         /// test can pin the subscribe and the unsubscribe without exiting the test process to observe them.</summary>
         internal bool HasProcessExitHandler => _processExit is not null;
 
+        /// <summary>AutomationGateTests invokes the subscribed cleanup without exiting the test host,
+        /// so it verifies that the actual process-exit handler deletes the handshake file.</summary>
+        internal void TriggerProcessExitForTests() => (_processExit
+            ?? throw new InvalidOperationException("The process-exit handler is not subscribed."))(null, EventArgs.Empty);
+
+        /// <summary>AutomationLoopbackTests closes only the accept socket to exercise unexpected accept-loop
+        /// failure reporting while the host and listener still consider themselves running.</summary>
+        internal void StopAcceptSocketForTests() => (_listener
+            ?? throw new InvalidOperationException("The automation listener has not started.")).StopAcceptSocketForTests();
+
         /// <summary>Test seam (InternalsVisibleTo): how many commands are parked on a frame that has not arrived, so
         /// a test can pump until one is genuinely waiting instead of sleeping and hoping.</summary>
         internal int WaitingCount

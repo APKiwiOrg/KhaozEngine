@@ -29,18 +29,18 @@ public class StepMaskTests
 
         bool[] blocked = StepMask.Compute(standable, height, headroom, 3, 1, stepHeight: 0.5f, agentHeight: 0f);
 
+        Assert.Equal(3, blocked.Length);
         Assert.All(blocked, b => Assert.False(b));
     }
 
-    [Fact]
-    public void TallStep_HigherSideEroded()
+    [Theory]
+    [InlineData(0f, 10f, 0f, 0.5f)] // Raised peak, neighbors remain passable.
+    [InlineData(1f, 1f, 0f, 0.4f)] // Connected plateau edge above a drop.
+    public void TallDrop_ErodesOnlyTheHigherEdge(float firstHeight, float middleHeight, float lastHeight, float stepHeight)
     {
-        var standable = AllStandable(3);
-        var height = new[] { 0f, 10f, 0f };
-        var headroom = UniformHeadroom(3);
-
-        bool[] blocked = StepMask.Compute(standable, height, headroom, 3, 1, stepHeight: 0.5f, agentHeight: 0f);
-
+        var height = new[] { firstHeight, middleHeight, lastHeight };
+        bool[] blocked = StepMask.Compute(AllStandable(3), height, UniformHeadroom(3),
+            3, 1, stepHeight, agentHeight: 0f);
         Assert.False(blocked[0]);
         Assert.True(blocked[1]);
         Assert.False(blocked[2]);
@@ -164,22 +164,6 @@ public class StepMaskTests
     }
 
     [Fact]
-    public void CliffEdge_WithOneNeighborWithinStepAndOneFarBelow_StillErodes()
-    {
-        // The plateau edge: cell 1 has a same-height neighbor (within the step) and a far-below neighbor,
-        // so it is a connected field's edge rather than an island and keeps eroding exactly as before.
-        var standable = AllStandable(3);
-        var height = new[] { 1f, 1f, 0f };
-        var headroom = UniformHeadroom(3);
-
-        bool[] blocked = StepMask.Compute(standable, height, headroom, 3, 1, stepHeight: 0.4f, agentHeight: 0f);
-
-        Assert.False(blocked[0]);
-        Assert.True(blocked[1]);
-        Assert.False(blocked[2]);
-    }
-
-    [Fact]
     public void Compute_BadDimensions_Throws()
     {
         var standable = AllStandable(3);
@@ -203,6 +187,7 @@ public class StepMaskTests
         bool[] a = StepMask.Compute(standable, height, headroom, 3, 3, stepHeight: 0.5f, agentHeight: 0f);
         bool[] b = StepMask.Compute(standable, height, headroom, 3, 3, stepHeight: 0.5f, agentHeight: 0f);
 
+        Assert.Equal(9, a.Length);
         Assert.Equal(a, b);
     }
 }

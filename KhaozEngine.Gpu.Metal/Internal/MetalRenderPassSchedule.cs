@@ -33,7 +33,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
     /// left alone, which is that same helper's semantics and not <c>EnsureNoEncoder</c>'s.</description></item>
     /// <item><description><b><see cref="PrepareDraw"/>, which the first draw of a pass calls.</b> Open the
     /// encoder with <c>loadAction = Clear</c> and the pending value per attachment that has one, <c>Load</c> for
-    /// the rest and <c>storeAction = Store</c> always (M-A4), then emit whatever dynamic state is
+    /// the rest and an explicit per-attachment store action, defaulting to Store (M-A4), then emit whatever dynamic state is
     /// owed.</description></item>
     /// <item><description><b><see cref="EndPass"/>, which <c>End</c>, <see cref="SetFramebuffer"/> and every
     /// texture copy call.</b> Close the pass, flushing pending clears through a begin and end pair first if there
@@ -112,6 +112,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
         MetalColourAttachment[] _beginColour = new MetalColourAttachment[4];
 
         MetalBoundFramebuffer _framebuffer;
+        GpuAttachmentStoreActions _stores;
         MetalViewportRect _viewport;
         MetalScissorRect _scissor;
 
@@ -203,9 +204,10 @@ namespace KhaozEngine.Gpu.Metal.Internal
         /// guard covers everything rather than the viewport alone.
         /// </summary>
         /// <param name="framebuffer">The incoming framebuffer as plain data.</param>
-        internal void SetFramebuffer(in MetalBoundFramebuffer framebuffer)
+        /// <param name="stores">The pass owner's explicit dead-attachment intent.</param>
+        internal void SetFramebuffer(in MetalBoundFramebuffer framebuffer, GpuAttachmentStoreActions stores = default)
         {
-            if (framebuffer.Id == _framebuffer.Id) return;
+            if (framebuffer.Id == _framebuffer.Id && stores == _stores) return;
 
             // THE OUTGOING FRAMEBUFFER'S PASS CLOSES FIRST, clear-only flush included, which is the same helper
             // End uses and one of the incumbent's two forcing sites (M-A3). Opening a pass against the incoming
@@ -213,6 +215,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
             EndPass();
 
             _framebuffer = framebuffer;
+            _stores = stores;
 
             EnsureColourCapacity(framebuffer.ColourCount);
             Array.Clear(_colourClears, 0, _colourClears.Length);
@@ -223,6 +226,9 @@ namespace KhaozEngine.Gpu.Metal.Internal
             _viewportEmitted.Clear();
             _scissorEmitted.Clear();
         }
+
+        // Replace the unresolved drawable placeholder without losing its clears or caller's scissor.
+        internal void ResolveFramebuffer(in MetalBoundFramebuffer framebuffer) => _framebuffer = framebuffer;
 
         /// <summary>
         /// A COLOUR CLEAR, WHICH FOLDS OR COSTS A BOUNDARY DEPENDING ON WHETHER THE PASS IS ALREADY OPEN (M-A2).
@@ -237,7 +243,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
         /// index.</exception>
         internal void ClearColourTarget(uint index, Color rgba)
         {
-            RequireFramebuffer("Clearing a colour target");
+            RequireFramebuffer("Clearing a colour target", nameof(IGpuCommandList.ClearColorTarget));
 
             if (index >= (uint)_framebuffer.ColourCount)
             {
@@ -262,14 +268,17 @@ namespace KhaozEngine.Gpu.Metal.Internal
         /// depth attachment.</exception>
         internal void ClearDepthStencil(float depth)
         {
-            RequireFramebuffer("Clearing the depth attachment");
+            RequireFramebuffer("Clearing the depth attachment", nameof(IGpuCommandList.ClearDepthStencil));
 
             if (!_framebuffer.HasDepth)
             {
-                throw new InvalidOperationException(
+                throw new GpuBoundFramebufferException(GpuBoundFramebufferRefusal.DepthAttachmentMissing,
                     "The bound native Metal framebuffer declares no depth attachment, so there is nothing to "
                     + "clear. A framebuffer's attachments are fixed at creation, so this is the pass binding the "
-                    + "wrong target rather than a depth attachment that failed to arrive.");
+                    + "wrong target rather than a depth attachment that failed to arrive.")
+                {
+                    Command = nameof(IGpuCommandList.ClearDepthStencil),
+                };
             }
 
             EndOpenPass();
@@ -303,7 +312,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
         /// <exception cref="InvalidOperationException">No framebuffer is bound.</exception>
         internal void SetFullScissorRects()
         {
-            RequireFramebuffer("Resetting the scissor rects");
+            RequireFramebuffer("Resetting the scissor rects", nameof(IGpuCommandList.SetFullScissorRects));
 
             _scissor = MetalScissorRect.ForFramebuffer(_framebuffer.Width, _framebuffer.Height);
             _scissorEmitted.Clear();
@@ -328,9 +337,9 @@ namespace KhaozEngine.Gpu.Metal.Internal
         /// </summary>
         /// <returns>The open render encoder, or <see cref="IntPtr.Zero"/>.</returns>
         /// <exception cref="InvalidOperationException">No framebuffer is bound.</exception>
-        internal IntPtr PrepareDraw()
+        internal IntPtr PrepareDraw(string command = nameof(IGpuCommandList.Draw))
         {
-            RequireFramebuffer("Drawing");
+            RequireFramebuffer("Drawing", command);
 
             IntPtr encoder = BeginPass();
             if (encoder == IntPtr.Zero) return IntPtr.Zero;
@@ -434,7 +443,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
         }
 
         /// <summary>
-        /// OPEN THE PASS IF IT IS NOT OPEN: one load action per attachment, <c>storeAction = Store</c> always
+        /// OPEN THE PASS IF IT IS NOT OPEN: one load action per attachment, explicit per-attachment store actions, defaulting to Store
         /// (M-A4), and the pending array consumed. Reached from the first draw of a pass and from the clear-only
         /// flush, and from nowhere else.
         /// <para>
@@ -463,15 +472,16 @@ namespace KhaozEngine.Gpu.Metal.Internal
                     colour[i].Texture,
                     pending.Pending ? MetalLoadAction.Clear : MetalLoadAction.Load,
                     pending.Value,
-                    MetalStoreAction.Store);
+                    _stores.DiscardsColour(i) ? MetalStoreAction.DontCare : MetalStoreAction.Store);
             }
 
             var depth = new MetalDepthAttachment(
                 _framebuffer.Depth.Texture,
                 _depthClearPending ? MetalLoadAction.Clear : MetalLoadAction.Load,
                 _depthClear,
-                MetalStoreAction.Store,
-                _framebuffer.DepthHasStencil);
+                _stores.DiscardDepth ? MetalStoreAction.DontCare : MetalStoreAction.Store,
+                _framebuffer.DepthHasStencil,
+                _stores.DiscardStencil ? MetalStoreAction.DontCare : MetalStoreAction.Store);
 
             IntPtr descriptor = _api.CreateRenderPassDescriptor(_beginColour.AsSpan(0, colour.Length), in depth);
 
@@ -542,15 +552,16 @@ namespace KhaozEngine.Gpu.Metal.Internal
                 + "PrepareDraw rather than through MetalEncoderScope directly.");
         }
 
-        void RequireFramebuffer(string what)
+        void RequireFramebuffer(string what, string command)
         {
             if (_framebuffer.IsBound) return;
 
-            throw new InvalidOperationException(
+            throw new GpuBoundFramebufferException(GpuBoundFramebufferRefusal.FramebufferNotBound,
                 what + " needs a framebuffer bound on the native Metal backend, and this recording has none. A "
                 + "render encoder is opened from a descriptor naming the bound framebuffer's own attachment "
                 + "textures, and there is no default target to fall back to: Begin resets the bound framebuffer, "
-                + "because a fresh MTLCommandBuffer holds none.");
+                + "because a fresh MTLCommandBuffer holds none.")
+            { Command = command };
         }
 
         static void RequireSingleScissor(uint index)

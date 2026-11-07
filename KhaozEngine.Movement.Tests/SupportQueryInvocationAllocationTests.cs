@@ -27,7 +27,7 @@ public class SupportQueryInvocationAllocationTests
         };
         var body = new MoveState { Position = new(0, tuning.CapsuleHalfHeight, 0), Grounded = true };
         var steering = new RangeSteering(Vector2.UnitX, RangeMoveStatus.Following);
-        var counts = Enumerable.Repeat(17L, 48).ToArray();
+        var counts = Enumerable.Repeat(17L, Enum.GetValues<SupportQueryCounter>().Length).ToArray();
         var prior = SupportQueryDiagnostics.Exchange(SupportQueryDiagnostics.ThreadState.Fresh(false) with { Counts = counts });
         try
         {

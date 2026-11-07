@@ -62,7 +62,7 @@ public class PositionFrameBlobMigrationTests
         Swimming = generation >= 3 && m.Swimming,
         TeleportEpoch = generation >= 4 ? m.TeleportEpoch : 0u,
         ClimbRateQ = generation >= 5 ? m.ClimbRateQ : (sbyte)0,
-        SpeedScaleQ = generation >= 6 ? m.SpeedScaleQ : (sbyte)0,
+        SpeedScaleQ = generation >= 15 ? m.SpeedScaleQ : generation >= 6 ? (short)(m.SpeedScaleQ * 64) : (short)0,
         HorizontalVelocityXQ = generation >= 7 ? m.HorizontalVelocityXQ : (short)0,
         HorizontalVelocityZQ = generation >= 7 ? m.HorizontalVelocityZQ : (short)0,
         FacingYawQ = generation >= 10 ? m.FacingYawQ : (short)0,

@@ -29,8 +29,9 @@ namespace KhaozEngine.TileWorld.Netcode;
 /// decoder: it returns false for a truncated, mis-tagged, over-capped or internally inconsistent frame and never
 /// throws, because the bytes come from a remote peer. The COMPONENT readers in this type's other partial mostly do
 /// not share that shape and are not meant to: a payload that lies about a declared length throws
-/// <see cref="System.IO.InvalidDataException"/> by design, and the conversion to a false plus a reason happens one
-/// layer out, in <c>ClientReplicationView.TryApply</c>'s catch, which the caller treats as terminal for the
+/// <see cref="TileComponentCodecDataException"/> by design. Direct apply callers catch
+/// <see cref="MalformedDataException"/> for malformed engine data. The conversion to a false plus a reason happens
+/// one layer out, in <c>ClientReplicationView.TryApply</c>'s catch, which the caller treats as terminal for the
 /// session. The ONE component reader that is total is the item instance's, whose payload the engine never decodes
 /// and which therefore answers an empty payload instead. <c>CreateRegistry</c> carries both halves of that
 /// reasoning: why a lying length is refused rather than clamped, and why that one reader answers instead.</para>

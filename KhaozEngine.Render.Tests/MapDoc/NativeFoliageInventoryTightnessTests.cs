@@ -26,8 +26,7 @@ public sealed class NativeFoliageInventoryTightnessTests
         var root = new MapSceneAdmission(new(MaxPreparedBytes: checked(4 * simultaneous + KernelAllowance)));
         using var active = root.Enter();
         using var window = root.LimitPreparation(checked(2 * simultaneous + KernelAllowance), "replacement-window");
-        var binding = (MapPreparationLedger.Window)typeof(MapSceneAdmission.PreparationWindow)
-            .GetFields(BindingFlags.Instance | BindingFlags.NonPublic).Single(f => f.FieldType == typeof(MapPreparationLedger.Window)).GetValue(window)!;
+        var binding = window.BindingForTests;
         long windowPeak = 0;
         void Take(long bytes) { root.ReserveBytes(bytes); windowPeak = Math.Max(windowPeak, binding.Live); }
         MapFoliageInstanceBatch batch;
@@ -80,8 +79,7 @@ public sealed class NativeFoliageInventoryTightnessTests
         var root = new MapSceneAdmission(new(MaxPreparedBytes: checked(4 * simultaneous + KernelAllowance)));
         using var active = root.Enter();
         using var window = root.LimitPreparation(checked(2 * simultaneous + KernelAllowance), "column-window");
-        var binding = (MapPreparationLedger.Window)typeof(MapSceneAdmission.PreparationWindow)
-            .GetFields(BindingFlags.Instance | BindingFlags.NonPublic).Single(f => f.FieldType == typeof(MapPreparationLedger.Window)).GetValue(window)!;
+        var binding = window.BindingForTests;
         using var operation = root.BeginPreparation();
         long windowPeak = 0;
         var limits = new MapFoliageLimits(MaxQueryRetainedBytes: long.MaxValue)
@@ -204,10 +202,9 @@ public sealed partial class NativeMapFoliageTests
     }
     static long CacheDomainCensus(MapFoliageRenderCache cache, IEnumerable<MapFoliageColumnOwner>? held = null)
     {
-        var owners = (Dictionary<MapFoliageCacheKey, MapFoliageColumnOwner>)typeof(MapFoliageRenderCache)
-            .GetField("_owners", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(cache)!;
+        var owners = cache.OwnersForTests;
         // Cache/gate/inventory/CPU-list/dictionary controls and their actual index capacity.
-        long bytes = 248 + 48 + 36L * owners.EnsureCapacity(0);
+        long bytes = 248 + 48 + 36L * cache.OwnerIndexCapacityForTests;
         var metadata = new HashSet<object>(ReferenceEqualityComparer.Instance);
         foreach (var owner in owners.Values.Concat(held ?? []).Distinct())
         {
@@ -220,7 +217,7 @@ public sealed partial class NativeMapFoliageTests
                 bytes += NativeFoliageInventoryTightnessTests.ArrayBytes(array);
             foreach (var value in refs) metadata.Add(value);
         }
-        var registry = typeof(MapFoliageRenderCache).GetField("_metadata", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(cache)!;
+        var registry = cache.MetadataForTests;
         var references = Assert.Single(NativeFoliageInventoryTightnessTests.Fields(registry).OfType<Dictionary<object, int>>());
         bytes += 240 + 48 + 28L * references.EnsureCapacity(0);
         foreach (var value in metadata) bytes += value is string text ? NativeFoliageInventoryTightnessTests.TextBytes(text) : 32;

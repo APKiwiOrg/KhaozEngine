@@ -214,6 +214,7 @@ sealed partial class ContentUpgradeRun
             plan = definition.Plan(context);
         }
         catch (Exception refused) when (refused is InvalidDataException
+            or MalformedDataException
             or ContentAuthoringException
             or ArgumentException)
         {

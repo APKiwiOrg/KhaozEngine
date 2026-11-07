@@ -41,6 +41,23 @@ public sealed partial class Scene3D
     /// <summary>Live proxy streams. For the lifetime tests.</summary>
     internal int FoliagePointShadowStreamCount => _foliagePointStreams.Count;
 
+    /// <summary>FoliagePointIndexedFrameTests checks lazy upload and buffer reuse through an opaque identity.</summary>
+    internal object? FoliagePointBufferIdentityForTests(FoliageBatch batch) =>
+        _foliagePointStreams[batch].Buffer is { } buffer ? TestObservationIdentity.For(buffer) : null;
+
+    /// <summary>FoliagePointIndexedFrameTests observes run boundaries and opaque buffer identities without borrowing buffers.</summary>
+    internal IReadOnlyList<(object BufferIdentity, FoliagePointShadowRun Run)> FoliagePointFaceRunsForTests =>
+        _foliagePointFaceRuns.ConvertAll(entry => (TestObservationIdentity.For(entry.Buffer), entry.Run)).AsReadOnly();
+
+    /// <summary>FoliagePointIndexedFrameTests verifies an empty frame removes membership and performs no touch tests.</summary>
+    internal (IReadOnlyList<FoliagePointCasterRef> Hits, int TouchTests) QueryFoliagePointIndexForTests(
+        Vector3 light, float radius)
+    {
+        var hits = new List<FoliagePointCasterRef>();
+        _foliagePointIndex.Query(light, radius, 0f, default, default, hits);
+        return (hits.AsReadOnly(), _foliagePointIndex.TouchTests);
+    }
+
     /// <summary>Open a frame's foliage point-shadow work: reset the counter and retire every stream whose batch
     /// was released. Runs every frame, requested or not, so a released batch's stream never outlives it by more
     /// than one frame.</summary>

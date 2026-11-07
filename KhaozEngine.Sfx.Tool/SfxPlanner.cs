@@ -55,8 +55,8 @@ public static class SfxPlanner
         {
             string outPath = Path.GetFullPath(Path.Combine(manifestDir, entry.Out));
             string sidecarPath = outPath + SfxDefaults.SidecarSuffix;
-            string hash = SfxHasher.Compute(entry, manifest.Model, manifest.SourceFormat);
-            (SfxAction action, string reason) = Decide(force, fs, outPath, sidecarPath, hash);
+            string hash = SfxHasher.Compute(entry, manifest.SourceFormat);
+            (SfxAction action, string reason) = Decide(force, fs, outPath, sidecarPath, entry, manifest, hash);
 
             items.Add(new SfxPlanItem
             {
@@ -72,15 +72,19 @@ public static class SfxPlanner
         return items;
     }
 
-    static (SfxAction, string) Decide(bool force, ISfxFileProbe fs, string outPath, string sidecarPath, string hash)
+    static (SfxAction, string) Decide(bool force, ISfxFileProbe fs, string outPath, string sidecarPath, SfxEntry entry,
+        SfxManifest manifest, string hash)
     {
         if (force) return (SfxAction.Generate, "forced");
         if (!fs.FileExists(outPath)) return (SfxAction.Generate, "output missing");
 
         SfxSidecar? sidecar = SfxSidecar.TryParse(fs.TryReadText(sidecarPath));
         if (sidecar is null) return (SfxAction.Generate, "no/unreadable sidecar");
-        if (sidecar.Hash != hash) return (SfxAction.Generate, "manifest changed");
+        if (!sidecar.Matches(entry, manifest.SourceFormat, hash)) return (SfxAction.Generate, "manifest changed");
 
-        return (SfxAction.Skip, "up to date");
+        // Name an older model so a dry run shows which outputs a deliberate --force would re-bake.
+        return sidecar.Model is { } model && model != manifest.Model
+            ? (SfxAction.Skip, $"up to date, made with {model}")
+            : (SfxAction.Skip, "up to date");
     }
 }

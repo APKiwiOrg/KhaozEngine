@@ -13,7 +13,7 @@ public sealed partial class NavPath
     /// turn. True when the waypoint has a predecessor and a successor, it and its successor are
     /// <see cref="NavWaypointKind.Walk"/>, all three share one layer, and in double precision the incoming and
     /// outgoing XZ directions are nonzero, point the same way, and bend by a sine of at most 1e-4. The first and
-    /// last waypoints are never pass-through. A corner, a reversal, a layer change or a hop is never
+    /// last waypoints are never pass-through. A corner, a reversal, a layer change or a special landing is never
     /// pass-through, so a follower that consumes passed waypoints still stops on every mandatory turn.
     /// </summary>
     /// <param name="index">Index into <see cref="Waypoints"/>.</param>

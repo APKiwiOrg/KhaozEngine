@@ -110,9 +110,17 @@ public sealed class WaterColumnGpuTests(WaterColumnRiverScene scene, ITestOutput
     [InlineData(1.5f, 0.28f, 0.30f, 0.18f)]
     public void Golden_DeepReferenceReproducesWaterColor(float clarity, float red, float green, float blue)
     {
-        var settings = new WaterColumnCase { ReferenceLight = true, Depth = 16f, Clarity = clarity,
+        var settings = new WaterColumnCase
+        {
+            ReferenceLight = true,
+            Depth = 16f,
+            Clarity = clarity,
             WaterColor = new Color(red, green, blue),
-            Caster = false, Ripples = false, TopDown = true, Orthographic = true };
+            Caster = false,
+            Ripples = false,
+            TopDown = true,
+            Orthographic = true
+        };
         Vector3 reference = scene.Capture(settings).Sample(LitColumn);
         output.WriteLine($"clarity={clarity}, reference deep RGB={reference}, target=({red},{green},{blue})");
         Assert.InRange(MaxChannelAbs(reference - new Vector3(red, green, blue)), 0f, 0.02f);

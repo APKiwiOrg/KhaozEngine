@@ -19,7 +19,7 @@ public sealed class BoundAttachmentSet
     readonly Matrix4x4[][] _palettes;
     readonly uint _revisionLow, _revisionHigh;
     readonly int _drawCount;
-    readonly bool _hasSkinnedParts;
+    readonly int _skinnedPartCount;
 
     internal BoundAttachmentSet(AttachmentSetCache owner, AttachmentSetDefinition definition,
         IReadOnlyList<AttachmentPartResources> resources, AttachmentSetBinding binding)
@@ -30,7 +30,7 @@ public sealed class BoundAttachmentSet
         _resources = resources;
         foreach (AttachmentPartResources part in resources)
         {
-            _hasSkinnedParts |= part.IsSkinned;
+            if (part.IsSkinned) _skinnedPartCount++;
             _drawCount += part.IsSkinned ? part.SkinnedHandles.Count : part.RigidHandles.Count;
         }
         _worlds = new Matrix4x4[_binding.PartCount];
@@ -65,8 +65,10 @@ public sealed class BoundAttachmentSet
         Span<RigidInstanceDraw> destination)
     {
         _owner.ThrowIfDisposed();
-        if (_hasSkinnedParts)
-            throw new InvalidOperationException("Skinned attachment parts require mixed draw submission, not rigid descriptors.");
+        if (_skinnedPartCount > 0)
+            throw new AttachmentSubmissionStateException(AttachmentSubmissionRefusal.MixedDrawRequired,
+                "Skinned attachment parts require mixed draw submission, not rigid descriptors.")
+            { SkinnedPartCount = _skinnedPartCount };
         ValidateCapacity(destination.Length);
         Prepare(skeleton, palette, model, instanceKey, template);
         for (int draw = 0; draw < _draws.Length; draw++) destination[draw] = _draws[draw].Rigid;
@@ -91,14 +93,18 @@ public sealed class BoundAttachmentSet
     void ValidateCapacity(int capacity)
     {
         if (capacity < _drawCount)
-            throw new ArgumentException($"Output capacity {capacity} must hold {_drawCount} attachment draws.", "destination");
+            throw new AttachmentSubmissionArgumentException(AttachmentSubmissionRefusal.OutputTooSmall,
+                $"Output capacity {capacity} must hold {_drawCount} attachment draws.", "destination")
+            { ActualCapacity = capacity, RequiredCapacity = _drawCount };
     }
 
     void Prepare(Skeleton skeleton, ReadOnlySpan<Matrix4x4> palette,
         in Matrix4x4 model, MotionKey instanceKey, in RigidInstanceDraw template)
     {
         if (template.ShadowOnly && !template.CastsShadows)
-            throw new ArgumentException("A shadow-only attachment must cast shadows.", nameof(template));
+            throw new DrawAdmissionArgumentException(DrawAdmissionRefusal.ShadowOnlyWithoutCasting,
+                "A shadow-only attachment must cast shadows.", nameof(template))
+            { ShadowOnly = template.ShadowOnly, CastsShadows = template.CastsShadows };
         PreparePose(skeleton, palette, model);
         MotionKey revision = MotionKey.Combine(MotionKey.Combine(instanceKey, _revisionLow), _revisionHigh);
         int draw = 0;

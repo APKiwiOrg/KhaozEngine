@@ -78,14 +78,17 @@ internal sealed class MapPrefabIdentityRegistry
         foreach (MapPrefabInstance instance in _set.Instances.OrderBy(i => i.Id, StringComparer.Ordinal))
             foreach (MapPrefabBinding binding in instance.Bindings.Entries)
                 if (!_bound.TryAdd((binding.Child.Kind, binding.WorldId), (instance, binding)))
-                    Fail($"Prefab world {binding.Child.Kind} ID '{binding.WorldId}' is bound more than once.");
+                    Fail(MapDocumentRefusal.IdentityDuplicate, $"Prefab world {binding.Child.Kind} ID '{binding.WorldId}' is bound more than once.",
+                        binding.Child.Kind, binding.WorldId, "prefab binding", instance.Id, child: binding.Child);
         foreach (MapPrefabBindingTransfer transfer in _set.Transfers)
         {
             var key = (transfer.Binding.Child.Kind, transfer.Binding.WorldId);
-            if (_bound.TryGetValue(key, out var reserved) &&
-                (!reserved.Instance.Removed || !reserved.Instance.Unpacked || reserved.Instance.Id != transfer.InstanceId || reserved.Binding.Removed || reserved.Binding != transfer.Binding) ||
-                !_transfers.TryAdd(key, transfer))
-                Fail($"Prefab world {key.Kind} ID '{key.WorldId}' is reserved more than once.");
+            bool ownershipMismatch = _bound.TryGetValue(key, out var reserved) &&
+                (!reserved.Instance.Removed || !reserved.Instance.Unpacked || reserved.Instance.Id != transfer.InstanceId || reserved.Binding.Removed || reserved.Binding != transfer.Binding);
+            if (ownershipMismatch || !_transfers.TryAdd(key, transfer))
+                Fail(ownershipMismatch ? MapDocumentRefusal.AuthoredOwnershipMismatch : MapDocumentRefusal.IdentityDuplicate,
+                    $"Prefab world {key.Kind} ID '{key.WorldId}' is reserved more than once.",
+                    key.Kind, key.WorldId, "prefab transfer", transfer.InstanceId, child: transfer.Binding.Child);
         }
         foreach (var (kind, id) in GlobalStandalone(globals)) Add(kind, id);
     }
@@ -130,7 +133,9 @@ internal sealed class MapPrefabIdentityRegistry
             Add(MapPrefabChildKind.Placement, placement.Id);
             _placements.Add(placement.Id);
             if (_transfers.TryGetValue((MapPrefabChildKind.Placement, placement.Id), out var transfer) && transfer.Binding.NumericId != placement.NumericId)
-                Fail($"Transfer '{placement.Id}' numeric ID must equal its standalone placement's numeric ID.");
+                Fail(MapDocumentRefusal.AuthoredOwnershipMismatch, $"Transfer '{placement.Id}' numeric ID must equal its standalone placement's numeric ID.",
+                    MapPrefabChildKind.Placement, placement.Id, "standalone owner", transfer.InstanceId, child: transfer.Binding.Child,
+                    placementId: placement.Id, numericId: placement.NumericId, expectedNumericId: transfer.Binding.NumericId);
         }
     }
 
@@ -139,26 +144,40 @@ internal sealed class MapPrefabIdentityRegistry
         if (!_active) return;
         foreach (var (key, transfer) in _transfers.OrderBy(t => t.Key.Item2, StringComparer.Ordinal))
             if (!transfer.Retired && _owners.GetValueOrDefault(key) != 1)
-                Fail($"Active transfer '{key.Item2}' must have exactly one standalone {key.Item1} owner.");
+                Fail(MapDocumentRefusal.AuthoredOwnershipMismatch, $"Active transfer '{key.Item2}' must have exactly one standalone {key.Item1} owner.",
+                    key.Item1, key.Item2, "standalone owner", transfer.InstanceId, child: transfer.Binding.Child,
+                    actualCount: _owners.GetValueOrDefault(key), expectedCount: 1);
         var producers = new HashSet<(MapPrefabChildKind, string)>();
         foreach (MapPrefabAttachmentTransfer row in _set!.Attachments)
         {
             if (!row.Retired && !_placements.Contains(row.PlacementId))
-                Fail($"Attachment row for '{row.PlacementId}' has no live standalone placement.");
+                Fail(MapDocumentRefusal.AuthoredOwnershipMismatch, $"Attachment row for '{row.PlacementId}' has no live standalone placement.",
+                    MapPrefabChildKind.Placement, row.PlacementId, "attachment owner", placementId: row.PlacementId);
             foreach (MapPrefabAttachedChild child in row.Children)
             {
                 var key = (child.LocalChild.Kind, child.WorldId);
-                if (!producers.Add(key)) Fail($"World {key.Kind} '{child.WorldId}' has more than one attachment producer.");
+                if (!producers.Add(key)) Fail(MapDocumentRefusal.IdentityDuplicate, $"World {key.Kind} '{child.WorldId}' has more than one attachment producer.",
+                    key.Kind, child.WorldId, "attachment producer", child: child.LocalChild, placementId: row.PlacementId);
                 if (!_transfers.TryGetValue(key, out var transfer) || transfer.Binding.Child != child.LocalChild || transfer.Retired != row.Retired)
-                    Fail($"Attached child '{child.WorldId}' must match one {(row.Retired ? "retired" : "active")} transfer.");
+                    Fail(transfer is null ? MapDocumentRefusal.ReferenceMissing : MapDocumentRefusal.AuthoredOwnershipMismatch,
+                        $"Attached child '{child.WorldId}' must match one {(row.Retired ? "retired" : "active")} transfer.",
+                        key.Kind, child.WorldId, "attachment transfer", transfer?.InstanceId, child: child.LocalChild, placementId: row.PlacementId);
                 if (row.Retired) continue;
                 if (child.LocalChild.Kind == MapPrefabChildKind.Record &&
                     (child.Anchor is not { } anchor || !_anchors.TryGetValue(child.WorldId, out MapPatchKey actual) || actual != anchor))
-                    Fail($"Attached record '{child.WorldId}' must declare the anchor of its standalone record.");
+                    Fail(child.Anchor is null ? MapDocumentRefusal.SchemaValueRequired : !_anchors.ContainsKey(child.WorldId)
+                            ? MapDocumentRefusal.ReferenceMissing : MapDocumentRefusal.AuthoredOwnershipMismatch,
+                        $"Attached record '{child.WorldId}' must declare the anchor of its standalone record.",
+                        key.Kind, child.WorldId, "attachment anchor", transfer.InstanceId, child: child.LocalChild, placementId: row.PlacementId,
+                        patch: child.Anchor, actualAnchor: _anchors.TryGetValue(child.WorldId, out var known) ? known : null, fieldPath: "$.anchor");
                 MapStandaloneResourceTransform? pose = _poses.FirstOrDefault(p => p.Kind == child.LocalChild.Kind && p.OwnerId == child.WorldId);
-                if (pose is null) Fail($"Attached child '{child.WorldId}' has no standalone descriptor pin.");
+                if (pose is null) Fail(MapDocumentRefusal.SchemaValueRequired, $"Attached child '{child.WorldId}' has no standalone descriptor pin.",
+                    key.Kind, child.WorldId, "standalone descriptor pin", transfer.InstanceId, child: child.LocalChild,
+                    placementId: row.PlacementId, fieldPath: "$.nativeResourceTransforms");
                 if (pose.SourceDigest != child.SourceDigest)
-                    Fail($"Attached child '{child.WorldId}' descriptor digest differs from its standalone pin.");
+                    Fail(MapDocumentRefusal.DigestMismatch, $"Attached child '{child.WorldId}' descriptor digest differs from its standalone pin.",
+                        key.Kind, child.WorldId, "standalone descriptor pin", transfer.InstanceId, child: child.LocalChild,
+                        placementId: row.PlacementId, expectedHash: pose.SourceDigest, actualHash: child.SourceDigest);
             }
         }
     }
@@ -166,12 +185,36 @@ internal sealed class MapPrefabIdentityRegistry
     void Add(MapPrefabChildKind kind, string id)
     {
         if (_bound.TryGetValue((kind, id), out var reserved) && !_transfers.ContainsKey((kind, id)))
-            Fail($"Standalone {kind} '{id}' collides with a binding of prefab instance '{reserved.Instance.Id}'.");
+            Fail(MapDocumentRefusal.IdentityDuplicate, $"Standalone {kind} '{id}' collides with a binding of prefab instance '{reserved.Instance.Id}'.",
+                kind, id, "standalone owner", reserved.Instance.Id, child: reserved.Binding.Child);
         if (!_transfers.TryGetValue((kind, id), out var transfer)) return;
-        if (transfer.Retired) Fail($"Retired transfer '{id}' still has a live standalone {kind} owner.");
+        if (transfer.Retired) Fail(MapDocumentRefusal.IdentityReserved, $"Retired transfer '{id}' still has a live standalone {kind} owner.",
+            kind, id, "standalone owner", transfer.InstanceId, child: transfer.Binding.Child);
         _owners[(kind, id)] = _owners.GetValueOrDefault((kind, id)) + 1;
     }
 
     [DoesNotReturn]
-    static void Fail(string message) => throw new MapDocumentException(message);
+    static void Fail(MapDocumentRefusal reason, string message, MapPrefabChildKind kind, string id, string subjectKind,
+        string? instanceId = null, MapPrefabChildKey? child = null, string? placementId = null,
+        MapPatchKey? patch = null, MapPatchKey? actualAnchor = null, long? numericId = null, long? expectedNumericId = null,
+        long? actualCount = null, long? expectedCount = null, string? expectedHash = null, string? actualHash = null,
+        string? fieldPath = null) => throw new MapDocumentException(reason, message)
+        {
+            EntityId = id,
+            WorldId = id,
+            ChildKind = kind,
+            SubjectKind = subjectKind,
+            InstanceId = instanceId,
+            Child = child,
+            PlacementId = placementId,
+            Patch = patch,
+            ActualAnchor = actualAnchor,
+            NumericId = numericId,
+            ExpectedNumericId = expectedNumericId,
+            ActualCount = actualCount,
+            ExpectedCount = expectedCount,
+            ExpectedHash = expectedHash,
+            ActualHash = actualHash,
+            FieldPath = fieldPath,
+        };
 }

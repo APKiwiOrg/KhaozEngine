@@ -1,6 +1,5 @@
 using System;
 using System.Linq;
-using System.Reflection;
 using KhaozEngine.MapDoc;
 using KhaozEngine.MapDoc.Foliage;
 using KhaozEngine.MapDoc.Scene;
@@ -222,14 +221,12 @@ public sealed class CapacityDemandProfileMatrixTests
             Row(rows[0], 0, 2, 3, false);
             Row(rows[1], 2, 2, 3, true);
         }
-        var work = typeof(MapPartialPaintCompiler).GetNestedType("Work", BindingFlags.NonPublic)!;
-        var source = work.GetMethod("Source", BindingFlags.Instance | BindingFlags.NonPublic)!;
         foreach (var (limits, name) in new[] { (refinement with { MaxRefinementVertices = 100 }, "MaxRefinementFaces"), (refinement with { MaxRefinementFaces = 100 }, "MaxRefinementVertices") })
         {
             using var probe = new CapacityDemandProbe();
-            using var regions = (IDisposable)Activator.CreateInstance(work, BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic, null, new object[] { limits }, null)!;
-            source.Invoke(regions, new object[] { 3 });
-            Assert.IsType<MapDocumentException>(Assert.Throws<TargetInvocationException>(() => source.Invoke(regions, new object[] { 3 })).InnerException);
+            var error = Assert.Throws<MapDocumentException>(() => MapPartialPaintCompiler.ChargeSourcesForTests(limits, 3, 3));
+            Assert.Equal(MapDocumentRefusal.WorkCapacityExceeded, error.Reason);
+            Assert.Equal(name, error.Budget);
             // Each paint source region charges one region and its three vertices, as a request against the whole ceiling.
             var rows = At(probe, "MapPartialPaintCompiler.Source", name);
             if (name == "MaxRefinementFaces") { Row(rows[0], 0, 1, 1, false); Row(rows[1], 0, 2, 1, true); }

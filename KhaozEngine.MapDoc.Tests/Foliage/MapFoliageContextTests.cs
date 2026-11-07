@@ -97,6 +97,8 @@ public sealed class MapFoliageContextTests
                 Assert.Equal(0, storage.PackReads);
             }
             Assert.Equal(MapFoliageStatus.PartialResidency, partial.Status);
+            Assert.Equal(MapDocumentRefusal.CompleteDocumentRequired, partial.Finding!.Reason);
+            Assert.Equal(document.Id, partial.Finding.DocumentId);
             Assert.Null(partial.Context);
             Assert.Equal(0, partial.Work.Expansions);
             Assert.Equal((0L, 0L), (MapPrefabResolver.ThreadExpansions - expansions, MapFoliageJson.ThreadPayloadWrites - writes));
@@ -107,6 +109,24 @@ public sealed class MapFoliageContextTests
         MapFoliageContextResult complete = MapFoliageGenerationContext.Capture(MapDocumentFile.LoadTiled(dir.Root), fixture.Assets);
         Assert.Equal(MapFoliageStatus.Complete, complete.Status);
         Assert.Equal(1, complete.Work.Expansions);
+    }
+
+    [Theory]
+    [InlineData("overflow")]
+    [InlineData("limit exceeded")]
+    [InlineData("missing")]
+    public void MissingAssetKeyword_DoesNotTurnAReferenceRefusalIntoCapacity(string assetId)
+    {
+        var fixture = FoliageFixtures.Create();
+        var placement = new MapPlacement { Id = "unavailable", Kind = "item", AssetId = assetId, Y = 0 };
+        fixture.Document.Placements.Add(placement);
+        string before = MapDocumentFile.SaveText(fixture.Document);
+        var refused = MapFoliageContextPreflight.Measure(fixture.Document, fixture.Assets, new());
+        Assert.Equal(MapFoliageStatus.Invalid, refused.Status);
+        Assert.Equal(MapDocumentRefusal.ReferenceMissing, refused.Finding!.Reason);
+        Assert.Equal(before, MapDocumentFile.SaveText(fixture.Document));
+        placement.AssetId = fixture.Assets.Assets.First().Id;
+        Assert.Equal(MapFoliageStatus.Complete, MapFoliageContextPreflight.Measure(fixture.Document, fixture.Assets, new()).Status);
     }
 
     [Fact]
@@ -134,6 +154,10 @@ public sealed class MapFoliageContextTests
             long expansions = MapPrefabResolver.ThreadExpansions, writes = MapFoliageJson.ThreadPayloadWrites;
             MapFoliageContextResult refused = MapFoliageGenerationContext.Capture(f.Document, f.Assets, limits);
             Assert.Equal(MapFoliageStatus.CapacityExceeded, refused.Status);
+            Assert.Equal(MapDocumentRefusal.WorkCapacityExceeded, refused.Finding!.Reason);
+            Assert.Equal(MapFoliageStatus.CapacityExceeded, refused.Finding.FoliageStatus);
+            Assert.NotNull(refused.Finding.Budget);
+            Assert.True(refused.Finding.ActualCount > refused.Finding.Limit);
             Assert.Null(refused.Context);
             Assert.Equal(0, refused.Work.Expansions);
             Assert.Equal(0, refused.Work.SnapshotSerializations);
@@ -145,6 +169,7 @@ public sealed class MapFoliageContextTests
             (int)demand.SurfacePatches, (int)demand.PaintTargets);
         MapFoliageContextResult captured = MapFoliageGenerationContext.Capture(f.Document, f.Assets, exact);
         Assert.Equal(MapFoliageStatus.Complete, captured.Status);
+        Assert.Null(captured.Finding);
         Assert.Equal(1, captured.Work.Expansions);
         Assert.Equal(demand with { Expansions = 1, SnapshotSerializations = captured.Work.SnapshotSerializations }, captured.Work);
         Assert.Equal(before, MapDocumentFile.SaveText(f.Document));                              // capture never edits its input

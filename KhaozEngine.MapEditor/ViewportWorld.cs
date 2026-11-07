@@ -495,8 +495,15 @@ public sealed partial class ViewportWorld : IDisposable
         foreach (MapCompanionLayer cl in doc.CompanionLayers)
         {
             if (!scatterIndex.TryGetValue(cl.HostLayer, out int hostIndex))
-                throw new MapDocumentException(
-                    $"companion layer '{cl.Name}' names unknown host scatter layer '{cl.HostLayer}' in map '{doc.Id}'.");
+                throw new MapDocumentException(MapDocumentRefusal.ReferenceMissing,
+                    $"companion layer '{cl.Name}' names unknown host scatter layer '{cl.HostLayer}' in map '{doc.Id}'.")
+                {
+                    DocumentId = doc.Id,
+                    LayerId = cl.Name,
+                    EntityId = cl.HostLayer,
+                    SubjectKind = "scatter layer",
+                    FieldPath = "CompanionLayers.HostLayer"
+                };
             CompanionConfig companions = MapRuntime.BuildCompanionConfig(doc, cl.Name);
             layers.Add(PropLayer.CompanionLayer(hostIndex, companions, _propMeshes, _companionDrawRadius)
                 .WithIdentity(cl.HostLayer));
@@ -602,6 +609,17 @@ public sealed partial class ViewportWorld : IDisposable
     {
         if (_built) throw new InvalidOperationException("A built viewport owns its document and field.");
         (_doc, _field) = (doc, field);
+    }
+
+    /// <summary>HeadlessPickViewport temporarily installs only the state consumed by picking. The streamer is
+    /// borrowed, never disposed here, and all previous state is restored before the fixture disposes its streamer.</summary>
+    internal IDisposable BindPickingForTests(MapDocument doc, TerrainField? field, TerrainStreamer streamer, Vector3 focus)
+    {
+        if (_built) throw new InvalidOperationException("A built viewport owns its picking state.");
+        var previous = (_doc, _field, _streamer, _lastDrawFocus, _built);
+        (_doc, _field, _streamer, _lastDrawFocus, _built) = (doc, field, streamer, focus, true);
+        return new PickingScopeForTests(() =>
+            (_doc, _field, _streamer, _lastDrawFocus, _built) = previous);
     }
 
     // ---- headless surface -------------------------------------------------------------------------------

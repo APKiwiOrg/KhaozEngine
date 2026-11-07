@@ -189,7 +189,7 @@ internal readonly struct MapMembershipAffine
     internal MapMembershipAffine(BigInteger x, BigInteger z, BigInteger c, BigInteger d)
     {
         using var arithmetic = MapMembershipBuild.Kernel();
-        if (d.IsZero) throw new MapDocumentException("invalid prepared plane");
+        if (d.IsZero) throw new MapDocumentException(MapDocumentRefusal.GeometryNotRepresentable, "invalid prepared plane") { FieldPath = "D", ActualInteger = 0, Operation = "Membership.PreparePlane" };
         if (d.Sign < 0) { x = -x; z = -z; c = -c; d = -d; }
         BigInteger gcd = BigInteger.GreatestCommonDivisor(BigInteger.Abs(x), BigInteger.Abs(z));
         gcd = BigInteger.GreatestCommonDivisor(gcd, BigInteger.Abs(c));

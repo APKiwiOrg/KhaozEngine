@@ -16,7 +16,7 @@ internal sealed record MapPrefabExpansionWork(long Instances, long Children, lon
 internal sealed record MapPrefabExpansionObserver(Action<string> EnterStage);
 
 /// <summary>Charges captured metadata and every retained and per-instance expansion before guarded work.</summary>
-internal static class MapPrefabPreflight
+internal static partial class MapPrefabPreflight
 {
     internal static MapPrefabExpansionWork Count(MapDocument document, MapAssetClosure assets, MapPrefabExpansionLimits limits)
     {
@@ -113,15 +113,19 @@ internal static class MapPrefabPreflight
             return new(count.Instances, count.Children, count.ReferenceEdges, count.Patches, count.Records,
                 count.GeometryElements, count.Bindings, count.Overrides, count.Transfers, count.PayloadBytes);
         }
-        catch (OverflowException) { throw new MapDocumentException("Prefab expansion preflight count overflow."); }
+        catch (OverflowException) { throw CountOverflow(nameof(Count), document.Id); }
     }
 
     internal static long AddProduct(long accumulated, long items, long copies)
     {
         if (accumulated < 0 || items < 0 || copies < 0) throw new ArgumentOutOfRangeException(nameof(items));
         try { return checked(accumulated + checked(items * copies)); }
-        catch (OverflowException) { throw new MapDocumentException("Prefab expansion preflight count overflow."); }
+        catch (OverflowException) { throw CountOverflow(nameof(AddProduct)); }
     }
+
+    static MapDocumentException CountOverflow(string operation, string? documentId = null) =>
+        new(MapDocumentRefusal.WorkCapacityExceeded, "Prefab expansion preflight count overflow.")
+        { Budget = "PrefabExpansionCount", Limit = long.MaxValue, Operation = operation, DocumentId = documentId };
 
     sealed class Counter(MapPrefabExpansionLimits limits, IReadOnlyList<MapPrefabAttachmentTransfer>? standaloneAttachments)
     {
@@ -137,7 +141,26 @@ internal static class MapPrefabPreflight
             if (DemandDiagnostics.Check(this, "MapPrefabPreflight.MaxInstances.1", "MaxInstances", 0, Instances, limits.MaxInstances, Instances > limits.MaxInstances, CapacityDemandLifetime.Inventory, allowanceSource: limits) || DemandDiagnostics.Check(this, "MapPrefabPreflight.MaxChildren.1", "MaxChildren", 0, Children, limits.MaxChildren, Children > limits.MaxChildren, CapacityDemandLifetime.Inventory, allowanceSource: limits) || DemandDiagnostics.Check(this, "MapPrefabPreflight.MaxReferenceEdges.1", "MaxReferenceEdges", 0, ReferenceEdges, limits.MaxReferenceEdges, ReferenceEdges > limits.MaxReferenceEdges, CapacityDemandLifetime.Inventory, allowanceSource: limits) ||
                 DemandDiagnostics.Check(this, "MapPrefabPreflight.MaxPatches.1", "MaxPatches", 0, Patches, limits.MaxPatches, Patches > limits.MaxPatches, CapacityDemandLifetime.Inventory, allowanceSource: limits) || DemandDiagnostics.Check(this, "MapPrefabPreflight.MaxRecords.1", "MaxRecords", 0, Records, limits.MaxRecords, Records > limits.MaxRecords, CapacityDemandLifetime.Inventory, allowanceSource: limits) || DemandDiagnostics.Check(this, "MapPrefabPreflight.MaxGeometryElements.1", "MaxGeometryElements", 0, GeometryElements, limits.MaxGeometryElements, GeometryElements > limits.MaxGeometryElements, CapacityDemandLifetime.Inventory, allowanceSource: limits) ||
                 DemandDiagnostics.Check(this, "MapPrefabPreflight.MaxBindings.1", "MaxBindings", 0, Bindings, limits.MaxBindings, Bindings > limits.MaxBindings, CapacityDemandLifetime.Inventory, allowanceSource: limits) || DemandDiagnostics.Check(this, "MapPrefabPreflight.MaxOverrides.1", "MaxOverrides", 0, Overrides, limits.MaxOverrides, Overrides > limits.MaxOverrides, CapacityDemandLifetime.Inventory, allowanceSource: limits) || DemandDiagnostics.Check(this, "MapPrefabPreflight.MaxTransfers.1", "MaxTransfers", 0, Transfers, limits.MaxTransfers, Transfers > limits.MaxTransfers, CapacityDemandLifetime.Inventory, allowanceSource: limits) || DemandDiagnostics.Check(this, "MapPrefabPreflight.MaxPayloadBytes.1", "MaxPayloadBytes", 0, PayloadBytes, limits.MaxPayloadBytes, PayloadBytes > limits.MaxPayloadBytes, CapacityDemandLifetime.Inventory, allowanceSource: limits))
-                throw new MapDocumentException("Prefab expansion preflight limit exceeded.");
+            {
+                (string budget, long actual, long limit) = Instances > limits.MaxInstances ? ("MaxInstances", Instances, limits.MaxInstances)
+                    : Children > limits.MaxChildren ? ("MaxChildren", Children, limits.MaxChildren)
+                    : ReferenceEdges > limits.MaxReferenceEdges ? ("MaxReferenceEdges", ReferenceEdges, limits.MaxReferenceEdges)
+                    : Patches > limits.MaxPatches ? ("MaxPatches", Patches, limits.MaxPatches)
+                    : Records > limits.MaxRecords ? ("MaxRecords", Records, limits.MaxRecords)
+                    : GeometryElements > limits.MaxGeometryElements ? ("MaxGeometryElements", GeometryElements, limits.MaxGeometryElements)
+                    : Bindings > limits.MaxBindings ? ("MaxBindings", Bindings, limits.MaxBindings)
+                    : Overrides > limits.MaxOverrides ? ("MaxOverrides", Overrides, limits.MaxOverrides)
+                    : Transfers > limits.MaxTransfers ? ("MaxTransfers", Transfers, limits.MaxTransfers)
+                    : ("MaxPayloadBytes", PayloadBytes, limits.MaxPayloadBytes);
+                throw new MapDocumentException(MapDocumentRefusal.WorkCapacityExceeded, "Prefab expansion preflight limit exceeded.")
+                {
+                    Budget = budget,
+                    ActualCount = actual,
+                    ActualByteCount = budget == "MaxPayloadBytes" ? actual : null,
+                    Limit = limit,
+                    Operation = nameof(Count)
+                };
+            }
         }
         internal void Child(MapAssetClosure assets, MapPrefabChild child, IReadOnlyList<MapPrefabLocalMaterialization>? rows, bool expandResources = true)
         {

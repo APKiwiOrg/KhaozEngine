@@ -34,7 +34,8 @@ public partial class ContactLeasedQueryTests
         var result = ExplicitCharacterMovement.Step(input, command, dt, tuning,
             new(WaterTraversalMode.SurfaceSwimmer, 7), scene.Lease);
         Assert.Equal(MovementStepOutcome.Advanced, result.Outcome);
-        AssertBits(expected with { Position = Vector3.Zero }, result.State.State with { Position = Vector3.Zero });
+        LocomotionStateBits.AssertEqual(expected with { Position = Vector3.Zero }, result.State.State with { Position = Vector3.Zero },
+            LocomotionStateBits.Policy.ExcludeContinuityHandle);
         Assert.InRange(Vector3.Distance(expected.Position - new Vector3(0, 0.75f, 0),
             mapping.KernelFeet(result.State.State.Position, tuning)), 0, 0.0005f);
         Assert.False(result.State.State.Grounded);
@@ -57,7 +58,8 @@ public partial class ContactLeasedQueryTests
             result = ExplicitCharacterMovement.Step(result.State, followCommand, dt, tuning,
                 new(WaterTraversalMode.SurfaceSwimmer, 7), scene.Lease);
             Assert.Equal(MovementStepOutcome.Advanced, result.Outcome);
-            AssertBits(expected with { Position = Vector3.Zero }, result.State.State with { Position = Vector3.Zero });
+            LocomotionStateBits.AssertEqual(expected with { Position = Vector3.Zero }, result.State.State with { Position = Vector3.Zero },
+                LocomotionStateBits.Policy.ExcludeContinuityHandle);
             Assert.False(result.State.State.Grounded);
             Assert.False(result.State.State.SupportGranted);
             Assert.Null(result.State.Selection!.Value.Support);
@@ -100,7 +102,8 @@ public partial class ContactLeasedQueryTests
         Assert.Equal(MovementStepOutcome.Advanced, result.Outcome);
         Assert.Equal(grounded, result.State.State.Grounded);
         Assert.Equal(grounded, result.State.State.SupportGranted);
-        AssertBits(expected with { Position = Vector3.Zero }, result.State.State with { Position = Vector3.Zero });
+        LocomotionStateBits.AssertEqual(expected with { Position = Vector3.Zero }, result.State.State with { Position = Vector3.Zero },
+            LocomotionStateBits.Policy.ExcludeContinuityHandle);
         Assert.Equal(WaterExcursionState.None, result.State.State.WaterExcursion);
         Assert.Equal(grounded, result.State.Selection!.Value.Support.HasValue);
     }

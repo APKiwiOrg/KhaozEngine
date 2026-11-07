@@ -25,6 +25,10 @@ public sealed class SceneResourceUpload : IDisposable
     IGpuCommandList? _barrier;
     int _nextTransfer;
     bool _submitted, _published, _disposed, _retiring, _transferSettled;
+    internal bool HoldsInputsForTests => _data is not null;
+    internal int TransferCapacityForTests => _transfers.Capacity;
+    internal bool HoldsCompletionResourcesForTests => _barrier is not null || _completion is not null;
+    internal int OwnedCapacityForTests => _owned.Capacity;
     internal MeshHandle PublishedMesh { get; private set; }
     internal FoliageBatch? PublishedFoliage { get; private set; }
     public SceneUploadDemand Demand { get; }
@@ -37,7 +41,13 @@ public sealed class SceneResourceUpload : IDisposable
         _meshOrder = data.BorrowMesh is null ? 0 : scene.ReserveMeshOrder();
         if (data.BorrowMesh is { } mesh)
             _publication = SceneUploadPublication.From(mesh) with
-            { AlphaCutoff = data.BorrowMaps?.AlphaCutoff ?? 0, Ground = data.GroundMaterial is not null, Sampler = data.GroundMaterial?.Sampler };
+            {
+                AlphaCutoff = data.BorrowMaps?.AlphaCutoff ?? 0,
+                Ground = data.GroundMaterial is not null,
+                Sampler = data.GroundMaterial?.Sampler,
+                OpaqueFoliage = FoliageMaterial.IsOpaque(data.BorrowMaps is { } maps &&
+                    (maps.Albedo is not null || maps.Normal is not null || maps.Roughness is not null), data.BorrowMaps?.AlphaCutoff ?? 0, mesh.Vertices)
+            };
     }
 
     internal void Prepare()

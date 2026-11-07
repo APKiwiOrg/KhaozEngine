@@ -19,7 +19,8 @@ public static class MapMarkerHeights
         ArgumentNullException.ThrowIfNull(marker);
         ArgumentNullException.ThrowIfNull(height);
         if ((height.ExplicitY is null) == (height.Binding is null))
-            throw new MapDocumentException($"Marker '{marker.Id}' requires exactly one explicit Y or support binding.");
+            throw new MapDocumentException(MapDocumentRefusal.MarkerHeightChoiceInvalid, $"Marker '{marker.Id}' requires exactly one explicit Y or support binding.")
+            { MarkerId = marker.Id };
         MapLocalMarkerDoc result = height.ExplicitY is { } y
             ? marker with { PayloadVersion = 2, HeightMode = MapMarkerHeightMode.Explicit, SupportBinding = null, Position = marker.Position with { Y = y } }
             : marker with { PayloadVersion = 2, HeightMode = MapMarkerHeightMode.Support, SupportBinding = height.Binding! with { }, Position = marker.Position with { Y = 0f } };

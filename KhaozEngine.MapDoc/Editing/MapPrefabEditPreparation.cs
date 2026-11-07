@@ -53,8 +53,7 @@ internal static class MapPrefabEditPreparation
         after = Copy(after);
         MapBoundDocumentValidation.Validate(after, assets);
         var resources = MapDocumentEditFinalizer.Expand(after, assets);
-        var errors = MapPrismCoverage.Validate(resources.CompleteView(), new());
-        if (errors.Count != 0) throw new MapDocumentException(string.Join("\n", errors));
+        MapPrismCoverage.Require(resources.CompleteView(), new());
         MapBoundDocumentValidation.ValidateEffectiveWater(resources, assets);
         var keys = bindings.Select(b => (b.Child.Kind, b.WorldId)).Distinct().ToArray();
         string[] Of(MapPrefabChildKind kind) => Ids(keys.Where(k => k.Kind == kind).Select(k => k.WorldId));

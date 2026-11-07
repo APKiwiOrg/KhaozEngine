@@ -70,11 +70,36 @@ namespace KhaozEngine.Tests.Gpu
             using var layout = new MetalResourceLayout(
                 harness.Liveness, new GpuResourceLayoutDescription(Element("Frame")));
 
-            ArgumentException failed = Assert.Throws<ArgumentException>(() => new MetalResourceSet(
+            GpuResourceSetException failed = Assert.Throws<GpuResourceSetException>(() => new MetalResourceSet(
                 harness.Liveness, new GpuResourceSetDescription(layout, buffer)));
 
-            Assert.Contains("'Frame' at binding 0", failed.Message, StringComparison.Ordinal);
-            Assert.Contains("already been disposed", failed.Message, StringComparison.Ordinal);
+            Assert.Equal(GpuResourceSetRefusal.NativeHandleMissing, failed.Reason);
+            Assert.Equal("Frame", failed.ElementName);
+            Assert.Equal(0, failed.Binding);
+            Assert.Equal(GpuResourceKind.UniformBuffer, failed.ResourceKind);
+            Assert.Equal("MTLBuffer", failed.NativeHandleKind);
+            Assert.Equal("element", failed.ParamName);
+        }
+
+        [Fact]
+        public void AStagingTextureCannotBeBoundAsAShaderTexture()
+        {
+            using var harness = new MetalRingHarness();
+            using MetalTexture staging = harness.NewTexture(GpuTextureDescription.Texture2D(
+                8, 8, GpuPixelFormat.R8G8B8A8UNorm, GpuTextureUsage.Staging));
+            using MetalTexture sampled = harness.NewTexture(GpuTextureDescription.Texture2D(
+                8, 8, GpuPixelFormat.R8G8B8A8UNorm, GpuTextureUsage.Sampled));
+            using var layout = new MetalResourceLayout(harness.Liveness, new GpuResourceLayoutDescription(
+                new GpuResourceLayoutElement("Image", GpuResourceKind.TextureReadOnly, GpuShaderStages.Fragment)));
+            var refusal = Assert.Throws<GpuResourceSetException>(() => new MetalResourceSet(
+                harness.Liveness, new GpuResourceSetDescription(layout, staging)));
+            Assert.Equal(GpuResourceSetRefusal.StagingTextureCannotBind, refusal.Reason);
+            Assert.Equal("resource", refusal.ParamName);
+            Assert.Equal("Image", refusal.ElementName);
+            Assert.Equal(0, refusal.Binding);
+            Assert.Equal(GpuResourceKind.TextureReadOnly, refusal.ResourceKind);
+            using var control = new MetalResourceSet(harness.Liveness, new GpuResourceSetDescription(layout, sampled));
+            Assert.Equal(1, control.Bindings.Length);
         }
 
         static GpuResourceLayoutElement Element(string name, bool dynamic = false)

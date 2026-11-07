@@ -4,6 +4,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using ModelContextProtocol.Client;
 using ModelContextProtocol.Protocol;
+using Microsoft.Extensions.DependencyInjection;
 using Xunit;
 
 namespace KhaozEngine.Tests.MapEditTool;
@@ -22,7 +23,8 @@ internal static class McpWire
 {
     internal static readonly TimeSpan CallTimeout = TimeSpan.FromSeconds(60);
 
-    internal static Task<McpAdapterTests.McpHarness> StartAsync() => Run("server start", McpAdapterTests.McpHarness.StartAsync);
+    internal static Task<McpAdapterTests.McpHarness> StartAsync(Action<IMcpServerBuilder>? configure = null) =>
+        Run("server start", token => McpAdapterTests.McpHarness.StartAsync(token, configure));
 
     internal static Task<McpAdapterTests.McpHarness> StartAsync(string nativePolicyPath) => Run("server start", token => McpAdapterTests.McpHarness.StartAsync(token, nativePolicyPath));
 

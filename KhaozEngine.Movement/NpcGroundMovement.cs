@@ -8,15 +8,19 @@ namespace KhaozEngine.Movement;
 /// <summary>Resolves NPC ground steering through the shared movement context.</summary>
 public static class NpcGroundMovement
 {
-    /// <summary>Only Following requests travel. The core resolves gravity, support and carried movement state.</summary>
+    /// <summary>Following and Dropping request travel. The core resolves gravity, support and carried movement state.</summary>
     public static MoveState Step(in MoveState body, in RangeSteering steering, bool run, float dt,
         in MoveTuning tuning, GroundMoveContext context)
     {
         ArgumentNullException.ThrowIfNull(context);
         SupportQueryDiagnostics.Record(tuning.Controller == MovementControllerKind.Contact
             ? SupportQueryCounter.NpcContactSteps : SupportQueryCounter.NpcLegacySteps);
-        Vector2 direction = steering.Status == RangeMoveStatus.Following
+        Vector2 direction = steering.Status is RangeMoveStatus.Following or RangeMoveStatus.Dropping
             ? steering.WorldDirection : Vector2.Zero;
+        // Opting into a certified Drop also opts into the state trajectory its proof executed.
+        // Ordinary unreplicated steering remains full precision.
+        if (tuning.Controller == MovementControllerKind.Contact && steering.Status == RangeMoveStatus.Dropping)
+            return PlayerMovementPublication.Canonicalize(context.Step(PlayerMovementPublication.PrepareStep(body), direction, run, dt, tuning));
         return context.Step(body, direction, run, dt, tuning);
     }
 

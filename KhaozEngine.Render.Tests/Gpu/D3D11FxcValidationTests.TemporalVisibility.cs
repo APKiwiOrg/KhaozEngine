@@ -101,7 +101,7 @@ bool temporalVisibilityReleases(vec2 uv, ivec2 centre, ivec2 last, vec2 previous
 ";
 
         [SupportedOSPlatform("windows")]
-        static string Disassemble(string fragment, string label)
+        internal static string Disassemble(string fragment, string label)
         {
             CrossCompiledPair hlsl = SpirvCrossCompile.GlslPairToHlsl(ShaderSources.FullscreenVert, fragment, label);
             byte[] dxbc = D3D11Fxc.Compile(hlsl.FragmentSource, D3D11ShaderProfile.Fragment, D3D11ShaderDebug.Optimized,

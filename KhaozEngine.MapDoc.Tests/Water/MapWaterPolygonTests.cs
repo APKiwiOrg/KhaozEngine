@@ -144,8 +144,17 @@ public class MapWaterPolygonTests
     {
         var budget = new MapWaterWorkBudget(2);
         budget.Charge(2);
+        Assert.False(budget.Exhausted);
+        Assert.Equal(budget.Limit, budget.Charged);
         var error = Assert.Throws<MapDocumentException>(() => budget.Charge(1));
-        Assert.Equal("domain work exceeds 2 pair checks", error.Message);
+        Assert.Equal(MapDocumentRefusal.WorkCapacityExceeded, error.Reason);
+        Assert.Equal("WaterDomainPairChecks", error.Budget);
+        Assert.Equal(3L, error.ActualCount);
+        Assert.Equal(2L, error.Limit);
         Assert.True(budget.Exhausted);
+        Assert.True(budget.Charged > budget.Limit);
+        var control = new MapWaterWorkBudget(2);
+        control.Charge(2);
+        Assert.False(control.Exhausted);
     }
 }

@@ -8,7 +8,7 @@ namespace KhaozEngine.MapDoc.Spaces;
 internal static class MapPrismCoveragePeers
 {
     internal static void Validate(MapScopedSurfaces view, IReadOnlyList<MapOccupiedPiece> raw,
-        MapWaterPolygons.Bounds[] bounds, MapWaterWorkBudget work, List<string> errors)
+        MapWaterPolygons.Bounds[] bounds, MapWaterWorkBudget work, System.Action<MapDocumentFinding> add)
     {
         var admission = MapPrismValidationWorkspace.Admission;
         using var indexWorkspace = admission?.BeginPreparation();
@@ -37,7 +37,8 @@ internal static class MapPrismCoveragePeers
                     System.Linq.Enumerable.Any(polygon, p => b.Top(p) is not { } tb || tb.CompareTo(a.Bottom(p)) > 0))
                 {
                     MapPrismValidationWorkspace.Reserve(checked(128L + 2L * (a.SpaceId.Length + b.SpaceId.Length + 32)));
-                    errors.Add($"peer occupied overlap: '{a.SpaceId}' with '{b.SpaceId}'");
+                    add(new(MapDocumentRefusal.SpaceOccupiedOverlap, $"peer occupied overlap: '{a.SpaceId}' with '{b.SpaceId}'")
+                    { SpaceId = a.SpaceId, RelatedRecordId = b.SpaceId });
                 }
             }
         }

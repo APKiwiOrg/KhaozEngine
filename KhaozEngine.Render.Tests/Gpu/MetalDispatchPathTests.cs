@@ -183,9 +183,8 @@ void main() { Values[gl_GlobalInvocationID.x] = Tint; }
 
             list.Begin();
 
-            InvalidOperationException thrown = Assert.Throws<InvalidOperationException>(
+            Assert.Throws<InvalidOperationException>(
                 () => list.Dispatch(1, 1, 1));
-            Assert.Contains("no compute pipeline bound", thrown.Message, StringComparison.Ordinal);
 
             // AND NOTHING WAS SPENT ON IT: the refusal comes before the encoder, so a dispatch that cannot happen
             // does not also cost a boundary and leave a compute encoder open behind the throw.
@@ -193,6 +192,9 @@ void main() { Values[gl_GlobalInvocationID.x] = Tint; }
             Assert.Equal(MetalEncoderKind.None, list.Encoders.Open);
             Assert.Empty(compute.States);
 
+            list.SetComputePipeline(ComputePipeline());
+            list.Dispatch(1, 1, 1);
+            Assert.Single(calls.Dispatches);
             list.End();
         }
 

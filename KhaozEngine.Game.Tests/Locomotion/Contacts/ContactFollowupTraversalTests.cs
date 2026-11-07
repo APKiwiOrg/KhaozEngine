@@ -1,7 +1,6 @@
 using System;
 using System.Collections.Generic;
 using System.Numerics;
-using System.Reflection;
 using KhaozEngine.Locomotion;
 using KhaozEngine.Locomotion.Contacts;
 using KhaozEngine.Physics;
@@ -143,7 +142,7 @@ public sealed class ContactFollowupTraversalTests(ITestOutputHelper output)
             for (int i = 0; i < inputs.Count; i++)
             {
                 GroundStepResult replay = DryTick(scene.World, feet, inputs[i], false);
-                AssertBits(results[i], replay, $"tick {i + 1}");
+                LocomotionStateBits.AssertEqual(results[i], replay, LocomotionStateBits.Policy.ExcludeContinuityHandle);
                 feet = replay.Feet;
             }
         }
@@ -238,7 +237,7 @@ public sealed class ContactFollowupTraversalTests(ITestOutputHelper output)
         for (int i = 0; i < inputs.Count; i++)
         {
             GroundStepResult replay = DryTick(scene.World, feet, inputs[i].Move, inputs[i].Stepping);
-            AssertBits(results[i], replay, $"tick {i + 1}");
+            LocomotionStateBits.AssertEqual(results[i], replay, LocomotionStateBits.Policy.ExcludeContinuityHandle);
             feet = replay.Feet;
         }
     }
@@ -276,32 +275,5 @@ public sealed class ContactFollowupTraversalTests(ITestOutputHelper output)
             return result;
         }
         finally { memo!.Close(); }
-    }
-
-    /// <summary>Bitwise equality over every geometric field. CF-4 interval evidence is excluded.</summary>
-    internal static void AssertBits(object expected, object actual, string path)
-    {
-        Assert.Equal(expected.GetType(), actual.GetType());
-        if (expected is float f)
-        {
-            Assert.True(BitConverter.SingleToInt32Bits(f) == BitConverter.SingleToInt32Bits((float)actual),
-                $"{path}: expected {f:R}, actual {actual}");
-            return;
-        }
-        if (expected is double d)
-        {
-            Assert.True(BitConverter.DoubleToInt64Bits(d) == BitConverter.DoubleToInt64Bits((double)actual),
-                $"{path}: expected {d:R}, actual {actual}");
-            return;
-        }
-        Type type = expected.GetType();
-        if (type.IsPrimitive || type.IsEnum || type == typeof(string)) { Assert.Equal(expected, actual); return; }
-        foreach (FieldInfo field in type.GetFields(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic))
-        {
-            if (field.FieldType == typeof(SupportContinuityHandle)) continue;
-            object? left = field.GetValue(expected), right = field.GetValue(actual);
-            if (left is null) Assert.Null(right);
-            else { Assert.NotNull(right); AssertBits(left, right!, path + "." + field.Name); }
-        }
     }
 }

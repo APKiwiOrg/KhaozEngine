@@ -113,7 +113,7 @@ public sealed class SetTilesCommand : TileCommandBase
                 var c = new RegionCoord(rx, rz);
                 if (doc.GetRegion(c) is not null) continue;
                 // Always throws, the region is absent by the line above. Routing it through the document keeps
-                // the message that tells a never-created region apart from one that is merely unloaded, and the
+                // refusal that tells a never-created region apart from one that is merely unloaded, and the
                 // clamp names a tile this fill actually covers rather than the region's own corner.
                 doc.RequireRegion(Math.Max(_rect.X, c.OriginX), Math.Max(_rect.Z, c.OriginZ));
             }

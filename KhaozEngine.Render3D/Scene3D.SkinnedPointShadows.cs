@@ -13,8 +13,10 @@ public sealed partial class Scene3D
     [Flags]
     enum PointShadowCasterSet : byte
     {
-        Rigid = 1,
+        StaticRigid = 1,
         Skinned = 2,
+        MovingRigid = 4,
+        Rigid = StaticRigid | MovingRigid,
     }
 
     readonly List<PointShadowTransientCandidate> _pointTransientCandidates = new();
@@ -59,7 +61,7 @@ public sealed partial class Scene3D
         return false;
     }
 
-    void ScheduleSkinnedPointShadows(PointShadowSlots cache, PointShadowSettings settings, int frame)
+    void ScheduleCurrentPointShadows(PointShadowSlots cache, PointShadowSettings settings, int frame)
     {
         _pointTransientCandidates.Clear();
         _selectedPointTransientRequests.Clear();
@@ -77,7 +79,9 @@ public sealed partial class Scene3D
         for (int i = 0; i < _pointRequests.Count; i++)
         {
             PointShadowRequest request = _pointRequests[i];
-            if (request.Slot < 0 || !PointRequestTouchesSkinned(request)) continue;
+            if (request.Slot < 0) continue;
+            bool skinned = request.TouchesSkinned;
+            if (!skinned && !request.TouchesMovingRigid) continue;
             if (request.Mode == LightShadowMode.Static)
             {
                 // A newly acquired base row becomes sampleable when its selected rigid rebuild finishes below.
@@ -85,7 +89,7 @@ public sealed partial class Scene3D
                 _pointTransientCandidates.Add(new PointShadowTransientCandidate(
                     i, request.LightIndex, request.Key, request.DistanceSq));
             }
-            else if (settings.MaxDynamicLightsPerFrame > 0
+            else if (skinned && settings.MaxDynamicLightsPerFrame > 0
                 && (cache.LastRenderedFrame(request.Slot) == frame || _pointRebuilds.Contains(i)))
             {
                 _pointDynamicSkinnedRequests[i] = true;
@@ -150,8 +154,10 @@ public sealed partial class Scene3D
 
         if (request.Mode == LightShadowMode.Dynamic)
             _pointDynamicSkinnedDrawCallsThisFrame += draws;
-        else
+        else if (ReferenceEquals(packed.Atlas, _pointShadowTransientAtlas))
             _pointStaticTransientSkinnedDrawCallsThisFrame += draws;
+        else
+            _pointStaticFallbackSkinnedDrawCallsThisFrame += draws;
         return draws;
     }
 }

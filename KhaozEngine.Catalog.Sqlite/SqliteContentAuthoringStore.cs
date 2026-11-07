@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Data;
 using System.Threading;
 using System.Threading.Tasks;
 using KhaozEngine.Catalog.Authoring;
@@ -73,6 +74,15 @@ public sealed partial class SqliteContentAuthoringStore : IContentAuthoringStore
         PackStore = packStore;
     }
 
+    /// <summary>UpgradeLifetimeCatalogTests captures the actual held native handle before failed setup.
+    /// The read-only probe reports that same handle's closure and the provider state without lending either object.</summary>
+    internal Func<(ConnectionState State, bool NativeHandleClosed)> CaptureConnectionLifetimeForTests()
+    {
+        SqliteConnection connection = _connection.Connection;
+        var native = connection.Handle ?? throw new InvalidOperationException("The held SQLite connection has no native handle.");
+        return () => (connection.State, native.IsClosed);
+    }
+
     /// <summary>The allocator this store hands its two allocation members to.</summary>
     public ContentIdAllocator Allocator => _allocator;
 
@@ -113,67 +123,12 @@ public sealed partial class SqliteContentAuthoringStore : IContentAuthoringStore
     }
 
     /// <inheritdoc />
-    public async Task SetPinnedVersionAsync(
+    public Task SetPinnedVersionAsync(
         int? version,
         string actor,
         string operatorId,
         CancellationToken cancellationToken = default)
-    {
-        ArgumentNullException.ThrowIfNull(actor);
-        ArgumentNullException.ThrowIfNull(operatorId);
-
-        using SqliteStoreLease lease = await _connection.EnterAsync(cancellationToken).ConfigureAwait(false);
-        using SqliteTransaction transaction = _connection.BeginTransaction();
-
-        if (version is int held && !await VersionExistsAsync(held, transaction, cancellationToken).ConfigureAwait(false))
-        {
-            // The reason token is the one the in-memory reference store answers with, so a console that keys
-            // on it reads the same answer whichever provider is behind the seam.
-            throw new ContentAuthoringException(
-                FormattableString.Invariant($"Version {held} does not exist, so it cannot be pinned."),
-                default,
-                0,
-                ContentAuthoringException.UnknownTypeReason);
-        }
-
-        int? before;
-        using (SqliteCommand read = Command(
-            "SELECT pinned_version FROM catalog_metadata WHERE metadata_key = 1;", transaction))
-        {
-            object? raw = await read.ExecuteScalarAsync(cancellationToken).ConfigureAwait(false);
-            before = raw is long pinned ? (int)pinned : null;
-        }
-
-        using (SqliteCommand write = Command(
-            """
-            UPDATE catalog_metadata
-            SET pinned_version = $pinned, updated_at_utc = $now
-            WHERE metadata_key = 1;
-            """,
-            transaction))
-        {
-            Bind(write, "$pinned", version);
-            Bind(write, "$now", Millis(_clock()));
-            await write.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
-        }
-
-        await AppendAuditAsync(
-            transaction,
-            ContentAuditActions.Pin,
-            actor,
-            operatorId,
-            default,
-            0,
-            default,
-            string.Empty,
-            Render(before),
-            Render(version),
-            0,
-            string.Empty,
-            cancellationToken).ConfigureAwait(false);
-
-        transaction.Commit();
-    }
+        => SetPinAsync(version, actor, operatorId, null, cancellationToken);
 
     /// <inheritdoc />
     public async Task<IReadOnlyList<ContentVersionRecord>> ListVersionsAsync(

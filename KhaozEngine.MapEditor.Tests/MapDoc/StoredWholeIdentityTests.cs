@@ -42,15 +42,44 @@ public sealed class StoredWholeIdentityTests
             foreach (string payloadFile in payloadFiles) File.Delete(payloadFile);
             Assert.All(payloadFiles, payloadFile => Assert.False(File.Exists(payloadFile)));
             MapDocumentException error = Assert.Throws<MapDocumentException>(() => MapStoredSurfaceSource.Open(directory));
-            Assert.Contains("Resolver version 2 requires supportRecipe AuthoredBindingsV2.", error.Message);
+            Assert.Equal(MapDocumentRefusal.ResolverContractMismatch, error.Reason);
+            Assert.Equal(2, error.ResolverVersion);
+            Assert.Equal(2, error.ExpectedResolverVersion);
+            Assert.Equal(MapSupportRecipe.LegacyXzCallbackV1, error.SupportRecipe);
+            Assert.Equal(MapSupportRecipe.AuthoredBindingsV2, error.ExpectedSupportRecipe);
+            Assert.Equal("supportRecipe", error.FieldPath);
+
+            manifest["supportRecipe"] = nameof(MapSupportRecipe.AuthoredBindingsV2);
+            File.WriteAllText(manifestPath, manifest.ToJsonString());
+            MapStoredSurfaceSource accepted = MapStoredSurfaceSource.Open(directory);
+            Assert.Equal(new[] { "far", "ground", "ridge" }, accepted.Surfaces.Select(s => s.Id));
             return;
         }
 
         MapStoredSurfaceSource source = MapStoredSurfaceSource.Open(directory);
         MapResolveOptions options = invalid == "options" ? V2 with { ResolverVersion = 1 } : V2;
         var work = new MapWholeIdentityWork();
-        Assert.Throws<MapDocumentException>(() => MapAuthoredIdentityV2.Compute(source, SurfaceStorageFixtures.Assets(), options, work));
+        var metadataError = Assert.Throws<MapDocumentException>(() => MapAuthoredIdentityV2.Compute(source, SurfaceStorageFixtures.Assets(), options, work));
         Assert.Equal(0, work.PayloadReads);
+        if (invalid == "resolver")
+        {
+            Assert.Equal(MapDocumentRefusal.ResolverContractMismatch, metadataError.Reason);
+            Assert.Equal(1, metadataError.PayloadVersion);
+            Assert.Equal(1, metadataError.ResolverVersion);
+            Assert.Equal(MapSupportRecipe.LegacyXzCallbackV1, metadataError.SupportRecipe);
+            Assert.Equal(2, metadataError.ExpectedResolverVersion);
+            Assert.Equal(MapSupportRecipe.AuthoredBindingsV2, metadataError.ExpectedSupportRecipe);
+
+            doc.ResolverIdentity = new(1, 2);
+            doc.SupportRecipe = MapSupportRecipe.AuthoredBindingsV2;
+            MapTiledFile.Save(doc, directory, MapDocRegistry.CreateDefault(), null,
+                new MapSurfacePacking(IndexBlockSlots: 1, DirectoryBlockPages: 2));
+            source = MapStoredSurfaceSource.Open(directory);
+        }
+
+        MapAssetClosure assets = SurfaceStorageFixtures.Assets();
+        Assert.Equal(MapAuthoredIdentityV2.Compute(doc, assets, V2), MapAuthoredIdentityV2.Compute(source, assets, V2, work));
+        Assert.Equal(invalid == "resolver" ? 0 : 5, work.PayloadReads);
     });
 
     [Fact]
@@ -75,7 +104,11 @@ public sealed class StoredWholeIdentityTests
 
         SurfaceStorageFixtures.DeletePayload(directory, new("ground", 0, 0));
         MapDocumentException error = Assert.Throws<MapDocumentException>(() => MapAuthoredIdentityV2.Compute(source, assets, V2));
-        Assert.Contains("Missing", error.Message);
+        Assert.Equal(MapDocumentRefusal.PinnedContentUnavailable, error.Reason);
+        Assert.Equal(MapPatchStatus.Missing, error.PatchStatus);
+        Assert.Equal(new MapPatchKey("ground", 0, 0), error.Patch);
+        MapDocumentFile.SaveTiled(doc, directory);
+        Assert.Equal(expected, MapAuthoredIdentityV2.Compute(source, assets, V2));
     });
 
     [Fact]
@@ -107,6 +140,10 @@ public sealed class StoredWholeIdentityTests
 
         string[] originalPayloads = SurfaceStorageFixtures.SurfaceFiles(directory)
             .Where(path => path.Replace(Path.DirectorySeparatorChar, '/').Contains("/p/", StringComparison.Ordinal)).ToArray();
+        var originalKey = new MapPatchKey("ground", 0, 0);
+        string originalHash = original.Index.ByKey[originalKey].PayloadSha256;
+        string originalPath = Path.Combine(directory, originalPayloads.Single(p => Path.GetFileNameWithoutExtension(p) == originalHash));
+        byte[] originalBytes = File.ReadAllBytes(originalPath);
         doc.Surfaces.Patches[new("ground", 0, 0)].Heights[5]++;
         MapTiledFile.Save(doc, directory, MapDocRegistry.CreateDefault(), null,
             new MapSurfacePacking(IndexBlockSlots: 1, DirectoryBlockPages: 2));
@@ -116,7 +153,13 @@ public sealed class StoredWholeIdentityTests
         Assert.Equal(recipe, original.SupportRecipe);
 
         MapDocumentException missing = Assert.Throws<MapDocumentException>(() => MapAuthoredIdentityV2.Compute(original, assets, V2));
-        Assert.Contains("Missing", missing.Message);
+        Assert.Equal(MapDocumentRefusal.PinnedContentUnavailable, missing.Reason);
+        Assert.Equal(MapPatchStatus.Missing, missing.PatchStatus);
+        Assert.Equal(originalKey, missing.Patch);
+        Assert.Equal(originalHash, missing.ExpectedHash);
+        Directory.CreateDirectory(Path.GetDirectoryName(originalPath)!);
+        File.WriteAllBytes(originalPath, originalBytes);
+        Assert.Equal(expected, MapAuthoredIdentityV2.Compute(original, assets, V2));
         MapStoredSurfaceSource replacement = MapStoredSurfaceSource.Open(directory);
         string replacementToken = MapAuthoredIdentityV2.Compute(doc, assets, V2);
         Assert.NotEqual(root, replacement.RootSha256);

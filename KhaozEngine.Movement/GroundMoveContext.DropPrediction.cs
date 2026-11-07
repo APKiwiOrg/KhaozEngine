@@ -17,7 +17,9 @@ public sealed partial class GroundMoveContext
         if (_stepping) throw new InvalidOperationException("Ground movement steps cannot overlap or recurse.");
         ValidateTuning(tuning);
         if (ResolvedBinding.Kind != EffectiveMovementBindingKind.OrdinaryContact)
-            throw new NotSupportedException("Contact prediction requires OrdinaryContact movement.");
+            throw new GroundContactCapabilityException(GroundContactCapabilityRefusal.OrdinaryPredictionRequired,
+                "Contact prediction requires OrdinaryContact movement.")
+            { RequiredKind = EffectiveMovementBindingKind.OrdinaryContact };
         _origin = Physics!.Origin;
         MovementFrameDescriptor frame = NavigationFrame;
         if (state.Frame != frame) return new(state, MovementStepOutcome.FrameMismatch);

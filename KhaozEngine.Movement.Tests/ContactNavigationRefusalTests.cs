@@ -117,7 +117,10 @@ public class ContactNavigationRefusalTests
     {
         using var world = new BepuPhysicsWorld();
         using PhysicsNavBake capture = Capture(world);
-        Assert.Throws<NotSupportedException>(() => capture.BuildProfile(ValidContact, default));
+        var failure = Assert.Throws<GroundContactCapabilityException>(() => capture.BuildProfile(ValidContact, default));
+        Assert.Equal(GroundContactCapabilityRefusal.OrdinaryContextRequired, failure.Reason);
+        Assert.Equal(EffectiveMovementBindingKind.OrdinaryContact, failure.RequiredKind);
+        capture.BuildProfile(MoveTuning.Default, default).Validate(MoveTuning.Default);
     }
 
     [Fact]

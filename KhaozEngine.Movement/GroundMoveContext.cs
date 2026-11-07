@@ -35,7 +35,8 @@ public sealed partial class GroundMoveContext : IDisposable
         Func<float, float, Vector2>? clampXz, Func<float, float, float, MovementMedium>? medium,
         IPhysicsWorldQueryView? movementQueries, IMovementWaterField? movementWaterField,
         OrdinaryMovementRegistration? movementRegistration, MovementBoundary? movementBoundary,
-        string? legacyOnlyContactRefusal, bool contactConstruction)
+        string? legacyOnlyContactRefusal, bool contactConstruction,
+        GroundContactProducerKind? producerKind = null, GroundContactCapability? requiredCapability = null)
     {
         GroundHeight = groundHeight ?? throw new ArgumentNullException(nameof(groundHeight));
         if (movementQueries is not null && (physics is null || !ReferenceEquals(movementQueries.SourceWorld, physics)))
@@ -48,6 +49,8 @@ public sealed partial class GroundMoveContext : IDisposable
         MovementRegistration = movementRegistration;
         MovementBoundary = movementBoundary;
         _legacyOnlyContactRefusal = legacyOnlyContactRefusal;
+        _contactProducerKind = producerKind;
+        _requiredContactCapability = requiredCapability;
         _contactConstruction = contactConstruction;
         MovementQueries = CreateMovementView(movementQueries);
         SupportsContactController = contactConstruction && legacyOnlyContactRefusal is null &&

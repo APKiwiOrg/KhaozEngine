@@ -9479,8 +9479,16 @@ trace. A dry traversal helper cannot bypass that proof.
 
 Dispose the context at teardown. Caller-supplied views stay borrowed, while a contact construction without a view
 creates and owns one selected view. The physics source remains caller-owned. Producers that support legacy geometry
-only set `legacyOnlyContactRefusal` at construction. Resolver-1 MapDoc contexts refuse every contact use with
-`Resolver-1 MapDoc contexts are legacy-only. Native contact movement requires G1b.`
+only set `legacyOnlyContactRefusal` at construction. Contact use then throws
+`GroundContactCapabilityException : NotSupportedException` with
+`GroundContactCapabilityRefusal.ContactProducerRestricted` and the producer's text in `Restriction`.
+The original constructor signature remains available. A further overload accepts optional metadata values
+`GroundContactProducerKind? producerKind` and `GroundContactCapability? requiredCapability` after the restriction
+string. These values do not alter admission. Resolver-1 MapDoc contexts carry `ProducerKind = MapDocResolverOne`
+and `RequiredCapability = NativeMapDocContact` (G1b). A producer using the string-only overload leaves both null.
+A context constructed through a legacy overload refuses contact with `OrdinaryContextRequired`. Contact prediction
+with another binding kind refuses with `OrdinaryPredictionRequired`. Both carry `RequiredKind = OrdinaryContact`.
+See the [ground context contact refusal table](../KhaozEngine.Movement/README.md#ground-context-contact-refusals).
 
 ### Static physics columns and profile construction
 

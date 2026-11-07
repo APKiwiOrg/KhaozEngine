@@ -24,8 +24,11 @@ public partial class OrdinaryContactLocalHeadTests
         using var context = new GroundMoveContext((_, _) => 0, physics: world);
         Assert.False(context.SupportsContactController);
         var body = new MoveState { Position = new(0, 0.75f, 0), Grounded = true };
-        Assert.Throws<NotSupportedException>(() => NpcGroundMovement.Hold(body, 0.1f,
+        var failure = Assert.Throws<GroundContactCapabilityException>(() => NpcGroundMovement.Hold(body, 0.1f,
             OrdinaryContactScene.DefaultTuning, context));
+        Assert.Equal(GroundContactCapabilityRefusal.OrdinaryContextRequired, failure.Reason);
+        Assert.Equal(EffectiveMovementBindingKind.OrdinaryContact, failure.RequiredKind);
+        Assert.True(NpcGroundMovement.Hold(body, 0.1f, MoveTuning.Default, context).Grounded);
     }
 
     [Theory]

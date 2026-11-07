@@ -212,12 +212,28 @@ depth fraction. The selected foot radius must be at least 0.01 m. No missing cap
 The context implements `IDisposable`. A supplied `MovementQueries` view remains borrowed. Without one, a contact
 construction creates one selected view and releases it on disposal. It never disposes the physics source.
 `legacyOnlyContactRefusal` lets a producer record a restriction when constructing the context, before tuning is
-known. Every later contact use throws `NotSupportedException` with that message. Resolver-1 MapDoc contexts set
-`Resolver-1 MapDoc contexts are legacy-only. Native contact movement requires G1b.` Here `G1b` names the native
-MapDoc contact adapter. No production friend access is required. Movement depends on Locomotion, Navigation and
-Physics, with no renderer dependency. The input-driven `CharacterController3D` lives in
+known. Every later contact use throws `GroundContactCapabilityException` with `ContactProducerRestricted` and
+that producer-supplied text in `Restriction`. The existing constructor keeps its signature. An additional overload
+accepts `GroundContactProducerKind? producerKind` and `GroundContactCapability? requiredCapability` after the
+restriction string. These identifiers are optional metadata and do not change admission. Resolver-1 MapDoc contexts
+carry `ProducerKind = MapDocResolverOne` and `RequiredCapability = NativeMapDocContact`, the native G1b adapter.
+The string-only overload leaves both identifiers null. No production friend access is required. Movement depends on
+Locomotion, Navigation and Physics, with no renderer dependency. The input-driven `CharacterController3D` lives in
 `KhaozEngine.Game.Render3D` and selects the same binding through its own Update overload. Dispose the context
 or controller to release its engine-created view. Caller-supplied views and physics sources remain borrowed.
+
+### Ground context contact refusals
+
+`GroundContactCapabilityException` derives from `NotSupportedException`, preserving existing catches, and carries
+a non-nullable `GroundContactCapabilityRefusal Reason`. Messages remain developer prose. `Restriction` is open,
+producer-supplied text. Known engine producer and capability values use `GroundContactProducerKind` and
+`GroundContactCapability` enums. Identifiers are null when the reason does not use them or the producer omitted them.
+
+| `GroundContactCapabilityRefusal` | Refused rule | Identifiers |
+| --- | --- | --- |
+| `ContactProducerRestricted` | The producer restricted this context to legacy movement | `Restriction`, optional `ProducerKind` and `RequiredCapability` |
+| `OrdinaryContextRequired` | Contact movement requires an ordinary-constructed context | `RequiredKind = OrdinaryContact` |
+| `OrdinaryPredictionRequired` | Contact prediction requires an ordinary contact binding | `RequiredKind = OrdinaryContact` |
 
 ## Bounded static physics capture
 

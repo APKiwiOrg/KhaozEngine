@@ -741,7 +741,9 @@ validator, change a type's id or key after the first publish, or register the sa
 split and this spec restated it, but registration threw only for a codec and schema mismatch or a duplicate
 id, so a game registering type 300 would have succeeded and collided with Scope B at the next engine release,
 silently until the collision. `ContentRegistrationBand` is `Engine`, `Instances` or `Game`, the caller names
-its own band, and registration throws `ContentRegistrationException` when the type id falls outside it:
+its own band, and registration throws `ContentRegistrationException` with
+`Reason == ContentRegistrationRefusal.BandTypeIdOutsideRange`, `TypeId`, `TypeKey`, `Band`,
+`MinimumTypeId` and `MaximumTypeId` when the type id falls outside it:
 
 | Band | Type ids | Who passes it |
 |---|---|---|
@@ -762,8 +764,9 @@ specify and is the identical failure one layer down.
 
 **The codec is checked against the schema at registration** (contracts 4.7). `IContentRowCodec` exposes
 `IReadOnlyList<string> WrittenFields { get; }`, registration compares that set against the schema's field
-names, and a mismatch in either direction throws `ContentRegistrationException` naming both sides before the
-registry freezes. The check costs one set comparison per type at process start and it is what stops an editor
+names, and a mismatch in either direction throws `ContentRegistrationException` with
+`Reason == ContentRegistrationRefusal.CodecSchemaFieldsMismatch`, `MissingFields` and `ExtraFields` before
+the registry freezes. The check costs one set comparison per type at process start and it is what stops an editor
 writing a field nothing reads.
 
 Grimhollow's game types, from #882's phase 1 acceptance list and `b-grimhollow.md` sections 2 to 4:
@@ -2175,8 +2178,9 @@ construction:
 chunkSlots * (maxRowBytes + 8) + 36  <=  MaxChunkUncompressedBytes
 ```
 
-Registration refuses a type that fails it, throwing `ContentRegistrationException` naming both numbers, before
-the registry freezes. The `+ 8` is the row table entry (a varint id, a flags byte and a varint length, section
+Registration refuses a type that fails it, throwing `ContentRegistrationException` with
+`Reason == ContentRegistrationRefusal.ChunkBytesExceeded`, `ChunkSlots`, `MaximumRowBytes`, `ActualBytes`
+and `MaximumBytes`, before the registry freezes. The `+ 8` is the row table entry (a varint id, a flags byte and a varint length, section
 7.3) and the `+ 36` is the header.
 
 **The old claim that the caps were "consistent by construction" was arithmetic backwards.** At 4,096 slots and

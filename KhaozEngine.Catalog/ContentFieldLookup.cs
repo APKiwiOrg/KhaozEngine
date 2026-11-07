@@ -37,9 +37,9 @@ public static class ContentFieldLookup
     /// <param name="field">The field name, off the type's own field-name member.</param>
     /// <returns>The index, which is always a real position in a row of that type.</returns>
     /// <exception cref="ArgumentNullException"><paramref name="runtime"/> or <paramref name="field"/> is null.</exception>
-    /// <exception cref="InvalidOperationException">
-    /// The runtime does not carry the type, or its schema for the type carries no such field. The message
-    /// names both, because the operator's next question is which publish moved which field.
+    /// <exception cref="ContentFieldLookupException">
+    /// The runtime does not carry the type, or its schema for the type carries no such field. Reason,
+    /// Type and FieldName name the refusal, and TypeKey names the registered type when it exists.
     /// </exception>
     public static int IndexIn(ContentRuntime runtime, ContentTypeId type, string field)
         => IndexIn(runtime, type, field, out _);
@@ -54,7 +54,7 @@ public static class ContentFieldLookup
     /// <param name="scale">The schema's own scale, which is 1 for every kind but a scaled integer.</param>
     /// <returns>The index, which is always a real position in a row of that type.</returns>
     /// <exception cref="ArgumentNullException"><paramref name="runtime"/> or <paramref name="field"/> is null.</exception>
-    /// <exception cref="InvalidOperationException">
+    /// <exception cref="ContentFieldLookupException">
     /// The runtime does not carry the type, or its schema for the type carries no such field.
     /// </exception>
     /// <remarks>
@@ -70,16 +70,18 @@ public static class ContentFieldLookup
 
         if (!runtime.Registry.TryGet(type, out ContentTypeRegistration? registration))
         {
-            throw new InvalidOperationException(FormattableString.Invariant(
-                $"Content type {type.Value} is not registered in this runtime, so the '{field}' field a reader over it names cannot be resolved. The world will not run on a catalog it cannot read."));
+            throw new ContentFieldLookupException(ContentFieldLookupRefusal.TypeUnregistered, FormattableString.Invariant(
+                $"Content type {type.Value} is not registered in this runtime, so the '{field}' field a reader over it names cannot be resolved. The world will not run on a catalog it cannot read."))
+            { Type = type, FieldName = field };
         }
 
         ContentFieldSchema schema = registration.Schema;
         int index = schema.IndexOf(field);
         if (index < 0)
         {
-            throw new InvalidOperationException(FormattableString.Invariant(
-                $"Content type '{registration.TypeKey}' carries no field named '{field}' in this runtime's schema, and a reader over it names that field. The world will not run on a catalog it cannot read."));
+            throw new ContentFieldLookupException(ContentFieldLookupRefusal.FieldUndeclared, FormattableString.Invariant(
+                $"Content type '{registration.TypeKey}' carries no field named '{field}' in this runtime's schema, and a reader over it names that field. The world will not run on a catalog it cannot read."))
+            { Type = type, TypeKey = registration.TypeKey, FieldName = field };
         }
 
         scale = schema.Fields[index].Scale;

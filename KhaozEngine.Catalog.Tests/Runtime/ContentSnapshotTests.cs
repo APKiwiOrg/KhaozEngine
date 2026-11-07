@@ -217,7 +217,19 @@ public class ContentSnapshotTests
             false,
             []);
 
-        Assert.Throws<ContentRegistrationException>(() => { Builder().AddRow(row); });
+        var registry = CatalogSnapshotFixtures.Registry();
+        var builder = new ContentSnapshotBuilder(registry);
+        ContentRegistrationException error = Assert.Throws<ContentRegistrationException>(() => builder.AddRow(row));
+
+        Assert.Equal(ContentRegistrationRefusal.SnapshotTypeUnregistered, error.Reason);
+        Assert.Equal(new ContentTypeId(4096), error.TypeId);
+        Assert.Equal(1, error.DefinitionId);
+        Assert.Empty(builder.Build().Rows(row.Type));
+
+        ContentFieldSchema schema = ItemContentType.CreateSchema();
+        registry.RegisterContentType(ContentRegistrationBand.Game, 4096, "mystery",
+            new ItemContentType.Codec(row.Type, schema), null, schema, ContentVisibility.Client, 256);
+        Assert.Equal(new[] { row }, builder.AddRow(row).Build().Rows(row.Type));
     }
 
     [Fact]

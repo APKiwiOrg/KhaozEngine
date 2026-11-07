@@ -23156,6 +23156,14 @@ touches at most the chunk whose slots cover the id. A long-lived client opens th
 content-addressed store remains the durable byte cache. Either way verify comes before decode and a decode
 never throws: a bad byte comes back as a stable reason token on the result.
 
+Registration and snapshot admission throw `ContentRegistrationException` with a nullable
+`ContentRegistrationRefusal` in `Reason`, filled by every engine throw site. Its existing constructors stay
+available to consumers and leave `Reason` null. The identifiers name the type id and key, the claimed band
+and inclusive limits, the existing duplicate identity, or owned read-only codec field-name sets. Snapshot
+admission reports `TypeId` and `DefinitionId`. These describe host declarations rather than row values.
+See the [registration refusal table](../KhaozEngine.Catalog/README.md#registration-and-required-field-refusals)
+for the identifiers each reason carries.
+
 Five packages carry it. `KhaozEngine.Catalog` is the read side above, plus the runtime, the loot roller, the
 server boot, the client fetch loop and the string catalog, and it is in the `Foundation` umbrella.
 `KhaozEngine.Catalog.Authoring` (the authoring seam, the publish pipeline, diff and bundle) and
@@ -24035,9 +24043,13 @@ documented path. The validator is a parameter the caller passes, and a type that
 
 **Reach a field BY NAME, never by a literal position.** A row's values are parallel by index to its type's
 schema, and a duration field is named for the game's own unit, so a reader resolves the position once at
-construction through `KhaozEngine.Catalog`'s `ContentFieldLookup.IndexIn(runtime, type, field)` and a field the schema lacks is a
-REFUSAL naming both rather than a -1 a caller reads as zero. On a server that runs at boot, before a socket is
-open, so a publish that moved a field stops the boot rather than pricing a world at nothing and carrying on.
+construction through `KhaozEngine.Catalog`'s `ContentFieldLookup.IndexIn(runtime, type, field)`. A field the
+schema lacks throws `ContentFieldLookupException` with
+`Reason == ContentFieldLookupRefusal.FieldUndeclared`, `Type`, `TypeKey` and `FieldName`, rather than
+returning a -1 a caller reads as zero. An unregistered type uses `TypeUnregistered`,
+`Type` and `FieldName`, with `TypeKey` null. Existing `InvalidOperationException` catches still match. On a
+server that runs at boot, before a socket is open, so a publish that moved a field stops the boot rather
+than pricing a world at nothing and carrying on.
 
 `GameContentFindings` is the `KGT` finding-code table, banded by content type a hundred to a band with 1300
 held for a cross-type sweep. A code is a stable token a counter, a test and a runbook key on, and it is never

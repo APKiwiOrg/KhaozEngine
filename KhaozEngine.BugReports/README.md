@@ -71,7 +71,7 @@ one `BugReportBundleRefusal` enum. A null draft throws `ArgumentNullException`.
 | `SectionKeyInvalid` | a section key outside `[a-z0-9][a-z0-9._-]{0,47}`, null included | `Index`, `SectionKey` |
 | `SectionKeyDuplicate` | a section key an earlier section uses, `Index` being the later one | `Index`, `SectionKey` |
 | `SectionBytesExceeded` | sections whose running total passes the limit, `ActualBytes` being the total through the section that crossed it | `ActualBytes`, `MaximumBytes` (1048576) |
-| `SectionJsonInvalid` | a section that is not one JSON object within the depth limit, with unique property names and decodable strings | `SectionKey`, `MaximumDepth` (64) |
+| `SectionJsonInvalid` | a section that is not one JSON object within the depth limit, with unique property names and decodable strings. `MaximumDepth` is the rule's limit, set on every such refusal whatever the cause, because the guard cannot tell which part of the section failed | `SectionKey`, `MaximumDepth` (64) |
 | `ScreenshotMediaUnsupported` | a screenshot media type other than `image/png` or `image/jpeg`, null included | `MediaType` |
 | `ImageDimensionsOutsideRange` | a screenshot or clip frame whose recorded width or height is outside the edge range | `EntryName`, `Width`, `Height`, `MinimumPixels` (1), `MaximumPixels` (2560) |
 | `ImageHeaderUnreadable` | a screenshot or clip frame whose bytes do not start with a readable header of its media type | `EntryName`, `MediaType` |

@@ -527,12 +527,19 @@ public sealed class BugReportBundleWriterTests
     [Fact]
     public void Null_section_list_throws()
     {
-        var missing = new BugReportDraft(ReportId, "grimhollow", BugReportKind.Bug, CapturedAt, null!, null, null) { Description = "A report" };
+        // Draft() substitutes TwoSections for a null argument, so both drafts are built here the same way and
+        // differ only by the section list.
+        static BugReportDraft WithSections(IReadOnlyList<CapturedSection> sections) =>
+            new(ReportId, "grimhollow", BugReportKind.Bug, CapturedAt, sections, null, null)
+            {
+                Description = "Fell through\nthe floor",
+                Category = "Gameplay",
+            };
 
-        BugReportBundleArgumentException refusal = Refused(missing, BugReportBundleRefusal.SectionListMissing);
+        BugReportBundleArgumentException refusal = Refused(WithSections(null!), BugReportBundleRefusal.SectionListMissing);
         Assert.Equal("Sections", refusal.FieldName);
 
-        AssertValid(BugReportBundleWriter.Write(Draft(sections: TwoSections)));
+        AssertValid(BugReportBundleWriter.Write(WithSections(TwoSections)));
     }
 
     [Fact]

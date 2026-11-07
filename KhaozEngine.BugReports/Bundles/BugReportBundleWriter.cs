@@ -215,16 +215,18 @@ public static class BugReportBundleWriter
                 throw new BugReportBundleArgumentException(BugReportBundleRefusal.ClipFrameCountExceeded, string.Create(CultureInfo.InvariantCulture,
                     $"The clip holds {count} frames and the limit is {BundleEntryNames.MaxClipFrames}."), DraftParameter)
                 { ActualCount = count, MaximumCount = BundleEntryNames.MaxClipFrames };
-            if (count > 0) AddClip(payloads, frames);
+            if (count > 0) AddClip(payloads, frames, count);
         }
         return payloads;
     }
 
-    static void AddClip(List<(string, ReadOnlyMemory<byte>)> payloads, IReadOnlyList<ReportClipFrame> frames)
+    // count is the frame count the limit guard checked. The list is caller code whose Count can change, so it is
+    // never reread here, and no index past the checked limit reaches ClipFrame.
+    static void AddClip(List<(string, ReadOnlyMemory<byte>)> payloads, IReadOnlyList<ReportClipFrame> frames, int count)
     {
-        var rows = new ClipIndexFrame[frames.Count];
+        var rows = new ClipIndexFrame[count];
         double previousOffset = 0;
-        for (int i = 0; i < frames.Count; i++)
+        for (int i = 0; i < count; i++)
         {
             ReportClipFrame? frame = frames[i];
             if (frame is null)
@@ -252,7 +254,7 @@ public static class BugReportBundleWriter
         }
 
         payloads.Add((BundleEntryNames.ClipIndex, BugReportJson.SerializeClipIndex(new ClipIndex(rows))));
-        for (int i = 0; i < frames.Count; i++) payloads.Add((rows[i].Entry, frames[i].Jpeg));
+        for (int i = 0; i < count; i++) payloads.Add((rows[i].Entry, frames[i].Jpeg));
     }
 
     // One message for two rules, so the nonfinite branch is chosen first, in the guard's order.

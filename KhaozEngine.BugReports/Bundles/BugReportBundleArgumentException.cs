@@ -69,7 +69,9 @@ public sealed class BugReportBundleArgumentException : ArgumentException
     /// <summary>The inclusive section byte limit, for <see cref="BugReportBundleRefusal.SectionBytesExceeded"/>.</summary>
     public long? MaximumBytes { get; init; }
 
-    /// <summary>The deepest accepted nesting, for <see cref="BugReportBundleRefusal.SectionJsonInvalid"/>.</summary>
+    /// <summary>The rule's nesting limit, the deepest accepted nesting, set on every
+    /// <see cref="BugReportBundleRefusal.SectionJsonInvalid"/> refusal whatever the cause. The guard cannot tell
+    /// which part of the section failed, so a value here does not mean the section was too deep.</summary>
     public int? MaximumDepth { get; init; }
 
     /// <summary>The screenshot's media type, for <see cref="BugReportBundleRefusal.ScreenshotMediaUnsupported"/>, where it

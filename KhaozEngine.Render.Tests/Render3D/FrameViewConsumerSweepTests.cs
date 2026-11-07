@@ -125,8 +125,11 @@ public sealed class FrameViewConsumerSweepTests
     {
         new("Scene3D.cs", "_model.SetFrameUniforms(", 1, @"\bvp\b", RasterForbidden,
             "the frame block the model, splat, tile ground, foliage and skinned pipelines rasterise with"),
-        new("Scene3D.cs", "BuildAndUploadLightingClusters(", 1, @"\bvp\b", RasterForbidden,
+        new("Scene3D.cs", "RecordWaterCausticsAndLightClusters(", 1, @"\bvp\b", RasterForbidden,
             "the cluster grid a lit fragment indexes through the frame block's jittered ViewProj"),
+        new("Scene3D.WaterCaustics.cs", "_waterCausticPlan.Build(", 1,
+            @"^(?=.*" + Snapshot + @"\.ViewProjection\b)(?=.*" + Snapshot + @"\.Projection\b)", CpuForbidden,
+            "the caustic window on the unjittered view, so it does not shake with the temporal sequence"),
         new("Scene3D.cs", "_decalRenderer.Draw(", 2, @"\bvp\b", RasterForbidden, "blob shadows and ground decals"),
         new("Scene3D.cs", "DrawOverlayMeshes(", 1, @"\bvp\b", RasterForbidden, "overlay meshes in the model target"),
         new("Scene3D.cs", "DrawSilhouettes(", 1, @"\bvp\b", RasterForbidden, "silhouette hulls in the model target"),

@@ -154,7 +154,7 @@ re-deriving them:
 
 - **Key strength.** `SigningSecret.Load` and `Decode` accept only standard base64 decoding to at least
   `SigningSecret.MinimumBytes` (32) bytes, the HMAC-SHA256 output size. Unset reads as null, and set but invalid throws
-  an error naming the variable and never the value. `AuthExchange` refuses a shorter key at construction. Local
+  `SigningSecretException` with the variable as `SourceName` and a `SigningSecretRefusal`, never the value. `AuthExchange` refuses a shorter key at construction. Local
   development uses `SigningSecret.CreateEphemeral()`, a random key that cannot leave the process, never a source
   constant. `HmacTokenAuthenticator` checks no key length, so the game server loads its key through `SigningSecret`
   too.

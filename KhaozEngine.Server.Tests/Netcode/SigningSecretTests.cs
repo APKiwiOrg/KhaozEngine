@@ -48,14 +48,19 @@ public class SigningSecretTests
     {
         string raw = Convert.ToBase64String(Key(31, 0x42));
 
-        InvalidOperationException thrown =
-            Assert.Throws<InvalidOperationException>(() => SigningSecret.Decode(raw, Variable));
+        SigningSecretException thrown =
+            Assert.Throws<SigningSecretException>(() => SigningSecret.Decode(raw, Variable));
 
-        Assert.Contains(Variable, thrown.Message, StringComparison.Ordinal);
-        Assert.Contains("31", thrown.Message, StringComparison.Ordinal);
-        Assert.Contains(SigningSecret.MinimumBytes.ToString(System.Globalization.CultureInfo.InvariantCulture),
-            thrown.Message, StringComparison.Ordinal);
+        Assert.IsAssignableFrom<InvalidOperationException>(thrown);
+        Assert.Equal(SigningSecretRefusal.DecodedKeyTooShort, thrown.Reason);
+        Assert.Equal(Variable, thrown.SourceName);
+        Assert.Equal(31L, thrown.ActualBytes);
+        // The documented floor, written out so a changed constant fails here.
+        Assert.Equal(32L, thrown.MinimumBytes);
         AssertCarriesNoPartOf(raw, thrown);
+
+        // The control repairs only the length, at the limit: the same fill one byte longer loads.
+        Assert.Equal(Key(32, 0x42), SigningSecret.Decode(Convert.ToBase64String(Key(32, 0x42)), Variable));
     }
 
     [Theory]
@@ -64,11 +69,12 @@ public class SigningSecretTests
     [InlineData("%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%")]
     public void Decode_NotBase64_Throws_NamingTheVariable_AndNotTheValue(string raw)
     {
-        InvalidOperationException thrown =
-            Assert.Throws<InvalidOperationException>(() => SigningSecret.Decode(raw, Variable));
+        SigningSecretException thrown =
+            Assert.Throws<SigningSecretException>(() => SigningSecret.Decode(raw, Variable));
 
-        Assert.Contains(Variable, thrown.Message, StringComparison.Ordinal);
-        Assert.Contains("base64", thrown.Message, StringComparison.Ordinal);
+        Assert.Equal(SigningSecretRefusal.NotStandardBase64, thrown.Reason);
+        Assert.Equal(Variable, thrown.SourceName);
+        Assert.Null(thrown.ActualBytes);
         AssertCarriesNoPartOf(raw, thrown);
     }
 
@@ -82,8 +88,9 @@ public class SigningSecretTests
         Assert.NotEqual(standard, urlSafe);
 
         Assert.Equal(key, SigningSecret.Decode(standard, Variable));
-        InvalidOperationException thrown =
-            Assert.Throws<InvalidOperationException>(() => SigningSecret.Decode(urlSafe, Variable));
+        SigningSecretException thrown =
+            Assert.Throws<SigningSecretException>(() => SigningSecret.Decode(urlSafe, Variable));
+        Assert.Equal(SigningSecretRefusal.NotStandardBase64, thrown.Reason);
         AssertCarriesNoPartOf(urlSafe, thrown);
     }
 
@@ -144,9 +151,9 @@ public class SigningSecretTests
         };
 
         Assert.Throws<FormatException>(() => GamesLoader(raw));
-        InvalidOperationException thrown =
-            Assert.Throws<InvalidOperationException>(() => SigningSecret.Decode(raw, Variable));
-        Assert.Contains("base64", thrown.Message, StringComparison.Ordinal);
+        SigningSecretException thrown =
+            Assert.Throws<SigningSecretException>(() => SigningSecret.Decode(raw, Variable));
+        Assert.Equal(SigningSecretRefusal.NotStandardBase64, thrown.Reason);
         AssertCarriesNoPartOf(raw, thrown);
     }
 
@@ -195,10 +202,13 @@ public class SigningSecretTests
     {
         string raw = Convert.ToBase64String(Key(16, 0x77));
 
-        InvalidOperationException thrown =
-            Assert.Throws<InvalidOperationException>(() => SigningSecret.Load(_ => raw, Variable));
+        SigningSecretException thrown =
+            Assert.Throws<SigningSecretException>(() => SigningSecret.Load(_ => raw, Variable));
 
-        Assert.Contains(Variable, thrown.Message, StringComparison.Ordinal);
+        // Load passes the variable through as the source, so the refusal names it and not the value.
+        Assert.Equal(Variable, thrown.SourceName);
+        Assert.Equal(SigningSecretRefusal.DecodedKeyTooShort, thrown.Reason);
+        Assert.Equal(16L, thrown.ActualBytes);
         AssertCarriesNoPartOf(raw, thrown);
     }
 
@@ -242,15 +252,14 @@ public class SigningSecretTests
             : throw new InvalidOperationException("The key is under the length floor.");
     }
 
-    // The message and every inner exception are checked, since a host logs the whole chain.
-    private static void AssertCarriesNoPartOf(string raw, Exception thrown)
+    // The message, every inner exception and the string identifier are checked, since a host logs the whole chain
+    // and may log the refusal's properties too.
+    private static void AssertCarriesNoPartOf(string raw, SigningSecretException thrown)
     {
         string trimmed = raw.Trim();
         string probe = trimmed.Length > 8 ? trimmed[..8] : trimmed;
-        for (Exception? e = thrown; e is not null; e = e.InnerException)
-        {
-            Assert.DoesNotContain(trimmed, e.Message, StringComparison.Ordinal);
-            Assert.DoesNotContain(probe, e.Message, StringComparison.Ordinal);
-        }
+        string carried = string.Join('\n', thrown.ToString(), thrown.SourceName);
+        Assert.DoesNotContain(trimmed, carried, StringComparison.Ordinal);
+        Assert.DoesNotContain(probe, carried, StringComparison.Ordinal);
     }
 }

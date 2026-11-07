@@ -110,10 +110,28 @@ public sealed class SqlServerMutationJournalStoreTests : IDisposable
     [InlineData("Server=tcp:production.invalid;Database=shared-journal-test;Integrated Security=true;")]
     public void Live_fixture_rejects_database_without_dedicated_journal_test_marker_before_io(string connectionString)
     {
-        InvalidOperationException exception = Assert.Throws<InvalidOperationException>(
+        JournalLiveTestConfigurationException exception = Assert.Throws<JournalLiveTestConfigurationException>(
             () => SqlServerJournalTestDatabase.RequireDedicatedTestDatabase(connectionString));
 
-        Assert.Contains("-journal-test-", exception.Message, StringComparison.Ordinal);
+        Assert.IsAssignableFrom<InvalidOperationException>(exception);
+        Assert.Equal(JournalLiveTestConfigurationRefusal.DedicatedDatabaseRequired, exception.Reason);
+        Assert.Equal("-journal-test-", exception.RequiredMarker);
+        string carried = string.Join('\n', exception.ToString(), exception.RequiredMarker, exception.SourceName);
+        Assert.DoesNotContain(connectionString, carried, StringComparison.Ordinal);
+        Assert.DoesNotContain("production.invalid", carried, StringComparison.Ordinal);
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("   ")]
+    public void Live_fixture_rejects_a_missing_connection_naming_its_variable(string? connectionString)
+    {
+        JournalLiveTestConfigurationException exception = Assert.Throws<JournalLiveTestConfigurationException>(
+            () => SqlServerJournalTestDatabase.RequireDedicatedTestDatabase(connectionString));
+
+        Assert.Equal(JournalLiveTestConfigurationRefusal.ConnectionMissing, exception.Reason);
+        Assert.Equal("KE_SQLSERVER_TEST_CONNSTRING", exception.SourceName);
     }
 
     [Fact]

@@ -509,13 +509,19 @@ byte[] devSecret = SigningSecret.CreateEphemeral();
 
 - `Decode(raw, sourceName)` returns `null` when the value is unset or blank, and the decoded key when it is standard
   base64 (the output of `openssl rand -base64 32`, trimmed) of at least `MinimumBytes` (32) bytes. A value that is
-  set but not base64, or decodes shorter, throws `InvalidOperationException`, so a misconfigured production key fails
-  loudly instead of becoming a door that verifies nothing. The message names `sourceName` and the rule it broke and
-  never any part of the value.
+  set but not base64, or decodes shorter, throws `SigningSecretException`, an `InvalidOperationException`, so a
+  misconfigured production key fails loudly instead of becoming a door that verifies nothing. Its `SourceName` is
+  `sourceName` and its `Reason` is the rule it broke, as in the table below. Nothing it carries, the message included,
+  holds any part of the value or of the decoded key.
 - `Load(read, variable)` is `Decode(read(variable), variable)`. The environment arrives as a delegate, so an
   in-process host or a test hands it a map and writes no process state.
 - `CreateEphemeral()` is 32 bytes from `RandomNumberGenerator`, for local development only. Never ship a key as a
   source constant.
+
+| `Reason` | What it refuses | Identifiers |
+|---|---|---|
+| `NotStandardBase64` | a set value that is not standard base64 once trimmed, the url-safe alphabet included | `SourceName` |
+| `DecodedKeyTooShort` | a set value that decodes to fewer than `MinimumBytes` (32) bytes | `SourceName`, `ActualBytes`, `MinimumBytes` |
 
 The loader compares nothing. The one comparison under the key is `SignedToken.TryVerify`, which already checks the
 MAC with `CryptographicOperations.FixedTimeEquals`. The key itself stays in the game's secret store under the game's

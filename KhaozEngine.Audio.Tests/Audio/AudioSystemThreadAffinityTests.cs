@@ -56,7 +56,7 @@ public sealed class AudioSystemThreadAffinityTests : IDisposable
     {
         Exception? caught = RunOffThread(action);
         AudioThreadAffinityException refused = Assert.IsType<AudioThreadAffinityException>(caught);
-        Assert.Equal(AudioThreadAffinityRefusal.WrongThread, refused.Reason);
+        Assert.Equal(AudioThreadAffinityRefusal.ThreadMismatch, refused.Reason);
         Assert.Equal(member, refused.MemberName);
     }
 
@@ -151,7 +151,7 @@ public sealed class AudioSystemThreadAffinityTests : IDisposable
 
         Assert.IsAssignableFrom<InvalidOperationException>(caught);
         var refused = Assert.IsType<AudioThreadAffinityException>(caught);
-        Assert.Equal(AudioThreadAffinityRefusal.WrongThread, refused.Reason);
+        Assert.Equal(AudioThreadAffinityRefusal.ThreadMismatch, refused.Reason);
         Assert.Equal("SetBusVolume", refused.MemberName);
         Assert.Equal(owner, refused.OwnerThreadId);
         Assert.Equal(caller, refused.CallerThreadId);
@@ -210,7 +210,7 @@ public sealed class AudioSystemThreadAffinityTests : IDisposable
         Assert.NotNull(built);
 
         var refused = Assert.Throws<AudioThreadAffinityException>(() => built!.RegisterTrack("theme"));
-        Assert.Equal(AudioThreadAffinityRefusal.WrongThread, refused.Reason);
+        Assert.Equal(AudioThreadAffinityRefusal.ThreadMismatch, refused.Reason);
         Assert.Equal(builder, refused.OwnerThreadId);
         Assert.Equal(Environment.CurrentManagedThreadId, refused.CallerThreadId);
         built!.Dispose();

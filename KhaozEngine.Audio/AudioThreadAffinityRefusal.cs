@@ -4,5 +4,5 @@ namespace KhaozEngine.Audio;
 public enum AudioThreadAffinityRefusal
 {
     /// <summary>Refuses a call from a thread other than the one that constructed the <see cref="AudioSystem"/>.</summary>
-    WrongThread,
+    ThreadMismatch,
 }

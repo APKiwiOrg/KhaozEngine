@@ -77,7 +77,7 @@ A call from the wrong thread throws `AudioThreadAffinityException`, which derive
 
 | `Reason` | What it refuses | Identifiers |
 |---|---|---|
-| `WrongThread` | a call to a guarded member from a thread other than the one that constructed the `AudioSystem` | `MemberName`, the guarded public member that refused (`RegisterSfxes`, `UnregisterSfxes` and `RegisterTracks` have no guard of their own and report their per-item member), and `OwnerThreadId` and `CallerThreadId`, the two managed thread ids |
+| `ThreadMismatch` | a call to a guarded member from a thread other than the one that constructed the `AudioSystem` | `MemberName`, the guarded public member that refused (`RegisterSfxes`, `UnregisterSfxes` and `RegisterTracks` have no guard of their own and report their per-item member), and `OwnerThreadId` and `CallerThreadId`, the two managed thread ids |
 
 ## Protected loops
 

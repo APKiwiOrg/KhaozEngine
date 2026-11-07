@@ -19651,7 +19651,7 @@ with no locking, so every mutating entry point (`RegisterTrack` / `RegisterSfx` 
 crossfade call, `Update`, `StopAllSfx`, `SetListener`, `SetRng`, `SetRotationPool`, and the `MasterVolume` /
 `MusicVolume` / `SfxVolume` / `MusicEnabled` / `MusicCrossfadeDuration` / `PlayMode` setters plus `DefineBus` /
 `SetBusVolume`) compares the calling thread first and throws `AudioThreadAffinityException` when it is the wrong
-one. It derives from `InvalidOperationException`, its `Reason` is `AudioThreadAffinityRefusal.WrongThread`, and it
+one. It derives from `InvalidOperationException`, its `Reason` is `AudioThreadAffinityRefusal.ThreadMismatch`, and it
 carries the guarded public member that refused in `MemberName` and both managed thread ids in `OwnerThreadId` and
 `CallerThreadId`. `RegisterSfxes`, `UnregisterSfxes` and `RegisterTracks` have no guard of their own and report their
 per-item member.

@@ -550,7 +550,7 @@ public sealed class AudioSystemLoopTests : IDisposable
         thread.Start();
         Assert.True(thread.Join(TimeSpan.FromSeconds(30)));
         AudioThreadAffinityException refused = Assert.IsType<AudioThreadAffinityException>(caught);
-        Assert.Equal(AudioThreadAffinityRefusal.WrongThread, refused.Reason);
+        Assert.Equal(AudioThreadAffinityRefusal.ThreadMismatch, refused.Reason);
         Assert.Equal(member, refused.MemberName);
     }
 }

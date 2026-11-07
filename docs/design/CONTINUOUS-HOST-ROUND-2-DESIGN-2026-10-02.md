@@ -244,8 +244,8 @@ Grid search terminates at a passable member of the region, retaining fixed scan 
 `PathQueryBudget` limits. Shared-frame priority uses the admitted members' containing local cell-index box.
 Differing frames use the containing world XZ square. Both use the construction-time spatial ratio on every
 layer, and g-scores and priorities sum actual edge prices in double. The
-[Navigation cost contract](../../KhaozEngine.Navigation/README.md#search-costs-and-spatial-bounds) owns the
-numeric model and detailed bound rules. Avoid one A* per sampled face.
+[Navigation numeric cost contract](../../KhaozEngine.Navigation/README.md#numeric-cost-contract) owns the
+accumulation error bound, conditioning and scale range. The detailed cost section defines the geometric metrics. Avoid one A* per sampled face.
 An exhausted budget can return Partial, with the existing NavPath semantics. Complete means its
 endpoint belongs to the region. Snapping cannot silently substitute a point outside it.
 
@@ -299,7 +299,7 @@ decisions without making legacy point queries inherit guarded semantics.
 | B2.2 | Guarded snapping requires an admitted raw-passable own cell and returns its centre. A nearby accepted ring cannot authorize crossing a rejected node. |
 | B3.1 | Safe search priority is separate from progress toward actual member feet. Zero heuristic must not pin every Partial to the start. |
 | B3.2 | Capture real admitted region members once before search. Empty membership refuses, with no invented target Y or anchor replacement. Discovery is separate from the expansion-node budget. |
-| B3.3 | A construction-time minimum edge-cost-to-spatial-span ratio scales point and region priority across every layer. Cheap links weaken the admissible, consistent bound instead of disabling it. Non-finite costs or nonpositive ratios retain zero priority. |
+| B3.3 | A construction-time minimum edge-cost-to-spatial-span ratio scales point and region priority across every layer. Cheap links weaken the exact-arithmetic geometric bound instead of disabling it. Complete costs follow the [numeric contract](../../KhaozEngine.Navigation/README.md#numeric-cost-contract). Non-finite costs or nonpositive ratios retain zero priority. |
 | B3.4, B3.5 | Member discovery uses the conservative anchor/extent bound and finite-safe double distance arithmetic. Bounds reduce discovery work without changing actual predicate membership, and wide differences avoid float overflow. |
 | B4.2 | A retained waypoint with zero XZ offset stays finite and Following until true membership or replanning. Same XZ on another floor is not arrival. |
 | B4.3 | A reached Complete endpoint outside membership makes replanning due. A previously nonterminal corridor refreshes under the follower's configured arrival radius and layer checks, without exact coordinate equality. A fresh result already terminal at query time keeps the ordinary cooldown, including after a stale-route refresh, until it leaves terminal state. Region membership remains the only Arrived witness. |

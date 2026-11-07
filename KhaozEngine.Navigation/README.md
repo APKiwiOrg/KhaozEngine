@@ -418,9 +418,10 @@ box by value in reused scratch, alongside the existing feet list. Rounded world 
 cannot distort this local bound. Distance to the containing box changes no faster than the same octile
 metric used for edge spans, and it is zero at every member. With differing frames, region priority retains
 world XZ distance to the extent square, using the same rounded centres as its construction-time scale.
-Physical feet still supply membership and 3D progress. Each edge costs at least its scaled spatial span,
-so the bounds are admissible and consistent for cheap Hops, long links and paths leaving and re-entering
-the goal layer. A popped node is final. Preserving links leave the ratio
+Physical feet still supply membership and 3D progress. In exact arithmetic these are admissible,
+consistent geometric bounds for cheap Hops, long links and paths leaving and re-entering the goal layer.
+Binary64 accumulation and priority evaluation have the finite error stated in the
+[numeric cost contract](#numeric-cost-contract), rather than an unrestricted exact-optimum promise. Preserving links leave the ratio
 at one. Point progress uses squared physical 3D distance to the goal cell's feet across layers, while
 region progress uses squared 3D distance to actual members. Legacy height-less point grids use a zero-height
 plane. Progress still selects a useful partial endpoint when the safe
@@ -433,11 +434,83 @@ The local member box and numeric model can change point and region order even on
 Actual float prices remain the objective. Stair floors use the same double span and round their float price upward. Finite-budget status, goal member and waypoint choices may change. A zero-span Stair retains its source-cell minimum.
 Stair weights are computed at load, so this policy changes no bake bytes, topology, format or identity fields
 at a fixed engine version. A released engine version still requires the normal consumer rebake.
-Complete searches retain optimal graph-edge cost. With `MaxExpandedNodes = int.MaxValue`, a query completes
-exactly when the admitted graph connects its start to a goal, otherwise it returns Partial or Unreachable.
+Complete searches obey the [numeric cost contract](#numeric-cost-contract). With
+`MaxExpandedNodes = int.MaxValue`, finite admitted reachability is exact: a query completes when the graph
+connects its resolved start to a goal, otherwise it returns Partial or Unreachable.
 Finite-budget results are best effort. Changing the search order can improve or worsen a status or the
 distance of a Partial endpoint within the same budget. Physical 3D point progress avoids selecting a roof
 directly above the goal merely because its XZ coordinates coincide.
+
+#### Numeric cost contract
+
+A searched `Complete` route is optimal up to the bound below. There is no unconditional absolute
+`0.00001 m` guarantee at every magnitude. Prices are the actual materialized float edge prices, widened
+exactly and added sequentially in binary64. The comparison optimum is exhaustive Dijkstra over the same
+admitted edges using those same sequential double additions. Legacy direct line-of-sight point shortcuts
+do not enter this graph search and are outside graph g-score comparison.
+
+For a query, choose:
+
+- `N`, an upper bound on both the returned raw route's edge count and an exhaustive-double-optimum route's
+  edge count. For multiple equal optima, a simple optimum suffices. `N = 0` has zero cost error.
+- `M > 0`, a finite arithmetic envelope in metres. It bounds the magnitudes of relevant accumulated g-scores,
+  g-plus-priority keys, represented coordinate/anchor/extent values and differences, spans, and length-valued
+  products used by the construction-time scale and query priorities. It covers corresponding exact
+  intermediates too, with room for rounding. Norm squares have the corresponding `M * M` scale. It is not
+  merely the returned final g. A remote anchor paired with a large extent needs that larger envelope even
+  if the traversed route is short.
+- `q = ULP(M) = BitIncrement(M) - M`, the binary64 spacing at that envelope.
+
+For finite nonnegative prices, valid finite geometry, round-to-nearest binary64 operations and no arithmetic
+underflow/overflow, the contract is:
+
+```text
+returned sequential-double cost - exhaustive sequential-double optimum <= B(N, M)
+B(N, M) = 132 * N * ULP(M) metres
+```
+
+This is a conservative upper bound, not a distance tolerance used by the planner. The planner does not
+round comparisons into a band, widen region membership, change budgets or force a different route.
+
+Derivation for this implementation:
+
+1. Widening float prices and integer indices to double is exact. An individual g or queue-key addition
+   incurs at most `q` absolute error inside the envelope, conservatively allowing a full ULP.
+2. Integer box selection, abs, min and max introduce no rounded arithmetic. Shared octile evaluation has
+   two products and one sum. World span evaluation has two differences, two squares, a sum and a square
+   root. A ratio adds division and one downward representable step. Taking a minimum over ratios does
+   not accumulate their errors. With binary64 unit roundoff `u = 2^-53` and the elementary-operation bound
+   `gamma(k) = k*u/(1-k*u)`, the scale contribution is below `12*q` over the envelope.
+3. For a world-square query, membership's rounded difference is covered by expanding its exact containing
+   square by `q` per axis. Each query axis has at most two rounded subtractions. With that expansion,
+   coordinate-gap error contributes less than `5*q` to the norm, norm arithmetic less than `5*q`, and the
+   final scale multiplication at most `q`. The shared-frame case is smaller. Thus the evaluated priority
+   differs from a nonnegative consistent exact-arithmetic geometric potential, zero at every admitted
+   goal, by less than `12*q + 10*q + q`. Use the conservative common budget `E = 64*q`.
+4. Along an oracle-optimal path, let `j` be its first unclosed vertex when another vertex `i` is closed.
+   The already-closed prefix bounds the excess label at `j`. Comparing their queue keys costs at most
+   `2*E + 2*q`, and comparing the two rounded relaxations costs at most another `2*q`. Exact geometric
+   consistency bounds the intervening path segment, whose double additions contribute at most one `q`
+   per edge. Induction charges at most `2*E + 4*q = 132*q` per oracle-path edge. The same frontier
+   comparison at the first popped goal covers different admitted goal members, giving `132*N*q`.
+
+The standard operation/summation model is described by
+[Higham, The Accuracy of Floating Point Summation](https://nhigham.com/wp-content/uploads/2023/10/high93s.pdf).
+The geometric-potential and closed-search error budget above is specific to this implementation. The
+arithmetic-envelope condition is essential. The formula is not a claim about NaNs, overflow, arbitrary
+precision, or geometric cancellation outside the selected `M`.
+
+A useful absolute-tolerance range is `N <= 10,000` and `M < 65,536 m`. Then `q <= 2^-37 m` and
+`B <= 9.604264050722122e-6 m`, strictly below the existing `0.00001 m` realistic-scale test tolerance.
+For Grimhollow, world coordinates are within a few hundred metres of the origin, cells are `0.25 m`, and
+published routes cost well under `1,000 m` with a few thousand edges. A conservative `M = 2,048 m` and
+`N = 4,096` gives `B = 2.4586915969848633e-7 m`, far inside that absolute range. Inputs outside that
+range require their actual envelope and edge-count bound, not the same fixed absolute promise.
+
+For example, a `2e12 m` prefix followed by thirteen 1 mm steps has binary64 spacing
+`0.000244140625 m`. The current F4 reproduction exceeds `0.00001 m` by one such ULP while remaining
+within `B(14, 2e12) = 0.451171875 m`. Its large allowance reflects its scale. Ordinary-scale tests keep
+their existing absolute assertions, and a future more accurate route remains valid under this contract.
 
 `PathQueryBudget` is a value type, cheap to construct per query: `MaxExpandedNodes` (the A* expansion
 cap before it gives up and returns `Partial`) and `SnapRadius` (the max world-unit nudge onto a passable

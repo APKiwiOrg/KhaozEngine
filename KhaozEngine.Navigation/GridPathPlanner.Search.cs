@@ -18,8 +18,9 @@ public sealed partial class GridPathPlanner
     /// <see cref="NavGrid.CellSize"/>, a <see cref="NavLinkKind.Hop"/> the constructor's hop cost), skipped
     /// when the link's far endpoint is not passable for the agent radius on its own layer. A construction-time
     /// spatial cost ratio scales one metric across every layer: octile in a shared frame, world XZ distance
-    /// otherwise. Each edge costs at least its scaled span, so the bound is admissible and consistent and a
-    /// popped node is final. Progress uses physical 3D feet distance independently of priority. The search stops
+    /// otherwise. The geometric bound is admissible and consistent in exact arithmetic. Double cost and
+    /// priority errors follow the numeric contract in the Navigation README. Closed nodes are not reopened.
+    /// Progress uses physical 3D feet distance independently of priority. The search stops
     /// when the goal is popped (<see cref="NavPathStatus.Complete"/>),
     /// the open set empties, or <paramref name="budget"/>'s <see cref="PathQueryBudget.MaxExpandedNodes"/>
     /// expansions are spent. On a non-goal stop it reconstructs to the closest-approach node (least

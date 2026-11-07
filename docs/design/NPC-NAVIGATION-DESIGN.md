@@ -176,7 +176,8 @@ All headless xUnit in `KhaozEngine.Tests`:
 - **Baker:** synthetic analytic terrain plus hand-placed colliders, assert expected clearance at known
   cells (flat clear, steep slope blocked, shrinking clearance near cylinder and box footprints,
   `extraBlocked` respected). Chamfer verified against brute-force distance on a small grid.
-- **Planner:** optimality on open grids (octile distance match), corner-cut never happens, partial
+- **Planner:** open-grid cost conformance (octile distance match within the
+  [numeric contract](../../KhaozEngine.Navigation/README.md#numeric-cost-contract)), corner-cut never happens, partial
   flag on walled-off goals, node budget respected, endpoint snapping, fast-path short-circuit when
   line-of-sight is clear, determinism (same inputs twice give identical waypoints).
 - **Dungeon:** bake a small generated `DungeonLayout`, assert a ground-floor to upper-floor path

@@ -69,7 +69,8 @@ public sealed partial class GridPathPlanner : IRegionPathPlanner
     /// <see cref="NavGrid.CellSize"/> (default 4). It must be positive. A <see cref="NavLinkKind.Stair"/>
     /// link costs the greater of its spatial metric span and one source cell. The planner scales its spatial
     /// lower bound once at construction
-    /// to account for links cheaper than their displacement, keeping search costs optimal.</summary>
+    /// to account for links cheaper than their displacement. Floating-point cost error follows the numeric
+    /// contract in the Navigation README.</summary>
     public GridPathPlanner(NavSpace space, float hopCostCells = 4f)
         : this(space, hopCostCells, null)
     {

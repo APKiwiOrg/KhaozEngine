@@ -9218,7 +9218,9 @@ ratio despite rounded world centres at large origins. Differing frames retain sc
 the extent square. Both apply on every layer. The member box is a value in reused scratch and introduces
 no query allocation. Separate finite-safe progress compares actual admitted members. Point progress compares
 physical 3D feet positions.
-Complete searches are optimal, unlimited searches are exact, and finite-budget results are best effort.
+Complete searches follow the [numeric cost contract](../KhaozEngine.Navigation/README.md#numeric-cost-contract),
+including its edge-count/arithmetic-envelope error bound and absolute-tolerance scale range. Unlimited
+finite reachability is exact, and finite-budget results are best effort.
 Route choices change in 23.3.0. Stair links cost at least their spatial metric span and one source cell,
 so diagonal Stairs no longer receive a discount. The Navigation README owns the complete cost contract.
 Work is `O(N + E*M)` and storage is `O(N + M)`.

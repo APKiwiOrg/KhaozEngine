@@ -8950,7 +8950,9 @@ glide described under "Animated characters" above (`CharacterController3D.ClimbR
 what the `ke-dungeon` CLI reads and writes. The JSON matches the embedded schema (`DungeonSchema.GetJson()`,
 a `oneOf` over the config and layout shapes), which the package's tests validate against and which is
 available for editor/AI tooling. The load path itself enforces its own semantic checks, throwing
-`DungeonJsonException` naming the offending field. A hand-authored or generated config looks like:
+`DungeonJsonException`. Its `Reason` (a `DungeonJsonRefusal`) names the rule and, where one applies, `JsonPath` the offending member,
+with the other identifiers listed in the package README. The message is prose, never a contract. A hand-authored
+or generated config looks like:
 
 ```jsonc
 {

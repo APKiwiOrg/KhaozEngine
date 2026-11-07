@@ -10,13 +10,77 @@ using KhaozEngine.Serialization;
 namespace KhaozEngine.Dungeon;
 
 /// <summary>Thrown when dungeon config or layout JSON fails to parse, deserialize, or pass semantic
-/// validation. The message names the offending field (in the JSON's own camelCase spelling) so tooling
-/// (the CLI, MCP servers) can report precisely what to fix.</summary>
+/// validation. <see cref="Reason"/> names the rule and the identifiers it documents name the offending member, so
+/// tooling (the CLI, MCP servers) can report precisely what to fix. The message is developer prose naming the same
+/// member in the JSON's own camelCase spelling, never a contract.</summary>
 public sealed class DungeonJsonException : Exception
 {
+    /// <summary>Creates the exception with no <see cref="Reason"/>.</summary>
     public DungeonJsonException(string message) : base(message)
     {
     }
+
+    /// <summary>Creates the exception with its reason.</summary>
+    /// <param name="reason">The rule that refused the document.</param>
+    /// <param name="message">The developer-facing explanation, not a classification token.</param>
+    public DungeonJsonException(DungeonJsonRefusal reason, string message) : base(message) => Reason = reason;
+
+    /// <summary>Creates the exception with its reason and the reader's exception.</summary>
+    /// <param name="reason">The rule that refused the document.</param>
+    /// <param name="message">The developer-facing explanation, not a classification token.</param>
+    /// <param name="innerException">The <see cref="JsonException"/> the reader or deserializer threw.</param>
+    public DungeonJsonException(DungeonJsonRefusal reason, string message, Exception innerException)
+        : base(message, innerException) => Reason = reason;
+
+    /// <summary>The rule that refused the document. Null for an instance built through the message-only
+    /// constructor, which code outside the engine may use and which the layout content checks (dimensions, ceiling
+    /// height, grid, rooms, edges, keys and markers) still use.</summary>
+    public DungeonJsonRefusal? Reason { get; }
+
+    /// <summary>The document kind, <c>config</c> or <c>layout</c>, for <see cref="DungeonJsonRefusal.JsonMalformed"/>,
+    /// <see cref="DungeonJsonRefusal.RootObjectRequired"/> and
+    /// <see cref="DungeonJsonRefusal.JsonMemberUnconvertible"/>.</summary>
+    public string? Section { get; init; }
+
+    /// <summary>The refused member. For a config rule, the member in the JSON's own camelCase spelling with no root
+    /// marker, such as <c>roomCountTarget</c>, where a rule over a pair names its minimum member. For
+    /// <see cref="DungeonJsonRefusal.JsonMalformed"/> and <see cref="DungeonJsonRefusal.JsonMemberUnconvertible"/>,
+    /// the reader's <see cref="JsonException.Path"/>, such as <c>$.roomCountTarget</c>, null when the reader reports
+    /// none.</summary>
+    public string? JsonPath { get; init; }
+
+    /// <summary>The zero-based line the reader stopped at, for <see cref="DungeonJsonRefusal.JsonMalformed"/>, null
+    /// when the reader reports none.</summary>
+    public long? LineNumber { get; init; }
+
+    /// <summary>The zero-based UTF-8 byte position within that line, for
+    /// <see cref="DungeonJsonRefusal.JsonMalformed"/>, null when the reader reports none.</summary>
+    public long? BytePositionInLine { get; init; }
+
+    /// <summary>The refused size, for <see cref="DungeonJsonRefusal.PositiveValueRequired"/>. The limit is zero,
+    /// exclusive.</summary>
+    public double? ActualNumber { get; init; }
+
+    /// <summary>The refused integer, for <see cref="DungeonJsonRefusal.IntegerBelowMinimum"/>,
+    /// <see cref="DungeonJsonRefusal.NonnegativeValueRequired"/>, <see cref="DungeonJsonRefusal.PercentageOutsideRange"/>,
+    /// <see cref="DungeonJsonRefusal.RoomMarginInsufficient"/> and
+    /// <see cref="DungeonJsonRefusal.HallMarginInsufficient"/>.</summary>
+    public long? ActualInteger { get; init; }
+
+    /// <summary>The inclusive minimum, for <see cref="DungeonJsonRefusal.IntegerBelowMinimum"/> (1),
+    /// <see cref="DungeonJsonRefusal.NonnegativeValueRequired"/> (0), <see cref="DungeonJsonRefusal.PercentageOutsideRange"/>
+    /// (0), <see cref="DungeonJsonRefusal.RoomMarginInsufficient"/> (<c>roomMaxTiles</c> + 2) and
+    /// <see cref="DungeonJsonRefusal.HallMarginInsufficient"/> (<c>hallMaxLengthTiles</c> + 2).</summary>
+    public long? MinimumInteger { get; init; }
+
+    /// <summary>The inclusive maximum, for <see cref="DungeonJsonRefusal.PercentageOutsideRange"/> (100).</summary>
+    public long? MaximumInteger { get; init; }
+
+    /// <summary>The minimum of the pair, for <see cref="DungeonJsonRefusal.RangeUnordered"/>.</summary>
+    public long? ActualMinimum { get; init; }
+
+    /// <summary>The maximum of the pair it exceeds, for <see cref="DungeonJsonRefusal.RangeUnordered"/>.</summary>
+    public long? ActualMaximum { get; init; }
 }
 
 /// <summary>
@@ -61,9 +125,9 @@ public static class DungeonJson
     }
 
     /// <summary>Parses and deserializes a <see cref="DungeonConfig"/> from JSON (JSONC-tolerant: comments and
-    /// trailing commas are accepted), then applies <see cref="DungeonConfig.Validate"/>. Throws
-    /// <see cref="DungeonJsonException"/> naming the offending field on a parse, deserialization, or
-    /// validation failure.</summary>
+    /// trailing commas are accepted), then applies the <see cref="DungeonConfig.Validate"/> rules. Throws
+    /// <see cref="DungeonJsonException"/> with its <see cref="DungeonJsonException.Reason"/> and the offending
+    /// member on a parse, deserialization, or validation failure.</summary>
     public static DungeonConfig LoadConfig(string json)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(json);
@@ -75,36 +139,66 @@ public static class DungeonJson
         }
         catch (JsonException ex)
         {
-            throw new DungeonJsonException($"config: invalid JSON. {ex.Message}");
+            throw new DungeonJsonException(DungeonJsonRefusal.JsonMalformed, $"config: invalid JSON. {ex.Message}", ex)
+            {
+                Section = "config",
+                JsonPath = ex.Path,
+                LineNumber = ex.LineNumber,
+                BytePositionInLine = ex.BytePositionInLine,
+            };
         }
 
         if (node is not JsonObject)
         {
-            throw new DungeonJsonException("config: document root must be a JSON object.");
+            throw new DungeonJsonException(DungeonJsonRefusal.RootObjectRequired, "config: document root must be a JSON object.")
+            {
+                Section = "config",
+            };
         }
 
         DungeonConfig config;
         try
         {
+            // An internal invariant no input reaches: node is a JsonObject and the private options register no
+            // converter for DungeonConfig, so the built-in object converter always constructs an instance. It
+            // returns null only for a JSON null token.
             config = node.Deserialize<DungeonConfig>(SerializerOptions)
-                ?? throw new DungeonJsonException("config: deserialized to null.");
+                ?? throw new InvalidOperationException("config: deserialized to null.");
         }
         catch (JsonException ex)
         {
-            throw new DungeonJsonException($"config: {ex.Message}");
+            throw new DungeonJsonException(DungeonJsonRefusal.JsonMemberUnconvertible, $"config: {ex.Message}", ex)
+            {
+                Section = "config",
+                JsonPath = ex.Path,
+            };
         }
 
-        try
+        // Validate's rules, read as a typed finding so the refusal carries the rule's reason and values. Every
+        // finding names its property, so the field is always that property in camelCase.
+        if (config.FirstFinding() is { } finding)
         {
-            config.Validate();
-        }
-        catch (ArgumentException ex)
-        {
-            string field = ex.ParamName is null ? "config" : JsonNamingPolicy.CamelCase.ConvertName(ex.ParamName);
-            throw new DungeonJsonException($"{field}: {ex.Message}");
+            throw ConfigRefused(finding);
         }
 
         return config;
+    }
+
+    // The message is the camelCase field followed by the message of the ArgumentException Validate throws for the
+    // same finding, parameter suffix included, as it was when this adapter caught that exception.
+    private static DungeonJsonException ConfigRefused(DungeonConfigFinding finding)
+    {
+        string field = JsonNamingPolicy.CamelCase.ConvertName(finding.PropertyName);
+        return new DungeonJsonException(finding.Reason, $"{field}: {finding.ToArgumentException().Message}")
+        {
+            JsonPath = field,
+            ActualNumber = finding.ActualNumber,
+            ActualInteger = finding.ActualInteger,
+            MinimumInteger = finding.MinimumInteger,
+            MaximumInteger = finding.MaximumInteger,
+            ActualMinimum = finding.ActualMinimum,
+            ActualMaximum = finding.ActualMaximum,
+        };
     }
 
     /// <summary>Serializes <paramref name="layout"/> to JSON: the raster as per-floor arrays of per-row
@@ -150,23 +244,39 @@ public static class DungeonJson
         }
         catch (JsonException ex)
         {
-            throw new DungeonJsonException($"layout: invalid JSON. {ex.Message}");
+            throw new DungeonJsonException(DungeonJsonRefusal.JsonMalformed, $"layout: invalid JSON. {ex.Message}", ex)
+            {
+                Section = "layout",
+                JsonPath = ex.Path,
+                LineNumber = ex.LineNumber,
+                BytePositionInLine = ex.BytePositionInLine,
+            };
         }
 
         if (node is not JsonObject)
         {
-            throw new DungeonJsonException("layout: document root must be a JSON object.");
+            throw new DungeonJsonException(DungeonJsonRefusal.RootObjectRequired, "layout: document root must be a JSON object.")
+            {
+                Section = "layout",
+            };
         }
 
         LayoutDto dto;
         try
         {
+            // An internal invariant no input reaches: node is a JsonObject and the private options register no
+            // converter for the private LayoutDto, so the built-in object converter always constructs an instance.
+            // It returns null only for a JSON null token.
             dto = node.Deserialize<LayoutDto>(SerializerOptions)
-                ?? throw new DungeonJsonException("layout: deserialized to null.");
+                ?? throw new InvalidOperationException("layout: deserialized to null.");
         }
         catch (JsonException ex)
         {
-            throw new DungeonJsonException($"layout: {ex.Message}");
+            throw new DungeonJsonException(DungeonJsonRefusal.JsonMemberUnconvertible, $"layout: {ex.Message}", ex)
+            {
+                Section = "layout",
+                JsonPath = ex.Path,
+            };
         }
 
         ValidateLayoutDto(dto);

@@ -176,14 +176,148 @@ namespace KhaozEngine.Tests.Dungeon
             Assert.Equal(defaults.BossRoom, loaded.BossRoom);
         }
 
-        [Fact]
-        public void BadField_Throws_NamingField()
+        // The default config with each member replaced in turn, so a refused document breaks only the rule named.
+        static string ConfigJson(params (string Member, JsonNode? Value)[] members)
         {
-            string json = DungeonJson.SaveConfig(new DungeonConfig())
-                .Replace("\"roomCountTarget\": 12", "\"roomCountTarget\": -1");
+            JsonObject node = JsonNode.Parse(DungeonJson.SaveConfig(new DungeonConfig()))!.AsObject();
+            foreach ((string member, JsonNode? value) in members)
+            {
+                node[member] = value;
+            }
 
-            DungeonJsonException ex = Assert.Throws<DungeonJsonException>(() => DungeonJson.LoadConfig(json));
-            Assert.Contains("roomCountTarget", ex.Message);
+            return node.ToJsonString();
+        }
+
+        // Integer config rules: each refused value sits one past the documented limit, and the control loads at it.
+        // hallChancePercent turns halls on for the hall margin row only.
+        [Theory]
+        [InlineData("roomCountTarget", -1, 1, DungeonJsonRefusal.IntegerBelowMinimum, 1, null, 0)]
+        [InlineData("roomMinTiles", 0, 1, DungeonJsonRefusal.IntegerBelowMinimum, 1, null, 0)]
+        [InlineData("lockCount", -1, 0, DungeonJsonRefusal.NonnegativeValueRequired, 0, null, 0)]
+        [InlineData("hallChancePercent", 101, 100, DungeonJsonRefusal.PercentageOutsideRange, 0, 100, 0)]
+        [InlineData("hallChancePercent", -1, 0, DungeonJsonRefusal.PercentageOutsideRange, 0, 100, 0)]
+        [InlineData("plotWidthTiles", 9, 10, DungeonJsonRefusal.RoomMarginInsufficient, 10, null, 0)]
+        [InlineData("plotDepthTiles", 17, 18, DungeonJsonRefusal.HallMarginInsufficient, 18, null, 25)]
+        public void BadField_Throws_NamingField(string member, int refused, int limit, DungeonJsonRefusal reason,
+            int minimum, int? maximum, int hallChancePercent)
+        {
+            DungeonJsonException ex = Assert.Throws<DungeonJsonException>(() =>
+                DungeonJson.LoadConfig(ConfigJson(("hallChancePercent", hallChancePercent), (member, refused))));
+
+            Assert.Equal(reason, ex.Reason);
+            Assert.Equal(member, ex.JsonPath);
+            Assert.Equal(refused, ex.ActualInteger);
+            Assert.Equal(minimum, ex.MinimumInteger);
+            Assert.Equal(maximum, ex.MaximumInteger);
+            Assert.Null(ex.Section);
+
+            DungeonConfig loaded = DungeonJson.LoadConfig(ConfigJson(("hallChancePercent", hallChancePercent), (member, limit)));
+            Assert.Equal(limit, JsonNode.Parse(DungeonJson.SaveConfig(loaded))![member]!.GetValue<int>());
+        }
+
+        [Theory]
+        [InlineData("cellSizeMeters", 0f)]
+        [InlineData("ceilingHeightMeters", -1f)]
+        public void NonPositiveSize_Throws_NamingField(string member, float refused)
+        {
+            DungeonJsonException ex = Assert.Throws<DungeonJsonException>(() =>
+                DungeonJson.LoadConfig(ConfigJson((member, refused))));
+
+            Assert.Equal(DungeonJsonRefusal.PositiveValueRequired, ex.Reason);
+            Assert.Equal(member, ex.JsonPath);
+            Assert.Equal(refused, ex.ActualNumber);
+
+            // The limit is zero, exclusive, so the smallest positive float loads.
+            DungeonConfig loaded = DungeonJson.LoadConfig(ConfigJson((member, float.Epsilon)));
+            Assert.Equal(float.Epsilon, JsonNode.Parse(DungeonJson.SaveConfig(loaded))![member]!.GetValue<float>());
+        }
+
+        [Fact]
+        public void MinimumOverMaximum_Throws_NamingTheMinimum()
+        {
+            DungeonJsonException ex = Assert.Throws<DungeonJsonException>(() =>
+                DungeonJson.LoadConfig(ConfigJson(("roomMinTiles", 9), ("roomMaxTiles", 8))));
+
+            Assert.Equal(DungeonJsonRefusal.RangeUnordered, ex.Reason);
+            Assert.Equal("roomMinTiles", ex.JsonPath);
+            Assert.Equal(9, ex.ActualMinimum);
+            Assert.Equal(8, ex.ActualMaximum);
+
+            Assert.Equal(8, DungeonJson.LoadConfig(ConfigJson(("roomMinTiles", 8), ("roomMaxTiles", 8))).RoomMinTiles);
+        }
+
+        // The two document kinds share their decoding rules, so each row runs one load path.
+        static void Load(string section, string json)
+        {
+            if (section == "config")
+            {
+                DungeonJson.LoadConfig(json);
+            }
+            else
+            {
+                DungeonJson.LoadLayout(json);
+            }
+        }
+
+        static string ValidDocument(string section) => section == "config"
+            ? DungeonJson.SaveConfig(new DungeonConfig())
+            : DungeonJson.SaveLayout(DungeonGenerator.Generate(Config(), 1UL));
+
+        [Theory]
+        [InlineData("config")]
+        [InlineData("layout")]
+        public void TruncatedDocument_Throws_JsonMalformed_WithTheReadersPosition(string section)
+        {
+            string valid = ValidDocument(section);
+            string truncated = valid[..valid.LastIndexOf('}')];
+
+            DungeonJsonException ex = Assert.Throws<DungeonJsonException>(() => Load(section, truncated));
+
+            Assert.Equal(DungeonJsonRefusal.JsonMalformed, ex.Reason);
+            Assert.Equal(section, ex.Section);
+            System.Text.Json.JsonException inner = Assert.IsAssignableFrom<System.Text.Json.JsonException>(ex.InnerException);
+            Assert.NotNull(ex.LineNumber);
+            Assert.Equal(inner.LineNumber, ex.LineNumber);
+            Assert.Equal(inner.BytePositionInLine, ex.BytePositionInLine);
+            Assert.Equal(inner.Path, ex.JsonPath);
+
+            Load(section, valid);
+        }
+
+        [Theory]
+        [InlineData("config")]
+        [InlineData("layout")]
+        public void ArrayRoot_Throws_RootObjectRequired(string section)
+        {
+            string valid = ValidDocument(section);
+
+            DungeonJsonException ex = Assert.Throws<DungeonJsonException>(() => Load(section, "[" + valid + "]"));
+
+            Assert.Equal(DungeonJsonRefusal.RootObjectRequired, ex.Reason);
+            Assert.Equal(section, ex.Section);
+            Assert.Null(ex.JsonPath);
+
+            Load(section, valid);
+        }
+
+        [Theory]
+        [InlineData("config", "roomCountTarget")]
+        [InlineData("layout", "width")]
+        public void StringForAnInteger_Throws_JsonMemberUnconvertible_NamingThePath(string section, string member)
+        {
+            JsonObject node = JsonNode.Parse(ValidDocument(section))!.AsObject();
+            int value = node[member]!.GetValue<int>();
+            node[member] = "many";
+
+            DungeonJsonException ex = Assert.Throws<DungeonJsonException>(() => Load(section, node.ToJsonString()));
+
+            Assert.Equal(DungeonJsonRefusal.JsonMemberUnconvertible, ex.Reason);
+            Assert.Equal(section, ex.Section);
+            Assert.Equal("$." + member, ex.JsonPath);
+            Assert.IsAssignableFrom<System.Text.Json.JsonException>(ex.InnerException);
+
+            node[member] = value;
+            Load(section, node.ToJsonString());
         }
 
         [Fact]

@@ -43,10 +43,28 @@ reserved for a future growth-heuristics/grammar layer.
 tolerant reads, deterministic byte-identical writes). The JSON matches the embedded schema
 (`DungeonSchema.GetJson()`, a `oneOf` over a `config` and a `layout` `$def`), which the package's tests
 validate against and which is available for editor/AI tooling. The load path itself enforces its own semantic
-checks, throwing `DungeonJsonException` naming the offending field in its own camelCase spelling. Layout JSON
-preserves `CeilingMode` and the resolved `CeilingHeightMeters`. Older layouts without those optional fields load
-as `Open` with a zero ceiling height. Layout loading rejects a negative or non-finite persisted ceiling height
-before constructing the layout.
+checks, throwing `DungeonJsonException`. Its `Reason`, from the `DungeonJsonRefusal` enum, names the rule, and
+the identifiers below name the offending member. The message is prose naming the same member in its own camelCase
+spelling, never a contract. Layout JSON preserves `CeilingMode` and the resolved `CeilingHeightMeters`. Older
+layouts without those optional fields load as `Open` with a zero ceiling height. Layout loading rejects a negative
+or non-finite persisted ceiling height before constructing the layout. The layout content checks (dimensions,
+ceiling height, grid, rooms, edges, keys and markers) do not carry a `Reason` yet.
+
+| `Reason` | What it refuses | Identifiers |
+| --- | --- | --- |
+| `JsonMalformed` | config or layout text that is not well-formed JSON, with the reader's exception as `InnerException` | `Section`, `JsonPath`, `LineNumber`, `BytePositionInLine` |
+| `RootObjectRequired` | a config or layout whose root is not a JSON object | `Section` |
+| `JsonMemberUnconvertible` | a member whose value cannot convert to its type, with the deserializer's exception as `InnerException` | `Section`, `JsonPath` (the reader's path, such as `$.roomCountTarget`) |
+| `PositiveValueRequired` | a config `cellSizeMeters`, `floorHeightMeters` or set `ceilingHeightMeters` not above zero | `JsonPath`, `ActualNumber` |
+| `IntegerBelowMinimum` | a config `roomMinTiles`, `roomCountTarget`, `maxFloors`, `criticalPathTarget`, `corridorMinWidth` or `hallMinLengthTiles` below 1 | `JsonPath`, `ActualInteger`, `MinimumInteger` (1) |
+| `RangeUnordered` | a config `roomMinTiles`, `corridorMinWidth` or `hallMinLengthTiles` above its maximum, `JsonPath` naming the minimum | `JsonPath`, `ActualMinimum`, `ActualMaximum` |
+| `NonnegativeValueRequired` | a negative config `loopEdgeBudget`, `lockCount`, `spawnMarkersPerRoomMax` or `lootMarkersPerRoomMax` | `JsonPath`, `ActualInteger`, `MinimumInteger` (0) |
+| `PercentageOutsideRange` | a config `hallChancePercent` outside 0 to 100 | `JsonPath`, `ActualInteger`, `MinimumInteger` (0), `MaximumInteger` (100) |
+| `RoomMarginInsufficient` | a config `plotWidthTiles` or `plotDepthTiles` below `roomMaxTiles` + 2 | `JsonPath`, `ActualInteger`, `MinimumInteger` |
+| `HallMarginInsufficient` | with halls enabled, a config `plotWidthTiles` or `plotDepthTiles` below `hallMaxLengthTiles` + 2 | `JsonPath`, `ActualInteger`, `MinimumInteger` |
+
+The config rules are the ones `DungeonConfig.Validate` checks, in its order, so the first broken rule is the one
+reported. `Validate` itself still throws a plain `ArgumentException` whose `ParamName` is the property.
 
 ## Baking into a `MapDocument` (`DungeonMapDocEmitter`)
 

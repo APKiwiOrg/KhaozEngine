@@ -1,3 +1,4 @@
+using System;
 using System.Linq;
 using KhaozEngine.MapDoc;
 using KhaozEngine.MapDoc.Identity;
@@ -42,7 +43,16 @@ public sealed class MapPrefabIdentityTests
         var missing = PrefabFixtures.Create("missing-binding");
         var loaded = Assert.Throws<MapDocumentException>(() => MapPrefabIdentity.Require(missing.Document, missing.Assets));
         var stored = Assert.Throws<MapDocumentException>(() => MapPrefabIdentity.RequireStored(PrefabFixtures.Stored(missing.Document), missing.Assets));
-        Assert.Equal(loaded.Message, stored.Message);
+        foreach (var error in new[] { loaded, stored })
+        {
+            Assert.Equal(MapDocumentRefusal.ReferenceMissing, error.Reason);
+            Assert.Equal("a", error.InstanceId);
+            Assert.Equal(new MapPrefabChildKey(MapPrefabChildKind.Record, "room"), error.Child);
+            Assert.Equal("prefab binding", error.SubjectKind);
+        }
+        missing.Document.Prefabs = PrefabFixtures.Create().Document.Prefabs;
+        MapPrefabIdentity.Require(missing.Document, missing.Assets);
+        MapPrefabIdentity.RequireStored(PrefabFixtures.Stored(missing.Document), missing.Assets);
         var collision = PrefabFixtures.Create("standalone-collision");
         string before = MapDocumentFile.SaveText(collision.Document);
         var loadedCollision = Assert.Throws<MapDocumentException>(() => MapPrefabIdentity.Require(collision.Document, collision.Assets));
@@ -65,21 +75,54 @@ public sealed class MapPrefabIdentityTests
     {
         var lowered = PrefabFixtures.Create();
         lowered.Document.NumericIdHighWaterMark = 100;
-        Refuses(lowered, lowered.Assets, "exceeds numericIdHighWaterMark");
+        Refuses(lowered, lowered.Assets, MapDocumentRefusal.NumericIdHighWaterExceeded, error =>
+        {
+            Assert.Equal(100, error.HighWaterMark);
+            Assert.True(error.NumericId > error.HighWaterMark);
+            Assert.False(string.IsNullOrEmpty(error.EntityId));
+        });
+        lowered.Document.NumericIdHighWaterMark = PrefabFixtures.Create().Document.NumericIdHighWaterMark;
+        MapPrefabIdentity.Require(lowered.Document, lowered.Assets);
+        MapPrefabIdentity.RequireStored(PrefabFixtures.Stored(lowered.Document), lowered.Assets);
         var duplicate = PrefabFixtures.Create("numeric-duplicate");
-        Refuses(duplicate, duplicate.Assets, "duplicate numericId");
+        Refuses(duplicate, duplicate.Assets, MapDocumentRefusal.IdentityDuplicate, error =>
+        {
+            Assert.Equal("standalone", error.EntityId);
+            Assert.Equal("placement", error.SubjectKind);
+            Assert.Equal(duplicate.Document.Placements.Single().NumericId, error.NumericId);
+        });
+        duplicate.Document.Placements.Single().NumericId = ++duplicate.Document.NumericIdHighWaterMark;
+        MapPrefabIdentity.Require(duplicate.Document, duplicate.Assets);
+        MapPrefabIdentity.RequireStored(PrefabFixtures.Stored(duplicate.Document), duplicate.Assets);
         var f = PrefabFixtures.Create();
         var other = PrefabFixtures.Create("asset-version").Assets;
         var loaded = Assert.Throws<MapDocumentException>(() => MapPrefabIdentity.Require(f.Document, other));
         var stored = Assert.Throws<MapDocumentException>(() => MapPrefabIdentity.RequireStored(PrefabFixtures.Stored(f.Document), other));
-        Assert.Equal(loaded.Message, stored.Message);
+        foreach (var error in new[] { loaded, stored })
+        {
+            Assert.Equal(MapDocumentRefusal.DocumentAssetRootsMismatch, error.Reason);
+            Assert.Equal(f.Document.NativeAssets.Select(r => r.Id), error.ResourceIds);
+            Assert.Equal(other.Roots.Select(r => r.Id), error.ExpectedResourceIds);
+        }
+        MapPrefabIdentity.Require(f.Document, f.Assets);
+        MapPrefabIdentity.RequireStored(PrefabFixtures.Stored(f.Document), f.Assets);
     }
 
     // A document the stored writer itself refuses cannot reach RequireStored, so its refusal names the same fault.
-    static void Refuses(PrefabFixture f, KhaozEngine.MapDoc.Assets.MapAssetClosure assets, string fault)
+    static void Refuses(PrefabFixture f, KhaozEngine.MapDoc.Assets.MapAssetClosure assets, MapDocumentRefusal reason,
+        Action<MapDocumentException> identifiers)
     {
-        Assert.Contains(fault, Assert.Throws<MapDocumentException>(() => MapPrefabIdentity.Require(f.Document, assets)).Message);
-        Assert.Contains(fault, Assert.Throws<MapDocumentException>(() => MapPrefabIdentity.RequireStored(PrefabFixtures.Stored(f.Document), assets)).Message);
+        var loaded = Assert.Throws<MapDocumentException>(() => MapPrefabIdentity.Require(f.Document, assets));
+        var stored = Assert.Throws<MapDocumentException>(() => MapPrefabIdentity.RequireStored(PrefabFixtures.Stored(f.Document), assets));
+        foreach (var error in new[] { loaded, stored })
+        {
+            Assert.Equal(reason, error.Reason);
+            identifiers(error);
+        }
+        Assert.Equal((loaded.EntityId, loaded.SubjectKind, loaded.NumericId, loaded.HighWaterMark),
+            (stored.EntityId, stored.SubjectKind, stored.NumericId, stored.HighWaterMark));
+        Assert.Equal(loaded.Findings?.Select(f => (f.Reason, f.EntityId, f.NumericId, f.HighWaterMark)),
+            stored.Findings?.Select(f => (f.Reason, f.EntityId, f.NumericId, f.HighWaterMark)));
     }
 
     [Fact]

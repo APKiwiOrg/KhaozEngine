@@ -14,6 +14,31 @@ namespace KhaozEngine.Tests.MapDoc.Prefabs;
 public class MapSupportResourceTests
 {
     [Theory]
+    [InlineData("null", MapDocumentRefusal.SchemaValueRequired)]
+    [InlineData("key", MapDocumentRefusal.AuthoredValueMismatch)]
+    [InlineData("surface", MapDocumentRefusal.ReferenceMissing)]
+    public void Support_patch_admission_names_the_first_failed_rule(string fault, MapDocumentRefusal reason)
+    {
+        var resource = PrefabFixtures.DeckSupport();
+        var (key, patch) = resource.Surfaces.Patches.First();
+        resource.Surfaces.Patches.Remove(key);
+        var submitted = fault == "surface" ? new MapPatchKey("missing", key.SlotX, key.SlotZ) : key;
+        if (fault == "surface") patch.Key = submitted;
+        if (fault == "key") patch.Key = key with { SlotX = key.SlotX + 1 };
+        resource.Surfaces.Patches.Add(submitted, fault == "null" ? null! : patch);
+        var error = Assert.Throws<MapDocumentException>(() => MapSupportResourceFile.Require(resource, "support"));
+        Assert.Equal(reason, error.Reason);
+        Assert.Equal("support", error.ResourceId);
+        Assert.Equal(submitted, error.ExpectedPatch);
+        Assert.Equal(fault == "null" ? (MapPatchKey?)null : patch.Key, error.Patch);
+        Assert.Equal(submitted.SurfaceId, error.SurfaceId);
+        resource.Surfaces.Patches.Remove(submitted);
+        patch.Key = key;
+        resource.Surfaces.Patches.Add(key, patch);
+        MapSupportResourceFile.Require(resource, "support");
+    }
+
+    [Theory]
     [InlineData("object", MapDocumentRefusal.SchemaObjectRequired, "$")]
     [InlineData("missing", MapDocumentRefusal.SchemaMemberMissing, "$.references")]
     [InlineData("unknown", MapDocumentRefusal.SchemaMemberUnknown, "$.extra")]
@@ -98,13 +123,56 @@ public class MapSupportResourceTests
     }
 
     [Theory]
-    [InlineData(MapSurfaceRole.Ceiling)]
-    [InlineData(MapSurfaceRole.PaintOverride)]
-    public void ResourceRejectsNonSupportRoles(MapSurfaceRole role)
+    [InlineData(MapSurfaceRole.Ceiling, MapPresencePolicy.Native, MapDocumentRefusal.SurfaceSupportRoleInvalid)]
+    [InlineData(MapSurfaceRole.PaintOverride, MapPresencePolicy.Native, MapDocumentRefusal.SurfaceSupportRoleInvalid)]
+    [InlineData(MapSurfaceRole.SupportFloor, MapPresencePolicy.LegacyTileWorld, MapDocumentRefusal.SurfaceSupportRoleInvalid)]
+    [InlineData((MapSurfaceRole)255, MapPresencePolicy.Native, MapDocumentRefusal.SchemaEnumUnsupported)]
+    [InlineData(MapSurfaceRole.SupportFloor, (MapPresencePolicy)255, MapDocumentRefusal.SchemaEnumUnsupported)]
+    public void ResourceRejectsNonSupportRoles(MapSurfaceRole role, MapPresencePolicy presence, MapDocumentRefusal reason)
     {
         var resource = new MapSupportResource(1, PrefabFixtures.FloorResource(role), null,
             PrefabFixtures.Slots(PrefabFixtures.Surf("/patches/0/key/surfaceId", "floor")));
-        Assert.Throws<MapDocumentException>(() => MapSupportResourceFile.Write(resource));
+        resource.Surfaces.Refs[0] = resource.Surfaces.Refs[0] with { PresencePolicy = presence };
+        var error = Assert.Throws<MapDocumentException>(() => MapSupportResourceFile.Write(resource));
+        Assert.Equal(reason, error.Reason);
+        Assert.Equal("floor", error.SurfaceId);
+        Assert.Equal(role == MapSurfaceRole.SupportFloor ? "$.surfaces[0].presencePolicy" : "$.surfaces[0].role", error.FieldPath);
+        resource.Surfaces.Refs[0] = resource.Surfaces.Refs[0] with { Role = MapSurfaceRole.SupportFloor, PresencePolicy = MapPresencePolicy.Native };
+        Assert.NotEmpty(MapSupportResourceFile.Write(resource));
+    }
+
+    [Theory]
+    [InlineData("null", MapDocumentRefusal.SchemaValueRequired)]
+    [InlineData("empty", MapDocumentRefusal.SchemaValueRequired)]
+    [InlineData("duplicate", MapDocumentRefusal.IdentityDuplicate)]
+    public void Support_surface_identity_keeps_the_actual_rule(string fault, MapDocumentRefusal reason)
+    {
+        var resource = PrefabFixtures.DeckSupport();
+        var originals = resource.Surfaces.Refs.ToArray();
+        if (fault == "null") resource.Surfaces.Refs[0] = null!;
+        else if (fault == "empty") resource.Surfaces.Refs[0] = originals[0] with { Id = " " };
+        else resource.Surfaces.Refs.Add(originals[0]);
+        var error = Assert.Throws<MapDocumentException>(() => MapSupportResourceFile.Require(resource, "support"));
+        Assert.Equal(reason, error.Reason);
+        Assert.Equal("support", error.ResourceId);
+        Assert.Equal(fault == "duplicate" ? originals.Length : 0, error.Index);
+        if (fault == "duplicate") Assert.Equal(originals[0].Id, error.SurfaceId);
+        resource.Surfaces.Refs.Clear();
+        resource.Surfaces.Refs.AddRange(originals);
+        MapSupportResourceFile.Require(resource, "support");
+    }
+
+    [Fact]
+    public void Support_byte_budget_accepts_its_exact_limit_without_allocating_a_payload()
+    {
+        long limit = MapPrefabJson.Limits.MaxPayloadBytes;
+        var error = Assert.Throws<MapDocumentException>(() => MapSupportResourceFile.RequirePayloadSize(limit + 1, "support"));
+        Assert.Equal(MapDocumentRefusal.WorkCapacityExceeded, error.Reason);
+        Assert.Equal("support", error.ResourceId);
+        Assert.Equal("MaxPayloadBytes", error.Budget);
+        Assert.Equal(limit + 1, error.ActualByteCount);
+        Assert.Equal(limit, error.Limit);
+        MapSupportResourceFile.RequirePayloadSize(limit, "support");
     }
 
     [Fact]

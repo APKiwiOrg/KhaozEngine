@@ -49,30 +49,40 @@ internal static class MapNativeVectorJson
 {
     internal static Vector3 Read(ref Utf8JsonReader reader, int dimensions)
     {
-        if (reader.TokenType != JsonTokenType.StartObject) throw new JsonException("A native vector must be an object.");
+        if (reader.TokenType != JsonTokenType.StartObject) throw new MapNativeVectorJsonException(MapDocumentRefusal.SchemaObjectRequired, "A native vector must be an object.") { FieldPath = "$" };
         int seen = 0;
         Vector3 result = default;
         while (reader.Read() && reader.TokenType != JsonTokenType.EndObject)
         {
+            // Utf8JsonReader rejects any non-property token here before this internal invariant can fail.
             if (reader.TokenType != JsonTokenType.PropertyName) throw new JsonException("Expected a vector component.");
-            int bit = reader.GetString() switch { "x" => 1, "y" => 2, "z" when dimensions == 3 => 4, _ => 0 };
-            if (bit == 0 || (seen & bit) != 0) throw new JsonException("Unknown or duplicate native vector component.");
-            if (!reader.Read() || reader.TokenType != JsonTokenType.Number || !reader.TryGetSingle(out float value) || !float.IsFinite(value))
-                throw new JsonException("Native vector components must be finite numbers.");
+            string component = reader.GetString()!;
+            int bit = component switch { "x" => 1, "y" => 2, "z" when dimensions == 3 => 4, _ => 0 };
+            if (bit == 0 || (seen & bit) != 0) throw new MapNativeVectorJsonException(bit == 0 ? MapDocumentRefusal.SchemaMemberUnknown : MapDocumentRefusal.SchemaMemberDuplicate,
+                "Unknown or duplicate native vector component.") { FieldPath = MapDocumentJsonPath.AppendProperty("$", component) };
+            float value = default;
+            bool parsed = reader.Read() && reader.TokenType == JsonTokenType.Number && reader.TryGetSingle(out value);
+            if (!parsed || !float.IsFinite(value))
+                throw new MapNativeVectorJsonException(parsed ? MapDocumentRefusal.ValueNonfinite : MapDocumentRefusal.SchemaValueRequired,
+                    "Native vector components must be finite numbers.")
+                { FieldPath = MapDocumentJsonPath.AppendProperty("$", component), ActualNumber = parsed ? value : null };
             seen |= bit;
             if (bit == 1) result.X = value;
             else if (bit == 2) result.Y = value;
             else result.Z = value;
         }
         if (reader.TokenType != JsonTokenType.EndObject || seen != (dimensions == 3 ? 7 : 3))
-            throw new JsonException("Missing native vector component.");
+            throw new MapNativeVectorJsonException(MapDocumentRefusal.SchemaMemberMissing, "Missing native vector component.")
+            { FieldPath = (seen & 1) == 0 ? "$.x" : (seen & 2) == 0 ? "$.y" : "$.z" };
         return result;
     }
 
     internal static void Write(Utf8JsonWriter writer, Vector3 value, int dimensions)
     {
         if (!float.IsFinite(value.X) || !float.IsFinite(value.Y) || !float.IsFinite(value.Z))
-            throw new JsonException("Native vector components must be finite numbers.");
+            throw new MapNativeVectorJsonException(MapDocumentRefusal.ValueNonfinite, "Native vector components must be finite numbers.")
+            { FieldPath = !float.IsFinite(value.X) ? "$.x" : !float.IsFinite(value.Y) ? "$.y" : "$.z",
+                ActualNumber = !float.IsFinite(value.X) ? value.X : !float.IsFinite(value.Y) ? value.Y : value.Z };
         writer.WriteStartObject();
         writer.WriteNumber("x", value.X);
         writer.WriteNumber("y", value.Y);

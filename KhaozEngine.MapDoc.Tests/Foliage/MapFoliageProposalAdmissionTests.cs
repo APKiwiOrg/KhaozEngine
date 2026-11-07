@@ -26,6 +26,7 @@ public sealed class MapFoliageProposalAdmissionTests
         var layer = fixture.Document.Foliage!.Layers[0];
         if (chunkless) layer = FoliageComparisonFixtures.Change(layer, l => l["chunks"] = new System.Text.Json.Nodes.JsonArray());
         fixture.Document.Foliage = null;
+        string before = MapDocumentFile.SaveText(fixture.Document);
         MapBoundDocumentValidation.Validate(fixture.Document, fixture.Assets);
         var proposal = MapDocumentFile.LoadText(MapDocumentFile.SaveText(fixture.Document));
         proposal.Foliage = new(1, [layer]);
@@ -49,9 +50,17 @@ public sealed class MapFoliageProposalAdmissionTests
         };
         long copies = MapPrefabEditPreparation.ThreadCopies, expansions = MapPrefabResolver.ThreadExpansions;
         long captures = MapFoliageGenerationContext.ThreadCaptures;
-        Assert.Contains(nameof(MapFoliageStatus.CapacityExceeded), Assert.Throws<MapDocumentException>(paths[path]).Message, StringComparison.Ordinal);
+        var error = Assert.Throws<MapDocumentException>(paths[path]);
+        Assert.Equal(MapDocumentRefusal.WorkCapacityExceeded, error.Reason);
+        Assert.Equal(MapFoliageStatus.CapacityExceeded, error.FoliageStatus);
+        Assert.Equal("MaxPaintTargets", error.Budget);
+        Assert.Equal(4097, error.ActualCount);
+        Assert.Equal(4096, error.Limit);
         Assert.Equal((0L, 0L, 0L), (MapPrefabEditPreparation.ThreadCopies - copies,
             MapPrefabResolver.ThreadExpansions - expansions, MapFoliageGenerationContext.ThreadCaptures - captures));
         Assert.Null(fixture.Document.Foliage);
+        Assert.Equal(before, MapDocumentFile.SaveText(fixture.Document));
+        fixture.Document.Surfaces.Refs.RemoveAll(s => s.Id is "paint-4096" or "target-4096");
+        MapFoliageEdits.Prepare(fixture.Document, fixture.Assets, new MapSetFoliageLayer(layer));
     }
 }

@@ -79,7 +79,9 @@ public static class MapPrefabSupportBounds
                 foreach (var x in a.Faces)
                     foreach (var y in b.Faces)
                         if (Coplanar(x, y) && Overlap(x, y))
-                            throw new MapDocumentException($"Independent support owners '{a.SurfaceId}' and '{b.SurfaceId}' have coincident faces.");
+                            throw new MapDocumentException(MapDocumentRefusal.SpaceSupportCoincident,
+                                $"Independent support owners '{a.SurfaceId}' and '{b.SurfaceId}' have coincident faces.")
+                            { SurfaceId = a.SurfaceId, OtherSurfaceId = b.SurfaceId };
             }
         foreach (var placement in placements.Where(p => p.Collider is not null))
             foreach (var floor in triangles)
@@ -92,11 +94,15 @@ public static class MapPrefabSupportBounds
                 foreach (var collider in ColliderFaces(placement.SourceCollider!, pose, scale))
                     foreach (var support in floor.Faces)
                         if (Coplanar(support, collider) && Overlap(support, collider))
-                            throw new MapDocumentException($"Collider '{placement.PlacementId}' and support owner '{floor.SurfaceId}' have coincident floor faces.");
+                            throw new MapDocumentException(MapDocumentRefusal.SpaceSupportCoincident,
+                                $"Collider '{placement.PlacementId}' and support owner '{floor.SurfaceId}' have coincident floor faces.")
+                            { PlacementId = placement.PlacementId, SurfaceId = floor.SurfaceId };
                 foreach (var hull in Hulls(placement.SourceCollider!, pose, scale))
                     foreach (var support in floor.Faces)
                         if (HullFloorOverlap(support, hull))
-                            throw new MapDocumentException($"Collider '{placement.PlacementId}' and support owner '{floor.SurfaceId}' have coincident floor faces.");
+                            throw new MapDocumentException(MapDocumentRefusal.SpaceSupportCoincident,
+                                $"Collider '{placement.PlacementId}' and support owner '{floor.SurfaceId}' have coincident floor faces.")
+                            { PlacementId = placement.PlacementId, SurfaceId = floor.SurfaceId };
             }
     }
 

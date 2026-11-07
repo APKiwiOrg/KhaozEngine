@@ -131,10 +131,17 @@ namespace KhaozEngine.Tests.MapEditTool
             string dir = NewTempDir();
             try
             {
-                (_, MutationService mutation, _) = OpenSample(dir);
-                ArgumentException ex = Assert.Throws<ArgumentException>(() =>
+                (var session, MutationService mutation, _) = OpenSample(dir);
+                string before = session.WithDocument((doc, _) => MapDocumentFile.SaveText(doc));
+                var ex = Assert.Throws<MapMutationArgumentException>(() =>
                     mutation.SculptApply("bulldoze", 0f, 0f, 2f, 4f, 0.5f));
-                Assert.Contains("raise", ex.Message, StringComparison.OrdinalIgnoreCase);
+                Assert.Equal(MapDocumentRefusal.SchemaEnumUnsupported, ex.Reason);
+                Assert.Equal("brush", ex.ParamName);
+                Assert.Equal("bulldoze", ex.SubmittedText);
+                Assert.Equal(typeof(SculptBrush), ex.EnumType);
+                Assert.Equal(new[] { "raise", "lower", "smooth", "flatten", "set_height" }, ex.AcceptedValues);
+                Assert.Equal(before, session.WithDocument((doc, _) => MapDocumentFile.SaveText(doc)));
+                mutation.SculptApply("raise", 0f, 0f, 2f, 4f, 0.5f);
             }
             finally { Directory.Delete(dir, recursive: true); }
         }
@@ -358,8 +365,14 @@ namespace KhaozEngine.Tests.MapEditTool
             string dir = NewTempDir();
             try
             {
-                (_, MutationService mutation, _) = OpenSample(dir);
-                Assert.Throws<ArgumentException>(() => mutation.SculptClear(minX: 0f));
+                (var session, MutationService mutation, _) = OpenSample(dir);
+                string before = session.WithDocument((doc, _) => MapDocumentFile.SaveText(doc));
+                var error = Assert.Throws<MapMutationArgumentException>(() => mutation.SculptClear(minX: 0f));
+                Assert.Equal(MapDocumentRefusal.ToolRectangleIncomplete, error.Reason);
+                Assert.Equal("sculpt_clear", error.Operation);
+                Assert.Equal("minX,minZ,maxX,maxZ", error.FieldPath);
+                Assert.Equal(before, session.WithDocument((doc, _) => MapDocumentFile.SaveText(doc)));
+                mutation.SculptClear(0, 0, 1, 1);
             }
             finally { Directory.Delete(dir, recursive: true); }
         }

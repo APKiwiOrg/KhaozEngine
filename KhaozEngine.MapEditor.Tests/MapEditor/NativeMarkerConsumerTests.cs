@@ -161,10 +161,14 @@ public sealed class NativeMarkerConsumerTests
             // Without a Surface owner the spawn readout refuses, and a rectangle without old spawns still reads.
             var bare = new MapEditSession();
             bare.Open(root, null, new(MarkerConsumerFixtures.Roles(), null));
-            string missingChoiceMessage = Assert.Throws<MapDocumentException>(() => new QueryService(bare).PlacementsInRect(-2, -2, 2, 2)).Message;
-            Assert.Contains("spawns_adopt", missingChoiceMessage, StringComparison.Ordinal);
-            Assert.Contains("marker_set", missingChoiceMessage, StringComparison.Ordinal);
+            string bareBefore = MarkerEditorFixtures.State(bare);
+            var missingChoice = Assert.Throws<MapDocumentException>(() => new QueryService(bare).PlacementsInRect(-2, -2, 2, 2));
+            Assert.Equal(MapDocumentRefusal.ToolLegacySpawnSurfaceRequired, missingChoice.Reason);
+            Assert.Equal("LegacySpawnSurfaceId", missingChoice.FieldPath);
+            Assert.Equal(bareBefore, MarkerEditorFixtures.State(bare));
             Assert.Equal(20f, Assert.Single(new QueryService(bare).PlacementsInRect(0, 0, 2, 2).Placements).Y);
+            bare.Open(root, null, new(MarkerConsumerFixtures.Roles(), MarkerConsumerFixtures.SupportOwner));
+            Assert.Single(new QueryService(bare).PlacementsInRect(-2, -2, 2, 2).Spawns);
 
             // The released open stages no role, so the summary lists no starts.
             var released = new MapEditSession();
@@ -184,18 +188,21 @@ public sealed class NativeMarkerConsumerTests
             session.Open(root, null, new(MarkerConsumerFixtures.Roles(), MarkerConsumerFixtures.SupportOwner));
             var query = new QueryService(session);
 
-            // Control: the covered spawns still read their supported height.
-            SpawnEntry covered = Assert.Single(query.PlacementsInRect(-2, -2, 2, 2).Spawns);
-            Assert.Equal((20f, MapSupportStatus.Supported), (covered.GroundY, covered.Support!.Status));
-
             MapSupportResult sample = session.WithNativeAssets(c => MapNativePointReadout.SurfaceAt(MapPrefabResolver.Expand(c.Document, c.Assets),
                 new(MapExactValue.FromSingle(10.5f), MapExactValue.FromSingle(10.5f)), MarkerConsumerFixtures.SupportOwner));
             Assert.NotEqual(MapSupportStatus.Supported, sample.Status);
-            string message = Assert.Throws<MapDocumentException>(() => query.PlacementsInRect(10, 10, 11, 11)).Message;
-            Assert.Contains($"legacy Spawn 'uncovered' support status {sample.Status} on Surface 'adoption-floor'", message, StringComparison.Ordinal);
-            Assert.Contains("legacySpawnSurfaceId 'adoption-floor'", message, StringComparison.Ordinal);
-            Assert.Contains("spawns_adopt", message, StringComparison.Ordinal);
-            Assert.Contains("marker_set", message, StringComparison.Ordinal);
+            string before = MarkerEditorFixtures.State(session);
+            var error = Assert.Throws<MapDocumentException>(() => query.PlacementsInRect(10, 10, 11, 11));
+            Assert.Equal(MapDocumentRefusal.ToolLegacySpawnSupportUnresolved, error.Reason);
+            Assert.Equal("adoption-floor", error.SurfaceId);
+            Assert.Equal(new[] { "uncovered" }, error.SourceIds);
+            var finding = Assert.Single(error.Findings!);
+            Assert.Equal("uncovered", finding.SourceId);
+            Assert.Equal("Spawn", finding.SubjectKind);
+            Assert.Equal(sample.Status, finding.SupportStatus);
+            Assert.Equal(before, MarkerEditorFixtures.State(session));
+            SpawnEntry covered = Assert.Single(query.PlacementsInRect(-2, -2, 2, 2).Spawns);
+            Assert.Equal((20f, MapSupportStatus.Supported), (covered.GroundY, covered.Support!.Status));
         });
     }
 

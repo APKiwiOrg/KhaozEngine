@@ -32,7 +32,9 @@ can absorb another contributor's staged files. Never use the shared stash for wo
   `InvalidDataException` derives from `MalformedDataException`, and code that handles malformed data catches
   the base. A new refusal in a family adds a reason member. The message stays developer prose
   and is never a contract. A plain parameter check whose `ParamName` and `ActualValue` already name the
-  problem stays a BCL exception. A rule that every implementation of a shared contract enforces, such as an
+  problem stays a BCL exception. An adapter's status projection remains distinct from the lower refusal
+  reason. Classifiers use typed reasons and producer context, never keywords inside user identifiers or
+  exception prose. A rule that every implementation of a shared contract enforces, such as an
   `IGpu*` command or resource rule, is one family in the contract's package, and every backend throws the
   same reason for the same input. A collection identifier is a read-only snapshot the exception copies when
   it is set, so neither the caller's source nor a cast of the exposed list can change it. A change to a throw
@@ -48,7 +50,12 @@ can absorb another contributor's staged files. Never use the shared stash for wo
   takes its reason from the validator's first typed finding, so it converts only once every finding the
   validator can return is typed, and it never stamps a generic reason. A reason names the rule the guard enforces,
   even when an inventory or plan labels it differently. A reason only test code can throw stays off the public
-  enum, in a test-only family beside that code.
+  enum, in a test-only family beside that code. A guard over a producer's or interface's property reads each value
+  once, and its predicate, reason and identifiers use that value, because a faulty producer is the case the refusal
+  has to describe. A limit identifier is the inclusive limit of the field it names, so a retry at that limit succeeds.
+  A catch or status that reads a message is replaced by a reason check only once every thrower behind it is typed,
+  keeping every status value and detail text. Code using `MapDocumentFinding.FromException` handles null, because
+  consumer code can still throw a refusal with no reason.
 - A test that reaches a numerical guard, such as a singular matrix, a collapsed cosine or a zero length, never
   depends on floating-point cancellation landing on a threshold or on subnormal inputs. CI runs on x64 and
   arm64, whose fused multiply-add, SIMD and denormal modes differ, so the same input can pass one check on one
@@ -205,6 +212,10 @@ keep the two in step and change the shared wording in both.
     its control at the limit, such as a route of exactly the cap or the last plane the world has, so a check
     tightened by one fails. The control follows the refusal's no-write assertions, so they still prove the
     refusal wrote nothing.
+    On a write path, compare content, such as saved bytes or a digest, rather than an object reference or a count.
+    A budget control runs the real operation at the exact limit and one below it, not an isolated guard helper. A
+    tiled save commits at its manifest rename, so a refused save leaves the manifest and loaded content unchanged,
+    and a content-addressed file it wrote first is unreferenced until the next save sweeps it.
 
 In this repository:
 

@@ -50,12 +50,17 @@ public sealed class MarkerVillageWorkflowTests
         MapLocalMarkerDoc clash = lookout with { Id = "lookout-2", Name = "start" };
         string directBefore = MarkerEditorFixtures.State(direct), liveBefore = MarkerEditorFixtures.State(live);
         var refused = Assert.Throws<MapDocumentException>(() => mutation.MarkerApply(new MapSetMarker(clash)));
-        Assert.Contains("duplicate marker name 'start'", refused.Message, StringComparison.Ordinal);
+        Assert.Equal(MapDocumentRefusal.MarkerNameDuplicate, refused.Reason);
+        Assert.Equal("start", refused.MarkerName);
+        Assert.Equal(new[] { "lookout-2", "start" }, refused.MarkerIds);
+        Assert.Equal(MapDocumentRefusal.MarkerNameDuplicate, Assert.Single(refused.Findings!).Reason);
         CallToolResult wireRefusal = await harness.Client.CallAsync("marker_set", MarkerArgs(clash));
         Assert.True(wireRefusal.IsError == true);
-        Assert.Contains(refused.Message, Text(wireRefusal), StringComparison.Ordinal);
         Assert.Equal(directBefore, MarkerEditorFixtures.State(direct));
         Assert.Equal(liveBefore, MarkerEditorFixtures.State(live));
+        MapLocalMarkerDoc corrected = clash with { Name = "second-lookout" };
+        await Both(mutation.MarkerApply(new MapSetMarker(corrected)), "marker_set", MarkerArgs(corrected));
+        await Both(mutation.MarkerApply(new MapRemoveMarker(corrected.Id)), "marker_remove", new() { ["id"] = corrected.Id });
 
         // A local replace override renames and raises the payload-1 child, which stays payload 1.
         MapPrefabMarkerChild entry = direct.WithNativeAssets(c => c.Assets.GetPrefab("hut")).Children.OfType<MapPrefabMarkerChild>()

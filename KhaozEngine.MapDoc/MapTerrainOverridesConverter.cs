@@ -17,7 +17,7 @@ internal sealed class MapTerrainOverridesConverter : JsonConverter<MapTerrainOve
     public override MapTerrainOverrides Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
     {
         if (reader.TokenType != JsonTokenType.StartObject)
-            throw new JsonException("terrainOverrides must be a JSON object.");
+            throw new MapTerrainOverridesJsonException(MapDocumentRefusal.SchemaObjectRequired, "terrainOverrides must be a JSON object.") { FieldPath = "$" };
 
         float cellSize = MapTerrainOverrides.DefaultCellSize;
         var tiles = new System.Collections.Generic.List<(int TileX, int TileZ, float[] Deltas)>();
@@ -25,6 +25,7 @@ internal sealed class MapTerrainOverridesConverter : JsonConverter<MapTerrainOve
         while (reader.Read())
         {
             if (reader.TokenType == JsonTokenType.EndObject) break;
+            // Utf8JsonReader enforces property tokens within an object before this internal invariant.
             if (reader.TokenType != JsonTokenType.PropertyName)
                 throw new JsonException("unexpected token in terrainOverrides.");
             string prop = reader.GetString()!;
@@ -52,53 +53,62 @@ internal sealed class MapTerrainOverridesConverter : JsonConverter<MapTerrainOve
     static void ReadTiles(ref Utf8JsonReader reader, System.Collections.Generic.List<(int, int, float[])> tiles)
     {
         if (reader.TokenType != JsonTokenType.StartArray)
-            throw new JsonException("terrainOverrides.tiles must be an array.");
+            throw new MapTerrainOverridesJsonException(MapDocumentRefusal.SchemaArrayRequired, "terrainOverrides.tiles must be an array.") { FieldPath = "$.tiles" };
 
         while (reader.Read())
         {
             if (reader.TokenType == JsonTokenType.EndArray) break;
+            int index = tiles.Count;
+            string tilePath = $"$.tiles[{index}]";
             if (reader.TokenType != JsonTokenType.StartObject)
-                throw new JsonException("each terrainOverrides tile must be a JSON object.");
+                throw new MapTerrainOverridesJsonException(MapDocumentRefusal.SchemaObjectRequired, "each terrainOverrides tile must be a JSON object.")
+                { FieldPath = tilePath, Index = index };
 
             int tileX = 0, tileZ = 0;
+            bool hasX = false, hasZ = false;
             float[]? deltas = null;
             while (reader.Read())
             {
                 if (reader.TokenType == JsonTokenType.EndObject) break;
+                // Utf8JsonReader rejects malformed object tokens before this internal invariant.
                 if (reader.TokenType != JsonTokenType.PropertyName)
                     throw new JsonException("unexpected token in a terrainOverrides tile.");
                 string prop = reader.GetString()!;
                 reader.Read();
                 switch (prop)
                 {
-                    case "tileX": tileX = reader.GetInt32(); break;
-                    case "tileZ": tileZ = reader.GetInt32(); break;
-                    case "deltas": deltas = ReadDeltas(ref reader); break;
+                    case "tileX": tileX = reader.GetInt32(); hasX = true; break;
+                    case "tileZ": tileZ = reader.GetInt32(); hasZ = true; break;
+                    case "deltas": deltas = ReadDeltas(ref reader, tilePath + ".deltas", index, hasX && hasZ ? new(tileX, tileZ) : null); break;
                     default: reader.Skip(); break;
                 }
             }
 
             if (deltas is null)
-                throw new JsonException($"terrainOverrides tile ({tileX}, {tileZ}) has no deltas array.");
+                throw new MapTerrainOverridesJsonException(MapDocumentRefusal.SchemaMemberMissing, $"terrainOverrides tile ({tileX}, {tileZ}) has no deltas array.")
+                { FieldPath = tilePath + ".deltas", Index = index, SculptTile = hasX && hasZ ? new(tileX, tileZ) : null };
             tiles.Add((tileX, tileZ, deltas));
         }
     }
 
-    static float[] ReadDeltas(ref Utf8JsonReader reader)
+    static float[] ReadDeltas(ref Utf8JsonReader reader, string path, int index, MapTileCoord? tile)
     {
         if (reader.TokenType != JsonTokenType.StartArray)
-            throw new JsonException("a terrainOverrides tile's deltas must be an array.");
+            throw new MapTerrainOverridesJsonException(MapDocumentRefusal.SchemaArrayRequired, "a terrainOverrides tile's deltas must be an array.")
+            { FieldPath = path, Index = index, SculptTile = tile };
         var deltas = new float[CellsPerTile];
         int count = 0;
         while (reader.Read())
         {
             if (reader.TokenType == JsonTokenType.EndArray) break;
             if (count >= CellsPerTile)
-                throw new JsonException($"a terrainOverrides tile needs exactly {CellsPerTile} deltas.");
+                throw new MapTerrainOverridesJsonException(MapDocumentRefusal.SchemaArrayLengthMismatch, $"a terrainOverrides tile needs exactly {CellsPerTile} deltas.")
+                { FieldPath = path, Index = index, SculptTile = tile, ActualCount = count + 1, ExpectedCount = CellsPerTile };
             deltas[count++] = reader.GetSingle();
         }
         if (count != CellsPerTile)
-            throw new JsonException($"a terrainOverrides tile needs exactly {CellsPerTile} deltas, got {count}.");
+            throw new MapTerrainOverridesJsonException(MapDocumentRefusal.SchemaArrayLengthMismatch, $"a terrainOverrides tile needs exactly {CellsPerTile} deltas, got {count}.")
+            { FieldPath = path, Index = index, SculptTile = tile, ActualCount = count, ExpectedCount = CellsPerTile };
         return deltas;
     }
 

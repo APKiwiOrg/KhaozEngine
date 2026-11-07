@@ -99,13 +99,21 @@ public partial class MapEditorScene
     {
         try
         {
-            return assetsOf(document) ?? throw new MapDocumentException("MapEditorOptions.MarkerAssets returned no asset closure.");
+            return assetsOf(document) ?? throw new MapDocumentException(MapDocumentRefusal.AssetClosureRequired,
+                "MapEditorOptions.MarkerAssets returned no asset closure.")
+            { DocumentId = document.Id, FieldPath = nameof(MapEditorOptions.MarkerAssets) };
         }
         catch (Exception error) when (error is not MapDocumentException)
         {
-            throw new MapDocumentException("MapEditorOptions.MarkerAssets failed: " + error.Message, error);
+            throw new MapDocumentException(MapDocumentRefusal.EditorMarkerAssetsFailed,
+                "MapEditorOptions.MarkerAssets failed: " + error.Message, error)
+            { DocumentId = document.Id, FieldPath = nameof(MapEditorOptions.MarkerAssets), Operation = nameof(HostAssets) };
         }
     }
+
+    /// <summary>Injects a host closure callback into the production admission guard without exposing its owner.</summary>
+    internal static void RequireMarkerAssetsForTests(Func<MapDocument, MapAssetClosure> assetsOf, MapDocument document) =>
+        _ = HostAssets(assetsOf, document);
 
     ViewportWorld CreateViewport(RenderDistanceProfile renderDistance) => new(_scene, _options.ManifestPaths)
     {

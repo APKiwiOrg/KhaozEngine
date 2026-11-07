@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Numerics;
 using KhaozEngine.Locomotion;
+using KhaozEngine.MapDoc;
 using KhaozEngine.MapDoc.Physics;
 using KhaozEngine.Movement;
 using Xunit;
@@ -157,9 +158,18 @@ public class MapStanceCandidatesTests
             case "radius": tuning = tuning with { CapsuleRadius = 0f }; break;
         }
         MapStanceValidator accept = (Vector3 c, out Vector3 seated) => { seated = c; return true; };
-        var error = Assert.Throws<ArgumentOutOfRangeException>(() => MapStanceCandidates.Find(
-            NativeWorldFixtures.BuildCrate(), "crate", Vector3.Zero, tuning, options, accept));
+        var world = NativeWorldFixtures.BuildCrate();
+        ArgumentOutOfRangeException error = input is "range" or "tolerance" or "band"
+            ? Assert.Throws<MapQueryRangeException>(() => MapStanceCandidates.Find(world, "crate", Vector3.Zero, tuning, options, accept))
+            : Assert.Throws<MapStanceRangeException>(() => MapStanceCandidates.Find(world, "crate", Vector3.Zero, tuning, options, accept));
         Assert.Equal(parameter, error.ParamName);
+        if (error is MapQueryRangeException query)
+        {
+            Assert.Equal(input == "tolerance" ? MapDocumentRefusal.ValueNonfinite : input == "band"
+                ? MapDocumentRefusal.BoundsInvalid : MapDocumentRefusal.ValueOutsideRange, query.Reason);
+            Assert.Equal(input == "range" ? "Range" : input == "tolerance" ? "Tolerance" : "Band", query.FieldPath);
+        }
+        Assert.NotEmpty(MapStanceCandidates.Find(world, "crate", Vector3.Zero, MoveTuning.Default, new(0.25f, 0.5f), accept));
     }
 
     [Fact]
@@ -177,9 +187,29 @@ public class MapStanceCandidatesTests
         var world = MapWorldBuilder.Build(f.Document, f.Assets, NativeWorldFixtures.Options());
         int calls = 0;
         MapStanceValidator count = (Vector3 c, out Vector3 seated) => { calls++; seated = c; return true; };
-        var error = Assert.Throws<ArgumentOutOfRangeException>(() => MapStanceCandidates.Find(world, "doorway",
+        var error = Assert.Throws<MapStanceRangeException>(() => MapStanceCandidates.Find(world, "doorway",
             Vector3.Zero, MoveTuning.Default, new MapStanceOptions(spacing, 0.5f), count));
         Assert.Equal("options", error.ParamName);
+        Assert.Equal(MapDocumentRefusal.WorkCapacityExceeded, error.Reason);
+        Assert.Equal("Spacing", error.FieldPath);
+        Assert.Equal(spacing, error.ActualNumber);
+        Assert.Equal("stance proposals", error.Budget);
+        Assert.Equal(cap, error.Limit);
+        Assert.True(error.ActualCount > cap);
         Assert.Equal(0, calls);
+
+        // A crate has one square outline, with four 0.6 m edges plus a full circle at the capsule radius.
+        // The float spacing rounds upward so ceil(perimeter / spacing) is the requested count, including at the cap.
+        var crate = NativeWorldFixtures.BuildCrate();
+        double perimeter = 8d * 0.3f + circle;
+        foreach (int expected in new[] { cap, cap - 1 })
+        {
+            float acceptedSpacing = MathF.BitIncrement((float)(perimeter / expected));
+            int proposals = 0;
+            MapStanceValidator refuse = (Vector3 candidate, out Vector3 seated) => { proposals++; seated = candidate; return false; };
+            Assert.Empty(MapStanceCandidates.Find(crate, "crate", Vector3.Zero, MoveTuning.Default,
+                new(acceptedSpacing, 0.5f), refuse));
+            Assert.Equal(expected, proposals);
+        }
     }
 }

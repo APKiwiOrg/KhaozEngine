@@ -4,6 +4,7 @@ using System.Linq;
 using System.Numerics;
 using KhaozEngine.MapDoc.Identity;
 using KhaozEngine.MapDoc.Prefabs;
+using KhaozEngine.MapDoc.Spaces;
 using KhaozEngine.MapDoc.Surfaces;
 using KhaozEngine.Primitives;
 
@@ -63,7 +64,8 @@ public sealed class MapScopedSurfaces
     {
         ArgumentNullException.ThrowIfNull(source);
         if (source is not IMapSurfaceAcquisitionSource capable)
-            throw new MapDocumentException("surface source does not support bounded scoped acquisition");
+            throw new MapDocumentException(MapDocumentRefusal.AcquisitionUnsupported, "surface source does not support bounded scoped acquisition")
+            { SourceType = source.GetType() };
         ArgumentNullException.ThrowIfNull(scope);
         ArgumentNullException.ThrowIfNull(assetSha256);
         scope.Validate();
@@ -90,7 +92,15 @@ public sealed class MapScopedSurfaces
         foreach (var entry in set.Patches)
         {
             if (entry.Key != entry.Value.Key || !facts.TrySurface(entry.Key.SurfaceId, out _))
-                throw new MapDocumentException("resident patch has an undeclared surface or mismatched key");
+                throw new MapDocumentException(entry.Key != entry.Value.Key
+                    ? MapDocumentRefusal.AuthoredValueMismatch : MapDocumentRefusal.ReferenceMissing,
+                    "resident patch has an undeclared surface or mismatched key")
+                {
+                    FieldPath = entry.Key != entry.Value.Key ? "Patches.Key" : "Patches.SurfaceId",
+                    Patch = entry.Key != entry.Value.Key ? entry.Value.Key : entry.Key,
+                    ExpectedPatch = entry.Key != entry.Value.Key ? entry.Key : null,
+                    SurfaceId = entry.Key.SurfaceId,
+                };
             facts.AddRead(new(entry.Key, MapPatchStatus.Present, entry.Value, MapSurfaceSemantics.PatchDigest(entry.Value), null, 0));
         }
         MapSurfaceScope scope = ResidentScope(facts);
@@ -169,6 +179,8 @@ public sealed class MapScopedSurfaces
         return copy;
     }
     public bool TryRecord(MapRecordRef r, out MapTopologyRecord? record, out MapPatchStatus status) => _facts.CopyRecord(r, out record, out status);
+    internal void InjectInvalidSpaceKindForTests(MapRecordRef reference, MapSpaceKind kind) =>
+        _facts.InjectInvalidSpaceKindForTests(reference, kind);
     internal bool TryRecord(MapRecordRef r, out MapTopologyRecord? record, out MapPatchStatus status, bool borrow) =>
         borrow ? _facts.TryRecord(r, out record, out status) : _facts.CopyRecord(r, out record, out status);
     public IEnumerable<MapTopologyRecord> RecordsIn(MapPatchKey key) => _facts.CopyRecords(key);

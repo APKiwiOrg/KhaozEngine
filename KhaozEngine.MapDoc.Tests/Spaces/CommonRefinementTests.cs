@@ -69,20 +69,34 @@ public sealed class CommonRefinementTests
     [Fact]
     public void Refine_ClassifiesInvalidCapacityAndRepresentabilityOutcomesWithoutPartialResults()
     {
-        static void Empty(MapCellRefinement r, MapRefinementStatus status, string? detail)
+        static void Empty(MapCellRefinement r, MapRefinementStatus status, MapDocumentRefusal? reason)
         {
             Assert.Equal((status, 0, 0), (r.Status, r.Faces.Count, r.Vertices.Count));
-            if (detail is not null) Assert.Contains(detail, r.Detail);
+            if (reason is not null)
+            {
+                Assert.Equal(reason, r.Finding!.Reason);
+                var adapter = MapOccupiedPartitions.Refusal(r.Status, r.Detail, r.Finding);
+                Assert.Equal(reason, adapter.Reason);
+                Assert.Equal(status, adapter.RefinementStatus);
+                Assert.False(MapCommonRefinement.NotRepresentable(adapter));
+                Assert.Equal(status == MapRefinementStatus.NotRepresentable, MapGeometryRefusals.Representability(adapter));
+                Assert.False(KhaozEngine.MapDoc.Water.MapWaterContainment.Invalid(adapter));
+            }
         }
         Empty(MapCommonRefinement.Refine(RefinementFixtures.CollinearTriangle(), RefinementFixtures.UnitSquareSwNe("up", 300), RefinementFixtures.Origin00, RefinementFixtures.One11, new()),
-            MapRefinementStatus.Invalid, "degenerate");
+            MapRefinementStatus.Invalid, MapDocumentRefusal.GeometryNotRepresentable);
         Empty(MapCommonRefinement.Refine(RefinementFixtures.UnitSquareSwNe("lo", 0), null, RefinementFixtures.Origin00, X(0, 1, 1, 1), new()),
-            MapRefinementStatus.Invalid, "cell");
+            MapRefinementStatus.Invalid, MapDocumentRefusal.BoundsInvalid);
         Empty(MapCommonRefinement.Refine(RefinementFixtures.LowerUnitTriangle(), RefinementFixtures.PrimeSliverUpper(long.MaxValue), RefinementFixtures.Origin00, RefinementFixtures.One11, new()),
-            MapRefinementStatus.NotRepresentable, "overflow");                  // the crossing x = p/(2p-1) needs a denominator above long.MaxValue
+            MapRefinementStatus.NotRepresentable, MapDocumentRefusal.GeometryNotRepresentable); // x = p/(2p-1) needs a denominator above long.MaxValue.
         var near = MixedResolutionFixtures.HalfUnderThird(far: false);
         foreach (MapRefinementLimits tight in new MapRefinementLimits[] { new(MaxSourceFacesPerBound: 3), new(MaxPairChecks: 5), new(MaxRefinementFaces: 4), new(MaxRefinementVertices: 7) })
             Empty(Cell(near, 1, tight), MapRefinementStatus.CapacityExceeded, null);
+        var normal = Assert.Throws<MapDocumentException>(() => MapEffectiveGeometry.Normal(RefinementFixtures.CollinearTriangle().Single().Triangle));
+        Assert.True(MapGeometryRefusals.Representability(normal));
+        Assert.False(MapGeometryRefusals.Representability(normal, arithmetic: false));
+        Assert.Equal(MapRefinementStatus.Complete, MapCommonRefinement.Refine(RefinementFixtures.UnitSquareSwNe("lo", 0),
+            RefinementFixtures.UnitSquareSwNe("up", 300), RefinementFixtures.Origin00, RefinementFixtures.One11, new()).Status);
     }
     [Fact]
     public void SixtyFourthFloorUnderOneMetreRoof_MeetsAndRefusesItsDeclaredBudgets()
@@ -115,7 +129,7 @@ public sealed class CommonRefinementTests
         MapSpaceFootprint strange = view.RecordsIn(new("odd", 0, 0)).OfType<MapSpaceFootprint>().Single();
         MapCellRefinement r = MapCommonRefinement.RefineFootprintCell(view, strange, 5, new());
         Assert.Equal((MapRefinementStatus.NotRepresentable, 0), (r.Status, r.Faces.Count));
-        Assert.Contains("overflow", r.Detail);
+        Assert.Equal(MapDocumentRefusal.GeometryNotRepresentable, r.Finding!.Reason);
     }
     [Fact]
     public void Refine_ChargesEveryAttemptedPairBeforeBoundingBoxRejection()
@@ -126,7 +140,10 @@ public sealed class CommonRefinementTests
         {
             MapCellRefinement r = MapCommonRefinement.Refine(lower, upper, RefinementFixtures.Origin00, RefinementFixtures.One11, refused);
             Assert.Equal((MapRefinementStatus.CapacityExceeded, 0, 0, 0), (r.Status, r.Faces.Count, r.Vertices.Count, r.PairChecks));
-            Assert.Contains("pair checks", r.Detail);
+            Assert.Equal(MapDocumentRefusal.WorkCapacityExceeded, r.Finding!.Reason);
+            Assert.Equal("MaxPairChecks", r.Finding.Budget);
+            Assert.Equal(262144L, r.Finding.ActualCount);
+            Assert.Equal(refused.MaxPairChecks, r.Finding.Limit);
         }
         MapCellRefinement ok = MapCommonRefinement.Refine(RefinementFixtures.UnitSquareGrid2("lo", 0), RefinementFixtures.UnitSquareGrid2("up", 100), RefinementFixtures.Origin00, RefinementFixtures.One11, new(MaxPairChecks: 64));
         Assert.Equal((MapRefinementStatus.Complete, 8, 9, 64), (ok.Status, ok.Faces.Count, ok.Vertices.Count, ok.PairChecks));

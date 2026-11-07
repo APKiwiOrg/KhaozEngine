@@ -1,4 +1,5 @@
 using System;
+using System.Linq;
 using System.Text.Json;
 using KhaozEngine.MapDoc;
 
@@ -30,7 +31,7 @@ internal static class NativeLegacySpawnAdmission
         try { return Canonical(live); }
         catch (Exception error) when (error is MapDocumentException or JsonException or ArgumentException)
         {
-            throw new MapDocumentException(Guidance(live), error);
+            throw Refusal(live, nameof(LiveLists), error);
         }
     }
 
@@ -46,9 +47,9 @@ internal static class NativeLegacySpawnAdmission
         catch (Exception error) when (error is MapDocumentException or JsonException or ArgumentException)
         {
             // A malformed attempted legacy write still names the native migration path, before general validation.
-            throw new MapDocumentException(Guidance(live), error);
+            throw Refusal(live, nameof(RequireAdmitted), error);
         }
-        throw new MapDocumentException(Guidance(live));
+        throw Refusal(live, nameof(RequireAdmitted));
     }
 
     internal static string Guidance(MapDocument document) => document.ResolverIdentity is { ResolverVersion: 1 }
@@ -60,6 +61,14 @@ internal static class NativeLegacySpawnAdmission
     {
         if (command is AddSpawnCommand or MoveSpawnCommand or SetSpawnEnabledCommand or RenameSpawnCommand or RemoveSpawnCommand or
             AddPlayerSpawnCommand or MovePlayerSpawnCommand or SetPlayerSpawnYawCommand or SetPlayerSpawnEnabledCommand or RenamePlayerSpawnCommand or RemovePlayerSpawnCommand)
-            throw new MapDocumentException(Guidance(document));
+            throw Refusal(document, command.GetType().Name);
     }
+
+    static MapDocumentException Refusal(MapDocument document, string operation, Exception? inner = null) =>
+        new(MapDocumentRefusal.EditorLegacySpawnEditProtected, Guidance(document), inner)
+        {
+            DocumentId = document.Id, ResolverVersion = document.ResolverIdentity?.ResolverVersion, Operation = operation,
+            SourceIds = (document.Spawns ?? []).Where(s => s is not null).Select(s => s.Id)
+                .Concat((document.PlayerSpawns ?? []).Where(s => s is not null).Select(s => s.Id)).ToArray(),
+        };
 }

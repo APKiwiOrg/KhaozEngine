@@ -4,6 +4,23 @@ All notable changes to KhaozEngine. One shared version line `<KhaozEngineVersion
 governs every package, including the four umbrella metapackages. Planned work lives in the repo's GitHub
 Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
+## 23.4.0
+
+2026-11-07
+
+- Every engine `MapDocumentException` now carries a `MapDocumentRefusal Reason` and typed identifiers, across surfaces,
+  acquisition, geometry, spaces, water, foliage, prefabs, document storage and persistence, MapDoc.Physics, MapEditor
+  and MapEdit.Tool. A test fences the message-only constructors out of those packages. `Reason` is null only on an
+  instance a consumer built. Read the reason, never the text. Messages do not change.
+- New refusal subtypes in those packages derive from the exact type thrown before, so existing catches keep working.
+  `ArgumentException` families carry `ParamName`. JSON refusals are `JsonException` subtypes sharing `MapDocumentRefusal`.
+  A test asserting an exact base type on one of these sites needs to assert the subtype instead.
+- `MapChainResolution` gains `Finding`, carrying the typed cause of a failed chain. Its constructor, deconstruction,
+  status values and `Detail` text are unchanged, but `Finding` joins its generated equality. Other status records that
+  gained a `Finding` behave the same way.
+- A status no longer depends on an identifier's text. An asset named `overflow` that is missing was reported as
+  `CapacityExceeded` because the classifier found that word in the message, and is now `Invalid`, like any missing asset.
+
 ## 23.3.0
 
 2026-11-07

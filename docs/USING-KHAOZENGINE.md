@@ -9391,7 +9391,7 @@ outside every umbrella and carries no physics backend, input or
 rendering dependency:
 
 ```xml
-<PackageReference Include="KhaozEngine.Movement" Version="23.3.0" />
+<PackageReference Include="KhaozEngine.Movement" Version="23.4.0" />
 ```
 
 The package composes `KhaozEngine.Locomotion`, `KhaozEngine.Navigation` and `KhaozEngine.Physics`. It does not
@@ -9962,7 +9962,7 @@ option does not enter bake identity or change canonical bytes. See the
 Round 2 D adds the driver layer in the same opt-in package. Keep the package reference explicit:
 
 ```xml
-<PackageReference Include="KhaozEngine.Movement" Version="23.3.0" />
+<PackageReference Include="KhaozEngine.Movement" Version="23.4.0" />
 ```
 
 `MoveToRange` consumes a `GroundNavigation` profile or an equivalent guarded `IRegionPathPlanner` composition.
@@ -10809,7 +10809,7 @@ same opt-in-backend pattern the `WorldStore.*` durable backends use.
 **Backend (`KhaozEngine.Physics.Bepu`)** - add this package to your game head / server:
 
 ```xml
-<PackageReference Include="KhaozEngine.Physics.Bepu" Version="23.3.0" />
+<PackageReference Include="KhaozEngine.Physics.Bepu" Version="23.4.0" />
 ```
 
 ```csharp
@@ -12178,8 +12178,15 @@ version or the load fails. The engine's own steps are pre-registered: v1 to v2 d
 `terrainOverrides` placeholder, v2 to v3 stamps `tileSize` with `MapDocumentFile.DefaultTileSize`
 (512 m), v3 to v4 adds `playableBounds` from `bounds` when it is absent, and v4 to v5 stamps the
 `LegacyXzCallbackV1` support recipe. The v5 to v6 step (`MapWaterMigration.Upgrade`) adds no member.
+Its version refusal distinguishes a missing or non-integer `formatVersion` (`SchemaValueRequired`)
+from an unsupported integer (`SchemaPayloadVersionUnsupported` with `ActualVersion` and
+`SupportedVersions` 5 and 6). The source object remains unchanged.
 The v6 to v7 step (`MapPrefabMigration.Upgrade`) clones input and changes only `formatVersion`.
 The v7 to v8 step (`MapMarkerMigration.Upgrade`) clones input and changes only `formatVersion`.
+Its refused source distinguishes `SchemaValueRequired` for missing or non-integer `formatVersion` from
+`DocumentMigrationSourceVersionInvalid` for an unsupported integer, with `FieldPath`, known `ActualVersion`
+and owned `SupportedVersions` containing 7 and 8. `MapMarkerAdoption.ConvertSpawns` refuses partial
+documents through `CompleteDocumentRequired`, retaining `DocumentId` and `Operation` before copying records.
 The v8 to v9 step (`MapFoliageMigration.Upgrade`) clones input and changes only `formatVersion`.
 `MapDocumentFile.CurrentFormatVersion` is 9, and saving always writes it. Version and layout are independent
 axes, so a monolithic file at the current version is legal. Format 5 and the v4 to v5 step arrived in
@@ -12234,15 +12241,90 @@ An incomplete section has no measured complete byte count. Document loading pres
 The codec uses `SchemaObjectRequired`, `SchemaArrayRequired`, `SchemaBooleanRequired`, `SchemaMemberUnknown`,
 `SchemaValueRequired`, `SchemaPayloadVersionUnsupported`, `SchemaBase64Malformed`, `SchemaArrayLengthMismatch`,
 `ValueNonfinite` and `ValueOutsideRange` for their corresponding shape, encoding and scalar rules. Repeated exact
-foliage member names use `IdentityDuplicate`, with `EntityId` naming the member and `SubjectKind` of `JSON member`.
+foliage member names use `SchemaMemberDuplicate` with the member path.
 `FieldPath` uses `JsonException.Path` syntax relative to the foliage section, with real array positions and escaped
 property names. Available context includes `LayerId`, `Index` and `FoliageChunk`. They remain unset until the guard
 knows them, and storage helpers without a typed path leave it unset. Payload version refusals carry `ActualVersion`
-and an owned read-only `SupportedVersions` snapshot. Density length refusals carry `ActualByteCount` and
+and an owned read-only `SupportedVersions` snapshot. Unsupported codec kinds use `SchemaEnumUnsupported`,
+`EnumType` and the submitted string in `ActualText`. A binding writer distinguishes a missing own member,
+a foreign member and an undefined kind, carrying its known `LayerId`, local `support` field path and
+surface or space identity. Codec capacity refusals carry `WorkCapacityExceeded`, `Budget`, the measured
+`ActualCount` or `ActualByteCount`, and inclusive `Limit`. Density length refusals carry `ActualByteCount` and
 `ExpectedByteCount`. Numeric refusals retain representable `ActualNumber` or `ActualInteger` and the checked
 `MinimumInteger` and `MaximumInteger` bounds. Known inner refusals survive wrappers with every identifier and the
 original cause. A converter failure without a typed inner reason uses `SchemaMalformed` with the reader's JSON path.
 See the [package refusal table](../KhaozEngine.MapDoc/README.md#loud-failures) for the complete field contract.
+
+Reading advertised nonresident foliage density throws `MapDocumentException` with `FoliageChunkUnavailable`,
+`LayerId` and `FoliageChunk`. Duplicate advertised keys use `IdentityDuplicate` with the same coordinates.
+The foliage migration distinguishes missing or noninteger `formatVersion` (`SchemaValueRequired`) from an
+unsupported integer (`SchemaPayloadVersionUnsupported`, `ActualVersion` and `SupportedVersions`). Effective
+owner findings retain the layer, local field path and known surface, space or owner identity. Missing targets,
+wrong surface roles, absent space IDs, non-World owner scopes and forbidden child kinds have their concrete
+shared reasons. The string API keeps the same order and text. Expansion forwards its first owner finding and attaches the full
+ordered snapshot. Other aggregate adapters wait for all their producers. Region-pack checks distinguish key
+coordinates, ordering, duplicate identities, malformed headers, lengths, capacities and digests. They retain
+`FoliageChunk`, record `Index`, measured byte counts, limits and expected/actual hashes where the guard knows them.
+Set admission retains typed version, layer identity, count and model-asset findings beside its string API.
+Layer scalar findings retain `LayerId`, the first failing `FieldPath` and the actual numeric value or
+version. Nonfinite values, finite domain failures and reversed scale bounds have distinct reasons.
+Bound resource checks distinguish `ReferenceMissing` from `ReferenceKindMismatch`. Material findings
+retain `ResourceId`, the material ID in `ActualInteger`, `ExpectedResourceKind` and available
+`ActualResourceKind`. Clearance findings identify the rule and asset. Support findings identify the
+surface and its path through the layer, owner support, exception mask or compatibility ordinal.
+Policy admission distinguishes a missing ID (`SchemaValueRequired`), another policy
+(`FoliagePolicyUnsupported`) and an unsupported version of the known policy
+(`SchemaPayloadVersionUnsupported`). Findings and source-wrapped exceptions retain `PolicyId` and
+`ExpectedPolicyId`. Model and material checks retain their array index and asset or material identity.
+Count capacities use `WorkCapacityExceeded` with `Budget`, `ActualCount` and `Limit`. Accumulated model
+weight uses that reason with `ActualNumber` and its supported `MaximumNumber`.
+Allowed-material ordering uses `OrderInvalid` with both `ActualInteger` and `PreviousInteger`. Missing
+declarations use `ReferenceMissing`. Ordinal findings retain `SurfaceId`, rule and mask findings retain
+`EntityId`, and duplicate owner supports retain their typed child kind and reference scope.
+Advertised keys outside the density domain use `FoliageChunkOutOfDomain` with `FoliageChunk`, sample
+dimensions and the first failing axis's value and bounds. Descriptor-count guards validate sparse layers
+without materializing density. Resident chunks retain the same domain metadata, while nonzero padding uses
+`FoliagePaddingNonzero` with the byte `Index`, chunk-local `CellX` and `CellZ`, and `ActualInteger`.
+Local binding, owner and clearance findings retain their layer, item identity and containing `FieldPath`.
+Owner checks distinguish missing values, non-World scopes and forbidden child kinds. Clearance footprints
+select the first nonfinite coordinate or collapsed finite dimension. `ValidateFindings` and
+`ValidateBoundFindings` expose complete owned read-only snapshots in string-validation order, and the
+document-level foliage collector forwards them. Whole-document and native-bound adapters retain the
+first typed finding and the full ordered snapshot.
+Brush layer mismatches use `AuthoredValueMismatch`, carrying the target `LayerId` and submitted
+`ActualText`. Scalar guards select `ValueNonfinite`, `ValueOutsideRange` or `BoundsInvalid` from the
+first failed branch and retain `FieldPath` and the checked value or limits. Hardness accepts both 0 and 1.
+`FoliageRectangleOutOfBounds` retains the submitted cell, raster dimensions and failed endpoint.
+Raster work limits use `WorkCapacityExceeded` with the address or chunk `Budget`, `ActualCount` and
+inclusive `Limit`. Required sequence lists, steps and layers use `SchemaValueRequired` with their local
+path and available document identity or step index, before writing density. Density lengths retain the
+single captured `ActualCount` and `ExpectedCount`. Invalid values retain the row-major index,
+rectangle-local cell and inclusive 0 through 255 limits.
+Nested sequences use `FoliageNestedSequenceUnsupported`. Unsupported edit kinds retain `RecordType`.
+A policy preview that cannot complete uses `FoliagePolicyPreviewIncomplete` with its `FoliageStatus`,
+and a stale token uses `FoliagePolicyDigestStale` with expected and submitted hashes. Missing tokens
+use `SchemaValueRequired` with `FieldPath = "ExpectedDifferentialDigest"`.
+Negative context options throw `MapFoliageContextArgumentException`, an `ArgumentOutOfRangeException`
+subtype carrying the first failed field, integer value and minimum 0. The BCL parameter stays `limits`
+and its `ActualValue` stays null. Zero options remain legal. Missing captured effective surfaces use
+`FoliageEffectiveContextRequired` with `Operation` and `SourceType`.
+Partial pack saves retain the unavailable layer, key and expected digest on `FoliagePartialSaveUnsafe`.
+Missing density uses `FoliageChunkUnavailable`. Materialized chunk validation forwards its first concrete
+finding and full snapshot. Stored JSON budget failures retain the byte limit and attempted byte count or
+membership count, and negative budget inputs retain their own field and numeric domain.
+
+Stored foliage guards retain typed layer references, pack byte counts and duplicate identities. Collection
+capacities distinguish the first failed `Chunks` or `Packs` field. Chunk-reference guards select invalid key
+coordinates, empty or oversized memberships, duplicates, missing packs and digest disagreements in that order.
+Pack count checks retain present and advertised counts. `FoliagePackOffsetMismatch` retains the row index,
+submitted offset and required offset as equal integer bounds. Resident guards distinguish an unadvertised key
+from bytes disagreeing with the advertised digest. Region calculations select
+`GeometryNotRepresentable`, `BoundsInvalid` or `WorkCapacityExceeded`, preserving the layer, chunk and available
+coordinate or budget metadata. The membership cap is inclusive at 4096. Stored lattice disagreement uses
+`FoliageRegionMembershipMismatch`. Complete-density checks retain missing counts, or the actual and expected chunk
+keys with their row index and compared hashes. `FoliageSaveSnapshotChanged` retains both save snapshot hashes.
+A required pinned pack read uses `PinnedContentUnavailable` with its `FoliageReadStatus`, `LayerId`, owner `Tile`
+and expected hash. `MapFoliageStorage` validation forwards the first concrete finding and complete ordered snapshot.
 
 Motion padding is explicit caller policy in metres. Transform all eight source-unit-adjusted mesh corners by each
 sample's exact CPU matrix, then expand XYZ. Preserve CPU selection, live blade/shrub profiles and shadow flags. Use the
@@ -12293,7 +12375,11 @@ These APIs are in `KhaozEngine.MapDoc.Prefabs`. Share this captured effective sn
 geometry, water, membership and annotations. Acquire bounded views from its `SurfaceSource` and pair water
 with the matching effective set and view. Floor resources install before nullable-Y support sampling. A
 prefab-local support request transforms from the pre-seat frame, while a standalone request stays world-space.
-Paint clips inside unchanged canonical physical triangles and never creates a second floor owner. Expansion
+Paint clips inside unchanged canonical physical triangles and never creates a second floor owner. Partial
+paint work uses `WorkCapacityExceeded` with the `MapRefinementLimits` field in `Budget`, its `Limit`
+and measured `ActualCount`. A producer that stops without returning its candidates leaves that count
+null. Exact intersection overflow uses `GeometryNotRepresentable`, the target `SurfaceId` and
+`Operation = "paint intersection"`. Both refuse without publishing partial regions. Expansion
 and composition refuse missing closure, unsupported work reporting and capacity overflow without partial facts.
 
 Typed Light and Support payloads begin with `resourceSchema`, valued `kemap/light-resource` or
@@ -12318,6 +12404,84 @@ and a missing dependency also identifies `DependencyId`. Uncaptured borrows use 
 
 A prefab resource keeps its logical asset ID and accepts either that ID or
 `prefab/<escaped-logical-id>/<sha256>`. The lowercase SHA-256 suffix must match its immutable bytes.
+Prefab and light payload byte admission carries `WorkCapacityExceeded`, `Budget = "PayloadBytes"`, the measured
+`ActualByteCount` and inclusive `Limit`, plus a known `ResourceId`. Codec array counts retain their JSON path and
+name their `Budget` as the collection or `Aggregate.<name>`. Patch geometry counts use `GeometryElements`.
+Cross-array totals use `Aggregate.ReferenceEdges`, `Aggregate.Patches`, `Aggregate.Records` or
+`Aggregate.GeometryElements`, with the crossing array's `FieldPath`, measured `ActualCount` and inclusive `Limit`.
+Unsupported child or override discriminators carry `OperationKindUnsupported`, `Child`, `ActualText` and
+`FieldPath = "$.type"`. A runtime subtype carries its `RecordType` and `Child`.
+The closed marker binding codec uses `MapPrefabJsonException`, a `JsonException` subtype carrying the shared reason
+and failed local `FieldPath`. It distinguishes object, missing, unknown, duplicate, null and wrong-type members.
+Unsupported kinds carry `EnumType` and submitted `ActualText` or writer `ActualInteger`. Writer shape failures retain
+known `SurfaceId` and `SpaceId`, using `SchemaValueRequired` or `AuthoredOwnershipMismatch`. Resource and document
+wrappers preserve this structured cause and add their source context without changing admission or diagnostic text.
+`MapPrefabValidation.ValidateFindings` is the immutable ordered typed projection of its existing string API.
+Throwing validation uses the first finding, attaches the complete `Findings` snapshot and retains its original cause.
+The complete snapshot survives state-read exceptions wrapping aggregate document refusals too.
+An unclassified state producer failure uses `PrefabStateUnreadable` with `DocumentId`, without a fabricated field path.
+Prefab expansion preflight uses `WorkCapacityExceeded`, selecting the first failing expansion-limit name in
+`Budget` with the measured `ActualCount` and inclusive `Limit`. Payload-byte budgets also carry `ActualByteCount`.
+Checked count overflow names `PrefabExpansionCount`, carries `Limit = long.MaxValue` and leaves `ActualCount` null.
+Foliage context preflight carries its concrete `Finding` on `MapFoliageContextMeasure` and preflight-refused
+capture results. Its five context limits use `WorkCapacityExceeded`, `FoliageStatus`, `Budget`, `ActualCount`,
+inclusive `Limit` and `DocumentId`, with `ActualByteCount` for source bytes. Partial residency uses
+`CompleteDocumentRequired`. Edit preflight forwards the finding and retains its released text.
+The generation-context throwing adapter forwards its concrete finding and every ordered validator finding.
+Missing root or asset child collections use `SchemaValueRequired`. Their capacity refusals use `WorkCapacityExceeded`
+with the collection `Budget`, captured `ActualCount`, inclusive `Limit`, `FieldPath` and known document or asset ID.
+Complete expansion over a partial document uses `CompleteDocumentRequired`, `DocumentId` and `Operation = "Expand"`.
+Authored-support adoption over a partial document uses the same reason with
+`Operation = "ConvertToAuthoredSupport"`. Unrepresentable binary32 placement presentation uses
+`GeometryNotRepresentable`, `PlacementId`, the failed component's `FieldPath`, binary64 `ActualNumber` and
+`Operation = "ResolveEffectivePlacements"`.
+Tiled persistence distinguishes `DocumentManifestMissing` (`Path`, `FileName`) from
+`DocumentManifestReadFailed` (`SourceName`, `Path`, original cause). A window under a different hash scheme
+uses `DocumentHashSchemeUnsupported`, stored `ActualVersion` and `ExpectedVersion`. Save refusals distinguish
+`DocumentStorageFormConflict` (target `Path`, actual `DocumentForm`, `ExpectedDocumentForm`),
+`DocumentLoadedIndexRequired` (target `Path`), `DocumentWindowTargetMismatch` (target `Path`, source `SourceName`)
+and `DocumentWindowTileSizeMismatch` (`FieldPath`, `ActualNumber`, `ExpectedNumber`). Content moved into an
+unloaded tile uses `DocumentUnloadedDestinationTile`, destination `Tile`, `SubjectKind` and known `EntityId`
+or `SculptTile`. These refusals leave existing bytes unchanged. Asynchronous residency reads preserve a typed
+cause's reason and identifiers. A nonpositive apply budget uses `MapResidencyArgumentException`,
+`ValueOutsideRange`, `ParamName = "config"`, `FieldPath = "MaxLoadsPerUpdate"`, `ActualInteger` and inclusive
+`MinimumInteger` one.
+An overlapping tiled save uses `DocumentSaveLockUnavailable` with the normalized directory `Path` and
+original cause. Missing or non-integer tile coordinates and missing or empty tile hashes use
+`SchemaValueRequired` with the first failed member's `FieldPath`, entry `Index`, manifest `SourceName` and `Path`.
+Sculpt shape guards use `MapTerrainOverridesJsonException`, derived from `JsonException`, with concrete
+`Reason`, relative `FieldPath`, tile array `Index` and `SculptTile` only once both coordinates were read.
+Delta length failures retain observed `ActualCount` and exact `ExpectedCount`. Document wrappers preserve them.
+Surface migration accepts source formats 4 and 5. Its refusal distinguishes `SchemaMemberMissing`,
+`SchemaValueRequired` and `DocumentMigrationSourceVersionInvalid`, retaining known `ActualVersion`,
+`FieldPath` and owned `SupportedVersions`.
+Residency radius admission uses `MapResidencyArgumentException`, derived from `ArgumentException`, with
+`ValueOutsideRange`, `ParamName = "config"`, specific `FieldPath`, `ActualInteger` and inclusive `MinimumInteger`.
+An unload band accepts `OuterRadius + 1`. Duplicate tile index entries use `IdentityDuplicate`, `Tile`,
+`SubjectKind = "tile index entry"` and known `SourceName`. Unreadable tile files use `DocumentTileReadFailed`
+with `Tile`, `SourceName`, full `Path` and pinned `ExpectedHash`.
+Native-vector, terrain-feature and numeric identity converter refusals remain catchable as `JsonException`
+through `MapNativeVectorJsonException`, `MapFeatureJsonException` and `MapNumericIdJsonException`. Their
+required `Reason` and typed identifiers survive document and prefab wrappers. Vectors name the refused
+component in relative `FieldPath`, retaining parsed `ActualNumber` for `ValueNonfinite`. Features name
+`$.type` and discriminator `ActualText`, distinguishing `SchemaValueRequired` from
+`DocumentTerrainFeatureUnknown`. Non-string and noncanonical identity text uses `SchemaInt64Malformed`
+with submitted `ActualText` when known and the inclusive integer limits. Invalid digits keep that reason.
+Out-of-range identities use `ValueOutsideRange`, those limits and `ActualInteger` only when representable.
+An unindexed `ReadTile` request
+uses `DocumentTileNotIndexed`, the requested `Tile` and `SourceName`. Native migration accepts source
+formats 3 and 4, reporting `SchemaMemberMissing`, `SchemaValueRequired` or
+`DocumentMigrationSourceVersionInvalid` with `FieldPath`, known `ActualVersion` and owned `SupportedVersions`.
+Prefab migration distinguishes missing, incorrectly typed and unsupported source versions. Its unsupported-version
+reason is `DocumentMigrationSourceVersionInvalid`, with `ActualVersion`, `FieldPath` and owned `SupportedVersions`.
+Exact-enum codecs use `SchemaEnumUnsupported` with `EnumType` and submitted text or numeric value. A marker binding's
+wrong numeric JSON type uses `SchemaValueRequired`, while a nonfinite float representation uses `ValueNonfinite`
+with parsed `ActualNumber` when available. Undefined descriptor kinds retain the enum type, value and `EntityId`.
+All three retain the actual count and accept the exact named ceiling. A consumer-defined prefab or marker edit
+uses `OperationKindUnsupported` with its `RecordType`. Submitting an asset update through `Prepare` uses
+`PrefabCapturedUpdateRequired` with `Operation = "PrepareAssetUpdate"`. Room selection retains `SpaceId` and
+actual/expected prism counts on `SpaceRoomOccupancyInvalid`.
+
 `MapPrefabEdits.Prepare` and `MapInteriorEdits.Prepare` return detached validated after states and named write
 sets. MapEditor publishes them through `PrefabEditCommand`, `InteriorEditCommand` and `PrefabAssetEditCommand`.
 Unpack transfers live children with their IDs and precise poses, retaining removed-source reservations and
@@ -12378,6 +12542,47 @@ Missing-Y support providers use `SupportProviderHeightMissing` with `PlacementId
 Missing bindings, bounded searches, spaces and adoption choices have distinct support reasons listed in the
 MapDoc refusal table. Broad document validation keeps its prose adapter until its complete producer is typed.
 
+Bound geometry reads outside their prepared demand set throw `MapBoundContextException`, an
+`InvalidOperationException` subtype whose `Reason` is `MapDocumentRefusal.ContextDemandUnprepared`.
+`Operation`, `Patch`, `Face`, `RecordId` and `SlotCell` identify the requested demand when applicable.
+Preparation keeps `MapDocumentException` and distinguishes missing references, unavailable patches,
+opening patch ownership and opening cell ownership. Occupied-bound refusals retain `SpaceId`, boundary
+`OwnerId` and `FieldPath` `Lower` or `Upper`. The prism record budget reports `WorkCapacityExceeded`
+with `Budget` `MaxRecordReads`, `ActualCount` and inclusive `Limit`.
+Prism ancestry distinguishes non-Room references, mismatched parents, parent cycles and missing
+parent footprints, retaining the prism `RecordId`, `SpaceId` and `RelatedRecordId`.
+Depth, face and vertex work refusals identify their own budget and measured count. Existing query
+statuses and developer-facing messages keep their released behavior.
+`MapChainResolution.Finding` preserves a caught typed refusal without changing positional construction
+or deconstruction. Wall-strip, aperture, membership, boundary, terrain-edit and physics adapters forward
+the original reason and identifiers. They use `SpaceChainUnresolved` or `PhysicsWallChainUnresolved`
+only without a typed producer finding. Record lookups retain the requested `ExpectedRecordType`
+alongside an actual `RecordType` when present. Prism versions, nonfinite endpoints and separation have
+distinct reasons. Portal height refusals retain the owning `RecordId` and column `Index`.
+Space alias cycles use `SpaceAliasCycle`, while ancestry cycles use `SpaceParentCycle`, both with
+the repeated `SpaceId`. Missing point-bound references retain their footprint `RecordId`, `SpaceId`
+and `FieldPath` on `SchemaValueRequired`. Unavailable source-cell and membership-demand patches
+retain `Patch` and `PatchStatus`. Portal point-sequence refusals use `GeometryVertexSequenceInvalid`
+with the chain `RecordId` and `FieldPath` `Vertices`.
+Prism admission distinguishes Room kind, parent agreement and single-prism occupancy. Storey
+refusals identify the prism `RecordId`, storey `EntityId` and failed `FieldPath`, checking version
+before ownership. Unpacked prisms require matching live record and storey transfers and report
+`SpaceStoreyTransferMissing` with `InstanceId` when that pair is absent or retired.
+Prism containment findings use `SpacePrismOutsideParent` or `SpacePrismParentSeparationInvalid`,
+with `RecordId`, `SpaceId` and parent `RelatedRecordId`. `SpaceOccupiedOverlap` names both occupied
+spaces through `SpaceId` and `RelatedRecordId`. The released validation strings retain their order
+and prose. Aggregate adapters forward the first concrete finding and its ordered snapshot.
+Boundary coverage distinguishes `SpaceBoundaryGap`, `SpaceBoundaryOverlap`,
+`SpaceCoverageMissingBound` and `SpaceCoverageSeparationInvalid`, retaining footprint `RecordId`,
+`SpaceId` and `SlotCell`. Portal air-band failures use `SpacePortalAirIntervalInvalid` with the
+portal `RecordId`, endpoint `SpaceId` and segment `Index`. Sequence findings retain the chain or
+portal subject instead of replacing it with wrapper context. Coverage exposes its released string API
+and complete ordered typed findings.
+Coincident supports use `SpaceSupportCoincident`. Footprint overlap findings retain both footprint
+identities and both cells with `RecordId`, `RelatedRecordId`, `SlotCell` and `RelatedSlotCell`.
+The coverage collector forwards known overlap and prism findings without reading identifiers from
+prose. Refinement and water findings retain the concrete producer reason and identifiers.
+
 Doors remain AuthoredOpen. `MapRoofPolicy` returns separate colour, shadow, camera-boom and sky-picking flags.
 Auto concealment uses occupied rooms and explicit links/groups, and leaves unlinked shelters visible. Hidden
 roofs still cast shadows and block sky picking, and never change physics statics. R8 owns rendering, cameras
@@ -12395,6 +12600,37 @@ A resolver-2 native document with `AuthoredBindingsV2` can carry an optional `Ma
 Each body has one level, exact half-open lattice rectangle or polygon domains, explicit covered authored
 spaces, a medium from the document's table and a render material from its verified asset closure.
 A present empty section selects bounded mode and is dry everywhere. Resolver-1 documents keep global water.
+
+`MapWaterDomain.Compile` reports its first concrete `MapDocumentRefusal` and preserves all ordered
+domain findings on `MapDocumentException.Findings`. Piece failures carry the stored `Index`,
+`SubjectKind` and `FieldPath`. Placement failures distinguish nonfinite components from nonpositive
+scale. Capacity refusals carry the exact `Budget`, `ActualCount` and `Limit`. Effective water adapters
+also retain the body `EntityId`. The [MapDoc refusal table](../KhaozEngine.MapDoc/README.md#loud-failures)
+lists the water domain reasons.
+Consumer-built message-only vertex failures remain untyped, keep the domain wrapper's text and retain the
+original exception as its inner cause. Validation keeps their string errors without inventing a finding.
+Water JSON conversion throws `MapWaterJsonException`, which derives from `JsonException` and retains
+the concrete reason, water-relative `FieldPath` and known scalar identifiers. Document readers carry
+the same reason and identifiers into `MapDocumentException`. Canonical decimal failures retain
+`ActualText` and signed integer limits, and unsupported enum text retains `EnumType` and `ActualText`.
+
+Water edits distinguish `WaterBodiesPreventLegacyMode`, `WaterBoundedModeRequired` and
+`WaterMediumInUse`. Missing body or medium identities use `ReferenceMissing`. Containment adds known
+typed refusals in the owned read-only `MapWaterContainmentReport.Findings` snapshot, retaining cover
+record identities and the body context. `WaterCoversAlias`, `WaterNoSpaceFootprint` and
+`WaterSpacesDisconnected` name the authored rules. Caught typed causes keep their original
+identifiers and add body `OwnerId` when unset. Medium and body scalar findings name the field and
+identity, and separate nonfinite numbers from finite range refusals. Invalid ring findings retain
+the captured invalid ring `Address` with its denominator identifiers. A null body medium uses
+`SchemaValueRequired`. A reader refusal remains a domain finding without inventing an address.
+An unresolved medium key uses `ReferenceMissing`. Occupied-water admission retains
+`AcquireStatus` and the unavailable patch and status where known. The released `Complete`, `Errors`
+and downstream status classifications remain unchanged. Untyped upstream failures remain in `Errors` during producer closure.
+The water edit adapter now retains its first concrete validator reason and ordered `Findings`.
+Domain-piece and shared-space body overlap use `WaterDomainPiecesOverlap` and `WaterBodiesOverlap`,
+with both piece indices or body identities. Missing render resources reuse `ReferenceMissing`, and
+wrong kinds use `ReferenceKindMismatch`. Both carry body `EntityId`, `ResourceId` and the required
+resource kind on in-memory and stored identity paths, plus the actual kind when a resource exists.
 
 `MapWaterQuery(view, document.Water)` captures the water set and digest. `Sample(point)` returns a wet
 interval only when the point's occupied space is covered, its XZ is in the body domain and
@@ -12483,12 +12719,107 @@ unloaded surface patches. `HasUnloadedTiles` retains the tile-only meaning. `Sav
 directory carries cold content through unchanged, subject to its reference and partial-edit guards.
 Whole-document writers refuse partial views, including surface-only windows, rather than silently dropping
 cold content. A window remembers the manifest it loaded. A windowed `SaveTiled`, including a surfaces-only
-window, refuses with `stale window` when another writer has changed the manifest since the window was loaded,
-or when the current manifest cannot be read. Reload the window and reapply the edit.
+window, refuses with `DocumentStaleWindow` when another writer changed the manifest after the window loaded
+or the current manifest cannot be read. It carries manifest `Path`, pinned `ExpectedHash` and `ActualHash`
+when readable. Reload the window and reapply the edit.
+
+Document read failures use `DocumentReadFailed` with source name, path and original cause. A future format
+version uses `DocumentVersionUnsupported` with the actual and supported versions. A missing migration uses
+`DocumentMigrationMissing`, source `ActualVersion` and next `TargetVersion`. A null migration result uses
+`DocumentMigrationReturnedNull`. Both retain `SourceName` and the format-version field path. Save-back to a
+missing source uses `DocumentSaveSourceMissing`. An unwritable requested form uses `DocumentSaveFormInvalid`.
+These save refusals retain `Path` and `DocumentForm`, and whole-save admission runs before opening its target.
+Document adapters forward the producer's first reason and complete ordered `Findings` snapshot.
+
+Null surface collections throw `MapSurfaceJsonException` with `SchemaMemberNull` and their `FieldPath`.
+Duplicate surface patches use `IdentityDuplicate`, `Patch` and zero-based `Index`. Document JSON wrappers
+preserve those identifiers. Native placement transform refusals distinguish nonfinite components,
+nonpositive scale, missing tags and null tag entries through the applicable scalar or required-value
+reason, `PlacementId`, field path, numeric value and tag index. Registry builds refuse unknown terrain
+features with `DocumentTerrainFeatureUnknown` and captured discriminator. World-hash ordering failures use
+`OrderInvalid`, `PreviousTile` and the offending `Tile`.
+
+Native validation and whole authored identity require a complete document. Their refusals expose
+`CompleteDocumentRequired`, `DocumentId` and `Operation` `ValidateNativeDocument` or
+`ComputeWholeAuthoredIdentity`. Scoped identity `RequireComplete()` uses `AcquisitionIncomplete` with
+`Operation` `RequireCompleteIdentity`. A native root mismatch reports `DocumentAssetRootsMismatch` and
+owned snapshots of the submitted `ResourceIds` and closure `ExpectedResourceIds`.
+
+Both authored identity schemes select the first invalid build option. Resolver mismatch uses
+`ResolverContractMismatch` with submitted and expected resolver versions. Blank builder ID or options hash
+uses `SchemaValueRequired` with `FieldPath` and `ActualText`. Nonpositive builder version uses
+`ValueOutsideRange` with `ActualInteger` and inclusive `MinimumInteger` 1. Missing playable bounds or a
+native placement asset also uses `SchemaValueRequired` with its field and known document or placement ID.
+Nonfinite storage bounds identify the first failed component through `ValueNonfinite`, `FieldPath` and
+`ActualNumber`. Authored duplicate content uses `IdentityDuplicate`, its typed `SubjectKind` and `EntityId`,
+or `SculptTile` for a sculpt duplicate.
+
+Tiled surface saves report dictionary key disagreement as `StoragePatchKeyMismatch` with the dictionary
+`ExpectedPatch` and payload `Patch`. A payload changed after preparation uses `StorageSaveSnapshotChanged`
+with `Patch` and the expected and actual hashes. The manifest rename commits a tiled save. A refusal before
+that commit preserves the previous live content, and the next successful save sweeps unreferenced payloads.
+Packing limits use `ValueOutsideRange`, the failed
+`FieldPath` (`IndexBlockSlots` or `DirectoryBlockPages`), actual integer and inclusive limits 1 and 16.
+Unrepresentable page blocks and load windows use `GeometryNotRepresentable` with `Operation`
+`PackSurfaces` or `LoadSurfaces` and `FieldPath` `Covers` or `Window`. Stored semantic digest mismatches
+retain the surface and both hashes. Missing or corrupt pages report `PatchUnavailable`, `PatchStatus`,
+`SurfaceId` and pinned `ExpectedHash`. Payload failures also name `Patch` and retain a known producer
+reason and its identifiers.
 
 **Streamed content and bounded surface embedding.** `SaveTo(doc, stream)` serializes through a
 `Utf8JsonWriter`, and `Save` uses it without building one whole-document text buffer. Native surface
 embedding has separate limits of 256 patches and 8 MiB. Larger native surfaces require tiled storage.
+The embedded payload writer reports byte and container-depth limits as `WorkCapacityExceeded`, with
+`Budget` `MaxEmbeddingBytes` or `MaxEmbeddingDepth`, required bytes or container count, and inclusive `Limit`.
+The depth budget admits 16 containers. A negative byte budget uses `ValueOutsideRange` and minimum 0.
+Wrong allocator lengths use `SchemaArrayLengthMismatch` with expected and available actual byte counts.
+A payload shrinking after measurement uses `StorageEmbeddingChanged` with measured and written byte counts.
+Malformed scalar values use `SchemaMalformed`. Nonfinite numbers use `ValueNonfinite` with `RecordType`
+and `ActualNumber`. Internal numeric formatting and default encoder progress checks remain invariants.
+Embedding array guards expose `SchemaArrayRequired` and `FieldPath` `$.surfacePatches`. Patch-count
+capacity exposes `WorkCapacityExceeded` with `Budget` `MaxEmbeddedPatches`, `ActualCount` and inclusive
+`Limit`. Invalid reader budgets expose `ValueOutsideRange` with the option's path, submitted integer
+and inclusive minimum. Repeated DOM patch keys use `IdentityDuplicate`, `Patch` and `Index`.
+The streaming converter's `MapSurfaceEmbeddingJsonException` remains catchable as `JsonException`.
+Document wrappers retain its concrete reason and the complete typed inner cause.
+Surface page envelopes report object shape, member count, missing, duplicate and null fields through
+their schema reasons and `FieldPath`. Declared count mismatches carry both counts. Surface identity
+mismatches use `AuthoredValueMismatch`, cover mismatches `BoundsInvalid`, and page byte capacity
+`WorkCapacityExceeded` with `Budget` `MaxPageBytes`, measured `ActualByteCount` and inclusive `Limit`.
+Page contents retain missing-field, bounds, ownership, ordering and duplicate-identity reasons with their
+`FieldPath` and known `SurfaceId`, `Patch` and `Index`. Page counts use `MaxEntries`, decoded metadata
+arrays `MaxMetadataEntries`, both with measured counts and inclusive limits. Overlapping index page covers
+use `StorageDirectoryPagesOverlap` with both indices. Interface-backed cardinalities are captured once,
+so a faulty producer cannot change the value reported by a refusal.
+Whole surface saves forward the first topology finding and the complete ordered `Findings` snapshot.
+Dependency-position overflow uses `GeometryNotRepresentable`, `Operation` `SaveSurfaces` and
+`FieldPath` `CornerDependencies`. Surface query conversion overflow uses `GeometryNotRepresentable`,
+`Operation` `FindPatches` and `FieldPath` `scope`. Raw saves still certify references and exact owner
+positions without certifying geometric seams or equal heights.
+A mismatched dependency owner address uses `SurfaceSeamPositionMismatch` with the dependent `Patch`,
+owner `ExpectedPatch` and `Address`, and dependent corner coordinates. An address outside the owner
+geometry uses `SurfaceSeamVertexUndeclared` with that context. Partial saves distinguish
+`StorageReferencedPatchUnloaded`, `StorageReverseKnowledgeUnknown`, `StorageReverseDependantUnloaded`
+and `StoragePartialEditUnsupported`. These identify the missing patch, affected surface, directory digest,
+incident record or unsupported field when known. Missing references retain `ReferenceMissing`, while an
+indoor-span parent of the wrong topology type retains `ReferenceKindMismatch` and both types. Refused saves
+leave every existing file byte-identical.
+Scope admission throws `MapSurfaceScopeArgumentException`, catchable as `ArgumentException`. Its shared
+`MapDocumentRefusal` distinguishes nonfinite coordinates, unordered bounds, missing required values,
+undefined roles and negative allowances in predicate order. `FieldPath` names the failed option, numeric
+identifiers retain its value and inclusive minimum, and enum failures retain their type and integer.
+Equal bounds and zero allowances remain valid, including when a record copy is readmitted by a query.
+
+Storage directory references preserve schema reasons, the failed `FieldPath`, row `Index` and both counts
+when a member-count guard fails. Unknown surface declarations use `ReferenceMissing`, overlapping directory
+covers `StorageDirectoryPagesOverlap`, and repeated index patch keys `IdentityDuplicate`.
+A malformed storage digest uses `DigestMalformed` before file access. Empty bytes use `ValueOutsideRange`
+with minimum one. Oversized bytes use `WorkCapacityExceeded`, `Budget` `MaxPageBytes`, the measured count
+and inclusive limit, accepted exactly by both read and write. Changed bytes use `DigestMismatch` with the
+pinned and actual hashes. A file with more bytes after the captured read length uses `StorageReadChanged`,
+the captured `ExpectedByteCount` and minimum observed `ActualByteCount` (that length plus one).
+Preparation overflow uses `GeometryNotRepresentable`, `Operation` `SaveSurfaces` and `FieldPath` `Surfaces`.
+
 `SaveTiled` writes one tile at a time and **does not rewrite a tile whose
 canonical hash is unchanged**. Its ordering is crash-consistent: changed tiles are written at names nothing
 points at yet, then a single `map.json` rename commits, then a best-effort sweep collects what the new
@@ -12670,6 +13001,15 @@ Resolver admission keeps the exact `MapDocumentException` catch contract. Its `R
 `OptionsResolverVersion`, `ExpectedResolverVersion`, `SupportRecipe`, `ExpectedSupportRecipe`,
 `FieldPath` and `SubjectKind`. Inspect those members rather than parsing prose. A consumer's
 message-only constructor leaves `Reason` null. `SourceName` carries available source context.
+Supplied prefab collections may throw such refusals. Foliage preflight retains their legacy status
+without inventing a typed finding.
+Effective prefab expansion forwards every ordered numeric finding, using the first finding's reason.
+Foliage capture exposes the concrete `Finding` and an owned read-only `Findings` snapshot when a
+validator supplied several. Finalization forwards the same rule, identifiers and snapshot, keeping a
+caught refusal as its cause. Mismatched effective resources use `AcquisitionSnapshotChanged` with
+`DocumentId`, the failed `FieldPath` and known expected/actual snapshot values. Prefab codec admission
+retains `Operation` `MapPrefabCapacity` for the existing capacity projection. Typed missing-reference
+identifiers containing classifier keywords retain their rule's `Invalid` category.
 Missing legacy support callbacks use `SupportLegacyHeightRequired`, with `ResolverVersion` and
 `FieldPath` `legacySupportHeight`. A nonfinite resolved support height uses `ValueNonfinite` with
 `PlacementId`, leaving `ActualNumber` null. A requested placement absent from the resolution scope uses
@@ -12677,6 +13017,76 @@ Missing legacy support callbacks use `SupportLegacyHeightRequired`, with `Resolv
 `MapDocumentFinding` carries an immutable reason, prose and typed context. The exception's optional
 `Findings` list is an ordered read-only snapshot. Existing string validation APIs retain their prose,
 and aggregate adapters retain their existing behavior until all their producing rules are typed.
+`MapLowerCellClassification.Finding` exposes the original failed rule without changing its class or
+`Detail`. Missing and wrong-kind reads stay `Unavailable`, and legacy recipe refusals stay `InvalidRecipe`.
+An out-of-range legacy height identifies its first failed corner, `ActualInteger` and the inclusive
+`MinimumInteger` and `MaximumInteger`. Caught patch failures retain their concrete reason and identifiers.
+`MapBoundFaceSet.Finding` and `MapCellRefinement.Finding` carry the same rule through bound, wide and
+bounded refinement. Their existing status values and `Detail` text remain independent of the reason.
+For example a caught degenerate triangle remains `Invalid` with `GeometryNotRepresentable`, while an
+arithmetic or narrowing overflow remains `NotRepresentable`. Capacity findings expose the actual
+source, pair, emitted face, vertex or context `Budget`, its measured `ActualCount` and inclusive `Limit`.
+Occupied partition classification retains `WaterDomainPairChecks` capacity provenance through an
+intermediate `Invalid` refinement status.
+Membership reports `MissingGeometry` for a legacy surface frame rejected by the compiler. Legacy recipe
+eligibility failures retain `Invalid`.
+Refusals expose no partial refinement. A count that overflowed its representation remains null.
+
+`MapPrismCoverage.ValidateFindings(view, limits)` and
+`MapSpaceCoverageValidator.ValidateFindings(view, limits?)` expose complete ordered read-only snapshots.
+Their string APIs keep their existing projection. Their `Require` adapters throw the first concrete
+reason and retain all findings, including the owning record and cell where known. Prefab preparation
+and the effective physics-world gate use these adapters. Partition refusals preserve their original
+status projection separately from the lower reason, including invalid refinement projected as missing geometry.
+Classification does not interpret keywords inside user-supplied identifiers.
+`MapCompiledWaterBody.Finding` carries a refused compile's original rule and body owner. Complete bodies
+have no finding. Capacity identifies the actual compile budget, measured `ActualCount` and inclusive
+`Limit`. Unverified cover and footprint discovery use `PatchUnavailable` or `AcquisitionIncomplete`.
+An uncovered bound area uses `SpaceCoverageMissingBound`, without changing the existing status or Detail.
+The effective-water publication gate forwards the first refused body's finding and typed context,
+retaining its existing detail and first-body admission order.
+
+Effective coordinate freezing carries `Operation = "Freeze"` and `ActualNumber`, using `ValueNonfinite`
+for nonfinite input or `ValueOutsideRange` with the inclusive `MinimumNumber` and `MaximumNumber`.
+Effective frame conversion uses `FrameRadiusExceeded` with its checked local position and inclusive `Limit`,
+or `ValueNonfinite` for nonfinite local height. Marker and placement support-seat arithmetic overflow uses
+`GeometryNotRepresentable`, the caller's `MarkerId` or `PlacementId` and `SupportStatus = NotRepresentable`.
+Relations preserve the chain or aperture's original invalid or missing projection independently of its reason.
+
+Fine-patch conversion retains `MapDocumentException` and exposes `MapCellConversion.Finding` alongside
+the unchanged classification and prose. `TerrainCornerCutCreaseUnsupported` and
+`TerrainCornerCutSubdivisionOdd` distinguish the two unsupported corner-cut rules.
+`TerrainAuthoredDifference` names legacy arithmetic or non-capture fallback requiring explicit acceptance,
+including an exact cell whose legacy arithmetic still changes. Findings carry `SurfaceId`, `Patch`,
+the signed 64-bit world-cell `Address`, `ActualInteger` subdivision, `ConversionClass` and source
+`PresencePolicy`. Absent cells use
+`TerrainCellMissing` with the known surface, patch and address. Footprint straddles use
+`TerrainFootprintStraddlesRegion`, `RecordId` and `SlotCell`. Failed owner retargets use
+`TerrainOwnerRetargetUnavailable` with the dependent `Patch`, patch-local `CellX` and `CellZ`, and
+the owner's `ExpectedPatch` and `Address`. Subdivision limits use `ValueOutsideRange` with
+`FieldPath = "Subdivision"`, `ActualInteger` and inclusive limits 2 and 64. Blank surface identities
+use `SchemaValueRequired`, while equal identities use `AuthoredValueMismatch`, with the first failed
+field and known surface identities. Conversion adapters forward the first concrete producer finding and
+the complete ordered `Findings`, including each refused authored-difference cell. Empty selections use
+`TerrainConversionRegionsMissing`, overlapping selections `TerrainConversionRegionsOverlap` with the
+later `Index` and earlier `OtherIndex`, empty rectangles `BoundsInvalid` with `Index`, paint-only sources
+`SurfacePaintPhysicalCompileUnsupported`, and intersecting boundary records `TerrainBoundaryRecordIntersects`
+with `RecordId`. Standalone interior alias replacement uses `InteriorAliasUnsupported` with `RecordId`,
+`SpaceId` and the alias target's `RelatedRecordId`. Other interior guards reuse ownership, reference,
+value and operation reasons with the identities known at admission.
+
+Terrain edits retain complete ordered producer findings and the unchanged source on refusal.
+`TerrainEditRegionOutOfBounds` carries the patch and submitted rectangle, or the out-of-domain presence
+slot. `TerrainOwnerChangeStale` identifies the dependent patch and corner and known old-owner context.
+`TerrainSmoothingHaloUnavailable` identifies the required world corner through `Address`.
+`TerrainTopologyWritesConflict` distinguishes conflicting patch or surface writes from `IdentityDuplicate`.
+`TerrainAnchorStillInUse` names a removed anchor's `Patch` and retained `RecordId`.
+`TerrainCornerOwnerAmbiguous` names the world-corner `Address`, surface and conflicting owner patches.
+Owner self-address mismatches reuse `SurfaceSeamPositionMismatch`, while disagreeing incident halo
+heights reuse `GeometryVertexHeightMismatch`. These reuse the same rules as seam and shared-corner
+admission. Height and cell count mismatches use `SchemaArrayLengthMismatch` with the failed field and
+actual and expected counts. Count diagnostics retain the value that failed the predicate when a
+faulty collection producer changes between reads. Plain smoothing iteration parameter checks remain BCL exceptions.
 
 Root, manifest, tile and prefab schema admission also preserves `MapDocumentException`. Its reasons distinguish
 `SchemaMemberUnknown`, `SchemaMemberDuplicate`, `SchemaMemberMissing`, `SchemaMemberNull`,
@@ -12708,6 +13118,181 @@ Manifest paths retain array positions, while a direct reference or resource chec
 root. JSON failures preserve known structured inner refusals, otherwise they use `SchemaMalformed` and
 the reader's path and location metadata.
 
+Surface scalar and cell admission also keep the exact `MapDocumentException` type. Lattice units use
+`SurfaceUnitUnreduced` with `Numerator` and `Denominator`, or `ValueOutsideRange` for nonpositive parts.
+Address denominators use `ValueOutsideRange` with inclusive limits and `ActualInteger` when the common
+denominator fits in `long`. Unsupported frame enumerations use `SchemaEnumUnsupported` with `EnumType`,
+`ActualInteger` and `FieldPath`. Missing surface identities and null patch height, cell or presence arrays use `SchemaValueRequired`,
+while mismatched array lengths use `SchemaArrayLengthMismatch` with the known counts. Invalid patch
+rectangles and reversed exact rectangles use `BoundsInvalid`. A cell or corner outside a valid patch uses
+`SurfaceAddressOutOfPatch` with `Patch`, `CellX`, `CellZ` and its inclusive coordinate limits. Corners
+include `Width`, `Depth`, while cells end one earlier on each axis. Local validation additionally
+collects typed cell-field, padding (`SurfacePresencePaddingNonzero`) and metadata-capacity
+(`WorkCapacityExceeded`) findings. Capacity findings retain `Budget`, `ActualCount` and `Limit`.
+`ValidateLocalFindings` returns every local finding as an owned read-only snapshot in diagnostic order.
+Its public string results stay unchanged. Metadata findings carry `Index`, `FieldPath`, `Patch`,
+`CellX`, `CellZ` and, for subdivisions, `Edge`. Missing dependencies or owners use `SchemaValueRequired`,
+coordinates use `SurfaceAddressOutOfPatch`, unsupported edges use `SchemaEnumUnsupported`, and repeated
+corner or cell-edge keys use `IdentityDuplicate`. Denominators and segment counts use `ValueOutsideRange`
+with their inclusive limits, including segments 2 through 64. An absent cell uses
+`SurfaceSubdivisionAbsentCell`, while an edge adjoining another present cell uses
+`SurfaceSubdivisionInteriorEdge`. The encoder consumes these typed findings. Other forwarding adapters still expose prose.
+`SplitSwNe` uses `ValueOutsideRange` for rotation outside 0 through 3 and `SchemaEnumUnsupported` for cut
+or topology, retaining the first failing field, actual integer and applicable enum type.
+An incompatible forced diagonal uses `SurfaceForcedTopologyConflict` and the submitted topology.
+The scalar topology API has no patch or slot-cell identifier to attach.
+
+Surface codec record guards distinguish missing values, duplicate identities, unsupported kinds,
+invalid enums, cardinality and prism payload versions through the corresponding schema, identity and
+`OperationKindUnsupported` reasons. Helper `FieldPath` values identify their local object fields.
+Unsupported decoded kinds retain `ActualText`, and unsupported runtime records retain `RecordType`.
+Chains admit 2 through 4097 vertices, slot lists 1 through 4096 entries, and slot values 0 through 4095.
+Slot ordering uses `OrderInvalid` with `Index`, `ActualInteger` and `PreviousInteger`. Prism versions
+carry `ActualVersion` and `SupportedVersions`. The encoder and decoder preserve the first local finding's reason
+and identifiers and attaches every ordered local finding as `Findings`. Decoded key mismatches use
+`SurfacePatchKeyMismatch` with `Patch` and `ExpectedPatch`, rectangle checks use `BoundsInvalid` with
+the patch and dimensions, and the trailing-value guard uses `SurfacePatchTrailingBytes` with the requested
+patch. Codec schema guards use the shared object, member, array and required-value reasons. Canonical
+decimal slots and addresses use `SchemaInt64Malformed` with `FieldPath`, `ActualText` and signed 64-bit
+limits. Base64 failures distinguish invalid encoding (`SchemaBase64Malformed`) from token or decoded
+length mismatches (`SchemaArrayLengthMismatch`). Token lengths are character counts in `ActualCount`
+and `ExpectedCount`, and byte lengths use `ExpectedByteCount` and `ActualByteCount` only when known.
+Other malformed JSON or scalar conversions use `SchemaMalformed` with the requested `Patch` and
+available reader location. The 1,048,576-byte codec cap uses `WorkCapacityExceeded`,
+`Budget = "SurfacePatchEncodedBytes"` and `Limit`. Exact attempted byte counts use `ActualByteCount`,
+while preflight collection and text checks retain `ActualCount` and a local `FieldPath` when known.
+Per-array count caps use the field name as `Budget`, with `ActualCount` and `Limit`.
+
+Acquired fact admission distinguishes missing values (`SchemaValueRequired`), undefined enums
+(`SchemaEnumUnsupported`), negative `PagesRead` (`ValueOutsideRange` with a zero minimum), repeated
+patch or record identities (`IdentityDuplicate`), mismatched present-payload keys (`AuthoredValueMismatch`
+with `Patch` and `ExpectedPatch`) and semantic pins (`DigestMismatch` with both hashes). The carrier
+retains the first failed `FieldPath` and known `SurfaceId`, `RecordId`, `Patch` and `PatchStatus`.
+A non-present acquired result carrying a payload uses `AcquisitionContractMismatch`. A missing bound
+surface names the footprint's record and lower or upper field. A composed source without bounded native
+acquisition uses `AcquisitionUnsupported` with `SourceType`. Source-context wrapping and finding
+projection preserve these identifiers. Ordinary and effective discovery snapshot changes use
+`AcquisitionSnapshotChanged` with `ExpectedSnapshot`, `ActualSnapshot` and `FieldPath`. Effective or
+composed session pin mismatches, scope or reservation discrepancies and inconsistent incidence use
+`AcquisitionContractMismatch`, retaining both snapshot identities or both root/scope hashes when known.
+Null scopes and known incidence without a list use `SchemaValueRequired`, and unsupported discovery or
+unavailable statuses use `SchemaEnumUnsupported`. A composed read without a surface owner uses
+`ReferenceMissing` with `SurfaceId` and `Patch`. Scope-coordinate admission remains in the shared
+surface query. Arithmetic overflow in the resident merge after patch-key admission is an internal
+invariant failure. Ordinary and effective read-key mismatches use `AcquisitionContractMismatch` with `Patch` and
+`ExpectedPatch`. Their surface lookups distinguish undeclared, null and wrong-identity results
+with `ReferenceMissing`, `SchemaValueRequired` and `AuthoredValueMismatch`, retaining `SurfaceId`,
+`FieldPath` and the actual identity when known. Reservation snapshots distinguish
+`WorkCapacityExceeded` (`Budget = "MaxCandidatePatches"`, count and limit) from `OrderInvalid`.
+Later snapshot, root or reservation changes use `AcquisitionSnapshotChanged`, naming the
+changed field and both pins when available. Negative page deltas use `ValueOutsideRange` with a zero
+minimum. Backward observations use `AcquisitionContractMismatch` with current, previous and minimum
+integer page counts. Inconsistent deltas use that reason with reported and observed counts. Ordinary session admission uses the same pin identifiers. A collapsed effective cell uses
+`GeometryNotRepresentable` with its surface, patch and local cell. Ordinary and effective coordinators
+share these reservation, reconciliation and page-observation reasons. Complete resident publication
+distinguishes mismatched patch keys (`AuthoredValueMismatch` with both keys) from undeclared surfaces
+(`ReferenceMissing` with surface and patch). Shared surface-query guards retain their current behavior.
+
+Surface compilation carries `WorkCapacityExceeded` with `Budget = "MaxFacesPerPatch"`, the measured
+`ActualCount`, `Limit` and `Patch`. Physical compilation of paint-only surfaces instead carries
+`SurfacePaintPhysicalCompileUnsupported`. Exact emission failures use `GeometryNotRepresentable`, with
+surface, patch and operation when known. Shared compiled or boundary vertices with different exact
+heights use `GeometryVertexHeightMismatch` and retain `Address`. An unavailable effective patch uses
+`PatchUnavailable` with its key and observed `PatchStatus`. Effective legacy sampling uses
+`SurfaceLegacyRecipeRequired` for an incompatible surface recipe and `SurfaceLegacySampleOutOfCell`
+for an out-of-cell sample, retaining surface, patch and selected `SlotCell` when known.
+`MapFrameLocal.ToFrame` uses `FrameRadiusExceeded` with `Limit` and the checked local planar coordinates.
+A subtraction overflow retains the limit without inventing local coordinates. A nonfinite coordinate
+uses `ValueNonfinite` with the first failed field and value. These refusals retain the patch when available.
+The compiler's local-validation adapter forwards the first concrete finding and the complete ordered
+`Findings` snapshot. Compiler metadata uses `AuthoredValueMismatch` for a different surface identity,
+`SchemaValueRequired` for a missing frame and `SchemaEnumUnsupported` with the refused enum type/value.
+Legacy frame-policy mismatch reuses `SurfaceLegacyRecipeRequired`. A native NoDraw cell uses
+`SurfaceNativeNoDrawUnsupported`, `SurfaceId`, `Patch` and its slot-relative `SlotCell`.
+`MapSurfaceSemantics.SurfaceDigest` distinguishes required metadata, unsupported enum values, wrong
+patch ownership, duplicate patch keys and malformed hashes. The last three preserve the submitted patch
+and the supplied digest. `MapSurfacePatch.Clone` carries `OperationKindUnsupported` with its patch,
+record identity and runtime type for an unsupported record, and `SchemaValueRequired` for a null record.
+
+`MapLegacyExteriorRecipe.CheckFinding` reports the first eligibility rule as
+`LegacyExteriorSpaceRequired`, `LegacyExteriorOpenTopRequired`, `SchemaValueRequired` for a missing
+lower surface, `SurfaceLegacyRecipeRequired` for an incompatible surface or `AuthoredOwnershipMismatch`
+for a different footprint lattice. It retains the footprint, space, surface, patch and first failed field.
+`Check` remains its prose projection. Topology admission also carries metadata, local patch, identity,
+strip-facing, prism and ancestry findings. `MapTopologyReferenceValidator.ValidateFindings` returns the
+complete ordered read-only finding list, and `Validate` remains its unchanged string projection. Record
+lookups distinguish missing targets, wrong anchors and wrong types through `ReferenceMissing`,
+`AuthoredOwnershipMismatch` and `ReferenceKindMismatch`. They retain the source `RecordId` or surface,
+target `RelatedRecordId`, requested `Patch`, actual anchor and actual record type when checked.
+Vertex denominator findings preserve their original scalar reason and limits. Chain findings distinguish
+kind, cardinality, source patch, height kind and vertex surface. Portal findings use
+`SpacePortalOpenTopInvalid`, `GeometryVertexSequenceInvalid` and `SpacePortalMembershipMismatch`,
+with the endpoint or measured count. Vertical-link findings retain forbidden geometry owner identity
+and type, or `SpaceLinkMembershipMismatch` with either endpoint and its actual and expected count.
+Prism versions use `SchemaPayloadVersionUnsupported`, a missing Room uses `ReferenceMissing`, a
+non-Room uses `ReferenceKindMismatch`, and parent disagreement uses `SpacePrismParentMismatch` with
+`RelatedRecordId`. Room prism counts use `SpaceRoomOccupancyInvalid` with actual and expected counts,
+and ancestry cycles use `SpaceParentCycle` with `SpaceId`. The source-copy and finding projection preserve
+`RelatedRecordId`. Space listings retain their owner, referenced portal or link, and the actual portal
+endpoint when resolved. Alias peer failures use `SpaceAliasPeerInvalid` and the first incompatible
+field. Room footprints use `SpaceRoomOccupancyInvalid` with their footprint identity, and legacy recipe
+findings keep their original reason, identifiers and display suffix when forwarded through a footprint.
+Bound checks distinguish required or missing surfaces, unsupported kinds, incompatible bound roles,
+conflicting opening fields and invalid open tops. Their `FieldPath` names the first failing lower or
+upper field. Slot checks retain the patch, cell index and value. They distinguish cardinality, duplicate
+entries, backwards ordering, numerical range, patch coordinates and openings over present cells.
+Count controls accept exactly 1 and 4096 slots. `PreviousInteger` is set only for an actual predecessor.
+The topology producer is complete. Whole-document and native-bound adapters retain its typed findings.
+Opening compilation carries the actual ownership, cardinality, slot range, patch address, duplicate or
+presence rule, retaining the opening identity and selected cell. Its exact geometry failures retain the
+opening and patch. Seam validation exposes ordered read-only findings through `ValidateFindings` and
+`ValidateCornerDependencyFindings`, beside the unchanged public string results. Edge and corner findings preserve the exact lower reason, both the
+dependent `Patch` and requested owner `ExpectedPatch` when relevant, and the offending address.
+A mismatching pair surface reuses `AuthoredValueMismatch`, with the submitted surface and declared edge
+patch. Pair alignment uses `SurfaceSeamPositionMismatch`, undeclared vertices use
+`SurfaceSeamVertexUndeclared`, height disagreement uses `GeometryVertexHeightMismatch`, and incomplete
+edge coverage uses `GeometryVertexSequenceInvalid` with actual and expected vertex counts. These findings
+retain the seam record and the relevant pair index or address. Collapsed or diagonal source edges use
+`SurfaceSeamEdgeInvalid`, and edge surface mismatches reuse `AuthoredValueMismatch`.
+Support resource read and write size checks carry `WorkCapacityExceeded`, `Budget = "MaxPayloadBytes"`,
+`ActualByteCount` and `Limit`. Surface identities distinguish required values and duplicates. Defined role
+or presence values outside native support floors use `SurfaceSupportRoleInvalid`, while undefined values
+use `SchemaEnumUnsupported` with their enum type and value. Both retain the surface index and failed field.
+Support patch checks preserve the submitted `Patch` and required `ExpectedPatch`, distinguishing null
+payloads, mismatching keys and undeclared surfaces through their concrete schema, authored-value and
+reference reasons. Wall-strip guards retain `RecordId`, the failed field or vertex index and the actual
+count where measured. Lower-chain cardinality accepts 2..4097, unequal chain lengths use
+`SchemaArrayLengthMismatch`, ordered XZ disagreement uses `GeometryVertexSequenceInvalid`, and an
+inverted height uses `SurfaceWallHeightInverted`. Exact arithmetic or normal failures carry
+`GeometryNotRepresentable` and their `Operation`, with the segment `Index` for a normal failure.
+Partial paint admission uses `AcquisitionIncomplete` with `AcquireStatus` and the failed status or role
+field. Target checks use `ReferenceMissing` for an absent target and `SurfacePaintTargetInvalid` for
+a paint-only target. Misplaced nonzero priority uses `SurfacePaintPriorityMisplaced`, `SurfaceId`,
+`FieldPath` and `ActualInteger`. Equal-priority material conflicts carry `SurfacePaintPriorityConflict`,
+both `SurfaceId` and `OtherSurfaceId`, and their priority in `ActualInteger`. Open or nonmanifold
+material boundaries carry `SurfacePaintBoundaryInvalid` and the paint surface.
+Lattice-unit converters throw `MapSurfaceJsonException`, retaining the `JsonException` base contract.
+Schema refusals carry the relative `FieldPath`. Lower scalar refusals retain their original reason and
+unit or numeric identifiers, including when document readers add source context.
+Patch-key JSON uses the same carrier, preserving the first failed field, the surface identity when
+already read and the exact `ActualText` for `SchemaInt64Malformed` slot strings. Both signed int64
+endpoints remain valid canonical strings. Whole-face paint admission retains its paint `SurfaceId`
+and physical `OtherSurfaceId`, with the failed role or target field. Undefined roles use
+`SchemaEnumUnsupported`. Material or presence crossings use `SurfacePaintCrossesPhysicalFace`,
+the target `Patch`, face `Index` and `FieldPath` `Material` or `Presence`, without changing either
+input. Exact override overflow uses `GeometryNotRepresentable` and `Operation = "paint override"`.
+
+Structural document findings retain `FieldPath`, `EntityId`, `SubjectKind` and item `Index` for required
+and duplicate names, and the referenced `LayerId` for missing companion hosts. Numeric rules carry
+their finite actual values and limits through `ValueOutsideRange`, while nonfinite failures use
+`ValueNonfinite`. Root format admission uses `DocumentVersionUnsupported`, `ActualVersion` and
+`SupportedVersions`.
+Per-content findings retain the entity identity and item path. Unknown terrain discriminators use
+`DocumentTerrainFeatureUnknown` with their captured `ActualText`. Layer filters retain the referenced
+`LayerId`. Sculpt extent findings carry `SculptTile`, first escaping axis, actual extent and
+document limits. Tile-size findings retain their positive or sculpt-span minimum, and native misplaced
+paint priority uses `SurfacePaintPriorityMisplaced` with the surface and submitted priority.
+
 Native metadata adds typed findings beside its unchanged string diagnostics. Compound findings select
 the first failing predicate branch. Missing asset-reference and indoor-span values use `SchemaValueRequired`, nonfinite
 bounds or support-search values use `ValueNonfinite`, finite unordered bounds use `BoundsInvalid`, and
@@ -12720,17 +13305,30 @@ where known. `IdentityDuplicate` distinguishes repeated identities from `Numeric
 An unsupported resolver payload uses `SchemaPayloadVersionUnsupported`, with `ActualVersion` and an
 owned read-only `SupportedVersions` snapshot containing 1. Unsupported resolver versions keep
 `ResolverContractMismatch`. Positive-only version checks carry `MinimumInteger` 1 without claiming a
-closed supported-version set. Native metadata still has three prose-only rules. Its aggregate throwing
-adapters, including document validation and numeric reservation adapters, retain their existing
-constructors until the remaining producer conversion.
+closed supported-version set. A missing native frame uses `SchemaValueRequired`, while undefined role,
+presence-policy and support-binding kinds use `SchemaEnumUnsupported`, `EnumType` and `ActualInteger`.
+
+`MapDocumentValidator.ValidateFindings` returns the complete ordered read-only snapshot behind the
+existing string API. Whole-document and tiled load/save, native-bound validation and marker-adoption
+adapters forward the first finding as `Reason` and retain the full `Findings` snapshot. Numeric
+reservation and allocation forward their numeric findings the same way. Supplied nonpositive numeric
+IDs use `ValueOutsideRange` with `NumericId`, actual value and minimum 1. Duplicate supplied IDs use
+`IdentityDuplicate`. Effective prefab expansion and foliage generation context forward the first
+numeric finding and the complete ordered snapshot.
+
+Tile ownership failures use `DocumentTileOwnershipMismatch`, retaining source document `Tile`, item
+identity and path, checked positions or `SculptTile`, `SourceName` and `Path`. The separate `SculptTile`
+identifier preserves sculpt coordinates through document-tile wrappers without replacing the source tile.
+Sculpt ownership positions widen the checked float coordinates into `PositionX` and `PositionZ`, so
+fractional sculpt cell sizes retain the ownership check's tile-boundary rounding.
 
 Identity registry checks preserve `MapDocumentException` and distinguish `IdentityDuplicate`,
 `IdentityReserved`, `AuthoredOwnershipMismatch`, `ReferenceMissing`, `SchemaValueRequired` and
 `DigestMismatch`. `EntityId` and `WorldId` identify the world subject, `ChildKind` gives its typed
 namespace, `Child` is the prefab-local key and `InstanceId` is the known source instance. Equal world ID
 text in different child kinds is allowed. Loaded and stored registry refusals retain the same reason
-and relevant identifiers. The surrounding aggregate validators keep their existing contracts until
-all of their producing rules carry typed findings.
+and relevant identifiers. Aggregate validators expose the ordered typed findings beside their unchanged
+prose projection, and throwing adapters preserve the first finding's reason and identifiers.
 
 For attachments, `PlacementId` names the standalone owner. A missing transfer uses `ReferenceMissing`,
 a missing anchor or descriptor pin uses `SchemaValueRequired`, and a mismatched existing transfer,
@@ -12746,7 +13344,9 @@ Standalone interior admission carries `RecordId`, `SpaceId` and `Patch`, with th
 on `AuthoredOwnershipMismatch`. A missing authored anchor uses `ReferenceMissing`. Runtime scatter and
 companion lookup also use `ReferenceMissing`, with `DocumentId`, `LayerId`, `EntityId` and `SubjectKind`
 of `scatter layer` or `companion layer`. Foliage edit preflight without a verified closure uses
-`AssetClosureRequired` and `DocumentId`. Editor transaction admission retains its current contract.
+`AssetClosureRequired` and `DocumentId`. Editor transaction adapters preserve the first producer finding's
+reason and identifiers and its complete ordered `Findings` snapshot. Native staging and snapshots use
+`CompleteDocumentRequired` with `DocumentId` and `Operation` for a partial document.
 
 
 Direct prefab asset and local light checks retain `MapDocumentException`. Inspect `SchemaEnumUnsupported`
@@ -12775,11 +13375,11 @@ refusals carry `InstanceId`, `Child` and known `WorldId`, plus `ActualCount` and
 a transfer count is checked. An incompatible attachment child also carries its typed `AttachmentKind`.
 
 Internal prefab validation collectors preserve typed findings alongside the unchanged string results.
-Each finding copies the full identifier context, including owned collection snapshots. Untyped failures
-keep their prose. Missing resolver identity, unsupported payload and incompatible resolver/recipe
-branches retain their own reasons. Precise poses retain their first failed component and value, and
-malformed digests retain `ActualHash`. Aggregate document adapters still report prose until every
-producing rule has typed findings.
+Each finding copies the full identifier context, including owned collection snapshots. An unclassified
+consumer failure uses `PrefabStateUnreadable` and retains its prose. Missing resolver identity, unsupported
+payload and incompatible resolver/recipe branches retain their own reasons. Precise poses retain their first failed component and value, and
+malformed digests retain `ActualHash`. Aggregate document adapters forward the first typed finding
+and retain the full ordered `Findings` snapshot.
 
 In prefab edit preparation, `PrefabInstanceMissing` identifies an absent or removed `InstanceId`,
 while `IdentityReserved` identifies a placement reusing a live or retained instance ID.
@@ -12837,8 +13437,9 @@ kind as separate identifiers. Equal text across distinct namespaces is allowed. 
 item uses `SchemaValueRequired`, with the known role and index. Numeric bindings require at least 1
 when present, reporting `ValueOutsideRange`, `NumericId` and `MinimumInteger`. A positive numeric
 identity on another child kind uses `AuthoredReferenceKindInvalid`. The package README lists the
-identifiers for each key shape. The aggregate document adapter, bounded collection guards and unsupported
-child arm still use message-only constructors, so their `Reason` is null.
+identifiers for each key shape. Every engine construction supplies a reason. Aggregate document adapters
+forward the first typed finding and retain the full ordered `Findings` snapshot. Consumer-built instances
+can still use the public message-only constructors and leave `Reason` null.
 
 **Whole authored surface identity.** Scheme 2, new in 20.30.0, is the resolver-2 whole-document identity. Resolver-2
 documents use `MapAuthoredIdentityV2` from `KhaozEngine.MapDoc.Identity`, with an explicitly verified
@@ -12862,7 +13463,15 @@ mismatches refuse with `Corrupt`. A stored surface aggregate mismatch uses `Dige
 and computed `ActualHash`. A changed manifest requires a new `Open`, never an implicit replacement.
 It also reads the tile files the pinned generation names, one at a time by their pinned names, and checks
 each tile's parsed content against its pinned tile hash. A removed tile file refuses with `Missing` and
-altered content with `Corrupt`.
+altered content with `Corrupt`. These are the typed `PatchStatus` values. Missing pinned content carries
+`PinnedContentUnavailable`, known `Tile` or `Patch`, storage `SubjectKind` and `ExpectedHash`. A known
+inner document refusal keeps its concrete reason and identifiers through the common copy operation.
+Tile and payload semantic mismatches use `DigestMismatch` with both hashes. Mismatched index metadata
+uses `AuthoredValueMismatch` with its failed `FieldPath`. `MapPatchRead.Finding` exposes a known payload
+failure beside the unchanged read status and detail. Payload reads and stored identity attach the known
+patch when a schema refusal lacks one, preserving existing identifiers. Unsupported pinned tile schemes use
+`DocumentHashSchemeUnsupported` with `ActualVersion`, `SupportedVersions` and `FieldPath` `schemeVersion`.
+Stored identity's foliage validator forwards the first concrete finding and the complete ordered snapshot.
 
 The `kemap/native-authored/2` token covers exactly the root digest, the authored content digest, ordered
 patch keys and semantic digests, the effective resource policy and query policy 2, the closure hash,
@@ -12882,7 +13491,7 @@ coverage, read and identity witnesses. Stored sources and `MapDocumentSurfaceSou
 support it. Custom producers must implement
 `IMapSurfaceAcquisitionSource` and open one pinned session across discovery, record expansion and bound
 reads. A source implementing only `IMapSurfaceSource` refuses with
-`surface source does not support bounded scoped acquisition` before legacy callbacks run.
+`AcquisitionUnsupported` with `SourceType` before legacy callbacks run.
 
 Sessions report ordered `ReservedPatchKeys` before work for every discovery or explicitly read key,
 including known-empty and unavailable keys, against one unique-key budget. Returned keys, reservations,
@@ -12965,6 +13574,85 @@ What it produces:
   Navigation captures include a `MediumDigest` where exact water geometry meets the capture, and
   `MapNativeInvalidation.Medium` invalidates affected water residency and capture tiles.
 
+Navigation policy and seam admission uses `MapNavigationArgumentException`, catchable as `ArgumentException`,
+with concrete `Reason`, nested `FieldPath` and the original `ParamName`. Nonfinite and negative margins use
+`ValueNonfinite` and `ValueOutsideRange`, with zero as the inclusive minimum. Blank profile or controller IDs
+use `SchemaValueRequired` with `ActualText`. Tile Y disagreement uses `AuthoredValueMismatch`, `Tile`,
+`ActualNumber` and `ExpectedNumber`. Duplicate coordinates use `IdentityDuplicate`. Disjoint neighbouring
+tile edges use `NavigationTilesNotAdjacent`, submitted `Tile` and preceding `OtherTile`.
+
+World builds over partial documents use `CompleteDocumentRequired`, `DocumentId` and `Operation` `BuildWorld`.
+Terrain compilation uses `AcquisitionIncomplete` with `AcquireStatus` and `Operation` `CompileTerrainPhysics`,
+or `WorkCapacityExceeded` with `Budget` `MaxTrianglesPerChunk`, `Patch`, `SlotCell`, cell coordinates,
+`ActualCount` and inclusive `Limit`. Missing terrain declarations and payloads use `ReferenceMissing` or
+`PatchUnavailable`, with `SurfaceId` and `Patch`. Geometry overflow retains the known patch or wall record
+under `GeometryNotRepresentable`. Repeated chunk IDs use `IdentityDuplicate`, `EntityId` and `SubjectKind`
+`physics chunk`. Wall-chain refusals preserve a known producer finding. Without one they use
+`PhysicsWallChainUnresolved`, chain `RecordId`, anchor `Patch`, and known strip `RelatedRecordId` and `PatchStatus`.
+Chunk-policy limits use `MapWorldBuildRangeException`, catchable as `ArgumentOutOfRangeException`, with
+`ValueOutsideRange`, original `ParamName` and `ActualValue`, nested `FieldPath`, submitted `ActualInteger`,
+and inclusive integer limits 64 and 1024.
+
+World-build range admission also uses that family for `BuilderVersion`, with inclusive minimum 1 and no
+upper bound, and `Chunks.MaxTrianglesPerChunk`. A missing consumer policy identity uses
+`MapWorldBuildArgumentException`, catchable as `ArgumentException`, with `SchemaValueRequired`,
+`FieldPath` `ConsumerPolicyIdentity`, submitted `ActualText` and original `ParamName` `options`.
+Repeated static owners use `IdentityDuplicate`, `OwnerId` and `SubjectKind` `static`.
+Water compilation adapters forward the producer's typed finding. A consumer-built incomplete body without
+one uses `AcquisitionIncomplete`, `BodyId`, `FieldPath` `Status` and status `ActualText`. A static colliding
+with a water owner uses `PhysicsWaterOwnerConflict`, `OwnerId` and `BodyId`. Missing body bounds and
+occupied fragment bounds use `PhysicsWaterBoundsMissing` and `PhysicsWaterFragmentBoundsMissing`,
+both carrying `BodyId`.
+
+Registration origin refusals use `PhysicsRegistrationOriginInvalid`, `FieldPath` `Origin`, all three position
+components and the inclusive absolute coordinate `Limit`. A native world's legacy-context refusal uses
+`PhysicsLegacyMoveContextUnsupported` and `ResolverVersion`. Storage membership budgets use
+`WorkCapacityExceeded`, `Budget` `MaxStorageTiles`, `ActualCount`, inclusive `Limit` and the known `OwnerId`.
+Edit-bound refusals use `ValueNonfinite` or `ValueOutsideRange`, failed endpoint `FieldPath`, `ActualNumber`
+and inclusive world-coordinate limits. Storage interval refusals use `MapNavigationArgumentException`,
+`ValueNonfinite` or `BoundsInvalid`, axis `FieldPath` and both submitted numeric endpoints.
+Navigation partition and interaction envelope capacity use `MapDocumentException.WorkCapacityExceeded`,
+`Budget`, measured `ActualCount` and inclusive `Limit`. Envelopes also name `OwnerId` and binary64 `ActualNumber`,
+leaving `ActualCount` null when it cannot fit in a signed 64-bit value. Navigation index refusals use
+`PhysicsNavIndexOutOfRange`, `Axis`, `FirstIndex`, `LastIndex`, `AxisOrigin`, inclusive signed index limits
+in `MinimumInteger` and `MaximumInteger`, and known source interval endpoints in `MinimumNumber` and `MaximumNumber`.
+Short portal intervals retain `RecordId`, `ActualCount` and minimum two through `GeometryVertexSequenceInvalid`.
+Missing opening geometry uses `PatchUnavailable`, `RecordId`, `Patch` and `PatchStatus`.
+Navigation surface lookup uses `ReferenceMissing` with `SurfaceId`. A missing or wrong-kind record uses
+`PatchUnavailable` or `ReferenceKindMismatch` with `RecordId`, `Patch`, `PatchStatus`, `ExpectedRecordType`
+and a known `RecordType`. Placement geometry uses `PhysicsInteractionSourceMissing` with `PlacementId`
+and `AssetId`, or `PhysicsShapeUnsupported` with `ShapeType` for unsupported shape bounds. Invalid combined
+scale uses `ValueNonfinite` or `ValueOutsideRange`, with `PlacementId`, `FieldPath`, `ActualNumber` and exclusive
+zero `MinimumNumber`. Nonfinite authored position or yaw identifies the actual failing component.
+Empty shape bounds use `BoundsInvalid`, while a nonfinite endpoint uses `ValueNonfinite`, `FieldPath` and
+`ActualNumber`. Independent coincident floors reuse `SpaceSupportCoincident`, with `SurfaceId` and
+`OtherSurfaceId`, or collider `PlacementId` and support `SurfaceId`.
+Stance spacing, capsule and proposal-cap refusals use `MapStanceRangeException`, preserving the
+`ArgumentOutOfRangeException` catch contract, `ParamName` and `ActualValue`. It carries `Reason`, nested
+`FieldPath`, `ActualNumber` and the field's `MinimumNumber`. Zero is exclusive for spacing and radius,
+while half height accepts the radius. The proposal cap uses `WorkCapacityExceeded`, `Budget`, inclusive `Limit`
+and the known proposed `ActualCount` through the failing outline. A missing legacy stance callback or nonfinite
+height uses `MapStanceException`, catchable as `InvalidOperationException`, with `SupportLegacyHeightRequired`
+or `ValueNonfinite`, callback `FieldPath`, and the known `ResolverVersion`, `PlacementId` or `ActualNumber`.
+Reach and band checks use `MapQueryRangeException`, also catchable as `ArgumentOutOfRangeException`, retaining
+the original `ParamName` and `ActualValue`. `ValueNonfinite` or `ValueOutsideRange` identifies `Range` or
+`Tolerance`, `ActualNumber` and inclusive zero `MinimumNumber`. Nonfinite band endpoints use `Band.MinY` or
+`Band.MaxY`. Finite inversion uses `BoundsInvalid` and `Band`, with submitted endpoints in `MinimumNumber`
+and `MaximumNumber`. Equal endpoints are accepted. Nonfinite seats use `MapStanceException.ValueNonfinite`
+with `PlacementId`, the `SeatedFeet` component and `ActualNumber`. Unsupported stance footprints use
+`MapStanceUnsupportedException.PhysicsShapeUnsupported`, catchable as `NotSupportedException`, with `ShapeType`.
+Grid refusals use `PhysicsGridAlignmentInvalid` with failed `FieldPath` and `StorageTileSize` for an alignment
+or world-size mismatch. World index coverage also carries `GridKind`, `Axis`, `AxisOrigin`, `StorageTiles`,
+`FirstIndex`, `LastIndex`, submitted source bounds and inclusive signed index limits. Storage-tile lookup uses
+`PhysicsGridIndexOutOfRange` with `TileIndex` and the same grid context. It retains a computed `ActualInteger`
+when available. An origin outside safe offset arithmetic instead identifies `OriginTile`, the origin in
+storage tiles through `ActualNumber` and its inclusive safe bounds, leaving `ActualInteger` null.
+Nonfinite grid fields use `ValueNonfinite`. Nonpositive grid sizes or block counts use `ValueOutsideRange`
+with the actual nested field, submitted value and inclusive minimum 1.
+Backend pose or error-bound conversion uses `GeometryNotRepresentable`, `Operation`, failed `FieldPath` and
+binary64 `ActualNumber`. An unsupported envelope sweep uses `PhysicsSweepShapeUnsupported`, `PlacementId`
+and `ShapeType`.
+
 **Ownership boundary.** The package adds no step limit, ledge rule or support model. Ground support, seating, steps
 and navigation column sampling stay with the #438 contact controller, which will stand on the statics a native world
 installs. A resolver 1 world keeps analytic ground behind `LegacySupportHeight` and installs no terrain statics.
@@ -13007,7 +13695,12 @@ a compound child orientation that is not a unit quaternion. `PropCollisionFormat
 too, so a writer never produces such a payload.
 
 **Editing colliders.** ke-mapedit's `NativeCollisionService` measures a placement's mesh top against its collider
-and resizes box colliders through content-addressed resources written by `MapAssetFileWriter`. See the
+and resizes box colliders through content-addressed resources written by `MapAssetFileWriter`.
+The `MapDocumentException.Reason` distinguishes missing colliders, shared collider resources, unsupported shapes,
+tilted boxes and published-plan mismatches. Identifiers retain `AssetId`, `ResourceId`, `OtherAssetId`, `ShapeType`,
+child `Index` or expected and actual hashes where the guard knows them. Requested and computed heights distinguish
+`ValueNonfinite`, `BoundsInvalid` and `ValueOutsideRange`, with the first failed field and actual value.
+Refused edits preserve document content and history. See the
 [ke-mapedit README](../KhaozEngine.MapEdit.Tool/README.md#native-colliders).
 
 ---
@@ -14551,6 +15244,31 @@ select/place/draw/bake tools from the editor building blocks above, and undo/red
 umbrella (the `Server.Admin` precedent), so add it explicitly to a game head that wants to edit its zone
 documents.
 
+Command identity admission uses `MapEditorCommandException`, catchable as `InvalidOperationException`, with
+`MapDocumentRefusal.ReferenceMissing`, `IdentityDuplicate` or `EditorScatterLayerReferenced`. It carries
+`DocumentId`, `SubjectKind`, `EntityId`, collection `FieldPath`, known colliding `Index` and `LayerId`.
+Referenced scatter removal also carries owned read-only `SourceIds`: companion names, exclusion index paths
+and scatter-override index paths in their original document order. A refused edit leaves document content
+and undo/redo history unchanged, and the status strip keeps its existing text.
+Freeze-zone host lookup uses `MapDocumentException.ReferenceMissing`, companion `LayerId`, missing host
+`EntityId`, `DocumentId` and `FieldPath` `CompanionLayers.HostLayer`. A `MarkerAssets` callback returning no
+closure uses `AssetClosureRequired`, `DocumentId` and callback `FieldPath` `MarkerAssets`.
+Callback failures use `EditorMarkerAssetsFailed` with the same callback and document identifiers and retain the
+original `InnerException`. Native snapshot and transaction admission use `CompleteDocumentRequired` with
+`DocumentId` and `Operation`, or `AssetClosureRequired` with the known `CommandType` and `SubjectKind`.
+Unsupported native commands use `OperationKindUnsupported` and `CommandType`. Validator adapters preserve the
+first concrete reason and identifiers and the complete ordered `Findings`, while retaining their diagnostic text.
+Native legacy spawn writes outside their admitted adoption transition use `EditorLegacySpawnEditProtected`,
+`DocumentId`, `ResolverVersion`, `Operation` and owned `SourceIds` in spawn then player-spawn order.
+Detached prefab work uses `EditorPrefabSessionCancelled` with `AssetId` and `Operation`, or `ToolAssetRootRequired`
+when the verified closure has no manifest root. A retained reference to a removed child uses
+`EditorRetainedReferenceRemoved` with `RecordId`, target `TargetId`, target `ChildKind` and reference `FieldPath`.
+The publication fallback `WaterContainmentUnverified` applies only when the containment report has no concrete
+finding. These refusals leave live document content and undo/redo history unchanged.
+Native placement lookups use `ReferenceMissing`. Their identity guard checks `SchemaValueRequired` before
+`IdentityDuplicate`, carrying `DocumentId`, `EntityId`, `SubjectKind` `placement` and `FieldPath` `Placements.Id`.
+Viewport companion construction uses the same missing-host identifiers as freeze-zone admission.
+
 **Wiring.** Fill `MapEditorOptions` and push the scene directly onto your `SceneManager`, the same way
 every other room/scene gets pushed:
 
@@ -15070,13 +15788,67 @@ the manifest paths it was opened with, a dirty flag, and a cached `TerrainField`
 world-affecting mutation (terrain features, terrain globals, exclusions, scatter overrides, bake). `map_open` (or
 `map_create`) replaces whatever was open, with no dirty guard, since the git diff is the safety net and
 `map_summary` reports the dirty flag. Every mutation validates before it lands
-(`MapDocumentValidator`, then a schema check on save) and reverts with the validation errors folded
-into the thrown message on failure, so the in-session document is never left invalid.
+(`MapDocumentValidator`, then a schema check on save) and reverts on failure, so the in-session document is never left invalid. The shared mutation adapters and
+`TerrainEdit`, scatter override edits, bake, freeze and sculpt operations throw `MapMutationException`, preserving the
+original `InvalidOperationException` catch contract.
+`Reason` is the first producer reason and `Findings` retains the complete ordered immutable snapshot and typed
+context. Direct region, scatter-layer, companion-layer and duplicate-source lookups use `ReferenceMissing`
+with the subject identity. Missing edited region, exclusion and scatter override shapes use
+`SchemaValueRequired` with `FieldPath` and the known identity or index. A feature without a duplicate
+translation uses `ToolFeatureTranslationUnsupported`, retaining `Index`, `FeatureType` and `Operation`.
+
+An empty `terrain_edit` or `scatter_rule_edit` uses `MapMutationArgumentException` and `ToolMutationEmpty`,
+retaining `Operation`, the known layer and rule index, and the original null `ParamName`. Unknown duplicate
+kinds and biome names use `SchemaEnumUnsupported`, with `SubmittedText`, owned read-only `AcceptedValues`,
+`EnumType` for biomes and the original `ParamName`. Empty scatter kind IDs use `SchemaValueRequired`, while
+unparseable weights use `SchemaMalformed`, both carrying the input `Index`, `FieldPath` and `SubmittedText`.
+Unknown sculpt brushes retain the same schema reason, the submitted text, `SculptBrush` enum type and every
+accepted brush name. Partial foliage, marker and sculpt rectangles share `ToolRectangleIncomplete` with their actual
+field path and refused `Operation`. Opening a parent-dependent prefab without a parent reuses `AuthoredValueRequired`, carrying its
+resource and asset identity. Local prefab work without an opened asset uses `ToolPrefabSessionRequired` and
+`Operation`. Ambiguous extraction parents use `ToolExtractionParentAmbiguous` with owned read-only `SpaceIds`.
+Document deserialization also adds the source name to an already-classified nested codec refusal without changing
+its text or typed context, retaining the original exception as the cause.
+Adding a standalone interior to a space that already owns a prism reuses `SpaceRoomOccupancyInvalid`, with
+the requested `RecordId`, `SpaceId` and `DocumentId`. Reading or removing a missing water body uses
+`ReferenceMissing`, the requested `EntityId` and `SubjectKind` `water body`. Reading also retains `DocumentId`,
+including when the document has no water section.
+A null decoded feature or shape uses `MapToolJsonException`,
+`SchemaValueRequired`, root `FieldPath` and `SubjectKind`, still catchable through `JsonException`.
+Foliage dry runs distinguish unsupported edit kinds (`FoliagePreviewEditUnsupported`, `EditType`) from new
+layers (`FoliagePreviewLayerNew`, `LayerId`). Missing or non-object foliage JSON parameters use
+`SchemaValueRequired` or `SchemaObjectRequired` with the parameter's `FieldPath`. The foliage binding converter
+keeps the existing `MapFoliageJsonException` producer family. MCP inner exceptions keep these typed reasons
+reachable without changing transport text.
+
+Session work without a document uses `MapSessionException`, `ToolDocumentRequired` and the refused `Operation`.
+Conversion onto a tiled target uses `DocumentStorageFormConflict`, `Path`, actual and expected document forms.
+Retiling partial content uses `CompleteDocumentRequired`, `DocumentId`, `Path` and `Operation` `Retile`.
+
+Window admission uses `MapSessionException`, still catchable as `InvalidOperationException`, with
+`ToolTiledSessionRequired` or `ToolUnsavedChanges`. It carries the known `DocumentId`, source `Path`,
+`Operation`, failing `FieldPath`, current `DocumentForm` and required `ExpectedDocumentForm` for tiled admission.
+Native publication uses `MapDocumentException` with `ToolNativeDocumentRequired`, `ToolStagedMutationRequired`,
+`ToolNestedMutationUnsupported` or `ToolPublishedClosureMismatch`. The mismatch retains supplied `ExpectedHash`
+and staged `ActualHash`. Binding guards distinguish the missing native document, verified closure and storage
+path in predicate order. Publication paths distinguish `ToolPublicationPathInvalid` from `AssetStoragePathReserved`
+and retain the submitted `Path`, `StoragePath` and form. Resource writers use `ToolImmutableResourceConflict`,
+`ToolResourceWriteFailed` or `ToolManifestSerializationFailed` with the known path, resource identity, digests
+and original cause. Refusals preserve live content and session history. MCP adapters keep their text and expose
+the original exception through `McpException.InnerException`, with an existing `McpException` passed through unchanged.
+Manifest serialization preserves a known typed JSON refusal's own reason and identifiers before using the
+ordinary `ToolManifestSerializationFailed` fallback.
 
 **Native lifecycle.** A document with `ResolverIdentity` is verified completely by
 `NativeDocumentService.ValidateComplete(document, source, options)` at open, window moves, save, validate,
 summary, conversion and retile. Its resource root is the monolithic file's directory or the tiled directory,
-anchored as an absolute path at open. Resolver identity `(1, 1)` uses the unchanged analytic `SessionOptions`
+anchored as an absolute path at open.
+Partial native verification reuses `CompleteDocumentRequired` with the document, path, resource root and
+`Operation` `Verify`. Changed or missing opened storage uses `ToolStorageFormChanged` and actual and expected
+forms. A parentless staging target uses `ToolParentDirectoryMissing` and `Path`. Prefab publication requires a
+manifest root (`ToolAssetRootRequired`) and verified immutable bytes (`ToolImmutableResourceConflict`).
+Resource write failures retain `ToolResourceWriteFailed`, their path, resource identity and original cause.
+A known lower refusal keeps its own reason and identifiers when publication adds context. Resolver identity `(1, 1)` uses the unchanged analytic `SessionOptions`
 (`khaozengine.mapedit.analytic-support`, builder version 1, options hash
 `mapruntime-buildfield-default-registry-v1`). The resolver identity `(1, 2)`, new in 20.30.0, uses `SessionOptionsV2`
 (`khaozengine.mapedit.authored-support`, builder version 1, options hash
@@ -15138,6 +15910,8 @@ enabled count, configured roles and selected start IDs on a complete resolver-2 
 resolved markers in ordinal ID order and accepts an optional half-open rectangle. `placements_in_rect` reads actual
 native placement resolution and reports seated support heights. It refuses an unadopted legacy spawn unless its
 configured Surface owner returns Supported, naming `spawns_adopt` and `marker_set` as the remedies.
+`ToolLegacySpawnSurfaceRequired` identifies an absent caller choice. `ToolLegacySpawnSupportUnresolved` carries
+`SurfaceId`, ordered `SourceIds` and ordered `Findings` retaining each source kind and `SupportStatus`.
 
 On native documents, legacy `spawn_*` and `player_spawn_*` mutations refuse and name the marker verbs. The
 `prefab_place` verb accepts `overridesJson` so repeated marker names can be replaced atomically. Query vectors use
@@ -15177,6 +15951,15 @@ token and publishes alone. A new-layer dry run refuses because no differential i
 sample rectangle and `previewChunkJson`. Omitted layer lists detached metadata in authored order. A named layer returns
 copied bytes and optional CPU preview, including every matrix/quaternion component. See the
 [wire contract](../KhaozEngine.MapEdit.Tool/README.md#foliage) for results and refusal semantics.
+Density or preview queries without a layer use `FoliageQueryLayerRequired`. Unknown layers reuse
+`ReferenceMissing`, and missing advertised density uses `FoliageChunkUnavailable` with `LayerId` and
+`FoliageChunk`. Paint targets outside the byte domain reuse `ValueOutsideRange`, retaining `ActualInteger`
+and inclusive limits 0 and 255.
+
+Render capture failures use `MapRenderException`, preserving `InvalidOperationException` catches, `Backend`
+and the original `InnerException`. A known document reason and its typed `Finding` survive the wrapper.
+Other capture failures use `RenderFailed`. A zero view direction uses `MapRenderArgumentException` with
+`RenderLookDirectionZero`, `Eye` and `Target`, before GPU work. MCP retains these exceptions as its inner cause.
 
 `sculpt_apply(brush, x, z, radius, strength, dt, targetHeight?)` applies one terrain-sculpt brush dab
 (`raise`/`lower`/`smooth`/`flatten`/`set_height`) at a world point as a single `TerrainSculptStrokeCommand`
@@ -19873,7 +20656,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="23.3.0" />
+<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="23.4.0" />
 ```
 
 ```csharp
@@ -19909,7 +20692,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="23.3.0" />
+<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="23.4.0" />
 ```
 
 ```csharp
@@ -20154,7 +20937,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Metal" Version="23.3.0" />
+<PackageReference Include="KhaozEngine.Gpu.Metal" Version="23.4.0" />
 ```
 
 ```csharp
@@ -24870,7 +25653,7 @@ socket a shipping build does not contain. It is in NO umbrella, and a game head 
 
 ```xml
 <ItemGroup Condition="'$(Configuration)' == 'Debug'">
-  <PackageReference Include="KhaozEngine.Automation" Version="23.3.0" />
+  <PackageReference Include="KhaozEngine.Automation" Version="23.4.0" />
 </ItemGroup>
 ```
 

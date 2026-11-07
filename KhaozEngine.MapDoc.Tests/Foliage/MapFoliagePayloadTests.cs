@@ -81,25 +81,28 @@ public sealed class MapFoliagePayloadTests
         Assert.Equal(text, MapDocumentFile.SaveText(tiled.Document));
     }
 
-    public static TheoryData<string, string?> PayloadCases()
+    public static TheoryData<string, MapDocumentRefusal?, string?> PayloadCases()
     {
-        var data = new TheoryData<string, string?>();
-        foreach (var (variant, fragment) in FoliageFixtures.PayloadCases) data.Add(variant, fragment);
+        var data = new TheoryData<string, MapDocumentRefusal?, string?>();
+        foreach (var (variant, reason, field) in FoliageFixtures.PayloadCases) data.Add(variant, reason, field);
         return data;
     }
 
     [Theory]
     [MemberData(nameof(PayloadCases))]
-    public void PayloadClosedSchema_RefusesMalformedAndFutureMembers(string variant, string? fragment)
+    public void PayloadClosedSchema_RefusesMalformedAndFutureMembers(string variant, MapDocumentRefusal? reason, string? field)
     {
         string text = FoliageFixtures.Malformed(variant);
-        if (fragment is null)
+        if (reason is null)
         {
             Assert.NotNull(MapDocumentFile.LoadText(text).Foliage);
             return;
         }
         var error = Assert.Throws<MapDocumentException>(() => MapDocumentFile.LoadText(text));
-        Assert.Contains(fragment, error.Message, StringComparison.Ordinal);
+        Assert.Equal(reason, error.Reason);
+        Assert.Equal(field, error.FieldPath);
+        FoliageFixtures.AssertPayloadIdentifiers(variant, error);
+        Assert.NotNull(MapDocumentFile.LoadText(FoliageFixtures.Malformed("control")).Foliage);
     }
 
     [Fact]
@@ -116,7 +119,10 @@ public sealed class MapFoliagePayloadTests
         JsonElement foliage = json.RootElement.GetProperty("foliage");
         int size = JsonMarshal.GetRawUtf8Value(foliage).Length;
         Assert.Single(MapFoliageJson.Read(foliage, size).Layers);
-        Assert.Throws<MapDocumentException>(() => MapFoliageJson.Read(foliage, size - 1));
+        var error = Assert.Throws<MapDocumentException>(() => MapFoliageJson.Read(foliage, size - 1));
+        Assert.Equal(MapDocumentRefusal.FoliageSectionByteLimitExceeded, error.Reason);
+        Assert.Equal(size, error.ActualByteCount);
+        Assert.Equal(size - 1, error.Limit);
     }
 
     [Fact]

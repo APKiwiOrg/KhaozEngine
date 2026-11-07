@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using KhaozEngine.MapDoc;
 using KhaozEngine.MapDoc.Spaces;
+using KhaozEngine.MapDoc.Prefabs;
 using KhaozEngine.MapDoc.Storage;
 using KhaozEngine.MapDoc.Surfaces;
 using KhaozEngine.Primitives;
@@ -37,6 +38,17 @@ internal static class AcquisitionConformanceFixtures
         }
         return new(doc, new[] { Seed });
     }
+    internal static MapEffectiveContext Context(R2AcquisitionProbeSource probe)
+    {
+        var set = new MapSurfaceSet();
+        set.Refs.AddRange(probe.Metadata);
+        foreach (var read in probe.Reads.Values) if (read.Patch is { } patch) set.Patches.Add(read.Key, patch);
+        return new(set, new Dictionary<string, MapEffectiveTransform>(), probe.RootSha256);
+    }
+    internal static MapScopedAcquisition.Result Run(R2AcquisitionProbeSource probe, bool effective, MapSurfaceScope? scope = null) =>
+        effective ? MapEffectiveAcquisition.Run(probe, scope ?? Scope(), null, Context(probe))
+            : MapScopedAcquisition.Run(probe, scope ?? Scope(), null);
+
     internal static MapDocument IsolatedIncident()
     {
         MapDocument doc = SurfaceStorageFixtures.FlatPatches(1);
@@ -170,6 +182,14 @@ internal sealed class R2AcquisitionProbeSource : IMapSurfaceAcquisitionSource
     internal Dictionary<MapPatchKey, IReadOnlyList<MapRecordRef>?> Incidents { get; } = new();
     internal List<MapCoveredRange> CoveredEmpty { get; } = new();
     internal List<MapPatchRead> Sentinels { get; } = new();
+    internal string? SessionSnapshotId { get; set; }
+    internal string? SessionRootSha256 { get; set; }
+    internal Queue<string> SessionSnapshotReads { get; } = new();
+    internal Func<MapPatchKey, (bool Known, IReadOnlyList<MapRecordRef>? Records)>? IncidentFault { get; set; }
+    internal Func<string, (bool Found, MapSurfaceRef? Surface)>? SurfaceFault { get; set; }
+    internal Func<IReadOnlyList<MapPatchKey>, IReadOnlyList<MapPatchKey>>? ReservationsFault { get; set; }
+    internal int PageCount { get; set; }
+    internal bool PagesReadFaults { get; set; }
     internal Action? DuringOpen { get; set; }
     internal Func<MapPatchFindResult, MapPatchFindResult>? FindFault { get; set; }
     internal Func<MapPatchKey, MapPatchRead, MapPatchRead>? ReadFault { get; set; }
@@ -206,9 +226,9 @@ internal sealed class R2AcquisitionProbeSession : IMapSurfaceAcquisitionSession
         Scope = scope with { Roles = Array.AsReadOnly(scope.Roles.ToArray()), SpaceIds = scope.SpaceIds is null ? null : Array.AsReadOnly(scope.SpaceIds.ToArray()) };
     }
     internal MapSurfaceScope Scope { get; }
-    public string SnapshotId => _source.SnapshotId;
-    public string RootSha256 => _source.RootSha256;
-    public int PagesRead => 0;
+    public string SnapshotId => _source.SessionSnapshotReads.TryDequeue(out string? read) ? read : _source.SessionSnapshotId ?? _source.SnapshotId;
+    public string RootSha256 => _source.SessionRootSha256 ?? _source.RootSha256;
+    public int PagesRead => _source.PagesReadFaults ? throw new InvalidOperationException("injected page read fault") : _source.PageCount;
     internal int Finds { get; private set; }
     internal int Disposals { get; private set; }
     internal List<string> SurfaceLookups { get; } = new();
@@ -225,13 +245,19 @@ internal sealed class R2AcquisitionProbeSession : IMapSurfaceAcquisitionSession
             Alive();
             IReadOnlyList<MapPatchKey> copy = Array.AsReadOnly(_reserved.ToArray());
             ReservationSnapshots.Add(copy);
-            return copy;
+            return _source.ReservationsFault is { } fault ? fault(copy) : copy;
         }
     }
     public bool TryGetSurface(string surfaceId, out MapSurfaceRef? surface)
     {
         Alive();
         SurfaceLookups.Add(surfaceId);
+        if (_source.SurfaceFault is { } fault)
+        {
+            var result = fault(surfaceId);
+            surface = result.Surface;
+            return result.Found;
+        }
         MapSurfaceRef? found = _source.Metadata.SingleOrDefault(s => s.Id == surfaceId);
         surface = found is null ? null : found with
         {
@@ -297,6 +323,12 @@ internal sealed class R2AcquisitionProbeSession : IMapSurfaceAcquisitionSession
         Found();
         if (!_served.Contains(acquiredKey)) throw new InvalidOperationException("probe incident key not served");
         IncidentQueries.Add(acquiredKey);
+        if (_source.IncidentFault is { } fault)
+        {
+            var result = fault(acquiredKey);
+            records = result.Records;
+            return result.Known;
+        }
         IReadOnlyList<MapRecordRef>? value = _source.Incidents.TryGetValue(acquiredKey, out var supplied) ? supplied : Array.Empty<MapRecordRef>();
         records = value is null ? null : Array.AsReadOnly(value.ToArray());
         return records is not null;
@@ -326,4 +358,14 @@ internal sealed class R2LegacyProbeSource : IMapSurfaceSource
         Finds++;
         return new(MapFindStatus.Complete, scope, SnapshotId, Array.Empty<MapPatchRead>(), Array.Empty<MapCoveredRange>(), Array.Empty<MapPatchRead>(), 0);
     }
+}
+
+// This producer exposes native metadata but cannot perform scoped acquisition. Traversal must never begin.
+internal sealed class R2UnscopedSurfaceSource(IMapSurfaceSource inner) : IMapSurfaceSource
+{
+    public string SnapshotId => inner.SnapshotId;
+    public string RootSha256 => inner.RootSha256;
+    public IReadOnlyList<MapSurfaceRef> Surfaces => inner.Surfaces;
+    public MapPatchRead ReadPatch(MapPatchKey key) => throw new InvalidOperationException("unscoped producer traversed");
+    public MapPatchFindResult FindPatches(MapSurfaceScope scope) => throw new InvalidOperationException("unscoped producer traversed");
 }

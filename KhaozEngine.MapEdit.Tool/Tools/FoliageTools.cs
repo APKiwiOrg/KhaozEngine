@@ -34,7 +34,8 @@ public sealed class FoliageTools(MutationService mutation, QueryService query)
     public MapFoliageMutationResult FoliagePaint(string layerId, float worldX, float worldZ, float radiusMetres, int target, float hardness) =>
         ToolGuard.Guard(() =>
         {
-            if (target is < 0 or > 255) throw new MapDocumentException($"Foliage paint target {target} must be from 0 to 255.");
+            if (target is < 0 or > 255) throw new MapDocumentException(MapDocumentRefusal.ValueOutsideRange, $"Foliage paint target {target} must be from 0 to 255.")
+            { LayerId = layerId, FieldPath = "target", ActualInteger = target, MinimumInteger = 0, MaximumInteger = 255 };
             return mutation.FoliageApply(new MapPaintFoliage(layerId, worldX, worldZ, radiusMetres, (byte)target, hardness));
         });
 

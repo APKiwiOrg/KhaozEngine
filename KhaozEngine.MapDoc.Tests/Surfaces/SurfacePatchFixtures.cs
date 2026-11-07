@@ -42,4 +42,12 @@ internal static class SurfacePatchFixtures
             Presence = new[] { cells == 64 ? ulong.MaxValue : (1UL << cells) - 1 },
         };
     }
+    internal static MapSurfacePatch PayloadAtByteCap()
+    {
+        var patch = SurfacePatchFixtures.Row(1);
+        patch.Records.Add(new MapHorizontalOpening("a", patch.Key, new[] { 0 }));
+        int baseLength = MapSurfacePatchCodec.Encode(patch).Length;
+        patch.Records[0] = patch.Records[0] with { Id = new string('x', MapSurfacePatchCodec.MaxEncodedBytes - baseLength + 1) };
+        return patch;
+    }
 }

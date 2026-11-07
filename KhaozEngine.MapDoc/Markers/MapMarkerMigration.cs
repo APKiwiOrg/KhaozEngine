@@ -11,7 +11,14 @@ public static class MapMarkerMigration
     {
         ArgumentNullException.ThrowIfNull(source);
         if (source["formatVersion"] is not JsonValue value || !value.TryGetValue(out int version) || version is not (7 or 8))
-            throw new MapDocumentException("Marker migration requires formatVersion 7 or 8.");
+            throw new MapDocumentException(source["formatVersion"] is JsonValue submitted && submitted.TryGetValue(out int actual)
+                ? MapDocumentRefusal.DocumentMigrationSourceVersionInvalid : MapDocumentRefusal.SchemaValueRequired,
+                "Marker migration requires formatVersion 7 or 8.")
+            {
+                FieldPath = "formatVersion",
+                ActualVersion = source["formatVersion"] is JsonValue number && number.TryGetValue(out int declared) ? declared : null,
+                SupportedVersions = [7, 8],
+            };
         var result = (JsonObject)source.DeepClone();
         result["formatVersion"] = 8;
         return result;

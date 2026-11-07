@@ -34,14 +34,20 @@ public sealed class FoliageSchemaParityTests
     {
         string schema = MapDocumentSchema.GetJson();
         var runtimeOnly = new List<string>();
-        foreach (var (variant, fragment) in FoliageFixtures.PayloadCases)
+        foreach (var (variant, reason, field) in FoliageFixtures.PayloadCases)
         {
             string text = FoliageFixtures.Malformed(variant);
             bool schemaValid = JsonSchemaValidator.Validate(text, schema).IsValid;
             MapDocumentException? refusal = Record.Exception(() => MapDocumentFile.LoadText(text)) as MapDocumentException;
-            if (fragment is null) Assert.Null(refusal);
-            else Assert.Contains(fragment, Assert.IsType<MapDocumentException>(refusal).Message, StringComparison.Ordinal);
-            if (fragment is null) Assert.True(schemaValid, variant + ": the schema refuses a document the runtime accepts");
+            if (reason is null) Assert.Null(refusal);
+            else
+            {
+                var error = Assert.IsType<MapDocumentException>(refusal);
+                Assert.Equal(reason, error.Reason);
+                Assert.Equal(field, error.FieldPath);
+                FoliageFixtures.AssertPayloadIdentifiers(variant, error);
+            }
+            if (reason is null) Assert.True(schemaValid, variant + ": the schema refuses a document the runtime accepts");
             else if (schemaValid) runtimeOnly.Add(variant);
         }
         Assert.True(RuntimeOnly.SequenceEqual(runtimeOnly), "runtime-only cases: " + string.Join(", ", runtimeOnly));
@@ -79,7 +85,7 @@ public sealed class FoliageSchemaParityTests
         Assert.True(JsonSchemaValidator.Validate(manifest.ToJsonString(), schema).IsValid);
         JsonObject control = JsonNode.Parse(FoliageFixtures.Malformed("control"))!["foliage"]!["layers"]![0]!.AsObject();
         int replayed = 0;
-        foreach (var (variant, fragment) in FoliageFixtures.PayloadCases.Where(c => c.Fragment is not null && Replayable(c.Variant)))
+        foreach (var (variant, reason, field) in FoliageFixtures.PayloadCases.Where(c => c.Reason is not null && Replayable(c.Variant)))
         {
             JsonObject inline = JsonNode.Parse(FoliageFixtures.Malformed(variant))!.AsObject();
             JsonObject layer = inline["foliage"]!["layers"]![0]!.AsObject();
@@ -93,7 +99,9 @@ public sealed class FoliageSchemaParityTests
             bool schemaValid = JsonSchemaValidator.Validate(text, schema).IsValid;
             File.WriteAllText(Path.Combine(dir.Root, "map.json"), text);
             var refusal = Assert.Throws<MapDocumentException>(() => MapDocumentFile.LoadTiled(dir.Root));
-            Assert.Contains(fragment!, refusal.Message, StringComparison.Ordinal);
+            Assert.Equal(reason, refusal.Reason);
+            Assert.Equal(field, refusal.FieldPath);
+            FoliageFixtures.AssertPayloadIdentifiers(variant, refusal);
             Assert.True(RuntimeOnly.Contains(variant) == schemaValid, variant + (schemaValid ? ": the stored schema accepts" : ": the stored schema refuses"));
             replayed++;
         }

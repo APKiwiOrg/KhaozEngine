@@ -145,8 +145,10 @@ public sealed partial class FreezeZoneCommand : EditorCommand
         foreach (MapCompanionLayer cl in doc.CompanionLayers)
         {
             if (!hostsByLayer.TryGetValue(cl.HostLayer, out IReadOnlyList<PropPlacement>? hosts))
-                throw new MapDocumentException(
-                    $"companion layer '{cl.Name}' names unknown host scatter layer '{cl.HostLayer}' in map '{doc.Id}'.");
+                throw new MapDocumentException(MapDocumentRefusal.ReferenceMissing,
+                    $"companion layer '{cl.Name}' names unknown host scatter layer '{cl.HostLayer}' in map '{doc.Id}'.")
+                { DocumentId = doc.Id, LayerId = cl.Name, EntityId = cl.HostLayer, SubjectKind = "scatter layer",
+                    FieldPath = "CompanionLayers.HostLayer" };
             CompanionConfig config = MapRuntime.BuildCompanionConfig(doc, cl.Name);
             IReadOnlyList<PropPlacement> companions = PropScatter.GenerateCompanions(field, hosts, config);
             AppendFrozen(baked, companions, cl.Name, taken);

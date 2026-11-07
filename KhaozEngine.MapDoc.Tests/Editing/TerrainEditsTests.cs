@@ -32,7 +32,17 @@ public sealed class TerrainEditsTests
     }
     [Fact]
     public void Smooth_RefusesAMissingHalo()
-        => Assert.Throws<MapDocumentException>(() => Prepare(TerrainEditFixtures.Bump(), new MapSmoothCorners(TerrainEditFixtures.BumpKey, 0, 0, 1, 1, 1)));
+    {
+        var set = TerrainEditFixtures.Bump();
+        var before = TerrainEditFixtures.Digest(set);
+        var error = Assert.Throws<MapDocumentException>(() => Prepare(set, new MapSmoothCorners(TerrainEditFixtures.BumpKey, 0, 0, 1, 1, 1)));
+        Assert.Equal(MapDocumentRefusal.TerrainSmoothingHaloUnavailable, error.Reason);
+        Assert.Equal(TerrainEditFixtures.BumpKey, error.Patch);
+        Assert.Equal(MapLatticeAddress.Corner(-1, -1), error.Address);
+        Assert.Equal(before, TerrainEditFixtures.Digest(set));
+        // For the control, smooth an interior corner whose entire halo is already captured.
+        Assert.NotNull(Prepare(set, new MapSmoothCorners(TerrainEditFixtures.BumpKey, 1, 1, 1, 1, 1)));
+    }
     [Theory, InlineData("heights", MapNativeInvalidation.Terrain | MapNativeInvalidation.Physics | MapNativeInvalidation.Nav | MapNativeInvalidation.Residency),
      InlineData("ids", MapNativeInvalidation.Terrain | MapNativeInvalidation.Material),
      InlineData("cut", MapNativeInvalidation.Terrain | MapNativeInvalidation.Physics | MapNativeInvalidation.Nav | MapNativeInvalidation.Material | MapNativeInvalidation.Residency)]
@@ -57,9 +67,12 @@ public sealed class TerrainEditsTests
         MapSurfaceSet set = TerrainEditFixtures.WithFarAnchors();
         var farWest = new MapPatchKey("far", -300, 0);
         var farEast = new MapPatchKey("far", 300, 0);
-        string m = Assert.Throws<MapDocumentException>(() => Prepare(set, Remove(farWest))).Message;
-        Assert.Contains("anchor", m);
-        Assert.Contains("far-chain", m);
+        var before = TerrainEditFixtures.Digest(set);
+        var error = Assert.Throws<MapDocumentException>(() => Prepare(set, Remove(farWest)));
+        Assert.Equal(MapDocumentRefusal.TerrainAnchorStillInUse, error.Reason);
+        Assert.Equal(farWest, error.Patch);
+        Assert.Equal("far-chain", error.RecordId);
+        Assert.Equal(before, TerrainEditFixtures.Digest(set));
         MapTerrainEditResult r = Prepare(set, new MapCompositeEdit(new MapTerrainEdit[] { new MapReanchorRecords(new[] { new MapRecordAnchorMove("far-chain", farWest, farEast) }), Remove(farWest) }));
         Assert.Equal(new MapRecordRef("far-chain", farEast), r.Candidate.AllRecords().OfType<MapWallStrip>().Single(w => w.Id == "far-wall").UpperChain);
         Assert.Empty(MapTopologyReferenceValidator.Validate(r.Candidate.Refs, r.Candidate.Patches.Values));

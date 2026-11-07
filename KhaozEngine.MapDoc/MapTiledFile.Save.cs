@@ -32,36 +32,39 @@ internal static partial class MapTiledFile
         string root = Normalize(directory);
 
         // 1. Validate, then the four guards.
-        IReadOnlyList<string> errors = MapDocumentValidator.Validate(doc, registry);
-        if (errors.Count > 0)
-            throw new MapDocumentException("refusing to save an invalid map document:\n  " + string.Join("\n  ", errors));
+        IReadOnlyList<MapDocumentFinding> findings = MapDocumentValidator.ValidateFindings(doc, registry);
+        if (findings.Count > 0)
+            throw MapDocumentRefusalFactory.FromFinding(findings[0] with { SourceName = directory, Path = directory }, "refusing to save an invalid map document:\n  " + string.Join("\n  ", findings.Select(f => f.Message)), findings: findings);
 
         if (File.Exists(root))
-            throw new MapDocumentException(
+            throw new MapDocumentException(MapDocumentRefusal.DocumentStorageFormConflict,
                 $"{directory}: a file already exists at this path. A tiled document is a directory, remove " +
-                "the file or choose a different path.");
+                "the file or choose a different path.")
+            { Path = root, DocumentForm = MapDocumentForm.Monolithic, ExpectedDocumentForm = MapDocumentForm.Tiled };
 
         Directory.CreateDirectory(root);
         using FileStream saveLock = MapTiledSaveLock.Acquire(root);
 
         string manifestPath = Path.Combine(root, ManifestName);
         if (doc.Tiles is null && File.Exists(manifestPath))
-            throw new MapDocumentException(
+            throw new MapDocumentException(MapDocumentRefusal.DocumentLoadedIndexRequired,
                 $"{directory}: refusing to write a document with no tile index over an existing tiled document. " +
-                "Load it first (MapDocumentFile.LoadTiled) so the write knows which tiles exist.");
+                "Load it first (MapDocumentFile.LoadTiled) so the write knows which tiles exist.") { Path = root };
 
         if (doc.Tiles is { IsPartial: true } partial)
         {
             if (partial.SourceDirectory is not { } source || !SamePath(source, root))
-                throw new MapDocumentException(
+                throw new MapDocumentException(MapDocumentRefusal.DocumentWindowTargetMismatch,
                     $"{directory}: this document is a window onto a larger world and may only be written back to " +
-                    $"'{partial.SourceDirectory ?? "(nowhere: the index was built in memory)"}'.");
+                    $"'{partial.SourceDirectory ?? "(nowhere: the index was built in memory)"}'.")
+                { Path = root, SourceName = partial.SourceDirectory };
             if (doc.TileSize != partial.TileSize)
-                throw new MapDocumentException(
+                throw new MapDocumentException(MapDocumentRefusal.DocumentWindowTileSizeMismatch,
                     $"{directory}: this document's tileSize ({doc.TileSize}) no longer matches the loaded " +
                     $"window's tileSize ({partial.TileSize}). Retiling rewrites every tile, and a partial " +
                     "save would write the new size over an index built for the old one, so every unloaded tile " +
-                    "would silently keep the wrong size. Load the whole world first, then retile.");
+                    "would silently keep the wrong size. Load the whole world first, then retile.")
+                { Path = root, FieldPath = nameof(doc.TileSize), ActualNumber = doc.TileSize, ExpectedNumber = partial.TileSize };
         }
 
         byte[]? current;
@@ -69,12 +72,14 @@ internal static partial class MapTiledFile
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
             if (doc.Tiles is { IsPartial: true })
-                throw new MapDocumentException($"{directory}: stale window, the current manifest cannot be read.", ex);
+                throw new MapDocumentException(MapDocumentRefusal.DocumentStaleWindow, $"{directory}: stale window, the current manifest cannot be read.", ex)
+                { Path = manifestPath, ExpectedHash = doc.Tiles.ManifestSha256 };
             current = null;
         }
         if (doc.Tiles is { IsPartial: true } generation &&
             (current is null || !string.Equals(generation.ManifestSha256, HashManifest(current), StringComparison.Ordinal)))
-            throw new MapDocumentException($"{directory}: stale window, the manifest changed after this window was loaded.");
+            throw new MapDocumentException(MapDocumentRefusal.DocumentStaleWindow, $"{directory}: stale window, the manifest changed after this window was loaded.")
+            { Path = manifestPath, ExpectedHash = generation.ManifestSha256, ActualHash = current is null ? null : HashManifest(current) };
 
         MapSurfaceTiledStore.Prepared surfaces = MapSurfaceTiledStore.Prepare(doc, root, packing);
         MapFoliagePreparedStorage foliage = MapFoliageStorage.Prepare(doc, root);
@@ -151,21 +156,23 @@ internal static partial class MapTiledFile
         foreach (MapTileCoord tile in spatial.OccupiedTiles)
         {
             if (!window.TryGet(tile, out MapTileEntry entry) || entry.Loaded) continue;
-            string what = Describe(spatial, tile);
-            throw new MapDocumentException(
+            var subject = Describe(spatial, tile);
+            string what = subject.Description;
+            throw new MapDocumentException(MapDocumentRefusal.DocumentUnloadedDestinationTile,
                 $"{what} now falls in tile ({tile.X}, {tile.Z}), which this window did not load. Writing that " +
                 "tile would replace its real content with just the moved item. Widen the window (set_window) " +
-                "and save again.");
+                "and save again.")
+            { Tile = tile, EntityId = subject.EntityId, SubjectKind = subject.Kind, SculptTile = subject.SculptTile };
         }
     }
 
-    static string Describe(MapSpatialIndex spatial, MapTileCoord tile)
+    static (string Description, string? EntityId, string Kind, MapTileCoord? SculptTile) Describe(MapSpatialIndex spatial, MapTileCoord tile)
     {
-        foreach (MapPlacement p in spatial.PlacementsIn(tile)) return $"placement '{p.Id}'";
-        foreach (MapSpawn s in spatial.SpawnsIn(tile)) return $"spawn '{s.Id}'";
-        foreach (MapPlayerSpawn s in spatial.PlayerSpawnsIn(tile)) return $"player spawn '{s.Id}'";
-        foreach (MapSculptTile t in spatial.SculptTilesIn(tile)) return $"sculpt tile ({t.TileX}, {t.TileZ})";
-        return "content";
+        foreach (MapPlacement p in spatial.PlacementsIn(tile)) return ($"placement '{p.Id}'", p.Id, "placement", null);
+        foreach (MapSpawn s in spatial.SpawnsIn(tile)) return ($"spawn '{s.Id}'", s.Id, "spawn", null);
+        foreach (MapPlayerSpawn s in spatial.PlayerSpawnsIn(tile)) return ($"player spawn '{s.Id}'", s.Id, "player spawn", null);
+        foreach (MapSculptTile t in spatial.SculptTilesIn(tile)) return ($"sculpt tile ({t.TileX}, {t.TileZ})", null, "sculpt tile", new(t.TileX, t.TileZ));
+        return ("content", null, "content", null);
     }
 
     /// <summary>The <c>$schema</c> annotations the writer emits. Relative, so a document directory that

@@ -82,7 +82,9 @@ internal static class MapRegistrationBounds
     static double Quantum(double magnitude)
     {
         float bound = (float)magnitude;
-        if (!float.IsFinite(bound)) throw new MapDocumentException("Registration bounds are not representable.");
+        if (!float.IsFinite(bound)) throw new MapDocumentException(MapDocumentRefusal.GeometryNotRepresentable,
+            "Registration bounds are not representable.")
+        { Operation = "RegistrationBounds", FieldPath = "Magnitude", ActualNumber = magnitude };
         if (bound < magnitude) bound = MathF.BitIncrement(bound);
         return (double)MathF.BitIncrement(bound) - bound;
     }

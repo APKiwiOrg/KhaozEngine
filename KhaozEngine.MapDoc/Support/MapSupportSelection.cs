@@ -214,7 +214,7 @@ internal static class MapSupportSelection
         catch (MapDocumentException error)
         {
             return Failure(MapCommonRefinement.NotRepresentable(error) ? MapSupportStatus.NotRepresentable :
-                error.Message.Contains("invalid", StringComparison.Ordinal) || error.Message.Contains("legacy recipe", StringComparison.Ordinal)
+                MapGeometryRefusals.Invalid(error) || error.Reason == MapDocumentRefusal.SurfaceLegacyRecipeRequired
                     ? MapSupportStatus.Invalid : MapSupportStatus.MissingGeometry, error.Message);
         }
 

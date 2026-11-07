@@ -120,8 +120,9 @@ namespace KhaozEngine.Tests.MapEditor
             int baseline = doc.Regions.Count;
 
             var ed = new EditorDocument(doc);
-            Assert.Throws<InvalidOperationException>(() => ed.Execute(new AddRegionCommand(
-                new MapRegion { Name = "town", Shape = new DiscShapeDoc { CenterX = 9f, CenterZ = 9f, Radius = 2f } })));
+            AssertIdentityRefusal(ed, new AddRegionCommand(
+                new MapRegion { Name = "town", Shape = new DiscShapeDoc { CenterX = 9f, CenterZ = 9f, Radius = 2f } }),
+                "region", "town", new AddRegionCommand(new MapRegion { Name = "new-region", Shape = new DiscShapeDoc { Radius = 2 } }));
 
             Assert.Equal(baseline, doc.Regions.Count);
             Assert.Single(doc.Regions, r => r.Name == "town");   // no second "town" landed
@@ -134,13 +135,14 @@ namespace KhaozEngine.Tests.MapEditor
         /// asserts it was refused with nothing mutated and no undo step pushed. The #75 shape, applied to the
         /// three id-keyed Add commands that still skipped their guard (#766). History.Execute applies BEFORE it
         /// pushes, so a throwing Apply lands no undo step.</summary>
-        static void AssertDuplicateAddIsRefused<T>(MapDocument doc, List<T> list, IEditorCommand add)
+        static void AssertDuplicateAddIsRefused<T>(MapDocument doc, List<T> list, IEditorCommand add,
+            string kind, string id, IEditorCommand control)
         {
             string before = Save(doc);
             int baseline = list.Count;
 
             var ed = new EditorDocument(doc);
-            Assert.Throws<InvalidOperationException>(() => ed.Execute(add));
+            AssertIdentityRefusal(ed, add, kind, id, control);
 
             Assert.Equal(baseline, list.Count);
             Assert.Equal(before, Save(doc));
@@ -153,7 +155,8 @@ namespace KhaozEngine.Tests.MapEditor
         {
             var doc = Sample();   // carries exactly one placement, "inn"
             AssertDuplicateAddIsRefused(doc, doc.Placements,
-                new AddPlacementCommand(new MapPlacement { Id = "inn", Kind = "rock", X = 9f, Z = 9f }));
+                new AddPlacementCommand(new MapPlacement { Id = "inn", Kind = "rock", X = 9f, Z = 9f }),
+                "placement", "inn", new AddPlacementCommand(new MapPlacement { Id = "new-placement", Kind = "rock", X = 9f, Z = 9f }));
             Assert.Single(doc.Placements, p => p.Id == "inn");
             Assert.Equal("building_inn", doc.Placements[0].Kind);   // the original, not the rejected one
         }
@@ -163,7 +166,8 @@ namespace KhaozEngine.Tests.MapEditor
         {
             var doc = Sample();   // carries exactly one spawn, "wolf-1"
             AssertDuplicateAddIsRefused(doc, doc.Spawns,
-                new AddSpawnCommand(new MapSpawn { Id = "wolf-1", ArchetypeId = "bear", X = 9f, Z = 9f }));
+                new AddSpawnCommand(new MapSpawn { Id = "wolf-1", ArchetypeId = "bear", X = 9f, Z = 9f }),
+                "spawn", "wolf-1", new AddSpawnCommand(new MapSpawn { Id = "new-spawn", ArchetypeId = "bear", X = 9f, Z = 9f }));
             Assert.Single(doc.Spawns, s => s.Id == "wolf-1");
             Assert.Equal("wolf", doc.Spawns[0].ArchetypeId);
         }
@@ -174,7 +178,8 @@ namespace KhaozEngine.Tests.MapEditor
             var doc = Sample();   // carries no player spawn, so seed the one being collided with
             doc.PlayerSpawns.Add(new MapPlayerSpawn { Id = "start", X = 1f, Z = 2f });
             AssertDuplicateAddIsRefused(doc, doc.PlayerSpawns,
-                new AddPlayerSpawnCommand(new MapPlayerSpawn { Id = "start", X = 9f, Z = 9f }));
+                new AddPlayerSpawnCommand(new MapPlayerSpawn { Id = "start", X = 9f, Z = 9f }),
+                "player spawn", "start", new AddPlayerSpawnCommand(new MapPlayerSpawn { Id = "new-player-spawn", X = 9f, Z = 9f }));
             Assert.Single(doc.PlayerSpawns, s => s.Id == "start");
             Assert.Equal(1f, doc.PlayerSpawns[0].X);
         }

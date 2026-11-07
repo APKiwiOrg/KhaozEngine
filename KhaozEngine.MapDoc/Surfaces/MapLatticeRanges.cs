@@ -10,7 +10,14 @@ public static class MapLatticeRanges
     {
         ArgumentNullException.ThrowIfNull(frame);
         if (string.IsNullOrWhiteSpace(lattice.SurfaceId) || slotCell is < 0 or >= 4096)
-            throw new MapDocumentException("invalid lattice cell");
+            throw new MapDocumentException(string.IsNullOrWhiteSpace(lattice.SurfaceId)
+                ? MapDocumentRefusal.SchemaValueRequired : MapDocumentRefusal.ValueOutsideRange, "invalid lattice cell")
+            { ResolutionStatus = MapResolveStatus.Invalid,
+                Patch = lattice, FieldPath = string.IsNullOrWhiteSpace(lattice.SurfaceId) ? "SurfaceId" : "slotCell",
+                ActualInteger = string.IsNullOrWhiteSpace(lattice.SurfaceId) ? null : slotCell,
+                MinimumInteger = string.IsNullOrWhiteSpace(lattice.SurfaceId) ? null : 0,
+                MaximumInteger = string.IsNullOrWhiteSpace(lattice.SurfaceId) ? null : 4095,
+            };
         try
         {
             long x = checked(lattice.SlotX * 64 + slotCell % 64), z = checked(lattice.SlotZ * 64 + slotCell / 64);
@@ -26,7 +33,12 @@ public static class MapLatticeRanges
         ArgumentNullException.ThrowIfNull(frame);
         _ = frame.WorldXz(MapLatticeAddress.Corner(0, 0));
         if (min.X.CompareTo(max.X) > 0 || min.Z.CompareTo(max.Z) > 0)
-            throw new MapDocumentException("invalid exact rectangle");
+            throw new MapDocumentException(MapDocumentRefusal.BoundsInvalid, "invalid exact rectangle")
+            { ResolutionStatus = MapResolveStatus.Invalid,
+                FieldPath = min.X.CompareTo(max.X) > 0 ? "X" : "Z",
+                MinimumNumber = (min.X.CompareTo(max.X) > 0 ? min.X : min.Z).ToDouble(),
+                MaximumNumber = (min.X.CompareTo(max.X) > 0 ? max.X : max.Z).ToDouble(),
+            };
         MapExactValue unit = frame.CellUnitMetres.Exact();
         MapExactValue minZ = min.Z, maxZ = max.Z;
         if (frame.RowDirection == MapRowDirection.NegativeZ) (minZ, maxZ) = (maxZ.Negate(), minZ.Negate());

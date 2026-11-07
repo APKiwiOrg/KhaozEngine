@@ -69,8 +69,15 @@ public sealed class NativeFoliageSnapshotTests
         Assert.Equal(0, work.InlineWrites);
         Assert.Equal(0, work.ChunkHashes);
         fixture.Document.Foliage = new(1, [FoliageStorageFixtures.Change(fixture.Document.Foliage!.Layers[0], l => l["cellSize"] = -1)]);
-        Assert.Contains("cellSize", Assert.Throws<MapDocumentException>(() =>
-            NativeDocumentSnapshot.Clone(fixture.Document, MapDocRegistry.CreateDefault())).Message, StringComparison.Ordinal);
+        string before = System.Text.Json.JsonSerializer.Serialize(fixture.Document.Foliage);
+        var error = Assert.Throws<MapDocumentException>(() => NativeDocumentSnapshot.Clone(fixture.Document, MapDocRegistry.CreateDefault()));
+        Assert.Equal(MapDocumentRefusal.ValueOutsideRange, error.Reason);
+        Assert.Equal("CellSize", error.FieldPath);
+        Assert.Equal(-1, error.ActualNumber);
+        Assert.Equal(0, error.MinimumNumber);
+        Assert.Equal(before, System.Text.Json.JsonSerializer.Serialize(fixture.Document.Foliage));
+        fixture.Document.Foliage = candidate.Foliage;
+        Assert.NotNull(NativeDocumentSnapshot.Clone(fixture.Document, MapDocRegistry.CreateDefault()));
     }
 
     [Fact]

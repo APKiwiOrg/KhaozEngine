@@ -10,7 +10,8 @@ namespace KhaozEngine.MapDoc.Spaces;
 /// <summary>Checks shared air and coincident support owners on the exact piecewise-linear partition.</summary>
 internal static class MapSpaceOverlapValidator
 {
-    internal static void Validate(MapScopedSurfaces view, IReadOnlyList<MapSpaceColumn> columns, Action<string, int, string> add)
+    internal static void Validate(MapScopedSurfaces view, IReadOnlyList<MapSpaceColumn> columns, Action<string, int, string> add,
+        Action<string, int, MapDocumentFinding>? addFinding = null)
     {
         for (int i = 0; i < columns.Count; i++)
             for (int j = i + 1; j < columns.Count; j++)
@@ -49,11 +50,31 @@ internal static class MapSpaceOverlapValidator
                                 (ua is null || polygon.Any(p => Height(ua.Value, p).Subtract(Height(lb, p)).Sign > 0)) &&
                                 (ub is null || polygon.Any(p => Height(ub.Value, p).Subtract(Height(la, p)).Sign > 0))) ambiguous = true;
                         }
-                    if (coincident) add(a.Footprint.Id, a.Cell, $"coincident: footprint '{a.Footprint.Id}' cell {a.Cell} with '{b.Footprint.Id}' cell {b.Cell}");
-                    if (ambiguous) add(a.Footprint.Id, a.Cell, $"ambiguous: footprint '{a.Footprint.Id}' cell {a.Cell} with '{b.Footprint.Id}' cell {b.Cell}");
+                    if (coincident) Add(new(MapDocumentRefusal.SpaceSupportCoincident,
+                        $"coincident: footprint '{a.Footprint.Id}' cell {a.Cell} with '{b.Footprint.Id}' cell {b.Cell}")
+                    { RecordId = a.Footprint.Id, RelatedRecordId = b.Footprint.Id, SpaceId = a.Space.Id,
+                        SlotCell = a.Cell, RelatedSlotCell = b.Cell });
+                    if (ambiguous) Add(new(MapDocumentRefusal.SpaceOccupiedOverlap,
+                        $"ambiguous: footprint '{a.Footprint.Id}' cell {a.Cell} with '{b.Footprint.Id}' cell {b.Cell}")
+                    { RecordId = a.Footprint.Id, RelatedRecordId = b.Footprint.Id, SpaceId = a.Space.Id, EntityId = b.Space.Id,
+                        SlotCell = a.Cell, RelatedSlotCell = b.Cell });
                 }
-                catch (MapExactOverflowException) { add(a.Footprint.Id, a.Cell, $"not representable: footprint '{a.Footprint.Id}' cell {a.Cell}"); }
-                catch (MapDocumentException error) { add(a.Footprint.Id, a.Cell, $"missing geometry: footprint '{a.Footprint.Id}' cell {a.Cell} ({error.Message})"); }
+                catch (MapExactOverflowException) { Add(new(MapDocumentRefusal.GeometryNotRepresentable,
+                    $"not representable: footprint '{a.Footprint.Id}' cell {a.Cell}")
+                    { RecordId = a.Footprint.Id, SpaceId = a.Space.Id, SlotCell = a.Cell }); }
+                catch (MapDocumentException error)
+                {
+                    string message = $"missing geometry: footprint '{a.Footprint.Id}' cell {a.Cell} ({error.Message})";
+                    add(a.Footprint.Id, a.Cell, message);
+                    if (MapDocumentFinding.FromException(error) is { } finding)
+                        addFinding?.Invoke(a.Footprint.Id, a.Cell, finding with { Message = message, RecordId = finding.RecordId ?? a.Footprint.Id });
+                }
+
+                void Add(MapDocumentFinding finding)
+                {
+                    add(a.Footprint.Id, a.Cell, finding.Message);
+                    addFinding?.Invoke(a.Footprint.Id, a.Cell, finding);
+                }
             }
     }
 

@@ -5,6 +5,7 @@ using System.Linq;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using KhaozEngine.MapDoc;
+using KhaozEngine.MapDoc.Assets;
 using KhaozEngine.MapDoc.Identity;
 using KhaozEngine.MapDoc.Prefabs;
 using KhaozEngine.MapDoc.Spaces;
@@ -224,7 +225,18 @@ public sealed class MapPrefabBindingTests
         f.Document.Prefabs = new(1, 1, new[] { instance with { ResourceSha256 = new string('f', 64) } }, []);
         var loaded = Assert.Throws<MapDocumentException>(() => Identity(f));
         var stored = Assert.Throws<MapDocumentException>(() => StoredIdentity(f));
-        Assert.Equal(loaded.Message, stored.Message);
+        foreach (var error in new[] { loaded, stored })
+        {
+            Assert.Equal(MapDocumentRefusal.PrefabAssetPinMismatch, error.Reason);
+            Assert.Equal(instance.Id, error.InstanceId);
+            Assert.Equal(instance.ResourceId, error.ResourceId);
+            Assert.Equal(new string('f', 64), error.ExpectedHash);
+            Assert.Equal(instance.ResourceSha256, error.ActualHash);
+            Assert.Equal(MapResourceKind.Prefab, error.ExpectedResourceKind);
+            Assert.Equal(MapResourceKind.Prefab, error.ActualResourceKind);
+        }
+        f.Document.Prefabs = new(1, 1, new[] { instance }, []);
+        Assert.Equal(Identity(f), StoredIdentity(f));
     }
 
     [Fact]

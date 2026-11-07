@@ -19,7 +19,8 @@ public static class MapMarkerAdoption
     {
         ArgumentNullException.ThrowIfNull(document);
         ArgumentNullException.ThrowIfNull(choices);
-        if (document.Tiles is { IsPartial: true }) throw new MapDocumentException("Cannot adopt spawns from a partial document.");
+        if (document.Tiles is { IsPartial: true }) throw new MapDocumentException(MapDocumentRefusal.CompleteDocumentRequired,
+            "Cannot adopt spawns from a partial document.") { DocumentId = document.Id, Operation = nameof(ConvertSpawns) };
         MapMarkerEdits.RequireResolver(document, nameof(ConvertSpawns));
         RequireValid(document);
         var sources = document.Spawns.Select(s => (Key: new MapLegacySpawnKey(MapLegacySpawnKind.Spawn, s.Id), s.X, s.Z,
@@ -77,7 +78,7 @@ public static class MapMarkerAdoption
 
     static void RequireValid(MapDocument document)
     {
-        var errors = MapDocumentValidator.Validate(document, MapDocRegistry.CreateDefault());
-        if (errors.Count != 0) throw new MapDocumentException(string.Join("\n", errors));
+        var findings = MapDocumentValidator.ValidateFindings(document, MapDocRegistry.CreateDefault());
+        if (findings.Count != 0) throw MapDocumentRefusalFactory.FromFinding(findings[0], string.Join("\n", findings.Select(f => f.Message)), findings: findings);
     }
 }

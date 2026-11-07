@@ -28,20 +28,28 @@ internal sealed class MapWaterWorkBudget
     public bool Exhausted => Charged > Limit;
 
     /// <summary>Charges <paramref name="checks"/> pair checks and throws <see cref="MapDocumentException"/>, or
-    /// <see cref="MapWaterCapacityException"/> for a compile budget, once the total passes the limit.</summary>
+    /// <see cref="MapWaterCapacityException"/> for a compile budget, once the total passes the limit.
+    /// Document refusals carry WorkCapacityExceeded with Budget, ActualCount and Limit.</summary>
     public void Charge(long checks)
     {
         Charged += checks;
         _parent?.Charge(checks);
         if (Charged <= Limit) return;
-        if (_compile) throw new MapWaterCapacityException(MapWaterWorkMeter.PairChecks);
-        throw new MapDocumentException($"domain work exceeds {Limit} pair checks");
+        if (_compile) throw new MapWaterCapacityException(MapWaterWorkMeter.PairChecks, "MaxPairChecks", Charged, Limit);
+        throw new MapDocumentException(MapDocumentRefusal.WorkCapacityExceeded, $"domain work exceeds {Limit} pair checks")
+        { Budget = "WaterDomainPairChecks", ActualCount = Charged, Limit = Limit };
     }
 }
 
 /// <summary>Thrown when compile work passes one of its <see cref="MapWaterCompileLimits"/>. <see cref="Exception.Message"/>
 /// is the limit's detail, such as <c>water pair checks</c>.</summary>
-internal sealed class MapWaterCapacityException(string limit) : Exception(limit);
+internal sealed class MapWaterCapacityException : Exception
+{
+    internal MapWaterCapacityException(string detail, string? budget = null, long? actual = null, long? limit = null) : base(detail) =>
+        Finding = new(MapDocumentRefusal.WorkCapacityExceeded, detail) { Budget = budget, ActualCount = actual, Limit = limit };
+
+    internal MapDocumentFinding Finding { get; }
+}
 
 /// <summary>The work one body's compile spends, each count checked against its limit before the work it guards. Pair
 /// checks run through one compile <see cref="MapWaterWorkBudget"/> shared by the domain kernel, containment and region
@@ -88,14 +96,14 @@ internal sealed class MapWaterWorkMeter
     {
         long pieces = (long)(domain.Rects?.Count ?? 0) + (domain.Rings?.Count ?? 0);
         PieceCount = (int)Math.Min(pieces, int.MaxValue);
-        if (pieces > _limits.MaxPieces) throw new MapWaterCapacityException(Pieces);
+        if (pieces > _limits.MaxPieces) throw new MapWaterCapacityException(Pieces, "MaxPieces", pieces, _limits.MaxPieces);
         long vertices = 4L * (domain.Rects?.Count ?? 0);
         foreach (MapWaterRing ring in domain.Rings ?? Array.Empty<MapWaterRing>()) vertices += ring?.Vertices?.Count ?? 0;
         VertexCount = (int)Math.Min(vertices, int.MaxValue);
-        if (vertices > _limits.MaxPieceVertices) throw new MapWaterCapacityException(PieceVertices);
+        if (vertices > _limits.MaxPieceVertices) throw new MapWaterCapacityException(PieceVertices, "MaxPieceVertices", vertices, _limits.MaxPieceVertices);
     }
 
-    internal void ChargeFootprintCells(int cells) => CellCount = Charge(CellCount, cells, _limits.MaxFootprintCells, FootprintCells);
+    internal void ChargeFootprintCells(int cells) => CellCount = Charge(CellCount, cells, _limits.MaxFootprintCells, FootprintCells, "MaxFootprintCells");
 
     internal void CountFootprintRects(int rects) => FootprintRects = checked(FootprintRects + rects);
 
@@ -105,14 +113,15 @@ internal sealed class MapWaterWorkMeter
     {
         _boundSlots += slots;
         _boundCells += cells;
-        if (_boundSlots + _boundCells > _limits.MaxBoundCells) throw new MapWaterCapacityException(BoundCells);
+        if (_boundSlots + _boundCells > _limits.MaxBoundCells) throw new MapWaterCapacityException(BoundCells, "MaxBoundCells",
+            _boundSlots + _boundCells <= long.MaxValue ? (long)(_boundSlots + _boundCells) : null, _limits.MaxBoundCells);
     }
 
     /// <summary>Charges one bound read and the faces its preflight counted, before the read runs.</summary>
     internal void ChargeRead(long faces)
     {
         _boundFaces = checked(_boundFaces + faces);
-        if (_boundFaces > _limits.MaxBoundFaces) throw new MapWaterCapacityException(BoundFaces);
+        if (_boundFaces > _limits.MaxBoundFaces) throw new MapWaterCapacityException(BoundFaces, "MaxBoundFaces", _boundFaces, _limits.MaxBoundFaces);
         BoundReads = checked(BoundReads + 1);
     }
 
@@ -122,12 +131,12 @@ internal sealed class MapWaterWorkMeter
         else LowerFaces = checked(LowerFaces + faces);
     }
 
-    internal void ChargeTriangles(int triangles) => TriangleCount = Charge(TriangleCount, triangles, _limits.MaxTriangles, Triangles);
+    internal void ChargeTriangles(int triangles) => TriangleCount = Charge(TriangleCount, triangles, _limits.MaxTriangles, Triangles, "MaxTriangles");
 
-    static int Charge(int current, int amount, int limit, string detail)
+    static int Charge(int current, int amount, int limit, string detail, string budget)
     {
         long total = (long)current + amount;
-        if (total > limit) throw new MapWaterCapacityException(detail);
+        if (total > limit) throw new MapWaterCapacityException(detail, budget, total, limit);
         return (int)total;
     }
 }

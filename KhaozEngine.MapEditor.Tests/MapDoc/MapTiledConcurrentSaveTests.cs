@@ -27,8 +27,15 @@ public sealed class MapTiledConcurrentSaveTests
                 {
                     if (attempted || step != (MapTiledSaveStep)phase) return;
                     attempted = true;
-                    Assert.Throws<MapDocumentException>(() =>
+                    // The held lock file cannot be read. Its bytes are always empty, checked separately.
+                    const string lockFile = ".mapdoc-save.lock";
+                    var saved = AssertFixtures.Files(directory, lockFile);
+                    var error = Assert.Throws<MapDocumentException>(() =>
                         MapDocumentFile.SaveTiled(second, Path.Combine(directory, ".")));
+                    Assert.Equal(MapDocumentRefusal.DocumentSaveLockUnavailable, error.Reason);
+                    Assert.Equal(Path.GetFullPath(directory), error.Path);
+                    Assert.Equal(saved, AssertFixtures.Files(directory, lockFile));
+                    Assert.Equal(0, new FileInfo(Path.Combine(directory, lockFile)).Length);
                 },
             };
 

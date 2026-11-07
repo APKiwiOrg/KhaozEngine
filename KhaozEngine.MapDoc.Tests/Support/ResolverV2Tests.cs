@@ -5,6 +5,8 @@ using KhaozEngine.MapDoc;
 using KhaozEngine.MapDoc.Storage;
 using KhaozEngine.MapDoc.Spaces;
 using KhaozEngine.MapDoc.Support;
+using KhaozEngine.MapDoc.Prefabs;
+using KhaozEngine.Tests.MapDoc.Foliage;
 using Xunit;
 
 namespace KhaozEngine.Tests.MapDoc;
@@ -101,11 +103,45 @@ public sealed class ResolverV2Tests
         if (invalid == "missing")
         {
             MapDocument window = MapDocumentFile.LoadTiled(FormatFourFixtures.CopyTiledToTemp(), new MapTileRect(new(0, 0), new(0, 0)));
-            Assert.Contains("window", Assert.Throws<MapDocumentException>(() => MapResolverAdoption.ConvertToAuthoredSupport(window, onlyA)).Message);
+            string before = FoliageStorageFixtures.Snapshot(window);
+            var partial = Assert.Throws<MapDocumentException>(() => MapResolverAdoption.ConvertToAuthoredSupport(window, onlyA));
+            Assert.Equal(MapDocumentRefusal.CompleteDocumentRequired, partial.Reason);
+            Assert.Equal(window.Id, partial.DocumentId);
+            Assert.Equal(nameof(MapResolverAdoption.ConvertToAuthoredSupport), partial.Operation);
+            Assert.Equal(before, FoliageStorageFixtures.Snapshot(window));
         }
         MapDocument adopted = MapResolverAdoption.ConvertToAuthoredSupport(v1, new Dictionary<string, MapPlacementSupportChoice> { ["a"] = new(2.5f, null), ["c"] = new(7.5f, null) });
         Assert.Equal((new MapResolverIdentityDoc(1, 2), MapSupportRecipe.AuthoredBindingsV2), (adopted.ResolverIdentity, adopted.SupportRecipe));
         Assert.Equal(new float?[] { 2.5f, 2.5f, 7.5f }, adopted.Placements.OrderBy(p => p.Id, StringComparer.Ordinal).Select(p => p.Y));
         Assert.Equal(new MapResolverIdentityDoc(1, 1), v1.ResolverIdentity);
+    }
+
+    [Theory]
+    [InlineData("scale", 1e40, (double)float.MaxValue)]
+    [InlineData("scale", 1e-50, 1d)]
+    [InlineData("yawRadians", 1e40, (double)float.MaxValue)]
+    public void BackendPose_RetainsTheUnrepresentableComponentWithoutChangingTheDocument(string field, double refused, double repaired)
+    {
+        var document = SupportFixtures.CaveWithPlacements();
+        var placement = document.Placements.First();
+        placement.Y = 0;
+        var assets = SupportFixtures.Assets();
+        var source = MapDocumentSurfaceSource.Capture(document);
+        var transforms = new Dictionary<string, MapEffectiveTransform>();
+        void Pose(double value) => transforms[MapEffectiveContext.Key(MapPrefabChildKind.Placement, placement.Id)] =
+            new(0, 0, 0, field == "yawRadians" ? value : 0, field == "scale" ? value : 1);
+        Pose(refused);
+        string before = FoliageStorageFixtures.Snapshot(document);
+        var error = Assert.Throws<MapDocumentException>(() =>
+            MapResolverV2.ResolveEffectivePlacements(document, assets, [placement], transforms, source, out _));
+        Assert.Equal(MapDocumentRefusal.GeometryNotRepresentable, error.Reason);
+        Assert.Equal(placement.Id, error.PlacementId);
+        Assert.Equal("$." + field, error.FieldPath);
+        Assert.Equal(refused, error.ActualNumber);
+        Assert.Equal(nameof(MapResolverV2.ResolveEffectivePlacements), error.Operation);
+        Assert.Equal(before, FoliageStorageFixtures.Snapshot(document));
+        Pose(repaired);
+        var control = Assert.Single(MapResolverV2.ResolveEffectivePlacements(document, assets, [placement], transforms, source, out _));
+        Assert.Equal((float)repaired, field == "scale" ? control.Transform.Scale : control.Transform.YawRadians);
     }
 }

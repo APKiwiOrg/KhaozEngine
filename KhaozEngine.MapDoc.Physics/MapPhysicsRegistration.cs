@@ -42,7 +42,8 @@ public sealed class MapPhysicsRegistration : IDisposable
     }
 
     /// <summary>Installs every static of <paramref name="world"/> into <paramref name="physics"/> in static order, at
-    /// <c>Position - physics.Origin</c>. Throws <see cref="MapDocumentException"/> naming "whole-metre origin" when an
+    /// <c>Position - physics.Origin</c>. Throws <see cref="MapDocumentException"/> with
+    /// <see cref="MapDocumentRefusal.PhysicsRegistrationOriginInvalid"/> and the origin components when an
     /// origin component is not a whole metre or lies beyond <see cref="MapWorldBuilder.MaxCoordinateMetres"/>, since
     /// terrain vertices are exact only against whole-metre anchors and every float from 2^23 up is a whole number whose
     /// offsets can round. Never call this, or mutate the physics world at all, inside a held query read lease: the
@@ -55,8 +56,10 @@ public sealed class MapPhysicsRegistration : IDisposable
         ArgumentNullException.ThrowIfNull(physics);
         Vector3 origin = physics.Origin;
         if (!WholeMetreWithinWorld(origin.X) || !WholeMetreWithinWorld(origin.Y) || !WholeMetreWithinWorld(origin.Z))
-            throw new MapDocumentException(FormattableString.Invariant(
-                $"Registration needs a whole-metre origin within {MapWorldBuilder.MaxCoordinateMetres:N0} m of the world origin on each axis, and the physics world's origin is ({origin.X}, {origin.Y}, {origin.Z})."));
+            throw new MapDocumentException(MapDocumentRefusal.PhysicsRegistrationOriginInvalid, FormattableString.Invariant(
+                $"Registration needs a whole-metre origin within {MapWorldBuilder.MaxCoordinateMetres:N0} m of the world origin on each axis, and the physics world's origin is ({origin.X}, {origin.Y}, {origin.Z})."))
+            { FieldPath = nameof(Physics.Origin), PositionX = origin.X, PositionY = origin.Y, PositionZ = origin.Z,
+                Limit = (long)MapWorldBuilder.MaxCoordinateMetres };
 
         var handles = new List<StaticHandle>(world.Statics.Count);
         var owners = new Dictionary<StaticHandle, (MapStaticOwner Owner, IReadOnlyList<MapFaceKey> Faces)>(world.Statics.Count);
@@ -131,7 +134,9 @@ public sealed class MapPhysicsRegistration : IDisposable
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
         if (World.IsNative || World.LegacySupportHeight is not { } height)
-            throw new MapDocumentException("Native worlds move on the contact controller (#438 phase 5), not a legacy move context.");
+            throw new MapDocumentException(MapDocumentRefusal.PhysicsLegacyMoveContextUnsupported,
+                "Native worlds move on the contact controller (#438 phase 5), not a legacy move context.")
+            { ResolverVersion = World.IsNative ? 2 : 1 };
         MapResolvedBounds playable = World.Document.PlayableBounds;
         Func<float, float, float, MovementMedium>? medium = null;
         if (legacyGlobalWater && World.LegacyWaterLevel is { } level)

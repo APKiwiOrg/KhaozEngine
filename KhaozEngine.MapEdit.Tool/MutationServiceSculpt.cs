@@ -54,11 +54,11 @@ public sealed partial class MutationService
             var command = new TerrainSculptStrokeCommand(createdLayer, cellSize, tiles, dabBounds);
             command.Apply(doc);
 
-            IReadOnlyList<string> errors = MapDocumentValidator.Validate(doc, registry);
+            IReadOnlyList<MapDocumentFinding> errors = MapDocumentValidator.ValidateFindings(doc, registry);
             if (errors.Count > 0)
             {
                 command.Revert(doc);
-                throw new InvalidOperationException("mutation rejected: " + string.Join("; ", errors));
+                throw MapMutationException.FromFindings(errors, "mutation rejected: " + string.Join("; ", errors.Select(e => e.Message)));
             }
 
             return new SculptApplyResult(brush, x, z, radius, writes.Count,
@@ -94,11 +94,11 @@ public sealed partial class MutationService
             var command = new TerrainSculptStrokeCommand(createdLayer, cellSize, tiles, dabBounds);
             command.Apply(doc);
 
-            IReadOnlyList<string> errors = MapDocumentValidator.Validate(doc, registry);
+            IReadOnlyList<MapDocumentFinding> errors = MapDocumentValidator.ValidateFindings(doc, registry);
             if (errors.Count > 0)
             {
                 command.Revert(doc);
-                throw new InvalidOperationException("mutation rejected: " + string.Join("; ", errors));
+                throw MapMutationException.FromFindings(errors, "mutation rejected: " + string.Join("; ", errors.Select(e => e.Message)));
             }
 
             return new SculptFlattenRegionResult(minX, minZ, maxX, maxZ, targetHeight, writes.Count,
@@ -135,11 +135,11 @@ public sealed partial class MutationService
             var command = new TerrainSculptClearCommand(cellSize, tiles, dirty);
             command.Apply(doc);
 
-            IReadOnlyList<string> errors = MapDocumentValidator.Validate(doc, registry);
+            IReadOnlyList<MapDocumentFinding> errors = MapDocumentValidator.ValidateFindings(doc, registry);
             if (errors.Count > 0)
             {
                 command.Revert(doc);
-                throw new InvalidOperationException("mutation rejected: " + string.Join("; ", errors));
+                throw MapMutationException.FromFindings(errors, "mutation rejected: " + string.Join("; ", errors.Select(e => e.Message)));
             }
 
             return new SculptClearResult(tiles.Count, Applied: true);
@@ -194,21 +194,24 @@ public sealed partial class MutationService
         int given = (minX is null ? 0 : 1) + (minZ is null ? 0 : 1) + (maxX is null ? 0 : 1) + (maxZ is null ? 0 : 1);
         if (given != 0 && given != 4)
         {
-            throw new ArgumentException(
-                "sculpt_clear needs minX/minZ/maxX/maxZ supplied together (a region clear) or all left null (a whole-layer clear).");
+            throw new MapMutationArgumentException(MapDocumentRefusal.ToolRectangleIncomplete,
+                "sculpt_clear needs minX/minZ/maxX/maxZ supplied together (a region clear) or all left null (a whole-layer clear).")
+            { Operation = "sculpt_clear", FieldPath = "minX,minZ,maxX,maxZ" };
         }
     }
 
     /// <summary>Parses a sculpt brush name (case-insensitive, underscore-insensitive so <c>set_height</c> matches
     /// <see cref="SculptBrush.SetHeight"/> the same way the tool description spells it) into a
-    /// <see cref="SculptBrush"/>. Throws <see cref="ArgumentException"/> naming every valid value when
-    /// <paramref name="brush"/> does not match one, the same convention <c>ParseBiome</c> uses for biome
-    /// names.</summary>
+    /// <see cref="SculptBrush"/>. Throws <see cref="MapMutationArgumentException"/> carrying the accepted names in
+    /// <see cref="MapMutationArgumentException.AcceptedValues"/> when <paramref name="brush"/> does not match one,
+    /// the same convention <c>ParseBiome</c> uses for biome names.</summary>
     static SculptBrush ParseSculptBrush(string brush)
     {
         if (Enum.TryParse(brush.Replace("_", ""), ignoreCase: true, out SculptBrush parsed)) return parsed;
-        throw new ArgumentException(
+        throw new MapMutationArgumentException(MapDocumentRefusal.SchemaEnumUnsupported,
             $"brush '{brush}' is not a recognized SculptBrush. Valid values: raise, lower, smooth, flatten, set_height.",
-            nameof(brush));
+            nameof(brush))
+        { FieldPath = "brush", SubmittedText = brush, EnumType = typeof(SculptBrush),
+            AcceptedValues = ["raise", "lower", "smooth", "flatten", "set_height"] };
     }
 }

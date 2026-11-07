@@ -21,10 +21,16 @@ internal static class MapFoliageManifestBudget
     internal static void CheckMemberships(long count, long maxUtf8Bytes = MapFoliagePayloadLimits.MaxUtf8Bytes)
     {
         // {"x":0,"z":0} is the smallest possible coordinate object. Commas and all other metadata add bytes.
-        if (count < 0 || maxUtf8Bytes < 0 || count > maxUtf8Bytes / 13) throw Limit(maxUtf8Bytes);
+        if (count < 0 || maxUtf8Bytes < 0 || count > maxUtf8Bytes / 13)
+            throw count < 0 || maxUtf8Bytes < 0
+                ? new MapDocumentException(MapDocumentRefusal.ValueOutsideRange, $"foliage stored JSON exceeds {maxUtf8Bytes} UTF-8 bytes.")
+                { FieldPath = count < 0 ? "Count" : "MaxUtf8Bytes", ActualInteger = count < 0 ? count : maxUtf8Bytes, MinimumInteger = 0 }
+                : Limit(maxUtf8Bytes, count: count);
     }
 
-    static MapDocumentException Limit(long limit) => new($"foliage stored JSON exceeds {limit} UTF-8 bytes.");
+    static MapDocumentException Limit(long limit, long? bytes = null, long? count = null) =>
+        new(MapDocumentRefusal.WorkCapacityExceeded, $"foliage stored JSON exceeds {limit} UTF-8 bytes.")
+        { Budget = "stored foliage UTF-8 bytes", Limit = limit, ActualByteCount = bytes, ActualCount = count };
 
     sealed class Counter(long limit) : Stream
     {
@@ -37,7 +43,7 @@ internal static class MapFoliageManifestBudget
         public override void Write(byte[] buffer, int offset, int count) => Write(buffer.AsSpan(offset, count));
         public override void Write(ReadOnlySpan<byte> buffer)
         {
-            if (buffer.Length > limit - _length) throw Limit(limit);
+            if (buffer.Length > limit - _length) throw Limit(limit, bytes: _length <= long.MaxValue - buffer.Length ? _length + buffer.Length : null);
             _length += buffer.Length;
         }
         public override void Flush() { }

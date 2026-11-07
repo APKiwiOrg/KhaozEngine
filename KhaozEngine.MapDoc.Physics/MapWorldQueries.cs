@@ -125,10 +125,13 @@ public sealed class MapWorldQueries
     internal static void CheckReach(float range, float tolerance, string? parameter = null)
     {
         if (!float.IsFinite(range) || range < 0f)
-            throw new ArgumentOutOfRangeException(parameter ?? nameof(range), "Range must be finite and nonnegative.");
+            throw new MapQueryRangeException(float.IsFinite(range) ? MapDocumentRefusal.ValueOutsideRange : MapDocumentRefusal.ValueNonfinite,
+                "Range must be finite and nonnegative.", parameter ?? nameof(range))
+            { FieldPath = "Range", ActualNumber = range, MinimumNumber = 0 };
         if (!float.IsFinite(tolerance) || tolerance < 0f)
-            throw new ArgumentOutOfRangeException(parameter ?? nameof(tolerance),
-                "Tolerance must be finite and nonnegative.");
+            throw new MapQueryRangeException(float.IsFinite(tolerance) ? MapDocumentRefusal.ValueOutsideRange : MapDocumentRefusal.ValueNonfinite,
+                "Tolerance must be finite and nonnegative.", parameter ?? nameof(tolerance))
+            { FieldPath = "Tolerance", ActualNumber = tolerance, MinimumNumber = 0 };
     }
 
     /// <summary>The reach test behind <see cref="Within"/>, for range and tolerance already checked.</summary>
@@ -158,8 +161,12 @@ public sealed class MapWorldQueries
     {
         if (band is not { } b) return MapSlab.All;
         if (!float.IsFinite(b.MinY) || !float.IsFinite(b.MaxY) || b.MinY > b.MaxY)
-            throw new ArgumentOutOfRangeException(parameter ?? nameof(band),
-                "A band needs finite heights with MinY at most MaxY.");
+            throw new MapQueryRangeException(!float.IsFinite(b.MinY) || !float.IsFinite(b.MaxY)
+                    ? MapDocumentRefusal.ValueNonfinite : MapDocumentRefusal.BoundsInvalid,
+                "A band needs finite heights with MinY at most MaxY.", parameter ?? nameof(band))
+            { FieldPath = !float.IsFinite(b.MinY) ? "Band.MinY" : !float.IsFinite(b.MaxY) ? "Band.MaxY" : "Band",
+                ActualNumber = !float.IsFinite(b.MaxY) && float.IsFinite(b.MinY) ? b.MaxY : b.MinY,
+                MinimumNumber = b.MinY, MaximumNumber = b.MaxY };
         return new MapSlab(b.MinY, b.MaxY);
     }
 

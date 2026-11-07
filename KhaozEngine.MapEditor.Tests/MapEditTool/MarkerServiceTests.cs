@@ -4,6 +4,7 @@ using System.Numerics;
 using System.Text;
 using KhaozEngine.MapDoc;
 using KhaozEngine.MapDoc.Prefabs;
+using KhaozEngine.MapDoc.Support;
 using KhaozEngine.MapEdit;
 using KhaozEngine.MapEdit.Tools;
 using KhaozEngine.Tests.MapDoc;
@@ -31,8 +32,14 @@ public sealed class MarkerServiceTests
         foreach (Func<MapPrefabMutationResult> verb in new Func<MapPrefabMutationResult>[] { () => tools.MarkerSet(json), () => tools.MarkerRemove("m") })
         {
             var refused = Assert.Throws<McpException>(verb);
-            Assert.Contains("resolver adoption", refused.Message, StringComparison.Ordinal);
-            Assert.Contains("MapResolverAdoption.ConvertToAuthoredSupport", refused.Message, StringComparison.Ordinal);
+            var reason = Assert.IsType<MapDocumentException>(refused.InnerException);
+            Assert.Equal(MapDocumentRefusal.ResolverContractMismatch, reason.Reason);
+            Assert.Equal(1, reason.PayloadVersion);
+            Assert.Equal(1, reason.ResolverVersion);
+            Assert.Equal(2, reason.ExpectedResolverVersion);
+            Assert.Equal(MapSupportRecipe.LegacyXzCallbackV1, reason.SupportRecipe);
+            Assert.Equal("resolverIdentity", reason.FieldPath);
+            Assert.Equal("marker", reason.SubjectKind);
             Assert.Equal(bytes, MapDocumentFile.SaveText(PrefabEditorFixtures.Document(session)));
             Assert.Equal(history, session.NativeHistoryState);
             Assert.False(session.IsDirty);
@@ -47,6 +54,13 @@ public sealed class MarkerServiceTests
         MapEditSession adopted = MarkerEditorFixtures.Session(MarkerFixtures.Create());
         Assert.Single(new QueryService(adopted).MarkerList(null, null, null, false, null));
         Assert.NotEqual(expansions, MapPrefabResolver.ThreadExpansions);
+        MapDocument repaired = MapResolverAdoption.ConvertToAuthoredSupport(document,
+            document.Placements.Where(p => p.Y is null).ToDictionary(p => p.Id, _ => new MapPlacementSupportChoice(0, null)));
+        MapEditSession accepted = PrefabEditorFixtures.Session(new PrefabFixture(repaired, assets));
+        var acceptedTools = new MarkerTools(new MutationService(accepted), new QueryService(accepted));
+        acceptedTools.MarkerSet(json);
+        acceptedTools.MarkerRemove("m");
+        Assert.Empty(acceptedTools.MarkerList());
     }
 
     [Fact]
@@ -78,9 +92,14 @@ public sealed class MarkerServiceTests
         Assert.Equal(query.MarkerList("y-name", null, null, false, null).Select(m => m.Id), tools.MarkerList(name: "y-name").Select(m => m.Id));
 
         // The four rectangle parameters are all present or all absent.
+        string before = MarkerEditorFixtures.State(session);
         foreach (var partial in new Func<object>[] { () => tools.MarkerList(minX: -1), () => tools.MarkerList(minX: -1, minZ: -1, maxX: 0) })
         {
-            Assert.Throws<McpException>(partial);
+            var error = Assert.IsType<MapDocumentException>(Assert.Throws<McpException>(partial).InnerException);
+            Assert.Equal(MapDocumentRefusal.ToolRectangleIncomplete, error.Reason);
+            Assert.Equal("marker_list", error.Operation);
+            Assert.Equal("minX,minZ,maxX,maxZ", error.FieldPath);
+            Assert.Equal(before, MarkerEditorFixtures.State(session));
         }
         Assert.Equal(new[] { "m" }, tools.MarkerList(minX: -1, minZ: -2, maxX: 0, maxZ: 0).Select(m => m.Id));
     }

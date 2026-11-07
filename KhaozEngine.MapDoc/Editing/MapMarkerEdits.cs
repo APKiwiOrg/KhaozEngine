@@ -33,7 +33,8 @@ public static class MapMarkerEdits
             MapSetMarker set => (set.Marker ?? throw new MapDocumentException(MapDocumentRefusal.SchemaValueRequired, "Marker set requires a marker.")
                 { FieldPath = "marker", SubjectKind = "marker" }).Id,
             MapRemoveMarker remove => remove.Id,
-            _ => throw new MapDocumentException("Unknown marker edit."),
+            _ => throw new MapDocumentException(MapDocumentRefusal.OperationKindUnsupported, "Unknown marker edit.")
+            { RecordType = edit.GetType(), Operation = nameof(Prepare) },
         };
         if (string.IsNullOrWhiteSpace(id)) throw new MapDocumentException(MapDocumentRefusal.SchemaValueRequired, "Marker edits require a nonempty marker ID.")
             { MarkerId = id, FieldPath = "marker.id", SubjectKind = "marker" };

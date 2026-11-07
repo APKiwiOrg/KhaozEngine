@@ -7,10 +7,17 @@ namespace KhaozEngine.MapDoc.Prefabs;
 /// <summary>The closed payload-1 prefab file. Prefabs contain leaf resources and never nested instances.</summary>
 public static class MapPrefabFile
 {
-    public static MapPrefabAsset Read(ReadOnlyMemory<byte> bytes, string resourceId)
+    public static MapPrefabAsset Read(ReadOnlyMemory<byte> bytes, string resourceId) =>
+        Read(bytes, resourceId, MapPrefabJson.Limits.MaxPayloadBytes);
+
+    // Measure actual payload bytes on the normal reader path with a small test ceiling.
+    internal static MapPrefabAsset ReadWithPayloadByteLimitForTests(ReadOnlyMemory<byte> bytes, string resourceId, long maximumPayloadBytes) =>
+        Read(bytes, resourceId, maximumPayloadBytes);
+
+    static MapPrefabAsset Read(ReadOnlyMemory<byte> bytes, string resourceId, long maximumPayloadBytes)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(resourceId);
-        if (bytes.Length > MapPrefabJson.Limits.MaxPayloadBytes) throw new MapDocumentException("Prefab payload byte limit exceeded.");
+        MapPrefabCapacity.RequirePayloadBytes(bytes.Length, "Prefab", resourceId, maximumPayloadBytes);
         try
         {
             using JsonDocument json = JsonDocument.Parse(bytes, new JsonDocumentOptions { MaxDepth = 64 });

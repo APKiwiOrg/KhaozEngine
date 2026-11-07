@@ -28,15 +28,15 @@ internal sealed class NativeCollisionToolFixture : IDisposable
     public string Root => _root;
     public string DocumentPath => Path.Combine(_root, DocumentName);
 
-    public NativeCollisionToolFixture()
-        : this(Path.Combine(Path.GetTempPath(), "native-collision-" + Guid.NewGuid().ToString("N")), author: true)
+    public NativeCollisionToolFixture(string? repairedAsset = null)
+        : this(Path.Combine(Path.GetTempPath(), "native-collision-" + Guid.NewGuid().ToString("N")), author: true, repairedAsset)
     {
     }
 
-    NativeCollisionToolFixture(string root, bool author)
+    NativeCollisionToolFixture(string root, bool author, string? repairedAsset = null)
     {
         _root = root;
-        if (author) Author(root);
+        if (author) Author(root, repairedAsset);
         Session.Open(DocumentPath);
         Service = new NativeCollisionService(Session);
     }
@@ -70,7 +70,7 @@ internal sealed class NativeCollisionToolFixture : IDisposable
         if (Directory.Exists(_root)) Directory.Delete(_root, true);
     }
 
-    static void Author(string root)
+    static void Author(string root, string? repairedAsset)
     {
         Directory.CreateDirectory(Path.Combine(root, "kit"));
         // Half-metre source units: the boxes span 0 to 5 units, 0 to 2.5 m.
@@ -86,14 +86,14 @@ internal sealed class NativeCollisionToolFixture : IDisposable
         MapAssetRef wallMesh = Write(root, "wall.mesh", "kit/wall-body.glb", NativeEditorAssetFixtures.QuadGlb(0f, 5f));
         MapAssetRef wallCollider = Write(root, "wall.collider", "kit/wall-body.coll", Collider(wall));
         MapAssetRef rockMesh = Write(root, "rock.mesh", "kit/rock-body.glb", NativeEditorAssetFixtures.QuadGlb(0f, 1.5f));
-        MapAssetRef rockCollider = Write(root, "rock.collider", "kit/rock-body.coll", Collider(rock));
+        MapAssetRef rockCollider = Write(root, "rock.collider", "kit/rock-body.coll", Collider(repairedAsset == "rock-mesh" ? new BoxShape(Vector3.One) : rock));
 
         // Refusal and edge cases: a box tilted 0.5 degrees about X, a lone centred box, one collider shared by two
         // assets, an asset declared only in a child manifest, and a root asset whose collider the child declares.
         var tilted = new CompoundShape(new[]
         {
             new CompoundChild(new BoxShape(new Vector3(1f, 1f, 0.2f)),
-                new Pose(new Vector3(0, 1f, 0), Quaternion.CreateFromAxisAngle(Vector3.UnitX, 0.5f * MathF.PI / 180f))),
+                new Pose(new Vector3(0, 1f, 0), repairedAsset == "tilted-wall" ? Quaternion.Identity : Quaternion.CreateFromAxisAngle(Vector3.UnitX, 0.5f * MathF.PI / 180f))),
         });
         MapAssetRef tiltedCollider = Write(root, "tilted.collider", "kit/tilted.coll", Collider(tilted));
         MapAssetRef loneCollider = Write(root, "lone.collider", "kit/lone.coll", Collider(new BoxShape(new Vector3(0.5f, 0.75f, 0.5f))));
@@ -105,12 +105,10 @@ internal sealed class NativeCollisionToolFixture : IDisposable
             Collider(new BoxShape(new Vector3(0.5f, 0.5f, 0.5f))));
         var box = (Min: new Vector3(-1, -1, -1), Max: new Vector3(1, 1, 1));
         string child = NativeEditorAssetFixtures.Manifest(
-            new[] { NativeEditorAssetFixtures.Asset("nested-wall", "rock.mesh", "nested.collider", 1f, box.Min, box.Max) },
-            new[]
-            {
-                NativeEditorAssetFixtures.Resource(nestedCollider, "Collider"),
-                NativeEditorAssetFixtures.Resource(splitCollider, "Collider"),
-            });
+            repairedAsset == "nested-wall" ? Array.Empty<string>() : new[] { NativeEditorAssetFixtures.Asset("nested-wall", "rock.mesh", "nested.collider", 1f, box.Min, box.Max) },
+            new[] { splitCollider }
+                .Where(r => !(repairedAsset == "split-wall" && r.Id == splitCollider.Id))
+                .Select(r => NativeEditorAssetFixtures.Resource(r, "Collider")).ToArray());
         MapAssetRef childManifest = Write(root, "kit.child", "kit/child.manifest.json", Encoding.UTF8.GetBytes(child));
 
         string manifest = NativeEditorAssetFixtures.Manifest(
@@ -123,7 +121,7 @@ internal sealed class NativeCollisionToolFixture : IDisposable
                 NativeEditorAssetFixtures.Asset("tilted-wall", "rock.mesh", "tilted.collider", 1f, box.Min, box.Max),
                 NativeEditorAssetFixtures.Asset("lone-box", "rock.mesh", "lone.collider", 1f, box.Min, box.Max),
                 NativeEditorAssetFixtures.Asset("shared-a", "rock.mesh", "shared.collider", 1f, box.Min, box.Max),
-                NativeEditorAssetFixtures.Asset("shared-b", "rock.mesh", "shared.collider", 1f, box.Min, box.Max),
+                NativeEditorAssetFixtures.Asset("shared-b", "rock.mesh", repairedAsset == "shared-a" ? "wall.collider" : "shared.collider", 1f, box.Min, box.Max),
                 NativeEditorAssetFixtures.Asset("split-wall", "rock.mesh", "split.collider", 1f, box.Min, box.Max),
             },
             new[]
@@ -135,9 +133,23 @@ internal sealed class NativeCollisionToolFixture : IDisposable
                 NativeEditorAssetFixtures.Resource(tiltedCollider, "Collider"),
                 NativeEditorAssetFixtures.Resource(loneCollider, "Collider"),
                 NativeEditorAssetFixtures.Resource(sharedCollider, "Collider"),
+                NativeEditorAssetFixtures.Resource(nestedCollider, "Collider"),
                 NativeEditorAssetFixtures.Resource(childManifest, "Manifest"),
             });
-        MapAssetRef kit = Write(root, "kit", "kit/walls.manifest.json", Encoding.UTF8.GetBytes(manifest));
+        var repaired = MapAssetManifestReader.Read(Encoding.UTF8.GetBytes(manifest), "kit");
+        if (repairedAsset == "nested-wall")
+        {
+            repaired.Assets.Add(new() { Id = "nested-wall", MeshResourceId = "rock.mesh", CollisionResourceId = "nested.collider",
+                SourceUnitsToMetres = 1f, RenderBounds = new(box.Min, box.Max), Source = "fixture", License = "CC0" });
+        }
+        if (repairedAsset == "split-wall")
+            repaired.Resources.Add(new() { Reference = splitCollider, Kind = MapResourceKind.Collider });
+        var optionalCollider = Write(root, "optional.collider", "kit/optional.coll", Collider(new BoxShape(Vector3.One)));
+        repaired.Resources.Add(new() { Reference = optionalCollider, Kind = MapResourceKind.Collider });
+        repaired.Assets.Add(new() { Id = "no-collider", MeshResourceId = "rock.mesh",
+            CollisionResourceId = repairedAsset == "no-collider" ? optionalCollider.Id : null,
+            SourceUnitsToMetres = 1f, RenderBounds = new(box.Min, box.Max), Source = "fixture", License = "CC0" });
+        MapAssetRef kit = Write(root, "kit", "kit/walls.manifest.json", MapAssetFileWriter.Serialize(repaired, "kit"));
 
         var doc = new MapDocument
         {
@@ -150,6 +162,7 @@ internal sealed class NativeCollisionToolFixture : IDisposable
         doc.Terrain.Biomes.Add(new MapBiomeBand());
         doc.Placements.Add(new MapPlacement { Id = "wall-1", Kind = "prop", AssetId = "wall-variant", X = 4, Z = 5 });
         doc.Placements.Add(new MapPlacement { Id = "rock-1", Kind = "prop", AssetId = "rock-mesh", X = -6, Z = 3 });
+        doc.Placements.Add(new MapPlacement { Id = "no-collider-1", Kind = "prop", AssetId = "no-collider", X = 15, Z = 10 });
         doc.Placements.Add(new MapPlacement { Id = "lone-1", Kind = "prop", AssetId = "lone-box", X = 10, Z = -8 });
         MapDocumentFile.Save(doc, Path.Combine(root, DocumentName));
     }

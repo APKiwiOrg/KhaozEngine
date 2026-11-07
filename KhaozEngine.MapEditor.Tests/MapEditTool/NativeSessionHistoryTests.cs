@@ -177,7 +177,8 @@ public sealed class NativeSessionHistoryTests
             File.Delete(session.DocumentPath!);
             Assert.Throws<MapDocumentException>(() => session.Retile(32));
         }
-        else Assert.Throws<InvalidOperationException>(() => session.SetWindow(-32, -32, 32, 32));
+        else Assert.Equal(MapDocumentRefusal.ToolTiledSessionRequired,
+            Assert.Throws<MapSessionException>(() => session.SetWindow(-32, -32, 32, 32)).Reason);
         Assert.Equal(before, PrefabEditorFixtures.State(session));
     }
     [Fact]

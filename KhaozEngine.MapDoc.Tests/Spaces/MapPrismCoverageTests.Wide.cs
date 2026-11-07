@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using KhaozEngine.MapDoc;
 using KhaozEngine.MapDoc.Spaces;
 using KhaozEngine.MapDoc.Support;
 using KhaozEngine.MapDoc.Surfaces;
@@ -51,8 +52,15 @@ public sealed partial class MapPrismCoverageTests
         Assert.Equal(MapRefinementStatus.Complete, refined.Status);
         Assert.Equal(expected.Length, refined.Faces.Count);
         Assert.Equal(MapEffectiveGeometry.AreaWide(ring), refined.LowerArea);
-        Assert.Equal(MapRefinementStatus.NotRepresentable, refined.Narrow().Status);
-        Assert.Equal(MapRefinementStatus.NotRepresentable, partition.Narrow().Status);
+        var boundedRefinement = refined.Narrow();
+        Assert.Equal(MapRefinementStatus.NotRepresentable, boundedRefinement.Status);
+        Assert.Equal(MapDocumentRefusal.GeometryNotRepresentable, boundedRefinement.Finding!.Reason);
+        Assert.Empty(boundedRefinement.Faces);
+        Assert.Empty(boundedRefinement.Vertices);
+        var boundedPartition = partition.Narrow();
+        Assert.Equal(MapRefinementStatus.NotRepresentable, boundedPartition.Status);
+        Assert.Equal(MapDocumentRefusal.GeometryNotRepresentable, boundedPartition.Finding!.Reason);
+        Assert.Empty(boundedPartition.Pieces);
     }
 
     [Theory]
@@ -163,6 +171,10 @@ public sealed partial class MapPrismCoverageTests
         Assert.Equal(MapRefinementStatus.MissingGeometry, result.Status);
         Assert.Empty(result.Pieces);
         Assert.False(result.Witness.Complete);
+        Assert.Equal(MapDocumentRefusal.AcquisitionIncomplete, result.Finding!.Reason);
+        Assert.Equal(view.Status, result.Finding.AcquireStatus);
+        Assert.Equal(MapRefinementStatus.Complete, MapOccupiedPartitions.BuildWide(r.CompleteView(),
+            new(new(0, 1), new(-4, 1)), new(new(4, 1), new(0, 1)), new(), true).Status);
     }
 
     // Independent canonical ordering of the exact polygons used in equality assertions.

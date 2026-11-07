@@ -111,9 +111,19 @@ public sealed class FinePatchConversionTests
     public void Conversion_NonCoplanarCornerCutIsUnsupportedEncodingUnlessAccepted()
     {
         MapSurfaceSet input = ConversionFixtures.Slopes(MapOverlayCut.CornerQuarter);
-        Assert.Throws<MapDocumentException>(() => Convert(input, ConversionFixtures.Request(2, false)));
+        var digests = Digests(input);
+        var refusal = Assert.Throws<MapDocumentException>(() => Convert(input, ConversionFixtures.Request(2, false)));
+        Assert.Equal(MapDocumentRefusal.TerrainCornerCutCreaseUnsupported, refusal.Reason);
+        Assert.Equal(MapDocumentRefusal.TerrainCornerCutCreaseUnsupported, Assert.Single(refusal.Findings!).Reason);
         MapCellConversion c = MapConversionClassifier.Classify(ConversionFixtures.Coarse(input).Surface, ConversionFixtures.Coarse(input).Patch, 1, 1, 2);
         Assert.Equal(MapCellConversionClass.UnsupportedEncoding, c.Class);
+        Assert.Equal(MapDocumentRefusal.TerrainCornerCutCreaseUnsupported, c.Finding?.Reason);
+        Assert.Equal(MapCellConversionClass.UnsupportedEncoding, c.Finding?.ConversionClass);
+        Assert.Equal(MapPresencePolicy.Native, c.Finding?.PresencePolicy);
+        Assert.Equal("coarse", c.Finding?.SurfaceId);
+        Assert.Equal(MapLatticeAddress.Corner(1, 1), c.Finding?.Address);
+        Assert.Equal(2, c.Finding?.ActualInteger);
+        Assert.Equal(digests, Digests(input));
         MapConversionResult accepted = Convert(input, ConversionFixtures.Request(2, true));
         Assert.Equal((4, 8), (accepted.Differences.Count(d => d.Kind == MapDifferenceKind.Geometry && d.OldFace is not null),
                               accepted.Differences.Count(d => d.Kind == MapDifferenceKind.Geometry && d.NewFace is not null)));
@@ -122,19 +132,43 @@ public sealed class FinePatchConversionTests
     [Theory, InlineData(2, MapCellConversionClass.ExactCoplanar), InlineData(3, MapCellConversionClass.UnsupportedEncoding)]
     public void Conversion_CoplanarCornerCutPaintNeedsAnEvenSubdivision(int k, MapCellConversionClass expected)
     {
-        var coarse = ConversionFixtures.Coarse(ConversionFixtures.Slopes(MapOverlayCut.CornerQuarter, coplanarCentre: true));
+        var input = ConversionFixtures.Slopes(MapOverlayCut.CornerQuarter, coplanarCentre: true);
+        var coarse = ConversionFixtures.Coarse(input);
         MapCellConversion c = MapConversionClassifier.Classify(coarse.Surface, coarse.Patch, 1, 1, k);
         Assert.Equal(expected, c.Class);
+        if (expected == MapCellConversionClass.UnsupportedEncoding)
+        {
+            Assert.Equal(MapDocumentRefusal.TerrainCornerCutSubdivisionOdd, c.Finding?.Reason);
+            Assert.Equal(k, c.Finding?.ActualInteger);
+            var before = Digests(input);
+            var error = Assert.Throws<MapDocumentException>(() => Convert(input, ConversionFixtures.Request(k, false)));
+            Assert.Equal(MapDocumentRefusal.TerrainCornerCutSubdivisionOdd, error.Reason);
+            Assert.Equal(before, Digests(input));
+            Assert.Equal(MapCellConversionClass.ExactCoplanar, Assert.Single(Convert(input, ConversionFixtures.Request(2, false)).Cells).Class);
+            Assert.Equal(MapCellConversionClass.ExactCoplanar,
+                MapConversionClassifier.Classify(coarse.Surface, coarse.Patch, 1, 1, 2).Class);
+        }
+        else Assert.Null(c.Finding);
     }
 
     [Fact]
     public void Conversion_LegacyFallbackIsNotRepresentableAndArithmeticIsAnExplicitDifference()
     {
         MapSurfaceSet input = ConversionFixtures.LegacyRowWithNoDraw();
-        Assert.Throws<MapDocumentException>(() => Convert(input, ConversionFixtures.LegacyRequest(2, false)));
+        var before = Digests(input);
+        var refs = input.Refs.ToArray();
+        var refusal = Assert.Throws<MapDocumentException>(() => Convert(input, ConversionFixtures.LegacyRequest(2, false)));
+        Assert.Equal(MapDocumentRefusal.TerrainAuthoredDifference, refusal.Reason);
+        Assert.Equal(2, refusal.Findings!.Count);
         var legacy = ConversionFixtures.Legacy(input);
         MapCellConversion c = MapConversionClassifier.Classify(legacy.Surface, legacy.Patch, 1, 0, 2);
         Assert.Equal(MapCellConversionClass.NotRepresentable, c.Class);
+        Assert.Equal(MapDocumentRefusal.TerrainAuthoredDifference, c.Finding?.Reason);
+        Assert.Equal(MapCellConversionClass.NotRepresentable, c.Finding?.ConversionClass);
+        Assert.Equal(MapPresencePolicy.LegacyTileWorld, c.Finding?.PresencePolicy);
+        Assert.Equal(MapLatticeAddress.Corner(1, 0), c.Finding?.Address);
+        Assert.Equal(before, Digests(input));
+        Assert.Equal(refs, input.Refs);
         MapConversionResult r = Convert(input, ConversionFixtures.LegacyRequest(2, true));
         Assert.Contains(r.Differences, d => d.Kind == MapDifferenceKind.FallbackRemoved && d.CellX == 1);
         Assert.Contains(r.Differences, d => d.Kind == MapDifferenceKind.FlagRemoved && d.CellX == 1);
@@ -178,9 +212,12 @@ public sealed class FinePatchConversionTests
     {
         MapSurfaceSet input = ConversionFixtures.MixedPorch();
         var digests = Digests(input);
-        string message = Assert.Throws<MapDocumentException>(() => Convert(input, ConversionFixtures.PorchRoofRequest(width: 2))).Message;  // x = 2/3 m crosses [1/2, 1)
-        Assert.Contains("footprint straddle: footprint 'porch-cells' cell 1 crosses the conversion region boundary.", message);   // cells 1 and 65 straddle, 1 is first
+        var error = Assert.Throws<MapDocumentException>(() => Convert(input, ConversionFixtures.PorchRoofRequest(width: 2)));  // x = 2/3 m crosses [1/2, 1)
+        Assert.Equal(MapDocumentRefusal.TerrainFootprintStraddlesRegion, error.Reason);
+        Assert.Equal("porch-cells", error.RecordId);
+        Assert.Equal(1, error.SlotCell);   // cells 1 and 65 straddle, 1 is first
         Assert.Equal(digests, Digests(input));
+        Assert.NotEmpty(Convert(input, ConversionFixtures.PorchRoofRequest(width: 3)).Cells);
     }
 
     [Fact]
@@ -188,7 +225,11 @@ public sealed class FinePatchConversionTests
     {
         MapSurfaceSet input = ConversionFixtures.WithWallOnTheCentreEdge();
         var digests = Digests(input);
-        Assert.Contains("west-foot", Assert.Throws<MapDocumentException>(() => Convert(input, ConversionFixtures.Request(2, false))).Message);
+        var refusal = Assert.Throws<MapDocumentException>(() => Convert(input, ConversionFixtures.Request(2, false)));
+        Assert.Equal(MapDocumentRefusal.TerrainBoundaryRecordIntersects, refusal.Reason);
+        Assert.Equal("west-foot", refusal.RecordId);
         Assert.Equal(digests, Digests(input));
+        Assert.NotEmpty(Convert(input, ConversionFixtures.Request(2, false) with
+            { Regions = new[] { new MapCellRect(2, 1, 3, 2) } }).Cells);
     }
 }

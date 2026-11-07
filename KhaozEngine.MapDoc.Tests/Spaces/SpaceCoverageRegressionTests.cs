@@ -99,6 +99,23 @@ public sealed class SpaceCoverageRegressionTests
         else Assert.Equal(new[] { $"ambiguous: footprint 'world-cells' cell {cell} with 'world-copy-cells' cell {cell}" }, findings);
         Assert.Equal(aliased ? MapMembershipStatus.Resolved : MapMembershipStatus.Ambiguous,
             CaveFixtures.Query(document, cell + 0.5f, 10, -0.5f).Status);
+        var typed = new System.Collections.Generic.List<MapDocumentFinding>();
+        Assert.Equal(findings, MapSpaceCoverageValidator.Validate(view, new(), typed));
+        if (aliased) Assert.Empty(typed);
+        else
+        {
+            var overlap = Assert.Single(typed);
+            Assert.Equal(MapDocumentRefusal.SpaceOccupiedOverlap, overlap.Reason);
+            Assert.Equal("world-cells", overlap.RecordId);
+            Assert.Equal("world-copy-cells", overlap.RelatedRecordId);
+            Assert.Equal(cell, overlap.SlotCell);
+            Assert.Equal(cell, overlap.RelatedSlotCell);
+            var peer = anchor.Records.OfType<MapSpaceDoc>().Single(s => s.Id == "world-copy");
+            Replace(anchor, peer with { AliasOf = world });
+            typed.Clear();
+            Assert.Empty(MapSpaceCoverageValidator.Validate(MapScopedSurfaces.CompleteView(set), new(), typed));
+            Assert.Empty(typed);
+        }
     }
 
     [Theory]

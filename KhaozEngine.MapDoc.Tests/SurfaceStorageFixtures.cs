@@ -193,10 +193,13 @@ internal static class SurfaceStorageFixtures
         var row = Locate(root, key); string hash = row.Entry["payloadSha256"]!.GetValue<string>();
         return Path.Combine(root, "tiles", "surfaces", "p", hash[..2], hash + ".json");
     }
-    internal static void RewriteIndexSemanticDigest(string root, MapPatchKey key, string digest)
+    internal static void RewriteIndexSemanticDigest(string root, MapPatchKey key, string digest) =>
+        RewriteIndexEntry(root, key, entry => entry["semanticSha256"] = digest);
+
+    internal static void RewriteIndexEntry(string root, MapPatchKey key, Action<JsonObject> edit)
     {
         var row = Locate(root, key);
-        row.Entry["semanticSha256"] = digest;
+        edit(row.Entry);
         string index = WritePage(root, 'i', row.Index);
         row.IndexRef["sha256"] = index;
         string directory = WritePage(root, 'd', row.Directory);

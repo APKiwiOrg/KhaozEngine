@@ -31,21 +31,38 @@ public sealed class SurfacePatchCodecTests
         Assert.True(new MapPatchKey("a", 5, 5).CompareTo(new MapPatchKey("b", -9, -9)) < 0);
         Assert.True(new MapPatchKey("a", 9, -1).CompareTo(new MapPatchKey("a", 0, 0)) < 0);
     }
-    [Theory, InlineData("width", "\"width\":4", "\"width\":65"), InlineData("heights", "\"depth\":2", "\"depth\":3"),
-     InlineData("presence", "/QAAAAAAAAA=", "/QAAAAABAAA="), InlineData("unknown", "\"width\":4", "\"width\":4,\"extra\":1")]
-    public void Decode_RefusesMalformedPayloadBeforeAllocation(string member, string from, string to)
+    [Theory, InlineData("rectangle", "\"width\":4", "\"width\":65", MapDocumentRefusal.BoundsInvalid),
+     InlineData("heights", "\"depth\":2", "\"depth\":3", MapDocumentRefusal.SchemaArrayLengthMismatch),
+     InlineData("Presence", "/QAAAAAAAAA=", "/QAAAAABAAA=", MapDocumentRefusal.SurfacePresencePaddingNonzero),
+     InlineData("extra", "\"width\":4", "\"width\":4,\"extra\":1", MapDocumentRefusal.SchemaMemberUnknown)]
+    public void Decode_RefusesMalformedPayloadBeforeAllocation(string member, string from, string to, MapDocumentRefusal reason)
     {
         string text = Encoding.UTF8.GetString(MapSurfacePatchCodec.Encode(SurfacePatchFixtures.Sample()));
         Assert.Contains(from, text);
         byte[] bad = Encoding.UTF8.GetBytes(text.Replace(from, to));
-        Assert.Contains(member, Assert.Throws<MapDocumentException>(() => MapSurfacePatchCodec.Decode(bad, SurfacePatchFixtures.Sample().Key)).Message);
+        var ex = Assert.Throws<MapDocumentException>(() => MapSurfacePatchCodec.Decode(bad, SurfacePatchFixtures.Sample().Key));
+        Assert.Equal(reason, ex.Reason);
+        Assert.Equal(member, ex.FieldPath);
+        Assert.Equal(SurfacePatchFixtures.Sample().Key, MapSurfacePatchCodec.Decode(Encoding.UTF8.GetBytes(text), SurfacePatchFixtures.Sample().Key).Key);
     }
     [Fact]
     public void Decode_RefusesOversizedInputUnreducedUnitsAndOverflow()
     {
-        Assert.Contains("1048576", Assert.Throws<MapDocumentException>(() => MapSurfacePatchCodec.Decode(new byte[1_048_577], SurfacePatchFixtures.Sample().Key)).Message);
+        var capacity = Assert.Throws<MapDocumentException>(() => MapSurfacePatchCodec.Decode(new byte[1_048_577], SurfacePatchFixtures.Sample().Key));
+        Assert.Equal(MapDocumentRefusal.WorkCapacityExceeded, capacity.Reason);
+        Assert.Equal("SurfacePatchEncodedBytes", capacity.Budget);
+        Assert.Equal(1_048_576L, capacity.Limit);
+        Assert.Equal(1_048_577L, capacity.ActualByteCount);
+        var capped = SurfacePatchFixtures.PayloadAtByteCap();
+        byte[] encoded = MapSurfacePatchCodec.Encode(capped);
+        Assert.Equal(MapSurfacePatchCodec.MaxEncodedBytes, encoded.Length);
+        Assert.Equal(capped.Key, MapSurfacePatchCodec.Decode(encoded, capped.Key).Key);
         Assert.Equal(new MapExactValue(1, 100), new MapRational(1, 100).Exact());
-        Assert.Throws<MapDocumentException>(() => new MapRational(2, 200));
+        var unit = Assert.Throws<MapDocumentException>(() => new MapRational(2, 200));
+        Assert.Equal(MapDocumentRefusal.SurfaceUnitUnreduced, unit.Reason);
+        Assert.Equal(2, unit.Numerator);
+        Assert.Equal(200, unit.Denominator);
+        Assert.Equal(new MapExactValue(1, 100), new MapRational(1, 100).Exact());
         Assert.Equal(new MapExactValue(1, 1), new MapRational(1, 1).Exact());
         Assert.Throws<MapDocumentException>(() => new MapRational(0, 1));
         Assert.Equal(new MapExactPoint(new(4, 1), new(1433, 100), new(-64, 1)), MapLatticeFrame.ImportedMetreCentimetre.Corner(4, 64, 1433));
@@ -83,7 +100,11 @@ public sealed class SurfacePatchCodecTests
         clone.CornerDependencies.Reverse();
         Assert.Equal(encoded, MapSurfacePatchCodec.Encode(clone));
         Assert.Equal(encoded, MapSurfacePatchCodec.Encode(MapSurfacePatchCodec.Decode(encoded, patch.Key)));
-        Assert.Throws<MapDocumentException>(() => MapSurfacePatchCodec.Decode(encoded, new("wrong", 0, 0)));
+        var key = Assert.Throws<MapDocumentException>(() => MapSurfacePatchCodec.Decode(encoded, new("wrong", 0, 0)));
+        Assert.Equal(MapDocumentRefusal.SurfacePatchKeyMismatch, key.Reason);
+        Assert.Equal(patch.Key, key.Patch);
+        Assert.Equal(new MapPatchKey("wrong", 0, 0), key.ExpectedPatch);
+        Assert.Equal(patch.Key, MapSurfacePatchCodec.Decode(encoded, patch.Key).Key);
         clone.Heights[0] = 12;
         clone.Cells[0] = default;
         clone.SetPresent(0, 0, false);

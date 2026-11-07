@@ -21,7 +21,10 @@ public class MapWorldBuilderTests
     [Fact]
     public void InvalidInputs_Refuse()
     {
-        Assert.Contains("partial", Assert.Throws<MapDocumentException>(() => NativeWorldFixtures.BuildPartialWindow()).Message);
+        var partial = Assert.Throws<MapDocumentException>(() => NativeWorldFixtures.BuildPartialWindow());
+        Assert.Equal(MapDocumentRefusal.CompleteDocumentRequired, partial.Reason);
+        Assert.Equal("BuildWorld", partial.Operation);
+        Assert.NotNull(partial.DocumentId);
         Assert.Equal(new[] { "crate", "far-crate" },
             NativeWorldFixtures.BuildPartialWindow(loadWholeWorld: true).Document.Placements.Select(p => p.PlacementId));
 
@@ -77,6 +80,63 @@ public class MapWorldBuilderTests
         string baseline = MapWorldBuilder.Build(f.Document, f.Assets, NativeWorldFixtures.Options()).BuildHash;
         Assert.NotEqual(baseline, MapWorldBuilder.Build(f.Document, f.Assets, NativeWorldFixtures.Options() with { ConsumerPolicyIdentity = "other" }).BuildHash);
         Assert.NotEqual(baseline, MapWorldBuilder.Build(f.Document, f.Assets, NativeWorldFixtures.Options() with { Chunks = new MapTerrainChunkPolicy(512) }).BuildHash);
+    }
+
+    [Theory]
+    [InlineData("BuilderVersion", 0, 1)]
+    [InlineData("Chunks.MaxTrianglesPerChunk", 63, 64)]
+    [InlineData("Chunks.MaxTrianglesPerChunk", 1025, 1024)]
+    public void InvalidPolicyNumbers_IdentifyTheFieldAndAdmitItsBoundary(string field, int invalid, int valid)
+    {
+        var f = NativeWorldFixtures.Crate();
+        var options = NativeWorldFixtures.Options();
+        MapWorldBuildOptions WithValue(int value) => field == "BuilderVersion"
+            ? options with { BuilderVersion = value } : options with { Chunks = new(value) };
+        string before = MapDocumentFile.SaveText(f.Document);
+        var error = Assert.Throws<MapWorldBuildRangeException>(() => MapWorldBuilder.Build(f.Document, f.Assets, WithValue(invalid)));
+        Assert.IsAssignableFrom<ArgumentOutOfRangeException>(error);
+        Assert.Equal("options", error.ParamName);
+        Assert.Null(error.ActualValue);
+        Assert.Equal(MapDocumentRefusal.ValueOutsideRange, error.Reason);
+        Assert.Equal(field, error.FieldPath);
+        Assert.Equal(invalid, error.ActualInteger);
+        Assert.Equal(field == "BuilderVersion" ? 1 : 64, error.MinimumInteger);
+        Assert.Equal(field == "BuilderVersion" ? (long?)null : 1024, error.MaximumInteger);
+        Assert.Equal(before, MapDocumentFile.SaveText(f.Document));
+        Assert.NotEmpty(MapWorldBuilder.Build(f.Document, f.Assets, WithValue(valid)).Statics);
+    }
+
+    [Fact]
+    public void BlankConsumerPolicy_IdentifiesTheRequiredIdentity()
+    {
+        var f = NativeWorldFixtures.Crate();
+        var options = NativeWorldFixtures.Options();
+        var error = Assert.Throws<MapWorldBuildArgumentException>(() =>
+            MapWorldBuilder.Build(f.Document, f.Assets, options with { ConsumerPolicyIdentity = " " }));
+        Assert.IsAssignableFrom<ArgumentException>(error);
+        Assert.Equal("options", error.ParamName);
+        Assert.Equal(MapDocumentRefusal.SchemaValueRequired, error.Reason);
+        Assert.Equal("ConsumerPolicyIdentity", error.FieldPath);
+        Assert.Equal(" ", error.ActualText);
+        Assert.NotEmpty(MapWorldBuilder.Build(f.Document, f.Assets, options).Statics);
+    }
+
+    [Fact]
+    public void DuplicateStaticOwners_IdentifyTheSharedOwner()
+    {
+        var f = NativeWorldFixtures.Crate();
+        var options = NativeWorldFixtures.Options();
+        string terrainOwner = MapWorldBuilder.Build(f.Document, f.Assets, options).Statics.First(s => s.Kind == MapStaticKind.TerrainChunk).OwnerId;
+        f.Document.Placements[0].Id = terrainOwner;
+        string before = MapDocumentFile.SaveText(f.Document);
+        var error = Assert.Throws<MapDocumentException>(() => MapWorldBuilder.Build(f.Document, f.Assets, options));
+        Assert.Equal(MapDocumentRefusal.IdentityDuplicate, error.Reason);
+        Assert.Equal(terrainOwner, error.OwnerId);
+        Assert.Equal(before, MapDocumentFile.SaveText(f.Document));
+        f.Document.Placements[0].Id = "crate";
+        var control = MapWorldBuilder.Build(f.Document, f.Assets, options);
+        Assert.NotEmpty(control.Statics);
+        Assert.Equal(control.Statics.Count, control.Statics.Select(s => s.OwnerId).Distinct().Count());
     }
 
     [Fact]

@@ -134,6 +134,11 @@ public class MapPrefabWaterWorldTests
         var body = Assert.Single(world.Water);
         Assert.Equal(MapWaterCompileStatus.Complete, body.Status);
         Assert.DoesNotContain(world.Statics, s => s.OwnerId == "water:" + body.BodyId);
+        Assert.Contains(body.Regions, r => r.Fragment is not null);
+        var error = Assert.Throws<MapDocumentException>(() => MapWorldBuilder.RequireWaterBody(body with { FragmentBounds = [] }));
+        Assert.Equal(MapDocumentRefusal.PhysicsWaterFragmentBoundsMissing, error.Reason);
+        Assert.Equal("a/pool-water", error.BodyId);
+        MapWorldBuilder.RequireWaterBody(body);
         var entry = Assert.Single(MapResidencyOwnership.BuildWater(world, Grids));
         Assert.Equal("water:a/pool-water", entry.OwnerId);
         Assert.NotEmpty(entry.Membership);

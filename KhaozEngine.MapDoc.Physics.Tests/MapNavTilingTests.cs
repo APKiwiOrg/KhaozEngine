@@ -75,8 +75,12 @@ public class MapNavTilingTests
         // Storage bounds -64 to 65,600 on both axes reach 1,026 tiles per axis.
         var world = NativeWorldFixtures.BuildCrateAt(65_536f, 0f, 65_536f);
         var error = Assert.Throws<MapDocumentException>(() => MapNavTiling.Partition(world, Grids, Options));
-        Assert.Contains("1,052,676", error.Message);
-        Assert.Contains("1,048,576", error.Message);
+        Assert.Equal(MapDocumentRefusal.WorkCapacityExceeded, error.Reason);
+        Assert.Equal("navigation partition tiles", error.Budget);
+        Assert.Equal(1_052_676, error.ActualCount);
+        Assert.Equal(MapNavTiling.MaxPartitionTiles, error.Limit);
+        Assert.Equal(MapNavTiling.MaxPartitionTiles, EmptyPartitionCount(MapNavTiling.MaxPartitionTiles));
+        Assert.Equal(MapNavTiling.MaxPartitionTiles - 1, EmptyPartitionCount(MapNavTiling.MaxPartitionTiles - 1));
     }
 
     [Fact]
@@ -130,8 +134,26 @@ public class MapNavTilingTests
         var error = Assert.Throws<MapDocumentException>(() =>
             MapNavTiling.Partition(NativeWorldFixtures.BuildLegacyStrip(), far, Options));
         // Validate refuses the grids before any capture is placed.
-        Assert.Contains("grid alignment", error.Message);
-        Assert.Contains("tile range", error.Message);
+        Assert.Equal(MapDocumentRefusal.PhysicsGridAlignmentInvalid, error.Reason);
+        Assert.Equal("navigation tiles", error.GridKind);
+        Assert.Equal("X", error.Axis);
+        Assert.Equal(-1_099_511_627_776d, error.AxisOrigin);
+        Assert.True(error.FirstIndex > int.MaxValue);
+        Assert.True(error.LastIndex > int.MaxValue);
+        Assert.NotEmpty(MapNavTiling.Partition(NativeWorldFixtures.BuildLegacyStrip(), far with { Origin = Vector2.Zero }, Options));
+    }
+
+    static int EmptyPartitionCount(int count)
+    {
+        var fixture = NativeWorldFixtures.Crate();
+        fixture.Document.Placements.Clear();
+        fixture.Document.Surfaces = new();
+        fixture.Document.TileSize = 1;
+        fixture.Document.TerrainOverrides = new(1f / 32);
+        fixture.Document.Bounds = new() { MinX = -524288, MinZ = 0, MaxX = -524288 + count, MaxZ = 1 };
+        fixture.Document.PlayableBounds = fixture.Document.Bounds;
+        var world = NativeWorldFixtures.Build(fixture);
+        return MapNavTiling.Partition(world, new(1, 1, 1, Vector2.Zero), Options with { SeamMarginMetres = 0 }).Count;
     }
 
     [Fact]
@@ -142,7 +164,12 @@ public class MapNavTilingTests
         var nearEdge = new MapWorldGrids(64f, 1, 4, new Vector2(-68_719_476_736f, 0f));
         var error = Assert.Throws<MapDocumentException>(() => MapNavTiling.Partition(
             NativeWorldFixtures.BuildLegacyStrip(), nearEdge, Options with { SeamMarginMetres = 1e12f }));
-        Assert.Contains("tile range", error.Message);
+        Assert.Equal(MapDocumentRefusal.PhysicsNavIndexOutOfRange, error.Reason);
+        Assert.Equal("X", error.Axis);
+        Assert.Equal(-68_719_476_736d, error.AxisOrigin);
+        Assert.Equal(int.MinValue, error.MinimumInteger);
+        Assert.Equal(int.MaxValue, error.MaximumInteger);
+        Assert.NotEmpty(MapNavTiling.Partition(NativeWorldFixtures.BuildLegacyStrip(), nearEdge, Options with { SeamMarginMetres = 0 }));
     }
 
     [Fact]
@@ -155,6 +182,12 @@ public class MapNavTilingTests
         };
         var error = Assert.Throws<MapDocumentException>(() =>
             MapNavTiling.AffectedTiles(NativeWorldFixtures.BuildLegacyStrip(), Grids, Options, effects));
-        Assert.Contains("1,000,000", error.Message);
+        Assert.Equal(MapDocumentRefusal.ValueOutsideRange, error.Reason);
+        Assert.Equal("MinX", error.FieldPath);
+        Assert.Equal(2_000_000, error.ActualNumber);
+        Assert.Equal(-1_000_000, error.MinimumNumber);
+        Assert.Equal(1_000_000, error.MaximumNumber);
+        Assert.NotEmpty(MapNavTiling.AffectedTiles(NativeWorldFixtures.BuildLegacyStrip(), Grids, Options,
+            effects with { NewBounds = new(999_999, 0, 0, 1_000_000, 1, 1) }));
     }
 }

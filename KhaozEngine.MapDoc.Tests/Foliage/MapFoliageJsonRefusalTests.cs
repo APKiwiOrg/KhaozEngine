@@ -39,6 +39,11 @@ public sealed class MapFoliageJsonRefusalTests
     [InlineData("density-base64", MapDocumentRefusal.SchemaBase64Malformed, "$.layers[0].chunks[0].density", 0)]
     [InlineData("density-noncanonical", MapDocumentRefusal.SchemaBase64Malformed, "$.layers[0].chunks[0].density", 0)]
     [InlineData("density-1023", MapDocumentRefusal.SchemaArrayLengthMismatch, "$.layers[0].chunks[0].density", 0)]
+    [InlineData("density-numeric-negative", MapDocumentRefusal.SchemaValueRequired, "$.layers[0].chunks[0].density", 0)]
+    [InlineData("support-kind-future", MapDocumentRefusal.SchemaEnumUnsupported, "$.layers[0].support.kind", 0)]
+    [InlineData("material-kind-future", MapDocumentRefusal.SchemaEnumUnsupported, "$.layers[0].materials[2].kind", 2)]
+    [InlineData("row-unknown", MapDocumentRefusal.SchemaEnumUnsupported, "$.layers[0].rowDirection", 0)]
+    [InlineData("rule-kind-future", MapDocumentRefusal.SchemaEnumUnsupported, "$.layers[0].clearanceRules[0].kind", 0)]
     public void Codec_refusals_identify_the_rule_and_typed_subject(string variant, MapDocumentRefusal reason, string path, int? index)
     {
         string text = Section(variant);
@@ -49,7 +54,8 @@ public sealed class MapFoliageJsonRefusalTests
         Assert.Equal(index, error.Index);
         if (variant is "support-object" or "model-object" or "policy-object" or "support-kind-missing" or
             "cell-nonfinite" or "cell-overflow-positive" or "cell-overflow-negative" or "width-fraction" or "seed-overflow" or "material-id-overflow" or "allowed-fraction" or
-            "exclude-type" or "density-base64" or "density-noncanonical" or "density-1023")
+            "exclude-type" or "density-base64" or "density-noncanonical" or "density-1023" or "density-numeric-negative" or
+            "support-kind-future" or "material-kind-future" or "row-unknown" or "rule-kind-future")
             Assert.Equal(FoliageFixtures.LayerId, error.LayerId);
         else Assert.Null(error.LayerId);
         if (variant.StartsWith("density-", StringComparison.Ordinal))
@@ -131,14 +137,18 @@ public sealed class MapFoliageJsonRefusalTests
     }
 
     [Fact]
-    public void Untyped_wave_six_refusal_uses_the_readers_path_until_it_has_a_reason()
+    public void Support_kind_refusal_keeps_its_rule_and_subject_through_wrappers()
     {
         var converter = Assert.Throws<MapFoliageJsonException>(() => JsonSerializer.Deserialize<MapFoliageSet>(Section("support-kind-future")));
-        Assert.Equal(MapDocumentRefusal.SchemaMalformed, converter.Reason);
-        Assert.Equal("$", converter.Path);
+        Assert.Equal(MapDocumentRefusal.SchemaEnumUnsupported, converter.Reason);
+        Assert.Equal("$.layers[0].support.kind", converter.FieldPath);
+        Assert.Equal("Volume", converter.ActualText);
+        Assert.Equal(typeof(MapSupportBindingKind), converter.EnumType);
         var error = Assert.Throws<MapDocumentException>(() => MapDocumentFile.LoadText(FoliageFixtures.Malformed("support-kind-future")));
-        Assert.Equal(MapDocumentRefusal.SchemaMalformed, error.Reason);
-        Assert.Equal("$.foliage", error.FieldPath);
+        Assert.Equal(converter.Reason, error.Reason);
+        Assert.Equal(converter.FieldPath, error.FieldPath);
+        Assert.Equal(converter.ActualText, error.ActualText);
+        Assert.Equal(converter.EnumType, error.EnumType);
         Assert.NotNull(MapDocumentFile.LoadText(FoliageFixtures.Malformed("control")).Foliage);
     }
 

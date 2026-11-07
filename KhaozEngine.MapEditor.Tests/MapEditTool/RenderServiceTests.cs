@@ -151,8 +151,16 @@ namespace KhaozEngine.Tests.MapEditTool
                 (MapEditSession _, RenderService render) = OpenSample(dir);
 
                 // Eye and target coincide: the look direction is zero, rejected before any GPU work.
-                Assert.Throws<ArgumentException>(() =>
+                var error = Assert.Throws<MapRenderArgumentException>(() =>
                     render.RenderView(5f, 10f, 5f, 5f, 10f, 5f));
+                Assert.IsAssignableFrom<ArgumentException>(error);
+                Assert.Null(error.ParamName);
+                Assert.Equal(MapDocumentRefusal.RenderLookDirectionZero, error.Reason);
+                Assert.Equal(new Vector3(5, 10, 5), error.Eye);
+                Assert.Equal(new Vector3(5, 10, 5), error.Target);
+                // float32 1e-6f is 0x358637BD. Its square rounds to 0x2B8CBCCC, exactly 1e-12f.
+                // One normal component from the origin avoids cancellation and subnormal arithmetic.
+                Assert.Equal(Vector3.UnitX, MapRenderViewAdmission.LookDirection(Vector3.Zero, new(1e-6f, 0, 0)));
             }
             finally { Directory.Delete(dir, recursive: true); }
         }
@@ -163,9 +171,10 @@ namespace KhaozEngine.Tests.MapEditTool
             var session = new MapEditSession();
             var render = new RenderService(session);
 
-            InvalidOperationException ex = Assert.Throws<InvalidOperationException>(() =>
-                render.RenderTopDown(width: 64, height: 64));
-            Assert.Contains("map_open", ex.Message, StringComparison.Ordinal);
+            var ex = Assert.Throws<MapSessionException>(() => render.RenderTopDown(width: 64, height: 64));
+            Assert.IsAssignableFrom<InvalidOperationException>(ex);
+            Assert.Equal(MapDocumentRefusal.ToolDocumentRequired, ex.Reason);
+            Assert.False(session.HasDocument);
         }
 
         // The MCP `textured` parameter on render_topdown/render_view threads into the throwaway ViewportWorld's

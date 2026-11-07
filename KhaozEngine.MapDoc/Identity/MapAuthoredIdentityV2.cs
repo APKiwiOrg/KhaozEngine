@@ -19,7 +19,8 @@ public static class MapAuthoredIdentityV2
     {
         ArgumentNullException.ThrowIfNull(document);
         if (document.Tiles is { IsPartial: true })
-            throw new MapDocumentException("Whole authored identity cannot hash a partial window.");
+            throw new MapDocumentException(MapDocumentRefusal.CompleteDocumentRequired, "Whole authored identity cannot hash a partial window.")
+                { DocumentId = document.Id, Operation = "ComputeWholeAuthoredIdentity" };
         ArgumentNullException.ThrowIfNull(assets);
         ArgumentNullException.ThrowIfNull(options);
         Validate(document.ResolverIdentity, document.SupportRecipe, options);
@@ -75,8 +76,6 @@ public static class MapAuthoredIdentityV2
                 ExpectedSupportRecipe = MapSupportRecipe.AuthoredBindingsV2,
                 FieldPath = resolver is not { PayloadVersion: 1, ResolverVersion: 2 } ? "resolverIdentity" : "supportRecipe",
             };
-        if (options.ResolverVersion != 2 || string.IsNullOrWhiteSpace(options.BuilderId) ||
-            options.BuilderVersion <= 0 || string.IsNullOrWhiteSpace(options.OptionsHash))
-            throw new MapDocumentException("Whole authored identity requires resolver 2, builder ID, positive version and options hash.");
+        MapAuthoredIdentityOptions.Require(options, 2, "Whole authored identity requires resolver 2, builder ID, positive version and options hash.");
     }
 }

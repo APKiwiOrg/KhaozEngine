@@ -421,7 +421,7 @@ namespace KhaozEngine.Tests.MapEditTool
                 Client = client;
             }
 
-            public static async Task<McpHarness> StartAsync(CancellationToken cancellationToken)
+            public static async Task<McpHarness> StartAsync(CancellationToken cancellationToken, Action<IMcpServerBuilder>? configure = null)
             {
                 var clientToServer = new Pipe();
                 var serverToClient = new Pipe();
@@ -429,9 +429,10 @@ namespace KhaozEngine.Tests.MapEditTool
                 HostApplicationBuilder builder = Host.CreateApplicationBuilder();
                 builder.Logging.ClearProviders();
                 builder.Services.AddMapEditServices();
-                builder.Services.AddMcpServer()
+                var server = builder.Services.AddMcpServer()
                     .WithStreamServerTransport(clientToServer.Reader.AsStream(), serverToClient.Writer.AsStream())
                     .WithMapEditTools();
+                configure?.Invoke(server);
 
                 IHost host = builder.Build();
                 await host.StartAsync(cancellationToken);

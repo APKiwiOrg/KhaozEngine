@@ -332,17 +332,23 @@ public sealed class NativeAssetClosureTests
     }
 
     [Theory]
-    [InlineData("{}")]
-    [InlineData("{\"x\":1,\"y\":2}")]
-    [InlineData("{\"x\":1,\"y\":2,\"z\":3,\"w\":4}")]
-    [InlineData("{\"x\":1,\"x\":2,\"y\":2,\"z\":3}")]
-    [InlineData("{\"X\":1,\"y\":2,\"z\":3}")]
-    [InlineData("{\"x\":1e100,\"y\":2,\"z\":3}")]
-    [InlineData("{\"x\":\"1\",\"y\":2,\"z\":3}")]
-    public void NativeVectorPayload_RefusesInvalidComponents(string json)
+    [InlineData("{}", MapDocumentRefusal.SchemaMemberMissing, "$.x")]
+    [InlineData("null", MapDocumentRefusal.SchemaObjectRequired, "$")]
+    [InlineData("{\"x\":1,\"y\":2}", MapDocumentRefusal.SchemaMemberMissing, "$.z")]
+    [InlineData("{\"x\":1,\"y\":2,\"z\":3,\"w\":4}", MapDocumentRefusal.SchemaMemberUnknown, "$.w")]
+    [InlineData("{\"x\":1,\"x\":2,\"y\":2,\"z\":3}", MapDocumentRefusal.SchemaMemberDuplicate, "$.x")]
+    [InlineData("{\"X\":1,\"y\":2,\"z\":3}", MapDocumentRefusal.SchemaMemberUnknown, "$.X")]
+    [InlineData("{\"x\":1e100,\"y\":2,\"z\":3}", MapDocumentRefusal.ValueNonfinite, "$.x")]
+    [InlineData("{\"x\":\"1\",\"y\":2,\"z\":3}", MapDocumentRefusal.SchemaValueRequired, "$.x")]
+    public void NativeVectorPayload_RefusesInvalidComponents(string json, MapDocumentRefusal reason, string path)
     {
         var options = Options();
-        Assert.Throws<JsonException>(() => JsonSerializer.Deserialize<Vector3>(json, options));
+        var error = Assert.Throws<MapNativeVectorJsonException>(() => JsonSerializer.Deserialize<Vector3>(json, options));
+        Assert.IsAssignableFrom<JsonException>(error);
+        Assert.Equal(reason, error.Reason);
+        Assert.Equal(path, error.FieldPath);
+        if (reason == MapDocumentRefusal.ValueNonfinite) Assert.Equal(double.PositiveInfinity, error.ActualNumber);
+        Assert.Equal(new Vector3(1, 2, 3), JsonSerializer.Deserialize<Vector3>("{\"x\":1,\"y\":2,\"z\":3}", options));
     }
 
     [Fact]
@@ -356,10 +362,18 @@ public sealed class NativeAssetClosureTests
         Assert.Equal("{\"x\":0.23,\"y\":-0.17}", JsonSerializer.Serialize(v2, options));
         Assert.Equal("9007199254740993", JsonSerializer.Serialize(9007199254740993L, options));
         Assert.False(options.IncludeFields);
-        Assert.Throws<JsonException>(() => JsonSerializer.Serialize(new Vector3(float.NaN, 0, 0), options));
-        Assert.Throws<JsonException>(() => JsonSerializer.Serialize(new Vector2(0, float.PositiveInfinity), options));
-        Assert.Throws<JsonException>(() => JsonSerializer.Deserialize<Vector2>("{\"x\":1}", options));
-        Assert.Throws<JsonException>(() => JsonSerializer.Deserialize<Vector2>("{\"x\":1,\"y\":2,\"z\":3}", options));
+        var write3 = Assert.Throws<MapNativeVectorJsonException>(() => JsonSerializer.Serialize(new Vector3(float.NaN, 0, 0), options));
+        Assert.Equal(MapDocumentRefusal.ValueNonfinite, write3.Reason);
+        Assert.Equal("$.x", write3.FieldPath);
+        Assert.True(double.IsNaN(write3.ActualNumber!.Value));
+        var write2 = Assert.Throws<MapNativeVectorJsonException>(() => JsonSerializer.Serialize(new Vector2(0, float.PositiveInfinity), options));
+        Assert.Equal(MapDocumentRefusal.ValueNonfinite, write2.Reason);
+        Assert.Equal("$.y", write2.FieldPath);
+        Assert.Equal(double.PositiveInfinity, write2.ActualNumber);
+        Assert.Equal(MapDocumentRefusal.SchemaMemberMissing, Assert.Throws<MapNativeVectorJsonException>(() => JsonSerializer.Deserialize<Vector2>("{\"x\":1}", options)).Reason);
+        Assert.Equal(MapDocumentRefusal.SchemaMemberUnknown, Assert.Throws<MapNativeVectorJsonException>(() => JsonSerializer.Deserialize<Vector2>("{\"x\":1,\"y\":2,\"z\":3}", options)).Reason);
+        Assert.Equal(v3, JsonSerializer.Deserialize<Vector3>(JsonSerializer.Serialize(v3, options), options));
+        Assert.Equal(v2, JsonSerializer.Deserialize<Vector2>(JsonSerializer.Serialize(v2, options), options));
     }
 
     [Fact]

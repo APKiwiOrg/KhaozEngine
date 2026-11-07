@@ -536,7 +536,8 @@ internal static class MapPrefabReferenceWalker
                 Lower = Bound("/lower", f.Lower),
                 Upper = Bound("/upper", f.Upper),
             },
-            _ => throw new MapDocumentException("Unknown topology record type."),
+            _ => throw new MapDocumentException(MapDocumentRefusal.OperationKindUnsupported, "Unknown topology record type.")
+                { RecordType = record.GetType(), RecordId = record.Id },
         };
         return (result, o);
     }

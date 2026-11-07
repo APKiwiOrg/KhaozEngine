@@ -197,7 +197,14 @@ namespace KhaozEngine.Tests.MapDoc
         {
             string json = WithFormatVersion(MapDocumentFile.SaveText(SampleDoc()), 99);
             var ex = Assert.Throws<MapDocumentException>(() => MapDocumentFile.LoadText(json));
-            Assert.Contains("99", ex.Message);
+            Assert.Equal(MapDocumentRefusal.DocumentVersionUnsupported, ex.Reason);
+            Assert.Equal(99, ex.ActualVersion);
+            Assert.Equal(new[] { MapDocumentFile.CurrentFormatVersion }, ex.SupportedVersions);
+            Assert.Equal("$.formatVersion", ex.FieldPath);
+            Assert.Equal("(inline)", ex.SourceName);
+            JsonNode repaired = JsonNode.Parse(json)!;
+            repaired["formatVersion"] = MapDocumentFile.CurrentFormatVersion;
+            Assert.Equal("test-zone", MapDocumentFile.LoadText(repaired.ToJsonString()).Id);
         }
 
         [Fact]

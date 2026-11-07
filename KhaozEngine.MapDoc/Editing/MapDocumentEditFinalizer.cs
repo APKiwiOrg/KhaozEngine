@@ -105,7 +105,7 @@ public static class MapDocumentEditFinalizer
         { DocumentId = document?.Id };
         MapFoliageContextMeasure measure = MapFoliageContextPreflight.Measure(document, assets, new(), foliage);
         if (measure.Status != MapFoliageStatus.Complete)
-            throw MapFoliageEditRefusal.Create(measure.Status, "the document exceeds the foliage context budget before any copy");
+            throw MapFoliageEditRefusal.Create(measure, "the document exceeds the foliage context budget before any copy");
     }
 
     /// <summary>One expansion of a document whose context demand the preflight first admits, with its provenance

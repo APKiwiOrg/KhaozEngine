@@ -8,6 +8,7 @@ using KhaozEngine.MapDoc;
 using KhaozEngine.MapDoc.Foliage;
 using KhaozEngine.MapDoc.Assets;
 using KhaozEngine.MapDoc.Prefabs;
+using KhaozEngine.MapDoc.Spaces;
 using KhaozEngine.MapDoc.Surfaces;
 using KhaozEngine.MapDoc.Support;
 using Xunit;
@@ -61,11 +62,25 @@ public sealed class MapDocumentExceptionTests
         string[] source = ["a", "b"];
         var refusal = new MapDocumentException(MapDocumentRefusal.AssetDependencyCycle, "cycle") { ResourceIds = source };
         var finding = new MapDocumentFinding(MapDocumentRefusal.AssetDependencyCycle, "cycle") { ResourceIds = source };
+        var roots = new MapDocumentException(MapDocumentRefusal.DocumentAssetRootsMismatch, "roots") { ExpectedResourceIds = source };
+        var rootFinding = new MapDocumentFinding(MapDocumentRefusal.DocumentAssetRootsMismatch, "roots") { ExpectedResourceIds = source };
         var choices = new MapDocumentException(MapDocumentRefusal.MarkerAdoptionChoiceSetMismatch, "choices") { SourceIds = source };
         var choiceFinding = new MapDocumentFinding(MapDocumentRefusal.MarkerAdoptionChoiceSetMismatch, "choices") { SourceIds = source };
         var collision = new MapDocumentException(MapDocumentRefusal.MarkerNameDuplicate, "collision") { MarkerIds = source };
         var collisionFinding = new MapDocumentFinding(MapDocumentRefusal.MarkerNameDuplicate, "collision") { MarkerIds = source };
+        var spaces = new MapDocumentException(MapDocumentRefusal.ToolExtractionParentAmbiguous, "parents") { SpaceIds = source };
+        var spaceFinding = new MapDocumentFinding(MapDocumentRefusal.ToolExtractionParentAmbiguous, "parents") { SpaceIds = source };
         source[0] = "changed";
+        Assert.Equal(new[] { "a", "b" }, spaces.SpaceIds);
+        Assert.Equal(new[] { "a", "b" }, spaceFinding.SpaceIds);
+        if (spaces.SpaceIds is IList<string> spaceList) Assert.Throws<NotSupportedException>(() => spaceList[0] = "changed");
+        if (spaceFinding.SpaceIds is IList<string> findingSpaces) Assert.Throws<NotSupportedException>(() => findingSpaces[0] = "changed");
+        Assert.Equal(new[] { "a", "b" }, roots.ExpectedResourceIds);
+        Assert.Equal(new[] { "a", "b" }, rootFinding.ExpectedResourceIds);
+        if (roots.ExpectedResourceIds is IList<string> rootList) Assert.Throws<NotSupportedException>(() => rootList[0] = "changed");
+        if (rootFinding.ExpectedResourceIds is IList<string> rootFindingList) Assert.Throws<NotSupportedException>(() => rootFindingList[0] = "changed");
+        Assert.Equal(new[] { "a", "b" }, roots.ExpectedResourceIds);
+        Assert.Equal(new[] { "a", "b" }, rootFinding.ExpectedResourceIds);
         Assert.Equal(new[] { "a", "b" }, refusal.ResourceIds);
         if (refusal.ResourceIds is IList<string> list)
             Assert.Throws<NotSupportedException>(() => list[0] = "changed");
@@ -99,16 +114,19 @@ public sealed class MapDocumentExceptionTests
             .GetProperties(BindingFlags.Public | BindingFlags.Instance | BindingFlags.DeclaredOnly)
             .Where(p => p.CanWrite).ToArray();
         Assert.Contains(identifiers, p => p.Name == nameof(MapDocumentException.SourceName));
-        var refusal = legacy ? new MapDocumentException("consumer refusal")
-            : new MapDocumentException(MapDocumentRefusal.ResolverContractMismatch, "resolver refusal");
+        var refusal = legacy ? new MapDocumentException("consumer refusal") { ResolutionStatus = MapResolveStatus.Invalid, RefinementStatus = KhaozEngine.MapDoc.Spaces.MapRefinementStatus.Invalid, InvalidPrefixSuppressed = true }
+            : new MapDocumentException(MapDocumentRefusal.ResolverContractMismatch, "resolver refusal") { ResolutionStatus = MapResolveStatus.Invalid, RefinementStatus = KhaozEngine.MapDoc.Spaces.MapRefinementStatus.Invalid, InvalidPrefixSuppressed = true };
         for (int i = 0; i < identifiers.Length; i++) identifiers[i].SetValue(refusal, Sample(identifiers[i], i));
 
         MapDocumentException named = throughJson
             ? MapDocumentJsonErrors.Wrap(new JsonException("converter failure", new InvalidOperationException("nested", refusal)),
                 withoutSource ? null : "map.json", "map.json: converter failure", resourceId: "outer-prefab")
-            : refusal.WithSourceName("map.json");
+            : refusal.WithSourceName("map.json", patch: new("outer", 9, 9));
 
         Assert.Equal(refusal.Reason, named.Reason);
+        Assert.Equal(MapResolveStatus.Invalid, named.ResolutionStatus);
+        Assert.Equal(KhaozEngine.MapDoc.Spaces.MapRefinementStatus.Invalid, named.RefinementStatus);
+        Assert.True(named.InvalidPrefixSuppressed);
         Assert.Same(refusal, named.InnerException);
         Assert.Equal(withoutSource ? refusal.SourceName : "map.json", named.SourceName);
         Assert.Empty(identifiers.Where(p => p.Name != nameof(MapDocumentException.SourceName) &&
@@ -126,15 +144,26 @@ public sealed class MapDocumentExceptionTests
         Assert.NotEmpty(identifiers);
         Assert.Empty(identifiers.Where(p => typeof(MapDocumentFinding).GetProperty(p.Name) is null).Select(p => p.Name));
         var refusal = legacy ? new MapDocumentException("consumer refusal")
-            : new MapDocumentException(MapDocumentRefusal.IdentityDuplicate, "validation refusal");
+            : new MapDocumentException(MapDocumentRefusal.IdentityDuplicate, "validation refusal") { ResolutionStatus = MapResolveStatus.Invalid, RefinementStatus = KhaozEngine.MapDoc.Spaces.MapRefinementStatus.Invalid, InvalidPrefixSuppressed = true };
         for (int i = 0; i < identifiers.Length; i++) identifiers[i].SetValue(refusal, Sample(identifiers[i], i));
         if (legacy) Assert.Null(MapDocumentFinding.FromException(refusal));
         else
         {
             var finding = Assert.IsType<MapDocumentFinding>(MapDocumentFinding.FromException(refusal));
             Assert.Equal(refusal.Reason, finding.Reason);
+            Assert.Equal(MapResolveStatus.Invalid, finding.ResolutionStatus);
+            Assert.Equal(KhaozEngine.MapDoc.Spaces.MapRefinementStatus.Invalid, finding.RefinementStatus);
+            Assert.True(finding.InvalidPrefixSuppressed);
             Assert.Empty(identifiers.Where(p => !Matches(p.GetValue(refusal),
                 typeof(MapDocumentFinding).GetProperty(p.Name)!.GetValue(finding))).Select(p => p.Name));
+            var cause = new ArithmeticException("original cause");
+            MapDocumentException restored = MapDocumentRefusalFactory.FromFinding(finding, "forwarded finding", cause);
+            Assert.Equal(refusal.Reason, restored.Reason);
+            Assert.Equal(MapResolveStatus.Invalid, restored.ResolutionStatus);
+            Assert.Equal(KhaozEngine.MapDoc.Spaces.MapRefinementStatus.Invalid, restored.RefinementStatus);
+            Assert.True(restored.InvalidPrefixSuppressed);
+            Assert.Same(cause, restored.InnerException);
+            Assert.Empty(identifiers.Where(p => !Matches(p.GetValue(refusal), p.GetValue(restored))).Select(p => p.Name));
         }
         Assert.NotNull(MapDocumentFinding.FromException(new(MapDocumentRefusal.IdentityDuplicate, "accepted typed projection")));
     }
@@ -142,15 +171,51 @@ public sealed class MapDocumentExceptionTests
     static object Sample(PropertyInfo property, int index)
     {
         Type type = Nullable.GetUnderlyingType(property.PropertyType) ?? property.PropertyType;
+        if (property.Name == nameof(MapDocumentException.Axis)) return "Z";
+        if (property.Name == nameof(MapDocumentException.FirstIndex)) return -2147483649d;
+        if (property.Name == nameof(MapDocumentException.LastIndex)) return 2147483648d;
+        if (property.Name == nameof(MapDocumentException.AxisOrigin)) return 64d;
+        if (property.Name == nameof(MapDocumentException.ExpectedVersion)) return 1;
+        if (property.Name == nameof(MapDocumentException.ExpectedNumber)) return 512d;
+        if (property.Name == nameof(MapDocumentException.ExpectedDocumentForm)) return MapDocumentForm.Tiled;
+        if (property.Name == nameof(MapDocumentException.FileName)) return "map.json";
+        if (property.Name == nameof(MapDocumentException.TargetVersion)) return 4;
+        if (property.Name == nameof(MapDocumentException.PreviousTile)) return new MapTileCoord(-8, index);
+        if (property.Name == nameof(MapDocumentException.ExpectedResourceIds)) return new[] { "expected-root", "second-root" };
+        if (property.Name == nameof(MapDocumentException.OtherAssetId)) return "collider-sharer";
         if (property.Name == nameof(MapDocumentException.MarkerId)) return "marker-owner";
         if (property.Name == nameof(MapDocumentException.SourceId)) return "spawn-source";
         if (property.Name == nameof(MapDocumentException.MarkerName)) return "arrival";
         if (property.Name == nameof(MapDocumentException.OwnerId)) return "terrain-owner";
+        if (property.Name == nameof(MapDocumentException.EditType)) return typeof(KhaozEngine.MapDoc.Editing.MapRemoveFoliage);
         if (property.Name == nameof(MapDocumentException.Operation)) return "Prepare";
+        if (property.Name == nameof(MapDocumentException.Numerator)) return 2;
+        if (property.Name == nameof(MapDocumentException.Denominator)) return 200;
+        if (property.Name == nameof(MapDocumentException.CellX)) return 64;
+        if (property.Name == nameof(MapDocumentException.SculptTile)) return new MapTileCoord(index, -11);
+        if (property.Name == nameof(MapDocumentException.CellZ)) return -1;
+        if (property.Name == nameof(MapDocumentException.SlotCell)) return 65;
+        if (property.Name == nameof(MapDocumentException.RelatedSlotCell)) return 66;
+        if (property.Name == nameof(MapDocumentException.Edge)) return MapCellEdge.West;
+        if (property.Name == nameof(MapDocumentException.PreviousInteger)) return 17L;
+        if (property.Name == nameof(MapDocumentException.ActualText)) return "future";
+        if (property.Name == nameof(MapDocumentException.PolicyId)) return "future-policy";
+        if (property.Name == nameof(MapDocumentException.ExpectedPolicyId)) return "legacy-tile";
+        if (property.Name == nameof(MapDocumentException.ExpectedPatch)) return new MapPatchKey("expected", 2, -3);
+        if (property.Name == nameof(MapDocumentException.ExpectedSnapshot)) return "expected-snapshot";
+        if (property.Name == nameof(MapDocumentException.ActualSnapshot)) return "actual-snapshot";
+        if (property.Name == nameof(MapDocumentException.RelatedRecordId)) return "parent-record";
+        if (property.Name == nameof(MapDocumentException.SourceType)) return typeof(KhaozEngine.MapDoc.Storage.MapDocumentSurfaceSource);
+        if (property.Name == nameof(MapDocumentException.RecordType)) return typeof(MapBoundaryChain);
+        if (property.Name == nameof(MapDocumentException.ExpectedRecordType)) return typeof(MapSpaceFootprint);
+        if (property.Name == nameof(MapDocumentException.Budget)) return "CornerDependencies";
+        if (type == typeof(KhaozEngine.MapDoc.Storage.MapPatchStatus)) return KhaozEngine.MapDoc.Storage.MapPatchStatus.Corrupt;
+        if (type == typeof(KhaozEngine.MapDoc.Storage.MapAcquireStatus)) return KhaozEngine.MapDoc.Storage.MapAcquireStatus.CapacityExceeded;
         if (type == typeof(Type)) return typeof(MapLocalLightDoc);
         if (type == typeof(string)) return property.Name;
         if (type == typeof(int)) return 1000 + index;
         if (type == typeof(long)) return 3000L + index;
+        if (type == typeof(float)) return 64f;
         if (type == typeof(double)) return property.Name switch
         {
             nameof(MapDocumentException.PositionX) => 1_000_001d,
@@ -158,8 +223,14 @@ public sealed class MapDocumentExceptionTests
             nameof(MapDocumentException.PositionZ) => 0.25d,
             _ => 4000.5 + index,
         };
+        if (type == typeof(KhaozEngine.MapDoc.Editing.MapCellConversionClass)) return KhaozEngine.MapDoc.Editing.MapCellConversionClass.UnsupportedEncoding;
+        if (type == typeof(MapPresencePolicy)) return MapPresencePolicy.LegacyTileWorld;
+        if (type == typeof(MapLatticeAddress)) return MapLatticeAddress.Create(1, -2, 3);
+        if (type == typeof(MapFoliageReadStatus)) return MapFoliageReadStatus.Unavailable;
+        if (type == typeof(MapFoliageStatus)) return MapFoliageStatus.NotRepresentable;
         if (type == typeof(MapFoliageChunkKey)) return new MapFoliageChunkKey(-3, index);
         if (type == typeof(IReadOnlyList<int>)) return new[] { 1, 5 };
+        if (property.Name == nameof(MapDocumentException.SpaceIds)) return new[] { "parent-a", "parent-b" };
         if (type == typeof(IReadOnlyList<string>)) return new[] { "a", "b" };
         if (type == typeof(MapTileCoord)) return new MapTileCoord(-7, index);
         if (type == typeof(MapPrefabReferenceScope)) return (MapPrefabReferenceScope)(8000 + index);

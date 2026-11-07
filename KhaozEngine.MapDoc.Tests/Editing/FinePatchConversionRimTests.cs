@@ -123,13 +123,16 @@ public sealed class FinePatchConversionRimTests
         var digests = Digests(input);
         MapSurfaceRef[] refs = input.Refs.ToArray();
 
-        string message = Assert.Throws<MapDocumentException>(() => MapFinePatchConversion.Convert(input, Request(3, false, cell))).Message;
+        var error = Assert.Throws<MapDocumentException>(() => MapFinePatchConversion.Convert(input, Request(3, false, cell)));
 
-        Assert.Contains("dependent-a", message);
-        Assert.Contains("corner (0, 0)", message);
-        Assert.Contains($"({2L * cell + 1}/2, 0/2)", message);
+        Assert.Equal(MapDocumentRefusal.TerrainOwnerRetargetUnavailable, error.Reason);
+        Assert.Equal(input.Patches.Keys.Single(p => p.SurfaceId == "dependent-a"), error.Patch);
+        Assert.Equal((0, 0), (error.CellX, error.CellZ));
+        Assert.Equal(MapLatticeAddress.Create(2L * cell + 1, 0, 2), error.Address);
+        Assert.Equal(input.Patches.Keys.Single(p => p.SurfaceId == SourceId), error.ExpectedPatch);
         Assert.Equal(digests, Digests(input));
         Assert.Equal(refs, input.Refs);
+        Assert.NotEmpty(MapFinePatchConversion.Convert(input, Request(2, false, cell)).WriteSet.OwnerChanges);
     }
 
     [Fact]

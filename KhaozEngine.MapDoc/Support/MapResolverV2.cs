@@ -40,7 +40,13 @@ public static class MapResolverV2
             _ = new MapResourceTransform(pose).Point(new(default, default, default));
             float presentationScale = (float)pose.Scale, presentationYaw = (float)pose.YawRadians;
             if (!float.IsFinite(presentationScale) || presentationScale <= 0 || !float.IsFinite(presentationYaw))
-                throw new MapDocumentException($"Placement '{placement.Id}' backend pose is NotRepresentable.");
+                throw new MapDocumentException(MapDocumentRefusal.GeometryNotRepresentable,
+                    $"Placement '{placement.Id}' backend pose is NotRepresentable.")
+                {
+                    PlacementId = placement.Id, Operation = nameof(ResolveEffectivePlacements),
+                    FieldPath = !float.IsFinite(presentationScale) || presentationScale <= 0 ? "$.scale" : "$.yawRadians",
+                    ActualNumber = !float.IsFinite(presentationScale) || presentationScale <= 0 ? pose.Scale : pose.YawRadians,
+                };
             float y = (float)pose.Y;
             if (placement.Y is null)
             {
@@ -119,7 +125,8 @@ public static class MapResolverV2
     {
         try { return SelectHeight(id, binding, x, z, surfaces, assets, supports); }
         catch (Exception error) when (error is MapExactOverflowException or OverflowException)
-        { throw new MapDocumentException($"Placement '{id}' support status NotRepresentable: overflow."); }
+        { throw new MapDocumentException(MapDocumentRefusal.GeometryNotRepresentable, $"Placement '{id}' support status NotRepresentable: overflow.")
+            { PlacementId = id, SupportStatus = MapSupportStatus.NotRepresentable, Operation = nameof(SupportHeight) }; }
     }
 
     static float SelectHeight(string id, MapSupportBinding binding, float x, float z, IMapSurfaceSource surfaces,

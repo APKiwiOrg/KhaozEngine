@@ -68,9 +68,11 @@ public sealed class ScopedProducerConformanceTests
     public void Acquire_LegacyOnlySourceRefusesBeforeCallbacks()
     {
         var source = new R2LegacyProbeSource();
-        Assert.Contains("surface source does not support bounded scoped acquisition",
-            Assert.Throws<MapDocumentException>(() => ScopeFixtures.Acquire(source, AcquisitionConformanceFixtures.Scope())).Message);
+        var ex = Assert.Throws<MapDocumentException>(() => ScopeFixtures.Acquire(source, AcquisitionConformanceFixtures.Scope()));
+        Assert.Equal(MapDocumentRefusal.AcquisitionUnsupported, ex.Reason);
+        Assert.Equal(typeof(R2LegacyProbeSource), ex.SourceType);
         Assert.Equal((0, 0, 0), (source.Finds, source.Reads, source.SurfaceGets));
+        Assert.Equal(MapAcquireStatus.Complete, ScopeFixtures.Acquire(AcquisitionConformanceFixtures.OneSeed(), AcquisitionConformanceFixtures.Scope()).Status);
     }
 
     [Fact]

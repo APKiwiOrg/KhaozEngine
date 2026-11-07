@@ -1,5 +1,6 @@
 using System;
 using System.Linq;
+using System.Text.Json;
 using KhaozEngine.MapDoc;
 using KhaozEngine.MapDoc.Editing;
 using KhaozEngine.MapDoc.Markers;
@@ -150,11 +151,18 @@ public sealed class MapMarkerAdoptionTests
     {
         var fixture = MarkerFixtures.LegacyLists();
         fixture.Document.Tiles = new(64, MapDocumentHash.SchemeVersion, null, [new(new(0, 0), "unloaded", false)]);
+        var options = MapDocumentFile.CreateOptions(MapDocRegistry.CreateDefault(), write: false);
+        string before = JsonSerializer.Serialize(fixture.Document, options);
         var error = Assert.Throws<MapDocumentException>(() => MapMarkerAdoption.ConvertSpawns(fixture.Document, MarkerFixtures.Choices()));
-        Assert.Contains("partial", error.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.Equal(MapDocumentRefusal.CompleteDocumentRequired, error.Reason);
+        Assert.Equal(fixture.Document.Id, error.DocumentId);
+        Assert.Equal(nameof(MapMarkerAdoption.ConvertSpawns), error.Operation);
+        Assert.Equal(before, JsonSerializer.Serialize(fixture.Document, options));
         Assert.Single(fixture.Document.Spawns);
         Assert.Single(fixture.Document.PlayerSpawns);
         Assert.Null(fixture.Document.BuildingIntent);
+        fixture.Document.Tiles = null;
+        Assert.Empty(MapMarkerAdoption.ConvertSpawns(fixture.Document, MarkerFixtures.Choices()).Spawns);
     }
 
     [Fact]

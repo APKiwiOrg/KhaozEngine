@@ -18,7 +18,7 @@ internal static class MapEffectiveAttachments
         var asset = reconciled.EffectiveAsset;
         // Remap below requires every live binding before this lookup. A miss here is an internal invariant.
         string Id(MapPrefabChildKind kind, string id) => bindings.TryGetValue(new(kind, id), out var world)
-            ? world : throw new MapDocumentException($"No binding for captured {kind} '{id}'.");
+            ? world : throw new InvalidOperationException($"No binding for captured {kind} '{id}'.");
         var children = asset.Children.ToDictionary(c => c.Key);
         var worldChildren = MapPrefabReferences.Remap(reconciled.LiveAsset, bindings, parent).Children.ToDictionary(c => c.Key);
         var result = new List<MapPrefabAttachmentTransfer>();
@@ -71,7 +71,8 @@ internal static class MapEffectiveAttachments
                         ?? throw Refusal(MapDocumentRefusal.ReferenceMissing, "Missing captured light.", attachment, child);
                     result.Add(new MapPrefabLightChild(key, light));
                     break;
-                default: throw new MapDocumentException("Invalid captured attachment child kind.");
+                // Attachment validation admits the captured child kinds before materialization.
+                default: throw new InvalidOperationException("Invalid captured attachment child kind.");
             }
             var descriptor = result[^1];
             var frame = document.NativeResourceTransforms!.Single(t => t.Kind == child.LocalChild.Kind && t.OwnerId == child.WorldId).Transform;

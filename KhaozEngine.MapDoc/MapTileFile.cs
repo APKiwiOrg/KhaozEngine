@@ -52,8 +52,9 @@ internal static class MapTileFile
         try { json = File.ReadAllText(path); }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
-            throw new MapDocumentException(
-                $"{directory}: tile ({coord.X}, {coord.Z}) at '{FileName(coord, hash)}' cannot be read. {ex.Message}", ex);
+            throw new MapDocumentException(MapDocumentRefusal.DocumentTileReadFailed,
+                $"{directory}: tile ({coord.X}, {coord.Z}) at '{FileName(coord, hash)}' cannot be read. {ex.Message}", ex)
+            { SourceName = directory, Tile = coord, Path = path, ExpectedHash = hash };
         }
 
         MapTileContent content = Parse(json, directory, coord, hash, options.Registry);

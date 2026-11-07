@@ -19,12 +19,16 @@ public static class MapPartialPaintCompiler
         ArgumentException.ThrowIfNullOrWhiteSpace(targetSurfaceId);
         var budget = limits ?? new();
         if (view.Status != MapAcquireStatus.Complete)
-            throw new MapDocumentException((view.Status == MapAcquireStatus.Incomplete ? "MissingGeometry" : view.Status.ToString()) + ": " + view.Detail);
+            throw new MapDocumentException(MapDocumentRefusal.AcquisitionIncomplete, (view.Status == MapAcquireStatus.Incomplete ? "MissingGeometry" : view.Status.ToString()) + ": " + view.Detail)
+            { SurfaceId = targetSurfaceId, AcquireStatus = view.Status, FieldPath = "Status" };
         if (!view.Scope.Roles.Contains(MapSurfaceRole.PaintOverride))
-            throw new MapDocumentException("MissingGeometry: paint compilation requires complete acquired paint and target geometry.");
+            throw new MapDocumentException(MapDocumentRefusal.AcquisitionIncomplete, "MissingGeometry: paint compilation requires complete acquired paint and target geometry.")
+            { SurfaceId = targetSurfaceId, AcquireStatus = view.Status, FieldPath = "Scope.Roles" };
         var target = view.Surfaces.SingleOrDefault(s => s.Id == targetSurfaceId);
         if (target is null || target.Role == MapSurfaceRole.PaintOverride)
-            throw new MapDocumentException("Invalid: paint target must be a declared physical surface.");
+            throw new MapDocumentException(target is null ? MapDocumentRefusal.ReferenceMissing : MapDocumentRefusal.SurfacePaintTargetInvalid,
+                "Invalid: paint target must be a declared physical surface.")
+            { SurfaceId = targetSurfaceId, FieldPath = "targetSurfaceId" };
         var paints = view.Surfaces.Where(s => s.Role == MapSurfaceRole.PaintOverride && s.PaintTargetSurfaceId == targetSurfaceId &&
             (view.EffectiveContext is null || view.EffectiveContext.IsPartialPaint(s)))
             .OrderByDescending(s => s.PaintPriority).ThenBy(s => s.Id, StringComparer.Ordinal).ToArray();
@@ -32,7 +36,8 @@ public static class MapPartialPaintCompiler
         if (paints.Length == 0) return new([], Digest([]));
         try { return CompileCore(view, target, paints, budget); }
         catch (Exception error) when (error is MapExactOverflowException or OverflowException)
-        { throw new MapDocumentException("NotRepresentable: paint intersection cannot be emitted exactly. No regions were published.", error); }
+        { throw new MapDocumentException(MapDocumentRefusal.GeometryNotRepresentable, "NotRepresentable: paint intersection cannot be emitted exactly. No regions were published.", error)
+            { SurfaceId = targetSurfaceId, Operation = "paint intersection" }; }
     }
 
     // Work follows painted area. Paint sources compile first. Only target cells whose exact lattice rectangle openly
@@ -45,7 +50,7 @@ public static class MapPartialPaintCompiler
         var refs = paints.ToDictionary(s => s.Id, StringComparer.Ordinal);
         var present = view.Witness.Present.Select(p => p.Key).Order().ToArray();
         var paintKeys = present.Where(k => refs.ContainsKey(k.SurfaceId)).ToArray();
-        work.Require(paintKeys.Length <= limits.MaxContextPatches, "context patches");
+        work.Require(paintKeys.Length, limits.MaxContextPatches, "context patches", nameof(limits.MaxContextPatches));
         var inputs = paintKeys.Select(key =>
         {
             var patch = Acquired(view, key);
@@ -55,8 +60,8 @@ public static class MapPartialPaintCompiler
                 Faces: MapSurfaceCompiler.CountFaces(adapter, patch, MapSlotCellMask.All));
         }).ToArray();
         long paintCount = inputs.Sum(p => p.Faces);
-        work.Require(paintCount <= limits.MaxSourceFacesPerBound, "source faces");
-        work.Require(paintCount <= limits.MaxContextFaces, "context faces");
+        work.Require(paintCount, limits.MaxSourceFacesPerBound, "source faces", nameof(limits.MaxSourceFacesPerBound));
+        work.Require(paintCount, limits.MaxContextFaces, "context faces", nameof(limits.MaxContextFaces));
         var source = inputs.Select(p => (p.Surface, Geometry: MapSurfaceCompiler.Compile(p.Adapter, p.Patch))).GroupBy(p => p.Surface)
             .SelectMany(group => PaintSources(view, group.Key, group.Select(p => p.Geometry), work))
             .OrderByDescending(p => p.Priority).ThenBy(p => p.Id, StringComparer.Ordinal).ThenBy(p => p.Material.Face).ToArray();
@@ -64,11 +69,11 @@ public static class MapPartialPaintCompiler
         // The cell filter refuses at the first hit target slot past the patch allowance, before marking it.
         var cells = TargetCells(view, target, sourceBounds, present.Where(k => k.SurfaceId == target.Id).ToArray(),
             limits.MaxContextPatches - paintKeys.Length);
-        work.Require(cells is not null && paintKeys.Length + cells.Count <= limits.MaxContextPatches, "context patches");
+        work.Require(cells is null ? null : paintKeys.Length + cells.Count, limits.MaxContextPatches, "context patches", nameof(limits.MaxContextPatches));
         var targets = cells!.Select(entry => (Patch: Acquired(view, entry.Key), Cells: entry.Value)).ToArray();
         long targetCount = targets.Sum(p => MapSurfaceCompiler.CountFaces(target, p.Patch, p.Cells));
-        work.Require(targetCount <= limits.MaxSourceFacesPerBound, "source faces");
-        work.Require(targetCount + paintCount <= limits.MaxContextFaces, "context faces");
+        work.Require(targetCount, limits.MaxSourceFacesPerBound, "source faces", nameof(limits.MaxSourceFacesPerBound));
+        work.Require(targetCount + paintCount, limits.MaxContextFaces, "context faces", nameof(limits.MaxContextFaces));
         var faces = targets.SelectMany(p =>
         {
             var geometry = MapEffectiveGeometry.TransformPatch(view, MapSurfaceCompiler.Compile(target, p.Patch, p.Cells, MapSurfaceCompiler.MaxFacesPerPatch));
@@ -76,7 +81,7 @@ public static class MapPartialPaintCompiler
         }).Select(f => (f.Face, f.Triangle, Parent: Polygon(f.Triangle))).ToArray();
         // Every candidate is charged below, so more candidates than the remaining allowance refuse before listing them.
         var pairs = MapWaterBoundsSweep.Cross(faces.Select(f => MapWaterPolygons.Bounds.Of(f.Parent)).ToArray(), sourceBounds, work.RemainingPairs);
-        work.Require(pairs is not null, "pair checks");
+        if (pairs is null) RequireWorkBudget(null, limits.MaxPairChecks, "pair checks", nameof(limits.MaxPairChecks));
         var regions = new List<MapPaintRegion>();
         for (int next = 0; next < pairs!.Count;)
         {
@@ -100,7 +105,8 @@ public static class MapPartialPaintCompiler
                     if (a.Material == b.Material) continue;
                     work.Pair();
                     if (BoundsOverlap(a.Polygon, b.Polygon) && MapEffectiveGeometry.AreaWide(MapEffectiveGeometry.Intersect(a.Polygon, b.Polygon)).Sign > 0)
-                        throw new MapDocumentException($"Invalid: equal-priority paint '{a.Id}' and '{b.Id}' overlap with conflicting materials. Author an explicit priority.");
+                        throw new MapDocumentException(MapDocumentRefusal.SurfacePaintPriorityConflict, $"Invalid: equal-priority paint '{a.Id}' and '{b.Id}' overlap with conflicting materials. Author an explicit priority.")
+                        { SurfaceId = a.Id, OtherSurfaceId = b.Id, ActualInteger = a.Priority };
                 }
             var accepted = new List<Source>();
             foreach (var candidate in candidates)
@@ -149,8 +155,7 @@ public static class MapPartialPaintCompiler
                 for (int i = 0; i < face.Polygon.Count; i++)
                 {
                     var edge = new Edge(face.Polygon[i], face.Polygon[(i + 1) % face.Polygon.Count]);
-                    if (!edges.Remove(new(edge.B, edge.A)) && !edges.Add(edge))
-                        throw new MapDocumentException("Invalid: non-manifold paint material boundary.");
+                    RequireUniqueMaterialEdge(!edges.Remove(new(edge.B, edge.A)) && !edges.Add(edge), surface.Id);
                 }
             return (group.Key, Edges: edges);
         }).ToArray();
@@ -200,7 +205,7 @@ public static class MapPartialPaintCompiler
                         crossings.Add((AtZ(edge, middle), edge));
                 }
                 crossings.Sort((a, b) => a.X.CompareTo(b.X));
-                if (crossings.Count % 2 != 0) throw new MapDocumentException("Invalid: open paint material boundary.");
+                RequireClosedMaterialBoundary(crossings.Count, surface.Id);
                 for (int j = 0; j < crossings.Count; j += 2)
                 {
                     var left = crossings[j].Edge; var right = crossings[j + 1].Edge;
@@ -219,9 +224,32 @@ public static class MapPartialPaintCompiler
         }
     }
 
-    static MapSurfacePatch Acquired(MapScopedSurfaces view, MapPatchKey key) =>
-        view.TryAcquiredPatch(key, out var patch, out _) && patch is not null ? patch
-            : throw new MapDocumentException("MissingGeometry: paint or target patch unavailable.");
+    static MapSurfacePatch Acquired(MapScopedSurfaces view, MapPatchKey key)
+    {
+        if (view.TryAcquiredPatch(key, out var patch, out var status) && patch is not null) return patch;
+        throw new MapDocumentException(MapDocumentRefusal.PatchUnavailable, "MissingGeometry: paint or target patch unavailable.")
+        { SurfaceId = key.SurfaceId, Patch = key, PatchStatus = status };
+    }
+
+    // Value-taking guards admit the actual edge/crossing observations and deterministic computed-fault tests.
+    internal static void RequireUniqueMaterialEdge(bool duplicate, string surfaceId)
+    {
+        if (duplicate) throw new MapDocumentException(MapDocumentRefusal.SurfacePaintBoundaryInvalid, "Invalid: non-manifold paint material boundary.")
+        { SurfaceId = surfaceId };
+    }
+
+    internal static void RequireClosedMaterialBoundary(int crossingCount, string surfaceId)
+    {
+        if (crossingCount % 2 != 0) throw new MapDocumentException(MapDocumentRefusal.SurfacePaintBoundaryInvalid, "Invalid: open paint material boundary.")
+        { SurfaceId = surfaceId };
+    }
+
+    // A null count means a bounded producer refused before it could publish a measured result.
+    internal static void RequireWorkBudget(long? count, long limit, string detail, string budget)
+    {
+        if (!(count <= limit)) throw new MapDocumentException(MapDocumentRefusal.WorkCapacityExceeded, "CapacityExceeded: paint " + detail + " budget exceeded.")
+        { Budget = budget, ActualCount = count, Limit = limit };
+    }
 
     // Present target patches in key order, each with its cells whose exact lattice rectangle openly overlaps some
     // source's bounds. Patches without such a cell are never read or counted. A posed target keeps every cell, because
@@ -350,25 +378,28 @@ public static class MapPartialPaintCompiler
     sealed class Work(MapRefinementLimits limits)
     {
         long _pairs, _regions, _vertices, _sources, _sourceVertices;
-        internal void Require(bool condition, string detail)
-        { if (!condition) throw new MapDocumentException("CapacityExceeded: paint " + detail + " budget exceeded."); }
-        internal void Pair() => Require(++_pairs <= limits.MaxPairChecks, "pair checks");
+        internal void Require(long? count, long limit, string detail, string budget) =>
+            RequireWorkBudget(count, limit, detail, budget);
+        internal void Pair() => Require(++_pairs, limits.MaxPairChecks, "pair checks", nameof(limits.MaxPairChecks));
         internal long RemainingPairs => Math.Max(0, limits.MaxPairChecks - _pairs);
         internal void Source(int vertices)
         {
             _sourceVertices += vertices;
-            Require(++_sources <= limits.MaxRefinementFaces && _sourceVertices <= limits.MaxRefinementVertices, "source regions");
+            Require(++_sources, limits.MaxRefinementFaces, "source regions", nameof(limits.MaxRefinementFaces));
+            Require(_sourceVertices, limits.MaxRefinementVertices, "source regions", nameof(limits.MaxRefinementVertices));
         }
         internal void Polygons(IEnumerable<IReadOnlyList<MapWideXz>> polygons)
         {
             long count = 0, vertices = 0;
             foreach (var p in polygons) { count++; vertices += p.Count; }
-            Require(count <= limits.MaxRefinementFaces && vertices <= limits.MaxRefinementVertices, "intermediate regions");
+            Require(count, limits.MaxRefinementFaces, "intermediate regions", nameof(limits.MaxRefinementFaces));
+            Require(vertices, limits.MaxRefinementVertices, "intermediate regions", nameof(limits.MaxRefinementVertices));
         }
         internal void Emit(int vertices)
         {
             _vertices += vertices;
-            Require(++_regions <= limits.MaxRefinementFaces && _vertices <= limits.MaxRefinementVertices, "output regions");
+            Require(++_regions, limits.MaxRefinementFaces, "output regions", nameof(limits.MaxRefinementFaces));
+            Require(_vertices, limits.MaxRefinementVertices, "output regions", nameof(limits.MaxRefinementVertices));
         }
     }
 }

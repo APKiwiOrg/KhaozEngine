@@ -23,10 +23,22 @@ public sealed class MapMarkerAnchorTests
         MapDocument reloaded = MapDocumentFile.LoadText(MapDocumentFile.SaveText(fixture.Document));
 
         var error = Assert.Throws<MapDocumentException>(() => MapMarkerAnchors.Read(reloaded, fixture.Assets));
-        Assert.Contains("preflight limit exceeded", error.Message);
+        Assert.Equal(MapDocumentRefusal.WorkCapacityExceeded, error.Reason);
+        Assert.Equal("MaxReferenceEdges", error.Budget);
+        Assert.Equal(limits.MaxReferenceEdges, error.Limit);
+        Assert.True(error.ActualCount > error.Limit);
 
         MarkerFixture control = ManyBoundMarkers(2, markers);
         Assert.Equal(2 * markers, MapMarkerAnchors.Read(control.Document, control.Assets).Count(a => a.Id.Contains("/bound-", System.StringComparison.Ordinal)));
+        MarkerFixture small = ManyBoundMarkers(2, 2);
+        int edges = checked((int)MapPrefabPreflight.Count(small.Document, small.Assets, limits).ReferenceEdges);
+        int expected = MapMarkerAnchors.Read(small.Document, small.Assets).Count;
+        var below = Assert.Throws<MapDocumentException>(() => MapMarkerAnchors.ReadWithReferenceEdgeLimitForTests(small.Document, small.Assets, edges - 1));
+        Assert.Equal(MapDocumentRefusal.WorkCapacityExceeded, below.Reason);
+        Assert.Equal("MaxReferenceEdges", below.Budget);
+        Assert.Equal(edges, below.ActualCount);
+        Assert.Equal(edges - 1, below.Limit);
+        Assert.Equal(expected, MapMarkerAnchors.ReadWithReferenceEdgeLimitForTests(small.Document, small.Assets, edges));
     }
 
     [Theory]

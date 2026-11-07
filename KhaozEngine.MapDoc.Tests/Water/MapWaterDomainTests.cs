@@ -143,9 +143,14 @@ public class MapWaterDomainTests
     public void Placement_WithUnrepresentableCorners_Refuses(float yaw, float scale)
     {
         var placement = new MapWaterPlacement(Vector3.Zero, yaw, scale);
-        var error = Assert.Throws<MapDocumentException>(() =>
-            MapWaterDomain.Compile(new(Up, new[] { new MapWaterRect(0, 0, 2, 1) }, Array.Empty<MapWaterRing>()), placement));
-        Assert.Contains("not representable", error.Message, StringComparison.Ordinal);
+        var domain = new MapWaterDomainDoc(Up, new[] { new MapWaterRect(0, 0, 2, 1) }, Array.Empty<MapWaterRing>());
+        var rects = domain.Rects.ToArray();
+        var error = Assert.Throws<MapDocumentException>(() => MapWaterDomain.Compile(domain, placement));
+        Assert.Equal(MapDocumentRefusal.GeometryNotRepresentable, error.Reason);
+        Assert.Equal("rect", error.SubjectKind);
+        Assert.Equal(0, error.Index);
+        Assert.Equal(rects, domain.Rects);
+        Assert.NotEmpty(MapWaterDomain.Compile(domain, placement with { Scale = 1 }).Pieces);
     }
 
     [Fact]

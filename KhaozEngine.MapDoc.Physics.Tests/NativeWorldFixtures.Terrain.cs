@@ -293,11 +293,12 @@ internal static partial class NativeWorldFixtures
     }
 
     /// <summary>A complete view whose wall strip's upper chain runs along a declared ceiling that has no patch.</summary>
-    internal static MapScopedSurfaces UnresolvedStripView()
+    internal static MapScopedSurfaces UnresolvedStripView(bool includeLid = false)
     {
         var set = new MapSurfaceSet();
         MapSurfacePatch yard = AddPatch(set, "unresolved-yard", MapSurfaceRole.SupportFloor, CentimetreHeights, 0, 0, 2, 2, (_, _) => 0);
-        set.Refs.Add(new MapSurfaceRef("unresolved-lid", CentimetreHeights, MapSurfaceRole.Ceiling, MapPresencePolicy.Native,
+        if (includeLid) AddPatch(set, "unresolved-lid", MapSurfaceRole.Ceiling, CentimetreHeights, 0, 0, 2, 2, (_, _) => 300);
+        else set.Refs.Add(new MapSurfaceRef("unresolved-lid", CentimetreHeights, MapSurfaceRole.Ceiling, MapPresencePolicy.Native,
             null, null, ""));
         yard.Records.Add(EdgeChain("unresolved-lower", yard.Key, 0, 0, 2, 0));
         yard.Records.Add(EdgeChain("unresolved-upper", new("unresolved-lid", 0, 0), 0, 0, 2, 0));

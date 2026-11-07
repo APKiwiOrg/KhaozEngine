@@ -41,7 +41,9 @@ public sealed partial class MapSurfacePatch
                     },
                 },
                 MapSpaceFootprint footprint => footprint with { SlotCells = footprint.SlotCells.ToArray() },
-                _ => throw new MapDocumentException("unknown topology record type"),
+                _ => throw new MapDocumentException(record is null ? MapDocumentRefusal.SchemaValueRequired
+                    : MapDocumentRefusal.OperationKindUnsupported, "unknown topology record type")
+                { Patch = Key, RecordId = record?.Id, RecordType = record?.GetType(), FieldPath = nameof(Records) },
             });
     }
 }

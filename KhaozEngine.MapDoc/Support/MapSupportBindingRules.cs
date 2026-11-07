@@ -88,4 +88,28 @@ internal static class MapSupportBindingRules
                 return false;
         }
     }
+
+    // Describes only the shape rejected by TryWrite. Its released writer admits blank names and signed ranges,
+    // so the stricter semantic validator above cannot classify this refusal without changing admission.
+    internal static MapDocumentFinding WriteRefusal(MapSupportBinding value, string message)
+    {
+        (MapDocumentRefusal reason, string field) = value.Kind switch
+        {
+            MapSupportBindingKind.Surface when value.SurfaceId is null => (MapDocumentRefusal.SchemaValueRequired, "surfaceId"),
+            MapSupportBindingKind.Surface => (MapDocumentRefusal.AuthoredOwnershipMismatch,
+                value.SpaceId is not null ? "spaceId" : value.ReferenceY is not null ? "referenceY" :
+                value.SearchBelow is not null ? "searchBelow" : "searchAbove"),
+            MapSupportBindingKind.Space when value.SpaceId is null => (MapDocumentRefusal.SchemaValueRequired, "spaceId"),
+            MapSupportBindingKind.Space when value.SurfaceId is not null => (MapDocumentRefusal.AuthoredOwnershipMismatch, "surfaceId"),
+            MapSupportBindingKind.Space => (MapDocumentRefusal.SchemaValueRequired,
+                value.ReferenceY is null ? "referenceY" : value.SearchBelow is null ? "searchBelow" : "searchAbove"),
+            _ => (MapDocumentRefusal.SchemaEnumUnsupported, "kind"),
+        };
+        return new(reason, message)
+        {
+            FieldPath = "$." + field, SurfaceId = value.SurfaceId, SpaceId = value.SpaceId,
+            EnumType = reason == MapDocumentRefusal.SchemaEnumUnsupported ? typeof(MapSupportBindingKind) : null,
+            ActualInteger = reason == MapDocumentRefusal.SchemaEnumUnsupported ? (long)value.Kind : null,
+        };
+    }
 }

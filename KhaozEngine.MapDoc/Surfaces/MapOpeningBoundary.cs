@@ -27,8 +27,16 @@ public static class MapOpeningBoundary
         ArgumentNullException.ThrowIfNull(opening);
         MapSurfaceRef surface = validated.Surface;
         MapSurfacePatch patch = validated.Patch;
-        if (opening.Patch != patch.Key || opening.SlotCells.Count == 0)
-            throw new MapDocumentException("opening must name absent cells in its patch");
+        // Preserve short-circuit order and describe the same cardinality observation that failed.
+        int? slotCount = opening.Patch == patch.Key ? opening.SlotCells.Count : null;
+        if (opening.Patch != patch.Key || slotCount == 0)
+            throw new MapDocumentException(opening.Patch != patch.Key ? MapDocumentRefusal.AuthoredOwnershipMismatch
+                : MapDocumentRefusal.ValueOutsideRange, "opening must name absent cells in its patch")
+            {
+                RecordId = opening.Id, SurfaceId = surface.Id, Patch = opening.Patch, ActualAnchor = patch.Key,
+                FieldPath = opening.Patch != patch.Key ? "Patch" : "SlotCells", ActualCount = slotCount,
+                MinimumInteger = opening.Patch == patch.Key ? 1 : null,
+            };
         try
         {
             MapSubmissionAnchor anchor = MapSurfaceCompiler.Anchor(surface, patch);
@@ -44,10 +52,21 @@ public static class MapOpeningBoundary
             {
                 int x = slot % MapPatchKey.SlotCells - patch.CellMinX;
                 int z = slot / MapPatchKey.SlotCells - patch.CellMinZ;
+                bool duplicate = false;
                 if (slot < 0 || slot >= MapPatchKey.SlotCells * MapPatchKey.SlotCells ||
                     x < 0 || x >= patch.Width || z < 0 || z >= patch.Depth ||
-                    !cells.Add(slot) || patch.IsPresent(x, z))
-                    throw new MapDocumentException("opening must name distinct absent cells in its patch");
+                    (duplicate = !cells.Add(slot)) || patch.IsPresent(x, z))
+                    throw new MapDocumentException(slot < 0 || slot >= MapPatchKey.SlotCells * MapPatchKey.SlotCells
+                        ? MapDocumentRefusal.ValueOutsideRange : x < 0 || x >= patch.Width || z < 0 || z >= patch.Depth
+                        ? MapDocumentRefusal.SurfaceAddressOutOfPatch : duplicate ? MapDocumentRefusal.IdentityDuplicate
+                        : MapDocumentRefusal.SpaceOpeningCellsInvalid, "opening must name distinct absent cells in its patch")
+                    {
+                        RecordId = opening.Id, SurfaceId = surface.Id, Patch = patch.Key, SlotCell = slot,
+                        FieldPath = "SlotCells", CellX = x, CellZ = z, ActualInteger = slot,
+                        MinimumInteger = slot < 0 || slot >= MapPatchKey.SlotCells * MapPatchKey.SlotCells ? 0 : null,
+                        MaximumInteger = slot < 0 || slot >= MapPatchKey.SlotCells * MapPatchKey.SlotCells
+                            ? MapPatchKey.SlotCells * MapPatchKey.SlotCells - 1 : null,
+                    };
                 int count = MapSurfaceCompiler.Describe(patch, x, z, parents);
                 for (byte parent = 0; parent < count; parent++)
                 {
@@ -59,7 +78,8 @@ public static class MapOpeningBoundary
                     MapSurfaceVertex c = builder.Point(x, z, triangle.C);
                     Vector3 normal = Vector3.Normalize(Vector3.Cross(b.Offset - a.Offset, c.Offset - a.Offset));
                     if (!float.IsFinite(normal.X) || !float.IsFinite(normal.Y) || !float.IsFinite(normal.Z) || normal.Y <= 0)
-                        throw new MapDocumentException("opening plane normal is not representable");
+                        throw new MapDocumentException(MapDocumentRefusal.GeometryNotRepresentable, "opening plane normal is not representable")
+                        { RecordId = opening.Id, Patch = patch.Key, SurfaceId = surface.Id, SlotCell = slot };
                     triangles.Add(new(Vertex(a), Vertex(b), Vertex(c), normal));
                     exact.Add(new(a.Exact, b.Exact, c.Exact));
                     keys.Add(new(opening.Id, patch.Key, slot, parent, 0, MapSide.Front));
@@ -72,8 +92,8 @@ public static class MapOpeningBoundary
                 var id = new MapVertexId(surface.Id, vertex.Address);
                 if (vertices.TryGetValue(id, out MapSurfaceVertex existing))
                 {
-                    if (existing.Exact != vertex.Exact)
-                        throw new MapDocumentException("inconsistent exact height for shared opening vertex");
+                    MapSurfaceGeometryAdmission.RequireSharedVertexHeight(existing.Exact, vertex, patch.Key,
+                        "inconsistent exact height for shared opening vertex", opening.Id);
                 }
                 else
                 {
@@ -85,7 +105,8 @@ public static class MapOpeningBoundary
         }
         catch (Exception error) when (error is MapExactOverflowException or OverflowException)
         {
-            throw new MapDocumentException("opening plane geometry is not representable", error);
+            throw new MapDocumentException(MapDocumentRefusal.GeometryNotRepresentable, "opening plane geometry is not representable", error)
+            { RecordId = opening.Id, Patch = patch.Key, SurfaceId = surface.Id };
         }
     }
 }

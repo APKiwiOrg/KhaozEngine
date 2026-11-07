@@ -4,6 +4,7 @@ using System.Numerics;
 using KhaozEngine.MapDoc;
 using KhaozEngine.MapDoc.Prefabs;
 using KhaozEngine.MapDoc.Spaces;
+using KhaozEngine.MapDoc.Storage;
 using KhaozEngine.MapDoc.Surfaces;
 using Xunit;
 
@@ -49,7 +50,27 @@ public sealed class MapPrefabPaintScaleTests
 
         var error = Assert.Throws<MapDocumentException>(() => PrefabFixtures.Effective(f));
 
-        Assert.Contains("CapacityExceeded: paint pair checks", error.Message);
+        Assert.Equal(MapDocumentRefusal.WorkCapacityExceeded, error.Reason);
+        Assert.Equal("MaxPairChecks", error.Budget);
+        Assert.Equal(new MapRefinementLimits().MaxPairChecks, error.Limit);
+        Assert.Null(error.ActualCount); // The bounded sweep refuses before publishing its candidate list.
+
+        var (target, targetPatch) = CompilerFixtures.OneCell(0, 0, 0, 0, CompilerFixtures.Full);
+        var (paint, paintPatch) = CompilerFixtures.OneCell(0, 0, 0, 0, CompilerFixtures.Full);
+        paint = paint with { Id = "paint", Role = MapSurfaceRole.PaintOverride, PaintTargetSurfaceId = target.Id };
+        paintPatch.Key = new("paint", 0, 0);
+        var set = new MapSurfaceSet();
+        set.Refs.AddRange(new[] { target, paint });
+        set.Patches.Add(targetPatch.Key, targetPatch);
+        set.Patches.Add(paintPatch.Key, paintPatch);
+        var view = MapScopedSurfaces.CompleteView(set);
+        // One source band charges its four edges, then clips against the two target triangles.
+        var below = Assert.Throws<MapDocumentException>(() => MapPartialPaintCompiler.Compile(view, target.Id, new(MaxPairChecks: 5)));
+        Assert.Equal(MapDocumentRefusal.WorkCapacityExceeded, below.Reason);
+        Assert.Equal("MaxPairChecks", below.Budget);
+        Assert.Equal(5, below.Limit);
+        Assert.Null(below.ActualCount);
+        Assert.NotEmpty(MapPartialPaintCompiler.Compile(view, target.Id, new(MaxPairChecks: 6)).Regions);
     }
 
     // Quarter metre cells from slot -1, so slots are 16 m wide. One footprint lies in the negative slot, one straddles

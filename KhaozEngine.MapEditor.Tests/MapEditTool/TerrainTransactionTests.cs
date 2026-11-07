@@ -1,5 +1,6 @@
 using KhaozEngine.MapDoc;
 using KhaozEngine.MapDoc.Editing;
+using KhaozEngine.MapDoc.Surfaces;
 using KhaozEngine.MapEdit;
 using KhaozEngine.MapEditor;
 using KhaozEngine.Tests.MapDoc;
@@ -28,11 +29,27 @@ public sealed class TerrainTransactionTests
         string state = gui.State();
         for (int i = 0; i < 2; i++)
         {
-            Assert.Contains("separation", Assert.Throws<MapDocumentException>(() => gui.Editor.Execute(new TerrainEditCommand(CaveFixtures.CeilingCrossingEdit()))).Message);
+            var error = Assert.Throws<MapDocumentException>(() => gui.Editor.Execute(new TerrainEditCommand(CaveFixtures.CeilingCrossingEdit())));
+            Assert.Equal(MapDocumentRefusal.SpaceBoundaryGap, error.Reason);
+            Assert.NotNull(error.RecordId);
+            Assert.NotNull(error.SpaceId);
+            Assert.NotNull(error.SlotCell);
             Assert.Equal(state, gui.State());
         }
-        Assert.Contains("halo", Assert.Throws<MapDocumentException>(() => gui.Editor.Execute(new TerrainEditCommand(new MapSmoothCorners(new("outer", 0, 0), 0, 0, 1, 1, 1)))).Message);
+        string ceilingBefore = gui.Text();
+        var repairedCeiling = CaveFixtures.CeilingCrossingEdit();
+        // The mouth floor is 800 height units. 801 is its first positive integer ceiling interval.
+        for (int x = 0; x <= repairedCeiling.UpsertPatches[0].Width; x++) repairedCeiling.UpsertPatches[0].Heights[x] = 801;
+        gui.Editor.Execute(new TerrainEditCommand(repairedCeiling));
+        Assert.NotEqual(ceilingBefore, gui.Text());
+        state = gui.State();
+        var halo = Assert.Throws<MapDocumentException>(() => gui.Editor.Execute(new TerrainEditCommand(
+            new MapSmoothCorners(new("outer", 0, 0), 0, 0, 1, 1, 1))));
+        Assert.Equal(MapDocumentRefusal.TerrainSmoothingHaloUnavailable, halo.Reason);
+        Assert.Equal(new MapPatchKey("outer", 0, 0), halo.Patch);
+        Assert.Equal(MapLatticeAddress.Corner(-1, -1), halo.Address);
         Assert.Equal(state, gui.State());
+        gui.Editor.Execute(new TerrainEditCommand(new MapSmoothCorners(new("outer", 0, 0), 1, 1, 1, 1, 1)));
     }
     [Fact]
     public void FinePatchConversion_UndoRedoRestoresExactPatchesAndOwners()

@@ -53,7 +53,7 @@ public static class MapResidencyOwnership
         {
             MapStaticDescriptor descriptor = world.Statics[i];
             MapTileRect tiles = TilesOf(descriptor.Bounds, grids.StorageTileSize);
-            RequireStorageTiles(tiles, $"Static '{descriptor.OwnerId}'");
+            RequireStorageTiles(tiles, $"Static '{descriptor.OwnerId}'", descriptor.OwnerId);
             MapNavTileCoord navMin = grids.AlignedNavTileOf(tiles.Min), navMax = grids.AlignedNavTileOf(tiles.Max);
             MapServerCellCoord cellMin = grids.AlignedServerCellOf(tiles.Min), cellMax = grids.AlignedServerCellOf(tiles.Max);
             // A placement static's position is its resolved transform position, whose X and Z are the authored floats.
@@ -109,7 +109,7 @@ public static class MapResidencyOwnership
         void Add(string id, MapExactPoint point, MapBox3 bounds)
         {
             var tiles = TilesOf(bounds, grids.StorageTileSize);
-            RequireStorageTiles(tiles, $"Annotation '{id}'");
+            RequireStorageTiles(tiles, $"Annotation '{id}'", id);
             var membership = Enumerate(tiles);
             entries.Add(new(id, TilesOf(new(point.X.ToDouble(), 0, point.Z.ToDouble(), point.X.ToDouble(), 0, point.Z.ToDouble()), grids.StorageTileSize).Min,
                 membership, membership.Select(grids.AlignedNavTileOf).Distinct().OrderBy(c => c.Z).ThenBy(c => c.X).ToArray(),
@@ -130,11 +130,12 @@ public static class MapResidencyOwnership
                 Enumerable.Range(1, p.Count - 2).Select(i => MapWaterOccupiedPieces.Bounds(new[] { p[0], p[i], p[i + 1] }, default, default))))
             {
                 MapTileRect rect = TilesOf(bounds, grids.StorageTileSize);
-                RequireStorageTiles(rect, what);
+                RequireStorageTiles(rect, what, WaterOwnerId(body.BodyId));
                 tiles.UnionWith(Enumerate(rect));
                 if (tiles.Count > MaxStorageTiles)
-                    throw new MapDocumentException(string.Format(CultureInfo.InvariantCulture,
-                        "{0} reaches more than the {1:N0} storage tiles one list allows.", what, MaxStorageTiles));
+                    throw new MapDocumentException(MapDocumentRefusal.WorkCapacityExceeded, string.Format(CultureInfo.InvariantCulture,
+                        "{0} reaches more than the {1:N0} storage tiles one list allows.", what, MaxStorageTiles))
+                    { Budget = nameof(MaxStorageTiles), OwnerId = WaterOwnerId(body.BodyId), ActualCount = tiles.Count, Limit = MaxStorageTiles };
             }
         return tiles.ToArray();
     }
@@ -198,7 +199,7 @@ public static class MapResidencyOwnership
         {
             bool patchChunk = descriptor.Kind == MapStaticKind.TerrainChunk &&
                 prefixes.Any(p => descriptor.OwnerId.StartsWith(p, StringComparison.Ordinal));
-            if (patchChunk) tiles.UnionWith(StorageTiles(descriptor.Bounds, grids, $"Chunk '{descriptor.OwnerId}'"));
+            if (patchChunk) tiles.UnionWith(StorageTiles(descriptor.Bounds, grids, $"Chunk '{descriptor.OwnerId}'", descriptor.OwnerId));
             if (unbounded || patchChunk || edited.Any(box => Meets(box, descriptor.Bounds))) owners.Add(descriptor.OwnerId);
         }
         foreach (var annotation in BuildAnnotations(world, grids))
@@ -235,7 +236,7 @@ public static class MapResidencyOwnership
         foreach (var removed in before.Statics.Where(s => !live.Contains(s.OwnerId)))
         {
             owners.Add(removed.OwnerId);
-            tiles.UnionWith(StorageTiles(removed.Bounds, grids, $"Removed owner '{removed.OwnerId}'"));
+            tiles.UnionWith(StorageTiles(removed.Bounds, grids, $"Removed owner '{removed.OwnerId}'", removed.OwnerId));
         }
         var liveAnnotations = BuildAnnotations(after, grids).Select(a => a.OwnerId).ToHashSet(StringComparer.Ordinal);
         foreach (var removed in BuildAnnotations(before, grids).Where(a => !liveAnnotations.Contains(a.OwnerId)))
@@ -268,26 +269,30 @@ public static class MapResidencyOwnership
     internal static void RequireWithinWorld(MapBox3 box)
     {
         const double limit = MapWorldBuilder.MaxCoordinateMetres;
-        foreach (double value in new[] { box.MinX, box.MinY, box.MinZ, box.MaxX, box.MaxY, box.MaxZ })
+        foreach ((string field, double value) in new[] { (nameof(box.MinX), box.MinX), (nameof(box.MinY), box.MinY),
+            (nameof(box.MinZ), box.MinZ), (nameof(box.MaxX), box.MaxX), (nameof(box.MaxY), box.MaxY), (nameof(box.MaxZ), box.MaxZ) })
             if (!(Math.Abs(value) <= limit))
-                throw new MapDocumentException(FormattableString.Invariant(
-                    $"Edit bounds ({box.MinX}, {box.MinY}, {box.MinZ}) to ({box.MaxX}, {box.MaxY}, {box.MaxZ}) reach beyond {limit:N0} m from the world origin on an axis."));
+                throw new MapDocumentException(double.IsFinite(value) ? MapDocumentRefusal.ValueOutsideRange : MapDocumentRefusal.ValueNonfinite,
+                    FormattableString.Invariant(
+                    $"Edit bounds ({box.MinX}, {box.MinY}, {box.MinZ}) to ({box.MaxX}, {box.MaxY}, {box.MaxZ}) reach beyond {limit:N0} m from the world origin on an axis."))
+                { FieldPath = field, ActualNumber = value, MinimumNumber = -limit, MaximumNumber = limit };
     }
 
     // The storage tiles box reaches, after refusing more than MaxStorageTiles of them.
-    static IReadOnlyList<MapTileCoord> StorageTiles(MapBox3 box, MapWorldGrids grids, string what)
+    static IReadOnlyList<MapTileCoord> StorageTiles(MapBox3 box, MapWorldGrids grids, string what, string? ownerId = null)
     {
         MapTileRect tiles = TilesOf(box, grids.StorageTileSize);
-        RequireStorageTiles(tiles, what);
+        RequireStorageTiles(tiles, what, ownerId);
         return Enumerate(tiles);
     }
 
-    static void RequireStorageTiles(MapTileRect tiles, string what)
+    static void RequireStorageTiles(MapTileRect tiles, string what, string? ownerId)
     {
         long count = ((long)tiles.Max.X - tiles.Min.X + 1) * ((long)tiles.Max.Z - tiles.Min.Z + 1);
         if (count > MaxStorageTiles)
-            throw new MapDocumentException(string.Format(CultureInfo.InvariantCulture,
-                "{0} reaches {1:N0} storage tiles, more than the {2:N0} one list allows.", what, count, MaxStorageTiles));
+            throw new MapDocumentException(MapDocumentRefusal.WorkCapacityExceeded, string.Format(CultureInfo.InvariantCulture,
+                "{0} reaches {1:N0} storage tiles, more than the {2:N0} one list allows.", what, count, MaxStorageTiles))
+            { Budget = nameof(MaxStorageTiles), OwnerId = ownerId, ActualCount = count, Limit = MaxStorageTiles };
     }
 
     /// <summary>The storage tiles a box reaches: minimum inclusive, maximum exclusive, and an axis with no extent in
@@ -296,15 +301,21 @@ public static class MapResidencyOwnership
     /// for its purpose: membership finds the tiles the geometry reaches, the key finds the tile that stores it.</summary>
     static MapTileRect TilesOf(MapBox3 box, float tileSize)
     {
-        (int minX, int maxX) = Axis(box.MinX, box.MaxX, tileSize);
-        (int minZ, int maxZ) = Axis(box.MinZ, box.MaxZ, tileSize);
+        (int minX, int maxX) = Axis(box.MinX, box.MaxX, tileSize, "X");
+        (int minZ, int maxZ) = Axis(box.MinZ, box.MaxZ, tileSize, "Z");
         return new(new(minX, minZ), new(maxX, maxZ));
     }
 
-    static (int Min, int Max) Axis(double min, double max, double tileSize)
+    /// <summary>Injects invalid storage bounds into the production interval guard and returns only tile coordinates.</summary>
+    internal static MapTileRect RequireFiniteStorageBoundsForTests(MapBox3 box, float tileSize) => TilesOf(box, tileSize);
+
+    static (int Min, int Max) Axis(double min, double max, double tileSize, string axis)
     {
         if (!double.IsFinite(min) || !double.IsFinite(max) || max < min)
-            throw new ArgumentException(FormattableString.Invariant($"bounds [{min}, {max}] are not a finite range"));
+            throw new MapNavigationArgumentException(!double.IsFinite(min) || !double.IsFinite(max)
+                ? MapDocumentRefusal.ValueNonfinite : MapDocumentRefusal.BoundsInvalid,
+                FormattableString.Invariant($"bounds [{min}, {max}] are not a finite range"))
+            { FieldPath = axis, ActualNumber = !double.IsFinite(min) ? min : max, MinimumNumber = min, MaximumNumber = max };
         int first = checked((int)Math.Floor(min / tileSize));
         if (!(max > min)) return (first, first);
         return (first, Math.Max(first, checked((int)Math.Ceiling(max / tileSize) - 1)));

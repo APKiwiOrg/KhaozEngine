@@ -45,7 +45,7 @@ public sealed class HostCoverageRegion
             { Path = $"$.key", RegionKey = key };
         string context = $"Region '{key}'";
 
-        HostCoverageRegionTriangles[] ownedTriangles = CoverageCollections.Snapshot(triangles, HostCoverageMap.MaxTriangles, count =>
+        HostCoverageRegionTriangles[] ownedTriangles = BoundedCollections.Snapshot(triangles, HostCoverageMap.MaxTriangles, count =>
             new HostCoverageDataException(HostCoverageRefusal.RegionTriangleCapacity, "Coverage collection exceeds its capacity.")
             { Path = "$.triangles", RegionKey = key, Count = count, Limit = HostCoverageMap.MaxTriangles });
         if (ownedTriangles.Length == 0)
@@ -66,7 +66,7 @@ public sealed class HostCoverageRegion
             throw new HostCoverageDataException(HostCoverageRefusal.RegionTriangleTotalCapacity, $"{context}: more than {HostCoverageMap.MaxTriangles} triangles.")
             { Path = $"$.triangles", RegionKey = key, Count = TriangleCount, Limit = HostCoverageMap.MaxTriangles };
 
-        CoverageSurfaceStrength[] ownedStrengths = CoverageCollections.Snapshot(strengths, HostCoverageMap.MaxSurfaceVertices, count =>
+        CoverageSurfaceStrength[] ownedStrengths = BoundedCollections.Snapshot(strengths, HostCoverageMap.MaxSurfaceVertices, count =>
             new HostCoverageDataException(HostCoverageRefusal.StrengthCapacity, "Coverage collection exceeds its capacity.")
             { Path = "$.strengths", RegionKey = key, Count = count, Limit = HostCoverageMap.MaxSurfaceVertices });
         if (ownedStrengths.Length == 0)
@@ -133,7 +133,7 @@ public sealed class HostCoverageMap
             throw new HostCoverageDataException(HostCoverageRefusal.InvalidLabel, "Authoring revision must be non-blank, well-formed UTF-16.")
             { Path = "$.authoring.revision" };
 
-        CoverageTopologyEntry[] ownedTopology = CoverageCollections.Snapshot(topology, MaxSurfaceVertices, count =>
+        CoverageTopologyEntry[] ownedTopology = BoundedCollections.Snapshot(topology, MaxSurfaceVertices, count =>
             new HostCoverageDataException(HostCoverageRefusal.TopologyCapacity, "Coverage collection exceeds its capacity.")
             { Path = "$.topology", Count = count, Limit = MaxSurfaceVertices });
         if (ownedTopology.Length is 0 or > MaxSurfaceVertices)
@@ -154,7 +154,7 @@ public sealed class HostCoverageMap
         }
         Array.Sort(ownedTopology, CompareVertex);
 
-        HostCoverageRegion[] ownedRegions = CoverageCollections.Snapshot(regions, MaxRegions, count =>
+        HostCoverageRegion[] ownedRegions = BoundedCollections.Snapshot(regions, MaxRegions, count =>
             new HostCoverageDataException(HostCoverageRefusal.RegionCapacity, "Coverage collection exceeds its capacity.")
             { Path = "$.regions", Count = count, Limit = MaxRegions });
         if (ownedRegions.Length is 0 or > MaxRegions)
@@ -191,7 +191,7 @@ public sealed class HostCoverageMap
         RefuseOverlap(ownedRegions.SelectMany(region => region.Triangles.Select(entry => entry.Triangles)).Order(RangeComparer.Instance),
             "Regions", "$.regions");
 
-        HostCoverageRefinement[] ownedRefinement = CoverageCollections.Snapshot(refinement, MaxTriangles, count =>
+        HostCoverageRefinement[] ownedRefinement = BoundedCollections.Snapshot(refinement, MaxTriangles, count =>
             new HostCoverageDataException(HostCoverageRefusal.RefinementRangeCapacity, "Coverage collection exceeds its capacity.")
             { Path = "$.refinement", Count = count, Limit = MaxTriangles });
         for (int index = 0; index < ownedRefinement.Length; index++)

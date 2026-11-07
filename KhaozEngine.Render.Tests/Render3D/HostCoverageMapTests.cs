@@ -219,7 +219,7 @@ public class HostCoverageMapTests
         CoverageTopologyEntry[] topology = [new(0, 0, 0, 0)];
         HostCoverageAuthoring authoring = new("synthetic-exporter", "r1");
 
-        Assert.Throws<HostCoverageDataException>(() =>
+        var refusal = Assert.Throws<HostCoverageDataException>(() =>
         {
             switch (collection)
             {
@@ -242,6 +242,16 @@ public class HostCoverageMapTests
                     throw new InvalidOperationException(collection);
             }
         });
+        HostCoverageRefusal reason = collection switch
+        {
+            "topology" => HostCoverageRefusal.TopologyCapacity,
+            "regions" => HostCoverageRefusal.RegionCapacity,
+            "triangles" => HostCoverageRefusal.RegionTriangleCapacity,
+            "strengths" => HostCoverageRefusal.StrengthCapacity,
+            _ => HostCoverageRefusal.RefinementRangeCapacity,
+        };
+        Assert.Equal(reason, refusal.Reason);
+        Assert.Equal(collection == "regions" ? (33L, 32L) : (65537L, 65536L), (refusal.Count, refusal.Limit));
     }
 
     [Fact]
@@ -259,7 +269,9 @@ public class HostCoverageMapTests
             throw new InvalidOperationException("Read beyond the capacity refusal witness.");
         }
 
-        Assert.Throws<HostCoverageDataException>(() => new HostCoverageMap(Hash, [new(0, 0, 0, 0)], RegionsWithWitness(), [], new("synthetic-exporter", "r1")));
+        var refusal = Assert.Throws<HostCoverageDataException>(() => new HostCoverageMap(Hash, [new(0, 0, 0, 0)], RegionsWithWitness(), [], new("synthetic-exporter", "r1")));
+        Assert.Equal(HostCoverageRefusal.RegionCapacity, refusal.Reason);
+        Assert.Equal((33L, 32L), (refusal.Count, refusal.Limit));
         Assert.Equal(33, consumed);
     }
 
@@ -353,6 +365,37 @@ public class HostCoverageMapTests
         Assert.NotNull(HostCoverageMapJson.Read(Encoding.UTF8.GetBytes(valid), "reordered"));
     }
 
+    [Theory]
+    [InlineData(11, true, false, false, false)]
+    [InlineData(64, false, false, false, false)]
+    [InlineData(64, true, false, false, false)]
+    [InlineData(65, false, false, true, false)]
+    [InlineData(65, true, false, true, false)]
+    [InlineData(64, true, true, false, false)]
+    [InlineData(65, true, true, true, false)]
+    [InlineData(64, false, false, false, true)]
+    [InlineData(64, true, false, false, true)]
+    [InlineData(65, false, true, true, true)]
+    [InlineData(4096, true, true, true, false)]
+    public void Unknown_member_diagnostics_use_a_decoded_budget_and_truthful_locations(int length, bool escaped, bool nested, bool omitted, bool nonAscii)
+    {
+        char character = nonAscii ? '\u00e9' : 'x';
+        string name = new(character, length);
+        string encoded = escaped ? string.Concat(Enumerable.Repeat(nonAscii ? "\\u00e9" : "\\u0078", length)) : name;
+        string anchor = "{\"key\":\"back\",";
+        string json = nested ? Canonical.Replace(anchor, "{\"" + encoded + "\":0," + anchor[1..], StringComparison.Ordinal)
+            : "{\"" + encoded + "\":0," + Canonical[1..];
+        string container = nested ? "$.regions[0]" : "$";
+        string component = nonAscii ? "[\"" + string.Concat(Enumerable.Repeat("\\u00E9", length)) + "\"]" : "." + name;
+        var refusal = Assert.Throws<HostCoverageDataException>(() => HostCoverageMapJson.Read(Encoding.UTF8.GetBytes(json), "unknown-name"));
+        Assert.Equal(HostCoverageRefusal.UnknownMember, refusal.Reason);
+        Assert.Equal("unknown-name", refusal.Identity);
+        Assert.Equal(omitted ? null : name, refusal.MemberName);
+        Assert.Equal(omitted, refusal.MemberNameOmitted);
+        Assert.Equal(omitted ? container : container + component, refusal.Path);
+        Assert.NotNull(HostCoverageMapJson.Read(Encoding.UTF8.GetBytes(Canonical), "unknown-name"));
+    }
+
     [Fact]
     public void Context_wrapper_preserves_every_identifier_and_typed_inner_reason()
     {
@@ -363,6 +406,7 @@ public class HostCoverageMapTests
             Count = 65537,
             Limit = 65536,
             MemberName = "count",
+            MemberNameOmitted = true,
             FormatVersion = 3,
             RegionKey = "chest",
             SurfaceId = 9,
@@ -376,9 +420,10 @@ public class HostCoverageMapTests
         Assert.Equal(original.Reason, refusal.Reason);
         Assert.Equal("outer", refusal.Identity);
         Assert.Equal("$.regions[1].triangles[2]", refusal.Path);
-        Assert.Equal(new[] { "Count", "FirstTriangle", "FormatVersion", "Identity", "Limit", "MemberName", "Mesh", "Path", "Primitive", "Reason", "RegionKey", "SurfaceId", "Vertex" },
+        Assert.Equal(new[] { "Count", "FirstTriangle", "FormatVersion", "Identity", "Limit", "MemberName", "MemberNameOmitted", "Mesh", "Path", "Primitive", "Reason", "RegionKey", "SurfaceId", "Vertex" },
             typeof(HostCoverageDataException).GetProperties().Where(property => property.DeclaringType == typeof(HostCoverageDataException))
                 .Select(property => property.Name).Order(StringComparer.Ordinal));
+        Assert.Equal(original.MemberNameOmitted, refusal.MemberNameOmitted);
         Assert.Equal((original.Count, original.Limit, original.MemberName, original.FormatVersion), (refusal.Count, refusal.Limit, refusal.MemberName, refusal.FormatVersion));
         Assert.Equal((original.RegionKey, original.SurfaceId, original.Mesh, original.Primitive, original.Vertex, original.FirstTriangle),
             (refusal.RegionKey, refusal.SurfaceId, refusal.Mesh, refusal.Primitive, refusal.Vertex, refusal.FirstTriangle));

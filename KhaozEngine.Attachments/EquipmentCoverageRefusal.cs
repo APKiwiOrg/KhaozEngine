@@ -104,7 +104,7 @@ public sealed class EquipmentCoverageDataException : MalformedDataException
     /// <summary>Caller-supplied asset identity, set by the JSON reader.</summary>
     public string? Identity { get; init; }
 
-    /// <summary>Rooted JSON path of the refused value or collection.</summary>
+    /// <summary>Rooted JSON path of the refused value or collection. When MemberNameOmitted is true, names the containing object.</summary>
     public string Path { get; init; } = "$";
 
     /// <summary>Observed count, or the first excess witness when enumeration is bounded.</summary>
@@ -115,6 +115,9 @@ public sealed class EquipmentCoverageDataException : MalformedDataException
 
     /// <summary>Missing, unknown or duplicated JSON member name.</summary>
     public string? MemberName { get; init; }
+
+    /// <summary>True when an unknown name exceeds 64 decoded UTF-16 code units. MemberName is null and Path names its containing object.</summary>
+    public bool MemberNameOmitted { get; init; }
 
     /// <summary>Refused format version when representable as an Int32.</summary>
     public int? FormatVersion { get; init; }
@@ -148,6 +151,7 @@ public sealed class EquipmentCoverageDataException : MalformedDataException
             Count = Count,
             Limit = Limit,
             MemberName = MemberName,
+            MemberNameOmitted = MemberNameOmitted,
             FormatVersion = FormatVersion,
             IdentifierValue = IdentifierValue,
             CommandId = CommandId,

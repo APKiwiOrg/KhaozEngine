@@ -118,6 +118,11 @@ Streaming preflight refuses duplicate and unknown members and excess array entri
 allocation or reading their values. Numeric overflow, malformed digests and unsupported versions
 have distinct reasons.
 
+Unknown names of at most 64 decoded UTF-16 code units retain their complete `MemberName` and
+member `Path`, independent of UTF-8 or Unicode-escaped spelling. Longer names have null `MemberName`,
+`MemberNameOmitted = true` and the actual containing-object `Path`. Diagnostic decoding uses a fixed
+buffer and never publishes a fabricated name or a partial name.
+
 ## Set refusals
 
 `AttachmentSetArgumentException` derives from `ArgumentException` for constructor admission.

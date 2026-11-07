@@ -39,7 +39,7 @@ public sealed class EquipmentCoverageCommand
             throw new EquipmentCoverageDataException(EquipmentCoverageRefusal.InvalidFrame, $"{context}: coverageLocal must be finite, affine, invertible and not mirrored.")
             { Path = $"$.coverageLocal", CommandId = id, PartId = partId };
 
-        EquipmentSupportRange[] support = CoverageCollections.Snapshot(inwardSupport, MaxSupportTriangles, count =>
+        EquipmentSupportRange[] support = BoundedCollections.Snapshot(inwardSupport, MaxSupportTriangles, count =>
             new EquipmentCoverageDataException(EquipmentCoverageRefusal.SupportRangeCapacity, $"{context}: too many support ranges.")
             { Path = "$.inwardSupport", CommandId = id, PartId = partId, Count = count, Limit = MaxSupportTriangles });
         if (support.Length == 0)
@@ -133,7 +133,7 @@ public sealed class EquipmentCoverageDefinition
         if (!AttachmentSetDefinition.ValidHash(hostMapSha256))
             throw new EquipmentCoverageDataException(EquipmentCoverageRefusal.MalformedDigest, "hostMapSha256 must be a lowercase SHA-256.")
             { Path = $"$.hostMapSha256" };
-        EquipmentCoverageCommand[] owned = CoverageCollections.Snapshot(commands, MaxCommands, count =>
+        EquipmentCoverageCommand[] owned = BoundedCollections.Snapshot(commands, MaxCommands, count =>
             new EquipmentCoverageDataException(EquipmentCoverageRefusal.CommandCapacity, "Too many coverage commands.")
             { Path = "$.commands", Count = count, Limit = MaxCommands });
         if (owned.Length is 0 or > MaxCommands)

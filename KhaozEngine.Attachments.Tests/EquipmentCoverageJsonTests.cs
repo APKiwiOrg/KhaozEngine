@@ -206,12 +206,13 @@ public class EquipmentCoverageJsonTests
     [InlineData(true)]
     public void Constructor_rejects_known_over_limit_counts_before_copy(bool support)
     {
-        if (support)
-            Assert.Throws<EquipmentCoverageDataException>(() => new EquipmentCoverageCommand(1, 1, "chest", Matrix4x4.Identity,
-                new RefusingCollection<EquipmentSupportRange>(1025), 0.05f, -1f, 1f, 0.01f, 0.1f));
-        else
-            Assert.Throws<EquipmentCoverageDataException>(() => new EquipmentCoverageDefinition(AttachmentHash, HostMapHash,
+        var refusal = support
+            ? Assert.Throws<EquipmentCoverageDataException>(() => new EquipmentCoverageCommand(1, 1, "chest", Matrix4x4.Identity,
+                new RefusingCollection<EquipmentSupportRange>(1025), 0.05f, -1f, 1f, 0.01f, 0.1f))
+            : Assert.Throws<EquipmentCoverageDataException>(() => new EquipmentCoverageDefinition(AttachmentHash, HostMapHash,
                 new RefusingCollection<EquipmentCoverageCommand>(5)));
+        Assert.Equal(support ? EquipmentCoverageRefusal.SupportRangeCapacity : EquipmentCoverageRefusal.CommandCapacity, refusal.Reason);
+        Assert.Equal(support ? (1025L, 1024L) : (5L, 4L), (refusal.Count, refusal.Limit));
     }
 
     [Fact]
@@ -229,7 +230,9 @@ public class EquipmentCoverageJsonTests
             throw new InvalidOperationException("Read beyond the capacity refusal witness.");
         }
 
-        Assert.Throws<EquipmentCoverageDataException>(() => new EquipmentCoverageDefinition(AttachmentHash, HostMapHash, CommandsWithWitness()));
+        var refusal = Assert.Throws<EquipmentCoverageDataException>(() => new EquipmentCoverageDefinition(AttachmentHash, HostMapHash, CommandsWithWitness()));
+        Assert.Equal(EquipmentCoverageRefusal.CommandCapacity, refusal.Reason);
+        Assert.Equal((5L, 4L), (refusal.Count, refusal.Limit));
         Assert.Equal(5, consumed);
     }
 
@@ -298,6 +301,37 @@ public class EquipmentCoverageJsonTests
         Assert.NotNull(EquipmentCoverageJson.Read(Encoding.UTF8.GetBytes(Fixture(limit)), "bounded"));
     }
 
+    [Theory]
+    [InlineData(11, true, false, false, false)]
+    [InlineData(64, false, false, false, false)]
+    [InlineData(64, true, false, false, false)]
+    [InlineData(65, false, false, true, false)]
+    [InlineData(65, true, false, true, false)]
+    [InlineData(64, true, true, false, false)]
+    [InlineData(65, true, true, true, false)]
+    [InlineData(64, false, false, false, true)]
+    [InlineData(64, true, false, false, true)]
+    [InlineData(65, false, true, true, true)]
+    [InlineData(4096, true, true, true, false)]
+    public void Unknown_member_diagnostics_use_a_decoded_budget_and_truthful_locations(int length, bool escaped, bool nested, bool omitted, bool nonAscii)
+    {
+        char character = nonAscii ? '\u00e9' : 'x';
+        string name = new(character, length);
+        string encoded = escaped ? string.Concat(Enumerable.Repeat(nonAscii ? "\\u00e9" : "\\u0078", length)) : name;
+        string anchor = "{\"id\":1,";
+        string json = nested ? Canonical.Replace(anchor, "{\"" + encoded + "\":0," + anchor[1..], StringComparison.Ordinal)
+            : "{\"" + encoded + "\":0," + Canonical[1..];
+        string container = nested ? "$.commands[0]" : "$";
+        string component = nonAscii ? "[\"" + string.Concat(Enumerable.Repeat("\\u00E9", length)) + "\"]" : "." + name;
+        var refusal = Assert.Throws<EquipmentCoverageDataException>(() => EquipmentCoverageJson.Read(Encoding.UTF8.GetBytes(json), "unknown-name"));
+        Assert.Equal(EquipmentCoverageRefusal.UnknownMember, refusal.Reason);
+        Assert.Equal("unknown-name", refusal.Identity);
+        Assert.Equal(omitted ? null : name, refusal.MemberName);
+        Assert.Equal(omitted, refusal.MemberNameOmitted);
+        Assert.Equal(omitted ? container : container + component, refusal.Path);
+        Assert.NotNull(EquipmentCoverageJson.Read(Encoding.UTF8.GetBytes(Canonical), "unknown-name"));
+    }
+
     [Fact]
     public void Context_wrapper_preserves_every_identifier_and_typed_inner_reason()
     {
@@ -308,6 +342,7 @@ public class EquipmentCoverageJsonTests
             Count = 1025,
             Limit = 1024,
             MemberName = "count",
+            MemberNameOmitted = true,
             FormatVersion = 3,
             CommandId = 7,
             PartId = 2,
@@ -323,9 +358,10 @@ public class EquipmentCoverageJsonTests
         Assert.Equal("outer", refusal.Identity);
         Assert.Equal("$.commands[1].inwardSupport[2]", refusal.Path);
         // This inventory fails by name when a new public identifier lacks a copy assertion.
-        Assert.Equal(new[] { "CommandId", "Count", "FirstTriangle", "FormatVersion", "IdentifierValue", "Identity", "Limit", "MemberName", "Mesh", "PartId", "Path", "Primitive", "Reason", "RegionKey" },
+        Assert.Equal(new[] { "CommandId", "Count", "FirstTriangle", "FormatVersion", "IdentifierValue", "Identity", "Limit", "MemberName", "MemberNameOmitted", "Mesh", "PartId", "Path", "Primitive", "Reason", "RegionKey" },
             typeof(EquipmentCoverageDataException).GetProperties().Where(property => property.DeclaringType == typeof(EquipmentCoverageDataException))
                 .Select(property => property.Name).Order(StringComparer.Ordinal));
+        Assert.Equal(original.MemberNameOmitted, refusal.MemberNameOmitted);
         Assert.Equal((original.Count, original.Limit, original.MemberName, original.FormatVersion), (refusal.Count, refusal.Limit, refusal.MemberName, refusal.FormatVersion));
         Assert.Equal((original.CommandId, original.PartId, original.RegionKey, original.IdentifierValue), (refusal.CommandId, refusal.PartId, refusal.RegionKey, refusal.IdentifierValue));
         Assert.Equal((original.Mesh, original.Primitive, original.FirstTriangle), (refusal.Mesh, refusal.Primitive, refusal.FirstTriangle));

@@ -28,16 +28,16 @@ internal static class EquipmentCoverageJsonPreflight
             Member member = Find(ref reader, kind);
             if (member.Name is null)
             {
-                // Do not allocate an unbounded unknown name for diagnostics.
-                string name;
-                try { name = reader.ValueSpan.Length <= 64 ? reader.GetString()! : "<omitted>"; }
+                // Only complete names inside the diagnostic budget can identify a member.
+                string? name;
+                try { name = JsonMemberDiagnostics.ReadName(ref reader); }
                 catch (InvalidOperationException error)
                 {
                     throw new EquipmentCoverageDataException(EquipmentCoverageRefusal.InvalidText, "Malformed UTF-16 member name.", error)
                     { Path = path };
                 }
                 throw new EquipmentCoverageDataException(EquipmentCoverageRefusal.UnknownMember, "Unknown coverage member.")
-                { Path = Property(path, name), MemberName = name };
+                { Path = name is null ? path : Property(path, name), MemberName = name, MemberNameOmitted = name is null };
             }
             string memberPath = Property(path, member.Name);
             uint mask = 1u << member.Slot;

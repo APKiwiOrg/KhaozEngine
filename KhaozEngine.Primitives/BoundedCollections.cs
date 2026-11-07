@@ -2,10 +2,10 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 
-namespace KhaozEngine.Render3D;
+namespace KhaozEngine;
 
 /// <summary>Owns a bounded snapshot, refusing known excess counts before copying and unknown excess at one witness.</summary>
-internal static class CoverageCollections
+internal static class BoundedCollections
 {
     internal static T[] Snapshot<T>(IEnumerable<T> source, int limit, Func<long, Exception> refuse)
     {

@@ -1791,6 +1791,11 @@ before DOM allocation and refuses duplicate or unknown members before reading th
 Core strength, collar strength, refinement level, overlap and each capacity rule have distinct
 reasons. Null arguments and a blank caller identity retain BCL exceptions.
 
+Unknown names of at most 64 decoded UTF-16 code units retain their complete `MemberName` and
+member `Path`, independent of UTF-8 or Unicode-escaped spelling. Longer names have null `MemberName`,
+`MemberNameOmitted = true` and the actual containing-object `Path`. Diagnostic decoding uses a fixed
+buffer and never publishes a fabricated name or a partial name.
+
 ## Mesh import and prop refusals
 
 Messages remain developer prose. Branch on `Reason` and read the structured identifiers below.

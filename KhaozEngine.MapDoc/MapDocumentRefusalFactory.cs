@@ -143,6 +143,7 @@ internal static class MapDocumentRefusalFactory
             ResourceIds = finding.ResourceIds,
             ExpectedResourceIds = finding.ExpectedResourceIds,
             SourceIds = finding.SourceIds,
+            SpaceIds = finding.SpaceIds,
             MarkerIds = finding.MarkerIds,
             SupportedVersions = finding.SupportedVersions,
             Findings = findings ?? new[] { finding },

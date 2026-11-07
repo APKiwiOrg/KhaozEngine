@@ -83,9 +83,10 @@ public partial class MutationServiceProceduralTests
     }
 
     [Theory]
-    [InlineData(":1", MapDocumentRefusal.SchemaValueRequired, "Kinds.Id")]
-    [InlineData("oak:notanumber", MapDocumentRefusal.SchemaMalformed, "Kinds.Weight")]
-    public void ScatterRuleAdd_InvalidKindText_RejectedAndReverted(string entry, MapDocumentRefusal reason, string field)
+    [InlineData(":1", MapDocumentRefusal.SchemaValueRequired, "Kinds.Id", "oak:1", 1f)]
+    [InlineData("oak:notanumber", MapDocumentRefusal.SchemaMalformed, "Kinds.Weight", "oak:2", 2f)]
+    public void ScatterRuleAdd_InvalidKindText_RejectedAndReverted(string entry, MapDocumentRefusal reason, string field,
+        string repaired, float expectedWeight)
     {
         string dir = NewTempDir();
         try
@@ -106,9 +107,9 @@ public partial class MutationServiceProceduralTests
             Assert.Equal(before, session.WithDocument((doc, r) => MapDocumentFile.SaveText(doc, r)));
             Assert.Equal(dirtyBefore, session.IsDirty);
 
-            mutation.ScatterRuleAdd("trees", "Meadow", kinds: new[] { "oak:2" });
+            mutation.ScatterRuleAdd("trees", "Meadow", kinds: new[] { repaired });
             MapPropKind oak = Assert.Single(session.WithDocument((doc, _) => doc.ScatterLayers.Single(l => l.Name == "trees").Rules[1].Kinds));
-            Assert.Equal(("oak", 2f), (oak.Id, oak.Weight));
+            Assert.Equal(("oak", expectedWeight), (oak.Id, oak.Weight));
         }
         finally { Directory.Delete(dir, recursive: true); }
     }

@@ -126,8 +126,13 @@ public sealed class FoliageToolTests
             Assert.Null(direct.Layer);
             Assert.Empty(direct.Chunks);
             Assert.Null(direct.Preview);
-            Assert.Throws<MapDocumentException>(() => query.FoliageGet(null, 0, 0, 1, 1));
-            Assert.Throws<MapDocumentException>(() => query.FoliageGet(null, previewChunk: new MapFoliageChunkKey(0, 0)));
+            var density = Assert.Throws<MapDocumentException>(() => query.FoliageGet(null, 0, 0, 1, 1));
+            Assert.Equal(MapDocumentRefusal.FoliageQueryLayerRequired, density.Reason);
+            Assert.Equal("layerId", density.FieldPath);
+            Assert.Equal(MapDocumentRefusal.FoliageQueryLayerRequired,
+                Assert.Throws<MapDocumentException>(() => query.FoliageGet(null, previewChunk: new MapFoliageChunkKey(0, 0))).Reason);
+            Assert.Equal(before, FoliageEditorFixtures.State(live));
+            Assert.NotNull(query.FoliageGet(Wire, 0, 0, 1, 1).Layer);
         }
         finally { FoliageEditorFixtures.Delete(seed); }
     }

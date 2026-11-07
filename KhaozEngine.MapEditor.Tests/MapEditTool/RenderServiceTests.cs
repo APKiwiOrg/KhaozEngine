@@ -151,8 +151,14 @@ namespace KhaozEngine.Tests.MapEditTool
                 (MapEditSession _, RenderService render) = OpenSample(dir);
 
                 // Eye and target coincide: the look direction is zero, rejected before any GPU work.
-                Assert.Throws<ArgumentException>(() =>
+                var error = Assert.Throws<MapRenderArgumentException>(() =>
                     render.RenderView(5f, 10f, 5f, 5f, 10f, 5f));
+                Assert.IsAssignableFrom<ArgumentException>(error);
+                Assert.Null(error.ParamName);
+                Assert.Equal(MapDocumentRefusal.RenderLookDirectionZero, error.Reason);
+                Assert.Equal(new Vector3(5, 10, 5), error.Eye);
+                Assert.Equal(new Vector3(5, 10, 5), error.Target);
+                Assert.Equal(Vector3.UnitZ, MapRenderViewAdmission.LookDirection(new(5, 10, 5), new(5, 10, 6)));
             }
             finally { Directory.Delete(dir, recursive: true); }
         }

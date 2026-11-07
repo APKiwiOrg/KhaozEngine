@@ -22,6 +22,7 @@ public partial class MutationServiceProceduralTests
         TiledDocFixture.InDirectory(root =>
         {
             var (session, mutation) = OpenSample(root);
+            if (kind == "player_spawn") mutation.PlayerSpawnAdd(0, 0);
             string before = AdmissionState(session);
             var error = Assert.Throws<MapMutationException>(() => kind == "edit_companion_layer"
                 ? mutation.CompanionLayerEdit("missing-source", seed: 7) : mutation.ElementDuplicate(kind, "missing-source"));
@@ -31,7 +32,6 @@ public partial class MutationServiceProceduralTests
             Assert.Equal("missing-source", error.EntityId);
             Assert.Equal(kind == "edit_companion_layer" ? "companion layer" : kind.Replace('_', ' '), error.SubjectKind);
             Assert.Equal(before, AdmissionState(session));
-            if (kind == "player_spawn") mutation.PlayerSpawnAdd(0, 0);
             string id = session.WithDocument((doc, _) => kind switch
             {
                 "spawn" => doc.Spawns[0].Id,
@@ -83,9 +83,12 @@ public partial class MutationServiceProceduralTests
     [InlineData("bake")]
     [InlineData("freeze")]
     [InlineData("sculpt")]
+    [InlineData("flatten")]
+    [InlineData("clear")]
     public void SpecializedMutation_ReportsProducerFindingsAndRevertsBeforeRepair(string verb) => TiledDocFixture.InDirectory(root =>
     {
         var (session, mutation) = OpenSample(root);
+        if (verb == "clear") mutation.SculptApply("raise", 0, 0, 2, 1, 1);
         session.WithDocument((doc, _) => doc.Id = "");
         string before = AdmissionState(session);
         void Edit()
@@ -95,6 +98,8 @@ public partial class MutationServiceProceduralTests
                 case "override": mutation.ScatterOverrideEdit(0, densityMultiplier: 2); break;
                 case "bake": mutation.BakeRegion("trees", -2, -2, 2, 2); break;
                 case "freeze": mutation.FreezeZone(); break;
+                case "flatten": mutation.SculptFlattenRegion(0, 0, 2, 2, 100); break;
+                case "clear": mutation.SculptClear(); break;
                 default: mutation.SculptApply("raise", 0, 0, 2, 1, 1); break;
             }
         }

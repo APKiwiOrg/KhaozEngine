@@ -1163,8 +1163,8 @@ public sealed partial class MutationService(MapEditSession session)
     }
 
     /// <summary>Parses a biome name (case-insensitive) into a <see cref="BiomeId"/>. Throws
-    /// <see cref="ArgumentException"/> naming every valid value when <paramref name="biome"/> does not match
-    /// one.</summary>
+    /// <see cref="MapMutationArgumentException"/> carrying the accepted names in
+    /// <see cref="MapMutationArgumentException.AcceptedValues"/> when <paramref name="biome"/> does not match one.</summary>
     static BiomeId ParseBiome(string biome)
     {
         if (Enum.TryParse(biome, ignoreCase: true, out BiomeId parsed)) return parsed;

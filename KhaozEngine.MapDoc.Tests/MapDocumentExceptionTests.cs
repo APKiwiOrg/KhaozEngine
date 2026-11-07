@@ -68,7 +68,13 @@ public sealed class MapDocumentExceptionTests
         var choiceFinding = new MapDocumentFinding(MapDocumentRefusal.MarkerAdoptionChoiceSetMismatch, "choices") { SourceIds = source };
         var collision = new MapDocumentException(MapDocumentRefusal.MarkerNameDuplicate, "collision") { MarkerIds = source };
         var collisionFinding = new MapDocumentFinding(MapDocumentRefusal.MarkerNameDuplicate, "collision") { MarkerIds = source };
+        var spaces = new MapDocumentException(MapDocumentRefusal.ToolExtractionParentAmbiguous, "parents") { SpaceIds = source };
+        var spaceFinding = new MapDocumentFinding(MapDocumentRefusal.ToolExtractionParentAmbiguous, "parents") { SpaceIds = source };
         source[0] = "changed";
+        Assert.Equal(new[] { "a", "b" }, spaces.SpaceIds);
+        Assert.Equal(new[] { "a", "b" }, spaceFinding.SpaceIds);
+        if (spaces.SpaceIds is IList<string> spaceList) Assert.Throws<NotSupportedException>(() => spaceList[0] = "changed");
+        if (spaceFinding.SpaceIds is IList<string> findingSpaces) Assert.Throws<NotSupportedException>(() => findingSpaces[0] = "changed");
         Assert.Equal(new[] { "a", "b" }, roots.ExpectedResourceIds);
         Assert.Equal(new[] { "a", "b" }, rootFinding.ExpectedResourceIds);
         if (roots.ExpectedResourceIds is IList<string> rootList) Assert.Throws<NotSupportedException>(() => rootList[0] = "changed");
@@ -224,6 +230,7 @@ public sealed class MapDocumentExceptionTests
         if (type == typeof(MapFoliageStatus)) return MapFoliageStatus.NotRepresentable;
         if (type == typeof(MapFoliageChunkKey)) return new MapFoliageChunkKey(-3, index);
         if (type == typeof(IReadOnlyList<int>)) return new[] { 1, 5 };
+        if (property.Name == nameof(MapDocumentException.SpaceIds)) return new[] { "parent-a", "parent-b" };
         if (type == typeof(IReadOnlyList<string>)) return new[] { "a", "b" };
         if (type == typeof(MapTileCoord)) return new MapTileCoord(-7, index);
         if (type == typeof(MapPrefabReferenceScope)) return (MapPrefabReferenceScope)(8000 + index);

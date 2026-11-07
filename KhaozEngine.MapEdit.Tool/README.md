@@ -275,8 +275,10 @@ it. `spawnCount`, `playerSpawnCount` and `playerSpawnIds` stay legacy list count
 `placements_in_rect` keeps its signature and inclusive rectangle, unlike the half-open `marker_list` rectangle. On a
 resolver-2 native document, placements come from the actual native resolution, prefab placements included, and a
 support-bound placement reports its seated height. Unadopted legacy spawns sample `legacySpawnSurfaceId` at their XZ and
-carry the Supported `support` answer, with `groundY` its height. Any other status refuses the query, naming each spawn,
-its status and the Surface owner. Without that owner, a rectangle holding a legacy spawn refuses. Both refusals give
+carry the Supported `support` answer, with `groundY` its height. Any other status uses
+`ToolLegacySpawnSupportUnresolved`, carrying `SurfaceId`, ordered `SourceIds` and `Findings` with each `SourceId`,
+source `SubjectKind` and `SupportStatus`. Without that owner, a rectangle holding a legacy spawn uses
+`ToolLegacySpawnSurfaceRequired` with the `LegacySpawnSurfaceId` field path. Both refusals give
 `spawns_adopt` and `marker_set` guidance. The `support` normal crosses the wire as `x`, `y` and `z` through MapDoc's
 vector converter on the query tool options. Analytic and resolver (1, 1) documents keep their released field readouts
 and omit `support`.
@@ -328,7 +330,7 @@ placement ID rename R10, actual import/source acceptance R11/G2 and appearance R
 
 ## Mutation and JSON refusals
 
-The shared `Apply` overloads, `TerrainEdit`, scatter override edits, bake, freeze and sculpt dabs validate through
+The shared `Apply` overloads, `TerrainEdit`, scatter override edits, bake, freeze and sculpt operations validate through
 `MapDocumentValidator.ValidateFindings`.
 Their `MapMutationException` derives from the original `InvalidOperationException` and takes `Reason` from the
 first finding. `Findings` is an owned read-only snapshot of every finding in producer order, retaining each
@@ -344,12 +346,24 @@ Direct missing region, scatter-layer, companion-layer and duplicate-source looku
 | `MapMutationArgumentException.SchemaEnumUnsupported` | An unknown duplicate kind or biome name | `SubmittedText`, owned read-only `AcceptedValues`, `EnumType` for biomes, original `ParamName` |
 | `MapMutationArgumentException.SchemaValueRequired` or `SchemaMalformed` | An empty scatter kind ID or unparseable weight | input `Index`, `FieldPath`, `SubmittedText` |
 | `MapMutationException.ToolFeatureTranslationUnsupported` | A feature without a supported duplicate translation | `DocumentId`, `Index`, `FeatureType`, `Operation` |
+| `MapMutationArgumentException.ToolRectangleIncomplete` | A partial sculpt clear rectangle | `Operation`, `FieldPath` |
+| `MapDocumentException.ToolRectangleIncomplete` | A partial foliage query rectangle | `Operation`, `FieldPath`, known `LayerId` |
+| `MapDocumentException.FoliageQueryLayerRequired` | A density or preview query without a layer | `FieldPath` `layerId` |
+| `MapDocumentException.FoliageChunkUnavailable` | Advertised density without resident bytes | `LayerId`, `FoliageChunk` |
+| `MapDocumentException.AuthoredValueRequired` | Opening a parent-dependent prefab without an authored parent | `ResourceId`, `AssetId`, `FieldPath` `parentSpace`, `Operation` |
+| `MapDocumentException.ToolPrefabSessionRequired` | Editing, exporting or saving without a local prefab session | `Operation` |
+| `MapDocumentException.ToolExtractionParentAmbiguous` | Extraction with multiple authored parents | owned read-only `SpaceIds`, `DocumentId` |
+| `MapDocumentException.ReferenceMissing` or `IdentityDuplicate` | Setting an absent interior or adding an existing interior ID | `RecordId`, `SpaceId`, `DocumentId`, `SubjectKind` |
+| `MapDocumentException.ToolEffectiveResourcesMissing` | Native query resolution without effective resources | `Operation` |
+| `MapRenderArgumentException.RenderLookDirectionZero` | A zero view direction | submitted `Eye`, `Target` |
+| `MapRenderException.RenderFailed` or a known document reason | Capture failure | `Backend`, `Operation`, original `InnerException`, known lower `Finding` |
 | `MapToolJsonException.SchemaValueRequired` | A null deserialized shape or terrain feature | root `FieldPath`, `SubjectKind` |
 | `MapDocumentException.SchemaValueRequired` or `SchemaObjectRequired` | Absent foliage JSON parameter or a non-object root | `FieldPath` `layerJson` or `previewChunkJson` |
 | `MapDocumentException.FoliagePreviewEditUnsupported` | A dry run for an edit other than setting a layer | runtime `EditType` |
 | `MapDocumentException.FoliagePreviewLayerNew` | A differential preview for a newly created layer | `LayerId` |
 
-`MapMutationArgumentException` remains catchable as `ArgumentException`, preserving `ParamName`.
+`MapMutationArgumentException` remains catchable as `ArgumentException`, preserving `ParamName`. Unknown sculpt
+brushes use `SchemaEnumUnsupported`, `SubmittedText`, `EnumType` and the complete owned `AcceptedValues` list.
 `MapToolJsonException` remains catchable as `JsonException`. The foliage binding converter reuses
 `MapFoliageJsonException` and keeps its producer reason and original `MapDocumentException`. Tool adapters retain
 these original exceptions and identifiers through `McpException.InnerException`, with transport text unchanged.
@@ -497,8 +511,11 @@ serializer options, instead of exploding into typed parameters. A lake feature:
 `render_topdown` and `render_view` are the only two verbs that touch a GPU, via
 `Render3DSnapshot.Capture` (the engine's public headless scene-capture helper). Every other verb (document,
 query, mutation) runs on a machine with no display or graphics device. A render on a machine with no
-headless GPU device fails with a precise `McpException` naming the selected backend, instead of hanging
-or crashing the process.
+headless GPU device fails with `MapRenderException`, catchable as `InvalidOperationException`, carrying the
+selected `Backend`, `Operation` and original `InnerException`. `Reason` is a known document or render rule when available,
+with its typed context in `Finding`, or `RenderFailed` for another capture failure. `ToolGuard` retains this
+exception through `McpException.InnerException` and preserves its precise transport text. A zero view direction
+uses `MapRenderArgumentException`, `RenderLookDirectionZero` and the submitted `Eye` and `Target`, before GPU work.
 
 Both renders take a `textured` bool (default `true`), mirroring the editor's `MapEditorOptions.TexturedProps`
 toggle: `true` renders a manifest entry's textured multi-material parts when it declares `"textured": true`,

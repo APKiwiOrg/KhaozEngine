@@ -2003,6 +2003,15 @@ their joined diagnostic text.
 | `FoliagePreviewLayerNew` | A tool differential preview for a new layer | `LayerId` |
 | `ToolMutationEmpty` | A tool terrain or scatter rule mutation with no supplied field, carried by `MapMutationArgumentException` | `Operation`, known `LayerId` and `Index`, original `ParamName` |
 | `ToolFeatureTranslationUnsupported` | A terrain feature without a supported duplicate translation, carried by `MapMutationException` | `DocumentId`, `Index`, `FeatureType`, `Operation` |
+| `ToolRectangleIncomplete` | A foliage query or sculpt clear rectangle supplied only in part | `FieldPath`, `Operation`, known `LayerId` |
+| `FoliageQueryLayerRequired` | A foliage density or preview query without a layer | `FieldPath` `layerId` |
+| `ToolExtractionParentAmbiguous` | A prefab extraction selection with multiple authored parents | owned read-only `SpaceIds`, `DocumentId` |
+| `ToolPrefabSessionRequired` | Prefab editing or export without an open local session | `Operation` |
+| `ToolLegacySpawnSurfaceRequired` | A native legacy spawn query without its support surface owner | `FieldPath`, ordered `SourceIds`, `DocumentId`, `Operation` |
+| `ToolLegacySpawnSupportUnresolved` | A native legacy spawn query with unsupported points | `SurfaceId`, ordered `SourceIds`, ordered `Findings` retaining each source and `SupportStatus` |
+| `ToolEffectiveResourcesMissing` | A native query without resolved effective resources | `Operation` |
+| `RenderLookDirectionZero` | A zero view direction, carried by `MapRenderArgumentException` | submitted `Eye` and `Target` |
+| `RenderFailed` | Capture failed without a known document finding, carried by `MapRenderException` | `Backend`, `Operation`, original `InnerException`, known lower document reasons retain their `Finding` |
 | `ToolStorageFormChanged` | Expected native source storage disappeared or changed form | `Path`, actual `DocumentForm`, `ExpectedDocumentForm`, `Operation` |
 | `ToolParentDirectoryMissing` | A staged save path without a parent directory | `Path`, `Operation` |
 | `ToolDocumentRequired` | Session work without an open document, carried by `MapSessionException` | `Operation` |

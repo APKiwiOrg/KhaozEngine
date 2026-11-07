@@ -22,6 +22,7 @@ public sealed class MapDocumentException : Exception
     IReadOnlyList<string>? _resourceIds;
     IReadOnlyList<string>? _expectedResourceIds;
     IReadOnlyList<string>? _sourceIds;
+    IReadOnlyList<string>? _spaceIds;
     IReadOnlyList<string>? _markerIds;
 
     public MapDocumentException(string message) : base(message) { }
@@ -333,6 +334,13 @@ public sealed class MapDocumentException : Exception
         init => _sourceIds = value is null ? null : Array.AsReadOnly<string>([.. value]);
     }
 
+    /// <summary>The authored parent space identities, copied as an owned read-only snapshot in discovery order.</summary>
+    public IReadOnlyList<string>? SpaceIds
+    {
+        get => _spaceIds;
+        init => _spaceIds = value is null ? null : Array.AsReadOnly<string>([.. value]);
+    }
+
     /// <summary>The colliding marker IDs in ordinal order, as an owned read-only snapshot.</summary>
     public IReadOnlyList<string>? MarkerIds
     {
@@ -502,6 +510,7 @@ public sealed class MapDocumentException : Exception
         _resourceIds = inner._resourceIds;
         _expectedResourceIds = inner._expectedResourceIds;
         _sourceIds = inner._sourceIds;
+        _spaceIds = inner._spaceIds;
         _markerIds = inner._markerIds;
         _supportedVersions = inner._supportedVersions;
         // Findings already owns a read-only snapshot whose elements are immutable records.

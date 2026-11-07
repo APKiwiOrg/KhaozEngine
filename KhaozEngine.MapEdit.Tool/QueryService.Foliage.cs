@@ -19,11 +19,13 @@ public sealed partial class QueryService
         MapFoliageChunkKey? previewChunk = null)
     {
         int given = (x is null ? 0 : 1) + (z is null ? 0 : 1) + (width is null ? 0 : 1) + (depth is null ? 0 : 1);
-        if (given is not (0 or 4)) throw new MapDocumentException("foliage_get takes x, z, width and depth together or not at all.");
+        if (given is not (0 or 4)) throw new MapDocumentException(MapDocumentRefusal.ToolRectangleIncomplete, "foliage_get takes x, z, width and depth together or not at all.")
+        { FieldPath = "x,z,width,depth", Operation = "foliage_get", LayerId = layerId };
         if (layerId is null)
         {
             if (given == 4 || previewChunk is not null)
-                throw new MapDocumentException("foliage_get needs a layer ID to read density or a preview.");
+                throw new MapDocumentException(MapDocumentRefusal.FoliageQueryLayerRequired, "foliage_get needs a layer ID to read density or a preview.")
+                { FieldPath = "layerId", Operation = "foliage_get" };
             return session.WithDocument((document, _) => new MapFoliageReadResult(MapFoliageReadMode.List,
                 Array.AsReadOnly((document.Foliage?.Layers ?? []).Select(l => new MapFoliageLayerInfo(l)).ToArray()), null, [], null));
         }
@@ -35,7 +37,8 @@ public sealed partial class QueryService
     static MapFoliageReadResult Read(MapDocument document, string id, int? x, int? z, int? width, int? depth, Func<MapFoliageSampleBatch>? preview)
     {
         MapFoliageLayer layer = document.Foliage?.Layers.FirstOrDefault(l => string.Equals(l.Id, id, StringComparison.Ordinal)) ??
-            throw new MapDocumentException($"No foliage layer '{id}'.");
+            throw new MapDocumentException(MapDocumentRefusal.ReferenceMissing, $"No foliage layer '{id}'.")
+            { DocumentId = document.Id, LayerId = id, FieldPath = "layerId", SubjectKind = "foliage layer" };
         IReadOnlyList<MapFoliageChunk> chunks = x is { } x0 && z is { } z0 && width is { } w && depth is { } d ? Chunks(layer, x0, z0, w, d) : [];
         return new(MapFoliageReadMode.Layer, [], new MapFoliageLayerInfo(layer), chunks, preview?.Invoke());
     }
@@ -48,7 +51,8 @@ public sealed partial class QueryService
         var resident = layer.Chunks.Select(c => c.Key).ToHashSet();
         foreach (MapFoliageChunkDigest advertised in layer.ChunkDigests)
             if (advertised.Key.X >= cx0 && advertised.Key.X <= cx1 && advertised.Key.Z >= cz0 && advertised.Key.Z <= cz1 && !resident.Contains(advertised.Key))
-                throw new MapDocumentException($"Foliage layer '{layer.Id}' chunk {advertised.Key} is unavailable.");
+                throw new MapDocumentException(MapDocumentRefusal.FoliageChunkUnavailable, $"Foliage layer '{layer.Id}' chunk {advertised.Key} is unavailable.")
+                { LayerId = layer.Id, FoliageChunk = advertised.Key };
         return Array.AsReadOnly(layer.Chunks.Where(c => c.Key.X >= cx0 && c.Key.X <= cx1 && c.Key.Z >= cz0 && c.Key.Z <= cz1).ToArray());
     }
 

@@ -15767,7 +15767,7 @@ world-affecting mutation (terrain features, terrain globals, exclusions, scatter
 `map_create`) replaces whatever was open, with no dirty guard, since the git diff is the safety net and
 `map_summary` reports the dirty flag. Every mutation validates before it lands
 (`MapDocumentValidator`, then a schema check on save) and reverts on failure, so the in-session document is never left invalid. The shared mutation adapters and
-`TerrainEdit`, scatter override edits, bake, freeze and sculpt dabs throw `MapMutationException`, preserving the
+`TerrainEdit`, scatter override edits, bake, freeze and sculpt operations throw `MapMutationException`, preserving the
 original `InvalidOperationException` catch contract.
 `Reason` is the first producer reason and `Findings` retains the complete ordered immutable snapshot and typed
 context. Direct region, scatter-layer, companion-layer and duplicate-source lookups use `ReferenceMissing`
@@ -15780,6 +15780,11 @@ retaining `Operation`, the known layer and rule index, and the original null `Pa
 kinds and biome names use `SchemaEnumUnsupported`, with `SubmittedText`, owned read-only `AcceptedValues`,
 `EnumType` for biomes and the original `ParamName`. Empty scatter kind IDs use `SchemaValueRequired`, while
 unparseable weights use `SchemaMalformed`, both carrying the input `Index`, `FieldPath` and `SubmittedText`.
+Unknown sculpt brushes retain the same schema reason, the submitted text, `SculptBrush` enum type and every
+accepted brush name. Partial foliage and sculpt rectangles share `ToolRectangleIncomplete` with their actual
+field path. Opening a parent-dependent prefab without a parent reuses `AuthoredValueRequired`, carrying its
+resource and asset identity. Local prefab work without an opened asset uses `ToolPrefabSessionRequired` and
+`Operation`. Ambiguous extraction parents use `ToolExtractionParentAmbiguous` with owned read-only `SpaceIds`.
 A null decoded feature or shape uses `MapToolJsonException`,
 `SchemaValueRequired`, root `FieldPath` and `SubjectKind`, still catchable through `JsonException`.
 Foliage dry runs distinguish unsupported edit kinds (`FoliagePreviewEditUnsupported`, `EditType`) from new
@@ -15877,6 +15882,8 @@ enabled count, configured roles and selected start IDs on a complete resolver-2 
 resolved markers in ordinal ID order and accepts an optional half-open rectangle. `placements_in_rect` reads actual
 native placement resolution and reports seated support heights. It refuses an unadopted legacy spawn unless its
 configured Surface owner returns Supported, naming `spawns_adopt` and `marker_set` as the remedies.
+`ToolLegacySpawnSurfaceRequired` identifies an absent caller choice. `ToolLegacySpawnSupportUnresolved` carries
+`SurfaceId`, ordered `SourceIds` and ordered `Findings` retaining each source kind and `SupportStatus`.
 
 On native documents, legacy `spawn_*` and `player_spawn_*` mutations refuse and name the marker verbs. The
 `prefab_place` verb accepts `overridesJson` so repeated marker names can be replaced atomically. Query vectors use
@@ -15916,6 +15923,15 @@ token and publishes alone. A new-layer dry run refuses because no differential i
 sample rectangle and `previewChunkJson`. Omitted layer lists detached metadata in authored order. A named layer returns
 copied bytes and optional CPU preview, including every matrix/quaternion component. See the
 [wire contract](../KhaozEngine.MapEdit.Tool/README.md#foliage) for results and refusal semantics.
+Density or preview queries without a layer use `FoliageQueryLayerRequired`. Unknown layers reuse
+`ReferenceMissing`, and missing advertised density uses `FoliageChunkUnavailable` with `LayerId` and
+`FoliageChunk`. Paint targets outside the byte domain reuse `ValueOutsideRange`, retaining `ActualInteger`
+and inclusive limits 0 and 255.
+
+Render capture failures use `MapRenderException`, preserving `InvalidOperationException` catches, `Backend`
+and the original `InnerException`. A known document reason and its typed `Finding` survive the wrapper.
+Other capture failures use `RenderFailed`. A zero view direction uses `MapRenderArgumentException` with
+`RenderLookDirectionZero`, `Eye` and `Target`, before GPU work. MCP retains these exceptions as its inner cause.
 
 `sculpt_apply(brush, x, z, radius, strength, dt, targetHeight?)` applies one terrain-sculpt brush dab
 (`raise`/`lower`/`smooth`/`flatten`/`set_height`) at a world point as a single `TerrainSculptStrokeCommand`

@@ -165,10 +165,16 @@ public sealed class PrefabWireTests
         var domain = MapInteriorCreationFixtures.Domain();
         string json = Encoding.UTF8.GetString(MapPrefabJson.Bytes<MapTopologyRecord>(domain));
         var before = PrefabEditorFixtures.State(session);
-        Assert.Throws<McpException>(() => tools.InteriorVolumeSet(json)); Assert.Equal(before, PrefabEditorFixtures.State(session));
+        var missing = Assert.IsType<MapDocumentException>(Assert.Throws<McpException>(() => tools.InteriorVolumeSet(json)).InnerException);
+        Assert.Equal(MapDocumentRefusal.ReferenceMissing, missing.Reason);
+        Assert.Equal(domain.Id, missing.RecordId);
+        Assert.Equal(domain.Space.Id, missing.SpaceId);
+        Assert.Equal(before, PrefabEditorFixtures.State(session));
         tools.InteriorVolumeAdd(json);
         var created = PrefabEditorFixtures.State(session);
-        Assert.Throws<McpException>(() => tools.InteriorVolumeAdd(json));
+        var duplicate = Assert.IsType<MapDocumentException>(Assert.Throws<McpException>(() => tools.InteriorVolumeAdd(json)).InnerException);
+        Assert.Equal(MapDocumentRefusal.IdentityDuplicate, duplicate.Reason);
+        Assert.Equal(domain.Id, duplicate.RecordId);
         Assert.Throws<McpException>(() => tools.InteriorVolumeAdd(Encoding.UTF8.GetString(MapPrefabJson.Bytes<MapTopologyRecord>(domain with { Id = "different-volume" }))));
         Assert.Equal(created, PrefabEditorFixtures.State(session));
         tools.InteriorVolumeSet(Encoding.UTF8.GetString(MapPrefabJson.Bytes<MapTopologyRecord>(domain with { UpperY = 2.5f })));

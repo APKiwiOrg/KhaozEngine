@@ -20,6 +20,7 @@ public sealed record MapDocumentFinding(MapDocumentRefusal Reason, string Messag
     IReadOnlyList<string>? _resourceIds;
     IReadOnlyList<string>? _expectedResourceIds;
     IReadOnlyList<string>? _sourceIds;
+    IReadOnlyList<string>? _spaceIds;
     IReadOnlyList<string>? _markerIds;
 
     /// <summary>The version required by an operation that accepts one version.</summary>
@@ -308,6 +309,13 @@ public sealed record MapDocumentFinding(MapDocumentRefusal Reason, string Messag
         init => _sourceIds = value is null ? null : Array.AsReadOnly<string>([.. value]);
     }
 
+    /// <summary>The authored parent space identities, copied as an owned read-only snapshot in discovery order.</summary>
+    public IReadOnlyList<string>? SpaceIds
+    {
+        get => _spaceIds;
+        init => _spaceIds = value is null ? null : Array.AsReadOnly<string>([.. value]);
+    }
+
     /// <summary>The colliding marker IDs in ordinal order, as an owned read-only snapshot.</summary>
     public IReadOnlyList<string>? MarkerIds
     {
@@ -459,6 +467,7 @@ public sealed record MapDocumentFinding(MapDocumentRefusal Reason, string Messag
             ResourceIds = error.ResourceIds,
             ExpectedResourceIds = error.ExpectedResourceIds,
             SourceIds = error.SourceIds,
+            SpaceIds = error.SpaceIds,
             MarkerIds = error.MarkerIds,
             SupportedVersions = error.SupportedVersions,
         } : null;

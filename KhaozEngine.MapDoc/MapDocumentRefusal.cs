@@ -465,6 +465,24 @@ public enum MapDocumentRefusal
     ToolMutationEmpty,
     /// <summary>Refuses duplicating a terrain feature without a supported translation.</summary>
     ToolFeatureTranslationUnsupported,
+    /// <summary>Refuses a tool rectangle whose bounds are supplied only in part.</summary>
+    ToolRectangleIncomplete,
+    /// <summary>Refuses a foliage density or preview query without a layer identity.</summary>
+    FoliageQueryLayerRequired,
+    /// <summary>Refuses an extraction selection with multiple authored parent spaces.</summary>
+    ToolExtractionParentAmbiguous,
+    /// <summary>Refuses prefab editing or export without an open local asset session.</summary>
+    ToolPrefabSessionRequired,
+    /// <summary>Refuses native legacy spawn queries without their caller-supplied support surface.</summary>
+    ToolLegacySpawnSurfaceRequired,
+    /// <summary>Refuses a native query without resolved effective resources.</summary>
+    ToolEffectiveResourcesMissing,
+    /// <summary>Refuses a native legacy spawn query with unsupported source points.</summary>
+    ToolLegacySpawnSupportUnresolved,
+    /// <summary>Refuses a render view with a zero look direction.</summary>
+    RenderLookDirectionZero,
+    /// <summary>Refuses a render whose capture failed without a known lower document or render rule.</summary>
+    RenderFailed,
 
     // Physics navigation and envelope admission.
     /// <summary>Refuses an interaction envelope sweep for an unsupported source shape.</summary>

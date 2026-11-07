@@ -84,23 +84,28 @@ public sealed class UnderwaterSunlightSettingsTests
     }
 
     [Theory]
-    [InlineData(true, -0.01f)]
-    [InlineData(true, float.NaN)]
-    [InlineData(true, float.PositiveInfinity)]
-    [InlineData(true, float.NegativeInfinity)]
-    [InlineData(false, -0.01f)]
-    [InlineData(false, float.NaN)]
-    [InlineData(false, float.PositiveInfinity)]
-    [InlineData(false, float.NegativeInfinity)]
-    public void PrepareFrameValidatesOnlyEnabledCausticStrength(bool enabled, float strength)
+    [InlineData(true, -0.01f, WaterWaveSource.Procedural)]
+    [InlineData(true, float.NaN, WaterWaveSource.Procedural)]
+    [InlineData(true, float.PositiveInfinity, WaterWaveSource.Procedural)]
+    [InlineData(true, float.NegativeInfinity, WaterWaveSource.Procedural)]
+    [InlineData(false, -0.01f, WaterWaveSource.Procedural)]
+    [InlineData(false, float.NaN, WaterWaveSource.Procedural)]
+    [InlineData(false, float.PositiveInfinity, WaterWaveSource.Procedural)]
+    [InlineData(false, float.NegativeInfinity, WaterWaveSource.Procedural)]
+    [InlineData(true, -0.01f, WaterWaveSource.FftOcean)]
+    [InlineData(true, float.NaN, WaterWaveSource.FftOcean)]
+    [InlineData(true, float.PositiveInfinity, WaterWaveSource.FftOcean)]
+    [InlineData(true, float.NegativeInfinity, WaterWaveSource.FftOcean)]
+    public void PrepareFrameValidatesOnlyEnabledProceduralCausticStrength(bool enabled, float strength,
+        WaterWaveSource source)
     {
         using Scene3D scene = Scene();
         scene.Post.Water.UnderwaterCaustics = !enabled;
-        var look = new WaterLook { UnderwaterCaustics = enabled, CausticStrength = 0f };
+        var look = new WaterLook { UnderwaterCaustics = enabled, CausticStrength = 0f, WaveSource = source };
         scene.DrawWater(new WaterPlane(0f, 2f, 0f, 4f, look: look));
         look.CausticStrength = strength;
 
-        if (enabled)
+        if (enabled && source == WaterWaveSource.Procedural)
         {
             ArgumentException error = Assert.Throws<ArgumentException>(() => scene.PrepareFrame());
             Assert.Equal(nameof(WaterSettings.CausticStrength), error.ParamName);

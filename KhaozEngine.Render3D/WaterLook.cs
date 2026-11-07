@@ -89,7 +89,9 @@ namespace KhaozEngine.Render3D
         /// <summary>Overrides <see cref="WaterSettings.CausticStrength"/>, the dimensionless scale of refracted
         /// focus offsets from the still-water ray. Strength scales focus displacement, not final brightness
         /// or contrast. Default <c>null</c> inherits the scene's physical <c>1</c> default. Must resolve finite
-        /// and non-negative when <see cref="UnderwaterCaustics"/> is enabled.</summary>
+        /// and non-negative only when <see cref="UnderwaterCaustics"/> resolves enabled and the resolved
+        /// <see cref="WaveSource"/> is <see cref="WaterWaveSource.Procedural"/>. FFT bodies ignore the opt-in
+        /// and strength, so strength is not validated for them.</summary>
         public float? CausticStrength;
 
         /// <summary>Overrides <see cref="WaterSettings.WaterColumnLight"/> for this plane. Default <c>null</c>

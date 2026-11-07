@@ -934,8 +934,9 @@ in the `KhaozEngine.Render3D.Ecs` arm under the same namespace, so a render-only
   Their nullable `WaterLook` fields inherit the scene, and an explicit `false` opts a body out.
   Strength is a dimensionless multiplier of refracted focus offsets from the still-water ray, with `1`
   representing physical focusing. Frame preparation checks that resolved strength is finite and non-negative
-  only when the body opts in, throwing `ArgumentException` with `ParamName` equal to `CausticStrength`.
-  Disabled bodies leave strength unvalidated. These authoring fields do not yet add a caustic render pass.
+  only when a procedural body opts in, throwing `ArgumentException` with `ParamName` equal to `CausticStrength`.
+  FFT bodies ignore the opt-in and strength. FFT and disabled bodies leave strength unvalidated.
+  These authoring fields do not yet add a caustic render pass.
 
   Water-column authoring uses `WaterColumnLight` (scene default `false`), `WaterColor` (linear RGB, neutral
   default `(0.10, 0.13, 0.10, 1)`, alpha ignored) and `Clarity` (neutral default `2` metres of vertical depth

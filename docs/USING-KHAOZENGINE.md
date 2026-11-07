@@ -6028,8 +6028,9 @@ is retained after a failed preparation and is zero before the first success. Unr
   - **Caustic authoring**: `UnderwaterCaustics` defaults to `false` and `CausticStrength` defaults to `1`.
     Nullable `WaterLook` overrides inherit on `null`, and an explicit `false` opts a body out. Strength scales
     refracted focus offsets from the still-water ray, with `1` representing physical focusing. Frame
-    preparation requires finite, non-negative strength only for an opted-in body, otherwise throwing
-    `ArgumentException` with `ParamName` equal to `CausticStrength`. Disabled bodies leave strength unvalidated.
+    preparation requires finite, non-negative strength only for an opted-in procedural body, otherwise throwing
+    `ArgumentException` with `ParamName` equal to `CausticStrength`. FFT bodies ignore the opt-in and strength.
+    FFT and disabled bodies leave strength unvalidated.
     These authoring fields do not yet add a caustic render pass.
   - **Water-column authoring**: `WaterColumnLight` defaults to `false`, `WaterColor` defaults to neutral linear
     RGB `(0.10, 0.13, 0.10, 1)` with alpha ignored, and `Clarity` defaults to `2` metres of vertical depth for

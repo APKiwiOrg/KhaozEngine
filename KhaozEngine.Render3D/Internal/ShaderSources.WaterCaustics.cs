@@ -141,7 +141,9 @@ void main() {
     vec2 lattice = Instance.xy + Local;
     vec2 S = clamp(windowMin + lattice * cell, CausticRect.xy, CausticRect.zw);
 
-    vec2 texel = ((S - windowMin) / cell + 0.5) / KE_FIELD_TEXELS;
+    // The window has 513 lattice points and 512 texels, and the +X edge must not read the next layer.
+    vec2 texel = clamp(((S - windowMin) / cell + 0.5) / KE_FIELD_TEXELS,
+                       vec2(0.5 / KE_FIELD_TEXELS), vec2((KE_FIELD_TEXELS - 0.5) / KE_FIELD_TEXELS));
     vec4 f = textureLod(sampler2D(SurfaceField, SurfaceFieldSampler),
                         vec2((CausticAtlas.x + texel.x) / CausticAtlas.y, texel.y), 0.0);
 

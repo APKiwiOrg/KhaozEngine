@@ -12,8 +12,11 @@ internal readonly record struct WaterCausticBody(int PlaneIndex, int Layer, floa
 internal sealed class WaterCausticPlan
 {
     internal const int MaxLayers = 4;
-    const int PatchCells = 32, Slices = 4;
+    internal const int PatchCells = 32;
+    const int Slices = 4;
     const int PatchesPerSide = WaterSurfaceWindow.Cells / PatchCells;
+    /// <summary>Most instances <see cref="WritePatches"/> writes for one body: every patch of the window, per slice.</summary>
+    internal const int MaxInstancesPerBody = PatchesPerSide * PatchesPerSide * Slices;
     const float PatchMetres = PatchCells * WaterSurfaceWindow.CellMetres;
     readonly WaterSettings _scratch = new();
     WaterCausticBody[] _bodies = Array.Empty<WaterCausticBody>();

@@ -76,7 +76,11 @@ namespace KhaozEngine.Tests.Gpu
         {
             AttachmentStoreBindings.Add((fb, ForceAttachmentStores ? default : stores));
             if (ForceAttachmentStores) SetFramebuffer(fb);
-            else { _framebufferBinds++; Inner.SetFramebufferWithStoreActions(fb, stores); }
+            else
+            {
+                NoteFramebuffer(fb);
+                Inner.SetFramebufferWithStoreActions(fb, stores);
+            }
         }
 
         /// <summary>Keep a COPY of each upload's bytes in <see cref="Upload.Data"/>, so a test can assert what a
@@ -110,9 +114,11 @@ namespace KhaozEngine.Tests.Gpu
             _resolves.Clear();
             _textureCopies.Clear();
             _colourClears.Clear();
+            _colourClearTargets.Clear();
             ClearDraws();
             _draws = 0;
             _framebufferBinds = 0;
+            FramebufferBindings.Clear();
             ClearReads();
         }
 
@@ -148,12 +154,13 @@ namespace KhaozEngine.Tests.Gpu
         public void End() => Inner.End();
         public void SetFramebuffer(IGpuFramebuffer fb)
         {
-            _framebufferBinds++;
+            NoteFramebuffer(fb);
             Inner.SetFramebuffer(fb);
         }
         public void ClearColorTarget(uint index, Color rgba)
         {
             _colourClears.Add(new ColourClear(index, rgba));
+            _colourClearTargets.Add(FramebufferBindings.Count > 0 ? FramebufferBindings[^1] : null);
             Inner.ClearColorTarget(index, rgba);
         }
         public void ClearDepthStencil(float depth) => Inner.ClearDepthStencil(depth);
@@ -173,8 +180,16 @@ namespace KhaozEngine.Tests.Gpu
         public void SetVertexBuffer(uint slot, IGpuBuffer b) { NoteVertexBuffer(slot, b); Inner.SetVertexBuffer(slot, b); }
         public void SetVertexBuffer(uint slot, IGpuBuffer b, uint offsetBytes) { NoteVertexBuffer(slot, b); Inner.SetVertexBuffer(slot, b, offsetBytes); }
         public void SetIndexBuffer(IGpuBuffer b, GpuIndexFormat fmt) { NoteIndexBuffer(b); Inner.SetIndexBuffer(b, fmt); }
-        public void SetScissorRect(uint index, uint x, uint y, uint w, uint h) => Inner.SetScissorRect(index, x, y, w, h);
-        public void SetFullScissorRects() => Inner.SetFullScissorRects();
+        public void SetScissorRect(uint index, uint x, uint y, uint w, uint h)
+        {
+            TraceCommand("scissor", _currentPipeline, x, w);
+            Inner.SetScissorRect(index, x, y, w, h);
+        }
+        public void SetFullScissorRects()
+        {
+            TraceCommand("full-scissor", _currentPipeline);
+            Inner.SetFullScissorRects();
+        }
         public void Draw(uint vertexCount, uint instanceCount, uint vertexStart, uint instanceStart)
         {
             TraceCommand("draw", _currentPipeline, instanceStart, instanceCount);

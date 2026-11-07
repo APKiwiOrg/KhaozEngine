@@ -5955,7 +5955,7 @@ is retained after a failed preparation and is zero before the first success. Unr
   ripple normal on top, a camera-distance detail fade, per-channel Beer-Lambert depth grading of the body colour, a
   fresnel blend toward the reflected sky, a GGX sun glint with distance/footprint roughness widening,
   procedural whitecap and shoreline foam, and a depth-driven shore fade at the waterline.
-  **No bent image lookup, no screen-space reflections, no caustics, no submerged view** - the reflection is the
+  **No bent image lookup, no screen-space reflections, no submerged view** - the reflection is the
   sky only (the legacy gradient or the enabled atmosphere's sky-view LUT, with a CPU mirror through
   `AtmosphereModel`). Feed the returning camera-aware `SunCycle.Apply` horizon to `Post.Water.HorizonColor`.
   Issue #54 records probes/SSR as not planned at the current bar. This is a stylized LDR surface, not a
@@ -6034,7 +6034,13 @@ is retained after a failed preparation and is zero before the first success. Unr
     FFT and disabled bodies leave strength unvalidated.
     A positive strength on a procedural body also opts it into underwater sunlight without changing
     `UnderwaterSunlight`, contributing a water volume record even when `WaterColumnLight` is false.
-    These authoring fields do not yet add a caustic render pass.
+    A participating body draws into a 64 m window that follows where the view meets the water, and lit receivers
+    under it read moving bands from the caustic map. `scene.WaterCausticDiagnostics` reports `OptedInPlanes`,
+    `DrawnPlanes`, `FftPlanes`, `OverflowPlanes` and `Layers` for the latest rendered frame. A frame with no
+    participating body runs no pass and creates no atlas. The first participating body costs a lit set replacement and
+    about 10.5 MB per atlas layer, and the atlases never shrink. Known limits: FFT bodies have no caustics, four map
+    layers (a body past them renders without caustics and is counted), the window's outer 4 m fades the term to 1 and
+    receivers outside it read 1, and bodies sharing a layer can exchange light across a gap narrower than its deflection.
   - **Water-column authoring**: `WaterColumnLight` defaults to `false`, `WaterColor` defaults to neutral linear
     RGB `(0.10, 0.13, 0.10, 1)` with alpha ignored, and `Clarity` defaults to `2` metres of vertical depth for
     about 5% bed visibility when seen straight down. These are neutral authoring defaults, not tuned river values.
@@ -26389,6 +26395,7 @@ Group intervals contain children and their durations must not be added as extra 
 | `shadow.point.static.face`, `.dynamic.face`, `.transient.face` | One of six faces under its row, occurrence is `row * 6 + face` |
 | `shadow.point.static.setup`, `.rigid`, `.foliage`, `.gpu-skinned`, `.cpu-skinned`, and the matching `dynamic` or `transient` prefixes | Atlas bind/clear and face leaf work, occurrence is atlas row for setup or `row * 6 + face` for draws |
 | `shadow.point.uploads`, `.finish` | Shared face/proxy/caster uploads and final atlas scissor restoration |
+| `water.caustics` | Surface field and caustic map atlases, with uploads before the first target, skipped without a participating body |
 | `opaque.light-clusters`, `.clear`, `.depth-clear`, `.frame-uniforms` | Cluster uploads, MRT bind and color clears, depth clear, frame uniforms and initial pipeline bind |
 | `motion.clear`, `opaque.visibility-clear` | Existing motion sentinel and independent key-shadow visibility clears, in native order |
 | `opaque.rigid`, `.splat`, `.tile-ground`, `.foliage`, `.gpu-skinned`, `.cpu-skinned` | Main geometry routes, with fused motion metadata when the MRT is active |

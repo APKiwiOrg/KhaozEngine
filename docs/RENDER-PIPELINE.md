@@ -279,7 +279,7 @@ disposal stage, after its water sets, preserving the later scene disposal stages
 
 Cascade projection, coverage and blend policy share C# GLSL text fragments with lit receivers. The refraction
 constant is shared separately from water's sun-travel function. Lit composition is pinned as fully composed GLSL, alongside the HLSL, MSL and SPIR-V emission
-pins. `NonWaterShaderSourceEqualityTests` covers all 248 non-water stages. Intentional source changes are
+pins. `NonWaterShaderSourceEqualityTests` covers all 256 non-water stages. Intentional source changes are
 rebaked with `KE_UPDATE_GLSL_HASHES=1`, `KE_UPDATE_HLSL_HASHES=1`, `KE_UPDATE_MSL_HASHES=1` and
 `KE_UPDATE_SPIRV_HASHES=1`, using the matching equality tests through `build-slot`. Read each table diff.
 The point-shadow exact-zero banded-NdotL gate deliberately changes the lit fragments' source while preserving
@@ -365,8 +365,9 @@ dropped from the tail. A cluster overflow scans all retained records, preserving
 buffer prefix uploads. The buffer is 652816 bytes, including a final `uvec4` at vector 40800 (byte 652800)
 for render-relative window minimum XZ, inverse extent `1 / 64` and the atlas layer capacity, packed as float bits.
 The capacity is not the layers this frame used, because the read addresses the atlas by its width.
-That block uploads separately only on a participating frame, with a positive capacity, after a record prefix upload. Scene frames
-currently clear the caustic plan without building it, so its record words stay zero and the window is not uploaded.
+That block uploads separately only on a participating frame, with a positive capacity, after a record prefix upload.
+The frame builds the caustic plan before this upload, so a body holding a layer carries its words on that frame. See
+[Water caustics](#water-caustics).
 Caustics-only bodies still contribute sunlight records when their effective waves are procedural and their
 resolved strength is positive. FFT bodies gain no record from that opt-in alone.
 `ClusterCamera.w` carries the record count independently of point lights. Empty and
@@ -413,7 +414,7 @@ Every lit set binds a 1x1 `R16G16B16A16Float` placeholder holding 1 and a linear
 `ModelRenderer.SetCausticMap` replaces the map. That transaction waits for idle, builds every rigid, splat, tile-ground
 and skinned-main frame set, then commits them together, and a failed build keeps the current sets. The caller owns the
 map. The opaque foliage subset rebuilds on its next draw and retires the set naming the previous map, so a replaced
-map goes through the retire queue. Scene frames do not replace the placeholder yet.
+map goes through the retire queue. The scene replaces the placeholder at the first participating body.
 
 The opaque atlas retains the sun-facing near face of outward CCW meshes with orientation-preserving transforms
 on every backend, with clockwise fronts culled. The glTF loader preserves triangle order. A straddling floater's
@@ -465,9 +466,72 @@ comparisons before cascade blending. This comparison count is not a native timin
 As `h` tends to zero, `E` tends to `P` with the same bias, transmittance tends to one, the march tends to fully
 lit and the kernel matches the dry filter exactly. The waterline has no shading seam. Entry visibility and
 submerged visibility multiply before the existing strength, fade and blend policy. The scalar R8 key-visibility
-export remains valid, including exactly one for non-positive strength. Caustics, underwater camera fog
+export remains valid, including exactly one for non-positive strength. Caustics reach the receiver as the
+transmittance term above, produced by [Water caustics](#water-caustics). Underwater camera fog
 and light shafts are separate effects. Receiver lighting does not change the surface pass. Its opted-in
 refracted view path is described in [Water column composite](#water-column-composite).
+
+## Water caustics
+
+A body participates when its effective waves are procedural, its resolved `UnderwaterCaustics` is true and its
+resolved `CausticStrength` is above zero. A frame with no participant builds nothing: no renderer object, program,
+atlas or buffer, no draw, and no window block. The pass reports `water.caustics` as skipped.
+`Scene3D.WaterCausticDiagnostics` reports `OptedInPlanes`, `DrawnPlanes`, `FftPlanes`, `OverflowPlanes` and `Layers`
+for the latest rendered frame, and `Begin` and preparation preserve it.
+
+`WaterCausticRenderer` owns a surface field atlas of `512N x 512` and a map atlas of `1024N x 1024`, both
+`R16G16B16A16Float` with no depth, with N of 1, 2 or 4. That is about 10.5 MB per layer. Preparation sizes them beside
+`EnsurePointLightCapacity` from every queued participant, ignoring the window, which can only over-allocate. Render
+repeats the sizing, a no-op unless settings changed after preparation made another body participate, so a planned layer
+always has a column. A larger atlas replaces the lit sets through `ModelRenderer.SetCausticMap`. A failed replacement
+keeps the current sets, keeps the map they name alive and retries on the next frame. Replaced atlases leave through the
+scene's retire queue. They never shrink, including after every body opts out, and go in the water disposal stage. Sizing
+ignores the window, so the frame can use fewer layers than the atlas holds. The window block and `CausticAtlas.y` carry
+the capacity, because both address the atlas by its width.
+
+The frame plans immediately before `opaque.light-clusters` on the unjittered view, because the records read each
+plane's layer. `WaterSurfaceWindow` is one 64 m square of 512 cells of 12.5 cm, anchored in absolute world and snapped
+to whole cells so the pattern never swims. It follows where the view meets the water rather than the eye. The reference
+plane is the `SurfaceY` of the participating body nearest the eye. An orthographic camera centres on the forward ray's
+hit. A perspective camera centres on the lower screen edge's hit plus up to 28 m along its heading, so the near field
+stays inside. Bodies take the first of four layers holding no conflicting body. Two conflict when their rectangles
+overlap, or when rectangles grown by one cell overlap and their `WaterPlane.Look` references differ. The same reference
+resolves to the same waves, so every rectangle of a tile river shares one layer. Bodies are not frustum culled, because
+an offscreen surface still lights onscreen receivers. A sun at or below the horizon skips the pass.
+
+`Record` uploads one uniform image and one instance buffer before its first framebuffer, so a staging backend never
+reopens a target for them. Each body takes one 256-byte `CausticBody` slot through a dynamic offset. Its wave vectors
+come from `WaterWaveUniforms`, the helper the water pass packs through, so the bands track the visible ripple phase. It
+clears the field to zero and the map to 1 once per frame, as whole targets, and draws each rectangle into its layer's
+column with a scissor. It ends by restoring the full scissor. The blend on the map is one plus one on colour and alpha,
+because the stock additive preset scales by source alpha, which would weight each slice by the deepest slice's value.
+
+The field fragment evaluates `gerstnerEvaluate` at the texel's absolute still-water XZ and `waterSlope` at that XZ plus
+the swell's horizontal offset, at `EffectTimeSeconds`, the same two positions the water pass uses. It writes
+`(entryOffset.xz, slope.xz)`, with `entryOffset = offset.xz + t0.xz * offset.y / -t0.y` carrying the crest to the still
+plane. The field is world space, so detail is 1, the footprint is the lattice cell and the swell shading attenuation
+does not apply. The clipped rectangle grows by one cell here, because sheets read bilinearly at an edge that need not
+sit on the lattice.
+
+Each map channel is one depth slice, at `D/8, D/4, D/2, D` below the surface. `D = clamp(3 / meanAttenuation, 1, 32)`
+metres, or 32 at zero attenuation, so slices sit where direct sun survives. `D` comes from the look and never `FloorY`,
+because rectangles of one river have different floors and would seam. The map starts at 1. Each rectangle draws one flat
+quad that adds -1 to all channels, then one instanced draw over its 4 m patches, with the slice in the instance data. A
+sheet vertex reads the field at its lattice point, with the texel clamped to `[0.5, 511.5] / 512`, because the window has
+513 lattice points and 512 texels and an unclamped read at the +X edge would land in the next layer. It refracts the sun
+through the surface normal and lands at
+`S + entryOffset + strength * D_i * (t.xz / -t.y - t0.xz / -t0.y)`, with `-t.y` held at 0.1 or more. The still-water
+position `S` is clamped to the rectangle and carried to the fragment, which adds
+`abs(determinant(dFdx(S), dFdy(S))) / texelArea`, clamped at 16, to its slice's channel. No culling or depth lets folded
+triangles add, so below the clamp energy is conserved by construction and the term has mean 1. Strength `s` at depth `d`
+is exactly strength 1 at depth `s * d`, because strength scales how far the ray lands and nothing extrapolates the ray.
+Starting from 1 and subtracting matters because a receiver's entry can lie beyond its rectangle, and a map that only adds
+would read black there.
+
+Known limits. FFT bodies have no caustics, gain no record from the opt-in and are counted in `FftPlanes`. A body past
+four layers renders without caustics and is counted in `OverflowPlanes`. The outer 4 m of the window fades the term to
+1, and receivers outside it read 1. Deflected light can land a short way past a rectangle, which is physical, and bodies
+sharing a layer can exchange it across a gap narrower than that deflection. The clamp discards what a fold exceeds.
 
 ## Where to look in the code
 

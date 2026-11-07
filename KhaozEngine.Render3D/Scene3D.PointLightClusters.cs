@@ -21,7 +21,7 @@ public sealed partial class Scene3D
     {
         _model.BuildAndUploadLightingClusters(cl, CollectionsMarshal.AsSpan(_lights), CollectWaterVolumeRecords(),
             rasterViewProjection, eyeRender, ActiveCamera.Forward, _currentFrameView.Projection, _frameOrigin,
-            causticWindow: default);
+            causticWindow: WaterCausticWindowVector());
         PointLightClusters = _model.PointLightClusterDiagnostics(_lights.Count);
         WaterVolumeClusters = _model.WaterVolumeDiagnostics;
     }

@@ -46,8 +46,9 @@ public sealed class WaterVolumeUploadTests
             Scene.RenderInternal(Commands, 96, 64, target);
         }
 
+        // The record prefix. A participating frame also uploads the window block at its own offset.
         internal RecordingGpuCommandList.Upload Upload() =>
-            Assert.Single(Commands.Uploads, u => ReferenceEquals(u.Buffer, Buffer));
+            Assert.Single(Commands.Uploads, u => ReferenceEquals(u.Buffer, Buffer) && u.Offset == 0);
 
         public void Dispose() { Commands.Dispose(); Scene.Dispose(); Device.Dispose(); }
     }
@@ -348,8 +349,10 @@ public sealed class WaterVolumeUploadTests
         Assert.Equal(expectedRecords, h.Scene.WaterVolumeClusters.RecordCount);
         if (expectedRecords > 0)
         {
-            uint[] words = MemoryMarshal.Cast<byte, uint>(h.Upload().Data!.AsSpan()).ToArray();
-            Assert.Equal(new uint[] { 0u, 0u }, words.AsSpan(114048 + 10, 2).ToArray());
+            // The body meets the window, so its record names layer plus one and its deepest slice.
+            float[] words = MemoryMarshal.Cast<byte, float>(h.Upload().Data!.AsSpan()).ToArray();
+            Assert.Equal(1f, words[114048 + 10]);
+            Assert.InRange(words[114048 + 11], 1f, 32f);
         }
         else
             Assert.DoesNotContain(h.Commands.Uploads, u => ReferenceEquals(u.Buffer, h.Buffer));

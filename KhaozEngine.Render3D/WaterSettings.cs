@@ -11,8 +11,8 @@ namespace KhaozEngine.Render3D
     /// (both are scene-wide look-and-feel bags reached off <c>Post</c>, as opposed to <see cref="WaterPlane"/>,
     /// which is the per-frame WHERE-to-draw request via <see cref="Scene3D.DrawWater(in WaterPlane)"/>). Drawing
     /// nothing (no <see cref="Scene3D.DrawWater(in WaterPlane)"/> call this frame) means no water pass runs at all,
-    /// regardless of these settings - existing scenes stay byte-stable. No refraction, no screen-space reflections,
-    /// no caustics and no submerged view: the reflection is the analytic sky only (see
+    /// regardless of these settings - existing scenes stay byte-stable. No refraction, no screen-space reflections
+    /// and no submerged view: the reflection is the analytic sky only (see
     /// <see cref="PixelPostProcessSettings.Sky"/>), and this is a stylized LDR surface, not a physically accurate
     /// one.
     /// <para>

@@ -937,7 +937,13 @@ in the `KhaozEngine.Render3D.Ecs` arm under the same namespace, so a render-only
   representing physical focusing. Frame preparation checks that resolved strength is finite and non-negative
   only when a procedural body opts in, throwing `ArgumentException` with `ParamName` equal to `CausticStrength`.
   FFT bodies ignore the opt-in and strength. FFT and disabled bodies leave strength unvalidated.
-  These authoring fields do not yet add a caustic render pass.
+  A participating body draws into a 64 m window that follows where the view meets the water, and lit receivers
+  under it read moving bands from the caustic map. `scene.WaterCausticDiagnostics` reports `OptedInPlanes`,
+  `DrawnPlanes`, `FftPlanes`, `OverflowPlanes` and `Layers` for the latest rendered frame. A frame with no participating
+  body runs no pass and creates no atlas. Known limits: FFT bodies have no caustics, four map layers (a body past them
+  renders without caustics and is counted), the window's outer 4 m fades the term to 1 and receivers outside it read
+  1, and bodies sharing a layer can exchange light across a gap narrower than its deflection. The pipeline is in
+  [Water caustics](../docs/RENDER-PIPELINE.md#water-caustics).
 
   Water-column authoring uses `WaterColumnLight` (scene default `false`), `WaterColor` (linear RGB, neutral
   default `(0.10, 0.13, 0.10, 1)`, alpha ignored) and `Clarity` (neutral default `2` metres of vertical depth
@@ -997,7 +1003,7 @@ in the `KhaozEngine.Render3D.Ecs` arm under the same namespace, so a render-only
   the swell's shading contrast fades on the same measure. `DetailFadeDistance`/`DistantDetailScale` remain as an
   artistic extra layered on top. Plus the
   depth-driven shore fade (`ShoreFadeDistance`) and, for legacy columns, `Opacity`.
-  **No bent image lookup, no screen-space reflections, no caustics, no submerged view** (all out of scope) - a stylized
+  **No bent image lookup, no screen-space reflections, no submerged view** (all out of scope) - a stylized
   surface with analytic sky reflection. Drawn after the sky + ground decals, before the final MRT resolve,
   one draw per plane, with depth test ON
   (`Less`, so geometry above the surface occludes it) but depth WRITE OFF (so the resolved normal/linear-depth the
@@ -1104,8 +1110,7 @@ in the `KhaozEngine.Render3D.Ecs` arm under the same namespace, so a render-only
   (byte 652800) for `(windowMinX, windowMinZ, 1 / 64, atlasLayers)`, all as float bits.
   `atlasLayers` is the map atlas's capacity, not the layers this frame used, because the read addresses the atlas by its width.
   The renderer uploads that block separately only on a participating frame, when `atlasLayers` is positive and a record prefix uploads.
-  Scene frames currently clear the caustic plan without building it, leaving record caustic words zero and
-  the window block untouched.
+  A record's caustic words stay zero unless its body holds a layer in the frame's plan.
   Water-only frames prepare the same camera grid as point lights. A failed light assignment keeps that grid
   valid for water, with full-list fallback headers for the lights. Empty and opted-out frames set the count
   in `ClusterCamera.w` to zero and skip water uploads, so retained buffer contents cannot be read next frame.

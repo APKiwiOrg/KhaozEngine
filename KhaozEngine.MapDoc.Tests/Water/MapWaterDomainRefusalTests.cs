@@ -111,30 +111,36 @@ public sealed class MapWaterDomainRefusalTests
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
-    public void DomainCountBudget_ReportsTheActualCountAndAcceptsItsCap(bool vertices)
+    public void DomainCountBudget_CompilesAtAndBelowTheLimitAndRefusesOneAbove(bool vertices)
     {
-        var rects = Enumerable.Range(0, MapWaterDomain.MaxPieces - (vertices ? 1 : 0))
+        // X24: inject small caps into the real compilation path, not the isolated count guard.
+        const int maxPieces = 4, maxVertices = 16;
+        var rects = Enumerable.Range(0, 3)
             .Select(i => new MapWaterRect(i, 0, i + 1, 1)).ToArray();
         var doc = new MapWaterDomainDoc(Frame, rects, [vertices
             ? Ring((0, 2), (2, 2), (2, 3), (1, 4), (0, 3)) : Ring((0, 2), (1, 2), (0, 3))]);
-        if (!vertices) doc = new(Frame, [], Enumerable.Range(0, MapWaterDomain.MaxPieces + 1)
+        if (!vertices) doc = new(Frame, [], Enumerable.Range(0, 5)
             .Select(i => Ring((i * 2, 0), (i * 2 + 1, 0), (i * 2, 1))).ToArray());
-        var errors = new List<string>();
-        var findings = new List<MapDocumentFinding>();
-        Assert.False(MapWaterDomain.WithinLimits(doc, errors, findings));
-        var finding = Assert.Single(findings);
-        Assert.Single(errors);
+        var error = Assert.Throws<MapDocumentException>(() => Compile(doc));
+        var finding = Assert.Single(error.Findings!);
+        Assert.Equal(MapDocumentRefusal.WorkCapacityExceeded, error.Reason);
         Assert.Equal(MapDocumentRefusal.WorkCapacityExceeded, finding.Reason);
         Assert.Equal(vertices ? "WaterDomainVertices" : "WaterDomainPieces", finding.Budget);
-        long limit = vertices ? MapWaterDomain.MaxPieceVertices : MapWaterDomain.MaxPieces;
+        long limit = vertices ? maxVertices : maxPieces;
         Assert.Equal(limit + 1, finding.ActualCount);
         Assert.Equal(limit, finding.Limit);
-        var control = vertices ? doc with { Rings = [Ring((0, 2), (1, 2), (1, 3), (0, 3))] }
-            : doc with { Rings = doc.Rings.Take(MapWaterDomain.MaxPieces).ToArray() };
-        errors.Clear(); findings.Clear();
-        Assert.True(MapWaterDomain.WithinLimits(control, errors, findings));
-        Assert.Empty(errors);
-        Assert.Empty(findings);
+        foreach (bool below in new[] { false, true })
+        {
+            var control = vertices ? doc with { Rings = [below ? Ring((0, 2), (1, 2), (0, 3))
+                : Ring((0, 2), (1, 2), (1, 3), (0, 3))] }
+                : doc with { Rings = doc.Rings.Take(below ? 3 : 4).ToArray() };
+            var compiled = Compile(control);
+            if (vertices) Assert.Equal(below ? 15 : 16, compiled.Pieces.Sum(p => p.Ring.Count));
+            else Assert.Equal(below ? 3 : 4, compiled.Pieces.Count);
+        }
+
+        static MapWaterDomain Compile(MapWaterDomainDoc source) =>
+            MapWaterDomain.CompileWithCountLimitsForTests(source, maxPieces, maxVertices);
     }
 
     [Fact]

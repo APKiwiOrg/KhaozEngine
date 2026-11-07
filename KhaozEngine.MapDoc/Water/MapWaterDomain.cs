@@ -61,12 +61,20 @@ public sealed class MapWaterDomain
     /// for an invalid domain, with the first finding's reason and the ordered Findings snapshot.
     /// GeometryNotRepresentable names a corner that cannot convert exactly, while WorkCapacityExceeded
     /// names a domain count or pair-check budget.</summary>
-    public static MapWaterDomain Compile(MapWaterDomainDoc doc, MapWaterPlacement? placement = null)
+    public static MapWaterDomain Compile(MapWaterDomainDoc doc, MapWaterPlacement? placement = null) =>
+        Compile(doc, placement, MaxPieces, MaxPieceVertices);
+
+    // Injects small count caps into the same compilation path without changing geometry admission.
+    internal static MapWaterDomain CompileWithCountLimitsForTests(MapWaterDomainDoc doc, int maxPieces, int maxPieceVertices) =>
+        Compile(doc, null, maxPieces, maxPieceVertices);
+
+    static MapWaterDomain Compile(MapWaterDomainDoc doc, MapWaterPlacement? placement, int maxPieces, int maxPieceVertices)
     {
         ArgumentNullException.ThrowIfNull(doc);
         var errors = new List<string>();
         var findings = new List<MapDocumentFinding>();
-        var domain = TryCompile(doc, placement, errors, new MapWaterWorkBudget(), findings, out var cause);
+        var domain = TryCompileEffective(doc, placement?.Kernel, errors, new MapWaterWorkBudget(), out var cause,
+            releasedPlacement: placement is not null, findings: findings, maxPieces: maxPieces, maxPieceVertices: maxPieceVertices);
         if (domain is not null) return domain;
         string message = "water domain: " + errors[0] + ".";
         if (cause is { Reason: null }) throw cause.WithSourceName(null, message);
@@ -89,7 +97,8 @@ public sealed class MapWaterDomain
         TryCompileEffective(doc, transform, errors, budget, out _, releasedPlacement, findings);
 
     internal static MapWaterDomain? TryCompileEffective(MapWaterDomainDoc doc, MapResourceTransform? transform, List<string> errors,
-        MapWaterWorkBudget budget, out MapDocumentException? firstCause, bool releasedPlacement = false, List<MapDocumentFinding>? findings = null)
+        MapWaterWorkBudget budget, out MapDocumentException? firstCause, bool releasedPlacement = false, List<MapDocumentFinding>? findings = null,
+        int maxPieces = MaxPieces, int maxPieceVertices = MaxPieceVertices)
     {
         firstCause = null;
         if (doc.Rects is null || doc.Rings is null || doc.Frame is null)
@@ -98,7 +107,7 @@ public sealed class MapWaterDomain
             { FieldPath = doc.Rects is null ? nameof(doc.Rects) : doc.Rings is null ? nameof(doc.Rings) : nameof(doc.Frame) });
             return null;
         }
-        if (!WithinLimits(doc, errors, findings)) return null;
+        if (!WithinLimits(doc, errors, findings, maxPieces, maxPieceVertices)) return null;
         if (doc.Rects.Count + doc.Rings.Count == 0)
         {
             Add(new(MapDocumentRefusal.WaterDomainEmpty, "domain is empty") { FieldPath = "Domain", ActualCount = 0 });
@@ -253,21 +262,22 @@ public sealed class MapWaterDomain
     internal void RejectTriangulationForTests(int piece) => _ = RequireTriangulation(null, piece);
 
     /// <summary>Refuses a domain over <see cref="MaxPieces"/> pieces or <see cref="MaxPieceVertices"/> vertices.</summary>
-    internal static bool WithinLimits(MapWaterDomainDoc doc, List<string> errors, List<MapDocumentFinding>? findings = null)
+    internal static bool WithinLimits(MapWaterDomainDoc doc, List<string> errors, List<MapDocumentFinding>? findings = null,
+        int maxPieces = MaxPieces, int maxPieceVertices = MaxPieceVertices)
     {
         long pieces = (long)doc.Rects.Count + doc.Rings.Count;
-        if (pieces > MaxPieces)
+        if (pieces > maxPieces)
         {
-            AddFinding(errors, findings, new(MapDocumentRefusal.WorkCapacityExceeded, $"domain exceeds {MaxPieces} pieces")
-            { Budget = "WaterDomainPieces", ActualCount = pieces, Limit = MaxPieces, FieldPath = "Domain" });
+            AddFinding(errors, findings, new(MapDocumentRefusal.WorkCapacityExceeded, $"domain exceeds {maxPieces} pieces")
+            { Budget = "WaterDomainPieces", ActualCount = pieces, Limit = maxPieces, FieldPath = "Domain" });
             return false;
         }
         long vertices = 4L * doc.Rects.Count;
         foreach (MapWaterRing ring in doc.Rings) vertices += ring?.Vertices?.Count ?? 0;
-        if (vertices > MaxPieceVertices)
+        if (vertices > maxPieceVertices)
         {
-            AddFinding(errors, findings, new(MapDocumentRefusal.WorkCapacityExceeded, $"domain exceeds {MaxPieceVertices} vertices")
-            { Budget = "WaterDomainVertices", ActualCount = vertices, Limit = MaxPieceVertices, FieldPath = "Domain" });
+            AddFinding(errors, findings, new(MapDocumentRefusal.WorkCapacityExceeded, $"domain exceeds {maxPieceVertices} vertices")
+            { Budget = "WaterDomainVertices", ActualCount = vertices, Limit = maxPieceVertices, FieldPath = "Domain" });
             return false;
         }
         return true;

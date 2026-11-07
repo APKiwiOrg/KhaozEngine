@@ -309,7 +309,8 @@ public class PhysicsNavProfileTests
 
         Assert.Throws<ArgumentException>(() => bake.BuildProfile(Tuning with { MaxSlopeRadians = 0.7f }, default));
         world.Rebase(new Vector3(100f, 20f, -80f));
-        Assert.Throws<InvalidOperationException>(() => bake.BuildProfile(Tuning, default));
+        var failure = Assert.Throws<NavigationBuildException>(() => bake.BuildProfile(Tuning, default));
+        Assert.Equal(NavigationBuildRefusal.CaptureOriginChanged, failure.Reason);
     }
 
     [Theory]

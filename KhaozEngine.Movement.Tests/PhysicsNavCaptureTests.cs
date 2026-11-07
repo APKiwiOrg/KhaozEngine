@@ -161,8 +161,13 @@ public class PhysicsNavCaptureTests
         using var world = BridgeWorld(Vector3.Zero);
         var context = PhysicsOnly(world);
 
-        Assert.Throws<InvalidOperationException>(() => PhysicsNavBake.Capture(context,
+        var failure = Assert.Throws<NavigationBuildException>(() => PhysicsNavBake.Capture(context,
             Options with { MaxSurfacesPerColumn = 1 }, _ => 0x01u));
+        Assert.Equal(NavigationBuildRefusal.ColumnSurfaceCapExceeded, failure.Reason);
+        Assert.Equal(102.5f, failure.AbsoluteX);
+        Assert.Equal(-76.5f, failure.AbsoluteZ);
+        Assert.Equal(1, failure.MaximumCount);
+        Assert.Equal(2, failure.ActualCount);
         using var bake = PhysicsNavBake.Capture(context, Options with { MaxSurfacesPerColumn = 2 }, _ => 0x01u);
 
         Assert.Equal(2, bake.Columns.GetColumn(0, 0).Length);
@@ -190,11 +195,17 @@ public class PhysicsNavCaptureTests
     {
         using var world = BridgeWorld(RebasedOrigin);
 
-        Assert.Throws<InvalidOperationException>(() => PhysicsNavBake.Capture(PhysicsOnly(world), Options, _ =>
+        var failure = Assert.Throws<NavigationBuildException>(() => PhysicsNavBake.Capture(PhysicsOnly(world), Options, _ =>
         {
             world.Rebase(new Vector3(96f, 12f, -72f));
             return 0x01u;
         }));
+        // Rebase advances geometry too, so the original predicate's generation branch wins first.
+        Assert.Equal(NavigationBuildRefusal.CaptureGeometryChanged, failure.Reason);
+        using (var current = world.AcquireQueryReadLease())
+            Assert.Equal(current.GeometryGeneration, failure.ActualGeneration);
+        using var repaired = PhysicsNavBake.Capture(PhysicsOnly(world), Options, _ => 0);
+        Assert.NotEmpty(repaired.Columns.GetColumn(0, 0).ToArray());
     }
 
     [Fact]
@@ -204,7 +215,12 @@ public class PhysicsNavCaptureTests
         using var bake = PhysicsNavBake.Capture(PhysicsOnly(world), Options, _ => 0x01u);
         world.Rebase(RebasedOrigin);
 
-        Assert.Throws<InvalidOperationException>(() => { _ = bake.Context; });
+        var failure = Assert.Throws<NavigationBuildException>(() => { _ = bake.Context; });
+        Assert.Equal(NavigationBuildRefusal.CaptureOriginChanged, failure.Reason);
+        Assert.Equal(Vector3.Zero, failure.ExpectedOrigin);
+        Assert.Equal(RebasedOrigin, failure.ActualOrigin);
+        world.Rebase(Vector3.Zero);
+        Assert.NotNull(bake.Context);
         Assert.Equal(1f, bake.Columns.GetColumn(0, 0)[0].Height, 5);
     }
 
@@ -265,7 +281,12 @@ public class PhysicsNavCaptureTests
     {
         using var world = new InvalidOriginWorld(new Vector3(coordinate, 0f, 0f));
 
-        Assert.Throws<InvalidOperationException>(() => PhysicsNavBake.Capture(PhysicsOnly(world), Options, _ => 0u));
+        var failure = Assert.Throws<NavigationBuildException>(() => PhysicsNavBake.Capture(PhysicsOnly(world), Options, _ => 0u));
+        Assert.Equal(NavigationBuildRefusal.PhysicsOriginNonfinite, failure.Reason);
+        Assert.Equal(new Vector3(coordinate, 0, 0), failure.ActualOrigin);
+        using var valid = FlatWorld();
+        using var repaired = PhysicsNavBake.Capture(PhysicsOnly(valid), Options, _ => 0);
+        Assert.NotNull(repaired);
     }
 
     [Fact]

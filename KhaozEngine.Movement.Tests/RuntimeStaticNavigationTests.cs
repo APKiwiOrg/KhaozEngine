@@ -19,7 +19,7 @@ public class RuntimeStaticNavigationTests
         using var context = Context(scene);
         Set(scene);
         int samples = 0;
-        Assert.Throws<InvalidOperationException>(() =>
+        Assert.Throws<NavigationBuildException>(() =>
             PhysicsNavBake.Capture(context, Options, _ => { samples++; return 0; }));
         Assert.Equal(0, samples);
         using var known = scene.Acquire();
@@ -35,8 +35,9 @@ public class RuntimeStaticNavigationTests
         using var capture = PhysicsNavBake.Capture(context, Options, _ => 0);
         Set(scene);
         MoveTuning tuning = contact ? Tuning : Tuning with { Controller = MovementControllerKind.Legacy, Water = default };
-        var refusal = Assert.Throws<InvalidOperationException>(() => capture.BuildProfile(tuning, default));
-        Assert.Contains("runtime statics", refusal.Message);
+        var refusal = Assert.Throws<NavigationBuildException>(() => capture.BuildProfile(tuning, default));
+        Assert.Equal(NavigationBuildRefusal.RuntimeStaticsPresent, refusal.Reason);
+        Assert.Equal(NavigationSourceRole.MovementRegistration, refusal.SourceRole);
         using var known = scene.Acquire();
     }
 
@@ -54,9 +55,10 @@ public class RuntimeStaticNavigationTests
             new("a-legacy", Tuning with { Controller = MovementControllerKind.Legacy, Water = default }, default),
             new("b-contact", Tuning, default),
         ];
-        var refusal = Assert.Throws<InvalidOperationException>(() =>
+        var refusal = Assert.Throws<NavigationBuildException>(() =>
             GroundNavigationBake.Create(capture, ContactBakeFile.Sources(), profiles, new(2)));
-        Assert.Contains("runtime statics", refusal.Message);
+        Assert.Equal(NavigationBuildRefusal.RuntimeStaticsPresent, refusal.Reason);
+        Assert.Equal(NavigationSourceRole.MovementRegistration, refusal.SourceRole);
         Assert.Equal(0, workers);
     }
 
@@ -68,7 +70,7 @@ public class RuntimeStaticNavigationTests
         using var capture = PhysicsNavBake.Capture(context, Options, _ => 0);
         Set(scene);
         Remove(scene);
-        Assert.Throws<InvalidOperationException>(() => capture.BuildProfile(Tuning, default));
+        Assert.Throws<NavigationBuildException>(() => capture.BuildProfile(Tuning, default));
         using var fresh = PhysicsNavBake.Capture(context, Options, _ => 0);
         Assert.NotEmpty(fresh.BuildProfile(Tuning, default).Space.Layers);
         using var known = scene.Acquire();
@@ -80,7 +82,7 @@ public class RuntimeStaticNavigationTests
         using var scene = Scene();
         using var context = Context(scene);
         int samples = 0;
-        Assert.Throws<InvalidOperationException>(() => PhysicsNavBake.Capture(context, Options, _ =>
+        Assert.Throws<NavigationBuildException>(() => PhysicsNavBake.Capture(context, Options, _ =>
         {
             if (++samples == 1) { Set(scene); Remove(scene); }
             return 0;
@@ -137,7 +139,7 @@ public class RuntimeStaticNavigationTests
                 if (removeAgain) Remove(scene);
             },
         });
-        Assert.Throws<InvalidOperationException>(() =>
+        Assert.Throws<NavigationBuildException>(() =>
             capture.BuildProfile(Tuning, default, GroundProfileOptions.Default, new(2)));
         Assert.Equal(bands, completed);
         using var known = scene.Acquire();

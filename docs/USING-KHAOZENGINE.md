@@ -9525,7 +9525,12 @@ Y and visits columns in Z then X order. It stores each surface's absolute height
 `MaxSurfacesPerColumn + 1` probe detects overflow. Checked cell, sample and layer budgets are validated before
 dense arrays. Missing, padded and exact outer-edge samples remain blocked. Capture does not fall back to
 `GroundMoveContext.GroundHeight`, and it does not retain the classifier in its snapshot.
-Keep statics and the origin unchanged through profile construction. `Dispose` releases builder references only.
+Keep statics and the origin unchanged through profile construction. Capture and stable-read failures use
+`NavigationBuildException` (an `InvalidOperationException`) with `NavigationBuildRefusal` and typed generation,
+origin, column, surface or source identifiers. Parallel contact and stable legacy capability failures use
+`NavigationReadCapabilityException` (a `NotSupportedException`) with `NavigationReadRefusal`,
+`RequiredCapability` and `SourceRole`. See the [capture and read refusal tables](../KhaozEngine.Movement/README.md#navigation-capture-and-read-refusals).
+`Dispose` releases builder references only.
 The returned profile owns pure data and stays usable after the builder, providers and physics world are disposed.
 
 ### GroundNavigation contract
@@ -9940,7 +9945,7 @@ The default is false. True is a caller assertion that every provider used by the
 read-only. Keep ground, normals, bounds, medium, water and area data fixed. Callbacks must not mutate physics,
 acquire an incompatible explicit nested lease or wait for another thread to mutate that owner. The complete physics
 source and any selected movement query view must each declare `IPhysicsQueryLeaseSource` themselves. Unsupported
-true throws `NotSupportedException` after argument checks and before proofs, with no capability inferred from an
+true throws `NavigationReadCapabilityException` with `LegacyQueryLeaseRequired` after argument checks and before proofs, with no capability inferred from an
 underlying backend. The live lease authenticates the exact owner, selected view, origin and captured geometry.
 
 The scope is thread-affine and releases on success or exception. An opted-in build inside an existing explicit lease

@@ -44,7 +44,9 @@ internal sealed class ContactNavigationSnapshot
     internal static ContactNavigationSnapshot Capture(PhysicsNavBake bake, GroundMoveContext context)
     {
         PhysicsNavCaptureBasis basis = bake.Basis
-            ?? throw new InvalidOperationException("Contact navigation requires a capture from an IPhysicsQueryLeaseSource.");
+            ?? throw new NavigationBuildException(NavigationBuildRefusal.CaptureLeaseRequired,
+                    "Contact navigation requires a capture from an IPhysicsQueryLeaseSource.")
+                    { RequiredCapability = typeof(KhaozEngine.Physics.IPhysicsQueryLeaseSource) };
         basis.AssertCurrent();
         var snapshot = new ContactNavigationSnapshot(basis, context.NavigationFrame, context);
         snapshot.AssertCurrent();

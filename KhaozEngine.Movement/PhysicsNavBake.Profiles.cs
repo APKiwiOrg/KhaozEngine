@@ -200,7 +200,9 @@ public sealed partial class PhysicsNavBake
         if (kind == EffectiveMovementBindingKind.OrdinaryContact)
         {
             PhysicsNavCaptureBasis basis = Basis
-                ?? throw new InvalidOperationException("Contact navigation requires a capture from an IPhysicsQueryLeaseSource.");
+                ?? throw new NavigationBuildException(NavigationBuildRefusal.CaptureLeaseRequired,
+                    "Contact navigation requires a capture from an IPhysicsQueryLeaseSource.")
+                    { RequiredCapability = typeof(KhaozEngine.Physics.IPhysicsQueryLeaseSource) };
             basis.AssertCurrent();
         }
         EffectiveMovementBinding? source = kind == EffectiveMovementBindingKind.OrdinaryContact

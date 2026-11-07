@@ -532,9 +532,9 @@ scope on success and on any failure.
 
 After existing degree and profile argument checks, the complete physics source and any selected movement query view
 must themselves declare `IPhysicsQueryLeaseSource`. A wrapper does not inherit its backend's capability. Otherwise
-the opted-in legacy profile throws `NotSupportedException` before providers or proofs execute. The selected view
+the opted-in legacy profile throws `NavigationReadCapabilityException` with `LegacyQueryLeaseRequired` before providers or proofs execute. The selected view
 must still name that exact owner and origin, and its live lease must match the captured geometry generation and
-origin. An identity or captured-basis change throws `InvalidOperationException`. Disposed and wrong-thread lease
+origin. A live identity or captured-basis change throws `NavigationBuildException`. Disposed and wrong-thread lease
 refusals propagate. No second lease is acquired to validate the basis within the scope.
 
 ```csharp
@@ -542,12 +542,48 @@ var execution = new NavBakeExecution(1) { UseStableLegacyReadScope = true };
 GroundNavigationBake bake = GroundNavigationBake.Create(capture, sources, profiles, execution);
 ```
 
+### Navigation capture and read refusals
+
+`NavigationBuildException` derives from `InvalidOperationException`. `NavigationReadCapabilityException`
+derives from `NotSupportedException`. Each carries a non-nullable `Reason`. Messages remain developer prose.
+The capture and read identifiers are nullable when the selected reason does not use them.
+
+| `NavigationBuildRefusal` | Refused rule | Identifiers |
+| --- | --- | --- |
+| `CaptureGeometryChanged` | Geometry changed since capture | `ExpectedGeneration`, `ActualGeneration` |
+| `CaptureLeaseRequired` | Contact capture lacks query leases | `RequiredCapability` |
+| `CaptureOriginChanged` | Origin changed since capture | `ExpectedOrigin`, `ActualOrigin` |
+| `ColumnSurfaceCapExceeded` | Column exceeds its configured inclusive cap | `AbsoluteX`, `AbsoluteZ`, `MaximumCount`, `ActualCount` |
+| `LegacyLeaseGenerationChanged` | Stable lease generation changed | `ExpectedGeneration`, `ActualGeneration` |
+| `LegacyLeaseOriginChanged` | Stable lease origin changed | `ExpectedOrigin`, `ActualOrigin` |
+| `LegacyLeaseSourceChanged` | Stable lease belongs to another owner | `SourceRole` (`ReadLease`) |
+| `LegacyViewOriginChanged` | Selected view origin changed | `ExpectedOrigin`, `ActualOrigin` |
+| `LegacyViewSourceChanged` | Selected view belongs to another owner | `SourceRole` (`MovementQueryView`) |
+| `LegacyWorldOriginChanged` | Complete physics origin changed during a stable read | `ExpectedOrigin`, `ActualOrigin` |
+| `PhysicsOriginNonfinite` | Physics origin has a nonfinite coordinate | `ActualOrigin` |
+| `RuntimeStaticsPresent` | Authored navigation has live runtime statics | `SourceRole` (`MovementRegistration`) |
+| `SurfaceHeadroomNaN` | Surface headroom is NaN | `ColumnX`, `ColumnZ`, `SurfaceIndex`, `ActualHeadroom` |
+| `SurfaceHeadroomNegative` | Surface headroom is below zero | `ColumnX`, `ColumnZ`, `SurfaceIndex`, `ActualHeadroom` |
+| `SurfaceHeightNonfinite` | Absolute surface height is nonfinite | `ColumnX`, `ColumnZ`, `SurfaceIndex`, `ActualHeight` |
+| `SurfaceHeightNotAscending` | Absolute surface height does not exceed its predecessor | `ColumnX`, `ColumnZ`, `SurfaceIndex`, `ActualHeight`, `PreviousHeight` |
+
+| `NavigationReadRefusal` | Refused rule | Identifiers |
+| --- | --- | --- |
+| `ConcurrentReadsRequired` | Parallel contact build lacks `IPhysicsConcurrentReadSource` | `RequiredCapability`, `SourceRole` |
+| `LegacyQueryLeaseRequired` | Stable legacy build lacks `IPhysicsQueryLeaseSource` | `RequiredCapability`, `SourceRole` |
+
+For read capability refusals, `SourceRole` names `PhysicsSource` or `MovementQueryView`, in that order.
+Surface validation selects height nonfiniteness, nonascending height, NaN headroom, then negative headroom,
+in the same order as the capture guard. Positive infinity headroom remains valid. Column indices and surface
+indices are zero-based. A stable read compares each producer value once, so identifiers retain the value
+that actually failed even if a faulty provider would return something different on its next read.
+
 ### Parallel contact provider contract
 
 Checks run in a fixed order. A degree below 1 throws `ArgumentOutOfRangeException` first. Every existing argument
 and profile check follows in its usual order. Only then does a contact profile above degree 1 require
 `IPhysicsConcurrentReadSource` on both the capture's physics source and the context's selected query view, and throw
-`NotSupportedException` when either lacks it. `BepuPhysicsWorld` and its restricted views declare it. A borrowed
+`NavigationReadCapabilityException` with `ConcurrentReadsRequired` when either lacks it. `BepuPhysicsWorld` and its restricted views declare it. A borrowed
 wrapper without it refuses above degree 1 and still builds at degree 1. A mixed `Create` above degree 1 checks every
 profile before it builds any.
 

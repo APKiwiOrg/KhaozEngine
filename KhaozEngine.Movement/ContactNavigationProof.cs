@@ -29,8 +29,9 @@ internal sealed partial class ContactNavigationProof : IDisposable
         _bake = bake;
         _context = context;
         _reuse = reuse ?? ContactNavigationReusePolicy.Capture();
-        _basis = bake.Basis ?? throw new InvalidOperationException(
-            "Contact navigation requires a capture from an IPhysicsQueryLeaseSource.");
+        _basis = bake.Basis ?? throw new NavigationBuildException(NavigationBuildRefusal.CaptureLeaseRequired,
+            "Contact navigation requires a capture from an IPhysicsQueryLeaseSource.")
+            { RequiredCapability = typeof(IPhysicsQueryLeaseSource) };
         _snapshot = _reuse.InitialHolds || maxDropMetres > 0 ? ContactNavigationSnapshot.Capture(bake, context) : null;
         if (_snapshot is null) _basis.AssertCurrent();
         try

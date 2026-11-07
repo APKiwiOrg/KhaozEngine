@@ -23,8 +23,9 @@ public sealed class AccountDataException : InvalidOperationException
     /// refused value for <see cref="AccountDataRefusal.TimestampMalformed"/>.</summary>
     public string? ColumnName { get; init; }
 
-    /// <summary>The collation the subject key uses, for
-    /// <see cref="AccountDataRefusal.SubjectKeyCollationUnsupported"/>.</summary>
+    /// <summary>The collation the subject key uses, spelled as the table declares it, for
+    /// <see cref="AccountDataRefusal.SubjectKeyCollationUnsupported"/>. SQLite collation names are case-insensitive,
+    /// so compare them that way.</summary>
     public string? ActualCollation { get; init; }
 
     /// <summary>The collation the subject key must use, for

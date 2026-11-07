@@ -320,6 +320,7 @@ public sealed class SqliteAccountStoreLayoutTests : IDisposable
 
     [Theory]
     [InlineData("subject TEXT COLLATE NOCASE PRIMARY KEY, " + LegacyColumns + ");", "NOCASE")]
+    [InlineData("subject TEXT COLLATE nocase PRIMARY KEY, " + LegacyColumns + ");", "nocase")]
     [InlineData("subject TEXT, " + LegacyColumns + ", PRIMARY KEY (subject COLLATE NOCASE));", "NOCASE")]
     [InlineData("subject TEXT PRIMARY KEY COLLATE RTRIM, " + LegacyColumns + ");", "RTRIM")]
     [InlineData("subject TEXT COLLATE NOCASE PRIMARY KEY, " + LegacyColumns + ") WITHOUT ROWID;", "NOCASE")]
@@ -400,10 +401,13 @@ public sealed class SqliteAccountStoreLayoutTests : IDisposable
     public async Task AnUpsertTheTableDiscards_IsRefused_AndChangesNoRow()
     {
         // The ensure reads columns and the subject key, never triggers, so this table is adopted. A game's trigger
-        // that calls RAISE(IGNORE) leaves the statement with nothing to return.
+        // that calls RAISE(IGNORE) leaves the statement with nothing to return. RAISE(IGNORE) keeps what the trigger
+        // already wrote, so the audit row can only disappear if the refusal rolls the write back.
         string path = scratch.NewDatabase(GrimhollowSqliteLayout.Timestamped +
             "INSERT INTO accounts (subject, display_name, whitelisted, banned) VALUES ('discord:1', 'Ferret', 1, 0);" +
-            "CREATE TRIGGER sign_ups_closed BEFORE INSERT ON accounts BEGIN SELECT RAISE(IGNORE); END;");
+            "CREATE TABLE sign_up_audit (subject TEXT NOT NULL);" +
+            "CREATE TRIGGER sign_ups_closed BEFORE INSERT ON accounts BEGIN " +
+            "INSERT INTO sign_up_audit VALUES (NEW.subject); SELECT RAISE(IGNORE); END;");
         SqliteAccountStore store = Open(path);
 
         AccountDataException refusal = await Assert.ThrowsAsync<AccountDataException>(
@@ -412,6 +416,7 @@ public sealed class SqliteAccountStoreLayoutTests : IDisposable
         Assert.Equal(AccountDataRefusal.UpsertReturnedNoRow, refusal.Reason);
         AssertNamesNothing(refusal);
         Assert.Equal(new[] { "discord:1|Ferret" }, SqliteScratch.Query(path, "SELECT subject, display_name FROM accounts;"));
+        Assert.Empty(SqliteScratch.Query(path, "SELECT subject FROM sign_up_audit;"));
 
         SqliteScratch.Execute(path, "DROP TRIGGER sign_ups_closed;");
         Assert.Equal("discord:2", (await store.FindOrCreateAsync(SignIn("2", "Weasel"))).Subject);

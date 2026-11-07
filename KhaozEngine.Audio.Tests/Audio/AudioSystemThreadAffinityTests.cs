@@ -68,6 +68,7 @@ public sealed class AudioSystemThreadAffinityTests : IDisposable
         // Even an unknown name must fail the thread guard before reaching the warn-once lookup path.
         using AudioSystem audio = NewLoaded();
         AssertThrowsOffThread(nameof(AudioSystem.PlaySfx), () => audio.PlaySfx(name));
+        AssertThrowsOffThread("PlaySfx", () => audio.PlaySfx(name, SfxPriority.Normal));
     }
 
     [Fact]
@@ -75,6 +76,7 @@ public sealed class AudioSystemThreadAffinityTests : IDisposable
     {
         using AudioSystem audio = NewLoaded();
         AssertThrowsOffThread(nameof(AudioSystem.PlaySfx3D), () => audio.PlaySfx3D("blip", Vector3.Zero));
+        AssertThrowsOffThread("PlaySfx3D", () => audio.PlaySfx3D("blip", Vector3.Zero, SfxPriority.Normal));
     }
 
     [Fact]
@@ -82,6 +84,8 @@ public sealed class AudioSystemThreadAffinityTests : IDisposable
     {
         using AudioSystem audio = NewLoaded();
         AssertThrowsOffThread(nameof(AudioSystem.PlaySfx), () => audio.PlaySfx(new[] { "blip" }));
+        AssertThrowsOffThread("PlaySfx", () => audio.PlaySfx(new[] { "blip" }, SfxPriority.Normal));
+        AssertThrowsOffThread("PlaySfx3D", () => audio.PlaySfx3D(new[] { "blip" }, Vector3.Zero, SfxPriority.Normal));
     }
 
     [Fact]
@@ -91,6 +95,11 @@ public sealed class AudioSystemThreadAffinityTests : IDisposable
         AssertThrowsOffThread(nameof(AudioSystem.RegisterSfx), () => audio.RegisterSfx("second"));
         AssertThrowsOffThread(nameof(AudioSystem.UnregisterSfx), () => audio.UnregisterSfx("blip"));
         AssertThrowsOffThread(nameof(AudioSystem.RegisterTrack), () => audio.RegisterTrack("theme"));
+        // The bulk members have no guard of their own, so the refusal names the per-item member they call.
+        // The sequences are non-empty because an empty one never reaches that member.
+        AssertThrowsOffThread("RegisterSfx", () => audio.RegisterSfxes(new[] { "second" }));
+        AssertThrowsOffThread("UnregisterSfx", () => audio.UnregisterSfxes(new[] { "blip" }));
+        AssertThrowsOffThread("RegisterTrack", () => audio.RegisterTracks(new[] { "theme" }));
         AssertThrowsOffThread(nameof(AudioSystem.LoadContent), () => audio.LoadContent(_dir));
     }
 
@@ -122,6 +131,7 @@ public sealed class AudioSystemThreadAffinityTests : IDisposable
         AssertThrowsOffThread(nameof(AudioSystem.SetRotationPool), () => audio.SetRotationPool(new[] { "theme" }));
         AssertThrowsOffThread(nameof(AudioSystem.SetRng), () => audio.SetRng(new KhaozEngine.Primitives.DeterministicRng(7)));
         AssertThrowsOffThread(nameof(AudioSystem.DefineBus), () => audio.DefineBus("ui"));
+        AssertThrowsOffThread("DefineBus", () => audio.DefineBus("ui", SfxAttenuation.Default));
         AssertThrowsOffThread(nameof(AudioSystem.SetBusVolume), () => audio.SetBusVolume("ui", 0.5f));
     }
 
@@ -159,8 +169,11 @@ public sealed class AudioSystemThreadAffinityTests : IDisposable
         // caller actually used rather than leaking the helper's name.
         using AudioSystem audio = NewLoaded();
 
-        AssertThrowsOffThread(nameof(AudioSystem.PlaySfx3D), () => audio.PlaySfx3D("blip", Vector3.One));
-        AssertThrowsOffThread(nameof(AudioSystem.PlaySfx3D), () => audio.PlaySfx3D(new[] { "blip" }, Vector3.One));
+        AssertThrowsOffThread("PlaySfx3D", () => audio.PlaySfx3D("blip", Vector3.One));
+        AssertThrowsOffThread("PlaySfx3D", () => audio.PlaySfx3D(new[] { "blip" }, Vector3.One));
+
+        // Control: the same positional call from the owning thread is admitted.
+        audio.PlaySfx3D("blip", Vector3.One);
     }
 
     [Fact]

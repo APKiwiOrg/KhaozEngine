@@ -19582,7 +19582,9 @@ crossfade call, `Update`, `StopAllSfx`, `SetListener`, `SetRng`, `SetRotationPoo
 `MusicVolume` / `SfxVolume` / `MusicEnabled` / `MusicCrossfadeDuration` / `PlayMode` setters plus `DefineBus` /
 `SetBusVolume`) compares the calling thread first and throws `AudioThreadAffinityException` when it is the wrong
 one. It derives from `InvalidOperationException`, its `Reason` is `AudioThreadAffinityRefusal.WrongThread`, and it
-carries the public member called in `MemberName` and both managed thread ids in `OwnerThreadId` and `CallerThreadId`.
+carries the guarded public member that refused in `MemberName` and both managed thread ids in `OwnerThreadId` and
+`CallerThreadId`. `RegisterSfxes`, `UnregisterSfxes` and `RegisterTracks` have no guard of their own and report their
+per-item member.
 The comparison is a thread-local `int` read, so it costs the same in Release as in Debug and
 a background job cannot get a pass on a build where `Debug.Assert` has been compiled away. To play a sound in
 response to work on a worker thread (an ECS job under `ThreadPoolJobScheduler`, an async content load), record

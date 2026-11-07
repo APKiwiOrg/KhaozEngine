@@ -15,8 +15,10 @@ public sealed class AudioThreadAffinityException : InvalidOperationException
     /// <summary>The rule that refused the call.</summary>
     public AudioThreadAffinityRefusal Reason { get; }
 
-    /// <summary>The public <see cref="AudioSystem"/> member the caller used, with no type prefix. A guard on a shared
-    /// private helper reports the public member it stands in for, never the helper.</summary>
+    /// <summary>The guarded public <see cref="AudioSystem"/> member that refused, with no type prefix. A guard on a
+    /// shared private helper reports the public member it stands in for, never the helper. <c>RegisterSfxes</c>,
+    /// <c>UnregisterSfxes</c> and <c>RegisterTracks</c> have no guard of their own and report their per-item
+    /// member.</summary>
     public string? MemberName { get; init; }
 
     /// <summary>The managed id of the thread that constructed the <see cref="AudioSystem"/>.</summary>

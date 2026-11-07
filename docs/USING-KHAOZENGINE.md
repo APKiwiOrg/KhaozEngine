@@ -25852,8 +25852,9 @@ public void EveryKey_IsTranslatedInEveryShippedCulture()
 It reflects the keys (every `public const string` value plus every `public static readonly StringId`'s `.Key`),
 then asserts each key resolves in the neutral resx **and** in each satellite with parent fallback OFF (a missing
 translation fails rather than silently reading the neutral language), plus placeholder-index integrity between each
-neutral template and its translation. A gap throws `LocalizationCoverageException` listing every miss. Pass no
-cultures to check only the neutral resx. `LocalizationCoverage.Keys(typeof(MyGameStrings))` is exposed if you would
+neutral template and its translation. A gap throws `LocalizationCoverageException`, whose `Reason` names the first
+rule broken and whose `Findings` list every miss in the order its message does (the package README's Refusals table
+lists each reason and identifier). Pass no cultures to check only the neutral resx. `LocalizationCoverage.Keys(typeof(MyGameStrings))` is exposed if you would
 rather drive a `[Theory]` off the same key source.
 
 No keys class? If your keys live directly in the neutral resx (referenced through the MSBuild-generated designer

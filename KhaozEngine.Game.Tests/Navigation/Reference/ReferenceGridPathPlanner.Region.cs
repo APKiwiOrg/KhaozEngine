@@ -53,7 +53,7 @@ internal sealed partial class ReferenceGridPathPlanner
         if (members.Count == 0) return NavPath.Unreachable;
 
         var anchorXz = new Vector2(goal.Anchor.X, goal.Anchor.Z);
-        float Priority(int layer, int x, int z)
+        double Priority(int layer, int x, int z)
         {
             return _spatialBound.Region(layer, x, z, memberBounds, anchorXz, goal.HorizontalExtent);
         }

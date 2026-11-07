@@ -33,7 +33,7 @@ internal sealed partial class ReferenceGridPathPlanner
     {
         NavGrid goalGrid = _space.Layers[goalLayer];
         (int goalX, int goalZ) = goalGrid.CellOf(goalPoint.X, goalPoint.Y);
-        float PointHeuristic(int layer, int x, int z)
+        double PointHeuristic(int layer, int x, int z)
             => _spatialBound.Point(layer, x, z, goalLayer, goalX, goalZ);
         Vector3 target = CellFeet(goalLayer, goalX, goalZ);
         double PointProgress(int layer, int x, int z)
@@ -52,27 +52,27 @@ internal sealed partial class ReferenceGridPathPlanner
     // Priority must bound remaining route cost. Progress only chooses a partial endpoint, so region
     // queries can measure useful approach independently when a safe priority has to be zero.
     NavPath RunSearch(int startLayer, Vector2 startPoint,
-        Func<int, int, int, bool> isGoal, Func<int, int, int, float> priority,
+        Func<int, int, int, bool> isGoal, Func<int, int, int, double> priority,
         Func<int, int, int, double> progress, Vector2? goalPoint, float agentRadius, PathQueryBudget budget)
     {
         NavGrid startGrid = _space.Layers[startLayer];
         (int startX, int startZ) = startGrid.CellOf(startPoint.X, startPoint.Y);
         int startId = _layerOffset[startLayer] + startZ * startGrid.Width + startX;
 
-        var gScore = new float[_totalNodes];
+        var gScore = new double[_totalNodes];
         var cameFrom = new int[_totalNodes];
         var closed = new bool[_totalNodes];
         for (int i = 0; i < _totalNodes; i++)
         {
-            gScore[i] = float.PositiveInfinity;
+            gScore[i] = double.PositiveInfinity;
             cameFrom[i] = -1;
         }
 
-        var open = new PriorityQueue<int, (float F, int Seq)>();
+        var open = new PriorityQueue<int, (double F, int Seq)>();
         int seq = 0;
 
         gScore[startId] = 0f;
-        float startHeuristic = priority(startLayer, startX, startZ);
+        double startHeuristic = priority(startLayer, startX, startZ);
         open.Enqueue(startId, (startHeuristic, seq++));
 
         int closestNode = startId;
@@ -116,7 +116,7 @@ internal sealed partial class ReferenceGridPathPlanner
                 break;
             }
 
-            float gCurrent = gScore[current];
+            double gCurrent = gScore[current];
             for (int i = 0; i < NeighborDx.Length; i++)
             {
                 int nx = cx + NeighborDx[i];
@@ -140,12 +140,12 @@ internal sealed partial class ReferenceGridPathPlanner
                     continue;
                 }
 
-                float tentative = gCurrent + (diagonal ? grid.CellSize * Sqrt2 : grid.CellSize);
+                double tentative = gCurrent + ReferencePlannerWalkingPrices.Cost(grid.CellSize, diagonal);
                 if (tentative < gScore[neighborId])
                 {
                     gScore[neighborId] = tentative;
                     cameFrom[neighborId] = current;
-                    float f = tentative + priority(layer, nx, nz);
+                    double f = tentative + priority(layer, nx, nz);
                     open.Enqueue(neighborId, (f, seq++));
                 }
             }
@@ -169,12 +169,12 @@ internal sealed partial class ReferenceGridPathPlanner
                         continue;
                     }
 
-                    float tentative = gCurrent + costMeters;
+                    double tentative = gCurrent + costMeters;
                     if (tentative < gScore[targetId])
                     {
                         gScore[targetId] = tentative;
                         cameFrom[targetId] = current;
-                        float f = tentative + priority(tLayer, tx, tz);
+                        double f = tentative + priority(tLayer, tx, tz);
                         open.Enqueue(targetId, (f, seq++));
                     }
                 }

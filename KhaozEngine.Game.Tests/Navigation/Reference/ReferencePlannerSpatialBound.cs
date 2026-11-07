@@ -1,4 +1,4 @@
-// Frozen allocating reference after the #1712 F1 metric correction for 23.3.0.
+// Frozen allocating reference after the #1712 F2 double-cost ruling for 23.3.0.
 // Keep independent of production scratch. Change only with an evidenced reference update.
 using System;
 using System.Collections.Generic;
@@ -11,11 +11,10 @@ namespace KhaozEngine.Tests.Navigation;
 /// <summary>A construction-time cost per metre lower bound in one metric shared by every layer.</summary>
 internal sealed class ReferencePlannerSpatialBound
 {
-    static readonly float Sqrt2 = MathF.Sqrt(2f);
     readonly IReadOnlyList<NavGrid> _layers;
     readonly bool _sharedFrame;
 
-    internal float Scale { get; }
+    internal double Scale { get; }
 
     internal ReferencePlannerSpatialBound(NavSpace space, NavTraversalGraph? traversal, Func<NavLink, double, float> linkCost)
     {
@@ -29,6 +28,8 @@ internal sealed class ReferencePlannerSpatialBound
         double scale = 1d;
         // In a shared frame the walking span is exactly its existing orthogonal/diagonal cost.
         // Otherwise use actual world centres, including float rounding in translated/yawed grids.
+        if (_sharedFrame && (!float.IsFinite(ReferencePlannerWalkingPrices.Cost(first.CellSize, false)) ||
+            !float.IsFinite(ReferencePlannerWalkingPrices.Cost(first.CellSize, true)))) scale = 0d;
         if (!_sharedFrame)
             for (int layer = 0; layer < _layers.Count; layer++)
                 scale = Math.Min(scale, WalkingScale(layer, traversal));
@@ -38,28 +39,30 @@ internal sealed class ReferencePlannerSpatialBound
             float cost = linkCost(link, span);
             scale = Constrain(scale, cost, span);
         }
-        // Round downward so storing the ratio cannot raise the promised lower bound.
-        float rounded = (float)scale;
-        Scale = rounded > scale ? MathF.BitDecrement(rounded) : rounded;
+        Scale = scale;
     }
 
-    internal float Point(int layer, int x, int z, int goalLayer, int gx, int gz)
-        => Scale == 0f ? 0f : (float)(Scale * Distance(layer, x, z, goalLayer, gx, gz));
+    internal double Point(int layer, int x, int z, int goalLayer, int gx, int gz)
+        => Scale == 0d ? 0d : Scale * Distance(layer, x, z, goalLayer, gx, gz);
 
     internal double Distance(int layer, int x, int z, int goalLayer, int gx, int gz)
     {
         if (_sharedFrame)
         {
             int dx = Math.Abs(x - gx), dz = Math.Abs(z - gz);
-            // Preserve the historical float octile expression exactly when the ratio is one.
-            return _layers[layer].CellSize * (Sqrt2 * Math.Min(dx, dz) + Math.Abs(dx - dz));
+            // Sum the actual edge prices in double, just as the search does.
+            float cell = _layers[layer].CellSize;
+            int diagonals = Math.Min(dx, dz);
+            double span = Math.Abs(dx - dz) * (double)ReferencePlannerWalkingPrices.Cost(cell, false);
+            if (diagonals != 0) span += diagonals * (double)ReferencePlannerWalkingPrices.Cost(cell, true);
+            return span;
         }
         return WorldDistance(_layers[layer].CellCenter(x, z), _layers[goalLayer].CellCenter(gx, gz));
     }
 
-    internal float Region(int layer, int x, int z, ReferencePlannerRegionBounds members, Vector2 anchor, float extent)
+    internal double Region(int layer, int x, int z, ReferencePlannerRegionBounds members, Vector2 anchor, float extent)
     {
-        if (Scale == 0f) return 0f;
+        if (Scale == 0d) return 0d;
         double span;
         if (_sharedFrame)
         {
@@ -74,7 +77,7 @@ internal sealed class ReferencePlannerSpatialBound
             double dz = Math.Max(Math.Abs((double)centre.Y - anchor.Y) - extent, 0d);
             span = Math.Sqrt(dx * dx + dz * dz);
         }
-        return (float)Math.Min(float.MaxValue, Scale * span);
+        return Scale * span;
     }
 
     double WalkingScale(int layer, NavTraversalGraph? traversal)
@@ -94,7 +97,7 @@ internal sealed class ReferencePlannerSpatialBound
                             traversal is not null && !traversal.CanWalkNeighbor(layer, x, z, nx, nz)) continue;
                         bool diagonal = dx != 0 && dz != 0;
                         if (diagonal && (!grid.IsPassable(nx, z, 0f) || !grid.IsPassable(x, nz, 0f))) continue;
-                        scale = Constrain(scale, diagonal ? grid.CellSize * Sqrt2 : grid.CellSize,
+                        scale = Constrain(scale, ReferencePlannerWalkingPrices.Cost(grid.CellSize, diagonal),
                             WorldDistance(grid.CellCenter(x, z), grid.CellCenter(nx, nz)));
                     }
             }
@@ -105,7 +108,10 @@ internal sealed class ReferencePlannerSpatialBound
     {
         if (!float.IsFinite(cost) || !double.IsFinite(span)) return 0d;
         if (span == 0d) return scale; // A purely vertical link imposes no spatial constraint.
-        return cost <= 0f ? 0d : Math.Min(scale, cost / span);
+        if (cost <= 0f) return 0d;
+        if (cost >= span) return scale;
+        // An undercutting division may round upward. Keep its ratio conservatively below it.
+        return Math.Min(scale, Math.BitDecrement(cost / span));
     }
 
     static double WorldDistance(Vector2 from, Vector2 to)

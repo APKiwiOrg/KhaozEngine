@@ -86,41 +86,16 @@ public sealed class ContentFamily
         ArgumentNullException.ThrowIfNull(familyKey);
         ArgumentNullException.ThrowIfNull(blocks);
 
-        if (string.IsNullOrWhiteSpace(familyKey))
-        {
-            throw new ArgumentException("A family names a key.", nameof(familyKey));
-        }
-
-        if (!IsLegalBlockSize(blockSize))
-        {
-            throw new ArgumentOutOfRangeException(
-                nameof(blockSize),
-                blockSize,
-                FormattableString.Invariant(
-                    $"A family's block size is a power of two between {MinBlockSize} and {MaxBlockSize}."));
-        }
-
+        // Each block is read once, so the blocks checked are the blocks kept even from a list whose reads disagree.
         var copy = new ContentFamilyBlock[blocks.Count];
-        for (int i = 0; i < blocks.Count; i++)
+        for (int i = 0; i < copy.Length; i++)
         {
-            ContentFamilyBlock block = blocks[i];
-            if (block.BlockSize != blockSize)
-            {
-                throw new ArgumentException(
-                    FormattableString.Invariant(
-                        $"Block {block.BlockOrdinal} is sized {block.BlockSize}, and a family's block size is fixed at {blockSize}."),
-                    nameof(blocks));
-            }
+            copy[i] = blocks[i];
+        }
 
-            if (block.BaseId % blockSize != 0)
-            {
-                throw new ArgumentException(
-                    FormattableString.Invariant(
-                        $"Block {block.BlockOrdinal} is based at {block.BaseId}, which is not aligned to {blockSize}, so the membership test would be wrong."),
-                    nameof(blocks));
-            }
-
-            copy[i] = block;
+        if (FindDefect(familyKey, blockSize, copy) is ContentFamilyFinding defect)
+        {
+            throw defect.ToException();
         }
 
         FamilyId = familyId;
@@ -169,6 +144,63 @@ public sealed class ContentFamily
         }
 
         return false;
+    }
+
+    /// <summary>
+    /// The first rule a family breaks, in the order the constructor checks them, or null. The constructor throws
+    /// exactly this finding, and the bundle reader maps it without reading the message.
+    /// </summary>
+    /// <param name="familyKey">The family's key.</param>
+    /// <param name="blockSize">The declared block size.</param>
+    /// <param name="blocks">The reserved blocks, in ordinal order.</param>
+    internal static ContentFamilyFinding? FindDefect(string familyKey, int blockSize, IReadOnlyList<ContentFamilyBlock> blocks)
+    {
+        if (string.IsNullOrWhiteSpace(familyKey))
+        {
+            return new(ContentFamilyRule.KeyBlank, -1, nameof(familyKey), "A family names a key.");
+        }
+
+        if (!IsLegalBlockSize(blockSize))
+        {
+            // IsLegalBlockSize checks the range before the power of two, so the reason follows that order.
+            return new(
+                blockSize < MinBlockSize || blockSize > MaxBlockSize
+                    ? ContentFamilyRule.BlockSizeOutsideRange
+                    : ContentFamilyRule.BlockSizeNotPowerOfTwo,
+                -1,
+                nameof(blockSize),
+                FormattableString.Invariant(
+                    $"A family's block size is a power of two between {MinBlockSize} and {MaxBlockSize}."))
+            {
+                BlockSize = blockSize,
+            };
+        }
+
+        for (int i = 0; i < blocks.Count; i++)
+        {
+            ContentFamilyBlock block = blocks[i];
+            if (block.BlockSize != blockSize)
+            {
+                return new(
+                    ContentFamilyRule.BlockSizeMismatch,
+                    i,
+                    nameof(blocks),
+                    FormattableString.Invariant(
+                        $"Block {block.BlockOrdinal} is sized {block.BlockSize}, and a family's block size is fixed at {blockSize}."));
+            }
+
+            if (block.BaseId % blockSize != 0)
+            {
+                return new(
+                    ContentFamilyRule.BlockUnaligned,
+                    i,
+                    nameof(blocks),
+                    FormattableString.Invariant(
+                        $"Block {block.BlockOrdinal} is based at {block.BaseId}, which is not aligned to {blockSize}, so the membership test would be wrong."));
+            }
+        }
+
+        return null;
     }
 
     /// <summary>A power of two between <see cref="MinBlockSize"/> and <see cref="MaxBlockSize"/>.</summary>

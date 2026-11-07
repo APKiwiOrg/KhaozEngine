@@ -423,6 +423,108 @@ public class BundleTests
         Assert.Equal(1, Assert.Single(repaired.Rules).Sequence);
     }
 
+    /// <summary>
+    /// One schema defect per row against <see cref="ValidDocument"/>, mapped from the schema's own finding, then the
+    /// same field repaired. A scale row refuses at the limit and repairs at it.
+    /// </summary>
+    [Theory]
+    [InlineData("\"name\": \"number\", \"kind\": 0", "\"name\": \" \", \"kind\": 0", "\"name\": \"n\", \"kind\": 0", ContentAuthoringRefusal.BundleFieldNameBlank, "$.types[0].fields[0].name", null, null, null, null, null)]
+    [InlineData("\"name\": \"blob\", \"kind\": 6", "\"name\": \"number\", \"kind\": 6", "\"name\": \"numbers\", \"kind\": 6", ContentAuthoringRefusal.BundleFieldNameDuplicate, "$.types[0].fields[1].name", "number", null, null, null, null)]
+    [InlineData("\"kind\": 0, \"referenceTarget\": null", "\"kind\": 3, \"referenceTarget\": \" \"", "\"kind\": 3, \"referenceTarget\": \"a\"", ContentAuthoringRefusal.BundleReferenceTargetMissing, "$.types[0].fields[0].referenceTarget", "number", null, null, null, null)]
+    [InlineData("\"kind\": 0, \"referenceTarget\": null", "\"kind\": 4, \"referenceTarget\": \"Tag\"", "\"kind\": 4, \"referenceTarget\": \"tag\"", ContentAuthoringRefusal.BundleTagReferenceTargetInvalid, "$.types[0].fields[0].referenceTarget", "number", null, null, null, null)]
+    [InlineData("\"kind\": 0, \"referenceTarget\": null", "\"kind\": 0, \"referenceTarget\": \"\"", "\"kind\": 0, \"referenceTarget\": null", ContentAuthoringRefusal.BundleUnexpectedReferenceTarget, "$.types[0].fields[0].referenceTarget", "number", ContentFieldKind.Int, null, null, null)]
+    [InlineData("\"kind\": 0, \"referenceTarget\": null, \"visibility\": 0, \"required\": false, \"scale\": 1", "\"kind\": 1, \"referenceTarget\": null, \"visibility\": 0, \"required\": false, \"scale\": 0", "\"kind\": 1, \"referenceTarget\": null, \"visibility\": 0, \"required\": false, \"scale\": 1", ContentAuthoringRefusal.BundleScaledIntegerScaleInvalid, "$.types[0].fields[0].scale", "number", null, 0, 1, null)]
+    [InlineData("\"required\": true, \"scale\": 1", "\"required\": true, \"scale\": 2", "\"required\": true, \"scale\": 1", ContentAuthoringRefusal.BundleUnscaledKindScaleInvalid, "$.types[0].fields[1].scale", "blob", ContentFieldKind.OpaqueBytes, 2, 1, 1)]
+    [InlineData("\"required\": true, \"scale\": 1", "\"required\": true, \"scale\": 0", "\"required\": true, \"scale\": 1", ContentAuthoringRefusal.BundleUnscaledKindScaleInvalid, "$.types[0].fields[1].scale", "blob", ContentFieldKind.OpaqueBytes, 0, 1, 1)]
+    public void ASchemaFieldTheSchemaRefusesNamesItsRuleAndField(
+        string original,
+        string replacement,
+        string control,
+        ContentAuthoringRefusal refusal,
+        string path,
+        string? fieldName,
+        ContentFieldKind? actualKind,
+        int? actualInteger,
+        int? minimumInteger,
+        int? maximumInteger)
+    {
+        string document = ValidDocument();
+        Assert.Equal(1, Occurrences(document, original));
+
+        ContentAuthoringException refused = Assert.Throws<ContentAuthoringException>(
+            () => ContentBundleJson.Read(document.Replace(original, replacement, StringComparison.Ordinal)));
+
+        Assert.Equal(ContentAuthoringException.BundleFormatReason, refused.Reason);
+        Assert.Equal(refusal, refused.Refusal);
+        Assert.Equal(path, refused.JsonPath);
+        Assert.Equal(fieldName, refused.FieldName);
+        Assert.Equal(actualKind, refused.ActualKind);
+        Assert.Equal(actualInteger, refused.ActualInteger);
+        Assert.Equal(minimumInteger, refused.MinimumInteger);
+        Assert.Equal(maximumInteger, refused.MaximumInteger);
+        Assert.IsAssignableFrom<ArgumentException>(refused.InnerException);
+
+        ContentBundle repaired = ContentBundleJson.Read(document.Replace(original, control, StringComparison.Ordinal));
+        Assert.Equal(2, Assert.Single(repaired.Types).Schema.Fields.Count);
+    }
+
+    /// <summary>
+    /// One family, rule or row value defect per row against <see cref="ValidDocument"/>, mapped from the lower
+    /// constructor's own rule, then the same member repaired. A range row refuses past the inclusive limit and
+    /// repairs at it.
+    /// </summary>
+    [Theory]
+    [InlineData("\"familyKey\": \"swords\", \"blockSize\": 16", "\"familyKey\": \" \", \"blockSize\": 16", "\"familyKey\": \"s\", \"blockSize\": 16", ContentAuthoringRefusal.BundleFamilyKeyBlank, "$.families[0].familyKey", null, null, null, null, null, null, null, null)]
+    [InlineData("\"blockSize\": 16", "\"blockSize\": 8", "\"blockSize\": 16", ContentAuthoringRefusal.FamilyBlockSizeOutsideRange, "$.families[0].blockSize", "swords", 8, 16, 65536, null, null, null, null)]
+    [InlineData("\"blockSize\": 16", "\"blockSize\": 24", "\"blockSize\": 16", ContentAuthoringRefusal.FamilyBlockSizeNotPowerOfTwo, "$.families[0].blockSize", "swords", 24, null, null, null, null, null, null)]
+    [InlineData("\"baseId\": 16", "\"baseId\": 17", "\"baseId\": 32", ContentAuthoringRefusal.BundleFamilyBlockAlignmentInvalid, "$.families[0].blocks[0].baseId", null, null, null, null, 17, null, null, null)]
+    [InlineData("\"sequence\": 1", "\"sequence\": -1", "\"sequence\": 0", ContentAuthoringRefusal.BundleRuleIntegerNegative, "$.rules[0].sequence", null, null, null, null, -1, 0, null, null)]
+    [InlineData("\"introducedIn\": 1", "\"introducedIn\": -1", "\"introducedIn\": 0", ContentAuthoringRefusal.BundleRuleIntegerNegative, "$.rules[0].introducedIn", null, null, null, null, -1, 0, null, null)]
+    [InlineData("\"fromId\": 1", "\"fromId\": -1", "\"fromId\": 0", ContentAuthoringRefusal.BundleRuleIntegerNegative, "$.rules[0].fromId", null, null, null, null, -1, 0, null, null)]
+    [InlineData("\"toId\": 2", "\"toId\": -1", "\"toId\": 0", ContentAuthoringRefusal.BundleRuleIntegerNegative, "$.rules[0].toId", null, null, null, null, -1, 0, null, null)]
+    [InlineData("\"kind\": 3, \"fromId\": 1, \"toId\": 2, \"payload\": \"\"", "\"kind\": 4, \"fromId\": 1, \"toId\": 2, \"payload\": \"000000\"", "\"kind\": 4, \"fromId\": 1, \"toId\": 2, \"payload\": \"00000000\"", ContentAuthoringRefusal.BundleRulePayloadMalformed, "$.rules[0].payload", null, null, null, null, null, null, RemapRuleKind.StackCapLowered, 3L)]
+    [InlineData("\"kind\": 4, \"bytes\": \"0a\"", "\"kind\": 5, \"bytes\": \"0a\"", "\"kind\": 5, \"absent\": true", ContentAuthoringRefusal.BundleMarkerValueAuthored, "$.rows[0].fields[1].bytes", null, null, null, null, null, null, null, null)]
+    public void AFamilyRuleOrRowValueItsConstructorRefusesNamesItsRule(
+        string original,
+        string replacement,
+        string control,
+        ContentAuthoringRefusal refusal,
+        string path,
+        string? familyKey,
+        int? actualBlockSize,
+        int? minimumBlockSize,
+        int? maximumBlockSize,
+        int? actualInteger,
+        int? minimumInteger,
+        RemapRuleKind? ruleKind,
+        long? actualBytes)
+    {
+        string document = ValidDocument();
+        Assert.Equal(1, Occurrences(document, original));
+
+        ContentAuthoringException refused = Assert.Throws<ContentAuthoringException>(
+            () => ContentBundleJson.Read(document.Replace(original, replacement, StringComparison.Ordinal)));
+
+        Assert.Equal(ContentAuthoringException.BundleFormatReason, refused.Reason);
+        Assert.Equal(refusal, refused.Refusal);
+        Assert.Equal(path, refused.JsonPath);
+        Assert.Equal(familyKey, refused.FamilyKey);
+        Assert.Equal(actualBlockSize, refused.ActualBlockSize);
+        Assert.Equal(minimumBlockSize, refused.MinimumBlockSize);
+        Assert.Equal(maximumBlockSize, refused.MaximumBlockSize);
+        Assert.Equal(actualInteger, refused.ActualInteger);
+        Assert.Equal(minimumInteger, refused.MinimumInteger);
+        Assert.Null(refused.MaximumInteger);
+        Assert.Equal(ruleKind, refused.RuleKind);
+        Assert.Equal(actualBytes, refused.ActualBytes);
+        Assert.IsAssignableFrom<ArgumentException>(refused.InnerException);
+
+        ContentBundle repaired = ContentBundleJson.Read(document.Replace(original, control, StringComparison.Ordinal));
+        Assert.Single(Assert.Single(repaired.Families).Blocks);
+        Assert.Single(repaired.Rules);
+        Assert.Equal(2, Assert.Single(repaired.Rows).Fields.Count);
+    }
+
     static int Occurrences(string text, string value)
     {
         int count = 0;
@@ -461,8 +563,7 @@ public class BundleTests
             {
               "familyId": 7,
               "typeId": 1025,
-              "familyKey": "swords",
-              "blockSize": 16,
+              "familyKey": "swords", "blockSize": 16,
               "retired": false,
               "createdInVersion": 1,
               "blocks": [ { "ordinal": 0, "baseId": 16, "nextFreeId": 17, "reservedInVersion": 1 } ]

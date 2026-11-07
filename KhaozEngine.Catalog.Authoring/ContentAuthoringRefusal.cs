@@ -64,4 +64,61 @@ public enum ContentAuthoringRefusal
     /// <summary>Refuses a bytes member whose string is not hexadecimal: an odd length or a character that is not
     /// a hex digit. Either letter case is accepted. Carries <c>JsonPath</c>.</summary>
     BundleHexMalformed,
+
+    // Bundle values a lower constructor refuses, mapped from its typed finding. Each carries the bundle-format
+    // token, and the constructor's own argument exception is the inner exception.
+
+    /// <summary>Refuses a family key that is empty or white space. Carries <c>JsonPath</c>.</summary>
+    BundleFamilyKeyBlank,
+
+    /// <summary>Refuses a family block size outside 16 to 65,536. Carries <c>FamilyKey</c>, <c>ActualBlockSize</c>,
+    /// <c>MinimumBlockSize</c> (16) and <c>MaximumBlockSize</c> (65,536), and <c>JsonPath</c> for a bundle.</summary>
+    FamilyBlockSizeOutsideRange,
+
+    /// <summary>Refuses a family block size inside 16 to 65,536 that is not a power of two. Carries
+    /// <c>FamilyKey</c> and <c>ActualBlockSize</c>, and <c>JsonPath</c> for a bundle.</summary>
+    FamilyBlockSizeNotPowerOfTwo,
+
+    /// <summary>Refuses a family block whose base id is not a multiple of the family's block size. Carries
+    /// <c>JsonPath</c> and the base id as <c>ActualInteger</c>.</summary>
+    BundleFamilyBlockAlignmentInvalid,
+
+    /// <summary>Refuses a schema field whose name is empty or white space. Carries <c>JsonPath</c>.</summary>
+    BundleFieldNameBlank,
+
+    /// <summary>Refuses a schema field whose name an earlier field of the type already declares. Carries
+    /// <c>JsonPath</c> of the later field's name and <c>FieldName</c>.</summary>
+    BundleFieldNameDuplicate,
+
+    /// <summary>Refuses a key reference field that names no content type key. Carries <c>JsonPath</c> and
+    /// <c>FieldName</c>.</summary>
+    BundleReferenceTargetMissing,
+
+    /// <summary>Refuses a tag list field whose reference target is not <c>tag</c>. Carries <c>JsonPath</c> and
+    /// <c>FieldName</c>.</summary>
+    BundleTagReferenceTargetInvalid,
+
+    /// <summary>Refuses a reference target on a field kind other than a key reference or a tag list. Carries
+    /// <c>JsonPath</c>, <c>FieldName</c> and <c>ActualKind</c>.</summary>
+    BundleUnexpectedReferenceTarget,
+
+    /// <summary>Refuses a scaled int field whose scale is below 1. Carries <c>JsonPath</c>, <c>FieldName</c>,
+    /// <c>ActualInteger</c> and <c>MinimumInteger</c> (1).</summary>
+    BundleScaledIntegerScaleInvalid,
+
+    /// <summary>Refuses a field of any other kind whose scale is not 1. Carries <c>JsonPath</c>, <c>FieldName</c>,
+    /// <c>ActualKind</c>, <c>ActualInteger</c>, <c>MinimumInteger</c> (1) and <c>MaximumInteger</c> (1).</summary>
+    BundleUnscaledKindScaleInvalid,
+
+    /// <summary>Refuses a row field of the byte-free <see cref="ContentFieldKind.LocalizedTextKey"/> kind that
+    /// carries a value instead of being absent. Carries <c>JsonPath</c>.</summary>
+    BundleMarkerValueAuthored,
+
+    /// <summary>Refuses a remap rule's <c>sequence</c>, <c>introducedIn</c>, <c>fromId</c> or <c>toId</c> below
+    /// 0. Carries <c>JsonPath</c>, <c>ActualInteger</c> and <c>MinimumInteger</c> (0).</summary>
+    BundleRuleIntegerNegative,
+
+    /// <summary>Refuses a remap rule payload that is not the shape its kind declares. Carries <c>JsonPath</c>,
+    /// <c>RuleKind</c> and the payload length as <c>ActualBytes</c>.</summary>
+    BundleRulePayloadMalformed,
 }

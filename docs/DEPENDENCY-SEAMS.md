@@ -1182,6 +1182,13 @@ boundary: authoring, publish and the two SQL providers are `KhaozEngine.Catalog.
 `Catalog.Authoring -> Catalog`, which is what keeps the graph acyclic. `ArchitectureTests.Catalog_CarriesNoPackage_AndNeverReachesItsAuthoringHalf`
 asserts both halves of that on the project graph, so neither is a claim.
 
+`KhaozEngine.Catalog` grants `InternalsVisibleTo` to `KhaozEngine.Catalog.Authoring` for one internal member,
+`ContentFieldSchema.FindDefect` with its `ContentFieldSchemaFinding`. The bundle reader maps the first rule a
+schema breaks to its own refusal from that finding, never from the message. A public form would add a second
+validation contract beside the constructor's plain argument exceptions. The grant adds no project edge, so the
+graph still runs `Catalog.Authoring -> Catalog`, and both packages ship under one `KhaozEngineVersion`, so the
+grant cannot skew across versions.
+
 The seams the family owns are in the table above: `IPackStore` (four providers now, not one),
 `IContentAuthoringStore`, optional `IContentVersionRowSource`, `IContentLoadIndex`, `IContentValidator`,
 `IContentVersionPointerSource` and

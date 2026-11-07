@@ -23,7 +23,8 @@ namespace KhaozEngine.Catalog.Authoring;
 /// Reading is TOTAL for shape: a document this build cannot read is a
 /// <see cref="ContentAuthoringException"/> naming what was wrong, never a half-built bundle. A shape rule this
 /// reader checks itself carries its <see cref="ContentAuthoringException.Refusal"/> and the rooted
-/// <see cref="ContentAuthoringException.JsonPath"/> of the member at fault.
+/// <see cref="ContentAuthoringException.JsonPath"/> of the member at fault, and so does a value a lower
+/// constructor refuses, mapped from that constructor's typed finding.
 /// </para>
 /// </summary>
 public static class ContentBundleJson
@@ -407,7 +408,7 @@ public static class ContentBundleJson
                 Visibility(element, typePath, "defaultVisibility"),
                 Int(element, typePath, "chunkSlots"),
                 OptionalInt(element, typePath, "maxDefinitionId"),
-                Schema(fields)));
+                Schema(fields, typePath)));
         }
 
         return types;
@@ -438,20 +439,21 @@ public static class ContentBundleJson
                     Int(block, blockPath, "reservedInVersion")));
             }
 
+            // Every member is read first, in the order the constructor call always read them, so only the
+            // constructor's own rules reach the catch. ContentFamilyBlock is a record struct with no checks, so
+            // building the blocks above cannot refuse.
+            ContentTypeId type = TypeId(element, familyPath, "typeId");
+            string familyKey = Text(element, familyPath, "familyKey");
+            bool retired = Bool(element, familyPath, "retired");
+            int createdInVersion = Int(element, familyPath, "createdInVersion");
             try
             {
-                families.Add(new ContentFamily(
-                    familyId,
-                    TypeId(element, familyPath, "typeId"),
-                    Text(element, familyPath, "familyKey"),
-                    blockSize,
-                    Bool(element, familyPath, "retired"),
-                    Int(element, familyPath, "createdInVersion"),
-                    blocks));
+                families.Add(new ContentFamily(familyId, type, familyKey, blockSize, retired, createdInVersion, blocks));
             }
             catch (ArgumentException malformed)
             {
-                throw Refuse("A bundle family is malformed: " + malformed.Message);
+                throw ContentBundleConstructionRefusals.Family(
+                    ContentFamily.FindDefect(familyKey, blockSize, blocks), malformed, familyPath, familyKey, blocks);
             }
         }
 
@@ -496,20 +498,22 @@ public static class ContentBundleJson
         foreach (JsonElement element in Array(root, RootPath, "rules"))
         {
             string rulePath = Element(rulesPath, ruleIndex++);
+            // Every member is read first, in the order the constructor call always read them, so only the
+            // constructor's own rules reach the catch.
+            int sequence = Int(element, rulePath, "sequence");
+            int introducedIn = Int(element, rulePath, "introducedIn");
+            ContentTypeId type = TypeId(element, rulePath, "typeId");
+            RemapRuleKind kind = RuleKind(element, rulePath, "kind");
+            int fromId = Int(element, rulePath, "fromId");
+            int toId = Int(element, rulePath, "toId");
+            byte[] payload = Bytes(element, rulePath, "payload");
             try
             {
-                rules.Add(new RemapRule(
-                    Int(element, rulePath, "sequence"),
-                    Int(element, rulePath, "introducedIn"),
-                    TypeId(element, rulePath, "typeId"),
-                    RuleKind(element, rulePath, "kind"),
-                    Int(element, rulePath, "fromId"),
-                    Int(element, rulePath, "toId"),
-                    Bytes(element, rulePath, "payload")));
+                rules.Add(new RemapRule(sequence, introducedIn, type, kind, fromId, toId, payload));
             }
             catch (ArgumentException malformed)
             {
-                throw Refuse("A bundle rule is malformed: " + malformed.Message);
+                throw ContentBundleConstructionRefusals.Rule(malformed, rulePath, kind, payload);
             }
         }
 
@@ -523,19 +527,25 @@ public static class ContentBundleJson
             return ContentFieldValue.Absent(kind);
         }
 
+        if (ContentFieldValue.StoresNumber(kind))
+        {
+            return ContentFieldValue.OfNumber(kind, Long(field, fieldPath, "number"));
+        }
+
+        byte[] bytes = Bytes(field, fieldPath, "bytes");
         try
         {
-            return ContentFieldValue.StoresNumber(kind)
-                ? ContentFieldValue.OfNumber(kind, Long(field, fieldPath, "number"))
-                : ContentFieldValue.OfBytes(kind, Bytes(field, fieldPath, "bytes"));
+            return ContentFieldValue.OfBytes(kind, bytes);
         }
         catch (ArgumentException malformed)
         {
-            throw Refuse("A bundle field value is malformed: " + malformed.Message);
+            // OfBytes has one rule, that the kind stores bytes, and the one defined kind that stores neither a
+            // number nor bytes is the byte-free text marker.
+            throw ContentBundleConstructionRefusals.MarkerValue(malformed, fieldPath);
         }
     }
 
-    static ContentFieldSchema Schema(IReadOnlyList<ContentFieldEntry> fields)
+    static ContentFieldSchema Schema(IReadOnlyList<ContentFieldEntry> fields, string typePath)
     {
         try
         {
@@ -543,7 +553,8 @@ public static class ContentBundleJson
         }
         catch (ArgumentException malformed)
         {
-            throw Refuse("A bundle type's schema is malformed: " + malformed.Message);
+            // No baseline is declared, so the schema treats every field as a baseline field.
+            throw ContentBundleConstructionRefusals.Schema(ContentFieldSchema.FindDefect(fields, fields.Count), malformed, typePath);
         }
     }
 
@@ -726,8 +737,8 @@ public static class ContentBundleJson
     internal static ContentAuthoringException Refuse(ContentAuthoringRefusal refusal, string jsonPath, string message)
         => new(refusal, message, default, 0, ContentAuthoringException.BundleFormatReason) { JsonPath = jsonPath };
 
-    // The message-only wrapper that the constructor catches above and the text section still use. Their
-    // lower constructors report only prose, so they carry the bundle-format token without a refusal.
+    // The message-only wrapper the text section still uses. Its member checks and text constructors are not yet
+    // typed, so they carry the bundle-format token without a refusal.
     internal static ContentAuthoringException Refuse(string message)
         => new(message, default, 0, ContentAuthoringException.BundleFormatReason);
 }

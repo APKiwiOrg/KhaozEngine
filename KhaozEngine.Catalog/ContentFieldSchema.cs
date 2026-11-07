@@ -116,29 +116,23 @@ public sealed class ContentFieldSchema
                     $"A schema of {fields.Count} fields cannot declare {baseline} of them as its first release."));
         }
 
+        // Each entry is read once, so the entries checked are the entries kept even from a list whose reads
+        // disagree.
         var ordered = new ContentFieldEntry[fields.Count];
-        _byName = new Dictionary<string, (ContentFieldEntry, int)>(fields.Count, StringComparer.Ordinal);
-        for (int i = 0; i < fields.Count; i++)
+        for (int i = 0; i < ordered.Length; i++)
         {
-            ContentFieldEntry entry = fields[i] ?? throw new ArgumentException(
-                FormattableString.Invariant($"Field entry {i} is null."), nameof(fields));
-            Check(entry, i, nameof(fields));
-            if (!_byName.TryAdd(entry.Name, (entry, i)))
-            {
-                throw new ArgumentException(
-                    FormattableString.Invariant($"Field name '{entry.Name}' is declared twice, at index {i}."),
-                    nameof(fields));
-            }
+            ordered[i] = fields[i];
+        }
 
-            if (i >= baseline && entry.Required && !entry.IsDerivedMarker)
-            {
-                throw new ArgumentException(
-                    FormattableString.Invariant(
-                        $"Field '{entry.Name}' at index {i} was appended after this type's first {baseline} fields and is declared required. An appended field is absent from every row written before it existed, so only an optional one can be appended."),
-                    nameof(fields));
-            }
+        if (FindDefect(ordered, baseline) is ContentFieldSchemaFinding defect)
+        {
+            throw defect.ToException(nameof(fields));
+        }
 
-            ordered[i] = entry;
+        _byName = new Dictionary<string, (ContentFieldEntry, int)>(ordered.Length, StringComparer.Ordinal);
+        for (int i = 0; i < ordered.Length; i++)
+        {
+            _byName.Add(ordered[i].Name, (ordered[i], i));
         }
 
         Fields = ordered;
@@ -191,37 +185,88 @@ public sealed class ContentFieldSchema
         return _byName.TryGetValue(name, out (ContentFieldEntry Entry, int Index) found) ? found.Index : -1;
     }
 
-    static void Check(ContentFieldEntry entry, int index, string parameterName)
+    /// <summary>
+    /// The first rule <paramref name="fields"/> breaks, in the order the constructor checks them, or null. The
+    /// constructor throws exactly this finding, and the bundle reader maps it without reading the message.
+    /// </summary>
+    /// <param name="fields">The fields in declared order.</param>
+    /// <param name="baseline">How many leading fields shipped with the type, already checked against the list.</param>
+    internal static ContentFieldSchemaFinding? FindDefect(IReadOnlyList<ContentFieldEntry> fields, int baseline)
+    {
+        var names = new HashSet<string>(fields.Count, StringComparer.Ordinal);
+        for (int i = 0; i < fields.Count; i++)
+        {
+            ContentFieldEntry? entry = fields[i];
+            if (entry is null)
+            {
+                return new(ContentFieldSchemaRule.EntryNull, i, null, FormattableString.Invariant($"Field entry {i} is null."));
+            }
+
+            if (Check(entry, i) is ContentFieldSchemaFinding broken)
+            {
+                return broken;
+            }
+
+            if (!names.Add(entry.Name))
+            {
+                return new(
+                    ContentFieldSchemaRule.NameDuplicate,
+                    i,
+                    entry,
+                    FormattableString.Invariant($"Field name '{entry.Name}' is declared twice, at index {i}."));
+            }
+
+            if (i >= baseline && entry.Required && !entry.IsDerivedMarker)
+            {
+                return new(
+                    ContentFieldSchemaRule.AppendedFieldRequired,
+                    i,
+                    entry,
+                    FormattableString.Invariant(
+                        $"Field '{entry.Name}' at index {i} was appended after this type's first {baseline} fields and is declared required. An appended field is absent from every row written before it existed, so only an optional one can be appended."));
+            }
+        }
+
+        return null;
+    }
+
+    static ContentFieldSchemaFinding? Check(ContentFieldEntry entry, int index)
     {
         if (string.IsNullOrWhiteSpace(entry.Name))
         {
-            throw new ArgumentException(
-                FormattableString.Invariant($"Field entry {index} has no name."), parameterName);
+            return new(
+                ContentFieldSchemaRule.NameBlank, index, entry, FormattableString.Invariant($"Field entry {index} has no name."));
         }
 
         switch (entry.Kind)
         {
             case ContentFieldKind.KeyReference when string.IsNullOrWhiteSpace(entry.ReferenceTarget):
-                throw new ArgumentException(
+                return new(
+                    ContentFieldSchemaRule.KeyReferenceTargetMissing,
+                    index,
+                    entry,
                     FormattableString.Invariant(
-                        $"Field '{entry.Name}' is a key reference and names no content type key."),
-                    parameterName);
+                        $"Field '{entry.Name}' is a key reference and names no content type key."));
             case ContentFieldKind.TagList when
                 !string.Equals(entry.ReferenceTarget, ContentFieldEntry.TagReferenceTarget, StringComparison.Ordinal):
-                throw new ArgumentException(
+                return new(
+                    ContentFieldSchemaRule.TagReferenceTargetInvalid,
+                    index,
+                    entry,
                     FormattableString.Invariant(
-                        $"Field '{entry.Name}' is a tag list, so its reference target must be '{ContentFieldEntry.TagReferenceTarget}'."),
-                    parameterName);
+                        $"Field '{entry.Name}' is a tag list, so its reference target must be '{ContentFieldEntry.TagReferenceTarget}'."));
             case ContentFieldKind.KeyReference:
             case ContentFieldKind.TagList:
                 break;
             default:
                 if (entry.ReferenceTarget is not null)
                 {
-                    throw new ArgumentException(
+                    return new(
+                        ContentFieldSchemaRule.ReferenceTargetUnexpected,
+                        index,
+                        entry,
                         FormattableString.Invariant(
-                            $"Field '{entry.Name}' is a {entry.Kind} and carries a reference target, which only a key reference and a tag list do."),
-                        parameterName);
+                            $"Field '{entry.Name}' is a {entry.Kind} and carries a reference target, which only a key reference and a tag list do."));
                 }
 
                 break;
@@ -231,19 +276,23 @@ public sealed class ContentFieldSchema
         {
             if (entry.Scale < 1)
             {
-                throw new ArgumentOutOfRangeException(
-                    parameterName,
-                    entry.Scale,
+                return new(
+                    ContentFieldSchemaRule.ScaleBelowOne,
+                    index,
+                    entry,
                     FormattableString.Invariant($"Field '{entry.Name}' declares a scale below 1."));
             }
         }
         else if (entry.Scale != 1)
         {
-            throw new ArgumentOutOfRangeException(
-                parameterName,
-                entry.Scale,
+            return new(
+                ContentFieldSchemaRule.ScaleNotOne,
+                index,
+                entry,
                 FormattableString.Invariant(
                     $"Field '{entry.Name}' is a {entry.Kind} and carries a scale of {entry.Scale}, which only a scaled int does."));
         }
+
+        return null;
     }
 }

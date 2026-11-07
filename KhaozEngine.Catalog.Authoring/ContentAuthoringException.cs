@@ -159,7 +159,8 @@ public sealed class ContentAuthoringException : Exception
 
     /// <summary>
     /// A bundle document could not be read: a format version this build does not know, or a malformed member.
-    /// A shape rule <c>ContentBundleJson</c> checks itself also names its <see cref="Refusal"/> and JSON path.
+    /// A shape rule <c>ContentBundleJson</c> checks itself, and a value a lower constructor refuses, also names its
+    /// <see cref="Refusal"/> and JSON path.
     /// </summary>
     public const string BundleFormatReason = "bundle-format";
 
@@ -360,6 +361,30 @@ public sealed class ContentAuthoringException : Exception
         get => _supportedFormatVersions;
         init => _supportedFormatVersions = value is null ? null : Array.AsReadOnly<int>([.. value]);
     }
+
+    /// <summary>The schema field name the refused entry declares, or null.</summary>
+    public string? FieldName { get; init; }
+
+    /// <summary>The content field kind the refused entry declares, or null.</summary>
+    public ContentFieldKind? ActualKind { get; init; }
+
+    /// <summary>The key of the family a block size refusal is about, or null.</summary>
+    public string? FamilyKey { get; init; }
+
+    /// <summary>The refused family block size, or null.</summary>
+    public int? ActualBlockSize { get; init; }
+
+    /// <summary>The smallest family block size, 16, inclusive, or null.</summary>
+    public int? MinimumBlockSize { get; init; }
+
+    /// <summary>The largest family block size, 65,536, inclusive, or null.</summary>
+    public int? MaximumBlockSize { get; init; }
+
+    /// <summary>The kind of the remap rule a payload refusal is about, or null.</summary>
+    public RemapRuleKind? RuleKind { get; init; }
+
+    /// <summary>The byte length of the refused value, or null.</summary>
+    public long? ActualBytes { get; init; }
 
     /// <summary>The content type the refusal is about. The default type id 0 means none.</summary>
     public ContentTypeId Type { get; }

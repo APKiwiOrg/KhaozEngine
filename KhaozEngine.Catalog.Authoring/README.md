@@ -1062,8 +1062,30 @@ value.
 | `BundleRemapKindUnknown` | An undefined `RemapRuleKind` | `JsonPath`, `ActualInteger` |
 | `BundleHexMalformed` | A bytes or payload string that is not hex, by odd length or a non-hex character. Either letter case reads | `JsonPath` |
 
-A value a lower constructor refuses, such as a malformed family, schema, field value, rule or text section
-entry, still carries `bundle-format` with no `Refusal`, and its message keeps the constructor's own words.
+A value a lower constructor refuses (`ContentFieldSchema`, `ContentFamily`, `RemapRule` or
+`ContentFieldValue`) carries `bundle-format` and the `Refusal` of the rule the constructor's own typed finding
+names, never one read from its message. The message keeps the constructor's own words behind the reader's
+prefix, and the constructor's argument exception is the inner exception.
+
+| Refusal | Refused rule | Identifiers |
+| --- | --- | --- |
+| `BundleFieldNameBlank` | A schema field name that is empty or white space | `JsonPath` (`$.types[n].fields[n].name`) |
+| `BundleFieldNameDuplicate` | A schema field name an earlier field of the type declares | `JsonPath` of the later name, `FieldName` |
+| `BundleReferenceTargetMissing` | A key reference with no content type key | `JsonPath` (`referenceTarget`), `FieldName` |
+| `BundleTagReferenceTargetInvalid` | A tag list whose reference target is not `tag`, compared ordinally | `JsonPath` (`referenceTarget`), `FieldName` |
+| `BundleUnexpectedReferenceTarget` | A reference target on any other kind, an empty string included | `JsonPath` (`referenceTarget`), `FieldName`, `ActualKind` |
+| `BundleScaledIntegerScaleInvalid` | A scaled int scale below 1 | `JsonPath` (`scale`), `FieldName`, `ActualInteger`, `MinimumInteger` (1) |
+| `BundleUnscaledKindScaleInvalid` | Any other kind with a scale that is not 1 | `JsonPath` (`scale`), `FieldName`, `ActualKind`, `ActualInteger`, `MinimumInteger` and `MaximumInteger` (1) |
+| `BundleFamilyKeyBlank` | A family key that is empty or white space | `JsonPath` (`$.families[n].familyKey`) |
+| `FamilyBlockSizeOutsideRange` | A family block size outside 16 to 65,536 | `JsonPath` (`blockSize`), `FamilyKey`, `ActualBlockSize`, `MinimumBlockSize` (16), `MaximumBlockSize` (65,536) |
+| `FamilyBlockSizeNotPowerOfTwo` | A family block size in that range that is not a power of two | `JsonPath` (`blockSize`), `FamilyKey`, `ActualBlockSize` |
+| `BundleFamilyBlockAlignmentInvalid` | A block base id that is not a multiple of the family's block size | `JsonPath` (`$.families[n].blocks[n].baseId`), the base id as `ActualInteger` |
+| `BundleRuleIntegerNegative` | A rule `sequence`, `introducedIn`, `fromId` or `toId` below 0 | `JsonPath` of that member, `ActualInteger`, `MinimumInteger` (0) |
+| `BundleRulePayloadMalformed` | A rule payload that is not its kind's shape, or longer than the payload cap | `JsonPath` (`$.rules[n].payload`), `RuleKind`, the payload length as `ActualBytes` |
+| `BundleMarkerValueAuthored` | A row field of the byte-free `LocalizedTextKey` kind that carries bytes instead of being absent | `JsonPath` (`$.rows[n].fields[n].bytes`) |
+
+The text section's own member checks and an entry a text constructor refuses still carry `bundle-format`
+with no `Refusal`, and their messages keep the same words.
 
 An import runs through the ORDINARY publish and there is no second mechanism. It restores the families and
 their blocks verbatim, including each family's `IsRetired` flag through family reads and later exports in

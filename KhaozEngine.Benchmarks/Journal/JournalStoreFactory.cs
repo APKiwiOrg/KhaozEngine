@@ -52,13 +52,7 @@ internal sealed class JournalStoreScope : IDisposable
                 {
                     SourceName = config.SqlServerEnvironmentVariable,
                 };
-            var builder = new SqlConnectionStringBuilder(connectionString);
-            if (!builder.InitialCatalog.Contains(DedicatedCatalogMarker, StringComparison.OrdinalIgnoreCase))
-                throw new JournalBenchmarkArgumentException(JournalBenchmarkRefusal.DedicatedDatabaseRequired,
-                    $"SQL Server Initial Catalog must contain '{DedicatedCatalogMarker}'.", nameof(config))
-                {
-                    RequiredMarker = DedicatedCatalogMarker,
-                };
+            RequireDedicatedCatalog(connectionString);
             var store = new SqlServerMutationJournalStore(new SqlServerMutationJournalStoreOptions(connectionString)
             {
                 Limits = limits,
@@ -76,6 +70,18 @@ internal sealed class JournalStoreScope : IDisposable
             Limits = limits,
         });
         return new JournalStoreScope(sqlite, sqlite, "sqlite", database, sqlite, config.DatabasePath is null);
+    }
+
+    // This boot safety check performs no I/O, so callers can validate a catalog before opening it.
+    internal static void RequireDedicatedCatalog(string connectionString)
+    {
+        var builder = new SqlConnectionStringBuilder(connectionString);
+        if (!builder.InitialCatalog.Contains(DedicatedCatalogMarker, StringComparison.OrdinalIgnoreCase))
+            throw new JournalBenchmarkArgumentException(JournalBenchmarkRefusal.DedicatedDatabaseRequired,
+                $"SQL Server Initial Catalog must contain '{DedicatedCatalogMarker}'.", "config")
+            {
+                RequiredMarker = DedicatedCatalogMarker,
+            };
     }
 
     internal static long? DatabaseBytes(string? path)

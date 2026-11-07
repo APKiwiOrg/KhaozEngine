@@ -122,6 +122,9 @@ public sealed class MutationJournalBenchmarkTests
             string carried = string.Join('\n', production.ToString(), production.RequiredMarker, production.ParamName);
             foreach (string secret in new[] { productionConnection, "top-secret", "203.0.113.1", "User ID=prod" })
                 Assert.DoesNotContain(secret, carried, StringComparison.Ordinal);
+
+            JournalStoreScope.RequireDedicatedCatalog(productionConnection.Replace(
+                "Initial Catalog=production", "Initial Catalog=ke-journal-benchmark-01", StringComparison.Ordinal));
         }
         finally
         {

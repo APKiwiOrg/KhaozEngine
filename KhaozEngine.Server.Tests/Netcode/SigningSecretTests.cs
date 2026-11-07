@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Text;
 using KhaozEngine.Netcode;
 using Xunit;
 
@@ -261,5 +262,20 @@ public class SigningSecretTests
         string carried = string.Join('\n', thrown.ToString(), thrown.SourceName);
         Assert.DoesNotContain(trimmed, carried, StringComparison.Ordinal);
         Assert.DoesNotContain(probe, carried, StringComparison.Ordinal);
+
+        byte[] decoded;
+        try
+        {
+            decoded = Convert.FromBase64String(trimmed);
+        }
+        catch (FormatException)
+        {
+            return;
+        }
+
+        Assert.DoesNotContain(Convert.ToHexString(decoded), carried, StringComparison.OrdinalIgnoreCase);
+        string decodedText = Encoding.UTF8.GetString(decoded);
+        if (decodedText.Length >= 4 && decodedText.All(static character => !char.IsControl(character)))
+            Assert.DoesNotContain(decodedText, carried, StringComparison.Ordinal);
     }
 }

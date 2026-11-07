@@ -216,6 +216,16 @@ SQL Server credentials are accepted only through the named environment variable 
 The connection string never appears in command arguments or result JSON. Its `Initial Catalog` must contain the
 dedicated `-journal-benchmark-` marker. The tool rejects other catalogs before opening a provider connection.
 
+### Refusals
+
+An unset or blank named connection variable throws `JournalBenchmarkConfigurationException` with `Reason` set to
+`JournalBenchmarkRefusal.ConnectionVariableMissing` or `JournalBenchmarkRefusal.ConnectionVariableBlank`. Its
+`SourceName` is the variable name, never its value. A connection whose `Initial Catalog` lacks
+`-journal-benchmark-` throws `JournalBenchmarkArgumentException` with `Reason`
+`JournalBenchmarkRefusal.DedicatedDatabaseRequired`. Its `RequiredMarker` is `-journal-benchmark-`, and the
+refusal never carries the connection string. Both exception `Reason` properties have type
+`JournalBenchmarkRefusal`. These are benchmark tooling types outside the packaged engine.
+
 ```bash
 dotnet run --project KhaozEngine.Benchmarks -c Release -- --journal --operations 10000 --players 1000 --seed 835
 

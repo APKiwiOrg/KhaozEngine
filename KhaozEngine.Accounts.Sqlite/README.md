@@ -50,8 +50,24 @@ The subject key must compare as `BINARY`. The constructor refuses, and changes n
 or unique index on `subject` alone uses another collation, such as `NOCASE` or `RTRIM`. Find-or-create's
 `ON CONFLICT(subject)` matches under the key's own collation, so over a `NOCASE` key holding `oidc:Alice` a sign-in
 as `oidc:alice` would overwrite Alice's display name and return her account. A `BINARY` key over a column declared
-with another collation is adopted, because the key is what the upsert matches on. The refusal names the collation
-and no subject.
+with another collation is adopted, because the key is what the upsert matches on.
+
+## Refusals
+
+A refused table or stored value throws `AccountDataException`, which derives from `InvalidOperationException`. `Reason`
+is the rule, and the identifiers name tables, columns and collations, never a subject, a stored value or a row.
+
+| `Reason` | What it refuses | Identifiers |
+|---|---|---|
+| `CoreColumnMissing` | an existing table without one of the first four columns, at construction | `TableName`, `ColumnName` |
+| `SubjectKeyCollationUnsupported` | an existing table whose subject key is not `BINARY`, at construction | `ActualCollation`, `ExpectedCollation` |
+| `TimestampMalformed` | a stored `ban_until`, `created_at_utc` or `updated_at_utc` that is not a date and time, on any read | `ColumnName` |
+| `UpsertReturnedNoRow` | a find-or-create the table discarded, so the statement returned no row | none |
+| `UpsertReturnedDifferentAccount` | a find-or-create that returned a row whose subject is not the minted one | none |
+
+The constructor changes nothing in a table it refuses. Both find-or-create refusals roll the write back.
+`UpsertReturnedNoRow` comes from something the ensure does not inspect, a trigger calling `RAISE(IGNORE)` or a
+constraint declared `ON CONFLICT IGNORE`.
 
 ## Legacy rows
 
@@ -69,7 +85,7 @@ its lease. Find-or-create is one `INSERT ... ON CONFLICT DO UPDATE ... RETURNING
 sign-ins produce one row in this process or across processes on one file. Every writing statement returns the
 row as it stands afterwards from the same statement. Find-or-create runs in a transaction and checks the returned
 subject ordinally against the one it minted. A mismatch, which only a table changed after the store opened can
-produce, rolls the write back and throws `InvalidOperationException` quoting neither subject.
+produce, rolls the write back and refuses with `UpsertReturnedDifferentAccount`, quoting neither subject.
 
 Every comparison and ordering names `COLLATE BINARY`, which is SQLite's default, so subjects are case sensitive and
 listings run in code-point order even over a column declared with another collation. SQLite compares UTF-8 bytes,

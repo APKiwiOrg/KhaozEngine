@@ -153,18 +153,26 @@ public sealed class SqliteAccountStoreLayoutTests : IDisposable
             SqliteScratch.Query(path, TimesByRow));
     }
 
-    [Fact]
-    public async Task ATimeThatIsNotADate_IsRefused_NamingTheColumn_WithoutEchoingIt()
+    [Theory]
+    [InlineData("created_at_utc")]
+    [InlineData("updated_at_utc")]
+    public async Task ATimeThatIsNotADate_IsRefused_NamingTheColumn_WithoutEchoingIt(string column)
     {
         string path = scratch.NewDatabase(GrimhollowSqliteLayout.Timestamped +
-            "INSERT INTO accounts VALUES ('discord:1', 'Ferret', 1, 0, NULL, NULL, 0, 'last tuesday', NULL);");
+            $"INSERT INTO accounts (subject, display_name, whitelisted, banned, {column}) " +
+            "VALUES ('discord:1', 'Ferret', 1, 0, 'last tuesday');");
         SqliteAccountStore store = Open(path);
 
-        InvalidOperationException refusal =
-            await Assert.ThrowsAsync<InvalidOperationException>(() => store.FindAsync("discord:1"));
+        AccountDataException refusal =
+            await Assert.ThrowsAsync<AccountDataException>(() => store.FindAsync("discord:1"));
 
-        Assert.Contains("created_at_utc", refusal.Message, StringComparison.Ordinal);
+        Assert.Equal(AccountDataRefusal.TimestampMalformed, refusal.Reason);
+        Assert.Equal(column, refusal.ColumnName);
+        Assert.Null(refusal.TableName);
         Assert.DoesNotContain("tuesday", refusal.Message, StringComparison.Ordinal);
+
+        SqliteScratch.Execute(path, $"UPDATE accounts SET {column} = '2026-01-01T12:00:00.0000000+00:00';");
+        Assert.Equal("Ferret", (await store.FindAsync("discord:1"))!.DisplayName);
     }
 
     [Fact]
@@ -295,32 +303,49 @@ public sealed class SqliteAccountStoreLayoutTests : IDisposable
         string path = scratch.NewDatabase(
             "CREATE TABLE accounts (subject TEXT PRIMARY KEY, display_name TEXT NOT NULL, banned INTEGER NOT NULL);");
 
-        Assert.Throws<InvalidOperationException>(
+        AccountDataException refusal = Assert.Throws<AccountDataException>(
             () => new SqliteAccountStore(SqliteScratch.ConnectionString(path), whitelistOnCreate: false));
 
+        Assert.IsAssignableFrom<InvalidOperationException>(refusal);
+        Assert.Equal(AccountDataRefusal.CoreColumnMissing, refusal.Reason);
+        Assert.Equal("accounts", refusal.TableName);
+        Assert.Equal("whitelisted", refusal.ColumnName);
+        Assert.Null(refusal.ActualCollation);
+        Assert.Null(refusal.ExpectedCollation);
         Assert.Equal(new[] { "subject", "display_name", "banned" }, SqliteScratch.Columns(path, "accounts"));
+
+        SqliteScratch.Execute(path, $"ALTER TABLE accounts ADD COLUMN {refusal.ColumnName} INTEGER NOT NULL DEFAULT 0;");
+        Open(path);
     }
 
     [Theory]
-    [InlineData("subject TEXT COLLATE NOCASE PRIMARY KEY, " + LegacyColumns + ");")]
-    [InlineData("subject TEXT, " + LegacyColumns + ", PRIMARY KEY (subject COLLATE NOCASE));")]
-    [InlineData("subject TEXT PRIMARY KEY COLLATE RTRIM, " + LegacyColumns + ");")]
-    [InlineData("subject TEXT COLLATE NOCASE PRIMARY KEY, " + LegacyColumns + ") WITHOUT ROWID;")]
-    [InlineData("subject TEXT PRIMARY KEY, " + LegacyColumns + "); CREATE UNIQUE INDEX subject_ci ON accounts (subject COLLATE NOCASE);")]
-    public void ATableWhoseSubjectKeyIsNotBinary_IsRefusedAtEnsure_NamingNoSubject_AndLeftAsItWas(string layout)
+    [InlineData("subject TEXT COLLATE NOCASE PRIMARY KEY, " + LegacyColumns + ");", "NOCASE")]
+    [InlineData("subject TEXT, " + LegacyColumns + ", PRIMARY KEY (subject COLLATE NOCASE));", "NOCASE")]
+    [InlineData("subject TEXT PRIMARY KEY COLLATE RTRIM, " + LegacyColumns + ");", "RTRIM")]
+    [InlineData("subject TEXT COLLATE NOCASE PRIMARY KEY, " + LegacyColumns + ") WITHOUT ROWID;", "NOCASE")]
+    [InlineData("subject TEXT PRIMARY KEY, " + LegacyColumns + "); CREATE UNIQUE INDEX subject_ci ON accounts (subject COLLATE NOCASE);", "NOCASE")]
+    public void ATableWhoseSubjectKeyIsNotBinary_IsRefusedAtEnsure_NamingNoSubject_AndLeftAsItWas(string layout, string collation)
     {
         // The upsert's ON CONFLICT(subject) matches under the key's collation, so over any of these a verified sign-in
         // as discord:alice would rename Alice's account and hand back discord:Alice to be signed into a token.
         string path = scratch.NewDatabase("CREATE TABLE accounts (" + layout +
             "INSERT INTO accounts VALUES ('discord:Alice', 'Alice', 1, 0);");
 
-        InvalidOperationException refusal = Assert.Throws<InvalidOperationException>(
+        AccountDataException refusal = Assert.Throws<AccountDataException>(
             () => new SqliteAccountStore(SqliteScratch.ConnectionString(path), whitelistOnCreate: true));
 
-        Assert.Contains("BINARY", refusal.Message, StringComparison.Ordinal);
+        Assert.Equal(AccountDataRefusal.SubjectKeyCollationUnsupported, refusal.Reason);
+        Assert.Equal(collation, refusal.ActualCollation);
+        Assert.Equal("BINARY", refusal.ExpectedCollation);
+        Assert.Null(refusal.ColumnName);
         Assert.DoesNotContain("alice", refusal.Message, StringComparison.OrdinalIgnoreCase);
         Assert.Equal(new[] { "subject", "display_name", "whitelisted", "banned" }, SqliteScratch.Columns(path, "accounts"));
         Assert.Equal(new[] { "discord:Alice|Alice" }, SqliteScratch.Query(path, "SELECT subject, display_name FROM accounts;"));
+
+        // The same columns under the collation the refusal asks for.
+        SqliteScratch.Execute(path,
+            $"DROP TABLE accounts; CREATE TABLE accounts (subject TEXT COLLATE {refusal.ExpectedCollation} PRIMARY KEY, {LegacyColumns});");
+        Open(path);
     }
 
     [Theory]
@@ -346,21 +371,58 @@ public sealed class SqliteAccountStoreLayoutTests : IDisposable
     {
         string path = scratch.NewPath();
         SqliteAccountStore store = Open(path, whitelistOnCreate: true);
-        // Rebuilt behind the open store: the ensure cannot see a change made after it ran, so what stands between this
-        // sign-in and Alice's account is the check on the subject the upsert returned.
-        SqliteScratch.Execute(path,
+        void RebuildWithAlice(string collation) => SqliteScratch.Execute(path,
             "DROP TABLE accounts;" +
-            "CREATE TABLE accounts (subject TEXT NOT NULL COLLATE NOCASE PRIMARY KEY, display_name TEXT NULL, " +
+            $"CREATE TABLE accounts (subject TEXT NOT NULL COLLATE {collation} PRIMARY KEY, display_name TEXT NULL, " +
             "whitelisted INTEGER NOT NULL, banned INTEGER NOT NULL, ban_reason TEXT NULL, ban_until TEXT NULL, " +
             "created_at_utc TEXT NULL, updated_at_utc TEXT NULL);" +
             "INSERT INTO accounts VALUES ('discord:Alice', 'Alice', 1, 0, NULL, NULL, NULL, NULL);");
+        // Rebuilt behind the open store: the ensure cannot see a change made after it ran, so what stands between this
+        // sign-in and Alice's account is the check on the subject the upsert returned.
+        RebuildWithAlice("NOCASE");
 
-        InvalidOperationException refusal = await Assert.ThrowsAsync<InvalidOperationException>(
+        AccountDataException refusal = await Assert.ThrowsAsync<AccountDataException>(
             () => store.FindOrCreateAsync(SignIn("alice", "Mallory")));
 
+        Assert.Equal(AccountDataRefusal.UpsertReturnedDifferentAccount, refusal.Reason);
+        AssertNamesNothing(refusal);
         Assert.DoesNotContain("alice", refusal.Message, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("Mallory", refusal.Message, StringComparison.Ordinal);
         Assert.Equal(new[] { "discord:Alice|Alice" }, SqliteScratch.Query(path, "SELECT subject, display_name FROM accounts;"));
+
+        RebuildWithAlice("BINARY");
+        Assert.Equal("discord:alice", (await store.FindOrCreateAsync(SignIn("alice", "Mallory"))).Subject);
+        Assert.Equal(new[] { "discord:Alice|Alice", "discord:alice|Mallory" },
+            SqliteScratch.Query(path, "SELECT subject, display_name FROM accounts ORDER BY subject;"));
+    }
+
+    [Fact]
+    public async Task AnUpsertTheTableDiscards_IsRefused_AndChangesNoRow()
+    {
+        // The ensure reads columns and the subject key, never triggers, so this table is adopted. A game's trigger
+        // that calls RAISE(IGNORE) leaves the statement with nothing to return.
+        string path = scratch.NewDatabase(GrimhollowSqliteLayout.Timestamped +
+            "INSERT INTO accounts (subject, display_name, whitelisted, banned) VALUES ('discord:1', 'Ferret', 1, 0);" +
+            "CREATE TRIGGER sign_ups_closed BEFORE INSERT ON accounts BEGIN SELECT RAISE(IGNORE); END;");
+        SqliteAccountStore store = Open(path);
+
+        AccountDataException refusal = await Assert.ThrowsAsync<AccountDataException>(
+            () => store.FindOrCreateAsync(SignIn("2", "Weasel")));
+
+        Assert.Equal(AccountDataRefusal.UpsertReturnedNoRow, refusal.Reason);
+        AssertNamesNothing(refusal);
+        Assert.Equal(new[] { "discord:1|Ferret" }, SqliteScratch.Query(path, "SELECT subject, display_name FROM accounts;"));
+
+        SqliteScratch.Execute(path, "DROP TRIGGER sign_ups_closed;");
+        Assert.Equal("discord:2", (await store.FindOrCreateAsync(SignIn("2", "Weasel"))).Subject);
+    }
+
+    private static void AssertNamesNothing(AccountDataException refusal)
+    {
+        Assert.Null(refusal.TableName);
+        Assert.Null(refusal.ColumnName);
+        Assert.Null(refusal.ActualCollation);
+        Assert.Null(refusal.ExpectedCollation);
     }
 
     [Fact]
@@ -370,10 +432,16 @@ public sealed class SqliteAccountStoreLayoutTests : IDisposable
             "INSERT INTO accounts VALUES ('discord:1', 'Ferret', 1, 1, 'r', 'next tuesday', 0);");
         SqliteAccountStore store = Open(path);
 
-        InvalidOperationException refusal =
-            await Assert.ThrowsAsync<InvalidOperationException>(() => store.FindAsync("discord:1"));
+        AccountDataException refusal =
+            await Assert.ThrowsAsync<AccountDataException>(() => store.FindAsync("discord:1"));
 
+        Assert.Equal(AccountDataRefusal.TimestampMalformed, refusal.Reason);
+        Assert.Equal("ban_until", refusal.ColumnName);
         Assert.DoesNotContain("tuesday", refusal.Message, StringComparison.Ordinal);
+
+        SqliteScratch.Execute(path, "UPDATE accounts SET ban_until = '2026-03-01T12:00:00.0000000+00:00';");
+        Assert.Equal(new AccountRecord("discord:1", "Ferret", true, new AccountBan("r", new DateTimeOffset(2026, 3, 1, 12, 0, 0, TimeSpan.Zero))),
+            await store.FindAsync("discord:1"));
     }
 
     [Fact]

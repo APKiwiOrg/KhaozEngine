@@ -68,8 +68,8 @@ public sealed class SqliteAccountStore : IAccountStore, IDisposable
     /// <c>accounts</c> table and the system clock.</param>
     /// <exception cref="ArgumentException">The connection string is blank, the table name is not a plain
     /// identifier, or the clock is null.</exception>
-    /// <exception cref="InvalidOperationException">The named table exists without one of the four original
-    /// columns, or with a subject key that is not <c>BINARY</c> collated.</exception>
+    /// <exception cref="AccountDataException">The named table exists without one of the four original columns, or
+    /// with a subject key that is not <c>BINARY</c> collated.</exception>
     public SqliteAccountStore(string connectionString, bool whitelistOnCreate, AccountTableOptions? table = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(connectionString);
@@ -143,13 +143,15 @@ public sealed class SqliteAccountStore : IAccountStore, IDisposable
         cmd.Parameters.Add("$name", SqliteType.Text).Value = (object?)signIn.DisplayName ?? DBNull.Value;
         cmd.Parameters.Add("$whitelisted", SqliteType.Integer).Value = WhitelistOnCreate ? 1L : 0L;
         cmd.Parameters.Add("$now", SqliteType.Text).Value = FormatUtc(clock.GetUtcNow());
+        // The statement inserts or updates, so it returns a row unless the table discards the write itself: a trigger
+        // calling RAISE(IGNORE), or a constraint declared ON CONFLICT IGNORE. The ensure inspects neither.
         AccountRecord account = await ReadOneAsync(cmd, ct).ConfigureAwait(false)
-            ?? throw new InvalidOperationException("The account upsert returned no row.");
+            ?? throw new AccountDataException(AccountDataRefusal.UpsertReturnedNoRow, "The account upsert returned no row.");
         // The ensure refuses a key that matches under another collation, but the table can change after it ran. A
         // row whose subject is not exactly the minted one is someone else's account, and never goes back to a caller
         // that would sign a token for it. Neither subject is quoted.
         if (!string.Equals(account.Subject, subject, StringComparison.Ordinal))
-            throw new InvalidOperationException(
+            throw new AccountDataException(AccountDataRefusal.UpsertReturnedDifferentAccount,
                 "The account upsert returned a different account than the sign-in names, so the table's subject key " +
                 "no longer matches exactly (a collation other than BINARY). The write was rolled back.");
         tx.Commit();
@@ -288,8 +290,11 @@ public sealed class SqliteAccountStore : IAccountStore, IDisposable
         return DateTimeOffset.TryParse(reader.GetString(ordinal), CultureInfo.InvariantCulture,
             DateTimeStyles.AssumeUniversal, out DateTimeOffset at)
             ? at.ToUniversalTime()
-            : throw new InvalidOperationException(
+            : throw new AccountDataException(AccountDataRefusal.TimestampMalformed,
                 $"A {column} value in the account table is not a date and time. The store writes round-trip UTC " +
-                "text, so the row was written by something else.");
+                "text, so the row was written by something else.")
+            {
+                ColumnName = column,
+            };
     }
 }

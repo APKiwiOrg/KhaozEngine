@@ -59,6 +59,7 @@ public sealed class CoverageResearchE0Tests(ITestOutputHelper output)
             string.Join(',', manifest.Parts.Select(p => $"{p.Id}={p.Glb.Sha256}")), fixture.HostMapSemanticSha256,
             fixture.CoverageSemanticSha256, manifest.Anchors.Sha256, Fingerprint(fixture.Topology)));
         Write(manifest.Output, fixture, identity, topology, anchors);
+        diagnostics.Surfaces.Write(manifest.Output);
         output.WriteLine($"{fixture.Name}: {anchors.Count(a => a.Accepted)} of {anchors.Length} anchors accepted.");
     }
 

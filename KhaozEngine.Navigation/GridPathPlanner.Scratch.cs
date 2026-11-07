@@ -39,7 +39,7 @@ public sealed partial class GridPathPlanner
     /// </summary>
     sealed class SearchScratch
     {
-        readonly float[] _gScore;
+        readonly double[] _gScore;
         readonly int[] _cameFrom;
         readonly NavLinkKind?[] _incoming;
         readonly int[] _stamp;
@@ -55,7 +55,7 @@ public sealed partial class GridPathPlanner
 
         public SearchScratch(int totalNodes, int layerCount)
         {
-            _gScore = new float[totalNodes];
+            _gScore = new double[totalNodes];
             _cameFrom = new int[totalNodes];
             _incoming = new NavLinkKind?[totalNodes];
             _stamp = new int[totalNodes];
@@ -65,7 +65,7 @@ public sealed partial class GridPathPlanner
         }
 
         /// <summary>The search's open set, cleared by <see cref="BeginSearch"/>.</summary>
-        public PriorityQueue<int, (float F, int Seq)> Open { get; } = new();
+        public PriorityQueue<int, (double F, int Seq)> Open { get; } = new();
 
         /// <summary>Reconstruction's node chain, start first.</summary>
         public List<int> Chain { get; } = new();
@@ -100,7 +100,7 @@ public sealed partial class GridPathPlanner
 
         public void SeedGeneration(int generation) => _generation = generation & ~1;
 
-        public float GScore(int id) => _stamp[id] >= _generation ? _gScore[id] : float.PositiveInfinity;
+        public double GScore(int id) => _stamp[id] >= _generation ? _gScore[id] : double.PositiveInfinity;
 
         public bool IsClosed(int id) => _stamp[id] == _generation + 1;
 
@@ -109,7 +109,7 @@ public sealed partial class GridPathPlanner
         public NavLinkKind? Incoming(int id) => _incoming[id];
 
         /// <summary>Records an improved route into an open node.</summary>
-        public void Relax(int id, float gScore, int cameFrom, NavLinkKind? kind = null)
+        public void Relax(int id, double gScore, int cameFrom, NavLinkKind? kind = null)
         {
             _gScore[id] = gScore;
             _cameFrom[id] = cameFrom;

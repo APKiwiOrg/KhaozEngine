@@ -54,11 +54,11 @@ public class GridPathPlannerTranslatedBoundTests
             ? planner.FindPath(start, new NavGoalRegion(goal, 0f, feet => feet == goal), 0f, budget)
             : planner.FindPath(start, goal, 0f, budget);
 
-        float optimum = Dijkstra(grid, hop, hopCostCells);
+        double optimum = Dijkstra(grid, hop, hopCostCells);
         float step = diagonal ? 0.1f * MathF.Sqrt(2f) : 0.1f;
-        Assert.Equal((step + step) + step, optimum);
+        Assert.Equal(((double)step + step) + step, optimum);
         Assert.Equal(NavPathStatus.Complete, path.Status);
-        Assert.True(MathF.Abs(PathCost(grid, hop, hopCostCells, path) - optimum) <= 0.00001f);
+        Assert.True(Math.Abs(PathCost(grid, hop, hopCostCells, path) - optimum) <= 0.00001f);
         Assert.Equal(3, path.Waypoints.Count);
         Assert.All(path.Waypoints, waypoint => Assert.Equal(NavWaypointKind.Walk, waypoint.Kind));
     }
@@ -76,12 +76,12 @@ public class GridPathPlannerTranslatedBoundTests
     static readonly int[] Dx = { 1, -1, 0, 0, 1, 1, -1, -1 };
     static readonly int[] Dz = { 0, 0, 1, -1, 1, -1, 1, -1 };
 
-    static float Dijkstra(NavGrid grid, NavLink hop, float hopCostCells)
+    static double Dijkstra(NavGrid grid, NavLink hop, float hopCostCells)
     {
-        var costs = new Dictionary<(int X, int Z), float> { [(0, 0)] = 0f };
-        var pending = new PriorityQueue<(int X, int Z), float>();
+        var costs = new Dictionary<(int X, int Z), double> { [(0, 0)] = 0f };
+        var pending = new PriorityQueue<(int X, int Z), double>();
         pending.Enqueue((0, 0), 0f);
-        while (pending.TryDequeue(out var node, out float cost))
+        while (pending.TryDequeue(out var node, out double cost))
         {
             if (cost != costs[node]) continue;
             if (node == (hop.ToX, hop.ToZ)) return cost;
@@ -93,19 +93,19 @@ public class GridPathPlannerTranslatedBoundTests
             if (node == (0, 0)) Relax((hop.ToX, hop.ToZ), grid.CellSize * hopCostCells);
             void Relax((int X, int Z) next, float edge)
             {
-                float candidate = cost + edge;
-                if (costs.TryGetValue(next, out float old) && candidate >= old) return;
+                double candidate = cost + edge;
+                if (costs.TryGetValue(next, out double old) && candidate >= old) return;
                 costs[next] = candidate;
                 pending.Enqueue(next, candidate);
             }
         }
-        return float.PositiveInfinity;
+        return double.PositiveInfinity;
     }
 
-    static float PathCost(NavGrid grid, NavLink hop, float hopCostCells, NavPath path)
+    static double PathCost(NavGrid grid, NavLink hop, float hopCostCells, NavPath path)
     {
         int x = 0, z = 0;
-        float cost = 0f;
+        double cost = 0d;
         foreach (NavWaypoint waypoint in path.Waypoints)
         {
             int nx = -1, nz = -1;

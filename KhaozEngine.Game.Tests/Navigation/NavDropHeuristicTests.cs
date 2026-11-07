@@ -46,23 +46,23 @@ public class NavDropHeuristicTests
             : Enumerable.Range(3, 10).Select(x => new NavWaypoint(new(x + 0.5f, 0.5f), 0)).ToArray(), point.Waypoints);
     }
 
-    static float Dijkstra(List<(int From, int To, float Cost)> edges, int start, int target)
+    static double Dijkstra(List<(int From, int To, float Cost)> edges, int start, int target)
     {
-        var distances = new Dictionary<int, float> { [start] = 0 };
-        var pending = new PriorityQueue<int, float>();
+        var distances = new Dictionary<int, double> { [start] = 0 };
+        var pending = new PriorityQueue<int, double>();
         pending.Enqueue(start, 0);
-        while (pending.TryDequeue(out int current, out float cost))
+        while (pending.TryDequeue(out int current, out double cost))
         {
             if (cost != distances[current]) continue;
             if (current == target) return cost;
             foreach (var edge in edges.Where(e => e.From == current))
             {
-                float next = cost + edge.Cost;
-                if (distances.TryGetValue(edge.To, out float old) && old <= next) continue;
+                double next = cost + edge.Cost;
+                if (distances.TryGetValue(edge.To, out double old) && old <= next) continue;
                 distances[edge.To] = next;
                 pending.Enqueue(edge.To, next);
             }
         }
-        return float.PositiveInfinity;
+        return double.PositiveInfinity;
     }
 }

@@ -8,7 +8,7 @@ public sealed partial class GridPathPlanner
     readonly record struct PlannerLink(int ToId, float CostMeters, NavLinkKind Kind);
 
     // Narrow observations for the #1712 cost-policy contract. Neither changes planner state.
-    internal float SpatialBoundScaleForTests => _spatialBound.Scale;
+    internal double SpatialBoundScaleForTests => _spatialBound.Scale;
     internal float LinkCostMetersForTests(NavLink link) => LinkCost(link);
 
     float LinkCost(NavLink link) => LinkCost(link,

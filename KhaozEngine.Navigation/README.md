@@ -381,11 +381,11 @@ no anchor substitution or target-Y guess. `IRegionPathPlanner` adds
 `IPathPlanner`. Region queries require surface-height grids and complete only when a candidate feet position
 passes `Contains`.
 
-The region search discovers the full admitted topology before expansion, then uses one shared search. Its
-priority scales world XZ distance to that square by the construction-time cost ratio on every layer.
-Distance to the square is zero at every admitted member. Distance to the inscribed circle would overestimate
-at corner members, which can select a costlier Complete route even without links. Separate finite-safe progress compares each expanded node with the actual admitted
-region members. Work is `O(N + E*M)` and storage is `O(N + M)`, where `N` is topology size, `E` is the
+The region search records admitted members before expansion, then uses one shared search. Shared frames
+bound those members in local cell coordinates. Differing frames use their containing world XZ square.
+Both bounds are zero at every admitted member and use the same numeric model as edge costs. See
+[Search costs and spatial bounds](#search-costs-and-spatial-bounds) for the detailed contract. Separate
+finite-safe progress compares each expanded node with the actual admitted region members. Work is `O(N + E*M)` and storage is `O(N + M)`, where `N` is topology size, `E` is the
 expanded node count, and `M` is the member count. The conservative anchor and horizontal extent AABB
 reduces exact predicate calls, not `M` for a valid predicate. `MaxExpandedNodes` bounds search expansions,
 not topology discovery or all query work. Region paths retain every validated cell edge and link endpoint
@@ -394,14 +394,20 @@ so it cannot prove a shortcut. Straightening a region route lives in Movement, b
 `RouteApproachOptions.StraightenRoutes`, which drops waypoints only where the full segment guard accepts the
 shortcut.
 
+### Search costs and spatial bounds
+
 `GridPathPlanner(space, hopCostCells = 4f)` exposes the one hop-cost knob: the cost of crossing a `Hop`
 link, in multiples of the source layer's `NavGrid.CellSize`. It must be positive. The default 4 exceeds
 an ordinary two-cell diagonal hop's octile span of about 2.83 cells.
 
 The planner computes a spatial cost ratio once at construction, never by rescanning links during a query.
 It takes the least cost divided by spatial span over walking edges and accepted links, capped at one.
-When every layer shares origin, cell size and yaw, the metric is octile in that common frame. Otherwise
-it is world XZ distance, including the actual walking spans of translated or rotated grids. A purely
+Walking and link prices are materialized as floats. Search widens each actual price exactly, then accumulates
+g-scores and queue priorities in double. The bound and its ratio also use double, not a rounded float octile
+expression or repeated float accumulation. In a shared frame, octile distance is the double sum of the
+actual float orthogonal and diagonal walking prices times their step counts. This is the cheapest
+unobstructed path at those prices. Differing frames use world XZ distance, including actual walking spans
+of translated or rotated grids. Undercutting link/walking ratios are rounded conservatively downward. A purely
 vertical link imposes no spatial constraint. A non-finite cost or a nonpositive ratio falls back to zero.
 Walking costs are uniform, with no area or terrain cost multiplier. Traversal profiles remove edges
 without changing their costs.
@@ -422,9 +428,9 @@ priority is zero. The legacy point line-of-sight shortcut is used only when the 
 cheap link can otherwise beat a visible direct walk.
 
 The bound and partial progress apply on every layer for every graph. Route choices change in 23.3.0,
-including the correction of discounted diagonal Stairs and the shared-frame region metric.
-The local member box can change region order even on exact binary coordinates. Point priorities and link
-prices keep their existing metric. Finite-budget status, goal member and waypoint choices may change. A zero-span Stair retains its source-cell minimum.
+including the correction of discounted diagonal Stairs, the shared-frame region metric and double cost arithmetic.
+The local member box and numeric model can change point and region order even on exact binary coordinates.
+Actual float prices remain the objective. Stair floors use the same double span and round their float price upward. Finite-budget status, goal member and waypoint choices may change. A zero-span Stair retains its source-cell minimum.
 Stair weights are computed at load, so this policy changes no bake bytes, topology, format or identity fields
 at a fixed engine version. A released engine version still requires the normal consumer rebake.
 Complete searches retain optimal graph-edge cost. With `MaxExpandedNodes = int.MaxValue`, a query completes

@@ -241,10 +241,11 @@ for that bound only. A candidate succeeds only on the exact shape predicate. Reg
 surface-height grids. They do not invent Y from the target centre for a grid without surface heights.
 
 Grid search terminates at a passable member of the region, retaining fixed scan and tie order and
-`PathQueryBudget` limits. Priority is world XZ distance to the anchor's extent square, scaled by the
-construction-time spatial cost ratio on every layer. The square contains every admitted member, including
-corners outside its inscribed circle. Distance to a convex set is consistent with the scaled edge spans.
-Avoid one A* per sampled face.
+`PathQueryBudget` limits. Shared-frame priority uses the admitted members' containing local cell-index box.
+Differing frames use the containing world XZ square. Both use the construction-time spatial ratio on every
+layer, and g-scores and priorities sum actual edge prices in double. The
+[Navigation cost contract](../../KhaozEngine.Navigation/README.md#search-costs-and-spatial-bounds) owns the
+numeric model and detailed bound rules. Avoid one A* per sampled face.
 An exhausted budget can return Partial, with the existing NavPath semantics. Complete means its
 endpoint belongs to the region. Snapping cannot silently substitute a point outside it.
 

@@ -127,7 +127,7 @@ public sealed partial class GridPathPlanner
     {
         public bool IsGoal(int layer, int x, int z) => scratch.IsMember(layer, x, z);
 
-        public float Priority(int layer, int x, int z)
+        public double Priority(int layer, int x, int z)
             => planner._spatialBound.Region(layer, x, z, scratch.MemberBounds, anchorXz, horizontalExtent);
 
         public double Progress(int layer, int x, int z)

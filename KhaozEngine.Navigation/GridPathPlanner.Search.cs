@@ -44,7 +44,7 @@ public sealed partial class GridPathPlanner
         bool IsGoal(int layer, int x, int z);
 
         /// <summary>Added to the g-score for the open-set order. Must bound the remaining route cost.</summary>
-        float Priority(int layer, int x, int z);
+        double Priority(int layer, int x, int z);
 
         /// <summary>Lower is closer. Only chooses a partial endpoint.</summary>
         double Progress(int layer, int x, int z);
@@ -56,7 +56,7 @@ public sealed partial class GridPathPlanner
     {
         public bool IsGoal(int layer, int x, int z) => layer == goalLayer && x == goalX && z == goalZ;
 
-        public float Priority(int layer, int x, int z)
+        public double Priority(int layer, int x, int z)
             => planner._spatialBound.Point(layer, x, z, goalLayer, goalX, goalZ);
 
         public double Progress(int layer, int x, int z)
@@ -80,11 +80,11 @@ public sealed partial class GridPathPlanner
         int startId = _layerOffset[startLayer] + startZ * startGrid.Width + startX;
 
         scratch.BeginSearch();
-        PriorityQueue<int, (float F, int Seq)> open = scratch.Open;
+        PriorityQueue<int, (double F, int Seq)> open = scratch.Open;
         int seq = 0;
 
-        scratch.Relax(startId, 0f, -1);
-        float startHeuristic = goal.Priority(startLayer, startX, startZ);
+        scratch.Relax(startId, 0d, -1);
+        double startHeuristic = goal.Priority(startLayer, startX, startZ);
         open.Enqueue(startId, (startHeuristic, seq++));
 
         int closestNode = startId;
@@ -128,7 +128,7 @@ public sealed partial class GridPathPlanner
                 break;
             }
 
-            float gCurrent = scratch.GScore(current);
+            double gCurrent = scratch.GScore(current);
             for (int i = 0; i < NeighborDx.Length; i++)
             {
                 int nx = cx + NeighborDx[i];
@@ -152,11 +152,11 @@ public sealed partial class GridPathPlanner
                     continue;
                 }
 
-                float tentative = gCurrent + (diagonal ? grid.CellSize * Sqrt2 : grid.CellSize);
+                double tentative = gCurrent + PlannerWalkingPrices.Cost(grid.CellSize, diagonal);
                 if (tentative < scratch.GScore(neighborId))
                 {
                     scratch.Relax(neighborId, tentative, current);
-                    float f = tentative + goal.Priority(layer, nx, nz);
+                    double f = tentative + goal.Priority(layer, nx, nz);
                     open.Enqueue(neighborId, (f, seq++));
                 }
             }
@@ -181,11 +181,11 @@ public sealed partial class GridPathPlanner
                         continue;
                     }
 
-                    float tentative = gCurrent + costMeters;
+                    double tentative = gCurrent + costMeters;
                     if (tentative < scratch.GScore(targetId))
                     {
                         scratch.Relax(targetId, tentative, current, kind);
-                        float f = tentative + goal.Priority(tLayer, tx, tz);
+                        double f = tentative + goal.Priority(tLayer, tx, tz);
                         open.Enqueue(targetId, (f, seq++));
                     }
                 }

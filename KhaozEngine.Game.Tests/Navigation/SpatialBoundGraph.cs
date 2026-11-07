@@ -81,7 +81,7 @@ internal sealed class SpatialBoundGraph
                 else
                 {
                     int x = Math.Abs(link.FromX - link.ToX), z = Math.Abs(link.FromZ - link.ToZ);
-                    span = source.CellSize * (MathF.Sqrt(2f) * Math.Min(x, z) + Math.Abs(x - z));
+                    span = (double)(source.CellSize * MathF.Sqrt(2f)) * Math.Min(x, z) + (double)source.CellSize * Math.Abs(x - z);
                 }
                 double minimum = Math.Max(source.CellSize, span);
                 cost = (float)minimum;
@@ -99,30 +99,30 @@ internal sealed class SpatialBoundGraph
         return new(xz.X, grid.RestingHeightAt(node.X, node.Z)!.Value, xz.Y);
     }
 
-    internal float ShortestCost(Node start, Node goal)
+    internal double ShortestCost(Node start, Node goal)
     {
         // Exhaustive Dijkstra has no spatial estimate and never stops at a budget frontier.
-        var distance = new Dictionary<Node, float> { [start] = 0f };
-        var queue = new PriorityQueue<Node, float>();
+        var distance = new Dictionary<Node, double> { [start] = 0d };
+        var queue = new PriorityQueue<Node, double>();
         queue.Enqueue(start, 0f);
-        while (queue.TryDequeue(out Node current, out float cost))
+        while (queue.TryDequeue(out Node current, out double cost))
         {
             if (cost != distance[current]) continue;
             if (current == goal) return cost;
             foreach (Edge edge in Edges.Where(e => e.From == current))
             {
-                float next = cost + edge.Cost;
-                if (distance.TryGetValue(edge.To, out float old) && next >= old) continue;
+                double next = cost + edge.Cost;
+                if (distance.TryGetValue(edge.To, out double old) && next >= old) continue;
                 distance[edge.To] = next;
                 queue.Enqueue(edge.To, next);
             }
         }
-        return float.PositiveInfinity;
+        return double.PositiveInfinity;
     }
 
-    internal float PathCost(Node start, NavPath path)
+    internal double PathCost(Node start, NavPath path)
     {
-        float cost = 0f;
+        double cost = 0d;
         Node previous = start;
         foreach (NavWaypoint waypoint in path.Waypoints)
         {

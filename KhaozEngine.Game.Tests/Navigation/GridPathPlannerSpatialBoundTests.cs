@@ -84,14 +84,14 @@ public class GridPathPlannerSpatialBoundTests
                 Vector3 from = graph.Feet(start), to = graph.Feet(goal);
                 var region = new NavGoalRegion(to, 0f, feet => feet == to);
                 NavPath previous = old.FindPath(from, region, 0f, PathQueryBudget.Default);
-                float expected = graph.ShortestCost(start, goal);
+                double expected = graph.ShortestCost(start, goal);
                 NavPath point = planner.FindPath(from, to, 0f, PathQueryBudget.Default);
                 NavPath area = planner.FindPath(from, region, 0f, PathQueryBudget.Default);
                 Assert.Equal(NavPathStatus.Complete, previous.Status);
                 foreach (NavPath path in new[] { point, area })
                 {
                     Assert.Equal(previous.Status, path.Status);
-                    Assert.True(MathF.Abs(expected - graph.PathCost(start, path)) <= 0.00001f,
+                    Assert.True(Math.Abs(expected - graph.PathCost(start, path)) <= 0.00001f,
                         $"seed {seed}, query {q}, frames {differentFrames}: cost {graph.PathCost(start, path)}, Dijkstra {expected}");
                 }
             }

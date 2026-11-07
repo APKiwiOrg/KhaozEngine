@@ -771,6 +771,10 @@ nine functions independently of the code under test, with each formula's source 
 look wrong and are not: `D32FloatS8UInt` is FIVE bytes per texel in that layout, and the `arrayPitch` field is
 set equal to the `depthPitch` rather than to the distance between array layers.
 
+Setup image uploads align staging offsets to the format's texel block size, with a minimum of four bytes,
+because Vulkan requires texel block alignment for buffer-to-image copies. Depth-stencil uploads use four-byte
+alignment instead of the software staging layout's texel size.
+
 **`Map(staging, Read)` waits on the timeline's last submitted value before returning the pointer**, counted as a
 drain. Direct3D 11's `Map(READ)` blocks by definition, so this is where Vulkan has to be explicit about something
 the other API did implicitly. A WRITE map does not wait, and neither did the incumbent's. There is no

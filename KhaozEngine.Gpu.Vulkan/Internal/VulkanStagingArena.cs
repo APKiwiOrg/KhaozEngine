@@ -159,8 +159,8 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         /// <param name="sizeBytes">The payload size. Zero is refused, because a copy of nothing is a command
         /// recorded for no reason and the caller has a bug rather than an empty upload.</param>
         /// <param name="alignment">The offset alignment the copy needs. A non-zero power of two. Four is the
-        /// default because <c>vkCmdCopyBuffer</c> asks for nothing more. An image copy passes the device's
-        /// <c>optimalBufferCopyOffsetAlignment</c> when that path lands.</param>
+        /// default because <c>vkCmdCopyBuffer</c> asks for nothing more. Image uploads pass at least the
+        /// format's texel block size, or four for a depth-stencil copy.</param>
         internal VulkanStagingLease Take(ulong sizeBytes, ulong alignment = 4)
         {
             ObjectDisposedException.ThrowIf(_disposed, this);

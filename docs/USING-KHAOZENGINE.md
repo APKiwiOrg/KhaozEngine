@@ -25376,10 +25376,17 @@ try
 }
 catch (SignInException ex)
 {
-    // Recoverable, whichever backend the player picked: show a retryable sign-in error.
-    ShowSignInError(ex.Message);
+    // Recoverable, whichever backend the player picked: show a retryable, localized sign-in error chosen by
+    // ex.Reason. The message is developer prose.
+    ShowSignInError(ex.Reason);
 }
 ```
+
+`Reason` is a `SignInRefusal` naming the rule an engine provider refused, with typed identifiers such as
+`ProviderId`, `StatusCode` and `MemberName`, and none of them carries a token, an authorization code, a `state`
+value, a client secret, an authority URL or a response body. It is null only for an instance another backend
+built through a message-only constructor, whose text is then in `Detail`. The
+[Sign-in refusals](../KhaozEngine.Identity/README.md#sign-in-refusals) table lists every reason.
 
 Catch the provider type instead when the handling differs per backend. The base is named `SignInException`
 rather than `IdentitySignInException` deliberately: sign-in code imports `KhaozEngine.Identity` alongside a

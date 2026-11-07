@@ -137,7 +137,9 @@ service exchanges. Two hardening details are baked into the client flow:
   authorization-code flow is generated with a PKCE code verifier and challenge (RFC 7636), so a stolen authorization
   code cannot be redeemed without the verifier that only the originating client holds. The `state` parameter is
   checked against the loopback redirect before the code is accepted, closing the cross-site request forgery gap in a
-  bare auth-code exchange.
+  bare auth-code exchange. A refused sign-in carries `SignInException.Reason` and typed identifiers, and none of
+  them holds a token, an authorization code, a `state` value, a client secret, the authority URL or a response
+  body. A state mismatch reports only the provider id.
 - **Token-at-rest posture** (`FileTokenCache`): the on-disk cached session is obfuscated (base64 + a fixed
   in-assembly HMAC tag) and, on unix, written with owner-only file permissions (`0600`). Read this precisely, the same
   as the `SaveEncoder` claim above: it is a **casual-read/tamper deterrent, not a security boundary**. The HMAC key

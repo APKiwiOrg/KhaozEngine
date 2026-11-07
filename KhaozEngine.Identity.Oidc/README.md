@@ -11,9 +11,9 @@ authorization-code + PKCE flow, using the system browser and a local loopback re
   (with the PKCE verifier and a checked `state`) for an id_token. `CredentialToken` is the OIDC `id_token`.
   `RefreshAsync` follows the refresh rejection contract: a 400 or 401 on the refresh grant (a revoked or
   expired chain, or an empty stored refresh token) returns null so the caller falls back to interactive
-  sign-in, while any other non-success status (a 5xx, say) throws `IdentitySignInException` as a transient
-  error to retry later. The interactive sign-in code exchange is unchanged: a 400 there is still a hard
-  `IdentitySignInException`.
+  sign-in, while any other non-success status (a 5xx, say) throws `IdentitySignInException` with
+  `TokenHttpFailure` and the `StatusCode` as a transient error to retry later. The interactive sign-in code
+  exchange is unchanged: a 400 there is still a hard `IdentitySignInException` with `TokenHttpFailure`.
 - **OidcTokenValidator** - `IIdentityValidator` implementation that validates an id_token against the
   issuer's discovery document + JWKS (via `Microsoft.IdentityModel.Protocols.OpenIdConnect` /
   `JsonWebTokens`), checks issuer/audience/lifetime/signature, and maps the `sub` claim (+ `name` or
@@ -35,21 +35,23 @@ authorization-code + PKCE flow, using the system browser and a local loopback re
   document it fetches, so a plain-http authority would put the PKCE `code_verifier` on the wire on the way
   out and the `id_token`/`refresh_token` on the way back. `OidcClientProvider` refuses a non-https authority
   with `IdentitySignInException` before any request leaves the process (so before the browser launches), on
-  both the sign-in and the refresh path. `AllowInsecureLoopbackAuthority` is the local-dev opt-out: with it
-  set, a plain-`http` authority is accepted only when its host is a loopback address (`localhost`,
-  `127.0.0.0/8`, `::1`), never for a remote host. `SignInTimeout` (default 5 minutes) bounds the **whole**
+  both the sign-in and the refresh path: `AuthorityInsecure` with the `ActualScheme`, or `AuthorityNotAbsolute`
+  when it is not an absolute URL. Neither carries the authority itself. `AllowInsecureLoopbackAuthority` is the
+  local-dev opt-out: with it set, a plain-`http` authority is accepted only when its host is a loopback address
+  (`localhost`, `127.0.0.0/8`, `::1`), never for a remote host. `SignInTimeout` (default 5 minutes) bounds the **whole**
   interactive sign-in, the open-ended wait on the browser redirect included: `HttpTimeout` only feeds the
   `HttpClient` used for discovery and the token exchange, so without `SignInTimeout` an abandoned flow (the
   player closes the tab, the browser crashes, they walk away) parks forever and holds the bound loopback port
-  for the life of the process. On expiry `SignInAsync` throws `IdentitySignInException` and the listener is
-  disposed on the way out. Set it to zero or negative to restore the unbounded wait and bound sign-in with
-  your own cancellation token instead.
+  for the life of the process. On expiry `SignInAsync` throws `IdentitySignInException` with `TimedOut` and the
+  expired `Timeout`, and the listener is disposed on the way out. Set it to zero or negative to restore the
+  unbounded wait and bound sign-in with your own cancellation token instead.
 - **IdentitySignInException** - this package's recoverable sign-in failure, thrown by every path above. It
   derives from `KhaozEngine.Identity.SignInException`, the shared base in the core package, so a game that
   offers a choice of sign-in providers catches that one type instead of one per backend. Catch this type when
   you need to know the OIDC backend specifically. The base carries a different simple name on purpose, so a
   file importing `KhaozEngine.Identity` alongside this namespace still resolves the unqualified
-  `IdentitySignInException`.
+  `IdentitySignInException`. Its `Reason` and identifiers are listed in the core package's
+  [Sign-in refusals](../KhaozEngine.Identity/README.md#sign-in-refusals) table.
 
 It is opt-in and not part of any umbrella package: reference it directly when a game wants generic
 OIDC sign-in (Auth0, Okta, Azure AD, or any standards-compliant OIDC provider). Discord and other

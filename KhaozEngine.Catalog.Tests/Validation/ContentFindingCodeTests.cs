@@ -504,6 +504,7 @@ public class ContentFindingCodeTests
             _ = GameRegistry(schema, chunkSlots: 128);
         });
         Assert.Equal(ContentRegistrationRefusal.ChunkSlotsOutsideRange, error.Reason);
+        _ = GameRegistry(schema, chunkSlots: 256);
 
         ContentTypeRegistry registry = EngineRegistry();
         AssertNone(Validate(CleanCandidate(registry), registry), "KEC0028");

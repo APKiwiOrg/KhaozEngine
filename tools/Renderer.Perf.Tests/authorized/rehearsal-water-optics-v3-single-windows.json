@@ -1,0 +1,291 @@
+{
+  "schema": "khaozengine.renderer-perf-unit/1",
+  "unitId": "rehearsal-water-optics-v3-single-windows",
+  "preset": "rehearsal-water-optics-v3-single",
+  "workloadSha": "536c704ea95cb79d53037c0700684709e5074e6f",
+  "baselineMainSha": "536c704ea95cb79d53037c0700684709e5074e6f",
+  "recipes": [
+    {
+      "sceneId": "S0",
+      "version": "water-optics-v3/village/off/1",
+      "profile": "renderer-full-native-1080/1",
+      "recipeSha256": "44716e7a60437085b8e1a5895e709db08c7cbdf646dde59543c69ec6af2a4489",
+      "settingsSha256": "52996fb7d6f7869492b4d0824249f9ad1e0453217b25967e76129de42e95ab51",
+      "shaderSha256": "0a0e5b8c2d58c343b695adecbd0c5ca3a1168a28aeb0b2d9fc3a2792d922277f",
+      "geometrySha256": "eca05480f105a224aa6c167f24ab3d311f8fb8fa6540053f37f84d17a0035bf6",
+      "assetSha256": "99dc87de2047b8b4e06ed9a4aa8ace50f66267abc3ec134bc5acfdd7341eaa9b"
+    },
+    {
+      "sceneId": "S1",
+      "version": "water-optics-v3/village/m5-on/1",
+      "profile": "renderer-full-native-1080/1",
+      "recipeSha256": "48222929ba0c06fab35a5d1bbf93b678f3c2db9ea42b4740d70d5f5c84b4ff53",
+      "settingsSha256": "d2b07d46cbcdf36869a44fd89abf9467e2aa64bbe01eb26d80c0834787cb1ac3",
+      "shaderSha256": "0a0e5b8c2d58c343b695adecbd0c5ca3a1168a28aeb0b2d9fc3a2792d922277f",
+      "geometrySha256": "eca05480f105a224aa6c167f24ab3d311f8fb8fa6540053f37f84d17a0035bf6",
+      "assetSha256": "99dc87de2047b8b4e06ed9a4aa8ace50f66267abc3ec134bc5acfdd7341eaa9b"
+    },
+    {
+      "sceneId": "S2",
+      "version": "water-optics-v3/village/m3-on/1",
+      "profile": "renderer-full-native-1080/1",
+      "recipeSha256": "e6625ec56455130537401ca3f8a17d41f9988976a7810ee75b6586ebc1f65a91",
+      "settingsSha256": "c4a1ffd70f6dba62bbf837e0cf87a1a8df056ebaa59806ace2eec238964cf95a",
+      "shaderSha256": "0a0e5b8c2d58c343b695adecbd0c5ca3a1168a28aeb0b2d9fc3a2792d922277f",
+      "geometrySha256": "eca05480f105a224aa6c167f24ab3d311f8fb8fa6540053f37f84d17a0035bf6",
+      "assetSha256": "99dc87de2047b8b4e06ed9a4aa8ace50f66267abc3ec134bc5acfdd7341eaa9b"
+    },
+    {
+      "sceneId": "S3",
+      "version": "water-optics-v3/outdoors/off/1",
+      "profile": "renderer-full-native-1080/1",
+      "recipeSha256": "73ce4a04c809558b56b3a54f023d5978838d62de81999abd98a1f6d4548fb54a",
+      "settingsSha256": "7b8702d8a6fae81274792845e7e489e3d94cd0072f7895645e11d215ce8c3c0c",
+      "shaderSha256": "0a0e5b8c2d58c343b695adecbd0c5ca3a1168a28aeb0b2d9fc3a2792d922277f",
+      "geometrySha256": "f633203fcb13429bd561b6989ceb4f247978e715f07e91747b2e60f296fa9a91",
+      "assetSha256": "e72c2b340d0c7bd66c83cac45f400748f143146672c663ed7173eb2577bcfafa"
+    },
+    {
+      "sceneId": "S4",
+      "version": "water-optics-v3/outdoors/m5-on/1",
+      "profile": "renderer-full-native-1080/1",
+      "recipeSha256": "0656b99f438dceebb14c621ff1a6fbb14ee10f449322be7ae313a7bfdcdf234e",
+      "settingsSha256": "e8bcd3df0e33c549eb34e6c6d40ca7e82fe72fd1c78d79c280e320a124c3fdba",
+      "shaderSha256": "0a0e5b8c2d58c343b695adecbd0c5ca3a1168a28aeb0b2d9fc3a2792d922277f",
+      "geometrySha256": "f633203fcb13429bd561b6989ceb4f247978e715f07e91747b2e60f296fa9a91",
+      "assetSha256": "e72c2b340d0c7bd66c83cac45f400748f143146672c663ed7173eb2577bcfafa"
+    },
+    {
+      "sceneId": "S5",
+      "version": "water-optics-v3/outdoors/m3-on/1",
+      "profile": "renderer-full-native-1080/1",
+      "recipeSha256": "b29b2a96107d21ae758cc35d41ff7f638784bc0c87037ac575705dec5b25b15b",
+      "settingsSha256": "ff49737ca1b19c00ef4f78bc552218f56744b172f704baec9302a51ece659586",
+      "shaderSha256": "0a0e5b8c2d58c343b695adecbd0c5ca3a1168a28aeb0b2d9fc3a2792d922277f",
+      "geometrySha256": "f633203fcb13429bd561b6989ceb4f247978e715f07e91747b2e60f296fa9a91",
+      "assetSha256": "e72c2b340d0c7bd66c83cac45f400748f143146672c663ed7173eb2577bcfafa"
+    }
+  ],
+  "blocks": [
+    {
+      "sceneId": "S0",
+      "layout": "total-only",
+      "iteration": 0,
+      "warmupFrames": 32,
+      "measuredFrames": 64
+    },
+    {
+      "sceneId": "S0",
+      "layout": "per-pass",
+      "iteration": 0,
+      "warmupFrames": 32,
+      "measuredFrames": 64
+    },
+    {
+      "sceneId": "S1",
+      "layout": "per-pass",
+      "iteration": 0,
+      "warmupFrames": 32,
+      "measuredFrames": 64
+    },
+    {
+      "sceneId": "S1",
+      "layout": "total-only",
+      "iteration": 0,
+      "warmupFrames": 32,
+      "measuredFrames": 64
+    },
+    {
+      "sceneId": "S2",
+      "layout": "total-only",
+      "iteration": 0,
+      "warmupFrames": 32,
+      "measuredFrames": 64
+    },
+    {
+      "sceneId": "S2",
+      "layout": "per-pass",
+      "iteration": 0,
+      "warmupFrames": 32,
+      "measuredFrames": 64
+    },
+    {
+      "sceneId": "S3",
+      "layout": "per-pass",
+      "iteration": 0,
+      "warmupFrames": 32,
+      "measuredFrames": 64
+    },
+    {
+      "sceneId": "S3",
+      "layout": "total-only",
+      "iteration": 0,
+      "warmupFrames": 32,
+      "measuredFrames": 64
+    },
+    {
+      "sceneId": "S4",
+      "layout": "total-only",
+      "iteration": 0,
+      "warmupFrames": 32,
+      "measuredFrames": 64
+    },
+    {
+      "sceneId": "S4",
+      "layout": "per-pass",
+      "iteration": 0,
+      "warmupFrames": 32,
+      "measuredFrames": 64
+    },
+    {
+      "sceneId": "S5",
+      "layout": "per-pass",
+      "iteration": 0,
+      "warmupFrames": 32,
+      "measuredFrames": 64
+    },
+    {
+      "sceneId": "S5",
+      "layout": "total-only",
+      "iteration": 0,
+      "warmupFrames": 32,
+      "measuredFrames": 64
+    }
+  ],
+  "controls": [
+    {
+      "id": 1,
+      "version": "1",
+      "workSha256": "8ee116407cc935ea7ee1274b3153e95f161dec828ab5cabaac07149f06349e0f",
+      "warmupFrames": 32,
+      "measuredFrames": 64
+    },
+    {
+      "id": 2,
+      "version": "1",
+      "workSha256": "695fb77fc32b63d53c43570ffb0d051c6ee79fe86a445c1684edf9bc495a93ab",
+      "warmupFrames": 32,
+      "measuredFrames": 64
+    },
+    {
+      "id": 3,
+      "version": "1",
+      "workSha256": "372bedce1d87fbe81319cf46243642d48be332c8ce91f2bc86590a2f8109a47c",
+      "warmupFrames": 32,
+      "measuredFrames": 64
+    },
+    {
+      "id": 4,
+      "version": "1",
+      "workSha256": "d58660c9e1b986b4b5ed5b978bec4542fd762c24425cde4195120399c9653a61",
+      "warmupFrames": 32,
+      "measuredFrames": 64
+    },
+    {
+      "id": 5,
+      "version": "1",
+      "workSha256": "0d4897cffa0ef344422c9a49c31bac191ec1a2c6723b9766e6c8d67d8661d931",
+      "warmupFrames": 32,
+      "measuredFrames": 64
+    },
+    {
+      "id": 6,
+      "version": "1",
+      "workSha256": "2918b80903fb6e670c088b21a7844ebde5cc90a975d763ae746266bc1ad3329c",
+      "warmupFrames": 32,
+      "measuredFrames": 64
+    },
+    {
+      "id": 7,
+      "version": "1",
+      "workSha256": "e64795cdcae0233f37b8791bc43288851dabd87553a850c30da65514b1a90585",
+      "warmupFrames": 32,
+      "measuredFrames": 64
+    },
+    {
+      "id": 8,
+      "version": "1",
+      "workSha256": "b0228f6926f6738b3b17960b744a52c22eeedae5309749d2106765f138c3cd97",
+      "warmupFrames": 32,
+      "measuredFrames": 64
+    },
+    {
+      "id": 9,
+      "version": "1",
+      "workSha256": "de7287001199ce06c8f06862092343c1a5cf378c7a48049edbfc6844100f28f1",
+      "warmupFrames": 32,
+      "measuredFrames": 64
+    },
+    {
+      "id": 10,
+      "version": "1",
+      "workSha256": "ae5f82f4d6cdc2b44118f38670b02271728f519fbbb01c52145a141ff0bcbee0",
+      "warmupFrames": 32,
+      "measuredFrames": 64
+    },
+    {
+      "id": 11,
+      "version": "1",
+      "workSha256": "01adcb0b72aee7e82393c646ceb003ab9f390ae50416d6e94973d4285e33f097",
+      "warmupFrames": 32,
+      "measuredFrames": 64
+    },
+    {
+      "id": 12,
+      "version": "1",
+      "workSha256": "8c0915a2171ab4978253841e6e8e2dfd9103ad580ea79bdb81dd4d4dd12924ad",
+      "warmupFrames": 32,
+      "measuredFrames": 64
+    }
+  ],
+  "conditioningFrames": 300,
+  "batchSize": 3,
+  "maximumScopeOccurrences": 255,
+  "runtime": {
+    "configuration": "Release",
+    "runtimeVersion": "10.0.13",
+    "environment": {
+      "DOTNET_MULTILEVEL_LOOKUP": "0",
+      "DOTNET_SKIP_FIRST_TIME_EXPERIENCE": "1",
+      "DOTNET_ROOT": "D:\\a\\_temp\\renderer-dotnet",
+      "DOTNET_TieredCompilation": "1",
+      "KE_GRAPHICS_BACKEND": "direct3d11-native",
+      "KE_GPU_TESTS": "1",
+      "DOTNET_HOST_PATH": "D:\\a\\_temp\\renderer-dotnet\\dotnet.exe",
+      "DOTNET_gcServer": "0",
+      "DOTNET_NOLOGO": "1",
+      "KE_D3D11_ADAPTER": "warp",
+      "DOTNET_CLI_TELEMETRY_OPTOUT": "1",
+      "DOTNET_ROOT_X64": "D:\\a\\_temp\\renderer-dotnet"
+    },
+    "gcMode": "workstation",
+    "tieredCompilation": true
+  },
+  "execution": {
+    "backend": "d3d11",
+    "adapterPolicy": "microsoft-warp-software",
+    "runner": "windows-2025-vs2026",
+    "workflow": "gpu-hosted-bench.yml",
+    "leg": "windows-d3d11",
+    "completionPolicy": "retained-fence-batch-3/1",
+    "lockedGraphicsClockMHz": null
+  },
+  "limits": {
+    "unitSeconds": 19800,
+    "frameMilliseconds": 60000,
+    "coldFrameMilliseconds": 120000,
+    "jobMinutes": 350
+  },
+  "budget": {
+    "maximumBilledMinutes": 350,
+    "ratePerMinute": 0,
+    "currency": "USD",
+    "maximumCostUsd": 0
+  },
+  "approval": {
+    "reference": "Round-two owner approval of 2026-11-08 (Approve, Windows first) for one attempt of rehearsal-water-optics-v3-single on windows-d3d11 at workload 536c704ea95cb79d53037c0700684709e5074e6f, 2604 frames, 25 operations and zero USD, one run at a time with Windows first.",
+    "purpose": "Validate the water-optics-v3 production schedule, compiler replay and publication on the approved software backend before a separately approved paid proposal.",
+    "campaignReference": "water-optics-v3 round-two software correctness rehearsals approved on 2026-11-08 (Approve, Windows first) at workload 536c704ea95cb79d53037c0700684709e5074e6f, one attempt per leg at zero USD, Windows before Linux",
+    "campaignMaximumUsd": 0
+  }
+}

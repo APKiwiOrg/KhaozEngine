@@ -51,11 +51,15 @@ public class ContactDropIdentityTests
         using var fixture = new ContactDropFixture();
         MoveTuning tuning = terminal ? ContactDropFixture.Tuning with { MaxFallSpeed = 0 } :
             ContactDropFixture.Tuning with { Gravity = 0 };
-        Assert.Throws<ArgumentException>(() => fixture.Capture.BuildProfile(tuning, default,
+        var build = Assert.Throws<MovementConfigurationException>(() => fixture.Capture.BuildProfile(tuning, default,
             new GroundProfileOptions { MaxDropMetres = 6 }));
         using var stream = new NeverReadStream();
-        Assert.Throws<ArgumentException>(() => GroundNavigationBake.Load(stream,
+        var load = Assert.Throws<MovementConfigurationException>(() => GroundNavigationBake.Load(stream,
             new(ContactDropFixture.Options, Sources(), [Profile() with { Tuning = tuning }])));
+        Assert.Equal(MovementConfigurationRefusal.KernelPositiveValueRequired, build.Reason);
+        Assert.Equal(build.Reason, load.Reason);
+        Assert.Equal(terminal ? nameof(MoveTuning.MaxFallSpeed) : nameof(MoveTuning.Gravity), build.FieldName);
+        Assert.Equal(build.FieldName, load.FieldName);
     }
 
     [Theory]

@@ -3,6 +3,7 @@
 using System;
 using System.Linq;
 using System.Numerics;
+using KhaozEngine.Locomotion;
 using KhaozEngine.Locomotion.Contacts;
 using KhaozEngine.Physics;
 using KhaozEngine.Physics.Bepu;
@@ -244,8 +245,11 @@ public class FootSupportTests
     {
         using FootSupportScene scene = Lip(SceneVariant.Box);
         var featureless = new FeaturelessWorld(scene.World);
-        Assert.Throws<NotSupportedException>(() =>
+        var failure = Assert.Throws<MovementCapabilityException>(() =>
             FootSupport.Find(null, null, featureless, scene.Lease, Query(-0.1f)));
+        Assert.Equal(MovementConfigurationRefusal.SupportFootprintRequired, failure.Reason);
+        Assert.Equal(typeof(IPhysicsSupportFootprint), failure.RequiredCapability);
+        FootSupport.Find(null, null, scene.World, scene.Lease, Query(-0.1f));
     }
 
     [Fact]

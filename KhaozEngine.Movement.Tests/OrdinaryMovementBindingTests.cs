@@ -10,6 +10,47 @@ namespace KhaozEngine.Tests.Movement;
 
 public class OrdinaryMovementBindingTests
 {
+    [Theory]
+    [InlineData(EffectiveMovementBindingKind.Legacy, MovementControllerKind.Contact, MovementConfigurationRefusal.LegacyControllerRequired)]
+    [InlineData(EffectiveMovementBindingKind.OrdinaryContact, MovementControllerKind.Legacy, MovementConfigurationRefusal.ContactControllerRequired)]
+    [InlineData(EffectiveMovementBindingKind.PublicExplicit, MovementControllerKind.Contact, MovementConfigurationRefusal.ConflictingMovementSelections)]
+    public void BindingSelectionRefusesTheSameRuleAtPreflightAndConstruction(EffectiveMovementBindingKind kind,
+        MovementControllerKind controller, MovementConfigurationRefusal reason)
+    {
+        using var scene = new OrdinaryContactScene();
+        var boundary = MovementBoundary.Rectangle(-20, -20, 20, 20);
+        var tuning = MoveTuning.Default with { Controller = controller,
+            Water = kind == EffectiveMovementBindingKind.OrdinaryContact ? new(WaterTraversalMode.WadeOnly) : default };
+        var preflight = Assert.Throws<MovementConfigurationException>(() => EffectiveMovementBinding.Preflight(tuning, kind));
+        Assert.Equal(reason, preflight.Reason);
+        Assert.Equal(controller, preflight.ActualController);
+        Assert.Equal("tuning", preflight.ParamName);
+        // PublicExplicit's context is supplied by the dedicated borrowed-lifetime test below.
+        if (kind != EffectiveMovementBindingKind.PublicExplicit)
+        {
+            var constructed = Assert.Throws<MovementConfigurationException>(() => kind == EffectiveMovementBindingKind.Legacy
+                ? EffectiveMovementBinding.Legacy(tuning)
+                : EffectiveMovementBinding.Ordinary(tuning, scene.Physics, scene.Registration, scene.Height, null, boundary));
+            Assert.Equal(reason, constructed.Reason);
+            Assert.Equal(controller, constructed.ActualController);
+            Assert.Equal(kind == EffectiveMovementBindingKind.Legacy ? MovementControllerKind.Legacy
+                : MovementControllerKind.Contact, constructed.ExpectedController);
+        }
+        else Assert.Equal(EffectiveMovementBindingKind.PublicExplicit, preflight.RequestedKind);
+        if (kind != EffectiveMovementBindingKind.PublicExplicit)
+            Assert.Equal(kind == EffectiveMovementBindingKind.Legacy ? MovementControllerKind.Legacy
+                : MovementControllerKind.Contact, preflight.ExpectedController);
+        tuning = tuning with { Controller = kind == EffectiveMovementBindingKind.OrdinaryContact
+            ? MovementControllerKind.Contact : MovementControllerKind.Legacy };
+        EffectiveMovementBinding.Preflight(tuning, kind);
+        if (kind == EffectiveMovementBindingKind.Legacy) { using var repaired = EffectiveMovementBinding.Legacy(tuning); }
+        if (kind == EffectiveMovementBindingKind.OrdinaryContact)
+        {
+            using var repaired = EffectiveMovementBinding.Ordinary(tuning, scene.Physics, scene.Registration,
+                scene.Height, null, boundary);
+        }
+    }
+
     [Fact]
     public void OwnedBorrowedAndFailedFactoryViewsHaveExactDisposeCounts()
     {
@@ -30,10 +71,10 @@ public class OrdinaryMovementBindingTests
         owned.Dispose();
         Assert.Equal(1, world.ViewDisposals);
         Assert.Equal(0, world.SourceDisposals);
-        Assert.Throws<ArgumentException>(() => EffectiveMovementBinding.Ordinary(tuning, world, registration,
+        Assert.Throws<MovementConfigurationException>(() => EffectiveMovementBinding.Ordinary(tuning, world, registration,
             (_, _) => 0, null, boundary, medium: (_, _, _) => MovementMedium.Dry));
         Assert.Equal(2, world.ViewDisposals);
-        Assert.Throws<ArgumentException>(() => EffectiveMovementBinding.Ordinary(tuning, world, registration,
+        Assert.Throws<MovementConfigurationException>(() => EffectiveMovementBinding.Ordinary(tuning, world, registration,
             (_, _) => 0, null, boundary, medium: (_, _, _) => MovementMedium.Dry, movementQueries: borrowed));
         Assert.Equal(2, world.ViewDisposals);
         Assert.Equal(3, world.ViewCreations);
@@ -183,7 +224,10 @@ public class OrdinaryMovementBindingTests
         var provider = new OrdinaryMovementEnvironment(view, scene.Registration, scene.Tuning, scene.Height, null, boundary);
         var context = new MovementEnvironmentContext(view, provider, provider.Identity);
         var dry = new WaterTraversalPolicy(WaterTraversalMode.DryOnly);
-        Assert.Throws<ArgumentException>(() => EffectiveMovementBinding.PublicExplicit(scene.Tuning, context, dry));
+        var conflict = Assert.Throws<MovementConfigurationException>(() => EffectiveMovementBinding.PublicExplicit(scene.Tuning, context, dry));
+        Assert.Equal(MovementConfigurationRefusal.ConflictingMovementSelections, conflict.Reason);
+        Assert.Equal(MovementControllerKind.Contact, conflict.ActualController);
+        Assert.Equal(EffectiveMovementBindingKind.PublicExplicit, conflict.RequestedKind);
         using var binding = EffectiveMovementBinding.PublicExplicit(MoveTuning.Default, context, dry);
         Assert.Equal(EffectiveMovementBindingKind.PublicExplicit, binding.Kind);
         Assert.True(binding.UsesLease);

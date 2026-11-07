@@ -107,7 +107,11 @@ public sealed partial class GroundMoveContext
             throw new NotSupportedException("Contact movement requires a GroundMoveContext constructed with its ordinary environment.");
         EffectiveMovementBinding.Preflight(tuning, EffectiveMovementBindingKind.OrdinaryContact);
         if (Physics is null || MovementRegistration is null || MovementBoundary is null)
-            throw new ArgumentException("Ordinary contact movement requires physics, a registration and a MovementBoundary.");
+            throw new MovementConfigurationException(Physics is null ? MovementConfigurationRefusal.PhysicsRequired
+                : MovementRegistration is null ? MovementConfigurationRefusal.RegistrationRequired : MovementConfigurationRefusal.BoundaryRequired,
+                "Ordinary contact movement requires physics, a registration and a MovementBoundary.")
+            { RequiredCapability = Physics is null ? typeof(IPhysicsWorld)
+                : MovementRegistration is null ? typeof(OrdinaryMovementRegistration) : typeof(MovementBoundary) };
         return EffectiveMovementBinding.Ordinary(tuning, Physics, MovementRegistration, GroundHeight, GroundNormal,
             MovementBoundary, MovementWaterField, _providedMedium, MovementQueries);
     }

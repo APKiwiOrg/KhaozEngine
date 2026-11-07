@@ -14,6 +14,7 @@ public partial class OrdinaryContactConfigurationTests
     [InlineData("registration")]
     [InlineData("boundary")]
     [InlineData("medium")]
+    [InlineData("medium-with-bounds")]
     [InlineData("legacy-hop")]
     [InlineData("two-selections")]
     public void EachRequiredCellFactoryAndSelectionRefusesAtTheShardedConstructor(string row)
@@ -26,14 +27,46 @@ public partial class OrdinaryContactConfigurationTests
             {
                 PhysicsWorldFactory = row == "physics" ? null : _ => { callbacks++; throw new InvalidOperationException(); },
                 MovementRegistrationFactory = row == "registration" ? null : _ => { callbacks++; throw new InvalidOperationException(); },
-                MovementBoundaryFactory = row == "boundary" ? null : _ => { callbacks++; throw new InvalidOperationException(); },
+                MovementBoundaryFactory = row is "boundary" or "medium-with-bounds" ? null : _ => { callbacks++; throw new InvalidOperationException(); },
                 ExplicitMovementFactory = row == "two-selections" ? _ => { callbacks++; throw new InvalidOperationException(); } : null
             };
             var tuning = row == "legacy-hop" ? MoveTuning.Default with { Water = new(WaterTraversalMode.Legacy, 1) }
                 : OrdinaryPlayerWorld.Tuning;
-            Assert.Throws<ArgumentException>(() => new ShardedWorldServer(st, config, (_, _) => 0, tuning,
-                medium: row == "medium" ? (_, _, _) => MovementMedium.Dry : null));
+            var failure = Assert.Throws<MovementConfigurationException>(() => new ShardedWorldServer(st, config, (_, _) => 0, tuning,
+                bounds: row == "medium-with-bounds" ? new RectBounds(-20, -20, 20, 20) : null,
+                medium: row is "medium" or "medium-with-bounds" ? (_, _, _) => MovementMedium.Dry : null));
+            Assert.Equal(row switch
+            {
+                "physics" => MovementConfigurationRefusal.PhysicsFactoryRequired,
+                "registration" => MovementConfigurationRefusal.RegistrationFactoryRequired,
+                "boundary" => MovementConfigurationRefusal.BoundaryFactoryRequired,
+                "medium" or "medium-with-bounds" => MovementConfigurationRefusal.WaterFieldFactoryRequired,
+                "legacy-hop" => MovementConfigurationRefusal.LegacyWaterNondefault,
+                _ => MovementConfigurationRefusal.ConflictingMovementSelections
+            }, failure.Reason);
+            if (row is "physics" or "registration" or "boundary" or "medium" or "medium-with-bounds")
+            {
+                Assert.Equal(row switch
+                {
+                    "physics" => "PhysicsWorldFactory",
+                    "registration" => "MovementRegistrationFactory",
+                    "boundary" => "MovementBoundaryFactory",
+                    _ => "MovementWaterFieldFactory"
+                }, failure.MemberName);
+                Assert.Equal("config", failure.ParamName);
+            }
             Assert.Equal(0, callbacks);
+            using var repaired = new ShardedWorldServer(st, new()
+            {
+                FrameAnchoring = false,
+                PhysicsWorldFactory = config.PhysicsWorldFactory ?? (_ => throw new InvalidOperationException()),
+                MovementRegistrationFactory = config.MovementRegistrationFactory ?? (_ => throw new InvalidOperationException()),
+                MovementBoundaryFactory = row == "medium-with-bounds" ? null
+                    : config.MovementBoundaryFactory ?? (_ => MovementBoundary.Rectangle(-20, -20, 20, 20)),
+                MovementWaterFieldFactory = _ => null
+            }, (_, _) => 0, row == "legacy-hop" ? MoveTuning.Default : OrdinaryPlayerWorld.Tuning,
+                bounds: row == "medium-with-bounds" ? new RectBounds(-20, -20, 20, 20) : null,
+                medium: row is "medium" or "medium-with-bounds" ? (_, _, _) => MovementMedium.Dry : null);
         }
     }
 
@@ -53,7 +86,7 @@ public partial class OrdinaryContactConfigurationTests
         using (st) using (ct)
         {
             int callbacks = 0;
-            Assert.Throws<ArgumentException>(() => new ShardedWorldServer(st, new()
+            Assert.Throws<MovementConfigurationException>(() => new ShardedWorldServer(st, new()
             {
                 ExplicitMovementFactory = _ => { callbacks++; throw new InvalidOperationException(); }
             }, (_, _) => 0, tuning));

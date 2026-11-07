@@ -41,9 +41,14 @@ internal static class OrdinaryPlayerMovement
             return EffectiveMovementBinding.PublicExplicit(tuning, publicExplicit.Environment, publicExplicit.Water);
         if (tuning.Controller == MovementControllerKind.Legacy) return EffectiveMovementBinding.Legacy(tuning);
         if (physics is null || registration is null)
-            throw new ArgumentException("Ordinary contact movement requires physics and a movement registration.");
+            throw new MovementConfigurationException(physics is null ? MovementConfigurationRefusal.PhysicsRequired
+                : MovementConfigurationRefusal.RegistrationRequired,
+                "Ordinary contact movement requires physics and a movement registration.")
+            { RequiredCapability = physics is null ? typeof(IPhysicsWorld) : typeof(OrdinaryMovementRegistration) };
         if (boundary is null && bounds?.TryCaptureExplicit(Vector3.Zero, out boundary) != MovementAvailability.Known)
-            throw new ArgumentException("Ordinary contact movement requires an absolute MovementBoundary or certified WorldBounds.");
+            throw new MovementConfigurationException(MovementConfigurationRefusal.BoundaryRequired,
+                "Ordinary contact movement requires an absolute MovementBoundary or certified WorldBounds.")
+            { RequiredCapability = typeof(MovementBoundary) };
         var groundSpace = samplerSpace == SamplerSpace.Frame ? OrdinaryGroundSpace.Frame : OrdinaryGroundSpace.World;
         return EffectiveMovementBinding.Ordinary(tuning, physics, registration, groundHeight, groundNormal,
             boundary!, field, medium, groundSpace: groundSpace);
@@ -63,10 +68,26 @@ internal static class OrdinaryPlayerMovement
             return;
         }
         EffectiveMovementBinding.Preflight(tuning, EffectiveMovementBindingKind.OrdinaryContact);
+        bool boundaryUnavailable = false;
         if (config.PhysicsWorldFactory is null || config.MovementRegistrationFactory is null ||
-            config.MovementBoundaryFactory is null && bounds?.TryCaptureExplicit(Vector3.Zero, out _) != MovementAvailability.Known ||
+            config.MovementBoundaryFactory is null && (boundaryUnavailable = bounds?.TryCaptureExplicit(Vector3.Zero, out _) != MovementAvailability.Known) ||
             hasMedium && config.MovementWaterFieldFactory is null)
-            throw new ArgumentException("Contact cells require physics, registration and boundary factories, and a field for a medium delegate.", nameof(config));
+        {
+            MovementConfigurationRefusal reason = config.PhysicsWorldFactory is null ? MovementConfigurationRefusal.PhysicsFactoryRequired
+                : config.MovementRegistrationFactory is null ? MovementConfigurationRefusal.RegistrationFactoryRequired
+                : boundaryUnavailable ? MovementConfigurationRefusal.BoundaryFactoryRequired : MovementConfigurationRefusal.WaterFieldFactoryRequired;
+            throw new MovementConfigurationException(reason,
+                "Contact cells require physics, registration and boundary factories, and a field for a medium delegate.", nameof(config))
+            {
+                MemberName = reason switch
+                {
+                    MovementConfigurationRefusal.PhysicsFactoryRequired => nameof(config.PhysicsWorldFactory),
+                    MovementConfigurationRefusal.RegistrationFactoryRequired => nameof(config.MovementRegistrationFactory),
+                    MovementConfigurationRefusal.BoundaryFactoryRequired => nameof(config.MovementBoundaryFactory),
+                    _ => nameof(config.MovementWaterFieldFactory)
+                }
+            };
+        }
     }
 
     internal static MoveState ToPhysics(in MoveState state, in MovementFrameDescriptor frame)

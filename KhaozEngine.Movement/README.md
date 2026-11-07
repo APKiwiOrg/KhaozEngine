@@ -5,6 +5,11 @@ server that needs body-aware movement geometry, absolute-coordinate ground movem
 ground navigation profile, a baked profile set loaded without physics, or a route-free approach. It stays
 outside every umbrella and carries no backend, input or rendering dependency.
 
+Ordinary contact configuration refusals use the shared
+[Locomotion reason and identifier contract](../KhaozEngine.Locomotion/README.md#configuration-and-capability-refusals).
+`MovementConfigurationException` preserves `ArgumentException` catches and `MovementCapabilityException`
+preserves `NotSupportedException` catches. Head admission and movement arithmetic are unchanged.
+
 ## Ground pursuit for committed travel
 
 `GroundPursuit` plans and steers one active pursuit without stepping physics or writing actor state. Construct it

@@ -13,19 +13,23 @@ public sealed partial class EffectiveMovementBinding
             case EffectiveMovementBindingKind.Legacy:
                 MovementConfigurationValidation.ValidateLegacy(tuning);
                 if (tuning.Controller != MovementControllerKind.Legacy)
-                    throw new ArgumentException("A Legacy binding requires the Legacy controller.", nameof(tuning));
+                    throw new MovementConfigurationException(MovementConfigurationRefusal.LegacyControllerRequired, "A Legacy binding requires the Legacy controller.", nameof(tuning))
+                    { ActualController = tuning.Controller, ExpectedController = MovementControllerKind.Legacy };
                 break;
             case EffectiveMovementBindingKind.OrdinaryContact:
                 MovementConfigurationValidation.ValidateExplicit(tuning, tuning.Water);
                 if (tuning.Controller != MovementControllerKind.Contact)
-                    throw new ArgumentException("An ordinary contact binding requires the Contact controller.", nameof(tuning));
+                    throw new MovementConfigurationException(MovementConfigurationRefusal.ContactControllerRequired, "An ordinary contact binding requires the Contact controller.", nameof(tuning))
+                    { ActualController = tuning.Controller, ExpectedController = MovementControllerKind.Contact };
                 break;
             case EffectiveMovementBindingKind.PublicExplicit:
                 if (tuning.Controller == MovementControllerKind.Contact)
-                    throw new ArgumentException("A public explicit environment and the Contact selector are two movement selections.", nameof(tuning));
+                    throw new MovementConfigurationException(MovementConfigurationRefusal.ConflictingMovementSelections,
+                        "A public explicit environment and the Contact selector are two movement selections.", nameof(tuning))
+                    { ActualController = tuning.Controller, RequestedKind = EffectiveMovementBindingKind.PublicExplicit };
                 MovementConfigurationValidation.ValidateContactGeometry(tuning);
                 if (!ExplicitCharacterMovement.Valid(tuning))
-                    throw new ArgumentException("Public explicit movement requires valid kernel tuning.", nameof(tuning));
+                    throw MovementKernelValidation.FindInvalid(tuning)!.Value.ToException("Public explicit movement requires valid kernel tuning.");
                 break;
             default:
                 throw new ArgumentOutOfRangeException(nameof(kind));

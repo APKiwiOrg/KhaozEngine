@@ -47,7 +47,9 @@ public static partial class CharacterMovement
     {
         if (groundHeight is null) throw new ArgumentNullException(nameof(groundHeight));
         if (tuning.Controller == MovementControllerKind.Contact)
-            throw new NotSupportedException("Contact movement requires the stateful CharacterMovement.Step(in MoveState, ...) overload.");
+            throw new MovementCapabilityException(MovementConfigurationRefusal.StatefulOverloadRequired,
+                "Contact movement requires the stateful CharacterMovement.Step(in MoveState, ...) overload.")
+            { RequiredOverload = "CharacterMovement.Step(in MoveState, ...)", RequiredStateType = typeof(MoveState) };
         MovementConfigurationValidation.ValidateLegacy(tuning);
 
         (Vector2 moveDir, float speedFraction, bool run) = ResolveCameraCommand(cmd, tuning);

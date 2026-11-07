@@ -1223,6 +1223,11 @@ Tuning must select a non-Legacy water policy even in a dry world. The view must 
 capsule contacts, complete support footprints and certified capsule sweeps. Shell and foot geometry, positive
 gravity, maximum fall speed and swim-enter depth fraction validate before a head can step.
 
+Ordinary contact configuration refusals use the shared
+[Locomotion reason and identifier contract](../KhaozEngine.Locomotion/README.md#configuration-and-capability-refusals).
+`MovementConfigurationException` preserves `ArgumentException` catches and `MovementCapabilityException`
+preserves `NotSupportedException` catches. Head admission and movement arithmetic are unchanged.
+
 ```csharp
 var tuning = MoveTuning.Default with
 {

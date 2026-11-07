@@ -17,8 +17,10 @@ public partial class OrdinaryContactConfigurationTests
         using (st) using (ct)
         {
             int connections = 0;
-            Assert.Throws<ArgumentException>(() => new WorldClient(() => { connections++; return ct; },
+            var failure = Assert.Throws<MovementConfigurationException>(() => new WorldClient(() => { connections++; return ct; },
                 world.Ground, OrdinaryPlayerWorld.Tuning, new() { FrameAnchoring = false }, physics: world.Physics));
+            Assert.Equal(MovementConfigurationRefusal.RegistrationRequired, failure.Reason);
+            Assert.Equal(typeof(OrdinaryMovementRegistration), failure.RequiredCapability);
             Assert.Equal(0, connections);
         }
     }

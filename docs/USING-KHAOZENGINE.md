@@ -16069,14 +16069,23 @@ select the dry contact controller when `Controller` is `Contact`, retaining came
 precise direction resolution. The foot fraction must be finite in (0, 1], the foot radius must be at least
 0.01 m and the knee-height shell must validate. Null physics supports analytic-only movement. Supplied physics
 requires `IPhysicsQueryLeaseSource` and `IPhysicsSupportFootprint`. Clamp and dry medium delegates are accepted.
-Wet point samples refuse and name the ordinary `IMovementWaterField` route. The position-only overload refuses
-Contact and names the stateful overload. Legacy requires default foot and water settings. Undefined selectors
+Wet point samples throw `MovementCapabilityException` with `PointSampledWaterUnsupported` and
+`RequiredCapability == typeof(IMovementWaterField)`. The position-only overload refuses Contact with
+`StatefulOverloadRequired`, `RequiredOverload == "CharacterMovement.Step(in MoveState, ...)"` and
+`RequiredStateType == typeof(MoveState)`. Legacy requires default foot and water settings. Undefined selectors
 throw `ArgumentOutOfRangeException`. Ordinary heads run the leased contact composition at placement offset zero,
 while public explicit APIs retain 0.001 m. Ordinary validation additionally requires positive gravity,
 maximum fall speed and swim-enter depth fraction, a non-Legacy water policy, registration, boundary and a view
 with query leases, capsule contacts, complete support footprints and certified capsule sweeps. A medium
 delegate requires a field. Public explicit configuration governs its own water policy and rejects conflicting
 tuning water. Contact plus public explicit configuration is refused as two selections.
+Shared selector and binding validation uses `MovementConfigurationException : ArgumentException` and
+`MovementCapabilityException : NotSupportedException`, with non-null `MovementConfigurationRefusal Reason`.
+The [Locomotion refusal table](../KhaozEngine.Locomotion/README.md#configuration-and-capability-refusals)
+defines every identifier. Numeric failures retain the first failed kernel predicate and its actual value,
+with nonfinite checks first and limits of zero, one or half pi as appropriate. Original parameter names,
+guard order, shell admission, messages and movement arithmetic are unchanged. Legacy and public explicit
+binding selection refusals carry the actual and expected controller or requested binding kind.
 Phase 5a is released in 20.37.0. Phase 5b ground navigation is released in 20.39.0.
 
 The retained `MoveCommand(move, run, cameraYaw, jump, faceCamera)` constructor and `default(MoveCommand)` leave

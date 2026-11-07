@@ -129,7 +129,8 @@ public partial class OrdinaryContactLocalHeadTests
             "fall" => scene.Tuning with { MaxFallSpeed = 0 },
             _ => scene.Tuning with { SwimEnterDepthFraction = 0, SwimExitDepthFraction = 0 }
         };
-        Assert.Throws<ArgumentException>(() => NpcGroundMovement.Hold(default, Dt, tuning, context));
+        Assert.Equal(MovementConfigurationRefusal.KernelPositiveValueRequired,
+            Assert.Throws<MovementConfigurationException>(() => NpcGroundMovement.Hold(default, Dt, tuning, context)).Reason);
     }
 
     [Theory]
@@ -146,9 +147,15 @@ public partial class OrdinaryContactLocalHeadTests
             missing == "registration" ? null : registration, missing == "boundary" ? null : Boundary);
         Assert.False(context.SupportsContactController);
         if (missing == "sweep")
-            Assert.Throws<NotSupportedException>(() => context.ValidateTuning(OrdinaryContactScene.DefaultTuning));
+            Assert.Equal(MovementConfigurationRefusal.CapsuleSweepRequired,
+                Assert.Throws<MovementCapabilityException>(() => context.ValidateTuning(OrdinaryContactScene.DefaultTuning)).Reason);
         else
-            Assert.Throws<ArgumentException>(() => context.ValidateTuning(OrdinaryContactScene.DefaultTuning));
+            Assert.Equal(missing switch
+            {
+                "registration" => MovementConfigurationRefusal.RegistrationRequired,
+                "boundary" => MovementConfigurationRefusal.BoundaryRequired,
+                _ => MovementConfigurationRefusal.WaterFieldRequired
+            }, Assert.Throws<MovementConfigurationException>(() => context.ValidateTuning(OrdinaryContactScene.DefaultTuning)).Reason);
     }
 
     [Fact]

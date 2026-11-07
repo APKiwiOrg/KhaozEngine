@@ -113,6 +113,11 @@ Ordinary contact rests at support height with zero placement offset. Public expl
 0.001 m. Validation follows [the shared selector contract](../KhaozEngine.Locomotion/README.md#movement-selector),
 including the 0.01 m minimum foot radius and positive kernel controls. Phase 5a is released in 20.37.0.
 
+Ordinary contact configuration refusals use the shared
+[Locomotion reason and identifier contract](../KhaozEngine.Locomotion/README.md#configuration-and-capability-refusals).
+`MovementConfigurationException` preserves `ArgumentException` catches and `MovementCapabilityException`
+preserves `NotSupportedException` catches. Head admission and movement arithmetic are unchanged.
+
 ## ReplicatedCharacterAnimators
 
 A render-free bridge ("the character bridge") that drives one skinned-character brain per entity from a per-frame

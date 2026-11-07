@@ -27,8 +27,14 @@ public class ContactNavigationRefusalTests
         Assert.Equal(defaultFingerprint, Profile(Contact, water).Fingerprint);
         Assert.Equal(defaultFingerprint, Profile(Contact with { Water = water }, water).Fingerprint);
         Assert.NotEqual(defaultFingerprint, Profile(Contact with { FootRadiusFraction = 0.75f }, water).Fingerprint);
-        Assert.Throws<ArgumentException>(() => Profile(Contact with { Water = new(WaterTraversalMode.DryOnly) }, water));
-        Assert.Throws<ArgumentException>(() => Profile(Contact with { Water = new(WaterTraversalMode.Legacy, 1) }, water));
+        var conflict = Assert.Throws<MovementConfigurationException>(() =>
+            Profile(Contact with { Water = new(WaterTraversalMode.DryOnly) }, water));
+        Assert.Equal(MovementConfigurationRefusal.WaterPoliciesConflict, conflict.Reason);
+        Assert.Equal(water, conflict.ExpectedWater);
+        Assert.Equal(new(WaterTraversalMode.DryOnly), conflict.ActualWater);
+        Assert.Equal("tuning", conflict.ParamName);
+        Assert.Equal(MovementConfigurationRefusal.WaterPoliciesConflict,
+            Assert.Throws<MovementConfigurationException>(() => Profile(Contact with { Water = new(WaterTraversalMode.Legacy, 1) }, water)).Reason);
     }
 
     [Theory]
@@ -88,11 +94,14 @@ public class ContactNavigationRefusalTests
         MoveTuning tuning = ValidContact with { Water = default };
         NavBakeProfile profile = new("contact", tuning, default) { Aquatic = aquatic };
         var options = new GroundProfileOptions { Aquatic = aquatic };
-        Assert.Throws<ArgumentException>(() => capture.BuildProfile(tuning, default, options));
-        Assert.Throws<ArgumentException>(() => GroundNavigationBake.Create(capture, Sources(), [profile]));
+        Assert.Equal(MovementConfigurationRefusal.ExplicitWaterModeRequired,
+            Assert.Throws<MovementConfigurationException>(() => capture.BuildProfile(tuning, default, options)).Reason);
+        Assert.Equal(MovementConfigurationRefusal.ExplicitWaterModeRequired,
+            Assert.Throws<MovementConfigurationException>(() => GroundNavigationBake.Create(capture, Sources(), [profile])).Reason);
         using var stream = new MemoryStream(new byte[64]);
-        Assert.Throws<ArgumentException>(() => GroundNavigationBake.Load(stream,
-            new(capture.Options, Sources(), [profile])));
+        Assert.Equal(MovementConfigurationRefusal.ExplicitWaterModeRequired,
+            Assert.Throws<MovementConfigurationException>(() => GroundNavigationBake.Load(stream,
+                new(capture.Options, Sources(), [profile]))).Reason);
         Assert.Equal(0, stream.Position);
     }
 

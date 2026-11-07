@@ -4,6 +4,24 @@ All notable changes to KhaozEngine. One shared version line `<KhaozEngineVersion
 governs every package, including the four umbrella metapackages. Planned work lives in the repo's GitHub
 Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
+## 23.3.0
+
+2026-11-07
+
+- Navigation caches one scaled geometric cost bound across every layer, without rescanning links per query.
+  Shared frames use an admitted-member cell box, and differing frames use the containing world-axis square,
+  including its corners. Search prices, double accumulation and the scale-dependent numeric cost contract are
+  described in the [Navigation cost section](KhaozEngine.Navigation/README.md#numeric-cost-contract) (#1712).
+- Point queries choose Partial progress by physical 3D feet distance, so a roof directly above the target is
+  not mistaken for the closest physical approach. Stair links cost at least their spatial span and one source
+  cell. Hop and Drop formulas are unchanged (#1712).
+- Finite-budget navigation results are best effort. Route choices, goal members and waypoint chains may differ,
+  even with the same budget. Complete cost comparisons use the documented floating-point bound and scale range (#1712).
+- Routed and direct approach stall windows measure accumulated horizontal feet travel. A valid reversal no
+  longer cancels its own motion, while a body held against a wall still latches Blocked (#1713).
+- **Consumer action required.** Rebake committed navigation bakes when adopting 23.3.0. The engine version is
+  part of bake identity. This batch introduces no additional topology, codec or bake-format change.
+
 ## 23.2.0
 
 2026-11-06

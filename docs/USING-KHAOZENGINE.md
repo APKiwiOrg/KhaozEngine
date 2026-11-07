@@ -23340,7 +23340,8 @@ caller to inspect, while `Read` refuses any version other than `ContentBundle.Cu
 row-only format 1, and `ContentBundle.TextFormatVersion`, format 2 with its `text` section, as
 `BundleVersionUnsupported` with `ActualFormatVersion` and `SupportedFormatVersions`. The
 [bundle document refusal table](../KhaozEngine.Catalog.Authoring/README.md#bundle-document-refusals) lists every
-shape rule and its identifiers. `Read` also names the rule a lower constructor refuses in a family, schema,
+shape rule and its identifiers. Array elements must be objects. A negative source version is refused as
+`BundleSourceVersionNegative`, with `JsonPath`, `ActualInteger` and `MinimumInteger` (0). `Read` also names the rule a lower constructor refuses in a family, schema,
 remap rule, row field value or text constructor, such as `FamilyBlockSizeOutsideRange`, `BundleFieldNameDuplicate`
 or `BundleTextTargetDuplicate`. The same section lists those.
 

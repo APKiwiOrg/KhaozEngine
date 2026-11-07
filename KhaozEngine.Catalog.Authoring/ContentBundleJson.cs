@@ -149,29 +149,40 @@ public static class ContentBundleJson
             IReadOnlyList<ContentBundleRow> rows = ReadRows(root);
             IReadOnlyList<ContentFamily> families = ReadFamilies(root);
             IReadOnlyList<RemapRule> rules = ReadRules(root);
-            if (formatVersion == ContentBundle.CurrentFormatVersion)
+            try
             {
-                // Format 1 is text free by contract, so a text section in one would be silently dropped.
-                if (root.TryGetProperty(ContentBundleTextJson.SectionName, out _))
+                if (formatVersion == ContentBundle.CurrentFormatVersion)
                 {
-                    throw new ContentAuthoringException(
-                        ContentAuthoringRefusal.BundleUnexpectedTextSection,
-                        FormattableString.Invariant(
-                            $"A format {ContentBundle.CurrentFormatVersion} bundle is text free by contract, and this one carries a '{ContentBundleTextJson.SectionName}' section. Declare format {ContentBundle.TextFormatVersion} for a text-bearing bundle."),
-                        default,
-                        0,
-                        ContentAuthoringException.BundleFormatReason)
+                    // Format 1 is text free by contract, so a text section in one would be silently dropped.
+                    if (root.TryGetProperty(ContentBundleTextJson.SectionName, out _))
                     {
-                        JsonPath = Member(RootPath, ContentBundleTextJson.SectionName),
-                        ActualFormatVersion = formatVersion,
-                    };
+                        throw new ContentAuthoringException(
+                            ContentAuthoringRefusal.BundleUnexpectedTextSection,
+                            FormattableString.Invariant(
+                                $"A format {ContentBundle.CurrentFormatVersion} bundle is text free by contract, and this one carries a '{ContentBundleTextJson.SectionName}' section. Declare format {ContentBundle.TextFormatVersion} for a text-bearing bundle."),
+                            default,
+                            0,
+                            ContentAuthoringException.BundleFormatReason)
+                        {
+                            JsonPath = Member(RootPath, ContentBundleTextJson.SectionName),
+                            ActualFormatVersion = formatVersion,
+                        };
+                    }
+
+                    return new ContentBundle(formatVersion, storeEpoch, sourceVersion, types, rows, families, rules);
                 }
 
-                return new ContentBundle(formatVersion, storeEpoch, sourceVersion, types, rows, families, rules);
+                return new ContentBundle(
+                    formatVersion, storeEpoch, sourceVersion, types, rows, families, rules, ContentBundleTextJson.Read(root));
             }
-
-            return new ContentBundle(
-                formatVersion, storeEpoch, sourceVersion, types, rows, families, rules, ContentBundleTextJson.Read(root));
+            catch (ArgumentOutOfRangeException malformed) when (malformed.ParamName == nameof(sourceVersion) && malformed.ActualValue is int)
+            {
+                throw new ContentAuthoringException(ContentAuthoringRefusal.BundleSourceVersionNegative, malformed.Message,
+                    default, 0, ContentAuthoringException.BundleFormatReason, malformed)
+                {
+                    JsonPath = Member(RootPath, "sourceVersion"), ActualInteger = (int)malformed.ActualValue, MinimumInteger = 0,
+                };
+            }
         }
     }
 
@@ -558,7 +569,7 @@ public static class ContentBundleJson
         }
     }
 
-    internal static JsonElement.ArrayEnumerator Array(JsonElement parent, string parentPath, string name)
+    internal static IEnumerable<JsonElement> Array(JsonElement parent, string parentPath, string name)
     {
         bool present = parent.TryGetProperty(name, out JsonElement element);
         if (!present || element.ValueKind != JsonValueKind.Array)
@@ -567,7 +578,15 @@ public static class ContentBundleJson
                 $"A bundle carries a '{name}' array, and this one does not."));
         }
 
-        return element.EnumerateArray();
+        string arrayPath = Member(parentPath, name);
+        int index = 0;
+        foreach (JsonElement item in element.EnumerateArray())
+        {
+            if (item.ValueKind != JsonValueKind.Object)
+                throw Shape(true, item, Element(arrayPath, index), "A bundle array element is an object, and this one is not.");
+            yield return item;
+            index++;
+        }
     }
 
     static string Text(JsonElement parent, string parentPath, string name)

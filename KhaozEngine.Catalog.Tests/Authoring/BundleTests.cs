@@ -1,6 +1,7 @@
 using System;
 using System.Linq;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using System.Threading.Tasks;
 using KhaozEngine.Catalog;
 using KhaozEngine.Catalog.Authoring;
@@ -377,6 +378,7 @@ public class BundleTests
     [InlineData("\"storeEpoch\": \"test\"", "\"epoch\": \"test\"", ContentAuthoringRefusal.BundleMemberRequired, "$.storeEpoch", null, null, "\"storeEpoch\": \"test\"")]
     [InlineData("\"storeEpoch\": \"test\"", "\"storeEpoch\": 5", ContentAuthoringRefusal.BundleMemberKindInvalid, "$.storeEpoch", JsonValueKind.Number, null, "\"storeEpoch\": \"test\"")]
     [InlineData("\"sourceVersion\": 0", "\"sourceVersion\": \"0\"", ContentAuthoringRefusal.BundleMemberKindInvalid, "$.sourceVersion", JsonValueKind.String, null, "\"sourceVersion\": 0")]
+    [InlineData("\"sourceVersion\": 0", "\"sourceVersion\": -1", ContentAuthoringRefusal.BundleSourceVersionNegative, "$.sourceVersion", null, -1, "\"sourceVersion\": 0")]
     [InlineData("\"sourceVersion\": 0", "\"sourceVersion\": 2147483648", ContentAuthoringRefusal.BundleInt32Unrepresentable, "$.sourceVersion", null, null, "\"sourceVersion\": 2147483647")]
     [InlineData("\"rules\": [", "\"spare\": [", ContentAuthoringRefusal.BundleMemberRequired, "$.rules", null, null, "\"rules\": [")]
     [InlineData("\"rows\": [", "\"rows\": null, \"spare\": [", ContentAuthoringRefusal.BundleMemberKindInvalid, "$.rows", JsonValueKind.Null, null, "\"rows\": [")]
@@ -416,11 +418,46 @@ public class BundleTests
         Assert.Equal(actualKind, refused.ActualJsonKind);
         Assert.Equal(actualInteger, refused.ActualInteger);
         bool typeIdRange = refusal == ContentAuthoringRefusal.BundleTypeIdOutsideRange;
-        Assert.Equal(typeIdRange ? 1 : null, refused.MinimumInteger);
+        Assert.Equal(typeIdRange ? 1 : refusal == ContentAuthoringRefusal.BundleSourceVersionNegative ? 0 : null, refused.MinimumInteger);
         Assert.Equal(typeIdRange ? 65535 : null, refused.MaximumInteger);
 
         ContentBundle repaired = ContentBundleJson.Read(document.Replace(original, control, StringComparison.Ordinal));
         Assert.Equal(1, Assert.Single(repaired.Rules).Sequence);
+    }
+
+    [Theory]
+    [InlineData("$.types[0]")]
+    [InlineData("$.types[0].fields[0]")]
+    [InlineData("$.families[0]")]
+    [InlineData("$.families[0].blocks[0]")]
+    [InlineData("$.rows[0]")]
+    [InlineData("$.rows[0].fields[0]")]
+    [InlineData("$.rules[0]")]
+    public void Every_bundle_array_refuses_a_nonobject_element_at_its_own_path(string path)
+    {
+        JsonNode document = JsonNode.Parse(ValidDocument())!;
+        JsonArray array = path switch
+        {
+            "$.types[0]" => document["types"]!.AsArray(),
+            "$.types[0].fields[0]" => document["types"]![0]!["fields"]!.AsArray(),
+            "$.families[0]" => document["families"]!.AsArray(),
+            "$.families[0].blocks[0]" => document["families"]![0]!["blocks"]!.AsArray(),
+            "$.rows[0]" => document["rows"]!.AsArray(),
+            "$.rows[0].fields[0]" => document["rows"]![0]!["fields"]!.AsArray(),
+            "$.rules[0]" => document["rules"]!.AsArray(),
+            _ => throw new ArgumentException("The theory names an array.", nameof(path)),
+        };
+        JsonNode control = array[0]!.DeepClone();
+        array[0] = 5;
+
+        ContentAuthoringException refused = Assert.Throws<ContentAuthoringException>(() => ContentBundleJson.Read(document.ToJsonString()));
+
+        Assert.Equal(ContentAuthoringException.BundleFormatReason, refused.Reason);
+        Assert.Equal(ContentAuthoringRefusal.BundleMemberKindInvalid, refused.Refusal);
+        Assert.Equal(path, refused.JsonPath);
+        Assert.Equal(JsonValueKind.Number, refused.ActualJsonKind);
+        array[0] = control;
+        Assert.Single(ContentBundleJson.Read(document.ToJsonString()).Types);
     }
 
     /// <summary>

@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using System.Threading.Tasks;
 using KhaozEngine.Catalog;
 using KhaozEngine.Catalog.Authoring;
@@ -189,6 +190,26 @@ public sealed partial class TextBundleTests
         }
 
         Assert.Equal(defect == "alias-values" ? 2 : 1, ContentBundleJson.Read(Document(defect, repaired: true)).TextState!.Values.Count);
+    }
+
+    [Theory]
+    [InlineData("languages")]
+    [InlineData("values")]
+    public void Each_text_array_refuses_a_nonobject_element_at_its_own_path(string name)
+    {
+        JsonNode document = JsonNode.Parse(Document("none"))!;
+        JsonArray array = document["text"]![name]!.AsArray();
+        JsonNode control = array[0]!.DeepClone();
+        array[0] = 5;
+
+        ContentAuthoringException refused = Assert.Throws<ContentAuthoringException>(() => ContentBundleJson.Read(document.ToJsonString()));
+
+        Assert.Equal(ContentAuthoringException.BundleFormatReason, refused.Reason);
+        Assert.Equal(ContentAuthoringRefusal.BundleMemberKindInvalid, refused.Refusal);
+        Assert.Equal("$.text." + name + "[0]", refused.JsonPath);
+        Assert.Equal(JsonValueKind.Number, refused.ActualJsonKind);
+        array[0] = control;
+        Assert.Single(ContentBundleJson.Read(document.ToJsonString()).TextState!.Values);
     }
 
     [Fact]

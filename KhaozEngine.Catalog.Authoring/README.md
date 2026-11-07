@@ -1043,7 +1043,9 @@ Every refusal `ContentBundleJson` raises for the document's own shape carries th
 `$.text.values[0].typeId`. A member-shape guard reports its branches in its own order: an absent member is
 `BundleMemberRequired`, and a present member of another JSON kind is `BundleMemberKindInvalid`. The JSON kind
 a member takes is fixed by its path. An integer that does not fit carries only its path, never a guessed
-value.
+value. Every array element must be an object. Elements are checked as they are visited, so an earlier
+member refusal still precedes a malformed later element. A negative source version is wrapped at the bundle
+constructor, with its original argument exception retained as inner.
 
 | Refusal | Refused rule | Identifiers |
 | --- | --- | --- |
@@ -1053,9 +1055,10 @@ value.
 | `BundleUnexpectedTextSection` | A format 1 document carrying `text` | `JsonPath` (`$.text`), `ActualFormatVersion` (1) |
 | `BundleTextSectionMissing` | Writing a format 2 bundle that lost its text section | `ActualFormatVersion` (2) |
 | `BundleMemberRequired` | A required member is absent | `JsonPath` |
-| `BundleMemberKindInvalid` | A member has another JSON kind | `JsonPath`, `ActualJsonKind` |
+| `BundleMemberKindInvalid` | A member has another JSON kind, or an array element is not an object | `JsonPath`, `ActualJsonKind` |
 | `BundleInt32Unrepresentable` | A number that is not a 32-bit integer, `formatVersion` included | `JsonPath` |
 | `BundleInt64Unrepresentable` | A number that is not a 64-bit integer (`familyId`, a row's `number`) | `JsonPath` |
+| `BundleSourceVersionNegative` | A source version below 0 | `JsonPath` (`$.sourceVersion`), `ActualInteger`, `MinimumInteger` (0) |
 | `BundleTypeIdOutsideRange` | A type id outside 1 to 65,535 | `JsonPath`, `ActualInteger`, `MinimumInteger` (1), `MaximumInteger` (65,535) |
 | `BundleFieldKindUnknown` | An undefined `ContentFieldKind` | `JsonPath`, `ActualInteger` |
 | `BundleVisibilityUnknown` | An undefined `ContentVisibility` | `JsonPath`, `ActualInteger` |

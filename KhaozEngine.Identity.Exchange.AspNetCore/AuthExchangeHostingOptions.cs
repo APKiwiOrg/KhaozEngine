@@ -36,8 +36,11 @@ public sealed class AuthExchangeHostingOptions
         for (int i = 0; i < TrustedProxies.Count; i++)
         {
             if (TrustedProxyNetworks.IsCatchAll(TrustedProxies[i]))
-                throw new ArgumentException(TrustedProxyNetworks.CatchAllRefusal(nameof(TrustedProxies), i),
-                    nameof(TrustedProxies));
+                throw new TrustedProxyConfigurationException(TrustedProxyConfigurationRefusal.CatchAllNetwork,
+                    TrustedProxyNetworks.CatchAllRefusal(nameof(TrustedProxies), i), nameof(TrustedProxies))
+                {
+                    Index = i,
+                };
         }
         if (MaxRequestBodyBytes is <= 0)
             throw new ArgumentOutOfRangeException(nameof(MaxRequestBodyBytes), "The server-wide body cap must be positive.");

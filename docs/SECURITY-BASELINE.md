@@ -187,8 +187,8 @@ re-deriving them:
   The framework's default loopback entries are removed, every network is registered in both address families, and
   the forward limit is one, so only the hop the trusted proxy appended is read and a client cannot choose its own
   bucket. A catch-all is refused when the hosting is added: any /0 in either family, which is what
-  `default(IPNetwork)` is, or an IPv6 network holding the whole IPv4-mapped block. The refusal names the list position
-  and never the value.
+  `default(IPNetwork)` is, or an IPv6 network holding the whole IPv4-mapped block. The refusal is
+  `TrustedProxyConfigurationRefusal.CatchAllNetwork` with the list position in `Index`, and never carries the value.
 - **One failure envelope, no account oracle.** A provider outage, the provider deadline, a store fault and a policy
   fault all answer the same 503 `unavailable` body, so a response never says which dependency failed. A refused
   credential and a malformed request answer before any account lookup. Every answer that names an account follows a

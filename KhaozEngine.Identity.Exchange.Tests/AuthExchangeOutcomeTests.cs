@@ -443,15 +443,17 @@ public class AuthExchangeOutcomeTests
 
         AuthExchangeResult resolve = await ExchangeFixture.Build(validator, resolveStore,
             policy: new FaultyPolicy(failResolve: true)).ExchangeAsync("discord", "tok");
+        var issuePolicy = new FaultyPolicy(failIssue: true);
         AuthExchangeResult issue = await ExchangeFixture.Build(validator, new CountingAccountStore(true),
-            policy: new FaultyPolicy(failIssue: true)).ExchangeAsync("discord", "tok");
+            policy: issuePolicy).ExchangeAsync("discord", "tok");
         AuthExchangeResult nameless = await ExchangeFixture.Build(validator, new CountingAccountStore(true),
             policy: new FaultyPolicy(issueNoName: true)).ExchangeAsync("discord", "tok");
 
         Assert.Equal((AuthExchangeOutcome.Unavailable, AuthExchangeCause.PolicyFault), (resolve.Outcome, resolve.Cause));
         Assert.Equal(0, resolveStore.Calls);
         Assert.Equal((AuthExchangeOutcome.Unavailable, AuthExchangeCause.PolicyFault), (issue.Outcome, issue.Cause));
-        Assert.Equal("issue fault", issue.Fault!.Message);
+        Assert.Same(issuePolicy.IssueFault, issue.Fault);
+        Assert.Null(issue.SessionToken);
         Assert.Equal((AuthExchangeOutcome.Unavailable, AuthExchangeCause.PolicyFault), (nameless.Outcome, nameless.Cause));
         Assert.Null(nameless.SessionToken);
     }

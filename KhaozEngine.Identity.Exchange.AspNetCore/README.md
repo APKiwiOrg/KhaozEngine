@@ -50,6 +50,7 @@ behind them shares one bucket.
 | `AuthExchangeHosting` | `AddAuthExchangeHosting(builder, options?)` and `UseAuthExchangeHosting(app)`. |
 | `AuthExchangeHostingOptions` | `TrustedProxies` (empty, which turns forwarded headers off, and never a catch-all: any /0, `default(IPNetwork)` included, or an IPv6 network holding the whole IPv4-mapped block is refused) and `MaxRequestBodyBytes` (null, which leaves Kestrel's default). |
 | `TrustedProxyNetworks` | `PrivateRanges` (RFC 1918 in both families), `Loopback` (a same-host proxy), and `WithBothFamilies(networks)`, the rule the hosting applies to any list, which refuses a catch-all. |
+| `TrustedProxyConfigurationException` | The catch-all refusal, an `ArgumentException` with a `TrustedProxyConfigurationRefusal` `Reason` and the network's `Index` (see [Forwarded headers](#forwarded-headers)). |
 | `AuthExchangeClientKey` | `For(peer, ipv6PrefixLength)`, the per-client partition key: the IPv4 address, a mapped address folded to IPv4, the IPv6 /64, or one shared key for a connection with no address. |
 
 ## The answers
@@ -103,9 +104,15 @@ one bucket and the limiter becomes a self-inflicted outage. `TrustedProxies` nam
   cannot choose its bucket by prepending addresses of its own.
 - **No catch-all.** A /0 in either family, which is what an unset `IPNetwork` is, or an IPv6 network holding the whole
   IPv4-mapped block would let every caller name its own bucket. `AddAuthExchangeHosting` and `WithBothFamilies` refuse
-  one, naming its position in the list and not its value.
+  one with `TrustedProxyConfigurationException`, an `ArgumentException`, as in the table below.
 - **`PrivateRanges` trusts every private host.** Any machine that can reach the service over RFC 1918 can name its own
   client address. Name the proxy's own subnet when the private network is shared with anything you do not control.
+
+| `Reason` | What it refuses | Identifiers |
+|---|---|---|
+| `CatchAllNetwork` | a trusted network that trusts every IPv4 caller | `Index`, the zero-based position in the list as passed, and `ParamName`, `networks` from `WithBothFamilies` or `TrustedProxies` from `AddAuthExchangeHosting` |
+
+No identifier carries the network value, and neither does the message.
 
 ## Logging
 

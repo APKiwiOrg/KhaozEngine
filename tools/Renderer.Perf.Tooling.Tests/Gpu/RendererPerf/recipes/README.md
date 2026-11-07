@@ -80,9 +80,11 @@ Bed geometry, props, camera and frame sequence stay identical to v2. Prop placem
 conservative clearance, while the live water uses the procedural bound. Its schedule records no
 FFT dispatches or mip copies. The village keeps its existing procedural pool.
 
-These six files freeze only the local `osx-arm64` family's cold construction. Other families must
-come from the free `tooling-validation` workflow, with portable inputs reviewed before their derived
-digests are committed. Missing families still refuse. Headless traces require M3's `water.caustics`
+These six files freeze cold construction for `osx-arm64`, `linux-x64` and `win-x64`. The Linux and
+Windows digests came from free `tooling-validation` [run 42376176393](https://github.com/APKiwiOrg/KhaozEngine/actions/runs/42376176393).
+[Run 42378553621](https://github.com/APKiwiOrg/KhaozEngine/actions/runs/42378553621) passed on all three families.
+New families must come from that workflow, with portable inputs reviewed before their derived digests
+are committed. Missing families still refuse. Headless traces require M3's `water.caustics`
 pass to execute with one drawn pool inside the window. OFF and M5 ON record it as not executed.
 The skipped caustic row also appears in live v1 and v2 pass inventories without changing their
 frozen recipe identity.

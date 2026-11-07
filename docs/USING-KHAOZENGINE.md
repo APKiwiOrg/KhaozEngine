@@ -20265,6 +20265,10 @@ lower bound, not an honest whole-frame GPU duration, so it was not shipped eithe
 finished frame to the screen) is not covered by these brackets: that happens in `KhaozEngine.Windowing.AppWindow.Run`,
 outside anything `Scene3D` records into.
 
+`ModelMs` includes underwater caustic planning and recording, opaque light-cluster construction, and the
+model/terrain (splat) instanced draws. Enabling caustics can therefore increase this interval before any
+model draw is recorded.
+
 `Scene3D` (`KhaozEngine.Render3D`) has no dependency on `KhaozEngine.Diagnostics`, so it exposes the raw
 per-pass milliseconds itself (`Scene3D.PassTimingsMs`, a `Scene3DPassTimingsMs` with `ShadowDepthMs` /
 `ModelMs` / `TransparentsMs` / `PostMs`) rather than owning a `PassTimings` meter directly - the same shape as

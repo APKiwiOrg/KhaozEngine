@@ -11,12 +11,14 @@ namespace KhaozEngine.Tests.Gpu.RendererPerf;
 public sealed class RendererPerfWaterOpticsWorkflowTests
 {
     [Theory]
-    [InlineData("linux-vulkan", "gpu-t4-linux", "vulkan-native", 35)]
-    [InlineData("windows-d3d11", "gpu-t4-windows", "direct3d11-native", 50)]
-    public void Select_routes_the_paid_v2_legs(string leg, string runner, string backend, int minutes)
+    [InlineData("water-optics-v2", "linux-vulkan", "gpu-t4-linux", "vulkan-native", 35)]
+    [InlineData("water-optics-v3", "linux-vulkan", "gpu-t4-linux", "vulkan-native", 35)]
+    [InlineData("water-optics-v2", "windows-d3d11", "gpu-t4-windows", "direct3d11-native", 50)]
+    [InlineData("water-optics-v3", "windows-d3d11", "gpu-t4-windows", "direct3d11-native", 50)]
+    public void Select_routes_the_paid_water_legs(string preset, string leg, string runner, string backend, int minutes)
     {
         using var workspace = new RendererPerfWorkflowTrustTests.AdmissionWorkspace();
-        Prepare(workspace.Fixture, "water-optics-v2", leg);
+        Prepare(workspace.Fixture, preset, leg);
         var result = workspace.Select();
         Assert.True(result.Code == 0, result.Output);
         JsonNode row = MatrixRow(File.ReadAllText(workspace.Output));
@@ -30,8 +32,10 @@ public sealed class RendererPerfWaterOpticsWorkflowTests
 
     [Theory]
     [InlineData("rehearsal-water-optics-v2", "linux-vulkan", "ubuntu-24.04", "mesa-lavapipe-software")]
+    [InlineData("rehearsal-water-optics-v3", "linux-vulkan", "ubuntu-24.04", "mesa-lavapipe-software")]
     [InlineData("rehearsal-water-optics-v2-single", "windows-d3d11", "windows-2025-vs2026", "microsoft-warp-software")]
-    public void Select_routes_the_v2_rehearsals(string preset, string leg, string runner, string adapter)
+    [InlineData("rehearsal-water-optics-v3-single", "windows-d3d11", "windows-2025-vs2026", "microsoft-warp-software")]
+    public void Select_routes_the_water_rehearsals(string preset, string leg, string runner, string adapter)
     {
         using var workspace = new RendererPerfWorkflowTrustTests.AdmissionWorkspace();
         Prepare(workspace.Fixture, preset, leg);
@@ -57,10 +61,14 @@ public sealed class RendererPerfWaterOpticsWorkflowTests
 
     [Theory]
     [InlineData("rehearsal-water-optics-v2", "windows-d3d11")]
+    [InlineData("rehearsal-water-optics-v3", "windows-d3d11")]
     [InlineData("rehearsal-water-optics-v2", "windows-vulkan")]
+    [InlineData("rehearsal-water-optics-v3", "windows-vulkan")]
     [InlineData("rehearsal-water-optics-v2-single", "linux-vulkan")]
+    [InlineData("rehearsal-water-optics-v3-single", "linux-vulkan")]
     [InlineData("rehearsal-water-optics-v2-single", "windows-vulkan")]
-    public void Select_refuses_other_v2_rehearsal_legs(string preset, string leg)
+    [InlineData("rehearsal-water-optics-v3-single", "windows-vulkan")]
+    public void Select_refuses_other_water_rehearsal_legs(string preset, string leg)
     {
         using var fixture = new RendererPerfWorkflowContractTests.WorkflowFixture();
         Prepare(fixture, preset, leg);
@@ -86,16 +94,22 @@ public sealed class RendererPerfWaterOpticsWorkflowTests
     // The last three caps differ from a boundary only past double precision, so the selector must compare exact decimals.
     [Theory]
     [InlineData("water-optics-v2", "linux-vulkan", "7.383")]
+    [InlineData("water-optics-v3", "linux-vulkan", "7.383")]
     [InlineData("water-optics-v2", "windows-d3d11", "7.383")]
+    [InlineData("water-optics-v3", "windows-d3d11", "7.383")]
     [InlineData("water-optics-v2", "linux-vulkan", "1.975")]
+    [InlineData("water-optics-v3", "linux-vulkan", "1.975")]
     [InlineData("water-optics-v2", "windows-d3d11", "5.405")]
+    [InlineData("water-optics-v3", "windows-d3d11", "5.405")]
     [InlineData("full", "linux-vulkan", "22.001")]
     [InlineData("full", "windows-d3d11", "22.001")]
     [InlineData("pilot", "linux-vulkan", "22.001")]
     [InlineData("pilot", "windows-d3d11", "22.001")]
     [InlineData("water-optics-v2", "linux-vulkan", "7.382000000000001")]
+    [InlineData("water-optics-v3", "linux-vulkan", "7.382000000000001")]
     [InlineData("full", "windows-d3d11", "22.000000000000001")]
     [InlineData("water-optics-v2", "linux-vulkan", "1.9759999999999999")]
+    [InlineData("water-optics-v3", "linux-vulkan", "1.9759999999999999")]
     public void Select_refuses_campaign_overruns(string preset, string leg, string cap)
     {
         using var workspace = new RendererPerfWorkflowTrustTests.AdmissionWorkspace();
@@ -129,7 +143,9 @@ public sealed class RendererPerfWaterOpticsWorkflowTests
     [InlineData("full", "windows-d3d11")]
     [InlineData("full", "windows-vulkan")]
     [InlineData("water-optics-v2", "linux-vulkan")]
+    [InlineData("water-optics-v3", "linux-vulkan")]
     [InlineData("water-optics-v2", "windows-d3d11")]
+    [InlineData("water-optics-v3", "windows-d3d11")]
     public void Select_accepts_paid_campaign_boundaries(string preset, string leg)
     {
         using var fixture = new RendererPerfWorkflowContractTests.WorkflowFixture();
@@ -137,15 +153,16 @@ public sealed class RendererPerfWaterOpticsWorkflowTests
         fixture.Manifest["approval"]!["campaignMaximumUsd"] = fixture.Manifest["budget"]!["maximumCostUsd"]!.DeepClone();
         fixture.SaveManifest();
         fixture.Accept("Select", "matrix=");
-        fixture.Manifest["approval"]!["campaignMaximumUsd"] = preset == "water-optics-v2" ? 7.382m : 22m;
+        fixture.Manifest["approval"]!["campaignMaximumUsd"] = preset.StartsWith("water-optics-", StringComparison.Ordinal) ? 7.382m : 22m;
         fixture.SaveManifest();
         fixture.Accept("Select", "matrix=");
     }
 
     [Theory]
     [InlineData("water-optics-v2", "Windows Vulkan is not an approved leg for the water-optics-v2 campaign.")]
+    [InlineData("water-optics-v3", "Windows Vulkan is not an approved leg for the water-optics-v3 campaign.")]
     [InlineData("pilot", "Windows Vulkan has no initial pilot")]
-    public void Select_refuses_windows_vulkan_for_v2_and_preserves_the_v1_reason(string preset, string reason)
+    public void Select_refuses_windows_vulkan_for_water_and_preserves_the_v1_reason(string preset, string reason)
     {
         using var fixture = new RendererPerfWorkflowContractTests.WorkflowFixture();
         Prepare(fixture, preset, "windows-vulkan");
@@ -167,6 +184,7 @@ public sealed class RendererPerfWaterOpticsWorkflowTests
         }
         Assert.Equal(RendererPerfPaidPolicy.CampaignMaximumUsd, Constant("campaignMaximumUsd"));
         Assert.Equal(RendererPerfPaidPolicy.WaterOpticsV2CampaignMaximumUsd, Constant("waterOpticsV2CampaignMaximumUsd"));
+        Assert.Equal(RendererPerfPaidPolicy.WaterOpticsV3CampaignMaximumUsd, Constant("waterOpticsV3CampaignMaximumUsd"));
         Assert.Equal(RendererPerfPaidPolicy.LinuxT4RatePerMinuteUsd, Constant("linuxT4RatePerMinuteUsd"));
         Assert.Equal(RendererPerfPaidPolicy.WindowsT4RatePerMinuteUsd, Constant("windowsT4RatePerMinuteUsd"));
     }

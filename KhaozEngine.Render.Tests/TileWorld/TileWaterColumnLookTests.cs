@@ -17,4 +17,11 @@ public sealed class TileWaterColumnLookTests
         Assert.True(TileWaterLooks.River.Clarity is > 0f);
         Assert.False(TileWaterLooks.River.ResolveInto(new WaterSettings(), new WaterSettings()).WaterColumnLight);
     }
+
+    [Fact]
+    public void River_caustic_strength_is_the_owners_pick_with_the_opt_in_inherited()
+    {
+        Assert.Null(TileWaterLooks.River.UnderwaterCaustics);
+        Assert.True(TileWaterLooks.River.CausticStrength > new WaterSettings().CausticStrength);
+    }
 }

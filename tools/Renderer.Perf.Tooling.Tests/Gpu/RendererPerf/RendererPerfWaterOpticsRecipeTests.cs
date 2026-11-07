@@ -1,19 +1,22 @@
 using System;
 using System.Collections.Generic;
+using System.Collections.Immutable;
 using System.Linq;
 using System.Numerics;
 using System.Text.Json.Nodes;
+using KhaozEngine.Gpu;
 using KhaozEngine.Primitives;
 using KhaozEngine.Render3D;
 using KhaozEngine.Render3D.Internal;
 using KhaozEngine.Tests.Render3D;
+using KhaozEngine.Tests.Gpu.Performance;
 using Xunit;
 
 namespace KhaozEngine.Tests.Gpu.RendererPerf;
 
 public sealed class RendererPerfWaterOpticsRecipeTests
 {
-    public static TheoryData<string> Ids => [.. RendererPerfWaterOptics.RecipeIds];
+    public static TheoryData<string> Ids => [.. RendererPerfWaterOptics.RecipeIds, .. RendererPerfWaterOpticsPresetTests.RecipeIds("water-optics-v3")];
 
     [Fact]
     public void Recipe_ids_list_the_six_scenes_in_order()
@@ -33,14 +36,18 @@ public sealed class RendererPerfWaterOpticsRecipeTests
     }
 
     [Theory]
-    [InlineData("village")]
-    [InlineData("outdoors")]
-    public void Profiles_share_everything_but_the_opt_ins(string scene)
+    [InlineData("water-optics-v2", "village")]
+    [InlineData("water-optics-v2", "outdoors")]
+    [InlineData("water-optics-v3", "village")]
+    [InlineData("water-optics-v3", "outdoors")]
+    public void Profiles_share_everything_but_the_opt_ins(string campaign, string scene)
     {
-        RendererPerfRecipe[] recipes = [.. RendererPerfWaterOptics.Profiles
-            .Select(profile => RendererPerfRecipe.Create(RendererPerfWaterOptics.RecipeId(scene, profile), verifyFrozen: false))];
+        RendererPerfRecipe[] recipes = [.. RendererPerfWaterOpticsPresetTests.RecipeIds(campaign)
+            .Where(id => id.Contains("/" + scene + "/", StringComparison.Ordinal))
+            .Select(id => RendererPerfRecipe.Create(id, verifyFrozen: false))];
         try
         {
+            Assert.Equal(3, recipes.Length);
             foreach (RendererPerfRecipe recipe in recipes)
             {
                 Assert.Equal(recipes[0].Facts.GeometrySha256, recipe.Facts.GeometrySha256);
@@ -51,16 +58,19 @@ public sealed class RendererPerfWaterOpticsRecipeTests
             Assert.Equal(3, recipes.Select(r => r.Facts.SettingsSha256).Distinct().Count());
             // The serialized settings, and the rest of the construction, are equal once the opt-ins are removed.
             JsonObject[] descriptions = [.. recipes.Select(r => JsonNode.Parse(r.Describe())!.AsObject())];
-            string[][] optIns = [[], ["UnderwaterSunlight"], ["UnderwaterSunlight", "WaterColumnLight"]];
+            string[][] optIns = campaign == "water-optics-v3"
+                ? [[], ["UnderwaterSunlight", "WaterColumnLight"], ["UnderwaterSunlight", "WaterColumnLight", "UnderwaterCaustics"]]
+                : [[], ["UnderwaterSunlight"], ["UnderwaterSunlight", "WaterColumnLight"]];
             for (int i = 0; i < descriptions.Length; i++)
             {
                 JsonObject water = descriptions[i]["Settings"]!["Water"]!.AsObject();
-                foreach (string name in new[] { "UnderwaterSunlight", "WaterColumnLight" })
+                foreach (string name in new[] { "UnderwaterSunlight", "WaterColumnLight", "UnderwaterCaustics" })
                 {
                     Assert.Equal(optIns[i].Contains(name), water.ContainsKey(name));
                     if (water[name] is { } value) Assert.True(value.GetValue<bool>());
                     water.Remove(name);
                 }
+                water.Remove("CausticStrength");
                 descriptions[i].Remove("Id");
                 descriptions[i].Remove("SettingsSha256");
             }
@@ -95,6 +105,7 @@ public sealed class RendererPerfWaterOpticsRecipeTests
         };
         Assert.Equal(sunlight, water.UnderwaterSunlight);
         Assert.Equal(column, water.WaterColumnLight);
+        Assert.Equal(id.EndsWith("/m3-on", StringComparison.Ordinal), water.UnderwaterCaustics);
     }
 
     [Theory]
@@ -116,7 +127,7 @@ public sealed class RendererPerfWaterOpticsRecipeTests
         Assert.Equal(-1.25f, pool.Plane.FloorY);
         Assert.Equal(1.5f, pool.Plane.SurfaceY - pool.Plane.FloorY!.Value, 5);
         // The wave clearance is the active wave source's amplitude bound plus 0.15 m.
-        float bound = id.Contains("/village/", StringComparison.Ordinal)
+        float bound = pool.Plane.Look?.WaveSource == WaterWaveSource.Procedural
             ? pool.Plane.Look!.SwellAmplitude!.Value
             : RendererPerfWaterOpticsPool.FftDisplacementBound(scene.WaterSettings);
         Assert.Equal(bound, pool.WaveBound);
@@ -307,10 +318,71 @@ public sealed class RendererPerfWaterOpticsRecipeTests
         Assert.Equal(profile == RendererPerfWaterOpticsProfile.Off ? 0 : 1, volumes.RecordCount);
         Assert.Equal(0, volumes.DroppedRecords);
         if (profile != RendererPerfWaterOpticsProfile.Off) Assert.True(volumes.ReferenceCount > 0);
-        bool columns = profile == RendererPerfWaterOpticsProfile.M5On;
+        bool columns = profile != RendererPerfWaterOpticsProfile.Off && profile != RendererPerfWaterOpticsProfile.M2On;
         Assert.Equal(columns ? 1 : 0, column.OptedInPlanes);
         Assert.Equal(columns, column.CopyRan);
         Assert.Equal(columns, column.CopyPath != WaterColumnCopyPath.None);
+    }
+
+    [Theory]
+    [InlineData("village", "off", false)]
+    [InlineData("village", "m5-on", false)]
+    [InlineData("village", "m3-on", true)]
+    [InlineData("outdoors", "off", false)]
+    [InlineData("outdoors", "m5-on", false)]
+    [InlineData("outdoors", "m3-on", true)]
+    public void M3_recipes_execute_the_caustic_pass(string sceneName, string profile, bool executed)
+    {
+        using var recipe = RendererPerfRecipe.Create("water-optics-v3/" + sceneName + "/" + profile);
+        var identity = Identity(recipe, "S0");
+        var definitions = RendererPerfFrozenLayout.Create(identity);
+        long clock = 0;
+        var recorder = new RendererPerfRecorder(1, RendererPerfLayout.PerPass, definitions, () => ++clock, 1000);
+        using var native = new PostTraceDevice();
+        var device = RendererPerfDevice.Wrap(native, recorder);
+        using var commands = device.Factory.CreateCommandList();
+        var observer = new RendererPerfPassObserver(recorder, RendererPerfLayout.PerPass, definitions);
+        using var work = new RendererPerfSceneWorkload(device, observer, identity, (_, _) => { });
+        work.PrepareCold(-192);
+        recorder.BeginFrame(0, 0, 0);
+        observer.BeginFrame();
+        work.Prepare(-192);
+        commands.Begin(); work.Record(commands, -192); commands.End();
+        recorder.EndFrame();
+        var timing = new GpuPerfTimestampResult(Enumerable.Range(0, (int)recorder.MarkerCount)
+            .Select(i => (ulong)i).ToImmutableArray(), 1d, true, "synthetic marker ticks");
+        var sample = recorder.Harvest(0, timing);
+        Assert.Empty(sample.Errors);
+        var pass = Assert.Single(sample.Passes, p => p.Id == "water.caustics");
+        Assert.Equal(executed ? RendererPerfMetricStatus.Available : RendererPerfMetricStatus.NotExecuted, pass.Duration.Status);
+        Assert.Equal(executed ? 1 : 0, work.Scene.WaterCausticDiagnostics.DrawnPlanes);
+        Assert.Equal(0, work.Scene.WaterCausticDiagnostics.FftPlanes);
+        if (executed)
+        {
+            var pool = ((IRendererPerfWaterOpticsScene)recipe).Pool;
+            var window = work.Scene.WaterSurfaceWindowForTests;
+            Assert.InRange(pool.Plane.CenterX, window.MinX, window.MinX + WaterSurfaceWindow.ExtentMetres);
+            Assert.InRange(pool.Plane.CenterZ, window.MinZ, window.MinZ + WaterSurfaceWindow.ExtentMetres);
+            Assert.True(pool.MinX < window.MinX + WaterSurfaceWindow.ExtentMetres && pool.MaxX > window.MinX);
+            Assert.True(pool.ShoreZ < window.MinZ + WaterSurfaceWindow.ExtentMetres && pool.FarZ > window.MinZ);
+            Assert.Equal(4f, ((IRendererPerfWaterOpticsScene)recipe).WaterSettings.CausticStrength);
+        }
+    }
+
+    [Fact]
+    public void V3_outdoors_changes_the_wave_source_while_preserving_props_and_camera()
+    {
+        using var v2 = RendererPerfRecipe.Create("water-optics-v2/outdoors/m5-on");
+        using var v3 = RendererPerfRecipe.Create("water-optics-v3/outdoors/m5-on", verifyFrozen: false);
+        var oldPool = ((IRendererPerfWaterOpticsScene)v2).Pool;
+        var pool = ((IRendererPerfWaterOpticsScene)v3).Pool;
+        Assert.Equal(WaterWaveSource.Procedural, pool.Plane.Look!.WaveSource);
+        Assert.Equal(.08f, pool.WaveBound);
+        Assert.Equal(oldPool.Props, pool.Props);
+        Assert.Equal(v2.Facts.SequenceSha256, v3.Facts.SequenceSha256);
+        Assert.Equal(v2.Facts.AssetSha256, v3.Facts.AssetSha256);
+        Assert.Equal(0, v3.Facts.Schedule.Features!.OceanDispatches);
+        Assert.Equal(0, v3.Facts.Schedule.Features.OceanMipCopies);
     }
 
     [Theory]
@@ -321,6 +393,7 @@ public sealed class RendererPerfWaterOpticsRecipeTests
         RendererPerfPassDefinition[] passes = RendererPerfFrozenLayout.Create(Identity(recipe, "S0"));
         Assert.InRange(passes.Length, 1, 255);
         Assert.Contains(passes, pass => pass.Id == "water");
+        Assert.Single(passes, pass => pass.Id == "water.caustics");
     }
 
     static RendererPerfRecipeIdentity Identity(RendererPerfRecipe recipe, string sceneId)

@@ -57,13 +57,20 @@ internal static class RendererPerfSchedules
         new(4, "effects-ui/1", "renderer-full-native-1080/1"),
     ];
     static readonly ImmutableArray<RendererPerfScheduledRecipe> V1Pilot = [V1Recipes[3]];
-    static readonly ImmutableArray<RendererPerfScheduledRecipe> WaterOpticsV2Recipes =
-        [.. RendererPerfWaterOptics.RecipeIds.Select((id, scene) => new RendererPerfScheduledRecipe(scene, id + "/1", "renderer-full-native-1080/1"))];
-    static readonly ImmutableArray<RendererPerfProfilePair> WaterOpticsV2Pairs =
-    [
-        new(0, 1, "village OFF to M2 ON"), new(1, 2, "village M2 ON to M5 ON"),
-        new(3, 4, "outdoors OFF to M2 ON"), new(4, 5, "outdoors M2 ON to M5 ON")
-    ];
+    static ImmutableArray<RendererPerfSchedule> WaterOpticsSchedules(RendererPerfWaterOpticsCampaign campaign)
+    {
+        ImmutableArray<RendererPerfScheduledRecipe> recipes = [.. campaign.RecipeIds.Select((id, scene) =>
+            new RendererPerfScheduledRecipe(scene, id + "/1", "renderer-full-native-1080/1"))];
+        return
+        [
+            new(campaign.Preset, RendererPerfExecutionClass.Performance, recipes,
+                3, 192, 256, AllControls, 64, 128, 1200, 5, 19632, campaign.Legs) { ProfilePairs = campaign.Pairs },
+            new(campaign.RehearsalPreset, RendererPerfExecutionClass.Rehearsal, recipes,
+                3, 64, 128, AllControls, 32, 64, 300, 5, 8364, [campaign.Legs[0]]) { ProfilePairs = campaign.Pairs },
+            new(campaign.SinglePreset, RendererPerfExecutionClass.Rehearsal, recipes,
+                1, 32, 64, AllControls, 32, 64, 300, 5, 2604, [campaign.Legs[1]]) { ProfilePairs = campaign.Pairs },
+        ];
+    }
 
     static RendererPerfSchedule V1PilotSchedule(string preset, RendererPerfExecutionClass executionClass)
         => new(preset, executionClass, V1Pilot, 1, 64, 128, PilotControls, 32, 64, 300, 3, 1260, PilotLegs);
@@ -78,12 +85,7 @@ internal static class RendererPerfSchedules
         V1FullSchedule("rehearsal-full", RendererPerfExecutionClass.Rehearsal),
         // A short conditioning session still carries the cold first frame and the S3 recipe facts without scene blocks.
         new("rehearsal-controls", RendererPerfExecutionClass.Rehearsal, V1Pilot, 0, 0, 0, AllControls, 64, 128, 3, 3, 2307, AllLegs),
-        new("water-optics-v2", RendererPerfExecutionClass.Performance, WaterOpticsV2Recipes,
-            3, 192, 256, AllControls, 64, 128, 1200, 5, 19632, PilotLegs) { ProfilePairs = WaterOpticsV2Pairs },
-        new("rehearsal-water-optics-v2", RendererPerfExecutionClass.Rehearsal, WaterOpticsV2Recipes,
-            3, 64, 128, AllControls, 32, 64, 300, 5, 8364, ["linux-vulkan"]) { ProfilePairs = WaterOpticsV2Pairs },
-        new("rehearsal-water-optics-v2-single", RendererPerfExecutionClass.Rehearsal, WaterOpticsV2Recipes,
-            1, 32, 64, AllControls, 32, 64, 300, 5, 2604, ["windows-d3d11"]) { ProfilePairs = WaterOpticsV2Pairs },
+        .. RendererPerfWaterOpticsCampaigns.All.SelectMany(c => WaterOpticsSchedules(c)),
     ];
 
     internal static ImmutableArray<string> Presets { get; } = [.. Table.Select(s => s.Preset)];

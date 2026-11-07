@@ -58,6 +58,9 @@ namespace KhaozEngine.Tests.Gpu
             CaptureTemporalPipelines(device, commands, KhaozEngine.Tests.Render3D.TemporalVisibilityLayoutTests.Layout(false, true));
             CaptureTemporalPipelines(device, commands, KhaozEngine.Tests.Render3D.TemporalVisibilityLayoutTests.Layout(true, true));
             CaptureFoliageShadowPipelines(scene, framebuffer, commands);
+            // Built at a scene's first participating body, which this scene never queues.
+            using (GpuRetireQueue retired = GpuRetireQueue.CreateFrameCounted(device, 3))
+            using (new WaterCausticRenderer(device, retired)) { }
 
             ShippedGraphicsProgram[] expectedPrograms = ShippedShaderPrograms.GraphicsPrograms()
                 .Where(program => Parse(program.VertexGlsl).Count > 0)

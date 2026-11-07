@@ -34,7 +34,7 @@ public sealed class RendererPerfBaselineFixture : IDisposable
     internal RendererPerfBaselineLeg Create(string leg, string unit, string preset, int billed, string? fault = null)
     {
         bool rehearsal = preset.StartsWith("rehearsal", StringComparison.Ordinal);
-        bool profiles = preset.Contains("water-optics-v2", StringComparison.Ordinal);
+        bool profiles = preset.Contains("water-optics-", StringComparison.Ordinal);
         var report = profiles ? RendererPerfProfileFixture.Report(preset, leg) : RendererPerfAnalysisFixture.Report(preset == "full");
         var manifestJson = profiles ? RendererPerfWaterOpticsPresetTests.ManifestJson(preset, leg)
             : rehearsal ? RendererPerfRehearsalManifestTests.ManifestJson() : RendererPerfProtocolTests.ManifestJson(preset, leg);

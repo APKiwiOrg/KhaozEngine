@@ -5957,7 +5957,7 @@ is retained after a failed preparation and is zero before the first success. Unr
   ripple normal on top, a camera-distance detail fade, per-channel Beer-Lambert depth grading of the body colour, a
   fresnel blend toward the reflected sky, a GGX sun glint with distance/footprint roughness widening,
   procedural whitecap and shoreline foam, and a depth-driven shore fade at the waterline.
-  **No bent image lookup, no screen-space reflections, no caustics, no submerged view** - the reflection is the
+  **No bent image lookup, no screen-space reflections, no submerged view** - the reflection is the
   sky only (the legacy gradient or the enabled atmosphere's sky-view LUT, with a CPU mirror through
   `AtmosphereModel`). Feed the returning camera-aware `SunCycle.Apply` horizon to `Post.Water.HorizonColor`.
   Issue #54 records probes/SSR as not planned at the current bar. This is a stylized LDR surface, not a
@@ -5980,7 +5980,8 @@ is retained after a failed preparation and is zero before the first success. Unr
     `ClusterCamera.w` carries the independent record count. Zero skips the entire water query without a buffer
     read or upload, so a frame with no opted-in water renders exactly as before. Every lit program reads
     `WaterVolumes` at appended set 0 binding 15 for rigid, foliage and CPU-skinned, 7 for GPU-skinned, or 6 for
-    splat and tile ground. A layout gains a binding with its first shader reader because optimization removes
+    splat and tile ground, with `CausticMap` and `CausticSampler` on the next two bindings.
+    A layout gains a binding with its first shader reader because optimization removes
     unread declarations and shifts Direct3D11 registers. Shaderc preserve-bindings stays unchanged.
     Scene and standalone lit renderer construction require `GpuCapabilities.MaxFragmentStorageBuffers >= 3`
     before GPU allocation, including when water is disabled. Lower reports throw
@@ -6006,7 +6007,8 @@ is retained after a failed preparation and is zero before the first success. Unr
     ```
     **Overridable fields**: `WaveSource`, the whole swell group, the ripple/detail group, body colour
     (`DeepColor`/`ShallowColor`/`AbsorptionPerMetre`/`UnderwaterSunlight`/`UnderwaterPenumbraPerMetre`/
-    `WaterColumnLight`/`WaterColor`/`Clarity`/`ShallowDepth`/`Opacity`), foam, the four `Glint*` scalars,
+    `UnderwaterCaustics`/`CausticStrength`/`WaterColumnLight`/`WaterColor`/`Clarity`/`ShallowDepth`/`Opacity`),
+    foam, the four `Glint*` scalars,
     `ShoreFadeDistance`, and the two depth-response strengths `ShoalingStrength`/`SurfStrength`.
     **What stays scene-wide, and cannot be put on
     a look at all**: `SeaState` (one FFT bake - calling the producer twice a frame with two sea states does not
@@ -6026,6 +6028,21 @@ is retained after a failed preparation and is zero before the first success. Unr
     being written anyway. Per-body sea states, bathymetry and grid modes stay deferred to
     [#275](https://github.com/APKiwiOrg/KhaozEngine/issues/275). Rationale, including why a per-plane sea state
     is refused rather than deferred: `docs/design/WATER-PER-PLANE-LOOK-DESIGN-2026-07-27.md`.
+  - **Caustic authoring**: `UnderwaterCaustics` defaults to `false` and `CausticStrength` defaults to `1`.
+    Nullable `WaterLook` overrides inherit on `null`, and an explicit `false` opts a body out. Strength scales
+    refracted focus offsets from the still-water ray, with `1` representing physical focusing. Frame
+    preparation requires finite, non-negative strength only for an opted-in procedural body, otherwise throwing
+    `ArgumentException` with `ParamName` equal to `CausticStrength`. FFT bodies ignore the opt-in and strength.
+    FFT and disabled bodies leave strength unvalidated.
+    A positive strength on a procedural body also opts it into underwater sunlight without changing
+    `UnderwaterSunlight`, contributing a water volume record even when `WaterColumnLight` is false.
+    A participating body draws into a 64 m window that follows where the view meets the water, and lit receivers
+    under it read moving bands from the caustic map. `scene.WaterCausticDiagnostics` reports `OptedInPlanes`,
+    `DrawnPlanes`, `FftPlanes`, `OverflowPlanes` and `Layers` for the latest rendered frame. A frame with no
+    participating body runs no pass and creates no atlas. The first participating body costs a lit set replacement and
+    about 10.5 MB per atlas layer, and the atlases never shrink. Known limits: FFT bodies have no caustics, four map
+    layers (a body past them renders without caustics and is counted), the window's outer 4 m fades the term to 1 and
+    receivers outside it read 1, and bodies sharing a layer can exchange light across a gap narrower than its deflection.
   - **Water-column authoring**: `WaterColumnLight` defaults to `false`, `WaterColor` defaults to neutral linear
     RGB `(0.10, 0.13, 0.10, 1)` with alpha ignored, and `Clarity` defaults to `2` metres of vertical depth for
     about 5% bed visibility when seen straight down. These are neutral authoring defaults, not tuned river values.
@@ -6136,8 +6153,9 @@ is retained after a failed preparation and is zero before the first success. Unr
       all-zero falls back to the legacy two-stop blend over `ShallowDepth`), plus `Opacity`. The resolved absorption
       also drives underwater sunlight for bodies without `WaterColumnLight`, where all-zero absorption means
       no attenuation.
-    - *Underwater sunlight*: either `UnderwaterSunlight` or `WaterColumnLight` opts in (both scene defaults `false`),
-      with `UnderwaterPenumbraPerMetre` (scene default `0.03` metres of extra penumbra radius per metre of in-water path).
+    - *Underwater sunlight*: `UnderwaterSunlight`, `WaterColumnLight` or `UnderwaterCaustics` with positive strength
+      and effective procedural waves opts in (all scene defaults `false`), with `UnderwaterPenumbraPerMetre`
+      (scene default `0.03` metres of extra penumbra radius per metre of in-water path).
       The penumbra value must be finite and non-negative. It is available on any plane, procedural or FFT, bound or
       unbound. The water refractive index is the fixed constant `1.333`, not a setting. A frame with no opted-in water
       renders exactly as before. The receiver's own body supplies the light path, using its still-water plane
@@ -20303,6 +20321,10 @@ lower bound, not an honest whole-frame GPU duration, so it was not shipped eithe
 finished frame to the screen) is not covered by these brackets: that happens in `KhaozEngine.Windowing.AppWindow.Run`,
 outside anything `Scene3D` records into.
 
+`ModelMs` includes underwater caustic planning and recording, opaque light-cluster construction, and the
+model/terrain (splat) instanced draws. Enabling caustics can therefore increase this interval before any
+model draw is recorded.
+
 `Scene3D` (`KhaozEngine.Render3D`) has no dependency on `KhaozEngine.Diagnostics`, so it exposes the raw
 per-pass milliseconds itself (`Scene3D.PassTimingsMs`, a `Scene3DPassTimingsMs` with `ShadowDepthMs` /
 `ModelMs` / `TransparentsMs` / `PostMs`) rather than owning a `PassTimings` meter directly - the same shape as
@@ -26453,6 +26475,7 @@ Group intervals contain children and their durations must not be added as extra 
 | `shadow.point.static.face`, `.dynamic.face`, `.transient.face` | One of six faces under its row, occurrence is `row * 6 + face` |
 | `shadow.point.static.setup`, `.rigid`, `.foliage`, `.gpu-skinned`, `.cpu-skinned`, and the matching `dynamic` or `transient` prefixes | Atlas bind/clear and face leaf work, occurrence is atlas row for setup or `row * 6 + face` for draws |
 | `shadow.point.uploads`, `.finish` | Shared face/proxy/caster uploads and final atlas scissor restoration |
+| `water.caustics` | Surface field and caustic map atlases, with uploads before the first target, skipped without a participating body |
 | `opaque.light-clusters`, `.clear`, `.depth-clear`, `.frame-uniforms` | Cluster uploads, MRT bind and color clears, depth clear, frame uniforms and initial pipeline bind |
 | `motion.clear`, `opaque.visibility-clear` | Existing motion sentinel and independent key-shadow visibility clears, in native order |
 | `opaque.rigid`, `.splat`, `.tile-ground`, `.foliage`, `.gpu-skinned`, `.cpu-skinned` | Main geometry routes, with fused motion metadata when the MRT is active |

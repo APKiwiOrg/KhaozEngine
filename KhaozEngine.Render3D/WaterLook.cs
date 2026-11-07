@@ -73,13 +73,27 @@ namespace KhaozEngine.Render3D
 
         /// <summary>Overrides <see cref="WaterSettings.UnderwaterSunlight"/> for this plane. Default <c>null</c>
         /// inherits the scene's opt-in, which defaults to <c>false</c>. An enabled <see cref="WaterColumnLight"/>
-        /// also enables underwater sunlight without changing this field.</summary>
+        /// or participating <see cref="UnderwaterCaustics"/> also enables underwater sunlight without changing
+        /// this field.</summary>
         public bool? UnderwaterSunlight;
 
         /// <summary>Overrides <see cref="WaterSettings.UnderwaterPenumbraPerMetre"/> in metres of extra
         /// key-shadow penumbra radius per metre of in-water light path. Must be finite and non-negative when set.
         /// Default <c>null</c> inherits the scene's value, which defaults to <c>0.03</c>.</summary>
         public float? UnderwaterPenumbraPerMetre;
+
+        /// <summary>Overrides <see cref="WaterSettings.UnderwaterCaustics"/> for this plane, opting in to
+        /// underwater sunlight focusing by procedural surface waves. Default <c>null</c> inherits the scene's
+        /// opt-in, which defaults to <c>false</c>. An explicit <c>false</c> opts this body out.</summary>
+        public bool? UnderwaterCaustics;
+
+        /// <summary>Overrides <see cref="WaterSettings.CausticStrength"/>, the dimensionless scale of refracted
+        /// focus offsets from the still-water ray. Strength scales focus displacement, not final brightness
+        /// or contrast. Default <c>null</c> inherits the scene's physical <c>1</c> default. Must resolve finite
+        /// and non-negative only when <see cref="UnderwaterCaustics"/> resolves enabled and the resolved
+        /// <see cref="WaveSource"/> is <see cref="WaterWaveSource.Procedural"/>. FFT bodies ignore the opt-in
+        /// and strength, so strength is not validated for them.</summary>
+        public float? CausticStrength;
 
         /// <summary>Overrides <see cref="WaterSettings.WaterColumnLight"/> for this plane. Default <c>null</c>
         /// inherits the scene's opt-in, which defaults to <c>false</c>. An explicit <c>false</c> disables the
@@ -303,6 +317,8 @@ namespace KhaozEngine.Render3D
             if (AbsorptionPerMetre.HasValue) scratch.AbsorptionPerMetre = AbsorptionPerMetre.Value;
             if (UnderwaterSunlight.HasValue) scratch.UnderwaterSunlight = UnderwaterSunlight.Value;
             if (UnderwaterPenumbraPerMetre.HasValue) scratch.UnderwaterPenumbraPerMetre = UnderwaterPenumbraPerMetre.Value;
+            if (UnderwaterCaustics.HasValue) scratch.UnderwaterCaustics = UnderwaterCaustics.Value;
+            if (CausticStrength.HasValue) scratch.CausticStrength = CausticStrength.Value;
             if (WaterColumnLight.HasValue) scratch.WaterColumnLight = WaterColumnLight.Value;
             if (WaterColor.HasValue) scratch.WaterColor = WaterColor.Value;
             if (Clarity.HasValue) scratch.Clarity = Clarity.Value;

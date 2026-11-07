@@ -44,7 +44,7 @@ public sealed class WaterColumnRiverScene : IDisposable
         for (int frame = 0; frame < Math.Max(1, warmupFrames); frame++)
         {
             scene.Begin();
-            scene.EffectTimeSeconds = 0f;
+            scene.EffectTimeSeconds = settings.Time;
             Draw(scene, settings);
             scene.PrepareFrame(settings.Size, settings.Size);
             using (GpuRecording.Open(device, _commands!, nameof(WaterColumnRiverScene)))
@@ -210,7 +210,7 @@ public sealed class WaterColumnRiverScene : IDisposable
             Water(0f, 1f, Look(new Color(0.04f, 0.35f, 0.65f), 0.4f, s.Enabled));
             Water(2f, 1f, Look(s.WaterColor, s.Clarity, false));
         }
-        else Water(0f, 6f, Look(s.WaterColor, s.Clarity, s.Enabled));
+        else Water(0f, 6f, s.Look ?? Look(s.WaterColor, s.Clarity, s.Enabled));
     }
 
     void Ensure(int size)

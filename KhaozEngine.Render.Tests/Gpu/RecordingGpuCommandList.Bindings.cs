@@ -23,6 +23,10 @@ namespace KhaozEngine.Tests.Gpu
         /// <summary>Record <see cref="Bindings"/> for every indexed draw. Off by default.</summary>
         public bool CaptureBindings { get; set; }
 
+        /// <summary>With <see cref="CaptureBindings"/>, also record instanced draws without an index buffer, such as the
+        /// caustic sheets. Off by default, so tests that index the indexed draws' bindings keep their positions.</summary>
+        public bool CaptureInstancedBindings { get; set; }
+
         /// <summary>The bindings of every indexed draw since the last <see cref="Clear"/>, in record order. Empty
         /// unless <see cref="CaptureBindings"/> was on.</summary>
         internal IReadOnlyList<DrawBindings> Bindings => _drawBindings;

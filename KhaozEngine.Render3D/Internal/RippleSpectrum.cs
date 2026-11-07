@@ -5,7 +5,7 @@ namespace KhaozEngine.Render3D.Internal
     /// <summary>
     /// Pure, GPU-free mirror of the water fragment shader's RIPPLE SLOPE SPECTRUM: the component generator, the
     /// per-component footprint band-limit, and the slope-variance-to-roughness transfer that catches the energy the
-    /// band-limit removes (<c>waterSlope</c> in <c>ShaderSources.Water.cs</c> MUST mirror this exactly, the same
+    /// band-limit removes (<c>waterSlope</c> in <c>ShaderSources.WaterRipples.cs</c> MUST mirror this exactly, the same
     /// contract <see cref="GerstnerWaves"/> has with the vertex stage). No GPU state, no allocations.
     /// <para>
     /// This replaced a field of three fixed cosines. Three coherent cosines do not make a surface, they make a

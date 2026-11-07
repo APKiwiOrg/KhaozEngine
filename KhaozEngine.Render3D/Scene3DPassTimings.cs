@@ -26,7 +26,8 @@ namespace KhaozEngine.Render3D
         /// <see cref="ShadowMode.ShadowMap"/> (the pass does not run) or when timing is off.</summary>
         public float ShadowDepthMs { get; }
 
-        /// <summary>CPU time recording the model/terrain (splat) instanced draws.</summary>
+        /// <summary>CPU time planning and recording underwater caustics, building opaque light clusters, and
+        /// recording the model/terrain (splat) instanced draws.</summary>
         public float ModelMs { get; }
 
         /// <summary>CPU time recording transparents/decals: textured billboards, beams, overlay meshes, the MRT

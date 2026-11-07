@@ -35,15 +35,18 @@ internal sealed class RendererPerfWaterOpticsPool
     readonly GltfMesh _bed, _rock = MeshPrimitives.Sphere(1.6f, 10, 12), _caster = MeshPrimitives.Box(.8f),
         _floater = MeshPrimitives.RoundedBox(1.4f, .3f, 4);
     readonly uint _seed;
+    readonly float _propClearance;
     RendererPerfPoolProp[]? _props;
     RigidInstanceDraw[] _draws = [];
     MeshHandle[] _handles = [];
 
     internal RendererPerfWaterOpticsPool(float minX, float maxX, float shoreZ, float farZ, float waveBound,
-        WaterLook? look, uint seed, float propScale = 1f)
+        WaterLook? look, uint seed, float propScale = 1f, float? propWaveBound = null)
     {
         (MinX, MaxX, ShoreZ, FarZ, WaveBound) = (minX, maxX, shoreZ, farZ, waveBound);
         Clearance = waveBound + WaveMargin;
+        // A later campaign can keep the original conservative prop placement while changing its wave source.
+        _propClearance = (propWaveBound ?? waveBound) + WaveMargin;
         Plane = new WaterPlane((minX + maxX) * .5f, SurfaceY, (shoreZ + farZ) * .5f, (maxX - minX) * .5f,
             (farZ - shoreZ) * .5f, look, floorY: FloorY);
         _bed = BuildBed();
@@ -174,9 +177,9 @@ internal sealed class RendererPerfWaterOpticsPool
     {
         var rng = new SplitMix(seed);
         var placed = new List<RendererPerfPoolProp>();
-        float top = SurfaceY - Clearance - Gap;
+        float top = SurfaceY - _propClearance - Gap;
         Vector3 caster = CasterSize * PropScale, rock = RockSize * PropScale;
-        Vector3 floater = FloaterFootprint * PropScale + new Vector3(0f, 2f * Clearance + 2f * Gap, 0f);
+        Vector3 floater = FloaterFootprint * PropScale + new Vector3(0f, 2f * _propClearance + 2f * Gap, 0f);
         Add(RendererPerfPoolPropKind.Caster, CasterCount, caster, top - caster.Y * .5f, caster.Y);
         Add(RendererPerfPoolPropKind.Floater, FloaterCount, floater, SurfaceY, floater.Y);
         Add(RendererPerfPoolPropKind.Rock, RockCount, rock, float.NaN, 0f);

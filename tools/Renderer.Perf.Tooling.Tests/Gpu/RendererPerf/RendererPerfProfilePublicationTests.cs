@@ -17,6 +17,26 @@ public sealed class RendererPerfProfilePublicationTests : IClassFixture<Renderer
 
     RendererPerfProfileRequest Request() => new("khaozengine.renderer-profile-request/1", _fixture.Output(), _fixture.ProfileLegs());
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void V3_publication_requires_both_legs_from_the_same_campaign(bool reverse)
+    {
+        string suffix = reverse ? "-reversed" : "";
+        var linux = _fixture.Create("linux-vulkan", "v3-linux" + suffix, "water-optics-v3", 38);
+        var windows = _fixture.Create("windows-d3d11", "v3-windows" + suffix, "water-optics-v3", 53);
+        var old = _fixture.ProfileLegs();
+        var request = new RendererPerfProfileRequest("khaozengine.renderer-profile-request/1", _fixture.Output(),
+            reverse ? [old[0], windows] : [linux, old[1]]);
+        Assert.Equal("NotProfile", Assert.Throws<RendererPerfBaselineException>(() => RendererPerfProfilePublisher.Publish(request)).Code);
+        Assert.False(Directory.Exists(request.OutputDirectory));
+        var files = RendererPerfProfilePublisher.Publish(request with { Legs = reverse ? [windows, linux] : [linux, windows] });
+        Assert.Equal(4, files.Length);
+        string profiles = File.ReadAllText(Path.Combine(request.OutputDirectory, "profiles-v3-linux" + suffix + "-v3-windows" + suffix + ".md"));
+        foreach (string label in new[] { "village OFF to M5 ON", "village M5 ON to M3 ON", "outdoors OFF to M5 ON", "outdoors M5 ON to M3 ON" })
+            Assert.Contains(label, profiles);
+    }
+
     [Fact]
     public void Single_rehearsal_compares_every_profile_pair_in_both_layouts()
     {

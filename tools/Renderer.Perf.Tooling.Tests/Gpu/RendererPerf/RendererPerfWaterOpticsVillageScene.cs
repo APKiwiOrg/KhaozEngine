@@ -14,9 +14,12 @@ internal sealed class RendererPerfWaterOpticsVillageScene : RendererPerfVillageS
     // Frames the pool so its surface covers about half of every measured frame.
     const float OrthoSize = 30f;
 
-    internal RendererPerfWaterOpticsVillageScene(RendererPerfWaterOpticsProfile profile)
-        : base(RendererPerfWaterOptics.RecipeId("village", profile), 8, 1024, 24)
+    readonly bool _v3;
+
+    internal RendererPerfWaterOpticsVillageScene(RendererPerfWaterOpticsProfile profile, string campaign = "water-optics-v2")
+        : base(RendererPerfWaterOptics.RecipeId("village", profile, campaign), 8, 1024, 24)
     {
+        _v3 = campaign == "water-optics-v3";
         Profile = profile;
         Pool = new RendererPerfWaterOpticsPool(-32f, 32f, 32f, 64f, SwellAmplitude,
             new WaterLook { WaveSource = WaterWaveSource.Procedural, SwellAmplitude = SwellAmplitude }, Seed);
@@ -37,7 +40,14 @@ internal sealed class RendererPerfWaterOpticsVillageScene : RendererPerfVillageS
     protected override void ConfigureSettings(PixelPostProcessSettings post)
     {
         base.ConfigureSettings(post);
-        RendererPerfWaterOptics.Apply(post.Water, Profile);
+        RendererPerfWaterOptics.Apply(post.Water,
+            Profile == RendererPerfWaterOpticsProfile.M3On ? RendererPerfWaterOpticsProfile.M5On : Profile);
+        if (_v3)
+        {
+            post.Water.UnderwaterCaustics = Profile == RendererPerfWaterOpticsProfile.M3On;
+            // The owner's River pick. Keep the legacy profiles' default strength frozen.
+            if (post.Water.UnderwaterCaustics) post.Water.CausticStrength = 4f;
+        }
     }
 
     protected override IsoCamera3D Camera()

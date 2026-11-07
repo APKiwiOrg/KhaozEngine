@@ -154,6 +154,9 @@ namespace KhaozEngine.Tests.Gpu
                 ["WaterClipmap"] = "WaterRenderer",
                 ["WaterTriangle"] = "WaterRenderer",
                 ["WaterClipmapTriangle"] = "WaterRenderer",
+                ["WaterSurfaceField"] = "WaterCausticRenderer field",
+                ["WaterCausticSubtract"] = "WaterCausticRenderer subtract",
+                ["WaterCausticSheet"] = "WaterCausticRenderer sheet",
 
                 ["PostPalette"] = "PixelPostProcess pal",
                 ["PostEdge"] = "PixelPostProcess edge",
@@ -249,7 +252,9 @@ namespace KhaozEngine.Tests.Gpu
                     atmosphere = [.. atmosphere, new(0, 14, GpuResourceKind.TextureReadOnly, "InteriorCut")];
                 int waterBinding = prefix == 11 ? 15 : prefix + 3;
                 atmosphere = [.. atmosphere,
-                    new(0, waterBinding, GpuResourceKind.StructuredBufferReadOnly, "WaterVolumeBuffer")];
+                    new(0, waterBinding, GpuResourceKind.StructuredBufferReadOnly, "WaterVolumeBuffer"),
+                    new(0, waterBinding + 1, GpuResourceKind.TextureReadOnly, "CausticMap"),
+                    new(0, waterBinding + 2, GpuResourceKind.Sampler, "CausticSampler")];
                 Assert.Equal(atmosphere, Parse(program.FragmentGlsl)
                     .Where(d => d.Set == 0 && d.Binding >= prefix).OrderBy(d => d.Binding).ToArray());
             }
@@ -346,7 +351,7 @@ namespace KhaozEngine.Tests.Gpu
                 .ToHashSet(StringComparer.Ordinal);
 
             // Ten certified FullyLit variants cover resolve, debug/count and both split sizes at both precisions.
-            Assert.Equal(128, catalog.Length);
+            Assert.Equal(131, catalog.Length);
             Assert.Equal(catalog.Length, ProgramPipelines.Count);
 
             foreach (string program in catalog)

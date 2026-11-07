@@ -13,12 +13,17 @@ namespace KhaozEngine.Render3D.Internal;
 /// Words [114048,163200) hold up to 4096 records, each twelve uints (three uvec4), starting at 114048 + record * 12.
 /// Every record field is a float bit pattern read with uintBitsToFloat. Its first uvec4 is (MinX,MinZ,MaxX,MaxZ),
 /// its second is (SurfaceY,FloorY,AbsorptionPerMetre.X,AbsorptionPerMetre.Y), and its third is
-/// (AbsorptionPerMetre.Z,PenumbraPerMetre,0,0). FloorY equal to float.MinValue encodes an unbounded floor.
+/// (AbsorptionPerMetre.Z,PenumbraPerMetre,CausticLayer,CausticDepth). CausticLayer is layer plus one and
+/// CausticDepth is the deepest slice. Both are exactly zero without a planned layer.
+/// FloorY equal to float.MinValue encodes an unbounded floor.
+/// Words [163200,163204), vector 40800, reserve (WindowMinX,WindowMinZ,1/64,AtlasLayers) as float bits.
+/// The caller uploads that fixed window block separately only on participating frames after a record upload.
 /// AbsorptionPerMetre retains its name and offsets, carrying legacy absorption or derived extinction for
 /// WaterColumnLight bodies. The direct sun beam uses the packed coefficient in either case.
 /// All positions, including FloorY, are already in render-relative metres. Build does not subtract an origin.
 /// UsedUIntCount is 114048 + RecordCount * 12 for a nonempty valid build, otherwise zero. The frame record count
-/// is supplied separately by the caller. Empty or invalid-grid builds reset every diagnostic and expose no image.
+/// is supplied separately by the caller. The window block is outside this prefix.
+/// Empty or invalid-grid builds reset every diagnostic and expose no image.
 /// ReferenceCount counts stored indices, excluding overflowed clusters. DroppedRecords counts the submitted tail
 /// beyond MaxRecords. Image has fixed ImageUIntCount capacity and unused words inside its used prefix are zero.
 /// Ranges widen at frame scale, then local plane tolerances and box-axis bounds limit false positives. Only the
@@ -34,7 +39,9 @@ internal sealed class WaterVolumeClusterBuilder
     internal const int IndexRegionUInts = ClusterCount * MaxRecordsPerCluster;
     internal const int RecordRegionUInts = HeaderRegionUInts + IndexRegionUInts;
     internal const int RecordStrideUInts = 12;
-    internal const int ImageUIntCount = RecordRegionUInts + MaxRecords * RecordStrideUInts;
+    internal const int WindowUIntOffset = RecordRegionUInts + MaxRecords * RecordStrideUInts;
+    internal const int WindowVectorIndex = WindowUIntOffset / 4;
+    internal const int ImageUIntCount = WindowUIntOffset + 4;
     internal const uint OverflowCount = 255u;
 
     const int CountX = ClusterFrameGrid.ClusterCountX;
@@ -112,6 +119,8 @@ internal sealed class WaterVolumeClusterBuilder
         words[7] = BitConverter.SingleToUInt32Bits(record.AbsorptionPerMetre.Y);
         words[8] = BitConverter.SingleToUInt32Bits(record.AbsorptionPerMetre.Z);
         words[9] = BitConverter.SingleToUInt32Bits(record.PenumbraPerMetre);
+        words[10] = BitConverter.SingleToUInt32Bits(record.CausticLayer);
+        words[11] = BitConverter.SingleToUInt32Bits(record.CausticDepth);
     }
 
     bool TryGetRange(ReadOnlySpan<Vector3> corners, ClusterFrameGrid grid, Vector3 forward, float margin,

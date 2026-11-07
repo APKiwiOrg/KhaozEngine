@@ -62,6 +62,7 @@ internal class RendererPerfOutdoorsScene : RendererPerfVillageScene
     internal RendererPerfFoliageVisibility FoliageVisibility() => new(_instances, _shrub, PatchSize, _wind);
     protected override int Water => _water.Length;
     protected virtual RendererPerfClipmapSchedule ClipmapSchedule => new(new(33, 1, 1), new(224, 1, 1), 2, 2, 4);
+    protected virtual bool HasFftWater => true;
     protected virtual string WaterRoute => "analytic-river-and-fft-ocean-clipmaps";
     protected override RendererPerfRecipeSchedule Schedule => base.Schedule with
     {
@@ -71,9 +72,9 @@ internal class RendererPerfOutdoorsScene : RendererPerfVillageScene
             FoliagePatches = 64,
             FoliageInstances = 4096,
             WaterPlanes = _water.Length,
-            OceanDispatches = 2,
-            OceanMipCopies = 4,
-            OceanPrime = "first-warmup-only",
+            OceanDispatches = HasFftWater ? 2 : 0,
+            OceanMipCopies = HasFftWater ? 4 : 0,
+            OceanPrime = HasFftWater ? "first-warmup-only" : null,
             Clipmap = ClipmapSchedule
         },
     };
@@ -105,9 +106,9 @@ internal class RendererPerfOutdoorsScene : RendererPerfVillageScene
             InstancesPerPatch = 64,
             CutoutShadows = true,
             Water = WaterRoute,
-            OceanDispatches = 2,
-            OceanMipCopies = 4,
-            OceanPrime = "first-warmup-only",
+            OceanDispatches = HasFftWater ? 2 : 0,
+            OceanMipCopies = HasFftWater ? 4 : 0,
+            OceanPrime = HasFftWater ? "first-warmup-only" : null,
             OceanSteadyStalls = 0,
             Directional = "four-cascades-recomputed",
             Temporal = "native-history-after-first-frame",
@@ -164,6 +165,7 @@ internal class RendererPerfOutdoorsScene : RendererPerfVillageScene
     internal override void PrepareCold(Scene3D scene, IGpuDevice device, int firstFrameIndex)
     {
         // Prepare and record only ocean compute. Do not consume Begin, pose or foliage history indices.
+        if (!HasFftWater) return;
         scene.EffectTimeSeconds = SequenceIndex(firstFrameIndex) * Dt;
         foreach (WaterPlane plane in _water) scene.DrawWater(plane);
         scene.PrepareFrame();

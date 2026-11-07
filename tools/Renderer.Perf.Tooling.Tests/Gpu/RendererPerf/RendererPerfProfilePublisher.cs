@@ -21,7 +21,7 @@ internal static class RendererPerfProfilePublisher
     {
         Require(request.Schema == "khaozengine.renderer-profile-request/1" && !string.IsNullOrWhiteSpace(request.OutputDirectory),
             "Request", "Expected renderer-profile-request/1 and an explicit output directory.");
-        var verified = RendererPerfBaselinePublisher.VerifyLegs(request.Legs, "water-optics-v2");
+        var verified = RendererPerfBaselinePublisher.VerifyLegs(request.Legs, null);
         string pair = verified[0].Summary.Raw.Identity.UnitId + "-" + verified[1].Summary.Raw.Identity.UnitId;
         var files = verified.Select(v => (Name: v.Input.Leg + "-" + v.Summary.Raw.Identity.UnitId + ".md",
             Text: RendererPerfBaselineMarkdown.Summary(v.Input, v.Summary))).ToList();

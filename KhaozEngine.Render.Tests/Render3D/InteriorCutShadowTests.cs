@@ -116,7 +116,7 @@ public sealed class InteriorCutShadowTests
         Assert.True(stage.Scene.EnsurePointShadowAtlas(64, 1));
         stage.Scene.BeginPointShadowFrame(1);
         var factory = (FakeGpuResourceFactory)stage.Device.Factory;
-        var texture = factory.ResourceSets.First(set => !set.Disposed && set.Resources.Length == 16).Resources[14];
+        var texture = factory.ResourceSets.First(set => !set.Disposed && set.Resources.Length == 18).Resources[14];
         Assert.Single(factory.ResourceSets, set => !set.Disposed && set.Resources.Length == 2
             && ReferenceEquals(set.Resources[0], texture));
     }
@@ -130,13 +130,13 @@ public sealed class InteriorCutShadowTests
         stage.Frame();
         var factory = (FakeGpuResourceFactory)stage.Device.Factory;
         var texture = Assert.IsType<FakeTexture>(factory.ResourceSets.First(set => !set.Disposed
-            && set.Resources.Length == 16).Resources[14]);
+            && set.Resources.Length == 18).Resources[14]);
         FakeResourceSet[] borrowers = factory.ResourceSets.Where(set => !set.Disposed
             && set.Resources.Length == 2 && set.Resources.Contains(texture)).ToArray();
         Assert.Equal(4, borrowers.Length);
         texture.OnDispose = () => Assert.All(borrowers, set => Assert.True(set.Disposed));
         int receivers = factory.ResourceSets.Count(set => !set.Disposed
-            && set.Resources.Length == 16 && ReferenceEquals(set.Resources[14], texture));
+            && set.Resources.Length == 18 && ReferenceEquals(set.Resources[14], texture));
         stage.Scene.InteriorCut = null;
         factory.ThrowOnResourceSetCreate = factory.ResourceSets.Count + receivers + 1;
         Assert.Throws<InvalidOperationException>(() => { stage.Frame(draw: false); });
@@ -158,7 +158,7 @@ public sealed class InteriorCutShadowTests
         stage.Frame();
         var factory = (FakeGpuResourceFactory)stage.Device.Factory;
         FakeTexture Texture() => (FakeTexture)factory.ResourceSets.First(set => !set.Disposed
-            && set.Resources.Length == 16).Resources[14];
+            && set.Resources.Length == 18).Resources[14];
         FakeResourceSet[] Borrowers(FakeTexture texture) => factory.ResourceSets.Where(set => !set.Disposed
             && set.Resources.Contains(texture)).ToArray();
         FakeTexture first = Texture();

@@ -5,12 +5,18 @@ internal static partial class ShaderSources
 {
     internal const string WaterVolumesAt15Glsl = @"
 layout(std430, set=0, binding=15) readonly buffer WaterVolumeBuffer { uvec4 WaterVolumes[]; };
+layout(set=0, binding=16) uniform texture2D CausticMap;
+layout(set=0, binding=17) uniform sampler CausticSampler;
 ";
     internal const string WaterVolumesAt7Glsl = @"
 layout(std430, set=0, binding=7) readonly buffer WaterVolumeBuffer { uvec4 WaterVolumes[]; };
+layout(set=0, binding=8) uniform texture2D CausticMap;
+layout(set=0, binding=9) uniform sampler CausticSampler;
 ";
     internal const string WaterVolumesAt6Glsl = @"
 layout(std430, set=0, binding=6) readonly buffer WaterVolumeBuffer { uvec4 WaterVolumes[]; };
+layout(set=0, binding=7) uniform texture2D CausticMap;
+layout(set=0, binding=8) uniform sampler CausticSampler;
 ";
 
     // Shared with point lights. The caller reuses the query made for water, including its full-list fallback.
@@ -72,6 +78,24 @@ uint waterVolumeWord(uint word) {
     return WaterVolumes[word >> 2u][int(word & 3u)];
 }
 
+// Dimensionless with mean 1. Slices sit at D/8, D/4, D/2 and D, with 1 at the surface and the last slice held below D.
+float underwaterCausticTerm(UnderwaterKey key, float layer, float D) {
+    vec4 window = uintBitsToFloat(WaterVolumes[40800u]);
+    vec2 uv = (key.entry.xz - window.xy) * window.z;
+    vec2 edge = min(uv, vec2(1.0) - uv) * (1.0 / window.z);
+    float fade = smoothstep(0.0, 4.0, min(edge.x, edge.y));
+    if (fade <= 0.0) return 1.0;
+    vec2 atlas = vec2((layer - 1.0 + clamp(uv.x, 0.0, 1.0)) / window.w, clamp(uv.y, 0.0, 1.0));
+    vec4 slices = textureLod(sampler2D(CausticMap, CausticSampler), atlas, 0.0);
+    float x = key.depth / D;
+    float term = x <= 0.125 ? mix(1.0, slices.r, x / 0.125)
+        : x <= 0.25 ? mix(slices.r, slices.g, (x - 0.125) / 0.125)
+        : x <= 0.5 ? mix(slices.g, slices.b, (x - 0.25) / 0.25)
+        : x <= 1.0 ? mix(slices.b, slices.a, (x - 0.5) / 0.5) : slices.a;
+    float blur = key.pathLength * key.penumbraPerMetre / 0.25;
+    return max(0.0, mix(1.0, term, fade / (1.0 + blur * blur)));
+}
+
 UnderwaterKey underwaterKeyForFragment(vec3 renderPos) {
     UnderwaterKey result;
     result.submerged = false;
@@ -90,6 +114,8 @@ UnderwaterKey underwaterKeyForFragment(vec3 renderPos) {
     uint candidateCount = fullScan ? recordCount : header;
     float surfaceY = 0.0;
     vec3 absorption = vec3(0.0);
+    float surfaceLayer = 0.0;
+    float surfaceDepth = 0.0;
     for (uint candidate = 0u; candidate < candidateCount; candidate++) {
         uint record = fullScan ? candidate
             : waterVolumeWord(3456u + underwaterClusterIndex * 32u + candidate);
@@ -108,6 +134,8 @@ UnderwaterKey underwaterKeyForFragment(vec3 renderPos) {
         surfaceY = level.x;
         absorption = vec3(level.zw, optics.x);
         result.penumbraPerMetre = optics.y;
+        surfaceLayer = optics.z;
+        surfaceDepth = optics.w;
     }
     if (!result.submerged) return result;
 
@@ -117,6 +145,8 @@ UnderwaterKey underwaterKeyForFragment(vec3 renderPos) {
     result.entry = renderPos - travel * result.pathLength;
     result.entry.y = surfaceY;
     result.transmittance = exp(-absorption * result.pathLength);
+    // The record that won carries layer plus one, so an opted-out record adds no texture read.
+    if (surfaceLayer > 0.0) result.transmittance *= underwaterCausticTerm(result, surfaceLayer, surfaceDepth);
     return result;
 }
 ";

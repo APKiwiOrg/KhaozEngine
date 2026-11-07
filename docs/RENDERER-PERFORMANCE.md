@@ -341,6 +341,47 @@ in 538 and 687 unit seconds, and billed 14 Linux and 21 Windows minutes, USD 2.8
 published pair is [docs/performance/water-optics/](performance/water-optics/index-water-optics-v2-linux-water-optics-v2-windows.md),
 and its profile deltas are the measured M2 and M5 cost.
 
+
+`water-optics-v3` measures underwater caustics in its own USD 7.382 campaign. Its six recipes live under
+`water-optics-v3/{village,outdoors}/{off,m5-on,m3-on}`. S0 to S2 are village OFF, M5 ON and M3 ON,
+then S3 to S5 are outdoors in the same order. They retain the v2 color, clarity, penumbra and absorption.
+M3 ON is M5 ON plus `UnderwaterCaustics = true` and `CausticStrength = 4`, the owner's River pick.
+OFF and M5 ON leave caustics disabled. The four profile pairs are village OFF to M5 ON, village M5 ON
+to M3 ON, outdoors OFF to M5 ON and outdoors M5 ON to M3 ON.
+
+V3 outdoors replaces the v2 FFT pool look with
+`new WaterLook { WaveSource = WaterWaveSource.Procedural, SwellAmplitude = .08f }`, using the village
+swell bound. WO-D15 excludes FFT bodies from caustics, so the original pool could not measure M3.
+The bed, props, camera and frame sequence stay the same. Prop placement retains the v2 conservative
+clearance so changing the wave bound does not move props or resize floaters. The procedural pool has
+no FFT dispatches or mip copies. FFT exclusion is a diagnostic correctness check, not a paid run.
+
+| Preset | Admitted leg and adapter | Conditioning | Scene blocks | Controls | Total frames |
+| --- | --- | --- | --- | --- | ---: |
+| `water-optics-v3` | Linux Vulkan or Windows D3D11, NVIDIA T4 hardware | 1,200 S5 frames | 36, each 192 warm-up plus 256 measured | 1 to 12, each 64 plus 128 | 19,632 |
+| `rehearsal-water-optics-v3` | Linux Vulkan, lavapipe on `ubuntu-24.04` | 300 S5 frames | 36, each 64 warm-up plus 128 measured | 1 to 12, each 32 plus 64 | 8,364 |
+| `rehearsal-water-optics-v3-single` | Windows D3D11, WARP on `windows-2025-vs2026` | 300 S5 frames | 12, each 32 warm-up plus 64 measured | 1 to 12, each 32 plus 64 | 2,604 |
+
+V3 retains v2's iterations, rotated block order, layouts, controls, operation bounds, hardware legs,
+clock, limits and per-leg billing caps. Conditioning runs `conditioning:S5/TotalOnly/0` on outdoors
+M3 ON, warming all three opt-in paths. The 120,000 ms cold limit applies only to its first frame.
+The rehearsals retain zero unit cost, zero campaign maximum, 19,800 unit seconds and 350 job minutes.
+WARP rehearsal approval must recheck the software margin with caustics before a paid proposal.
+
+The campaign table supplies recipes, pairs, campaign maxima and legs to schedules and admission.
+`publish-profiles` accepts a complete paid v2 pair or a complete paid v3 pair. Mixed campaigns refuse.
+The v1 and v2 frozen recipe bytes and identities stay pinned. Live frozen pass layouts include a skipped
+`water.caustics` row for earlier profiles, which changes report inventory without changing recipe identity.
+Headless recorder traces require the M3 pool in the caustic window with `DrawnPlanes` of 1 and
+`water.caustics` executed. OFF and M5 ON retain a not-executed row.
+
+Implementation and frozen recipes grant no dispatch approval. Free tooling validation collects and
+checks platform-family digests without authorizing a rehearsal. Each free rehearsal needs explicit
+owner approval first. Paid runs need separate owner approval naming the exact workload and both
+proposal hashes, plus the renderer performance owner's admission review. Use GitHub-hosted runners
+only. There is no automatic retry or extra design budget. The owner rules on the measured deltas
+before M3 ships.
+
 ## Software correctness rehearsal
 
 The v1 `rehearsal`, `rehearsal-full` and `rehearsal-controls` presets, and the two
@@ -834,7 +875,7 @@ The first eligible pair is published in [docs/performance/renderer/](performance
 Tesla T4 Linux Vulkan and Windows D3D11 full units at workload `2243d40a7`, with the graphics clock locked at 1,095 MHz.
 The [verification record](verification/2026-10-21-renderer-performance-baseline.md) lists every attempt that led to it.
 
-For a received `water-optics-v2` pair, use the same offline verifier with the profile request schema
+For a received `water-optics-v2` or `water-optics-v3` pair, use the same offline verifier with the profile request schema
 `khaozengine.renderer-profile-request/1` and the same request fields:
 
 ```sh
@@ -842,7 +883,7 @@ dotnet tools/Renderer.Perf.Verify/bin/Release/net10.0/Renderer.Perf.Verify.dll p
 ```
 
 Profile publication shares baseline directory verification, native identity admission and promotion
-checks. It accepts only the paid `water-optics-v2` preset, one Linux Vulkan and one Windows D3D11 leg
+checks. It accepts matching paid `water-optics-v2` or `water-optics-v3` presets, one Linux Vulkan and one Windows D3D11 leg
 with shared workload and baseline source. Rehearsals and v1 presets refuse. Supplied actual billed
 minutes must fit the preset's 38-minute Linux and 53-minute Windows caps. Cost checks use decimal USD
 and the preset's USD 7.382 campaign maximum. The request remains bounded to 1 MiB. Publication does not
@@ -855,9 +896,10 @@ both legs pass admission. Existing files refuse before writes. The same UTF-8, L
 and deterministic-ordering rules apply. `NotProfile` replaces `NotFull` for a wrong preset.
 
 Profile deltas compare S0 to S1 (village OFF to M2 ON), S1 to S2 (village M2 ON to M5 ON), S3 to S4
-(outdoors OFF to M2 ON) and S4 to S5 (outdoors M2 ON to M5 ON), within each unit. Each layout retains
+(outdoors OFF to M2 ON) and S4 to S5 (outdoors M2 ON to M5 ON) for v2. V3 uses the same scene pairs for
+OFF to M5 ON and M5 ON to M3 ON in each scene, within each unit. Each layout retains
 its admitted iterations and a combined descriptive row, with one iteration for the WARP rehearsal
-and three for paid v2 and lavapipe. Every shared metric has candidate-minus-baseline
+and three for paid campaigns and lavapipe. Every shared metric has candidate-minus-baseline
 mean, median, nearest-rank p95 and p99 deltas and a relative mean percent. Unavailable values retain
 their causes. A zero baseline mean has no percentage. The Markdown shows `gpu.frame` first, followed
 by each named pass, with separate backend series and no significance or regression-budget claim.

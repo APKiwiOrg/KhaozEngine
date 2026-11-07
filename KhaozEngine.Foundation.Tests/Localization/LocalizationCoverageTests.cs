@@ -219,6 +219,21 @@ namespace KhaozEngine.Tests.Localization
         }
 
         [Fact]
+        public void AssertComplete_ResourceManager_NeutralWithNoEntries_ReportsKeyUniverseEmpty()
+        {
+            const string EmptyBaseName = "KhaozEngine.Tests.Localization.Fixtures.CoverageEmptyStrings";
+            var empty = new ResourceManager(EmptyBaseName, typeof(LocalizationCoverageTests).Assembly);
+
+            var ex = Assert.Throws<LocalizationCoverageException>(() => LocalizationCoverage.AssertComplete(empty));
+
+            Assert.Equal(LocalizationCoverageRefusal.KeyUniverseEmpty, ex.Reason);
+            Assert.Equal(EmptyBaseName, ex.BaseName);
+            Assert.Null(ex.Findings);
+
+            LocalizationCoverage.AssertComplete(Rm()); // control: a neutral resx with string entries
+        }
+
+        [Fact]
         public void AssertComplete_ResourceManager_NullResources_Throws()
             => Assert.Throws<ArgumentNullException>(() => LocalizationCoverage.AssertComplete((ResourceManager)null!, "fr"));
 

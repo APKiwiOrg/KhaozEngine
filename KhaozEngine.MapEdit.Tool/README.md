@@ -355,7 +355,7 @@ Direct missing region, scatter-layer, companion-layer and duplicate-source looku
 | `MapDocumentException.ToolExtractionParentAmbiguous` | Extraction with multiple authored parents | owned read-only `SpaceIds`, `DocumentId` |
 | `MapDocumentException.ReferenceMissing` or `IdentityDuplicate` | Setting an absent interior or adding an existing interior ID | `RecordId`, `SpaceId`, `DocumentId`, `SubjectKind` |
 | `MapDocumentException.SpaceRoomOccupancyInvalid` | Adding another standalone prism for an occupied interior space | requested `RecordId`, `SpaceId`, `DocumentId` |
-| `MapDocumentException.ReferenceMissing` | Reading an absent water body | requested `BodyId`, `DocumentId` |
+| `MapDocumentException.ReferenceMissing` | Reading an absent water body | requested `EntityId`, `SubjectKind` `water body`, `DocumentId` |
 | `MapDocumentException.ToolEffectiveResourcesMissing` | Native query resolution without effective resources | `Operation` |
 | `MapRenderArgumentException.RenderLookDirectionZero` | A zero view direction | submitted `Eye`, `Target` |
 | `MapRenderException.RenderFailed` or a known document reason | Capture failure | `Backend`, `Operation`, original `InnerException`, known lower `Finding` |
@@ -366,7 +366,7 @@ Direct missing region, scatter-layer, companion-layer and duplicate-source looku
 
 `marker_list` rectangle refusals carry `Operation` `marker_list` and `FieldPath` `minX,minZ,maxX,maxZ`.
 The interior add guard reuses the Room occupancy rule before publication. A missing water body uses the same
-reference reason as other lookups, preserving the requested body identity even when the water section is absent.
+reference reason and requested `EntityId` as water body removal, even when the water section is absent.
 
 `MapMutationArgumentException` remains catchable as `ArgumentException`, preserving `ParamName`. Unknown sculpt
 brushes use `SchemaEnumUnsupported`, `SubmittedText`, `EnumType` and the complete owned `AcceptedValues` list.

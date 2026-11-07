@@ -522,8 +522,8 @@ catchable as `NotSupportedException`, with `PhysicsShapeUnsupported` and `ShapeT
 | `MapDocumentException.GeometryVertexSequenceInvalid` | A portal interval has fewer than two vertices | `RecordId`, `ActualCount`, inclusive `MinimumInteger` two |
 | `MapDocumentException.PatchUnavailable` | An opening's geometry patch is unavailable | `RecordId`, `Patch`, `PatchStatus` |
 
-These navigation and envelope guards populate their structured reasons. Grid alignment and remaining physics
-adapters complete their conversions separately. Collection and source wrappers retain the navigation index
+Navigation, envelope, grid alignment and physics adapter guards populate their structured reasons.
+Collection and source wrappers retain the navigation index
 identifiers through the shared document finding and source-copy paths.
 
 Tile and capture bounds are residency extents, not probe windows. A resolver 1 world's bounds exclude its analytic

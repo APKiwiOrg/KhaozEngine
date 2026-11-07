@@ -26,7 +26,7 @@ public sealed class WaterService(MapEditSession session)
         return session.WithDocument((document, _) =>
             document.Water?.Clone().Bodies.Find(body => string.Equals(body.Id, id, StringComparison.Ordinal))
             ?? throw new MapDocumentException(MapDocumentRefusal.ReferenceMissing, $"Water body '{id}' does not exist.")
-            { BodyId = id, DocumentId = document.Id });
+            { EntityId = id, SubjectKind = "water body", DocumentId = document.Id });
     }
 
     /// <summary>Samples world metres through the native water query. An absent water section is dry.</summary>

@@ -34,6 +34,7 @@ public sealed class MapWaterEditRefusalTests
         var error = Assert.Throws<MapDocumentException>(() => MapWaterEdits.Prepare(doc, edit));
         Assert.Equal(reason, error.Reason);
         if (defect is "body" or "medium") Assert.Equal("absent", error.EntityId);
+        if (defect == "body") Assert.Equal("water body", error.SubjectKind);
         if (defect == "used")
         {
             Assert.Equal("sea-water", error.ActualText);

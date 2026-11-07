@@ -91,7 +91,8 @@ public sealed class WaterServiceTests : IDisposable
         {
             var error = Assert.Throws<MapDocumentException>(() => water.Get(id));
             Assert.Equal(MapDocumentRefusal.ReferenceMissing, error.Reason);
-            Assert.Equal(id, error.BodyId);
+            Assert.Equal(id, error.EntityId);
+            Assert.Equal("water body", error.SubjectKind);
             Assert.Equal(WaterToolFixtures.Document(session).Id, error.DocumentId);
             Assert.Equal(before, MapDocumentFile.SaveText(WaterToolFixtures.Document(session)));
             Assert.False(session.IsDirty);

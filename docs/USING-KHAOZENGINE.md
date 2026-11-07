@@ -15791,8 +15791,9 @@ resource and asset identity. Local prefab work without an opened asset uses `Too
 Document deserialization also adds the source name to an already-classified nested codec refusal without changing
 its text or typed context, retaining the original exception as the cause.
 Adding a standalone interior to a space that already owns a prism reuses `SpaceRoomOccupancyInvalid`, with
-the requested `RecordId`, `SpaceId` and `DocumentId`. Reading a missing water body uses `ReferenceMissing`
-with the requested `BodyId` and `DocumentId`, including when the document has no water section.
+the requested `RecordId`, `SpaceId` and `DocumentId`. Reading or removing a missing water body uses
+`ReferenceMissing`, the requested `EntityId` and `SubjectKind` `water body`. Reading also retains `DocumentId`,
+including when the document has no water section.
 A null decoded feature or shape uses `MapToolJsonException`,
 `SchemaValueRequired`, root `FieldPath` and `SubjectKind`, still catchable through `JsonException`.
 Foliage dry runs distinguish unsupported edit kinds (`FoliagePreviewEditUnsupported`, `EditType`) from new

@@ -16,7 +16,7 @@ public sealed class ShardFrameException : ArgumentException
     /// <summary>The cell the factory world was being admitted into.</summary>
     public CellCoord? Cell { get; init; }
     /// <summary>The consumer configuration member, PhysicsWorldFactory, whose factory returned the world.</summary>
-    public string? FactoryMember { get; init; }
+    public string? MemberName { get; init; }
     /// <summary>The compared origin, captured once before disposing the refused world.</summary>
     public Vector3? ActualOrigin { get; init; }
     /// <summary>The cell's fixed frame anchor the world must use.</summary>

@@ -254,7 +254,7 @@ public sealed partial class ShardHost : IDisposable
                         "factory contract requires the returned world's Origin to equal ShardHost.FrameFor(coord).Anchor " +
                         "(or CellSim.Frame.Anchor, the same value) - read it from there rather than re-deriving it.",
                         nameof(physicsFactory))
-                    { Cell = coord, FactoryMember = "PhysicsWorldFactory", ActualOrigin = badOrigin, ExpectedOrigin = frame.Anchor };
+                    { Cell = coord, MemberName = "PhysicsWorldFactory", ActualOrigin = badOrigin, ExpectedOrigin = frame.Anchor };
                 }
             }
             cell = new CellSim(coord, tickSeconds, registry, interestCellSize, frame, physics);

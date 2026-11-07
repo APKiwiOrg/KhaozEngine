@@ -17035,7 +17035,7 @@ IPhysicsWorld BuildCellWorld(CellCoord coord)
   near a border legitimately exists in both neighbours' worlds - nothing reconciles the copies, because a static
   does not move. Sharing one world between two cells rebuilds the exact failure per-cell worlds exist to prevent.
   With frame anchoring on, a mismatched origin throws Sharding's `ShardFrameException` (`ArgumentException`)
-  with `PhysicsFactoryOriginMismatch`, `Cell`, `FactoryMember` (`PhysicsWorldFactory`), `ActualOrigin` and
+  with `PhysicsFactoryOriginMismatch`, `Cell`, `MemberName` (`PhysicsWorldFactory`), `ActualOrigin` and
   `ExpectedOrigin`. The compared origin is read once before disposal, and no cell is published.
 - **`SamplerSpace.World`** (the default, on both server configs and on `WorldClientConfig`, and it must MATCH
   across them) means your `groundHeight` / `groundNormal` / medium delegates keep taking absolute coordinates and

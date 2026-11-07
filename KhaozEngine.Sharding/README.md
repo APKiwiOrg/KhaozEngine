@@ -225,7 +225,7 @@ settles and reclassifies its destination. Neither purpose may publish an unprove
 
 | `Reason` | What it refuses | Identifiers |
 | --- | --- | --- |
-| `PhysicsFactoryOriginMismatch` | a factory world whose origin differs from the framed cell's anchor | `Cell`, `FactoryMember` (`PhysicsWorldFactory`), `ActualOrigin`, `ExpectedOrigin` |
+| `PhysicsFactoryOriginMismatch` | a factory world whose origin differs from the framed cell's anchor | `Cell`, `MemberName` (`PhysicsWorldFactory`), `ActualOrigin`, `ExpectedOrigin` |
 
 `ShardHost` captures the compared origin once, before disposing the refused world, and publishes no cell for
 that refusal. With frame anchoring off, it does not validate the origin. The family lives here because Sharding

@@ -89,7 +89,7 @@ public class ShardedFrameAnchoringTests
         Assert.IsAssignableFrom<ArgumentException>(ex);
         Assert.Equal(ShardFrameRefusal.PhysicsFactoryOriginMismatch, ex.Reason);
         Assert.Equal("physicsFactory", ex.ParamName);
-        Assert.Equal("PhysicsWorldFactory", ex.FactoryMember);
+        Assert.Equal("PhysicsWorldFactory", ex.MemberName);
         Assert.Equal(farCoord, ex.Cell);
         Assert.Equal(Vector3.Zero, ex.ActualOrigin);
         Assert.Equal(FrameOf(farCoord).Anchor, ex.ExpectedOrigin);

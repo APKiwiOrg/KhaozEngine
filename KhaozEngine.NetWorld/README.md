@@ -1426,7 +1426,7 @@ anchor is exactly `Vector3.Zero`, so the default path there is byte-identical to
   `FrameFor(coord).Anchor`, it is disposed with the cell, and a static near a border legitimately exists in both
   neighbours' worlds (nothing reconciles the copies, because a static does not move). **With `FrameAnchoring` on,
   `ShardHost` validates the returned world's `Origin` against the cell's own anchor at creation and throws
-  `ShardFrameException` with `PhysicsFactoryOriginMismatch`, `FactoryMember`, `Cell`, `ActualOrigin` and
+  `ShardFrameException` with `PhysicsFactoryOriginMismatch`, `MemberName`, `Cell`, `ActualOrigin` and
   `ExpectedOrigin` on a mismatch** - left unchecked, every character the cell owns would silently no-clip, since
   `CharacterMovement` reads frame-local coordinates with no compensation for a wrong origin. With `FrameAnchoring`
   off a world left at `Vector3.Zero` is correct (every cell's anchor is `WorldFrame.Origin` then) and the guard

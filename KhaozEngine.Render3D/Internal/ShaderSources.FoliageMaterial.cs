@@ -32,10 +32,10 @@ void main() {
         string header = ModelFrag[..ModelFrag.IndexOf("void main() {", StringComparison.Ordinal)]
             .Replace(InteriorCutGlsl, "", StringComparison.Ordinal);
         header = Regex.Replace(header, @"layout\(set=0, binding=(3|4|5|6|14)\)[^;]+;[^\r\n]*", "");
-        return Regex.Replace(header, @"(?<=set=0, binding=)(7|8|9|10|11|12|13|15)(?=\))", match =>
+        return Regex.Replace(header, @"(?<=set=0, binding=)(7|8|9|10|11|12|13|15|16|17)(?=\))", match =>
         {
             int binding = int.Parse(match.Groups[1].Value, CultureInfo.InvariantCulture);
-            return (binding == 15 ? 10 : binding - 4).ToString(CultureInfo.InvariantCulture);
+            return (binding >= 15 ? binding - 5 : binding - 4).ToString(CultureInfo.InvariantCulture);
         });
     }
 

@@ -5978,7 +5978,8 @@ is retained after a failed preparation and is zero before the first success. Unr
     `ClusterCamera.w` carries the independent record count. Zero skips the entire water query without a buffer
     read or upload, so a frame with no opted-in water renders exactly as before. Every lit program reads
     `WaterVolumes` at appended set 0 binding 15 for rigid, foliage and CPU-skinned, 7 for GPU-skinned, or 6 for
-    splat and tile ground. A layout gains a binding with its first shader reader because optimization removes
+    splat and tile ground, with `CausticMap` and `CausticSampler` on the next two bindings.
+    A layout gains a binding with its first shader reader because optimization removes
     unread declarations and shifts Direct3D11 registers. Shaderc preserve-bindings stays unchanged.
     Scene and standalone lit renderer construction require `GpuCapabilities.MaxFragmentStorageBuffers >= 3`
     before GPU allocation, including when water is disabled. Lower reports throw

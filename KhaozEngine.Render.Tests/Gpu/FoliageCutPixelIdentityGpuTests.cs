@@ -43,15 +43,15 @@ public sealed class FoliageCutPixelIdentityGpuTests
                 ? ShadowVisibilityTargets.Fragment(generic, motion) : generic;
         }, layout =>
         {
-            if (layout.Elements.Length == 16 && layout.Elements[0].Name == "U") genericLayout = layout;
-            return layout.Elements.Length == 11 && layout.Elements[3].Name == "ShadowMap"
+            if (layout.Elements.Length == 18 && layout.Elements[0].Name == "U") genericLayout = layout;
+            return layout.Elements.Length == 13 && layout.Elements[3].Name == "ShadowMap"
                 ? genericLayout!.Value : layout;
         }, set =>
         {
-            if (set.Resources.Length == 16) defaults = set.Resources;
-            return set.Resources.Length == 11 && defaults is not null
+            if (set.Resources.Length == 18) defaults = set.Resources;
+            return set.Resources.Length == 13 && defaults is not null
                 ? new GpuResourceSetDescription(set.Layout,
-                    [.. set.Resources[..3], .. defaults[3..7], .. set.Resources[3..10], defaults[14], set.Resources[10]])
+                    [.. set.Resources[..3], .. defaults[3..7], .. set.Resources[3..10], defaults[14], .. set.Resources[10..]])
                 : set;
         });
         byte[][] expected = Render(baseline, materialKind: materialKind, model: model);

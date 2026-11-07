@@ -373,7 +373,9 @@ opted-out frames skip building and upload. A zero count skips shader buffer read
 unreachable and the old dry frame unchanged.
 
 Set 0 appends `WaterVolumes` at binding 15 for rigid, foliage and CPU-skinned receivers, 7 for GPU-skinned,
-and 6 for splat and tile ground. Appending preserves existing binding numbers.
+and 6 for splat and tile ground, with `CausticMap` and `CausticSampler` on the next two bindings. The opaque foliage
+subset closes its gaps, placing the three at 10, 11 and 12. Appending preserves existing binding numbers.
+Direct3D 11 numbers registers across sets, so later sets' texture and sampler registers each move up by one.
 The shared lighting block is read by all six base fragments
 (`ModelFrag`, `ModelDissolveFrag`, `SkinnedModelFrag`, `SkinnedModelDissolveFrag`, `SplatFrag`, `TileGroundFrag`),
 including their motion and key-visibility variants. The `sampleKeyShadow(...)` call statements remain unchanged
@@ -398,6 +400,19 @@ and `Clarity`, with mean extinction `3 / Clarity`, ignoring legacy absorption. A
 point lights, emissive and fog retain their values. Underwater sunlight models the direct sun path. The
 surface handles the view path through legacy vertical-depth tint or the opted-in column composite.
 Key-only attenuation lowers shadow contrast with depth against unchanged ambient.
+
+A winning record with a caustic layer multiplies that transmittance by one dimensionless term, read with one
+bilinear `textureLod` at the entry's XZ. The map's four channels are slices at `D/8, D/4, D/2, D` below the
+surface. The term interpolates linearly from 1 at depth 0 across the slices and holds the last below `D`, softens by
+`1 / (1 + (L * penumbraPerMetre / 0.25)^2)`, fades over 4 m at the window edge and clamps at zero.
+`computeLighting` and shadow visibility stay unchanged, so only key diffuse and specular move. A zero record count
+returns before any of this, and a dry pixel or a winning record without a layer adds no texture read.
+
+Every lit set binds a 1x1 `R16G16B16A16Float` placeholder holding 1 and a linear-clamp sampler until
+`ModelRenderer.SetCausticMap` replaces the map. That transaction waits for idle, builds every rigid, splat, tile-ground
+and skinned-main frame set, then commits them together, and a failed build keeps the current sets. The caller owns the
+map. The opaque foliage subset rebuilds on its next draw and retires the set naming the previous map, so a replaced
+map goes through the retire queue. Scene frames do not replace the placeholder yet.
 
 The opaque atlas retains the sun-facing near face of outward CCW meshes with orientation-preserving transforms
 on every backend, with clockwise fronts culled. The glTF loader preserves triangle order. A straddling floater's

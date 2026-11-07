@@ -1109,7 +1109,9 @@ in the `KhaozEngine.Render3D.Ecs` arm under the same namespace, so a render-only
   valid for water, with full-list fallback headers for the lights. Empty and opted-out frames set the count
   in `ClusterCamera.w` to zero and skip water uploads, so retained buffer contents cannot be read next frame.
   Every lit receiver reads that scene-owned buffer in shared key shading. Set 0 appends binding 15 for rigid,
-  foliage and CPU-skinned receivers, 7 for GPU-skinned, and 6 for splat and tile ground. Lit fragments require
+  foliage and CPU-skinned receivers, 7 for GPU-skinned, and 6 for splat and tile ground, with `CausticMap` and
+  `CausticSampler` on the next two bindings. Every lit set binds a 1x1 placeholder holding 1 until a real map
+  replaces it, and only a winning record with a caustic layer reads it. Lit fragments require
   three storage buffers, checked at renderer creation against `GpuCapabilities.MaxFragmentStorageBuffers`.
   Scene and standalone lit renderer construction throw `LitReceiverNotSupportedException` before GPU allocation
   for reports below three, with `LitReceiverRefusal.FragmentStorageBufferLimitInsufficient`, `RequiredCount`,

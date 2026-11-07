@@ -79,13 +79,14 @@ internal sealed partial class ModelRenderer
     void AddReplacement(IGpuResourceSet oldSet, IGpuTexture shadowTexture, IGpuTexture pointShadowTexture,
         IGpuTexture pointShadowTransientTexture, IGpuBuffer pointLightBuffer,
         Dictionary<IGpuResourceSet, IGpuResourceSet> replacements,
-        Dictionary<IGpuResourceSet, ShadowSamplingBinding> replacementBindings, IGpuTexture? interiorCut = null)
+        Dictionary<IGpuResourceSet, ShadowSamplingBinding> replacementBindings, IGpuTexture? interiorCut = null,
+        IGpuTexture? causticMap = null)
     {
         if (replacements.ContainsKey(oldSet)) return;
         if (!_shadowSamplingBindings.TryGetValue(oldSet, out ShadowSamplingBinding? binding))
             throw new InvalidOperationException("a live shadow-sampling set has no rebuild description.");
         IGpuResourceSet replacement = BuildShadowSamplingSet(
-            binding, shadowTexture, pointShadowTexture, pointShadowTransientTexture, pointLightBuffer, interiorCut);
+            binding, shadowTexture, pointShadowTexture, pointShadowTransientTexture, pointLightBuffer, interiorCut, causticMap);
         replacements.Add(oldSet, replacement);
         replacementBindings.Add(replacement, binding);
     }
@@ -116,10 +117,11 @@ internal sealed partial class ModelRenderer
         CreateShadowSamplingSet(_splatMaterialLayout, _shadowMap.ShadowTexture,
             paramsUbo, albedoArray, normalArray, sampler ?? _terrainSampler);
 
-    // Shadow resources end each material prefix. Rigid set 0 appends atmosphere, the interior texture, then water volumes.
+    // Shadow resources end each material prefix. Rigid set 0 appends atmosphere, the interior texture, then water
+    // volumes and the caustic map.
     IGpuResourceSet BuildShadowSamplingSet(ShadowSamplingBinding binding, IGpuTexture shadowTexture,
         IGpuTexture pointShadowTexture, IGpuTexture pointShadowTransientTexture, IGpuBuffer pointLightBuffer,
-        IGpuTexture? interiorCut = null)
+        IGpuTexture? interiorCut = null, IGpuTexture? causticMap = null)
     {
         int pointLightOffset = binding.IncludesPointLights ? 2 : 0;
         var resources = new IGpuBindableResource[binding.MaterialResources.Length + pointLightOffset + 4];
@@ -138,7 +140,8 @@ internal sealed partial class ModelRenderer
         resources[^3] = _shadowMap.ShadowSampler;
         resources[^2] = pointShadowTexture;
         resources[^1] = pointShadowTransientTexture;
-        if (binding.IncludesAtmosphere) resources = [.. _atmosphere.AppendResources(resources), interiorCut ?? _interiorTexture, _waterVolumeBuffer];
+        if (binding.IncludesAtmosphere)
+            resources = WaterVolumeResources(causticMap ?? _causticMap, [.. _atmosphere.AppendResources(resources), interiorCut ?? _interiorTexture]);
         return _gd.Factory.CreateResourceSet(new GpuResourceSetDescription(binding.Layout, resources));
     }
 

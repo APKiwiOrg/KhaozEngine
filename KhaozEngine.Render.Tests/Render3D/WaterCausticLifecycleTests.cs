@@ -203,6 +203,11 @@ public sealed class WaterCausticLifecycleTests
         Assert.False(first.Disposed);
         Assert.False(firstField.Disposed);
         Assert.True(h.Scene.RetiredResourceCount > retired);
+        // The second layer's sheet draws into its own 1024-texel map column.
+        List<RecordingGpuCommandList.Command> trace = h.Commands.CommandTrace!;
+        int secondSheet = trace.IndexOf(h.Draws(ShaderSources.WaterCausticSheetVert)[1]);
+        RecordingGpuCommandList.Command scissor = trace[trace.FindLastIndex(secondSheet, c => c.Kind == "scissor")];
+        Assert.Equal((1024u, 1024u), (scissor.Slot, scissor.Value));
 
         h.Frame(Plane(0f), Plane(1f), Plane(2f));
         var third = (FakeTexture)h.Scene.WaterCausticMapForTests!;

@@ -37,6 +37,26 @@ Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 - A status no longer depends on an identifier's text. An asset named `overflow` that is missing was reported as
   `CapacityExceeded` because the classifier found that word in the message, and is now `Invalid`, like any missing asset.
 
+- Refusals outside MapDoc now carry a public reason enum and typed identifiers too, filled at every engine throw site,
+  in Accounts.SqlServer and Accounts.Sqlite, Audio, BugReports and BugReports.Relay, Dungeon, Identity and its Discord
+  and OIDC providers, Identity.Exchange.AspNetCore, ItemInstances generation tables, Localization.TestKit, Locomotion,
+  Movement, NetWorld, Netcode signing secrets and Sharding. Each family's README lists its reasons. Messages do not
+  change, and no admission, threshold or order changed.
+- New sealed refusal types derive from the exact type thrown before, so existing catches keep working:
+  `AccountSchemaException`, `AccountDataException`, `AudioThreadAffinityException`, `BugReportBundleArgumentException`,
+  `BugReportBundleLimitException`, `DungeonKitException`, `TrustedProxyConfigurationException`,
+  `GenerationTableException`, `MovementConfigurationException`, `MovementCapabilityException`, `MovementReadException`,
+  `NavigationBuildException`, `NavigationProfileException`, `NavigationProfileCapabilityException`,
+  `NavigationReadCapabilityException`, `GroundContactCapabilityException`, `WorldConfigurationException`,
+  `CellBlobMigrationException`, `SigningSecretException` and `ShardFrameException`. A test asserting the exact base type
+  at one of these sites needs to assert the subtype instead.
+- Existing carriers keep every constructor and member and gain a reason. `GitHubApiException` gains `Reason`,
+  `ResponsePart` and a bounded, credential-free `UpstreamDetail`, and a moved update whose destination is unusable is
+  `RedirectDestinationUnusable`. `SignInException` gains `Reason`, `ProviderId`, `Timeout`, `StatusCode`, `EndpointRole`,
+  `MemberName`, `ActualScheme` and `Detail`, and none of them carries a token, code, state, secret or response body.
+  `LocalizationCoverageException` gains `Reason` and ordered `Findings`, each finding with its own reason, and
+  `DungeonJsonException` gains `Reason` with a rooted `JsonPath` such as `$.edges[0].roomA`.
+
 ## 23.3.0
 
 2026-11-07

@@ -11,8 +11,8 @@ namespace KhaozEngine.Tests.Gpu;
 
 /// <summary>
 /// Absolute acceptance for underwater caustics on synthetic scenes. Bands are measured against
-/// <see cref="CausticOracle"/>, the design's forward map evaluated independently in double precision, never against
-/// another render. Comparisons with M2 alone use the same scene and water with only the opt-in off.
+/// <see cref="CausticOracle"/>, the design's forward map evaluated independently in double precision. Temporal motion
+/// compares with current-frame temporal-off references. Comparisons with M2 alone change only the opt-in.
 /// </summary>
 public sealed class WaterCausticsGpuTests(WaterCausticsScenes scenes, ITestOutputHelper output)
     : IClassFixture<WaterCausticsScenes>
@@ -355,45 +355,49 @@ public sealed class WaterCausticsGpuTests(WaterCausticsScenes scenes, ITestOutpu
     }
 
     /// <summary>
-    /// Bands jump half a wavelength, then the frames settle. Stepped and steady sequences end on the same jitter phases
-    /// with the same current frames, so what separates them is history left from before the step, which every frame
-    /// clips into the current neighbourhood and keeps by at most <c>A / (A + w)</c>, with <c>A</c> the accumulation cap and
-    /// <c>w</c> the nearest sample's Lanczos-2 weight at that frame's jitter. Measured in the resolve's weighted luma
-    /// <c>L / (1 + L)</c>, where those operations contract: the trail may exceed the steady sequence's own difference
-    /// from the temporal-off image by that decay times the starting gap, plus half-float rounding. MSAA has no history,
-    /// so the same bound holds trivially there.
+    /// Continuously moving bands must stay within one map texel of a fresh temporal-off reference at the same time.
+    /// The fundamental's phase measures lag over three whole wavelengths, independently of the lattice's own phase
+    /// error. Every late frame is checked, covering two complete native jitter cycles with no cuts or phase holds.
     /// </summary>
     [GpuTheory]
     [InlineData("temporal")]
     [InlineData("msaa")]
     public void Temporal_resolve_leaves_no_trail(string resolve)
     {
-        const int warm = 16, settle = 64;
+        const int warm = 64, measured = 16;
+        const float step = 1f / 60f;
         AntiAliasing aa = resolve == "msaa" ? AntiAliasing.Msaa(4) : AntiAliasing.Temporal;
-        // Wave speed 1 and k = pi: pi seconds move the ripple phase by pi, half a wavelength.
-        var before = new WaterCausticsCase { Aa = aa };
-        var after = before with { Time = MathF.PI };
-        WaterCausticsImage offBefore = scenes.Capture(before with { Aa = AntiAliasing.Off });
-        WaterCausticsImage offAfter = scenes.Capture(after with { Aa = AntiAliasing.Off });
-        // Both sequences last warm + settle frames, a multiple of the eight native phases, so they end on the same phase.
-        WaterCausticsImage steady = scenes.Capture(after, warm + settle);
-        scenes.Capture(before, warm);
-        WaterCausticsImage stepped = scenes.Capture(after, settle, cut: false);
-
-        double start = MaxWeightedDifference(offBefore, offAfter), floor = MaxWeightedDifference(steady, offAfter);
-        double trail = MaxWeightedDifference(stepped, offAfter);
-        double decay = 1d;
-        if (aa.Mode == AntiAliasingMode.Temporal)
-            for (int frame = 0; frame < settle; frame++)
-            {
-                Vector2 jitter = TemporalJitter.Offset(frame, TemporalJitter.NativePhaseCount);
-                double weight = Lanczos2(jitter.X) * Lanczos2(jitter.Y);
-                decay *= TemporalResolveTuning.MaxAccumulation / (TemporalResolveTuning.MaxAccumulation + weight);
-            }
-        else decay = 0d;
-        double bound = floor + decay * (start + 2d * floor) + 1d / 512d;
-        output.WriteLine($"{resolve}: step gap={start:F5}, steady difference from off={floor:F5}, stepped difference={trail:F5}, history decay over {settle} frames={decay:F5}, bound={bound:F5}");
-        Assert.True(trail <= bound, $"The {resolve} resolve trails the old bands: {trail:F5} against a bound of {bound:F5}.");
+        var settings = new WaterCausticsCase { Aa = aa, Heading = 0f, Strength = 4f };
+        using var references = new WaterCausticsScenes();
+        scenes.Capture(settings, warm, timeStepSeconds: step);
+        double pixel = WaterCausticsScenes.ViewMetres / WaterCausticsScenes.Size;
+        double k = 2d * Math.PI / WaterCausticsScenes.Wavelength;
+        // At 60 Hz, speed/k is 0.318 m/s, or 0.340 pixels/frame. On these smooth X-directed bands the 3x3
+        // variance clip permits GammaStill * sqrt(2/3) = 1.225 pixels of phase displacement. Allow another
+        // half pixel for jitter, one for reconstruction across the bilinear map, and at most one for half-float
+        // rounding (checked from the reference contrast below): 3.725 pixels < one map texel (4 pixels).
+        // A non-clipping 15-sample history has about 15 frames of lag even at sample weight 1, or 5.09 pixels.
+        // This bound contains no measured steady-state error or history-decay allowance.
+        double worst = 0d;
+        for (int frame = 0; frame < measured; frame++)
+        {
+            var current = settings with { Time = (warm + frame) * step };
+            WaterCausticsImage actual = scenes.Capture(current, frames: 1, cut: false);
+            WaterCausticsImage reference = references.Capture(current with { Aa = AntiAliasing.Off }, frames: 1);
+            Complex band = actual.BandHarmonicX(), expected = reference.BandHarmonicX();
+            // Budget 1/1024 weighted luma per image for half-float input, preparation and output: the grey
+            // preparation is in [0,1] and rounds to nearest, and input/output relative error <= 1/1024
+            // changes L/(1+L) by at most 1/4096. Two images and the Fourier sum's 2/N give <= 1/256.
+            double roundingLag = Math.Asin(Math.Min(1d, 1d / (256d * expected.Magnitude))) / k;
+            Assert.True(roundingLag <= pixel, $"The reference contrast cannot resolve subpixel lag: {expected.Magnitude:F6}.");
+            Assert.True(band.Magnitude >= expected.Magnitude / 2d,
+                $"The {resolve} resolve lost the moving bands: contrast {band.Magnitude:F6} against {expected.Magnitude:F6}.");
+            double lag = Math.Abs((band / expected).Phase) / k;
+            worst = Math.Max(worst, lag);
+            output.WriteLine($"{resolve}: time={current.Time:F6}s, phase lag={lag:F6}m ({lag / pixel:F3}px), contrast={band.Magnitude:F6}, reference={expected.Magnitude:F6}, rounding allowance={roundingLag / pixel:F3}px, bound={Texel:F4}m");
+            Assert.True(lag <= Texel, $"The {resolve} resolve trails continuously moving bands by {lag:F6}m, beyond {Texel:F4}m.");
+        }
+        output.WriteLine($"{resolve}: worst continuously moving band lag over {measured} late frames={worst:F6}m ({worst / pixel:F3}px), bound={Texel:F4}m");
     }
 
     [GpuFact]
@@ -453,21 +457,4 @@ public sealed class WaterCausticsGpuTests(WaterCausticsScenes scenes, ITestOutpu
         return true;
     }
 
-    static double MaxWeightedDifference(WaterCausticsImage a, WaterCausticsImage b)
-    {
-        double worst = 0d;
-        foreach (var (_, _, i) in WaterCausticsImage.Interior())
-        {
-            double la = WaterCausticsImage.Luma(a.Linear, i), lb = WaterCausticsImage.Luma(b.Linear, i);
-            worst = Math.Max(worst, Math.Abs(la / (1d + la) - lb / (1d + lb)));
-        }
-        return worst;
-    }
-
-    static double Lanczos2(double x)
-    {
-        if (x == 0d) return 1d;
-        double px = Math.PI * x;
-        return Math.Abs(x) >= 2d ? 0d : 2d * Math.Sin(px) * Math.Sin(px / 2d) / (px * px);
-    }
 }

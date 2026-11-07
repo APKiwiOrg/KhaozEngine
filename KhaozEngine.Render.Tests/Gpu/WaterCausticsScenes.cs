@@ -89,7 +89,7 @@ public sealed class WaterCausticsScenes : IDisposable
 
     internal Scene3D Scene => _scene!;
 
-    public WaterCausticsImage Capture(WaterCausticsCase settings, int frames = 2, bool cut = true)
+    public WaterCausticsImage Capture(WaterCausticsCase settings, int frames = 2, bool cut = true, float timeStepSeconds = 0f)
     {
         Ensure();
         IGpuDevice device = _gpu!.GpuDevice;
@@ -100,7 +100,7 @@ public sealed class WaterCausticsScenes : IDisposable
         for (int frame = 0; frame < frames; frame++)
         {
             scene.Begin();
-            scene.EffectTimeSeconds = settings.Time;
+            scene.EffectTimeSeconds = settings.Time + frame * timeStepSeconds;
             Draw(scene, settings);
             scene.PrepareFrame(Size, Size);
             using (GpuRecording.Open(device, _commands!, nameof(WaterCausticsScenes)))
@@ -118,7 +118,7 @@ public sealed class WaterCausticsScenes : IDisposable
         Assert.NotNull(scene.ResolvedVisibilityTarget);
         return new WaterCausticsImage(GpuReadback.ToRgba(device, _color!, Size, Size), ReadFloat(linear),
             LitVisibilityGpuScene.ReadR8(device, scene.ResolvedVisibilityTarget!), copy, camera.ViewProjection,
-            renderOrigin, settings, scene.WaterCausticDiagnostics);
+            renderOrigin, settings with { Time = scene.EffectTimeSeconds }, scene.WaterCausticDiagnostics);
     }
 
     float[] ReadFloat(IGpuTexture texture)
@@ -363,6 +363,26 @@ public sealed class WaterCausticsImage
 
     public static double Luma(float[] rgba, int pixel) =>
         0.299d * rgba[pixel * 4] + 0.587d * rgba[pixel * 4 + 1] + 0.114d * rgba[pixel * 4 + 2];
+
+    /// <summary>The weighted-luma fundamental of X-directed bands over the central three whole wavelengths.
+    /// Its argument measures translation without peak-bin quantization, and its magnitude measures contrast.</summary>
+    internal Complex BandHarmonicX()
+    {
+        const int first = Size / 8, last = Size - first;
+        Complex sum = Complex.Zero;
+        for (int x = first; x < last; x++)
+        {
+            double column = 0d;
+            for (int y = Border; y < Size - Border; y++)
+            {
+                double luma = Luma(Linear, y * Size + x);
+                column += luma / (1d + luma);
+            }
+            double phase = 2d * Math.PI * World(x, Border).X / WaterCausticsScenes.Wavelength;
+            sum += column / (Size - 2 * Border) * Complex.FromPolarCoordinates(1d, -phase);
+        }
+        return sum * (2d / (last - first));
+    }
 
     /// <summary>Interior pixels, away from a border the temporal and MSAA resolves treat differently.</summary>
     public static System.Collections.Generic.IEnumerable<(int X, int Y, int Index)> Interior()

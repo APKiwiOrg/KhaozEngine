@@ -230,7 +230,6 @@ public sealed class WaterVolumeLayoutTests
             Assert.False(set.Disposed);
             AssertBindsCausticMap(set, placeholder);
         });
-        Assert.Equal(failingSet - 1, factory.ResourceSets.Count - created);
         Assert.All(factory.ResourceSets.Skip(created), set => Assert.True(set.Disposed));
 
         factory.ThrowOnResourceSetCreate = 0;

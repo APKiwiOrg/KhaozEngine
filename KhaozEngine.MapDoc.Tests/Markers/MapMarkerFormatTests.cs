@@ -197,9 +197,13 @@ public sealed class MapMarkerFormatTests
         var root = JsonNode.Parse(MapDocumentFile.SaveText(fixture.Document))!.AsObject();
         Assert.NotNull(MapDocumentFile.LoadText(root.ToJsonString()));
         mutate(DocumentMarker(root, "w-" + form));
-        var (documentRefusal, _, writeRefusal) = Refusal(variant);
-        Assert.Contains(documentRefusal, Assert.Throws<MapDocumentException>(() =>
-            MapDocumentFile.LoadText(Duplicated(root.ToJsonString(), duplicate))).Message, StringComparison.Ordinal);
+        var (_, _, writeRefusal) = Refusal(variant);
+        var documentError = Assert.Throws<MapDocumentException>(() => MapDocumentFile.LoadText(Duplicated(root.ToJsonString(), duplicate), sourcePath: "marker-case"));
+        AssertDocumentFinding(variant, form, root, documentError);
+        var documentControl = JsonNode.Parse(MapDocumentFile.SaveText(fixture.Document))!.AsObject();
+        if (variant is "negative-search" or "space-null-search" or "nonfinite-search")
+            DocumentMarker(documentControl, "w-" + form)["supportBinding"]![variant == "negative-search" ? "searchBelow" : "searchAbove"] = 0;
+        Assert.NotNull(MapDocumentFile.LoadText(documentControl.ToJsonString()));
 
         // The prefab payload path runs Preflight, the closed codec and asset validation.
         var asset = JsonNode.Parse(fixture.Assets.GetResource(MarkerFixtures.PayloadTwoResource).Bytes.ToArray())!.AsObject();
@@ -257,6 +261,61 @@ public sealed class MapMarkerFormatTests
         Assert.Equal(new[] { MapDocumentRefusal.SchemaValueRequired, MapDocumentRefusal.SchemaValueRequired, MapDocumentRefusal.MarkerHeightChoiceInvalid }, error.Findings!.Select(f => f.Reason));
         Assert.Equal(MapMarkerValidation.Validate(invalid), error.Findings!.Select(f => f.Message));
         MapMarkerValidation.Require(valid);
+    }
+
+    static void AssertDocumentFinding(string variant, string form, JsonObject root, MapDocumentException error)
+    {
+        (MapDocumentRefusal reason, string field) = variant switch
+        {
+            "future-payload" or "payload-one-height" => (MapDocumentRefusal.SchemaMemberUnknown, ".heightMode"),
+            "unknown-member" or "binding-unknown-member" => (MapDocumentRefusal.SchemaMemberUnknown, ".extra"),
+            "case-member" => (MapDocumentRefusal.SchemaMalformed, ".HeightMode"),
+            "duplicate-member" or "binding-duplicate-member" => (MapDocumentRefusal.SchemaMemberDuplicate, ""),
+            "payload-two-missing-height" => (MapDocumentRefusal.SchemaMemberMissing, ".heightMode"),
+            "payload-two-null-height" => (MapDocumentRefusal.SchemaMemberNull, ".heightMode"),
+            "payload-one-binding" => (MapDocumentRefusal.SchemaMemberUnknown, ".supportBinding"),
+            "payload-one-archetype" => (MapDocumentRefusal.SchemaMemberUnknown, ".archetypeId"),
+            "explicit-binding" => (MapDocumentRefusal.AuthoredOwnershipMismatch, ".supportBinding"),
+            "support-without-binding" => (MapDocumentRefusal.SchemaValueRequired, ".supportBinding"),
+            "support-null-binding" => (MapDocumentRefusal.SchemaMemberNull, ".supportBinding"),
+            "support-y-one" or "support-negative-zero" => (MapDocumentRefusal.MarkerHeightChoiceInvalid, ".position.y"),
+            "nonfinite-y" => (MapDocumentRefusal.ValueNonfinite, ".y"),
+            "nonfinite-yaw" => (MapDocumentRefusal.ValueNonfinite, ".yawRadians"),
+            "null-tags" => (MapDocumentRefusal.SchemaMemberNull, ".tags"),
+            "null-tag" => (MapDocumentRefusal.SchemaMemberNull, ".tags[1]"),
+            "empty-archetype" or "blank-archetype" => (MapDocumentRefusal.SchemaValueRequired, ".archetypeId"),
+            "null-archetype" => (MapDocumentRefusal.SchemaMemberNull, ".archetypeId"),
+            "unknown-height-mode" => (MapDocumentRefusal.SchemaEnumUnsupported, ".heightMode"),
+            "unknown-binding-kind" => (MapDocumentRefusal.SchemaEnumUnsupported, ".kind"),
+            "binding-case-member" => (MapDocumentRefusal.SchemaMemberUnknown, ".SurfaceId"),
+            "surface-reference-y" => (MapDocumentRefusal.SchemaMemberUnknown, ".referenceY"),
+            "surface-search-below" => (MapDocumentRefusal.SchemaMemberUnknown, ".searchBelow"),
+            "surface-space-id" or "binding-null-member" => (MapDocumentRefusal.SchemaMemberUnknown, ".spaceId"),
+            "space-missing-reference-y" => (MapDocumentRefusal.SchemaMemberMissing, ".referenceY"),
+            "space-surface-id" => (MapDocumentRefusal.SchemaMemberUnknown, ".surfaceId"),
+            "space-null-search" => (MapDocumentRefusal.SchemaMemberNull, ".searchAbove"),
+            "negative-search" => (MapDocumentRefusal.ValueOutsideRange, ".supportBinding.searchBelow"),
+            "nonfinite-search" => (MapDocumentRefusal.ValueNonfinite, ".searchAbove"),
+            _ => throw new ArgumentException("No document case " + variant),
+        };
+        Assert.Equal(reason, error.Reason);
+        Assert.Equal("marker-case", error.SourceName);
+        if (reason == MapDocumentRefusal.SchemaMemberDuplicate)
+        {
+            int index = root["buildingIntent"]!["markers"]!.AsArray().IndexOf(DocumentMarker(root, "w-" + form));
+            Assert.True(index >= 0);
+            Assert.Equal($"$.buildingIntent.markers[{index}]" + (variant == "binding-duplicate-member" ? ".supportBinding" : ""), error.FieldPath);
+        }
+        else Assert.EndsWith(field, error.FieldPath, StringComparison.Ordinal);
+        if (variant is "explicit-binding" or "support-without-binding" or "support-y-one" or "support-negative-zero" or
+            "nonfinite-yaw" or "empty-archetype" or "blank-archetype" or "negative-search")
+            Assert.Equal("w-" + form, error.MarkerId);
+        if (variant == "negative-search") Assert.Equal(0d, error.MinimumNumber);
+        if (variant is "unknown-height-mode" or "unknown-binding-kind")
+        {
+            Assert.Equal(variant == "unknown-height-mode" ? typeof(MapMarkerHeightMode) : typeof(MapSupportBindingKind), error.EnumType);
+            Assert.Equal(variant == "unknown-height-mode" ? "Floating" : "Volume", error.ActualText);
+        }
     }
 
     static void AssertMarkerFinding(string variant, string id, MapDocumentException error)

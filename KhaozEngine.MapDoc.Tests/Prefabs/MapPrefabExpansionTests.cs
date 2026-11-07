@@ -152,9 +152,25 @@ public sealed class MapPrefabExpansionTests
         var removed = new MapPrefabRemoveOverride(child.Key, new MapPrefabReplaceOverride(child.Key, replacement));
         instance = instance with { Overrides = new MapPrefabOverride[] { removed }, Bindings = new(instance.Bindings.Entries.Select(b => b.Child == child.Key ? b with { Removed = true } : b).ToArray()) };
         f.Document.Prefabs = new(1, 1, new[] { instance }, []);
-        Assert.Contains("deck/deck-support/missing", Assert.Throws<MapDocumentException>(() => MapAuthoredIdentityV2.Compute(f.Document, f.Assets, PrefabFixtures.Options())).Message);
         var stored = PrefabFixtures.Stored(f.Document);
-        Assert.Contains("deck/deck-support/missing", Assert.Throws<MapDocumentException>(() => MapAuthoredIdentityV2.Compute(stored, f.Assets, PrefabFixtures.Options())).Message);
+        foreach (var error in new[]
+        {
+            Assert.Throws<MapDocumentException>(() => MapAuthoredIdentityV2.Compute(f.Document, f.Assets, PrefabFixtures.Options())),
+            Assert.Throws<MapDocumentException>(() => MapAuthoredIdentityV2.Compute(stored, f.Assets, PrefabFixtures.Options())),
+        })
+        {
+            Assert.Equal(MapDocumentRefusal.ReferenceMissing, error.Reason);
+            Assert.Equal("deck/deck-support/missing", error.EntityId);
+            Assert.Equal(MapPrefabChildKind.Surface, error.ChildKind);
+            Assert.Equal(child.Key, error.Child);
+            Assert.Equal("$.references", error.FieldPath);
+            Assert.False(string.IsNullOrEmpty(error.ReferencePath));
+        }
+        var valid = PrefabFixtures.ImplicitReferenceAsset(child.Value.SupportBinding!.SurfaceId!).Children.OfType<MapPrefabPlacementChild>().Single(p => p.Key == child.Key);
+        f.Document.Prefabs = new(1, 1, new[] { instance with { Overrides = new MapPrefabOverride[]
+            { removed with { Previous = new MapPrefabReplaceOverride(child.Key, valid) } } } }, []);
+        Assert.Equal(MapAuthoredIdentityV2.Compute(f.Document, f.Assets, PrefabFixtures.Options()),
+            MapAuthoredIdentityV2.Compute(PrefabFixtures.Stored(f.Document), f.Assets, PrefabFixtures.Options()));
     }
 
     [Theory]
@@ -306,7 +322,8 @@ public sealed class MapPrefabExpansionTests
     public void OwnerAssetOverride_ImplicitReferencesValidateOnLoadedAndStoredPaths()
     {
         var f = PrefabFixtures.SupportBoundChild(5);
-        var instance = f.Document.Prefabs!.Instances.Single() with
+        var original = f.Document.Prefabs!.Instances.Single();
+        var instance = original with
         {
             Overrides = new MapPrefabOverride[]
             { new MapPrefabPlacementOverride(new(MapPrefabChildKind.Placement, "deck"), null, "item", null) }
@@ -314,8 +331,21 @@ public sealed class MapPrefabExpansionTests
         f.Document.Prefabs = new(1, 1, new[] { instance }, []);
         var plan = MapPrefabBindingPlanner.Plan(f.Document, f.Assets.GetPrefab("hut"), f.Assets, "a", instance.Bindings);
         f.Document.Prefabs = new(1, 1, new[] { instance with { Bindings = plan.Bindings } }, []);
-        Assert.Contains("deck/deck-support/floor", Assert.Throws<MapDocumentException>(() => MapAuthoredIdentityV2.Compute(f.Document, f.Assets, PrefabFixtures.Options())).Message);
-        Assert.Contains("deck/deck-support/floor", Assert.Throws<MapDocumentException>(() => MapAuthoredIdentityV2.Compute(PrefabFixtures.Stored(f.Document), f.Assets, PrefabFixtures.Options())).Message);
+        foreach (var error in new[]
+        {
+            Assert.Throws<MapDocumentException>(() => MapAuthoredIdentityV2.Compute(f.Document, f.Assets, PrefabFixtures.Options())),
+            Assert.Throws<MapDocumentException>(() => MapAuthoredIdentityV2.Compute(PrefabFixtures.Stored(f.Document), f.Assets, PrefabFixtures.Options())),
+        })
+        {
+            Assert.Equal(MapDocumentRefusal.ReferenceMissing, error.Reason);
+            Assert.Equal("deck/deck-support/floor", error.EntityId);
+            Assert.Equal(MapPrefabChildKind.Surface, error.ChildKind);
+            Assert.Equal("$.references", error.FieldPath);
+            Assert.False(string.IsNullOrEmpty(error.ReferencePath));
+        }
+        f.Document.Prefabs = new(1, 1, new[] { original }, []);
+        Assert.Equal(MapAuthoredIdentityV2.Compute(f.Document, f.Assets, PrefabFixtures.Options()),
+            MapAuthoredIdentityV2.Compute(PrefabFixtures.Stored(f.Document), f.Assets, PrefabFixtures.Options()));
     }
 
     [Fact]

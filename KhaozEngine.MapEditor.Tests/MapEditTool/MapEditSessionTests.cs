@@ -1,6 +1,7 @@
 using System;
 using System.IO;
 using System.Linq;
+using System.Text.Json;
 using System.Text.Json.Nodes;
 using KhaozEngine.MapDoc;
 using KhaozEngine.MapEdit;
@@ -97,8 +98,13 @@ namespace KhaozEngine.Tests.MapEditTool
                 var session = new MapEditSession();
 
                 MapDocumentException ex = Assert.Throws<MapDocumentException>(() => session.Open(path));
-                Assert.Contains(path, ex.Message);
+                Assert.Equal(MapDocumentRefusal.DocumentReadFailed, ex.Reason);
+                Assert.Equal(path, ex.Path);
+                Assert.Equal(path, ex.SourceName);
                 Assert.False(session.HasDocument);
+                MapDocumentFile.Save(SampleDocs.SampleDoc(), path);
+                session.Open(path);
+                Assert.True(session.HasDocument);
             }
             finally { Directory.Delete(dir, recursive: true); }
         }
@@ -362,6 +368,7 @@ namespace KhaozEngine.Tests.MapEditTool
                 var session = new MapEditSession { WholeWorldTileLimit = 1, EditorWindowRadius = 0 };
                 session.Open(dir);   // windowed: only tile (0, 0) loaded
 
+                string savedContent = MapDocumentFile.SaveText(MapDocumentFile.LoadTiled(dir));
                 // p-a is loaded (tile (0, 0)). Move it into tile (-2, 0), which the index marks occupied but
                 // this window never loaded.
                 session.Mutate((d, r) =>
@@ -371,9 +378,20 @@ namespace KhaozEngine.Tests.MapEditTool
                     return 0;
                 }, worldChanged: false);
 
+                byte[] manifest = File.ReadAllBytes(Path.Combine(dir, "map.json"));
+                string live = session.WithDocument((doc, _) => JsonSerializer.Serialize(doc, MapDocumentFile.CreateOptions(MapDocRegistry.CreateDefault(), write: true)));
                 MapDocumentException ex = Assert.Throws<MapDocumentException>(() => session.Save());
-                Assert.Contains("p-a", ex.Message);
-                Assert.Contains("set_window", ex.Message);
+                Assert.Equal(MapDocumentRefusal.DocumentUnloadedDestinationTile, ex.Reason);
+                Assert.Equal("p-a", ex.EntityId);
+                Assert.Equal("placement", ex.SubjectKind);
+                Assert.Equal(new MapTileCoord(-2, 0), ex.Tile);
+                Assert.Equal(manifest, File.ReadAllBytes(Path.Combine(dir, "map.json")));
+                Assert.Equal(savedContent, MapDocumentFile.SaveText(MapDocumentFile.LoadTiled(dir)));
+                Assert.Equal(live, session.WithDocument((doc, _) => JsonSerializer.Serialize(doc, MapDocumentFile.CreateOptions(MapDocRegistry.CreateDefault(), write: true))));
+                session.SetWindow(-1024f, 0f, 511f, 511f, discard: true);
+                session.Mutate((doc, _) => { doc.Placements.Single(p => p.Id == "p-a").X = -600f; return 0; }, worldChanged: false);
+                Assert.True(session.Save().Saved);
+                Assert.Equal(-600f, MapDocumentFile.LoadTiled(dir).Placements.Single(p => p.Id == "p-a").X);
             }
             finally { TiledFixture.Delete(dir); }
         }

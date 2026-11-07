@@ -42,7 +42,12 @@ public sealed class StoredWholeIdentityTests
             foreach (string payloadFile in payloadFiles) File.Delete(payloadFile);
             Assert.All(payloadFiles, payloadFile => Assert.False(File.Exists(payloadFile)));
             MapDocumentException error = Assert.Throws<MapDocumentException>(() => MapStoredSurfaceSource.Open(directory));
-            Assert.Contains("Resolver version 2 requires supportRecipe AuthoredBindingsV2.", error.Message);
+            Assert.Equal(MapDocumentRefusal.ResolverContractMismatch, error.Reason);
+            Assert.Equal(2, error.ResolverVersion);
+            Assert.Equal(2, error.ExpectedResolverVersion);
+            Assert.Equal(MapSupportRecipe.LegacyXzCallbackV1, error.SupportRecipe);
+            Assert.Equal(MapSupportRecipe.AuthoredBindingsV2, error.ExpectedSupportRecipe);
+            Assert.Equal("supportRecipe", error.FieldPath);
 
             manifest["supportRecipe"] = nameof(MapSupportRecipe.AuthoredBindingsV2);
             File.WriteAllText(manifestPath, manifest.ToJsonString());

@@ -110,7 +110,12 @@ namespace KhaozEngine.Tests.MapDoc
             TiledDocFixture.InDirectory(root =>
             {
                 var ex = Assert.Throws<MapDocumentException>(() => MapDocumentFile.LoadTiled(root));
-                Assert.Contains("map.json", ex.Message, StringComparison.Ordinal);
+                Assert.Equal(MapDocumentRefusal.DocumentManifestMissing, ex.Reason);
+                Assert.Equal("map.json", ex.FileName);
+                Assert.Equal(root, ex.SourceName);
+                Assert.Equal(Path.Combine(root, "map.json"), ex.Path);
+                MapDocumentFile.SaveTiled(TiledDocFixture.SampleDoc(), root);
+                Assert.Equal(TiledDocFixture.SampleDoc().Id, MapDocumentFile.LoadTiled(root).Id);
             });
         }
 

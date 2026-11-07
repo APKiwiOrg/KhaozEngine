@@ -15781,10 +15781,15 @@ kinds and biome names use `SchemaEnumUnsupported`, with `SubmittedText`, owned r
 `EnumType` for biomes and the original `ParamName`. Empty scatter kind IDs use `SchemaValueRequired`, while
 unparseable weights use `SchemaMalformed`, both carrying the input `Index`, `FieldPath` and `SubmittedText`.
 Unknown sculpt brushes retain the same schema reason, the submitted text, `SculptBrush` enum type and every
-accepted brush name. Partial foliage and sculpt rectangles share `ToolRectangleIncomplete` with their actual
-field path. Opening a parent-dependent prefab without a parent reuses `AuthoredValueRequired`, carrying its
+accepted brush name. Partial foliage, marker and sculpt rectangles share `ToolRectangleIncomplete` with their actual
+field path and refused `Operation`. Opening a parent-dependent prefab without a parent reuses `AuthoredValueRequired`, carrying its
 resource and asset identity. Local prefab work without an opened asset uses `ToolPrefabSessionRequired` and
 `Operation`. Ambiguous extraction parents use `ToolExtractionParentAmbiguous` with owned read-only `SpaceIds`.
+Document deserialization also adds the source name to an already-classified nested codec refusal without changing
+its text or typed context, retaining the original exception as the cause.
+Adding a standalone interior to a space that already owns a prism reuses `SpaceRoomOccupancyInvalid`, with
+the requested `RecordId`, `SpaceId` and `DocumentId`. Reading a missing water body uses `ReferenceMissing`
+with the requested `BodyId` and `DocumentId`, including when the document has no water section.
 A null decoded feature or shape uses `MapToolJsonException`,
 `SchemaValueRequired`, root `FieldPath` and `SubjectKind`, still catchable through `JsonException`.
 Foliage dry runs distinguish unsupported edit kinds (`FoliagePreviewEditUnsupported`, `EditType`) from new

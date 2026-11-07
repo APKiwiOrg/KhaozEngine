@@ -146,7 +146,16 @@ public static class MapDocumentFile
     {
         options ??= new MapDocumentLoadOptions();
         string where = sourcePath ?? "(inline)";
+        try { return LoadTextCore(json, options, where); }
+        catch (MapDocumentException ex) when (ex.SourceName is null)
+        {
+            // Every nested reader uses the same context copy, retaining its original text and typed refusal.
+            throw ex.WithSourceName(where, ex.Message);
+        }
+    }
 
+    static MapDocument LoadTextCore(string json, MapDocumentLoadOptions options, string where)
+    {
         JsonObject root;
         try
         {

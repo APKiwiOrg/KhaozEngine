@@ -14,7 +14,7 @@ public sealed class SurfaceStorageTests
 {
     static readonly MapPatchKey Ridge = new("ridge", 0, 0), Ground0 = new("ground", 0, 0),
         Ground1 = new("ground", 1, 0), FarEast = new("far", 300, 0), FarWest = new("far", -300, 0);
-    static string Refusal(MapDocument doc, string dir) => Assert.Throws<MapDocumentException>(() => MapDocumentFile.SaveTiled(doc, dir)).Message;
+    static MapDocumentException Refusal(MapDocument doc, string dir) => Assert.Throws<MapDocumentException>(() => MapDocumentFile.SaveTiled(doc, dir));
 
     [Theory]
     [InlineData((int)MapTiledSaveStep.BeforeTileWrite)]
@@ -245,9 +245,17 @@ public sealed class SurfaceStorageTests
         MapDocumentFile.SaveTiled(whole, dir);
         byte[] manifest = File.ReadAllBytes(Path.Combine(dir, "map.json"));
         window.Surfaces.Patches[Ground0].Heights[6] = 1100;
-        Assert.Contains("stale window", Refusal(window, dir));
+        MapDocumentException refusal = Refusal(window, dir);
+        Assert.Equal(MapDocumentRefusal.DocumentStaleWindow, refusal.Reason);
+        Assert.Equal(window.Tiles!.ManifestSha256, refusal.ExpectedHash);
+        Assert.Equal(AssertFixtures.Sha256(Path.Combine(dir, "map.json")), refusal.ActualHash);
+        Assert.Equal(Path.Combine(dir, "map.json"), refusal.Path);
         Assert.Equal(manifest, File.ReadAllBytes(Path.Combine(dir, "map.json")));
         Assert.Equal(2100, MapDocumentFile.LoadTiled(dir).Surfaces.Patches[FarEast].Heights[0]);
+        MapDocument repaired = SurfaceStorageFixtures.LoadSlotWindow(dir, 0);
+        repaired.Surfaces.Patches[Ground0].Heights[6] = 1100;
+        MapDocumentFile.SaveTiled(repaired, dir);
+        Assert.Equal(1100, MapDocumentFile.LoadTiled(dir).Surfaces.Patches[Ground0].Heights[6]);
     });
     [Fact]
     public void SurfacesOnlyWindows_SecondSaveRefusesAsStale() => TiledDocFixture.InDirectory(dir =>
@@ -259,17 +267,29 @@ public sealed class SurfaceStorageTests
         MapDocumentFile.SaveTiled(b, dir);
         byte[] manifest = File.ReadAllBytes(Path.Combine(dir, "map.json"));
         a.Surfaces.Patches[FarEast].Heights[0] = 2200;
-        Assert.Contains("stale window", Refusal(a, dir));
+        MapDocumentException refusal = Refusal(a, dir);
+        Assert.Equal(MapDocumentRefusal.DocumentStaleWindow, refusal.Reason);
+        Assert.Equal(a.Tiles!.ManifestSha256, refusal.ExpectedHash);
+        Assert.Equal(AssertFixtures.Sha256(Path.Combine(dir, "map.json")), refusal.ActualHash);
+        Assert.Equal(Path.Combine(dir, "map.json"), refusal.Path);
         Assert.Equal(manifest, File.ReadAllBytes(Path.Combine(dir, "map.json")));
         MapDocument whole = MapDocumentFile.LoadTiled(dir);
         Assert.Equal((2100, 2000), (whole.Surfaces.Patches[FarWest].Heights[0], whole.Surfaces.Patches[FarEast].Heights[0]));
+        MapDocument repaired = SurfaceStorageFixtures.LoadSlotWindow(dir, 300);
+        repaired.Surfaces.Patches[FarEast].Heights[0] = 2200;
+        MapDocumentFile.SaveTiled(repaired, dir);
+        Assert.Equal(2200, MapDocumentFile.LoadTiled(dir).Surfaces.Patches[FarEast].Heights[0]);
     });
     [Fact]
     public void SurfacesOnlyWindow_IsPartialEverywhereACompleteDocumentIsRequired() => TiledDocFixture.InDirectory(dir =>
     {
         MapDocumentFile.SaveTiled(SurfaceStorageFixtures.ThreeSurfaces(), dir);
         MapDocument w = SurfaceStorageFixtures.LoadSlotWindow(dir, 300);
-        Assert.Contains("windowed", Assert.Throws<MapDocumentException>(() => MapDocumentFile.SaveText(w)).Message);
+        var wholeRefusal = Assert.Throws<MapDocumentException>(() => MapDocumentFile.SaveText(w));
+        Assert.Equal(MapDocumentRefusal.CompleteDocumentRequired, wholeRefusal.Reason);
+        Assert.Equal(w.Id, wholeRefusal.DocumentId);
+        Assert.Equal("SaveWholeDocument", wholeRefusal.Operation);
+        Assert.NotEmpty(MapDocumentFile.SaveText(MapDocumentFile.LoadTiled(dir)));
         TiledDocFixture.InDirectory(other => Assert.Throws<MapDocumentException>(() => MapDocumentFile.SaveAs(w, Path.Combine(other, "m.json"), MapDocumentForm.Monolithic)));
         Assert.Throws<MapDocumentException>(() => MapBoundDocumentValidation.Validate(w, SurfaceStorageFixtures.Assets()));
         Assert.Throws<MapDocumentException>(() => NativeDocumentSnapshot.Clone(w, MapDocRegistry.CreateDefault()));
@@ -335,7 +355,13 @@ public sealed class SurfaceStorageTests
         MapDocumentFile.SaveTiled(monolithic, dir);
         Assert.NotEqual(repackedGeneration, AssertFixtures.Sha256(Path.Combine(dir, "map.json")));
         Assert.Equal(semantic, SurfaceStorageFixtures.SemanticSnapshot(MapDocumentFile.LoadTiled(dir)));
-        Assert.Contains("tiled", Assert.Throws<MapDocumentException>(() =>
-            MapDocumentFile.SaveText(SurfaceStorageFixtures.FlatPatches(257))).Message);
+        var refusal = Assert.Throws<MapDocumentException>(() => MapDocumentFile.SaveText(SurfaceStorageFixtures.FlatPatches(257)));
+        Assert.Equal(MapDocumentRefusal.WorkCapacityExceeded, refusal.Reason);
+        Assert.Equal("MaxEmbeddedPatches", refusal.Budget);
+        Assert.Equal("$.surfacePatches", refusal.FieldPath);
+        Assert.Equal(257, refusal.ActualCount);
+        Assert.Equal(256, refusal.Limit);
+        foreach (int count in new[] { 255, 256 })
+            Assert.Equal(count, MapDocumentFile.LoadText(MapDocumentFile.SaveText(SurfaceStorageFixtures.FlatPatches(count))).Surfaces.Patches.Count);
     });
 }

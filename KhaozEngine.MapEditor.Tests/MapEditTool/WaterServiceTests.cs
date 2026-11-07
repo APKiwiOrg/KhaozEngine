@@ -35,14 +35,24 @@ public sealed class WaterServiceTests : IDisposable
         MapEditSession refused = Open(WaterFixtures.OceanOverCaves());
         MapWaterBodyDoc ocean = WaterToolFixtures.Document(refused).Water!.Bodies.Single(b => b.Id == "ocean");
         string before = WaterToolFixtures.Document(refused).Water!.Digest();
+        string contentBefore = MapDocumentFile.SaveText(WaterToolFixtures.Document(refused));
+        var historyBefore = refused.NativeHistoryState;
         var stray = ocean with
         {
             Domain = ocean.Domain with { Rects = new[] { new MapWaterRect(30, 0, 34, 4) } },
         };
         var error = Assert.Throws<MapDocumentException>(() => new MutationService(refused).WaterApply(new MapUpsertWaterBody(stray)));
-        Assert.Contains("water body 'ocean' covers no space footprint", error.Message, StringComparison.Ordinal);
+        Assert.Equal(MapDocumentRefusal.WaterNoSpaceFootprint, error.Reason);
+        Assert.Equal("ocean", error.EntityId);
+        Assert.Equal(ocean.Covers.Select(c => c.Id), error.SourceIds);
+        Assert.Contains(error.Findings!, f => f.Reason == MapDocumentRefusal.WaterNoSpaceFootprint && f.EntityId == "ocean");
         Assert.Equal(before, WaterToolFixtures.Document(refused).Water!.Digest());
+        Assert.Equal(contentBefore, MapDocumentFile.SaveText(WaterToolFixtures.Document(refused)));
+        Assert.Equal(historyBefore, refused.NativeHistoryState);
         Assert.False(refused.IsDirty);
+        var repaired = stray with { Domain = ocean.Domain };
+        new MutationService(refused).WaterApply(new MapUpsertWaterBody(repaired));
+        Assert.Equal(before, WaterToolFixtures.Document(refused).Water!.Digest());
     }
 
     [Fact]
@@ -76,9 +86,17 @@ public sealed class WaterServiceTests : IDisposable
         var water = new WaterService(session);
         Assert.Equal(new[] { "cave-lake", "flooded", "ocean" }, water.List().Select(b => b.Id));
         Assert.Equal(-20f, water.Get("flooded").SurfaceY);
-        Assert.Throws<MapDocumentException>(() => { water.Get("Flooded"); });
-        Assert.Throws<MapDocumentException>(() => { water.Get("missing"); });
-        Assert.False(session.IsDirty);
+        string before = MapDocumentFile.SaveText(WaterToolFixtures.Document(session));
+        foreach (string id in new[] { "Flooded", "missing" })
+        {
+            var error = Assert.Throws<MapDocumentException>(() => water.Get(id));
+            Assert.Equal(MapDocumentRefusal.ReferenceMissing, error.Reason);
+            Assert.Equal(id, error.BodyId);
+            Assert.Equal(WaterToolFixtures.Document(session).Id, error.DocumentId);
+            Assert.Equal(before, MapDocumentFile.SaveText(WaterToolFixtures.Document(session)));
+            Assert.False(session.IsDirty);
+        }
+        Assert.Equal("flooded", water.Get("flooded").Id);
 
         using ServiceProvider services = new ServiceCollection().AddMapEditServices().BuildServiceProvider();
         Assert.Same(services.GetRequiredService<WaterService>(), services.GetRequiredService<WaterService>());

@@ -347,13 +347,15 @@ Direct missing region, scatter-layer, companion-layer and duplicate-source looku
 | `MapMutationArgumentException.SchemaValueRequired` or `SchemaMalformed` | An empty scatter kind ID or unparseable weight | input `Index`, `FieldPath`, `SubmittedText` |
 | `MapMutationException.ToolFeatureTranslationUnsupported` | A feature without a supported duplicate translation | `DocumentId`, `Index`, `FeatureType`, `Operation` |
 | `MapMutationArgumentException.ToolRectangleIncomplete` | A partial sculpt clear rectangle | `Operation`, `FieldPath` |
-| `MapDocumentException.ToolRectangleIncomplete` | A partial foliage query rectangle | `Operation`, `FieldPath`, known `LayerId` |
+| `MapDocumentException.ToolRectangleIncomplete` | A partial foliage or marker query rectangle | `Operation`, `FieldPath`, known `LayerId` |
 | `MapDocumentException.FoliageQueryLayerRequired` | A density or preview query without a layer | `FieldPath` `layerId` |
 | `MapDocumentException.FoliageChunkUnavailable` | Advertised density without resident bytes | `LayerId`, `FoliageChunk` |
 | `MapDocumentException.AuthoredValueRequired` | Opening a parent-dependent prefab without an authored parent | `ResourceId`, `AssetId`, `FieldPath` `parentSpace`, `Operation` |
 | `MapDocumentException.ToolPrefabSessionRequired` | Editing, exporting or saving without a local prefab session | `Operation` |
 | `MapDocumentException.ToolExtractionParentAmbiguous` | Extraction with multiple authored parents | owned read-only `SpaceIds`, `DocumentId` |
 | `MapDocumentException.ReferenceMissing` or `IdentityDuplicate` | Setting an absent interior or adding an existing interior ID | `RecordId`, `SpaceId`, `DocumentId`, `SubjectKind` |
+| `MapDocumentException.SpaceRoomOccupancyInvalid` | Adding another standalone prism for an occupied interior space | requested `RecordId`, `SpaceId`, `DocumentId` |
+| `MapDocumentException.ReferenceMissing` | Reading an absent water body | requested `BodyId`, `DocumentId` |
 | `MapDocumentException.ToolEffectiveResourcesMissing` | Native query resolution without effective resources | `Operation` |
 | `MapRenderArgumentException.RenderLookDirectionZero` | A zero view direction | submitted `Eye`, `Target` |
 | `MapRenderException.RenderFailed` or a known document reason | Capture failure | `Backend`, `Operation`, original `InnerException`, known lower `Finding` |
@@ -361,6 +363,10 @@ Direct missing region, scatter-layer, companion-layer and duplicate-source looku
 | `MapDocumentException.SchemaValueRequired` or `SchemaObjectRequired` | Absent foliage JSON parameter or a non-object root | `FieldPath` `layerJson` or `previewChunkJson` |
 | `MapDocumentException.FoliagePreviewEditUnsupported` | A dry run for an edit other than setting a layer | runtime `EditType` |
 | `MapDocumentException.FoliagePreviewLayerNew` | A differential preview for a newly created layer | `LayerId` |
+
+`marker_list` rectangle refusals carry `Operation` `marker_list` and `FieldPath` `minX,minZ,maxX,maxZ`.
+The interior add guard reuses the Room occupancy rule before publication. A missing water body uses the same
+reference reason as other lookups, preserving the requested body identity even when the water section is absent.
 
 `MapMutationArgumentException` remains catchable as `ArgumentException`, preserving `ParamName`. Unknown sculpt
 brushes use `SchemaEnumUnsupported`, `SubmittedText`, `EnumType` and the complete owned `AcceptedValues` list.

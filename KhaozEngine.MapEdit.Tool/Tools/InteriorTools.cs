@@ -26,7 +26,8 @@ public sealed class InteriorTools(MutationService mutation, MapEditSession sessi
             requirePresent ? "No standalone interior with that ID." : "An interior with that ID already exists.")
         { DocumentId = c.Document.Id, RecordId = domain.Id, SpaceId = domain.Space.Id, SubjectKind = "standalone interior" };
         if (!requirePresent && c.Document.Surfaces.AllRecords().OfType<MapPrismDomain>().Any(d => d.Space.Id == domain.Space.Id))
-            throw new MapDocumentException("The interior space already owns a prism.");
+            throw new MapDocumentException(MapDocumentRefusal.SpaceRoomOccupancyInvalid, "The interior space already owns a prism.")
+            { DocumentId = c.Document.Id, RecordId = domain.Id, SpaceId = domain.Space.Id };
         return mutation.InteriorApply(new MapSetInterior(domain));
     });
 

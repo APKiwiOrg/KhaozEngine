@@ -38,8 +38,25 @@ its start. A failed bootstrap is retried by the next call.
   `AutoCreate` run adds them.
 
 Both modes end with the same check: every owned column present, `nvarchar` for the text columns at no less than
-the limits, `bit` for the flags and `datetimeoffset` for the expiry and the two row times. The message names
-columns, never rows.
+the limits, `bit` for the flags and `datetimeoffset` for the expiry and the two row times.
+
+## Refusals
+
+A refused bootstrap throws `AccountSchemaException`, which derives from `InvalidOperationException`. `Reason` is the
+rule, and the identifiers name schemas, tables, columns and types, never rows.
+
+| `Reason` | What it refuses | Identifiers |
+|---|---|---|
+| `SchemaMissing` | a configured schema that does not exist, in either mode | `SchemaName` |
+| `TableMissing` | a missing table under `ValidateOnly` | `TableName` |
+| `ColumnMissing` | an absent owned column, other than one `AutoCreate` is about to add | `ColumnName` |
+| `ColumnTypeMismatch` | an owned column of a type the store cannot read | `ColumnName`, `ActualType`, `ExpectedType` |
+| `ColumnTooNarrow` | an owned text column under its limit | `ColumnName`, `ActualCharacters`, `MinimumCharacters` |
+
+The last three are the layout check, which reports every column it refuses. `Findings` holds one
+`AccountSchemaFinding` per refused column, in the layout's column order, with that column's `Reason` and identifiers.
+The exception's `Reason` and column identifiers are the first finding's. `MinimumCharacters` is inclusive, so a column
+widened to it passes. `SchemaMissing` and `TableMissing` leave `Findings` null.
 
 ## The table
 
@@ -95,7 +112,8 @@ string. A duplicate-key failure is rethrown without the provider's exception, wh
 
 ## Testing this backend
 
-The shared conformance suite and the Grimhollow layout fixtures run against this backend only when
+The schema refusal facts run everywhere, over the two checks with the catalog read taken out. The shared conformance
+suite and the Grimhollow layout fixtures run against this backend only when
 `KE_ACCOUNTS_SQLSERVER` holds a connection string whose initial catalog contains `-accounts-test-`, because the
 fixtures create and drop tables in it. CI's `accounts-sqlserver` job runs them against a disposable
 `mcr.microsoft.com/mssql/server:2022-latest` service and fails unless every fact executed. Locally, start a

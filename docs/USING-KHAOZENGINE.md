@@ -25067,7 +25067,8 @@ The ASP.NET Core names come from a web project's implicit usings. What a game ch
   `SqlServerAccountStore` for production, where `AccountSchemaMode.ValidateOnly` lets the runtime identity run without
   DDL rights once one `AutoCreate` run under a migration identity has brought the table to the engine layout,
   including the `created_at_utc` and `updated_at_utc` columns behind `AccountRecord.CreatedAtUtc` and
-  `UpdatedAtUtc`. The engine stores keep one flat `accounts` table and mint `{ProviderId}:{ProviderSubject}`, for
+  `UpdatedAtUtc`. A schema, table or column that does not fit refuses the first call with `AccountSchemaException`,
+  whose `Reason` and `Findings` its README tabulates. The engine stores keep one flat `accounts` table and mint `{ProviderId}:{ProviderSubject}`, for
   example `discord:80351110224678912`. A game with its own schema implements `IAccountStore` over it and mints what
   it likes, provided `AccountStoreRules.IsAdmissibleSubject` accepts the result. Each store's README has its table
   and the contract.

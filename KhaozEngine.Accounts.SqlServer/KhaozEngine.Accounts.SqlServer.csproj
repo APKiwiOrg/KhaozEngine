@@ -13,5 +13,7 @@
          9.0.11 transitively. Drop it once SqlClient references a patched build itself. -->
     <PackageReference Include="System.Security.Cryptography.Pkcs" />
     <None Include="README.md" Pack="true" PackagePath="\" />
+    <!-- The schema refusals' catalog-free checks, so every leg reaches each reason with no server. -->
+    <InternalsVisibleTo Include="KhaozEngine.Accounts.Tests" />
   </ItemGroup>
 </Project>

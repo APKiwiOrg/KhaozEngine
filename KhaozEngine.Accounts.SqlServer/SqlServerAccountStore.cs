@@ -305,7 +305,7 @@ public sealed class SqlServerAccountStore : IAccountStore
         {
             if (shape is { } known) return known;
             bool displayNameRequired = await SqlServerAccountSchema
-                .EnsureAsync(connection, schemaName, qualified, Options.SchemaMode, ct).ConfigureAwait(false);
+                .EnsureAsync(connection, schemaName, Options.Table, qualified, Options.SchemaMode, ct).ConfigureAwait(false);
             var bootstrapped = new TableShape(displayNameRequired);
             shape = bootstrapped;
             return bootstrapped;

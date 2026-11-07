@@ -216,10 +216,16 @@ public sealed class SqlServerAccountStoreLayoutTests : IDisposable
     {
         string table = Database.NewTableName();
 
-        await Assert.ThrowsAsync<InvalidOperationException>(
+        AccountSchemaException refusal = await Assert.ThrowsAsync<AccountSchemaException>(
             () => Open(table, AccountSchemaMode.ValidateOnly).FindAsync("discord:1"));
 
+        Assert.Equal(AccountSchemaRefusal.TableMissing, refusal.Reason);
+        Assert.Equal(table, refusal.TableName);
         Assert.Equal(new[] { "NULL" }, Database.Query($"SELECT OBJECT_ID(N'dbo.{table}');"));
+
+        // The control makes the table, the one thing that was wrong.
+        await Open(table).ListAsync();
+        Assert.Empty(await Open(table, AccountSchemaMode.ValidateOnly).ListAsync());
     }
 
     [AccountsSqlServerFact]
@@ -227,14 +233,18 @@ public sealed class SqlServerAccountStoreLayoutTests : IDisposable
     {
         string table = OriginalTable();
 
-        InvalidOperationException refusal = await Assert.ThrowsAsync<InvalidOperationException>(
+        AccountSchemaException refusal = await Assert.ThrowsAsync<AccountSchemaException>(
             () => Open(table, AccountSchemaMode.ValidateOnly).ListAsync());
 
-        Assert.Contains("'ban_reason' is missing", refusal.Message, StringComparison.Ordinal);
-        Assert.Contains("'ban_until' is missing", refusal.Message, StringComparison.Ordinal);
-        Assert.Contains("'created_at_utc' is missing", refusal.Message, StringComparison.Ordinal);
-        Assert.Contains("'updated_at_utc' is missing", refusal.Message, StringComparison.Ordinal);
+        Assert.Equal(AccountSchemaRefusal.ColumnMissing, refusal.Reason);
+        Assert.Equal("ban_reason", refusal.ColumnName);
+        Assert.Equal(EngineColumns.Skip(4), refusal.Findings!.Select(finding => finding.ColumnName));
+        Assert.All(refusal.Findings!, finding => Assert.Equal(AccountSchemaRefusal.ColumnMissing, finding.Reason));
         Assert.Equal(EngineColumns.Take(4), Database.Columns(table));
+
+        // The control runs the one AutoCreate the refusal asks for, after which the same table validates.
+        await Open(table).ListAsync();
+        Assert.Empty(await Open(table, AccountSchemaMode.ValidateOnly).ListAsync());
     }
 
     [AccountsSqlServerFact]
@@ -262,13 +272,28 @@ public sealed class SqlServerAccountStoreLayoutTests : IDisposable
         Database.Execute($"CREATE TABLE dbo.[{narrow}] (subject NVARCHAR(128) NOT NULL PRIMARY KEY, " +
             "display_name NVARCHAR(64) NULL, whitelisted BIT NOT NULL, banned BIT NOT NULL);");
 
-        InvalidOperationException refusal =
-            await Assert.ThrowsAsync<InvalidOperationException>(() => Open(narrow).FindAsync("discord:1"));
-        Assert.Contains("'display_name' holds fewer than 128 characters", refusal.Message, StringComparison.Ordinal);
+        AccountSchemaException refusal =
+            await Assert.ThrowsAsync<AccountSchemaException>(() => Open(narrow).FindAsync("discord:1"));
+        Assert.Equal(AccountSchemaRefusal.ColumnTooNarrow, refusal.Reason);
+        Assert.Equal("display_name", refusal.ColumnName);
+        Assert.Equal(64, refusal.ActualCharacters);
+        Assert.Equal(AccountStoreRules.MaxDisplayNameChars, refusal.MinimumCharacters);
+        Assert.Equal("display_name", Assert.Single(refusal.Findings!).ColumnName);
         Assert.Equal(EngineColumns.Take(4), Database.Columns(narrow));
 
-        await Assert.ThrowsAsync<InvalidOperationException>(
-            () => Open(Database.NewTableName(), schema: "no_such_schema_" + Guid.NewGuid().ToString("N")).ListBannedAsync());
+        // The control widens the column to the limit the refusal reported, the least that passes.
+        Database.Execute($"ALTER TABLE dbo.[{narrow}] ALTER COLUMN display_name NVARCHAR({refusal.MinimumCharacters}) NULL;");
+        Assert.Null(await Open(narrow).FindAsync("discord:1"));
+
+        string table = Database.NewTableName();
+        string noSuchSchema = "no_such_schema_" + Guid.NewGuid().ToString("N");
+        AccountSchemaException noSchema = await Assert.ThrowsAsync<AccountSchemaException>(
+            () => Open(table, schema: noSuchSchema).ListBannedAsync());
+        Assert.Equal(AccountSchemaRefusal.SchemaMissing, noSchema.Reason);
+        Assert.Equal(noSuchSchema, noSchema.SchemaName);
+
+        // The control names a schema that exists and changes nothing else.
+        Assert.Empty(await Open(table).ListBannedAsync());
     }
 
     [AccountsSqlServerFact]
@@ -278,11 +303,18 @@ public sealed class SqlServerAccountStoreLayoutTests : IDisposable
         Database.Execute($"CREATE TABLE dbo.[{table}] (subject NVARCHAR(128) NOT NULL PRIMARY KEY, " +
             "display_name NVARCHAR(128) NULL, whitelisted BIT NOT NULL, banned BIT NOT NULL, created_at_utc DATETIME2 NULL);");
 
-        InvalidOperationException refusal =
-            await Assert.ThrowsAsync<InvalidOperationException>(() => Open(table).FindAsync("discord:1"));
+        AccountSchemaException refusal =
+            await Assert.ThrowsAsync<AccountSchemaException>(() => Open(table).FindAsync("discord:1"));
 
-        Assert.Contains("'created_at_utc' is datetime2 where datetimeoffset is expected", refusal.Message,
-            StringComparison.Ordinal);
+        Assert.Equal(AccountSchemaRefusal.ColumnTypeMismatch, refusal.Reason);
+        Assert.Equal("created_at_utc", refusal.ColumnName);
+        Assert.Equal("datetime2", refusal.ActualType);
+        Assert.Equal("datetimeoffset", refusal.ExpectedType);
+        Assert.Equal("created_at_utc", Assert.Single(refusal.Findings!).ColumnName);
         Assert.Equal(EngineColumns.Take(4).Append("created_at_utc"), Database.Columns(table));
+
+        // The control removes the mistyped column, which the widening then adds with the right type.
+        Database.Execute($"ALTER TABLE dbo.[{table}] DROP COLUMN created_at_utc;");
+        Assert.Null(await Open(table).FindAsync("discord:1"));
     }
 }

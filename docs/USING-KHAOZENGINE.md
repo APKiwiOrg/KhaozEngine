@@ -23345,6 +23345,16 @@ shape rule and its identifiers. Array elements must be objects. A negative sourc
 remap rule, row field value or text constructor, such as `FamilyBlockSizeOutsideRange`, `BundleFieldNameDuplicate`
 or `BundleTextTargetDuplicate`. The same section lists those.
 
+`ContentIdAllocator` refuses a plain range above its ceiling as `AllocationCeilingExceeded`, carrying
+`Type`, the inclusive `Ceiling`, `IssuedThrough`, `ReservedThrough` and `RequestedCount`. A family block
+whose highest id exceeds the ceiling uses `FamilyReservationCeilingExceeded`, with `FamilyKey`, `BaseId`
+and `HighestId` beside the type, ceiling and marks. Both keep `id-ceiling-exceeded` in the legacy `Reason`.
+An unknown allocation family uses `FamilyUnknown` and `FamilyId`, with the legacy `unknown-family` token.
+`ContentChangeSet.Apply` refuses competing operations as `EditTargetOperationCollision`, carrying the
+compared `Type`, `Id` and `RowKey` and both `StandingOperation` and `RequestedOperation`, while retaining
+`edit-target-collision`. A diff over an unregistered type uses `TypeUnknown` and `Type`, retaining
+`unknown-type`. See the [allocation and change-set refusal table](../KhaozEngine.Catalog.Authoring/README.md#allocation-and-change-set-refusals).
+
 ### Authoring catalog text
 
 `IContentTextAuthoringStore` is the opt-in text companion of `IContentAuthoringStore`, and all three stores

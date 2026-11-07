@@ -110,6 +110,10 @@ public class AuthoringValueTests
 
         ContentAuthoringException refusal = Assert.Throws<ContentAuthoringException>(() => set.Apply(retire));
         Assert.Equal(ContentAuthoringException.EditTargetCollisionReason, refusal.Reason);
+        Assert.Equal(ContentAuthoringRefusal.EditTargetOperationCollision, refusal.Refusal);
+        Assert.Equal("stone_sword", refusal.RowKey);
+        Assert.Equal(ContentEditOperation.Update, refusal.StandingOperation);
+        Assert.Equal(ContentEditOperation.Retire, refusal.RequestedOperation);
         Assert.Equal(Item, refusal.Type);
         Assert.Equal(13, refusal.Id);
 
@@ -117,6 +121,9 @@ public class AuthoringValueTests
         ContentEdit only = Assert.Single(set.Edits);
         Assert.Equal(ContentEditOperation.Update, only.Operation);
         Assert.Equal(45, Assert.Single(only.Fields).Value.Number);
+
+        set.Apply(ContentEdit.Update(Item, 13, new ContentKey("stone_sword"), [Int("value", 46)]));
+        Assert.Equal(46, Assert.Single(Assert.Single(set.Edits).Fields).Value.Number);
     }
 
     [Fact]

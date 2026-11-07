@@ -151,7 +151,9 @@ pending intent per target, and it answers a second edit of an occupied target in
   which is also the order the audit will show.
 
 `TryApply` reports the standing edit that refused the new one. `Apply` throws the same refusal as a
-`ContentAuthoringException` carrying the `edit-target-collision` reason.
+`ContentAuthoringException` carrying the `edit-target-collision` reason and
+`EditTargetOperationCollision` in `Refusal`. `Type`, `Id`, `RowKey`, `StandingOperation` and
+`RequestedOperation` describe the compared target and its two intents.
 
 ## Families and id blocks
 
@@ -188,9 +190,25 @@ it. The plain path therefore needs no knowledge of families at all.
 
 A type may declare a `maxDefinitionId` at registration, and both paths refuse to cross it: a range that
 would pass it is refused whole, a reservation stops at it, and a new block whose top would exceed it is
-refused. The refusal is a `ContentAuthoringException` carrying the `id-ceiling-exceeded` reason and naming
-the type, the ceiling and the high-water mark. Retired rows count toward a ceiling, because ids are never
-reused and a retired row keeps the number it occupies.
+refused. Both refusals are `ContentAuthoringException` carrying the unchanged `id-ceiling-exceeded`
+`Reason` token. The typed members below describe the type, inclusive ceiling and high-water marks.
+Retired rows count toward a ceiling, because ids are never reused and a retired row keeps the number it occupies.
+
+### Allocation and change-set refusals
+
+| `Refusal` | What it refuses | Identifiers |
+|---|---|---|
+| `AllocationCeilingExceeded` | A plain id range whose top exceeds the type's inclusive ceiling | `Type`, `Ceiling`, `IssuedThrough`, `ReservedThrough`, `RequestedCount` |
+| `FamilyReservationCeilingExceeded` | A new aligned family block whose highest id exceeds the type's inclusive ceiling | `Type`, `FamilyKey`, `Ceiling`, `BaseId`, `HighestId`, `IssuedThrough`, `ReservedThrough` |
+| `FamilyUnknown` | Allocation or block reservation by a family id the persistence does not hold | `FamilyId`, with `Type` left at its default because the family is unknown |
+| `EditTargetOperationCollision` | A change-set target already held under a different edit operation | `Type`, `Id`, `RowKey`, `StandingOperation`, `RequestedOperation` |
+| `TypeUnknown` | A diff row whose type the supplied registry does not declare | `Type` |
+
+The plain ceiling is the declared `maxDefinitionId`, or 2,147,483,647 when no ceiling is declared.
+`BaseId` and `HighestId` are 64-bit so a refused block beyond positive `int` space is reported without
+truncation. `FamilyUnknown` keeps `unknown-family`, `EditTargetOperationCollision` keeps
+`edit-target-collision`, and `TypeUnknown` keeps `unknown-type` in `Reason`. Other store and publish
+refusals still expose their legacy tokens when they carry no typed `Refusal`.
 
 `IContentIdPersistence` is the durable half the allocator sits on, and every `Commit` member on it commits
 on its own. A backend implements it with its own transactions.

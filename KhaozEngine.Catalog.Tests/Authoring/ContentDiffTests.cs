@@ -246,5 +246,10 @@ public class ContentDiffTests
             () => ContentDiff.Between(1, [], 2, [stranger], registry));
 
         Assert.Equal(ContentAuthoringException.UnknownTypeReason, refused.Reason);
+        Assert.Equal(ContentAuthoringRefusal.TypeUnknown, refused.Refusal);
+        Assert.Equal(new ContentTypeId(2001), refused.Type);
+
+        ContentDiff repaired = ContentDiff.Between(1, [], 2, [Revision(1, "x", 10)], registry);
+        Assert.Equal(Thing, Assert.Single(repaired.Changes).Type);
     }
 }

@@ -157,4 +157,26 @@ public enum ContentAuthoringRefusal
     /// <summary>Refuses a text value above 8,192 strict UTF-8 bytes. A bundle carries <c>JsonPath</c>,
     /// <c>ActualBytes</c> and <c>MaximumBytes</c> (8,192).</summary>
     TextValueBytesExceeded,
+
+    // Id allocation, family reservations, change sets and diff row identity.
+
+    /// <summary>Refuses a plain id range whose top exceeds the type's inclusive ceiling. Carries
+    /// <c>Type</c>, <c>Ceiling</c>, <c>IssuedThrough</c>, <c>ReservedThrough</c> and <c>RequestedCount</c>.</summary>
+    AllocationCeilingExceeded,
+
+    /// <summary>Refuses an aligned family block whose highest id exceeds the type's inclusive ceiling. Carries
+    /// <c>Type</c>, <c>FamilyKey</c>, <c>Ceiling</c>, <c>BaseId</c>, <c>HighestId</c>, <c>IssuedThrough</c>
+    /// and <c>ReservedThrough</c>.</summary>
+    FamilyReservationCeilingExceeded,
+
+    /// <summary>Refuses allocation or reservation by an absent family id. Carries <c>FamilyId</c>, with
+    /// <c>Type</c> left at its default because the family is unknown.</summary>
+    FamilyUnknown,
+
+    /// <summary>Refuses a target held under a different edit operation. Carries <c>Type</c>, <c>Id</c>,
+    /// <c>RowKey</c>, <c>StandingOperation</c> and <c>RequestedOperation</c>.</summary>
+    EditTargetOperationCollision,
+
+    /// <summary>Refuses a diff row whose type the registry does not declare. Carries <c>Type</c>.</summary>
+    TypeUnknown,
 }

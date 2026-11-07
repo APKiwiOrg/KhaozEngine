@@ -1436,8 +1436,11 @@ spends this case.
 registration (3.6). When it does, both allocation branches refuse to issue an id above it: step 1 fails rather
 than handing out a range that crosses the ceiling, step 2 reserves no further, and
 `AllocateInFamilyAsync` refuses a new block whose top would exceed it. The failure is a
-`ContentAuthoringException` naming the type, the ceiling and the current high-water mark, and it aborts the
-publish with nothing written, which is the same shape as every other allocation failure.
+`ContentAuthoringException` carrying `AllocationCeilingExceeded` for a plain range or
+`FamilyReservationCeilingExceeded` for a block in `Refusal`, beside the unchanged `id-ceiling-exceeded`
+`Reason`. `Type`, `Ceiling`, `IssuedThrough` and `ReservedThrough` describe the refused allocation, with
+`RequestedCount` for a range or `FamilyKey`, `BaseId` and `HighestId` for a block. It aborts the publish
+with nothing written, which is the same shape as every other allocation failure.
 
 **Why a ceiling exists at all: some ids are a FORMAT constraint rather than a preference.** Scope B's payload
 kind 130 is `[RarityId: byte]`, pinned by the contracts' own worked example, so `rarity_rule` ids are capped

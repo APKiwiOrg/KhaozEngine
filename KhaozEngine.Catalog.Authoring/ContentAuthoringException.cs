@@ -368,7 +368,7 @@ public sealed class ContentAuthoringException : Exception
     /// <summary>The content field kind the refused entry declares, or null.</summary>
     public ContentFieldKind? ActualKind { get; init; }
 
-    /// <summary>The key of the family a block size refusal is about, or null.</summary>
+    /// <summary>The key of the family a block size or reservation refusal is about, or null.</summary>
     public string? FamilyKey { get; init; }
 
     /// <summary>The refused family block size, or null.</summary>
@@ -400,6 +400,36 @@ public sealed class ContentAuthoringException : Exception
 
     /// <summary>The repeated canonical text target, or null.</summary>
     public ContentTextTarget? TextTarget { get; init; }
+
+    /// <summary>The type's inclusive definition-id ceiling, or null.</summary>
+    public int? Ceiling { get; init; }
+
+    /// <summary>The highest id already issued when an allocation was refused, or null.</summary>
+    public int? IssuedThrough { get; init; }
+
+    /// <summary>The highest id already reserved when an allocation was refused, or null.</summary>
+    public int? ReservedThrough { get; init; }
+
+    /// <summary>The number of plain ids the refused range requested, or null.</summary>
+    public int? RequestedCount { get; init; }
+
+    /// <summary>The aligned base id of a refused family block, without 32-bit truncation, or null.</summary>
+    public long? BaseId { get; init; }
+
+    /// <summary>The highest id of a refused family block, without 32-bit truncation, or null.</summary>
+    public long? HighestId { get; init; }
+
+    /// <summary>The absent family id an allocation or reservation named, or null.</summary>
+    public long? FamilyId { get; init; }
+
+    /// <summary>The content key of the target a change-set collision compared, or null.</summary>
+    public string? RowKey { get; init; }
+
+    /// <summary>The operation already held for a colliding change-set target, or null.</summary>
+    public ContentEditOperation? StandingOperation { get; init; }
+
+    /// <summary>The competing operation a change-set collision refused, or null.</summary>
+    public ContentEditOperation? RequestedOperation { get; init; }
 
     /// <summary>The content type the refusal is about. The default type id 0 means none.</summary>
     public ContentTypeId Type { get; }

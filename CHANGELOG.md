@@ -6,7 +6,23 @@ Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
 ## 23.4.0
 
-2026-11-07
+2026-11-08
+
+- Underwater caustics for opted-in procedural water. `WaterSettings.UnderwaterCaustics` (off by default) and
+  `WaterSettings.CausticStrength` (1, physical) gain `WaterLook` overrides. Strength scales how far refracted sunlight
+  lands, so strength `s` at depth `d` matches strength 1 at depth `s * d`. Enabling caustics also enables underwater
+  sunlight for that body. FFT bodies ignore the opt-in and are never refused. A `water.caustics` pass before the opaque
+  pass draws a 64 m surface window that follows the view and a four-slice caustic map, and lit receivers read it once at
+  their refracted entry point. Frames without participating water run no pass, upload nothing new and allocate nothing.
+  `Scene3D.WaterCausticDiagnostics` reports opted-in, drawn, FFT and overflow planes and layers.
+- Lit receivers gain set 0 bindings `CausticMap` and `CausticSampler` after `WaterVolumes`: 16 and 17 for rigid, foliage
+  and CPU-skinned, 8 and 9 for GPU-skinned, 7 and 8 for splat and tile ground, 11 and 12 for opaque foliage. The water
+  volume buffer grows to 652816 bytes for the window block. The Direct3D 11 motion vertex stage's
+  `PreviousInstanceTransforms` moves from t11 to t12. Frames without participating water render byte-identically.
+- `TileWaterLooks.River` sets `CausticStrength = 4` and leaves the caustic opt-in inherited, so consumers opt in.
+- `Scene3DPassTimings.ModelMs` now also covers caustic planning and recording and opaque light-cluster construction.
+- Vulkan image staging copies align their buffer offset to the format's texel block. An 8-byte format uploaded after a
+  4-byte one used to start at an offset Vulkan rejects.
 
 - Every engine `MapDocumentException` now carries a `MapDocumentRefusal Reason` and typed identifiers, across surfaces,
   acquisition, geometry, spaces, water, foliage, prefabs, document storage and persistence, MapDoc.Physics, MapEditor

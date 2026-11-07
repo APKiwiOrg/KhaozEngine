@@ -359,7 +359,8 @@ public class CurrencyFamilyTests
 
         // Registration runs once, at process start. A second call is the ids already being taken, which is
         // the same refusal EngineContentTypes.Register makes.
-        Assert.Throws<ContentRegistrationException>(() => InstanceContentTypes.Register(registry));
+        ContentRegistrationException error = Assert.Throws<ContentRegistrationException>(() => InstanceContentTypes.Register(registry));
+        Assert.Equal(ContentRegistrationRefusal.TypeIdDuplicate, error.Reason);
     }
 
     [Fact]
@@ -368,7 +369,8 @@ public class CurrencyFamilyTests
         var registry = new ContentTypeRegistry();
         registry.Freeze();
 
-        Assert.Throws<ContentRegistrationException>(() => InstanceContentTypes.Register(registry));
+        ContentRegistrationException error = Assert.Throws<ContentRegistrationException>(() => InstanceContentTypes.Register(registry));
+        Assert.Equal(ContentRegistrationRefusal.RegistryFrozen, error.Reason);
     }
 
     [Fact]

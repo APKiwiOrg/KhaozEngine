@@ -239,6 +239,7 @@ public class EngineContentTypeTests
     {
         ContentTypeRegistry registry = Registered();
 
-        Assert.Throws<ContentRegistrationException>(() => EngineContentTypes.Register(registry));
+        ContentRegistrationException error = Assert.Throws<ContentRegistrationException>(() => EngineContentTypes.Register(registry));
+        Assert.Equal(ContentRegistrationRefusal.TypeIdDuplicate, error.Reason);
     }
 }

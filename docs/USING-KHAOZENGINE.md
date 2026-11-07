@@ -23160,7 +23160,7 @@ Registration and snapshot admission throw `ContentRegistrationException` with a 
 `ContentRegistrationRefusal` in `Reason`, filled by every engine throw site. Its existing constructors stay
 available to consumers and leave `Reason` null. The identifiers name the type id and key, the claimed band
 and inclusive limits, the existing duplicate identity, or owned read-only codec field-name sets. Snapshot
-admission reports `TypeId` and `DefinitionId`. These describe host declarations rather than row values.
+admission reports `Type` and `DefinitionId`. These describe host declarations rather than row values.
 See the [registration refusal table](../KhaozEngine.Catalog/README.md#registration-and-required-field-refusals)
 for the identifiers each reason carries.
 

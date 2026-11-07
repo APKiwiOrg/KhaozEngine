@@ -168,7 +168,8 @@ public class GameContentTypesRegisterTests
     {
         ContentTypeRegistry registry = Registered();
 
-        Assert.Throws<ContentRegistrationException>(
+        ContentRegistrationException error = Assert.Throws<ContentRegistrationException>(
             () => GameContentTypes.Register(registry, ContentDurationUnit.Ticks, Options()));
+        Assert.Equal(ContentRegistrationRefusal.TypeIdDuplicate, error.Reason);
     }
 }

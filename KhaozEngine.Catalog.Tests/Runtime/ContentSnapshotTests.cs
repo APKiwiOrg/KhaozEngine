@@ -222,7 +222,7 @@ public class ContentSnapshotTests
         ContentRegistrationException error = Assert.Throws<ContentRegistrationException>(() => builder.AddRow(row));
 
         Assert.Equal(ContentRegistrationRefusal.SnapshotTypeUnregistered, error.Reason);
-        Assert.Equal(new ContentTypeId(4096), error.TypeId);
+        Assert.Equal(new ContentTypeId(4096), error.Type);
         Assert.Equal(1, error.DefinitionId);
         Assert.Empty(builder.Build().Rows(row.Type));
 

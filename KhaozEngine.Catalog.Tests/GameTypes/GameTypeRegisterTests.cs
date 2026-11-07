@@ -128,8 +128,9 @@ public class GameTypeRegisterTests
         EngineContentTypes.Register(registry);
         ToolTierContentType.Register(registry, validator: null);
 
-        Assert.Throws<ContentRegistrationException>(
+        ContentRegistrationException error = Assert.Throws<ContentRegistrationException>(
             () => ToolTierContentType.Register(registry, validator: null));
+        Assert.Equal(ContentRegistrationRefusal.TypeIdDuplicate, error.Reason);
     }
 
     sealed class CountingValidator : IContentValidator

@@ -64,15 +64,15 @@ public class ContentTypeRegistryTests
             () => Register(registry, ContentRegistrationBand.Engine, 0, "nothing"));
 
         Assert.Equal(ContentRegistrationRefusal.TypeIdReserved, error.Reason);
-        Assert.Equal(new ContentTypeId(0), error.TypeId);
+        Assert.Equal(new ContentTypeId(0), error.Type);
         Assert.Equal("nothing", error.TypeKey);
         Assert.Empty(registry.ByTypeId);
         Register(registry, ContentRegistrationBand.Engine, 1, "nothing");
     }
 
     [Theory]
-    [InlineData(ContentRegistrationBand.Game, 300, 1024, 65535, 1024)]
-    [InlineData(ContentRegistrationBand.Engine, 1024, 1, 255, 255)]
+    [InlineData(ContentRegistrationBand.Game, 1023, 1024, 65535, 1024)]
+    [InlineData(ContentRegistrationBand.Engine, 256, 1, 255, 255)]
     [InlineData(ContentRegistrationBand.Instances, 255, 256, 1023, 256)]
     [InlineData(ContentRegistrationBand.Instances, 1024, 256, 1023, 1023)]
     public void ACallerCannotRegisterOutsideItsBand(
@@ -84,7 +84,7 @@ public class ContentTypeRegistryTests
             () => Register(registry, band, (ushort)typeId, "store"));
 
         Assert.Equal(ContentRegistrationRefusal.BandTypeIdOutsideRange, error.Reason);
-        Assert.Equal(new ContentTypeId((ushort)typeId), error.TypeId);
+        Assert.Equal(new ContentTypeId((ushort)typeId), error.Type);
         Assert.Equal("store", error.TypeKey);
         Assert.Equal(band, error.Band);
         Assert.Equal((ushort)minimum, error.MinimumTypeId);
@@ -102,7 +102,7 @@ public class ContentTypeRegistryTests
             () => Register(registry, (ContentRegistrationBand)99, 2, "item"));
 
         Assert.Equal(ContentRegistrationRefusal.BandUnrecognized, error.Reason);
-        Assert.Equal(new ContentTypeId(2), error.TypeId);
+        Assert.Equal(new ContentTypeId(2), error.Type);
         Assert.Equal("item", error.TypeKey);
         Assert.Equal((ContentRegistrationBand)99, error.Band);
         Assert.Null(error.MinimumTypeId);
@@ -139,7 +139,7 @@ public class ContentTypeRegistryTests
             () => Register(registry, ContentRegistrationBand.Engine, 2, "stat"));
 
         Assert.Equal(ContentRegistrationRefusal.TypeIdDuplicate, error.Reason);
-        Assert.Equal(new ContentTypeId(2), error.TypeId);
+        Assert.Equal(new ContentTypeId(2), error.Type);
         Assert.Equal("stat", error.TypeKey);
         Assert.Equal("item", error.ExistingTypeKey);
         Assert.Equal(new[] { (new ContentTypeId(2), "item") }, registry.ByTypeId.Select(r => (r.Type, r.TypeKey)));
@@ -156,7 +156,7 @@ public class ContentTypeRegistryTests
             () => Register(registry, ContentRegistrationBand.Game, 1024, "item"));
 
         Assert.Equal(ContentRegistrationRefusal.TypeKeyDuplicate, error.Reason);
-        Assert.Equal(new ContentTypeId(1024), error.TypeId);
+        Assert.Equal(new ContentTypeId(1024), error.Type);
         Assert.Equal("item", error.TypeKey);
         Assert.Equal(new ContentTypeId(2), error.ExistingTypeId);
         Assert.Equal(new[] { (new ContentTypeId(2), "item") }, registry.ByTypeId.Select(r => (r.Type, r.TypeKey)));
@@ -178,7 +178,7 @@ public class ContentTypeRegistryTests
             () => Register(registry, ContentRegistrationBand.Engine, 2, "item", chunkSlots, maxRowBytes: 64));
 
         Assert.Equal(reason, error.Reason);
-        Assert.Equal(new ContentTypeId(2), error.TypeId);
+        Assert.Equal(new ContentTypeId(2), error.Type);
         Assert.Equal("item", error.TypeKey);
         Assert.Equal(chunkSlots, error.ActualSlots);
         Assert.Equal(256, error.MinimumSlots);
@@ -199,7 +199,7 @@ public class ContentTypeRegistryTests
                 maxRowBytes: maxRowBytes));
 
         Assert.Equal(ContentRegistrationRefusal.RowBytesOutsideRange, error.Reason);
-        Assert.Equal(new ContentTypeId(2), error.TypeId);
+        Assert.Equal(new ContentTypeId(2), error.Type);
         Assert.Equal("item", error.TypeKey);
         Assert.Equal((long)maxRowBytes, error.ActualBytes);
         Assert.Equal(1L, error.MinimumBytes);
@@ -212,19 +212,18 @@ public class ContentTypeRegistryTests
     public void ARegistrationThatWouldBuildAnUnloadableChunkIsRefused()
     {
         // Spec 7.1: chunkSlots * (maxRowBytes + 8) + 36 <= MaxChunkUncompressedBytes. loot_entry at 16,384
-        // slots and the 1,024 default is 16.9 MB, which is over, and is exactly the case the bound exists
-        // for. It registers once it declares maxRowBytes: 512, which is what section 3.1 has it do.
+        // slots is the case the bound exists for. A row cap of 1,016 is the first it refuses there.
         var registry = new ContentTypeRegistry();
 
         ContentRegistrationException error = Assert.Throws<ContentRegistrationException>(
-            () => Register(registry, ContentRegistrationBand.Engine, 5, "loot_entry", chunkSlots: 16384));
+            () => Register(registry, ContentRegistrationBand.Engine, 5, "loot_entry", chunkSlots: 16384, maxRowBytes: 1016));
 
         Assert.Equal(ContentRegistrationRefusal.ChunkBytesExceeded, error.Reason);
-        Assert.Equal(new ContentTypeId(5), error.TypeId);
+        Assert.Equal(new ContentTypeId(5), error.Type);
         Assert.Equal("loot_entry", error.TypeKey);
         Assert.Equal(16384, error.ChunkSlots);
-        Assert.Equal(1024, error.MaximumRowBytes);
-        Assert.Equal(16908324L, error.ActualBytes);
+        Assert.Equal(1016, error.RowBytes);
+        Assert.Equal(16777252L, error.ActualBytes);
         Assert.Equal(16777216L, error.MaximumBytes);
         Assert.Empty(registry.ByTypeId);
 
@@ -246,7 +245,7 @@ public class ContentTypeRegistryTests
                 codec: new StubRowCodec("sort"), schema: Schema("sort", "max_stack")));
 
         Assert.Equal(ContentRegistrationRefusal.CodecSchemaFieldsMismatch, missing.Reason);
-        Assert.Equal(new ContentTypeId(2), missing.TypeId);
+        Assert.Equal(new ContentTypeId(2), missing.Type);
         Assert.Equal("item", missing.TypeKey);
         Assert.Equal(new[] { "max_stack" }, missing.MissingFields);
         Assert.NotNull(missing.ExtraFields);
@@ -258,7 +257,7 @@ public class ContentTypeRegistryTests
                 codec: new StubRowCodec("sort", "tradable"), schema: Schema("sort")));
 
         Assert.Equal(ContentRegistrationRefusal.CodecSchemaFieldsMismatch, extra.Reason);
-        Assert.Equal(new ContentTypeId(2), extra.TypeId);
+        Assert.Equal(new ContentTypeId(2), extra.Type);
         Assert.Equal("item", extra.TypeKey);
         Assert.NotNull(extra.MissingFields);
         Assert.Empty(extra.MissingFields);
@@ -284,7 +283,7 @@ public class ContentTypeRegistryTests
                 codec: new StubRowCodec("sort", "name"), schema: schema));
 
         Assert.Equal(ContentRegistrationRefusal.CodecWritesDerivedMarkers, error.Reason);
-        Assert.Equal(new ContentTypeId(1), error.TypeId);
+        Assert.Equal(new ContentTypeId(1), error.Type);
         Assert.Equal("tag", error.TypeKey);
         Assert.Equal(new[] { "name" }, error.FieldNames);
         Assert.Empty(registry.ByTypeId);
@@ -303,7 +302,7 @@ public class ContentTypeRegistryTests
             () => Register(registry, ContentRegistrationBand.Engine, 3, "stat"));
 
         Assert.Equal(ContentRegistrationRefusal.RegistryFrozen, error.Reason);
-        Assert.Equal(new ContentTypeId(3), error.TypeId);
+        Assert.Equal(new ContentTypeId(3), error.Type);
         Assert.Equal("stat", error.TypeKey);
         Assert.Equal(new[] { (new ContentTypeId(2), "item") }, registry.ByTypeId.Select(r => (r.Type, r.TypeKey)));
         var unfrozen = new ContentTypeRegistry();
@@ -319,7 +318,7 @@ public class ContentTypeRegistryTests
             () => Register(registry, ContentRegistrationBand.Engine, 2, string.Empty));
 
         Assert.Equal(ContentRegistrationRefusal.TypeKeyEmpty, error.Reason);
-        Assert.Equal(new ContentTypeId(2), error.TypeId);
+        Assert.Equal(new ContentTypeId(2), error.Type);
         Assert.Equal(string.Empty, error.TypeKey);
         Assert.Empty(registry.ByTypeId);
         Register(registry, ContentRegistrationBand.Engine, 2, "item");
@@ -333,7 +332,7 @@ public class ContentTypeRegistryTests
             () => Register(registry, ContentRegistrationBand.Engine, 2, "item", codec: new StubRowCodec(null)));
 
         Assert.Equal(ContentRegistrationRefusal.CodecWrittenFieldsMissing, error.Reason);
-        Assert.Equal(new ContentTypeId(2), error.TypeId);
+        Assert.Equal(new ContentTypeId(2), error.Type);
         Assert.Equal("item", error.TypeKey);
         Assert.Empty(registry.ByTypeId);
         Register(registry, ContentRegistrationBand.Engine, 2, "item");

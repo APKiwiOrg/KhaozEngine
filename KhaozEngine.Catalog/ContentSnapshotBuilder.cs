@@ -81,7 +81,7 @@ public sealed class ContentSnapshotBuilder
         {
             throw new ContentRegistrationException(ContentRegistrationRefusal.SnapshotTypeUnregistered, FormattableString.Invariant(
                 $"Content type {row.Type.Value} is not registered, so row {row.Id} cannot go into a snapshot. Registration runs once at process start, before the first pack loads."))
-            { TypeId = row.Type, DefinitionId = row.Id };
+            { Type = row.Type, DefinitionId = row.Id };
         }
 
         if (!_byType.TryGetValue(row.Type.Value, out List<Entry>? rows))

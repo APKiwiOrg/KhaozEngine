@@ -742,7 +742,7 @@ split and this spec restated it, but registration threw only for a codec and sch
 id, so a game registering type 300 would have succeeded and collided with Scope B at the next engine release,
 silently until the collision. `ContentRegistrationBand` is `Engine`, `Instances` or `Game`, the caller names
 its own band, and registration throws `ContentRegistrationException` with
-`Reason == ContentRegistrationRefusal.BandTypeIdOutsideRange`, `TypeId`, `TypeKey`, `Band`,
+`Reason == ContentRegistrationRefusal.BandTypeIdOutsideRange`, `Type`, `TypeKey`, `Band`,
 `MinimumTypeId` and `MaximumTypeId` when the type id falls outside it:
 
 | Band | Type ids | Who passes it |
@@ -2179,7 +2179,7 @@ chunkSlots * (maxRowBytes + 8) + 36  <=  MaxChunkUncompressedBytes
 ```
 
 Registration refuses a type that fails it, throwing `ContentRegistrationException` with
-`Reason == ContentRegistrationRefusal.ChunkBytesExceeded`, `ChunkSlots`, `MaximumRowBytes`, `ActualBytes`
+`Reason == ContentRegistrationRefusal.ChunkBytesExceeded`, `ChunkSlots`, `RowBytes`, `ActualBytes`
 and `MaximumBytes`, before the registry freezes. The `+ 8` is the row table entry (a varint id, a flags byte and a varint length, section
 7.3) and the `+ 36` is the header.
 

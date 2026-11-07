@@ -143,21 +143,21 @@ only the unregistered type and row id. Field-name collections are owned read-onl
 
 | Reason | Refused rule | Identifiers |
 | --- | --- | --- |
-| `RegistryFrozen` | Registration after freeze | `TypeId`, `TypeKey` |
-| `TypeKeyEmpty` | Empty type key | `TypeId`, `TypeKey` (empty) |
-| `TypeIdReserved` | Reserved id 0 | `TypeId`, `TypeKey` |
-| `BandUnrecognized` | Undefined registration band | `TypeId`, `TypeKey`, `Band`. No range exists |
-| `BandTypeIdOutsideRange` | Id outside its recognized band | `TypeId`, `TypeKey`, `Band`, `MinimumTypeId`, `MaximumTypeId` (inclusive) |
-| `TypeIdDuplicate` | An existing registration owns the id | `TypeId`, `TypeKey`, `ExistingTypeKey` |
-| `TypeKeyDuplicate` | An existing registration owns the key | `TypeId`, `TypeKey`, `ExistingTypeId` |
-| `ChunkSlotsOutsideRange` | Slot count outside 256 to 65,536 | `TypeId`, `TypeKey`, `ActualSlots`, `MinimumSlots` (256), `MaximumSlots` (65,536) |
-| `ChunkSlotsNotPowerOfTwo` | In-range slot count is not a power of two | `TypeId`, `TypeKey`, `ActualSlots`, `MinimumSlots` (256), `MaximumSlots` (65,536) |
-| `RowBytesOutsideRange` | Row cap outside 1 to 4,096 bytes | `TypeId`, `TypeKey`, `ActualBytes`, `MinimumBytes` (1), `MaximumBytes` (4,096) |
-| `ChunkBytesExceeded` | Worst-case chunk exceeds 16 MiB | `TypeId`, `TypeKey`, `ChunkSlots`, `MaximumRowBytes` (submitted row cap), `ActualBytes`, `MaximumBytes` (16,777,216) |
-| `CodecWrittenFieldsMissing` | Codec returns no written field list | `TypeId`, `TypeKey` |
-| `CodecWritesDerivedMarkers` | Codec writes byte-free derived markers | `TypeId`, `TypeKey`, `FieldNames` |
-| `CodecSchemaFieldsMismatch` | Codec and non-marker schema field sets differ | `TypeId`, `TypeKey`, `MissingFields`, `ExtraFields` (including empty sides) |
-| `SnapshotTypeUnregistered` | Snapshot row type is unregistered | `TypeId`, `DefinitionId` |
+| `RegistryFrozen` | Registration after freeze | `Type`, `TypeKey` |
+| `TypeKeyEmpty` | Empty type key | `Type`, `TypeKey` (empty) |
+| `TypeIdReserved` | Reserved id 0 | `Type`, `TypeKey` |
+| `BandUnrecognized` | Undefined registration band | `Type`, `TypeKey`, `Band`. No range exists |
+| `BandTypeIdOutsideRange` | Id outside its recognized band | `Type`, `TypeKey`, `Band`, `MinimumTypeId`, `MaximumTypeId` (inclusive) |
+| `TypeIdDuplicate` | An existing registration owns the id | `Type`, `TypeKey`, `ExistingTypeKey` |
+| `TypeKeyDuplicate` | An existing registration owns the key | `Type`, `TypeKey`, `ExistingTypeId` |
+| `ChunkSlotsOutsideRange` | Slot count outside 256 to 65,536 | `Type`, `TypeKey`, `ActualSlots`, `MinimumSlots` (256), `MaximumSlots` (65,536) |
+| `ChunkSlotsNotPowerOfTwo` | In-range slot count is not a power of two | `Type`, `TypeKey`, `ActualSlots`, `MinimumSlots` (256), `MaximumSlots` (65,536) |
+| `RowBytesOutsideRange` | Row cap outside 1 to 4,096 bytes | `Type`, `TypeKey`, `ActualBytes`, `MinimumBytes` (1), `MaximumBytes` (4,096) |
+| `ChunkBytesExceeded` | Worst-case chunk exceeds 16 MiB | `Type`, `TypeKey`, `ChunkSlots`, `RowBytes` (submitted row cap), `ActualBytes`, `MaximumBytes` (16,777,216) |
+| `CodecWrittenFieldsMissing` | Codec returns no written field list | `Type`, `TypeKey` |
+| `CodecWritesDerivedMarkers` | Codec writes byte-free derived markers | `Type`, `TypeKey`, `FieldNames` |
+| `CodecSchemaFieldsMismatch` | Codec and non-marker schema field sets differ | `Type`, `TypeKey`, `MissingFields`, `ExtraFields` (including empty sides) |
+| `SnapshotTypeUnregistered` | Snapshot row type is unregistered | `Type`, `DefinitionId` |
 
 `ContentFieldLookupException` derives from `InvalidOperationException`, so existing catches keep working.
 Its non-nullable `Reason` carries a `ContentFieldLookupRefusal`:

@@ -50,7 +50,7 @@ public sealed class ContentRegistrationException : Exception
     public ContentRegistrationRefusal? Reason { get; }
 
     /// <summary>The type id being registered or admitted to a snapshot.</summary>
-    public ContentTypeId? TypeId { get; init; }
+    public ContentTypeId? Type { get; init; }
 
     /// <summary>The submitted type key for a registration refusal, including an empty key.</summary>
     public string? TypeKey { get; init; }
@@ -91,8 +91,9 @@ public sealed class ContentRegistrationException : Exception
     /// <summary>The submitted chunk slot count for a chunk byte refusal.</summary>
     public int? ChunkSlots { get; init; }
 
-    /// <summary>The submitted per-row byte cap for a chunk byte refusal.</summary>
-    public int? MaximumRowBytes { get; init; }
+    /// <summary>The row cap the caller submitted, in bytes, for a chunk byte refusal. It is the declared cap the
+    /// chunk bound was computed from, not a limit.</summary>
+    public int? RowBytes { get; init; }
 
     /// <summary>The row id whose type was not registered in the snapshot builder.</summary>
     public int? DefinitionId { get; init; }

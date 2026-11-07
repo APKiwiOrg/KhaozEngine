@@ -1101,8 +1101,9 @@ in the `KhaozEngine.Render3D.Ecs` arm under the same namespace, so a render-only
   tail. Each of the `16 x 9 x 24` clusters holds 32 indices. An overflow header makes its fragments scan all
   retained records, preserving containment at increased query cost. Headers and indices precede the records,
   and only the used prefix is uploaded. The 652816-byte buffer reserves a final `uvec4` at vector 40800
-  (byte 652800) for `(windowMinX, windowMinZ, 1 / 64, layerCount)`, all as float bits.
-  The renderer uploads that block separately only when its layer count is positive and a record prefix uploads.
+  (byte 652800) for `(windowMinX, windowMinZ, 1 / 64, atlasLayers)`, all as float bits.
+  `atlasLayers` is the map atlas's capacity, not the layers this frame used, because the read addresses the atlas by its width.
+  The renderer uploads that block separately only on a participating frame, when `atlasLayers` is positive and a record prefix uploads.
   Scene frames currently clear the caustic plan without building it, leaving record caustic words zero and
   the window block untouched.
   Water-only frames prepare the same camera grid as point lights. A failed light assignment keeps that grid

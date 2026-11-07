@@ -16,7 +16,7 @@ namespace KhaozEngine.Render3D.Internal;
 /// (AbsorptionPerMetre.Z,PenumbraPerMetre,CausticLayer,CausticDepth). CausticLayer is layer plus one and
 /// CausticDepth is the deepest slice. Both are exactly zero without a planned layer.
 /// FloorY equal to float.MinValue encodes an unbounded floor.
-/// Words [163200,163204), vector 40800, reserve (WindowMinX,WindowMinZ,1/64,LayerCount) as float bits.
+/// Words [163200,163204), vector 40800, reserve (WindowMinX,WindowMinZ,1/64,AtlasLayers) as float bits.
 /// The caller uploads that fixed window block separately only on participating frames after a record upload.
 /// AbsorptionPerMetre retains its name and offsets, carrying legacy absorption or derived extinction for
 /// WaterColumnLight bodies. The direct sun beam uses the packed coefficient in either case.

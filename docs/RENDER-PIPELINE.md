@@ -363,8 +363,9 @@ The retained `AbsorptionPerMetre` member
 and its buffer offsets carry legacy absorption or derived extinction for a column body. Excess records are
 dropped from the tail. A cluster overflow scans all retained records, preserving correctness at greater query cost. Only the used
 buffer prefix uploads. The buffer is 652816 bytes, including a final `uvec4` at vector 40800 (byte 652800)
-for render-relative window minimum XZ, inverse extent `1 / 64` and layer count, packed as float bits.
-That block uploads separately only with a positive layer count after a record prefix upload. Scene frames
+for render-relative window minimum XZ, inverse extent `1 / 64` and the atlas layer capacity, packed as float bits.
+The capacity is not the layers this frame used, because the read addresses the atlas by its width.
+That block uploads separately only on a participating frame, with a positive capacity, after a record prefix upload. Scene frames
 currently clear the caustic plan without building it, so its record words stay zero and the window is not uploaded.
 Caustics-only bodies still contribute sunlight records when their effective waves are procedural and their
 resolved strength is positive. FFT bodies gain no record from that opt-in alone.

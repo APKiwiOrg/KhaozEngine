@@ -362,6 +362,7 @@ static class ContentChunkBuilder
         => registry.TryGet(new ContentTypeId(typeId), out ContentTypeRegistration? registration)
             ? registration
             : throw new ContentAuthoringException(
+                ContentAuthoringRefusal.TypeUnknown,
                 FormattableString.Invariant(
                     $"Content type {typeId} is not registered, so the chunk range its rows fall into cannot be computed."),
                 new ContentTypeId(typeId),

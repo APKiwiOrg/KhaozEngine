@@ -488,7 +488,11 @@ public class PublishCommitTests
             () => PublishFixtures.Commit(store, pointerless, registry));
 
         Assert.Equal(ContentAuthoringException.NoPackStoreReason, refused.Reason);
+        Assert.Equal(ContentAuthoringRefusal.PackPointerStoreRequired, refused.Refusal);
+        Assert.Equal(typeof(PointerlessPackStore), refused.StoreType);
+        Assert.Equal(nameof(ContentPublishCommit), refused.MemberName);
         Assert.False(Directory.Exists(root.Path) && Directory.GetFiles(root.Path).Length > 0);
+        _ = PublishFixtures.Commit(store, pack, registry);
         await Task.CompletedTask;
     }
 

@@ -169,6 +169,7 @@ static class ContentManifestBuilder
             }
 
             throw new ContentAuthoringException(
+                ContentAuthoringRefusal.TypeUnknown,
                 FormattableString.Invariant(
                     $"Content type {typeId} holds a chunk in this version and is not registered, so the manifest cannot name its key or its slot count."),
                 new ContentTypeId(typeId),

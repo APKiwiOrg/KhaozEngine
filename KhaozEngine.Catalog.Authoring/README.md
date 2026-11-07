@@ -202,7 +202,7 @@ Retired rows count toward a ceiling, because ids are never reused and a retired 
 | `FamilyReservationCeilingExceeded` | A new aligned family block whose highest id exceeds the type's inclusive ceiling | `Type`, `FamilyKey`, `Ceiling`, `BaseId`, `HighestId`, `IssuedThrough`, `ReservedThrough` |
 | `FamilyUnknown` | Allocation or block reservation by a family id the persistence does not hold | `FamilyId`, with `Type` left at its default because the family is unknown |
 | `EditTargetOperationCollision` | A change-set target already held under a different edit operation | `Type`, `Id`, `RowKey`, `StandingOperation`, `RequestedOperation` |
-| `TypeUnknown` | A diff row whose type the supplied registry does not declare | `Type` |
+| `TypeUnknown` | A diff, candidate, rollback or pack row whose type the registry does not declare | `Type`, with the existing `Id` retained where the row is known |
 
 The plain ceiling is the declared `maxDefinitionId`, or 2,147,483,647 when no ceiling is declared.
 `BaseId` and `HighestId` are 64-bit so a refused block beyond positive `int` space is reported without
@@ -263,8 +263,37 @@ commits against cannot differ.
 previous snapshot. `ContentPublishBaseline.After(plan)` is the baseline the next publish sees.
 
 `ContentPublishRequest.ExpectedBaseVersion` is optimistic concurrency and it is required. Two consoles cannot
-both publish the same draft: the second one's expectation is stale and it is refused with both numbers named,
-carrying the `base-version-moved` reason.
+both publish the same draft: the second one's expectation is stale. The row publisher reports
+`BaseVersionMoved`, with `ExpectedBaseVersion` and `ActualBaseVersion` beside the unchanged
+`base-version-moved` token.
+
+### Publication and rollback refusals
+
+The candidate builders, row publisher, pack writer, rebuild and `ContentRollback.Refusal` carry these
+`ContentAuthoringRefusal` members. Existing legacy tokens, content type and definition id remain intact.
+A consumer reads the reason and identifiers, never message wording.
+
+| `Refusal` | What it refuses | Identifiers |
+|---|---|---|
+| `BaseVersionMoved` | A row publish expecting another baseline version | `ExpectedBaseVersion`, `ActualBaseVersion` |
+| `NoPendingDraft` | A row publish with no open draft carrying pending edits | None |
+| `FrozenDraftLost` | A policy publish whose store no longer holds its draft frozen for this base | `ExpectedBaseVersion` |
+| `CandidateRejected` | A candidate rejected by validation | The complete owned read-only `Findings` snapshot |
+| `DefinitionIdDuplicate` | A carried id already occupied in the candidate, including a preview | `Type`, `Id`, `RowKey`, `EditOrdinal` |
+| `FieldUnknown` | A candidate edit naming an undeclared schema field | `Type`, `Id`, `TypeKey`, `FieldName`, `EditOrdinal` |
+| `RowUnknown` | An update or retire naming an absent candidate row | `Type`, `Id`, `RowKey`, `EditOrdinal` |
+| `PackPointerStoreRequired` | A publish or rebuild target without a version-pointer half | `StoreType`, `MemberName` (`ContentPublishCommit` or `RunAsync`) |
+| `VersionUnknown` | A rebuild naming a version the store does not hold | `VersionNumber` |
+| `RetireIrreversible` | A rollback across a retire, code `KEC0039` | First blocker's `Type`, `Id`, `RowKey`, plus `TargetVersion`, `BlockerCount` and complete `Findings` |
+| `RulePrefixShortened` | A plan with fewer rules than the held history | `ActualCount`, `MinimumCount` |
+| `RulePrefixEntryMismatch` | A different rule at an already held sequence | One-based `RuleSequence` |
+| `TextPlanOnRowOnlyRoute` | A row writer handed the row half of a text plan | `MemberName` (`WriteAsync`), `VersionNumber` |
+| `TextChunkMissingOnRowOnlyRoute` | A row writer naming a text chunk absent from its pack store | `MemberName` (`WriteAsync`), `Language`, `TextHash` |
+
+`CandidateRejected` is one rule regardless of how many findings the validator returns. Each
+`ContentFinding.Code` is the stable identity of its finding, including codes a consumer policy supplies.
+There is no singular finding-code identifier. Both legacy and typed finding-taking exception constructors
+copy the complete list into a read-only snapshot, so later producer mutation cannot change the refusal.
 
 ### The draft is frozen for the whole publish
 

@@ -53,8 +53,8 @@ public sealed class ContentAuthoringException : Exception
 
     /// <summary>
     /// A publish expected a base version the store no longer stands at (spec 6.2). Two consoles cannot both
-    /// publish the same draft: the second one's expectation is stale and it is refused with both numbers
-    /// named, which turns a race into an error message.
+    /// publish the same draft: the second one's expectation is stale. The row publisher carries both numbers
+    /// as ExpectedBaseVersion and ActualBaseVersion beside Refusal BaseVersionMoved.
     /// </summary>
     public const string BaseVersionMovedReason = "base-version-moved";
 
@@ -277,7 +277,7 @@ public sealed class ContentAuthoringException : Exception
         : this(message, type, id, reason)
     {
         ArgumentNullException.ThrowIfNull(findings);
-        Findings = findings;
+        Findings = Array.AsReadOnly(new List<ContentFinding>(findings).ToArray());
     }
 
     /// <summary>Creates the exception carrying the exact rule it refused beside the legacy reason token.</summary>
@@ -293,6 +293,19 @@ public sealed class ContentAuthoringException : Exception
         int id,
         string? reason)
         : this(message, type, id, reason)
+    {
+        Refusal = refusal;
+    }
+
+    /// <summary>Creates a structured refusal carrying every validation or rollback finding as an owned snapshot.</summary>
+    public ContentAuthoringException(
+        ContentAuthoringRefusal refusal,
+        string message,
+        ContentTypeId type,
+        int id,
+        string? reason,
+        IReadOnlyList<ContentFinding> findings)
+        : this(message, type, id, reason, findings)
     {
         Refusal = refusal;
     }
@@ -431,6 +444,45 @@ public sealed class ContentAuthoringException : Exception
     /// <summary>The competing operation a change-set collision refused, or null.</summary>
     public ContentEditOperation? RequestedOperation { get; init; }
 
+    /// <summary>The base version the refused publish expected, or null.</summary>
+    public int? ExpectedBaseVersion { get; init; }
+
+    /// <summary>The actual baseline version a stale publish compared against, or null.</summary>
+    public int? ActualBaseVersion { get; init; }
+
+    /// <summary>The zero-based ordinal of a refused edit, or null.</summary>
+    public int? EditOrdinal { get; init; }
+
+    /// <summary>The registered type key of an edit naming an unknown field, or null.</summary>
+    public string? TypeKey { get; init; }
+
+    /// <summary>The runtime type of a pack target without version pointers, or null.</summary>
+    public Type? StoreType { get; init; }
+
+    /// <summary>The operation that refused an unsupported pack or row-only write, or null.</summary>
+    public string? MemberName { get; init; }
+
+    /// <summary>The version an absent-version or row-only-plan refusal names, or null.</summary>
+    public int? VersionNumber { get; init; }
+
+    /// <summary>The rollback target version, or null.</summary>
+    public int? TargetVersion { get; init; }
+
+    /// <summary>The number of rows blocking a rollback, or null.</summary>
+    public long? BlockerCount { get; init; }
+
+    /// <summary>The submitted rule count when it is shorter than the held history, or null.</summary>
+    public long? ActualCount { get; init; }
+
+    /// <summary>The inclusive minimum rule count needed to retain the held history, or null.</summary>
+    public long? MinimumCount { get; init; }
+
+    /// <summary>The one-based rule sequence whose prefix entry differs, or null.</summary>
+    public int? RuleSequence { get; init; }
+
+    /// <summary>The missing text chunk's content address, or null.</summary>
+    public string? TextHash { get; init; }
+
     /// <summary>The content type the refusal is about. The default type id 0 means none.</summary>
     public ContentTypeId Type { get; }
 
@@ -441,7 +493,7 @@ public sealed class ContentAuthoringException : Exception
     public string? Reason { get; }
 
     /// <summary>
-    /// Every finding behind the refusal, EMPTY when the refusal is a plain one. A publish refused by the
+    /// An owned read-only snapshot of every finding behind the refusal, EMPTY for a plain refusal. A publish refused by the
     /// validator and a rollback blocked by a retire both carry theirs here, so the API boundary renders one
     /// body shape whichever refused.
     /// </summary>

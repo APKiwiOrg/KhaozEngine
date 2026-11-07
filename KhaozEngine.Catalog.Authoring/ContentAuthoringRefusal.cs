@@ -177,6 +177,55 @@ public enum ContentAuthoringRefusal
     /// <c>RowKey</c>, <c>StandingOperation</c> and <c>RequestedOperation</c>.</summary>
     EditTargetOperationCollision,
 
-    /// <summary>Refuses a diff row whose type the registry does not declare. Carries <c>Type</c>.</summary>
+    /// <summary>Refuses a diff, candidate, rollback or pack row whose type the registry does not declare.
+    /// Carries <c>Type</c>, retaining the existing <c>Id</c> where known.</summary>
     TypeUnknown,
+    // Publication, rollback and row-only pack writes.
+
+    /// <summary>Refuses a stale publish expectation. Carries <c>ExpectedBaseVersion</c> and <c>ActualBaseVersion</c>.</summary>
+    BaseVersionMoved,
+
+    /// <summary>Refuses publication without an open draft carrying pending edits.</summary>
+    NoPendingDraft,
+
+    /// <summary>Refuses a policy publish that lost its frozen draft. Carries <c>ExpectedBaseVersion</c>.</summary>
+    FrozenDraftLost,
+
+    /// <summary>Refuses a candidate rejected by validation. The complete <c>Findings</c> snapshot identifies it.</summary>
+    CandidateRejected,
+
+    /// <summary>Refuses a carried definition id already in the candidate. Carries <c>Type</c>, <c>Id</c>,
+    /// <c>RowKey</c> and <c>EditOrdinal</c>.</summary>
+    DefinitionIdDuplicate,
+
+    /// <summary>Refuses an edit naming an undeclared field. Carries <c>Type</c>, <c>Id</c>, <c>TypeKey</c>,
+    /// <c>FieldName</c> and <c>EditOrdinal</c>.</summary>
+    FieldUnknown,
+
+    /// <summary>Refuses an edit whose target row is absent. Carries <c>Type</c>, <c>Id</c>, <c>RowKey</c>
+    /// and <c>EditOrdinal</c>.</summary>
+    RowUnknown,
+
+    /// <summary>Refuses a pack target without version pointers. Carries <c>StoreType</c> and <c>MemberName</c>.</summary>
+    PackPointerStoreRequired,
+
+    /// <summary>Refuses a version the store does not hold. Carries <c>VersionNumber</c>.</summary>
+    VersionUnknown,
+
+    /// <summary>Refuses rollback across an irreversible retire (KEC0039). Carries the first blocker's
+    /// <c>Type</c>, <c>Id</c>, <c>RowKey</c>, <c>TargetVersion</c>, <c>BlockerCount</c> and complete <c>Findings</c>.</summary>
+    RetireIrreversible,
+
+    /// <summary>Refuses a rule list shorter than the held history. Carries <c>ActualCount</c> and <c>MinimumCount</c>.</summary>
+    RulePrefixShortened,
+
+    /// <summary>Refuses a different rule at a held sequence. Carries <c>RuleSequence</c>.</summary>
+    RulePrefixEntryMismatch,
+
+    /// <summary>Refuses writing the row half of a text plan. Carries <c>MemberName</c> and <c>VersionNumber</c>.</summary>
+    TextPlanOnRowOnlyRoute,
+
+    /// <summary>Refuses a row-only write naming an absent text chunk. Carries <c>MemberName</c>,
+    /// <c>Language</c> and <c>TextHash</c>.</summary>
+    TextChunkMissingOnRowOnlyRoute,
 }

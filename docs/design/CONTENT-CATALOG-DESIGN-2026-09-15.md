@@ -208,7 +208,7 @@ COMPILES against it, which is why milestone 1.1 gates every `ItemInstances` pack
 | `ContentPublisher` | The publish pipeline of section 6. |
 | `ContentDiff`, `ContentDiffEntry` | The field-level diff between two versions, contracts 4.7. |
 | `ContentBundle` | The bulk import and export envelope of section 10.9. |
-| `ContentAuthoringException` | The one exception type, carrying the offending type, id and reason. |
+| `ContentAuthoringException` | The one exception type, carrying the offending type, id, legacy reason token and structured refusal identifiers. Candidate rejection carries the complete owned read-only findings list, identified by stable finding codes. |
 
 ### 2.4 `KhaozEngine.Catalog.Netcode` public types
 

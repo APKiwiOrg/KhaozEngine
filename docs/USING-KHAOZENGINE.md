@@ -23303,13 +23303,24 @@ ContentPublishResult published = await store.PublishAsync(
 ```
 
 `ExpectedBaseVersion` is required, not optional: two consoles cannot both publish the same draft, and the
-second one is refused with `base-version-moved` rather than producing a second version. The result carries the
+second one is refused with `base-version-moved` rather than producing a second version. The row publisher
+also reports `ContentAuthoringRefusal.BaseVersionMoved`, with `ExpectedBaseVersion` and `ActualBaseVersion`.
+The result carries the
 new number, both manifest hashes, and the chunk accounting, so an operator sees that an edit to one row
 rewrote one chunk and reused the rest. `ContentRollback` builds a reviewable draft that restores an earlier
 version's field values, `ContentDiff` is the field-level comparison, and `ContentBundle` is the lossless
 seeding document, imported into an EMPTY database only.
 
-A rollback refuses a row live at the target and retired since. `ContentRollbackBlocker.RuleKind` reports
+The authoring package's [publication refusal table](../KhaozEngine.Catalog.Authoring/README.md#publication-and-rollback-refusals)
+names the candidate, rule-prefix and pack-target rules and their identifiers. A validation refusal carries
+`ContentAuthoringRefusal.CandidateRejected` and the complete owned read-only `Findings` snapshot. Assert or
+branch on each `ContentFinding.Code`, including consumer-defined codes, rather than its message. The legacy
+`Reason`, `Type` and `Id` remain available. A row-only pack write distinguishes `TextPlanOnRowOnlyRoute`
+(`MemberName`, `VersionNumber`) from `TextChunkMissingOnRowOnlyRoute` (`MemberName`, `Language`, `TextHash`).
+
+A rollback refuses a row live at the target and retired since. `ContentRollback.Refusal` reports
+`RetireIrreversible`, the first blocker's `Type`, `Id` and `RowKey`, plus `TargetVersion`, `BlockerCount` and
+all `KEC0039` findings. `ContentRollbackBlocker.RuleKind` reports
 the matching rule's actual kind, or null if the provider baseline has no matching rule. That missing-rule
 case retains the blocker with `RuleSequence` and `IntroducedIn` at 0. The admin action renders the same
 absence as `kind: null` in `blockedByRules`, while a matching retire rule renders `kind: "Retired"`.

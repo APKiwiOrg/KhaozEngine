@@ -11,7 +11,4 @@ public enum GitHubResponsePart
 
     /// <summary>The issue page URL of an updated issue.</summary>
     IssueUrl,
-
-    /// <summary>Where an issue update was redirected, from the <c>Location</c> header or the followed request.</summary>
-    RedirectDestination,
 }

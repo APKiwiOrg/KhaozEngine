@@ -138,7 +138,7 @@ public sealed class GitHubAppIssueClient : IGitHubIssueClient, IDisposable
                 && int.TryParse(number, NumberStyles.None, CultureInfo.InvariantCulture, out int movedNumber) && movedNumber > 0)
                 return new GitHubIssueUpdateResult(GitHubIssueUpdateOutcome.Moved,
                     new Uri("https://github.com/" + destination.AbsolutePath["/repos/".Length..]));
-            throw GitHubResponseClassifier.InvalidResponse(response, GitHubResponsePart.RedirectDestination);
+            throw GitHubResponseClassifier.RedirectDestinationUnusable(response);
         }
         if (response.StatusCode is HttpStatusCode.NotFound or HttpStatusCode.Gone)
             return new GitHubIssueUpdateResult(GitHubIssueUpdateOutcome.Gone, null);

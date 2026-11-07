@@ -210,8 +210,8 @@ public sealed class GitHubAppIssueClientTests : IDisposable
         var error = await Assert.ThrowsAsync<GitHubApiException>(() =>
             client.UpdateIssueAsync(12, new GitHubIssueUpdate("Title", "Body"), CancellationToken.None));
 
-        Assert.Equal(GitHubApiRefusal.InvalidSuccessResponse, error.Reason);
-        Assert.Equal(GitHubResponsePart.RedirectDestination, error.ResponsePart);
+        Assert.Equal(GitHubApiRefusal.RedirectDestinationUnusable, error.Reason);
+        Assert.Null(error.ResponsePart);
         Assert.Equal(301, error.StatusCode);
         Assert.Null(error.UpstreamDetail);
         AssertNoSecrets(error);
@@ -241,8 +241,8 @@ public sealed class GitHubAppIssueClientTests : IDisposable
         var error = await Assert.ThrowsAsync<GitHubApiException>(() =>
             client.UpdateIssueAsync(12, new GitHubIssueUpdate("Title", "Body"), CancellationToken.None));
 
-        Assert.Equal(GitHubApiRefusal.InvalidSuccessResponse, error.Reason);
-        Assert.Equal(GitHubResponsePart.RedirectDestination, error.ResponsePart);
+        Assert.Equal(GitHubApiRefusal.RedirectDestinationUnusable, error.Reason);
+        Assert.Null(error.ResponsePart);
         Assert.Equal(status, error.StatusCode);
         Assert.Null(error.UpstreamDetail);
     }

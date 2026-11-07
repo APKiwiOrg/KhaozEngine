@@ -62,11 +62,16 @@ internal static class GitHubResponseClassifier
     }
 
     internal static GitHubApiException InvalidResponse(HttpResponseMessage response, GitHubResponsePart part) =>
-        new(GitHubApiRefusal.InvalidSuccessResponse, (int)response.StatusCode, false, null,
-            $"GitHub API returned HTTP {(int)response.StatusCode} with an invalid response.")
+        new(GitHubApiRefusal.InvalidSuccessResponse, (int)response.StatusCode, false, null, InvalidResponseMessage(response))
         {
             ResponsePart = part,
         };
+
+    internal static GitHubApiException RedirectDestinationUnusable(HttpResponseMessage response) =>
+        new(GitHubApiRefusal.RedirectDestinationUnusable, (int)response.StatusCode, false, null, InvalidResponseMessage(response));
+
+    static string InvalidResponseMessage(HttpResponseMessage response) =>
+        $"GitHub API returned HTTP {(int)response.StatusCode} with an invalid response.";
 
     static string? Header(HttpResponseMessage response, string name) =>
         response.Headers.TryGetValues(name, out var values) ? values.FirstOrDefault() : null;

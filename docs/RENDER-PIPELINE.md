@@ -529,15 +529,20 @@ the fragment as a flat value and is added to its slice's channel. A landing coll
 because screen derivatives are not: on Metal a fragment's `dFdx` can take its neighbour from another triangle of the draw,
 depending on how the draw is composed, so `abs(determinant(dFdx(S), dFdy(S)))` moved texels by up to 10% at the 1 m slice
 when one body was cut into two rectangles. The vertex stage pays three field reads and refractions per vertex for it. No
-culling or depth lets folded triangles add, so below the clamp energy is conserved by construction and the term has mean 1. Strength `s` at depth `d`
-is exactly strength 1 at depth `s * d`, because strength scales how far the ray lands and nothing extrapolates the ray.
+culling or depth lets folded triangles add, so each sheet carries its still-water area exactly and the term's mean over
+the map is 1 below the clamp. Strength `s` at depth `d` is exactly strength 1 at depth `s * d`, because strength scales
+how far the ray lands and nothing extrapolates the ray.
 Starting from 1 and subtracting matters because a receiver's entry can lie beyond its rectangle, and a map that only adds
 would read black there.
 
 Known limits. FFT bodies have no caustics, gain no record from the opt-in and are counted in `FftPlanes`. A body past
 four layers renders without caustics and is counted in `OverflowPlanes`. The outer 4 m of the window fades the term to
 1, and receivers outside it read 1. Deflected light can land a short way past a rectangle, which is physical, and bodies
-sharing a layer can exchange it across a gap narrower than that deflection. The clamp discards what a fold exceeds.
+sharing a layer can exchange it across a gap narrower than that deflection. The clamp discards what a fold exceeds, a
+few percent of a slice past focus. Past focus a landed triangle is smaller than a map texel and counts only where it
+covers a texel centre, so a deep slice's mean holds 1 only on average over the ripple's phase against the texel grid.
+A ripple aligned with the grid measured 0.68 to 1.16 across phases at 8 m, and the moving phase can make deep bands
+shimmer from frame to frame. The bands a river shows sit short of focus, where the mean measured within 0.4% of 1.
 
 ## Where to look in the code
 

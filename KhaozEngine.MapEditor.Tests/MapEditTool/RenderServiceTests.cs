@@ -158,7 +158,9 @@ namespace KhaozEngine.Tests.MapEditTool
                 Assert.Equal(MapDocumentRefusal.RenderLookDirectionZero, error.Reason);
                 Assert.Equal(new Vector3(5, 10, 5), error.Eye);
                 Assert.Equal(new Vector3(5, 10, 5), error.Target);
-                Assert.Equal(Vector3.UnitZ, MapRenderViewAdmission.LookDirection(new(5, 10, 5), new(5, 10, 6)));
+                // float32 1e-6f is 0x358637BD. Its square rounds to 0x2B8CBCCC, exactly 1e-12f.
+                // One normal component from the origin avoids cancellation and subnormal arithmetic.
+                Assert.Equal(Vector3.UnitX, MapRenderViewAdmission.LookDirection(Vector3.Zero, new(1e-6f, 0, 0)));
             }
             finally { Directory.Delete(dir, recursive: true); }
         }

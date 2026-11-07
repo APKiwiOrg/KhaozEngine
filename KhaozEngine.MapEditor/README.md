@@ -1041,8 +1041,8 @@ outer publisher runs. The publisher validates and publishes first, then accepts 
 movement. Callback snapshots delegate to the complete-snapshot command and capture every semantic
 root. Failed outer publication leaves both stacks and command retry state unchanged. Owner-removal commands that
 reach marker seating retain `MapDocumentRefusal.MarkerSupportUnresolved`, `MarkerId` and typed `SupportStatus`.
-Callback edits can fail earlier in space-coverage validation, whose aggregate remains a prose diagnostic until
-all its producing rules carry typed findings.
+Callback edits can fail earlier in space-coverage validation. Its aggregate forwards the first typed
+finding's reason and identifiers and retains the ordered `Findings` snapshot.
 
 Unpacked placement commands preserve binary64 pose components outside the explicit edit intent. Moves
 replace XZ and supplied Y, rotations replace yaw, scales replace scale, and label edits retain the pose.
@@ -1137,8 +1137,9 @@ leaves the layer through the diff. The **Authored props** switch, Terrain Only a
 layer through the sink's draw filter without a refresh, and the diff is deferred while the group is hidden.
 
 A rebuild reads the document as it stands, and mid-edit that can be invalid: `ViewportWorld`'s prop-layer
-build throws `MapDocumentException` for a companion layer naming a host scatter layer the document does not
-declare. `CheckWorldRebuild` runs inside `OnUpdate`, so it catches that rather than letting it escape the
+build refuses a companion layer whose host scatter layer is absent with `MapDocumentException` and
+`ReferenceMissing`. `DocumentId` names the document, `LayerId` the companion, `EntityId` the missing host,
+and `FieldPath` is `CompanionLayers.HostLayer`. `CheckWorldRebuild` runs inside `OnUpdate`, so it catches that rather than letting it escape the
 frame and take the editor down. The message goes to the status strip, the world already on screen stays up
 (neither seam swaps anything before it has built), and the pending flag is consumed, so a document that
 stays invalid does not throw once a frame. The next edit marks it pending again and the world catches up as

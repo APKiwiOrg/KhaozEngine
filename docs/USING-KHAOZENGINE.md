@@ -13306,8 +13306,8 @@ Identity registry checks preserve `MapDocumentException` and distinguish `Identi
 `DigestMismatch`. `EntityId` and `WorldId` identify the world subject, `ChildKind` gives its typed
 namespace, `Child` is the prefab-local key and `InstanceId` is the known source instance. Equal world ID
 text in different child kinds is allowed. Loaded and stored registry refusals retain the same reason
-and relevant identifiers. The surrounding aggregate validators keep their existing contracts until
-all of their producing rules carry typed findings.
+and relevant identifiers. Aggregate validators expose the ordered typed findings beside their unchanged
+prose projection, and throwing adapters preserve the first finding's reason and identifiers.
 
 For attachments, `PlacementId` names the standalone owner. A missing transfer uses `ReferenceMissing`,
 a missing anchor or descriptor pin uses `SchemaValueRequired`, and a mismatched existing transfer,
@@ -13354,11 +13354,11 @@ refusals carry `InstanceId`, `Child` and known `WorldId`, plus `ActualCount` and
 a transfer count is checked. An incompatible attachment child also carries its typed `AttachmentKind`.
 
 Internal prefab validation collectors preserve typed findings alongside the unchanged string results.
-Each finding copies the full identifier context, including owned collection snapshots. Untyped failures
-keep their prose. Missing resolver identity, unsupported payload and incompatible resolver/recipe
-branches retain their own reasons. Precise poses retain their first failed component and value, and
-malformed digests retain `ActualHash`. Aggregate document adapters still report prose until every
-producing rule has typed findings.
+Each finding copies the full identifier context, including owned collection snapshots. An unclassified
+consumer failure uses `PrefabStateUnreadable` and retains its prose. Missing resolver identity, unsupported
+payload and incompatible resolver/recipe branches retain their own reasons. Precise poses retain their first failed component and value, and
+malformed digests retain `ActualHash`. Aggregate document adapters forward the first typed finding
+and retain the full ordered `Findings` snapshot.
 
 In prefab edit preparation, `PrefabInstanceMissing` identifies an absent or removed `InstanceId`,
 while `IdentityReserved` identifies a placement reusing a live or retained instance ID.
@@ -13416,8 +13416,9 @@ kind as separate identifiers. Equal text across distinct namespaces is allowed. 
 item uses `SchemaValueRequired`, with the known role and index. Numeric bindings require at least 1
 when present, reporting `ValueOutsideRange`, `NumericId` and `MinimumInteger`. A positive numeric
 identity on another child kind uses `AuthoredReferenceKindInvalid`. The package README lists the
-identifiers for each key shape. The aggregate document adapter, bounded collection guards and unsupported
-child arm still use message-only constructors, so their `Reason` is null.
+identifiers for each key shape. Every engine construction supplies a reason. Aggregate document adapters
+forward the first typed finding and retain the full ordered `Findings` snapshot. Consumer-built instances
+can still use the public message-only constructors and leave `Reason` null.
 
 **Whole authored surface identity.** Scheme 2, new in 20.30.0, is the resolver-2 whole-document identity. Resolver-2
 documents use `MapAuthoredIdentityV2` from `KhaozEngine.MapDoc.Identity`, with an explicitly verified

@@ -131,8 +131,8 @@ Unsupported pinned tile schemes use `DocumentHashSchemeUnsupported`, `ActualVers
 Identity never rereads
 the manifest, lists directories or trusts a stored hash without reading the file. Stored identity validates
 the same document rules as the loaded document. Ownership-registry refusals expose the same `Reason` and typed
-identity, child-kind, instance and anchor context on both paths. Other aggregate validators retain their prose
-until their producing rules are typed.
+identity, child-kind, instance and anchor context on both paths. Aggregate validators expose ordered typed
+findings alongside their existing prose projection.
 
 Both overloads hash exactly these inputs under `kemap/native-authored/2`: the root digest, the authored
 content digest, ordered `(patchKey, semanticDigest)` facts, `kemap/effective-resources/1`, query policy 2,
@@ -970,8 +970,8 @@ read, support query, callback or static installation. Names are never normalized
 marker-bearing prefab gives each copy's marker its own name through an explicit replace override.
 The metadata uniqueness guard carries `IdentityDuplicate` or `MarkerNameDuplicate`, the repeated `MarkerId` or
 `MarkerName`, and colliding `MarkerIds` as a read-only snapshot. Its ordered `Findings` retain every collision, IDs
-first and then names, each in ordinal order. Aggregate validation adapters keep their existing prose projection
-until all of their producer's findings are typed.
+first and then names, each in ordinal order. Aggregate validation adapters forward the first finding's
+reason and identifiers and retain the complete ordered `Findings` snapshot.
 
 Compatibility: duplicate marker names were accepted before R6. A document whose repeated prefab instances share a
 marker name now refuses to load and build until each repeated instance carries such an override. Format 8 moves every
@@ -1889,8 +1889,8 @@ ran on a worker thread. The handoff did not.
 
 Resolver, root, prefab, identity registry, runtime layer, surface scalar and cell admission, foliage codec, asset-manifest, asset-closure, light, support and native adapter admission refusals keep the exact `MapDocumentException` type. Inspect its nullable
 `MapDocumentRefusal Reason` and applicable identifiers instead of classifying its message. The public
-message-only constructors remain available to consumers and leave `Reason` null. Other validation
-adapters continue reporting prose until all of their producing rules carry typed findings.
+message-only constructors remain available to consumers and leave `Reason` null. Every engine construction
+supplies a reason. Validation adapters forward their first typed finding and retain the ordered `Findings` snapshot.
 
 Surface scalar and cell checks preserve their original messages. `FieldPath` names the failed unit part,
 frame enumeration, rectangle axis, cell coordinate or required surface identity. Denominator checks carry
@@ -1961,9 +1961,8 @@ unrepresentable finite surface level uses `GeometryNotRepresentable`.
 Occupied-water admission carries `AcquireStatus` on both `GeometryNotRepresentable` and
 `AcquisitionIncomplete`. Missing witness facts additionally retain their `Patch`, `PatchStatus` and
 `SubjectKind`. A scope that does not prove the window complete uses `FieldPath = "Scope"`.
-Untyped upstream
-failures still appear in `Errors`. Compiler, containment and query status classification keeps its
-existing prose predicates until every upstream producer supplies a typed finding.
+Compiler, containment and query statuses use typed findings and producer context. `Errors` retains the
+ordered developer prose projection, including failures from consumer-built message-only exceptions.
 
 The water edit adapter forwards its first document-level water finding and retains every finding in
 `MapDocumentException.Findings`. Domain and cover fields use their actual failing path and stored
@@ -2453,7 +2452,8 @@ Cardinality uses `ValueOutsideRange` with the inclusive 2..4097 limits, while di
 use `SchemaArrayLengthMismatch` with actual and expected counts. Both name the failed `FieldPath`.
 Height inversion uses `SurfaceWallHeightInverted` with the vertex `Index`. Exact arithmetic and normal
 failures use `GeometryNotRepresentable` with `Operation`, and normal failures also name the segment
-`Index`. Unresolved chain adapters retain their prose projection until their producer carries findings.
+`Index`. Unresolved chain adapters preserve a known producer finding, including its reason and identifiers.
+A chain without an inner refusal uses the adapter's `SpaceChainUnresolved` or `PhysicsWallChainUnresolved` reason.
 
 `MapSeamValidator.ValidateFindings` and `ValidateCornerDependencyFindings` expose complete ordered
 read-only findings. The existing string validators retain their prose projection. Paint priority admission
@@ -2571,8 +2571,8 @@ Depth and geometry work refusals retain the actual `Budget`, `ActualCount` and i
 These budgets are `MaxRecordDepth`, `MaxRecordReads`, `MaxInspectedFaces`, `MaxRefinementFaces` and
 `MaxRefinementVertices`. An incomplete occupied acquisition carries `AcquisitionIncomplete` and
 `AcquireStatus`. Wide partition status results retain an available original typed `Finding` through
-narrowing. Their status and prose remain unchanged. Adapters whose producers are not yet fully typed
-retain their existing prose projection.
+narrowing. Their status and prose remain unchanged. Throwing adapters preserve the concrete producer
+reason and identifiers.
 Occupied partition classification retains `WaterDomainPairChecks` capacity provenance even when an
 intermediate refinement projected the failure to `Invalid`.
 Membership keeps a compiler-rejected legacy surface frame as `MissingGeometry`. Actual legacy recipe

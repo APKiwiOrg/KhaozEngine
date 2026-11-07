@@ -451,8 +451,9 @@ bounds reach. Pre-edit extents outside the post-edit world cannot be listed, whi
 than patch.
 
 `MapResidencyOwnership.MaxStorageTiles` (2^20) caps every storage tile list: one static's membership, and each extent
-`Affected` lists. A static or extent that reaches more refuses with `MapDocumentException` naming the count before
-any tile is listed.
+`Affected` lists. A static or extent that reaches more refuses with `MapDocumentException` and
+`WorkCapacityExceeded` before any tile is listed. Inspect `Budget` `MaxStorageTiles`, `ActualCount`,
+inclusive `Limit` and the known `OwnerId`.
 
 `MapTileResidency` remains the streaming loader keyed by storage tile. This index is the ownership R8 consumes.
 

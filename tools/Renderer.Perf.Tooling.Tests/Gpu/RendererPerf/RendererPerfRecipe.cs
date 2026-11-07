@@ -118,13 +118,7 @@ internal abstract class RendererPerfRecipe : IRendererPerfRecipe
             "crowd" => new RendererPerfCrowdScene(),
             "outdoors" => new RendererPerfOutdoorsScene(),
             "effects-ui" => new RendererPerfEffectsScene(),
-            "water-optics-v2/village/off" => new RendererPerfWaterOpticsVillageScene(RendererPerfWaterOpticsProfile.Off),
-            "water-optics-v2/village/m2-on" => new RendererPerfWaterOpticsVillageScene(RendererPerfWaterOpticsProfile.M2On),
-            "water-optics-v2/village/m5-on" => new RendererPerfWaterOpticsVillageScene(RendererPerfWaterOpticsProfile.M5On),
-            "water-optics-v2/outdoors/off" => new RendererPerfWaterOpticsOutdoorsScene(RendererPerfWaterOpticsProfile.Off),
-            "water-optics-v2/outdoors/m2-on" => new RendererPerfWaterOpticsOutdoorsScene(RendererPerfWaterOpticsProfile.M2On),
-            "water-optics-v2/outdoors/m5-on" => new RendererPerfWaterOpticsOutdoorsScene(RendererPerfWaterOpticsProfile.M5On),
-            _ => throw new ArgumentOutOfRangeException(nameof(id)),
+            _ => RendererPerfWaterOpticsCampaigns.CreateRecipe(id) ?? throw new ArgumentOutOfRangeException(nameof(id)),
         };
         recipe.Freeze();
         try

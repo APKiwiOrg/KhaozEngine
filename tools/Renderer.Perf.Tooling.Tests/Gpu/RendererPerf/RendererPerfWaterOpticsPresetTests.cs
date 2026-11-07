@@ -23,8 +23,8 @@ public sealed class RendererPerfWaterOpticsPresetTests
     {
         JsonObject json = RendererPerfProtocolTests.ManifestJson("full", leg);
         bool rehearsal = preset.StartsWith("rehearsal-", StringComparison.Ordinal);
-        bool single = preset == "rehearsal-water-optics-v2-single";
-        bool shortened = preset == "rehearsal-water-optics-v2" || single;
+        bool single = preset.EndsWith("-single", StringComparison.Ordinal);
+        bool shortened = rehearsal;
         json["preset"] = preset;
         json["conditioningFrames"] = shortened ? 300 : 1200;
         var recipes = new JsonArray();
@@ -32,7 +32,7 @@ public sealed class RendererPerfWaterOpticsPresetTests
         {
             JsonNode recipe = json["recipes"]![1]!.DeepClone();
             recipe["sceneId"] = "S" + scene;
-            recipe["version"] = RendererPerfWaterOptics.RecipeIds[scene] + "/1";
+            recipe["version"] = RecipeIds(preset)[scene] + "/1";
             recipes.Add(recipe);
         }
         json["recipes"] = recipes;
@@ -71,17 +71,26 @@ public sealed class RendererPerfWaterOpticsPresetTests
         return json;
     }
 
-    [Fact]
-    public void Paid_schedule_reconciles()
+    internal static string[] RecipeIds(string preset)
     {
-        var manifest = RendererPerfRehearsalManifestTests.Parse(ManifestJson());
+        string campaign = preset.Contains("water-optics-v3", StringComparison.Ordinal) ? "water-optics-v3" : "water-optics-v2";
+        string[] profiles = campaign == "water-optics-v3" ? ["off", "m5-on", "m3-on"] : ["off", "m2-on", "m5-on"];
+        return [.. new[] { "village", "outdoors" }.SelectMany(scene => profiles.Select(profile => campaign + "/" + scene + "/" + profile))];
+    }
+
+    [Theory]
+    [InlineData("water-optics-v2")]
+    [InlineData("water-optics-v3")]
+    public void Paid_schedule_reconciles(string preset)
+    {
+        var manifest = RendererPerfRehearsalManifestTests.Parse(ManifestJson(preset));
         var schedule = manifest.Schedule;
         Assert.Equal(RendererPerfExecutionClass.Performance, manifest.ExecutionClass);
         Assert.Equal(19632, manifest.TotalFrameCount);
         Assert.Equal(19632, schedule.TotalFrames);
         Assert.Equal(BlockOrder, manifest.Blocks.Select(b => $"{b.SceneId}/{b.Iteration}/{b.Layout}"));
         Assert.All(manifest.Blocks, b => Assert.Equal((192, 256), (b.WarmupFrames, b.MeasuredFrames)));
-        Assert.Equal(RendererPerfWaterOptics.RecipeIds.Select(id => id + "/1"), schedule.Recipes.Select(r => r.Version));
+        Assert.Equal(RecipeIds(preset).Select(id => id + "/1"), schedule.Recipes.Select(r => r.Version));
         Assert.Equal(Enumerable.Range(0, 6), schedule.Recipes.Select(r => r.Scene));
         Assert.All(schedule.Recipes, r => Assert.Equal("renderer-full-native-1080/1", r.Profile));
         Assert.Equal(1200, manifest.ConditioningFrames);
@@ -92,7 +101,9 @@ public sealed class RendererPerfWaterOpticsPresetTests
 
     [Theory]
     [InlineData("rehearsal-water-optics-v2", "linux-vulkan", 8364, 3, 64, 128)]
+    [InlineData("rehearsal-water-optics-v3", "linux-vulkan", 8364, 3, 64, 128)]
     [InlineData("rehearsal-water-optics-v2-single", "windows-d3d11", 2604, 1, 32, 64)]
+    [InlineData("rehearsal-water-optics-v3-single", "windows-d3d11", 2604, 1, 32, 64)]
     public void Rehearsal_schedules_reconcile(string preset, string leg, int total, int iterations, int warmup, int measured)
     {
         var manifest = RendererPerfRehearsalManifestTests.Parse(ManifestJson(preset, leg));
@@ -106,14 +117,16 @@ public sealed class RendererPerfWaterOpticsPresetTests
         Assert.All(manifest.Controls, c => Assert.Equal((32, 64), (c.WarmupFrames, c.MeasuredFrames)));
         Assert.Equal(iterations == 1 ? 25 : 49, manifest.Schedule.Operations);
         Assert.Equal("conditioning:S5/TotalOnly/0", manifest.Schedule.ConditioningOperation);
-        Assert.Equal(RendererPerfWaterOptics.RecipeIds.Select(id => id + "/1"), manifest.Recipes.Select(r => r.Version));
+        Assert.Equal(RecipeIds(preset).Select(id => id + "/1"), manifest.Recipes.Select(r => r.Version));
         Assert.Equal(Enumerable.Range(0, 6), manifest.Schedule.Recipes.Select(r => r.Scene));
         Assert.All(manifest.Recipes, r => Assert.Equal("renderer-full-native-1080/1", r.Profile));
     }
 
     [Theory]
     [InlineData("rehearsal-water-optics-v2", "linux-vulkan", "windows-d3d11")]
+    [InlineData("rehearsal-water-optics-v3", "linux-vulkan", "windows-d3d11")]
     [InlineData("rehearsal-water-optics-v2-single", "windows-d3d11", "linux-vulkan")]
+    [InlineData("rehearsal-water-optics-v3-single", "windows-d3d11", "linux-vulkan")]
     public void Rehearsal_classes_are_leg_specific(string preset, string leg, string refusedLeg)
     {
         var manifest = RendererPerfRehearsalManifestTests.Parse(ManifestJson(preset, leg));
@@ -145,11 +158,13 @@ public sealed class RendererPerfWaterOpticsPresetTests
     }
 
     [Theory]
-    [InlineData("linux-vulkan", 35, 38, "1.976")]
-    [InlineData("windows-d3d11", 50, 53, "5.406")]
-    public void Paid_caps_are_the_full_caps(string leg, int minutes, int billed, string cost)
+    [InlineData("water-optics-v2", "linux-vulkan", 35, 38, "1.976")]
+    [InlineData("water-optics-v3", "linux-vulkan", 35, 38, "1.976")]
+    [InlineData("water-optics-v2", "windows-d3d11", 50, 53, "5.406")]
+    [InlineData("water-optics-v3", "windows-d3d11", 50, 53, "5.406")]
+    public void Paid_caps_are_the_full_caps(string preset, string leg, int minutes, int billed, string cost)
     {
-        var manifest = RendererPerfRehearsalManifestTests.Parse(ManifestJson(leg: leg));
+        var manifest = RendererPerfRehearsalManifestTests.Parse(ManifestJson(preset, leg));
         Assert.Equal(new RendererPerfLimits(1500, 10000, 120000, minutes), manifest.Limits);
         Assert.Equal(billed, manifest.Budget.MaximumBilledMinutes);
         Assert.Equal(decimal.Parse(cost, System.Globalization.CultureInfo.InvariantCulture), manifest.Budget.MaximumCostUsd);
@@ -157,11 +172,13 @@ public sealed class RendererPerfWaterOpticsPresetTests
     }
 
     [Theory]
-    [InlineData("linux-vulkan")]
-    [InlineData("windows-d3d11")]
-    public void Campaign_maximums_are_separate(string leg)
+    [InlineData("water-optics-v2", "linux-vulkan")]
+    [InlineData("water-optics-v2", "windows-d3d11")]
+    [InlineData("water-optics-v3", "linux-vulkan")]
+    [InlineData("water-optics-v3", "windows-d3d11")]
+    public void Campaign_maximums_are_separate(string preset, string leg)
     {
-        var json = ManifestJson(leg: leg);
+        var json = ManifestJson(preset, leg);
         RendererPerfRehearsalManifestTests.Parse(json);
         json["approval"]!["campaignMaximumUsd"] = 7.383m;
         Assert.Equal("Approval", Assert.Throws<RendererPerfProtocolException>(() => RendererPerfRehearsalManifestTests.Parse(json)).Code);
@@ -175,24 +192,30 @@ public sealed class RendererPerfWaterOpticsPresetTests
     }
 
     [Theory]
-    [InlineData("linux-vulkan", "adapterPolicy", "mesa-lavapipe-software")]
-    [InlineData("windows-d3d11", "adapterPolicy", "microsoft-warp-software")]
-    [InlineData("linux-vulkan", "runner", "ubuntu-24.04")]
-    [InlineData("windows-d3d11", "runner", "windows-2025-vs2026")]
-    public void V2_refuses_software_adapters_and_runners(string leg, string key, string value)
+    [InlineData("water-optics-v2", "linux-vulkan", "adapterPolicy", "mesa-lavapipe-software")]
+    [InlineData("water-optics-v3", "linux-vulkan", "adapterPolicy", "mesa-lavapipe-software")]
+    [InlineData("water-optics-v2", "windows-d3d11", "adapterPolicy", "microsoft-warp-software")]
+    [InlineData("water-optics-v3", "windows-d3d11", "adapterPolicy", "microsoft-warp-software")]
+    [InlineData("water-optics-v2", "linux-vulkan", "runner", "ubuntu-24.04")]
+    [InlineData("water-optics-v3", "linux-vulkan", "runner", "ubuntu-24.04")]
+    [InlineData("water-optics-v2", "windows-d3d11", "runner", "windows-2025-vs2026")]
+    [InlineData("water-optics-v3", "windows-d3d11", "runner", "windows-2025-vs2026")]
+    public void Paid_water_refuses_software_adapters_and_runners(string preset, string leg, string key, string value)
     {
-        var json = ManifestJson(leg: leg);
+        var json = ManifestJson(preset, leg);
         json["execution"]![key] = value;
         Assert.Equal("Preset", Assert.Throws<RendererPerfProtocolException>(() => RendererPerfRehearsalManifestTests.Parse(json)).Code);
     }
 
-    [Fact]
-    public void V2_refuses_windows_vulkan_naming_the_refusing_campaign()
+    [Theory]
+    [InlineData("water-optics-v2")]
+    [InlineData("water-optics-v3")]
+    public void Water_refuses_windows_vulkan_naming_the_refusing_campaign(string preset)
     {
         var error = Assert.Throws<RendererPerfProtocolException>(() =>
-            RendererPerfRehearsalManifestTests.Parse(ManifestJson(leg: "windows-vulkan")));
+            RendererPerfRehearsalManifestTests.Parse(ManifestJson(preset, "windows-vulkan")));
         Assert.Equal("Preset", error.Code);
-        Assert.Equal("water-optics-v2", error.Preset);
+        Assert.Equal(preset, error.Preset);
         Assert.Equal("windows-vulkan", error.Leg);
         var pilot = Assert.Throws<RendererPerfProtocolException>(() =>
             RendererPerfRehearsalManifestTests.Parse(RendererPerfProtocolTests.ManifestJson("pilot", "windows-vulkan")));
@@ -203,8 +226,11 @@ public sealed class RendererPerfWaterOpticsPresetTests
 
     [Theory]
     [InlineData("water-optics-v2", "linux-vulkan", 49)]
+    [InlineData("water-optics-v3", "linux-vulkan", 49)]
     [InlineData("rehearsal-water-optics-v2", "linux-vulkan", 49)]
+    [InlineData("rehearsal-water-optics-v3", "linux-vulkan", 49)]
     [InlineData("rehearsal-water-optics-v2-single", "windows-d3d11", 25)]
+    [InlineData("rehearsal-water-optics-v3-single", "windows-d3d11", 25)]
     public void Capacity_follows_the_admitted_schedule(string preset, string leg, int operations)
     {
         var manifest = RendererPerfRehearsalManifestTests.Parse(ManifestJson(preset, leg));
@@ -236,8 +262,10 @@ public sealed class RendererPerfWaterOpticsPresetTests
 
     [Theory]
     [InlineData("rehearsal-water-optics-v2", "linux-vulkan", "gpu-t4-linux")]
+    [InlineData("rehearsal-water-optics-v3", "linux-vulkan", "gpu-t4-linux")]
     [InlineData("rehearsal-water-optics-v2-single", "windows-d3d11", "gpu-t4-windows")]
-    public void V2_rehearsal_refuses_hardware_and_nonzero_cost(string preset, string leg, string runner)
+    [InlineData("rehearsal-water-optics-v3-single", "windows-d3d11", "gpu-t4-windows")]
+    public void Water_rehearsal_refuses_hardware_and_nonzero_cost(string preset, string leg, string runner)
     {
         var original = ManifestJson(preset, leg);
         foreach ((string section, string key, JsonNode? value) in new (string, string, JsonNode?)[]

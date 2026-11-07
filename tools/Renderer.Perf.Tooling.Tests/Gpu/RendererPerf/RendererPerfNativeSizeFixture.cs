@@ -40,10 +40,11 @@ internal sealed class RendererPerfNativeSizeFixture
             "post.bloom.bright", "post.bloom.horizontal", "post.bloom.vertical", "post.bloom.composite", "post.tonemap",
             "post.sharpen", "post.fxaa", "post.blit", "temporal.resolve", "temporal.depth-store", "background.sky",
             "background.starfield", "atmosphere.transmittance", "atmosphere.multiple-scattering", "atmosphere.sky-view",
-            "outline.mask", "outline.composite", "display.fills", "display.lines", "ui.sprites",
+            "outline.mask", "outline.composite", "display.fills", "display.lines", "ui.sprites", "water.caustics",
             "device.scene.begin", "device.water.geometry", "device.water.bathymetry"];
+        const int logicalIds = 31;
         var passes = Enumerable.Range(0, 255).Select(i => new RendererPerfPassDefinition(
-            ids[i < 252 ? i % 30 : i - 222], i < 252 ? i / 30 : 0, -1,
+            ids[i < 252 ? i % logicalIds : i - 252 + logicalIds], i < 252 ? i / logicalIds : 0, -1,
             i < 252 ? (uint)(i * 2 + 1) : 0, i < 252 ? (uint)(i * 2 + 2) : 0, i >= 252)).ToArray();
         long tick = Origin;
         var recorder = new RendererPerfRecorder(1, detailed ? RendererPerfLayout.PerPass : RendererPerfLayout.TotalOnly,
@@ -55,7 +56,7 @@ internal sealed class RendererPerfNativeSizeFixture
         recorder.Register(graphics, new(true, Topology: GpuPrimitiveTopology.TriangleList));
         recorder.Register(compute, new(true, LocalX: 8, LocalY: 4, LocalZ: 1));
         recorder.BeginFrame(0, 0, 0);
-        foreach (string id in ids.Skip(30))
+        foreach (string id in ids.Skip(logicalIds))
         {
             recorder.BeginCpuPhase(id);
             recorder.BeginUpload(262144, true); recorder.EndUpload();
@@ -67,7 +68,7 @@ internal sealed class RendererPerfNativeSizeFixture
         for (int i = 0; i < 252; i++)
         {
             recorder.BeginPass(commands, i);
-            if (i % 30 is 8 or 9 or 22 or 23 or 24)
+            if (i % logicalIds is 8 or 9 or 22 or 23 or 24)
             {
                 commands.SetComputePipeline(compute);
                 commands.Dispatch(16, 8, 1);

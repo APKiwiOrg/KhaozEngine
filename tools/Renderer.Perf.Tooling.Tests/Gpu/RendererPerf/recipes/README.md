@@ -66,3 +66,28 @@ The six files were frozen on `osx-arm64`. Their `linux-x64` and `win-x64` famili
 `cross-platform-gpu` run 40715141521, as for any new family. As with the v1 recipes, the village files share
 one sequence digest between Linux and Windows and differ in geometry, and the outdoors files share geometry
 and differ in sequence.
+
+## Water optics v3 recipes
+
+`water-optics-v3` freezes village and outdoors under `off`, `m5-on` and `m3-on`, in that order.
+M3 ON is M5 ON plus underwater caustics at `CausticStrength = 4`, the approved River strength.
+Within each scene the three profiles share geometry, assets and sequence. Only the opt-ins and
+M3's strength differ. The v1 and v2 files and identities remain unchanged.
+
+V3 outdoors uses `new WaterLook { WaveSource = WaterWaveSource.Procedural, SwellAmplitude = .08f }`
+with the village swell bound. WO-D15 gives FFT no caustics, so the v2 pool cannot measure M3.
+Bed geometry, props, camera and frame sequence stay identical to v2. Prop placement keeps v2's
+conservative clearance, while the live water uses the procedural bound. Its schedule records no
+FFT dispatches or mip copies. The village keeps its existing procedural pool.
+
+These six files freeze only the local `osx-arm64` family's cold construction. Other families must
+come from the free `tooling-validation` workflow, with portable inputs reviewed before their derived
+digests are committed. Missing families still refuse. Headless traces require M3's `water.caustics`
+pass to execute with one drawn pool inside the window. OFF and M5 ON record it as not executed.
+The skipped caustic row also appears in live v1 and v2 pass inventories without changing their
+frozen recipe identity.
+
+The [campaign contract](../../../../../docs/RENDERER-PERFORMANCE.md#water-optics-campaign) owns
+presets, frame counts, pairs, caps and approval gates. Free validation grants no rehearsal approval.
+Rehearsals need explicit owner approval, and paid attempts need separate approval naming the exact
+workload and both proposal hashes plus the renderer performance owner's admission review.

@@ -32,6 +32,7 @@ internal sealed partial class ReferenceGridPathPlanner
         var isMember = new bool[_totalNodes];
         var memberLayers = new bool[_space.Layers.Count];
         var members = new List<Vector3>();
+        var memberBounds = ReferencePlannerRegionBounds.Empty;
         for (int layer = 0; layer < _space.Layers.Count; layer++)
         {
             NavGrid grid = _space.Layers[layer];
@@ -46,6 +47,7 @@ internal sealed partial class ReferenceGridPathPlanner
                     isMember[_layerOffset[layer] + z * grid.Width + x] = true;
                     memberLayers[layer] = true;
                     members.Add(feet);
+                    memberBounds = memberBounds.Include(x, z);
                 }
         }
         if (members.Count == 0) return NavPath.Unreachable;
@@ -53,11 +55,7 @@ internal sealed partial class ReferenceGridPathPlanner
         var anchorXz = new Vector2(goal.Anchor.X, goal.Anchor.Z);
         float Priority(int layer, int x, int z)
         {
-            if (_spatialBound.Scale == 0f) return 0f;
-            Vector2 centre = _space.Layers[layer].CellCenter(x, z);
-            double dx = Math.Max(Math.Abs((double)centre.X - anchorXz.X) - goal.HorizontalExtent, 0d);
-            double dz = Math.Max(Math.Abs((double)centre.Y - anchorXz.Y) - goal.HorizontalExtent, 0d);
-            return (float)Math.Min(float.MaxValue, _spatialBound.Scale * Math.Sqrt(dx * dx + dz * dz));
+            return _spatialBound.Region(layer, x, z, memberBounds, anchorXz, goal.HorizontalExtent);
         }
         double Progress(int layer, int x, int z)
         {

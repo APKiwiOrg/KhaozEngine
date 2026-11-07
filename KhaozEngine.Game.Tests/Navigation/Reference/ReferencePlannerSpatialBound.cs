@@ -1,4 +1,4 @@
-// Frozen allocating reference after the #1712 spatial-bound ruling for 23.3.0.
+// Frozen allocating reference after the #1712 F1 metric correction for 23.3.0.
 // Keep independent of production scratch. Change only with an evidenced reference update.
 using System;
 using System.Collections.Generic;
@@ -55,6 +55,26 @@ internal sealed class ReferencePlannerSpatialBound
             return _layers[layer].CellSize * (Sqrt2 * Math.Min(dx, dz) + Math.Abs(dx - dz));
         }
         return WorldDistance(_layers[layer].CellCenter(x, z), _layers[goalLayer].CellCenter(gx, gz));
+    }
+
+    internal float Region(int layer, int x, int z, ReferencePlannerRegionBounds members, Vector2 anchor, float extent)
+    {
+        if (Scale == 0f) return 0f;
+        double span;
+        if (_sharedFrame)
+        {
+            // Membership uses rounded world feet. Its actual cell indices still share the cost metric.
+            (int gx, int gz) = members.Closest(x, z);
+            span = Distance(layer, x, z, layer, gx, gz);
+        }
+        else
+        {
+            Vector2 centre = _layers[layer].CellCenter(x, z);
+            double dx = Math.Max(Math.Abs((double)centre.X - anchor.X) - extent, 0d);
+            double dz = Math.Max(Math.Abs((double)centre.Y - anchor.Y) - extent, 0d);
+            span = Math.Sqrt(dx * dx + dz * dz);
+        }
+        return (float)Math.Min(float.MaxValue, Scale * span);
     }
 
     double WalkingScale(int layer, NavTraversalGraph? traversal)

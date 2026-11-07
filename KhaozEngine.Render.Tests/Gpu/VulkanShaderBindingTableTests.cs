@@ -154,6 +154,9 @@ namespace KhaozEngine.Tests.Gpu
                 ["WaterClipmap"] = "WaterRenderer",
                 ["WaterTriangle"] = "WaterRenderer",
                 ["WaterClipmapTriangle"] = "WaterRenderer",
+                ["WaterSurfaceField"] = "WaterCausticRenderer field",
+                ["WaterCausticSubtract"] = "WaterCausticRenderer subtract",
+                ["WaterCausticSheet"] = "WaterCausticRenderer sheet",
 
                 ["PostPalette"] = "PixelPostProcess pal",
                 ["PostEdge"] = "PixelPostProcess edge",
@@ -348,7 +351,7 @@ namespace KhaozEngine.Tests.Gpu
                 .ToHashSet(StringComparer.Ordinal);
 
             // Ten certified FullyLit variants cover resolve, debug/count and both split sizes at both precisions.
-            Assert.Equal(128, catalog.Length);
+            Assert.Equal(131, catalog.Length);
             Assert.Equal(catalog.Length, ProgramPipelines.Count);
 
             foreach (string program in catalog)

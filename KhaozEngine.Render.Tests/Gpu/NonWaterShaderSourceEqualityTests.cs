@@ -18,7 +18,8 @@ public sealed class NonWaterShaderSourceEqualityTests
         var actual = new Dictionary<string, string>(StringComparer.Ordinal);
         foreach (ShippedGraphicsProgram program in ShippedShaderPrograms.GraphicsPrograms())
         {
-            if (program.Name is "Water" or "WaterClipmap" or "WaterTriangle" or "WaterClipmapTriangle") continue;
+            if (program.Name is "Water" or "WaterClipmap" or "WaterTriangle" or "WaterClipmapTriangle"
+                or "WaterSurfaceField" or "WaterCausticSubtract" or "WaterCausticSheet") continue;
             actual.Add(program.Name + ".vertex", Sha256(program.VertexGlsl));
             actual.Add(program.Name + ".fragment", Sha256(program.FragmentGlsl));
         }

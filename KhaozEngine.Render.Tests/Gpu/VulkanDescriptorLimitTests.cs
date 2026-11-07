@@ -239,6 +239,12 @@ namespace KhaozEngine.Tests.Gpu
                     U("Atmosphere", F), T("AtmoSkyView"), S("AtmoSkySampler"), T("OpticsTex"), S("OpticsSamp"),
                     T("ColumnShadowAtlas"), S("ColumnShadowSampler"), U("WaterLitFrame", F),
                     T("ColumnSceneColor"), S("ColumnColorSampler")),
+
+                // The three caustic passes, each with its own uniform slot and only the stages that read it.
+                ["WaterCaustics.field"] = L(U("CausticBody", VF, dynamic: true)),
+                ["WaterCaustics.subtract"] = L(U("CausticBody", V, dynamic: true)),
+                ["WaterCaustics.sheet"] = L(U("CausticBody", V, dynamic: true), T("SurfaceField", V),
+                    S("SurfaceFieldSampler", V)),
             };
 
         /// <summary>
@@ -350,6 +356,9 @@ namespace KhaozEngine.Tests.Gpu
             ("TransitionRenderer cross", ["Transition.cross"]),
             ("MotionVectorsView", ["MotionVectorsView"]),
             ("WaterRenderer", ["Water"]),
+            ("WaterCausticRenderer field", ["WaterCaustics.field"]),
+            ("WaterCausticRenderer subtract", ["WaterCaustics.subtract"]),
+            ("WaterCausticRenderer sheet", ["WaterCaustics.sheet"]),
         ];
 
         /// <summary>
@@ -363,8 +372,8 @@ namespace KhaozEngine.Tests.Gpu
             // The atmosphere producers add three dense layouts and pipeline rows. GpuScaledCopy adds one of each.
             // Both counts are stated so an emptied table cannot pass by agreeing with itself.
             // Certified resolve and accumulation add two compact layouts and four pipeline shapes.
-            Assert.Equal(69, ShippedLayouts.Count);
-            Assert.Equal(77, ShippedPipelines.Count);
+            Assert.Equal(72, ShippedLayouts.Count);
+            Assert.Equal(80, ShippedPipelines.Count);
 
             foreach ((string pipeline, string[] slots) in ShippedPipelines)
             {

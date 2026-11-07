@@ -21,8 +21,8 @@ namespace KhaozEngine.Tests.Gpu
         {
             Assert.Equal(new[] { "Tex", "Samp", "Mask", "MaskSamp" },
                 VulkanDescriptorLimitTests.ShippedLayouts["SpriteBatch.maskedTexture"].Elements.Select(e => e.Name));
-            Assert.Equal(69, VulkanDescriptorLimitTests.ShippedLayouts.Count);
-            Assert.Equal(77, VulkanDescriptorLimitTests.ShippedPipelines.Count);
+            Assert.Equal(72, VulkanDescriptorLimitTests.ShippedLayouts.Count);
+            Assert.Equal(80, VulkanDescriptorLimitTests.ShippedPipelines.Count);
             Assert.Equal(new[] { "SpriteBatch.maskedTexture", "SpriteBatch.vp" },
                 Assert.Single(VulkanDescriptorLimitTests.ShippedPipelines,
                     p => p.Pipeline == "SpriteBatch masked").Slots);

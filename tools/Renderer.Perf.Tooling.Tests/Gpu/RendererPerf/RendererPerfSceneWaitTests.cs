@@ -8,11 +8,21 @@ namespace KhaozEngine.Tests.Gpu.RendererPerf;
 
 public sealed class RendererPerfSceneWaitTests
 {
-    [Fact]
-    public void Conditioning_retires_cold_replacements_without_waits_or_extra_submissions()
+    // The v3 campaign recipes ride along, because a first cold frame is where a lit set replacement can drain. The
+    // v2 outdoors recipes build an FFT ocean this device does not construct, and v2 has already run.
+    public static TheoryData<string> ConditionedRecipes()
+    {
+        var data = new TheoryData<string> { "crowd" };
+        foreach (string id in RendererPerfWaterOpticsCampaigns.ForPreset("water-optics-v3")!.RecipeIds) data.Add(id);
+        return data;
+    }
+
+    [Theory]
+    [MemberData(nameof(ConditionedRecipes))]
+    public void Conditioning_retires_cold_replacements_without_waits_or_extra_submissions(string recipe)
     {
         using var device = CreateDevice();
-        using var session = CreateSession(device, "conditioning:S3", 0, 3);
+        using var session = CreateSession(device, "conditioning:S3", 0, 3, recipe: recipe);
         var samples = new RendererPerfFrameSample[3];
         session.Frame(0, ref samples[0]);
         session.Frame(1, ref samples[1]);
@@ -81,11 +91,11 @@ public sealed class RendererPerfSceneWaitTests
     };
 
     static RendererPerfNativeSession CreateSession(GpuPerfTimestampTestDevice device, string sceneId,
-        int warmup, int measured, bool injectWait = false)
+        int warmup, int measured, bool injectWait = false, string recipe = "crowd")
     {
-        using var recipe = RendererPerfRecipe.Create("crowd");
-        var facts = recipe.Facts;
-        var recipeIdentity = new RendererPerfRecipeIdentity("S3", "crowd/1", facts.Profile, facts.RecipeSha256,
+        using var frozen = RendererPerfRecipe.Create(recipe);
+        var facts = frozen.Facts;
+        var recipeIdentity = new RendererPerfRecipeIdentity("S3", facts.Id + "/" + facts.Version, facts.Profile, facts.RecipeSha256,
             facts.SettingsSha256, new string('b', 64), facts.GeometrySha256, facts.AssetSha256);
         var identity = RendererPerfProtocolTests.CompleteReport().Identity with { TimestampPeriodNs = 2.5 };
         long tick = 0;

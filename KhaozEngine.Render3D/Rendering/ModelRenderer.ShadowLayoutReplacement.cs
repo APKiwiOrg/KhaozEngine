@@ -43,7 +43,8 @@ internal sealed partial class ModelRenderer
         return true;
     }
 
-    // Swap every rebuilt set in and re-key its description. Shadow replacements supply the completion queue.
+    // Swap every rebuilt set in and re-key its description. Shadow and caustic map replacements supply the
+    // completion queue.
     // Point-light buffer and interior texture transactions keep their explicit drain and immediate release.
     void CommitShadowSamplingSets(Dictionary<IGpuResourceSet, IGpuResourceSet> replacements,
         Dictionary<IGpuResourceSet, ShadowSamplingBinding> replacementBindings,

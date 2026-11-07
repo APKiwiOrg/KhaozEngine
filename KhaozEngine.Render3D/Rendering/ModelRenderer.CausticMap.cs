@@ -30,8 +30,9 @@ internal sealed partial class ModelRenderer
     }
 
     /// <summary>Replace every set that captured the map, or none of them when one fails to build. The caller owns
-    /// the map. The opaque foliage subset rebuilds on its next draw and retires the set naming the previous map,
-    /// so a replaced map goes through the same retire queue rather than being freed at once.</summary>
+    /// the map. A frame in flight may still read the sets naming the previous map, so they go through the retire
+    /// queue rather than a drain, which would stall the frame that first meets caustic water and each layer growth.
+    /// The opaque foliage subset rebuilds on its next draw and retires its own set the same way.</summary>
     internal void SetCausticMap(IGpuTexture map, IReadOnlyList<IGpuResourceSet> liveMaterialSets,
         Action<Func<IGpuResourceSet, IGpuResourceSet>> commitMaterialSets)
     {
@@ -44,7 +45,6 @@ internal sealed partial class ModelRenderer
         IGpuResourceSet? skinnedMainSet = null;
         try
         {
-            _gd.WaitForIdle();
             AddReplacement(_defaultSet, _shadowMap.ShadowTexture, _pointShadowTexture, _pointShadowTransientTexture,
                 _pointLightBuffer, replacements, bindings, causticMap: map);
             foreach (IGpuResourceSet set in liveMaterialSets)
@@ -81,10 +81,7 @@ internal sealed partial class ModelRenderer
         _splatFrameSet = splatFrameSet;
         _tileGroundFrameSet = tileGroundFrameSet;
         if (oldSkinnedMainSet is not null) _skinnedMainSet = skinnedMainSet;
-        CommitShadowSamplingSets(replacements, bindings, commitMaterialSets);
-
-        oldSkinnedMainSet?.Dispose();
-        oldSplatFrameSet.Dispose();
-        oldTileGroundFrameSet.Dispose();
+        CommitShadowSamplingSets(replacements, bindings, commitMaterialSets, _retired);
+        _retired.Retire(oldSkinnedMainSet, oldSplatFrameSet, oldTileGroundFrameSet);
     }
 }

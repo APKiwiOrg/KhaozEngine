@@ -411,10 +411,12 @@ surface. The term interpolates linearly from 1 at depth 0 across the slices and 
 returns before any of this, and a dry pixel or a winning record without a layer adds no texture read.
 
 Every lit set binds a 1x1 `R16G16B16A16Float` placeholder holding 1 and a linear-clamp sampler until
-`ModelRenderer.SetCausticMap` replaces the map. That transaction waits for idle, builds every rigid, splat, tile-ground
-and skinned-main frame set, then commits them together, and a failed build keeps the current sets. The caller owns the
-map. The opaque foliage subset rebuilds on its next draw and retires the set naming the previous map, so a replaced
-map goes through the retire queue. The scene replaces the placeholder at the first participating body.
+`ModelRenderer.SetCausticMap` replaces the map. That transaction builds every rigid, splat, tile-ground and skinned-main
+frame set, then commits them together, and a failed build keeps the current sets. It never waits for idle. A frame in
+flight may still read the sets naming the previous map, so they go through the retire queue, and a drain would stall the
+frame that first meets caustic water and each layer growth. The caller owns the map. The opaque foliage subset rebuilds
+on its next draw and retires the set naming the previous map the same way. The scene replaces the placeholder at the
+first participating body.
 
 The opaque atlas retains the sun-facing near face of outward CCW meshes with orientation-preserving transforms
 on every backend, with clockwise fronts culled. The glTF loader preserves triangle order. A straddling floater's

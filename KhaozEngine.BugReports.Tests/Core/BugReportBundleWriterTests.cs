@@ -234,6 +234,40 @@ public sealed class BugReportBundleWriterTests
             index.Frames);
     }
 
+    // A second index read must never replace the frame whose header and dimensions were validated.
+    [Fact]
+    public void Clip_payload_is_the_validated_frame_when_the_list_changes_on_a_second_read()
+    {
+        ReportClipFrame validated = Frame(0, 16.5);
+        ReportClipFrame replacement = Frame(0, 16.5, 6, 3);
+        var frames = new ChangingFrameList(validated, replacement);
+
+        byte[] bundle = BugReportBundleWriter.Write(Draft(clip: new ReportClip(frames)));
+
+        AssertValid(bundle);
+        Assert.Equal(validated.Jpeg.ToArray(), Read(Entries(bundle).Single(e => e.FullName == "clip/000.jpg")));
+        ClipIndex index = BugReportJson.DeserializeClipIndex(Read(Entries(bundle).Single(e => e.FullName == BundleEntryNames.ClipIndex)));
+        Assert.Equal(new[] { new ClipIndexFrame(0, 16.5, 4, 4, "clip/000.jpg") }, index.Frames);
+    }
+
+    sealed class ChangingFrameList(ReportClipFrame first, ReportClipFrame replacement) : IReadOnlyList<ReportClipFrame>
+    {
+        bool read;
+        public int Count => 1;
+        public ReportClipFrame this[int index]
+        {
+            get
+            {
+                if (index != 0) throw new ArgumentOutOfRangeException(nameof(index));
+                ReportClipFrame frame = read ? replacement : first;
+                read = true;
+                return frame;
+            }
+        }
+        public IEnumerator<ReportClipFrame> GetEnumerator() { yield return this[0]; }
+        System.Collections.IEnumerator System.Collections.IEnumerable.GetEnumerator() => GetEnumerator();
+    }
+
     [Fact]
     public void Entries_are_stored_not_compressed()
     {

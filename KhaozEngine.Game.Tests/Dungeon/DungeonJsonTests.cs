@@ -318,9 +318,9 @@ namespace KhaozEngine.Tests.Dungeon
         }
 
         [Theory]
-        [InlineData("config", "roomCountTarget")]
-        [InlineData("layout", "width")]
-        public void StringForAnInteger_Throws_JsonMemberUnconvertible_NamingThePath(string section, string member)
+        [InlineData("config", "roomCountTarget", "$.roomCountTarget")]
+        [InlineData("layout", "width", "$.width")]
+        public void StringForAnInteger_Throws_JsonMemberUnconvertible_NamingThePath(string section, string member, string jsonPath)
         {
             JsonObject node = JsonNode.Parse(ValidDocument(section))!.AsObject();
             int value = node[member]!.GetValue<int>();
@@ -330,7 +330,7 @@ namespace KhaozEngine.Tests.Dungeon
 
             Assert.Equal(DungeonJsonRefusal.JsonMemberUnconvertible, ex.Reason);
             Assert.Equal(section, ex.Section);
-            Assert.Equal("$." + member, ex.JsonPath);
+            Assert.Equal(jsonPath, ex.JsonPath);
             Assert.IsAssignableFrom<System.Text.Json.JsonException>(ex.InnerException);
 
             node[member] = value;
@@ -395,7 +395,9 @@ namespace KhaozEngine.Tests.Dungeon
             Assert.Equal(1, ex.MinimumInteger);
             Assert.Null(ex.ActualNumber);
 
-            DungeonJson.LoadLayout(DungeonJson.SaveLayout(ContentLayout()));
+            var control = new DungeonLayout(member == "width" ? 1 : 2, member == "depth" ? 1 : 2,
+                member == "floors" ? 1 : 2, 1f, 1f);
+            DungeonJson.LoadLayout(DungeonJson.SaveLayout(control));
         }
 
         [Fact]

@@ -44,10 +44,11 @@ tolerant reads, deterministic byte-identical writes). The JSON matches the embed
 (`DungeonSchema.GetJson()`, a `oneOf` over a `config` and a `layout` `$def`), which the package's tests
 validate against and which is available for editor/AI tooling. The load path itself enforces its own semantic
 checks, throwing `DungeonJsonException`. Its `Reason`, from the `DungeonJsonRefusal` enum, names the rule, and
-the identifiers below name the offending member. `JsonPath` is always a rooted path, `$.` then member names and indices. The message is prose naming the same member in its own camelCase
-spelling, never a contract. Layout JSON preserves `CeilingMode` and the resolved `CeilingHeightMeters`. Older
-layouts without those optional fields load as `Open` with a zero ceiling height. Layout loading rejects a negative
-or non-finite persisted ceiling height before constructing the layout.
+the identifiers below name the offending member. When set, `JsonPath` is a rooted path, `$.` then member names
+and indices. `RootObjectRequired` and a reader failure without a path leave it null. The message is prose naming
+the same member in its own camelCase spelling, never a contract. Layout JSON preserves `CeilingMode` and the
+resolved `CeilingHeightMeters`. Older layouts without those optional fields load as `Open` with a zero ceiling
+height. Layout loading rejects a negative or non-finite persisted ceiling height before constructing the layout.
 
 | `Reason` | What it refuses | Identifiers |
 | --- | --- | --- |

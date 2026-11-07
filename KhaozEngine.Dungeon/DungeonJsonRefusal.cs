@@ -21,7 +21,8 @@ public enum DungeonJsonRefusal
     /// <summary>Refuses a length that is not greater than zero.</summary>
     PositiveValueRequired,
 
-    /// <summary>Refuses an integer below its fixed minimum, which is 1 except 0 for a count or budget.</summary>
+    /// <summary>Refuses an integer below its fixed minimum: 0 for config loopEdgeBudget, lockCount,
+    /// spawnMarkersPerRoomMax and lootMarkersPerRoomMax, and 1 for every other integer this rule checks.</summary>
     IntegerBelowMinimum,
 
     /// <summary>Refuses a minimum that exceeds the maximum it pairs with.</summary>

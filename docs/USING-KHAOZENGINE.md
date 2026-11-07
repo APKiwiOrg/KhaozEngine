@@ -27941,6 +27941,13 @@ persistence.Issue += issue => log.Info(issue.ToString());   // migrated / skippe
   candidate OLDER than the truth reads a built-in payload short and the bytes it leaves behind re-sync into frames
   the walk copies, which used to let it beat the truth and restore silently wrong movement fields plus phantom
   components.
+- **Failed cell-blob walks carry structured refusals.** `CellBlobMigrationException` remains catchable as
+  `InvalidOperationException`. Its `Reason` is `KnownGenerationUnwalkable` with `FromGeneration` and `ToGeneration`,
+  or `NoInferredGeneration` with `SchemaLabel`, inclusive `OldestGeneration` and `NewestGeneration`, the distinct
+  `UnregisteredExtensionIds` in encounter order, and `RecoveryMembers` (`AssumedWireGeneration`, `Registry`). Both
+  lists are copied read-only snapshots. The id list is empty when no unregistered id was observed, including
+  without a supplied registry. Disagreeing successful candidates retain the separate
+  `AmbiguousCellBlobGenerationException`. Messages and persistence quarantine statuses stay unchanged.
 - **Two knobs, and both are worth setting on a server with pre-v4 saves.**
 
   ```csharp

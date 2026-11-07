@@ -89,26 +89,66 @@ public class CellBlobRecoveryTests
     }
 
     /// <summary>
-    /// The message a body that walks at no candidate either way has to carry, since it is the one an operator reads
-    /// before deciding what to do with the cell: the ids that were not registered, and both knobs by name.
+    /// A body that walks at no candidate carries the ids that were not registered and both recovery knobs,
+    /// independently of its developer-facing message.
     /// </summary>
     [Fact]
     public void ABodyThatWalksNowhere_NamesTheUnregisteredIdsAndBothKnobs()
     {
         byte[] body = new CellBlobFixtures.BodyBuilder()
-            .Entity(1,
-                (MoveProtocol.MovementTypeId, CellBlobFixtures.Movement(6, CellBlobFixtures.RandomMovement(new Random(7)))),
-                (DroppedExtensionId, CellBlobFixtures.Extension(new byte[6])))
+            .Entity(1, (DroppedExtensionId, CellBlobFixtures.Extension(new byte[6])))
             .ToBody();
         byte[] truncated = body.AsSpan(0, body.Length - 1).ToArray();   // walks at nothing, with or without a registry
 
-        var ex = Assert.Throws<InvalidOperationException>(() =>
-            PositionFrameBlobMigration.FrameV2ToV3(truncated, new CellBlobMigrationOptions { Registry = MoveProtocol.CreateRegistry() }));
+        byte[] before = [.. truncated];
+        var options = new CellBlobMigrationOptions { Registry = MoveProtocol.CreateRegistry() };
+        var ex = Assert.Throws<CellBlobMigrationException>(() => PositionFrameBlobMigration.FrameV2ToV3(truncated, options));
 
         output.WriteLine(ex.Message);
-        Assert.Contains(DroppedExtensionId.ToString(), ex.Message, StringComparison.Ordinal);
-        Assert.Contains(nameof(CellBlobMigrationOptions.Registry), ex.Message, StringComparison.Ordinal);
-        Assert.Contains(nameof(CellBlobMigrationOptions.AssumedWireGeneration), ex.Message, StringComparison.Ordinal);
+        Assert.IsAssignableFrom<InvalidOperationException>(ex);
+        Assert.Equal(CellBlobMigrationRefusal.NoInferredGeneration, ex.Reason);
+        Assert.Equal("v2 (absolute position)", ex.SchemaLabel);
+        Assert.Equal(2, ex.OldestGeneration);
+        Assert.Equal(8, ex.NewestGeneration);
+        Assert.Equal(new ushort[] { 16 }, ex.UnregisteredExtensionIds);
+        Assert.Equal(new[] { "AssumedWireGeneration", "Registry" }, ex.RecoveryMembers);
+        Assert.Equal(before, truncated);
+
+        // No built-in layout varies across these candidates, so every successful reading preserves these bytes.
+        Assert.Equal(body, PositionFrameBlobMigration.FrameV2ToV3(body, options));
+    }
+
+    [Fact]
+    public void Known_generation_no_walk_carries_both_generations_without_changing_the_body()
+    {
+        byte[] body = PlainBody(6);
+        byte[] truncated = body.AsSpan(0, body.Length - 1).ToArray();
+        byte[] before = [.. truncated];
+
+        var ex = Assert.Throws<CellBlobMigrationException>(() => CellBlobRewriter.Rewrite(truncated, 6, 9, widenNetIds: false));
+
+        Assert.Equal(CellBlobMigrationRefusal.KnownGenerationUnwalkable, ex.Reason);
+        Assert.Equal(6, ex.FromGeneration);
+        Assert.Equal(9, ex.ToGeneration);
+        Assert.Equal(before, truncated);
+        Assert.Null(ex.SchemaLabel);
+        Assert.NotEmpty(CellBlobRewriter.Rewrite(body, 6, 9, widenNetIds: false));
+    }
+
+    [Fact]
+    public void Migration_collection_identifiers_are_owned_read_only_snapshots()
+    {
+        ushort[] ids = [16, 17];
+        string[] members = ["AssumedWireGeneration", "Registry"];
+        var ex = new CellBlobMigrationException(CellBlobMigrationRefusal.NoInferredGeneration, "no candidate")
+        { UnregisteredExtensionIds = ids, RecoveryMembers = members };
+        ids[0] = 99;
+        members[0] = "changed";
+
+        Assert.Equal(new ushort[] { 16, 17 }, ex.UnregisteredExtensionIds);
+        Assert.Equal(new[] { "AssumedWireGeneration", "Registry" }, ex.RecoveryMembers);
+        Assert.Throws<NotSupportedException>(() => ((IList<ushort>)ex.UnregisteredExtensionIds!)[0] = 99);
+        Assert.Throws<NotSupportedException>(() => ((IList<string>)ex.RecoveryMembers!)[0] = "changed");
     }
 
     /// <summary>

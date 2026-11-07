@@ -426,6 +426,23 @@ opt-outs still skip stream validation. Nonfinite frame magnitudes keep the exist
 so this classification adds no new refusal for NaN. A factory world in the wrong cell frame is owned by
 [Sharding's `ShardFrameException`](../KhaozEngine.Sharding/README.md#frame-refusals).
 
+## Cell-blob migration refusals
+
+`CellBlobMigrationException` derives from `InvalidOperationException` and requires a `CellBlobMigrationRefusal`
+as its `Reason`. The failed walks keep their original admission rules and developer messages. Inference whose
+successful candidates disagree still throws the separate `AmbiguousCellBlobGenerationException`.
+
+| `Reason` | What it refuses | Identifiers |
+| --- | --- | --- |
+| `KnownGenerationUnwalkable` | a body that does not walk at its stated generation | `FromGeneration`, `ToGeneration` |
+| `NoInferredGeneration` | a body that no candidate generation can walk, after any retry without the registry rule | `SchemaLabel`, `OldestGeneration`, `NewestGeneration`, `UnregisteredExtensionIds`, `RecoveryMembers` |
+
+The candidate bounds are inclusive. `UnregisteredExtensionIds` is a distinct list in encounter order, empty when
+no rejected extension id was observed or no registry was supplied. `RecoveryMembers` contains
+`AssumedWireGeneration` then `Registry`, in the order the recovery recommendation names them. Both lists are
+owned read-only snapshots. Known-generation refusals carry no inferred schema or candidate range. The existing
+persistence catches still quarantine these failures and preserve their status and detail text.
+
 ## Server input hardening
 
 Both server configs expose `AntiCheat`, an `AntiCheatConfig` whose rate and correction checks are disabled by

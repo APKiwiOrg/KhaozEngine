@@ -225,6 +225,7 @@ public static class BugReportBundleWriter
     static void AddClip(List<(string, ReadOnlyMemory<byte>)> payloads, IReadOnlyList<ReportClipFrame> frames, int count)
     {
         var rows = new ClipIndexFrame[count];
+        var jpegs = new ReadOnlyMemory<byte>[count];
         double previousOffset = 0;
         for (int i = 0; i < count; i++)
         {
@@ -250,11 +251,12 @@ public static class BugReportBundleWriter
                     "Clip frame " + i + " edges must be 1 to " + BugReportLimits.MaxScreenshotLongEdge + " pixels.");
             CheckHeader(entry, ImageHeaders.JpegMediaType, frame.Jpeg, frame.Width, frame.Height);
             previousOffset = offset;
+            jpegs[i] = frame.Jpeg;
             rows[i] = new ClipIndexFrame(offset, frame.RenderMilliseconds, frame.Width, frame.Height, entry);
         }
 
         payloads.Add((BundleEntryNames.ClipIndex, BugReportJson.SerializeClipIndex(new ClipIndex(rows))));
-        for (int i = 0; i < count; i++) payloads.Add((rows[i].Entry, frames[i].Jpeg));
+        for (int i = 0; i < count; i++) payloads.Add((rows[i].Entry, jpegs[i]));
     }
 
     // One message for two rules, so the nonfinite branch is chosen first, in the guard's order.

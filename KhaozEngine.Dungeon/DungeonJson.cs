@@ -41,13 +41,12 @@ public sealed class DungeonJsonException : Exception
     /// <see cref="DungeonJsonRefusal.JsonMemberUnconvertible"/>.</summary>
     public string? Section { get; init; }
 
-    /// <summary>The refused member. For a config rule, the member in the JSON's own camelCase spelling with no root
-    /// marker, such as <c>roomCountTarget</c>, where a rule over a pair names its minimum member. For
-    /// <see cref="DungeonJsonRefusal.JsonMalformed"/> and <see cref="DungeonJsonRefusal.JsonMemberUnconvertible"/>,
-    /// the reader's <see cref="JsonException.Path"/>, such as <c>$.roomCountTarget</c>, null when the reader reports
-    /// none. For a layout content rule, the member or entry with no root marker, such as <c>width</c>,
-    /// <c>rooms[2].id</c>, <c>edges[0].roomA</c> or <c>grid[1][3]</c>. A grid character rule names the row string
-    /// that holds the character.</summary>
+    /// <summary>The refused member as a rooted path, <c>$.</c> then member names and indices, for every reason that
+    /// sets it, such as <c>$.roomCountTarget</c>, <c>$.rooms[2].id</c>, <c>$.edges[0].roomA</c> or
+    /// <c>$.grid[1][3]</c>. A config rule names the member in the JSON's own camelCase spelling, and a rule over a
+    /// pair names its minimum member. For <see cref="DungeonJsonRefusal.JsonMalformed"/> and
+    /// <see cref="DungeonJsonRefusal.JsonMemberUnconvertible"/> it is the reader's <see cref="JsonException.Path"/>,
+    /// null when the reader reports none. A grid character rule names the row string that holds the character.</summary>
     public string? JsonPath { get; init; }
 
     /// <summary>The zero-based line the reader stopped at, for <see cref="DungeonJsonRefusal.JsonMalformed"/>, null
@@ -234,7 +233,7 @@ public static class DungeonJson
         string field = JsonNamingPolicy.CamelCase.ConvertName(finding.PropertyName);
         return new DungeonJsonException(finding.Reason, $"{field}: {finding.ToArgumentException().Message}")
         {
-            JsonPath = field,
+            JsonPath = "$." + field,
             ActualNumber = finding.ActualNumber,
             ActualInteger = finding.ActualInteger,
             MinimumInteger = finding.MinimumInteger,
@@ -431,7 +430,7 @@ public static class DungeonJson
         _ => throw new DungeonJsonException(DungeonJsonRefusal.GridCharacterUnknown,
             $"grid[{floor}][{row}][{col}]: unknown cell character '{c}'.")
         {
-            JsonPath = $"grid[{floor}][{row}]",
+            JsonPath = $"$.grid[{floor}][{row}]",
             Floor = floor,
             Row = row,
             Column = col,
@@ -440,19 +439,19 @@ public static class DungeonJson
     };
 
     private static DungeonJsonException NullValue(string path) =>
-        new(DungeonJsonRefusal.NullValue, $"{path}: must not be null.") { JsonPath = path };
+        new(DungeonJsonRefusal.NullValue, $"{path}: must not be null.") { JsonPath = "$." + path };
 
     private static DungeonJsonException NotPositive(string path, double actual) =>
         new(DungeonJsonRefusal.PositiveValueRequired, $"{path}: must be greater than zero.")
         {
-            JsonPath = path,
+            JsonPath = "$." + path,
             ActualNumber = actual,
         };
 
     private static DungeonJsonException RoomMissing(string path, int index, int roomId) =>
         new(DungeonJsonRefusal.ReferencedRoomMissing, $"{path}: room id {roomId} does not exist.")
         {
-            JsonPath = path,
+            JsonPath = "$." + path,
             Index = index,
             RoomId = roomId,
         };
@@ -496,13 +495,13 @@ public static class DungeonJson
             throw dto.CeilingHeightMeters < 0f
                 ? new DungeonJsonException(DungeonJsonRefusal.NonnegativeValueRequired, message)
                 {
-                    JsonPath = "ceilingHeightMeters",
+                    JsonPath = "$.ceilingHeightMeters",
                     ActualNumber = dto.CeilingHeightMeters,
                     MinimumNumber = 0,
                 }
                 : new DungeonJsonException(DungeonJsonRefusal.NumberNonfinite, message)
                 {
-                    JsonPath = "ceilingHeightMeters",
+                    JsonPath = "$.ceilingHeightMeters",
                     ActualNumber = dto.CeilingHeightMeters,
                 };
         }
@@ -542,7 +541,7 @@ public static class DungeonJson
             throw new DungeonJsonException(DungeonJsonRefusal.GridFloorCountMismatch,
                 $"grid: expected {dto.Floors} floor(s), found {dto.Grid.Count}.")
             {
-                JsonPath = "grid",
+                JsonPath = "$.grid",
                 ActualCount = dto.Grid.Count,
                 ExpectedCount = dto.Floors,
             };
@@ -561,7 +560,7 @@ public static class DungeonJson
                 throw new DungeonJsonException(DungeonJsonRefusal.GridRowCountMismatch,
                     $"grid[{floor}]: expected {dto.Depth} row(s), found {rows.Count}.")
                 {
-                    JsonPath = $"grid[{floor}]",
+                    JsonPath = $"$.grid[{floor}]",
                     Floor = floor,
                     ActualCount = rows.Count,
                     ExpectedCount = dto.Depth,
@@ -580,7 +579,7 @@ public static class DungeonJson
                     throw new DungeonJsonException(DungeonJsonRefusal.GridColumnCountMismatch,
                         $"grid[{floor}][{z}]: expected length {dto.Width}, found {rows[z].Length}.")
                     {
-                        JsonPath = $"grid[{floor}][{z}]",
+                        JsonPath = $"$.grid[{floor}][{z}]",
                         Floor = floor,
                         Row = z,
                         ActualCount = rows[z].Length,
@@ -604,7 +603,7 @@ public static class DungeonJson
                 throw new DungeonJsonException(DungeonJsonRefusal.RoomIdDuplicate,
                     $"rooms[{i}]: duplicate room id {room.Id}.")
                 {
-                    JsonPath = $"rooms[{i}].id",
+                    JsonPath = $"$.rooms[{i}].id",
                     Index = i,
                     RoomId = room.Id,
                 };
@@ -664,7 +663,7 @@ public static class DungeonJson
                 throw new DungeonJsonException(DungeonJsonRefusal.ReferencedLockMissing,
                     $"keys[{i}].lockId: lock id {key.LockId} has no matching locked edge.")
                 {
-                    JsonPath = $"keys[{i}].lockId",
+                    JsonPath = $"$.keys[{i}].lockId",
                     Index = i,
                     LockId = key.LockId,
                 };

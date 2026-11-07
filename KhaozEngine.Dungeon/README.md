@@ -44,7 +44,7 @@ tolerant reads, deterministic byte-identical writes). The JSON matches the embed
 (`DungeonSchema.GetJson()`, a `oneOf` over a `config` and a `layout` `$def`), which the package's tests
 validate against and which is available for editor/AI tooling. The load path itself enforces its own semantic
 checks, throwing `DungeonJsonException`. Its `Reason`, from the `DungeonJsonRefusal` enum, names the rule, and
-the identifiers below name the offending member. The message is prose naming the same member in its own camelCase
+the identifiers below name the offending member. `JsonPath` is always a rooted path, `$.` then member names and indices. The message is prose naming the same member in its own camelCase
 spelling, never a contract. Layout JSON preserves `CeilingMode` and the resolved `CeilingHeightMeters`. Older
 layouts without those optional fields load as `Open` with a zero ceiling height. Layout loading rejects a negative
 or non-finite persisted ceiling height before constructing the layout.
@@ -63,14 +63,14 @@ or non-finite persisted ceiling height before constructing the layout.
 | `RoomMarginInsufficient` | a config `plotWidthTiles` or `plotDepthTiles` below `roomMaxTiles` + 2 | `JsonPath`, `ActualInteger`, `MinimumInteger` |
 | `HallMarginInsufficient` | with halls enabled, a config `plotWidthTiles` or `plotDepthTiles` below `hallMaxLengthTiles` + 2 | `JsonPath`, `ActualInteger`, `MinimumInteger` |
 | `NumberNonfinite` | a layout `ceilingHeightMeters` of positive infinity, such as `1e1000` | `JsonPath`, `ActualNumber` |
-| `NullValue` | a JSON null for a layout section (`grid`, `rooms`, `edges`, `keys`, `markers`, `stats`), a grid floor or row, a room, edge, key or marker entry, or an edge `path` or `doors` or a marker `tags`. An absent section loads as empty | `JsonPath`, such as `rooms[0]` or `edges[2].path` |
-| `GridFloorCountMismatch` | a `grid` whose floor count is not the layout's `floors` | `JsonPath` (`grid`), `ActualCount`, `ExpectedCount` |
-| `GridRowCountMismatch` | a grid floor whose row count is not the layout's `depth` | `JsonPath` (`grid[f]`), `Floor`, `ActualCount`, `ExpectedCount` |
-| `GridColumnCountMismatch` | a grid row whose length is not the layout's `width` | `JsonPath` (`grid[f][r]`), `Floor`, `Row`, `ActualCount`, `ExpectedCount` |
-| `RoomIdDuplicate` | a room whose id an earlier room uses | `JsonPath` (`rooms[i].id`), `Index`, `RoomId` |
-| `ReferencedRoomMissing` | an edge `roomA` or `roomB`, or a key `roomId`, that names no room | `JsonPath` (such as `edges[i].roomA`), `Index`, `RoomId` |
-| `ReferencedLockMissing` | a key `lockId` that no edge carries as its lock | `JsonPath` (`keys[i].lockId`), `Index`, `LockId` |
-| `GridCharacterUnknown` | a grid character that names no cell kind | `JsonPath` (the row, `grid[f][r]`), `Floor`, `Row`, `Column`, `Character` |
+| `NullValue` | a JSON null for a layout section (`grid`, `rooms`, `edges`, `keys`, `markers`, `stats`), a grid floor or row, a room, edge, key or marker entry, or an edge `path` or `doors` or a marker `tags`. An absent section loads as empty | `JsonPath`, such as `$.rooms[0]` or `$.edges[2].path` |
+| `GridFloorCountMismatch` | a `grid` whose floor count is not the layout's `floors` | `JsonPath` (`$.grid`), `ActualCount`, `ExpectedCount` |
+| `GridRowCountMismatch` | a grid floor whose row count is not the layout's `depth` | `JsonPath` (`$.grid[f]`), `Floor`, `ActualCount`, `ExpectedCount` |
+| `GridColumnCountMismatch` | a grid row whose length is not the layout's `width` | `JsonPath` (`$.grid[f][r]`), `Floor`, `Row`, `ActualCount`, `ExpectedCount` |
+| `RoomIdDuplicate` | a room whose id an earlier room uses | `JsonPath` (`$.rooms[i].id`), `Index`, `RoomId` |
+| `ReferencedRoomMissing` | an edge `roomA` or `roomB`, or a key `roomId`, that names no room | `JsonPath` (such as `$.edges[i].roomA`), `Index`, `RoomId` |
+| `ReferencedLockMissing` | a key `lockId` that no edge carries as its lock | `JsonPath` (`$.keys[i].lockId`), `Index`, `LockId` |
+| `GridCharacterUnknown` | a grid character that names no cell kind | `JsonPath` (the row, `$.grid[f][r]`), `Floor`, `Row`, `Column`, `Character` |
 
 The config rules are the ones `DungeonConfig.Validate` checks, in its order, so the first broken rule is the one
 reported. `Validate` itself still throws a plain `ArgumentException` whose `ParamName` is the property.

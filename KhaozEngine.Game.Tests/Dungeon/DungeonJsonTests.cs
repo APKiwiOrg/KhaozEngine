@@ -131,7 +131,7 @@ namespace KhaozEngine.Tests.Dungeon
                 DungeonJson.LoadLayout(LayoutWithCeiling(literal)));
 
             Assert.Equal(DungeonJsonRefusal.NonnegativeValueRequired, ex.Reason);
-            Assert.Equal("ceilingHeightMeters", ex.JsonPath);
+            Assert.Equal("$.ceilingHeightMeters", ex.JsonPath);
             Assert.Equal(refused, ex.ActualNumber);
             Assert.Equal(0.0, ex.MinimumNumber);
 
@@ -146,7 +146,7 @@ namespace KhaozEngine.Tests.Dungeon
                 DungeonJson.LoadLayout(LayoutWithCeiling("1e1000")));
 
             Assert.Equal(DungeonJsonRefusal.NumberNonfinite, ex.Reason);
-            Assert.Equal("ceilingHeightMeters", ex.JsonPath);
+            Assert.Equal("$.ceilingHeightMeters", ex.JsonPath);
             Assert.Equal(double.PositiveInfinity, ex.ActualNumber);
             Assert.Null(ex.MinimumNumber);
 
@@ -208,21 +208,21 @@ namespace KhaozEngine.Tests.Dungeon
         // Integer config rules: each refused value sits one past the documented limit, and the control loads at it.
         // hallChancePercent turns halls on for the hall margin row only.
         [Theory]
-        [InlineData("roomCountTarget", -1, 1, DungeonJsonRefusal.IntegerBelowMinimum, 1, null, 0)]
-        [InlineData("roomMinTiles", 0, 1, DungeonJsonRefusal.IntegerBelowMinimum, 1, null, 0)]
-        [InlineData("lockCount", -1, 0, DungeonJsonRefusal.NonnegativeValueRequired, 0, null, 0)]
-        [InlineData("hallChancePercent", 101, 100, DungeonJsonRefusal.PercentageOutsideRange, 0, 100, 0)]
-        [InlineData("hallChancePercent", -1, 0, DungeonJsonRefusal.PercentageOutsideRange, 0, 100, 0)]
-        [InlineData("plotWidthTiles", 9, 10, DungeonJsonRefusal.RoomMarginInsufficient, 10, null, 0)]
-        [InlineData("plotDepthTiles", 17, 18, DungeonJsonRefusal.HallMarginInsufficient, 18, null, 25)]
-        public void BadField_Throws_NamingField(string member, int refused, int limit, DungeonJsonRefusal reason,
+        [InlineData("roomCountTarget", "$.roomCountTarget", -1, 1, DungeonJsonRefusal.IntegerBelowMinimum, 1, null, 0)]
+        [InlineData("roomMinTiles", "$.roomMinTiles", 0, 1, DungeonJsonRefusal.IntegerBelowMinimum, 1, null, 0)]
+        [InlineData("lockCount", "$.lockCount", -1, 0, DungeonJsonRefusal.NonnegativeValueRequired, 0, null, 0)]
+        [InlineData("hallChancePercent", "$.hallChancePercent", 101, 100, DungeonJsonRefusal.PercentageOutsideRange, 0, 100, 0)]
+        [InlineData("hallChancePercent", "$.hallChancePercent", -1, 0, DungeonJsonRefusal.PercentageOutsideRange, 0, 100, 0)]
+        [InlineData("plotWidthTiles", "$.plotWidthTiles", 9, 10, DungeonJsonRefusal.RoomMarginInsufficient, 10, null, 0)]
+        [InlineData("plotDepthTiles", "$.plotDepthTiles", 17, 18, DungeonJsonRefusal.HallMarginInsufficient, 18, null, 25)]
+        public void BadField_Throws_NamingField(string member, string jsonPath, int refused, int limit, DungeonJsonRefusal reason,
             int minimum, int? maximum, int hallChancePercent)
         {
             DungeonJsonException ex = Assert.Throws<DungeonJsonException>(() =>
                 DungeonJson.LoadConfig(ConfigJson(("hallChancePercent", hallChancePercent), (member, refused))));
 
             Assert.Equal(reason, ex.Reason);
-            Assert.Equal(member, ex.JsonPath);
+            Assert.Equal(jsonPath, ex.JsonPath);
             Assert.Equal(refused, ex.ActualInteger);
             Assert.Equal(minimum, ex.MinimumInteger);
             Assert.Equal(maximum, ex.MaximumInteger);
@@ -233,15 +233,15 @@ namespace KhaozEngine.Tests.Dungeon
         }
 
         [Theory]
-        [InlineData("cellSizeMeters", 0f)]
-        [InlineData("ceilingHeightMeters", -1f)]
-        public void NonPositiveSize_Throws_NamingField(string member, float refused)
+        [InlineData("cellSizeMeters", "$.cellSizeMeters", 0f)]
+        [InlineData("ceilingHeightMeters", "$.ceilingHeightMeters", -1f)]
+        public void NonPositiveSize_Throws_NamingField(string member, string jsonPath, float refused)
         {
             DungeonJsonException ex = Assert.Throws<DungeonJsonException>(() =>
                 DungeonJson.LoadConfig(ConfigJson((member, refused))));
 
             Assert.Equal(DungeonJsonRefusal.PositiveValueRequired, ex.Reason);
-            Assert.Equal(member, ex.JsonPath);
+            Assert.Equal(jsonPath, ex.JsonPath);
             Assert.Equal(refused, ex.ActualNumber);
 
             // The limit is zero, exclusive, so the smallest positive float loads.
@@ -256,7 +256,7 @@ namespace KhaozEngine.Tests.Dungeon
                 DungeonJson.LoadConfig(ConfigJson(("roomMinTiles", 9), ("roomMaxTiles", 8))));
 
             Assert.Equal(DungeonJsonRefusal.RangeUnordered, ex.Reason);
-            Assert.Equal("roomMinTiles", ex.JsonPath);
+            Assert.Equal("$.roomMinTiles", ex.JsonPath);
             Assert.Equal(9, ex.ActualMinimum);
             Assert.Equal(8, ex.ActualMaximum);
 
@@ -366,18 +366,18 @@ namespace KhaozEngine.Tests.Dungeon
         }
 
         [Theory]
-        [InlineData("width")]
-        [InlineData("depth")]
-        [InlineData("floors")]
-        [InlineData("cellSizeMeters")]
-        [InlineData("floorHeightMeters")]
-        public void BadLayoutDims_Throws_NamingField(string member)
+        [InlineData("width", "$.width")]
+        [InlineData("depth", "$.depth")]
+        [InlineData("floors", "$.floors")]
+        [InlineData("cellSizeMeters", "$.cellSizeMeters")]
+        [InlineData("floorHeightMeters", "$.floorHeightMeters")]
+        public void BadLayoutDims_Throws_NamingField(string member, string jsonPath)
         {
             DungeonJsonException ex = Assert.Throws<DungeonJsonException>(() =>
                 DungeonJson.LoadLayout(LayoutWith("/" + member, 0)));
 
             Assert.Equal(DungeonJsonRefusal.PositiveValueRequired, ex.Reason);
-            Assert.Equal(member, ex.JsonPath);
+            Assert.Equal(jsonPath, ex.JsonPath);
             Assert.Equal(0.0, ex.ActualNumber);
 
             DungeonJson.LoadLayout(DungeonJson.SaveLayout(ContentLayout()));
@@ -395,7 +395,7 @@ namespace KhaozEngine.Tests.Dungeon
             DungeonJsonException ex = Assert.Throws<DungeonJsonException>(() => DungeonJson.LoadLayout(node.ToJsonString()));
 
             Assert.Equal(DungeonJsonRefusal.GridColumnCountMismatch, ex.Reason);
-            Assert.Equal($"grid[{floor}][1]", ex.JsonPath);
+            Assert.Equal($"$.grid[{floor}][1]", ex.JsonPath);
             Assert.Equal(floor, ex.Floor);
             Assert.Equal(1, ex.Row);
             Assert.Equal(layout.Width - 1, ex.ActualCount);
@@ -418,7 +418,7 @@ namespace KhaozEngine.Tests.Dungeon
             DungeonJsonException ex = Assert.Throws<DungeonJsonException>(() => DungeonJson.LoadLayout(node.ToJsonString()));
 
             Assert.Equal(DungeonJsonRefusal.GridRowCountMismatch, ex.Reason);
-            Assert.Equal($"grid[{floor}]", ex.JsonPath);
+            Assert.Equal($"$.grid[{floor}]", ex.JsonPath);
             Assert.Equal(floor, ex.Floor);
             Assert.Null(ex.Row);
             Assert.Equal(layout.Depth - 1, ex.ActualCount);
@@ -439,7 +439,7 @@ namespace KhaozEngine.Tests.Dungeon
             DungeonJsonException ex = Assert.Throws<DungeonJsonException>(() => DungeonJson.LoadLayout(node.ToJsonString()));
 
             Assert.Equal(DungeonJsonRefusal.GridFloorCountMismatch, ex.Reason);
-            Assert.Equal("grid", ex.JsonPath);
+            Assert.Equal("$.grid", ex.JsonPath);
             Assert.Null(ex.Floor);
             Assert.Equal(layout.Floors + 1, ex.ActualCount);
             Assert.Equal(layout.Floors, ex.ExpectedCount);
@@ -449,9 +449,9 @@ namespace KhaozEngine.Tests.Dungeon
         }
 
         [Theory]
-        [InlineData("/edges/0/roomA", "edges[0].roomA")]
-        [InlineData("/edges/0/roomB", "edges[0].roomB")]
-        [InlineData("/keys/0/roomId", "keys[0].roomId")]
+        [InlineData("/edges/0/roomA", "$.edges[0].roomA")]
+        [InlineData("/edges/0/roomB", "$.edges[0].roomB")]
+        [InlineData("/keys/0/roomId", "$.keys[0].roomId")]
         public void BadLayoutRoomId_Throws_NamingField(string pointer, string jsonPath)
         {
             DungeonJsonException ex = Assert.Throws<DungeonJsonException>(() =>
@@ -472,7 +472,7 @@ namespace KhaozEngine.Tests.Dungeon
                 DungeonJson.LoadLayout(LayoutWith("/keys/0/lockId", 9999)));
 
             Assert.Equal(DungeonJsonRefusal.ReferencedLockMissing, ex.Reason);
-            Assert.Equal("keys[0].lockId", ex.JsonPath);
+            Assert.Equal("$.keys[0].lockId", ex.JsonPath);
             Assert.Equal(0, ex.Index);
             Assert.Equal(9999, ex.LockId);
             Assert.Null(ex.RoomId);
@@ -490,7 +490,7 @@ namespace KhaozEngine.Tests.Dungeon
                 DungeonJson.LoadLayout(LayoutWith("/rooms/1/id", firstId)));
 
             Assert.Equal(DungeonJsonRefusal.RoomIdDuplicate, ex.Reason);
-            Assert.Equal("rooms[1].id", ex.JsonPath);
+            Assert.Equal("$.rooms[1].id", ex.JsonPath);
             Assert.Equal(1, ex.Index);
             Assert.Equal(firstId, ex.RoomId);
 
@@ -499,21 +499,21 @@ namespace KhaozEngine.Tests.Dungeon
 
         // Every null guard, one row each: the sections, a grid floor and row, each array's entries and each entry list.
         [Theory]
-        [InlineData("/grid", "grid")]
-        [InlineData("/rooms", "rooms")]
-        [InlineData("/edges", "edges")]
-        [InlineData("/keys", "keys")]
-        [InlineData("/markers", "markers")]
-        [InlineData("/stats", "stats")]
-        [InlineData("/grid/0", "grid[0]")]
-        [InlineData("/grid/0/0", "grid[0][0]")]
-        [InlineData("/rooms/0", "rooms[0]")]
-        [InlineData("/edges/0", "edges[0]")]
-        [InlineData("/edges/0/path", "edges[0].path")]
-        [InlineData("/edges/0/doors", "edges[0].doors")]
-        [InlineData("/keys/0", "keys[0]")]
-        [InlineData("/markers/0", "markers[0]")]
-        [InlineData("/markers/0/tags", "markers[0].tags")]
+        [InlineData("/grid", "$.grid")]
+        [InlineData("/rooms", "$.rooms")]
+        [InlineData("/edges", "$.edges")]
+        [InlineData("/keys", "$.keys")]
+        [InlineData("/markers", "$.markers")]
+        [InlineData("/stats", "$.stats")]
+        [InlineData("/grid/0", "$.grid[0]")]
+        [InlineData("/grid/0/0", "$.grid[0][0]")]
+        [InlineData("/rooms/0", "$.rooms[0]")]
+        [InlineData("/edges/0", "$.edges[0]")]
+        [InlineData("/edges/0/path", "$.edges[0].path")]
+        [InlineData("/edges/0/doors", "$.edges[0].doors")]
+        [InlineData("/keys/0", "$.keys[0]")]
+        [InlineData("/markers/0", "$.markers[0]")]
+        [InlineData("/markers/0/tags", "$.markers[0].tags")]
         public void NullSectionOrEntry_Throws_NullValue_NamingThePath(string pointer, string jsonPath)
         {
             DungeonJsonException ex = Assert.Throws<DungeonJsonException>(() =>
@@ -537,7 +537,7 @@ namespace KhaozEngine.Tests.Dungeon
             DungeonJsonException ex = Assert.Throws<DungeonJsonException>(() => DungeonJson.LoadLayout(node.ToJsonString()));
 
             Assert.Equal(DungeonJsonRefusal.NullValue, ex.Reason);
-            Assert.Equal("markers", ex.JsonPath);
+            Assert.Equal("$.markers", ex.JsonPath);
         }
 
         [Fact]
@@ -552,7 +552,7 @@ namespace KhaozEngine.Tests.Dungeon
             DungeonJsonException ex = Assert.Throws<DungeonJsonException>(() => DungeonJson.LoadLayout(node.ToJsonString()));
 
             Assert.Equal(DungeonJsonRefusal.GridCharacterUnknown, ex.Reason);
-            Assert.Equal($"grid[{floor}][2]", ex.JsonPath);
+            Assert.Equal($"$.grid[{floor}][2]", ex.JsonPath);
             Assert.Equal(floor, ex.Floor);
             Assert.Equal(2, ex.Row);
             Assert.Equal(3, ex.Column);

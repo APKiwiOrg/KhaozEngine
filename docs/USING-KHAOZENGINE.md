@@ -25856,8 +25856,9 @@ then asserts each key resolves in the neutral resx **and** in each satellite wit
 translation fails rather than silently reading the neutral language), plus placeholder-index integrity between each
 neutral template and its translation. A gap throws `LocalizationCoverageException`, whose `Reason` names the first
 rule broken and whose `Findings` list every miss in the order its message does (the package README's Refusals table
-lists each reason and identifier). Pass no cultures to check only the neutral resx. `LocalizationCoverage.Keys(typeof(MyGameStrings))` is exposed if you would
-rather drive a `[Theory]` off the same key source.
+lists each reason and identifier). Pass no cultures to check only the neutral resx.
+`LocalizationCoverage.Keys(typeof(MyGameStrings))` is exposed if you would rather drive a `[Theory]` off the same
+key source.
 
 No keys class? If your keys live directly in the neutral resx (referenced through the MSBuild-generated designer
 properties, e.g. `Resources.KeyName`), pass just the `ResourceManager`: the neutral resx's own string entries

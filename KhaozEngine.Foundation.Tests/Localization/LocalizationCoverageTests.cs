@@ -10,9 +10,9 @@ namespace KhaozEngine.Tests.Localization
 {
     /// <summary>
     /// Exercises <see cref="LocalizationCoverage"/> against embedded resx fixtures under
-    /// <c>Localization/Fixtures</c>: a neutral file, a complete <c>fr</c> satellite, and a deliberately broken
-    /// <c>de</c> satellite (missing keys + an extra placeholder). This is the engine's own guard for the test kit
-    /// the games consume.
+    /// <c>Localization/Fixtures</c>: a neutral file, a complete <c>fr</c> satellite, a deliberately broken
+    /// <c>de</c> satellite (missing keys + an extra placeholder), and <c>CoverageEmptyStrings</c>, a neutral resx
+    /// with no string entries. This is the engine's own guard for the test kit the games consume.
     /// </summary>
     public class LocalizationCoverageTests
     {
@@ -181,6 +181,13 @@ namespace KhaozEngine.Tests.Localization
             Assert.Equal(LocalizationCoverageRefusal.NeutralResourcesUnavailable, ex.Reason);
             Assert.Equal("No.Such.BaseName", ex.BaseName);
             Assert.Null(ex.Findings);
+
+            // The resx overload reads its universe through NeutralKeys first, so it refuses the same way.
+            ex = Assert.Throws<LocalizationCoverageException>(() => LocalizationCoverage.AssertComplete(NoSuchRm()));
+
+            Assert.Equal(LocalizationCoverageRefusal.NeutralResourcesUnavailable, ex.Reason);
+            Assert.Equal("No.Such.BaseName", ex.BaseName);
+            Assert.Null(ex.Findings);
         }
 
         [Fact]
@@ -260,6 +267,34 @@ namespace KhaozEngine.Tests.Localization
             AssertMissing(Assert.Single(ex.Findings), LocalizationCoverageRefusal.NeutralKeysMissing, null, "not.a.key");
 
             LocalizationCoverage.AssertComplete(new[] { "menu.play" }, Rm()); // control: every key is in the neutral resx
+        }
+
+        [Fact]
+        public void AssertComplete_KeySequence_NeutralAndTwoSatelliteGaps_ReportsNeutralFirstThenCulturesAsPassed()
+        {
+            // The README promises the neutral finding first, then each satellite in the order passed. es (no resource
+            // set) is passed before de, against their ordinal order, so a sorted sweep would fail.
+            string[] keys = { "menu.play", "menu.quit", "not.a.key" };
+            var ex = Assert.Throws<LocalizationCoverageException>(
+                () => LocalizationCoverage.AssertComplete(keys, Rm(), "es", "de"));
+
+            Assert.Equal(LocalizationCoverageRefusal.NeutralKeysMissing, ex.Reason);
+            Assert.NotNull(ex.Findings);
+            Assert.Equal(3, ex.Findings.Count);
+            AssertMissing(ex.Findings[0], LocalizationCoverageRefusal.NeutralKeysMissing, null, "not.a.key");
+            Assert.Equal(LocalizationCoverageRefusal.SatelliteResourcesUnavailable, ex.Findings[1].Reason);
+            Assert.Equal("es", ex.Findings[1].CultureName);
+            AssertMissing(ex.Findings[2], LocalizationCoverageRefusal.TranslationsMissing, "de", "menu.quit", "not.a.key");
+
+            // The same gaps passed the other way round follow that order.
+            ex = Assert.Throws<LocalizationCoverageException>(
+                () => LocalizationCoverage.AssertComplete(keys, Rm(), "de", "es"));
+
+            Assert.Equal(LocalizationCoverageRefusal.NeutralKeysMissing, ex.Reason);
+            Assert.NotNull(ex.Findings);
+            Assert.Equal(
+                new string?[] { null, "de", "es" },
+                ex.Findings.Select(finding => finding.CultureName).ToArray());
         }
 
         [Theory]

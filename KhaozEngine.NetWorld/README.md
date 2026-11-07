@@ -404,6 +404,28 @@ the multi-cell variant (overworld sub-project 6b).
 Both server drains use `KhaozEngine.Simulation.Hosting.DrainController` for their deterministic tick-driven grace. The
 public `KhaozEngine.NetWorld.DrainController` remains as a source-compatible forwarding facade for existing code.
 
+## World configuration refusals
+
+`WorldConfigurationException` derives from `ArgumentException`, retaining `ParamName`. Its required `Reason`
+is a `WorldConfigurationRefusal`. Messages remain developer prose. Nullable identifiers are set for the rule
+that knows them. `IncompatibleMembers` is a copied read-only snapshot.
+
+| `Reason` | What it refuses | Identifiers |
+| --- | --- | --- |
+| `CellOriginNonfinite` | a nonfinite cell origin coordinate | `MemberName` (`CellOrigin`), `ActualOrigin`, `ParamName` (`config`) |
+| `FramePlanarMagnitudeExceeded` | a finite worst frame-local planar magnitude above the divergence ceiling | `CellSize`, `OverlapMargin`, `ActualPlanarMagnitude`, `MaximumPlanarMagnitude` (512 m), `ParamName` (`config`) |
+| `FramePlanarMagnitudeNonfinite` | a nonfinite worst frame-local planar magnitude that exceeds the ceiling, including overflow | `CellSize`, `OverlapMargin`, `ActualPlanarMagnitude`, `ParamName` (`config`) |
+| `InterestOutsideOverlap` | an interest radius greater than the overlap margin | `InterestRadius`, `OverlapMargin`, `ParamName` (`config`) |
+| `PhysicsCannotRebase` | frame anchoring with a physics world that cannot rebase | `MemberName` (`CanRebase`), `ParamName` (`physics`) |
+| `ReplicationStreamMissing` | an unreliable opt-in without stream options | `MemberName` (`ReplicationStream`), `ParamName` (`config`) |
+| `ServerTickWithUnreliableReplication` | receiving the server tick with format 2 | `IncompatibleMembers` (`ReceiveServerTick`, `RequestUnreliableDeltaReplication`), `ParamName` (`config`) |
+| `UnreliableWithoutDelta` | an unreliable opt-in without the delta switch | `MemberName` (`optIn`), `RequiredMember` (`deltaReplication`), `ParamName` (`optIn`) |
+
+The last rule names the guarded per-stream arguments rather than the head-specific config properties. Reliable
+opt-outs still skip stream validation. Nonfinite frame magnitudes keep the existing comparison's admission rule,
+so this classification adds no new refusal for NaN. A factory world in the wrong cell frame is owned by
+[Sharding's `ShardFrameException`](../KhaozEngine.Sharding/README.md#frame-refusals).
+
 ## Server input hardening
 
 Both server configs expose `AntiCheat`, an `AntiCheatConfig` whose rate and correction checks are disabled by
@@ -1381,8 +1403,9 @@ anchor is exactly `Vector3.Zero`, so the default path there is byte-identical to
   `CellSize / 2 + OverlapMargin` of the cell centre, its poses are relative to an `Origin` of
   `FrameFor(coord).Anchor`, it is disposed with the cell, and a static near a border legitimately exists in both
   neighbours' worlds (nothing reconciles the copies, because a static does not move). **With `FrameAnchoring` on,
-  `ShardHost` validates the returned world's `Origin` against the cell's own anchor at creation and throws (naming
-  the factory) on a mismatch** - left unchecked, every character the cell owns would silently no-clip, since
+  `ShardHost` validates the returned world's `Origin` against the cell's own anchor at creation and throws
+  `ShardFrameException` with `PhysicsFactoryOriginMismatch`, `FactoryMember`, `Cell`, `ActualOrigin` and
+  `ExpectedOrigin` on a mismatch** - left unchecked, every character the cell owns would silently no-clip, since
   `CharacterMovement` reads frame-local coordinates with no compensation for a wrong origin. With `FrameAnchoring`
   off a world left at `Vector3.Zero` is correct (every cell's anchor is `WorldFrame.Origin` then) and the guard
   never fires.
@@ -1396,7 +1419,9 @@ anchor is exactly `Vector3.Zero`, so the default path there is byte-identical to
   step converts for it either way.
 - **`CellSize` is validated against the divergence ceiling** when frame anchoring is on. A cell's frame sits at its
   centre, so its worst frame-local coordinate is bounded by its own size. `CellSize = 600` puts the planar
-  magnitude past `WorldFrame.MaxLocalRadius` and is refused with the derivation in the message.
+  magnitude past `WorldFrame.MaxLocalRadius` and is refused as `FramePlanarMagnitudeExceeded`, carrying `CellSize`,
+  `OverlapMargin`, `ActualPlanarMagnitude` and `MaximumPlanarMagnitude` (512 m). A nonfinite result that exceeds
+  the ceiling is `FramePlanarMagnitudeNonfinite`.
 
 ### Everything a consumer sees stays ABSOLUTE
 
@@ -1702,7 +1727,7 @@ and changes nothing for a host or client that does not opt in.
 - **Opt-ins.** **`WorldServerConfig.AllowUnreliableDeltaReplication`**, **`ShardedWorldServerConfig.AllowUnreliableDeltaReplication`**
   and **`WorldClientConfig.RequestUnreliableDeltaReplication`**, all default false. Each requires its existing delta
   switch (`DeltaReplication` on servers, `RequestDeltaReplication` on the client), and an opt-in with the switch off
-  throws `ArgumentException` at construction. Limits and cadence come from each config's **`ReplicationStream`**
+  throws `WorldConfigurationException` with `UnreliableWithoutDelta` at construction. Limits and cadence come from each config's **`ReplicationStream`**
   (`ReplicationStreamOptions`), validated only when the opt-in is on. Movement, notices, game messages,
   authentication and journal traffic keep their channels.
 - **Capability gate introduced at wire generation 13.** This capability introduced no wire-generation bump.

@@ -253,12 +253,15 @@ public class WorldClientServerTickTests
     public void UnreliableDeltasWithTheTickAreRefused()
     {
         using var hub = new InMemoryTransportHub();
-        ArgumentException thrown = Assert.Throws<ArgumentException>(() => new WorldClient(hub.CreateClient(), Flat,
+        WorldConfigurationException thrown = Assert.Throws<WorldConfigurationException>(() => new WorldClient(hub.CreateClient(), Flat,
             MoveTuning.Default, new WorldClientConfig { ReceiveServerTick = true, RequestUnreliableDeltaReplication = true }));
 
         Assert.Equal("config", thrown.ParamName);
-        Assert.Contains(nameof(WorldClientConfig.ReceiveServerTick), thrown.Message);
-        Assert.Contains(nameof(WorldClientConfig.RequestUnreliableDeltaReplication), thrown.Message);
+        Assert.Equal(WorldConfigurationRefusal.ServerTickWithUnreliableReplication, thrown.Reason);
+        Assert.Equal(new[] { "ReceiveServerTick", "RequestUnreliableDeltaReplication" }, thrown.IncompatibleMembers);
+
+        using var control = new WorldClient(hub.CreateClient(), Flat, MoveTuning.Default,
+            new WorldClientConfig { ReceiveServerTick = true, RequestUnreliableDeltaReplication = false });
     }
 
     // The reference bracket over (stamp, newest tick) pairs: the oldest before the first, the newest at or past the

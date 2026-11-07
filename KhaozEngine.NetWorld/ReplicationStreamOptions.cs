@@ -85,15 +85,17 @@ public sealed class ReplicationStreamOptions
     /// <summary>Validates a host or client config. Returns null and checks nothing when the opt-in is off, so a
     /// reliable-only caller keeps its current behavior. An opt-in without the existing delta switch is a
     /// configuration error. Otherwise returns <see cref="ValidateForUnreliable"/>.</summary>
-    /// <exception cref="ArgumentException">The opt-in is on and the delta switch is off. <c>ParamName</c> is
-    /// <c>optIn</c>. Raised before any budget is read.</exception>
+    /// <exception cref="WorldConfigurationException">The opt-in is on and the delta switch is off, with
+    /// <see cref="WorldConfigurationRefusal.UnreliableWithoutDelta"/>, <c>MemberName</c> and <c>ParamName</c>
+    /// <c>optIn</c>, and <c>RequiredMember</c> <c>deltaReplication</c>. Raised before any budget is read.</exception>
     internal DeltaRebuildOptions? ValidateConfig(bool deltaReplication, bool optIn, float tickSeconds)
     {
         if (!optIn) return null;
         if (!deltaReplication)
-            throw new ArgumentException(
+            throw new WorldConfigurationException(WorldConfigurationRefusal.UnreliableWithoutDelta,
                 "Unreliable delta replication needs delta replication. Turn on DeltaReplication (servers) or " +
-                "RequestDeltaReplication (client), or turn the unreliable opt-in off.", nameof(optIn));
+                "RequestDeltaReplication (client), or turn the unreliable opt-in off.", nameof(optIn))
+            { MemberName = nameof(optIn), RequiredMember = nameof(deltaReplication) };
         return ValidateForUnreliable(tickSeconds);
     }
 

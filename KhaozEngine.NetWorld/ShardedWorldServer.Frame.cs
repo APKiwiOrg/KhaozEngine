@@ -225,11 +225,19 @@ public sealed partial class ShardedWorldServer
         float worstAxis = config.CellSize * 0.5f + config.OverlapMargin + WorldFrame.Grid * 0.5f;
         float worstPlanar = worstAxis * MathF.Sqrt(2f);
         if (worstPlanar > WorldFrame.MaxLocalRadius)
-            throw new ArgumentException(
+            throw new WorldConfigurationException(float.IsFinite(worstPlanar)
+                    ? WorldConfigurationRefusal.FramePlanarMagnitudeExceeded
+                    : WorldConfigurationRefusal.FramePlanarMagnitudeNonfinite,
                 $"CellSize {config.CellSize} with OverlapMargin {config.OverlapMargin} puts a cell's worst frame-local "
               + $"coordinate at {worstAxis} m per axis, a planar magnitude of {worstPlanar} m, past the "
               + $"{WorldFrame.MaxLocalRadius} m float32 divergence ceiling (the ceiling is on the planar magnitude). "
-              + "Reduce CellSize, or turn FrameAnchoring off and accept the precision.", nameof(config));
+              + "Reduce CellSize, or turn FrameAnchoring off and accept the precision.", nameof(config))
+            {
+                CellSize = config.CellSize,
+                OverlapMargin = config.OverlapMargin,
+                ActualPlanarMagnitude = worstPlanar,
+                MaximumPlanarMagnitude = float.IsFinite(worstPlanar) ? WorldFrame.MaxLocalRadius : null,
+            };
     }
 
     /// <summary>

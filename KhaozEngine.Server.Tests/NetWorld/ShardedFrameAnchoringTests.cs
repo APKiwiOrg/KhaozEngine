@@ -10,6 +10,7 @@ using KhaozEngine.Physics.Bepu;
 using KhaozEngine.Primitives;
 using KhaozEngine.Replication;
 using KhaozEngine.Sharding;
+using KhaozEngine.Tests.NetWorld.Fixtures;
 using Xunit;
 
 namespace KhaozEngine.Tests.NetWorld;
@@ -84,9 +85,54 @@ public class ShardedFrameAnchoringTests
             physicsFactory: _ => new BepuPhysicsWorld(),   // left at Vector3.Zero: never rebased to the cell's frame
             frameAnchoring: true);
 
-        ArgumentException ex = Assert.Throws<ArgumentException>(() => host.EnsureCell(farCoord));
-        Assert.Contains("PhysicsWorldFactory", ex.Message, StringComparison.Ordinal);
-        Assert.Contains(farCoord.ToString(), ex.Message, StringComparison.Ordinal);
+        ShardFrameException ex = Assert.Throws<ShardFrameException>(() => host.EnsureCell(farCoord));
+        Assert.IsAssignableFrom<ArgumentException>(ex);
+        Assert.Equal(ShardFrameRefusal.PhysicsFactoryOriginMismatch, ex.Reason);
+        Assert.Equal("physicsFactory", ex.ParamName);
+        Assert.Equal("PhysicsWorldFactory", ex.FactoryMember);
+        Assert.Equal(farCoord, ex.Cell);
+        Assert.Equal(Vector3.Zero, ex.ActualOrigin);
+        Assert.Equal(FrameOf(farCoord).Anchor, ex.ExpectedOrigin);
+        Assert.Empty(host.Cells);
+
+        using var control = new ShardHost(Cell, Dt, MoveProtocol.CreateRegistry(), Cell, overlapMargin: 24f,
+            physicsFactory: coord => { var world = new BepuPhysicsWorld(); world.Rebase(FrameOf(coord).Anchor); return world; },
+            frameAnchoring: true);
+        Assert.Equal(FrameOf(farCoord).Anchor, control.EnsureCell(farCoord).Physics!.Origin);
+    }
+
+    [Fact]
+    public void PhysicsWorldFactory_refusal_carries_the_compared_origin_before_disposal()
+    {
+        var coord = new CellCoord(1666, 1666);
+        var world = new ChangingOriginWorld();
+        using var host = new ShardHost(Cell, Dt, MoveProtocol.CreateRegistry(), Cell, overlapMargin: 24f,
+            physicsFactory: _ => world, frameAnchoring: true);
+
+        ShardFrameException ex = Assert.Throws<ShardFrameException>(() => host.EnsureCell(coord));
+
+        Assert.Equal(ShardFrameRefusal.PhysicsFactoryOriginMismatch, ex.Reason);
+        Assert.Equal(new Vector3(1, 2, 3), ex.ActualOrigin);
+        Assert.Equal(FrameOf(coord).Anchor, ex.ExpectedOrigin);
+        Assert.True(world.Disposed);
+        Assert.Empty(host.Cells);
+    }
+
+    sealed class ChangingOriginWorld() : PhysicsForwarder(new BepuPhysicsWorld()), IPhysicsWorld
+    {
+        bool read;
+        public bool Disposed { get; private set; }
+        public new Vector3 Origin
+        {
+            get
+            {
+                ObjectDisposedException.ThrowIf(Disposed, this);
+                Vector3 value = read ? Vector3.Zero : new Vector3(1, 2, 3);
+                read = true;
+                return value;
+            }
+        }
+        public override void Dispose() { Disposed = true; base.Dispose(); }
     }
 
     [Fact]
@@ -269,15 +315,26 @@ public class ShardedFrameAnchoringTests
     }
 
     [Fact]
-    public void A_cell_size_past_the_float32_divergence_ceiling_is_refused_with_the_derivation_in_the_message()
+    public void A_cell_size_past_the_float32_divergence_ceiling_carries_the_planar_magnitude_and_limit()
     {
         // CellSize 600 with the default OverlapMargin clears a 512 m PER-AXIS ceiling comfortably (388 m) while its
         // PLANAR magnitude of 549 m does not, which is exactly why the guard carries the sqrt(2).
         (LoopbackTransport st, _) = LoopbackTransport.CreatePair();
         var big = new ShardedWorldServerConfig { CellSize = 600f, OverlapMargin = 24f, InterestRadius = 24f };
-        ArgumentException ex = Assert.Throws<ArgumentException>(() => new ShardedWorldServer(st, big, Flat, Unit));
-        Assert.Contains("planar magnitude", ex.Message, StringComparison.Ordinal);
-        Assert.Contains("512", ex.Message, StringComparison.Ordinal);
+        WorldConfigurationException ex = Assert.Throws<WorldConfigurationException>(() => new ShardedWorldServer(st, big, Flat, Unit));
+        Assert.Equal(WorldConfigurationRefusal.FramePlanarMagnitudeExceeded, ex.Reason);
+        Assert.Equal("config", ex.ParamName);
+        Assert.Equal(600f, ex.CellSize);
+        Assert.Equal(24f, ex.OverlapMargin);
+        Assert.Equal((double)(388f * MathF.Sqrt(2f)), ex.ActualPlanarMagnitude);
+        Assert.Equal(512f, ex.MaximumPlanarMagnitude);
+
+        // 548.077392578125 / 2 + 24 + 64 = 362.0386962890625 m per axis. Its float32 sqrt(2) product is
+        // exactly 512 m. The next smaller cell size yields 511.999969482421875 m and is admitted too.
+        float limit = 548.077392578125f;
+        Assert.Equal(512f, (limit * 0.5f + 24f + 64f) * MathF.Sqrt(2f));
+        using var atLimit = new ShardedWorldServer(st, new() { CellSize = limit }, Flat, Unit);
+        using var belowLimit = new ShardedWorldServer(st, new() { CellSize = MathF.BitDecrement(limit) }, Flat, Unit);
 
         // Unframed, the ceiling does not apply: there is no frame-local coordinate for it to bound.
         var unframed = new ShardedWorldServerConfig

@@ -87,11 +87,13 @@ public sealed partial class ShardedWorldServer : IWorldPersistenceHost, IAdminCo
         this.config = config ?? throw new ArgumentNullException(nameof(config));
         if (groundHeight is null) throw new ArgumentNullException(nameof(groundHeight));
         if (config.InterestRadius > config.OverlapMargin)
-            throw new ArgumentException(
+            throw new WorldConfigurationException(WorldConfigurationRefusal.InterestOutsideOverlap,
                 $"InterestRadius {config.InterestRadius} must be <= OverlapMargin {config.OverlapMargin} so the home cell can hold the full AoI as ghosts.",
-                nameof(config));
+                nameof(config)) { InterestRadius = config.InterestRadius, OverlapMargin = config.OverlapMargin };
         if (!float.IsFinite(config.CellOrigin.X) || !float.IsFinite(config.CellOrigin.Y))
-            throw new ArgumentException($"CellOrigin {config.CellOrigin} must be finite on both axes.", nameof(config));
+            throw new WorldConfigurationException(WorldConfigurationRefusal.CellOriginNonfinite,
+                $"CellOrigin {config.CellOrigin} must be finite on both axes.", nameof(config))
+            { MemberName = nameof(config.CellOrigin), ActualOrigin = config.CellOrigin };
         ValidateCellSizeAgainstFrameGrid(config);
         OrdinaryPlayerMovement.ValidateSharded(config, tuning, bounds, medium is not null);
 

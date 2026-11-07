@@ -99,7 +99,13 @@ public class ShardedCellOriginTests
     [InlineData(float.NegativeInfinity, 0f)]
     public void A_non_finite_origin_is_refused_at_construction(float x, float z)
     {
-        ArgumentException ex = Assert.Throws<ArgumentException>(() => Server(Config(1024f, new Vector2(x, z))));
-        Assert.Contains("CellOrigin", ex.Message, StringComparison.Ordinal);
+        WorldConfigurationException ex = Assert.Throws<WorldConfigurationException>(() => Server(Config(1024f, new Vector2(x, z))));
+        Assert.IsAssignableFrom<ArgumentException>(ex);
+        Assert.Equal(WorldConfigurationRefusal.CellOriginNonfinite, ex.Reason);
+        Assert.Equal("config", ex.ParamName);
+        Assert.Equal("CellOrigin", ex.MemberName);
+        Assert.Equal(new Vector2(x, z), ex.ActualOrigin);
+
+        using ShardedWorldServer control = Server(Config(1024f, Vector2.Zero));
     }
 }

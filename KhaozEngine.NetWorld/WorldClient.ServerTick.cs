@@ -30,9 +30,10 @@ public sealed partial class WorldClient
     {
         if (!config.ReceiveServerTick) return null;
         if (config.RequestUnreliableDeltaReplication)
-            throw new ArgumentException(
+            throw new WorldConfigurationException(WorldConfigurationRefusal.ServerTickWithUnreliableReplication,
                 "ReceiveServerTick cannot be combined with RequestUnreliableDeltaReplication: format 2 frames carry no server tick.",
-                nameof(config));
+                nameof(config))
+            { IncompatibleMembers = [nameof(config.ReceiveServerTick), nameof(config.RequestUnreliableDeltaReplication)] };
         return new ServerTickTimeline(ServerTickHistory);
     }
 

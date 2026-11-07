@@ -533,7 +533,9 @@ are drawn at, bracketed at the remote render time exactly as the remote samples 
 including against an older server and from the start of a reconnect attempt. Polling once per tick and then
 presenting one tick of time reads `LatestServerTick - InterpolationDelayTicks + 1` for a remote with continuous history
 after the first `InterpolationDelayTicks` of a session, so read `RemoteRenderTick` rather than computing it. Format 2
-replication carries no tick, so `ReceiveServerTick` with `RequestUnreliableDeltaReplication` throws at construction.
+replication carries no tick, so `ReceiveServerTick` with `RequestUnreliableDeltaReplication` throws
+`WorldConfigurationException` with `ServerTickWithUnreliableReplication` at construction. `IncompatibleMembers`
+carries both names as a copied read-only snapshot.
 
 **Runtime window/taskbar icon.** Set `WindowIconPath` to a PNG (the simple case) or `WindowIcons` to an explicit
 list of decoded `ImageRgba` (16/32/48 px so GLFW picks per DPI; `WindowIcons` wins over `WindowIconPath`). `GameApp`
@@ -16980,6 +16982,9 @@ IPhysicsWorld BuildCellWorld(CellCoord coord)
   `Origin` of `FrameFor(coord).Anchor`, it belongs to that one cell (it is disposed with the cell), and a static
   near a border legitimately exists in both neighbours' worlds - nothing reconciles the copies, because a static
   does not move. Sharing one world between two cells rebuilds the exact failure per-cell worlds exist to prevent.
+  With frame anchoring on, a mismatched origin throws Sharding's `ShardFrameException` (`ArgumentException`)
+  with `PhysicsFactoryOriginMismatch`, `Cell`, `FactoryMember` (`PhysicsWorldFactory`), `ActualOrigin` and
+  `ExpectedOrigin`. The compared origin is read once before disposal, and no cell is published.
 - **`SamplerSpace.World`** (the default, on both server configs and on `WorldClientConfig`, and it must MATCH
   across them) means your `groundHeight` / `groundNormal` / medium delegates keep taking absolute coordinates and
   the step converts for them. That is zero work and still fixes the accumulating half, because the carried state
@@ -16993,7 +16998,9 @@ IPhysicsWorld BuildCellWorld(CellCoord coord)
   gate) goes flat without an error. Set `SamplerSpace.Frame` whenever the sampler is physics-backed.
 - **A physics world must be able to rebase.** Constructing a `WorldServer` with `FrameAnchoring` and an
   `IPhysicsWorld` whose `CanRebase` is false throws, and so does constructing a `WorldClient` with one, because a
-  framed step querying an unframed world is a wrong answer rather than an imprecise one. `BepuPhysicsWorld` can.
+  framed step querying an unframed world is a wrong answer rather than an imprecise one. The refusal is
+  `WorldConfigurationException` (`ArgumentException`) with `PhysicsCannotRebase`, `MemberName` (`CanRebase`)
+  and `ParamName` (`physics`). `BepuPhysicsWorld` can.
   A hand-written backend or test double reports false through the seam's default and has to opt in.
 - **The frame is reachable from a `World` alone.** Anything the engine hands only a world - the `WorldPickups`
   spawn callback, your `OnBeforeTick` brain, a system reading a cross-border ghost - reads
@@ -17002,7 +17009,16 @@ IPhysicsWorld BuildCellWorld(CellCoord coord)
   is exactly zero, so the same code is correct either way.
 - **`CellSize` is validated against the divergence ceiling** when frame anchoring is on. A cell's frame sits at its
   centre, so its worst frame-local coordinate is bounded by the cell's own size: `CellSize = 600` puts the planar
-  magnitude past `WorldFrame.MaxLocalRadius` and the constructor refuses it with the derivation in the message.
+  magnitude past `WorldFrame.MaxLocalRadius` and the constructor throws `WorldConfigurationException` with
+  `FramePlanarMagnitudeExceeded`, `CellSize`, `OverlapMargin`, `ActualPlanarMagnitude` and the inclusive
+  `MaximumPlanarMagnitude` (512 m). An overflowed nonfinite result that exceeds the ceiling carries
+  `FramePlanarMagnitudeNonfinite`. The admission comparison is unchanged.
+- **Other configuration refusals** use the same type, retaining the original `ParamName`. `CellOriginNonfinite`
+  carries `MemberName` (`CellOrigin`) and `ActualOrigin`. `InterestOutsideOverlap` carries `InterestRadius` and
+  `OverlapMargin`. `ReplicationStreamMissing` carries `MemberName` (`ReplicationStream`). `UnreliableWithoutDelta`
+  carries the guarded stream arguments as `MemberName` (`optIn`) and `RequiredMember` (`deltaReplication`),
+  including when a server or client config delegates to that guard. See the
+  [NetWorld refusal table](../KhaozEngine.NetWorld/README.md#world-configuration-refusals).
 - **Turn it off** (`FrameAnchoring = false`) for byte-identical pre-frame behaviour, at the cost of the precision.
 - **What it does not need:** any change to your terrain bake or your collision meshes. Chunk-local terrain
   vertices (see the Terrain section) are unconditional and work on both heads with this flag off.

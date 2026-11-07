@@ -1769,6 +1769,28 @@ SharpGLTF) are confined to this package via
 `KhaozEngine.Gpu`. See
 `docs/USING-KHAOZENGINE.md`.
 
+## Host coverage sidecars
+
+`HostCoverageMapJson.Read(utf8, identity)` reads strict host coverage format 1. `HostCoverageMap`
+owns the exact host GLB SHA-256, welded surface topology, region triangle roles and strengths,
+fixed refinement levels from 1 to 4, and authoring labels. It snapshots and canonically sorts its
+collections. Limits are 32 regions, 65536 source render vertices and 65536 referenced triangles.
+Regions are disjoint, and a surface may have positive strength in only one region. Source-dependent
+checks, including core and collar strength requirements, belong to the binding layer with the GLB.
+
+`Write(map)` emits canonical UTF-8 with fixed member order and normalized signed zero.
+`SemanticSha256(map)` hashes `KhaozEngine.HostCoverageMap/1\n` followed by the canonical bytes,
+independently of source whitespace, member order or array order.
+
+`HostCoverageDataException` derives from `MalformedDataException` and exposes the public
+`HostCoverageRefusal Reason`, caller `Identity` and rooted JSON `Path`. Count refusals include
+`Count` and inclusive `Limit`. Region, surface and source-ordinal identifiers accompany the
+relevant refusal, and wrappers preserve those fields and their typed inner reason. Paths name
+source JSON positions even when the model sorts its entries. Streaming preflight bounds arrays
+before DOM allocation and refuses duplicate or unknown members before reading their values.
+Core strength, collar strength, refinement level, overlap and each capacity rule have distinct
+reasons. Null arguments and a blank caller identity retain BCL exceptions.
+
 ## Mesh import and prop refusals
 
 Messages remain developer prose. Branch on `Reason` and read the structured identifiers below.

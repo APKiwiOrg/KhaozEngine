@@ -46,7 +46,8 @@ public sealed class SqlServerAccountSchemaRefusalTests
         Assert.Null(refusal.TableName);
         Assert.Null(refusal.Findings);
 
-        // The control fixes the schema alone. The table exists, so neither mode has anything left to refuse.
+        // The control supplies a schema and a table that both exist, because a table cannot exist without its
+        // schema. Neither mode has anything left to refuse.
         SqlServerAccountSchema.RefuseMissingObjects(schemaExists: true, tableExists: true, "game", "grim_accounts", mode);
     }
 

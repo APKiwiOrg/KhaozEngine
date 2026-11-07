@@ -277,7 +277,7 @@ public sealed class SqlServerAccountStoreLayoutTests : IDisposable
         Assert.Equal(AccountSchemaRefusal.ColumnTooNarrow, refusal.Reason);
         Assert.Equal("display_name", refusal.ColumnName);
         Assert.Equal(64, refusal.ActualCharacters);
-        Assert.Equal(AccountStoreRules.MaxDisplayNameChars, refusal.MinimumCharacters);
+        Assert.Equal(128, refusal.MinimumCharacters);
         Assert.Equal("display_name", Assert.Single(refusal.Findings!).ColumnName);
         Assert.Equal(EngineColumns.Take(4), Database.Columns(narrow));
 

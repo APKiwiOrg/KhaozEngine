@@ -17,7 +17,7 @@ public sealed class WaterCausticShaderTests
         { "WaterCausticSubtract", [GpuResourceKind.UniformBuffer], [V], [] },
         {
             "WaterCausticSheet", [GpuResourceKind.UniformBuffer, GpuResourceKind.TextureReadOnly, GpuResourceKind.Sampler],
-            [V, V, V], [GpuVertexElementFormat.Float2, GpuVertexElementFormat.Float3]
+            [V, V, V], [GpuVertexElementFormat.Float3]
         },
     };
 

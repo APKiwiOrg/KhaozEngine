@@ -40,6 +40,7 @@ public sealed class WaterCausticLifecycleTests
         {
             CapturePayloads = true,
             CaptureBindings = true,
+            CaptureInstancedBindings = true,
             CommandTrace = [],
         };
         internal readonly PassLog Passes = new();
@@ -335,7 +336,7 @@ public sealed class WaterCausticLifecycleTests
         int model = IndexOf(binds, h.Scene.ColorTargetsForTests.ColorTex);
         Assert.True(field >= 0 && field + 1 == map && map < model, $"field {field}, map {map}, model {model}");
 
-        Assert.All(new[] { h.UniformBuffer, h.SheetBinding().VertexBuffers[1] }, buffer =>
+        Assert.All(new[] { h.UniformBuffer, h.SheetBinding().VertexBuffers[0] }, buffer =>
             Assert.Equal(field, Assert.Single(h.Commands.Uploads, u => ReferenceEquals(u.Buffer, buffer)).FramebufferBindsBefore));
 
         // The whole-atlas clears name their targets' documented starting values.
@@ -417,7 +418,7 @@ public sealed class WaterCausticLifecycleTests
         Assert.Equal(sheets[0].Value, sheets[1].Slot);
         uint instances = sheets[0].Value + sheets[1].Value;
         Assert.Equal(instances * 12u, Assert.Single(h.Commands.Uploads,
-            u => ReferenceEquals(u.Buffer, h.SheetBinding().VertexBuffers[1])).Bytes);
+            u => ReferenceEquals(u.Buffer, h.SheetBinding().VertexBuffers[0])).Bytes);
         Assert.Equal(WaterCausticRenderer.SlotBytes, h.SheetBinding(1).Sets[0].DynamicOffset);
 
         WaterCausticUniforms slot = h.Slot(0);

@@ -194,6 +194,7 @@ namespace KhaozEngine.Tests.Gpu
         {
             TraceCommand("draw", _currentPipeline, instanceStart, instanceCount);
             NoteGraphicsReads();
+            if (CaptureInstancedBindings) NoteDrawBindings();
             _draws++;
             Inner.Draw(vertexCount, instanceCount, vertexStart, instanceStart);
         }

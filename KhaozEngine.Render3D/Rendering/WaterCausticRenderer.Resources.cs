@@ -16,8 +16,8 @@ internal sealed partial class WaterCausticRenderer
     const GpuPixelFormat AtlasFormat = GpuPixelFormat.R16G16B16A16Float;
     const GpuTextureUsage AtlasUsage = GpuTextureUsage.RenderTarget | GpuTextureUsage.Sampled;
     const uint QuadVertices = 6;
-    const int PatchSideVertices = WaterCausticPlan.PatchCells + 1;
-    const uint PatchIndexCount = WaterCausticPlan.PatchCells * WaterCausticPlan.PatchCells * 6;
+    // Six vertices per cell with no index buffer: each vertex lands its whole triangle to give it an exact area ratio.
+    const uint PatchVertexCount = WaterCausticPlan.PatchCells * WaterCausticPlan.PatchCells * 6;
     const int InitialSlots = 4;
 
     // The sheets and subtract quad add exact values on all four channels. The stock additive preset scales by source
@@ -35,7 +35,6 @@ internal sealed partial class WaterCausticRenderer
     IGpuResourceLayout _fieldLayout = null!, _subtractLayout = null!, _sheetLayout = null!;
     IGpuPipeline _fieldPipeline = null!, _subtractPipeline = null!, _sheetPipeline = null!;
     IGpuSampler _fieldSampler = null!;
-    IGpuBuffer _patchVertices = null!, _patchIndices = null!;
 
     IGpuBuffer _uniformBuffer = null!;
     IGpuResourceSet _fieldSet = null!, _subtractSet = null!;
@@ -64,7 +63,6 @@ internal sealed partial class WaterCausticRenderer
         try
         {
             CreatePrograms(gd.Factory);
-            CreatePatch(gd.Factory);
             _fieldSampler = gd.Factory.CreateSampler(GpuSamplerDescription.Linear);
             EnsureSlots(InitialSlots);
         }
@@ -94,7 +92,6 @@ internal sealed partial class WaterCausticRenderer
         _subtractPipeline = CreatePipeline(f, _subtractShaders, _subtractLayout, PlusOne, []);
         _sheetPipeline = CreatePipeline(f, _sheetShaders, _sheetLayout, PlusOne,
         [
-            new GpuVertexLayoutDescription(new GpuVertexElement("Local", GpuVertexElementFormat.Float2)),
             new GpuVertexLayoutDescription(stride: 12, instanceStepRate: 1,
                 elements: [new GpuVertexElement("Instance", GpuVertexElementFormat.Float3)]),
         ]);
@@ -115,37 +112,6 @@ internal sealed partial class WaterCausticRenderer
             VertexLayouts = vertexLayouts,
             Outputs = new GpuOutputDescription(null, AtlasFormat),
         });
-
-    void CreatePatch(IGpuResourceFactory f)
-    {
-        var vertices = new Vector2[PatchSideVertices * PatchSideVertices];
-        for (int z = 0; z < PatchSideVertices; z++)
-            for (int x = 0; x < PatchSideVertices; x++)
-                vertices[z * PatchSideVertices + x] = new Vector2(x, z);
-        _patchVertices = f.CreateBuffer(new GpuBufferDescription(
-            (uint)vertices.Length * 8u, GpuBufferUsage.VertexBuffer));
-        _gd.UpdateBuffer<Vector2>(_patchVertices, 0, vertices);
-
-        var indices = new ushort[PatchIndexCount];
-        int written = 0;
-        for (int z = 0; z < WaterCausticPlan.PatchCells; z++)
-            for (int x = 0; x < WaterCausticPlan.PatchCells; x++)
-            {
-                ushort corner = (ushort)(z * PatchSideVertices + x);
-                ushort right = (ushort)(corner + 1);
-                ushort below = (ushort)(corner + PatchSideVertices);
-                ushort opposite = (ushort)(below + 1);
-                indices[written++] = corner;
-                indices[written++] = below;
-                indices[written++] = right;
-                indices[written++] = right;
-                indices[written++] = below;
-                indices[written++] = opposite;
-            }
-        _patchIndices = f.CreateBuffer(new GpuBufferDescription(
-            PatchIndexCount * sizeof(ushort), GpuBufferUsage.IndexBuffer));
-        _gd.UpdateBuffer<ushort>(_patchIndices, 0, indices);
-    }
 
     /// <summary>Grow both atlases to hold <paramref name="layers"/>, rounded up to 1, 2 or 4. Never shrinks.
     /// Returns true when the map texture changed. The replaced map stays alive until
@@ -270,8 +236,6 @@ internal sealed partial class WaterCausticRenderer
         _field?.Dispose();
         _instanceBuffer?.Dispose();
         _uniformBuffer?.Dispose();
-        _patchIndices?.Dispose();
-        _patchVertices?.Dispose();
         _fieldSampler?.Dispose();
         _sheetPipeline?.Dispose();
         _subtractPipeline?.Dispose();

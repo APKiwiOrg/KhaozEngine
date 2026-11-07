@@ -516,14 +516,20 @@ sit on the lattice.
 Each map channel is one depth slice, at `D/8, D/4, D/2, D` below the surface. `D = clamp(3 / meanAttenuation, 1, 32)`
 metres, or 32 at zero attenuation, so slices sit where direct sun survives. `D` comes from the look and never `FloorY`,
 because rectangles of one river have different floors and would seam. The map starts at 1. Each rectangle draws one flat
-quad that adds -1 to all channels, then one instanced draw over its 4 m patches, with the slice in the instance data. A
-sheet vertex reads the field at its lattice point, with the texel clamped to `[0.5, 511.5] / 512`, because the window has
-513 lattice points and 512 texels and an unclamped read at the +X edge would land in the next layer. It refracts the sun
-through the surface normal and lands at
+quad that adds -1 to all channels, then one instanced draw over its 4 m patches, with the slice in the instance data. The
+sheets draw without an index buffer: each 12.5 cm cell is six vertices, two triangles split along the same diagonal, and
+a vertex knows its cell and corner from its vertex index. A corner reads the field at its lattice point, with the texel
+clamped to `[0.5, 511.5] / 512`, because the window has 513 lattice points and 512 texels and an unclamped read at the +X
+edge would land in the next layer. It refracts the sun through the surface normal and lands at
 `S + entryOffset + strength * D_i * (t.xz / -t.y - t0.xz / -t0.y)`, with `-t.y` held at 0.1 or more. The still-water
-position `S` is clamped to the rectangle and carried to the fragment, which adds
-`abs(determinant(dFdx(S), dFdy(S))) / texelArea`, clamped at 16, to its slice's channel. No culling or depth lets folded
-triangles add, so below the clamp energy is conserved by construction and the term has mean 1. Strength `s` at depth `d`
+position `S` is clamped to the rectangle. Every vertex lands all three corners of its triangle in the same order, so the
+triangle's still-water area over its landed area, clamped at 16, is bit-identical at its three vertices. That ratio goes to
+the fragment as a flat value and is added to its slice's channel. A landing collapsed to a line or a point reads exactly
+16, and an overhanging patch whose still-water area clamps to zero adds nothing. The ratio is computed per triangle
+because screen derivatives are not: on Metal a fragment's `dFdx` can take its neighbour from another triangle of the draw,
+depending on how the draw is composed, so `abs(determinant(dFdx(S), dFdy(S)))` moved texels by up to 10% at the 1 m slice
+when one body was cut into two rectangles. The vertex stage pays three field reads and refractions per vertex for it. No
+culling or depth lets folded triangles add, so below the clamp energy is conserved by construction and the term has mean 1. Strength `s` at depth `d`
 is exactly strength 1 at depth `s * d`, because strength scales how far the ray lands and nothing extrapolates the ray.
 Starting from 1 and subtracting matters because a receiver's entry can lie beyond its rectangle, and a map that only adds
 would read black there.

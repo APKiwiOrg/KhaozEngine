@@ -124,10 +124,8 @@ internal sealed partial class WaterCausticRenderer : IDisposable
 
             cl.SetPipeline(_sheetPipeline);
             cl.SetGraphicsResourceSet(0, _sheetSet!, slot);
-            cl.SetVertexBuffer(0, _patchVertices);
-            cl.SetVertexBuffer(1, _instanceBuffer!);
-            cl.SetIndexBuffer(_patchIndices, GpuIndexFormat.UInt16);
-            cl.DrawIndexed(PatchIndexCount, (uint)_instanceCount[i], 0, 0, (uint)_firstInstance[i]);
+            cl.SetVertexBuffer(0, _instanceBuffer!);
+            cl.Draw(PatchVertexCount, (uint)_instanceCount[i], 0, (uint)_firstInstance[i]);
         }
     }
 }

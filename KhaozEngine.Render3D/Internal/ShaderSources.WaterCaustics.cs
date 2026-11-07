@@ -16,9 +16,12 @@ namespace KhaozEngine.Render3D.Internal
     /// texels have to hold this body's waves.
     /// </para>
     /// <para>
-    /// <b>Energy.</b> A sheet's fragment adds the area ratio between the still-water patch and the map texel it landed
-    /// on, so the term has mean 1 below the clamp. The subtract quad runs first because the map clears to 1: without it a
-    /// rectangle's light would sit on top of that 1. No culling and additive blending let folded triangles add.
+    /// <b>Energy.</b> Every texel a sheet triangle covers gains that triangle's still-water area over its landed area, so
+    /// the term has mean 1 below the clamp. The ratio is exact per triangle and computed in the vertex stage rather than
+    /// from screen derivatives, because on Metal a fragment's derivatives can mix neighbouring triangles depending on the
+    /// draw's composition, so cutting a body into rectangles would change its bands. The subtract quad runs first because
+    /// the map clears to 1: without it a rectangle's light would sit on top of that 1. No culling and additive blending let
+    /// folded triangles add.
     /// </para>
     /// </summary>
     internal static partial class ShaderSources
@@ -120,26 +123,27 @@ void main() {
 }";
 
         /// <summary>
-        /// Sheet vertex stage. One instance is one patch at one slice. Reads the field at the still-water lattice point,
-        /// refracts the sun through its normal and places the vertex where that ray lands at the slice depth, relative to
-        /// the still ray so strength scales deflection and nothing else. <c>S</c> is clamped to the rectangle so patches
-        /// overhanging it collapse to zero area and add nothing.
+        /// Sheet vertex stage, drawn without an index buffer: one instance is one patch at one slice, and each of a
+        /// patch's 32 by 32 cells is six vertices, two triangles split from <c>(1, 0)</c> to <c>(0, 1)</c>. Every vertex lands
+        /// all three corners of its triangle in the same fixed order, so the three vertices of a triangle compute a
+        /// bit-identical area ratio and a shared corner lands identically wherever it appears. A corner reads the field
+        /// at its still-water lattice point, refracts the sun through that normal and lands where the ray meets the slice
+        /// depth, relative to the still ray so strength scales deflection and nothing else. <c>S</c> is clamped to the
+        /// rectangle so patches overhanging it collapse to zero area and add nothing.
         /// </summary>
         internal const string WaterCausticSheetVert = @"#version 450
 " + WaterCausticBodyGlsl + WaterCausticClipGlsl + WaterRefractionShaderSource.RefractiveIndexGlsl + @"
 layout(set=0, binding=1) uniform texture2D SurfaceField;
 layout(set=0, binding=2) uniform sampler SurfaceFieldSampler;
 
-layout(location=0) in vec2 Local;      // patch-local lattice coordinates, 0 to 32
-layout(location=1) in vec3 Instance;   // latticeX, latticeZ, slice
-layout(location=0) out vec2 vS;
-layout(location=1) flat out vec4 vSliceMask;
+layout(location=0) in vec3 Instance;   // latticeX, latticeZ, slice
+layout(location=0) flat out vec4 vDensity;
 
-void main() {
+// The clamped still-water position of a lattice point and how far from it its ray lands at this slice depth.
+vec2 causticCorner(vec2 lattice, float sliceDepth, out vec2 S) {
     float cell = CausticWindow.w;
     vec2 windowMin = CausticWindow.xy;
-    vec2 lattice = Instance.xy + Local;
-    vec2 S = clamp(windowMin + lattice * cell, CausticRect.xy, CausticRect.zw);
+    S = clamp(windowMin + lattice * cell, CausticRect.xy, CausticRect.zw);
 
     // The window has 513 lattice points and 512 texels, and the +X edge must not read the next layer.
     vec2 texel = clamp(((S - windowMin) / cell + 0.5) / KE_FIELD_TEXELS,
@@ -149,25 +153,52 @@ void main() {
 
     vec3 n = normalize(vec3(f.z, 1.0, f.w));
     vec3 t = refract(SunTravel.xyz, n, 1.0 / UnderwaterRefractiveIndex);
+    return f.xy + SunTravel.w * sliceDepth
+        * (t.xz / max(-t.y, 0.1) - StillRay.xz / max(-StillRay.y, 0.1));
+}
+
+float causticCross(vec2 a, vec2 b) {
+    return a.x * b.y - a.y * b.x;
+}
+
+void main() {
+    int cell = gl_VertexIndex / 6;
+    int role = gl_VertexIndex - cell * 6;
+    vec2 cellLattice = Instance.xy + vec2(cell % 32, cell / 32);
+    bool second = role >= 3;
+    vec2 cornerA = cellLattice + (second ? vec2(1.0, 0.0) : vec2(0.0, 0.0));
+    vec2 cornerB = cellLattice + vec2(0.0, 1.0);
+    vec2 cornerC = cellLattice + (second ? vec2(1.0, 1.0) : vec2(1.0, 0.0));
+
     vec4 sliceMask = vec4(equal(ivec4(int(Instance.z + 0.5)), ivec4(0, 1, 2, 3)));
     float sliceDepth = StillRay.w * dot(sliceMask, vec4(0.125, 0.25, 0.5, 1.0));
-    vec2 land = S + f.xy + SunTravel.w * sliceDepth
-        * (t.xz / max(-t.y, 0.1) - StillRay.xz / max(-StillRay.y, 0.1));
+    vec2 sa, sb, sc;
+    vec2 da = causticCorner(cornerA, sliceDepth, sa);
+    vec2 db = causticCorner(cornerB, sliceDepth, sb);
+    vec2 dc = causticCorner(cornerC, sliceDepth, sc);
 
-    vS = S;
-    vSliceMask = sliceMask;
-    gl_Position = causticClip((land - windowMin) * CausticWindow.z);
+    // Edges relative to corner A, so the areas never subtract two large render-relative positions.
+    vec2 stillB = sb - sa, stillC = sc - sa;
+    float oldArea = abs(causticCross(stillB, stillC)) * 0.5;
+    float newArea = abs(causticCross(stillB + (db - da), stillC + (dc - da))) * 0.5;
+    // Dividing by no less than oldArea / 16 gives exactly the clamp for a landing collapsed to a line or a point, and
+    // never forms an infinity or a zero divide, which Metal's fast math leaves undefined.
+    float density = oldArea > 0.0 ? min(oldArea / max(newArea, oldArea * (1.0 / 16.0)), 16.0) : 0.0;
+    vDensity = sliceMask * density;
+
+    int corner = role - (second ? 3 : 0);
+    vec2 land = corner == 0 ? sa + da : corner == 1 ? sb + db : sc + dc;
+    gl_Position = causticClip((land - CausticWindow.xy) * CausticWindow.z);
 }";
 
-        /// <summary>Sheet fragment stage: the still-water area this map texel gathered, over the texel's own area
-        /// (0.0625 m per side), added to the sheet's slice. The clamp keeps a fold's hot line finite.</summary>
+        /// <summary>Sheet fragment stage: the triangle's area ratio, added to its slice. The clamp keeps a fold's hot
+        /// line finite.</summary>
         internal const string WaterCausticSheetFrag = @"#version 450
-layout(location=0) in vec2 vS;
-layout(location=1) flat in vec4 vSliceMask;
+layout(location=0) flat in vec4 vDensity;
 layout(location=0) out vec4 oMap;
 
 void main() {
-    oMap = vSliceMask * min(abs(determinant(mat2(dFdx(vS), dFdy(vS)))) / (0.0625 * 0.0625), 16.0);
+    oMap = vDensity;
 }";
     }
 }

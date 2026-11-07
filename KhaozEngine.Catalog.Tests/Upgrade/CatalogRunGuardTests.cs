@@ -22,7 +22,8 @@ public sealed class CatalogRunGuardTests
         ContentTypeRegistry registry = PublishFixtures.Registry(PublishFixtures.Thing, PublishFixtures.Other);
         using ContentAuthoringStoreLease lease = await UpgradeLifetimeCatalog.CreateAsync(files, registry, sqlite, packs);
         var clock = new ManualCatalogPhaseClock();
-        var scenario = new UpgradePublishScenario(lease.Store, registry, clock: clock);
+        var safety = new ManualCatalogPhaseClock();
+        var scenario = new UpgradePublishScenario(lease.Store, registry, clock: clock, safetyClock: safety);
         // Each actual filesystem read advances less than one phase budget. Several reads exceed the
         // entire old budget while the waiting peer must keep observing its producer's real progress.
         packs.BeforeRead = () => clock.Advance(TimeSpan.FromSeconds(11));
@@ -84,7 +85,8 @@ public sealed class CatalogRunGuardTests
         ContentTypeRegistry registry = PublishFixtures.Registry(PublishFixtures.Thing, PublishFixtures.Other);
         using ContentAuthoringStoreLease lease = await UpgradeLifetimeCatalog.CreateAsync(files, registry, sqlite);
         var clock = new ManualCatalogPhaseClock();
-        var scenario = new UpgradePublishScenario(lease.Store, registry, clock: clock);
+        var safety = new ManualCatalogPhaseClock();
+        var scenario = new UpgradePublishScenario(lease.Store, registry, clock: clock, safetyClock: safety);
         var hold = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var held = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         scenario.Sequence.BeforeSnapshot = async () => { held.TrySetResult(); await hold.Task; };
@@ -95,7 +97,10 @@ public sealed class CatalogRunGuardTests
         {
             await scenario.Owner.ReadyAsync(scenario.Sequence.OlderWaiting.Task, older, CatalogPhase.OlderSweepWait);
             Task missing = scenario.Owner.ReadyAsync(scenario.Sequence.SecondFrozen.Task, older, CatalogPhase.NextCompleteFreeze);
-            clock.ExpireActive();
+            clock.Advance(TimeSpan.FromSeconds(20) - TimeSpan.FromTicks(1));
+            Assert.False(scenario.Owner.Diagnostic.Task.IsCompleted);
+            Assert.False(missing.IsFaulted);
+            clock.Advance(TimeSpan.FromTicks(1));
             Assert.True(scenario.Owner.Diagnostic.Task.IsCompletedSuccessfully, "the independent diagnostic never expired");
             var failure = await Assert.ThrowsAsync<CatalogPhaseTimeoutException>(() => missing);
             primary = failure;
@@ -141,7 +146,10 @@ public sealed class CatalogRunGuardTests
             // Establish the real blocked producer using System time, not the held diagnostic clock.
             await scenario.Sequence.OlderWaiting.Task.WaitAsync(TimeSpan.FromSeconds(20));
             Task readiness = scenario.Owner.ReadyAsync(withheld.Task, older, CatalogPhase.WithheldOlderReadiness);
-            safety.ExpireActive();
+            safety.Advance(TimeSpan.FromSeconds(20) - TimeSpan.FromTicks(1));
+            Assert.False(scenario.Owner.Diagnostic.Task.IsCompleted);
+            Assert.False(readiness.IsFaulted);
+            safety.Advance(TimeSpan.FromTicks(1));
             Assert.True(scenario.Owner.Diagnostic.Task.IsCompletedSuccessfully,
                 "readiness has no independent safety clock while the producer clock is held");
             var failure = await Assert.ThrowsAsync<CatalogPhaseTimeoutException>(() => readiness);
@@ -163,6 +171,44 @@ public sealed class CatalogRunGuardTests
             hold.TrySetResult();
             await CatalogLifetimeTestSafety.JoinAsync(scenario, cleanup, primary);
         }
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task ReadinessBeforeExpiryCompletesWithoutRefusalAfterBothClocksPassTheBudget(bool sqlite)
+    {
+        using var files = new TemporaryCatalogDatabase();
+        ContentTypeRegistry registry = PublishFixtures.Registry(PublishFixtures.Thing, PublishFixtures.Other);
+        using ContentAuthoringStoreLease lease = await UpgradeLifetimeCatalog.CreateAsync(files, registry, sqlite);
+        var phase = new ManualCatalogPhaseClock();
+        var safety = new ManualCatalogPhaseClock();
+        var scenario = new UpgradePublishScenario(lease.Store, registry, clock: phase, safetyClock: safety);
+
+        await scenario.Owner.ExecuteAsync(async () =>
+        {
+            Task<ContentUpgradeReport> older = scenario.StartOlder();
+            await scenario.Sequence.OlderWaiting.Task.WaitAsync(TimeSpan.FromSeconds(20));
+            Task readiness = scenario.Owner.ReadyAsync(scenario.Sequence.SecondFrozen.Task, older, CatalogPhase.NextCompleteFreeze);
+            phase.Advance(TimeSpan.FromSeconds(20) - TimeSpan.FromTicks(1));
+            safety.Advance(TimeSpan.FromSeconds(20) - TimeSpan.FromTicks(1));
+            Assert.False(scenario.Owner.Diagnostic.Task.IsCompleted);
+            Assert.False(readiness.IsFaulted);
+
+            Task<ContentUpgradeReport> next = scenario.StartNext();
+            await readiness.WaitAsync(TimeSpan.FromSeconds(20));
+            phase.Advance(TimeSpan.FromTicks(2));
+            safety.Advance(TimeSpan.FromTicks(2));
+            Assert.False(scenario.Owner.Diagnostic.Task.IsCompleted);
+            ContentUpgradeReport nextReport = await scenario.Owner.AwaitAsync(next).WaitAsync(TimeSpan.FromSeconds(20));
+            ContentUpgradeReport olderReport = await scenario.Owner.AwaitAsync(older).WaitAsync(TimeSpan.FromSeconds(20));
+
+            Assert.True(readiness.IsCompletedSuccessfully);
+            Assert.True(olderReport.Success);
+            Assert.True(nextReport.Success);
+            Assert.False(scenario.Owner.Diagnostic.Task.IsCompleted);
+            return true;
+        });
     }
 
     sealed class HeldRivalDraftStore(IContentAuthoringStore inner, ContentTypeRegistry registry,

@@ -52,14 +52,18 @@ public sealed class ContentUpgradeSweepCancellationTests
         using ContentAuthoringStoreLease lease = await UpgradeLifetimeCatalog.CreateAsync(files, registry, sqlite);
         using var exercise = new CancellationTokenSource();
         var clock = new ManualCatalogPhaseClock();
-        var owner = new CatalogRunnerLifetime(clock);
+        var safety = new ManualCatalogPhaseClock();
+        var owner = new CatalogRunnerLifetime(clock, safetyClock: safety);
         var held = new HeldInitialVersionStore(lease.Store);
         Task<ContentUpgradeReport> run = RunAsync(held, registry, exercise.Token, owner);
         try
         {
             // This setup safety does not depend on the deliberately held phase clock.
             await held.Entered.Task.WaitAsync(TimeSpan.FromSeconds(20));
-            clock.ExpireActive();
+            clock.Advance(TimeSpan.FromSeconds(20) - TimeSpan.FromTicks(1));
+            Assert.False(owner.Diagnostic.Task.IsCompleted);
+            Assert.False(run.IsFaulted);
+            clock.Advance(TimeSpan.FromTicks(1));
             Assert.True(owner.Diagnostic.Task.IsCompletedSuccessfully,
                 "the cancellation characterization ran outside its independent phase diagnostic");
             var failure = Assert.IsType<CatalogPhaseTimeoutException>(await owner.Diagnostic.Task);

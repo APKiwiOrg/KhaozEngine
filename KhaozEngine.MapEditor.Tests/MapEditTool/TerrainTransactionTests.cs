@@ -36,10 +36,12 @@ public sealed class TerrainTransactionTests
             Assert.NotNull(error.SlotCell);
             Assert.Equal(state, gui.State());
         }
+        string ceilingBefore = gui.Text();
         var repairedCeiling = CaveFixtures.CeilingCrossingEdit();
-        var ceiling = CaveFixtures.Patch(CaveFixtures.RampChamberShaft().Surfaces, "cave-ceiling");
-        repairedCeiling = repairedCeiling with { UpsertPatches = new[] { ceiling } };
+        // The mouth floor is 800 height units. 801 is its first positive integer ceiling interval.
+        for (int x = 0; x <= repairedCeiling.UpsertPatches[0].Width; x++) repairedCeiling.UpsertPatches[0].Heights[x] = 801;
         gui.Editor.Execute(new TerrainEditCommand(repairedCeiling));
+        Assert.NotEqual(ceilingBefore, gui.Text());
         state = gui.State();
         var halo = Assert.Throws<MapDocumentException>(() => gui.Editor.Execute(new TerrainEditCommand(
             new MapSmoothCorners(new("outer", 0, 0), 0, 0, 1, 1, 1))));

@@ -52,4 +52,50 @@ public enum BugReportBundleRefusal
     /// <summary>Refuses a section that is not one JSON object within the depth limit, with unique property names and
     /// decodable strings.</summary>
     SectionJsonInvalid,
+
+    // Screenshot and clip media.
+
+    /// <summary>Refuses a screenshot whose media type is not <c>image/png</c> or <c>image/jpeg</c>, null included.</summary>
+    ScreenshotMediaUnsupported,
+
+    /// <summary>Refuses a screenshot or clip frame whose recorded width or height is outside the edge range.</summary>
+    ImageDimensionsOutsideRange,
+
+    /// <summary>Refuses a screenshot or clip frame whose bytes do not start with a readable header of its media type.</summary>
+    ImageHeaderUnreadable,
+
+    /// <summary>Refuses a screenshot or clip frame whose header size differs from its recorded size.</summary>
+    ImageHeaderDimensionsMismatch,
+
+    /// <summary>Refuses a clip whose frame list is null.</summary>
+    ClipFrameListMissing,
+
+    /// <summary>Refuses a clip holding more frames than the clip frame limit.</summary>
+    ClipFrameCountExceeded,
+
+    /// <summary>Refuses a null entry in the clip frame list.</summary>
+    ClipFrameMissing,
+
+    /// <summary>Refuses a clip frame that starts before the frame ahead of it, or before the clip.</summary>
+    ClipOffsetDecreased,
+
+    /// <summary>Refuses a clip frame that starts past the clip offset limit.</summary>
+    ClipOffsetExceeded,
+
+    /// <summary>Refuses a clip frame whose render time is NaN or infinite.</summary>
+    RenderTimeNonfinite,
+
+    /// <summary>Refuses a clip frame whose finite render time is negative or over the render time limit.</summary>
+    RenderTimeOutsideRange,
+
+    // Bundle limits, thrown as BugReportBundleLimitException.
+
+    /// <summary>Refuses a bundle that would need more zip entries than the entry limit, the manifest included.</summary>
+    EntryCountExceeded,
+
+    /// <summary>Refuses a bundle whose entries after the manifest total more bytes than the bundle byte limit.</summary>
+    PayloadBytesExceeded,
+
+    /// <summary>Refuses a bundle whose written archive is longer than the bundle byte limit.</summary>
+    ArchiveBytesExceeded,
 }

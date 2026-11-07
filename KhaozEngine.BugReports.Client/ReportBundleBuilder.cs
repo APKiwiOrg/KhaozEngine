@@ -22,7 +22,7 @@ internal static class ReportBundleBuilder
 
     /// <summary>Writes the bundle with as much of the requested media as fits.</summary>
     /// <exception cref="BugReportBundleArgumentException">A field other than the media is invalid. See <see cref="BugReportBundleWriter.Write"/>.</exception>
-    /// <exception cref="InvalidOperationException">Even the sections alone exceed a bundle limit.</exception>
+    /// <exception cref="BugReportBundleLimitException">Even the sections alone exceed a bundle limit.</exception>
     internal static byte[] Write(Request request)
     {
         ReportClip? clip = request.Clip is { } requested ? FitClip(requested, request.Sections, request.Screenshot) : null;

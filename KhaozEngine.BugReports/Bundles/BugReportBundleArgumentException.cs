@@ -3,8 +3,8 @@ using KhaozEngine.BugReports.Contracts;
 
 namespace KhaozEngine.BugReports;
 
-/// <summary>A structured refusal of a draft field or section. Existing <see cref="ArgumentException"/> catches remain
-/// valid, and <see cref="ArgumentException.ParamName"/> is <c>draft</c>.</summary>
+/// <summary>A structured refusal of a draft field, section, screenshot or clip. Existing <see cref="ArgumentException"/>
+/// catches remain valid, and <see cref="ArgumentException.ParamName"/> is <c>draft</c>.</summary>
 public sealed class BugReportBundleArgumentException : ArgumentException
 {
     /// <summary>Creates a refusal with its required reason, retaining the parameter name.</summary>
@@ -50,7 +50,11 @@ public sealed class BugReportBundleArgumentException : ArgumentException
 
     /// <summary>The zero-based position in the section list, for <see cref="BugReportBundleRefusal.SectionMissing"/>,
     /// <see cref="BugReportBundleRefusal.SectionKeyInvalid"/> and
-    /// <see cref="BugReportBundleRefusal.SectionKeyDuplicate"/>, where it is the later of the two sections.</summary>
+    /// <see cref="BugReportBundleRefusal.SectionKeyDuplicate"/>, where it is the later of the two sections. The
+    /// zero-based position in the clip frame list, for <see cref="BugReportBundleRefusal.ClipFrameMissing"/>,
+    /// <see cref="BugReportBundleRefusal.ClipOffsetDecreased"/>, <see cref="BugReportBundleRefusal.ClipOffsetExceeded"/>,
+    /// <see cref="BugReportBundleRefusal.RenderTimeNonfinite"/> and
+    /// <see cref="BugReportBundleRefusal.RenderTimeOutsideRange"/>.</summary>
     public int? Index { get; init; }
 
     /// <summary>The key as the section holds it, for <see cref="BugReportBundleRefusal.SectionKeyDuplicate"/> and
@@ -67,4 +71,58 @@ public sealed class BugReportBundleArgumentException : ArgumentException
 
     /// <summary>The deepest accepted nesting, for <see cref="BugReportBundleRefusal.SectionJsonInvalid"/>.</summary>
     public int? MaximumDepth { get; init; }
+
+    /// <summary>The screenshot's media type, for <see cref="BugReportBundleRefusal.ScreenshotMediaUnsupported"/>, where it
+    /// is null when the type is null, or the media type the header was read as, for
+    /// <see cref="BugReportBundleRefusal.ImageHeaderUnreadable"/>.</summary>
+    public string? MediaType { get; init; }
+
+    /// <summary>The bundle entry the image would be written as, such as <c>screenshot.png</c> or <c>clip/002.jpg</c>, for
+    /// <see cref="BugReportBundleRefusal.ImageDimensionsOutsideRange"/>,
+    /// <see cref="BugReportBundleRefusal.ImageHeaderUnreadable"/> and
+    /// <see cref="BugReportBundleRefusal.ImageHeaderDimensionsMismatch"/>.</summary>
+    public string? EntryName { get; init; }
+
+    /// <summary>The recorded width in pixels, for <see cref="BugReportBundleRefusal.ImageDimensionsOutsideRange"/> and
+    /// <see cref="BugReportBundleRefusal.ImageHeaderDimensionsMismatch"/>.</summary>
+    public int? Width { get; init; }
+
+    /// <summary>The recorded height in pixels, for <see cref="BugReportBundleRefusal.ImageDimensionsOutsideRange"/> and
+    /// <see cref="BugReportBundleRefusal.ImageHeaderDimensionsMismatch"/>.</summary>
+    public int? Height { get; init; }
+
+    /// <summary>The shortest accepted edge, for <see cref="BugReportBundleRefusal.ImageDimensionsOutsideRange"/>.</summary>
+    public int? MinimumPixels { get; init; }
+
+    /// <summary>The longest accepted edge, for <see cref="BugReportBundleRefusal.ImageDimensionsOutsideRange"/>.</summary>
+    public int? MaximumPixels { get; init; }
+
+    /// <summary>The width the image header encodes, for
+    /// <see cref="BugReportBundleRefusal.ImageHeaderDimensionsMismatch"/>.</summary>
+    public int? HeaderWidth { get; init; }
+
+    /// <summary>The height the image header encodes, for
+    /// <see cref="BugReportBundleRefusal.ImageHeaderDimensionsMismatch"/>.</summary>
+    public int? HeaderHeight { get; init; }
+
+    /// <summary>The frames the clip holds, for <see cref="BugReportBundleRefusal.ClipFrameCountExceeded"/>.</summary>
+    public int? ActualCount { get; init; }
+
+    /// <summary>The inclusive clip frame limit, for <see cref="BugReportBundleRefusal.ClipFrameCountExceeded"/>.</summary>
+    public int? MaximumCount { get; init; }
+
+    /// <summary>The frame's offset into the clip, for <see cref="BugReportBundleRefusal.ClipOffsetDecreased"/> and
+    /// <see cref="BugReportBundleRefusal.ClipOffsetExceeded"/>, or its render time, for
+    /// <see cref="BugReportBundleRefusal.RenderTimeNonfinite"/> and
+    /// <see cref="BugReportBundleRefusal.RenderTimeOutsideRange"/>.</summary>
+    public double? ActualMilliseconds { get; init; }
+
+    /// <summary>The earliest accepted offset, the offset of the frame ahead or zero for the first frame, for
+    /// <see cref="BugReportBundleRefusal.ClipOffsetDecreased"/>, or the shortest accepted render time, for
+    /// <see cref="BugReportBundleRefusal.RenderTimeOutsideRange"/>.</summary>
+    public double? MinimumMilliseconds { get; init; }
+
+    /// <summary>The inclusive offset limit, for <see cref="BugReportBundleRefusal.ClipOffsetExceeded"/>, or the inclusive
+    /// render time limit, for <see cref="BugReportBundleRefusal.RenderTimeOutsideRange"/>.</summary>
+    public double? MaximumMilliseconds { get; init; }
 }

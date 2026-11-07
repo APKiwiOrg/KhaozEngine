@@ -88,6 +88,19 @@ public sealed class BugReportBundleWriterTests
         return refusal;
     }
 
+    /// <summary>The draft is refused by exactly this bundle limit, on the exact type.</summary>
+    static BugReportBundleLimitException Limited(BugReportDraft draft, BugReportBundleRefusal reason)
+    {
+        BugReportBundleLimitException refusal =
+            Assert.Throws<BugReportBundleLimitException>(() => BugReportBundleWriter.Write(draft));
+        Assert.IsAssignableFrom<InvalidOperationException>(refusal);
+        Assert.Equal(reason, refusal.Reason);
+        return refusal;
+    }
+
+    /// <summary>Two valid frames, then <paramref name="last"/> as frame 2.</summary>
+    static ReportClip ClipEndingWith(ReportClipFrame? last) => new([Frame(0, 16.5), Frame(33, 16.5), last!]);
+
     static BugReportManifest Manifest(byte[] bundle) =>
         BugReportJson.DeserializeManifest(Read(Entries(bundle).Single(e => e.FullName == BundleEntryNames.Manifest)));
 
@@ -310,28 +323,44 @@ public sealed class BugReportBundleWriterTests
     [Fact]
     public void More_than_120_clip_frames_throws()
     {
-        AssertValid(BugReportBundleWriter.Write(Draft(clip: Clip(BundleEntryNames.MaxClipFrames))));
+        BugReportBundleArgumentException refusal =
+            Refused(Draft(clip: Clip(BundleEntryNames.MaxClipFrames + 1)), BugReportBundleRefusal.ClipFrameCountExceeded);
+        Assert.Equal(121, refusal.ActualCount);
+        Assert.Equal(120, refusal.MaximumCount);
 
-        Assert.Throws<ArgumentException>(() => BugReportBundleWriter.Write(Draft(clip: Clip(BundleEntryNames.MaxClipFrames + 1))));
+        AssertValid(BugReportBundleWriter.Write(Draft(clip: Clip(BundleEntryNames.MaxClipFrames))));
     }
 
     [Fact]
     public void Unknown_media_type_throws()
     {
-        var gif = new ReportImage("image/gif", 8, 6, TestBundles.Png(8, 6));
+        BugReportBundleArgumentException refusal = Refused(
+            Draft(screenshot: new ReportImage("image/gif", 8, 6, TestBundles.Png(8, 6))), BugReportBundleRefusal.ScreenshotMediaUnsupported);
+        Assert.Equal("image/gif", refusal.MediaType);
 
-        Assert.Throws<ArgumentException>(() => BugReportBundleWriter.Write(Draft(screenshot: gif)));
+        AssertValid(BugReportBundleWriter.Write(Draft(screenshot: new ReportImage("image/png", 8, 6, TestBundles.Png(8, 6)))));
     }
 
+    // Each refused image carries a header that matches its record, so only the edge rule can refuse it.
     [Theory]
-    [InlineData(0, 6)]
-    [InlineData(8, 0)]
-    [InlineData(2561, 6)]
-    public void Screenshot_size_outside_the_edge_limit_throws(int width, int height)
+    [InlineData("screenshot", 0, 6, 1, 6)]
+    [InlineData("screenshot", 8, 0, 8, 1)]
+    [InlineData("screenshot", 2561, 6, 2560, 6)]
+    [InlineData("clip", 0, 4, 1, 4)]
+    [InlineData("clip", 4, 2561, 4, 2560)]
+    public void Image_edge_outside_the_limit_throws(string image, int width, int height, int limitWidth, int limitHeight)
     {
-        var image = new ReportImage("image/png", width, height, TestBundles.Png(width, height));
+        BugReportDraft Sized(int w, int h) =>
+            image == "screenshot" ? Draft(screenshot: Png(w, h)) : Draft(clip: ClipEndingWith(Frame(49.5, 16.5, w, h)));
 
-        Assert.Throws<ArgumentException>(() => BugReportBundleWriter.Write(Draft(screenshot: image)));
+        BugReportBundleArgumentException refusal = Refused(Sized(width, height), BugReportBundleRefusal.ImageDimensionsOutsideRange);
+        Assert.Equal(image == "screenshot" ? "screenshot.png" : "clip/002.jpg", refusal.EntryName);
+        Assert.Equal(width, refusal.Width);
+        Assert.Equal(height, refusal.Height);
+        Assert.Equal(1, refusal.MinimumPixels);
+        Assert.Equal(2560, refusal.MaximumPixels);
+
+        AssertValid(BugReportBundleWriter.Write(Sized(limitWidth, limitHeight)));
     }
 
     [Fact]
@@ -349,72 +378,121 @@ public sealed class BugReportBundleWriterTests
     [Fact]
     public void Png_screenshot_with_empty_bytes_throws()
     {
-        var empty = new ReportImage("image/png", 8, 6, ReadOnlyMemory<byte>.Empty);
+        BugReportBundleArgumentException refusal = Refused(
+            Draft(screenshot: new ReportImage("image/png", 8, 6, ReadOnlyMemory<byte>.Empty)), BugReportBundleRefusal.ImageHeaderUnreadable);
+        Assert.Equal("screenshot.png", refusal.EntryName);
+        Assert.Equal("image/png", refusal.MediaType);
 
-        AssertRejected(Draft(screenshot: empty), BundleEntryNames.ScreenshotPng);
+        AssertValid(BugReportBundleWriter.Write(Draft(screenshot: Png(8, 6))));
     }
 
     [Fact]
     public void Screenshot_header_that_disagrees_with_its_record_throws()
     {
-        var image = new ReportImage("image/png", 2560, 1440, TestBundles.Png(2561, 1440));
+        BugReportBundleArgumentException refusal = Refused(
+            Draft(screenshot: new ReportImage("image/png", 2560, 1440, TestBundles.Png(2561, 1440))),
+            BugReportBundleRefusal.ImageHeaderDimensionsMismatch);
+        Assert.Equal("screenshot.png", refusal.EntryName);
+        Assert.Equal(2560, refusal.Width);
+        Assert.Equal(1440, refusal.Height);
+        Assert.Equal(2561, refusal.HeaderWidth);
+        Assert.Equal(1440, refusal.HeaderHeight);
 
-        AssertRejected(Draft(screenshot: image), BundleEntryNames.ScreenshotPng);
+        AssertValid(BugReportBundleWriter.Write(Draft(screenshot: new ReportImage("image/png", 2560, 1440, TestBundles.Png(2560, 1440)))));
     }
 
     [Fact]
     public void Jpeg_screenshot_that_is_not_a_jpeg_throws()
     {
-        var image = new ReportImage("image/jpeg", 8, 6, TestBundles.Png(8, 6));
+        BugReportBundleArgumentException refusal = Refused(
+            Draft(screenshot: new ReportImage("image/jpeg", 8, 6, TestBundles.Png(8, 6))), BugReportBundleRefusal.ImageHeaderUnreadable);
+        Assert.Equal("screenshot.jpg", refusal.EntryName);
+        Assert.Equal("image/jpeg", refusal.MediaType);
 
-        AssertRejected(Draft(screenshot: image), BundleEntryNames.ScreenshotJpeg);
+        AssertValid(BugReportBundleWriter.Write(Draft(screenshot: new ReportImage("image/jpeg", 8, 6, TestBundles.Jpeg(8, 6)))));
     }
 
     [Fact]
     public void Clip_frame_header_that_disagrees_with_its_record_throws()
     {
         var mismatched = new ReportClipFrame(TimeSpan.FromMilliseconds(16.5), 16.5, 4, 4, TestBundles.Jpeg(6, 3));
-        var clip = new ReportClip([Frame(0, 16.5), mismatched]);
 
-        AssertRejected(Draft(clip: clip), "clip/001.jpg");
-    }
+        BugReportBundleArgumentException refusal =
+            Refused(Draft(clip: new ReportClip([Frame(0, 16.5), mismatched])), BugReportBundleRefusal.ImageHeaderDimensionsMismatch);
+        Assert.Equal("clip/001.jpg", refusal.EntryName);
+        Assert.Equal(4, refusal.Width);
+        Assert.Equal(4, refusal.Height);
+        Assert.Equal(6, refusal.HeaderWidth);
+        Assert.Equal(3, refusal.HeaderHeight);
 
-    [Theory]
-    [InlineData("negative-offset")]
-    [InlineData("decreasing-offset")]
-    [InlineData("nan-render")]
-    [InlineData("negative-render")]
-    [InlineData("zero-width")]
-    [InlineData("tall-frame")]
-    [InlineData("null-frame")]
-    [InlineData("render-over-limit")]
-    [InlineData("offset-over-limit")]
-    public void Invalid_clip_frame_throws(string fault)
-    {
-        ReportClipFrame?[] frames = [Frame(0, 16.5), Frame(33, 16.5), Frame(49.5, 16.5)];
-        frames[2] = fault switch
-        {
-            "negative-offset" => Frame(-1, 16.5),
-            "decreasing-offset" => Frame(16.5, 16.5),
-            "nan-render" => Frame(49.5, double.NaN),
-            "negative-render" => Frame(49.5, -1),
-            "render-over-limit" => Frame(49.5, BugReportLimits.MaxRenderMilliseconds + 1),
-            "offset-over-limit" => Frame(BugReportLimits.MaxClipOffsetMilliseconds + 1, 16.5),
-            "zero-width" => frames[2]! with { Width = 0 },
-            "tall-frame" => frames[2]! with { Height = 2561 },
-            _ => null,
-        };
-        var clip = new ReportClip(frames!);
-
-        Assert.Throws<ArgumentException>(() => BugReportBundleWriter.Write(Draft(clip: clip)));
+        AssertValid(BugReportBundleWriter.Write(Draft(clip: new ReportClip([Frame(0, 16.5), mismatched with { Width = 6, Height = 3 }]))));
     }
 
     [Fact]
-    public void Clip_timing_at_the_limits_is_written_and_valid()
+    public void Null_clip_frame_throws()
     {
-        var clip = new ReportClip([Frame(0, BugReportLimits.MaxRenderMilliseconds), Frame(BugReportLimits.MaxClipOffsetMilliseconds, 16.5)]);
+        BugReportBundleArgumentException refusal = Refused(Draft(clip: ClipEndingWith(null)), BugReportBundleRefusal.ClipFrameMissing);
+        Assert.Equal(2, refusal.Index);
 
-        AssertValid(BugReportBundleWriter.Write(Draft(clip: clip)));
+        AssertValid(BugReportBundleWriter.Write(Draft(clip: ClipEndingWith(Frame(49.5, 16.5)))));
+    }
+
+    // The first frame may not start before the clip, nor a later one before the frame ahead of it. Equal offsets are written.
+    [Theory]
+    [InlineData(0, -1, 0)]
+    [InlineData(2, 16.5, 33)]
+    public void Clip_frame_that_starts_too_early_throws(int index, double offset, double earliest)
+    {
+        ReportClipFrame[] ahead = [Frame(0, 16.5), Frame(33, 16.5)];
+        ReportClip Starting(double at) => new([.. ahead[..index], Frame(at, 16.5)]);
+
+        BugReportBundleArgumentException refusal = Refused(Draft(clip: Starting(offset)), BugReportBundleRefusal.ClipOffsetDecreased);
+        Assert.Equal(index, refusal.Index);
+        Assert.Equal(offset, refusal.ActualMilliseconds);
+        Assert.Equal(earliest, refusal.MinimumMilliseconds);
+
+        AssertValid(BugReportBundleWriter.Write(Draft(clip: Starting(earliest))));
+    }
+
+    [Fact]
+    public void Clip_frame_that_starts_past_the_limit_throws()
+    {
+        BugReportBundleArgumentException refusal =
+            Refused(Draft(clip: ClipEndingWith(Frame(600001, 16.5))), BugReportBundleRefusal.ClipOffsetExceeded);
+        Assert.Equal(2, refusal.Index);
+        Assert.Equal(600001.0, refusal.ActualMilliseconds);
+        Assert.Equal(600000.0, refusal.MaximumMilliseconds);
+
+        AssertValid(BugReportBundleWriter.Write(Draft(clip: ClipEndingWith(Frame(600000, 16.5)))));
+    }
+
+    // Infinity is also past the limit, so its row proves the nonfinite branch is judged first.
+    [Theory]
+    [InlineData(double.NaN)]
+    [InlineData(double.PositiveInfinity)]
+    public void Render_time_that_is_not_finite_throws(double render)
+    {
+        BugReportBundleArgumentException refusal =
+            Refused(Draft(clip: ClipEndingWith(Frame(49.5, render))), BugReportBundleRefusal.RenderTimeNonfinite);
+        Assert.Equal(2, refusal.Index);
+        Assert.Equal(render, refusal.ActualMilliseconds);
+
+        AssertValid(BugReportBundleWriter.Write(Draft(clip: ClipEndingWith(Frame(49.5, 16.5)))));
+    }
+
+    [Theory]
+    [InlineData(-1, 0)]
+    [InlineData(60001, 60000)]
+    public void Render_time_outside_its_range_throws(double render, double limit)
+    {
+        BugReportBundleArgumentException refusal =
+            Refused(Draft(clip: ClipEndingWith(Frame(49.5, render))), BugReportBundleRefusal.RenderTimeOutsideRange);
+        Assert.Equal(2, refusal.Index);
+        Assert.Equal(render, refusal.ActualMilliseconds);
+        Assert.Equal(0.0, refusal.MinimumMilliseconds);
+        Assert.Equal(60000.0, refusal.MaximumMilliseconds);
+
+        AssertValid(BugReportBundleWriter.Write(Draft(clip: ClipEndingWith(Frame(49.5, limit)))));
     }
 
     [Theory]
@@ -598,15 +676,17 @@ public sealed class BugReportBundleWriterTests
     [Theory]
     [InlineData("null-frames")]
     [InlineData("null-media-type")]
-    public void Null_media_fields_throw_argument_exceptions(string field)
+    public void Null_media_fields_throw(string field)
     {
-        BugReportDraft draft = field == "null-frames"
-            ? Draft(clip: new ReportClip(null!))
-            : Draft(screenshot: new ReportImage(null!, 8, 6, TestBundles.Png(8, 6)));
+        (BugReportDraft refused, BugReportBundleRefusal reason, BugReportDraft control) = field == "null-frames"
+            ? (Draft(clip: new ReportClip(null!)), BugReportBundleRefusal.ClipFrameListMissing, Draft(clip: ThreeFrames()))
+            : (Draft(screenshot: new ReportImage(null!, 8, 6, TestBundles.Png(8, 6))), BugReportBundleRefusal.ScreenshotMediaUnsupported,
+                Draft(screenshot: Png(8, 6)));
 
-        Exception thrown = Record.Exception(() => BugReportBundleWriter.Write(draft));
+        BugReportBundleArgumentException refusal = Refused(refused, reason);
+        if (field == "null-media-type") Assert.Null(refusal.MediaType);
 
-        Assert.IsAssignableFrom<ArgumentException>(thrown);
+        AssertValid(BugReportBundleWriter.Write(control));
     }
 
     [Fact]
@@ -614,38 +694,51 @@ public sealed class BugReportBundleWriterTests
     {
         CapturedSection[] sections = [.. Enumerable.Range(0, 7).Select(i => Section("s" + i, "{}"))];
 
-        Assert.Throws<InvalidOperationException>(
-            () => BugReportBundleWriter.Write(Draft(sections: sections, clip: Clip(BundleEntryNames.MaxClipFrames))));
+        BugReportBundleLimitException refusal =
+            Limited(Draft(sections: sections, clip: Clip(BundleEntryNames.MaxClipFrames)), BugReportBundleRefusal.EntryCountExceeded);
+        Assert.Equal(129, refusal.ActualCount);
+        Assert.Equal(128, refusal.MaximumCount);
+
         AssertValid(BugReportBundleWriter.Write(Draft(sections: sections[..6], clip: Clip(BundleEntryNames.MaxClipFrames))));
     }
 
+    // Padding changes no clip index row, so the unpadded bundle's listed sizes plus the padding are the refused payload.
     [Fact]
     public void Bundle_over_16_MiB_throws()
     {
         int padding = (int)(BugReportLimits.MaxBundleBytes / BundleEntryNames.MaxClipFrames) + 1024;
 
-        InvalidOperationException thrown = Assert.Throws<InvalidOperationException>(
-            () => BugReportBundleWriter.Write(Draft(clip: Clip(BundleEntryNames.MaxClipFrames, padding))));
-        Assert.StartsWith("The report payloads need ", thrown.Message, StringComparison.Ordinal);
+        BugReportBundleLimitException refusal =
+            Limited(Draft(clip: Clip(BundleEntryNames.MaxClipFrames, padding)), BugReportBundleRefusal.PayloadBytesExceeded);
+        Assert.Equal(16777216L, refusal.MaximumBytes);
+
+        byte[] unpadded = BugReportBundleWriter.Write(Draft(clip: Clip(BundleEntryNames.MaxClipFrames)));
+        AssertValid(unpadded);
+        Assert.Equal(Manifest(unpadded).Entries.Sum(e => e.Size) + 120L * padding, refusal.ActualBytes);
     }
 
+    // The payloads total exactly the limit, which the payload rule admits, so only the zip framing pushes the archive over
+    // it. Shrinking the screenshot by the reported excess leaves an archive of exactly the limit, which is written.
     [Fact]
     public void Archive_over_16_MiB_throws_when_the_payloads_alone_fit()
     {
-        // The payloads total 10 bytes under the limit, so only the zip headers push the archive over it.
+        const int Limit = 16777216;
         CapturedSection[] sections = [Section("build", "{}")];
-        int pngBytes = (int)BugReportLimits.MaxBundleBytes - 2 - 10;
-        byte[] png = [.. TestBundles.Png(8, 6), .. new byte[pngBytes - TestBundles.Png(8, 6).Length]];
+        byte[] header = TestBundles.Png(8, 6);
+        BugReportDraft Carrying(int pngBytes)
+        {
+            byte[] png = [.. header, .. new byte[pngBytes - header.Length]];
+            return Draft(sections: sections, screenshot: new ReportImage("image/png", 8, 6, png));
+        }
 
-        InvalidOperationException thrown = Assert.Throws<InvalidOperationException>(
-            () => BugReportBundleWriter.Write(Draft(sections: sections, screenshot: new ReportImage("image/png", 8, 6, png))));
-        Assert.StartsWith("The written archive is ", thrown.Message, StringComparison.Ordinal);
-    }
+        BugReportBundleLimitException refusal = Limited(Carrying(Limit - 2), BugReportBundleRefusal.ArchiveBytesExceeded);
+        Assert.Equal(16777216L, refusal.MaximumBytes);
+        long excess = refusal.ActualBytes!.Value - Limit;
+        Assert.True(excess > 0);
 
-    static void AssertRejected(BugReportDraft draft, string entry)
-    {
-        ArgumentException thrown = Assert.Throws<ArgumentException>(() => BugReportBundleWriter.Write(draft));
-        Assert.Contains(entry, thrown.Message, StringComparison.Ordinal);
+        byte[] bundle = BugReportBundleWriter.Write(Carrying(Limit - 2 - (int)excess));
+        Assert.Equal(Limit, bundle.Length);
+        AssertValid(bundle);
     }
 
     sealed class TestSection(string key, Action<Utf8JsonWriter> body) : IBugReportSection

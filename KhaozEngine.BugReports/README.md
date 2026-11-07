@@ -50,10 +50,10 @@ lines in their original order. Missing or malformed log data gives an empty tail
 
 ## Refusals
 
-A refused draft field or section throws `BugReportBundleArgumentException`, which derives from `ArgumentException`
-and keeps `ParamName` as `draft`. `Reason` is the rule. A screenshot or clip field still throws a plain
-`ArgumentException`, a broken entry or archive limit a plain `InvalidOperationException`, and a null draft
-`ArgumentNullException`.
+A refused draft field, section, screenshot or clip throws `BugReportBundleArgumentException`, which derives from
+`ArgumentException` and keeps `ParamName` as `draft`. A bundle that would break its entry or byte limit throws
+`BugReportBundleLimitException`, which derives from `InvalidOperationException`. Both carry `Reason`, the rule, from the
+one `BugReportBundleRefusal` enum. A null draft throws `ArgumentNullException`.
 
 | `Reason` | What it refuses | Identifiers |
 | --- | --- | --- |
@@ -72,8 +72,26 @@ and keeps `ParamName` as `draft`. `Reason` is the rule. A screenshot or clip fie
 | `SectionKeyDuplicate` | a section key an earlier section uses, `Index` being the later one | `Index`, `SectionKey` |
 | `SectionBytesExceeded` | sections whose running total passes the limit, `ActualBytes` being the total through the section that crossed it | `ActualBytes`, `MaximumBytes` (1048576) |
 | `SectionJsonInvalid` | a section that is not one JSON object within the depth limit, with unique property names and decodable strings | `SectionKey`, `MaximumDepth` (64) |
+| `ScreenshotMediaUnsupported` | a screenshot media type other than `image/png` or `image/jpeg`, null included | `MediaType` |
+| `ImageDimensionsOutsideRange` | a screenshot or clip frame whose recorded width or height is outside the edge range | `EntryName`, `Width`, `Height`, `MinimumPixels` (1), `MaximumPixels` (2560) |
+| `ImageHeaderUnreadable` | a screenshot or clip frame whose bytes do not start with a readable header of its media type | `EntryName`, `MediaType` |
+| `ImageHeaderDimensionsMismatch` | a screenshot or clip frame whose header size differs from its record | `EntryName`, `Width`, `Height`, `HeaderWidth`, `HeaderHeight` |
+| `ClipFrameListMissing` | a clip whose frame list is null | none |
+| `ClipFrameCountExceeded` | a clip over the frame limit | `ActualCount`, `MaximumCount` (120) |
+| `ClipFrameMissing` | a null entry in the clip frame list | `Index` |
+| `ClipOffsetDecreased` | a clip frame that starts before the frame ahead of it, or the first before the clip | `Index`, `ActualMilliseconds`, `MinimumMilliseconds` |
+| `ClipOffsetExceeded` | a clip frame that starts past the offset limit | `Index`, `ActualMilliseconds`, `MaximumMilliseconds` (600000) |
+| `RenderTimeNonfinite` | a clip frame whose render time is NaN or infinite | `Index`, `ActualMilliseconds` |
+| `RenderTimeOutsideRange` | a clip frame whose finite render time is negative or over the limit | `Index`, `ActualMilliseconds`, `MinimumMilliseconds` (0), `MaximumMilliseconds` (60000) |
+| `EntryCountExceeded` | a bundle needing more zip entries than the limit, the manifest included (`BugReportBundleLimitException`) | `ActualCount`, `MaximumCount` (128) |
+| `PayloadBytesExceeded` | a bundle whose entries after the manifest total more than the limit (`BugReportBundleLimitException`) | `ActualBytes`, `MaximumBytes` (16777216) |
+| `ArchiveBytesExceeded` | a bundle whose written archive, zip framing included, is longer than the limit (`BugReportBundleLimitException`) | `ActualBytes`, `MaximumBytes` (16777216) |
 
 `FieldName` is the `BugReportDraft` property: `ReportId`, `GameId`, `Category`, `Description` or `Sections`.
+`EntryName` is the bundle entry the image would be written as, such as `screenshot.png` or `clip/002.jpg`. `Width` and
+`Height` are the recorded size in pixels, and `HeaderWidth` and `HeaderHeight` the size the encoded header holds.
+`Index` is the position in the section list for a section reason and in the clip frame list for a clip frame reason.
+`MinimumMilliseconds` for `ClipOffsetDecreased` is the offset of the frame ahead, or zero for the first frame.
 
 ## Sinks
 

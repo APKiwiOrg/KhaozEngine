@@ -188,11 +188,16 @@ internal static class ContentBundleTextCompatibility
     /// <param name="formatVersion">The declared format.</param>
     public static ContentAuthoringException UnsupportedFormat(int formatVersion)
         => new(
+            ContentAuthoringRefusal.BundleVersionUnsupported,
             FormattableString.Invariant(
                 $"The bundle declares format version {formatVersion} and this build reads {ContentBundle.CurrentFormatVersion} and {ContentBundle.TextFormatVersion}. A format version is a refusal of the whole document rather than a best-effort partial read."),
             default,
             0,
-            ContentAuthoringException.BundleFormatReason);
+            ContentAuthoringException.BundleFormatReason)
+        {
+            ActualFormatVersion = formatVersion,
+            SupportedFormatVersions = [ContentBundle.CurrentFormatVersion, ContentBundle.TextFormatVersion],
+        };
 
     /// <summary>Type, id, field and language, ordinally, so two exports of one version write the same bytes.</summary>
     static int Order(ContentTextRevision left, ContentTextRevision right)

@@ -68,7 +68,10 @@ is required for an apply or an authoring host.
 
 `ContentAuthoringException` is the one exception this package throws. It carries the offending content type,
 the definition id and a stable `Reason` token beside the message, and an operator's log line keys on the
-reason rather than on the message.
+reason rather than on the message. Where a throw site names its exact rule, `Refusal` carries a
+`ContentAuthoringRefusal` member and the identifiers that member documents, beside the unchanged `Reason`
+token. `Refusal` is null for an instance built through a constructor that takes none, so a caller reads
+`Reason` then. The [bundle document refusals](#bundle-document-refusals) carry one.
 
 ## The four edit operations
 
@@ -1016,7 +1019,8 @@ generated. Reading is total for shape: a document this build cannot read is a re
 never a half-built bundle. Shape includes MAGNITUDE, because JSON has one number type and a member the reader
 wants as an integer can be handed `1.5`, an id past `int.MaxValue` or `1e308`. Type ids must also fit their
 1 to 65,535 domain, and field kinds, visibility values and remap kinds must be known enum values. Each bad
-value is refused naming the member, the same as a missing one.
+value is refused naming the member, the same as a missing one. The refusal's `JsonPath` is that member's
+rooted path, as the table below lists.
 
 `ContentBundleJson.ReadFormatVersion` is the precheck for a consumer that must inspect the declared format
 before reading or combining a bundle. It uses the same JSONC policy and format member rules as `Read`, so both
@@ -1027,9 +1031,39 @@ report it. `Read` remains the operation that refuses a format version this build
 This build reads and writes two formats. `ContentBundle.CurrentFormatVersion`, 1, is ROW-ONLY and text free by
 contract, and a format 1 document carrying a `text` member is refused. `ContentBundle.TextFormatVersion`, 2,
 adds the protected `text` section, `ContentBundle.TextState`, of declared languages and complete values, and a
-format 2 document without it is refused. Any other format is refused whole with `bundle-format`.
-`ImportBundleAsync` is the row-only route and imports format 1 only. [Catalog text](#catalog-text) covers the
-text import and the export format rule.
+format 2 document without it is refused. Any other format is refused whole with `bundle-format` and
+`BundleVersionUnsupported`. `ImportBundleAsync` is the row-only route and imports format 1 only.
+[Catalog text](#catalog-text) covers the text import and the export format rule.
+
+### Bundle document refusals
+
+Every refusal `ContentBundleJson` raises for the document's own shape carries the `bundle-format` token in
+`Reason` and a `ContentAuthoringRefusal` in `Refusal`. Messages remain developer prose, so branch on these.
+`JsonPath` is rooted at `$` with zero-based indices, such as `$.types[0].fields[1].kind` or
+`$.text.values[0].typeId`. A member-shape guard reports its branches in its own order: an absent member is
+`BundleMemberRequired`, and a present member of another JSON kind is `BundleMemberKindInvalid`. The JSON kind
+a member takes is fixed by its path. An integer that does not fit carries only its path, never a guessed
+value.
+
+| Refusal | Refused rule | Identifiers |
+| --- | --- | --- |
+| `BundleJsonMalformed` | Text that is not a JSON document | `JsonPath`, `LineNumber`, `BytePositionInLine` as the reader reports them, each null when it reports none. The reader's `JsonException` is the inner exception |
+| `BundleRootObjectRequired` | A root that is not an object | `JsonPath` (`$`), `ActualJsonKind` |
+| `BundleVersionUnsupported` | A format version other than 1 or 2, on read, write or import | `ActualFormatVersion`, `SupportedFormatVersions` (1 and 2, an owned read-only snapshot) |
+| `BundleUnexpectedTextSection` | A format 1 document carrying `text` | `JsonPath` (`$.text`), `ActualFormatVersion` (1) |
+| `BundleTextSectionMissing` | Writing a format 2 bundle that lost its text section | `ActualFormatVersion` (2) |
+| `BundleMemberRequired` | A required member is absent | `JsonPath` |
+| `BundleMemberKindInvalid` | A member has another JSON kind | `JsonPath`, `ActualJsonKind` |
+| `BundleInt32Unrepresentable` | A number that is not a 32-bit integer, `formatVersion` included | `JsonPath` |
+| `BundleInt64Unrepresentable` | A number that is not a 64-bit integer (`familyId`, a row's `number`) | `JsonPath` |
+| `BundleTypeIdOutsideRange` | A type id outside 1 to 65,535 | `JsonPath`, `ActualInteger`, `MinimumInteger` (1), `MaximumInteger` (65,535) |
+| `BundleFieldKindUnknown` | An undefined `ContentFieldKind` | `JsonPath`, `ActualInteger` |
+| `BundleVisibilityUnknown` | An undefined `ContentVisibility` | `JsonPath`, `ActualInteger` |
+| `BundleRemapKindUnknown` | An undefined `RemapRuleKind` | `JsonPath`, `ActualInteger` |
+| `BundleHexMalformed` | A bytes or payload string that is not hex, by odd length or a non-hex character. Either letter case reads | `JsonPath` |
+
+A value a lower constructor refuses, such as a malformed family, schema, field value, rule or text section
+entry, still carries `bundle-format` with no `Refusal`, and its message keeps the constructor's own words.
 
 An import runs through the ORDINARY publish and there is no second mechanism. It restores the families and
 their blocks verbatim, including each family's `IsRetired` flag through family reads and later exports in
@@ -1163,7 +1197,8 @@ discard audited. A draft a row-only route built is never a proof and always retu
 
 `ImportTextBundleAsync` imports a complete bundle into an EMPTY store, rows, ids, families, rules, declarations
 and values together, as one complete version 1. Format 1 imports as empty text. A format 2 bundle that lost its
-section and any later format are refused with `bundle-format`, a value naming a row the bundle does not carry
+section and any later format are refused with `bundle-format`, the later format with `Refusal`
+`BundleVersionUnsupported`, a value naming a row the bundle does not carry
 with `unknown-row`, and an ineligible target with `text-target-ineligible`, all before anything is reset or
 staged. An open draft holding any row, text or language work refuses the import with `draft-open` and stays as
 it was. A later refusal restores the empty store. Every declared language keeps its wire spelling, empty ones

@@ -23331,10 +23331,16 @@ ContentBundle bundle = ContentBundleJson.Read(json);
 ```
 
 `ReadFormatVersion` and `Read` share the same JSONC parsing and format member rules. Both accept comments and
-trailing commas. Both refuse malformed JSON, a nonobject root, a missing version or a version that is not a
-32-bit integer with `ContentAuthoringException`. The precheck returns an unsupported integer for the caller to
-inspect, while `Read` refuses any version other than `ContentBundle.CurrentFormatVersion`, the row-only format 1,
-and `ContentBundle.TextFormatVersion`, format 2 with its `text` section.
+trailing commas. Both refuse malformed JSON (`BundleJsonMalformed`), a nonobject root
+(`BundleRootObjectRequired`), a missing version (`BundleMemberRequired`) or a version that is not a 32-bit
+integer (`BundleMemberKindInvalid` or `BundleInt32Unrepresentable`) with `ContentAuthoringException`. Each
+carries the `bundle-format` token in `Reason`, the `ContentAuthoringRefusal` in `Refusal` and the rooted
+`JsonPath` `$.formatVersion` where a member is at fault. The precheck returns an unsupported integer for the
+caller to inspect, while `Read` refuses any version other than `ContentBundle.CurrentFormatVersion`, the
+row-only format 1, and `ContentBundle.TextFormatVersion`, format 2 with its `text` section, as
+`BundleVersionUnsupported` with `ActualFormatVersion` and `SupportedFormatVersions`. The
+[bundle document refusal table](../KhaozEngine.Catalog.Authoring/README.md#bundle-document-refusals) lists every
+shape rule and its identifiers.
 
 ### Authoring catalog text
 

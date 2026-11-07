@@ -69,8 +69,9 @@ internal static class ContentBundleTextJson
                 $"A format {ContentBundle.TextFormatVersion} bundle carries a '{SectionName}' object, and this one does not. A bundle that lost its text section is never read as text free."));
         }
 
+        string sectionPath = ContentBundleJson.Member("$", SectionName);
         var languages = new List<ContentTextLanguageDeclaration>();
-        foreach (JsonElement element in ContentBundleJson.Array(section, "languages"))
+        foreach (JsonElement element in ContentBundleJson.Array(section, sectionPath, "languages"))
         {
             string language = StrictText(element, "language");
             string wireTag = StrictText(element, "wireTag");
@@ -78,10 +79,12 @@ internal static class ContentBundleTextJson
                 () => new ContentTextLanguageDeclaration(language, wireTag), "A bundle text language is malformed: "));
         }
 
+        string valuesPath = ContentBundleJson.Member(sectionPath, "values");
+        int valueIndex = 0;
         var values = new List<ContentBundleTextValue>();
-        foreach (JsonElement element in ContentBundleJson.Array(section, "values"))
+        foreach (JsonElement element in ContentBundleJson.Array(section, sectionPath, "values"))
         {
-            ContentTypeId type = ContentBundleJson.TypeId(element, "typeId");
+            ContentTypeId type = ContentBundleJson.TypeId(element, ContentBundleJson.Element(valuesPath, valueIndex++), "typeId");
             string key = StrictText(element, "key");
             string field = StrictText(element, "field");
             string language = StrictText(element, "language");

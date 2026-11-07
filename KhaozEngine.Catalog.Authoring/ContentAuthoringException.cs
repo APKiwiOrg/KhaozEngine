@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Text.Json;
 
 namespace KhaozEngine.Catalog.Authoring;
 
@@ -16,9 +17,15 @@ namespace KhaozEngine.Catalog.Authoring;
 /// <see cref="Reason"/> is what an operator's log line and a counter key on, never the message, the same
 /// rule the pack decoders' reason tokens follow.
 /// </para>
+/// <para>
+/// <see cref="Refusal"/> names the exact rule where a throw site carries one, with the identifiers that member
+/// documents. It sits beside <see cref="Reason"/> and never replaces it.
+/// </para>
 /// </summary>
 public sealed class ContentAuthoringException : Exception
 {
+    readonly IReadOnlyList<int>? _supportedFormatVersions;
+
     /// <summary>
     /// A second edit named a target the open draft already holds under a DIFFERENT operation (spec 4.4). A
     /// draft holds one pending intent per row, so the second edit is refused rather than silently flipping
@@ -150,7 +157,10 @@ public sealed class ContentAuthoringException : Exception
     /// </summary>
     public const string NoPackStoreReason = "no-pack-store";
 
-    /// <summary>A bundle document could not be read: a format version this build does not know, or a malformed member.</summary>
+    /// <summary>
+    /// A bundle document could not be read: a format version this build does not know, or a malformed member.
+    /// A shape rule <c>ContentBundleJson</c> checks itself also names its <see cref="Refusal"/> and JSON path.
+    /// </summary>
     public const string BundleFormatReason = "bundle-format";
 
     /// <summary>
@@ -267,6 +277,88 @@ public sealed class ContentAuthoringException : Exception
     {
         ArgumentNullException.ThrowIfNull(findings);
         Findings = findings;
+    }
+
+    /// <summary>Creates the exception carrying the exact rule it refused beside the legacy reason token.</summary>
+    /// <param name="refusal">The rule that was refused.</param>
+    /// <param name="message">The human-readable refusal.</param>
+    /// <param name="type">The content type the refusal is about, or the default when it is about none.</param>
+    /// <param name="id">The definition id, or 0 when the refusal is about the store as a whole.</param>
+    /// <param name="reason">The stable legacy reason token.</param>
+    public ContentAuthoringException(
+        ContentAuthoringRefusal refusal,
+        string message,
+        ContentTypeId type,
+        int id,
+        string? reason)
+        : this(message, type, id, reason)
+    {
+        Refusal = refusal;
+    }
+
+    /// <summary>Creates the exception carrying the exact rule it refused and the fault that caused it.</summary>
+    /// <param name="refusal">The rule that was refused.</param>
+    /// <param name="message">The human-readable refusal.</param>
+    /// <param name="type">The content type the refusal is about, or the default when it is about none.</param>
+    /// <param name="id">The definition id, or 0 when the refusal is about the store as a whole.</param>
+    /// <param name="reason">The stable legacy reason token.</param>
+    /// <param name="innerException">The fault the refusal reports.</param>
+    public ContentAuthoringException(
+        ContentAuthoringRefusal refusal,
+        string message,
+        ContentTypeId type,
+        int id,
+        string? reason,
+        Exception innerException)
+        : base(message, innerException)
+    {
+        Refusal = refusal;
+        Type = type;
+        Id = id;
+        Reason = reason;
+    }
+
+    /// <summary>
+    /// The exact rule refused, or null when the instance was built through a constructor that takes no
+    /// refusal. Read <see cref="Reason"/> then.
+    /// </summary>
+    public ContentAuthoringRefusal? Refusal { get; }
+
+    /// <summary>
+    /// The rooted JSON path (<c>$</c>, <c>$.types[0].typeId</c>) of the bundle member a document refusal is
+    /// about, or null. For <see cref="ContentAuthoringRefusal.BundleJsonMalformed"/> it is the reader's own
+    /// path, null when the reader reports none.
+    /// </summary>
+    public string? JsonPath { get; init; }
+
+    /// <summary>The zero-based line the JSON reader stopped at, for
+    /// <see cref="ContentAuthoringRefusal.BundleJsonMalformed"/>, null when the reader reports none.</summary>
+    public long? LineNumber { get; init; }
+
+    /// <summary>The zero-based byte offset in that line, for
+    /// <see cref="ContentAuthoringRefusal.BundleJsonMalformed"/>, null when the reader reports none.</summary>
+    public long? BytePositionInLine { get; init; }
+
+    /// <summary>The JSON kind the refused member actually has, or null.</summary>
+    public JsonValueKind? ActualJsonKind { get; init; }
+
+    /// <summary>The integer a refused member actually holds, once it was read as a 32-bit integer, or null.</summary>
+    public int? ActualInteger { get; init; }
+
+    /// <summary>The smallest integer the refused member admits, inclusive, or null.</summary>
+    public int? MinimumInteger { get; init; }
+
+    /// <summary>The largest integer the refused member admits, inclusive, or null.</summary>
+    public int? MaximumInteger { get; init; }
+
+    /// <summary>The bundle format version the refused bundle declares, or null.</summary>
+    public int? ActualFormatVersion { get; init; }
+
+    /// <summary>The bundle format versions this build reads and writes, as an owned read-only snapshot, or null.</summary>
+    public IReadOnlyList<int>? SupportedFormatVersions
+    {
+        get => _supportedFormatVersions;
+        init => _supportedFormatVersions = value is null ? null : Array.AsReadOnly<int>([.. value]);
     }
 
     /// <summary>The content type the refusal is about. The default type id 0 means none.</summary>

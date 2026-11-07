@@ -141,23 +141,31 @@ public sealed partial class TextBundleTests
                 1, fromCompanion.StoreEpoch, 1, fromCompanion.Types, fromCompanion.Rows, fromCompanion.Families, fromCompanion.Rules)));
     }
 
+    /// <summary>
+    /// A null refusal marks a defect a text constructor refuses, which reaches the document only as prose and
+    /// so carries the bundle-format token alone.
+    /// </summary>
     [Theory]
-    [InlineData("alias-declarations")]
-    [InlineData("alias-values")]
-    [InlineData("missing-section")]
-    [InlineData("lone-surrogate")]
-    [InlineData("oversized-value")]
-    [InlineData("bad-language")]
-    [InlineData("empty-key")]
-    [InlineData("text-in-format-one")]
-    [InlineData("future-version")]
-    public void A_malformed_text_document_is_refused_whole(string defect)
+    [InlineData("alias-declarations", null, null)]
+    [InlineData("alias-values", null, null)]
+    [InlineData("missing-section", null, null)]
+    [InlineData("lone-surrogate", null, null)]
+    [InlineData("oversized-value", null, null)]
+    [InlineData("bad-language", null, null)]
+    [InlineData("empty-key", null, null)]
+    [InlineData("zero-type-id", ContentAuthoringRefusal.BundleTypeIdOutsideRange, "$.text.values[0].typeId")]
+    [InlineData("text-in-format-one", ContentAuthoringRefusal.BundleUnexpectedTextSection, "$.text")]
+    [InlineData("future-version", ContentAuthoringRefusal.BundleVersionUnsupported, null)]
+    public void A_malformed_text_document_is_refused_whole(string defect, ContentAuthoringRefusal? refusal, string? path)
     {
         string json = Document(defect);
 
         ContentAuthoringException refused = Assert.Throws<ContentAuthoringException>(() => ContentBundleJson.Read(json));
 
         Assert.Equal(ContentAuthoringException.BundleFormatReason, refused.Reason);
+        Assert.Equal(refusal, refused.Refusal);
+        Assert.Equal(path, refused.JsonPath);
+        Assert.Single(ContentBundleJson.Read(Document("none")).TextState!.Values);
     }
 
     [Fact]
@@ -210,6 +218,9 @@ public sealed partial class TextBundleTests
         Assert.Equal(ContentAuthoringException.BundleFormatReason, companion.Reason);
         var written = Assert.Throws<ContentAuthoringException>(() => ContentBundleJson.Write(stripped));
         Assert.Equal(ContentAuthoringException.BundleFormatReason, written.Reason);
+        Assert.Equal(ContentAuthoringRefusal.BundleTextSectionMissing, written.Refusal);
+        Assert.Equal(ContentBundle.TextFormatVersion, written.ActualFormatVersion);
+        Assert.NotEmpty(ContentBundleJson.Write(Rebuild(stripped, ContentBundle.CurrentFormatVersion)));
         var context = Assert.Throws<ContentAuthoringException>(() => new ContentUpgradeContext(1, stripped, TextRegistry()));
         Assert.Equal(ContentAuthoringException.BundleFormatReason, context.Reason);
         Assert.Empty(await destination.ListVersionsAsync());
@@ -279,6 +290,7 @@ public sealed partial class TextBundleTests
         string value = "Sword";
         string language = "en-us";
         string key = "sword";
+        int typeId = 1024;
         int format = 2;
         string extra = string.Empty;
         switch (defect)
@@ -301,6 +313,9 @@ public sealed partial class TextBundleTests
             case "empty-key":
                 key = string.Empty;
                 break;
+            case "zero-type-id":
+                typeId = 0;
+                break;
             case "text-in-format-one":
                 format = 1;
                 break;
@@ -314,7 +329,7 @@ public sealed partial class TextBundleTests
             : FormattableString.Invariant($$"""
                 , "text": {
                   "languages": {{languages}},
-                  "values": [ { "typeId": 1024, "key": "{{key}}", "field": "name", "language": "{{language}}", "value": "{{value}}" }{{extra}} ]
+                  "values": [ { "typeId": {{typeId}}, "key": "{{key}}", "field": "name", "language": "{{language}}", "value": "{{value}}" }{{extra}} ]
                 }
                 """);
         return FormattableString.Invariant($$"""

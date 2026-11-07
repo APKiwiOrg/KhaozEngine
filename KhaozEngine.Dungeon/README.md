@@ -47,24 +47,36 @@ checks, throwing `DungeonJsonException`. Its `Reason`, from the `DungeonJsonRefu
 the identifiers below name the offending member. The message is prose naming the same member in its own camelCase
 spelling, never a contract. Layout JSON preserves `CeilingMode` and the resolved `CeilingHeightMeters`. Older
 layouts without those optional fields load as `Open` with a zero ceiling height. Layout loading rejects a negative
-or non-finite persisted ceiling height before constructing the layout. The layout content checks (dimensions,
-ceiling height, grid, rooms, edges, keys and markers) do not carry a `Reason` yet.
+or non-finite persisted ceiling height before constructing the layout.
 
 | `Reason` | What it refuses | Identifiers |
 | --- | --- | --- |
 | `JsonMalformed` | config or layout text that is not well-formed JSON, with the reader's exception as `InnerException` | `Section`, `JsonPath`, `LineNumber`, `BytePositionInLine` |
 | `RootObjectRequired` | a config or layout whose root is not a JSON object | `Section` |
 | `JsonMemberUnconvertible` | a member whose value cannot convert to its type, with the deserializer's exception as `InnerException` | `Section`, `JsonPath` (the reader's path, such as `$.roomCountTarget`) |
-| `PositiveValueRequired` | a config `cellSizeMeters`, `floorHeightMeters` or set `ceilingHeightMeters` not above zero | `JsonPath`, `ActualNumber` |
+| `PositiveValueRequired` | a config `cellSizeMeters`, `floorHeightMeters` or set `ceilingHeightMeters`, or a layout `width`, `depth`, `floors`, `cellSizeMeters` or `floorHeightMeters`, not above zero | `JsonPath`, `ActualNumber` |
 | `IntegerBelowMinimum` | a config `roomMinTiles`, `roomCountTarget`, `maxFloors`, `criticalPathTarget`, `corridorMinWidth` or `hallMinLengthTiles` below 1 | `JsonPath`, `ActualInteger`, `MinimumInteger` (1) |
 | `RangeUnordered` | a config `roomMinTiles`, `corridorMinWidth` or `hallMinLengthTiles` above its maximum, `JsonPath` naming the minimum | `JsonPath`, `ActualMinimum`, `ActualMaximum` |
 | `NonnegativeValueRequired` | a negative config `loopEdgeBudget`, `lockCount`, `spawnMarkersPerRoomMax` or `lootMarkersPerRoomMax` | `JsonPath`, `ActualInteger`, `MinimumInteger` (0) |
+| `NonnegativeValueRequired` | a negative layout `ceilingHeightMeters`, negative infinity included | `JsonPath`, `ActualNumber`, `MinimumNumber` (0) |
 | `PercentageOutsideRange` | a config `hallChancePercent` outside 0 to 100 | `JsonPath`, `ActualInteger`, `MinimumInteger` (0), `MaximumInteger` (100) |
 | `RoomMarginInsufficient` | a config `plotWidthTiles` or `plotDepthTiles` below `roomMaxTiles` + 2 | `JsonPath`, `ActualInteger`, `MinimumInteger` |
 | `HallMarginInsufficient` | with halls enabled, a config `plotWidthTiles` or `plotDepthTiles` below `hallMaxLengthTiles` + 2 | `JsonPath`, `ActualInteger`, `MinimumInteger` |
+| `NumberNonfinite` | a layout `ceilingHeightMeters` of positive infinity, such as `1e1000` | `JsonPath`, `ActualNumber` |
+| `NullValue` | a JSON null for a layout section (`grid`, `rooms`, `edges`, `keys`, `markers`, `stats`), a grid floor or row, a room, edge, key or marker entry, or an edge `path` or `doors` or a marker `tags`. An absent section loads as empty | `JsonPath`, such as `rooms[0]` or `edges[2].path` |
+| `GridFloorCountMismatch` | a `grid` whose floor count is not the layout's `floors` | `JsonPath` (`grid`), `ActualCount`, `ExpectedCount` |
+| `GridRowCountMismatch` | a grid floor whose row count is not the layout's `depth` | `JsonPath` (`grid[f]`), `Floor`, `ActualCount`, `ExpectedCount` |
+| `GridColumnCountMismatch` | a grid row whose length is not the layout's `width` | `JsonPath` (`grid[f][r]`), `Floor`, `Row`, `ActualCount`, `ExpectedCount` |
+| `RoomIdDuplicate` | a room whose id an earlier room uses | `JsonPath` (`rooms[i].id`), `Index`, `RoomId` |
+| `ReferencedRoomMissing` | an edge `roomA` or `roomB`, or a key `roomId`, that names no room | `JsonPath` (such as `edges[i].roomA`), `Index`, `RoomId` |
+| `ReferencedLockMissing` | a key `lockId` that no edge carries as its lock | `JsonPath` (`keys[i].lockId`), `Index`, `LockId` |
+| `GridCharacterUnknown` | a grid character that names no cell kind | `JsonPath` (the row, `grid[f][r]`), `Floor`, `Row`, `Column`, `Character` |
 
 The config rules are the ones `DungeonConfig.Validate` checks, in its order, so the first broken rule is the one
 reported. `Validate` itself still throws a plain `ArgumentException` whose `ParamName` is the property.
+The layout checks run sizes and the ceiling height first, then null sections, the grid shape, rooms, edges, keys
+and markers, with each entry's null check before its other rules, and the grid characters last, so the first
+broken rule is the one reported.
 
 ## Baking into a `MapDocument` (`DungeonMapDocEmitter`)
 
@@ -122,8 +134,10 @@ kit.Map(DungeonPiece.StairDown, "my_landing");
 kit.Map(DungeonPiece.Ceiling, "my_ceiling");   // only emitted when CeilingMode is Roofed
 ```
 
-`Require(piece)` throws `InvalidOperationException` naming the missing piece if a mapping is absent, so a
-partially-configured kit fails loudly at bake/stamp time rather than silently dropping content.
+`Require(piece)` throws `DungeonKitException`, which derives from `InvalidOperationException`, if a mapping is
+absent, so a partially-configured kit fails loudly at bake/stamp time rather than silently dropping content. Its
+`Reason` is `DungeonKitRefusal.PieceUnmapped` and its `Piece` names the missing piece. The message is prose, never a
+contract.
 `DungeonKitMap.Greybox()` maps all six pieces to the placeholder ids `dungeon_floor`/`dungeon_wall`/
 `dungeon_doorframe`/`dungeon_stair`/`dungeon_landing`/`dungeon_ceiling`, matching the committed greybox kit under
 `KhaozEngine.Showcase/assets/dungeon/` (glTF pieces plus `dungeon.manifest.json`, loaded through

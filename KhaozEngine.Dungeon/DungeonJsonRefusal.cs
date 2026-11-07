@@ -39,4 +39,36 @@ public enum DungeonJsonRefusal
     /// <summary>Refuses a plot dimension too small to fit the largest hall plus a one-tile margin on each side, when
     /// halls are enabled.</summary>
     HallMarginInsufficient,
+
+    // Layout content, in the order LoadLayout checks it. Layout sizes reuse PositiveValueRequired and a negative
+    // ceiling height reuses NonnegativeValueRequired.
+
+    /// <summary>Refuses a layout ceiling height that is positive infinity. A negative value, negative infinity
+    /// included, is <see cref="NonnegativeValueRequired"/>.</summary>
+    NumberNonfinite,
+
+    /// <summary>Refuses a JSON null for a layout section, an entry in one of its arrays or a list member of an entry.
+    /// An absent section loads as empty.</summary>
+    NullValue,
+
+    /// <summary>Refuses a grid whose floor array count differs from the layout's <c>floors</c>.</summary>
+    GridFloorCountMismatch,
+
+    /// <summary>Refuses a grid floor whose row string count differs from the layout's <c>depth</c>.</summary>
+    GridRowCountMismatch,
+
+    /// <summary>Refuses a grid row string whose length differs from the layout's <c>width</c>.</summary>
+    GridColumnCountMismatch,
+
+    /// <summary>Refuses a room whose id an earlier room already uses.</summary>
+    RoomIdDuplicate,
+
+    /// <summary>Refuses an edge or key that names a room id no room carries.</summary>
+    ReferencedRoomMissing,
+
+    /// <summary>Refuses a key whose lock id no edge carries as its lock.</summary>
+    ReferencedLockMissing,
+
+    /// <summary>Refuses a grid character that names no cell kind.</summary>
+    GridCharacterUnknown,
 }

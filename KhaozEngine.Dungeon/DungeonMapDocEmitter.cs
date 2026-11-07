@@ -30,8 +30,8 @@ public static class DungeonMapDocEmitter
     /// <paramref name="target"/> is null.</exception>
     /// <exception cref="ArgumentException"><paramref name="spawnArchetypeId"/> is null, empty, or
     /// whitespace.</exception>
-    /// <exception cref="InvalidOperationException"><paramref name="kit"/> has no mapping for a
-    /// <see cref="DungeonPiece"/> the layout needs. The message names the missing piece
+    /// <exception cref="DungeonKitException"><paramref name="kit"/> has no mapping for a
+    /// <see cref="DungeonPiece"/> the layout needs, with <see cref="DungeonKitException.Piece"/> naming it
     /// (see <see cref="DungeonKitMap.Require"/>).</exception>
     public static void Emit(DungeonLayout layout, DungeonKitMap kit, DungeonPlotTransform plot, MapDocument target,
         string spawnArchetypeId = "dungeon-spawn")

@@ -111,30 +111,47 @@ namespace KhaozEngine.Tests.Dungeon
             Assert.Equal(0f, loaded.CeilingHeightMeters);
         }
 
-        [Fact]
-        public void Layout_NegativeCeilingHeight_Throws_NamingField()
+        // A saved layout with its ceilingHeightMeters replaced by a raw JSON number, so out-of-range literals such as
+        // 1e1000 (which System.Text.Json reads as infinity) reach the semantic check.
+        static string LayoutWithCeiling(string literal)
         {
             DungeonLayout layout = DungeonGenerator.Generate(Config(), 42UL);
-            JsonNode node = JsonNode.Parse(DungeonJson.SaveLayout(layout))!;
-            node["ceilingHeightMeters"] = -1f;
+            return Regex.Replace(DungeonJson.SaveLayout(layout),
+                "\"ceilingHeightMeters\":\\s*[-+0-9.eE]+", "\"ceilingHeightMeters\": " + literal,
+                RegexOptions.None, System.TimeSpan.FromSeconds(1));
+        }
 
+        // The guard checks negative before finite, so negative infinity is a negative value, not a nonfinite one.
+        [Theory]
+        [InlineData("-1", -1.0)]
+        [InlineData("-1e1000", double.NegativeInfinity)]
+        public void Layout_NegativeCeilingHeight_Throws_NamingField(string literal, double refused)
+        {
             DungeonJsonException ex = Assert.Throws<DungeonJsonException>(() =>
-                DungeonJson.LoadLayout(node.ToJsonString()));
+                DungeonJson.LoadLayout(LayoutWithCeiling(literal)));
 
-            Assert.Contains("ceilingHeightMeters", ex.Message);
+            Assert.Equal(DungeonJsonRefusal.NonnegativeValueRequired, ex.Reason);
+            Assert.Equal("ceilingHeightMeters", ex.JsonPath);
+            Assert.Equal(refused, ex.ActualNumber);
+            Assert.Equal(0.0, ex.MinimumNumber);
+
+            // The limit is zero, inclusive.
+            Assert.Equal(0f, DungeonJson.LoadLayout(LayoutWithCeiling("0")).CeilingHeightMeters);
         }
 
         [Fact]
         public void Layout_NonFiniteCeilingHeight_Throws_NamingField()
         {
-            DungeonLayout layout = DungeonGenerator.Generate(Config(), 42UL);
-            string json = Regex.Replace(DungeonJson.SaveLayout(layout),
-                "\"ceilingHeightMeters\":\\s*[-+0-9.eE]+", "\"ceilingHeightMeters\": 1e1000",
-                RegexOptions.None, System.TimeSpan.FromSeconds(1));
+            DungeonJsonException ex = Assert.Throws<DungeonJsonException>(() =>
+                DungeonJson.LoadLayout(LayoutWithCeiling("1e1000")));
 
-            DungeonJsonException ex = Assert.Throws<DungeonJsonException>(() => DungeonJson.LoadLayout(json));
+            Assert.Equal(DungeonJsonRefusal.NumberNonfinite, ex.Reason);
+            Assert.Equal("ceilingHeightMeters", ex.JsonPath);
+            Assert.Equal(double.PositiveInfinity, ex.ActualNumber);
+            Assert.Null(ex.MinimumNumber);
 
-            Assert.Contains("ceilingHeightMeters", ex.Message);
+            // The largest finite float loads.
+            Assert.Equal(float.MaxValue, DungeonJson.LoadLayout(LayoutWithCeiling("3.4028235E+38")).CeilingHeightMeters);
         }
 
         [Fact]
@@ -320,86 +337,229 @@ namespace KhaozEngine.Tests.Dungeon
             Load(section, node.ToJsonString());
         }
 
-        [Fact]
-        public void BadLayoutDims_Throws_NamingField()
-        {
-            DungeonLayout layout = DungeonGenerator.Generate(Config(), 1UL);
-            string json = DungeonJson.SaveLayout(layout).Replace("\"width\": 64", "\"width\": 0");
+        static DungeonLayout ContentLayout() => DungeonGenerator.Generate(Config(), 1UL);
 
-            DungeonJsonException ex = Assert.Throws<DungeonJsonException>(() => DungeonJson.LoadLayout(json));
-            Assert.Contains("width", ex.Message);
+        // Walks a slash-separated pointer such as /edges/0/roomA into a parsed layout and sets the last step.
+        static string LayoutWith(string pointer, JsonNode? value)
+        {
+            JsonNode root = JsonNode.Parse(DungeonJson.SaveLayout(ContentLayout()))!;
+            string[] steps = pointer.TrimStart('/').Split('/');
+            JsonNode parent = root;
+            for (int i = 0; i < steps.Length - 1; i++)
+            {
+                parent = int.TryParse(steps[i], out int index) ? parent[index]! : parent[steps[i]]!;
+            }
+
+            string last = steps[^1];
+            if (int.TryParse(last, out int lastIndex))
+            {
+                Assert.NotNull(parent[lastIndex]); // the fixture holds the entry the row replaces
+                parent[lastIndex] = value;
+            }
+            else
+            {
+                Assert.NotNull(parent[last]);
+                parent[last] = value;
+            }
+
+            return root.ToJsonString();
+        }
+
+        [Theory]
+        [InlineData("width")]
+        [InlineData("depth")]
+        [InlineData("floors")]
+        [InlineData("cellSizeMeters")]
+        [InlineData("floorHeightMeters")]
+        public void BadLayoutDims_Throws_NamingField(string member)
+        {
+            DungeonJsonException ex = Assert.Throws<DungeonJsonException>(() =>
+                DungeonJson.LoadLayout(LayoutWith("/" + member, 0)));
+
+            Assert.Equal(DungeonJsonRefusal.PositiveValueRequired, ex.Reason);
+            Assert.Equal(member, ex.JsonPath);
+            Assert.Equal(0.0, ex.ActualNumber);
+
+            DungeonJson.LoadLayout(DungeonJson.SaveLayout(ContentLayout()));
         }
 
         [Fact]
         public void BadLayoutRowLength_Throws_NamingField()
         {
-            DungeonLayout layout = DungeonGenerator.Generate(Config(), 1UL);
-            string json = DungeonJson.SaveLayout(layout);
-            string firstRow = FindFirstGridRow(json);
-            string innerContent = firstRow.Substring(1, firstRow.Length - 2);
-            string shortenedRow = "\"" + innerContent.Substring(0, innerContent.Length - 1) + "\"";
-            string json2 = json.Replace(firstRow, shortenedRow);
-
-            DungeonJsonException ex = Assert.Throws<DungeonJsonException>(() => DungeonJson.LoadLayout(json2));
-            Assert.Contains("grid", ex.Message);
-        }
-
-        [Fact]
-        public void BadLayoutRoomId_Throws_NamingField()
-        {
-            DungeonLayout layout = DungeonGenerator.Generate(Config(), 1UL);
-            string json = DungeonJson.SaveLayout(layout);
-            string json2 = Regex.Replace(json, "\"roomA\":\\s*-?\\d+", "\"roomA\": 9999", RegexOptions.None, System.TimeSpan.FromSeconds(1));
-
-            DungeonJsonException ex = Assert.Throws<DungeonJsonException>(() => DungeonJson.LoadLayout(json2));
-            Assert.Contains("roomA", ex.Message);
-        }
-
-        [Fact]
-        public void NullGridRow_Throws_NamingField()
-        {
-            DungeonLayout layout = DungeonGenerator.Generate(Config(), 1UL);
-            string json = DungeonJson.SaveLayout(layout);
-            string firstRow = FindFirstGridRow(json);
-            string json2 = json.Replace(firstRow, "null");
-
-            DungeonJsonException ex = Assert.Throws<DungeonJsonException>(() => DungeonJson.LoadLayout(json2));
-            Assert.Contains("grid", ex.Message);
-        }
-
-        [Fact]
-        public void NullRoomEntry_Throws_NamingField()
-        {
-            DungeonLayout layout = DungeonGenerator.Generate(Config(), 1UL);
+            DungeonLayout layout = ContentLayout();
+            int floor = layout.Floors - 1;
             JsonNode node = JsonNode.Parse(DungeonJson.SaveLayout(layout))!;
-            node["rooms"]![0] = null;
+            string row = node["grid"]![floor]![1]!.GetValue<string>();
+            node["grid"]![floor]![1] = row[..^1];
 
             DungeonJsonException ex = Assert.Throws<DungeonJsonException>(() => DungeonJson.LoadLayout(node.ToJsonString()));
-            Assert.Contains("rooms[0]", ex.Message);
+
+            Assert.Equal(DungeonJsonRefusal.GridColumnCountMismatch, ex.Reason);
+            Assert.Equal($"grid[{floor}][1]", ex.JsonPath);
+            Assert.Equal(floor, ex.Floor);
+            Assert.Equal(1, ex.Row);
+            Assert.Equal(layout.Width - 1, ex.ActualCount);
+            Assert.Equal(layout.Width, ex.ExpectedCount);
+
+            node["grid"]![floor]![1] = row;
+            DungeonJson.LoadLayout(node.ToJsonString());
+        }
+
+        [Fact]
+        public void MissingGridRow_Throws_GridRowCountMismatch()
+        {
+            DungeonLayout layout = ContentLayout();
+            int floor = layout.Floors - 1;
+            JsonNode node = JsonNode.Parse(DungeonJson.SaveLayout(layout))!;
+            JsonArray rows = node["grid"]![floor]!.AsArray();
+            JsonNode lastRow = rows[^1]!;
+            rows.RemoveAt(rows.Count - 1);
+
+            DungeonJsonException ex = Assert.Throws<DungeonJsonException>(() => DungeonJson.LoadLayout(node.ToJsonString()));
+
+            Assert.Equal(DungeonJsonRefusal.GridRowCountMismatch, ex.Reason);
+            Assert.Equal($"grid[{floor}]", ex.JsonPath);
+            Assert.Equal(floor, ex.Floor);
+            Assert.Null(ex.Row);
+            Assert.Equal(layout.Depth - 1, ex.ActualCount);
+            Assert.Equal(layout.Depth, ex.ExpectedCount);
+
+            rows.Add(lastRow);
+            DungeonJson.LoadLayout(node.ToJsonString());
+        }
+
+        [Fact]
+        public void ExtraGridFloor_Throws_GridFloorCountMismatch()
+        {
+            DungeonLayout layout = ContentLayout();
+            JsonNode node = JsonNode.Parse(DungeonJson.SaveLayout(layout))!;
+            JsonArray grid = node["grid"]!.AsArray();
+            grid.Add(grid[0]!.DeepClone());
+
+            DungeonJsonException ex = Assert.Throws<DungeonJsonException>(() => DungeonJson.LoadLayout(node.ToJsonString()));
+
+            Assert.Equal(DungeonJsonRefusal.GridFloorCountMismatch, ex.Reason);
+            Assert.Equal("grid", ex.JsonPath);
+            Assert.Null(ex.Floor);
+            Assert.Equal(layout.Floors + 1, ex.ActualCount);
+            Assert.Equal(layout.Floors, ex.ExpectedCount);
+
+            grid.RemoveAt(grid.Count - 1);
+            DungeonJson.LoadLayout(node.ToJsonString());
+        }
+
+        [Theory]
+        [InlineData("/edges/0/roomA", "edges[0].roomA")]
+        [InlineData("/edges/0/roomB", "edges[0].roomB")]
+        [InlineData("/keys/0/roomId", "keys[0].roomId")]
+        public void BadLayoutRoomId_Throws_NamingField(string pointer, string jsonPath)
+        {
+            DungeonJsonException ex = Assert.Throws<DungeonJsonException>(() =>
+                DungeonJson.LoadLayout(LayoutWith(pointer, 9999)));
+
+            Assert.Equal(DungeonJsonRefusal.ReferencedRoomMissing, ex.Reason);
+            Assert.Equal(jsonPath, ex.JsonPath);
+            Assert.Equal(0, ex.Index);
+            Assert.Equal(9999, ex.RoomId);
+
+            DungeonJson.LoadLayout(DungeonJson.SaveLayout(ContentLayout()));
+        }
+
+        [Fact]
+        public void UnmatchedKeyLock_Throws_ReferencedLockMissing()
+        {
+            DungeonJsonException ex = Assert.Throws<DungeonJsonException>(() =>
+                DungeonJson.LoadLayout(LayoutWith("/keys/0/lockId", 9999)));
+
+            Assert.Equal(DungeonJsonRefusal.ReferencedLockMissing, ex.Reason);
+            Assert.Equal("keys[0].lockId", ex.JsonPath);
+            Assert.Equal(0, ex.Index);
+            Assert.Equal(9999, ex.LockId);
+            Assert.Null(ex.RoomId);
+
+            DungeonJson.LoadLayout(DungeonJson.SaveLayout(ContentLayout()));
+        }
+
+        [Fact]
+        public void RepeatedRoomId_Throws_RoomIdDuplicate()
+        {
+            DungeonLayout layout = ContentLayout();
+            int firstId = layout.Rooms[0].Id;
+
+            DungeonJsonException ex = Assert.Throws<DungeonJsonException>(() =>
+                DungeonJson.LoadLayout(LayoutWith("/rooms/1/id", firstId)));
+
+            Assert.Equal(DungeonJsonRefusal.RoomIdDuplicate, ex.Reason);
+            Assert.Equal("rooms[1].id", ex.JsonPath);
+            Assert.Equal(1, ex.Index);
+            Assert.Equal(firstId, ex.RoomId);
+
+            DungeonJson.LoadLayout(DungeonJson.SaveLayout(layout));
+        }
+
+        // Every null guard, one row each: the sections, a grid floor and row, each array's entries and each entry list.
+        [Theory]
+        [InlineData("/grid", "grid")]
+        [InlineData("/rooms", "rooms")]
+        [InlineData("/edges", "edges")]
+        [InlineData("/keys", "keys")]
+        [InlineData("/markers", "markers")]
+        [InlineData("/stats", "stats")]
+        [InlineData("/grid/0", "grid[0]")]
+        [InlineData("/grid/0/0", "grid[0][0]")]
+        [InlineData("/rooms/0", "rooms[0]")]
+        [InlineData("/edges/0", "edges[0]")]
+        [InlineData("/edges/0/path", "edges[0].path")]
+        [InlineData("/edges/0/doors", "edges[0].doors")]
+        [InlineData("/keys/0", "keys[0]")]
+        [InlineData("/markers/0", "markers[0]")]
+        [InlineData("/markers/0/tags", "markers[0].tags")]
+        public void NullSectionOrEntry_Throws_NullValue_NamingThePath(string pointer, string jsonPath)
+        {
+            DungeonJsonException ex = Assert.Throws<DungeonJsonException>(() =>
+                DungeonJson.LoadLayout(LayoutWith(pointer, null)));
+
+            Assert.Equal(DungeonJsonRefusal.NullValue, ex.Reason);
+            Assert.Equal(jsonPath, ex.JsonPath);
+
+            DungeonJson.LoadLayout(DungeonJson.SaveLayout(ContentLayout()));
+        }
+
+        [Fact]
+        public void AbsentSection_LoadsEmpty_WhereANullOneIsRefused()
+        {
+            // An absent section is not a null one: it loads as empty and reaches the rule that needs its content.
+            JsonObject node = JsonNode.Parse(DungeonJson.SaveLayout(ContentLayout()))!.AsObject();
+            node.Remove("markers");
+            Assert.Empty(DungeonJson.LoadLayout(node.ToJsonString()).Markers);
+
+            node["markers"] = null;
+            DungeonJsonException ex = Assert.Throws<DungeonJsonException>(() => DungeonJson.LoadLayout(node.ToJsonString()));
+
+            Assert.Equal(DungeonJsonRefusal.NullValue, ex.Reason);
+            Assert.Equal("markers", ex.JsonPath);
         }
 
         [Fact]
         public void UnknownGridChar_Throws_NamingPosition()
         {
-            DungeonLayout layout = DungeonGenerator.Generate(Config(), 1UL);
-            string json = DungeonJson.SaveLayout(layout);
-            string firstRow = FindFirstGridRow(json);
-            string mutatedRow = "\"X" + firstRow.Substring(2);
-            string json2 = json.Replace(firstRow, mutatedRow);
+            DungeonLayout layout = ContentLayout();
+            int floor = layout.Floors - 1;
+            JsonNode node = JsonNode.Parse(DungeonJson.SaveLayout(layout))!;
+            string row = node["grid"]![floor]![2]!.GetValue<string>();
+            node["grid"]![floor]![2] = row[..3] + "X" + row[4..];
 
-            DungeonJsonException ex = Assert.Throws<DungeonJsonException>(() => DungeonJson.LoadLayout(json2));
-            Assert.Contains("grid[0][0][0]", ex.Message);
-        }
+            DungeonJsonException ex = Assert.Throws<DungeonJsonException>(() => DungeonJson.LoadLayout(node.ToJsonString()));
 
-        // Finds the first quoted row string under the "grid" property (the opening bracket of the grid array
-        // is immediately followed by nested arrays and strings, so the first quote encountered scanning
-        // forward from it is always the first row's opening quote).
-        static string FindFirstGridRow(string json)
-        {
-            int gridIndex = json.IndexOf("\"grid\"");
-            int quoteStart = json.IndexOf('"', json.IndexOf('[', gridIndex) + 1);
-            int quoteEnd = json.IndexOf('"', quoteStart + 1);
-            return json.Substring(quoteStart, quoteEnd - quoteStart + 1);
+            Assert.Equal(DungeonJsonRefusal.GridCharacterUnknown, ex.Reason);
+            Assert.Equal($"grid[{floor}][2]", ex.JsonPath);
+            Assert.Equal(floor, ex.Floor);
+            Assert.Equal(2, ex.Row);
+            Assert.Equal(3, ex.Column);
+            Assert.Equal('X', ex.Character);
+
+            node["grid"]![floor]![2] = row;
+            DungeonJson.LoadLayout(node.ToJsonString());
         }
     }
 }

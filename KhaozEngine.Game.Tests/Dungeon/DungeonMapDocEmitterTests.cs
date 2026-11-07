@@ -91,10 +91,14 @@ namespace KhaozEngine.Tests.Dungeon
             var plot = new DungeonPlotTransform(0f, 0f, 0f, 0f);
             var target = new MapDocument();
 
-            InvalidOperationException ex = Assert.Throws<InvalidOperationException>(
+            DungeonKitException ex = Assert.Throws<DungeonKitException>(
                 () => DungeonMapDocEmitter.Emit(layout, kit, plot, target));
 
-            Assert.Contains(nameof(DungeonPiece.Wall), ex.Message);
+            Assert.Equal(DungeonKitRefusal.PieceUnmapped, ex.Reason);
+            Assert.Equal(DungeonPiece.Wall, ex.Piece);
+
+            kit.Map(DungeonPiece.Wall, nameof(DungeonPiece.Wall));
+            DungeonMapDocEmitter.Emit(layout, kit, plot, new MapDocument());
         }
 
         // The first seed in the scanned range whose single-floor layout carries at least one Spawn marker,

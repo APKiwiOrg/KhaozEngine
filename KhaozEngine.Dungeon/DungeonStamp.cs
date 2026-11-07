@@ -43,8 +43,8 @@ public static class DungeonStamp
     /// kit ids through <paramref name="kit"/> and world positions/orientations through <paramref name="plot"/>.
     /// See the type doc for what each list contains.</summary>
     /// <exception cref="ArgumentNullException"><paramref name="layout"/> or <paramref name="kit"/> is null.</exception>
-    /// <exception cref="InvalidOperationException"><paramref name="kit"/> has no mapping for a
-    /// <see cref="DungeonPiece"/> the layout needs. The message names the missing piece
+    /// <exception cref="DungeonKitException"><paramref name="kit"/> has no mapping for a
+    /// <see cref="DungeonPiece"/> the layout needs, with <see cref="DungeonKitException.Piece"/> naming it
     /// (see <see cref="DungeonKitMap.Require"/>).</exception>
     public static DungeonStampResult Build(DungeonLayout layout, DungeonKitMap kit, DungeonPlotTransform plot)
     {

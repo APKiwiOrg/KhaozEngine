@@ -51,7 +51,9 @@ public sealed class DungeonKitMap
     /// <summary>
     /// Resolves the kit id mapped to <paramref name="piece"/>.
     /// </summary>
-    /// <exception cref="InvalidOperationException"><paramref name="piece"/> has no mapping.</exception>
+    /// <exception cref="DungeonKitException"><paramref name="piece"/> has no mapping, with
+    /// <see cref="DungeonKitRefusal.PieceUnmapped"/> and <see cref="DungeonKitException.Piece"/>. It derives from
+    /// <see cref="InvalidOperationException"/>.</exception>
     public string Require(DungeonPiece piece)
     {
         if (_ids.TryGetValue(piece, out var kitId))
@@ -59,7 +61,10 @@ public sealed class DungeonKitMap
             return kitId;
         }
 
-        throw new InvalidOperationException($"No kit id mapped for dungeon piece '{piece}'.");
+        throw new DungeonKitException(DungeonKitRefusal.PieceUnmapped, $"No kit id mapped for dungeon piece '{piece}'.")
+        {
+            Piece = piece,
+        };
     }
 
     /// <summary>

@@ -1003,11 +1003,28 @@ zero. **A zero there is not proof the lists are right**: both sides come from th
 divergence between the merge and the recording of it and nothing more. The independent check is a second
 merge written in the test file rather than shared with this code.
 
-**The build REFUSES rather than clamps.** A tier ordinal past `MaxTierOrdinal`, a bucket past
-`MaxBucketEntries`, a union past `int.MaxValue` and a base past `MaxGenerationTagPositions` each throw, which
-fails the boot closed. Every one of them is something the `KEC0100` band already refuses at publish, so a
-throw here means a version reached a boot without one, and the alternative to throwing is a silently
-different probability.
+**The build refuses rather than clamps.** Boot-time table checks throw `GenerationTableException`, derived
+from `InvalidOperationException`, with a required `GenerationTableRefusal Reason` and the identifiers below.
+The message is developer prose. These checks run in `ModCandidateTables.Build`, `GenerationTagSignature.Build`
+and `GenerationTables.Build`, before any runtime draw. Direct signature builds carry their supplied
+`maxTagPositions` as the limit. Normal boot uses 8.
+
+| Reason | What it refuses | Identifiers |
+| --- | --- | --- |
+| `BaseTagCountExceeded` | More authored tag positions than permitted, catalog finding `KEC0114` | `BaseId`, `ActualCount`, `MaximumCount` (8 at boot) |
+| `BucketEntryCountExceeded` | A bucket wider than its 16-bit overlap indices | `TagId`, `ModKind`, `Band`, `ActualCount`, `MaximumCount` (65,535) |
+| `BucketWeightExceeded` | A bucket's cumulative weight exceeds an int, catalog finding `KEC0113` | `TagId`, `ModKind`, `Band`, `ActualWeight`, `MaximumWeight` (2,147,483,647) |
+| `ExcludedRunCountExceeded` | Worst-case excluded runs exceed generator scratch capacity | `ActualCount`, `MaximumCount` (4,096), `AffixCount`, `WidestGroup`, `WidestBucket` |
+| `PackedModIdExceeded` | A mod id cannot fit above the tier ordinal bits | `ModId`, `MaximumModId` (134,217,727) |
+| `PoolWeightExceeded` | A signature's live union exceeds the bounded draw's int ceiling | `Signature`, `ModKind`, `Band`, `ActualWeight`, `MaximumWeight` (2,147,483,647) |
+| `RareNamePositionUncovered` | A reachable rarity has no positive-weight word at a required position, catalog finding `KEC0109` | `RarityId`, `Signature`, `Position`, `RequiredPositions` |
+| `TierOrdinalExceeded` | A tier ordinal exceeds the packed key's four bits, catalog finding `KEC0102` | `TierId`, `ActualOrdinal`, `MaximumOrdinal` (15) |
+
+`ActualCount`, `ActualWeight`, `AffixCount` and `ActualOrdinal` are nullable `long` identifiers, so refused
+values survive without narrowing. Other numeric identifiers are nullable `int`. Limits are inclusive,
+`Signature` and `Band` are zero-based, and name `Position` is one-based. Unrelated identifiers are null.
+The four fixed catalog codes are documented beside their reasons rather than repeated in a `FindingCode`
+property. A boot wrapper keeps the original refusal as `ContentLoadIndexException.InnerException`.
 
 `ModCandidateTablesIndex` is the boot-side half: an `IContentLoadIndex` registered against `mod`, so the
 tables are built at boot step 7b with no second pass wired anywhere. It owns the WHOLE of what a roll reads

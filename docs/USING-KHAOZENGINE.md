@@ -24374,6 +24374,15 @@ a process holds exactly one table set and a new content version becomes active a
 through a swap. A host either keeps the instances it constructed, as above, or reads one back off the runtime
 with `TryGetLoadIndex<ModCandidateTablesIndex>(new ContentTypeId(InstanceContentTypeIds.ModTypeId), out ...)`.
 
+Boot-time generation table checks throw `GenerationTableException`, derived from `InvalidOperationException`.
+Read its required `GenerationTableRefusal Reason` and typed identifiers, or the original refusal in
+`ContentLoadIndexException.InnerException` when boot step 7b wraps it. Reasons distinguish tag-position and
+bucket-entry limits, bucket and union weight limits, excluded-run capacity, packed mod ids and tier ordinals,
+and uncovered rarity name positions. The
+[package refusal table](../KhaozEngine.ItemInstances/README.md#the-candidate-tables-what-one-roll-reads)
+names each reason, its identifiers and inclusive limits, with the matching fixed catalog finding codes.
+Actual counts, weights, affix counts and ordinals use `long` identifiers. Messages are developer prose.
+
 **Rolling one item.** `ItemGenerator` turns (base, item level, randomness) into a canonical payload. It does
 NOT decide which base drops: that is a loot table, one package down, and the seam is deliberate.
 

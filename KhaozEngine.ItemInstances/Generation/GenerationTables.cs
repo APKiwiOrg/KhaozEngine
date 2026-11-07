@@ -59,6 +59,8 @@ public sealed class GenerationTables
     /// <param name="candidates">The candidate tables built from the same snapshot.</param>
     /// <param name="snapshot">The loaded version, read here and never again by a roll.</param>
     /// <exception cref="ArgumentNullException">Either argument is null.</exception>
+    /// <exception cref="GenerationTableException">A reachable rarity has an uncovered name position or the
+    /// worst-case excluded run count exceeds 4,096.</exception>
     public static GenerationTables Build(ModCandidateTables candidates, IContentSnapshot snapshot)
     {
         ArgumentNullException.ThrowIfNull(candidates);
@@ -76,7 +78,7 @@ public sealed class GenerationTables
     /// the failure at the seat, where the only thing left to do is drop a run and leave a mod live.
     /// </para>
     /// </summary>
-    /// <exception cref="InvalidOperationException">The worst case is past the ceiling.</exception>
+    /// <exception cref="GenerationTableException">The worst case is past the ceiling.</exception>
     static int MeasureRunsPerSlot(ModCandidateTables tables, GenerationContentTables content)
     {
         int widestGroup = 1;
@@ -99,8 +101,15 @@ public sealed class GenerationTables
         long needed = Math.Min((affixes * widestGroup) + affixes, widestBucket);
         if (needed > RunCeiling)
         {
-            throw new InvalidOperationException(FormattableString.Invariant(
-                $"A roll on this version could seat up to {needed} excluded runs in one tag table, over the ceiling of {RunCeiling}: {affixes} affixes times a widest mod group of {widestGroup} members, plus one run each, inside a widest bucket of {widestBucket} entries. Each run costs three ints per slot in every generator, and clamping the scratch down instead would leave a mod LIVE the moment the list filled."));
+            throw new GenerationTableException(GenerationTableRefusal.ExcludedRunCountExceeded, FormattableString.Invariant(
+                $"A roll on this version could seat up to {needed} excluded runs in one tag table, over the ceiling of {RunCeiling}: {affixes} affixes times a widest mod group of {widestGroup} members, plus one run each, inside a widest bucket of {widestBucket} entries. Each run costs three ints per slot in every generator, and clamping the scratch down instead would leave a mod LIVE the moment the list filled."))
+            {
+                ActualCount = needed,
+                MaximumCount = RunCeiling,
+                AffixCount = affixes,
+                WidestGroup = widestGroup,
+                WidestBucket = widestBucket,
+            };
         }
 
         return (int)Math.Max(needed, 1);

@@ -234,7 +234,7 @@ sealed class GenerationContentTables
     /// position in kind 134, and the item is named by a word list nothing in the payload says is misaligned.
     /// </para>
     /// </summary>
-    /// <exception cref="InvalidOperationException">A reachable rarity has a position no word can fill.</exception>
+    /// <exception cref="GenerationTableException">A reachable rarity has a position no word can fill.</exception>
     void RefuseUncoveredNamePositions()
     {
         for (int signature = 0; signature < SignatureCount; signature++)
@@ -252,8 +252,14 @@ sealed class GenerationContentTables
                 {
                     if (NameCumulative(signature, position).IsEmpty)
                     {
-                        throw new InvalidOperationException(FormattableString.Invariant(
-                            $"{InstanceContentFindings.RareNameCoverage}: rarity rule {_rarityIds[index]} rolls {_rarityNamePositions[index]} name positions and is reachable at tag signature {signature}, which carries no rare_name_word of non-zero weight at position {position}. Step 10 would skip that position and shift every later word DOWN one place in kind 134, so the item would be named by a word list nothing says is misaligned."));
+                        throw new GenerationTableException(GenerationTableRefusal.RareNamePositionUncovered, FormattableString.Invariant(
+                            $"{InstanceContentFindings.RareNameCoverage}: rarity rule {_rarityIds[index]} rolls {_rarityNamePositions[index]} name positions and is reachable at tag signature {signature}, which carries no rare_name_word of non-zero weight at position {position}. Step 10 would skip that position and shift every later word DOWN one place in kind 134, so the item would be named by a word list nothing says is misaligned."))
+                        {
+                            RarityId = _rarityIds[index],
+                            Signature = signature,
+                            Position = position,
+                            RequiredPositions = _rarityNamePositions[index],
+                        };
                     }
                 }
             }

@@ -86,17 +86,8 @@ public sealed class ContentFamily
         ArgumentNullException.ThrowIfNull(familyKey);
         ArgumentNullException.ThrowIfNull(blocks);
 
-        // Each block is read once, so the blocks checked are the blocks kept even from a list whose reads disagree.
-        var copy = new ContentFamilyBlock[blocks.Count];
-        for (int i = 0; i < copy.Length; i++)
-        {
-            copy[i] = blocks[i];
-        }
-
-        if (FindDefect(familyKey, blockSize, copy) is ContentFamilyFinding defect)
-        {
-            throw defect.ToException();
-        }
+        ContentFamilyBlock[] copy = CopyBlocks(familyKey, blockSize, blocks, out ContentFamilyFinding? defect);
+        if (defect is not null) throw defect.ToException();
 
         FamilyId = familyId;
         Type = type;
@@ -155,15 +146,24 @@ public sealed class ContentFamily
     /// <param name="blocks">The reserved blocks, in ordinal order.</param>
     internal static ContentFamilyFinding? FindDefect(string familyKey, int blockSize, IReadOnlyList<ContentFamilyBlock> blocks)
     {
+        _ = CopyBlocks(familyKey, blockSize, blocks, out ContentFamilyFinding? finding);
+        return finding;
+    }
+
+    static ContentFamilyBlock[] CopyBlocks(
+        string familyKey, int blockSize, IReadOnlyList<ContentFamilyBlock> blocks, out ContentFamilyFinding? finding)
+    {
+        finding = null;
         if (string.IsNullOrWhiteSpace(familyKey))
         {
-            return new(ContentFamilyRule.KeyBlank, -1, nameof(familyKey), "A family names a key.");
+            finding = new(ContentFamilyRule.KeyBlank, -1, nameof(familyKey), "A family names a key.");
+            return [];
         }
 
         if (!IsLegalBlockSize(blockSize))
         {
             // IsLegalBlockSize checks the range before the power of two, so the reason follows that order.
-            return new(
+            finding = new(
                 blockSize < MinBlockSize || blockSize > MaxBlockSize
                     ? ContentFamilyRule.BlockSizeOutsideRange
                     : ContentFamilyRule.BlockSizeNotPowerOfTwo,
@@ -174,33 +174,39 @@ public sealed class ContentFamily
             {
                 BlockSize = blockSize,
             };
+            return [];
         }
 
-        for (int i = 0; i < blocks.Count; i++)
+        // Header rules precede every list read. Each captured block is refused before reading the next one.
+        var copy = new ContentFamilyBlock[blocks.Count];
+        for (int i = 0; i < copy.Length; i++)
         {
             ContentFamilyBlock block = blocks[i];
             if (block.BlockSize != blockSize)
             {
-                return new(
+                finding = new(
                     ContentFamilyRule.BlockSizeMismatch,
                     i,
                     nameof(blocks),
                     FormattableString.Invariant(
                         $"Block {block.BlockOrdinal} is sized {block.BlockSize}, and a family's block size is fixed at {blockSize}."));
+                return copy;
             }
 
             if (block.BaseId % blockSize != 0)
             {
-                return new(
+                finding = new(
                     ContentFamilyRule.BlockUnaligned,
                     i,
                     nameof(blocks),
                     FormattableString.Invariant(
                         $"Block {block.BlockOrdinal} is based at {block.BaseId}, which is not aligned to {blockSize}, so the membership test would be wrong."));
+                return copy;
             }
+            copy[i] = block;
         }
 
-        return null;
+        return copy;
     }
 
     /// <summary>A power of two between <see cref="MinBlockSize"/> and <see cref="MaxBlockSize"/>.</summary>

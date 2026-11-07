@@ -116,18 +116,8 @@ public sealed class ContentFieldSchema
                     $"A schema of {fields.Count} fields cannot declare {baseline} of them as its first release."));
         }
 
-        // Each entry is read once, so the entries checked are the entries kept even from a list whose reads
-        // disagree.
-        var ordered = new ContentFieldEntry[fields.Count];
-        for (int i = 0; i < ordered.Length; i++)
-        {
-            ordered[i] = fields[i];
-        }
-
-        if (FindDefect(ordered, baseline) is ContentFieldSchemaFinding defect)
-        {
-            throw defect.ToException(nameof(fields));
-        }
+        ContentFieldEntry[] ordered = CopyFields(fields, baseline, out ContentFieldSchemaFinding? defect);
+        if (defect is not null) throw defect.ToException(nameof(fields));
 
         _byName = new Dictionary<string, (ContentFieldEntry, int)>(ordered.Length, StringComparer.Ordinal);
         for (int i = 0; i < ordered.Length; i++)
@@ -193,41 +183,56 @@ public sealed class ContentFieldSchema
     /// <param name="baseline">How many leading fields shipped with the type, already checked against the list.</param>
     internal static ContentFieldSchemaFinding? FindDefect(IReadOnlyList<ContentFieldEntry> fields, int baseline)
     {
+        _ = CopyFields(fields, baseline, out ContentFieldSchemaFinding? finding);
+        return finding;
+    }
+
+    static ContentFieldEntry[] CopyFields(
+        IReadOnlyList<ContentFieldEntry> fields, int baseline, out ContentFieldSchemaFinding? finding)
+    {
+        finding = null;
         var names = new HashSet<string>(fields.Count, StringComparer.Ordinal);
-        for (int i = 0; i < fields.Count; i++)
+        var ordered = new ContentFieldEntry[fields.Count];
+        // Refuse each captured entry before reading the next caller-owned entry.
+        for (int i = 0; i < ordered.Length; i++)
         {
             ContentFieldEntry? entry = fields[i];
             if (entry is null)
             {
-                return new(ContentFieldSchemaRule.EntryNull, i, null, FormattableString.Invariant($"Field entry {i} is null."));
+                finding = new(ContentFieldSchemaRule.EntryNull, i, null, FormattableString.Invariant($"Field entry {i} is null."));
+                return ordered;
             }
 
             if (Check(entry, i) is ContentFieldSchemaFinding broken)
             {
-                return broken;
+                finding = broken;
+                return ordered;
             }
 
             if (!names.Add(entry.Name))
             {
-                return new(
+                finding = new(
                     ContentFieldSchemaRule.NameDuplicate,
                     i,
                     entry,
                     FormattableString.Invariant($"Field name '{entry.Name}' is declared twice, at index {i}."));
+                return ordered;
             }
 
             if (i >= baseline && entry.Required && !entry.IsDerivedMarker)
             {
-                return new(
+                finding = new(
                     ContentFieldSchemaRule.AppendedFieldRequired,
                     i,
                     entry,
                     FormattableString.Invariant(
                         $"Field '{entry.Name}' at index {i} was appended after this type's first {baseline} fields and is declared required. An appended field is absent from every row written before it existed, so only an optional one can be appended."));
+                return ordered;
             }
+            ordered[i] = entry;
         }
 
-        return null;
+        return ordered;
     }
 
     static ContentFieldSchemaFinding? Check(ContentFieldEntry entry, int index)

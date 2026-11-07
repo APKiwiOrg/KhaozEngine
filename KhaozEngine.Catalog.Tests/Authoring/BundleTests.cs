@@ -537,6 +537,12 @@ public class BundleTests
         long? actualBytes)
     {
         string document = ValidDocument();
+        if (refusal == ContentAuthoringRefusal.FamilyBlockSizeNotPowerOfTwo)
+        {
+            const string block = "\"baseId\": 16, \"nextFreeId\": 17";
+            Assert.Equal(1, Occurrences(document, block));
+            document = document.Replace(block, "\"baseId\": 48, \"nextFreeId\": 49", StringComparison.Ordinal);
+        }
         Assert.Equal(1, Occurrences(document, original));
 
         ContentAuthoringException refused = Assert.Throws<ContentAuthoringException>(

@@ -119,12 +119,13 @@ namespace KhaozEngine.Render3D
 
         /// <summary>Enable refracted, absorbed key sunlight for receivers inside water volumes. Default
         /// <c>false</c>. Each plane may override this through <see cref="WaterLook.UnderwaterSunlight"/>.
-        /// <see cref="WaterColumnLight"/> also enables this lighting without changing this field.</summary>
+        /// <see cref="WaterColumnLight"/> or participating <see cref="UnderwaterCaustics"/> also enables this
+        /// lighting without changing this field.</summary>
         public bool UnderwaterSunlight;
 
         /// <summary>Extra key-shadow penumbra radius in metres per metre of in-water light path. Must be finite
         /// and non-negative. Default <c>0.03</c>. Used when <see cref="UnderwaterSunlight"/> or
-        /// <see cref="WaterColumnLight"/> is enabled.</summary>
+        /// <see cref="WaterColumnLight"/> is enabled, or <see cref="UnderwaterCaustics"/> participates.</summary>
         public float UnderwaterPenumbraPerMetre = 0.03f;
 
         /// <summary>Opt in to underwater sunlight focusing by procedural surface waves. Default <c>false</c>.

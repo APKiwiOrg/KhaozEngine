@@ -41,8 +41,9 @@ public sealed partial class Scene3D
 
     /// <summary>WaterVolumeUploadTests exercises water and point-light assignment through their normal shared path.</summary>
     internal void BuildModelLightingClustersForTests(IGpuCommandList commands, ReadOnlySpan<ModelRenderer.PointLightData> lights,
-        ReadOnlySpan<WaterVolumeRecord> water, Matrix4x4 view, Vector3 eye, Vector3 forward, Matrix4x4 projection, Vector3 origin) =>
-        _model.BuildAndUploadLightingClusters(commands, lights, water, view, eye, forward, projection, origin);
+        ReadOnlySpan<WaterVolumeRecord> water, Matrix4x4 view, Vector3 eye, Vector3 forward, Matrix4x4 projection, Vector3 origin,
+        Vector4 causticWindow = default) =>
+        _model.BuildAndUploadLightingClusters(commands, lights, water, view, eye, forward, projection, origin, causticWindow);
 
     /// <summary>WaterVolumeUploadTests exercises the original light-only path's legacy frame bytes.</summary>
     internal void BuildModelPointLightClustersForTests(IGpuCommandList commands, ReadOnlySpan<ModelRenderer.PointLightData> lights,

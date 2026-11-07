@@ -918,8 +918,9 @@ in the `KhaozEngine.Render3D.Ecs` arm under the same namespace, so a render-only
     on the still-water plane grows, which keeps distant whitecap coverage where the old per-vertex fold left it
     rather than whitening the horizon to the near field's density.
 
-  Underwater sunlight opts in per water body through either `UnderwaterSunlight` or `WaterColumnLight`
-  (both scene defaults `false`). `WaterColumnLight` implies sunlight without changing the `UnderwaterSunlight`
+  Underwater sunlight opts in per water body through `UnderwaterSunlight`, `WaterColumnLight` or
+  `UnderwaterCaustics` with positive strength and effective procedural waves (all scene defaults `false`).
+  The latter two imply sunlight without changing the `UnderwaterSunlight`
   setting. A column body's sunlight uses extinction derived from its resolved `WaterColor` and `Clarity`,
   with mean extinction `3 / Clarity`, instead of legacy `AbsorptionPerMetre`.
   `UnderwaterPenumbraPerMetre` defaults to `0.03` metres of extra penumbra radius per metre of in-water path.
@@ -1085,18 +1086,25 @@ in the `KhaozEngine.Render3D.Ecs` arm under the same namespace, so a render-only
   See [consumer use](../docs/USING-KHAOZENGINE.md) for a worked binding and
   [TileWorld](../KhaozEngine.TileWorld.Render3D/README.md) for the triangle producer.
 - Underwater volume uploads (`scene.WaterVolumeClusters`). Queued planes whose resolved
-  `WaterSettings.UnderwaterSunlight` or `WaterColumnLight` is true contribute render-relative records, including
-  their optional `WaterPlane.FloorY`, attenuation and penumbra. Both scene defaults are false and `WaterLook`
-  can override them per plane. The retained absorption fields hold legacy absorption or derived column
+  `WaterSettings.UnderwaterSunlight` or `WaterColumnLight` is true contribute render-relative records.
+  `UnderwaterCaustics` also contributes when strength is positive and the effective waves are procedural.
+  FFT bodies gain no record from caustics alone. Records include their optional `WaterPlane.FloorY`, attenuation
+  and penumbra. All three opt-ins default to false and `WaterLook` can override them per plane.
+  The retained absorption fields hold legacy absorption or derived column
   extinction without a layout change. Diagnostics expose `RecordCount`, `DroppedRecords`, `ReferenceCount`
   and `OverflowedClusters`.
   Each record is 48 bytes, packed as three `uvec4`: `(minX, minZ, maxX, maxZ)`,
-  `(surfaceY, floorY, absorptionR, absorptionG)` and `(absorptionB, penumbraPerMetre, 0, 0)`.
+  `(surfaceY, floorY, absorptionR, absorptionG)` and `(absorptionB, penumbraPerMetre, causticLayer, causticDepth)`.
+  The last two words hold layer plus one and slice depth as float bits, or exactly zero without a planned layer.
   All positions are render-relative. A null floor encodes `float.MinValue`. A frame retains at most 4096
   records in submission order and drops the
   tail. Each of the `16 x 9 x 24` clusters holds 32 indices. An overflow header makes its fragments scan all
   retained records, preserving containment at increased query cost. Headers and indices precede the records,
-  and only the used prefix is uploaded.
+  and only the used prefix is uploaded. The 652816-byte buffer reserves a final `uvec4` at vector 40800
+  (byte 652800) for `(windowMinX, windowMinZ, 1 / 64, layerCount)`, all as float bits.
+  The renderer uploads that block separately only when its layer count is positive and a record prefix uploads.
+  Scene frames currently clear the caustic plan without building it, leaving record caustic words zero and
+  the window block untouched.
   Water-only frames prepare the same camera grid as point lights. A failed light assignment keeps that grid
   valid for water, with full-list fallback headers for the lights. Empty and opted-out frames set the count
   in `ClusterCamera.w` to zero and skip water uploads, so retained buffer contents cannot be read next frame.

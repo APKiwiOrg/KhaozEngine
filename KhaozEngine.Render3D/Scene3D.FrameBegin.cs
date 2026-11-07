@@ -44,6 +44,7 @@ public sealed partial class Scene3D
         _decals.Clear();
         _shadowBlobs.Clear();
         _waterPlanes.Clear();
+        _waterCausticPlan.Clear();
         _overlayMeshDraws.Clear();
         _silhouetteDraws.Clear();
         BeginMeshOutlineFrame();

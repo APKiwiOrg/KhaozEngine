@@ -17,11 +17,14 @@ public sealed partial class Scene3D
     ReadOnlySpan<WaterVolumeRecord> CollectWaterVolumeRecords()
     {
         _waterVolumeRecords.Clear();
-        foreach (WaterPlane plane in RelativeWaterPlanes())
+        ReadOnlySpan<WaterPlane> planes = RelativeWaterPlanes();
+        for (int planeIndex = 0; planeIndex < planes.Length; planeIndex++)
         {
+            ref readonly WaterPlane plane = ref planes[planeIndex];
             if (plane.Look is { } look) look.ResolveInto(_waterVolumeScratch, Post.Water);
             else _waterVolumeScratch.CopyFrom(Post.Water);
-            if (!_waterVolumeScratch.UnderwaterSunlight && !_waterVolumeScratch.WaterColumnLight) continue;
+            if (!_waterVolumeScratch.UnderwaterSunlight && !_waterVolumeScratch.WaterColumnLight
+                && !WaterCausticPlan.Participates(plane, _waterVolumeScratch)) continue;
             Vector3 attenuation;
             if (_waterVolumeScratch.WaterColumnLight)
                 attenuation = WaterColumnOptics.Derive(_waterVolumeScratch.WaterColor, _waterVolumeScratch.Clarity).Extinction;
@@ -34,7 +37,8 @@ public sealed partial class Scene3D
                 plane.CenterX - plane.HalfExtentX, plane.CenterZ - plane.HalfExtentZ,
                 plane.CenterX + plane.HalfExtentX, plane.CenterZ + plane.HalfExtentZ,
                 plane.SurfaceY, plane.FloorY ?? float.MinValue,
-                attenuation, _waterVolumeScratch.UnderwaterPenumbraPerMetre));
+                attenuation, _waterVolumeScratch.UnderwaterPenumbraPerMetre,
+                _waterCausticPlan.LayerOfPlane(planeIndex), _waterCausticPlan.DepthOfPlane(planeIndex)));
         }
         return CollectionsMarshal.AsSpan(_waterVolumeRecords);
     }

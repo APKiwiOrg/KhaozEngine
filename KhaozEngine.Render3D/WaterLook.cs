@@ -73,7 +73,8 @@ namespace KhaozEngine.Render3D
 
         /// <summary>Overrides <see cref="WaterSettings.UnderwaterSunlight"/> for this plane. Default <c>null</c>
         /// inherits the scene's opt-in, which defaults to <c>false</c>. An enabled <see cref="WaterColumnLight"/>
-        /// also enables underwater sunlight without changing this field.</summary>
+        /// or participating <see cref="UnderwaterCaustics"/> also enables underwater sunlight without changing
+        /// this field.</summary>
         public bool? UnderwaterSunlight;
 
         /// <summary>Overrides <see cref="WaterSettings.UnderwaterPenumbraPerMetre"/> in metres of extra

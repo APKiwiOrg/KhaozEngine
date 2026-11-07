@@ -26,6 +26,14 @@ internal sealed class WaterCausticPlan
     internal ReadOnlySpan<WaterCausticBody> Bodies => _bodies.AsSpan(0, _bodyCount);
     internal WaterCausticDiagnostics Diagnostics { get; private set; }
 
+    /// <summary>Forget this frame's plan while retaining the reusable body and plane storage.</summary>
+    internal void Clear()
+    {
+        _bodyCount = _planeCount = LayerCount = 0;
+        Window = default;
+        Diagnostics = default;
+    }
+
     internal int LayerOfPlane(int planeIndex)
     {
         int index = BodyIndex(planeIndex);
@@ -93,8 +101,7 @@ internal sealed class WaterCausticPlan
     internal void Build(ReadOnlySpan<WaterPlane> relativePlanes, WaterSettings scene, Vector3 lightDirection,
         Vector3 eyeRender, Vector3 forward, Matrix4x4 viewProjection, bool orthographic, Vector3 renderOrigin)
     {
-        _bodyCount = _planeCount = LayerCount = 0;
-        Window = default;
+        Clear();
         int optedIn = 0, fft = 0, overflow = 0;
         double nearest = double.PositiveInfinity;
         float surfaceY = 0f;

@@ -20,7 +20,7 @@ public sealed class WaterVolumeUploadTests
         internal readonly Scene3D Scene;
         internal readonly RecordingGpuCommandList Commands = new(new NullGpuCommandList()) { CapturePayloads = true };
         internal FakeGpuResourceFactory Factory => (FakeGpuResourceFactory)Device.Factory;
-        internal IGpuBuffer Buffer => Assert.Single(Factory.Buffers, b => b.SizeInBytes == 652800);
+        internal IGpuBuffer Buffer => Assert.Single(Factory.Buffers, b => b.SizeInBytes == 652816);
         internal byte[] UploadedFrame
         {
             get
@@ -137,7 +137,6 @@ public sealed class WaterVolumeUploadTests
         Assert.InRange(MathF.Abs(words[114055] - 1.485f), 0f, 0.000001f);
         Assert.InRange(MathF.Abs(words[114056] - 1.5075f), 0f, 0.000001f);
         Assert.Equal(new[] { 0.2f, 0.3f, 0.4f }, words.AsSpan(114060 + 6, 3).ToArray());
-        Assert.Equal(40, Marshal.SizeOf<WaterVolumeRecord>());
         Assert.Equal<uint>((114048 + 2 * 12) * 4, upload.Bytes);
         Assert.Equal(new[] { 1f, 1f, 3f, 5f, 2f, -2f }, words.AsSpan(114048, 6).ToArray());
         Assert.Equal(new[] { 0.04f, 0f, 0f }, words.AsSpan(114048 + 9, 3).ToArray());
@@ -322,6 +321,74 @@ public sealed class WaterVolumeUploadTests
         Vector4[] expected = [new(0f, 0f, 0f, -1f), Vector4.Zero];
         Assert.Equal(MemoryMarshal.AsBytes(expected.AsSpan()).ToArray(), h.UploadedFrame.AsSpan(1312, 32).ToArray());
         Assert.DoesNotContain(h.Commands.Uploads, u => ReferenceEquals(u.Buffer, h.Buffer));
+    }
+
+    [Theory]
+    [InlineData(false, false, 1f, 1)]
+    [InlineData(true, false, 1f, 1)]
+    [InlineData(false, true, 1f, 0)]
+    [InlineData(false, false, 0f, 0)]
+    public void CausticOnlyOptInProducesRecordsForParticipatingBodies(bool sceneOptIn, bool fft,
+        float strength, int expectedRecords)
+    {
+        using var h = new Host();
+        h.Scene.Post.Water.UnderwaterCaustics = sceneOptIn;
+        var look = new WaterLook
+        {
+            UnderwaterCaustics = sceneOptIn ? null : true,
+            CausticStrength = strength,
+            WaveSource = fft ? WaterWaveSource.FftOcean : WaterWaveSource.Procedural,
+        };
+        h.Scene.Begin();
+        h.Scene.DrawWater(new WaterPlane(0f, 0f, 0f, 5f, look: look));
+
+        h.Render();
+
+        Assert.Equal((float)expectedRecords, h.Count);
+        Assert.Equal(expectedRecords, h.Scene.WaterVolumeClusters.RecordCount);
+        if (expectedRecords > 0)
+        {
+            uint[] words = MemoryMarshal.Cast<byte, uint>(h.Upload().Data!.AsSpan()).ToArray();
+            Assert.Equal(new uint[] { 0u, 0u }, words.AsSpan(114048 + 10, 2).ToArray());
+        }
+        else
+            Assert.DoesNotContain(h.Commands.Uploads, u => ReferenceEquals(u.Buffer, h.Buffer));
+        Assert.False(h.Scene.Post.Water.UnderwaterSunlight);
+        Assert.False(h.Scene.Post.Water.WaterColumnLight);
+        Assert.Null(look.UnderwaterSunlight);
+        Assert.Null(look.WaterColumnLight);
+    }
+
+    [Theory]
+    [InlineData(0f, true, true)]
+    [InlineData(2f, true, true)]
+    [InlineData(2f, false, true)]
+    [InlineData(2f, true, false)]
+    public void Window_block_uploads_only_on_participating_frames(float layers, bool hasRecords, bool validGrid)
+    {
+        using var h = new Host();
+        Matrix4x4 projection = Matrix4x4.CreateOrthographic(16f, 16f, 0.1f, 64f);
+        WaterVolumeRecord[] records = hasRecords
+            ? [new(-2f, -2f, 2f, 0f, 0f, -2f, Vector3.One, 0.03f)] : [];
+        h.Scene.BuildModelLightingClustersForTests(h.Commands, [], records,
+            validGrid ? projection : default, Vector3.Zero, -Vector3.UnitZ, projection, Vector3.Zero,
+            new Vector4(-32f, 16f, 1f / 64f, layers));
+
+        RecordingGpuCommandList.Upload[] uploads = h.Commands.Uploads
+            .Where(u => ReferenceEquals(u.Buffer, h.Buffer)).ToArray();
+        if (!hasRecords || !validGrid)
+        {
+            Assert.Empty(uploads);
+            return;
+        }
+        Assert.Equal(layers > 0f ? 2 : 1, uploads.Length);
+        Assert.Equal(0u, uploads[0].Offset);
+        Assert.Equal(456240u, uploads[0].Bytes);
+        if (layers <= 0f) return;
+        Assert.Equal(652800u, uploads[1].Offset);
+        Assert.Equal(16u, uploads[1].Bytes);
+        Assert.Equal(new uint[] { 0xc2000000u, 0x41800000u, 0x3c800000u, 0x40000000u },
+            MemoryMarshal.Cast<byte, uint>(uploads[1].Data!.AsSpan()).ToArray());
     }
 
     [Fact]

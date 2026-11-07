@@ -6031,6 +6031,8 @@ is retained after a failed preparation and is zero before the first success. Unr
     preparation requires finite, non-negative strength only for an opted-in procedural body, otherwise throwing
     `ArgumentException` with `ParamName` equal to `CausticStrength`. FFT bodies ignore the opt-in and strength.
     FFT and disabled bodies leave strength unvalidated.
+    A positive strength on a procedural body also opts it into underwater sunlight without changing
+    `UnderwaterSunlight`, contributing a water volume record even when `WaterColumnLight` is false.
     These authoring fields do not yet add a caustic render pass.
   - **Water-column authoring**: `WaterColumnLight` defaults to `false`, `WaterColor` defaults to neutral linear
     RGB `(0.10, 0.13, 0.10, 1)` with alpha ignored, and `Clarity` defaults to `2` metres of vertical depth for
@@ -6142,8 +6144,9 @@ is retained after a failed preparation and is zero before the first success. Unr
       all-zero falls back to the legacy two-stop blend over `ShallowDepth`), plus `Opacity`. The resolved absorption
       also drives underwater sunlight for bodies without `WaterColumnLight`, where all-zero absorption means
       no attenuation.
-    - *Underwater sunlight*: either `UnderwaterSunlight` or `WaterColumnLight` opts in (both scene defaults `false`),
-      with `UnderwaterPenumbraPerMetre` (scene default `0.03` metres of extra penumbra radius per metre of in-water path).
+    - *Underwater sunlight*: `UnderwaterSunlight`, `WaterColumnLight` or `UnderwaterCaustics` with positive strength
+      and effective procedural waves opts in (all scene defaults `false`), with `UnderwaterPenumbraPerMetre`
+      (scene default `0.03` metres of extra penumbra radius per metre of in-water path).
       The penumbra value must be finite and non-negative. It is available on any plane, procedural or FFT, bound or
       unbound. The water refractive index is the fixed constant `1.333`, not a setting. A frame with no opted-in water
       renders exactly as before. The receiver's own body supplies the light path, using its still-water plane

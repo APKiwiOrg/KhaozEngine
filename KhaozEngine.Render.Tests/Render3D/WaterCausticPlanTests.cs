@@ -275,6 +275,32 @@ public sealed class WaterCausticPlanTests
     }
 
     [Fact]
+    public void Clear_resets_the_frame_plan_before_reuse()
+    {
+        var scene = Settings();
+        var plan = Build([new(0f, 0f, 0f, 2f), new(0f, 1f, 0f, 2f)], scene);
+        Assert.True(plan.Active);
+        Assert.Equal(2, plan.LayerOfPlane(1));
+
+        plan.Clear();
+
+        Assert.False(plan.Active);
+        Assert.Equal(default, plan.Window);
+        Assert.Equal(default, plan.Diagnostics);
+        Assert.Equal(0, plan.LayerCount);
+        Assert.Equal(0, plan.Bodies.Length);
+        Assert.Equal(0, plan.LayerOfPlane(0));
+        Assert.Equal(0, plan.LayerOfPlane(1));
+        Assert.Equal(0f, plan.DepthOfPlane(0));
+        Assert.Equal(0f, plan.DepthOfPlane(1));
+
+        Rebuild(plan, [new(0f, 0f, 0f, 2f)], scene, -Vector3.UnitY);
+        Assert.True(plan.Active);
+        Assert.Equal(1, plan.LayerOfPlane(0));
+        Assert.Equal(0, plan.LayerOfPlane(1));
+    }
+
+    [Fact]
     public void Rebuilding_a_steady_plan_allocates_nothing()
     {
         var scene = Settings();

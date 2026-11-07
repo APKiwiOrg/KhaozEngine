@@ -20,7 +20,8 @@ public sealed partial class Scene3D
     void BuildAndUploadLightingClusters(IGpuCommandList cl, Matrix4x4 rasterViewProjection, Vector3 eyeRender)
     {
         _model.BuildAndUploadLightingClusters(cl, CollectionsMarshal.AsSpan(_lights), CollectWaterVolumeRecords(),
-            rasterViewProjection, eyeRender, ActiveCamera.Forward, _currentFrameView.Projection, _frameOrigin);
+            rasterViewProjection, eyeRender, ActiveCamera.Forward, _currentFrameView.Projection, _frameOrigin,
+            causticWindow: default);
         PointLightClusters = _model.PointLightClusterDiagnostics(_lights.Count);
         WaterVolumeClusters = _model.WaterVolumeDiagnostics;
     }

@@ -39,7 +39,7 @@ public sealed class WaterVolumeLayoutTests
         Assert.Equal(GpuShaderStages.Fragment, elements[binding].Stages);
         var sets = factory.ResourceSets.Where(s => ReferenceEquals(s.Layout, layout)).ToArray();
         Assert.NotEmpty(sets);
-        FakeBuffer water = Assert.Single(factory.Buffers, b => b.SizeInBytes == 652800);
+        FakeBuffer water = Assert.Single(factory.Buffers, b => b.SizeInBytes == 652816);
         Assert.All(sets, set => Assert.Same(water, set.Resources[binding]));
     }
 
@@ -68,14 +68,16 @@ public sealed class WaterVolumeLayoutTests
         using var device = new FakeGpuDevice();
         using ModelRenderer renderer = NewRenderer(device);
         FakeBuffer buffer = Assert.Single(((FakeGpuResourceFactory)device.Factory).Buffers,
-            b => b.SizeInBytes == 652800);
+            b => b.SizeInBytes == 652816);
         Assert.Equal(GpuBufferUsage.StructuredBufferReadOnly, buffer.Usage);
         Assert.Equal(16u, buffer.StructureByteStride);
         Assert.Equal((uint)(WaterVolumeClusterBuilder.ImageUIntCount * sizeof(uint)), buffer.SizeInBytes);
         Assert.Equal(3456, WaterVolumeClusterBuilder.HeaderRegionUInts);
         Assert.Equal(114048, WaterVolumeClusterBuilder.RecordRegionUInts);
         Assert.Equal(12, WaterVolumeClusterBuilder.RecordStrideUInts);
-        Assert.Equal(163200, WaterVolumeClusterBuilder.ImageUIntCount);
+        Assert.Equal(163200, WaterVolumeClusterBuilder.WindowUIntOffset);
+        Assert.Equal(40800, WaterVolumeClusterBuilder.WindowVectorIndex);
+        Assert.Equal(163204, WaterVolumeClusterBuilder.ImageUIntCount);
     }
 
     [Fact]

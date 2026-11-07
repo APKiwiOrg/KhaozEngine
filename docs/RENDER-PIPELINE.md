@@ -337,8 +337,9 @@ the `water-optics` program in the owner's program store before release.
 
 Underwater key lighting runs in every lit opaque receiver, independently of the water pass's depth sources.
 `WaterSettings.UnderwaterSunlight` defaults to false, with nullable `WaterLook` overrides for each procedural
-or FFT plane, bound or unbound. A plane also opts in when its resolved `WaterColumnLight` is true, without
-changing its `UnderwaterSunlight` setting. The query uses a render-relative slab bounded by the rectangle,
+or FFT plane, bound or unbound. A plane also opts in when its resolved `WaterColumnLight` is true, or when
+`UnderwaterCaustics` has positive strength and effective procedural waves, without changing its
+`UnderwaterSunlight` setting. The query uses a render-relative slab bounded by the rectangle,
 still surface and optional `WaterPlane.FloorY`, with an unbounded floor when null. Rectangle minima and the floor are
 inclusive, maxima and the surface exclusive. Overlapping slabs choose the lowest surface above the receiver,
 keeping submission order on ties. A slab can conservatively include dry space beneath a locally higher bed.
@@ -356,10 +357,18 @@ changing the camera-grid uniforms water reads. Point-light-only frames preserve 
 
 One storage buffer holds 3456 uint headers, 32 fixed uint index slots per cluster, then up to 4096 records in
 submission order. Each record is 48 bytes (three `uvec4`), holding rectangle min/max XZ, surface/floor Y,
-attenuation RGB and penumbra per metre, all positions render-relative. The retained `AbsorptionPerMetre` member
+attenuation RGB, penumbra per metre, caustic layer plus one and caustic slice depth, all positions render-relative.
+The last two words are float bits and remain exactly zero without a planned caustic layer.
+The retained `AbsorptionPerMetre` member
 and its buffer offsets carry legacy absorption or derived extinction for a column body. Excess records are
 dropped from the tail. A cluster overflow scans all retained records, preserving correctness at greater query cost. Only the used
-buffer prefix uploads. `ClusterCamera.w` carries the record count independently of point lights. Empty and
+buffer prefix uploads. The buffer is 652816 bytes, including a final `uvec4` at vector 40800 (byte 652800)
+for render-relative window minimum XZ, inverse extent `1 / 64` and layer count, packed as float bits.
+That block uploads separately only with a positive layer count after a record prefix upload. Scene frames
+currently clear the caustic plan without building it, so its record words stay zero and the window is not uploaded.
+Caustics-only bodies still contribute sunlight records when their effective waves are procedural and their
+resolved strength is positive. FFT bodies gain no record from that opt-in alone.
+`ClusterCamera.w` carries the record count independently of point lights. Empty and
 opted-out frames skip building and upload. A zero count skips shader buffer reads, leaving stale contents
 unreachable and the old dry frame unchanged.
 

@@ -150,20 +150,15 @@ public sealed class WaterVolumeLayoutTests
             rigid = replace(rigid);
             skinned = replace(skinned);
         }
-        bool drained = false;
-        device.OnWaitForIdle = () =>
-        {
-            drained = true;
-            Assert.All(before, set => Assert.False(set.Disposed));
-        };
+        int idles = device.WaitForIdleCalls;
         renderer.SetCausticMap(map, [rigid, skinned], Commit);
-        device.OnWaitForIdle = null;
 
-        Assert.True(drained);
+        // No drain, so a frame in flight may still read the replaced sets until the retire queue frees them.
+        Assert.Equal(idles, device.WaitForIdleCalls);
+        Assert.All(before, set => Assert.False(set.Disposed));
         Assert.Same(map, renderer.CausticMap);
         Assert.False(Assert.IsType<FakeTexture>(placeholder).Disposed);
         Assert.NotSame(rigidBefore, rigid);
-        Assert.True(Assert.IsType<FakeResourceSet>(rigidBefore).Disposed);
         // Set 1 of the skinned pipeline declares no caustic binding, so it has nothing to rebuild.
         Assert.Same(skinnedBefore, skinned);
         Assert.False(Assert.IsType<FakeResourceSet>(skinnedBefore).Disposed);
@@ -189,6 +184,7 @@ public sealed class WaterVolumeLayoutTests
         Assert.True(renderer.ReplaceShadowLayout(256, 2, settings, [rigid, skinned, created], CommitWithCreated, () => { }));
         AssertBindsCausticMap(DrawOpaqueFoliage(renderer, factory), map);
         for (int i = 0; i < GpuRetireQueue.DefaultFrameDelay; i++) retired.BeginFrame();
+        Assert.True(Assert.IsType<FakeResourceSet>(rigidBefore).Disposed);
         FakeResourceSet[] after = LiveLitSets(factory);
         Assert.Equal(7, after.Length);
         Assert.All(after, set => AssertBindsCausticMap(set, map));
@@ -209,7 +205,8 @@ public sealed class WaterVolumeLayoutTests
     {
         using var device = new FakeGpuDevice();
         var factory = (FakeGpuResourceFactory)device.Factory;
-        using ModelRenderer renderer = NewRenderer(device);
+        using var retired = GpuRetireQueue.CreateFrameCounted(device, GpuRetireQueue.DefaultFrameDelay);
+        using var renderer = new ModelRenderer(device, Outputs, 128, 1, retired);
         IGpuResourceSet material = renderer.CreateMaterialSet();
         renderer.EnsureSkinnedMainCapacity(1);
         IGpuTexture placeholder = renderer.CausticMap;
@@ -235,6 +232,7 @@ public sealed class WaterVolumeLayoutTests
         factory.ThrowOnResourceSetCreate = 0;
         renderer.SetCausticMap(map, [material], replace => material = replace(material));
         Assert.Same(map, renderer.CausticMap);
+        for (int i = 0; i < GpuRetireQueue.DefaultFrameDelay; i++) retired.BeginFrame();
         Assert.Equal(5, LiveLitSets(factory).Length);
         Assert.All(LiveLitSets(factory), set => AssertBindsCausticMap(set, map));
     }

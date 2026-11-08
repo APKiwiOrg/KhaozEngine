@@ -12,9 +12,10 @@ namespace KhaozEngine.Tests.WorldStore.Journal;
 [Collection("SQL Server mutation journal")]
 public sealed class SqlServerJournalSchemaRefusalTests
 {
+    // SQL Server refuses to rename a column a CHECK constraint depends on, so the constraint goes first.
     [SqlServerFact]
     public Task Missing_version_column_names_metadata_shape_and_rolls_back()
-        => RefuseAsync("EXEC sys.sp_rename N'dbo.journal_metadata.schema_version', N'bad_version', N'COLUMN';",
+        => RefuseAsync("ALTER TABLE dbo.journal_metadata DROP CONSTRAINT ck_journal_metadata_version; EXEC sys.sp_rename N'dbo.journal_metadata.schema_version', N'bad_version', N'COLUMN';",
             JournalStoreRefusal.SchemaMetadataShapeInvalid);
 
     [SqlServerFact]

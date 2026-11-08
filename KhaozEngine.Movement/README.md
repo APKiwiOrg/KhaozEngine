@@ -1098,9 +1098,21 @@ The route-free `DirectMoveToRange` always runs its own stall window. Both adapte
 input, and treat the other statuses as idle.
 
 `MoveToRange` copies the supplied `PathFollowConfig` and clamps `AcceptRadius` to at most `0.00001f`,
-including when the supplied value is zero. Its near-ring preflight resolves copies of `MoveState` through the
-live context, with a bounded bisection of up to 32 candidates plus endpoint and final checks. It performs no
-world step and writes no entity state. The command cap includes the requested walk or run pace, the body's
+including when the supplied value is zero. Its near-ring preflight keeps the same bounded float interval
+search of up to 32 candidates plus endpoint and final checks. A certified flat, unchanged analytic support
+region evaluates the command-dependent state algebra directly under one authenticated read interval, with
+zero full movement previews inside the search. The certificate requires exact field provenance, complete
+selected-static absence across support and shell paths, strictly dry whole-body coverage and the existing
+scope and convex play-area bounds. A supplied water field must also opt into `IMovementDryTracePointProof`
+and certify successful dry point classification throughout this particular enclosure. Without that separate
+operation-level guarantee, both drivers retain full previews and the direct driver's ordinary pacing point read. Only grounded bodies without swimming, commitments, buffered jumps or
+carried climb signals use the algebra. A conservative roundoff enclosure must fit the unchanged coverage skin,
+otherwise the live solver retains each trial's precision refusal. The direct driver's dry pacing reads share that certificate. If a producer revokes the
+read, the proof closes and the remaining candidates use the exact solver from the current float bracket.
+The search never restarts its earlier decisions. Every other
+case resolves each copied state through the exact live solver. Both drivers retain identical command bits,
+state and admission decisions, including custom segment guards. No reach tolerance, iteration limit, world
+step, position snap or entity publication changes. The command cap includes the requested walk or run pace, the body's
 `SpeedScale`, and medium boosts above one. A slowing medium only shortens the core's resulting travel. The
 follower uses `GroundNavigation` or an equivalent guarded planner, so an area or graph refusal, an exhausted
 partial route waiting on cooldown, an unreachable or refused route, or a `Hop` waypoint returns zero requested
@@ -1392,7 +1404,7 @@ window. After landing the approach resumes, and the drop's travel counts as prog
 Each tick validates like `MoveToRange`, then returns `Suspended` for an airborne or committed body, `InRange` when
 the current body already passes `ReachGeometry.Within`, and `Blocked` while a block is latched. Otherwise it requests
 bounded travel toward the closest horizontal point of the target, preflights the step on a copy through the live
-context, and shrinks it with the same stop ring bisection. Keep range and target shape constant for a walk, and call
+context, and shrinks it with the same certified-or-live stop ring interval search. Keep range and target shape constant for a walk, and call
 Reset to start a new one.
 
 ```csharp
@@ -1416,7 +1428,7 @@ Differences from a typical game-side walk-up rule:
 
 - Direction uses the closest horizontal point of a box rather than its centre. For capsules and points they are the
   same. A box approach reaches its near face sooner.
-- The final fraction comes from live bisection against exact reach, not from a minimum fraction, so a short last step
+- The final fraction comes from the shared float interval search against exact reach, not from a minimum fraction, so a short last step
   cannot stall or overshoot.
 - A step that would leave the ground or start swimming is refused and counts toward the stall window, so a walk off a
   ledge or into deep water ends `Blocked` instead of falling or swimming. A step decides swimming from its starting

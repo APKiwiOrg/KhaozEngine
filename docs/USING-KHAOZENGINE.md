@@ -10132,8 +10132,13 @@ var duckFollower = new MoveToRange(duckProfile, null, new RouteApproachOptions
 ```
 
 `MoveToRange` copies its follower controls and caps `AcceptRadius` to `0.00001f`, including a supplied zero.
-The near-ring check resolves copies through the live context, with up to 32 bisection candidates plus endpoint
-and final checks. It does not step the world or publish an entity. The travel cap includes the requested pace,
+The near-ring check retains up to 32 float interval candidates plus endpoint and final checks. Certified flat,
+unchanged analytic support evaluates exact command-dependent states under one read interval without full
+movement previews. Water fields additionally opt into `IMovementDryTracePointProof` and certify successful dry
+point operations over the enclosure. A known dry sweep alone does not authorize skipping point refusals.
+Wet, obstructed, nonuniform, unsupported and refused regions keep the exact live solver and pacing reads.
+The certificate and both drivers preserve command bits and admission decisions. See the
+[range approach contract](../KhaozEngine.Movement/README.md). The check does not step the world or publish an entity. The travel cap includes the requested pace,
 the body's `SpeedScale` and medium boosts above one. A slowing medium only shortens core travel. A blocked
 near-field shortcut keeps the detour. Area or graph guards apply to direct approaches and all route edges, so an
 exhausted partial route waiting on cooldown, an unreachable or refused route, or an unsupported Hop route holds

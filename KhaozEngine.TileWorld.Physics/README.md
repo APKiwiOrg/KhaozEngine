@@ -62,6 +62,10 @@ complete physics world. Use `CreateMovementRegistrationBuilder(worldId, combined
 and exclusions while adding other installed statics. Build that combined registration under a fresh source lease.
 
 A complete ground installation also attaches optional `OrdinaryMovementRegistration.AnalyticSupport`.
+The captured source offers `IMovementFlatAnalyticSupportSource` for exact constant-height regions, including
+flat cell seams. Nonuniform or missing captured triangles decline this optional arrival proof and keep live
+movement previews. [Analytic support provenance](../KhaozEngine.Locomotion/README.md#analytic-support-provenance)
+defines the certificate contract.
 It recognizes the exact captured `MovementGroundHeight` and `MovementGroundNormal` delegates in world coordinates.
 Wrapping those delegates requires a separately authenticated source, even when their sampled values agree.
 The canonical key qualifies packed signed tile X/Z and the triangle ordinal with the world and immutable captured
@@ -89,6 +93,11 @@ Outside the loaded bounding rectangle, captured analytic terrain extends the nea
 including objects outside their anchor region.
 
 `TileMediumSampler` implements `IMovementWaterField` with immutable body identities, finite beds and free surfaces.
+Its optional `IMovementDryTracePointProof` accepts only a trace whose directed lateral capsule-path bounds are
+disjoint from every captured column projection. Such points return Known dry before any rounded drawn-bed
+lookup, even at large coordinates. An overlapping projection declines the proof, including dry regions below
+beds or above water, because the separate bed lookup can refuse. This adds no tolerance and does not relax any
+trace precision or capacity check. The bound uses the same immutable column index as point selection.
 A point is in a column when the exact framed centre lies in X [minimum, maximum), Z (minimum, maximum] and its
 feet in [bed, surface). Support and water share captured drawn triangles, triangle selection and anchored height
 evaluation. The lower boundary follows the selected triangle at the queried axis, including sloped beds and a

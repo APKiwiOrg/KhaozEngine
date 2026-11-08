@@ -14,7 +14,7 @@ public sealed class ExactTests
     [Fact]
     public void Commanded_triangle_crossing_refuses()
     {
-        var rig = new Fixture();
+        var rig = new ExactPanelFixture();
         var before = rig.Before();
         var beforeCallerBytes = Bytes(before);
         bool certified = CoverageCertification.ValidateGeometry(rig.Topology, before, before,
@@ -31,7 +31,7 @@ public sealed class ExactTests
     [Fact]
     public void Protected_bytes_and_world_recession_budget_are_checked()
     {
-        var rig = new Fixture();
+        var rig = new ExactPanelFixture();
         var before = rig.Before();
         var output = rig.Construct();
         var scratch = new CoverageScratch(rig.Topology);
@@ -74,7 +74,7 @@ public sealed class ExactTests
     [Fact]
     public void Exact_construction_exports_independent_scalar_storage()
     {
-        var rig = new Fixture();
+        var rig = new ExactPanelFixture();
         float[] scalars = new float[rig.Topology.PositionGroupCount];
         int[] representatives = new int[scalars.Length];
         var output = new ModelVertex[rig.Topology.VertexCount];
@@ -100,48 +100,4 @@ public sealed class ExactTests
 
     static byte[] Bytes(ModelVertex[] vertices) => MemoryMarshal.AsBytes(vertices.AsSpan()).ToArray();
 
-    sealed class Fixture
-    {
-        readonly CoverageFixture fixture = CoverageFixture.CurvedPanel(level: 1);
-        internal Fixture()
-        {
-            Topology = CoverageRefinement.Build(fixture.Source, fixture.Map);
-            var solid = new CoverageSourceTopology("synthetic-support", CoverageFixture.Hash, fixture.RigidPositions,
-                Enumerable.Range(0, fixture.RigidPositions.Length).Select(v => new CoverageSourceVertex(0, 0, v, -1, 0, v)),
-                Enumerable.Range(0, fixture.RigidIndices.Length / 3).Select(t => new CoverageSourceTriangle(0, 0, t, -1, 0,
-                    (int)fixture.RigidIndices[t * 3], (int)fixture.RigidIndices[t * 3 + 1], (int)fixture.RigidIndices[t * 3 + 2])));
-            var support = CoverageSupportSurface.Compile(solid, [new(0, 0, 0, 4)], Matrix4x4.Identity);
-            Command = new(23, 17, Topology, 0, support, Matrix4x4.Identity, Matrix4x4.Identity, -2, 2, .4f, .02f, .8f);
-            Matrix4x4[] binds = [Matrix4x4.Identity, Matrix4x4.Identity];
-            Constructor = new(Topology, binds);
-            // Construction must own the inverse binds, independent of later source edits.
-            Array.Fill(binds, Matrix4x4.CreateTranslation(100, 100, 100));
-        }
-        internal CoverageRefinement Topology { get; }
-        internal CoverageCommandPose Command { get; }
-        internal CoverageExactConstructor Constructor { get; }
-        internal Matrix4x4[] Palette { get; } = CoverageFixture.Pose;
-        internal ModelVertex[] Before()
-        {
-            var result = new ModelVertex[Topology.VertexCount];
-            // Certification compares against the retained binary32 skinning and refinement graph.
-            // The fixture's ordinary SkinningMath pose uses a different arithmetic graph.
-            Assert.True(Constructor.TryConstruct(Palette, Matrix4x4.Identity, [], result,
-                new float[Topology.PositionGroupCount], new int[Topology.PositionGroupCount], out var failure), failure.ToString());
-            return result;
-        }
-        internal ModelVertex[] Construct()
-        {
-            var output = new ModelVertex[Topology.VertexCount];
-            Assert.True(Constructor.TryConstruct(Palette, Matrix4x4.Identity, [Command], output,
-                new float[Topology.PositionGroupCount], new int[Topology.PositionGroupCount], out var failure), failure.ToString());
-            return output;
-        }
-        internal void Context(CoverageFailure failure)
-        {
-            Assert.Equal(Topology.HostIdentity, failure.HostIdentity);
-            Assert.Equal(17ul, failure.EquipmentInstanceId);
-            Assert.Equal(23u, failure.CommandId);
-        }
-    }
 }

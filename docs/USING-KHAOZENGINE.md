@@ -23338,15 +23338,19 @@ Family declarations distinguish an out-of-range size, a non-power-of-two size an
 Text commit reasons distinguish store epoch, missing draft, freeze marker, complete draft, baseline,
 missing close revision and missing live row. Store-wide legacy `Type` and `Id` stay default and 0 where
 `TextRowType` and `TextRowId` now identify the text row. Each member keeps one identifier set.
-SQLite reuses those same identifier sets. Its missing `catalog_metadata` singleton read uses
+SQLite and SQL Server reuse those same identifier sets. A missing `catalog_metadata` singleton read uses
 `SchemaMetadataMissing` with no identifiers. A non-null stored scalar of the wrong CLR type uses
 `StoredScalarTypeMismatch`, with `ExpectedScalarType` and `ActualScalarType` rather than the stored value.
-Its registry pairing guard uses `TypeIdentityMismatch`,
+Their registry pairing guards use `TypeIdentityMismatch`,
 carrying requested `Type`, the full persisted Int64 `StoredTypeId`, `StoredTypeKey` and `RegisteredTypeKey`. Metadata absence has no
 in-memory twin. `DraftRowDisappeared` identifies a singleton removed inside its transaction, including by a
 host trigger. `StoredEditOperationUnknown` carries `Type`, `Id`, `ActualOperation` and the Int64
-`StoredEditOrdinal`. SQLite validates catalog DDL, so trigger behavior and malformed persisted values still
+`StoredEditOrdinal`. Durable stores validate catalog DDL, so trigger behavior and malformed persisted values still
 need these refusals. A database ordinal is distinct from the submitted batch's zero-based `EditOrdinal`.
+SQL Server additionally reports `DraftEditIdentityMissing` with `Type` and `Id`, and `FamilyIdentityMissing`
+with `Type` and `FamilyKey`, when an insert returns no identity. Its contention adapter reports
+`TransactionContended` with `SqlErrorNumber` 1205 or 3960, while retaining the legacy `base-version-moved`
+token and the same 409 handling. These provider numbers are typed values, never parsed message text.
 
 Text binding reports `TextBindingRowUnknown` with `Type`, `Id` 0 and `RowKey`. Final-row checks
 report `TextFinalRowUnknown` with `Type`, `Id`, `FieldName` and `Language`.

@@ -127,17 +127,7 @@ internal static class ContentTextCompatibility
         return true;
     }
 
-    /// <summary>The legacy refusal adapter for the remaining provider-owned text gates.</summary>
-    /// <param name="member">The member refusing.</param>
-    /// <param name="detail">What it could not represent.</param>
-    public static ContentAuthoringException Unrepresented(string member, string detail)
-        => new(
-            DescribeUnrepresented(member, detail),
-            default,
-            0,
-            ContentAuthoringException.TextUnrepresentedReason);
-
-    /// <summary>The unchanged prose shared by typed pack-write guards and the remaining row-only gates.</summary>
+    /// <summary>The unchanged prose shared by typed pack-write guards and row-only gates.</summary>
     internal static string DescribeUnrepresented(string member, string detail)
         => FormattableString.Invariant(
             $"{member} is refused because {detail}, and this row-only route cannot carry text. Use the text authoring companion, which publishes, discards and moves rows and text together.");

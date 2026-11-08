@@ -18,6 +18,7 @@
     <None Include="NetWorld/Fixtures/cell-v1-32bit.blob" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="../test-shared/RefusalConstructorFence.cs" Link="Shared/RefusalConstructorFence.cs" />
     <Compile Include="../test-shared/ItemsBenchmarkFields.cs" Link="Benchmarks/ItemsBenchmarkFields.cs" />
     <Compile Include="../test-shared/ItemsBenchmarkFixtureDirectory.cs" Link="Benchmarks/ItemsBenchmarkFixtureDirectory.cs" />
     <Compile Include="../KhaozEngine.Game.Tests/Locomotion/Contacts/SupportAllocationRegion.cs" Link="NetWorld/Fixtures/SupportAllocationRegion.cs" />

@@ -67,11 +67,19 @@ public sealed partial class SqlServerContentAuthoringStore
         if (!ContentFamily.IsLegalBlockSize(blockSize))
         {
             throw new ContentAuthoringException(
+                blockSize < ContentFamily.MinBlockSize || blockSize > ContentFamily.MaxBlockSize
+                    ? ContentAuthoringRefusal.FamilyDeclarationBlockSizeOutsideRange
+                    : ContentAuthoringRefusal.FamilyDeclarationBlockSizeNotPowerOfTwo,
                 FormattableString.Invariant(
                     $"Family '{familyKey}' declares a block size of {blockSize}, and a block size is a power of two between {ContentFamily.MinBlockSize} and {ContentFamily.MaxBlockSize}. It is fixed at creation, because changing it would move every id in the family."),
                 type,
                 0,
-                ContentAuthoringException.FamilyDeclarationReason);
+                ContentAuthoringException.FamilyDeclarationReason)
+            {
+                FamilyKey = familyKey, ActualBlockSize = blockSize,
+                MinimumBlockSize = blockSize < ContentFamily.MinBlockSize || blockSize > ContentFamily.MaxBlockSize ? ContentFamily.MinBlockSize : null,
+                MaximumBlockSize = blockSize < ContentFamily.MinBlockSize || blockSize > ContentFamily.MaxBlockSize ? ContentFamily.MaxBlockSize : null,
+            };
         }
 
         return await WriteAsync(
@@ -83,11 +91,12 @@ public sealed partial class SqlServerContentAuthoringStore
                 if (await FamilyKeyTakenAsync(scope, type, familyKey, token).ConfigureAwait(false))
                 {
                     throw new ContentAuthoringException(
+                        ContentAuthoringRefusal.FamilyKeyDuplicate,
                         FormattableString.Invariant(
                             $"Content type {type.Value} already carries a family keyed '{familyKey}', and a family key is unique within its type."),
                         type,
                         0,
-                        ContentAuthoringException.FamilyDeclarationReason);
+                        ContentAuthoringException.FamilyDeclarationReason) { FamilyKey = familyKey };
                 }
 
                 int active = await ReadActiveVersionAsync(scope, token).ConfigureAwait(false);
@@ -113,11 +122,12 @@ public sealed partial class SqlServerContentAuthoringStore
                 long familyId = raw is long identity
                     ? identity
                     : throw new ContentAuthoringException(
+                        ContentAuthoringRefusal.FamilyIdentityMissing,
                         FormattableString.Invariant(
                             $"The insert of family '{familyKey}' returned no identity, so nothing can reserve a block for it."),
                         type,
                         0,
-                        ContentAuthoringException.SchemaMismatchReason);
+                        ContentAuthoringException.SchemaMismatchReason) { FamilyKey = familyKey };
                 ContentFamilyBlock block = await ReserveInitialBlockAsync(scope, familyId, mark, token)
                     .ConfigureAwait(false);
                 ContentFamily created = await RequireFamilyAsync(scope, familyId, token).ConfigureAwait(false);
@@ -352,10 +362,11 @@ public sealed partial class SqlServerContentAuthoringStore
         CancellationToken cancellationToken)
         => await ReadFamilyAsync(scope, familyId, cancellationToken).ConfigureAwait(false)
             ?? throw new ContentAuthoringException(
+                ContentAuthoringRefusal.FamilyUnknown,
                 FormattableString.Invariant($"Family {familyId} is not in the store."),
                 default,
                 0,
-                ContentAuthoringException.UnknownFamilyReason);
+                ContentAuthoringException.UnknownFamilyReason) { FamilyId = familyId };
 
     /// <summary>
     /// Families with their blocks in ordinal order, filtered to one type (id 0 means all) or to one family.
@@ -474,10 +485,11 @@ public sealed partial class SqlServerContentAuthoringStore
         return await command.ExecuteScalarAsync(cancellationToken).ConfigureAwait(false) is int type
             ? new ContentTypeId((ushort)type)
             : throw new ContentAuthoringException(
+                ContentAuthoringRefusal.FamilyUnknown,
                 FormattableString.Invariant($"Family {familyId} is not in the store."),
                 default,
                 0,
-                ContentAuthoringException.UnknownFamilyReason);
+                ContentAuthoringException.UnknownFamilyReason) { FamilyId = familyId };
     }
 
     /// <summary>

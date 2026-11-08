@@ -123,7 +123,11 @@ public class SqlServerCatalogSchemaTests
             () => store.InitializeAsync(ContentAuthoringSchemaMode.ValidateOnly));
 
         Assert.Equal("unknown-type", refused.Reason);
-        Assert.Contains(CatalogFixtures.ThingTypeKey, refused.Message, StringComparison.Ordinal);
-        Assert.Contains("renamed_thing", refused.Message, StringComparison.Ordinal);
+        Assert.Equal(ContentAuthoringRefusal.TypeIdentityMismatch, refused.Refusal);
+        Assert.Equal(new ContentTypeId(1024), refused.Type);
+        Assert.Equal(1024L, refused.StoredTypeId);
+        Assert.Equal("thing", refused.StoredTypeKey);
+        Assert.Equal("renamed_thing", refused.RegisteredTypeKey);
+        await created.InitializeAsync(ContentAuthoringSchemaMode.ValidateOnly);
     }
 }

@@ -71,6 +71,7 @@ public sealed partial class SqlServerContentAuthoringStore
                 if (await command.ExecuteNonQueryAsync(token).ConfigureAwait(false) == 0)
                 {
                     throw new ContentAuthoringException(
+                        ContentAuthoringRefusal.NoPendingDraft,
                         "There is no open draft to freeze, so there is nothing to publish.",
                         default,
                         0,
@@ -148,11 +149,12 @@ public sealed partial class SqlServerContentAuthoringStore
         }
 
         throw new ContentAuthoringException(
+            ContentAuthoringRefusal.PublishInProgress,
             FormattableString.Invariant(
                 $"{member} is refused: a publish standing on version {Convert.ToInt32(held, CultureInfo.InvariantCulture)} holds this draft frozen. The change set that publish read at step 1 is the one it will delete, so an edit arriving now would either be published without review or be deleted unpublished."),
             default,
             0,
-            ContentAuthoringException.PublishInProgressReason);
+            ContentAuthoringException.PublishInProgressReason) { MemberName = member, FrozenForBaseVersion = Convert.ToInt32(held, CultureInfo.InvariantCulture) };
     }
 
     /// <summary>

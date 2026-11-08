@@ -158,6 +158,11 @@ public abstract partial class ContentAuthoringStoreConformance
             () => store.ImportBundleAsync(
                 SeedBundle("no_such_family"), CatalogFixtures.Actor, CatalogFixtures.Operator, "seed"));
         Assert.Equal(ContentAuthoringException.UnknownFamilyReason, refused.Reason);
+        Assert.Equal(ContentAuthoringRefusal.BundleFamilyUnknown, refused.Refusal);
+        Assert.Equal(Thing, refused.Type);
+        Assert.Equal(41, refused.Id);
+        Assert.Equal("forty_one", refused.RowKey);
+        Assert.Equal("no_such_family", refused.FamilyKey);
 
         Assert.Empty(await store.ListFamiliesAsync(default));
         Assert.Empty(await RulesAsync(store));

@@ -60,7 +60,7 @@ public sealed partial class SqlServerContentAuthoringStore
         // rollback and names the edit rather than the statement.
         for (int i = 0; i < edits.Count; i++)
         {
-            CheckAgainstSchema(edits[i]);
+            CheckAgainstSchema(edits[i], i);
         }
 
         return WriteAsync(
@@ -100,6 +100,7 @@ public sealed partial class SqlServerContentAuthoringStore
     static async Task<ContentDraft> RequireDraftAsync(SqlServerCatalogScope scope, CancellationToken cancellationToken)
         => await ReadDraftAsync(scope, cancellationToken).ConfigureAwait(false)
             ?? throw new ContentAuthoringException(
+                ContentAuthoringRefusal.DraftRowDisappeared,
                 "The draft row went missing inside the transaction that opened it.",
                 default,
                 0,
@@ -239,11 +240,12 @@ public sealed partial class SqlServerContentAuthoringStore
                     reader.GetString(8),
                     payload),
                 _ => throw new ContentAuthoringException(
+                    ContentAuthoringRefusal.StoredEditOperationUnknown,
                     FormattableString.Invariant(
                         $"Draft edit {ordinal} carries operation {(int)operation}, which is not one of the four of spec 3.7."),
                     type,
                     definitionId,
-                    ContentAuthoringException.UnknownEditOperationReason),
+                    ContentAuthoringException.UnknownEditOperationReason) { ActualOperation = (int)operation, StoredEditOrdinal = ordinal },
             });
         }
 
@@ -329,11 +331,12 @@ public sealed partial class SqlServerContentAuthoringStore
         if (standing is { } held && held.Operation != edit.Operation)
         {
             throw new ContentAuthoringException(
+                ContentAuthoringRefusal.EditTargetOperationCollision,
                 FormattableString.Invariant(
                     $"The open draft already holds a {held.Operation} edit for type {edit.Type.Value} row {edit.DefinitionId} ('{edit.Key}'), so a {edit.Operation} of the same row is refused. A draft holds one pending intent per row."),
                 edit.Type,
                 edit.DefinitionId,
-                ContentAuthoringException.EditTargetCollisionReason);
+                ContentAuthoringException.EditTargetCollisionReason) { RowKey = edit.Key.ToString(), StandingOperation = held.Operation, RequestedOperation = edit.Operation };
         }
 
         // One reading per edit, shared by the edit row and its field rows, which are written together.
@@ -386,6 +389,7 @@ public sealed partial class SqlServerContentAuthoringStore
             ordinal = raw is long identity
                 ? identity
                 : throw new ContentAuthoringException(
+                    ContentAuthoringRefusal.DraftEditIdentityMissing,
                     "The draft edit insert returned no identity, so its field rows have nothing to hang off.",
                     edit.Type,
                     edit.DefinitionId,
@@ -478,7 +482,7 @@ public sealed partial class SqlServerContentAuthoringStore
     /// An edit may only name fields its type declares, and may never author a value for a DERIVED marker,
     /// whose key is a function of the row it sits on. Both are refused at the boundary rather than at publish.
     /// </summary>
-    void CheckAgainstSchema(ContentEdit edit)
+    void CheckAgainstSchema(ContentEdit edit, int editOrdinal)
     {
         ArgumentNullException.ThrowIfNull(edit);
 
@@ -489,21 +493,23 @@ public sealed partial class SqlServerContentAuthoringStore
             if (!registration.Schema.TryGet(field.Name, out ContentFieldEntry? entry))
             {
                 throw new ContentAuthoringException(
+                    ContentAuthoringRefusal.FieldUnknown,
                     FormattableString.Invariant(
                         $"Content type {registration.Type.Value} '{registration.TypeKey}' declares no field named '{field.Name}', so the edit is refused at the boundary rather than at publish."),
                     edit.Type,
                     edit.DefinitionId,
-                    ContentAuthoringException.UnknownFieldReason);
+                    ContentAuthoringException.UnknownFieldReason) { TypeKey = registration.TypeKey, FieldName = field.Name, EditOrdinal = editOrdinal };
             }
 
             if (entry.IsDerivedMarker)
             {
                 throw new ContentAuthoringException(
+                    ContentAuthoringRefusal.DerivedMarkerNotAuthorable,
                     FormattableString.Invariant(
                         $"Field '{field.Name}' of content type {registration.Type.Value} '{registration.TypeKey}' is a derived marker, whose key is a function of the row it sits on, so an edit cannot author a value for it."),
                     edit.Type,
                     edit.DefinitionId,
-                    ContentAuthoringException.UnknownFieldReason);
+                    ContentAuthoringException.UnknownFieldReason) { TypeKey = registration.TypeKey, FieldName = field.Name, EditOrdinal = editOrdinal };
             }
         }
     }

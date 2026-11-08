@@ -597,6 +597,9 @@ public sealed class ContentAuthoringException : Exception
     /// <summary>The actual CLR type of a malformed non-null persisted scalar, or null.</summary>
     public Type? ActualScalarType { get; init; }
 
+    /// <summary>The typed SQL Server error number of a transaction-contention refusal, or null.</summary>
+    public int? SqlErrorNumber { get; init; }
+
     /// <summary>The content type the refusal is about. The default type id 0 means none.</summary>
     public ContentTypeId Type { get; }
 

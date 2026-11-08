@@ -127,11 +127,12 @@ public sealed partial class SqlServerContentAuthoringStore
             }
 
             throw new ContentAuthoringException(
+                ContentAuthoringRefusal.TypeIdentityMismatch,
                 FormattableString.Invariant(
                     $"This database already pins content type {storedId} to key '{storedKey}', and the registry declares type {registration.Type.Value} as '{registration.TypeKey}'. Neither a rename nor a reassignment is possible: both repoint every row already stored under the old pairing."),
                 registration.Type,
                 0,
-                ContentAuthoringException.UnknownTypeReason);
+                ContentAuthoringException.UnknownTypeReason) { StoredTypeId = storedId, StoredTypeKey = storedKey, RegisteredTypeKey = registration.TypeKey };
         }
     }
 

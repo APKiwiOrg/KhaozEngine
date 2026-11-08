@@ -411,4 +411,13 @@ public enum ContentAuthoringRefusal
     /// <summary>Refuses a non-null stored scalar of the wrong CLR type. Carries ExpectedScalarType and ActualScalarType.</summary>
     StoredScalarTypeMismatch,
 
+    /// <summary>Refuses a SQL Server draft-edit insert that returns no identity. Carries Type and Id.</summary>
+    DraftEditIdentityMissing,
+
+    /// <summary>Refuses a SQL Server family insert that returns no identity. Carries Type and FamilyKey.</summary>
+    FamilyIdentityMissing,
+
+    /// <summary>Refuses a SQL Server transaction contended by another writer. Carries SqlErrorNumber (1205 or 3960).</summary>
+    TransactionContended,
+
 }

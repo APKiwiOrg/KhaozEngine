@@ -34,6 +34,21 @@ Guarded operator pins use `IContentVersionSelectionStore.TrySetPinnedVersionAsyn
 checked catalog epoch, active version and pin in the same transaction as the pin and audit write.
 Trusted `SetPinnedVersionAsync` recovery calls keep their existing semantics.
 
+Store admission and commit failures carry `ContentAuthoringException.Refusal` with the same members and
+identifier sets as the in-memory and SQLite stores. See the shared
+[store refusal table](../KhaozEngine.Catalog.Authoring/README.md#store-admission-and-confirmation-refusals).
+Legacy string `Reason` tokens, `Type`, `Id` and `Findings` retain their meanings. Metadata absence uses
+`SchemaMetadataMissing`, a non-null stored scalar of the wrong CLR type uses `StoredScalarTypeMismatch`,
+and registry pairing conflicts use `TypeIdentityMismatch` with the full persisted Int64 `StoredTypeId`.
+`DraftRowDisappeared` and `StoredEditOperationUnknown` identify malformed persisted inputs or host-trigger
+effects, which DDL validation does not exclude.
+
+SQL Server's insert-identity guards use `DraftEditIdentityMissing` (`Type`, `Id`) and
+`FamilyIdentityMissing` (`Type`, `FamilyKey`). An `INSTEAD OF INSERT` trigger can suppress a row and leave
+`SCOPE_IDENTITY()` null, so these are input refusals. A contention refusal uses `TransactionContended`
+with the typed `SqlErrorNumber` (1205 or 3960). Its legacy token remains `base-version-moved`, so existing
+409 handling keeps working. No provider message is parsed.
+
 Operator imports support `IContentPolicyImportStore.ImportWithPolicyAsync` with a required-policy
 `ContentPolicyImportRequest`. The host's admin registration binds the policy and the existing frozen
 publisher enforces it. Trusted `ImportBundleAsync` and `ImportTextBundleAsync` calls keep their existing
@@ -292,10 +307,10 @@ every pending edit, so editing or an intentional discard can continue. Run `cata
 current draft is intentionally ready to publish. The draft delete at step 10 is scoped to the edits step 1
 froze.
 
-**A serialization failure carries that same reason.** SQL error 1205 (deadlock victim) and 3960 (snapshot
-update conflict) both mean what a moved base version means to a caller: the plan was built over a state that is
-no longer there, nothing was written, and the remedy is to re-read the baseline and prepare again. A separate
-reason token would make one condition two things for a console to handle.
+**A serialization failure keeps that legacy reason token.** SQL error 1205 (deadlock victim) and 3960
+(snapshot update conflict) have the same remedy as a moved base: nothing was written, so re-read the baseline
+and prepare again. The structured refusal is TransactionContended with SqlErrorNumber, since the provider
+knows which SQL rule refused the transaction but no expected or actual version pair.
 
 ## Ids
 

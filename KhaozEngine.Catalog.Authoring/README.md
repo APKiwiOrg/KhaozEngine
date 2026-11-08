@@ -298,7 +298,7 @@ copy the complete list into a read-only snapshot, so later producer mutation can
 
 ### Store admission and confirmation refusals
 
-The in-memory and SQLite stores carry these members alongside their legacy tokens. Row-boundary field checks reuse
+The in-memory, SQLite and SQL Server stores carry these members alongside their legacy tokens. Row-boundary field checks reuse
 `FieldUnknown` with the submitted batch's zero-based `EditOrdinal`. Family-id lookup reuses `FamilyUnknown`,
 unknown registrations reuse `TypeUnknown`, and absent versions reuse `VersionUnknown`, including pinning.
 Candidate rejection retains the complete `Findings` snapshot. Stale base checks reuse `BaseVersionMoved`.
@@ -333,6 +333,9 @@ Text apply reuses `TextBindingRowUnknown` and `TextLanguageUndeclared` with thei
 | `TypeIdentityMismatch` | A durable registry pairing disagreeing with a stored id or key | Requested `Type`, `StoredTypeId` (full persisted Int64), `StoredTypeKey`, `RegisteredTypeKey` |
 | `DraftRowDisappeared` | A draft singleton removed during its transaction | None |
 | `StoredEditOperationUnknown` | A persisted edit operation outside the four supported operations | `Type`, `Id`, `ActualOperation`, persisted `StoredEditOrdinal` (Int64) |
+| `DraftEditIdentityMissing` | A SQL Server draft-edit insert returning no identity | `Type`, `Id` |
+| `FamilyIdentityMissing` | A SQL Server family insert returning no identity | `Type`, `FamilyKey` |
+| `TransactionContended` | A SQL Server transaction refused with error 1205 or 3960 | `SqlErrorNumber` |
 
 `TextRowType` and `TextRowId` identify rows without changing the existing store-wide legacy `Type` and
 `Id` values of default and 0. Pinning an absent version retains its existing `unknown-type` legacy token

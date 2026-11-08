@@ -122,14 +122,22 @@ public sealed class CoverageSourceTopology
     internal CoverageGeometryDataException Error(CoverageGeometryRefusal reason, string message,
         int? mesh = null, int? primitive = null, int? vertex = null, int? triangle = null, int? node = null, int? materialSlice = null,
         long? count = null, long? limit = null) => new(reason, $"Coverage asset '{Identity}': {message}")
-    { Identity = Identity, Mesh = mesh, Primitive = primitive, Vertex = vertex, Triangle = triangle, Node = node, MaterialSlice = materialSlice, Count = count, Limit = limit };
+        { Identity = Identity, Mesh = mesh, Primitive = primitive, Vertex = vertex, Triangle = triangle, Node = node, MaterialSlice = materialSlice, Count = count, Limit = limit };
 
     internal HostCoverageDataException Error(HostCoverageRefusal reason, string message, int? mesh = null,
         int? primitive = null, int? vertex = null, int? firstTriangle = null, int? materialSlice = null,
         int? surfaceId = null, string? regionKey = null) =>
         new(reason, $"Coverage asset '{Identity}': {message}")
-        { Identity = Identity, Mesh = mesh, Primitive = primitive, Vertex = vertex, FirstTriangle = firstTriangle,
-            MaterialSlice = materialSlice, SurfaceId = surfaceId, RegionKey = regionKey };
+        {
+            Identity = Identity,
+            Mesh = mesh,
+            Primitive = primitive,
+            Vertex = vertex,
+            FirstTriangle = firstTriangle,
+            MaterialSlice = materialSlice,
+            SurfaceId = surfaceId,
+            RegionKey = regionKey
+        };
 
     internal int[] Select(ReadOnlySpan<CoverageTriangleRange> ranges)
     {

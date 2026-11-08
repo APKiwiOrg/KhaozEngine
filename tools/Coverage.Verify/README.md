@@ -2,6 +2,9 @@
 
 `Coverage.Verify` is a nonpackable executable outside `KhaozEngine.slnx` and every engine umbrella.
 Runtime code never references it. Public fixtures contain synthetic geometry only.
+The living [equipment coverage guide](../../docs/EQUIPMENT-COVERAGE.md) connects this offline contract
+to runtime selection, fallback and submitted history. Native correctness and cost require separately
+approved evidence. Sample verification is not a continuous proof.
 
 `CoverageExactConstructor` owns a copy of the inverse-bind palette and reusable per-pose scratch.
 `TryConstruct` skins the source, applies frozen refinement, conforms and corrects the core, blends
@@ -170,3 +173,12 @@ rule. The CLI emits a JSON refusal containing that public reason and applicable 
 sample, state key, entry, command, equipment and exact-failure identifiers, then exits 1. Malformed
 JSON retains `CoverageBuildDataException`, its rooted path and exit 2. Accepted evidence reuses the
 same bounded serialization, provenance checks and atomic publication as sample-only commands.
+
+## Headless tooling CI
+
+The free `tooling-validation.yml` suite `coverage` builds this executable and its test project explicitly
+on hosted Ubuntu. It requires a nonempty inventory, executed CLI process tests and zero skips, with
+`KE_GPU_TESTS=0`. Coverage format, carry and tooling changes select the suite. This is deterministic
+headless verification, not native correctness or cost acceptance. The Diagnostic hardware cost fact
+requires its separate exact `KE_COVERAGE_COST_UNIT` opt-in and owner-approved invocation, documented in
+[performance evidence](../../docs/RENDERER-PERFORMANCE.md#equipment-coverage-cost-evidence).

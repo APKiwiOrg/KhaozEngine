@@ -7411,6 +7411,27 @@ Besides the set type renames in the design record table:
   `InvalidDataException` is sealed. Update existing malformed-data catches to include `MalformedDataException`.
   Callers never need a SharpGLTF exception type.
 
+### Offline table equipment coverage
+
+Use `HostCoverageBinding` from `KhaozEngine.Attachments.Render3D` for a complete annotated host and
+an immutable `CoverageRecessionTable`. Supply a consumer-owned `CoverageStateKey` every frame.
+Preparation freezes complete equipment descriptors without queuing them. Forward every descriptor
+unchanged, including coverage tokens and borrowed skinned palettes. A missing or explicit-hole key
+returns `TableHole` with no prepared equipment draws. Explicitly draw the uncovered current host and
+ordinary equipment on refusal.
+
+Join the existing `GpuFrameSubmission` through `Scene3D.BeginFrame(submission)`, queue all actors and
+prepare before opening the host list. The scene registers one aggregate participant for all actors.
+Only successful submission commits coverage history. Dispose the submission owner before bindings,
+then dispose bindings before caches and scenes. Legacy attachment adapters retain ordinary equipment
+submission without implementing the optional coverage interface.
+
+See [equipment coverage](EQUIPMENT-COVERAGE.md) and the exact
+[compiled consumer example](examples/EquipmentCoverageConsumer.cs) for configuration identity, the
+three fallback paths, slot ownership, partial-weight and whole-skin checks, allocation conditions and
+the blocking offline `verify` command. Sample verification is not a continuous proof. Native correctness
+and aggregate cost remain unproven until their separately approved units are accepted.
+
 ### Skinned body contracts (any body shape)
 
 A game with more than one skinned body states each body's joints once as a `SkeletonContract` and checks every

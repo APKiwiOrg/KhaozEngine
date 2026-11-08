@@ -185,7 +185,8 @@ public sealed class CoverageSupportSurface
         if (!double.IsFinite(y)) throw new ArgumentException("Query coordinate must be finite.", nameof(y));
         if (!TryGetBoundaryBounds(CoverageAffinePoint.FromDouble(x, y), out var bounds))
             throw new CoverageGeometryArgumentException(CoverageGeometryRefusal.UncertifiableBoundaryQuery,
-                "Query distance is numerically uncertifiable.") { Identity = Source.Identity, X = x, Y = y };
+                "Query distance is numerically uncertifiable.")
+            { Identity = Source.Identity, X = x, Y = y };
         nearest = bounds.ApproximateNearest;
         distance = bounds.Distance.Midpoint;
     }

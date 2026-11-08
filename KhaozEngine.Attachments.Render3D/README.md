@@ -202,6 +202,12 @@ For the version-21 set-level rename and its rationale, see the
 
 ## Table coverage preparation
 
+See the living [equipment coverage guide](../docs/EQUIPMENT-COVERAGE.md) and its
+[compiled consumer example](../docs/examples/EquipmentCoverageConsumer.cs) for complete submission,
+explicit uncovered-current-pose fallback and teardown order. The submission owner drains first, then
+bindings dispose before their attachment caches and scenes. One scene-owned aggregate participant
+commits every actor's history. Native correctness and cost remain separately gated.
+
 `IAttachmentCoverageScene` is an optional capability beside `IAttachmentScene`.
 `Scene3DAttachmentScene` supplies it through its actual Scene3D resource owner. Ordinary attachment
 adapters remain usable for ordinary equipment and empty coverage configurations.

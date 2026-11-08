@@ -33,6 +33,29 @@ capability gates and software-adapter refusals. A software result cannot certify
 Paid `gpu-hosted-bench.yml` measurement mode keeps its explicit filter and separate owner authorization.
 Historical timing receipts remain evidence for their original commits and workloads.
 
+## Equipment coverage cost evidence
+
+The recession-table implementation has headless carry, descriptor, submission-history and allocation
+guards. It has no accepted native cost result. The separately approved G1 to G3 correctness units and
+G4/G5 hardware cost units remain required at the actual code SHA. Publish no cost or measured-memory
+claim from the headless tests. See [equipment coverage](EQUIPMENT-COVERAGE.md) for the runtime and
+verification boundaries, including the open Vulkan previous-slot synchronization item.
+
+`CoverageRecessionCostGpuTests.Real_body_size_carry_and_scene_overhead_for_1_and_32_actors` is a
+Diagnostic fact with a separate exact opt-in:
+`KE_COVERAGE_COST_UNIT=Real_body_size_carry_and_scene_overhead_for_1_and_32_actors`. GPU enablement,
+an approved backend and selecting the fact are also required. A missing or different opt-in skips before
+any hardware probe. The hosted benchmark's optional `coverage-cost-unit` input forwards the same token.
+Ordinary shard filters exclude this fact even when Diagnostic filtering is absent. Broad Diagnostic
+selection never authorizes it.
+
+The prepared synthetic workload measures carry and paired full-scene baseline/coverage rows separately.
+The graph has five dispatches per active table group, including final atomic per-actor publication.
+The output reservation is `D + 2` slots per actor and is a storage policy, not a measured footprint.
+Carry-only results cannot establish aggregate scene overhead. The free `coverage` tooling CI suite
+checks deterministic fixture/CLI behavior with GPU disabled and supplies no timing evidence. No native,
+local, hosted, paid or stress invocation follows automatically from passing headless checks.
+
 ## Hosted physics rebase diagnostic
 
 The separate `physics-rebase-perf.yml` CPU lane runs on `main` every Monday at 04:37 UTC and on

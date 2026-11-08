@@ -8,6 +8,18 @@ Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
 2026-11-09
 
+- Offline-verified equipment recession tables and consumer-owned state keys. Strict host and equipment
+  sidecars, immutable source evidence and the shared canonical configuration identity bind tables to
+  complete material slices. The outside-solution verifier builds deterministic rows and blocks invalid
+  selected samples, dense replay and whole-skin changed-record depth. Sampled evidence is not continuous proof.
+- Runtime table carry records five dispatches per active table group and publishes one final surface per
+  actor across colour, depth, motion, shadows and outlines. Submission-owned history retains safe output
+  slots and explicitly presents the uncovered current pose on refusal. Native correctness, Vulkan
+  cross-frame synchronization and aggregate cost remain unproven pending separate acceptance units.
+- `GpuShaderCompileOptions` adds an opt-in precise compute/vertex math policy without changing default
+  compilation or cache identities. Coverage requests that policy. A compiled public consumer example
+  and the living equipment coverage guide document complete descriptors, fallback and resource lifetime.
+
 - Catalog and journal refusals now carry a public reason enum and typed identifiers, filled at every engine throw
   site. `ContentAuthoringException` gains `ContentAuthoringRefusal? Refusal` beside its existing string `Reason`,
   `ContentRegistrationException` gains `ContentRegistrationRefusal? Reason`, and `JournalStoreException` gains

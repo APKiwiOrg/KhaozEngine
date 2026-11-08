@@ -96,6 +96,10 @@ joint. Host joint-name mapping and bind-pose compatibility are renderer-level ch
 
 ## Equipment coverage companions
 
+These sidecars describe offline table inputs. Runtime selection and the blocking verification contract
+are documented in the living [equipment coverage guide](../docs/EQUIPMENT-COVERAGE.md). The consumer
+owns state-key semantics and sampled evidence does not provide a continuous proof.
+
 `EquipmentCoverageJson.Read(utf8, identity)` reads strict equipment coverage format 1, separate
 from attachment JSON v1/v2. `EquipmentCoverageDefinition` binds an exact attachment-file SHA-256
 to a host-map semantic SHA-256. It owns 1 to 4 commands with unique positive IDs. Each command

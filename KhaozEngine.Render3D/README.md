@@ -1883,10 +1883,16 @@ keep their original families. Caller parameter checks remain BCL exceptions.
 
 ## Recession table assets
 
+The living [equipment coverage guide](../docs/EQUIPMENT-COVERAGE.md) owns the end-to-end consumer,
+offline verification and acceptance contract, with a directly compiled public example. Verification at
+samples is not a continuous proof. Native correctness and cost remain unproven until separately
+approved device and cost units are accepted.
+
 `CoverageRecessionTable.Create(identity, representatives, entryMajorRecessions, states)` owns deep
 copies of its spans, sorts the state index by unsigned `CoverageStateKey.Value` and refuses duplicate
 keys. `Entry(index)` borrows one immutable binary32 row. Every row shares the same representative
-array. A 958-group row occupies 3,832 scalar bytes. Representatives may be -1, and host binding
+array. Scalar storage is four bytes per group per entry, before other table and runtime storage.
+Representatives may be -1, and host binding
 validates their upper bounds and group ownership against actual topology. At least one group is
 required. Zero entries and an empty state index are valid.
 

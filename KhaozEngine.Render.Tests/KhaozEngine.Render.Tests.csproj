@@ -115,6 +115,7 @@
   <ItemGroup>
     <Compile Include="$(ArchitectureTestSourceRoot)/IlCallGraph.cs" Link="Shared/IlCallGraph.cs" />
     <Compile Include="$(ArchitectureTestSourceRoot)/RefusalConstructorFence.cs" Link="Shared/RefusalConstructorFence.cs" />
+    <Compile Include="../docs/examples/EquipmentCoverageConsumer.cs" Link="Examples/EquipmentCoverageConsumer.cs" />
     <Compile Include="../test-shared/SkinnedAttachmentGlbFixture.cs" Link="Shared/SkinnedAttachmentGlbFixture.cs" />
     <Compile Include="../test-shared/RendererPerfSceneInputs.cs" Link="Shared/RendererPerfSceneInputs.cs" />
   </ItemGroup>

@@ -546,6 +546,9 @@ What it owns today:
   Factories without precision support throw `GpuShaderPolicyUnsupportedException`, derived from
   `NotSupportedException`, with `PreciseMathUnavailable`. Vulkan reports `FloatControlsUnavailable` when its
   float-control property is absent. `Stage` names the refused compute or vertex stage.
+  [Equipment coverage](../docs/EQUIPMENT-COVERAGE.md#runtime-carry-refusal-and-history) requests this
+  policy for its carry and pulling graphics variants. Its native correctness and cost acceptance remain
+  separate from headless compiler and scheduling evidence.
 - **Compute** (since 15.2.0) - `IGpuResourceFactory.CreateComputeShaderFromSpirv(computeGlsl)` compiles a GLSL 450
   compute source into an `IGpuComputeShader`, and `CreateComputePipeline(in GpuComputePipelineDescription)` builds an
   `IGpuComputePipeline` over it plus its resource layouts. Both handle types are separate from the graphics

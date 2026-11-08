@@ -21,7 +21,8 @@ internal sealed class CoverageRecessionBodySizeFixture
     internal readonly string FixtureHash, TableHash;
     internal readonly int Width, Height, Level;
 
-    internal CoverageRecessionBodySizeFixture(int width = 18, int height = 16, int level = 2)
+    internal CoverageRecessionBodySizeFixture(int width = 18, int height = 16, int level = 2, int refinedTriangles = -1,
+        bool sharedQuadCorners = false)
     {
         ArgumentOutOfRangeException.ThrowIfLessThan(width, 2);
         ArgumentOutOfRangeException.ThrowIfLessThan(height, 2);
@@ -33,15 +34,28 @@ internal sealed class CoverageRecessionBodySizeFixture
         for (int y = 0; y < height; y++)
             for (int x = 0; x < width; x++)
             {
+                if (sharedQuadCorners)
+                {
+                    // A skinned body shares corners across a quad, so skinning work tracks vertices rather than faces.
+                    int a = Corner((x, y)), b = Corner((x + 1, y)), c = Corner((x + 1, y + 1)), d = Corner((x, y + 1));
+                    Triangle(a, b, c);
+                    Triangle(a, c, d);
+                    continue;
+                }
                 Face((x, y), (x + 1, y), (x + 1, y + 1));
                 Face((x, y), (x + 1, y + 1), (x, y + 1));
             }
         var sourceVertices = skin.ToArray();
-        uint[] indices = Enumerable.Range(0, sourceVertices.Length).Select(i => (uint)i).ToArray();
+        uint[] indices = triangles.SelectMany(t => new[] { (uint)t.A, (uint)t.B, (uint)t.C }).ToArray();
         using var hash = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
         hash.AppendData(MemoryMarshal.AsBytes(sourceVertices.AsSpan()));
         hash.AppendData(MemoryMarshal.AsBytes(indices.AsSpan()));
         hash.AppendData(BitConverter.GetBytes(level));
+        if (refinedTriangles >= 0 || sharedQuadCorners)
+        {
+            hash.AppendData(BitConverter.GetBytes(refinedTriangles));
+            hash.AppendData(BitConverter.GetBytes(sharedQuadCorners));
+        }
         FixtureHash = Convert.ToHexStringLower(hash.GetHashAndReset());
         Source = new("synthetic-recession-grid", FixtureHash, sourceVertices.Select(v => v.Position).ToArray(),
             provenance, triangles, sourceVertices);
@@ -50,7 +64,7 @@ internal sealed class CoverageRecessionBodySizeFixture
                 id % (width + 1) is 0 || id % (width + 1) == width || id / (width + 1) is 0 || id / (width + 1) == height ? 0 : 1));
         var authored = new HostCoverageMap(FixtureHash, vertices,
             [new("patch", [new(new(0, 0, 0, triangles.Count), CoverageTriangleRole.Collar)], strengths)],
-            [new(new(0, 0, 0, triangles.Count), level)], new("synthetic", "native-recession"));
+            [new(new(0, 0, 0, refinedTriangles < 0 ? triangles.Count : refinedTriangles), level)], new("synthetic", "native-recession"));
         // Native fixtures consume the same strict public sidecar and binary formats as callers.
         Map = HostCoverageMapJson.Read(HostCoverageMapJson.Write(authored), "synthetic-map");
         Topology = CoverageRefinement.Build(Source, Map);
@@ -80,24 +94,40 @@ internal sealed class CoverageRecessionBodySizeFixture
 
         void Face((int X, int Y) a, (int X, int Y) b, (int X, int Y) c)
         {
-            int start = skin.Count;
-            foreach (var p in new[] { a, b, c })
-            {
-                int index = skin.Count;
-                skin.Add(new()
-                {
-                    Position = new((2 * p.X - width) / 32f, (2 * p.Y - height) / 32f, 0),
-                    Normal = Vector3.UnitZ,
-                    Tangent = new(1, 0, 0, -1),
-                    Color = new(.75f, .5f, .25f, 1),
-                    Uv = new(p.X / 16f, p.Y / 16f),
-                    BoneWeights = Vector4.UnitX,
-                });
-                provenance.Add(new(0, 0, index, -1, 0, index));
-                vertices.Add(new(0, 0, index, p.Y * (width + 1) + p.X));
-            }
-            triangles.Add(new(0, 0, triangles.Count, -1, 0, start, start + 1, start + 2));
+            int first = Corner(a), second = Corner(b), third = Corner(c);
+            Triangle(first, second, third);
         }
+
+        void Triangle(int a, int b, int c) => triangles.Add(new(0, 0, triangles.Count, -1, 0, a, b, c));
+
+        int Corner((int X, int Y) p)
+        {
+            int index = skin.Count;
+            skin.Add(new()
+            {
+                Position = new((2 * p.X - width) / 32f, (2 * p.Y - height) / 32f, 0),
+                Normal = Vector3.UnitZ,
+                Tangent = new(1, 0, 0, -1),
+                Color = new(.75f, .5f, .25f, 1),
+                Uv = new(p.X / 16f, p.Y / 16f),
+                BoneWeights = Vector4.UnitX,
+            });
+            provenance.Add(new(0, 0, index, -1, 0, index));
+            vertices.Add(new(0, 0, index, p.Y * (width + 1) + p.X));
+            return index;
+        }
+    }
+
+    /// <summary>The count-only consumer workload the cost unit must meet or exceed, excluding unused padding.</summary>
+    internal static void AssertCoversConsumerExtents(CoverageRecessionBodySizeFixture fixture)
+    {
+        var t = fixture.Topology;
+        Xunit.Assert.True(fixture.Source.Vertices.Count >= 3164);
+        Xunit.Assert.True(fixture.Source.Triangles.Count >= 1584);
+        Xunit.Assert.True(t.VertexCount >= 3424);
+        Xunit.Assert.True(t.TriangleCount >= 1892);
+        Xunit.Assert.True(t.Indices.Length >= 5676);
+        Xunit.Assert.True(t.PositionGroupCount >= 958);
     }
 
     internal Vector3 RestPosition(int vertex)
@@ -132,6 +162,7 @@ internal sealed class CoverageRecessionBodySizeFixture
         Width,
         Height,
         Level,
+        RefinedTriangles = Map.Refinement.Sum(r => r.Triangles.Count),
         sourceVertices = Source.Vertices.Count,
         sourceTriangles = Source.Triangles.Count,
         finalVertices = Topology.VertexCount,

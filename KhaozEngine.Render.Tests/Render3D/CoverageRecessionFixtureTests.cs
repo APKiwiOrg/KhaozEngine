@@ -58,6 +58,23 @@ public sealed class CoverageRecessionFixtureTests(ITestOutputHelper output)
     }
 
     [Fact]
+    public void Cost_fixture_meets_the_consumer_extents_without_overshooting_them()
+    {
+        var fixture = new CoverageRecessionBodySizeFixture(33, 24, 2, 103, true);
+        CoverageRecessionBodySizeFixture.AssertCoversConsumerExtents(fixture);
+        var t = fixture.Topology;
+        // An oversized body would overstate cost against a tight budget, so each extent stays close to the target.
+        Assert.InRange(fixture.Source.Vertices.Count, 3164, 3164 * 1.02);
+        Assert.InRange(fixture.Source.Triangles.Count, 1584, 1584 * 1.02);
+        Assert.InRange(t.VertexCount, 3424, 3424 * 1.05);
+        Assert.InRange(t.TriangleCount, 1892, 1892 * 1.02);
+        Assert.InRange(t.Indices.Length, 5676, 5676 * 1.02);
+        Assert.InRange(t.PositionGroupCount, 958, 958 * 1.2);
+        Assert.True(t.Vertices.GroupBy(v => v.PositionGroup).Max(g => g.Count()) > 1);
+        output.WriteLine("SYNTHETIC_COVERAGE_COST_FIXTURE=" + JsonSerializer.Serialize(fixture.Extents));
+    }
+
+    [Fact]
     public void Body_size_extents_execute_indexed_refinement_and_gather_without_padding()
     {
         var fixture = new CoverageRecessionBodySizeFixture();

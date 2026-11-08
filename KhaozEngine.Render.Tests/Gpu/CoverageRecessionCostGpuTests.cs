@@ -31,8 +31,9 @@ public sealed class CoverageRecessionCostGpuTests(ITestOutputHelper output)
             Assert.Equal(GpuBackendKind.VulkanNative, context.Backend);
             Assert.Matches(@"^(NVIDIA\s+)?(Tesla\s+)?T4$", device.Capabilities.DeviceName);
         }
-        var fixture = new CoverageRecessionBodySizeFixture(Extent("WIDTH", 18), Extent("HEIGHT", 16), Extent("LEVEL", 2));
-        Assert.True(fixture.Topology.VertexCount >= 3424); Assert.True(fixture.Topology.PositionGroupCount >= 958);
+        var fixture = new CoverageRecessionBodySizeFixture(Extent("WIDTH", 33), Extent("HEIGHT", 24), Extent("LEVEL", 2),
+            Extent("REFINED_TRIANGLES", 103), Extent("SHARED_QUAD_CORNERS", 1) != 0);
+        CoverageRecessionBodySizeFixture.AssertCoversConsumerExtents(fixture);
         var rows = new List<CoverageRecessionCostMeasurement.Row>();
         foreach (int actors in new[] { 1, 32 })
             rows.AddRange(CoverageRecessionCostMeasurement.Measure(device, fixture, actors, observed, deadline));

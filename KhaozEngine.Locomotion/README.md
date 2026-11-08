@@ -1077,6 +1077,15 @@ input, execute the real controller and publish the canonical result under the sa
 player simulation and certified Drop execution. NetWorld applies this policy to forward prediction, pending
 replay, both authorities and admitted placements. The local Contact `CharacterController3D` uses it too.
 
+`CertifyPlayerPlacement` performs the same cold classification as `ValidatePlacement` and returns an opaque
+`MovementColdPlacement` on success. `StepPlayerWithPlacement` can consume it for one identical first player
+Step in the same read. Copies share that single use. The certificate binds raw and prepared state bits,
+selection, frame, binding identity (including immutable tuning, water policy and composition), boundary and
+exact lease. The controller authenticates the current generations and reconstructs selection before reuse.
+A default, consumed or mismatched certificate takes the regular validation path. Keep the certificate inside
+the caller's read scope, discard it on correction or replay, and never serialize it. Disposal invalidates
+its use. `StepPlayer` remains the ordinary uncached entry point.
+
 Horizontal velocity rounds independently per axis to 1/256 m/s and clamps to +/-127 m/s. Speed scale uses the
 existing offset-from-one 1/1024 grid and 0 through 8 range. Heading and climb rate keep their existing wire grids.
 The next ascent average starts from the positive decoded climb signal, exactly as owner reconstruction and

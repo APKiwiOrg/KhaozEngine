@@ -9,6 +9,13 @@ namespace KhaozEngine.Render3D.Rendering;
 internal readonly record struct CoveragePulledDraw(CoverageSurfaceRange Surface, int FirstCorner, int CornerCount,
     uint InstanceSlot, MotionKey Actor, PointShadowCasterSphere Sphere, bool VisibleMain, ShadowCastKind ShadowKind);
 
+/// <summary>Pass observations contain immutable values, never borrowed GPU resource owners.</summary>
+internal readonly record struct CoverageDrawEvidence(MotionKey Actor, int FirstCorner, int CornerCount, bool VisibleMain)
+{
+    internal CoverageDrawEvidence(in CoveragePulledDraw draw)
+        : this(draw.Actor, draw.FirstCorner, draw.CornerCount, draw.VisibleMain) { }
+}
+
 /// <summary>Cold bindings over batch-owned surfaces. Every material keeps its own dynamic draw window.</summary>
 internal sealed class CoveragePulledResources : IDisposable
 {

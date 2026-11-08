@@ -97,7 +97,7 @@ public sealed partial class Scene3D
         frame = default;
         var p = owner.Request;
         if (_disposalComplete || _coverageArena.Generation == 0 || _framePrepared || actor.IsNone || actor != owner.Actor
-            || IsCoveragePreparedThisFrame(owner))
+            || IsCoveragePreparedThisFrame(owner) || p.PublicationGeneration == _coverageArena.Generation)
             return Refuse(CoverageFailureCode.StaleFrame, out failure);
         p.AttemptGeneration = _coverageArena.Generation;
         p.Raw = false;

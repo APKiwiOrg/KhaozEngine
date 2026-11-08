@@ -11,7 +11,7 @@ internal sealed partial class TargetOutlineRenderer
     IGpuShaderSet _coverageFullShaders = null!, _coverageVisibleShaders = null!;
     IGpuPipeline? _coverageFullPipeline, _coverageVisiblePipeline;
     IGpuResourceSet?[] _coverageMaterials = [];
-    internal Action<string, CoveragePulledDraw>? CoveragePullObserverForTests { get; set; }
+    internal Action<string, CoverageDrawEvidence>? CoveragePullObserverForTests { get; set; }
 
     internal void ReserveCoverage(int count)
     {
@@ -77,7 +77,7 @@ internal sealed partial class TargetOutlineRenderer
         commands.SetGraphicsResourceSet(0, _drawSet!, (uint)draw.DrawIndex * DrawSlotBytes);
         commands.SetGraphicsResourceSet(1, draw.MaterialSet);
         _coveragePull.Bind(commands, 2, (uint)draw.DrawIndex);
-        CoveragePullObserverForTests?.Invoke(full ? "full" : "visible", draw.Coverage);
+        CoveragePullObserverForTests?.Invoke(full ? "full" : "visible", new(draw.Coverage));
         commands.Draw((uint)draw.IndexCount, 1, 0, 0);
     }
 

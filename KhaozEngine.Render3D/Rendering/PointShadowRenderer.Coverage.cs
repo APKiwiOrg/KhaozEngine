@@ -38,7 +38,7 @@ internal sealed partial class PointShadowRenderer
     }
 
     internal void ReserveCoverageSurface(int slot, in CoverageSurfaceRange surface) => _coveragePull!.ReserveSurface(slot, surface);
-    internal Action<string, CoveragePulledDraw>? CoveragePullObserverForTests { get; set; }
+    internal Action<string, CoverageDrawEvidence>? CoveragePullObserverForTests { get; set; }
 
     internal void PackCoverage(in CoveragePulledDraw draw) => _coveragePull!.Pack(draw.InstanceSlot, draw);
     internal void UploadCoverage(IGpuCommandList commands) => _coveragePull!.Upload(commands);
@@ -63,7 +63,7 @@ internal sealed partial class PointShadowRenderer
         commands.SetGraphicsResourceSet(1, _skinnedCasterSet, casterSlot * SkinnedCasterSlotBytes);
         _coveragePull!.Bind(commands, 2, draw.InstanceSlot);
         commands.Draw((uint)draw.CornerCount, 1, 0, 0);
-        CoveragePullObserverForTests?.Invoke("point", draw);
+        CoveragePullObserverForTests?.Invoke("point", new(draw));
     }
 
     void DisposeCoverage()

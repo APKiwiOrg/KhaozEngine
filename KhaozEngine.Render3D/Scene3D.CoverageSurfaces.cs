@@ -106,7 +106,7 @@ public sealed partial class Scene3D
     }
 
     // Immutable pass evidence is emitted only after the real draw command has been recorded.
-    Action<string, CoveragePulledDraw>? _coverageObservePass;
+    Action<string, CoverageDrawEvidence>? _coverageObservePass;
     internal Action<CoveragePassEvidence>? CoveragePassObserverForTests
     {
         set
@@ -117,7 +117,7 @@ public sealed partial class Scene3D
             if (_pointShadows is not null) _pointShadows.CoveragePullObserverForTests = _coverageObservePass;
         }
     }
-    void ObserveCoveragePass(Action<CoveragePassEvidence> observe, string pass, CoveragePulledDraw draw)
+    void ObserveCoveragePass(Action<CoveragePassEvidence> observe, string pass, CoverageDrawEvidence draw)
     {
         foreach (var host in _coverageHosts)
         {

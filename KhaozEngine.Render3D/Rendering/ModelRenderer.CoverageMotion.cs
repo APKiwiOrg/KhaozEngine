@@ -40,7 +40,7 @@ internal sealed partial class ModelRenderer
         commands.SetGraphicsResourceSet(3, _motion!.FrameSet);
         _coveragePull.Bind(commands, 2, draw.InstanceSlot);
         commands.Draw((uint)draw.CornerCount, 1, 0, 0);
-        CoveragePullObserverForTests?.Invoke("motion", draw);
+        CoveragePullObserverForTests?.Invoke("motion", new(draw));
     }
 
     void DisposeCoverageMotion()

@@ -33,4 +33,18 @@ public sealed class CoveragePrepareLifecycleTests
         fixture.Submit(); Assert.True(fixture.History.Discontinuity);
     }
 
+    [Fact]
+    public void A_preparation_retry_cannot_replace_a_queued_raw_fallback_pose()
+    {
+        using var fixture = new CoveragePublicationFixture();
+        fixture.Begin(); fixture.Queue(30);
+        fixture.Host.Palette[0] = Matrix4x4.CreateTranslation(1, 0, 0);
+        Assert.False(fixture.Host.Prepare(fixture.Binding, out _, out var failure, 20));
+        Assert.Equal(CoverageFailureCode.StaleFrame, failure.Code);
+        fixture.Record(); Assert.NotEmpty(fixture.Evidence); fixture.Submit();
+        Assert.Equal(-1, fixture.History.Entry);
+        fixture.Begin(); fixture.Queue(20); fixture.Record(); fixture.Submit();
+        Assert.Equal(1, fixture.History.Entry);
+    }
+
 }

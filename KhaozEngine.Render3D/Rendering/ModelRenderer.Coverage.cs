@@ -14,7 +14,7 @@ internal sealed partial class ModelRenderer
     uint _coverageMainSlotOffset;
     internal void SetCoverageMainSlotOffset(uint offset) => _coverageMainSlotOffset = offset;
     GpuOutputDescription _coverageOutputs;
-    internal Action<string, CoveragePulledDraw>? CoveragePullObserverForTests { get; set; }
+    internal Action<string, CoverageDrawEvidence>? CoveragePullObserverForTests { get; set; }
 
     internal void ReserveCoverage(int count)
     {
@@ -53,7 +53,7 @@ internal sealed partial class ModelRenderer
         commands.SetGraphicsResourceSet(1, material ?? _skinnedDefaultFragSet);
         _coveragePull.Bind(commands, 2, draw.InstanceSlot);
         commands.Draw((uint)draw.CornerCount, 1, 0, 0);
-        CoveragePullObserverForTests?.Invoke("main", draw);
+        CoveragePullObserverForTests?.Invoke("main", new(draw));
     }
 
     void BuildCoveragePipelines(IGpuResourceFactory factory, GpuOutputDescription outputs)

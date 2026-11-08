@@ -1970,7 +1970,8 @@ coverage bounds by the render origin, while camera and point-light culling stay 
 An explicit or missing table key returns `TableHole` from preparation. Submit each ordinary current host
 slice with the same actor motion key and exact scene-issued host handles. Only this frame's registered
 actor/handle pairs enter the fallback publisher. The actual submitted palette and model are frozen and
-preflighted again. With a usable pipeline and safe slot, entry `-1` runs the same five kernels, with no CPU
+preflighted again. Once a fallback draw is captured, later host preparations refuse `StaleFrame`
+instead of replacing that pose. With a usable pipeline and safe slot, entry `-1` runs the same five kernels, with no CPU
 skinned upload and no recession. Publication chooses every word of the uncovered current record, even if
 the candidate path succeeds. Merely refusing preparation without subsequently drawing records no surface.
 

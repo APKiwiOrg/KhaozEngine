@@ -75,7 +75,7 @@ internal sealed partial class ModelRenderer
         commands.SetGraphicsResourceSet(0, _coverageCascadeSet!, checked((uint)(cascade * _coverageCascadeStride + draw.InstanceSlot) * 256));
         _coveragePull.Bind(commands, 1, draw.InstanceSlot);
         commands.Draw((uint)draw.CornerCount, 1, 0, 0);
-        CoveragePullObserverForTests?.Invoke("cascade", draw);
+        CoveragePullObserverForTests?.Invoke("cascade", new(draw));
     }
 
     void DisposeCoverageShadows()

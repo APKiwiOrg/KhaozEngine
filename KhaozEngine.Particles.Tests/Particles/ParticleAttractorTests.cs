@@ -466,7 +466,8 @@ public class ParticleAttractorTests
         cfg.Direction = Vector3.Zero;
         cfg.SpreadDegrees = 180f;
 
-        ParticleSystem Run()
+        // Absorption can empty the pool before the last step, so every step is compared.
+        List<(int Absorbed, (Vector3 Position, Vector3 Velocity, float Age)[] Live)> Run()
         {
             var sys = new ParticleSystem(64, seed: 77);
             sys.Emit(cfg, Vector3.Zero, 32);
@@ -477,23 +478,28 @@ public class ParticleAttractorTests
                 StrengthCurve = ParticleCurve.One,
                 KillRadius = 0.75f,
             };
+            var steps = new List<(int, (Vector3, Vector3, float)[])>();
             for (int i = 0; i < 300; i++)
             {
                 sys.Update(1f / 60f);
+                var live = new (Vector3, Vector3, float)[sys.ActiveCount];
+                for (int p = 0; p < live.Length; p++)
+                    live[p] = (sys.Active[p].Position, sys.Active[p].Velocity, sys.Active[p].Age);
+                steps.Add((sys.AbsorbedTotal, live));
             }
-            return sys;
+            return steps;
         }
 
         var a = Run();
         var b = Run();
 
-        Assert.Equal(a.AbsorbedTotal, b.AbsorbedTotal);
-        Assert.Equal(a.ActiveCount, b.ActiveCount);
-        for (int i = 0; i < a.ActiveCount; i++)
+        Assert.Contains(a, step => step.Live.Length > 0);
+        Assert.True(a[^1].Absorbed > 0, "The attractor must absorb particles for this comparison to cover it.");
+        Assert.Equal(a.Count, b.Count);
+        for (int step = 0; step < a.Count; step++)
         {
-            Assert.Equal(a.Active[i].Position, b.Active[i].Position);
-            Assert.Equal(a.Active[i].Velocity, b.Active[i].Velocity);
-            Assert.Equal(a.Active[i].Age, b.Active[i].Age);
+            Assert.Equal(a[step].Absorbed, b[step].Absorbed);
+            Assert.Equal(a[step].Live, b[step].Live);
         }
     }
 }

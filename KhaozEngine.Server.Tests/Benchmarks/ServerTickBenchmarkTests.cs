@@ -8,7 +8,7 @@ namespace KhaozEngine.Tests.Benchmarks;
 
 /// <summary>
 /// Headless acceptance for the jobs-0 server-tick benchmark harness. The timing loop itself is not unit-tested
-/// (wall-clock is observational, run via <c>dotnet run</c>); what is asserted here is the harness's deterministic
+/// (wall-clock is observational, run via <c>dotnet run</c>). What is asserted here is the harness's deterministic
 /// and structural behaviour - the things that make the reported numbers trustworthy and repeatable.
 /// </summary>
 public class ServerTickBenchmarkTests
@@ -32,6 +32,7 @@ public class ServerTickBenchmarkTests
         foreach (CellSim cell in host.Cells)
             cell.World.ForEach<BenchPosition, BenchVelocity>((Entity _, ref BenchPosition p, ref BenchVelocity v) =>
                 rows.Add((p.X, p.Y, v.X, v.Y)));
+        Assert.NotEmpty(rows);
         return rows;
     }
 
@@ -54,14 +55,19 @@ public class ServerTickBenchmarkTests
         ShardHost host = ServerTickBenchmark.Build(config);
         float s = config.CellSize;
 
+        Assert.Equal(config.CellCount, host.CellCount);
         foreach (CellSim cell in host.Cells)
         {
             float minX = cell.Coord.X * s, minY = cell.Coord.Y * s;
+            var positions = new List<(float X, float Y)>();
             cell.World.ForEach<BenchPosition, BenchVelocity>((Entity _, ref BenchPosition p, ref BenchVelocity _) =>
+                positions.Add((p.X, p.Y)));
+            Assert.Equal(config.EntitiesPerCell, positions.Count);
+            foreach ((float x, float y) in positions)
             {
-                Assert.InRange(p.X, minX, minX + s);
-                Assert.InRange(p.Y, minY, minY + s);
-            });
+                Assert.InRange(x, minX, minX + s);
+                Assert.InRange(y, minY, minY + s);
+            }
         }
     }
 
@@ -119,6 +125,7 @@ public class ServerTickBenchmarkTests
         host.Tick(dt, maxTicksPerFrame: 1);
         List<(float px, float py, float vx, float vy)> after = Snapshot(host);
 
+        Assert.Equal(before.Count, after.Count);
         for (int i = 0; i < before.Count; i++)
         {
             float expected = before[i].px;

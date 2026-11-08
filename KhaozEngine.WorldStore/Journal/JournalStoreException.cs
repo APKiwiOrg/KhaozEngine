@@ -30,7 +30,7 @@ public enum JournalStoreFailureScope
     WholeStore,
 }
 
-public sealed class JournalStoreException : Exception
+public sealed partial class JournalStoreException : Exception
 {
     private readonly IReadOnlyList<string> streamKeys;
 

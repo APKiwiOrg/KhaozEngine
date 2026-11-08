@@ -37,15 +37,25 @@ public sealed class SqlServerJournalResetAtomicityTests
             JournalStoreException failed = await Assert.ThrowsAsync<JournalStoreException>(
                 () => SqlServerJournalReset.ResetAsync(SqlServerJournalResetHarness.ConnectionString));
 
+            Assert.Equal(JournalStoreRefusal.ProviderOperationFailed, failed.Reason);
+            Assert.Equal(547, failed.ProviderCode);
+            Assert.Equal(JournalOperationStage.Transaction, failed.Stage);
             Assert.Equal(JournalStoreFailureKind.ConstraintViolation, failed.Kind);
             Assert.Equal(JournalStoreFailureCertainty.DefinitelyNotCommitted, failed.Certainty);
             Assert.Equal(JournalStoreFailureScope.WholeStore, failed.Scope);
             SqlException provider = Assert.IsType<SqlException>(failed.InnerException);
             Assert.Equal(547, provider.Number);
-            Assert.Contains(SqlServerJournalResetHostObjectTests.HostTable, provider.Message, StringComparison.Ordinal);
             Assert.Equal(before, await SqlServerJournalResetHarness.CountsAsync());
             Assert.Equal(content, await SqlServerJournalSnapshot.CaptureAsync(SqlServerJournalResetHarness.ConnectionString));
             Assert.Equal(1L, await SqlServerJournalResetHostObjectTests.HostRowsReferencingAsync(seeded.First));
+
+            // The same reset succeeds once its sole obstruction, the host key and row, is removed.
+            await SqlServerJournalResetHostObjectTests.DropHostObjectsAsync();
+            JournalResetResult reset = await SqlServerJournalReset.ResetAsync(SqlServerJournalResetHarness.ConnectionString);
+            Assert.Equal(before, JournalResetTestSupport.CountsByTable(reset));
+            KeyValuePair<string, long>[] after = await SqlServerJournalResetHarness.CountsAsync();
+            Assert.Equal(6, after.Length);
+            Assert.All(after, table => Assert.Equal(0L, table.Value));
         }
         finally
         {

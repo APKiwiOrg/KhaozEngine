@@ -137,7 +137,9 @@ the dozen or so statements the logical transaction contains. That batch takes th
 the operation for idempotent replay, locks every touched stream head with `UPDLOCK, HOLDLOCK` in ordinal stream-key
 order, checks the per-stream projection limits, writes events, heads, projections, and the operation receipt, and
 reports `Applied`, `Replayed`, `VersionConflict`, `OperationConflict`, `ExistingStream`, a projection-limit refusal,
-or an application-lock failure through a result set rather than through an error message. Provider errors still
+or an application-lock failure through a result set rather than through an error message. A projection-limit result
+also carries the guard's reason, actual total and inclusive configured limit for the refusing stream, with count
+checked before bytes. Provider errors still
 surface as themselves: the batch rethrows inside its own `TRY`/`CATCH`, so a duplicate key or a deadlock keeps its
 number and its place in the failure contract. The caller owns `BEGIN` and `COMMIT`, so nothing is visible before
 the commit and every failure boundary still rolls the whole operation back. Variable-length work is unrolled into
@@ -184,7 +186,8 @@ observes the caller's cancellation token, so a host stuck in schema initializati
 Its transaction then takes the exclusive side of the maintenance application lock, the gate every commit holds shared
 and compaction, purge, and epoch rotation hold exclusive. It waits up to the lock timeout
 (`SqlServerJournalReset.DefaultLockTimeout`, thirty seconds, when none is given) and is then refused with a
-whole-store `Timeout` that deleted nothing. Under the lock and before the first delete it refuses a game table's
+whole-store `Timeout` that deleted nothing. That reset wrapper retains `ApplicationLockNotGranted`, its `ReturnCode`,
+every identifier and the original refusal as `InnerException`. Under the lock and before the first delete it refuses a game table's
 foreign key into a journal data table declared `CASCADE`, `SET NULL`, or `SET DEFAULT` with a whole-store
 `SchemaMismatch` with reason `HostForeignKeyActionUnsafe` and every key in `HostObjects`, having deleted nothing. A `NO ACTION` key fires nothing, so a game row that still
 references a stream fails the delete instead and the whole reset rolls back with `ConstraintViolation`. It opens the
@@ -227,6 +230,25 @@ by removing whitespace and uppercasing. Each unsafe host key in `HostObjects` ca
 `ForeignKeyName`, `ReferencedTable` and `DeleteAction`. Keys are ordered by schema, table and key name.
 Collections are owned immutable snapshots. Provider failure numbers come directly from `SqlException.Number`.
 Application lock refusals carry the actual negative `ReturnCode`, without an invented timeout or migration.
+
+Runtime adapters share SQLite's reason and identifier sets for provider failures, cancellation, uncertain commits,
+checksums, projection limits, missing snapshots, replacement versions, invalid epochs and metadata update counts.
+`ProviderOperationFailed` carries the original typed `ProviderCode` and `Stage`. `CommitOutcomeUnknown` carries
+`Stage` without a provider code, including unconfirmed rollback before commit. `OperationCancelled` carries `Stage`
+and the original cause. Failure kind, certainty, scope and stream keys keep their existing meaning.
+
+| Runtime reason | What is refused | Identifiers |
+|---|---|---|
+| `ReplacementSnapshotDataMismatch` | SQL Server's readback differs from the requested replacement data before pruning. | `StreamKey` |
+| `TransportFailed` | An I/O or socket failure before a transaction or after confirmed rollback. | `Stage`, original `InnerException` |
+| `WriteFailedAfterRollback` | A non-provider commit failure after confirmed rollback. | `Stage` (`Commit`), original `InnerException` |
+| `ProviderClockUnavailable` | SQL Server did not return its UTC clock. | `ProviderName` (`SQL Server`) |
+
+The [core refusal table](../KhaozEngine.WorldStore/README.md#refusals) lists every shared runtime member and its
+identifiers. Replacement verification checks version, requested data, requested checksum and checksum validity in
+that order. Bad checksums share `SnapshotChecksumMismatch` with stored reads. A reset obstruction through a
+`NO ACTION` host row carries `ProviderOperationFailed`, `ProviderCode` 547 and `Stage` (`Transaction`), with the
+original provider cause. Reset context copies preserve every identifier, including owned collection snapshots.
 
 Live provider tests require `KE_SQLSERVER_TEST_CONNSTRING`. Each test owns a unique stream prefix and cleanup
 removes only rows under that prefix. The reset facts are the exception: they wipe the whole test journal, inside the

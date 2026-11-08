@@ -85,7 +85,7 @@ public enum JournalStoreRefusal
     ProviderOperationFailed,
     /// <summary>A commit completed or may have completed before its response failed.</summary>
     CommitOutcomeUnknown,
-    /// <summary>A journal operation was cancelled inside its transaction.</summary>
+    /// <summary>A journal operation was cancelled before its result was returned.</summary>
     OperationCancelled,
     /// <summary>The provider did not return its UTC clock value.</summary>
     ProviderClockUnavailable,
@@ -99,4 +99,10 @@ public enum JournalStoreRefusal
     MetadataUpdateNotApplied,
     /// <summary>A stream being compacted has no stored snapshot.</summary>
     StreamSnapshotMissing,
+    /// <summary>A SQL Server replacement snapshot differs from the requested data before pruning.</summary>
+    ReplacementSnapshotDataMismatch,
+    /// <summary>A runtime transport failed with confirmed rollback or before a transaction began.</summary>
+    TransportFailed,
+    /// <summary>A non-provider commit failure has a confirmed rollback.</summary>
+    WriteFailedAfterRollback,
 }

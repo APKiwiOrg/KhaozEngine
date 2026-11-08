@@ -180,7 +180,7 @@ public sealed partial class SqlServerMutationJournalStore
             Add(update, "@epoch", next);
             Add(update, "@now", Timestamp(UtcNow()));
             if (await update.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false) != 1)
-                throw Corrupt(Array.Empty<string>(), "Journal metadata row is missing.");
+                throw Corrupt(JournalStoreRefusal.MetadataUpdateNotApplied, Array.Empty<string>(), "Journal metadata row is missing.");
             Invoke(JournalTestHookPhase.BeforeCommit);
             commitStarted = true;
             await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
@@ -204,7 +204,7 @@ public sealed partial class SqlServerMutationJournalStore
         using SqlCommand command = CreateCommand(transaction, "SELECT through_version FROM dbo.journal_snapshot WITH (UPDLOCK, HOLDLOCK) WHERE stream_key = @stream;");
         Add(command, "@stream", streamKey);
         object? result = await command.ExecuteScalarAsync(cancellationToken).ConfigureAwait(false);
-        if (result is null or DBNull) throw Corrupt(new[] { streamKey }, "Journal stream has no snapshot.");
+        if (result is null or DBNull) throw Corrupt(JournalStoreRefusal.StreamSnapshotMissing, new[] { streamKey }, "Journal stream has no snapshot.", streamKey: streamKey);
         return Convert.ToInt64(result);
     }
 
@@ -241,13 +241,22 @@ public sealed partial class SqlServerMutationJournalStore
         Add(command, "@stream", compaction.StreamKey);
         await using SqlDataReader reader = await command.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
         if (!await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
-            throw Corrupt(new[] { compaction.StreamKey }, "Replacement journal snapshot did not verify before pruning.");
+            throw Corrupt(JournalStoreRefusal.StreamSnapshotMissing, new[] { compaction.StreamKey }, "Replacement journal snapshot did not verify before pruning.", streamKey: compaction.StreamKey);
         byte[] data = reader.GetFieldValue<byte[]>(1);
         byte[] checksum = reader.GetFieldValue<byte[]>(2);
-        if (reader.GetInt64(0) != compaction.ThroughVersion
-            || !data.AsSpan().SequenceEqual(compaction.SnapshotData.Span)
+        long actualVersion = reader.GetInt64(0);
+        bool dataMatches = data.AsSpan().SequenceEqual(compaction.SnapshotData.Span);
+        if (actualVersion != compaction.ThroughVersion
+            || !dataMatches
             || !checksum.AsSpan().SequenceEqual(compaction.SnapshotChecksum.Span)
             || !JournalCanonicalizer.VerifySha256(data, checksum))
-            throw Corrupt(new[] { compaction.StreamKey }, "Replacement journal snapshot did not verify before pruning.");
+        {
+            JournalStoreRefusal reason = actualVersion != compaction.ThroughVersion ? JournalStoreRefusal.ReplacementSnapshotVersionMismatch
+                : !dataMatches ? JournalStoreRefusal.ReplacementSnapshotDataMismatch : JournalStoreRefusal.SnapshotChecksumMismatch;
+            throw Corrupt(reason, new[] { compaction.StreamKey }, "Replacement journal snapshot did not verify before pruning.",
+                streamKey: compaction.StreamKey,
+                expectedVersion: reason == JournalStoreRefusal.ReplacementSnapshotVersionMismatch ? compaction.ThroughVersion : null,
+                actualVersion: reason == JournalStoreRefusal.ReplacementSnapshotVersionMismatch ? actualVersion : null);
+        }
     }
 }

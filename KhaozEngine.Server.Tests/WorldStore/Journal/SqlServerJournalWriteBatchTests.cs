@@ -35,7 +35,7 @@ public sealed class SqlServerJournalWriteBatchTests
             "UPDATE dbo.journal_projection",
             "INSERT INTO dbo.journal_operation(",
             "INSERT INTO dbo.journal_operation_stream(",
-            "SELECT @outcome, @lockResult, @limitStream;",
+            "SELECT @outcome, @lockResult, @limitStream,",
         };
         int previous = -1;
         foreach (string statement in ordered)
@@ -102,7 +102,7 @@ public sealed class SqlServerJournalWriteBatchTests
             skipOperationLookup: true);
 
         Assert.DoesNotContain("SELECT @storedIntent = intent_fingerprint", command.CommandText, StringComparison.Ordinal);
-        Assert.Contains("SELECT @outcome, @lockResult, @limitStream;", command.CommandText, StringComparison.Ordinal);
+        Assert.Contains("SELECT @outcome, @lockResult, @limitStream,", command.CommandText, StringComparison.Ordinal);
     }
 
     [Fact]

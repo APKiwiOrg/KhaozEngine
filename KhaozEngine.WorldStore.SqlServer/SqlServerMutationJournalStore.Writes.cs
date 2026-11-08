@@ -64,7 +64,7 @@ public sealed partial class SqlServerMutationJournalStore
                     await transaction.RollbackAsync(CancellationToken.None).ConfigureAwait(false);
                     return new JournalInitializeResult(JournalInitializeStatus.ExistingStream);
                 default:
-                    throw WriteBatchFailure(batch, streamKeys);
+                    throw WriteBatchFailure(batch);
             }
             Invoke(JournalTestHookPhase.AfterHeadValidation);
             Invoke(JournalTestHookPhase.AfterEventWrites);
@@ -164,7 +164,7 @@ public sealed partial class SqlServerMutationJournalStore
                     await transaction.RollbackAsync(CancellationToken.None).ConfigureAwait(false);
                     return new JournalCommitResult(JournalCommitStatus.VersionConflict);
                 default:
-                    throw WriteBatchFailure(batch, streamKeys);
+                    throw WriteBatchFailure(batch);
             }
             Invoke(JournalTestHookPhase.AfterHeadValidation);
             Invoke(JournalTestHookPhase.AfterEventWrites);

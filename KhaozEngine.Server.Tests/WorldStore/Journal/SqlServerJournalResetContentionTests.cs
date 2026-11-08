@@ -160,6 +160,11 @@ public sealed class SqlServerJournalResetContentionTests
             JournalStoreException refused = await Assert.ThrowsAsync<JournalStoreException>(
                 () => SqlServerJournalReset.ResetAsync(SqlServerJournalResetHarness.ConnectionString, ShortLockTimeout));
 
+            Assert.Equal(JournalStoreRefusal.ApplicationLockNotGranted, refused.Reason);
+            Assert.Equal(-1, refused.ReturnCode);
+            var inner = Assert.IsType<JournalStoreException>(refused.InnerException);
+            Assert.Equal(refused.Reason, inner.Reason);
+            Assert.Equal(refused.ReturnCode, inner.ReturnCode);
             Assert.Equal(JournalStoreFailureKind.Timeout, refused.Kind);
             Assert.Equal(JournalStoreFailureCertainty.DefinitelyNotCommitted, refused.Certainty);
             Assert.Equal(JournalStoreFailureScope.WholeStore, refused.Scope);

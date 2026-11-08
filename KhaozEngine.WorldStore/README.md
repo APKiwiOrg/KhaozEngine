@@ -274,14 +274,17 @@ Messages are developer prose. Use the rule and its identifiers to distinguish th
 | `EventPageIncomplete` | A page exhausted its rows before the captured through version, without hitting its count or byte limit. | `StreamKey`, `ExpectedThroughVersion`, `ActualThroughVersion` |
 | `ProjectionSectionCountExceeded` | Stored projections exceed the engine section cap, or replacement would exceed the configured stream cap. | `StreamKey`, `ActualCount`, `MaximumCount` |
 | `ProjectionByteCountExceeded` | Stored projections exceed the engine byte cap, or replacement would exceed the configured stream cap. | `StreamKey`, `ActualBytes`, `MaximumBytes` |
-| `ProviderOperationFailed` | SQLite failed a runtime provider operation. | `Stage`, typed `ProviderCode`, original `InnerException` |
+| `ProviderOperationFailed` | SQLite or SQL Server failed a runtime provider operation. | `Stage`, typed `ProviderCode`, original `InnerException` |
 | `CommitOutcomeUnknown` | A runtime commit completed or may have completed before its response failed. | `Stage`, original `InnerException` |
-| `OperationCancelled` | A runtime write was cancelled inside its transaction. | `Stage`, original `InnerException` |
+| `OperationCancelled` | A runtime operation was cancelled. | `Stage`, original `InnerException` |
 | `ProviderClockUnavailable` | The provider did not return its UTC clock. | `ProviderName` |
 | `ReplacementSnapshotVersionMismatch` | A replacement snapshot has the wrong through version before pruning. | `StreamKey`, `ExpectedVersion`, `ActualVersion` |
 | `ResetWriteLockTimedOut` | SQLite reset could not take its write lock within the timeout. | `LockTimeout`, original `InnerException` |
 | `StoredEpochInvalid` | The stored epoch cannot be read as a GUID. | Existing whole-store scope |
 | `MetadataUpdateNotApplied` | Epoch rotation did not update exactly one metadata row, including a trigger that ignores the update. | Existing whole-store scope |
+| `ReplacementSnapshotDataMismatch` | SQL Server replacement data differs from the requested bytes before pruning. | `StreamKey` |
+| `TransportFailed` | A runtime I/O or socket failure before a transaction or after confirmed rollback. | `Stage`, original `InnerException` |
+| `WriteFailedAfterRollback` | A non-provider commit failure after confirmed rollback. | `Stage`, original `InnerException` |
 | `StreamSnapshotMissing` | A stream being compacted has no snapshot, including replacement verification before pruning. | `StreamKey` |
 | `StoredStreamKeyInvalid` | A provider row has an invalid stream key. | `Index`, `ParameterName` (`streamKey`) |
 | `StoredHeadVersionNegative` | A provider row has a negative head version. | `Index`, `ActualVersion` |
@@ -339,7 +342,9 @@ read-only validation through `JournalOperationStage`. A cancelled provider call 
 
 Runtime `Stage` distinguishes an operation without a captured transaction, transaction work, commit and the
 post-commit response. SQLite `ProviderCode` is the original `SqliteException.SqliteErrorCode`, never parsed prose.
-Unknown commits carry only the stage rather than varying their identifier set by the inner exception type.
+SQL Server runtime provider codes come directly from `SqlException.Number`. Unknown commits carry only the stage
+rather than varying their identifier set by the inner exception type. SQL Server reset context retains the reason,
+failure dimensions, every identifier and owned collection snapshot, with the original refusal as its inner cause.
 Projection limits are inclusive. The engine read caps are 64 sections and 8 MiB per stream, while write limits
 may be configured lower. Both paths use the same limit reasons and identifiers, with their existing failure kind
 and certainty distinguishing stored corruption from a refused replacement. If count and bytes both exceed their

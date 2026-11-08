@@ -13,7 +13,8 @@ namespace KhaozEngine.Render3D.Internal
     /// a constant tunes both. Both round the weighted colour and the reactive difference to half float in integer
     /// steps, which the split stores exactly, so the two apply every rule to the same values, and
     /// <c>TemporalEntryIdentityGpuTests</c> shows they write the same history bit for bit on hardware and on WARP. On
-    /// a software Vulkan device (llvmpipe) the state is identical and the colour within a measured bound.
+    /// a software Vulkan device (llvmpipe) colour, drift and swing stay within their measured bounds, while
+    /// confidence, lock, mark, R8 and depth remain exact.
     /// The split's targets hold 24 bytes an internal texel, 82.3 MB at 3456x2234 Quality, and exist only while it runs.
     /// <see cref="TemporalResolvePolicy"/> picks the split on every backend at every size, from the hosted NVIDIA
     /// measurements on Direct3D 11 and Vulkan and the Metal figures, and the design records them

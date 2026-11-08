@@ -17,8 +17,9 @@ namespace KhaozEngine.Render3D.Internal
         /// <summary>The two display-resolution history colour targets: resolved HDR colour and coverage alpha.</summary>
         public const GpuPixelFormat HistoryColor = GpuPixelFormat.R16G16B16A16Float;
 
-        /// <summary>The two display-resolution confidence and stability targets: the accumulated sample weight over its
-        /// cap in red, the thin feature lock in green. Where history was valid and the surface the pixel reprojected by
+        /// <summary>The two display-resolution confidence, stability and shimmer record targets: the accumulated
+        /// sample weight over the fixed <see cref="TemporalResolveTuning.MaxAccumulation"/> in red, which can exceed
+        /// one, and the thin feature lock in green. Where history was valid and the surface the pixel reprojected by
         /// moved, green holds minus one minus the lock, minus three minus the lock where the pixel followed the edge
         /// of a nearer surface that moved in the world, and minus five minus the lock on a pixel of that surface
         /// itself while the camera follows it (<see cref="TemporalResolveTuning.WorldMotionMetres"/>), so the next

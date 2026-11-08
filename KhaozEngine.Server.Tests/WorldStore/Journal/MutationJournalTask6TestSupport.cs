@@ -69,7 +69,7 @@ internal static class MutationJournalTask6TestSupport
     internal static async Task<JournalEventPage> ReadAllAsync(IMutationJournalStore store, long afterVersion = 0)
         => await store.ReadEventsAsync(new JournalEventRead(StreamKey, afterVersion, null, 128, 1024 * 1024));
 
-    internal static async Task AssertCorruptAsync(
+    internal static async Task<JournalStoreException> AssertCorruptAsync(
         Func<Task> action,
         string expectedStreamKey = StreamKey)
     {
@@ -78,6 +78,7 @@ internal static class MutationJournalTask6TestSupport
         Assert.Equal(JournalStoreFailureCertainty.CommittedDataUnreadable, exception.Certainty);
         Assert.Equal(JournalStoreFailureScope.OperationStreams, exception.Scope);
         Assert.Equal(expectedStreamKey, Assert.Single(exception.StreamKeys));
+        return exception;
     }
 
     internal static async Task<JournalCompletion> WaitForCompletionAsync(MutationJournalExecutor executor)

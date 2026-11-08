@@ -391,7 +391,12 @@ rebuild resolves it.
 
 ### 6.1 Failure contract
 
-`JournalStoreException` carries three exhaustive fields:
+`JournalStoreException` carries three exhaustive failure dimensions beside its nullable `JournalStoreRefusal`
+`Reason` and typed identifiers. The reason identifies the rule without replacing these retry and quarantine
+contracts. The [package refusal table](../../KhaozEngine.WorldStore/README.md#refusals) lists each rule's payload.
+The legacy constructor leaves `Reason` null for consumer-built exceptions.
+
+The failure dimensions are:
 
 - `Kind`: `Unavailable`, `Timeout`, `Deadlock`, `Cancelled`, `UnknownOutcome`, `CorruptData`, `SchemaMismatch`,
   or `ConstraintViolation`

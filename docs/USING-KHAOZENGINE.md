@@ -28300,6 +28300,12 @@ listing seams. Their package READMEs cover schema modes
 and permissions. The complete public type and limit reference is in
 [`KhaozEngine.WorldStore/README.md`](../KhaozEngine.WorldStore/README.md).
 
+Journal store failures retain `Kind`, `Certainty`, `Scope` and the owned `StreamKeys` snapshot. The additive
+`JournalStoreException.Reason` names a `JournalStoreRefusal` rule, with typed stream, operation, version, limit or
+stored-row coordinates. Inspect those members instead of parsing messages. Consumer code can still use the
+legacy constructor, which leaves `Reason` null. The package README's
+[refusal table](../KhaozEngine.WorldStore/README.md#refusals) lists the identifiers for each rule.
+
 Journal request values copy byte arrays at construction. Their existing `ReadOnlyMemory<byte>` properties also
 return defensive copies. Use the matching `ReadOnlySpan<byte>` property in a hot synchronous read, such as
 `frozen.ResultDataSpan` or `frozen.Identity.NormalizedIntentSpan`. It views the object's owned bytes without an

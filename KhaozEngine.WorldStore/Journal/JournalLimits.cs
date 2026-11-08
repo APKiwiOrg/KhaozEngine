@@ -152,20 +152,28 @@ internal static class JournalValidation
         {
             expectedVersion = checked(expectedVersion + 1);
             if (storedEvent.StreamVersion != expectedVersion)
-                throw CorruptEventSequence(streamKey);
+                throw CorruptEventSequence(JournalStoreRefusal.EventSequenceGap, streamKey, expectedVersion, storedEvent.StreamVersion);
         }
 
         bool reachedThroughVersion = expectedVersion >= throughVersion;
         if (!reachedThroughVersion && !stoppedByCountLimit && !stoppedByByteLimit)
-            throw CorruptEventSequence(streamKey);
+            throw CorruptEventSequence(JournalStoreRefusal.EventPageIncomplete, streamKey, throughVersion, expectedVersion);
         return reachedThroughVersion;
     }
 
-    private static JournalStoreException CorruptEventSequence(string streamKey)
+    private static JournalStoreException CorruptEventSequence(JournalStoreRefusal reason, string streamKey, long expected, long actual)
         => new(
+            reason,
             JournalStoreFailureKind.CorruptData,
             JournalStoreFailureCertainty.CommittedDataUnreadable,
             JournalStoreFailureScope.OperationStreams,
             new[] { streamKey },
-            "Stored journal event sequence is not contiguous.");
+            "Stored journal event sequence is not contiguous.")
+        {
+            StreamKey = streamKey,
+            ExpectedVersion = reason == JournalStoreRefusal.EventSequenceGap ? expected : null,
+            ActualVersion = reason == JournalStoreRefusal.EventSequenceGap ? actual : null,
+            ExpectedThroughVersion = reason == JournalStoreRefusal.EventPageIncomplete ? expected : null,
+            ActualThroughVersion = reason == JournalStoreRefusal.EventPageIncomplete ? actual : null,
+        };
 }

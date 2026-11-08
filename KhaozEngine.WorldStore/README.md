@@ -256,6 +256,36 @@ Expected races use result statuses. Provider, transport, schema, and corruption 
 - `Certainty` is `DefinitelyNotCommitted`, `Unknown`, or `CommittedDataUnreadable`.
 - `Scope` is `OperationStreams` with exact `StreamKeys`, or `WholeStore` with no stream keys.
 
+### Refusals
+
+`JournalStoreException.Reason` is a nullable `JournalStoreRefusal` beside `Kind`, `Certainty`, `Scope` and
+`StreamKeys`. The legacy constructor remains available for consumer-built exceptions and leaves `Reason` null.
+The reason-taking overload accepts the same failure dimensions, stream keys, message and optional inner cause.
+Stream keys remain sorted owned snapshots backed by a fresh boxed immutable array, even for immutable input.
+Messages are developer prose. Use the rule and its identifiers to distinguish the following refusals.
+
+| Reason | What is refused | Additional identifiers |
+|---|---|---|
+| `SnapshotChecksumMismatch` | Stored snapshot data fails verification. | `StreamKey` |
+| `EventChecksumMismatch` | Stored event payload fails verification. | `StreamKey`, `StreamVersion` |
+| `ProjectionChecksumMismatch` | Stored projection data fails verification. | `StreamKey`, `SectionName` |
+| `ResultChecksumMismatch` | A stored operation result fails verification. | `OperationId`, existing `StreamKeys` |
+| `EventSequenceGap` | An event does not have the next expected stream version. | `StreamKey`, `ExpectedVersion`, `ActualVersion` |
+| `EventPageIncomplete` | A page exhausted its rows before the captured through version, without hitting its count or byte limit. | `StreamKey`, `ExpectedThroughVersion`, `ActualThroughVersion` |
+| `ProjectionSectionCountExceeded` | Replacement would exceed the configured section count of a stream. | `StreamKey`, `ActualCount`, `MaximumCount` |
+| `ProjectionByteCountExceeded` | Replacement would exceed the configured aggregate projection bytes of a stream. | `StreamKey`, `ActualBytes`, `MaximumBytes` |
+| `StoredStreamKeyInvalid` | A provider row has an invalid stream key. | `Index`, `ParameterName` (`streamKey`) |
+| `StoredHeadVersionNegative` | A provider row has a negative head version. | `Index`, `ActualVersion` |
+| `StoredTimestampNonUtc` | A provider row timestamp has a nonzero UTC offset. | `Index`, `FieldName` (`createdAtUtc` or `updatedAtUtc`) |
+| `StoredStreamOrderInvalid` | The kept rows are duplicate or out of ordinal key order. | `Index` of the latter row |
+
+Projection limits are inclusive. If section count and bytes both exceed their limits, section count is reported
+first. Stored-row indices are zero-based. Each row's key, head and timestamps are checked before page ordering,
+including the extra row used to establish a continuation. Ordering applies only to the kept rows. These stored-row
+refusals retain their original argument exception as the inner cause and have whole-store scope, without inventing
+an affected stream key. The in-memory compaction's replacement snapshot checksum check is an internal invariant:
+its sealed immutable compaction owns both the copied data and the checksum computed from that data.
+
 A write call on a store opened read only throws `NotSupportedException` instead. That is a caller error rather than
 a store failure, so it sits outside this contract and nothing was attempted.
 

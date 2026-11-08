@@ -91,7 +91,14 @@ public sealed class MutationJournalRecoveryTests
         await SeedTwoEventsAsync(store, 50);
         store.RemoveStoredEventForTests(StreamKey, streamVersion: 1);
 
-        await AssertCorruptAsync(() => ReadAllAsync(store));
+        JournalStoreException refused = await AssertCorruptAsync(() => ReadAllAsync(store));
+        Assert.Equal(JournalStoreRefusal.EventSequenceGap, refused.Reason);
+        Assert.Equal(StreamKey, refused.StreamKey);
+        Assert.Equal(1, refused.ExpectedVersion);
+        Assert.Equal(2, refused.ActualVersion);
+        var repaired = new InMemoryMutationJournalStore();
+        await SeedTwoEventsAsync(repaired, 50);
+        Assert.Equal(2, (await ReadAllAsync(repaired)).Events.Count);
     }
 
     [Fact]
@@ -101,7 +108,14 @@ public sealed class MutationJournalRecoveryTests
         await SeedTwoEventsAsync(store, 55);
         store.RemoveStoredEventForTests(StreamKey, streamVersion: 2);
 
-        await AssertCorruptAsync(() => ReadAllAsync(store));
+        JournalStoreException refused = await AssertCorruptAsync(() => ReadAllAsync(store));
+        Assert.Equal(JournalStoreRefusal.EventPageIncomplete, refused.Reason);
+        Assert.Equal(StreamKey, refused.StreamKey);
+        Assert.Equal(2, refused.ExpectedThroughVersion);
+        Assert.Equal(1, refused.ActualThroughVersion);
+        var repaired = new InMemoryMutationJournalStore();
+        await SeedTwoEventsAsync(repaired, 55);
+        Assert.Equal(2, (await ReadAllAsync(repaired)).Events.Count);
     }
 
     [SqlServerFact]
@@ -160,7 +174,11 @@ public sealed class MutationJournalRecoveryTests
         await store.InitializeAsync(Initialization(80, snapshotValue: 8));
         store.CorruptStoredSnapshotChecksumForTests(StreamKey);
 
-        await AssertCorruptAsync(() => store.LoadSnapshotAsync(StreamKey));
+        JournalStoreException refused = await AssertCorruptAsync(() => store.LoadSnapshotAsync(StreamKey));
+        Assert.Equal(JournalStoreRefusal.SnapshotChecksumMismatch, refused.Reason);
+        Assert.Equal(StreamKey, refused.StreamKey);
+        store.CorruptStoredSnapshotChecksumForTests(StreamKey);
+        Assert.Equal(new byte[] { 8 }, (await store.LoadSnapshotAsync(StreamKey))!.Data.ToArray());
     }
 
     [Fact]

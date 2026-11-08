@@ -40,6 +40,31 @@ public sealed class JournalStoreException : Exception
         IReadOnlyList<string>? streamKeys,
         string message,
         Exception? innerException = null)
+        : this(null, kind, certainty, scope, streamKeys, message, innerException)
+    {
+    }
+
+    /// <summary>Creates a refusal with its rule beside the existing failure dimensions and stream snapshot.</summary>
+    public JournalStoreException(
+        JournalStoreRefusal reason,
+        JournalStoreFailureKind kind,
+        JournalStoreFailureCertainty certainty,
+        JournalStoreFailureScope scope,
+        IReadOnlyList<string>? streamKeys,
+        string message,
+        Exception? innerException = null)
+        : this((JournalStoreRefusal?)reason, kind, certainty, scope, streamKeys, message, innerException)
+    {
+    }
+
+    private JournalStoreException(
+        JournalStoreRefusal? reason,
+        JournalStoreFailureKind kind,
+        JournalStoreFailureCertainty certainty,
+        JournalStoreFailureScope scope,
+        IReadOnlyList<string>? streamKeys,
+        string message,
+        Exception? innerException)
         : base(message, innerException)
     {
         ArgumentNullException.ThrowIfNull(message);
@@ -48,11 +73,46 @@ public sealed class JournalStoreException : Exception
             throw new ArgumentException("A whole-store failure cannot name operation streams.", nameof(streamKeys));
         if (scope == JournalStoreFailureScope.OperationStreams && copy.Length == 0)
             throw new ArgumentException("An operation-stream failure must name at least one stream.", nameof(streamKeys));
+        Reason = reason;
         Kind = kind;
         Certainty = certainty;
         Scope = scope;
         this.streamKeys = ImmutableArray.Create(copy);
     }
+
+    /// <summary>The exact rule refused, or null for an instance consumer code built through the legacy constructor.</summary>
+    public JournalStoreRefusal? Reason { get; }
+
+    /// <summary>The affected stream for a single-stream checksum, sequence or projection-limit refusal.</summary>
+    public string? StreamKey { get; init; }
+    /// <summary>The stored event version whose checksum failed.</summary>
+    public long? StreamVersion { get; init; }
+    /// <summary>The stored projection section whose checksum failed.</summary>
+    public string? SectionName { get; init; }
+    /// <summary>The operation whose stored result checksum failed.</summary>
+    public Guid? OperationId { get; init; }
+    /// <summary>The next expected event version at a sequence gap.</summary>
+    public long? ExpectedVersion { get; init; }
+    /// <summary>The event version found at a gap, or the negative stored stream head.</summary>
+    public long? ActualVersion { get; init; }
+    /// <summary>The captured through version an incomplete event page should have reached.</summary>
+    public long? ExpectedThroughVersion { get; init; }
+    /// <summary>The last version an incomplete event page actually reached, or its after version when empty.</summary>
+    public long? ActualThroughVersion { get; init; }
+    /// <summary>The resulting per-stream projection bytes refused by a replacement.</summary>
+    public long? ActualBytes { get; init; }
+    /// <summary>The inclusive configured per-stream projection byte limit.</summary>
+    public long? MaximumBytes { get; init; }
+    /// <summary>The resulting per-stream projection section count refused by a replacement.</summary>
+    public long? ActualCount { get; init; }
+    /// <summary>The inclusive configured per-stream projection section limit.</summary>
+    public long? MaximumCount { get; init; }
+    /// <summary>The zero-based stored row index, or the latter row of an invalid ordered pair.</summary>
+    public int? Index { get; init; }
+    /// <summary>The stored-row constructor parameter whose stream key is invalid.</summary>
+    public string? ParameterName { get; init; }
+    /// <summary>The stored-row constructor timestamp parameter whose offset is not zero.</summary>
+    public string? FieldName { get; init; }
 
     public JournalStoreFailureKind Kind { get; }
     public JournalStoreFailureCertainty Certainty { get; }

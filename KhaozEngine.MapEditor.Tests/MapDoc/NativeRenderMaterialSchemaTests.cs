@@ -82,6 +82,7 @@ public sealed class NativeRenderMaterialSchemaTests
     public void ConfigurationRanges_AgreeBeforeHostResolution()
     {
         foreach (var (path, value) in new[] { ("styles.0.render.water.opacity", "-1"), ("styles.0.render.water.swellComponents", "9"),
+            ("styles.0.render.water.causticStrength", "-1"),
             ("styles.0.render.foliage.options.windStrength", "2"), ("lighting.shadows.shadowCascadeCount", "5"),
             ("lighting.shadows.pointShadows.faceResolution", "65"), ("previewWindowLimit", "0") })
         {

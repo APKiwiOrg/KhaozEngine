@@ -706,7 +706,16 @@ HTTP `catalog-import` is an operator publication too. The bundled stores impleme
 `ContentPolicyImportRequest` carrying a non-null policy and the server's actor, operator and note. It uses
 the existing seed staging, text handling and frozen publisher. The admin handler binds its configured
 policy to this request, never a value from JSON. A custom store lacking this capability refuses operator
-imports under `IContentPolicyImportStore.UnavailableReason` when a policy is configured.
+imports under `IContentPolicyImportStore.UnavailableReason` when a policy is configured. The admin
+boundary carries this refusal on `ContentAuthoringException` with the following structured member.
+
+| `Refusal` | What it refuses | Identifiers |
+|---|---|---|
+| `PolicyImportCapabilityMissing` | An operator import with a host policy and a store without policy import support | `RequiredCapability` is `typeof(IContentPolicyImportStore)` |
+
+The legacy `Reason` stays `policy-import-unavailable`, with default `Type`, `Id` 0 and empty `Findings`.
+A lower provider refusal passes through the operator adapter as the original exception, retaining its
+`Refusal`, identifiers, findings and inner cause.
 
 Trusted server calls to `ImportBundleAsync` and `ImportTextBundleAsync`, release tooling and upgrade
 publication keep their existing paths without an operator policy. These paths can ship matching artifacts

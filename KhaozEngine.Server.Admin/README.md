@@ -180,7 +180,11 @@ checks the preview baseline and candidate, and the original store's publisher ch
 rows again before publication. The HTTP caller cannot supply, omit or override the policy. HTTP
 `catalog-import` binds the same policy through `IContentPolicyImportStore`, implemented by the bundled
 stores. A custom store without that capability refuses imports under `IContentPolicyImportStore.UnavailableReason`
-when a policy is configured. Trusted server seed, release and upgrade callers keep their existing store
+when a policy is configured. The exception carries `ContentAuthoringRefusal.PolicyImportCapabilityMissing`
+and `RequiredCapability` equal to `typeof(IContentPolicyImportStore)`. Its legacy token remains
+`policy-import-unavailable`, with default `Type`, `Id` 0 and empty `Findings`, and HTTP still returns 400.
+A lower provider refusal passes through as the original exception, keeping its reason, identifiers,
+findings and inner cause. Trusted server seed, release and upgrade callers keep their existing store
 paths without an operator policy.
 
 Policies receive detached `ContentPublishPolicySnapshot` row views with typed field values and no store
@@ -385,6 +389,15 @@ empty when the refusal is about the REQUEST rather than about the content. A 409
 whatever the race needs: a stale publish adds `expectedBaseVersion` and `actualBaseVersion`, a draft a publish
 is holding adds a `remedy`, text state that changed under a discard or a commit adds a `remedy` under
 `text-state-mismatch`, and a blocked rollback adds `code`, `blockedByRules[]` and a `remedy`.
+
+The legacy `ContentAuthoringException.Reason` token controls this HTTP projection. Adding `Refusal`
+does not change a status, detail, remedy or payload shape, and a consumer-built exception with a null enum
+keeps the same mapping. `publish-in-progress`, `edit-target-collision`, `text-state-mismatch` and
+`draft-open` map to 409 in the shared refusal adapter. Other tokens map to 400 there, with a null token
+rendered as `malformed-request`. Action-specific conflict bodies still carry their existing context.
+Text reads likewise recognize the legacy `text-provenance-unknown` and `text-operation-unavailable`
+tokens as unknown text rather than an empty snapshot, whether or not the exception carries an enum.
+Other refusals propagate unchanged.
 
 Each rollback blocker names its row through `type` and `fromId`. Its `kind` carries the matching rule's
 actual name, normally `Retired`. If the provider's baseline has no matching rule, `kind` is JSON null and

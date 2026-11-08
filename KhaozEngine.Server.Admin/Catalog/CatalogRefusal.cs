@@ -144,7 +144,9 @@ internal static class CatalogRefusal
 
     /// <summary>
     /// The store's own refusal as a result. The state tokens become a 409 and everything else a 400,
-    /// and a refusal the validator produced carries its findings through unchanged.
+    /// and a refusal the validator produced carries its findings through unchanged. The legacy
+    /// <see cref="ContentAuthoringException.Reason"/> token controls this released projection even when
+    /// <see cref="ContentAuthoringException.Refusal"/> is present. Consumer-built refusals may carry no enum.
     /// </summary>
     /// <param name="failure">The store's refusal.</param>
     /// <param name="registry">The registry a finding's type id is named through.</param>

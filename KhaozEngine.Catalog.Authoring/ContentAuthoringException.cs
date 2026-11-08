@@ -463,6 +463,9 @@ public sealed class ContentAuthoringException : Exception
     /// <summary>The runtime type of a pack target without version pointers, or null.</summary>
     public Type? StoreType { get; init; }
 
+    /// <summary>The interface an operator import requires the store to implement, or null.</summary>
+    public Type? RequiredCapability { get; init; }
+
     /// <summary>The operation refusing a pack write, or the malformed text component (TypeKey or FieldName), or null.</summary>
     public string? MemberName { get; init; }
 

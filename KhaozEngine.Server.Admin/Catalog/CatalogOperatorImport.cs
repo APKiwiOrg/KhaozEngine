@@ -21,8 +21,10 @@ internal static class CatalogOperatorImport
             if (store is not IContentPolicyImportStore guarded)
             {
                 throw new ContentAuthoringException(
+                    ContentAuthoringRefusal.PolicyImportCapabilityMissing,
                     "This authoring store cannot bind the host's policy to an operator import. Use a policy-aware provider or a trusted server seed path.",
-                    default, 0, IContentPolicyImportStore.UnavailableReason);
+                    default, 0, IContentPolicyImportStore.UnavailableReason)
+                { RequiredCapability = typeof(IContentPolicyImportStore) };
             }
 
             return guarded.ImportWithPolicyAsync(bundle,

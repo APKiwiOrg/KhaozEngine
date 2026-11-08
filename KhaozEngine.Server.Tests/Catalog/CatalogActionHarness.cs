@@ -167,6 +167,25 @@ internal sealed class CatalogActionHarness : IDisposable
         return document.RootElement.Clone();
     }
 
+    /// <summary>The fixture's schema, version ledger, draft and complete row payloads for no-write checks.</summary>
+    public async Task<string> SnapshotAsync()
+    {
+        var state = new List<JsonElement>
+        {
+            await OkAsync("catalog-schema", null),
+            await OkAsync("catalog-versions", null),
+            await OkAsync("catalog-draft", null),
+        };
+        foreach (ContentTypeRegistration type in Registry.ByTypeId)
+        {
+            JsonElement page = await OkAsync("catalog-list", JsonSerializer.Serialize(new
+            { typeKey = type.TypeKey, includeRetired = true, take = 500 }));
+            Assert.Equal(page.GetProperty("total").GetInt32(), page.GetProperty("rows").GetArrayLength());
+            state.Add(page);
+        }
+        return JsonSerializer.Serialize(state);
+    }
+
     /// <summary>Every finding code in a refusal body, in the order the body carries them.</summary>
     /// <param name="body">The refusal body.</param>
     public static string[] Codes(JsonElement body)

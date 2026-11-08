@@ -327,6 +327,12 @@ public enum ContentAuthoringRefusal
     /// and <c>RecordedValueCount</c>.</summary>
     TextBaselineHiddenFromPlanner,
 
+    // Operator policy binding.
+
+    /// <summary>Refuses an operator import whose store cannot bind the host policy. Carries
+    /// <c>RequiredCapability</c> (<see cref="IContentPolicyImportStore"/>).</summary>
+    PolicyImportCapabilityMissing,
+
     // Store admission and commit confirmation.
 
     /// <summary>Refuses a store family declaration outside the inclusive block-size range. Carries Type, FamilyKey, ActualBlockSize, MinimumBlockSize (16) and MaximumBlockSize (65,536).</summary>

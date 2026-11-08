@@ -23895,7 +23895,21 @@ in-process `ContentPublishRequest.PublishPolicy`, which is excluded from JSON. H
 binds it, through `IContentPolicyImportStore.ImportWithPolicyAsync` and a required-policy
 `ContentPolicyImportRequest`. The bundled in-memory, SQLite and SQL Server stores carry that policy through
 their existing seed pipeline to the frozen publication. A custom store without this capability refuses
-operator imports when a policy is configured, rather than dropping the policy. Trusted server calls to
+operator imports when a policy is configured, rather than dropping the policy. It throws
+`ContentAuthoringException` with `Refusal` equal to `ContentAuthoringRefusal.PolicyImportCapabilityMissing`
+and `RequiredCapability` equal to `typeof(IContentPolicyImportStore)`. The legacy `Reason` remains
+`policy-import-unavailable`, with default `Type`, `Id` 0 and empty `Findings`. HTTP still returns 400.
+The operator adapter forwards a lower provider refusal as the original exception with its typed reason,
+identifiers, findings and inner cause intact.
+
+The shared admin refusal adapter keeps its legacy token mappings and payload shapes. `publish-in-progress`,
+`edit-target-collision`, `text-state-mismatch` and `draft-open` map to 409. Other tokens map to 400 there,
+with a null token rendered as `malformed-request`. Details, remedies and action-specific conflicts retain
+their existing rendering. A consumer-built exception with a null `Refusal` remains supported.
+The admin text reads use the legacy `text-provenance-unknown` and `text-operation-unavailable` tokens to
+report unknown text, never a fabricated empty snapshot, and propagate every other refusal unchanged.
+
+Trusted server calls to
 `ImportBundleAsync` or `ImportTextBundleAsync`, release tooling and `ContentUpgradeRunner` keep their
 existing publication paths and do not acquire an operator policy. A custom operator surface must bind its own host policy both at preview and on its
 publish request. There is no HTTP bypass mode. With no policy configured, the existing validation sequence,

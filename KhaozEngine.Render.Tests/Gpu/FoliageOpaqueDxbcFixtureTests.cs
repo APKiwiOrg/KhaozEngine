@@ -8,7 +8,7 @@ using Xunit;
 namespace KhaozEngine.Tests.Gpu;
 
 /// <summary>Frozen hosted FXC listings and source pins for every opaque foliage fragment variant.
-/// Hosted run 41776387006, job 126397672543, captured FXC 10.1 on windows-2025-vs2026 20261030.294.1.
+/// Hosted run 42442873750, job 128615660172, captured FXC 10.1 on windows-2025-vs2026 20261103.298.1.
 /// Each listing retains the complete numbered dump, including its terminal newline.</summary>
 public sealed class FoliageOpaqueDxbcFixtureTests
 {

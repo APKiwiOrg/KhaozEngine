@@ -124,6 +124,28 @@ flowchart LR
    shader (lit / cel / textured), and writes the framebuffer. `AppWindow` calls `Present()` to put the
    swapchain image on screen.
 
+## Physical atmosphere fog
+
+Lit models (rigid, dissolved and skinned), terrain, tile ground and foliage call
+`atmosphereFogKeyShadowed` after lighting. It retains the analytic height transmission and sky-view lookup,
+then scales only the shadow-casting sun or moon's direct in-scatter. The other body, multiple scattering and
+the night floor remain. `AtmosphereSettings.AerialShadowSamples` defaults to 8, accepts 0 through 16, and
+disables the correction at 0. The atmosphere UBO appends `FogShadow = (keySun, keyMoon, taps, 0)`.
+
+The bounded 16-tap loop places each point at an equal share of the segment's in-scatter under a uniform-density
+grey approximation. It inverts optical depth and the aerial onset, projects outward through the key cascades
+without a surface normal offset, and compares one point depth at explicit LOD zero per covered tap. The
+outermost cascade fades shadowed taps toward lit at its coverage border. Uncovered taps count as lit. Shadow
+strength blends the mean visibility only when it is below one, so a fully lit segment returns exactly one
+and uses the original fog arithmetic. Unoccluded output stays byte-identical.
+
+Decals, effects, water and water columns keep the original unoccluded fog path, because they bind no key shadow
+atlas. The decals are unlit telegraph overlays, so a binding for them would buy little. Each fogged lit fragment
+pays up to `AerialShadowSamples` point fetches plus their cascade projections, next to the 16 fetches of its
+surface PCF. The shadow atlas only covers the near air. The owner ruled against a terrain horizon profile for
+the rest (issue #1411): air beyond the cascades waits on the aerial-perspective volume (#1364), and the river's
+reflected sunset horizon under a ridge is reflection occlusion, owned by scene reflections in water (#1609).
+
 ## Point-shadow caster layers
 
 `RigidInstanceDraw.ShadowMobility` classifies point-shadow participation independently of motion identity.
@@ -411,10 +433,12 @@ surface. The term interpolates linearly from 1 at depth 0 across the slices and 
 returns before any of this, and a dry pixel or a winning record without a layer adds no texture read.
 
 Every lit set binds a 1x1 `R16G16B16A16Float` placeholder holding 1 and a linear-clamp sampler until
-`ModelRenderer.SetCausticMap` replaces the map. That transaction waits for idle, builds every rigid, splat, tile-ground
-and skinned-main frame set, then commits them together, and a failed build keeps the current sets. The caller owns the
-map. The opaque foliage subset rebuilds on its next draw and retires the set naming the previous map, so a replaced
-map goes through the retire queue. The scene replaces the placeholder at the first participating body.
+`ModelRenderer.SetCausticMap` replaces the map. That transaction builds every rigid, splat, tile-ground and skinned-main
+frame set, then commits them together, and a failed build keeps the current sets. It never waits for idle. A frame in
+flight may still read the sets naming the previous map, so they go through the retire queue, and a drain would stall the
+frame that first meets caustic water and each layer growth. The caller owns the map. The opaque foliage subset rebuilds
+on its next draw and retires the set naming the previous map the same way. The scene replaces the placeholder at the
+first participating body.
 
 The opaque atlas retains the sun-facing near face of outward CCW meshes with orientation-preserving transforms
 on every backend, with clockwise fronts culled. The glTF loader preserves triangle order. A straddling floater's

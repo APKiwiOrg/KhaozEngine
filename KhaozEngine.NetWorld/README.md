@@ -1297,7 +1297,14 @@ The captured physics origin must match that island's anchor, with the retained Y
 Call `BeginExplicitRead(basis)` and retain its `PlayerMoveReadScope` through `Step`, prediction or
 reconciliation and pure state publication. A corrected/restored basis may be published only when
 `BasisValid` is true. `ExplicitCharacterMovement.ValidatePlacement` classifies that exact pose
-without simulating a tick. Disposal releases the environment pin before the physics lease, including
+without simulating a tick. A successful read retains its cold-placement certificate for its first attempted
+Step. Only a bit-identical raw and prepared basis under the same binding, boundary and live lease can reuse
+the stationary water/boundary verdict. Binding identity fixes tuning, water policy and composition. The
+controller still authenticates generations and reconstructs selection, and reuse requires that selection
+to match the certified one. A changed pose, carry, frame stamp or teleport epoch, a later replay Step, or a
+new lease validates again. A changed generation refuses the stale lease through the existing guard.
+The certificate is consumed even when the first attempt differs or refuses, and disposal clears it.
+Disposal releases the environment pin before the physics lease, including
 when publication throws. Legacy bindings return a null read scope and keep legacy behavior.
 Configured simulators called without a read scope hold and clear refused-step effects rather than
 falling back to legacy sampling. `LastExplicitOutcome` reports the last leased simulation result for either composition.

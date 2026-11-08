@@ -5776,6 +5776,12 @@ trails are not depth-sorted against each other - keep alpha trails for cases whe
     Additive effects lose transmitted energy only. Models, dissolved and skinned models, splat and tile terrain,
     foliage, water, decals, billboards, particles, trails and beams participate. Debug lines and distortion draws
     retain their own paths.
+    `AerialShadowSamples = 8` takes point samples of the key shadow atlas along lit model, terrain, tile-ground
+    and foliage fog segments. Valid values are 0 through 16, and 0 disables the correction. Equal in-scatter
+    shares under a uniform-density grey approximation place the taps, including the aerial onset. Only the
+    shadow-casting body's direct in-scatter is scaled. The other body, multiple scattering and night floor
+    remain, and fully lit segments stay byte-identical. Uncovered taps count as lit. Water, decals and effects
+    keep unoccluded fog, so the correction does not cover distant valley haze beyond shadow range.
   - **GPU-free model and fog oracle.** `AtmosphereModel` needs no device. It snapshots validated settings and
     exposes `Transmittance`, `SingleScattering`, `MultiScattering`, `SkyRadiance`, `CreateFrame`, `EvaluateLighting`,
     `EvaluateIrradiance` and `SkyValue`. `CreateFrame(SunCycle.Evaluate(timeOfDay, cycle))` produces an
@@ -5789,7 +5795,9 @@ trails are not depth-sorted against each other - keep alpha trails for cases whe
     Transport positions are
     planet-centred kilometres. `AtmosphereFog.Transmittance` accepts world distance and absolute endpoint heights
     and applies the onset itself.
-    `Shade` accepts camera-relative positions plus the render origin, and `Compose`/`ComposePremultiplied` expose
+    `Shade` accepts camera-relative positions plus the render origin. Its `keyVisibility` overload takes a
+    finite value from 0 through 1 for the key-only correction, defaulting to full visibility on existing calls.
+    `Compose`/`ComposePremultiplied` expose
     the blend oracle. Call `model.UpdateSettings(settings)` after changing the caller's settings.
   - **GPU work and precedence.** Half-float transmittance (256 by 64) and multi-scattering (32 by 32) LUTs rebuild
     on physical-settings changes. Sky-view (192 by 108) rebuilds every enabled frame before scene draws. Physical
@@ -10125,8 +10133,13 @@ var duckFollower = new MoveToRange(duckProfile, null, new RouteApproachOptions
 ```
 
 `MoveToRange` copies its follower controls and caps `AcceptRadius` to `0.00001f`, including a supplied zero.
-The near-ring check resolves copies through the live context, with up to 32 bisection candidates plus endpoint
-and final checks. It does not step the world or publish an entity. The travel cap includes the requested pace,
+The near-ring check retains up to 32 float interval candidates plus endpoint and final checks. Certified flat,
+unchanged analytic support evaluates exact command-dependent states under one read interval without full
+movement previews. Water fields additionally opt into `IMovementDryTracePointProof` and certify successful dry
+point operations over the enclosure. A known dry sweep alone does not authorize skipping point refusals.
+Wet, obstructed, nonuniform, unsupported and refused regions keep the exact live solver and pacing reads.
+The certificate and both drivers preserve command bits and admission decisions. See the
+[range approach contract](../KhaozEngine.Movement/README.md). The check does not step the world or publish an entity. The travel cap includes the requested pace,
 the body's `SpeedScale` and medium boosts above one. A slowing medium only shortens core travel. A blocked
 near-field shortcut keeps the detour. Area or graph guards apply to direct approaches and all route edges, so an
 exhausted partial route waiting on cooldown, an unreachable or refused route, or an unsupported Hop route holds

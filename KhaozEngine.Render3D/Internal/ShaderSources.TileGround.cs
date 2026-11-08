@@ -211,7 +211,7 @@ vec3 sampleMaterial(int sl, vec3 wpAbs, vec3 dWx, vec3 dWy, vec3 tw, bool tri) {
     }
     return c * TintTiling[sl].xyz;
 }
-" + MaterialLodGradGlsl + LightingCommonGlsl + AtmosphereBindingsAt3Glsl + AtmosphereFogGlsl + @"
+" + MaterialLodGradGlsl + LightingCommonGlsl + AtmosphereBindingsAt3Glsl + AtmosphereFogGlsl + AtmosphereFogKeyShadowGlsl + @"
 void main() {
     vec3 Ngeo = normalize(vNormalW);
 
@@ -315,7 +315,7 @@ void main() {
     vec3 diffuse; vec3 specColor;
     computeLighting(PointShadowMap, PointShadowTransientMap, ShadowSamp, Ngeo, vWorldPos, specStrength, TILEGROUND_SPEC_EXP, keyShadow, diffuse, specColor);
     vec3 lit = albedo * (indirectDiffuse(Ngeo, vWorldPos) + diffuse) + specColor + vEmissive.rgb;
-    lit = atmosphereFog(lit, vWorldPos, false, RenderOrigin.w > 0.5);
+    lit = atmosphereFogKeyShadowed(lit, vWorldPos, RenderOrigin.w > 0.5, ShadowMap, ShadowSamp);
     oColor = vec4(lit, 1.0);
     oNormal = vec4(Ngeo * 0.5 + 0.5, 1.0); // GEOMETRIC normal for the edge pass
     // Per-fragment NDC depth, never a varying: see the note at the top of ShaderSources.Model.cs (issue #301).

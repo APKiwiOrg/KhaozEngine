@@ -8,6 +8,23 @@ Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
 2026-11-08
 
+- Contact movement costs far less in a populated world, with every movement result unchanged. Flat water coverage
+  queries use a conservative spatial candidate index and return a certified dry result when a capsule path touches no
+  water, instead of scanning every column and boundary patch (#1728). `RangeApproachCore.StopAtRange` solves a certified
+  flat arrival directly instead of up to 32 full movement previews, and any other case keeps the exact solver (#1729).
+  A player's first identical step reuses its cold-placement certificate under the same lease, and any different,
+  corrected or replayed basis revalidates (#1730).
+- `IMovementDryTracePointProof` is a new opt-in for water fields. It states that a known, completely dry trace certifies
+  a successful dry point classification across the swept region. A field that does not implement it keeps the exact
+  arrival solver, so custom fields are unaffected. Level water and the tile water field declare it where it holds.
+- Lit model, terrain, tile-ground and foliage fog now loses the key sun or moon's glow when the shadow atlas
+  occludes its camera-to-receiver segment. `AtmosphereSettings.AerialShadowSamples` defaults to 8, accepts
+  0 through 16, and disables the correction at 0. The other body's light, multiple scattering and night floor
+  remain. Unoccluded output is byte-identical (#1411). Fog beyond shadow coverage waits on the aerial-perspective
+  volume (#1364), and the water's reflected horizon on scene reflections in water (#1609). Decals and effects
+  keep the unoccluded fog colour.
+- Native Metal shaders now end the fragment at a discard. Discarded pixels could otherwise hold stale memory in
+  every colour attachment once a shader grew (#1411).
 - Underwater caustics for opted-in procedural water. `WaterSettings.UnderwaterCaustics` (off by default) and
   `WaterSettings.CausticStrength` (1, physical) gain `WaterLook` overrides. Strength scales how far refracted sunlight
   lands, so strength `s` at depth `d` matches strength 1 at depth `s * d`. Enabling caustics also enables underwater

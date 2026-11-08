@@ -158,15 +158,22 @@ public sealed class WaterCausticLifecycleTests
         Assert.Equal(expected, h.Scene.WaterCausticDiagnostics);
     }
 
+    /// <summary>The replacement never drains. A frame in flight may still read the sets naming the placeholder, so they
+    /// are retired rather than freed on the frame that replaces them.</summary>
     [Fact]
     public void First_participating_frame_allocates_and_replaces_lit_sets_once()
     {
         using var h = new Host();
         h.LoadTriangle();
+        h.Frame();
         IGpuResourceSet[] before = h.LiveLitSets();
         Assert.NotEmpty(before);
+        int idles = h.Device.WaitForIdleCalls;
 
         h.Frame(Plane(0f));
+
+        Assert.Equal(idles, h.Device.WaitForIdleCalls);
+        Assert.All(before, set => Assert.False(((FakeResourceSet)set).Disposed));
 
         var map = Assert.IsType<FakeTexture>(h.Scene.WaterCausticMapForTests);
         var field = Assert.IsType<FakeTexture>(h.Scene.WaterSurfaceFieldForTests);
@@ -194,6 +201,7 @@ public sealed class WaterCausticLifecycleTests
         var first = (FakeTexture)h.Scene.WaterCausticMapForTests!;
         var firstField = (FakeTexture)h.Scene.WaterSurfaceFieldForTests!;
         int retired = h.Scene.RetiredResourceCount;
+        int idles = h.Device.WaitForIdleCalls;
 
         h.Frame(Plane(0f), Plane(1f));
 
@@ -212,6 +220,7 @@ public sealed class WaterCausticLifecycleTests
         h.Frame(Plane(0f), Plane(1f), Plane(2f));
         var third = (FakeTexture)h.Scene.WaterCausticMapForTests!;
         Assert.Equal(4096u, third.Width);
+        Assert.Equal(idles, h.Device.WaitForIdleCalls);
 
         for (int frame = 0; frame < 8; frame++) h.Frame(Plane(0f));
 

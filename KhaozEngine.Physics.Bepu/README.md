@@ -75,6 +75,8 @@ either value shifts the bit-exact result legitimately.
   therefore cannot hide the replacement. An empty selection still returns a restricted non-owning view with
   unfiltered query results. The view preserves the source world's mobility gates and dynamic observations,
   while simulation contacts remain unchanged.
+  Views also expose `IPhysicsStaticEvidence` for their actual selected statics under the same authenticated
+  read interval. A registration's exclusion list never substitutes for that selected capture.
 - **Query read leases** - the owner and its restricted views implement `IPhysicsQueryLeaseSource` and
   `IPhysicsConcurrentReadSource`. A lease is a thread-affine reader interval, and several threads may hold
   leases and query one world at once. Every outer read interval borrows private query scratch, including its

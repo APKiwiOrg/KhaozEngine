@@ -74,15 +74,12 @@ public sealed partial class MovementQueryLease
 
         int spanCapacity = Math.Min(spans.Length, MaxCoverageSpans);
         int contactCapacity = Math.Min(contacts.Length, MaxDomainContacts);
-        MovementCoverageSpan[] spanStorage = ArrayPool<MovementCoverageSpan>.Shared.Rent(Math.Max(1, spanCapacity));
-        MovementDomainContact[]? contactStorage = null;
+        var storage = BorrowWaterCoverage(boundary: false);
         try
         {
-            contactStorage = ArrayPool<MovementDomainContact>.Shared.Rent(Math.Max(1, contactCapacity));
-            Span<MovementCoverageSpan> scratchSpans = spanStorage.AsSpan(0, spanCapacity);
-            Span<MovementDomainContact> scratchContacts = contactStorage.AsSpan(0, contactCapacity);
+            Span<MovementCoverageSpan> scratchSpans = storage.Spans[..spanCapacity];
+            Span<MovementDomainContact> scratchContacts = storage.Contacts[..contactCapacity];
             scratchSpans.Clear();
-            scratchContacts.Clear();
             AssertCurrent();
             MovementCoverageResult result = _pin.TraceWater(query, scratchSpans, scratchContacts);
             AssertCurrent();
@@ -132,8 +129,7 @@ public sealed partial class MovementQueryLease
         catch (ArgumentException) { return NoCoverage(MovementAvailability.Invalid); }
         finally
         {
-            if (contactStorage is not null) ArrayPool<MovementDomainContact>.Shared.Return(contactStorage, clearArray: true);
-            ArrayPool<MovementCoverageSpan>.Shared.Return(spanStorage, clearArray: true);
+            storage.Return(contactCapacity);
         }
     }
 

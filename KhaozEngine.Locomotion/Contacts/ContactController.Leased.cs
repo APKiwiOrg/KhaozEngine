@@ -19,7 +19,7 @@ internal static partial class ContactController
     internal static MovementStepResult StepLeased(in FramedMovementState state, Vector2 moveDir,
         float speedFraction, bool run, bool jump, float dt, in MoveTuning tuning, in WaterTraversalPolicy water,
         MovementQueryLease queries, in ContactComposition composition, MovementBoundary? boundary = null,
-        float? faceYaw = null)
+        float? faceYaw = null, MovementSelection? validatedPlacement = null)
     {
         using var entry = ContactAllocationDiagnostics.Begin(ContactAllocationPhase.ControllerEntry);
         ArgumentNullException.ThrowIfNull(queries);
@@ -65,7 +65,14 @@ internal static partial class ContactController
                 tuning.CapsuleHalfHeight, selection.Space, selection.Support);
             MovementStepOutcome placement;
             using (ContactAllocationDiagnostics.Begin(ContactAllocationPhase.Placement))
-                placement = ExplicitCharacterMovement.WaterPlacement(body, tuning, water, queries, boundary);
+            {
+                if (validatedPlacement is { } certified && certified == selection)
+                {
+                    MovementPlacementDiagnostics.Reuse();
+                    placement = MovementStepOutcome.Advanced;
+                }
+                else placement = ExplicitCharacterMovement.WaterPlacement(body, tuning, water, queries, boundary);
+            }
             if (placement != MovementStepOutcome.Advanced) return HoldLeased(state, placement);
             var leased = queries.Workspace.Queries;
             leased.Initialize(queries, tuning, selection,

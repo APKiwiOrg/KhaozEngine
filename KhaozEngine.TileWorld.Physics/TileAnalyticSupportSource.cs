@@ -5,7 +5,7 @@ using KhaozEngine.Locomotion;
 namespace KhaozEngine.TileWorld.Physics;
 
 /// <summary>Identity from the same private captured lattice used by the installed ground's analytic field.</summary>
-internal sealed class TileAnalyticSupportSource(TileMovementSnapshot snapshot, string worldId) : IMovementAnalyticSupportSource, IMovementAnalyticSupportCandidates
+internal sealed partial class TileAnalyticSupportSource(TileMovementSnapshot snapshot, string worldId) : IMovementFlatAnalyticSupportSource, IMovementAnalyticSupportCandidates
 {
     readonly string _source = worldId + "/tile-ground-v1/" + snapshot.Ground.Fingerprint;
     readonly MovementSupportKey _owner = new(worldId, "tile-ground");

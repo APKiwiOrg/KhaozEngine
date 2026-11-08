@@ -24,11 +24,11 @@ public sealed class AtmosphereRendererTests
         {
             (ShaderSources.ModelFrag, 11), (ShaderSources.ModelDissolveFrag, 11),
             (ShaderSources.SkinnedModelFrag, 4), (ShaderSources.SkinnedModelDissolveFrag, 4),
-            (ShaderSources.SplatFrag, 3), (ShaderSources.TileGroundFrag, 3),
+            (ShaderSources.SplatFrag, 3), (ShaderSources.TileGroundFrag, 3), (ShaderSources.FoliageOpaqueFrag, 7),
         })
         {
             Assert.Contains($"layout(std140, set=0, binding={prefix}) uniform Atmosphere", source);
-            Assert.Contains("lit = atmosphereFog(lit, vWorldPos, false, RenderOrigin.w > 0.5);", source);
+            Assert.Contains("lit = atmosphereFogKeyShadowed(lit, vWorldPos, RenderOrigin.w > 0.5, ShadowMap, ShadowSamp);", source);
             Assert.Contains("fragmentRelative.y + Atmo.Origin.y", source);
             Assert.Contains("Atmo.Camera.y + Atmo.Origin.y", source);
         }
@@ -468,9 +468,9 @@ public sealed class AtmosphereRendererTests
     {
         string[] names = { "Planet", "Rayleigh", "Mie", "Ozone", "GroundHaze", "Sun", "Moon", "Tint",
                 "Floors", "Camera", "Origin", "SunT", "MoonT", "Right", "Up", "Back", "Ray", "Res", "Tone", "NightTint",
-                "FogScatter", "FogSource", "FogHorizon" };
-        Assert.Equal(368, Marshal.SizeOf<AtmosphereRenderer.AtmosphereUbo>());
-        Assert.Equal(368u, AtmosphereRenderer.UboBytes);
+                "FogScatter", "FogSource", "FogHorizon", "FogShadow" };
+        Assert.Equal(384, Marshal.SizeOf<AtmosphereRenderer.AtmosphereUbo>());
+        Assert.Equal(384u, AtmosphereRenderer.UboBytes);
         for (int i = 0; i < names.Length; i++)
             Assert.Equal(i * 16, (int)Marshal.OffsetOf<AtmosphereRenderer.AtmosphereUbo>(names[i]));
         foreach (string source in new[] { ConsumerBindings(1), ConsumerBindings(3), ConsumerBindings(4),
@@ -607,5 +607,18 @@ public sealed class AtmosphereRendererTests
         Assert.Equal(0f, u.Tone.X);
         Assert.Equal(1f, u.FogHorizon.X);
         Assert.True(MathF.Abs(u.FogHorizon.Y) < 1e-6f, $"Horizon cosine at sea level: {u.FogHorizon.Y}.");
+    }
+
+    [Theory]
+    [InlineData(KeyLightSource.Sun, 1f, 0f, 8)]
+    [InlineData(KeyLightSource.Moon, 0f, 1f, 16)]
+    [InlineData(KeyLightSource.None, 0f, 0f, 0)]
+    public void PackUbo_IdentifiesTheShadowCastingFogSource(KeyLightSource source, float sun, float moon, int samples)
+    {
+        var settings = new AtmosphereSettings { AerialShadowSamples = samples };
+        var frame = new AtmosphereFrame(Vector3.UnitY, -Vector3.UnitY, .04f, Vector3.One, source);
+        var packed = AtmosphereRenderer.PackUbo(settings, frame, default, default, default, default,
+            Matrix4x4.Identity, Matrix4x4.Identity, 800, 600, new HdrSettings());
+        Assert.Equal(new Vector4(sun, moon, samples, 0), packed.FogShadow);
     }
 }

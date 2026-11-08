@@ -8,6 +8,7 @@ public static partial class ExplicitCharacterMovement
     internal static MovementStepOutcome WaterPlacement(in MovementBodyQuery body, in MoveTuning tuning,
         in WaterTraversalPolicy water, MovementQueryLease queries, MovementBoundary? boundary)
     {
+        MovementPlacementDiagnostics.Validate();
         if (boundary is not null)
         {
             MovementAvailability availability = boundary.Classify(body.Centre, out bool inside);

@@ -27,6 +27,7 @@ internal static partial class ShaderSources
     vec4 FogScatter;
     vec4 FogSource;
     vec4 FogHorizon;
+    vec4 FogShadow;
 } Atmo;
 ";
 

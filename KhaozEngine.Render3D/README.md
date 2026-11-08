@@ -801,6 +801,14 @@ in the `KhaozEngine.Render3D.Ecs` arm under the same namespace, so a render-only
   `SkyHorizon`. Static half-float LUTs are transmittance 256 by 64 and multi-scattering 32 by 32. Sky-view is
   192 by 108, rebuilt each enabled frame with separate horizon endpoints for sky and ground.
 
+  `AerialShadowSamples = 8` estimates the key light's visibility along lit model, terrain, tile-ground and
+  foliage fog segments with point taps of the key shadow atlas. Valid values are 0 through 16, with 0 disabling
+  this correction. Taps have equal in-scatter weight under a uniform-density grey approximation and follow the
+  aerial onset. Occlusion scales only the selected sun or moon's direct in-scatter at the view's eased true
+  angle. The other body, multiple scattering and the night floor remain. Fully lit segments are byte-identical
+  to disabled fog shadows. Taps outside cascade coverage count as lit. Decals, effects, water and water columns
+  retain their unoccluded fog colour.
+
   `AtmosphereModel` is GPU-free. `CreateFrame` consumes a `SunCycle.Evaluate` state and returns `AtmosphereFrame`,
   with body directions, moon fraction, tint and key visibility. `EvaluateLighting(heightKm, frame)` returns
   `AtmosphereLighting` with `Key`, `Ambient`, `Fill`, `Horizon` and untinted source transmittances.
@@ -814,9 +822,11 @@ in the `KhaozEngine.Render3D.Ecs` arm under the same namespace, so a render-only
   from entering the ground branch. Fog samples only the sky hemisphere. Its final sky texel
   eases into the geometric-horizon colour with zero slope, without changing the sky or reflection LUT
   mapping. Below the horizon the phase ratio eases in from one with zero slope as well. Additive effects
-  attenuate without adding fog glow.
+  attenuate without adding fog glow. The `Shade` overload with `keyVisibility` accepts a finite value from
+  0 through 1 and mirrors the key-only correction before the night floor. Existing calls retain full visibility.
 
-  Phase 1 fog can be too bright in deep valleys under a low sun. The aerial perspective volume remains
+  Fog beyond key-shadow coverage and fog on water and effects can still be too bright in deep valleys under
+  a low sun. The aerial perspective volume remains
   [#1364](https://github.com/APKiwiOrg/KhaozEngine/issues/1364). Diffuse sky light reflected off the transport's
   ground boundary and its feedback into multi-scattering are omitted. Scene receivers get sky ambient and
   directional fill in `Uniform`, or directional sky irradiance and a ground hemisphere in `Directional`.

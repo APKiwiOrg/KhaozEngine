@@ -23373,6 +23373,10 @@ names the slot, `MemberName` and zero-based UTF-16 `Index`.
 `TextKeyUtf8Invalid` identifies an invalid content key. `TextKeyBytesExceeded` and `TextChunkBytesExceeded`
 carry `ActualBytes` and inclusive `MaximumBytes` (192 and 16,777,216), plus the slot or `Language`.
 `TextKeyCollision` carries the canonical `Language` and repeated `DerivedKey`.
+Defensive producer checks retain `ContentAuthoringException` and `text-bounds`.
+`TextProducerWireTagBytesExceeded` carries `Language`, `WireTag`, `ActualBytes` and `MaximumBytes` (35), with
+legacy `Type` default and `Id` 0. `TextDerivedKeyByteCountMismatch` carries the slot's `Type`, `Id`, `FieldName`
+and `Language`.
 Commit confirmation distinguishes `TextChunkHashMismatch`, `TextChunkBytesMismatch`,
 `TextReusedChunkUnrecorded`, `TextReusedWireTagMismatch` and `TextReusedHashMismatch`. Each carries `Language` and claimed `TextHash`.
 Hash mismatches add `ExpectedTextHash`, and reuse failures add the baseline `VersionNumber`.
@@ -23429,7 +23433,10 @@ compared `Type`, `Id` and `RowKey` and both `StandingOperation` and `RequestedOp
 `unknown-type`. See the [allocation and change-set refusal table](../KhaozEngine.Catalog.Authoring/README.md#allocation-and-change-set-refusals).
 
 All engine `ContentAuthoringException` construction across Authoring, SQLite, SQL Server and Server.Admin
-supplies `Refusal`. Public legacy constructors remain available to consumers and preserve the existing
+supplies `Refusal`, including defensive candidate guards. `CandidateEditOperationUnsupported` retains
+`unknown-edit-operation` and carries `Type`, `Id`, `TypeKey`, `ActualOperation` and `EditOrdinal`.
+`CandidateForkFlagInvalid` retains `fork-flag-field` and carries `Type`, `Id`, `TypeKey`, `FieldName` and
+`EditOrdinal`, including direct internal builder admission. Public legacy constructors remain available to consumers and preserve the existing
 string `Reason`, row identifiers, findings and inner cause while leaving `Refusal` null.
 
 ### Authoring catalog text

@@ -34,6 +34,31 @@ public sealed class PublicationRefusalTests
             ContentEdit.Import(Thing, 2, new ContentKey("other"), PublishFixtures.Fields(2))]), registry).Report.IsValid);
     }
 
+    [Theory]
+    [InlineData("missing")]
+    [InlineData("value")]
+    public void CandidateBuilderRefusesAnAbsentOrNonBooleanForkFlag(string field)
+    {
+        // W7-B18b: the friend-assembly builder entry point does not run fork preflight.
+        ContentTypeRegistry registry = PublishFixtures.Registry(PublishFixtures.Thing);
+        ContentPublishBaseline baseline = Baseline();
+        var changes = new ContentChangeSet([ContentEdit.Fork(Thing, 1, Key, new("legacy_one"), field, [])]);
+        var refused = Assert.Throws<ContentAuthoringException>(() => ContentCandidateBuilder.Build(baseline, changes, registry, 2));
+        Assert.Equal(ContentAuthoringRefusal.CandidateForkFlagInvalid, refused.Refusal);
+        Assert.Equal(ContentAuthoringException.ForkFlagFieldReason, refused.Reason);
+        Assert.Equal(Thing, refused.Type);
+        Assert.Equal(1, refused.Id);
+        Assert.Equal("thing", refused.TypeKey);
+        Assert.Equal(field, refused.FieldName);
+        Assert.Equal(0, refused.EditOrdinal);
+        Assert.Equal(new[] { ContentFieldValue.OfNumber(ContentFieldKind.Int, 1), ContentFieldValue.Absent(ContentFieldKind.Bool) },
+            Assert.Single(baseline.Rows).Row.Fields);
+        var repaired = new ContentChangeSet([ContentEdit.Fork(Thing, 1, Key, new("legacy_one"), "legacy", [])]);
+        var candidate = ContentCandidateBuilder.Build(baseline, repaired, registry, 2);
+        Assert.Equal(2, candidate.Rows.Count);
+        Assert.Single(candidate.Rules);
+    }
+
     [Fact]
     public void PreviewRefusesAnUnknownFieldWithItsEditContext()
     {

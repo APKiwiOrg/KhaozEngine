@@ -280,6 +280,8 @@ A consumer reads the reason and identifiers, never message wording.
 | `NoPendingDraft` | A row publish with no open draft carrying pending edits | None |
 | `FrozenDraftLost` | A policy publish whose store no longer holds its draft frozen for this base | `ExpectedBaseVersion` |
 | `CandidateRejected` | A candidate rejected by validation | The complete owned read-only `Findings` snapshot |
+| `CandidateEditOperationUnsupported` | A candidate edit outside the four supported operations | `Type`, `Id`, `TypeKey`, `ActualOperation`, `EditOrdinal` |
+| `CandidateForkFlagInvalid` | A candidate fork flag absent from its schema or not Bool | `Type`, `Id`, `TypeKey`, `FieldName`, `EditOrdinal` |
 | `DefinitionIdDuplicate` | A carried id already occupied in the candidate, including a preview | `Type`, `Id`, `RowKey`, `EditOrdinal` |
 | `FieldUnknown` | A candidate edit naming an undeclared schema field | `Type`, `Id`, `TypeKey`, `FieldName`, `EditOrdinal` |
 | `RowUnknown` | An update or retire naming an absent candidate row | `Type`, `Id`, `RowKey`, `EditOrdinal` |
@@ -298,9 +300,10 @@ copy the complete list into a read-only snapshot, so later producer mutation can
 Engine construction is fenced across Authoring, SQLite, SQL Server and Server.Admin. The public legacy
 constructors still leave `Refusal` null for consumer instances, with their existing `Type`, `Id`, `Reason`,
 `Findings` and inner cause intact. Structured constructors use a private initialization path rather than
-calling a legacy constructor. The candidate builder's defensive unknown-operation and fork-flag checks
-cannot be reached after sealed edit admission and fork preflight. They remain plain internal-invariant
-exceptions, with no public refusal member.
+calling a legacy constructor. Defensive candidate checks retain `ContentAuthoringException` and their legacy
+`unknown-edit-operation` and `fork-flag-field` tokens, with the candidate members above. Sealed edit factories
+admit only supported operations. Public publication runs fork preflight, while the internal candidate builder
+can admit a fork directly and reports an invalid flag through the same structured carrier.
 
 ### Durable schema and reset refusals
 
@@ -420,6 +423,8 @@ including its parameter name. No reason is inferred from prose.
 | `TextLanguageUndeclared` | Text whose language neither the baseline nor the draft declares | `Type`, `Id`, `FieldName`, `Language` |
 | `TextTargetIneligible` | Text without a registered CLIENT type and a CLIENT localized marker | `Type`, `Id`, `FieldName`, `Language`, `TypeKey` when registered |
 | `TextProducerMalformedUnicode` | An unpaired surrogate in a type key or marker field used to derive text keys | `Type`, `Id`, `FieldName`, `Language`, `MemberName` (`TypeKey` or `FieldName`), zero-based UTF-16 `Index` |
+| `TextProducerWireTagBytesExceeded` | A producer wire tag above 35 ASCII bytes | Legacy `Type` default and `Id` 0, `Language`, `WireTag`, `ActualBytes`, `MaximumBytes` (35) |
+| `TextDerivedKeyByteCountMismatch` | A derived key re-encoding to a different byte length than measured | `Type`, `Id`, `FieldName`, `Language` |
 | `TextKeyUtf8Invalid` | Invalid UTF-8 in the content key | `Type`, `Id`, `FieldName`, `Language` |
 | `TextKeyBytesExceeded` | A derived key above 192 strict UTF-8 bytes | `Type`, `Id`, `FieldName`, `Language`, `ActualBytes`, `MaximumBytes` (192) |
 | `TextKeyCollision` | Two values deriving one key in the same language | `DerivedKey`, canonical `Language` |
@@ -433,10 +438,11 @@ including its parameter name. No reason is inferred from prose.
 
 The key and body bounds are inclusive. Repeating the operation at the reported `MaximumBytes` succeeds
 when that bound is the only failed rule. The sealed declaration and revision constructors already enforce
-35-byte ASCII wire tags and 8,192-byte strict UTF-8 values. Those defensive producer guards, the derived
-key's nonempty lower bound and measured-length re-encoding are internal invariants. The wire-tag and
-re-encoding checks throw plain `InvalidOperationException` if an engine invariant breaks. Commit confirmation
-still checks reuse spelling because the plan's public list facades can be changed after construction.
+35-byte ASCII wire tags and 8,192-byte strict UTF-8 values. The wire-tag and measured-length re-encoding
+guards retain `ContentAuthoringException` and the legacy `text-bounds` token, with their producer members above,
+even when earlier admission makes them defensive. A derived key's nonempty lower bound follows from its
+nonempty type and field plus two separators. Commit confirmation still checks reuse spelling because the
+plan's public list facades can be changed after construction.
 
 ### The draft is frozen for the whole publish
 

@@ -142,10 +142,16 @@ internal static class ContentTextChunkBuilder
         {
             // Internal invariant: sealed declarations admit only ASCII tags of 1 to 35 bytes.
             // No caller can construct a declaration whose wire tag reaches this defensive guard.
-            if (Encoding.ASCII.GetByteCount(declarations[i].WireTag) > ContentTextChunkCodec.MaxLanguageTagBytes)
+            int wireTagBytes = Encoding.ASCII.GetByteCount(declarations[i].WireTag);
+            if (wireTagBytes > ContentTextChunkCodec.MaxLanguageTagBytes)
             {
-                throw new InvalidOperationException(FormattableString.Invariant(
-                    $"Wire tag '{declarations[i].WireTag}' is over {ContentTextChunkCodec.MaxLanguageTagBytes} bytes."));
+                throw new ContentAuthoringException(ContentAuthoringRefusal.TextProducerWireTagBytesExceeded, FormattableString.Invariant(
+                    $"Wire tag '{declarations[i].WireTag}' is over {ContentTextChunkCodec.MaxLanguageTagBytes} bytes."),
+                    default, 0, ContentAuthoringException.TextBoundsReason)
+                {
+                    Language = declarations[i].Language, WireTag = declarations[i].WireTag,
+                    ActualBytes = wireTagBytes, MaximumBytes = ContentTextChunkCodec.MaxLanguageTagBytes,
+                };
             }
 
             index[declarations[i].Language] = i;
@@ -266,7 +272,9 @@ internal static class ContentTextChunkBuilder
         // Derive joins those same pieces with two ASCII dots, so re-encoding cannot change the length.
         return keyUtf8.Length == keyBytes
             ? new Entry(key, keyUtf8, value.Value, valueBytes)
-            : throw new InvalidOperationException("The derived key does not re-encode to its measured bytes.");
+            : throw new ContentAuthoringException(ContentAuthoringRefusal.TextDerivedKeyByteCountMismatch,
+                "The derived key does not re-encode to its measured bytes.", value.Type, value.DefinitionId,
+                ContentAuthoringException.TextBoundsReason) { FieldName = value.FieldName, Language = value.Language };
     }
 
     static int MeasureUtf8(string text, string parameterName, ContentTextRevision value, string member)

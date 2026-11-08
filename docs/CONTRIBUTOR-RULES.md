@@ -72,7 +72,10 @@ can absorb another contributor's staged files. Never use the shared stash for wo
   constructors, including constructor chaining and provider base forwarding. Each fence has a deliberate
   forbidden-constructor positive control. Legacy chaining uses a nonpublic initialization constructor that
   accepts a nullable reason, never a public unspecified member. Copy completeness tests cover every public
-  identifier and owned collection and name any property lost by the copy.
+  identifier and owned collection and name any property lost by the copy. An invariant claim must hold for every
+  admitted input, including host triggers in the same transaction, host DDL after open and collection interface
+  casts. An existing structured refusal keeps its carrier and failure dimensions even at a defensive guard
+  believed unreachable. Do not downgrade it to a plain BCL exception.
 - A test that reaches a numerical guard, such as a singular matrix, a collapsed cosine or a zero length, never
   depends on floating-point cancellation landing on a threshold or on subnormal inputs. CI runs on x64 and
   arm64, whose fused multiply-add, SIMD and denormal modes differ, so the same input can pass one check on one

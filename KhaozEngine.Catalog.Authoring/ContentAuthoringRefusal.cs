@@ -398,6 +398,24 @@ public enum ContentAuthoringRefusal
     /// <summary>Refuses a text commit revision without a live plan row. Carries TextRowType, TextRowId, FieldName and Language. Legacy Type and Id stay default and 0.</summary>
     TextPlanRowUnknown,
 
+    // Defensive candidate and text producer admission.
+
+    /// <summary>Refuses a candidate edit operation outside the four supported operations. Carries Type, Id,
+    /// TypeKey, ActualOperation and EditOrdinal.</summary>
+    CandidateEditOperationUnsupported,
+
+    /// <summary>Refuses a candidate fork flag absent from its registered schema or not Bool. Carries Type,
+    /// Id, TypeKey, FieldName and EditOrdinal.</summary>
+    CandidateForkFlagInvalid,
+
+    /// <summary>Refuses a text producer wire tag above 35 ASCII bytes. Carries Language, WireTag,
+    /// ActualBytes and MaximumBytes (35). Legacy Type and Id stay default and 0.</summary>
+    TextProducerWireTagBytesExceeded,
+
+    /// <summary>Refuses a derived text key whose re-encoded length differs from its measurement.
+    /// Carries Type, Id, FieldName and Language.</summary>
+    TextDerivedKeyByteCountMismatch,
+
     // Durable store metadata and identity.
 
     /// <summary>Refuses a store read when the catalog_metadata singleton is absent. Carries no identifiers.</summary>

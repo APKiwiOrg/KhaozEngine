@@ -594,7 +594,7 @@ public sealed class ContentAuthoringException : Exception
     /// <summary>The stored type key whose identity disagrees with registration, or null.</summary>
     public string? StoredTypeKey { get; init; }
 
-    /// <summary>The unrecognized persisted operation after conversion to ContentEditOperation, or null.</summary>
+    /// <summary>The unrecognized candidate or persisted edit operation as an integer, or null.</summary>
     public int? ActualOperation { get; init; }
 
     /// <summary>The persisted database ordinal of an edit with an unrecognized operation, or null.</summary>

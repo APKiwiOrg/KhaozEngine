@@ -48,7 +48,8 @@ public sealed class SessionPublicationRefusalTests
         byte[] bytes = [1, 2, 3];
         var writer = new MapAssetFileWriter(root);
         var address = MapAssetFileWriter.Address(bytes, "bin");
-        string target = Path.Combine(root, address.Path);
+        // #1723. Refusal paths use the writer's platform-normalized full filesystem path.
+        string target = Path.GetFullPath(address.Path, root);
         string obstruction = blockedDirectory ? Path.Combine(root, MapAssetFileWriter.ContentDirectory) : target;
         Directory.CreateDirectory(Path.GetDirectoryName(obstruction)!);
         File.WriteAllBytes(obstruction, [9, 8, 7]);

@@ -1858,7 +1858,7 @@ while the 65536 output limits belong to fixed host refinement.
 `CoverageSupportSurface.Compile(source, inwardFaces,
 coverageLocal)` validates a single-valued convex support sheet with at most 1024 inward triangles
 and 256 boundary edges. Its immutable source and bounds trees support cold height and boundary
-queries. A queryable open sheet is distinguished from an inward sheet of a closed displayed solid.
+queries. Offline construction and certification live in [Coverage.Verify](../tools/Coverage.Verify/README.md). A queryable open sheet is distinguished from an inward sheet of a closed displayed solid.
 Approximate compatibility queries do not certify clearance. An uncertifiable finite
 `NearestBoundary` query throws `CoverageGeometryArgumentException` with `Reason`, source `Identity`
 and query `X` and `Y`, preserving its `ArgumentException` base.

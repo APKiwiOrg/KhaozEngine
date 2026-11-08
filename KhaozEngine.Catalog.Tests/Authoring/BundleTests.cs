@@ -252,8 +252,12 @@ public class BundleTests
             () => source.Store.ImportBundleAsync(bundle, PublishFixtures.Actor, "oid:tests", "seed again"));
 
         Assert.Equal(ContentAuthoringException.CatalogNotEmptyReason, refused.Reason);
+        Assert.Equal(ContentAuthoringRefusal.CatalogNotEmpty, refused.Refusal);
+        Assert.Equal(3, refused.ActiveVersion);
         Assert.Equal(3, await source.Store.GetActiveVersionAsync());
         Assert.Null(await source.Store.GetOpenDraftAsync());
+        using var empty = new Catalog();
+        Assert.Equal(1, (await empty.Store.ImportBundleAsync(bundle, PublishFixtures.Actor, "oid:tests", "seed")).VersionNumber);
     }
 
     [Fact]

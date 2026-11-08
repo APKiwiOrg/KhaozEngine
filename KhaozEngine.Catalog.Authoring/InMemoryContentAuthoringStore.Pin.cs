@@ -40,11 +40,12 @@ public sealed partial class InMemoryContentAuthoringStore : IContentVersionSelec
             if (version is int held && FindVersion(held) is null)
             {
                 throw new ContentAuthoringException(
+                    ContentAuthoringRefusal.VersionUnknown,
                     FormattableString.Invariant(
                         $"Version {held} does not exist, so it cannot be pinned."),
                     default,
                     0,
-                    ContentAuthoringException.UnknownTypeReason);
+                    ContentAuthoringException.UnknownTypeReason) { VersionNumber = held };
             }
 
             // STAGE, then move the pin, then COMMIT. Everything that can fail is in the staging, so a pin

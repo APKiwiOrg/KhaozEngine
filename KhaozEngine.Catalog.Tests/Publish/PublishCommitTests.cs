@@ -224,8 +224,15 @@ public class PublishCommitTests
             () => store.CommitPublishAsync(plan, PublishFixtures.Request(0), null));
 
         Assert.Equal(ContentAuthoringException.BaseVersionMovedReason, refused.Reason);
+        Assert.Equal(ContentAuthoringRefusal.NextVersionMismatch, refused.Refusal);
+        Assert.Equal(1, refused.RequestedVersion);
+        Assert.Equal(1, refused.HighestVersion);
+        Assert.Equal(2, refused.NextVersion);
         Assert.Equal(1, await store.GetActiveVersionAsync());
         Assert.Single(await store.ListVersionsAsync());
+        await PublishFixtures.ApplyAsync(store, ContentEdit.Update(Thing, 1, new ContentKey("one"), PublishFixtures.Fields(2)));
+        ContentPublishPlan repaired = await publisher.PrepareAsync(PublishFixtures.Request(1), await store.ReadPublishBaselineAsync());
+        Assert.Equal(2, (await store.CommitPublishAsync(repaired, PublishFixtures.Request(1), null)).VersionNumber);
     }
 
     [Fact]
@@ -313,8 +320,15 @@ public class PublishCommitTests
             () => store.CommitPublishAsync(plan, PublishFixtures.Request(0), null));
 
         Assert.Equal(ContentAuthoringException.CandidateInvalidReason, refused.Reason);
+        Assert.Equal(ContentAuthoringRefusal.CandidateRejected, refused.Refusal);
+        Assert.Contains(refused.Findings, finding => finding.Code == "KEC0002");
         Assert.NotEmpty(refused.Findings);
         Assert.Equal(0, await store.GetActiveVersionAsync());
+        await store.ClearDraftFreezeAsync();
+        await store.DiscardDraftAsync(PublishFixtures.Actor, "oid:tests");
+        await PublishFixtures.ApplyAsync(store, ContentEdit.Add(Thing, new ContentKey("unique"), PublishFixtures.Fields(1)));
+        ContentPublishPlan repaired = await publisher.PrepareAsync(PublishFixtures.Request(0), await store.ReadPublishBaselineAsync());
+        Assert.Equal(1, (await store.CommitPublishAsync(repaired, PublishFixtures.Request(0), null)).VersionNumber);
     }
 
     [Fact]
@@ -510,7 +524,13 @@ public class PublishCommitTests
             () => store.PublishAsync(PublishFixtures.Request(0)));
 
         Assert.Equal(ContentAuthoringException.NoPackStoreReason, refused.Reason);
+        Assert.Equal(ContentAuthoringRefusal.PackStoreMissing, refused.Refusal);
+        Assert.Equal("PublishAsync", refused.MemberName);
         Assert.Equal(0, await store.GetActiveVersionAsync());
+        using var root = new TemporaryRoot();
+        InMemoryContentAuthoringStore repaired = PublishFixtures.Store(registry, new FileSystemPackStore(root.Path));
+        await PublishFixtures.ApplyAsync(repaired, ContentEdit.Add(Thing, new ContentKey("one"), PublishFixtures.Fields(1)));
+        Assert.Equal(1, (await repaired.PublishAsync(PublishFixtures.Request(0))).VersionNumber);
     }
 
     [Fact]

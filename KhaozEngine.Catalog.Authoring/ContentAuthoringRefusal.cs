@@ -326,4 +326,70 @@ public enum ContentAuthoringRefusal
     /// <c>CarriedLanguageCount</c>, <c>CarriedValueCount</c>, <c>RecordedLanguageCount</c>
     /// and <c>RecordedValueCount</c>.</summary>
     TextBaselineHiddenFromPlanner,
+
+    // Store admission and commit confirmation.
+
+    /// <summary>Refuses a store family declaration outside the inclusive block-size range. Carries Type, FamilyKey, ActualBlockSize, MinimumBlockSize (16) and MaximumBlockSize (65,536).</summary>
+    FamilyDeclarationBlockSizeOutsideRange,
+
+    /// <summary>Refuses an in-range store family block size that is not a power of two. Carries Type, FamilyKey and ActualBlockSize.</summary>
+    FamilyDeclarationBlockSizeNotPowerOfTwo,
+
+    /// <summary>Refuses a family key already declared for its type. Carries Type and FamilyKey.</summary>
+    FamilyKeyDuplicate,
+
+    /// <summary>Refuses a row edit authoring a derived marker. Carries Type, Id, TypeKey, FieldName and EditOrdinal.</summary>
+    DerivedMarkerNotAuthorable,
+
+    /// <summary>Refuses a bundle declaration that disagrees with the registry. Carries Type, ActualTypeKey, RegisteredTypeKey, ActualChunkSlots and RegisteredChunkSlots.</summary>
+    BundleTypeDeclarationMismatch,
+
+    /// <summary>Refuses an imported row naming no carried family. Carries Type, Id, RowKey and FamilyKey.</summary>
+    BundleFamilyUnknown,
+
+    /// <summary>Refuses import into a catalog that already published. Carries ActiveVersion.</summary>
+    CatalogNotEmpty,
+
+    /// <summary>Refuses a plan whose number is not next after the highest version. Carries RequestedVersion, HighestVersion and NextVersion.</summary>
+    NextVersionMismatch,
+
+    /// <summary>Refuses an operation requiring an absent pack store. Carries MemberName.</summary>
+    PackStoreMissing,
+
+    /// <summary>Refuses a version whose pack reader failed. Carries VersionNumber, ObjectHash and the stable PackReaderReason token.</summary>
+    PackUnreadable,
+
+    /// <summary>Refuses a draft write while publication holds its freeze. Carries MemberName and FrozenForBaseVersion.</summary>
+    PublishInProgress,
+
+    /// <summary>Refuses publication of an upgrade already in the ledger. Carries UpgradeId.</summary>
+    UpgradeAlreadyRecorded,
+
+    /// <summary>Refuses a fork whose row text a row-only route cannot copy. Carries MemberName, TextRowType and TextRowId. Legacy Type and Id stay default and 0.</summary>
+    TextForkOnRowOnlyRoute,
+
+    /// <summary>Refuses a row-only route over recorded text. Carries MemberName, VersionNumber, RecordedLanguageCount and RecordedValueCount.</summary>
+    TextBaseOnRowOnlyRoute,
+
+    /// <summary>Refuses a row-only plan naming different text chunks from its baseline. Carries MemberName, VersionNumber, ActualCount and ExpectedCount.</summary>
+    TextManifestOnRowOnlyRoute,
+
+    /// <summary>Refuses a text plan frozen in another store. Carries ExpectedEpoch from the plan and ActualEpoch from the store.</summary>
+    TextPlanEpochMismatch,
+
+    /// <summary>Refuses a text plan whose draft freeze does not match the active base. Carries ExpectedBaseVersion and nullable ActualBaseVersion from the freeze marker.</summary>
+    TextPlanFreezeMismatch,
+
+    /// <summary>Refuses a text plan whose complete frozen draft differs from the store. Carries ExpectedBaseVersion.</summary>
+    TextPlanDraftMismatch,
+
+    /// <summary>Refuses a text plan whose baseline text differs from the store. Carries ExpectedBaseVersion.</summary>
+    TextPlanBaselineMismatch,
+
+    /// <summary>Refuses a text close absent from the store. Carries TextRowType, TextRowId, FieldName, Language and FromVersion. Legacy Type and Id stay default and 0.</summary>
+    TextCloseRevisionMissing,
+
+    /// <summary>Refuses a text commit revision without a live plan row. Carries TextRowType, TextRowId, FieldName and Language. Legacy Type and Id stay default and 0.</summary>
+    TextPlanRowUnknown,
+
 }

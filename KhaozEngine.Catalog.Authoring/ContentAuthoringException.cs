@@ -523,11 +523,59 @@ public sealed class ContentAuthoringException : Exception
     /// <summary>The number of values recorded by the planner's exact baseline version, or null.</summary>
     public int? RecordedValueCount { get; init; }
 
-    /// <summary>The text revision's type when export cannot find its live row, or null. Legacy Type stays default.</summary>
+    /// <summary>The text row named by an export or store refusal, or null. Legacy Type stays default.</summary>
     public ContentTypeId? TextRowType { get; init; }
 
-    /// <summary>The text revision's definition id when export cannot find its live row, or null. Legacy Id stays 0.</summary>
+    /// <summary>The text row id named by an export or store refusal, or null. Legacy Id stays 0.</summary>
     public int? TextRowId { get; init; }
+
+    /// <summary>The version number the refused plan would publish. Null for other refusals.</summary>
+    public int? RequestedVersion { get; init; }
+
+    /// <summary>The highest version the store already holds. Null for other refusals.</summary>
+    public int? HighestVersion { get; init; }
+
+    /// <summary>The next publishable version after HighestVersion. Null for other refusals.</summary>
+    public int? NextVersion { get; init; }
+
+    /// <summary>The type key the refused bundle declares. Null for other refusals.</summary>
+    public string? ActualTypeKey { get; init; }
+
+    /// <summary>The registered type key the bundle must match. Null for other refusals.</summary>
+    public string? RegisteredTypeKey { get; init; }
+
+    /// <summary>The chunk slot count the refused bundle declares. Null for other refusals.</summary>
+    public int? ActualChunkSlots { get; init; }
+
+    /// <summary>The registered chunk slot count the bundle must match. Null for other refusals.</summary>
+    public int? RegisteredChunkSlots { get; init; }
+
+    /// <summary>The active version blocking import into a nonempty catalog. Null for other refusals.</summary>
+    public int? ActiveVersion { get; init; }
+
+    /// <summary>The object content address where a pack read failed. Null for other refusals.</summary>
+    public string? ObjectHash { get; init; }
+
+    /// <summary>The pack reader's stable refusal token. Null for other refusals.</summary>
+    public string? PackReaderReason { get; init; }
+
+    /// <summary>The freeze marker blocking a draft write. Null for other refusals.</summary>
+    public int? FrozenForBaseVersion { get; init; }
+
+    /// <summary>The upgrade id already recorded in the ledger. Null for other refusals.</summary>
+    public string? UpgradeId { get; init; }
+
+    /// <summary>The recorded text chunk count a row-only plan must match. Null for other refusals.</summary>
+    public long? ExpectedCount { get; init; }
+
+    /// <summary>The store epoch the text plan read. Null for other refusals.</summary>
+    public string? ExpectedEpoch { get; init; }
+
+    /// <summary>The epoch of the store refusing the text plan. Null for other refusals.</summary>
+    public string? ActualEpoch { get; init; }
+
+    /// <summary>The starting version of a text revision the store cannot close. Null for other refusals.</summary>
+    public int? FromVersion { get; init; }
 
     /// <summary>The content type the refusal is about. The default type id 0 means none.</summary>
     public ContentTypeId Type { get; }

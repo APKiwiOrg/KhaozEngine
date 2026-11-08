@@ -296,6 +296,47 @@ A consumer reads the reason and identifiers, never message wording.
 There is no singular finding-code identifier. Both legacy and typed finding-taking exception constructors
 copy the complete list into a read-only snapshot, so later producer mutation cannot change the refusal.
 
+### Store admission and confirmation refusals
+
+The in-memory store carries these members alongside its legacy tokens. Row-boundary field checks reuse
+`FieldUnknown` with the submitted batch's zero-based `EditOrdinal`. Family-id lookup reuses `FamilyUnknown`,
+unknown registrations reuse `TypeUnknown`, and absent versions reuse `VersionUnknown`, including pinning.
+Candidate rejection retains the complete `Findings` snapshot. Stale base checks reuse `BaseVersionMoved`.
+A text commit whose frozen draft is absent reuses `FrozenDraftLost` with `ExpectedBaseVersion`.
+Text apply reuses `TextBindingRowUnknown` and `TextLanguageUndeclared` with their existing identifier sets.
+
+| `Refusal` | What it refuses | Identifiers |
+|---|---|---|
+| `FamilyDeclarationBlockSizeOutsideRange` | A store declaration outside the inclusive block-size range | `Type`, `FamilyKey`, `ActualBlockSize`, `MinimumBlockSize` (16), `MaximumBlockSize` (65,536) |
+| `FamilyDeclarationBlockSizeNotPowerOfTwo` | An in-range store block size that is not a power of two | `Type`, `FamilyKey`, `ActualBlockSize` |
+| `FamilyKeyDuplicate` | A family key already declared for the type | `Type`, `FamilyKey` |
+| `DerivedMarkerNotAuthorable` | A row edit authoring a derived marker | `Type`, `Id`, `TypeKey`, `FieldName`, `EditOrdinal` |
+| `BundleTypeDeclarationMismatch` | A bundle's key or chunk slots disagreeing with registration | `Type`, `ActualTypeKey`, `RegisteredTypeKey`, `ActualChunkSlots`, `RegisteredChunkSlots` |
+| `BundleFamilyUnknown` | An imported row naming no carried family | `Type`, `Id`, `RowKey`, `FamilyKey` |
+| `CatalogNotEmpty` | Import into a catalog that already published | `ActiveVersion` |
+| `NextVersionMismatch` | A plan whose number is not the next after the highest held version | `RequestedVersion`, `HighestVersion`, `NextVersion` |
+| `PackStoreMissing` | An operation requiring an absent pack target | `MemberName` |
+| `PackUnreadable` | A pack read returning a refusal | `VersionNumber`, `ObjectHash`, stable `PackReaderReason` token |
+| `PublishInProgress` | A draft write while publication holds the freeze | `MemberName`, `FrozenForBaseVersion` |
+| `UpgradeAlreadyRecorded` | A publish applying an upgrade already in the ledger | `UpgradeId` |
+| `TextForkOnRowOnlyRoute` | A fork whose source text the row-only route cannot copy | `MemberName`, `TextRowType`, `TextRowId` |
+| `TextBaseOnRowOnlyRoute` | A row-only rollback across recorded text | `MemberName`, `VersionNumber`, `RecordedLanguageCount`, `RecordedValueCount` |
+| `TextManifestOnRowOnlyRoute` | A row-only plan naming text chunks other than the baseline's | `MemberName`, `VersionNumber`, `ActualCount`, `ExpectedCount` |
+| `TextPlanEpochMismatch` | A text plan frozen in another store | Plan's `ExpectedEpoch`, store's `ActualEpoch` |
+| `TextPlanFreezeMismatch` | A draft freeze that no longer names the active base | `ExpectedBaseVersion`, nullable freeze marker `ActualBaseVersion` |
+| `TextPlanDraftMismatch` | A complete frozen draft differing from the plan's | `ExpectedBaseVersion` |
+| `TextPlanBaselineMismatch` | Baseline text or languages differing from the plan's | `ExpectedBaseVersion` |
+| `TextCloseRevisionMissing` | A text close absent from the store | `TextRowType`, `TextRowId`, `FieldName`, `Language`, `FromVersion` |
+| `TextPlanRowUnknown` | A text commit revision without a live plan row | `TextRowType`, `TextRowId`, `FieldName`, `Language` |
+
+`TextRowType` and `TextRowId` identify rows without changing the existing store-wide legacy `Type` and
+`Id` values of default and 0. Pinning an absent version retains its existing `unknown-type` legacy token
+while `Refusal` reports `VersionUnknown`. A pack reader returns a stable token rather than an exception,
+so `PackUnreadable` preserves that token without inventing an inner exception.
+The in-memory store commits and resets each version and its complete language record together under its
+gate. Missing internal language records, and an import losing the draft its row step just created, are
+internal invariants, not additional public refusal reasons.
+
 ### Text producer and confirmation refusals
 
 The text candidate and chunk builders check eligibility and strict byte bounds before encoding. Their reasons name the producer and keep one identifier set per member. The bundle reader

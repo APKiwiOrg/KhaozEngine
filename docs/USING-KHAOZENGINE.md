@@ -23328,6 +23328,17 @@ carries `TextRowType`, `TextRowId`, `FieldName`, `Language`, `VersionNumber` and
 legacy `Type` and `Id` remain default and 0. `TextBaselineHiddenFromPlanner` carries the exact version and
 both carried and recorded language and value counts. An upgrade that loses its frozen draft reports
 `FrozenDraftLost` with `ExpectedBaseVersion`.
+The in-memory store also identifies admission and commit failures through the
+[store refusal table](../KhaozEngine.Catalog.Authoring/README.md#store-admission-and-confirmation-refusals).
+Family declarations distinguish an out-of-range size, a non-power-of-two size and a duplicate key.
+`FieldUnknown` and `DerivedMarkerNotAuthorable` identify the submitted batch's `EditOrdinal` and field.
+`BundleTypeDeclarationMismatch` carries both declared and registered keys and chunk-slot counts.
+`NextVersionMismatch` carries the requested, highest and next version numbers, while stale bases retain
+`BaseVersionMoved`. `PackUnreadable` carries the failed object and the pack reader's stable token.
+Text commit reasons distinguish store epoch, missing draft, freeze marker, complete draft, baseline,
+missing close revision and missing live row. Store-wide legacy `Type` and `Id` stay default and 0 where
+`TextRowType` and `TextRowId` now identify the text row. Each member keeps one identifier set.
+
 Text binding reports `TextBindingRowUnknown` with `Type`, `Id` 0 and `RowKey`. Final-row checks
 report `TextFinalRowUnknown` with `Type`, `Id`, `FieldName` and `Language`.
 Text candidate and chunk preflight use the same enum. `TextLanguageUndeclared` carries `Language`

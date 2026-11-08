@@ -151,24 +151,21 @@ public sealed class TextProducerRefusalTests
         var (snapshot, rowPlan) = await FreezeAndPlanAsync(store, [new ManifestLanguageEntry("en", original.Hash)]);
         var candidate = new ContentTextCandidate(snapshot.BaselineText.Revisions, [new("en", "en")], [], []);
         var plan = new ContentTextPublishPlan(rowPlan, snapshot, candidate, [original.AsReused()]);
-        // Public read-only list facades currently expose mutable arrays. A caller can replace their
-        // entries after construction, so commit confirmation must still identify the spelling refusal.
-        var languages = (IList<ContentTextLanguage>)plan.Languages;
-        var chunks = (IList<ContentTextChunkRecord>)plan.Chunks;
+        // Protected plan views cannot be changed after construction. Inject the producer's typed values
+        // at the same reuse check so its defensive spelling refusal keeps coverage.
         ContentTextChunkRecord changed = Chunk("EN", ("sword", "Sword"));
-        languages[0] = new("en", "EN", changed.Hash);
-        chunks[0] = changed.AsReused();
+        var regenerated = new ContentRegeneratedText(new("en", "EN", changed.Hash), changed.Hash, changed.StoredFile.ToArray());
+        ContentTextLanguage held = Assert.Single(snapshot.BaselineText.Languages);
 
         ContentAuthoringException refused = Assert.Throws<ContentAuthoringException>(() =>
-            ContentTextChunkConfirmation.Require(TextRegistry(), plan));
+            ContentTextChunkConfirmation.RequireRecordedReuseForTests(regenerated, held, plan.BaseVersion));
         Assert.Equal(ContentAuthoringRefusal.TextReusedWireTagMismatch, refused.Refusal);
         Assert.Equal("en", refused.Language);
         Assert.Equal(1, refused.VersionNumber);
         Assert.Equal("EN", refused.WireTag);
         Assert.Equal("en", refused.ExpectedWireTag);
         Assert.Equal(changed.Hash, refused.TextHash);
-        languages[0] = new("en", "en", original.Hash);
-        chunks[0] = original.AsReused();
+        ContentTextChunkConfirmation.RequireRecordedReuseForTests(new(held, original.Hash, original.StoredFile.ToArray()), held, plan.BaseVersion);
         ContentTextChunkConfirmation.Require(TextRegistry(), plan);
     }
 

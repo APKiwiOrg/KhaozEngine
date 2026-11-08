@@ -65,26 +65,38 @@ internal static class ContentTextChunkConfirmation
                     $"the '{chunk.Recorded.WireTag}' chunk is named {chunk.Hash} and its stored bytes are not the file the plan's values encode to"));
             }
 
-            if (plan.Chunks[i].IsReused
-                && (!recorded.TryGetValue(chunk.Recorded.Language, out ContentTextLanguage? held)
-                    || !string.Equals(held.WireTag, chunk.Recorded.WireTag, StringComparison.Ordinal)
-                    || !string.Equals(held.Hash, chunk.Hash, StringComparison.Ordinal)))
+            if (plan.Chunks[i].IsReused)
             {
-                string detail = FormattableString.Invariant(
-                    $"the '{chunk.Recorded.WireTag}' chunk is reused and version {plan.BaseVersion} recorded no such chunk for it");
-                ContentAuthoringRefusal refusal = held is null ? ContentAuthoringRefusal.TextReusedChunkUnrecorded
-                    : !string.Equals(held.WireTag, chunk.Recorded.WireTag, StringComparison.Ordinal)
-                        ? ContentAuthoringRefusal.TextReusedWireTagMismatch : ContentAuthoringRefusal.TextReusedHashMismatch;
-                throw new ContentAuthoringException(refusal, DescribeMismatch(detail), default, 0, ContentAuthoringException.TextChunkMismatchReason)
-                {
-                    Language = chunk.Recorded.Language, VersionNumber = plan.BaseVersion, TextHash = chunk.Hash,
-                    ExpectedTextHash = refusal == ContentAuthoringRefusal.TextReusedHashMismatch ? held!.Hash : null,
-                    WireTag = refusal == ContentAuthoringRefusal.TextReusedWireTagMismatch ? chunk.Recorded.WireTag : null,
-                    ExpectedWireTag = refusal == ContentAuthoringRefusal.TextReusedWireTagMismatch ? held!.WireTag : null,
-                };
+                recorded.TryGetValue(chunk.Recorded.Language, out ContentTextLanguage? held);
+                RequireRecordedReuse(chunk, held, plan.BaseVersion);
             }
         }
     }
+
+    // Value-taking boundary shared with the fault seam. Public plan views cannot be mutated after validation.
+    static void RequireRecordedReuse(ContentRegeneratedText chunk, ContentTextLanguage? held, int baseVersion)
+    {
+        if (held is null
+            || !string.Equals(held.WireTag, chunk.Recorded.WireTag, StringComparison.Ordinal)
+            || !string.Equals(held.Hash, chunk.Hash, StringComparison.Ordinal))
+        {
+            string detail = FormattableString.Invariant(
+                $"the '{chunk.Recorded.WireTag}' chunk is reused and version {baseVersion} recorded no such chunk for it");
+            ContentAuthoringRefusal refusal = held is null ? ContentAuthoringRefusal.TextReusedChunkUnrecorded
+                : !string.Equals(held.WireTag, chunk.Recorded.WireTag, StringComparison.Ordinal)
+                    ? ContentAuthoringRefusal.TextReusedWireTagMismatch : ContentAuthoringRefusal.TextReusedHashMismatch;
+            throw new ContentAuthoringException(refusal, DescribeMismatch(detail), default, 0, ContentAuthoringException.TextChunkMismatchReason)
+            {
+                Language = chunk.Recorded.Language, VersionNumber = baseVersion, TextHash = chunk.Hash,
+                ExpectedTextHash = refusal == ContentAuthoringRefusal.TextReusedHashMismatch ? held!.Hash : null,
+                WireTag = refusal == ContentAuthoringRefusal.TextReusedWireTagMismatch ? chunk.Recorded.WireTag : null,
+                ExpectedWireTag = refusal == ContentAuthoringRefusal.TextReusedWireTagMismatch ? held!.WireTag : null,
+            };
+        }
+    }
+
+    internal static void RequireRecordedReuseForTests(ContentRegeneratedText chunk, ContentTextLanguage? held, int baseVersion)
+        => RequireRecordedReuse(chunk, held, baseVersion);
 
     static ContentAuthoringException Mismatch(ContentAuthoringRefusal refusal, ContentRegeneratedText chunk, string detail)
         => new(refusal, DescribeMismatch(detail), default, 0, ContentAuthoringException.TextChunkMismatchReason)

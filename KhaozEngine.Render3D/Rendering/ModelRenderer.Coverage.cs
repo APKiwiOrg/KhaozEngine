@@ -8,6 +8,7 @@ internal sealed partial class ModelRenderer
 {
     CoveragePulledResources _coveragePull = null!;
     readonly ModelVisibilityShaders _coverageVisibility = new();
+    bool _coverageReady, _coverageRefused;
     IGpuShaderSet _coverageShaders = null!, _coverageDissolveShaders = null!;
     IGpuPipeline? _coveragePipeline, _coverageDissolvePipeline;
     bool[] _coverageDissolving = [];
@@ -16,16 +17,33 @@ internal sealed partial class ModelRenderer
     GpuOutputDescription _coverageOutputs;
     internal Action<string, CoverageDrawEvidence>? CoveragePullObserverForTests { get; set; }
 
+    internal void RefuseCoverage() => _coverageRefused = true;
+
     internal void ReserveCoverage(int count)
     {
-        if (_coveragePull is null)
+        if (_coverageRefused)
+            throw new GpuShaderPolicyUnsupportedException(GpuShaderPolicyRefusal.PreciseMathUnavailable, GpuShaderStages.Vertex);
+        if (!_coverageReady)
         {
-            _coveragePull = new(_gd, resource => _retired.Retire(resource));
-            _coverageShaders = _gd.Factory.CreateShadersFromSpirv(ShaderSources.CoverageModelVert,
-                ShaderSources.SkinnedModelFrag, new(PreciseMath: true));
-            _coverageDissolveShaders = _gd.Factory.CreateShadersFromSpirv(ShaderSources.CoverageModelVert,
-                ShaderSources.SkinnedModelDissolveFrag, new(PreciseMath: true));
-            BuildCoveragePipelines(_gd.Factory, _coverageOutputs);
+            // All resources remain an unpublished transaction until every graphics owner is usable.
+            try
+            {
+                _coveragePull = new(_gd, resource => _retired.Retire(resource));
+                _coverageShaders = _gd.Factory.CreateShadersFromSpirv(ShaderSources.CoverageModelVert,
+                    ShaderSources.SkinnedModelFrag, new(PreciseMath: true));
+                _coverageDissolveShaders = _gd.Factory.CreateShadersFromSpirv(ShaderSources.CoverageModelVert,
+                    ShaderSources.SkinnedModelDissolveFrag, new(PreciseMath: true));
+                CreateCoveragePipelines(_gd.Factory, _coverageOutputs);
+                _coveragePull.Reserve(count);
+                ReserveCoverageShadows(count);
+                _coverageReady = true;
+            }
+            catch
+            {
+                DisposeCoveragePulling();
+                _coverageRefused = true;
+                throw;
+            }
         }
         _coveragePull.Reserve(count);
         ReserveCoverageShadows(count);
@@ -59,8 +77,15 @@ internal sealed partial class ModelRenderer
     void BuildCoveragePipelines(IGpuResourceFactory factory, GpuOutputDescription outputs)
     {
         _coverageOutputs = outputs;
-        if (_coveragePull is null) return;
+        // Ordinary output rebuilds must never resurrect a refused or incomplete coverage owner.
+        if (!_coverageReady || _coverageRefused) return;
+        CreateCoveragePipelines(factory, outputs);
+    }
+
+    void CreateCoveragePipelines(IGpuResourceFactory factory, GpuOutputDescription outputs)
+    {
         _retired.Retire(_coveragePipeline); _retired.Retire(_coverageDissolvePipeline);
+        _coveragePipeline = _coverageDissolvePipeline = null;
         BuildCoverageMotionPipelines(factory, outputs);
         _coveragePipeline = Create(_coverageShaders); _coverageDissolvePipeline = Create(_coverageDissolveShaders);
         IGpuPipeline Create(IGpuShaderSet shaders) => factory.CreateGraphicsPipeline(new()
@@ -85,6 +110,9 @@ internal sealed partial class ModelRenderer
         DisposeCoverageMotion();
         _coveragePipeline?.Dispose(); _coverageDissolvePipeline?.Dispose();
         _coverageShaders?.Dispose(); _coverageDissolveShaders?.Dispose(); _coveragePull?.Dispose();
+        _coveragePipeline = _coverageDissolvePipeline = null;
+        _coverageShaders = _coverageDissolveShaders = null!;
+        _coveragePull = null!; _coverageReady = false;
     }
 
 }

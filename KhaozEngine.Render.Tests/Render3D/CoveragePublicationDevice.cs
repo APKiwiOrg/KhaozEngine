@@ -17,10 +17,12 @@ internal sealed class CoveragePublicationDevice : IGpuDevice, IGpuResourceFactor
     readonly List<CoverageCarryTestDevice.Fence> fences = [];
     internal readonly List<(string Vertex, string Fragment, GpuShaderCompileOptions Options)> PrecisePrograms = [];
     internal bool AutoComplete = true, RefusePrecise, FailSubmission;
+    internal Func<string, string, bool>? RefuseVertex;
+    internal readonly List<FakeResourceLayout> Layouts = [];
     internal FakeGpuResourceFactory Resources => (FakeGpuResourceFactory)inner.Factory;
     internal CoveragePublicationDevice(bool compute = true, bool completion = true)
         => inner = new(capabilityOverride: new GpuCapabilities(false, true, "coverage-publication",
-            supportsCompute: compute, supportsCompletionFences: completion, supportsShadowMaps: true));
+            supportsCompute: compute, supportsCompletionFences: completion, supportsShadowMaps: true, maxMsaaSampleCount: 4));
     public GpuBackendKind Backend => inner.Backend;
     public GpuCapabilities Capabilities => inner.Capabilities;
     public IGpuResourceFactory Factory => this;
@@ -57,12 +59,19 @@ internal sealed class CoveragePublicationDevice : IGpuDevice, IGpuResourceFactor
     public IGpuTexture CreateTexture(in GpuTextureDescription d) => Resources.CreateTexture(d);
     public IGpuFramebuffer CreateFramebuffer(IGpuTexture? depth, params IGpuTexture[] color) => Resources.CreateFramebuffer(depth, color);
     public IGpuSampler CreateSampler(in GpuSamplerDescription d) => Resources.CreateSampler(d);
-    public IGpuResourceLayout CreateResourceLayout(in GpuResourceLayoutDescription d) => Resources.CreateResourceLayout(d);
+    public IGpuResourceLayout CreateResourceLayout(in GpuResourceLayoutDescription d)
+    { var layout = (FakeResourceLayout)Resources.CreateResourceLayout(d); Layouts.Add(layout); return layout; }
     public IGpuResourceSet CreateResourceSet(in GpuResourceSetDescription d) => Resources.CreateResourceSet(d);
     public IGpuShaderSet CreateShadersFromSpirv(string vertex, string fragment) => Resources.CreateShadersFromSpirv(vertex, fragment);
     public IGpuShaderSet CreateShadersFromSpirv(string vertex, string fragment, GpuShaderCompileOptions options)
     {
-        if (options.PreciseMath) { RequirePrecise(GpuShaderStages.Vertex); PrecisePrograms.Add((vertex, fragment, options)); }
+        if (options.PreciseMath)
+        {
+            RequirePrecise(GpuShaderStages.Vertex);
+            if (RefuseVertex?.Invoke(vertex, fragment) == true)
+                throw new GpuShaderPolicyUnsupportedException(GpuShaderPolicyRefusal.PreciseMathUnavailable, GpuShaderStages.Vertex);
+            PrecisePrograms.Add((vertex, fragment, options));
+        }
         return CreateShadersFromSpirv(vertex, fragment);
     }
     public IGpuComputeShader CreateComputeShaderFromSpirv(string source) => new ComputeShader(source);

@@ -135,6 +135,8 @@ public sealed partial class Scene3D
         catch (Exception error) when (error is NotSupportedException or ShaderValidationException)
         {
             _coverageBatch.RefuseDevice();
+            _model.RefuseCoverage();
+            _targetOutlines.RefuseCoverage();
             foreach (var host in _coverageHosts)
             {
                 host.Request.Published = false;

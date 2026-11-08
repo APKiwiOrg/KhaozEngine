@@ -47,5 +47,7 @@ internal sealed partial class ModelRenderer
     {
         _coverageMotionPipeline?.Dispose(); _coverageDissolveMotionPipeline?.Dispose();
         _coverageMotionShaders?.Dispose(); _coverageDissolveMotionShaders?.Dispose();
+        _coverageMotionPipeline = _coverageDissolveMotionPipeline = null;
+        _coverageMotionShaders = _coverageDissolveMotionShaders = null;
     }
 }

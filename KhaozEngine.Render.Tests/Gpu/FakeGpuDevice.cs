@@ -366,7 +366,8 @@ namespace KhaozEngine.Tests.Gpu
     internal sealed class FakeResourceLayout(GpuResourceLayoutDescription description = default) : IGpuResourceLayout
     {
         internal GpuResourceLayoutDescription Description { get; } = description;
-        public void Dispose() { }
+        internal bool Disposed { get; private set; }
+        public void Dispose() => Disposed = true;
     }
 
     internal sealed class FakeResourceSet : IGpuResourceSet

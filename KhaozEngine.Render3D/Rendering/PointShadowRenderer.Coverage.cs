@@ -14,25 +14,37 @@ internal sealed partial class PointShadowRenderer
     {
         if (_coveragePull is null)
         {
-            _coveragePull = new(_gd, resource => _retired.Add(resource));
+            var pull = new CoveragePulledResources(_gd, resource => _retired.Add(resource));
             var factory = _gd.Factory;
             // Coverage consumes the skinned caster bindings, which exclude the rigid interior cut.
-            _coverageShaders = [
-                factory.CreateShadersFromSpirv(ShaderSources.CoveragePointVert, ShaderSources.PointShadowRigidFrag, new(PreciseMath: true)),
-                factory.CreateShadersFromSpirv(ShaderSources.CoveragePointDissolveVert, ShaderSources.PointShadowSkinnedDissolveFrag, new(PreciseMath: true)),
-                factory.CreateShadersFromSpirv(ShaderSources.CoveragePointDissolveVert, ShaderSources.PointShadowSkinnedDissolveInvertedFrag, new(PreciseMath: true))];
-            _coveragePipelines = new IGpuPipeline[3];
-            for (int i = 0; i < 3; i++) _coveragePipelines[i] = factory.CreateGraphicsPipeline(new()
+            var shaders = new IGpuShaderSet[3];
+            var pipelines = new IGpuPipeline[3];
+            try
             {
-                BlendAttachments = [GpuBlendAttachment.OverrideBlend],
-                DepthStencil = GpuDepthStencilState.DepthOnlyLessEqual,
-                Rasterizer = new(GpuFaceCull.None, GpuPolygonFill.Solid, GpuFrontFace.Clockwise, true, true),
-                Topology = GpuPrimitiveTopology.TriangleList,
-                ResourceLayouts = [_layout, _skinnedCasterLayout, _coveragePull.Layout],
-                ShaderSet = _coverageShaders[i],
-                VertexLayouts = [],
-                Outputs = new(GpuPixelFormat.D32FloatS8UInt, GpuPixelFormat.R32Float),
-            });
+                shaders[0] = factory.CreateShadersFromSpirv(ShaderSources.CoveragePointVert, ShaderSources.PointShadowRigidFrag, new(PreciseMath: true));
+                shaders[1] = factory.CreateShadersFromSpirv(ShaderSources.CoveragePointDissolveVert, ShaderSources.PointShadowSkinnedDissolveFrag, new(PreciseMath: true));
+                shaders[2] = factory.CreateShadersFromSpirv(ShaderSources.CoveragePointDissolveVert, ShaderSources.PointShadowSkinnedDissolveInvertedFrag, new(PreciseMath: true));
+                for (int i = 0; i < 3; i++) pipelines[i] = factory.CreateGraphicsPipeline(new()
+                {
+                    BlendAttachments = [GpuBlendAttachment.OverrideBlend],
+                    DepthStencil = GpuDepthStencilState.DepthOnlyLessEqual,
+                    Rasterizer = new(GpuFaceCull.None, GpuPolygonFill.Solid, GpuFrontFace.Clockwise, true, true),
+                    Topology = GpuPrimitiveTopology.TriangleList,
+                    ResourceLayouts = [_layout, _skinnedCasterLayout, pull.Layout],
+                    ShaderSet = shaders[i],
+                    VertexLayouts = [],
+                    Outputs = new(GpuPixelFormat.D32FloatS8UInt, GpuPixelFormat.R32Float),
+                });
+                pull.Reserve(count);
+            }
+            catch
+            {
+                foreach (var pipeline in pipelines) pipeline?.Dispose();
+                foreach (var shader in shaders) shader?.Dispose();
+                pull.Dispose();
+                throw;
+            }
+            _coveragePull = pull; _coverageShaders = shaders; _coveragePipelines = pipelines;
         }
         _coveragePull.Reserve(count);
     }

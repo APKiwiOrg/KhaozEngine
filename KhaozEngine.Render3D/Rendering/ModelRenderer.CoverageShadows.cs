@@ -24,10 +24,10 @@ internal sealed partial class ModelRenderer
             _coverageCascadeLayout = factory.CreateResourceLayout(new(new GpuResourceLayoutElement(
                 "VBlock", GpuResourceKind.UniformBuffer, GpuShaderStages.Vertex, dynamic: true)));
             // Pulled hosts follow the skinned path. Interior-cut bindings belong to rigid casters.
-            _coverageCascadeShaders = [
-                factory.CreateShadersFromSpirv(ShaderSources.CoverageCascadeVert, ShaderSources.ShadowDepthFrag, new(PreciseMath: true)),
-                factory.CreateShadersFromSpirv(ShaderSources.CoverageCascadeDissolveVert, ShaderSources.SkinnedShadowDepthDissolveFrag, new(PreciseMath: true)),
-                factory.CreateShadersFromSpirv(ShaderSources.CoverageCascadeDissolveVert, ShaderSources.SkinnedShadowDepthDissolveInvertedFrag, new(PreciseMath: true))];
+            _coverageCascadeShaders = new IGpuShaderSet[3];
+            _coverageCascadeShaders[0] = factory.CreateShadersFromSpirv(ShaderSources.CoverageCascadeVert, ShaderSources.ShadowDepthFrag, new(PreciseMath: true));
+            _coverageCascadeShaders[1] = factory.CreateShadersFromSpirv(ShaderSources.CoverageCascadeDissolveVert, ShaderSources.SkinnedShadowDepthDissolveFrag, new(PreciseMath: true));
+            _coverageCascadeShaders[2] = factory.CreateShadersFromSpirv(ShaderSources.CoverageCascadeDissolveVert, ShaderSources.SkinnedShadowDepthDissolveInvertedFrag, new(PreciseMath: true));
             _coverageCascadePipelines = new IGpuPipeline[3];
             for (int i = 0; i < 3; i++)
                 _coverageCascadePipelines[i] = factory.CreateGraphicsPipeline(new()
@@ -83,5 +83,8 @@ internal sealed partial class ModelRenderer
         foreach (var pipeline in _coverageCascadePipelines) pipeline?.Dispose();
         foreach (var shaders in _coverageCascadeShaders) shaders?.Dispose();
         _coverageCascadeSet?.Dispose(); _coverageCascadeUniform?.Dispose(); _coverageCascadeLayout?.Dispose();
+        _coverageCascadePipelines = []; _coverageCascadeShaders = [];
+        _coverageCascadeSet = null; _coverageCascadeUniform = null; _coverageCascadeLayout = null;
+        _coverageCascadeImage = [];
     }
 }

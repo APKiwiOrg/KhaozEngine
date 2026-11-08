@@ -163,7 +163,9 @@ a finite reference result. It neither clamps the pose nor fabricates a GPU raw r
 Carry and pulling graphics variants request the public `GpuShaderCompileOptions(PreciseMath: true)`
 and author GLSL `precise` operations. The option preserves operation order and disables the applicable
 backend fast-math/contraction optimizations. Default shader compilation and cache identity are unchanged.
-Unsupported precise requests refuse through the existing typed shader/capability families. This is not
+Unsupported precise requests refuse through the existing typed shader/capability families. Graphics
+owners publish readiness only after successful construction and release partial resources on failure.
+A sticky graphics refusal also suppresses coverage rebuilds when ordinary temporal, HDR or MSAA outputs change. This is not
 a promise of identical transcendental or denormal behavior on all devices. See the
 [GPU precision contract](USING-KHAOZENGINE.md#precise-compute-and-vertex-arithmetic).
 

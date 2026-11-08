@@ -11,14 +11,41 @@ internal sealed partial class TargetOutlineRenderer
     IGpuShaderSet _coverageFullShaders = null!, _coverageVisibleShaders = null!;
     IGpuPipeline? _coverageFullPipeline, _coverageVisiblePipeline;
     IGpuResourceSet?[] _coverageMaterials = [];
+    bool _coverageRefused;
+    internal void RefuseCoverage() => _coverageRefused = true;
     internal Action<string, CoverageDrawEvidence>? CoveragePullObserverForTests { get; set; }
 
     internal void ReserveCoverage(int count)
     {
+        if (_coverageRefused)
+            throw new GpuShaderPolicyUnsupportedException(GpuShaderPolicyRefusal.PreciseMathUnavailable, GpuShaderStages.Vertex);
         if (_coveragePull is null)
         {
-            _coveragePull = InitializeCoveragePulling(_gd.Factory);
-            BuildCoverageMaskPipelines(_gd.Factory);
+            var resources = new CoveragePulledResources(_gd, _retired.Add);
+            IGpuShaderSet? full = null, visible = null;
+            IGpuPipeline? fullPipeline = null, visiblePipeline = null;
+            try
+            {
+                var factory = _gd.Factory;
+                full = factory.CreateShadersFromSpirv(ShaderSources.CoverageOutlineVert,
+                    ShaderSources.TargetOutlineFullMaskFrag, new(PreciseMath: true));
+                visible = factory.CreateShadersFromSpirv(ShaderSources.CoverageOutlineVert,
+                    ShaderSources.TargetOutlineVisibleMaskFrag, new(PreciseMath: true));
+                if (_fullFramebuffer is not null && _visibleFramebuffer is not null)
+                {
+                    fullPipeline = BuildCoverageMaskPipeline(factory, full, _fullFramebuffer.Outputs, true, resources.Layout);
+                    visiblePipeline = BuildCoverageMaskPipeline(factory, visible, _visibleFramebuffer.Outputs, false, resources.Layout);
+                }
+                resources.Reserve(count);
+            }
+            catch
+            {
+                fullPipeline?.Dispose(); visiblePipeline?.Dispose();
+                full?.Dispose(); visible?.Dispose(); resources.Dispose();
+                throw;
+            }
+            _coveragePull = resources; _coverageFullShaders = full; _coverageVisibleShaders = visible;
+            _coverageFullPipeline = fullPipeline; _coverageVisiblePipeline = visiblePipeline;
         }
         _coveragePull.Reserve(count);
         if (_coverageMaterials.Length < count) Array.Resize(ref _coverageMaterials, count);
@@ -35,16 +62,6 @@ internal sealed partial class TargetOutlineRenderer
             _coverageMaterials[drawIndex] ?? _defaultMaterialSet, drawIndex, -1, 0, 0, 0, draw));
     }
 
-    CoveragePulledResources InitializeCoveragePulling(IGpuResourceFactory factory)
-    {
-        var resources = new CoveragePulledResources(_gd, _retired.Add);
-        _coverageFullShaders = factory.CreateShadersFromSpirv(ShaderSources.CoverageOutlineVert,
-            ShaderSources.TargetOutlineFullMaskFrag, new(PreciseMath: true));
-        _coverageVisibleShaders = factory.CreateShadersFromSpirv(ShaderSources.CoverageOutlineVert,
-            ShaderSources.TargetOutlineVisibleMaskFrag, new(PreciseMath: true));
-        return resources;
-    }
-
     void UploadCoverageMasks(IGpuCommandList commands)
     {
         if (_queue.Exists(static draw => draw.Geometry == QueuedGeometry.Coverage)) _coveragePull.Upload(commands);
@@ -52,20 +69,20 @@ internal sealed partial class TargetOutlineRenderer
 
     void BuildCoverageMaskPipelines(IGpuResourceFactory factory)
     {
-        if (_coveragePull is null || _fullFramebuffer is null || _visibleFramebuffer is null) return;
-        _coverageFullPipeline = BuildCoverageMaskPipeline(factory, _coverageFullShaders, _fullFramebuffer.Outputs, true);
-        _coverageVisiblePipeline = BuildCoverageMaskPipeline(factory, _coverageVisibleShaders, _visibleFramebuffer.Outputs, false);
+        if (_coverageRefused || _coveragePull is null || _fullFramebuffer is null || _visibleFramebuffer is null) return;
+        _coverageFullPipeline = BuildCoverageMaskPipeline(factory, _coverageFullShaders, _fullFramebuffer.Outputs, true, _coveragePull.Layout);
+        _coverageVisiblePipeline = BuildCoverageMaskPipeline(factory, _coverageVisibleShaders, _visibleFramebuffer.Outputs, false, _coveragePull.Layout);
     }
 
     IGpuPipeline BuildCoverageMaskPipeline(IGpuResourceFactory factory, IGpuShaderSet shaders,
-        GpuOutputDescription outputs, bool full) => factory.CreateGraphicsPipeline(new()
+        GpuOutputDescription outputs, bool full, IGpuResourceLayout pullingLayout) => factory.CreateGraphicsPipeline(new()
         {
             BlendAttachments = full ? [GpuBlendAttachment.OverrideBlend]
                 : [GpuBlendAttachment.OverrideBlend, GpuBlendAttachment.OverrideBlend],
             DepthStencil = full ? GpuDepthStencilState.DepthOnlyLessEqual : GpuDepthStencilState.DepthTestLessEqualNoWrite,
             Rasterizer = new(GpuFaceCull.None, GpuPolygonFill.Solid, GpuFrontFace.Clockwise, true, false),
             Topology = GpuPrimitiveTopology.TriangleList,
-            ResourceLayouts = [_drawLayout, _materialLayout, _coveragePull.Layout],
+            ResourceLayouts = [_drawLayout, _materialLayout, pullingLayout],
             ShaderSet = shaders,
             VertexLayouts = [],
             Outputs = outputs,

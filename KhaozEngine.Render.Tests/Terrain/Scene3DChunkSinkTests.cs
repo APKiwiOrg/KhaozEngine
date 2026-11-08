@@ -28,21 +28,27 @@ namespace KhaozEngine.Tests.Terrain
             body(scene);
         }
 
-        // Minimal fake IPhysicsWorld: records AddStatic / RemoveStatic calls (mirrors ChunkStaticsTests' fake, kept
-        // local here since that one is private to its own test class).
+        // The live static set exposes collider lifetime without asserting how many calls maintain it.
         sealed class FakePhysicsWorld : IPhysicsWorld
         {
             int _next = 1;
-            public readonly List<(PhysicsShape Shape, Pose Pose)> Added = new();
+            public readonly Dictionary<StaticHandle, (PhysicsShape Shape, Pose Pose)> Statics = new();
+            public readonly List<StaticHandle> Added = new();
             public readonly List<StaticHandle> Removed = new();
 
             public StaticHandle AddStatic(PhysicsShape shape, Pose pose, PhysicsMaterial? material = null)
             {
-                Added.Add((shape, pose));
-                return new StaticHandle(_next++);
+                var handle = new StaticHandle(_next++);
+                Statics.Add(handle, (shape, pose));
+                Added.Add(handle);
+                return handle;
             }
 
-            public void RemoveStatic(StaticHandle handle) => Removed.Add(handle);
+            public void RemoveStatic(StaticHandle handle)
+            {
+                Statics.Remove(handle);
+                Removed.Add(handle);
+            }
 
             public DynamicBodyHandle AddDynamic(PhysicsShape shape, Pose pose, DynamicBodyDescription body, PhysicsMaterial? material = null)
                 => throw new NotSupportedException();
@@ -167,6 +173,7 @@ namespace KhaozEngine.Tests.Terrain
             var multi = new Scene3DChunkSink(scene: null!, field, new[] { PropLayer.ScatterLayer(trees, NoMeshes(), 90f) }, chunkSize: size);
 
             var coord = new ChunkCoord(-2, -2);
+            Assert.NotEmpty(legacy.ScatterFor(coord));
             AssertSamePlacements(PropScatter.Generate(field, trees, ChunkGrid.AreaOf(coord, size)), legacy.ScatterFor(coord));
             AssertSamePlacements(legacy.ScatterFor(coord), multi.ScatterFor(coord));
         }
@@ -257,6 +264,8 @@ namespace KhaozEngine.Tests.Terrain
             sink.UpdateField(fieldB);
             var after = (Scene3DChunkSink.CpuBuild)sink.BuildCpu(coord, lod: 1);
 
+            Assert.True(before.Mesh.SurfaceVertexCount > 0);
+            Assert.True(after.Mesh.SurfaceVertexCount > 0);
             for (int i = 0; i < before.Mesh.SurfaceVertexCount; i++)
                 Assert.Equal(0f, before.Mesh.Mesh.Vertices[i].Position.Y, 3);
             for (int i = 0; i < after.Mesh.SurfaceVertexCount; i++)
@@ -347,15 +356,15 @@ namespace KhaozEngine.Tests.Terrain
 
             object handle = sink.Load(coord, lod: 0);
             var load = (Scene3DChunkSink.ChunkLoad)handle;
-            int staticsBefore = load.Statics.Count;
-            Assert.True(staticsBefore > 0);
-            Assert.Equal(staticsBefore, world.Added.Count);
+            var staticsBefore = load.Statics.ToHashSet();
+            Assert.NotEmpty(staticsBefore);
+            Assert.True(staticsBefore.SetEquals(world.Statics.Keys));
 
             sink.UpdateField(fieldB);
             sink.ReLod(coord, handle, lod: 0);
 
             Assert.Empty(load.Statics);                        // carved: no props left, so no live statics remain
-            Assert.Equal(staticsBefore, world.Removed.Count);  // every stale static was torn down, none leaked
+            Assert.Empty(world.Statics);                       // no stale collider remains live
         });
 
         // --- Decor ring + collision decouple (L1) -----------------------------------------------------------------
@@ -379,6 +388,8 @@ namespace KhaozEngine.Tests.Terrain
 
             var decor = (Scene3DChunkSink.CpuBuild)sink.BuildCpu(coord, lod: 0, ring: ChunkRing.Decor);
             Assert.NotNull(decor.Mesh);                    // decor still meshes the terrain (it is visible)
+            Assert.NotEmpty(decor.Mesh.Mesh.Vertices);
+            Assert.NotEmpty(decor.Mesh.Mesh.Indices32);
             Assert.Empty(decor.LayerProps[0]);             // but no scatter
             Assert.Null(decor.CollisionMesh);              // and no collision surface
         }
@@ -399,7 +410,8 @@ namespace KhaozEngine.Tests.Terrain
             Assert.Empty(load.LayerProps[0]);              // render-only: no props
             Assert.Empty(load.Statics);                     // no prop colliders
             Assert.False(load.HasTerrainCollider);          // no terrain collider
-            Assert.Empty(world.Added);                      // nothing hit the physics world at all
+            Assert.Empty(world.Added);                      // no collider registration is allowed for decor
+            Assert.Empty(world.Statics);
         });
 
         [GpuFact]
@@ -417,15 +429,14 @@ namespace KhaozEngine.Tests.Terrain
             var load = (Scene3DChunkSink.ChunkLoad)handle;
             Assert.True(load.HasTerrainCollider);
             StaticHandle bodyBefore = load.TerrainCollider;
-            int addedBefore = world.Added.Count;      // 1: the terrain surface body
-            Assert.Equal(1, addedBefore);
+            Assert.Equal(bodyBefore, Assert.Single(world.Statics).Key);
 
             sink.ReLod(coord, handle, lod: 1, ring: ChunkRing.Gameplay);   // render re-LOD, same gameplay ring
 
             Assert.True(load.HasTerrainCollider);
             Assert.Equal(bodyBefore, load.TerrainCollider);   // same body handle: never rebuilt
-            Assert.Empty(world.Removed);             // collider not removed
-            Assert.Equal(addedBefore, world.Added.Count);     // collider not re-added
+            Assert.Empty(world.Removed);
+            Assert.Equal(bodyBefore, Assert.Single(world.Statics).Key);
         });
 
         [GpuFact]
@@ -445,13 +456,13 @@ namespace KhaozEngine.Tests.Terrain
             var load = (Scene3DChunkSink.ChunkLoad)handle;
             var before = load.Statics.ToList();
             Assert.NotEmpty(before);
-            int addedOnLoad = world.Added.Count;
+            Assert.True(before.ToHashSet().SetEquals(world.Statics.Keys));
 
             sink.ReLod(coord, handle, lod: 1, ring: ChunkRing.Gameplay);   // tier change, same field, same ring
 
-            Assert.Equal(before, load.Statics);            // exact same handles, in order: never torn down
-            Assert.Empty(world.Removed);          // nothing removed
-            Assert.Equal(addedOnLoad, world.Added.Count);  // nothing re-added
+            Assert.True(before.ToHashSet().SetEquals(load.Statics));
+            Assert.Empty(world.Removed);
+            Assert.True(before.ToHashSet().SetEquals(world.Statics.Keys));
         });
 
         [GpuFact]
@@ -470,7 +481,6 @@ namespace KhaozEngine.Tests.Terrain
             var load = (Scene3DChunkSink.ChunkLoad)handle;
             IReadOnlyList<PropPlacement> propsBefore = load.LayerProps[0];
             var staticsBefore = load.Statics.ToList();
-            int addedBefore = world.Added.Count;
             Assert.NotEmpty(propsBefore);
             Assert.NotEmpty(staticsBefore);
 
@@ -478,9 +488,9 @@ namespace KhaozEngine.Tests.Terrain
             sink.ReLod(coord, handle, lod: 0, ChunkRing.Gameplay, ChunkBuildReason.ConfigurationChange);
 
             Assert.Same(propsBefore, load.LayerProps[0]);
-            Assert.Equal(staticsBefore, load.Statics);
+            Assert.True(staticsBefore.ToHashSet().SetEquals(load.Statics));
             Assert.Empty(world.Removed);
-            Assert.Equal(addedBefore, world.Added.Count);
+            Assert.True(staticsBefore.ToHashSet().SetEquals(world.Statics.Keys));
         });
 
         [GpuFact]
@@ -500,13 +510,13 @@ namespace KhaozEngine.Tests.Terrain
             Assert.Empty(load.Statics);
             Assert.False(load.HasTerrainCollider);
             Assert.Empty(world.Added);
+            Assert.Empty(world.Statics);
 
             // Approach: upgrade to gameplay. Scatter + prop colliders + terrain collider all appear.
             sink.ReLod(coord, handle, lod: 0, ring: ChunkRing.Gameplay);
             Assert.NotEmpty(load.Statics);
             Assert.True(load.HasTerrainCollider);
-            int addedOnUpgrade = world.Added.Count;
-            Assert.True(addedOnUpgrade > 0);
+            Assert.True(load.Statics.Append(load.TerrainCollider).ToHashSet().SetEquals(world.Statics.Keys));
             Assert.Empty(world.Removed);
 
             // Retreat: downgrade to decor. Everything the upgrade added is torn down, nothing left live.
@@ -514,7 +524,7 @@ namespace KhaozEngine.Tests.Terrain
             Assert.Empty(load.Statics);
             Assert.False(load.HasTerrainCollider);
             Assert.Empty(load.LayerProps[0]);
-            Assert.Equal(addedOnUpgrade, world.Removed.Count);   // every body from the upgrade removed
+            Assert.Empty(world.Statics);
         });
 
         // --- HLOD merged-mesh bake (L3) -------------------------------------------------------------------------
@@ -580,6 +590,8 @@ namespace KhaozEngine.Tests.Terrain
             GltfMesh a = ((Scene3DChunkSink.CpuBuild)sink.BuildCpu(coord, lod: 0)).HlodMeshes![0]!;
             GltfMesh b = ((Scene3DChunkSink.CpuBuild)sink.BuildCpu(coord, lod: 0)).HlodMeshes![0]!;
 
+            Assert.NotEmpty(a.Vertices);
+            Assert.NotEmpty(a.Indices32);
             Assert.Equal(a.Vertices.Length, b.Vertices.Length);
             Assert.Equal(a.Indices32.Length, b.Indices32.Length);
             for (int i = 0; i < a.Vertices.Length; i++)

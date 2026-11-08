@@ -1,6 +1,7 @@
 namespace KhaozEngine.Render3D;
 
-/// <summary>Actor-atomic uncovered/candidate selection, complete publication and barrier-safe tight bounds.</summary>
+/// <summary>Actor-atomic uncovered/candidate selection, complete publication and barrier-safe tight bounds.
+/// CPU palette admission excludes raw skin/interpolation overflow, so the defensive error path selects finite Before.</summary>
 internal static class CoverageCarryPublicationShader
 {
     internal const string Source = """

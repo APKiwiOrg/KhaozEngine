@@ -11,7 +11,7 @@ internal sealed class CoverageCarryFailureFixture
 {
     internal const uint Poison = 0x7fc01234;
     internal const int Source = 64, Before = 112, After = 144, Candidate = 176, Basis = 208, Moved = 300;
-    internal readonly uint[] Static = new uint[256], Frames = new uint[102];
+    internal readonly uint[] Static = new uint[384], Frames = new uint[102];
     internal readonly uint[] Work = Enumerable.Repeat(Poison, 512).ToArray();
     internal readonly uint[] Errors = [uint.MaxValue, uint.MaxValue, uint.MaxValue, 0, 0, 0, 0, 0];
     internal readonly uint[] Current = Enumerable.Repeat(Poison, 32).ToArray();
@@ -57,6 +57,23 @@ internal sealed class CoverageCarryFailureFixture
         a.CopyTo(Work, Source); b.CopyTo(Work, Source + 16); a.CopyTo(Work, Source + 32);
         Expected = [.. a, .. Record(new(1, 0, 0), Vector3.Zero, new(.5f, .5f, .5f, 1), new(.5f, 0), new(0, 1, 0, 1))];
         if (execute) Run("CoverageCarryTransport");
+    }
+
+    internal void SkinAndCancellingTransport(float xScale)
+    {
+        CancellingTransport(execute: false);
+        Static[8] = 208; Static[10] = 272;
+        for (int vertex = 0; vertex < 3; vertex++)
+        {
+            Work.AsSpan(Source + vertex * 16, 16).CopyTo(Static.AsSpan(208 + vertex * 20, 16));
+            Static[208 + vertex * 20 + 16] = Bits(1);
+        }
+        int palette = 6 + 16;
+        Frames[palette] = Bits(xScale); Frames[palette + 5] = Frames[palette + 10] = Frames[palette + 15] = Bits(1);
+        Work.AsSpan(Source, 48).Fill(Poison);
+        Expected[16] = Bits(xScale);
+        Run("CoverageCarrySkin");
+        Run("CoverageCarryTransport");
     }
 
     internal void FailingGather(bool fail)

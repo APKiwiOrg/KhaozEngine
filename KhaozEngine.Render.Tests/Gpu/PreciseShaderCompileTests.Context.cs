@@ -14,6 +14,8 @@ public sealed partial class PreciseShaderCompileTests
     {
         var original = new ShaderValidationException(ShaderValidationRefusal.PreciseMslHelperUnsupported, "original");
         var properties = typeof(ShaderValidationException).GetProperties(BindingFlags.Public | BindingFlags.Instance | BindingFlags.DeclaredOnly);
+        Assert.Equal(new[] { nameof(ShaderValidationException.Reason) },
+            properties.Where(p => !p.CanWrite).Select(p => p.Name).Order(StringComparer.Ordinal));
         var identifiers = properties.Where(p => p.CanWrite).ToArray();
         Assert.True(identifiers.Length > 40);
         foreach (var property in identifiers)
@@ -34,8 +36,11 @@ public sealed partial class PreciseShaderCompileTests
         foreach (var property in identifiers)
         {
             if (property.Name == nameof(ShaderValidationException.RepairSourcePaths))
-                Assert.Equal(original.RepairSourcePaths, copied.RepairSourcePaths);
-            else Assert.Equal(property.GetValue(original), property.GetValue(copied));
+                Assert.True(original.RepairSourcePaths!.SequenceEqual(copied.RepairSourcePaths!),
+                    "Identifier " + property.Name + " was not copied.");
+            else Assert.True(Equals(property.GetValue(original), property.GetValue(copied)),
+                "Identifier " + property.Name + " was not copied. Expected "
+                + property.GetValue(original) + ", actual " + (property.GetValue(copied) ?? "<null>") + ".");
         }
     }
 

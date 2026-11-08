@@ -1929,6 +1929,15 @@ representative vector and entry-major scalar upload. Warm recordings upload curr
 selected row offsets and reset bounds/error words. No runtime recession constructor, exact correction,
 filtered policy, certificate, membership check or synchronous readback participates.
 
+CPU preparation first applies a conservative overflow preflight to the composed palette. A cold source envelope
+and the actual maximum absolute weight sum bound each bone's skinned coordinates in double precision, with
+rounding headroom and a fixed `2^20` ceiling. It does not assume the four weights sum to exactly one. Raw
+directions and unchanged attributes also remain bounded, so normalization and generated-record intermediates
+stay finite. Nonnegative barycentric coefficients sum to twelve before division and cannot expand the exact
+coordinate envelope. `UnsupportedTransform` refuses an unsafe palette before carry dispatch and takes the
+existing ordinary-current-skin route. This can conservatively refuse a finite CPU-reference result. No clamp
+or substitute pose is applied. GPU error publication is a defence over admitted finite uncovered records.
+
 Output storage reserves `D + 2` equal slots per actor, where `D` comes from
 `GpuRetireQueue.FramesInFlightFor(device)` at the first cold reservation. Pending output cannot alias
 committed or retained output. Successful submission commits the pending slot and retains its predecessor

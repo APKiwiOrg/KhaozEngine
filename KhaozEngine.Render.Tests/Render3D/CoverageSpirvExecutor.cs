@@ -9,7 +9,8 @@ using KhaozEngine.Gpu.Internal;
 namespace KhaozEngine.Tests.Render3D;
 
 /// <summary>Bounded test execution of the actual coverage SPIR-V modules over poisoned word buffers.
-/// Unsupported instructions refuse. This is structural headless evidence, not native-device equivalence.</summary>
+/// Unsupported executed instructions refuse. This is bounded structural evidence for finite fixtures,
+/// not a numerical or synchronization oracle. Host arithmetic and a serial lane scheduler do not model a device.</summary>
 internal sealed class CoverageSpirvExecutor
 {
     sealed record Type(uint Op, uint[] Data);
@@ -40,9 +41,13 @@ internal sealed class CoverageSpirvExecutor
     const int StepLimit = 10_000_000;
 
     internal CoverageSpirvExecutor(string source, string name, IReadOnlyList<uint[]> buffers)
+        : this(SpirvFrontEnd.ToSpirv(source, GpuShaderStages.Compute, name,
+            new GpuShaderCompileOptions(PreciseMath: true)), buffers)
+    { }
+
+    internal CoverageSpirvExecutor(byte[] module, IReadOnlyList<uint[]> buffers)
     {
         this.buffers = buffers;
-        byte[] module = SpirvFrontEnd.ToSpirv(source, GpuShaderStages.Compute, name, new GpuShaderCompileOptions(PreciseMath: true));
         uint[] words = MemoryMarshal.Cast<byte, uint>(module).ToArray();
         Function? function = null;
         for (int at = 5; at < words.Length; at += (int)(words[at] >> 16))
@@ -102,6 +107,16 @@ internal sealed class CoverageSpirvExecutor
     static void Write(Pointer pointer, uint[] words) => words.CopyTo(pointer.Words, pointer.Offset);
     static float Float(uint word) => BitConverter.UInt32BitsToSingle(word);
     static uint Bits(float value) => BitConverter.SingleToUInt32Bits(value);
+
+    static uint SignedRemainder(uint left, uint right, bool modulo)
+    {
+        int a = unchecked((int)left), b = unchecked((int)right);
+        if (b == 0 || a == int.MinValue && b == -1)
+            throw new NotSupportedException("Undefined or unsupported signed division in the bounded executor.");
+        int remainder = a % b;
+        if (modulo && remainder != 0 && (remainder < 0) != (b < 0)) remainder += b;
+        return unchecked((uint)remainder);
+    }
 
     internal void Run(int vertices)
     {
@@ -228,7 +243,8 @@ internal sealed class CoverageSpirvExecutor
                 case 134: Set(Binary((a, b) => a / b)); break;
                 case 135: Set(Binary((a, b) => unchecked((uint)((int)a / (int)b)))); break;
                 case 137: Set(Binary((a, b) => a % b)); break;
-                case 138: case 139: Set(Binary((a, b) => unchecked((uint)((int)a % (int)b)))); break;
+                case 138: Set(Binary((a, b) => SignedRemainder(a, b, modulo: false))); break;
+                case 139: Set(Binary((a, b) => SignedRemainder(a, b, modulo: true))); break;
                 case 129: Set(Binary((a, b) => Bits(Float(a) + Float(b)))); break;
                 case 131: Set(Binary((a, b) => Bits(Float(a) - Float(b)))); break;
                 case 133: Set(Binary((a, b) => Bits(Float(a) * Float(b)))); break;
@@ -253,7 +269,10 @@ internal sealed class CoverageSpirvExecutor
                 case 178: Set(Binary((a, b) => a <= b ? 1u : 0)); break;
                 case 179: Set(Binary((a, b) => (int)a <= (int)b ? 1u : 0)); break;
                 case 180: Set(Binary((a, b) => Float(a) == Float(b) ? 1u : 0)); break;
-                case 182: case 183: Set(Binary((a, b) => Float(a) != Float(b) ? 1u : 0)); break;
+                case 182:
+                    Set(Binary((a, b) => !float.IsNaN(Float(a)) && !float.IsNaN(Float(b))
+                    && Float(a) != Float(b) ? 1u : 0)); break;
+                case 183: Set(Binary((a, b) => Float(a) != Float(b) ? 1u : 0)); break;
                 case 184: Set(Binary((a, b) => Float(a) < Float(b) ? 1u : 0)); break;
                 case 186: Set(Binary((a, b) => Float(a) > Float(b) ? 1u : 0)); break;
                 case 188: Set(Binary((a, b) => Float(a) <= Float(b) ? 1u : 0)); break;

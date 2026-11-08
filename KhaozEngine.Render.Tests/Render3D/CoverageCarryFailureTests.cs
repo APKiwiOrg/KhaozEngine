@@ -1,4 +1,5 @@
 using System;
+using System.Linq;
 using Xunit;
 
 namespace KhaozEngine.Tests.Render3D;
@@ -31,8 +32,11 @@ public sealed class CoverageCarryFailureTests
         fixture.Publish();
         Assert.Equal(0u, fixture.Errors[6]);
         Assert.DoesNotContain(CoverageCarryFailureFixture.Poison, fixture.Current);
-        Assert.NotEqual(fixture.Expected, fixture.Current);
-        Assert.Equal(BitConverter.SingleToUInt32Bits(-.25f), fixture.Current[2]);
-        Assert.Equal(BitConverter.SingleToUInt32Bits(-.25f), fixture.Current[18]);
+        uint[] expected = new float[]
+        {
+            0, 0, -.25f, 1, 0, 0, .25f, .5f, .75f, 1, 0, 0, 0, 0, 0, 0,
+            2, 0, -.25f, 1, 0, 0, .75f, .5f, .25f, 1, 1, 0, 0, 0, 0, 0,
+        }.Select(BitConverter.SingleToUInt32Bits).ToArray();
+        Assert.Equal(expected, fixture.Current);
     }
 }

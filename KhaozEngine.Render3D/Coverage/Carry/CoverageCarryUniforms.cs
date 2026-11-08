@@ -10,6 +10,7 @@ internal sealed class CoverageCarryUniforms
 {
     internal const int MaxCommands = 4;
     readonly CoverageRefinement topology;
+    readonly CoverageSkinOverflow overflow;
     readonly Matrix4x4[] composedPalette;
     readonly CoverageCarryCommand[] commands = new CoverageCarryCommand[MaxCommands];
     readonly int[] order = new int[MaxCommands];
@@ -22,6 +23,7 @@ internal sealed class CoverageCarryUniforms
         ArgumentNullException.ThrowIfNull(topology);
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(boneCount);
         this.topology = topology;
+        overflow = new(topology.Source);
         composedPalette = new Matrix4x4[boneCount];
         regionCommands = new int[topology.Map.Regions.Count];
     }
@@ -56,6 +58,8 @@ internal sealed class CoverageCarryUniforms
         for (int bone = 0; bone < composedPalette.Length; bone++)
             if (!CoverageAffine.TryFrom(composedPalette[bone], out _))
                 return Refuse(topology, CoverageFailureCode.UnsupportedTransform, 0, 0, 0, 0, out failure);
+        if (!overflow.Accepts(composedPalette))
+            return Refuse(topology, CoverageFailureCode.UnsupportedTransform, 0, 0, 0, 0, out failure);
         count = commands.Length;
         prepared = true;
         return true;

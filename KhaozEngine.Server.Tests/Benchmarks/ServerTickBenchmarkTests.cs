@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Linq;
 using KhaozEngine.Benchmarks;
 using KhaozEngine.Ecs;
 using KhaozEngine.Sharding;
@@ -154,9 +155,10 @@ public class ServerTickBenchmarkTests
     {
         IReadOnlyList<BenchmarkConfig> matrix = BenchmarkMatrix.Default();
 
-        Assert.Contains(matrix, c => c.CellCount > 1 && c.EntitiesPerCell < c.CellCount); // many small cells
-        Assert.Contains(matrix, c => c.CellCount == 1);                                    // one hot cell
-        Assert.Contains(matrix, c => c.CellCount > 1 && c.CellCount < 1000);               // a mid case
+        int most = matrix.Max(c => c.CellCount);
+        Assert.Contains(matrix, c => c.CellCount == most && c.EntitiesPerCell < c.CellCount); // many small cells
+        Assert.Contains(matrix, c => c.CellCount == 1);                                       // one hot cell
+        Assert.Contains(matrix, c => c.CellCount > 1 && c.CellCount < most);                  // a mid case
 
         long n = matrix[0].TotalEntities;
         Assert.All(matrix, c => Assert.Equal(n, c.TotalEntities));                         // comparable across regimes

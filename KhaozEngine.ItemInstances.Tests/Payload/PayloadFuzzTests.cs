@@ -46,6 +46,50 @@ public class PayloadFuzzTests
 
     public PayloadFuzzTests(ITestOutputHelper output) => _output = output;
 
+    /// <summary>Every golden the test assembly ships. A new one fails the coverage fact until it is listed.</summary>
+    static readonly string[] ShippedGoldens =
+    [
+        "contracts-9-8-worked-example.bin",
+        "spec-3-8-mortal-online-longsword.bin",
+        "spec-3-8-osrs-coins.bin",
+        "spec-3-8-poe-greatsword.bin",
+        "spec-3-8-tibia-wand.bin",
+    ];
+
+    public static TheoryData<MutationClass, string> MutationCases()
+    {
+        var cases = new TheoryData<MutationClass, string>();
+        foreach (MutationClass kind in Enum.GetValues<MutationClass>())
+            foreach (string golden in ShippedGoldens)
+                cases.Add(kind, golden);
+        return cases;
+    }
+
+    [Fact]
+    public void The_fuzz_cases_cover_every_shipped_golden()
+        => Assert.Equal(ShippedGoldens, Corpus().Select(path => Path.GetFileName(path)));
+
+    [Theory]
+    [MemberData(nameof(MutationCases))]
+    public void Mutating_a_golden_never_throws_and_answers_a_stable_closed_reason(MutationClass kind, string golden)
+    {
+        InstancePropertyRegistry registry = InstancePropertyRegistry.CreateV1();
+        var mutator = new PayloadMutator(GoldenBytes(golden), kind, new SeededRandomSource(Seed));
+
+        for (int index = 0; index < MutantsPerGolden; index++)
+        {
+            byte[] mutant = mutator.Next();
+
+            // The registry-free overload checks structure alone and the registry one walks every
+            // registered shape, so both are fuzzed: a body the shape walk reads is a whole surface the
+            // structural walk never touches.
+            Answer(mutant, registry: null, kind, golden, index);
+            Answer(mutant, registry, kind, golden, index);
+        }
+    }
+
+    // A class that refuses NOTHING has stopped testing the decoder, which is the failure mode a fuzzer
+    // hides best: it still runs, still passes, and covers nothing.
     [Theory]
     [InlineData(MutationClass.BitFlip)]
     [InlineData(MutationClass.Truncate)]
@@ -53,66 +97,41 @@ public class PayloadFuzzTests
     [InlineData(MutationClass.KindSwap)]
     [InlineData(MutationClass.CountLie)]
     [InlineData(MutationClass.NestDeeper)]
-    public void Mutating_a_golden_never_throws_and_answers_a_stable_closed_reason(MutationClass kind)
+    public void Every_mutation_class_still_produces_refused_mutants(MutationClass kind)
     {
         InstancePropertyRegistry registry = InstancePropertyRegistry.CreateV1();
-        IReadOnlyList<string> corpus = Corpus();
-        Assert.NotEmpty(corpus);
-
         int total = 0;
         int accepted = 0;
-        foreach (string path in corpus)
+        foreach (string golden in ShippedGoldens)
         {
-            string name = Path.GetFileName(path);
-            byte[] source = File.ReadAllBytes(path);
-            var mutator = new PayloadMutator(source, kind, new SeededRandomSource(Seed));
-
+            var mutator = new PayloadMutator(GoldenBytes(golden), kind, new SeededRandomSource(Seed));
             for (int index = 0; index < MutantsPerGolden; index++)
             {
-                byte[] mutant = mutator.Next();
                 total++;
-
-                // The registry-free overload checks structure alone and the registry one walks every
-                // registered shape, so both are fuzzed: a body the shape walk reads is a whole surface the
-                // structural walk never touches.
-                Answer(mutant, registry: null, kind, name, index);
-                if (Answer(mutant, registry, kind, name, index) is null)
-                {
+                if (ItemInstancePayload.Validate(registry, mutator.Next()) is null)
                     accepted++;
-                }
             }
         }
 
         _output.WriteLine(FormattableString.Invariant(
             $"{kind}: {accepted} of {total} mutants stayed valid ({(accepted * 100.0 / total).ToString("F1", CultureInfo.InvariantCulture)} percent accepted), seed 0x{Seed:X8}"));
 
-        // A class that refuses NOTHING has stopped testing the decoder, which is the failure mode a fuzzer
-        // hides best: it still runs, still passes, and covers nothing.
         Assert.True(
             accepted < total,
             FormattableString.Invariant(
                 $"the {kind} class produced {total} mutants and every one stayed valid, so it is no longer mutating anything (seed 0x{Seed:X8})"));
     }
 
-    [Fact]
-    public void The_same_seed_produces_the_same_mutants_on_every_run()
+    [Theory]
+    [MemberData(nameof(MutationCases))]
+    public void The_same_seed_produces_the_same_mutants_on_every_run(MutationClass kind, string golden)
     {
         // The fuzzer's own determinism, which is what makes the seed in a failure message worth printing.
-        IReadOnlyList<string> corpus = Corpus();
-        Assert.NotEmpty(corpus);
-        foreach (string path in corpus)
-        {
-            byte[] source = File.ReadAllBytes(path);
-            foreach (MutationClass kind in Enum.GetValues<MutationClass>())
-            {
-                var first = new PayloadMutator(source, kind, new SeededRandomSource(Seed));
-                var second = new PayloadMutator(source, kind, new SeededRandomSource(Seed));
-                for (int index = 0; index < 32; index++)
-                {
-                    Assert.Equal(first.Next(), second.Next());
-                }
-            }
-        }
+        byte[] source = GoldenBytes(golden);
+        var first = new PayloadMutator(source, kind, new SeededRandomSource(Seed));
+        var second = new PayloadMutator(source, kind, new SeededRandomSource(Seed));
+        for (int index = 0; index < 32; index++)
+            Assert.Equal(first.Next(), second.Next());
     }
 
     [Fact]
@@ -210,6 +229,9 @@ public class PayloadFuzzTests
     /// fuzzed without a line changing here. Sorted, because a directory listing's order is not defined and
     /// the corpus has to be the same sequence on every machine.
     /// </summary>
+    static byte[] GoldenBytes(string golden)
+        => File.ReadAllBytes(Path.Combine(AppContext.BaseDirectory, "Payload", "Goldens", golden));
+
     static IReadOnlyList<string> Corpus()
     {
         string[] found = Directory.GetFiles(

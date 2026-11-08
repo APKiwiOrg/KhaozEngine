@@ -121,7 +121,10 @@ public sealed class HostCoverageBinding : IDisposable
         in RigidInstanceDraw equipmentTemplate, out SkinnedCoverageFrame frame, out CoverageFailure failure)
     {
         RequireLive();
-        _preparedCount = 0; frame = default;
+        frame = default;
+        if (_host is not null && _host.IsPreparedThisFrame)
+            return Refuse(CoverageFailureCode.StaleFrame, 0, 0, out failure);
+        _preparedCount = 0;
         _host?.Invalidate();
         bool accepted = false;
         try

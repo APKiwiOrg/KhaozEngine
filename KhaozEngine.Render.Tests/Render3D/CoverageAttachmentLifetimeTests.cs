@@ -1,5 +1,6 @@
 using System;
 using System.Numerics;
+using KhaozEngine.Primitives;
 using KhaozEngine.Render3D;
 using Xunit;
 
@@ -44,20 +45,94 @@ public sealed class CoverageAttachmentLifetimeTests
     [Fact]
     public void Repeated_binding_preparation_cannot_rewrite_a_queued_snapshot()
     {
-        using var f = new CoverageBindingFixture();
+        using var f = new CoverageBindingFixture(mixed: true, materialSlices: true);
         using var binding = f.Binding();
         Assert.True(binding.TrySetEquipment([f.Equipment()], out _));
         f.Scene.Begin();
         Assert.True(f.Prepare(binding, out var frame, out _));
+        var borrowed = binding.PreparedEquipmentDraws;
+        var descriptors = borrowed.ToArray();
+        Assert.Equal(3, descriptors.Length);
+        var preparation = frame.Preparation!;
+        var palette = preparation.Palette.AsSpan().ToArray();
+        var commands = preparation.Commands.AsSpan(0, preparation.CommandCount).ToArray();
+        Assert.NotEmpty(commands);
+        var stage = preparation.Equipment[0]!;
+        Assert.Equal(2, stage.Count);
+        var stageDraws = stage.Draws.AsSpan(0, stage.Count).ToArray();
+        var stageCommands = stage.Commands.AsSpan(0, stage.CommandCount).ToArray();
+        Assert.NotEmpty(stageCommands);
+        var group = f.Scene.BeginMeshOutline(Color.White, 2);
         f.Scene.DrawSkinned(f.Host(frame), f.Palette);
+        f.Scene.Draw(descriptors[0].Rigid);
+        f.Scene.DrawMeshOutline(group, descriptors[1].Rigid);
+        Assert.Equal(new[] { true, false }, stage.Submitted);
+        Assert.Equal(new[] { false, true }, stage.Outlined);
+        var submitted = stage.Submitted.AsSpan().ToArray();
+        var outlined = stage.Outlined.AsSpan().ToArray();
         f.Palette[0] = Matrix4x4.CreateTranslation(1, 0, 0);
-        Assert.False(f.Prepare(binding, out var replacement, out var failure, 20));
+        Assert.False(binding.TryPrepare(f.Skeleton, f.Palette, Matrix4x4.CreateTranslation(0, 2, 0),
+            new(20), CoverageBindingFixture.Template, out var replacement, out var failure));
         Assert.Equal(CoverageFailureCode.StaleFrame, failure.Code);
         Assert.Equal(default, replacement);
-        Assert.Equal(Matrix4x4.Identity, frame.Preparation!.Palette[0]);
-        Assert.True(binding.PreparedEquipmentDraws.IsEmpty);
+        Assert.Equal(stageDraws, stage.Draws.AsSpan(0, stage.Count).ToArray());
+        Assert.Equal(stageCommands, stage.Commands.AsSpan(0, stage.CommandCount).ToArray());
+        Assert.Equal(commands, preparation.Commands.AsSpan(0, preparation.CommandCount).ToArray());
+        Assert.Equal(palette, preparation.Palette);
+        Assert.Equal(submitted, stage.Submitted);
+        Assert.Equal(outlined, stage.Outlined);
+        Assert.Equal(descriptors, binding.PreparedEquipmentDraws.ToArray());
+        Assert.Equal(descriptors, borrowed.ToArray());
+        Assert.Equal(Matrix4x4.Identity, descriptors[2].BoneMatrices.Span[0]);
+        Assert.Equal(0, f.Scene.CoverageEntryForTests(frame));
+        // The other host slice and the unused draw/outline paths still accept the original tokens.
+        f.Scene.DrawSkinned(f.Host(frame, 1), palette);
+        f.Scene.Draw(descriptors[1].Rigid);
+        f.Scene.DrawMeshOutline(group, descriptors[0].Rigid);
+        Assert.Equal(2, f.Scene.QueuedSkinnedInstancesForTests.Count);
+        Assert.Equal(2, f.Scene.QueuedInstancesForTests.Count);
+        Assert.Equal(2, f.Scene.MeshOutlinePartCount);
         f.Scene.Begin();
         Assert.True(f.Prepare(binding, out _, out _, 20));
+    }
+
+    [Theory]
+    [InlineData(0, false)]
+    [InlineData(1, false)]
+    [InlineData(0, true)]
+    [InlineData(1, true)]
+    public void Equipment_tokens_expire_when_any_host_slice_is_unloaded(int slice, bool outline)
+    {
+        using var f = new CoverageBindingFixture();
+        using var binding = f.Binding();
+        Assert.True(binding.TrySetEquipment([f.Equipment()], out _));
+        f.Scene.Begin();
+        Assert.True(f.Prepare(binding, out _, out _));
+        var draw = Assert.Single(binding.PreparedEquipmentDraws.ToArray()).Rigid;
+        var group = f.Scene.BeginMeshOutline(Color.White, 2);
+        f.Scene.UnloadSkinnedMesh(f.Hosts[slice]);
+
+        var error = Assert.Throws<CoverageFrameStateException>(() => Admit(f.Scene, group, draw, outline));
+
+        Assert.Equal(CoverageFailureCode.StaleFrame, error.Reason);
+        Assert.Empty(f.Scene.QueuedInstancesForTests);
+        Assert.Equal(0, f.Scene.MeshOutlinePartCount);
+        using var control = new CoverageBindingFixture();
+        using var controlBinding = control.Binding();
+        Assert.True(controlBinding.TrySetEquipment([control.Equipment()], out _));
+        control.Scene.Begin();
+        Assert.True(control.Prepare(controlBinding, out _, out _));
+        var controlDraw = Assert.Single(controlBinding.PreparedEquipmentDraws.ToArray()).Rigid;
+        var controlGroup = control.Scene.BeginMeshOutline(Color.White, 2);
+        Admit(control.Scene, controlGroup, controlDraw, outline);
+        Assert.Equal(outline ? 0 : 1, control.Scene.QueuedInstancesForTests.Count);
+        Assert.Equal(outline ? 1 : 0, control.Scene.MeshOutlinePartCount);
+
+        static void Admit(Scene3D scene, MeshOutlineGroup group, RigidInstanceDraw draw, bool outline)
+        {
+            if (outline) scene.DrawMeshOutline(group, draw);
+            else scene.Draw(draw);
+        }
     }
 
     [Fact]

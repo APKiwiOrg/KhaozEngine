@@ -226,10 +226,11 @@ descriptors. Empty equipment bypasses the table identity check and selects ordin
 the raw host palette, model, current command frames and complete material descriptors. It uses only
 the opaque consumer key to select a row. It never chooses an entry from pose geometry or performs
 runtime certification. Forward `PreparedEquipmentDraws` synchronously and unchanged. The borrowed
-descriptors and tokens expire on the next preparation, successful replacement, Begin, resource
+descriptors and tokens expire on the next accepted preparation, successful replacement, Begin, resource
 unload or disposal. Prepared garment palettes are isolated from another actor using the same loaded set.
 Each actor accepts one preparation between Begin calls. A repeated preparation returns `StaleFrame`
-and cannot overwrite the snapshot already referenced by queued draws.
+before changing the accepted preparation, its borrowed descriptors, tokens or equipment participation.
+Unloading any registered host slice expires host and equipment tokens for both drawing and outlining.
 
 A missing or explicit-hole key returns `TableHole`, an empty token and no equipment descriptors.
 The caller explicitly submits the current uncovered host with `Motion = actorKey` and ordinary
@@ -238,6 +239,7 @@ and exact host handles even for fallback, so later submission history can associ
 Staging and registration alone never record a presented surface or commit history.
 
 `SkinnedHostCoverage` is the lower-level actor owner. `BindActor` fixes its actor incarnation,
+`IsPreparedThisFrame` reads the existing accepted-frame state without reserving another frame slot,
 `MatchesConfiguration` checks the canonical configuration, and `ReserveEquipment` reserves bounded
 material snapshot storage at cold equip. Frame preparation calls the retained carry uniform
 interface with the exact palette, inverse binds, model and commands. Descriptor-aware outline

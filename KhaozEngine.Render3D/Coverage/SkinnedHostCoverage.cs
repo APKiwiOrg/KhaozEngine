@@ -28,6 +28,11 @@ public sealed class SkinnedHostCoverage : IDisposable
     }
     public CoverageRefinement Topology { get; }
 
+    /// <summary>Whether this owner has an accepted preparation in the scene's current frame. This read-only
+    /// check lets attachment binding refuse a repeat before changing borrowed descriptors or equipment stages.</summary>
+    public bool IsPreparedThisFrame
+    { get { RequireLive(); return Scene.IsCoveragePreparedThisFrame(this); } }
+
     /// <summary>Register one immutable actor incarnation and its exact host handles, also used by token-free fallback.
     /// Registration does not record a presented surface or commit history.</summary>
     public void BindActor(MotionKey actorKey)

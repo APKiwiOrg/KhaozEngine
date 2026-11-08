@@ -68,6 +68,14 @@ public sealed partial class Scene3D
         owner.Actor = actor;
     }
     internal void RetireCoverage(SkinnedHostCoverage owner) => _coverageHosts.Remove(owner);
+    internal bool IsCoveragePreparedThisFrame(SkinnedHostCoverage owner) =>
+        _coverageArena.Generation != 0 && owner.Request.Generation == _coverageArena.Generation;
+    bool CoverageHostsLive(SkinnedHostCoverage owner)
+    {
+        foreach (var handle in owner.Meshes)
+            if (!_skinnedSlots.IsValid(handle.Index, handle.Generation)) return false;
+        return true;
+    }
     void DisposeCoverage()
     {
         foreach (var owner in _coverageHosts) { owner.Invalidate(); owner.Disposed = true; }
@@ -81,10 +89,9 @@ public sealed partial class Scene3D
         frame = default;
         var p = owner.Request;
         if (_disposalComplete || _coverageArena.Generation == 0 || _framePrepared || actor.IsNone || actor != owner.Actor
-            || p.Generation == _coverageArena.Generation)
+            || IsCoveragePreparedThisFrame(owner))
             return Refuse(CoverageFailureCode.StaleFrame, out failure);
-        foreach (var handle in owner.Meshes)
-            if (!_skinnedSlots.IsValid(handle.Index, handle.Generation)) return Refuse(CoverageFailureCode.IdentityMismatch, out failure);
+        if (!CoverageHostsLive(owner)) return Refuse(CoverageFailureCode.IdentityMismatch, out failure);
         if (!owner.Uniforms.TryPrepare(palette, owner.InverseBind, model, commands, out failure)) return false;
         if (!owner.Binding.Table.TrySelect(stateKey, out int entry)) return Refuse(CoverageFailureCode.TableHole, out failure);
         if (commands.IsEmpty) return Refuse(CoverageFailureCode.IdentityMismatch, out failure);
@@ -122,8 +129,7 @@ public sealed partial class Scene3D
             || frame.Generation != _coverageArena.Generation || frame.Generation != p.Generation || frame.Revision != p.Revision)
             throw StaleCoverage(p);
         p.Owner.RequireThread();
-        foreach (var handle in p.Owner.Meshes)
-            if (!_skinnedSlots.IsValid(handle.Index, handle.Generation)) throw StaleCoverage(p);
+        if (!CoverageHostsLive(p.Owner)) throw StaleCoverage(p);
         for (int command = 0; command < p.CommandCount; command++)
         {
             var stage = p.Equipment[command]!;

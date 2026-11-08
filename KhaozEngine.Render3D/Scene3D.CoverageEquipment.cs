@@ -80,6 +80,7 @@ public sealed partial class Scene3D
             || token.Generation != _coverageArena.Generation || token.Generation != stage.Generation
             || token.Revision != stage.Revision || token.Revision != stage.Owner.Request.Revision
             || (uint)token.Slice >= (uint)stage.Count || !_slots.IsValid(draw.Mesh.Index, draw.Mesh.Generation)
+            || !CoverageHostsLive(stage.Owner)
             || !SameCoverageRigid(draw, stage.Draws[token.Slice]) || (outline ? stage.Outlined[token.Slice] : stage.Submitted[token.Slice]))
             throw StaleCoverage(stage.Owner.Request);
         for (int material = 0; material < stage.Count; material++)

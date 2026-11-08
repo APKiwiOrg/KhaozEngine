@@ -293,7 +293,10 @@ in-water answer is always built through the `MovementMedium` constructor and lea
 The legacy samplers have no shared scratch. The ground sampler needs its document to remain unedited while read.
 The water field and certified ground delegates retain immutable captured data. Water tracing uses bounded
 per-thread scratch and precomputed exterior topology. A proved constant captured bed can use an exact rectangular
-union specialization. Trace certificates include represented height-evaluation and geometric arithmetic error.
+union specialization. Immutable bounds trees select flat columns and their boundary and exterior patches in original
+source order. A whole capsule path with no potential column certifies a single dry interval immediately, without
+geometric intersections. Nonuniform-bed selection uses its own captured column tree. Fixed candidate storage is
+only an optimization: overflow retains the original full scan and all original refusal limits. Trace certificates include represented height-evaluation and geometric arithmetic error.
 Point membership retains exact half-open comparisons, and an error beyond the existing coverage limit refuses
 the whole trace. A finite over-budget certificate reports `MovementAvailability.PrecisionExceeded` without
 publishing spans or contacts. Unresolved geometry and unavailable evidence keep their existing refusal kinds.

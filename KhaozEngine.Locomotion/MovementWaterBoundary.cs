@@ -1,5 +1,4 @@
 using System;
-using System.Buffers;
 using System.Numerics;
 
 namespace KhaozEngine.Locomotion;
@@ -19,20 +18,24 @@ internal static class MovementWaterBoundary
         hit = default;
         if (mode is not (WaterTraversalMode.SurfaceSwimmer or WaterTraversalMode.WadeOnly or WaterTraversalMode.DryOnly))
             return MovementAvailability.Invalid;
-        MovementCoverageSpan[] spans = ArrayPool<MovementCoverageSpan>.Shared.Rent(MovementQueryLease.MaxCoverageSpans);
-        MovementDomainContact[] contacts = ArrayPool<MovementDomainContact>.Shared.Rent(MovementQueryLease.MaxDomainContacts);
+        var query = new MovementMediumSweepQuery(enclosure, delta);
+        var storage = queries.BorrowWaterCoverage(boundary: true);
+        Span<MovementCoverageSpan> spans = storage.Spans;
+        Span<MovementDomainContact> contacts = storage.Contacts;
+        int initialized = 0;
         try
         {
-            MovementCoverageResult result = queries.TraceWater(new(enclosure, delta),
-                spans.AsSpan(0, MovementQueryLease.MaxCoverageSpans), contacts.AsSpan(0, MovementQueryLease.MaxDomainContacts));
+            MovementCoverageResult result = queries.TraceWater(query,
+                spans, contacts);
+            initialized = result.ContactsWritten;
             if (result.Availability != MovementAvailability.Known) return result.Availability;
             Span<Candidate> candidates = stackalloc Candidate[MovementQueryLease.MaxDomainContacts];
             int count = 0;
             double first = double.PositiveInfinity;
             bool overlap = false;
-            foreach (MovementCoverageSpan span in spans.AsSpan(0, result.SpansWritten))
+            foreach (MovementCoverageSpan span in spans[..result.SpansWritten])
             {
-                ReadOnlySpan<MovementDomainContact> region = contacts.AsSpan(span.ContactStart, span.ContactCount);
+                ReadOnlySpan<MovementDomainContact> region = contacts.Slice(span.ContactStart, span.ContactCount);
                 if (mode == WaterTraversalMode.SurfaceSwimmer)
                 {
                     float? level = null;
@@ -92,8 +95,7 @@ internal static class MovementWaterBoundary
         }
         finally
         {
-            ArrayPool<MovementCoverageSpan>.Shared.Return(spans, clearArray: true);
-            ArrayPool<MovementDomainContact>.Shared.Return(contacts, clearArray: true);
+            storage.Return(initialized);
         }
     }
 }

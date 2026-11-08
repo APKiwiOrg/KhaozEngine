@@ -52,6 +52,8 @@ public sealed partial class TileMediumSampler
         internal TileWaterBoundary[] FlatBoundaries { get; }
         internal TileWaterBoundary[] FlatExterior { get; }
         internal TileWaterColumnIndex PointIndex { get; }
+        internal TileWaterColumnIndex NonuniformIndex { get; }
+        internal TileWaterFlatIndex FlatIndex { get; }
         internal MovementWaterExtent Extent { get; }
 
         internal FieldSnapshot(TileWorldDocument document, TileWorldCatalogs catalogs, RegionCoord[] regions, string worldId,
@@ -119,6 +121,8 @@ public sealed partial class TileMediumSampler
             FlatBoundaries = TileWaterBoundary.Build(FlatColumns, true);
             FlatExterior = TileWaterBoundary.Build(FlatColumns, false);
             NonuniformColumns = nonuniform.ToArray();
+            NonuniformIndex = new(NonuniformColumns);
+            FlatIndex = new(FlatColumns, FlatBoundaries, FlatExterior);
             Extent = new(min, max);
             SemanticIdentity = "tile-water-drawn-v2/" + Convert.ToHexString(semantic.GetHashAndReset());
             Prisms = prisms.ToArray();
@@ -135,13 +139,8 @@ public sealed partial class TileMediumSampler
             return starts;
         }
 
-        internal bool CanTraceFlat(in MovementMediumSweepQuery query, Vector3 origin)
-        {
-            var bounds = new TileWaterPathBounds(query, origin);
-            foreach (TileWaterColumn column in NonuniformColumns)
-                if (bounds.Meets(column.Minimum, column.Maximum)) return false;
-            return true;
-        }
+        internal bool CanTraceFlat(in MovementMediumSweepQuery query, Vector3 origin) =>
+            !NonuniformIndex.MeetsAny(new(query, origin));
 
         static string Bits(float value) => BitConverter.SingleToInt32Bits(value).ToString("X8", CultureInfo.InvariantCulture);
     }

@@ -751,6 +751,13 @@ readiness cleared and the out selection empty. The same null-hint witness stays 
 success, while subsequent requests carry the returned canonical key. This guard does not cache
 membership or replace producer validation.
 
+Water coverage validation and the boundary resolver borrow separate bounded buffers from the interval workspace.
+They retain storage across serial queries and ticks, with the lease's thread and lifetime checks. Reentrant producer
+queries use isolated pooled fallback storage without retaining additional buffers. Producer-exposed contact slices
+are inspected on return because a refusing or throwing producer can leave partial writes. Only initialized runs are
+cleared, while validated boundary output clears its written prefix. Value-only span storage is reset before producer
+callbacks, so missing writes cannot reuse an earlier certificate.
+
 `MovementQueryLease.EnumerateSupport` and `TraceWater` use cleared private scratch and validate the
 complete producer result before publishing caller buffers. Refusal or a provider exception leaves
 both caller buffers untouched. Initial operational limits are 256 support candidates, 64 spans and

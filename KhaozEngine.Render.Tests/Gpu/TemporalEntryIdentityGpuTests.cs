@@ -30,8 +30,9 @@ namespace KhaozEngine.Tests.Gpu
     /// and swing within the per-channel half-float-step and differing-share bounds in
     /// <see cref="TemporalSoftwareRecordDivergenceRule"/> over each channel's values compared.
     /// Everywhere else stored colour, confidence, locks, drift, swing, R8 and depth are exact. Hardware NVIDIA
-    /// Direct3D 11 additionally prints each production entry and D's paired entries against D. Against D only the non-finite classes of colour and
-    /// confidence are asserted. The large-frame case (<c>TemporalEntryIdentityGpuTests.LargeFrames.cs</c>) holds both
+    /// Direct3D 11 additionally prints each production entry and D's paired entries against D. Against D only the
+    /// non-finite classes of colour, confidence, drift and swing are asserted. The large-frame case
+    /// (<c>TemporalEntryIdentityGpuTests.LargeFrames.cs</c>) holds both
     /// entries, and D prime's two, byte-identical across columns 512 and 1024 and row 512 under positive jitter,
     /// under the same software Vulkan colour rule and production-record rule.
     /// </summary>

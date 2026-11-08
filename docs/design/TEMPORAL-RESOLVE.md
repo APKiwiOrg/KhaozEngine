@@ -1405,8 +1405,8 @@ Implementation review established the contract amendments below.
 
     Certified-versus-check comparisons have their own device rules. Exact hardware and llvmpipe
     compare every channel exactly. Hardware NVIDIA Direct3D 11 keeps locks, marks, R8 and depth
-    exact and preserves colour/confidence nonfinite classes, reporting finite differences.
-    WARP keeps those same state channels exact but bounds colour and confidence separately by
+    exact and preserves colour, confidence, drift and swing nonfinite classes, reporting finite differences.
+    WARP keeps those same state channels exact but bounds colour, confidence, drift and swing separately by
     worst absolute difference 0.0625 and differing share 0.0025. TemporalSoftwareCompileDivergenceRule
     owns that constant pair. These rules do not change production fused/split identity, whose only
     exceptions are llvmpipe colour and the record-sized drift and swing rule above. Confidence, locks, marks, R8

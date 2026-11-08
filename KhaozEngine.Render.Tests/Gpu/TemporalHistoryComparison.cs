@@ -102,7 +102,7 @@ internal sealed class TemporalHistoryDifference
     }
 
     internal readonly Channel[] Colour = [new(), new(), new(), new()];
-    internal readonly Channel Confidence = new(), Locks = new();
+    internal readonly Channel Confidence = new(), Locks = new(), Drift = new(), Swing = new();
 
     internal static TemporalHistoryDifference Measure(float[] a, float[] stateA, float[] b, float[] stateB)
     {
@@ -114,6 +114,8 @@ internal sealed class TemporalHistoryDifference
         {
             difference.Confidence.Add(i, stateA[i], stateB[i]);
             difference.Locks.Add(i + 1, stateA[i + 1], stateB[i + 1]);
+            difference.Drift.Add(i + 2, stateA[i + 2], stateB[i + 2]);
+            difference.Swing.Add(i + 3, stateA[i + 3], stateB[i + 3]);
         }
         return difference;
     }
@@ -128,25 +130,26 @@ internal sealed class TemporalHistoryDifference
     }
 
     public override string ToString() => "colour RGBA [" + string.Join(" | ", Colour.Select(c => c.ToString()))
-        + $"], confidence [{Confidence}], any lock differs {Locks.Count > 0} ({Locks.Count})";
+        + $"], confidence [{Confidence}], drift [{Drift}], swing [{Swing}], any lock differs {Locks.Count > 0} ({Locks.Count})";
 }
 
 // The hardware NVIDIA D3D11 rules. That driver compiles confidence arithmetic unrelated to the visibility check
 // differently whenever the visibility code changes, frame 0 included, while WARP running the same DXBC matches D bit
-// for bit. Every colour and confidence value must keep D's non-finite class (NaN, positive infinity, negative infinity
-// or finite), and only finite differences are reported. The A/B rule also holds stored locks, R8 and depth to D's
-// bits. Entry identity holds its production against D comparisons to the class rule alone.
+// for bit. Every colour, confidence, drift and swing value must keep D's non-finite class (NaN, positive infinity,
+// negative infinity or finite), and only finite differences are reported. The A/B rule also holds stored locks, R8
+// and depth to D's bits. Entry identity holds its production against D comparisons to the class rule alone.
 internal static class TemporalNvidiaComparisonRule
 {
     internal static bool ClassesMatch(TemporalHistoryDifference d)
-        => d.Confidence.ClassMismatches == 0 && d.Colour.All(c => c.ClassMismatches == 0);
+        => d.Confidence.ClassMismatches == 0 && d.Drift.ClassMismatches == 0 && d.Swing.ClassMismatches == 0
+            && d.Colour.All(c => c.ClassMismatches == 0);
 
     internal static bool Allows(TemporalHistoryDifference d) => d.Locks.Count == 0 && ClassesMatch(d);
 }
 
 // Software-device compile divergence, with the single bound pair accepted in temporal amendment 23. llvmpipe's
-// production entry colour and WARP's certified-versus-check colour and confidence use this rule. Each channel is
-// measured separately. Callers keep every other channel exact. A non-finite difference never passes.
+// production entry colour and WARP's certified-versus-check colour, confidence, drift and swing use this rule.
+// Each channel is measured separately. Callers keep every other channel exact. A non-finite difference never passes.
 internal static class TemporalSoftwareCompileDivergenceRule
 {
     internal const float AbsoluteBound = 0.0625f, DifferingShareBound = 0.0025f;
@@ -158,7 +161,7 @@ internal static class TemporalSoftwareCompileDivergenceRule
 }
 
 // Only hardware NVIDIA D3D11 creates this oracle. D's paired entries are diagnostic only. Entry identity's production
-// against D comparisons assert only that colour and confidence keep D's non-finite classes.
+// against D comparisons assert only that colour, confidence, drift and swing keep D's non-finite classes.
 internal sealed class TemporalNvidiaHistoryOracle(ITestOutputHelper output)
 {
     internal void ObserveD(int frame, TemporalHistorySample fused, TemporalHistorySample split)
@@ -170,8 +173,8 @@ internal sealed class TemporalNvidiaHistoryOracle(ITestOutputHelper output)
             + $"depth bits equal {MemoryMarshal.AsBytes(fused.Depth.AsSpan()).SequenceEqual(MemoryMarshal.AsBytes(split.Depth.AsSpan()))}");
     }
 
-    // Entry identity's comparison against D: colour and confidence keep D's non-finite classes, everything else is
-    // printed only.
+    // Entry identity's comparison against D: colour, confidence, drift and swing keep D's non-finite classes.
+    // Everything else is printed only.
     internal TemporalHistoryDifference Report(int frame, string what, TemporalHistorySample a, TemporalHistorySample b)
     {
         TemporalHistoryDifference difference = TemporalHistoryDifference.Measure(a.Colour, a.State, b.Colour, b.State);
@@ -183,8 +186,8 @@ internal sealed class TemporalNvidiaHistoryOracle(ITestOutputHelper output)
         return difference;
     }
 
-    // The A/B comparison: exact stored locks, R8 and depth, colour and confidence in D's non-finite classes, their
-    // finite differences printed only.
+    // The A/B comparison: exact stored locks, R8 and depth, colour, confidence, drift and swing in D's non-finite
+    // classes, their finite differences printed only.
     internal TemporalHistoryDifference Compare(int frame, string what, TemporalHistorySample a,
         TemporalHistorySample b)
     {
@@ -198,6 +201,6 @@ internal sealed class TemporalNvidiaHistoryOracle(ITestOutputHelper output)
     }
 
     internal void Complete() => output.WriteLine("  NVIDIA Direct3D 11: exact stored locks, R8 and depth against D, "
-        + "and colour and confidence in D's non-finite classes. Finite colour and confidence differences against D are "
+        + "and colour, confidence, drift and swing in D's non-finite classes. Their finite differences against D are "
         + "reported only.");
 }

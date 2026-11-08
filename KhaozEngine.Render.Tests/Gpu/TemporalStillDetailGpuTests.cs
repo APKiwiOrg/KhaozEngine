@@ -44,7 +44,7 @@ namespace KhaozEngine.Tests.Gpu
         }
 
         [GpuTheory, InlineData(TemporalUpscale.Native), InlineData(TemporalUpscale.Quality)]
-        public void A_shadow_creeping_over_a_shimmering_line_tracks_like_one_over_a_plain_wall(TemporalUpscale preset)
+        public void A_shadow_creeping_over_a_shimmering_line_tracks_no_later_than_its_baseline(TemporalUpscale preset)
         {
             // The wall's luma falls linearly from 0.80 to 0.30 over 24 frames after convergence, a shadow creeping across.
             TrackRun plain = RunRampUnderLine(preset, withLine: false), shimmering = RunRampUnderLine(preset, withLine: true);

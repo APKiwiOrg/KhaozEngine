@@ -2,7 +2,6 @@ using System;
 using System.Linq;
 using System.Numerics;
 using KhaozEngine.Render3D;
-using KhaozEngine.Tests.Render3D;
 using KhaozEngine.Tools.Coverage;
 using Xunit;
 
@@ -34,19 +33,58 @@ public sealed class CoverageWholeSkinDepthTests
     }
 
     [Fact]
-    public void Commanded_certification_does_not_replace_the_uncommanded_whole_skin_gate()
+    public void Whole_skin_replay_blocks_cross_command_intrusion_by_a_changed_triangle()
     {
-        var data = CoverageFixture.CurvedPanel(seams: false, level: 1, crossingSegment: true);
-        var topology = CoverageRefinement.Build(data.Source, data.Map);
-        var constructor = new CoverageExactConstructor(topology, [Matrix4x4.Identity, Matrix4x4.Identity]);
-        var raw = new ModelVertex[topology.VertexCount];
-        Assert.True(constructor.TryConstruct(CoverageFixture.Pose, Matrix4x4.Identity, [], raw,
-            new float[topology.PositionGroupCount], new int[topology.PositionGroupCount], out _));
-        Assert.True(CoverageCertification.ValidateGeometry(topology, raw, raw, Matrix4x4.Identity, [], new(topology), out _));
-        bool[] uncommanded = topology.Triangles.Select(t => t.RegionIndex < 0).ToArray();
-        Assert.Single(uncommanded, value => value);
-        var measured = Box().Measure(topology.Indices, raw, Matrix4x4.Identity, Matrix4x4.Identity, uncommanded);
-        Assert.True(measured.ObservedMm > 0);
+        var fixture = new CoverageCrossCommandFixture();
+        var crossing = fixture.Input(crossing: true);
+        var table = CoverageCrossCommandFixture.Table(crossing);
+        var sample = crossing.Domains[0].DenseRows[0].Sample;
+        Assert.Equal(2, sample.Commands.Length);
+        Assert.All(sample.Commands.ToArray(), c => Assert.Contains(crossing.Topology.Triangles, t => t.RegionIndex == c.RegionIndex));
+        var surfaces = CoverageCrossCommandFixture.KnownPositions(crossing, table);
+        Assert.True(CoverageCertification.ValidateGeometry(crossing.Topology, surfaces.Raw, surfaces.Final,
+            sample.ActorModel, sample.Commands, new(crossing.Topology), out var failure), failure.ToString());
+        var box = sample.Commands.ToArray().Single(c => c.Id == CoverageCrossCommandFixture.BoxCommand);
+        Assert.NotEqual(box.RegionIndex, crossing.Topology.Triangles[0].RegionIndex);
+        Vector3 center = default;
+        for (int corner = 0; corner < 3; corner++)
+        {
+            int vertex = (int)crossing.Topology.Indices[corner];
+            Assert.NotEqual(surfaces.Raw[vertex].Position, surfaces.Final[vertex].Position);
+            var point = surfaces.Final[vertex].Position;
+            Assert.True(Math.Abs(point.X) > 1 || Math.Abs(point.Y) > 1 || Math.Abs(point.Z) > 1);
+            center += point / 3;
+        }
+        Assert.True(Math.Abs(center.X) < 1 && Math.Abs(center.Y) < 1 && Math.Abs(center.Z) < 1);
+        var replay = CoverageReplay.Verify(crossing, table);
+        var pose = Assert.Single(replay.Poses);
+        Assert.True(pose.ExactValid);
+        Assert.Equal(0, replay.SelectedFailures);
+        Assert.True(pose.PositionChangedTriangleCount > 0);
+        Assert.True(replay.ChangedRecordObservedMm > 0);
+        Assert.False(replay.Accepted);
+        var refusal = Assert.Throws<CoverageVerificationException>(replay.EnsureAccepted);
+        Assert.Equal(CoverageVerificationRefusal.ChangedRecordPenetration, refusal.Reason);
+        Assert.Equal(CoverageCrossCommandFixture.Domain, refusal.DomainId);
+        Assert.Equal(0, refusal.DenseIndex);
+        Assert.Equal("current", refusal.SampleId);
+        Assert.Equal(1ul, refusal.StateKey);
+        Assert.Equal(0, refusal.EntryIndex);
+        Assert.Equal(CoverageCrossCommandFixture.BoxCommand, refusal.CommandId);
+        Assert.Equal(CoverageCrossCommandFixture.BoxEquipment, refusal.EquipmentInstanceId);
+
+        // The same rig, commands and table with only the moving assembly translated clear of the box.
+        var control = fixture.Input(crossing: false);
+        var controlSample = control.Domains[0].DenseRows[0].Sample;
+        var controlSurfaces = CoverageCrossCommandFixture.KnownPositions(control, table);
+        Assert.Equal(2, controlSample.Commands.Length);
+        Assert.True(CoverageCertification.ValidateGeometry(control.Topology, controlSurfaces.Raw, controlSurfaces.Final,
+            controlSample.ActorModel, controlSample.Commands, new(control.Topology), out failure), failure.ToString());
+        var accepted = CoverageReplay.Verify(control, table);
+        Assert.True(accepted.Accepted);
+        Assert.Equal(0d, accepted.ChangedRecordObservedMm);
+        Assert.Equal(0d, accepted.ChangedRecordUpperEstimateMm);
+        Assert.Equal(0, accepted.UnresolvedChangedRecordPoses);
     }
 
     [Fact]
@@ -115,14 +153,5 @@ public sealed class CoverageWholeSkinDepthTests
         Assert.NotNull(Box());
     }
 
-    internal static CoverageWholeSkinDepth Box()
-    {
-        Vector3[] points = [new(-1, -1, -1), new(1, -1, -1), new(1, 1, -1), new(-1, 1, -1),
-            new(-1, -1, 1), new(1, -1, 1), new(1, 1, 1), new(-1, 1, 1)];
-        int[] indices = [0, 1, 2, 0, 2, 3, 4, 6, 5, 4, 7, 6, 0, 5, 1, 0, 4, 5, 1, 6, 2, 1, 5, 6, 2, 7, 3, 2, 6, 7, 3, 4, 0, 3, 7, 4];
-        var source = new CoverageSourceTopology("synthetic-depth-solid", CoverageBuildFixture.Hash, points,
-            points.Select((_, i) => new CoverageSourceVertex(0, 0, i, -1, 0, i)),
-            Enumerable.Range(0, indices.Length / 3).Select(i => new CoverageSourceTriangle(0, 0, i, -1, 0, indices[i * 3], indices[i * 3 + 1], indices[i * 3 + 2])));
-        return new(CoverageSupportSurface.Compile(source, [new(0, 0, 0, 2)], Matrix4x4.Identity));
-    }
+    internal static CoverageWholeSkinDepth Box() => new(CoverageCrossCommandFixture.BoxSupport(Vector3.One, Vector3.Zero));
 }

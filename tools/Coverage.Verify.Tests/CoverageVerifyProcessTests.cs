@@ -148,6 +148,35 @@ public sealed class CoverageVerifyProcessTests
         Assert.Equal(0, Program.Run(Args(files, "verify"), accepted.Length));
     }
 
+    [Fact]
+    public async Task Verify_blocks_cross_command_intrusion_by_a_changed_triangle_without_overwriting_accepted_bytes()
+    {
+        using var files = new CoverageBuildFiles("task7");
+        var fixture = new CoverageCrossCommandFixture();
+        fixture.Write(files, crossing: false);
+        var input = CoverageBuildInput.Read(files.ManifestPath);
+        File.WriteAllBytes(files.TablePath, CoverageRecessionTableBinary.Write(CoverageCrossCommandFixture.Table(input)));
+        Assert.Equal(0, (await Execute(files)).ExitCode);
+        byte[] table = File.ReadAllBytes(files.TablePath), evidence = File.ReadAllBytes(files.EvidencePath);
+        fixture.Write(files, crossing: true);
+        var result = await Execute(files);
+        Assert.Equal(1, result.ExitCode);
+        using var refusal = JsonDocument.Parse(result.Error);
+        var root = refusal.RootElement;
+        Assert.Equal("ChangedRecordPenetration", root.GetProperty("Reason").GetString());
+        Assert.Equal(CoverageCrossCommandFixture.Domain, root.GetProperty("DomainId").GetString());
+        Assert.Equal(0, root.GetProperty("DenseIndex").GetInt32());
+        Assert.Equal("current", root.GetProperty("SampleId").GetString());
+        Assert.Equal(1ul, root.GetProperty("StateKey").GetUInt64());
+        Assert.Equal(0, root.GetProperty("EntryIndex").GetInt32());
+        Assert.Equal(CoverageCrossCommandFixture.BoxCommand, root.GetProperty("CommandId").GetUInt32());
+        Assert.Equal(CoverageCrossCommandFixture.BoxEquipment, root.GetProperty("EquipmentInstanceId").GetUInt64());
+        Assert.Equal(table, File.ReadAllBytes(files.TablePath));
+        Assert.Equal(evidence, File.ReadAllBytes(files.EvidencePath));
+        fixture.Write(files, crossing: false);
+        Assert.Equal(0, (await Execute(files)).ExitCode);
+    }
+
     internal static CoverageBuildFiles Files()
     {
         var files = new CoverageBuildFiles("task7");

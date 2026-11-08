@@ -119,7 +119,7 @@ internal sealed class CoverageBuildFiles : IDisposable
         { ["id"] = 23, ["equipmentInstanceId"] = 17, ["equipmentWorld"] = Matrix(equipment), ["coverageWorld"] = Matrix(equipment), ["transitionWeight"] = 1 }),
     };
     internal static JsonArray Matrix(Matrix4x4 m) => new(new float[] { m.M11, m.M12, m.M13, m.M14, m.M21, m.M22, m.M23, m.M24, m.M31, m.M32, m.M33, m.M34, m.M41, m.M42, m.M43, m.M44 }.Select(v => (JsonNode)JsonValue.Create(v)!).ToArray());
-    static byte[] Mesh(Vector3[] positions, uint[] indices, SkinnedVertex[]? skin)
+    internal static byte[] Mesh(Vector3[] positions, uint[] indices, SkinnedVertex[]? skin)
     {
         var fixture = new SkinnedAttachmentGlbFixture(jointCount: 2);
         var prim = fixture.Primitives[0]!.AsObject();

@@ -27,4 +27,30 @@ public enum JournalStoreRefusal
     StoredTimestampNonUtc,
     /// <summary>The kept stored stream rows are not unique and in ordinal key order.</summary>
     StoredStreamOrderInvalid,
+
+    // Schema validation and reset admission.
+    /// <summary>A host foreign key's delete action would write outside the journal during reset.</summary>
+    HostForeignKeyActionUnsafe,
+    /// <summary>A host trigger would run on a journal data table during reset.</summary>
+    HostTriggerUnsafe,
+    /// <summary>The connection has foreign key enforcement disabled.</summary>
+    SchemaForeignKeysDisabled,
+    /// <summary>The writer connection's journal mode is neither WAL nor memory.</summary>
+    SchemaJournalModeUnsupported,
+    /// <summary>The schema metadata row or its version value is missing.</summary>
+    SchemaMetadataMissing,
+    /// <summary>The provider could not read or validate the schema metadata.</summary>
+    SchemaMetadataUnreadable,
+    /// <summary>No journal schema exists in a mode that cannot create it.</summary>
+    SchemaMissing,
+    /// <summary>A declared schema object's definition differs from the supported shape.</summary>
+    SchemaObjectDefinitionMismatch,
+    /// <summary>The schema object count differs from the supported inventory.</summary>
+    SchemaObjectInventoryMismatch,
+    /// <summary>A required schema object is missing despite a matching inventory count.</summary>
+    SchemaObjectMissing,
+    /// <summary>The stored schema version is not an integer.</summary>
+    SchemaVersionMalformed,
+    /// <summary>The declared schema version is unsupported by the refusing mode.</summary>
+    SchemaVersionUnsupported,
 }

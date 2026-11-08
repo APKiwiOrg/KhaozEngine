@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using KhaozEngine.WorldStore.Journal;
 using Microsoft.Data.Sqlite;
 
 namespace KhaozEngine.WorldStore.Sqlite;
@@ -72,13 +73,15 @@ VALUES (1, 2, lower(hex(randomblob(16))), CAST(strftime('%s', 'now') AS INTEGER)
         IReadOnlyDictionary<string, string> versionTwo = ReadReferenceObjects(VersionTwoTables);
         IReadOnlyDictionary<string, string> versionThree = ReadReferenceObjects(Tables);
         if (actual.Count != versionTwo.Count)
-            throw Mismatch("partial or contains unexpected journal objects");
+            throw InventoryMismatch(actual, versionTwo, 2);
         foreach ((string name, string expectedSql) in versionTwo)
         {
-            if (!actual.TryGetValue(name, out string? actualSql)
+            bool found = actual.TryGetValue(name, out string? actualSql);
+            if (!found
                 || !(StringComparer.Ordinal.Equals(actualSql, expectedSql)
                     || (versionThree.TryGetValue(name, out string? migratedSql) && StringComparer.Ordinal.Equals(actualSql, migratedSql))))
-                throw Mismatch($"version 2 object '{name}' does not match the supported shape");
+                throw Mismatch(found ? JournalStoreRefusal.SchemaObjectDefinitionMismatch : JournalStoreRefusal.SchemaObjectMissing,
+                    $"version 2 object '{name}' does not match the supported shape", objectName: name, expectedVersion: 2);
         }
     }
 

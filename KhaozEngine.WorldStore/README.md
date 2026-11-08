@@ -278,6 +278,31 @@ Messages are developer prose. Use the rule and its identifiers to distinguish th
 | `StoredHeadVersionNegative` | A provider row has a negative head version. | `Index`, `ActualVersion` |
 | `StoredTimestampNonUtc` | A provider row timestamp has a nonzero UTC offset. | `Index`, `FieldName` (`createdAtUtc` or `updatedAtUtc`) |
 | `StoredStreamOrderInvalid` | The kept rows are duplicate or out of ordinal key order. | `Index` of the latter row |
+| `SchemaMissing` | No schema exists in a mode that cannot create one. | `RequiredMigration` |
+| `SchemaVersionUnsupported` | The refusing mode cannot use the declared schema version. | `ActualVersion`, `SupportedVersions`, `RequiredMigration` |
+| `SchemaMetadataMissing` | The schema metadata row or version value is missing. | `RequiredMigration` |
+| `SchemaVersionMalformed` | The schema version is not an integer. | `MetadataType`, `RequiredMigration` |
+| `SchemaMetadataUnreadable` | SQLite could not read or validate schema metadata. | `RequiredMigration`, original `InnerException` |
+| `SchemaForeignKeysDisabled` | The connection has foreign key enforcement disabled. | `RequiredMigration` |
+| `SchemaJournalModeUnsupported` | A writer connection uses neither WAL nor memory mode. | `ActualMode`, `RequiredMode` (`wal`), `RequiredMigration` |
+| `SchemaObjectInventoryMismatch` | The schema object count differs from the expected inventory. | `ExpectedVersion`, complete `MissingObjects` and `UnexpectedObjects`, `RequiredMigration` |
+| `SchemaObjectMissing` | The inventory count matches but a required object is missing. | `ObjectName`, `ExpectedVersion`, `RequiredMigration` |
+| `SchemaObjectDefinitionMismatch` | An object's definition differs from its supported shape. | `ObjectName`, `ExpectedVersion`, `RequiredMigration` |
+| `HostForeignKeyActionUnsafe` | A reset would fire a host key's delete action. | Complete ordered `HostObjects` |
+| `HostTriggerUnsafe` | A reset would fire a host trigger. | Complete ordered `HostObjects` |
+
+SQLite schema refusals name migration `sqlite-journal-v3-row-timestamps`. Unsupported versions report the supported
+version set `[3]`. Object names include their kind, such as `table:journal_stream` or
+`index:ix_journal_event_operation`. Inventory differences are ordinally sorted. A count mismatch is reported before
+individual definitions, and schema metadata is read before object validation. Version two accepts each object's
+version-two or already-migrated version-three shape.
+
+`SupportedVersions`, `MissingObjects`, `UnexpectedObjects` and `HostObjects` copy their inputs into fresh boxed
+immutable arrays. A SQLite reset lists all unsafe foreign keys in provider order by host table, referenced table
+and delete action, followed by all unsafe triggers ordered by name. Its reason is the first finding's reason.
+Each `JournalHostObjectFinding` carries its own `Reason` and `ReferencedTable`. A foreign key also carries
+`HostTable` and `DeleteAction`, with `TriggerName` null. A trigger carries `TriggerName`, with `HostTable` and
+`DeleteAction` null. The complete list survives when both kinds are present.
 
 Projection limits are inclusive. If section count and bytes both exceed their limits, section count is reported
 first. Stored-row indices are zero-based. Each row's key, head and timestamps are checked before page ordering,
@@ -511,7 +536,8 @@ committed before the reset resolves `NotFound` and is not recognized as a replay
 The reset refuses to reach outside the journal. A game table's foreign key into a journal data table declared
 `CASCADE`, `SET NULL`, or `SET DEFAULT` would fire on the deletes and delete or rewrite the game's own rows, and so
 would a game trigger on a journal data table. The reset refuses either with a whole-store `SchemaMismatch` that names
-it and deleted nothing. A `NO ACTION` key fires nothing: a game row that still references a stream fails the delete
+it and deleted nothing. SQLite reports these as `HostForeignKeyActionUnsafe` or `HostTriggerUnsafe`, with every
+finding in `HostObjects`. A `NO ACTION` key fires nothing: a game row that still references a stream fails the delete
 instead, and the whole reset rolls back with `ConstraintViolation`. Clear those rows, or drop the key, first.
 
 A projection cursor binds the store epoch, the stream key, and its captured head. The reset keeps the epoch, so

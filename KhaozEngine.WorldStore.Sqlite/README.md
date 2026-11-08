@@ -79,7 +79,9 @@ refuses a version-three journal, so rolling back past this upgrade needs a resto
 
 Production hosts can select `SqliteJournalSchemaMode.ValidateOnly` through
 `SqliteMutationJournalStoreOptions.SchemaMode` when the application identity has no DDL permission. Missing or
-unsupported schemas fail startup with `SchemaMismatch` and name the required migration. Version-three validation
+unsupported schemas fail startup with `SchemaMismatch` and `RequiredMigration` equal to
+`sqlite-journal-v3-row-timestamps`. Inspect `JournalStoreException.Reason` for `SchemaMissing` or
+`SchemaVersionUnsupported`, and the latter's `ActualVersion` and supported version set `[3]`. Version-three validation
 checks the complete table and index definitions before normal store mutation. Operation retention is independent
 from event retention, so purging replay receipts leaves committed events in place.
 
@@ -141,6 +143,21 @@ row that still references a stream fails the delete instead and the whole reset 
 `ConstraintViolation`. It opens the store's own operation delete guard for its transaction and closes it however the
 transaction ends. Stop every journal host first, because an idle host holds no lock. The `KhaozEngine.WorldStore`
 README describes what a projection cursor means after a reset.
+
+Schema refusals carry `JournalStoreRefusal` reasons and typed identifiers, with the existing failure dimensions
+unchanged. `SchemaObjectInventoryMismatch` names the complete ordinally sorted `MissingObjects` and
+`UnexpectedObjects` for `ExpectedVersion`. With a matching count, `SchemaObjectMissing` and
+`SchemaObjectDefinitionMismatch` name the compared `ObjectName` (`table:`, `index:` or `trigger:`) and
+`ExpectedVersion`. `SchemaMetadataMissing`, `SchemaVersionMalformed` (`MetadataType`) and
+`SchemaMetadataUnreadable` (original `InnerException`) distinguish metadata failures. `SchemaForeignKeysDisabled`
+and `SchemaJournalModeUnsupported` distinguish connection settings, with the latter carrying `ActualMode` and
+`RequiredMode` (`wal`). All schema reasons carry `RequiredMigration`.
+
+A reset's `HostObjects` is an owned immutable snapshot of every unsafe key followed by every unsafe trigger.
+Keys are ordered by host table, referenced table and delete action, and triggers by name. Each
+`JournalHostObjectFinding` carries `Reason` and `ReferencedTable`, plus `HostTable` and `DeleteAction` for keys or
+`TriggerName` for triggers. The exception's reason is the first finding's reason, `HostForeignKeyActionUnsafe`
+or `HostTriggerUnsafe`. Inspect these members instead of parsing the message.
 
 `SqliteWorldStore` implements **`IEnumerableWorldStore`** (since 8.4.2): `EnumerateAsync(keyPrefix?)` streams
 `WorldStoreEntry { Key, UpdatedAt, Size? }` records via a streaming SQLite cursor, optionally filtered by key

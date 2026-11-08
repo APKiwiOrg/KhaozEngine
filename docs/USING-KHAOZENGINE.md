@@ -28306,6 +28306,13 @@ stored-row coordinates. Inspect those members instead of parsing messages. Consu
 legacy constructor, which leaves `Reason` null. The package README's
 [refusal table](../KhaozEngine.WorldStore/README.md#refusals) lists the identifiers for each rule.
 
+SQLite schema reasons also carry `RequiredMigration` (`sqlite-journal-v3-row-timestamps`), with actual and supported
+versions, malformed metadata type, connection journal modes, or compared object names where applicable.
+`SchemaObjectInventoryMismatch` carries the complete sorted `MissingObjects` and `UnexpectedObjects` for its
+`ExpectedVersion`. Reset refusals use `HostForeignKeyActionUnsafe` or `HostTriggerUnsafe` and retain every unsafe
+key and trigger in `HostObjects`. Each finding names its rule and referenced table, with the host table and delete
+action for a key or the trigger name for a trigger. All collection identifiers are owned immutable snapshots.
+
 Journal request values copy byte arrays at construction. Their existing `ReadOnlyMemory<byte>` properties also
 return defensive copies. Use the matching `ReadOnlySpan<byte>` property in a hot synchronous read, such as
 `frozen.ResultDataSpan` or `frozen.Identity.NormalizedIntentSpan`. It views the object's owned bytes without an

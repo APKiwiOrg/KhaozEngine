@@ -14,8 +14,8 @@ namespace KhaozEngine.Tests.WorldStore.Journal;
 /// The refusals elsewhere all land before the first delete, so none of them proves the transaction. Here a game table
 /// holds a plain <c>NO ACTION</c> key into <c>journal_stream</c> and a row behind it. The key fires nothing, so the
 /// reset lets it through, and the reset deletes children before parents, so the five tables below
-/// <c>journal_stream</c> are already empty inside the transaction when the last delete breaks the key. Every count
-/// and the whole metadata row reading as they stood afterwards is the rollback.
+/// <c>journal_stream</c> are already empty inside the transaction when the last delete breaks the key. Every table
+/// and row reading as they stood afterwards proves the rollback, including metadata and host rows.
 /// </para>
 /// </summary>
 public sealed class SqliteJournalResetAtomicityTests : IDisposable
@@ -37,7 +37,8 @@ public sealed class SqliteJournalResetAtomicityTests : IDisposable
             """,
             ("$stream", seeded.First));
         KeyValuePair<string, long>[] before = SqliteJournalResetHarness.Counts(database, path);
-        string metadata = SqliteJournalResetHarness.Metadata(database, path);
+        SqliteJournalFileState content = SqliteJournalFileState.Capture(path);
+        Assert.Equal(6, before.Length);
         Assert.All(before, table => Assert.True(table.Value > 0, $"The seed left {table.Key} empty."));
 
         JournalStoreException failed = await Assert.ThrowsAsync<JournalStoreException>(
@@ -50,7 +51,7 @@ public sealed class SqliteJournalResetAtomicityTests : IDisposable
         Assert.Equal(19, provider.SqliteErrorCode);
         Assert.Equal(787, provider.SqliteExtendedErrorCode);
         Assert.Equal(before, SqliteJournalResetHarness.Counts(database, path));
-        Assert.Equal(metadata, SqliteJournalResetHarness.Metadata(database, path));
+        Assert.Equal(content, SqliteJournalFileState.Capture(path));
         Assert.Equal(
             1,
             database.ScalarLong(path, $"SELECT COUNT(*) FROM game_character WHERE stream_key = '{seeded.First}';"));

@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Collections.Immutable;
+using System.Linq;
 
 namespace KhaozEngine.WorldStore.Journal;
 
@@ -91,9 +92,9 @@ public sealed class JournalStoreException : Exception
     public string? SectionName { get; init; }
     /// <summary>The operation whose stored result checksum failed.</summary>
     public Guid? OperationId { get; init; }
-    /// <summary>The next expected event version at a sequence gap.</summary>
+    /// <summary>The next expected event version at a gap, or the compared schema version.</summary>
     public long? ExpectedVersion { get; init; }
-    /// <summary>The event version found at a gap, or the negative stored stream head.</summary>
+    /// <summary>The event version found at a gap, negative stored stream head or unsupported schema version.</summary>
     public long? ActualVersion { get; init; }
     /// <summary>The captured through version an incomplete event page should have reached.</summary>
     public long? ExpectedThroughVersion { get; init; }
@@ -113,6 +114,49 @@ public sealed class JournalStoreException : Exception
     public string? ParameterName { get; init; }
     /// <summary>The stored-row constructor timestamp parameter whose offset is not zero.</summary>
     public string? FieldName { get; init; }
+
+    /// <summary>The migration required by a schema refusal.</summary>
+    public string? RequiredMigration { get; init; }
+    /// <summary>The schema object compared, qualified by its provider object kind.</summary>
+    public string? ObjectName { get; init; }
+    /// <summary>The CLR type of a malformed non-null schema version value.</summary>
+    public Type? MetadataType { get; init; }
+    /// <summary>The unsupported connection journal mode.</summary>
+    public string? ActualMode { get; init; }
+    /// <summary>The required persistent writer journal mode.</summary>
+    public string? RequiredMode { get; init; }
+
+    private readonly IReadOnlyList<long>? supportedVersions;
+    /// <summary>The schema versions supported by the refusing mode, as an owned snapshot.</summary>
+    public IReadOnlyList<long>? SupportedVersions
+    {
+        get => supportedVersions;
+        init => supportedVersions = value is null ? null : ImmutableArray.Create(value.ToArray());
+    }
+
+    private readonly IReadOnlyList<string>? missingObjects;
+    /// <summary>The missing schema objects in ordinal order, as an owned snapshot.</summary>
+    public IReadOnlyList<string>? MissingObjects
+    {
+        get => missingObjects;
+        init => missingObjects = value is null ? null : ImmutableArray.Create(value.ToArray());
+    }
+
+    private readonly IReadOnlyList<string>? unexpectedObjects;
+    /// <summary>The unexpected schema objects in ordinal order, as an owned snapshot.</summary>
+    public IReadOnlyList<string>? UnexpectedObjects
+    {
+        get => unexpectedObjects;
+        init => unexpectedObjects = value is null ? null : ImmutableArray.Create(value.ToArray());
+    }
+
+    private readonly IReadOnlyList<JournalHostObjectFinding>? hostObjects;
+    /// <summary>Every host key and trigger a reset would fire, in provider order, as an owned snapshot.</summary>
+    public IReadOnlyList<JournalHostObjectFinding>? HostObjects
+    {
+        get => hostObjects;
+        init => hostObjects = value is null ? null : ImmutableArray.Create(value.ToArray());
+    }
 
     public JournalStoreFailureKind Kind { get; }
     public JournalStoreFailureCertainty Certainty { get; }

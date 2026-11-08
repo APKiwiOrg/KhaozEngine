@@ -161,7 +161,8 @@ pending intent per target, and it answers a second edit of an occupied target in
 contiguous ALIGNED blocks, so a membership test is two comparisons per block rather than a set lookup. The
 block size is declared at creation, is a power of two between 16 and 65,536, and cannot be changed later,
 because changing it would move every id in the family. When a block fills a second one is reserved and the
-family carries an ordered `ContentFamilyBlock` list.
+family carries an ordered `ContentFamilyBlock` list. `Blocks` is an owned read-only snapshot, so a list
+cast cannot replace a validated block or change the family's membership test.
 
 A family is never deleted. It is retired like a definition.
 

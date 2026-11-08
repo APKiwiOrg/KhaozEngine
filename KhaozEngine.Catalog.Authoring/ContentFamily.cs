@@ -96,6 +96,7 @@ public sealed class ContentFamily
         IsRetired = isRetired;
         CreatedInVersion = createdInVersion;
         _blocks = copy;
+        Blocks = Array.AsReadOnly(copy);
     }
 
     /// <summary>The store's own family id.</summary>
@@ -116,8 +117,8 @@ public sealed class ContentFamily
     /// <summary>The version the family was created in.</summary>
     public int CreatedInVersion { get; }
 
-    /// <summary>The reserved blocks in ORDINAL order, which is the order the allocator walks them in.</summary>
-    public IReadOnlyList<ContentFamilyBlock> Blocks => _blocks;
+    /// <summary>The reserved blocks as a read-only snapshot in the ORDINAL order the allocator walks.</summary>
+    public IReadOnlyList<ContentFamilyBlock> Blocks { get; }
 
     /// <summary>
     /// The membership test of contracts 5.2: a short loop over the block list, two comparisons per block,

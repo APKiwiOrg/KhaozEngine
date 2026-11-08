@@ -42,8 +42,12 @@ public class RemapRuleSetTests
     {
         var set = new RemapRuleSet([Rule(1, 4, Item, RemapRuleKind.ReplacedBy, 5, 9), Rule(2, 7, Item, RemapRuleKind.ReplacedBy, 6, 10)]);
 
+        Assert.Throws<NotSupportedException>(() =>
+            ((IList<RemapRule>)set.Rules)[0] = Rule(3, 99, Item, RemapRuleKind.ReplacedBy, 5, 11));
         Assert.Equal(2, set.Rules.Count);
         Assert.Equal(1, set.Rules[0].Sequence);
+        Assert.Equal(7, set.ActiveStamp);
+        Assert.Equal(9, Once(set, Item, 5, 0));
 
         Assert.Throws<ArgumentException>(() => new RemapRuleSet(
             [Rule(2, 4, Item, RemapRuleKind.ReplacedBy, 5, 9), Rule(1, 7, Item, RemapRuleKind.ReplacedBy, 6, 10)]));

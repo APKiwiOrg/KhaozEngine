@@ -125,11 +125,11 @@ public sealed class ContentFieldSchema
             _byName.Add(ordered[i].Name, (ordered[i], i));
         }
 
-        Fields = ordered;
+        Fields = Array.AsReadOnly(ordered);
         BaselineFieldCount = baseline;
     }
 
-    /// <summary>The fields in DECLARED order, which is the order a row's values are parallel to.</summary>
+    /// <summary>The fields in DECLARED order as a read-only snapshot, parallel to a row's values.</summary>
     public IReadOnlyList<ContentFieldEntry> Fields { get; }
 
     /// <summary>

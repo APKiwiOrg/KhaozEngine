@@ -88,7 +88,8 @@ var key = new ContentKey(rowBlob, start, length);       // no string materialise
   parallel to BY INDEX rather than keyed by name, so a codec is a positional walk. An entry carries its name,
   its kind, a reference target, its visibility, whether a live row must carry it and a scaled int's scale.
   `TryGet(name)` and `IndexOf(name)` answer ordinally in constant time, and `IndexOf` answers -1 for a name
-  the schema does not declare.
+  the schema does not declare. `Fields` is an owned read-only snapshot, so a cast cannot change the
+  declaration independently of those lookups.
 - `ContentFieldLookup` - the LOUD by-name resolution, against the schema a loaded `ContentRuntime` was
   actually built from. A reader indexes a row by position, and the position is not a caller's to write down
   as a literal, so it names the field and resolves once at construction:
@@ -295,8 +296,9 @@ mismatch refuses the WHOLE record with a reason token. Every decode entry point 
 - `ContentRuleChunkCodec`, `RemapRule`, `RemapRuleKind`, `RemapRuleCodec` and `RemapRuleSet` - the `KECR`
   chunk, ONE per manifest, holding the FULL rule list from sequence 1 rather than a delta, because a durable
   page can be arbitrarily old. Four v1 kinds (`ReplacedBy`, `Retired`, `MovedToLegacy`, `StackCapLowered`),
-  append only, no delete kind and no delete path. `RemapRuleSet.TryResolve` walks a from-id and a page stamp
-  forward to the id a page should carry now.
+  append only, no delete kind and no delete path. `RemapRuleSet.Rules` is an owned read-only snapshot,
+  preserving the validated order and active stamp against list casts. `RemapRuleSet.TryResolve` walks a
+  from-id and a page stamp forward to the id a page should carry now.
 - `ContentTextChunkCodec`, `ContentTextChunk` and `ContentTextChunkEnumerator` - the `KECT` per-language
   chunk, one per language with its own hash so a client downloads only what it wants. The header is VARIABLE
   because the language tag sits inside it and inside the digest, and the decoded chunk keeps its body as

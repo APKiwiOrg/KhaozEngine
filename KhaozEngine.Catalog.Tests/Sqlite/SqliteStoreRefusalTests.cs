@@ -1,6 +1,7 @@
 using System;
 using System.Linq;
 using System.Threading.Tasks;
+using KhaozEngine.Catalog;
 using KhaozEngine.Catalog.Authoring;
 using KhaozEngine.Catalog.Sqlite;
 using KhaozEngine.Tests.Catalog.Authoring;
@@ -74,6 +75,47 @@ public sealed class SqliteStoreRefusalTests : StoreRefusalTests
         database.Execute("DROP TRIGGER host_remove_draft;");
         Assert.Equal(0, (await store.ApplyEditsAsync([], Actor, Operator, "")).EditCount);
         Assert.NotNull(await store.GetOpenDraftAsync());
+    }
+
+    // RAISE(IGNORE) leaves the close affecting no row, so only the real commit path can see it. The probe row the
+    // trigger writes first is what a lost rollback would leave behind.
+    [Fact]
+    public async Task AHostTriggerThatSuppressesATextCloseRefusesTheCommitAndRollsBackItsOwnWrite()
+    {
+        using var database = new TemporaryCatalogDatabase();
+        using var store = new SqliteContentAuthoringStore(database.ConnectionString, TextRegistry(), database.Pack(), () => DateTimeOffset.UnixEpoch);
+        await store.InitializeAsync(ContentAuthoringSchemaMode.AutoCreate);
+        await PublishNamedRowAsync(store, "sword", "Sword");
+        await ApplyAsync(store, [ContentEdit.Update(Item, 1, Sword, [Value(2)])], ContentTextEdit.Set(Target("name", "en"), "Blade"));
+        ContentTextChunkRecord chunk = Chunk("en", ("sword", "Blade"));
+        var (snapshot, rowPlan) = await FreezeAndPlanAsync(store, [new ManifestLanguageEntry("en", chunk.Hash)]);
+        ContentTextRevision held = Assert.Single(snapshot.BaselineText.Revisions);
+        var inserted = new ContentTextRevision(Item, 1, "name", "en", "Blade", 2, null);
+        var plan = new ContentTextPublishPlan(rowPlan, snapshot, new ContentTextCandidate([inserted], [new("en", "en")], [held], [inserted]), [chunk]);
+        database.Execute("""
+            CREATE TABLE host_text_probe(value TEXT NOT NULL);
+            CREATE TRIGGER host_keep_text BEFORE UPDATE ON catalog_text BEGIN
+                INSERT INTO host_text_probe VALUES ('written');
+                SELECT RAISE(IGNORE);
+            END;
+            """);
+        await store.InitializeAsync(ContentAuthoringSchemaMode.ValidateOnly);
+
+        ContentAuthoringException refused = await Assert.ThrowsAsync<ContentAuthoringException>(() =>
+            store.CommitTextPublishAsync(plan, Request(1), null));
+
+        Assert.Equal(ContentAuthoringRefusal.TextCloseRevisionMissing, refused.Refusal);
+        Assert.Equal(Item, refused.TextRowType);
+        Assert.Equal(1, refused.TextRowId);
+        Assert.Equal(1, refused.FromVersion);
+        Assert.Equal(0, database.Scalar("SELECT COUNT(*) FROM host_text_probe;"));
+        Assert.Equal(1, await store.GetActiveVersionAsync());
+        Assert.Single(await store.ListVersionsAsync());
+        Assert.Equal("Sword", Assert.Single((await store.ReadTextSnapshotAsync(1)).Revisions).Value);
+
+        database.Execute("DROP TRIGGER host_keep_text;");
+        Assert.Equal(2, (await store.CommitTextPublishAsync(plan, Request(1), null)).VersionNumber);
+        Assert.Equal("Blade", Assert.Single((await store.ReadTextSnapshotAsync(2)).Revisions).Value);
     }
 
     [Fact]

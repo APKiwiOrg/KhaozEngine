@@ -23328,9 +23328,11 @@ carries `TextRowType`, `TextRowId`, `FieldName`, `Language`, `VersionNumber` and
 legacy `Type` and `Id` remain default and 0. `TextBaselineHiddenFromPlanner` carries the exact version and
 both carried and recorded language and value counts. An upgrade that loses its frozen draft reports
 `FrozenDraftLost` with `ExpectedBaseVersion`.
-Text candidate and chunk preflight use the same enum. `BundleTextLanguageUndeclared` carries `Language`
+Text binding reports `TextBindingRowUnknown` with `Type`, `Id` 0 and `RowKey`. Final-row checks
+report `TextFinalRowUnknown` with `Type`, `Id`, `FieldName` and `Language`.
+Text candidate and chunk preflight use the same enum. `TextLanguageUndeclared` carries `Language`
 and the text slot's `Type`, `Id` and `FieldName`, and `TextTargetIneligible` identifies the ineligible slot
-with `TypeKey` when registered. `TextMalformedUnicode` keeps the original argument refusal as inner and
+with `TypeKey` when registered. `TextProducerMalformedUnicode` keeps the original argument refusal as inner and
 names the slot, `MemberName` and zero-based UTF-16 `Index`.
 `TextKeyUtf8Invalid` identifies an invalid content key. `TextKeyBytesExceeded` and `TextChunkBytesExceeded`
 carry `ActualBytes` and inclusive `MaximumBytes` (192 and 16,777,216), plus the slot or `Language`.

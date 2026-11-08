@@ -157,7 +157,7 @@ internal static class ContentTextChunkBuilder
             if (!index.TryGetValue(value.Language, out int language))
             {
                 throw new ContentAuthoringException(
-                    ContentAuthoringRefusal.BundleTextLanguageUndeclared,
+                    ContentAuthoringRefusal.TextLanguageUndeclared,
                     FormattableString.Invariant(
                         $"Text of type {value.Type.Value} row {value.DefinitionId} is in language '{value.Language}', which the version does not declare."),
                     value.Type,
@@ -218,7 +218,7 @@ internal static class ContentTextChunkBuilder
         if (!keys.TryGetValue((value.Type.Value, value.DefinitionId), out ContentKey contentKey))
         {
             throw new ContentAuthoringException(
-                ContentAuthoringRefusal.RowUnknown,
+                ContentAuthoringRefusal.TextFinalRowUnknown,
                 FormattableString.Invariant(
                     $"Text of type {value.Type.Value} row {value.DefinitionId} names a row the version does not hold."),
                 value.Type,
@@ -274,7 +274,7 @@ internal static class ContentTextChunkBuilder
         int bytes = ContentTextEdit.MeasureUtf8(text, parameterName, out ContentTextFinding? finding);
         if (finding is null) return bytes;
         ArgumentException invalid = finding.ToException();
-        throw new ContentAuthoringException(finding.Refusal, invalid.Message, value.Type, value.DefinitionId,
+        throw new ContentAuthoringException(ContentAuthoringRefusal.TextProducerMalformedUnicode, invalid.Message, value.Type, value.DefinitionId,
             ContentAuthoringException.TextBoundsReason, invalid)
         { FieldName = value.FieldName, Language = value.Language, MemberName = member, Index = finding.CharacterIndex };
     }

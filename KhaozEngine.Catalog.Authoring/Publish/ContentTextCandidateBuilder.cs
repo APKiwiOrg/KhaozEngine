@@ -58,7 +58,7 @@ internal static class ContentTextCandidateBuilder
             if (!live.Contains((slot.Type, slot.DefinitionId)))
             {
                 throw new ContentAuthoringException(
-                    ContentAuthoringRefusal.RowUnknown,
+                    ContentAuthoringRefusal.TextFinalRowUnknown,
                     FormattableString.Invariant(
                         $"Text of type {slot.Type} row {slot.DefinitionId} field '{slot.FieldName}' names a row the final row plan does not hold."),
                     new ContentTypeId(slot.Type),
@@ -70,7 +70,7 @@ internal static class ContentTextCandidateBuilder
             if (!declared.Contains(slot.Language))
             {
                 throw new ContentAuthoringException(
-                    ContentAuthoringRefusal.BundleTextLanguageUndeclared,
+                    ContentAuthoringRefusal.TextLanguageUndeclared,
                     FormattableString.Invariant(
                         $"Text of type {slot.Type} row {slot.DefinitionId} is in language '{slot.Language}', which neither the base version nor the draft declares."),
                     new ContentTypeId(slot.Type),

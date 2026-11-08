@@ -118,7 +118,7 @@ internal static class ContentTextExpectedValues
         }
 
         throw new ContentAuthoringException(
-            ContentAuthoringRefusal.RowUnknown,
+            ContentAuthoringRefusal.TextBindingRowUnknown,
             FormattableString.Invariant(
                 $"Text names type {type.Value} row '{key}', which the final row plan holds no single live row of, so the text has nowhere to land."),
             type,

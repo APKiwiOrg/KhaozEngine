@@ -15,9 +15,9 @@ public sealed class TextProducerRefusalTests
     [Theory]
     [InlineData("key-utf8", ContentAuthoringRefusal.TextKeyUtf8Invalid)]
     [InlineData("key-length", ContentAuthoringRefusal.TextKeyBytesExceeded)]
-    [InlineData("unicode", ContentAuthoringRefusal.TextMalformedUnicode)]
-    [InlineData("type-unicode", ContentAuthoringRefusal.TextMalformedUnicode)]
-    [InlineData("row", ContentAuthoringRefusal.RowUnknown)]
+    [InlineData("unicode", ContentAuthoringRefusal.TextProducerMalformedUnicode)]
+    [InlineData("type-unicode", ContentAuthoringRefusal.TextProducerMalformedUnicode)]
+    [InlineData("row", ContentAuthoringRefusal.TextFinalRowUnknown)]
     [InlineData("collision", ContentAuthoringRefusal.TextKeyCollision)]
     public void RegenerationNamesTheFailedProducerRuleAndAcceptsItsRepair(string defect, ContentAuthoringRefusal reason)
     {
@@ -113,7 +113,7 @@ public sealed class TextProducerRefusalTests
         var text = new ContentDraftTextState([ContentTextEdit.Set(Target("name", "en"), "Sword")], []);
         ContentAuthoringException refused = Assert.Throws<ContentAuthoringException>(() =>
             ContentTextExpectedValues.Compute([], [], text, []));
-        Assert.Equal(ContentAuthoringRefusal.RowUnknown, refused.Refusal);
+        Assert.Equal(ContentAuthoringRefusal.TextBindingRowUnknown, refused.Refusal);
         Assert.Equal(Item, refused.Type);
         Assert.Equal(0, refused.Id);
         Assert.Equal("sword", refused.RowKey);
@@ -186,7 +186,7 @@ public sealed class TextProducerRefusalTests
         var undeclared = new ContentTextPublishSnapshot(snapshot.StoreEpoch, snapshot.Baseline, snapshot.BaselineText, draft);
         ContentAuthoringException refused = Assert.Throws<ContentAuthoringException>(() =>
             ContentTextCandidateBuilder.Build(TextRegistry(), undeclared, rows));
-        Assert.Equal(ContentAuthoringRefusal.BundleTextLanguageUndeclared, refused.Refusal);
+        Assert.Equal(ContentAuthoringRefusal.TextLanguageUndeclared, refused.Refusal);
         Assert.Equal("en", refused.Language);
         Assert.Equal(Item, refused.Type);
         Assert.Equal(1, refused.Id);

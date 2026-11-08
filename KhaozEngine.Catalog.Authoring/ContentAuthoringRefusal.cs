@@ -139,8 +139,7 @@ public enum ContentAuthoringRefusal
     /// <c>Language</c> and the submitted <c>WireTag</c>.</summary>
     BundleLanguageWireTagMismatch,
 
-    /// <summary>Refuses a text value in an undeclared language. Carries <c>Language</c> and, for a bundle,
-    /// <c>JsonPath</c>, or for publication, <c>Type</c>, <c>Id</c> and <c>FieldName</c>.</summary>
+    /// <summary>Refuses a bundle text value in an undeclared language. Carries <c>JsonPath</c> and <c>Language</c>.</summary>
     BundleTextLanguageUndeclared,
 
     /// <summary>Refuses a repeated canonical text target. Carries <c>JsonPath</c> and <c>TextTarget</c>.</summary>
@@ -152,10 +151,7 @@ public enum ContentAuthoringRefusal
     /// <summary>Refuses a text target with an empty content key. Carries <c>JsonPath</c>.</summary>
     BundleTextTargetKeyEmpty,
 
-    /// <summary>Refuses text with an unpaired surrogate. A bundle carries <c>JsonPath</c>. A chunk producer
-    /// carries <c>Type</c>, <c>Id</c>, <c>FieldName</c>, <c>Language</c>, <c>MemberName</c> and the UTF-16
-    /// <c>Index</c>, with the
-    /// original argument exception as inner.</summary>
+    /// <summary>Refuses a bundle text string with an unpaired surrogate. Carries <c>JsonPath</c>.</summary>
     TextMalformedUnicode,
 
     /// <summary>Refuses a text value above 8,192 strict UTF-8 bytes. A bundle carries <c>JsonPath</c>,
@@ -207,8 +203,7 @@ public enum ContentAuthoringRefusal
     FieldUnknown,
 
     /// <summary>Refuses an edit whose target row is absent. Carries <c>Type</c>, <c>Id</c>, <c>RowKey</c>
-    /// and <c>EditOrdinal</c> for a row edit. Text binding carries <c>Type</c> and <c>RowKey</c> with
-    /// <c>Id</c> 0, or <c>Type</c>, <c>Id</c>, <c>FieldName</c> and <c>Language</c> for an absent final row.</summary>
+    /// and <c>EditOrdinal</c>.</summary>
     RowUnknown,
 
     /// <summary>Refuses a pack target without version pointers. Carries <c>StoreType</c> and <c>MemberName</c>.</summary>
@@ -235,6 +230,22 @@ public enum ContentAuthoringRefusal
     TextChunkMissingOnRowOnlyRoute,
 
     // Text candidate preflight and commit confirmation.
+
+    /// <summary>Refuses text binding without a single live row for its key. Carries <c>Type</c>,
+    /// <c>Id</c> 0 and <c>RowKey</c>.</summary>
+    TextBindingRowUnknown,
+
+    /// <summary>Refuses text whose final row is absent. Carries <c>Type</c>, <c>Id</c>,
+    /// <c>FieldName</c> and <c>Language</c>.</summary>
+    TextFinalRowUnknown,
+
+    /// <summary>Refuses publication text in an undeclared language. Carries <c>Type</c>, <c>Id</c>,
+    /// <c>FieldName</c> and <c>Language</c>.</summary>
+    TextLanguageUndeclared,
+
+    /// <summary>Refuses an unpaired surrogate in a text producer component. Carries <c>Type</c>, <c>Id</c>,
+    /// <c>FieldName</c>, <c>Language</c>, <c>MemberName</c> and zero-based UTF-16 <c>Index</c>.</summary>
+    TextProducerMalformedUnicode,
 
     /// <summary>Refuses text without a registered CLIENT type and CLIENT localized marker. Carries
     /// <c>Type</c>, <c>Id</c>, <c>FieldName</c>, <c>Language</c> and <c>TypeKey</c> when registered.</summary>

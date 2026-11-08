@@ -256,11 +256,10 @@ internal static class ContentTextChunkBuilder
             };
         }
 
-        // Internal invariant: ContentTextRevision validates its immutable value against the same
-        // 8192-byte bound. Keep the shared value reason at this defensive producer check.
+        // The producer reports row context, while the bundle reader's value bound reports a JSON path.
         if (valueBytes > ContentTextChunkCodec.MaxValueBytes)
         {
-            throw new ContentAuthoringException(ContentAuthoringRefusal.TextValueBytesExceeded, FormattableString.Invariant(
+            throw new ContentAuthoringException(ContentAuthoringRefusal.TextProducerValueBytesExceeded, FormattableString.Invariant(
                 $"The value of type {value.Type.Value} row {value.DefinitionId} field '{value.FieldName}' is {valueBytes} bytes, over {ContentTextChunkCodec.MaxValueBytes}."),
                 value.Type, value.DefinitionId, ContentAuthoringException.TextBoundsReason)
             { FieldName = value.FieldName, Language = value.Language, ActualBytes = valueBytes, MaximumBytes = ContentTextChunkCodec.MaxValueBytes };

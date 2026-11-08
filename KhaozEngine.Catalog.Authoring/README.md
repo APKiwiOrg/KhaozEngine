@@ -418,7 +418,8 @@ internal invariants, not additional public refusal reasons.
 ### Text producer and confirmation refusals
 
 The text candidate and chunk builders check eligibility and strict byte bounds before encoding. Their reasons name the producer and keep one identifier set per member. The bundle reader
-reports its own JSON paths. The defensive value-byte guard retains `TextValueBytesExceeded`. A malformed Unicode finding keeps the original `ArgumentException` as its inner,
+reports its own JSON paths. The defensive value-byte guard uses `TextProducerValueBytesExceeded` with row context.
+A malformed Unicode finding keeps the original `ArgumentException` as its inner,
 including its parameter name. No reason is inferred from prose.
 
 | `Refusal` | What it refuses | Identifiers |
@@ -429,6 +430,7 @@ including its parameter name. No reason is inferred from prose.
 | `TextTargetIneligible` | Text without a registered CLIENT type and a CLIENT localized marker | `Type`, `Id`, `FieldName`, `Language`, `TypeKey` when registered |
 | `TextProducerMalformedUnicode` | An unpaired surrogate in a type key or marker field used to derive text keys | `Type`, `Id`, `FieldName`, `Language`, `MemberName` (`TypeKey` or `FieldName`), zero-based UTF-16 `Index` |
 | `TextProducerWireTagBytesExceeded` | A producer wire tag above 35 ASCII bytes | Legacy `Type` default and `Id` 0, `Language`, `WireTag`, `ActualBytes`, `MaximumBytes` (35) |
+| `TextProducerValueBytesExceeded` | A producer value above 8192 strict UTF-8 bytes | `Type`, `Id`, `FieldName`, `Language`, `ActualBytes`, `MaximumBytes` (8192) |
 | `TextDerivedKeyByteCountMismatch` | A derived key re-encoding to a different byte length than measured | `Type`, `Id`, `FieldName`, `Language` |
 | `TextKeyUtf8Invalid` | Invalid UTF-8 in the content key | `Type`, `Id`, `FieldName`, `Language` |
 | `TextKeyBytesExceeded` | A derived key above 192 strict UTF-8 bytes | `Type`, `Id`, `FieldName`, `Language`, `ActualBytes`, `MaximumBytes` (192) |

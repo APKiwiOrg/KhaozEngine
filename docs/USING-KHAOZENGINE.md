@@ -23396,6 +23396,9 @@ Hash mismatches add `ExpectedTextHash`, and reuse failures add the baseline `Ver
 A reuse spelling mismatch also carries the claimed `WireTag` and recorded `ExpectedWireTag`.
 `TextProvenanceUnknown` names the `VersionNumber` whose text neither manifest proof can establish as empty.
 See the [text producer refusal table](../KhaozEngine.Catalog.Authoring/README.md#text-producer-and-confirmation-refusals).
+The defensive producer value bound uses `TextProducerValueBytesExceeded` with `Type`, `Id`, `FieldName`,
+`Language`, `ActualBytes` and `MaximumBytes` (8192). The bundle reader's `TextValueBytesExceeded` carries
+its JSON path instead.
 
 A rollback refuses a row live at the target and retired since. `ContentRollback.Refusal` reports
 `RetireIrreversible`, the first blocker's `Type`, `Id` and `RowKey`, plus `TargetVersion`, `BlockerCount` and

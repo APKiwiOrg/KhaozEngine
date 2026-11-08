@@ -487,4 +487,8 @@ public enum ContentAuthoringRefusal
     /// <summary>Refuses reset whose host foreign key delete actions write host rows. Carries HostObjects.</summary>
     HostForeignKeyActionUnsafe,
 
+    /// <summary>Refuses a text producer value above 8192 strict UTF-8 bytes. Carries Type, Id,
+    /// FieldName, Language, ActualBytes and MaximumBytes (8192).</summary>
+    TextProducerValueBytesExceeded,
+
 }

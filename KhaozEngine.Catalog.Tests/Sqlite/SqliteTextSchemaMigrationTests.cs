@@ -122,13 +122,18 @@ public sealed class SqliteTextSchemaMigrationTests
             ContentAuthoringException refused = await Assert.ThrowsAsync<ContentAuthoringException>(
                 () => store.InitializeAsync(mode));
             Assert.Equal(ContentAuthoringException.SchemaMismatchReason, refused.Reason);
-            Assert.Contains("at unsupported version '3'", refused.Message, StringComparison.Ordinal);
-            Assert.Contains(MigrationName, refused.Message, StringComparison.Ordinal);
+            Assert.Equal(ContentAuthoringRefusal.SchemaVersionUnsupported, refused.Refusal);
+            Assert.Equal(3L, refused.ActualVersion);
+            Assert.Equal(new long[] { 4 }, refused.SupportedVersions);
+            Assert.Equal("catalog-v4-text-authoring", refused.RequiredMigration);
         }
 
         SqliteConnection.ClearAllPools();
         Assert.Equal(file, File.ReadAllBytes(database.DatabasePath));
         Assert.Equal(0L, database.Scalar("SELECT COUNT(*) FROM sqlite_master WHERE name = 'catalog_text';"));
+        using var repaired = new SqliteContentAuthoringStore(database.ConnectionString, ThingRegistry());
+        await repaired.InitializeAsync(ContentAuthoringSchemaMode.AutoCreate);
+        await repaired.InitializeAsync(ContentAuthoringSchemaMode.ValidateOnly);
     }
 
     /// <summary>
@@ -158,7 +163,17 @@ public sealed class SqliteTextSchemaMigrationTests
             ContentAuthoringException refused = Assert.Throws<ContentAuthoringException>(
                 () => SqliteCatalogSchemaValidation.ValidateVersionThreeObjects(unmoved));
             Assert.Equal(ContentAuthoringException.SchemaMismatchReason, refused.Reason);
-            Assert.Contains(MigrationName, refused.Message, StringComparison.Ordinal);
+            Assert.Equal("catalog-v4-text-authoring", refused.RequiredMigration);
+            Assert.Equal(ContentAuthoringRefusal.SchemaObjectDefinitionMismatch, refused.Refusal);
+            Assert.Equal("table:catalog_audit", refused.ObjectName);
+            Assert.Equal(3, refused.ExpectedVersion);
+        }
+
+        database.Execute("UPDATE catalog_metadata SET schema_version = 4;");
+        using (var repaired = new SqliteConnection(database.ConnectionString + ";Pooling=False"))
+        {
+            repaired.Open();
+            Assert.Equal(4L, SqliteCatalogSchemaValidation.ValidateVersionThreeObjects(repaired));
         }
 
         using var legacy = new TemporaryCatalogDatabase();

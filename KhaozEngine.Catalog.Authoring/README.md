@@ -296,6 +296,46 @@ A consumer reads the reason and identifiers, never message wording.
 There is no singular finding-code identifier. Both legacy and typed finding-taking exception constructors
 copy the complete list into a read-only snapshot, so later producer mutation cannot change the refusal.
 
+### Durable schema and reset refusals
+
+SQLite schema validation and reset retain their legacy `schema-mismatch`, `catalog-partial`, `draft-open`
+and `host-foreign-key` tokens beside `ContentAuthoringException.Refusal`. Store-wide `Type` and `Id` remain
+at default and 0. Schema objects use the provider identity in `ObjectName`, such as
+`index:ix_catalog_row_live` on SQLite. A wrong table or column definition names its owning table.
+Provider read failures keep their typed `InnerException` and the existing message text.
+
+| Refusal | What it refuses | Identifiers |
+|---|---|---|
+| `SchemaMissing` | Validation of an absent catalog | `RequiredMigration` |
+| `SchemaValidationMetadataMissing` | Schema validation or reset missing a required metadata value | `RequiredMigration` |
+| `SchemaMetadataUnreadable` | Provider failure reading schema metadata | `RequiredMigration`, provider `InnerException` |
+| `SchemaVersionMalformed` | A noninteger stored schema version | `MetadataType`, `RequiredMigration` |
+| `SchemaVersionUnsupported` | A schema version this mode cannot use | `ActualVersion`, owned `SupportedVersions`, `RequiredMigration` |
+| `SchemaForeignKeysDisabled` | SQLite validation without foreign key enforcement | `RequiredMigration` |
+| `SchemaObjectMissing` | An absent table or index | `ObjectName`, `ExpectedVersion`, `RequiredMigration` |
+| `SchemaObjectDefinitionMismatch` | A table or index differing from its declared shape | `ObjectName`, `ExpectedVersion`, `RequiredMigration` |
+| `SchemaObjectUnexpected` | A table or index its version does not declare | `ObjectName`, `ExpectedVersion`, `RequiredMigration` |
+| `ResetTablesPartial` | Reset of incomplete tables with a readable version, without force | `StandingTableCount`, `ExpectedTableCount`, `ActualVersion`, `ForceRequired` |
+| `ResetVersionUnreadable` | Reset without a readable version, without force | `StandingTableCount`, `ExpectedTableCount`, `ForceRequired` |
+| `ResetVersionNewer` | Reset that would recreate an older schema | `ActualVersion`, inclusive `MaximumVersion` |
+| `ResetDraftOpen` | Reset that would destroy a draft without force | `DraftCount` |
+| `HostForeignKeyActionUnsafe` | Reset whose host key delete action would write host rows | Owned `HostObjects` of `ContentHostForeignKeyFinding` |
+
+`SchemaValidationMetadataMissing` covers an absent metadata row or a NULL required metadata scalar and
+includes the migration the schema check prescribes. Ordinary store
+reads retain `SchemaMetadataMissing` with no identifiers. `ResetDraftOpen` reports draft rows rather than
+the companion import's `DraftOpen` edit counts. A non-null reset scalar of the wrong CLR type reuses
+`StoredScalarTypeMismatch` with `ExpectedScalarType` and `ActualScalarType`, for integer reads and the
+post-recreation TEXT epoch alike. Even the latter is an input check: SQLite's table inventory leaves views
+and their INSTEAD OF triggers standing, and a metadata-shaped view can intercept the seed. A missing epoch
+uses `SchemaValidationMetadataMissing`. The refusal rolls back trigger writes as well as catalog changes.
+
+`ContentHostForeignKeyFinding` names `HostTable`, `ReferencedTable` and the declared `DeleteAction` for every
+unsafe key. Composite key columns with the same table pair and action are folded, as in the existing reset
+diagnostics. No key name or schema is invented where the provider reports none. `SupportedVersions` and
+`HostObjects` copy their inputs into fresh immutable snapshots. SQLite validation currently supports schema
+version 4 and names migration `catalog-v4-text-authoring`. A partial reset measures against 19 current tables.
+
 ### Store admission and confirmation refusals
 
 The in-memory, SQLite and SQL Server stores carry these members alongside their legacy tokens. Row-boundary field checks reuse

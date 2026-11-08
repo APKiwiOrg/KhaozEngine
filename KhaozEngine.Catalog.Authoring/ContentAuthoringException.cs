@@ -170,8 +170,9 @@ public sealed class ContentAuthoringException : Exception
     /// <summary>
     /// A provider's database is absent under <see cref="ContentAuthoringSchemaMode.ValidateOnly"/>, carries a
     /// schema version the build does not support, or holds an object that does not match the shape its
-    /// migration declares. The message names the object and the migration, because those are the two facts an
-    /// operator can act on.
+    /// migration declares. SQLite schema validation carries <see cref="ObjectName"/> where applicable and
+    /// <see cref="RequiredMigration"/> beside <see cref="Refusal"/>. A newer-schema reset instead carries
+    /// <see cref="ActualVersion"/> and <see cref="MaximumVersion"/>.
     /// </summary>
     public const string SchemaMismatchReason = "schema-mismatch";
 
@@ -600,6 +601,52 @@ public sealed class ContentAuthoringException : Exception
 
     /// <summary>The typed SQL Server error number of a transaction-contention refusal, or null.</summary>
     public int? SqlErrorNumber { get; init; }
+
+    /// <summary>The migration required by a schema validation or reset refusal, or null.</summary>
+    public string? RequiredMigration { get; init; }
+
+    /// <summary>The compared provider object identity, such as index:ix_catalog_row_live on SQLite, or null.</summary>
+    public string? ObjectName { get; init; }
+
+    /// <summary>The schema version whose object definition was expected, or null.</summary>
+    public int? ExpectedVersion { get; init; }
+
+    /// <summary>The schema version read from the refused database, or null when unreadable.</summary>
+    public long? ActualVersion { get; init; }
+
+    /// <summary>The newest schema version a reset can recreate, or null.</summary>
+    public long? MaximumVersion { get; init; }
+
+    /// <summary>The CLR type of a noninteger schema version, or null.</summary>
+    public Type? MetadataType { get; init; }
+
+    /// <summary>The number of catalog tables standing before a refused reset, or null.</summary>
+    public int? StandingTableCount { get; init; }
+
+    /// <summary>The number of tables the current schema declares, or null.</summary>
+    public int? ExpectedTableCount { get; init; }
+
+    /// <summary>Whether a reset requires explicit force to repair the catalog, or null.</summary>
+    public bool? ForceRequired { get; init; }
+
+    /// <summary>The number of draft rows blocking reset, or null.</summary>
+    public long? DraftCount { get; init; }
+
+    readonly IReadOnlyList<long>? _supportedVersions;
+    /// <summary>The schema versions supported by the refusing mode, as an owned snapshot, or null.</summary>
+    public IReadOnlyList<long>? SupportedVersions
+    {
+        get => _supportedVersions;
+        init => _supportedVersions = value is null ? null : ImmutableArray.Create(value.ToArray());
+    }
+
+    readonly IReadOnlyList<ContentHostForeignKeyFinding>? _hostObjects;
+    /// <summary>Every host key whose delete action would fire, as an owned snapshot, or null.</summary>
+    public IReadOnlyList<ContentHostForeignKeyFinding>? HostObjects
+    {
+        get => _hostObjects;
+        init => _hostObjects = value is null ? null : ImmutableArray.Create(value.ToArray());
+    }
 
     /// <summary>The content type the refusal is about. The default type id 0 means none.</summary>
     public ContentTypeId Type { get; }

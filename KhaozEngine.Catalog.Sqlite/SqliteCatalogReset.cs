@@ -319,11 +319,11 @@ public static class SqliteCatalogReset
 
         if (drafts > 0 && !force)
         {
-            throw new ContentAuthoringException(
+            throw new ContentAuthoringException(ContentAuthoringRefusal.ResetDraftOpen,
                 "This catalog carries an OPEN DRAFT, and a reset drops it with everything else. Publish or discard the draft, or pass the reset's force flag to destroy it deliberately.",
                 default,
                 0,
-                ContentAuthoringException.DraftOpenReason);
+                ContentAuthoringException.DraftOpenReason) { DraftCount = drafts };
         }
 
         string? server = null;
@@ -435,7 +435,11 @@ public static class SqliteCatalogReset
     {
         using SqliteCommand command = Command(connection, transaction, sql);
         object? raw = await command.ExecuteScalarAsync(cancellationToken).ConfigureAwait(false);
-        return raw is long value ? value : throw Mismatch("missing its metadata row");
+        if (raw is long value) return value;
+        if (raw is null or DBNull) throw Mismatch("missing its metadata row");
+        throw new ContentAuthoringException(ContentAuthoringRefusal.StoredScalarTypeMismatch,
+            DescribeMismatch("missing its metadata row", null), default, 0, ContentAuthoringException.SchemaMismatchReason)
+        { ExpectedScalarType = typeof(long), ActualScalarType = raw.GetType() };
     }
 
     static async Task<string> ReadTextAsync(
@@ -445,8 +449,14 @@ public static class SqliteCatalogReset
         CancellationToken cancellationToken)
     {
         using SqliteCommand command = Command(connection, transaction, sql);
-        return await command.ExecuteScalarAsync(cancellationToken).ConfigureAwait(false) as string
-            ?? throw Mismatch("missing its metadata row after the recreate");
+        // A metadata-shaped view and its INSTEAD OF trigger survive the table inventory's drops,
+        // so even the recreate does not prove that the epoch came from the engine's seed.
+        object? raw = await command.ExecuteScalarAsync(cancellationToken).ConfigureAwait(false);
+        if (raw is string value) return value;
+        if (raw is null or DBNull) throw Mismatch("missing its metadata row after the recreate");
+        throw new ContentAuthoringException(ContentAuthoringRefusal.StoredScalarTypeMismatch,
+            DescribeMismatch("missing its metadata row after the recreate", null), default, 0, ContentAuthoringException.SchemaMismatchReason)
+        { ExpectedScalarType = typeof(string), ActualScalarType = raw.GetType() };
     }
 
     static SqliteCommand Command(SqliteConnection connection, SqliteTransaction transaction, string sql)
@@ -504,12 +514,13 @@ public static class SqliteCatalogReset
     /// migration. The reset itself is the remedy, and the sentence says so.
     /// </summary>
     static ContentAuthoringException Partial(int standing, long? version)
-        => new(
+        => new(version.HasValue ? ContentAuthoringRefusal.ResetTablesPartial : ContentAuthoringRefusal.ResetVersionUnreadable,
             FormattableString.Invariant(
                 $"The SQLite content catalog is PARTIAL: {standing} of the {SqliteCatalogSchemaInventory.Tables.Count} tables schema version {SqliteCatalogSchema.CurrentVersion} declares stand, {Measured(version)}, so what it holds cannot be read. Pass the reset's force flag to drop what is left and recreate the schema at version {SqliteCatalogSchema.CurrentVersion}, which repairs it."),
             default,
             0,
-            ContentAuthoringException.CatalogPartialReason);
+            ContentAuthoringException.CatalogPartialReason)
+        { StandingTableCount = standing, ExpectedTableCount = SqliteCatalogSchemaInventory.Tables.Count, ActualVersion = version, ForceRequired = true };
 
     /// <summary>What the partial refusal measured the standing tables against, or that it had nothing to measure with.</summary>
     static string Measured(long? version)
@@ -523,12 +534,12 @@ public static class SqliteCatalogReset
     /// rather than a migration.
     /// </summary>
     static ContentAuthoringException Newer(long version)
-        => new(
+        => new(ContentAuthoringRefusal.ResetVersionNewer,
             FormattableString.Invariant(
                 $"The SQLite content catalog schema is at version '{version}', newer than version {SqliteCatalogSchema.CurrentVersion} this build writes, so a reset by this build would move it backwards. Nothing was dropped. Reset it from a build that writes schema version {version} or later."),
             default,
             0,
-            ContentAuthoringException.SchemaMismatchReason);
+            ContentAuthoringException.SchemaMismatchReason) { ActualVersion = version, MaximumVersion = SqliteCatalogSchema.CurrentVersion };
 
     /// <summary>
     /// The schema refusal, in the words and under the reason token the provider's own validation uses, so a
@@ -536,12 +547,15 @@ public static class SqliteCatalogReset
     /// wrong at reset.
     /// </summary>
     static ContentAuthoringException Mismatch(string actual, Exception? innerException = null)
-        => new(
-            FormattableString.Invariant(
-                $"The SQLite content catalog schema is {actual}{Because(innerException)}. Apply migration '{SqliteCatalogSchema.RequiredMigration}'."),
-            default,
-            0,
-            ContentAuthoringException.SchemaMismatchReason);
+        => innerException is null
+            ? new(ContentAuthoringRefusal.SchemaValidationMetadataMissing, DescribeMismatch(actual, null), default, 0, ContentAuthoringException.SchemaMismatchReason)
+                { RequiredMigration = SqliteCatalogSchema.RequiredMigration }
+            : new(ContentAuthoringRefusal.SchemaMetadataUnreadable, DescribeMismatch(actual, innerException), default, 0, ContentAuthoringException.SchemaMismatchReason, innerException)
+                { RequiredMigration = SqliteCatalogSchema.RequiredMigration };
+
+    static string DescribeMismatch(string actual, Exception? innerException)
+        => FormattableString.Invariant(
+            $"The SQLite content catalog schema is {actual}{Because(innerException)}. Apply migration '{SqliteCatalogSchema.RequiredMigration}'.");
 
     static string Because(Exception? innerException)
         => innerException is null ? string.Empty : ": " + innerException.Message;

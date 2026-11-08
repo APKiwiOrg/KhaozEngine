@@ -266,14 +266,19 @@ public sealed partial class SqliteCatalogRowTimestampTests
                 () => store.InitializeAsync(ContentAuthoringSchemaMode.ValidateOnly));
 
             Assert.Equal(ContentAuthoringException.SchemaMismatchReason, refused.Reason);
-            Assert.Contains("at unsupported version '2'", refused.Message, StringComparison.Ordinal);
-            Assert.Contains(MigrationName, refused.Message, StringComparison.Ordinal);
+            Assert.Equal(ContentAuthoringRefusal.SchemaVersionUnsupported, refused.Refusal);
+            Assert.Equal(2L, refused.ActualVersion);
+            Assert.Equal(new long[] { 4 }, refused.SupportedVersions);
+            Assert.Equal("catalog-v4-text-authoring", refused.RequiredMigration);
         }
 
         SqliteConnection.ClearAllPools();
         Assert.Equal(before, File.ReadAllBytes(database.DatabasePath));
         Assert.Equal(2L, database.Scalar("SELECT schema_version FROM catalog_metadata;"));
         Assert.Equal(0L, NewColumnCount(database));
+        using var repaired = new SqliteContentAuthoringStore(database.ConnectionString, Registry());
+        await repaired.InitializeAsync(ContentAuthoringSchemaMode.AutoCreate);
+        await repaired.InitializeAsync(ContentAuthoringSchemaMode.ValidateOnly);
     }
 
     /// <summary>

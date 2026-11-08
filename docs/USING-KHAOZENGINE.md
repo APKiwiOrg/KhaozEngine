@@ -23264,7 +23264,14 @@ await store.InitializeAsync(ContentAuthoringSchemaMode.ValidateOnly, ct);
 `AutoCreate` creates the schema when the database carries no catalog table and validates it after.
 `ValidateOnly` refuses an empty or mismatched database instead, which is what a production host sets so a typo
 in a connection string cannot silently create a second empty catalog and serve it. A mismatch is a
-`ContentAuthoringException` naming the object and the required migration. Both existing modes synchronize
+`ContentAuthoringException` naming the object and the required migration. SQLite exposes these through
+[durable schema and reset refusals](../KhaozEngine.Catalog.Authoring/README.md#durable-schema-and-reset-refusals).
+`SchemaMissing` carries `RequiredMigration`. Object refusals carry `ObjectName` (SQLite's `type:name`),
+`ExpectedVersion` and `RequiredMigration`, with column mismatches naming their table. Version refusals
+carry `ActualVersion`, owned `SupportedVersions` (currently `[4]`) and `RequiredMigration`
+(`catalog-v4-text-authoring`). An absent metadata row or NULL required scalar during schema validation uses
+`SchemaValidationMetadataMissing` with that migration, distinct from a store read's identifier-free
+`SchemaMetadataMissing`. Unreadable metadata retains its typed provider inner exception. Both existing modes synchronize
 registered type settings after schema validation.
 
 For a hosted upgrade preview, open with `ContentAuthoringSchemaMode.ValidateOnlyWithoutTypeSync`. It validates
@@ -23547,6 +23554,14 @@ build's script. A whole version 1 catalog, without the `catalog_content_upgrade`
 whole catalog and needs no `force`. A catalog at a NEWER schema version is refused with `schema-mismatch`
 before anything is dropped, `force` or not, because recreating an older schema over it would move the database
 backwards.
+
+SQLite reset uses `ResetTablesPartial` with standing and expected table counts (19 current tables), the
+read `ActualVersion` and `ForceRequired`. An unreadable version uses `ResetVersionUnreadable` with the
+same counts and force requirement, and no invented version. `ResetVersionNewer` carries `ActualVersion`
+and inclusive `MaximumVersion` (4). `ResetDraftOpen` carries `DraftCount`, rather than companion import
+edit counts. `HostForeignKeyActionUnsafe` carries the complete owned `HostObjects` snapshot, each finding
+naming `HostTable`, `ReferencedTable` and `DeleteAction`. Legacy reason tokens and reset behavior stay the
+same. A refusal rolls back catalog and host content, including a failure after drops and recreation.
 
 `ContentCatalogResetResult` carries what stood (the active version number, its server and client manifest
 hashes, the counts of versions and row revisions dropped, and `PriorSchemaVersion`) plus the recreated

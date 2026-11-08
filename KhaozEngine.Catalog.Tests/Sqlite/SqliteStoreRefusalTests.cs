@@ -15,12 +15,11 @@ public sealed class SqliteStoreRefusalTests : StoreRefusalTests
     protected override bool UsesSqlite => true;
 
     [Fact]
-    public void SqliteStoreNeverConstructsAMessageOnlyRefusal()
+    public void SqliteProviderNeverConstructsAMessageOnlyRefusal()
     {
         var legacy = typeof(ContentAuthoringException).GetConstructors()
             .Where(constructor => constructor.GetParameters().All(parameter => parameter.ParameterType != typeof(ContentAuthoringRefusal)));
-        Assert.DoesNotContain(RefusalConstructorFence.EngineCallers([typeof(SqliteContentAuthoringStore).Assembly], legacy),
-            caller => caller.StartsWith("KhaozEngine.Catalog.Sqlite.SqliteContentAuthoringStore", StringComparison.Ordinal));
+        Assert.Empty(RefusalConstructorFence.EngineCallers([typeof(SqliteContentAuthoringStore).Assembly], legacy));
     }
 
     [Fact]

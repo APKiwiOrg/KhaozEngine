@@ -420,4 +420,48 @@ public enum ContentAuthoringRefusal
     /// <summary>Refuses a SQL Server transaction contended by another writer. Carries SqlErrorNumber (1205 or 3960).</summary>
     TransactionContended,
 
+    // Durable schema validation and reset.
+
+    /// <summary>Refuses validation of an absent catalog. Carries RequiredMigration.</summary>
+    SchemaMissing,
+
+    /// <summary>Refuses schema validation or reset with a missing required metadata value. Carries RequiredMigration.</summary>
+    SchemaValidationMetadataMissing,
+
+    /// <summary>Refuses schema metadata that the provider cannot read. Carries RequiredMigration and the provider InnerException.</summary>
+    SchemaMetadataUnreadable,
+
+    /// <summary>Refuses a noninteger schema version. Carries RequiredMigration and MetadataType.</summary>
+    SchemaVersionMalformed,
+
+    /// <summary>Refuses a schema version this mode cannot use. Carries ActualVersion, SupportedVersions and RequiredMigration.</summary>
+    SchemaVersionUnsupported,
+
+    /// <summary>Refuses validation with foreign key enforcement disabled. Carries RequiredMigration.</summary>
+    SchemaForeignKeysDisabled,
+
+    /// <summary>Refuses a missing schema object. Carries ObjectName, ExpectedVersion and RequiredMigration.</summary>
+    SchemaObjectMissing,
+
+    /// <summary>Refuses a schema object with the wrong definition. Carries ObjectName, ExpectedVersion and RequiredMigration.</summary>
+    SchemaObjectDefinitionMismatch,
+
+    /// <summary>Refuses a schema object its version does not declare. Carries ObjectName, ExpectedVersion and RequiredMigration.</summary>
+    SchemaObjectUnexpected,
+
+    /// <summary>Refuses reset of an incomplete catalog with a readable version. Carries StandingTableCount, ExpectedTableCount, ActualVersion and ForceRequired.</summary>
+    ResetTablesPartial,
+
+    /// <summary>Refuses reset without a readable version. Carries StandingTableCount, ExpectedTableCount and ForceRequired.</summary>
+    ResetVersionUnreadable,
+
+    /// <summary>Refuses reset to an older schema. Carries ActualVersion and MaximumVersion.</summary>
+    ResetVersionNewer,
+
+    /// <summary>Refuses reset while a draft stands. Carries DraftCount.</summary>
+    ResetDraftOpen,
+
+    /// <summary>Refuses reset whose host foreign key delete actions write host rows. Carries HostObjects.</summary>
+    HostForeignKeyActionUnsafe,
+
 }

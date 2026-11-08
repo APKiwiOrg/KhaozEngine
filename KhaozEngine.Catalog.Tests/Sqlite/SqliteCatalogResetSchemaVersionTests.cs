@@ -122,10 +122,16 @@ public class SqliteCatalogResetSchemaVersionTests
         database.Execute("DROP TABLE catalog_chunk;");
         int standing = SqliteCatalogResetHarness.Tables(database).Count;
 
+        string before = SqliteCatalogNonmutatingOpenTests.Snapshot(database.ConnectionString);
         ContentAuthoringException refused = await Assert.ThrowsAsync<ContentAuthoringException>(
             () => SqliteCatalogReset.ResetAsync(database.ConnectionString, Actor, Operator, "content release"));
+        Assert.Equal(before, SqliteCatalogNonmutatingOpenTests.Snapshot(database.ConnectionString));
         Assert.Equal("catalog-partial", refused.Reason);
-        Assert.Contains("schema version '1'", refused.Message, StringComparison.Ordinal);
+        Assert.Equal(ContentAuthoringRefusal.ResetTablesPartial, refused.Refusal);
+        Assert.Equal(1L, refused.ActualVersion);
+        Assert.Equal(standing, refused.StandingTableCount);
+        Assert.Equal(19, refused.ExpectedTableCount);
+        Assert.True(refused.ForceRequired);
         Assert.Equal(standing, SqliteCatalogResetHarness.Tables(database).Count);
         Assert.Equal(1L, database.Scalar("SELECT schema_version FROM catalog_metadata;"));
 
@@ -149,14 +155,20 @@ public class SqliteCatalogResetSchemaVersionTests
         database.Execute(FormattableString.Invariant(
             $"UPDATE catalog_metadata SET schema_version = {Current + 1} WHERE metadata_key = 1;"));
 
+        string before = SqliteCatalogNonmutatingOpenTests.Snapshot(database.ConnectionString);
         ContentAuthoringException refused = await Assert.ThrowsAsync<ContentAuthoringException>(
             () => SqliteCatalogReset.ResetAsync(
                 database.ConnectionString, Actor, Operator, "content release", force: true));
 
+        Assert.Equal(before, SqliteCatalogNonmutatingOpenTests.Snapshot(database.ConnectionString));
         Assert.Equal("schema-mismatch", refused.Reason);
-        Assert.Contains(FormattableString.Invariant($"version '{Current + 1}', newer"), refused.Message, StringComparison.Ordinal);
+        Assert.Equal(ContentAuthoringRefusal.ResetVersionNewer, refused.Refusal);
+        Assert.Equal(5L, refused.ActualVersion);
+        Assert.Equal(4L, refused.MaximumVersion);
         AssertUntouched(database, epochBefore, SqliteCatalogSchemaInventory.Tables.Count);
         Assert.Equal((long)Current + 1, database.Scalar("SELECT schema_version FROM catalog_metadata;"));
+        database.Execute("UPDATE catalog_metadata SET schema_version = 4;");
+        await SqliteCatalogReset.ResetAsync(database.ConnectionString, Actor, Operator, "repair", force: true);
     }
 
     [Fact]
@@ -171,12 +183,19 @@ public class SqliteCatalogResetSchemaVersionTests
 
         // The version is still READABLE, so it still decides. Force repairs a partial catalog, and this one is
         // partial, but recreating an older schema over a database that says it is newer is not a repair.
+        string before = SqliteCatalogNonmutatingOpenTests.Snapshot(database.ConnectionString);
         ContentAuthoringException refused = await Assert.ThrowsAsync<ContentAuthoringException>(
             () => SqliteCatalogReset.ResetAsync(
                 database.ConnectionString, Actor, Operator, "repair", force: true));
 
+        Assert.Equal(before, SqliteCatalogNonmutatingOpenTests.Snapshot(database.ConnectionString));
         Assert.Equal("schema-mismatch", refused.Reason);
+        Assert.Equal(ContentAuthoringRefusal.ResetVersionNewer, refused.Refusal);
+        Assert.Equal(5L, refused.ActualVersion);
+        Assert.Equal(4L, refused.MaximumVersion);
         AssertUntouched(database, epochBefore, SqliteCatalogSchemaInventory.Tables.Count - 1);
+        database.Execute("UPDATE catalog_metadata SET schema_version = 4;");
+        await SqliteCatalogReset.ResetAsync(database.ConnectionString, Actor, Operator, "repair", force: true);
     }
 
     /// <summary>A published store with one version, two rows and an audit trail, left open for the caller.</summary>
@@ -225,10 +244,14 @@ public class SqliteCatalogResetSchemaVersionTests
     {
         using var store = new SqliteContentAuthoringStore(
             database.ConnectionString, SqliteCatalogResetHarness.Registry(), database.Pack());
+        string before = SqliteCatalogNonmutatingOpenTests.Snapshot(database.ConnectionString);
         ContentAuthoringException refused = await Assert.ThrowsAsync<ContentAuthoringException>(
             () => store.InitializeAsync(ContentAuthoringSchemaMode.ValidateOnly));
-        Assert.Contains(
-            FormattableString.Invariant($"at unsupported version '{version}'"), refused.Message, StringComparison.Ordinal);
+        Assert.Equal(ContentAuthoringRefusal.SchemaVersionUnsupported, refused.Refusal);
+        Assert.Equal((long)version, refused.ActualVersion);
+        Assert.Equal(new long[] { 4 }, refused.SupportedVersions);
+        Assert.Equal("catalog-v4-text-authoring", refused.RequiredMigration);
+        Assert.Equal(before, SqliteCatalogNonmutatingOpenTests.Snapshot(database.ConnectionString));
     }
 
     /// <summary>Every row and every table of the seeded catalog where it was, down to the epoch.</summary>

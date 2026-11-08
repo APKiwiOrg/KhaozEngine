@@ -51,8 +51,10 @@ public class SqliteCatalogSchemaTests
             () => store.InitializeAsync(ContentAuthoringSchemaMode.ValidateOnly));
 
         Assert.Equal("schema-mismatch", refused.Reason);
-        Assert.Contains("catalog-v4-text-authoring", refused.Message, StringComparison.Ordinal);
-        Assert.Contains("missing", refused.Message, StringComparison.Ordinal);
+        Assert.Equal("catalog-v4-text-authoring", refused.RequiredMigration);
+        Assert.Equal(ContentAuthoringRefusal.SchemaMissing, refused.Refusal);
+        await store.InitializeAsync(ContentAuthoringSchemaMode.AutoCreate);
+        await store.InitializeAsync(ContentAuthoringSchemaMode.ValidateOnly);
     }
 
     [Fact]
@@ -92,8 +94,12 @@ public class SqliteCatalogSchemaTests
             () => store.InitializeAsync(ContentAuthoringSchemaMode.ValidateOnly));
 
         Assert.Equal("schema-mismatch", refused.Reason);
-        Assert.Contains("index:ix_catalog_row_live", refused.Message, StringComparison.Ordinal);
-        Assert.Contains("catalog-v4-text-authoring", refused.Message, StringComparison.Ordinal);
+        Assert.Equal(ContentAuthoringRefusal.SchemaObjectDefinitionMismatch, refused.Refusal);
+        Assert.Equal("index:ix_catalog_row_live", refused.ObjectName);
+        Assert.Equal(4, refused.ExpectedVersion);
+        Assert.Equal("catalog-v4-text-authoring", refused.RequiredMigration);
+        database.Execute("DROP INDEX ix_catalog_row_live; CREATE INDEX ix_catalog_row_live ON catalog_row(type_id, replaced_in_version, definition_id);");
+        await store.InitializeAsync(ContentAuthoringSchemaMode.ValidateOnly);
     }
 
     [Fact]
@@ -114,7 +120,12 @@ public class SqliteCatalogSchemaTests
             () => store.InitializeAsync(ContentAuthoringSchemaMode.ValidateOnly));
 
         Assert.Equal("schema-mismatch", refused.Reason);
-        Assert.Contains("table:catalog_leftover", refused.Message, StringComparison.Ordinal);
+        Assert.Equal(ContentAuthoringRefusal.SchemaObjectUnexpected, refused.Refusal);
+        Assert.Equal("table:catalog_leftover", refused.ObjectName);
+        Assert.Equal(4, refused.ExpectedVersion);
+        Assert.Equal("catalog-v4-text-authoring", refused.RequiredMigration);
+        database.Execute("DROP TABLE catalog_leftover;");
+        await store.InitializeAsync(ContentAuthoringSchemaMode.ValidateOnly);
     }
 
     [Theory]
@@ -203,7 +214,11 @@ public class SqliteCatalogSchemaTests
             () => store.InitializeAsync(ContentAuthoringSchemaMode.ValidateOnly));
 
         Assert.Equal("schema-mismatch", refused.Reason);
-        Assert.Contains("unreadable", refused.Message, StringComparison.Ordinal);
-        Assert.Contains("catalog-v4-text-authoring", refused.Message, StringComparison.Ordinal);
+        Assert.Equal(ContentAuthoringRefusal.SchemaMetadataUnreadable, refused.Refusal);
+        Assert.Equal(1, Assert.IsType<SqliteException>(refused.InnerException).SqliteErrorCode);
+        Assert.Equal("catalog-v4-text-authoring", refused.RequiredMigration);
+        database.Execute("DROP TABLE catalog_orphan;");
+        await store.InitializeAsync(ContentAuthoringSchemaMode.AutoCreate);
+        await store.InitializeAsync(ContentAuthoringSchemaMode.ValidateOnly);
     }
 }

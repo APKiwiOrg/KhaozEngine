@@ -157,16 +157,7 @@ public sealed partial class SqliteContentAuthoringStore
             BindRevision(command, close);
             Bind(command, "$version", (long)versionNumber);
             Bind(command, "$at", at);
-            if (await command.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false) != 1)
-            {
-                throw new ContentAuthoringException(ContentAuthoringRefusal.TextCloseRevisionMissing,
-                    DescribeMismatch("a text close names a revision this store does not hold live"),
-                    default, 0, ContentAuthoringException.TextStateMismatchReason)
-                {
-                    TextRowType = close.Type, TextRowId = close.DefinitionId, FieldName = close.FieldName,
-                    Language = close.Language, FromVersion = close.ValidFromVersion,
-                };
-            }
+            RequireTextClosePresent(close, await command.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false) == 1);
         }
 
         foreach (ContentTextRevision insert in text.Inserts)

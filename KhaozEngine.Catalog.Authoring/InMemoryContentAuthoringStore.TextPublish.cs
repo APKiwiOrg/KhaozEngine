@@ -99,16 +99,7 @@ public sealed partial class InMemoryContentAuthoringStore
         foreach (ContentTextRevision close in plan.TextCloses)
         {
             int index = revisions.IndexOf(close);
-            if (index < 0)
-            {
-                throw new ContentAuthoringException(ContentAuthoringRefusal.TextCloseRevisionMissing,
-                    DescribeMismatch("a text close names a revision this store does not hold live"),
-                    default, 0, ContentAuthoringException.TextStateMismatchReason)
-                {
-                    TextRowType = close.Type, TextRowId = close.DefinitionId, FieldName = close.FieldName,
-                    Language = close.Language, FromVersion = close.ValidFromVersion,
-                };
-            }
+            RequireTextClosePresent(close, index >= 0);
 
             revisions[index] = close.ClosedIn(plan.VersionNumber);
         }

@@ -152,6 +152,10 @@ public abstract partial class StoreRefusalTests : IDisposable
         await ApplyAsync(store, [ContentEdit.Update(Item, 1, Sword, [Value(2)])], ContentTextEdit.Set(Target("name", "en"), "Blade"));
         ContentTextChunkRecord chunk = Chunk("en", ("sword", "Blade"));
         var (snapshot, rowPlan) = await FreezeAndPlanAsync(store, [new ManifestLanguageEntry("en", chunk.Hash)]);
+        ContentTextPublishSnapshot originalSnapshot = snapshot;
+        if (defect == "baseline")
+            snapshot = new(snapshot.StoreEpoch, snapshot.Baseline,
+                new(snapshot.StoreEpoch, 1, [new(Item, 1, "name", "en", "Forged", 1, null)], snapshot.BaselineText.Languages), snapshot.Draft);
         ContentTextRevision held = Assert.Single(snapshot.BaselineText.Revisions);
         var inserted = new ContentTextRevision(Item, 1, "name", "en", "Blade", 2, null);
         var candidate = new ContentTextCandidate([inserted], [new("en", "en")], [held], [inserted]);
@@ -163,17 +167,29 @@ public abstract partial class StoreRefusalTests : IDisposable
         }
         if (defect == "freeze") await store.ClearDraftFreezeAsync();
         if (defect == "draft") snapshot.Draft.Changes.Apply(ContentEdit.Update(Item, 1, Sword, [Value(9)]));
-        if (defect == "baseline") ((IList<ContentTextRevision>)snapshot.BaselineText.Revisions)[0] =
-            new(Item, 1, "name", "en", "Forged", 1, null);
-        if (defect == "close") ((IList<ContentTextRevision>)candidate.Closes)[0] =
-            new(Item, 1, "name", "en", "Forged", 1, null);
-        if (defect == "row") ((IList<ContentTextRevision>)candidate.Inserts)[0] =
-            new(Item, 9, "name", "en", "Blade", 2, null);
+        Task Attempt()
+        {
+            // These defensive guards now take typed fault values because validated plan lists resist casts.
+            if (defect == "close")
+            {
+                var close = new ContentTextRevision(Item, 1, "name", "en", "Forged", 1, null);
+                if (UsesSqlite) SqliteContentAuthoringStore.RefuseMissingTextCloseForTests(close, false);
+                else InMemoryContentAuthoringStore.RefuseMissingTextCloseForTests(close, false);
+                return Task.CompletedTask;
+            }
+            if (defect == "row")
+            {
+                var revision = new ContentTextRevision(Item, 9, "name", "en", "Blade", 2, null);
+                if (UsesSqlite) SqliteContentAuthoringStore.RequireTextPlanRowForTests(rowPlan, revision);
+                else InMemoryContentAuthoringStore.RequireTextPlanRowForTests(rowPlan, revision);
+                return Task.CompletedTask;
+            }
+            return store.CommitTextPublishAsync(plan, Request(1), null);
+        }
         string before = ContentBundleJson.Write(await store.ExportBundleAsync(1));
         ContentDraft? draftBefore = await store.GetOpenDraftAsync();
         IReadOnlyList<ContentAuditEntry> auditBefore = await store.ListAuditAsync(default, 0, 0, 500);
-        ContentAuthoringException refused = await Assert.ThrowsAsync<ContentAuthoringException>(() =>
-            store.CommitTextPublishAsync(plan, Request(1), null));
+        ContentAuthoringException refused = await Assert.ThrowsAsync<ContentAuthoringException>(Attempt);
         Assert.Equal(reason, refused.Refusal);
         if (defect is "row" or "close")
         {
@@ -195,9 +211,21 @@ public abstract partial class StoreRefusalTests : IDisposable
         Assert.Equal(1, await store.GetActiveVersionAsync());
         Assert.Single(await store.ListVersionsAsync());
         if (defect == "draft") snapshot.Draft.Changes.Apply(ContentEdit.Update(Item, 1, Sword, [Value(2)]));
-        if (defect == "baseline") ((IList<ContentTextRevision>)snapshot.BaselineText.Revisions)[0] = held;
-        if (defect == "close") ((IList<ContentTextRevision>)candidate.Closes)[0] = held;
-        if (defect == "row") ((IList<ContentTextRevision>)candidate.Inserts)[0] = inserted;
+        if (defect == "baseline")
+        {
+            held = Assert.Single(originalSnapshot.BaselineText.Revisions);
+            candidate = new([inserted], [new("en", "en")], [held], [inserted]);
+            plan = new(rowPlan, originalSnapshot, candidate, [chunk]);
+        }
+        if (defect == "close")
+        {
+            if (UsesSqlite) SqliteContentAuthoringStore.RefuseMissingTextCloseForTests(held, true);
+            else InMemoryContentAuthoringStore.RefuseMissingTextCloseForTests(held, true);
+        }
+        if (defect == "row")
+            Assert.Equal(Sword, UsesSqlite
+                ? SqliteContentAuthoringStore.RequireTextPlanRowForTests(rowPlan, inserted)
+                : InMemoryContentAuthoringStore.RequireTextPlanRowForTests(rowPlan, inserted));
         if (defect == "missing") await ApplyAsync(store, [ContentEdit.Update(Item, 1, Sword, [Value(2)])], ContentTextEdit.Set(Target("name", "en"), "Blade"));
         if (defect is "missing" or "freeze") await store.FreezeChangesAsync(1);
         Assert.Equal(2, (await store.CommitTextPublishAsync(plan, Request(1), null)).VersionNumber);

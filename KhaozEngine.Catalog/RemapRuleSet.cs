@@ -54,7 +54,7 @@ public sealed class RemapRuleSet
         }
 
         ActiveStamp = stamp;
-        Rules = Array.AsReadOnly(_rules);
+        Rules = new CatalogReadOnlyView<RemapRule>(_rules);
     }
 
     /// <summary>Every rule as a read-only snapshot in the sequence order the pass applies.</summary>

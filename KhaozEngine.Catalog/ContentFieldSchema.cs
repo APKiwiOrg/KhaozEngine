@@ -125,7 +125,7 @@ public sealed class ContentFieldSchema
             _byName.Add(ordered[i].Name, (ordered[i], i));
         }
 
-        Fields = Array.AsReadOnly(ordered);
+        Fields = new CatalogReadOnlyView<ContentFieldEntry>(ordered);
         BaselineFieldCount = baseline;
     }
 

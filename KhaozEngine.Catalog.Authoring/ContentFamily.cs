@@ -96,7 +96,7 @@ public sealed class ContentFamily
         IsRetired = isRetired;
         CreatedInVersion = createdInVersion;
         _blocks = copy;
-        Blocks = Array.AsReadOnly(copy);
+        Blocks = new CatalogReadOnlyView<ContentFamilyBlock>(copy);
     }
 
     /// <summary>The store's own family id.</summary>

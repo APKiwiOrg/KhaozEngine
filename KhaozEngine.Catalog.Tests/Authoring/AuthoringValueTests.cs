@@ -263,8 +263,8 @@ public class AuthoringValueTests
             ]);
 
         ContentFamilyBlock original = family.Blocks[0];
-        Assert.Throws<NotSupportedException>(() =>
-            ((IList<ContentFamilyBlock>)family.Blocks)[0] = original with { BaseId = 2048 });
+        Assert.False(family.Blocks is IList<ContentFamilyBlock>);
+        Assert.False(family.Blocks is System.Collections.ICollection);
         Assert.Equal(original, family.Blocks[0]);
         Assert.True(family.Contains(1030));
         Assert.True(family.Contains(4099));

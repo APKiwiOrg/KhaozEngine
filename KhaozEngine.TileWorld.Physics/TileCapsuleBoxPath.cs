@@ -15,6 +15,7 @@ internal static class TileCapsuleBoxPath
     internal static Range Intersect(Vector3 minimum, Vector3 maximum, in MovementMediumSweepQuery query, Vector3 origin,
         double enter = 0, double exit = 1)
     {
+        if (TileWaterQueryWork.Enabled) TileWaterQueryWork.Intersections++;
         if (!Potential(minimum, maximum, query, origin, enter, exit))
             return new(false, double.PositiveInfinity, double.NegativeInfinity, double.PositiveInfinity, 0);
         I core = I.Point(query.Body.HalfHeight) - I.Point(query.Body.Radius);

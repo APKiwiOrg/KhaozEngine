@@ -14,6 +14,7 @@ internal sealed class ContactTickWorkspace
     readonly OwnerEntry[] _owners = new OwnerEntry[MovementQueryLease.MaxSupportCandidates];
     readonly (MovementDomainKey Domain, float Level)[] _water = new (MovementDomainKey, float)[MovementQueryLease.MaxWaterDomainsPerLease];
     int _waterCount;
+    internal MovementWaterCoverageBuffers WaterCoverage { get; } = new();
     internal int WaterCount => _waterCount;
     internal bool Owns(MovementQueryLease lease) => ReferenceEquals(_lease, lease);
     MovementQueryLease? _lease;

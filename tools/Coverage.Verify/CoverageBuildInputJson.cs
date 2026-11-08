@@ -14,7 +14,7 @@ namespace KhaozEngine.Tools.Coverage;
 /// <summary>Strict format 1 reader. Relative references resolve beside the document that declares them.</summary>
 public static class CoverageBuildInputJson
 {
-    const int MaxBytes = 64 * 1024 * 1024;
+    internal const int MaxBytes = 64 * 1024 * 1024;
     internal sealed record Command(EquipmentCoverageCommand Definition, CoverageSupportSurface Support, int Region);
 
     public static CoverageBuildInput Read(string manifestPath)
@@ -247,13 +247,21 @@ public static class CoverageBuildInputJson
         if (Hash(bytes) != hash) throw new CoverageBuildDataException(CoverageBuildInputRefusal.HashMismatch, "Exact asset hash differs.") { Path = path + ".sha256", Identity = file };
         return bytes;
     }
-    internal static byte[] ReadBytes(string path)
+    internal static byte[] ReadBytes(string path, int byteLimit = MaxBytes)
     {
         using var stream = File.OpenRead(path);
-        if (stream.Length > MaxBytes) throw new CoverageBuildDataException(CoverageBuildInputRefusal.CapacityExceeded, "Input file exceeds byte capacity.") { Identity = path, Count = stream.Length, Limit = MaxBytes };
+        CheckByteCapacity(stream.Length, byteLimit, path);
         byte[] bytes = new byte[checked((int)stream.Length)];
         stream.ReadExactly(bytes);
         return bytes;
+    }
+    internal static void CheckByteCapacity(long count, int byteLimit, string? identity = null)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegative(byteLimit);
+        ArgumentOutOfRangeException.ThrowIfGreaterThan(byteLimit, MaxBytes);
+        if (count > byteLimit)
+            throw new CoverageBuildDataException(CoverageBuildInputRefusal.CapacityExceeded, "Artifact exceeds byte capacity.")
+            { Identity = identity, Count = count, Limit = byteLimit };
     }
     internal static string Hash(ReadOnlySpan<byte> bytes) => Convert.ToHexStringLower(SHA256.HashData(bytes));
     internal static string CodeHash() => Hash(File.ReadAllBytes(typeof(CoverageBuildInput).Assembly.Location));

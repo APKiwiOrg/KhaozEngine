@@ -70,14 +70,11 @@ public static class CoverageSampleVerifier
 
     internal static int[] Representatives(CoverageRefinement topology, CoverageSample sample)
     {
-        var regions = sample.Commands.ToArray().Select(c => c.RegionIndex).ToHashSet();
-        int[] representatives = Enumerable.Repeat(-1, topology.PositionGroupCount).ToArray();
-        for (int vertex = 0; vertex < topology.VertexCount; vertex++)
-        {
-            var record = topology.Vertices[vertex];
-            if (record.Strength > 0 && regions.Contains(record.RegionIndex) && representatives[record.PositionGroup] < 0)
-                representatives[record.PositionGroup] = vertex;
-        }
+        int[] regions = Enumerable.Repeat(-1, topology.Map.Regions.Count).ToArray();
+        foreach (var command in sample.Commands)
+            if ((uint)command.RegionIndex < (uint)regions.Length) regions[command.RegionIndex] = 0;
+        int[] representatives = new int[topology.PositionGroupCount];
+        CoverageReferenceTopology.FillActiveRepresentatives(topology, regions, representatives, new CoverageReferenceArithmetic());
         return representatives;
     }
     internal static void CheckRepresentatives(ReadOnlySpan<int> expected, ReadOnlySpan<int> actual, string? sample = null)

@@ -34,6 +34,20 @@ internal static class CoverageBuildFixture
                 CoverageBuildFixture.Hash, CoverageBuildFixture.Hash, CoverageBuildFixture.Hash), Hash);
     }
 
+    internal static CoverageBuildInput WithCollarStrength(uint word)
+    {
+        var input = Input();
+        var map = input.Topology.Map;
+        var regions = map.Regions.Select(r => new HostCoverageRegion(r.Key, r.Triangles,
+            r.Strengths.Select(s => s.Strength == .5f ? s with { Strength = BitConverter.UInt32BitsToSingle(word) } : s)));
+        var modified = new HostCoverageMap(map.HostSha256, map.Topology, regions, map.Refinement, map.Authoring);
+        var topology = CoverageRefinement.Build(input.Topology.Source, modified);
+        var samples = input.Samples.Select(s => new CoverageSample(s.Id, s.DomainId, s.AuthoredFrameId, s.BlendPathId,
+            s.StateKey, s.ActorModel, s.Palette, s.Commands.ToArray().Select(c => c with { Topology = topology }).ToArray()));
+        return new(topology, input.InverseBind, input.Domains, samples, input.CandidateSampleIds,
+            input.Identity with { HostMapSha256 = HostCoverageMapJson.SemanticSha256(modified) }, input.InputSha256);
+    }
+
     internal const string Hash = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
 }
 

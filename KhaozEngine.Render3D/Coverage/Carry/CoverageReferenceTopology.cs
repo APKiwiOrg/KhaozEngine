@@ -86,6 +86,23 @@ internal sealed class CoverageReferenceTopology
     internal int[] ShadingCornerOffsets { get; }
     internal int[] ShadingCorners { get; }
 
+    /// <summary>Selects the first active vertex of each position group for the admitted command regions.
+    /// Baseline GroupRepresentatives above also include protected groups and have a different purpose.</summary>
+    internal static void FillActiveRepresentatives(CoverageRefinement topology, ReadOnlySpan<int> regionCommands,
+        Span<int> representatives, CoverageReferenceArithmetic arithmetic)
+    {
+        if (regionCommands.Length != topology.Map.Regions.Count || representatives.Length != topology.PositionGroupCount)
+            throw new ArgumentException("Active representative selection requires complete region and group storage.");
+        representatives.Fill(-1);
+        for (int vertex = 0; vertex < topology.VertexCount; vertex++)
+        {
+            var record = topology.Vertices[vertex];
+            if (record.RegionIndex >= 0 && regionCommands[record.RegionIndex] >= 0
+                && arithmetic.IsActiveStrength(record.Strength) && representatives[record.PositionGroup] < 0)
+                representatives[record.PositionGroup] = vertex;
+        }
+    }
+
     static int[] Allocate(int[] offsets)
     {
         for (int i = 1; i < offsets.Length; i++) offsets[i] += offsets[i - 1];

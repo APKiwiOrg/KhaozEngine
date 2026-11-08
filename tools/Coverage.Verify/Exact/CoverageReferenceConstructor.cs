@@ -14,16 +14,9 @@ internal static class CoverageReferenceConstructor
         var f = scratch.Arithmetic;
         var data = scratch.ReferenceTopology;
         Array.Clear(scratch.FullRecessions);
-        Array.Fill(scratch.ActiveGroupRepresentatives, -1);
         for (int g = 0; g < data.PositionGroupCount; g++)
             scratch.GroupPositions[g] = scratch.Before[scratch.ReferenceTopology.GroupRepresentatives[g]].Position;
-        for (int v = 0; v < data.VertexCount; v++)
-        {
-            var record = data.Vertices[v];
-            if (f.Greater(record.Strength, 0) && record.RegionIndex >= 0 && scratch.RegionCommands[record.RegionIndex] >= 0
-                && scratch.ActiveGroupRepresentatives[record.PositionGroup] < 0)
-                scratch.ActiveGroupRepresentatives[record.PositionGroup] = v;
-        }
+        CoverageReferenceTopology.FillActiveRepresentatives(topology, scratch.RegionCommands, scratch.ActiveGroupRepresentatives, f);
         var tally = new CoverageTally();
         // Representatives are visited by vertex index, independently of position-group or command-slot order.
         for (int v = 0; v < data.VertexCount; v++)

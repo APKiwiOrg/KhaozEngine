@@ -41,6 +41,9 @@ an animation or infer a key. Exit codes are 0 for complete accepted work, 1 for 
 publication failure, and 2 for malformed input. Holes are explicit in the in-memory build result, but a
 CLI run containing a hole publishes neither table nor evidence. Refused runs preserve existing outputs.
 Outputs are staged as temporary siblings before rename, with rollback if publishing the pair fails.
+Evidence serialization and resumed file admission share one inclusive byte bound. Oversized output
+refuses with the typed capacity reason before either accepted file is replaced. Resumed JSON syntax
+and field-type errors retain the malformed-input refusal family and exit code 2.
 
 ```sh
 dotnet tools/Coverage.Verify/bin/Release/net10.0/Coverage.Verify.dll build --manifest poses.json --table coverage.kert --evidence samples.json
@@ -62,7 +65,7 @@ Each sample declares `id`, `domainId`, `stateKey` (an unsigned 64-bit number), `
 and `commands`, and at least one of `authoredFrameId` and `blendPathId`. Both identifiers, when present,
 must belong to that domain. Every declared frame and path needs a sample. Candidate IDs are unique,
 ordered and must name samples. Limits are 65536 samples or inventory items, 4096 candidates, 4194304
-candidate/sample pairs, 1024 palette matrices, four commands and 64 MiB per input file.
+candidate/sample pairs, 1024 palette matrices, four commands and 64 MiB per input or published artifact.
 
 The configuration file requires `formatVersion`, exact `attachment` and `companion` references, and
 `parts`. Every part has `id`, an exact GLB `asset` reference, `hostJoint`, `socket` and `bodyAlignment`.
@@ -83,6 +86,9 @@ Current actor models, palettes and equipment instance IDs are outside configurat
 
 `CoverageTableBuilder.Build` constructs full unweighted scalars with the exact constructor, requires one
 canonical topology-owned representative vector, and deduplicates scalar rows by their binary32 words.
+The exact constructor and verifier use Render3D's shared active-representative selection. Its activity
+predicate uses retained arithmetic, so strength at 2^-126 or below is inactive and the next normal word
+above that boundary is active.
 It certifies every deduplicated candidate at every sample through the retained carry path and exact
 validator. For a repeated key it intersects validity across every occurrence. Deterministic greedy cover
 chooses the row covering most unassigned keys, with canonical scalar SHA-256 and then bytes as tie-breaks.

@@ -334,6 +334,93 @@ public sealed class CoverageTableBuilderTests
         Assert.True(CoverageTableBuilder.Build(input).Evidence.Complete);
     }
 
+    [Theory]
+    [InlineData("build", "truncated", CoverageBuildInputRefusal.InvalidJson)]
+    [InlineData("verify-samples", "truncated", CoverageBuildInputRefusal.InvalidJson)]
+    [InlineData("build", "duplicate", CoverageBuildInputRefusal.DuplicateMember)]
+    [InlineData("verify-samples", "duplicate", CoverageBuildInputRefusal.DuplicateMember)]
+    [InlineData("build", "wrong-type", CoverageBuildInputRefusal.InvalidValue)]
+    [InlineData("verify-samples", "wrong-type", CoverageBuildInputRefusal.InvalidValue)]
+    public void Malformed_resumed_evidence_returns_exit_two_and_preserves_both_outputs(string command, string defect, CoverageBuildInputRefusal reason)
+    {
+        using var files = new CoverageBuildFiles();
+        Assert.Equal(0, Run(files, "build"));
+        byte[] table = File.ReadAllBytes(files.TablePath), accepted = File.ReadAllBytes(files.EvidencePath);
+        string json = Encoding.UTF8.GetString(accepted);
+        if (defect == "truncated") json = "{";
+        else if (defect == "duplicate") json = json.Insert(1, "\"formatVersion\":1,");
+        else
+        {
+            var root = JsonNode.Parse(json)!;
+            root["tableSha256"] = 7;
+            json = root.ToJsonString();
+        }
+        byte[] malformed = Encoding.UTF8.GetBytes(json);
+        File.WriteAllBytes(files.EvidencePath, malformed);
+        Assert.Equal(2, Run(files, command));
+        Assert.Equal(table, File.ReadAllBytes(files.TablePath));
+        Assert.Equal(malformed, File.ReadAllBytes(files.EvidencePath));
+        var evidence = CoverageTableBuilder.Build(CoverageBuildInput.Read(files.ManifestPath)).Evidence;
+        Assert.Equal(reason, Assert.Throws<CoverageBuildDataException>(() => evidence.ValidateResume(malformed)).Reason);
+        File.WriteAllBytes(files.EvidencePath, accepted);
+        Assert.Equal(0, Run(files, command));
+    }
+
+    [Theory]
+    [InlineData("build")]
+    [InlineData("verify-samples")]
+    public void Evidence_byte_bound_is_shared_by_publication_and_resume_admission(string command)
+    {
+        using var files = new CoverageBuildFiles();
+        Assert.Equal(0, Run(files, "build"));
+        byte[] table = File.ReadAllBytes(files.TablePath), accepted = File.ReadAllBytes(files.EvidencePath);
+        var input = CoverageBuildInput.Read(files.ManifestPath);
+        var evidence = command == "build" ? CoverageTableBuilder.Build(input).Evidence
+            : CoverageSampleVerifier.Verify(input, CoverageRecessionTableBinary.Read(table, "accepted"));
+        byte[] candidate = evidence.Write();
+        int limit = candidate.Length - 1;
+        string[] args = [command, "--manifest", files.ManifestPath, "--table", files.TablePath, "--evidence", files.EvidencePath];
+        Assert.Equal(2, Program.Run(args, limit));
+        Assert.Equal(table, File.ReadAllBytes(files.TablePath));
+        Assert.Equal(accepted, File.ReadAllBytes(files.EvidencePath));
+        var refusal = Assert.Throws<CoverageBuildDataException>(() => evidence.Write(limit));
+        Assert.Equal(CoverageBuildInputRefusal.CapacityExceeded, refusal.Reason);
+        Assert.Equal(limit, refusal.Limit);
+        Assert.True(refusal.Count > limit);
+        // The inclusive bound admits and republishes its own exact output without a large fixture.
+        File.WriteAllBytes(files.EvidencePath, candidate);
+        Assert.Equal(0, Program.Run(args, candidate.Length));
+        Assert.Equal(0, Program.Run(args, candidate.Length));
+        byte[] oversized = [.. candidate, (byte)' '];
+        File.WriteAllBytes(files.EvidencePath, oversized);
+        Assert.Equal(2, Program.Run(args, candidate.Length));
+        Assert.Equal(table, File.ReadAllBytes(files.TablePath));
+        Assert.Equal(oversized, File.ReadAllBytes(files.EvidencePath));
+        var readRefusal = Assert.Throws<CoverageBuildDataException>(() => CoverageBuildInputJson.ReadBytes(files.EvidencePath, candidate.Length));
+        Assert.Equal(CoverageBuildInputRefusal.CapacityExceeded, readRefusal.Reason);
+        Assert.Equal(candidate.Length, readRefusal.Limit);
+        Assert.Equal(oversized.Length, readRefusal.Count);
+        File.WriteAllBytes(files.EvidencePath, candidate);
+        Assert.Equal(0, Program.Run(args, candidate.Length));
+    }
+
+    [Theory]
+    [InlineData(0x00800000u, false)]
+    [InlineData(0x00800001u, true)]
+    [InlineData(0x007fffffu, false)]
+    public void Representative_activity_uses_the_retained_inclusive_flush_boundary(uint strengthWord, bool active)
+    {
+        var original = CoverageBuildFixture.Input();
+        int[] collarGroups = original.Topology.Vertices.Where(v => v.Strength == .5f).Select(v => v.PositionGroup).Distinct().ToArray();
+        Assert.NotEmpty(collarGroups);
+        var input = CoverageBuildFixture.WithCollarStrength(strengthWord);
+        int[] representatives = CoverageSampleVerifier.Representatives(input.Topology, input.Samples[0]);
+        Assert.All(collarGroups, group => Assert.Equal(active, representatives[group] >= 0));
+        var result = CoverageTableBuilder.Build(input);
+        Assert.True(result.Evidence.Complete);
+        Assert.Equal(representatives, result.Table.Representatives.ToArray());
+    }
+
     static int Run(CoverageBuildFiles files, string command) => Program.Main([command, "--manifest", files.ManifestPath, "--table", files.TablePath, "--evidence", files.EvidencePath]);
 
 }

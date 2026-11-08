@@ -9,7 +9,9 @@ namespace KhaozEngine.Tools.Coverage;
 public static class Program
 {
     /// <summary>0 complete accepted work, 1 validation/output failure, 2 malformed input.</summary>
-    public static int Main(string[] args)
+    public static int Main(string[] args) => Run(args, CoverageBuildInputJson.MaxBytes);
+
+    internal static int Run(string[] args, int evidenceByteLimit)
     {
         try
         {
@@ -31,6 +33,7 @@ public static class Program
                 var result = CoverageTableBuilder.Build(input);
                 evidence = result.Evidence;
                 tableBytes = CoverageRecessionTableBinary.Write(result.Table);
+                CoverageBuildInputJson.CheckByteCapacity(tableBytes.LongLength, CoverageBuildInputJson.MaxBytes, tablePath);
             }
             else
             {
@@ -38,8 +41,9 @@ public static class Program
                 evidence = CoverageSampleVerifier.Verify(input, table);
             }
             if (!evidence.Complete) return 1;
-            if (File.Exists(evidencePath)) evidence.ValidateResume(CoverageBuildInputJson.ReadBytes(evidencePath));
-            Publish(tableBytes == null ? [(evidencePath, evidence.Write())] : [(tablePath, tableBytes), (evidencePath, evidence.Write())]);
+            byte[] evidenceBytes = evidence.Write(evidenceByteLimit);
+            if (File.Exists(evidencePath)) evidence.ValidateResume(CoverageBuildInputJson.ReadBytes(evidencePath, evidenceByteLimit), evidenceBytes);
+            Publish(tableBytes == null ? [(evidencePath, evidenceBytes)] : [(tablePath, tableBytes), (evidencePath, evidenceBytes)]);
             return 0;
         }
         catch (CoverageToolStateException error) { Console.Error.WriteLine(error.Reason); return 1; }

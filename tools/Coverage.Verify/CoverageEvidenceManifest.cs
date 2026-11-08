@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Text.Json;
 using System.Text.Json.Serialization;
@@ -57,21 +58,72 @@ public sealed class CoverageEvidenceManifest
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
         Converters = { new JsonStringEnumConverter(JsonNamingPolicy.KebabCaseLower) },
     };
-    public byte[] Write() => JsonSerializer.SerializeToUtf8Bytes(this, Options);
+    public byte[] Write() => Write(CoverageBuildInputJson.MaxBytes);
 
-    /// <summary>A resumed output must bind the same exact inputs, tool, arithmetic and serialized table.</summary>
-    internal void ValidateResume(byte[] bytes)
+    internal byte[] Write(int byteLimit)
     {
-        using var document = CoverageBuildInputJson.Document(bytes);
-        var root = document.RootElement;
-        using var expectedDocument = CoverageBuildInputJson.Document(Write());
-        var expected = expectedDocument.RootElement;
-        CoverageBuildInputJson.Members(root, "$", expected.EnumerateObject().Select(p => p.Name).ToArray());
-        foreach (string member in new[] { "formatVersion", "tool", "scope", "identity", "inputSha256", "tableSha256", "toolCodeSha256" })
+        using var stream = new EvidenceStream(byteLimit);
+        JsonSerializer.Serialize(stream, this, Options);
+        return stream.ToArray();
+    }
+
+    /// <summary>A resumed output must bind the same exact inputs, tool, arithmetic and serialized table.
+    /// Malformed JSON or field types retain the tool's malformed-input refusal family.</summary>
+    internal void ValidateResume(byte[] bytes, byte[]? expectedBytes = null)
+    {
+        try
         {
-            var actual = CoverageBuildInputJson.Get(root, member, "$");
-            if (!JsonElement.DeepEquals(actual, expected.GetProperty(member)))
-                throw new CoverageBuildValidationException(CoverageBuildValidationRefusal.ProvenanceMismatch, "Resumed evidence provenance differs.");
+            CoverageBuildInputJson.CheckByteCapacity(bytes.LongLength, CoverageBuildInputJson.MaxBytes);
+            using var document = CoverageBuildInputJson.Document(bytes);
+            var root = document.RootElement;
+            using var expectedDocument = CoverageBuildInputJson.Document(expectedBytes ?? Write());
+            var expected = expectedDocument.RootElement;
+            ValidateObjectTypes(root, expected, "$");
+            foreach (string member in new[] { "formatVersion", "tool", "scope", "identity", "inputSha256", "tableSha256", "toolCodeSha256" })
+            {
+                if (!JsonElement.DeepEquals(root.GetProperty(member), expected.GetProperty(member)))
+                    throw new CoverageBuildValidationException(CoverageBuildValidationRefusal.ProvenanceMismatch, "Resumed evidence provenance differs.");
+            }
+        }
+        catch (JsonException error)
+        {
+            throw new CoverageBuildDataException(CoverageBuildInputRefusal.InvalidJson, "Malformed resumed evidence JSON.", error)
+            { Path = error.Path ?? "$" };
+        }
+    }
+
+    static void ValidateObjectTypes(JsonElement actual, JsonElement expected, string path)
+    {
+        CoverageBuildInputJson.Members(actual, path, expected.EnumerateObject().Select(p => p.Name).ToArray());
+        foreach (var member in expected.EnumerateObject())
+        {
+            var value = CoverageBuildInputJson.Get(actual, member.Name, path);
+            string memberPath = path + "." + member.Name;
+            bool boolean = value.ValueKind is JsonValueKind.True or JsonValueKind.False
+                && member.Value.ValueKind is JsonValueKind.True or JsonValueKind.False;
+            if (value.ValueKind != member.Value.ValueKind && !boolean)
+                throw new CoverageBuildDataException(CoverageBuildInputRefusal.InvalidValue, "Evidence field has the wrong JSON type.")
+                { Path = memberPath, MemberName = member.Name };
+            if (value.ValueKind == JsonValueKind.Object) ValidateObjectTypes(value, member.Value, memberPath);
+        }
+    }
+
+    sealed class EvidenceStream(int byteLimit) : MemoryStream
+    {
+        public override void Write(byte[] buffer, int offset, int count)
+        {
+            CoverageBuildInputJson.CheckByteCapacity(Position + count, byteLimit);
+            base.Write(buffer, offset, count);
+        }
+        public override void Write(ReadOnlySpan<byte> buffer)
+        {
+            CoverageBuildInputJson.CheckByteCapacity(Position + buffer.Length, byteLimit);
+            base.Write(buffer);
+        }
+        public override void WriteByte(byte value)
+        {
+            CoverageBuildInputJson.CheckByteCapacity(Position + 1, byteLimit);
+            base.WriteByte(value);
         }
     }
 }

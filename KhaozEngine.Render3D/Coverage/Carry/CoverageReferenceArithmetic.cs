@@ -19,6 +19,8 @@ internal sealed class CoverageReferenceArithmetic
     internal bool Less(float a, float b) => Flush(a) < Flush(b);
     internal bool LessOrEqual(float a, float b) => Flush(a) <= Flush(b);
     internal bool Greater(float a, float b) => Flush(a) > Flush(b);
+    /// <summary>Coverage activity uses the retained comparison, including the inclusive flush boundary.</summary>
+    internal bool IsActiveStrength(float strength) => Greater(strength, 0);
     internal bool GreaterOrEqual(float a, float b) => Flush(a) >= Flush(b);
     internal bool Equal(float a, float b) => Flush(a) == Flush(b);
     internal bool NotEqual(float a, float b) => Flush(a) != Flush(b);

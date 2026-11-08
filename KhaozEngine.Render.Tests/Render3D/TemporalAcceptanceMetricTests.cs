@@ -57,6 +57,7 @@ namespace KhaozEngine.Tests.Render3D
                 src[i] = 100; src[i + 1] = 150; src[i + 2] = 200; src[i + 3] = 255;
             }
             byte[] up = TemporalAcceptance.BilinearUpscale(src, 4, 3, 10, 7);
+            Assert.Equal(10 * 7 * 4, up.Length);
             for (int i = 0; i < up.Length; i += 4) { Assert.Equal(100, up[i]); Assert.Equal(200, up[i + 2]); }
         }
 
@@ -165,6 +166,7 @@ namespace KhaozEngine.Tests.Render3D
         {
             Assert.Throws<ArgumentException>(() => Error(new[] { 0f, 1f }, new[] { 0f, 1f, 0f }));
             Assert.Throws<ArgumentException>(() => Error(new[] { 0f }, new[] { 0f }));
+            Assert.Equal(0.0, Error(new[] { 0f, 1f }, new[] { 0f, 1f }));
         }
 
         [Fact]

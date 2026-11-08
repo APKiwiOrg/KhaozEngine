@@ -34,6 +34,7 @@ namespace KhaozEngine.Tests.Render3D
         public void BuildTube_RestPose_LeavesGeometryUnmoved()
         {
             var tube = SkinnedMeshBuilder.BuildTube(0.5f, 4f, 4, 6, 5);
+            Assert.NotEmpty(tube.Vertices);
             foreach (var v in tube.Vertices)
             {
                 var moved = Skin(v, tube.RestPose, tube.InverseBind);
@@ -57,6 +58,7 @@ namespace KhaozEngine.Tests.Render3D
                           * tube.RestPose[last];
 
             float maxBaseShift = 0f, maxTipShift = 0f;
+            Assert.Contains(tube.Vertices, v => v.Position.Z < 0.5f);
             foreach (var v in tube.Vertices)
             {
                 float shift = Vector3.Distance(Skin(v, posed, tube.InverseBind), v.Position);

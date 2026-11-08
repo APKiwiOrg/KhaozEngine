@@ -19,6 +19,7 @@ namespace KhaozEngine.Tests.Render3D
 
             Assert.Equal(box.Vertices.Length, smooth.Vertices.Length);
             Assert.Equal(box.Indices.Length, smooth.Indices.Length);
+            Assert.NotEmpty(smooth.Vertices);
 
             foreach (var v in smooth.Vertices)
             {
@@ -37,6 +38,8 @@ namespace KhaozEngine.Tests.Render3D
             var smooth = MeshOps.WithSmoothNormals(box);
 
             Assert.Equal(box.Indices, smooth.Indices);
+            Assert.NotEmpty(box.Vertices);
+            Assert.Equal(box.Vertices.Length, smooth.Vertices.Length);
             for (int i = 0; i < box.Vertices.Length; i++)
             {
                 Assert.Equal(box.Vertices[i].Position, smooth.Vertices[i].Position);
@@ -50,7 +53,9 @@ namespace KhaozEngine.Tests.Render3D
         {
             var box = MeshPrimitives.Box();
             var before = box.Vertices.Select(v => v.Normal).ToArray();
+            Assert.NotEmpty(before);
             _ = MeshOps.WithSmoothNormals(box);
+            Assert.Equal(before.Length, box.Vertices.Length);
             for (int i = 0; i < box.Vertices.Length; i++)
                 Assert.Equal(before[i], box.Vertices[i].Normal);
         }
@@ -87,6 +92,7 @@ namespace KhaozEngine.Tests.Render3D
             };
             var mesh = new GltfMesh(verts, new ushort[] { 0, 1, 2 });
             var flat = MeshOps.RecomputeFlatNormals(mesh);
+            Assert.NotEmpty(flat.Vertices);
             foreach (var v in flat.Vertices)
                 Assert.True(Vector3.Dot(v.Normal, Vector3.UnitY) > 0.99f);
         }
@@ -95,6 +101,7 @@ namespace KhaozEngine.Tests.Render3D
         public void WithSmoothNormals_Throws_On_Null()
         {
             Assert.Throws<ArgumentNullException>(() => MeshOps.WithSmoothNormals(null!));
+            Assert.NotEmpty(MeshOps.WithSmoothNormals(MeshPrimitives.Box()).Vertices);
         }
 
         [Fact]
@@ -102,7 +109,9 @@ namespace KhaozEngine.Tests.Render3D
         {
             var box = MeshPrimitives.Box();
             var before = box.Vertices.Select(v => v.Normal).ToArray();
+            Assert.NotEmpty(before);
             _ = MeshOps.RecomputeFlatNormals(box);
+            Assert.Equal(before.Length, box.Vertices.Length);
             for (int i = 0; i < box.Vertices.Length; i++)
                 Assert.Equal(before[i], box.Vertices[i].Normal);
         }
@@ -111,6 +120,7 @@ namespace KhaozEngine.Tests.Render3D
         public void RecomputeFlatNormals_Throws_On_Null()
         {
             Assert.Throws<ArgumentNullException>(() => MeshOps.RecomputeFlatNormals(null!));
+            Assert.NotEmpty(MeshOps.RecomputeFlatNormals(MeshPrimitives.Box()).Vertices);
         }
     }
 }

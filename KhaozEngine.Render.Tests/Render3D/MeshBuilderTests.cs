@@ -50,6 +50,7 @@ namespace KhaozEngine.Tests.Render3D
                 .Build();
 
             Assert.Equal(src.Vertices.Length, mesh.Vertices.Length);
+            Assert.NotEmpty(mesh.Vertices);
             for (int i = 0; i < src.Vertices.Length; i++)
             {
                 var expected = src.Vertices[i].Position + t;
@@ -69,6 +70,7 @@ namespace KhaozEngine.Tests.Render3D
                 .Build();
 
             int boxVerts = MeshPrimitives.Box().Vertices.Length;
+            Assert.InRange(boxVerts, 1, mesh.Vertices.Length - 1);
             for (int i = 0; i < boxVerts; i++)
                 Assert.Equal(Vector4.One, mesh.Vertices[i].Color);
             for (int i = boxVerts; i < mesh.Vertices.Length; i++)
@@ -81,6 +83,7 @@ namespace KhaozEngine.Tests.Render3D
             var mesh = new MeshBuilder()
                 .Add(MeshPrimitives.Box(), Matrix4x4.Identity)
                 .Build();
+            Assert.NotEmpty(mesh.Vertices);
             foreach (var v in mesh.Vertices)
                 Assert.Equal(Vector4.One, v.Color);
         }
@@ -121,6 +124,7 @@ namespace KhaozEngine.Tests.Render3D
             var mesh = new MeshBuilder()
                 .Add(MeshPrimitives.Sphere(), transform)
                 .Build();
+            Assert.NotEmpty(mesh.Vertices);
             foreach (var v in mesh.Vertices)
                 Assert.Equal(1f, v.Normal.Length(), 3);
         }

@@ -12,6 +12,7 @@ namespace KhaozEngine.Tests.Render3D
         {
             GltfMesh box = MeshOps.WithTangents(MeshPrimitives.Box(2f));
 
+            Assert.NotEmpty(box.Vertices);
             Assert.All(box.Vertices, v =>
             {
                 var t = new Vector3(v.Tangent.X, v.Tangent.Y, v.Tangent.Z);
@@ -27,6 +28,7 @@ namespace KhaozEngine.Tests.Render3D
             GltfMesh box = MeshPrimitives.Box(1f);
             GltfMesh tan = MeshOps.WithTangents(box);
 
+            Assert.NotEmpty(box.Vertices);
             Assert.Equal(box.Vertices.Length, tan.Vertices.Length);
             Assert.Equal(box.Indices32, tan.Indices32);
             for (int i = 0; i < box.Vertices.Length; i++)
@@ -43,6 +45,8 @@ namespace KhaozEngine.Tests.Render3D
             GltfMesh box = MeshOps.WithTangents(MeshPrimitives.Box(1f));
             GltfMesh tiled = MeshOps.ScaleUv(box, 3f);
 
+            Assert.NotEmpty(box.Vertices);
+            Assert.Equal(box.Vertices.Length, tiled.Vertices.Length);
             Assert.Equal(box.Indices32, tiled.Indices32);
             for (int i = 0; i < box.Vertices.Length; i++)
             {

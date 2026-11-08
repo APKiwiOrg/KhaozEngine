@@ -1,4 +1,5 @@
 using System;
+using System.Linq;
 using System.Numerics;
 using KhaozEngine.Render3D.Internal;
 using KhaozEngine.Tests.Gpu;
@@ -252,9 +253,11 @@ namespace KhaozEngine.Tests.Render3D
         public void TheEqualDepthCases_LandOnAnEqualStoredTexelThatCountsAsLit()
         {
             float[] atlas = ShadowFilterOracle.Atlas();
-            foreach (ShadowFilterCase c in ShadowFilterOracle.Cases())
+            ShadowFilterCase[] cases = ShadowFilterOracle.Cases()
+                .Where(c => c.Name.Contains("equal to stored", StringComparison.Ordinal)).ToArray();
+            Assert.NotEmpty(cases);
+            foreach (ShadowFilterCase c in cases)
             {
-                if (!c.Name.Contains("equal to stored", StringComparison.Ordinal)) continue;
                 float equal = ShadowFilterOracle.Filter(atlas, c.Cascade, c.Uv, c.Depth);
                 float above = ShadowFilterOracle.Filter(atlas, c.Cascade, c.Uv, MathF.BitIncrement(c.Depth));
                 Assert.True(equal > above, $"{c.Name}: no weighted texel holds exactly {c.Depth}.");

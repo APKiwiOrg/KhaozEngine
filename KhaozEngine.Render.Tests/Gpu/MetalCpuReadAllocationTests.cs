@@ -106,8 +106,8 @@ public sealed class MetalCpuReadAllocationTests(ITestOutputHelper output)
         f.Begin();
         long retained = f.List.RetainedVertexWindowCapacityForTests;
         output.WriteLine($"32 reachable keys and 64 instance windows retain {retained} window entries after Begin");
-        // Only one key uses disconnected windows. Allow geometric growth slack without an N x W term.
-        Assert.InRange(retained, 1L, 256L);
+        // The peak has 63 disconnected windows total, independent of the 32 reachable keys.
+        Assert.InRange(retained, 1L, 128L);
         for (uint binding = 32; binding < 64; binding++)
         {
             f.List.SetVertexBuffer(0, f.Vertices, binding * 96);
@@ -129,7 +129,8 @@ public sealed class MetalCpuReadAllocationTests(ITestOutputHelper output)
         f.Begin();
         long mixed = f.List.RetainedVertexWindowCapacityForTests;
         output.WriteLine($"One large and 31 small window keys retain {mixed} window entries after Begin");
-        Assert.InRange(mixed, 1L, 384L);
+        // The mixed recording peaks at 63 + 31 disconnected windows in the shared table.
+        Assert.InRange(mixed, 1L, 256L);
         f.List.End();
     }
 
@@ -148,17 +149,20 @@ public sealed class MetalCpuReadAllocationTests(ITestOutputHelper output)
             {
                 bool manyWindows = (binding == 0) != reverse;
                 vertices.Record(1, manyWindows ? f.Instances : f.Meshes[0], 0);
-                for (uint window = 0; window < (manyWindows ? 10u : 1u); window++)
+                for (uint window = 0; window < (manyWindows ? 3u : 2u); window++)
                     vertices.RecordReads(reads, f.Pipeline.Plan.ReadLayout, 0, 1, window * 4, 1, indexed: true);
             }
         }
         Frame(false);
         Frame(false);
         long bytes = AllocationMeasurement.Measure("warm vertex windows in reversed binding order", () => Frame(true));
+        output.WriteLine($"Reversing A={{0,4,8}} and B={{0,4}} allocated {bytes} bytes");
         Assert.Equal(0, bytes);
-        Assert.True(reads.Overlaps(new(f.Instances.CpuResource, 36 * 96, 32)));
-        Assert.False(reads.Overlaps(new(f.Instances.CpuResource, 35 * 96, 32)));
-        Assert.False(reads.Overlaps(new(f.Instances.CpuResource, 36 * 96 + 32, 64)));
+        Assert.True(reads.Overlaps(new(f.Instances.CpuResource, 8 * 96, 32)));
+        Assert.False(reads.Overlaps(new(f.Instances.CpuResource, 7 * 96, 32)));
+        Assert.False(reads.Overlaps(new(f.Instances.CpuResource, 8 * 96 + 32, 64)));
+        Assert.True(reads.Overlaps(new(f.Meshes[0].CpuResource, 4 * 96, 32)));
+        Assert.False(reads.Overlaps(new(f.Meshes[0].CpuResource, 8 * 96, 32)));
     }
 
     // #1692. Both interval indexes must reuse large, irregular recordings, not only tiny prefixes.

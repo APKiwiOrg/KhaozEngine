@@ -60,13 +60,15 @@ it reserves the resource and interval capacities observed by the preceding recor
 carried forward. Resource identities, byte ranges and protection remain with their original slot. A
 repeating scene shape therefore stays warm when its period differs from the ring depth.
 
-Vertex coverage leases window storage only after a disconnected window. A list-owned pool has geometric
-capacity classes, so a small demand cannot take a large store needed by another key later in the frame.
-Growth copies only that key's windows and returns its smaller store. Begin and footprint-generation changes
-return all leases and clear coverage. Reachable indexed streams never lease a store. Retained capacity is
-proportional to the sum of observed per-key window peaks, with geometric growth slack, rather than the global
-peak at every coverage position. Pool entries contain only ulong ranges and links, retaining no buffer or
-GPU object identity across Begin. Exact byte coverage is rebuilt independently for each recording.
+Vertex coverage records all disconnected windows in one list-owned table. Its key is a coverage-header slot
+and the first element, and its value is the maximum last element seen for that pair. The table is cleared at
+Begin and footprint-generation changes, retaining its backing capacity. It grows only when aggregate window
+demand exceeds the warmed recording peak, independently of binding order or per-key demand distribution.
+Reachable indexed streams add no window entries. Total storage is O(N + D), where N is the coverage-header
+high-water count and D is the peak total disconnected-window count of any recording, with normal dictionary
+growth slack. Only integer slots and element ranges enter the table. No buffer, GPU object or key identity
+crosses Begin. Lookup and max-end updates need no per-key enumeration or node chains. Exact byte coverage
+is rebuilt independently in the slot-owned read index and retains the same prefix/completion rules.
 
 Within a footprint, each resource has a reusable sorted append run for contiguous reads and separate AVL
 indexes for earlier contiguous reads and strided reads. Increasing uniform-ring slices append in constant

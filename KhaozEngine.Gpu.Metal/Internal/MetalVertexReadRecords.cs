@@ -21,14 +21,14 @@ internal sealed class MetalVertexReadRecords
     readonly Dictionary<MetalVertexReadLayout.Stream, int> _shapes = new();
     readonly int[] _shapeIds = new int[MetalVertexStreamRecords.MaxSlot + 1];
     readonly List<MetalVertexReadCoverage> _storage = new();
-    readonly MetalVertexWindowPool _windowPool = new();
+    readonly MetalVertexWindowTable _windowTable = new();
     MetalRecordedReads? _target;
     MetalVertexReadLayout? _layout;
     ulong _generation;
     bool _indexed;
     uint _dirty, _windowSlots;
     long _preparations;
-    internal long RetainedWindowCapacityForTests => _windowPool.RetainedCapacityForTests;
+    internal long RetainedWindowCapacityForTests => _windowTable.RetainedCapacityForTests;
 
     internal long CoverageStepsForTests
     {
@@ -100,6 +100,7 @@ internal sealed class MetalVertexReadRecords
     // Window stores are CPU recording scratch. Published prefixes own the separate exact read index.
     void ClearCoverage()
     {
+        _windowTable.Clear();
         foreach (var coverage in _coverage.Values) coverage.Clear();
         _coverage.Clear();
         _shapes.Clear();
@@ -141,7 +142,7 @@ internal sealed class MetalVertexReadRecords
             if (!_coverage.TryGetValue(key, out var coverage))
             {
                 int index = _coverage.Count;
-                if (index == _storage.Count) _storage.Add(new(_windowPool));
+                if (index == _storage.Count) _storage.Add(new(_windowTable, index));
                 coverage = _storage[index];
                 coverage.Clear();
                 _coverage.Add(key, coverage);

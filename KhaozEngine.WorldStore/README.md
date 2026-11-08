@@ -290,6 +290,19 @@ Messages are developer prose. Use the rule and its identifiers to distinguish th
 | `SchemaObjectDefinitionMismatch` | An object's definition differs from its supported shape. | `ObjectName`, `ExpectedVersion`, `RequiredMigration` |
 | `HostForeignKeyActionUnsafe` | A reset would fire a host key's delete action. | Complete ordered `HostObjects` |
 | `HostTriggerUnsafe` | A reset would fire a host trigger. | Complete ordered `HostObjects` |
+| `DefinitionUnavailable` | SQL Server cannot expose an unencrypted definition. | `ObjectName`, `RequiredPermission` (`VIEW DEFINITION`) |
+| `ApplicationLockNotGranted` | SQL Server did not grant an application lock. | `ReturnCode`, existing `Kind` distinguishes timeout, cancellation, deadlock and unavailable |
+| `SchemaMetadataShapeInvalid` | SQL Server has no readable version column. | `RequiredMigration` |
+| `SchemaColumnsMismatch` | SQL Server columns differ from the supported shape. | `ExpectedVersion`, complete sorted `MissingObjects` and `UnexpectedObjects`, `RequiredMigration` |
+| `SchemaIndexesMismatch` | SQL Server indexes differ from the supported shape. | `ExpectedVersion`, complete sorted `MissingObjects` and `UnexpectedObjects`, `RequiredMigration` |
+| `SchemaForeignKeysMismatch` | SQL Server foreign keys differ from the supported shape. | `ExpectedVersion`, complete sorted `MissingObjects` and `UnexpectedObjects`, `RequiredMigration` |
+| `SchemaChecksMismatch` | SQL Server check constraints differ from the supported shape. | `ExpectedVersion`, complete sorted `MissingObjects` and `UnexpectedObjects`, `RequiredMigration` |
+| `SchemaDefaultsMismatch` | SQL Server defaults differ from the supported shape. | `ExpectedVersion`, complete sorted `MissingObjects` and `UnexpectedObjects`, `RequiredMigration` |
+| `SchemaTriggersMismatch` | SQL Server triggers differ from the supported shape. | `ExpectedVersion`, complete sorted `MissingObjects` and `UnexpectedObjects`, `RequiredMigration` |
+| `SchemaEpochEmpty` | SQL Server metadata has an empty store epoch. | `RequiredMigration` |
+| `SchemaCancelled` | The caller cancelled SQL Server schema admission or validation. | `Stage` |
+| `SchemaProviderFailure` | SQL Server failed during schema admission or validation. | `Stage`, typed `ProviderCode`, original `InnerException` |
+| `SchemaRollbackUnconfirmed` | A failed SQL Server schema initialization could not confirm rollback. | Existing unknown kind and certainty, original `InnerException` |
 
 SQLite schema refusals name migration `sqlite-journal-v3-row-timestamps`. Unsupported versions report the supported
 version set `[3]`. Object names include their kind, such as `table:journal_stream` or
@@ -302,7 +315,18 @@ immutable arrays. A SQLite reset lists all unsafe foreign keys in provider order
 and delete action, followed by all unsafe triggers ordered by name. Its reason is the first finding's reason.
 Each `JournalHostObjectFinding` carries its own `Reason` and `ReferencedTable`. A foreign key also carries
 `HostTable` and `DeleteAction`, with `TriggerName` null. A trigger carries `TriggerName`, with `HostTable` and
-`DeleteAction` null. The complete list survives when both kinds are present.
+`DeleteAction` null. The complete list survives when both kinds are present. SQL Server key findings also carry
+`HostSchema` and `ForeignKeyName`, and are ordered by schema, host table and key name.
+
+SQL Server shares the schema missing, metadata missing, malformed version and unsupported version members and their
+identifier sets with SQLite. Its migration is `sqlserver-journal-v3-row-timestamps`. Shape-set members are distinct
+from SQLite's inventory count and per-definition checks. Each difference retains the entire compared identity,
+including types, lengths, nullability, collation, index columns, key actions, trust flags or normalized definitions.
+Version-two column differences exclude optional columns already present in their exact version-three shape.
+`SchemaVersionUnsupported.SupportedVersions` is `[3]` on version admission, or the compared version on the final
+metadata recheck. `Stage` names writer connection open, transaction begin, initialization, read-only open or
+read-only validation through `JournalOperationStage`. A cancelled provider call exposes cancellation, with no
+`ProviderCode`. A provider failure retains its original `SqlException.Number` without parsing its message.
 
 Projection limits are inclusive. If section count and bytes both exceed their limits, section count is reported
 first. Stored-row indices are zero-based. Each row's key, head and timestamps are checked before page ordering,

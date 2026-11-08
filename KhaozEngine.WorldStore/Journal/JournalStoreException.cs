@@ -117,7 +117,7 @@ public sealed class JournalStoreException : Exception
 
     /// <summary>The migration required by a schema refusal.</summary>
     public string? RequiredMigration { get; init; }
-    /// <summary>The schema object compared, qualified by its provider object kind.</summary>
+    /// <summary>The compared SQLite object qualified by kind, or the unreadable SQL Server definition name.</summary>
     public string? ObjectName { get; init; }
     /// <summary>The CLR type of a malformed non-null schema version value.</summary>
     public Type? MetadataType { get; init; }
@@ -125,6 +125,15 @@ public sealed class JournalStoreException : Exception
     public string? ActualMode { get; init; }
     /// <summary>The required persistent writer journal mode.</summary>
     public string? RequiredMode { get; init; }
+
+    /// <summary>The permission required to expose an unreadable SQL Server object definition.</summary>
+    public string? RequiredPermission { get; init; }
+    /// <summary>The SQL Server application lock's negative return code.</summary>
+    public int? ReturnCode { get; init; }
+    /// <summary>The provider error number for a schema provider failure.</summary>
+    public int? ProviderCode { get; init; }
+    /// <summary>The schema stage refused by cancellation or a provider failure.</summary>
+    public JournalOperationStage? Stage { get; init; }
 
     private readonly IReadOnlyList<long>? supportedVersions;
     /// <summary>The schema versions supported by the refusing mode, as an owned snapshot.</summary>

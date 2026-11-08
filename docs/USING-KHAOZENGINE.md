@@ -28311,7 +28311,19 @@ versions, malformed metadata type, connection journal modes, or compared object 
 `SchemaObjectInventoryMismatch` carries the complete sorted `MissingObjects` and `UnexpectedObjects` for its
 `ExpectedVersion`. Reset refusals use `HostForeignKeyActionUnsafe` or `HostTriggerUnsafe` and retain every unsafe
 key and trigger in `HostObjects`. Each finding names its rule and referenced table, with the host table and delete
-action for a key or the trigger name for a trigger. All collection identifiers are owned immutable snapshots.
+action for a key or the trigger name for a trigger. SQL Server key findings also carry `HostSchema` and
+`ForeignKeyName`. All collection identifiers are owned immutable snapshots.
+
+SQL Server schema admission reuses the missing schema, missing metadata, malformed version and unsupported version
+members with the same identifier sets. Its `RequiredMigration` is `sqlserver-journal-v3-row-timestamps`.
+`SchemaColumnsMismatch`, `SchemaIndexesMismatch`, `SchemaForeignKeysMismatch`, `SchemaChecksMismatch`,
+`SchemaDefaultsMismatch` and `SchemaTriggersMismatch` report `ExpectedVersion` and complete sorted `MissingObjects`
+and `UnexpectedObjects` retaining each compared shape. `DefinitionUnavailable` identifies the hidden or encrypted
+`ObjectName` and `RequiredPermission` (`VIEW DEFINITION`). `SchemaCancelled` reports its `Stage`.
+`SchemaProviderFailure` also carries typed `ProviderCode`, taken from the original `SqlException.Number`.
+`SchemaRollbackUnconfirmed` retains unknown outcome and certainty. `ApplicationLockNotGranted` carries `ReturnCode`,
+with the existing failure kind preserving timeout, cancellation and deadlock classification. See the
+[SQL Server refusal table](../KhaozEngine.WorldStore.SqlServer/README.md#refusals) for each rule's payload.
 
 Journal request values copy byte arrays at construction. Their existing `ReadOnlyMemory<byte>` properties also
 return defensive copies. Use the matching `ReadOnlySpan<byte>` property in a hot synchronous read, such as

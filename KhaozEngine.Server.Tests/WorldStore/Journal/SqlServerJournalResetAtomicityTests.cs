@@ -30,7 +30,8 @@ public sealed class SqlServerJournalResetAtomicityTests
             JournalResetTestSupport.Seeded seeded = await SqlServerJournalResetHarness.SeedAsync();
             await SqlServerJournalResetHostObjectTests.CreateHostTableAsync("NO ACTION", seeded.First);
             KeyValuePair<string, long>[] before = await SqlServerJournalResetHarness.CountsAsync();
-            string metadata = await SqlServerJournalResetHarness.MetadataAsync();
+            string content = await SqlServerJournalSnapshot.CaptureAsync(SqlServerJournalResetHarness.ConnectionString);
+            Assert.Equal(6, before.Length);
             Assert.All(before, table => Assert.True(table.Value > 0, $"The seed left {table.Key} empty."));
 
             JournalStoreException failed = await Assert.ThrowsAsync<JournalStoreException>(
@@ -43,7 +44,7 @@ public sealed class SqlServerJournalResetAtomicityTests
             Assert.Equal(547, provider.Number);
             Assert.Contains(SqlServerJournalResetHostObjectTests.HostTable, provider.Message, StringComparison.Ordinal);
             Assert.Equal(before, await SqlServerJournalResetHarness.CountsAsync());
-            Assert.Equal(metadata, await SqlServerJournalResetHarness.MetadataAsync());
+            Assert.Equal(content, await SqlServerJournalSnapshot.CaptureAsync(SqlServerJournalResetHarness.ConnectionString));
             Assert.Equal(1L, await SqlServerJournalResetHostObjectTests.HostRowsReferencingAsync(seeded.First));
         }
         finally

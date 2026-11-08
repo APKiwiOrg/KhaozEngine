@@ -74,6 +74,7 @@ public sealed class SqlServerMutationJournalReadOnlyTests : IDisposable
     {
         _ = new SqlServerMutationJournalStore(DedicatedConnectionString);
         string before = await SqlServerJournalFingerprint.CaptureAsync(DedicatedConnectionString, "journal-test/none/");
+        string contentBefore = await SqlServerJournalSnapshot.CaptureAsync(DedicatedConnectionString);
         var hook = new SqlServerJournalSchemaTestHook(async (connection, transaction, cancellationToken) =>
         {
             foreach (string table in TablesInDropOrder)
@@ -87,9 +88,10 @@ public sealed class SqlServerMutationJournalReadOnlyTests : IDisposable
 
         JournalStoreException exception = Assert.Throws<JournalStoreException>(() => OpenReadOnly(hook));
 
-        AssertSchemaRefusal(exception);
-        Assert.Contains("missing", exception.Message, StringComparison.Ordinal);
+        AssertSchemaRefusal(exception, JournalStoreRefusal.SchemaMissing);
         Assert.Equal(before, await SqlServerJournalFingerprint.CaptureAsync(DedicatedConnectionString, "journal-test/none/"));
+        Assert.Equal(contentBefore, await SqlServerJournalSnapshot.CaptureAsync(DedicatedConnectionString));
+        _ = new SqlServerMutationJournalStore(new SqlServerMutationJournalStoreOptions(DedicatedConnectionString) { SchemaMode = SqlServerJournalSchemaMode.ReadOnly });
     }
 
     [SqlServerFact]
@@ -97,6 +99,7 @@ public sealed class SqlServerMutationJournalReadOnlyTests : IDisposable
     {
         _ = new SqlServerMutationJournalStore(DedicatedConnectionString);
         string before = await SqlServerJournalFingerprint.CaptureAsync(DedicatedConnectionString, "journal-test/none/");
+        string contentBefore = await SqlServerJournalSnapshot.CaptureAsync(DedicatedConnectionString);
         short isolationLevel = 0;
         string applicationLock = string.Empty;
         var hook = new SqlServerJournalSchemaTestHook(async (connection, transaction, cancellationToken) =>
@@ -117,11 +120,14 @@ public sealed class SqlServerMutationJournalReadOnlyTests : IDisposable
 
         JournalStoreException exception = Assert.Throws<JournalStoreException>(() => OpenReadOnly(hook));
 
-        AssertSchemaRefusal(exception);
-        Assert.Contains("unsupported version '1'", exception.Message, StringComparison.Ordinal);
+        AssertSchemaRefusal(exception, JournalStoreRefusal.SchemaVersionUnsupported);
+        Assert.Equal(1L, exception.ActualVersion);
+        Assert.Equal(new long[] { 3 }, exception.SupportedVersions);
         Assert.Equal((short)2, isolationLevel);
         Assert.Equal("NoLock", applicationLock);
         Assert.Equal(before, await SqlServerJournalFingerprint.CaptureAsync(DedicatedConnectionString, "journal-test/none/"));
+        Assert.Equal(contentBefore, await SqlServerJournalSnapshot.CaptureAsync(DedicatedConnectionString));
+        _ = new SqlServerMutationJournalStore(new SqlServerMutationJournalStoreOptions(DedicatedConnectionString) { SchemaMode = SqlServerJournalSchemaMode.ReadOnly });
     }
 
     [SqlServerFact]
@@ -168,6 +174,8 @@ public sealed class SqlServerMutationJournalReadOnlyTests : IDisposable
                 await Task.WhenAny(opening, Task.Delay(WaiterBound)) == opening,
                 "The cancelled read only validation kept waiting on its command.");
             JournalStoreException exception = await Assert.ThrowsAsync<JournalStoreException>(() => opening);
+            Assert.Equal(JournalStoreRefusal.SchemaCancelled, exception.Reason);
+            Assert.Equal(JournalOperationStage.SchemaReadOnlyValidation, exception.Stage);
             Assert.Equal(JournalStoreFailureKind.Cancelled, exception.Kind);
             Assert.Equal(JournalStoreFailureCertainty.DefinitelyNotCommitted, exception.Certainty);
             Assert.Equal(JournalStoreFailureScope.WholeStore, exception.Scope);
@@ -253,12 +261,13 @@ public sealed class SqlServerMutationJournalReadOnlyTests : IDisposable
         await Assert.ThrowsAsync<NotSupportedException>(write);
     }
 
-    private static void AssertSchemaRefusal(JournalStoreException exception)
+    private static void AssertSchemaRefusal(JournalStoreException exception, JournalStoreRefusal reason)
     {
         Assert.Equal(JournalStoreFailureKind.SchemaMismatch, exception.Kind);
         Assert.Equal(JournalStoreFailureCertainty.DefinitelyNotCommitted, exception.Certainty);
         Assert.Equal(JournalStoreFailureScope.WholeStore, exception.Scope);
-        Assert.Contains(SqlServerJournalSchema.RequiredMigration, exception.Message, StringComparison.Ordinal);
+        Assert.Equal(reason, exception.Reason);
+        Assert.Equal("sqlserver-journal-v3-row-timestamps", exception.RequiredMigration);
     }
 
     private static JournalOperationIdentity Identity(int suffix)

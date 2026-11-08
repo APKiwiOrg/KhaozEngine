@@ -204,6 +204,8 @@ public sealed partial class SqlServerMutationJournalFailureTests : IDisposable
     {
         JournalStoreException mapped = SqlServerMutationJournalStore.MapApplicationLockFailureForTest(returnCode);
 
+        Assert.Equal(JournalStoreRefusal.ApplicationLockNotGranted, mapped.Reason);
+        Assert.Equal(returnCode, mapped.ReturnCode);
         Assert.Equal(expectedKind, mapped.Kind);
         Assert.Equal(JournalStoreFailureCertainty.DefinitelyNotCommitted, mapped.Certainty);
         Assert.Equal(JournalStoreFailureScope.WholeStore, mapped.Scope);
@@ -366,6 +368,8 @@ public sealed partial class SqlServerMutationJournalFailureTests : IDisposable
 
     private async Task RejectsTransactionalMalformedSchemaWithoutPersistingDdl(SqlServerJournalSchemaMode mode)
     {
+        _ = new SqlServerMutationJournalStore(DedicatedConnectionString);
+        string before = await SqlServerJournalSnapshot.CaptureAsync(DedicatedConnectionString);
         var hook = new SqlServerJournalSchemaTestHook(async (connection, transaction, cancellationToken) =>
         {
             await using SqlCommand command = connection.CreateCommand();
@@ -380,10 +384,17 @@ public sealed partial class SqlServerMutationJournalFailureTests : IDisposable
             schemaTestHook: hook));
 
         Assert.Equal(JournalStoreFailureKind.SchemaMismatch, exception.Kind);
-        Assert.Contains(SqlServerJournalSchema.RequiredMigration, exception.Message, StringComparison.Ordinal);
+        Assert.Equal(JournalStoreRefusal.SchemaIndexesMismatch, exception.Reason);
+        Assert.Equal(3L, exception.ExpectedVersion);
+        Assert.Equal(new[] { "journal_projection.ix_journal_projection_version|False|False|NONCLUSTERED|1|stream_key|False|False",
+            "journal_projection.ix_journal_projection_version|False|False|NONCLUSTERED|2|source_version|False|False" }, exception.MissingObjects);
+        Assert.Empty(exception.UnexpectedObjects!);
+        Assert.Equal("sqlserver-journal-v3-row-timestamps", exception.RequiredMigration);
         Assert.True(await SqlServerJournalTestDatabase.IndexExistsAsync(
             DedicatedConnectionString,
             "ix_journal_projection_version"));
+        Assert.Equal(before, await SqlServerJournalSnapshot.CaptureAsync(DedicatedConnectionString));
+        _ = new SqlServerMutationJournalStore(new SqlServerMutationJournalStoreOptions(DedicatedConnectionString) { SchemaMode = mode });
     }
 
     private async Task InjectedStatementBoundaryFailureRollsBackAllMutationRows(JournalTestHookPhase failurePhase)

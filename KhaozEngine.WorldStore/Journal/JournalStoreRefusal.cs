@@ -53,4 +53,30 @@ public enum JournalStoreRefusal
     SchemaVersionMalformed,
     /// <summary>The declared schema version is unsupported by the refusing mode.</summary>
     SchemaVersionUnsupported,
+    /// <summary>SQL Server cannot expose an unencrypted schema object definition.</summary>
+    DefinitionUnavailable,
+    /// <summary>The SQL Server application lock was not granted.</summary>
+    ApplicationLockNotGranted,
+    /// <summary>The schema version column is missing or malformed.</summary>
+    SchemaMetadataShapeInvalid,
+    /// <summary>The SQL Server column set differs from the supported shape.</summary>
+    SchemaColumnsMismatch,
+    /// <summary>The SQL Server index set differs from the supported shape.</summary>
+    SchemaIndexesMismatch,
+    /// <summary>The SQL Server foreign key set differs from the supported shape.</summary>
+    SchemaForeignKeysMismatch,
+    /// <summary>The SQL Server check constraint set differs from the supported shape.</summary>
+    SchemaChecksMismatch,
+    /// <summary>The SQL Server default constraint set differs from the supported shape.</summary>
+    SchemaDefaultsMismatch,
+    /// <summary>The SQL Server trigger set differs from the supported shape.</summary>
+    SchemaTriggersMismatch,
+    /// <summary>The SQL Server metadata contains an empty store epoch.</summary>
+    SchemaEpochEmpty,
+    /// <summary>The caller cancelled schema admission or validation.</summary>
+    SchemaCancelled,
+    /// <summary>The SQL Server provider failed during schema admission or validation.</summary>
+    SchemaProviderFailure,
+    /// <summary>A failed schema initialization could not confirm its rollback.</summary>
+    SchemaRollbackUnconfirmed,
 }

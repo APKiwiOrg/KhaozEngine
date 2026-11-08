@@ -61,6 +61,14 @@ internal static class RendererPerfRecipeSettings
                         property.ShouldSerialize = static (_, field) => field is not null;
                 return;
             }
+            // A new atmosphere default preserves the frozen encoding. An explicit sample count remains an authored input.
+            if (info.Type == typeof(AtmosphereSettings))
+            {
+                foreach (var property in info.Properties)
+                    if (property.Name == nameof(AtmosphereSettings.AerialShadowSamples))
+                        property.ShouldSerialize = static (_, field) => field is int samples && samples != 8;
+                return;
+            }
             if (info.Type != typeof(PixelPostProcessSettings)) return;
             foreach (var property in info.Properties)
                 if (property.Name is nameof(PixelPostProcessSettings.IndirectDiffuse)

@@ -10,6 +10,24 @@ namespace KhaozEngine.Tests.WorldStore.Journal;
 public sealed class JournalValueOwnershipTests
 {
     [Fact]
+    public void Refusal_stream_keys_are_owned_sorted_read_only_snapshots()
+    {
+        string[] source = ["player/b", "player/a"];
+        var error = new JournalStoreException(JournalStoreFailureKind.Unavailable,
+            JournalStoreFailureCertainty.DefinitelyNotCommitted, JournalStoreFailureScope.OperationStreams,
+            source, "refused");
+        source[0] = "changed";
+
+        Assert.Equal(new[] { "player/a", "player/b" }, error.StreamKeys);
+        Assert.Throws<NotSupportedException>(() => ((IList<string>)error.StreamKeys)[0] = "changed");
+        Assert.Throws<NotSupportedException>(() => ((System.Collections.ICollection)error.StreamKeys).SyncRoot);
+        var wholeStore = new JournalStoreException(JournalStoreFailureKind.Unavailable,
+            JournalStoreFailureCertainty.DefinitelyNotCommitted, JournalStoreFailureScope.WholeStore, null, "refused");
+        Assert.Empty(wholeStore.StreamKeys);
+        Assert.Throws<NotSupportedException>(() => ((System.Collections.ICollection)wholeStore.StreamKeys).SyncRoot);
+    }
+
+    [Fact]
     public void Public_byte_accessors_do_not_expose_mutable_backing_arrays()
     {
         var identity = new JournalOperationIdentity(Guid.NewGuid(), "scope", "action", new byte[] { 1 });

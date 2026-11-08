@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Collections.Immutable;
 
 namespace KhaozEngine.Accounts.SqlServer;
 
@@ -49,6 +50,6 @@ public sealed class AccountSchemaException : InvalidOperationException
     public IReadOnlyList<AccountSchemaFinding>? Findings
     {
         get => findings;
-        init => findings = value is null ? null : Array.AsReadOnly<AccountSchemaFinding>([.. value]);
+        init => findings = value is null ? null : ImmutableArray.CreateRange(value);
     }
 }

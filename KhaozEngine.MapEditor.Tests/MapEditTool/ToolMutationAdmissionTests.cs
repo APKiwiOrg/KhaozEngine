@@ -192,9 +192,17 @@ public sealed class ToolMutationAdmissionTests
         var first = new MapDocumentFinding(MapDocumentRefusal.ReferenceMissing, "finding") { EntityId = "first" };
         var source = new List<MapDocumentFinding> { first };
         var error = new MapMutationException(first.Reason, "refusal") { Findings = source };
+        string[] accepted = ["add", "remove"];
+        var argument = new MapMutationArgumentException(MapDocumentRefusal.SchemaEnumUnsupported, "refused")
+        { AcceptedValues = accepted };
+        accepted[0] = "changed";
         source.Clear();
+        Assert.Equal(new[] { "add", "remove" }, argument.AcceptedValues);
+        Assert.Throws<NotSupportedException>(() => ((IList<string>)argument.AcceptedValues!)[0] = "changed");
+        Assert.Throws<NotSupportedException>(() => ((System.Collections.ICollection)argument.AcceptedValues!).SyncRoot);
         Assert.Same(first, Assert.Single(error.Findings!));
         Assert.Throws<NotSupportedException>(() => ((IList<MapDocumentFinding>)error.Findings!).Clear());
+        Assert.Throws<NotSupportedException>(() => ((System.Collections.ICollection)error.Findings!).SyncRoot);
     }
 
     [Fact]

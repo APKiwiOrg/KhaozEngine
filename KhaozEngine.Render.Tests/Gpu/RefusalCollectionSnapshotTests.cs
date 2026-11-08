@@ -27,7 +27,9 @@ public sealed class RefusalCollectionSnapshotTests
         Assert.Throws<InvalidCastException>(() => (string[])refusal.CandidateNames!);
         Assert.Throws<InvalidCastException>(() => (string?[])refusal.CandidateRejections!);
         Assert.Throws<NotSupportedException>(() => ((IList<string>)refusal.CandidateNames!)[0] = "changed");
+        Assert.Throws<NotSupportedException>(() => ((System.Collections.ICollection)refusal.CandidateNames!).SyncRoot);
         Assert.Throws<NotSupportedException>(() => ((IList<string?>)refusal.CandidateRejections!)[0] = "changed");
+        Assert.Throws<NotSupportedException>(() => ((System.Collections.ICollection)refusal.CandidateRejections!).SyncRoot);
         var absent = new VulkanBackendCreationStateException(VulkanBackendCreationRefusal.PhysicalDevicesMissing, "refused")
         {
             CandidateNames = null,
@@ -50,6 +52,7 @@ public sealed class RefusalCollectionSnapshotTests
         Assert.Equal(new[] { "ShaderSources.Shadow.cs", "ShaderSources.Terrain.cs" }, refusal.RepairSourcePaths);
         Assert.Throws<InvalidCastException>(() => (string[])refusal.RepairSourcePaths!);
         Assert.Throws<NotSupportedException>(() => ((IList<string>)refusal.RepairSourcePaths!)[0] = "changed");
+        Assert.Throws<NotSupportedException>(() => ((System.Collections.ICollection)refusal.RepairSourcePaths!).SyncRoot);
         Assert.Null(new ShaderValidationException("consumer") { RepairSourcePaths = null }.RepairSourcePaths);
     }
 }

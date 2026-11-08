@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Collections.Immutable;
 
 namespace KhaozEngine.NetWorld;
 
@@ -27,12 +28,13 @@ public sealed class AmbiguousCellBlobGenerationException : InvalidOperationExcep
                "CellBlobMigrationOptions.AssumedWireGeneration) to the generation this save was written at.")
     {
         SchemaLabel = schemaLabel;
-        CandidateGenerations = candidateGenerations ?? Array.Empty<int>();
+        CandidateGenerations = ImmutableArray.CreateRange(candidateGenerations ?? Array.Empty<int>());
     }
 
     /// <summary>The schema the body was being read as, in the same words the migration reports elsewhere.</summary>
     public string SchemaLabel { get; }
 
-    /// <summary>Every wire generation the body walked cleanly at, ascending. Two or more, by construction.</summary>
+    /// <summary>Every wire generation the body walked cleanly at, ascending, as an owned read-only snapshot.
+    /// Two or more, by construction.</summary>
     public IReadOnlyList<int> CandidateGenerations { get; }
 }

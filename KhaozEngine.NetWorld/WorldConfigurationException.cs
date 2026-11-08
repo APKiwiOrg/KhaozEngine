@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Collections.Immutable;
 using System.Numerics;
 
 namespace KhaozEngine.NetWorld;
@@ -36,6 +37,6 @@ public sealed class WorldConfigurationException : ArgumentException
     public IReadOnlyList<string>? IncompatibleMembers
     {
         get => incompatibleMembers;
-        init => incompatibleMembers = value is null ? null : Array.AsReadOnly<string>([.. value]);
+        init => incompatibleMembers = value is null ? null : ImmutableArray.CreateRange(value);
     }
 }

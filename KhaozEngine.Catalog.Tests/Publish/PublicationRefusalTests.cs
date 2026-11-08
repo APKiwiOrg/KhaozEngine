@@ -180,11 +180,23 @@ public sealed class PublicationRefusalTests
         foreach (ContentAuthoringException error in new[] { legacy, typed })
         {
             Assert.Equal("KEC0002", Assert.Single(error.Findings).Code);
+            Assert.Throws<NotSupportedException>(() => ((System.Collections.ICollection)error.Findings!).SyncRoot);
             if (error.Findings is IList<ContentFinding> mutable)
             {
                 Assert.Throws<NotSupportedException>(() => mutable.Clear());
             }
         }
+    }
+
+    [Fact]
+    public void SupportedFormatVersionsAreAnOwnedReadOnlySnapshot()
+    {
+        int[] source = [1, 2];
+        var error = new ContentAuthoringException("refused") { SupportedFormatVersions = source };
+        source[0] = 3;
+        Assert.Equal(new[] { 1, 2 }, error.SupportedFormatVersions);
+        Assert.Throws<NotSupportedException>(() => ((IList<int>)error.SupportedFormatVersions!)[0] = 3);
+        Assert.Throws<NotSupportedException>(() => ((System.Collections.ICollection)error.SupportedFormatVersions!).SyncRoot);
     }
 
     static ContentPublishBaseline Baseline() => new(1, [new ContentRowRevision(

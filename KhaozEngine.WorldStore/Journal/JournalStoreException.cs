@@ -1,6 +1,6 @@
 using System;
 using System.Collections.Generic;
-using System.Collections.ObjectModel;
+using System.Collections.Immutable;
 
 namespace KhaozEngine.WorldStore.Journal;
 
@@ -31,7 +31,7 @@ public enum JournalStoreFailureScope
 
 public sealed class JournalStoreException : Exception
 {
-    private readonly ReadOnlyCollection<string> streamKeys;
+    private readonly IReadOnlyList<string> streamKeys;
 
     public JournalStoreException(
         JournalStoreFailureKind kind,
@@ -51,7 +51,7 @@ public sealed class JournalStoreException : Exception
         Kind = kind;
         Certainty = certainty;
         Scope = scope;
-        this.streamKeys = Array.AsReadOnly(copy);
+        this.streamKeys = ImmutableArray.CreateRange(copy);
     }
 
     public JournalStoreFailureKind Kind { get; }

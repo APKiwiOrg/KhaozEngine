@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Collections.Immutable;
 using System.Text.Json;
 
 namespace KhaozEngine.MapDoc.Foliage;
@@ -55,7 +56,7 @@ public sealed class MapFoliageJsonException : JsonException
     public IReadOnlyList<int>? SupportedVersions
     {
         get => _supportedVersions;
-        init => _supportedVersions = value is null ? null : Array.AsReadOnly<int>([.. value]);
+        init => _supportedVersions = value is null ? null : ImmutableArray.CreateRange(value);
     }
 
     // The original document refusal stays in the cause chain, so the document reader uses its

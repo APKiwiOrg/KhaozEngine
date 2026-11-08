@@ -359,6 +359,7 @@ public class ContentTypeRegistryTests
     {
         Assert.NotNull(fields);
         Assert.Equal(new[] { "sort" }, fields);
+        Assert.Throws<NotSupportedException>(() => ((System.Collections.ICollection)fields!).SyncRoot);
         if (fields is IList<string> mutable)
         {
             Assert.Throws<NotSupportedException>(() => mutable[0] = "changed");

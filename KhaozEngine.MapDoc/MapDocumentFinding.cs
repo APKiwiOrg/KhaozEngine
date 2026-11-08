@@ -1,6 +1,7 @@
 using System;
 using KhaozEngine.MapDoc.Editing;
 using System.Collections.Generic;
+using System.Collections.Immutable;
 using KhaozEngine.MapDoc.Foliage;
 using KhaozEngine.MapDoc.Assets;
 using KhaozEngine.MapDoc.Prefabs;
@@ -291,14 +292,14 @@ public sealed record MapDocumentFinding(MapDocumentRefusal Reason, string Messag
     public IReadOnlyList<string>? ResourceIds
     {
         get => _resourceIds;
-        init => _resourceIds = value is null ? null : Array.AsReadOnly<string>([.. value]);
+        init => _resourceIds = value is null ? null : ImmutableArray.CreateRange(value);
     }
 
     /// <summary>The expected verified root resource identities, as an owned read-only snapshot in closure order.</summary>
     public IReadOnlyList<string>? ExpectedResourceIds
     {
         get => _expectedResourceIds;
-        init => _expectedResourceIds = value is null ? null : Array.AsReadOnly<string>([.. value]);
+        init => _expectedResourceIds = value is null ? null : ImmutableArray.CreateRange(value);
     }
 
     /// <summary>The source identities associated with the refusal, as an owned read-only snapshot in producer
@@ -306,28 +307,28 @@ public sealed record MapDocumentFinding(MapDocumentRefusal Reason, string Messag
     public IReadOnlyList<string>? SourceIds
     {
         get => _sourceIds;
-        init => _sourceIds = value is null ? null : Array.AsReadOnly<string>([.. value]);
+        init => _sourceIds = value is null ? null : ImmutableArray.CreateRange(value);
     }
 
     /// <summary>The authored parent space identities, copied as an owned read-only snapshot in discovery order.</summary>
     public IReadOnlyList<string>? SpaceIds
     {
         get => _spaceIds;
-        init => _spaceIds = value is null ? null : Array.AsReadOnly<string>([.. value]);
+        init => _spaceIds = value is null ? null : ImmutableArray.CreateRange(value);
     }
 
     /// <summary>The colliding marker IDs in ordinal order, as an owned read-only snapshot.</summary>
     public IReadOnlyList<string>? MarkerIds
     {
         get => _markerIds;
-        init => _markerIds = value is null ? null : Array.AsReadOnly<string>([.. value]);
+        init => _markerIds = value is null ? null : ImmutableArray.CreateRange(value);
     }
 
     /// <summary>The supported payload versions, as an owned read-only snapshot.</summary>
     public IReadOnlyList<int>? SupportedVersions
     {
         get => _supportedVersions;
-        init => _supportedVersions = value is null ? null : Array.AsReadOnly<int>([.. value]);
+        init => _supportedVersions = value is null ? null : ImmutableArray.CreateRange(value);
     }
 
     /// <summary>Projects an atomic typed refusal without inventing a reason for a legacy failure.</summary>

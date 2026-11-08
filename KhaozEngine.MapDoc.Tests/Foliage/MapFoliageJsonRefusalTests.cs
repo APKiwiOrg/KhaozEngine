@@ -163,8 +163,11 @@ public sealed class MapFoliageJsonRefusalTests
         Assert.Equal(new[] { 1 }, error.SupportedVersions);
         Assert.Equal(new[] { 1 }, json.SupportedVersions);
         Assert.Equal(new[] { 1 }, finding.SupportedVersions);
+        Assert.Throws<NotSupportedException>(() => ((System.Collections.ICollection)error.SupportedVersions!).SyncRoot);
         if (error.SupportedVersions is IList<int> list) Assert.Throws<NotSupportedException>(() => list[0] = 3);
+        Assert.Throws<NotSupportedException>(() => ((System.Collections.ICollection)json.SupportedVersions!).SyncRoot);
         if (json.SupportedVersions is IList<int> jsonList) Assert.Throws<NotSupportedException>(() => jsonList[0] = 3);
+        Assert.Throws<NotSupportedException>(() => ((System.Collections.ICollection)finding.SupportedVersions!).SyncRoot);
         if (finding.SupportedVersions is IList<int> findingList) Assert.Throws<NotSupportedException>(() => findingList[0] = 3);
     }
 

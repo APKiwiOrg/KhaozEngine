@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Collections.Immutable;
 
 namespace KhaozEngine.Gpu;
 
@@ -58,7 +59,7 @@ public sealed class ShaderValidationException : Exception
     public IReadOnlyList<string>? RepairSourcePaths
     {
         get => _repairSourcePaths;
-        init => _repairSourcePaths = value is null ? null : Array.AsReadOnly<string>([.. value]);
+        init => _repairSourcePaths = value is null ? null : ImmutableArray.CreateRange(value);
     }
 
     /// <summary>The set identifying this refusal, when applicable.</summary>

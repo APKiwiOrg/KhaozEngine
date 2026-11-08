@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Collections.Immutable;
 using System.Text.Json;
 
 namespace KhaozEngine.Catalog.Authoring;
@@ -278,7 +279,7 @@ public sealed class ContentAuthoringException : Exception
         : this(message, type, id, reason)
     {
         ArgumentNullException.ThrowIfNull(findings);
-        Findings = Array.AsReadOnly(new List<ContentFinding>(findings).ToArray());
+        Findings = ImmutableArray.CreateRange(findings);
     }
 
     /// <summary>Creates the exception carrying the exact rule it refused beside the legacy reason token.</summary>
@@ -373,7 +374,7 @@ public sealed class ContentAuthoringException : Exception
     public IReadOnlyList<int>? SupportedFormatVersions
     {
         get => _supportedFormatVersions;
-        init => _supportedFormatVersions = value is null ? null : Array.AsReadOnly<int>([.. value]);
+        init => _supportedFormatVersions = value is null ? null : ImmutableArray.CreateRange(value);
     }
 
     /// <summary>The schema field name the refused entry declares, or null.</summary>
@@ -610,5 +611,5 @@ public sealed class ContentAuthoringException : Exception
     /// validator and a rollback blocked by a retire both carry theirs here, so the API boundary renders one
     /// body shape whichever refused.
     /// </summary>
-    public IReadOnlyList<ContentFinding> Findings { get; } = [];
+    public IReadOnlyList<ContentFinding> Findings { get; } = ImmutableArray<ContentFinding>.Empty;
 }

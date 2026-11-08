@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Collections.Immutable;
 using KhaozEngine.MapDoc;
 
 namespace KhaozEngine.MapEdit;
@@ -30,6 +31,6 @@ public sealed class MapMutationArgumentException : ArgumentException
     public IReadOnlyList<string>? AcceptedValues
     {
         get => _acceptedValues;
-        init => _acceptedValues = value is null ? null : Array.AsReadOnly<string>([.. value]);
+        init => _acceptedValues = value is null ? null : ImmutableArray.CreateRange(value);
     }
 }

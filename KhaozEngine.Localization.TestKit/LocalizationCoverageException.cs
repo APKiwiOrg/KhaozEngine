@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Collections.Immutable;
 
 namespace KhaozEngine.Localization.TestKit;
 
@@ -50,6 +51,6 @@ public sealed class LocalizationCoverageException : Exception
     public IReadOnlyList<LocalizationCoverageFinding>? Findings
     {
         get => findings;
-        init => findings = value is null ? null : Array.AsReadOnly<LocalizationCoverageFinding>([.. value]);
+        init => findings = value is null ? null : ImmutableArray.CreateRange(value);
     }
 }

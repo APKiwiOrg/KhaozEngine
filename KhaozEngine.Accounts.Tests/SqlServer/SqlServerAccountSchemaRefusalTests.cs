@@ -1,4 +1,6 @@
 using System;
+using System.Collections;
+using System.Collections.Immutable;
 using System.Collections.Generic;
 using System.Linq;
 using KhaozEngine.Accounts;
@@ -194,6 +196,19 @@ public sealed class SqlServerAccountSchemaRefusalTests
     }
 
     [Fact]
+    public void ImmutableArraySnapshots_RejectWritesAndSyncRootStorageAccess()
+    {
+        int[] source = [1, 2];
+        IReadOnlyList<int> snapshot = ImmutableArray.CreateRange(source);
+        source[0] = 3;
+
+        Assert.Equal(new[] { 1, 2 }, snapshot);
+        Assert.Throws<NotSupportedException>(() => ((IList<int>)snapshot)[0] = 3);
+        Assert.Throws<NotSupportedException>(() => ((ICollection)snapshot).SyncRoot);
+        Assert.Equal(new[] { 1, 2 }, snapshot);
+    }
+
+    [Fact]
     public void TheFindings_AreASnapshotNoCallerCanChange()
     {
         var source = new List<AccountSchemaFinding>
@@ -206,5 +221,6 @@ public sealed class SqlServerAccountSchemaRefusalTests
 
         Assert.Equal("subject", Assert.Single(refusal.Findings!).ColumnName);
         Assert.Throws<NotSupportedException>(() => ((IList<AccountSchemaFinding>)refusal.Findings!).Clear());
+        Assert.Throws<NotSupportedException>(() => ((ICollection)refusal.Findings!).SyncRoot);
     }
 }

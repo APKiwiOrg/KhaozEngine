@@ -44,7 +44,9 @@ public sealed class MapFoliageWorldTests
             MapBuiltWorld bare = Build(new(Without(fixture.Document), fixture.Assets));
             Assert.Equal((beforeStatics, beforeNavCapture, beforeWorldBounds), (Statics(bare), NavCapture(bare), bare.Bounds));
             Assert.True(before.Bounds.MaxY < BeaconY, $"{name}: {before.Bounds}");
-            Assert.All(MapNavTiling.Partition(before, Grids(before), Nav),
+            var tiles = MapNavTiling.Partition(before, Grids(before), Nav);
+            Assert.NotEmpty(tiles);
+            Assert.All(tiles,
                 tile => Assert.True(tile.Bounds.MaxY < BeaconY && tile.CaptureBounds.MaxY < BeaconY));
 
             MapFoliageLayer target = fixture.Document.Foliage!.Layers.Single(l => l.Id == layerId);
@@ -85,11 +87,14 @@ public sealed class MapFoliageWorldTests
             // world without foliage meets, and every explicit placement keeps its own pick.
             var queries = new MapWorldQueries(before);
             var bareQueries = new MapWorldQueries(bare);
-            foreach (MapFoliageSample sample in Batches(fixture).SelectMany(b => b.Samples))
+            var samples = Batches(fixture).SelectMany(b => b.Samples).ToArray();
+            Assert.NotEmpty(samples);
+            foreach (MapFoliageSample sample in samples)
             {
                 var ray = new MapPickRay(sample.Position + new Vector3(0, 0.5f, 0), -Vector3.UnitY, 1);
                 Assert.Equal(bareQueries.Pick(ray)?.PlacementId, queries.Pick(ray)?.PlacementId);
             }
+            if (fixture.Document.Placements.Count > 0) Assert.NotEmpty(before.Placements);
             foreach (MapPlacementGeometry placement in before.Placements)
             {
                 MapBox3 envelope = placement.Envelope.Bounds;
@@ -126,7 +131,9 @@ public sealed class MapFoliageWorldTests
             Assert.Single(worlds.Select(NavCapture).Distinct());
             string[] foliage = heads.Select(h => Canonical(Batches(h))).ToArray();
             Assert.Single(foliage.Distinct());
-            foreach (MapFoliageSampleBatch batch in Batches(heads[3]))
+            var batches = Batches(heads[3]);
+            Assert.NotEmpty(batches);
+            foreach (MapFoliageSampleBatch batch in batches)
             {
                 Assert.Equal(MapFoliageStatus.Complete, batch.Status);
                 Assert.NotEmpty(batch.Samples);

@@ -1218,9 +1218,12 @@ every recorded read per draw or disjoint write, avoiding quadratic frame work in
 (#1692). Warmed node storage is reused without steady-frame allocation. At recording begin, a ring slot
 inherits the previous slot's observed storage capacities without copying its resources or read ranges.
 This keeps repeating scene shapes warm even when their period differs from the ring depth. Protected
-prefix footprints stay slot-owned and immutable until final completion. Retained vertex coverage positions
-also share observed disconnected-window capacity at reset or footprint-generation changes. Binding-order
-changes reuse that capacity without copying coverage or making skipped elements immutable.
+prefix footprints stay slot-owned and immutable until final completion. Vertex coverage leases a window
+store only when it records a disconnected window. Stores grow through geometric capacity classes and
+return to a list-owned pool at Begin or footprint-generation changes. Reachable indexed streams lease no
+window store. Retained capacity follows the sum of window-using keys' observed peaks, rather than a global
+peak multiplied by every coverage key. The pool holds only element ranges and links, with no buffer or GPU
+object identity. Reordered bindings reuse capacity without copying coverage or making skipped elements immutable.
 [Frame submission](../docs/METAL-FRAME-SUBMISSION.md) owns the lifetime and write-path details.
 
 ## Three decisions worth knowing before reading the code

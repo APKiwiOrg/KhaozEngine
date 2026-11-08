@@ -58,10 +58,15 @@ never chooses a fresh footprint from a shared pool. Frame records are stored by 
 and mapping lease lists return to a pool after the outermost unmap. Before clearing the reclaimed slot,
 it reserves the resource and interval capacities observed by the preceding recording. Only capacity is
 carried forward. Resource identities, byte ranges and protection remain with their original slot. A
-repeating scene shape therefore stays warm when its period differs from the ring depth. Retained vertex
-coverage positions likewise reserve the observed disconnected-window capacity at reset or generation
-changes, so a different buffer binding order does not allocate for already warmed windows. Their exact
-byte coverage is still cleared and rebuilt for each recording.
+repeating scene shape therefore stays warm when its period differs from the ring depth.
+
+Vertex coverage leases window storage only after a disconnected window. A list-owned pool has geometric
+capacity classes, so a small demand cannot take a large store needed by another key later in the frame.
+Growth copies only that key's windows and returns its smaller store. Begin and footprint-generation changes
+return all leases and clear coverage. Reachable indexed streams never lease a store. Retained capacity is
+proportional to the sum of observed per-key window peaks, with geometric growth slack, rather than the global
+peak at every coverage position. Pool entries contain only ulong ranges and links, retaining no buffer or
+GPU object identity across Begin. Exact byte coverage is rebuilt independently for each recording.
 
 Within a footprint, each resource has a reusable sorted append run for contiguous reads and separate AVL
 indexes for earlier contiguous reads and strided reads. Increasing uniform-ring slices append in constant

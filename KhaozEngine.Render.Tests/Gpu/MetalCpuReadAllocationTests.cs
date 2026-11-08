@@ -85,6 +85,54 @@ public sealed class MetalCpuReadAllocationTests(ITestOutputHelper output)
         Assert.False(reads.Overlaps(new(f.InstanceStreams[2].CpuResource, 628 * 96, 192)));
     }
 
+    // #1696. Reachable vertex keys must not multiply an unrelated instance-window peak.
+    [Fact]
+    public void ReachableVertexBindingsRetainOnlyTheObservedInstanceWindowDemand()
+    {
+        using var f = new MetalReadFootprintDrawFixture(draws: 64);
+        f.Begin();
+        for (uint binding = 0; binding < 32; binding++)
+        {
+            f.List.SetVertexBuffer(0, f.Vertices, binding * 96);
+            f.List.DrawIndexed(3, 1, 0, 0, 0);
+        }
+        for (uint window = 1; window < 64; window++)
+            f.List.DrawIndexed(3, 1, 0, 0, window * 4);
+        Assert.True(f.List.ReadOverlapsForTests(new(f.Instances.CpuResource, 252 * 96, 32)));
+        Assert.False(f.List.ReadOverlapsForTests(new(f.Instances.CpuResource, 251 * 96, 32)));
+        Assert.False(f.List.ReadOverlapsForTests(new(f.Instances.CpuResource, 252 * 96 + 32, 64)));
+        f.List.End();
+
+        f.Begin();
+        long retained = f.List.RetainedVertexWindowCapacityForTests;
+        output.WriteLine($"32 reachable keys and 64 instance windows retain {retained} window entries after Begin");
+        // Only one key uses disconnected windows. Allow geometric growth slack without an N x W term.
+        Assert.InRange(retained, 1L, 256L);
+        for (uint binding = 32; binding < 64; binding++)
+        {
+            f.List.SetVertexBuffer(0, f.Vertices, binding * 96);
+            f.List.DrawIndexed(3, 1, 0, 0, 0);
+        }
+        f.List.End();
+        f.Begin();
+        Assert.Equal(retained, f.List.RetainedVertexWindowCapacityForTests);
+        for (uint binding = 0; binding < 32; binding++)
+        {
+            f.List.SetVertexBuffer(1, f.Instances, binding * 32);
+            f.List.DrawIndexed(3, 1, 0, 0, 0);
+            f.List.DrawIndexed(3, 1, 0, 0, 4);
+        }
+        f.List.SetVertexBuffer(1, f.Instances, 0);
+        for (uint window = 2; window < 64; window++)
+            f.List.DrawIndexed(3, 1, 0, 0, window * 4);
+        f.List.End();
+        f.Begin();
+        long mixed = f.List.RetainedVertexWindowCapacityForTests;
+        output.WriteLine($"One large and 31 small window keys retain {mixed} window entries after Begin");
+        Assert.InRange(mixed, 1L, 384L);
+        f.List.End();
+    }
+
     // #1696. A warm scene can revisit the same instance windows in a different buffer-binding order.
     [Fact]
     public void WarmedVertexCoverageKeepsWindowCapacityAcrossBindingOrderChanges()

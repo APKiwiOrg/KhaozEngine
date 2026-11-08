@@ -106,7 +106,9 @@ Issues (the `kind/roadmap` label), not a checked-in roadmap file.
   uncovered polygon replacement capacity after its last overlap.
 - Metal read footprints carry warmed storage capacity between ring slots, so repeating scene shapes allocate
   no late resource records when their period differs from the ring depth. Vertex coverage also retains warmed
-  disconnected-window capacity across changes in buffer binding order.
+  disconnected-window capacity across changes in buffer binding order. Window stores are pooled by observed
+  demand, so reachable indexed streams retain none and one window-heavy key cannot multiply its peak across
+  unrelated coverage records.
 - Space coverage refinement refusals identify their footprint through `OwnerId` while retaining underlying
   bound and opening identifiers.
 

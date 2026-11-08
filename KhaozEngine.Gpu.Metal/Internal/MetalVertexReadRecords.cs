@@ -21,13 +21,14 @@ internal sealed class MetalVertexReadRecords
     readonly Dictionary<MetalVertexReadLayout.Stream, int> _shapes = new();
     readonly int[] _shapeIds = new int[MetalVertexStreamRecords.MaxSlot + 1];
     readonly List<MetalVertexReadCoverage> _storage = new();
+    readonly MetalVertexWindowPool _windowPool = new();
     MetalRecordedReads? _target;
     MetalVertexReadLayout? _layout;
     ulong _generation;
     bool _indexed;
     uint _dirty, _windowSlots;
     long _preparations;
-    int _windowCapacity;
+    internal long RetainedWindowCapacityForTests => _windowPool.RetainedCapacityForTests;
 
     internal long CoverageStepsForTests
     {
@@ -50,14 +51,10 @@ internal sealed class MetalVertexReadRecords
 
     internal void Reset()
     {
-        ReserveWindowCapacity();
         Array.Clear(_bindings);
-        _coverage.Clear();
-        _shapes.Clear();
+        ClearCoverage();
         _target = null;
-        _layout = null;
         _dirty = _windowSlots = 0;
-        _preparations = 0;
     }
 
     internal void RecordReads(MetalRecordedReads reads, MetalVertexReadLayout layout,
@@ -66,13 +63,9 @@ internal sealed class MetalVertexReadRecords
         if (vertexCount == 0 || instanceCount == 0) return;
         if (!ReferenceEquals(_target, reads) || _generation != reads.Generation)
         {
-            if (_target is not null) ReserveWindowCapacity();
+            if (_target is not null) ClearCoverage();
             _target = reads;
             _generation = reads.Generation;
-            _coverage.Clear();
-            _shapes.Clear();
-            _layout = null;
-            _preparations = 0;
         }
         if (!ReferenceEquals(_layout, layout) || _indexed != indexed)
         {
@@ -104,15 +97,14 @@ internal sealed class MetalVertexReadRecords
         }
     }
 
-    // Coverage positions can serve different buffer/window combinations next recording. Propagate only
-    // observed backing capacity, never coverage, so a changed bind order cannot make warmed windows cold.
-    void ReserveWindowCapacity()
+    // Window stores are CPU recording scratch. Published prefixes own the separate exact read index.
+    void ClearCoverage()
     {
-        int capacity = _windowCapacity;
-        foreach (var coverage in _storage) capacity = Math.Max(capacity, coverage.WindowCapacity);
-        if (capacity == _windowCapacity) return;
-        _windowCapacity = capacity;
-        foreach (var coverage in _storage) coverage.ReserveWindows(capacity);
+        foreach (var coverage in _coverage.Values) coverage.Clear();
+        _coverage.Clear();
+        _shapes.Clear();
+        _layout = null;
+        _preparations = 0;
     }
 
     // Resolve structural equality only when the pipeline layout changes, never on every mesh rebind.
@@ -149,9 +141,8 @@ internal sealed class MetalVertexReadRecords
             if (!_coverage.TryGetValue(key, out var coverage))
             {
                 int index = _coverage.Count;
-                if (index == _storage.Count) _storage.Add(new());
+                if (index == _storage.Count) _storage.Add(new(_windowPool));
                 coverage = _storage[index];
-                coverage.ReserveWindows(_windowCapacity);
                 coverage.Clear();
                 _coverage.Add(key, coverage);
             }
